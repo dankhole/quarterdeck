@@ -176,36 +176,59 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 	);
 
 	// Main effect: when files change, build enriched list from cache and start fetching uncached diffs.
-	// Uses a fingerprint of file paths+statuses+counts to detect actual content changes vs. timestamp-only
-	// poll bumps. When the fingerprint changes, cached diffs are invalidated and re-fetched in background
-	// (stale-while-revalidate) to avoid skeleton flash on every poll cycle.
+	// Uses a fingerprint to detect actual content changes vs. timestamp-only poll bumps.
+	// When the fingerprint is unchanged, we skip all work to avoid unnecessary re-renders.
 	useEffect(() => {
-		// Abort any in-flight fetch sequence.
-		abortRef.current?.abort();
-		abortRef.current = null;
-
 		if (!files || files.length === 0 || !projectId) {
-			setEnrichedFiles(files);
-			setFileLoadingState(EMPTY_LOADING_STATE);
-			prevFileFingerprintRef.current = "";
+			if (prevFileFingerprintRef.current !== "") {
+				abortRef.current?.abort();
+				abortRef.current = null;
+				setEnrichedFiles(files);
+				setFileLoadingState(EMPTY_LOADING_STATE);
+				prevFileFingerprintRef.current = "";
+			}
 			return;
 		}
 
-		const cache = cacheRef.current;
 		const fingerprint = buildFileListFingerprint(files);
-		const fingerprintChanged = fingerprint !== prevFileFingerprintRef.current;
+		if (fingerprint === prevFileFingerprintRef.current) {
+			return;
+		}
+
+		abortRef.current?.abort();
+		abortRef.current = null;
+
+		const cache = cacheRef.current;
+		const previousFingerprint = prevFileFingerprintRef.current;
 		prevFileFingerprintRef.current = fingerprint;
 
-		// When the file list actually changed (not just a timestamp bump), invalidate cached diffs
-		// so they get re-fetched — but use background mode to avoid skeleton flash.
-		if (fingerprintChanged && cache.size > 0) {
-			cache.clear();
+		// Selectively invalidate only files whose fingerprint entry changed,
+		// keeping stable diffs in place to avoid skeleton flash.
+		if (previousFingerprint && cache.size > 0) {
+			const prevEntries = new Map(
+				previousFingerprint.split("|").map((entry) => {
+					const path = entry.slice(0, entry.indexOf(":"));
+					return [path, entry] as const;
+				}),
+			);
+			for (const file of files) {
+				const currentEntry = `${file.path}:${file.status}:${file.additions}:${file.deletions}`;
+				if (prevEntries.get(file.path) !== currentEntry) {
+					cache.delete(buildCacheKey(file.path, mode, fromRef, toRef));
+				}
+			}
+			const currentPaths = new Set(files.map((f) => f.path));
+			for (const key of cache.keys()) {
+				const path = key.slice(0, key.indexOf("::"));
+				if (!currentPaths.has(path)) {
+					cache.delete(key);
+				}
+			}
 			isBackgroundRefetchRef.current = true;
 		}
 
 		const loaded = new Set<string>();
 
-		// Build initial enriched list from cache.
 		const initial = files.map((file) => {
 			const cacheKey = buildCacheKey(file.path, mode, fromRef, toRef);
 			const cached = cache.get(cacheKey);
@@ -219,7 +242,6 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 		setEnrichedFiles(initial);
 		setFileLoadingState({ loaded, loading: new Set() });
 
-		// Start fetching uncached diffs.
 		const hasUncached = files.some((file) => {
 			const cacheKey = buildCacheKey(file.path, mode, fromRef, toRef);
 			return !cache.has(cacheKey);

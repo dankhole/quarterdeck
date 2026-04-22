@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: stabilize uncommitted changes view against needless poll re-renders
+
+- `useTrpcQuery` now compares JSON-serialized responses before updating React state, so identical 1-second poll results no longer cascade new object references through the component tree.
+- `activeFiles` memo in `use-git-view` depends on `.files` arrays instead of full response objects, preventing invalidation from `generatedAt` timestamp changes.
+- `useAllFileDiffContent` early-exits when the file fingerprint is unchanged and selectively invalidates only changed files instead of clearing the entire diff cache — unchanged diffs stay in place without skeleton flash.
+
 ### Fix: detect sessions that stall before first hook arrives
 
 - Widened `checkStalledSession` to catch running sessions that never receive their first hook — covers agent-level failures (API errors, cert issues, quota exhaustion) that happen before the hook system engages.

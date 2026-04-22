@@ -29,12 +29,19 @@ function toError(value: unknown): Error {
 // do not overwrite newer state. This hook provides that minimal behavior with no cache layer.
 export function useTrpcQuery<TData>(options: UseTrpcQueryOptions<TData>): UseTrpcQueryResult<TData> {
 	const { enabled, queryFn, retainDataOnError = false } = options;
-	const [data, setData] = useState<TData | null>(null);
+	const [data, setDataRaw] = useState<TData | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [isError, setIsError] = useState(false);
 	const [error, setError] = useState<Error | null>(null);
 	const requestIdRef = useRef(0);
 	const isMountedRef = useRef(true);
+	const prevJsonRef = useRef<string | null>(null);
+
+	const setData = useCallback((nextData: TData | null) => {
+		const nextJson = nextData === null ? null : JSON.stringify(nextData);
+		prevJsonRef.current = nextJson;
+		setDataRaw(nextData);
+	}, []);
 
 	useEffect(() => {
 		isMountedRef.current = true;
@@ -60,7 +67,11 @@ export function useTrpcQuery<TData>(options: UseTrpcQueryOptions<TData>): UseTrp
 			if (!isMountedRef.current || requestIdRef.current !== requestId) {
 				return null;
 			}
-			setData(nextData);
+			const nextJson = JSON.stringify(nextData);
+			if (nextJson !== prevJsonRef.current) {
+				prevJsonRef.current = nextJson;
+				setDataRaw(nextData);
+			}
 			setIsLoading(false);
 			return nextData;
 		} catch (queryError) {

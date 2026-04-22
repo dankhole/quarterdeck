@@ -2,6 +2,31 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: stabilize uncommitted changes view against needless poll re-renders (2026-04-22)
+
+The uncommitted changes diff view was bouncing/reloading every 1-second poll cycle even when no files had changed. Three cascading reference-equality problems combined to cause full re-renders of the entire diff panel on every poll.
+
+**Root cause chain:**
+1. `useTrpcQuery` called `setData(nextData)` on every successful poll, creating a new React state reference even when the server returned identical data (the server-side cache returned the same object, but tRPC serialization created a new JS reference on the client).
+2. `activeFiles` useMemo in `use-git-view` depended on the full `uncommittedChanges` response object (which includes a `generatedAt` timestamp that changes every call), not just the `.files` array.
+3. `useAllFileDiffContent` ran its full effect on every `files` reference change: rebuilding the enriched files array, resetting loading state, and (when the fingerprint changed) clearing the entire diff cache instead of selectively invalidating only the files that actually changed.
+
+**Fix:**
+- `useTrpcQuery`: added `prevJsonRef` that stores `JSON.stringify(data)`. The `runQuery` path compares before calling `setDataRaw`, skipping the state update when content is identical. The public `setData` API (used for intentional clears like view transitions) writes unconditionally and keeps the ref in sync.
+- `use-git-view`: extracted `uncommittedFiles`, `lastTurnFiles`, `compareFiles` from their response objects before the `useMemo` dependency array, so the memo only recomputes when the `.files` arrays actually change.
+- `use-all-file-diff-content`: added fingerprint early-exit (skip all work when unchanged), and replaced the full `cache.clear()` with selective invalidation that compares each file's fingerprint entry and only evicts changed files. Removed files are also cleaned from the cache.
+
+**Files touched:**
+- [`web-ui/src/runtime/use-trpc-query.ts`](./../web-ui/src/runtime/use-trpc-query.ts) — JSON comparison in runQuery, prevJsonRef, public setData wrapper
+- [`web-ui/src/hooks/git/use-git-view.ts`](./../web-ui/src/hooks/git/use-git-view.ts) — extract .files before useMemo
+- [`web-ui/src/runtime/use-all-file-diff-content.ts`](./../web-ui/src/runtime/use-all-file-diff-content.ts) — fingerprint early-exit, selective cache invalidation
+
+**Validation:**
+- All 873 web-ui tests pass, all 750 runtime/utility tests pass
+- Both `npm run typecheck` and `npm run web:typecheck` clean
+- Existing `use-runtime-project-changes` tests (view-transition clearing, view-key change clearing, keep-visible-during-transition) all pass — confirms `setData(null)` still works through the wrapper
+- Pre-commit hook passed
+
 ## Fix: detect sessions that stall before first hook arrives (2026-04-22)
 
 Widened the stalled-session reconciliation check to cover a gap where agent-level failures (API errors like `UNKNOWN_CERTIFICATE_VERIFICATION_ERROR`, cert issues, quota exhaustion) that happen before the hook system engages left the task card stuck in "running" indefinitely.

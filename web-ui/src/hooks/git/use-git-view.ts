@@ -220,9 +220,12 @@ export function useGitView({
 	);
 
 	// Derive active file list for file tree
+	const uncommittedFiles = uncommittedChanges?.files ?? null;
+	const lastTurnFiles = lastTurnChanges?.files ?? null;
+	const compareFiles = compareChanges?.files ?? null;
 	const activeFiles: RuntimeWorkdirFileChange[] | null = useMemo(
-		() => deriveActiveFiles(activeTab, uncommittedChanges?.files, lastTurnChanges?.files, compareChanges?.files),
-		[activeTab, uncommittedChanges, lastTurnChanges, compareChanges],
+		() => deriveActiveFiles(activeTab, uncommittedFiles, lastTurnFiles, compareFiles),
+		[activeTab, uncommittedFiles, lastTurnFiles, compareFiles],
 	);
 
 	// Batch diff content loading
