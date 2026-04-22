@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
 	type AudibleNotificationEventConfig,
 	areSoundsSuppressed,
@@ -9,20 +9,19 @@ import {
 	resolveSessionSoundEvent,
 	type TaskColumn,
 } from "@/hooks/notifications/audible-notifications";
-import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { flattenProjectNotificationTasks } from "@/hooks/notifications/project-notifications";
+import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import type { AudibleNotificationEventType } from "@/utils/notification-audio";
 import { notificationAudioPlayer } from "@/utils/notification-audio";
 
 interface UseAudibleNotificationsOptions {
-	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
+	notificationProjects: RuntimeProjectNotificationStateMap;
 	audibleNotificationsEnabled: boolean;
 	audibleNotificationVolume: number;
 	audibleNotificationEvents: AudibleNotificationEventConfig;
 	audibleNotificationsOnlyWhenHidden: boolean;
 	/** Per-event suppression for tasks in the currently viewed project. */
 	audibleNotificationSuppressCurrentProject: AudibleNotificationEventConfig;
-	/** Maps task IDs to their project IDs. */
-	notificationProjectIds: Record<string, string>;
 	/** The currently viewed project ID. */
 	currentProjectId: string | null;
 	/** Task IDs for which sounds should be suppressed (e.g. tasks being trashed). */
@@ -35,28 +34,31 @@ interface PendingSound {
 }
 
 export function useAudibleNotifications({
-	notificationSessions,
+	notificationProjects,
 	audibleNotificationsEnabled,
 	audibleNotificationVolume,
 	audibleNotificationEvents,
 	audibleNotificationsOnlyWhenHidden,
 	audibleNotificationSuppressCurrentProject,
-	notificationProjectIds,
 	currentProjectId,
 	suppressedTaskIds,
 }: UseAudibleNotificationsOptions): void {
+	const notificationTasks = useMemo(
+		() => flattenProjectNotificationTasks(notificationProjects),
+		[notificationProjects],
+	);
 	const previousColumnsRef = useRef<Map<string, TaskColumn>>(new Map());
 	const isInitialLoadRef = useRef(true);
 	const pendingSoundsRef = useRef<Map<string, PendingSound>>(new Map());
 	const latestVolumeRef = useRef(audibleNotificationVolume);
 	const latestEventsRef = useRef(audibleNotificationEvents);
 	const latestSuppressRef = useRef(audibleNotificationSuppressCurrentProject);
-	const latestProjectIdsRef = useRef(notificationProjectIds);
+	const latestNotificationTasksRef = useRef(notificationTasks);
 	const latestProjectIdRef = useRef(currentProjectId);
 	latestVolumeRef.current = audibleNotificationVolume;
 	latestEventsRef.current = audibleNotificationEvents;
 	latestSuppressRef.current = audibleNotificationSuppressCurrentProject;
-	latestProjectIdsRef.current = notificationProjectIds;
+	latestNotificationTasksRef.current = notificationTasks;
 	latestProjectIdRef.current = currentProjectId;
 
 	const fireSound = (taskId: string) => {
@@ -65,11 +67,12 @@ export function useAudibleNotifications({
 		pendingSoundsRef.current.delete(taskId);
 		const eventType = pending.eventType;
 		if (!latestEventsRef.current[eventType]) return;
+		const task = latestNotificationTasksRef.current[taskId];
 		if (
 			isEventSuppressedForProject(
 				eventType,
 				latestSuppressRef.current,
-				latestProjectIdsRef.current[taskId],
+				task?.projectId,
 				latestProjectIdRef.current,
 			)
 		) {
@@ -86,16 +89,16 @@ export function useAudibleNotifications({
 		// On initial load, populate columns without playing sounds.
 		if (isInitialLoadRef.current) {
 			isInitialLoadRef.current = false;
-			for (const [taskId, summary] of Object.entries(notificationSessions)) {
-				previousColumns.set(taskId, deriveColumn(summary));
+			for (const [taskId, task] of Object.entries(notificationTasks)) {
+				previousColumns.set(taskId, deriveColumn(task.summary));
 			}
 			return;
 		}
 
 		const soundsSuppressed = areSoundsSuppressed(audibleNotificationsEnabled, audibleNotificationsOnlyWhenHidden);
 
-		for (const [taskId, summary] of Object.entries(notificationSessions)) {
-			const currentColumn = deriveColumn(summary);
+		for (const [taskId, task] of Object.entries(notificationTasks)) {
+			const currentColumn = deriveColumn(task.summary);
 			const previousColumn = previousColumns.get(taskId);
 			previousColumns.set(taskId, currentColumn);
 
@@ -116,9 +119,9 @@ export function useAudibleNotifications({
 				if (existing) {
 					clearTimeout(existing.timer);
 				}
-				const eventType = resolveSessionSoundEvent(summary);
+				const eventType = resolveSessionSoundEvent(task.summary);
 				if (eventType) {
-					const timer = setTimeout(() => fireSound(taskId), getSettleWindowMs(summary));
+					const timer = setTimeout(() => fireSound(taskId), getSettleWindowMs(task.summary));
 					pendingSoundsRef.current.set(taskId, { eventType, timer });
 				}
 				continue;
@@ -129,7 +132,7 @@ export function useAudibleNotifications({
 			// the pending sound if the new event is higher priority.
 			if (currentColumn === "stopped" && pendingSoundsRef.current.has(taskId)) {
 				const pending = pendingSoundsRef.current.get(taskId)!;
-				const eventType = resolveSessionSoundEvent(summary);
+				const eventType = resolveSessionSoundEvent(task.summary);
 				if (eventType && EVENT_PRIORITY[eventType] > EVENT_PRIORITY[pending.eventType]) {
 					pending.eventType = eventType;
 				}
@@ -146,10 +149,10 @@ export function useAudibleNotifications({
 			}
 		}
 
-		// Clean up removed tasks. In practice notificationSessions grows monotonically,
+		// Clean up removed tasks. In practice notification state grows monotonically,
 		// so this loop is defensive — retained for correctness if pruning is added later.
 		for (const taskId of previousColumns.keys()) {
-			if (!(taskId in notificationSessions)) {
+			if (!(taskId in notificationTasks)) {
 				previousColumns.delete(taskId);
 				const existing = pendingSoundsRef.current.get(taskId);
 				if (existing) {
@@ -158,7 +161,7 @@ export function useAudibleNotifications({
 				}
 			}
 		}
-	}, [audibleNotificationsEnabled, audibleNotificationsOnlyWhenHidden, notificationSessions, suppressedTaskIds]);
+	}, [audibleNotificationsEnabled, audibleNotificationsOnlyWhenHidden, notificationTasks, suppressedTaskIds]);
 
 	// Clean up pending timers on unmount.
 	useEffect(() => {

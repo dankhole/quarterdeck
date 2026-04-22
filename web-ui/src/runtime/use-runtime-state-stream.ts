@@ -1,6 +1,7 @@
 import { useEffect, useReducer } from "react";
 import { consumeProjectPreload } from "@/runtime/project-preload-cache";
 import { resolveStreamMessage } from "@/runtime/runtime-stream-dispatch";
+import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import {
 	createInitialRuntimeStateStreamStore,
 	runtimeStateStreamReducer,
@@ -18,7 +19,6 @@ import type {
 	RuntimeProjectStateResponse,
 	RuntimeProjectSummary,
 	RuntimeStateStreamTaskReadyForReviewMessage,
-	RuntimeTaskSessionSummary,
 } from "@/runtime/types";
 
 export type { TaskBaseRefUpdate, TaskTitleUpdate, TaskWorkingDirectoryUpdate } from "@/runtime/runtime-state-stream-store";
@@ -28,8 +28,7 @@ export interface UseRuntimeStateStreamResult {
 	projects: RuntimeProjectSummary[];
 	projectState: RuntimeProjectStateResponse | null;
 	projectMetadata: RuntimeProjectMetadata | null;
-	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
-	notificationProjectIds: Record<string, string>;
+	notificationProjects: RuntimeProjectNotificationStateMap;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	latestTaskTitleUpdate: TaskTitleUpdate | null;
 	latestTaskBaseRefUpdate: TaskBaseRefUpdate | null;
@@ -97,8 +96,7 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 		projects: state.projects,
 		projectState: state.projectState,
 		projectMetadata: state.projectMetadata,
-		notificationSessions: state.notificationMemory.sessions,
-		notificationProjectIds: state.notificationMemory.projectIds,
+		notificationProjects: state.notificationMemory.projects,
 		latestTaskReadyForReview: state.latestTaskReadyForReview,
 		latestTaskTitleUpdate: state.latestTaskTitleUpdate,
 		latestTaskBaseRefUpdate: state.latestTaskBaseRefUpdate,

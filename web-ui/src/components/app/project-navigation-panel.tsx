@@ -2,7 +2,7 @@ import { ProjectNavigationList } from "@/components/app/project-navigation-list"
 import { ProjectNavigationRemovalDialog } from "@/components/app/project-navigation-removal-dialog";
 import { ProjectNavigationSidebarSections } from "@/components/app/project-navigation-sidebar-sections";
 import { useProjectNavigationPanel } from "@/hooks/project";
-import type { RuntimeProjectSummary, RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeProjectSummary } from "@/runtime/types";
 
 export function ProjectNavigationPanel({
 	projects,
@@ -14,8 +14,7 @@ export function ProjectNavigationPanel({
 	onRemoveProject,
 	onReorderProjects,
 	onAddProject,
-	notificationSessions,
-	notificationProjectIds,
+	needsInputByProject,
 }: {
 	projects: RuntimeProjectSummary[];
 	isLoadingProjects?: boolean;
@@ -26,16 +25,13 @@ export function ProjectNavigationPanel({
 	onRemoveProject: (projectId: string) => Promise<boolean>;
 	onReorderProjects?: (projectOrder: string[]) => Promise<void>;
 	onAddProject: () => void;
-	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
-	notificationProjectIds: Record<string, string>;
+	needsInputByProject: Record<string, number>;
 }): React.ReactElement {
 	const panel = useProjectNavigationPanel({
 		projects,
 		removingProjectId,
 		onRemoveProject,
 		onReorderProjects,
-		notificationSessions,
-		notificationProjectIds,
 	});
 
 	return (
@@ -54,7 +50,7 @@ export function ProjectNavigationPanel({
 				canReorder={panel.canReorder}
 				currentProjectId={currentProjectId}
 				removingProjectId={removingProjectId}
-				needsInputByProject={panel.needsInputByProject}
+				needsInputByProject={needsInputByProject}
 				onSelectProject={onSelectProject}
 				onPreloadProject={onPreloadProject}
 				onRequestRemoveProject={panel.requestProjectRemoval}

@@ -66,13 +66,12 @@ export function useAppSideEffects({
 	}, [board.board.columns]);
 
 	useAudibleNotifications({
-		notificationSessions: project.notificationSessions,
+		notificationProjects: project.notificationProjects,
 		audibleNotificationsEnabled: projectRuntime.audibleNotificationsEnabled,
 		audibleNotificationVolume: projectRuntime.audibleNotificationVolume,
 		audibleNotificationEvents: projectRuntime.audibleNotificationEvents,
 		audibleNotificationsOnlyWhenHidden: projectRuntime.audibleNotificationsOnlyWhenHidden,
 		audibleNotificationSuppressCurrentProject: projectRuntime.audibleNotificationSuppressCurrentProject,
-		notificationProjectIds: project.notificationProjectIds,
 		currentProjectId: project.currentProjectId,
 		suppressedTaskIds: trashTaskIdSet,
 	});

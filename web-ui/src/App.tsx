@@ -503,8 +503,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 										onAddProject={() => {
 											void project.handleAddProject();
 										}}
-										notificationSessions={project.notificationSessions}
-										notificationProjectIds={project.notificationProjectIds}
+										needsInputByProject={project.needsInputByProject}
 									/>
 								</div>
 								<ResizeHandle

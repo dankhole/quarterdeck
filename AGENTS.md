@@ -85,6 +85,10 @@ Session reconciliation
 - Before adding dynamic UI state tied to session lifecycle (status indicators, transient panels, auto-triggered actions), check `src/terminal/session-reconciliation.ts` and ensure stale/orphaned instances of the new state have a cleanup path in the reconciliation sweep. The sweep runs every 10 seconds and currently handles dead processes, processless sessions, and stale hook metadata.
 
 Misc. tribal knowledge
+- Notification ownership is intentionally split:
+  - `web-ui/src/runtime/runtime-state-stream-store.ts` keeps cross-project notification state bucketed by project, not as one flat task map plus a separate task→project lookup.
+  - UI consumers should read the provider-owned projection (`needsInputByProject`, current-project/other-project needs-input flags) instead of re-deriving project ownership from raw notification buckets.
+  - `use-audible-notifications` is the main place that may flatten project buckets back into task entries, because sound transitions are inherently cross-project and event-oriented.
 - Keep **task agent terminals** and **shell terminals** mentally separate even when they share xterm/panel plumbing.
   - Task agent terminals are task-scoped viewers for agent sessions and use the shared/pool path.
   - Shell terminals (home shell and detail shell) are dedicated workspace-scoped manual shells with different lifecycle rules, restart behavior, and exit handling.

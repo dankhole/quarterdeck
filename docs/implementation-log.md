@@ -2,6 +2,54 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Notification/project-scoping ownership refactor (2026-04-21)
+
+Landed the first notification ownership cleanup pass by making project boundaries first-class in frontend notification state instead of letting multiple consumers reconstruct project ownership from a flat cross-project session map plus a separate task-to-project lookup. Before this change, runtime ingress stored notification memory as two loosely coupled global maps, and navigation badges, toolbar indicators, and current-project sound suppression each had to infer ownership from those maps independently. After this slice, runtime notification memory is stored as project-owned buckets, and the provider layer exposes a narrow project notification projection for UI consumers.
+
+**What changed:**
+
+- Added `web-ui/src/runtime/runtime-notification-projects.ts`, which now owns the project-bucket notification memory helpers used by the runtime stream store: per-project session merges stay monotonic for notification semantics, project-state seeding stays explicit, and removed projects prune their notification buckets instead of leaving cross-project residue behind.
+- Refactored `web-ui/src/runtime/runtime-state-stream-store.ts` and `web-ui/src/runtime/use-runtime-state-stream.ts` so notification memory is now `projects[projectId].sessions` rather than one flat `sessions` map plus `projectIds`. This keeps project ownership in the data model itself and makes current-project seeding/pruning an explicit reducer concern.
+- Added `web-ui/src/hooks/notifications/project-notifications.ts`, a pure notification-domain module that derives the provider-owned UI projection (`needsInputByProject`, `currentProjectHasNeedsInput`, `otherProjectsHaveNeedsInput`, and current-project sessions) from the project buckets. This keeps project badge logic out of UI hooks/components that only need the projection, not the raw notification memory.
+- Narrowed `web-ui/src/providers/project-provider.tsx` to expose that derived notification projection, updated `web-ui/src/hooks/app/use-app-action-models.ts` to read the provider-owned current/other-project flags for toolbar badges, and simplified `web-ui/src/components/app/project-navigation-panel.tsx` plus `web-ui/src/hooks/project/use-project-navigation-panel.ts` so the panel no longer owns notification aggregation logic.
+- Updated `web-ui/src/hooks/notifications/use-audible-notifications.ts` to flatten the project-owned buckets internally. That keeps review/permission/failure audio behavior and current-project suppression stable while removing the separate task-to-project lookup map from the hook contract.
+- Added the high-signal tribal-knowledge follow-up in `AGENTS.md` documenting that notification ownership is intentionally split between project-owned runtime buckets, provider-owned UI projection, and the audible-notification hook’s event-oriented flattening.
+- Added/updated focused regression coverage in:
+  - `web-ui/src/runtime/runtime-state-stream-store.test.ts`
+  - `web-ui/src/hooks/notifications/project-notifications.test.ts`
+  - `web-ui/src/hooks/project/use-project-navigation-panel.test.tsx`
+  - `web-ui/src/components/app/project-navigation-panel.test.tsx`
+  - Existing audible notification suites via `web-ui/src/hooks/notifications/audible-notifications-*.test*`
+- Reran targeted frontend notification/navigation tests plus `npm run web:typecheck` and `npm run typecheck`.
+
+**Why:** The old shape “worked” only because several layers happened to keep a flat notification session map and a separate task-to-project map in sync. That made it too easy for project-switch or project-removal bugs to show up as stale needs-input dots, badge leakage, or suppression logic depending on the wrong ownership source. This slice does not solve the whole later “notification / indicator state model” follow-up, but it removes one important structural weakness: project ownership is now explicit in notification state, and most UI consumers no longer need to re-derive it.
+
+**Files touched:**
+
+- `AGENTS.md`
+- `web-ui/src/App.tsx`
+- `web-ui/src/components/app/project-navigation-panel.test.tsx`
+- `web-ui/src/components/app/project-navigation-panel.tsx`
+- `web-ui/src/hooks/app/use-app-action-models.ts`
+- `web-ui/src/hooks/app/use-app-side-effects.ts`
+- `web-ui/src/hooks/notifications/audible-notifications-test-utils.tsx`
+- `web-ui/src/hooks/notifications/project-notifications.test.ts`
+- `web-ui/src/hooks/notifications/project-notifications.ts`
+- `web-ui/src/hooks/notifications/use-audible-notifications.ts`
+- `web-ui/src/hooks/project/use-project-navigation-panel.test.tsx`
+- `web-ui/src/hooks/project/use-project-navigation-panel.ts`
+- `web-ui/src/hooks/project/use-project-navigation.ts`
+- `web-ui/src/providers/project-provider.tsx`
+- `web-ui/src/runtime/runtime-notification-projects.ts`
+- `web-ui/src/runtime/runtime-state-stream-store.test.ts`
+- `web-ui/src/runtime/runtime-state-stream-store.ts`
+- `web-ui/src/runtime/use-runtime-state-stream.ts`
+- `docs/todo.md`
+- `CHANGELOG.md`
+- `docs/implementation-log.md`
+
+**Commit hash:** Pending commit on `feature/notification-project-scoping` (branch created from local `main` at `f261083f`).
+
 ## Board/task-editor provider ownership follow-up (2026-04-21)
 
 Landed the next provider-narrowing follow-up by extracting task editing out of `BoardProvider` into a dedicated `TaskEditorProvider`. Before this change, `BoardContext` mixed core board/selection/session ownership with task create/edit dialog state, branch-option derivation, and the “save edit, then auto-start once it lands back in backlog” bridge. After the split, `BoardProvider` reads as board + selection + task-session ownership, while the new task-editor seam owns task editing as its own coherent workflow.

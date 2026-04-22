@@ -1,21 +1,17 @@
 import type { DropResult } from "@hello-pangea/dnd";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { RuntimeProjectSummary, RuntimeTaskSessionSummary } from "@/runtime/types";
-import { isApprovalState } from "@/utils/session-status";
+import type { RuntimeProjectSummary } from "@/runtime/types";
 
 interface UseProjectNavigationPanelInput {
 	projects: RuntimeProjectSummary[];
 	removingProjectId: string | null;
 	onRemoveProject: (projectId: string) => Promise<boolean>;
 	onReorderProjects?: (projectOrder: string[]) => Promise<void>;
-	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
-	notificationProjectIds: Record<string, string>;
 }
 
 export interface UseProjectNavigationPanelResult {
 	canReorder: boolean;
 	displayedProjects: RuntimeProjectSummary[];
-	needsInputByProject: Record<string, number>;
 	pendingProjectRemoval: RuntimeProjectSummary | null;
 	pendingProjectTaskCount: number;
 	isProjectRemovalPending: boolean;
@@ -30,28 +26,12 @@ export function useProjectNavigationPanel({
 	removingProjectId,
 	onRemoveProject,
 	onReorderProjects,
-	notificationSessions,
-	notificationProjectIds,
 }: UseProjectNavigationPanelInput): UseProjectNavigationPanelResult {
 	const canReorder = projects.length > 1 && onReorderProjects !== undefined;
 	const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
 	const [pendingProjectRemoval, setPendingProjectRemoval] = useState<RuntimeProjectSummary | null>(null);
 	const previousProjectIdsRef = useRef("");
 	const projectIdsSignature = useMemo(() => projects.map((project) => project.id).join(","), [projects]);
-
-	const needsInputByProject = useMemo(() => {
-		const counts: Record<string, number> = {};
-		for (const [taskId, session] of Object.entries(notificationSessions)) {
-			if (!isApprovalState(session)) {
-				continue;
-			}
-			const projectId = notificationProjectIds[taskId];
-			if (projectId) {
-				counts[projectId] = (counts[projectId] ?? 0) + 1;
-			}
-		}
-		return counts;
-	}, [notificationSessions, notificationProjectIds]);
 
 	useEffect(() => {
 		if (optimisticOrder && previousProjectIdsRef.current !== projectIdsSignature) {
@@ -135,7 +115,6 @@ export function useProjectNavigationPanel({
 	return {
 		canReorder,
 		displayedProjects,
-		needsInputByProject,
 		pendingProjectRemoval,
 		pendingProjectTaskCount,
 		isProjectRemovalPending,

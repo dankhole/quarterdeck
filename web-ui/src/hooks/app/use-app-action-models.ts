@@ -16,7 +16,6 @@ import type { ReactiveCardState, StableCardActions } from "@/state/card-actions-
 import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import { getTerminalPrewarmPolicy } from "@/terminal/terminal-prewarm-policy";
 import { createIdleTaskSession } from "@/utils/app-utils";
-import { isApprovalState } from "@/utils/session-status";
 
 interface UseAppActionModelsInput {
 	project: ProjectContextValue;
@@ -196,25 +195,13 @@ export function useAppActionModels({
 	);
 
 	const projectsBadgeColor: "orange" | undefined = useMemo(
-		() =>
-			Object.entries(project.notificationSessions).some(
-				([taskId, session]) =>
-					project.notificationProjectIds[taskId] !== project.currentProjectId && isApprovalState(session),
-			)
-				? "orange"
-				: undefined,
-		[project.currentProjectId, project.notificationSessions, project.notificationProjectIds],
+		() => (project.otherProjectsHaveNeedsInput ? "orange" : undefined),
+		[project.otherProjectsHaveNeedsInput],
 	);
 
 	const boardBadgeColor: "orange" | undefined = useMemo(
-		() =>
-			Object.entries(project.notificationSessions).some(
-				([taskId, session]) =>
-					project.notificationProjectIds[taskId] === project.currentProjectId && isApprovalState(session),
-			)
-				? "orange"
-				: undefined,
-		[project.currentProjectId, project.notificationSessions, project.notificationProjectIds],
+		() => (project.currentProjectHasNeedsInput ? "orange" : undefined),
+		[project.currentProjectHasNeedsInput],
 	);
 
 	const handleBack = useCallback(() => {

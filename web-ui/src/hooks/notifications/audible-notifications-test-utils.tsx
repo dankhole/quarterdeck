@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { vi } from "vitest";
 
 import { useAudibleNotifications } from "@/hooks/notifications/use-audible-notifications";
+import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 
 export function createMockSession(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
@@ -30,7 +31,8 @@ export function createMockSession(overrides: Partial<RuntimeTaskSessionSummary> 
 }
 
 export interface HookProps {
-	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
+	notificationProjects?: RuntimeProjectNotificationStateMap;
+	notificationSessions?: Record<string, RuntimeTaskSessionSummary>;
 	audibleNotificationsEnabled: boolean;
 	audibleNotificationVolume: number;
 	audibleNotificationEvents: {
@@ -44,13 +46,13 @@ export interface HookProps {
 		review: boolean;
 		failure: boolean;
 	};
-	notificationProjectIds: Record<string, string>;
+	notificationProjectIds?: Record<string, string>;
 	currentProjectId: string | null;
 }
 
 export function defaultProps(): HookProps {
 	return {
-		notificationSessions: {},
+		notificationProjects: {},
 		audibleNotificationsEnabled: true,
 		audibleNotificationVolume: 0.7,
 		audibleNotificationEvents: {
@@ -64,17 +66,40 @@ export function defaultProps(): HookProps {
 			review: false,
 			failure: false,
 		},
-		notificationProjectIds: {},
 		currentProjectId: null,
 	};
 }
 
 export function HookHarness({ onRender, ...props }: HookProps & { onRender?: () => void }): null {
-	useAudibleNotifications(props);
+	const notificationProjects =
+		props.notificationSessions || props.notificationProjectIds
+			? buildNotificationProjectsFromLegacyProps(props)
+			: (props.notificationProjects ?? {});
+
+	useAudibleNotifications({
+		notificationProjects,
+		audibleNotificationsEnabled: props.audibleNotificationsEnabled,
+		audibleNotificationVolume: props.audibleNotificationVolume,
+		audibleNotificationEvents: props.audibleNotificationEvents,
+		audibleNotificationsOnlyWhenHidden: props.audibleNotificationsOnlyWhenHidden,
+		audibleNotificationSuppressCurrentProject: props.audibleNotificationSuppressCurrentProject,
+		currentProjectId: props.currentProjectId,
+	});
 	useEffect(() => {
 		onRender?.();
 	});
 	return null;
+}
+
+function buildNotificationProjectsFromLegacyProps(props: HookProps): RuntimeProjectNotificationStateMap {
+	const notificationProjects: RuntimeProjectNotificationStateMap = {};
+	for (const [taskId, summary] of Object.entries(props.notificationSessions ?? {})) {
+		const projectId = props.notificationProjectIds?.[taskId] ?? props.currentProjectId ?? "project-unknown";
+		const project = notificationProjects[projectId] ?? { sessions: {} };
+		project.sessions[taskId] = summary;
+		notificationProjects[projectId] = project;
+	}
+	return notificationProjects;
 }
 
 /** Must match SETTLE_WINDOW_HOOK_MS in source. */

@@ -6,7 +6,7 @@ import {
 	type UseProjectNavigationPanelResult,
 	useProjectNavigationPanel,
 } from "@/hooks/project/use-project-navigation-panel";
-import type { RuntimeProjectSummary, RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeProjectSummary } from "@/runtime/types";
 
 function makeProject(id: string, name = id): RuntimeProjectSummary {
 	return {
@@ -19,28 +19,6 @@ function makeProject(id: string, name = id): RuntimeProjectSummary {
 			review: 3,
 			trash: 4,
 		},
-	};
-}
-
-function makeSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
-	return {
-		taskId: "task-1",
-		state: "idle",
-		agentId: null,
-		projectPath: null,
-		pid: null,
-		startedAt: null,
-		updatedAt: Date.now(),
-		lastOutputAt: null,
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
-		...overrides,
 	};
 }
 
@@ -111,55 +89,6 @@ describe("useProjectNavigationPanel", () => {
 		});
 	}
 
-	it("counts only approval-state sessions by project", () => {
-		renderHook({
-			projects: [makeProject("project-1"), makeProject("project-2")],
-			removingProjectId: null,
-			onRemoveProject: vi.fn(async () => true),
-			notificationProjectIds: {
-				"task-1": "project-1",
-				"task-2": "project-1",
-				"task-3": "project-2",
-			},
-			notificationSessions: {
-				"task-1": makeSummary({
-					state: "awaiting_review",
-					reviewReason: "hook",
-					latestHookActivity: {
-						activityText: null,
-						toolName: null,
-						toolInputSummary: null,
-						finalMessage: null,
-						hookEventName: "permissionRequest",
-						notificationType: null,
-						source: null,
-						conversationSummaryText: null,
-					},
-				}),
-				"task-2": makeSummary({ state: "running" }),
-				"task-3": makeSummary({
-					state: "awaiting_review",
-					reviewReason: "hook",
-					latestHookActivity: {
-						activityText: "Waiting for approval",
-						toolName: null,
-						toolInputSummary: null,
-						finalMessage: null,
-						hookEventName: null,
-						notificationType: null,
-						source: null,
-						conversationSummaryText: null,
-					},
-				}),
-			},
-		});
-
-		expect(latestValue.needsInputByProject).toEqual({
-			"project-1": 1,
-			"project-2": 1,
-		});
-	});
-
 	it("reorders projects optimistically and resets when the project list changes", () => {
 		const onReorderProjects = vi.fn(async () => {});
 		const projects = [makeProject("project-1"), makeProject("project-2"), makeProject("project-3")];
@@ -169,8 +98,6 @@ describe("useProjectNavigationPanel", () => {
 			removingProjectId: null,
 			onRemoveProject: vi.fn(async () => true),
 			onReorderProjects,
-			notificationSessions: {},
-			notificationProjectIds: {},
 		});
 
 		act(() => {
@@ -189,8 +116,6 @@ describe("useProjectNavigationPanel", () => {
 			removingProjectId: null,
 			onRemoveProject: vi.fn(async () => true),
 			onReorderProjects,
-			notificationSessions: {},
-			notificationProjectIds: {},
 		});
 
 		expect(latestValue.displayedProjects.map((project) => project.id)).toEqual([
@@ -207,8 +132,6 @@ describe("useProjectNavigationPanel", () => {
 			projects: [makeProject("project-1"), makeProject("project-2")],
 			removingProjectId: null,
 			onRemoveProject,
-			notificationSessions: {},
-			notificationProjectIds: {},
 		});
 
 		act(() => {

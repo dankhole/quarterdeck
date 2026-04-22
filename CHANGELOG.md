@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Refactor: tighten notification ownership around project-scoped projections
+
+- Replaced the old flat notification session map plus task-to-project lookup with project-owned notification buckets in `web-ui/src/runtime/runtime-state-stream-store.ts`, keeping cross-project notification memory monotonic for stream/audio semantics while making project ownership explicit in the stored shape.
+- Added `web-ui/src/hooks/notifications/project-notifications.ts` and moved project-level indicator derivation there, so navigation badges and current-vs-other project needs-input indicators now consume a narrow projection (`needsInputByProject`, current-project flag, other-project flag) instead of reconstructing ownership from broad global maps.
+- Narrowed notification consumers to the ownership seam they actually need: `ProjectProvider` now exposes the derived project notification projection, `ProjectNavigationPanel` no longer owns notification aggregation logic, and `use-app-action-models.ts` now reads provider-owned needs-input flags for toolbar badges.
+- Kept audible notification timing and suppression behavior intact while switching `use-audible-notifications.ts` to flatten project-owned notification buckets internally, so current-project suppression still works without relying on a separate task→project map.
+- Added focused regression coverage for the new notification projection, runtime notification bucket pruning, navigation-panel ownership narrowing, and the existing audible notification suites, then reran targeted `web-ui` notification/navigation tests plus frontend and root typecheck.
+
 ### Refactor: narrow board provider ownership around task editing
 
 - Added `web-ui/src/providers/task-editor-provider.tsx`, a dedicated task-editing seam that owns task create/edit state, branch-option derivation, and the edit-save-to-start bridge instead of exposing those workflows through `BoardContext`.

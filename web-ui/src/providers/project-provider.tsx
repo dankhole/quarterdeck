@@ -1,8 +1,10 @@
 import type { Dispatch, MutableRefObject, ReactNode, SetStateAction } from "react";
 import { createContext, useContext, useMemo } from "react";
 import { useDocumentVisibility } from "@/hooks/notifications";
+import { buildProjectNotificationProjection } from "@/hooks/notifications/project-notifications";
 import { type UseProjectNavigationResult, useProjectNavigation, useProjectSync } from "@/hooks/project";
 import { ProjectRuntimeProvider } from "@/providers/project-runtime-provider";
+import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardData } from "@/types";
 
@@ -20,8 +22,10 @@ export interface ProjectContextValue {
 	projects: UseProjectNavigationResult["projects"];
 	streamedProjectState: UseProjectNavigationResult["projectState"];
 	projectMetadata: UseProjectNavigationResult["projectMetadata"];
-	notificationSessions: UseProjectNavigationResult["notificationSessions"];
-	notificationProjectIds: UseProjectNavigationResult["notificationProjectIds"];
+	notificationProjects: RuntimeProjectNotificationStateMap;
+	needsInputByProject: Record<string, number>;
+	currentProjectHasNeedsInput: boolean;
+	otherProjectsHaveNeedsInput: boolean;
 	latestTaskReadyForReview: UseProjectNavigationResult["latestTaskReadyForReview"];
 	latestTaskTitleUpdate: UseProjectNavigationResult["latestTaskTitleUpdate"];
 	latestTaskBaseRefUpdate: UseProjectNavigationResult["latestTaskBaseRefUpdate"];
@@ -120,8 +124,7 @@ export function ProjectProvider({
 		projects,
 		projectState: streamedProjectState,
 		projectMetadata,
-		notificationSessions,
-		notificationProjectIds,
+		notificationProjects,
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
 		latestTaskBaseRefUpdate,
@@ -148,6 +151,11 @@ export function ProjectProvider({
 	} = useProjectNavigation({
 		onProjectSwitchStart,
 	});
+
+	const notificationProjection = useMemo(
+		() => buildProjectNotificationProjection(notificationProjects, currentProjectId),
+		[currentProjectId, notificationProjects],
+	);
 
 	// --- Document visibility ---
 	const isDocumentVisible = useDocumentVisibility();
@@ -183,8 +191,10 @@ export function ProjectProvider({
 			projects,
 			streamedProjectState,
 			projectMetadata,
-			notificationSessions,
-			notificationProjectIds,
+			notificationProjects,
+			needsInputByProject: notificationProjection.needsInputByProject,
+			currentProjectHasNeedsInput: notificationProjection.currentProjectHasNeedsInput,
+			otherProjectsHaveNeedsInput: notificationProjection.otherProjectsHaveNeedsInput,
 			latestTaskReadyForReview,
 			latestTaskTitleUpdate,
 			latestTaskBaseRefUpdate,
@@ -227,8 +237,8 @@ export function ProjectProvider({
 			projects,
 			streamedProjectState,
 			projectMetadata,
-			notificationSessions,
-			notificationProjectIds,
+			notificationProjects,
+			notificationProjection,
 			latestTaskReadyForReview,
 			latestTaskTitleUpdate,
 			latestTaskBaseRefUpdate,

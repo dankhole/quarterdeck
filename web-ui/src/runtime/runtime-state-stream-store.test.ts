@@ -63,8 +63,7 @@ describe("runtimeStateStreamReducer", () => {
 
 		expect(nextState.currentProjectId).toBe("project-a");
 		expect(nextState.projectState?.sessions["task-1"]?.updatedAt).toBe(200);
-		expect(nextState.notificationMemory.sessions["task-1"]?.updatedAt).toBe(200);
-		expect(nextState.notificationMemory.projectIds["task-1"]).toBe("project-a");
+		expect(nextState.notificationMemory.projects["project-a"]?.sessions["task-1"]?.updatedAt).toBe(200);
 		expect(nextState.hasReceivedSnapshot).toBe(true);
 	});
 
@@ -99,7 +98,7 @@ describe("runtimeStateStreamReducer", () => {
 		});
 
 		expect(nextState.projectState?.sessions["task-1"]?.updatedAt).toBe(200);
-		expect(nextState.notificationMemory.sessions["task-1"]?.updatedAt).toBe(200);
+		expect(nextState.notificationMemory.projects["project-a"]?.sessions["task-1"]?.updatedAt).toBe(200);
 	});
 
 	it("drops stale tasks missing from a later authoritative project snapshot", () => {
@@ -174,8 +173,8 @@ describe("runtimeStateStreamReducer", () => {
 		});
 
 		expect(withDelta.projectState?.sessions["task-1"]?.updatedAt).toBe(250);
-		expect(withInitialNotification.notificationMemory.sessions["task-1"]?.updatedAt).toBe(200);
-		expect(withOlderNotification.notificationMemory.sessions["task-1"]?.updatedAt).toBe(200);
+		expect(withInitialNotification.notificationMemory.projects["project-a"]?.sessions["task-1"]?.updatedAt).toBe(200);
+		expect(withOlderNotification.notificationMemory.projects["project-a"]?.sessions["task-1"]?.updatedAt).toBe(200);
 
 		const withNewerNotification = runtimeStateStreamReducer(withOlderNotification, {
 			type: "task_notification",
@@ -183,7 +182,60 @@ describe("runtimeStateStreamReducer", () => {
 			summaries: [createSessionSummary("task-1", 300)],
 		});
 
-		expect(withNewerNotification.notificationMemory.sessions["task-1"]?.updatedAt).toBe(300);
-		expect(withNewerNotification.notificationMemory.projectIds["task-1"]).toBe("project-a");
+		expect(withNewerNotification.notificationMemory.projects["project-a"]?.sessions["task-1"]?.updatedAt).toBe(300);
+	});
+
+	it("prunes notification state for removed projects on projects_updated", () => {
+		const snapshotState = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
+			type: "snapshot",
+			payload: {
+				type: "snapshot",
+				currentProjectId: "project-a",
+				projects: [
+					{
+						id: "project-a",
+						path: "/tmp/project-a",
+						name: "Project A",
+						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+					},
+					{
+						id: "project-b",
+						path: "/tmp/project-b",
+						name: "Project B",
+						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+					},
+				],
+				projectState: createProjectState(1, {
+					"task-1": createSessionSummary("task-1", 100),
+				}),
+				projectMetadata: null,
+			},
+		});
+
+		const withOtherProjectNotification = runtimeStateStreamReducer(snapshotState, {
+			type: "task_notification",
+			projectId: "project-b",
+			summaries: [createSessionSummary("task-2", 150)],
+		});
+
+		const nextState = runtimeStateStreamReducer(withOtherProjectNotification, {
+			type: "projects_updated",
+			payload: {
+				type: "projects_updated",
+				currentProjectId: "project-a",
+				projects: [
+					{
+						id: "project-a",
+						path: "/tmp/project-a",
+						name: "Project A",
+						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+					},
+				],
+			},
+			nextProjectId: "project-a",
+		});
+
+		expect(nextState.notificationMemory.projects["project-a"]?.sessions["task-1"]?.updatedAt).toBe(100);
+		expect(nextState.notificationMemory.projects["project-b"]).toBeUndefined();
 	});
 });

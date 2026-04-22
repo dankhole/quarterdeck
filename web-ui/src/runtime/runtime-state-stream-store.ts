@@ -9,6 +9,12 @@ import type {
 	RuntimeTaskSessionSummary,
 } from "@/runtime/types";
 import {
+	type RuntimeProjectNotificationStateMap,
+	mergeRuntimeProjectNotificationStateMap,
+	pruneRuntimeProjectNotificationStateMap,
+	seedRuntimeProjectNotificationStateMapFromProjectState,
+} from "@/runtime/runtime-notification-projects";
+import {
 	mergeTaskSessionSummaryMap,
 	reconcileAuthoritativeTaskSessionSummaryMap,
 } from "@/utils/session-summary-utils";
@@ -33,8 +39,7 @@ export interface TaskWorkingDirectoryUpdate {
 }
 
 export interface RuntimeNotificationMemory {
-	sessions: Record<string, RuntimeTaskSessionSummary>;
-	projectIds: Record<string, string>;
+	projects: RuntimeProjectNotificationStateMap;
 }
 
 export interface RuntimeStateStreamStore {
@@ -118,11 +123,7 @@ function mergeNotificationMemory(
 	}
 
 	return {
-		sessions: mergeTaskSessionSummaries(currentMemory.sessions, summaries),
-		projectIds: {
-			...currentMemory.projectIds,
-			...Object.fromEntries(summaries.map((summary) => [summary.taskId, projectId])),
-		},
+		projects: mergeRuntimeProjectNotificationStateMap(currentMemory.projects, projectId, summaries),
 	};
 }
 
@@ -131,10 +132,18 @@ function seedNotificationMemoryFromProjectState(
 	projectId: string | null,
 	projectState: RuntimeProjectStateResponse | null,
 ): RuntimeNotificationMemory {
-	if (!projectId || !projectState) {
-		return currentMemory;
-	}
-	return mergeNotificationMemory(currentMemory, projectId, Object.values(projectState.sessions ?? {}));
+	return {
+		projects: seedRuntimeProjectNotificationStateMapFromProjectState(currentMemory.projects, projectId, projectState),
+	};
+}
+
+function pruneNotificationMemory(
+	currentMemory: RuntimeNotificationMemory,
+	projects: readonly RuntimeProjectSummary[],
+): RuntimeNotificationMemory {
+	return {
+		projects: pruneRuntimeProjectNotificationStateMap(currentMemory.projects, projects),
+	};
 }
 
 function mergeDebugLogEntries(
@@ -197,7 +206,7 @@ function applySnapshot(
 		projectState: nextProjectState,
 		projectMetadata: payload.projectMetadata,
 		notificationMemory: seedNotificationMemoryFromProjectState(
-			state.notificationMemory,
+			pruneNotificationMemory(state.notificationMemory, payload.projects),
 			payload.currentProjectId,
 			payload.projectState,
 		),
@@ -214,8 +223,7 @@ export function createInitialRuntimeStateStreamStore(requestedProjectId: string 
 		projectState: null,
 		projectMetadata: null,
 		notificationMemory: {
-			sessions: {},
-			projectIds: {},
+			projects: {},
 		},
 		latestTaskReadyForReview: null,
 		latestTaskTitleUpdate: null,
@@ -252,6 +260,7 @@ export function runtimeStateStreamReducer(
 			...state,
 			currentProjectId: action.nextProjectId,
 			projects: action.payload.projects,
+			notificationMemory: pruneNotificationMemory(state.notificationMemory, action.payload.projects),
 			projectState: didProjectChange ? null : state.projectState,
 			projectMetadata: didProjectChange ? null : state.projectMetadata,
 			latestTaskReadyForReview: didProjectChange ? null : state.latestTaskReadyForReview,
@@ -296,6 +305,11 @@ export function runtimeStateStreamReducer(
 		return {
 			...state,
 			projectState: reconcileProjectStateSessions(state.projectState, action.projectState),
+			notificationMemory: seedNotificationMemoryFromProjectState(
+				state.notificationMemory,
+				state.currentProjectId,
+				action.projectState,
+			),
 		};
 	}
 	if (action.type === "task_sessions_updated") {
