@@ -10,7 +10,9 @@
 //   - Stale hook activity metadata
 //   - Stalled sessions (running but no activity for several minutes)
 // Future candidates: auto-restart loop breaking, frontend panel state reconciliation.
-import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../core";
+import { isPermissionActivity, type RuntimeTaskSessionSummary } from "../core";
+
+export { isPermissionActivity } from "../core";
 
 export type ReconciliationAction =
 	| { type: "clear_hook_activity" }
@@ -44,23 +46,6 @@ export function isProcessAlive(pid: number): boolean {
 		}
 		return false;
 	}
-}
-
-/**
- * Returns true when the hook activity contains permission-related fields.
- * Mirrors the UI's `isPermissionRequest()` in `web-ui/src/utils/session-status.ts`.
- * Both functions must stay in sync — a future refactor should extract a shared utility.
- */
-export function isPermissionActivity(activity: RuntimeTaskHookActivity): boolean {
-	const hook = activity.hookEventName?.toLowerCase() ?? "";
-	const notif = activity.notificationType?.toLowerCase() ?? "";
-	const text = activity.activityText?.toLowerCase() ?? "";
-	return (
-		hook === "permissionrequest" ||
-		notif === "permission_prompt" ||
-		notif === "permission.asked" ||
-		text === "waiting for approval"
-	);
 }
 
 /**

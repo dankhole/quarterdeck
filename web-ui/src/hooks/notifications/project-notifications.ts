@@ -1,6 +1,6 @@
+import { deriveTaskIndicatorState } from "@runtime-contract";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { isApprovalState } from "@/utils/session-status";
 
 export interface FlattenedProjectNotificationTask {
 	projectId: string;
@@ -41,7 +41,7 @@ export function buildProjectNotificationProjection(
 
 	for (const [projectId, projectState] of Object.entries(notificationProjects)) {
 		for (const summary of Object.values(projectState.sessions)) {
-			if (!isApprovalState(summary)) {
+			if (!deriveTaskIndicatorState(summary).approvalRequired) {
 				continue;
 			}
 

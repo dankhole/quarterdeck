@@ -6,5 +6,6 @@ export * from "./git-sync.js";
 export * from "./project-state.js";
 export * from "./shared.js";
 export * from "./streams.js";
+export * from "./task-indicators.js";
 export * from "./task-session.js";
 export * from "./workdir-files.js";

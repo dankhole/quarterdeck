@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Refactor: share notification/indicator semantics across UI consumers
+
+- Added `src/core/api/task-indicators.ts` as the shared semantic layer for approval-required, review-ready, needs-input, failure, completed, stalled, and interrupted indicator meaning, so Claude and Codex raw hook signals normalize into one runtime-contract model before UI consumers interpret them.
+- Switched `web-ui/src/utils/session-status.ts`, `web-ui/src/hooks/notifications/audible-notifications.ts`, and `web-ui/src/hooks/notifications/project-notifications.ts` to consume that shared derivation instead of independently inspecting `reviewReason`, `hookEventName`, `notificationType`, or approval text.
+- Updated backend permission cleanup to reuse the same shared `isPermissionActivity(...)` helper in `src/terminal/session-reconciliation.ts`, keeping permission semantics aligned across hook guards, stale-hook cleanup, status badges, project indicators, and audible notification selection.
+- Preserved the prior green badge tone for `attention` / “Waiting for input” review state so the semantic refactor does not silently change a visible task-status color while still exposing `needsInput` semantics to downstream consumers.
+- Added focused regression coverage for the new semantic layer plus the existing runtime/frontend notification and status consumers, including exit-code, interrupted, stalled, failed, running, and idle derivation cases, then reran targeted runtime tests, targeted `web-ui` notification/navigation tests, and both root/frontend typecheck.
+
 ### Refactor: tighten notification ownership around project-scoped projections
 
 - Replaced the old flat notification session map plus task-to-project lookup with project-owned notification buckets in `web-ui/src/runtime/runtime-state-stream-store.ts`, keeping cross-project notification memory monotonic for stream/audio semantics while making project ownership explicit in the stored shape.

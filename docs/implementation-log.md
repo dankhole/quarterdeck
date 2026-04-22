@@ -2,6 +2,42 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Notification/indicator semantic model refactor (2026-04-21)
+
+Landed the notification/indicator refactor pass by introducing one shared semantic derivation layer for UI-facing task state meaning instead of letting several consumers independently decode raw session summary and hook metadata. Before this change, permission/approval state, review-ready state, needs-input/attention, and failure semantics were inferred in parallel from `reviewReason`, `latestHookActivity.notificationType`, `hookEventName`, and even fallback activity text. That duplication made it easy for Claude/Codex differences to leak upward and for notification, badge, and auto-review behavior to drift apart. After this slice, the raw signals still arrive through the existing session summary model, but the meaning those signals imply is normalized once in the runtime contract and then reused by UI consumers.
+
+**What changed:**
+
+- Added `src/core/api/task-indicators.ts`, which now owns the shared semantic derivation for task indicator state. The module exposes:
+  - `isPermissionActivity(...)` for normalized permission-request detection across Claude and Codex raw metadata.
+  - `deriveTaskIndicatorState(summary)` for the shared semantic model covering `approval_required`, `review_ready`, `needs_input`, `completed`, `error`, `failed`, `stalled`, `interrupted`, `running`, and `idle`, along with the derived badge tone, notification event, approval-blocking flag, and notification column.
+- Exported the new semantic helpers through the runtime contract in `src/core/api/index.ts`, making them available to both the backend and the `web-ui` via `@runtime-contract`.
+- Refactored `src/terminal/session-reconciliation.ts` to reuse the shared `isPermissionActivity(...)` helper rather than keeping a backend-only copy of the permission-detection logic. This keeps stale-hook cleanup aligned with the same permission semantics used by UI indicators.
+- Refactored `web-ui/src/utils/session-status.ts` so status labels, badge tones, stalled tooltip behavior, and the `isApprovalState(...)` helper now derive from `deriveTaskIndicatorState(...)` instead of inspecting raw hook/session fields directly.
+- Refactored `web-ui/src/hooks/notifications/audible-notifications.ts` so settle-window choice, task notification column, and review/permission/failure sound selection all come from the shared semantic layer rather than a separate raw-field switch tree.
+- Refactored `web-ui/src/hooks/notifications/project-notifications.ts` so project-scoped needs-input/approval aggregation now depends on the shared semantic model instead of re-deriving approval state locally.
+- Added `test/runtime/core/task-indicators.test.ts` to lock in the core semantic layer, including explicit Claude vs Codex normalization cases for approval-required state.
+- Followed up on review by preserving the old green badge tone for `attention` / “Waiting for input” sessions, tightening the shared `TaskColumn` typing in `audible-notifications.ts`, making the badge-style/tone bridge explicit in `session-status.ts`, and adding coverage for running, idle, failed, interrupted, stalled, and exit-code-driven completed states.
+- Added a small `AGENTS.md` tribal-knowledge note directing future indicator work to the shared semantic layer so new consumers do not regress back to direct `reviewReason` / `notificationType` / `hookEventName` parsing.
+
+**Why:** The project-scoping ownership refactor made notification ownership clearer, but the meaning of the indicator states themselves was still spread across multiple layers. This pass addresses that second problem without rewriting the whole session lifecycle system: agent-specific raw signals stay low in the stack, Claude and Codex normalize into the same semantic model, and the highest-value UI consumers now read that shared meaning instead of low-level fields.
+
+**Files touched:**
+
+- `AGENTS.md`
+- `src/core/api/index.ts`
+- `src/core/api/task-indicators.ts`
+- `src/terminal/session-reconciliation.ts`
+- `test/runtime/core/task-indicators.test.ts`
+- `web-ui/src/hooks/notifications/audible-notifications.ts`
+- `web-ui/src/hooks/notifications/project-notifications.ts`
+- `web-ui/src/utils/session-status.ts`
+- `docs/todo.md`
+- `CHANGELOG.md`
+- `docs/implementation-log.md`
+
+**Commit hash:** Pending commit on `feature/notification-indicator-model` (branched from local `main` at `3f2b9099`).
+
 ## Notification/project-scoping ownership refactor (2026-04-21)
 
 Landed the first notification ownership cleanup pass by making project boundaries first-class in frontend notification state instead of letting multiple consumers reconstruct project ownership from a flat cross-project session map plus a separate task-to-project lookup. Before this change, runtime ingress stored notification memory as two loosely coupled global maps, and navigation badges, toolbar indicators, and current-project sound suppression each had to infer ownership from those maps independently. After this slice, runtime notification memory is stored as project-owned buckets, and the provider layer exposes a narrow project notification projection for UI consumers.

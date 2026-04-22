@@ -1,12 +1,12 @@
+import { deriveTaskIndicatorState, type RuntimeTaskIndicatorColumn } from "@runtime-contract";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { AudibleNotificationEventType } from "@/utils/notification-audio";
-import { isApprovalState } from "@/utils/session-status";
 
 export const SETTLE_WINDOW_HOOK_MS = 500;
 export const SETTLE_WINDOW_IMMEDIATE_MS = 0;
 
 export function getSettleWindowMs(summary: RuntimeTaskSessionSummary): number {
-	if (summary.state === "awaiting_review" && summary.reviewReason === "hook") {
+	if (deriveTaskIndicatorState(summary).hookReview) {
 		return SETTLE_WINDOW_HOOK_MS;
 	}
 	return SETTLE_WINDOW_IMMEDIATE_MS;
@@ -19,13 +19,10 @@ export const EVENT_PRIORITY: Record<AudibleNotificationEventType, number> = {
 	failure: 2,
 };
 
-export type TaskColumn = "active" | "stopped" | "silent";
+export type TaskColumn = RuntimeTaskIndicatorColumn;
 
 export function deriveColumn(summary: RuntimeTaskSessionSummary): TaskColumn {
-	if (summary.state === "running") return "active";
-	if (summary.state === "interrupted") return "silent";
-	if (summary.state === "awaiting_review" && summary.reviewReason === "interrupted") return "silent";
-	return "stopped";
+	return deriveTaskIndicatorState(summary).column;
 }
 
 export function isTabVisible(): boolean {
@@ -36,26 +33,7 @@ export function isTabVisible(): boolean {
 }
 
 export function resolveSessionSoundEvent(summary: RuntimeTaskSessionSummary): AudibleNotificationEventType | null {
-	if (summary.state === "awaiting_review") {
-		switch (summary.reviewReason) {
-			case "hook":
-				return isApprovalState(summary) ? "permission" : "review";
-			case "attention":
-				return "review";
-			case "exit":
-				return summary.exitCode === 0 ? "review" : "failure";
-			case "error":
-				return "failure";
-			case "interrupted":
-				return null;
-			default:
-				return null;
-		}
-	}
-	if (summary.state === "failed") {
-		return "failure";
-	}
-	return null;
+	return deriveTaskIndicatorState(summary).notification;
 }
 
 export interface AudibleNotificationEventConfig {

@@ -1,63 +1,44 @@
+import { deriveTaskIndicatorState, type RuntimeTaskIndicatorTone } from "@runtime-contract";
 import { type StatusBadgeStyle, statusBadgeColors } from "@/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 
 export { type StatusBadgeStyle, statusBadgeColors };
 
 export function isApprovalState(summary: RuntimeTaskSessionSummary | null): boolean {
-	if (!summary) return false;
-	return summary.state === "awaiting_review" && summary.reviewReason === "hook" && isPermissionRequest(summary);
-}
-
-function isPermissionRequest(summary: RuntimeTaskSessionSummary): boolean {
-	const activity = summary.latestHookActivity;
-	if (!activity) return false;
-	const hook = activity.hookEventName?.toLowerCase() ?? "";
-	const notif = activity.notificationType?.toLowerCase() ?? "";
-	return (
-		hook === "permissionrequest" ||
-		notif === "permission_prompt" ||
-		notif === "permission.asked" ||
-		(activity.activityText?.toLowerCase() ?? "") === "waiting for approval"
-	);
+	return summary ? deriveTaskIndicatorState(summary).approvalRequired : false;
 }
 
 export function describeSessionState(summary: RuntimeTaskSessionSummary | null): string {
 	if (!summary) {
 		return "No session yet";
 	}
-	if (summary.state === "running") {
-		return "Running";
+	switch (deriveTaskIndicatorState(summary).kind) {
+		case "running":
+			return "Running";
+		case "approval_required":
+			return "Waiting for approval";
+		case "review_ready":
+			return "Ready for review";
+		case "needs_input":
+			return "Waiting for input";
+		case "completed":
+			return "Completed";
+		case "error":
+			return "Error";
+		case "failed":
+			return "Failed";
+		case "stalled":
+			return "Stalled";
+		case "interrupted":
+			return "Interrupted";
+		default:
+			return "Idle";
 	}
-	if (summary.state === "awaiting_review") {
-		switch (summary.reviewReason) {
-			case "exit":
-				return "Completed";
-			case "hook":
-				return isPermissionRequest(summary) ? "Waiting for approval" : "Ready for review";
-			case "attention":
-				return "Waiting for input";
-			case "error":
-				return "Error";
-			case "interrupted":
-				return "Interrupted";
-			case "stalled":
-				return "Stalled";
-			default:
-				return "Ready for review";
-		}
-	}
-	if (summary.state === "interrupted") {
-		return "Interrupted";
-	}
-	if (summary.state === "failed") {
-		return "Failed";
-	}
-	return "Idle";
 }
 
 export function getSessionStatusTooltip(summary: RuntimeTaskSessionSummary | null): string | null {
 	if (!summary) return null;
-	if (summary.state === "awaiting_review" && summary.reviewReason === "stalled") {
+	if (deriveTaskIndicatorState(summary).kind === "stalled") {
 		return "No activity for several minutes \u2014 the agent may be stalled or could still be thinking";
 	}
 	return null;
@@ -67,24 +48,7 @@ export function getSessionStatusBadgeStyle(summary: RuntimeTaskSessionSummary | 
 	if (!summary) {
 		return "neutral";
 	}
-	if (summary.state === "running") {
-		return "running";
-	}
-	if (summary.state === "awaiting_review") {
-		switch (summary.reviewReason) {
-			case "exit":
-			case "stalled":
-				return "review";
-			case "error":
-				return "error";
-			case "interrupted":
-				return "neutral";
-			default:
-				return isPermissionRequest(summary) ? "needs_input" : "review";
-		}
-	}
-	if (summary.state === "interrupted" || summary.state === "failed") {
-		return "error";
-	}
-	return "neutral";
+	const tone: RuntimeTaskIndicatorTone = deriveTaskIndicatorState(summary).tone;
+	const badgeStyle: StatusBadgeStyle = tone;
+	return badgeStyle;
 }

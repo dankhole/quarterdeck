@@ -89,6 +89,9 @@ Misc. tribal knowledge
   - `web-ui/src/runtime/runtime-state-stream-store.ts` keeps cross-project notification state bucketed by project, not as one flat task map plus a separate task→project lookup.
   - UI consumers should read the provider-owned projection (`needsInputByProject`, current-project/other-project needs-input flags) instead of re-deriving project ownership from raw notification buckets.
   - `use-audible-notifications` is the main place that may flatten project buckets back into task entries, because sound transitions are inherently cross-project and event-oriented.
+- Indicator semantics are intentionally centralized:
+  - Use `deriveTaskIndicatorState(summary)` and `isPermissionActivity(...)` from `src/core/api/task-indicators.ts` / `@runtime-contract` for approval, review-ready, needs-input, and failure meaning.
+  - Do not add new UI logic that re-interprets `reviewReason`, `latestHookActivity.notificationType`, `hookEventName`, or `"Waiting for approval"` text directly in components/hooks. Project badges, status badges, audible notifications, and approval-blocking behavior should all flow from the shared semantic layer.
 - Keep **task agent terminals** and **shell terminals** mentally separate even when they share xterm/panel plumbing.
   - Task agent terminals are task-scoped viewers for agent sessions and use the shared/pool path.
   - Shell terminals (home shell and detail shell) are dedicated workspace-scoped manual shells with different lifecycle rules, restart behavior, and exit handling.
