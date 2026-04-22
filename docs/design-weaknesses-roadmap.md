@@ -18,77 +18,77 @@ Execution tracking note:
 
 ## Ranking
 
-### 1. Split-brain task state
+The previous top-wave refactors around split-brain task state, manual broadcast choreography, provider narrowing, task-detail composition, notification scoping/indicator semantics, and project/worktree identity first-pass normalization have now landed. The ranking below reflects the biggest remaining weaknesses after that cleanup wave.
 
-Task truth is still spread across server persistence, in-memory session state, websocket deltas, browser board state, and client-side cache/restore behavior. The system works, but correctness depends too much on update ordering and repair paths instead of one clear source of truth.
+### 1. Terminal/session lifecycle ownership is still too broad
 
-Why it matters:
-
-- easy to create drift bugs
-- hard to change without breaking sync behavior
-- encourages more reconciliation logic instead of clearer ownership
-
-### 2. Manual broadcast choreography instead of stronger domain-event boundaries
-
-Many state-changing operations still depend on developers remembering which follow-up refreshes, websocket messages, or lightweight notifications must fire after a mutation. That makes the system accurate by convention more than by structure.
+The terminal transport layer is in much better shape, but `TerminalSessionManager` still carries too much lifecycle coordination at once: spawn/attach, stale recovery, restart ownership, reconciliation timer wiring, listener fanout, and process/session registry responsibilities still meet at one seam.
 
 Why it matters:
 
-- easy to miss a refresh path
-- hard to audit full mutation consequences
-- encourages copy-paste post-mutation behavior
+- terminal bugs are still the most likely to become hard-to-reproduce lifecycle bugs
+- restart/recovery changes still carry broader regression risk than they should
+- the manager reads more like a composed system now, but not yet like a mostly honest composition root
 
-### 3. Terminal/session runtime correctness is too entangled with optimization policy
+### 2. Project-level frontend ownership is still broader than ideal
 
-The terminal system needs real optimization, but too much of its architecture is shaped by prewarm/reuse/restore policy instead of a simpler session/viewer/attachment model.
-
-Why it matters:
-
-- terminal bugs are hard to reason about
-- performance policy has become part of the mental model
-- future optimization changes carry correctness risk
-
-See `docs/terminal-architecture-refactor-brief.md`.
-
-### 4. `App.tsx` and app-shell orchestration still carry too much integration gravity
-
-The provider split helped, but the top-level app shell remains a high-gravity integration point where many cross-feature concerns still meet. The file is much healthier than before, but the architecture still pushes broad orchestration upward.
+The provider split helped a lot, but `ProjectProvider` remains the broadest frontend ownership seam. Project navigation, runtime ingress, authoritative sync outputs, notification projection, persistence gating, and metadata/debug-log exposure are still close enough together that “project-level everything” can regather there.
 
 Why it matters:
 
-- top-level changes remain expensive
-- app-wide integration concerns are easy to re-centralize
-- features drift toward “just add one more top-level wire”
+- it is still the easiest place for project-scoped feature work to attach “just one more field/action”
+- consumers can still depend on more project-level surface area than they actually need
+- future provider cleanup will be harder if this seam regrows breadth quietly
 
-### 5. Broad provider/context surfaces still hide too much cross-domain ownership
+### 3. Too many critical invariants still live in docs and team memory
 
-Some providers, especially project- and git-related ones, still aggregate multiple concerns that would be easier to reason about if they were exposed through narrower interfaces.
-
-Why it matters:
-
-- easy to grow god-contexts
-- makes reuse and testing harder
-- encourages mixed ownership behind one hook or provider
-
-### 6. Task detail and related large UI surfaces still carry workflow state too close to rendering
-
-Some major UI surfaces are decomposed better now, but the pattern still exists: large render surfaces accumulate enough workflow behavior that the UI boundary becomes the design boundary.
+Quarterdeck has good docs, but some of its most important rules are still protected mainly by explanation rather than by APIs, tests, or structural constraints.
 
 Why it matters:
 
-- rendering and workflow logic evolve together
-- code becomes harder to test in smaller units
-- UI churn can destabilize business logic
+- new contributors can follow the wrong path accidentally
+- knowledge leaks across time and worktrees
+- the system stays dependent on “people remembering”
 
-### 7. Project/workspace identity and sync ownership remain easy to blur
+### 4. Orphan cleanup and reconciliation boundaries are still blurred
 
-The codebase has improved its naming, but there are still places where project path, project ID, active project state, metadata snapshots, and UI cache/restore behavior are too easy to treat as one thing.
+Session reconciliation, stale lock cleanup, orphan worktree cleanup, and dangling state repair are adjacent but not yet cleanly partitioned into one obvious lifecycle model.
 
 Why it matters:
 
-- confusing bugs at switch/reconnect boundaries
-- encourages hidden assumptions
-- makes state ownership harder to explain
+- maintenance-style fixes still want to attach themselves to whatever sweep already exists
+- stale artifact bugs can span process/session state, filesystem state, and persistent state references
+- it is not yet obvious which timer or maintenance path should own a new cleanup case
+
+### 5. Branch/base-ref UX state is still a fragmented domain
+
+Branch identity, pinned refs, inferred base refs, detached-head display, and integration-branch behavior still read more like a pile of fixes than one coherent model.
+
+Why it matters:
+
+- recurring branch/base-ref bugs are often model problems, not isolated UI mistakes
+- different surfaces can still render slightly different interpretations of the same git situation
+- future git workflow features will keep rediscovering the same missing state distinctions
+
+### 6. File browser/diff viewer transport and view policy are still too mixed
+
+The file browser and diff viewer are not just slow; the data-flow boundary is still fuzzy. Scope resolution, tree loading, diff/content fetching, caching, and view-local behavior are still too intertwined.
+
+Why it matters:
+
+- performance work risks becoming local hot-path tuning instead of a clearer pipeline
+- it is still hard to say which work should happen server-side, which should be cached, and which should stay view-local
+- the same ambiguity will keep moving lag from one interaction to another
+
+### 7. Shared LLM helper features are still provider-specific
+
+Titles, summaries, and small helper generations still depend on an Anthropic/Bedrock-shaped helper client even though the app now supports multiple agent providers.
+
+Why it matters:
+
+- auxiliary UX should not disappear just because the primary agent changes
+- the current helper client bakes provider assumptions into a shared supporting path
+- more multi-provider feature work will keep tripping on this boundary until the helper layer is neutral
 
 ### 8. Optimization-shaped architecture is repeating in multiple subsystems
 
@@ -112,15 +112,15 @@ Why it matters:
 - good conventions are easy to bypass under delivery pressure
 - design drift happens gradually
 
-### 10. Too many critical invariants still live in docs and team memory
+### 10. Project/worktree identity follow-through still needs cleanup
 
-Quarterdeck has good docs, but some of its most important rules are still protected mainly by explanation rather than by APIs, tests, or structural constraints.
+The first project/worktree identity pass landed, but the migration is not fully closed out yet. Compatibility cleanup and remaining edge cases can still blur assigned task identity, launch-path identity, and displayed git identity if the distinctions are not kept explicit.
 
 Why it matters:
 
-- new contributors can follow the wrong path accidentally
-- knowledge leaks across time and worktrees
-- the system stays dependent on “people remembering”
+- the remaining bugs here now look narrow, which makes them tempting to patch one by one
+- the compatibility tail can keep stale vocabulary alive longer than intended
+- if true live-cwd streaming ever returns, the code needs to stay disciplined about assigned identity versus execution identity
 
 ## How To Use This Doc
 

@@ -20,27 +20,26 @@ Execution tracking note:
 
 Backlog note:
 
-- The "Current active order" list below is the live refactor queue and should match `docs/todo.md`.
-- The numbered sections that follow include both active items and recently completed items that are still worth keeping as context.
-- The extended backlog later in this document captures additional code-validated refactor targets that are worth tracking, but are not at the very top of the current order.
+- The "Current active order" list below is the live remaining refactor queue and should match `docs/todo.md`.
+- The numbered sections that follow include both completed items that are still worth keeping as context and the remaining backlog items.
+- The extended backlog later in this document captures additional code-validated refactor targets that still matter, but are no longer the first things to pick up.
 
 ## Current Active Order
 
-1. Notification / project-scoping ownership
-2. Notification / indicator state model
-3. Project / worktree identity normalization
-4. Branch / base-ref UX state model
-5. File browser + diff viewer data pipeline
-6. Terminal session manager / lifecycle boundaries
-7. Orphan cleanup / reconciliation boundary
-8. Shared LLM client abstraction
+1. ProjectProvider / project-runtime ownership follow-up
+2. Terminal session manager / lifecycle boundaries
+3. Remove the temporary legacy `projectPath` read path after the `sessionLaunchPath` migration
+4. Shared LLM client abstraction
+5. Orphan cleanup / reconciliation boundary
+6. Branch / base-ref UX state model
+7. File browser + diff viewer data pipeline
 
 That sequence is deliberate:
 
-- 1 through 5 are the most concrete next backlog items once the provider-surface and task-detail cleanup landed.
-- 6 through 8 are still important, but they are better treated as later-wave cleanup once the more user-visible ownership seams are clearer.
+- 1 and 2 are the two biggest remaining ownership seams after the recent refactor wave.
+- 3 through 7 are still worthwhile, but they are now narrower follow-on cleanup items rather than “stop feature work until this is fixed” refactors.
 
-In other words: yes, this order is intentional. It is sequenced by dependency and leverage, not just by how interesting each item sounds in isolation.
+In other words: yes, this order is intentional. It is sequenced by leverage and remaining architectural risk, not just by how visible each bug symptom is.
 
 ## Optimization-shaped Refactors Recently Closed Out
 
@@ -66,7 +65,13 @@ These landed recently enough that they are still useful context for what remains
 
 - Broad provider / context surfaces
 - Task-detail layout / composition follow-up
+- Task-editor provider extraction from `BoardProvider`
 - Manual broadcast choreography / post-mutation effects
+- Notification / project-scoping ownership
+- Notification / indicator state model
+- Project / worktree identity normalization (first pass)
+- Terminal session transition controller extraction
+- Runtime config and task/session fixture dedup
 - Project metadata monitor follow-ups
 - Project sync plus board cache restore
 - Frontend runtime state stream store
@@ -393,6 +398,10 @@ These are still real refactor targets confirmed against implementation files, bu
 
 ## 9. Terminal Session Manager / Lifecycle Boundaries
 
+Status:
+
+- Still active. A meaningful first slice landed on 2026-04-22 by extracting `src/terminal/session-transition-controller.ts`, but `TerminalSessionManager` remains the broadest runtime lifecycle coordinator left in the codebase.
+
 Primary files:
 
 - `src/terminal/session-manager.ts`
@@ -404,7 +413,7 @@ Primary files:
 Current smell:
 
 - `TerminalSessionManager` is much healthier than it used to be, but it still coordinates listener fanout, restart ownership, attach/restore behavior, spawn routing, input/output flow, stale recovery, and reconciliation timer lifecycle
-- session truth, process ownership, restart policy, and reconciliation policy still meet at one coordinator seam
+- the recent `SessionTransitionController` extraction gave transition side effects and summary fanout a real owner, but session truth, process ownership, restart policy, and reconciliation policy still meet at one coordinator seam
 
 Why it matters:
 
@@ -418,7 +427,7 @@ What “good” looks like:
 
 Suggested first slice:
 
-- inventory which transitions are true lifecycle rules vs orchestration glue
+- continue the same pattern as the transition-controller extraction
 - push one cohesive responsibility, likely restart/recovery orchestration or reconciliation action application, behind a clearer ownership seam
 
 Key risk:
@@ -426,6 +435,10 @@ Key risk:
 - splitting into more helper files without clarifying transition ownership would add indirection without improving lifecycle reasoning
 
 ## 10. Project / Worktree Identity Normalization
+
+Status:
+
+- Partially completed on 2026-04-22. The main first pass landed via `web-ui/src/utils/task-identity.ts` plus the `sessionLaunchPath` rename on `RuntimeTaskSessionSummary`, but one compatibility cleanup item remains and some live-execution-vs-assigned-identity boundaries are still easy to blur.
 
 Primary files:
 
@@ -436,30 +449,35 @@ Primary files:
 - `web-ui/src/stores/project-metadata-store.ts`
 - `src/commands/statusline.ts`
 
-Current smell:
+Historical smell:
 
-- assigned worktree path, live agent cwd, displayed branch, displayed project folder, and shared-vs-isolated task state still blur together
-- task-scoped UI sometimes wants assigned worktree identity, while other surfaces want live execution identity, but the code does not model that distinction explicitly
+- assigned worktree path, live agent cwd, displayed branch, displayed project folder, and shared-vs-isolated task state used to blur together
+- task-scoped UI sometimes wants assigned worktree identity, while other surfaces want live execution identity, but the code previously did not model that distinction explicitly
 
-Why it matters:
+Why it still matters:
 
-- recurring bugs around wrong branch pills, wrong folder labels, and stale “shared” indicators all point at the same missing identity layer
+- the first pass established a shared vocabulary, but the migration is not quite finished
+- recurring bugs around wrong branch pills, wrong folder labels, and stale “shared” indicators are now narrower follow-up problems instead of proof that no identity layer exists
 
-What “good” looks like:
+What the landed slice achieved:
 
-- the code distinguishes project root path, assigned task worktree path, live agent cwd, and displayed task git identity explicitly
-- task-scoped UI can intentionally choose assigned identity vs live execution identity
+- the code now distinguishes project root path, assigned task worktree path, launch path, and display git identity explicitly in one shared UI vocabulary
+- task-scoped UI no longer relies on ad hoc fallback chains across many consumers
 
-Suggested first slice:
+Remaining follow-up:
 
-- define a small shared vocabulary for task path identity in metadata + UI layers
-- fix one end-to-end path, likely task-scoped branch/folder display, so it no longer relies on raw `cwd`
+- remove the temporary legacy `projectPath` read path from `src/core/api/task-session.ts` once the one-time local-state rewrite is complete
+- keep watching places where the UI may still confuse assigned identity with live execution identity if true live cwd ever becomes available again
 
 Key risk:
 
 - forcing everything to use either assigned worktree or live cwd globally would erase a real distinction instead of modeling it
 
 ## 11. Notification / Project-scoping Ownership
+
+Status:
+
+- Completed on 2026-04-21. See `CHANGELOG.md` and `docs/implementation-log.md` for the landed project-bucket notification model and UI projection cleanup.
 
 Primary files:
 
@@ -469,28 +487,20 @@ Primary files:
 - `web-ui/src/hooks/notifications/use-audible-notifications.ts`
 - `web-ui/src/hooks/notifications/use-review-ready-notifications.ts`
 
-Current smell:
+Historical smell:
 
-- notification state crosses project boundaries through broad global session and project-id maps
-- project-scoping rules are distributed across runtime ingress, provider state, sidebar aggregation, and playback suppression
+- notification state crossed project boundaries through broad global session and project-id maps
+- project-scoping rules were distributed across runtime ingress, provider state, sidebar aggregation, and playback suppression
 
-Why it matters:
+Outcome:
 
-- bugs like the wrong yellow-dot state following a project switch strongly suggest the scoping model is still too implicit
+- runtime notification memory is now explicitly bucketed by project
+- navigation badges and audible notification flows consume a narrower project-owned projection instead of re-deriving ownership from flat global maps
+- project removal and authoritative project refresh now prune/seed notification ownership explicitly
 
-What “good” looks like:
+Remaining follow-up worth watching:
 
-- notification ownership is easier to explain per project and per task
-- navigation badges, audible notifications, and review-ready memory stop depending on loosely related maps staying in sync
-
-Suggested first slice:
-
-- define the minimal notification projection the UI actually needs instead of passing broad runtime-session memory around
-- separate global notification memory from per-project derived indicators
-
-Key risk:
-
-- folding everything into one global notification store would make scoping even harder unless project boundaries are first-class in that model
+- semantic meaning for those notifications now has a shared model too, but future notification work should continue to consume the projection and semantic layer rather than rebuilding project ownership from raw runtime maps
 
 ## 12. Shared LLM Client Abstraction
 
@@ -554,6 +564,10 @@ Key risk:
 
 ## 14. Notification / Indicator State Model
 
+Status:
+
+- Completed on 2026-04-21. See `CHANGELOG.md` and `docs/implementation-log.md` for the shared `RuntimeTaskIndicatorState` semantic layer.
+
 Primary files:
 
 - `web-ui/src/utils/session-status.ts`
@@ -561,28 +575,19 @@ Primary files:
 - `web-ui/src/hooks/project/use-project-navigation-panel.ts`
 - `web-ui/src/components/app/project-navigation-panel.tsx`
 
-Current smell:
+Historical smell:
 
-- the permission-request / needs-input concept is inferred from session summary hook metadata in more than one layer
-- visual indicators are coupled directly to low-level hook metadata shape and session summaries
+- the permission-request / needs-input concept was inferred from session summary hook metadata in more than one layer
+- visual indicators were coupled directly to low-level hook metadata shape and session summaries
 
-Why it matters:
+Outcome:
 
-- small badge bugs can require reasoning across runtime summaries, hook payloads, and navigation-level aggregation
+- `src/core/api/task-indicators.ts` now normalizes Claude and Codex raw hook signals into one shared indicator model
+- session-status, project-notification projection, and audible-notification logic now share that semantic layer instead of independently inspecting raw hook/session fields
 
-What “good” looks like:
+Remaining follow-up worth watching:
 
-- approval / review / failure / needs-input indicators have a clearer domain model
-- UI badges and dots consume a narrower, easier-to-test derived state
-
-Suggested first slice:
-
-- isolate the approval/needs-input derivation into one shared semantic layer or one clearly owned UI projection
-- use the yellow-dot project-switch bug as a validation case for the new boundary
-
-Key risk:
-
-- replacing summaries with an overly lossy “status enum” would hide useful detail; the goal is a clearer derived model, not less information
+- keep future UI surfaces on the shared semantic layer instead of letting agent-specific raw fields leak back upward
 
 ## 15. Branch / Base-ref UX State Model
 
@@ -695,6 +700,45 @@ Key risk:
 
 - splitting JSX without changing ownership will just recreate the same kitchen-sink screen across more files
 - adding a task-detail provider too early could create another broad context surface instead of a cleaner layout seam
+
+## 18. ProjectProvider / Project-runtime Ownership Follow-up
+
+Status:
+
+- Still active. The first provider-narrowing pass landed on 2026-04-21, but `ProjectProvider` remains the broadest frontend ownership seam left in active use.
+
+Primary files:
+
+- `web-ui/src/providers/project-provider.tsx`
+- `web-ui/src/providers/project-runtime-provider.tsx`
+- `web-ui/src/hooks/project/use-project-navigation.ts`
+- `web-ui/src/hooks/project/use-project-sync.ts`
+- `web-ui/src/hooks/project/use-project-navigation-panel.ts`
+
+Current smell:
+
+- `ProjectProvider` is much narrower than before, but it still combines project navigation, runtime ingress, authoritative project sync outputs, persistence gating, metadata/debug-log exposure, and notification projection in one context seam
+- `ProjectRuntimeProvider` helped pull runtime-config and onboarding/access-gate concerns out, but the combined project-level ownership story is still broader than ideal
+
+Why it matters:
+
+- this is now the broadest remaining frontend seam after the provider, app-shell, runtime-stream, and task-detail refactors landed
+- future feature work will naturally try to attach “one more project-level thing” here unless the ownership boundary gets a final tightening pass
+
+What “good” looks like:
+
+- `ProjectProvider` reads primarily as project navigation + runtime-sync ownership
+- runtime ingress, notification projection, persistence gating, and metadata/debug-log exposure are either more clearly grouped or pushed behind narrower seams
+- consumers ask for smaller project-owned contracts instead of one large project bag
+
+Suggested first slice:
+
+- inventory which parts of `ProjectContext` are true project-navigation/project-sync ownership versus bridge state that only happens to live there now
+- extract or regroup one coherent seam, likely project-level runtime projection versus project selection/navigation, without re-centralizing logic back into `App.tsx`
+
+Key risk:
+
+- splitting `ProjectProvider` purely to reduce prop count or context size would just move the same broad seam into two shallower wrappers instead of clarifying ownership
 
 ## How To Use This Doc
 

@@ -18,6 +18,9 @@ Use this section together with:
 
 These items are broader ownership-boundary refactors that do not yet need full implementation briefs, but they need enough written context that a fresh agent can pick them up without rediscovering the problem from scratch.
 
+- Tighten the remaining project-level ownership seam around `web-ui/src/providers/project-provider.tsx` and `web-ui/src/providers/project-runtime-provider.tsx` so project navigation, runtime ingress, persistence gating, notification projection, and metadata/debug-log exposure do not keep regathering behind one broad context bag. Backlog context: [docs/refactor-roadmap-context.md#18-projectprovider--project-runtime-ownership-follow-up](./refactor-roadmap-context.md#18-projectprovider--project-runtime-ownership-follow-up)
+- Continue the terminal lifecycle cleanup after the `SessionTransitionController` extraction so `src/terminal/session-manager.ts` owns less indirect lifecycle policy and more explicit registry/composition responsibility. Backlog context: [docs/refactor-roadmap-context.md#9-terminal-session-manager--lifecycle-boundaries](./refactor-roadmap-context.md#9-terminal-session-manager--lifecycle-boundaries)
+
 ## Additional code-validated refactor backlog
 
 Use this section together with:
@@ -26,7 +29,7 @@ Use this section together with:
 
 These are not the top active roadmap items, but they are still real refactor targets confirmed against implementation files and worth keeping visible as broader architecture work.
 
-- After the one-time local-state rewrite to `RuntimeTaskSessionSummary.sessionLaunchPath`, remove the temporary legacy `projectPath` read path from `src/core/api/task-session.ts` so the session identity contract only has one field.
+- After the one-time local-state rewrite to `RuntimeTaskSessionSummary.sessionLaunchPath`, remove the temporary legacy `projectPath` read path from `src/core/api/task-session.ts` so the session identity contract only has one field. Backlog context: [docs/refactor-roadmap-context.md#10-project--worktree-identity-normalization](./refactor-roadmap-context.md#10-project--worktree-identity-normalization)
 - Make supporting LLM features provider-neutral by turning `src/title/llm-client.ts` into a provider-agnostic lightweight-generation client instead of a Bedrock/Anthropic-specific helper. Backlog context: [docs/refactor-roadmap-context.md#12-shared-llm-client-abstraction](./refactor-roadmap-context.md#12-shared-llm-client-abstraction)
 - Separate orphan cleanup from session reconciliation more explicitly so session/process drift, stale lock artifacts, orphan worktrees, and dangling state references each have a clearer maintenance boundary. Backlog context: [docs/refactor-roadmap-context.md#13-orphan-cleanup--reconciliation-boundary](./refactor-roadmap-context.md#13-orphan-cleanup--reconciliation-boundary)
 - Build a clearer branch/base-ref UX state model so inferred base refs, pinned refs, integration branches, and detached-head display rules stop acting like isolated fixes. Backlog context: [docs/refactor-roadmap-context.md#15-branch--base-ref-ux-state-model](./refactor-roadmap-context.md#15-branch--base-ref-ux-state-model)
