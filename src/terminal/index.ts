@@ -51,6 +51,7 @@ export {
 	type ReconciliationEntry,
 	reconciliationChecks,
 	STALLED_HOOK_THRESHOLD_MS,
+	UNRESPONSIVE_THRESHOLD_MS,
 } from "./session-reconciliation";
 export {
 	canReturnToRunning,

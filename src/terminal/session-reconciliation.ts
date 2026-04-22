@@ -134,13 +134,20 @@ export function checkProcesslessActiveSession(entry: ReconciliationEntry, _nowMs
 /** How long (ms) a running session can go without activity before being marked stalled. */
 export const STALLED_HOOK_THRESHOLD_MS = 180_000;
 
+/** How long (ms) a running session can go without receiving its first hook before being marked stalled. */
+export const UNRESPONSIVE_THRESHOLD_MS = 60_000;
+
 /**
- * Detects running sessions that haven't shown activity in over 3 minutes.
- * Uses the more recent of lastHookAt and lastOutputAt as the activity reference —
- * terminal output isn't as authoritative as hooks but does indicate the process
- * is alive and producing something, so it suppresses premature stalled warnings.
- * Only fires after at least one hook has been received (lastHookAt is set),
- * so fresh sessions in their initial thinking phase aren't flagged.
+ * Detects running sessions that aren't making progress.
+ *
+ * Two modes:
+ *   1. **Went quiet** — at least one hook arrived, then activity stopped for 3+ minutes.
+ *      Uses the more recent of lastHookAt and lastOutputAt as the activity reference;
+ *      terminal output suppresses premature stalled warnings.
+ *   2. **Never started** — no hook has ever arrived and the session has been running
+ *      for 60+ seconds. Catches agent-level failures (API errors, cert issues) that
+ *      happen before the hook system engages.
+ *
  * Sets stalledSince once; subsequent sweeps skip already-stalled sessions.
  */
 export function checkStalledSession(entry: ReconciliationEntry, nowMs: number): ReconciliationAction | null {
@@ -148,14 +155,19 @@ export function checkStalledSession(entry: ReconciliationEntry, nowMs: number): 
 	if (summary.state !== "running") {
 		return null;
 	}
-	if (summary.lastHookAt == null) {
-		return null;
-	}
 	if (summary.stalledSince != null) {
 		return null;
 	}
-	const lastActivity = Math.max(summary.lastHookAt, summary.lastOutputAt ?? 0);
-	if (nowMs - lastActivity > STALLED_HOOK_THRESHOLD_MS) {
+
+	if (summary.lastHookAt != null) {
+		const lastActivity = Math.max(summary.lastHookAt, summary.lastOutputAt ?? 0);
+		if (nowMs - lastActivity > STALLED_HOOK_THRESHOLD_MS) {
+			return { type: "mark_stalled" };
+		}
+		return null;
+	}
+
+	if (summary.startedAt != null && nowMs - summary.startedAt > UNRESPONSIVE_THRESHOLD_MS) {
 		return { type: "mark_stalled" };
 	}
 	return null;

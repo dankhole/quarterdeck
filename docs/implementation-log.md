@@ -2,6 +2,35 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: detect sessions that stall before first hook arrives (2026-04-22)
+
+Widened the stalled-session reconciliation check to cover a gap where agent-level failures (API errors like `UNKNOWN_CERTIFICATE_VERIFICATION_ERROR`, cert issues, quota exhaustion) that happen before the hook system engages left the task card stuck in "running" indefinitely.
+
+**Root cause:** `checkStalledSession` had a `lastHookAt == null` early-return guard — it only detected stalled sessions after at least one hook arrived. If the agent crashed or showed an error before any hook fired, the session was invisible to all five reconciliation checks: `checkDeadProcess` (process still alive showing error in TUI), `checkProcesslessActiveSession` (`entry.active` still set), `checkInterruptedNoRestart` (not interrupted), `checkStaleHookActivity` (no activity to be stale), and `checkStalledSession` (no hooks to be stale).
+
+**Fix:** Instead of adding a sixth check function (which would be the "just add another sweep here" anti-pattern warned about in `docs/refactor-roadmap-context.md` item #13), widened the existing `checkStalledSession` to handle two detection modes within one function:
+1. **Went quiet** (existing, unchanged) — hooks were flowing, then stopped for 3+ minutes. Uses `Math.max(lastHookAt, lastOutputAt)` as the activity reference.
+2. **Never started** (new) — no hook ever arrived and `startedAt` is 60+ seconds old. Falls back to `startedAt` timestamp.
+
+Both modes return the same `{ type: "mark_stalled" }` action, flow through the same `reconciliation.stalled` state machine event, and produce the same `awaiting_review` + `reviewReason: "stalled"` outcome. No new action type, no new check function, no change to the sweep runner or state machine.
+
+**Key design decisions:**
+- 60-second `UNRESPONSIVE_THRESHOLD_MS` threshold: agent processes are spawned directly (not via `zsh -i`), and the first hook typically arrives within 10–30 seconds. 60 seconds provides ample headroom for slow startups without false positives.
+- Hydrated sessions are safe: `hydrateSessionEntries` moves "running" sessions to "interrupted" on server restart, so they never reach the stalled check.
+- `stalledSince != null` guard at the top of the function prevents re-triggering for both modes.
+
+**Files touched:**
+- [`src/terminal/session-reconciliation.ts`](./../src/terminal/session-reconciliation.ts) — widened `checkStalledSession`, added `UNRESPONSIVE_THRESHOLD_MS` constant
+- [`src/terminal/index.ts`](./../src/terminal/index.ts) — exported the new constant
+- [`test/runtime/terminal/session-reconciliation.test.ts`](./../test/runtime/terminal/session-reconciliation.test.ts) — restructured stalled tests into `went-quiet`, `never-started`, and `shared guards` groups
+
+**Validation:**
+- All 57 reconciliation tests pass, all 279 terminal tests pass, all 750 runtime/utility tests pass
+- `npm run typecheck` clean
+- Pre-commit hook (biome check + typecheck + test:fast) passed
+
+**Commit hash:** `41fa00c8`
+
 ## Merge main + fixture review follow-through (2026-04-22)
 
 Merged local `main` commit `0e12cc74` into `feature/test-fixture-dedup` instead of keeping the terminal session transition-controller reversal tangled into the earlier fixture-refactor history. This preserves the clean separation the review asked for: the production terminal lifecycle ownership change remains a dedicated mainline slice with its own tests and docs, while the fixture refactor branch stays about centralizing test defaults. The follow-through in this commit also tightened the new shared task-session factory API so `latestHookActivity` overrides read like the two real test intents: no hook activity vs an explicit hook activity override.

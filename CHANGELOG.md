@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: detect sessions that stall before first hook arrives
+
+- Widened `checkStalledSession` to catch running sessions that never receive their first hook — covers agent-level failures (API errors, cert issues, quota exhaustion) that happen before the hook system engages.
+- Added a 60-second `UNRESPONSIVE_THRESHOLD_MS` fallback using `startedAt` when `lastHookAt` is null, so the card moves to review with a "Stalled" badge instead of staying stuck in "running" indefinitely.
+- No new check function, action type, or reconciliation mechanism — same `mark_stalled` action and `reconciliation.stalled` state machine transition, broader detection condition.
+
 ### Refactor: deduplicate config and task/session test fixtures
 
 - Replaced the hand-maintained runtime config save-payload fixture in `test/runtime/config/runtime-config-helpers.ts` with typed shared builders in `test/utilities/runtime-config-factory.ts`, so most config-shape changes now update one runtime helper instead of a copied 30+ field object.
