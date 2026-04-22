@@ -5,6 +5,7 @@
 // Responsibility groups are extracted into focused modules:
 //   session-manager-types.ts       — shared types, helpers, factories
 //   session-lifecycle.ts           — task/shell spawn, exit handling, stale recovery, hydration
+//   session-transition-controller.ts — transition side effects + summary fanout
 //   session-output-pipeline.ts     — PTY output processing pipeline
 //   session-input-pipeline.ts      — user input routing pipeline
 //   session-workspace-trust.ts     — workspace trust auto-confirm
@@ -12,7 +13,6 @@
 //   session-auto-restart.ts        — auto-restart after unexpected exit
 //   session-reconciliation-sweep.ts — periodic reconciliation sweep
 import type { RuntimeTaskSessionSummary } from "../core";
-import { emitSessionEvent } from "../core";
 import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
 import { processSessionInput } from "./session-input-pipeline";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
@@ -33,35 +33,26 @@ import {
 } from "./session-manager-types";
 import { disableOutputOscIntercept, processTaskSessionOutput } from "./session-output-pipeline";
 import { createReconciliationTimer, type ReconciliationTimer } from "./session-reconciliation-sweep";
-import {
-	cloneSummary,
-	type SessionSummaryStore,
-	type SessionTransitionEvent,
-	type SessionTransitionResult,
-} from "./session-summary-store";
+import type { SessionSummaryStore } from "./session-summary-store";
 import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service";
+import { SessionTransitionController } from "./session-transition-controller";
 
 export type { StartShellSessionRequest, StartTaskSessionRequest };
 
 export class TerminalSessionManager implements TerminalSessionService {
 	readonly store: SessionSummaryStore;
 	private readonly entries = new Map<string, ProcessEntry>();
+	private readonly transitions: SessionTransitionController;
 	private readonly reconciliation: ReconciliationTimer;
 
 	constructor(store: SessionSummaryStore) {
 		this.store = store;
-		this.store.onChange((summary) => {
-			const entry = this.entries.get(summary.taskId);
-			if (entry?.active) {
-				for (const listener of entry.listeners.values()) {
-					listener.onState?.(cloneSummary(summary));
-				}
-			}
-		});
+		this.transitions = new SessionTransitionController(this.store, this.entries);
+		this.store.onChange((summary) => this.transitions.broadcastSummary(summary));
 		this.reconciliation = createReconciliationTimer({
 			entries: this.entries,
 			store: this.store,
-			applySessionEventWithSideEffects: (entry, event) => this.applySessionEventWithSideEffects(entry, event),
+			applyTransitionEvent: (entry, event) => this.transitions.applyTransitionEvent(entry, event),
 		});
 	}
 
@@ -169,7 +160,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			recoverStaleSession: (id) => this.store.recoverStaleSession(id),
 			startTaskSession: (r) => this.startTaskSession(r),
 			updateStore: (id, patch) => this.store.update(id, patch),
-			applySessionEventWithSideEffects: (entry, event) => this.applySessionEventWithSideEffects(entry, event),
+			applyTransitionEvent: (entry, event) => this.transitions.applyTransitionEvent(entry, event),
 		});
 	}
 
@@ -182,7 +173,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			getSummary: (id) => this.store.getSummary(id),
 			updateStore: (id, patch) => this.store.update(id, patch),
 			getEntry: (id) => this.entries.get(id),
-			applySessionEventWithSideEffects: (e, ev) => this.applySessionEventWithSideEffects(e, ev),
+			applyTransitionEvent: (e, ev) => this.transitions.applyTransitionEvent(e, ev),
 		});
 	}
 
@@ -301,7 +292,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		processTaskSessionOutput(entry, taskId, chunk, {
 			getSummary: (id) => this.store.getSummary(id),
 			updateStore: (id, patch) => this.store.update(id, patch),
-			applySessionEventWithSideEffects: (e, ev) => this.applySessionEventWithSideEffects(e, ev),
+			applyTransitionEvent: (e, ev) => this.transitions.applyTransitionEvent(e, ev),
 		});
 	}
 
@@ -311,49 +302,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 			getSummary: (id) => this.store.getSummary(id),
 			updateStore: (id, patch) => this.store.update(id, patch),
 			startTaskSession: (r) => this.startTaskSession(r),
-			applySessionEventWithSideEffects: (e, ev) => this.applySessionEventWithSideEffects(e, ev),
+			applyTransitionEvent: (e, ev) => this.transitions.applyTransitionEvent(e, ev),
 		});
-	}
-
-	/**
-	 * Apply a session state machine event via the store and handle process-side
-	 * side effects (clearing attention buffer, resetting codex flags).
-	 */
-	private applySessionEventWithSideEffects(
-		entry: ProcessEntry,
-		event: SessionTransitionEvent,
-	): (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null {
-		const beforeSummary = this.store.getSummary(entry.taskId);
-		const result = this.store.applySessionEvent(entry.taskId, event);
-		if (!result?.changed) {
-			if (beforeSummary) {
-				emitSessionEvent(entry.taskId, "state.transition.noop", {
-					eventType: event.type,
-					currentState: beforeSummary.state,
-					currentReviewReason: beforeSummary.reviewReason,
-				});
-			}
-			return result;
-		}
-		emitSessionEvent(entry.taskId, "state.transition", {
-			eventType: event.type,
-			fromState: beforeSummary?.state ?? null,
-			toState: result.patch.state ?? beforeSummary?.state ?? null,
-			fromReviewReason: beforeSummary?.reviewReason ?? null,
-			toReviewReason: result.patch.reviewReason ?? null,
-		});
-		if (result.clearAttentionBuffer && entry.active) {
-			if (entry.active.workspaceTrustBuffer !== null) {
-				entry.active.workspaceTrustBuffer = "";
-			}
-		}
-		if (entry.active && result.patch.state === "running") {
-			clearInterruptRecoveryTimer(entry.active);
-		}
-		if (entry.active && result.patch.state === "awaiting_review") {
-			entry.active.awaitingCodexPromptAfterEnter = false;
-		}
-		return result;
 	}
 
 	private ensureProcessEntry(taskId: string): ProcessEntry {

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Refactor: narrow terminal session lifecycle transition ownership
+
+- Added `src/terminal/session-transition-controller.ts` as the terminal-layer owner for session state-machine side effects and active-listener summary fanout, so `TerminalSessionManager` no longer hides that lifecycle policy behind a private callback.
+- Rewired task-session exit/restart recovery, reconciliation action application, interrupt recovery, and PTY input/output transition paths to call the shared controller, clarifying the boundary between session truth in `SessionSummaryStore`, process entry wiring in `TerminalSessionManager`, and transition-policy side effects.
+- Added focused runtime coverage for the new controller boundary and reran targeted terminal lifecycle tests (`session-manager`, auto-restart, interrupt-recovery, reconciliation, and the new controller suite) plus `npm run typecheck`.
+
 ### Refactor: normalize session launch path vs assigned task identity
 
 - Added `web-ui/src/utils/task-identity.ts`, a shared task-identity model that explicitly separates project root, assigned task path, assigned git identity, shared-vs-isolated assignment, and the session launch path used for divergence warnings.

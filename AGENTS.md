@@ -88,6 +88,7 @@ Test fixtures and merge conflicts
 
 Session reconciliation
 - Before adding dynamic UI state tied to session lifecycle (status indicators, transient panels, auto-triggered actions), check `src/terminal/session-reconciliation.ts` and ensure stale/orphaned instances of the new state have a cleanup path in the reconciliation sweep. The sweep runs every 10 seconds and currently handles dead processes, processless sessions, and stale hook metadata.
+- `src/terminal/session-transition-controller.ts` is the terminal-layer owner for process-side consequences of session state-machine events and active-listener summary fanout. If input/output/restart/recovery/reconciliation code needs to apply `hook.to_review`, `hook.to_in_progress`, `process.exit`, `interrupt.recovery`, or `autorestart.denied`, route it through that controller instead of adding another private transition-side-effect path to `TerminalSessionManager`.
 
 Misc. tribal knowledge
 - Notification ownership is intentionally split:

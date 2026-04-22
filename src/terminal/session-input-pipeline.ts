@@ -50,7 +50,7 @@ export interface InputPipelineDeps {
 	getSummary: (taskId: string) => RuntimeTaskSessionSummary | null;
 	updateStore: (taskId: string, patch: Partial<RuntimeTaskSessionSummary>) => RuntimeTaskSessionSummary | null;
 	getEntry: (taskId: string) => ProcessEntry | undefined;
-	applySessionEventWithSideEffects: (
+	applyTransitionEvent: (
 		entry: ProcessEntry,
 		event: SessionTransitionEvent,
 	) => (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null;
@@ -114,7 +114,7 @@ export function processSessionInput(
 		scheduleInterruptRecovery(entry, {
 			getEntry: (id) => deps.getEntry(id),
 			getSummary: (id) => deps.getSummary(id),
-			applySessionEventWithSideEffects: (e, ev) => deps.applySessionEventWithSideEffects(e, ev),
+			applyTransitionEvent: (e, ev) => deps.applyTransitionEvent(e, ev),
 		});
 	}
 

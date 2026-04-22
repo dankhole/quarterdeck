@@ -32,7 +32,7 @@ export function detectInterruptSignal(data: Buffer): { isCtrlC: boolean; isBareE
 export interface InterruptRecoveryContext {
 	getEntry: (taskId: string) => ProcessEntry | undefined;
 	getSummary: (taskId: string) => RuntimeTaskSessionSummary | null;
-	applySessionEventWithSideEffects: (
+	applyTransitionEvent: (
 		entry: ProcessEntry,
 		event: SessionTransitionEvent,
 	) => (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null;
@@ -65,6 +65,6 @@ export function scheduleInterruptRecovery(entry: ProcessEntry, ctx: InterruptRec
 		// Always transition — even if the agent produced output after the interrupt
 		// (e.g. Claude redraws its prompt after Escape). If the agent is genuinely
 		// still working, its next hook will move the card back to running.
-		ctx.applySessionEventWithSideEffects(current, { type: "interrupt.recovery" });
+		ctx.applyTransitionEvent(current, { type: "interrupt.recovery" });
 	}, INTERRUPT_RECOVERY_DELAY_MS);
 }

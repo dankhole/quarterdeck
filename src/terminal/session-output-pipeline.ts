@@ -20,7 +20,7 @@ const OSC_BACKGROUND_QUERY_REPLY = "\u001b]11;rgb:1717/1717/2121\u001b\\";
 export interface OutputPipelineDeps {
 	getSummary: (taskId: string) => RuntimeTaskSessionSummary | null;
 	updateStore: (taskId: string, patch: Partial<RuntimeTaskSessionSummary>) => RuntimeTaskSessionSummary | null;
-	applySessionEventWithSideEffects: (
+	applyTransitionEvent: (
 		entry: ProcessEntry,
 		event: SessionTransitionEvent,
 	) => (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null;
@@ -90,7 +90,7 @@ export function processTaskSessionOutput(
 			liveSummary?.agentId === "codex" &&
 			!entry.active.awaitingCodexPromptAfterEnter;
 		if (!requiresEnterForCodex) {
-			deps.applySessionEventWithSideEffects(entry, adapterEvent);
+			deps.applyTransitionEvent(entry, adapterEvent);
 			if (adapterEvent.type === "agent.prompt-ready" && liveSummary?.agentId === "codex") {
 				entry.active.awaitingCodexPromptAfterEnter = false;
 			}

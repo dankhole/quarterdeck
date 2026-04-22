@@ -223,7 +223,7 @@ export interface TaskSessionExitDeps {
 	getSummary: (taskId: string) => RuntimeTaskSessionSummary | null;
 	updateStore: (taskId: string, patch: Partial<RuntimeTaskSessionSummary>) => RuntimeTaskSessionSummary | null;
 	startTaskSession: (request: StartTaskSessionRequest) => Promise<RuntimeTaskSessionSummary>;
-	applySessionEventWithSideEffects: (
+	applyTransitionEvent: (
 		entry: ProcessEntry,
 		event: SessionTransitionEvent,
 	) => (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null;
@@ -259,7 +259,7 @@ export function handleTaskSessionExit(
 	stopWorkspaceTrustTimers(currentEntry.active);
 	clearInterruptRecoveryTimer(currentEntry.active);
 
-	const result = deps.applySessionEventWithSideEffects(currentEntry, {
+	const result = deps.applyTransitionEvent(currentEntry, {
 		type: "process.exit",
 		exitCode: event.exitCode,
 		interrupted: currentEntry.active.session.wasInterrupted(),
@@ -293,10 +293,10 @@ export function handleTaskSessionExit(
 		scheduleAutoRestart(currentEntry, {
 			startTaskSession: (r) => deps.startTaskSession(r),
 			updateStore: (id, patch) => deps.updateStore(id, patch),
-			applyDenied: () => deps.applySessionEventWithSideEffects(currentEntry, { type: "autorestart.denied" }),
+			applyDenied: () => deps.applyTransitionEvent(currentEntry, { type: "autorestart.denied" }),
 		});
 	} else if (exitSummary?.state === "interrupted") {
-		deps.applySessionEventWithSideEffects(currentEntry, { type: "autorestart.denied" });
+		deps.applyTransitionEvent(currentEntry, { type: "autorestart.denied" });
 	} else if (
 		request.resumeConversation &&
 		preExitState === "awaiting_review" &&
@@ -309,7 +309,7 @@ export function handleTaskSessionExit(
 			{
 				startTaskSession: (r) => deps.startTaskSession(r),
 				updateStore: (id, patch) => deps.updateStore(id, patch),
-				applyDenied: () => deps.applySessionEventWithSideEffects(currentEntry, { type: "autorestart.denied" }),
+				applyDenied: () => deps.applyTransitionEvent(currentEntry, { type: "autorestart.denied" }),
 			},
 			{ skipContinueAttempt: true, eventPrefix: "startup.resume_fallback" },
 		);
@@ -437,7 +437,7 @@ export interface RecoverStaleSessionDeps {
 	recoverStaleSession: (taskId: string) => RuntimeTaskSessionSummary | null;
 	startTaskSession: (request: StartTaskSessionRequest) => Promise<RuntimeTaskSessionSummary>;
 	updateStore: (taskId: string, patch: Partial<RuntimeTaskSessionSummary>) => RuntimeTaskSessionSummary | null;
-	applySessionEventWithSideEffects: (
+	applyTransitionEvent: (
 		entry: ProcessEntry,
 		event: SessionTransitionEvent,
 	) => (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null;
@@ -462,7 +462,7 @@ export function recoverStaleSession(taskId: string, deps: RecoverStaleSessionDep
 			scheduleAutoRestart(entry, {
 				startTaskSession: (r) => deps.startTaskSession(r),
 				updateStore: (id, patch) => deps.updateStore(id, patch),
-				applyDenied: () => deps.applySessionEventWithSideEffects(entry, { type: "autorestart.denied" }),
+				applyDenied: () => deps.applyTransitionEvent(entry, { type: "autorestart.denied" }),
 			});
 		}
 		return summary;

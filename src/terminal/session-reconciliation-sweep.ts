@@ -19,7 +19,7 @@ export const SESSION_RECONCILIATION_INTERVAL_MS = 10_000;
 export interface ReconciliationSweepContext {
 	entries: Map<string, ProcessEntry>;
 	store: SessionSummaryStore;
-	applySessionEventWithSideEffects: (
+	applyTransitionEvent: (
 		entry: ProcessEntry,
 		event: SessionTransitionEvent,
 	) => (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null;
@@ -111,7 +111,7 @@ export function applyReconciliationAction(
 			if (!entry.active) break;
 			stopWorkspaceTrustTimers(entry.active);
 			clearInterruptRecoveryTimer(entry.active);
-			const result = ctx.applySessionEventWithSideEffects(entry, {
+			const result = ctx.applyTransitionEvent(entry, {
 				type: "process.exit",
 				exitCode: null,
 				interrupted: false,
@@ -127,7 +127,7 @@ export function applyReconciliationAction(
 			// Route through the state machine instead of directly mutating the
 			// store. process.exit with exitCode=null maps to reviewReason="error",
 			// which is the same outcome but validated by the reducer.
-			ctx.applySessionEventWithSideEffects(entry, {
+			ctx.applyTransitionEvent(entry, {
 				type: "process.exit",
 				exitCode: null,
 				interrupted: false,
@@ -139,11 +139,11 @@ export function applyReconciliationAction(
 			break;
 		}
 		case "mark_stalled": {
-			ctx.applySessionEventWithSideEffects(entry, { type: "reconciliation.stalled" });
+			ctx.applyTransitionEvent(entry, { type: "reconciliation.stalled" });
 			break;
 		}
 		case "move_interrupted_to_review": {
-			ctx.applySessionEventWithSideEffects(entry, { type: "autorestart.denied" });
+			ctx.applyTransitionEvent(entry, { type: "autorestart.denied" });
 			break;
 		}
 	}

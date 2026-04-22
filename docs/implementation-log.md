@@ -2,6 +2,56 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Terminal session transition ownership seam (2026-04-22)
+
+Narrowed the backend terminal/session refactor to one real lifecycle boundary: `TerminalSessionManager` no longer owns the process-side consequences of session state-machine transitions as an implicit private behavior. Before this pass, restart handling, interrupt recovery, reconciliation, PTY input/output transition detection, and active-listener summary fanout all depended on the manager's private `applySessionEventWithSideEffects(...)` seam. That made the manager more than a registry/wiring root: it was also the hidden owner of transition-policy side effects. This slice extracts that responsibility into a dedicated terminal-layer collaborator so the ownership story is clearer: `SessionSummaryStore` owns session truth, `TerminalSessionManager` owns process entry registry/wiring, and `SessionTransitionController` owns what extra process-side cleanup/fanout happens when a transition event is applied.
+
+**What changed:**
+
+- Added `src/terminal/session-transition-controller.ts`, which now owns two previously diffused concerns:
+  - applying session state-machine events plus process-side side effects (`workspaceTrustBuffer` clearing, interrupt-recovery timer clearing, Codex prompt-reset behavior, transition telemetry)
+  - broadcasting updated summaries to active session listeners
+- Narrowed `src/terminal/session-manager.ts` into more of a composition root:
+  - the manager now constructs the transition controller once
+  - store change fanout routes through `SessionTransitionController.broadcastSummary(...)`
+  - reconciliation, stale recovery, PTY input routing, PTY output transition detection, and task-session exit handling all receive `applyTransitionEvent(...)` from the controller instead of the manager's old private callback
+- Updated the extracted lifecycle collaborators so the shared boundary is explicit in their dependency contracts:
+  - `src/terminal/session-lifecycle.ts`
+  - `src/terminal/session-input-pipeline.ts`
+  - `src/terminal/session-output-pipeline.ts`
+  - `src/terminal/session-interrupt-recovery.ts`
+  - `src/terminal/session-reconciliation-sweep.ts`
+- Added `test/runtime/terminal/session-transition-controller.test.ts` with focused coverage for the new seam:
+  - active-listener summary fanout
+  - review-transition side effects
+  - returning-to-running timer cleanup
+  - no-op transition behavior
+- Revalidated the fragile lifecycle paths that motivated the refactor without changing their user-facing behavior:
+  - restart ownership (`session-manager-auto-restart.test.ts`)
+  - interrupted/review recovery (`session-manager-interrupt-recovery.test.ts`)
+  - reconciliation action application (`session-manager-reconciliation.test.ts`, `session-reconciliation.test.ts`)
+  - attach/restore/session-manager basics (`session-manager.test.ts`)
+- Added a high-signal `AGENTS.md` note documenting that future transition-event application in the terminal layer should route through `session-transition-controller.ts` instead of re-embedding side effects into `TerminalSessionManager`.
+
+**Why:** The main backend terminal plumbing was already decomposed, but one bug-prone category of lifecycle behavior still had no obvious owner: whenever a session transitioned, several extra consequences might need to happen, and the answer lived in a private manager method that many collaborators depended on indirectly. That made restart/reconciliation/input/output bugs expensive to trace because “apply this event” really meant “ask the manager to maybe mutate store state, maybe clear buffers, maybe reset Codex prompt state, maybe clear timers, and maybe fan out summary updates.” After this slice, that behavior is behind one named boundary with direct tests. The resulting design is not a total terminal rewrite, but it makes the manager materially easier to explain and creates a safer seam for future restart/recovery or reconciliation cleanup.
+
+**Files touched:**
+
+- `AGENTS.md`
+- `src/terminal/session-input-pipeline.ts`
+- `src/terminal/session-interrupt-recovery.ts`
+- `src/terminal/session-lifecycle.ts`
+- `src/terminal/session-manager.ts`
+- `src/terminal/session-output-pipeline.ts`
+- `src/terminal/session-reconciliation-sweep.ts`
+- `src/terminal/session-transition-controller.ts`
+- `test/runtime/terminal/session-transition-controller.test.ts`
+- `docs/todo.md`
+- `CHANGELOG.md`
+- `docs/implementation-log.md`
+
+**Commit hash:** Pending commit on `feature/terminal-session-lifecycle-boundaries` (branched from local `main` at `ce6e95ac7f4e46478ecb0ef5ea4036ef8eae5d58`).
+
 ## Project/worktree identity normalization contract + UI slice (2026-04-22)
 
 Expanded the project/worktree identity refactor from an initial `web-ui` display cleanup into a shared runtime-contract normalization pass. The key clarification is now explicit in both the contract and the UI vocabulary: Quarterdeck has a project root path, an assigned task path/git identity, and a session launch path, and those are not interchangeable. This pass keeps the useful session-location signal while stopping the runtime/session API from pretending it is generic “project path” identity. It also intentionally does **not** invent a fake live-cwd field; there is still no authoritative continuously streamed runtime-location signal for task agents.
