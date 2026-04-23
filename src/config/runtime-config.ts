@@ -2,7 +2,7 @@
 // Orchestrates normalizers (pure) and persistence (I/O).
 import type { PromptShortcut, RuntimeAgentId, RuntimeProjectShortcut } from "../core";
 import { lockedFileSystem } from "../fs";
-import { detectInstalledCommands } from "./agent-registry";
+import { detectRunnableAgentIds } from "./agent-registry";
 import type { AudibleNotificationEvents, AudibleNotificationSuppressCurrentProject } from "./config-defaults";
 import {
 	extractGlobalConfigFields,
@@ -54,7 +54,7 @@ export {
 // --- Internal helpers ---
 
 function pickBestInstalledAgentId() {
-	return pickBestInstalledAgentIdFromDetected(detectInstalledCommands());
+	return pickBestInstalledAgentIdFromDetected(detectRunnableAgentIds());
 }
 
 async function loadRuntimeConfigLocked(projectId?: string | null): Promise<RuntimeConfigState> {

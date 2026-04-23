@@ -19,6 +19,8 @@ export function createTestAgentDef(
 		binary: info?.binary ?? id,
 		command: info?.binary ?? id,
 		defaultArgs: [],
+		status: "installed",
+		statusMessage: null,
 		installed: true,
 		configured: true,
 		...overrides,
@@ -182,10 +184,12 @@ export function createSelectedAgentRuntimeConfigResponse(
 		detectedCommands: [selectedAgentId],
 		agents: [
 			createTestAgentDef("claude", {
+				status: selectedAgentId === "claude" ? "installed" : "missing",
 				installed: selectedAgentId === "claude",
 				configured: selectedAgentId === "claude",
 			}),
 			createTestAgentDef("codex", {
+				status: selectedAgentId === "codex" ? "installed" : "missing",
 				installed: selectedAgentId === "codex",
 				configured: selectedAgentId === "codex",
 			}),

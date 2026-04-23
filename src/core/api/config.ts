@@ -1,12 +1,17 @@
 import { z } from "zod";
 import { promptShortcutSchema, runtimeAgentIdSchema, runtimeProjectShortcutSchema } from "./shared.js";
 
+export const runtimeAgentInstallStatusSchema = z.enum(["installed", "upgrade_required", "missing"]);
+export type RuntimeAgentInstallStatus = z.infer<typeof runtimeAgentInstallStatusSchema>;
+
 export const runtimeAgentDefinitionSchema = z.object({
 	id: runtimeAgentIdSchema,
 	label: z.string(),
 	binary: z.string(),
 	command: z.string(),
 	defaultArgs: z.array(z.string()),
+	status: runtimeAgentInstallStatusSchema,
+	statusMessage: z.string().nullable(),
 	installed: z.boolean(),
 	configured: z.boolean(),
 });

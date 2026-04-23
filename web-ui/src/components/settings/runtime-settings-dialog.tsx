@@ -71,12 +71,16 @@ export function RuntimeSettingsDialog({
 				id: agent.id,
 				label: agent.label,
 				binary: agent.binary,
+				status: agent.status,
+				statusMessage: agent.statusMessage,
 				installed: agent.installed,
 			})) ??
 			getRuntimeLaunchSupportedAgentCatalog().map((agent) => ({
 				id: agent.id,
 				label: agent.label,
 				binary: agent.binary,
+				status: "missing" as const,
+				statusMessage: null,
 				installed: null,
 			}));
 		const orderIndexByAgentId = new Map(SETTINGS_AGENT_ORDER.map((agentId, index) => [agentId, index] as const));

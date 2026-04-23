@@ -299,6 +299,19 @@ function getInstallLinkLabel(agentId: RuntimeAgentId): string {
 	return "Install guide";
 }
 
+function getAgentStatusBadge(agent: Pick<RuntimeAgentDefinition, "status" | "installed">): {
+	label: string;
+	statusClassName: string;
+} {
+	if (agent.status === "installed" && agent.installed) {
+		return { label: "Detected", statusClassName: "bg-status-green/10 text-status-green" };
+	}
+	if (agent.status === "upgrade_required") {
+		return { label: "Upgrade required", statusClassName: "bg-status-orange/10 text-status-orange" };
+	}
+	return { label: "Not installed", statusClassName: "bg-surface-3 text-text-secondary" };
+}
+
 export function TaskStartAgentOnboardingCarousel({
 	open,
 	projectId: _projectId,
@@ -337,6 +350,8 @@ export function TaskStartAgentOnboardingCarousel({
 					id: agentId,
 					label: catalogEntry?.label ?? configuredAgent?.label ?? agentId,
 					installUrl: catalogEntry?.installUrl ?? null,
+					status: configuredAgent?.status ?? "missing",
+					statusMessage: configuredAgent?.statusMessage ?? null,
 					installed: configuredAgent?.installed ?? false,
 				};
 			}),
@@ -470,11 +485,7 @@ export function TaskStartAgentOnboardingCarousel({
 									</RadixCheckbox.Root>
 									<span className="text-[13px] text-text-primary">{agent.label}</span>
 								</span>
-								{agent.installed ? (
-									<AgentStatusBadge label="Detected" statusClassName="bg-status-green/10 text-status-green" />
-								) : (
-									<AgentStatusBadge label="Not installed" statusClassName="bg-surface-3 text-text-secondary" />
-								)}
+								<AgentStatusBadge {...getAgentStatusBadge(agent)} />
 							</div>
 							<p className="mt-2 mb-0 text-[12px] text-text-secondary">
 								{resolveInstallInstructions(agent.id)}
@@ -492,6 +503,9 @@ export function TaskStartAgentOnboardingCarousel({
 									</>
 								) : null}
 							</p>
+							{agent.statusMessage ? (
+								<p className="mt-2 mb-0 text-[12px] text-status-orange">{agent.statusMessage}</p>
+							) : null}
 						</div>
 					))}
 					{selectionError ? (

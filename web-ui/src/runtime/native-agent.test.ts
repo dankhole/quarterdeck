@@ -35,6 +35,8 @@ describe("native-agent helpers", () => {
 					binary: "claude",
 					command: "claude",
 					defaultArgs: [],
+					status: "missing",
+					statusMessage: null,
 					installed: false,
 					configured: true,
 				},

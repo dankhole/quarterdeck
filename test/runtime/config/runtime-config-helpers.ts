@@ -53,3 +53,24 @@ export function writeFakeCommand(binDir: string, command: string): void {
 	writeFileSync(scriptPath, "#!/bin/sh\nexit 0\n", "utf8");
 	chmodSync(scriptPath, 0o755);
 }
+
+export function writeFakeVersionedCommand(binDir: string, command: string, version: string): void {
+	mkdirSync(binDir, { recursive: true });
+	if (process.platform === "win32") {
+		const scriptPath = join(binDir, `${command}.cmd`);
+		writeFileSync(scriptPath, `@echo off\r\nif "%1"=="--version" echo ${version}\r\nexit /b 0\r\n`, "utf8");
+		return;
+	}
+	const scriptPath = join(binDir, command);
+	writeFileSync(
+		scriptPath,
+		`#!/bin/sh
+if [ "$1" = "--version" ]; then
+	echo "${version}"
+fi
+exit 0
+`,
+		"utf8",
+	);
+	chmodSync(scriptPath, 0o755);
+}

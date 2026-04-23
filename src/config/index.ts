@@ -1,6 +1,7 @@
 export {
 	buildRuntimeConfigResponse,
 	detectInstalledCommands,
+	detectRunnableAgentIds,
 	type ResolvedAgentCommand,
 	resolveAgentCommand,
 } from "./agent-registry";

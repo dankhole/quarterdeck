@@ -21,7 +21,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		label: "OpenAI Codex",
 		binary: "codex",
 		baseArgs: [],
-		installUrl: "https://github.com/openai/codex",
+		installUrl: "https://help.openai.com/en/articles/11096431-openai-codex-ci-getting-started",
 	},
 ];
 

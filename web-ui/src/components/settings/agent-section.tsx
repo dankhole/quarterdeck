@@ -4,7 +4,7 @@ import { Circle, CircleDot } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
-import type { RuntimeAgentId, RuntimeConfigResponse } from "@/runtime/types";
+import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeConfigResponse } from "@/runtime/types";
 import type { SettingsSectionProps } from "./settings-section-props";
 
 export interface AgentRowModel {
@@ -12,6 +12,8 @@ export interface AgentRowModel {
 	label: string;
 	binary: string;
 	command: string;
+	status: RuntimeAgentDefinition["status"];
+	statusMessage: string | null;
 	installed: boolean | null;
 }
 
@@ -27,7 +29,8 @@ function AgentRow({
 	disabled: boolean;
 }): React.ReactElement {
 	const installUrl = getRuntimeAgentCatalogEntry(agent.id)?.installUrl;
-	const isInstalled = agent.installed === true;
+	const isInstalled = agent.status === "installed";
+	const requiresUpgrade = agent.status === "upgrade_required";
 	const isInstallStatusPending = agent.installed === null;
 
 	return (
@@ -63,6 +66,10 @@ function AgentRow({
 							<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-status-green/10 text-status-green">
 								Installed
 							</span>
+						) : requiresUpgrade ? (
+							<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-status-orange/10 text-status-orange">
+								Upgrade required
+							</span>
 						) : isInstallStatusPending ? (
 							<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-surface-3 text-text-secondary">
 								Checking...
@@ -71,6 +78,9 @@ function AgentRow({
 					</div>
 					{agent.command ? (
 						<p className="text-text-secondary font-mono text-xs mt-0.5 m-0">{agent.command}</p>
+					) : null}
+					{agent.statusMessage ? (
+						<p className="text-status-orange text-xs mt-1 mb-0">{agent.statusMessage}</p>
 					) : null}
 				</div>
 			</div>
@@ -82,11 +92,11 @@ function AgentRow({
 					onClick={(event: React.MouseEvent) => event.stopPropagation()}
 					className="inline-flex items-center justify-center rounded-md font-medium duration-150 cursor-default select-none h-7 px-2 text-xs bg-surface-2 border border-border text-text-primary hover:bg-surface-3 hover:border-border-bright"
 				>
-					Install
+					{requiresUpgrade ? "Upgrade" : "Install"}
 				</a>
 			) : agent.installed === false ? (
 				<Button size="sm" disabled>
-					Install
+					{requiresUpgrade ? "Upgrade" : "Install"}
 				</Button>
 			) : null}
 		</div>
@@ -128,8 +138,12 @@ export function AgentSection({
 			))}
 			{!configLoaded ? (
 				<p className="text-text-secondary py-2">Checking which CLIs are installed for this project...</p>
-			) : null}
-
+			) : (
+				<p className="text-text-secondary text-[12px] mt-2 mb-0">
+					Detection checks whether each CLI is available on Quarterdeck&apos;s PATH. Codex also enforces a minimum
+					supported version.
+				</p>
+			)}
 			<div className="mt-3">
 				<div className="flex items-center justify-between">
 					<button

@@ -119,6 +119,14 @@ describe("TerminalSessionManager", () => {
 		expect(updated?.latestHookActivity?.toolInputSummary).toBe("src/main.ts");
 	});
 
+	it("uses the configured row multiplier for Claude", () => {
+		expect(resolveAgentTerminalRowMultiplier("claude", 5)).toBe(5);
+	});
+
+	it("ignores the configured row multiplier for Codex", () => {
+		expect(resolveAgentTerminalRowMultiplier("codex", 5)).toBe(1);
+	});
+
 	it("transitionToReview preserves latestHookActivity (RC4 invariant — no null-window)", () => {
 		const manager = createTestManager();
 		manager.store.hydrateFromRecord({
@@ -501,14 +509,6 @@ describe("TerminalSessionManager", () => {
 		expect(resized).toBe(true);
 		expect(resizeSpy).toHaveBeenCalledWith(100, 150, undefined, undefined);
 		expect(resizeMirrorSpy).toHaveBeenCalledWith(100, 150);
-	});
-
-	it("uses the configured row multiplier for Claude", () => {
-		expect(resolveAgentTerminalRowMultiplier("claude", 5)).toBe(5);
-	});
-
-	it("ignores the configured row multiplier for Codex", () => {
-		expect(resolveAgentTerminalRowMultiplier("codex", 5)).toBe(1);
 	});
 
 	it("returns the latest terminal restore snapshot when available", async () => {

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { loadRuntimeConfig, pickBestInstalledAgentIdFromDetected } from "../../../src/config";
 import { createTempDir } from "../../utilities/temp-dir";
-import { withTemporaryEnv, writeFakeCommand } from "./runtime-config-helpers";
+import { withTemporaryEnv, writeFakeCommand, writeFakeVersionedCommand } from "./runtime-config-helpers";
 
 describe.sequential("runtime-config auto agent selection", () => {
 	it("selects agents using the configured priority order", () => {
@@ -22,7 +22,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-");
 
 		try {
-			writeFakeCommand(tempBin, "codex");
+			writeFakeVersionedCommand(tempBin, "codex", "0.30.0");
 
 			const previousShell = process.env.SHELL;
 			try {
@@ -102,6 +102,27 @@ describe.sequential("runtime-config auto agent selection", () => {
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin }, async () => {
 				const state = await loadRuntimeConfig(null);
 				expect(state.selectedAgentId).toBe("claude");
+			});
+		} finally {
+			cleanupBin();
+			cleanupHome();
+		}
+	});
+
+	it("does not auto-select Codex when the detected version is below the supported floor", async () => {
+		if (process.platform === "win32") {
+			return;
+		}
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-old-codex-");
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-old-codex-");
+
+		try {
+			writeFakeVersionedCommand(tempBin, "codex", "0.29.0");
+
+			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
+				const state = await loadRuntimeConfig(null);
+				expect(state.selectedAgentId).toBe("claude");
+				expect(existsSync(join(tempHome, ".quarterdeck", "config.json"))).toBe(false);
 			});
 		} finally {
 			cleanupBin();

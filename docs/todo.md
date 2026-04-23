@@ -179,10 +179,6 @@ Supporting LLM UX (titles, summaries, helper generations) is still Anthropic-onl
 
 **Broader refactor context:** [docs/refactor-roadmap-context.md#12-shared-llm-client-abstraction](./refactor-roadmap-context.md#12-shared-llm-client-abstraction)
 
-## Harden Codex install and capability detection
-
-Codex detection currently stops at “binary exists on PATH,” and the install link still points to the GitHub repo instead of the current OpenAI docs surface. Add real Codex capability detection: verify CLI version and/or feature support for hooks, session-targeted resume, config/rules/AGENTS support, approvals/security modes, and app-server/remote features before enabling related UX. Update install/help links to the official OpenAI Codex docs.
-
 ## Make the worktree system prompt apply to Codex too
 
 The settings UI advertises the worktree system prompt as an agent-wide feature, but only the Claude launch path currently injects it. Extend the Codex adapter so `worktreeSystemPromptTemplate` is applied for Codex sessions too, or scope the UI copy if Codex cannot support the same mechanism. Avoid the current silent mismatch where users customize the prompt and Codex ignores it.
