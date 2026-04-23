@@ -7,7 +7,6 @@ This is not a full implementation plan. It is a ranked map of the biggest design
 Related docs:
 
 - `docs/design-guardrails.md`
-- `docs/terminal-architecture-refactor-brief.md`
 - `docs/refactor-roadmap-context.md`
 - `docs/todo.md`
 

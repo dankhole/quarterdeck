@@ -145,5 +145,4 @@ When working in those areas, prefer:
 ## Companion Docs
 
 - `docs/design-weaknesses-roadmap.md`
-- `docs/terminal-architecture-refactor-brief.md`
 - `docs/refactor-roadmap-context.md`

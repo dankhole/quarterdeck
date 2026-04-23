@@ -201,7 +201,7 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 
 ## Design investigation follow-ups
 
-Full plan at [docs/plan-design-investigation.md](plan-design-investigation.md). These are architectural follow-ups for places where the concern may be incorrect responsibility boundaries or overlapping ownership, not just readability.
+These are architectural follow-ups for places where the concern may be incorrect responsibility boundaries or overlapping ownership, not just readability. The original investigation plan is archived in `docs/archive/plan-design-investigation.md`.
 
 - ~~**Reassess board-state ownership between browser and runtime**~~ — Done (cbf81f71). Board rule consolidation confirmed `task-board-mutations.ts` as the canonical owner; browser layer is a thin adapter.
 - ~~**Reassess terminal architecture across `terminal-slot.ts` and `terminal-pool.ts`**~~ — Done (c9abe225). Slot decomposed into `slot-dom-host.ts` + `slot-visibility-lifecycle.ts`; pool split into shared-pool policy + `terminal-dedicated-registry.ts`.

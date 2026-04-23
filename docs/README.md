@@ -15,11 +15,8 @@ If you are new to the codebase, read these in order:
 1. [`../README.md`](../README.md) for the product overview and local setup.
 2. [`architecture.md`](./architecture.md) for the system map, runtime model, and key file guide.
 3. [`design-weaknesses-roadmap.md`](./design-weaknesses-roadmap.md) for the current ranked architectural risks and prevention priorities.
-4. [`terminal-architecture-refactor-brief.md`](./terminal-architecture-refactor-brief.md) for the self-contained terminal refactor brief and target design.
-5. [`project-metadata-monitor-refactor-brief.md`](./project-metadata-monitor-refactor-brief.md) for the self-contained project metadata monitor refactor brief and target design.
-6. [`terminal-ws-server-refactor-brief.md`](./terminal-ws-server-refactor-brief.md) for the backend websocket-bridge refactor brief and target module split.
-7. [`refactor-roadmap-context.md`](./refactor-roadmap-context.md) for the current refactor queue, recent completions, optimization-shaped cleanup context, and the extended code-validated refactor backlog.
-8. [`design-guardrails.md`](./design-guardrails.md) for reusable rules on adding clever features without letting optimization define the architecture.
+4. [`refactor-roadmap-context.md`](./refactor-roadmap-context.md) for the current refactor queue, recent completions, optimization-shaped cleanup context, and the extended code-validated refactor backlog.
+5. [`design-guardrails.md`](./design-guardrails.md) for reusable rules on adding clever features without letting optimization define the architecture.
 
 If you only need the current refactor state, start with:
 
@@ -37,16 +34,11 @@ Use this map when you are planning or evaluating refactor work.
 - [`todo.md`](./todo.md): active engineering backlog, including currently tracked refactor work.
 - [`design-weaknesses-roadmap.md`](./design-weaknesses-roadmap.md): ranked list of the biggest architectural weaknesses.
 - [`design-guardrails.md`](./design-guardrails.md): reusable design rules for preventing optimization-shaped architecture.
-- [`terminal-architecture-refactor-brief.md`](./terminal-architecture-refactor-brief.md): self-contained terminal refactor planning brief.
-- [`project-metadata-monitor-refactor-brief.md`](./project-metadata-monitor-refactor-brief.md): self-contained project metadata monitor refactor planning brief.
-- [`terminal-ws-server-refactor-brief.md`](./terminal-ws-server-refactor-brief.md): self-contained websocket bridge refactor planning brief.
 - [`refactor-roadmap-context.md`](./refactor-roadmap-context.md): current refactor ordering plus recent completions, optimization-shaped cleanup context, and the extended code-validated backlog for items that do not yet have full implementation briefs.
 
 ### Live architecture and implementation guidance
 
 - [`architecture.md`](./architecture.md): system-wide architecture overview.
-- [`plan-design-investigation.md`](./plan-design-investigation.md): ownership-boundary investigations and conclusions.
-- [`plan-csharp-readability-followups.md`](./plan-csharp-readability-followups.md): readability/navigation follow-up slices.
 - [`patterns-frontend-service-extraction.md`](./patterns-frontend-service-extraction.md): domain-module extraction pattern for frontend hooks and services.
 - [`web-ui-conventions.md`](./web-ui-conventions.md): frontend conventions and hooks architecture guidance.
 - [`ui-layout-architecture.md`](./ui-layout-architecture.md): UI composition and layout ownership model.

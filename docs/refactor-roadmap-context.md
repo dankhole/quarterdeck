@@ -2,11 +2,6 @@
 
 Purpose: capture enough context for the current refactor queue and backlog that a fresh agent can pick the next item up without reconstructing the architectural story from chat history.
 
-This is intentionally lighter than the dedicated implementation briefs such as:
-
-- `docs/project-metadata-monitor-refactor-brief.md`
-- `docs/terminal-ws-server-refactor-brief.md`
-
 Use this document when:
 
 - choosing what to work on next
@@ -92,10 +87,6 @@ Primary files:
 - `src/server/project-metadata-refresher.ts`
 - `src/server/project-metadata-poller.ts`
 - `src/server/project-metadata-remote-fetch.ts`
-
-Existing docs:
-
-- `docs/project-metadata-monitor-refactor-brief.md`
 
 What this follow-up closed out:
 
