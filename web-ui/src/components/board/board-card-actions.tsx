@@ -1,4 +1,4 @@
-import { Bug, Play, RotateCcw, RotateCw, Trash2 } from "lucide-react";
+import { Play, RotateCcw, RotateCw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -23,7 +23,6 @@ export function BoardCardActions({
 	onMoveToTrash,
 	onRestoreFromTrash,
 	onHardDelete,
-	onFlagForDebug,
 }: {
 	cardId: string;
 	columnId: BoardColumnId;
@@ -37,27 +36,10 @@ export function BoardCardActions({
 	onMoveToTrash?: (taskId: string) => void;
 	onRestoreFromTrash?: (taskId: string) => void;
 	onHardDelete?: (taskId: string) => void;
-	onFlagForDebug?: (taskId: string) => void;
 }): React.ReactElement | null {
 	if (columnId === "in_progress") {
 		return (
 			<>
-				{onFlagForDebug && isHovered ? (
-					<Tooltip content="Flag for debug log">
-						<Button
-							icon={<Bug size={12} />}
-							variant="ghost"
-							size="sm"
-							className="text-text-tertiary hover:text-status-purple"
-							aria-label="Flag task state for debug log"
-							onMouseDown={stopEvent}
-							onClick={(event) => {
-								stopEvent(event);
-								onFlagForDebug(cardId);
-							}}
-						/>
-					</Tooltip>
-				) : null}
 				{showRunningTaskEmergencyActions && !isSessionDead && isHovered ? (
 					<>
 						{onRestartSession ? (
@@ -116,22 +98,6 @@ export function BoardCardActions({
 	if (columnId === "review") {
 		return (
 			<>
-				{onFlagForDebug ? (
-					<Tooltip content="Flag for debug log">
-						<Button
-							icon={<Bug size={12} />}
-							variant="ghost"
-							size="sm"
-							className="text-text-tertiary hover:text-status-purple"
-							aria-label="Flag task state for debug log"
-							onMouseDown={stopEvent}
-							onClick={(event) => {
-								stopEvent(event);
-								onFlagForDebug(cardId);
-							}}
-						/>
-					</Tooltip>
-				) : null}
 				{(isSessionRestartable || (isHovered && !isSessionDead)) && onRestartSession ? (
 					<Tooltip content="Restart session">
 						<Button

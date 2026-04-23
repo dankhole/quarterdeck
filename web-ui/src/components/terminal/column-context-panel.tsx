@@ -50,7 +50,6 @@ function ColumnSection({
 		onRequestDisplaySummary,
 		onTerminalWarmup,
 		onTerminalCancelWarmup,
-		onFlagForDebug,
 	} = useStableCardActions();
 	const {
 		moveToTrashLoadingById,
@@ -201,7 +200,6 @@ function ColumnSection({
 								onRequestDisplaySummary={onRequestDisplaySummary}
 								onTerminalWarmup={onTerminalWarmup}
 								onTerminalCancelWarmup={onTerminalCancelWarmup}
-								onFlagForDebug={onFlagForDebug}
 								onClick={() => {
 									if (column.id === "backlog") {
 										onEditTask?.(card);

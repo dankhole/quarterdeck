@@ -1,5 +1,4 @@
 import type { RuntimeTaskSessionSummary } from "../core";
-import { emitSessionEvent } from "../core";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
 import type { ProcessEntry } from "./session-manager-types";
 import {
@@ -33,26 +32,10 @@ export class SessionTransitionController {
 		entry: ProcessEntry,
 		event: SessionTransitionEvent,
 	): (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null {
-		const beforeSummary = this.store.getSummary(entry.taskId);
 		const result = this.store.applySessionEvent(entry.taskId, event);
 		if (!result?.changed) {
-			if (beforeSummary) {
-				emitSessionEvent(entry.taskId, "state.transition.noop", {
-					eventType: event.type,
-					currentState: beforeSummary.state,
-					currentReviewReason: beforeSummary.reviewReason,
-				});
-			}
 			return result;
 		}
-
-		emitSessionEvent(entry.taskId, "state.transition", {
-			eventType: event.type,
-			fromState: beforeSummary?.state ?? null,
-			toState: result.patch.state ?? beforeSummary?.state ?? null,
-			fromReviewReason: beforeSummary?.reviewReason ?? null,
-			toReviewReason: result.patch.reviewReason ?? null,
-		});
 
 		const active = entry.active;
 		if (result.clearAttentionBuffer && active && active.workspaceTrustBuffer !== null) {

@@ -6,7 +6,6 @@
 import type { IRuntimeBroadcaster, IRuntimeConfigProvider, RuntimeCommandRunResponse } from "../core";
 import type { TerminalSessionManager } from "../terminal";
 import type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
-import { handleFlagTaskForDebug } from "./handlers/flag-task-for-debug";
 import { handleLoadConfig } from "./handlers/load-config";
 import { handleOpenFile } from "./handlers/open-file";
 import { handleRunCommand } from "./handlers/run-command";
@@ -72,10 +71,6 @@ class RuntimeApiImpl implements RuntimeApi {
 
 	async setLogLevel(level: "debug" | "info" | "warn" | "error") {
 		return await handleSetLogLevel(level, this.deps);
-	}
-
-	async flagTaskForDebug(projectScope: RuntimeTrpcProjectScope, input: { taskId: string; note?: string }) {
-		return handleFlagTaskForDebug(projectScope, input, this.deps);
 	}
 
 	async openFile(input: { filePath: string }) {

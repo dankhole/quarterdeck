@@ -13,7 +13,6 @@
 //   interrupted → exits         = user-initiated stop → no restart
 
 import type { RuntimeTaskSessionState, RuntimeTaskSessionSummary } from "../core";
-import { emitSessionEvent } from "../core";
 import type { ProcessEntry, StartTaskSessionRequest } from "./session-manager-types";
 import { cloneStartTaskSessionRequest } from "./session-manager-types";
 import { cloneSummary } from "./session-summary-store";
@@ -58,9 +57,6 @@ export function shouldAutoRestart(entry: ProcessEntry, preExitState: RuntimeTask
 		(timestamp) => currentTime - timestamp < AUTO_RESTART_WINDOW_MS,
 	);
 	if (entry.autoRestartTimestamps.length >= MAX_AUTO_RESTARTS_PER_WINDOW) {
-		emitSessionEvent(entry.taskId, "autorestart.rate_limited", {
-			timestamps: entry.autoRestartTimestamps,
-		});
 		return { restart: false, reason: "rate_limited" };
 	}
 	entry.autoRestartTimestamps.push(currentTime);
@@ -100,11 +96,6 @@ export function scheduleAutoRestart(
 	if (!restartRequest || restartRequest.kind !== "task") {
 		return;
 	}
-	const prefix = options?.eventPrefix ?? "autorestart";
-	emitSessionEvent(entry.taskId, `${prefix}.triggered`, {
-		restartCount: entry.autoRestartTimestamps.length,
-		skipContinueAttempt: options?.skipContinueAttempt ?? false,
-	});
 	let pendingAutoRestart: Promise<void> | null = null;
 	pendingAutoRestart = (async () => {
 		try {
@@ -120,16 +111,12 @@ export function scheduleAutoRestart(
 				try {
 					await callbacks.startTaskSession(request);
 				} catch {
-					emitSessionEvent(entry.taskId, `${prefix}.continue_failed`, {});
 					request.resumeConversation = false;
 					await callbacks.startTaskSession(request);
 				}
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			emitSessionEvent(entry.taskId, `${prefix}.failed`, {
-				error: message,
-			});
 			// Transition to review immediately instead of waiting for the
 			// reconciliation sweep to catch the orphaned interrupted state.
 			callbacks.applyDenied();

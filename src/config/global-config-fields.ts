@@ -124,7 +124,6 @@ export const GLOBAL_CONFIG_FIELDS = {
 	worktreeAddParentGitDir: boolField(false),
 	worktreeAddQuarterdeckDir: boolField(false),
 	showRunningTaskEmergencyActions: boolField(false),
-	eventLogEnabled: boolField(false),
 	logLevel: enumField<LogLevel>("warn", LOG_LEVELS),
 	backupIntervalMinutes: numField(30),
 	agentTerminalRowMultiplier: numField(5),

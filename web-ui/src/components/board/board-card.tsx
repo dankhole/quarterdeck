@@ -43,7 +43,6 @@ export function BoardCard({
 	onUpdateTitle,
 	onTogglePin,
 	isMoveToTrashLoading = false,
-	onFlagForDebug,
 	onDependencyPointerDown,
 	onDependencyPointerEnter,
 	onRequestDisplaySummary,
@@ -75,7 +74,6 @@ export function BoardCard({
 	onUpdateTitle?: (taskId: string, title: string) => void;
 	onTogglePin?: (taskId: string) => void;
 	isMoveToTrashLoading?: boolean;
-	onFlagForDebug?: (taskId: string) => void;
 	onDependencyPointerDown?: (taskId: string, event: MouseEvent<HTMLElement>) => void;
 	onDependencyPointerEnter?: (taskId: string) => void;
 	onRequestDisplaySummary?: (taskId: string) => void;
@@ -338,7 +336,6 @@ export function BoardCard({
 								onMoveToTrash={onMoveToTrash}
 								onRestoreFromTrash={onRestoreFromTrash}
 								onHardDelete={onHardDelete}
-								onFlagForDebug={onFlagForDebug}
 							/>
 						</div>
 						{showSummaryOnCards && latestSummaryText ? (

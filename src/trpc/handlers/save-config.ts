@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import type { RuntimeConfigState } from "../../config";
 import { buildRuntimeConfigResponse, updateGlobalRuntimeConfig, updateRuntimeConfig } from "../../config";
 import type { IRuntimeBroadcaster, IRuntimeConfigProvider } from "../../core";
-import { type LogLevel, parseRuntimeConfigSaveRequest, setEventLogEnabled, setLogLevel } from "../../core";
+import { type LogLevel, parseRuntimeConfigSaveRequest, setLogLevel } from "../../core";
 import type { RuntimeTrpcProjectScope } from "../app-router-context";
 import {
 	applyRuntimeMutationEffects,
@@ -52,7 +52,6 @@ export async function handleSaveConfig(
 			}),
 		);
 	}
-	setEventLogEnabled(nextRuntimeConfig.eventLogEnabled);
 	setLogLevel(nextRuntimeConfig.logLevel as LogLevel);
 	effects.push(...createLogLevelBroadcastEffects(nextRuntimeConfig.logLevel as LogLevel));
 	await applyRuntimeMutationEffects(deps.broadcaster, effects);

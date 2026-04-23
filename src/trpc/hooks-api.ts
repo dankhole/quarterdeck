@@ -8,7 +8,7 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core";
-import { createTaggedLogger, emitSessionEvent, parseHookIngestRequest } from "../core";
+import { createTaggedLogger, parseHookIngestRequest } from "../core";
 import { loadProjectContextById } from "../state";
 import type { SessionSummaryStore } from "../terminal";
 import { canReturnToRunning, isPermissionActivity } from "../terminal";
@@ -109,21 +109,9 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 
 				manager.recordHookReceived(taskId);
 				const canTransition = canTransitionTaskForHookEvent(summary, event);
-				emitSessionEvent(taskId, "hook.received", {
-					...hookReceivedData,
-					canTransition,
-					currentState: summary.state,
-					currentReviewReason: summary.reviewReason,
-				});
 				if (!canTransition) {
 					log.debug("Hook blocked — can't transition", {
 						taskId,
-						event,
-						currentState: summary.state,
-						currentReviewReason: summary.reviewReason,
-						hookEventName: body.metadata?.hookEventName ?? null,
-					});
-					emitSessionEvent(taskId, "hook.blocked.cant_transition", {
 						event,
 						currentState: summary.state,
 						currentReviewReason: summary.reviewReason,
@@ -161,11 +149,6 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 										currentPermissionActivity: currentActivity.hookEventName,
 									},
 								);
-								emitSessionEvent(taskId, "hook.blocked.permission_guard", {
-									event,
-									incomingHookEvent: body.metadata.hookEventName ?? null,
-									currentPermissionActivity: currentActivity.hookEventName ?? null,
-								});
 								// Skip applyHookActivity — the incoming event is not permission-related
 								// and would clobber the existing permission metadata.
 								applyConversationSummaryFromMetadata(store, taskId, body.metadata);
@@ -207,12 +190,6 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 								currentPermissionActivity: currentActivity.hookEventName,
 							},
 						);
-						emitSessionEvent(taskId, "hook.blocked.transition_guard", {
-							event,
-							currentState: summary.state,
-							incomingHookEvent,
-							currentPermissionActivity: currentActivity.hookEventName ?? null,
-						});
 						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 						return { ok: true } satisfies RuntimeHookIngestResponse;
 					}
@@ -226,7 +203,6 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					hookEventName: body.metadata?.hookEventName ?? null,
 				};
 				log.info("Hook transitioning", { taskId, ...transitionData });
-				emitSessionEvent(taskId, "hook.transitioned", transitionData);
 
 				const transitionedSummary =
 					event === "to_review" ? store.transitionToReview(taskId, "hook") : store.transitionToRunning(taskId);

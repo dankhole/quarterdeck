@@ -10,7 +10,7 @@ import type {
 	RuntimeProjectSummary,
 	RuntimeProjectTaskCounts,
 } from "../core";
-import { createTaggedLogger, emitEvent, emitSessionEvent } from "../core";
+import { createTaggedLogger } from "../core";
 import {
 	isUnderWorktreesHome,
 	listProjectIndexEntries,
@@ -235,7 +235,6 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			manager.startReconciliation(repoPath);
 			terminalManagersByProjectId.set(projectId, manager);
 			registryLog.warn("terminal manager created", { projectId, repoPath, hydratedSessionCount });
-			emitEvent("project.terminal_manager_created", { projectId, repoPath, hydratedSessionCount });
 			return manager;
 		})().finally(() => {
 			terminalManagerLoadPromises.delete(projectId);
@@ -471,7 +470,6 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			return 0;
 		}
 		for (const { taskId, cwd } of resumable) {
-			emitSessionEvent(taskId, "startup.resume", {});
 			void manager
 				.startTaskSession({
 					taskId,
@@ -491,7 +489,6 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				})
 				.catch((error) => {
 					const message = error instanceof Error ? error.message : String(error);
-					emitSessionEvent(taskId, "startup.resume_failed", { error: message });
 					// Transition immediately so the card moves to review without
 					// waiting for the reconciliation sweep to catch it.
 					manager.store.update(taskId, {

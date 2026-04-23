@@ -4,7 +4,6 @@
 // agent doesn't resume working within the recovery window.
 
 import type { RuntimeTaskSessionSummary } from "../core";
-import { emitSessionEvent } from "../core";
 import type { ActiveProcessState, ProcessEntry } from "./session-manager-types";
 import type { SessionTransitionEvent, SessionTransitionResult } from "./session-summary-store";
 
@@ -48,7 +47,6 @@ export function scheduleInterruptRecovery(entry: ProcessEntry, ctx: InterruptRec
 	}
 	clearInterruptRecoveryTimer(entry.active);
 	const taskId = entry.taskId;
-	emitSessionEvent(taskId, "interrupt_recovery.scheduled", {});
 	entry.active.interruptRecoveryTimer = setTimeout(() => {
 		const current = ctx.getEntry(taskId);
 		if (!current?.active) {
@@ -59,9 +57,6 @@ export function scheduleInterruptRecovery(entry: ProcessEntry, ctx: InterruptRec
 		if (summary?.state !== "running") {
 			return;
 		}
-		emitSessionEvent(taskId, "interrupt_recovery.fired", {
-			currentState: summary.state,
-		});
 		// Always transition — even if the agent produced output after the interrupt
 		// (e.g. Claude redraws its prompt after Escape). If the agent is genuinely
 		// still working, its next hook will move the card back to running.

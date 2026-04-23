@@ -7,7 +7,6 @@ import type { RuntimeCommandRunResponse, RuntimeProjectStateResponse } from "../
 import {
 	buildQuarterdeckRuntimeUrl,
 	createTaggedLogger,
-	emitEvent,
 	getQuarterdeckRuntimeHost,
 	getQuarterdeckRuntimeOrigin,
 	getQuarterdeckRuntimePort,
@@ -234,7 +233,6 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	}
 	const serverPort = typeof address === "object" ? address.port : null;
 	serverLog.warn("server started", { port: serverPort, pid: process.pid });
-	emitEvent("server.started", { port: serverPort, pid: process.pid });
 	const activeProjectId = deps.projectRegistry.getActiveProjectId();
 	const url = activeProjectId
 		? buildQuarterdeckRuntimeUrl(`/${encodeURIComponent(activeProjectId)}`)

@@ -28,7 +28,6 @@ export interface SettingsFormValues {
 	skipHomeCheckoutConfirmation: boolean;
 	skipCherryPickConfirmation: boolean;
 	showRunningTaskEmergencyActions: boolean;
-	eventLogEnabled: boolean;
 	audibleNotificationsEnabled: boolean;
 	audibleNotificationVolume: number;
 	audibleNotificationEvents: {
@@ -80,7 +79,6 @@ export function resolveInitialValues(
 		skipCherryPickConfirmation: config?.skipCherryPickConfirmation ?? CONFIG_DEFAULTS.skipCherryPickConfirmation,
 		showRunningTaskEmergencyActions:
 			config?.showRunningTaskEmergencyActions ?? CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
-		eventLogEnabled: config?.eventLogEnabled ?? CONFIG_DEFAULTS.eventLogEnabled,
 		audibleNotificationsEnabled: config?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled,
 		audibleNotificationVolume: config?.audibleNotificationVolume ?? CONFIG_DEFAULTS.audibleNotificationVolume,
 		audibleNotificationEvents: config?.audibleNotificationEvents ?? {

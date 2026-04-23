@@ -61,7 +61,6 @@ export function BoardColumn({
 		onRequestDisplaySummary,
 		onTerminalWarmup,
 		onTerminalCancelWarmup,
-		onFlagForDebug,
 	} = useStableCardActions();
 	const {
 		moveToTrashLoadingById,
@@ -195,7 +194,6 @@ export function BoardColumn({
 											onRequestDisplaySummary={onRequestDisplaySummary}
 											onTerminalWarmup={onTerminalWarmup}
 											onTerminalCancelWarmup={onTerminalCancelWarmup}
-											onFlagForDebug={onFlagForDebug}
 											onClick={() => {
 												if (column.id === "backlog") {
 													onEditTask?.(card);

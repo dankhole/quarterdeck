@@ -3,13 +3,13 @@
 // this module owns the timer lifecycle and action execution.
 
 import type { RuntimeTaskSessionSummary } from "../core";
-import { createTaggedLogger, emitSessionEvent } from "../core";
+import { createTaggedLogger } from "../core";
 import { cleanStaleGitIndexLocks } from "../fs";
 import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
 import type { ProcessEntry } from "./session-manager-types";
 import { finalizeProcessExit } from "./session-manager-types";
-import { isProcessAlive, type ReconciliationAction, reconciliationChecks } from "./session-reconciliation";
+import { type ReconciliationAction, reconciliationChecks } from "./session-reconciliation";
 import type { SessionSummaryStore, SessionTransitionEvent, SessionTransitionResult } from "./session-summary-store";
 
 const sessionLog = createTaggedLogger("session-reconciliation");
@@ -48,22 +48,6 @@ export function reconcileSessionStates(ctx: ReconciliationSweepContext, repoPath
 			}
 			sessionsChecked += 1;
 
-			// Emit health snapshot for every active session.
-			const pid = summary.pid;
-			emitSessionEvent(entry.taskId, "health.snapshot", {
-				state: summary.state,
-				reviewReason: summary.reviewReason,
-				pid,
-				processAlive: pid != null ? isProcessAlive(pid) : false,
-				msSinceStart: summary.startedAt != null ? nowMs - summary.startedAt : null,
-				msSinceLastOutput: summary.lastOutputAt != null ? nowMs - summary.lastOutputAt : null,
-				msSinceLastHook: summary.lastHookAt != null ? nowMs - summary.lastHookAt : null,
-				msSinceLastStateChange: nowMs - summary.updatedAt,
-				hookCount: entry.hookCount,
-				listenerCount: entry.listeners.size,
-				autoRestartCount: entry.autoRestartTimestamps.length,
-			});
-
 			for (const check of reconciliationChecks) {
 				const action = check(
 					{
@@ -76,11 +60,6 @@ export function reconcileSessionStates(ctx: ReconciliationSweepContext, repoPath
 					nowMs,
 				);
 				if (action) {
-					emitSessionEvent(entry.taskId, "reconciliation.action", {
-						actionType: action.type,
-						currentState: summary.state,
-						pid: summary.pid,
-					});
 					applyReconciliationAction(entry, action, ctx);
 					actionsApplied += 1;
 					break;
@@ -92,12 +71,8 @@ export function reconcileSessionStates(ctx: ReconciliationSweepContext, repoPath
 			});
 		}
 	}
-	if (sessionsChecked > 0) {
-		emitSessionEvent("_system", "reconciliation.sweep", {
-			sessionsChecked,
-			actionsApplied,
-		});
-	}
+	void sessionsChecked;
+	void actionsApplied;
 }
 
 /** Apply a single reconciliation action to an entry. */

@@ -81,12 +81,6 @@ const runtimeRouter = t.router({
 		.mutation(({ ctx, input }) => {
 			return ctx.runtimeApi.setLogLevel(input.level);
 		}),
-	flagTaskForDebug: projectProcedure
-		.input(z.object({ taskId: z.string(), note: z.string().optional() }))
-		.output(z.object({ ok: z.boolean() }))
-		.mutation(async ({ ctx, input }) => {
-			return await ctx.runtimeApi.flagTaskForDebug(ctx.projectScope, input);
-		}),
 	openFile: t.procedure
 		.input(runtimeOpenFileRequestSchema)
 		.output(runtimeOpenFileResponseSchema)

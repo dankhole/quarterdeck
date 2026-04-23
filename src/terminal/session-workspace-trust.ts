@@ -4,7 +4,7 @@
 // Claude and Codex agents.
 
 import type { RuntimeTaskSessionSummary } from "../core";
-import { createTaggedLogger, emitSessionEvent } from "../core";
+import { createTaggedLogger } from "../core";
 import { hasClaudeWorkspaceTrustPrompt, WORKSPACE_TRUST_CONFIRM_DELAY_MS } from "./claude-workspace-trust";
 import { hasCodexWorkspaceTrustPrompt } from "./codex-workspace-trust";
 import type { ActiveProcessState } from "./session-manager-types";
@@ -61,11 +61,6 @@ export function processWorkspaceTrustOutput(
 		isClaudePrompt: hasClaudePrompt,
 		isCodexPrompt: hasCodexPrompt,
 	});
-	emitSessionEvent(taskId, "trust.detected", {
-		isClaudePrompt: hasClaudePrompt,
-		isCodexPrompt: hasCodexPrompt,
-		confirmCount: active.workspaceTrustConfirmCount,
-	});
 
 	active.workspaceTrustConfirmTimer = setTimeout(() => {
 		const activeEntry = callbacks.getActive(taskId);
@@ -73,9 +68,6 @@ export function processWorkspaceTrustOutput(
 			return;
 		}
 		activeEntry.session.write("\r");
-		emitSessionEvent(taskId, "trust.confirmed", {
-			confirmCount: activeEntry.workspaceTrustConfirmCount,
-		});
 		// Trust text can remain in the rolling buffer after we auto-confirm.
 		// Clear it so later startup/prompt checks do not match stale trust output.
 		if (activeEntry.workspaceTrustBuffer !== null) {
@@ -91,9 +83,6 @@ export function processWorkspaceTrustOutput(
 			// Cap reached — disable the buffer entirely to avoid
 			// accumulating output that will never be checked.
 			activeEntry.workspaceTrustBuffer = null;
-			emitSessionEvent(taskId, "trust.cap_reached", {
-				confirmCount: activeEntry.workspaceTrustConfirmCount,
-			});
 			sessionLog.warn("workspace trust auto-confirm cap reached", {
 				taskId,
 				confirmCount: activeEntry.workspaceTrustConfirmCount,

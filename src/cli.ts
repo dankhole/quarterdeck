@@ -367,7 +367,6 @@ async function loadRuntimeStartupModules() {
 		{ collectProjectWorktreeTaskIdsForRemoval, createProjectRegistry },
 		{ cleanupGlobalStaleLockArtifacts, cleanupProjectStaleLockArtifacts },
 		{ listProjectIndexEntries },
-		{ initEventLog, setEventLogEnabled },
 		{ setLogLevel },
 		{ createBackup, startPeriodicBackups, stopPeriodicBackups },
 		{ migrateLegacyProjectConfig },
@@ -381,7 +380,6 @@ async function loadRuntimeStartupModules() {
 		import("./server/project-registry.js"),
 		import("./fs/lock-cleanup.js"),
 		import("./state/project-state.js"),
-		import("./core/event-log.js"),
 		import("./core/runtime-logger.js"),
 		import("./state/state-backup.js"),
 		import("./config/index.js"),
@@ -400,8 +398,6 @@ async function loadRuntimeStartupModules() {
 		cleanupProjectStaleLockArtifacts,
 		listProjectIndexEntries,
 		migrateLegacyProjectConfig,
-		initEventLog,
-		setEventLogEnabled,
 		setLogLevel,
 		createBackup,
 		startPeriodicBackups,
@@ -413,9 +409,6 @@ async function runRuntimeStartupCleanup(
 	modules: Awaited<ReturnType<typeof loadRuntimeStartupModules>>,
 	warn: (message: string) => void,
 ): Promise<void> {
-	// Phase 0: Ensure the event log directory exists before any sessions emit events.
-	await modules.initEventLog();
-
 	// Phase 1: Clean stale lock artifacts from ~/.quarterdeck/ (before registry load).
 	await modules.cleanupGlobalStaleLockArtifacts(warn);
 
@@ -467,7 +460,6 @@ async function createRuntimeBootstrapState(
 		},
 	});
 	const activeConfig = projectRegistry.getActiveRuntimeConfig();
-	modules.setEventLogEnabled(activeConfig.eventLogEnabled);
 	modules.setLogLevel(activeConfig.logLevel as "debug" | "info" | "warn" | "error");
 
 	// Phase 4: State backup — snapshot before any mutations, then start periodic timer.

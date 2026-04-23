@@ -125,10 +125,6 @@ export interface RuntimeTrpcContext {
 			ok: boolean;
 			level: "debug" | "info" | "warn" | "error";
 		}>;
-		flagTaskForDebug: (
-			scope: RuntimeTrpcProjectScope,
-			input: { taskId: string; note?: string },
-		) => Promise<{ ok: boolean }>;
 	};
 	projectApi: {
 		runGitSyncAction: (

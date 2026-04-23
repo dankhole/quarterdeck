@@ -3,7 +3,7 @@
 // processing, auto-restart decisions, and stale session recovery.
 
 import type { RuntimeTaskSessionReviewReason, RuntimeTaskSessionSummary } from "../core";
-import { createTaggedLogger, emitSessionEvent } from "../core";
+import { createTaggedLogger } from "../core";
 import { cleanStaleIndexLockForWorktree } from "../fs";
 import type { PreparedAgentLaunch } from "./agent-session-adapters";
 import { prepareAgentLaunch } from "./agent-session-adapters";
@@ -144,11 +144,6 @@ export async function spawnTaskSession(
 			binary: commandBinary,
 			error: errorMessage,
 		});
-		emitSessionEvent(request.taskId, "session.spawn_failed", {
-			agentId: request.agentId,
-			binary: commandBinary,
-			error: errorMessage,
-		});
 		entry.pendingSessionStart = false;
 		if (launch.cleanup) {
 			void launch.cleanup().catch(() => {});
@@ -176,10 +171,6 @@ export async function spawnTaskSession(
 		taskId: request.taskId,
 		pid: session.pid,
 		willAutoTrust,
-	});
-	emitSessionEvent(request.taskId, "session.started", {
-		...spawnData,
-		pid: session.pid,
 	});
 
 	entry.active = createActiveProcessState({
@@ -250,7 +241,6 @@ export function handleTaskSessionExit(
 		exitCode: event.exitCode,
 		trustConfirmCount: exitEventData.trustConfirmCount,
 	});
-	emitSessionEvent(request.taskId, "session.exited", exitEventData);
 
 	if (!currentEntry?.active) {
 		return;
@@ -284,7 +274,6 @@ export function handleTaskSessionExit(
 		} else {
 			sessionLog.warn("auto-restart skipped on exit", skipData);
 		}
-		emitSessionEvent(request.taskId, "session.autorestart_skipped", skipData);
 	}
 	const exitSummary = result?.summary ?? deps.getSummary(request.taskId);
 	const cleanupFn = finalizeProcessExit(currentEntry, exitSummary, event.exitCode);
@@ -403,12 +392,6 @@ export async function spawnShellSession(
 		terminalStateMirror.setBatching(true);
 	}
 
-	emitSessionEvent(request.taskId, "session.started.shell", {
-		binary: request.binary,
-		cwd: request.cwd,
-		pid: session.pid,
-	});
-
 	const summary = deps.updateStore(request.taskId, {
 		state: "running",
 		agentId: null,
@@ -470,12 +453,6 @@ export function recoverStaleSession(taskId: string, deps: RecoverStaleSessionDep
 
 	sessionLog.warn("recovering stale session to idle", {
 		taskId,
-		previousState: summary.state,
-		previousReviewReason: summary.reviewReason,
-		hasRestartRequest: entry?.restartRequest != null,
-		restartRequestKind: entry?.restartRequest?.kind ?? null,
-	});
-	emitSessionEvent(taskId, "session.recover_to_idle", {
 		previousState: summary.state,
 		previousReviewReason: summary.reviewReason,
 		hasRestartRequest: entry?.restartRequest != null,

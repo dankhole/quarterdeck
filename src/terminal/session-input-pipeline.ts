@@ -4,7 +4,6 @@
 // activity clearing → Codex prompt flagging → interrupt detection → PTY write.
 
 import type { RuntimeTaskSessionSummary } from "../core";
-import { emitSessionEvent } from "../core";
 import { detectInterruptSignal, scheduleInterruptRecovery } from "./session-interrupt-recovery";
 import type { ProcessEntry } from "./session-manager-types";
 import { isPermissionActivity } from "./session-reconciliation";
@@ -95,21 +94,12 @@ export function processSessionInput(
 		data.includes(13)
 	) {
 		entry.active.awaitingCodexPromptAfterEnter = true;
-		emitSessionEvent(taskId, "writeInput.codex_flag", {
-			currentState: summary.state,
-			reviewReason: summary.reviewReason,
-		});
 	}
 
 	// 3. Interrupt detection — Ctrl+C or bare Escape while running suppresses
 	//    auto-restart and schedules a recovery timer.
 	const { isCtrlC, isBareEscape } = detectInterruptSignal(data);
 	if (summary?.state === "running" && (isCtrlC || isBareEscape)) {
-		emitSessionEvent(taskId, "writeInput.interrupt", {
-			isCtrlC,
-			isBareEscape,
-			currentState: summary.state,
-		});
 		entry.suppressAutoRestartOnExit = true;
 		scheduleInterruptRecovery(entry, {
 			getEntry: (id) => deps.getEntry(id),

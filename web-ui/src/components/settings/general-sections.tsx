@@ -196,22 +196,6 @@ export function AdvancedSection({ fields, setField, disabled }: SettingsSectionP
 				}
 				description="Gives agents read/write access to Quarterdeck state files (board data, session state, other worktrees). Rogue writes can corrupt project state and cause revision conflicts. The agent can also navigate into other task worktrees, breaking isolation. Claude Code only."
 			/>
-			<SettingsSwitch
-				className="mt-3"
-				checked={fields.eventLogEnabled}
-				onCheckedChange={(v) => setField("eventLogEnabled", v)}
-				disabled={disabled}
-				label="Session event log"
-				description={
-					<>
-						Writes session lifecycle events to a JSONL file on disk (
-						<code className="text-xs bg-surface-3 px-1 rounded">~/.quarterdeck/logs/events.jsonl</code>
-						). Intended for developer debugging — helps diagnose stuck sessions and state tracking issues. The
-						file grows up to 10 MB before rotating. Leave this off unless you are actively investigating a
-						problem.
-					</>
-				}
-			/>
 		</>
 	);
 }

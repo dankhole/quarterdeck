@@ -111,7 +111,6 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	worktreeAddParentGitDir: CONFIG_DEFAULTS.worktreeAddParentGitDir,
 	worktreeAddQuarterdeckDir: CONFIG_DEFAULTS.worktreeAddQuarterdeckDir,
 	showRunningTaskEmergencyActions: CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
-	eventLogEnabled: CONFIG_DEFAULTS.eventLogEnabled,
 	logLevel: CONFIG_DEFAULTS.logLevel,
 	defaultBaseRef: CONFIG_DEFAULTS.defaultBaseRef,
 	backupIntervalMinutes: CONFIG_DEFAULTS.backupIntervalMinutes,

@@ -1,6 +1,5 @@
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import { useCallback, useMemo } from "react";
-import { showAppToast } from "@/components/app-toaster";
 import { useDisplaySummaryOnHover, useTitleActions } from "@/hooks/board";
 import type { BoardContextValue } from "@/providers/board-provider";
 import type { InteractionsContextValue } from "@/providers/interactions-provider";
@@ -8,7 +7,6 @@ import type { ProjectContextValue } from "@/providers/project-provider";
 import type { ProjectRuntimeContextValue } from "@/providers/project-runtime-provider";
 import type { SurfaceNavigationContextValue } from "@/providers/surface-navigation-provider";
 import type { MainViewId } from "@/resize/use-card-detail-layout";
-import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import { toggleTaskPinned } from "@/state/board-state";
 import type { ReactiveCardState, StableCardActions } from "@/state/card-actions-context";
 import { getTerminalController } from "@/terminal/terminal-controller-registry";
@@ -105,19 +103,6 @@ export function useAppActionModels({
 		[board.setSelectedTaskId, navigation.setMainView, interactions.handleCardSelect],
 	);
 
-	const handleFlagForDebug = useCallback(
-		(taskId: string) => {
-			if (!project.currentProjectId) return;
-			getRuntimeTrpcClient(project.currentProjectId)
-				.runtime.flagTaskForDebug.mutate({ taskId })
-				.then((result) => {
-					if (result.ok) showAppToast({ message: "Flagged in event log", intent: "success", timeout: 2000 });
-				})
-				.catch(() => {});
-		},
-		[project.currentProjectId],
-	);
-
 	const stableCardActions = useMemo<StableCardActions>(
 		() => ({
 			onStartTask: interactions.handleStartTaskFromBoard,
@@ -132,10 +117,8 @@ export function useAppActionModels({
 			onRequestDisplaySummary: handleRequestDisplaySummary,
 			onTerminalWarmup: handleTerminalWarmup,
 			onTerminalCancelWarmup: handleTerminalCancelWarmup,
-			onFlagForDebug: projectRuntime.runtimeProjectConfig?.eventLogEnabled ? handleFlagForDebug : undefined,
 		}),
 		[
-			handleFlagForDebug,
 			handleRegenerateTitleTask,
 			handleRequestDisplaySummary,
 			handleTerminalCancelWarmup,
@@ -148,7 +131,6 @@ export function useAppActionModels({
 			interactions.handleRestartTaskSession,
 			interactions.handleRestoreTaskFromTrash,
 			interactions.handleStartTaskFromBoard,
-			projectRuntime.runtimeProjectConfig?.eventLogEnabled,
 		],
 	);
 

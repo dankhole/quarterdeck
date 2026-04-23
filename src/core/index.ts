@@ -30,14 +30,6 @@ export {
 	type IDisposable,
 	toDisposable,
 } from "./disposable";
-export {
-	type EventLogEntry,
-	emitEvent,
-	emitSessionEvent,
-	initEventLog,
-	isEventLogEnabled,
-	setEventLogEnabled,
-} from "./event-log";
 export { createGitProcessEnv } from "./git-process-env";
 export {
 	type GracefulShutdownProcess,
