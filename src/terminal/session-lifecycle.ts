@@ -300,7 +300,7 @@ export function handleTaskSessionExit(
 				updateStore: (id, patch) => deps.updateStore(id, patch),
 				applyDenied: () => deps.applyTransitionEvent(currentEntry, { type: "autorestart.denied" }),
 			},
-			{ skipContinueAttempt: true, eventPrefix: "startup.resume_fallback" },
+			{ skipContinueAttempt: true },
 		);
 	}
 	if (cleanupFn) {

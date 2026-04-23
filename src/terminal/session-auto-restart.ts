@@ -71,7 +71,6 @@ export interface AutoRestartCallbacks {
 
 export interface ScheduleAutoRestartOptions {
 	skipContinueAttempt?: boolean;
-	eventPrefix?: string;
 }
 
 /**

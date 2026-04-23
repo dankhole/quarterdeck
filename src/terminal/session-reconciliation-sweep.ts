@@ -35,8 +35,6 @@ export function reconcileSessionStates(ctx: ReconciliationSweepContext, repoPath
 	}
 
 	const nowMs = Date.now();
-	let sessionsChecked = 0;
-	let actionsApplied = 0;
 	for (const entry of ctx.entries.values()) {
 		try {
 			const summary = ctx.store.getSummary(entry.taskId);
@@ -46,7 +44,6 @@ export function reconcileSessionStates(ctx: ReconciliationSweepContext, repoPath
 			) {
 				continue;
 			}
-			sessionsChecked += 1;
 
 			for (const check of reconciliationChecks) {
 				const action = check(
@@ -61,7 +58,6 @@ export function reconcileSessionStates(ctx: ReconciliationSweepContext, repoPath
 				);
 				if (action) {
 					applyReconciliationAction(entry, action, ctx);
-					actionsApplied += 1;
 					break;
 				}
 			}
@@ -71,8 +67,6 @@ export function reconcileSessionStates(ctx: ReconciliationSweepContext, repoPath
 			});
 		}
 	}
-	void sessionsChecked;
-	void actionsApplied;
 }
 
 /** Apply a single reconciliation action to an entry. */
