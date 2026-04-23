@@ -151,6 +151,16 @@ export function createProcessEntry(taskId: string): ProcessEntry {
 	};
 }
 
+export function resolveAgentTerminalRowMultiplier(
+	agentId: StartTaskSessionRequest["agentId"],
+	configuredValue: number,
+): number {
+	if (agentId !== "claude") {
+		return 1;
+	}
+	return Math.max(1, Math.floor(configuredValue));
+}
+
 /** Check whether any listener has an output handler attached. */
 export function hasLiveOutputListener(entry: ProcessEntry): boolean {
 	for (const listener of entry.listeners.values()) {

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
 import { buildShellCommandLine } from "../../../src/core";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
+import { resolveAgentTerminalRowMultiplier } from "../../../src/terminal/session-manager-types";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 function createTestManager(): TerminalSessionManager {
@@ -500,6 +501,14 @@ describe("TerminalSessionManager", () => {
 		expect(resized).toBe(true);
 		expect(resizeSpy).toHaveBeenCalledWith(100, 150, undefined, undefined);
 		expect(resizeMirrorSpy).toHaveBeenCalledWith(100, 150);
+	});
+
+	it("uses the configured row multiplier for Claude", () => {
+		expect(resolveAgentTerminalRowMultiplier("claude", 5)).toBe(5);
+	});
+
+	it("ignores the configured row multiplier for Codex", () => {
+		expect(resolveAgentTerminalRowMultiplier("codex", 5)).toBe(1);
 	});
 
 	it("returns the latest terminal restore snapshot when available", async () => {

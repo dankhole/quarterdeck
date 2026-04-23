@@ -20,6 +20,7 @@ import {
 	hasLiveOutputListener,
 	normalizeDimension,
 	type ProcessEntry,
+	resolveAgentTerminalRowMultiplier,
 	type StartShellSessionRequest,
 	type StartTaskSessionRequest,
 } from "./session-manager-types";
@@ -65,7 +66,7 @@ export async function spawnTaskSession(
 	entry.pendingSessionStart = true;
 
 	const cols = normalizeDimension(request.cols, 120);
-	const rowMultiplier = Math.max(1, Math.floor(request.agentTerminalRowMultiplier ?? 1));
+	const rowMultiplier = resolveAgentTerminalRowMultiplier(request.agentId, request.agentTerminalRowMultiplier ?? 1);
 	const rows = normalizeDimension(request.rows, 40) * rowMultiplier;
 	let terminalStateMirror: TerminalStateMirror;
 	let launch: PreparedAgentLaunch;

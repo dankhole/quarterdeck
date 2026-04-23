@@ -338,7 +338,7 @@ export function TerminalSection({ fields, setField, disabled }: SettingsSectionP
 			</p>
 			<NumericSettingsInput
 				id="agent-terminal-row-multiplier"
-				label="Agent row multiplier"
+				label="Claude row multiplier"
 				value={fields.agentTerminalRowMultiplier}
 				onChange={(v) => setField("agentTerminalRowMultiplier", v)}
 				disabled={disabled}
@@ -346,8 +346,8 @@ export function TerminalSection({ fields, setField, disabled }: SettingsSectionP
 				max={20}
 			/>
 			<p className="text-text-secondary text-[13px] mt-1 mb-0">
-				Makes agents output more content before pausing, so you can scroll back and see more of what they did. Set
-				to 1 if the agent UI looks broken. Applies to new sessions only.
+				Makes Claude Code output more content before pausing, so you can scroll back and see more of what it did.
+				Codex ignores this setting. Set to 1 if Claude's UI looks broken. Applies to new Claude sessions only.
 			</p>
 			<Button
 				size="sm"
