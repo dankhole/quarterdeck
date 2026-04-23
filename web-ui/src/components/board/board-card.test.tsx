@@ -204,6 +204,7 @@ describe("BoardCard", () => {
 
 			await act(async () => {
 				cardShell?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+				// exceeds the 200ms hover delay in BoardCard before isHovered flips
 				vi.advanceTimersByTime(250);
 			});
 

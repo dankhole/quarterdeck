@@ -120,9 +120,7 @@ export function ConfirmationsSection({ fields, setField, disabled }: SettingsSec
 // Troubleshooting
 // ---------------------------------------------------------------------------
 
-export function TroubleshootingSection({
-	onResetLayout,
-}: SettingsSectionProps & { onResetLayout: () => void }): React.ReactElement {
+export function TroubleshootingSection({ onResetLayout }: { onResetLayout: () => void }): React.ReactElement {
 	return (
 		<>
 			<h6 className="font-semibold text-text-primary mt-4 mb-2">Troubleshooting</h6>

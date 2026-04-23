@@ -8,7 +8,7 @@ Removed the `showRunningTaskEmergencyActions` escape-hatch setting and collapsed
 
 Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/config/global-config-fields.ts`, `src/core/api/config.ts`, `web-ui/src/components/board/board-card.test.tsx`, `web-ui/src/components/board/board-card-actions.tsx`, `web-ui/src/components/board/board-card.tsx`, `web-ui/src/components/board/board-column.tsx`, `web-ui/src/components/settings/general-sections.tsx`, `web-ui/src/components/task/card-detail-view.test.tsx`, `web-ui/src/components/terminal/column-context-panel.test.tsx`, `web-ui/src/components/terminal/column-context-panel.tsx`, `web-ui/src/hooks/app/use-app-action-models.ts`, `web-ui/src/hooks/settings/settings-form.ts`, `web-ui/src/state/card-actions-context.tsx`, `web-ui/src/test-utils/runtime-config-factory.ts`
 
-Commit: `(uncommitted)`
+Commit: `55e48635`
 
 ## Fix: harden Codex CLI detection with version gating (2026-04-22)
 
@@ -17,6 +17,7 @@ Replaced the old Codex "binary exists on PATH" check with a small compatibility 
 Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `docs/todo.md`, `src/config/agent-registry.ts`, `src/config/index.ts`, `src/config/runtime-config.ts`, `src/core/agent-catalog.ts`, `src/core/api/config.ts`, `test/runtime/config/agent-registry.test.ts`, `test/runtime/config/agent-selection.test.ts`, `test/runtime/config/runtime-config-helpers.ts`, `web-ui/src/components/settings/agent-section.tsx`, `web-ui/src/components/settings/runtime-settings-dialog.tsx`, `web-ui/src/components/task/task-start-agent-onboarding-carousel.tsx`, `web-ui/src/runtime/native-agent.test.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`
 
 Commit: `bcf31abc`
+
 ## Refactor: remove session event log debugging path (2026-04-22)
 
 Removed the developer-only session event log feature end-to-end. On the runtime side this deleted `src/core/event-log.ts`, removed its startup/config plumbing from `src/cli.ts`, `src/trpc/handlers/save-config.ts`, `src/core/index.ts`, `src/config/global-config-fields.ts`, and `src/core/api/config.ts`, and dropped the now-pointless event-emission call sites from the runtime server, project registry, session lifecycle/reconciliation/auto-restart/input/workspace-trust modules, and hook ingestion pipeline. On the tRPC/browser side this removed the `flagTaskForDebug` mutation and handler from `src/trpc/app-router.ts`, `src/trpc/app-router-context.ts`, `src/trpc/runtime-api.ts`, and `src/trpc/handlers/flag-task-for-debug.ts`, removed the “Session event log” settings toggle and config-form field from `web-ui/src/components/settings/general-sections.tsx` and `web-ui/src/hooks/settings/settings-form.ts`, and stripped the board/detail debug action wiring from `web-ui/src/hooks/app/use-app-action-models.ts`, `web-ui/src/state/card-actions-context.tsx`, `web-ui/src/components/board/board-card-actions.tsx`, `web-ui/src/components/board/board-card.tsx`, `web-ui/src/components/board/board-column.tsx`, and `web-ui/src/components/terminal/column-context-panel.tsx`. Updated the frontend runtime-config test factory and added the release note in `CHANGELOG.md`. Verified with `npm run typecheck` and `npm run web:typecheck`.
