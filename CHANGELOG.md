@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: clarify worktree system prompt is Claude Code only
+
+- Updated settings UI copy from "the agent's system prompt" to "Claude Code's system prompt" — Codex has no equivalent injection, so the generic phrasing was misleading.
+
 ## [0.11.0] — 2026-04-22
 
 ### Fix: stabilize uncommitted changes view against needless poll re-renders
