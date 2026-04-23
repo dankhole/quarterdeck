@@ -41,6 +41,7 @@ interface SendTaskSessionInputResult {
 interface StartTaskSessionResult {
 	ok: boolean;
 	message?: string;
+	summary?: RuntimeTaskSessionSummary;
 }
 
 interface StartTaskSessionOptions {
@@ -178,7 +179,7 @@ export function useTaskSessions({
 				if (payload.summary.sessionLaunchPath) {
 					onWorkingDirectoryResolved?.(task.id, payload.summary.sessionLaunchPath);
 				}
-				return { ok: true };
+				return { ok: true, summary: payload.summary };
 			} catch (error) {
 				const message = toErrorMessage(error);
 				return { ok: false, message };

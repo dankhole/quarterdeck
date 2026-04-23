@@ -55,9 +55,9 @@ export async function handleStartTaskSession(
 		const shouldCaptureTurnCheckpoint = !body.resumeConversation;
 
 		const terminalManager = await deps.getScopedTerminalManager(projectScope);
-		const previousTerminalAgentId = body.resumeConversation
-			? (terminalManager.store.getSummary(body.taskId)?.agentId ?? null)
-			: null;
+		const previousSummary = body.resumeConversation ? terminalManager.store.getSummary(body.taskId) : null;
+		const previousTerminalAgentId = previousSummary?.agentId ?? null;
+		const previousResumeSessionId = previousSummary?.resumeSessionId ?? null;
 		const effectiveAgentId = previousTerminalAgentId ?? scopedRuntimeConfig.selectedAgentId;
 
 		const resolvedConfig =
@@ -82,6 +82,7 @@ export async function handleStartTaskSession(
 			images: body.images,
 			startInPlanMode: body.startInPlanMode,
 			resumeConversation: body.resumeConversation,
+			resumeSessionId: previousResumeSessionId ?? undefined,
 			awaitReview: body.awaitReview,
 			cols: body.cols,
 			rows: body.rows,

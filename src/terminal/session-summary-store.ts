@@ -7,6 +7,7 @@
 
 import type {
 	ConversationSummaryEntry,
+	RuntimeHookMetadata,
 	RuntimeTaskHookActivity,
 	RuntimeTaskSessionReviewReason,
 	RuntimeTaskSessionSummary,
@@ -43,6 +44,7 @@ export interface SessionSummaryStore {
 	transitionToReview(taskId: string, reason: RuntimeTaskSessionReviewReason): RuntimeTaskSessionSummary | null;
 	transitionToRunning(taskId: string): RuntimeTaskSessionSummary | null;
 	applyHookActivity(taskId: string, activity: Partial<RuntimeTaskHookActivity>): RuntimeTaskSessionSummary | null;
+	applyHookMetadata(taskId: string, metadata: RuntimeHookMetadata): RuntimeTaskSessionSummary | null;
 	appendConversationSummary(
 		taskId: string,
 		entry: { text: string; capturedAt: number },
@@ -72,6 +74,7 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		state: "idle",
 		agentId: null,
 		sessionLaunchPath: null,
+		resumeSessionId: null,
 		pid: null,
 		startedAt: null,
 		updatedAt: now(),
@@ -96,6 +99,88 @@ export function cloneSummary(summary: RuntimeTaskSessionSummary): RuntimeTaskSes
 
 function isActiveState(state: RuntimeTaskSessionSummary["state"]): boolean {
 	return state === "running" || state === "awaiting_review";
+}
+
+function buildNextHookActivity(
+	previous: RuntimeTaskHookActivity | null,
+	activity: Partial<RuntimeTaskHookActivity>,
+): RuntimeTaskHookActivity | null {
+	const isMetadataOnlySessionMeta =
+		activity.hookEventName === "session_meta" &&
+		typeof activity.activityText !== "string" &&
+		typeof activity.toolName !== "string" &&
+		typeof activity.toolInputSummary !== "string" &&
+		typeof activity.finalMessage !== "string" &&
+		typeof activity.notificationType !== "string";
+	if (isMetadataOnlySessionMeta) {
+		return previous;
+	}
+
+	const hasActivityUpdate =
+		typeof activity.activityText === "string" ||
+		typeof activity.toolName === "string" ||
+		typeof activity.toolInputSummary === "string" ||
+		typeof activity.finalMessage === "string" ||
+		typeof activity.hookEventName === "string" ||
+		typeof activity.notificationType === "string" ||
+		typeof activity.source === "string";
+	if (!hasActivityUpdate) {
+		return previous;
+	}
+
+	const isNewEvent = typeof activity.hookEventName === "string" || typeof activity.notificationType === "string";
+	return {
+		activityText:
+			typeof activity.activityText === "string"
+				? activity.activityText
+				: isNewEvent
+					? null
+					: (previous?.activityText ?? null),
+		toolName: typeof activity.toolName === "string" ? activity.toolName : (previous?.toolName ?? null),
+		toolInputSummary:
+			typeof activity.toolInputSummary === "string"
+				? activity.toolInputSummary
+				: (previous?.toolInputSummary ?? null),
+		finalMessage:
+			typeof activity.finalMessage === "string"
+				? activity.finalMessage
+				: isNewEvent
+					? null
+					: (previous?.finalMessage ?? null),
+		hookEventName:
+			typeof activity.hookEventName === "string"
+				? activity.hookEventName
+				: isNewEvent
+					? null
+					: (previous?.hookEventName ?? null),
+		notificationType:
+			typeof activity.notificationType === "string"
+				? activity.notificationType
+				: isNewEvent
+					? null
+					: (previous?.notificationType ?? null),
+		source: typeof activity.source === "string" ? activity.source : (previous?.source ?? null),
+		conversationSummaryText:
+			typeof activity.conversationSummaryText === "string"
+				? activity.conversationSummaryText
+				: (previous?.conversationSummaryText ?? null),
+	};
+}
+
+function didHookActivityChange(
+	previous: RuntimeTaskHookActivity | null,
+	next: RuntimeTaskHookActivity | null,
+): boolean {
+	return (
+		(next?.activityText ?? null) !== (previous?.activityText ?? null) ||
+		(next?.toolName ?? null) !== (previous?.toolName ?? null) ||
+		(next?.toolInputSummary ?? null) !== (previous?.toolInputSummary ?? null) ||
+		(next?.finalMessage ?? null) !== (previous?.finalMessage ?? null) ||
+		(next?.hookEventName ?? null) !== (previous?.hookEventName ?? null) ||
+		(next?.notificationType ?? null) !== (previous?.notificationType ?? null) ||
+		(next?.source ?? null) !== (previous?.source ?? null) ||
+		(next?.conversationSummaryText ?? null) !== (previous?.conversationSummaryText ?? null)
+	);
 }
 
 // ── Implementation ───────────────────────────────────────────────────────────
@@ -212,68 +297,9 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		if (!entry) {
 			return null;
 		}
-
-		const hasActivityUpdate =
-			typeof activity.activityText === "string" ||
-			typeof activity.toolName === "string" ||
-			typeof activity.toolInputSummary === "string" ||
-			typeof activity.finalMessage === "string" ||
-			typeof activity.hookEventName === "string" ||
-			typeof activity.notificationType === "string" ||
-			typeof activity.source === "string";
-		if (!hasActivityUpdate) {
-			return cloneSummary(entry);
-		}
-
 		const previous = entry.latestHookActivity;
-		const isNewEvent = typeof activity.hookEventName === "string" || typeof activity.notificationType === "string";
-		const next: RuntimeTaskHookActivity = {
-			activityText:
-				typeof activity.activityText === "string"
-					? activity.activityText
-					: isNewEvent
-						? null
-						: (previous?.activityText ?? null),
-			toolName: typeof activity.toolName === "string" ? activity.toolName : (previous?.toolName ?? null),
-			toolInputSummary:
-				typeof activity.toolInputSummary === "string"
-					? activity.toolInputSummary
-					: (previous?.toolInputSummary ?? null),
-			finalMessage:
-				typeof activity.finalMessage === "string"
-					? activity.finalMessage
-					: isNewEvent
-						? null
-						: (previous?.finalMessage ?? null),
-			hookEventName:
-				typeof activity.hookEventName === "string"
-					? activity.hookEventName
-					: isNewEvent
-						? null
-						: (previous?.hookEventName ?? null),
-			notificationType:
-				typeof activity.notificationType === "string"
-					? activity.notificationType
-					: isNewEvent
-						? null
-						: (previous?.notificationType ?? null),
-			source: typeof activity.source === "string" ? activity.source : (previous?.source ?? null),
-			conversationSummaryText:
-				typeof activity.conversationSummaryText === "string"
-					? activity.conversationSummaryText
-					: (previous?.conversationSummaryText ?? null),
-		};
-
-		const didChange =
-			next.activityText !== (previous?.activityText ?? null) ||
-			next.toolName !== (previous?.toolName ?? null) ||
-			next.toolInputSummary !== (previous?.toolInputSummary ?? null) ||
-			next.finalMessage !== (previous?.finalMessage ?? null) ||
-			next.hookEventName !== (previous?.hookEventName ?? null) ||
-			next.notificationType !== (previous?.notificationType ?? null) ||
-			next.source !== (previous?.source ?? null) ||
-			next.conversationSummaryText !== (previous?.conversationSummaryText ?? null);
-		if (!didChange) {
+		const next = buildNextHookActivity(previous, activity);
+		if (!didHookActivityChange(previous, next)) {
 			return cloneSummary(entry);
 		}
 
@@ -281,6 +307,34 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 			lastHookAt: now(),
 			latestHookActivity: next,
 			stalledSince: null,
+		});
+	}
+
+	applyHookMetadata(taskId: string, metadata: RuntimeHookMetadata): RuntimeTaskSessionSummary | null {
+		const entry = this.entries.get(taskId);
+		if (!entry) {
+			return null;
+		}
+
+		const previousActivity = entry.latestHookActivity;
+		const nextActivity = buildNextHookActivity(previousActivity, metadata);
+		const normalizedSessionId = typeof metadata.sessionId === "string" ? metadata.sessionId : null;
+		const nextResumeSessionId = normalizedSessionId ?? entry.resumeSessionId ?? null;
+		const activityChanged = didHookActivityChange(previousActivity, nextActivity);
+		const resumeSessionIdChanged = nextResumeSessionId !== (entry.resumeSessionId ?? null);
+		if (!activityChanged && !resumeSessionIdChanged) {
+			return cloneSummary(entry);
+		}
+
+		return this.update(taskId, {
+			...(activityChanged
+				? {
+						lastHookAt: now(),
+						latestHookActivity: nextActivity,
+						stalledSince: null,
+					}
+				: {}),
+			...(resumeSessionIdChanged ? { resumeSessionId: nextResumeSessionId } : {}),
 		});
 	}
 

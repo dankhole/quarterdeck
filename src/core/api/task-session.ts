@@ -24,6 +24,13 @@ export const runtimeTaskHookActivitySchema = z.object({
 });
 export type RuntimeTaskHookActivity = z.infer<typeof runtimeTaskHookActivitySchema>;
 
+export const runtimeHookMetadataSchema = runtimeTaskHookActivitySchema
+	.extend({
+		sessionId: z.string().nullable().default(null),
+	})
+	.partial();
+export type RuntimeHookMetadata = z.infer<typeof runtimeHookMetadataSchema>;
+
 export const conversationSummaryEntrySchema = z.object({
 	/** The extracted assistant message text, capped at 500 chars. */
 	text: z.string(),
@@ -51,6 +58,7 @@ const runtimeTaskSessionSummaryWireSchema = z.object({
 	// older local sessions.json snapshots written before the rename.
 	projectPath: z.string().nullable().optional(),
 	sessionLaunchPath: z.string().nullable().optional(),
+	resumeSessionId: z.string().nullable().optional(),
 	pid: z.number().nullable(),
 	startedAt: z.number().nullable(),
 	updatedAt: z.number(),
@@ -149,7 +157,7 @@ export const runtimeHookIngestRequestSchema = z.object({
 	taskId: z.string(),
 	projectId: z.string(),
 	event: runtimeHookEventSchema,
-	metadata: runtimeTaskHookActivitySchema.partial().optional(),
+	metadata: runtimeHookMetadataSchema.optional(),
 });
 export type RuntimeHookIngestRequest = z.infer<typeof runtimeHookIngestRequestSchema>;
 

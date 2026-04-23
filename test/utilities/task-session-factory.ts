@@ -43,6 +43,7 @@ export function createTestTaskSessionSummary(
 		mode: null,
 		agentId: null,
 		sessionLaunchPath: null,
+		resumeSessionId: null,
 		pid: null,
 		startedAt: null,
 		updatedAt: 1,

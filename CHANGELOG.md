@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: resume Codex sessions by stored session id
+
+- Quarterdeck now persists the Codex root session id from `session_meta` events and reuses it on task restart, trash restore, and interrupted-session recovery, so Codex resumes target the original conversation instead of falling back to repo-global `codex resume --last`.
+- Non-isolated task resumes still warn for agents without session-targeted resume, but Codex no longer shows that warning once a stored resume id is available.
+
 ### Fix: replay queued terminal restore requests during untrash resume
 
 - Task terminals now queue `request_restore` calls that arrive before the initial restore handshake finishes, then replay them immediately after that first restore completes.

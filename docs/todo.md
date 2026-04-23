@@ -163,7 +163,7 @@ Auto-fill a default commit message when the commit sidebar opens (not just via t
 
 ## Refactor Codex support to use native hooks
 
-Codex now has first-party hooks (`hooks.json`, native hook events, and session-targeted resume) in the official OpenAI docs, but Quarterdeck still routes Codex through the legacy `codex-wrapper` watcher path. Replace the wrapper-first integration with native Codex hook configuration where possible: generate Codex hook files alongside launch config, map native `SessionStart` / `UserPromptSubmit` / `PreToolUse` / `PostToolUse` / `Stop` events into Quarterdeck transitions, and use native session IDs for resume instead of `codex resume --last`. Keep any log-watcher fallback only for gaps the native hook surface still cannot cover.
+Codex now has first-party hooks (`hooks.json` plus native lifecycle events) in the official OpenAI docs, but Quarterdeck still routes Codex through the legacy `codex-wrapper` watcher path. Replace the wrapper-first integration with native Codex hook configuration where possible: generate Codex hook files alongside launch config, map native `SessionStart` / `UserPromptSubmit` / `PreToolUse` / `PostToolUse` / `Stop` events into Quarterdeck transitions, and keep any log-watcher fallback only for gaps the native hook surface still cannot cover.
 
 ## Make supporting LLM features provider-neutral
 

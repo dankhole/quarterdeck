@@ -94,6 +94,7 @@ export function createIdleTaskSession(taskId: string): RuntimeTaskSessionSummary
 		state: "idle",
 		agentId: null,
 		sessionLaunchPath: null,
+		resumeSessionId: null,
 		pid: null,
 		startedAt: null,
 		updatedAt: Date.now(),

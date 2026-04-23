@@ -119,6 +119,58 @@ describe("TerminalSessionManager", () => {
 		expect(updated?.latestHookActivity?.toolInputSummary).toBe("src/main.ts");
 	});
 
+	it("stores resumeSessionId without clobbering existing hook activity", () => {
+		const manager = createTestManager();
+		manager.store.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "running",
+				agentId: "codex",
+				latestHookActivity: {
+					source: "codex",
+					activityText: "Running command: npm test",
+					hookEventName: "exec_command_begin",
+					notificationType: null,
+					toolName: null,
+					toolInputSummary: null,
+					finalMessage: null,
+					conversationSummaryText: null,
+				},
+			}),
+		});
+
+		const updated = manager.store.applyHookMetadata("task-1", {
+			source: "codex",
+			hookEventName: "session_meta",
+			sessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
+		});
+
+		expect(updated?.resumeSessionId).toBe("019d6fa0-db65-7f83-9531-35df54674d76");
+		expect(updated?.latestHookActivity?.activityText).toBe("Running command: npm test");
+		expect(updated?.latestHookActivity?.hookEventName).toBe("exec_command_begin");
+	});
+
+	it("dedupes repeated metadata-only session ids", () => {
+		const manager = createTestManager();
+		manager.store.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "running",
+				agentId: "codex",
+				resumeSessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
+			}),
+		});
+
+		const before = manager.store.getSummary("task-1");
+		const updated = manager.store.applyHookMetadata("task-1", {
+			source: "codex",
+			hookEventName: "session_meta",
+			sessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
+		});
+		const after = manager.store.getSummary("task-1");
+
+		expect(updated).toEqual(before);
+		expect(after).toEqual(before);
+	});
+
 	it("uses the configured row multiplier for Claude", () => {
 		expect(resolveAgentTerminalRowMultiplier("claude", 5)).toBe(5);
 	});

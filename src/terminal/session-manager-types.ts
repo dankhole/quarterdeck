@@ -59,6 +59,7 @@ export interface StartTaskSessionRequest {
 	images?: RuntimeTaskImage[];
 	startInPlanMode?: boolean;
 	resumeConversation?: boolean;
+	resumeSessionId?: string;
 	awaitReview?: boolean;
 	cols?: number;
 	rows?: number;

@@ -100,6 +100,9 @@ Misc. tribal knowledge
 - Indicator semantics are intentionally centralized:
   - Use `deriveTaskIndicatorState(summary)` and `isPermissionActivity(...)` from `src/core/api/task-indicators.ts` / `@runtime-contract` for approval, review-ready, needs-input, and failure meaning.
   - Do not add new UI logic that re-interprets `reviewReason`, `latestHookActivity.notificationType`, `hookEventName`, or `"Waiting for approval"` text directly in components/hooks. Project badges, status badges, audible notifications, and approval-blocking behavior should all flow from the shared semantic layer.
+- Codex `session_meta` is a metadata-only signal:
+  - Persist `resumeSessionId` from Codex `session_meta`, but do **not** let that event clobber `latestHookActivity` or bump summary state twice. If resume-id persistence and hook activity need to land together, use one store mutation (`applyHookMetadata(...)`) rather than separate `update(...)` + `applyHookActivity(...)` calls.
+  - The rollout fallback and live session-log parser have separate dedupe paths. Even if the incoming session id is already stored, a metadata-only `session_meta` event must remain a no-op for activity/broadcast purposes or it will wipe real Codex activity and emit redundant websocket updates.
 - Keep **task agent terminals** and **shell terminals** mentally separate even when they share xterm/panel plumbing.
   - Task agent terminals are task-scoped viewers for agent sessions and use the shared/pool path.
   - Shell terminals (home shell and detail shell) are dedicated workspace-scoped manual shells with different lifecycle rules, restart behavior, and exit handling.

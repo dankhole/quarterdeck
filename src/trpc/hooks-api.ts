@@ -4,6 +4,7 @@ import type {
 	ITerminalManagerProvider,
 	RuntimeHookEvent,
 	RuntimeHookIngestResponse,
+	RuntimeHookMetadata,
 	RuntimeTaskHookActivity,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
@@ -41,6 +42,27 @@ function applyConversationSummaryFromMetadata(
 			store.setDisplaySummary(taskId, display, null);
 		}
 	}
+}
+
+function toHookActivityPatch(metadata: RuntimeHookMetadata | undefined): Partial<RuntimeTaskHookActivity> | undefined {
+	if (!metadata) {
+		return undefined;
+	}
+	const { sessionId: _sessionId, ...activity } = metadata;
+	return activity;
+}
+
+function isMetadataOnlySessionMeta(metadata: RuntimeHookMetadata | undefined): boolean {
+	if (!metadata || metadata.hookEventName !== "session_meta" || !metadata.sessionId) {
+		return false;
+	}
+	return (
+		typeof metadata.activityText !== "string" &&
+		typeof metadata.toolName !== "string" &&
+		typeof metadata.toolInputSummary !== "string" &&
+		typeof metadata.finalMessage !== "string" &&
+		typeof metadata.notificationType !== "string"
+	);
 }
 
 export interface CreateHooksApiDependencies {
@@ -107,6 +129,10 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					} satisfies RuntimeHookIngestResponse;
 				}
 
+				const incomingSessionId = body.metadata?.sessionId?.trim() || null;
+				const activityMetadata = toHookActivityPatch(body.metadata);
+				const metadataOnlySessionMeta = isMetadataOnlySessionMeta(body.metadata);
+
 				manager.recordHookReceived(taskId);
 				const canTransition = canTransitionTaskForHookEvent(summary, event);
 				if (!canTransition) {
@@ -117,7 +143,14 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						currentReviewReason: summary.reviewReason,
 						hookEventName: body.metadata?.hookEventName ?? null,
 					});
-					if (body.metadata) {
+					if (body.metadata && metadataOnlySessionMeta) {
+						store.applyHookMetadata(taskId, body.metadata);
+						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
+						return {
+							ok: true,
+						} satisfies RuntimeHookIngestResponse;
+					}
+					if (activityMetadata) {
 						// Guard: protect permission metadata from being clobbered by non-permission hooks.
 						// When the task is in awaiting_review with permission-related activity, only allow
 						// permission events to overwrite the activity. Non-permission hooks (Stop, PreToolUse,
@@ -130,14 +163,14 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 
 						if (shouldGuardPermission) {
 							const incomingActivity: RuntimeTaskHookActivity = {
-								hookEventName: body.metadata.hookEventName ?? null,
-								notificationType: body.metadata.notificationType ?? null,
-								activityText: body.metadata.activityText ?? null,
-								toolName: body.metadata.toolName ?? null,
-								toolInputSummary: body.metadata.toolInputSummary ?? null,
-								finalMessage: body.metadata.finalMessage ?? null,
-								source: body.metadata.source ?? null,
-								conversationSummaryText: body.metadata.conversationSummaryText ?? null,
+								hookEventName: activityMetadata.hookEventName ?? null,
+								notificationType: activityMetadata.notificationType ?? null,
+								activityText: activityMetadata.activityText ?? null,
+								toolName: activityMetadata.toolName ?? null,
+								toolInputSummary: activityMetadata.toolInputSummary ?? null,
+								finalMessage: activityMetadata.finalMessage ?? null,
+								source: activityMetadata.source ?? null,
+								conversationSummaryText: activityMetadata.conversationSummaryText ?? null,
 							};
 							if (!isPermissionActivity(incomingActivity)) {
 								log.debug(
@@ -145,7 +178,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 									{
 										taskId,
 										event,
-										incomingHookEvent: body.metadata.hookEventName,
+										incomingHookEvent: activityMetadata.hookEventName,
 										currentPermissionActivity: currentActivity.hookEventName,
 									},
 								);
@@ -157,8 +190,9 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 								} satisfies RuntimeHookIngestResponse;
 							}
 						}
-
-						store.applyHookActivity(taskId, body.metadata);
+					}
+					if (body.metadata && (incomingSessionId || activityMetadata)) {
+						store.applyHookMetadata(taskId, body.metadata);
 					}
 					applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 					return {
@@ -213,8 +247,8 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					} satisfies RuntimeHookIngestResponse;
 				}
 
-				if (body.metadata) {
-					store.applyHookActivity(taskId, body.metadata);
+				if (body.metadata && (incomingSessionId || activityMetadata)) {
+					store.applyHookMetadata(taskId, body.metadata);
 				}
 
 				applyConversationSummaryFromMetadata(store, taskId, body.metadata);

@@ -21,6 +21,7 @@ export interface AgentAdapterLaunchInput {
 	images?: RuntimeTaskImage[];
 	startInPlanMode?: boolean;
 	resumeConversation?: boolean;
+	resumeSessionId?: string;
 	env?: Record<string, string | undefined>;
 	projectId?: string;
 	projectPath?: string;
@@ -317,7 +318,9 @@ const codexAdapter: AgentSessionAdapter = {
 			if (!codexArgs.includes("resume")) {
 				codexArgs.push("resume");
 			}
-			if (!hasCliOption(codexArgs, "--last")) {
+			if (input.resumeSessionId?.trim()) {
+				codexArgs.push(input.resumeSessionId.trim());
+			} else if (!hasCliOption(codexArgs, "--last")) {
 				codexArgs.push("--last");
 			}
 		}

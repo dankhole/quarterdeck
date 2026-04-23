@@ -1,6 +1,6 @@
 import { createTRPCProxyClient, httpBatchLink, TRPCClientError } from "@trpc/client";
 import type { Command } from "commander";
-import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core";
+import type { RuntimeHookEvent, RuntimeHookMetadata } from "../core";
 import { buildQuarterdeckRuntimeUrl } from "../core";
 import { parseHookRuntimeContextFromEnv } from "../terminal";
 import type { RuntimeAppRouter } from "../trpc";
@@ -32,7 +32,7 @@ interface HooksIngestArgs {
 	event: RuntimeHookEvent;
 	taskId: string;
 	projectId: string;
-	metadata?: Partial<RuntimeTaskHookActivity>;
+	metadata?: RuntimeHookMetadata;
 	payload?: Record<string, unknown> | null;
 }
 
@@ -302,6 +302,7 @@ export function registerHooksCommand(program: Command): void {
 		.option("--final-message <message>", "Final message.")
 		.option("--hook-event-name <name>", "Original hook event name.")
 		.option("--notification-type <type>", "Notification type.")
+		.option("--session-id <id>", "Resumable agent session id.")
 		.option("--metadata-base64 <base64>", "Base64-encoded JSON metadata payload.")
 		.action(
 			async (
@@ -322,6 +323,7 @@ export function registerHooksCommand(program: Command): void {
 		.option("--final-message <message>", "Final message.")
 		.option("--hook-event-name <name>", "Original hook event name.")
 		.option("--notification-type <type>", "Notification type.")
+		.option("--session-id <id>", "Resumable agent session id.")
 		.option("--metadata-base64 <base64>", "Base64-encoded JSON metadata payload.")
 		.action(
 			async (

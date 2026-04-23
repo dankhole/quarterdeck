@@ -3,8 +3,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useBoardInteractions } from "@/hooks/board/use-board-interactions";
+import { shouldWarnForNonIsolatedResume } from "@/hooks/board/use-task-lifecycle";
 import type { UseTaskSessionsResult } from "@/hooks/board/use-task-sessions";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 import type { BoardCard, BoardData } from "@/types";
 
 const notifyErrorMock = vi.hoisted(() => vi.fn());
@@ -172,6 +174,20 @@ describe("useBoardInteractions", () => {
 		container = document.createElement("div");
 		document.body.appendChild(container);
 		root = createRoot(container);
+	});
+
+	describe("shouldWarnForNonIsolatedResume", () => {
+		it("returns true for non-Codex agents", () => {
+			expect(shouldWarnForNonIsolatedResume("claude", "session-1")).toBe(true);
+		});
+
+		it("returns true for Codex when no stored session id exists", () => {
+			expect(shouldWarnForNonIsolatedResume("codex", null)).toBe(true);
+		});
+
+		it("returns false for Codex when a stored session id exists", () => {
+			expect(shouldWarnForNonIsolatedResume("codex", "session-1")).toBe(false);
+		});
 	});
 
 	afterEach(() => {
@@ -738,6 +754,78 @@ describe("useBoardInteractions", () => {
 
 		expect(stopTaskSession).toHaveBeenCalledWith("task-rv", { waitForExit: true });
 		expect(startTaskSession).toHaveBeenCalledWith(reviewTask, { resumeConversation: true, awaitReview: true });
+	});
+
+	it("suppresses the non-isolated resume warning when Codex has a stored session id", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		useProgrammaticCardMovesMock.mockReturnValue({
+			handleProgrammaticCardMoveReady: () => {},
+			setRequestMoveTaskToTrashHandler: () => {},
+			tryProgrammaticCardMove: () => "unavailable",
+			consumeProgrammaticCardMove: () => ({}),
+			resolvePendingProgrammaticTrashMove: () => {},
+			waitForProgrammaticCardMoveAvailability: async () => {},
+			resetProgrammaticCardMoves: () => {},
+			requestMoveTaskToTrashWithAnimation: async () => {},
+			programmaticCardMoveCycle: 0,
+		});
+
+		useLinkedBacklogTaskActionsMock.mockReturnValue({
+			handleCreateDependency: () => {},
+			handleDeleteDependency: () => {},
+			confirmMoveTaskToTrash: async () => {},
+			requestMoveTaskToTrash: async () => {},
+		});
+
+		const reviewTask = { ...createTask("task-codex", "Review task", 1), useWorktree: false };
+		const board: BoardData = {
+			columns: [
+				{ id: "backlog", title: "Backlog", cards: [] },
+				{ id: "in_progress", title: "In Progress", cards: [] },
+				{ id: "review", title: "Review", cards: [reviewTask] },
+				{ id: "trash", title: "Trash", cards: [] },
+			],
+			dependencies: [],
+		};
+		const setBoard = vi.fn<Dispatch<SetStateAction<BoardData>>>();
+		const stopTaskSession = vi.fn(async () => {});
+		const startTaskSession = vi.fn(async () => ({
+			ok: true as const,
+			summary: createTestTaskSessionSummary({
+				taskId: "task-codex",
+				agentId: "codex",
+				resumeSessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
+			}),
+		}));
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={board}
+					setBoard={setBoard}
+					ensureTaskWorktree={async () => ({ ok: true as const })}
+					startTaskSession={startTaskSession}
+					stopTaskSession={stopTaskSession}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (!latestSnapshot) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			latestSnapshot!.handleRestartTaskSession("task-codex");
+			for (let i = 0; i < 10; i++) {
+				await Promise.resolve();
+			}
+		});
+
+		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
 
 	it("ignores card selection requests for trashed tasks", async () => {

@@ -167,7 +167,25 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.deferredStartupInput?.endsWith("\r")).toBe(true);
 	});
 
-	it("adds resume flags for each agent", async () => {
+	it("uses a stored Codex session id for resume when available", async () => {
+		setupTempHome();
+
+		const codexLaunch = await prepareAgentLaunch({
+			taskId: "task-codex",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
+		});
+
+		expect(codexLaunch.args).toEqual(expect.arrayContaining(["resume", "019d6fa0-db65-7f83-9531-35df54674d76"]));
+		expect(codexLaunch.args).not.toContain("--last");
+	});
+
+	it("falls back to --last when no Codex session id is stored", async () => {
 		setupTempHome();
 
 		const codexLaunch = await prepareAgentLaunch({
@@ -180,6 +198,10 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeConversation: true,
 		});
 		expect(codexLaunch.args).toEqual(expect.arrayContaining(["resume", "--last"]));
+	});
+
+	it("adds Claude continue flags for resume", async () => {
+		setupTempHome();
 
 		const claudeLaunch = await prepareAgentLaunch({
 			taskId: "task-claude",

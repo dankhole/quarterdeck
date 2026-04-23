@@ -5,7 +5,16 @@ import type { SessionSummaryStore, TerminalSessionManager } from "../../../../sr
 import { type CreateHooksApiDependencies, createHooksApi } from "../../../../src/trpc";
 
 export function createMockManager(storeMethods: Partial<SessionSummaryStore>): TerminalSessionManager {
-	return { store: storeMethods, recordHookReceived: vi.fn() } as unknown as TerminalSessionManager;
+	const store = {
+		...storeMethods,
+		applyHookMetadata:
+			storeMethods.applyHookMetadata ??
+			vi.fn((taskId: string, metadata: Parameters<SessionSummaryStore["applyHookMetadata"]>[1]) => {
+				const { sessionId: _sessionId, ...activity } = metadata;
+				return storeMethods.applyHookActivity?.(taskId, activity);
+			}),
+	};
+	return { store, recordHookReceived: vi.fn() } as unknown as TerminalSessionManager;
 }
 
 export function mockStore(manager: TerminalSessionManager): Record<string, ReturnType<typeof vi.fn>> {
@@ -18,6 +27,7 @@ export function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}
 		state: "running",
 		agentId: "claude",
 		sessionLaunchPath: "/tmp/worktree",
+		resumeSessionId: null,
 		pid: 1234,
 		startedAt: Date.now(),
 		updatedAt: Date.now(),

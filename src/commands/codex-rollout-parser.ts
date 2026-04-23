@@ -329,6 +329,24 @@ export function mapCodexRolloutActivityLine(
 	if (!lineType) {
 		return null;
 	}
+	if (lineType === "session_meta") {
+		const payload = asRecord(parsedLine.payload);
+		const sessionId = payload ? readStringField(payload, "id") : null;
+		if (!sessionId) {
+			return null;
+		}
+		return {
+			fingerprint: `rollout:session_meta:${sessionId}`,
+			mapped: {
+				event: "activity",
+				metadata: {
+					source: "codex",
+					hookEventName: lineType,
+					sessionId,
+				},
+			},
+		};
+	}
 	if (lineType === "event_msg") {
 		const payload = asRecord(parsedLine.payload);
 		if (!payload) {

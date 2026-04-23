@@ -1,10 +1,10 @@
-import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core";
+import type { RuntimeHookEvent, RuntimeHookMetadata } from "../core";
 
 // ── Shared types ────────────────────────────────────────────────────────────────
 
 export interface CodexMappedHookEvent {
 	event: RuntimeHookEvent;
-	metadata?: Partial<RuntimeTaskHookActivity>;
+	metadata?: RuntimeHookMetadata;
 }
 
 export type CodexSessionWatcherNotify = (mapped: CodexMappedHookEvent) => void;
@@ -85,6 +85,7 @@ interface CodexEventPayload {
 	message?: unknown;
 	command?: unknown;
 	item?: unknown;
+	payload?: unknown;
 }
 
 interface CodexSessionLogLine {
@@ -105,6 +106,7 @@ export interface CodexWatcherState {
 	lastApprovalId: string;
 	lastExecCallId: string;
 	lastActivityFingerprint: string;
+	lastSessionId: string;
 	approvalFallbackSeq: number;
 	offset: number;
 	remainder: string;
@@ -117,6 +119,7 @@ export function createCodexWatcherState(): CodexWatcherState {
 		lastApprovalId: "",
 		lastExecCallId: "",
 		lastActivityFingerprint: "",
+		lastSessionId: "",
 		approvalFallbackSeq: 0,
 		offset: 0,
 		remainder: "",
@@ -232,7 +235,23 @@ export function parseCodexEventLine(line: string, state: CodexWatcherState): Cod
 	const normalizedType = type.toLowerCase();
 	if (normalizedType === "session_meta") {
 		state.currentSessionScope = isCodexDescendantSession(message) ? "descendant" : "root";
-		return null;
+		if (state.currentSessionScope !== "root") {
+			return null;
+		}
+		const sessionMetaPayload = asRecord(message.payload);
+		const sessionId = sessionMetaPayload ? readStringField(sessionMetaPayload, "id") : null;
+		if (!sessionId || sessionId === state.lastSessionId) {
+			return null;
+		}
+		state.lastSessionId = sessionId;
+		return {
+			event: "activity",
+			metadata: {
+				source: "codex",
+				hookEventName: type,
+				sessionId,
+			},
+		};
 	}
 	if (state.currentSessionScope === "descendant") {
 		if (normalizedType === "task_complete" || normalizedType === "turn_aborted") {

@@ -1,4 +1,4 @@
-import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core";
+import type { RuntimeHookEvent, RuntimeHookMetadata } from "../core";
 
 function normalizeWhitespace(value: string): string {
 	return value.replace(/\s+/g, " ").trim();
@@ -51,17 +51,19 @@ export interface HookCommandMetadataOptionValues {
 	finalMessage?: string;
 	hookEventName?: string;
 	notificationType?: string;
+	sessionId?: string;
 	metadataBase64?: string;
 }
 
-export function parseMetadataFromOptions(options: HookCommandMetadataOptionValues): Partial<RuntimeTaskHookActivity> {
-	const metadata: Partial<RuntimeTaskHookActivity> = {};
+export function parseMetadataFromOptions(options: HookCommandMetadataOptionValues): RuntimeHookMetadata {
+	const metadata: RuntimeHookMetadata = {};
 	const activityText = options.activityText;
 	const toolName = options.toolName;
 	const finalMessage = options.finalMessage;
 	const hookEventName = options.hookEventName;
 	const notificationType = options.notificationType;
 	const source = options.source;
+	const sessionId = options.sessionId;
 
 	if (activityText) {
 		metadata.activityText = normalizeWhitespace(activityText);
@@ -80,6 +82,9 @@ export function parseMetadataFromOptions(options: HookCommandMetadataOptionValue
 	}
 	if (source) {
 		metadata.source = normalizeWhitespace(source);
+	}
+	if (sessionId) {
+		metadata.sessionId = normalizeWhitespace(sessionId);
 	}
 
 	return metadata;
@@ -247,8 +252,8 @@ export function inferHookSourceFromPayload(payload: Record<string, unknown> | nu
 export function normalizeHookMetadata(
 	event: RuntimeHookEvent,
 	payload: Record<string, unknown> | null,
-	flagMetadata: Partial<RuntimeTaskHookActivity>,
-): Partial<RuntimeTaskHookActivity> | undefined {
+	flagMetadata: RuntimeHookMetadata,
+): RuntimeHookMetadata | undefined {
 	const hookEventName = payload
 		? (readStringField(payload, "hook_event_name") ??
 			readStringField(payload, "hookEventName") ??
@@ -281,13 +286,14 @@ export function normalizeHookMetadata(
 	const inferredSource = inferHookSourceFromPayload(payload);
 
 	const activityText = inferActivityText(event, payload, toolName, finalMessage, notificationType);
-	const merged: Partial<RuntimeTaskHookActivity> = {
+	const merged: RuntimeHookMetadata = {
 		source: flagMetadata.source ?? inferredSource ?? null,
 		hookEventName: flagMetadata.hookEventName ?? hookEventName ?? null,
 		toolName: flagMetadata.toolName ?? toolName ?? null,
 		notificationType: flagMetadata.notificationType ?? notificationType ?? null,
 		finalMessage: flagMetadata.finalMessage ?? (finalMessage ? normalizeWhitespace(finalMessage) : null),
 		activityText: flagMetadata.activityText ?? (activityText ? normalizeWhitespace(activityText) : null),
+		sessionId: flagMetadata.sessionId ?? null,
 	};
 
 	const hasValue = Object.values(merged).some((value) => typeof value === "string" && value.trim().length > 0);
@@ -302,7 +308,7 @@ export function readPayloadStringField(payload: Record<string, unknown>, key: st
 	return readStringField(payload, key);
 }
 
-export function appendMetadataFlags(args: string[], metadata?: Partial<RuntimeTaskHookActivity>): string[] {
+export function appendMetadataFlags(args: string[], metadata?: RuntimeHookMetadata): string[] {
 	if (!metadata) {
 		return args;
 	}
@@ -323,6 +329,9 @@ export function appendMetadataFlags(args: string[], metadata?: Partial<RuntimeTa
 	}
 	if (metadata.notificationType) {
 		args.push("--notification-type", metadata.notificationType);
+	}
+	if (metadata.sessionId) {
+		args.push("--session-id", metadata.sessionId);
 	}
 	return args;
 }

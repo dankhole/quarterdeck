@@ -26,6 +26,13 @@ export function showNonIsolatedResumeWarning(): void {
 	});
 }
 
+export function shouldWarnForNonIsolatedResume(
+	agentId: string | null | undefined,
+	resumeSessionId: string | null | undefined,
+): boolean {
+	return agentId !== "codex" || !resumeSessionId;
+}
+
 interface UseTaskLifecycleInput {
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	selectedTaskId: string | null;
@@ -145,7 +152,10 @@ export function useTaskLifecycle({
 
 			const resumed = await startTaskSession(task, { resumeConversation: true, awaitReview: true });
 			if (resumed.ok) {
-				if (isNonIsolatedTask(task)) {
+				if (
+					isNonIsolatedTask(task) &&
+					shouldWarnForNonIsolatedResume(resumed.summary?.agentId, resumed.summary?.resumeSessionId)
+				) {
 					showNonIsolatedResumeWarning();
 				}
 				setBoard((board) => {

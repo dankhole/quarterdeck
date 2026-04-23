@@ -9,7 +9,11 @@ import { useLinkedBacklogTaskActions } from "@/hooks/board/use-linked-backlog-ta
 import { useProgrammaticCardMoves } from "@/hooks/board/use-programmatic-card-moves";
 import { useReviewAutoActions } from "@/hooks/board/use-review-auto-actions";
 import { useSessionColumnSync } from "@/hooks/board/use-session-column-sync";
-import { showNonIsolatedResumeWarning, useTaskLifecycle } from "@/hooks/board/use-task-lifecycle";
+import {
+	shouldWarnForNonIsolatedResume,
+	showNonIsolatedResumeWarning,
+	useTaskLifecycle,
+} from "@/hooks/board/use-task-lifecycle";
 import type { UseTaskSessionsResult } from "@/hooks/board/use-task-sessions";
 import { useTaskStart } from "@/hooks/board/use-task-start";
 import { type HardDeleteDialogState, type TrashWarningState, useTrashWorkflow } from "@/hooks/board/use-trash-workflow";
@@ -253,7 +257,10 @@ export function useBoardInteractions({
 				const started = await startTaskSession(selection.card, { resumeConversation: true, awaitReview });
 				if (!started.ok) {
 					notifyError(started.message ?? "Could not restart task session.");
-				} else if (selection.card.useWorktree === false) {
+				} else if (
+					selection.card.useWorktree === false &&
+					shouldWarnForNonIsolatedResume(started.summary?.agentId, started.summary?.resumeSessionId)
+				) {
 					showNonIsolatedResumeWarning();
 				}
 			})();

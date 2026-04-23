@@ -11,6 +11,7 @@ describe("parseHookIngestRequest", () => {
 			metadata: {
 				source: " claude ",
 				activityText: " Using Read ",
+				sessionId: "  session-789  ",
 			},
 		});
 		expect(parsed).toEqual({
@@ -25,6 +26,7 @@ describe("parseHookIngestRequest", () => {
 				toolInputSummary: null,
 				finalMessage: undefined,
 				notificationType: undefined,
+				sessionId: "session-789",
 				conversationSummaryText: null,
 			},
 		});

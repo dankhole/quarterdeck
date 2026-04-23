@@ -19,6 +19,30 @@ function createCodexOpLine(payload: Record<string, unknown>): string {
 }
 
 describe("parseCodexEventLine", () => {
+	it("captures the root Codex session id from session metadata", () => {
+		const state = createCodexWatcherState();
+
+		const event = parseCodexEventLine(
+			createCodexLogLine({
+				type: "session_meta",
+				payload: {
+					id: "019d6fa0-db65-7f83-9531-35df54674d76",
+					source: "cli",
+				},
+			}),
+			state,
+		);
+
+		expect(event).toEqual({
+			event: "activity",
+			metadata: {
+				source: "codex",
+				hookEventName: "session_meta",
+				sessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
+			},
+		});
+	});
+
 	it("keeps full codex activity text for long agent and final messages", () => {
 		const state = createCodexWatcherState();
 		const longAgentMessage =
@@ -117,7 +141,14 @@ describe("parseCodexEventLine", () => {
 				}),
 				state,
 			),
-		).toBeNull();
+		).toEqual({
+			event: "activity",
+			metadata: {
+				source: "codex",
+				hookEventName: "session_meta",
+				sessionId: "root-session",
+			},
+		});
 
 		expect(
 			parseCodexEventLine(

@@ -454,7 +454,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		if (!resolved) {
 			return 0;
 		}
-		const resumable: Array<{ taskId: string; cwd: string }> = [];
+		const resumable: Array<{ taskId: string; cwd: string; resumeSessionId?: string }> = [];
 		for (const column of state.board.columns) {
 			if (column.id !== "in_progress" && column.id !== "review") {
 				continue;
@@ -462,14 +462,18 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			for (const card of column.cards) {
 				const summary = manager.store.getSummary(card.id);
 				if (summary?.state === "interrupted" && summary.reviewReason === "interrupted" && card.workingDirectory) {
-					resumable.push({ taskId: card.id, cwd: card.workingDirectory });
+					resumable.push({
+						taskId: card.id,
+						cwd: card.workingDirectory,
+						resumeSessionId: summary.resumeSessionId ?? undefined,
+					});
 				}
 			}
 		}
 		if (resumable.length === 0) {
 			return 0;
 		}
-		for (const { taskId, cwd } of resumable) {
+		for (const { taskId, cwd, resumeSessionId } of resumable) {
 			void manager
 				.startTaskSession({
 					taskId,
@@ -479,6 +483,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 					cwd,
 					prompt: "",
 					resumeConversation: true,
+					resumeSessionId,
 					awaitReview: true,
 					projectId,
 					projectPath,
