@@ -16,7 +16,6 @@ export function BoardCardActions({
 	isHovered,
 	isSessionDead,
 	isSessionRestartable,
-	showRunningTaskEmergencyActions,
 	isMoveToTrashLoading,
 	onStart,
 	onRestartSession,
@@ -29,7 +28,6 @@ export function BoardCardActions({
 	isHovered: boolean;
 	isSessionDead: boolean;
 	isSessionRestartable: boolean;
-	showRunningTaskEmergencyActions: boolean;
 	isMoveToTrashLoading: boolean;
 	onStart?: (taskId: string) => void;
 	onRestartSession?: (taskId: string) => void;
@@ -40,7 +38,7 @@ export function BoardCardActions({
 	if (columnId === "in_progress") {
 		return (
 			<>
-				{showRunningTaskEmergencyActions && !isSessionDead && isHovered ? (
+				{!isSessionDead && isHovered ? (
 					<>
 						{onRestartSession ? (
 							<Tooltip content="Force restart session">

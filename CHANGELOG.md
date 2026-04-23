@@ -2,13 +2,16 @@
 
 ## [Unreleased]
 
+### Refactor: always show running-task stop/trash actions
+
+- Removed the `showRunningTaskEmergencyActions` setting and its config/schema/settings wiring, so running task cards now always expose the stop/restart and trash escape hatches on hover instead of hiding them behind an opt-in toggle.
+
 ### Fix: harden Codex CLI detection with version gating
 
 - Replaced the old "Codex binary exists on PATH" launch gate with a minimal compatibility check that still uses PATH for discovery but also runs `codex --version` and requires `0.30.0` or newer before Quarterdeck treats Codex as runnable.
 - Added explicit agent install states (`installed`, `upgrade_required`, `missing`) to the runtime config contract so the settings dialog and startup onboarding can distinguish outdated Codex installs from genuinely missing CLIs.
 - Updated the Codex install/help link to the official OpenAI Codex CLI quickstart and clarified in Settings that detection is PATH-based plus a Codex version floor.
 - Tightened auto-selection so Quarterdeck no longer silently picks an outdated Codex binary as the default task agent.
-
 ### Refactor: remove session event log debugging path
 
 - Removed the `eventLogEnabled` setting, deleted the JSONL session event logger and its startup/save plumbing, and stripped the task “flag for debug log” action plus tRPC handler so Quarterdeck no longer writes `~/.quarterdeck/logs/events.jsonl` or exposes that developer-only workflow.

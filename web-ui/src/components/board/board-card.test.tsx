@@ -181,6 +181,43 @@ describe("BoardCard", () => {
 		expect(trashButton?.querySelector("svg.animate-spin")).toBeTruthy();
 	});
 
+	it("always shows running-task restart and trash actions on hover", async () => {
+		vi.useFakeTimers();
+		try {
+			await act(async () => {
+				root.render(
+					<Providers>
+						<BoardCard
+							card={createCard()}
+							index={0}
+							columnId="in_progress"
+							sessionSummary={createSummary("running")}
+							onRestartSession={() => {}}
+							onMoveToTrash={() => {}}
+						/>
+					</Providers>,
+				);
+			});
+
+			const cardShell = container.querySelector('[data-task-id="task-1"]');
+			expect(cardShell).toBeInstanceOf(HTMLDivElement);
+
+			await act(async () => {
+				cardShell?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+				vi.advanceTimersByTime(250);
+			});
+
+			expect(container.querySelector('button[aria-label="Force restart agent session"]')).toBeInstanceOf(
+				HTMLButtonElement,
+			);
+			expect(container.querySelector('button[aria-label="Force move task to trash"]')).toBeInstanceOf(
+				HTMLButtonElement,
+			);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("shows tool input details in the session preview text", async () => {
 		await act(async () => {
 			root.render(

@@ -121,22 +121,12 @@ export function ConfirmationsSection({ fields, setField, disabled }: SettingsSec
 // ---------------------------------------------------------------------------
 
 export function TroubleshootingSection({
-	fields,
-	setField,
-	disabled,
 	onResetLayout,
 }: SettingsSectionProps & { onResetLayout: () => void }): React.ReactElement {
 	return (
 		<>
 			<h6 className="font-semibold text-text-primary mt-4 mb-2">Troubleshooting</h6>
-			<SettingsSwitch
-				checked={fields.showRunningTaskEmergencyActions}
-				onCheckedChange={(v) => setField("showRunningTaskEmergencyActions", v)}
-				disabled={disabled}
-				label="Show stop & trash buttons on running tasks"
-				description="Adds emergency stop and trash actions to in-progress cards when a task is stuck."
-			/>
-			<Button size="sm" className="mt-3" onClick={onResetLayout}>
+			<Button size="sm" onClick={onResetLayout}>
 				Reset layout
 			</Button>
 			<p className="text-text-secondary text-[13px] mt-2 mb-0">

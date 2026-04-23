@@ -154,7 +154,6 @@ const noopReactiveState: ReactiveCardState = {
 	isLlmGenerationDisabled: false,
 	showSummaryOnCards: false,
 	uncommittedChangesOnCardsEnabled: false,
-	showRunningTaskEmergencyActions: false,
 };
 
 const noopBoardContext: BoardContextValue = {

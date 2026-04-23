@@ -12,7 +12,6 @@ const noopReactiveState: ReactiveCardState = {
 	isLlmGenerationDisabled: false,
 	showSummaryOnCards: false,
 	uncommittedChangesOnCardsEnabled: false,
-	showRunningTaskEmergencyActions: false,
 };
 
 vi.mock("@/components/board/board-card", () => ({

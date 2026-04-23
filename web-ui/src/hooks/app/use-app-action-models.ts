@@ -143,14 +143,10 @@ export function useAppActionModels({
 			uncommittedChangesOnCardsEnabled:
 				projectRuntime.runtimeProjectConfig?.uncommittedChangesOnCardsEnabled ??
 				CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
-			showRunningTaskEmergencyActions:
-				projectRuntime.runtimeProjectConfig?.showRunningTaskEmergencyActions ??
-				CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
 		}),
 		[
 			interactions.moveToTrashLoadingById,
 			projectRuntime.isLlmGenerationDisabled,
-			projectRuntime.runtimeProjectConfig?.showRunningTaskEmergencyActions,
 			projectRuntime.runtimeProjectConfig?.showSummaryOnCards,
 			projectRuntime.runtimeProjectConfig?.uncommittedChangesOnCardsEnabled,
 		],

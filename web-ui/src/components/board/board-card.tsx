@@ -29,7 +29,6 @@ export function BoardCard({
 	selected = false,
 	showSummaryOnCards = false,
 	uncommittedChangesOnCardsEnabled = false,
-	showRunningTaskEmergencyActions = false,
 	onClick,
 	onDoubleClick,
 	onStart,
@@ -60,7 +59,6 @@ export function BoardCard({
 	selected?: boolean;
 	showSummaryOnCards?: boolean;
 	uncommittedChangesOnCardsEnabled?: boolean;
-	showRunningTaskEmergencyActions?: boolean;
 	onClick?: () => void;
 	onDoubleClick?: () => void;
 	onStart?: (taskId: string) => void;
@@ -329,7 +327,6 @@ export function BoardCard({
 								isHovered={isHovered}
 								isSessionDead={isSessionDead}
 								isSessionRestartable={isSessionRestartable}
-								showRunningTaskEmergencyActions={showRunningTaskEmergencyActions}
 								isMoveToTrashLoading={isMoveToTrashLoading}
 								onStart={onStart}
 								onRestartSession={onRestartSession}

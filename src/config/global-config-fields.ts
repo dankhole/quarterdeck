@@ -123,7 +123,6 @@ export const GLOBAL_CONFIG_FIELDS = {
 	terminalFontWeight: numField(325),
 	worktreeAddParentGitDir: boolField(false),
 	worktreeAddQuarterdeckDir: boolField(false),
-	showRunningTaskEmergencyActions: boolField(false),
 	logLevel: enumField<LogLevel>("warn", LOG_LEVELS),
 	backupIntervalMinutes: numField(30),
 	agentTerminalRowMultiplier: numField(5),
