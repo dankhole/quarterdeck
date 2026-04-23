@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Fix: replay queued terminal restore requests during untrash resume
+
+- Task terminals now queue `request_restore` calls that arrive before the initial restore handshake finishes, then replay them immediately after that first restore completes.
+- This closes the remaining untrash race where Codex could publish a new resumed session while the first empty pre-spawn snapshot was still restoring, leaving the terminal stuck on a spinner with no logs because the refresh request was silently dropped.
+
+### Fix: refresh terminal restore when untrash creates a new session instance
+
+- Task terminals now request a fresh restore snapshot when the runtime reports a new `startedAt`/`pid` for the same task, covering untrash resumes that connected early enough to receive an empty pre-spawn snapshot.
+- This keeps restored tasks from sitting on a loading spinner with no logs when the resumed Codex process appears after the first restore attempt.
+
+### Fix: wait for trash-stop exit before untrash resume
+
+- Restoring a trashed task now waits for any lingering task session shutdown to finish before asking the runtime to resume the conversation.
+- This closes a trash/untrash race where `startTaskSession()` could see the still-active pre-trash session, skip spawning a new one, and leave the restored card stuck without a live agent once the old process finally exited.
 ### Refactor: always show running-task stop/trash actions
 
 - Removed the `showRunningTaskEmergencyActions` setting and its config/schema/settings wiring, so running task cards now always expose the stop/restart and trash escape hatches on hover instead of hiding them behind an opt-in toggle.

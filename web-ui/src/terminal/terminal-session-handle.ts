@@ -23,7 +23,7 @@ interface TerminalSessionHandleCallbacks {
 	applyRestore: (snapshot: string, cols: number | null | undefined, rows: number | null | undefined) => Promise<void>;
 	onSummaryStateChange: (
 		summary: RuntimeTaskSessionSummary,
-		previousState: RuntimeTaskSessionSummary["state"] | undefined,
+		previousSummary: RuntimeTaskSessionSummary | null,
 	) => void;
 	onExit: (code: number | null) => void;
 	ensureVisible: () => void;
@@ -232,9 +232,9 @@ export class TerminalSessionHandle {
 	}
 
 	private handleState(payload: RuntimeTerminalWsServerMessage & { type: "state" }): void {
-		const previousState = this.latestSummary?.state;
+		const previousSummary = this.latestSummary;
 		this.latestSummary = payload.summary;
-		this.callbacks.onSummaryStateChange(payload.summary, previousState);
+		this.callbacks.onSummaryStateChange(payload.summary, previousSummary);
 		for (const subscriber of this.subscribers) {
 			subscriber.onSummary?.(payload.summary);
 		}

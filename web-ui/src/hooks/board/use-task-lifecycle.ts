@@ -29,6 +29,7 @@ export function showNonIsolatedResumeWarning(): void {
 interface UseTaskLifecycleInput {
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	selectedTaskId: string | null;
+	stopTaskSession: (taskId: string, options?: { waitForExit?: boolean }) => Promise<void>;
 	ensureTaskWorktree: UseTaskSessionsResult["ensureTaskWorktree"];
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
 	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
@@ -51,6 +52,7 @@ export interface UseTaskLifecycleResult {
 export function useTaskLifecycle({
 	setBoard,
 	selectedTaskId,
+	stopTaskSession,
 	ensureTaskWorktree,
 	startTaskSession,
 	fetchTaskWorktreeInfo,
@@ -118,6 +120,11 @@ export function useTaskLifecycle({
 				setBoard((board) => revertOptimisticMoveToReview(board, taskId) ?? board);
 			};
 
+			// Trashing waits for the old task session to exit, but restore can race if the
+			// user untrashes before that stop fully settles. Force the previous session to
+			// finish exiting before we ask the runtime to resume the conversation.
+			await stopTaskSession(taskId, { waitForExit: true });
+
 			// Non-isolated tasks run in the home repo — no worktree to ensure.
 			if (!isNonIsolatedTask(task)) {
 				const ensured = await ensureTaskWorktree(task);
@@ -151,7 +158,7 @@ export function useTaskLifecycle({
 			notifyError(resumed.message ?? "Could not resume task session.");
 			revertToTrash();
 		},
-		[ensureTaskWorktree, setBoard, startTaskSession],
+		[ensureTaskWorktree, setBoard, startTaskSession, stopTaskSession],
 	);
 
 	return { kickoffTaskInProgress, resumeTaskFromTrash };

@@ -466,6 +466,7 @@ describe("useBoardInteractions", () => {
 		const setBoard = vi.fn<Dispatch<SetStateAction<BoardData>>>((_nextBoard) => {
 			// The optimistic move is not part of this assertion.
 		});
+		const stopTaskSession = vi.fn(async () => {});
 		const ensureTaskWorktree = vi.fn(async () => ({
 			ok: true as const,
 			response: {
@@ -485,6 +486,7 @@ describe("useBoardInteractions", () => {
 					setBoard={setBoard}
 					ensureTaskWorktree={ensureTaskWorktree}
 					startTaskSession={startTaskSession}
+					stopTaskSession={stopTaskSession}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -512,6 +514,7 @@ describe("useBoardInteractions", () => {
 			baseRef: trashTask.baseRef,
 			createdAt: trashTask.createdAt,
 		});
+		expect(stopTaskSession).toHaveBeenCalledWith("task-trash", { waitForExit: true });
 		expect(ensureTaskWorktree).toHaveBeenCalledWith(expectedTask);
 		expect(startTaskSession).toHaveBeenCalledWith(expectedTask, { resumeConversation: true, awaitReview: true });
 		expect(showAppToastMock).toHaveBeenCalledWith({
@@ -520,6 +523,89 @@ describe("useBoardInteractions", () => {
 			message: "Saved task changes could not be reapplied automatically.",
 			timeout: 7000,
 		});
+	});
+
+	it("waits for any lingering task session exit before restoring a trashed task", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		useProgrammaticCardMovesMock.mockReturnValue({
+			handleProgrammaticCardMoveReady: () => {},
+			setRequestMoveTaskToTrashHandler: () => {},
+			tryProgrammaticCardMove: () => "unavailable",
+			consumeProgrammaticCardMove: () => ({}),
+			resolvePendingProgrammaticTrashMove: () => {},
+			waitForProgrammaticCardMoveAvailability: async () => {},
+			resetProgrammaticCardMoves: () => {},
+			requestMoveTaskToTrashWithAnimation: async () => {},
+			programmaticCardMoveCycle: 0,
+		});
+
+		useLinkedBacklogTaskActionsMock.mockReturnValue({
+			handleCreateDependency: () => {},
+			handleDeleteDependency: () => {},
+			confirmMoveTaskToTrash: async () => {},
+			requestMoveTaskToTrash: async () => {},
+		});
+
+		const trashTask = createTask("task-trash", "Trash task", 2);
+		const board: BoardData = {
+			columns: [
+				{ id: "backlog", title: "Backlog", cards: [] },
+				{ id: "in_progress", title: "In Progress", cards: [] },
+				{ id: "review", title: "Review", cards: [] },
+				{ id: "trash", title: "Trash", cards: [trashTask] },
+			],
+			dependencies: [],
+		};
+		const callOrder: string[] = [];
+		const stopTaskSession = vi.fn(async () => {
+			callOrder.push("stop");
+		});
+		const ensureTaskWorktree = vi.fn(async () => {
+			callOrder.push("ensure");
+			return {
+				ok: true as const,
+				response: {
+					ok: true as const,
+					path: "/tmp/task-trash",
+					baseRef: "main",
+					baseCommit: "abc123",
+				},
+			};
+		});
+		const startTaskSession = vi.fn(async () => {
+			callOrder.push("start");
+			return { ok: true as const };
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={board}
+					setBoard={vi.fn<Dispatch<SetStateAction<BoardData>>>()}
+					ensureTaskWorktree={ensureTaskWorktree}
+					startTaskSession={startTaskSession}
+					stopTaskSession={stopTaskSession}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (!latestSnapshot) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			latestSnapshot!.handleRestoreTaskFromTrash("task-trash");
+			for (let i = 0; i < 10; i++) {
+				await Promise.resolve();
+			}
+		});
+
+		expect(stopTaskSession).toHaveBeenCalledWith("task-trash", { waitForExit: true });
+		expect(callOrder).toEqual(["stop", "ensure", "start"]);
 	});
 
 	it("restarts a session from in_progress with resumeConversation and without awaitReview", async () => {

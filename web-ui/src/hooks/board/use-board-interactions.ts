@@ -107,6 +107,7 @@ export function useBoardInteractions({
 	const { kickoffTaskInProgress, resumeTaskFromTrash } = useTaskLifecycle({
 		setBoard,
 		selectedTaskId,
+		stopTaskSession,
 		ensureTaskWorktree,
 		startTaskSession,
 		fetchTaskWorktreeInfo,

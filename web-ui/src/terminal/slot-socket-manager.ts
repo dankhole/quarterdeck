@@ -29,6 +29,7 @@ export class SlotSocketManager {
 	private ioSocket: WebSocket | null = null;
 	private controlSocket: WebSocket | null = null;
 	private outputTextDecoder = new TextDecoder();
+	private pendingRestoreRequest = false;
 	connectionReady = false;
 	restoreCompleted = false;
 
@@ -118,6 +119,7 @@ export class SlotSocketManager {
 			this.outputTextDecoder = new TextDecoder();
 			this.connectionReady = false;
 			this.restoreCompleted = false;
+			this.pendingRestoreRequest = false;
 			this.callbacks.onLastError("Terminal stream closed. Close and reopen to reconnect.");
 		};
 	}
@@ -193,6 +195,7 @@ export class SlotSocketManager {
 			}
 			this.callbacks.ensureVisible();
 			this.controlSocket = null;
+			this.pendingRestoreRequest = false;
 			this.callbacks.onLastError("Terminal control connection closed. Close and reopen to reconnect.");
 		};
 	}
@@ -200,6 +203,11 @@ export class SlotSocketManager {
 	markRestoreCompleted(): void {
 		this.restoreCompleted = true;
 		this.sendControl({ type: "restore_complete" });
+		if (!this.pendingRestoreRequest) {
+			return;
+		}
+		log.info(`slot ${this.slotId} replaying queued restore request after initial restore`);
+		this.sendRestoreRequest();
 	}
 
 	closeAll(): void {
@@ -218,14 +226,11 @@ export class SlotSocketManager {
 	resetConnectionState(): void {
 		this.connectionReady = false;
 		this.restoreCompleted = false;
+		this.pendingRestoreRequest = false;
 		this.outputTextDecoder = new TextDecoder();
 	}
 
 	requestRestore(): boolean {
-		if (!this.restoreCompleted) {
-			log.warn(`slot ${this.slotId} requestRestore skipped — initial restore not yet complete`);
-			return false;
-		}
 		const socketState = this.controlSocket?.readyState;
 		if (!this.controlSocket || socketState !== WebSocket.OPEN) {
 			log.warn(`slot ${this.slotId} requestRestore skipped — control socket not open`, {
@@ -234,9 +239,19 @@ export class SlotSocketManager {
 			});
 			return false;
 		}
+		if (!this.restoreCompleted) {
+			this.pendingRestoreRequest = true;
+			log.info(`slot ${this.slotId} queued restore request until initial restore completes`);
+			return true;
+		}
+		this.sendRestoreRequest();
+		return true;
+	}
+
+	private sendRestoreRequest(): void {
 		log.info(`slot ${this.slotId} requesting restore from server`);
+		this.pendingRestoreRequest = false;
 		this.restoreCompleted = false;
 		this.sendControl({ type: "request_restore" });
-		return true;
 	}
 }

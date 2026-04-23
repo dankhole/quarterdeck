@@ -86,8 +86,8 @@ export class TerminalAttachmentController {
 					},
 				});
 			},
-			onSummaryStateChange: (summary, previousState) => {
-				this.handleSessionStateChange(summary, previousState);
+			onSummaryStateChange: (summary, previousSummary) => {
+				this.handleSessionStateChange(summary, previousSummary);
 			},
 			onExit: (code) => {
 				this.handleSessionExit(code);
@@ -103,8 +103,13 @@ export class TerminalAttachmentController {
 
 	private handleSessionStateChange(
 		summary: RuntimeTaskSessionSummary,
-		previousState: RuntimeTaskSessionSummary["state"] | undefined,
+		previousSummary: RuntimeTaskSessionSummary | null,
 	): void {
+		const previousState = previousSummary?.state;
+		const sessionInstanceChanged =
+			previousSummary !== null &&
+			(summary.startedAt !== previousSummary.startedAt || summary.pid !== previousSummary.pid);
+
 		if (
 			(this.visibleContainer ?? this.stageContainer) &&
 			summary.state !== previousState &&
@@ -113,6 +118,10 @@ export class TerminalAttachmentController {
 			(summary.state === "running" || summary.state === "awaiting_review")
 		) {
 			this.viewport.forceResize();
+		}
+
+		if ((this.visibleContainer ?? this.stageContainer) && sessionInstanceChanged) {
+			this.requestRestore();
 		}
 	}
 

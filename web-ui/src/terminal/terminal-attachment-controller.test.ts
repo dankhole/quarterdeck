@@ -2,20 +2,27 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const viewportInstances: Array<{
 	forceResize: ReturnType<typeof vi.fn>;
+	stageContainer: HTMLDivElement | null;
 }> = [];
 const sessionInstances: Array<{
 	requestRestore: ReturnType<typeof vi.fn>;
 	sessionAgentId: "claude" | "codex" | null;
+	emitSummaryStateChange: (summary: {
+		state: "idle" | "running" | "awaiting_review" | "interrupted" | "failed";
+		startedAt: number | null;
+		pid: number | null;
+	}) => void;
 }> = [];
 
 let nextSessionAgentId: "claude" | "codex" | null = null;
 
 vi.mock("@/terminal/terminal-viewport", () => ({
-	TerminalViewport: vi.fn(function () {
+	TerminalViewport: vi.fn(function TerminalViewportMock() {
+		const stageContainer = document.createElement("div");
 		const instance = {
 			forceResize: vi.fn(),
 			visibleContainer: null,
-			stageContainer: null,
+			stageContainer,
 			ensureVisible: vi.fn(),
 			invalidateResize: vi.fn(),
 			requestResize: vi.fn(),
@@ -47,7 +54,15 @@ vi.mock("@/terminal/terminal-viewport", () => ({
 }));
 
 vi.mock("@/terminal/terminal-session-handle", () => ({
-	TerminalSessionHandle: vi.fn(function () {
+	TerminalSessionHandle: vi.fn(function TerminalSessionHandleMock(
+		_slotId: number,
+		callbacks: { onSummaryStateChange: (summary: unknown, previousSummary: unknown) => void },
+	) {
+		let latestSummary: {
+			state: "idle" | "running" | "awaiting_review" | "interrupted" | "failed";
+			startedAt: number | null;
+			pid: number | null;
+		} | null = null;
 		const instance = {
 			requestRestore: vi.fn(),
 			sessionAgentId: nextSessionAgentId,
@@ -70,6 +85,14 @@ vi.mock("@/terminal/terminal-session-handle", () => ({
 			publishOutputText: vi.fn(),
 			notifyConnectionReadyAfterRestore: vi.fn(),
 			notifyInteractiveShown: vi.fn(),
+			emitSummaryStateChange: (summary: {
+				state: "idle" | "running" | "awaiting_review" | "interrupted" | "failed";
+				startedAt: number | null;
+				pid: number | null;
+			}) => {
+				callbacks.onSummaryStateChange(summary, latestSummary);
+				latestSummary = summary;
+			},
 		};
 		sessionInstances.push(instance);
 		return instance;
@@ -139,5 +162,37 @@ describe("TerminalAttachmentController", () => {
 
 		expect(viewport.forceResize).not.toHaveBeenCalled();
 		expect(session.requestRestore).toHaveBeenCalledOnce();
+	});
+
+	it("requests a fresh restore when the same task reports a new session instance", () => {
+		new TerminalAttachmentController(
+			1,
+			{ cursorColor: "cursor", terminalBackgroundColor: "background" },
+			{ isDisposed: () => false },
+		);
+		const session = getLatestSession();
+
+		session.emitSummaryStateChange({ state: "awaiting_review", startedAt: 100, pid: 111 });
+		session.requestRestore.mockClear();
+
+		session.emitSummaryStateChange({ state: "awaiting_review", startedAt: 200, pid: 222 });
+
+		expect(session.requestRestore).toHaveBeenCalledOnce();
+	});
+
+	it("does not request restore for summary updates on the same session instance", () => {
+		new TerminalAttachmentController(
+			1,
+			{ cursorColor: "cursor", terminalBackgroundColor: "background" },
+			{ isDisposed: () => false },
+		);
+		const session = getLatestSession();
+
+		session.emitSummaryStateChange({ state: "awaiting_review", startedAt: 100, pid: 111 });
+		session.requestRestore.mockClear();
+
+		session.emitSummaryStateChange({ state: "awaiting_review", startedAt: 100, pid: 111 });
+
+		expect(session.requestRestore).not.toHaveBeenCalled();
 	});
 });

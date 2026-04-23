@@ -60,14 +60,6 @@ Move from a browser-based UI to a standalone desktop application, similar to how
 - How to handle the transition period — support both standalone and browser mode, or cut over?
 - Multi-project windowing model — one window per project, or tabbed projects within a single window?
 
-## Fix session persistence across restart and un-trash
-
-Three overlapping problems with session continuity:
-
-- ~~**Sessions break after crash/closure**~~: **Fixed.** Running sessions are marked as interrupted during hydration. On first UI WebSocket connection, the server resumes them with `--continue` and `awaitReview=true` so they land in review (the agent is at its prompt, not actively working). Auto-restart on crash also uses `awaitReview=true`. Terminal scrollback from before the crash is still lost (in-memory only), but the agent picks up where it left off.
-- ~~**Auto-trashing on graceful shutdown**~~: **Fixed.** Graceful shutdown preserves cards in their columns and marks sessions as "interrupted". The UI no longer auto-trashes interrupted sessions — the server owns the interrupted→review transition via `autorestart.denied`.
-- **Un-trash doesn't reliably auto-resume**: After un-trashing a task, the terminal sometimes shows the original prompt but not the rest of the conversation context. Manually typing `/resume` works and brings back the full session. Investigate why auto-resume doesn't reliably trigger on un-trash.
-
 ## Branch management in git view
 
 Add branch operations within the git view. The branch pill, git stats, fetch/pull/push, and right-click context menus already exist — this is about adding the interactive git operations on top.
