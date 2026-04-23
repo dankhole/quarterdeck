@@ -192,58 +192,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 		expect(claudeLaunch.args).toContain("--continue");
 	});
-
-	it("applies autonomous mode flags in adapters", async () => {
-		setupTempHome();
-
-		const claudeLaunch = await prepareAgentLaunch({
-			taskId: "task-claude-auto",
-			agentId: "claude",
-			binary: "claude",
-			args: [],
-			autonomousModeEnabled: true,
-			cwd: "/tmp",
-			prompt: "",
-		});
-		expect(claudeLaunch.args).toContain("--dangerously-skip-permissions");
-
-		const codexLaunch = await prepareAgentLaunch({
-			taskId: "task-codex-auto",
-			agentId: "codex",
-			binary: "codex",
-			args: [],
-			autonomousModeEnabled: true,
-			cwd: "/tmp",
-			prompt: "",
-		});
-		expect(codexLaunch.args).toContain("--dangerously-bypass-approvals-and-sandbox");
-	});
-
-	it("preserves explicit autonomous args when autonomous mode is disabled", async () => {
-		setupTempHome();
-
-		const claudeLaunch = await prepareAgentLaunch({
-			taskId: "task-claude-no-auto",
-			agentId: "claude",
-			binary: "claude",
-			args: ["--dangerously-skip-permissions"],
-			autonomousModeEnabled: false,
-			cwd: "/tmp",
-			prompt: "",
-		});
-		expect(claudeLaunch.args).toContain("--dangerously-skip-permissions");
-
-		const codexLaunch = await prepareAgentLaunch({
-			taskId: "task-codex-no-auto",
-			agentId: "codex",
-			binary: "codex",
-			args: ["--dangerously-bypass-approvals-and-sandbox"],
-			autonomousModeEnabled: false,
-			cwd: "/tmp",
-			prompt: "",
-		});
-		expect(codexLaunch.args).toContain("--dangerously-bypass-approvals-and-sandbox");
-	});
 });
 
 describe("worktree context system prompt", () => {

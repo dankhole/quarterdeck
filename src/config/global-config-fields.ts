@@ -101,7 +101,6 @@ function enumField<T extends string>(defaultValue: T, allowed: readonly T[]): Co
 // in runtime-config.ts.
 
 export const GLOBAL_CONFIG_FIELDS = {
-	agentAutonomousModeEnabled: boolField(false),
 	readyForReviewNotificationsEnabled: boolField(true),
 	shellAutoRestartEnabled: boolField(true),
 	showSummaryOnCards: boolField(false),

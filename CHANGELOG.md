@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Remove: agent autonomous mode / bypass permissions feature
+
+- Removed the "bypass permissions" settings toggle and the entire autonomous mode feature end-to-end — config field, API schemas, agent catalog `autonomousArgs`, adapter injection logic for both Claude (`--dangerously-skip-permissions`) and Codex (`--dangerously-bypass-approvals-and-sandbox`), session request plumbing, settings UI checkbox, and all related tests.
+
 ### Fix: clarify worktree system prompt is Claude Code only
 
 - Updated settings UI copy from "the agent's system prompt" to "Claude Code's system prompt" — Codex has no equivalent injection, so the generic phrasing was misleading.

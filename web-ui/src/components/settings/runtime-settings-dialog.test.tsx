@@ -13,7 +13,6 @@ vi.mock("@runtime-agent-catalog", () => ({
 	getRuntimeAgentCatalogEntry: vi.fn((agentId: string) => ({
 		id: agentId,
 		installUrl: null,
-		autonomousArgs: [],
 	})),
 	getRuntimeLaunchSupportedAgentCatalog: vi.fn(() => [
 		{ id: "claude", label: "Claude Code", binary: "claude" },

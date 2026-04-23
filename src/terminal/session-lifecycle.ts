@@ -84,7 +84,6 @@ export async function spawnTaskSession(
 			agentId: request.agentId,
 			binary: request.binary,
 			args: request.args,
-			autonomousModeEnabled: request.autonomousModeEnabled,
 			cwd: request.cwd,
 			prompt: request.prompt,
 			images: request.images,

@@ -5,7 +5,6 @@ export interface RuntimeAgentCatalogEntry {
 	label: string;
 	binary: string;
 	baseArgs: string[];
-	autonomousArgs: string[];
 	installUrl: string;
 }
 
@@ -15,7 +14,6 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		label: "Claude Code",
 		binary: "claude",
 		baseArgs: [],
-		autonomousArgs: ["--dangerously-skip-permissions"],
 		installUrl: "https://docs.anthropic.com/en/docs/claude-code/quickstart",
 	},
 	{
@@ -23,7 +21,6 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		label: "OpenAI Codex",
 		binary: "codex",
 		baseArgs: [],
-		autonomousArgs: ["--dangerously-bypass-approvals-and-sandbox"],
 		installUrl: "https://github.com/openai/codex",
 	},
 ];

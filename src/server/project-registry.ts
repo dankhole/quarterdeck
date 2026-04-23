@@ -478,7 +478,6 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 					agentId: resolved.agentId,
 					binary: resolved.binary,
 					args: resolved.args,
-					autonomousModeEnabled: runtimeConfig.agentAutonomousModeEnabled,
 					cwd,
 					prompt: "",
 					resumeConversation: true,

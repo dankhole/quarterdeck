@@ -54,7 +54,6 @@ export interface StartTaskSessionRequest {
 	agentId: AgentAdapterLaunchInput["agentId"];
 	binary: string;
 	args: string[];
-	autonomousModeEnabled?: boolean;
 	cwd: string;
 	prompt: string;
 	images?: RuntimeTaskImage[];

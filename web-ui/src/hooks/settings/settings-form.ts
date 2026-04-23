@@ -15,7 +15,6 @@ import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } fr
 
 export interface SettingsFormValues {
 	selectedAgentId: RuntimeAgentId;
-	agentAutonomousModeEnabled: boolean;
 	showSummaryOnCards: boolean;
 	autoGenerateSummary: boolean;
 	summaryStaleAfterSeconds: number;
@@ -63,7 +62,6 @@ export function resolveInitialValues(
 ): SettingsFormValues {
 	return {
 		selectedAgentId: config?.selectedAgentId ?? fallbackAgentId,
-		agentAutonomousModeEnabled: config?.agentAutonomousModeEnabled ?? CONFIG_DEFAULTS.agentAutonomousModeEnabled,
 		showSummaryOnCards: config?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
 		autoGenerateSummary: config?.autoGenerateSummary ?? CONFIG_DEFAULTS.autoGenerateSummary,
 		summaryStaleAfterSeconds: config?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds,

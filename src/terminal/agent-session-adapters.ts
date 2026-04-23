@@ -16,7 +16,6 @@ export interface AgentAdapterLaunchInput {
 	agentId: RuntimeAgentId;
 	binary?: string;
 	args: string[];
-	autonomousModeEnabled?: boolean;
 	cwd: string;
 	prompt: string;
 	images?: RuntimeTaskImage[];
@@ -148,13 +147,6 @@ const claudeAdapter: AgentSessionAdapter = {
 		const env: Record<string, string | undefined> = {
 			FORCE_HYPERLINK: "1",
 		};
-		if (
-			input.autonomousModeEnabled &&
-			!input.startInPlanMode &&
-			!hasCliOption(args, "--dangerously-skip-permissions")
-		) {
-			args.push("--dangerously-skip-permissions");
-		}
 		if (input.resumeConversation && !hasCliOption(args, "--continue")) {
 			args.push("--continue");
 		}
@@ -321,10 +313,6 @@ const codexAdapter: AgentSessionAdapter = {
 		let binary = input.binary;
 		let deferredStartupInput: string | undefined;
 
-		if (input.autonomousModeEnabled && !hasCliOption(codexArgs, "--dangerously-bypass-approvals-and-sandbox")) {
-			codexArgs.push("--dangerously-bypass-approvals-and-sandbox");
-		}
-
 		if (input.resumeConversation) {
 			if (!codexArgs.includes("resume")) {
 				codexArgs.push("resume");
@@ -401,7 +389,6 @@ export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promis
 		imageCount: input.images?.length ?? 0,
 		resumeConversation: input.resumeConversation ?? false,
 		startInPlanMode: input.startInPlanMode ?? false,
-		autonomousMode: input.autonomousModeEnabled ?? false,
 	});
 	const preparedPrompt = await prepareTaskPromptWithImages({
 		prompt: input.prompt,

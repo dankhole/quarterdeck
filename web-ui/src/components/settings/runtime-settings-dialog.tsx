@@ -1,5 +1,5 @@
 // Settings dialog composition for Quarterdeck.
-import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } from "@runtime-agent-catalog";
+import { getRuntimeLaunchSupportedAgentCatalog } from "@runtime-agent-catalog";
 import { DEFAULT_PROMPT_SHORTCUTS } from "@runtime-config-defaults";
 import { ExternalLink, Settings } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -32,18 +32,6 @@ import type { RuntimeAgentId, RuntimeConfigResponse } from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { toErrorMessage } from "@/utils/to-error-message";
-
-function quoteCommandPartForDisplay(part: string): string {
-	if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(part)) {
-		return part;
-	}
-	return JSON.stringify(part);
-}
-
-function buildDisplayedAgentCommand(agentId: RuntimeAgentId, binary: string, autonomousModeEnabled: boolean): string {
-	const args = autonomousModeEnabled ? (getRuntimeAgentCatalogEntry(agentId)?.autonomousArgs ?? []) : [];
-	return [binary, ...args.map(quoteCommandPartForDisplay)].join(" ");
-}
 
 export type RuntimeSettingsSection = "shortcuts";
 
@@ -104,14 +92,14 @@ export function RuntimeSettingsDialog({
 	// Consolidated form state — dirty check, reset, and save payload are automatic
 	const { fields, setField, hasUnsavedChanges } = useSettingsForm(config, open, fallbackAgentId);
 
-	// Agent display models (depends on form state for command string)
+	// Agent display models
 	const supportedAgents = useMemo<AgentRowModel[]>(
 		() =>
 			orderedAgents.map((agent) => ({
 				...agent,
-				command: buildDisplayedAgentCommand(agent.id, agent.binary, fields.agentAutonomousModeEnabled),
+				command: agent.binary,
 			})),
-		[orderedAgents, fields.agentAutonomousModeEnabled],
+		[orderedAgents],
 	);
 
 	// Reset default prompt shortcuts — visibility

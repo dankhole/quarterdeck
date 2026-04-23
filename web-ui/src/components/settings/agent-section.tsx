@@ -1,10 +1,9 @@
-// Settings section: agent selection, autonomous mode, and worktree system prompt.
+// Settings section: agent selection and worktree system prompt.
 import { getRuntimeAgentCatalogEntry } from "@runtime-agent-catalog";
 import { Circle, CircleDot } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
-import { SettingsCheckbox } from "@/components/ui/settings-controls";
 import type { RuntimeAgentId, RuntimeConfigResponse } from "@/runtime/types";
 import type { SettingsSectionProps } from "./settings-section-props";
 
@@ -106,7 +105,6 @@ export function AgentSection({
 	configLoaded: boolean;
 	config: RuntimeConfigResponse | null;
 }): React.ReactElement {
-	const bypassPermissionsCheckboxId = "runtime-settings-bypass-permissions";
 	const [systemPromptExpanded, setSystemPromptExpanded] = useState(false);
 
 	const defaultTemplate = config?.worktreeSystemPromptTemplateDefault ?? "";
@@ -131,21 +129,6 @@ export function AgentSection({
 			{!configLoaded ? (
 				<p className="text-text-secondary py-2">Checking which CLIs are installed for this project...</p>
 			) : null}
-			<label
-				htmlFor={bypassPermissionsCheckboxId}
-				className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
-			>
-				<SettingsCheckbox
-					id={bypassPermissionsCheckboxId}
-					checked={fields.agentAutonomousModeEnabled}
-					onCheckedChange={(v) => setField("agentAutonomousModeEnabled", v)}
-					disabled={disabled}
-				/>
-				<span>Enable bypass permissions flag</span>
-			</label>
-			<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
-				Allows agents to use tools without stopping for permission. Use at your own risk.
-			</p>
 
 			<div className="mt-3">
 				<div className="flex items-center justify-between">

@@ -102,11 +102,9 @@ describe.sequential("runtime-config persistence", () => {
 
 				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
 					selectedAgentId?: string;
-					agentAutonomousModeEnabled?: boolean;
 					readyForReviewNotificationsEnabled?: boolean;
 				};
 				expect(globalPayload.selectedAgentId).toBeUndefined();
-				expect(globalPayload.agentAutonomousModeEnabled).toBeUndefined();
 				expect(globalPayload.readyForReviewNotificationsEnabled).toBeUndefined();
 				expect(existsSync(join(projectDir, "config.json"))).toBe(false);
 			});
@@ -131,7 +129,6 @@ describe.sequential("runtime-config persistence", () => {
 					projectId,
 					createDefaultRuntimeConfigSaveRequest({
 						selectedAgentId: "codex",
-						agentAutonomousModeEnabled: true,
 					}),
 				);
 
@@ -156,7 +153,6 @@ describe.sequential("runtime-config persistence", () => {
 					projectId,
 					createDefaultRuntimeConfigSaveRequest({
 						selectedAgentId: "codex",
-						agentAutonomousModeEnabled: true,
 						shortcuts: [{ label: "Ship", command: "npm run ship", icon: "rocket" }],
 					}),
 				);
@@ -188,38 +184,11 @@ describe.sequential("runtime-config persistence", () => {
 				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
 					selectedAgentId?: string;
 					selectedShortcutLabel?: string;
-					agentAutonomousModeEnabled?: boolean;
 					readyForReviewNotificationsEnabled?: boolean;
 				};
 				expect(globalPayload.selectedAgentId).toBe("codex");
 				expect(globalPayload.selectedShortcutLabel).toBeUndefined();
-				expect(globalPayload.agentAutonomousModeEnabled).toBeUndefined();
 				expect(globalPayload.readyForReviewNotificationsEnabled).toBeUndefined();
-			});
-		} finally {
-			cleanupHome();
-		}
-	});
-
-	it("persists autonomous mode when enabled", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir(
-			"quarterdeck-home-runtime-config-autonomous-enabled-",
-		);
-
-		try {
-			await withTemporaryEnv({ home: tempHome }, async () => {
-				const updated = await updateRuntimeConfig(null, {
-					agentAutonomousModeEnabled: true,
-				});
-				expect(updated.agentAutonomousModeEnabled).toBe(true);
-
-				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
-					agentAutonomousModeEnabled?: boolean;
-				};
-				expect(globalPayload.agentAutonomousModeEnabled).toBe(true);
-
-				const reloaded = await loadRuntimeConfig(null);
-				expect(reloaded.agentAutonomousModeEnabled).toBe(true);
 			});
 		} finally {
 			cleanupHome();
@@ -233,21 +202,21 @@ describe.sequential("runtime-config persistence", () => {
 			await withTemporaryEnv({ home: tempHome }, async () => {
 				await loadRuntimeConfig(null);
 
-				const [selectedAgentState, autonomousModeState] = await Promise.all([
+				const [selectedAgentState, notificationsState] = await Promise.all([
 					updateRuntimeConfig(null, {
 						selectedAgentId: "codex",
 					}),
 					updateRuntimeConfig(null, {
-						agentAutonomousModeEnabled: false,
+						readyForReviewNotificationsEnabled: false,
 					}),
 				]);
 
 				expect(selectedAgentState.selectedAgentId).toBe("codex");
-				expect(autonomousModeState.agentAutonomousModeEnabled).toBe(false);
+				expect(notificationsState.readyForReviewNotificationsEnabled).toBe(false);
 
 				const reloaded = await loadRuntimeConfig(null);
 				expect(reloaded.selectedAgentId).toBe("codex");
-				expect(reloaded.agentAutonomousModeEnabled).toBe(false);
+				expect(reloaded.readyForReviewNotificationsEnabled).toBe(false);
 			});
 		} finally {
 			cleanupHome();

@@ -33,11 +33,9 @@ describe.sequential("runtime-config auto agent selection", () => {
 					expect(state.selectedAgentId).toBe("codex");
 					const persisted = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
 						selectedAgentId?: string;
-						agentAutonomousModeEnabled?: boolean;
 						readyForReviewNotificationsEnabled?: boolean;
 					};
 					expect(persisted.selectedAgentId).toBe("codex");
-					expect(persisted.agentAutonomousModeEnabled).toBeUndefined();
 					expect(persisted.readyForReviewNotificationsEnabled).toBeUndefined();
 
 					const reloadedState = await loadRuntimeConfig(null);

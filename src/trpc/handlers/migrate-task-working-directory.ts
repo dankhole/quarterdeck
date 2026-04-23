@@ -113,7 +113,6 @@ export async function handleMigrateTaskWorkingDirectory(
 				agentId: summary?.agentId ?? resolved.agentId,
 				binary: resolved.binary,
 				args: resolved.args,
-				autonomousModeEnabled: scopedRuntimeConfig.agentAutonomousModeEnabled,
 				cwd,
 				prompt: "",
 				resumeConversation,

@@ -70,7 +70,6 @@ type TestAudibleNotificationConfigOverrides = Omit<
 const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	selectedAgentId: CONFIG_DEFAULTS.selectedAgentId,
 	selectedShortcutLabel: null,
-	agentAutonomousModeEnabled: CONFIG_DEFAULTS.agentAutonomousModeEnabled,
 	debugModeEnabled: false,
 	effectiveCommand: "claude",
 	globalConfigPath: "/tmp/global-config.json",

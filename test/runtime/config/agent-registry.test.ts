@@ -39,33 +39,14 @@ describe("agent-registry", () => {
 });
 
 describe("buildRuntimeConfigResponse", () => {
-	it("keeps curated agent default args independent of autonomous mode", () => {
-		const config = createTestRuntimeConfigState({
-			agentAutonomousModeEnabled: true,
-		});
+	it("includes curated agent definitions with empty default args", () => {
+		const config = createTestRuntimeConfigState();
 
 		const response = buildRuntimeConfigResponse(config);
 
-		expect(response.agentAutonomousModeEnabled).toBe(true);
 		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex"]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
-	});
-
-	it("omits autonomous flags from curated agent commands when disabled", () => {
-		const config = createTestRuntimeConfigState({
-			agentAutonomousModeEnabled: false,
-		});
-		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "claude");
-
-		const response = buildRuntimeConfigResponse(config);
-
-		expect(response.agentAutonomousModeEnabled).toBe(false);
-		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex"]);
-		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
-		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
-		expect(response.agents.find((agent) => agent.id === "claude")?.command).toBe("claude");
-		expect(response.agents.find((agent) => agent.id === "codex")?.command).toBe("codex");
 	});
 
 	it("sets debug mode from runtime environment variables", () => {
