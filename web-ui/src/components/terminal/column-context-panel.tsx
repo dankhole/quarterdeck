@@ -47,7 +47,6 @@ function ColumnSection({
 		onRegenerateTitleTask,
 		onUpdateTaskTitle,
 		onTogglePinTask,
-		onMigrateWorkingDirectory,
 		onRequestDisplaySummary,
 		onTerminalWarmup,
 		onTerminalCancelWarmup,
@@ -55,7 +54,6 @@ function ColumnSection({
 	} = useStableCardActions();
 	const {
 		moveToTrashLoadingById,
-		migratingTaskId,
 		isLlmGenerationDisabled,
 		showSummaryOnCards,
 		uncommittedChangesOnCardsEnabled,
@@ -193,8 +191,6 @@ function ColumnSection({
 								onHardDelete={onHardDeleteTrashTask}
 								onCancelAutomaticAction={onCancelAutomaticTaskAction}
 								isMoveToTrashLoading={moveToTrashLoadingById[card.id] ?? false}
-								onMigrateWorkingDirectory={onMigrateWorkingDirectory}
-								isMigrateLoading={migratingTaskId === card.id}
 								onRegenerateTitle={onRegenerateTitleTask}
 								isLlmGenerationDisabled={isLlmGenerationDisabled}
 								onUpdateTitle={onUpdateTaskTitle}

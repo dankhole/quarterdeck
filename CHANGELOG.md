@@ -2,9 +2,9 @@
 
 ## [Unreleased]
 
-### Remove: agent autonomous mode / bypass permissions feature
+### Refactor: remove task working-directory migration
 
-- Removed the "bypass permissions" settings toggle and the entire autonomous mode feature end-to-end — config field, API schemas, agent catalog `autonomousArgs`, adapter injection logic for both Claude (`--dangerously-skip-permissions`) and Codex (`--dangerously-bypass-approvals-and-sandbox`), session request plumbing, settings UI checkbox, and all related tests.
+- Removed the end-to-end "Move to main checkout" / "Isolate to worktree" feature: the runtime mutation, websocket delta, board sync hook, confirmation dialog, and board-card action are gone, so task working directories are now chosen at task creation/start time and no longer hot-swapped mid-session.
 
 ### Fix: clarify worktree system prompt is Claude Code only
 

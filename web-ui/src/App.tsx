@@ -306,10 +306,6 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 	const {
 		stableCardActions,
 		reactiveCardState,
-		pendingMigrate,
-		migratingTaskId,
-		handleConfirmMigrate,
-		cancelMigrate,
 		handleMainViewChange,
 		handleCardSelectWithFocus,
 		handleCardDoubleClick,
@@ -323,7 +319,6 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		board: boardContext,
 		navigation,
 		interactions,
-		serverMutationInFlightRef,
 	});
 
 	const { sidebarAreaRef, homeSidePanelPercent, handleHomeSidePanelSeparatorMouseDown } = useHomeSidePanelResize({
@@ -594,13 +589,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 							homeGitSummary={homeGitSummary}
 						/>
 					)}
-					<AppDialogs
-						savePromptShortcuts={savePromptShortcuts}
-						pendingMigrate={pendingMigrate}
-						migratingTaskId={migratingTaskId}
-						cancelMigrate={cancelMigrate}
-						handleConfirmMigrate={handleConfirmMigrate}
-					/>
+					<AppDialogs savePromptShortcuts={savePromptShortcuts} />
 					{isFileFinderOpen && (
 						<FileFinderOverlay
 							projectId={project.currentProjectId}

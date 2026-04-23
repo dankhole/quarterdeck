@@ -2,7 +2,6 @@ export { CardDetailView } from "./card-detail-view";
 export { ClearTrashDialog } from "./clear-trash-dialog";
 export { HardDeleteTaskDialog } from "./hard-delete-task-dialog";
 export { InlineTitleEditor } from "./inline-title-editor";
-export { MigrateWorkingDirectoryDialog } from "./migrate-working-directory-dialog";
 export { TaskCreateDialog } from "./task-create-dialog";
 export type { TaskBranchOption, TaskInlineCardMode } from "./task-inline-create-card";
 export { TaskInlineCreateCard } from "./task-inline-create-card";

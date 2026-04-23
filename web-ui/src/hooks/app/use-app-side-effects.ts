@@ -1,7 +1,7 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { useCallback, useEffect, useMemo } from "react";
 import { showAppToast } from "@/components/app-toaster";
-import { useBoardMetadataSync, useTaskBaseRefSync, useTaskTitleSync, useTaskWorkingDirectorySync } from "@/hooks/board";
+import { useBoardMetadataSync, useTaskBaseRefSync, useTaskTitleSync } from "@/hooks/board";
 import {
 	useAudibleNotifications,
 	useFocusedTaskNotification,
@@ -78,10 +78,6 @@ export function useAppSideEffects({
 
 	useTaskTitleSync({ latestTaskTitleUpdate: project.latestTaskTitleUpdate, setBoard: board.setBoard });
 	useTaskBaseRefSync({ latestTaskBaseRefUpdate: project.latestTaskBaseRefUpdate, setBoard: board.setBoard });
-	useTaskWorkingDirectorySync({
-		latestTaskWorkingDirectoryUpdate: project.latestTaskWorkingDirectoryUpdate,
-		setBoard: board.setBoard,
-	});
 	useStreamErrorHandler({ streamError: project.streamError, isRuntimeDisconnected: project.isRuntimeDisconnected });
 
 	useProjectSwitchCleanup({

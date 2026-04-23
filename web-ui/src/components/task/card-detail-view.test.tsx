@@ -151,7 +151,6 @@ function requireSidePanel(container: HTMLElement): HTMLElement {
 const noopStableActions: StableCardActions = {};
 const noopReactiveState: ReactiveCardState = {
 	moveToTrashLoadingById: {},
-	migratingTaskId: null,
 	isLlmGenerationDisabled: false,
 	showSummaryOnCards: false,
 	uncommittedChangesOnCardsEnabled: false,

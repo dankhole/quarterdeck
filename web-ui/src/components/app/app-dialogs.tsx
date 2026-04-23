@@ -12,14 +12,7 @@ import {
 	ResetToRefDialog,
 } from "@/components/git/panels";
 import { PromptShortcutEditorDialog, RuntimeSettingsDialog } from "@/components/settings";
-import {
-	ClearTrashDialog,
-	HardDeleteTaskDialog,
-	MigrateWorkingDirectoryDialog,
-	TaskCreateDialog,
-	TaskTrashWarningDialog,
-} from "@/components/task";
-import type { MigrateDirection } from "@/hooks/terminal/use-migrate-working-directory";
+import { ClearTrashDialog, HardDeleteTaskDialog, TaskCreateDialog, TaskTrashWarningDialog } from "@/components/task";
 import { useDialogContext } from "@/providers/dialog-provider";
 import { useGitContext } from "@/providers/git-provider";
 import { useInteractionsContext } from "@/providers/interactions-provider";
@@ -30,19 +23,9 @@ import type { PromptShortcut } from "@/runtime/types";
 
 interface AppDialogsProps {
 	savePromptShortcuts: (shortcuts: PromptShortcut[], hiddenDefaults: string[]) => Promise<boolean>;
-	pendingMigrate: { taskId: string; direction: MigrateDirection } | null;
-	migratingTaskId: string | null;
-	cancelMigrate: () => void;
-	handleConfirmMigrate: () => void;
 }
 
-export function AppDialogs({
-	savePromptShortcuts,
-	pendingMigrate,
-	migratingTaskId,
-	cancelMigrate,
-	handleConfirmMigrate,
-}: AppDialogsProps): ReactElement {
+export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactElement {
 	const project = useProjectContext();
 	const projectRuntime = useProjectRuntimeContext();
 	const { createTaskBranchOptions, taskEditor } = useTaskEditorContext();
@@ -275,13 +258,6 @@ export function AppDialogs({
 				}
 				onCancel={git.topbarBranchActions.closeResetToRefDialog}
 				onConfirm={git.topbarBranchActions.handleConfirmResetToRef}
-			/>
-			<MigrateWorkingDirectoryDialog
-				open={pendingMigrate !== null}
-				direction={pendingMigrate?.direction ?? "isolate"}
-				isMigrating={migratingTaskId !== null}
-				onCancel={cancelMigrate}
-				onConfirm={handleConfirmMigrate}
 			/>
 			<ProjectDialogs />
 			<GitActionErrorDialog

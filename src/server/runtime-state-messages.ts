@@ -24,7 +24,6 @@ import type {
 	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeStateStreamTaskSessionsMessage,
 	RuntimeStateStreamTaskTitleUpdatedMessage,
-	RuntimeStateStreamTaskWorkingDirectoryUpdatedMessage,
 	RuntimeTaskSessionSummary,
 } from "../core";
 
@@ -123,21 +122,6 @@ export function buildTaskBaseRefUpdatedMessage(
 		projectId,
 		taskId,
 		baseRef,
-	};
-}
-
-export function buildTaskWorkingDirectoryUpdatedMessage(
-	projectId: string,
-	taskId: string,
-	workingDirectory: string,
-	useWorktree: boolean,
-): RuntimeStateStreamTaskWorkingDirectoryUpdatedMessage {
-	return {
-		type: "task_working_directory_updated",
-		projectId,
-		taskId,
-		workingDirectory,
-		useWorktree,
 	};
 }
 

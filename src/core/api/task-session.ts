@@ -125,21 +125,6 @@ export const runtimeTaskSessionInputResponseSchema = z.object({
 });
 export type RuntimeTaskSessionInputResponse = z.infer<typeof runtimeTaskSessionInputResponseSchema>;
 
-export const runtimeMigrateTaskWorkingDirectoryRequestSchema = z.object({
-	taskId: z.string(),
-	direction: z.enum(["isolate", "de-isolate"]),
-});
-export type RuntimeMigrateTaskWorkingDirectoryRequest = z.infer<typeof runtimeMigrateTaskWorkingDirectoryRequestSchema>;
-
-export const runtimeMigrateTaskWorkingDirectoryResponseSchema = z.object({
-	ok: z.boolean(),
-	error: z.string().optional(),
-	newWorkingDirectory: z.string().optional(),
-});
-export type RuntimeMigrateTaskWorkingDirectoryResponse = z.infer<
-	typeof runtimeMigrateTaskWorkingDirectoryResponseSchema
->;
-
 export const runtimeShellSessionStartRequestSchema = z.object({
 	taskId: z.string(),
 	cols: z.number().int().positive().optional(),

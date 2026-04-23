@@ -10,8 +10,6 @@ import {
 	runtimeConfigSaveRequestSchema,
 	runtimeHookIngestRequestSchema,
 	runtimeHookIngestResponseSchema,
-	runtimeMigrateTaskWorkingDirectoryRequestSchema,
-	runtimeMigrateTaskWorkingDirectoryResponseSchema,
 	runtimeOpenFileRequestSchema,
 	runtimeOpenFileResponseSchema,
 	runtimeProjectAddRequestSchema,
@@ -94,12 +92,6 @@ const runtimeRouter = t.router({
 		.output(runtimeOpenFileResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.runtimeApi.openFile(input);
-		}),
-	migrateTaskWorkingDirectory: projectProcedure
-		.input(runtimeMigrateTaskWorkingDirectoryRequestSchema)
-		.output(runtimeMigrateTaskWorkingDirectoryResponseSchema)
-		.mutation(async ({ ctx, input }) => {
-			return await ctx.runtimeApi.migrateTaskWorkingDirectory(ctx.projectScope, input);
 		}),
 });
 

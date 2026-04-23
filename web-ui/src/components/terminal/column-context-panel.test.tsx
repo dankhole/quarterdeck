@@ -9,7 +9,6 @@ import type { BoardColumn, CardSelection } from "@/types";
 const noopStableActions: StableCardActions = {};
 const noopReactiveState: ReactiveCardState = {
 	moveToTrashLoadingById: {},
-	migratingTaskId: null,
 	isLlmGenerationDisabled: false,
 	showSummaryOnCards: false,
 	uncommittedChangesOnCardsEnabled: false,

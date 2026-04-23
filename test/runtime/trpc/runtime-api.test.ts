@@ -12,10 +12,6 @@ const agentRegistryMocks = vi.hoisted(() => ({
 const taskWorktreeMocks = vi.hoisted(() => ({
 	resolveTaskCwd: vi.fn(),
 	resolveTaskWorkingDirectory: vi.fn((): Promise<string> => Promise.resolve("/tmp/worktree")),
-	captureTaskPatch: vi.fn(),
-	ensureTaskWorktreeIfDoesntExist: vi.fn(),
-	findTaskPatch: vi.fn(),
-	applyTaskPatch: vi.fn(),
 	getTaskWorkingDirectory: vi.fn(),
 	pathExists: vi.fn(async () => true),
 }));
@@ -32,18 +28,6 @@ const taskBoardMutationMocks = vi.hoisted(() => ({
 	findCardInBoard: vi.fn((): Record<string, unknown> | null => null),
 }));
 
-const fsMocks = vi.hoisted(() => ({
-	rm: vi.fn(async () => {}),
-}));
-
-vi.mock("node:fs/promises", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("node:fs/promises")>();
-	return {
-		...actual,
-		rm: fsMocks.rm,
-	};
-});
-
 vi.mock("../../../src/config/agent-registry.js", () => ({
 	resolveAgentCommand: agentRegistryMocks.resolveAgentCommand,
 	buildRuntimeConfigResponse: agentRegistryMocks.buildRuntimeConfigResponse,
@@ -54,10 +38,6 @@ vi.mock("../../../src/workdir/task-worktree.js", () => ({
 	resolveTaskWorkingDirectory: taskWorktreeMocks.resolveTaskWorkingDirectory,
 	getTaskWorkingDirectory: taskWorktreeMocks.getTaskWorkingDirectory,
 	pathExists: taskWorktreeMocks.pathExists,
-	applyTaskPatch: taskWorktreeMocks.applyTaskPatch,
-	captureTaskPatch: taskWorktreeMocks.captureTaskPatch,
-	ensureTaskWorktreeIfDoesntExist: taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist,
-	findTaskPatch: taskWorktreeMocks.findTaskPatch,
 }));
 
 vi.mock("../../../src/workdir/turn-checkpoints.js", () => ({
@@ -153,7 +133,6 @@ function createDeps(flat: Record<string, unknown> = {}) {
 		},
 		broadcaster: {
 			broadcastRuntimeProjectStateUpdated: vi.fn(),
-			broadcastTaskWorkingDirectoryUpdated: vi.fn(),
 			setPollIntervals: vi.fn(),
 			broadcastLogLevel: vi.fn(),
 		},
@@ -408,295 +387,6 @@ describe("createRuntimeApi startTaskSession", () => {
 				agentId: "codex",
 				images,
 			}),
-		);
-	});
-});
-
-describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
-	beforeEach(() => {
-		agentRegistryMocks.resolveAgentCommand.mockReset();
-		taskWorktreeMocks.captureTaskPatch.mockReset();
-		taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist.mockReset();
-		taskWorktreeMocks.findTaskPatch.mockReset();
-		taskWorktreeMocks.applyTaskPatch.mockReset();
-		projectStateMocks.loadProjectState.mockReset();
-		taskBoardMutationMocks.findCardInBoard.mockReset();
-		turnCheckpointMocks.captureTaskTurnCheckpoint.mockReset();
-		fsMocks.rm.mockReset();
-
-		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
-			agentId: "claude",
-			label: "Claude Code",
-			command: "claude",
-			binary: "claude",
-			args: [],
-		});
-		turnCheckpointMocks.captureTaskTurnCheckpoint.mockResolvedValue({
-			turn: 1,
-			ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
-			commit: "1111111",
-			createdAt: Date.now(),
-		});
-	});
-
-	it("isolates a task from main checkout to a worktree", async () => {
-		const card = createCard({ workingDirectory: "/tmp/repo" });
-		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
-		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
-		taskWorktreeMocks.captureTaskPatch.mockResolvedValue(undefined);
-		taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist.mockResolvedValue({
-			ok: true,
-			path: "/tmp/worktree",
-		});
-		taskWorktreeMocks.findTaskPatch.mockResolvedValue({
-			path: "/tmp/patches/task-1.patch",
-			commit: "abc123",
-		});
-		taskWorktreeMocks.applyTaskPatch.mockResolvedValue(undefined);
-		fsMocks.rm.mockResolvedValue(undefined);
-
-		const terminalManager = {
-			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			stopTaskSession: vi.fn(() => createSummary()),
-			stopTaskSessionAndWaitForExit: vi.fn(async () => createSummary()),
-			startTaskSession: vi.fn(async () => createSummary()),
-		};
-		const deps = createDeps(terminalManager);
-		const api = createRuntimeApi(deps);
-
-		const result = await api.migrateTaskWorkingDirectory(defaultScope, {
-			taskId: "task-1",
-			direction: "isolate",
-		});
-
-		expect(result.ok).toBe(true);
-		expect(result.newWorkingDirectory).toBe("/tmp/worktree");
-		expect(terminalManager.stopTaskSessionAndWaitForExit).toHaveBeenCalledWith("task-1");
-		expect(taskWorktreeMocks.captureTaskPatch).toHaveBeenCalled();
-		expect(taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist).toHaveBeenCalled();
-		expect(taskWorktreeMocks.applyTaskPatch).toHaveBeenCalledWith("/tmp/patches/task-1.patch", "/tmp/worktree");
-		expect(deps.broadcaster.broadcastTaskWorkingDirectoryUpdated).toHaveBeenCalledWith(
-			"project-1",
-			"task-1",
-			"/tmp/worktree",
-			true,
-		);
-		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
-			expect.objectContaining({ cwd: "/tmp/worktree", resumeConversation: false }),
-		);
-	});
-
-	it("preserves awaitReview when migrating a task in awaiting_review state", async () => {
-		const card = createCard({ workingDirectory: "/tmp/repo" });
-		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
-		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
-		taskWorktreeMocks.captureTaskPatch.mockResolvedValue(undefined);
-		taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist.mockResolvedValue({
-			ok: true,
-			path: "/tmp/worktree",
-		});
-		taskWorktreeMocks.findTaskPatch.mockResolvedValue(null);
-
-		const terminalManager = {
-			getSummary: vi.fn(() => createSummary({ state: "awaiting_review" })),
-			stopTaskSession: vi.fn(() => createSummary()),
-			stopTaskSessionAndWaitForExit: vi.fn(async () => createSummary()),
-			startTaskSession: vi.fn(async () => createSummary()),
-		};
-		const api = createRuntimeApi(createDeps(terminalManager));
-
-		const result = await api.migrateTaskWorkingDirectory(defaultScope, {
-			taskId: "task-1",
-			direction: "isolate",
-		});
-
-		expect(result.ok).toBe(true);
-		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
-			expect.objectContaining({ cwd: "/tmp/worktree", resumeConversation: false, awaitReview: true }),
-		);
-	});
-
-	it("de-isolates a task from worktree to main checkout", async () => {
-		const card = createCard({ workingDirectory: "/tmp/worktree" });
-		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
-		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
-
-		const terminalManager = {
-			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			stopTaskSession: vi.fn(() => createSummary()),
-			stopTaskSessionAndWaitForExit: vi.fn(async () => createSummary()),
-			startTaskSession: vi.fn(async () => createSummary()),
-		};
-		const api = createRuntimeApi(createDeps(terminalManager));
-
-		const result = await api.migrateTaskWorkingDirectory(defaultScope, {
-			taskId: "task-1",
-			direction: "de-isolate",
-		});
-
-		expect(result.ok).toBe(true);
-		expect(result.newWorkingDirectory).toBe("/tmp/repo");
-		expect(terminalManager.stopTaskSessionAndWaitForExit).toHaveBeenCalledWith("task-1");
-		expect(taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist).not.toHaveBeenCalled();
-		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(expect.objectContaining({ cwd: "/tmp/repo" }));
-	});
-
-	it("returns error when task not found", async () => {
-		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
-		taskBoardMutationMocks.findCardInBoard.mockReturnValue(null);
-
-		const api = createRuntimeApi(createDeps());
-
-		const result = await api.migrateTaskWorkingDirectory(defaultScope, {
-			taskId: "task-1",
-			direction: "isolate",
-		});
-
-		expect(result.ok).toBe(false);
-		expect(result.error).toMatch(/not found/);
-	});
-
-	it("resolves working directory from worktree state when not persisted on card", async () => {
-		const card = createCard({ workingDirectory: undefined });
-		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
-		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
-		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/resolved-worktree");
-		taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist.mockResolvedValue({
-			ok: true,
-			path: "/tmp/new-worktree",
-		});
-		taskWorktreeMocks.findTaskPatch.mockResolvedValue(null);
-
-		const terminalManager = {
-			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			stopTaskSession: vi.fn(() => createSummary()),
-			stopTaskSessionAndWaitForExit: vi.fn(async () => createSummary()),
-			startTaskSession: vi.fn(async () => createSummary()),
-		};
-		const api = createRuntimeApi(createDeps(terminalManager));
-
-		const result = await api.migrateTaskWorkingDirectory(defaultScope, {
-			taskId: "task-1",
-			direction: "isolate",
-		});
-
-		expect(result.ok).toBe(true);
-		expect(taskWorktreeMocks.resolveTaskCwd).toHaveBeenCalled();
-	});
-
-	it("succeeds even when patch apply fails (non-fatal)", async () => {
-		const card = createCard({ workingDirectory: "/tmp/repo" });
-		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
-		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
-		taskWorktreeMocks.captureTaskPatch.mockResolvedValue(undefined);
-		taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist.mockResolvedValue({
-			ok: true,
-			path: "/tmp/worktree",
-		});
-		taskWorktreeMocks.findTaskPatch.mockResolvedValue({
-			path: "/tmp/patches/task-1.patch",
-			commit: "abc123",
-		});
-		taskWorktreeMocks.applyTaskPatch.mockRejectedValue(new Error("patch conflict"));
-		fsMocks.rm.mockResolvedValue(undefined);
-
-		const terminalManager = {
-			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			stopTaskSession: vi.fn(() => createSummary()),
-			stopTaskSessionAndWaitForExit: vi.fn(async () => createSummary()),
-			startTaskSession: vi.fn(async () => createSummary()),
-		};
-		const api = createRuntimeApi(createDeps(terminalManager));
-
-		const result = await api.migrateTaskWorkingDirectory(defaultScope, {
-			taskId: "task-1",
-			direction: "isolate",
-		});
-
-		expect(result.ok).toBe(true);
-		expect(result.newWorkingDirectory).toBe("/tmp/worktree");
-		// Patch file should still be cleaned up.
-		expect(fsMocks.rm).toHaveBeenCalledWith("/tmp/patches/task-1.patch", { force: true });
-	});
-
-	it("returns error when no agent command is configured and session is running", async () => {
-		const card = createCard({ workingDirectory: "/tmp/worktree" });
-		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
-		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
-		agentRegistryMocks.resolveAgentCommand.mockReturnValue(null);
-
-		const terminalManager = {
-			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			stopTaskSession: vi.fn(),
-			stopTaskSessionAndWaitForExit: vi.fn(),
-			startTaskSession: vi.fn(),
-		};
-		const api = createRuntimeApi(createDeps(terminalManager));
-
-		const result = await api.migrateTaskWorkingDirectory(defaultScope, {
-			taskId: "task-1",
-			direction: "de-isolate",
-		});
-
-		expect(result.ok).toBe(false);
-		expect(result.error).toMatch(/No runnable agent command/);
-		expect(terminalManager.startTaskSession).not.toHaveBeenCalled();
-		expect(terminalManager.stopTaskSessionAndWaitForExit).not.toHaveBeenCalled();
-	});
-
-	it("succeeds for idle tasks even when no agent command is configured", async () => {
-		const card = createCard({ workingDirectory: "/tmp/worktree" });
-		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
-		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
-		agentRegistryMocks.resolveAgentCommand.mockReturnValue(null);
-
-		const terminalManager = {
-			getSummary: vi.fn(() => null),
-			stopTaskSession: vi.fn(),
-			stopTaskSessionAndWaitForExit: vi.fn(),
-			startTaskSession: vi.fn(),
-		};
-		const api = createRuntimeApi(createDeps(terminalManager));
-
-		const result = await api.migrateTaskWorkingDirectory(defaultScope, {
-			taskId: "task-1",
-			direction: "de-isolate",
-		});
-
-		expect(result.ok).toBe(true);
-		expect(result.newWorkingDirectory).toBe("/tmp/repo");
-		expect(terminalManager.startTaskSession).not.toHaveBeenCalled();
-		expect(terminalManager.stopTaskSessionAndWaitForExit).not.toHaveBeenCalled();
-	});
-
-	it("restarts session at old CWD when worktree creation fails during isolate", async () => {
-		const card = createCard({ workingDirectory: "/tmp/repo" });
-		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
-		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
-		taskWorktreeMocks.captureTaskPatch.mockResolvedValue(undefined);
-		taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist.mockResolvedValue({
-			ok: false,
-			error: "git worktree add failed",
-		});
-
-		const terminalManager = {
-			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			stopTaskSession: vi.fn(() => createSummary()),
-			stopTaskSessionAndWaitForExit: vi.fn(async () => createSummary()),
-			startTaskSession: vi.fn(async () => createSummary()),
-		};
-		const api = createRuntimeApi(createDeps(terminalManager));
-
-		const result = await api.migrateTaskWorkingDirectory(defaultScope, {
-			taskId: "task-1",
-			direction: "isolate",
-		});
-
-		expect(result.ok).toBe(false);
-		expect(result.error).toMatch(/git worktree add failed/);
-		// Session should have been restarted at the old CWD.
-		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
-			expect.objectContaining({ cwd: "/tmp/repo", resumeConversation: true }),
 		);
 	});
 });

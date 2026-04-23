@@ -20,7 +20,6 @@ export interface StableCardActions {
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	onTogglePinTask?: (taskId: string) => void;
 	onHardDeleteTrashTask?: (taskId: string) => void;
-	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
 	onRequestDisplaySummary?: (taskId: string) => void;
 	onTerminalWarmup?: (taskId: string) => void;
 	onTerminalCancelWarmup?: (taskId: string) => void;
@@ -40,7 +39,6 @@ export interface StableCardActions {
 
 export interface ReactiveCardState {
 	moveToTrashLoadingById: Record<string, boolean>;
-	migratingTaskId: string | null;
 	isLlmGenerationDisabled: boolean;
 	showSummaryOnCards: boolean;
 	uncommittedChangesOnCardsEnabled: boolean;
@@ -91,7 +89,6 @@ export function CardActionsProvider({
 			stable.onUpdateTaskTitle,
 			stable.onTogglePinTask,
 			stable.onHardDeleteTrashTask,
-			stable.onMigrateWorkingDirectory,
 			stable.onRequestDisplaySummary,
 			stable.onTerminalWarmup,
 			stable.onTerminalCancelWarmup,

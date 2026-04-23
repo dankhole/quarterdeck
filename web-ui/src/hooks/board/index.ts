@@ -24,7 +24,6 @@ export { useTaskStart } from "./use-task-start";
 export type { UseTaskStartActionsResult } from "./use-task-start-actions";
 export { useTaskStartActions } from "./use-task-start-actions";
 export { useTaskTitleSync } from "./use-task-title-sync";
-export { useTaskWorkingDirectorySync } from "./use-task-working-directory-sync";
 export { useTitleActions } from "./use-title-actions";
 export type { UseTrashWorkflowResult } from "./use-trash-workflow";
 export { useTrashWorkflow } from "./use-trash-workflow";

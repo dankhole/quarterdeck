@@ -29,7 +29,6 @@ export interface ProjectContextValue {
 	latestTaskReadyForReview: UseProjectNavigationResult["latestTaskReadyForReview"];
 	latestTaskTitleUpdate: UseProjectNavigationResult["latestTaskTitleUpdate"];
 	latestTaskBaseRefUpdate: UseProjectNavigationResult["latestTaskBaseRefUpdate"];
-	latestTaskWorkingDirectoryUpdate: UseProjectNavigationResult["latestTaskWorkingDirectoryUpdate"];
 	logLevel: UseProjectNavigationResult["logLevel"];
 	debugLogEntries: UseProjectNavigationResult["debugLogEntries"];
 	streamError: UseProjectNavigationResult["streamError"];
@@ -128,7 +127,6 @@ export function ProjectProvider({
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
 		latestTaskBaseRefUpdate,
-		latestTaskWorkingDirectoryUpdate,
 		logLevel,
 		debugLogEntries,
 		streamError,
@@ -198,7 +196,6 @@ export function ProjectProvider({
 			latestTaskReadyForReview,
 			latestTaskTitleUpdate,
 			latestTaskBaseRefUpdate,
-			latestTaskWorkingDirectoryUpdate,
 			logLevel,
 			debugLogEntries,
 			streamError,
@@ -242,7 +239,6 @@ export function ProjectProvider({
 			latestTaskReadyForReview,
 			latestTaskTitleUpdate,
 			latestTaskBaseRefUpdate,
-			latestTaskWorkingDirectoryUpdate,
 			logLevel,
 			debugLogEntries,
 			streamError,

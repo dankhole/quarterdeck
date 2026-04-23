@@ -1,9 +1,7 @@
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
-import type { MutableRefObject } from "react";
 import { useCallback, useMemo } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import { useDisplaySummaryOnHover, useTitleActions } from "@/hooks/board";
-import { useMigrateTaskDialog } from "@/hooks/terminal";
 import type { BoardContextValue } from "@/providers/board-provider";
 import type { InteractionsContextValue } from "@/providers/interactions-provider";
 import type { ProjectContextValue } from "@/providers/project-provider";
@@ -23,16 +21,11 @@ interface UseAppActionModelsInput {
 	board: BoardContextValue;
 	navigation: SurfaceNavigationContextValue;
 	interactions: InteractionsContextValue;
-	serverMutationInFlightRef: MutableRefObject<boolean>;
 }
 
 export interface UseAppActionModelsResult {
 	stableCardActions: StableCardActions;
 	reactiveCardState: ReactiveCardState;
-	pendingMigrate: { taskId: string; direction: "isolate" | "de-isolate" } | null;
-	migratingTaskId: string | null;
-	handleConfirmMigrate: () => void;
-	cancelMigrate: () => void;
 	handleMainViewChange: (view: MainViewId) => void;
 	handleCardSelectWithFocus: (taskId: string) => void;
 	handleCardDoubleClick: (taskId: string) => void;
@@ -48,7 +41,6 @@ export function useAppActionModels({
 	board,
 	navigation,
 	interactions,
-	serverMutationInFlightRef,
 }: UseAppActionModelsInput): UseAppActionModelsResult {
 	const terminalPrewarmPolicy = getTerminalPrewarmPolicy();
 	const handleRequestDisplaySummary = useDisplaySummaryOnHover(
@@ -86,14 +78,6 @@ export function useAppActionModels({
 		},
 		[board.setBoard],
 	);
-
-	const { pendingMigrate, migratingTaskId, handleMigrateWorkingDirectory, handleConfirmMigrate, cancelMigrate } =
-		useMigrateTaskDialog({
-			currentProjectId: project.currentProjectId,
-			serverMutationInFlightRef,
-			stopTaskSession: board.stopTaskSession,
-			refreshProjectState: project.refreshProjectState,
-		});
 
 	const handleMainViewChange = useCallback(
 		(view: MainViewId) => {
@@ -145,7 +129,6 @@ export function useAppActionModels({
 			onRegenerateTitleTask: handleRegenerateTitleTask,
 			onUpdateTaskTitle: handleUpdateTaskTitle,
 			onTogglePinTask: handleToggleTaskPinned,
-			onMigrateWorkingDirectory: handleMigrateWorkingDirectory,
 			onRequestDisplaySummary: handleRequestDisplaySummary,
 			onTerminalWarmup: handleTerminalWarmup,
 			onTerminalCancelWarmup: handleTerminalCancelWarmup,
@@ -153,7 +136,6 @@ export function useAppActionModels({
 		}),
 		[
 			handleFlagForDebug,
-			handleMigrateWorkingDirectory,
 			handleRegenerateTitleTask,
 			handleRequestDisplaySummary,
 			handleTerminalCancelWarmup,
@@ -173,7 +155,6 @@ export function useAppActionModels({
 	const reactiveCardState = useMemo<ReactiveCardState>(
 		() => ({
 			moveToTrashLoadingById: interactions.moveToTrashLoadingById ?? {},
-			migratingTaskId: migratingTaskId ?? null,
 			isLlmGenerationDisabled: projectRuntime.isLlmGenerationDisabled,
 			showSummaryOnCards:
 				projectRuntime.runtimeProjectConfig?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
@@ -186,7 +167,6 @@ export function useAppActionModels({
 		}),
 		[
 			interactions.moveToTrashLoadingById,
-			migratingTaskId,
 			projectRuntime.isLlmGenerationDisabled,
 			projectRuntime.runtimeProjectConfig?.showRunningTaskEmergencyActions,
 			projectRuntime.runtimeProjectConfig?.showSummaryOnCards,
@@ -216,10 +196,6 @@ export function useAppActionModels({
 	return {
 		stableCardActions,
 		reactiveCardState,
-		pendingMigrate,
-		migratingTaskId,
-		handleConfirmMigrate,
-		cancelMigrate,
 		handleMainViewChange,
 		handleCardSelectWithFocus,
 		handleCardDoubleClick,

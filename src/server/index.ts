@@ -42,7 +42,6 @@ export {
 	buildTaskReadyForReviewMessage,
 	buildTaskSessionsUpdatedMessage,
 	buildTaskTitleUpdatedMessage,
-	buildTaskWorkingDirectoryUpdatedMessage,
 } from "./runtime-state-messages";
 export {
 	type RuntimeShutdownCoordinatorDependencies,

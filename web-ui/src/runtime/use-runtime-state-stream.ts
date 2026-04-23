@@ -1,18 +1,17 @@
 import { useEffect, useReducer } from "react";
 import { consumeProjectPreload } from "@/runtime/project-preload-cache";
-import { resolveStreamMessage } from "@/runtime/runtime-stream-dispatch";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import {
 	createInitialRuntimeStateStreamStore,
 	runtimeStateStreamReducer,
 	type TaskBaseRefUpdate,
 	type TaskTitleUpdate,
-	type TaskWorkingDirectoryUpdate,
 } from "@/runtime/runtime-state-stream-store";
 import {
-	startRuntimeStateStreamTransport,
 	type RuntimeStateStreamTransport,
+	startRuntimeStateStreamTransport,
 } from "@/runtime/runtime-state-stream-transport";
+import { resolveStreamMessage } from "@/runtime/runtime-stream-dispatch";
 import type {
 	RuntimeDebugLogEntry,
 	RuntimeProjectMetadata,
@@ -21,7 +20,7 @@ import type {
 	RuntimeStateStreamTaskReadyForReviewMessage,
 } from "@/runtime/types";
 
-export type { TaskBaseRefUpdate, TaskTitleUpdate, TaskWorkingDirectoryUpdate } from "@/runtime/runtime-state-stream-store";
+export type { TaskBaseRefUpdate, TaskTitleUpdate } from "@/runtime/runtime-state-stream-store";
 
 export interface UseRuntimeStateStreamResult {
 	currentProjectId: string | null;
@@ -32,7 +31,6 @@ export interface UseRuntimeStateStreamResult {
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	latestTaskTitleUpdate: TaskTitleUpdate | null;
 	latestTaskBaseRefUpdate: TaskBaseRefUpdate | null;
-	latestTaskWorkingDirectoryUpdate: TaskWorkingDirectoryUpdate | null;
 	logLevel: "debug" | "info" | "warn" | "error";
 	debugLogEntries: RuntimeDebugLogEntry[];
 	streamError: string | null;
@@ -100,7 +98,6 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 		latestTaskReadyForReview: state.latestTaskReadyForReview,
 		latestTaskTitleUpdate: state.latestTaskTitleUpdate,
 		latestTaskBaseRefUpdate: state.latestTaskBaseRefUpdate,
-		latestTaskWorkingDirectoryUpdate: state.latestTaskWorkingDirectoryUpdate,
 		logLevel: state.logLevel,
 		debugLogEntries: state.debugLogEntries,
 		streamError: state.streamError,

@@ -43,8 +43,6 @@ export function BoardCard({
 	onUpdateTitle,
 	onTogglePin,
 	isMoveToTrashLoading = false,
-	onMigrateWorkingDirectory,
-	isMigrateLoading = false,
 	onFlagForDebug,
 	onDependencyPointerDown,
 	onDependencyPointerEnter,
@@ -77,8 +75,6 @@ export function BoardCard({
 	onUpdateTitle?: (taskId: string, title: string) => void;
 	onTogglePin?: (taskId: string) => void;
 	isMoveToTrashLoading?: boolean;
-	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
-	isMigrateLoading?: boolean;
 	onFlagForDebug?: (taskId: string) => void;
 	onDependencyPointerDown?: (taskId: string, event: MouseEvent<HTMLElement>) => void;
 	onDependencyPointerEnter?: (taskId: string) => void;
@@ -271,24 +267,6 @@ export function BoardCard({
 									<span className="inline-flex items-center shrink-0">
 										<span className="block size-1.5 rounded-full bg-status-red" />
 									</span>
-								</Tooltip>
-							) : null}
-							{onMigrateWorkingDirectory &&
-							(columnId === "in_progress" || columnId === "review") &&
-							isHovered ? (
-								<Tooltip content={isSharedCheckout ? "Isolate to worktree" : "Move to main checkout"}>
-									<Button
-										icon={<GitBranch size={12} />}
-										variant="ghost"
-										size="sm"
-										disabled={isMigrateLoading}
-										aria-label={isSharedCheckout ? "Isolate to worktree" : "Move to main checkout"}
-										onMouseDown={stopEvent}
-										onClick={(event) => {
-											stopEvent(event);
-											onMigrateWorkingDirectory(card.id, isSharedCheckout ? "isolate" : "de-isolate");
-										}}
-									/>
 								</Tooltip>
 							) : null}
 							{isEditingTitle && onUpdateTitle ? (

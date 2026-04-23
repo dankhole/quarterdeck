@@ -8,7 +8,6 @@ import type { TerminalSessionManager } from "../terminal";
 import type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
 import { handleFlagTaskForDebug } from "./handlers/flag-task-for-debug";
 import { handleLoadConfig } from "./handlers/load-config";
-import { handleMigrateTaskWorkingDirectory } from "./handlers/migrate-task-working-directory";
 import { handleOpenFile } from "./handlers/open-file";
 import { handleRunCommand } from "./handlers/run-command";
 import { handleSaveConfig } from "./handlers/save-config";
@@ -22,10 +21,7 @@ export interface CreateRuntimeApiDependencies {
 	config: IRuntimeConfigProvider;
 	broadcaster: Pick<
 		IRuntimeBroadcaster,
-		| "broadcastRuntimeProjectStateUpdated"
-		| "broadcastTaskWorkingDirectoryUpdated"
-		| "setPollIntervals"
-		| "broadcastLogLevel"
+		"broadcastRuntimeProjectStateUpdated" | "setPollIntervals" | "broadcastLogLevel"
 	>;
 	getActiveProjectId: () => string | null;
 	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
@@ -84,15 +80,6 @@ class RuntimeApiImpl implements RuntimeApi {
 
 	async openFile(input: { filePath: string }) {
 		return handleOpenFile(input);
-	}
-
-	// ── Migration ─────────────────────────────────────────────────────────
-
-	async migrateTaskWorkingDirectory(
-		projectScope: RuntimeTrpcProjectScope,
-		input: { taskId: string; direction: "isolate" | "de-isolate" },
-	) {
-		return handleMigrateTaskWorkingDirectory(projectScope, input, this.deps);
 	}
 }
 

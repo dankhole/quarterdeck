@@ -30,9 +30,8 @@ export async function handleStartTaskSession(
 		const savedBranch = existingCard?.branch ?? null;
 		const persistedExists = persisted !== null && (await pathExists(persisted));
 
-		// The persisted workingDirectory is the source of truth. It's kept
-		// in sync with useWorktree by migrateTaskWorkingDirectory. We only
-		// fall back to useWorktree for legacy or first-run cards.
+		// The persisted workingDirectory is the source of truth. We only fall
+		// back to useWorktree for legacy or first-run cards.
 		let taskCwd: string;
 		if (persistedExists) {
 			taskCwd = persisted;

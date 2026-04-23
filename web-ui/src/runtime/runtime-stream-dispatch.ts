@@ -6,10 +6,7 @@
  * and reports whether the transport should reconnect to a different project.
  */
 import type { RuntimeStateStreamAction } from "@/runtime/runtime-state-stream-store";
-import type {
-	RuntimeStateStreamMessage,
-	RuntimeStateStreamProjectsMessage,
-} from "@/runtime/types";
+import type { RuntimeStateStreamMessage, RuntimeStateStreamProjectsMessage } from "@/runtime/types";
 
 export interface RuntimeStreamDispatchState {
 	activeProjectId: string | null;
@@ -55,8 +52,7 @@ const streamMessageHandlers: {
 
 	projects_updated: (msg, state) => {
 		const nextProjectId = resolveProjectIdAfterProjectsUpdate(state.activeProjectId, msg);
-		const reconnectProjectId =
-			nextProjectId && nextProjectId !== state.activeProjectId ? nextProjectId : null;
+		const reconnectProjectId = nextProjectId && nextProjectId !== state.activeProjectId ? nextProjectId : null;
 		return createDispatchResult(
 			[{ type: "projects_updated", payload: msg, nextProjectId }],
 			nextProjectId,
@@ -120,21 +116,6 @@ const streamMessageHandlers: {
 							type: "task_base_ref_updated",
 							taskId: msg.taskId,
 							baseRef: msg.baseRef,
-						},
-					],
-					state.activeProjectId,
-				),
-
-	task_working_directory_updated: (msg, state) =>
-		msg.projectId !== state.activeProjectId
-			? createDispatchResult([], state.activeProjectId)
-			: createDispatchResult(
-					[
-						{
-							type: "task_working_directory_updated",
-							taskId: msg.taskId,
-							workingDirectory: msg.workingDirectory,
-							useWorktree: msg.useWorktree,
 						},
 					],
 					state.activeProjectId,

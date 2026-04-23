@@ -31,7 +31,6 @@ import {
 	buildTaskReadyForReviewMessage,
 	buildTaskSessionsUpdatedMessage,
 	buildTaskTitleUpdatedMessage,
-	buildTaskWorkingDirectoryUpdatedMessage,
 } from "./runtime-state-messages";
 
 export interface DisposeRuntimeStateProjectOptions {
@@ -210,18 +209,6 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 	broadcastTaskBaseRefUpdated = (projectId: string, taskId: string, baseRef: string): void => {
 		this.clients.broadcastToProject(projectId, buildTaskBaseRefUpdatedMessage(projectId, taskId, baseRef));
-	};
-
-	broadcastTaskWorkingDirectoryUpdated = (
-		projectId: string,
-		taskId: string,
-		workingDirectory: string,
-		useWorktree: boolean,
-	): void => {
-		this.clients.broadcastToProject(
-			projectId,
-			buildTaskWorkingDirectoryUpdatedMessage(projectId, taskId, workingDirectory, useWorktree),
-		);
 	};
 
 	setFocusedTask = (projectId: string, taskId: string | null): void => {

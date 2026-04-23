@@ -47,8 +47,6 @@ import type {
 	RuntimeHookIngestResponse,
 	RuntimeListFilesRequest,
 	RuntimeListFilesResponse,
-	RuntimeMigrateTaskWorkingDirectoryRequest,
-	RuntimeMigrateTaskWorkingDirectoryResponse,
 	RuntimeOpenFileRequest,
 	RuntimeOpenFileResponse,
 	RuntimeProjectAddRequest,
@@ -123,10 +121,6 @@ export interface RuntimeTrpcContext {
 			input: RuntimeCommandRunRequest,
 		) => Promise<RuntimeCommandRunResponse>;
 		openFile: (input: RuntimeOpenFileRequest) => Promise<RuntimeOpenFileResponse>;
-		migrateTaskWorkingDirectory: (
-			scope: RuntimeTrpcProjectScope,
-			input: RuntimeMigrateTaskWorkingDirectoryRequest,
-		) => Promise<RuntimeMigrateTaskWorkingDirectoryResponse>;
 		setLogLevel: (level: "debug" | "info" | "warn" | "error") => Promise<{
 			ok: boolean;
 			level: "debug" | "info" | "warn" | "error";

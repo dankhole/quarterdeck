@@ -58,7 +58,6 @@ export function BoardColumn({
 		onRegenerateTitleTask,
 		onUpdateTaskTitle,
 		onTogglePinTask,
-		onMigrateWorkingDirectory,
 		onRequestDisplaySummary,
 		onTerminalWarmup,
 		onTerminalCancelWarmup,
@@ -66,7 +65,6 @@ export function BoardColumn({
 	} = useStableCardActions();
 	const {
 		moveToTrashLoadingById,
-		migratingTaskId,
 		isLlmGenerationDisabled,
 		showSummaryOnCards,
 		uncommittedChangesOnCardsEnabled,
@@ -190,8 +188,6 @@ export function BoardColumn({
 											onDependencyPointerEnter={onDependencyPointerEnter}
 											isDependencySource={dependencySourceTaskId === card.id}
 											isDependencyTarget={dependencyTargetTaskId === card.id}
-											onMigrateWorkingDirectory={onMigrateWorkingDirectory}
-											isMigrateLoading={migratingTaskId === card.id}
 											isDependencyLinking={isDependencyLinking}
 											showSummaryOnCards={showSummaryOnCards}
 											uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}
