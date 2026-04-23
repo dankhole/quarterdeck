@@ -100,6 +100,10 @@ export class TerminalSessionHandle {
 		return this.latestSummary?.state ?? null;
 	}
 
+	get sessionAgentId(): RuntimeTaskSessionSummary["agentId"] | null {
+		return this.latestSummary?.agentId ?? null;
+	}
+
 	get hasIoSocket(): boolean {
 		return this.sockets.hasIoSocket;
 	}

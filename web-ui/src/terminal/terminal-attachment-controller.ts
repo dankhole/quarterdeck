@@ -55,6 +55,10 @@ export class TerminalAttachmentController {
 		return this.session.sessionState;
 	}
 
+	get sessionAgentId(): RuntimeTaskSessionSummary["agentId"] | null {
+		return this.session.sessionAgentId;
+	}
+
 	private createViewport(appearance: PersistentTerminalAppearance): TerminalViewport {
 		return new TerminalViewport(this.slotId, appearance, {
 			clearGeometry: clearTerminalGeometry,
@@ -220,6 +224,12 @@ export class TerminalAttachmentController {
 	}
 
 	requestRestore(): void {
+		// Keep agent-specific restore tuning narrow here. If more agents need
+		// custom restore behavior, extract a dedicated restore-policy module
+		// instead of growing TerminalAttachmentController into that owner.
+		if (this.sessionAgentId === "codex") {
+			this.viewport.forceResize();
+		}
 		this.session.requestRestore();
 	}
 

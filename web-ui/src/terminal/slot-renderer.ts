@@ -123,8 +123,13 @@ export class SlotRenderer {
 	}
 
 	/**
-	 * Canvas repair sequence — three steps that fix blurry/stale terminal
-	 * rendering after a DPR change, monitor move, or DOM re-parent.
+	 * Canvas repair sequence — fixes renderer/canvas presentation problems
+	 * such as blurry glyphs, stale textures, or wrong pixel sizing after a
+	 * DPR change, monitor move, or DOM re-parent.
+	 *
+	 * This is not a terminal-content repair path. It does not fetch a fresh
+	 * snapshot, replace the xterm buffer, or reconcile the terminal with the
+	 * backend session. Use restore/requestRestore for content desync.
 	 *
 	 * 1. Dimension bounce — forces fitAddon to recalculate canvas pixel dimensions
 	 * 2. clearTextureAtlas() — discards cached glyph textures for rebuild at current DPR
