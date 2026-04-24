@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Chore: bump `postcss` to 8.5.10 in both packages
+
+- Ran `npm audit fix` in the root and `web-ui` packages to pull `postcss` from 8.5.8 to 8.5.10, clearing the only open advisory (GHSA-qx2v-qp2m-jg93, moderate) across both lockfiles.
+- `postcss` is a transitive dev/build dependency of the CSS toolchain and the advisory is only reachable when the stringifier processes untrusted CSS, which Quarterdeck does not do at runtime — but keeping the lockfiles clean makes future security reviews easier.
+- Re-synced the root `package-lock.json` internal version field with `package.json` (0.10.0 → 0.11.0) where it had drifted; no `package.json` edits required.
+
 ### Fix: resume Codex sessions by stored session id
 
 - Quarterdeck now persists the Codex root session id from `session_meta` events and reuses it on task restart, trash restore, and interrupted-session recovery, so Codex resumes target the original conversation instead of falling back to repo-global `codex resume --last`.

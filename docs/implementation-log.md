@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Chore: bump postcss to 8.5.10 in both packages (2026-04-24)
+
+During an internal security review of Quarterdeck, `npm audit` reported one open moderate-severity advisory (GHSA-qx2v-qp2m-jg93, "PostCSS has XSS via Unescaped `</style>` in its CSS Stringify Output", CVSS 6.1) in both the root and `web-ui` packages. The vulnerable version was `postcss@8.5.8`, reached transitively via the Vite/Tailwind CSS toolchain. The fix was available in `postcss@8.5.10`, so I ran `npm audit fix` in both package roots to pull the lockfiles forward. No `package.json` edits were needed because `postcss` is not a direct dependency. The root `package-lock.json` also had a pre-existing drift where its internal version field still read `0.10.0` despite `package.json` being on `0.11.0`; `npm audit fix` re-synced that field as a side effect.
+
+Verified the bump is safe with the full local check matrix: `npm run typecheck` (clean), `npm run web:typecheck` (clean), `npm run build` (runtime + web UI bundles built successfully), `npm test` (777 runtime tests across 88 files passing), and `npm run web:test` (884 web tests across 110 files passing). Post-fix `npm audit` reports 0 vulnerabilities in both packages. The attack surface for the advisory requires feeding untrusted CSS through PostCSS's stringifier, which Quarterdeck does not do at runtime — PostCSS only runs at build time on project-authored Tailwind/CSS — so the real-world risk here was already low, but clearing the advisory keeps the security review lockfile-clean.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `package-lock.json`, `web-ui/package-lock.json`
+
+Commit: pending
+
 ## Fix: resume Codex task sessions by stored session id (2026-04-23)
 
 Quarterdeck’s Codex resume path was still keyed to `codex resume --last`, which is only “most recent session in this repo” rather than “the session that belongs to this task.” That meant trash restore, manual restart, and interrupted-session recovery could all attach a Codex task to the wrong conversation when another Codex run had happened in the same checkout. The local Codex 0.123.0 CLI now supports `codex resume [SESSION_ID]`, and Codex’s rollout/session logs already expose the root session id in `session_meta`, so the missing piece was persisting that id through Quarterdeck’s hook transport and feeding it back into every resume path.
