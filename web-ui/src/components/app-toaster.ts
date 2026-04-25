@@ -48,6 +48,13 @@ interface NotifyErrorOptions {
 }
 
 export function showAppToast(props: AppToastProps, key?: string): void {
+	// Log the full, untruncated message so the debug panel retains what users see
+	// in the (truncated) toast. Toasts disappear quickly; the log stays.
+	if (props.intent === "danger") {
+		log.error(props.message);
+	} else if (props.intent === "warning") {
+		log.warn(props.message);
+	}
 	const displayMessage = props.intent === "danger" ? sanitizeErrorForToast(props.message) : props.message;
 	const options: Parameters<typeof toast>[1] = {
 		id: key,
@@ -70,7 +77,6 @@ export function notifyError(message: string | null | undefined, options?: Notify
 	if (!normalized) {
 		return;
 	}
-	log.error(normalized);
 	showAppToast(
 		{
 			intent: "danger",

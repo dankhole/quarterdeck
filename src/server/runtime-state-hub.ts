@@ -11,7 +11,7 @@ import type {
 	RuntimeProjectSummary,
 	RuntimeStateStreamMessage,
 } from "../core";
-import { Disposable, getLogLevel, getRecentLogEntries, onLogEntry, toDisposable } from "../core";
+import { createTaggedLogger, Disposable, getLogLevel, getRecentLogEntries, onLogEntry, toDisposable } from "../core";
 import type { TerminalSessionManager } from "../terminal";
 import { applyRuntimeMutationEffects, createTaskBaseRefUpdatedEffects } from "../trpc/runtime-mutation-effects";
 import { createProjectMetadataMonitor, type ProjectMetadataPollIntervals } from "./project-metadata-monitor";
@@ -32,6 +32,8 @@ import {
 	buildTaskSessionsUpdatedMessage,
 	buildTaskTitleUpdatedMessage,
 } from "./runtime-state-messages";
+
+const hubLog = createTaggedLogger("runtime-state-hub");
 
 export interface DisposeRuntimeStateProjectOptions {
 	disconnectClients?: boolean;
@@ -157,6 +159,9 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			return;
 		}
 
+		if (options.closeClientErrorMessage) {
+			hubLog.warn(options.closeClientErrorMessage, { projectId });
+		}
 		this.clients.disconnectProjectClients(projectId, {
 			closeClientPayload: options.closeClientErrorMessage
 				? buildErrorMessage(options.closeClientErrorMessage)
@@ -310,12 +315,9 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				this.sendMessage(client, buildDebugLoggingStateMessage(getLogLevel(), getRecentLogEntries()));
 
 				if (resolved.removedRequestedProjectPath) {
-					this.sendMessage(
-						client,
-						buildErrorMessage(
-							`Project no longer exists on disk and was removed: ${resolved.removedRequestedProjectPath}`,
-						),
-					);
+					const message = `Project no longer exists on disk and was removed: ${resolved.removedRequestedProjectPath}`;
+					hubLog.warn(message);
+					this.sendMessage(client, buildErrorMessage(message));
 				}
 				if (resolved.didPruneProjects) {
 					void this.broadcastRuntimeProjectsUpdated(resolved.projectId);
@@ -329,10 +331,12 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 					this.metadataMonitor.disconnectProject(monitorProjectId);
 				}
 				const message = error instanceof Error ? error.message : String(error);
+				hubLog.error("Failed to load initial snapshot for client", { message, error });
 				this.sendMessage(client, buildErrorMessage(message));
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
+			hubLog.error("Failed to resolve project for client connection", { message, error });
 			this.sendMessage(client, buildErrorMessage(message));
 			client.close();
 		}

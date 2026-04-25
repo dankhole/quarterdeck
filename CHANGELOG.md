@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: log full toast warning/error messages to the debug log
+
+- Error and warning toasts now log their full, untruncated message through the existing tagged-logger system, so the debug log panel (and browser console) retains the complete text even when the toast itself truncates at 150 chars.
+- Centralized the logging inside `showAppToast` / `notifyError` rather than adding per-call-site log calls, so all ~80 danger/warning toasts are covered by one edit. Two direct-sonner toast violations were migrated onto `showAppToast` so they get logged too.
+- Server-side WebSocket error payloads sent to clients (e.g. `Invalid sessions.json file at …` from `parsePersistedStateFile`) are now logged on the runtime side with a `runtime-state-hub` tag, so the full schema-validation detail is recoverable from runtime logs instead of disappearing with the toast.
+
 ### Chore: bump `postcss` to 8.5.10 in both packages
 
 - Ran `npm audit fix` in the root and `web-ui` packages to pull `postcss` from 8.5.8 to 8.5.10, clearing the only open advisory (GHSA-qx2v-qp2m-jg93, moderate) across both lockfiles.

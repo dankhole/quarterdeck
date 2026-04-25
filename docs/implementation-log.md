@@ -2,6 +2,22 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: log full toast warning/error messages to the debug log (2026-04-25)
+
+Toast-delivered warnings and errors were the only surface for certain failures — for example, the server's `Invalid sessions.json file at … Fix or remove the file. Validation errors: …` message that flows from `parsePersistedStateFile` through the WebSocket error channel and lands in `useStreamErrorHandler` → `notifyError`. `sanitizeErrorForToast` collapses the message to its first non-empty line capped at 150 characters, so the actual Zod validation issues were truncated away and there was no debug-log trace, making the failure hard to diagnose after the toast disappeared.
+
+The fix centralizes the logging inside `showAppToast`: when `intent` is `danger` or `warning` it now emits the full, untruncated `props.message` via `createClientLogger("toast")` before dispatching to sonner. This covers ~80 call sites (all `showAppToast` danger/warning invocations, `notifyError`, and the `showGitErrorToast` / `showGitWarningToast` wrappers that already route through `showAppToast`) with one edit, so future toasts automatically log without per-site boilerplate. `notifyError`'s now-redundant `log.error` call was removed to avoid duplicate entries.
+
+Two direct `toast.*` calls that bypassed `showAppToast` were cleaned up in the same pass: `conflict-resolution-panel.tsx` now uses `showAppToast({ intent: "success", … })` for its copy-path toast; the info-style "Task worktree removed" toast in `use-linked-backlog-task-actions.ts` uses custom sonner options (cancel action with `className: "toast-with-dismiss-link"`) that `showAppToast` doesn't expose, and it's info-only rather than warning/error, so it was left alone.
+
+Server-side, `src/server/runtime-state-hub.ts` also sends raw error strings to browser clients via `buildErrorMessage`, including the sessions.json case. Added a `createTaggedLogger("runtime-state-hub")` and wired it into the three `buildErrorMessage` call sites (removed-project notice, snapshot-load failure, connection-resolution failure) plus the `disposeProject(..., { closeClientErrorMessage })` path so the full message is also recoverable from runtime logs on the server side, not only via the client-side mirror.
+
+Verified clean with `npm run typecheck`, `npm run web:typecheck`, `npm run lint`, `npm run test:fast` (748/748 runtime), and `npm run web:test` (884/884 web).
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/server/runtime-state-hub.ts`, `web-ui/src/components/app-toaster.ts`, `web-ui/src/components/git/panels/conflict-resolution-panel.tsx`
+
+Commit: pending
+
 ## Chore: bump postcss to 8.5.10 in both packages (2026-04-24)
 
 During an internal security review of Quarterdeck, `npm audit` reported one open moderate-severity advisory (GHSA-qx2v-qp2m-jg93, "PostCSS has XSS via Unescaped `</style>` in its CSS Stringify Output", CVSS 6.1) in both the root and `web-ui` packages. The vulnerable version was `postcss@8.5.8`, reached transitively via the Vite/Tailwind CSS toolchain. The fix was available in `postcss@8.5.10`, so I ran `npm audit fix` in both package roots to pull the lockfiles forward. No `package.json` edits were needed because `postcss` is not a direct dependency. The root `package-lock.json` also had a pre-existing drift where its internal version field still read `0.10.0` despite `package.json` being on `0.11.0`; `npm audit fix` re-synced that field as a side effect.

@@ -12,8 +12,8 @@ import {
 	XCircle,
 } from "lucide-react";
 import { useMemo } from "react";
-import { toast } from "sonner";
 
+import { showAppToast } from "@/components/app-toaster";
 import { buildUnifiedDiffRows, ReadOnlyUnifiedDiff } from "@/components/shared/diff-renderer";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -147,7 +147,7 @@ function ConflictDetailPane({
 
 	const handleCopyPath = (): void => {
 		void navigator.clipboard.writeText(selectedPath);
-		toast.success("Path copied to clipboard");
+		showAppToast({ intent: "success", message: "Path copied to clipboard" });
 	};
 
 	return (
