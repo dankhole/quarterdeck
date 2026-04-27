@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: suppress closed-PTY async write noise
+
+- PTY sessions now suppress expected async `EIO` / `EBADF` write-queue races from node-pty when a child PTY closes after input has already been accepted, while preserving `EAGAIN` retries and keeping unexpected write failures visible.
+- Added focused coverage for the node-pty async write-queue path so the shutdown-noise guard stays narrower than the existing synchronous write/resize protections.
+
 ### Fix: harden Codex native hook dogfooding
 
 - Codex availability now requires `0.124.0` or newer, matching the release where `codex_hooks` became stable and gained the tool coverage Quarterdeck relies on.

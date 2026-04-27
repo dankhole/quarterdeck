@@ -3,9 +3,25 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+type MockFsWrite = (
+	fd: number,
+	buffer: Buffer,
+	offset: number,
+	callback: (error: NodeJS.ErrnoException | null, written: number) => void,
+) => void;
+
 const ptyMocks = vi.hoisted(() => ({
 	spawn: vi.fn(),
 }));
+const fsWriteMock = vi.hoisted(() => vi.fn<MockFsWrite>());
+
+vi.mock("node:fs", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs")>();
+	return {
+		...actual,
+		write: fsWriteMock,
+	};
+});
 
 vi.mock("node-pty", () => ({
 	spawn: ptyMocks.spawn,
@@ -19,6 +35,13 @@ const originalCOMSPEC = process.env.COMSPEC;
 const originalPath = process.env.PATH;
 const originalPathExt = process.env.PATHEXT;
 
+interface MockNodePtyWriteStream {
+	_fd: number;
+	_writeQueue: Array<{ buffer: Buffer; offset: number }>;
+	_writeImmediate?: NodeJS.Immediate;
+	_processWriteQueue: () => void;
+}
+
 function setPlatform(value: NodeJS.Platform): void {
 	Object.defineProperty(process, "platform", {
 		value,
@@ -26,7 +49,15 @@ function setPlatform(value: NodeJS.Platform): void {
 	});
 }
 
-function createMockPtyProcess() {
+function createMockWriteStream(buffer = Buffer.from("hello")): MockNodePtyWriteStream {
+	return {
+		_fd: 10,
+		_writeQueue: [{ buffer, offset: 0 }],
+		_processWriteQueue: vi.fn(),
+	};
+}
+
+function createMockPtyProcess(writeStream?: MockNodePtyWriteStream) {
 	const listeners: {
 		onData?: (data: string | Buffer | Uint8Array) => void;
 		onExit?: (event: { exitCode: number; signal?: number }) => void;
@@ -51,12 +82,14 @@ function createMockPtyProcess() {
 		emitExit: (event: { exitCode: number; signal?: number }) => {
 			listeners.onExit?.(event);
 		},
+		_writeStream: writeStream,
 	};
 }
 
 describe("PtySession", () => {
 	beforeEach(() => {
 		ptyMocks.spawn.mockReset();
+		fsWriteMock.mockReset();
 		setPlatform(originalPlatform);
 		if (originalComSpec === undefined) {
 			delete process.env.ComSpec;
@@ -320,5 +353,67 @@ describe("PtySession", () => {
 		});
 
 		expect(() => session.write("hello")).toThrow("permission denied");
+	});
+
+	it("suppresses node-pty async EIO write queue errors", () => {
+		setPlatform("darwin");
+		const writeStream = createMockWriteStream();
+		const ptyProcess = createMockPtyProcess(writeStream);
+		const error = new Error("i/o error") as NodeJS.ErrnoException;
+		error.code = "EIO";
+		fsWriteMock.mockImplementation((_fd, _buffer, _offset, callback) => {
+			callback(error, 0);
+		});
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		try {
+			PtySession.spawn({
+				binary: "claude",
+				args: [],
+				cwd: "/tmp",
+				cols: 120,
+				rows: 40,
+			});
+
+			writeStream._processWriteQueue();
+
+			expect(fsWriteMock).toHaveBeenCalledTimes(1);
+			expect(writeStream._writeQueue).toHaveLength(0);
+			expect(consoleError).not.toHaveBeenCalled();
+		} finally {
+			consoleError.mockRestore();
+		}
+	});
+
+	it("keeps node-pty async non-ignorable write errors visible", () => {
+		setPlatform("darwin");
+		const writeStream = createMockWriteStream();
+		const ptyProcess = createMockPtyProcess(writeStream);
+		const error = new Error("permission denied") as NodeJS.ErrnoException;
+		error.code = "EPERM";
+		fsWriteMock.mockImplementation((_fd, _buffer, _offset, callback) => {
+			callback(error, 0);
+		});
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		try {
+			PtySession.spawn({
+				binary: "claude",
+				args: [],
+				cwd: "/tmp",
+				cols: 120,
+				rows: 40,
+			});
+
+			writeStream._processWriteQueue();
+
+			expect(fsWriteMock).toHaveBeenCalledTimes(1);
+			expect(writeStream._writeQueue).toHaveLength(0);
+			expect(consoleError).toHaveBeenCalledWith("Unhandled pty write error", error);
+		} finally {
+			consoleError.mockRestore();
+		}
 	});
 });

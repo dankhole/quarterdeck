@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: suppress closed-PTY async write noise (2026-04-27)
+
+Dogfooding showed `Unhandled pty write error [Error: EIO: i/o error, write]` immediately after startup backup logging. The backup itself was incidental; the exact error line comes from node-pty's Unix `CustomWriteStream`, which accepts input synchronously through `IPty.write()` and performs the real `fs.write(...)` later. If the child PTY exits or is killed in that async window, macOS/Linux can report `EIO` or `EBADF`. Quarterdeck's existing `PtySession.write()` try/catch already ignored synchronous closed-PTY write errors, but it could not intercept node-pty's later internal `console.error(...)`.
+
+`PtySession.spawn(...)` now installs a narrow node-pty write-queue guard when the Unix private write-stream shape is present. The guard keeps the upstream `EAGAIN` retry behavior, clears the queue on terminal write failure like node-pty already did, suppresses only expected closed-PTY `EIO` / `EBADF` shutdown races, and continues logging any other write error. Focused tests mock the async `fs.write` callback to verify both the suppressed closed-PTY path and the still-visible unexpected-error path.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/terminal/pty-session.ts`, `test/runtime/terminal/pty-session.test.ts`.
+
+Commit: pending
+
 ## Fix: preserve non-zero startup resume failures (2026-04-27)
 
 Dogfooding showed a review-ready Codex task could come back after server startup with a blank terminal. The runtime log had the important clue: `codex resume <stored-id>` exited with code 1, then the generic resume-failure fallback opened a fresh non-resume Codex prompt. That second prompt had no task prompt or conversation context, cleared the stored `resumeSessionId`, and replaced the useful failed-resume terminal output with an empty live session.

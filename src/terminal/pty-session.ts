@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as pty from "node-pty";
 
 import { buildWindowsCmdArgsCommandLine, resolveWindowsComSpec, shouldUseWindowsCmdLaunch } from "../core";
@@ -20,11 +21,50 @@ export interface SpawnPtySessionRequest {
 
 type PtyOutputChunk = string | Buffer | Uint8Array;
 
+interface NodePtyWriteTask {
+	buffer: Buffer;
+	offset: number;
+}
+
+interface NodePtyCustomWriteStream {
+	_fd: number;
+	_writeQueue: NodePtyWriteTask[];
+	_writeImmediate?: NodeJS.Immediate;
+	_processWriteQueue: () => void;
+}
+
+interface NodePtyWithWriteStream extends pty.IPty {
+	_writeStream?: unknown;
+}
+
 function normalizeOutputChunk(data: PtyOutputChunk): Buffer {
 	if (typeof data === "string") {
 		return Buffer.from(data, "utf8");
 	}
 	return Buffer.isBuffer(data) ? data : Buffer.from(data);
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+function isNodePtyWriteTask(value: unknown): value is NodePtyWriteTask {
+	if (!isObjectRecord(value)) {
+		return false;
+	}
+	return Buffer.isBuffer(value.buffer) && typeof value.offset === "number";
+}
+
+function isNodePtyCustomWriteStream(value: unknown): value is NodePtyCustomWriteStream {
+	if (!isObjectRecord(value)) {
+		return false;
+	}
+	return (
+		typeof value._fd === "number" &&
+		Array.isArray(value._writeQueue) &&
+		value._writeQueue.every(isNodePtyWriteTask) &&
+		typeof value._processWriteQueue === "function"
+	);
 }
 
 function isIgnorablePtyWriteError(error: unknown): boolean {
@@ -33,6 +73,10 @@ function isIgnorablePtyWriteError(error: unknown): boolean {
 	}
 	const code = (error as NodeJS.ErrnoException).code;
 	return code === "EIO" || code === "EBADF";
+}
+
+function hasErrnoCode(error: unknown, code: string): boolean {
+	return error instanceof Error && (error as NodeJS.ErrnoException).code === code;
 }
 
 function isIgnorablePtyResizeError(error: unknown): boolean {
@@ -44,6 +88,47 @@ function isIgnorablePtyResizeError(error: unknown): boolean {
 		return true;
 	}
 	return error.message.toLowerCase().includes("already exited");
+}
+
+function installNodePtyWriteErrorGuard(ptyProcess: pty.IPty): void {
+	const writeStream = (ptyProcess as NodePtyWithWriteStream)._writeStream;
+	if (!isNodePtyCustomWriteStream(writeStream)) {
+		return;
+	}
+
+	// node-pty's Unix CustomWriteStream performs the real fs.write asynchronously
+	// after IPty.write() returns. If the child PTY closes in that window, macOS/Linux
+	// can report EIO/EBADF and node-pty logs "Unhandled pty write error" directly to
+	// stderr. Keep this shim narrow: preserve EAGAIN retries, suppress only expected
+	// closed-PTY errors, and keep all other write failures visible.
+	writeStream._processWriteQueue = () => {
+		writeStream._writeImmediate = undefined;
+		const task = writeStream._writeQueue[0];
+		if (!task) {
+			return;
+		}
+
+		fs.write(writeStream._fd, task.buffer, task.offset, (error, written) => {
+			if (error) {
+				if (hasErrnoCode(error, "EAGAIN")) {
+					writeStream._writeImmediate = setImmediate(() => writeStream._processWriteQueue());
+					return;
+				}
+
+				writeStream._writeQueue.length = 0;
+				if (!isIgnorablePtyWriteError(error)) {
+					console.error("Unhandled pty write error", error);
+				}
+				return;
+			}
+
+			task.offset += written;
+			if (task.offset >= task.buffer.byteLength) {
+				writeStream._writeQueue.shift();
+			}
+			writeStream._processWriteQueue();
+		});
+	};
 }
 
 function terminatePtyProcess(ptyProcess: pty.IPty): void {
@@ -96,6 +181,7 @@ export class PtySession {
 		};
 
 		const ptyProcess = pty.spawn(spawnBinary, spawnArgs, ptyOptions);
+		installNodePtyWriteErrorGuard(ptyProcess);
 		return new PtySession(ptyProcess, onData, onExit);
 	}
 
