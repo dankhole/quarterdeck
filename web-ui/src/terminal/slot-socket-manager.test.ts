@@ -119,5 +119,6 @@ describe("SlotSocketManager", () => {
 			JSON.stringify({ type: "request_restore" }),
 		]);
 		expect(manager.restoreCompleted).toBe(false);
+		manager.resetConnectionState();
 	});
 });

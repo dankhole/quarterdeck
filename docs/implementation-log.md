@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: add terminal restore watchdog logging (2026-04-27)
+
+Dogfooding an untrashed Codex task showed the agent terminal could remain behind the loading spinner long enough that switching projects away and back was needed to recover the view. Local `main` already contained the behavioral recovery pieces for the known restore races: queued restore requests during initial connect, IO-open fallback after 1.5 seconds, pooled-slot reconnect on session-instance changes, and guards against empty restore snapshots blanking live output. Reapplying the older worktree's behavioral patch on top of `main` would have risked duplicating or perturbing that flow.
+
+The main-based fix therefore adds observability instead of changing restore semantics. `SlotSocketManager` now tracks restore cycles started by initial connect, restore payloads, and explicit restore requests; clears that tracking on successful restore, reset, and shutdown; and emits warning-level diagnostics if restore remains pending for 10 seconds, if IO/control sockets close mid-restore, or if snapshot application throws. The focused test cleanup now resets the manager after exercising queued restore requests so the watchdog timer cannot leak across tests.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `web-ui/src/terminal/slot-socket-manager.ts`, `web-ui/src/terminal/slot-socket-manager.test.ts`.
+
+Commit: pending
+
 ## Fix: seed cross-project notification state on stream connect (2026-04-27)
 
 Notification ownership is intentionally project-bucketed in the browser, but a fresh runtime WebSocket connection only hydrated full session state for the selected project. Other projects entered notification memory only after a live `task_notification` delta arrived. That meant a reload/reconnect could miss already-running or already-waiting tasks in other managed projects, breaking cross-project needs-input badges and audible-notification transition baselines until the next task event.

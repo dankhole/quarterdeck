@@ -8,6 +8,7 @@ import {
 import { createClientLogger } from "@/utils/client-logger";
 
 const log = createClientLogger("slot-socket");
+const RESTORE_STALL_WARNING_MS = 10_000;
 
 interface SlotSocketCallbacks {
 	enqueueWrite: (data: string | Uint8Array, options?: { ackBytes?: number; notifyText?: string | null }) => void;
@@ -31,6 +32,9 @@ export class SlotSocketManager {
 	private controlSocket: WebSocket | null = null;
 	private outputTextDecoder = new TextDecoder();
 	private pendingRestoreRequest = false;
+	private restoreInProgress = false;
+	private restoreStallWarningTimer: ReturnType<typeof setTimeout> | null = null;
+	private restoreStartedAt: number | null = null;
 	connectionReady = false;
 	restoreCompleted = false;
 
@@ -122,6 +126,9 @@ export class SlotSocketManager {
 			this.connectionReady = false;
 			this.restoreCompleted = false;
 			this.pendingRestoreRequest = false;
+			if (this.restoreInProgress) {
+				log.warn(`slot ${this.slotId} IO socket closed while restore was pending`);
+			}
 			this.callbacks.onLastError("Terminal stream closed. Close and reopen to reconnect.");
 		};
 	}
@@ -133,6 +140,7 @@ export class SlotSocketManager {
 		const t0 = performance.now();
 		const controlSocket = new WebSocket(getTerminalWebSocketUrl("control", taskId, projectId, this.clientId));
 		this.controlSocket = controlSocket;
+		this.beginRestoreCycle("initial_connect");
 		controlSocket.onopen = () => {
 			if (this.callbacks.isDisposed() || this.controlSocket !== controlSocket) {
 				return;
@@ -153,7 +161,7 @@ export class SlotSocketManager {
 			}
 
 			if (payload.type === "restore") {
-				this.restoreCompleted = false;
+				this.beginRestoreCycle("restore_payload");
 				void this.callbacks
 					.onRestore(payload.snapshot, payload.cols, payload.rows)
 					.then(() => {
@@ -166,6 +174,9 @@ export class SlotSocketManager {
 						if (this.callbacks.isDisposed() || this.controlSocket !== controlSocket) {
 							return;
 						}
+						log.warn(`slot ${this.slotId} restore failed while applying snapshot`, {
+							snapshotLength: payload.snapshot.length,
+						});
 						this.callbacks.ensureVisible();
 						this.callbacks.onLastError("Terminal restore failed.");
 					});
@@ -197,13 +208,23 @@ export class SlotSocketManager {
 			}
 			this.callbacks.ensureVisible();
 			this.controlSocket = null;
+			if (this.restoreInProgress || this.pendingRestoreRequest) {
+				log.warn(`slot ${this.slotId} control socket closed during restore`, {
+					restoreInProgress: this.restoreInProgress,
+					pendingRestoreRequest: this.pendingRestoreRequest,
+				});
+			}
+			this.clearRestoreWatchdog();
+			this.restoreInProgress = false;
 			this.pendingRestoreRequest = false;
 			this.callbacks.onLastError("Terminal control connection closed. Close and reopen to reconnect.");
 		};
 	}
 
 	markRestoreCompleted(): void {
+		this.restoreInProgress = false;
 		this.restoreCompleted = true;
+		this.clearRestoreWatchdog();
 		this.sendControl({ type: "restore_complete" });
 		if (!this.pendingRestoreRequest) {
 			return;
@@ -228,12 +249,17 @@ export class SlotSocketManager {
 			this.controlSocket = null;
 			socket.close();
 		}
+		this.pendingRestoreRequest = false;
+		this.restoreInProgress = false;
+		this.clearRestoreWatchdog();
 	}
 
 	resetConnectionState(): void {
 		this.connectionReady = false;
 		this.restoreCompleted = false;
 		this.pendingRestoreRequest = false;
+		this.restoreInProgress = false;
+		this.clearRestoreWatchdog();
 		this.outputTextDecoder = new TextDecoder();
 	}
 
@@ -258,7 +284,43 @@ export class SlotSocketManager {
 	private sendRestoreRequest(): void {
 		log.info(`slot ${this.slotId} requesting restore from server`);
 		this.pendingRestoreRequest = false;
-		this.restoreCompleted = false;
+		this.beginRestoreCycle("request_restore");
 		this.sendControl({ type: "request_restore" });
+	}
+
+	private beginRestoreCycle(reason: string): void {
+		if (!this.restoreInProgress) {
+			this.restoreStartedAt = performance.now();
+		}
+		this.restoreInProgress = true;
+		this.restoreCompleted = false;
+		this.scheduleRestoreWatchdog(reason);
+	}
+
+	private scheduleRestoreWatchdog(reason: string): void {
+		this.clearRestoreWatchdog();
+		this.restoreStallWarningTimer = setTimeout(() => {
+			this.restoreStallWarningTimer = null;
+			if (!this.restoreInProgress) {
+				return;
+			}
+			const elapsedMs =
+				this.restoreStartedAt === null ? null : Math.round((performance.now() - this.restoreStartedAt) * 10) / 10;
+			log.warn(`slot ${this.slotId} restore still pending after ${RESTORE_STALL_WARNING_MS}ms`, {
+				reason,
+				elapsedMs,
+				hasControlSocket: this.controlSocket !== null,
+				hasIoSocket: this.ioSocket !== null,
+				pendingRestoreRequest: this.pendingRestoreRequest,
+			});
+		}, RESTORE_STALL_WARNING_MS);
+	}
+
+	private clearRestoreWatchdog(): void {
+		if (this.restoreStallWarningTimer === null) {
+			return;
+		}
+		clearTimeout(this.restoreStallWarningTimer);
+		this.restoreStallWarningTimer = null;
 	}
 }

@@ -71,6 +71,7 @@
 - Pooled task terminals skip that reconnect for processless stop summaries, reducing the extra flash before untrash starts the real replacement process.
 - Restore recovery no longer issues speculative extra restores after live output is available, and empty restore snapshots are ignored after queued terminal writes drain when the visible terminal already has content, preventing Codex untrash from flashing output and then blanking the terminal.
 - Untrash/resume diagnostics now follow the logger-level conventions: normal breadcrumbs are debug-level tagged logs, degradation paths stay warn-level, and temporary raw Codex subprocess stderr traces were removed from the visible agent terminal stream.
+- Terminal restore now emits warning-level diagnostics when the restore handshake remains pending for 10 seconds, when IO/control sockets close mid-restore, or when snapshot application fails, making stuck agent-terminal spinners diagnosable without changing restore behavior.
 
 ### Chore: bump `postcss` to 8.5.10 in both packages
 
