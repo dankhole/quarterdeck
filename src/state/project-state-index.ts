@@ -1,10 +1,15 @@
 import { randomBytes } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { copyFile, readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { z } from "zod";
 
 import type { RuntimeBoardColumnId, RuntimeBoardData, RuntimeTaskSessionSummary } from "../core";
-import { canonicalizeTaskBoard, runtimeBoardDataSchema, runtimeTaskSessionSummarySchema } from "../core";
+import {
+	canonicalizeTaskBoard,
+	createTaggedLogger,
+	runtimeBoardDataSchema,
+	runtimeTaskSessionSummarySchema,
+} from "../core";
 import { isNodeError, lockedFileSystem } from "../fs";
 import {
 	getProjectBoardPath,
@@ -103,17 +108,79 @@ const projectIndexFileSchema = z
 		}
 	});
 
-const projectSessionsSchema = z.record(z.string(), runtimeTaskSessionSummarySchema).superRefine((sessions, context) => {
-	for (const [taskId, session] of Object.entries(sessions)) {
-		if (session.taskId !== taskId) {
-			context.addIssue({
-				code: z.ZodIssueCode.custom,
-				path: [taskId, "taskId"],
-				message: `Session taskId must match record key "${taskId}".`,
-			});
+const projectSessionsOuterSchema = z.record(z.string(), z.unknown());
+
+export interface ReadProjectSessionsWarning {
+	taskId: string;
+	reason: string;
+}
+
+export interface ReadProjectSessionsResult {
+	sessions: Record<string, RuntimeTaskSessionSummary>;
+	droppedCount: number;
+	warnings: ReadProjectSessionsWarning[];
+	backupPath: string | null;
+}
+
+const sessionsStateLog = createTaggedLogger("project-state");
+
+function parseSessionsLeniently(raw: Record<string, unknown>): {
+	sessions: Record<string, RuntimeTaskSessionSummary>;
+	warnings: ReadProjectSessionsWarning[];
+} {
+	const sessions: Record<string, RuntimeTaskSessionSummary> = {};
+	const warnings: ReadProjectSessionsWarning[] = [];
+	for (const [taskId, entry] of Object.entries(raw)) {
+		const parsed = runtimeTaskSessionSummarySchema.safeParse(entry);
+		if (!parsed.success) {
+			warnings.push({ taskId, reason: formatSchemaIssues(parsed.error) });
+			continue;
 		}
+		if (parsed.data.taskId !== taskId) {
+			warnings.push({
+				taskId,
+				reason: `Session taskId "${parsed.data.taskId}" does not match record key.`,
+			});
+			continue;
+		}
+		sessions[taskId] = parsed.data;
 	}
-});
+	return { sessions, warnings };
+}
+
+async function backUpCorruptSessionsFile(sessionsPath: string): Promise<string | null> {
+	const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+	const backupPath = `${sessionsPath}.corrupt-${timestamp}-${randomBytes(3).toString("hex")}`;
+	try {
+		await copyFile(sessionsPath, backupPath);
+		return backupPath;
+	} catch (error) {
+		sessionsStateLog.warn("failed to back up corrupt sessions.json", {
+			sessionsPath,
+			backupPath,
+			error: error instanceof Error ? error.message : String(error),
+		});
+		return null;
+	}
+}
+
+async function writeRepairedSessionsFile(
+	sessionsPath: string,
+	sessions: Record<string, RuntimeTaskSessionSummary>,
+): Promise<boolean> {
+	try {
+		await lockedFileSystem.writeJsonFileAtomic(sessionsPath, sessions, {
+			lock: null,
+		});
+		return true;
+	} catch (error) {
+		sessionsStateLog.warn("failed to write repaired sessions.json", {
+			sessionsPath,
+			error: error instanceof Error ? error.message : String(error),
+		});
+		return false;
+	}
+}
 
 // --- JSON parsing helpers ---
 
@@ -227,10 +294,40 @@ export async function loadProjectBoardById(projectId: string): Promise<RuntimeBo
 	return await readProjectBoard(projectId);
 }
 
-export async function readProjectSessions(projectId: string): Promise<Record<string, RuntimeTaskSessionSummary>> {
+export async function readProjectSessions(projectId: string): Promise<ReadProjectSessionsResult> {
 	const sessionsPath = getProjectSessionsPath(projectId);
 	const rawSessions = await readJsonFile(sessionsPath);
-	return parsePersistedStateFile(sessionsPath, "sessions.json", rawSessions, projectSessionsSchema, {});
+	if (rawSessions === null) {
+		return { sessions: {}, droppedCount: 0, warnings: [], backupPath: null };
+	}
+	const outer = projectSessionsOuterSchema.safeParse(rawSessions);
+	if (!outer.success) {
+		throw new Error(
+			`Invalid sessions.json file at ${sessionsPath}. ` +
+				`Fix or remove the file. Validation errors: ${formatSchemaIssues(outer.error)}`,
+		);
+	}
+	const { sessions, warnings } = parseSessionsLeniently(outer.data);
+	let backupPath: string | null = null;
+	let repaired = false;
+	if (warnings.length > 0) {
+		backupPath = await backUpCorruptSessionsFile(sessionsPath);
+		repaired = backupPath !== null && (await writeRepairedSessionsFile(sessionsPath, sessions));
+		sessionsStateLog.warn("dropped invalid sessions.json entries", {
+			projectId,
+			sessionsPath,
+			backupPath,
+			repaired,
+			droppedCount: warnings.length,
+			warnings,
+		});
+	}
+	return {
+		sessions,
+		droppedCount: warnings.length,
+		warnings,
+		backupPath,
+	};
 }
 
 export async function readProjectMeta(projectId: string): Promise<ProjectStateMeta> {

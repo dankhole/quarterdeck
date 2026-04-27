@@ -1,7 +1,7 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { notifyError } from "@/components/app-toaster";
+import { notifyError, showAppToast } from "@/components/app-toaster";
 import { createInitialBoardData } from "@/data/board-data";
 import { restoreProjectBoard, stashProjectBoard, updateProjectBoardCache } from "@/runtime/project-board-cache";
 import { fetchProjectState } from "@/runtime/project-state-query";
@@ -73,6 +73,7 @@ export function useProjectSync({
 	const cachedBoardRestoreRef = useRef<CachedProjectBoardRestore | null>(null);
 	const syncTargetProjectIdRef = useRef<string | null>(currentProjectId);
 	const projectRefreshRequestIdRef = useRef(0);
+	const warnedProjectIdsRef = useRef<Set<string>>(new Set());
 
 	const isProjectMetadataPending = currentProjectId !== null && appliedProjectId !== currentProjectId;
 
@@ -118,6 +119,21 @@ export function useProjectSync({
 			setProjectPath(nextProjectState.repoPath);
 			setStoreProjectPath(nextProjectState.repoPath);
 			setProjectGit(nextProjectState.git);
+			if (currentProjectId && !warnedProjectIdsRef.current.has(currentProjectId)) {
+				const sessionsWarning = nextProjectState.warnings?.find(
+					(warning) => warning.kind === "sessions_corruption",
+				);
+				if (sessionsWarning) {
+					warnedProjectIdsRef.current.add(currentProjectId);
+					const plural = sessionsWarning.droppedCount === 1 ? "entry" : "entries";
+					showAppToast({
+						intent: "warning",
+						icon: "warning-sign",
+						message: `Skipped ${sessionsWarning.droppedCount} invalid session ${plural}. See server log for details.`,
+						timeout: 10000,
+					});
+				}
+			}
 			// Authoritative project state enters the browser through exactly one
 			// atomic apply seam. Do not split session reconciliation, board
 			// projection, hydration policy, or cache/revision updates back into
@@ -266,11 +282,11 @@ export function useProjectSync({
 	}, [applyProjectState, hasNoProjects, streamedProjectState]);
 
 	useEffect(() => {
-		if (!hasReceivedSnapshot || !isDocumentVisible) {
+		if (!hasReceivedSnapshot || !isDocumentVisible || !streamedProjectState) {
 			return;
 		}
 		void refreshProjectState();
-	}, [hasReceivedSnapshot, isDocumentVisible, refreshProjectState]);
+	}, [hasReceivedSnapshot, isDocumentVisible, refreshProjectState, streamedProjectState]);
 
 	return {
 		projectPath,

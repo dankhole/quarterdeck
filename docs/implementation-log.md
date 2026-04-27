@@ -2,6 +2,18 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: repair invalid session entries during project load (2026-04-27)
+
+The first hardening pass made `readProjectSessions` tolerant of bad entries, but its repair path only renamed the original corrupt file and relied on a later browser save to write a clean `sessions.json`. That left the project in a poor intermediate state if no save followed: valid surviving sessions were only returned for that one load, the canonical file was not immediately repaired, and a later load could see missing or still-invalid session state depending on where the previous attempt stopped. The WebSocket startup path also still treated selected-project state as all-or-nothing: `loadInitialSnapshot` used `Promise.all` for the project list and full project state, so one invalid selected project's state discarded the already-built project list and left the UI showing no projects.
+
+The fix makes invalid session-entry recovery an immediate read-repair. `readProjectSessions` now validates the outer `sessions.json` object strictly, parses each entry independently, preserves the original file as `sessions.json.corrupt-<timestamp>-<suffix>`, and writes a repaired `sessions.json` containing only the surviving valid summaries. The project-state response carries a `sessions_corruption` warning so the UI can show a one-time warning toast for the affected project. The warning is also held in a small pending map until the next authoritative save, because startup terminal-manager hydration can read and repair the file before the browser asks for its first snapshot. Truly malformed outer shapes still throw because there is no safe per-entry salvage.
+
+Runtime streaming now builds and sends the projects payload before attempting the selected project's full state. If project-state loading still fails, the snapshot contains the visible project list with `projectState: null`, and the error is sent as a separate WebSocket error message. The browser-side visibility refresh now requires an actual streamed project state before calling `project.getState`, preventing the partial snapshot from immediately retrying the same failed load and producing a second identical toast.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/core/api/project-state.ts`, `src/server/runtime-state-hub.ts`, `src/state/project-state-index.ts`, `src/state/project-state.ts`, `test/integration/project-state.integration.test.ts`, `test/integration/state-streaming.integration.test.ts`, `web-ui/src/hooks/project/use-project-sync.test.tsx`, `web-ui/src/hooks/project/use-project-sync.ts`
+
+Commit: pending
+
 ## Fix: log full toast warning/error messages to the debug log (2026-04-25)
 
 Toast-delivered warnings and errors were the only surface for certain failures — for example, the server's `Invalid sessions.json file at … Fix or remove the file. Validation errors: …` message that flows from `parsePersistedStateFile` through the WebSocket error channel and lands in `useStreamErrorHandler` → `notifyError`. `sanitizeErrorForToast` collapses the message to its first non-empty line capped at 150 characters, so the actual Zod validation issues were truncated away and there was no debug-log trace, making the failure hard to diagnose after the toast disappeared.

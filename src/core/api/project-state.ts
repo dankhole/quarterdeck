@@ -47,6 +47,13 @@ export const runtimeProjectMetadataSchema = z.object({
 });
 export type RuntimeProjectMetadata = z.infer<typeof runtimeProjectMetadataSchema>;
 
+export const runtimeProjectStateWarningSchema = z.object({
+	kind: z.literal("sessions_corruption"),
+	droppedCount: z.number().int().nonnegative(),
+	backupPath: z.string().nullable(),
+});
+export type RuntimeProjectStateWarning = z.infer<typeof runtimeProjectStateWarningSchema>;
+
 export const runtimeProjectStateResponseSchema = z.object({
 	repoPath: z.string(),
 	statePath: z.string(),
@@ -54,6 +61,7 @@ export const runtimeProjectStateResponseSchema = z.object({
 	board: runtimeBoardDataSchema,
 	sessions: z.record(z.string(), runtimeTaskSessionSummarySchema),
 	revision: z.number(),
+	warnings: z.array(runtimeProjectStateWarningSchema).optional(),
 });
 export type RuntimeProjectStateResponse = z.infer<typeof runtimeProjectStateResponseSchema>;
 

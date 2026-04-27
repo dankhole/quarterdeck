@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: repair invalid session entries during project load
+
+- Project loads now drop invalid `sessions.json` entries individually, preserve the original file as `sessions.json.corrupt-*`, and immediately write a repaired `sessions.json` containing the surviving sessions so the project does not remain half-corrupt until the next board save.
+- Runtime-state WebSocket startup now sends the project list even when the selected project's full state cannot load, then reports the project-state error separately instead of leaving the browser with no visible projects.
+- Repair warnings are retained long enough for the browser snapshot to see them even when startup terminal-manager hydration repairs the file first, and the web UI no longer immediately retries `project.getState` after a partial snapshot with no project state.
+
 ### Fix: log full toast warning/error messages to the debug log
 
 - Error and warning toasts now log their full, untruncated message through the existing tagged-logger system, so the debug log panel (and browser console) retains the complete text even when the toast itself truncates at 150 chars.

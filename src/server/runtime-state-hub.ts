@@ -298,6 +298,15 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 					this.clients.registerProjectClient(monitorProjectId, client);
 				}
 
+				if (snapshot.projectStateError) {
+					hubLog.error("Failed to load initial project state for client", {
+						projectId: snapshot.projectId,
+						projectPath: snapshot.projectPath,
+						message: snapshot.projectStateError,
+					});
+					this.sendMessage(client, buildErrorMessage(snapshot.projectStateError));
+				}
+
 				if (snapshot.projectId && snapshot.projectPath && snapshot.projectState) {
 					didConnectProjectMonitor = true;
 					void this.metadataMonitor
@@ -322,7 +331,12 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				if (resolved.didPruneProjects) {
 					void this.broadcastRuntimeProjectsUpdated(resolved.projectId);
 				}
-				if (snapshot.projectId && snapshot.projectPath && !this.resumeAttempted.has(snapshot.projectId)) {
+				if (
+					snapshot.projectId &&
+					snapshot.projectPath &&
+					snapshot.projectState &&
+					!this.resumeAttempted.has(snapshot.projectId)
+				) {
 					this.resumeAttempted.add(snapshot.projectId);
 					void this.deps.projectRegistry.resumeInterruptedSessions(snapshot.projectId, snapshot.projectPath);
 				}
@@ -348,18 +362,27 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		projectId: string | null;
 		projectPath: string | null;
 		projectState: RuntimeProjectStateResponse | null;
+		projectStateError: string | null;
 	}> {
 		if (resolved.projectId && resolved.projectPath) {
-			const [projectsPayload, projectState] = await Promise.all([
-				this.deps.projectRegistry.buildProjectsPayload(resolved.projectId),
-				this.deps.projectRegistry.buildProjectStateSnapshot(resolved.projectId, resolved.projectPath),
-			]);
+			const projectsPayload = await this.deps.projectRegistry.buildProjectsPayload(resolved.projectId);
+			let projectState: RuntimeProjectStateResponse | null = null;
+			let projectStateError: string | null = null;
+			try {
+				projectState = await this.deps.projectRegistry.buildProjectStateSnapshot(
+					resolved.projectId,
+					resolved.projectPath,
+				);
+			} catch (error) {
+				projectStateError = error instanceof Error ? error.message : String(error);
+			}
 			return {
 				currentProjectId: projectsPayload.currentProjectId,
 				projects: projectsPayload.projects,
 				projectId: resolved.projectId,
 				projectPath: resolved.projectPath,
 				projectState,
+				projectStateError,
 			};
 		}
 
@@ -370,6 +393,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			projectId: null,
 			projectPath: null,
 			projectState: null,
+			projectStateError: null,
 		};
 	}
 

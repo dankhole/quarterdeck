@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
@@ -10,15 +10,18 @@ import type {
 	RuntimeProjectStateResponse,
 	RuntimeProjectsResponse,
 	RuntimeShellSessionStartResponse,
+	RuntimeStateStreamErrorMessage,
 	RuntimeStateStreamProjectStateMessage,
 	RuntimeStateStreamSnapshotMessage,
 	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeWorktreeEnsureResponse,
 } from "../../src/core";
+import { loadProjectContext } from "../../src/state";
 import { createBoard, createReviewBoard } from "../utilities/board-factory";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
 import { getAvailablePort, startQuarterdeckServer } from "../utilities/integration-server";
 import { connectRuntimeStream, type RuntimeStreamClient } from "../utilities/runtime-stream-client";
+import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir } from "../utilities/temp-dir";
 import { requestJson } from "../utilities/trpc-request";
 
@@ -139,6 +142,173 @@ describe.sequential("state streaming integration", () => {
 			}
 			await server.stop();
 			cleanupRoot();
+			cleanupHome();
+		}
+	}, 30_000);
+
+	it("streams the project list when the selected project's state cannot load", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-stream-corrupt-");
+		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("quarterdeck-projects-stream-corrupt-");
+
+		const projectAPath = join(tempRoot, "project-a");
+		const projectBPath = join(tempRoot, "project-b");
+		mkdirSync(projectAPath, { recursive: true });
+		mkdirSync(projectBPath, { recursive: true });
+		initGitRepository(projectAPath);
+		initGitRepository(projectBPath);
+
+		const previousHome = process.env.HOME;
+		const previousUserProfile = process.env.USERPROFILE;
+		let projectAId = "";
+		let projectBId = "";
+		process.env.HOME = tempHome;
+		process.env.USERPROFILE = tempHome;
+		try {
+			const contextA = await loadProjectContext(projectAPath);
+			const contextB = await loadProjectContext(projectBPath);
+			projectAId = contextA.projectId;
+			projectBId = contextB.projectId;
+			mkdirSync(contextA.statePath, { recursive: true });
+			writeFileSync(
+				join(contextA.statePath, "board.json"),
+				JSON.stringify(createBoard("Valid board"), null, 2),
+				"utf8",
+			);
+			writeFileSync(join(contextA.statePath, "sessions.json"), JSON.stringify(["not", "an", "object"]), "utf8");
+		} finally {
+			if (previousHome === undefined) {
+				delete process.env.HOME;
+			} else {
+				process.env.HOME = previousHome;
+			}
+			if (previousUserProfile === undefined) {
+				delete process.env.USERPROFILE;
+			} else {
+				process.env.USERPROFILE = previousUserProfile;
+			}
+		}
+
+		const port = await getAvailablePort();
+		const server = await startQuarterdeckServer({
+			cwd: projectAPath,
+			homeDir: tempHome,
+			port,
+		});
+
+		let stream: RuntimeStreamClient | null = null;
+		try {
+			stream = await connectRuntimeStream(
+				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectAId)}`,
+			);
+			const snapshot = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
+			)) as RuntimeStateStreamSnapshotMessage;
+			expect(snapshot.currentProjectId).toBe(projectAId);
+			expect(snapshot.projects.map((project) => project.id).sort()).toEqual([projectAId, projectBId].sort());
+			expect(snapshot.projectState).toBeNull();
+
+			const error = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamErrorMessage => message.type === "error",
+			)) as RuntimeStateStreamErrorMessage;
+			expect(error.message).toContain("Invalid sessions.json file");
+		} finally {
+			if (stream) {
+				await stream.close();
+			}
+			await server.stop();
+			cleanupRoot();
+			cleanupHome();
+		}
+	}, 30_000);
+
+	it("keeps session repair warnings visible when startup hydration repairs the file first", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-startup-repair-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-startup-repair-");
+
+		mkdirSync(projectPath, { recursive: true });
+		initGitRepository(projectPath);
+
+		const previousHome = process.env.HOME;
+		const previousUserProfile = process.env.USERPROFILE;
+		let projectId = "";
+		let sessionsPath = "";
+		process.env.HOME = tempHome;
+		process.env.USERPROFILE = tempHome;
+		try {
+			const context = await loadProjectContext(projectPath);
+			projectId = context.projectId;
+			sessionsPath = join(context.statePath, "sessions.json");
+			mkdirSync(context.statePath, { recursive: true });
+			writeFileSync(
+				join(context.statePath, "board.json"),
+				JSON.stringify(createBoard("Valid board"), null, 2),
+				"utf8",
+			);
+			writeFileSync(
+				sessionsPath,
+				JSON.stringify(
+					{
+						"task-good": createTestTaskSessionSummary({
+							taskId: "task-good",
+							updatedAt: 100,
+						}),
+						"task-bad": {
+							...createTestTaskSessionSummary({
+								taskId: "task-bad",
+								updatedAt: 200,
+							}),
+							agentId: "old-agent",
+						},
+					},
+					null,
+					2,
+				),
+				"utf8",
+			);
+		} finally {
+			if (previousHome === undefined) {
+				delete process.env.HOME;
+			} else {
+				process.env.HOME = previousHome;
+			}
+			if (previousUserProfile === undefined) {
+				delete process.env.USERPROFILE;
+			} else {
+				process.env.USERPROFILE = previousUserProfile;
+			}
+		}
+
+		const port = await getAvailablePort();
+		const server = await startQuarterdeckServer({
+			cwd: projectPath,
+			homeDir: tempHome,
+			port,
+		});
+
+		let stream: RuntimeStreamClient | null = null;
+		try {
+			stream = await connectRuntimeStream(
+				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectId)}`,
+			);
+			const snapshot = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
+			)) as RuntimeStateStreamSnapshotMessage;
+			expect(snapshot.projectState?.warnings).toEqual([
+				expect.objectContaining({
+					kind: "sessions_corruption",
+					droppedCount: 1,
+				}),
+			]);
+			expect(Object.keys(snapshot.projectState?.sessions ?? {})).toEqual(["task-good"]);
+
+			const repairedSessions = JSON.parse(readFileSync(sessionsPath, "utf8")) as Record<string, unknown>;
+			expect(Object.keys(repairedSessions)).toEqual(["task-good"]);
+		} finally {
+			if (stream) {
+				await stream.close();
+			}
+			await server.stop();
+			cleanupProject();
 			cleanupHome();
 		}
 	}, 30_000);

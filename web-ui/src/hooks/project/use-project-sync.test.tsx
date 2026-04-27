@@ -678,6 +678,26 @@ describe("useProjectSync", () => {
 		expect(latestSnapshot).not.toBeNull();
 	});
 
+	it("does not retry project state refresh when the runtime snapshot has no project state", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					streamedProjectState={null}
+					hasReceivedSnapshot={true}
+					isDocumentVisible={true}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		expect(fetchProjectStateMock).not.toHaveBeenCalled();
+		expect(latestSnapshot).not.toBeNull();
+	});
+
 	it("projects runtime-owned work-column placement during authoritative hydrate", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 

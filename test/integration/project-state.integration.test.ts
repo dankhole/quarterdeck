@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -265,11 +265,83 @@ describe.sequential("project-state integration", () => {
 		});
 	});
 
-	it("fails loudly when persisted sessions include unknown states", async () => {
+	it("drops invalid session entries, backs up the original file, and repairs sessions.json", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-malformed-sessions-");
 			try {
 				const projectPath = join(sandboxRoot, "project-bad-sessions");
+				mkdirSync(projectPath, { recursive: true });
+				initGitRepository(projectPath);
+
+				const context = await loadProjectContext(projectPath);
+				mkdirSync(context.statePath, { recursive: true });
+				const sessionsPath = join(context.statePath, "sessions.json");
+				writeFileSync(
+					join(context.statePath, "board.json"),
+					JSON.stringify(createBoard("Valid board"), null, 2),
+					"utf8",
+				);
+				writeFileSync(
+					sessionsPath,
+					JSON.stringify(
+						{
+							"task-good": createSessionSummary("task-good"),
+							"task-bad": {
+								...createSessionSummary("task-bad"),
+								state: "not-a-valid-state",
+							},
+						},
+						null,
+						2,
+					),
+					"utf8",
+				);
+
+				const state = await loadProjectState(projectPath);
+				expect(Object.keys(state.sessions)).toEqual(["task-good"]);
+				expect(state.warnings).toEqual([
+					expect.objectContaining({
+						kind: "sessions_corruption",
+						droppedCount: 1,
+					}),
+				]);
+				const backupPath = state.warnings?.[0]?.backupPath;
+				expect(backupPath).toMatch(/sessions\.json\.corrupt-/);
+				if (!backupPath) {
+					throw new Error("Expected corrupt sessions backup path.");
+				}
+				expect(existsSync(backupPath)).toBe(true);
+				expect(readFileSync(backupPath, "utf8")).toContain("not-a-valid-state");
+
+				const repairedSessions = JSON.parse(readFileSync(sessionsPath, "utf8")) as Record<string, unknown>;
+				expect(Object.keys(repairedSessions)).toEqual(["task-good"]);
+
+				const loadedAgain = await loadProjectState(projectPath);
+				expect(Object.keys(loadedAgain.sessions)).toEqual(["task-good"]);
+				expect(loadedAgain.warnings).toEqual(state.warnings);
+				const backupFiles = readdirSync(context.statePath).filter((entry) =>
+					entry.startsWith("sessions.json.corrupt-"),
+				);
+				expect(backupFiles).toHaveLength(1);
+
+				await saveProjectState(projectPath, {
+					board: loadedAgain.board,
+					sessions: loadedAgain.sessions,
+					expectedRevision: loadedAgain.revision,
+				});
+				const loadedAfterSave = await loadProjectState(projectPath);
+				expect(loadedAfterSave.warnings).toBeUndefined();
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("still throws when sessions.json outer shape is invalid", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-sessions-nonobject-");
+			try {
+				const projectPath = join(sandboxRoot, "project-non-object-sessions");
 				mkdirSync(projectPath, { recursive: true });
 				initGitRepository(projectPath);
 
@@ -280,23 +352,9 @@ describe.sequential("project-state integration", () => {
 					JSON.stringify(createBoard("Valid board"), null, 2),
 					"utf8",
 				);
-				writeFileSync(
-					join(context.statePath, "sessions.json"),
-					JSON.stringify(
-						{
-							"task-1": {
-								...createSessionSummary("task-1"),
-								state: "not-a-valid-state",
-							},
-						},
-						null,
-						2,
-					),
-					"utf8",
-				);
+				writeFileSync(join(context.statePath, "sessions.json"), JSON.stringify(["not", "an", "object"]), "utf8");
 
 				await expect(loadProjectState(projectPath)).rejects.toThrow("sessions.json");
-				await expect(loadProjectState(projectPath)).rejects.toThrow("state");
 			} finally {
 				cleanup();
 			}
