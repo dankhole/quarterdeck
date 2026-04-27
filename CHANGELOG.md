@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: skip shell stop RPC when home terminal was never opened
+
+- `closeHomeTerminal` no longer falls back to `currentProjectId` when the home-shell project ref is null. The ref is only populated by paths that actually start the shell, so a null ref unambiguously means "never opened" and there is nothing to stop.
+- Eliminates the debug warning `[terminal-panels] failed to stop shell terminal { reason: "close", error: "Could not stop terminal session." }` that fired on every project-switch reset because the UI was asking the runtime to stop a session that never existed.
+
 ### Docs: consolidate architecture and convention references
 
 - Merged the ranked architecture weaknesses and refactor-roadmap context into `docs/architecture-roadmap.md`, with `docs/todo.md` remaining the active execution queue.

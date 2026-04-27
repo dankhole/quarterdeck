@@ -2,6 +2,35 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: skip shell stop RPC when home terminal was never opened (2026-04-27)
+
+Dogfooding surfaced a recurring debug warning:
+
+```
+[terminal-panels] failed to stop shell terminal {
+  projectId: "airlock",
+  taskId: "__home_terminal__",
+  reason: "close",
+  error: "Could not stop terminal session."
+}
+```
+
+Root cause sat on the browser side. `useProjectSwitchCleanup` runs `resetTerminalPanelsState()` in a layout effect on every current-project change, which calls `closeHomeTerminal()` unconditionally. The old implementation in `web-ui/src/hooks/terminal/use-terminal-panels.ts` fell back to `currentProjectId` when `homeTerminalProjectIdRef.current` was null:
+
+```ts
+const projectId = homeTerminalProjectIdRef.current ?? currentProjectId;
+```
+
+If the user had never opened the home shell in the current project, the ref was `null` but `currentProjectId` was truthy, so the UI fired `trpcClient.runtime.stopTaskSession.mutate({ taskId: "__home_terminal__", waitForExit: true })` for a task id the runtime had never seen. `handleStopTaskSession` correctly returned `{ ok: false, summary: null }` (no `error` because there was no failure to describe — just nothing to stop), and the client's background wrapper surfaced a synthetic `"Could not stop terminal session."` warning.
+
+The fix drops the fallback. `homeTerminalProjectIdRef` is populated by every path that actually starts the shell (`handleToggleHomeTerminal`, `startHomeTerminalSession`, `prepareTerminalForShortcut`, and the project-change effect), so a null ref unambiguously means "never opened" and there is nothing to stop. No server-side change is needed — the runtime contract for task sessions correctly treats "unknown session" as `ok:false`, which is still a real signal for other callers.
+
+I considered a second change to treat `{ ok: false, summary: null }` without an `error` field as an idempotent no-op on the client. After a review round I dropped it: once the root-cause fallback is removed, `ok:false` during shell close would indicate some *other* invariant going wrong, and we'd rather see it than swallow it.
+
+Files touched: `web-ui/src/hooks/terminal/use-terminal-panels.ts`, `web-ui/src/hooks/terminal/use-terminal-panels.test.tsx` (regression test asserts `resetTerminalPanelsState()` and `closeHomeTerminal()` on a never-opened shell do not call `stopTaskSession`).
+
+Commit: pending
+
 ## Docs: consolidate architecture and convention references (2026-04-27)
 
 The docs cleanup merged the old split between ranked architecture weaknesses and per-item refactor context into a single `docs/architecture-roadmap.md`. The new roadmap keeps the quick ranking at the top, retains the active order and item briefs from the old context doc, and removes stale phrasing that still described completed split-brain task-state cleanup as the current top weakness. `docs/todo.md` now points at the merged roadmap while staying the live execution queue.

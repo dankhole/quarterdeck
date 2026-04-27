@@ -30,6 +30,7 @@ vi.mock("@/terminal/terminal-geometry-registry", () => ({
 }));
 
 interface HookSnapshot {
+	closeHomeTerminal: ReturnType<typeof useTerminalPanels>["closeHomeTerminal"];
 	collapseDetailTerminal: ReturnType<typeof useTerminalPanels>["collapseDetailTerminal"];
 	collapseHomeTerminal: ReturnType<typeof useTerminalPanels>["collapseHomeTerminal"];
 	detailTerminalPaneHeight: number | undefined;
@@ -43,6 +44,7 @@ interface HookSnapshot {
 	resetBottomTerminalLayoutCustomizations: ReturnType<
 		typeof useTerminalPanels
 	>["resetBottomTerminalLayoutCustomizations"];
+	resetTerminalPanelsState: ReturnType<typeof useTerminalPanels>["resetTerminalPanelsState"];
 	setDetailTerminalPaneHeight: ReturnType<typeof useTerminalPanels>["setDetailTerminalPaneHeight"];
 	setHomeTerminalPaneHeight: ReturnType<typeof useTerminalPanels>["setHomeTerminalPaneHeight"];
 }
@@ -116,6 +118,7 @@ function HookHarness({
 
 	useEffect(() => {
 		onSnapshot({
+			closeHomeTerminal: result.closeHomeTerminal,
 			collapseDetailTerminal: result.collapseDetailTerminal,
 			collapseHomeTerminal: result.collapseHomeTerminal,
 			detailTerminalPaneHeight: result.detailTerminalPaneHeight,
@@ -127,11 +130,13 @@ function HookHarness({
 			isDetailTerminalOpen: result.isDetailTerminalOpen,
 			prepareTerminalForShortcut: result.prepareTerminalForShortcut,
 			resetBottomTerminalLayoutCustomizations: result.resetBottomTerminalLayoutCustomizations,
+			resetTerminalPanelsState: result.resetTerminalPanelsState,
 			setDetailTerminalPaneHeight: result.setDetailTerminalPaneHeight,
 			setHomeTerminalPaneHeight: result.setHomeTerminalPaneHeight,
 		});
 	}, [
 		onSnapshot,
+		result.closeHomeTerminal,
 		result.collapseDetailTerminal,
 		result.collapseHomeTerminal,
 		result.detailTerminalPaneHeight,
@@ -143,6 +148,7 @@ function HookHarness({
 		result.isDetailTerminalOpen,
 		result.prepareTerminalForShortcut,
 		result.resetBottomTerminalLayoutCustomizations,
+		result.resetTerminalPanelsState,
 		result.setDetailTerminalPaneHeight,
 		result.setHomeTerminalPaneHeight,
 	]);
@@ -473,5 +479,35 @@ describe("useTerminalPanels", () => {
 
 		expect(requireSnapshot(latestSnapshot).homeTerminalPaneHeight).toBeUndefined();
 		expect(window.localStorage.getItem(LocalStorageKey.BottomTerminalPaneHeight)).toBeNull();
+	});
+
+	it("does not try to stop the home shell when it was never opened", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					selectedCard={null}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushPromises();
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).resetTerminalPanelsState();
+			await flushPromises();
+		});
+
+		expect(stopTaskSessionMutateMock).not.toHaveBeenCalled();
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).closeHomeTerminal();
+			await flushPromises();
+		});
+
+		expect(stopTaskSessionMutateMock).not.toHaveBeenCalled();
 	});
 });

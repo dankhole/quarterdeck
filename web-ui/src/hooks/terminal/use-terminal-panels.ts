@@ -247,7 +247,12 @@ export function useTerminalPanels({
 	);
 
 	const closeHomeTerminal = useCallback(() => {
-		const projectId = homeTerminalProjectIdRef.current ?? currentProjectId;
+		// Only stop the backing PTY when we actually opened one for a project.
+		// The ref is populated when the home shell starts; a null ref means the
+		// terminal was never opened (e.g. during project-switch reset), so there
+		// is nothing to stop and asking the runtime to stop it would be a no-op
+		// that surfaces as a "no session" failure.
+		const projectId = homeTerminalProjectIdRef.current;
 		setIsHomeTerminalOpen(false);
 		setIsHomeTerminalExpanded(false);
 		setHomeTerminalShellBinary(null);
@@ -260,7 +265,7 @@ export function useTerminalPanels({
 				waitForExit: true,
 			});
 		}
-	}, [currentProjectId, stopShellTerminalSessionInBackground]);
+	}, [stopShellTerminalSessionInBackground]);
 
 	const closeDetailTerminalByTaskId = useCallback(
 		(taskId: string, reason = "close") => {
