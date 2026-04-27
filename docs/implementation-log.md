@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: preserve non-zero startup resume failures (2026-04-27)
+
+Dogfooding showed a review-ready Codex task could come back after server startup with a blank terminal. The runtime log had the important clue: `codex resume <stored-id>` exited with code 1, then the generic resume-failure fallback opened a fresh non-resume Codex prompt. That second prompt had no task prompt or conversation context, cleared the stored `resumeSessionId`, and replaced the useful failed-resume terminal output with an empty live session.
+
+The terminal exit path now treats clean and failed resume exits differently. Clean startup-resume exits still use the fresh-prompt fallback because some `codex resume` / Claude `--continue` launches can exit 0 without leaving an interactive session. Non-zero resume exits are preserved instead: the session stays in review with `reviewReason: "error"`, the original `resumeSessionId` remains available for manual retry or later recovery, a `warningMessage` is stored for the UI toast, and a `[quarterdeck]` line is written into the terminal mirror so later restores are not blank even if the agent's own error output was sparse. Added regression coverage for both the failed-resume preservation path and the clean-exit fallback.
+
+Files touched: `AGENTS.md`, `CHANGELOG.md`, `docs/implementation-log.md`, `src/terminal/session-lifecycle.ts`, `test/runtime/terminal/session-manager-auto-restart.test.ts`.
+
+Commit: pending
+
 ## Fix: keep Codex slash-command maintenance from faking resumed work (2026-04-27)
 
 Dogfooding native Codex hooks showed a review-ready task could jump back to `running` after `/compact` and then stay there. The failure mode was a combination of state signals that are too broad for native hooks: Codex `SessionStart` can fire during session maintenance and the old Codex prompt-redraw fallback treated a repainted `›` prompt after Enter as proof the agent was working. Once the card was back in `running`, the reconciliation sweep often failed to recover it because Codex's TUI redraw traffic kept `lastOutputAt` fresh.

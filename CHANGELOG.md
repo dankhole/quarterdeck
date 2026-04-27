@@ -52,6 +52,7 @@
 - Codex resume without a stored `resumeSessionId` now surfaces a session warning toast, because falling back to `codex resume --last` is explicitly best-effort.
 - Explicitly stopped resumed sessions no longer run the resume-failure fallback that starts a fresh non-resume Codex process, preserving the stored `resumeSessionId` for the real trash-restore resume.
 - Startup resume keeps the clean-exit fallback path for resumed agents, so a `codex resume`/`--continue` process that exits 0 can still reopen an interactive review session when it was not explicitly stopped.
+- Startup resume no longer replaces a non-zero `codex resume` failure with a fresh blank prompt; it preserves the failed resume output, keeps the stored `resumeSessionId`, and surfaces a warning instead.
 - Startup resume now logs its scan result and warns when it cannot select or launch resumable work-column sessions, so restart failures are visible without raising the global log level to debug.
 - Startup resume now treats persisted `awaiting_review` / `attention` sessions with a stale pid as resumable after an unclean server stop, while still preserving completed `hook` / `exit` review sessions.
 - Task terminals now fall back to an interactive visible terminal when the IO socket is open but the restore handshake stalls, including reused pooled slots and delayed IO-open cases, so a delayed restore cannot keep input blocked behind the loading spinner.

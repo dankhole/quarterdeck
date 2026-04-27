@@ -232,6 +232,100 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(manager.store.getSummary("task-1")?.resumeSessionId).toBe("codex-session-1");
 	});
 
+	it("preserves a non-zero startup resume failure instead of opening a fresh blank prompt", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		const onOutput = vi.fn();
+		const onState = vi.fn();
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111 + spawnedSessions.length, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", {
+			onState,
+			onOutput,
+			onExit: vi.fn(),
+		});
+
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "codex-session-1",
+			awaitReview: true,
+		});
+
+		spawnedSessions[0]?.triggerData("No session found\n");
+		spawnedSessions[0]?.triggerExit(1);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+		const summary = manager.store.getSummary("task-1");
+		expect(summary?.state).toBe("awaiting_review");
+		expect(summary?.reviewReason).toBe("error");
+		expect(summary?.pid).toBeNull();
+		expect(summary?.exitCode).toBe(1);
+		expect(summary?.resumeSessionId).toBe("codex-session-1");
+		expect(summary?.warningMessage).toBe("Resume failed before opening an interactive session (exit code 1).");
+
+		const outputText = Buffer.concat(onOutput.mock.calls.map(([chunk]) => chunk as Buffer)).toString("utf8");
+		expect(outputText).toContain("No session found");
+		expect(outputText).toContain("Resume failed before opening an interactive session");
+		expect(onState).toHaveBeenCalledWith(
+			expect.objectContaining({
+				reviewReason: "error",
+				warningMessage: "Resume failed before opening an interactive session (exit code 1).",
+			}),
+		);
+		const restore = await manager.getRestoreSnapshot("task-1");
+		expect(restore?.snapshot).toContain("No session found");
+		expect(restore?.snapshot).toContain("Resume failed before opening an interactive session");
+	});
+
+	it("keeps the fresh prompt fallback for clean startup resume exits", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111 + spawnedSessions.length, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", {
+			onState: vi.fn(),
+			onOutput: vi.fn(),
+			onExit: vi.fn(),
+		});
+
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "codex-session-1",
+			awaitReview: true,
+		});
+
+		spawnedSessions[0]?.triggerExit(0);
+
+		await vi.waitFor(() => {
+			expect(ptySessionSpawnMock).toHaveBeenCalledTimes(2);
+		});
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.pid).toBe(112);
+		expect(manager.store.getSummary("task-1")?.resumeSessionId).toBeNull();
+	});
+
 	it("sends deferred Codex startup input when the prompt marker appears", async () => {
 		const deferredStartupInput = "\u001b[200~/plan Validate rollout\u001b[201~\r";
 		prepareAgentLaunchMock.mockResolvedValue({

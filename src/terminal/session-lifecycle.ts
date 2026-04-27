@@ -25,7 +25,7 @@ import {
 	type StartTaskSessionRequest,
 } from "./session-manager-types";
 import { processShellSessionOutput } from "./session-output-pipeline";
-import type { SessionTransitionEvent, SessionTransitionResult } from "./session-summary-store";
+import { cloneSummary, type SessionTransitionEvent, type SessionTransitionResult } from "./session-summary-store";
 import { TerminalStateMirror } from "./terminal-state-mirror";
 
 const sessionLog = createTaggedLogger("session-mgr");
@@ -46,6 +46,17 @@ const TERMINAL_REVIEW_REASONS = new Set<RuntimeTaskSessionReviewReason>([
 
 export function isTerminalReviewReason(reason: RuntimeTaskSessionReviewReason): boolean {
 	return TERMINAL_REVIEW_REASONS.has(reason);
+}
+
+function writeSystemOutput(entry: ProcessEntry, message: string, summary: RuntimeTaskSessionSummary | null): void {
+	const output = Buffer.from(`\r\n[quarterdeck] ${message}\r\n`, "utf8");
+	entry.terminalStateMirror?.applyOutput(output);
+	for (const listener of entry.listeners.values()) {
+		listener.onOutput?.(output);
+		if (summary) {
+			listener.onState?.(cloneSummary(summary));
+		}
+	}
 }
 
 // ── Task session spawn ──────────────────────────────────────────────────────
@@ -344,28 +355,40 @@ export function handleTaskSessionExit(
 		event.exitCode != null &&
 		currentEntry.restartRequest?.kind === "task"
 	) {
-		// Keep this fallback for startup resume: a clean `codex resume`/Claude
-		// `--continue` process can exit without leaving an interactive session,
-		// and server-start restore previously relied on opening a fresh review
-		// prompt in that case. The explicit-stop guard above is the important
-		// trash/untrash protection.
-		sessionLog.warn("resume exited before interactive session; scheduling fallback start", {
+		const resumeExitData = {
 			taskId: request.taskId,
 			agentId: request.agentId,
 			exitCode: event.exitCode,
 			preExitState,
 			preExitReviewReason: currentSummaryAtExit.reviewReason,
 			resumeSessionId: request.resumeSessionId ?? null,
-		});
-		scheduleAutoRestart(
-			currentEntry,
-			{
-				startTaskSession: (r) => deps.startTaskSession(r),
-				updateStore: (id, patch) => deps.updateStore(id, patch),
-				applyDenied: () => deps.applyTransitionEvent(currentEntry, { type: "autorestart.denied" }),
-			},
-			{ skipContinueAttempt: true },
-		);
+		};
+		if (event.exitCode === 0) {
+			// Keep this fallback for startup resume: a clean `codex resume`/Claude
+			// `--continue` process can exit without leaving an interactive session,
+			// and server-start restore previously relied on opening a fresh review
+			// prompt in that case. The explicit-stop guard above is the important
+			// trash/untrash protection.
+			sessionLog.warn("resume exited before interactive session; scheduling fallback start", resumeExitData);
+			scheduleAutoRestart(
+				currentEntry,
+				{
+					startTaskSession: (r) => deps.startTaskSession(r),
+					updateStore: (id, patch) => deps.updateStore(id, patch),
+					applyDenied: () => deps.applyTransitionEvent(currentEntry, { type: "autorestart.denied" }),
+				},
+				{ skipContinueAttempt: true },
+			);
+		} else {
+			const message = `Resume failed before opening an interactive session (exit code ${event.exitCode}).`;
+			sessionLog.warn("resume exited before interactive session; preserving failed resume", resumeExitData);
+			const failedSummary = deps.updateStore(request.taskId, {
+				state: "awaiting_review",
+				reviewReason: "error",
+				warningMessage: message,
+			});
+			writeSystemOutput(currentEntry, message, failedSummary);
+		}
 	}
 	if (cleanupFn) {
 		cleanupFn().catch(() => {});
