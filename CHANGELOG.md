@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: keep normal interrupted auto-restart skips out of warning logs
+
+- Auto-restart skip classification now checks the pre-exit session state before listener count, so expected `interrupted` / review cleanup exits report `not_running` and stay at debug level even when no browser listener is attached.
+- `no_listeners` remains warning-level for a task that was actually `running` when it exited, preserving signal for skipped crash recovery.
+
 ### Fix: skip shell stop RPC when home terminal was never opened
 
 - `closeHomeTerminal` no longer falls back to `currentProjectId` when the home-shell project ref is null. The ref is only populated by paths that actually start the shell, so a null ref unambiguously means "never opened" and there is nothing to stop.

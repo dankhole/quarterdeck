@@ -42,15 +42,15 @@ export function shouldAutoRestart(entry: ProcessEntry, preExitState: RuntimeTask
 	if (wasSuppressed) {
 		return { restart: false, reason: "suppressed" };
 	}
-	if (entry.listeners.size === 0 || entry.restartRequest?.kind !== "task") {
-		return { restart: false, reason: "no_listeners" };
-	}
 	// Only restart when the agent was actively working. Any other pre-exit
 	// state means the agent already handed off (hook/exit/error/stalled) or
 	// was stopped by the user (interrupted). The process exiting in those
 	// states is normal cleanup, not a crash.
 	if (preExitState !== "running") {
 		return { restart: false, reason: "not_running" };
+	}
+	if (entry.listeners.size === 0 || entry.restartRequest?.kind !== "task") {
+		return { restart: false, reason: "no_listeners" };
 	}
 	const currentTime = Date.now();
 	entry.autoRestartTimestamps = entry.autoRestartTimestamps.filter(

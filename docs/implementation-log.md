@@ -2,6 +2,26 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: keep interrupted auto-restart skips at debug level (2026-04-27)
+
+Dogfooding surfaced a warning-level log for an expected interrupted task exit:
+
+```
+[session-mgr] auto-restart skipped on exit {
+  reason: "no_listeners",
+  preExitState: "interrupted",
+  exitState: "interrupted"
+}
+```
+
+The underlying restart policy was already right: auto-restart only recovers unexpected crashes from the `running` state, and `interrupted` exits are normal stop/trash cleanup. The bug was the skip-reason order in `shouldAutoRestart(...)`: it checked listener count before the pre-exit state, so an expected interrupted exit with no browser listener was classified as `no_listeners`. `session-lifecycle.ts` intentionally logs `no_listeners` at warn because a truly running task that crashes while detached is skipped crash recovery, but that severity is wrong for non-running lifecycle cleanup.
+
+The fix checks `preExitState !== "running"` before the listener/restart-request guard. Expected review/interrupted cleanup now reports `not_running` and keeps the existing debug-level skip log, while actual running exits with no task listener still report `no_listeners` and remain warning-level. A focused unit test covers both paths so the severity contract stays tied to the restart decision rather than the log call site.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/terminal/session-auto-restart.ts`, `test/runtime/terminal/session-auto-restart.test.ts`
+
+Commit: pending
+
 ## Fix: skip shell stop RPC when home terminal was never opened (2026-04-27)
 
 Dogfooding surfaced a recurring debug warning:
