@@ -1,12 +1,12 @@
 import { join, resolve } from "node:path";
 
+import { buildCodexHookConfigOverrides, CODEX_HOOKS_FEATURE_NAME } from "../codex-hooks";
 import { buildStatuslineCommand } from "../commands/statusline";
 import type { RuntimeAgentId, RuntimeHookEvent, RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core";
 import { buildQuarterdeckCommandParts, createTaggedLogger, quoteShellArg } from "../core";
 import { lockedFileSystem } from "../fs";
 import { getRuntimeHomePath } from "../state";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
-import { stripAnsi } from "./output-utils";
 import type { SessionTransitionEvent } from "./session-state-machine";
 import { prepareTaskPromptWithImages } from "./task-image-prompt";
 import { buildWorktreeContextPrompt } from "./worktree-context";
@@ -115,6 +115,32 @@ async function ensureTextFile(filePath: string, content: string, executable = fa
 	await lockedFileSystem.writeTextFileAtomic(filePath, content, {
 		executable,
 	});
+}
+
+function hasCodexFeatureEnabled(args: string[], featureName: string): boolean {
+	for (let i = 0; i < args.length; i += 1) {
+		const arg = args[i];
+		const nextArg = args[i + 1];
+		if (!arg) {
+			continue;
+		}
+		if (arg === "--enable" && nextArg === featureName) {
+			return true;
+		}
+		if (arg.startsWith("--enable=") && arg.slice("--enable=".length) === featureName) {
+			return true;
+		}
+		if ((arg === "-c" || arg === "--config") && nextArg === `features.${featureName}=true`) {
+			return true;
+		}
+		if (arg.startsWith("-c=") && arg.slice("-c=".length) === `features.${featureName}=true`) {
+			return true;
+		}
+		if (arg.startsWith("--config=") && arg.slice("--config=".length) === `features.${featureName}=true`) {
+			return true;
+		}
+	}
+	return false;
 }
 
 function withPrompt(args: string[], prompt: string, mode: "append" | "flag", flag?: string): PreparedAgentLaunch {
@@ -291,52 +317,35 @@ const claudeAdapter: AgentSessionAdapter = {
 	},
 };
 
-function codexPromptDetector(data: string, summary: RuntimeTaskSessionSummary): SessionTransitionEvent | null {
-	if (summary.state !== "awaiting_review") {
-		return null;
-	}
-	if (summary.reviewReason !== "attention" && summary.reviewReason !== "hook") {
-		return null;
-	}
-	const stripped = stripAnsi(data);
-	if (/(?:^|\n)\s*›/.test(stripped)) {
-		return { type: "agent.prompt-ready" };
-	}
-	return null;
-}
-
-function shouldInspectCodexOutputForTransition(summary: RuntimeTaskSessionSummary): boolean {
-	return (
-		summary.state === "awaiting_review" &&
-		(summary.reviewReason === "attention" || summary.reviewReason === "hook" || summary.reviewReason === "error")
-	);
-}
-
 const codexAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const codexArgs = [...input.args];
 		const env: Record<string, string | undefined> = {};
-		let binary = input.binary;
+		const binary = input.binary;
 		let deferredStartupInput: string | undefined;
 
 		if (input.resumeConversation) {
 			if (!codexArgs.includes("resume")) {
 				codexArgs.push("resume");
 			}
-			if (input.resumeSessionId?.trim()) {
-				const trimmedSessionId = input.resumeSessionId.trim();
-				log.debug("codex resume using stored session id", {
-					taskId: input.taskId,
-					cwd: input.cwd,
-					resumeSessionId: trimmedSessionId,
-				});
-				codexArgs.push(trimmedSessionId);
-			} else {
-				log.warn("codex resume falling back to --last (no stored resumeSessionId)", {
-					taskId: input.taskId,
-					cwd: input.cwd,
-				});
-				if (!hasCliOption(codexArgs, "--last")) {
+			const resumeIndex = codexArgs.indexOf("resume");
+			const hasResumeTarget = codexArgs
+				.slice(resumeIndex + 1)
+				.some((arg) => arg !== "--last" && !arg.startsWith("-"));
+			if (!hasResumeTarget && !hasCliOption(codexArgs, "--last")) {
+				const resumeTarget = input.resumeSessionId?.trim();
+				if (resumeTarget) {
+					log.debug("codex resume using stored session id", {
+						taskId: input.taskId,
+						cwd: input.cwd,
+						resumeSessionId: resumeTarget,
+					});
+					codexArgs.push(resumeTarget);
+				} else {
+					log.warn("codex resume falling back to --last (no stored resumeSessionId)", {
+						taskId: input.taskId,
+						cwd: input.cwd,
+					});
 					codexArgs.push("--last");
 				}
 			}
@@ -352,6 +361,28 @@ const codexAdapter: AgentSessionAdapter = {
 				}),
 			);
 		}
+		if (!hasCodexFeatureEnabled(codexArgs, CODEX_HOOKS_FEATURE_NAME)) {
+			codexArgs.push("--enable", CODEX_HOOKS_FEATURE_NAME);
+		}
+		if (hooks) {
+			// Keep Quarterdeck's Codex hooks launch-scoped so standalone Codex app/GUI
+			// sessions are unaffected. Codex supports inline [hooks] config via -c.
+			const hookOverrides = buildCodexHookConfigOverrides();
+			codexArgs.push(...hookOverrides);
+			log.debug("Codex hook launch config prepared", {
+				taskId: hooks.taskId,
+				projectId: hooks.projectId,
+				featureName: CODEX_HOOKS_FEATURE_NAME,
+				hookEventCount: hookOverrides.length / 2,
+				resumeConversation: input.resumeConversation ?? false,
+				hasResumeSessionId: !!input.resumeSessionId?.trim(),
+			});
+		} else {
+			log.debug("Codex launch has no Quarterdeck hook context", {
+				taskId: input.taskId,
+				featureName: CODEX_HOOKS_FEATURE_NAME,
+			});
+		}
 
 		const trimmed = input.prompt.trim();
 		if (input.startInPlanMode) {
@@ -361,37 +392,7 @@ const codexAdapter: AgentSessionAdapter = {
 			codexArgs.push(trimmed);
 		}
 
-		if (hooks) {
-			const wrapperParts = buildHooksCommandParts([
-				"codex-wrapper",
-				"--real-binary",
-				input.binary ?? "codex",
-				"--",
-				...codexArgs,
-			]);
-			binary = wrapperParts[0];
-			const args = wrapperParts.slice(1);
-			log.debug("codex adapter prepared launch (wrapped)", {
-				taskId: input.taskId,
-				binary,
-				resumeConversation: input.resumeConversation ?? false,
-				resumeSessionId: input.resumeSessionId ?? null,
-				hasResumeArg: codexArgs.includes("resume"),
-				hasLastFlag: hasCliOption(codexArgs, "--last"),
-				codexArgCount: codexArgs.length,
-				codexArgsPreview: codexArgs.map((a) => (a.length > 200 ? `${a.slice(0, 200)}…(${a.length})` : a)),
-			});
-			return {
-				binary,
-				args,
-				env,
-				deferredStartupInput,
-				detectOutputTransition: codexPromptDetector,
-				shouldInspectOutputForTransition: shouldInspectCodexOutputForTransition,
-			};
-		}
-
-		log.debug("codex adapter prepared launch (unwrapped)", {
+		log.debug("codex adapter prepared launch", {
 			taskId: input.taskId,
 			binary: binary ?? null,
 			resumeConversation: input.resumeConversation ?? false,
@@ -399,14 +400,13 @@ const codexAdapter: AgentSessionAdapter = {
 			hasResumeArg: codexArgs.includes("resume"),
 			hasLastFlag: hasCliOption(codexArgs, "--last"),
 			codexArgCount: codexArgs.length,
+			codexArgsPreview: codexArgs.map((arg) => (arg.length > 200 ? `${arg.slice(0, 200)}...(${arg.length})` : arg)),
 		});
 		return {
 			binary,
 			args: codexArgs,
 			env,
 			deferredStartupInput,
-			detectOutputTransition: codexPromptDetector,
-			shouldInspectOutputForTransition: shouldInspectCodexOutputForTransition,
 		};
 	},
 };

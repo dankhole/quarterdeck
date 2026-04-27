@@ -19,6 +19,46 @@ import type { RuntimeTrpcContext } from "./app-router";
 import { applyRuntimeMutationEffects, createHookTransitionEffects } from "./runtime-mutation-effects";
 
 const log = createTaggedLogger("hooks");
+const HOOK_LOG_SNIPPET_MAX_LENGTH = 300;
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+function logSnippet(value: string | null | undefined): string | null {
+	if (!value) {
+		return null;
+	}
+	const trimmed = value.trim();
+	if (trimmed.length <= HOOK_LOG_SNIPPET_MAX_LENGTH) {
+		return trimmed;
+	}
+	return `${trimmed.slice(0, HOOK_LOG_SNIPPET_MAX_LENGTH)}...`;
+}
+
+function buildHookLogData(input: {
+	projectId: string;
+	taskId: string;
+	event: RuntimeHookEvent;
+	metadata: RuntimeHookMetadata | undefined;
+}): Record<string, unknown> {
+	const metadata = input.metadata;
+	return {
+		projectId: input.projectId,
+		taskId: input.taskId,
+		event: input.event,
+		source: metadata?.source ?? null,
+		sessionId: metadata?.sessionId ?? null,
+		hookEventName: metadata?.hookEventName ?? null,
+		notificationType: metadata?.notificationType ?? null,
+		toolName: metadata?.toolName ?? null,
+		activityTextSnippet: logSnippet(metadata?.activityText),
+		toolInputSummarySnippet: logSnippet(metadata?.toolInputSummary),
+		finalMessageSnippet: logSnippet(metadata?.finalMessage),
+		hasConversationSummaryText: !!metadata?.conversationSummaryText,
+		conversationSummarySnippet: logSnippet(metadata?.conversationSummaryText),
+	};
+}
 
 /**
  * Apply conversation summary or finalMessage from hook metadata to the session.
@@ -98,21 +138,13 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				const taskId = body.taskId;
 				const projectId = body.projectId;
 				const event = body.event;
-				const hookReceivedData = {
-					event,
-					hookEventName: body.metadata?.hookEventName ?? null,
-					notificationType: body.metadata?.notificationType ?? null,
-					activityText: body.metadata?.activityText ?? null,
-					toolName: body.metadata?.toolName ?? null,
-					source: body.metadata?.source ?? null,
-					hasSummaryText: !!body.metadata?.conversationSummaryText,
-					summarySnippet: body.metadata?.conversationSummaryText?.slice(0, 100),
-				};
-				log.debug("Hook ingest received", { taskId, ...hookReceivedData });
+				const hookLogData = buildHookLogData({ projectId, taskId, event, metadata: body.metadata });
+				log.info("Hook ingest received", hookLogData);
 				const knownProjectPath = deps.projects.getProjectPathById(projectId);
 				const projectContext = knownProjectPath ? null : await loadProjectContextById(projectId);
 				const projectPath = knownProjectPath ?? projectContext?.repoPath ?? null;
 				if (!projectPath) {
+					log.warn("Hook ingest rejected: project not found", hookLogData);
 					return {
 						ok: false,
 						error: `Project "${projectId}" not found`,
@@ -123,6 +155,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				const { store } = manager;
 				const summary = store.getSummary(taskId);
 				if (!summary) {
+					log.warn("Hook ingest rejected: task not found", { ...hookLogData, projectPath });
 					return {
 						ok: false,
 						error: `Task "${taskId}" not found in project "${projectId}"`,
@@ -145,18 +178,23 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					});
 				}
 
+				// Record before transition guards. Even a no-op or blocked hook proves
+				// the agent hook system is alive, so the "never started" reconciliation
+				// path must not treat this session as pre-hook.
 				manager.recordHookReceived(taskId);
 				const canTransition = canTransitionTaskForHookEvent(summary, event);
 				if (!canTransition) {
-					log.debug("Hook blocked — can't transition", {
-						taskId,
-						event,
+					log.debug("Hook blocked: cannot transition from current state", {
+						...hookLogData,
 						currentState: summary.state,
 						currentReviewReason: summary.reviewReason,
-						hookEventName: body.metadata?.hookEventName ?? null,
 					});
 					if (body.metadata && metadataOnlySessionMeta) {
 						store.applyHookMetadata(taskId, body.metadata);
+						log.debug("Hook metadata-only session id applied", {
+							...hookLogData,
+							currentState: summary.state,
+						});
 						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 						return {
 							ok: true,
@@ -185,15 +223,11 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 								conversationSummaryText: activityMetadata.conversationSummaryText ?? null,
 							};
 							if (!isPermissionActivity(incomingActivity)) {
-								log.debug(
-									"Hook blocked — permission guard (non-permission event clobbering permission state)",
-									{
-										taskId,
-										event,
-										incomingHookEvent: activityMetadata.hookEventName,
-										currentPermissionActivity: currentActivity.hookEventName,
-									},
-								);
+								log.debug("Hook blocked: permission guard prevented activity overwrite", {
+									...hookLogData,
+									incomingHookEvent: activityMetadata.hookEventName,
+									currentPermissionActivity: currentActivity.hookEventName,
+								});
 								// Skip applyHookActivity — the incoming event is not permission-related
 								// and would clobber the existing permission metadata.
 								applyConversationSummaryFromMetadata(store, taskId, body.metadata);
@@ -205,6 +239,10 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					}
 					if (body.metadata && (incomingSessionId || activityMetadata)) {
 						store.applyHookMetadata(taskId, body.metadata);
+						log.debug("Hook metadata applied without state transition", {
+							...hookLogData,
+							currentState: summary.state,
+						});
 					}
 					applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 					return {
@@ -227,15 +265,11 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						isPermissionActivity(currentActivity) &&
 						incomingHookEvent !== "UserPromptSubmit"
 					) {
-						log.debug(
-							"Hook blocked — permission-aware transition guard (stale to_in_progress during permission)",
-							{
-								taskId,
-								event,
-								incomingHookEvent,
-								currentPermissionActivity: currentActivity.hookEventName,
-							},
-						);
+						log.debug("Hook blocked: permission-aware transition guard prevented stale to_in_progress", {
+							...hookLogData,
+							incomingHookEvent,
+							currentPermissionActivity: currentActivity.hookEventName,
+						});
 						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 						return { ok: true } satisfies RuntimeHookIngestResponse;
 					}
@@ -248,11 +282,12 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					toState: event === "to_review" ? "awaiting_review" : "running",
 					hookEventName: body.metadata?.hookEventName ?? null,
 				};
-				log.info("Hook transitioning", { taskId, ...transitionData });
+				log.info("Hook transitioning", { ...hookLogData, ...transitionData });
 
 				const transitionedSummary =
 					event === "to_review" ? store.transitionToReview(taskId, "hook") : store.transitionToRunning(taskId);
 				if (!transitionedSummary) {
+					log.warn("Hook transition failed", { ...hookLogData, ...transitionData });
 					return {
 						ok: false,
 						error: `Task "${taskId}" transition failed`,
@@ -261,9 +296,20 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 
 				if (body.metadata && (incomingSessionId || activityMetadata)) {
 					store.applyHookMetadata(taskId, body.metadata);
+					log.debug("Hook metadata applied after transition", {
+						...hookLogData,
+						toState: transitionedSummary.state,
+						toReviewReason: transitionedSummary.reviewReason,
+					});
 				}
 
 				applyConversationSummaryFromMetadata(store, taskId, body.metadata);
+				log.info("Hook transition applied", {
+					...hookLogData,
+					toState: transitionedSummary.state,
+					toReviewReason: transitionedSummary.reviewReason,
+					resumeSessionId: transitionedSummary.resumeSessionId,
+				});
 
 				// Patch B: Broadcast and return BEFORE checkpoint capture.
 				// Checkpoint capture runs git operations (stash create) that routinely
@@ -271,19 +317,34 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				// triggered retries while the state transition has already succeeded.
 				// The checkpoint fires in the background and applies via store.update
 				// which triggers onChange listeners for downstream consumers.
-				void applyRuntimeMutationEffects(
-					deps.broadcaster,
-					createHookTransitionEffects({
-						projectId,
-						projectPath,
-						taskId,
-						event,
-					}),
-				);
+				const effects = createHookTransitionEffects({
+					projectId,
+					projectPath,
+					taskId,
+					event,
+				});
+				void applyRuntimeMutationEffects(deps.broadcaster, effects).catch((error) => {
+					log.error("Failed to deliver hook transition effects", {
+						...hookLogData,
+						error: errorMessage(error),
+						effectTypes: effects.map((effect) => effect.type),
+					});
+				});
+				log.debug("Hook transition effects queued", {
+					...hookLogData,
+					effectTypes: effects.map((effect) => effect.type),
+				});
 				if (event === "to_review") {
 					const nextTurn = (transitionedSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
 					const checkpointCwd = transitionedSummary.sessionLaunchPath ?? projectPath;
 					const staleRef = transitionedSummary.previousTurnCheckpoint?.ref ?? null;
+					const checkpointLogData = {
+						...hookLogData,
+						checkpointCwd,
+						checkpointTurn: nextTurn,
+						staleCheckpointRef: staleRef,
+					};
+					log.debug("Hook turn checkpoint capture queued", checkpointLogData);
 					void (async () => {
 						try {
 							const checkpoint = await checkpointCapture({
@@ -292,23 +353,39 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 								turn: nextTurn,
 							});
 							store.applyTurnCheckpoint(taskId, checkpoint);
+							log.info("Hook turn checkpoint captured", {
+								...checkpointLogData,
+								checkpointRef: checkpoint.ref,
+								checkpointCommit: checkpoint.commit,
+							});
 							if (staleRef) {
 								void checkpointRefDelete({
 									cwd: checkpointCwd,
 									ref: staleRef,
-								}).catch(() => {
-									// Best effort cleanup only.
-								});
+								})
+									.then(() => {
+										log.debug("Stale hook turn checkpoint ref deleted", checkpointLogData);
+									})
+									.catch((error) => {
+										log.warn("Failed to delete stale hook turn checkpoint ref", {
+											...checkpointLogData,
+											error: errorMessage(error),
+										});
+									});
 							}
-						} catch {
-							// Best effort checkpointing only.
+						} catch (error) {
+							log.warn("Hook turn checkpoint capture failed", {
+								...checkpointLogData,
+								error: errorMessage(error),
+							});
 						}
 					})();
 				}
 
 				return { ok: true } satisfies RuntimeHookIngestResponse;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = errorMessage(error);
+				log.error("Hook ingest crashed", { error: message });
 				return { ok: false, error: message } satisfies RuntimeHookIngestResponse;
 			}
 		},

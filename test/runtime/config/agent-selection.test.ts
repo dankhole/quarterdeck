@@ -1,13 +1,23 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
-import { loadRuntimeConfig, pickBestInstalledAgentIdFromDetected } from "../../../src/config";
+import {
+	loadRuntimeConfig,
+	pickBestInstalledAgentIdFromDetected,
+	resetAgentAvailabilityCache,
+} from "../../../src/config";
 import { createTempDir } from "../../utilities/temp-dir";
 import { withTemporaryEnv, writeFakeCommand, writeFakeVersionedCommand } from "./runtime-config-helpers";
 
 describe.sequential("runtime-config auto agent selection", () => {
+	beforeEach(() => {
+		// Each test simulates a distinct PATH/HOME environment; clear the availability
+		// cache so probes are re-run against the freshly staged fake binaries.
+		resetAgentAvailabilityCache();
+	});
+
 	it("selects agents using the configured priority order", () => {
 		expect(pickBestInstalledAgentIdFromDetected(["codex"])).toBe("codex");
 		expect(pickBestInstalledAgentIdFromDetected(["claude", "codex"])).toBe("claude");
@@ -22,7 +32,39 @@ describe.sequential("runtime-config auto agent selection", () => {
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-");
 
 		try {
-			writeFakeVersionedCommand(tempBin, "codex", "0.30.0");
+			writeFakeVersionedCommand(tempBin, "codex", "0.124.0");
+
+			const previousShell = process.env.SHELL;
+			try {
+				process.env.SHELL = "/definitely-not-a-shell";
+				const isolatedPath = `${tempBin}${delimiter}/usr/bin${delimiter}/bin`;
+				await withTemporaryEnv({ home: tempHome, pathPrefix: isolatedPath, replacePath: true }, async () => {
+					const state = await loadRuntimeConfig(null);
+					expect(state.selectedAgentId).toBe("codex");
+					expect(existsSync(join(tempHome, ".quarterdeck", "config.json"))).toBe(true);
+				});
+			} finally {
+				if (previousShell === undefined) {
+					delete process.env.SHELL;
+				} else {
+					process.env.SHELL = previousShell;
+				}
+			}
+		} finally {
+			cleanupBin();
+			cleanupHome();
+		}
+	});
+
+	it("auto-selects Codex when the detected build supports native hooks", async () => {
+		if (process.platform === "win32") {
+			return;
+		}
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-");
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-");
+
+		try {
+			writeFakeVersionedCommand(tempBin, "codex", "0.124.0");
 
 			const previousShell = process.env.SHELL;
 			try {
@@ -117,7 +159,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-old-codex-");
 
 		try {
-			writeFakeVersionedCommand(tempBin, "codex", "0.29.0");
+			writeFakeVersionedCommand(tempBin, "codex", "0.123.0");
 
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
 				const state = await loadRuntimeConfig(null);

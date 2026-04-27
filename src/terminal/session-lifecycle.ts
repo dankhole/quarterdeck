@@ -107,12 +107,10 @@ export async function spawnTaskSession(
 	const env = buildTerminalEnvironment(request.env, launch.env);
 	const commandBinary = launch.binary ?? request.binary;
 	const commandArgs = [...launch.args];
-	const hasCodexLaunchSignature = [commandBinary, ...commandArgs].some((part) => part.toLowerCase().includes("codex"));
 
 	const willAutoTrust =
 		shouldAutoConfirmClaudeWorkspaceTrust(request.agentId, request.cwd, request.projectPath) ||
-		shouldAutoConfirmCodexWorkspaceTrust(request.agentId, request.cwd) ||
-		hasCodexLaunchSignature;
+		shouldAutoConfirmCodexWorkspaceTrust(request.agentId, request.cwd);
 	const spawnData = {
 		agentId: request.agentId,
 		binary: commandBinary,

@@ -110,7 +110,6 @@ describe("SessionTransitionController", () => {
 			return;
 		}
 		active.workspaceTrustBuffer = "trust prompt";
-		active.awaitingCodexPromptAfterEnter = true;
 
 		const controller = new SessionTransitionController(store, new Map([["task-1", entry]]));
 		const result = controller.applyTransitionEvent(entry, { type: "hook.to_review" });
@@ -119,7 +118,6 @@ describe("SessionTransitionController", () => {
 		expect(result?.summary.state).toBe("awaiting_review");
 		expect(result?.summary.reviewReason).toBe("hook");
 		expect(entry.active?.workspaceTrustBuffer).toBe("");
-		expect(entry.active?.awaitingCodexPromptAfterEnter).toBe(false);
 	});
 
 	it("clears interrupt recovery when a transition returns the session to running", () => {
@@ -171,7 +169,6 @@ describe("SessionTransitionController", () => {
 			return;
 		}
 		active.workspaceTrustBuffer = "keep";
-		active.awaitingCodexPromptAfterEnter = true;
 
 		const controller = new SessionTransitionController(store, new Map([["task-1", entry]]));
 		const result = controller.applyTransitionEvent(entry, { type: "hook.to_review" });
@@ -179,6 +176,5 @@ describe("SessionTransitionController", () => {
 		expect(result?.changed).toBe(false);
 		expect(result?.summary.state).toBe("idle");
 		expect(entry.active?.workspaceTrustBuffer).toBe("keep");
-		expect(entry.active?.awaitingCodexPromptAfterEnter).toBe(true);
 	});
 });

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { loadRuntimeConfig, updateRuntimeConfig } from "../../../src/config";
 import { createTempDir } from "../../utilities/temp-dir";
-import { withTemporaryEnv } from "./runtime-config-helpers";
+import { withTemporaryEnv, writeFakeCommand } from "./runtime-config-helpers";
 
 describe.sequential("audible notification config", () => {
 	it("loads default audible notification settings when config is empty", async () => {
@@ -121,13 +121,15 @@ describe.sequential("audible notification config", () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir(
 			"quarterdeck-home-runtime-config-audible-preserve-",
 		);
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-audible-preserve-");
 
 		try {
-			await withTemporaryEnv({ home: tempHome }, async () => {
-				await updateRuntimeConfig(null, { selectedAgentId: "codex" });
+			writeFakeCommand(tempBin, "claude");
+			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
+				await updateRuntimeConfig(null, { selectedAgentId: "claude" });
 
 				const afterAgentChange = await loadRuntimeConfig(null);
-				expect(afterAgentChange.selectedAgentId).toBe("codex");
+				expect(afterAgentChange.selectedAgentId).toBe("claude");
 
 				await updateRuntimeConfig(null, {
 					audibleNotificationsEnabled: false,
@@ -135,11 +137,12 @@ describe.sequential("audible notification config", () => {
 				});
 
 				const reloaded = await loadRuntimeConfig(null);
-				expect(reloaded.selectedAgentId).toBe("codex");
+				expect(reloaded.selectedAgentId).toBe("claude");
 				expect(reloaded.audibleNotificationsEnabled).toBe(false);
 				expect(reloaded.audibleNotificationVolume).toBe(0.4);
 			});
 		} finally {
+			cleanupBin();
 			cleanupHome();
 		}
 	});

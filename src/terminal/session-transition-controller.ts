@@ -1,4 +1,4 @@
-import type { RuntimeTaskSessionSummary } from "../core";
+import { createTaggedLogger, type RuntimeTaskSessionSummary } from "../core";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
 import type { ProcessEntry } from "./session-manager-types";
 import {
@@ -7,6 +7,8 @@ import {
 	type SessionTransitionEvent,
 	type SessionTransitionResult,
 } from "./session-summary-store";
+
+const transitionLog = createTaggedLogger("session-transition");
 
 /**
  * Owns process-side consequences of session state-machine transitions and the
@@ -34,18 +36,28 @@ export class SessionTransitionController {
 	): (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null {
 		const result = this.store.applySessionEvent(entry.taskId, event);
 		if (!result?.changed) {
+			transitionLog.debug("session transition no-op", {
+				taskId: entry.taskId,
+				event: event.type,
+				currentState: result?.summary.state ?? null,
+				currentReviewReason: result?.summary.reviewReason ?? null,
+			});
 			return result;
 		}
 
 		const active = entry.active;
+		transitionLog.debug("session transition applied", {
+			taskId: entry.taskId,
+			event: event.type,
+			nextState: result.summary.state,
+			nextReviewReason: result.summary.reviewReason,
+			nextPid: result.summary.pid,
+		});
 		if (result.clearAttentionBuffer && active && active.workspaceTrustBuffer !== null) {
 			active.workspaceTrustBuffer = "";
 		}
 		if (active && result.patch.state === "running") {
 			clearInterruptRecoveryTimer(active);
-		}
-		if (active && result.patch.state === "awaiting_review") {
-			active.awaitingCodexPromptAfterEnter = false;
 		}
 		return result;
 	}

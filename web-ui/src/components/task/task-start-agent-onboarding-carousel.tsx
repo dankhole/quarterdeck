@@ -2,7 +2,6 @@ import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import { getRuntimeAgentCatalogEntry } from "@runtime-agent-catalog";
 import { Check } from "lucide-react";
 import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
-
 import { cn } from "@/components/ui/cn";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeConfigResponse } from "@/runtime/types";
 import { toErrorMessage } from "@/utils/to-error-message";
@@ -359,6 +358,10 @@ export function TaskStartAgentOnboardingCarousel({
 	);
 
 	const handleAgentSelect = (agentId: RuntimeAgentId) => {
+		const targetAgent = onboardingAgents.find((agent) => agent.id === agentId);
+		if (!targetAgent || targetAgent.installed !== true) {
+			return;
+		}
 		if (activeAgentId === agentId) {
 			return;
 		}
@@ -459,7 +462,8 @@ export function TaskStartAgentOnboardingCarousel({
 						>
 							<div
 								role="button"
-								tabIndex={0}
+								tabIndex={agent.installed ? 0 : -1}
+								aria-disabled={!agent.installed}
 								onClick={() => handleAgentSelect(agent.id)}
 								onKeyDown={(event) => {
 									if (event.key === "Enter" || event.key === " ") {
@@ -467,17 +471,21 @@ export function TaskStartAgentOnboardingCarousel({
 										handleAgentSelect(agent.id);
 									}
 								}}
-								className="flex cursor-pointer items-center justify-between gap-3"
+								className={cn(
+									"flex items-center justify-between gap-3",
+									agent.installed ? "cursor-pointer" : "cursor-default",
+								)}
 							>
 								<span className="flex items-center gap-2">
 									<RadixCheckbox.Root
 										checked={activeAgentId === agent.id}
+										disabled={!agent.installed}
 										onCheckedChange={(checked) => {
 											if (checked === true) {
 												handleAgentSelect(agent.id);
 											}
 										}}
-										className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border-bright bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+										className="flex h-4 w-4 items-center justify-center rounded border border-border-bright bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-50"
 									>
 										<RadixCheckbox.Indicator>
 											<Check size={12} className="text-white" />

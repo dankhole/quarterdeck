@@ -14,13 +14,12 @@
  * NOTE: This format is internal to Claude Code and may change. If parsing
  * fails, return null gracefully - never throw.
  *
- * --- Future: Codex Integration ---
- * Codex transcripts use a different JSONL format (see codex-hook-events.ts).
- * When unifying enrichment, create a shared interface:
+ * --- Future: Multi-agent transcript enrichment ---
+ * If another agent later needs transcript-side enrichment, create a shared interface:
  *   interface TranscriptParser {
  *     extractLastAssistantMessage(filePath: string): Promise<string | null>;
  *   }
- * with per-agent implementations (ClaudeTranscriptParser, CodexTranscriptParser).
+ * with per-agent implementations.
  */
 import { readFile } from "node:fs/promises";
 

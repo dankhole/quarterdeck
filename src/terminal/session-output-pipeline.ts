@@ -85,16 +85,7 @@ export function processTaskSessionOutput(
 	// 7. Agent output transition detection
 	const adapterEvent = liveSummary ? (entry.active.detectOutputTransition?.(data, liveSummary) ?? null) : null;
 	if (adapterEvent) {
-		const requiresEnterForCodex =
-			adapterEvent.type === "agent.prompt-ready" &&
-			liveSummary?.agentId === "codex" &&
-			!entry.active.awaitingCodexPromptAfterEnter;
-		if (!requiresEnterForCodex) {
-			deps.applyTransitionEvent(entry, adapterEvent);
-			if (adapterEvent.type === "agent.prompt-ready" && liveSummary?.agentId === "codex") {
-				entry.active.awaitingCodexPromptAfterEnter = false;
-			}
-		}
+		deps.applyTransitionEvent(entry, adapterEvent);
 	}
 
 	// 8. Listener broadcast

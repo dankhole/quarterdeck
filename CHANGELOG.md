@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fix: harden Codex native hook dogfooding
+
+- Codex availability now requires `0.124.0` or newer, matching the release where `codex_hooks` became stable and gained the tool coverage Quarterdeck relies on.
+- Codex feature probing now rejects disabled `codex_hooks` rows and emits structured debug logs for version/feature probes, launch-scoped hook config, hook ingest rejections, transitions, broadcast failures, and checkpoint failures.
+- Codex `SessionStart` hooks now record metadata without moving tasks back to running, avoiding false resumes after slash-command/compact session maintenance.
+- Codex prompt redraws no longer drive `agent.prompt-ready` state transitions, so review cards do not move to running from Enter or TUI repaint noise.
+- Codex `PostToolUse` now uses one transition hook because the transition ingest path already persists the same hook metadata, cutting one hook subprocess/tRPC round trip per tool completion.
+- Documented the known Codex subagent `Stop` limitation in the task-state guide and active todo list, and removed the stale branch-review handoff document that described older native-hook iterations.
+
 ### Fix: keep normal interrupted auto-restart skips out of warning logs
 
 - Auto-restart skip classification now checks the pre-exit session state before listener count, so expected `interrupted` / review cleanup exits report `not_running` and stay at debug level even when no browser listener is attached.
@@ -54,8 +63,14 @@
 ### Chore: bump `postcss` to 8.5.10 in both packages
 
 - Ran `npm audit fix` in the root and `web-ui` packages to pull `postcss` from 8.5.8 to 8.5.10, clearing the only open advisory (GHSA-qx2v-qp2m-jg93, moderate) across both lockfiles.
-- `postcss` is a transitive dev/build dependency of the CSS toolchain and the advisory is only reachable when the stringifier processes untrusted CSS, which Quarterdeck does not do at runtime — but keeping the lockfiles clean makes future security reviews easier.
-- Re-synced the root `package-lock.json` internal version field with `package.json` (0.10.0 → 0.11.0) where it had drifted; no `package.json` edits required.
+- `postcss` is a transitive dev/build dependency of the CSS toolchain and the advisory is only reachable when the stringifier processes untrusted CSS, which Quarterdeck does not do at runtime, but keeping the lockfiles clean makes future security reviews easier.
+- Re-synced the root `package-lock.json` internal version field with `package.json` (0.10.0 -> 0.11.0) where it had drifted; no `package.json` edits required.
+
+### Fix: harden native Codex hook integration
+
+- Codex hook activity/permission matchers now use `*`, so Quarterdeck keeps seeing file-edit and future tool events instead of only Bash-class hooks.
+- Quarterdeck now injects its Codex hooks inline on the `codex` command line instead of writing repo-local or user-global hook files, so only Quarterdeck-launched Codex sessions load the task-state hooks and standalone Codex app/GUI sessions stop seeing Quarterdeck hook failures.
+- Settings and startup onboarding no longer have a separate Codex hook setup gate; Codex availability is back to the normal version-and-feature detection path, while Quarterdeck still forces `codex_hooks` on with `--enable codex_hooks` when it launches Codex.
 
 ### Fix: resume Codex sessions by stored session id
 
@@ -77,6 +92,11 @@
 - Restoring a trashed task now waits for any lingering task session shutdown to finish before asking the runtime to resume the conversation.
 - This closes a trash/untrash race where `startTaskSession()` could see the still-active pre-trash session, skip spawning a new one, and leave the restored card stuck without a live agent once the old process finally exited.
 
+### Refactor: switch Codex integration to native hooks
+
+- Removed the legacy Codex wrapper/log-watcher/rollout-scraping path and now launch `codex` directly with Quarterdeck-generated native hook config, using `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, and `Stop` hooks for runtime state transitions.
+- Persisted Codex `session_id` from hook payloads onto task session summaries so resume now prefers `codex resume <session_id>` instead of relying on `codex resume --last`.
+
 ### Fix: log and fail loud when untrash/restart races a still-exiting session
 
 - `stopTaskSession(..., { waitForExit: true })` now waits up to 3 seconds (down from 5) before timing out and emits a warning log if the PTY still has not exited, instead of silently continuing.
@@ -94,7 +114,7 @@
 
 ### Fix: harden Codex CLI detection with version gating
 
-- Replaced the old "Codex binary exists on PATH" launch gate with a minimal compatibility check that still uses PATH for discovery but also runs `codex --version` and requires `0.30.0` or newer before Quarterdeck treats Codex as runnable.
+- Replaced the old "Codex binary exists on PATH" launch gate with a minimal compatibility check that still uses PATH for discovery but also runs `codex --version` and requires `0.124.0` or newer before Quarterdeck treats Codex as runnable.
 - Added explicit agent install states (`installed`, `upgrade_required`, `missing`) to the runtime config contract so the settings dialog and startup onboarding can distinguish outdated Codex installs from genuinely missing CLIs.
 - Updated the Codex install/help link to the official OpenAI Codex CLI quickstart and clarified in Settings that detection is PATH-based plus a Codex version floor.
 - Tightened auto-selection so Quarterdeck no longer silently picks an outdated Codex binary as the default task agent.

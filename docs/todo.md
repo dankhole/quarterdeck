@@ -35,6 +35,12 @@ These are not the top active roadmap items, but they are still real refactor tar
 - Build a clearer branch/base-ref UX state model so inferred base refs, pinned refs, integration branches, and detached-head display rules stop acting like isolated fixes. Backlog context: [docs/architecture-roadmap.md#15-branch--base-ref-ux-state-model](./architecture-roadmap.md#15-branch--base-ref-ux-state-model)
 - Rework the file browser + diff viewer data pipeline so scope resolution, tree loading, diff/content fetching, and caching are easier to optimize without mixing transport and view policy. Backlog context: [docs/architecture-roadmap.md#16-file-browser--diff-viewer-data-pipeline](./architecture-roadmap.md#16-file-browser--diff-viewer-data-pipeline)
 
+## Codex native hooks parity follow-ups
+
+- Revisit Codex subagent hook scoping before declaring full Claude Code parity. Current Codex hook payloads do not reliably identify root-agent vs subagent `Stop` events, so Quarterdeck maps `Stop` to review for main-agent completion while accepting that subagent-heavy Codex sessions can prematurely mark a task review-ready. Track upstream Codex support for a root/subagent discriminator and split or suppress subagent `Stop` once that metadata exists.
+- Revisit Codex slash-command lifecycle parity before declaring full Claude Code parity. Native Codex hooks do not expose stable start/finish boundaries for `/compact`, `/resume`, plugin reloads, or future TUI-local slash commands. Quarterdeck treats those as session-maintenance operations rather than agent turns: they should not move review-ready cards to running, but the UI also cannot show a precise in-progress/completed lifecycle for them until Codex exposes compact/slash-command hooks.
+- Revisit Codex turn-lifecycle granularity if the native hook API grows beyond tool/user/stop hooks. The deleted wrapper/parser path could infer `task_started`, `turn_aborted`, and `task_complete` from Codex event logs; native hooks are cleaner and launch-scoped, but currently provide less detail for non-tool turn progress and failure attribution.
+
 ## Broader backlog and long-running programs
 
 These sections mix active product/backlog work with a few historical program summaries that are still useful context. The live refactor queue is the set of active items above, plus the explicitly active refactor bullets elsewhere in this file.
@@ -107,7 +113,7 @@ Multiple related bugs where the UI shows the wrong task state. A comprehensive a
 - ~~**API errors leave session stuck in "running"** (medium)~~: Reconciliation sweep now detects running sessions that haven't received a hook in over 60 seconds and marks them as stalled. UI shows an orange "Stalled" badge with explanatory tooltip. Auto-clears when hooks resume.
 
 **Remaining issues:**
-- **Non-hook operations stick in wrong state** (medium): Auto-compact, plugin reload, and `/resume` produce no hook events. Compact and plugin reload get stuck in "running"; `/resume` after review doesn't transition back to running.
+- **Non-hook operations have limited state fidelity** (medium): Auto-compact, plugin reload, and `/resume` produce no stable turn lifecycle hooks. Native Codex state tracking now avoids treating prompt redraws or `SessionStart` maintenance as proof of resumed work, but these operations still cannot show precise in-progress/completed state until Codex exposes dedicated hooks.
 - **Notification beep count wrong for rapid transitions** (low): When a task goes to review then quickly to needs-input, wrong beep count plays. Debounce/settle window issues cause double-beeps for single events or single beeps for multiple events.
 
 ## Client-side project switch optimizations
@@ -160,10 +166,6 @@ The experimental HTML chat view (`terminalChatViewEnabled`) was removed because 
 ## Commit sidebar: Auto-fill commit message on open
 
 Auto-fill a default commit message when the commit sidebar opens (not just via the generate button, which is already implemented). Pre-fill from the task title, diff summary, and optionally agent session context. The message should be fully editable. Consider using the agent's conversation context (why it made changes, not just what changed) to produce better messages than a blind diff summary — this is a differentiator over standard IDE commit message generation.
-
-## Refactor Codex support to use native hooks
-
-Codex now has first-party hooks (`hooks.json` plus native lifecycle events) in the official OpenAI docs, but Quarterdeck still routes Codex through the legacy `codex-wrapper` watcher path. Replace the wrapper-first integration with native Codex hook configuration where possible: generate Codex hook files alongside launch config, map native `SessionStart` / `UserPromptSubmit` / `PreToolUse` / `PostToolUse` / `Stop` events into Quarterdeck transitions, and keep any log-watcher fallback only for gaps the native hook surface still cannot cover.
 
 ## Make supporting LLM features provider-neutral
 

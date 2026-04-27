@@ -8,6 +8,7 @@ import { createTestRuntimeConfigResponse } from "@/test-utils/runtime-config-fac
 
 const resetLayoutCustomizationsMock = vi.hoisted(() => vi.fn());
 const saveMock = vi.hoisted(() => vi.fn(async () => true));
+const refreshMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@runtime-agent-catalog", () => ({
 	getRuntimeAgentCatalogEntry: vi.fn((agentId: string) => ({
@@ -36,6 +37,7 @@ vi.mock("@/runtime/use-runtime-config", () => ({
 		config: initialConfig ?? null,
 		isLoading: false,
 		isSaving: false,
+		refresh: refreshMock,
 		save: saveMock,
 	}),
 }));
@@ -78,6 +80,7 @@ describe("RuntimeSettingsDialog", () => {
 
 	beforeEach(() => {
 		resetLayoutCustomizationsMock.mockReset();
+		refreshMock.mockReset();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

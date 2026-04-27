@@ -25,7 +25,6 @@ export interface ActiveProcessState {
 	deferredStartupInput: string | null;
 	detectOutputTransition: AgentOutputTransitionDetector | null;
 	shouldInspectOutputForTransition: AgentOutputTransitionInspectionPredicate | null;
-	awaitingCodexPromptAfterEnter: boolean;
 	autoConfirmedWorkspaceTrust: boolean;
 	workspaceTrustConfirmCount: number;
 	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
@@ -213,7 +212,6 @@ export function createActiveProcessState(opts: CreateActiveProcessStateOptions):
 		deferredStartupInput: opts.launch?.deferredStartupInput ?? null,
 		detectOutputTransition: opts.launch?.detectOutputTransition ?? null,
 		shouldInspectOutputForTransition: opts.launch?.shouldInspectOutputForTransition ?? null,
-		awaitingCodexPromptAfterEnter: false,
 		autoConfirmedWorkspaceTrust: false,
 		workspaceTrustConfirmCount: 0,
 		workspaceTrustConfirmTimer: null,

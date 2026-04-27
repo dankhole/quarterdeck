@@ -1,7 +1,7 @@
 // Input routing pipeline for PTY sessions.
 // Extracted from session-manager.ts — processes user keyboard input through
 // an ordered pipeline: terminal protocol response detection → permission
-// activity clearing → Codex prompt flagging → interrupt detection → PTY write.
+// activity clearing → interrupt detection → PTY write.
 
 import type { RuntimeTaskSessionSummary } from "../core";
 import { detectInterruptSignal, scheduleInterruptRecovery } from "./session-interrupt-recovery";
@@ -56,8 +56,8 @@ export interface InputPipelineDeps {
 }
 
 /**
- * Process user input for a session. Handles permission activity clearing,
- * Codex prompt flagging, and interrupt detection before writing to the PTY.
+ * Process user input for a session. Handles permission activity clearing and
+ * interrupt detection before writing to the PTY.
  * Returns the current summary, or null if the session has no active process.
  */
 export function processSessionInput(
@@ -84,19 +84,7 @@ export function processSessionInput(
 		deps.updateStore(taskId, { latestHookActivity: null });
 	}
 
-	// 2. Codex Enter detection — flag when the user presses Enter during review
-	//    so the output handler knows to watch for a prompt transition.
-	//    Only trigger on CR (byte 13 = Enter), not LF (byte 10 = Shift+Enter newline).
-	if (
-		summary?.agentId === "codex" &&
-		summary.state === "awaiting_review" &&
-		(summary.reviewReason === "hook" || summary.reviewReason === "attention" || summary.reviewReason === "error") &&
-		data.includes(13)
-	) {
-		entry.active.awaitingCodexPromptAfterEnter = true;
-	}
-
-	// 3. Interrupt detection — Ctrl+C or bare Escape while running suppresses
+	// 2. Interrupt detection — Ctrl+C or bare Escape while running suppresses
 	//    auto-restart and schedules a recovery timer.
 	const { isCtrlC, isBareEscape } = detectInterruptSignal(data);
 	if (summary?.state === "running" && (isCtrlC || isBareEscape)) {
@@ -108,7 +96,7 @@ export function processSessionInput(
 		});
 	}
 
-	// 4. PTY write
+	// 3. PTY write
 	entry.active.session.write(data);
 	return deps.getSummary(taskId);
 }

@@ -1,9 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { buildCodexHooksConfig } from "../../../src/codex-hooks";
 import { prepareAgentLaunch } from "../../../src/terminal";
 
 const buildWorktreeContextPromptMock = vi.hoisted(() => vi.fn().mockResolvedValue(""));
@@ -54,30 +55,54 @@ afterEach(() => {
 });
 
 describe("prepareAgentLaunch hook strategies", () => {
-	it("routes codex through hooks codex-wrapper command", async () => {
-		setupTempHome();
+	it("launches codex directly without implicitly writing hook files", async () => {
+		const home = setupTempHome();
+		const repoPath = join(home, "repo");
+		mkdirSync(repoPath, { recursive: true });
 		const launch = await prepareAgentLaunch({
 			taskId: "task-1",
 			agentId: "codex",
 			binary: "codex",
 			args: [],
-			cwd: "/tmp",
+			cwd: repoPath,
 			prompt: "",
 			projectId: "project-1",
 		});
 
 		expect(launch.env.QUARTERDECK_HOOK_TASK_ID).toBe("task-1");
 		expect(launch.env.QUARTERDECK_HOOK_PROJECT_ID).toBe("project-1");
+		expect(launch.binary).toBe("codex");
+		expect(launch.detectOutputTransition).toBeUndefined();
+		expect(launch.shouldInspectOutputForTransition).toBeUndefined();
+		expect(launch.args.slice(0, 2)).toEqual(["--enable", "codex_hooks"]);
+		const hookOverrideArgs = launch.args.slice(2);
+		expect(hookOverrideArgs.length).toBe(Object.keys(buildCodexHooksConfig()).length * 2);
+		expect(hookOverrideArgs).toContain("-c");
+		expect(hookOverrideArgs.join("\n")).toContain("hooks.SessionStart=");
+		expect(hookOverrideArgs.join("\n")).toContain("hooks.PostToolUse=");
+		expect(hookOverrideArgs.join("\n")).toContain("hooks.PermissionRequest=");
 
-		const launchCommand = [launch.binary ?? "", ...launch.args].join(" ");
-		expect(launchCommand).toContain("hooks");
-		expect(launchCommand).toContain("codex-wrapper");
-		expect(launchCommand).toContain("--real-binary");
-		expect(launchCommand).toContain("codex");
-		expect(launchCommand).toContain("--");
+		const quarterdeckHooksPath = join(home, ".quarterdeck", "hooks", "codex", "hooks.json");
+		const codexGlobalHooksPath = join(home, ".codex", "hooks.json");
+		expect(existsSync(quarterdeckHooksPath)).toBe(false);
+		expect(existsSync(codexGlobalHooksPath)).toBe(false);
+		expect(existsSync(join(repoPath, ".codex", "hooks.json"))).toBe(false);
+	});
 
-		const wrapperPath = join(homedir(), ".quarterdeck", "hooks", "codex", "codex-wrapper.mjs");
-		expect(existsSync(wrapperPath)).toBe(false);
+	it("does not duplicate codex_hooks enable flag when already configured", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-flags",
+			agentId: "codex",
+			binary: "codex",
+			args: ["--enable", "codex_hooks"],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		expect(launch.args.filter((arg) => arg === "--enable")).toHaveLength(1);
+		expect(launch.args.filter((arg) => arg === "codex_hooks")).toHaveLength(1);
+		expect(launch.args.join("\n")).not.toContain("hooks.SessionStart=");
 	});
 
 	it("writes Claude settings with explicit permission hook", async () => {

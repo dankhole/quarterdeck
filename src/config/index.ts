@@ -2,7 +2,9 @@ export {
 	buildRuntimeConfigResponse,
 	detectInstalledCommands,
 	detectRunnableAgentIds,
+	parseCodexFeaturesListOutput,
 	type ResolvedAgentCommand,
+	resetAgentAvailabilityCache,
 	resolveAgentCommand,
 } from "./agent-registry";
 export {

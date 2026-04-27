@@ -2,7 +2,7 @@
 // Orchestrates normalizers (pure) and persistence (I/O).
 import type { PromptShortcut, RuntimeAgentId, RuntimeProjectShortcut } from "../core";
 import { lockedFileSystem } from "../fs";
-import { detectRunnableAgentIds } from "./agent-registry";
+import { detectRunnableAgentIds, getAgentAvailability } from "./agent-registry";
 import type { AudibleNotificationEvents, AudibleNotificationSuppressCurrentProject } from "./config-defaults";
 import {
 	extractGlobalConfigFields,
@@ -57,6 +57,13 @@ function pickBestInstalledAgentId() {
 	return pickBestInstalledAgentIdFromDetected(detectRunnableAgentIds());
 }
 
+function assertSelectedAgentRunnable(selectedAgentId: RuntimeAgentId): void {
+	const availability = getAgentAvailability(selectedAgentId);
+	if (!availability.installed) {
+		throw new Error(availability.statusMessage ?? `Selected agent "${selectedAgentId}" is not runnable.`);
+	}
+}
+
 async function loadRuntimeConfigLocked(projectId?: string | null): Promise<RuntimeConfigState> {
 	const configFiles = await readRuntimeConfigFiles(projectId ?? null);
 	if (configFiles.globalConfig === null) {
@@ -91,6 +98,9 @@ async function applyConfigUpdates({
 	const mergedFields = mergeGlobalConfigFields(currentFields, updates);
 
 	const nextSelectedAgentId = updates.selectedAgentId ?? current.selectedAgentId;
+	if (updates.selectedAgentId !== undefined) {
+		assertSelectedAgentRunnable(nextSelectedAgentId);
+	}
 	const nextSelectedShortcutLabel =
 		updates.selectedShortcutLabel === undefined ? current.selectedShortcutLabel : updates.selectedShortcutLabel;
 	const nextCommitPromptTemplate = updates.commitPromptTemplate ?? current.commitPromptTemplate;
@@ -221,6 +231,11 @@ export async function saveRuntimeConfig(
 		hiddenDefaultPromptShortcuts: string[];
 	},
 ): Promise<RuntimeConfigState> {
+	// Runnability is guarded on the update path (`applyConfigUpdates`) and pre-checked
+	// in the Settings dialog. `saveRuntimeConfig` is the low-level writer — do not
+	// re-probe here: it would duplicate work and block persistence in edge cases
+	// (e.g. shutdown writes, tests that seed configs directly) where the agent
+	// availability state is intentionally stale.
 	const { globalConfigPath, projectConfigPath } = resolveRuntimeConfigPaths(projectId);
 	return await lockedFileSystem.withLocks(getRuntimeConfigLockRequests(projectId), async () => {
 		const { shortcuts, pinnedBranches, defaultBaseRef, ...globalFields } = config;

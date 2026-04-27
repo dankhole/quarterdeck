@@ -54,11 +54,25 @@ export function writeFakeCommand(binDir: string, command: string): void {
 	chmodSync(scriptPath, 0o755);
 }
 
-export function writeFakeVersionedCommand(binDir: string, command: string, version: string): void {
+export function writeFakeVersionedCommand(
+	binDir: string,
+	command: string,
+	version: string,
+	options: { codexHooksSupported?: boolean } = {},
+): void {
 	mkdirSync(binDir, { recursive: true });
+	const codexHooksSupported = options.codexHooksSupported ?? true;
 	if (process.platform === "win32") {
 		const scriptPath = join(binDir, `${command}.cmd`);
-		writeFileSync(scriptPath, `@echo off\r\nif "%1"=="--version" echo ${version}\r\nexit /b 0\r\n`, "utf8");
+		writeFileSync(
+			scriptPath,
+			`@echo off
+if "%1"=="--version" echo ${version}
+if "%1"=="features" if "%2"=="list" echo codex_hooks  stable  ${codexHooksSupported ? "true" : "false"}
+exit /b 0
+`,
+			"utf8",
+		);
 		return;
 	}
 	const scriptPath = join(binDir, command);
@@ -67,6 +81,9 @@ export function writeFakeVersionedCommand(binDir: string, command: string, versi
 		`#!/bin/sh
 if [ "$1" = "--version" ]; then
 	echo "${version}"
+fi
+if [ "$1" = "features" ] && [ "$2" = "list" ]; then
+	echo "codex_hooks                         stable             ${codexHooksSupported ? "true" : "false"}"
 fi
 exit 0
 `,

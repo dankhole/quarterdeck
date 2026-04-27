@@ -214,75 +214,41 @@ The full mapping:
 
 **Metadata extraction:** When Claude stops (`to_review` from the `Stop` event), the hook payload includes a `transcript_path` pointing to Claude's JSONL conversation transcript. The ingest command reads this file, finds the last assistant message (skipping short preambles like "I'll read that file"), caps it at 500 characters, and includes it as `conversationSummaryText` in the hook metadata. This is how the UI shows a summary of what the agent last said.
 
-### Codex hooks: external observation layer
+### Codex hooks: native hook configuration via launch-scoped inline config
 
-Codex has no native hook system. There's no equivalent of Claude's `--settings` flag or lifecycle event callbacks. Quarterdeck can't ask Codex to call a command when it stops or starts — it has to figure that out from the outside.
+Codex now has a native hook system, so Quarterdeck no longer wraps the CLI or scrapes internal logs. Instead, the Codex adapter injects its hook configuration inline on the `codex` command line using `-c hooks.<Event>=...` overrides, injects the same `QUARTERDECK_HOOK_TASK_ID` / `QUARTERDECK_HOOK_PROJECT_ID` environment variables used by Claude, forces `--enable codex_hooks`, and then launches `codex` directly. This keeps Quarterdeck's Codex hooks scoped to Quarterdeck-launched sessions instead of leaking into standalone Codex app/GUI usage through `~/.codex/hooks.json`.
 
-The solution is a **wrapper + log watcher** architecture with three layers:
+The generated inline Codex hook config maps native events into Quarterdeck's three internal hook events:
 
-**Layer 1: The wrapper.** Instead of launching Codex directly, Quarterdeck launches `quarterdeck hooks codex-wrapper --real-binary codex -- [codex args]`. This wrapper process:
+| Codex Hook Event | Matcher | Quarterdeck Event | Purpose |
+|---|---|---|---|
+| `SessionStart` | `startup\|resume` (excludes `clear`) | `activity` | Capture session metadata without changing task state |
+| `UserPromptSubmit` | — | `to_in_progress` | Mark resumed work after user input |
+| `PreToolUse` | `*` | `activity` | Informational tool activity |
+| `PermissionRequest` | `*` | `to_review` | Enter review with approval-needed metadata |
+| `PostToolUse` | `*` | `to_in_progress` | Store tool-completion metadata and return review cards to running |
+| `Stop` | — | `to_review` | Enter review when the turn ends |
 
-1. Sets environment variables that tell Codex to record its session: `CODEX_TUI_RECORD_SESSION=1` and `CODEX_TUI_SESSION_LOG_PATH=/tmp/quarterdeck-codex-session-{pid}_{timestamp}.jsonl`
-2. Starts a log watcher (see layer 2)
-3. Spawns the real Codex binary with `stdio: "inherit"` (terminal output goes straight through)
-4. Forwards signals (SIGINT, SIGTERM) to the child process
-5. On exit, stops the watcher (flushing any partial lines), waits up to 3 seconds for cleanup, then exits with Codex's exit code
+> ⚠️ **`SessionStart` is metadata-only.** Codex emits `SessionStart` for launch/resume and can also reinitialize session state around maintenance flows. Quarterdeck deliberately records it as `activity`, not `to_in_progress`, because `UserPromptSubmit`, `PreToolUse`/`PostToolUse`, and `Stop` are the reliable turn-state boundaries. Tests assert the matcher excludes `clear` and the event maps to `activity` — see `test/runtime/codex-hooks.test.ts`.
 
-**Layer 2: The session log watcher.** Runs concurrently with Codex inside the wrapper process. Every 200ms, it:
-
-1. Stats the JSONL session log file to check if the size changed
-2. If new bytes exist, reads only the new portion (tracks byte offset)
-3. Splits into lines, keeping any incomplete line in a remainder buffer
-4. Parses each line as JSON and maps it to a Quarterdeck hook event
-5. Calls the notification callback for each mapped event
-
-If the session log doesn't exist yet (Codex hasn't started writing), the watcher falls back to scanning Codex's rollout activity log at `~/.codex/sessions/{YYYY}/{MM}/{DD}/rollout-*.jsonl`, polled every 1 second. This is a secondary signal source.
-
-The JSONL log contains structured events. Example lines:
-
-```json
-{"dir":"to_tui","kind":"codex_event","msg":{"type":"task_started","command":"Fix the parser bug"}}
-{"dir":"to_tui","kind":"codex_event","msg":{"type":"task_complete","last_agent_message":"Fixed the bug"}}
-{"dir":"from_tui","kind":"op","payload":{"type":"exec_command_begin","call_id":"call_123","command":["bash","-c","npm test"]}}
-```
-
-The event mapping:
-
-| Codex Log Event | Hook Event | Metadata |
-|---|---|---|
-| `task_started`, `turn_started` | `to_in_progress` | "Working on task: {command}" |
-| `user_turn` | `to_in_progress` | "Resumed after user input" |
-| `task_complete` | `to_review` | "Final: {lastAgentMessage}" |
-| `approval_request`, `permission_request` | `to_review` | "Waiting for approval" |
-| `exec_command_begin` | `activity` | "Running command: {command}" |
-| `exec_command_end` | `activity` | "Command finished/failed: {command}" |
-| `raw_response_item` (function_call) | `activity` | "Calling {name}: {command}" |
-| `agent_message` | `activity` | "Agent: {message}" |
-
-The watcher has deduplication logic — it tracks fingerprints (`lastTurnId`, `lastApprovalId`, `lastExecCallId`) to avoid emitting duplicate events when Codex logs the same action multiple times. It also filters out events from descendant/subagent sessions by detecting `session_meta` entries with `source.subagent.thread_spawn`.
-
-**Layer 3: Detached notification.** When the watcher maps a log event to a hook event, it doesn't call `quarterdeck hooks ingest` synchronously (that would block the poll loop). Instead, it spawns a fully detached process:
-
-```
-quarterdeck hooks notify --event to_review --source codex
-```
-
-`notify` is a best-effort variant of `ingest`. It has the same internal logic (parse metadata, POST to tRPC, single retry) but wraps everything in a try/catch that swallows all errors silently. The spawned process is detached (`detached: true`, `stdio: "ignore"`, `child.unref()`) so it runs independently of the wrapper — if the wrapper exits, in-flight notifications still complete.
-
-**Fallback mechanism.** As a safety net, the wrapper also injects a Codex config flag (`-c notify=[quarterdeck hooks notify --event to_review --source codex]`) into Codex's arguments. This uses Codex's own legacy `notify` config, which fires a command when the task completes. If the log watcher misses the completion event (file I/O failure, unexpected log format), this fallback ensures at least one `to_review` event reaches the server.
+Because Codex includes `session_id` in each hook payload, Quarterdeck also persists that identifier as `resumeSessionId` on the runtime task session summary. When a task resumes later, the Codex adapter prefers `codex resume <session_id>` and only falls back to `codex resume --last` if no session id has been captured yet.
 
 ### Claude vs Codex: comparison
 
 | Aspect | Claude | Codex |
 |---|---|---|
-| Integration type | Native hook system | External log observation |
-| How hooks are configured | `--settings` JSON file | Wrapper + JSONL watcher |
-| Execution model | Synchronous (Claude waits) | Asynchronous (detached processes) |
-| Latency | Near-instant (<100ms typical) | ~200ms poll interval + spawn overhead |
-| Failure handling | 3s timeout, 1 retry, blocks on failure | Best-effort, silent failure, never blocks |
-| Metadata source | Transcript file (parsed on `to_review`) | JSONL session log (parsed continuously) |
-| Fallback | None needed (native) | Legacy `-c notify` config |
-| Subagent filtering | N/A (hooks only fire on main agent) | Tracks `session_meta` to ignore descendant sessions |
+| Integration type | Native hook system | Native hook system |
+| How hooks are configured | `--settings` JSON file | Inline `-c hooks...` launch overrides |
+| Execution model | Synchronous (Claude waits) | Synchronous (Codex waits) |
+| Latency | Near-instant (<100ms typical) | Near-instant (<100ms typical) |
+| Failure handling | 3s timeout, 1 retry, blocks on failure | 3s timeout, 1 retry, blocks on failure |
+| Metadata source | Transcript file (parsed on `to_review`) | Native hook stdin payload |
+| Fallback | None needed (native) | None for supported hook boundaries; slash-command lifecycle is a known gap |
+| Subagent filtering | Dedicated `SubagentStop` event maps to `activity` | Known limitation: current Codex payloads do not identify root-agent vs subagent `Stop`, so subagent-heavy sessions can prematurely transition to review |
+
+> Known Codex parity gap: Quarterdeck currently maps Codex `Stop` to `to_review` so main-agent turn completion works. Until Codex exposes a reliable root-agent/subagent discriminator in hook payloads, a Codex subagent `Stop` can look identical to main-agent completion. This is tracked in `docs/todo.md` and should be revisited before claiming full Claude parity for subagent-heavy Codex workflows.
+
+> Known Codex slash-command gap: `/compact`, `/resume`, plugin reloads, and other TUI-local maintenance commands do not currently expose stable start/finish hooks. Quarterdeck therefore should not move a review-ready card to `running` from Codex prompt redraws or `SessionStart` maintenance events, but it also cannot show a precise progress lifecycle for those operations until Codex exposes dedicated compact/slash-command hooks.
 
 ### Server-side ingestion (both agents)
 
@@ -292,11 +258,11 @@ Regardless of which agent sent the event, the server processes it the same way:
 Hook CLI command (ingest or notify)
     │
     ▼
-1. Read QUARTERDECK_HOOK_TASK_ID and QUARTERDECK_HOOK_WORKSPACE_ID from env
+1. Read `QUARTERDECK_HOOK_TASK_ID` and `QUARTERDECK_HOOK_PROJECT_ID` from env
 2. Parse metadata from flags / base64 payload / stdin / positional arg
 3. Agent-specific enrichment:
    - Claude: read transcript file for last assistant message
-   - Codex: read rollout file for final message
+   - Codex: use native hook payload fields (`session_id`, `tool_name`, `tool_input`, etc.)
 4. POST to tRPC hooks.ingest endpoint (3s timeout, 1 retry)
     │
     ▼

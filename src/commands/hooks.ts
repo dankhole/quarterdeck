@@ -5,8 +5,6 @@ import { buildQuarterdeckRuntimeUrl } from "../core";
 import { parseHookRuntimeContextFromEnv } from "../terminal";
 import type { RuntimeAppRouter } from "../trpc";
 import { extractLastAssistantMessage } from "./claude-transcript-parser";
-import { resolveCodexRolloutFinalMessageForCwd } from "./codex-hook-events";
-import { runCodexWrapperSubcommand } from "./codex-wrapper";
 import {
 	type HookCommandMetadataOptionValues,
 	normalizeHookMetadata,
@@ -16,13 +14,6 @@ import {
 	readPayloadStringField,
 } from "./hook-metadata";
 
-export {
-	createCodexWatcherState,
-	parseCodexEventLine,
-	resolveCodexRolloutFinalMessageForCwd,
-	startCodexSessionWatcher,
-} from "./codex-hook-events";
-export { buildCodexWrapperChildArgs, buildCodexWrapperSpawn } from "./codex-wrapper";
 // Re-exports for backward compatibility (tests and other consumers).
 export { inferHookSourceFromPayload } from "./hook-metadata";
 
@@ -34,6 +25,45 @@ interface HooksIngestArgs {
 	projectId: string;
 	metadata?: RuntimeHookMetadata;
 	payload?: Record<string, unknown> | null;
+}
+
+function formatDiagnosticValue(value: string | null | undefined, maxLength = 80): string {
+	if (!value) {
+		return "-";
+	}
+	const compact = value.replace(/\s+/g, " ").trim();
+	const truncated = compact.length > maxLength ? `${compact.slice(0, maxLength)}...` : compact;
+	return JSON.stringify(truncated);
+}
+
+function formatHookDiagnosticFields(
+	args: HooksIngestArgs,
+	extra: Record<string, string | null | undefined> = {},
+): string {
+	const metadata = args.metadata;
+	const fields: Record<string, string | null | undefined> = {
+		event: args.event,
+		project: args.projectId,
+		task: args.taskId,
+		source: metadata?.source ?? null,
+		session: metadata?.sessionId ?? null,
+		hookEvent: metadata?.hookEventName ?? null,
+		tool: metadata?.toolName ?? null,
+		notifType: metadata?.notificationType ?? null,
+		activity: metadata?.activityText ?? null,
+		...extra,
+	};
+	return Object.entries(fields)
+		.map(([key, value]) => `${key}=${formatDiagnosticValue(value)}`)
+		.join(" ");
+}
+
+function writeHookCliDiagnostic(
+	args: HooksIngestArgs,
+	message: string,
+	extra: Record<string, string | null | undefined> = {},
+): void {
+	process.stderr.write(`[hooks:cli] ${message} ${formatHookDiagnosticFields(args, extra)}\n`);
 }
 
 function formatError(error: unknown): string {
@@ -81,7 +111,13 @@ function parseHooksIngestArgs(
 	const payloadFromStdin = parseJsonObject(stdinPayload.trim());
 	const payloadFromArg = payloadArg ? parseJsonObject(payloadArg) : null;
 	const payload = payloadFromBase64 ?? payloadFromStdin ?? payloadFromArg;
-	const metadata = normalizeHookMetadata(event, payload, flagMetadata);
+	const payloadSessionId = payload
+		? (readPayloadStringField(payload, "session_id") ?? readPayloadStringField(payload, "sessionId"))
+		: null;
+	const metadata = normalizeHookMetadata(event, payload, {
+		...flagMetadata,
+		sessionId: flagMetadata.sessionId ?? payloadSessionId ?? null,
+	});
 	return {
 		event,
 		taskId: context.taskId,
@@ -126,66 +162,26 @@ async function ingestHookEvent(args: HooksIngestArgs): Promise<void> {
 		// Single retry after a short delay. State-transition hooks (to_review,
 		// to_in_progress) are the only reliable channel — a lost hook means a
 		// stuck task with no automatic recovery.
+		writeHookCliDiagnostic(args, "ingest attempt failed; retrying", {
+			error: formatError(firstError),
+		});
 		await new Promise((resolve) => setTimeout(resolve, HOOK_INGEST_RETRY_DELAY_MS));
 		try {
 			await attempt();
-		} catch {
+		} catch (retryError) {
+			writeHookCliDiagnostic(args, "ingest retry failed", {
+				error: formatError(retryError),
+				firstError: formatError(firstError),
+			});
 			// Re-throw the original error so callers see the first failure.
 			throw firstError;
 		}
 	}
 }
 
-async function enrichCodexReviewMetadata(args: HooksIngestArgs, cwd: string): Promise<HooksIngestArgs> {
-	if (args.event !== "to_review") {
-		return args;
-	}
-	const metadata = args.metadata ?? {};
-	const source = metadata.source?.toLowerCase();
-	if (source !== "codex") {
-		return args;
-	}
-	const existingFinalMessage =
-		typeof metadata.finalMessage === "string" && metadata.finalMessage.trim().length > 0
-			? metadata.finalMessage
-			: null;
-	if (existingFinalMessage) {
-		return {
-			...args,
-			metadata: {
-				...metadata,
-				activityText: metadata.activityText ?? `Final: ${existingFinalMessage}`,
-			},
-		};
-	}
-
-	const fallbackFinalMessage = await resolveCodexRolloutFinalMessageForCwd(cwd);
-	if (!fallbackFinalMessage) {
-		return {
-			...args,
-			metadata: {
-				...metadata,
-				activityText: metadata.activityText ?? "Waiting for review",
-			},
-		};
-	}
-
-	return {
-		...args,
-		metadata: {
-			...metadata,
-			finalMessage: fallbackFinalMessage,
-			activityText: metadata.activityText ?? `Final: ${fallbackFinalMessage}`,
-		},
-	};
-}
-
 /**
  * Enrich Claude Stop hook metadata with a conversation summary extracted from
  * the transcript JSONL file.
- *
- * Follows the same pattern as enrichCodexReviewMetadata - reads agent-specific
- * files on the CLI side before the tRPC call to the server.
  */
 async function enrichClaudeStopMetadata(args: HooksIngestArgs): Promise<HooksIngestArgs> {
 	if (args.event !== "to_review") {
@@ -233,8 +229,7 @@ async function runHooksNotify(
 	try {
 		const stdinPayload = await readStdinText();
 		const parsedArgs = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
-		const args = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
-		await ingestHookEvent(args);
+		await ingestHookEvent(parsedArgs);
 	} catch {
 		// Best effort only. Detached notify stdio is "ignore" so stderr writes
 		// here would be dropped anyway — server-side hooks-api logging covers
@@ -263,12 +258,14 @@ async function runHooksIngest(
 	try {
 		const stdinPayload = await readStdinText();
 		const parsedArgs = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
-		const codexEnriched = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
 		try {
-			args = await enrichClaudeStopMetadata(codexEnriched);
-		} catch {
+			args = await enrichClaudeStopMetadata(parsedArgs);
+		} catch (error) {
 			// If enrichment crashes, fall back to unenriched args so the hook is still ingested.
-			args = codexEnriched;
+			writeHookCliDiagnostic(parsedArgs, "metadata enrichment failed; ingesting raw hook", {
+				error: formatError(error),
+			});
+			args = parsedArgs;
 		}
 	} catch (error) {
 		process.stderr.write(`quarterdeck hooks ingest: ${formatError(error)}\n`);
@@ -278,10 +275,7 @@ async function runHooksIngest(
 
 	// Diagnostic stderr logging — always emitted so it shows in the agent's PTY
 	// output. Enable debug logging in the UI to see the matching server-side logs.
-	const meta = args.metadata;
-	process.stderr.write(
-		`[hooks:cli] event=${args.event} hookEvent=${meta?.hookEventName ?? "-"} tool=${meta?.toolName ?? "-"} notifType=${meta?.notificationType ?? "-"} activity=${meta?.activityText?.slice(0, 60) ?? "-"}\n`,
-	);
+	writeHookCliDiagnostic(args, "parsed");
 
 	try {
 		await ingestHookEvent(args);
@@ -335,16 +329,4 @@ export function registerHooksCommand(program: Command): void {
 				await runHooksNotify(options.event, options, payload);
 			},
 		);
-
-	hooks
-		.command("codex-wrapper [agentArgs...]")
-		.description("Codex wrapper that emits Quarterdeck hook notifications.")
-		.requiredOption("--real-binary <path>", "Path to the actual codex binary.")
-		.allowUnknownOption(true)
-		.action(async (agentArgs: string[] | undefined, options: { realBinary: string }) => {
-			await runCodexWrapperSubcommand({
-				realBinary: options.realBinary,
-				agentArgs: agentArgs ?? [],
-			});
-		});
 }

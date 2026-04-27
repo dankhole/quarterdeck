@@ -141,7 +141,7 @@ export function AgentSection({
 			) : (
 				<p className="text-text-secondary text-[12px] mt-2 mb-0">
 					Detection checks whether each CLI is available on Quarterdeck&apos;s PATH. Codex also enforces a minimum
-					supported version.
+					supported version, verifies native hook support, and enables <code>codex_hooks</code> at launch.
 				</p>
 			)}
 			<div className="mt-3">
