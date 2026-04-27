@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Docs: consolidate architecture and convention references
+
+- Merged the ranked architecture weaknesses and refactor-roadmap context into `docs/architecture-roadmap.md`, with `docs/todo.md` remaining the active execution queue.
+- Moved reusable methodology docs under `docs/conventions/`, including architecture guardrails and UI layout conventions, and removed the stale UI component cheatsheet.
+- Updated `AGENTS.md` with an area-specific documentation lookup cheat sheet so agents read convention docs only when working in the matching code area.
+
 ### Fix: repair invalid session entries during project load
 
 - Project loads now drop invalid `sessions.json` entries individually, preserve the original file as `sessions.json.corrupt-*`, and immediately write a repaired `sessions.json` containing the surviving sessions so the project does not remain half-corrupt until the next board save.
@@ -178,4 +184,4 @@
 - Restructured `todo.md` with active/historical separation and cross-links to roadmap context.
 - Updated all cross-references in `docs/README.md`, `design-guardrails.md`, `design-weaknesses-roadmap.md`, and `terminal-ws-server-refactor-brief.md`.
 
-> Prior entries (0.10.0 and earlier) in `docs/changelog-through-0.10.0.md`, `docs/changelog-through-0.9.4.md`, `docs/changelog-through-0.8.0.md`, and `docs/changelog-through-0.5.0.md`.
+> Prior entries (0.10.0 and earlier) in `docs/history/changelog-through-0.10.0.md` and `docs/history/changelog-through-0.9.4.md`.

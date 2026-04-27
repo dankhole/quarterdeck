@@ -37,7 +37,15 @@ Architecture opinions
 - Avoid thin shell wrappers that only forward props or relocate JSX for a single call site.
 - Prefer extracting domain logic (state, effects, async orchestration) over presentation-only pass-through layers.
 - Do not optimize for line count alone. Optimize for codebase navigability and clarity.
-- **Before adding or modifying main views, sidebar panels, or tab infrastructure in `web-ui`**, read `docs/ui-layout-architecture.md`. It documents the dual-selection layout system, component hierarchy, auto-coupling rules, and step-by-step guides for adding new views/panels.
+
+Documentation lookup cheat sheet
+- Read the area-specific docs when you enter that area; do not bulk-read every convention doc by default.
+- `docs/conventions/web-ui.md`: read before frontend work in `web-ui` for stack, design tokens, UI primitives, Radix gotchas, dialog suppression, dark theme, and hook directory rules.
+- `docs/conventions/frontend-hooks.md`: read when extracting hook/domain logic, changing provider/context contracts, or applying the frontend domain-module pattern.
+- `docs/conventions/ui-layout.md`: read before adding or modifying main views, sidebar panels, toolbar tabs, task-detail layout routing, or surface-navigation behavior.
+- `docs/conventions/architecture-guardrails.md`: read when adding caching, batching, retry, preload, recovery, lifecycle policy, or any clever behavior that could start defining the architecture.
+- `docs/architecture-roadmap.md`: read when choosing, reprioritizing, or touching active architecture refactor backlog items.
+- `docs/task-state-system-stale.md`: historical task/session state context only; verify against current code before relying on it.
 
 Git guardrails
 - NEVER commit unless user asks.
@@ -52,9 +60,8 @@ When closing issues via commit:
 - Include fixes #<number> or closes #<number> in the commit message. This automatically closes the issue when the commit is merged.
 
 web-ui conventions
-- **Before any frontend work**, read `docs/web-ui-conventions.md` — it covers the stack, design tokens, UI primitives, Radix gotchas, dialog suppression rules, dark theme constraints, and the hooks architecture (domain modules vs hooks, directory structure, naming conventions).
 - In `web-ui`, prefer `react-use` hooks (via `@/quarterdeck/utils/react-use`) whenever possible.
-- **When modifying or creating hooks** in `web-ui/src/hooks/`: if the hook has >50 lines of non-React logic (validation, data transforms, state machine guards), extract that logic into a companion domain module (`foo-bar.ts` alongside `use-foo-bar.ts`). Domain modules are pure TS with no React imports — testable with plain `describe`/`it`. See `docs/web-ui-conventions.md` § "Hooks architecture" for the full pattern and the reference table of existing extractions.
+- **When modifying or creating hooks** in `web-ui/src/hooks/`: if the hook has >50 lines of non-React logic (validation, data transforms, state machine guards), extract that logic into a companion domain module (`foo-bar.ts` alongside `use-foo-bar.ts`). Domain modules are pure TS with no React imports — testable with plain `describe`/`it`. See `docs/conventions/web-ui.md` § "Hooks architecture" for the full pattern, and `docs/conventions/frontend-hooks.md` for the deeper methodology.
 
 Board state single-writer rule
 - When the browser UI is connected, the UI is the **single writer** of board state via `saveProjectState` (optimistic concurrency with `expectedRevision`). Server code must **never** write board state directly — doing so bumps the server-side revision and causes the UI's next persist to hit a `ProjectStateConflictError`, surfacing a disruptive "Project changed elsewhere" toast.

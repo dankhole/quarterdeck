@@ -63,16 +63,19 @@
 
 ### Directory structure
 
-Hooks live in `src/hooks/` organized by domain:
+Hooks live in `src/hooks/` organized by domain. Every hook belongs to a domain subdirectory — the `src/hooks/` root is not a dumping ground for flat files. Current domains:
 
+- `hooks/app/` — app-wide wiring (hotkeys, side effects, action models, layout resize)
 - `hooks/board/` — task lifecycle, board state, drag-and-drop, trash workflow
+- `hooks/debug/` — debug logging and tooling
 - `hooks/git/` — branch operations, diffs, conflict resolution, commit panel
-- `hooks/terminal/` — PTY panels, shell management, auto-restart
-- `hooks/project/` — project navigation, project switching, sync
 - `hooks/notifications/` — alerts, sound, browser notifications
-- `hooks/` (flat) — cross-cutting hooks that don't belong to a single domain (settings, hotkeys, display)
+- `hooks/project/` — project navigation, project switching, sync
+- `hooks/search/` — file finder, text search
+- `hooks/settings/` — settings form, shortcut actions
+- `hooks/terminal/` — PTY panels, shell management, auto-restart
 
-When adding a new hook, place it in the most specific subdirectory that fits. Only keep hooks flat at the root if they're genuinely cross-cutting (used by 3+ domains) or standalone utilities.
+When adding a new hook, place it in the most specific domain that fits. If nothing fits, create a new domain subdirectory rather than leaving it flat.
 
 ### Domain modules vs hooks
 
@@ -108,31 +111,19 @@ export type { HardDeleteDialogState, TrashWarningState } from "@/hooks/board/tra
 export { INITIAL_HARD_DELETE_DIALOG_STATE, INITIAL_TRASH_WARNING_STATE } from "@/hooks/board/trash-workflow";
 ```
 
-### Existing domain modules (reference)
+### Finding existing extractions
 
-| Domain module | Extracted from | What it contains |
-|---------------|---------------|-----------------|
-| `board/task-lifecycle.ts` | `use-task-lifecycle` | Board move helpers, project info transforms |
-| `board/trash-workflow.ts` | `use-trash-workflow` | Types, initial states, trash column queries |
-| `git/conflict-resolution.ts` | `use-conflict-resolution` | Step change detection, path filtering, fallback responses |
-| `git/git-actions.ts` | `use-git-actions` | Loading state derivation, project info matching, error titles |
-| `git/commit-panel.ts` | `use-commit-panel` | Selection sync, commit validation, success formatting |
-| `terminal/terminal-panels.ts` | `use-terminal-panels` | Geometry estimation, pane height persistence, panel state helpers |
-| `project/project-navigation.ts` | `use-project-navigation` | Error parsing, picker detection, manual path prompt |
-| `project/project-sync.ts` | `use-project-sync` | Session merging, version comparison, hydration guards |
-| `notifications/audible-notifications.ts` | `use-audible-notifications` | Column derivation, sound event resolution, settle window, visibility, project suppression |
-| `debug-logging.ts` | `use-debug-logging` | Log merging, filtering, tag extraction, disabled-tag persistence |
-| `task-editor.ts` | `use-task-editor` | Branch ref resolution, plan mode incompatibility, task save validation |
-| `board/review-auto-actions.ts` | `use-review-auto-actions` | Auto-review eligibility, column mapping, review card collection, auto-trash mode check |
-| `terminal/shell-auto-restart.ts` | `use-shell-auto-restart` | Rate limiting, restart target parsing, restart eligibility |
-| `board/linked-backlog-task-actions.ts` | `use-linked-backlog-task-actions` | Dependency error messages, trash warning view model building |
-| `shortcut-actions.ts` | `use-shortcut-actions` | Label collision detection, shortcut creation validation |
-| `settings-form.ts` | `use-settings-form` | Form values type, initial values resolver, equality check |
+For examples of the pattern in the codebase, `ls web-ui/src/hooks/*/` and look for any `*.ts` file that does **not** start with `use-` — those are domain modules paired with their `use-*.ts` hook. Pick the one nearest to the domain you're working in and read both files to see how inputs/outputs are drawn.
 
 ### Non-hook files
 
 Utility functions, constants, and React components do not belong in `hooks/`. Place them in `utils/`, `terminal/`, or `components/` respectively.
 
-### No barrel files
+### Domain barrel files
 
-Every import is a direct file path (`@/hooks/board/use-task-lifecycle`). Do not add `index.ts` barrel re-exports.
+Each domain subdirectory has an `index.ts` that re-exports its hooks and result types. Consumers import from the domain barrel (`@/hooks/board`) for hooks used across many call sites, and from the specific file (`@/hooks/board/use-task-editor`) when the consumer is tightly coupled to one hook (e.g. a provider that wraps it).
+
+Rules for the barrel:
+- Only re-export hooks and their named result/input interfaces. Do not re-export internal domain-module helpers — consumers that need those should import directly from the domain module file.
+- Keep entries alphabetized and grouped as `export type { ... }` followed by `export { ... }` per hook.
+- Do not add a top-level `src/hooks/index.ts` that re-exports across domains — cross-domain imports must name their domain.

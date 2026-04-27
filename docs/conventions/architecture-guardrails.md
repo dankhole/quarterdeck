@@ -1,6 +1,8 @@
-# Design Guardrails
+# Architecture Guardrails
 
 Purpose: capture reusable rules for adding clever features without letting optimization or recovery behavior become the architecture.
+
+Read this when adding caching, batching, retry, preload, recovery, lifecycle policy, or other clever behavior that could start defining a subsystem's shape.
 
 This is a guardrails doc, not a style guide. It exists because several Quarterdeck subsystems have followed the same failure mode:
 
@@ -144,5 +146,5 @@ When working in those areas, prefer:
 
 ## Companion Docs
 
-- `docs/design-weaknesses-roadmap.md`
-- `docs/refactor-roadmap-context.md`
+- `docs/architecture-roadmap.md`
+- `docs/todo.md`

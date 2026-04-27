@@ -14,14 +14,13 @@ If you are new to the codebase, read these in order:
 
 1. [`../README.md`](../README.md) for the product overview and local setup.
 2. [`architecture.md`](./architecture.md) for the system map, runtime model, and key file guide.
-3. [`design-weaknesses-roadmap.md`](./design-weaknesses-roadmap.md) for the current ranked architectural risks and prevention priorities.
-4. [`refactor-roadmap-context.md`](./refactor-roadmap-context.md) for the current refactor queue, recent completions, optimization-shaped cleanup context, and the extended code-validated refactor backlog.
-5. [`design-guardrails.md`](./design-guardrails.md) for reusable rules on adding clever features without letting optimization define the architecture.
+3. [`architecture-roadmap.md`](./architecture-roadmap.md) for the ranked architectural risks, current refactor queue, per-item pickup briefs, recent completions, and extended code-validated backlog.
+4. [`conventions/architecture-guardrails.md`](./conventions/architecture-guardrails.md) for reusable rules on adding clever features without letting optimization define the architecture.
 
 If you only need the current refactor state, start with:
 
 1. [`todo.md`](./todo.md) for the active backlog.
-2. [`refactor-roadmap-context.md`](./refactor-roadmap-context.md) for current ordering, backlog context, and links out to deeper briefs.
+2. [`architecture-roadmap.md`](./architecture-roadmap.md) for current ordering, backlog context, and links out to deeper briefs.
 3. The dedicated brief/follow-up linked from the roadmap item you are actually picking up.
 
 ## Refactor Docs Map
@@ -30,24 +29,23 @@ Use this map when you are planning or evaluating refactor work.
 
 ### Live planning and prioritization
 
-- Start here for current refactor status: [`todo.md`](./todo.md) + [`refactor-roadmap-context.md`](./refactor-roadmap-context.md).
+- Start here for current refactor status: [`todo.md`](./todo.md) + [`architecture-roadmap.md`](./architecture-roadmap.md).
 - [`todo.md`](./todo.md): active engineering backlog, including currently tracked refactor work.
-- [`design-weaknesses-roadmap.md`](./design-weaknesses-roadmap.md): ranked list of the biggest architectural weaknesses.
-- [`design-guardrails.md`](./design-guardrails.md): reusable design rules for preventing optimization-shaped architecture.
-- [`refactor-roadmap-context.md`](./refactor-roadmap-context.md): current refactor ordering plus recent completions, optimization-shaped cleanup context, and the extended code-validated backlog for items that do not yet have full implementation briefs.
+- [`architecture-roadmap.md`](./architecture-roadmap.md): ranked architectural weaknesses, current refactor ordering, recent completions, and the extended code-validated backlog.
+- [`conventions/architecture-guardrails.md`](./conventions/architecture-guardrails.md): reusable design rules for preventing optimization-shaped architecture.
 
 ### Live architecture and implementation guidance
 
 - [`architecture.md`](./architecture.md): system-wide architecture overview.
-- [`patterns-frontend-service-extraction.md`](./patterns-frontend-service-extraction.md): domain-module extraction pattern for frontend hooks and services.
-- [`web-ui-conventions.md`](./web-ui-conventions.md): frontend conventions and hooks architecture guidance.
-- [`ui-layout-architecture.md`](./ui-layout-architecture.md): UI composition and layout ownership model.
-- [`task-state-system.md`](./task-state-system.md): end-to-end task/session state explanation.
+- [`conventions/frontend-hooks.md`](./conventions/frontend-hooks.md): domain-module extraction pattern for frontend hooks and services.
+- [`conventions/web-ui.md`](./conventions/web-ui.md): frontend conventions and hooks architecture guidance.
+- [`conventions/ui-layout.md`](./conventions/ui-layout.md): UI region names, shell layout ownership, and main-view/sidebar rules.
+- [`task-state-system-stale.md`](./task-state-system-stale.md): end-to-end task/session state explanation. Marked stale — verify against current code before acting on it.
 
 ### Forensic history
 
 - [`implementation-log.md`](./implementation-log.md): current detailed implementation history.
-- [`implementation-archive/`](./implementation-archive): archived implementation logs from earlier milestones.
+- [`history/`](./history): frozen historical records — version-scoped implementation logs and changelogs from earlier milestones.
 
 ### Historical refactor and investigation context
 

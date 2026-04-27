@@ -1,8 +1,10 @@
-# Frontend Patterns: Service Extraction & Typed Context Interfaces
+# Frontend Hooks and Context Patterns
 
-**Purpose:** Methodology guide for two related patterns that make the frontend navigable for developers coming from class-based / service-oriented backgrounds (C#, Java, Go). This doc explains *how* to identify candidates, apply the patterns, and verify correctness — not which specific files to change.
+**Purpose:** methodology guide for two related frontend patterns: extracting hook business logic into pure TypeScript domain modules, and keeping context/provider contracts explicit and navigable.
 
-**Companion doc:** `docs/archived/refactor-hooks-directory.md` Phase 2 has concrete examples, naming conventions, and a candidate list for domain extraction. Read that for the specifics.
+Read this when changing complex hooks, extracting domain logic, or changing provider/context return shapes. For the everyday `web-ui` stack, styling, UI primitives, and hook directory rules, use `docs/conventions/web-ui.md`.
+
+Progress tracking (what's been extracted, what's left) lives in `docs/todo.md` and `docs/implementation-log.md`. This doc is the "how," those are the "what."
 
 ---
 
@@ -138,7 +140,7 @@ The goal is not "every hook must have a companion module." The goal is "business
 Do NOT extract all hooks in a single pass. Two approaches:
 
 1. **Opportunistic** (preferred): When modifying a hook for a feature or bugfix, check if it has extractable domain logic. If so, extract in the same PR.
-2. **Focused pass**: Pick the 3-5 most complex hooks (see the candidate list in `docs/archived/refactor-hooks-directory.md` Phase 2) and extract them in a dedicated PR. Do this during a low-activity window to minimize merge conflicts.
+2. **Focused pass**: Pick the 3-5 most complex hooks and extract them in a dedicated PR. Do this during a low-activity window to minimize merge conflicts.
 
 ---
 
@@ -171,30 +173,13 @@ const { board, selectedCard, stopTaskSession } = useBoardContext();
 
 This is exactly `IBoardService` in a C# project. The interface is the contract. The provider is the implementation registered in DI. The `useXxxContext()` call is constructor injection. You can ctrl+click from `stopTaskSession` at the consumer → `BoardContextValue` interface → the provider that produces it.
 
-### Current state in this project
-
-The App.tsx refactor established this pattern. Six providers were created:
-
-| Provider | Interface |
-|----------|-----------|
-| `ProjectProvider` | `ProjectContextValue` |
-| `DialogProvider` | `DialogContextValue` |
-| `BoardProvider` | `BoardContextValue` |
-| `TerminalProvider` | `TerminalContextValue` |
-| `GitProvider` | `GitContextValue` |
-| `InteractionsProvider` | `InteractionsContextValue` |
-
-### Should you push this further after the refactor?
-
-**Short answer: no.** The 6 providers are the right granularity. Here's why:
-
-#### Don't split contexts into smaller pieces
+### Granularity: don't split contexts into smaller pieces
 
 In C# you might split `IBoardService` into `IBoardReader`, `IBoardWriter`, `ITaskSessionManager` for interface segregation. In React, **every context split has a performance cost** — each `useContext()` call is a re-render subscription. If you split `BoardContextValue` into `BoardStateContext` and `BoardActionsContext`, every component that needs both now subscribes to two contexts and re-renders for changes to either.
 
-React contexts are not C# interfaces. They're closer to observable state containers. Fewer, coarser contexts means fewer re-render triggers. The 6 providers map to the 6 domain areas of the app — that's the right boundary.
+React contexts are not C# interfaces. They're closer to observable state containers. Fewer, coarser contexts means fewer re-render triggers. Providers should map to domain areas of the app, not to individual operations.
 
-#### Don't add a DI container library
+### Don't add a DI container library
 
 Libraries like InversifyJS or TSyringe bring C#-style `[Inject]` decorators and service locators to TypeScript. They work, but they fight React's paradigm:
 
@@ -202,11 +187,9 @@ Libraries like InversifyJS or TSyringe bring C#-style `[Inject]` decorators and 
 - You'd end up maintaining two parallel systems: contexts for React-aware state, DI for "pure" services.
 - The community and tooling (React DevTools, testing utilities) assume contexts, not service locators.
 
-Context providers ARE the DI container. `useXxxContext()` IS constructor injection. The pattern is already right — it just needs to finish being applied.
+Context providers ARE the DI container. `useXxxContext()` IS constructor injection.
 
-#### DO keep the interfaces clean and explicit
-
-What you should continue doing after the refactor:
+### Keep interfaces clean and explicit
 
 1. **Every context value is a named, exported interface** — not an inline type, not `ReturnType<typeof useSomeHook>`. The interface lives in the provider file and is the source of truth.
 
@@ -234,9 +217,9 @@ What you should continue doing after the refactor:
 
 4. **New fields go through the interface first** — when a component needs a new value from a provider, add it to the interface, implement it in the provider, then consume it. Don't reach around the interface by importing internal hooks from the provider file.
 
-#### DO apply the interface pattern to non-provider state
+### Apply the interface pattern to non-provider state
 
-The context interface pattern works for any shared state container, not just providers. If you have a store (`workspace-metadata-store.ts`), a state machine, or a complex hook that returns an object, give it a named interface:
+The context interface pattern works for any shared state container, not just providers. If you have a store, a state machine, or a complex hook that returns an object, give it a named interface:
 
 ```typescript
 // Before — anonymous return type, can't ctrl+click to see the shape
@@ -257,7 +240,7 @@ export function useTaskEditor(...): UseTaskEditorResult {
 }
 ```
 
-This is already partially done in the codebase (`UseTaskEditorResult` exists). The convention should be: any hook that returns an object with more than 3 fields gets a named result interface.
+Convention: any hook that returns an object with more than 3 fields gets a named result interface.
 
 ---
 

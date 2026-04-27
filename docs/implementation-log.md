@@ -1,6 +1,18 @@
 # Implementation Log
 
-> Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
+> Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
+
+## Docs: consolidate architecture and convention references (2026-04-27)
+
+The docs cleanup merged the old split between ranked architecture weaknesses and per-item refactor context into a single `docs/architecture-roadmap.md`. The new roadmap keeps the quick ranking at the top, retains the active order and item briefs from the old context doc, and removes stale phrasing that still described completed split-brain task-state cleanup as the current top weakness. `docs/todo.md` now points at the merged roadmap while staying the live execution queue.
+
+The convention-style docs were reorganized under `docs/conventions/`: `design-guardrails.md` moved to `conventions/architecture-guardrails.md`, the cleaned-up UI layout reference moved to `conventions/ui-layout.md`, and the stale `ui-component-cheatsheet.md` was removed after its useful naming glossary was absorbed into the UI layout doc. The conventions cleanup branch also brought in `conventions/web-ui.md`, `conventions/frontend-hooks.md`, `docs/history/`, and the stale task-state-system marker; this pass reconciled those names with the merged roadmap and docs index.
+
+`AGENTS.md` now has an area-specific documentation lookup cheat sheet so agents read convention docs only when entering the relevant work area instead of treating every convention doc as mandatory context for every task. The cheat sheet points frontend work to `conventions/web-ui.md`, hook/provider extraction work to `conventions/frontend-hooks.md`, UI surface/layout work to `conventions/ui-layout.md`, and optimization/lifecycle-policy work to `conventions/architecture-guardrails.md`.
+
+Files touched: `AGENTS.md`, `CHANGELOG.md`, `docs/README.md`, `docs/architecture-roadmap.md`, `docs/conventions/architecture-guardrails.md`, `docs/conventions/frontend-hooks.md`, `docs/conventions/ui-layout.md`, `docs/todo.md`; deleted `docs/design-weaknesses-roadmap.md`, `docs/refactor-roadmap-context.md`, `docs/design-guardrails.md`, `docs/ui-layout-architecture.md`, and `docs/ui-component-cheatsheet.md`.
+
+Commit: pending
 
 ## Fix: repair invalid session entries during project load (2026-04-27)
 

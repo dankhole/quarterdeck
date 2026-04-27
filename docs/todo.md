@@ -8,32 +8,31 @@ Tracking note:
 - Older completed roadmap/program sections are kept farther down for context only; they are not the live queue.
 - For newly completed work, remove the active todo item and record the result in `CHANGELOG.md` plus `docs/implementation-log.md` rather than adding a new struck-through history line here.
 
-## Architecture follow-ups from the design roadmap
+## Architecture follow-ups from the architecture roadmap
 
 Use this section together with:
 
-- [docs/design-weaknesses-roadmap.md](./design-weaknesses-roadmap.md)
-- [docs/refactor-roadmap-context.md](./refactor-roadmap-context.md)
-- [docs/task-state-system.md](./task-state-system.md)
+- [docs/architecture-roadmap.md](./architecture-roadmap.md)
+- [docs/task-state-system-stale.md](./task-state-system-stale.md)
 
 These items are broader ownership-boundary refactors that do not yet need full implementation briefs, but they need enough written context that a fresh agent can pick them up without rediscovering the problem from scratch.
 
-- Tighten the remaining project-level ownership seam around `web-ui/src/providers/project-provider.tsx` and `web-ui/src/providers/project-runtime-provider.tsx` so project navigation, runtime ingress, persistence gating, notification projection, and metadata/debug-log exposure do not keep regathering behind one broad context bag. Backlog context: [docs/refactor-roadmap-context.md#18-projectprovider--project-runtime-ownership-follow-up](./refactor-roadmap-context.md#18-projectprovider--project-runtime-ownership-follow-up)
-- Continue the terminal lifecycle cleanup after the `SessionTransitionController` extraction so `src/terminal/session-manager.ts` owns less indirect lifecycle policy and more explicit registry/composition responsibility. Backlog context: [docs/refactor-roadmap-context.md#9-terminal-session-manager--lifecycle-boundaries](./refactor-roadmap-context.md#9-terminal-session-manager--lifecycle-boundaries)
+- Tighten the remaining project-level ownership seam around `web-ui/src/providers/project-provider.tsx` and `web-ui/src/providers/project-runtime-provider.tsx` so project navigation, runtime ingress, persistence gating, notification projection, and metadata/debug-log exposure do not keep regathering behind one broad context bag. Backlog context: [docs/architecture-roadmap.md#18-projectprovider--project-runtime-ownership-follow-up](./architecture-roadmap.md#18-projectprovider--project-runtime-ownership-follow-up)
+- Continue the terminal lifecycle cleanup after the `SessionTransitionController` extraction so `src/terminal/session-manager.ts` owns less indirect lifecycle policy and more explicit registry/composition responsibility. Backlog context: [docs/architecture-roadmap.md#9-terminal-session-manager--lifecycle-boundaries](./architecture-roadmap.md#9-terminal-session-manager--lifecycle-boundaries)
 
 ## Additional code-validated refactor backlog
 
 Use this section together with:
 
-- [docs/refactor-roadmap-context.md](./refactor-roadmap-context.md)
+- [docs/architecture-roadmap.md](./architecture-roadmap.md)
 
 These are not the top active roadmap items, but they are still real refactor targets confirmed against implementation files and worth keeping visible as broader architecture work.
 
-- After the one-time local-state rewrite to `RuntimeTaskSessionSummary.sessionLaunchPath`, remove the temporary legacy `projectPath` read path from `src/core/api/task-session.ts` so the session identity contract only has one field. Backlog context: [docs/refactor-roadmap-context.md#10-project--worktree-identity-normalization](./refactor-roadmap-context.md#10-project--worktree-identity-normalization)
-- Make supporting LLM features provider-neutral by turning `src/title/llm-client.ts` into a provider-agnostic lightweight-generation client instead of a Bedrock/Anthropic-specific helper. Backlog context: [docs/refactor-roadmap-context.md#12-shared-llm-client-abstraction](./refactor-roadmap-context.md#12-shared-llm-client-abstraction)
-- Separate orphan cleanup from session reconciliation more explicitly so session/process drift, stale lock artifacts, orphan worktrees, and dangling state references each have a clearer maintenance boundary. Backlog context: [docs/refactor-roadmap-context.md#13-orphan-cleanup--reconciliation-boundary](./refactor-roadmap-context.md#13-orphan-cleanup--reconciliation-boundary)
-- Build a clearer branch/base-ref UX state model so inferred base refs, pinned refs, integration branches, and detached-head display rules stop acting like isolated fixes. Backlog context: [docs/refactor-roadmap-context.md#15-branch--base-ref-ux-state-model](./refactor-roadmap-context.md#15-branch--base-ref-ux-state-model)
-- Rework the file browser + diff viewer data pipeline so scope resolution, tree loading, diff/content fetching, and caching are easier to optimize without mixing transport and view policy. Backlog context: [docs/refactor-roadmap-context.md#16-file-browser--diff-viewer-data-pipeline](./refactor-roadmap-context.md#16-file-browser--diff-viewer-data-pipeline)
+- After the one-time local-state rewrite to `RuntimeTaskSessionSummary.sessionLaunchPath`, remove the temporary legacy `projectPath` read path from `src/core/api/task-session.ts` so the session identity contract only has one field. Backlog context: [docs/architecture-roadmap.md#10-project--worktree-identity-normalization](./architecture-roadmap.md#10-project--worktree-identity-normalization)
+- Make supporting LLM features provider-neutral by turning `src/title/llm-client.ts` into a provider-agnostic lightweight-generation client instead of a Bedrock/Anthropic-specific helper. Backlog context: [docs/architecture-roadmap.md#12-shared-llm-client-abstraction](./architecture-roadmap.md#12-shared-llm-client-abstraction)
+- Separate orphan cleanup from session reconciliation more explicitly so session/process drift, stale lock artifacts, orphan worktrees, and dangling state references each have a clearer maintenance boundary. Backlog context: [docs/architecture-roadmap.md#13-orphan-cleanup--reconciliation-boundary](./architecture-roadmap.md#13-orphan-cleanup--reconciliation-boundary)
+- Build a clearer branch/base-ref UX state model so inferred base refs, pinned refs, integration branches, and detached-head display rules stop acting like isolated fixes. Backlog context: [docs/architecture-roadmap.md#15-branch--base-ref-ux-state-model](./architecture-roadmap.md#15-branch--base-ref-ux-state-model)
+- Rework the file browser + diff viewer data pipeline so scope resolution, tree loading, diff/content fetching, and caching are easier to optimize without mixing transport and view policy. Backlog context: [docs/architecture-roadmap.md#16-file-browser--diff-viewer-data-pipeline](./architecture-roadmap.md#16-file-browser--diff-viewer-data-pipeline)
 
 ## Broader backlog and long-running programs
 
@@ -141,13 +140,13 @@ Periodically read through docs in `docs/` (research, plans, specs, top-level) an
 When `worktreeAddQuarterdeckDir` is enabled, agents can `cd` out of their assigned worktree into other directories. The status bar branch pill, task card branch label, and branch selector dropdown all derive their values from the agent's current working directory (via the metadata monitor's git probe), so they start showing the wrong branch state instead of the worktree's. Fix the metadata monitor and/or display logic so that task-scoped UI elements always reflect the assigned worktree path, not wherever the agent's shell happens to be. The statusline (`buildStatuslineCommand`) may also need the same fix.
 
 **Related symptom:** The status bar sometimes shows the wrong project folder — may be the same metadata monitor root cause or a separate project-level resolution bug.
-**Broader refactor context:** [docs/refactor-roadmap-context.md#10-project--worktree-identity-normalization](./refactor-roadmap-context.md#10-project--worktree-identity-normalization)
+**Broader refactor context:** [docs/architecture-roadmap.md#10-project--worktree-identity-normalization](./architecture-roadmap.md#10-project--worktree-identity-normalization)
 
 ## "Shared" indicator on task cards should update when agent moves to shared directory
 
 Task cards show a "shared" badge when a task is operating in the shared home workspace instead of an isolated worktree. When `worktreeAddQuarterdeckDir` is enabled, an agent that was started in an isolated worktree can `cd` into shared directories — at that point the task is effectively operating in shared space, but the card still shows as isolated. The "shared" indicator should react to the agent's actual working directory, not just the initial launch config.
 
-**Broader refactor context:** [docs/refactor-roadmap-context.md#10-project--worktree-identity-normalization](./refactor-roadmap-context.md#10-project--worktree-identity-normalization)
+**Broader refactor context:** [docs/architecture-roadmap.md#10-project--worktree-identity-normalization](./architecture-roadmap.md#10-project--worktree-identity-normalization)
 
 ## Add clarification when multiple worktrees share the same detached HEAD hash
 
@@ -169,7 +168,7 @@ Codex now has first-party hooks (`hooks.json` plus native lifecycle events) in t
 
 Supporting LLM UX (titles, summaries, helper generations) is still Anthropic-only: `src/title/llm-client.ts` assumes Anthropic Bedrock-compatible env vars and a Claude default model, so Codex/OpenAI-only setups leave these features effectively disabled. Refactor the shared LLM client to support provider-neutral configuration, including direct OpenAI-compatible endpoints and config-driven model/provider selection, so auxiliary UX works regardless of whether the task agent is Claude or Codex.
 
-**Broader refactor context:** [docs/refactor-roadmap-context.md#12-shared-llm-client-abstraction](./refactor-roadmap-context.md#12-shared-llm-client-abstraction)
+**Broader refactor context:** [docs/architecture-roadmap.md#12-shared-llm-client-abstraction](./architecture-roadmap.md#12-shared-llm-client-abstraction)
 
 ## Make the worktree system prompt apply to Codex too
 
@@ -185,7 +184,7 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 - **Interaction between the two**: Selecting a file in the browser triggers a diff load — if this round-trips to the server each time, latency compounds. Consider pre-fetching diffs for visible files or caching previously viewed diffs.
 - **Commit from sidebar is slow**: The commit action triggered from the sidebar loads for a while before completing. Profile whether the bottleneck is the git commit itself, pre-commit hooks, diff recomputation after commit, or UI update.
 
-**Broader refactor context:** [docs/refactor-roadmap-context.md#16-file-browser--diff-viewer-data-pipeline](./refactor-roadmap-context.md#16-file-browser--diff-viewer-data-pipeline)
+**Broader refactor context:** [docs/architecture-roadmap.md#16-file-browser--diff-viewer-data-pipeline](./architecture-roadmap.md#16-file-browser--diff-viewer-data-pipeline)
 
 ## Design investigation follow-ups
 
@@ -206,7 +205,7 @@ Four phases to make the frontend navigable like a C#/Angular solution — featur
 
 - ~~**Phase 1**~~ — Sort 15 orphan hooks into domain subdirectories (`hooks/app/`, `hooks/debug/`, `hooks/settings/`, and existing dirs). Pure file moves. Done.
 - ~~**Phase 2**~~ — Group 48 root-level components into feature directories (`components/board/`, `components/task/`, `components/git/`, `components/app/`, `components/terminal/`, `components/debug/`). Pure file moves. Done.
-- ~~**Phase 3**~~ — Done. Finished the remaining workflow-heavy UI surface decompositions so the high-churn components now read more clearly as composition shells over hooks/domain modules: `project-navigation-panel.tsx` (679L → 74L), `top-bar.tsx` (624L → 176L), `git-view` (757L → 255L view + 343L hook + 88L domain module + 132L CompareBar + 36L empty panels), `task-create-dialog.tsx` (544L → 424L dialog + 235L hook + 76L domain module), `branch-selector-popover.tsx` (698L → hook/domain-driven popover shell), `card-detail-view.tsx` (585L → composition shell + extracted main content/dialog children + hook/domain logic), and `board-card.tsx` (521L → render shell + dedicated board-card hook/domain module). Roadmap context: [docs/refactor-roadmap-context.md#8-remaining-workflow-heavy-ui-surfaces](./refactor-roadmap-context.md#8-remaining-workflow-heavy-ui-surfaces)
+- ~~**Phase 3**~~ — Done. Finished the remaining workflow-heavy UI surface decompositions so the high-churn components now read more clearly as composition shells over hooks/domain modules: `project-navigation-panel.tsx` (679L → 74L), `top-bar.tsx` (624L → 176L), `git-view` (757L → 255L view + 343L hook + 88L domain module + 132L CompareBar + 36L empty panels), `task-create-dialog.tsx` (544L → 424L dialog + 235L hook + 76L domain module), `branch-selector-popover.tsx` (698L → hook/domain-driven popover shell), `card-detail-view.tsx` (585L → composition shell + extracted main content/dialog children + hook/domain logic), and `board-card.tsx` (521L → render shell + dedicated board-card hook/domain module). Roadmap context: [docs/architecture-roadmap.md#8-remaining-workflow-heavy-ui-surfaces](./architecture-roadmap.md#8-remaining-workflow-heavy-ui-surfaces)
 - ~~**Phase 4**~~ — Add `index.ts` barrel exports to all feature directories in both `components/` and `hooks/`. Done.
 
 ## Readability refactoring roadmap (C#-style navigability) — completed
@@ -236,7 +235,7 @@ All hooks migrated out of the monolithic App component into provider-owned seams
 
 Review and improve the periodic cleanup of orphaned entities — stale worktrees, abandoned sessions, dangling state references — that accumulate over time. Session reconciliation (`session-reconciliation.ts`) runs every 10 seconds for process/session state, but broader orphan cleanup (worktrees without tasks, tasks referencing deleted worktrees) may need a separate sweep.
 
-**Broader refactor context:** [docs/refactor-roadmap-context.md#13-orphan-cleanup--reconciliation-boundary](./refactor-roadmap-context.md#13-orphan-cleanup--reconciliation-boundary)
+**Broader refactor context:** [docs/architecture-roadmap.md#13-orphan-cleanup--reconciliation-boundary](./architecture-roadmap.md#13-orphan-cleanup--reconciliation-boundary)
 
 ## Organize web-ui hooks directory and extract domain logic
 
@@ -245,14 +244,14 @@ Review and improve the periodic cleanup of orphaned entities — stale worktrees
 Three phases, done in order:
 
 1. ~~**Subdirectory reorg**~~ — Done. Moved 78 files into 5 domain subdirectories plus relocated 5 misplaced non-hook files. Pure file moves + import path updates.
-2. ~~**Domain logic extraction**~~ — Done (16 domain modules, 211 domain-level unit tests). Split hooks into domain module + thin React wrapper pairs. Named candidates `use-board-interactions` and `use-task-start` confirmed as pure orchestration hooks with no extractable domain logic. Methodology: [docs/patterns-frontend-service-extraction.md](patterns-frontend-service-extraction.md) Pattern 1.
-3. ~~**Conventions update**~~ — Done. Added "Hooks architecture" section to `docs/web-ui-conventions.md` covering directory structure, domain module pattern, naming, re-exports, and reference table. Updated `AGENTS.md` with extraction rule.
+2. ~~**Domain logic extraction**~~ — Done (16 domain modules, 211 domain-level unit tests). Split hooks into domain module + thin React wrapper pairs. Named candidates `use-board-interactions` and `use-task-start` confirmed as pure orchestration hooks with no extractable domain logic. Methodology: [docs/conventions/frontend-hooks.md](conventions/frontend-hooks.md) Pattern 1.
+3. ~~**Conventions update**~~ — Done. Added "Hooks architecture" section to `docs/conventions/web-ui.md` covering directory structure, domain module pattern, naming, re-exports, and reference table. Updated `AGENTS.md` with extraction rule.
 
 ## Fix "needs input" yellow dot incorrectly persisting across project switches
 
 The yellow "needs input" indicator on the board icon sometimes shows for projects that don't actually need input. The erroneous state follows the project — switching projects brings the wrong NI status along. Investigate whether this is a stale hook state issue, a project-scoping bug in the notification system, or a UI render bug.
 
-**Broader refactor context:** [docs/refactor-roadmap-context.md#11-notification--project-scoping-ownership](./refactor-roadmap-context.md#11-notification--project-scoping-ownership) and [docs/refactor-roadmap-context.md#14-notification--indicator-state-model](./refactor-roadmap-context.md#14-notification--indicator-state-model)
+**Broader refactor context:** [docs/architecture-roadmap.md#11-notification--project-scoping-ownership](./architecture-roadmap.md#11-notification--project-scoping-ownership) and [docs/architecture-roadmap.md#14-notification--indicator-state-model](./architecture-roadmap.md#14-notification--indicator-state-model)
 
 ## Skip trash confirmation when task has no uncommitted or unmerged changes
 
@@ -272,7 +271,7 @@ When an agent switches branches inside a task worktree, the metadata monitor cal
 
 **Key files:** `src/workdir/git-utils.ts` (`resolveBaseRefForBranch`), `src/server/project-metadata-monitor.ts` (`checkForBranchChanges`), `web-ui/src/hooks/board/use-task-base-ref-sync.ts`, `src/core/task-board-mutations.ts` (validation), `web-ui/src/components/app/connected-top-bar.tsx` (base ref pill UI).
 
-**Broader refactor context:** [docs/refactor-roadmap-context.md#15-branch--base-ref-ux-state-model](./refactor-roadmap-context.md#15-branch--base-ref-ux-state-model)
+**Broader refactor context:** [docs/architecture-roadmap.md#15-branch--base-ref-ux-state-model](./architecture-roadmap.md#15-branch--base-ref-ux-state-model)
 
 ## Search modals: live preview pane
 
