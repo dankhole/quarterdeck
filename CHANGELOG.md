@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: seed cross-project notification state on stream connect
+
+- Runtime stream snapshots now include a notification-summary baseline for every managed project, so reconnecting or reloading the browser preserves already-waiting cross-project needs-input state instead of relying only on future live deltas.
+- The browser notification store seeds its existing project-owned notification buckets from that snapshot while keeping `task_notification` as the live update channel, preserving current-project mute and sound-transition semantics.
+- Added regression coverage for cross-project stream seeding plus Codex-specific audible notification suppression so `PermissionRequest` stays a permission sound and Codex completion remains a review event.
+
 ### Fix: suppress closed-PTY async write noise
 
 - PTY sessions now suppress expected async `EIO` / `EBADF` write-queue races from node-pty when a child PTY closes after input has already been accepted, while preserving `EAGAIN` retries and keeping unexpected write failures visible.

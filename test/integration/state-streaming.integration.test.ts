@@ -146,6 +146,95 @@ describe.sequential("state streaming integration", () => {
 		}
 	}, 30_000);
 
+	it("seeds cross-project notification state when a browser stream connects", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-notification-seed-");
+		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("quarterdeck-projects-notification-seed-");
+
+		const projectAPath = join(tempRoot, "project-a");
+		const projectBPath = join(tempRoot, "project-b");
+		mkdirSync(projectAPath, { recursive: true });
+		mkdirSync(projectBPath, { recursive: true });
+		initGitRepository(projectAPath);
+		initGitRepository(projectBPath);
+
+		const port = await getAvailablePort();
+		const server = await startQuarterdeckServer({
+			cwd: projectAPath,
+			homeDir: tempHome,
+			port,
+		});
+
+		let streamA: RuntimeStreamClient | null = null;
+		let startedTaskId: string | null = null;
+		let projectBId: string | null = null;
+
+		try {
+			const runtimeUrl = new URL(server.runtimeUrl);
+			const projectAId = decodeURIComponent(runtimeUrl.pathname.slice(1));
+			expect(projectAId).not.toBe("");
+
+			const addProjectResponse = await requestJson<RuntimeProjectAddResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "projects.add",
+				type: "mutation",
+				projectId: projectAId,
+				payload: {
+					path: projectBPath,
+				},
+			});
+			expect(addProjectResponse.status).toBe(200);
+			expect(addProjectResponse.payload.ok).toBe(true);
+			projectBId = addProjectResponse.payload.project?.id ?? null;
+			expect(projectBId).not.toBeNull();
+			if (!projectBId) {
+				throw new Error("Missing project id for added project.");
+			}
+
+			startedTaskId = "project-b-live-task";
+			const startShellResponse = await requestJson<RuntimeShellSessionStartResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "runtime.startShellSession",
+				type: "mutation",
+				projectId: projectBId,
+				payload: {
+					taskId: startedTaskId,
+					baseRef: "HEAD",
+				},
+			});
+			expect(startShellResponse.status).toBe(200);
+			expect(startShellResponse.payload.ok).toBe(true);
+			expect(startShellResponse.payload.summary?.state).toBe("running");
+
+			streamA = await connectRuntimeStream(
+				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectAId)}`,
+			);
+			const snapshot = (await streamA.waitForMessage(
+				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
+			)) as RuntimeStateStreamSnapshotMessage;
+			expect(
+				snapshot.notificationSummariesByProject?.[projectBId]?.some(
+					(summary) => summary.taskId === startedTaskId && summary.state === "running",
+				),
+			).toBe(true);
+		} finally {
+			if (streamA) {
+				await streamA.close();
+			}
+			if (projectBId && startedTaskId) {
+				await requestJson({
+					baseUrl: `http://127.0.0.1:${port}`,
+					procedure: "runtime.stopTaskSession",
+					type: "mutation",
+					projectId: projectBId,
+					payload: { taskId: startedTaskId },
+				});
+			}
+			await server.stop();
+			cleanupRoot();
+			cleanupHome();
+		}
+	}, 30_000);
+
 	it("streams the project list when the selected project's state cannot load", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-stream-corrupt-");
 		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("quarterdeck-projects-stream-corrupt-");

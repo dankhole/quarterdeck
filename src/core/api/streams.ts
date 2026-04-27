@@ -12,6 +12,9 @@ export const runtimeStateStreamSnapshotMessageSchema = z.object({
 	projects: z.array(runtimeProjectSummarySchema),
 	projectState: runtimeProjectStateResponseSchema.nullable(),
 	projectMetadata: runtimeProjectMetadataSchema.nullable(),
+	// Connection-time baseline for all managed projects; live updates continue
+	// to arrive through task_notification messages.
+	notificationSummariesByProject: z.record(z.string(), z.array(runtimeTaskSessionSummarySchema)).optional(),
 });
 export type RuntimeStateStreamSnapshotMessage = z.infer<typeof runtimeStateStreamSnapshotMessageSchema>;
 

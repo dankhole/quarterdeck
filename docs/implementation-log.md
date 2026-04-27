@@ -2,6 +2,18 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: seed cross-project notification state on stream connect (2026-04-27)
+
+Notification ownership is intentionally project-bucketed in the browser, but a fresh runtime WebSocket connection only hydrated full session state for the selected project. Other projects entered notification memory only after a live `task_notification` delta arrived. That meant a reload/reconnect could miss already-running or already-waiting tasks in other managed projects, breaking cross-project needs-input badges and audible-notification transition baselines until the next task event.
+
+The runtime stream snapshot now carries `notificationSummariesByProject`, a connection-time baseline collected from every managed project's terminal summary store. The browser reducer seeds its project-owned notification buckets from that baseline, then continues to process `task_notification` messages as the live delta channel. This keeps the correctness model simple: `snapshot` establishes initial state, `task_notification` advances it. The stream client remains registered globally before snapshot loading, so live deltas that happen during snapshot construction are still received.
+
+The investigation also confirmed that current-project mute wiring was already sound: `audibleNotificationsOnlyWhenHidden` is the global gate, and the per-project review/permission/failure suppression applies after that. Added focused Codex coverage to lock in the shared indicator semantics: `PermissionRequest` remains a permission event even when `notificationType` is null, while Codex `Stop` remains a review event and is suppressed by current-project review mute.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/core/api/streams.ts`, `src/server/runtime-state-hub.ts`, `src/server/runtime-state-messages.ts`, `test/integration/state-streaming.integration.test.ts`, `web-ui/src/hooks/notifications/audible-notifications-suppress.test.tsx`, `web-ui/src/runtime/runtime-notification-projects.ts`, `web-ui/src/runtime/runtime-state-stream-store.test.ts`, `web-ui/src/runtime/runtime-state-stream-store.ts`.
+
+Commit: pending
+
 ## Fix: suppress closed-PTY async write noise (2026-04-27)
 
 Dogfooding showed `Unhandled pty write error [Error: EIO: i/o error, write]` immediately after startup backup logging. The backup itself was incidental; the exact error line comes from node-pty's Unix `CustomWriteStream`, which accepts input synchronously through `IPty.write()` and performs the real `fs.write(...)` later. If the child PTY exits or is killed in that async window, macOS/Linux can report `EIO` or `EBADF`. Quarterdeck's existing `PtySession.write()` try/catch already ignored synchronous closed-PTY write errors, but it could not intercept node-pty's later internal `console.error(...)`.

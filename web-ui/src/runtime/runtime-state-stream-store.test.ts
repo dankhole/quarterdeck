@@ -166,6 +166,40 @@ describe("runtimeStateStreamReducer", () => {
 		expect(withNewerNotification.notificationMemory.projects["project-a"]?.sessions["task-1"]?.updatedAt).toBe(300);
 	});
 
+	it("seeds cross-project notification memory from the initial snapshot", () => {
+		const nextState = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
+			type: "snapshot",
+			payload: {
+				type: "snapshot",
+				currentProjectId: "project-a",
+				projects: [
+					{
+						id: "project-a",
+						path: "/tmp/project-a",
+						name: "Project A",
+						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+					},
+					{
+						id: "project-b",
+						path: "/tmp/project-b",
+						name: "Project B",
+						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+					},
+				],
+				projectState: createProjectState(1, {
+					"task-1": createSessionSummary("task-1", 100),
+				}),
+				projectMetadata: null,
+				notificationSummariesByProject: {
+					"project-b": [createSessionSummary("task-2", 150)],
+				},
+			},
+		});
+
+		expect(nextState.notificationMemory.projects["project-a"]?.sessions["task-1"]?.updatedAt).toBe(100);
+		expect(nextState.notificationMemory.projects["project-b"]?.sessions["task-2"]?.updatedAt).toBe(150);
+	});
+
 	it("prunes notification state for removed projects on projects_updated", () => {
 		const snapshotState = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
 			type: "snapshot",

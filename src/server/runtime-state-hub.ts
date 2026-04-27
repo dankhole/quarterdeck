@@ -10,6 +10,7 @@ import type {
 	RuntimeProjectStateResponse,
 	RuntimeProjectSummary,
 	RuntimeStateStreamMessage,
+	RuntimeTaskSessionSummary,
 } from "../core";
 import { createTaggedLogger, Disposable, getLogLevel, getRecentLogEntries, onLogEntry, toDisposable } from "../core";
 import type { TerminalSessionManager } from "../terminal";
@@ -48,6 +49,7 @@ export interface CreateRuntimeStateHubDependencies {
 		| "buildProjectStateSnapshot"
 		| "resumeInterruptedSessions"
 		| "getActiveRuntimeConfig"
+		| "listManagedProjects"
 	>;
 	getActivePollIntervals: () => ProjectMetadataPollIntervals;
 }
@@ -286,7 +288,12 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 				this.sendMessage(
 					client,
-					buildSnapshotMessage(snapshot.currentProjectId, snapshot.projects, snapshot.projectState),
+					buildSnapshotMessage(
+						snapshot.currentProjectId,
+						snapshot.projects,
+						snapshot.projectState,
+						snapshot.notificationSummariesByProject,
+					),
 				);
 				if (client.readyState !== WebSocket.OPEN) {
 					this.clients.removeClient(client);
@@ -363,6 +370,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		projectPath: string | null;
 		projectState: RuntimeProjectStateResponse | null;
 		projectStateError: string | null;
+		notificationSummariesByProject: Record<string, RuntimeTaskSessionSummary[]>;
 	}> {
 		if (resolved.projectId && resolved.projectPath) {
 			const projectsPayload = await this.deps.projectRegistry.buildProjectsPayload(resolved.projectId);
@@ -383,6 +391,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				projectPath: resolved.projectPath,
 				projectState,
 				projectStateError,
+				notificationSummariesByProject: this.collectNotificationSummariesByProject(),
 			};
 		}
 
@@ -394,6 +403,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			projectPath: null,
 			projectState: null,
 			projectStateError: null,
+			notificationSummariesByProject: this.collectNotificationSummariesByProject(),
 		};
 	}
 
@@ -406,6 +416,18 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		} catch {
 			// Ignore websocket write errors; close handlers clean up disconnected sockets.
 		}
+	}
+
+	private collectNotificationSummariesByProject(): Record<string, RuntimeTaskSessionSummary[]> {
+		const summariesByProject: Record<string, RuntimeTaskSessionSummary[]> = {};
+		for (const project of this.deps.projectRegistry.listManagedProjects()) {
+			const summaries = project.terminalManager.store.listSummaries();
+			if (summaries.length === 0) {
+				continue;
+			}
+			summariesByProject[project.projectId] = summaries;
+		}
+		return summariesByProject;
 	}
 
 	private parseProjectId(context: unknown): string | null {

@@ -6,6 +6,7 @@ export interface RuntimeProjectNotificationState {
 }
 
 export type RuntimeProjectNotificationStateMap = Record<string, RuntimeProjectNotificationState>;
+export type RuntimeProjectNotificationSummariesByProject = Record<string, readonly RuntimeTaskSessionSummary[]>;
 
 function mergeProjectSessions(
 	currentSessions: Record<string, RuntimeTaskSessionSummary>,
@@ -43,7 +44,26 @@ export function seedRuntimeProjectNotificationStateMapFromProjectState(
 		return currentProjects;
 	}
 
-	return mergeRuntimeProjectNotificationStateMap(currentProjects, projectId, Object.values(projectState.sessions ?? {}));
+	return mergeRuntimeProjectNotificationStateMap(
+		currentProjects,
+		projectId,
+		Object.values(projectState.sessions ?? {}),
+	);
+}
+
+export function seedRuntimeProjectNotificationStateMapFromProjectSummaries(
+	currentProjects: RuntimeProjectNotificationStateMap,
+	summariesByProject: RuntimeProjectNotificationSummariesByProject | null | undefined,
+): RuntimeProjectNotificationStateMap {
+	if (!summariesByProject) {
+		return currentProjects;
+	}
+
+	let nextProjects = currentProjects;
+	for (const [projectId, summaries] of Object.entries(summariesByProject)) {
+		nextProjects = mergeRuntimeProjectNotificationStateMap(nextProjects, projectId, summaries);
+	}
+	return nextProjects;
 }
 
 export function pruneRuntimeProjectNotificationStateMap(

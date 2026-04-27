@@ -122,6 +122,112 @@ describe("useAudibleNotifications — suppress current project", () => {
 		expect(playMock).toHaveBeenCalledWith("failure", 0.7);
 	});
 
+	it("plays current-project Codex permission when only current-project review is muted", async () => {
+		const props: HookProps = {
+			...defaultProps(),
+			audibleNotificationsOnlyWhenHidden: false,
+			audibleNotificationSuppressCurrentProject: {
+				permission: false,
+				review: true,
+				failure: false,
+			},
+			currentProjectId: "project-a",
+			notificationProjectIds: { "task-1": "project-a" },
+		};
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({
+							taskId: "task-1",
+							state: "awaiting_review",
+							reviewReason: "hook",
+							latestHookActivity: {
+								hookEventName: "PermissionRequest",
+								notificationType: null,
+								activityText: null,
+								toolName: null,
+								toolInputSummary: null,
+								finalMessage: null,
+								source: "codex",
+								conversationSummaryText: null,
+							},
+						}),
+					}}
+				/>,
+			);
+		});
+
+		harness.flushSettleWindow();
+		expect(playMock).toHaveBeenCalledWith("permission", 0.7);
+	});
+
+	it("suppresses current-project Codex review when current-project review is muted", async () => {
+		const props: HookProps = {
+			...defaultProps(),
+			audibleNotificationsOnlyWhenHidden: false,
+			audibleNotificationSuppressCurrentProject: {
+				permission: false,
+				review: true,
+				failure: false,
+			},
+			currentProjectId: "project-a",
+			notificationProjectIds: { "task-1": "project-a" },
+		};
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({
+							taskId: "task-1",
+							state: "awaiting_review",
+							reviewReason: "hook",
+							latestHookActivity: {
+								hookEventName: "Stop",
+								notificationType: null,
+								activityText: "Final: Done",
+								toolName: null,
+								toolInputSummary: null,
+								finalMessage: "Done",
+								source: "codex",
+								conversationSummaryText: null,
+							},
+						}),
+					}}
+				/>,
+			);
+		});
+
+		harness.flushSettleWindow();
+		expect(playMock).not.toHaveBeenCalled();
+	});
+
 	it("plays sounds for other-project tasks even when suppress is enabled", async () => {
 		const props: HookProps = {
 			...defaultProps(),

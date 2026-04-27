@@ -3,6 +3,7 @@ import {
 	pruneRuntimeProjectNotificationStateMap,
 	type RuntimeProjectNotificationStateMap,
 	seedRuntimeProjectNotificationStateMapFromProjectState,
+	seedRuntimeProjectNotificationStateMapFromProjectSummaries,
 } from "@/runtime/runtime-notification-projects";
 import type {
 	RuntimeDebugLogEntry,
@@ -126,6 +127,15 @@ function seedNotificationMemoryFromProjectState(
 	};
 }
 
+function seedNotificationMemoryFromProjectSummaries(
+	currentMemory: RuntimeNotificationMemory,
+	summariesByProject: RuntimeStateStreamSnapshotMessage["notificationSummariesByProject"],
+): RuntimeNotificationMemory {
+	return {
+		projects: seedRuntimeProjectNotificationStateMapFromProjectSummaries(currentMemory.projects, summariesByProject),
+	};
+}
+
 function pruneNotificationMemory(
 	currentMemory: RuntimeNotificationMemory,
 	projects: readonly RuntimeProjectSummary[],
@@ -195,7 +205,10 @@ function applySnapshot(
 		projectState: nextProjectState,
 		projectMetadata: payload.projectMetadata,
 		notificationMemory: seedNotificationMemoryFromProjectState(
-			pruneNotificationMemory(state.notificationMemory, payload.projects),
+			seedNotificationMemoryFromProjectSummaries(
+				pruneNotificationMemory(state.notificationMemory, payload.projects),
+				payload.notificationSummariesByProject,
+			),
 			payload.currentProjectId,
 			payload.projectState,
 		),

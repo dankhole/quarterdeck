@@ -31,6 +31,7 @@ export function buildSnapshotMessage(
 	currentProjectId: string | null,
 	projects: RuntimeProjectSummary[],
 	projectState: RuntimeProjectStateResponse | null,
+	notificationSummariesByProject: Record<string, RuntimeTaskSessionSummary[]> = {},
 ): RuntimeStateStreamSnapshotMessage {
 	return {
 		type: "snapshot",
@@ -38,6 +39,7 @@ export function buildSnapshotMessage(
 		projects,
 		projectState,
 		projectMetadata: null,
+		notificationSummariesByProject,
 	};
 }
 
