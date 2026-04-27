@@ -13,12 +13,15 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core";
+import { createTaggedLogger } from "../core";
 import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title";
 import {
 	reduceSessionTransition,
 	type SessionTransitionEvent,
 	type SessionTransitionResult,
 } from "./session-state-machine";
+
+const storeLog = createTaggedLogger("session-store");
 
 export type { SessionTransitionEvent, SessionTransitionResult };
 
@@ -313,6 +316,10 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 	applyHookMetadata(taskId: string, metadata: RuntimeHookMetadata): RuntimeTaskSessionSummary | null {
 		const entry = this.entries.get(taskId);
 		if (!entry) {
+			storeLog.debug("applyHookMetadata dropped — no entry", {
+				taskId,
+				incomingSessionId: metadata.sessionId ?? null,
+			});
 			return null;
 		}
 
@@ -322,6 +329,19 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		const nextResumeSessionId = normalizedSessionId ?? entry.resumeSessionId ?? null;
 		const activityChanged = didHookActivityChange(previousActivity, nextActivity);
 		const resumeSessionIdChanged = nextResumeSessionId !== (entry.resumeSessionId ?? null);
+		if (metadata.sessionId || resumeSessionIdChanged) {
+			storeLog.debug("applyHookMetadata session-id check", {
+				taskId,
+				incomingSessionId: metadata.sessionId ?? null,
+				normalizedSessionId,
+				previousResumeSessionId: entry.resumeSessionId ?? null,
+				nextResumeSessionId,
+				resumeSessionIdChanged,
+				activityChanged,
+				hookEventName: metadata.hookEventName ?? null,
+				source: metadata.source ?? null,
+			});
+		}
 		if (!activityChanged && !resumeSessionIdChanged) {
 			return cloneSummary(entry);
 		}

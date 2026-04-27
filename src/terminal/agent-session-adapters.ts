@@ -150,6 +150,11 @@ const claudeAdapter: AgentSessionAdapter = {
 		};
 		if (input.resumeConversation && !hasCliOption(args, "--continue")) {
 			args.push("--continue");
+			log.debug("claude resume via --continue (relies on cwd match)", {
+				taskId: input.taskId,
+				cwd: input.cwd,
+				projectPath: input.projectPath ?? null,
+			});
 		}
 		if (input.startInPlanMode) {
 			const withoutImmediateBypass = args.filter((arg) => arg !== "--dangerously-skip-permissions");
@@ -319,9 +324,21 @@ const codexAdapter: AgentSessionAdapter = {
 				codexArgs.push("resume");
 			}
 			if (input.resumeSessionId?.trim()) {
-				codexArgs.push(input.resumeSessionId.trim());
-			} else if (!hasCliOption(codexArgs, "--last")) {
-				codexArgs.push("--last");
+				const trimmedSessionId = input.resumeSessionId.trim();
+				log.debug("codex resume using stored session id", {
+					taskId: input.taskId,
+					cwd: input.cwd,
+					resumeSessionId: trimmedSessionId,
+				});
+				codexArgs.push(trimmedSessionId);
+			} else {
+				log.warn("codex resume falling back to --last (no stored resumeSessionId)", {
+					taskId: input.taskId,
+					cwd: input.cwd,
+				});
+				if (!hasCliOption(codexArgs, "--last")) {
+					codexArgs.push("--last");
+				}
 			}
 		}
 
@@ -354,6 +371,16 @@ const codexAdapter: AgentSessionAdapter = {
 			]);
 			binary = wrapperParts[0];
 			const args = wrapperParts.slice(1);
+			log.debug("codex adapter prepared launch (wrapped)", {
+				taskId: input.taskId,
+				binary,
+				resumeConversation: input.resumeConversation ?? false,
+				resumeSessionId: input.resumeSessionId ?? null,
+				hasResumeArg: codexArgs.includes("resume"),
+				hasLastFlag: hasCliOption(codexArgs, "--last"),
+				codexArgCount: codexArgs.length,
+				codexArgsPreview: codexArgs.map((a) => (a.length > 200 ? `${a.slice(0, 200)}…(${a.length})` : a)),
+			});
 			return {
 				binary,
 				args,
@@ -364,6 +391,15 @@ const codexAdapter: AgentSessionAdapter = {
 			};
 		}
 
+		log.debug("codex adapter prepared launch (unwrapped)", {
+			taskId: input.taskId,
+			binary: binary ?? null,
+			resumeConversation: input.resumeConversation ?? false,
+			resumeSessionId: input.resumeSessionId ?? null,
+			hasResumeArg: codexArgs.includes("resume"),
+			hasLastFlag: hasCliOption(codexArgs, "--last"),
+			codexArgCount: codexArgs.length,
+		});
 		return {
 			binary,
 			args: codexArgs,
@@ -391,6 +427,7 @@ export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promis
 		hasPrompt: input.prompt.trim().length > 0,
 		imageCount: input.images?.length ?? 0,
 		resumeConversation: input.resumeConversation ?? false,
+		resumeSessionId: input.resumeSessionId ?? null,
 		startInPlanMode: input.startInPlanMode ?? false,
 	});
 	const preparedPrompt = await prepareTaskPromptWithImages({

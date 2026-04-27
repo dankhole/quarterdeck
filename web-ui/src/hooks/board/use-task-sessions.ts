@@ -17,8 +17,11 @@ import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import { getTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard } from "@/types";
+import { createClientLogger } from "@/utils/client-logger";
 import { selectNewestTaskSessionSummary } from "@/utils/session-summary-utils";
 import { toErrorMessage } from "@/utils/to-error-message";
+
+const log = createClientLogger("task-session");
 
 interface UseTaskSessionsInput {
 	currentProjectId: string | null;
@@ -150,6 +153,13 @@ export function useTaskSessions({
 			if (!currentProjectId) {
 				return { ok: false, message: "No project selected." };
 			}
+			log.debug("startTaskSession trpc call", {
+				taskId: task.id,
+				resumeConversation: options?.resumeConversation ?? false,
+				awaitReview: options?.awaitReview ?? false,
+				useWorktree: task.useWorktree,
+				hasPrompt: !options?.resumeConversation && task.prompt.trim().length > 0,
+			});
 			try {
 				const kickoffPrompt = options?.resumeConversation ? "" : task.prompt.trim();
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
@@ -167,6 +177,15 @@ export function useTaskSessions({
 					cols: geometry.cols,
 					rows: geometry.rows,
 				});
+				log.debug("startTaskSession trpc resolved", {
+					taskId: task.id,
+					ok: payload.ok,
+					error: payload.ok ? null : (payload.error ?? null),
+					summaryState: payload.summary?.state ?? null,
+					summaryAgentId: payload.summary?.agentId ?? null,
+					summaryPid: payload.summary?.pid ?? null,
+					summaryResumeSessionId: payload.summary?.resumeSessionId ?? null,
+				});
 				if (!payload.ok || !payload.summary) {
 					return {
 						ok: false,
@@ -182,6 +201,7 @@ export function useTaskSessions({
 				return { ok: true, summary: payload.summary };
 			} catch (error) {
 				const message = toErrorMessage(error);
+				log.warn("startTaskSession trpc rejected", { taskId: task.id, error: message });
 				return { ok: false, message };
 			}
 		},
@@ -193,13 +213,24 @@ export function useTaskSessions({
 			if (!currentProjectId) {
 				return;
 			}
+			log.debug("stopTaskSession trpc call", {
+				taskId,
+				waitForExit: options?.waitForExit ?? false,
+			});
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				await trpcClient.runtime.stopTaskSession.mutate({
+				const response = await trpcClient.runtime.stopTaskSession.mutate({
 					taskId,
 					waitForExit: options?.waitForExit,
 				});
-			} catch {
+				log.debug("stopTaskSession trpc resolved", {
+					taskId,
+					ok: response.ok,
+					state: response.summary?.state ?? null,
+				});
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				log.warn("stopTaskSession trpc rejected", { taskId, error: message });
 				// Ignore stop errors during cleanup.
 			}
 		},
@@ -255,13 +286,13 @@ export function useTaskSessions({
 				const payload = await trpcClient.project.deleteWorktree.mutate({ taskId });
 				if (!payload.ok) {
 					const message = payload.error ?? "Could not clean up task worktree.";
-					console.error(`[cleanupTaskWorktree] ${message}`);
+					log.error("cleanupTaskWorktree failed", { taskId, error: message });
 					return null;
 				}
 				return payload;
 			} catch (error) {
 				const message = toErrorMessage(error);
-				console.error(`[cleanupTaskWorktree] ${message}`);
+				log.error("cleanupTaskWorktree failed", { taskId, error: message });
 				return null;
 			}
 		},

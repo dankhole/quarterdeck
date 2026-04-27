@@ -9,7 +9,7 @@ import type { PreparedAgentLaunch } from "./agent-session-adapters";
 import { prepareAgentLaunch } from "./agent-session-adapters";
 import { shouldAutoConfirmClaudeWorkspaceTrust, stopWorkspaceTrustTimers } from "./claude-workspace-trust";
 import { shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust";
-import { PtySession } from "./pty-session";
+import { PtySession, type PtySession as PtySessionInstance } from "./pty-session";
 import { scheduleAutoRestart, shouldAutoRestart } from "./session-auto-restart";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
 import {
@@ -55,7 +55,7 @@ export interface SpawnTaskSessionDeps {
 	updateStore: (taskId: string, patch: Partial<RuntimeTaskSessionSummary>) => RuntimeTaskSessionSummary | null;
 	ensureEntry: (taskId: string) => RuntimeTaskSessionSummary;
 	onOutput: (entry: ProcessEntry, taskId: string, chunk: Buffer) => void;
-	onExit: (request: StartTaskSessionRequest, event: { exitCode: number | null }) => void;
+	onExit: (request: StartTaskSessionRequest, event: { exitCode: number | null }, session: PtySessionInstance) => void;
 }
 
 export async function spawnTaskSession(
@@ -123,9 +123,16 @@ export async function spawnTaskSession(
 		worktreeAddParentGitDir: request.worktreeAddParentGitDir ?? false,
 		worktreeAddQuarterdeckDir: request.worktreeAddQuarterdeckDir ?? false,
 	};
-	sessionLog.info("spawning task session", { taskId: request.taskId, ...spawnData });
+	sessionLog.debug("spawning task session", {
+		taskId: request.taskId,
+		...spawnData,
+		resumeConversation: request.resumeConversation ?? false,
+		resumeSessionId: request.resumeSessionId ?? null,
+		preparedArgsPreview: commandArgs.map((a) => (a.length > 200 ? `${a.slice(0, 200)}…(${a.length})` : a)),
+	});
 
 	let session: PtySession;
+	let sessionForExit: PtySession | null = null;
 	try {
 		session = PtySession.spawn({
 			binary: commandBinary,
@@ -135,8 +142,18 @@ export async function spawnTaskSession(
 			cols,
 			rows,
 			onData: (chunk) => deps.onOutput(entry, request.taskId, chunk),
-			onExit: (event) => deps.onExit(request, event),
+			onExit: (event) => {
+				if (!sessionForExit) {
+					sessionLog.warn("task session exited before spawn handoff completed", {
+						taskId: request.taskId,
+						exitCode: event.exitCode,
+					});
+					return;
+				}
+				deps.onExit(request, event, sessionForExit);
+			},
 		});
+		sessionForExit = session;
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		sessionLog.error("failed to spawn task session", {
@@ -189,11 +206,20 @@ export async function spawnTaskSession(
 		terminalStateMirror.setBatching(true);
 	}
 
+	const postSpawnResumeSessionId = request.resumeConversation ? (request.resumeSessionId ?? null) : null;
+	sessionLog.debug("seeding summary for spawned task session", {
+		taskId: request.taskId,
+		state: request.awaitReview ? "awaiting_review" : "running",
+		resumeConversation: request.resumeConversation ?? false,
+		resumeSessionId: postSpawnResumeSessionId,
+		sessionLaunchPath: request.cwd,
+		pid: session.pid,
+	});
 	const summary = deps.updateStore(request.taskId, {
 		state: request.awaitReview ? "awaiting_review" : "running",
 		agentId: request.agentId,
 		sessionLaunchPath: request.cwd,
-		resumeSessionId: request.resumeConversation ? (request.resumeSessionId ?? null) : null,
+		resumeSessionId: postSpawnResumeSessionId,
 		pid: session.pid,
 		startedAt: Date.now(),
 		lastOutputAt: null,
@@ -226,15 +252,37 @@ export interface TaskSessionExitDeps {
 export function handleTaskSessionExit(
 	request: StartTaskSessionRequest,
 	event: { exitCode: number | null },
+	exitingSession: PtySessionInstance,
 	deps: TaskSessionExitDeps,
 ): void {
 	const currentSummaryAtExit = deps.getSummary(request.taskId);
 	const currentEntry = deps.getEntry(request.taskId);
+	if (!currentEntry?.active) {
+		sessionLog.debug("task session exit ignored because no active session remains", {
+			taskId: request.taskId,
+			exitCode: event.exitCode,
+			exitingPid: exitingSession.pid,
+			currentState: currentSummaryAtExit?.state ?? null,
+			currentReviewReason: currentSummaryAtExit?.reviewReason ?? null,
+		});
+		return;
+	}
+	if (currentEntry.active.session !== exitingSession) {
+		sessionLog.warn("ignoring stale task session exit for replaced process", {
+			taskId: request.taskId,
+			exitCode: event.exitCode,
+			exitingPid: exitingSession.pid,
+			activePid: currentEntry.active.session.pid,
+			currentState: currentSummaryAtExit?.state ?? null,
+			currentReviewReason: currentSummaryAtExit?.reviewReason ?? null,
+		});
+		return;
+	}
 
 	const exitEventData = {
 		exitCode: event.exitCode,
-		wasInterrupted: currentEntry?.active?.session.wasInterrupted() ?? false,
-		trustConfirmCount: currentEntry?.active?.workspaceTrustConfirmCount ?? 0,
+		wasInterrupted: exitingSession.wasInterrupted(),
+		trustConfirmCount: currentEntry.active.workspaceTrustConfirmCount,
 		timeInState: currentSummaryAtExit?.updatedAt ? Date.now() - currentSummaryAtExit.updatedAt : null,
 		timeSinceLastHook: currentSummaryAtExit?.lastHookAt ? Date.now() - currentSummaryAtExit.lastHookAt : null,
 	};
@@ -244,10 +292,6 @@ export function handleTaskSessionExit(
 		exitCode: event.exitCode,
 		trustConfirmCount: exitEventData.trustConfirmCount,
 	});
-
-	if (!currentEntry?.active) {
-		return;
-	}
 
 	stopWorkspaceTrustTimers(currentEntry.active);
 	clearInterruptRecoveryTimer(currentEntry.active);
@@ -280,6 +324,11 @@ export function handleTaskSessionExit(
 	}
 	const exitSummary = result?.summary ?? deps.getSummary(request.taskId);
 	const cleanupFn = finalizeProcessExit(currentEntry, exitSummary, event.exitCode);
+	// Trash/stop flows intentionally suppress auto-restart while the old PTY exits.
+	// Do not let the resume-failure fallback below convert that explicit stop
+	// into a fresh non-resume Codex start; that is what cleared resumeSessionId
+	// before the real untrash resume could use it.
+	const wasExplicitStop = !autoRestartDecision.restart && autoRestartDecision.reason === "suppressed";
 
 	if (autoRestartDecision.restart) {
 		scheduleAutoRestart(currentEntry, {
@@ -290,12 +339,26 @@ export function handleTaskSessionExit(
 	} else if (exitSummary?.state === "interrupted") {
 		deps.applyTransitionEvent(currentEntry, { type: "autorestart.denied" });
 	} else if (
+		!wasExplicitStop &&
 		request.resumeConversation &&
 		preExitState === "awaiting_review" &&
 		currentSummaryAtExit?.reviewReason === "attention" &&
 		event.exitCode != null &&
 		currentEntry.restartRequest?.kind === "task"
 	) {
+		// Keep this fallback for startup resume: a clean `codex resume`/Claude
+		// `--continue` process can exit without leaving an interactive session,
+		// and server-start restore previously relied on opening a fresh review
+		// prompt in that case. The explicit-stop guard above is the important
+		// trash/untrash protection.
+		sessionLog.warn("resume exited before interactive session; scheduling fallback start", {
+			taskId: request.taskId,
+			agentId: request.agentId,
+			exitCode: event.exitCode,
+			preExitState,
+			preExitReviewReason: currentSummaryAtExit.reviewReason,
+			resumeSessionId: request.resumeSessionId ?? null,
+		});
 		scheduleAutoRestart(
 			currentEntry,
 			{

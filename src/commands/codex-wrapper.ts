@@ -94,7 +94,6 @@ export async function runCodexWrapperSubcommand(wrapperArgs: CodexWrapperArgs): 
 	} catch {
 		shouldWatchSessionLog = false;
 	}
-
 	if (shouldWatchSessionLog) {
 		childEnv.CODEX_TUI_RECORD_SESSION = "1";
 		if (!childEnv.CODEX_TUI_SESSION_LOG_PATH) {

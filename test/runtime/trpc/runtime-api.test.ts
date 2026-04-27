@@ -102,6 +102,7 @@ function emptyBoard() {
 const STORE_METHOD_NAMES = new Set([
 	"getSummary",
 	"listSummaries",
+	"update",
 	"applyTurnCheckpoint",
 	"transitionToReview",
 	"transitionToRunning",
@@ -225,6 +226,135 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
 			expect.objectContaining({ cwd: "/tmp/new-worktree" }),
 		);
+	});
+
+	it("surfaces a warning when Claude resume recreates a trashed task worktree", async () => {
+		const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const card = createCard({ workingDirectory: null, useWorktree: true });
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
+		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/recreated-worktree");
+
+		const update = vi.fn((taskId: string, patch: Record<string, unknown>) =>
+			createSummary({
+				taskId,
+				warningMessage: String(patch.warningMessage ?? ""),
+				sessionLaunchPath: "/tmp/recreated-worktree",
+			}),
+		);
+		const terminalManager = {
+			startTaskSession: vi.fn(async () =>
+				createSummary({
+					taskId: "task-1",
+					agentId: "claude",
+					sessionLaunchPath: "/tmp/recreated-worktree",
+				}),
+			),
+			getSummary: vi.fn(() =>
+				createSummary({
+					taskId: "task-1",
+					agentId: "claude",
+					sessionLaunchPath: "/tmp/old-worktree",
+				}),
+			),
+			update,
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const api = createRuntimeApi(createDeps(terminalManager));
+
+		const response = await api.startTaskSession(defaultScope, {
+			taskId: "task-1",
+			baseRef: "main",
+			prompt: "",
+			resumeConversation: true,
+			awaitReview: true,
+			useWorktree: true,
+		});
+
+		expect(response.ok).toBe(true);
+		expect(taskWorktreeMocks.resolveTaskCwd).toHaveBeenCalled();
+		expect(update).toHaveBeenCalledWith(
+			"task-1",
+			expect.objectContaining({
+				warningMessage: expect.stringContaining("original task worktree was deleted"),
+			}),
+		);
+		expect(consoleWarn).toHaveBeenCalledWith(
+			expect.stringContaining("[task-session-start]"),
+			"resume requested after task worktree identity was lost",
+			expect.objectContaining({
+				taskId: "task-1",
+				agentId: "claude",
+			}),
+		);
+		expect(response.summary?.warningMessage).toContain("original task worktree was deleted");
+	});
+
+	it("surfaces a warning when Codex resume has no stored session id", async () => {
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
+			agentId: "codex",
+			label: "OpenAI Codex",
+			command: "codex",
+			binary: "codex",
+			args: [],
+		});
+		const card = createCard({ workingDirectory: "/tmp/codex-worktree", useWorktree: true });
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
+		taskWorktreeMocks.pathExists.mockResolvedValue(true);
+
+		const update = vi.fn((taskId: string, patch: Record<string, unknown>) =>
+			createSummary({
+				taskId,
+				agentId: "codex",
+				warningMessage: String(patch.warningMessage ?? ""),
+				sessionLaunchPath: "/tmp/codex-worktree",
+			}),
+		);
+		const terminalManager = {
+			startTaskSession: vi.fn(async () =>
+				createSummary({
+					taskId: "task-1",
+					agentId: "codex",
+					sessionLaunchPath: "/tmp/codex-worktree",
+					resumeSessionId: null,
+				}),
+			),
+			getSummary: vi.fn(() =>
+				createSummary({
+					taskId: "task-1",
+					agentId: "codex",
+					sessionLaunchPath: "/tmp/codex-worktree",
+					resumeSessionId: null,
+				}),
+			),
+			update,
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const api = createRuntimeApi(createDeps(terminalManager));
+
+		const response = await api.startTaskSession(defaultScope, {
+			taskId: "task-1",
+			baseRef: "main",
+			prompt: "",
+			resumeConversation: true,
+			awaitReview: true,
+			useWorktree: true,
+		});
+
+		expect(response.ok).toBe(true);
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				agentId: "codex",
+				resumeConversation: true,
+				resumeSessionId: undefined,
+			}),
+		);
+		expect(update).toHaveBeenCalledWith(
+			"task-1",
+			expect.objectContaining({
+				warningMessage: expect.stringContaining("Codex resume did not have a stored session id"),
+			}),
+		);
+		expect(response.summary?.warningMessage).toContain("Codex resume did not have a stored session id");
 	});
 
 	it("falls back to projectPath when non-worktree task's persisted directory is deleted", async () => {

@@ -7,6 +7,7 @@ import type { RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
 import { disableTaskAutoReview } from "@/state/board-state";
 import { setTaskWorktreeInfo } from "@/stores/project-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
+import { createClientLogger } from "@/utils/client-logger";
 
 import {
 	applyDeferredMoveToInProgress,
@@ -15,6 +16,8 @@ import {
 	revertOptimisticMoveToInProgress,
 	revertOptimisticMoveToReview,
 } from "./task-lifecycle";
+
+const log = createClientLogger("untrash");
 
 export function showNonIsolatedResumeWarning(): void {
 	showAppToast({
@@ -120,6 +123,15 @@ export function useTaskLifecycle({
 
 	const resumeTaskFromTrash = useCallback(
 		async (task: BoardCard, taskId: string, options?: { optimisticMoveApplied?: boolean }): Promise<void> => {
+			log.debug("resumeTaskFromTrash begin", {
+				taskId,
+				optimisticMoveApplied: options?.optimisticMoveApplied ?? false,
+				useWorktree: task.useWorktree,
+				isNonIsolated: isNonIsolatedTask(task),
+				workingDirectory: task.workingDirectory ?? null,
+				branch: task.branch ?? null,
+				baseRef: task.baseRef ?? null,
+			});
 			const revertToTrash = () => {
 				if (!options?.optimisticMoveApplied) {
 					return;
@@ -130,11 +142,19 @@ export function useTaskLifecycle({
 			// Trashing waits for the old task session to exit, but restore can race if the
 			// user untrashes before that stop fully settles. Force the previous session to
 			// finish exiting before we ask the runtime to resume the conversation.
+			log.debug("awaiting stopTaskSession(waitForExit)", { taskId });
 			await stopTaskSession(taskId, { waitForExit: true });
+			log.debug("stopTaskSession(waitForExit) resolved", { taskId });
 
 			// Non-isolated tasks run in the home repo — no worktree to ensure.
 			if (!isNonIsolatedTask(task)) {
+				log.debug("ensuring task worktree", { taskId });
 				const ensured = await ensureTaskWorktree(task);
+				log.debug("ensureTaskWorktree resolved", {
+					taskId,
+					ok: ensured.ok,
+					hasWarning: Boolean(ensured.response?.warning),
+				});
 				if (!ensured.ok) {
 					notifyError(ensured.message ?? "Could not set up task worktree.");
 					revertToTrash();
@@ -150,7 +170,16 @@ export function useTaskLifecycle({
 				}
 			}
 
+			log.debug("calling startTaskSession(resume)", { taskId });
 			const resumed = await startTaskSession(task, { resumeConversation: true, awaitReview: true });
+			log.debug("startTaskSession(resume) resolved", {
+				taskId,
+				ok: resumed.ok,
+				message: resumed.ok ? null : (resumed.message ?? null),
+				summaryState: resumed.ok ? (resumed.summary?.state ?? null) : null,
+				summaryAgentId: resumed.ok ? (resumed.summary?.agentId ?? null) : null,
+				summaryResumeSessionId: resumed.ok ? (resumed.summary?.resumeSessionId ?? null) : null,
+			});
 			if (resumed.ok) {
 				if (
 					isNonIsolatedTask(task) &&

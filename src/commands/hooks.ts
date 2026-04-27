@@ -236,7 +236,9 @@ async function runHooksNotify(
 		const args = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
 		await ingestHookEvent(args);
 	} catch {
-		// Best effort only.
+		// Best effort only. Detached notify stdio is "ignore" so stderr writes
+		// here would be dropped anyway — server-side hooks-api logging covers
+		// anything that reaches the runtime.
 	}
 }
 

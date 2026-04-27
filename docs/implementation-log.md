@@ -69,6 +69,18 @@ Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `docs/todo.md`, `sr
 
 Commit: `0dbd86632`, `2cdad884d`
 
+## Fix: stabilize Codex untrash and startup resume (2026-04-27)
+
+The Codex trash/untrash bug was a stack of session-lifecycle and terminal-restore races. The durable fixes now cover both runtime ownership and browser terminal attachment: task exit callbacks are tied to the concrete spawned `PtySession` so late exits from old Codex wrappers cannot clear a replacement session; explicit stop/trash paths suppress the resume-failure fallback so a stopped resume process cannot spawn a fresh non-resume Codex instance and wipe the stored `resumeSessionId`; startup resume keeps the clean-exit fallback for non-stopped resumed agents; shutdown persistence preserves already-interrupted in-memory summaries; and startup selection now resumes stale live `awaiting_review` / `attention` summaries with a persisted pid while preserving completed `hook` / `exit` review sessions.
+
+The browser-side terminal fixes address the spinner/blank-output half of the bug. Pooled task terminals queue restore requests until initial restore completes, reconnect IO/control sockets when a live task session instance changes, avoid that reconnect for processless stop summaries, reveal the terminal when IO is open but restore readiness stalls, and skip delayed empty restore snapshots over non-empty visible buffers after draining queued writes. This keeps untrash from getting stuck behind a loading overlay or briefly rendering Codex output before an empty restore blanks it.
+
+Diagnostics were also normalized. Routine breadcrumbs stay debug-level, startup scan/launch breadcrumbs are info-level, and user-visible degradation paths such as missing Codex resume ids, `--last` fallback, still-exiting starts, stale replaced-process exits, startup resume misses, and stop timeouts are warn-level. Temporary raw Codex subprocess `process.stderr.write(...)` traces were removed from wrapper/parser code so debug output does not pollute the visible agent terminal stream. The detailed review/handoff timeline moved to `docs/codex-untrash-resume-handoff.md` so this implementation-log entry can stay concise.
+
+Files touched: `AGENTS.md`, `CHANGELOG.md`, `docs/codex-untrash-resume-handoff.md`, `docs/implementation-log.md`, `src/commands/codex-rollout-parser.ts`, `src/commands/codex-session-parser.ts`, `src/commands/codex-wrapper.ts`, `src/server/project-registry.ts`, `src/server/shutdown-coordinator.ts`, `src/terminal/agent-session-adapters.ts`, `src/terminal/session-lifecycle.ts`, `src/terminal/session-manager.ts`, `src/terminal/session-summary-store.ts`, `src/trpc/handlers/start-task-session.ts`, `src/trpc/handlers/stop-task-session.ts`, `src/trpc/hooks-api.ts`, `test/integration/shutdown-coordinator.integration.test.ts`, `test/runtime/server/project-registry-startup-resume.test.ts`, `test/runtime/terminal/session-manager-auto-restart.test.ts`, `test/runtime/terminal/session-manager-ordering.test.ts`, `test/runtime/trpc/runtime-api.test.ts`, `web-ui/src/hooks/board/use-task-lifecycle.ts`, `web-ui/src/hooks/board/use-task-sessions.ts`, `web-ui/src/terminal/slot-socket-manager.test.ts`, `web-ui/src/terminal/slot-socket-manager.ts`, `web-ui/src/terminal/terminal-attachment-controller.test.ts`, `web-ui/src/terminal/terminal-attachment-controller.ts`, `web-ui/src/terminal/terminal-restore-policy.test.ts`, `web-ui/src/terminal/terminal-restore-policy.ts`, `web-ui/src/terminal/terminal-reuse-manager.ts`, `web-ui/src/terminal/terminal-session-handle.test.ts`, `web-ui/src/terminal/terminal-session-handle.ts`, `web-ui/src/terminal/terminal-viewport.ts`, `web-ui/src/terminal/use-persistent-terminal-session.test.tsx`, `web-ui/src/terminal/use-persistent-terminal-session.ts`
+
+Commit: `2422d0059`, `ef16a74c0`
+
 ## Fix: log full toast warning/error messages to the debug log (2026-04-25)
 
 Toast-delivered warnings and errors were the only surface for certain failures — for example, the server's `Invalid sessions.json file at … Fix or remove the file. Validation errors: …` message that flows from `parsePersistedStateFile` through the WebSocket error channel and lands in `useStreamErrorHandler` → `notifyError`. `sanitizeErrorForToast` collapses the message to its first non-empty line capped at 150 characters, so the actual Zod validation issues were truncated away and there was no debug-log trace, making the failure hard to diagnose after the toast disappeared.
@@ -93,7 +105,33 @@ Verified the bump is safe with the full local check matrix: `npm run typecheck` 
 
 Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `package-lock.json`, `web-ui/package-lock.json`
 
+Commit: `a24b9cf6a`
+
+## Fix: warn when Claude trash restore no longer has the original worktree identity (2026-04-24)
+
+The remaining “startup resume works, untrash resume does not” bug turned out to be a different class from the shutdown race. Startup resume is driven by `resumeInterruptedSessions(...)` and reuses the persisted `card.workingDirectory` for isolated tasks when that original worktree still exists. Trash restore is not equivalent: moving a task to trash clears `workingDirectory` in board state and deletes the worktree, so untrash later recreates a fresh worktree path. That means Claude restore is no longer resuming against the same task identity; it is launching `claude --continue` in a recreated worktree, and Claude has no stored session-id resume path analogous to Codex. That explains the observed behavior exactly: startup can reopen the original Claude chat, while untrash may silently land on a fresh prompt even though process startup succeeds cleanly.
+
+The code change stays at the runtime start-session boundary in `src/trpc/handlers/start-task-session.ts`, because that is the one place that can see all relevant facts together: this is a resume request, the selected agent is Claude, the task is isolated, the persisted `workingDirectory` is gone, and the previous session launched from a task worktree. When those conditions line up, the handler now emits a server warning log (`[task-session-start] resume requested after task worktree identity was lost`) and writes a `warningMessage` onto the returned session summary: Claude resume after trash restore is best-effort only because the original task worktree was deleted. That warning then flows through the existing browser-side session-summary toast path instead of requiring any new UI-specific trash logic.
+
+I also captured the behavior in shared repo instructions so future agents do not assume startup resume and untrash resume are equivalent for isolated Claude tasks. Added runtime coverage in `test/runtime/trpc/runtime-api.test.ts` to assert both the warning log and the surfaced warning message when resume recreates a trashed Claude worktree, and updated the changelog entry to document the visible distinction between startup restore and untrash restore.
+
+Files touched: `AGENTS.md`, `CHANGELOG.md`, `docs/implementation-log.md`, `src/trpc/handlers/start-task-session.ts`, `test/runtime/trpc/runtime-api.test.ts`
+
 Commit: pending
+
+## Fix: fail loudly when untrash/restart races a still-exiting task session (2026-04-23)
+
+The remaining "untrash shows a spinner forever with no logs" bug was not actually specific to Codex resume ids. The shared failure mode was that trash restore and manual restart both rely on `stopTaskSession(..., { waitForExit: true })`, but the terminal layer only waited 5 seconds and then let the caller continue without distinguishing "process exited" from "we gave up waiting." If the old PTY was still alive, `TerminalSessionManager.startTaskSession()` saw an active `running` / `awaiting_review` entry for the same task and quietly returned that stale summary instead of spawning anything new. Once the old PTY finally exited, the card was left in review with no live session behind it, which surfaced as a loading spinner and empty terminal for both Claude and Codex restores.
+
+The runtime fix hardens that contract in `src/terminal/session-manager.ts`. `stopTaskSessionAndWaitForExit()` now waits up to 3 seconds (tight enough not to feel like a hang, long enough to cover a clean PTY stop), removes timed-out wait resolvers cleanly, and emits a warning log when the PTY still has not exited. More importantly, `startTaskSession()` now treats "same task is still exiting after an explicit stop request" as a real error: when `suppressAutoRestartOnExit` is still set, it logs a warning and throws `Task session is still shutting down. Wait a moment and try again.` instead of silently reusing the stale summary. That keeps the runtime from lying about a successful resume when no new process exists yet.
+
+The adjacent silent-resume failure modes now emit warnings too. The tRPC `start-task-session` handler logs when `resumeConversation=true` arrives without a stored `resumeSessionId` (which is how "Codex came back up but in the wrong conversation" escaped notice), and the Codex adapter logs when it falls back to `codex resume --last`. The Claude adapter logs its `--continue` cwd at debug level so worktree-path divergence can be spotted if `--continue` ever picks up the wrong cached session.
+
+The browser-side follow-through was intentionally small: the existing restore/restart hooks already surface failed `startTaskSession()` results, so once the runtime stopped returning false-success summaries the board logic behaved correctly again. Added a frontend regression in `web-ui/src/hooks/board/use-board-interactions.test.tsx` to lock in the user-visible behavior: if restore hits the "still shutting down" error after the stop wait, the task is moved back to trash and the error is surfaced instead of staying in review with a dead spinner. Added matching runtime tests in `test/runtime/terminal/session-manager.test.ts` for both the timeout warning and the start-while-exiting throw. Also updated the `AGENTS.md` terminal note because this shutdown-timeout / start-short-circuit interaction is easy to miss when touching terminal lifecycle code.
+
+Files touched: `AGENTS.md`, `CHANGELOG.md`, `docs/implementation-log.md`, `src/terminal/agent-session-adapters.ts`, `src/terminal/session-manager.ts`, `src/trpc/handlers/start-task-session.ts`, `test/runtime/terminal/session-manager.test.ts`, `web-ui/src/hooks/board/use-board-interactions.test.tsx`
+
+Commit: `e88e820d9`
 
 ## Fix: resume Codex task sessions by stored session id (2026-04-23)
 

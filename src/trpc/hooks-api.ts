@@ -108,7 +108,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					hasSummaryText: !!body.metadata?.conversationSummaryText,
 					summarySnippet: body.metadata?.conversationSummaryText?.slice(0, 100),
 				};
-				log.info("Hook ingest received", { taskId, ...hookReceivedData });
+				log.debug("Hook ingest received", { taskId, ...hookReceivedData });
 				const knownProjectPath = deps.projects.getProjectPathById(projectId);
 				const projectContext = knownProjectPath ? null : await loadProjectContextById(projectId);
 				const projectPath = knownProjectPath ?? projectContext?.repoPath ?? null;
@@ -132,6 +132,18 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				const incomingSessionId = body.metadata?.sessionId?.trim() || null;
 				const activityMetadata = toHookActivityPatch(body.metadata);
 				const metadataOnlySessionMeta = isMetadataOnlySessionMeta(body.metadata);
+
+				if (incomingSessionId) {
+					log.debug("Hook ingest session_meta", {
+						taskId,
+						projectId,
+						incomingSessionId,
+						storedResumeSessionId: summary.resumeSessionId ?? null,
+						metadataOnly: metadataOnlySessionMeta,
+						hookEventName: body.metadata?.hookEventName ?? null,
+						source: body.metadata?.source ?? null,
+					});
+				}
 
 				manager.recordHookReceived(taskId);
 				const canTransition = canTransitionTaskForHookEvent(summary, event);

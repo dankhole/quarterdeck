@@ -43,17 +43,20 @@ function createBoard(taskIds: { inProgress?: string[]; review?: string[] }): Run
 	};
 }
 
-function createSession(taskId: string, state: "running" | "awaiting_review" | "idle"): RuntimeTaskSessionSummary {
+function createSession(
+	taskId: string,
+	state: "running" | "awaiting_review" | "idle" | "interrupted",
+): RuntimeTaskSessionSummary {
 	return createTestTaskSessionSummary({
 		taskId,
 		state,
 		agentId: "codex",
 		sessionLaunchPath: `/tmp/${taskId}`,
-		pid: state === "idle" ? null : 1234,
+		pid: state === "idle" || state === "interrupted" ? null : 1234,
 		startedAt: state === "idle" ? null : Date.now() - 1_000,
 		updatedAt: Date.now(),
 		lastOutputAt: state === "idle" ? null : Date.now(),
-		reviewReason: state === "awaiting_review" ? "hook" : null,
+		reviewReason: state === "awaiting_review" ? "hook" : state === "interrupted" ? "interrupted" : null,
 	});
 }
 
@@ -95,14 +98,15 @@ describe.sequential("shutdown coordinator integration", () => {
 				});
 
 				let didCloseRuntimeServer = false;
+				const interruptedManagedRunning = createSession("managed-running", "interrupted");
 				const managedTerminalManager = {
 					stopReconciliation: () => {},
-					markInterruptedAndStopAll: () => [createSession("managed-running", "running")],
+					markInterruptedAndStopAll: () => [interruptedManagedRunning],
 					store: {
-						listSummaries: () => [createSession("managed-running", "running")],
+						listSummaries: () => [interruptedManagedRunning],
 						getSummary: (taskId: string) => {
 							if (taskId === "managed-running") {
-								return createSession("managed-running", "running");
+								return interruptedManagedRunning;
 							}
 							if (taskId === "managed-idle") {
 								return createSession("managed-idle", "idle");

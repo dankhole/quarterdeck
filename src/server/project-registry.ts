@@ -9,6 +9,7 @@ import type {
 	RuntimeProjectStateResponse,
 	RuntimeProjectSummary,
 	RuntimeProjectTaskCounts,
+	RuntimeTaskSessionSummary,
 } from "../core";
 import { createTaggedLogger } from "../core";
 import {
@@ -24,6 +25,59 @@ import {
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../terminal";
 
 const registryLog = createTaggedLogger("project-registry");
+const STARTUP_RESUME_SKIP_SAMPLE_LIMIT = 5;
+
+// Startup resume selection is still small enough to live near the registry
+// entry point. If it gains more agent-specific rules or scan outcomes, extract
+// this block into a dedicated startup-resume policy module with focused tests.
+type StartupResumeSkipReason = "missing_summary" | "not_interrupted" | "missing_working_directory";
+
+interface StartupResumeSkipSample {
+	taskId: string;
+	columnId: RuntimeBoardColumnId;
+	reason: StartupResumeSkipReason;
+	state?: string | null;
+	reviewReason?: string | null;
+	pid?: number | null;
+	hasWorkingDirectory?: boolean;
+	hasResumeSessionId?: boolean;
+}
+
+interface StartupResumeScanStats {
+	consideredTaskCount: number;
+	resumableTaskCount: number;
+	skippedMissingSummaryCount: number;
+	skippedNotInterruptedCount: number;
+	skippedMissingWorkingDirectoryCount: number;
+	skippedSamples: StartupResumeSkipSample[];
+}
+
+function createStartupResumeScanStats(): StartupResumeScanStats {
+	return {
+		consideredTaskCount: 0,
+		resumableTaskCount: 0,
+		skippedMissingSummaryCount: 0,
+		skippedNotInterruptedCount: 0,
+		skippedMissingWorkingDirectoryCount: 0,
+		skippedSamples: [],
+	};
+}
+
+function recordStartupResumeSkip(stats: StartupResumeScanStats, sample: StartupResumeSkipSample): void {
+	if (stats.skippedSamples.length < STARTUP_RESUME_SKIP_SAMPLE_LIMIT) {
+		stats.skippedSamples.push(sample);
+	}
+}
+
+export function shouldResumeSessionOnStartup(summary: RuntimeTaskSessionSummary): boolean {
+	if (summary.state === "interrupted") {
+		return summary.reviewReason === "interrupted";
+	}
+	// A hard server/process exit can leave the last persisted summary as
+	// awaiting_review/attention even though the agent process was live. On the
+	// next boot that pid is stale, so resume it the same way trash-restore does.
+	return summary.state === "awaiting_review" && summary.reviewReason === "attention" && summary.pid !== null;
+}
 
 export interface ProjectRegistryScope {
 	projectId: string;
@@ -441,39 +495,115 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	const resumeInterruptedSessions = async (projectId: string, projectPath: string): Promise<number> => {
 		const manager = getTerminalManagerForProject(projectId);
 		if (!manager) {
+			registryLog.warn("startup resume skipped: no terminal manager", { projectId, projectPath });
 			return 0;
 		}
 		let state: RuntimeProjectStateResponse;
 		try {
 			state = await loadProjectState(projectPath);
-		} catch {
+		} catch (error) {
+			registryLog.warn("startup resume skipped: failed to load project state", {
+				projectId,
+				projectPath,
+				error: error instanceof Error ? error.message : String(error),
+			});
 			return 0;
 		}
 		const runtimeConfig = await deps.loadRuntimeConfig(projectId);
 		const resolved = resolveAgentCommand(runtimeConfig);
 		if (!resolved) {
+			registryLog.warn("startup resume skipped: no agent command resolved", {
+				projectId,
+				projectPath,
+				selectedAgentId: runtimeConfig.selectedAgentId,
+			});
 			return 0;
 		}
 		const resumable: Array<{ taskId: string; cwd: string; resumeSessionId?: string }> = [];
+		// Startup resume runs before a user can inspect task terminals, so keep
+		// enough scan detail to tell whether we never selected a task or failed
+		// after selection.
+		const scanStats = createStartupResumeScanStats();
 		for (const column of state.board.columns) {
 			if (column.id !== "in_progress" && column.id !== "review") {
 				continue;
 			}
 			for (const card of column.cards) {
+				scanStats.consideredTaskCount += 1;
 				const summary = manager.store.getSummary(card.id);
-				if (summary?.state === "interrupted" && summary.reviewReason === "interrupted" && card.workingDirectory) {
-					resumable.push({
+				if (!summary) {
+					scanStats.skippedMissingSummaryCount += 1;
+					recordStartupResumeSkip(scanStats, {
 						taskId: card.id,
-						cwd: card.workingDirectory,
-						resumeSessionId: summary.resumeSessionId ?? undefined,
+						columnId: column.id,
+						reason: "missing_summary",
+						hasWorkingDirectory: Boolean(card.workingDirectory),
 					});
+					continue;
 				}
+				if (!shouldResumeSessionOnStartup(summary)) {
+					scanStats.skippedNotInterruptedCount += 1;
+					recordStartupResumeSkip(scanStats, {
+						taskId: card.id,
+						columnId: column.id,
+						reason: "not_interrupted",
+						state: summary.state,
+						reviewReason: summary.reviewReason,
+						pid: summary.pid,
+						hasWorkingDirectory: Boolean(card.workingDirectory),
+						hasResumeSessionId: Boolean(summary.resumeSessionId),
+					});
+					continue;
+				}
+				if (!card.workingDirectory) {
+					scanStats.skippedMissingWorkingDirectoryCount += 1;
+					const skipData = {
+						projectId,
+						taskId: card.id,
+						columnId: column.id,
+						state: summary.state,
+						reviewReason: summary.reviewReason,
+						pid: summary.pid,
+						hasResumeSessionId: Boolean(summary.resumeSessionId),
+					};
+					recordStartupResumeSkip(scanStats, {
+						...skipData,
+						reason: "missing_working_directory",
+					});
+					registryLog.warn("startup resume skipped interrupted task: missing working directory", skipData);
+					continue;
+				}
+				resumable.push({
+					taskId: card.id,
+					cwd: card.workingDirectory,
+					resumeSessionId: summary.resumeSessionId ?? undefined,
+				});
 			}
 		}
+		scanStats.resumableTaskCount = resumable.length;
+		registryLog.info("startup resume scan complete", {
+			projectId,
+			projectPath,
+			...scanStats,
+		});
 		if (resumable.length === 0) {
+			if (scanStats.consideredTaskCount > scanStats.skippedMissingSummaryCount) {
+				registryLog.warn("startup resume found work-column sessions but no resumable interrupted tasks", {
+					projectId,
+					projectPath,
+					...scanStats,
+				});
+			}
 			return 0;
 		}
 		for (const { taskId, cwd, resumeSessionId } of resumable) {
+			registryLog.info("startup resume launching task", {
+				projectId,
+				taskId,
+				agentId: resolved.agentId,
+				cwd,
+				resumeSessionId: resumeSessionId ?? null,
+			});
 			void manager
 				.startTaskSession({
 					taskId,
@@ -494,6 +624,14 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				})
 				.catch((error) => {
 					const message = error instanceof Error ? error.message : String(error);
+					registryLog.warn("startup resume failed to launch task session", {
+						projectId,
+						taskId,
+						agentId: resolved.agentId,
+						cwd,
+						resumeSessionId: resumeSessionId ?? null,
+						error: message,
+					});
 					// Transition immediately so the card moves to review without
 					// waiting for the reconciliation sweep to catch it.
 					manager.store.update(taskId, {

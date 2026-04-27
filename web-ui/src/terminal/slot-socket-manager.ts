@@ -15,6 +15,7 @@ interface SlotSocketCallbacks {
 	onState: (payload: RuntimeTerminalWsServerMessage & { type: "state" }) => void;
 	onExit: (code: number | null) => void;
 	onError: (message: string) => void;
+	onIoOpen: () => void;
 	onConnectionReady: () => void;
 	onLastError: (message: string | null) => void;
 	ensureVisible: () => void;
@@ -96,6 +97,7 @@ export class SlotSocketManager {
 			log.debug(`[perf] slot ${this.slotId} IO socket open`, { elapsedMs: (performance.now() - t0).toFixed(1) });
 			this.callbacks.onLastError(null);
 			this.callbacks.invalidateResize();
+			this.callbacks.onIoOpen();
 			if (this.restoreCompleted && this.callbacks.getVisibleContainer()) {
 				this.callbacks.requestResize();
 			}
@@ -206,6 +208,11 @@ export class SlotSocketManager {
 		if (!this.pendingRestoreRequest) {
 			return;
 		}
+		// A request_restore can arrive while the initial restore is still being
+		// applied. Replay it only after restore_complete so the server does not
+		// interleave two snapshots with live output. If this completion never
+		// arrives, TerminalSessionHandle.reconnect(...) drops the stale socket on
+		// the next session-instance change.
 		log.info(`slot ${this.slotId} replaying queued restore request after initial restore`);
 		this.sendRestoreRequest();
 	}

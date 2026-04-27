@@ -31,6 +31,21 @@
 - Centralized the logging inside `showAppToast` / `notifyError` rather than adding per-call-site log calls, so all ~80 danger/warning toasts are covered by one edit. Two direct-sonner toast violations were migrated onto `showAppToast` so they get logged too.
 - Server-side WebSocket error payloads sent to clients (e.g. `Invalid sessions.json file at …` from `parsePersistedStateFile`) are now logged on the runtime side with a `runtime-state-hub` tag, so the full schema-validation detail is recoverable from runtime logs instead of disappearing with the toast.
 
+### Fix: stabilize Codex untrash and resume terminal races
+
+- Task session exit handling now verifies that the exiting PTY is still the active PTY for that task before mutating summary state or clearing the active process entry.
+- This prevents delayed Codex/wrapper exits from tearing down a newly spawned resume session and leaving the restored task with an empty terminal/spinner.
+- Codex resume without a stored `resumeSessionId` now surfaces a session warning toast, because falling back to `codex resume --last` is explicitly best-effort.
+- Explicitly stopped resumed sessions no longer run the resume-failure fallback that starts a fresh non-resume Codex process, preserving the stored `resumeSessionId` for the real trash-restore resume.
+- Startup resume keeps the clean-exit fallback path for resumed agents, so a `codex resume`/`--continue` process that exits 0 can still reopen an interactive review session when it was not explicitly stopped.
+- Startup resume now logs its scan result and warns when it cannot select or launch resumable work-column sessions, so restart failures are visible without raising the global log level to debug.
+- Startup resume now treats persisted `awaiting_review` / `attention` sessions with a stale pid as resumable after an unclean server stop, while still preserving completed `hook` / `exit` review sessions.
+- Task terminals now fall back to an interactive visible terminal when the IO socket is open but the restore handshake stalls, including reused pooled slots and delayed IO-open cases, so a delayed restore cannot keep input blocked behind the loading spinner.
+- Pooled task terminals now reconnect their IO/control sockets when the task session instance changes, avoiding stale control sockets that stay stuck waiting for initial restore completion after Codex trash-restore.
+- Pooled task terminals skip that reconnect for processless stop summaries, reducing the extra flash before untrash starts the real replacement process.
+- Restore recovery no longer issues speculative extra restores after live output is available, and empty restore snapshots are ignored after queued terminal writes drain when the visible terminal already has content, preventing Codex untrash from flashing output and then blanking the terminal.
+- Untrash/resume diagnostics now follow the logger-level conventions: normal breadcrumbs are debug-level tagged logs, degradation paths stay warn-level, and temporary raw Codex subprocess stderr traces were removed from the visible agent terminal stream.
+
 ### Chore: bump `postcss` to 8.5.10 in both packages
 
 - Ran `npm audit fix` in the root and `web-ui` packages to pull `postcss` from 8.5.8 to 8.5.10, clearing the only open advisory (GHSA-qx2v-qp2m-jg93, moderate) across both lockfiles.
@@ -56,6 +71,18 @@
 
 - Restoring a trashed task now waits for any lingering task session shutdown to finish before asking the runtime to resume the conversation.
 - This closes a trash/untrash race where `startTaskSession()` could see the still-active pre-trash session, skip spawning a new one, and leave the restored card stuck without a live agent once the old process finally exited.
+
+### Fix: log and fail loud when untrash/restart races a still-exiting session
+
+- `stopTaskSession(..., { waitForExit: true })` now waits up to 3 seconds (down from 5) before timing out and emits a warning log if the PTY still has not exited, instead of silently continuing.
+- If a new start/resume arrives for the same task while the previous session is still exiting, the runtime now logs a warning and throws an explicit error instead of reusing the stale active summary; the board restore path surfaces that failure and moves the card back to trash instead of leaving the terminal spinner stuck with no logs.
+- The tRPC start-task-session handler warns when `resumeConversation` is requested but no stored `resumeSessionId` is available, and the Codex adapter warns when it falls back to `codex resume --last`, so "agent came back up but with the wrong conversation" no longer disappears into silence.
+
+### Fix: warn when Claude untrash resume lost the original worktree identity
+
+- Start-task resume now emits an explicit warning log and session warning when Claude is asked to resume an isolated task after trash deleted its original worktree and cleared the persisted `workingDirectory`.
+- This makes the startup-vs-untrash difference visible: server-start resume can reopen the old Claude chat when the original worktree still exists, but trash restore recreates a fresh worktree and `--continue` is only best-effort because Claude has no stored session-id resume path.
+
 ### Refactor: always show running-task stop/trash actions
 
 - Removed the `showRunningTaskEmergencyActions` setting and its config/schema/settings wiring, so running task cards now always expose the stop/restart and trash escape hatches on hover instead of hiding them behind an opt-in toggle.

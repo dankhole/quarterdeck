@@ -25,6 +25,7 @@ export interface TaskTerminalHandle {
 	hide: () => void;
 	park: () => void;
 	reset: () => void;
+	requestRestore: () => void;
 	input: (text: string) => boolean;
 	paste: (text: string) => boolean;
 	waitForLikelyPrompt: (timeoutMs: number) => Promise<boolean>;

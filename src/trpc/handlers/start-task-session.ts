@@ -1,14 +1,52 @@
 import { resolveAgentCommand } from "../../config";
-import type { IRuntimeConfigProvider } from "../../core";
-import { findCardInBoard, parseTaskSessionStartRequest } from "../../core";
+import {
+	createTaggedLogger,
+	findCardInBoard,
+	type IRuntimeConfigProvider,
+	parseTaskSessionStartRequest,
+} from "../../core";
 import { loadProjectState } from "../../state";
 import type { TerminalSessionManager } from "../../terminal";
 import { captureTaskTurnCheckpoint, pathExists, resolveTaskCwd } from "../../workdir";
 import type { RuntimeTrpcProjectScope } from "../app-router-context";
 
+const log = createTaggedLogger("task-session-start");
+
 export interface StartTaskSessionDeps {
 	config: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
 	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
+}
+
+function getResumeContextWarning(options: {
+	resumeConversation: boolean | undefined;
+	useWorktree: boolean;
+	agentId: string;
+	persistedWorkingDirectory: string | null;
+	previousSessionLaunchPath: string | null | undefined;
+	projectPath: string;
+}): string | null {
+	if (!options.resumeConversation || !options.useWorktree || options.agentId !== "claude") {
+		return null;
+	}
+	if (options.persistedWorkingDirectory) {
+		return null;
+	}
+	const previousSessionLaunchPath = options.previousSessionLaunchPath?.trim() ?? "";
+	if (!previousSessionLaunchPath || previousSessionLaunchPath === options.projectPath) {
+		return null;
+	}
+	return "Claude resume after trash restore is best-effort only: the original task worktree was deleted, so --continue may not reopen the previous chat.";
+}
+
+function getCodexResumeSessionWarning(options: {
+	resumeConversation: boolean | undefined;
+	agentId: string;
+	resumeSessionId: string | null | undefined;
+}): string | null {
+	if (!options.resumeConversation || options.agentId !== "codex" || options.resumeSessionId) {
+		return null;
+	}
+	return "Codex resume did not have a stored session id, so Quarterdeck fell back to the most recent Codex session for this checkout. If this opens the wrong conversation, start a fresh task.";
 }
 
 export async function handleStartTaskSession(
@@ -18,6 +56,18 @@ export async function handleStartTaskSession(
 ) {
 	try {
 		const body = parseTaskSessionStartRequest(input);
+		log.debug("start-task-session request received", {
+			taskId: body.taskId,
+			projectId: projectScope.projectId,
+			projectPath: projectScope.projectPath,
+			resumeConversation: body.resumeConversation ?? false,
+			awaitReview: body.awaitReview ?? false,
+			useWorktree: body.useWorktree ?? true,
+			startInPlanMode: body.startInPlanMode ?? false,
+			hasPrompt: Boolean(body.prompt && body.prompt.trim().length > 0),
+			imageCount: body.images?.length ?? 0,
+			baseRef: body.baseRef ?? null,
+		});
 		const scopedRuntimeConfig = await deps.config.loadScopedRuntimeConfig(projectScope);
 		const useWorktree = body.useWorktree !== false;
 		// Prefer the persisted working directory if it still exists on disk.
@@ -59,6 +109,29 @@ export async function handleStartTaskSession(
 		const previousTerminalAgentId = previousSummary?.agentId ?? null;
 		const previousResumeSessionId = previousSummary?.resumeSessionId ?? null;
 		const effectiveAgentId = previousTerminalAgentId ?? scopedRuntimeConfig.selectedAgentId;
+		if (body.resumeConversation) {
+			log.debug("resume path: loaded previous session summary", {
+				taskId: body.taskId,
+				hasPreviousSummary: Boolean(previousSummary),
+				previousAgentId: previousTerminalAgentId,
+				previousResumeSessionId,
+				previousState: previousSummary?.state ?? null,
+				previousReviewReason: previousSummary?.reviewReason ?? null,
+				previousLaunchPath: previousSummary?.sessionLaunchPath ?? null,
+				previousPid: previousSummary?.pid ?? null,
+				previousStartedAt: previousSummary?.startedAt ?? null,
+				effectiveAgentId,
+			});
+		}
+		if (body.resumeConversation && effectiveAgentId === "codex" && !previousResumeSessionId) {
+			log.warn("resume requested without stored resumeSessionId", {
+				taskId: body.taskId,
+				agentId: effectiveAgentId,
+				previousState: previousSummary?.state ?? null,
+				previousReviewReason: previousSummary?.reviewReason ?? null,
+				previousLaunchPath: previousSummary?.sessionLaunchPath ?? null,
+			});
+		}
 
 		const resolvedConfig =
 			effectiveAgentId !== scopedRuntimeConfig.selectedAgentId
@@ -72,6 +145,37 @@ export async function handleStartTaskSession(
 				error: "No runnable agent command is configured. Open Settings, install a supported CLI, and select it.",
 			};
 		}
+		const resumeContextWarning = getResumeContextWarning({
+			resumeConversation: body.resumeConversation,
+			useWorktree,
+			agentId: resolved.agentId,
+			persistedWorkingDirectory: persisted,
+			previousSessionLaunchPath: previousSummary?.sessionLaunchPath,
+			projectPath: projectScope.projectPath,
+		});
+		if (resumeContextWarning) {
+			log.warn("resume requested after task worktree identity was lost", {
+				taskId: body.taskId,
+				agentId: resolved.agentId,
+				previousSessionLaunchPath: previousSummary?.sessionLaunchPath ?? null,
+				projectPath: projectScope.projectPath,
+				resolvedTaskCwd: taskCwd,
+			});
+		}
+		const codexResumeSessionWarning = getCodexResumeSessionWarning({
+			resumeConversation: body.resumeConversation,
+			agentId: resolved.agentId,
+			resumeSessionId: previousResumeSessionId,
+		});
+		log.debug("handing start-task-session request to terminal manager", {
+			taskId: body.taskId,
+			agentId: resolved.agentId,
+			binary: resolved.binary,
+			taskCwd,
+			resumeConversation: body.resumeConversation ?? false,
+			resumeSessionIdPassed: previousResumeSessionId ?? null,
+			awaitReview: body.awaitReview ?? false,
+		});
 		const summary = await terminalManager.startTaskSession({
 			taskId: body.taskId,
 			agentId: resolved.agentId,
@@ -110,12 +214,34 @@ export async function handleStartTaskSession(
 				// Best effort checkpointing only.
 			}
 		}
+		if (resumeContextWarning) {
+			nextSummary =
+				terminalManager.store.update(body.taskId, {
+					warningMessage: resumeContextWarning,
+				}) ?? nextSummary;
+		} else if (codexResumeSessionWarning) {
+			nextSummary =
+				terminalManager.store.update(body.taskId, {
+					warningMessage: codexResumeSessionWarning,
+				}) ?? nextSummary;
+		}
+		log.debug("start-task-session returning ok", {
+			taskId: body.taskId,
+			agentId: nextSummary?.agentId ?? null,
+			state: nextSummary?.state ?? null,
+			reviewReason: nextSummary?.reviewReason ?? null,
+			pid: nextSummary?.pid ?? null,
+			startedAt: nextSummary?.startedAt ?? null,
+			resumeSessionIdOnSummary: nextSummary?.resumeSessionId ?? null,
+			sessionLaunchPath: nextSummary?.sessionLaunchPath ?? null,
+		});
 		return {
 			ok: true,
 			summary: nextSummary,
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
+		log.warn("start-task-session returning error", { error: message });
 		return {
 			ok: false,
 			summary: null,

@@ -9,6 +9,7 @@ import { generateTerminalClientId } from "@/terminal/terminal-socket-utils";
 import { createClientLogger } from "@/utils/client-logger";
 
 const log = createClientLogger("terminal-session-handle");
+const CONNECTION_READY_FALLBACK_MS = 1500;
 
 export interface PersistentTerminalSubscriber {
 	onConnectionReady?: (taskId: string) => void;
@@ -45,6 +46,7 @@ export class TerminalSessionHandle {
 	private onceConnectionReadyCallback: (() => void) | null = null;
 	private connectTimestamp: number | null = null;
 	private restoreRequestTimestamp: number | null = null;
+	private connectionReadyFallbackTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(
 		private readonly slotId: number,
@@ -65,6 +67,11 @@ export class TerminalSessionHandle {
 			},
 			onError: (message) => {
 				this.callbacks.enqueueWrite(`\r\n[quarterdeck] ${message}\r\n`);
+			},
+			onIoOpen: () => {
+				if (!this.sockets.connectionReady) {
+					this.scheduleConnectionReadyFallback();
+				}
 			},
 			onConnectionReady: () => {
 				this.notifyConnectionReady();
@@ -126,6 +133,36 @@ export class TerminalSessionHandle {
 		}
 		this.sockets.connectIo(this.taskId, this.projectId);
 		this.sockets.connectControl(this.taskId, this.projectId);
+		if (!this.sockets.connectionReady) {
+			this.scheduleConnectionReadyFallback();
+		}
+	}
+
+	reconnect(reason: "session_instance_changed"): void {
+		if (this.callbacks.isDisposed() || !this.taskId || !this.projectId) {
+			return;
+		}
+		// Session-instance changes can leave a reused pooled slot with a control
+		// socket that is open but restoreCompleted=false. Closing both sockets is
+		// more reliable than requesting another restore on that stale control
+		// channel.
+		log.debug(`slot ${this.slotId} reconnecting terminal sockets`, {
+			taskId: this.taskId,
+			projectId: this.projectId,
+			reason,
+			hadIoSocket: this.sockets.hasIoSocket,
+			hadControlSocket: this.sockets.hasControlSocket,
+			wasIoOpen: this.sockets.isIoOpen,
+			restoreCompleted: this.sockets.restoreCompleted,
+		});
+		this.clearConnectionReadyFallback();
+		this.sockets.closeAll();
+		this.sockets.resetConnectionState();
+		this.connectTimestamp = performance.now();
+		this.restoreRequestTimestamp = null;
+		this.sockets.connectIo(this.taskId, this.projectId);
+		this.sockets.connectControl(this.taskId, this.projectId);
+		this.scheduleConnectionReadyFallback();
 	}
 
 	connectToTask(taskId: string, projectId: string): void {
@@ -133,6 +170,7 @@ export class TerminalSessionHandle {
 			return;
 		}
 		if (this.taskId === taskId && this.projectId === projectId) {
+			this.ensureConnected();
 			return;
 		}
 		if (this.taskId) {
@@ -143,6 +181,7 @@ export class TerminalSessionHandle {
 		this.connectTimestamp = performance.now();
 		this.sockets.connectIo(taskId, projectId);
 		this.sockets.connectControl(taskId, projectId);
+		this.scheduleConnectionReadyFallback();
 	}
 
 	disconnectFromTask(): string | null {
@@ -155,6 +194,7 @@ export class TerminalSessionHandle {
 		this.latestSummary = null;
 		this.lastError = null;
 		this.restoreRequestTimestamp = null;
+		this.clearConnectionReadyFallback();
 		this.taskId = null;
 		this.projectId = null;
 		this.subscribers.clear();
@@ -208,8 +248,46 @@ export class TerminalSessionHandle {
 
 	dispose(): void {
 		this.sockets.closeAll();
+		this.clearConnectionReadyFallback();
 		this.subscribers.clear();
 		this.onceConnectionReadyCallback = null;
+	}
+
+	private clearConnectionReadyFallback(): void {
+		if (this.connectionReadyFallbackTimer === null) {
+			return;
+		}
+		clearTimeout(this.connectionReadyFallbackTimer);
+		this.connectionReadyFallbackTimer = null;
+	}
+
+	private scheduleConnectionReadyFallback(): void {
+		this.clearConnectionReadyFallback();
+		this.connectionReadyFallbackTimer = setTimeout(() => {
+			this.connectionReadyFallbackTimer = null;
+			if (this.callbacks.isDisposed() || !this.taskId || this.sockets.connectionReady) {
+				return;
+			}
+			if (!this.sockets.isIoOpen) {
+				log.warn(`slot ${this.slotId} terminal still waiting for IO socket before becoming interactive`, {
+					taskId: this.taskId,
+					projectId: this.projectId,
+					hasControlSocket: this.sockets.hasControlSocket,
+				});
+				return;
+			}
+			log.warn(`slot ${this.slotId} terminal restore readiness fallback`, {
+				taskId: this.taskId,
+				projectId: this.projectId,
+				hasControlSocket: this.sockets.hasControlSocket,
+			});
+			// IO is open, so input can work even if the restore/control handshake
+			// is late. Reveal the terminal instead of blocking the user behind a
+			// loading overlay; do not request another restore here because a stale
+			// empty snapshot can erase live Codex output.
+			this.callbacks.ensureVisible();
+			this.notifyConnectionReady();
+		}, CONNECTION_READY_FALLBACK_MS);
 	}
 
 	private async handleRestore(
@@ -270,6 +348,7 @@ export class TerminalSessionHandle {
 		if (!this.taskId) {
 			return;
 		}
+		this.clearConnectionReadyFallback();
 		this.sockets.connectionReady = true;
 		if (this.connectTimestamp !== null) {
 			log.debug(`[perf] slot ${this.slotId} connect-to-ready`, {

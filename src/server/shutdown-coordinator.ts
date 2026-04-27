@@ -54,6 +54,12 @@ async function persistInterruptedSessions(
 const TERMINAL_REVIEW_REASONS = new Set(["hook", "exit", "error", "attention", "stalled"]);
 
 function shouldInterruptSessionOnShutdown(summary: RuntimeTaskSessionSummary): boolean {
+	if (summary.state === "interrupted") {
+		// markInterruptedAndStopAll() mutates active in-memory summaries before
+		// shutdown persistence runs. Those already-interrupted summaries are the
+		// exact records startup resume needs on disk.
+		return summary.reviewReason === "interrupted";
+	}
 	if (summary.state === "running") {
 		return true;
 	}

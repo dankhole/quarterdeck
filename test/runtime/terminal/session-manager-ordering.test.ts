@@ -66,6 +66,59 @@ describe("TerminalSessionManager ordering invariants", () => {
 
 	// ── Gap 1: onData transition-before-broadcast ordering ──────────────
 
+	it("ignores an exit event from a replaced task PTY", async () => {
+		const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const spawnedSessions = setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		const onExit = vi.fn();
+		manager.attach("task-1", {
+			onExit,
+		});
+
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		});
+		expect(manager.store.getSummary("task-1")?.pid).toBe(111);
+
+		// Simulate a stale active process whose summary was already recovered.
+		// A replacement start should not let the old exit callback tear down
+		// the newly active process.
+		manager.store.update("task-1", {
+			state: "idle",
+			reviewReason: null,
+			pid: null,
+		});
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Resume work",
+		});
+		expect(manager.store.getSummary("task-1")?.pid).toBe(222);
+
+		spawnedSessions[0]?.triggerExit(0);
+
+		expect(manager.store.getSummary("task-1")?.pid).toBe(222);
+		expect(manager.store.getSummary("task-1")?.state).toBe("running");
+		expect(onExit).not.toHaveBeenCalled();
+		expect(consoleWarn).toHaveBeenCalledWith(
+			expect.stringContaining("[session-mgr]"),
+			"ignoring stale task session exit for replaced process",
+			expect.objectContaining({
+				taskId: "task-1",
+				exitingPid: 111,
+				activePid: 222,
+			}),
+		);
+	});
+
 	describe("onData transition-before-broadcast ordering", () => {
 		it("listeners see post-transition state when onData triggers a state machine transition", async () => {
 			prepareAgentLaunchMock.mockImplementation(async (input: { args: string[]; binary?: string }) => ({

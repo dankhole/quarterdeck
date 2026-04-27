@@ -88,6 +88,7 @@ describe("SlotSocketManager", () => {
 			onState: vi.fn(),
 			onExit: vi.fn(),
 			onError: vi.fn(),
+			onIoOpen: vi.fn(),
 			onConnectionReady: vi.fn(),
 			onLastError: vi.fn(),
 			ensureVisible: vi.fn(),

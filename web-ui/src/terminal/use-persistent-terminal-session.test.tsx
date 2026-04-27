@@ -37,6 +37,7 @@ function createTerminalSlotMock() {
 		hide: vi.fn(),
 		park: vi.fn(),
 		reset: vi.fn(),
+		requestRestore: vi.fn(),
 		input: vi.fn(() => true),
 		paste: vi.fn(() => true),
 		waitForLikelyPrompt: vi.fn(async () => true),
@@ -194,6 +195,25 @@ describe("usePersistentTerminalSession", () => {
 
 		expect(terminal.show).toHaveBeenCalledTimes(1);
 		expect(terminal.hide).not.toHaveBeenCalled();
+	});
+
+	it("resets without requesting another restore for a restarted task session", async () => {
+		const terminal = createTerminalSlotMock();
+		acquireTaskTerminalMock.mockReturnValue(terminal);
+
+		await act(async () => {
+			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} />);
+		});
+
+		terminal.reset.mockClear();
+		terminal.requestRestore.mockClear();
+
+		await act(async () => {
+			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={200} />);
+		});
+
+		expect(terminal.reset).toHaveBeenCalledTimes(1);
+		expect(terminal.requestRestore).not.toHaveBeenCalled();
 	});
 
 	it("uses dedicated terminal path for home shell", async () => {

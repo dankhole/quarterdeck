@@ -13,6 +13,7 @@ import { SlotResizeManager } from "@/terminal/slot-resize-manager";
 import { SlotWriteQueue } from "@/terminal/slot-write-queue";
 import { TERMINAL_SCROLLBACK } from "@/terminal/terminal-constants";
 import { createQuarterdeckTerminalOptions, type PersistentTerminalAppearance } from "@/terminal/terminal-options";
+import { shouldSkipEmptyRestoreSnapshot } from "@/terminal/terminal-restore-policy";
 import { isCopyShortcut } from "@/terminal/terminal-socket-utils";
 import { createClientLogger } from "@/utils/client-logger";
 import { isMacPlatform } from "@/utils/platform";
@@ -223,7 +224,17 @@ export class TerminalViewport {
 		rows: number | null | undefined,
 	): Promise<void> {
 		this.resizer.invalidate();
+		// Live IO output and control restore messages can race. Drain queued
+		// writes before deciding whether an empty restore is safe; otherwise an
+		// empty stale snapshot can reset content that has reached the queue but
+		// not xterm yet.
 		await this.writeQueue.drain();
+		if (shouldSkipEmptyRestoreSnapshot(snapshot, this.readBufferLines())) {
+			log.warn(`slot ${this.slotId} skipped empty restore over non-empty terminal buffer`, {
+				taskId: this.callbacks.getConnectedTaskId(),
+			});
+			return;
+		}
 		this.terminal.reset();
 		if (cols && rows && (this.terminal.cols !== cols || this.terminal.rows !== rows)) {
 			this.terminal.resize(cols, rows);

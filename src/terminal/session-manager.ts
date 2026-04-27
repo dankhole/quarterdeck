@@ -12,8 +12,9 @@
 //   session-interrupt-recovery.ts  — interrupt detection and recovery
 //   session-auto-restart.ts        — auto-restart after unexpected exit
 //   session-reconciliation-sweep.ts — periodic reconciliation sweep
-import type { RuntimeTaskSessionSummary } from "../core";
+import { createTaggedLogger, type RuntimeTaskSessionSummary } from "../core";
 import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
+import type { PtySession } from "./pty-session";
 import { processSessionInput } from "./session-input-pipeline";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
 import {
@@ -38,6 +39,8 @@ import { SessionTransitionController } from "./session-transition-controller";
 import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service";
 
 export type { StartShellSessionRequest, StartTaskSessionRequest };
+
+const sessionLog = createTaggedLogger("session-mgr");
 
 export class TerminalSessionManager implements TerminalSessionService {
 	readonly store: SessionSummaryStore;
@@ -111,11 +114,44 @@ export class TerminalSessionManager implements TerminalSessionService {
 			},
 		};
 		const currentSummary = this.store.getSummary(request.taskId);
+		sessionLog.debug("startTaskSession called", {
+			taskId: request.taskId,
+			agentId: request.agentId,
+			cwd: request.cwd,
+			resumeConversation: request.resumeConversation ?? false,
+			resumeSessionId: request.resumeSessionId ?? null,
+			awaitReview: request.awaitReview ?? false,
+			entryActive: Boolean(entry.active),
+			entrySuppressAutoRestart: Boolean(entry.suppressAutoRestartOnExit),
+			entryPendingStart: Boolean(entry.pendingSessionStart),
+			pendingExitResolverCount: entry.pendingExitResolvers.length,
+			currentState: currentSummary?.state ?? null,
+			currentReviewReason: currentSummary?.reviewReason ?? null,
+			currentPid: currentSummary?.pid ?? null,
+			currentResumeSessionId: currentSummary?.resumeSessionId ?? null,
+		});
 		if (
 			entry.active &&
 			currentSummary &&
 			(currentSummary.state === "running" || currentSummary.state === "awaiting_review")
 		) {
+			if (entry.suppressAutoRestartOnExit) {
+				sessionLog.warn("task session start requested while previous session is still exiting", {
+					taskId: request.taskId,
+					agentId: request.agentId,
+					currentState: currentSummary.state,
+					currentReviewReason: currentSummary.reviewReason,
+					currentPid: currentSummary.pid,
+					resumeConversation: request.resumeConversation ?? false,
+					awaitReview: request.awaitReview ?? false,
+				});
+				throw new Error("Task session is still shutting down. Wait a moment and try again.");
+			}
+			sessionLog.debug("startTaskSession short-circuit — existing active session reused", {
+				taskId: request.taskId,
+				currentState: currentSummary.state,
+				currentPid: currentSummary.pid,
+			});
 			return currentSummary;
 		}
 
@@ -126,7 +162,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			updateStore: (id, patch) => this.store.update(id, patch),
 			ensureEntry: (id) => this.store.ensureEntry(id),
 			onOutput: (e, taskId, chunk) => this.handleTaskSessionOutput(e, taskId, chunk),
-			onExit: (req, event) => this.handleTaskSessionExit(req, event),
+			onExit: (req, event, session) => this.handleTaskSessionExit(req, event, session),
 		});
 	}
 
@@ -236,8 +272,16 @@ export class TerminalSessionManager implements TerminalSessionService {
 	stopTaskSession(taskId: string): RuntimeTaskSessionSummary | null {
 		const entry = this.entries.get(taskId);
 		if (!entry?.active) {
+			sessionLog.debug("stopTaskSession no-op — no active session", {
+				taskId,
+				hasEntry: Boolean(entry),
+			});
 			return this.store.getSummary(taskId);
 		}
+		sessionLog.debug("stopTaskSession invoked", {
+			taskId,
+			pid: entry.active.session.pid,
+		});
 		entry.suppressAutoRestartOnExit = true;
 		const cleanupFn = entry.active.onSessionCleanup;
 		entry.active.onSessionCleanup = null;
@@ -250,17 +294,51 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return this.store.getSummary(taskId);
 	}
 
-	async stopTaskSessionAndWaitForExit(taskId: string, timeoutMs = 5_000): Promise<RuntimeTaskSessionSummary | null> {
+	async stopTaskSessionAndWaitForExit(taskId: string, timeoutMs = 3_000): Promise<RuntimeTaskSessionSummary | null> {
 		const entry = this.entries.get(taskId);
 		if (!entry?.active) {
+			sessionLog.debug("stopTaskSessionAndWaitForExit no-op — no active entry", {
+				taskId,
+				hasEntry: Boolean(entry),
+			});
 			return this.store.getSummary(taskId);
 		}
+		sessionLog.debug("stopTaskSessionAndWaitForExit starting", {
+			taskId,
+			timeoutMs,
+			existingResolverCount: entry.pendingExitResolvers.length,
+			currentPid: entry.active.session.pid,
+		});
+		let resolveExit: (() => void) | null = null;
 		const exitPromise = new Promise<void>((resolve) => {
+			resolveExit = resolve;
 			entry.pendingExitResolvers.push(resolve);
 		});
 		this.stopTaskSession(taskId);
-		const timeout = new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
-		await Promise.race([exitPromise, timeout]);
+		const didExit = await new Promise<boolean>((resolve) => {
+			const timeoutHandle = setTimeout(() => {
+				if (resolveExit) {
+					entry.pendingExitResolvers = entry.pendingExitResolvers.filter((candidate) => candidate !== resolveExit);
+				}
+				resolve(false);
+			}, timeoutMs);
+			void exitPromise.then(() => {
+				clearTimeout(timeoutHandle);
+				resolve(true);
+			});
+		});
+		if (!didExit) {
+			const latestSummary = this.store.getSummary(taskId);
+			sessionLog.warn("task session did not exit before timeout", {
+				taskId,
+				timeoutMs,
+				currentState: latestSummary?.state ?? null,
+				currentReviewReason: latestSummary?.reviewReason ?? null,
+				currentPid: latestSummary?.pid ?? null,
+			});
+		} else {
+			sessionLog.debug("stopTaskSessionAndWaitForExit observed clean exit", { taskId });
+		}
 		return this.store.getSummary(taskId);
 	}
 
@@ -296,8 +374,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 		});
 	}
 
-	private handleTaskSessionExit(request: StartTaskSessionRequest, event: { exitCode: number | null }): void {
-		handleTaskSessionExit(request, event, {
+	private handleTaskSessionExit(
+		request: StartTaskSessionRequest,
+		event: { exitCode: number | null },
+		session: PtySession,
+	): void {
+		handleTaskSessionExit(request, event, session, {
 			getEntry: (id) => this.entries.get(id),
 			getSummary: (id) => this.store.getSummary(id),
 			updateStore: (id, patch) => this.store.update(id, patch),

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
 import { buildShellCommandLine } from "../../../src/core";
@@ -24,6 +24,14 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 }
 
 describe("TerminalSessionManager", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	it("transitions to review via the store's applySessionEvent", () => {
 		const store = new InMemorySessionSummaryStore();
 		store.hydrateFromRecord({
@@ -593,5 +601,109 @@ describe("TerminalSessionManager", () => {
 			rows: 40,
 		});
 		expect(getSnapshotSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("warns when a task session does not exit before waitForExit times out", async () => {
+		const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const manager = createTestManager();
+		const stop = vi.fn();
+
+		(
+			manager as unknown as {
+				entries: Map<string, unknown>;
+			}
+		).entries.set("task-timeout", {
+			taskId: "task-timeout",
+			active: {
+				session: {
+					stop,
+				},
+			},
+			pendingExitResolvers: [],
+			suppressAutoRestartOnExit: false,
+			listeners: new Map(),
+			listenerIdCounter: 1,
+			terminalStateMirror: null,
+		});
+		manager.store.hydrateFromRecord({
+			"task-timeout": createSummary({
+				taskId: "task-timeout",
+				pid: 1234,
+				state: "running",
+			}),
+		});
+
+		const waitPromise = manager.stopTaskSessionAndWaitForExit("task-timeout", 1_000);
+		await vi.advanceTimersByTimeAsync(1_000);
+		await waitPromise;
+
+		expect(stop).toHaveBeenCalledTimes(1);
+		expect(consoleWarn).toHaveBeenCalledWith(
+			expect.stringContaining("[session-mgr]"),
+			"task session did not exit before timeout",
+			expect.objectContaining({
+				taskId: "task-timeout",
+				timeoutMs: 1_000,
+				currentPid: 1234,
+			}),
+		);
+	});
+
+	it("rejects a new start request while the previous task session is still exiting", async () => {
+		const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const manager = createTestManager();
+		const stop = vi.fn();
+
+		(
+			manager as unknown as {
+				entries: Map<string, unknown>;
+			}
+		).entries.set("task-restart", {
+			taskId: "task-restart",
+			active: {
+				session: {
+					stop,
+				},
+			},
+			pendingExitResolvers: [],
+			suppressAutoRestartOnExit: false,
+			listeners: new Map(),
+			listenerIdCounter: 1,
+			terminalStateMirror: null,
+			restartRequest: null,
+			autoRestartTimestamps: [],
+			pendingAutoRestart: null,
+			pendingSessionStart: false,
+			hookCount: 0,
+		});
+		manager.store.hydrateFromRecord({
+			"task-restart": createSummary({
+				taskId: "task-restart",
+				pid: 4321,
+				state: "running",
+			}),
+		});
+
+		manager.stopTaskSession("task-restart");
+
+		await expect(
+			manager.startTaskSession({
+				taskId: "task-restart",
+				agentId: "claude",
+				binary: "claude",
+				args: [],
+				cwd: "/tmp/task-restart",
+				prompt: "Fix the bug",
+			}),
+		).rejects.toThrow("Task session is still shutting down. Wait a moment and try again.");
+		expect(stop).toHaveBeenCalledTimes(1);
+		expect(consoleWarn).toHaveBeenCalledWith(
+			expect.stringContaining("[session-mgr]"),
+			"task session start requested while previous session is still exiting",
+			expect.objectContaining({
+				taskId: "task-restart",
+				currentPid: 4321,
+			}),
+		);
 	});
 });

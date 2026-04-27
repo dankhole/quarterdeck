@@ -624,6 +624,92 @@ describe("useBoardInteractions", () => {
 		expect(callOrder).toEqual(["stop", "ensure", "start"]);
 	});
 
+	it("reverts a trashed task back to trash when resume fails after the stop wait", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		useProgrammaticCardMovesMock.mockReturnValue({
+			handleProgrammaticCardMoveReady: () => {},
+			setRequestMoveTaskToTrashHandler: () => {},
+			tryProgrammaticCardMove: () => "unavailable",
+			consumeProgrammaticCardMove: () => ({}),
+			resolvePendingProgrammaticTrashMove: () => {},
+			waitForProgrammaticCardMoveAvailability: async () => {},
+			resetProgrammaticCardMoves: () => {},
+			requestMoveTaskToTrashWithAnimation: async () => {},
+			programmaticCardMoveCycle: 0,
+		});
+
+		useLinkedBacklogTaskActionsMock.mockReturnValue({
+			handleCreateDependency: () => {},
+			handleDeleteDependency: () => {},
+			confirmMoveTaskToTrash: async () => {},
+			requestMoveTaskToTrash: async () => {},
+		});
+
+		const trashTask = createTask("task-trash", "Trash task", 2);
+		let boardState: BoardData = {
+			columns: [
+				{ id: "backlog", title: "Backlog", cards: [] },
+				{ id: "in_progress", title: "In Progress", cards: [] },
+				{ id: "review", title: "Review", cards: [] },
+				{ id: "trash", title: "Trash", cards: [trashTask] },
+			],
+			dependencies: [],
+		};
+		const setBoard = vi.fn<Dispatch<SetStateAction<BoardData>>>((nextBoard) => {
+			boardState = typeof nextBoard === "function" ? nextBoard(boardState) : nextBoard;
+		});
+		const stopTaskSession = vi.fn(async () => {});
+		const ensureTaskWorktree = vi.fn(async () => ({
+			ok: true as const,
+			response: {
+				ok: true as const,
+				path: "/tmp/task-trash",
+				baseRef: "main",
+				baseCommit: "abc123",
+			},
+		}));
+		const startTaskSession = vi.fn(async () => ({
+			ok: false as const,
+			message: "Task session is still shutting down. Wait a moment and try again.",
+		}));
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={boardState}
+					setBoard={setBoard}
+					ensureTaskWorktree={ensureTaskWorktree}
+					startTaskSession={startTaskSession}
+					stopTaskSession={stopTaskSession}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (!latestSnapshot) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			latestSnapshot!.handleRestoreTaskFromTrash("task-trash");
+			for (let i = 0; i < 10; i++) {
+				await Promise.resolve();
+			}
+		});
+
+		expect(stopTaskSession).toHaveBeenCalledWith("task-trash", { waitForExit: true });
+		expect(ensureTaskWorktree).toHaveBeenCalledTimes(1);
+		expect(startTaskSession).toHaveBeenCalledTimes(1);
+		expect(notifyErrorMock).toHaveBeenCalledWith("Task session is still shutting down. Wait a moment and try again.");
+		expect(boardState.columns.find((column) => column.id === "trash")?.cards.map((card) => card.id)).toEqual([
+			"task-trash",
+		]);
+		expect(boardState.columns.find((column) => column.id === "review")?.cards).toEqual([]);
+	});
+
 	it("restarts a session from in_progress with resumeConversation and without awaitReview", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 

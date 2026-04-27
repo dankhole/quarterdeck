@@ -120,8 +120,15 @@ export class TerminalAttachmentController {
 			this.viewport.forceResize();
 		}
 
-		if ((this.visibleContainer ?? this.stageContainer) && sessionInstanceChanged) {
-			this.requestRestore();
+		if ((this.visibleContainer ?? this.stageContainer) && sessionInstanceChanged && summary.pid !== null) {
+			// A new pid/startedAt means the server-side PTY changed underneath an
+			// existing pooled slot. Reconnect the sockets rather than queueing a
+			// restore on the old control socket; dogfood showed reused slots can
+			// remain stuck forever waiting for an initial restore that never
+			// completes. Ignore processless stop/exit summaries here: reconnecting
+			// on pid=null just flashes the old terminal before untrash starts the
+			// real replacement process.
+			this.session.reconnect("session_instance_changed");
 		}
 	}
 

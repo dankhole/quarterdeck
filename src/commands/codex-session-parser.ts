@@ -240,7 +240,10 @@ export function parseCodexEventLine(line: string, state: CodexWatcherState): Cod
 		}
 		const sessionMetaPayload = asRecord(message.payload);
 		const sessionId = sessionMetaPayload ? readStringField(sessionMetaPayload, "id") : null;
-		if (!sessionId || sessionId === state.lastSessionId) {
+		if (!sessionId) {
+			return null;
+		}
+		if (sessionId === state.lastSessionId) {
 			return null;
 		}
 		state.lastSessionId = sessionId;

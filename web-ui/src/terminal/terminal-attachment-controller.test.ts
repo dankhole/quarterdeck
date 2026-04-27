@@ -6,7 +6,9 @@ const viewportInstances: Array<{
 }> = [];
 const sessionInstances: Array<{
 	requestRestore: ReturnType<typeof vi.fn>;
+	reconnect: ReturnType<typeof vi.fn>;
 	sessionAgentId: "claude" | "codex" | null;
+	isIoOpen: boolean;
 	emitSummaryStateChange: (summary: {
 		state: "idle" | "running" | "awaiting_review" | "interrupted" | "failed";
 		startedAt: number | null;
@@ -74,6 +76,7 @@ vi.mock("@/terminal/terminal-session-handle", () => ({
 			isIoOpen: false,
 			restoreCompleted: false,
 			ensureConnected: vi.fn(),
+			reconnect: vi.fn(),
 			connectToTask: vi.fn(),
 			disconnectFromTask: vi.fn(() => null),
 			onceConnectionReady: vi.fn(),
@@ -164,7 +167,7 @@ describe("TerminalAttachmentController", () => {
 		expect(session.requestRestore).toHaveBeenCalledOnce();
 	});
 
-	it("requests a fresh restore when the same task reports a new session instance", () => {
+	it("reconnects sockets when the same task reports a new session instance", () => {
 		new TerminalAttachmentController(
 			1,
 			{ cursorColor: "cursor", terminalBackgroundColor: "background" },
@@ -173,11 +176,61 @@ describe("TerminalAttachmentController", () => {
 		const session = getLatestSession();
 
 		session.emitSummaryStateChange({ state: "awaiting_review", startedAt: 100, pid: 111 });
-		session.requestRestore.mockClear();
+		session.reconnect.mockClear();
 
 		session.emitSummaryStateChange({ state: "awaiting_review", startedAt: 200, pid: 222 });
 
-		expect(session.requestRestore).toHaveBeenCalledOnce();
+		expect(session.reconnect).toHaveBeenCalledWith("session_instance_changed");
+	});
+
+	it("reconnects sockets even when the IO stream is open for a new session instance", () => {
+		new TerminalAttachmentController(
+			1,
+			{ cursorColor: "cursor", terminalBackgroundColor: "background" },
+			{ isDisposed: () => false },
+		);
+		const session = getLatestSession();
+
+		session.emitSummaryStateChange({ state: "awaiting_review", startedAt: 100, pid: 111 });
+		session.reconnect.mockClear();
+		session.isIoOpen = true;
+
+		session.emitSummaryStateChange({ state: "awaiting_review", startedAt: 200, pid: 222 });
+
+		expect(session.reconnect).toHaveBeenCalledWith("session_instance_changed");
+	});
+
+	it("does not reconnect sockets for processless stop summaries", () => {
+		new TerminalAttachmentController(
+			1,
+			{ cursorColor: "cursor", terminalBackgroundColor: "background" },
+			{ isDisposed: () => false },
+		);
+		const session = getLatestSession();
+
+		session.emitSummaryStateChange({ state: "awaiting_review", startedAt: 100, pid: 111 });
+		session.reconnect.mockClear();
+
+		session.emitSummaryStateChange({ state: "awaiting_review", startedAt: 100, pid: null });
+
+		expect(session.reconnect).not.toHaveBeenCalled();
+	});
+
+	it("reconnects when a live replacement pid appears after a processless stop summary", () => {
+		new TerminalAttachmentController(
+			1,
+			{ cursorColor: "cursor", terminalBackgroundColor: "background" },
+			{ isDisposed: () => false },
+		);
+		const session = getLatestSession();
+
+		session.emitSummaryStateChange({ state: "awaiting_review", startedAt: 100, pid: 111 });
+		session.emitSummaryStateChange({ state: "awaiting_review", startedAt: 100, pid: null });
+		session.reconnect.mockClear();
+
+		session.emitSummaryStateChange({ state: "awaiting_review", startedAt: 200, pid: 222 });
+
+		expect(session.reconnect).toHaveBeenCalledWith("session_instance_changed");
 	});
 
 	it("does not request restore for summary updates on the same session instance", () => {
