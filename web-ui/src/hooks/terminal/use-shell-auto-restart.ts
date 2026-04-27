@@ -18,6 +18,8 @@ interface UseShellAutoRestartOptions {
 export interface UseShellAutoRestartResult {
 	handleShellExit: (taskId: string, exitCode: number | null) => void;
 	cancelPendingRestart: (taskId: string) => void;
+	suppressNextExit: (taskId: string) => void;
+	clearSuppressedExit: (taskId: string) => void;
 }
 
 export function useShellAutoRestart({
@@ -30,6 +32,7 @@ export function useShellAutoRestart({
 	const rateLimiterRef = useRef<Map<string, number[]>>(new Map());
 	const pendingTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 	const restartInProgressRef = useRef<Set<string>>(new Set());
+	const suppressedNextExitRef = useRef<Set<string>>(new Set());
 
 	const optionsRef = useRef({
 		shellAutoRestartEnabled,
@@ -64,8 +67,23 @@ export function useShellAutoRestart({
 		}
 	}, []);
 
+	const suppressNextExit = useCallback(
+		(taskId: string): void => {
+			suppressedNextExitRef.current.add(taskId);
+			cancelPendingRestart(taskId);
+		},
+		[cancelPendingRestart],
+	);
+
+	const clearSuppressedExit = useCallback((taskId: string): void => {
+		suppressedNextExitRef.current.delete(taskId);
+	}, []);
+
 	const handleShellExit = useCallback(
 		(taskId: string, exitCode: number | null) => {
+			if (suppressedNextExitRef.current.delete(taskId)) {
+				return;
+			}
 			if (exitCode === 0) {
 				return;
 			}
@@ -131,8 +149,9 @@ export function useShellAutoRestart({
 				clearTimeout(timer);
 			}
 			pendingTimersRef.current.clear();
+			suppressedNextExitRef.current.clear();
 		};
 	}, []);
 
-	return { handleShellExit, cancelPendingRestart };
+	return { handleShellExit, cancelPendingRestart, suppressNextExit, clearSuppressedExit };
 }

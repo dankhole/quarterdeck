@@ -10,6 +10,9 @@ import {
 	stageTaskTerminalContainer,
 	type TaskTerminalHandle,
 } from "@/terminal/terminal-reuse-manager";
+import { createClientLogger } from "@/utils/client-logger";
+
+const log = createClientLogger("persistent-terminal-session");
 
 interface UsePersistentTerminalSessionInput {
 	taskId: string;
@@ -107,6 +110,7 @@ export function usePersistentTerminalSession({
 		// These are workspace-scoped manual shells, not pooled task agent viewers.
 		if (isDedicatedShellTerminal) {
 			if (!enabled) {
+				log.debug("dedicated shell terminal disabled; disposing", { taskId, projectId });
 				disposeDedicatedShellTerminal(terminalRef, previousSessionRef);
 				setLastError(null);
 				setIsLoading(false);
@@ -115,6 +119,7 @@ export function usePersistentTerminalSession({
 			}
 
 			if (!projectId) {
+				log.warn("dedicated shell terminal cannot show without a project", { taskId });
 				disposeDedicatedShellTerminal(terminalRef, previousSessionRef);
 				setLastError("No project selected.");
 				setIsLoading(false);
@@ -122,6 +127,7 @@ export function usePersistentTerminalSession({
 			}
 			const container = containerRef.current;
 			if (!container) {
+				log.debug("dedicated shell terminal waiting for container", { taskId, projectId });
 				return;
 			}
 			const previousSession = previousSessionRef.current;
@@ -137,6 +143,12 @@ export function usePersistentTerminalSession({
 				cursorColor,
 				terminalBackgroundColor,
 			});
+			log.debug("showing dedicated shell terminal", {
+				taskId,
+				projectId,
+				sessionStartedAt,
+				didSessionRestart,
+			});
 			if (didSessionRestart) {
 				terminal.reset();
 			}
@@ -151,20 +163,28 @@ export function usePersistentTerminalSession({
 			setIsStopping(false);
 			const unsubscribe = terminal.subscribe({
 				onConnectionReady: (connectedTaskId: string) => {
+					log.debug("dedicated shell terminal connection ready", { taskId: connectedTaskId, projectId });
 					setIsLoading(false);
 					callbackRef.current.onConnectionReady?.(connectedTaskId);
 				},
-				onLastError: setLastError,
+				onLastError: (message: string | null) => {
+					if (message) {
+						log.warn("dedicated shell terminal connection error", { taskId, projectId, message });
+					}
+					setLastError(message);
+				},
 				onSummary: (summary: RuntimeTaskSessionSummary) => {
 					callbackRef.current.onSummary?.(summary);
 				},
 				onExit: (exitTaskId: string, exitCode: number | null) => {
+					log.info("dedicated shell terminal exited", { taskId: exitTaskId, projectId, exitCode });
 					callbackRef.current.onExit?.(exitTaskId, exitCode);
 				},
 			});
 			terminal.attachToStageContainer(container);
 			terminal.show({ cursorColor, terminalBackgroundColor }, { autoFocus, isVisible });
 			return () => {
+				log.debug("hiding dedicated shell terminal view", { taskId, projectId });
 				unsubscribe();
 				terminal.hide();
 				// Park the host element back to the off-screen root before React

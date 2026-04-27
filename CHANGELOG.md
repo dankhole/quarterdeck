@@ -14,6 +14,12 @@
 - Runtime-state WebSocket startup now sends the project list even when the selected project's full state cannot load, then reports the project-state error separately instead of leaving the browser with no visible projects.
 - Repair warnings are retained long enough for the browser snapshot to see them even when startup terminal-manager hydration repairs the file first, and the web UI no longer immediately retries `project.getState` after a partial snapshot with no project state.
 
+### Fix: stop shell terminal sessions on close
+
+- Home and task shell terminals now treat close/context switch as a real shell-session boundary: the browser disposes the dedicated terminal view and asks the runtime to stop the backing PTY instead of keeping hidden shells alive.
+- Project shortcuts now reuse an already-open home/task shell without calling `startShellSession` again, avoiding the visible terminal reboot when running a shortcut in an open shell.
+- Shell session exits now use the shared terminal finalizer, so `stopTaskSession({ waitForExit: true })` resolves on shell exits instead of waiting for the timeout fallback.
+
 ### Fix: log full toast warning/error messages to the debug log
 
 - Error and warning toasts now log their full, untruncated message through the existing tagged-logger system, so the debug log panel (and browser console) retains the complete text even when the toast itself truncates at 150 chars.

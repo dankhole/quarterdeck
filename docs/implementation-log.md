@@ -24,7 +24,21 @@ Runtime streaming now builds and sends the projects payload before attempting th
 
 Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/core/api/project-state.ts`, `src/server/runtime-state-hub.ts`, `src/state/project-state-index.ts`, `src/state/project-state.ts`, `test/integration/project-state.integration.test.ts`, `test/integration/state-streaming.integration.test.ts`, `web-ui/src/hooks/project/use-project-sync.test.tsx`, `web-ui/src/hooks/project/use-project-sync.ts`
 
-Commit: pending
+Commit: `94bdae0eb`
+
+## Fix: stop shell terminal sessions on close (2026-04-27)
+
+Shell terminals could get into a split-brain state where the PTY still accepted shortcut commands but the visible xterm pane stayed on the loading spinner with no logs. The fragile path was the dedicated shell-terminal persistence layer: closing or switching context hid/parked the terminal view while keeping the backing shell session around, then a later show had to coordinate DOM reattachment, WebSocket restore, and server session state perfectly.
+
+The intermediate fix makes shell lifetime explicit and conservative. Home shells are owned by the current project/root context; detail shells are owned by the selected task/worktree context. Closing a shell, switching away from its owning context, project switching, reset, and manual restart now dispose the dedicated terminal slot and send `stopTaskSession({ waitForExit: true })` for the shell task id. `pendingShellStopsRef` serializes close -> open races so a fresh start waits for the old PTY to finish exiting, and it now ignores duplicate stop requests for the same project/task while a stop is already pending. `useShellAutoRestart` gained one-shot exit suppression so intentional shell stops do not get treated as unexpected crashes. Project shortcuts were adjusted to truly reuse an already-open home/task shell instead of calling `startShellSession` again.
+
+Server-side, shell process exits now route through `finalizeProcessExit(...)` instead of manually notifying listeners and clearing `entry.active`; this resolves pending `stopTaskSessionAndWaitForExit` callers for shell sessions and makes the new client-side wait path reliable. Added shell spawn/exit logging on the runtime side plus dedicated-shell show/ready/error/exit/hide logging in the browser so future failures have a breadcrumb trail.
+
+The known tradeoff is intentional: this branch chooses "close means stop" over keeping shell PTYs alive while minimized. A follow-up todo tracks restoring VS Code-style minimized shell persistence once the hidden-shell lifecycle has a stronger ownership model.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `docs/todo.md`, `src/terminal/session-lifecycle.ts`, `web-ui/src/hooks/terminal/use-shell-auto-restart.ts`, `web-ui/src/hooks/terminal/use-terminal-panels.test.tsx`, `web-ui/src/hooks/terminal/use-terminal-panels.ts`, `web-ui/src/terminal/use-persistent-terminal-session.ts`
+
+Commit: `0dbd86632`, `2cdad884d`
 
 ## Fix: log full toast warning/error messages to the debug log (2026-04-25)
 

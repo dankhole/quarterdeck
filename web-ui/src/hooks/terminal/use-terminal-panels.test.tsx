@@ -9,12 +9,16 @@ import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory"
 import type { CardSelection } from "@/types";
 
 const startShellSessionMutateMock = vi.hoisted(() => vi.fn());
+const stopTaskSessionMutateMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/runtime/trpc-client", () => ({
 	getRuntimeTrpcClient: () => ({
 		runtime: {
 			startShellSession: {
 				mutate: startShellSessionMutateMock,
+			},
+			stopTaskSession: {
+				mutate: stopTaskSessionMutateMock,
 			},
 		},
 	}),
@@ -31,8 +35,11 @@ interface HookSnapshot {
 	detailTerminalPaneHeight: number | undefined;
 	detailTerminalTaskId: string | null;
 	handleToggleDetailTerminal: ReturnType<typeof useTerminalPanels>["handleToggleDetailTerminal"];
+	handleToggleHomeTerminal: ReturnType<typeof useTerminalPanels>["handleToggleHomeTerminal"];
 	homeTerminalPaneHeight: number | undefined;
+	isHomeTerminalOpen: boolean;
 	isDetailTerminalOpen: boolean;
+	prepareTerminalForShortcut: ReturnType<typeof useTerminalPanels>["prepareTerminalForShortcut"];
 	resetBottomTerminalLayoutCustomizations: ReturnType<
 		typeof useTerminalPanels
 	>["resetBottomTerminalLayoutCustomizations"];
@@ -114,8 +121,11 @@ function HookHarness({
 			detailTerminalPaneHeight: result.detailTerminalPaneHeight,
 			detailTerminalTaskId: result.detailTerminalTaskId,
 			handleToggleDetailTerminal: result.handleToggleDetailTerminal,
+			handleToggleHomeTerminal: result.handleToggleHomeTerminal,
 			homeTerminalPaneHeight: result.homeTerminalPaneHeight,
+			isHomeTerminalOpen: result.isHomeTerminalOpen,
 			isDetailTerminalOpen: result.isDetailTerminalOpen,
+			prepareTerminalForShortcut: result.prepareTerminalForShortcut,
 			resetBottomTerminalLayoutCustomizations: result.resetBottomTerminalLayoutCustomizations,
 			setDetailTerminalPaneHeight: result.setDetailTerminalPaneHeight,
 			setHomeTerminalPaneHeight: result.setHomeTerminalPaneHeight,
@@ -127,8 +137,11 @@ function HookHarness({
 		result.detailTerminalPaneHeight,
 		result.detailTerminalTaskId,
 		result.handleToggleDetailTerminal,
+		result.handleToggleHomeTerminal,
 		result.homeTerminalPaneHeight,
+		result.isHomeTerminalOpen,
 		result.isDetailTerminalOpen,
+		result.prepareTerminalForShortcut,
 		result.resetBottomTerminalLayoutCustomizations,
 		result.setDetailTerminalPaneHeight,
 		result.setHomeTerminalPaneHeight,
@@ -145,7 +158,12 @@ describe("useTerminalPanels", () => {
 	beforeEach(() => {
 		window.localStorage.clear();
 		startShellSessionMutateMock.mockReset();
+		stopTaskSessionMutateMock.mockReset();
 		startShellSessionMutateMock.mockImplementation(async ({ taskId }: { taskId: string }) => ({
+			ok: true,
+			summary: createSummary(taskId),
+		}));
+		stopTaskSessionMutateMock.mockImplementation(async ({ taskId }: { taskId: string }) => ({
 			ok: true,
 			summary: createSummary(taskId),
 		}));
@@ -236,12 +254,94 @@ describe("useTerminalPanels", () => {
 		});
 
 		const restoredTaskASnapshot = requireSnapshot(latestSnapshot);
-		expect(restoredTaskASnapshot.isDetailTerminalOpen).toBe(true);
+		expect(restoredTaskASnapshot.isDetailTerminalOpen).toBe(false);
 		expect(restoredTaskASnapshot.detailTerminalTaskId).toBe("__detail_terminal__:task-a");
-		// Switching back should NOT re-call startShellSession — the selection ref
-		// is preserved across task switches so the cached terminal reconnects
-		// without a redundant server round-trip that could kill a running shell.
 		expect(startShellSessionMutateMock).toHaveBeenCalledTimes(1);
+		expect(stopTaskSessionMutateMock).toHaveBeenCalledWith({
+			taskId: "__detail_terminal__:task-a",
+			waitForExit: true,
+		});
+	});
+
+	it("reuses an already-open home terminal when preparing a shortcut", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const prepareWaitForTerminalConnectionReady = vi.fn(() => async () => {});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					selectedCard={null}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushPromises();
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).handleToggleHomeTerminal();
+			await flushPromises();
+		});
+
+		expect(requireSnapshot(latestSnapshot).isHomeTerminalOpen).toBe(true);
+		expect(startShellSessionMutateMock).toHaveBeenCalledTimes(1);
+
+		await act(async () => {
+			const result = await requireSnapshot(latestSnapshot).prepareTerminalForShortcut({
+				prepareWaitForTerminalConnectionReady,
+			});
+			expect(result).toEqual({
+				hadExistingOpenTerminal: true,
+				ok: true,
+				targetTaskId: "__home_terminal__",
+			});
+			await flushPromises();
+		});
+
+		expect(startShellSessionMutateMock).toHaveBeenCalledTimes(1);
+		expect(prepareWaitForTerminalConnectionReady).not.toHaveBeenCalled();
+	});
+
+	it("reuses an already-open detail terminal when preparing a shortcut", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const selection = createSelection("task-a");
+		const prepareWaitForTerminalConnectionReady = vi.fn(() => async () => {});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					selectedCard={selection}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushPromises();
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).handleToggleDetailTerminal();
+			await flushPromises();
+		});
+
+		expect(requireSnapshot(latestSnapshot).isDetailTerminalOpen).toBe(true);
+		expect(startShellSessionMutateMock).toHaveBeenCalledTimes(1);
+
+		await act(async () => {
+			const result = await requireSnapshot(latestSnapshot).prepareTerminalForShortcut({
+				prepareWaitForTerminalConnectionReady,
+			});
+			expect(result).toEqual({
+				hadExistingOpenTerminal: true,
+				ok: true,
+				targetTaskId: "__detail_terminal__:task-a",
+			});
+			await flushPromises();
+		});
+
+		expect(startShellSessionMutateMock).toHaveBeenCalledTimes(1);
+		expect(prepareWaitForTerminalConnectionReady).not.toHaveBeenCalled();
 	});
 
 	it("shares the last resized bottom terminal height across home and detail panes", async () => {

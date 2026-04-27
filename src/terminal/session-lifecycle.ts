@@ -25,7 +25,7 @@ import {
 	type StartTaskSessionRequest,
 } from "./session-manager-types";
 import { processShellSessionOutput } from "./session-output-pipeline";
-import { cloneSummary, type SessionTransitionEvent, type SessionTransitionResult } from "./session-summary-store";
+import type { SessionTransitionEvent, SessionTransitionResult } from "./session-summary-store";
 import { TerminalStateMirror } from "./terminal-state-mirror";
 
 const sessionLog = createTaggedLogger("session-mgr");
@@ -338,6 +338,13 @@ export async function spawnShellSession(
 
 	let session: PtySession;
 	try {
+		sessionLog.info("spawning shell session", {
+			taskId: request.taskId,
+			binary: request.binary,
+			cwd: request.cwd,
+			cols,
+			rows,
+		});
 		session = PtySession.spawn({
 			binary: request.binary,
 			args: request.args ?? [],
@@ -352,6 +359,10 @@ export async function spawnShellSession(
 				}
 				stopWorkspaceTrustTimers(entry.active);
 				clearInterruptRecoveryTimer(entry.active);
+				sessionLog.info("shell session process exited", {
+					taskId: request.taskId,
+					exitCode: event.exitCode,
+				});
 
 				const summary = deps.updateStore(request.taskId, {
 					state: entry.active.session.wasInterrupted() ? "interrupted" : "idle",
@@ -359,14 +370,13 @@ export async function spawnShellSession(
 					exitCode: event.exitCode,
 					pid: null,
 				});
-
-				for (const taskListener of entry.listeners.values()) {
-					if (summary) {
-						taskListener.onState?.(cloneSummary(summary));
-					}
-					taskListener.onExit?.(event.exitCode);
+				// Shell stops use waitForExit too. The shared finalizer resolves
+				// pending stopTaskSessionAndWaitForExit callers in addition to
+				// notifying listeners and clearing the active process entry.
+				const cleanupFn = finalizeProcessExit(entry, summary, event.exitCode);
+				if (cleanupFn) {
+					cleanupFn().catch(() => {});
 				}
-				entry.active = null;
 			},
 		});
 	} catch (error) {
@@ -388,6 +398,11 @@ export async function spawnShellSession(
 		});
 		throw new Error(formatSpawnFailure(request.binary, error, "shell"));
 	}
+	sessionLog.info("shell session spawned successfully", {
+		taskId: request.taskId,
+		pid: session.pid,
+		cwd: request.cwd,
+	});
 
 	entry.active = createActiveProcessState({ session, cols, rows, willAutoTrust: false });
 	entry.terminalStateMirror = terminalStateMirror;
