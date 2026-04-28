@@ -4,8 +4,8 @@ import {
 	buildDisplayItems,
 	buildUnifiedDiffRows,
 	CollapsedBlockControls,
+	createHighlightedLineCache,
 	DiffRowText,
-	getHighlightedLineHtml,
 	resolvePrismGrammar,
 	resolvePrismLanguage,
 	type UnifiedDiffRow,
@@ -115,6 +115,10 @@ export function SplitDiff({
 	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
 	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
 	const prismGrammar = useMemo(() => resolvePrismGrammar(prismLanguage), [prismLanguage]);
+	const highlightCache = useMemo(
+		() => createHighlightedLineCache(prismGrammar, prismLanguage),
+		[oldText, newText, prismGrammar, prismLanguage],
+	);
 	const rows = useMemo(() => buildUnifiedDiffRows(oldText, newText), [oldText, newText]);
 	const displayItems = useMemo(() => buildDisplayItems(rows, expandedBlocks), [expandedBlocks, rows]);
 
@@ -140,7 +144,7 @@ export function SplitDiff({
 				? baseClass
 				: `${baseClass} kb-diff-row-noncommentable`;
 		const canClickRow = canCommentOnSide && !hasComment;
-		const highlightedLineHtml = getHighlightedLineHtml(row.text, prismGrammar, prismLanguage);
+		const highlightedLineHtml = row.segments ? null : highlightCache.get(row.text);
 
 		return (
 			<div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -161,12 +165,7 @@ export function SplitDiff({
 						canComment={canCommentOnSide}
 						onDeleteComment={hasComment ? () => onDeleteComment(rowLineNumber, row.variant) : undefined}
 					/>
-					<DiffRowText
-						row={row}
-						highlightedLineHtml={highlightedLineHtml}
-						grammar={prismGrammar}
-						language={prismLanguage}
-					/>
+					<DiffRowText row={row} highlightedLineHtml={highlightedLineHtml} highlightCache={highlightCache} />
 				</div>
 				{existingComment ? (
 					<InlineComment

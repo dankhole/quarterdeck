@@ -6,7 +6,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { showAppToast } from "@/components/app-toaster";
 import {
-	getHighlightedLineHtml,
+	createHighlightedLineCache,
 	resolvePrismGrammar,
 	resolvePrismLanguage,
 	resolvePrismLanguageByAlias,
@@ -82,6 +82,10 @@ export function FileContentViewer({
 
 	const prismLanguage = useMemo(() => (filePath ? resolvePrismLanguage(filePath) : null), [filePath]);
 	const prismGrammar = useMemo(() => resolvePrismGrammar(prismLanguage), [prismLanguage]);
+	const highlightCache = useMemo(
+		() => createHighlightedLineCache(prismGrammar, prismLanguage),
+		[content, prismGrammar, prismLanguage],
+	);
 
 	const lines = useMemo(() => {
 		if (!content) {
@@ -93,11 +97,6 @@ export function FileContentViewer({
 		}
 		return rawLines;
 	}, [content]);
-
-	const highlightedLines = useMemo(() => {
-		if (!prismGrammar || !prismLanguage) return null;
-		return lines.map((line) => getHighlightedLineHtml(line, prismGrammar, prismLanguage));
-	}, [lines, prismGrammar, prismLanguage]);
 
 	const gutterWidth = useMemo(() => {
 		const digits = String(lines.length).length;
@@ -254,7 +253,7 @@ export function FileContentViewer({
 						{virtualizer.getVirtualItems().map((virtualItem) => {
 							const lineNumber = virtualItem.index + 1;
 							const line = lines[virtualItem.index] ?? "";
-							const highlightedHtml = highlightedLines?.[virtualItem.index] ?? null;
+							const highlightedHtml = highlightCache.get(line);
 							return (
 								<div
 									key={virtualItem.key}

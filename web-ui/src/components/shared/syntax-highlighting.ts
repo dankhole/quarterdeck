@@ -62,6 +62,14 @@ const PRISM_LANGUAGE_BY_EXTENSION: Record<string, string> = {
 	zsh: "bash",
 };
 
+export const MAX_SYNC_HIGHLIGHT_LINE_LENGTH = 20_000;
+
+export interface HighlightedLineCache {
+	get(line: string): string | null;
+	clear: () => void;
+	readonly size: number;
+}
+
 function getPathBasename(path: string): string {
 	const separatorIndex = path.lastIndexOf("/");
 	return separatorIndex >= 0 ? path.slice(separatorIndex + 1) : path;
@@ -102,27 +110,34 @@ export function getHighlightedLineHtml(
 	if (!grammar || !language) {
 		return null;
 	}
+	if (line.length > MAX_SYNC_HIGHLIGHT_LINE_LENGTH) {
+		return null;
+	}
 	return Prism.highlight(line.length > 0 ? line : " ", grammar, language);
 }
 
-function toLines(text: string): string[] {
-	const rawLines = text.split("\n");
-	return text.endsWith("\n") ? rawLines.slice(0, -1) : rawLines;
-}
-
-export function buildHighlightedLineMap(
-	text: string | null | undefined,
+export function createHighlightedLineCache(
 	grammar: Prism.Grammar | null,
 	language: string | null,
-): Map<number, string> {
-	const lines = toLines(text ?? "");
-	const highlightedByLine = new Map<number, string>();
-	for (let index = 0; index < lines.length; index += 1) {
-		const line = lines[index] ?? "";
-		const highlighted = getHighlightedLineHtml(line, grammar, language);
-		if (highlighted != null) {
-			highlightedByLine.set(index + 1, highlighted);
-		}
-	}
-	return highlightedByLine;
+): HighlightedLineCache {
+	const highlightedByLine = new Map<string, string | null>();
+	return {
+		get(line: string): string | null {
+			if (!grammar || !language) {
+				return null;
+			}
+			if (highlightedByLine.has(line)) {
+				return highlightedByLine.get(line) ?? null;
+			}
+			const highlighted = getHighlightedLineHtml(line, grammar, language);
+			highlightedByLine.set(line, highlighted);
+			return highlighted;
+		},
+		clear(): void {
+			highlightedByLine.clear();
+		},
+		get size(): number {
+			return highlightedByLine.size;
+		},
+	};
 }

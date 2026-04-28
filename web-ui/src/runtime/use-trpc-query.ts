@@ -4,6 +4,7 @@ interface UseTrpcQueryOptions<TData> {
 	enabled: boolean;
 	queryFn: () => Promise<TData>;
 	retainDataOnError?: boolean;
+	isDataEqual?: (previousData: TData, nextData: TData) => boolean;
 }
 
 export interface UseTrpcQueryResult<TData> {
@@ -28,18 +29,17 @@ function toError(value: unknown): Error {
 // request race protection when inputs change, and unmount safety so stale responses
 // do not overwrite newer state. This hook provides that minimal behavior with no cache layer.
 export function useTrpcQuery<TData>(options: UseTrpcQueryOptions<TData>): UseTrpcQueryResult<TData> {
-	const { enabled, queryFn, retainDataOnError = false } = options;
+	const { enabled, queryFn, retainDataOnError = false, isDataEqual } = options;
 	const [data, setDataRaw] = useState<TData | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [isError, setIsError] = useState(false);
 	const [error, setError] = useState<Error | null>(null);
 	const requestIdRef = useRef(0);
 	const isMountedRef = useRef(true);
-	const prevJsonRef = useRef<string | null>(null);
+	const dataRef = useRef<TData | null>(null);
 
 	const setData = useCallback((nextData: TData | null) => {
-		const nextJson = nextData === null ? null : JSON.stringify(nextData);
-		prevJsonRef.current = nextJson;
+		dataRef.current = nextData;
 		setDataRaw(nextData);
 	}, []);
 
@@ -67,9 +67,9 @@ export function useTrpcQuery<TData>(options: UseTrpcQueryOptions<TData>): UseTrp
 			if (!isMountedRef.current || requestIdRef.current !== requestId) {
 				return null;
 			}
-			const nextJson = JSON.stringify(nextData);
-			if (nextJson !== prevJsonRef.current) {
-				prevJsonRef.current = nextJson;
+			const previousData = dataRef.current;
+			if (previousData === null || !isDataEqual?.(previousData, nextData)) {
+				dataRef.current = nextData;
 				setDataRaw(nextData);
 			}
 			setIsLoading(false);
@@ -86,7 +86,7 @@ export function useTrpcQuery<TData>(options: UseTrpcQueryOptions<TData>): UseTrp
 			setError(toError(queryError));
 			return null;
 		}
-	}, [enabled, queryFn, retainDataOnError]);
+	}, [enabled, isDataEqual, queryFn, retainDataOnError, setData]);
 
 	useEffect(() => {
 		if (!enabled) {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { GitCommitDiffSource } from "@/components/git/history/git-commit-diff-panel";
+import { areGitRefsResponsesEqual, areWorkdirChangesRevisionsEqual } from "@/runtime/query-equality";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeGitCommit,
@@ -115,6 +116,7 @@ export function useGitHistoryData({
 		enabled: enabled && projectId !== null,
 		queryFn: refsQueryFn,
 		retainDataOnError: true,
+		isDataEqual: areGitRefsResponsesEqual,
 	});
 
 	const scopeKey = `${projectId ?? "__none__"}:${taskScope?.taskId ?? "__home__"}:${taskScope?.baseRef ?? "__home__"}`;
@@ -377,6 +379,7 @@ export function useGitHistoryData({
 		enabled: shouldLoadWorkingCopyChanges,
 		queryFn: workingCopyQueryFn,
 		retainDataOnError: true,
+		isDataEqual: areWorkdirChangesRevisionsEqual,
 	});
 
 	useEffect(() => {

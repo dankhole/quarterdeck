@@ -2,9 +2,9 @@ import { useMemo } from "react";
 
 import {
 	buildDisplayItems,
-	buildHighlightedLineMap,
 	buildUnifiedDiffRows,
 	CollapsedBlockControls,
+	createHighlightedLineCache,
 	DiffRowText,
 	resolvePrismGrammar,
 	resolvePrismLanguage,
@@ -37,13 +37,9 @@ export function UnifiedDiff({
 	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
 	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
 	const prismGrammar = useMemo(() => resolvePrismGrammar(prismLanguage), [prismLanguage]);
-	const highlightedOldByLine = useMemo(
-		() => buildHighlightedLineMap(oldText, prismGrammar, prismLanguage),
-		[oldText, prismGrammar, prismLanguage],
-	);
-	const highlightedNewByLine = useMemo(
-		() => buildHighlightedLineMap(newText, prismGrammar, prismLanguage),
-		[newText, prismGrammar, prismLanguage],
+	const highlightCache = useMemo(
+		() => createHighlightedLineCache(prismGrammar, prismLanguage),
+		[oldText, newText, prismGrammar, prismLanguage],
 	);
 	const rows = useMemo(() => buildUnifiedDiffRows(oldText, newText), [oldText, newText]);
 	const displayItems = useMemo(() => buildDisplayItems(rows, expandedBlocks), [expandedBlocks, rows]);
@@ -60,12 +56,7 @@ export function UnifiedDiff({
 					: "kb-diff-row kb-diff-row-context";
 		const rowClass = hasComment ? `${baseClass} kb-diff-row-commented` : baseClass;
 		const canClickRow = row.lineNumber != null && !hasComment;
-		const highlightedLineHtml =
-			row.lineNumber == null
-				? null
-				: row.variant === "removed"
-					? (highlightedOldByLine.get(row.lineNumber) ?? null)
-					: (highlightedNewByLine.get(row.lineNumber) ?? null);
+		const highlightedLineHtml = row.lineNumber == null || row.segments ? null : highlightCache.get(row.text);
 
 		const handleRowClick =
 			row.lineNumber != null && !hasComment
@@ -82,12 +73,7 @@ export function UnifiedDiff({
 						hasComment={hasComment}
 						onDeleteComment={hasComment ? () => onDeleteComment(row.lineNumber!, row.variant) : undefined}
 					/>
-					<DiffRowText
-						row={row}
-						highlightedLineHtml={highlightedLineHtml}
-						grammar={prismGrammar}
-						language={prismLanguage}
-					/>
+					<DiffRowText row={row} highlightedLineHtml={highlightedLineHtml} highlightCache={highlightCache} />
 				</div>
 				{existingComment ? (
 					<InlineComment

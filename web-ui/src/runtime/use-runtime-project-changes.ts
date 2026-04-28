@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-
+import { areWorkdirChangesRevisionsEqual } from "@/runtime/query-equality";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeDiffMode, RuntimeWorkdirChangesMode, RuntimeWorkdirChangesResponse } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
@@ -48,6 +48,7 @@ export function useRuntimeProjectChanges(
 	const changesQuery = useTrpcQuery<RuntimeWorkdirChangesResponse>({
 		enabled: hasProjectScope,
 		queryFn,
+		isDataEqual: areWorkdirChangesRevisionsEqual,
 	});
 
 	const refresh = useCallback(async () => {

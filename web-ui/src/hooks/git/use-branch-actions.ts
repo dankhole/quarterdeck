@@ -5,6 +5,7 @@ import {
 	resolveCheckoutDialogState,
 } from "@/components/git/panels";
 import { showGitErrorToast, showGitSuccessToast, showGitWarningToast } from "@/hooks/git/git-actions";
+import { areGitRefsResponsesEqual } from "@/runtime/query-equality";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRef, RuntimeGitRefsResponse, RuntimeGitSyncSummary } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
@@ -132,6 +133,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 	const refsQuery = useTrpcQuery<RuntimeGitRefsResponse>({
 		enabled: (isBranchPopoverOpen || isRefsRequested) && projectId !== null,
 		queryFn: refsQueryFn,
+		isDataEqual: areGitRefsResponsesEqual,
 	});
 
 	const branches = refsQuery.data?.refs ?? null;

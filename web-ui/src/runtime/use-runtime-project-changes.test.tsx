@@ -17,6 +17,8 @@ vi.mock("@/runtime/trpc-client", () => ({
 	}),
 }));
 
+let nextGeneratedAt = 1;
+
 function createDeferred<T>() {
 	let resolve!: (value: T) => void;
 	let reject!: (reason?: unknown) => void;
@@ -30,7 +32,7 @@ function createDeferred<T>() {
 function createWorkdirChangesResponse(path: string): RuntimeWorkdirChangesResponse {
 	return {
 		repoRoot: "/tmp/project",
-		generatedAt: Date.now(),
+		generatedAt: nextGeneratedAt++,
 		files: [
 			{
 				path,
@@ -90,6 +92,7 @@ describe("useRuntimeProjectChanges", () => {
 
 	beforeEach(() => {
 		getChangesQueryMock.mockReset();
+		nextGeneratedAt = 1;
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

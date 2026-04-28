@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { areListFilesResponsesEqual } from "@/runtime/query-equality";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeFileContentResponse, RuntimeListFilesResponse } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
@@ -92,6 +93,7 @@ export function useFileBrowserData(options: {
 	const fileListQuery = useTrpcQuery<RuntimeListFilesResponse>({
 		enabled: projectId !== null,
 		queryFn: listFilesQueryFn,
+		isDataEqual: areListFilesResponsesEqual,
 	});
 
 	// Restore last selected file when the scope changes, or clear if none was remembered.

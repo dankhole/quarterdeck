@@ -39,6 +39,8 @@ vi.mock("@/runtime/trpc-client", () => ({
 	}),
 }));
 
+let nextGeneratedAt = 1;
+
 interface HookSnapshot {
 	refs: string[];
 	activeRefName: string | null;
@@ -133,7 +135,7 @@ function createDiffResponse(hash: string): RuntimeGitCommitDiffResponse {
 function createWorkdirChangesResponse(): RuntimeWorkdirChangesResponse {
 	return {
 		repoRoot: "/tmp/project",
-		generatedAt: Date.now(),
+		generatedAt: nextGeneratedAt++,
 		files: [],
 	};
 }
@@ -184,6 +186,7 @@ describe("useGitHistoryData", () => {
 		getCommitDiffQueryMock.mockReset();
 		getChangesQueryMock.mockReset();
 		getWorkdirChangesQueryMock.mockReset();
+		nextGeneratedAt = 1;
 
 		getGitRefsQueryMock.mockImplementation(async (taskScope: { taskId: string; baseRef: string } | null) =>
 			taskScope ? createRefsResponse("task-branch", "taskhash1") : createRefsResponse("main", "homehash1"),

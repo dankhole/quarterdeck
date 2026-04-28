@@ -24,6 +24,12 @@
 - Dropped the obsolete inline task toggle, local storage key, deferred Codex startup command path, and CLI man-page option.
 - Updated fixtures and coverage to use the standard task start flow everywhere.
 
+### Fix: reduce browser main-thread work
+
+- Replaced the shared tRPC hook's unconditional `JSON.stringify` response comparison with opt-in lightweight endpoint equality for polled changes, file lists, and git refs.
+- Git file and diff viewers now highlight rendered lines through a per-line Prism cache instead of pre-highlighting whole files or full old/new diff text, with very long lines falling back to plain text.
+- Added focused coverage for query revision equality, syntax highlighting cache behavior, and unified diff rendering without whole-file highlighting.
+
 ### Chore: remove reviewed-task auto-trash
 
 - Removed the task-level “Auto-trash when reviewed” setting, its persisted board fields, local storage defaults, review-column timer hook, cancel affordances, and CLI/man-page option references.

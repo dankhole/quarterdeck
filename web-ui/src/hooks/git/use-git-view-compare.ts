@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { areGitRefsResponsesEqual } from "@/runtime/query-equality";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRef, RuntimeGitRefsResponse, RuntimeGitSyncSummary } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
@@ -137,6 +138,7 @@ export function useGitViewCompare({
 	const refsQuery = useTrpcQuery<RuntimeGitRefsResponse>({
 		enabled: isActive && currentProjectId !== null,
 		queryFn: refsQueryFn,
+		isDataEqual: areGitRefsResponsesEqual,
 	});
 
 	const branches = refsQuery.data?.refs ?? null;

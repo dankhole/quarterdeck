@@ -4,7 +4,12 @@ import { useCallback, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { CollapsedContextBlock, ExpandedBlockState, UnifiedDiffRow } from "./diff-parser";
 import { buildDisplayItems, INCREMENTAL_EXPAND_STEP, INCREMENTAL_EXPAND_THRESHOLD } from "./diff-parser";
-import { getHighlightedLineHtml, resolvePrismGrammar, resolvePrismLanguage } from "./syntax-highlighting";
+import {
+	createHighlightedLineCache,
+	type HighlightedLineCache,
+	resolvePrismGrammar,
+	resolvePrismLanguage,
+} from "./syntax-highlighting";
 
 export type {
 	CollapsedContextBlock,
@@ -25,7 +30,7 @@ export {
 } from "./diff-parser";
 // Re-export everything from sub-modules for backward compatibility.
 export {
-	buildHighlightedLineMap,
+	createHighlightedLineCache,
 	getHighlightedLineHtml,
 	resolvePrismGrammar,
 	resolvePrismLanguage,
@@ -35,13 +40,11 @@ export {
 export function DiffRowText({
 	row,
 	highlightedLineHtml,
-	grammar,
-	language,
+	highlightCache,
 }: {
 	row: UnifiedDiffRow;
 	highlightedLineHtml: string | null;
-	grammar: Prism.Grammar | null;
-	language: string | null;
+	highlightCache: HighlightedLineCache | null;
 }): React.ReactElement {
 	if (!row.segments) {
 		if (highlightedLineHtml) {
@@ -59,7 +62,7 @@ export function DiffRowText({
 						: segment.tone === "removed"
 							? "kb-diff-segment-removed"
 							: undefined;
-				const highlightedSegmentHtml = getHighlightedLineHtml(segment.text, grammar, language);
+				const highlightedSegmentHtml = highlightCache?.get(segment.text) ?? null;
 				if (highlightedSegmentHtml) {
 					return (
 						<span
@@ -205,6 +208,10 @@ export function ReadOnlyUnifiedDiff({ rows, path }: { rows: UnifiedDiffRow[]; pa
 	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
 	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
 	const prismGrammar = useMemo(() => resolvePrismGrammar(prismLanguage), [prismLanguage]);
+	const highlightCache = useMemo(
+		() => createHighlightedLineCache(prismGrammar, prismLanguage),
+		[prismGrammar, prismLanguage, rows],
+	);
 	const displayItems = useMemo(() => buildDisplayItems(rows, expandedBlocks), [expandedBlocks, rows]);
 
 	const renderRow = (row: UnifiedDiffRow): React.ReactElement => {
@@ -214,19 +221,14 @@ export function ReadOnlyUnifiedDiff({ rows, path }: { rows: UnifiedDiffRow[]; pa
 				: row.variant === "removed"
 					? "kb-diff-row kb-diff-row-removed"
 					: "kb-diff-row kb-diff-row-context";
-		const highlightedLineHtml = getHighlightedLineHtml(row.text, prismGrammar, prismLanguage);
+		const highlightedLineHtml = highlightCache.get(row.text);
 
 		return (
 			<div key={row.key} className={baseClass} style={{ cursor: "default" }}>
 				<span className="kb-diff-line-number" style={{ color: "var(--color-text-tertiary)" }}>
 					<span className="kb-diff-line-number-text">{row.lineNumber ?? ""}</span>
 				</span>
-				<DiffRowText
-					row={row}
-					highlightedLineHtml={highlightedLineHtml}
-					grammar={prismGrammar}
-					language={prismLanguage}
-				/>
+				<DiffRowText row={row} highlightedLineHtml={highlightedLineHtml} highlightCache={highlightCache} />
 			</div>
 		);
 	};
