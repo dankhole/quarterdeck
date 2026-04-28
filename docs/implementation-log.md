@@ -2,6 +2,18 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: show remote refs in base branch picker (2026-04-28)
+
+Dogfooding exposed that the task top-bar "from {baseRef}" dropdown only rendered local branches even though the git refs API already returned remote tracking refs and the full branch picker already grouped them. This made repositories without a local checkout of the desired base branch look empty or incomplete when setting a task base ref.
+
+The base-ref picker is now a dedicated `BaseRefLabel` component instead of an inline block inside `ConnectedTopBar`. It reuses the shared branch-selector sectioning helper, keeps project-pinned local branches first, renders separate Local and Remote sections, and updates the copy from branch-only language to ref-oriented loading, filter, and empty states. Selecting a remote ref stores the full ref name such as `origin/main`, so remote bases are not silently collapsed to local names.
+
+Focused web tests cover pinned/local/remote grouping, filtering across local and remote refs, and selecting `origin/main` without aliasing it. Validation included the component test, web TypeScript checking, and a narrow Biome check for the touched files.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `web-ui/src/components/app/base-ref-label.tsx`, `web-ui/src/components/app/base-ref-label.test.tsx`, `web-ui/src/components/app/connected-top-bar.tsx`.
+
+Commit: pending
+
 ## Chore: remove reviewed-task auto-trash (2026-04-28)
 
 Removed the task-level auto-trash automation end to end. Board cards and runtime board schemas no longer carry `autoReviewEnabled` / `autoReviewMode`, create/update task mutations no longer accept those fields, persisted board parsing ignores the old fields, and the task indicator semantic layer no longer exposes auto-review-specific blocking state. Existing saved board JSON can still hydrate because the parser strips unknown legacy fields.

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: show remote refs in base branch picker
+
+- The task top-bar base-ref dropdown now groups pinned local, local, and remote refs, so refs such as `origin/main` can be selected directly.
+- The base-ref picker now uses ref-oriented loading, filter, and empty-state copy and preserves the selected remote ref name instead of aliasing it to a local branch.
+
 ### Chore: remove reviewed-task auto-trash
 
 - Removed the task-level “Auto-trash when reviewed” setting, its persisted board fields, local storage defaults, review-column timer hook, cancel affordances, and CLI/man-page option references.

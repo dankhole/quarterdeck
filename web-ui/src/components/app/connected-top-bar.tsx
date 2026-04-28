@@ -1,10 +1,9 @@
-import * as RadixPopover from "@radix-ui/react-popover";
-import { ArrowDown, ArrowUp, Check, CircleArrowDown, Lock, LockOpen, Search } from "lucide-react";
-import { type ReactElement, useCallback, useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, CircleArrowDown } from "lucide-react";
+import { type ReactElement, useCallback } from "react";
+import { BaseRefLabel } from "@/components/app/base-ref-label";
 import { TopBar } from "@/components/app/top-bar";
 import { BranchPillTrigger, BranchSelectorPopover } from "@/components/git/panels/branch-selector-popover";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useBoardContext } from "@/providers/board-provider";
@@ -14,163 +13,8 @@ import { useProjectContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { useTerminalContext } from "@/providers/terminal-provider";
-import type { PromptShortcut, RuntimeGitRef, RuntimeGitSyncSummary, RuntimeProjectShortcut } from "@/runtime/types";
-import type { BoardCard, ReviewTaskWorktreeSnapshot } from "@/types";
-
-function BaseRefLabel({
-	card,
-	behindBaseCount,
-	branches,
-	isLoadingBranches,
-	requestBranches,
-	onUpdateBaseRef,
-	pinnedBranches,
-}: {
-	card: BoardCard;
-	behindBaseCount: number | null | undefined;
-	branches: RuntimeGitRef[] | null;
-	isLoadingBranches: boolean;
-	requestBranches: () => void;
-	onUpdateBaseRef: (taskId: string, baseRef: string, pinned: boolean) => void;
-	pinnedBranches: string[];
-}): ReactElement {
-	const [isOpen, setIsOpen] = useState(false);
-	const [filter, setFilter] = useState("");
-	const [pinned, setPinned] = useState(card.baseRefPinned === true);
-	const inputRef = useRef<HTMLInputElement>(null);
-
-	const handleOpen = useCallback(
-		(open: boolean) => {
-			if (open) {
-				setFilter("");
-				setPinned(card.baseRefPinned === true);
-				requestBranches();
-			}
-			setIsOpen(open);
-		},
-		[card.baseRefPinned, requestBranches],
-	);
-
-	const handleSelect = useCallback(
-		(branchName: string) => {
-			if (branchName !== card.baseRef || pinned !== (card.baseRefPinned === true)) {
-				onUpdateBaseRef(card.id, branchName, pinned);
-			}
-			setIsOpen(false);
-		},
-		[pinned, card.baseRef, card.baseRefPinned, card.id, onUpdateBaseRef],
-	);
-
-	const localBranches = useMemo(() => {
-		if (!branches) return [];
-		return branches.filter((ref) => ref.type === "branch");
-	}, [branches]);
-
-	const pinnedSet = useMemo(() => new Set(pinnedBranches), [pinnedBranches]);
-
-	const filteredBranches = useMemo(() => {
-		const base = filter
-			? localBranches.filter((ref) => ref.name.toLowerCase().includes(filter.toLowerCase()))
-			: localBranches;
-		return [...base].sort((a, b) => {
-			const ap = pinnedSet.has(a.name) ? 0 : 1;
-			const bp = pinnedSet.has(b.name) ? 0 : 1;
-			return ap - bp;
-		});
-	}, [localBranches, filter, pinnedSet]);
-
-	return (
-		<RadixPopover.Root open={isOpen} onOpenChange={handleOpen}>
-			<RadixPopover.Trigger asChild>
-				<button
-					type="button"
-					className={cn(
-						"text-xs whitespace-nowrap cursor-pointer flex items-center gap-1 px-1.5 py-0.5 rounded",
-						isOpen
-							? "bg-surface-2 text-text-secondary"
-							: "text-text-tertiary hover:text-text-secondary hover:bg-surface-2",
-					)}
-				>
-					{card.baseRefPinned ? <Lock size={10} className="text-text-quaternary" /> : null}
-					from <span className="font-mono">{card.baseRef}</span>
-					{(behindBaseCount ?? 0) > 0 ? (
-						<span className="text-status-blue">({behindBaseCount} behind)</span>
-					) : null}
-				</button>
-			</RadixPopover.Trigger>
-			<RadixPopover.Portal>
-				<RadixPopover.Content
-					side="bottom"
-					align="start"
-					sideOffset={6}
-					className="z-50 rounded-md border border-border bg-surface-1 shadow-lg w-56"
-					onOpenAutoFocus={(e) => {
-						e.preventDefault();
-						inputRef.current?.focus();
-					}}
-				>
-					<div className="flex flex-col">
-						<div className="flex items-center gap-1.5 border-b border-border px-2 py-1.5">
-							<Search size={12} className="text-text-quaternary shrink-0" />
-							<input
-								ref={inputRef}
-								name={`base-ref-filter-${card.id}`}
-								type="text"
-								value={filter}
-								onChange={(e) => setFilter(e.target.value)}
-								onKeyDown={(e) => {
-									if (e.key === "Escape") setIsOpen(false);
-								}}
-								placeholder="Filter branches..."
-								className="h-5 w-full bg-transparent text-xs text-text-primary font-mono placeholder:text-text-quaternary focus:outline-none"
-							/>
-						</div>
-						<div className="max-h-48 overflow-y-auto py-1">
-							{isLoadingBranches && !branches ? (
-								<div className="flex items-center justify-center gap-1.5 px-3 py-3">
-									<Spinner size={12} />
-									<span className="text-xs text-text-tertiary">Loading branches...</span>
-								</div>
-							) : filteredBranches.length === 0 ? (
-								<div className="px-3 py-2 text-xs text-text-quaternary">No matching branches</div>
-							) : (
-								filteredBranches.map((ref) => (
-									<button
-										key={ref.name}
-										type="button"
-										className="flex items-center gap-2 w-full px-3 py-1 text-xs text-text-secondary hover:bg-bg-tertiary cursor-pointer text-left"
-										onClick={() => handleSelect(ref.name)}
-									>
-										<span className="w-3 shrink-0">
-											{ref.name === card.baseRef ? <Check size={12} className="text-accent-blue" /> : null}
-										</span>
-										<span className="font-mono truncate">{ref.name}</span>
-									</button>
-								))
-							)}
-						</div>
-						<div className="border-t border-border px-2 py-1.5">
-							<button
-								type="button"
-								className="flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-secondary cursor-pointer"
-								onClick={() => {
-									const next = !pinned;
-									setPinned(next);
-									if (next !== (card.baseRefPinned === true)) {
-										onUpdateBaseRef(card.id, card.baseRef, next);
-									}
-								}}
-							>
-								{pinned ? <Lock size={11} /> : <LockOpen size={11} />}
-								{pinned ? "Pinned — won't auto-update" : "Unpinned — auto-updates on branch change"}
-							</button>
-						</div>
-					</div>
-				</RadixPopover.Content>
-			</RadixPopover.Portal>
-		</RadixPopover.Root>
-	);
-}
+import type { PromptShortcut, RuntimeGitSyncSummary, RuntimeProjectShortcut } from "@/runtime/types";
+import type { ReviewTaskWorktreeSnapshot } from "@/types";
 
 interface ConnectedTopBarProps {
 	onBack: (() => void) | undefined;
