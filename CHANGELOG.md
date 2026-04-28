@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: checkout remote branch refs from branch picker
+
+- Branch checkout now accepts explicit remote refs such as `origin/feature`, so top-bar and file-scope branch pickers can create or switch to the matching local tracking branch.
+- Added runtime coverage for remote-only refs, existing local branches selected through their remote ref, and linked worktree checkouts.
+
 ### Fix: start Codex with measured task terminal width
 
 - Task sessions now wait briefly for the browser terminal to report real geometry before spawning the agent PTY, preventing Codex from hard-wrapping its first output at a stale half-width estimate.

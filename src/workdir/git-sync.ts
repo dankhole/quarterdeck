@@ -99,6 +99,25 @@ export async function runGitCheckoutAction(options: {
 			error: "Branch name cannot be empty.",
 		};
 	}
+	if (!validateGitRef(requestedBranch)) {
+		return {
+			ok: false,
+			branch: requestedBranch,
+			summary: initialSummary,
+			output: "",
+			error: "Invalid branch name.",
+		};
+	}
+	const requestedRemoteRef = shortRemoteTrackingRefName(requestedBranch);
+	if (requestedRemoteRef && !validateGitRef(requestedRemoteRef)) {
+		return {
+			ok: false,
+			branch: requestedBranch,
+			summary: initialSummary,
+			output: "",
+			error: "Invalid branch name.",
+		};
+	}
 
 	if (initialSummary.currentBranch === requestedBranch) {
 		return {
@@ -110,13 +129,42 @@ export async function runGitCheckoutAction(options: {
 	}
 
 	const repoRoot = await resolveRepoRoot(options.cwd);
+	const remoteTrackingRef = await resolveRemoteTrackingRef(repoRoot, requestedBranch, requestedRemoteRef);
+	const localBranchForRemote = remoteTrackingRef ? localBranchNameForRemoteRef(remoteTrackingRef.name) : null;
+
+	if (initialSummary.currentBranch && initialSummary.currentBranch === localBranchForRemote) {
+		return {
+			ok: true,
+			branch: requestedBranch,
+			summary: initialSummary,
+			output: `Already on '${initialSummary.currentBranch}'.`,
+		};
+	}
 
 	const hasLocalBranch = await hasGitRef(repoRoot, `refs/heads/${requestedBranch}`);
-	const commandResult = hasLocalBranch
-		? await runGit(repoRoot, ["switch", requestedBranch], USER_GIT_ACTION_OPTIONS)
-		: (await hasGitRef(repoRoot, `refs/remotes/origin/${requestedBranch}`))
-			? await runGit(repoRoot, ["switch", "--track", `origin/${requestedBranch}`], USER_GIT_ACTION_OPTIONS)
-			: await runGit(repoRoot, ["switch", requestedBranch], USER_GIT_ACTION_OPTIONS);
+	const hasLocalBranchForRemote = localBranchForRemote
+		? await hasGitRef(repoRoot, `refs/heads/${localBranchForRemote}`)
+		: false;
+	let commandResult = hasLocalBranch
+		? await runGit(repoRoot, ["switch", "--", requestedBranch], USER_GIT_ACTION_OPTIONS)
+		: remoteTrackingRef && localBranchForRemote && hasLocalBranchForRemote
+			? await runGit(repoRoot, ["switch", "--", localBranchForRemote], USER_GIT_ACTION_OPTIONS)
+			: remoteTrackingRef
+				? await runGit(repoRoot, ["switch", "--track", remoteTrackingRef.name], USER_GIT_ACTION_OPTIONS)
+				: await runGit(repoRoot, ["switch", "--", requestedBranch], USER_GIT_ACTION_OPTIONS);
+	if (
+		!commandResult.ok &&
+		remoteTrackingRef?.explicit &&
+		localBranchForRemote &&
+		hasLocalBranchForRemote &&
+		isBranchCheckedOutInAnotherWorktree(commandResult)
+	) {
+		commandResult = await runGit(
+			repoRoot,
+			["switch", "--detach", "--", remoteTrackingRef.name],
+			USER_GIT_ACTION_OPTIONS,
+		);
+	}
 	const nextSummary = await getGitSyncSummary(repoRoot);
 
 	if (!commandResult.ok) {
@@ -138,6 +186,53 @@ export async function runGitCheckoutAction(options: {
 		summary: nextSummary,
 		output: commandResult.output,
 	};
+}
+
+interface RemoteTrackingRefResolution {
+	name: string;
+	explicit: boolean;
+}
+
+async function resolveRemoteTrackingRef(
+	repoRoot: string,
+	requestedBranch: string,
+	requestedRemoteRef: string | null,
+): Promise<RemoteTrackingRefResolution | null> {
+	if (
+		requestedRemoteRef &&
+		validateGitRef(requestedRemoteRef) &&
+		(await hasGitRef(repoRoot, `refs/remotes/${requestedRemoteRef}`))
+	) {
+		return { name: requestedRemoteRef, explicit: true };
+	}
+	const originRef = `origin/${requestedBranch}`;
+	return (await hasGitRef(repoRoot, `refs/remotes/${originRef}`)) ? { name: originRef, explicit: false } : null;
+}
+
+function shortRemoteTrackingRefName(ref: string): string | null {
+	const fullPrefix = "refs/remotes/";
+	if (ref.startsWith(fullPrefix)) {
+		const shortName = ref.slice(fullPrefix.length);
+		return shortName.length > 0 ? shortName : null;
+	}
+	return ref.includes("/") ? ref : null;
+}
+
+function localBranchNameForRemoteRef(remoteRef: string): string | null {
+	const slashIndex = remoteRef.indexOf("/");
+	if (slashIndex <= 0 || slashIndex === remoteRef.length - 1) {
+		return null;
+	}
+	return remoteRef.slice(slashIndex + 1);
+}
+
+function isBranchCheckedOutInAnotherWorktree(result: {
+	stderr: string;
+	output: string;
+	error: string | null;
+}): boolean {
+	const message = [result.stderr, result.output, result.error].filter(Boolean).join("\n");
+	return /already (?:checked out|used by worktree)/i.test(message);
 }
 
 export async function createBranchFromRef(options: {

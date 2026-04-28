@@ -2,6 +2,20 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: checkout remote branch refs from branch picker (2026-04-28)
+
+The branch selector passes `RuntimeGitRef.name` through checkout actions. For remote rows, that name is an explicit remote ref such as `origin/feature/foo`. `runGitCheckoutAction(...)` only handled bare branch names: it could turn `feature/foo` into `origin/feature/foo`, but when it received `origin/feature/foo` directly it looked for `refs/remotes/origin/origin/feature/foo` and then fell through to `git switch origin/feature/foo`, which fails because Git treats that as a remote branch ref rather than a local branch checkout target.
+
+The checkout helper now validates the requested ref, recognizes explicit `refs/remotes/<remote>/<branch>` names, maps an explicit remote ref to its existing local branch when one is already present, and otherwise uses `git switch --track <remote>/<branch>` so Git creates the matching local tracking branch. Local branch checkout still wins when the exact requested branch exists locally, preserving normal branch switching behavior. This shared helper is used by both home checkout and task-scoped checkout, so the fix covers the top-bar picker, file-scope picker, and linked worktree task contexts.
+
+Focused runtime tests create temporary origin remotes and verify the regression paths: a remote-only branch selected as `origin/<branch>`, a full `refs/remotes/origin/<branch>` ref, an explicit remote ref whose local branch already exists, the same remote-only checkout from a linked worktree, the locked-worktree fallback when the matching local branch is checked out elsewhere, and invalid full remote refs whose normalized remote name would be unsafe as a git argument.
+
+Validation included `npm test -- --run test/runtime/git-checkout.test.ts`, `npm run typecheck`, and `npx @biomejs/biome check src/workdir/git-sync.ts test/runtime/git-checkout.test.ts`.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/workdir/git-sync.ts`, `test/runtime/git-checkout.test.ts`.
+
+Commit: pending
+
 ## Fix: start Codex with measured task terminal width (2026-04-28)
 
 Codex terminal sessions could render their initial screen at roughly half width because task startup read the geometry registry synchronously and fell back to an old one-third-viewport estimate when no fresh terminal measurement was available. Codex hard-wraps early TUI output at the PTY width it sees during spawn, so later browser resizes could shrink or redraw content but did not reliably make already-emitted lines longer.
