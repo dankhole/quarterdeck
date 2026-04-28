@@ -2,6 +2,18 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: keep agent hooks off blocking transcript work (2026-04-28)
+
+Claude Stop hook enrichment no longer reads/parses the transcript JSONL file inside the hook CLI before state transition ingest. The CLI now forwards the transcript path as hook metadata, the server accepts the `to_review` transition first, and `hooks-api` schedules transcript summary extraction as background work. The background enrichment reuses the permission-activity guard before updating `latestHookActivity`, and it skips entirely if `lastHookAt` changed after queuing, so a late Stop summary cannot overwrite or append stale context after a newer hook arrives.
+
+Activity-only Claude and Codex tool/maintenance hooks now use `quarterdeck hooks notify`, which applies a short best-effort/no-retry ingest timeout. State-changing `to_review` and `to_in_progress` hooks continue to use the reliable retrying `hooks ingest` path, and Codex `SessionStart` stays on reliable ingest because it can carry `session_meta` resume ids. Claude transcript parsing now reads a bounded tail of the JSONL file instead of loading the whole transcript into memory.
+
+Validation included `npm test -- test/runtime/trpc/hooks-api/transcript-enrichment.test.ts test/runtime/trpc/hooks-api/summaries.test.ts test/runtime/trpc/hooks-api/permission-guard.test.ts test/runtime/trpc/hooks-api/transitions.test.ts test/runtime/commands/claude-transcript-parser.test.ts test/runtime/commands/hooks.test.ts test/runtime/codex-hooks.test.ts test/runtime/terminal/agent-session-adapters.test.ts test/runtime/api-validation.test.ts test/runtime/hooks-source-inference.test.ts`, `npm run typecheck`, focused Biome checks, and `git diff --check`.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/codex-hooks.ts`, `src/commands/claude-transcript-parser.ts`, `src/commands/hook-metadata.ts`, `src/commands/hooks.ts`, `src/core/api/task-session.ts`, `src/core/api-validation.ts`, `src/terminal/agent-session-adapters.ts`, `src/trpc/hooks-api.ts`, plus focused runtime tests under `test/runtime`.
+
+Commit: pending
+
 ## Fix: parallelize runtime file and stream loading (2026-04-28)
 
 Runtime stream connection now starts the project list, selected project-state snapshot, and cross-project notification baseline concurrently. The selected project-state read still converts failures into the existing `projectStateError` snapshot path, so a corrupt selected project does not block the project list or notification baseline from reaching the browser.

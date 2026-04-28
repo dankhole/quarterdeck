@@ -20,6 +20,15 @@ function readStringField(record: Record<string, unknown>, key: string): string |
 	return normalized.length > 0 ? normalized : null;
 }
 
+function readTrimmedStringField(record: Record<string, unknown>, key: string): string | null {
+	const value = record[key];
+	if (typeof value !== "string") {
+		return null;
+	}
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : null;
+}
+
 function readNestedString(record: Record<string, unknown>, path: string[]): string | null {
 	let current: unknown = record;
 	for (const key of path) {
@@ -52,6 +61,7 @@ export interface HookCommandMetadataOptionValues {
 	hookEventName?: string;
 	notificationType?: string;
 	sessionId?: string;
+	transcriptPath?: string;
 	metadataBase64?: string;
 }
 
@@ -64,6 +74,7 @@ export function parseMetadataFromOptions(options: HookCommandMetadataOptionValue
 	const notificationType = options.notificationType;
 	const source = options.source;
 	const sessionId = options.sessionId;
+	const transcriptPath = options.transcriptPath;
 
 	if (activityText) {
 		metadata.activityText = normalizeWhitespace(activityText);
@@ -85,6 +96,9 @@ export function parseMetadataFromOptions(options: HookCommandMetadataOptionValue
 	}
 	if (sessionId) {
 		metadata.sessionId = normalizeWhitespace(sessionId);
+	}
+	if (transcriptPath) {
+		metadata.transcriptPath = transcriptPath.trim();
 	}
 
 	return metadata;
@@ -237,7 +251,7 @@ function inferActivityText(
 
 export function inferHookSourceFromPayload(payload: Record<string, unknown> | null): string | null {
 	const transcriptPath = payload
-		? (readStringField(payload, "transcript_path") ?? readStringField(payload, "transcriptPath"))
+		? (readTrimmedStringField(payload, "transcript_path") ?? readTrimmedStringField(payload, "transcriptPath"))
 		: null;
 	const normalizedTranscriptPath = transcriptPath?.replaceAll("\\", "/").toLowerCase() ?? null;
 	if (normalizedTranscriptPath?.includes("/.claude/")) {
@@ -282,6 +296,9 @@ export function normalizeHookMetadata(
 			readNestedString(payload, ["taskComplete", "taskMetadata", "result"]) ??
 			readNestedString(payload, ["taskComplete", "result"]))
 		: null;
+	const transcriptPath = payload
+		? (readTrimmedStringField(payload, "transcript_path") ?? readTrimmedStringField(payload, "transcriptPath"))
+		: null;
 
 	const inferredSource = inferHookSourceFromPayload(payload);
 
@@ -294,6 +311,7 @@ export function normalizeHookMetadata(
 		finalMessage: flagMetadata.finalMessage ?? (finalMessage ? normalizeWhitespace(finalMessage) : null),
 		activityText: flagMetadata.activityText ?? (activityText ? normalizeWhitespace(activityText) : null),
 		sessionId: flagMetadata.sessionId ?? null,
+		transcriptPath: flagMetadata.transcriptPath ?? transcriptPath ?? null,
 	};
 
 	const hasValue = Object.values(merged).some((value) => typeof value === "string" && value.trim().length > 0);
@@ -332,6 +350,9 @@ export function appendMetadataFlags(args: string[], metadata?: RuntimeHookMetada
 	}
 	if (metadata.sessionId) {
 		args.push("--session-id", metadata.sessionId);
+	}
+	if (metadata.transcriptPath) {
+		args.push("--transcript-path", metadata.transcriptPath);
 	}
 	return args;
 }

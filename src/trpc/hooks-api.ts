@@ -1,3 +1,4 @@
+import { extractLastAssistantMessage } from "../commands/claude-transcript-parser";
 import type {
 	IProjectResolver,
 	IRuntimeBroadcaster,
@@ -57,6 +58,7 @@ function buildHookLogData(input: {
 		finalMessageSnippet: logSnippet(metadata?.finalMessage),
 		hasConversationSummaryText: !!metadata?.conversationSummaryText,
 		conversationSummarySnippet: logSnippet(metadata?.conversationSummaryText),
+		hasTranscriptPath: !!metadata?.transcriptPath,
 	};
 }
 
@@ -88,7 +90,7 @@ function toHookActivityPatch(metadata: RuntimeHookMetadata | undefined): Partial
 	if (!metadata) {
 		return undefined;
 	}
-	const { sessionId: _sessionId, ...activity } = metadata;
+	const { sessionId: _sessionId, transcriptPath: _transcriptPath, ...activity } = metadata;
 	return activity;
 }
 
@@ -101,8 +103,126 @@ function isMetadataOnlySessionMeta(metadata: RuntimeHookMetadata | undefined): b
 		typeof metadata.toolName !== "string" &&
 		typeof metadata.toolInputSummary !== "string" &&
 		typeof metadata.finalMessage !== "string" &&
-		typeof metadata.notificationType !== "string"
+		typeof metadata.notificationType !== "string" &&
+		typeof metadata.transcriptPath !== "string"
 	);
+}
+
+type ClaudeTranscriptExtractor = (transcriptPath: string) => Promise<string | null>;
+type HookBackgroundTaskScheduler = (task: () => void) => void;
+
+function scheduleHookBackgroundTask(task: () => void): void {
+	const timeout = setTimeout(task, 0);
+	timeout.unref?.();
+}
+
+function isPermissionGuardedActivityOverwrite(
+	summary: RuntimeTaskSessionSummary,
+	activityMetadata: Partial<RuntimeTaskHookActivity> | undefined,
+): boolean {
+	if (!activityMetadata) {
+		return false;
+	}
+	const currentActivity = summary.latestHookActivity;
+	const shouldGuardPermission =
+		summary.state === "awaiting_review" && currentActivity != null && isPermissionActivity(currentActivity);
+	if (!shouldGuardPermission) {
+		return false;
+	}
+	const incomingActivity: RuntimeTaskHookActivity = {
+		hookEventName: activityMetadata.hookEventName ?? null,
+		notificationType: activityMetadata.notificationType ?? null,
+		activityText: activityMetadata.activityText ?? null,
+		toolName: activityMetadata.toolName ?? null,
+		toolInputSummary: activityMetadata.toolInputSummary ?? null,
+		finalMessage: activityMetadata.finalMessage ?? null,
+		source: activityMetadata.source ?? null,
+		conversationSummaryText: activityMetadata.conversationSummaryText ?? null,
+	};
+	return !isPermissionActivity(incomingActivity);
+}
+
+function resolveClaudeTranscriptPath(
+	event: RuntimeHookEvent,
+	metadata: RuntimeHookMetadata | undefined,
+): string | null {
+	if (event !== "to_review") {
+		return null;
+	}
+	if (metadata?.source?.toLowerCase() !== "claude") {
+		return null;
+	}
+	if (metadata.conversationSummaryText?.trim()) {
+		return null;
+	}
+	return metadata.transcriptPath?.trim() || null;
+}
+
+function buildClaudeTranscriptMetadata(metadata: RuntimeHookMetadata, extractedText: string): RuntimeHookMetadata {
+	// finalMessage and activityText are set alongside conversationSummaryText for backward
+	// compatibility — legacy consumers and the activity feed read these fields rather than
+	// conversationSummaryText, so the redundancy is deliberate.
+	return {
+		...metadata,
+		conversationSummaryText: extractedText,
+		finalMessage: metadata.finalMessage ?? extractedText,
+		activityText: metadata.activityText ?? `Final: ${extractedText}`,
+	};
+}
+
+function queueClaudeTranscriptEnrichment(input: {
+	store: SessionSummaryStore;
+	taskId: string;
+	event: RuntimeHookEvent;
+	metadata: RuntimeHookMetadata | undefined;
+	hookLogData: Record<string, unknown>;
+	expectedLastHookAt: number | null;
+	extractClaudeTranscriptSummary: ClaudeTranscriptExtractor;
+	scheduleBackgroundTask: HookBackgroundTaskScheduler;
+}): void {
+	const metadata = input.metadata;
+	const transcriptPath = resolveClaudeTranscriptPath(input.event, metadata);
+	if (!transcriptPath || !metadata) {
+		return;
+	}
+
+	input.scheduleBackgroundTask(() => {
+		void (async () => {
+			const extractedText = await input.extractClaudeTranscriptSummary(transcriptPath);
+			if (!extractedText) {
+				log.debug("Claude transcript enrichment skipped: no assistant summary found", input.hookLogData);
+				return;
+			}
+			const enrichedMetadata = buildClaudeTranscriptMetadata(metadata, extractedText);
+			const summary = input.store.getSummary(input.taskId);
+			if (!summary) {
+				log.debug("Claude transcript enrichment skipped: task missing", input.hookLogData);
+				return;
+			}
+			if ((summary.lastHookAt ?? null) !== input.expectedLastHookAt) {
+				log.debug("Claude transcript enrichment skipped: newer hook activity observed", {
+					...input.hookLogData,
+					expectedLastHookAt: input.expectedLastHookAt,
+					currentLastHookAt: summary.lastHookAt ?? null,
+				});
+				return;
+			}
+
+			const activityMetadata = toHookActivityPatch(enrichedMetadata);
+			if (isPermissionGuardedActivityOverwrite(summary, activityMetadata)) {
+				log.debug("Claude transcript enrichment preserved permission activity", input.hookLogData);
+			} else {
+				input.store.applyHookMetadata(input.taskId, enrichedMetadata);
+			}
+			applyConversationSummaryFromMetadata(input.store, input.taskId, enrichedMetadata);
+			log.info("Claude transcript enrichment applied", input.hookLogData);
+		})().catch((error) => {
+			log.warn("Claude transcript enrichment failed", {
+				...input.hookLogData,
+				error: errorMessage(error),
+			});
+		});
+	});
 }
 
 export interface CreateHooksApiDependencies {
@@ -115,6 +235,8 @@ export interface CreateHooksApiDependencies {
 		turn: number;
 	}) => Promise<RuntimeTaskTurnCheckpoint>;
 	deleteTaskTurnCheckpointRef?: (input: { cwd: string; ref: string }) => Promise<void>;
+	extractClaudeTranscriptSummary?: ClaudeTranscriptExtractor;
+	scheduleHookBackgroundTask?: HookBackgroundTaskScheduler;
 }
 
 function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event: RuntimeHookEvent): boolean {
@@ -130,6 +252,8 @@ function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event
 export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcContext["hooksApi"] {
 	const checkpointCapture = deps.captureTaskTurnCheckpoint ?? captureTaskTurnCheckpoint;
 	const checkpointRefDelete = deps.deleteTaskTurnCheckpointRef ?? deleteTaskTurnCheckpointRef;
+	const extractClaudeTranscriptSummary = deps.extractClaudeTranscriptSummary ?? extractLastAssistantMessage;
+	const scheduleBackgroundTask = deps.scheduleHookBackgroundTask ?? scheduleHookBackgroundTask;
 
 	return {
 		ingest: async (input) => {
@@ -165,6 +289,22 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				const incomingSessionId = body.metadata?.sessionId?.trim() || null;
 				const activityMetadata = toHookActivityPatch(body.metadata);
 				const metadataOnlySessionMeta = isMetadataOnlySessionMeta(body.metadata);
+				const queueTranscriptEnrichment = () => {
+					if (!resolveClaudeTranscriptPath(event, body.metadata)) {
+						return;
+					}
+					const queuedSummary = store.getSummary(taskId);
+					queueClaudeTranscriptEnrichment({
+						store,
+						taskId,
+						event,
+						metadata: body.metadata,
+						hookLogData,
+						expectedLastHookAt: queuedSummary?.lastHookAt ?? null,
+						extractClaudeTranscriptSummary,
+						scheduleBackgroundTask,
+					});
+				};
 
 				if (incomingSessionId) {
 					log.debug("Hook ingest session_meta", {
@@ -196,46 +336,24 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 							currentState: summary.state,
 						});
 						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
+						queueTranscriptEnrichment();
 						return {
 							ok: true,
 						} satisfies RuntimeHookIngestResponse;
 					}
-					if (activityMetadata) {
-						// Guard: protect permission metadata from being clobbered by non-permission hooks.
-						// When the task is in awaiting_review with permission-related activity, only allow
-						// permission events to overwrite the activity. Non-permission hooks (Stop, PreToolUse,
-						// SubagentStop, etc.) are silently skipped to preserve the "Waiting for approval" state.
-						const currentActivity = summary.latestHookActivity;
-						const shouldGuardPermission =
-							summary.state === "awaiting_review" &&
-							currentActivity != null &&
-							isPermissionActivity(currentActivity);
-
-						if (shouldGuardPermission) {
-							const incomingActivity: RuntimeTaskHookActivity = {
-								hookEventName: activityMetadata.hookEventName ?? null,
-								notificationType: activityMetadata.notificationType ?? null,
-								activityText: activityMetadata.activityText ?? null,
-								toolName: activityMetadata.toolName ?? null,
-								toolInputSummary: activityMetadata.toolInputSummary ?? null,
-								finalMessage: activityMetadata.finalMessage ?? null,
-								source: activityMetadata.source ?? null,
-								conversationSummaryText: activityMetadata.conversationSummaryText ?? null,
-							};
-							if (!isPermissionActivity(incomingActivity)) {
-								log.debug("Hook blocked: permission guard prevented activity overwrite", {
-									...hookLogData,
-									incomingHookEvent: activityMetadata.hookEventName,
-									currentPermissionActivity: currentActivity.hookEventName,
-								});
-								// Skip applyHookActivity — the incoming event is not permission-related
-								// and would clobber the existing permission metadata.
-								applyConversationSummaryFromMetadata(store, taskId, body.metadata);
-								return {
-									ok: true,
-								} satisfies RuntimeHookIngestResponse;
-							}
-						}
+					if (isPermissionGuardedActivityOverwrite(summary, activityMetadata)) {
+						log.debug("Hook blocked: permission guard prevented activity overwrite", {
+							...hookLogData,
+							incomingHookEvent: activityMetadata?.hookEventName,
+							currentPermissionActivity: summary.latestHookActivity?.hookEventName ?? null,
+						});
+						// Skip applyHookActivity — the incoming event is not permission-related
+						// and would clobber the existing permission metadata.
+						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
+						queueTranscriptEnrichment();
+						return {
+							ok: true,
+						} satisfies RuntimeHookIngestResponse;
 					}
 					if (body.metadata && (incomingSessionId || activityMetadata)) {
 						store.applyHookMetadata(taskId, body.metadata);
@@ -245,6 +363,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						});
 					}
 					applyConversationSummaryFromMetadata(store, taskId, body.metadata);
+					queueTranscriptEnrichment();
 					return {
 						ok: true,
 					} satisfies RuntimeHookIngestResponse;
@@ -304,6 +423,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				}
 
 				applyConversationSummaryFromMetadata(store, taskId, body.metadata);
+				queueTranscriptEnrichment();
 				log.info("Hook transition applied", {
 					...hookLogData,
 					toState: transitionedSummary.state,

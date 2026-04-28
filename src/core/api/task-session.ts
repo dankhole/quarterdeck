@@ -24,6 +24,7 @@ export type RuntimeTaskHookActivity = z.infer<typeof runtimeTaskHookActivitySche
 export const runtimeHookMetadataSchema = runtimeTaskHookActivitySchema
 	.extend({
 		sessionId: z.string().nullable().default(null),
+		transcriptPath: z.string().nullable().default(null),
 	})
 	.partial();
 export type RuntimeHookMetadata = z.infer<typeof runtimeHookMetadataSchema>;

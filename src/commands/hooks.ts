@@ -4,7 +4,6 @@ import type { RuntimeHookEvent, RuntimeHookMetadata } from "../core";
 import { buildQuarterdeckRuntimeUrl } from "../core";
 import { parseHookRuntimeContextFromEnv } from "../terminal";
 import type { RuntimeAppRouter } from "../trpc";
-import { extractLastAssistantMessage } from "./claude-transcript-parser";
 import {
 	type HookCommandMetadataOptionValues,
 	normalizeHookMetadata,
@@ -140,8 +139,29 @@ function parseHooksIngestArgs(
 
 const HOOK_INGEST_TIMEOUT_MS = 3000;
 const HOOK_INGEST_RETRY_DELAY_MS = 1000;
+const HOOK_NOTIFY_TIMEOUT_MS = 250;
 
-async function ingestHookEvent(args: HooksIngestArgs): Promise<void> {
+interface HookIngestPolicy {
+	timeoutMs: number;
+	retry: boolean;
+	retryDelayMs?: number;
+}
+
+const RELIABLE_HOOK_INGEST_POLICY: HookIngestPolicy = {
+	timeoutMs: HOOK_INGEST_TIMEOUT_MS,
+	retry: true,
+	retryDelayMs: HOOK_INGEST_RETRY_DELAY_MS,
+};
+
+const BEST_EFFORT_HOOK_NOTIFY_POLICY: HookIngestPolicy = {
+	timeoutMs: HOOK_NOTIFY_TIMEOUT_MS,
+	retry: false,
+};
+
+async function ingestHookEvent(
+	args: HooksIngestArgs,
+	policy: HookIngestPolicy = RELIABLE_HOOK_INGEST_POLICY,
+): Promise<void> {
 	const attempt = async (): Promise<void> => {
 		const ingestResponse = await withAbortableTimeout(
 			(signal) => {
@@ -165,7 +185,7 @@ async function ingestHookEvent(args: HooksIngestArgs): Promise<void> {
 					metadata: args.metadata,
 				});
 			},
-			HOOK_INGEST_TIMEOUT_MS,
+			policy.timeoutMs,
 			"quarterdeck hooks ingest",
 		);
 		if (ingestResponse.ok === false) {
@@ -176,13 +196,16 @@ async function ingestHookEvent(args: HooksIngestArgs): Promise<void> {
 	try {
 		await attempt();
 	} catch (firstError) {
+		if (!policy.retry) {
+			throw firstError;
+		}
 		// Single retry after a short delay. State-transition hooks (to_review,
 		// to_in_progress) are the only reliable channel — a lost hook means a
 		// stuck task with no automatic recovery.
 		writeHookCliDiagnostic(args, "ingest attempt failed; retrying", {
 			error: formatError(firstError),
 		});
-		await new Promise((resolve) => setTimeout(resolve, HOOK_INGEST_RETRY_DELAY_MS));
+		await new Promise((resolve) => setTimeout(resolve, policy.retryDelayMs ?? HOOK_INGEST_RETRY_DELAY_MS));
 		try {
 			await attempt();
 		} catch (retryError) {
@@ -196,48 +219,6 @@ async function ingestHookEvent(args: HooksIngestArgs): Promise<void> {
 	}
 }
 
-/**
- * Enrich Claude Stop hook metadata with a conversation summary extracted from
- * the transcript JSONL file.
- */
-async function enrichClaudeStopMetadata(args: HooksIngestArgs): Promise<HooksIngestArgs> {
-	if (args.event !== "to_review") {
-		return args;
-	}
-	const metadata = args.metadata ?? {};
-	const source = metadata.source?.toLowerCase();
-	if (source !== "claude") {
-		return args;
-	}
-
-	// Extract transcript_path from payload (check both key variants).
-	const transcriptPath = args.payload
-		? (readPayloadStringField(args.payload, "transcript_path") ??
-			readPayloadStringField(args.payload, "transcriptPath"))
-		: null;
-	if (!transcriptPath) {
-		return args;
-	}
-
-	const extractedText = await extractLastAssistantMessage(transcriptPath);
-	if (!extractedText) {
-		return args;
-	}
-
-	// finalMessage and activityText are set alongside conversationSummaryText for backward
-	// compatibility — legacy consumers and the activity feed read these fields rather than
-	// conversationSummaryText, so the redundancy is deliberate.
-	return {
-		...args,
-		metadata: {
-			...metadata,
-			conversationSummaryText: extractedText,
-			finalMessage: metadata.finalMessage ?? extractedText,
-			activityText: metadata.activityText ?? `Final: ${extractedText}`,
-		},
-	};
-}
-
 async function runHooksNotify(
 	event: RuntimeHookEvent,
 	options: HookCommandMetadataOptionValues,
@@ -246,7 +227,7 @@ async function runHooksNotify(
 	try {
 		const stdinPayload = await readStdinText();
 		const parsedArgs = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
-		await ingestHookEvent(parsedArgs);
+		await ingestHookEvent(parsedArgs, BEST_EFFORT_HOOK_NOTIFY_POLICY);
 	} catch {
 		// Best effort only. Detached notify stdio is "ignore" so stderr writes
 		// here would be dropped anyway — server-side hooks-api logging covers
@@ -271,26 +252,9 @@ async function runHooksIngest(
 	options: HookCommandMetadataOptionValues,
 	payloadArg: string | undefined,
 ): Promise<void> {
-	let args: HooksIngestArgs;
 	try {
 		const stdinPayload = await readStdinText();
-		const parsedArgs = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
-		try {
-			args = await enrichClaudeStopMetadata(parsedArgs);
-		} catch (error) {
-			// If enrichment crashes, fall back to unenriched args so the hook is still ingested.
-			writeHookCliDiagnostic(parsedArgs, "metadata enrichment failed; ingesting raw hook", {
-				error: formatError(error),
-			});
-			args = parsedArgs;
-		}
-	} catch (error) {
-		process.stderr.write(`quarterdeck hooks ingest: ${formatError(error)}\n`);
-		process.exitCode = 1;
-		return;
-	}
-
-	try {
+		const args = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
 		await ingestHookEvent(args);
 	} catch (error) {
 		process.stderr.write(`quarterdeck hooks ingest: ${formatError(error)}\n`);
@@ -312,6 +276,7 @@ export function registerHooksCommand(program: Command): void {
 		.option("--hook-event-name <name>", "Original hook event name.")
 		.option("--notification-type <type>", "Notification type.")
 		.option("--session-id <id>", "Resumable agent session id.")
+		.option("--transcript-path <path>", "Agent transcript JSONL path.")
 		.option("--metadata-base64 <base64>", "Base64-encoded JSON metadata payload.")
 		.action(
 			async (
@@ -333,6 +298,7 @@ export function registerHooksCommand(program: Command): void {
 		.option("--hook-event-name <name>", "Original hook event name.")
 		.option("--notification-type <type>", "Notification type.")
 		.option("--session-id <id>", "Resumable agent session id.")
+		.option("--transcript-path <path>", "Agent transcript JSONL path.")
 		.option("--metadata-base64 <base64>", "Base64-encoded JSON metadata payload.")
 		.action(
 			async (

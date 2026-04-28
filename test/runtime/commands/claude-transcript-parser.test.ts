@@ -169,4 +169,20 @@ describe("extractLastAssistantMessage", () => {
 		const result = await extractLastAssistantMessage(filePath);
 		expect(result).toBe("Plain string content");
 	});
+
+	it("extracts from the tail when earlier transcript content exceeds the tail byte limit", async () => {
+		tempDir = createTempDir();
+		const filePath = join(tempDir.path, "transcript.jsonl");
+		writeFileSync(
+			filePath,
+			[
+				JSON.stringify(assistantMessage(`Earlier oversized message ${"x".repeat(1024 * 1024 + 32)}`)),
+				JSON.stringify(assistantMessage("Final meaningful response after a huge earlier transcript entry")),
+			].join("\n"),
+			"utf8",
+		);
+
+		const result = await extractLastAssistantMessage(filePath);
+		expect(result).toBe("Final meaningful response after a huge earlier transcript entry");
+	});
 });

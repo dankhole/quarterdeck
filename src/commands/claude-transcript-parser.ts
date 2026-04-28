@@ -21,7 +21,7 @@
  *   }
  * with per-agent implementations.
  */
-import { readFile } from "node:fs/promises";
+import { open } from "node:fs/promises";
 
 interface TranscriptContentItem {
 	type: string;
@@ -36,6 +36,56 @@ interface TranscriptMessage {
 interface TranscriptLine {
 	type?: string;
 	message?: TranscriptMessage;
+}
+
+const DEFAULT_TAIL_LINE_LIMIT = 50;
+const DEFAULT_TAIL_CHUNK_BYTES = 64 * 1024;
+const DEFAULT_TAIL_BYTE_LIMIT = 1024 * 1024;
+const NEWLINE_BYTE = "\n".charCodeAt(0);
+
+async function readTranscriptTailLines(
+	transcriptPath: string,
+	maxLines = DEFAULT_TAIL_LINE_LIMIT,
+	maxBytes = DEFAULT_TAIL_BYTE_LIMIT,
+): Promise<string[]> {
+	const handle = await open(transcriptPath, "r");
+	try {
+		const { size } = await handle.stat();
+		if (size === 0 || maxLines <= 0 || maxBytes <= 0) {
+			return [];
+		}
+
+		const chunks: Buffer[] = [];
+		let position = size;
+		let bytesCollected = 0;
+		let newlineCount = 0;
+
+		while (position > 0 && newlineCount <= maxLines && bytesCollected < maxBytes) {
+			const bytesToRead = Math.min(DEFAULT_TAIL_CHUNK_BYTES, position, maxBytes - bytesCollected);
+			position -= bytesToRead;
+			const buffer = Buffer.allocUnsafe(bytesToRead);
+			const { bytesRead } = await handle.read(buffer, 0, bytesToRead, position);
+			if (bytesRead <= 0) {
+				break;
+			}
+			const chunk = buffer.subarray(0, bytesRead);
+			chunks.unshift(chunk);
+			bytesCollected += bytesRead;
+			for (const byte of chunk) {
+				if (byte === NEWLINE_BYTE) {
+					newlineCount += 1;
+				}
+			}
+		}
+
+		const rawLines = Buffer.concat(chunks).toString("utf8").split(/\r?\n/);
+		if (position > 0) {
+			rawLines.shift();
+		}
+		return rawLines.filter((line) => line.trim().length > 0).slice(-maxLines);
+	} finally {
+		await handle.close();
+	}
 }
 
 /**
@@ -87,9 +137,7 @@ function hasToolUse(content: TranscriptContentItem[] | string | undefined): bool
  */
 export async function extractLastAssistantMessage(transcriptPath: string): Promise<string | null> {
 	try {
-		const raw = await readFile(transcriptPath, "utf8");
-		const allLines = raw.split("\n").filter((line) => line.trim().length > 0);
-		const lines = allLines.slice(-50);
+		const lines = await readTranscriptTailLines(transcriptPath);
 
 		for (let i = lines.length - 1; i >= 0; i--) {
 			let parsed: TranscriptLine;

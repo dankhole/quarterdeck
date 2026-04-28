@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: keep agent hooks off blocking transcript work
+
+- Claude Stop hooks now transition tasks through the normal reliable ingest path before transcript parsing, then enrich conversation summaries from the server in the background.
+- Claude transcript parsing now scans a bounded JSONL tail instead of loading the whole transcript file to find the last useful assistant message.
+- Activity-only Claude and Codex tool/maintenance hooks now use best-effort `hooks notify` delivery with no retry, while `to_review`, `to_in_progress`, and Codex `SessionStart` session metadata keep the reliable retrying ingest path.
+
 ### Chore: remove sidebar pinning
 
 - Removed the sidebar toolbar pin toggle, its surface-navigation state, and the persisted `quarterdeck.sidebar-pinned` preference.

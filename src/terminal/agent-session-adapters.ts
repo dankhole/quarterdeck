@@ -74,7 +74,8 @@ function resolveHookContext(input: AgentAdapterLaunchInput): HookContext | null 
 }
 
 function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadata): string {
-	const parts = buildHooksCommandParts(["ingest", "--event", event]);
+	const subcommand = event === "activity" ? "notify" : "ingest";
+	const parts = buildHooksCommandParts([subcommand, "--event", event]);
 	if (metadata?.source) {
 		parts.push("--source", metadata.source);
 	}

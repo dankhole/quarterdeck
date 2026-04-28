@@ -125,6 +125,10 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(settings.hooks?.PreToolUse).toBeDefined();
 		expect(settings.hooks?.PostToolUse).toBeDefined();
 		expect(settings.hooks?.PostToolUseFailure).toBeDefined();
+		const serializedSettings = JSON.stringify(settings);
+		expect(serializedSettings).toContain("'notify' '--event' 'activity'");
+		expect(serializedSettings).toContain("'ingest' '--event' 'to_review'");
+		expect(serializedSettings).toContain("'ingest' '--event' 'to_in_progress'");
 	});
 
 	it("materializes task images for CLI prompts", async () => {

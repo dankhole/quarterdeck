@@ -3,8 +3,9 @@ import { buildQuarterdeckCommandParts, quoteShellArg } from "./core";
 
 export const CODEX_HOOKS_FEATURE_NAME = "codex_hooks";
 
-function buildHookCommand(event: RuntimeHookEvent, metadata?: { source?: string }): string {
-	const parts = buildQuarterdeckCommandParts(["hooks", "ingest", "--event", event]);
+function buildHookCommand(event: RuntimeHookEvent, metadata?: { source?: string; reliable?: boolean }): string {
+	const subcommand = metadata?.reliable || event !== "activity" ? "ingest" : "notify";
+	const parts = buildQuarterdeckCommandParts(["hooks", subcommand, "--event", event]);
 	if (metadata?.source) {
 		parts.push("--source", metadata.source);
 	}
@@ -38,7 +39,7 @@ export function buildCodexHooksConfig(): CodexHooksConfig {
 				// back to running. Codex can emit SessionStart around session
 				// maintenance flows such as compaction, where no agent turn starts.
 				matcher: "startup|resume",
-				hooks: [{ type: "command", command: buildHookCommand("activity", { source: "codex" }) }],
+				hooks: [{ type: "command", command: buildHookCommand("activity", { source: "codex", reliable: true }) }],
 			},
 		],
 		PreToolUse: [

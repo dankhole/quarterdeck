@@ -27,6 +27,7 @@ describe("parseHookIngestRequest", () => {
 				finalMessage: undefined,
 				notificationType: undefined,
 				sessionId: "session-789",
+				transcriptPath: null,
 				conversationSummaryText: null,
 			},
 		});

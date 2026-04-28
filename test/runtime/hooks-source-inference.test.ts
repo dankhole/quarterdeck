@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { normalizeHookMetadata } from "../../src/commands/hook-metadata";
 import { inferHookSourceFromPayload } from "../../src/commands/hooks";
 
 describe("inferHookSourceFromPayload", () => {
@@ -42,5 +43,24 @@ describe("inferHookSourceFromPayload", () => {
 				transcript_path: "C:\\Users\\dev\\logs\\session.jsonl",
 			}),
 		).toBeNull();
+	});
+
+	it("preserves Claude transcript paths for server-side enrichment", () => {
+		const metadata = normalizeHookMetadata(
+			"to_review",
+			{
+				hook_event_name: "Stop",
+				transcript_path: " /tmp/Claude Project/transcript.jsonl ",
+			},
+			{ source: "claude" },
+		);
+
+		expect(metadata).toEqual(
+			expect.objectContaining({
+				source: "claude",
+				hookEventName: "Stop",
+				transcriptPath: "/tmp/Claude Project/transcript.jsonl",
+			}),
+		);
 	});
 });
