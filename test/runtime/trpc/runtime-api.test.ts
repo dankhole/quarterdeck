@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeBoardCard, RuntimeTaskSessionSummary } from "../../../src/core";
+import { STORED_CODEX_RESUME_FAILED_WARNING } from "../../../src/terminal/codex-resume-failure";
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
@@ -355,6 +356,77 @@ describe("createRuntimeApi startTaskSession", () => {
 			}),
 		);
 		expect(response.summary?.warningMessage).toContain("Codex resume did not have a stored session id");
+	});
+
+	it("falls back to Codex --last after a stored session id already failed", async () => {
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
+			agentId: "codex",
+			label: "OpenAI Codex",
+			command: "codex",
+			binary: "codex",
+			args: [],
+		});
+		const card = createCard({ workingDirectory: "/tmp/codex-worktree", useWorktree: true });
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
+		taskWorktreeMocks.pathExists.mockResolvedValue(true);
+
+		const failedSummary = createSummary({
+			taskId: "task-1",
+			agentId: "codex",
+			state: "awaiting_review",
+			reviewReason: "error",
+			sessionLaunchPath: "/tmp/codex-worktree",
+			resumeSessionId: "missing-session-id",
+			warningMessage: "Resume failed before opening an interactive session (exit code 1).",
+		});
+		const update = vi.fn((taskId: string, patch: Record<string, unknown>) =>
+			createSummary({
+				taskId,
+				agentId: "codex",
+				warningMessage: String(patch.warningMessage ?? ""),
+				sessionLaunchPath: "/tmp/codex-worktree",
+				resumeSessionId: null,
+			}),
+		);
+		const terminalManager = {
+			startTaskSession: vi.fn(async () =>
+				createSummary({
+					taskId: "task-1",
+					agentId: "codex",
+					sessionLaunchPath: "/tmp/codex-worktree",
+					resumeSessionId: null,
+				}),
+			),
+			getSummary: vi.fn(() => failedSummary),
+			update,
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const api = createRuntimeApi(createDeps(terminalManager));
+
+		const response = await api.startTaskSession(defaultScope, {
+			taskId: "task-1",
+			baseRef: "main",
+			prompt: "",
+			resumeConversation: true,
+			awaitReview: true,
+			useWorktree: true,
+		});
+
+		expect(response.ok).toBe(true);
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				agentId: "codex",
+				resumeConversation: true,
+				resumeSessionId: undefined,
+			}),
+		);
+		expect(update).toHaveBeenCalledWith(
+			"task-1",
+			expect.objectContaining({
+				warningMessage: STORED_CODEX_RESUME_FAILED_WARNING,
+			}),
+		);
+		expect(response.summary?.warningMessage).toBe(STORED_CODEX_RESUME_FAILED_WARNING);
 	});
 
 	it("falls back to projectPath when non-worktree task's persisted directory is deleted", async () => {

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { STORED_CODEX_RESUME_FAILED_WARNING } from "../../../src/terminal/codex-resume-failure";
 
 const prepareAgentLaunchMock = vi.hoisted(() => vi.fn());
 const ptySessionSpawnMock = vi.hoisted(() => vi.fn());
@@ -232,7 +233,7 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(manager.store.getSummary("task-1")?.resumeSessionId).toBe("codex-session-1");
 	});
 
-	it("preserves a non-zero startup resume failure instead of opening a fresh blank prompt", async () => {
+	it("clears a bad stored Codex session id after a non-zero startup resume failure", async () => {
 		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
 		const onOutput = vi.fn();
 		const onState = vi.fn();
@@ -272,21 +273,64 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(summary?.reviewReason).toBe("error");
 		expect(summary?.pid).toBeNull();
 		expect(summary?.exitCode).toBe(1);
-		expect(summary?.resumeSessionId).toBe("codex-session-1");
-		expect(summary?.warningMessage).toBe("Resume failed before opening an interactive session (exit code 1).");
+		expect(summary?.resumeSessionId).toBeNull();
+		expect(summary?.warningMessage).toBe(STORED_CODEX_RESUME_FAILED_WARNING);
 
 		const outputText = Buffer.concat(onOutput.mock.calls.map(([chunk]) => chunk as Buffer)).toString("utf8");
 		expect(outputText).toContain("No session found");
-		expect(outputText).toContain("Resume failed before opening an interactive session");
+		expect(outputText).toContain("Could not resume the stored Codex session");
 		expect(onState).toHaveBeenCalledWith(
 			expect.objectContaining({
 				reviewReason: "error",
-				warningMessage: "Resume failed before opening an interactive session (exit code 1).",
+				resumeSessionId: null,
+				warningMessage: STORED_CODEX_RESUME_FAILED_WARNING,
 			}),
 		);
 		const restore = await manager.getRestoreSnapshot("task-1");
 		expect(restore?.snapshot).toContain("No session found");
-		expect(restore?.snapshot).toContain("Resume failed before opening an interactive session");
+		expect(restore?.snapshot).toContain("Could not resume the stored Codex session");
+	});
+
+	it("does not reconnect-auto-restart a failed Codex stored-id resume", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111 + spawnedSessions.length, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", {
+			onState: vi.fn(),
+			onOutput: vi.fn(),
+			onExit: vi.fn(),
+		});
+
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "codex-session-1",
+			awaitReview: true,
+		});
+
+		spawnedSessions[0]?.triggerExit(1);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(manager.store.getSummary("task-1")?.warningMessage).toBe(STORED_CODEX_RESUME_FAILED_WARNING);
+
+		manager.recoverStaleSession("task-1");
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("error");
 	});
 
 	it("keeps the fresh prompt fallback for clean startup resume exits", async () => {

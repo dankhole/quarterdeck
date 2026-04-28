@@ -8,6 +8,7 @@ import { cleanStaleIndexLockForWorktree } from "../fs";
 import type { PreparedAgentLaunch } from "./agent-session-adapters";
 import { prepareAgentLaunch } from "./agent-session-adapters";
 import { shouldAutoConfirmClaudeWorkspaceTrust, stopWorkspaceTrustTimers } from "./claude-workspace-trust";
+import { isCodexResumeFailureSummary, STORED_CODEX_RESUME_FAILED_WARNING } from "./codex-resume-failure";
 import { shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust";
 import { PtySession, type PtySession as PtySessionInstance } from "./pty-session";
 import { scheduleAutoRestart, shouldAutoRestart } from "./session-auto-restart";
@@ -380,11 +381,18 @@ export function handleTaskSessionExit(
 				{ skipContinueAttempt: true },
 			);
 		} else {
-			const message = `Resume failed before opening an interactive session (exit code ${event.exitCode}).`;
-			sessionLog.warn("resume exited before interactive session; preserving failed resume", resumeExitData);
+			const failedStoredCodexResume = request.agentId === "codex" && Boolean(request.resumeSessionId?.trim());
+			const message = failedStoredCodexResume
+				? STORED_CODEX_RESUME_FAILED_WARNING
+				: `Resume failed before opening an interactive session (exit code ${event.exitCode}).`;
+			sessionLog.warn("resume exited before interactive session; preserving failed resume", {
+				...resumeExitData,
+				clearedResumeSessionId: failedStoredCodexResume,
+			});
 			const failedSummary = deps.updateStore(request.taskId, {
 				state: "awaiting_review",
 				reviewReason: "error",
+				...(failedStoredCodexResume ? { resumeSessionId: null } : {}),
 				warningMessage: message,
 			});
 			writeSystemOutput(currentEntry, message, failedSummary);
@@ -543,7 +551,12 @@ export function recoverStaleSession(taskId: string, deps: RecoverStaleSessionDep
 	}
 
 	if (summary.state === "awaiting_review" && isTerminalReviewReason(summary.reviewReason)) {
-		if (entry?.restartRequest?.kind === "task" && !entry.pendingAutoRestart && summary.reviewReason === "error") {
+		if (
+			entry?.restartRequest?.kind === "task" &&
+			!entry.pendingAutoRestart &&
+			summary.reviewReason === "error" &&
+			!isCodexResumeFailureSummary(summary)
+		) {
 			scheduleAutoRestart(entry, {
 				startTaskSession: (r) => deps.startTaskSession(r),
 				updateStore: (id, patch) => deps.updateStore(id, patch),

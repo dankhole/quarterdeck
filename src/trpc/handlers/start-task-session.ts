@@ -7,6 +7,7 @@ import {
 } from "../../core";
 import { loadProjectState } from "../../state";
 import type { TerminalSessionManager } from "../../terminal";
+import { hasFailedStoredCodexResume, STORED_CODEX_RESUME_FAILED_WARNING } from "../../terminal/codex-resume-failure";
 import { captureTaskTurnCheckpoint, pathExists, resolveTaskCwd } from "../../workdir";
 import type { RuntimeTrpcProjectScope } from "../app-router-context";
 
@@ -42,8 +43,15 @@ function getCodexResumeSessionWarning(options: {
 	resumeConversation: boolean | undefined;
 	agentId: string;
 	resumeSessionId: string | null | undefined;
+	failedStoredResumeSession: boolean;
 }): string | null {
-	if (!options.resumeConversation || options.agentId !== "codex" || options.resumeSessionId) {
+	if (!options.resumeConversation || options.agentId !== "codex") {
+		return null;
+	}
+	if (options.failedStoredResumeSession) {
+		return STORED_CODEX_RESUME_FAILED_WARNING;
+	}
+	if (options.resumeSessionId) {
 		return null;
 	}
 	return "Codex resume did not have a stored session id, so Quarterdeck fell back to the most recent Codex session for this checkout. If this opens the wrong conversation, start a fresh task.";
@@ -109,12 +117,15 @@ export async function handleStartTaskSession(
 		const previousTerminalAgentId = previousSummary?.agentId ?? null;
 		const previousResumeSessionId = previousSummary?.resumeSessionId ?? null;
 		const effectiveAgentId = previousTerminalAgentId ?? scopedRuntimeConfig.selectedAgentId;
+		const failedStoredResumeSession = hasFailedStoredCodexResume(previousSummary);
+		const resumeSessionIdForStart = failedStoredResumeSession ? null : previousResumeSessionId;
 		if (body.resumeConversation) {
 			log.debug("resume path: loaded previous session summary", {
 				taskId: body.taskId,
 				hasPreviousSummary: Boolean(previousSummary),
 				previousAgentId: previousTerminalAgentId,
 				previousResumeSessionId,
+				failedStoredResumeSession,
 				previousState: previousSummary?.state ?? null,
 				previousReviewReason: previousSummary?.reviewReason ?? null,
 				previousLaunchPath: previousSummary?.sessionLaunchPath ?? null,
@@ -123,7 +134,16 @@ export async function handleStartTaskSession(
 				effectiveAgentId,
 			});
 		}
-		if (body.resumeConversation && effectiveAgentId === "codex" && !previousResumeSessionId) {
+		if (body.resumeConversation && effectiveAgentId === "codex" && failedStoredResumeSession) {
+			log.warn("stored Codex resumeSessionId disabled after previous resume failure", {
+				taskId: body.taskId,
+				agentId: effectiveAgentId,
+				previousResumeSessionId,
+				previousState: previousSummary?.state ?? null,
+				previousReviewReason: previousSummary?.reviewReason ?? null,
+				previousLaunchPath: previousSummary?.sessionLaunchPath ?? null,
+			});
+		} else if (body.resumeConversation && effectiveAgentId === "codex" && !resumeSessionIdForStart) {
 			log.warn("resume requested without stored resumeSessionId", {
 				taskId: body.taskId,
 				agentId: effectiveAgentId,
@@ -165,7 +185,8 @@ export async function handleStartTaskSession(
 		const codexResumeSessionWarning = getCodexResumeSessionWarning({
 			resumeConversation: body.resumeConversation,
 			agentId: resolved.agentId,
-			resumeSessionId: previousResumeSessionId,
+			resumeSessionId: resumeSessionIdForStart,
+			failedStoredResumeSession,
 		});
 		log.debug("handing start-task-session request to terminal manager", {
 			taskId: body.taskId,
@@ -173,7 +194,7 @@ export async function handleStartTaskSession(
 			binary: resolved.binary,
 			taskCwd,
 			resumeConversation: body.resumeConversation ?? false,
-			resumeSessionIdPassed: previousResumeSessionId ?? null,
+			resumeSessionIdPassed: resumeSessionIdForStart ?? null,
 			awaitReview: body.awaitReview ?? false,
 		});
 		const summary = await terminalManager.startTaskSession({
@@ -186,7 +207,7 @@ export async function handleStartTaskSession(
 			images: body.images,
 			startInPlanMode: body.startInPlanMode,
 			resumeConversation: body.resumeConversation,
-			resumeSessionId: previousResumeSessionId ?? undefined,
+			resumeSessionId: resumeSessionIdForStart ?? undefined,
 			awaitReview: body.awaitReview,
 			cols: body.cols,
 			rows: body.rows,

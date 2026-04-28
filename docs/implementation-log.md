@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: fall back after missing Codex resume ids (2026-04-28)
+
+Dogfooding showed that a failed targeted Codex resume could trap a task in a repeated failure: `codex resume <stored-id>` exited with "No saved session found", Quarterdeck preserved the failed review summary, but the bad `resumeSessionId` stayed on the summary. A later manual restart or terminal reconnect could reuse the same missing id, so the user saw the same failed-resume terminal state instead of a best-effort continuation.
+
+The terminal layer now treats a non-zero targeted Codex resume as evidence that the stored id is no longer usable. It keeps the failed output and review/error state, but clears `resumeSessionId`, stores a warning that the next restart will fall back to the most recent Codex session, and writes that warning into the terminal mirror for restore. `recoverStaleSession` also recognizes Codex resume-failure summaries and does not auto-restart them on WebSocket reconnect, so reconnects cannot silently loop the same failed resume. The tRPC start handler recognizes older persisted summaries with the previous generic "Resume failed before opening an interactive session" warning and suppresses the stale id before launching, which lets already-stuck tasks recover via the same `codex resume --last` fallback path. Focused tests cover the id clearing, reconnect non-retry, and legacy failed-summary fallback.
+
+Files touched: `AGENTS.md`, `CHANGELOG.md`, `docs/implementation-log.md`, `src/terminal/codex-resume-failure.ts`, `src/terminal/session-lifecycle.ts`, `src/trpc/handlers/start-task-session.ts`, `test/runtime/terminal/session-manager-auto-restart.test.ts`, `test/runtime/trpc/runtime-api.test.ts`.
+
+Commit: pending
+
 ## Fix: add terminal restore watchdog logging (2026-04-27)
 
 Dogfooding an untrashed Codex task showed the agent terminal could remain behind the loading spinner long enough that switching projects away and back was needed to recover the view. Local `main` already contained the behavioral recovery pieces for the known restore races: queued restore requests during initial connect, IO-open fallback after 1.5 seconds, pooled-slot reconnect on session-instance changes, and guards against empty restore snapshots blanking live output. Reapplying the older worktree's behavioral patch on top of `main` would have risked duplicating or perturbing that flow.
@@ -38,7 +48,7 @@ Commit: pending
 
 Dogfooding showed a review-ready Codex task could come back after server startup with a blank terminal. The runtime log had the important clue: `codex resume <stored-id>` exited with code 1, then the generic resume-failure fallback opened a fresh non-resume Codex prompt. That second prompt had no task prompt or conversation context, cleared the stored `resumeSessionId`, and replaced the useful failed-resume terminal output with an empty live session.
 
-The terminal exit path now treats clean and failed resume exits differently. Clean startup-resume exits still use the fresh-prompt fallback because some `codex resume` / Claude `--continue` launches can exit 0 without leaving an interactive session. Non-zero resume exits are preserved instead: the session stays in review with `reviewReason: "error"`, the original `resumeSessionId` remains available for manual retry or later recovery, a `warningMessage` is stored for the UI toast, and a `[quarterdeck]` line is written into the terminal mirror so later restores are not blank even if the agent's own error output was sparse. Added regression coverage for both the failed-resume preservation path and the clean-exit fallback.
+The terminal exit path now treats clean and failed resume exits differently. Clean startup-resume exits still use the fresh-prompt fallback because some `codex resume` / Claude `--continue` launches can exit 0 without leaving an interactive session. Non-zero resume exits are preserved instead: the session stays in review with `reviewReason: "error"`, a `warningMessage` is stored for the UI toast, and a `[quarterdeck]` line is written into the terminal mirror so later restores are not blank even if the agent's own error output was sparse. Added regression coverage for both the failed-resume preservation path and the clean-exit fallback.
 
 Files touched: `AGENTS.md`, `CHANGELOG.md`, `docs/implementation-log.md`, `src/terminal/session-lifecycle.ts`, `test/runtime/terminal/session-manager-auto-restart.test.ts`.
 
