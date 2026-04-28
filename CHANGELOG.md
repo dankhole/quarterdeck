@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: prune orphan session summaries from project state
+
+- Project-state snapshots and cross-project notification baselines now omit stale non-live session summaries whose cards are no longer on the board, reducing old task history in stream payloads.
+- Browser board saves now persist only board-linked task summaries to `sessions.json`, so deleted tasks and ephemeral shell terminals stop accumulating in project state.
+- Shutdown cleanup now applies the same board-linked persistence filter when marking sessions interrupted, preventing home/detail shell summaries from surviving a restart through the sessions-only writer.
+
 ### Fix: explain why title regeneration failed
 
 - Title regeneration now produces a descriptive warning/error trail at every layer when the "Could not regenerate title" toast fires, instead of swallowing the failure silently.

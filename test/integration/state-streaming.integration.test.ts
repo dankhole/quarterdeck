@@ -337,8 +337,10 @@ describe.sequential("state streaming integration", () => {
 				sessionsPath,
 				JSON.stringify(
 					{
-						"task-good": createTestTaskSessionSummary({
-							taskId: "task-good",
+						// task-1 matches the card created by createBoard so it survives
+						// the board-linked prune applied to the broadcast snapshot.
+						"task-1": createTestTaskSessionSummary({
+							taskId: "task-1",
 							updatedAt: 100,
 						}),
 						"task-bad": {
@@ -388,10 +390,10 @@ describe.sequential("state streaming integration", () => {
 					droppedCount: 1,
 				}),
 			]);
-			expect(Object.keys(snapshot.projectState?.sessions ?? {})).toEqual(["task-good"]);
+			expect(Object.keys(snapshot.projectState?.sessions ?? {})).toEqual(["task-1"]);
 
 			const repairedSessions = JSON.parse(readFileSync(sessionsPath, "utf8")) as Record<string, unknown>;
-			expect(Object.keys(repairedSessions)).toEqual(["task-good"]);
+			expect(Object.keys(repairedSessions)).toEqual(["task-1"]);
 		} finally {
 			if (stream) {
 				await stream.close();

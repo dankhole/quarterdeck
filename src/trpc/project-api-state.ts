@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { parseWorktreeDeleteRequest, parseWorktreeEnsureRequest } from "../core";
+import { parseWorktreeDeleteRequest, parseWorktreeEnsureRequest, pruneOrphanSessionsForPersist } from "../core";
 import { ProjectStateConflictError, saveProjectState } from "../state";
 import { generateTaskTitle } from "../title";
 import { deleteTaskWorktree, ensureTaskWorktreeIfDoesntExist, getTaskWorktreeInfo } from "../workdir";
@@ -78,7 +78,7 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 				);
 				const response = await saveProjectState(projectScope.projectPath, {
 					board: input.board,
-					sessions: authoritativeSessions,
+					sessions: pruneOrphanSessionsForPersist(authoritativeSessions, input.board),
 					expectedRevision: input.expectedRevision,
 				});
 				ctx.applyEffects(createBoardStateSavedEffects(projectScope));

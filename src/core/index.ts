@@ -87,6 +87,8 @@ export {
 	getReadyLinkedTaskIdsForTaskInTrash,
 	getTaskColumnId,
 	moveTaskToColumn,
+	pruneOrphanSessionsForBroadcast,
+	pruneOrphanSessionsForPersist,
 	removeTaskDependency,
 	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,

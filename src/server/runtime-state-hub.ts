@@ -12,7 +12,16 @@ import type {
 	RuntimeStateStreamMessage,
 	RuntimeTaskSessionSummary,
 } from "../core";
-import { createTaggedLogger, Disposable, getLogLevel, getRecentLogEntries, onLogEntry, toDisposable } from "../core";
+import {
+	createTaggedLogger,
+	Disposable,
+	getLogLevel,
+	getRecentLogEntries,
+	onLogEntry,
+	pruneOrphanSessionsForBroadcast,
+	toDisposable,
+} from "../core";
+import { loadProjectBoardById } from "../state";
 import type { TerminalSessionManager } from "../terminal";
 import { applyRuntimeMutationEffects, createTaskBaseRefUpdatedEffects } from "../trpc/runtime-mutation-effects";
 import { createProjectMetadataMonitor, type ProjectMetadataPollIntervals } from "./project-metadata-monitor";
@@ -384,6 +393,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			} catch (error) {
 				projectStateError = error instanceof Error ? error.message : String(error);
 			}
+			const notificationSummariesByProject = await this.collectNotificationSummariesByProject();
 			return {
 				currentProjectId: projectsPayload.currentProjectId,
 				projects: projectsPayload.projects,
@@ -391,11 +401,12 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				projectPath: resolved.projectPath,
 				projectState,
 				projectStateError,
-				notificationSummariesByProject: this.collectNotificationSummariesByProject(),
+				notificationSummariesByProject,
 			};
 		}
 
 		const projectsPayload = await this.deps.projectRegistry.buildProjectsPayload(null);
+		const notificationSummariesByProject = await this.collectNotificationSummariesByProject();
 		return {
 			currentProjectId: projectsPayload.currentProjectId,
 			projects: projectsPayload.projects,
@@ -403,7 +414,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			projectPath: null,
 			projectState: null,
 			projectStateError: null,
-			notificationSummariesByProject: this.collectNotificationSummariesByProject(),
+			notificationSummariesByProject,
 		};
 	}
 
@@ -418,14 +429,40 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		}
 	}
 
-	private collectNotificationSummariesByProject(): Record<string, RuntimeTaskSessionSummary[]> {
+	private async collectNotificationSummariesByProject(): Promise<Record<string, RuntimeTaskSessionSummary[]>> {
+		const managed = this.deps.projectRegistry.listManagedProjects();
+		const projectEntries = await Promise.all(
+			managed.map(async (project) => {
+				const summaries = project.terminalManager.store.listSummaries();
+				if (summaries.length === 0) {
+					return null;
+				}
+				// Filter out summaries whose cards are no longer on the board.
+				// Without this, the connect-time notification snapshot grows in
+				// proportion to every task ever run in the project.
+				try {
+					const board = await loadProjectBoardById(project.projectId);
+					const summaryMap = Object.fromEntries(summaries.map((summary) => [summary.taskId, summary]));
+					const pruned = pruneOrphanSessionsForBroadcast(summaryMap, board);
+					const prunedList = Object.values(pruned);
+					if (prunedList.length === 0) {
+						return null;
+					}
+					return [project.projectId, prunedList] as const;
+				} catch {
+					// Board read failed — fall back to full list rather than
+					// silently dropping notifications.
+					return [project.projectId, summaries] as const;
+				}
+			}),
+		);
 		const summariesByProject: Record<string, RuntimeTaskSessionSummary[]> = {};
-		for (const project of this.deps.projectRegistry.listManagedProjects()) {
-			const summaries = project.terminalManager.store.listSummaries();
-			if (summaries.length === 0) {
+		for (const entry of projectEntries) {
+			if (!entry) {
 				continue;
 			}
-			summariesByProject[project.projectId] = summaries;
+			const [projectId, summaries] = entry;
+			summariesByProject[projectId] = summaries;
 		}
 		return summariesByProject;
 	}

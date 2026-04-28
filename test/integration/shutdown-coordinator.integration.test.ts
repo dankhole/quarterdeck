@@ -60,6 +60,20 @@ function createSession(
 	});
 }
 
+function createInterruptedShellSession(taskId: string): RuntimeTaskSessionSummary {
+	return createTestTaskSessionSummary({
+		taskId,
+		state: "interrupted",
+		agentId: null,
+		sessionLaunchPath: `/tmp/${taskId}`,
+		pid: null,
+		startedAt: Date.now() - 1_000,
+		updatedAt: Date.now(),
+		lastOutputAt: Date.now(),
+		reviewReason: "interrupted",
+	});
+}
+
 describe.sequential("shutdown coordinator integration", () => {
 	it("preserves cards in their columns and marks sessions interrupted on shutdown", async () => {
 		await withTemporaryHome(async () => {
@@ -99,14 +113,26 @@ describe.sequential("shutdown coordinator integration", () => {
 
 				let didCloseRuntimeServer = false;
 				const interruptedManagedRunning = createSession("managed-running", "interrupted");
+				const interruptedHomeShell = createInterruptedShellSession("__home_terminal__");
+				const interruptedDetailShell = createInterruptedShellSession("__detail_terminal__:managed-running");
 				const managedTerminalManager = {
 					stopReconciliation: () => {},
-					markInterruptedAndStopAll: () => [interruptedManagedRunning],
+					markInterruptedAndStopAll: () => [
+						interruptedManagedRunning,
+						interruptedHomeShell,
+						interruptedDetailShell,
+					],
 					store: {
-						listSummaries: () => [interruptedManagedRunning],
+						listSummaries: () => [interruptedManagedRunning, interruptedHomeShell, interruptedDetailShell],
 						getSummary: (taskId: string) => {
 							if (taskId === "managed-running") {
 								return interruptedManagedRunning;
+							}
+							if (taskId === "__home_terminal__") {
+								return interruptedHomeShell;
+							}
+							if (taskId === "__detail_terminal__:managed-running") {
+								return interruptedDetailShell;
 							}
 							if (taskId === "managed-idle") {
 								return createSession("managed-idle", "idle");
@@ -152,6 +178,9 @@ describe.sequential("shutdown coordinator integration", () => {
 				expect(managedAfter.sessions["managed-idle"]?.state).toBe("idle");
 				// Tasks without a pre-existing session record are unchanged.
 				expect(managedAfter.sessions["managed-missing-session"]).toBeUndefined();
+				// Dedicated shell summaries are runtime-only and do not survive restart.
+				expect(managedAfter.sessions["__home_terminal__"]).toBeUndefined();
+				expect(managedAfter.sessions["__detail_terminal__:managed-running"]).toBeUndefined();
 
 				// Indexed (non-managed) projects are also preserved in place.
 				const indexedAfter = await loadProjectState(indexedProjectPath);

@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: prune orphan session summaries from project state (2026-04-28)
+
+Dogfooding the Codex slowdown investigation found that project state could carry hundreds of session summaries even when the visible board had only a small number of active cards. The terminal-manager store hydrates persisted `sessions.json`, project snapshots merge every live store summary back into the response, browser saves previously wrote every authoritative summary, and cross-project notification snapshots enumerated every managed-project summary. Old deleted-card summaries therefore inflated stream payloads, save payloads, notification baselines, and browser reconciliation work long after the corresponding cards were gone.
+
+The fix adds shared board-linked pruning helpers in `src/core/task-board-mutations.ts`. Broadcast snapshots keep board-linked summaries plus live summaries so active processes and open shell terminals stay visible during the current runtime, while persistence uses a stricter board-only filter so deleted task summaries and ephemeral shell entries do not survive restart. `ProjectRegistry.buildProjectStateSnapshot(...)` and the runtime stream notification baseline use the broadcast filter; `project.saveState` and shutdown's sessions-only writer use the persistence filter. The shutdown path is important because it bypasses the browser save API while marking active sessions interrupted, so it now applies the same strict filter before calling `saveProjectSessions(...)`. Focused unit and integration coverage verifies both filters and confirms active home/detail shell summaries are not persisted during shutdown.
+
+Files touched: `CHANGELOG.md`, `docs/codex-session-slowdown-investigation.md`, `docs/implementation-log.md`, `src/core/index.ts`, `src/core/task-board-mutations.ts`, `src/server/project-registry.ts`, `src/server/runtime-state-hub.ts`, `src/server/shutdown-coordinator.ts`, `src/trpc/project-api-state.ts`, `test/integration/state-streaming.integration.test.ts`, `test/integration/shutdown-coordinator.integration.test.ts`, `test/runtime/task-board-mutations.test.ts`.
+
+Commit: pending
+
 ## Fix: explain why title regeneration failed (2026-04-28)
 
 The "Could not regenerate title" toast was the only visible signal when title regeneration failed, and every layer in the chain swallowed its real reason. The browser `handleRegenerateTitleTask` did `.catch(() => showAppToast(...))` with no logging and did not even react to the `{ ok: false }` success path. On the runtime side, `generateTaskTitle` only logged a generic "returned null", and `callLlm` returned null without any log at all when `ANTHROPIC_BEDROCK_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` were missing — the most common cause in dev.

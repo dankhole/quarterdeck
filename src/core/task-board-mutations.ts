@@ -5,6 +5,7 @@ import type {
 	RuntimeBoardDependency,
 	RuntimeTaskAutoReviewMode,
 	RuntimeTaskImage,
+	RuntimeTaskSessionSummary,
 } from "./api-contract";
 import { createUniqueTaskId } from "./task-id";
 
@@ -647,4 +648,59 @@ export function updateTask(
 		task: updatedTask,
 		updated: true,
 	};
+}
+
+function collectBoardTaskIds(board: RuntimeBoardData): Set<string> {
+	const taskIds = new Set<string>();
+	for (const column of board.columns) {
+		for (const card of column.cards) {
+			taskIds.add(card.id);
+		}
+	}
+	return taskIds;
+}
+
+function isLiveSessionSummary(summary: RuntimeTaskSessionSummary): boolean {
+	return summary.pid !== null || summary.state === "running";
+}
+
+/**
+ * Drop session summaries whose cards are no longer on the board. Live
+ * summaries (pid !== null or state === "running") are kept so an in-flight
+ * agent process — or a still-open shell terminal — stays visible even if the
+ * owning card has briefly left the board. Use for the project-state snapshot
+ * broadcast and the cross-project notification snapshot.
+ */
+export function pruneOrphanSessionsForBroadcast(
+	sessions: Record<string, RuntimeTaskSessionSummary>,
+	board: RuntimeBoardData,
+): Record<string, RuntimeTaskSessionSummary> {
+	const boardTaskIds = collectBoardTaskIds(board);
+	const pruned: Record<string, RuntimeTaskSessionSummary> = {};
+	for (const [taskId, summary] of Object.entries(sessions)) {
+		if (boardTaskIds.has(taskId) || isLiveSessionSummary(summary)) {
+			pruned[taskId] = summary;
+		}
+	}
+	return pruned;
+}
+
+/**
+ * Strict board-linked filter for persistence. Sessions whose card is no
+ * longer on the board are dropped from `sessions.json` so the file does not
+ * grow unbounded. Shells and other non-board-linked live entries are also
+ * dropped — they are ephemeral and should not survive a restart.
+ */
+export function pruneOrphanSessionsForPersist(
+	sessions: Record<string, RuntimeTaskSessionSummary>,
+	board: RuntimeBoardData,
+): Record<string, RuntimeTaskSessionSummary> {
+	const boardTaskIds = collectBoardTaskIds(board);
+	const pruned: Record<string, RuntimeTaskSessionSummary> = {};
+	for (const [taskId, summary] of Object.entries(sessions)) {
+		if (boardTaskIds.has(taskId)) {
+			pruned[taskId] = summary;
+		}
+	}
+	return pruned;
 }

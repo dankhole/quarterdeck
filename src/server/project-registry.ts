@@ -11,7 +11,7 @@ import type {
 	RuntimeProjectTaskCounts,
 	RuntimeTaskSessionSummary,
 } from "../core";
-import { createTaggedLogger } from "../core";
+import { createTaggedLogger, pruneOrphanSessionsForBroadcast } from "../core";
 import {
 	isUnderWorktreesHome,
 	listProjectIndexEntries,
@@ -376,6 +376,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		for (const summary of terminalManager.store.listSummaries()) {
 			response.sessions[summary.taskId] = summary;
 		}
+		response.sessions = pruneOrphanSessionsForBroadcast(response.sessions, response.board);
 		return response;
 	};
 

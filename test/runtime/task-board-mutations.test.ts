@@ -7,9 +7,12 @@ import {
 	canonicalizeTaskBoard,
 	deleteTasksFromBoard,
 	moveTaskToColumn,
+	pruneOrphanSessionsForBroadcast,
+	pruneOrphanSessionsForPersist,
 	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
 } from "../../src/core";
+import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 
 function createBoard(): RuntimeBoardData {
 	return {
@@ -314,5 +317,112 @@ describe("shutdown-coordinator moveTaskToTrash preserves branch", () => {
 			.find((c) => c.id === "trash")
 			?.cards.find((c) => c.id === created.task.id);
 		expect(trashedCard?.branch).toBe("feat/shutdown-work");
+	});
+});
+
+describe("pruneOrphanSessionsForPersist", () => {
+	function boardWithCards(cardIds: string[]): RuntimeBoardData {
+		let board = createBoard();
+		for (const id of cardIds) {
+			const created = addTaskToColumn(board, "backlog", { prompt: id, baseRef: "main" }, () => `${id}1234`);
+			board = created.board;
+		}
+		return board;
+	}
+
+	it("keeps summaries for cards currently on the board", () => {
+		const board = boardWithCards(["aaaaa"]);
+		const boardCardId = board.columns.find((c) => c.id === "backlog")?.cards[0]?.id ?? "";
+		const sessions = {
+			[boardCardId]: createTestTaskSessionSummary({ taskId: boardCardId }),
+		};
+
+		const pruned = pruneOrphanSessionsForPersist(sessions, board);
+
+		expect(Object.keys(pruned)).toEqual([boardCardId]);
+	});
+
+	it("drops summaries for tasks no longer on the board", () => {
+		const board = boardWithCards(["aaaaa"]);
+		const sessions = {
+			"orphan-task": createTestTaskSessionSummary({
+				taskId: "orphan-task",
+				state: "awaiting_review",
+				reviewReason: "hook",
+			}),
+		};
+
+		const pruned = pruneOrphanSessionsForPersist(sessions, board);
+
+		expect(pruned).toEqual({});
+	});
+
+	it("drops live shell summaries that have no card (shells are ephemeral)", () => {
+		const board = boardWithCards([]);
+		const sessions = {
+			__home_terminal__: createTestTaskSessionSummary({
+				taskId: "__home_terminal__",
+				state: "running",
+				pid: 12345,
+			}),
+		};
+
+		const pruned = pruneOrphanSessionsForPersist(sessions, board);
+
+		expect(pruned).toEqual({});
+	});
+});
+
+describe("pruneOrphanSessionsForBroadcast", () => {
+	function boardWithCards(cardIds: string[]): RuntimeBoardData {
+		let board = createBoard();
+		for (const id of cardIds) {
+			const created = addTaskToColumn(board, "backlog", { prompt: id, baseRef: "main" }, () => `${id}1234`);
+			board = created.board;
+		}
+		return board;
+	}
+
+	it("keeps summaries for cards currently on the board", () => {
+		const board = boardWithCards(["aaaaa"]);
+		const boardCardId = board.columns.find((c) => c.id === "backlog")?.cards[0]?.id ?? "";
+		const sessions = {
+			[boardCardId]: createTestTaskSessionSummary({ taskId: boardCardId }),
+		};
+
+		const pruned = pruneOrphanSessionsForBroadcast(sessions, board);
+
+		expect(Object.keys(pruned)).toEqual([boardCardId]);
+	});
+
+	it("keeps live shell summaries even when the board has no matching card", () => {
+		const board = boardWithCards([]);
+		const sessions = {
+			__home_terminal__: createTestTaskSessionSummary({
+				taskId: "__home_terminal__",
+				state: "running",
+				pid: 12345,
+			}),
+		};
+
+		const pruned = pruneOrphanSessionsForBroadcast(sessions, board);
+
+		expect(pruned).toEqual(sessions);
+	});
+
+	it("drops idle summaries for tasks no longer on the board", () => {
+		const board = boardWithCards(["aaaaa"]);
+		const sessions = {
+			"orphan-task": createTestTaskSessionSummary({
+				taskId: "orphan-task",
+				state: "awaiting_review",
+				reviewReason: "hook",
+				pid: null,
+			}),
+		};
+
+		const pruned = pruneOrphanSessionsForBroadcast(sessions, board);
+
+		expect(pruned).toEqual({});
 	});
 });
