@@ -2,6 +2,18 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: keep .NET build outputs local to task worktrees (2026-04-28)
+
+Dogfooding a .NET project exposed a bad interaction between Quarterdeck's ignored-path mirroring and mutable build outputs. `syncIgnoredPathsIntoWorktree(...)` intentionally symlinks ignored paths from the parent checkout into task worktrees so dependency/setup directories such as `node_modules` do not need to be recreated for every task. In .NET repositories, `bin/`, `obj/`, and `TestResults/` are ignored too, but MSBuild and test runners write through those directories. Symlinking them back to the parent checkout can cross the worktree sandbox boundary and can also mix build artifacts from different branches.
+
+The ignored-path filter now skips any path segment named `bin`, `obj`, or `TestResults` before the mirroring pass creates symlinks or writes the managed `info/exclude` block. This keeps those paths absent in new task worktrees so local builds create per-worktree outputs normally, while still allowing dependency-style ignored paths to mirror. A focused integration test creates the .NET-style ignored output tree next to a normal `node_modules` ignored path and verifies the build outputs are not symlinked while `node_modules` still is.
+
+`docs/todo.md` now tracks the broader design follow-up: replace broad ignored-path mirroring with an explicit allowlist plus project-level opt-ins, so future ecosystems do not rely on an ever-growing denylist.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `docs/todo.md`, `src/workdir/task-worktree-symlinks.ts`, `test/integration/task-worktree.integration.test.ts`.
+
+Commit: pending
+
 ## Fix: avoid blocking project git context probes (2026-04-28)
 
 Project-scoped HTTP routing and hook ingest were still using full project context loading in places where they only needed the project id and repository path. Full context loading also detects current branch, local branches, and default branch, so frequent request setup could pay for git metadata probes even when the handler did not use branch data. That undercut the metadata-polling work that moved slow git probes away from runtime snapshots.

@@ -18,6 +18,7 @@ const SYMLINK_PATH_SEGMENT_BLACKLIST = new Set([
 	".Spotlight-V100",
 	".Trashes",
 ]);
+const MUTABLE_BUILD_OUTPUT_SEGMENT_BLACKLIST = new Set(["bin", "obj", "testresults"]);
 
 type CreateSymlink = (target: string, path: string, type: "dir" | "file" | "junction") => Promise<void>;
 
@@ -62,7 +63,11 @@ function shouldSkipSymlink(relativePath: string): boolean {
 	if (segments.length === 0) {
 		return true;
 	}
-	return segments.some((segment) => SYMLINK_PATH_SEGMENT_BLACKLIST.has(segment));
+	return segments.some(
+		(segment) =>
+			SYMLINK_PATH_SEGMENT_BLACKLIST.has(segment) ||
+			MUTABLE_BUILD_OUTPUT_SEGMENT_BLACKLIST.has(segment.toLowerCase()),
+	);
 }
 
 function isPathWithinRoot(path: string, root: string): boolean {

@@ -37,6 +37,7 @@ These are not the top active roadmap items, but they are still real refactor tar
 - Revisit shell terminal minimization after the dedicated terminal lifecycle is more observable and reliable: home/task shell panes currently stop and dispose when closed or when their owning context is left; keeping them live while minimized should preserve that context boundary without resurrecting hidden terminals into blank/loading panes.
 - Build a clearer branch/base-ref UX state model so inferred base refs, pinned refs, integration branches, and detached-head display rules stop acting like isolated fixes. Backlog context: [docs/architecture-roadmap.md#15-branch--base-ref-ux-state-model](./architecture-roadmap.md#15-branch--base-ref-ux-state-model)
 - Rework the file browser + diff viewer data pipeline so scope resolution, tree loading, diff/content fetching, and caching are easier to optimize without mixing transport and view policy. Backlog context: [docs/architecture-roadmap.md#16-file-browser--diff-viewer-data-pipeline](./architecture-roadmap.md#16-file-browser--diff-viewer-data-pipeline)
+- Replace broad ignored-path worktree symlinking with an explicit allowlist plus project-level opt-ins. The current denylist protects known mutable build outputs such as `.NET` `bin/`, `obj/`, and `TestResults/`, but the safer long-term contract is to mirror only high-confidence dependency/setup paths like `node_modules` by default and let projects opt into additional ignored paths intentionally.
 
 ## Codex native hooks parity follow-ups
 

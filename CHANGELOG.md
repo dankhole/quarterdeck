@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: keep .NET build outputs local to task worktrees
+
+- Worktree ignored-path mirroring now skips mutable build-output directories named `bin`, `obj`, and `TestResults`, avoiding symlinks back into the parent checkout for .NET build/test artifacts.
+- Added integration coverage that keeps those build outputs absent from the task worktree while preserving normal ignored dependency mirroring.
+- Added a follow-up todo to move ignored-path mirroring toward an explicit allowlist with per-project opt-ins.
+
 ### Fix: avoid blocking project git context probes
 
 - Project request routing, hook ingest, and project-add path resolution now use a lightweight project scope lookup when they only need project identity/path data, avoiding branch-list git probes on hot request paths.

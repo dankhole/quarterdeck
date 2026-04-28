@@ -156,6 +156,71 @@ describe.sequential("task-worktree integration", () => {
 		});
 	});
 
+	it("does not symlink mutable .NET build output paths into task worktrees", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-dotnet-output-");
+			try {
+				const repoPath = join(sandboxRoot, "repo");
+				mkdirSync(join(repoPath, "src", "Service"), { recursive: true });
+				mkdirSync(join(repoPath, "tests", "ServiceTests"), { recursive: true });
+
+				runGit(repoPath, ["init"]);
+				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
+				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
+
+				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
+				writeFileSync(join(repoPath, "src", "Service", "Program.cs"), 'Console.WriteLine("hello");\n', "utf8");
+				writeFileSync(
+					join(repoPath, "tests", "ServiceTests", "ServiceTests.cs"),
+					"namespace ServiceTests;\n",
+					"utf8",
+				);
+				writeFileSync(
+					join(repoPath, ".gitignore"),
+					"/src/Service/bin/\n/src/Service/obj/\n/tests/ServiceTests/TestResults/\n/node_modules/\n",
+					"utf8",
+				);
+				mkdirSync(join(repoPath, "src", "Service", "bin", "Debug"), { recursive: true });
+				mkdirSync(join(repoPath, "src", "Service", "obj", "Debug"), { recursive: true });
+				mkdirSync(join(repoPath, "tests", "ServiceTests", "TestResults"), { recursive: true });
+				mkdirSync(join(repoPath, "node_modules"), { recursive: true });
+				writeFileSync(join(repoPath, "src", "Service", "bin", "Debug", "Service.dll"), "binary\n", "utf8");
+				writeFileSync(join(repoPath, "src", "Service", "obj", "Debug", "Service.assets.cache"), "cache\n", "utf8");
+				writeFileSync(join(repoPath, "tests", "ServiceTests", "TestResults", "results.trx"), "results\n", "utf8");
+				writeFileSync(join(repoPath, "node_modules", "package.json"), '{\n  "name": "fixture"\n}\n', "utf8");
+
+				runGit(repoPath, [
+					"add",
+					"README.md",
+					".gitignore",
+					"src/Service/Program.cs",
+					"tests/ServiceTests/ServiceTests.cs",
+				]);
+				runGit(repoPath, ["commit", "-m", "init"]);
+
+				const ensured = await ensureTaskWorktreeIfDoesntExist({
+					cwd: repoPath,
+					taskId: "task-dotnet-output",
+					baseRef: "HEAD",
+				});
+				expect(ensured.ok).toBe(true);
+				if (!ensured.ok || !ensured.path) {
+					throw new Error("Task worktree was not created");
+				}
+
+				expect(existsSync(join(ensured.path, "src", "Service", "bin"))).toBe(false);
+				expect(existsSync(join(ensured.path, "src", "Service", "obj"))).toBe(false);
+				expect(existsSync(join(ensured.path, "tests", "ServiceTests", "TestResults"))).toBe(false);
+				expectMirroredPathBehavior(join(ensured.path, "node_modules"));
+				expect(runGit(ensured.path, ["status", "--porcelain", "--", "src/Service/bin"])).toBe("");
+				expect(runGit(ensured.path, ["status", "--porcelain", "--", "src/Service/obj"])).toBe("");
+				expect(runGit(ensured.path, ["status", "--porcelain", "--", "tests/ServiceTests/TestResults"])).toBe("");
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("skips symlinking root node_modules for root Next apps without a next config file", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-root-turbopack-");
