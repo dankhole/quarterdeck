@@ -1,18 +1,18 @@
 # Architecture Overview
 
-Quarterdeck is a local Node runtime plus a React app for running many coding-agent tasks in parallel.
+Quarterdeck is a local Node runtime plus a React app for running many coding-agent tasks across one or more git projects.
 
 There are two big ideas to hold in your head:
 
-1. The browser is mostly a control surface. It renders state, sends commands, and reacts to live updates.
-2. The local runtime is the source of truth for projects, worktrees, sessions, git operations, and streaming state.
+1. The browser is mostly a control surface. It renders state, sends commands, reacts to live updates, and owns durable board writes.
+2. The local runtime is the source of truth for project registration, worktrees, sessions, git operations, and streaming state.
 
 All agents (Claude Code, Codex, etc.) run as PTY-backed CLI processes.
 
 If you remember nothing else, remember this:
 
 - agents are process-oriented
-- the backend coordinates them through one runtime API and one state stream
+- the backend coordinates them through project-scoped APIs and one runtime state stream
 
 ## System Diagram
 
@@ -30,7 +30,8 @@ If you remember nothing else, remember this:
 | Local Runtime                                                                    |
 | src/                                                                             |
 |                                                                                  |
-| trpc/app-router.ts, trpc/runtime-api.ts, server/runtime-state-hub.ts             |
+| trpc/app-router.ts, trpc/project-procedures.ts, server/runtime-state-hub.ts      |
+| server/project-registry.ts                                                      |
 +-------------------------------+--------------------------------------------------+
                                 |
                                 v
@@ -38,9 +39,10 @@ If you remember nothing else, remember this:
 | PTY Runtime                      |
 | src/terminal/                    |
 |                                  |
-| agent-registry.ts                |
 | session-manager.ts               |
 | pty-session.ts                   |
+| session-lifecycle.ts             |
+| session-transition-controller.ts |
 +-------------------------------+--+
                                 |
                                 v
@@ -67,15 +69,18 @@ TRPC client
     v
 app-router.ts
     |
-    v
-runtime-api.ts
+    +--> runtime-api.ts        -> terminal/session-manager.ts
     |
-    +--> terminal/session-manager.ts
+    +--> project-procedures.ts -> project-api-* / workdir / git helpers
 
 
-Live runtime output
+Live runtime state
     |
     +--> terminal session summaries
+    |
+    +--> project metadata updates
+    |
+    +--> lightweight task deltas
     |
     v
 runtime-state-hub.ts
@@ -87,22 +92,23 @@ websocket stream
 browser runtime state hooks
     |
     v
-board, detail view, sidebar, and terminal panels
+project provider, board, detail view, badges, and terminal panels
 ```
 
 ## The Mental Model
 
 Quarterdeck is easiest to understand if you separate it into three layers of responsibility.
 
-The browser layer is the presentation and orchestration layer. It renders the board, detail view, settings, and terminal surfaces. It also owns short-lived UI state such as panel visibility, form drafts, and optimistic message rendering.
+The browser layer is the presentation and orchestration layer. It renders the board, detail view, settings, git panels, and terminal surfaces. It also owns short-lived UI state such as panel visibility, form drafts, and optimistic message rendering. For durable board layout, it is the writer: browser saves send board truth through `project.saveState` with optimistic revision checks.
 
-The runtime layer is the control layer. It decides what session to start, where it should run, what worktree or workspace it belongs to, what command should be used, and what state should be streamed back to the browser.
+The runtime layer is the control layer. It decides what session to start, where it should run, what worktree or project it belongs to, what command should be used, what git metadata should be refreshed, and what state should be streamed back to the browser.
 
-The execution layer is the actual agent implementation — a CLI process attached to a PTY for every agent in the catalog.
+The execution layer is the actual agent implementation: a CLI process attached to a PTY for every task agent or shell session.
 
 That split explains a lot of the architecture:
 
 - the browser should not be the source of truth for session lifecycle
+- the runtime should not rewrite board state behind an attached browser
 - the runtime should coordinate work, not render UI
 
 ## Runtime Modes
@@ -112,7 +118,7 @@ Quarterdeck currently supports two runtime modes.
 | Runtime mode | Used for | Scope | Backing implementation | Why it exists |
 | --- | --- | --- | --- | --- |
 | CLI-backed task terminal | Claude Code, Codex, and similar agents | task-scoped | PTY-backed process runtime | these agents are command-driven CLIs and fit the terminal model well |
-| Workspace shell terminal | the bottom shell panel | workspace-scoped | PTY-backed shell process | this is for manual commands in the repo, not task execution |
+| Project shell terminal | the home/detail shell panels | project-scoped | PTY-backed shell process | this is for manual commands in the repo, not task execution |
 
 ## Core Concepts
 
@@ -120,11 +126,11 @@ These terms come up everywhere in the codebase.
 
 | Concept | Meaning | Why it matters |
 | --- | --- | --- |
-| Workspace | an indexed git repository that Quarterdeck has opened | most browser and runtime state is scoped to a workspace |
+| Project | an indexed git repository that Quarterdeck has opened | most browser and runtime state is scoped to a project id |
 | Task card | a board item with a prompt, base ref, and review settings | a task is the unit of work the board cares about |
 | Worktree | a per-task git worktree | most task agents run inside one |
 | Task session | the live runtime attached to a task card | this is a PTY process |
-| Home agent session | a synthetic, project-scoped session used by the sidebar agent surface | this lets the sidebar reuse existing runtime primitives without creating a real task card |
+| Shell session | a project-scoped manual terminal | shell sessions reuse terminal plumbing but have different lifecycle rules from task agents |
 | Runtime summary | the small state object the board uses to know whether a session is idle, running, awaiting review, interrupted, or failed | this is the bridge between long-running agent work and the UI |
 
 ## Who Owns What
@@ -133,7 +139,9 @@ One of the biggest cleanup themes was making ownership clearer. The system is mu
 
 | Concern | Primary owner | Notes |
 | --- | --- | --- |
-| board state, workspace state, review state | Quarterdeck | this is product state |
+| durable board state | browser through `project.saveState` | the public save contract is board-only and uses `expectedRevision` |
+| runtime session truth | terminal runtime | task/session summaries come from the server-owned terminal store |
+| project registration and project state files | Quarterdeck runtime | state is stored under the runtime state home, outside repos |
 | worktree lifecycle | Quarterdeck | task worktrees are a Quarterdeck concept |
 | process lifecycle | Quarterdeck | the terminal runtime owns process start, resize, output, and stop |
 
@@ -143,9 +151,15 @@ The backend has a few important subsystems, each with a different job.
 
 ### TRPC layer
 
-`app-router.ts` defines the typed contract between the browser and the runtime.
+`app-router.ts` defines the typed tRPC contract between the browser and the runtime. Procedures are split into runtime, project, projects, and hooks routers.
 
-`runtime-api.ts` is the coordinator behind that contract. It should be the front door for runtime procedures, but not the place where deep session logic accumulates. A good rule of thumb is that `runtime-api.ts` should route and validate, then hand off to the terminal runtime, workspace logic, config helpers, or git helpers.
+`runtime-api.ts` is the coordinator behind that contract. It should be the front door for runtime procedures, but not the place where deep session logic accumulates. A good rule of thumb is that `runtime-api.ts` should route and validate, then hand off to the terminal runtime, workdir helpers, project state, config helpers, or git helpers.
+
+Project-specific git, worktree, state, and file operations live behind `project-procedures.ts` and the `project-api-*` modules. Multi-project operations such as add/remove/reorder live behind `projects-api.ts`.
+
+### Project registry
+
+`server/project-registry.ts` is the runtime's project directory. It tracks indexed projects, the active project, runtime config for the active project, and the per-project `TerminalSessionManager` instances. It also builds project snapshots by loading persisted board state, overlaying live terminal summaries, and pruning session summaries to the board/runtime view that is appropriate for broadcasting.
 
 ### Terminal runtime
 
@@ -155,19 +169,28 @@ The `src/terminal/` area owns everything process-oriented:
 - launching PTY sessions
 - resizing and streaming terminal output
 - translating process lifecycle into Quarterdeck runtime summaries
-- handling the workspace shell terminal
+- handling project shell terminals
+- reconciling stale/dead/processless sessions
 
 This is the path for all agents: Claude Code, Codex, and any other command-driven agent.
 
-### Workspace and config
+`session-manager.ts` is the public terminal-service facade, but much of the behavior is split into focused modules:
 
-`src/workspace/` owns worktree creation, lookup, cleanup, and turn checkpoints.
+- `session-lifecycle.ts` for task/shell spawn, exit handling, stale recovery, and hydration
+- `session-transition-controller.ts` for state-machine side effects and summary fanout
+- `session-input-pipeline.ts` and `session-output-pipeline.ts` for PTY IO paths
+- `session-reconciliation.ts` and `session-reconciliation-sweep.ts` for periodic cleanup
+- `terminal-state-mirror.ts` and `ws-server.ts` for terminal restore and socket transport
 
-`src/config/runtime-config.ts` owns Quarterdeck preferences such as selected agents, shortcuts, and prompt templates.
+### Workdir and config
+
+`src/workdir/` owns worktree creation, lookup, cleanup, git helpers, workdir searches, and turn checkpoints.
+
+`src/config/runtime-config.ts` owns Quarterdeck preferences such as selected agents, shortcuts, notification settings, and prompt templates. Global config lives at the runtime state home; project config lives under the project's state directory.
 
 ### State streaming
 
-`runtime-state-hub.ts` is the central fanout point for live updates. It listens to terminal summaries, workspace metadata, and workspace state changes, then broadcasts websocket messages that keep the browser in sync.
+`runtime-state-hub.ts` is the central fanout point for live updates. It listens to terminal summaries, project metadata, project state changes, debug logs, and lightweight task events, then broadcasts websocket messages that keep the browser in sync. It delegates batching to `runtime-state-message-batcher.ts` and git metadata policy to the project metadata monitor modules.
 
 This is important because Quarterdeck is not designed around browser polling. The runtime is long-lived and streams state outward.
 
@@ -175,19 +198,35 @@ This is important because Quarterdeck is not designed around browser polling. Th
 
 The frontend is also easier to navigate if you think in responsibilities instead of folders.
 
-`App.tsx` is the composition root. It wires together the major hooks, determines which high-level surfaces are visible, and hands state down into the board, detail view, dialogs, and terminal areas. It should not become a second runtime orchestrator.
+`App.tsx` is the composition root for the application shell. It wires the provider tree and high-level surfaces, but it should not become a second runtime orchestrator.
 
-Hooks in `web-ui/src/hooks/` are where most domain logic lives. This includes project navigation, workspace synchronization, task-session actions, review behavior, and the home sidebar agent lifecycle. If you are looking for "how does this behavior actually work?", the answer is usually in a hook, not a component.
+Providers in `web-ui/src/providers/` own broad UI state domains. `ProjectProvider` owns project navigation, stream state, hydration, and project sync. `ProjectRuntimeProvider` owns project-scoped runtime config and onboarding/access gates. Board, dialog, git, terminal, and interaction providers layer on top of that project foundation.
+
+Hooks in `web-ui/src/hooks/` are where most domain logic lives. Hooks are organized by domain subdirectory: `app`, `board`, `debug`, `git`, `notifications`, `project`, `search`, `settings`, and `terminal`. If you are looking for "how does this behavior actually work?", the answer is usually in a hook or its pure companion domain module, not a component.
 
 Components in `web-ui/src/components/` are mostly rendering and composition. Good frontend changes often mean moving runtime-aware logic into hooks and leaving the component to render a view model.
 
-`web-ui/src/runtime/` holds client-side query helpers and persistence glue. One of the guardrails we now enforce is that raw workspace TRPC client creation should stay concentrated in the runtime query helpers rather than spread through arbitrary components.
+`web-ui/src/runtime/` holds client-side query helpers, stream transport/reducer code, project persistence, board cache, and runtime config glue. Raw project tRPC client creation should stay concentrated in these runtime helpers rather than spread through arbitrary components.
+
+`web-ui/src/terminal/` owns the browser terminal implementation: pooled task terminal slots, dedicated shell terminals, socket/restore handling, xterm viewport plumbing, and DOM diagnostics.
 
 ## Main Flows
 
 ### Starting a task session
 
-When the user starts a task, the browser asks the runtime to start a task session. The runtime resolves the task cwd, chooses the right command, and starts a PTY-backed process inside the task worktree. As the process runs, the terminal runtime emits summary updates and terminal output. The runtime state hub then streams those updates back to the browser so the board and detail view stay live.
+When the user starts a task, the browser asks the runtime to start a task session. The runtime resolves the task cwd, chooses the right command, and starts a PTY-backed process inside the task worktree. As the process runs, the terminal runtime emits summary updates. The runtime state hub streams those summaries back to the browser so the board and detail view stay live.
+
+Raw PTY output does not travel through the runtime state hub. It streams through the terminal WebSocket path and browser terminal slot/restore layer, while the runtime state hub carries the product-shaped summaries and metadata that the rest of the UI needs.
+
+### Saving board state
+
+When the user changes the board, the browser persists through `project.saveState` with the current `expectedRevision`. The public save payload contains board data only. On the server, the project API reads authoritative session summaries from the terminal manager, prunes them for persistence, and writes the combined state through the low-level project-state writer. If the revision has moved, the save fails with a conflict and the browser refetches authoritative state.
+
+Server code that needs to notify the UI about a task-scoped board change should prefer a lightweight runtime stream message, such as `task_title_updated`, and let the browser apply and persist that board change through the normal save path.
+
+### Applying authoritative project state
+
+Authoritative project snapshots enter the browser through `applyAuthoritativeProjectState(...)` in `web-ui/src/hooks/project/project-sync.ts`. That function reconciles session truth, projects runtime state onto the `in_progress`/`review` columns, decides whether to hydrate from server state or keep a cached board, and tells the persistence layer whether the next save should be skipped.
 
 ## Configuration and Persistence
 
@@ -195,31 +234,34 @@ Different state lives in different places on purpose.
 
 | State | Where it lives | Why |
 | --- | --- | --- |
-| selected agent, shortcuts, Quarterdeck prompt templates | Quarterdeck runtime config | these are Quarterdeck preferences |
-| per-project UI or workflow state | workspace state or project config | this is workspace-scoped product state |
-| task runtime summaries | Quarterdeck runtime memory and state stream | the board needs a lightweight product-shaped summary of current work |
+| selected agent, global prompt shortcuts, Quarterdeck prompt templates | global runtime config | these are cross-project Quarterdeck preferences |
+| project shortcuts, default base ref, pinned branches | project config under the project state directory | these are project-scoped preferences |
+| board columns and cards | project `board.json`, written by the browser save path | the board is durable product state |
+| task runtime summaries | terminal runtime memory plus project `sessions.json` | runtime session truth is server-owned |
+| git metadata | streamed project metadata | it is refreshed by runtime policy instead of browser polling |
 
 ### State directory layout
 
-All persistent state lives under `~/.quarterdeck/` in the user's home directory, not inside the project repository. The in-repo `.quarterdeck/` directory only holds project-level config (shortcuts, hooks).
+Persistent runtime state lives under `~/.quarterdeck/` in the user's home directory by default. Tests and isolated runs can override that root with `QUARTERDECK_STATE_HOME`. Current project config also lives under this state home; repo-local `.quarterdeck/config.json` is a legacy location that is migrated into the state directory.
 
 ```
 ~/.quarterdeck/
 ├── config.json                          # global runtime config
-├── hooks/                               # global hook scripts
 ├── worktrees/                           # task worktree checkouts
 │   └── <task-id>/
 │       └── <repo-name>/                 # isolated git worktree for the task
 ├── trashed-task-patches/                # saved patches from deleted tasks
-└── workspaces/                          # per-workspace persistent state
-    ├── index.json                       # maps workspace slugs to paths
-    └── <workspace-slug>/
+└── projects/                            # per-project persistent state
+    ├── index.json                       # maps project ids to repo paths
+    └── <project-id>/
         ├── board.json                   # columns, cards, prompts, settings
-        ├── sessions.json                # session history (PIDs, state, timestamps)
+        ├── config.json                  # project shortcuts and defaults
+        ├── pinned-branches.json         # optional pinned branch order
+        ├── sessions.json                # session summaries (PIDs, state, timestamps)
         └── meta.json                    # revision counter and last-updated timestamp
 ```
 
-Workspace state is keyed by a slug derived from the project path. When you run Quarterdeck against `/Users/you/projects/myapp`, the state lands in `~/.quarterdeck/workspaces/myapp/`. This means state does not transfer automatically if you clone a repo to a new path or rename the project directory — you would need to copy the workspace folder manually.
+Project state is keyed by a generated project id stored in `projects/index.json`, with a reverse mapping from repository path to project id. When you run Quarterdeck against `/Users/you/projects/myapp`, the project is indexed by its canonical git root path, and its state lands in `~/.quarterdeck/projects/<project-id>/`. Moving or recloning a repo changes the path identity unless the project index/state is migrated.
 
 ## Design Rules
 
@@ -227,8 +269,9 @@ These are the architectural rules that are most important to preserve.
 
 - one concern should have one clear source of truth
 - keep `runtime-api.ts` as a coordinator, not a god file
-- prefer sharing runtime-aware hooks between detail view and sidebar instead of letting the two diverge
+- keep project-specific behavior behind project APIs, registry, and providers instead of ad hoc globals
 - treat the browser as a client of streamed runtime state, not the source of truth for long-running sessions
+- treat the browser as the writer for durable board changes when it is connected
 - when adding new agent behavior, prefer capability-oriented reasoning over agent-specific branching
 
 ## Common Change Guide
@@ -239,7 +282,9 @@ When you are making a change, this table is often more useful than a file list.
 | --- | --- | --- |
 | task startup for any agent | the PTY runtime and agent launch path | accidentally adding agent-specific special cases |
 | live board updates | the runtime state hub and browser stream consumers | falling back to polling or duplicating summary logic |
-| home sidebar agent behavior | the synthetic home session lifecycle | treating the sidebar like a normal task with a real worktree |
+| board persistence | browser `project.saveState`, revision conflicts, and session overlay | writing board state directly from server code |
+| session lifecycle or transient session UI | terminal manager, transition controller, and reconciliation sweep | using terminal output timestamps as work-state truth |
+| git metadata indicators | project metadata monitor and workdir git helpers | adding browser polling or unbounded git probes |
 
 ## What A New Engineer Should Expect
 
@@ -249,6 +294,7 @@ A new engineer opening this repo will probably notice a few things quickly:
 - the browser is closer to a local control client than a traditional web app
 - the task system, review system, and runtime system are tightly connected
 - all agents use the same PTY-backed execution path
+- project state and worktrees live outside the target repository by default
 - the architecture favors clean ownership over compatibility glue
 
 If you approach the code with those assumptions, the rest of the system starts to make sense much faster.
