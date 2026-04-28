@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Feature: send worktree context to Codex agents
+
+- Worktree-launched Codex task sessions now receive the configured worktree context prompt as Codex `developer_instructions`, giving Codex the same repo/task guidance path that Claude already received through its system-prompt context.
+- Codex launch args now preserve explicit per-launch `developer_instructions` overrides, and the settings reminder now describes the Claude and Codex delivery paths.
+- Added focused adapter coverage for injected Codex worktree context and explicit override handling.
+
 ### Fix: checkout remote branch refs from branch picker
 
 - Branch checkout now accepts explicit remote refs such as `origin/feature`, so top-bar and file-scope branch pickers can create or switch to the matching local tracking branch.

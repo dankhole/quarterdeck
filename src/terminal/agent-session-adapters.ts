@@ -1,6 +1,6 @@
 import { join, resolve } from "node:path";
 
-import { buildCodexHookConfigOverrides, CODEX_HOOKS_FEATURE_NAME } from "../codex-hooks";
+import { buildCodexHookConfigOverrides, CODEX_HOOKS_FEATURE_NAME, serializeCodexTomlValue } from "../codex-hooks";
 import { buildStatuslineCommand } from "../commands/statusline";
 import type { RuntimeAgentId, RuntimeHookEvent, RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core";
 import { buildQuarterdeckCommandParts, createTaggedLogger, quoteShellArg } from "../core";
@@ -101,6 +101,25 @@ function hasCliOption(args: string[], optionName: string): boolean {
 		const arg = args[i];
 		if (!arg) continue;
 		if (arg === optionName || arg.startsWith(`${optionName}=`)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function hasCodexConfigOverride(args: string[], configKey: string): boolean {
+	const prefix = `${configKey}=`;
+	for (let i = 0; i < args.length; i += 1) {
+		const arg = args[i];
+		const nextArg = args[i + 1];
+		if (!arg) continue;
+		if ((arg === "-c" || arg === "--config") && nextArg?.startsWith(prefix)) {
+			return true;
+		}
+		if (arg.startsWith("-c=") && arg.slice("-c=".length).startsWith(prefix)) {
+			return true;
+		}
+		if (arg.startsWith("--config=") && arg.slice("--config=".length).startsWith(prefix)) {
 			return true;
 		}
 	}
@@ -382,6 +401,17 @@ const codexAdapter: AgentSessionAdapter = {
 				taskId: input.taskId,
 				featureName: CODEX_HOOKS_FEATURE_NAME,
 			});
+		}
+
+		if (!hasCodexConfigOverride(codexArgs, "developer_instructions")) {
+			const worktreeContext = await buildWorktreeContextPrompt({
+				cwd: input.cwd,
+				projectPath: input.projectPath,
+				template: input.worktreeSystemPromptTemplate,
+			});
+			if (worktreeContext) {
+				codexArgs.push("-c", `developer_instructions=${serializeCodexTomlValue(worktreeContext)}`);
+			}
 		}
 
 		const trimmed = input.prompt.trim();

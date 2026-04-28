@@ -2,6 +2,20 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Feature: send worktree context to Codex agents (2026-04-28)
+
+Quarterdeck's configurable worktree context prompt was previously wired only into Claude task launches through system-prompt context. Codex task sessions could receive Quarterdeck's native launch-scoped hooks, but they did not receive the same repo/task guidance text, so custom worktree instructions in settings were not available to Codex agents.
+
+Codex task launch preparation now builds the existing worktree context prompt and passes it through Codex's `developer_instructions` config key using the same command-line `-c` channel already used for launch-scoped hook configuration. The value is serialized as TOML before being appended to the Codex argv. If the user already supplied a launch-level `developer_instructions` override in the agent's configured launch args, Quarterdeck leaves that override alone instead of appending a second value.
+
+The settings reminder now describes both delivery paths: Claude receives the context as system-prompt context, while Codex receives it as developer instructions. Focused adapter tests cover the injected Codex config and the explicit-override skip path.
+
+Validation included `npm test -- test/runtime/terminal/agent-session-adapters.test.ts`, `npm run typecheck`, `npm run web:typecheck`, and `npx @biomejs/biome check src/terminal/agent-session-adapters.ts test/runtime/terminal/agent-session-adapters.test.ts web-ui/src/components/settings/agent-section.tsx`.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/terminal/agent-session-adapters.ts`, `test/runtime/terminal/agent-session-adapters.test.ts`, `web-ui/src/components/settings/agent-section.tsx`.
+
+Commit: pending
+
 ## Fix: checkout remote branch refs from branch picker (2026-04-28)
 
 The branch selector passes `RuntimeGitRef.name` through checkout actions. For remote rows, that name is an explicit remote ref such as `origin/feature/foo`. `runGitCheckoutAction(...)` only handled bare branch names: it could turn `feature/foo` into `origin/feature/foo`, but when it received `origin/feature/foo` directly it looked for `refs/remotes/origin/origin/feature/foo` and then fell through to `git switch origin/feature/foo`, which fails because Git treats that as a remote branch ref rather than a local branch checkout target.

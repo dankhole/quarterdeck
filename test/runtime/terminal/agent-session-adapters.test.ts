@@ -326,4 +326,44 @@ describe("worktree context system prompt", () => {
 
 		expect(launch.args).not.toContain("--append-system-prompt");
 	});
+
+	it("injects Codex worktree context as developer instructions", async () => {
+		setupTempHome();
+		const contextText = "You are working in a git worktree.\n- Your working directory is /worktree.";
+		buildWorktreeContextPromptMock.mockResolvedValue(contextText);
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-wt",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/worktree",
+			prompt: "Fix the bug",
+			projectPath: "/repo",
+		});
+
+		const configArg = launch.args.find((arg) => arg.startsWith("developer_instructions="));
+		expect(configArg).toBe(`developer_instructions=${JSON.stringify(contextText)}`);
+		expect(launch.args[launch.args.indexOf(configArg ?? "") - 1]).toBe("-c");
+		expect(launch.args.at(-1)).toBe("Fix the bug");
+	});
+
+	it("skips Codex worktree context when developer instructions are already configured", async () => {
+		setupTempHome();
+		buildWorktreeContextPromptMock.mockResolvedValue("Should not appear");
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-existing-dev",
+			agentId: "codex",
+			binary: "codex",
+			args: ["-c", 'developer_instructions="Custom prompt"'],
+			cwd: "/worktree",
+			prompt: "Fix the bug",
+			projectPath: "/repo",
+		});
+
+		const configArgs = launch.args.filter((arg) => arg.startsWith("developer_instructions="));
+		expect(configArgs).toEqual(['developer_instructions="Custom prompt"']);
+		expect(launch.args.join("\n")).not.toContain("Should not appear");
+	});
 });

@@ -170,8 +170,8 @@ export function AgentSection({
 				{systemPromptExpanded ? (
 					<>
 						<p className="text-text-secondary text-[13px] mt-1 mb-2">
-							Appended to Claude Code's system prompt when running in a worktree. Supports{" "}
-							<code className="text-[12px] bg-surface-3 px-1 rounded">{"{{cwd}}"}</code>,{" "}
+							Sent to worktree-launched agents as Claude system-prompt context or Codex developer instructions.
+							Supports <code className="text-[12px] bg-surface-3 px-1 rounded">{"{{cwd}}"}</code>,{" "}
 							<code className="text-[12px] bg-surface-3 px-1 rounded">{"{{project_path}}"}</code>, and{" "}
 							<code className="text-[12px] bg-surface-3 px-1 rounded">{"{{detached_head_note}}"}</code>{" "}
 							placeholders.
