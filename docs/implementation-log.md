@@ -2,6 +2,18 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: expose degraded terminal DOM diagnostics (2026-04-28)
+
+Dogfooding a degraded Quarterdeck browser session showed roughly 22 `textarea.xterm-helper-textarea` nodes even though no shell terminals were open. The existing debug-panel button was not reliable in that state because the panel path itself could be slow or blocked, and unnamed xterm helper textareas made it hard to tell which DOM nodes belonged to live Quarterdeck terminal slots versus orphaned hosts.
+
+The browser terminal layer now has a direct DevTools diagnostic path: `window.__quarterdeckDumpTerminalState()` returns and logs registered pool/dedicated terminal slots, buffer summaries, helper textarea counts, missing `id`/`name` counts, xterm DOM counts, parking-root children, and parent paths for every helper textarea. Xterm's generated helper textarea is also assigned a stable `quarterdeck-terminal-input-<slotId>` `id`/`name` when a slot opens, so pre-existing orphaned helpers remain obvious. The terminal pool now disposes all pool and dedicated terminal instances on Vite hot-module disposal, which prevents dev reloads from accumulating old xterm DOM hosts.
+
+To catch the failure mode while it is forming, the pool starts a minute-based DOM health monitor after initialization. It expects the steady-state terminal count to be low: four pooled task terminals plus a small number of dedicated home/detail shell terminals. If registered terminals, helper textareas, or xterm nodes exceed eight, it emits a raw browser-console warning first, then schedules a best-effort Quarterdeck client-log warning. The raw console path uses the new `warnToBrowserConsole(...)` escape hatch, documented as critical degraded-UI/debug-only logging rather than a general app logger.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `web-ui/src/terminal/slot-renderer.ts`, `web-ui/src/terminal/terminal-dom-diagnostics.ts`, `web-ui/src/terminal/terminal-dom-diagnostics.test.ts`, `web-ui/src/terminal/terminal-helper-textarea.ts`, `web-ui/src/terminal/terminal-helper-textarea.test.ts`, `web-ui/src/terminal/terminal-pool.ts`, `web-ui/src/terminal/terminal-pool-lifecycle.test.ts`, `web-ui/src/hooks/terminal/use-terminal-panels.ts`, `web-ui/src/terminal/use-persistent-terminal-session.ts`, `web-ui/src/utils/global-error-capture.ts`.
+
+Commit: pending
+
 ## Chore: add perf-investigation instrumentation (2026-04-28)
 
 Dogfooding found an idle terminal scrollbar/CPU slowdown that could come from several different layers: child PTY output, terminal mirror writes, runtime session-summary fanout, cross-project notification seeding, hook ingest, browser terminal reconnects, xterm write queues, or restore/snapshot churn. The first instrumentation pass covered only a few browser-side symptoms and PTY input writes, which was not enough to rule out the likely output and fanout hot paths.

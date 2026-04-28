@@ -28,6 +28,9 @@ interface MockSlot {
 	sessionState: string | null;
 }
 
+const browserWarnMock = vi.hoisted(() => vi.fn());
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@/terminal/terminal-slot", () => {
 	function createMock(slotId: number): MockSlot {
 		const mock: MockSlot = {
@@ -122,9 +125,13 @@ vi.mock("@/utils/client-logger", () => ({
 	createClientLogger: () => ({
 		debug: vi.fn(),
 		info: vi.fn(),
-		warn: vi.fn(),
+		warn: clientLogWarnMock,
 		error: vi.fn(),
 	}),
+}));
+
+vi.mock("@/utils/global-error-capture", () => ({
+	warnToBrowserConsole: browserWarnMock,
 }));
 
 // ---------------------------------------------------------------------------
@@ -136,6 +143,7 @@ import {
 	acquireForTask,
 	attachPoolContainer,
 	cancelWarmup,
+	collectTerminalDebugState,
 	detachPoolContainer,
 	getSlotForTask,
 	getSlotRole,
@@ -173,10 +181,14 @@ describe("terminal-pool — lifecycle", () => {
 		vi.useFakeTimers();
 		_resetPoolForTesting();
 		TerminalSlotMock.mockClear();
+		browserWarnMock.mockClear();
+		clientLogWarnMock.mockClear();
+		document.body.innerHTML = "";
 	});
 
 	afterEach(() => {
 		_resetPoolForTesting();
+		document.body.innerHTML = "";
 		vi.useRealTimers();
 	});
 
@@ -192,6 +204,52 @@ describe("terminal-pool — lifecycle", () => {
 			expect(poolSlots).toHaveLength(4);
 			const roles = getSlotRoles(poolSlots);
 			expect(roles).toEqual(["FREE", "FREE", "FREE", "FREE"]);
+		});
+
+		it("exposes a console-safe terminal state dump hook", () => {
+			initPool();
+			const helperTextarea = document.createElement("textarea");
+			helperTextarea.className = "xterm-helper-textarea";
+			document.body.appendChild(helperTextarea);
+
+			const state = collectTerminalDebugState();
+
+			expect(typeof window.__quarterdeckDumpTerminalState).toBe("function");
+			expect(state.registered).toEqual({
+				total: 4,
+				pool: 4,
+				dedicated: 0,
+			});
+			expect(state.poolSlots).toHaveLength(4);
+			expect(state.dom.helperTextareaCount).toBe(1);
+			expect(state.dom.helperTextareasMissingId).toBe(1);
+		});
+
+		it("warns when terminal DOM counts exceed the expected ceiling", () => {
+			initPool();
+			for (let index = 0; index < 9; index += 1) {
+				const helperTextarea = document.createElement("textarea");
+				helperTextarea.className = "xterm-helper-textarea";
+				document.body.appendChild(helperTextarea);
+			}
+
+			vi.advanceTimersByTime(60_000);
+			vi.advanceTimersByTime(1);
+
+			expect(browserWarnMock).toHaveBeenCalledWith(
+				expect.stringContaining("terminal DOM count exceeded expected ceiling"),
+				expect.objectContaining({
+					helperTextareas: 9,
+					threshold: 8,
+				}),
+			);
+			expect(clientLogWarnMock).toHaveBeenCalledWith(
+				"terminal DOM count exceeded expected ceiling",
+				expect.objectContaining({
+					helperTextareas: 9,
+					threshold: 8,
+				}),
+			);
 		});
 	});
 

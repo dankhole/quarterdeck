@@ -9,14 +9,53 @@ import {
 	getDedicatedTerminalCount,
 	isDedicatedTerminalTaskId,
 } from "@/terminal/terminal-dedicated-registry";
+import { collectTerminalDomDiagnostics, type TerminalDomDiagnostics } from "@/terminal/terminal-dom-diagnostics";
 import {
 	type PersistentTerminalAppearance,
 	TerminalSlot,
 	updateGlobalTerminalFontWeight,
 } from "@/terminal/terminal-slot";
 import { createClientLogger } from "@/utils/client-logger";
+import { warnToBrowserConsole } from "@/utils/global-error-capture";
 
 const log = createClientLogger("terminal-pool");
+const TERMINAL_DOM_ALERT_MESSAGE = "terminal DOM count exceeded expected ceiling";
+const TERMINAL_DOM_ALERT_CONSOLE_MESSAGE =
+	"[quarterdeck] terminal DOM count exceeded expected ceiling; run window.__quarterdeckDumpTerminalState() for details.";
+
+interface ViteHotContext {
+	dispose(callback: () => void): void;
+}
+
+type TerminalBufferDebugInfo = ReturnType<TerminalSlot["getBufferDebugInfo"]>;
+
+export interface RegisteredTerminalDebugSnapshot {
+	kind: "pool" | "dedicated";
+	key: string | null;
+	slotId: number;
+	role: SlotRole | null;
+	taskId: string | null;
+	projectId: string | null;
+	buffer: TerminalBufferDebugInfo;
+}
+
+export interface TerminalDebugState {
+	generatedAt: string;
+	registered: {
+		total: number;
+		pool: number;
+		dedicated: number;
+	};
+	dom: TerminalDomDiagnostics;
+	poolSlots: RegisteredTerminalDebugSnapshot[];
+	dedicatedSlots: RegisteredTerminalDebugSnapshot[];
+}
+
+declare global {
+	interface Window {
+		__quarterdeckDumpTerminalState?: () => TerminalDebugState;
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,6 +78,8 @@ let _rotationTimer: ReturnType<typeof setInterval> | null = null;
 let initialized = false;
 let nextSlotId = 0;
 let poolContainer: HTMLDivElement | null = null;
+let terminalDomHealthTimer: ReturnType<typeof setInterval> | null = null;
+let lastTerminalDomAlert: { signature: string; timestamp: number } | null = null;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -50,6 +91,9 @@ const WARMUP_TIMEOUT_MS = 3_000;
 /** How long a PREVIOUS slot stays connected before auto-eviction. Keeps instant
  *  switch-back for quick peeks while stopping hidden WebGL rendering long-term. */
 const PREVIOUS_EVICTION_MS = 30_000;
+const TERMINAL_DOM_ALERT_THRESHOLD = 8;
+const TERMINAL_DOM_ALERT_INTERVAL_MS = 60_000;
+const TERMINAL_DOM_ALERT_REPEAT_MS = 5 * 60_000;
 
 /** Default appearance for pool slots at init — real appearance is set on show(). */
 const DEFAULT_POOL_APPEARANCE: PersistentTerminalAppearance = {
@@ -118,6 +162,93 @@ function clearWarmupTimeout(taskId: string): void {
 		clearTimeout(timeout);
 		warmupTimeouts.delete(taskId);
 	}
+}
+
+function buildTerminalDomAlertPayload(trigger: string): {
+	trigger: string;
+	threshold: number;
+	registeredTotal: number;
+	registeredPool: number;
+	registeredDedicated: number;
+	helperTextareas: number;
+	helperTextareasMissingId: number;
+	helperTextareasMissingName: number;
+	xtermElements: number;
+	parkingRootChildren: number;
+} {
+	const dom = collectTerminalDomDiagnostics();
+	return {
+		trigger,
+		threshold: TERMINAL_DOM_ALERT_THRESHOLD,
+		registeredTotal: slots.length + getDedicatedTerminalCount(),
+		registeredPool: slots.length,
+		registeredDedicated: getDedicatedTerminalCount(),
+		helperTextareas: dom.helperTextareaCount,
+		helperTextareasMissingId: dom.helperTextareasMissingId,
+		helperTextareasMissingName: dom.helperTextareasMissingName,
+		xtermElements: dom.xtermElementCount,
+		parkingRootChildren: dom.parkingRoot?.childElementCount ?? 0,
+	};
+}
+
+function queueQuarterdeckTerminalDomAlert(payload: ReturnType<typeof buildTerminalDomAlertPayload>): void {
+	setTimeout(() => {
+		try {
+			log.warn(TERMINAL_DOM_ALERT_MESSAGE, payload);
+		} catch {
+			// Browser console output above is the reliable diagnostic path.
+		}
+	}, 0);
+}
+
+function maybeWarnAboutTerminalDomGrowth(trigger: string): void {
+	const payload = buildTerminalDomAlertPayload(trigger);
+	const observedCount = Math.max(payload.registeredTotal, payload.helperTextareas, payload.xtermElements);
+	if (observedCount <= TERMINAL_DOM_ALERT_THRESHOLD) {
+		lastTerminalDomAlert = null;
+		return;
+	}
+
+	const signature = [
+		payload.registeredTotal,
+		payload.helperTextareas,
+		payload.xtermElements,
+		payload.parkingRootChildren,
+		payload.helperTextareasMissingId,
+		payload.helperTextareasMissingName,
+	].join(":");
+	const now = Date.now();
+	if (
+		lastTerminalDomAlert?.signature === signature &&
+		now - lastTerminalDomAlert.timestamp < TERMINAL_DOM_ALERT_REPEAT_MS
+	) {
+		return;
+	}
+
+	lastTerminalDomAlert = { signature, timestamp: now };
+	// Raw console first because this alert is specifically for cases where the
+	// debug panel or Quarterdeck logging path may be too slow to use.
+	warnToBrowserConsole(TERMINAL_DOM_ALERT_CONSOLE_MESSAGE, payload);
+	queueQuarterdeckTerminalDomAlert(payload);
+}
+
+function startTerminalDomHealthMonitor(): void {
+	if (terminalDomHealthTimer !== null) {
+		return;
+	}
+	terminalDomHealthTimer = setInterval(
+		() => maybeWarnAboutTerminalDomGrowth("interval"),
+		TERMINAL_DOM_ALERT_INTERVAL_MS,
+	);
+	maybeWarnAboutTerminalDomGrowth("init");
+}
+
+function stopTerminalDomHealthMonitor(): void {
+	if (terminalDomHealthTimer !== null) {
+		clearInterval(terminalDomHealthTimer);
+		terminalDomHealthTimer = null;
+	}
+	lastTerminalDomAlert = null;
 }
 
 /**
@@ -220,6 +351,7 @@ export function initPool(): void {
 	}
 	// Start proactive rotation timer
 	_rotationTimer = setInterval(rotateOldestFreeSlot, ROTATION_INTERVAL_MS);
+	startTerminalDomHealthMonitor();
 }
 
 /**
@@ -591,40 +723,136 @@ export function setTerminalFontWeight(weight: number): void {
 /**
  * Log debug info for all pool slots and dedicated terminals.
  */
-export function dumpTerminalDebugInfo(): void {
-	if (slots.length === 0 && getDedicatedTerminalCount() === 0) {
+export function dumpTerminalDebugInfo(): TerminalDebugState {
+	const state = collectTerminalDebugState();
+	logTerminalDebugState(state);
+	dumpTerminalDebugStateToConsole(state);
+	return state;
+}
+
+function buildSlotDebugSnapshot(
+	kind: "pool" | "dedicated",
+	slot: TerminalSlot,
+	options: { key?: string; role?: SlotRole } = {},
+): RegisteredTerminalDebugSnapshot {
+	return {
+		kind,
+		key: options.key ?? null,
+		slotId: slot.slotId,
+		role: options.role ?? null,
+		taskId: slot.connectedTaskId,
+		projectId: slot.connectedProjectId,
+		buffer: slot.getBufferDebugInfo(),
+	};
+}
+
+export function collectTerminalDebugState(): TerminalDebugState {
+	const dedicatedTerminalCount = getDedicatedTerminalCount();
+	const totalTerminalCount = slots.length + dedicatedTerminalCount;
+	const dedicatedSlots: RegisteredTerminalDebugSnapshot[] = [];
+	forEachDedicatedTerminal((slot, key) => {
+		dedicatedSlots.push(buildSlotDebugSnapshot("dedicated", slot, { key }));
+	});
+
+	return {
+		generatedAt: new Date().toISOString(),
+		registered: {
+			total: totalTerminalCount,
+			pool: slots.length,
+			dedicated: dedicatedTerminalCount,
+		},
+		dom: collectTerminalDomDiagnostics(),
+		poolSlots: slots.map((slot) => buildSlotDebugSnapshot("pool", slot, { role: getRole(slot) })),
+		dedicatedSlots,
+	};
+}
+
+function logTerminalDebugState(state: TerminalDebugState): void {
+	if (state.registered.total === 0) {
 		log.info("No active terminals");
 		return;
 	}
 
+	log.info("terminal instance counts", {
+		total: state.registered.total,
+		pool: state.registered.pool,
+		dedicated: state.registered.dedicated,
+		helperTextareas: state.dom.helperTextareaCount,
+		helperTextareasMissingId: state.dom.helperTextareasMissingId,
+		helperTextareasMissingName: state.dom.helperTextareasMissingName,
+		parkingRootChildren: state.dom.parkingRoot?.childElementCount ?? 0,
+	});
+
 	// Pool slots
-	for (const slot of slots) {
-		const role = getRole(slot);
-		const taskId = slot.connectedTaskId;
-		const info = slot.getBufferDebugInfo();
-		log.info(`pool slot ${slot.slotId} [${role}]`, {
-			taskId: taskId ?? "(none)",
-			buffer: info.activeBuffer,
-			scrollback: `${info.normalScrollbackLines} lines (max ${info.scrollbackOption})`,
-			normal: `len=${info.normalLength} baseY=${info.normalBaseY}`,
-			alternate: `len=${info.alternateLength}`,
-			viewport: info.viewportRows,
-			session: info.sessionState,
+	for (const slot of state.poolSlots) {
+		log.info(`pool slot ${slot.slotId} [${slot.role ?? "unknown"}]`, {
+			taskId: slot.taskId ?? "(none)",
+			projectId: slot.projectId ?? "(none)",
+			buffer: slot.buffer.activeBuffer,
+			scrollback: `${slot.buffer.normalScrollbackLines} lines (max ${slot.buffer.scrollbackOption})`,
+			normal: `len=${slot.buffer.normalLength} baseY=${slot.buffer.normalBaseY}`,
+			alternate: `len=${slot.buffer.alternateLength}`,
+			viewport: slot.buffer.viewportRows,
+			session: slot.buffer.sessionState,
 		});
 	}
 
 	// Dedicated terminals
-	forEachDedicatedTerminal((slot, key) => {
-		const info = slot.getBufferDebugInfo();
-		log.info(`dedicated ${key}`, {
-			buffer: info.activeBuffer,
-			scrollback: `${info.normalScrollbackLines} lines (max ${info.scrollbackOption})`,
-			normal: `len=${info.normalLength} baseY=${info.normalBaseY}`,
-			alternate: `len=${info.alternateLength}`,
-			viewport: info.viewportRows,
-			session: info.sessionState,
+	for (const slot of state.dedicatedSlots) {
+		log.info(`dedicated ${slot.key ?? "(unknown)"}`, {
+			taskId: slot.taskId ?? "(none)",
+			projectId: slot.projectId ?? "(none)",
+			buffer: slot.buffer.activeBuffer,
+			scrollback: `${slot.buffer.normalScrollbackLines} lines (max ${slot.buffer.scrollbackOption})`,
+			normal: `len=${slot.buffer.normalLength} baseY=${slot.buffer.normalBaseY}`,
+			alternate: `len=${slot.buffer.alternateLength}`,
+			viewport: slot.buffer.viewportRows,
+			session: slot.buffer.sessionState,
 		});
-	});
+	}
+}
+
+function summarizeHelperForConsole(helper: TerminalDomDiagnostics["helperTextareas"][number]): {
+	index: number;
+	id: string;
+	name: string;
+	inParkingRoot: boolean;
+	isConnected: boolean;
+	parentPath: string;
+} {
+	return {
+		index: helper.index,
+		id: helper.id || "(missing)",
+		name: helper.name || "(missing)",
+		inParkingRoot: helper.inParkingRoot,
+		isConnected: helper.isConnected,
+		parentPath: helper.parentPath,
+	};
+}
+
+function dumpTerminalDebugStateToConsole(state = collectTerminalDebugState()): TerminalDebugState {
+	console.groupCollapsed(
+		`[quarterdeck] terminal state: ${state.registered.total} registered, ${state.dom.helperTextareaCount} helper textarea(s)`,
+	);
+	console.info(state);
+	if (state.dom.helperTextareas.length > 0) {
+		console.table(state.dom.helperTextareas.map(summarizeHelperForConsole));
+	}
+	if (state.dom.parkingRoot?.children.length) {
+		console.table(state.dom.parkingRoot.children);
+	}
+	console.groupEnd();
+	return state;
+}
+
+function installTerminalDebugHook(): void {
+	window.__quarterdeckDumpTerminalState = dumpTerminalDebugStateToConsole;
+}
+
+function uninstallTerminalDebugHook(): void {
+	if (window.__quarterdeckDumpTerminalState === dumpTerminalDebugStateToConsole) {
+		delete window.__quarterdeckDumpTerminalState;
+	}
 }
 
 /**
@@ -667,12 +895,17 @@ export function isTerminalSessionRunning(projectId: string, taskId: string): boo
 
 /** @internal — test only. Resets all module-level state so tests start clean. */
 export function _resetPoolForTesting(): void {
+	resetPoolState();
+}
+
+function resetPoolState(): void {
 	// Clear all timers
 	for (const [, timeout] of warmupTimeouts) {
 		clearTimeout(timeout);
 	}
 	warmupTimeouts.clear();
 	clearPreviousEvictionTimer();
+	stopTerminalDomHealthMonitor();
 
 	// Dispose all pool slots
 	for (const slot of slots) {
@@ -696,4 +929,14 @@ export function _resetPoolForTesting(): void {
 	initialized = false;
 	nextSlotId = 0;
 	poolContainer = null;
+}
+
+installTerminalDebugHook();
+
+const hot = (import.meta as ImportMeta & { hot?: ViteHotContext }).hot;
+if (hot) {
+	hot.dispose(() => {
+		resetPoolState();
+		uninstallTerminalDebugHook();
+	});
 }

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: expose degraded terminal DOM diagnostics
+
+- Xterm helper textareas now receive stable `id` and `name` attributes when terminals open, making orphaned helpers easier to identify in degraded browser sessions.
+- Added `window.__quarterdeckDumpTerminalState()` so terminal pool, dedicated terminal, helper textarea, xterm DOM, and parking-root state can be dumped from DevTools without opening the debug panel.
+- Terminal pool teardown now disposes browser terminal instances during Vite hot reload, and a minute-based DOM health monitor warns through the raw browser console when terminal DOM counts exceed the expected ceiling.
+
 ### Chore: add perf-investigation instrumentation
 
 - Added temporary `[perf-investigation]` probes around PTY input/output, terminal mirror application, runtime summary fanout, hook ingest, notification snapshot seeding, terminal reconnects, write queues, and restore guards so idle-scrollbar CPU churn can be isolated across the likely hot paths.

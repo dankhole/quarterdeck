@@ -187,10 +187,12 @@ export function usePersistentTerminalSession({
 				log.debug("hiding dedicated shell terminal view", { taskId, projectId });
 				unsubscribe();
 				terminal.hide();
-				// Park the host element back to the off-screen root before React
-				// removes the container div from the DOM. Without this, the xterm
-				// canvas becomes detached from the live DOM on unmount, causing
-				// WebGL context loss and a blank terminal on next open.
+				// This cleanup runs for ordinary React unmounts/remounts while a
+				// shell is still logically open. It is not the shell-close path:
+				// use-terminal-panels disposes the dedicated terminal slot when a
+				// shell is closed or its owning context changes. Park here only to
+				// keep an open shell's xterm host in the live DOM while React removes
+				// this container, preventing WebGL context loss on remount.
 				terminal.park();
 				if (terminalRef.current === terminal) {
 					terminalRef.current = null;

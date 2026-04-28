@@ -31,6 +31,17 @@ let callback: ErrorCallback | null = null;
 let installed = false;
 /** Re-entry guard to prevent feedback loops with client-logger (which calls console[level]). */
 let isEmitting = false;
+const rawConsoleWarn = console.warn.bind(console);
+
+/**
+ * Escape hatch for diagnostics that must reach the browser console even when
+ * Quarterdeck's debug panel or console-capture path may be degraded. Prefer
+ * createClientLogger for ordinary app logging; use this only for critical
+ * degraded-UI breadcrumbs or short-lived investigations.
+ */
+export function warnToBrowserConsole(...args: unknown[]): void {
+	rawConsoleWarn(...args);
+}
 
 export function setGlobalErrorCallback(cb: ErrorCallback | null): void {
 	callback = cb;

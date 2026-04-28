@@ -2,6 +2,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import type { Terminal } from "@xterm/xterm";
 
+import { applyTerminalInputFieldAttributes } from "@/terminal/terminal-helper-textarea";
 import type { PersistentTerminalAppearance } from "@/terminal/terminal-options";
 import {
 	createQuarterdeckTerminalOptions,
@@ -45,6 +46,7 @@ export class SlotRenderer {
 			}
 			log.debug(`[perf] slot ${this.slotId} terminal.open`, { elapsedMs: (performance.now() - t0).toFixed(1) });
 			this.terminal.open(this.hostElement);
+			applyTerminalInputFieldAttributes(this.hostElement, this.slotId);
 			this.attachWebglAddon();
 			if (this.callbacks.getStageContainer() ?? this.callbacks.getVisibleContainer()) {
 				this.fitAddon.fit();

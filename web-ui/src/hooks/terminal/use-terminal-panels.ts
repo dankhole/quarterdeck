@@ -204,6 +204,10 @@ export function useTerminalPanels({
 			}
 			cancelPendingRestartRef.current?.(taskId);
 			suppressNextShellExitRef.current?.(taskId);
+			// Shell close/context-switch is an ownership boundary, not a
+			// minimize action. Dispose the browser-side dedicated xterm slot
+			// before stopping the PTY so closed shells do not leave parked
+			// xterm instances, WebGL contexts, sockets, or helper textareas alive.
 			disposeDedicatedTerminal(projectId, taskId);
 			const trpcClient = getRuntimeTrpcClient(projectId);
 			const stopPromise = (async () => {
