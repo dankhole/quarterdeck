@@ -2,6 +2,22 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: explain why title regeneration failed (2026-04-28)
+
+The "Could not regenerate title" toast was the only visible signal when title regeneration failed, and every layer in the chain swallowed its real reason. The browser `handleRegenerateTitleTask` did `.catch(() => showAppToast(...))` with no logging and did not even react to the `{ ok: false }` success path. On the runtime side, `generateTaskTitle` only logged a generic "returned null", and `callLlm` returned null without any log at all when `ANTHROPIC_BEDROCK_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` were missing — the most common cause in dev.
+
+The fix keeps the same control flow but makes every failure mode self-describing.
+
+- `web-ui/src/hooks/board/use-title-actions.ts` now logs `console.error` with error name/message/stack when the mutation throws, and logs `console.warn` (and still toasts) when the server returns `ok: false`, pointing at the runtime `title-gen` / `llm-client` tags. It also warns on the missing-project no-op and adds matching diagnostics to `handleUpdateTaskTitle`.
+- `src/title/title-generator.ts` now short-circuits with a descriptive warning when `isLlmConfigured()` is false and when the prompt is empty after trim, and the post-call null warning now says explicitly that the cause is in the preceding `llm-client` log.
+- `src/title/llm-client.ts` now emits distinct warnings per failure: rate limiter hits include `inFlight`, calls-in-window, and configured limits; HTTP non-2xx responses capture status, statusText, a 500-char response body snippet, and the model; empty content logs whether any choices came back; sanitizer rejection includes the model; and the timeout branch is split from the generic network/parse branch with `timeoutMs` recorded.
+
+No behavioral change: failure still returns null/`ok: false` and still shows the same toast. Only logging output changed.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/title/llm-client.ts`, `src/title/title-generator.ts`, `web-ui/src/hooks/board/use-title-actions.ts`.
+
+Commit: pending
+
 ## Fix: fall back after missing Codex resume ids (2026-04-28)
 
 Dogfooding showed that a failed targeted Codex resume could trap a task in a repeated failure: `codex resume <stored-id>` exited with "No saved session found", Quarterdeck preserved the failed review summary, but the bad `resumeSessionId` stayed on the summary. A later manual restart or terminal reconnect could reuse the same missing id, so the user saw the same failed-resume terminal state instead of a best-effort continuation.

@@ -15,12 +15,29 @@ export function useTitleActions({ currentProjectId }: UseTitleActionsInput): Use
 	const handleRegenerateTitleTask = useCallback(
 		(taskId: string) => {
 			if (!currentProjectId) {
+				console.warn("[title-actions] regenerate skipped: no current project", { taskId });
 				return;
 			}
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			void trpcClient.project.regenerateTaskTitle.mutate({ taskId }).catch(() => {
-				showAppToast({ message: "Could not regenerate title", intent: "danger" });
-			});
+			void trpcClient.project.regenerateTaskTitle
+				.mutate({ taskId })
+				.then((result) => {
+					if (!result.ok) {
+						console.warn(
+							"[title-actions] regenerate returned ok=false — server could not generate a title (LLM unconfigured, rate-limited, timed out, empty, or sanitizer-rejected; check runtime logs tagged 'title-gen' / 'llm-client')",
+							{ taskId, projectId: currentProjectId, result },
+						);
+						showAppToast({ message: "Could not regenerate title", intent: "danger" });
+					}
+				})
+				.catch((err: unknown) => {
+					console.error("[title-actions] regenerate mutation threw", {
+						taskId,
+						projectId: currentProjectId,
+						error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : err,
+					});
+					showAppToast({ message: "Could not regenerate title", intent: "danger" });
+				});
 		},
 		[currentProjectId],
 	);
@@ -28,10 +45,17 @@ export function useTitleActions({ currentProjectId }: UseTitleActionsInput): Use
 	const handleUpdateTaskTitle = useCallback(
 		(taskId: string, title: string) => {
 			if (!currentProjectId) {
+				console.warn("[title-actions] update skipped: no current project", { taskId });
 				return;
 			}
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			void trpcClient.project.updateTaskTitle.mutate({ taskId, title }).catch(() => {
+			void trpcClient.project.updateTaskTitle.mutate({ taskId, title }).catch((err: unknown) => {
+				console.error("[title-actions] update mutation threw", {
+					taskId,
+					projectId: currentProjectId,
+					titleLength: title.length,
+					error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : err,
+				});
 				showAppToast({ message: "Could not update title", intent: "danger" });
 			});
 		},

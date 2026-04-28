@@ -131,18 +131,25 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 	}
 
 	if (!acquireSlot()) {
-		log.warn("Rate limit hit — dropping call");
+		log.warn("Rate limit hit — dropping call", {
+			inFlight,
+			callsInWindow: callTimestamps.length,
+			maxConcurrent: MAX_CONCURRENT,
+			maxPerMinute: MAX_PER_MINUTE,
+			windowMs: WINDOW_MS,
+		});
 		return null;
 	}
 
+	const model = process.env.QUARTERDECK_LLM_MODEL || DEFAULT_LLM_MODEL;
+	const startTime = Date.now();
+	const timeoutMs = options.timeoutMs ?? 5_000;
 	try {
-		const model = process.env.QUARTERDECK_LLM_MODEL || DEFAULT_LLM_MODEL;
-		const startTime = Date.now();
 		log.debug("LLM call starting", { model, maxTokens: options.maxTokens, promptLength: options.userPrompt.length });
 		const origin = baseUrl.replace(/\/bedrock\/?$/, "");
 		const response = await fetch(`${origin}/v1/chat/completions`, {
 			method: "POST",
-			signal: AbortSignal.timeout(options.timeoutMs ?? 5_000),
+			signal: AbortSignal.timeout(timeoutMs),
 			headers: {
 				"content-type": "application/json",
 				authorization: `Bearer ${authToken}`,
@@ -158,7 +165,20 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 		});
 
 		if (!response.ok) {
-			log.warn("LLM call failed", { status: response.status, durationMs: Date.now() - startTime });
+			const bodySnippet = await response
+				.text()
+				.then((t) => t.slice(0, 500))
+				.catch(
+					(readErr: unknown) =>
+						`<failed to read body: ${readErr instanceof Error ? readErr.message : String(readErr)}>`,
+				);
+			log.warn("LLM call failed: non-2xx response", {
+				status: response.status,
+				statusText: response.statusText,
+				durationMs: Date.now() - startTime,
+				model,
+				bodySnippet,
+			});
 			return null;
 		}
 
@@ -167,22 +187,35 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 		};
 		const rawContent = data.choices?.[0]?.message?.content?.trim() || null;
 		if (!rawContent) {
-			log.warn("LLM call returned empty content", { durationMs: Date.now() - startTime });
+			log.warn("LLM call returned empty content", {
+				durationMs: Date.now() - startTime,
+				model,
+				hasChoices: Array.isArray(data.choices) && data.choices.length > 0,
+			});
 			return null;
 		}
 		const result = sanitizeLlmResponse(rawContent);
 		if (!result) {
-			log.warn("LLM response rejected by sanitizer", { rawContent, durationMs: Date.now() - startTime });
+			log.warn("LLM response rejected by sanitizer (looked like a question, refusal, or empty after stripping)", {
+				rawContent,
+				durationMs: Date.now() - startTime,
+				model,
+			});
 			return null;
 		}
 		log.debug("LLM call completed", { durationMs: Date.now() - startTime, resultLength: result.length });
 		return result;
 	} catch (error) {
 		const isTimeout = error instanceof DOMException && error.name === "AbortError";
-		const level = isTimeout ? "debug" : "warn";
-		log[level]("LLM call error", {
-			error: isTimeout ? "timeout" : error instanceof Error ? error.message : String(error),
-		});
+		if (isTimeout) {
+			log.warn("LLM call timed out", { timeoutMs, durationMs: Date.now() - startTime, model });
+		} else {
+			log.warn("LLM call error (network or parse failure)", {
+				error: error instanceof Error ? { name: error.name, message: error.message } : String(error),
+				durationMs: Date.now() - startTime,
+				model,
+			});
+		}
 		return null;
 	} finally {
 		releaseSlot();

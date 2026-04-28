@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fix: explain why title regeneration failed
+
+- Title regeneration now produces a descriptive warning/error trail at every layer when the "Could not regenerate title" toast fires, instead of swallowing the failure silently.
+- The browser handler now logs mutation throws with full error context and also warns (and shows the toast) when the server returns `ok: false`, pointing readers at the matching `title-gen` / `llm-client` runtime logs.
+- The runtime title generator distinguishes the common unconfigured-LLM case up front and labels the post-call null path so the preceding `llm-client` warning is easy to correlate with the user-visible failure.
+- The LLM client now logs distinct causes for each failure mode: rate limiter hits include current usage versus configured limits, HTTP non-2xx responses capture status/statusText/body snippet/model, empty-content and sanitizer rejections include model context, and timeouts are tagged separately from network/parse errors with the configured `timeoutMs`.
+
 ### Fix: keep shutdown cleanup from overwriting board state
 
 - Shutdown cleanup now writes only runtime session state when marking active tasks interrupted, leaving browser-owned `board.json` and its revision untouched.

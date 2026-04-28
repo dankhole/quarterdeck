@@ -3,7 +3,7 @@
 // When LLM is not configured, these return null and callers fall back
 // gracefully (cards show truncated prompt text, branch name field stays empty).
 import { createTaggedLogger } from "../core";
-import { callLlm } from "./llm-client";
+import { callLlm, isLlmConfigured } from "./llm-client";
 
 const log = createTaggedLogger("title-gen");
 const TITLE_SYSTEM_PROMPT = `Generate a concise 2-4 word title for this coding task.
@@ -31,7 +31,22 @@ CRITICAL RULES:
 const MAX_PROMPT_LENGTH = 1600;
 
 export async function generateTaskTitle(prompt: string): Promise<string | null> {
-	log.debug("Generating task title", { promptLength: prompt.length, promptSnippet: prompt.slice(0, 100) });
+	const llmConfigured = isLlmConfigured();
+	log.debug("Generating task title", {
+		promptLength: prompt.length,
+		promptSnippet: prompt.slice(0, 100),
+		llmConfigured,
+	});
+	if (!llmConfigured) {
+		log.warn(
+			"Title generation unavailable: LLM not configured (set ANTHROPIC_BEDROCK_BASE_URL and ANTHROPIC_AUTH_TOKEN)",
+		);
+		return null;
+	}
+	if (prompt.trim().length === 0) {
+		log.warn("Title generation skipped: prompt is empty after trim");
+		return null;
+	}
 	const title = await callLlm({
 		systemPrompt: TITLE_SYSTEM_PROMPT,
 		userPrompt: prompt.slice(0, MAX_PROMPT_LENGTH),
@@ -41,7 +56,10 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 	if (title) {
 		log.info("Title generated", { title });
 	} else {
-		log.warn("Title generation returned null");
+		log.warn(
+			"Title generation returned null — see preceding 'llm-client' log for cause (rate limit, HTTP error, timeout, empty content, or sanitizer rejection)",
+			{ promptLength: prompt.length, promptSnippet: prompt.slice(0, 100) },
+		);
 	}
 	return title;
 }
