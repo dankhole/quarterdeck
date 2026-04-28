@@ -5,6 +5,7 @@ import type {
 	RuntimeProjectMetadata,
 	RuntimeTaskWorktreeMetadata,
 } from "../core";
+import { invalidateGitRepositoryInfoCache } from "../state/project-state-utils";
 import {
 	computeAutoMergedFiles,
 	detectActiveConflict,
@@ -206,6 +207,10 @@ export async function loadHomeGitMetadata(
 			probeGitWorkdirState(projectPath),
 			stashCount(projectPath),
 		]);
+		// Metadata polling is the current safety net for out-of-band branch
+		// changes. If repository-info cache ownership moves closer to metadata
+		// polling, fold this into that shared owner instead of leaving it implicit.
+		invalidateGitRepositoryInfoCache(projectPath);
 		const stashCountChanged = currentStashCount !== currentHomeGit.stashCount;
 		if (currentHomeGit.stateToken === probe.stateToken) {
 			if (stashCountChanged) {

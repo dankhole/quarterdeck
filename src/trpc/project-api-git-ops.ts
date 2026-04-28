@@ -1,4 +1,5 @@
 import { parseGitCheckoutRequest } from "../core";
+import { invalidateGitRepositoryInfoCache } from "../state/project-state-utils";
 import {
 	cherryPickCommit,
 	createBranchFromRef,
@@ -11,7 +12,7 @@ import {
 	runGitRebaseAction,
 	runGitSyncAction,
 } from "../workdir";
-import type { RuntimeTrpcContext } from "./app-router-context";
+import type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
 import {
 	createGitBranchErrorResponse,
 	EMPTY_GIT_SUMMARY,
@@ -36,6 +37,13 @@ type GitOps = Pick<
 	| "renameBranch"
 >;
 
+function invalidateProjectGitRepositoryInfo(projectScope: Pick<RuntimeTrpcProjectScope, "projectPath">): void {
+	// Keep this wrapper as the local reminder that branch-list context has a
+	// separate cache. If git mutation handling grows beyond this module, move
+	// this invalidation behind that shared mutation path instead of copying it.
+	invalidateGitRepositoryInfoCache(projectScope.projectPath);
+}
+
 export function createGitOps(ctx: ProjectApiContext): GitOps {
 	return {
 		runGitSyncAction: async (projectScope, input) => {
@@ -44,7 +52,11 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					projectScope.projectPath,
 					normalizeOptionalTaskScopeInput(input.taskScope ?? null),
 				);
-				return await runGitSyncAction({ cwd, action: input.action, branch: input.branch ?? null });
+				const response = await runGitSyncAction({ cwd, action: input.action, branch: input.branch ?? null });
+				if (response.ok) {
+					invalidateProjectGitRepositoryInfo(projectScope);
+				}
+				return response;
 			} catch (error) {
 				return {
 					ok: false,
@@ -68,6 +80,7 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					});
 					const response = await runGitCheckoutAction({ cwd: taskCwd, branch: body.branch });
 					if (response.ok) {
+						invalidateProjectGitRepositoryInfo(projectScope);
 						ctx.applyEffects(
 							createGitMetadataRefreshEffects(projectScope, {
 								taskId: input.taskId,
@@ -88,7 +101,10 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					cwd: projectScope.projectPath,
 					branch: body.branch,
 				});
-				if (response.ok) ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
+				if (response.ok) {
+					invalidateProjectGitRepositoryInfo(projectScope);
+					ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
+				}
 				return response;
 			} catch (error) {
 				return createGitBranchErrorResponse(error);
@@ -275,7 +291,10 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					branchName: input.branchName,
 					startRef: input.startRef,
 				});
-				if (result.ok) ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
+				if (result.ok) {
+					invalidateProjectGitRepositoryInfo(projectScope);
+					ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
+				}
 				return result;
 			} catch (error) {
 				return { ok: false as const, branchName: input.branchName, error: errorMessage(error) };
@@ -288,7 +307,10 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					cwd: projectScope.projectPath,
 					branchName: input.branchName,
 				});
-				if (result.ok) ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
+				if (result.ok) {
+					invalidateProjectGitRepositoryInfo(projectScope);
+					ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
+				}
 				return result;
 			} catch (error) {
 				return { ok: false as const, branchName: input.branchName, error: errorMessage(error) };
@@ -302,7 +324,10 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					oldName: input.oldName,
 					newName: input.newName,
 				});
-				if (result.ok) ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
+				if (result.ok) {
+					invalidateProjectGitRepositoryInfo(projectScope);
+					ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
+				}
 				return result;
 			} catch (error) {
 				return { ok: false as const, oldName: input.oldName, newName: input.newName, error: errorMessage(error) };

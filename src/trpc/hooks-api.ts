@@ -10,7 +10,7 @@ import type {
 	RuntimeTaskTurnCheckpoint,
 } from "../core";
 import { createTaggedLogger, parseHookIngestRequest } from "../core";
-import { loadProjectContextById } from "../state";
+import { loadProjectScopeById } from "../state";
 import type { SessionSummaryStore } from "../terminal";
 import { canReturnToRunning, isPermissionActivity } from "../terminal";
 import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title";
@@ -141,8 +141,8 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				const hookLogData = buildHookLogData({ projectId, taskId, event, metadata: body.metadata });
 				log.info("Hook ingest received", hookLogData);
 				const knownProjectPath = deps.projects.getProjectPathById(projectId);
-				const projectContext = knownProjectPath ? null : await loadProjectContextById(projectId);
-				const projectPath = knownProjectPath ?? projectContext?.repoPath ?? null;
+				const projectScope = knownProjectPath ? null : await loadProjectScopeById(projectId);
+				const projectPath = knownProjectPath ?? projectScope?.repoPath ?? null;
 				if (!projectPath) {
 					log.warn("Hook ingest rejected: project not found", hookLogData);
 					return {

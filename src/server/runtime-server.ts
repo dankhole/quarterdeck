@@ -11,7 +11,7 @@ import {
 	getQuarterdeckRuntimeOrigin,
 	getQuarterdeckRuntimePort,
 } from "../core";
-import { loadProjectContextById } from "../state";
+import { loadProjectScopeById } from "../state";
 import type { TerminalSessionManager } from "../terminal";
 import { createTerminalWebSocketBridge } from "../terminal";
 import {
@@ -100,18 +100,29 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				projectScope: null,
 			};
 		}
-		const requestedProjectContext = await loadProjectContextById(requestedProjectId);
-		if (!requestedProjectContext) {
+		const knownProjectPath = deps.projectRegistry.getProjectPathById(requestedProjectId);
+		if (knownProjectPath) {
+			return {
+				requestedProjectId,
+				projectScope: {
+					projectId: requestedProjectId,
+					projectPath: knownProjectPath,
+				},
+			};
+		}
+		const requestedProjectScope = await loadProjectScopeById(requestedProjectId);
+		if (!requestedProjectScope) {
 			return {
 				requestedProjectId,
 				projectScope: null,
 			};
 		}
+		deps.projectRegistry.rememberProject(requestedProjectScope.projectId, requestedProjectScope.repoPath);
 		return {
 			requestedProjectId,
 			projectScope: {
-				projectId: requestedProjectContext.projectId,
-				projectPath: requestedProjectContext.repoPath,
+				projectId: requestedProjectScope.projectId,
+				projectPath: requestedProjectScope.repoPath,
 			},
 		};
 	};

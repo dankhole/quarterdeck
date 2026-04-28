@@ -7,16 +7,18 @@ import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core
 import type { ProjectStateConflictError } from "../../src/state";
 import {
 	getProjectsRootPath,
+	invalidateGitRepositoryInfoCache,
 	listProjectIndexEntries,
 	loadProjectContext,
 	loadProjectContextById,
+	loadProjectScopeById,
 	loadProjectState,
 	pruneProjectSessionsForBoard,
 	removeProjectIndexEntry,
 	saveProjectSessions,
 	saveProjectState,
 } from "../../src/state";
-import { initGitRepository } from "../utilities/git-env";
+import { commitAll, initGitRepository, runGit as runGitCommand } from "../utilities/git-env";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
@@ -213,8 +215,14 @@ describe.sequential("project-state integration", () => {
 					[contextA.projectId, contextB.projectId].sort(),
 				);
 
+				expect(await loadProjectScopeById(contextA.projectId)).toEqual({
+					projectId: contextA.projectId,
+					repoPath: contextA.repoPath,
+					statePath: contextA.statePath,
+				});
 				expect(await loadProjectContextById(contextA.projectId)).not.toBeNull();
 				expect(await removeProjectIndexEntry(contextA.projectId)).toBe(true);
+				expect(await loadProjectScopeById(contextA.projectId)).toBeNull();
 				expect(await loadProjectContextById(contextA.projectId)).toBeNull();
 				expect(await removeProjectIndexEntry(contextA.projectId)).toBe(false);
 
@@ -222,6 +230,35 @@ describe.sequential("project-state integration", () => {
 				expect(entriesAfterRemoval).toHaveLength(1);
 				expect(entriesAfterRemoval[0]?.projectId).toBe(contextB.projectId);
 			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("caches repository git info and refreshes it after explicit invalidation", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-project-git-info-cache-");
+			try {
+				const projectPath = join(sandboxRoot, "project-a");
+				mkdirSync(projectPath, { recursive: true });
+				initGitRepository(projectPath);
+				writeFileSync(join(projectPath, "README.md"), "# Project A\n", "utf8");
+				commitAll(projectPath, "initial commit");
+
+				const initial = await loadProjectContext(projectPath);
+				expect(initial.git.currentBranch).toBe("main");
+				expect(initial.git.branches).toContain("main");
+
+				runGitCommand(projectPath, ["branch", "feature/cache-test"]);
+
+				const cached = await loadProjectContext(projectPath);
+				expect(cached.git.branches).toEqual(initial.git.branches);
+
+				invalidateGitRepositoryInfoCache(initial.repoPath);
+				const refreshed = await loadProjectContext(projectPath);
+				expect(refreshed.git.branches).toContain("feature/cache-test");
+			} finally {
+				invalidateGitRepositoryInfoCache();
 				cleanup();
 			}
 		});

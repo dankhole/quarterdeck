@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: avoid blocking project git context probes
+
+- Project request routing, hook ingest, and project-add path resolution now use a lightweight project scope lookup when they only need project identity/path data, avoiding branch-list git probes on hot request paths.
+- Repository branch context detection now runs asynchronously with in-flight deduping and a short cache, with explicit invalidation after git mutations and metadata polling refreshes.
+- Added integration coverage for cached repository git info and the new scope-only project lookup path.
+
 ### Fix: avoid tsx force-killing dev shutdown
 
 - `npm run dev` now runs the runtime through a small Node supervisor that forwards one shutdown signal to `tsx watch`, waits for Quarterdeck cleanup, and only force-kills after a timeout.

@@ -2,6 +2,18 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: avoid blocking project git context probes (2026-04-28)
+
+Project-scoped HTTP routing and hook ingest were still using full project context loading in places where they only needed the project id and repository path. Full context loading also detects current branch, local branches, and default branch, so frequent request setup could pay for git metadata probes even when the handler did not use branch data. That undercut the metadata-polling work that moved slow git probes away from runtime snapshots.
+
+Project state now separates lightweight `RuntimeProjectScopeContext` from full `RuntimeProjectContext`. Runtime request scope resolution, hook ingest, and project-add base-path resolution use the scope-only lookup, while state hydration still calls the full context path when it needs `RuntimeGitRepositoryInfo`. Repository info detection now uses async `runGit` metadata probes, parallelizes branch/default-branch reads, dedupes concurrent loads, and keeps a short in-memory cache. Git mutation handlers and home metadata polling explicitly invalidate that cache; comments mark this as a future cleanup point if git mutation ownership moves behind a shared effects layer.
+
+Focused integration coverage now verifies scope lookup by project id and repository git-info caching/invalidation. Validation for the landed branch included typecheck, fast runtime/utilities tests, project-state integration tests, and the task-worktree metadata streaming regression.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/server/project-metadata-loaders.ts`, `src/server/runtime-server.ts`, `src/state/index.ts`, `src/state/project-state-utils.ts`, `src/state/project-state.ts`, `src/trpc/hooks-api.ts`, `src/trpc/project-api-git-ops.ts`, `src/trpc/projects-api.ts`, `test/integration/project-state.integration.test.ts`.
+
+Commit: pending
+
 ## Fix: avoid tsx force-killing dev shutdown (2026-04-28)
 
 Reproducing `npm run dev -- --no-open --port auto` showed that a single Ctrl+C could print `Previous process hasn't exited yet. Force killing...` from `tsx watch` while Quarterdeck was still inside its graceful shutdown path. The warning was emitted by `tsx`'s parent watcher signal handler, not by Quarterdeck's HTTP `server.close()`: npm/terminal wrapper signal delivery could reach `tsx` a second time while the watched Quarterdeck child was still persisting shutdown state and closing sockets.

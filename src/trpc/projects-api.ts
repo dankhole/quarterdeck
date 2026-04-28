@@ -11,7 +11,7 @@ import {
 	isUnderWorktreesHome,
 	listProjectIndexEntries,
 	loadProjectContext,
-	loadProjectContextById,
+	loadProjectScopeById,
 	loadProjectState,
 	removeProjectIndexEntry,
 	removeProjectStateFiles,
@@ -54,7 +54,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 		},
 		addProject: async (preferredProjectId, input) => {
 			const body = parseProjectAddRequest(input);
-			const preferredProjectContext = preferredProjectId ? await loadProjectContextById(preferredProjectId) : null;
+			const preferredProjectContext = preferredProjectId ? await loadProjectScopeById(preferredProjectId) : null;
 			const resolveBasePath =
 				preferredProjectContext?.repoPath ?? deps.projects.getActiveProjectPath() ?? process.cwd();
 			try {

@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 
 import type { RuntimeGitRepositoryInfo } from "../core";
 import type { LockRequest } from "../fs";
-import { runGitSync } from "../workdir";
+import { runGit } from "../workdir";
 
 // --- Path constants and getters ---
 
@@ -93,18 +93,63 @@ export function getProjectsRootLockRequest(): LockRequest {
 
 // --- Git detection ---
 
-function detectGitRoot(cwd: string): string | null {
-	return runGitSync(cwd, ["rev-parse", "--show-toplevel"]);
+const GIT_REPOSITORY_INFO_CACHE_TTL_MS = 30_000;
+
+// Repository info is intentionally cached here because project state hydration
+// needs branch context, while many project-scoped request paths only need the
+// lightweight scope from project-state.ts. If more git mutation entry points are
+// added, prefer centralizing invalidation in the git mutation/effects layer over
+// adding another one-off invalidateGitRepositoryInfoCache() call.
+interface CachedGitRepositoryInfo {
+	info: RuntimeGitRepositoryInfo;
+	loadedAt: number;
 }
 
-function detectGitCurrentBranch(repoPath: string): string | null {
-	return runGitSync(repoPath, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+const gitRepositoryInfoCache = new Map<string, CachedGitRepositoryInfo>();
+const gitRepositoryInfoLoadPromises = new Map<string, Promise<RuntimeGitRepositoryInfo>>();
+let gitRepositoryInfoCacheGeneration = 0;
+
+function normalizeGitRepositoryCacheKey(repoPath: string): string {
+	return resolve(repoPath);
 }
 
-function detectGitBranches(repoPath: string): string[] {
+export function invalidateGitRepositoryInfoCache(repoPath?: string): void {
+	gitRepositoryInfoCacheGeneration += 1;
+	if (!repoPath) {
+		gitRepositoryInfoCache.clear();
+		gitRepositoryInfoLoadPromises.clear();
+		return;
+	}
+	const cacheKey = normalizeGitRepositoryCacheKey(repoPath);
+	gitRepositoryInfoCache.delete(cacheKey);
+	gitRepositoryInfoLoadPromises.delete(cacheKey);
+}
+
+async function readGitStdout(cwd: string, args: string[]): Promise<string | null> {
+	const result = await runGit(cwd, args, { timeoutClass: "metadata" });
+	if (!result.ok || !result.stdout) {
+		return null;
+	}
+	return result.stdout;
+}
+
+async function detectGitRoot(cwd: string): Promise<string | null> {
+	return await readGitStdout(cwd, ["--no-optional-locks", "rev-parse", "--show-toplevel"]);
+}
+
+async function detectGitCurrentBranch(repoPath: string): Promise<string | null> {
+	return await readGitStdout(repoPath, ["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "HEAD"]);
+}
+
+async function detectGitBranches(repoPath: string): Promise<string[]> {
 	// TODO: support showing remote branches again once worktree creation can safely fetch/pull
 	// and resolve missing local tracking branches automatically.
-	const output = runGitSync(repoPath, ["for-each-ref", "--format=%(refname:short)", "refs/heads"]);
+	const output = await readGitStdout(repoPath, [
+		"--no-optional-locks",
+		"for-each-ref",
+		"--format=%(refname:short)",
+		"refs/heads",
+	]);
 	if (!output) {
 		return [];
 	}
@@ -120,8 +165,7 @@ function detectGitBranches(repoPath: string): string[] {
 	return Array.from(unique).sort((left, right) => left.localeCompare(right));
 }
 
-function detectGitDefaultBranch(repoPath: string, branches: string[]): string | null {
-	const remoteHead = runGitSync(repoPath, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
+function resolveGitDefaultBranch(remoteHead: string | null, branches: string[]): string | null {
 	if (remoteHead) {
 		const normalized = remoteHead.startsWith("origin/") ? remoteHead.slice("origin/".length) : remoteHead;
 		if (normalized && branches.includes(normalized)) {
@@ -137,22 +181,52 @@ function detectGitDefaultBranch(repoPath: string, branches: string[]): string | 
 	return branches[0] ?? null;
 }
 
-export function detectGitRepositoryInfo(repoPath: string): RuntimeGitRepositoryInfo {
-	const gitRoot = detectGitRoot(repoPath);
+async function loadGitRepositoryInfo(repoPath: string): Promise<RuntimeGitRepositoryInfo> {
+	const gitRoot = await detectGitRoot(repoPath);
 	if (!gitRoot) {
 		throw new Error(`No git repository detected at ${repoPath}`);
 	}
 
-	const currentBranch = detectGitCurrentBranch(repoPath);
-	const branches = detectGitBranches(repoPath);
+	const [currentBranch, branches, remoteHead] = await Promise.all([
+		detectGitCurrentBranch(gitRoot),
+		detectGitBranches(gitRoot),
+		readGitStdout(gitRoot, ["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]),
+	]);
 	const orderedBranches = currentBranch && !branches.includes(currentBranch) ? [currentBranch, ...branches] : branches;
-	const defaultBranch = detectGitDefaultBranch(repoPath, orderedBranches);
+	const defaultBranch = resolveGitDefaultBranch(remoteHead, orderedBranches);
 
 	return {
 		currentBranch,
 		defaultBranch,
 		branches: orderedBranches,
 	};
+}
+
+export async function detectGitRepositoryInfo(repoPath: string): Promise<RuntimeGitRepositoryInfo> {
+	const cacheKey = normalizeGitRepositoryCacheKey(repoPath);
+	const cached = gitRepositoryInfoCache.get(cacheKey);
+	if (cached && Date.now() - cached.loadedAt < GIT_REPOSITORY_INFO_CACHE_TTL_MS) {
+		return cached.info;
+	}
+
+	const existingLoad = gitRepositoryInfoLoadPromises.get(cacheKey);
+	if (existingLoad) {
+		return await existingLoad;
+	}
+
+	const loadGeneration = gitRepositoryInfoCacheGeneration;
+	const loadPromise = loadGitRepositoryInfo(repoPath).then((info) => {
+		if (loadGeneration === gitRepositoryInfoCacheGeneration) {
+			gitRepositoryInfoCache.set(cacheKey, { info, loadedAt: Date.now() });
+		}
+		return info;
+	});
+	gitRepositoryInfoLoadPromises.set(cacheKey, loadPromise);
+	try {
+		return await loadPromise;
+	} finally {
+		gitRepositoryInfoLoadPromises.delete(cacheKey);
+	}
 }
 
 export async function resolveProjectPath(cwd: string): Promise<string> {
@@ -164,7 +238,7 @@ export async function resolveProjectPath(cwd: string): Promise<string> {
 		canonicalCwd = resolvedCwd;
 	}
 
-	const gitRoot = detectGitRoot(canonicalCwd);
+	const gitRoot = await detectGitRoot(canonicalCwd);
 	if (!gitRoot) {
 		throw new Error(`No git repository detected at ${canonicalCwd}`);
 	}

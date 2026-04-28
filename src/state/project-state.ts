@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { copyFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { copyFile, realpath, rm } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { z } from "zod";
 
 import type {
@@ -61,6 +61,12 @@ export interface RuntimeProjectContext {
 	projectId: string;
 	statePath: string;
 	git: RuntimeGitRepositoryInfo;
+}
+
+export interface RuntimeProjectScopeContext {
+	repoPath: string;
+	projectId: string;
+	statePath: string;
 }
 
 export interface LoadProjectContextOptions {
@@ -134,27 +140,60 @@ export class ProjectStateConflictError extends Error {
 // the next authoritative save so the UI still sees what was repaired.
 const pendingSessionsWarningByProjectId = new Map<string, RuntimeProjectStateWarning>();
 
+async function canonicalizeProjectInputPath(cwd: string): Promise<string> {
+	const resolvedCwd = resolve(cwd);
+	try {
+		return await realpath(resolvedCwd);
+	} catch {
+		return resolvedCwd;
+	}
+}
+
+function toProjectScopeContext(input: { projectId: string; repoPath: string }): RuntimeProjectScopeContext {
+	return {
+		repoPath: input.repoPath,
+		projectId: input.projectId,
+		statePath: getProjectDirectoryPath(input.projectId),
+	};
+}
+
+async function loadProjectScopeByRepoPath(repoPath: string): Promise<RuntimeProjectScopeContext | null> {
+	const index = await readProjectIndex();
+	const existingEntry = findProjectEntry(index, repoPath);
+	return existingEntry ? toProjectScopeContext(existingEntry) : null;
+}
+
+// Keep scope lookup cheap: request routing, hooks, and project management only
+// need identity/path data. Add git metadata through RuntimeProjectContext instead
+// so those hot paths do not accidentally reintroduce blocking repository probes.
+async function loadFullProjectContext(scope: RuntimeProjectScopeContext): Promise<RuntimeProjectContext> {
+	return {
+		...scope,
+		git: await detectGitRepositoryInfo(scope.repoPath),
+	};
+}
+
 export async function loadProjectContext(
 	cwd: string,
 	options: LoadProjectContextOptions = {},
 ): Promise<RuntimeProjectContext> {
-	const repoPath = await resolveProjectPath(cwd);
 	const autoCreateIfMissing = options.autoCreateIfMissing ?? true;
-	if (!autoCreateIfMissing) {
-		const index = await readProjectIndex();
-		const existingEntry = findProjectEntry(index, repoPath);
-		if (!existingEntry) {
-			throw new Error(`Project ${repoPath} is not added to Quarterdeck yet.`);
-		}
-		return {
-			repoPath,
-			projectId: existingEntry.projectId,
-			statePath: getProjectDirectoryPath(existingEntry.projectId),
-			git: detectGitRepositoryInfo(repoPath),
-		};
+	const canonicalCwd = await canonicalizeProjectInputPath(cwd);
+	const exactIndexedScope = await loadProjectScopeByRepoPath(canonicalCwd);
+	if (exactIndexedScope) {
+		return await loadFullProjectContext(exactIndexedScope);
 	}
 
-	return await lockedFileSystem.withLock(getProjectIndexLockRequest(), async () => {
+	const repoPath = await resolveProjectPath(canonicalCwd);
+	if (!autoCreateIfMissing) {
+		const existingScope = await loadProjectScopeByRepoPath(repoPath);
+		if (!existingScope) {
+			throw new Error(`Project ${repoPath} is not added to Quarterdeck yet.`);
+		}
+		return await loadFullProjectContext(existingScope);
+	}
+
+	const scope = await lockedFileSystem.withLock(getProjectIndexLockRequest(), async () => {
 		let index = await readProjectIndex();
 		const existingEntry = findProjectEntry(index, repoPath);
 		const ensured = existingEntry
@@ -165,23 +204,27 @@ export async function loadProjectContext(
 			await writeProjectIndexSafe(index);
 		}
 
-		return {
-			repoPath,
-			projectId: ensured.entry.projectId,
-			statePath: getProjectDirectoryPath(ensured.entry.projectId),
-			git: detectGitRepositoryInfo(repoPath),
-		};
+		return toProjectScopeContext(ensured.entry);
 	});
+	return await loadFullProjectContext(scope);
 }
 
-export async function loadProjectContextById(projectId: string): Promise<RuntimeProjectContext | null> {
+export async function loadProjectScopeById(projectId: string): Promise<RuntimeProjectScopeContext | null> {
 	const index = await readProjectIndex();
 	const entry = index.entries[projectId];
 	if (!entry) {
 		return null;
 	}
+	return toProjectScopeContext(entry);
+}
+
+export async function loadProjectContextById(projectId: string): Promise<RuntimeProjectContext | null> {
+	const scope = await loadProjectScopeById(projectId);
+	if (!scope) {
+		return null;
+	}
 	try {
-		return await loadProjectContext(entry.repoPath);
+		return await loadFullProjectContext(scope);
 	} catch {
 		return null;
 	}
