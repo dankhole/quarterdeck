@@ -6,6 +6,7 @@ import { useTaskSessions } from "@/hooks/board/use-task-sessions";
 import type { BoardCard } from "@/types";
 
 const startTaskSessionMutateMock = vi.hoisted(() => vi.fn());
+const resolveTaskStartGeometryMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/runtime/trpc-client", () => ({
 	getRuntimeTrpcClient: () => ({
@@ -17,8 +18,8 @@ vi.mock("@/runtime/trpc-client", () => ({
 	}),
 }));
 
-vi.mock("@/runtime/task-session-geometry", () => ({
-	estimateTaskSessionGeometry: () => ({ cols: 120, rows: 40 }),
+vi.mock("@/hooks/board/task-session-geometry", () => ({
+	resolveTaskStartGeometry: resolveTaskStartGeometryMock,
 }));
 
 interface HookSnapshot {
@@ -54,6 +55,17 @@ function HookHarness({ onSnapshot }: { onSnapshot: (snapshot: HookSnapshot) => v
 	return null;
 }
 
+function createDeferred<T>(): {
+	promise: Promise<T>;
+	resolve: (value: T) => void;
+} {
+	let resolve: (value: T) => void = () => {};
+	const promise = new Promise<T>((nextResolve) => {
+		resolve = nextResolve;
+	});
+	return { promise, resolve };
+}
+
 describe("useTaskSessions", () => {
 	let container: HTMLDivElement;
 	let root: Root;
@@ -61,6 +73,8 @@ describe("useTaskSessions", () => {
 
 	beforeEach(() => {
 		startTaskSessionMutateMock.mockReset();
+		resolveTaskStartGeometryMock.mockReset();
+		resolveTaskStartGeometryMock.mockResolvedValue({ cols: 120, rows: 40 });
 		startTaskSessionMutateMock.mockResolvedValue({
 			ok: true,
 			summary: {
@@ -176,5 +190,42 @@ describe("useTaskSessions", () => {
 				],
 			}),
 		);
+	});
+
+	it("waits for terminal geometry before starting the runtime session", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const geometry = createDeferred<{ cols: number; rows: number }>();
+		resolveTaskStartGeometryMock.mockReturnValue(geometry.promise);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a hook snapshot.");
+		}
+		const snapshot = latestSnapshot as HookSnapshot;
+
+		const startPromise = snapshot.startTaskSession(createTask());
+
+		expect(resolveTaskStartGeometryMock).toHaveBeenCalledWith({
+			taskId: "task-1",
+			viewportWidth: window.innerWidth,
+			viewportHeight: window.innerHeight,
+		});
+		expect(startTaskSessionMutateMock).not.toHaveBeenCalled();
+
+		geometry.resolve({ cols: 132, rows: 38 });
+		await act(async () => {
+			await startPromise;
+		});
+
+		expect(startTaskSessionMutateMock).toHaveBeenCalledWith(expect.objectContaining({ cols: 132, rows: 38 }));
 	});
 });

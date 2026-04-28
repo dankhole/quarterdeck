@@ -5,7 +5,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { useCallback } from "react";
 
 import { notifyError, showAppToast } from "@/components/app-toaster";
-import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
+import { resolveTaskStartGeometry } from "@/hooks/board/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeTaskSessionSummary,
@@ -14,7 +14,6 @@ import type {
 	RuntimeWorktreeEnsureResponse,
 } from "@/runtime/types";
 import { getTerminalController } from "@/terminal/terminal-controller-registry";
-import { getTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard } from "@/types";
 import { createClientLogger } from "@/utils/client-logger";
@@ -163,8 +162,11 @@ export function useTaskSessions({
 			try {
 				const kickoffPrompt = options?.resumeConversation ? "" : task.prompt.trim();
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				const geometry =
-					getTerminalGeometry(task.id) ?? estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
+				const geometry = await resolveTaskStartGeometry({
+					taskId: task.id,
+					viewportWidth: window.innerWidth,
+					viewportHeight: window.innerHeight,
+				});
 				const payload = await trpcClient.runtime.startTaskSession.mutate({
 					taskId: task.id,
 					prompt: kickoffPrompt,

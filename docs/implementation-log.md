@@ -2,6 +2,20 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: start Codex with measured task terminal width (2026-04-28)
+
+Codex terminal sessions could render their initial screen at roughly half width because task startup read the geometry registry synchronously and fell back to an old one-third-viewport estimate when no fresh terminal measurement was available. Codex hard-wraps early TUI output at the PTY width it sees during spawn, so later browser resizes could shrink or redraw content but did not reliably make already-emitted lines longer.
+
+The browser task-start path now resolves geometry through `resolveTaskStartGeometry(...)`: it waits up to 300ms for a real terminal measurement when none exists, and waits 100ms for already cached geometry to settle so pending resize-observer updates from a just-widened terminal can replace stale cached columns before spawning the PTY. If no frontend terminal is attached, startup still cannot know a real browser width, so the detached fallback now uses a wider viewport-based estimate capped at 160 columns instead of the previous one-third-width estimate.
+
+Focused tests cover all three geometry paths: cached geometry settling to a newer value, missing geometry resolving after the wait, and detached fallback estimation. `useTaskSessions` coverage now also proves `runtime.startTaskSession.mutate(...)` is not called until geometry resolution completes, locking in the ordering that matters for Codex's first draw.
+
+Validation included `npm --prefix web-ui run test -- src/hooks/board/task-session-geometry.test.ts src/hooks/board/use-task-sessions.test.tsx src/runtime/task-session-geometry.test.ts`, `npm --prefix web-ui run typecheck`, the staged Biome check, root `npm run typecheck`, and root `npm run test:fast` through the commit hook.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `web-ui/src/hooks/board/task-session-geometry.ts`, `web-ui/src/hooks/board/task-session-geometry.test.ts`, `web-ui/src/hooks/board/use-task-sessions.ts`, `web-ui/src/hooks/board/use-task-sessions.test.tsx`, `web-ui/src/runtime/task-session-geometry.ts`, `web-ui/src/runtime/task-session-geometry.test.ts`.
+
+Commit: pending
+
 ## Fix: add form field identifiers (2026-04-28)
 
 Browser and accessibility diagnostics were still reporting unlabeled form controls across Quarterdeck's web UI because many utility search boxes, textareas, select filters, and hidden file inputs had neither an `id` nor a `name`. The fix adds stable `name` attributes to those native controls without changing their visible labels or control flow, covering top-bar branch filters, shortcut editors, debug filters, git branch/file panels, search overlays, notification volume, prompt shortcut editing, task title editing, task creation prompts, feature branch naming, inline diff comments, stash messages, and commit messages.

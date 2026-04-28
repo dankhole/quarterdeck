@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: start Codex with measured task terminal width
+
+- Task sessions now wait briefly for the browser terminal to report real geometry before spawning the agent PTY, preventing Codex from hard-wrapping its first output at a stale half-width estimate.
+- Cached terminal geometry now gets a short settle window so pending resize-observer updates can land before startup, while detached/background starts fall back to a wider capped estimate.
+- Added focused coverage for geometry resolution, startup deferral until geometry is available, and the detached fallback sizing path.
+
 ### Fix: add form field identifiers
 
 - Added stable `name` attributes to unlabeled web UI inputs, textareas, and selects so browser autofill, diagnostics, and accessibility tooling can identify fields consistently.
