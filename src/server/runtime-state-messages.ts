@@ -130,11 +130,13 @@ export function buildTaskBaseRefUpdatedMessage(
 export function buildTaskNotificationMessage(
 	projectId: string,
 	summaries: RuntimeTaskSessionSummary[],
+	options?: { removedTaskIds?: string[] },
 ): RuntimeStateStreamTaskNotificationMessage {
 	return {
 		type: "task_notification",
 		projectId,
 		summaries,
+		...(options?.removedTaskIds?.length ? { removedTaskIds: options.removedTaskIds } : undefined),
 	};
 }
 

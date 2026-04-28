@@ -1,9 +1,9 @@
 import {
-	mergeRuntimeProjectNotificationStateMap,
+	applyRuntimeProjectNotificationDelta,
 	pruneRuntimeProjectNotificationStateMap,
 	type RuntimeProjectNotificationStateMap,
-	seedRuntimeProjectNotificationStateMapFromProjectState,
-	seedRuntimeProjectNotificationStateMapFromProjectSummaries,
+	replaceRuntimeProjectNotificationStateMapFromProjectState,
+	replaceRuntimeProjectNotificationStateMapFromProjectSummaries,
 } from "@/runtime/runtime-notification-projects";
 import type {
 	RuntimeDebugLogEntry,
@@ -69,7 +69,12 @@ export type RuntimeStateStreamAction =
 	| { type: "task_base_ref_updated"; taskId: string; baseRef: string }
 	| { type: "project_state_updated"; projectState: RuntimeProjectStateResponse }
 	| { type: "task_sessions_updated"; summaries: readonly RuntimeTaskSessionSummary[] }
-	| { type: "task_notification"; projectId: string; summaries: readonly RuntimeTaskSessionSummary[] }
+	| {
+			type: "task_notification";
+			projectId: string;
+			summaries: readonly RuntimeTaskSessionSummary[];
+			removedTaskIds?: readonly string[];
+	  }
 	| {
 			type: "debug_logging_state";
 			level: "debug" | "info" | "warn" | "error";
@@ -107,32 +112,42 @@ function mergeNotificationMemory(
 	currentMemory: RuntimeNotificationMemory,
 	projectId: string,
 	summaries: readonly RuntimeTaskSessionSummary[],
+	removedTaskIds: readonly string[] = [],
 ): RuntimeNotificationMemory {
-	if (summaries.length === 0) {
+	if (summaries.length === 0 && removedTaskIds.length === 0) {
 		return currentMemory;
 	}
 
 	return {
-		projects: mergeRuntimeProjectNotificationStateMap(currentMemory.projects, projectId, summaries),
+		projects: applyRuntimeProjectNotificationDelta(currentMemory.projects, projectId, summaries, removedTaskIds),
 	};
 }
 
-function seedNotificationMemoryFromProjectState(
+function replaceNotificationMemoryFromProjectState(
 	currentMemory: RuntimeNotificationMemory,
 	projectId: string | null,
 	projectState: RuntimeProjectStateResponse | null,
 ): RuntimeNotificationMemory {
 	return {
-		projects: seedRuntimeProjectNotificationStateMapFromProjectState(currentMemory.projects, projectId, projectState),
+		projects: replaceRuntimeProjectNotificationStateMapFromProjectState(
+			currentMemory.projects,
+			projectId,
+			projectState,
+		),
 	};
 }
 
-function seedNotificationMemoryFromProjectSummaries(
+function replaceNotificationMemoryFromProjectSummaries(
 	currentMemory: RuntimeNotificationMemory,
+	projects: readonly RuntimeProjectSummary[],
 	summariesByProject: RuntimeStateStreamSnapshotMessage["notificationSummariesByProject"],
 ): RuntimeNotificationMemory {
 	return {
-		projects: seedRuntimeProjectNotificationStateMapFromProjectSummaries(currentMemory.projects, summariesByProject),
+		projects: replaceRuntimeProjectNotificationStateMapFromProjectSummaries(
+			currentMemory.projects,
+			projects,
+			summariesByProject,
+		),
 	};
 }
 
@@ -179,7 +194,7 @@ function applyRequestedProjectChange(
 		currentProjectId: requestedProjectId,
 		projectState: preloadedProjectState,
 		projectMetadata: null,
-		notificationMemory: seedNotificationMemoryFromProjectState(
+		notificationMemory: replaceNotificationMemoryFromProjectState(
 			state.notificationMemory,
 			requestedProjectId,
 			preloadedProjectState,
@@ -204,13 +219,14 @@ function applySnapshot(
 		projects: payload.projects,
 		projectState: nextProjectState,
 		projectMetadata: payload.projectMetadata,
-		notificationMemory: seedNotificationMemoryFromProjectState(
-			seedNotificationMemoryFromProjectSummaries(
+		notificationMemory: replaceNotificationMemoryFromProjectState(
+			replaceNotificationMemoryFromProjectSummaries(
 				pruneNotificationMemory(state.notificationMemory, payload.projects),
+				payload.projects,
 				payload.notificationSummariesByProject,
 			),
 			payload.currentProjectId,
-			payload.projectState,
+			nextProjectState,
 		),
 		streamError: null,
 		isRuntimeDisconnected: false,
@@ -293,13 +309,14 @@ export function runtimeStateStreamReducer(
 		};
 	}
 	if (action.type === "project_state_updated") {
+		const nextProjectState = reconcileProjectStateSessions(state.projectState, action.projectState);
 		return {
 			...state,
-			projectState: reconcileProjectStateSessions(state.projectState, action.projectState),
-			notificationMemory: seedNotificationMemoryFromProjectState(
+			projectState: nextProjectState,
+			notificationMemory: replaceNotificationMemoryFromProjectState(
 				state.notificationMemory,
 				state.currentProjectId,
-				action.projectState,
+				nextProjectState,
 			),
 		};
 	}
@@ -316,11 +333,16 @@ export function runtimeStateStreamReducer(
 		};
 	}
 	if (action.type === "task_notification") {
-		// Notification memory stays monotonic on purpose so reconnects do not
-		// replay "new" events into downstream notification hooks.
+		// Live deltas update notification memory, while authoritative snapshots
+		// and project-state updates replace project buckets to clear stale tasks.
 		return {
 			...state,
-			notificationMemory: mergeNotificationMemory(state.notificationMemory, action.projectId, action.summaries),
+			notificationMemory: mergeNotificationMemory(
+				state.notificationMemory,
+				action.projectId,
+				action.summaries,
+				action.removedTaskIds ?? [],
+			),
 		};
 	}
 	if (action.type === "debug_logging_state") {

@@ -686,6 +686,26 @@ export function pruneOrphanSessionsForBroadcast(
 }
 
 /**
+ * Board-linked filter for notification projections. Cross-project badges and
+ * sounds must only represent tasks the user can find on a board; live orphan
+ * process summaries remain useful for terminal restore paths, but they should
+ * not keep project-level NI/R/F badges alive after the card is gone.
+ */
+export function pruneOrphanSessionsForNotification(
+	sessions: Record<string, RuntimeTaskSessionSummary>,
+	board: RuntimeBoardData,
+): Record<string, RuntimeTaskSessionSummary> {
+	const boardTaskIds = collectBoardTaskIds(board);
+	const pruned: Record<string, RuntimeTaskSessionSummary> = {};
+	for (const [taskId, summary] of Object.entries(sessions)) {
+		if (boardTaskIds.has(taskId)) {
+			pruned[taskId] = summary;
+		}
+	}
+	return pruned;
+}
+
+/**
  * Strict board-linked filter for persistence. Sessions whose card is no
  * longer on the board are dropped from `sessions.json` so the file does not
  * grow unbounded. Shells and other non-board-linked live entries are also

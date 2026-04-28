@@ -79,4 +79,25 @@ describe("resolveStreamMessage", () => {
 			},
 		]);
 	});
+
+	it("preserves task notification removals", () => {
+		const result = resolveStreamMessage(
+			{
+				type: "task_notification",
+				projectId: "project-b",
+				summaries: [],
+				removedTaskIds: ["task-1"],
+			},
+			{ activeProjectId: "project-a" },
+		);
+
+		expect(result.actions).toEqual([
+			{
+				type: "task_notification",
+				projectId: "project-b",
+				summaries: [],
+				removedTaskIds: ["task-1"],
+			},
+		]);
+	});
 });

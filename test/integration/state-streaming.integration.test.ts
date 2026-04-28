@@ -190,7 +190,26 @@ describe.sequential("state streaming integration", () => {
 				throw new Error("Missing project id for added project.");
 			}
 
-			startedTaskId = "project-b-live-task";
+			startedTaskId = "task-1";
+			const projectBState = await requestJson<RuntimeProjectStateResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "project.getState",
+				type: "query",
+				projectId: projectBId,
+			});
+			expect(projectBState.status).toBe(200);
+			const seedProjectBBoard = await requestJson<RuntimeProjectStateResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "project.saveState",
+				type: "mutation",
+				projectId: projectBId,
+				payload: {
+					board: createBoard("Project B notification task"),
+					expectedRevision: projectBState.payload.revision,
+				},
+			});
+			expect(seedProjectBBoard.status).toBe(200);
+
 			const startShellResponse = await requestJson<RuntimeShellSessionStartResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "runtime.startShellSession",

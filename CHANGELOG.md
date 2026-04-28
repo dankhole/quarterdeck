@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: reconcile stale project notification indicators
+
+- Runtime task-notification streams now filter summaries through board-linked task IDs and send tombstones for removed notification tasks, so deleted-card sessions do not keep project needs-input/review/failure indicators alive.
+- Browser notification memory now replaces project buckets from authoritative snapshots and project-state updates, while live deltas still merge monotonically unless a tombstone removes a task.
+- Added focused stream-store, dispatch, and integration coverage for notification bucket replacement, tombstone propagation, and board-linked notification seeding.
+
 ### Fix: expose degraded terminal DOM diagnostics
 
 - Xterm helper textareas now receive stable `id` and `name` attributes when terminals open, making orphaned helpers easier to identify in degraded browser sessions.

@@ -2,6 +2,20 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: reconcile stale project notification indicators (2026-04-28)
+
+Dogfooding found that project-level needs-input indicators could outlive the board and session truth they were supposed to summarize. The browser notification memory was intentionally monotonic for live deltas, which is useful for avoiding duplicate audible transitions, but that meant a task notification from a deleted or orphaned card could remain in the project bucket after a later project snapshot proved the task no longer existed on the board. The previous orphan-session pruning fixed payload bloat, but notification projection still needed a separate board-only view because live orphan summaries can remain useful for terminal restore paths while still being wrong for project badges.
+
+The runtime now has `pruneOrphanSessionsForNotification(...)`, a board-linked filter specifically for badge/sound projection. Cross-project notification snapshots use it instead of the broader broadcast filter, and live `task_notification` batches read the board before broadcasting. If a live batch contains summaries whose task IDs are no longer on the board, the stream omits those summaries and includes `removedTaskIds` tombstones so already-open browsers can clear stale entries without waiting for a reconnect. If the board read fails, the runtime keeps live notifications flowing and relies on the next authoritative snapshot or project-state update to repair stale memory.
+
+The browser notification store now separates live deltas from authoritative replacement. `task_notification` still merges newer summaries into a project bucket, but it also applies tombstone removals. Runtime snapshots and active-project state updates replace the affected project buckets using board-linked sessions from the authoritative project state, so stale entries are cleared when the server re-sends truth. While finishing the branch, the reducer was tightened to replace notification memory from the already reconciled project state, not the raw incoming payload, so an older replayed snapshot or project-state event cannot downgrade a newer local session summary.
+
+Focused coverage now exercises notification bucket replacement from snapshots, active-project project-state replacement, live tombstone removals, preservation of reconciled newer summaries, stream dispatch of `removedTaskIds`, and the integration stream path that seeds another project's notification baseline only when the task exists on that project's board.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `docs/todo.md`, `src/core/api/streams.ts`, `src/core/index.ts`, `src/core/task-board-mutations.ts`, `src/server/runtime-state-hub.ts`, `src/server/runtime-state-messages.ts`, `test/integration/state-streaming.integration.test.ts`, `web-ui/src/runtime/runtime-notification-projects.ts`, `web-ui/src/runtime/runtime-state-stream-store.ts`, `web-ui/src/runtime/runtime-state-stream-store.test.ts`, `web-ui/src/runtime/runtime-stream-dispatch.ts`, `web-ui/src/runtime/runtime-stream-dispatch.test.ts`.
+
+Commit: pending
+
 ## Fix: expose degraded terminal DOM diagnostics (2026-04-28)
 
 Dogfooding a degraded Quarterdeck browser session showed roughly 22 `textarea.xterm-helper-textarea` nodes even though no shell terminals were open. The existing debug-panel button was not reliable in that state because the panel path itself could be slow or blocked, and unnamed xterm helper textareas made it hard to tell which DOM nodes belonged to live Quarterdeck terminal slots versus orphaned hosts.

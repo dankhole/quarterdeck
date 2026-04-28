@@ -18,7 +18,7 @@ import {
 	getLogLevel,
 	getRecentLogEntries,
 	onLogEntry,
-	pruneOrphanSessionsForBroadcast,
+	pruneOrphanSessionsForNotification,
 	toDisposable,
 } from "../core";
 import { loadProjectBoardById } from "../state";
@@ -143,7 +143,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				this.clients.broadcastToProject(projectId, buildTaskSessionsUpdatedMessage(projectId, summaries));
 			},
 			onTaskNotificationBatch: (projectId, summaries) => {
-				this.clients.broadcastToAll(buildTaskNotificationMessage(projectId, summaries));
+				void this.broadcastTaskNotifications(projectId, summaries);
 			},
 			onProjectsRefreshRequested: (preferredCurrentProjectId) => {
 				void this.broadcastRuntimeProjectsUpdated(preferredCurrentProjectId);
@@ -469,6 +469,27 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		}
 	}
 
+	private async broadcastTaskNotifications(projectId: string, summaries: RuntimeTaskSessionSummary[]): Promise<void> {
+		if (summaries.length === 0) {
+			return;
+		}
+		try {
+			const board = await loadProjectBoardById(projectId);
+			const summaryMap = Object.fromEntries(summaries.map((summary) => [summary.taskId, summary]));
+			const pruned = pruneOrphanSessionsForNotification(summaryMap, board);
+			const prunedSummaries = Object.values(pruned);
+			const removedTaskIds = summaries.map((summary) => summary.taskId).filter((taskId) => !(taskId in pruned));
+			if (prunedSummaries.length === 0 && removedTaskIds.length === 0) {
+				return;
+			}
+			this.clients.broadcastToAll(buildTaskNotificationMessage(projectId, prunedSummaries, { removedTaskIds }));
+		} catch {
+			// Board read failed — keep live notifications flowing. The next
+			// authoritative snapshot/project-state update will repair stale entries.
+			this.clients.broadcastToAll(buildTaskNotificationMessage(projectId, summaries));
+		}
+	}
+
 	private async collectNotificationSummariesByProject(): Promise<Record<string, RuntimeTaskSessionSummary[]>> {
 		const startedAt = performance.now();
 		const callTime = Date.now();
@@ -494,7 +515,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				try {
 					const board = await loadProjectBoardById(project.projectId);
 					const summaryMap = Object.fromEntries(summaries.map((summary) => [summary.taskId, summary]));
-					const pruned = pruneOrphanSessionsForBroadcast(summaryMap, board);
+					const pruned = pruneOrphanSessionsForNotification(summaryMap, board);
 					const prunedList = Object.values(pruned);
 					if (prunedList.length === 0) {
 						return {

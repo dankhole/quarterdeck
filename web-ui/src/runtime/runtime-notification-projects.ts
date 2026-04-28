@@ -18,6 +18,42 @@ function mergeProjectSessions(
 	return mergeTaskSessionSummaryMap(currentSessions, summaries);
 }
 
+function collectProjectStateBoardTaskIds(projectState: RuntimeProjectStateResponse): Set<string> {
+	const taskIds = new Set<string>();
+	for (const column of projectState.board.columns) {
+		for (const card of column.cards) {
+			taskIds.add(card.id);
+		}
+	}
+	return taskIds;
+}
+
+function selectBoardLinkedProjectStateSummaries(
+	projectState: RuntimeProjectStateResponse,
+): RuntimeTaskSessionSummary[] {
+	const boardTaskIds = collectProjectStateBoardTaskIds(projectState);
+	return Object.values(projectState.sessions ?? {}).filter((summary) => boardTaskIds.has(summary.taskId));
+}
+
+function replaceProjectSessions(
+	currentProjects: RuntimeProjectNotificationStateMap,
+	projectId: string,
+	summaries: readonly RuntimeTaskSessionSummary[],
+): RuntimeProjectNotificationStateMap {
+	const remainingProjects = { ...currentProjects };
+	delete remainingProjects[projectId];
+	if (summaries.length === 0) {
+		return remainingProjects;
+	}
+
+	return {
+		...remainingProjects,
+		[projectId]: {
+			sessions: Object.fromEntries(summaries.map((summary) => [summary.taskId, summary])),
+		},
+	};
+}
+
 export function mergeRuntimeProjectNotificationStateMap(
 	currentProjects: RuntimeProjectNotificationStateMap,
 	projectId: string,
@@ -33,6 +69,38 @@ export function mergeRuntimeProjectNotificationStateMap(
 			sessions: mergeProjectSessions(currentProjects[projectId]?.sessions ?? {}, summaries),
 		},
 	};
+}
+
+export function applyRuntimeProjectNotificationDelta(
+	currentProjects: RuntimeProjectNotificationStateMap,
+	projectId: string,
+	summaries: readonly RuntimeTaskSessionSummary[],
+	removedTaskIds: readonly string[] = [],
+): RuntimeProjectNotificationStateMap {
+	if (summaries.length === 0 && removedTaskIds.length === 0) {
+		return currentProjects;
+	}
+
+	let nextProjects = currentProjects;
+	if (removedTaskIds.length > 0) {
+		const existingProject = nextProjects[projectId];
+		if (existingProject) {
+			const removedTaskIdSet = new Set(removedTaskIds);
+			const nextSessions = Object.fromEntries(
+				Object.entries(existingProject.sessions).filter(([taskId]) => !removedTaskIdSet.has(taskId)),
+			);
+			nextProjects = replaceProjectSessions(nextProjects, projectId, Object.values(nextSessions));
+		}
+	}
+	return mergeRuntimeProjectNotificationStateMap(nextProjects, projectId, summaries);
+}
+
+export function replaceRuntimeProjectNotificationStateMap(
+	currentProjects: RuntimeProjectNotificationStateMap,
+	projectId: string,
+	summaries: readonly RuntimeTaskSessionSummary[],
+): RuntimeProjectNotificationStateMap {
+	return replaceProjectSessions(currentProjects, projectId, summaries);
 }
 
 export function seedRuntimeProjectNotificationStateMapFromProjectState(
@@ -51,6 +119,22 @@ export function seedRuntimeProjectNotificationStateMapFromProjectState(
 	);
 }
 
+export function replaceRuntimeProjectNotificationStateMapFromProjectState(
+	currentProjects: RuntimeProjectNotificationStateMap,
+	projectId: string | null,
+	projectState: RuntimeProjectStateResponse | null,
+): RuntimeProjectNotificationStateMap {
+	if (!projectId || !projectState) {
+		return currentProjects;
+	}
+
+	return replaceRuntimeProjectNotificationStateMap(
+		currentProjects,
+		projectId,
+		selectBoardLinkedProjectStateSummaries(projectState),
+	);
+}
+
 export function seedRuntimeProjectNotificationStateMapFromProjectSummaries(
 	currentProjects: RuntimeProjectNotificationStateMap,
 	summariesByProject: RuntimeProjectNotificationSummariesByProject | null | undefined,
@@ -62,6 +146,22 @@ export function seedRuntimeProjectNotificationStateMapFromProjectSummaries(
 	let nextProjects = currentProjects;
 	for (const [projectId, summaries] of Object.entries(summariesByProject)) {
 		nextProjects = mergeRuntimeProjectNotificationStateMap(nextProjects, projectId, summaries);
+	}
+	return nextProjects;
+}
+
+export function replaceRuntimeProjectNotificationStateMapFromProjectSummaries(
+	currentProjects: RuntimeProjectNotificationStateMap,
+	projects: readonly RuntimeProjectSummary[],
+	summariesByProject: RuntimeProjectNotificationSummariesByProject | null | undefined,
+): RuntimeProjectNotificationStateMap {
+	let nextProjects = currentProjects;
+	for (const project of projects) {
+		nextProjects = replaceRuntimeProjectNotificationStateMap(
+			nextProjects,
+			project.id,
+			summariesByProject?.[project.id] ?? [],
+		);
 	}
 	return nextProjects;
 }

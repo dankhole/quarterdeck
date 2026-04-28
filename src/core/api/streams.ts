@@ -81,6 +81,7 @@ export const runtimeStateStreamTaskNotificationMessageSchema = z.object({
 	// per-project notification settings (currently out of scope).
 	projectId: z.string(),
 	summaries: z.array(runtimeTaskSessionSummarySchema),
+	removedTaskIds: z.array(z.string()).optional(),
 });
 export type RuntimeStateStreamTaskNotificationMessage = z.infer<typeof runtimeStateStreamTaskNotificationMessageSchema>;
 

@@ -250,12 +250,6 @@ Three phases, done in order:
 2. ~~**Domain logic extraction**~~ — Done (16 domain modules, 211 domain-level unit tests). Split hooks into domain module + thin React wrapper pairs. Named candidates `use-board-interactions` and `use-task-start` confirmed as pure orchestration hooks with no extractable domain logic. Methodology: [docs/conventions/frontend-hooks.md](conventions/frontend-hooks.md) Pattern 1.
 3. ~~**Conventions update**~~ — Done. Added "Hooks architecture" section to `docs/conventions/web-ui.md` covering directory structure, domain module pattern, naming, re-exports, and reference table. Updated `AGENTS.md` with extraction rule.
 
-## Fix "needs input" yellow dot incorrectly persisting across project switches
-
-The yellow "needs input" indicator on the board icon sometimes shows for projects that don't actually need input. The erroneous state follows the project — switching projects brings the wrong NI status along. Investigate whether this is a stale hook state issue, a project-scoping bug in the notification system, or a UI render bug.
-
-**Broader refactor context:** [docs/architecture-roadmap.md#11-notification--project-scoping-ownership](./architecture-roadmap.md#11-notification--project-scoping-ownership) and [docs/architecture-roadmap.md#14-notification--indicator-state-model](./architecture-roadmap.md#14-notification--indicator-state-model)
-
 ## Skip trash confirmation when task has no uncommitted or unmerged changes
 
 The trash confirmation dialog should only appear when the task has uncommitted changes or an unmerged branch. If there's nothing to lose, trash immediately without prompting.

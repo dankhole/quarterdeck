@@ -81,11 +81,15 @@ const streamMessageHandlers: {
 			? createDispatchResult([], state.activeProjectId)
 			: createDispatchResult([{ type: "task_sessions_updated", summaries: msg.summaries }], state.activeProjectId),
 
-	task_notification: (msg, state) =>
-		createDispatchResult(
-			[{ type: "task_notification", projectId: msg.projectId, summaries: msg.summaries }],
-			state.activeProjectId,
-		),
+	task_notification: (msg, state) => {
+		const action: RuntimeStateStreamAction = {
+			type: "task_notification",
+			projectId: msg.projectId,
+			summaries: msg.summaries,
+			...(msg.removedTaskIds?.length ? { removedTaskIds: msg.removedTaskIds } : undefined),
+		};
+		return createDispatchResult([action], state.activeProjectId);
+	},
 
 	task_ready_for_review: (msg, state) =>
 		msg.projectId !== state.activeProjectId
