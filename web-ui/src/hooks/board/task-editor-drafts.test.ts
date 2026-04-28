@@ -15,8 +15,6 @@ function createTask(id: string, prompt: string, overrides: Partial<BoardCard> = 
 		title: null,
 		prompt,
 		startInPlanMode: false,
-		autoReviewEnabled: false,
-		autoReviewMode: "commit",
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,
@@ -49,7 +47,6 @@ describe("task-editor-drafts", () => {
 		expect(createEmptyTaskEditDraft()).toMatchObject({
 			editingTaskId: null,
 			prompt: "",
-			autoReviewMode: "commit",
 			branchRef: "",
 		});
 	});
@@ -57,8 +54,6 @@ describe("task-editor-drafts", () => {
 	it("builds edit drafts and applies edited task changes to the board", () => {
 		const task = createTask("task-1", "Original prompt", {
 			startInPlanMode: true,
-			autoReviewEnabled: true,
-			autoReviewMode: "move_to_trash",
 			images: [{ id: "img-1", data: "abc", mimeType: "image/png" }],
 		});
 		const draft = createTaskEditDraft(task, "main");
@@ -66,8 +61,6 @@ describe("task-editor-drafts", () => {
 			editingTaskId: "task-1",
 			prompt: "Original prompt",
 			startInPlanMode: true,
-			autoReviewEnabled: true,
-			autoReviewMode: "move_to_trash",
 			branchRef: "main",
 		});
 
@@ -76,8 +69,6 @@ describe("task-editor-drafts", () => {
 			editingTaskId: draft.editingTaskId,
 			prompt: "Updated prompt",
 			startInPlanMode: false,
-			autoReviewEnabled: false,
-			autoReviewMode: "commit",
 			images: draft.images,
 			branchRef: draft.branchRef,
 			defaultBranchRef: "main",
@@ -87,8 +78,6 @@ describe("task-editor-drafts", () => {
 		expect(result.board.columns[0]?.cards[0]).toMatchObject({
 			prompt: "Updated prompt",
 			startInPlanMode: false,
-			autoReviewEnabled: false,
-			autoReviewMode: "commit",
 		});
 	});
 
@@ -97,8 +86,6 @@ describe("task-editor-drafts", () => {
 			board: createBoard(),
 			prompt: "Ship release",
 			startInPlanMode: false,
-			autoReviewEnabled: false,
-			autoReviewMode: "commit",
 			images: [],
 			branchRef: "main",
 			defaultBranchRef: "main",
@@ -114,8 +101,6 @@ describe("task-editor-drafts", () => {
 			board: createBoard(),
 			prompts: ["One", "  ", "Two"],
 			startInPlanMode: false,
-			autoReviewEnabled: false,
-			autoReviewMode: "commit",
 			images: [],
 			branchRef: "develop",
 			defaultBranchRef: "main",

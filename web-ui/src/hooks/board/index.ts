@@ -10,7 +10,6 @@ export { useLinkedBacklogTaskActions } from "./use-linked-backlog-task-actions";
 export type { ProgrammaticCardMoveAttemptResult, ProgrammaticCardMoveBehavior } from "./use-programmatic-card-moves";
 export { useProgrammaticCardMoves } from "./use-programmatic-card-moves";
 export { usePromptShortcuts } from "./use-prompt-shortcuts";
-export { useReviewAutoActions } from "./use-review-auto-actions";
 export { useSessionColumnSync } from "./use-session-column-sync";
 export { useTaskBaseRefSync } from "./use-task-base-ref-sync";
 export type { UseTaskEditorResult } from "./use-task-editor";

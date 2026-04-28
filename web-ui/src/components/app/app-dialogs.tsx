@@ -39,8 +39,6 @@ export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactEleme
 		setNewTaskPrompt,
 		newTaskImages,
 		setNewTaskImages,
-		newTaskAutoReviewEnabled,
-		setNewTaskAutoReviewEnabled,
 		newTaskUseWorktree,
 		setNewTaskUseWorktree,
 		createFeatureBranch,
@@ -91,8 +89,6 @@ export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactEleme
 				onCreateStartAndOpen={interactions.handleCreateStartAndOpenTask}
 				onCreateMultiple={handleCreateTasks}
 				onCreateAndStartMultiple={interactions.handleCreateAndStartTasks}
-				autoReviewEnabled={newTaskAutoReviewEnabled}
-				onAutoReviewEnabledChange={setNewTaskAutoReviewEnabled}
 				useWorktree={newTaskUseWorktree}
 				onUseWorktreeChange={setNewTaskUseWorktree}
 				currentBranch={project.projectGit?.currentBranch ?? null}

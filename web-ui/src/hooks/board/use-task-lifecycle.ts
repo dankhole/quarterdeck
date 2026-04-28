@@ -4,7 +4,6 @@ import { useCallback } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import type { UseTaskSessionsResult } from "@/hooks/board/use-task-sessions";
 import type { RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
-import { disableTaskAutoReview } from "@/state/board-state";
 import { setTaskWorktreeInfo } from "@/stores/project-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { createClientLogger } from "@/utils/client-logger";
@@ -187,10 +186,6 @@ export function useTaskLifecycle({
 				) {
 					showNonIsolatedResumeWarning();
 				}
-				setBoard((board) => {
-					const result = disableTaskAutoReview(board, taskId);
-					return result.updated ? result.board : board;
-				});
 				return;
 			}
 

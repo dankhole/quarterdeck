@@ -27,8 +27,6 @@ export interface PersistentTerminalPanelLayoutProps {
 	sessionControls: PersistentTerminalSessionControls;
 	showSessionToolbar?: boolean;
 	onClose?: () => void;
-	onCancelAutomaticAction?: () => void;
-	cancelAutomaticActionLabel?: string | null;
 	headerTitle?: string;
 	headerSubtitle?: string | null;
 	panelBackgroundColor?: string;
@@ -48,8 +46,6 @@ export function PersistentTerminalPanelLayout({
 	sessionControls,
 	showSessionToolbar = true,
 	onClose,
-	onCancelAutomaticAction,
-	cancelAutomaticActionLabel,
 	headerTitle = "Terminal",
 	headerSubtitle = null,
 	panelBackgroundColor = "var(--color-surface-1)",
@@ -241,13 +237,6 @@ export function PersistentTerminalPanelLayout({
 			{lastError ? (
 				<div className="flex gap-2 rounded-none border-t border-status-red/30 bg-status-red/10 p-3 text-[13px] text-status-red">
 					{lastError}
-				</div>
-			) : null}
-			{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
-				<div className="px-3 py-2">
-					<Button variant="default" fill onClick={onCancelAutomaticAction}>
-						{cancelAutomaticActionLabel}
-					</Button>
 				</div>
 			) : null}
 		</div>

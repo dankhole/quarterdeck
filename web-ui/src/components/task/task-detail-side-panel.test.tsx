@@ -35,8 +35,6 @@ function createCard(id: string): BoardCard {
 		title: "Task detail",
 		prompt: `Task ${id}`,
 		startInPlanMode: false,
-		autoReviewEnabled: false,
-		autoReviewMode: "commit",
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,

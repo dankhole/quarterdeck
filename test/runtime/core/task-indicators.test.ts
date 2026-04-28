@@ -78,7 +78,6 @@ describe("deriveTaskIndicatorState", () => {
 		expect(indicator.kind).toBe("approval_required");
 		expect(indicator.approvalRequired).toBe(true);
 		expect(indicator.notification).toBe("permission");
-		expect(indicator.blocksAutoReview).toBe(true);
 	});
 
 	it("normalizes Codex permission requests into approval_required", () => {

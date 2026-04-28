@@ -32,8 +32,6 @@ function createTask(): BoardCard {
 		title: null,
 		prompt: "Resume me",
 		startInPlanMode: false,
-		autoReviewEnabled: false,
-		autoReviewMode: "commit",
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,

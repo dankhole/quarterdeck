@@ -148,7 +148,7 @@ BoardCard renders status badge via describeSessionState()
     "Running" / "Completed" / "Error" / "Stalled" / etc.
 ```
 
-For hook-triggered transitions specifically, there's also a `task_ready_for_review` message sent alongside `task_sessions_updated` — this is used for notification sounds and auto-review scheduling, not column moves.
+For hook-triggered transitions specifically, there's also a `task_ready_for_review` message sent alongside `task_sessions_updated` — this is used for notification sounds, not column moves.
 
 ---
 
@@ -382,6 +382,5 @@ Badges only display on cards in `in_progress` and `review` columns (not backlog 
 | `web-ui/src/runtime/use-runtime-state-stream.ts` | WebSocket connection and message handling |
 | `web-ui/src/runtime/runtime-stream-dispatch.ts` | Message type → handler routing |
 | `web-ui/src/hooks/board/use-session-column-sync.ts` | Auto-moves cards between columns based on session state |
-| `web-ui/src/hooks/board/use-review-auto-actions.ts` | Auto-trash/auto-commit scheduling |
 | `web-ui/src/utils/session-status.ts` | Session state → display label/badge style mapping |
 | `web-ui/src/stores/workspace-metadata-store.ts` | Git state, workspace paths (external store) |

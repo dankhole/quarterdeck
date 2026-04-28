@@ -29,22 +29,20 @@ vi.mock("@/resize/resizable-bottom-pane", () => ({
 	),
 }));
 
-function createCard(id: string, autoReviewEnabled = false): BoardCard {
+function createCard(id: string): BoardCard {
 	return {
 		id,
 		title: "Task detail",
 		prompt: `Task ${id}`,
 		startInPlanMode: false,
-		autoReviewEnabled,
-		autoReviewMode: "move_to_trash",
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,
 	};
 }
 
-function createSelection(autoReviewEnabled = false): CardSelection {
-	const card = createCard("task-1", autoReviewEnabled);
+function createSelection(): CardSelection {
+	const card = createCard("task-1");
 	const columns: BoardColumn[] = [{ id: "review", title: "Review", cards: [card] }];
 	return {
 		card,
@@ -62,7 +60,6 @@ function createLayoutState(): Pick<CardDetailViewLayoutState, "mainRowRef"> {
 function createTerminalState(): CardDetailViewTerminalState {
 	return {
 		onSessionSummary: () => {},
-		onCancelAutomaticTaskAction: () => {},
 		isTaskTerminalEnabled: true,
 	};
 }
@@ -117,11 +114,11 @@ describe("TaskDetailTerminalSurface", () => {
 		}
 	});
 
-	it("renders the task agent terminal with the detail terminal styling and auto-review action", async () => {
+	it("renders the task agent terminal with the detail terminal styling", async () => {
 		await act(async () => {
 			root.render(
 				<TaskDetailTerminalSurface
-					selection={createSelection(true)}
+					selection={createSelection()}
 					currentProjectId="project-1"
 					layoutState={createLayoutState()}
 					terminalState={createTerminalState()}
@@ -138,7 +135,6 @@ describe("TaskDetailTerminalSurface", () => {
 				projectId: "project-1",
 				panelBackgroundColor: TERMINAL_THEME_COLORS.surfacePrimary,
 				terminalBackgroundColor: TERMINAL_THEME_COLORS.surfacePrimary,
-				cancelAutomaticActionLabel: "Cancel Auto-trash",
 			}),
 		);
 	});

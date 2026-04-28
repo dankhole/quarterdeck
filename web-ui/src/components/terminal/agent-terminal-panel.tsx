@@ -14,8 +14,6 @@ export interface AgentTerminalPanelProps {
 	summary: RuntimeTaskSessionSummary | null;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
 	taskColumnId?: string;
-	onCancelAutomaticAction?: () => void;
-	cancelAutomaticActionLabel?: string | null;
 	showSessionToolbar?: boolean;
 	onClose?: () => void;
 	autoFocus?: boolean;
@@ -58,8 +56,6 @@ export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement
 			sessionControls={sessionControls}
 			showSessionToolbar={props.showSessionToolbar}
 			onClose={props.onClose}
-			onCancelAutomaticAction={props.onCancelAutomaticAction}
-			cancelAutomaticActionLabel={props.cancelAutomaticActionLabel}
 			headerTitle={props.minimalHeaderTitle ?? "Terminal"}
 			headerSubtitle={props.minimalHeaderSubtitle ?? null}
 			panelBackgroundColor={props.panelBackgroundColor}

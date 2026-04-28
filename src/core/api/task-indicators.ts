@@ -28,7 +28,6 @@ export interface RuntimeTaskIndicatorState {
 	reviewReady: boolean;
 	failure: boolean;
 	hookReview: boolean;
-	blocksAutoReview: boolean;
 }
 
 function createIndicatorState(
@@ -42,7 +41,6 @@ function createIndicatorState(
 		reviewReady = false,
 		failure = false,
 		hookReview = false,
-		blocksAutoReview = false,
 	}: {
 		tone: RuntimeTaskIndicatorTone;
 		column: RuntimeTaskIndicatorColumn;
@@ -52,7 +50,6 @@ function createIndicatorState(
 		reviewReady?: boolean;
 		failure?: boolean;
 		hookReview?: boolean;
-		blocksAutoReview?: boolean;
 	},
 ): RuntimeTaskIndicatorState {
 	return {
@@ -65,7 +62,6 @@ function createIndicatorState(
 		reviewReady,
 		failure,
 		hookReview,
-		blocksAutoReview,
 	};
 }
 
@@ -119,7 +115,6 @@ export function deriveTaskIndicatorState(summary: RuntimeTaskSessionSummary): Ru
 				approvalRequired: true,
 				needsInput: true,
 				hookReview: true,
-				blocksAutoReview: true,
 			});
 		}
 

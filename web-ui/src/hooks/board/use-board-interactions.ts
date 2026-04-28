@@ -7,7 +7,6 @@ import type { TaskTrashWarningViewModel } from "@/components/task";
 import { useBoardDragHandler } from "@/hooks/board/use-board-drag-handler";
 import { useLinkedBacklogTaskActions } from "@/hooks/board/use-linked-backlog-task-actions";
 import { useProgrammaticCardMoves } from "@/hooks/board/use-programmatic-card-moves";
-import { useReviewAutoActions } from "@/hooks/board/use-review-auto-actions";
 import { useSessionColumnSync } from "@/hooks/board/use-session-column-sync";
 import {
 	shouldWarnForNonIsolatedResume,
@@ -18,9 +17,8 @@ import type { UseTaskSessionsResult } from "@/hooks/board/use-task-sessions";
 import { useTaskStart } from "@/hooks/board/use-task-start";
 import { type HardDeleteDialogState, type TrashWarningState, useTrashWorkflow } from "@/hooks/board/use-trash-workflow";
 import type { RuntimeTaskSessionSummary, RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
-import { findCardSelection, updateTask } from "@/state/board-state";
+import { findCardSelection } from "@/state/board-state";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
-import { resolveTaskAutoReviewMode } from "@/types";
 import { createClientLogger } from "@/utils/client-logger";
 
 const log = createClientLogger("board-interactions");
@@ -69,7 +67,6 @@ export interface UseBoardInteractionsResult {
 	handleCancelHardDelete: () => void;
 	handleConfirmHardDelete: () => void;
 	handleRestartTaskSession: (taskId: string) => void;
-	handleCancelAutomaticTaskAction: (taskId: string) => void;
 	handleOpenClearTrash: () => void;
 	handleConfirmClearTrash: () => void;
 	moveToTrashLoadingById: Record<string, boolean>;
@@ -226,14 +223,6 @@ export function useBoardInteractions({
 		programmaticCardMoveCycle,
 	});
 
-	// ── Auto-review actions ──────────────────────────────────────────────
-	useReviewAutoActions({
-		board,
-		sessions,
-		requestMoveTaskToTrash: requestMoveTaskToTrashWithAnimation,
-		resetKey: currentProjectId,
-	});
-
 	// ── Remaining small handlers ─────────────────────────────────────────
 
 	const handleCardSelect = useCallback(
@@ -271,27 +260,6 @@ export function useBoardInteractions({
 		[board, startTaskSession, stopTaskSession],
 	);
 
-	const handleCancelAutomaticTaskAction = useCallback(
-		(taskId: string) => {
-			setBoard((currentBoard) => {
-				const selection = findCardSelection(currentBoard, taskId);
-				if (!selection || selection.card.autoReviewEnabled !== true) {
-					return currentBoard;
-				}
-				const updated = updateTask(currentBoard, taskId, {
-					prompt: selection.card.prompt,
-					startInPlanMode: selection.card.startInPlanMode,
-					autoReviewEnabled: false,
-					autoReviewMode: resolveTaskAutoReviewMode(selection.card.autoReviewMode),
-					baseRef: selection.card.baseRef,
-					useWorktree: selection.card.useWorktree,
-				});
-				return updated.updated ? updated.board : currentBoard;
-			});
-		},
-		[setBoard],
-	);
-
 	// ── Reset on project change ──────────────────────────────────────────
 	useEffect(() => {
 		resetTrashWorkflowState();
@@ -316,7 +284,6 @@ export function useBoardInteractions({
 		handleCancelHardDelete,
 		handleConfirmHardDelete,
 		handleRestartTaskSession,
-		handleCancelAutomaticTaskAction,
 		handleOpenClearTrash,
 		handleConfirmClearTrash,
 		moveToTrashLoadingById,

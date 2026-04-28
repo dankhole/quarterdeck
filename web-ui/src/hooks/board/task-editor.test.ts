@@ -1,24 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	isBranchRefValid,
-	isPlanModeDisabledByAutoReview,
-	isTaskSaveValid,
-	resolveEffectiveBaseRef,
-} from "@/hooks/board/task-editor";
-
-describe("isPlanModeDisabledByAutoReview", () => {
-	it("returns true when auto-review enabled with move_to_trash mode", () => {
-		expect(isPlanModeDisabledByAutoReview(true, "move_to_trash")).toBe(true);
-	});
-
-	it("returns false when auto-review disabled", () => {
-		expect(isPlanModeDisabledByAutoReview(false, "move_to_trash")).toBe(false);
-	});
-
-	it("returns false when auto-review mode is commit", () => {
-		expect(isPlanModeDisabledByAutoReview(true, "commit")).toBe(false);
-	});
-});
+import { isBranchRefValid, isTaskSaveValid, resolveEffectiveBaseRef } from "@/hooks/board/task-editor";
 
 describe("isBranchRefValid", () => {
 	const branches = [{ value: "main" }, { value: "develop" }];

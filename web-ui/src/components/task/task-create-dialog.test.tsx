@@ -97,8 +97,6 @@ function Harness({ initialPrompt, initialImages = [], onCreate = () => "task-1" 
 			onCreateStartAndOpen={() => "task-3"}
 			onCreateMultiple={(prompts) => prompts.map((taskPrompt, index) => `${taskPrompt}-${index}`)}
 			onCreateAndStartMultiple={(prompts) => prompts.map((taskPrompt, index) => `${taskPrompt}-${index}`)}
-			autoReviewEnabled={false}
-			onAutoReviewEnabledChange={() => {}}
 			useWorktree
 			onUseWorktreeChange={() => {}}
 			createFeatureBranch={false}

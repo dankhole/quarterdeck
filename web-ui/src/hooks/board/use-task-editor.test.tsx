@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useTaskEditor } from "@/hooks/board/use-task-editor";
-import type { BoardCard, BoardData, TaskAutoReviewMode, TaskImage } from "@/types";
+import type { BoardCard, BoardData, TaskImage } from "@/types";
 
 function createTask(taskId: string, prompt: string, createdAt: number, overrides: Partial<BoardCard> = {}): BoardCard {
 	return {
@@ -11,8 +11,6 @@ function createTask(taskId: string, prompt: string, createdAt: number, overrides
 		title: null,
 		prompt,
 		startInPlanMode: false,
-		autoReviewEnabled: false,
-		autoReviewMode: "commit",
 		baseRef: "main",
 		createdAt,
 		updatedAt: createdAt,
@@ -41,7 +39,6 @@ interface HookSnapshot {
 	editingTaskId: string | null;
 	editTaskPrompt: string;
 	editTaskStartInPlanMode: boolean;
-	isEditTaskStartInPlanModeDisabled: boolean;
 	handleOpenCreateTask: () => void;
 	handleCreateTask: (options?: { keepDialogOpen?: boolean }) => string | null;
 	handleCreateTasks: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
@@ -52,8 +49,6 @@ interface HookSnapshot {
 	handleSaveEditedTask: () => string | null;
 	handleSaveAndStartEditedTask: () => void;
 	setEditTaskPrompt: (value: string) => void;
-	setEditTaskAutoReviewEnabled: (value: boolean) => void;
-	setEditTaskAutoReviewMode: (value: TaskAutoReviewMode) => void;
 }
 
 function requireSnapshot(snapshot: HookSnapshot | null): HookSnapshot {
@@ -98,7 +93,6 @@ function HookHarness({
 			editingTaskId: editor.editingTaskId,
 			editTaskPrompt: editor.editTaskPrompt,
 			editTaskStartInPlanMode: editor.editTaskStartInPlanMode,
-			isEditTaskStartInPlanModeDisabled: editor.isEditTaskStartInPlanModeDisabled,
 			handleOpenCreateTask: editor.handleOpenCreateTask,
 			handleCreateTask: editor.handleCreateTask,
 			handleCreateTasks: editor.handleCreateTasks,
@@ -109,8 +103,6 @@ function HookHarness({
 			handleSaveEditedTask: editor.handleSaveEditedTask,
 			handleSaveAndStartEditedTask: editor.handleSaveAndStartEditedTask,
 			setEditTaskPrompt: editor.setEditTaskPrompt,
-			setEditTaskAutoReviewEnabled: editor.setEditTaskAutoReviewEnabled,
-			setEditTaskAutoReviewMode: editor.setEditTaskAutoReviewMode,
 		});
 	}, [
 		board,
@@ -123,13 +115,10 @@ function HookHarness({
 		editor.handleOpenEditTask,
 		editor.handleSaveEditedTask,
 		editor.handleSaveAndStartEditedTask,
-		editor.isEditTaskStartInPlanModeDisabled,
 		editor.isInlineTaskCreateOpen,
 		editor.newTaskPrompt,
 		editor.newTaskImages,
 		editor.newTaskBranchRef,
-		editor.setEditTaskAutoReviewEnabled,
-		editor.setEditTaskAutoReviewMode,
 		editor.setEditTaskPrompt,
 		editor.setNewTaskBranchRef,
 		editor.setNewTaskImages,
@@ -208,44 +197,6 @@ describe("useTaskEditor", () => {
 		expect(savedTaskId).toBe("task-1");
 		expect(requireSnapshot(latestSnapshot).editingTaskId).toBeNull();
 		expect(requireSnapshot(latestSnapshot).board.columns[0]?.cards[0]?.prompt).toBe("Updated prompt");
-	});
-
-	it("disables start in plan mode when move to trash auto review is selected while editing", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-		const initialBoard = createBoard([
-			createTask("task-1", "Initial prompt", 1, {
-				startInPlanMode: true,
-			}),
-		]);
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					initialBoard={initialBoard}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-		});
-
-		const initialSnapshot = requireSnapshot(latestSnapshot);
-		const task = initialSnapshot.board.columns[0]?.cards[0];
-		if (!task) {
-			throw new Error("Expected a backlog task.");
-		}
-
-		await act(async () => {
-			initialSnapshot.handleOpenEditTask(task);
-		});
-
-		await act(async () => {
-			latestSnapshot?.setEditTaskAutoReviewEnabled(true);
-			latestSnapshot?.setEditTaskAutoReviewMode("move_to_trash");
-		});
-
-		expect(requireSnapshot(latestSnapshot).isEditTaskStartInPlanModeDisabled).toBe(true);
-		expect(requireSnapshot(latestSnapshot).editTaskStartInPlanMode).toBe(false);
 	});
 
 	it("queues the saved task id when saving and starting an edited task", async () => {

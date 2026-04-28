@@ -1,4 +1,4 @@
-// Default prompt templates for prompt shortcuts and auto-review actions.
+// Default prompt templates for prompt shortcuts.
 // Kept in a dedicated file so multi-line templates don't clutter config-defaults.
 
 export const DEFAULT_COMMIT_PROMPT_TEMPLATE = `When you are finished with the task, commit your working changes.

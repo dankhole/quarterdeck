@@ -145,7 +145,6 @@ describe("board-state parser helpers", () => {
 			{
 				prompt: "  Task A  ",
 				baseRef: "  main  ",
-				autoReviewMode: "not-a-mode",
 				images: [{ id: "img-1", data: "data", mimeType: "image/png" }, { id: 123 }],
 				workingDirectory: null,
 				branch: 123,
@@ -158,8 +157,6 @@ describe("board-state parser helpers", () => {
 			title: null,
 			prompt: "Task A",
 			startInPlanMode: false,
-			autoReviewEnabled: false,
-			autoReviewMode: "move_to_trash",
 			images: [{ id: "img-1", data: "data", mimeType: "image/png" }],
 			baseRef: "main",
 			useWorktree: undefined,

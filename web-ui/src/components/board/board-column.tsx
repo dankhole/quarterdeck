@@ -54,7 +54,6 @@ export function BoardColumn({
 		onMoveToTrashTask,
 		onRestoreFromTrashTask,
 		onHardDeleteTrashTask,
-		onCancelAutomaticTaskAction,
 		onRegenerateTitleTask,
 		onUpdateTaskTitle,
 		onTogglePinTask,
@@ -172,7 +171,6 @@ export function BoardColumn({
 											onMoveToTrash={onMoveToTrashTask}
 											onRestoreFromTrash={onRestoreFromTrashTask}
 											onHardDelete={onHardDeleteTrashTask}
-											onCancelAutomaticAction={onCancelAutomaticTaskAction}
 											onRegenerateTitle={onRegenerateTitleTask}
 											isLlmGenerationDisabled={isLlmGenerationDisabled}
 											onUpdateTitle={onUpdateTaskTitle}

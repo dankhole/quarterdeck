@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Chore: remove reviewed-task auto-trash
+
+- Removed the task-level “Auto-trash when reviewed” setting, its persisted board fields, local storage defaults, review-column timer hook, cancel affordances, and CLI/man-page option references.
+- Kept normal manual trash behavior intact, including confirmation dialogs, worktree cleanup, and patch capture for uncommitted work.
+
 ### Feature: send worktree context to Codex agents
 
 - Worktree-launched Codex task sessions now receive the configured worktree context prompt as Codex `developer_instructions`, giving Codex the same repo/task guidance path that Claude already received through its system-prompt context.

@@ -1,13 +1,11 @@
 import { z } from "zod";
-import { runtimeBoardColumnIdSchema, runtimeTaskAutoReviewModeSchema, runtimeTaskImageSchema } from "./shared.js";
+import { runtimeBoardColumnIdSchema, runtimeTaskImageSchema } from "./shared.js";
 
 export const runtimeBoardCardSchema = z.object({
 	id: z.string(),
 	title: z.string().nullable().default(null),
 	prompt: z.string(),
 	startInPlanMode: z.boolean(),
-	autoReviewEnabled: z.boolean().optional(),
-	autoReviewMode: runtimeTaskAutoReviewModeSchema.optional(),
 	images: z.array(runtimeTaskImageSchema).optional(),
 	baseRef: z.string(),
 	baseRefPinned: z.boolean().optional(),

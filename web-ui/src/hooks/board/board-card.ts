@@ -1,6 +1,5 @@
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardCard, BoardColumnId, ReviewTaskWorktreeSnapshot } from "@/types";
-import { getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { getCardHoverTooltip, getRunningActivityLabel, shortenBranchName } from "@/utils/board-card-display";
 import { describeSessionState, getSessionStatusBadgeStyle, getSessionStatusTooltip } from "@/utils/session-status";
 import { resolveTaskIdentity } from "@/utils/task-identity";
@@ -79,8 +78,6 @@ export function resolveBoardCardViewModel({
 					additions: reviewWorktreeSnapshot.additions ?? 0,
 					deletions: reviewWorktreeSnapshot.deletions ?? 0,
 				};
-	const cancelAutomaticActionLabel =
-		!isTrashCard && card.autoReviewEnabled ? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode) : null;
 	const showUncommittedChangesIndicator =
 		uncommittedChangesOnCardsEnabled &&
 		showProjectStatus &&
@@ -108,7 +105,6 @@ export function resolveBoardCardViewModel({
 		reviewBranchLabel,
 		reviewBranchTooltip,
 		reviewChangeSummary,
-		cancelAutomaticActionLabel,
 		showUncommittedChangesIndicator,
 	};
 }

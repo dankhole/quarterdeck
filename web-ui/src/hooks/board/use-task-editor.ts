@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
-import { isBranchRefValid, isPlanModeDisabledByAutoReview } from "@/hooks/board/task-editor";
+import { isBranchRefValid } from "@/hooks/board/task-editor";
 import {
 	createEmptyTaskEditDraft,
 	createResetTaskCreateDraft,
@@ -13,14 +13,8 @@ import {
 } from "@/hooks/board/task-editor-drafts";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import { findCardSelection } from "@/state/board-state";
-import type { BoardCard, BoardData, TaskAutoReviewMode, TaskImage } from "@/types";
-import {
-	normalizeStoredTaskAutoReviewMode,
-	TASK_AUTO_REVIEW_ENABLED_STORAGE_KEY,
-	TASK_AUTO_REVIEW_MODE_STORAGE_KEY,
-} from "@/utils/app-utils";
+import type { BoardCard, BoardData, TaskImage } from "@/types";
 import { slugifyBranchName } from "@/utils/branch-utils";
-import { useBooleanLocalStorageValue, useRawLocalStorageValue } from "@/utils/react-use";
 
 interface UseTaskEditorInput {
 	board: BoardData;
@@ -46,10 +40,6 @@ export interface UseTaskEditorResult {
 	setNewTaskPrompt: Dispatch<SetStateAction<string>>;
 	newTaskImages: TaskImage[];
 	setNewTaskImages: Dispatch<SetStateAction<TaskImage[]>>;
-	newTaskAutoReviewEnabled: boolean;
-	setNewTaskAutoReviewEnabled: Dispatch<SetStateAction<boolean>>;
-	newTaskAutoReviewMode: TaskAutoReviewMode;
-	setNewTaskAutoReviewMode: Dispatch<SetStateAction<TaskAutoReviewMode>>;
 	newTaskUseWorktree: boolean;
 	setNewTaskUseWorktree: Dispatch<SetStateAction<boolean>>;
 	createFeatureBranch: boolean;
@@ -67,11 +57,6 @@ export interface UseTaskEditorResult {
 	setEditTaskImages: Dispatch<SetStateAction<TaskImage[]>>;
 	editTaskStartInPlanMode: boolean;
 	setEditTaskStartInPlanMode: Dispatch<SetStateAction<boolean>>;
-	editTaskAutoReviewEnabled: boolean;
-	setEditTaskAutoReviewEnabled: Dispatch<SetStateAction<boolean>>;
-	editTaskAutoReviewMode: TaskAutoReviewMode;
-	setEditTaskAutoReviewMode: Dispatch<SetStateAction<TaskAutoReviewMode>>;
-	isEditTaskStartInPlanModeDisabled: boolean;
 	editTaskBranchRef: string;
 	setEditTaskBranchRef: Dispatch<SetStateAction<string>>;
 	handleOpenCreateTask: () => void;
@@ -97,15 +82,6 @@ export function useTaskEditor({
 	const [isInlineTaskCreateOpen, setIsInlineTaskCreateOpen] = useState(false);
 	const [newTaskPrompt, setNewTaskPrompt] = useState("");
 	const [newTaskImages, setNewTaskImages] = useState<TaskImage[]>([]);
-	const [newTaskAutoReviewEnabled, setNewTaskAutoReviewEnabled] = useBooleanLocalStorageValue(
-		TASK_AUTO_REVIEW_ENABLED_STORAGE_KEY,
-		false,
-	);
-	const [newTaskAutoReviewMode, setNewTaskAutoReviewMode] = useRawLocalStorageValue<TaskAutoReviewMode>(
-		TASK_AUTO_REVIEW_MODE_STORAGE_KEY,
-		"commit",
-		normalizeStoredTaskAutoReviewMode,
-	);
 	const [newTaskUseWorktree, setNewTaskUseWorktree] = useState(true);
 	const [createFeatureBranch, setCreateFeatureBranch] = useState(false);
 	const [branchName, setBranchName] = useState("");
@@ -114,12 +90,6 @@ export function useTaskEditor({
 	const [editTaskPrompt, setEditTaskPrompt] = useState("");
 	const [editTaskImages, setEditTaskImages] = useState<TaskImage[]>([]);
 	const [editTaskStartInPlanMode, setEditTaskStartInPlanMode] = useState(false);
-	const [editTaskAutoReviewEnabled, setEditTaskAutoReviewEnabled] = useState(false);
-	const [editTaskAutoReviewMode, setEditTaskAutoReviewMode] = useState<TaskAutoReviewMode>("commit");
-	const isEditTaskStartInPlanModeDisabled = isPlanModeDisabledByAutoReview(
-		editTaskAutoReviewEnabled,
-		editTaskAutoReviewMode,
-	);
 	const [editTaskBranchRef, setEditTaskBranchRef] = useState("");
 
 	const resolvedDefaultTaskBranchRef = defaultTaskBranchRef;
@@ -152,13 +122,6 @@ export function useTaskEditor({
 	}, [newTaskUseWorktree, createFeatureBranch]);
 
 	useEffect(() => {
-		if (!isEditTaskStartInPlanModeDisabled || !editTaskStartInPlanMode) {
-			return;
-		}
-		setEditTaskStartInPlanMode(false);
-	}, [editTaskStartInPlanMode, isEditTaskStartInPlanModeDisabled]);
-
-	useEffect(() => {
 		if (!editingTaskId) {
 			return;
 		}
@@ -177,8 +140,6 @@ export function useTaskEditor({
 			setEditingTaskId(null);
 			setEditTaskPrompt("");
 			setEditTaskStartInPlanMode(false);
-			setEditTaskAutoReviewEnabled(false);
-			setEditTaskAutoReviewMode("commit");
 			setEditTaskImages([]);
 			setEditTaskBranchRef("");
 		}
@@ -246,8 +207,6 @@ export function useTaskEditor({
 			setEditTaskPrompt(editDraft.prompt);
 			setEditTaskImages(editDraft.images);
 			setEditTaskStartInPlanMode(editDraft.startInPlanMode);
-			setEditTaskAutoReviewEnabled(editDraft.autoReviewEnabled);
-			setEditTaskAutoReviewMode(editDraft.autoReviewMode);
 			setEditTaskBranchRef(editDraft.branchRef);
 		},
 		[resolvedDefaultTaskBranchRef, setSelectedTaskId],
@@ -258,8 +217,6 @@ export function useTaskEditor({
 		setEditingTaskId(emptyEditDraft.editingTaskId);
 		setEditTaskPrompt(emptyEditDraft.prompt);
 		setEditTaskStartInPlanMode(emptyEditDraft.startInPlanMode);
-		setEditTaskAutoReviewEnabled(emptyEditDraft.autoReviewEnabled);
-		setEditTaskAutoReviewMode(emptyEditDraft.autoReviewMode);
 		setEditTaskImages(emptyEditDraft.images);
 		setEditTaskBranchRef(emptyEditDraft.branchRef);
 	}, []);
@@ -270,8 +227,6 @@ export function useTaskEditor({
 			editingTaskId,
 			prompt: editTaskPrompt,
 			startInPlanMode: editTaskStartInPlanMode,
-			autoReviewEnabled: editTaskAutoReviewEnabled,
-			autoReviewMode: editTaskAutoReviewMode,
 			images: editTaskImages,
 			branchRef: editTaskBranchRef,
 			defaultBranchRef: resolvedDefaultTaskBranchRef,
@@ -283,15 +238,11 @@ export function useTaskEditor({
 		const emptyEditDraft = createEmptyTaskEditDraft();
 		setEditingTaskId(emptyEditDraft.editingTaskId);
 		setEditTaskPrompt(emptyEditDraft.prompt);
-		setEditTaskAutoReviewEnabled(emptyEditDraft.autoReviewEnabled);
-		setEditTaskAutoReviewMode(emptyEditDraft.autoReviewMode);
 		setEditTaskImages(emptyEditDraft.images);
 		setEditTaskBranchRef(emptyEditDraft.branchRef);
 		return savedTaskId;
 	}, [
 		board,
-		editTaskAutoReviewEnabled,
-		editTaskAutoReviewMode,
 		editTaskBranchRef,
 		editTaskPrompt,
 		editTaskImages,
@@ -315,8 +266,6 @@ export function useTaskEditor({
 				board,
 				prompt: newTaskPrompt,
 				startInPlanMode: false,
-				autoReviewEnabled: newTaskAutoReviewEnabled,
-				autoReviewMode: newTaskAutoReviewMode,
 				images: newTaskImages,
 				branchRef: newTaskBranchRef,
 				defaultBranchRef: resolvedDefaultTaskBranchRef,
@@ -344,8 +293,6 @@ export function useTaskEditor({
 			board,
 			branchName,
 			createFeatureBranch,
-			newTaskAutoReviewEnabled,
-			newTaskAutoReviewMode,
 			newTaskBranchRef,
 			newTaskImages,
 			newTaskPrompt,
@@ -361,8 +308,6 @@ export function useTaskEditor({
 				board,
 				prompts,
 				startInPlanMode: false,
-				autoReviewEnabled: newTaskAutoReviewEnabled,
-				autoReviewMode: newTaskAutoReviewMode,
 				images: newTaskImages,
 				branchRef: newTaskBranchRef,
 				defaultBranchRef: resolvedDefaultTaskBranchRef,
@@ -384,16 +329,7 @@ export function useTaskEditor({
 			}
 			return createdTaskIds;
 		},
-		[
-			board,
-			newTaskAutoReviewEnabled,
-			newTaskAutoReviewMode,
-			newTaskBranchRef,
-			newTaskImages,
-			newTaskUseWorktree,
-			resolvedDefaultTaskBranchRef,
-			setBoard,
-		],
+		[board, newTaskBranchRef, newTaskImages, newTaskUseWorktree, resolvedDefaultTaskBranchRef, setBoard],
 	);
 
 	const resetTaskEditorState = useCallback(() => {
@@ -403,8 +339,6 @@ export function useTaskEditor({
 		setEditingTaskId(emptyEditDraft.editingTaskId);
 		setEditTaskPrompt(emptyEditDraft.prompt);
 		setEditTaskStartInPlanMode(emptyEditDraft.startInPlanMode);
-		setEditTaskAutoReviewEnabled(emptyEditDraft.autoReviewEnabled);
-		setEditTaskAutoReviewMode(emptyEditDraft.autoReviewMode);
 		setEditTaskImages(emptyEditDraft.images);
 		setEditTaskBranchRef(emptyEditDraft.branchRef);
 		setNewTaskImages(resetCreateDraft.images);
@@ -418,10 +352,6 @@ export function useTaskEditor({
 		setNewTaskPrompt,
 		newTaskImages,
 		setNewTaskImages,
-		newTaskAutoReviewEnabled,
-		setNewTaskAutoReviewEnabled,
-		newTaskAutoReviewMode,
-		setNewTaskAutoReviewMode,
 		newTaskUseWorktree,
 		setNewTaskUseWorktree,
 		createFeatureBranch,
@@ -439,11 +369,6 @@ export function useTaskEditor({
 		setEditTaskImages,
 		editTaskStartInPlanMode,
 		setEditTaskStartInPlanMode,
-		editTaskAutoReviewEnabled,
-		setEditTaskAutoReviewEnabled,
-		editTaskAutoReviewMode,
-		setEditTaskAutoReviewMode,
-		isEditTaskStartInPlanModeDisabled,
 		editTaskBranchRef,
 		setEditTaskBranchRef,
 		handleOpenCreateTask,

@@ -55,8 +55,6 @@ function createSelection(taskId: string): CardSelection {
 		title: null,
 		prompt: `Task ${taskId}`,
 		startInPlanMode: false,
-		autoReviewEnabled: false,
-		autoReviewMode: "commit" as const,
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,

@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { createContext, useContext, useMemo } from "react";
 
 import type { UseGitHistoryDataResult } from "@/components/git/history";
-import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import {
 	type ResolvedScope,
 	type ScopeMode,
@@ -59,7 +58,6 @@ export interface GitContextValue {
 	switchHomeBranch: (branch: string) => Promise<void>;
 	resetGitActionState: () => void;
 	taskGitActionLoadingByTaskId: Record<string, TaskGitActionLoadingState>;
-	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 	onStashAndRetry: (() => void) | undefined;
 	isStashAndRetryingPull: boolean;
 
@@ -188,7 +186,6 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 		switchHomeBranch,
 		resetGitActionState,
 		taskGitActionLoadingByTaskId,
-		runAutoReviewGitAction,
 		onStashAndRetry,
 		isStashAndRetryingPull,
 	} = useGitActions({
@@ -221,7 +218,6 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 			switchHomeBranch,
 			resetGitActionState,
 			taskGitActionLoadingByTaskId,
-			runAutoReviewGitAction,
 			onStashAndRetry,
 			isStashAndRetryingPull,
 			fileBrowserScopeMode,
@@ -246,7 +242,6 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 			switchHomeBranch,
 			resetGitActionState,
 			taskGitActionLoadingByTaskId,
-			runAutoReviewGitAction,
 			onStashAndRetry,
 			isStashAndRetryingPull,
 			fileBrowserScopeMode,

@@ -1,17 +1,3 @@
-import type { TaskAutoReviewMode } from "@/types";
-
-/**
- * Plan mode is incompatible with auto-review "move_to_trash" because
- * plan mode keeps the agent in a read-only planning state, which would
- * immediately trigger a review → trash cycle.
- */
-export function isPlanModeDisabledByAutoReview(
-	autoReviewEnabled: boolean,
-	autoReviewMode: TaskAutoReviewMode,
-): boolean {
-	return autoReviewEnabled && autoReviewMode === "move_to_trash";
-}
-
 /**
  * Check whether a branch ref value is still valid against the current
  * set of available branch options.

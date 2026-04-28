@@ -43,7 +43,6 @@ function ColumnSection({
 		onMoveToTrashTask,
 		onRestoreFromTrashTask,
 		onHardDeleteTrashTask,
-		onCancelAutomaticTaskAction,
 		onRegenerateTitleTask,
 		onUpdateTaskTitle,
 		onTogglePinTask,
@@ -183,7 +182,6 @@ function ColumnSection({
 								onMoveToTrash={onMoveToTrashTask}
 								onRestoreFromTrash={onRestoreFromTrashTask}
 								onHardDelete={onHardDeleteTrashTask}
-								onCancelAutomaticAction={onCancelAutomaticTaskAction}
 								isMoveToTrashLoading={moveToTrashLoadingById[card.id] ?? false}
 								onRegenerateTitle={onRegenerateTitleTask}
 								isLlmGenerationDisabled={isLlmGenerationDisabled}

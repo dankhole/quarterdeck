@@ -35,8 +35,6 @@ describe("buildTrashWarningViewModel", () => {
 			title: "My Task",
 			prompt: "do it",
 			startInPlanMode: false,
-			autoReviewEnabled: false,
-			autoReviewMode: "commit",
 			baseRef: "main",
 			createdAt: Date.now(),
 			updatedAt: Date.now(),

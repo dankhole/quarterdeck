@@ -3,7 +3,6 @@ import type {
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
 	RuntimeBoardDependency,
-	RuntimeTaskAutoReviewMode,
 	RuntimeTaskImage,
 	RuntimeTaskSessionSummary,
 } from "./api-contract";
@@ -14,8 +13,6 @@ export interface RuntimeCreateTaskInput {
 	title?: string | null;
 	prompt: string;
 	startInPlanMode?: boolean;
-	autoReviewEnabled?: boolean;
-	autoReviewMode?: RuntimeTaskAutoReviewMode;
 	images?: RuntimeTaskImage[];
 	baseRef: string;
 	useWorktree?: boolean;
@@ -27,19 +24,10 @@ export interface RuntimeUpdateTaskInput {
 	title?: string | null;
 	prompt: string;
 	startInPlanMode?: boolean;
-	autoReviewEnabled?: boolean;
-	autoReviewMode?: RuntimeTaskAutoReviewMode;
 	images?: RuntimeTaskImage[];
 	baseRef: string;
 	useWorktree?: boolean;
 	pinned?: boolean;
-}
-
-function normalizeTaskAutoReviewMode(value: RuntimeTaskAutoReviewMode | null | undefined): RuntimeTaskAutoReviewMode {
-	if (value === "pr" || value === "move_to_trash") {
-		return value;
-	}
-	return "commit";
 }
 
 // Copy image metadata so board tasks do not retain caller-owned array or object references.
@@ -299,8 +287,6 @@ export function addTaskToColumn(
 		title: input.title?.trim() || null,
 		prompt,
 		startInPlanMode: Boolean(input.startInPlanMode),
-		autoReviewEnabled: Boolean(input.autoReviewEnabled),
-		autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
 		images: cloneTaskImages(input.images),
 		baseRef,
 		useWorktree: input.useWorktree,
@@ -619,8 +605,6 @@ export function updateTask(
 				title: input.title === undefined ? card.title : input.title?.trim() || null,
 				prompt,
 				startInPlanMode: Boolean(input.startInPlanMode),
-				autoReviewEnabled: Boolean(input.autoReviewEnabled),
-				autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
 				images: input.images === undefined ? card.images : cloneTaskImages(input.images),
 				baseRef,
 				useWorktree: input.useWorktree,

@@ -1,7 +1,6 @@
 import { isTaskSaveValid, resolveEffectiveBaseRef } from "@/hooks/board/task-editor";
 import { addTaskToColumnWithResult, updateTask } from "@/state/board-state";
-import type { BoardCard, BoardData, TaskAutoReviewMode, TaskImage } from "@/types";
-import { resolveTaskAutoReviewMode } from "@/types";
+import type { BoardCard, BoardData, TaskImage } from "@/types";
 
 export interface TaskCreateDraftReset {
 	prompt: string;
@@ -17,8 +16,6 @@ export interface TaskEditDraftState {
 	prompt: string;
 	images: TaskImage[];
 	startInPlanMode: boolean;
-	autoReviewEnabled: boolean;
-	autoReviewMode: TaskAutoReviewMode;
 	branchRef: string;
 }
 
@@ -39,8 +36,6 @@ export function createEmptyTaskEditDraft(): TaskEditDraftState {
 		prompt: "",
 		images: [],
 		startInPlanMode: false,
-		autoReviewEnabled: false,
-		autoReviewMode: "commit",
 		branchRef: "",
 	};
 }
@@ -51,8 +46,6 @@ export function createTaskEditDraft(task: BoardCard, defaultBranchRef: string): 
 		prompt: task.prompt.trim(),
 		images: task.images ? task.images.map((image) => ({ ...image })) : [],
 		startInPlanMode: task.startInPlanMode,
-		autoReviewEnabled: task.autoReviewEnabled === true,
-		autoReviewMode: resolveTaskAutoReviewMode(task.autoReviewMode),
 		branchRef: task.baseRef || defaultBranchRef,
 	};
 }
@@ -62,8 +55,6 @@ export function saveEditedTaskToBoard({
 	editingTaskId,
 	prompt,
 	startInPlanMode,
-	autoReviewEnabled,
-	autoReviewMode,
 	images,
 	branchRef,
 	defaultBranchRef,
@@ -72,8 +63,6 @@ export function saveEditedTaskToBoard({
 	editingTaskId: string | null;
 	prompt: string;
 	startInPlanMode: boolean;
-	autoReviewEnabled: boolean;
-	autoReviewMode: TaskAutoReviewMode;
 	images: TaskImage[];
 	branchRef: string;
 	defaultBranchRef: string;
@@ -87,8 +76,6 @@ export function saveEditedTaskToBoard({
 	const updated = updateTask(board, editingTaskId, {
 		prompt: trimmedPrompt,
 		startInPlanMode,
-		autoReviewEnabled,
-		autoReviewMode,
 		images,
 		baseRef,
 	});
@@ -103,8 +90,6 @@ export function createTaskOnBoard({
 	board,
 	prompt,
 	startInPlanMode,
-	autoReviewEnabled,
-	autoReviewMode,
 	images,
 	branchRef,
 	defaultBranchRef,
@@ -115,8 +100,6 @@ export function createTaskOnBoard({
 	board: BoardData;
 	prompt: string;
 	startInPlanMode: boolean;
-	autoReviewEnabled: boolean;
-	autoReviewMode: TaskAutoReviewMode;
 	images: TaskImage[];
 	branchRef: string;
 	defaultBranchRef: string;
@@ -133,8 +116,6 @@ export function createTaskOnBoard({
 	const created = addTaskToColumnWithResult(board, "backlog", {
 		prompt: trimmedPrompt,
 		startInPlanMode,
-		autoReviewEnabled,
-		autoReviewMode,
 		images,
 		baseRef,
 		useWorktree,
@@ -152,8 +133,6 @@ export function createTasksOnBoard({
 	board,
 	prompts,
 	startInPlanMode,
-	autoReviewEnabled,
-	autoReviewMode,
 	images,
 	branchRef,
 	defaultBranchRef,
@@ -162,8 +141,6 @@ export function createTasksOnBoard({
 	board: BoardData;
 	prompts: string[];
 	startInPlanMode: boolean;
-	autoReviewEnabled: boolean;
-	autoReviewMode: TaskAutoReviewMode;
 	images: TaskImage[];
 	branchRef: string;
 	defaultBranchRef: string;
@@ -181,8 +158,6 @@ export function createTasksOnBoard({
 		const created = addTaskToColumnWithResult(updatedBoard, "backlog", {
 			prompt,
 			startInPlanMode,
-			autoReviewEnabled,
-			autoReviewMode,
 			images,
 			baseRef,
 			useWorktree,

@@ -36,7 +36,6 @@ export function BoardCard({
 	onMoveToTrash,
 	onRestoreFromTrash,
 	onHardDelete,
-	onCancelAutomaticAction,
 	onRegenerateTitle,
 	isLlmGenerationDisabled,
 	onUpdateTitle,
@@ -66,7 +65,6 @@ export function BoardCard({
 	onMoveToTrash?: (taskId: string) => void;
 	onRestoreFromTrash?: (taskId: string) => void;
 	onHardDelete?: (taskId: string) => void;
-	onCancelAutomaticAction?: (taskId: string) => void;
 	onRegenerateTitle?: (taskId: string) => void;
 	isLlmGenerationDisabled?: boolean;
 	onUpdateTitle?: (taskId: string, title: string) => void;
@@ -109,7 +107,6 @@ export function BoardCard({
 		reviewBranchLabel,
 		reviewBranchTooltip,
 		reviewChangeSummary,
-		cancelAutomaticActionLabel,
 		showUncommittedChangesIndicator,
 	} = useBoardCard({
 		card,
@@ -398,20 +395,6 @@ export function BoardCard({
 									) : null}
 								</p>
 							</TruncateTooltip>
-						) : null}
-						{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
-							<Button
-								size="sm"
-								fill
-								style={{ marginTop: 12 }}
-								onMouseDown={stopEvent}
-								onClick={(event) => {
-									stopEvent(event);
-									onCancelAutomaticAction(card.id);
-								}}
-							>
-								{cancelAutomaticActionLabel}
-							</Button>
 						) : null}
 					</div>
 				</Tooltip>

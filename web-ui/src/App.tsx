@@ -350,9 +350,6 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		setEditTaskImages,
 		editTaskStartInPlanMode,
 		setEditTaskStartInPlanMode,
-		editTaskAutoReviewEnabled,
-		setEditTaskAutoReviewEnabled,
-		isEditTaskStartInPlanModeDisabled,
 		editTaskBranchRef,
 		setEditTaskBranchRef,
 		handleOpenCreateTask,
@@ -373,9 +370,6 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 			onCancel={handleCancelEditTask}
 			startInPlanMode={editTaskStartInPlanMode}
 			onStartInPlanModeChange={setEditTaskStartInPlanMode}
-			startInPlanModeDisabled={isEditTaskStartInPlanModeDisabled}
-			autoReviewEnabled={editTaskAutoReviewEnabled}
-			onAutoReviewEnabledChange={setEditTaskAutoReviewEnabled}
 			projectId={project.currentProjectId}
 			branchRef={editTaskBranchRef}
 			branchOptions={createTaskBranchOptions}

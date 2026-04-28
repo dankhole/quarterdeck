@@ -76,7 +76,6 @@ export interface UseGitActionsResult {
 	handleOpenPrTask: (taskId: string) => void;
 	handleAgentCommitTask: (taskId: string) => void;
 	handleAgentOpenPrTask: (taskId: string) => void;
-	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 	resetGitActionState: () => void;
 }
 
@@ -419,13 +418,6 @@ export function useGitActions({
 		});
 	}, [currentProjectId, discardHomeChangesGuard.run, refreshGitHistory]);
 
-	const runAutoReviewGitAction = useCallback(
-		async (taskId: string, action: TaskGitAction) => {
-			return await runTaskGitAction(taskId, action, "card");
-		},
-		[runTaskGitAction],
-	);
-
 	const stashAndRetryPull = useCallback(async () => {
 		if (!currentProjectId) return;
 		await stashAndRetryPullGuard.run(async () => {
@@ -527,7 +519,6 @@ export function useGitActions({
 		handleOpenPrTask,
 		handleAgentCommitTask,
 		handleAgentOpenPrTask,
-		runAutoReviewGitAction,
 		resetGitActionState,
 	};
 }

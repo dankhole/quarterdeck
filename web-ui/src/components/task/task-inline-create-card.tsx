@@ -44,8 +44,6 @@ export function TaskInlineCreateCard({
 	onCancel,
 	startInPlanMode,
 	onStartInPlanModeChange,
-	autoReviewEnabled,
-	onAutoReviewEnabledChange,
 	startInPlanModeDisabled = false,
 	useWorktree,
 	onUseWorktreeChange,
@@ -68,8 +66,6 @@ export function TaskInlineCreateCard({
 	onCancel?: () => void;
 	startInPlanMode: boolean;
 	onStartInPlanModeChange: (value: boolean) => void;
-	autoReviewEnabled: boolean;
-	onAutoReviewEnabledChange: (value: boolean) => void;
 	startInPlanModeDisabled?: boolean;
 	useWorktree?: boolean;
 	onUseWorktreeChange?: (value: boolean) => void;
@@ -86,7 +82,6 @@ export function TaskInlineCreateCard({
 	const promptId = `${idPrefix}-prompt-input`;
 	const planModeId = `${idPrefix}-plan-mode-toggle`;
 	const useWorktreeId = `${idPrefix}-use-worktree-toggle`;
-	const autoReviewEnabledId = `${idPrefix}-auto-review-enabled-toggle`;
 	const branchSelectId = `${idPrefix}-branch-select`;
 	const actionLabel = mode === "edit" ? "Save" : "Create";
 	const [measureRef, cardRect] = useMeasure<HTMLDivElement>();
@@ -213,25 +208,6 @@ export function TaskInlineCreateCard({
 					/>
 				</div>
 
-				<div className="flex items-center gap-2">
-					<label
-						htmlFor={autoReviewEnabledId}
-						className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
-					>
-						<RadixCheckbox.Root
-							id={autoReviewEnabledId}
-							aria-label="Enable automatic review action"
-							checked={autoReviewEnabled}
-							onCheckedChange={(checked) => onAutoReviewEnabledChange(checked === true)}
-							className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
-						>
-							<RadixCheckbox.Indicator>
-								<Check size={10} className="text-white" />
-							</RadixCheckbox.Indicator>
-						</RadixCheckbox.Root>
-						<span>Auto-trash when reviewed</span>
-					</label>
-				</div>
 				{onUseWorktreeChange !== undefined ? (
 					<div>
 						<label

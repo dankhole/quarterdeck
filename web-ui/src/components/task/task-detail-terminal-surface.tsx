@@ -4,7 +4,7 @@ import type { CardDetailViewLayoutState, CardDetailViewTerminalState } from "@/h
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
-import { type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
+import type { CardSelection } from "@/types";
 
 interface TaskDetailTerminalSurfaceProps {
 	selection: CardSelection;
@@ -23,11 +23,6 @@ export function TaskDetailTerminalSurface({
 	sessionSummary,
 	terminalProps,
 }: TaskDetailTerminalSurfaceProps): React.ReactElement {
-	const cancelAutomaticAction =
-		selection.card.autoReviewEnabled === true && terminalState.onCancelAutomaticTaskAction
-			? () => terminalState.onCancelAutomaticTaskAction?.(selection.card.id)
-			: undefined;
-
 	return (
 		<>
 			<div ref={layoutState.mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
@@ -40,12 +35,6 @@ export function TaskDetailTerminalSurface({
 						onSummary={terminalState.onSessionSummary}
 						showSessionToolbar={false}
 						autoFocus
-						onCancelAutomaticAction={cancelAutomaticAction}
-						cancelAutomaticActionLabel={
-							selection.card.autoReviewEnabled === true
-								? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
-								: null
-						}
 						panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
 						terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
 						taskColumnId={selection.column.id}

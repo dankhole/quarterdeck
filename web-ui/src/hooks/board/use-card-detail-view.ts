@@ -12,7 +12,6 @@ import { useGitContext } from "@/providers/git-provider";
 import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { useStableCardActions } from "@/state/card-actions-context";
 import {
 	useHomeGitSummaryValue,
 	useTaskWorktreeInfoValue,
@@ -71,7 +70,6 @@ export interface CardDetailViewRepositoryState {
 
 export interface CardDetailViewTerminalState {
 	onSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
-	onCancelAutomaticTaskAction: ReturnType<typeof useStableCardActions>["onCancelAutomaticTaskAction"];
 	isTaskTerminalEnabled: boolean;
 }
 
@@ -95,7 +93,6 @@ export function useCardDetailView({
 	const navigation = useSurfaceNavigationContext();
 	const { runGitAction } = useGitContext();
 	const { startDrag: startSidePanelResize } = useResizeDrag();
-	const { onCancelAutomaticTaskAction } = useStableCardActions();
 	const detailLayoutRef = useRef<HTMLDivElement | null>(null);
 	const mainRowRef = useRef<HTMLDivElement | null>(null);
 
@@ -258,7 +255,6 @@ export function useCardDetailView({
 		},
 		terminal: {
 			onSessionSummary,
-			onCancelAutomaticTaskAction,
 			isTaskTerminalEnabled: selection.column.id === "in_progress" || selection.column.id === "review",
 		},
 	};

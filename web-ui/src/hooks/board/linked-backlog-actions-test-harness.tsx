@@ -34,8 +34,6 @@ export function createTask(taskId: string, prompt: string, createdAt: number): B
 		title: null,
 		prompt,
 		startInPlanMode: false,
-		autoReviewEnabled: false,
-		autoReviewMode: "commit",
 		baseRef: "main",
 		createdAt,
 		updatedAt: createdAt,

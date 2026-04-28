@@ -5,7 +5,6 @@ import {
 	addTaskDependency,
 	addTaskToColumn,
 	clearColumnTasks,
-	disableTaskAutoReview,
 	moveTaskToColumn,
 	reconcileTaskBranch,
 	removeTask,
@@ -32,30 +31,6 @@ describe("moveTaskToColumn", () => {
 		expect(movedC.moved).toBe(true);
 		const inProgressColumn = movedC.board.columns.find((column) => column.id === "in_progress");
 		expect(inProgressColumn?.cards.map((card) => card.id)).toEqual([taskC, taskA, taskB]);
-	});
-});
-
-describe("disableTaskAutoReview", () => {
-	it("disables auto-review settings for a task", () => {
-		let board = createInitialBoardData();
-		board = addTaskToColumn(board, "review", {
-			prompt: "Task A",
-			autoReviewEnabled: true,
-			autoReviewMode: "move_to_trash",
-			baseRef: "main",
-		});
-		const task = board.columns.find((column) => column.id === "review")?.cards[0];
-		expect(task).toBeDefined();
-		if (!task) {
-			throw new Error("Expected review task to exist");
-		}
-
-		const disabled = disableTaskAutoReview(board, task.id);
-		expect(disabled.updated).toBe(true);
-
-		const updatedTask = disabled.board.columns.find((column) => column.id === "review")?.cards[0];
-		expect(updatedTask?.autoReviewEnabled).toBe(false);
-		expect(updatedTask?.autoReviewMode).toBe("move_to_trash");
 	});
 });
 

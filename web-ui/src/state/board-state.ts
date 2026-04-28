@@ -9,24 +9,19 @@ import {
 	parsePersistedBoardPayload,
 } from "@/state/board-state-parser";
 import { isAllowedCrossColumnCardMove, type ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
-import {
-	type BoardCard,
-	type BoardColumn,
-	type BoardColumnId,
-	type BoardData,
-	type BoardDependency,
-	type CardSelection,
-	DEFAULT_TASK_AUTO_REVIEW_MODE,
-	resolveTaskAutoReviewMode,
-	type TaskAutoReviewMode,
-	type TaskImage,
+import type {
+	BoardCard,
+	BoardColumn,
+	BoardColumnId,
+	BoardData,
+	BoardDependency,
+	CardSelection,
+	TaskImage,
 } from "@/types";
 
 export interface TaskDraft {
 	prompt: string;
 	startInPlanMode?: boolean;
-	autoReviewEnabled?: boolean;
-	autoReviewMode?: TaskAutoReviewMode;
 	images?: TaskImage[];
 	baseRef: string;
 	useWorktree?: boolean;
@@ -102,9 +97,6 @@ function createRuntimeTaskUpdateInput(
 		title: overrides.title === undefined ? card.title : overrides.title,
 		prompt: overrides.prompt === undefined ? card.prompt : overrides.prompt,
 		startInPlanMode: overrides.startInPlanMode === undefined ? card.startInPlanMode : overrides.startInPlanMode,
-		autoReviewEnabled:
-			overrides.autoReviewEnabled === undefined ? card.autoReviewEnabled : overrides.autoReviewEnabled,
-		autoReviewMode: overrides.autoReviewMode === undefined ? card.autoReviewMode : overrides.autoReviewMode,
 		images: overrides.images === undefined ? card.images : overrides.images,
 		baseRef: overrides.baseRef === undefined ? card.baseRef : overrides.baseRef,
 		useWorktree: overrides.useWorktree === undefined ? card.useWorktree : overrides.useWorktree,
@@ -177,8 +169,6 @@ export function addTaskToColumnWithResult(
 		{
 			prompt,
 			startInPlanMode: draft.startInPlanMode,
-			autoReviewEnabled: draft.autoReviewEnabled,
-			autoReviewMode: draft.autoReviewMode,
 			images: draft.images,
 			baseRef: draft.baseRef,
 			useWorktree: draft.useWorktree,
@@ -370,31 +360,12 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 		createRuntimeTaskUpdateInput(selection.card, {
 			prompt,
 			startInPlanMode: Boolean(draft.startInPlanMode),
-			autoReviewEnabled: Boolean(draft.autoReviewEnabled),
-			autoReviewMode: resolveTaskAutoReviewMode(draft.autoReviewMode ?? DEFAULT_TASK_AUTO_REVIEW_MODE),
 			images: draft.images,
 			baseRef,
 			useWorktree: draft.useWorktree ?? selection.card.useWorktree,
 		}),
 	);
 	return { board: updated.board, updated: updated.updated };
-}
-
-export function disableTaskAutoReview(board: BoardData, taskId: string): { board: BoardData; updated: boolean } {
-	const selection = findCardSelection(board, taskId);
-	if (!selection) {
-		return { board, updated: false };
-	}
-
-	return updateTask(board, taskId, {
-		prompt: selection.card.prompt,
-		startInPlanMode: selection.card.startInPlanMode,
-		autoReviewEnabled: false,
-		autoReviewMode: DEFAULT_TASK_AUTO_REVIEW_MODE,
-		images: selection.card.images,
-		baseRef: selection.card.baseRef,
-		useWorktree: selection.card.useWorktree,
-	});
 }
 
 export function reconcileTaskWorkingDirectory(

@@ -1,7 +1,5 @@
 export enum LocalStorageKey {
 	TaskStartInPlanMode = "quarterdeck.task-start-in-plan-mode",
-	TaskAutoReviewEnabled = "quarterdeck.task-auto-review-enabled",
-	TaskAutoReviewMode = "quarterdeck.task-auto-review-mode",
 	TaskCreatePrimaryStartAction = "quarterdeck.task-create-primary-start-action",
 	BottomTerminalPaneHeight = "quarterdeck.bottom-terminal-pane-height",
 	DetailSidePanelRatio = "quarterdeck.detail-side-panel-ratio",

@@ -15,7 +15,6 @@ export interface StableCardActions {
 	onRestartSessionTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
 	onRestoreFromTrashTask?: (taskId: string) => void;
-	onCancelAutomaticTaskAction?: (taskId: string) => void;
 	onRegenerateTitleTask?: (taskId: string) => void;
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	onTogglePinTask?: (taskId: string) => void;
@@ -82,7 +81,6 @@ export function CardActionsProvider({
 			stable.onRestartSessionTask,
 			stable.onMoveToTrashTask,
 			stable.onRestoreFromTrashTask,
-			stable.onCancelAutomaticTaskAction,
 			stable.onRegenerateTitleTask,
 			stable.onUpdateTaskTitle,
 			stable.onTogglePinTask,

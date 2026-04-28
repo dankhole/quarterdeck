@@ -40,7 +40,6 @@ export interface InteractionsContextValue {
 	handleCancelHardDelete: UseBoardInteractionsResult["handleCancelHardDelete"];
 	handleConfirmHardDelete: UseBoardInteractionsResult["handleConfirmHardDelete"];
 	handleRestartTaskSession: UseBoardInteractionsResult["handleRestartTaskSession"];
-	handleCancelAutomaticTaskAction: UseBoardInteractionsResult["handleCancelAutomaticTaskAction"];
 	handleOpenClearTrash: UseBoardInteractionsResult["handleOpenClearTrash"];
 	handleConfirmClearTrash: UseBoardInteractionsResult["handleConfirmClearTrash"];
 	moveToTrashLoadingById: UseBoardInteractionsResult["moveToTrashLoadingById"];
@@ -123,7 +122,6 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 		handleCancelHardDelete,
 		handleConfirmHardDelete,
 		handleRestartTaskSession,
-		handleCancelAutomaticTaskAction,
 		handleOpenClearTrash,
 		handleConfirmClearTrash,
 		moveToTrashLoadingById,
@@ -197,7 +195,6 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 			handleCancelHardDelete,
 			handleConfirmHardDelete,
 			handleRestartTaskSession,
-			handleCancelAutomaticTaskAction,
 			handleOpenClearTrash,
 			handleConfirmClearTrash,
 			moveToTrashLoadingById,
@@ -228,7 +225,6 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 			handleCancelHardDelete,
 			handleConfirmHardDelete,
 			handleRestartTaskSession,
-			handleCancelAutomaticTaskAction,
 			handleOpenClearTrash,
 			handleConfirmClearTrash,
 			moveToTrashLoadingById,

@@ -1,12 +1,6 @@
-import { runtimeBoardColumnIdSchema, runtimeTaskAutoReviewModeSchema, runtimeTaskImageSchema } from "@runtime-contract";
+import { runtimeBoardColumnIdSchema, runtimeTaskImageSchema } from "@runtime-contract";
 import { z } from "zod";
-import {
-	type BoardCard,
-	type BoardColumnId,
-	type BoardDependency,
-	resolveTaskAutoReviewMode,
-	type TaskImage,
-} from "@/types";
+import type { BoardCard, BoardColumnId, BoardDependency, TaskImage } from "@/types";
 
 const rawPersistedBoardSchema = z.object({
 	columns: z.array(z.unknown()),
@@ -23,8 +17,6 @@ const rawPersistedBoardCardSchema = z.object({
 	title: z.unknown().optional(),
 	prompt: z.unknown().optional(),
 	startInPlanMode: z.unknown().optional(),
-	autoReviewEnabled: z.unknown().optional(),
-	autoReviewMode: z.unknown().optional(),
 	images: z.unknown().optional(),
 	baseRef: z.unknown().optional(),
 	useWorktree: z.unknown().optional(),
@@ -98,8 +90,6 @@ export function parsePersistedBoardCard(
 		title: typeof result.data.title === "string" ? result.data.title : null,
 		prompt,
 		startInPlanMode: typeof result.data.startInPlanMode === "boolean" ? result.data.startInPlanMode : false,
-		autoReviewEnabled: typeof result.data.autoReviewEnabled === "boolean" ? result.data.autoReviewEnabled : false,
-		autoReviewMode: parseTaskAutoReviewMode(result.data.autoReviewMode),
 		images: parsePersistedTaskImages(result.data.images),
 		baseRef,
 		useWorktree: typeof result.data.useWorktree === "boolean" ? result.data.useWorktree : undefined,
@@ -187,12 +177,4 @@ function parseOptionalNullableString(value: unknown): string | null | undefined 
 		return value;
 	}
 	return value === null ? null : undefined;
-}
-
-function parseTaskAutoReviewMode(value: unknown) {
-	if (typeof value !== "string") {
-		return resolveTaskAutoReviewMode(undefined);
-	}
-	const result = runtimeTaskAutoReviewModeSchema.safeParse(value);
-	return resolveTaskAutoReviewMode(result.success ? result.data : undefined);
 }
