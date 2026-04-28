@@ -22,7 +22,6 @@ export interface ActiveProcessState {
 	rows: number;
 	terminalProtocolFilter: TerminalProtocolFilterState;
 	onSessionCleanup: (() => Promise<void>) | null;
-	deferredStartupInput: string | null;
 	detectOutputTransition: AgentOutputTransitionDetector | null;
 	shouldInspectOutputForTransition: AgentOutputTransitionInspectionPredicate | null;
 	autoConfirmedWorkspaceTrust: boolean;
@@ -56,7 +55,6 @@ export interface StartTaskSessionRequest {
 	cwd: string;
 	prompt: string;
 	images?: RuntimeTaskImage[];
-	startInPlanMode?: boolean;
 	resumeConversation?: boolean;
 	resumeSessionId?: string;
 	awaitReview?: boolean;
@@ -171,19 +169,6 @@ export function hasLiveOutputListener(entry: ProcessEntry): boolean {
 	return false;
 }
 
-export function hasCodexInteractivePrompt(text: string): boolean {
-	const stripped = stripAnsi(text);
-	return /(?:^|[\n\r])\s*›\s*/u.test(stripped);
-}
-
-export function hasCodexStartupUiRendered(text: string): boolean {
-	const stripped = stripAnsi(text).toLowerCase();
-	return stripped.includes("openai codex (v");
-}
-
-// Inline import to avoid circular deps — stripAnsi is a leaf utility.
-import { stripAnsi } from "./output-utils";
-
 // ── ActiveProcessState factory ───────────────────────────────────────────────
 
 import type { PreparedAgentLaunch } from "./agent-session-adapters";
@@ -209,7 +194,6 @@ export function createActiveProcessState(opts: CreateActiveProcessStateOptions):
 			suppressDeviceAttributeQueries: false,
 		}),
 		onSessionCleanup: opts.launch?.cleanup ?? null,
-		deferredStartupInput: opts.launch?.deferredStartupInput ?? null,
 		detectOutputTransition: opts.launch?.detectOutputTransition ?? null,
 		shouldInspectOutputForTransition: opts.launch?.shouldInspectOutputForTransition ?? null,
 		autoConfirmedWorkspaceTrust: false,

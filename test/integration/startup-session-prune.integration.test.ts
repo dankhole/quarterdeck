@@ -21,7 +21,6 @@ function createBoard(): RuntimeBoardData {
 						id: "task-1",
 						title: null,
 						prompt: "Durable task",
-						startInPlanMode: false,
 						baseRef: "main",
 						createdAt: Date.now(),
 						updatedAt: Date.now(),

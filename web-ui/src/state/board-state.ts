@@ -21,7 +21,6 @@ import type {
 
 export interface TaskDraft {
 	prompt: string;
-	startInPlanMode?: boolean;
 	images?: TaskImage[];
 	baseRef: string;
 	useWorktree?: boolean;
@@ -96,7 +95,6 @@ function createRuntimeTaskUpdateInput(
 	return {
 		title: overrides.title === undefined ? card.title : overrides.title,
 		prompt: overrides.prompt === undefined ? card.prompt : overrides.prompt,
-		startInPlanMode: overrides.startInPlanMode === undefined ? card.startInPlanMode : overrides.startInPlanMode,
 		images: overrides.images === undefined ? card.images : overrides.images,
 		baseRef: overrides.baseRef === undefined ? card.baseRef : overrides.baseRef,
 		useWorktree: overrides.useWorktree === undefined ? card.useWorktree : overrides.useWorktree,
@@ -168,7 +166,6 @@ export function addTaskToColumnWithResult(
 		columnId,
 		{
 			prompt,
-			startInPlanMode: draft.startInPlanMode,
 			images: draft.images,
 			baseRef: draft.baseRef,
 			useWorktree: draft.useWorktree,
@@ -359,7 +356,6 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 		taskId,
 		createRuntimeTaskUpdateInput(selection.card, {
 			prompt,
-			startInPlanMode: Boolean(draft.startInPlanMode),
 			images: draft.images,
 			baseRef,
 			useWorktree: draft.useWorktree ?? selection.card.useWorktree,

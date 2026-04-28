@@ -19,7 +19,6 @@ function createBoardWithTask(columnId: "backlog" | "in_progress" | "review" | "t
 		id: taskId,
 		title: null,
 		prompt: `Prompt ${taskId}`,
-		startInPlanMode: false,
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,

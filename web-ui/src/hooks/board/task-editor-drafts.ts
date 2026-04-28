@@ -15,7 +15,6 @@ export interface TaskEditDraftState {
 	editingTaskId: string | null;
 	prompt: string;
 	images: TaskImage[];
-	startInPlanMode: boolean;
 	branchRef: string;
 }
 
@@ -35,7 +34,6 @@ export function createEmptyTaskEditDraft(): TaskEditDraftState {
 		editingTaskId: null,
 		prompt: "",
 		images: [],
-		startInPlanMode: false,
 		branchRef: "",
 	};
 }
@@ -45,7 +43,6 @@ export function createTaskEditDraft(task: BoardCard, defaultBranchRef: string): 
 		editingTaskId: task.id,
 		prompt: task.prompt.trim(),
 		images: task.images ? task.images.map((image) => ({ ...image })) : [],
-		startInPlanMode: task.startInPlanMode,
 		branchRef: task.baseRef || defaultBranchRef,
 	};
 }
@@ -54,7 +51,6 @@ export function saveEditedTaskToBoard({
 	board,
 	editingTaskId,
 	prompt,
-	startInPlanMode,
 	images,
 	branchRef,
 	defaultBranchRef,
@@ -62,7 +58,6 @@ export function saveEditedTaskToBoard({
 	board: BoardData;
 	editingTaskId: string | null;
 	prompt: string;
-	startInPlanMode: boolean;
 	images: TaskImage[];
 	branchRef: string;
 	defaultBranchRef: string;
@@ -75,7 +70,6 @@ export function saveEditedTaskToBoard({
 	const baseRef = resolveEffectiveBaseRef(branchRef, defaultBranchRef);
 	const updated = updateTask(board, editingTaskId, {
 		prompt: trimmedPrompt,
-		startInPlanMode,
 		images,
 		baseRef,
 	});
@@ -89,7 +83,6 @@ export function saveEditedTaskToBoard({
 export function createTaskOnBoard({
 	board,
 	prompt,
-	startInPlanMode,
 	images,
 	branchRef,
 	defaultBranchRef,
@@ -99,7 +92,6 @@ export function createTaskOnBoard({
 }: {
 	board: BoardData;
 	prompt: string;
-	startInPlanMode: boolean;
 	images: TaskImage[];
 	branchRef: string;
 	defaultBranchRef: string;
@@ -115,7 +107,6 @@ export function createTaskOnBoard({
 	const baseRef = resolveEffectiveBaseRef(branchRef, defaultBranchRef);
 	const created = addTaskToColumnWithResult(board, "backlog", {
 		prompt: trimmedPrompt,
-		startInPlanMode,
 		images,
 		baseRef,
 		useWorktree,
@@ -132,7 +123,6 @@ export function createTaskOnBoard({
 export function createTasksOnBoard({
 	board,
 	prompts,
-	startInPlanMode,
 	images,
 	branchRef,
 	defaultBranchRef,
@@ -140,7 +130,6 @@ export function createTasksOnBoard({
 }: {
 	board: BoardData;
 	prompts: string[];
-	startInPlanMode: boolean;
 	images: TaskImage[];
 	branchRef: string;
 	defaultBranchRef: string;
@@ -157,7 +146,6 @@ export function createTasksOnBoard({
 	for (const prompt of validPrompts) {
 		const created = addTaskToColumnWithResult(updatedBoard, "backlog", {
 			prompt,
-			startInPlanMode,
 			images,
 			baseRef,
 			useWorktree,

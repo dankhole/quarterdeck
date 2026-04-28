@@ -55,8 +55,6 @@ export interface UseTaskEditorResult {
 	setEditTaskPrompt: Dispatch<SetStateAction<string>>;
 	editTaskImages: TaskImage[];
 	setEditTaskImages: Dispatch<SetStateAction<TaskImage[]>>;
-	editTaskStartInPlanMode: boolean;
-	setEditTaskStartInPlanMode: Dispatch<SetStateAction<boolean>>;
 	editTaskBranchRef: string;
 	setEditTaskBranchRef: Dispatch<SetStateAction<string>>;
 	handleOpenCreateTask: () => void;
@@ -89,7 +87,6 @@ export function useTaskEditor({
 	const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 	const [editTaskPrompt, setEditTaskPrompt] = useState("");
 	const [editTaskImages, setEditTaskImages] = useState<TaskImage[]>([]);
-	const [editTaskStartInPlanMode, setEditTaskStartInPlanMode] = useState(false);
 	const [editTaskBranchRef, setEditTaskBranchRef] = useState("");
 
 	const resolvedDefaultTaskBranchRef = defaultTaskBranchRef;
@@ -139,7 +136,6 @@ export function useTaskEditor({
 		if (!selection || selection.column.id !== "backlog") {
 			setEditingTaskId(null);
 			setEditTaskPrompt("");
-			setEditTaskStartInPlanMode(false);
 			setEditTaskImages([]);
 			setEditTaskBranchRef("");
 		}
@@ -206,7 +202,6 @@ export function useTaskEditor({
 			setEditingTaskId(editDraft.editingTaskId);
 			setEditTaskPrompt(editDraft.prompt);
 			setEditTaskImages(editDraft.images);
-			setEditTaskStartInPlanMode(editDraft.startInPlanMode);
 			setEditTaskBranchRef(editDraft.branchRef);
 		},
 		[resolvedDefaultTaskBranchRef, setSelectedTaskId],
@@ -216,7 +211,6 @@ export function useTaskEditor({
 		const emptyEditDraft = createEmptyTaskEditDraft();
 		setEditingTaskId(emptyEditDraft.editingTaskId);
 		setEditTaskPrompt(emptyEditDraft.prompt);
-		setEditTaskStartInPlanMode(emptyEditDraft.startInPlanMode);
 		setEditTaskImages(emptyEditDraft.images);
 		setEditTaskBranchRef(emptyEditDraft.branchRef);
 	}, []);
@@ -226,7 +220,6 @@ export function useTaskEditor({
 			board,
 			editingTaskId,
 			prompt: editTaskPrompt,
-			startInPlanMode: editTaskStartInPlanMode,
 			images: editTaskImages,
 			branchRef: editTaskBranchRef,
 			defaultBranchRef: resolvedDefaultTaskBranchRef,
@@ -246,7 +239,6 @@ export function useTaskEditor({
 		editTaskBranchRef,
 		editTaskPrompt,
 		editTaskImages,
-		editTaskStartInPlanMode,
 		editingTaskId,
 		resolvedDefaultTaskBranchRef,
 		setBoard,
@@ -265,7 +257,6 @@ export function useTaskEditor({
 			const { board: nextBoard, createdTaskId } = createTaskOnBoard({
 				board,
 				prompt: newTaskPrompt,
-				startInPlanMode: false,
 				images: newTaskImages,
 				branchRef: newTaskBranchRef,
 				defaultBranchRef: resolvedDefaultTaskBranchRef,
@@ -307,7 +298,6 @@ export function useTaskEditor({
 			const { board: nextBoard, createdTaskIds } = createTasksOnBoard({
 				board,
 				prompts,
-				startInPlanMode: false,
 				images: newTaskImages,
 				branchRef: newTaskBranchRef,
 				defaultBranchRef: resolvedDefaultTaskBranchRef,
@@ -338,7 +328,6 @@ export function useTaskEditor({
 		const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef);
 		setEditingTaskId(emptyEditDraft.editingTaskId);
 		setEditTaskPrompt(emptyEditDraft.prompt);
-		setEditTaskStartInPlanMode(emptyEditDraft.startInPlanMode);
 		setEditTaskImages(emptyEditDraft.images);
 		setEditTaskBranchRef(emptyEditDraft.branchRef);
 		setNewTaskImages(resetCreateDraft.images);
@@ -367,8 +356,6 @@ export function useTaskEditor({
 		setEditTaskPrompt,
 		editTaskImages,
 		setEditTaskImages,
-		editTaskStartInPlanMode,
-		setEditTaskStartInPlanMode,
 		editTaskBranchRef,
 		setEditTaskBranchRef,
 		handleOpenCreateTask,

@@ -1,5 +1,4 @@
 export enum LocalStorageKey {
-	TaskStartInPlanMode = "quarterdeck.task-start-in-plan-mode",
 	TaskCreatePrimaryStartAction = "quarterdeck.task-create-primary-start-action",
 	BottomTerminalPaneHeight = "quarterdeck.bottom-terminal-pane-height",
 	DetailSidePanelRatio = "quarterdeck.detail-side-panel-ratio",

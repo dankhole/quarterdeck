@@ -40,7 +40,6 @@ export function createTestTaskSessionSummary(
 	return {
 		taskId: "task-1",
 		state: "idle",
-		mode: null,
 		agentId: null,
 		sessionLaunchPath: null,
 		resumeSessionId: null,

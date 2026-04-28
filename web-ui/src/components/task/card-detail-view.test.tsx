@@ -64,7 +64,6 @@ function createCard(id: string): BoardCard {
 		id,
 		title: null,
 		prompt: `Task ${id}`,
-		startInPlanMode: false,
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,

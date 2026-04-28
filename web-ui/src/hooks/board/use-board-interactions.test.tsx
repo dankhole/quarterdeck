@@ -36,7 +36,6 @@ function createTask(taskId: string, prompt: string, createdAt: number): BoardCar
 		id: taskId,
 		title: null,
 		prompt,
-		startInPlanMode: false,
 		baseRef: "main",
 		createdAt,
 		updatedAt: createdAt,

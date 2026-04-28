@@ -20,7 +20,6 @@ function createCard(overrides: Partial<BoardCard> = {}): BoardCard {
 		id: "task-1",
 		title: "Task 1",
 		prompt: "Do the thing",
-		startInPlanMode: false,
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,

@@ -102,7 +102,6 @@ export async function spawnTaskSession(
 			cwd: request.cwd,
 			prompt: request.prompt,
 			images: request.images,
-			startInPlanMode: request.startInPlanMode,
 			resumeConversation: request.resumeConversation,
 			resumeSessionId: request.resumeSessionId,
 			env: request.env,

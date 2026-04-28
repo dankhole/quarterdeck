@@ -33,7 +33,6 @@ function createBoard(title: string): RuntimeBoardData {
 						id: "task-1",
 						title: null,
 						prompt: title,
-						startInPlanMode: false,
 						baseRef: "main",
 						createdAt: Date.now(),
 						updatedAt: Date.now(),
@@ -370,7 +369,6 @@ describe.sequential("project-state integration", () => {
 									cards: [
 										{
 											prompt: "Missing ID and baseRef",
-											startInPlanMode: false,
 											createdAt: Date.now(),
 											updatedAt: Date.now(),
 										},
@@ -389,6 +387,69 @@ describe.sequential("project-state integration", () => {
 
 				await expect(loadProjectState(projectPath)).rejects.toThrow("board.json");
 				await expect(loadProjectState(projectPath)).rejects.toThrow(/id|baseRef/);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("loads legacy persisted startup mode fields without re-emitting them", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-legacy-startup-mode-");
+			try {
+				const projectPath = join(sandboxRoot, "project-legacy-startup-mode");
+				mkdirSync(projectPath, { recursive: true });
+				initGitRepository(projectPath);
+
+				const context = await loadProjectContext(projectPath);
+				mkdirSync(context.statePath, { recursive: true });
+				const legacyBoard = createBoard("Legacy task");
+				const legacyCardField = ["start", "In", "Plan", "Mode"].join("");
+				const legacySessionModeValue = ["pl", "an"].join("");
+				writeFileSync(
+					join(context.statePath, "board.json"),
+					JSON.stringify(
+						{
+							...legacyBoard,
+							columns: legacyBoard.columns.map((column) =>
+								column.id === "backlog"
+									? {
+											...column,
+											cards: column.cards.map((card) => ({
+												...card,
+												[legacyCardField]: true,
+											})),
+										}
+									: column,
+							),
+						},
+						null,
+						2,
+					),
+					"utf8",
+				);
+				writeFileSync(
+					join(context.statePath, "sessions.json"),
+					JSON.stringify(
+						{
+							"task-1": {
+								...createSessionSummary("task-1"),
+								mode: legacySessionModeValue,
+							},
+						},
+						null,
+						2,
+					),
+					"utf8",
+				);
+
+				const state = await loadProjectState(projectPath);
+				const card = state.board.columns[0]?.cards[0];
+				expect(card?.prompt).toBe("Legacy task");
+				expect(legacyCardField in (card as Record<string, unknown>)).toBe(false);
+				const session = state.sessions["task-1"];
+				expect(session?.state).toBe("idle");
+				expect("mode" in (session as Record<string, unknown>)).toBe(false);
 			} finally {
 				cleanup();
 			}

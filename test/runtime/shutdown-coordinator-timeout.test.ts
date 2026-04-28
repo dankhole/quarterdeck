@@ -26,7 +26,6 @@ function createBoard(inProgressTaskIds: string[]): RuntimeBoardData {
 					id,
 					title: null,
 					prompt: `Task ${id}`,
-					startInPlanMode: false,
 					baseRef: "main",
 					createdAt: Date.now(),
 					updatedAt: Date.now(),

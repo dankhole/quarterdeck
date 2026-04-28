@@ -121,7 +121,6 @@ describe("findCardColumnId", () => {
 		id,
 		title,
 		prompt: "",
-		startInPlanMode: false,
 		baseRef: "main",
 		createdAt: 0,
 		updatedAt: 0,

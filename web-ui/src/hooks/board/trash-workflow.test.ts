@@ -19,7 +19,6 @@ function makeBoard(trashCardIds: string[]): BoardData {
 					id,
 					title: `Task ${id}`,
 					prompt: "",
-					startInPlanMode: false,
 					baseRef: "main",
 					createdAt: 1,
 					updatedAt: 1,

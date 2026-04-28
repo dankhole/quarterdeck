@@ -8,7 +8,6 @@ export interface BoardCard {
 	id: string;
 	title: string | null;
 	prompt: string;
-	startInPlanMode: boolean;
 	images?: TaskImage[];
 	baseRef: string;
 	baseRefPinned?: boolean;

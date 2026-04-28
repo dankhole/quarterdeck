@@ -1,8 +1,5 @@
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { BoardData } from "@/types";
-
-export const TASK_START_IN_PLAN_MODE_STORAGE_KEY = LocalStorageKey.TaskStartInPlanMode;
 
 export interface SearchableTask {
 	id: string;

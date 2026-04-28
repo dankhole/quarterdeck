@@ -1,17 +1,12 @@
 // Output processing pipeline for PTY sessions (task and shell).
 // Extracted from session-manager.ts — processes each chunk of PTY stdout
 // through an ordered pipeline: protocol filter → state mirror →
-// trust → codex deferred input → transition detection →
-// listener broadcast.
+// trust → transition detection → listener broadcast.
 
 import type { RuntimeTaskSessionSummary } from "../core";
 import type { ProcessEntry } from "./session-manager-types";
 import type { SessionTransitionEvent, SessionTransitionResult } from "./session-summary-store";
-import {
-	checkAndSendDeferredCodexInput,
-	MAX_WORKSPACE_TRUST_BUFFER_CHARS,
-	processWorkspaceTrustOutput,
-} from "./session-workspace-trust";
+import { MAX_WORKSPACE_TRUST_BUFFER_CHARS, processWorkspaceTrustOutput } from "./session-workspace-trust";
 import { disableOscColorQueryIntercept, filterTerminalProtocolOutput } from "./terminal-protocol-filter";
 
 const OSC_FOREGROUND_QUERY_REPLY = "\u001b]10;rgb:e6e6/eded/f3f3\u001b\\";
@@ -78,16 +73,13 @@ export function processTaskSessionOutput(
 		},
 	});
 
-	// 5. Codex deferred startup input
-	checkAndSendDeferredCodexInput(entry.active, data, liveSummary?.agentId);
-
-	// 6. Agent output transition detection
+	// 5. Agent output transition detection
 	const adapterEvent = liveSummary ? (entry.active.detectOutputTransition?.(data, liveSummary) ?? null) : null;
 	if (adapterEvent) {
 		deps.applyTransitionEvent(entry, adapterEvent);
 	}
 
-	// 7. Listener broadcast
+	// 6. Listener broadcast
 	for (const taskListener of entry.listeners.values()) {
 		taskListener.onOutput?.(filteredChunk);
 	}
@@ -95,8 +87,8 @@ export function processTaskSessionOutput(
 
 /**
  * Process a chunk of shell session PTY output. Simpler than the task pipeline —
- * no transition detection, no Codex deferred input, but shares protocol filtering,
- * state mirror, trust buffering, and listener broadcast.
+ * no transition detection, but shares protocol filtering, state mirror, trust
+ * buffering, and listener broadcast.
  */
 export function processShellSessionOutput(entry: ProcessEntry, _taskId: string, chunk: Buffer): void {
 	if (!entry.active) {

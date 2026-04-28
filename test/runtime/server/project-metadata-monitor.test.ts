@@ -72,7 +72,6 @@ function createCard(taskId: string, now: number) {
 		id: taskId,
 		title: null,
 		prompt: `Prompt for ${taskId}`,
-		startInPlanMode: false,
 		baseRef: "main",
 		workingDirectory: `/worktrees/${taskId}`,
 		createdAt: now,

@@ -10,7 +10,6 @@ function createTask(taskId: string, prompt: string, createdAt: number, overrides
 		id: taskId,
 		title: null,
 		prompt,
-		startInPlanMode: false,
 		baseRef: "main",
 		createdAt,
 		updatedAt: createdAt,
@@ -38,7 +37,6 @@ interface HookSnapshot {
 	newTaskBranchRef: string;
 	editingTaskId: string | null;
 	editTaskPrompt: string;
-	editTaskStartInPlanMode: boolean;
 	handleOpenCreateTask: () => void;
 	handleCreateTask: (options?: { keepDialogOpen?: boolean }) => string | null;
 	handleCreateTasks: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
@@ -92,7 +90,6 @@ function HookHarness({
 			newTaskBranchRef: editor.newTaskBranchRef,
 			editingTaskId: editor.editingTaskId,
 			editTaskPrompt: editor.editTaskPrompt,
-			editTaskStartInPlanMode: editor.editTaskStartInPlanMode,
 			handleOpenCreateTask: editor.handleOpenCreateTask,
 			handleCreateTask: editor.handleCreateTask,
 			handleCreateTasks: editor.handleCreateTasks,
@@ -110,7 +107,6 @@ function HookHarness({
 		editor.handleCreateTasks,
 		editor.handleOpenCreateTask,
 		editor.editTaskPrompt,
-		editor.editTaskStartInPlanMode,
 		editor.editingTaskId,
 		editor.handleOpenEditTask,
 		editor.handleSaveEditedTask,

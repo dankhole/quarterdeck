@@ -4,9 +4,6 @@ import { runtimeAgentIdSchema, runtimeTaskImageSchema } from "./shared.js";
 export const runtimeTaskSessionStateSchema = z.enum(["idle", "running", "awaiting_review", "failed", "interrupted"]);
 export type RuntimeTaskSessionState = z.infer<typeof runtimeTaskSessionStateSchema>;
 
-export const runtimeTaskSessionModeSchema = z.enum(["act", "plan"]);
-export type RuntimeTaskSessionMode = z.infer<typeof runtimeTaskSessionModeSchema>;
-
 export const runtimeTaskSessionReviewReasonSchema = z
 	.enum(["attention", "exit", "error", "interrupted", "hook", "stalled"])
 	.nullable();
@@ -52,7 +49,6 @@ export type RuntimeTaskTurnCheckpoint = z.infer<typeof runtimeTaskTurnCheckpoint
 const runtimeTaskSessionSummaryWireSchema = z.object({
 	taskId: z.string(),
 	state: runtimeTaskSessionStateSchema,
-	mode: runtimeTaskSessionModeSchema.nullable().optional(),
 	agentId: runtimeAgentIdSchema.nullable(),
 	// `projectPath` is accepted here as a temporary load-time migration path for
 	// older local sessions.json snapshots written before the rename.
@@ -88,8 +84,6 @@ export const runtimeTaskSessionStartRequestSchema = z.object({
 	taskId: z.string(),
 	prompt: z.string(),
 	images: z.array(runtimeTaskImageSchema).optional(),
-	startInPlanMode: z.boolean().optional(),
-	mode: runtimeTaskSessionModeSchema.optional(),
 	resumeConversation: z.boolean().optional(),
 	awaitReview: z.boolean().optional(),
 	baseRef: z.string(),

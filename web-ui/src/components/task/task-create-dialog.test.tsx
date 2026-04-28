@@ -220,13 +220,4 @@ describe("TaskCreateDialog", () => {
 		expect(container.querySelector('[data-testid="composer-image-count"]')?.textContent).toBe("0");
 		expect(container.textContent).toContain("New task");
 	});
-
-	it("does not render the start-in-plan-mode toggle in the create dialog", async () => {
-		await act(async () => {
-			root.render(<Harness initialPrompt="Review login flow" />);
-		});
-
-		expect(container.textContent).not.toContain("Start in plan mode");
-		expect(container.querySelector('[aria-label="Start in plan mode"]')).toBeNull();
-	});
 });

@@ -77,7 +77,6 @@ function createCard(overrides: Partial<RuntimeBoardCard> = {}): RuntimeBoardCard
 		id: "task-1",
 		title: "Test task",
 		prompt: "Do something",
-		startInPlanMode: false,
 		baseRef: "main",
 		createdAt: Date.now(),
 		updatedAt: Date.now(),

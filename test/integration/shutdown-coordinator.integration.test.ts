@@ -16,7 +16,6 @@ function createCard(taskId: string) {
 		id: taskId,
 		title: null,
 		prompt: `Task ${taskId}`,
-		startInPlanMode: false,
 		baseRef: "main",
 		createdAt: Date.now(),
 		updatedAt: Date.now(),
@@ -179,7 +178,7 @@ describe.sequential("shutdown coordinator integration", () => {
 				// Tasks without a pre-existing session record are unchanged.
 				expect(managedAfter.sessions["managed-missing-session"]).toBeUndefined();
 				// Dedicated shell summaries are runtime-only and do not survive restart.
-				expect(managedAfter.sessions["__home_terminal__"]).toBeUndefined();
+				expect(managedAfter.sessions.__home_terminal__).toBeUndefined();
 				expect(managedAfter.sessions["__detail_terminal__:managed-running"]).toBeUndefined();
 
 				// Indexed (non-managed) projects are also preserved in place.

@@ -19,7 +19,6 @@ export interface AgentAdapterLaunchInput {
 	cwd: string;
 	prompt: string;
 	images?: RuntimeTaskImage[];
-	startInPlanMode?: boolean;
 	resumeConversation?: boolean;
 	resumeSessionId?: string;
 	env?: Record<string, string | undefined>;
@@ -43,7 +42,6 @@ export interface PreparedAgentLaunch {
 	args: string[];
 	env: Record<string, string | undefined>;
 	cleanup?: () => Promise<void>;
-	deferredStartupInput?: string;
 	detectOutputTransition?: AgentOutputTransitionDetector;
 	shouldInspectOutputForTransition?: AgentOutputTransitionInspectionPredicate;
 }
@@ -183,10 +181,6 @@ function withPrompt(args: string[], prompt: string, mode: "append" | "flag", fla
 
 const log = createTaggedLogger("agent-launch");
 
-function toBracketedPasteSubmission(command: string): string {
-	return `\u001b[200~${command}\u001b[201~\r`;
-}
-
 const claudeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
@@ -200,15 +194,6 @@ const claudeAdapter: AgentSessionAdapter = {
 				cwd: input.cwd,
 				projectPath: input.projectPath ?? null,
 			});
-		}
-		if (input.startInPlanMode) {
-			const withoutImmediateBypass = args.filter((arg) => arg !== "--dangerously-skip-permissions");
-			args.length = 0;
-			args.push(...withoutImmediateBypass);
-			if (!hasCliOption(args, "--allow-dangerously-skip-permissions")) {
-				args.push("--allow-dangerously-skip-permissions");
-			}
-			args.push("--permission-mode", "plan");
 		}
 
 		const hooks = resolveHookContext(input);
@@ -341,7 +326,6 @@ const codexAdapter: AgentSessionAdapter = {
 		const codexArgs = [...input.args];
 		const env: Record<string, string | undefined> = {};
 		const binary = input.binary;
-		let deferredStartupInput: string | undefined;
 
 		if (input.resumeConversation) {
 			if (!codexArgs.includes("resume")) {
@@ -415,10 +399,7 @@ const codexAdapter: AgentSessionAdapter = {
 		}
 
 		const trimmed = input.prompt.trim();
-		if (input.startInPlanMode) {
-			const planCommand = trimmed ? `/plan ${trimmed}` : "/plan";
-			deferredStartupInput = toBracketedPasteSubmission(planCommand);
-		} else if (trimmed) {
+		if (trimmed) {
 			codexArgs.push(trimmed);
 		}
 
@@ -436,7 +417,6 @@ const codexAdapter: AgentSessionAdapter = {
 			binary,
 			args: codexArgs,
 			env,
-			deferredStartupInput,
 		};
 	},
 };
@@ -458,7 +438,6 @@ export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promis
 		imageCount: input.images?.length ?? 0,
 		resumeConversation: input.resumeConversation ?? false,
 		resumeSessionId: input.resumeSessionId ?? null,
-		startInPlanMode: input.startInPlanMode ?? false,
 	});
 	const preparedPrompt = await prepareTaskPromptWithImages({
 		prompt: input.prompt,

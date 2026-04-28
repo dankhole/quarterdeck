@@ -39,7 +39,6 @@ function createCard(id: string, prompt: string) {
 		id,
 		title: null,
 		prompt,
-		startInPlanMode: false,
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,

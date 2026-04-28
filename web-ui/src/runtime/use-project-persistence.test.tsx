@@ -17,7 +17,6 @@ function createBoard(taskId: string): BoardData {
 		id: taskId,
 		title: null,
 		prompt: `Prompt ${taskId}`,
-		startInPlanMode: false,
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,

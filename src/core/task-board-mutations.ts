@@ -12,7 +12,6 @@ export interface RuntimeCreateTaskInput {
 	taskId?: string;
 	title?: string | null;
 	prompt: string;
-	startInPlanMode?: boolean;
 	images?: RuntimeTaskImage[];
 	baseRef: string;
 	useWorktree?: boolean;
@@ -23,7 +22,6 @@ export interface RuntimeCreateTaskInput {
 export interface RuntimeUpdateTaskInput {
 	title?: string | null;
 	prompt: string;
-	startInPlanMode?: boolean;
 	images?: RuntimeTaskImage[];
 	baseRef: string;
 	useWorktree?: boolean;
@@ -286,7 +284,6 @@ export function addTaskToColumn(
 		id: explicitTaskId || createUniqueTaskId(existingIds, randomUuid),
 		title: input.title?.trim() || null,
 		prompt,
-		startInPlanMode: Boolean(input.startInPlanMode),
 		images: cloneTaskImages(input.images),
 		baseRef,
 		useWorktree: input.useWorktree,
@@ -604,7 +601,6 @@ export function updateTask(
 				...card,
 				title: input.title === undefined ? card.title : input.title?.trim() || null,
 				prompt,
-				startInPlanMode: Boolean(input.startInPlanMode),
 				images: input.images === undefined ? card.images : cloneTaskImages(input.images),
 				baseRef,
 				useWorktree: input.useWorktree,

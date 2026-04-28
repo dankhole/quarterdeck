@@ -17,7 +17,6 @@ function makeCard(overrides: Partial<BoardCard> = {}): BoardCard {
 		id: "task-1",
 		title: "Test task",
 		prompt: "Do the thing",
-		startInPlanMode: false,
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,

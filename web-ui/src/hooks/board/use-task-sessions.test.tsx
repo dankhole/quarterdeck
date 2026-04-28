@@ -31,7 +31,6 @@ function createTask(): BoardCard {
 		id: "task-1",
 		title: null,
 		prompt: "Resume me",
-		startInPlanMode: false,
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,
@@ -111,7 +110,7 @@ describe("useTaskSessions", () => {
 		}
 	});
 
-	it("forwards start-in-plan-mode from the task card when starting a task", async () => {
+	it("forwards the task prompt when starting a task", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
@@ -129,16 +128,12 @@ describe("useTaskSessions", () => {
 		}
 
 		await act(async () => {
-			await latestSnapshot?.startTaskSession({
-				...createTask(),
-				startInPlanMode: true,
-			});
+			await latestSnapshot?.startTaskSession(createTask());
 		});
 
 		expect(startTaskSessionMutateMock).toHaveBeenCalledWith({
 			taskId: "task-1",
 			prompt: "Resume me",
-			startInPlanMode: true,
 			resumeConversation: undefined,
 			awaitReview: undefined,
 			baseRef: "main",

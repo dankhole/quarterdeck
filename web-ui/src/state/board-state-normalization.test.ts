@@ -32,7 +32,7 @@ describe("normalizeBoardData", () => {
 			columns: [
 				{
 					id: "backlog",
-					cards: [{ id: "a", prompt: "Task A", startInPlanMode: false, baseRef: "main", branch: "feat/foo" }],
+					cards: [{ id: "a", prompt: "Task A", baseRef: "main", branch: "feat/foo" }],
 				},
 				{ id: "in_progress", cards: [] },
 				{ id: "review", cards: [] },
@@ -50,7 +50,7 @@ describe("normalizeBoardData", () => {
 			columns: [
 				{
 					id: "backlog",
-					cards: [{ id: "a", prompt: "Task A", startInPlanMode: false, baseRef: "main", branch: null }],
+					cards: [{ id: "a", prompt: "Task A", baseRef: "main", branch: null }],
 				},
 				{ id: "in_progress", cards: [] },
 				{ id: "review", cards: [] },
@@ -68,7 +68,7 @@ describe("normalizeBoardData", () => {
 			columns: [
 				{
 					id: "backlog",
-					cards: [{ id: "a", prompt: "Task A", startInPlanMode: false, baseRef: "main" }],
+					cards: [{ id: "a", prompt: "Task A", baseRef: "main" }],
 				},
 				{ id: "in_progress", cards: [] },
 				{ id: "review", cards: [] },
@@ -86,7 +86,7 @@ describe("normalizeBoardData", () => {
 			columns: [
 				{
 					id: "backlog",
-					cards: [{ id: "a", prompt: "Task A", startInPlanMode: false, baseRef: "main", branch: 123 }],
+					cards: [{ id: "a", prompt: "Task A", baseRef: "main", branch: 123 }],
 				},
 				{ id: "in_progress", cards: [] },
 				{ id: "review", cards: [] },
@@ -105,8 +105,8 @@ describe("normalizeBoardData", () => {
 				{
 					id: "backlog",
 					cards: [
-						{ id: "a", prompt: "Old Card", startInPlanMode: false, baseRef: "main" },
-						{ id: "b", prompt: "Card With Branch", startInPlanMode: false, baseRef: "main", branch: "feat/x" },
+						{ id: "a", prompt: "Old Card", baseRef: "main" },
+						{ id: "b", prompt: "Card With Branch", baseRef: "main", branch: "feat/x" },
 					],
 				},
 				{ id: "in_progress", cards: [] },
@@ -141,10 +141,12 @@ describe("board-state parser helpers", () => {
 	});
 
 	it("parses cards with the same defaults as the legacy normalization path", () => {
+		const legacyCardField = ["start", "In", "Plan", "Mode"].join("");
 		const card = parsePersistedBoardCard(
 			{
 				prompt: "  Task A  ",
 				baseRef: "  main  ",
+				[legacyCardField]: true,
 				images: [{ id: "img-1", data: "data", mimeType: "image/png" }, { id: 123 }],
 				workingDirectory: null,
 				branch: 123,
@@ -156,7 +158,6 @@ describe("board-state parser helpers", () => {
 			id: "task-1",
 			title: null,
 			prompt: "Task A",
-			startInPlanMode: false,
 			images: [{ id: "img-1", data: "data", mimeType: "image/png" }],
 			baseRef: "main",
 			useWorktree: undefined,
@@ -166,6 +167,7 @@ describe("board-state parser helpers", () => {
 			createdAt: 42,
 			updatedAt: 42,
 		});
+		expect(legacyCardField in (card as unknown as Record<string, unknown>)).toBe(false);
 	});
 
 	it("filters invalid persisted images and returns undefined when none survive", () => {

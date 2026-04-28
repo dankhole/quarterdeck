@@ -42,9 +42,6 @@ export function TaskInlineCreateCard({
 	onCreate,
 	onCreateAndStart,
 	onCancel,
-	startInPlanMode,
-	onStartInPlanModeChange,
-	startInPlanModeDisabled = false,
 	useWorktree,
 	onUseWorktreeChange,
 	projectId,
@@ -64,9 +61,6 @@ export function TaskInlineCreateCard({
 	onCreate: () => void;
 	onCreateAndStart?: () => void;
 	onCancel?: () => void;
-	startInPlanMode: boolean;
-	onStartInPlanModeChange: (value: boolean) => void;
-	startInPlanModeDisabled?: boolean;
 	useWorktree?: boolean;
 	onUseWorktreeChange?: (value: boolean) => void;
 	projectId: string | null;
@@ -80,7 +74,6 @@ export function TaskInlineCreateCard({
 	idPrefix?: string;
 }): ReactElement {
 	const promptId = `${idPrefix}-prompt-input`;
-	const planModeId = `${idPrefix}-plan-mode-toggle`;
 	const useWorktreeId = `${idPrefix}-use-worktree-toggle`;
 	const branchSelectId = `${idPrefix}-branch-select`;
 	const actionLabel = mode === "edit" ? "Save" : "Create";
@@ -172,25 +165,6 @@ export function TaskInlineCreateCard({
 			</div>
 
 			<div className="flex flex-col gap-2 mt-3">
-				<label
-					htmlFor={planModeId}
-					className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
-				>
-					<RadixCheckbox.Root
-						id={planModeId}
-						aria-label="Start in plan mode"
-						checked={startInPlanMode}
-						onCheckedChange={(checked) => onStartInPlanModeChange(checked === true)}
-						disabled={startInPlanModeDisabled || !enabled}
-						className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
-					>
-						<RadixCheckbox.Indicator>
-							<Check size={10} className="text-white" />
-						</RadixCheckbox.Indicator>
-					</RadixCheckbox.Root>
-					<span>Start in plan mode</span>
-				</label>
-
 				<div>
 					<span className="text-[11px] text-text-secondary block mb-1">Base ref</span>
 					<BranchSelectDropdown

@@ -8,7 +8,6 @@ import { createTaggedLogger } from "../core";
 import { hasClaudeWorkspaceTrustPrompt, WORKSPACE_TRUST_CONFIRM_DELAY_MS } from "./claude-workspace-trust";
 import { hasCodexWorkspaceTrustPrompt } from "./codex-workspace-trust";
 import type { ActiveProcessState } from "./session-manager-types";
-import { hasCodexInteractivePrompt, hasCodexStartupUiRendered } from "./session-manager-types";
 
 const sessionLog = createTaggedLogger("session-trust");
 
@@ -95,47 +94,4 @@ export function processWorkspaceTrustOutput(
 			});
 		}
 	}, WORKSPACE_TRUST_CONFIRM_DELAY_MS);
-}
-
-/**
- * Attempt to send deferred Codex startup input (e.g. plan-mode key) once the
- * TUI has rendered past the workspace trust prompt.
- */
-export function trySendDeferredCodexStartupInput(active: ActiveProcessState): boolean {
-	if (active.deferredStartupInput === null) {
-		return false;
-	}
-	const trustPromptVisible =
-		active.workspaceTrustBuffer !== null && hasCodexWorkspaceTrustPrompt(active.workspaceTrustBuffer);
-	if (trustPromptVisible) {
-		return false;
-	}
-	const deferredInput = active.deferredStartupInput;
-	active.deferredStartupInput = null;
-	active.session.write(deferredInput);
-	return true;
-}
-
-/**
- * Check whether Codex deferred startup input should be sent based on the current output.
- * Returns true if the input was sent.
- */
-export function checkAndSendDeferredCodexInput(
-	active: ActiveProcessState,
-	data: string,
-	agentId: string | null | undefined,
-): boolean {
-	if (agentId !== "codex" || active.deferredStartupInput === null || data.length === 0) {
-		return false;
-	}
-	if (
-		hasCodexInteractivePrompt(data) ||
-		hasCodexStartupUiRendered(data) ||
-		(active.workspaceTrustBuffer !== null &&
-			(hasCodexInteractivePrompt(active.workspaceTrustBuffer) ||
-				hasCodexStartupUiRendered(active.workspaceTrustBuffer)))
-	) {
-		return trySendDeferredCodexStartupInput(active);
-	}
-	return false;
 }

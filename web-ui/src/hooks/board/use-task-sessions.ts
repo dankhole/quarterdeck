@@ -171,7 +171,6 @@ export function useTaskSessions({
 					taskId: task.id,
 					prompt: kickoffPrompt,
 					images: options?.resumeConversation ? undefined : task.images,
-					startInPlanMode: options?.resumeConversation ? undefined : task.startInPlanMode,
 					resumeConversation: options?.resumeConversation,
 					awaitReview: options?.awaitReview,
 					baseRef: task.baseRef,

@@ -54,7 +54,6 @@ function createSelection(taskId: string): CardSelection {
 		id: taskId,
 		title: null,
 		prompt: `Task ${taskId}`,
-		startInPlanMode: false,
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,

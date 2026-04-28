@@ -14,6 +14,18 @@ Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `web-ui/src/compone
 
 Commit: pending
 
+## Chore: remove read-only startup task flow (2026-04-28)
+
+The task board still carried an obsolete per-card read-only startup flag after the create dialog had already stopped exposing that option. Removing the rest of the path keeps task creation, editing, persistence, and agent startup on the same standard flow and avoids preserving a hidden per-task launch behavior that users can no longer control intentionally.
+
+The cleanup removes the field from board-card API schemas, board mutation inputs, browser board types, persisted-card normalization, task editor drafts, inline edit UI props, task-session start requests, and terminal launch requests. Agent adapters now pass prompts directly through the normal launch arguments instead of preparing a deferred Codex startup command, and the terminal output pipeline no longer carries the deferred-input detection hook. The public man page and upstream-sync tracker were updated so current docs no longer advertise the removed task option.
+
+Tests and fixtures were updated to stop seeding the removed field, and the specific adapter/session tests for the deferred startup command were deleted because the behavior no longer exists. Follow-up review coverage now locks the legacy compatibility path: old persisted board cards with the removed card field and old session summaries with the removed session field still load, but the parsed runtime/browser objects do not re-emit those fields. Validation included `npm run typecheck`, `npm run web:typecheck`, `npm run test:fast`, `npm run web:test`, `npm run lint`, focused project-state and board-normalization tests, `git diff --check`, and an `rg` scan confirming the removed identifiers and UI label are gone outside ignored build output and archived history. The web test run still prints the existing jsdom/xterm canvas `getContext` warning, but exits successfully.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `docs/upstream-sync.md`, `man/quarterdeck.1`, `src/core/api/board.ts`, `src/core/api/task-session.ts`, `src/core/task-board-mutations.ts`, `src/terminal/agent-session-adapters.ts`, `src/terminal/session-lifecycle.ts`, `src/terminal/session-manager-types.ts`, `src/terminal/session-output-pipeline.ts`, `src/terminal/session-workspace-trust.ts`, `src/trpc/handlers/start-task-session.ts`, `web-ui/src/App.tsx`, `web-ui/src/components/task/task-inline-create-card.tsx`, `web-ui/src/hooks/board/task-editor.ts`, `web-ui/src/hooks/board/task-editor-drafts.ts`, `web-ui/src/hooks/board/use-task-editor.ts`, `web-ui/src/hooks/board/use-task-sessions.ts`, `web-ui/src/hooks/board/use-board-interactions.ts`, `web-ui/src/state/board-state.ts`, `web-ui/src/state/board-state-parser.ts`, `web-ui/src/storage/local-storage-store.ts`, `web-ui/src/types/board.ts`, `web-ui/src/utils/app-utils.tsx`, plus matching runtime, integration, and web UI test fixtures.
+
+Commit: pending
+
 ## Chore: remove reviewed-task auto-trash (2026-04-28)
 
 Removed the task-level auto-trash automation end to end. Board cards and runtime board schemas no longer carry `autoReviewEnabled` / `autoReviewMode`, create/update task mutations no longer accept those fields, persisted board parsing ignores the old fields, and the task indicator semantic layer no longer exposes auto-review-specific blocking state. Existing saved board JSON can still hydrate because the parser strips unknown legacy fields.

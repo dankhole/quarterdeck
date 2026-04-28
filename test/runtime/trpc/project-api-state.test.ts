@@ -44,7 +44,6 @@ function createBoard(): RuntimeBoardData {
 						id: "task-1",
 						title: "Task One",
 						prompt: "Do the thing",
-						startInPlanMode: false,
 						baseRef: "main",
 						createdAt: 1,
 						updatedAt: 1,

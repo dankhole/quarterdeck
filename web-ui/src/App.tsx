@@ -348,8 +348,6 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		setEditTaskPrompt,
 		editTaskImages,
 		setEditTaskImages,
-		editTaskStartInPlanMode,
-		setEditTaskStartInPlanMode,
 		editTaskBranchRef,
 		setEditTaskBranchRef,
 		handleOpenCreateTask,
@@ -368,8 +366,6 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 			onCreate={handleSaveEditedTask}
 			onCreateAndStart={handleSaveAndStartEditedTask}
 			onCancel={handleCancelEditTask}
-			startInPlanMode={editTaskStartInPlanMode}
-			onStartInPlanModeChange={setEditTaskStartInPlanMode}
 			projectId={project.currentProjectId}
 			branchRef={editTaskBranchRef}
 			branchOptions={createTaskBranchOptions}

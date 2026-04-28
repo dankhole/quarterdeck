@@ -5,7 +5,6 @@ export const runtimeBoardCardSchema = z.object({
 	id: z.string(),
 	title: z.string().nullable().default(null),
 	prompt: z.string(),
-	startInPlanMode: z.boolean(),
 	images: z.array(runtimeTaskImageSchema).optional(),
 	baseRef: z.string(),
 	baseRefPinned: z.boolean().optional(),

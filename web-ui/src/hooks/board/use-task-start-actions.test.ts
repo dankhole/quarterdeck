@@ -9,7 +9,6 @@ describe("getStartableBacklogTaskIds", () => {
 			id,
 			title: null,
 			prompt,
-			startInPlanMode: false,
 			baseRef: "main",
 			createdAt: Date.now(),
 			updatedAt: Date.now(),

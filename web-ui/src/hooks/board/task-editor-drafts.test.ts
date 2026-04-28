@@ -14,7 +14,6 @@ function createTask(id: string, prompt: string, overrides: Partial<BoardCard> = 
 		id,
 		title: null,
 		prompt,
-		startInPlanMode: false,
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,
@@ -53,14 +52,12 @@ describe("task-editor-drafts", () => {
 
 	it("builds edit drafts and applies edited task changes to the board", () => {
 		const task = createTask("task-1", "Original prompt", {
-			startInPlanMode: true,
 			images: [{ id: "img-1", data: "abc", mimeType: "image/png" }],
 		});
 		const draft = createTaskEditDraft(task, "main");
 		expect(draft).toMatchObject({
 			editingTaskId: "task-1",
 			prompt: "Original prompt",
-			startInPlanMode: true,
 			branchRef: "main",
 		});
 
@@ -68,7 +65,6 @@ describe("task-editor-drafts", () => {
 			board: createBoard([task]),
 			editingTaskId: draft.editingTaskId,
 			prompt: "Updated prompt",
-			startInPlanMode: false,
 			images: draft.images,
 			branchRef: draft.branchRef,
 			defaultBranchRef: "main",
@@ -77,7 +73,6 @@ describe("task-editor-drafts", () => {
 		expect(result.savedTaskId).toBe("task-1");
 		expect(result.board.columns[0]?.cards[0]).toMatchObject({
 			prompt: "Updated prompt",
-			startInPlanMode: false,
 		});
 	});
 
@@ -85,7 +80,6 @@ describe("task-editor-drafts", () => {
 		const single = createTaskOnBoard({
 			board: createBoard(),
 			prompt: "Ship release",
-			startInPlanMode: false,
 			images: [],
 			branchRef: "main",
 			defaultBranchRef: "main",
@@ -100,7 +94,6 @@ describe("task-editor-drafts", () => {
 		const multi = createTasksOnBoard({
 			board: createBoard(),
 			prompts: ["One", "  ", "Two"],
-			startInPlanMode: false,
 			images: [],
 			branchRef: "develop",
 			defaultBranchRef: "main",

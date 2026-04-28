@@ -46,7 +46,6 @@ function createCard(overrides?: Partial<Parameters<typeof BoardCard>[0]["card"]>
 		id: "task-1",
 		title: null,
 		prompt: "Review API changes",
-		startInPlanMode: false,
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,

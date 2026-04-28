@@ -43,7 +43,6 @@ function createBoardWithTasks(taskIds: readonly string[]): BoardData {
 							id: taskId,
 							title: null,
 							prompt: `Prompt for ${taskId}`,
-							startInPlanMode: false,
 							baseRef: "main",
 							createdAt: now,
 							updatedAt: now,
