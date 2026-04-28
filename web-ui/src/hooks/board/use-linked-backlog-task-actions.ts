@@ -15,7 +15,10 @@ import {
 } from "@/state/board-state";
 import { getTaskWorktreeInfo, getTaskWorktreeSnapshot } from "@/stores/project-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
+import { createClientLogger } from "@/utils/client-logger";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
+
+const log = createClientLogger("linked-backlog-task-actions");
 
 interface RequestMoveTaskToTrashOptions {
 	optimisticMoveApplied?: boolean;
@@ -107,7 +110,7 @@ export function useLinkedBacklogTaskActions({
 		async (task: BoardCard, currentBoard?: BoardData): Promise<void> => {
 			const boardBeforeTrash = currentBoard ?? boardRef.current;
 			const trashed = trashTaskAndGetReadyLinkedTaskIds(boardBeforeTrash, task.id);
-			console.debug("[trash] performMoveTaskToTrash", {
+			log.debug("performing task trash move", {
 				taskId: task.id,
 				moved: trashed.moved,
 				hadCurrentBoard: !!currentBoard,
@@ -115,7 +118,7 @@ export function useLinkedBacklogTaskActions({
 			if (!trashed.moved) {
 				// Card is already in trash (e.g. optimistic drag move applied before confirmation dialog).
 				// Still need to update selection and stop sessions and cleanup the worktree.
-				console.debug("[trash] card already in trash, cleaning up", { taskId: task.id });
+				log.debug("task already in trash; cleaning up backing resources", { taskId: task.id });
 				setSelectedTaskId((currentSelectedTaskId) =>
 					currentSelectedTaskId === task.id
 						? getNextDetailTaskIdAfterTrashMove(boardBeforeTrash, task.id)
@@ -130,7 +133,7 @@ export function useLinkedBacklogTaskActions({
 				if (task.useWorktree !== false) {
 					await cleanupTaskWorktree(task.id);
 				}
-				console.debug("[trash] cleanup complete (already-in-trash path)", { taskId: task.id });
+				log.debug("trash cleanup complete for already-trashed task", { taskId: task.id });
 				return;
 			}
 
@@ -200,7 +203,7 @@ export function useLinkedBacklogTaskActions({
 
 	const requestMoveTaskToTrash = useCallback(
 		async (taskId: string, fromColumnId: BoardColumnId, options?: RequestMoveTaskToTrashOptions): Promise<void> => {
-			console.debug("[trash] requestMoveTaskToTrash", {
+			log.debug("task trash move requested", {
 				taskId,
 				fromColumnId,
 				optimisticMoveApplied: !!options?.optimisticMoveApplied,
@@ -209,7 +212,7 @@ export function useLinkedBacklogTaskActions({
 			const boardSnapshot = boardRef.current;
 			const selection = findCardSelection(boardSnapshot, taskId);
 			if (!selection) {
-				console.debug("[trash] task not found in board, bailing", { taskId });
+				log.debug("task trash move skipped because task was not found", { taskId });
 				return;
 			}
 

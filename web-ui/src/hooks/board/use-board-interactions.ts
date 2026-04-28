@@ -21,6 +21,9 @@ import type { RuntimeTaskSessionSummary, RuntimeTaskWorktreeInfoResponse } from 
 import { findCardSelection, updateTask } from "@/state/board-state";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
+import { createClientLogger } from "@/utils/client-logger";
+
+const log = createClientLogger("board-interactions");
 
 interface SelectedBoardCard {
 	card: BoardCard;
@@ -150,7 +153,7 @@ export function useBoardInteractions({
 				fromColumnId: BoardColumnId,
 				optimisticMoveApplied: boolean,
 			) => {
-				console.debug("[trash-warning] showing dialog", {
+				log.debug("showing trash warning dialog", {
 					cardId: card.id,
 					fileCount: viewModel.fileCount,
 					fromColumnId,

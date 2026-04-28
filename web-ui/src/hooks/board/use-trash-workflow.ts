@@ -13,9 +13,12 @@ import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { clearColumnTasks, findCardSelection, moveTaskToColumn, removeTask } from "@/state/board-state";
 import { clearTaskWorktreeInfo } from "@/stores/project-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
+import { createClientLogger } from "@/utils/client-logger";
 
 export type { HardDeleteDialogState, TrashWarningState } from "@/hooks/board/trash-workflow";
 export { INITIAL_HARD_DELETE_DIALOG_STATE, INITIAL_TRASH_WARNING_STATE } from "@/hooks/board/trash-workflow";
+
+const log = createClientLogger("trash-workflow");
 
 interface SelectedBoardCard {
 	card: BoardCard;
@@ -295,19 +298,19 @@ export function useTrashWorkflow({
 		// this cancel handler with a stale closure (React state hasn't re-rendered yet). The ref
 		// lets us detect that confirm already ran and skip the revert.
 		if (trashWarningConfirmedRef.current) {
-			console.debug("[trash-warning] cancel skipped — confirm already in progress (ref guard)");
+			log.debug("trash warning cancel skipped after confirm");
 			trashWarningConfirmedRef.current = false;
 			return;
 		}
 		const { card, fromColumnId, optimisticMoveApplied } = trashWarningState;
-		console.debug("[trash-warning] cancel handler fired", {
+		log.debug("trash warning cancel handler fired", {
 			open: trashWarningState.open,
 			cardId: card?.id ?? null,
 			fromColumnId,
 			optimisticMoveApplied,
 		});
 		if (trashWarningState.open && card && fromColumnId && optimisticMoveApplied) {
-			console.debug("[trash-warning] reverting optimistic move", { cardId: card.id, fromColumnId });
+			log.debug("trash warning reverting optimistic move", { cardId: card.id, fromColumnId });
 			setBoard((currentBoard) => {
 				const reverted = moveTaskToColumn(currentBoard, card.id, fromColumnId);
 				return reverted.moved ? reverted.board : currentBoard;
@@ -318,16 +321,16 @@ export function useTrashWorkflow({
 
 	const handleConfirmTrashWarning = useCallback(() => {
 		if (!trashWarningState.open || !trashWarningState.card) {
-			console.debug("[trash-warning] confirm handler bailed — no open state or card");
+			log.debug("trash warning confirm skipped without open card");
 			return;
 		}
 		const { card } = trashWarningState;
-		console.debug("[trash-warning] confirm handler — trashing card", { cardId: card.id });
+		log.debug("trash warning confirm accepted", { cardId: card.id });
 		trashWarningConfirmedRef.current = true;
 		setTrashWarningState(INITIAL_TRASH_WARNING_STATE);
 		void confirmMoveTaskToTrash(card).then(
-			() => console.debug("[trash-warning] confirmMoveTaskToTrash resolved", { cardId: card.id }),
-			(err) => console.error("[trash-warning] confirmMoveTaskToTrash failed", { cardId: card.id, err }),
+			() => log.debug("trash warning confirm move resolved", { cardId: card.id }),
+			(err) => log.error("trash warning confirm move failed", { cardId: card.id, err }),
 		);
 	}, [confirmMoveTaskToTrash, trashWarningState]);
 

@@ -2,13 +2,11 @@ import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { clearTerminalGeometry, reportTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import { type PersistentTerminalSubscriber, TerminalSessionHandle } from "@/terminal/terminal-session-handle";
 import { type PersistentTerminalAppearance, TerminalViewport } from "@/terminal/terminal-viewport";
-import type { TerminalWritePoolRole } from "@/terminal/terminal-write-diagnostics";
 
 export type { PersistentTerminalSubscriber } from "@/terminal/terminal-session-handle";
 
-// [perf-investigation] Full console.trace stacks are expensive if the reconnect
-// path loops. Keep one breadcrumb, then sample at most once per window while the
-// terminal-session-handle rate counter reports the hot path volume.
+// Full console.trace stacks are expensive if the reconnect path loops. Keep one
+// breadcrumb, then sample at most once per window.
 const SESSION_INSTANCE_TRACE_SAMPLE_INTERVAL_MS = 5000;
 let sessionInstanceReconnectTraceCount = 0;
 let sessionInstanceReconnectLastTraceAt = 0;
@@ -42,7 +40,6 @@ function maybeTraceSessionInstanceReconnect(data: SessionInstanceReconnectTraceD
 
 interface TerminalAttachmentControllerOptions {
 	isDisposed: () => boolean;
-	getPoolRole?: () => TerminalWritePoolRole | null;
 }
 
 export class TerminalAttachmentController {
@@ -99,13 +96,6 @@ export class TerminalAttachmentController {
 		return new TerminalViewport(this.slotId, appearance, {
 			clearGeometry: clearTerminalGeometry,
 			getConnectedTaskId: () => this.connectedTaskId,
-			getPoolRole: () => this.options.getPoolRole?.() ?? null,
-			getSocketDiagnostics: () => ({
-				ioSocketState: this.session.ioSocketState,
-				controlSocketState: this.session.controlSocketState,
-				connectionReady: this.session.connectionReady,
-				restoreCompleted: this.session.restoreCompleted,
-			}),
 			isDisposed: () => this.options.isDisposed(),
 			notifyOutputText: (text) => this.session.publishOutputText(text),
 			reportGeometry: reportTerminalGeometry,

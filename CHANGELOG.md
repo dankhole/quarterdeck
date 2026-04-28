@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Chore: remove frontend perf-investigation logging
+
+- Removed the remaining browser-side `[perf-investigation]` console probes from terminal writes, restore application, and session-instance reconnects now that hidden terminal streams are bounded.
+- Deleted the diagnostic-only terminal write/socket/pool-role plumbing that only fed those probes, while keeping the sampled `[quarterdeck-debug]` reconnect trace for targeted lifecycle debugging.
+- Routed leftover trash/trash-warning debug breadcrumbs through Quarterdeck's client logger instead of raw `console.debug` / `console.error` calls.
+
 ### Fix: keep .NET build outputs local to task worktrees
 
 - Worktree ignored-path mirroring now skips mutable build-output directories named `bin`, `obj`, and `TestResults`, avoiding symlinks back into the parent checkout for .NET build/test artifacts.
@@ -24,7 +30,7 @@
 - Terminal prewarm slots now have a 12-second absolute TTL from warmup start, so hover-created `PRELOADING` / `READY` slots cannot stay connected indefinitely when `cancelWarmup()` never arrives.
 - PREVIOUS task terminals now auto-evict after 8 seconds, and promoting an already-retained slot back to `ACTIVE` demotes any other active slot first so hidden streams keep the same bounded lifecycle.
 - Mouseleave cancellation still uses the existing 3-second grace eviction, and acquiring, releasing, evicting, or clearing the pool cancels the relevant delayed timers.
-- Temporary terminal write diagnostics now include slot, task, pool role, visibility, socket state, readiness, and restore state so any remaining hidden writer can be identified from browser console output.
+- Temporary terminal write diagnostics captured slot, task, pool role, visibility, socket state, readiness, and restore state while any remaining hidden writer was still being identified from browser console output.
 - Added focused terminal-pool lifecycle/acquire coverage for max-TTL eviction, previous-slot eviction, existing-slot promotion, cancel-warmup eviction, acquisition cleanup, and `releaseAll()` timer cleanup.
 
 ### Fix: keep timed-out Codex hooks from pinning cancellation

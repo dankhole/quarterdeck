@@ -15,35 +15,12 @@ import { TERMINAL_SCROLLBACK } from "@/terminal/terminal-constants";
 import { createQuarterdeckTerminalOptions, type PersistentTerminalAppearance } from "@/terminal/terminal-options";
 import { shouldSkipEmptyRestoreSnapshot } from "@/terminal/terminal-restore-policy";
 import { isCopyShortcut } from "@/terminal/terminal-socket-utils";
-import type {
-	TerminalWritePoolRole,
-	TerminalWriteSocketDiagnostics,
-	TerminalWriteVisibility,
-} from "@/terminal/terminal-write-diagnostics";
 import { createClientLogger } from "@/utils/client-logger";
 import { isMacPlatform } from "@/utils/platform";
 
 const log = createClientLogger("terminal-viewport");
 
 const SHIFT_ENTER_SEQUENCE = "\n";
-
-// [perf-investigation] Count applyRestoreSnapshot invocations across all
-// slots. Every restore calls terminal.reset() + rewrites the buffer, which
-// visibly repaints the scrollbar. If this number climbs while an agent is
-// idle, combined with the reconnect counter in terminal-session-handle.ts,
-// that confirms suspect #2 (session-instance-change reconnect loop). Uses
-// console.info instead of client logging/warn capture. Remove this block and
-// the reportRestoreApplied() call if investigation clears it.
-let restoreApplyCount = 0;
-function reportRestoreApplied(slotId: number, snapshotLength: number, skipped: boolean): void {
-	restoreApplyCount += 1;
-	console.info("[perf-investigation] terminal restore applied", {
-		totalRestores: restoreApplyCount,
-		slotId,
-		snapshotLength,
-		skipped,
-	});
-}
 
 let currentTerminalFontWeight: number = CONFIG_DEFAULTS.terminalFontWeight;
 
@@ -56,8 +33,6 @@ export function updateGlobalTerminalFontWeight(weight: number): void {
 interface TerminalViewportCallbacks {
 	clearGeometry: (taskId: string) => void;
 	getConnectedTaskId: () => string | null;
-	getPoolRole: () => TerminalWritePoolRole | null;
-	getSocketDiagnostics: () => TerminalWriteSocketDiagnostics;
 	isDisposed: () => boolean;
 	notifyOutputText: (text: string) => void;
 	reportGeometry: (taskId: string, geometry: { cols: number; rows: number }) => void;
@@ -120,25 +95,8 @@ export class TerminalViewport {
 		return new SlotWriteQueue(this.terminal, {
 			sendControlMessage: (msg) => this.callbacks.sendControlMessage(msg),
 			notifyOutputText: (text) => this.callbacks.notifyOutputText(text),
-			getDiagnostics: () => ({
-				slotId: this.slotId,
-				taskId: this.callbacks.getConnectedTaskId(),
-				poolRole: this.callbacks.getPoolRole(),
-				visibility: this.getVisibilityState(),
-				...this.callbacks.getSocketDiagnostics(),
-			}),
 			isDisposed: () => this.callbacks.isDisposed(),
 		});
-	}
-
-	private getVisibilityState(): TerminalWriteVisibility {
-		if (this.visibleContainer) {
-			return "visible";
-		}
-		if (this.stageContainer) {
-			return "hidden-staged";
-		}
-		return "hidden-parked";
 	}
 
 	private initializeTerminalAddons(): void {
@@ -275,10 +233,8 @@ export class TerminalViewport {
 			log.warn(`slot ${this.slotId} skipped empty restore over non-empty terminal buffer`, {
 				taskId: this.callbacks.getConnectedTaskId(),
 			});
-			reportRestoreApplied(this.slotId, snapshot.length, true);
 			return;
 		}
-		reportRestoreApplied(this.slotId, snapshot.length, false);
 		this.terminal.reset();
 		if (cols && rows && (this.terminal.cols !== cols || this.terminal.rows !== rows)) {
 			this.terminal.resize(cols, rows);

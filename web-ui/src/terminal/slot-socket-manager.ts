@@ -5,25 +5,10 @@ import {
 	getTerminalSocketWriteData,
 	getTerminalWebSocketUrl,
 } from "@/terminal/terminal-socket-utils";
-import type { TerminalSocketState } from "@/terminal/terminal-write-diagnostics";
 import { createClientLogger } from "@/utils/client-logger";
 
 const log = createClientLogger("slot-socket");
 const RESTORE_STALL_WARNING_MS = 10_000;
-
-const SOCKET_STATE_LABELS: Record<number, TerminalSocketState> = {
-	0: "connecting",
-	1: "open",
-	2: "closing",
-	3: "closed",
-};
-
-function getSocketState(socket: WebSocket | null): TerminalSocketState {
-	if (!socket) {
-		return "none";
-	}
-	return SOCKET_STATE_LABELS[socket.readyState] ?? "unknown";
-}
 
 interface SlotSocketCallbacks {
 	enqueueWrite: (data: string | Uint8Array, options?: { ackBytes?: number; notifyText?: string | null }) => void;
@@ -69,14 +54,6 @@ export class SlotSocketManager {
 
 	get isIoOpen(): boolean {
 		return this.ioSocket !== null && this.ioSocket.readyState === WebSocket.OPEN;
-	}
-
-	get ioSocketState(): TerminalSocketState {
-		return getSocketState(this.ioSocket);
-	}
-
-	get controlSocketState(): TerminalSocketState {
-		return getSocketState(this.controlSocket);
 	}
 
 	sendControl(message: RuntimeTerminalWsClientMessage): boolean {

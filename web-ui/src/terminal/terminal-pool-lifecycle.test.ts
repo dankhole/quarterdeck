@@ -19,7 +19,6 @@ interface MockSlot {
 	dispose: ReturnType<typeof vi.fn>;
 	resetRenderer: ReturnType<typeof vi.fn>;
 	requestRestore: ReturnType<typeof vi.fn>;
-	setPoolRoleForDiagnostics: ReturnType<typeof vi.fn>;
 	setFontWeight: ReturnType<typeof vi.fn>;
 	writeText: ReturnType<typeof vi.fn>;
 	setAppearance: ReturnType<typeof vi.fn>;
@@ -55,7 +54,6 @@ vi.mock("@/terminal/terminal-slot", () => {
 			dispose: vi.fn(),
 			resetRenderer: vi.fn(),
 			requestRestore: vi.fn(),
-			setPoolRoleForDiagnostics: vi.fn(),
 			setFontWeight: vi.fn(),
 			writeText: vi.fn(),
 			setAppearance: vi.fn(),

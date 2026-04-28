@@ -2,6 +2,20 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Chore: remove frontend perf-investigation logging (2026-04-28)
+
+After the hidden terminal stream lifetime fix, the remaining browser-side `[perf-investigation]` probes were no longer needed. The cleanup removes the xterm write-rate accumulator from `SlotWriteQueue`, the restore-applied counter from `TerminalViewport`, and the reconnect-rate counter from `TerminalSessionHandle`. The sampled `[quarterdeck-debug] terminal reconnect on session_instance_changed` trace stays in `TerminalAttachmentController` as a targeted lifecycle breadcrumb, with its comment rewritten so it no longer references the temporary investigation counters.
+
+The diagnostic helper module was only feeding those removed browser console probes, so `terminal-write-diagnostics.ts` was deleted instead of leaving investigation-shaped types behind. That let the surrounding terminal classes drop socket-state getters, pool-role mirroring into slots, viewport visibility diagnostics, and mock-only test plumbing. The terminal pool still owns its role union directly, preserving pool behavior while narrowing the public surface.
+
+The remaining raw trash/trash-warning browser breadcrumbs were also routed through `createClientLogger(...)`, so they respect Quarterdeck's normal client log enablement and level controls instead of writing directly to the console. This touched the board interaction hook, linked backlog trash actions, and trash workflow confirm/cancel handlers without changing the trash lifecycle behavior.
+
+Validation included `rg "\[perf-investigation\]|perf-investigation" src web-ui/src` with no matches, `npm --prefix web-ui run typecheck`, and `npm --prefix web-ui run test -- terminal-pool`.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `web-ui/src/hooks/board/use-board-interactions.ts`, `web-ui/src/hooks/board/use-linked-backlog-task-actions.ts`, `web-ui/src/hooks/board/use-trash-workflow.ts`, `web-ui/src/terminal/slot-socket-manager.ts`, `web-ui/src/terminal/slot-write-queue.ts`, `web-ui/src/terminal/terminal-attachment-controller.ts`, `web-ui/src/terminal/terminal-pool.ts`, `web-ui/src/terminal/terminal-pool-acquire.test.ts`, `web-ui/src/terminal/terminal-pool-dedicated.test.ts`, `web-ui/src/terminal/terminal-pool-lifecycle.test.ts`, `web-ui/src/terminal/terminal-session-handle.ts`, `web-ui/src/terminal/terminal-slot.ts`, `web-ui/src/terminal/terminal-viewport.ts`, deleted `web-ui/src/terminal/terminal-write-diagnostics.ts`.
+
+Commit: pending
+
 ## Fix: keep .NET build outputs local to task worktrees (2026-04-28)
 
 Dogfooding a .NET project exposed a bad interaction between Quarterdeck's ignored-path mirroring and mutable build outputs. `syncIgnoredPathsIntoWorktree(...)` intentionally symlinks ignored paths from the parent checkout into task worktrees so dependency/setup directories such as `node_modules` do not need to be recreated for every task. In .NET repositories, `bin/`, `obj/`, and `TestResults/` are ignored too, but MSBuild and test runners write through those directories. Symlinking them back to the parent checkout can cross the worktree sandbox boundary and can also mix build artifacts from different branches.

@@ -15,7 +15,6 @@ import {
 	TerminalSlot,
 	updateGlobalTerminalFontWeight,
 } from "@/terminal/terminal-slot";
-import type { TerminalWritePoolRole } from "@/terminal/terminal-write-diagnostics";
 import { createClientLogger } from "@/utils/client-logger";
 import { warnToBrowserConsole } from "@/utils/global-error-capture";
 
@@ -62,7 +61,7 @@ declare global {
 // Types
 // ---------------------------------------------------------------------------
 
-export type SlotRole = TerminalWritePoolRole;
+export type SlotRole = "FREE" | "PRELOADING" | "READY" | "ACTIVE" | "PREVIOUS";
 
 // ---------------------------------------------------------------------------
 // Module-level state
@@ -110,7 +109,6 @@ const DEFAULT_POOL_APPEARANCE: PersistentTerminalAppearance = {
 
 function setRole(slot: TerminalSlot, role: SlotRole): void {
 	slotRoles.set(slot, role);
-	slot.setPoolRoleForDiagnostics(role);
 	roleTimestamps.set(slot, Date.now());
 }
 
@@ -686,7 +684,6 @@ function rotateOldestFreeSlot(): void {
 
 	// Dispose old FIRST, then create new (no temporary 5th slot)
 	slotRoles.delete(oldest);
-	oldest.setPoolRoleForDiagnostics(null);
 	roleTimestamps.delete(oldest);
 	oldest.dispose();
 
