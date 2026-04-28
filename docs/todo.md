@@ -6,7 +6,7 @@ Tracking note:
 
 - The sections at the top of this file are the active backlog.
 - Older completed roadmap/program sections are kept farther down for context only; they are not the live queue.
-- For newly completed work, remove the active todo item and record the result in `CHANGELOG.md` plus `docs/implementation-log.md` rather than adding a new struck-through history line here.
+- For newly completed user-visible work, remove the active todo item and record the result in `CHANGELOG.md` rather than adding a new struck-through history line here. Add `docs/implementation-log.md` only when the change has high-signal forensic context: architecture or ownership boundaries, persistence/recovery, terminal/session lifecycle, races, dogfooding incidents, broad cross-cutting edits, or non-obvious investigations.
 
 ## Architecture follow-ups from the architecture roadmap
 

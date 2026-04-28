@@ -80,11 +80,13 @@ Board state single-writer rule
   `RuntimeTaskSessionSummary.sessionLaunchPath` is **not** a continuously updated live cwd stream. It is the path the current agent session was launched in. The shared schema still accepts legacy persisted `projectPath` when reading old `sessions.json`, but new code should speak `sessionLaunchPath` and use it for divergence/restart hints, not as the authoritative source for task branch/folder/shared-vs-isolated display.
 
 Completing a feature or fix (release hygiene)
-- When a todo item is done, **all three files must be updated in the same commit or PR**:
-  1. `docs/todo.md` — remove the completed item (items are unnumbered; order is implicit).
+- When a user-visible feature/fix lands or an active todo item is completed, update the release-tracking files in the same commit or PR:
+  1. `docs/todo.md` — remove the completed active item, if one existed. Items are unnumbered; order is implicit.
   2. `CHANGELOG.md` — add a bullet under the current version section matching the existing style (feature-area headings, em-dash descriptions). If no current version section exists, create one with the next patch bump.
-  3. `docs/implementation-log.md` — add a detailed entry at the top with: what changed, why, which files were touched, and the commit hash. This is the forensic record — include enough detail that someone debugging a regression can understand the full scope of the change without reading the diff.
-- Skipping any of these creates drift that compounds quickly across concurrent worktrees. The changelog and implementation log are easy to forget after the code is working — do them immediately, not in a follow-up.
+- Add `docs/implementation-log.md` entries only for high-signal forensic context, not for every changelog bullet. Use it when a change involves architecture or ownership boundaries, state persistence/migration/recovery, terminal/session lifecycle, concurrency/race behavior, production or dogfooding incidents, broad cross-cutting edits, or a non-obvious investigation that future agents would otherwise have to rediscover.
+- Skip the implementation log for routine UI polish, mechanical refactors, test-only changes, and small isolated fixes where the changelog plus git diff already explain the work.
+- When an implementation-log entry is warranted, add it at the top and keep it concise but useful: what changed, why, the key invariant or failure mode, notable files touched, validation, and the commit hash if known. Treat it as a forensic record, not a second changelog.
+- Release tracking is easy to forget after the code is working; update required docs before handing off rather than in a follow-up.
 - When bumping the version number, always keep a `## [Unreleased]` section at the top of `CHANGELOG.md` above the new version heading. This is where subsequent changes land before the next release.
 
 Adding a new config field
