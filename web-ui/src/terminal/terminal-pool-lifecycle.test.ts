@@ -304,15 +304,23 @@ describe("terminal-pool — lifecycle", () => {
 			expect(getSlotRole(getSlotForTask("task-warm-3")!)).toBe("PRELOADING");
 		});
 
-		it("stays warm indefinitely until cancelWarmup is called", () => {
+		it("evicts a warm slot after max TTL even without cancelWarmup", () => {
 			warmup("task-1", "ws-1");
 			const slot = getSlotForTask("task-1")!;
 			expect(getSlotRole(slot)).toBe("PRELOADING");
 
-			vi.advanceTimersByTime(10_000);
+			const readyCallback = (slot as unknown as MockSlot).onceConnectionReady.mock.calls[0]?.[0] as
+				| (() => void)
+				| undefined;
+			readyCallback?.();
+			expect(getSlotRole(slot)).toBe("READY");
 
-			expect(getSlotForTask("task-1")).not.toBeNull();
-			expect(getSlotRole(slot)).toBe("PRELOADING");
+			vi.advanceTimersByTime(60_000);
+
+			expect(getSlotForTask("task-1")).toBeNull();
+			expect(getSlotRole(slot)).toBe("FREE");
+			const mockSlot = slot as unknown as MockSlot;
+			expect(mockSlot.disconnectFromTask).toHaveBeenCalled();
 		});
 	});
 

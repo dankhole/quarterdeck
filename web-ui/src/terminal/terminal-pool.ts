@@ -72,6 +72,7 @@ const slotRoles = new Map<TerminalSlot, SlotRole>();
 const slotTaskIds = new Map<string, TerminalSlot>(); // taskId -> slot
 const roleTimestamps = new Map<TerminalSlot, number>();
 const warmupTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+const warmupMaxTtlTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 let previousEvictionTimer: ReturnType<typeof setTimeout> | null = null;
 // Retained for future destroyPool() cleanup.
 let _rotationTimer: ReturnType<typeof setInterval> | null = null;
@@ -88,6 +89,7 @@ let lastTerminalDomAlert: { signature: string; timestamp: number } | null = null
 const POOL_SIZE = 4;
 const ROTATION_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
 const WARMUP_TIMEOUT_MS = 3_000;
+const WARMUP_MAX_TTL_MS = 60_000;
 /** How long a PREVIOUS slot stays connected before auto-eviction. Keeps instant
  *  switch-back for quick peeks while stopping hidden WebGL rendering long-term. */
 const PREVIOUS_EVICTION_MS = 30_000;
@@ -162,6 +164,30 @@ function clearWarmupTimeout(taskId: string): void {
 		clearTimeout(timeout);
 		warmupTimeouts.delete(taskId);
 	}
+}
+
+function clearWarmupMaxTtlTimeout(taskId: string): void {
+	const timeout = warmupMaxTtlTimeouts.get(taskId);
+	if (timeout !== undefined) {
+		clearTimeout(timeout);
+		warmupMaxTtlTimeouts.delete(taskId);
+	}
+}
+
+function clearWarmupTimers(taskId: string): void {
+	clearWarmupTimeout(taskId);
+	clearWarmupMaxTtlTimeout(taskId);
+}
+
+function clearAllWarmupTimers(): void {
+	for (const [, timeout] of warmupTimeouts) {
+		clearTimeout(timeout);
+	}
+	warmupTimeouts.clear();
+	for (const [, timeout] of warmupMaxTtlTimeouts) {
+		clearTimeout(timeout);
+	}
+	warmupMaxTtlTimeouts.clear();
 }
 
 function buildTerminalDomAlertPayload(trigger: string): {
@@ -320,7 +346,7 @@ function findFreeOrEvict(): TerminalSlot | null {
 function evictSlot(slot: TerminalSlot): void {
 	const evictedTaskId = removeSlotFromTaskIndex(slot);
 	if (evictedTaskId) {
-		clearWarmupTimeout(evictedTaskId);
+		clearWarmupTimers(evictedTaskId);
 	}
 	setRole(slot, "FREE");
 	// Async disconnect — socket close + buffer reset happen in the background.
@@ -390,7 +416,7 @@ export function acquireForTask(taskId: string, projectId: string): TerminalSlot 
 	// 1. If task already has a slot: cancel warmup, transition to ACTIVE, return it
 	const existing = slotTaskIds.get(taskId);
 	if (existing) {
-		clearWarmupTimeout(taskId);
+		clearWarmupTimers(taskId);
 		// Re-open sockets if they closed (e.g. after sleep/wake).
 		existing.ensureConnected();
 		const previousRole = getRole(existing);
@@ -471,8 +497,8 @@ function acquireForTaskIntoSlot(slot: TerminalSlot, taskId: string, projectId: s
 
 /**
  * Warm up a pool slot for a task that may be needed soon (e.g. mouseover).
- * Connects the slot and begins preloading. If acquireForTask is not called
- * within WARMUP_TIMEOUT_MS, the warmup is cancelled.
+ * Connects the slot and begins preloading. If neither acquireForTask nor
+ * cancelWarmup is called within WARMUP_MAX_TTL_MS, the warmup is evicted.
  */
 export function warmup(taskId: string, projectId: string): void {
 	const t0 = performance.now();
@@ -507,10 +533,15 @@ export function warmup(taskId: string, projectId: string): void {
 		}
 	});
 
-	// 5. No timeout here — the slot stays warm as long as the caller holds it.
-	//    The timeout starts when cancelWarmup() is called (i.e. mouseLeave),
-	//    giving a grace period before eviction in case the user clicks shortly
-	//    after leaving the card.
+	// 5. Bound warm slots even if the caller never sends cancelWarmup().
+	const maxTtlTimeoutId = setTimeout(() => {
+		if (warmupMaxTtlTimeouts.get(taskId) !== maxTtlTimeoutId) {
+			return;
+		}
+		warmupMaxTtlTimeouts.delete(taskId);
+		evictWarmupSlot(taskId, "warmupMaxTtl");
+	}, WARMUP_MAX_TTL_MS);
+	warmupMaxTtlTimeouts.set(taskId, maxTtlTimeoutId);
 }
 
 /**
@@ -522,35 +553,36 @@ export function warmup(taskId: string, projectId: string): void {
 export function cancelWarmup(taskId: string): void {
 	const slot = slotTaskIds.get(taskId);
 	if (!slot) {
-		clearWarmupTimeout(taskId);
+		clearWarmupTimers(taskId);
 		return;
 	}
 	const role = getRole(slot);
 	if (role !== "PRELOADING" && role !== "READY") {
-		clearWarmupTimeout(taskId);
+		clearWarmupTimers(taskId);
 		return;
 	}
+	clearWarmupMaxTtlTimeout(taskId);
 	// Already has a pending eviction timeout — leave it running.
 	if (warmupTimeouts.has(taskId)) {
 		return;
 	}
 	const timeoutId = setTimeout(() => {
 		warmupTimeouts.delete(taskId);
-		evictWarmupSlot(taskId);
+		evictWarmupSlot(taskId, "cancelWarmup");
 	}, WARMUP_TIMEOUT_MS);
 	warmupTimeouts.set(taskId, timeoutId);
 }
 
 /** Immediately evict a PRELOADING/READY warmup slot. */
-function evictWarmupSlot(taskId: string): void {
-	clearWarmupTimeout(taskId);
+function evictWarmupSlot(taskId: string, reason: "cancelWarmup" | "warmupMaxTtl" = "cancelWarmup"): void {
+	clearWarmupTimers(taskId);
 	const slot = slotTaskIds.get(taskId);
 	if (!slot) {
 		return;
 	}
 	const role = getRole(slot);
 	if (role === "PRELOADING" || role === "READY") {
-		log.debug(`cancelWarmup — releasing slot ${slot.slotId} for ${taskId}`);
+		log.debug(`${reason} — releasing slot ${slot.slotId} for ${taskId}`);
 		slotTaskIds.delete(taskId);
 		setRole(slot, "FREE");
 		void slot.disconnectFromTask();
@@ -565,7 +597,7 @@ export function releaseTask(taskId: string): void {
 	if (!slot) {
 		return;
 	}
-	clearWarmupTimeout(taskId);
+	clearWarmupTimers(taskId);
 	slotTaskIds.delete(taskId);
 	setRole(slot, "FREE");
 	log.debug(`releaseTask — freed slot ${slot.slotId} from ${taskId}`);
@@ -573,14 +605,10 @@ export function releaseTask(taskId: string): void {
 }
 
 /**
- * Release all pool slots to FREE. Clears all warmup timeouts.
+ * Release all pool slots to FREE. Clears all warmup timers.
  */
 export function releaseAll(): void {
-	// Clear all timers
-	for (const [, timeout] of warmupTimeouts) {
-		clearTimeout(timeout);
-	}
-	warmupTimeouts.clear();
+	clearAllWarmupTimers();
 	clearPreviousEvictionTimer();
 
 	// Disconnect all non-FREE slots
@@ -899,11 +927,7 @@ export function _resetPoolForTesting(): void {
 }
 
 function resetPoolState(): void {
-	// Clear all timers
-	for (const [, timeout] of warmupTimeouts) {
-		clearTimeout(timeout);
-	}
-	warmupTimeouts.clear();
+	clearAllWarmupTimers();
 	clearPreviousEvictionTimer();
 	stopTerminalDomHealthMonitor();
 

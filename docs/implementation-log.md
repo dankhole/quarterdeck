@@ -2,6 +2,18 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: bound terminal prewarm slot lifetime (2026-04-28)
+
+Terminal prewarm slots were intentionally kept alive until mouseleave triggered `cancelWarmup()`, which made fast hover-to-click transitions feel good. The missing bound was the opposite edge case: if the caller never sent a cancellation signal, a `PRELOADING` or `READY` slot could remain connected forever even though it had never been acquired as the visible task terminal.
+
+The terminal pool now starts a separate 60-second max-TTL timer when `warmup(...)` creates a slot. The existing 3-second `cancelWarmup(...)` mouseleave grace path remains unchanged, but it clears the max-TTL timer before scheduling the shorter eviction. All warm-slot cleanup paths now clear both timer families: acquisition, release, eviction, `releaseAll()`, and test/HMR pool reset. The max-TTL callback rechecks that it is still the active timer for the task and only evicts `PRELOADING` / `READY` slots, preserving `ACTIVE` / `PREVIOUS` behavior and leaving dedicated agent PTYs outside the shared pool untouched.
+
+Focused terminal-pool tests now cover a warm slot expiring after the max TTL without cancellation, the existing cancel-warmup grace eviction, acquisition clearing the max TTL so active slots are not evicted, and `releaseAll()` clearing delayed timers without a second disconnect.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `web-ui/src/terminal/terminal-pool.ts`, `web-ui/src/terminal/terminal-pool-acquire.test.ts`, `web-ui/src/terminal/terminal-pool-lifecycle.test.ts`.
+
+Commit: pending
+
 ## Fix: abort timed-out hook ingests (2026-04-28)
 
 Investigating a canceled Codex task stuck on `Running 2 PostToolUse hooks` narrowed the likely failure to the hook CLI timeout path. `quarterdeck hooks ingest` wrapped the tRPC mutation in a `Promise.race(...)`, but the losing HTTP request was never aborted. If the runtime request hung or the connection stayed open after the timeout, the hook subprocess could remain alive after the CLI had already decided the attempt had timed out, and Codex would keep waiting for its native `PostToolUse` hooks to finish.

@@ -326,6 +326,22 @@ describe("terminal-pool — acquire & release", () => {
 			expect(mockSlot.requestRestore).toHaveBeenCalledOnce();
 		});
 
+		it("clears max TTL when acquiring a warm slot", () => {
+			warmup("task-1", "ws-1");
+			const slot = getSlotForTask("task-1")!;
+			const mockSlot = slot as unknown as MockSlot;
+
+			const acquired = acquireForTask("task-1", "ws-1");
+			expect(acquired).toBe(slot);
+			expect(getSlotRole(slot)).toBe("ACTIVE");
+
+			vi.advanceTimersByTime(60_000);
+
+			expect(getSlotForTask("task-1")).toBe(slot);
+			expect(getSlotRole(slot)).toBe("ACTIVE");
+			expect(mockSlot.disconnectFromTask).not.toHaveBeenCalled();
+		});
+
 		it("re-syncs when reacquiring a PREVIOUS slot", () => {
 			const slot1 = acquireForTask("task-1", "ws-1");
 			acquireForTask("task-2", "ws-1");
@@ -399,14 +415,17 @@ describe("terminal-pool — acquire & release", () => {
 			expect(getSlotForTask("task-3")).toBeNull();
 		});
 
-		it("clears warmup timeouts", () => {
+		it("clears warmup timers", () => {
 			warmup("task-1", "ws-1");
 			const slot = getSlotForTask("task-1")!;
+			const mockSlot = slot as unknown as MockSlot;
 
 			releaseAll();
+			const disconnectCallsAfterRelease = mockSlot.disconnectFromTask.mock.calls.length;
 
-			vi.advanceTimersByTime(5000);
+			vi.advanceTimersByTime(60_000);
 			expect(getSlotRole(slot)).toBe("FREE");
+			expect(mockSlot.disconnectFromTask.mock.calls.length).toBe(disconnectCallsAfterRelease);
 		});
 	});
 

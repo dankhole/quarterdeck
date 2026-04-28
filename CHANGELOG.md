@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: bound terminal prewarm slot lifetime
+
+- Terminal prewarm slots now have a 60-second absolute TTL from warmup start, so hover-created `PRELOADING` / `READY` slots cannot stay connected indefinitely when `cancelWarmup()` never arrives.
+- Mouseleave cancellation still uses the existing 3-second grace eviction, and acquiring, releasing, evicting, or clearing the pool now cancels the max-TTL timer so active and previous task terminals are not affected.
+- Added focused terminal-pool lifecycle/acquire coverage for max-TTL eviction, cancel-warmup eviction, acquisition cleanup, and `releaseAll()` timer cleanup.
+
 ### Fix: keep timed-out Codex hooks from pinning cancellation
 
 - Hook CLI timeouts now abort the underlying tRPC HTTP request instead of only racing the promise, so a timed-out `PostToolUse` ingest cannot keep a hook subprocess alive and leave Codex stuck on "Running ... hooks" during cancellation.
