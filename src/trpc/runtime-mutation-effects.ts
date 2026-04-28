@@ -2,7 +2,6 @@ import type { IRuntimeBroadcaster, RuntimeHookEvent } from "../core";
 import type { RuntimeTrpcProjectScope } from "./app-router-context";
 
 type RuntimeLogLevel = Parameters<IRuntimeBroadcaster["broadcastLogLevel"]>[0];
-type RuntimePollIntervals = Parameters<IRuntimeBroadcaster["setPollIntervals"]>[1];
 
 export type RuntimeMutationEffect =
 	| {
@@ -42,11 +41,6 @@ export type RuntimeMutationEffect =
 			projectId: string;
 	  }
 	| {
-			type: "poll_intervals_updated";
-			projectId: string;
-			intervals: RuntimePollIntervals;
-	  }
-	| {
 			type: "log_level_broadcast";
 			level: RuntimeLogLevel;
 	  };
@@ -62,7 +56,6 @@ type RuntimeMutationEffectBroadcaster = Partial<
 		| "broadcastLogLevel"
 		| "requestTaskRefresh"
 		| "requestHomeRefresh"
-		| "setPollIntervals"
 	>
 >;
 
@@ -181,19 +174,6 @@ export function createHookTransitionEffects(input: {
 	return effects;
 }
 
-export function createPollIntervalsUpdatedEffects(
-	projectId: string,
-	intervals: RuntimePollIntervals,
-): readonly RuntimeMutationEffect[] {
-	return [
-		{
-			type: "poll_intervals_updated",
-			projectId,
-			intervals,
-		},
-	];
-}
-
 export function createLogLevelBroadcastEffects(level: RuntimeLogLevel): readonly RuntimeMutationEffect[] {
 	return [
 		{
@@ -219,8 +199,6 @@ function getEffectKey(effect: RuntimeMutationEffect): string {
 			return `${effect.type}:${effect.projectId}:${effect.taskId}`;
 		case "home_git_metadata_refresh":
 			return `${effect.type}:${effect.projectId}`;
-		case "poll_intervals_updated":
-			return `${effect.type}:${effect.projectId}:${effect.intervals.focusedTaskPollMs}:${effect.intervals.backgroundTaskPollMs}:${effect.intervals.homeRepoPollMs}`;
 		case "log_level_broadcast":
 			return `${effect.type}:${effect.level}`;
 	}
@@ -277,9 +255,6 @@ export async function applyRuntimeMutationEffects(
 				break;
 			case "home_git_metadata_refresh":
 				requireBroadcasterMethod(broadcaster, "requestHomeRefresh")(effect.projectId);
-				break;
-			case "poll_intervals_updated":
-				requireBroadcasterMethod(broadcaster, "setPollIntervals")(effect.projectId, effect.intervals);
 				break;
 			case "log_level_broadcast":
 				requireBroadcasterMethod(broadcaster, "broadcastLogLevel")(effect.level);

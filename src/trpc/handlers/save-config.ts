@@ -7,13 +7,12 @@ import type { RuntimeTrpcProjectScope } from "../app-router-context";
 import {
 	applyRuntimeMutationEffects,
 	createLogLevelBroadcastEffects,
-	createPollIntervalsUpdatedEffects,
 	type RuntimeMutationEffect,
 } from "../runtime-mutation-effects";
 
 export interface SaveConfigDeps {
 	config: IRuntimeConfigProvider;
-	broadcaster: Pick<IRuntimeBroadcaster, "setPollIntervals" | "broadcastLogLevel">;
+	broadcaster: Pick<IRuntimeBroadcaster, "broadcastLogLevel">;
 	getActiveProjectId: () => string | null;
 }
 
@@ -43,15 +42,6 @@ export async function handleSaveConfig(
 		deps.config.setActiveRuntimeConfig(nextRuntimeConfig);
 	}
 	const effects: RuntimeMutationEffect[] = [];
-	if (projectScope) {
-		effects.push(
-			...createPollIntervalsUpdatedEffects(projectScope.projectId, {
-				focusedTaskPollMs: nextRuntimeConfig.focusedTaskPollMs,
-				backgroundTaskPollMs: nextRuntimeConfig.backgroundTaskPollMs,
-				homeRepoPollMs: nextRuntimeConfig.homeRepoPollMs,
-			}),
-		);
-	}
 	setLogLevel(nextRuntimeConfig.logLevel as LogLevel);
 	effects.push(...createLogLevelBroadcastEffects(nextRuntimeConfig.logLevel as LogLevel));
 	await applyRuntimeMutationEffects(deps.broadcaster, effects);

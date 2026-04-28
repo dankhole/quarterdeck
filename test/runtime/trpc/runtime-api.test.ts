@@ -117,7 +117,10 @@ const STORE_METHOD_NAMES = new Set([
  * method names are placed under `.store`; the rest stay at the top level.
  */
 function createDeps(flat: Record<string, unknown> = {}) {
-	const store: Record<string, unknown> = {};
+	const store: Record<string, unknown> = {
+		getSummary: vi.fn(() => null),
+		applyTurnCheckpoint: vi.fn(),
+	};
 	const manager: Record<string, unknown> = { store };
 	for (const [key, value] of Object.entries(flat)) {
 		if (STORE_METHOD_NAMES.has(key)) {
@@ -135,7 +138,6 @@ function createDeps(flat: Record<string, unknown> = {}) {
 		},
 		broadcaster: {
 			broadcastRuntimeProjectStateUpdated: vi.fn(),
-			setPollIntervals: vi.fn(),
 			broadcastLogLevel: vi.fn(),
 		},
 		getActiveProjectId: vi.fn(() => "project-1"),
@@ -541,6 +543,55 @@ describe("createRuntimeApi startTaskSession", () => {
 			baseRef: "main",
 			ensure: true,
 			branch: null,
+		});
+	});
+
+	it("does not wait for turn checkpoint capture before returning start response", async () => {
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(null);
+		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/existing-worktree");
+		const summary = createSummary({ taskId: "task-1", startedAt: 12_345 });
+		const checkpoint = {
+			turn: 1,
+			ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
+			commit: "1111111",
+			createdAt: 12_346,
+		};
+		let resolveCheckpoint: (value: typeof checkpoint) => void = () => {};
+		const checkpointPromise = new Promise<typeof checkpoint>((resolve) => {
+			resolveCheckpoint = resolve;
+		});
+		turnCheckpointMocks.captureTaskTurnCheckpoint.mockReturnValueOnce(checkpointPromise);
+
+		const applyTurnCheckpoint = vi.fn();
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => summary),
+			getSummary: vi.fn(() => summary),
+			applyTurnCheckpoint,
+		};
+		const api = createRuntimeApi(createDeps(terminalManager));
+
+		const responsePromise = api.startTaskSession(defaultScope, {
+			taskId: "task-1",
+			baseRef: "main",
+			prompt: "Investigate startup freeze",
+		});
+		let racedResult: Awaited<typeof responsePromise> | "timed-out";
+		try {
+			racedResult = await Promise.race([
+				responsePromise,
+				new Promise<"timed-out">((resolve) => {
+					setTimeout(() => resolve("timed-out"), 50);
+				}),
+			]);
+		} finally {
+			resolveCheckpoint(checkpoint);
+		}
+
+		expect(racedResult).toMatchObject({ ok: true });
+		expect(applyTurnCheckpoint).not.toHaveBeenCalled();
+		await responsePromise;
+		await vi.waitFor(() => {
+			expect(applyTurnCheckpoint).toHaveBeenCalledWith("task-1", checkpoint);
 		});
 	});
 

@@ -24,7 +24,7 @@ import {
 import { loadProjectBoardById } from "../state";
 import type { TerminalSessionManager } from "../terminal";
 import { applyRuntimeMutationEffects, createTaskBaseRefUpdatedEffects } from "../trpc/runtime-mutation-effects";
-import { createProjectMetadataMonitor, type ProjectMetadataPollIntervals } from "./project-metadata-monitor";
+import { createProjectMetadataMonitor } from "./project-metadata-monitor";
 import type { ProjectRegistry } from "./project-registry";
 import { RuntimeStateClientRegistry } from "./runtime-state-client-registry";
 import { RuntimeStateMessageBatcher } from "./runtime-state-message-batcher";
@@ -98,7 +98,6 @@ export interface CreateRuntimeStateHubDependencies {
 		| "getActiveRuntimeConfig"
 		| "listManagedProjects"
 	>;
-	getActivePollIntervals: () => ProjectMetadataPollIntervals;
 }
 
 export interface RuntimeStateHub extends IRuntimeBroadcaster {
@@ -228,11 +227,15 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		try {
 			const projectState = await this.deps.projectRegistry.buildProjectStateSnapshot(projectId, projectPath);
 			this.clients.broadcastToProject(projectId, buildProjectStateUpdatedMessage(projectId, projectState));
-			await this.metadataMonitor.updateProjectState({
-				projectId,
-				projectPath,
-				board: projectState.board,
-			});
+			void this.metadataMonitor
+				.updateProjectState({
+					projectId,
+					projectPath,
+					board: projectState.board,
+				})
+				.catch(() => {
+					// Metadata is eventual; the next scheduled/manual refresh will resync.
+				});
 		} catch {
 			// Ignore transient state read failures; next update will resync.
 		}
@@ -271,16 +274,16 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		this.metadataMonitor.setFocusedTask(projectId, taskId);
 	};
 
+	setDocumentVisible = (projectId: string, isDocumentVisible: boolean): void => {
+		this.metadataMonitor.setDocumentVisible(projectId, isDocumentVisible);
+	};
+
 	requestTaskRefresh = (projectId: string, taskId: string): void => {
 		this.metadataMonitor.requestTaskRefresh(projectId, taskId);
 	};
 
 	requestHomeRefresh = (projectId: string): void => {
 		this.metadataMonitor.requestHomeRefresh(projectId);
-	};
-
-	setPollIntervals = (projectId: string, intervals: ProjectMetadataPollIntervals): void => {
-		this.metadataMonitor.setPollIntervals(projectId, intervals);
 	};
 
 	broadcastLogLevel = (level: LogLevel): void => {
@@ -370,7 +373,6 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 							projectId: snapshot.projectId,
 							projectPath: snapshot.projectPath,
 							board: snapshot.projectState.board,
-							pollIntervals: this.deps.getActivePollIntervals(),
 						})
 						.catch(() => {
 							// Non-fatal: metadata arrives on the next poll cycle.

@@ -5,6 +5,8 @@ import { join } from "node:path";
 import type { RuntimeGitCherryPickResponse } from "../core";
 import { hasGitRef, resolveRepoRoot, runGit, validateGitRef } from "./git-utils";
 
+const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
+
 /**
  * Parse `git worktree list --porcelain` output to find which directory
  * has a given branch checked out. Returns null if the branch is not
@@ -97,10 +99,10 @@ async function cherryPickInDirectory(
 		};
 	}
 
-	const pickResult = await runGit(targetDir, ["cherry-pick", "--no-edit", commitHash]);
+	const pickResult = await runGit(targetDir, ["cherry-pick", "--no-edit", commitHash], USER_GIT_ACTION_OPTIONS);
 	if (!pickResult.ok) {
 		// Abort to restore clean state
-		await runGit(targetDir, ["cherry-pick", "--abort"]);
+		await runGit(targetDir, ["cherry-pick", "--abort"], USER_GIT_ACTION_OPTIONS);
 		return {
 			ok: false,
 			commitHash,
@@ -131,7 +133,7 @@ async function cherryPickViaTempWorktree(
 	const tempPath = join(tmpdir(), `qd-cherry-pick-${randomUUID()}`);
 
 	// Create a temp worktree checked out to the target branch
-	const addResult = await runGit(repoRoot, ["worktree", "add", tempPath, targetBranch]);
+	const addResult = await runGit(repoRoot, ["worktree", "add", tempPath, targetBranch], USER_GIT_ACTION_OPTIONS);
 	if (!addResult.ok) {
 		return {
 			ok: false,
@@ -143,9 +145,9 @@ async function cherryPickViaTempWorktree(
 	}
 
 	try {
-		const pickResult = await runGit(tempPath, ["cherry-pick", "--no-edit", commitHash]);
+		const pickResult = await runGit(tempPath, ["cherry-pick", "--no-edit", commitHash], USER_GIT_ACTION_OPTIONS);
 		if (!pickResult.ok) {
-			await runGit(tempPath, ["cherry-pick", "--abort"]);
+			await runGit(tempPath, ["cherry-pick", "--abort"], USER_GIT_ACTION_OPTIONS);
 			return {
 				ok: false,
 				commitHash,
@@ -167,6 +169,6 @@ async function cherryPickViaTempWorktree(
 		};
 	} finally {
 		// Always clean up the temp worktree
-		await runGit(repoRoot, ["worktree", "remove", "--force", tempPath]);
+		await runGit(repoRoot, ["worktree", "remove", "--force", tempPath], USER_GIT_ACTION_OPTIONS);
 	}
 }

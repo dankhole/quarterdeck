@@ -5,6 +5,17 @@ import { createGitProcessEnv } from "../core";
 
 const execFileAsync = promisify(execFile);
 const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
+export const GIT_COMMAND_TIMEOUTS_MS = {
+	default: 5_000,
+	inspection: 30_000,
+	metadata: 5_000,
+	remoteFetch: 30_000,
+	checkpoint: 30_000,
+	sync: 5_000,
+	userAction: 120_000,
+} as const;
+
+export type GitCommandTimeoutClass = keyof typeof GIT_COMMAND_TIMEOUTS_MS;
 
 interface GitCommandResult {
 	ok: boolean;
@@ -13,12 +24,23 @@ interface GitCommandResult {
 	output: string;
 	error: string | null;
 	exitCode: number;
+	timedOut: boolean;
 }
 
 export interface RunGitOptions {
 	trimStdout?: boolean;
 	env?: NodeJS.ProcessEnv;
+	timeoutMs?: number;
+	timeoutClass?: GitCommandTimeoutClass;
 }
+
+export interface RunGitSyncOptions {
+	timeoutMs?: number;
+	timeoutClass?: GitCommandTimeoutClass;
+}
+
+export const GIT_INSPECTION_OPTIONS = { timeoutClass: "inspection" } as const satisfies RunGitOptions;
+export const GIT_CHECKPOINT_OPTIONS = { timeoutClass: "checkpoint" } as const satisfies RunGitOptions;
 
 function normalizeProcessExitCode(code: unknown): number {
 	if (typeof code === "number" && Number.isFinite(code)) {
@@ -33,6 +55,29 @@ function normalizeProcessExitCode(code: unknown): number {
 	return -1;
 }
 
+function resolveGitTimeoutMs(options: { timeoutMs?: number; timeoutClass?: GitCommandTimeoutClass }): number {
+	if (typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0) {
+		return Math.floor(options.timeoutMs);
+	}
+	return GIT_COMMAND_TIMEOUTS_MS[options.timeoutClass ?? "default"];
+}
+
+function isTimeoutError(error: {
+	code?: string | number | null;
+	killed?: unknown;
+	signal?: unknown;
+	message?: unknown;
+}): boolean {
+	if (error.code === "ETIMEDOUT") {
+		return true;
+	}
+	if (error.killed === true && error.signal === "SIGTERM") {
+		return true;
+	}
+	const message = typeof error.message === "string" ? error.message.toLowerCase() : "";
+	return message.includes("timed out") || message.includes("timeout");
+}
+
 export async function runGit(cwd: string, args: string[], options: RunGitOptions = {}): Promise<GitCommandResult> {
 	try {
 		const fullArgs = ["-c", "core.quotepath=false", ...args];
@@ -40,6 +85,7 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 			cwd,
 			encoding: "utf8",
 			maxBuffer: GIT_MAX_BUFFER_BYTES,
+			timeout: resolveGitTimeoutMs(options),
 			env: options.env || createGitProcessEnv(),
 		});
 		const normalizedStdout = String(stdout ?? "").trim();
@@ -51,6 +97,7 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 			output: [normalizedStdout, normalizedStderr].filter(Boolean).join("\n"),
 			error: null,
 			exitCode: 0,
+			timedOut: false,
 		};
 	} catch (error) {
 		const candidate = error as {
@@ -58,12 +105,16 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 			stdout?: unknown;
 			stderr?: unknown;
 			message?: unknown;
+			killed?: unknown;
+			signal?: unknown;
 		};
 		const rawStdout = String(candidate.stdout ?? "");
 		const stdout = options.trimStdout === false ? rawStdout : rawStdout.trim();
 		const stderr = String(candidate.stderr ?? "").trim();
 		const message = String(candidate.message ?? "").trim();
-		const errorMessage = stderr || message || "Unknown git error";
+		const timedOut = isTimeoutError(candidate);
+		const timeoutMessage = `Git command timed out after ${resolveGitTimeoutMs(options)}ms`;
+		const errorMessage = timedOut ? stderr || timeoutMessage : stderr || message || "Unknown git error";
 		const exitCode = normalizeProcessExitCode(candidate.code);
 
 		return {
@@ -73,6 +124,7 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 			output: [stdout, stderr].filter(Boolean).join("\n"),
 			error: errorMessage,
 			exitCode,
+			timedOut,
 		};
 	}
 }
@@ -124,16 +176,20 @@ export async function getCommitsBehindBase(
 	// Check both origin and local refs, return whichever is further ahead.
 	// Origin may be stale (no fetch), local may be stale (no pull) — take the max.
 	const [originMergeBase, localMergeBase] = await Promise.all([
-		runGit(cwd, ["--no-optional-locks", "merge-base", "HEAD", originRef]),
-		runGit(cwd, ["--no-optional-locks", "merge-base", "HEAD", baseRef]),
+		runGit(cwd, ["--no-optional-locks", "merge-base", "HEAD", originRef], { timeoutClass: "metadata" }),
+		runGit(cwd, ["--no-optional-locks", "merge-base", "HEAD", baseRef], { timeoutClass: "metadata" }),
 	]);
 
 	const [originCount, localCount] = await Promise.all([
 		originMergeBase.ok
-			? runGit(cwd, ["--no-optional-locks", "rev-list", "--count", `${originMergeBase.stdout}..${originRef}`])
+			? runGit(cwd, ["--no-optional-locks", "rev-list", "--count", `${originMergeBase.stdout}..${originRef}`], {
+					timeoutClass: "metadata",
+				})
 			: null,
 		localMergeBase.ok
-			? runGit(cwd, ["--no-optional-locks", "rev-list", "--count", `${localMergeBase.stdout}..${baseRef}`])
+			? runGit(cwd, ["--no-optional-locks", "rev-list", "--count", `${localMergeBase.stdout}..${baseRef}`], {
+					timeoutClass: "metadata",
+				})
 			: null,
 	]);
 	const originBehind = originCount?.ok ? parseInt(originCount.stdout, 10) || 0 : 0;
@@ -183,7 +239,7 @@ export async function listFilesAtRef(cwd: string, ref: string): Promise<string[]
 	if (!validateGitRef(ref)) {
 		return [];
 	}
-	const result = await runGit(cwd, ["ls-tree", "-r", "--name-only", ref, "--"]);
+	const result = await runGit(cwd, ["ls-tree", "-r", "--name-only", ref, "--"], GIT_INSPECTION_OPTIONS);
 	if (!result.ok) {
 		return [];
 	}
@@ -202,7 +258,10 @@ export async function getFileContentAtRef(
 	if (!validateGitRef(ref) || !validateGitPath(path)) {
 		return null;
 	}
-	const result = await runGit(cwd, ["show", `${ref}:${path}`], { trimStdout: false });
+	const result = await runGit(cwd, ["show", `${ref}:${path}`], {
+		trimStdout: false,
+		...GIT_INSPECTION_OPTIONS,
+	});
 	if (!result.ok) {
 		return null;
 	}
@@ -376,12 +435,11 @@ export async function resolveBaseRefForBranch(
 	projectDefaultBaseRef: string,
 ): Promise<string | null> {
 	// 1. Check upstream tracking ref
-	const upstreamResult = await runGit(cwd, [
-		"--no-optional-locks",
-		"rev-parse",
-		"--abbrev-ref",
-		`${currentBranch}@{upstream}`,
-	]);
+	const upstreamResult = await runGit(
+		cwd,
+		["--no-optional-locks", "rev-parse", "--abbrev-ref", `${currentBranch}@{upstream}`],
+		{ timeoutClass: "metadata" },
+	);
 	if (upstreamResult.ok && upstreamResult.stdout) {
 		const upstream = upstreamResult.stdout;
 		// Strip "origin/" prefix to get the local branch name
@@ -409,14 +467,15 @@ export async function resolveBaseRefForBranch(
 	// 3. For each candidate, find distance from merge-base to HEAD
 	const distanceChecks = await Promise.all(
 		[...candidates].map(async (candidate) => {
-			const mbResult = await runGit(cwd, ["--no-optional-locks", "merge-base", "HEAD", candidate]);
+			const mbResult = await runGit(cwd, ["--no-optional-locks", "merge-base", "HEAD", candidate], {
+				timeoutClass: "metadata",
+			});
 			if (!mbResult.ok) return null;
-			const countResult = await runGit(cwd, [
-				"--no-optional-locks",
-				"rev-list",
-				"--count",
-				`${mbResult.stdout}..HEAD`,
-			]);
+			const countResult = await runGit(
+				cwd,
+				["--no-optional-locks", "rev-list", "--count", `${mbResult.stdout}..HEAD`],
+				{ timeoutClass: "metadata" },
+			);
 			if (!countResult.ok) return null;
 			const distance = parseInt(countResult.stdout, 10);
 			if (!Number.isFinite(distance)) return null;
@@ -438,11 +497,12 @@ export async function resolveBaseRefForBranch(
  * Synchronous git command execution — returns trimmed stdout or null on failure.
  * Use sparingly; prefer the async {@link runGit} for most operations.
  */
-export function runGitSync(cwd: string, args: string[]): string | null {
+export function runGitSync(cwd: string, args: string[], options: RunGitSyncOptions = {}): string | null {
 	const result = spawnSync("git", args, {
 		cwd,
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "ignore"],
+		timeout: resolveGitTimeoutMs({ timeoutClass: options.timeoutClass ?? "sync", timeoutMs: options.timeoutMs }),
 		env: createGitProcessEnv(),
 	});
 	if (result.status !== 0 || typeof result.stdout !== "string") {

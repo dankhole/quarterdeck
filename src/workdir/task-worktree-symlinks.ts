@@ -7,6 +7,7 @@ import { listTurbopackNodeModulesSymlinkSkipPaths } from "./task-worktree-turbop
 
 const QUARTERDECK_MANAGED_EXCLUDE_BLOCK_START = "# quarterdeck-managed-symlinked-ignored-paths:start";
 const QUARTERDECK_MANAGED_EXCLUDE_BLOCK_END = "# quarterdeck-managed-symlinked-ignored-paths:end";
+const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 
 const SYMLINK_PATH_SEGMENT_BLACKLIST = new Set([
 	".git",
@@ -94,6 +95,7 @@ async function listIgnoredPaths(repoPath: string): Promise<string[]> {
 	const output = await getGitStdout(
 		["ls-files", "--others", "--ignored", "--exclude-per-directory=.gitignore", "--directory"],
 		repoPath,
+		USER_GIT_ACTION_OPTIONS,
 	);
 	return output
 		.split("\n")
@@ -130,7 +132,11 @@ function stripManagedExcludeBlock(content: string): string {
 }
 
 async function syncManagedIgnoredPathExcludes(repoPath: string, relativePaths: string[]): Promise<void> {
-	const excludePathOutput = await getGitStdout(["rev-parse", "--git-path", "info/exclude"], repoPath);
+	const excludePathOutput = await getGitStdout(
+		["rev-parse", "--git-path", "info/exclude"],
+		repoPath,
+		USER_GIT_ACTION_OPTIONS,
+	);
 	if (!excludePathOutput) {
 		return;
 	}
@@ -197,13 +203,11 @@ async function worktreeHasConfiguredSubmodules(worktreePath: string): Promise<bo
 		return false;
 	}
 
-	const result = await runGit(worktreePath, [
-		"config",
-		"--file",
-		gitmodulesPath,
-		"--get-regexp",
-		"^submodule\\..*\\.path$",
-	]);
+	const result = await runGit(
+		worktreePath,
+		["config", "--file", gitmodulesPath, "--get-regexp", "^submodule\\..*\\.path$"],
+		USER_GIT_ACTION_OPTIONS,
+	);
 	return result.ok && result.stdout.length > 0;
 }
 
@@ -212,5 +216,5 @@ export async function initializeSubmodulesIfNeeded(worktreePath: string): Promis
 		return;
 	}
 
-	await getGitStdout(["submodule", "update", "--init", "--recursive"], worktreePath);
+	await getGitStdout(["submodule", "update", "--init", "--recursive"], worktreePath, USER_GIT_ACTION_OPTIONS);
 }

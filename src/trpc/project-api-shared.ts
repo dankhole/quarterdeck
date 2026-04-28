@@ -26,6 +26,7 @@ export interface CreateProjectApiDependencies {
 		| "broadcastRuntimeProjectsUpdated"
 		| "broadcastTaskTitleUpdated"
 		| "setFocusedTask"
+		| "setDocumentVisible"
 		| "requestTaskRefresh"
 		| "requestHomeRefresh"
 	>;

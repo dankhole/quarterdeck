@@ -252,6 +252,11 @@ export const projectRouter = t.router({
 	setFocusedTask: projectProcedure.input(z.object({ taskId: z.string().nullable() })).mutation(({ ctx, input }) => {
 		ctx.projectApi.setFocusedTask(ctx.projectScope, input.taskId);
 	}),
+	setDocumentVisible: projectProcedure
+		.input(z.object({ isDocumentVisible: z.boolean() }))
+		.mutation(({ ctx, input }) => {
+			ctx.projectApi.setDocumentVisible(ctx.projectScope, input.isDocumentVisible);
+		}),
 	getWorkdirChanges: projectProcedure.output(runtimeWorkdirChangesResponseSchema).query(async ({ ctx }) => {
 		return await ctx.projectApi.loadWorkdirChanges(ctx.projectScope);
 	}),

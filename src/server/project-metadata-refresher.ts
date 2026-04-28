@@ -22,6 +22,7 @@ interface QueuedFullRefreshState {
 
 export interface CreateProjectMetadataRefresherDependencies {
 	projectId: string;
+	limitMetadataProbe: <T>(probe: () => Promise<T>) => Promise<T>;
 	limitTaskProbe: <T>(probe: () => Promise<T>) => Promise<T>;
 	onMetadataUpdated: (projectId: string, metadata: RuntimeProjectMetadata) => void;
 	onTaskBaseRefChanged?: (projectId: string, taskId: string, newBaseRef: string) => void;
@@ -87,10 +88,12 @@ export class ProjectMetadataRefresher {
 			async (invalidate) => {
 				const previousSnapshot = this.snapshot;
 				const currentHomeGit = this.deps.getHomeGit();
-				const nextHomeGit = await loadHomeGitMetadata(
-					this.deps.getProjectPath(),
-					invalidate ? { ...currentHomeGit, stateToken: null } : currentHomeGit,
-				);
+				const nextHomeGit = await this.deps.limitMetadataProbe(async () => {
+					return await loadHomeGitMetadata(
+						this.deps.getProjectPath(),
+						invalidate ? { ...currentHomeGit, stateToken: null } : currentHomeGit,
+					);
+				});
 				this.deps.commitHomeGit(nextHomeGit);
 				this.broadcastIfChanged(previousSnapshot);
 			},
@@ -166,7 +169,7 @@ export class ProjectMetadataRefresher {
 		if (!commit.applied) {
 			return;
 		}
-		await this.checkForBranchChanges(taskId, commit.previous, next);
+		await this.checkForBranchChanges(taskId, commit.previous, next, this.deps.getTaskFreshness(taskId));
 		this.broadcastIfChanged(previousSnapshot);
 	}
 
@@ -180,7 +183,9 @@ export class ProjectMetadataRefresher {
 		const taskFreshnessByTaskId = new Map(
 			trackedTasks.map((task) => [task.taskId, this.deps.getTaskFreshness(task.taskId)] as const),
 		);
-		const nextHomeGit = await loadHomeGitMetadata(projectPath, this.deps.getHomeGit());
+		const nextHomeGit = await this.deps.limitMetadataProbe(async () => {
+			return await loadHomeGitMetadata(projectPath, this.deps.getHomeGit());
+		});
 		// Home git intentionally stays last-writer-wins: it is one project-wide value,
 		// so the targeted-vs-full stale-overwrite problem we guard for tasks does not
 		// apply in the same per-entity way here.
@@ -210,7 +215,7 @@ export class ProjectMetadataRefresher {
 				bumpVersion: false,
 			});
 			if (commit.applied) {
-				void this.checkForBranchChanges(taskId, commit.previous, next);
+				void this.checkForBranchChanges(taskId, commit.previous, next, this.deps.getTaskFreshness(taskId));
 			}
 		}
 
@@ -225,6 +230,7 @@ export class ProjectMetadataRefresher {
 		taskId: string,
 		previous: CachedTaskWorktreeMetadata | null,
 		next: CachedTaskWorktreeMetadata,
+		expectedFreshness: number,
 	): Promise<void> {
 		if (!this.deps.onTaskBaseRefChanged) {
 			return;
@@ -242,12 +248,34 @@ export class ProjectMetadataRefresher {
 		if (!task) {
 			return;
 		}
+		if (!this.isTaskMetadataStillCurrent(taskId, next, expectedFreshness)) {
+			return;
+		}
 
 		const projectDefault = this.deps.getProjectDefaultBaseRef?.(this.deps.projectId) ?? "";
-		const resolved = await resolveBaseRefForBranch(next.data.path, newBranch, projectDefault);
-		if (resolved && resolved !== task.baseRef) {
+		const resolved = await this.deps.limitMetadataProbe(async () => {
+			return await resolveBaseRefForBranch(next.data.path, newBranch, projectDefault);
+		});
+		const latestTask = this.deps.getTrackedTask(taskId);
+		if (!latestTask || !this.isTaskMetadataStillCurrent(taskId, next, expectedFreshness)) {
+			return;
+		}
+		if (resolved && resolved !== latestTask.baseRef) {
 			this.deps.onTaskBaseRefChanged(this.deps.projectId, taskId, resolved);
 		}
+	}
+
+	private isTaskMetadataStillCurrent(
+		taskId: string,
+		expected: CachedTaskWorktreeMetadata,
+		expectedFreshness: number,
+	): boolean {
+		const current = this.deps.getTaskMetadata(taskId);
+		return (
+			this.deps.getTaskFreshness(taskId) === expectedFreshness &&
+			current?.data.path === expected.data.path &&
+			current.lastKnownBranch === expected.lastKnownBranch
+		);
 	}
 
 	private broadcastIfChanged(previousSnapshot: RuntimeProjectMetadata): void {

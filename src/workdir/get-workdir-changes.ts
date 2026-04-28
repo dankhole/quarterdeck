@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { RuntimeWorkdirChangesResponse, RuntimeWorkdirFileChange, RuntimeWorkdirFileStatus } from "../core";
 import type { FileFingerprint } from "./file-fingerprint";
 import { buildFileFingerprints } from "./file-fingerprint";
-import { countLines, getGitStdout, parseNumstatPerFile, resolveRepoRoot } from "./git-utils";
+import { countLines, GIT_INSPECTION_OPTIONS, getGitStdout, parseNumstatPerFile, resolveRepoRoot } from "./git-utils";
 
 const WORKDIR_CHANGES_CACHE_MAX_ENTRIES = 128;
 
@@ -152,7 +152,7 @@ function pruneWorkdirChangesCache(): void {
 
 async function readHeadFile(repoRoot: string, path: string): Promise<string | null> {
 	try {
-		return await getGitStdout(["show", `HEAD:${path}`], repoRoot);
+		return await getGitStdout(["show", `HEAD:${path}`], repoRoot, GIT_INSPECTION_OPTIONS);
 	} catch {
 		return null;
 	}
@@ -160,7 +160,7 @@ async function readHeadFile(repoRoot: string, path: string): Promise<string | nu
 
 async function readFileAtRef(repoRoot: string, ref: string, path: string): Promise<string | null> {
 	try {
-		return await getGitStdout(["show", `${ref}:${path}`], repoRoot);
+		return await getGitStdout(["show", `${ref}:${path}`], repoRoot, GIT_INSPECTION_OPTIONS);
 	} catch {
 		return null;
 	}
@@ -177,7 +177,7 @@ async function readWorkingTreeFile(repoRoot: string, path: string): Promise<stri
 /** Run `git diff --numstat <args>` in batch and return per-file stats. */
 async function batchReadNumstat(repoRoot: string, args: string[]): Promise<Map<string, DiffStat>> {
 	try {
-		const output = await getGitStdout(["diff", "--numstat", ...args], repoRoot);
+		const output = await getGitStdout(["diff", "--numstat", ...args], repoRoot, GIT_INSPECTION_OPTIONS);
 		return parseNumstatPerFile(output);
 	} catch {
 		return new Map();
@@ -220,9 +220,9 @@ export async function getWorkdirChanges(cwd: string): Promise<RuntimeWorkdirChan
 	const repoRoot = await resolveRepoRoot(cwd);
 
 	const [trackedChangesOutput, untrackedOutput, headCommitOutput] = await Promise.all([
-		getGitStdout(["diff", "--name-status", "HEAD", "--"], repoRoot),
-		getGitStdout(["ls-files", "--others", "--exclude-standard"], repoRoot),
-		getGitStdout(["rev-parse", "--verify", "HEAD"], repoRoot).catch(() => ""),
+		getGitStdout(["diff", "--name-status", "HEAD", "--"], repoRoot, GIT_INSPECTION_OPTIONS),
+		getGitStdout(["ls-files", "--others", "--exclude-standard"], repoRoot, GIT_INSPECTION_OPTIONS),
+		getGitStdout(["rev-parse", "--verify", "HEAD"], repoRoot, GIT_INSPECTION_OPTIONS).catch(() => ""),
 	]);
 	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
 	const untrackedPaths = untrackedOutput
@@ -291,8 +291,8 @@ export async function getWorkdirChangesBetweenRefs(
 
 	// Resolve refs to commit hashes so branch names that advance don't serve stale cache.
 	const [fromHash, toHash] = await Promise.all([
-		getGitStdout(["rev-parse", input.fromRef], repoRoot).catch(() => input.fromRef),
-		getGitStdout(["rev-parse", input.toRef], repoRoot).catch(() => input.toRef),
+		getGitStdout(["rev-parse", input.fromRef], repoRoot, GIT_INSPECTION_OPTIONS).catch(() => input.fromRef),
+		getGitStdout(["rev-parse", input.toRef], repoRoot, GIT_INSPECTION_OPTIONS).catch(() => input.toRef),
 	]);
 	const cacheKey = `${repoRoot}::${fromHash}::${toHash}::${threeDot ? "3dot" : "2dot"}`;
 	const cached = refChangesCacheByKey.get(cacheKey);
@@ -307,6 +307,7 @@ export async function getWorkdirChangesBetweenRefs(
 	const trackedChangesOutput = await getGitStdout(
 		["diff", "--name-status", "--find-renames", ...diffSpec, "--"],
 		repoRoot,
+		GIT_INSPECTION_OPTIONS,
 	);
 	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
 	if (trackedChanges.length === 0) {
@@ -366,14 +367,22 @@ export async function getWorkdirChangesFromRef(input: ChangesFromRefInput): Prom
 	// This shows only changes introduced since divergence, excluding base-side advancement.
 	let effectiveFromRef = input.fromRef;
 	if (threeDot) {
-		const mergeBase = await getGitStdout(["merge-base", input.fromRef, "HEAD"], repoRoot).catch(() => null);
+		const mergeBase = await getGitStdout(
+			["merge-base", input.fromRef, "HEAD"],
+			repoRoot,
+			GIT_INSPECTION_OPTIONS,
+		).catch(() => null);
 		if (mergeBase) effectiveFromRef = mergeBase.trim();
 	}
 
 	const [trackedChangesOutput, untrackedOutput, fromHash] = await Promise.all([
-		getGitStdout(["diff", "--name-status", "--find-renames", effectiveFromRef, "--"], repoRoot),
-		getGitStdout(["ls-files", "--others", "--exclude-standard"], repoRoot),
-		getGitStdout(["rev-parse", effectiveFromRef], repoRoot).catch(() => effectiveFromRef),
+		getGitStdout(
+			["diff", "--name-status", "--find-renames", effectiveFromRef, "--"],
+			repoRoot,
+			GIT_INSPECTION_OPTIONS,
+		),
+		getGitStdout(["ls-files", "--others", "--exclude-standard"], repoRoot, GIT_INSPECTION_OPTIONS),
+		getGitStdout(["rev-parse", effectiveFromRef], repoRoot, GIT_INSPECTION_OPTIONS).catch(() => effectiveFromRef),
 	]);
 	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
 	const untrackedPaths = untrackedOutput
@@ -468,7 +477,11 @@ export async function getWorkdirFileDiff(
 	let effectiveFromRef = input.fromRef;
 	if (input.threeDot && input.fromRef) {
 		const targetRef = input.toRef ?? "HEAD";
-		const mergeBase = await getGitStdout(["merge-base", input.fromRef, targetRef], repoRoot).catch(() => null);
+		const mergeBase = await getGitStdout(
+			["merge-base", input.fromRef, targetRef],
+			repoRoot,
+			GIT_INSPECTION_OPTIONS,
+		).catch(() => null);
 		if (mergeBase) effectiveFromRef = mergeBase.trim();
 	}
 

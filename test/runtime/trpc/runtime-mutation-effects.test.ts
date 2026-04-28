@@ -6,7 +6,6 @@ import {
 	createGitMetadataRefreshEffects,
 	createHookTransitionEffects,
 	createLogLevelBroadcastEffects,
-	createPollIntervalsUpdatedEffects,
 	createTaskBaseRefUpdatedEffects,
 } from "../../../src/trpc/runtime-mutation-effects";
 
@@ -87,24 +86,11 @@ describe("runtime mutation effects", () => {
 
 	it("delivers config/debug effects through the same effect layer", async () => {
 		const broadcaster = {
-			setPollIntervals: vi.fn(),
 			broadcastLogLevel: vi.fn(),
 		};
 
-		await applyRuntimeMutationEffects(broadcaster, [
-			...createPollIntervalsUpdatedEffects("project-1", {
-				focusedTaskPollMs: 1000,
-				backgroundTaskPollMs: 2000,
-				homeRepoPollMs: 3000,
-			}),
-			...createLogLevelBroadcastEffects("debug"),
-		]);
+		await applyRuntimeMutationEffects(broadcaster, createLogLevelBroadcastEffects("debug"));
 
-		expect(broadcaster.setPollIntervals).toHaveBeenCalledWith("project-1", {
-			focusedTaskPollMs: 1000,
-			backgroundTaskPollMs: 2000,
-			homeRepoPollMs: 3000,
-		});
 		expect(broadcaster.broadcastLogLevel).toHaveBeenCalledWith("debug");
 	});
 });

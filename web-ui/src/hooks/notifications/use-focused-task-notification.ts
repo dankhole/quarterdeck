@@ -15,7 +15,7 @@ export function useFocusedTaskNotification({
 	selectedTaskId,
 }: UseFocusedTaskNotificationInput): void {
 	useEffect(() => {
-		if (!currentProjectId || selectedTaskId === null) {
+		if (!currentProjectId) {
 			return;
 		}
 		getRuntimeTrpcClient(currentProjectId)
@@ -24,4 +24,17 @@ export function useFocusedTaskNotification({
 				// Fire-and-forget — polling priority is non-critical.
 			});
 	}, [currentProjectId, selectedTaskId]);
+
+	useEffect(() => {
+		if (!currentProjectId) {
+			return;
+		}
+		return () => {
+			getRuntimeTrpcClient(currentProjectId)
+				.project.setFocusedTask.mutate({ taskId: null })
+				.catch(() => {
+					// Fire-and-forget — polling priority is non-critical.
+				});
+		};
+	}, [currentProjectId]);
 }

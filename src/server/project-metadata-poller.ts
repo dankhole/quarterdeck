@@ -1,7 +1,16 @@
 import type { ProjectMetadataPollIntervals } from "./project-metadata-loaders";
 
+const HIDDEN_HOME_REPO_POLL_MS = 60_000;
+const HIDDEN_BACKGROUND_TASK_POLL_MS = 60_000;
+
+interface ProjectMetadataPollState {
+	pollIntervals: ProjectMetadataPollIntervals;
+	isDocumentVisible: boolean;
+	hasFocusedTask: boolean;
+}
+
 export interface CreateProjectMetadataPollerDependencies {
-	getPollIntervals: () => ProjectMetadataPollIntervals;
+	getPollState: () => ProjectMetadataPollState;
 	refreshHome: () => Promise<void>;
 	refreshFocusedTask: () => Promise<void>;
 	refreshBackgroundTasks: () => Promise<void>;
@@ -17,21 +26,29 @@ export class ProjectMetadataPoller {
 	start(): void {
 		this.stop();
 
-		const pollIntervals = this.deps.getPollIntervals();
+		const { pollIntervals, isDocumentVisible, hasFocusedTask } = this.deps.getPollState();
+		const homePollMs = isDocumentVisible
+			? pollIntervals.homeRepoPollMs
+			: Math.max(pollIntervals.homeRepoPollMs, HIDDEN_HOME_REPO_POLL_MS);
+		const backgroundPollMs = isDocumentVisible
+			? pollIntervals.backgroundTaskPollMs
+			: Math.max(pollIntervals.backgroundTaskPollMs, HIDDEN_BACKGROUND_TASK_POLL_MS);
 
 		this.homeTimer = setInterval(() => {
 			void this.deps.refreshHome();
-		}, pollIntervals.homeRepoPollMs);
+		}, homePollMs);
 		this.homeTimer.unref();
 
-		this.focusedTaskTimer = setInterval(() => {
-			void this.deps.refreshFocusedTask();
-		}, pollIntervals.focusedTaskPollMs);
-		this.focusedTaskTimer.unref();
+		if (isDocumentVisible && hasFocusedTask) {
+			this.focusedTaskTimer = setInterval(() => {
+				void this.deps.refreshFocusedTask();
+			}, pollIntervals.focusedTaskPollMs);
+			this.focusedTaskTimer.unref();
+		}
 
 		this.backgroundTaskTimer = setInterval(() => {
 			void this.deps.refreshBackgroundTasks();
-		}, pollIntervals.backgroundTaskPollMs);
+		}, backgroundPollMs);
 		this.backgroundTaskTimer.unref();
 	}
 

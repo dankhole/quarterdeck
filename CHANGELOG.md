@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: harden git metadata polling and command isolation
+
+- Git metadata polling now uses fixed, less aggressive intervals with visibility-aware focused-task polling, hidden-tab backoff, and no user-facing settings for poll cadence.
+- Metadata refresh, remote fetch, and project-state broadcast paths now avoid blocking snapshots on git probes, with per-project and global concurrency limits to isolate slow repositories.
+- Git commands now use explicit timeout classes for metadata, remote fetches, inspection reads, checkpoints, and user actions, and start-time turn checkpoints no longer block task-session startup.
+
 ### Fix: stop PTY output from driving session-summary churn
 
 - Task and shell PTY output no longer updates `lastOutputAt` on every chunk, so idle terminal redraws do not emit full runtime session summaries or fan out through browser session, notification, and project-summary state.

@@ -5,7 +5,7 @@ import type {
 	RuntimeGitRef,
 	RuntimeGitRefsResponse,
 } from "../core";
-import { runGit } from "./git-utils";
+import { GIT_INSPECTION_OPTIONS, runGit } from "./git-utils";
 
 const LOG_FIELD_SEPARATOR = "\x1f";
 const LOG_RECORD_SEPARATOR = "\x1e";
@@ -43,7 +43,7 @@ export async function getGitLog(options: {
 }): Promise<RuntimeGitLogResponse> {
 	const { cwd, ref, refs, maxCount = 200, skip = 0 } = options;
 
-	const repoRootResult = await runGit(cwd, ["rev-parse", "--show-toplevel"]);
+	const repoRootResult = await runGit(cwd, ["rev-parse", "--show-toplevel"], GIT_INSPECTION_OPTIONS);
 	if (!repoRootResult.ok || !repoRootResult.stdout) {
 		return { ok: false, commits: [], totalCount: 0, error: "No git repository detected." };
 	}
@@ -63,7 +63,7 @@ export async function getGitLog(options: {
 		logArgs.push(...requestedRefs);
 	}
 
-	const logResult = await runGit(repoRoot, logArgs);
+	const logResult = await runGit(repoRoot, logArgs, GIT_INSPECTION_OPTIONS);
 	if (!logResult.ok) {
 		return { ok: false, commits: [], totalCount: 0, error: logResult.error ?? "Failed to read git log." };
 	}
@@ -91,12 +91,11 @@ export async function getGitLog(options: {
 		}
 	}
 
-	const countResult = await runGit(repoRoot, [
-		"--no-optional-locks",
-		"rev-list",
-		"--count",
-		...(requestedRefs.length > 0 ? requestedRefs : ["HEAD"]),
-	]);
+	const countResult = await runGit(
+		repoRoot,
+		["--no-optional-locks", "rev-list", "--count", ...(requestedRefs.length > 0 ? requestedRefs : ["HEAD"])],
+		GIT_INSPECTION_OPTIONS,
+	);
 	const totalCount = countResult.ok ? Number.parseInt(countResult.stdout, 10) || commits.length : commits.length;
 
 	return { ok: true, commits, totalCount };
@@ -117,21 +116,25 @@ function parseTrackCounts(trackDescriptor: string | null): { ahead?: number; beh
 }
 
 export async function getGitRefs(cwd: string): Promise<RuntimeGitRefsResponse> {
-	const repoRootResult = await runGit(cwd, ["rev-parse", "--show-toplevel"]);
+	const repoRootResult = await runGit(cwd, ["rev-parse", "--show-toplevel"], GIT_INSPECTION_OPTIONS);
 	if (!repoRootResult.ok || !repoRootResult.stdout) {
 		return { ok: false, refs: [], error: "No git repository detected." };
 	}
 	const repoRoot = repoRootResult.stdout;
 
 	const [headResult, branchResult, headRefResult] = await Promise.all([
-		runGit(repoRoot, ["rev-parse", "HEAD"]),
-		runGit(repoRoot, [
-			"for-each-ref",
-			"--format=%(refname)\x1f%(refname:short)\x1f%(objectname)\x1f%(upstream:short)\x1f%(upstream:track)",
-			"refs/heads/",
-			"refs/remotes/",
-		]),
-		runGit(repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]),
+		runGit(repoRoot, ["rev-parse", "HEAD"], GIT_INSPECTION_OPTIONS),
+		runGit(
+			repoRoot,
+			[
+				"for-each-ref",
+				"--format=%(refname)\x1f%(refname:short)\x1f%(objectname)\x1f%(upstream:short)\x1f%(upstream:track)",
+				"refs/heads/",
+				"refs/remotes/",
+			],
+			GIT_INSPECTION_OPTIONS,
+		),
+		runGit(repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"], GIT_INSPECTION_OPTIONS),
 	]);
 
 	const headCommit = headResult.ok ? headResult.stdout : null;
@@ -231,8 +234,8 @@ async function buildCommitRelationMap(repoRoot: string, refs: string[]): Promise
 	}
 
 	const [selectedOnlyResult, upstreamOnlyResult] = await Promise.all([
-		runGit(repoRoot, ["--no-optional-locks", "rev-list", selectedRef, "--not", upstreamRef]),
-		runGit(repoRoot, ["--no-optional-locks", "rev-list", upstreamRef, "--not", selectedRef]),
+		runGit(repoRoot, ["--no-optional-locks", "rev-list", selectedRef, "--not", upstreamRef], GIT_INSPECTION_OPTIONS),
+		runGit(repoRoot, ["--no-optional-locks", "rev-list", upstreamRef, "--not", selectedRef], GIT_INSPECTION_OPTIONS),
 	]);
 
 	if (!selectedOnlyResult.ok || !upstreamOnlyResult.ok) {
@@ -401,17 +404,26 @@ export async function getCommitDiff(options: {
 }): Promise<RuntimeGitCommitDiffResponse> {
 	const { cwd, commitHash } = options;
 
-	const repoRootResult = await runGit(cwd, ["rev-parse", "--show-toplevel"]);
+	const repoRootResult = await runGit(cwd, ["rev-parse", "--show-toplevel"], GIT_INSPECTION_OPTIONS);
 	if (!repoRootResult.ok || !repoRootResult.stdout) {
 		return { ok: false, commitHash, files: [], error: "No git repository detected." };
 	}
 	const repoRoot = repoRootResult.stdout;
 
 	const [nameStatusResult, numstatResult, diffResult] = await Promise.all([
-		runGit(repoRoot, ["diff-tree", "--root", "--no-commit-id", "-r", "-M", "--name-status", "-z", commitHash]),
-		runGit(repoRoot, ["diff-tree", "--root", "--no-commit-id", "-r", "-M", "--numstat", "-z", commitHash]),
+		runGit(
+			repoRoot,
+			["diff-tree", "--root", "--no-commit-id", "-r", "-M", "--name-status", "-z", commitHash],
+			GIT_INSPECTION_OPTIONS,
+		),
+		runGit(
+			repoRoot,
+			["diff-tree", "--root", "--no-commit-id", "-r", "-M", "--numstat", "-z", commitHash],
+			GIT_INSPECTION_OPTIONS,
+		),
 		runGit(repoRoot, ["show", "--format=", "--find-renames", "--patch", "--diff-algorithm=histogram", commitHash], {
 			trimStdout: false,
+			...GIT_INSPECTION_OPTIONS,
 		}),
 	]);
 

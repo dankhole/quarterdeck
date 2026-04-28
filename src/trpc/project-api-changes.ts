@@ -8,6 +8,7 @@ import type {
 import {
 	assertValidGitRef,
 	createEmptyWorkdirChangesResponse,
+	GIT_INSPECTION_OPTIONS,
 	getCommitDiff,
 	getFileContentAtRef,
 	getGitLog,
@@ -197,7 +198,7 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 			if (paths && paths.length > 0) {
 				args.push(...paths);
 			}
-			return await getGitStdout(args, cwd);
+			return await getGitStdout(args, cwd, GIT_INSPECTION_OPTIONS);
 		},
 
 		loadWorkdirChanges: async (projectScope) => {

@@ -45,6 +45,7 @@ export interface ProjectMetadataEntry {
 	trackedTasks: TrackedTaskWorktree[];
 	subscriberCount: number;
 	focusedTaskId: string | null;
+	isDocumentVisible: boolean;
 	homeGit: CachedHomeGitMetadata;
 	taskMetadataByTaskId: Map<string, CachedTaskWorktreeMetadata>;
 	pollIntervals: ProjectMetadataPollIntervals;
@@ -55,6 +56,12 @@ export interface ProjectMetadataPollIntervals {
 	backgroundTaskPollMs: number;
 	homeRepoPollMs: number;
 }
+
+export const PROJECT_METADATA_POLL_INTERVALS: ProjectMetadataPollIntervals = {
+	focusedTaskPollMs: 5_000,
+	backgroundTaskPollMs: 20_000,
+	homeRepoPollMs: 30_000,
+};
 
 export function collectTrackedTasks(board: RuntimeBoardData): TrackedTaskWorktree[] {
 	const tracked: TrackedTaskWorktree[] = [];
@@ -165,6 +172,7 @@ export function createProjectEntry(projectPath: string): ProjectMetadataEntry {
 		trackedTasks: [],
 		subscriberCount: 0,
 		focusedTaskId: null,
+		isDocumentVisible: true,
 		homeGit: {
 			summary: null,
 			conflictState: null,
@@ -173,7 +181,7 @@ export function createProjectEntry(projectPath: string): ProjectMetadataEntry {
 			stateVersion: 0,
 		},
 		taskMetadataByTaskId: new Map<string, CachedTaskWorktreeMetadata>(),
-		pollIntervals: { focusedTaskPollMs: 2_000, backgroundTaskPollMs: 5_000, homeRepoPollMs: 10_000 },
+		pollIntervals: PROJECT_METADATA_POLL_INTERVALS,
 	};
 }
 
@@ -297,8 +305,12 @@ export async function loadTaskWorktreeMetadata(
 		const originRef = `origin/${pathInfo.baseRef}`;
 		const [probe, baseRefResult, originBaseRefResult] = await Promise.all([
 			probeGitWorkdirState(pathInfo.path),
-			runGit(pathInfo.path, ["--no-optional-locks", "rev-parse", "--verify", pathInfo.baseRef]),
-			runGit(pathInfo.path, ["--no-optional-locks", "rev-parse", "--verify", originRef]),
+			runGit(pathInfo.path, ["--no-optional-locks", "rev-parse", "--verify", pathInfo.baseRef], {
+				timeoutClass: "metadata",
+			}),
+			runGit(pathInfo.path, ["--no-optional-locks", "rev-parse", "--verify", originRef], {
+				timeoutClass: "metadata",
+			}),
 		]);
 		const baseRefCommit = baseRefResult.ok ? baseRefResult.stdout : null;
 		const originBaseRefCommit = originBaseRefResult.ok ? originBaseRefResult.stdout : null;
@@ -314,8 +326,12 @@ export async function loadTaskWorktreeMetadata(
 		}
 		const [summary, unmergedResult, treeDiffResult, behindBase] = await Promise.all([
 			getGitSyncSummary(pathInfo.path, { probe }),
-			runGit(pathInfo.path, ["--no-optional-locks", "diff", "--quiet", `${pathInfo.baseRef}...HEAD`]),
-			runGit(pathInfo.path, ["--no-optional-locks", "diff", "--quiet", pathInfo.baseRef, "HEAD"]),
+			runGit(pathInfo.path, ["--no-optional-locks", "diff", "--quiet", `${pathInfo.baseRef}...HEAD`], {
+				timeoutClass: "metadata",
+			}),
+			runGit(pathInfo.path, ["--no-optional-locks", "diff", "--quiet", pathInfo.baseRef, "HEAD"], {
+				timeoutClass: "metadata",
+			}),
 			getCommitsBehindBase(pathInfo.path, pathInfo.baseRef),
 		]);
 		const detected = await detectActiveConflict(pathInfo.path);

@@ -3,9 +3,8 @@ import pLimit from "p-limit";
 import type { RuntimeBoardData, RuntimeProjectMetadata } from "../core";
 import { ProjectMetadataController } from "./project-metadata-controller";
 
-export type { ProjectMetadataPollIntervals } from "./project-metadata-loaders";
-
-const GIT_PROBE_CONCURRENCY_LIMIT = 3;
+const GLOBAL_METADATA_PROBE_CONCURRENCY_LIMIT = 4;
+const PROJECT_METADATA_PROBE_CONCURRENCY_LIMIT = 2;
 
 export interface CreateProjectMetadataMonitorDependencies {
 	onMetadataUpdated: (projectId: string, metadata: RuntimeProjectMetadata) => void;
@@ -18,7 +17,6 @@ export interface ProjectMetadataMonitor {
 		projectId: string;
 		projectPath: string;
 		board: RuntimeBoardData;
-		pollIntervals: { focusedTaskPollMs: number; backgroundTaskPollMs: number; homeRepoPollMs: number };
 	}) => Promise<RuntimeProjectMetadata>;
 	updateProjectState: (input: {
 		projectId: string;
@@ -26,12 +24,9 @@ export interface ProjectMetadataMonitor {
 		board: RuntimeBoardData;
 	}) => Promise<RuntimeProjectMetadata>;
 	setFocusedTask: (projectId: string, taskId: string | null) => void;
+	setDocumentVisible: (projectId: string, isDocumentVisible: boolean) => void;
 	requestTaskRefresh: (projectId: string, taskId: string) => void;
 	requestHomeRefresh: (projectId: string) => void;
-	setPollIntervals: (
-		projectId: string,
-		intervals: { focusedTaskPollMs: number; backgroundTaskPollMs: number; homeRepoPollMs: number },
-	) => void;
 	disconnectProject: (projectId: string) => void;
 	disposeProject: (projectId: string) => void;
 	close: () => void;
@@ -39,7 +34,25 @@ export interface ProjectMetadataMonitor {
 
 export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorDependencies): ProjectMetadataMonitor {
 	const projects = new Map<string, ProjectMetadataController>();
-	const taskProbeLimit = pLimit(GIT_PROBE_CONCURRENCY_LIMIT);
+	const globalMetadataProbeLimit = pLimit(GLOBAL_METADATA_PROBE_CONCURRENCY_LIMIT);
+	const projectMetadataProbeLimits = new Map<string, ReturnType<typeof pLimit>>();
+
+	const getProjectMetadataProbeLimit = (projectId: string): ReturnType<typeof pLimit> => {
+		const existing = projectMetadataProbeLimits.get(projectId);
+		if (existing) {
+			return existing;
+		}
+		const next = pLimit(PROJECT_METADATA_PROBE_CONCURRENCY_LIMIT);
+		projectMetadataProbeLimits.set(projectId, next);
+		return next;
+	};
+
+	const limitProjectMetadataProbe = async <T>(projectId: string, probe: () => Promise<T>): Promise<T> => {
+		const projectLimit = getProjectMetadataProbeLimit(projectId);
+		return await projectLimit(async () => {
+			return await globalMetadataProbeLimit(probe);
+		});
+	};
 
 	const getOrCreateController = (projectId: string, projectPath: string): ProjectMetadataController => {
 		const existing = projects.get(projectId);
@@ -49,8 +62,11 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 		const controller = new ProjectMetadataController({
 			projectId,
 			projectPath,
+			limitMetadataProbe: async <T>(probe: () => Promise<T>) => {
+				return await limitProjectMetadataProbe(projectId, probe);
+			},
 			limitTaskProbe: async <T>(probe: () => Promise<T>) => {
-				return await taskProbeLimit(probe);
+				return await limitProjectMetadataProbe(projectId, probe);
 			},
 			onMetadataUpdated: deps.onMetadataUpdated,
 			onTaskBaseRefChanged: deps.onTaskBaseRefChanged,
@@ -61,9 +77,9 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 	};
 
 	return {
-		connectProject: async ({ projectId, projectPath, board, pollIntervals }) => {
+		connectProject: async ({ projectId, projectPath, board }) => {
 			const controller = getOrCreateController(projectId, projectPath);
-			return await controller.connect({ projectPath, board, pollIntervals });
+			return await controller.connect({ projectPath, board });
 		},
 		updateProjectState: async ({ projectId, projectPath, board }) => {
 			const controller = getOrCreateController(projectId, projectPath);
@@ -72,14 +88,14 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 		setFocusedTask: (projectId, taskId) => {
 			projects.get(projectId)?.setFocusedTask(taskId);
 		},
+		setDocumentVisible: (projectId, isDocumentVisible) => {
+			projects.get(projectId)?.setDocumentVisible(isDocumentVisible);
+		},
 		requestTaskRefresh: (projectId, taskId) => {
 			projects.get(projectId)?.requestTaskRefresh(taskId);
 		},
 		requestHomeRefresh: (projectId) => {
 			projects.get(projectId)?.requestHomeRefresh();
-		},
-		setPollIntervals: (projectId, intervals) => {
-			projects.get(projectId)?.setPollIntervals(intervals);
 		},
 		disconnectProject: (projectId) => {
 			const controller = projects.get(projectId);
@@ -88,6 +104,7 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 			}
 			if (controller.disconnect()) {
 				projects.delete(projectId);
+				projectMetadataProbeLimits.delete(projectId);
 			}
 		},
 		disposeProject: (projectId) => {
@@ -97,12 +114,14 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 			}
 			controller.dispose();
 			projects.delete(projectId);
+			projectMetadataProbeLimits.delete(projectId);
 		},
 		close: () => {
 			for (const controller of projects.values()) {
 				controller.dispose();
 			}
 			projects.clear();
+			projectMetadataProbeLimits.clear();
 		},
 	};
 }

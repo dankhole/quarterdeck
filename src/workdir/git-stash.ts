@@ -6,7 +6,9 @@ import type {
 	RuntimeStashPushResponse,
 	RuntimeStashShowResponse,
 } from "../core";
-import { resolveRepoRoot, runGit, validateGitPath } from "./git-utils";
+import { GIT_INSPECTION_OPTIONS, resolveRepoRoot, runGit, validateGitPath } from "./git-utils";
+
+const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 
 /**
  * Stash changes in the working tree.
@@ -35,7 +37,7 @@ export async function stashPush(options: {
 		args.push("--", ...paths);
 	}
 
-	const result = await runGit(repoRoot, args);
+	const result = await runGit(repoRoot, args, USER_GIT_ACTION_OPTIONS);
 	if (!result.ok) {
 		return { ok: false, error: result.error ?? "Stash push failed." };
 	}
@@ -55,7 +57,7 @@ export async function stashPush(options: {
 export async function stashList(cwd: string): Promise<RuntimeStashListResponse> {
 	const repoRoot = await resolveRepoRoot(cwd);
 
-	const result = await runGit(repoRoot, ["stash", "list", "--format=%gd%x1f%gs%x1f%ci"]);
+	const result = await runGit(repoRoot, ["stash", "list", "--format=%gd%x1f%gs%x1f%ci"], GIT_INSPECTION_OPTIONS);
 	if (!result.ok) {
 		return { ok: false, entries: [], error: result.error ?? "Stash list failed." };
 	}
@@ -102,7 +104,7 @@ export async function stashList(cwd: string): Promise<RuntimeStashListResponse> 
  */
 export async function stashPop(options: { cwd: string; index: number }): Promise<RuntimeStashPopApplyResponse> {
 	const repoRoot = await resolveRepoRoot(options.cwd);
-	const result = await runGit(repoRoot, ["stash", "pop", `stash@{${options.index}}`]);
+	const result = await runGit(repoRoot, ["stash", "pop", `stash@{${options.index}}`], USER_GIT_ACTION_OPTIONS);
 
 	if (!result.ok) {
 		// Git writes CONFLICT messages to stdout, not stderr.
@@ -123,7 +125,7 @@ export async function stashPop(options: { cwd: string; index: number }): Promise
  */
 export async function stashApply(options: { cwd: string; index: number }): Promise<RuntimeStashPopApplyResponse> {
 	const repoRoot = await resolveRepoRoot(options.cwd);
-	const result = await runGit(repoRoot, ["stash", "apply", `stash@{${options.index}}`]);
+	const result = await runGit(repoRoot, ["stash", "apply", `stash@{${options.index}}`], USER_GIT_ACTION_OPTIONS);
 
 	if (!result.ok) {
 		// Git writes CONFLICT messages to stdout, not stderr.
@@ -143,7 +145,7 @@ export async function stashApply(options: { cwd: string; index: number }): Promi
  */
 export async function stashDrop(options: { cwd: string; index: number }): Promise<RuntimeStashDropResponse> {
 	const repoRoot = await resolveRepoRoot(options.cwd);
-	const result = await runGit(repoRoot, ["stash", "drop", `stash@{${options.index}}`]);
+	const result = await runGit(repoRoot, ["stash", "drop", `stash@{${options.index}}`], USER_GIT_ACTION_OPTIONS);
 
 	if (!result.ok) {
 		return { ok: false, error: result.error ?? "Stash drop failed." };
@@ -157,7 +159,7 @@ export async function stashDrop(options: { cwd: string; index: number }): Promis
  */
 export async function stashShow(options: { cwd: string; index: number }): Promise<RuntimeStashShowResponse> {
 	const repoRoot = await resolveRepoRoot(options.cwd);
-	const result = await runGit(repoRoot, ["stash", "show", "-p", `stash@{${options.index}}`]);
+	const result = await runGit(repoRoot, ["stash", "show", "-p", `stash@{${options.index}}`], GIT_INSPECTION_OPTIONS);
 
 	if (!result.ok) {
 		return { ok: false, error: result.error ?? "Stash show failed." };

@@ -23,6 +23,7 @@ type StateOps = Pick<
 	| "notifyTaskTitleUpdated"
 	| "setTaskDisplaySummary"
 	| "setFocusedTask"
+	| "setDocumentVisible"
 >;
 
 export function createStateOps(ctx: ProjectApiContext): StateOps {
@@ -147,6 +148,10 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 			// post-mutation effect. Focus steers metadata-monitor polling policy;
 			// it is not a "mutation happened, now deliver consequences" path.
 			ctx.deps.broadcaster.setFocusedTask(projectScope.projectId, taskId);
+		},
+
+		setDocumentVisible: (projectScope, isDocumentVisible) => {
+			ctx.deps.broadcaster.setDocumentVisible(projectScope.projectId, isDocumentVisible);
 		},
 	};
 }

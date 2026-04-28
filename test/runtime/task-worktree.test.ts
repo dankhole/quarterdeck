@@ -52,6 +52,7 @@ vi.mock("../../src/workdir/task-worktree-path.js", () => ({
 	normalizeTaskIdForWorktreePath: taskWorktreePathMocks.normalizeTaskIdForWorktreePath,
 }));
 
+import { GIT_COMMAND_TIMEOUTS_MS } from "../../src/workdir/git-utils";
 import { ensureTaskWorktreeIfDoesntExist } from "../../src/workdir/task-worktree";
 
 type ExecFileOptions = {
@@ -59,6 +60,7 @@ type ExecFileOptions = {
 	encoding?: string;
 	maxBuffer?: number;
 	env?: NodeJS.ProcessEnv;
+	timeout?: number;
 };
 
 function createGitError(message: string): NodeJS.ErrnoException & { stdout: string; stderr: string; code: number } {
@@ -508,6 +510,34 @@ describe.sequential("branch-aware worktree creation", () => {
 				return command[0] === "worktree" && command[1] === "add" && command[2] === "-b";
 			});
 			expect(createCalls.length).toBeGreaterThanOrEqual(1);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("uses the user-action timeout for worktree creation", async () => {
+		const { repoPath, cleanup } = setupSandbox();
+		try {
+			const worktreeHeads = new Map<string, string>();
+			const existingBranches = new Set<string>();
+
+			childProcessMocks.execFilePromise.mockImplementation(
+				createBranchAwareMock({ worktreeHeads, existingBranches }),
+			);
+
+			const result = await ensureTaskWorktreeIfDoesntExist({
+				cwd: repoPath,
+				taskId: "task-timeout",
+				baseRef: "HEAD",
+			});
+
+			expect(result).toMatchObject({ ok: true });
+			const worktreeAddCall = childProcessMocks.execFilePromise.mock.calls.find((_call: unknown[]) => {
+				const args = stripConfigFlags(_call[1] as string[]);
+				const { command } = getCommandArgs(args, _call[2] as ExecFileOptions | undefined);
+				return command[0] === "worktree" && command[1] === "add";
+			});
+			expect(worktreeAddCall?.[2]).toEqual(expect.objectContaining({ timeout: GIT_COMMAND_TIMEOUTS_MS.userAction }));
 		} finally {
 			cleanup();
 		}

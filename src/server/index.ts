@@ -5,7 +5,6 @@ export {
 	type CreateProjectMetadataMonitorDependencies,
 	createProjectMetadataMonitor,
 	type ProjectMetadataMonitor,
-	type ProjectMetadataPollIntervals,
 } from "./project-metadata-monitor";
 export {
 	type CreateProjectRegistryDependencies,

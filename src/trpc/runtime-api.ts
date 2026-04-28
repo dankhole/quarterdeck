@@ -18,10 +18,7 @@ import { handleStopTaskSession } from "./handlers/stop-task-session";
 
 export interface CreateRuntimeApiDependencies {
 	config: IRuntimeConfigProvider;
-	broadcaster: Pick<
-		IRuntimeBroadcaster,
-		"broadcastRuntimeProjectStateUpdated" | "setPollIntervals" | "broadcastLogLevel"
-	>;
+	broadcaster: Pick<IRuntimeBroadcaster, "broadcastRuntimeProjectStateUpdated" | "broadcastLogLevel">;
 	getActiveProjectId: () => string | null;
 	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };

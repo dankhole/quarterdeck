@@ -5,7 +5,6 @@ import {
 	collectTrackedTasks,
 	createProjectEntry,
 	type ProjectMetadataEntry,
-	type ProjectMetadataPollIntervals,
 	type TrackedTaskWorktree,
 } from "./project-metadata-loaders";
 import { ProjectMetadataPoller } from "./project-metadata-poller";
@@ -15,6 +14,7 @@ import { ProjectMetadataRemoteFetchPolicy } from "./project-metadata-remote-fetc
 export interface CreateProjectMetadataControllerDependencies {
 	projectId: string;
 	projectPath: string;
+	limitMetadataProbe: <T>(probe: () => Promise<T>) => Promise<T>;
 	limitTaskProbe: <T>(probe: () => Promise<T>) => Promise<T>;
 	onMetadataUpdated: (projectId: string, metadata: RuntimeProjectMetadata) => void;
 	onTaskBaseRefChanged?: (projectId: string, taskId: string, newBaseRef: string) => void;
@@ -33,6 +33,7 @@ export class ProjectMetadataController {
 		this.entry = createProjectEntry(deps.projectPath);
 		this.refresher = new ProjectMetadataRefresher({
 			projectId: deps.projectId,
+			limitMetadataProbe: deps.limitMetadataProbe,
 			limitTaskProbe: deps.limitTaskProbe,
 			onMetadataUpdated: deps.onMetadataUpdated,
 			onTaskBaseRefChanged: deps.onTaskBaseRefChanged,
@@ -51,13 +52,18 @@ export class ProjectMetadataController {
 			commitTaskMetadata: (taskId, next, options) => this.commitTaskMetadata(taskId, next, options),
 		});
 		this.poller = new ProjectMetadataPoller({
-			getPollIntervals: () => this.entry.pollIntervals,
+			getPollState: () => ({
+				pollIntervals: this.entry.pollIntervals,
+				isDocumentVisible: this.entry.isDocumentVisible,
+				hasFocusedTask: this.entry.focusedTaskId !== null,
+			}),
 			refreshHome: () => this.refresher.refreshHome(),
 			refreshFocusedTask: () => this.refresher.refreshFocusedTask(),
 			refreshBackgroundTasks: () => this.refresher.refreshBackgroundTasks(),
 		});
 		this.remoteFetchPolicy = new ProjectMetadataRemoteFetchPolicy({
 			getProjectPath: () => this.entry.projectPath,
+			limitRemoteFetch: deps.limitMetadataProbe,
 			onFetchSucceeded: async () => {
 				await this.refresher.refreshHome({ invalidate: true });
 				void this.refresher.refreshFocusedTask();
@@ -65,14 +71,10 @@ export class ProjectMetadataController {
 		});
 	}
 
-	async connect(input: {
-		projectPath: string;
-		board: RuntimeBoardData;
-		pollIntervals: ProjectMetadataPollIntervals;
-	}): Promise<RuntimeProjectMetadata> {
+	async connect(input: { projectPath: string; board: RuntimeBoardData }): Promise<RuntimeProjectMetadata> {
 		this.updateTrackedState(input.projectPath, input.board);
 		this.entry.subscriberCount += 1;
-		this.entry.pollIntervals = input.pollIntervals;
+		this.entry.isDocumentVisible = true;
 		this.poller.start();
 		this.remoteFetchPolicy.start();
 		this.remoteFetchPolicy.requestFetch();
@@ -94,8 +96,29 @@ export class ProjectMetadataController {
 			return;
 		}
 		this.entry.focusedTaskId = nextFocusedTaskId;
+		if (this.entry.subscriberCount > 0) {
+			this.poller.start();
+		}
 		if (nextFocusedTaskId) {
 			void this.refresher.refreshFocusedTask();
+		}
+	}
+
+	setDocumentVisible(isDocumentVisible: boolean): void {
+		if (this.entry.isDocumentVisible === isDocumentVisible) {
+			return;
+		}
+		this.entry.isDocumentVisible = isDocumentVisible;
+		if (this.entry.subscriberCount === 0) {
+			return;
+		}
+		this.poller.start();
+		if (isDocumentVisible) {
+			this.remoteFetchPolicy.start();
+			this.remoteFetchPolicy.requestFetch();
+			void this.refresher.refreshProject();
+		} else {
+			this.remoteFetchPolicy.stop();
 		}
 	}
 
@@ -105,22 +128,6 @@ export class ProjectMetadataController {
 
 	requestHomeRefresh(): void {
 		void this.refresher.refreshHome();
-	}
-
-	setPollIntervals(intervals: ProjectMetadataPollIntervals): void {
-		const changed =
-			this.entry.pollIntervals.focusedTaskPollMs !== intervals.focusedTaskPollMs ||
-			this.entry.pollIntervals.backgroundTaskPollMs !== intervals.backgroundTaskPollMs ||
-			this.entry.pollIntervals.homeRepoPollMs !== intervals.homeRepoPollMs;
-		if (!changed) {
-			return;
-		}
-		this.entry.pollIntervals = intervals;
-		if (this.entry.subscriberCount > 0) {
-			this.poller.start();
-			this.remoteFetchPolicy.stop();
-			this.remoteFetchPolicy.start();
-		}
 	}
 
 	disconnect(): boolean {

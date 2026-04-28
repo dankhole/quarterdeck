@@ -196,13 +196,11 @@ describe("ProjectMetadataMonitor", () => {
 			projectId: "project-a",
 			projectPath: "/repo-a",
 			board: createBoard([{ taskId: "task-a", columnId: "in_progress" }]),
-			pollIntervals: { focusedTaskPollMs: 2_000, backgroundTaskPollMs: 5_000, homeRepoPollMs: 10_000 },
 		});
 		await monitor.connectProject({
 			projectId: "project-b",
 			projectPath: "/repo-b",
 			board: createBoard([{ taskId: "task-b", columnId: "review" }]),
-			pollIntervals: { focusedTaskPollMs: 2_000, backgroundTaskPollMs: 5_000, homeRepoPollMs: 10_000 },
 		});
 
 		onMetadataUpdated.mockClear();
@@ -271,7 +269,6 @@ describe("ProjectMetadataMonitor", () => {
 				{ taskId: "task-1", columnId: "in_progress" },
 				{ taskId: "task-2", columnId: "review" },
 			]),
-			pollIntervals: { focusedTaskPollMs: 2_000, backgroundTaskPollMs: 5_000, homeRepoPollMs: 10_000 },
 		});
 
 		monitor.setFocusedTask("project-1", "task-1");
@@ -280,12 +277,168 @@ describe("ProjectMetadataMonitor", () => {
 		});
 		probeCounts.clear();
 
-		await vi.advanceTimersByTimeAsync(4_100);
+		await vi.advanceTimersByTimeAsync(10_100);
 		expect(probeCounts.get("task-1")).toBe(2);
 		expect(probeCounts.get("task-2") ?? 0).toBe(0);
 
-		await vi.advanceTimersByTimeAsync(1_000);
+		await vi.advanceTimersByTimeAsync(10_000);
 		expect(probeCounts.get("task-2")).toBe(1);
+
+		monitor.close();
+	});
+
+	it("does not run the focused-task polling timer when no task is focused", async () => {
+		vi.useFakeTimers();
+
+		const refreshedTasks: string[] = [];
+		loaderMocks.loadTaskWorktreeMetadata.mockImplementation(
+			async (_projectPath: string, task: TrackedTaskWorktree) => {
+				refreshedTasks.push(task.taskId);
+				return createTaskMetadata(task);
+			},
+		);
+		workdirMocks.runGit.mockResolvedValue({ ok: false, stdout: "", stderr: "", exitCode: 1 });
+
+		const monitor = createProjectMetadataMonitor({
+			onMetadataUpdated: vi.fn(),
+		});
+
+		await monitor.connectProject({
+			projectId: "project-1",
+			projectPath: "/repo-1",
+			board: createBoard([{ taskId: "task-1", columnId: "in_progress" }]),
+		});
+
+		refreshedTasks.length = 0;
+		await vi.advanceTimersByTimeAsync(4_100);
+		expect(refreshedTasks).toEqual([]);
+
+		monitor.setFocusedTask("project-1", "task-1");
+		await vi.waitFor(() => {
+			expect(refreshedTasks).toEqual(["task-1"]);
+		});
+
+		monitor.close();
+	});
+
+	it("backs off metadata polling and pauses focused polling while the document is hidden", async () => {
+		vi.useFakeTimers();
+
+		const refreshedTasks: string[] = [];
+		let homeRefreshCount = 0;
+		loaderMocks.loadHomeGitMetadata.mockImplementation(
+			async (projectPath: string, currentHomeGit: CachedHomeGitMetadata) => {
+				homeRefreshCount += 1;
+				return createHomeMetadata(projectPath, `home-${homeRefreshCount}`, currentHomeGit);
+			},
+		);
+		loaderMocks.loadTaskWorktreeMetadata.mockImplementation(
+			async (_projectPath: string, task: TrackedTaskWorktree) => {
+				refreshedTasks.push(task.taskId);
+				return createTaskMetadata(task);
+			},
+		);
+		workdirMocks.runGit.mockResolvedValue({ ok: false, stdout: "", stderr: "", exitCode: 1 });
+
+		const monitor = createProjectMetadataMonitor({
+			onMetadataUpdated: vi.fn(),
+		});
+
+		await monitor.connectProject({
+			projectId: "project-1",
+			projectPath: "/repo-1",
+			board: createBoard([
+				{ taskId: "task-1", columnId: "in_progress" },
+				{ taskId: "task-2", columnId: "review" },
+			]),
+		});
+		refreshedTasks.length = 0;
+		homeRefreshCount = 0;
+		monitor.setFocusedTask("project-1", "task-1");
+		await vi.waitFor(() => {
+			expect(refreshedTasks).toEqual(["task-1"]);
+		});
+
+		refreshedTasks.length = 0;
+		homeRefreshCount = 0;
+		workdirMocks.runGit.mockClear();
+		monitor.setDocumentVisible("project-1", false);
+
+		await vi.advanceTimersByTimeAsync(59_000);
+		expect(refreshedTasks).toEqual([]);
+		expect(homeRefreshCount).toBe(0);
+		expect(workdirMocks.runGit).not.toHaveBeenCalledWith("/repo-1", ["fetch", "--all", "--prune"], expect.anything());
+
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(refreshedTasks).toEqual(["task-2"]);
+		expect(homeRefreshCount).toBe(1);
+
+		monitor.close();
+	});
+
+	it("limits metadata probes per project while letting another project refresh", async () => {
+		const monitor = createProjectMetadataMonitor({
+			onMetadataUpdated: vi.fn(),
+		});
+
+		await monitor.connectProject({
+			projectId: "project-a",
+			projectPath: "/repo-a",
+			board: createBoard([
+				{ taskId: "task-a-1", columnId: "in_progress" },
+				{ taskId: "task-a-2", columnId: "in_progress" },
+				{ taskId: "task-a-3", columnId: "review" },
+			]),
+		});
+		await monitor.connectProject({
+			projectId: "project-b",
+			projectPath: "/repo-b",
+			board: createBoard([{ taskId: "task-b-1", columnId: "in_progress" }]),
+		});
+
+		const blockedProjectARefreshes: Array<{
+			task: TrackedTaskWorktree;
+			deferred: ReturnType<typeof createDeferred<CachedTaskWorktreeMetadata>>;
+		}> = [];
+		let activeProjectARefreshes = 0;
+		let maxActiveProjectARefreshes = 0;
+		let projectBRefreshed = false;
+		let blockProjectARefreshes = true;
+		loaderMocks.loadTaskWorktreeMetadata.mockImplementation(
+			async (projectPath: string, task: TrackedTaskWorktree) => {
+				if (projectPath === "/repo-b") {
+					projectBRefreshed = true;
+					return createTaskMetadata(task);
+				}
+				if (!blockProjectARefreshes) {
+					return createTaskMetadata(task);
+				}
+				const blocked = { task, deferred: createDeferred<CachedTaskWorktreeMetadata>() };
+				blockedProjectARefreshes.push(blocked);
+				activeProjectARefreshes += 1;
+				maxActiveProjectARefreshes = Math.max(maxActiveProjectARefreshes, activeProjectARefreshes);
+				try {
+					return await blocked.deferred.promise;
+				} finally {
+					activeProjectARefreshes -= 1;
+				}
+			},
+		);
+
+		monitor.requestTaskRefresh("project-a", "task-a-1");
+		monitor.requestTaskRefresh("project-a", "task-a-2");
+		monitor.requestTaskRefresh("project-a", "task-a-3");
+		monitor.requestTaskRefresh("project-b", "task-b-1");
+
+		await vi.waitFor(() => {
+			expect(projectBRefreshed).toBe(true);
+			expect(maxActiveProjectARefreshes).toBe(2);
+		});
+
+		blockProjectARefreshes = false;
+		for (const blocked of blockedProjectARefreshes) {
+			blocked.deferred.resolve(createTaskMetadata(blocked.task));
+		}
 
 		monitor.close();
 	});
@@ -301,7 +454,6 @@ describe("ProjectMetadataMonitor", () => {
 			projectId: "project-1",
 			projectPath: "/repo-1",
 			board,
-			pollIntervals: { focusedTaskPollMs: 2_000, backgroundTaskPollMs: 5_000, homeRepoPollMs: 10_000 },
 		});
 
 		const staleFullRefresh = createDeferred<CachedTaskWorktreeMetadata>();
@@ -387,7 +539,6 @@ describe("ProjectMetadataMonitor", () => {
 			projectId: "project-1",
 			projectPath: "/repo-1",
 			board: boardOne,
-			pollIntervals: { focusedTaskPollMs: 2_000, backgroundTaskPollMs: 5_000, homeRepoPollMs: 10_000 },
 		});
 
 		const blockedTaskOneRefresh = createDeferred<CachedTaskWorktreeMetadata>();
@@ -469,7 +620,6 @@ describe("ProjectMetadataMonitor", () => {
 				{ taskId: "task-1", columnId: "in_progress" },
 				{ taskId: "task-2", columnId: "review" },
 			]),
-			pollIntervals: { focusedTaskPollMs: 2_000, backgroundTaskPollMs: 5_000, homeRepoPollMs: 10_000 },
 		});
 		monitor.setFocusedTask("project-1", "task-1");
 
@@ -525,7 +675,6 @@ describe("ProjectMetadataMonitor", () => {
 			projectId: "project-1",
 			projectPath: "/repo-1",
 			board: createBoard([{ taskId: "task-1", columnId: "in_progress" }]),
-			pollIntervals: { focusedTaskPollMs: 120_000, backgroundTaskPollMs: 120_000, homeRepoPollMs: 120_000 },
 		});
 		monitor.setFocusedTask("project-1", "task-1");
 
@@ -533,7 +682,7 @@ describe("ProjectMetadataMonitor", () => {
 		refreshedTasks.length = 0;
 		workdirMocks.runGit.mockClear();
 
-		await vi.advanceTimersByTimeAsync(60_000);
+		await vi.advanceTimersByTimeAsync(120_000);
 
 		expect(workdirMocks.runGit).toHaveBeenCalledWith(
 			"/repo-1",
@@ -544,45 +693,6 @@ describe("ProjectMetadataMonitor", () => {
 		);
 		expect(seenHomeStateTokens).toContain(null);
 		expect(refreshedTasks).toContain("task-1");
-
-		monitor.close();
-	});
-
-	it("restarts the remote fetch cadence when poll intervals change", async () => {
-		vi.useFakeTimers();
-
-		const monitor = createProjectMetadataMonitor({
-			onMetadataUpdated: vi.fn(),
-		});
-
-		await monitor.connectProject({
-			projectId: "project-1",
-			projectPath: "/repo-1",
-			board: createBoard([{ taskId: "task-1", columnId: "in_progress" }]),
-			pollIntervals: { focusedTaskPollMs: 2_000, backgroundTaskPollMs: 5_000, homeRepoPollMs: 10_000 },
-		});
-
-		workdirMocks.runGit.mockClear();
-		await vi.advanceTimersByTimeAsync(30_000);
-		expect(workdirMocks.runGit).not.toHaveBeenCalled();
-
-		monitor.setPollIntervals("project-1", {
-			focusedTaskPollMs: 3_000,
-			backgroundTaskPollMs: 6_000,
-			homeRepoPollMs: 12_000,
-		});
-
-		await vi.advanceTimersByTimeAsync(31_000);
-		expect(workdirMocks.runGit).not.toHaveBeenCalled();
-
-		await vi.advanceTimersByTimeAsync(29_000);
-		expect(workdirMocks.runGit).toHaveBeenCalledWith(
-			"/repo-1",
-			["fetch", "--all", "--prune"],
-			expect.objectContaining({
-				env: expect.objectContaining({ GIT_TERMINAL_PROMPT: "0" }),
-			}),
-		);
 
 		monitor.close();
 	});

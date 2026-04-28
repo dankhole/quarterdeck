@@ -13,6 +13,8 @@ import type {
 import { getGitSyncSummary } from "./git-probe";
 import { hasGitRef, resolveRepoRoot, runGit, validateGitPath, validateGitRef } from "./git-utils";
 
+const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
+
 export async function runGitSyncAction(options: {
 	cwd: string;
 	action: RuntimeGitSyncAction;
@@ -60,7 +62,7 @@ export async function runGitSyncAction(options: {
 		gitArgs = argsByAction[options.action];
 	}
 
-	const commandResult = await runGit(options.cwd, gitArgs);
+	const commandResult = await runGit(options.cwd, gitArgs, USER_GIT_ACTION_OPTIONS);
 	const nextSummary = await getGitSyncSummary(options.cwd);
 
 	if (!commandResult.ok) {
@@ -111,10 +113,10 @@ export async function runGitCheckoutAction(options: {
 
 	const hasLocalBranch = await hasGitRef(repoRoot, `refs/heads/${requestedBranch}`);
 	const commandResult = hasLocalBranch
-		? await runGit(repoRoot, ["switch", requestedBranch])
+		? await runGit(repoRoot, ["switch", requestedBranch], USER_GIT_ACTION_OPTIONS)
 		: (await hasGitRef(repoRoot, `refs/remotes/origin/${requestedBranch}`))
-			? await runGit(repoRoot, ["switch", "--track", `origin/${requestedBranch}`])
-			: await runGit(repoRoot, ["switch", requestedBranch]);
+			? await runGit(repoRoot, ["switch", "--track", `origin/${requestedBranch}`], USER_GIT_ACTION_OPTIONS)
+			: await runGit(repoRoot, ["switch", requestedBranch], USER_GIT_ACTION_OPTIONS);
 	const nextSummary = await getGitSyncSummary(repoRoot);
 
 	if (!commandResult.ok) {
@@ -166,7 +168,7 @@ export async function createBranchFromRef(options: {
 		return { ok: false, branchName, error: `Branch "${branchName}" already exists.` };
 	}
 
-	const createResult = await runGit(repoRoot, ["branch", "--", branchName, startRef]);
+	const createResult = await runGit(repoRoot, ["branch", "--", branchName, startRef], USER_GIT_ACTION_OPTIONS);
 	if (!createResult.ok) {
 		return {
 			ok: false,
@@ -203,7 +205,7 @@ export async function deleteBranch(options: {
 
 	// Use -d (safe delete — requires branch to be fully merged).
 	// If the branch is unmerged, git will error with a helpful message.
-	const deleteResult = await runGit(repoRoot, ["branch", "-d", "--", branchName]);
+	const deleteResult = await runGit(repoRoot, ["branch", "-d", "--", branchName], USER_GIT_ACTION_OPTIONS);
 	if (!deleteResult.ok) {
 		return {
 			ok: false,
@@ -241,7 +243,7 @@ export async function renameBranch(options: {
 		return { ok: false, oldName, newName, error: `Branch "${newName}" already exists.` };
 	}
 
-	const renameResult = await runGit(repoRoot, ["branch", "-m", oldName, newName]);
+	const renameResult = await runGit(repoRoot, ["branch", "-m", oldName, newName], USER_GIT_ACTION_OPTIONS);
 	if (!renameResult.ok) {
 		return {
 			ok: false,
@@ -269,7 +271,7 @@ export async function resetToRef(options: { cwd: string; ref: string }): Promise
 		return { ok: false, ref: targetRef, summary, output: "", error: `Ref "${targetRef}" does not exist.` };
 	}
 
-	const resetResult = await runGit(repoRoot, ["reset", "--hard", targetRef]);
+	const resetResult = await runGit(repoRoot, ["reset", "--hard", targetRef], USER_GIT_ACTION_OPTIONS);
 	const summary = await getGitSyncSummary(repoRoot);
 
 	if (!resetResult.ok) {
@@ -297,8 +299,14 @@ export async function discardGitChanges(options: { cwd: string }): Promise<Runti
 		};
 	}
 
-	const restoreResult = await runGit(repoRoot, ["restore", "--source=HEAD", "--staged", "--worktree", "--", "."]);
-	const cleanResult = restoreResult.ok ? await runGit(repoRoot, ["clean", "-fd", "--", "."]) : null;
+	const restoreResult = await runGit(
+		repoRoot,
+		["restore", "--source=HEAD", "--staged", "--worktree", "--", "."],
+		USER_GIT_ACTION_OPTIONS,
+	);
+	const cleanResult = restoreResult.ok
+		? await runGit(repoRoot, ["clean", "-fd", "--", "."], USER_GIT_ACTION_OPTIONS)
+		: null;
 	const nextSummary = await getGitSyncSummary(repoRoot);
 	const output = [restoreResult.output, cleanResult?.output ?? ""].filter(Boolean).join("\n");
 
@@ -359,7 +367,7 @@ export async function commitSelectedFiles(options: {
 	}
 
 	// Stage the specified files.
-	const addResult = await runGit(repoRoot, ["add", "--", ...options.paths]);
+	const addResult = await runGit(repoRoot, ["add", "--", ...options.paths], USER_GIT_ACTION_OPTIONS);
 	if (!addResult.ok) {
 		return {
 			ok: false,
@@ -370,10 +378,14 @@ export async function commitSelectedFiles(options: {
 	}
 
 	// Commit only the staged paths (avoids committing pre-staged files the user didn't select).
-	const commitResult = await runGit(repoRoot, ["commit", "-m", options.message, "--", ...options.paths]);
+	const commitResult = await runGit(
+		repoRoot,
+		["commit", "-m", options.message, "--", ...options.paths],
+		USER_GIT_ACTION_OPTIONS,
+	);
 	if (!commitResult.ok) {
 		// Rollback staging if commit failed.
-		await runGit(repoRoot, ["reset", "HEAD", "--", ...options.paths]);
+		await runGit(repoRoot, ["reset", "HEAD", "--", ...options.paths], USER_GIT_ACTION_OPTIONS);
 		return {
 			ok: false,
 			summary: await getGitSyncSummary(repoRoot),
@@ -424,13 +436,17 @@ export async function discardSingleFile(options: {
 
 	// New staged files ("added") don't exist at HEAD — unstage before cleaning.
 	if (options.fileStatus === "added") {
-		await runGit(repoRoot, ["rm", "--cached", "--force", "--", options.path]);
+		await runGit(repoRoot, ["rm", "--cached", "--force", "--", options.path], USER_GIT_ACTION_OPTIONS);
 	}
 
 	const result =
 		options.fileStatus === "untracked" || options.fileStatus === "added"
-			? await runGit(repoRoot, ["clean", "-f", "--", options.path])
-			: await runGit(repoRoot, ["restore", "--source=HEAD", "--staged", "--worktree", "--", options.path]);
+			? await runGit(repoRoot, ["clean", "-f", "--", options.path], USER_GIT_ACTION_OPTIONS)
+			: await runGit(
+					repoRoot,
+					["restore", "--source=HEAD", "--staged", "--worktree", "--", options.path],
+					USER_GIT_ACTION_OPTIONS,
+				);
 
 	const nextSummary = await getGitSyncSummary(repoRoot);
 

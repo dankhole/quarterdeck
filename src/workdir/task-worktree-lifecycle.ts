@@ -10,6 +10,7 @@ import { getWorkdirFolderLabelForWorktreePath, normalizeTaskIdForWorktreePath } 
 import { initializeSubmodulesIfNeeded, pathExists, syncIgnoredPathsIntoWorktree } from "./task-worktree-symlinks";
 
 const QUARTERDECK_TASK_WORKTREE_SETUP_LOCKFILE_NAME = "quarterdeck-task-worktree-setup.lock";
+const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 
 function isMissingInitialCommitError(message: string): boolean {
 	const normalizedMessage = message.trim().toLowerCase();
@@ -34,7 +35,7 @@ function getWorktreeBaseRefResolutionErrorMessage(baseRef: string, errorMessage:
 }
 
 async function tryRunGit(cwd: string, args: string[]): Promise<string | null> {
-	const result = await runGit(cwd, args);
+	const result = await runGit(cwd, args, USER_GIT_ACTION_OPTIONS);
 	return result.ok ? result.stdout : null;
 }
 
@@ -66,11 +67,15 @@ export function getTaskWorktreePath(repoPath: string, taskId: string): string {
 
 async function removeTaskWorktreeInternal(repoPath: string, worktreePath: string): Promise<boolean> {
 	const existed = await pathExists(worktreePath);
-	const removeResult = await runGit(repoPath, ["worktree", "remove", "--force", worktreePath]);
+	const removeResult = await runGit(
+		repoPath,
+		["worktree", "remove", "--force", worktreePath],
+		USER_GIT_ACTION_OPTIONS,
+	);
 	if (!removeResult.ok) {
 		// If remove failed (e.g. worktree in bad state), prune stale registrations
 		// so git doesn't think the path is still registered after we rm it.
-		await runGit(repoPath, ["worktree", "prune"]);
+		await runGit(repoPath, ["worktree", "prune"], USER_GIT_ACTION_OPTIONS);
 	}
 	await rm(worktreePath, { recursive: true, force: true });
 	return existed;
@@ -119,7 +124,7 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 		// compared the worktree HEAD to the latest baseRef commit and recreated the worktree
 		// when the base branch advanced, which could destroy valid task progress. Existing
 		// worktrees are now treated as authoritative and only missing worktrees are created.
-		const existingResult = await runGit(worktreePath, ["rev-parse", "HEAD"]);
+		const existingResult = await runGit(worktreePath, ["rev-parse", "HEAD"], USER_GIT_ACTION_OPTIONS);
 		if (existingResult.ok && existingResult.stdout) {
 			await syncIgnoredPathsIntoWorktree(context.repoPath, worktreePath);
 			const headInfo = await readGitHeadInfo(worktreePath);
@@ -157,11 +162,11 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 				};
 			}
 
-			const baseRefResult = await runGit(context.repoPath, [
-				"rev-parse",
-				"--verify",
-				`${requestedBaseRef}^{commit}`,
-			]);
+			const baseRefResult = await runGit(
+				context.repoPath,
+				["rev-parse", "--verify", `${requestedBaseRef}^{commit}`],
+				USER_GIT_ACTION_OPTIONS,
+			);
 			if (!baseRefResult.ok) {
 				return {
 					ok: false,
@@ -187,17 +192,17 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 			// Clean up stale worktree registrations that can linger when git
 			// worktree remove fails or the process is interrupted. Without this,
 			// git worktree add refuses with "missing but already registered".
-			await runGit(context.repoPath, ["worktree", "prune"]);
+			await runGit(context.repoPath, ["worktree", "prune"], USER_GIT_ACTION_OPTIONS);
 
 			await mkdir(dirname(worktreePath), { recursive: true });
 
 			// Branch-aware worktree creation: try named branch before falling back to detached HEAD.
 			if (options.branch) {
-				const branchCheck = await runGit(context.repoPath, [
-					"rev-parse",
-					"--verify",
-					`refs/heads/${options.branch}`,
-				]);
+				const branchCheck = await runGit(
+					context.repoPath,
+					["rev-parse", "--verify", `refs/heads/${options.branch}`],
+					USER_GIT_ACTION_OPTIONS,
+				);
 
 				const finalizeBranchWorktree = async (
 					resolvedBaseCommit: string,
@@ -225,7 +230,11 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 
 				if (branchCheck.ok) {
 					// Branch EXISTS — checkout existing branch (resume path)
-					const checkoutResult = await runGit(context.repoPath, ["worktree", "add", worktreePath, options.branch]);
+					const checkoutResult = await runGit(
+						context.repoPath,
+						["worktree", "add", worktreePath, options.branch],
+						USER_GIT_ACTION_OPTIONS,
+					);
 					if (checkoutResult.ok) {
 						return await finalizeBranchWorktree(
 							branchCheck.stdout.trim(),
@@ -234,18 +243,15 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 					}
 					// Checkout failed (e.g., locked by another worktree) — clean up before fallback
 					await removeTaskWorktreeInternal(context.repoPath, worktreePath);
-					await runGit(context.repoPath, ["worktree", "prune"]);
+					await runGit(context.repoPath, ["worktree", "prune"], USER_GIT_ACTION_OPTIONS);
 					// fall through to detached
 				} else {
 					// Branch NOT exists — create new branch (creation path)
-					const createResult = await runGit(context.repoPath, [
-						"worktree",
-						"add",
-						"-b",
-						options.branch,
-						worktreePath,
-						baseCommit,
-					]);
+					const createResult = await runGit(
+						context.repoPath,
+						["worktree", "add", "-b", options.branch, worktreePath, baseCommit],
+						USER_GIT_ACTION_OPTIONS,
+					);
 					if (createResult.ok) {
 						return await finalizeBranchWorktree(
 							baseCommit,
@@ -254,12 +260,16 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 					}
 					// -b failed — clean up before fallback
 					await removeTaskWorktreeInternal(context.repoPath, worktreePath);
-					await runGit(context.repoPath, ["worktree", "prune"]);
+					await runGit(context.repoPath, ["worktree", "prune"], USER_GIT_ACTION_OPTIONS);
 					// fall through to detached
 				}
 			}
 
-			const addResult = await runGit(context.repoPath, ["worktree", "add", "--detach", worktreePath, baseCommit]);
+			const addResult = await runGit(
+				context.repoPath,
+				["worktree", "add", "--detach", worktreePath, baseCommit],
+				USER_GIT_ACTION_OPTIONS,
+			);
 			if (!addResult.ok) {
 				if (!storedPatch) {
 					return {
@@ -274,7 +284,11 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 				baseCommit = requestedBaseCommit;
 				warning =
 					"Could not restore the saved task patch onto its original commit. Started from the task base ref instead.";
-				await getGitStdout(["worktree", "add", "--detach", worktreePath, baseCommit], context.repoPath);
+				await getGitStdout(
+					["worktree", "add", "--detach", worktreePath, baseCommit],
+					context.repoPath,
+					USER_GIT_ACTION_OPTIONS,
+				);
 			}
 			await prepareNewTaskWorktree(context.repoPath, worktreePath);
 

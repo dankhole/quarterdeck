@@ -5,15 +5,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const childProcessMocks = vi.hoisted(() => ({
 	execFile: vi.fn(),
 	execFilePromise: vi.fn(),
+	spawnSync: vi.fn(),
 }));
 
 vi.mock("node:child_process", () => ({
 	execFile: Object.assign(childProcessMocks.execFile, {
 		[promisify.custom]: childProcessMocks.execFilePromise,
 	}),
+	spawnSync: childProcessMocks.spawnSync,
 }));
 
-import { runGit } from "../../src/workdir";
+import { GIT_COMMAND_TIMEOUTS_MS, runGit, runGitSync } from "../../src/workdir";
 
 function createExecError(options: {
 	code: string | number;
@@ -36,6 +38,7 @@ describe("runGit", () => {
 	beforeEach(() => {
 		childProcessMocks.execFile.mockReset();
 		childProcessMocks.execFilePromise.mockReset();
+		childProcessMocks.spawnSync.mockReset();
 	});
 
 	it("preserves raw stdout on exit code 1 when trimStdout is false", async () => {
@@ -70,5 +73,76 @@ describe("runGit", () => {
 		expect(result.ok).toBe(false);
 		expect(result.exitCode).toBe(-1);
 		expect(result.stdout).toBe("partial-output");
+	});
+
+	it("passes the default timeout to child_process execFile", async () => {
+		childProcessMocks.execFilePromise.mockResolvedValueOnce({ stdout: "ok\n", stderr: "" });
+
+		await runGit("/repo", ["status"]);
+
+		expect(childProcessMocks.execFilePromise).toHaveBeenCalledWith(
+			"git",
+			["-c", "core.quotepath=false", "status"],
+			expect.objectContaining({ timeout: GIT_COMMAND_TIMEOUTS_MS.default }),
+		);
+	});
+
+	it("passes explicit inspection and checkpoint timeout classes to child_process execFile", async () => {
+		childProcessMocks.execFilePromise
+			.mockResolvedValueOnce({ stdout: "ok\n", stderr: "" })
+			.mockResolvedValueOnce({ stdout: "ok\n", stderr: "" });
+
+		await runGit("/repo", ["show", "HEAD:file.txt"], { timeoutClass: "inspection" });
+		await runGit("/repo", ["write-tree"], { timeoutClass: "checkpoint" });
+
+		expect(childProcessMocks.execFilePromise).toHaveBeenNthCalledWith(
+			1,
+			"git",
+			["-c", "core.quotepath=false", "show", "HEAD:file.txt"],
+			expect.objectContaining({ timeout: GIT_COMMAND_TIMEOUTS_MS.inspection }),
+		);
+		expect(childProcessMocks.execFilePromise).toHaveBeenNthCalledWith(
+			2,
+			"git",
+			["-c", "core.quotepath=false", "write-tree"],
+			expect.objectContaining({ timeout: GIT_COMMAND_TIMEOUTS_MS.checkpoint }),
+		);
+	});
+
+	it("classifies timed-out git commands distinctly", async () => {
+		const error = createExecError({
+			code: "ETIMEDOUT",
+			stdout: "",
+			stderr: "",
+			message: "Command failed: git status",
+		});
+		childProcessMocks.execFilePromise.mockRejectedValueOnce(error);
+
+		const result = await runGit("/repo", ["status"], { timeoutClass: "metadata" });
+
+		expect(result.ok).toBe(false);
+		expect(result.timedOut).toBe(true);
+		expect(result.error).toBe(`Git command timed out after ${GIT_COMMAND_TIMEOUTS_MS.metadata}ms`);
+	});
+});
+
+describe("runGitSync", () => {
+	beforeEach(() => {
+		childProcessMocks.execFile.mockReset();
+		childProcessMocks.execFilePromise.mockReset();
+		childProcessMocks.spawnSync.mockReset();
+	});
+
+	it("passes the sync timeout to child_process spawnSync", () => {
+		childProcessMocks.spawnSync.mockReturnValueOnce({ status: 0, stdout: "main\n" });
+
+		const result = runGitSync("/repo", ["symbolic-ref", "--short", "HEAD"]);
+
+		expect(result).toBe("main");
+		expect(childProcessMocks.spawnSync).toHaveBeenCalledWith(
+			"git",
+			["symbolic-ref", "--short", "HEAD"],
+			expect.objectContaining({ timeout: GIT_COMMAND_TIMEOUTS_MS.sync }),
+		);
 	});
 });

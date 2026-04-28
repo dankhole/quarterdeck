@@ -26,6 +26,7 @@ import type { RuntimeStateHub } from "./server";
 import { terminateProcessForTimeout } from "./server";
 import type { TerminalSessionManager } from "./terminal";
 import { killOrphanedAgentProcesses } from "./terminal";
+import { GIT_COMMAND_TIMEOUTS_MS } from "./workdir/git-utils";
 
 interface CliOptions {
 	noOpen: boolean;
@@ -203,6 +204,7 @@ function hasGitRepository(path: string): boolean {
 		cwd: path,
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "ignore"],
+		timeout: GIT_COMMAND_TIMEOUTS_MS.sync,
 		env: createGitProcessEnv(),
 	});
 	return result.status === 0 && result.stdout.trim() === "true";
@@ -490,14 +492,6 @@ async function createRuntimeBootstrapState(
 	modules.startPeriodicBackups(activeConfig.backupIntervalMinutes);
 	runtimeStateHub = modules.createRuntimeStateHub({
 		projectRegistry,
-		getActivePollIntervals: () => {
-			const config = projectRegistry.getActiveRuntimeConfig();
-			return {
-				focusedTaskPollMs: config.focusedTaskPollMs,
-				backgroundTaskPollMs: config.backgroundTaskPollMs,
-				homeRepoPollMs: config.homeRepoPollMs,
-			};
-		},
 	});
 	const runtimeHub = runtimeStateHub;
 	for (const { projectId, terminalManager } of projectRegistry.listManagedProjects()) {

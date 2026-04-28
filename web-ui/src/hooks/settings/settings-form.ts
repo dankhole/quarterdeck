@@ -40,9 +40,6 @@ export interface SettingsFormValues {
 		review: boolean;
 		failure: boolean;
 	};
-	focusedTaskPollMs: number;
-	backgroundTaskPollMs: number;
-	homeRepoPollMs: number;
 	worktreeAddParentGitDir: boolean;
 	worktreeAddQuarterdeckDir: boolean;
 	worktreeSystemPromptTemplate: string;
@@ -86,9 +83,6 @@ export function resolveInitialValues(
 		audibleNotificationSuppressCurrentProject: config?.audibleNotificationSuppressCurrentProject ?? {
 			...CONFIG_DEFAULTS.audibleNotificationSuppressCurrentProject,
 		},
-		focusedTaskPollMs: config?.focusedTaskPollMs ?? CONFIG_DEFAULTS.focusedTaskPollMs,
-		backgroundTaskPollMs: config?.backgroundTaskPollMs ?? CONFIG_DEFAULTS.backgroundTaskPollMs,
-		homeRepoPollMs: config?.homeRepoPollMs ?? CONFIG_DEFAULTS.homeRepoPollMs,
 		worktreeAddParentGitDir: config?.worktreeAddParentGitDir ?? CONFIG_DEFAULTS.worktreeAddParentGitDir,
 		worktreeAddQuarterdeckDir: config?.worktreeAddQuarterdeckDir ?? CONFIG_DEFAULTS.worktreeAddQuarterdeckDir,
 		worktreeSystemPromptTemplate: config?.worktreeSystemPromptTemplate ?? "",

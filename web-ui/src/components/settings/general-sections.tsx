@@ -7,10 +7,6 @@ import type { SettingsSectionProps } from "./settings-section-props";
 // Git
 // ---------------------------------------------------------------------------
 
-function clampPollInterval(value: string): number {
-	return Math.max(500, Math.min(60000, Number(value)));
-}
-
 const GIT_CARD_INDICATOR_TOGGLES = [
 	{
 		field: "uncommittedChangesOnCardsEnabled",
@@ -30,12 +26,6 @@ const GIT_CARD_INDICATOR_TOGGLES = [
 	},
 ] as const;
 
-const POLL_INTERVAL_FIELDS = [
-	{ id: "focused-task-poll", label: "Selected task", field: "focusedTaskPollMs" },
-	{ id: "background-task-poll", label: "Background tasks", field: "backgroundTaskPollMs" },
-	{ id: "home-repo-poll", label: "Home repository", field: "homeRepoPollMs" },
-] as const;
-
 export function GitSection({ fields, setField, disabled }: SettingsSectionProps): React.ReactElement {
 	return (
 		<>
@@ -52,34 +42,6 @@ export function GitSection({ fields, setField, disabled }: SettingsSectionProps)
 					description={description}
 				/>
 			))}
-			<h6 className="font-semibold text-text-primary mt-4 mb-1">Git Polling</h6>
-			<p className="text-text-secondary text-[13px] mt-1 mb-3">
-				How often to check for git changes in task worktrees. Lower values show changes faster but use more
-				resources when many tasks are active.
-			</p>
-			<div className="flex flex-col gap-2">
-				{POLL_INTERVAL_FIELDS.map(({ id, label, field }) => (
-					<div key={id} className="flex items-center justify-between gap-3">
-						<label htmlFor={id} className="text-text-primary text-[13px] shrink-0">
-							{label}
-						</label>
-						<div className="flex items-center gap-1.5">
-							<input
-								id={id}
-								type="number"
-								min={500}
-								max={60000}
-								step={500}
-								value={fields[field]}
-								onChange={(event) => setField(field, clampPollInterval(event.target.value))}
-								disabled={disabled}
-								className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
-							/>
-							<span className="text-text-secondary text-[11px]">ms</span>
-						</div>
-					</div>
-				))}
-			</div>
 		</>
 	);
 }

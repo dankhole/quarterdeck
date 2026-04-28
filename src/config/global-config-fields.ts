@@ -20,9 +20,6 @@
 export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
-const MIN_POLL_INTERVAL_MS = 500;
-const MAX_POLL_INTERVAL_MS = 60_000;
-
 // --- Normalize helpers (also used by special-case fields in runtime-config.ts) ---
 
 export function normalizeBoolean(value: unknown, fallback: boolean): boolean {
@@ -53,11 +50,6 @@ export function normalizeVolume(value: unknown, fallback: number): number {
 	return fallback;
 }
 
-export function normalizePollInterval(value: unknown, fallback: number): number {
-	const normalized = normalizeNumber(value, fallback);
-	return Math.max(MIN_POLL_INTERVAL_MS, Math.min(MAX_POLL_INTERVAL_MS, Math.round(normalized)));
-}
-
 // --- Field definition ---
 
 interface ConfigField<T> {
@@ -75,10 +67,6 @@ function numField(defaultValue: number): ConfigField<number> {
 
 function volumeField(defaultValue: number): ConfigField<number> {
 	return { defaultValue, normalize: normalizeVolume };
-}
-
-function pollField(defaultValue: number): ConfigField<number> {
-	return { defaultValue, normalize: normalizePollInterval };
 }
 
 function enumField<T extends string>(defaultValue: T, allowed: readonly T[]): ConfigField<T> {
@@ -116,9 +104,6 @@ export const GLOBAL_CONFIG_FIELDS = {
 	audibleNotificationsEnabled: boolField(true),
 	audibleNotificationVolume: volumeField(0.7),
 	audibleNotificationsOnlyWhenHidden: boolField(true),
-	focusedTaskPollMs: pollField(2_000),
-	backgroundTaskPollMs: pollField(5_000),
-	homeRepoPollMs: pollField(10_000),
 	statuslineEnabled: boolField(true),
 	terminalFontWeight: numField(325),
 	worktreeAddParentGitDir: boolField(false),

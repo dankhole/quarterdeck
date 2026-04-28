@@ -7,10 +7,11 @@ import { runGit } from "../workdir";
  * counts reported by `git status` are stale because the local tracking ref
  * (e.g. `origin/main`) only reflects the last fetch/pull/push.
  */
-export const REMOTE_FETCH_INTERVAL_MS = 60_000;
+export const REMOTE_FETCH_INTERVAL_MS = 120_000;
 
 export interface CreateProjectMetadataRemoteFetchPolicyDependencies {
 	getProjectPath: () => string;
+	limitRemoteFetch: <T>(fetch: () => Promise<T>) => Promise<T>;
 	onFetchSucceeded: () => Promise<void>;
 }
 
@@ -50,8 +51,11 @@ export class ProjectMetadataRemoteFetchPolicy {
 
 		this.fetchPromise = (async () => {
 			try {
-				const result = await runGit(this.deps.getProjectPath(), ["fetch", "--all", "--prune"], {
-					env: createGitProcessEnv({ GIT_TERMINAL_PROMPT: "0" }),
+				const result = await this.deps.limitRemoteFetch(async () => {
+					return await runGit(this.deps.getProjectPath(), ["fetch", "--all", "--prune"], {
+						env: createGitProcessEnv({ GIT_TERMINAL_PROMPT: "0" }),
+						timeoutClass: "remoteFetch",
+					});
 				});
 				if (result.ok) {
 					await this.deps.onFetchSucceeded();

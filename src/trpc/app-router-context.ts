@@ -254,6 +254,7 @@ export interface RuntimeTrpcContext {
 			generatedAt: number | null,
 		) => Promise<void>;
 		setFocusedTask: (scope: RuntimeTrpcProjectScope, taskId: string | null) => void;
+		setDocumentVisible: (scope: RuntimeTrpcProjectScope, isDocumentVisible: boolean) => void;
 		stashPush: (
 			scope: RuntimeTrpcProjectScope,
 			input: { taskScope: { taskId: string; baseRef: string } | null; paths: string[]; message?: string },

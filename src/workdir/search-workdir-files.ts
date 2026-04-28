@@ -1,13 +1,10 @@
-import { execFile } from "node:child_process";
 import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
-import { promisify } from "node:util";
 
 import type { RuntimeWorkdirFileSearchMatch } from "../core";
-import { createGitProcessEnv } from "../core";
+import { runGit } from "./git-utils";
 
-const execFileAsync = promisify(execFile);
 const CACHE_TTL_MS = 5_000;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -113,21 +110,21 @@ async function loadFileIndex(cwd: string): Promise<{ files: readonly string[]; c
 
 	try {
 		const [filesResult, statusResult] = await Promise.all([
-			execFileAsync(
-				"git",
-				["-c", "core.quotepath=false", "ls-files", "--cached", "--others", "--exclude-standard"],
-				{
-					cwd,
-					maxBuffer: 8 * 1024 * 1024,
-					env: createGitProcessEnv(),
-				},
-			),
-			execFileAsync("git", ["-c", "core.quotepath=false", "status", "--porcelain=v1", "--untracked-files=all"], {
-				cwd,
-				maxBuffer: 8 * 1024 * 1024,
-				env: createGitProcessEnv(),
+			runGit(cwd, ["ls-files", "--cached", "--others", "--exclude-standard"], {
+				trimStdout: false,
+				timeoutClass: "metadata",
+			}),
+			runGit(cwd, ["status", "--porcelain=v1", "--untracked-files=all"], {
+				trimStdout: false,
+				timeoutClass: "metadata",
 			}).catch(() => ({ stdout: "" })),
 		]);
+		if (!filesResult.ok) {
+			return {
+				files: [],
+				changedPaths: new Set<string>(),
+			};
+		}
 		const allFiles = normalizeLines(filesResult.stdout);
 		const { changed: changedPaths, deleted: deletedPaths } = parsePorcelainStatus(statusResult.stdout);
 		// Filter out deleted files — git ls-files --cached still lists them

@@ -120,6 +120,7 @@ describe("createStateOps.saveState", () => {
 					broadcastRuntimeProjectsUpdated: vi.fn(async () => undefined),
 					broadcastTaskTitleUpdated: vi.fn(),
 					setFocusedTask: vi.fn(),
+					setDocumentVisible: vi.fn(),
 					requestTaskRefresh: vi.fn(),
 					requestHomeRefresh: vi.fn(),
 				},

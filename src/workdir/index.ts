@@ -45,6 +45,10 @@ export {
 export {
 	assertValidGitRef,
 	countLines,
+	GIT_CHECKPOINT_OPTIONS,
+	GIT_COMMAND_TIMEOUTS_MS,
+	GIT_INSPECTION_OPTIONS,
+	type GitCommandTimeoutClass,
 	type GitHeadInfo,
 	getCommitsBehindBase,
 	getFileContentAtRef,
@@ -57,6 +61,7 @@ export {
 	parseNumstatPerFile,
 	parseNumstatTotals,
 	type RunGitOptions,
+	type RunGitSyncOptions,
 	readGitHeadInfo,
 	resolveBaseRefForBranch,
 	resolveRepoRoot,

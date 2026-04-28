@@ -1,6 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import type { RuntimeWorkdirTextSearchFile, RuntimeWorkdirTextSearchResponse } from "../core";
-import { runGit } from "./git-utils.js";
+import { GIT_INSPECTION_OPTIONS, runGit } from "./git-utils.js";
 
 const DEFAULT_LIMIT = 100;
 
@@ -24,7 +24,7 @@ export async function searchWorkdirText(
 	args.push(isRegex ? "-E" : "-F");
 	args.push("--", query);
 
-	const result = await runGit(cwd, args, { trimStdout: false });
+	const result = await runGit(cwd, args, { trimStdout: false, ...GIT_INSPECTION_OPTIONS });
 
 	// Exit code 1 = no matches found
 	if (!result.ok && result.exitCode === 1) {

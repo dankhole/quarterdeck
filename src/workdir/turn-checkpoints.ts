@@ -4,18 +4,18 @@ import { join } from "node:path";
 
 import type { RuntimeTaskTurnCheckpoint } from "../core";
 import { createGitProcessEnv } from "../core";
-import { getGitStdout, type RunGitOptions } from "./git-utils";
+import { GIT_CHECKPOINT_OPTIONS, getGitStdout, type RunGitOptions } from "./git-utils";
 
 const CHECKPOINT_AUTHOR_NAME = "quarterdeck-checkpoint";
 const CHECKPOINT_AUTHOR_EMAIL = "quarterdeck-checkpoint@local";
 
 function runGit(cwd: string, args: string[], options: RunGitOptions = {}) {
-	return getGitStdout(args, cwd, options);
+	return getGitStdout(args, cwd, { ...GIT_CHECKPOINT_OPTIONS, ...options });
 }
 
 async function tryRunGit(cwd: string, args: string[], options: RunGitOptions = {}): Promise<string | null> {
 	try {
-		return await getGitStdout(args, cwd, options);
+		return await getGitStdout(args, cwd, { ...GIT_CHECKPOINT_OPTIONS, ...options });
 	} catch {
 		return null;
 	}

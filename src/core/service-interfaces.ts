@@ -11,7 +11,6 @@
  */
 
 import type { RuntimeConfigState } from "../config";
-import type { ProjectMetadataPollIntervals } from "../server";
 import type { TerminalSessionManager } from "../terminal";
 import type { RuntimeProjectStateResponse, RuntimeProjectSummary, RuntimeProjectTaskCounts } from "./api-contract";
 import type { LogLevel } from "./runtime-logger";
@@ -35,9 +34,9 @@ export interface IRuntimeBroadcaster {
 	broadcastTaskBaseRefUpdated: (projectId: string, taskId: string, baseRef: string) => void;
 	broadcastLogLevel: (level: LogLevel) => void;
 	setFocusedTask: (projectId: string, taskId: string | null) => void;
+	setDocumentVisible: (projectId: string, isDocumentVisible: boolean) => void;
 	requestTaskRefresh: (projectId: string, taskId: string) => void;
 	requestHomeRefresh: (projectId: string) => void;
-	setPollIntervals: (projectId: string, intervals: ProjectMetadataPollIntervals) => void;
 }
 
 // ── Terminal Manager Access ──────────────────────────────────────────────────

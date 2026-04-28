@@ -5,6 +5,7 @@ import { useBoardMetadataSync, useTaskBaseRefSync, useTaskTitleSync } from "@/ho
 import {
 	useAudibleNotifications,
 	useFocusedTaskNotification,
+	useProjectMetadataVisibility,
 	useReviewReadyNotifications,
 	useStreamErrorHandler,
 } from "@/hooks/notifications";
@@ -53,6 +54,10 @@ export function useAppSideEffects({
 	handleToggleTextSearch,
 }: UseAppSideEffectsInput): void {
 	useFocusedTaskNotification({ currentProjectId: project.currentProjectId, selectedTaskId: board.selectedTaskId });
+	useProjectMetadataVisibility({
+		currentProjectId: project.currentProjectId,
+		isDocumentVisible: project.isDocumentVisible,
+	});
 	useBoardMetadataSync({ projectMetadata: project.projectMetadata, setBoard: board.setBoard });
 	useReviewReadyNotifications({
 		activeProjectId: project.navigationCurrentProjectId,

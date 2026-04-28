@@ -8,6 +8,7 @@ import { normalizeTaskIdForWorktreePath } from "./task-worktree-path";
 
 const QUARTERDECK_TRASHED_TASK_PATCHES_DIR_NAME = "trashed-task-patches";
 const TASK_PATCH_FILE_SUFFIX = ".patch";
+const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 
 function getTaskPatchFilePrefix(taskId: string): string {
 	return `${normalizeTaskIdForWorktreePath(taskId)}.`;
@@ -67,6 +68,7 @@ async function listUntrackedPaths(worktreePath: string): Promise<string[]> {
 	// Original used runGitRaw (throws on failure).
 	const output = await getGitStdout(["ls-files", "--others", "--exclude-standard", "-z"], worktreePath, {
 		trimStdout: false,
+		...USER_GIT_ACTION_OPTIONS,
 	});
 	return output
 		.split("\0")
@@ -79,9 +81,16 @@ export async function captureTaskPatch(options: {
 	taskId: string;
 	worktreePath: string;
 }): Promise<void> {
-	const headCommit = await getGitStdout(["rev-parse", "--verify", "HEAD"], options.worktreePath);
+	const headCommit = await getGitStdout(
+		["rev-parse", "--verify", "HEAD"],
+		options.worktreePath,
+		USER_GIT_ACTION_OPTIONS,
+	);
 
-	const trackedResult = await runGit(options.worktreePath, ["diff", "--binary", "HEAD", "--"], { trimStdout: false });
+	const trackedResult = await runGit(options.worktreePath, ["diff", "--binary", "HEAD", "--"], {
+		trimStdout: false,
+		...USER_GIT_ACTION_OPTIONS,
+	});
 	if (!trackedResult.ok && trackedResult.exitCode !== 1) {
 		throw new Error(trackedResult.error ?? "Failed to capture tracked diff.");
 	}
@@ -92,7 +101,7 @@ export async function captureTaskPatch(options: {
 		const untrackedResult = await runGit(
 			options.worktreePath,
 			["diff", "--binary", "--no-index", "--", process.platform === "win32" ? "NUL" : "/dev/null", relativePath],
-			{ trimStdout: false },
+			{ trimStdout: false, ...USER_GIT_ACTION_OPTIONS },
 		);
 		if (!untrackedResult.ok && untrackedResult.exitCode !== 1) {
 			throw new Error(untrackedResult.error ?? "Failed to capture untracked diff.");
@@ -118,5 +127,5 @@ export async function captureTaskPatch(options: {
 }
 
 export async function applyTaskPatch(patchPath: string, worktreePath: string): Promise<void> {
-	await getGitStdout(["apply", "--binary", "--whitespace=nowarn", patchPath], worktreePath);
+	await getGitStdout(["apply", "--binary", "--whitespace=nowarn", patchPath], worktreePath, USER_GIT_ACTION_OPTIONS);
 }
