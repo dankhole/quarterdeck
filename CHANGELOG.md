@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Chore: remove sidebar pinning
+
+- Removed the sidebar toolbar pin toggle, its surface-navigation state, and the persisted `quarterdeck.sidebar-pinned` preference.
+- Files/Git now always collapse non-Commit side panels, and selecting a task from Home always opens the Board side panel.
+
 ### Fix: show remote refs in base branch picker
 
 - The task top-bar base-ref dropdown now groups pinned local, local, and remote refs, so refs such as `origin/main` can be selected directly.

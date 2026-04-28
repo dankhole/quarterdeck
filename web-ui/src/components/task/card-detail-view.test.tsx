@@ -327,8 +327,6 @@ const noopSurfaceNavigationContext: SurfaceNavigationContextValue = {
 	sidebar: null,
 	setMainView: () => {},
 	toggleSidebar: () => {},
-	sidebarPinned: false,
-	toggleSidebarPinned: () => {},
 	visualMainView: "home",
 	visualSidebar: null,
 	sidePanelRatio: 0.15,

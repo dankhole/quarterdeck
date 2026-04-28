@@ -1,15 +1,10 @@
 import { readPersistedResizeNumber, writePersistedResizeNumber } from "@/resize/resize-persistence";
-import { type LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
+import type { LocalStorageKey } from "@/storage/local-storage-store";
 
 export interface ResizeNumberPreference {
 	defaultValue: number | (() => number);
 	key: LocalStorageKey;
 	normalize?: (value: number) => number;
-}
-
-export interface ResizeBooleanPreference {
-	defaultValue: boolean;
-	key: LocalStorageKey;
 }
 
 export function getResizePreferenceDefaultValue(preference: ResizeNumberPreference): number {
@@ -30,17 +25,4 @@ export function persistResizePreference(preference: ResizeNumberPreference, valu
 		value,
 		normalize: preference.normalize,
 	});
-}
-
-export function loadBooleanResizePreference(preference: ResizeBooleanPreference): boolean {
-	const storedValue = readLocalStorageItem(preference.key);
-	if (storedValue === null) {
-		return preference.defaultValue;
-	}
-	return storedValue === "true";
-}
-
-export function persistBooleanResizePreference(preference: ResizeBooleanPreference, value: boolean): boolean {
-	writeLocalStorageItem(preference.key, String(value));
-	return value;
 }

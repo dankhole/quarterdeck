@@ -96,8 +96,6 @@ export function useCardDetailLayout({
 	sidebar: SidebarId | null;
 	setMainView: (view: MainViewId, callbacks?: { setSelectedTaskId?: (id: string | null) => void }) => void;
 	toggleSidebar: (id: SidebarId) => void;
-	sidebarPinned: boolean;
-	toggleSidebarPinned: () => void;
 	visualMainView: MainViewId;
 	visualSidebar: SidebarId | null;
 	lastSidebarTab: SidebarId;
@@ -124,19 +122,6 @@ export function useCardDetailLayout({
 		setLastSidebarTabState(persistLastSidebarTab(tab));
 	}, []);
 
-	const [sidebarPinned, setSidebarPinned] = useState(
-		() => readLocalStorageItem(LocalStorageKey.SidebarPinned) === "true",
-	);
-	const toggleSidebarPinned = useCallback(() => {
-		setSidebarPinned((prev) => {
-			const next = !prev;
-			writeLocalStorageItem(LocalStorageKey.SidebarPinned, String(next));
-			return next;
-		});
-	}, []);
-	const sidebarPinnedRef = useRef(sidebarPinned);
-	sidebarPinnedRef.current = sidebarPinned;
-
 	// Tracks sidebar that was auto-collapsed when switching to files/git,
 	// so it can be restored when switching back to terminal.
 	const sidebarBeforeAutoCollapseRef = useRef<SidebarId | null>(null);
@@ -144,7 +129,7 @@ export function useCardDetailLayout({
 	/**
 	 * Set the main view. Auto-coupling rules:
 	 * - "home" → also sets sidebar to "projects" and deselects the task.
-	 * - "files" / "git" → collapse sidebar if not pinned (integrated tree replaces it).
+	 * - "files" / "git" → collapse non-Commit sidebars (integrated tree replaces them).
 	 *   Remembers the collapsed sidebar for restoration.
 	 * - "terminal" → restores sidebar if it was auto-collapsed by a previous view switch.
 	 */
@@ -155,11 +140,7 @@ export function useCardDetailLayout({
 				setSidebarPersist("projects");
 				sidebarBeforeAutoCollapseRef.current = null;
 				callbacks?.setSelectedTaskId?.(null);
-			} else if (
-				(view === "files" || view === "git") &&
-				sidebarRef.current !== "commit" &&
-				!sidebarPinnedRef.current
-			) {
+			} else if ((view === "files" || view === "git") && sidebarRef.current !== "commit") {
 				if (sidebarRef.current !== null) {
 					sidebarBeforeAutoCollapseRef.current = sidebarRef.current;
 				}
@@ -212,31 +193,24 @@ export function useCardDetailLayout({
 			return;
 		}
 		const currentMainView = mainViewRef.current;
-		const pinned = sidebarPinnedRef.current;
 
 		if (selectedTaskId) {
 			// Task selected: switch to terminal + task_column from home.
 			// From terminal, files, or git view: keep current state (all work with task context).
 			if (currentMainView === "home") {
 				setMainViewPersist("terminal");
-				if (!pinned) {
-					setSidebarPersist("task_column");
-					setLastSidebarTab("task_column");
-				}
+				setSidebarPersist("task_column");
+				setLastSidebarTab("task_column");
 			}
 			// else: already on terminal/files/git — leave mainView and sidebar as-is
 		} else {
-			// Task deselected: task_column can't function without a task — always fall back.
-			if (sidebarRef.current === "task_column") {
-				setSidebarPersist("projects");
-			}
 			// Terminal needs a task — fall back to home.
 			if (currentMainView === "terminal") {
 				setMainViewPersist("home");
-				// Also switch sidebar to projects if not pinned (and not already switched above).
-				if (!pinned && sidebarRef.current !== "task_column") {
-					setSidebarPersist("projects");
-				}
+				setSidebarPersist("projects");
+			} else if (sidebarRef.current === "task_column") {
+				// Task deselected: task_column can't function without a task.
+				setSidebarPersist("projects");
 			}
 		}
 	}, [selectedTaskId, setMainViewPersist, setSidebarPersist, setLastSidebarTab]);
@@ -264,8 +238,6 @@ export function useCardDetailLayout({
 		sidebar,
 		setMainView,
 		toggleSidebar,
-		sidebarPinned,
-		toggleSidebarPinned,
 		visualMainView,
 		visualSidebar,
 		lastSidebarTab,

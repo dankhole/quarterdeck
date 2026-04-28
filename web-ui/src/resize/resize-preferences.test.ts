@@ -2,11 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import {
 	getResizePreferenceDefaultValue,
-	loadBooleanResizePreference,
 	loadResizePreference,
-	persistBooleanResizePreference,
 	persistResizePreference,
-	type ResizeBooleanPreference,
 	type ResizeNumberPreference,
 } from "./resize-preferences";
 
@@ -15,17 +12,7 @@ vi.mock("@/resize/resize-persistence", () => ({
 	writePersistedResizeNumber: vi.fn(),
 }));
 
-vi.mock("@/storage/local-storage-store", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@/storage/local-storage-store")>();
-	return {
-		...actual,
-		readLocalStorageItem: vi.fn(),
-		writeLocalStorageItem: vi.fn(),
-	};
-});
-
 import { readPersistedResizeNumber, writePersistedResizeNumber } from "@/resize/resize-persistence";
-import { readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 
 describe("getResizePreferenceDefaultValue", () => {
 	it("returns static number default", () => {
@@ -104,64 +91,5 @@ describe("persistResizePreference", () => {
 			normalize: undefined,
 		});
 		expect(result).toBe(55);
-	});
-});
-
-describe("loadBooleanResizePreference", () => {
-	beforeEach(() => {
-		vi.mocked(readLocalStorageItem).mockReset();
-	});
-
-	const pref: ResizeBooleanPreference = {
-		defaultValue: false,
-		key: LocalStorageKey.SidebarPinned,
-	};
-
-	it("returns default when storage is null", () => {
-		vi.mocked(readLocalStorageItem).mockReturnValue(null);
-		expect(loadBooleanResizePreference(pref)).toBe(false);
-	});
-
-	it("returns true when stored value is 'true'", () => {
-		vi.mocked(readLocalStorageItem).mockReturnValue("true");
-		expect(loadBooleanResizePreference(pref)).toBe(true);
-	});
-
-	it("returns false when stored value is 'false'", () => {
-		vi.mocked(readLocalStorageItem).mockReturnValue("false");
-		expect(loadBooleanResizePreference(pref)).toBe(false);
-	});
-
-	it("returns false for non-'true' stored values", () => {
-		vi.mocked(readLocalStorageItem).mockReturnValue("yes");
-		expect(loadBooleanResizePreference(pref)).toBe(false);
-	});
-
-	it("respects default=true when storage is null", () => {
-		vi.mocked(readLocalStorageItem).mockReturnValue(null);
-		expect(loadBooleanResizePreference({ ...pref, defaultValue: true })).toBe(true);
-	});
-});
-
-describe("persistBooleanResizePreference", () => {
-	beforeEach(() => {
-		vi.mocked(writeLocalStorageItem).mockReset();
-	});
-
-	const pref: ResizeBooleanPreference = {
-		defaultValue: false,
-		key: LocalStorageKey.SidebarPinned,
-	};
-
-	it("writes 'true' to storage and returns true", () => {
-		const result = persistBooleanResizePreference(pref, true);
-		expect(writeLocalStorageItem).toHaveBeenCalledWith(LocalStorageKey.SidebarPinned, "true");
-		expect(result).toBe(true);
-	});
-
-	it("writes 'false' to storage and returns false", () => {
-		const result = persistBooleanResizePreference(pref, false);
-		expect(writeLocalStorageItem).toHaveBeenCalledWith(LocalStorageKey.SidebarPinned, "false");
-		expect(result).toBe(false);
 	});
 });

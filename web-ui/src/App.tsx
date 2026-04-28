@@ -412,8 +412,6 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 							activeSidebar={navigation.visualSidebar}
 							onMainViewChange={handleMainViewChange}
 							onSidebarChange={navigation.toggleSidebar}
-							sidebarPinned={navigation.sidebarPinned}
-							onToggleSidebarPinned={navigation.toggleSidebarPinned}
 							hasSelectedTask={selectedCard !== null}
 							gitBadgeColor={
 								selectedCard

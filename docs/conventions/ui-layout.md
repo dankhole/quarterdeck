@@ -32,7 +32,6 @@ Git      /
 Projects \
 Board     > SidebarId: controls the side panel
 Commit   /
-Pin
 ```
 
 Main-view selection and side-panel selection are independent state values. They auto-couple only for a few UX defaults, described below.
@@ -54,7 +53,7 @@ type GitViewTab = "uncommitted" | "last_turn" | "compare";
 
 `SurfaceNavigationProvider` owns UI surface navigation. It wraps:
 
-- `useCardDetailLayout(...)` for `mainView`, `sidebar`, sidebar pinning, and side-panel width.
+- `useCardDetailLayout(...)` for `mainView`, `sidebar`, and side-panel width.
 - `useGitNavigation(...)` for cross-surface file navigation and Git compare navigation.
 - Git history open/closed state.
 
@@ -65,7 +64,7 @@ Important files:
 | File | Role |
 | --- | --- |
 | `web-ui/src/providers/surface-navigation-provider.tsx` | Public context for main view, sidebar, Git history, and file/compare navigation |
-| `web-ui/src/resize/use-card-detail-layout.ts` | Main-view/sidebar state, auto-coupling, sidebar pinning, persistence |
+| `web-ui/src/resize/use-card-detail-layout.ts` | Main-view/sidebar state, auto-coupling, persistence |
 | `web-ui/src/components/terminal/detail-toolbar.tsx` | Sidebar toolbar buttons and badges |
 | `web-ui/src/App.tsx` | Top-level shell wiring and home side-panel rendering |
 | `web-ui/src/components/app/home-view.tsx` | No-task main area: board, files, git, and home shell terminal |
@@ -154,15 +153,13 @@ These are defaults, not locks. The user can override them unless the target surf
 | Trigger | Main view result | Sidebar result |
 | --- | --- | --- |
 | `setMainView("home")` | Home | Projects; also deselects task through callback |
-| `setMainView("files")` or `"git"` | Files/Git | Collapses sidebar unless it is Commit or pinned |
+| `setMainView("files")` or `"git"` | Files/Git | Collapses sidebar unless it is Commit |
 | `setMainView("terminal")` | Terminal | Restores sidebar that Files/Git auto-collapsed, when still applicable |
-| Task selected while on Home | Terminal | Board, unless sidebar is pinned |
+| Task selected while on Home | Terminal | Board |
 | Task selected while on Terminal/Files/Git | Unchanged | Unchanged |
 | Task deselected while on Terminal | Home | Projects |
 | Task deselected while sidebar is Board | Unchanged, except Terminal still returns Home | Projects |
 | Project switch starts | Home | Projects; Git history closes |
-
-Sidebar pinning currently prevents Files/Git auto-collapse and prevents task selection from forcing Board open. It does not make task-only panels valid without a task.
 
 Toolbar highlights are literal:
 
@@ -182,7 +179,6 @@ Relevant `LocalStorageKey` values:
 | `DetailMainView` | Last written main view |
 | `DetailSidebar` | Last written sidebar; empty string means collapsed |
 | `DetailLastSidebarTab` | Last task-tied sidebar |
-| `SidebarPinned` | Whether auto-collapse/auto-open behavior is pinned |
 | `DetailSidePanelRatio` | Home/task side-panel width |
 | `GitViewActiveTab` | Current Git tab |
 | `GitViewFileTreeRatio` | Git changed-file tree width |

@@ -19,7 +19,6 @@ export enum LocalStorageKey {
 	PromptShortcutLastLabel = "quarterdeck.prompt-shortcut-last-label",
 	GitViewFileTreeRatio = "quarterdeck.git-view-file-tree-ratio",
 	GitViewActiveTab = "quarterdeck.git-view-active-tab",
-	SidebarPinned = "quarterdeck.sidebar-pinned",
 	DebugLogPanelWidth = "quarterdeck.debug-log-panel-width",
 	FileBrowserWordWrap = "quarterdeck.file-browser-word-wrap",
 	FileBrowserMarkdownPreview = "quarterdeck.file-browser-markdown-preview",

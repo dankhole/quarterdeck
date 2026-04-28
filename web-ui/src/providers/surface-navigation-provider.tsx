@@ -22,8 +22,6 @@ export interface SurfaceNavigationContextValue {
 	sidebar: SidebarId | null;
 	setMainView: (view: MainViewId, callbacks?: { setSelectedTaskId?: (id: string | null) => void }) => void;
 	toggleSidebar: (id: SidebarId) => void;
-	sidebarPinned: boolean;
-	toggleSidebarPinned: () => void;
 	visualMainView: MainViewId;
 	visualSidebar: SidebarId | null;
 	sidePanelRatio: number;
@@ -55,8 +53,6 @@ export function SurfaceNavigationProvider({ children }: SurfaceNavigationProvide
 		sidebar,
 		setMainView,
 		toggleSidebar,
-		sidebarPinned,
-		toggleSidebarPinned,
 		visualMainView,
 		visualSidebar,
 		sidePanelRatio,
@@ -111,8 +107,6 @@ export function SurfaceNavigationProvider({ children }: SurfaceNavigationProvide
 			sidebar,
 			setMainView,
 			toggleSidebar,
-			sidebarPinned,
-			toggleSidebarPinned,
 			visualMainView,
 			visualSidebar,
 			sidePanelRatio,
@@ -135,8 +129,6 @@ export function SurfaceNavigationProvider({ children }: SurfaceNavigationProvide
 			sidebar,
 			setMainView,
 			toggleSidebar,
-			sidebarPinned,
-			toggleSidebarPinned,
 			visualMainView,
 			visualSidebar,
 			sidePanelRatio,

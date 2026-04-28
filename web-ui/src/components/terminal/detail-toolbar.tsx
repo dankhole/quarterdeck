@@ -5,8 +5,6 @@ import {
 	GitCompareArrows,
 	House,
 	LayoutGrid,
-	Pin,
-	PinOff,
 	SquareTerminal,
 } from "lucide-react";
 import { cn } from "@/components/ui/cn";
@@ -20,8 +18,6 @@ interface DetailToolbarProps {
 	activeSidebar: SidebarId | null;
 	onMainViewChange: (view: MainViewId) => void;
 	onSidebarChange: (id: SidebarId) => void;
-	sidebarPinned: boolean;
-	onToggleSidebarPinned: () => void;
 	hasSelectedTask: boolean;
 	gitBadgeColor?: "red" | "blue";
 	isBehindBase?: boolean;
@@ -133,8 +129,6 @@ export function DetailToolbar({
 	activeSidebar,
 	onMainViewChange,
 	onSidebarChange,
-	sidebarPinned,
-	onToggleSidebarPinned,
 	hasSelectedTask,
 	gitBadgeColor,
 	isBehindBase,
@@ -214,24 +208,6 @@ export function DetailToolbar({
 				icon={<GitCommitHorizontal size={18} />}
 				label="Commit"
 			/>
-
-			{/* Pin toggle — prevents sidebar from auto-switching when selecting/deselecting tasks */}
-			<Tooltip content={sidebarPinned ? "Unpin sidebar" : "Pin sidebar"} side="right">
-				<button
-					type="button"
-					onClick={onToggleSidebarPinned}
-					className={cn(
-						"flex items-center justify-center w-6 h-6 rounded cursor-pointer border-0 mt-0.5 bg-transparent",
-						sidebarPinned
-							? "text-accent"
-							: "text-text-tertiary opacity-40 hover:opacity-100 hover:text-text-secondary",
-					)}
-					aria-label={sidebarPinned ? "Unpin sidebar" : "Pin sidebar"}
-					aria-pressed={sidebarPinned}
-				>
-					{sidebarPinned ? <Pin size={14} /> : <PinOff size={14} />}
-				</button>
-			</Tooltip>
 		</aside>
 	);
 }
