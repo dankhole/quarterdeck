@@ -605,6 +605,16 @@ describe.sequential("state streaming integration", () => {
 			);
 
 			writeFileSync(join(ensureResponse.payload.path, "task-change.txt"), "updated\n", "utf8");
+			const focusResponse = await requestJson({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "project.setFocusedTask",
+				type: "mutation",
+				projectId,
+				payload: {
+					taskId,
+				},
+			});
+			expect(focusResponse.status).toBe(200);
 
 			const metadataMessage = await stream.waitForMessage(
 				(message) =>

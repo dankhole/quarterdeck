@@ -51,7 +51,7 @@
     "dogfood": "node scripts/dogfood.mjs",
     "link": "npm run build && npm link",
     "unlink": "npm unlink -g quarterdeck",
-    "dev": "tsx watch src/cli.ts",
+    "dev": "node scripts/dev-runtime.mjs",
     "dev:full": "node scripts/dev-full.mjs",
     "web:dev": "npm --prefix web-ui run dev",
     "web:build": "npm --prefix web-ui run build",

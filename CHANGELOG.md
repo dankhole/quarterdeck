@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: avoid tsx force-killing dev shutdown
+
+- `npm run dev` now runs the runtime through a small Node supervisor that forwards one shutdown signal to `tsx watch`, waits for Quarterdeck cleanup, and only force-kills after a timeout.
+- `npm run dev:full` now uses the same managed shutdown path for both runtime and web UI processes, avoiding duplicate wrapper signals while still cleaning up both children when either exits.
+
 ### Fix: bound hidden terminal stream lifetimes
 
 - Terminal prewarm slots now have a 12-second absolute TTL from warmup start, so hover-created `PRELOADING` / `READY` slots cannot stay connected indefinitely when `cancelWarmup()` never arrives.

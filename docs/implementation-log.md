@@ -2,6 +2,18 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: avoid tsx force-killing dev shutdown (2026-04-28)
+
+Reproducing `npm run dev -- --no-open --port auto` showed that a single Ctrl+C could print `Previous process hasn't exited yet. Force killing...` from `tsx watch` while Quarterdeck was still inside its graceful shutdown path. The warning was emitted by `tsx`'s parent watcher signal handler, not by Quarterdeck's HTTP `server.close()`: npm/terminal wrapper signal delivery could reach `tsx` a second time while the watched Quarterdeck child was still persisting shutdown state and closing sockets.
+
+The dev runtime now launches `tsx watch src/cli.ts` through `scripts/dev-runtime.mjs`, which resolves the local `tsx/cli` entrypoint and supervises it with a managed child-process helper. The helper starts the child in its own process group, forwards only one graceful shutdown signal to the immediate child, waits for exit, and reserves process-group `SIGKILL` for the timeout fallback. `scripts/dev-full.mjs` now reuses that helper for both runtime and web UI children, waits for both processes during shutdown, and passes runtime CLI arguments through to the runtime supervisor for local repros.
+
+Verified with isolated `QUARTERDECK_STATE_HOME` runs: `npm run dev -- --no-open --port auto` now exits with `Cleaning up... done` and no `tsx` force-kill warning; `npm run dev:full -- --no-open --port auto` cleanly shuts down both runtime and web UI children. Syntax checks passed for all touched `.mjs` dev scripts.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `package.json`, `scripts/dev-full.mjs`, `scripts/dev-process.mjs`, `scripts/dev-runtime.mjs`.
+
+Commit: pending
+
 ## Fix: bound hidden terminal stream lifetimes (2026-04-28)
 
 Terminal prewarm and quick-switch slots were intentionally kept alive briefly to make hover-to-click and task switching feel instant. Dogfooding showed two missing bounds in that policy layer: a `PRELOADING` / `READY` slot could stay connected if the caller never sent `cancelWarmup()`, and a quick switch back to an already-retained slot could leave the formerly visible task marked `ACTIVE` even though it was now hidden.
