@@ -17,109 +17,6 @@ import { disableOscColorQueryIntercept, filterTerminalProtocolOutput } from "./t
 const OSC_FOREGROUND_QUERY_REPLY = "\u001b]10;rgb:e6e6/eded/f3f3\u001b\\";
 const OSC_BACKGROUND_QUERY_REPLY = "\u001b]11;rgb:1717/1717/2121\u001b\\";
 
-// [perf-investigation] Count PTY output before/after protocol filtering and
-// time the synchronous cost of the headless terminal mirror. Uses direct
-// console output to avoid feeding Quarterdeck's runtime log stream while
-// investigating degraded performance. Remove once the idle-agent CPU
-// investigation concludes.
-const OUTPUT_REPORT_INTERVAL_MS = 5000;
-interface OutputPerfWindow {
-	rawChunks: number;
-	rawBytes: number;
-	filteredChunks: number;
-	filteredBytes: number;
-	filteredOutChunks: number;
-	mirrorApplyCount: number;
-	mirrorApplyMs: number;
-	mirrorApplyMaxMs: number;
-	listenerBroadcasts: number;
-	lastKind: "task" | "shell";
-	lastTaskId: string;
-	startedAt: number;
-}
-
-const outputPerfWindow: OutputPerfWindow = {
-	rawChunks: 0,
-	rawBytes: 0,
-	filteredChunks: 0,
-	filteredBytes: 0,
-	filteredOutChunks: 0,
-	mirrorApplyCount: 0,
-	mirrorApplyMs: 0,
-	mirrorApplyMaxMs: 0,
-	listenerBroadcasts: 0,
-	lastKind: "task",
-	lastTaskId: "",
-	startedAt: Date.now(),
-};
-
-function roundPerf(value: number): number {
-	return Math.round(value * 100) / 100;
-}
-
-function maybeReportOutputPerf(kind: "task" | "shell", taskId: string): void {
-	const now = Date.now();
-	const elapsed = now - outputPerfWindow.startedAt;
-	if (elapsed < OUTPUT_REPORT_INTERVAL_MS) {
-		return;
-	}
-	console.warn("[perf-investigation] pty output pipeline rate", {
-		windowMs: elapsed,
-		rawChunks: outputPerfWindow.rawChunks,
-		rawBytes: outputPerfWindow.rawBytes,
-		filteredChunks: outputPerfWindow.filteredChunks,
-		filteredBytes: outputPerfWindow.filteredBytes,
-		filteredOutChunks: outputPerfWindow.filteredOutChunks,
-		chunksPerSec: roundPerf((outputPerfWindow.rawChunks / elapsed) * 1000),
-		bytesPerSec: Math.round((outputPerfWindow.filteredBytes / elapsed) * 1000),
-		mirrorApplyCount: outputPerfWindow.mirrorApplyCount,
-		mirrorApplyTotalMs: roundPerf(outputPerfWindow.mirrorApplyMs),
-		mirrorApplyMaxMs: roundPerf(outputPerfWindow.mirrorApplyMaxMs),
-		listenerBroadcasts: outputPerfWindow.listenerBroadcasts,
-		lastKind: kind,
-		lastTaskId: taskId,
-	});
-	outputPerfWindow.rawChunks = 0;
-	outputPerfWindow.rawBytes = 0;
-	outputPerfWindow.filteredChunks = 0;
-	outputPerfWindow.filteredBytes = 0;
-	outputPerfWindow.filteredOutChunks = 0;
-	outputPerfWindow.mirrorApplyCount = 0;
-	outputPerfWindow.mirrorApplyMs = 0;
-	outputPerfWindow.mirrorApplyMaxMs = 0;
-	outputPerfWindow.listenerBroadcasts = 0;
-	outputPerfWindow.lastKind = kind;
-	outputPerfWindow.lastTaskId = taskId;
-	outputPerfWindow.startedAt = now;
-}
-
-function reportRawOutput(kind: "task" | "shell", taskId: string, byteLength: number): void {
-	outputPerfWindow.rawChunks += 1;
-	outputPerfWindow.rawBytes += byteLength;
-	outputPerfWindow.lastKind = kind;
-	outputPerfWindow.lastTaskId = taskId;
-}
-
-function reportFilteredOutput(kind: "task" | "shell", taskId: string, byteLength: number): void {
-	if (byteLength === 0) {
-		outputPerfWindow.filteredOutChunks += 1;
-		maybeReportOutputPerf(kind, taskId);
-		return;
-	}
-	outputPerfWindow.filteredChunks += 1;
-	outputPerfWindow.filteredBytes += byteLength;
-}
-
-function reportMirrorApply(elapsedMs: number): void {
-	outputPerfWindow.mirrorApplyCount += 1;
-	outputPerfWindow.mirrorApplyMs += elapsedMs;
-	outputPerfWindow.mirrorApplyMaxMs = Math.max(outputPerfWindow.mirrorApplyMaxMs, elapsedMs);
-}
-
-function reportListenerBroadcasts(count: number): void {
-	outputPerfWindow.listenerBroadcasts += count;
-}
-
 export interface OutputPipelineDeps {
 	getSummary: (taskId: string) => RuntimeTaskSessionSummary | null;
 	updateStore: (taskId: string, patch: Partial<RuntimeTaskSessionSummary>) => RuntimeTaskSessionSummary | null;
@@ -143,7 +40,6 @@ export function processTaskSessionOutput(
 	if (!entry.active) {
 		return;
 	}
-	reportRawOutput("task", taskId, chunk.byteLength);
 
 	// 1. Protocol filter — strip/intercept terminal escape sequences, synthesize
 	//    color replies for TUI agents that query before a browser is attached.
@@ -151,7 +47,6 @@ export function processTaskSessionOutput(
 		onOsc10ForegroundQuery: () => entry.active?.session.write(OSC_FOREGROUND_QUERY_REPLY),
 		onOsc11BackgroundQuery: () => entry.active?.session.write(OSC_BACKGROUND_QUERY_REPLY),
 	});
-	reportFilteredOutput("task", taskId, filteredChunk.byteLength);
 	if (filteredChunk.byteLength === 0) {
 		return;
 	}
@@ -159,9 +54,7 @@ export function processTaskSessionOutput(
 	// 2. Terminal state mirror — feed filtered output to the headless xterm
 	//    so screen state stays current for restore snapshots.
 	if (entry.terminalStateMirror) {
-		const mirrorApplyStart = performance.now();
 		entry.terminalStateMirror.applyOutput(filteredChunk);
-		reportMirrorApply(performance.now() - mirrorApplyStart);
 	}
 
 	// 3. Decode to text only when needed — avoid toString("utf8") cost unless
@@ -195,11 +88,9 @@ export function processTaskSessionOutput(
 	}
 
 	// 7. Listener broadcast
-	reportListenerBroadcasts(entry.listeners.size);
 	for (const taskListener of entry.listeners.values()) {
 		taskListener.onOutput?.(filteredChunk);
 	}
-	maybeReportOutputPerf("task", taskId);
 }
 
 /**
@@ -207,25 +98,21 @@ export function processTaskSessionOutput(
  * no transition detection, no Codex deferred input, but shares protocol filtering,
  * state mirror, trust buffering, and listener broadcast.
  */
-export function processShellSessionOutput(entry: ProcessEntry, taskId: string, chunk: Buffer): void {
+export function processShellSessionOutput(entry: ProcessEntry, _taskId: string, chunk: Buffer): void {
 	if (!entry.active) {
 		return;
 	}
-	reportRawOutput("shell", taskId, chunk.byteLength);
 
 	const filteredChunk = filterTerminalProtocolOutput(entry.active.terminalProtocolFilter, chunk, {
 		onOsc10ForegroundQuery: () => entry.active?.session.write(OSC_FOREGROUND_QUERY_REPLY),
 		onOsc11BackgroundQuery: () => entry.active?.session.write(OSC_BACKGROUND_QUERY_REPLY),
 	});
-	reportFilteredOutput("shell", taskId, filteredChunk.byteLength);
 	if (filteredChunk.byteLength === 0) {
 		return;
 	}
 
 	if (entry.terminalStateMirror) {
-		const mirrorApplyStart = performance.now();
 		entry.terminalStateMirror.applyOutput(filteredChunk);
-		reportMirrorApply(performance.now() - mirrorApplyStart);
 	}
 
 	if (entry.active.workspaceTrustBuffer !== null) {
@@ -235,11 +122,9 @@ export function processShellSessionOutput(entry: ProcessEntry, taskId: string, c
 		}
 	}
 
-	reportListenerBroadcasts(entry.listeners.size);
 	for (const taskListener of entry.listeners.values()) {
 		taskListener.onOutput?.(filteredChunk);
 	}
-	maybeReportOutputPerf("shell", taskId);
 }
 
 /**

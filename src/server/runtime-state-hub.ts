@@ -44,44 +44,6 @@ import {
 } from "./runtime-state-messages";
 
 const hubLog = createTaggedLogger("runtime-state-hub");
-// [perf-investigation] Notification snapshot diagnostics intentionally use
-// direct console output instead of hubLog so reconnect storms do not feed back
-// through Quarterdeck's runtime debug-log WebSocket stream. Remove this whole
-// diagnostic block once the investigation concludes.
-const NOTIFICATION_SNAPSHOT_CALL_WINDOW_MS = 60_000;
-const NOTIFICATION_SNAPSHOT_WARN_THROTTLE_MS = 30_000;
-const NOTIFICATION_SNAPSHOT_WARN_THRESHOLDS = {
-	callsInLastMinute: 10,
-	durationMs: 100,
-	totalSummariesBeforePrune: 100,
-	totalSummariesAfterPrune: 50,
-	boardReadFailures: 0,
-} as const;
-
-interface NotificationSnapshotDiagnostics {
-	durationMs: number;
-	managedProjectCount: number;
-	projectsWithSummaries: number;
-	totalSummariesBeforePrune: number;
-	totalSummariesAfterPrune: number;
-	prunedSummaryCount: number;
-	boardReadFailures: number;
-	callsInLastMinute: number;
-}
-
-function roundDurationMs(value: number): number {
-	return Math.round(value * 100) / 100;
-}
-
-function isSuspiciousNotificationSnapshot(diagnostics: NotificationSnapshotDiagnostics): boolean {
-	return (
-		diagnostics.callsInLastMinute > NOTIFICATION_SNAPSHOT_WARN_THRESHOLDS.callsInLastMinute ||
-		diagnostics.durationMs > NOTIFICATION_SNAPSHOT_WARN_THRESHOLDS.durationMs ||
-		diagnostics.totalSummariesBeforePrune > NOTIFICATION_SNAPSHOT_WARN_THRESHOLDS.totalSummariesBeforePrune ||
-		diagnostics.totalSummariesAfterPrune > NOTIFICATION_SNAPSHOT_WARN_THRESHOLDS.totalSummariesAfterPrune ||
-		diagnostics.boardReadFailures > NOTIFICATION_SNAPSHOT_WARN_THRESHOLDS.boardReadFailures
-	);
-}
 
 export interface DisposeRuntimeStateProjectOptions {
 	disconnectClients?: boolean;
@@ -116,8 +78,6 @@ export interface RuntimeStateHub extends IRuntimeBroadcaster {
 
 export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	private readonly resumeAttempted = new Set<string>();
-	private readonly notificationSnapshotCallTimestamps: number[] = [];
-	private lastNotificationSnapshotWarnAt = 0;
 	private readonly wss: WebSocketServer;
 	private readonly clients: RuntimeStateClientRegistry;
 	private readonly batcher: RuntimeStateMessageBatcher;
@@ -493,17 +453,6 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	}
 
 	private async collectNotificationSummariesByProject(): Promise<Record<string, RuntimeTaskSessionSummary[]>> {
-		const startedAt = performance.now();
-		const callTime = Date.now();
-		this.notificationSnapshotCallTimestamps.push(callTime);
-		while (
-			this.notificationSnapshotCallTimestamps.length > 0 &&
-			this.notificationSnapshotCallTimestamps[0] !== undefined &&
-			callTime - this.notificationSnapshotCallTimestamps[0] > NOTIFICATION_SNAPSHOT_CALL_WINDOW_MS
-		) {
-			this.notificationSnapshotCallTimestamps.shift();
-		}
-
 		const managedProjects = this.deps.projectRegistry.listManagedProjects();
 		const projectEntries = await Promise.all(
 			managedProjects.map(async (project) => {
@@ -523,17 +472,11 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 						return {
 							projectId: project.projectId,
 							summaries: prunedList,
-							beforeCount: summaries.length,
-							afterCount: 0,
-							boardReadFailed: false,
 						};
 					}
 					return {
 						projectId: project.projectId,
 						summaries: prunedList,
-						beforeCount: summaries.length,
-						afterCount: prunedList.length,
-						boardReadFailed: false,
 					};
 				} catch {
 					// Board read failed — fall back to full list rather than
@@ -541,58 +484,20 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 					return {
 						projectId: project.projectId,
 						summaries,
-						beforeCount: summaries.length,
-						afterCount: summaries.length,
-						boardReadFailed: true,
 					};
 				}
 			}),
 		);
 		const summariesByProject: Record<string, RuntimeTaskSessionSummary[]> = {};
-		let projectsWithSummaries = 0;
-		let totalSummariesBeforePrune = 0;
-		let totalSummariesAfterPrune = 0;
-		let boardReadFailures = 0;
 		for (const entry of projectEntries) {
 			if (!entry) {
 				continue;
-			}
-			projectsWithSummaries += 1;
-			totalSummariesBeforePrune += entry.beforeCount;
-			totalSummariesAfterPrune += entry.afterCount;
-			if (entry.boardReadFailed) {
-				boardReadFailures += 1;
 			}
 			if (entry.summaries.length > 0) {
 				summariesByProject[entry.projectId] = entry.summaries;
 			}
 		}
-		const diagnostics: NotificationSnapshotDiagnostics = {
-			durationMs: roundDurationMs(performance.now() - startedAt),
-			managedProjectCount: managedProjects.length,
-			projectsWithSummaries,
-			totalSummariesBeforePrune,
-			totalSummariesAfterPrune,
-			prunedSummaryCount: Math.max(0, totalSummariesBeforePrune - totalSummariesAfterPrune),
-			boardReadFailures,
-			callsInLastMinute: this.notificationSnapshotCallTimestamps.length,
-		};
-		this.logNotificationSnapshotDiagnostics(diagnostics, callTime);
 		return summariesByProject;
-	}
-
-	private logNotificationSnapshotDiagnostics(diagnostics: NotificationSnapshotDiagnostics, callTime: number): void {
-		const suspicious = isSuspiciousNotificationSnapshot(diagnostics);
-		if (!suspicious) {
-			console.debug("[perf-investigation] notification snapshot seed", diagnostics);
-			return;
-		}
-		if (callTime - this.lastNotificationSnapshotWarnAt < NOTIFICATION_SNAPSHOT_WARN_THROTTLE_MS) {
-			console.debug("[perf-investigation] notification snapshot seed warning throttled", diagnostics);
-			return;
-		}
-		this.lastNotificationSnapshotWarnAt = callTime;
-		console.warn("[perf-investigation] notification snapshot seed suspicious", diagnostics);
 	}
 
 	private parseProjectId(context: unknown): string | null {
