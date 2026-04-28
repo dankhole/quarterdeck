@@ -293,6 +293,7 @@ export function GitRefsPanel({
 										className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary"
 									/>
 									<input
+										name="git-ref-filter"
 										className="h-7 w-full rounded-md border border-border bg-surface-2 pl-8 pr-3 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 										placeholder="Filter refs..."
 										value={searchQuery}

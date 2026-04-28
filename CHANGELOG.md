@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: add form field identifiers
+
+- Added stable `name` attributes to unlabeled web UI inputs, textareas, and selects so browser autofill, diagnostics, and accessibility tooling can identify fields consistently.
+- Covered task creation mocks with matching field names and left existing interactive behavior unchanged.
+
 ### Chore: remove frontend perf-investigation logging
 
 - Removed the remaining browser-side `[perf-investigation]` console probes from terminal writes, restore application, and session-instance reconnects now that hidden terminal streams are bounded.

@@ -99,6 +99,7 @@ export function TaskCreateMultiList({
 						<span className="text-[12px] text-text-tertiary text-right shrink-0 tabular-nums">{index + 1}.</span>
 						<input
 							ref={(el) => setInputRef(index, el)}
+							name={`task-prompt-${index + 1}`}
 							type="text"
 							value={taskPrompt}
 							onChange={(e) => handleUpdate(index, e.target.value)}

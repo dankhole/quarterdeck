@@ -29,6 +29,7 @@ vi.mock("@/components/git/branch-select-dropdown", () => ({
 		disabled?: boolean;
 	}) => (
 		<select
+			name="base-ref"
 			aria-label="Base ref"
 			value={selectedValue}
 			onChange={(event) => onSelect(event.currentTarget.value)}
@@ -55,6 +56,7 @@ vi.mock("@/components/task/task-prompt-composer", () => ({
 	}) => (
 		<div>
 			<textarea
+				name="task-prompt"
 				aria-label="Task prompt"
 				value={value}
 				onChange={(event) => onValueChange(event.currentTarget.value)}

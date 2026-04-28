@@ -271,6 +271,7 @@ export function TaskCreateDialog({
 						{createFeatureBranch ? (
 							<div className="mt-1.5 flex items-center gap-1.5">
 								<input
+									name="feature-branch-name"
 									type="text"
 									value={branchName}
 									onChange={(e) => onBranchNameEdit(e.currentTarget.value)}

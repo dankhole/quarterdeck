@@ -248,6 +248,7 @@ export function FileBrowserTreePanel({
 					<Search size={12} className="text-text-tertiary shrink-0" />
 					<input
 						ref={inputRef}
+						name={scopeKey ? `file-filter-${scopeKey}` : "file-filter"}
 						type="text"
 						value={searchQuery}
 						onChange={handleSearchChange}

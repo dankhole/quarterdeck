@@ -129,6 +129,7 @@ export function InlineComment({
 		<div className="kb-diff-inline-comment">
 			<textarea
 				ref={textAreaRef}
+				name={`diff-comment-${comment.filePath}-${comment.variant}-${comment.lineNumber}`}
 				value={comment.comment}
 				onChange={(event) => onChange(event.target.value)}
 				onKeyDown={(event) => {

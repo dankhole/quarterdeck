@@ -190,6 +190,7 @@ export function ShortcutsSection({
 						}
 					/>
 					<input
+						name={`project-shortcut-label-${shortcutIndex}`}
 						value={shortcut.label}
 						onChange={(event) =>
 							setField(
@@ -203,6 +204,7 @@ export function ShortcutsSection({
 						className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 					/>
 					<input
+						name={`project-shortcut-command-${shortcutIndex}`}
 						value={shortcut.command}
 						onChange={(event) =>
 							setField(

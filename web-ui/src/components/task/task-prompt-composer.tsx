@@ -59,6 +59,7 @@ export function TaskPromptComposer({
 }: TaskPromptComposerProps): ReactElement {
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
+	const fieldName = id ?? "task-prompt";
 	const mentionSearchRequestIdRef = useRef(0);
 	const [cursorIndex, setCursorIndex] = useState(0);
 	const [mentionItems, setMentionItems] = useState<InlineCompletionItem[]>([]);
@@ -373,6 +374,7 @@ export function TaskPromptComposer({
 				>
 					<textarea
 						id={id}
+						name={fieldName}
 						ref={textareaRef}
 						value={value}
 						onChange={(event) => {
@@ -419,6 +421,7 @@ export function TaskPromptComposer({
 				<>
 					<input
 						ref={fileInputRef}
+						name={`${fieldName}-images`}
 						type="file"
 						accept={ACCEPTED_TASK_IMAGE_INPUT_ACCEPT}
 						multiple

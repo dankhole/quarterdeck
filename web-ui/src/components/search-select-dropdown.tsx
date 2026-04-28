@@ -334,6 +334,7 @@ export function SearchSelectDropdown({
 					<div className="p-2 border-b border-border">
 						<input
 							ref={inputRef}
+							name={id ? `${id}-search` : "search-select-query"}
 							className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							placeholder={placeholder}
 							value={query}

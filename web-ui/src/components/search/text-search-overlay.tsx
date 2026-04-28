@@ -69,6 +69,7 @@ export function TextSearchOverlay({ projectId, onSelect, onDismiss }: TextSearch
 			<div className="flex items-center gap-1 border-b border-zinc-700 bg-zinc-800 px-1">
 				<input
 					ref={inputRef}
+					name="text-search-query"
 					type="text"
 					value={search.query}
 					onChange={(e) => search.setQuery(e.target.value)}

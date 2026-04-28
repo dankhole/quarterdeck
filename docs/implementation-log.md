@@ -2,6 +2,18 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: add form field identifiers (2026-04-28)
+
+Browser and accessibility diagnostics were still reporting unlabeled form controls across Quarterdeck's web UI because many utility search boxes, textareas, select filters, and hidden file inputs had neither an `id` nor a `name`. The fix adds stable `name` attributes to those native controls without changing their visible labels or control flow, covering top-bar branch filters, shortcut editors, debug filters, git branch/file panels, search overlays, notification volume, prompt shortcut editing, task title editing, task creation prompts, feature branch naming, inline diff comments, stash messages, and commit messages.
+
+Shared controls use their existing contextual identifiers where available: `TaskPromptComposer` derives the field name from its optional `id`, `SearchSelectDropdown` derives the search field from its trigger id, and file/diff controls include scope or comment context so repeated instances stay distinguishable. The task-create dialog test mocks were updated to expose the same field names as the real controls.
+
+Validation included an AST scan over tracked `web-ui/src/**/*.tsx` confirming every native `input`, `textarea`, and `select` has either `id` or `name`, plus `npm run web:test -- --run src/components/task/task-create-dialog.test.tsx`.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `web-ui/src/components/app/connected-top-bar.tsx`, `web-ui/src/components/app/top-bar-project-shortcut-control.tsx`, `web-ui/src/components/debug/debug-log-panel.tsx`, `web-ui/src/components/git/history/git-refs-panel.tsx`, `web-ui/src/components/git/panels/branch-selector-popover.tsx`, `web-ui/src/components/git/panels/commit-panel.tsx`, `web-ui/src/components/git/panels/diff-viewer-utils.tsx`, `web-ui/src/components/git/panels/file-browser-tree-panel.tsx`, `web-ui/src/components/git/panels/rename-branch-dialog.tsx`, `web-ui/src/components/search-select-dropdown.tsx`, `web-ui/src/components/search/file-finder-overlay.tsx`, `web-ui/src/components/search/text-search-overlay.tsx`, `web-ui/src/components/settings/display-sections.tsx`, `web-ui/src/components/settings/prompt-shortcut-editor-dialog.tsx`, `web-ui/src/components/settings/shortcuts-section.tsx`, `web-ui/src/components/task/inline-title-editor.tsx`, `web-ui/src/components/task/task-create-dialog.test.tsx`, `web-ui/src/components/task/task-create-dialog.tsx`, `web-ui/src/components/task/task-create-multi-list.tsx`, `web-ui/src/components/task/task-prompt-composer.tsx`.
+
+Commit: pending
+
 ## Chore: remove frontend perf-investigation logging (2026-04-28)
 
 After the hidden terminal stream lifetime fix, the remaining browser-side `[perf-investigation]` probes were no longer needed. The cleanup removes the xterm write-rate accumulator from `SlotWriteQueue`, the restore-applied counter from `TerminalViewport`, and the reconnect-rate counter from `TerminalSessionHandle`. The sampled `[quarterdeck-debug] terminal reconnect on session_instance_changed` trace stays in `TerminalAttachmentController` as a targeted lifecycle breadcrumb, with its comment rewritten so it no longer references the temporary investigation counters.

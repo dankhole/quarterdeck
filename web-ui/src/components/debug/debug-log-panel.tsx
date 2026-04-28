@@ -188,6 +188,7 @@ export function DebugLogPanel({
 
 					<span className="text-[10px] text-text-tertiary ml-1">capture:</span>
 					<select
+						name="debug-log-level"
 						value={logLevel}
 						onChange={(e) => onSetLogLevel(e.target.value as LogLevel)}
 						className="text-[11px] bg-surface-2 border border-border rounded px-1 py-0.5 text-text-primary"
@@ -234,6 +235,7 @@ export function DebugLogPanel({
 				<div className="flex items-center gap-1.5 px-2 py-1 border-b border-border bg-surface-1/50 shrink-0">
 					<span className="text-[10px] text-text-tertiary">show:</span>
 					<select
+						name="debug-log-level-filter"
 						value={levelFilter}
 						onChange={(e) => onSetLevelFilter(e.target.value as DebugLogLevelFilter)}
 						className="text-xs bg-surface-2 border border-border rounded px-1 py-0.5 text-text-primary"
@@ -246,6 +248,7 @@ export function DebugLogPanel({
 					</select>
 
 					<select
+						name="debug-log-source-filter"
 						value={sourceFilter}
 						onChange={(e) => onSetSourceFilter(e.target.value as DebugLogSourceFilter)}
 						className="text-xs bg-surface-2 border border-border rounded px-1 py-0.5 text-text-primary"
@@ -256,6 +259,7 @@ export function DebugLogPanel({
 					</select>
 
 					<input
+						name="debug-log-search"
 						type="text"
 						placeholder="Filter..."
 						value={searchText}
@@ -266,6 +270,7 @@ export function DebugLogPanel({
 					<Tooltip content="Show intercepted console.warn/error from libraries and React">
 						<label className="flex items-center gap-1 text-xs text-text-secondary cursor-pointer whitespace-nowrap select-none">
 							<input
+								name="debug-log-console-capture"
 								type="checkbox"
 								checked={showConsoleCapture}
 								onChange={(e) => onSetShowConsoleCapture(e.target.checked)}

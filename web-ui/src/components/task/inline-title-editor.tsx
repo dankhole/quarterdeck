@@ -78,6 +78,7 @@ export function InlineTitleEditor({
 		>
 			<input
 				ref={inputRef}
+				name="task-title"
 				type="text"
 				value={value}
 				onChange={(event) => setValue(event.target.value)}

@@ -53,6 +53,8 @@ export function RenameBranchDialog({
 					Rename <code className="rounded bg-surface-3 px-1 py-0.5 text-text-primary">{branchName}</code> to:
 				</AlertDialogDescription>
 				<input
+					id="rename-branch-name"
+					name="rename-branch-name"
 					type="text"
 					value={newName}
 					onChange={(e) => setNewName(e.target.value)}

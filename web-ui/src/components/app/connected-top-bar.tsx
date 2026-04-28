@@ -114,6 +114,7 @@ function BaseRefLabel({
 							<Search size={12} className="text-text-quaternary shrink-0" />
 							<input
 								ref={inputRef}
+								name={`base-ref-filter-${card.id}`}
 								type="text"
 								value={filter}
 								onChange={(e) => setFilter(e.target.value)}

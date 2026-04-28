@@ -136,6 +136,7 @@ export function NotificationsSection({ fields, setField, disabled }: SettingsSec
 			<div className="flex items-center gap-3 mt-3">
 				<Volume2 size={14} className={cn("text-text-secondary", masterOff && "opacity-40")} />
 				<input
+					name="audible-notification-volume"
 					type="range"
 					min={0}
 					max={100}

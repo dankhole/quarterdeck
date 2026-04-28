@@ -126,6 +126,7 @@ function FirstShortcutDialog({
 				<div className="grid gap-2" style={{ gridTemplateColumns: "max-content 1fr 2fr" }}>
 					<FirstShortcutIconPicker value={newShortcutIcon} onSelect={setNewShortcutIcon} />
 					<input
+						name="first-shortcut-label"
 						value={newShortcutLabel}
 						onChange={(event) => setNewShortcutLabel(event.target.value)}
 						placeholder="Label"
@@ -133,6 +134,7 @@ function FirstShortcutDialog({
 						className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none disabled:opacity-60"
 					/>
 					<input
+						name="first-shortcut-command"
 						value={newShortcutCommand}
 						onChange={(event) => setNewShortcutCommand(event.target.value)}
 						placeholder="npm run dev"

@@ -153,6 +153,7 @@ export function BranchSelectorPopover({
 						<Search size={13} className="text-text-tertiary shrink-0" />
 						<input
 							ref={inputRef}
+							name="branch-selector-filter"
 							type="text"
 							value={query}
 							onChange={(e) => setQuery(e.target.value)}

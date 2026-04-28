@@ -32,6 +32,7 @@ export function FileFinderOverlay({ projectId, onSelect, onDismiss }: FileFinder
 		<SearchOverlayShell onDismiss={onDismiss}>
 			<input
 				ref={inputRef}
+				name="file-finder-query"
 				type="text"
 				value={query}
 				onChange={(e) => setQuery(e.target.value)}

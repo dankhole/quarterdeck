@@ -207,6 +207,7 @@ export function PromptShortcutEditorDialog({
 														</div>
 														<div className="flex flex-col gap-1">
 															<input
+																name={`prompt-shortcut-label-${index}`}
 																type="text"
 																value={shortcut.label}
 																onChange={(e) => updateShortcut(index, "label", e.target.value)}
@@ -223,6 +224,7 @@ export function PromptShortcutEditorDialog({
 															) : null}
 														</div>
 														<textarea
+															name={`prompt-shortcut-prompt-${index}`}
 															value={shortcut.prompt}
 															onChange={(e) => updateShortcut(index, "prompt", e.target.value)}
 															placeholder="Prompt text..."

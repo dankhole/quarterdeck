@@ -310,6 +310,7 @@ export function CommitPanel({ projectId, taskId, baseRef, navigateToFile }: Comm
 						{stashMessageVisible ? (
 							<div className="flex items-center gap-1.5">
 								<input
+									name="stash-message"
 									type="text"
 									value={stashMessage}
 									onChange={(e) => setStashMessage(e.target.value)}
@@ -333,6 +334,7 @@ export function CommitPanel({ projectId, taskId, baseRef, navigateToFile }: Comm
 				{/* Commit message + generate button */}
 				<div className="relative">
 					<textarea
+						name="commit-message"
 						value={message}
 						onChange={(e) => setMessage(e.target.value)}
 						placeholder="Commit message"
