@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fix: stop PTY output from driving session-summary churn
+
+- Task and shell PTY output no longer updates `lastOutputAt` on every chunk, so idle terminal redraws do not emit full runtime session summaries or fan out through browser session, notification, and project-summary state.
+- Removed the stalled-session reconciliation producer that moved quiet running sessions into `awaiting_review` with reason `stalled`; legacy stalled summaries remain readable so older local state can recover normally.
+- Successful hook CLI ingests no longer write `[hooks:cli] parsed` diagnostics to stderr on every hook; retry/failure diagnostics still surface when the hook cannot reliably reach runtime logging.
+- Added a follow-up todo to reintroduce stalled/unresponsive detection through a cheaper signal that does not wake the runtime/browser fanout path for terminal output noise.
+
 ### Fix: reconcile stale project notification indicators
 
 - Runtime task-notification streams now filter summaries through board-linked task IDs and send tombstones for removed notification tasks, so deleted-card sessions do not keep project needs-input/review/failure indicators alive.

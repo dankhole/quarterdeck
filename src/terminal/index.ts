@@ -43,15 +43,12 @@ export {
 	checkInterruptedNoRestart,
 	checkProcesslessActiveSession,
 	checkStaleHookActivity,
-	checkStalledSession,
 	isPermissionActivity,
 	isProcessAlive,
 	type ReconciliationAction,
 	type ReconciliationCheck,
 	type ReconciliationEntry,
 	reconciliationChecks,
-	STALLED_HOOK_THRESHOLD_MS,
-	UNRESPONSIVE_THRESHOLD_MS,
 } from "./session-reconciliation";
 export {
 	canReturnToRunning,

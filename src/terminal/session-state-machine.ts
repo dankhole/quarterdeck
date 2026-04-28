@@ -6,7 +6,6 @@ export type SessionTransitionEvent =
 	| { type: "agent.prompt-ready" }
 	| { type: "process.exit"; exitCode: number | null; interrupted: boolean }
 	| { type: "interrupt.recovery" }
-	| { type: "reconciliation.stalled" }
 	| { type: "autorestart.denied" };
 
 export interface SessionTransitionResult {
@@ -19,7 +18,9 @@ export function canReturnToRunning(reason: RuntimeTaskSessionReviewReason): bool
 	// "exit" was previously excluded, creating a permanent dead state — a task
 	// that exited cleanly could never transition back to running via hooks.
 	// Note: "interrupted" maps to state "interrupted" (not "awaiting_review"),
-	// so it's handled by a different path and isn't relevant here.
+	// so it's handled by a different path and isn't relevant here. "stalled" is
+	// kept for older persisted summaries; new sessions no longer enter that
+	// review reason via reconciliation.
 	return (
 		reason === "attention" || reason === "hook" || reason === "error" || reason === "exit" || reason === "stalled"
 	);
@@ -107,20 +108,6 @@ export function reduceSessionTransition(
 					pid: null,
 				},
 				clearAttentionBuffer: false,
-			};
-		}
-		case "reconciliation.stalled": {
-			if (summary.state !== "running") {
-				return { changed: false, patch: {}, clearAttentionBuffer: false };
-			}
-			return {
-				changed: true,
-				patch: {
-					state: "awaiting_review",
-					reviewReason: "stalled",
-					stalledSince: Date.now(),
-				},
-				clearAttentionBuffer: true,
 			};
 		}
 		case "autorestart.denied": {

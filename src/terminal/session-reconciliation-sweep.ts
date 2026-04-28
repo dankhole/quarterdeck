@@ -107,10 +107,6 @@ export function applyReconciliationAction(
 			ctx.store.update(entry.taskId, { latestHookActivity: null });
 			break;
 		}
-		case "mark_stalled": {
-			ctx.applyTransitionEvent(entry, { type: "reconciliation.stalled" });
-			break;
-		}
 		case "move_interrupted_to_review": {
 			ctx.applyTransitionEvent(entry, { type: "autorestart.denied" });
 			break;

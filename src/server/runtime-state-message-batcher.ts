@@ -6,9 +6,8 @@ const DEBUG_LOG_BATCH_MS = 150;
 
 // [perf-investigation] Measure how often session-summary changes become
 // runtime-state stream batches, notification batches, and project refreshes.
-// This pairs with session-output-pipeline's lastOutputAt counter to confirm or
-// rule out React/runtime-state churn from idle PTY output. Uses direct console
-// output to avoid feeding Quarterdeck's runtime log stream. Remove when done.
+// Uses direct console output to avoid feeding Quarterdeck's runtime log stream.
+// Remove when done.
 const FANOUT_REPORT_INTERVAL_MS = 5000;
 interface FanoutPerfWindow {
 	onChangeEvents: number;

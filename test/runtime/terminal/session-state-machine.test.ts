@@ -34,7 +34,7 @@ describe("canReturnToRunning", () => {
 		expect(canReturnToRunning("exit")).toBe(true);
 	});
 
-	it("returns true for 'stalled'", () => {
+	it("returns true for legacy 'stalled'", () => {
 		expect(canReturnToRunning("stalled")).toBe(true);
 	});
 
@@ -205,36 +205,7 @@ describe("reduceSessionTransition", () => {
 		});
 	});
 
-	describe("reconciliation.stalled", () => {
-		it("transitions from running to awaiting_review with reason 'stalled'", () => {
-			const summary = createSummary({ state: "running" });
-			const result = reduceSessionTransition(summary, { type: "reconciliation.stalled" });
-
-			expect(result.changed).toBe(true);
-			expect(result.patch.state).toBe("awaiting_review");
-			expect(result.patch.reviewReason).toBe("stalled");
-			expect(result.patch.stalledSince).toEqual(expect.any(Number));
-			expect(result.clearAttentionBuffer).toBe(true);
-		});
-
-		it("no-op from awaiting_review", () => {
-			const summary = createSummary({ state: "awaiting_review", reviewReason: "hook" });
-			const result = reduceSessionTransition(summary, { type: "reconciliation.stalled" });
-
-			expect(result.changed).toBe(false);
-			expect(result.patch).toEqual({});
-		});
-
-		it("no-op from idle", () => {
-			const summary = createSummary({ state: "idle", pid: null });
-			const result = reduceSessionTransition(summary, { type: "reconciliation.stalled" });
-
-			expect(result.changed).toBe(false);
-			expect(result.patch).toEqual({});
-		});
-	});
-
-	describe("hook.to_in_progress from stalled review", () => {
+	describe("hook.to_in_progress from legacy stalled review", () => {
 		it("transitions from awaiting_review (reason 'stalled') to running", () => {
 			const summary = createSummary({ state: "awaiting_review", reviewReason: "stalled", stalledSince: Date.now() });
 			const result = reduceSessionTransition(summary, { type: "hook.to_in_progress" });

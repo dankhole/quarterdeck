@@ -8,7 +8,6 @@
 //   - Processless active sessions (state says running, no PTY)
 //   - Interrupted sessions with no pending auto-restart (failed or denied)
 //   - Stale hook activity metadata
-//   - Stalled sessions (running but no activity for several minutes)
 // Future candidates: auto-restart loop breaking, frontend panel state reconciliation.
 import { isPermissionActivity, type RuntimeTaskSessionSummary } from "../core";
 
@@ -18,7 +17,6 @@ export type ReconciliationAction =
 	| { type: "clear_hook_activity" }
 	| { type: "recover_dead_process" }
 	| { type: "mark_processless_error" }
-	| { type: "mark_stalled" }
 	| { type: "move_interrupted_to_review" };
 
 /** Minimal shape of a session entry needed by the check functions. */
@@ -121,56 +119,14 @@ export function checkProcesslessActiveSession(entry: ReconciliationEntry, _nowMs
 		return null;
 	}
 	// A processless awaiting_review session is expected — the agent finished
-	// its work (or was stopped/stalled), then the backing process exited as
-	// normal cleanup. The review reason was already set correctly by the
-	// onExit handler or hook. Only flag "running" sessions as processless
-	// errors, since those genuinely lost their process mid-work.
+	// its work or was stopped, then the backing process exited as normal
+	// cleanup. The review reason was already set correctly by the onExit
+	// handler or hook. Only flag "running" sessions as processless errors,
+	// since those genuinely lost their process mid-work.
 	if (summary.state === "awaiting_review") {
 		return null;
 	}
 	return { type: "mark_processless_error" };
-}
-
-/** How long (ms) a running session can go without activity before being marked stalled. */
-export const STALLED_HOOK_THRESHOLD_MS = 180_000;
-
-/** How long (ms) a running session can go without receiving its first hook before being marked stalled. */
-export const UNRESPONSIVE_THRESHOLD_MS = 60_000;
-
-/**
- * Detects running sessions that aren't making progress.
- *
- * Two modes:
- *   1. **Went quiet** — at least one hook arrived, then activity stopped for 3+ minutes.
- *      Uses the more recent of lastHookAt and lastOutputAt as the activity reference;
- *      terminal output suppresses premature stalled warnings.
- *   2. **Never started** — no hook has ever arrived and the session has been running
- *      for 60+ seconds. Catches agent-level failures (API errors, cert issues) that
- *      happen before the hook system engages.
- *
- * Sets stalledSince once; subsequent sweeps skip already-stalled sessions.
- */
-export function checkStalledSession(entry: ReconciliationEntry, nowMs: number): ReconciliationAction | null {
-	const { summary } = entry;
-	if (summary.state !== "running") {
-		return null;
-	}
-	if (summary.stalledSince != null) {
-		return null;
-	}
-
-	if (summary.lastHookAt != null) {
-		const lastActivity = Math.max(summary.lastHookAt, summary.lastOutputAt ?? 0);
-		if (nowMs - lastActivity > STALLED_HOOK_THRESHOLD_MS) {
-			return { type: "mark_stalled" };
-		}
-		return null;
-	}
-
-	if (summary.startedAt != null && nowMs - summary.startedAt > UNRESPONSIVE_THRESHOLD_MS) {
-		return { type: "mark_stalled" };
-	}
-	return null;
 }
 
 /**
@@ -200,11 +156,10 @@ export function checkInterruptedNoRestart(entry: ReconciliationEntry, _nowMs: nu
 	return { type: "move_interrupted_to_review" };
 }
 
-/** Ordered by priority: dead process > processless recovery > interrupted cleanup > clear activity > stalled. */
+/** Ordered by priority: dead process > processless recovery > interrupted cleanup > clear activity. */
 export const reconciliationChecks: ReconciliationCheck[] = [
 	checkDeadProcess,
 	checkProcesslessActiveSession,
 	checkInterruptedNoRestart,
 	checkStaleHookActivity,
-	checkStalledSession,
 ];

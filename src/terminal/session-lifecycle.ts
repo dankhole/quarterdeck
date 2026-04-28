@@ -42,6 +42,8 @@ const TERMINAL_REVIEW_REASONS = new Set<RuntimeTaskSessionReviewReason>([
 	"exit",
 	"error",
 	"attention",
+	// Legacy persisted sessions may still carry this reason, but new sessions
+	// no longer enter stalled review via reconciliation.
 	"stalled",
 ]);
 
@@ -444,7 +446,7 @@ export async function spawnShellSession(
 			env,
 			cols,
 			rows,
-			onData: (chunk) => processShellSessionOutput(entry, request.taskId, chunk, deps),
+			onData: (chunk) => processShellSessionOutput(entry, request.taskId, chunk),
 			onExit: (event) => {
 				if (!entry.active) {
 					return;

@@ -51,7 +51,11 @@ async function persistInterruptedSessions(
 	await saveProjectSessions(projectPath, pruneOrphanSessionsForPersist(nextSessions, projectState.board));
 }
 
-/** Review reasons that represent completed agent work — preserve across shutdown. */
+/**
+ * Review reasons that represent completed agent work — preserve across
+ * shutdown. "stalled" is kept only for older persisted summaries; new sessions
+ * no longer enter stalled review via reconciliation.
+ */
 const TERMINAL_REVIEW_REASONS = new Set(["hook", "exit", "error", "attention", "stalled"]);
 
 function shouldInterruptSessionOnShutdown(summary: RuntimeTaskSessionSummary): boolean {

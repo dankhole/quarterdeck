@@ -2,6 +2,22 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: stop PTY output from driving session-summary churn (2026-04-28)
+
+Dogfooding and follow-up code tracing showed that every non-empty task and shell PTY output chunk updated `lastOutputAt` through the normal session-summary store. That write stamped a new `updatedAt`, emitted to terminal state listeners, entered the runtime-state message batcher, refreshed cross-project notification memory, and requested project-summary broadcasts. Claude/Codex idle redraws and status-line traffic could therefore wake the whole runtime/browser fanout path even though terminal rendering already receives raw PTY output through a separate low-latency stream.
+
+The fix removes PTY-output-driven `lastOutputAt` writes from `src/terminal/session-output-pipeline.ts`, while leaving terminal mirror updates, workspace-trust detection, deferred Codex input, output-transition detection, and listener output broadcasts intact. The temporary output perf probe now measures raw/filter/mirror/output-listener activity only, because there is no summary update in the PTY output hot path anymore.
+
+The hook CLI no longer writes `[hooks:cli] parsed ...` to stderr for every successful hook ingest. Retry, retry-failure, parse-failure, and metadata-enrichment diagnostics still use stderr because those paths may fail before the runtime-side hook logger can record the event, but normal successful hooks now stay out of the agent PTY output stream.
+
+The previous stalled-session watchdog was removed as the only production consumer of fresh `lastOutputAt`. `src/terminal/session-reconciliation.ts` no longer exports or runs `checkStalledSession`, the sweep no longer applies a `mark_stalled` action, and the state machine no longer accepts `reconciliation.stalled`. The runtime still accepts legacy `reviewReason: "stalled"` summaries and can return them to running via hooks, so older local state stays readable; new sessions simply stop producing that review reason. `docs/todo.md` now tracks a replacement stalled/unresponsive detector that must use a cheap internal signal or low-frequency health check rather than output-driven summary fanout.
+
+Focused coverage was updated to assert that terminal output reaches output listeners without changing `lastOutputAt` or emitting session-state summaries, and reconciliation/state-machine tests were reduced to the remaining live checks plus legacy stalled compatibility.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `docs/todo.md`, `src/commands/hooks.ts`, `src/server/runtime-state-message-batcher.ts`, `src/server/shutdown-coordinator.ts`, `src/terminal/index.ts`, `src/terminal/session-auto-restart.ts`, `src/terminal/session-lifecycle.ts`, `src/terminal/session-output-pipeline.ts`, `src/terminal/session-reconciliation.ts`, `src/terminal/session-reconciliation-sweep.ts`, `src/terminal/session-state-machine.ts`, `src/terminal/session-summary-store.ts`, `test/runtime/terminal/session-manager-reconciliation.test.ts`, `test/runtime/terminal/session-reconciliation.test.ts`, `test/runtime/terminal/session-state-machine.test.ts`.
+
+Commit: 4ab91214b
+
 ## Fix: reconcile stale project notification indicators (2026-04-28)
 
 Dogfooding found that project-level needs-input indicators could outlive the board and session truth they were supposed to summarize. The browser notification memory was intentionally monotonic for live deltas, which is useful for avoiding duplicate audible transitions, but that meant a task notification from a deleted or orphaned card could remain in the project bucket after a later project snapshot proved the task no longer existed on the board. The previous orphan-session pruning fixed payload bloat, but notification projection still needed a separate board-only view because live orphan summaries can remain useful for terminal restore paths while still being wrong for project badges.

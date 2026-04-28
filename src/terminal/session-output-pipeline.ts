@@ -1,7 +1,7 @@
 // Output processing pipeline for PTY sessions (task and shell).
 // Extracted from session-manager.ts — processes each chunk of PTY stdout
 // through an ordered pipeline: protocol filter → state mirror →
-// trust → store timestamp → codex deferred input → transition detection →
+// trust → codex deferred input → transition detection →
 // listener broadcast.
 
 import type { RuntimeTaskSessionSummary } from "../core";
@@ -18,11 +18,10 @@ const OSC_FOREGROUND_QUERY_REPLY = "\u001b]10;rgb:e6e6/eded/f3f3\u001b\\";
 const OSC_BACKGROUND_QUERY_REPLY = "\u001b]11;rgb:1717/1717/2121\u001b\\";
 
 // [perf-investigation] Count PTY output before/after protocol filtering and
-// time the synchronous cost of the headless terminal mirror + lastOutputAt
-// summary update. This is the server-side source of terminal redraw and summary
-// fanout churn. Uses direct console output to avoid feeding Quarterdeck's
-// runtime log stream while investigating degraded performance. Remove once the
-// idle-agent CPU investigation concludes.
+// time the synchronous cost of the headless terminal mirror. Uses direct
+// console output to avoid feeding Quarterdeck's runtime log stream while
+// investigating degraded performance. Remove once the idle-agent CPU
+// investigation concludes.
 const OUTPUT_REPORT_INTERVAL_MS = 5000;
 interface OutputPerfWindow {
 	rawChunks: number;
@@ -33,9 +32,6 @@ interface OutputPerfWindow {
 	mirrorApplyCount: number;
 	mirrorApplyMs: number;
 	mirrorApplyMaxMs: number;
-	summaryUpdateCount: number;
-	summaryUpdateMs: number;
-	summaryUpdateMaxMs: number;
 	listenerBroadcasts: number;
 	lastKind: "task" | "shell";
 	lastTaskId: string;
@@ -51,9 +47,6 @@ const outputPerfWindow: OutputPerfWindow = {
 	mirrorApplyCount: 0,
 	mirrorApplyMs: 0,
 	mirrorApplyMaxMs: 0,
-	summaryUpdateCount: 0,
-	summaryUpdateMs: 0,
-	summaryUpdateMaxMs: 0,
 	listenerBroadcasts: 0,
 	lastKind: "task",
 	lastTaskId: "",
@@ -82,9 +75,6 @@ function maybeReportOutputPerf(kind: "task" | "shell", taskId: string): void {
 		mirrorApplyCount: outputPerfWindow.mirrorApplyCount,
 		mirrorApplyTotalMs: roundPerf(outputPerfWindow.mirrorApplyMs),
 		mirrorApplyMaxMs: roundPerf(outputPerfWindow.mirrorApplyMaxMs),
-		summaryUpdateCount: outputPerfWindow.summaryUpdateCount,
-		summaryUpdateTotalMs: roundPerf(outputPerfWindow.summaryUpdateMs),
-		summaryUpdateMaxMs: roundPerf(outputPerfWindow.summaryUpdateMaxMs),
 		listenerBroadcasts: outputPerfWindow.listenerBroadcasts,
 		lastKind: kind,
 		lastTaskId: taskId,
@@ -97,9 +87,6 @@ function maybeReportOutputPerf(kind: "task" | "shell", taskId: string): void {
 	outputPerfWindow.mirrorApplyCount = 0;
 	outputPerfWindow.mirrorApplyMs = 0;
 	outputPerfWindow.mirrorApplyMaxMs = 0;
-	outputPerfWindow.summaryUpdateCount = 0;
-	outputPerfWindow.summaryUpdateMs = 0;
-	outputPerfWindow.summaryUpdateMaxMs = 0;
 	outputPerfWindow.listenerBroadcasts = 0;
 	outputPerfWindow.lastKind = kind;
 	outputPerfWindow.lastTaskId = taskId;
@@ -127,12 +114,6 @@ function reportMirrorApply(elapsedMs: number): void {
 	outputPerfWindow.mirrorApplyCount += 1;
 	outputPerfWindow.mirrorApplyMs += elapsedMs;
 	outputPerfWindow.mirrorApplyMaxMs = Math.max(outputPerfWindow.mirrorApplyMaxMs, elapsedMs);
-}
-
-function reportSummaryUpdate(elapsedMs: number): void {
-	outputPerfWindow.summaryUpdateCount += 1;
-	outputPerfWindow.summaryUpdateMs += elapsedMs;
-	outputPerfWindow.summaryUpdateMaxMs = Math.max(outputPerfWindow.summaryUpdateMaxMs, elapsedMs);
 }
 
 function reportListenerBroadcasts(count: number): void {
@@ -204,21 +185,16 @@ export function processTaskSessionOutput(
 		},
 	});
 
-	// 5. Store timestamp
-	const summaryUpdateStart = performance.now();
-	deps.updateStore(taskId, { lastOutputAt: Date.now() });
-	reportSummaryUpdate(performance.now() - summaryUpdateStart);
-
-	// 6. Codex deferred startup input
+	// 5. Codex deferred startup input
 	checkAndSendDeferredCodexInput(entry.active, data, liveSummary?.agentId);
 
-	// 7. Agent output transition detection
+	// 6. Agent output transition detection
 	const adapterEvent = liveSummary ? (entry.active.detectOutputTransition?.(data, liveSummary) ?? null) : null;
 	if (adapterEvent) {
 		deps.applyTransitionEvent(entry, adapterEvent);
 	}
 
-	// 8. Listener broadcast
+	// 7. Listener broadcast
 	reportListenerBroadcasts(entry.listeners.size);
 	for (const taskListener of entry.listeners.values()) {
 		taskListener.onOutput?.(filteredChunk);
@@ -231,12 +207,7 @@ export function processTaskSessionOutput(
  * no transition detection, no Codex deferred input, but shares protocol filtering,
  * state mirror, trust buffering, and listener broadcast.
  */
-export function processShellSessionOutput(
-	entry: ProcessEntry,
-	taskId: string,
-	chunk: Buffer,
-	deps: Pick<OutputPipelineDeps, "updateStore">,
-): void {
+export function processShellSessionOutput(entry: ProcessEntry, taskId: string, chunk: Buffer): void {
 	if (!entry.active) {
 		return;
 	}
@@ -263,10 +234,6 @@ export function processShellSessionOutput(
 			entry.active.workspaceTrustBuffer = entry.active.workspaceTrustBuffer.slice(-MAX_WORKSPACE_TRUST_BUFFER_CHARS);
 		}
 	}
-
-	const summaryUpdateStart = performance.now();
-	deps.updateStore(taskId, { lastOutputAt: Date.now() });
-	reportSummaryUpdate(performance.now() - summaryUpdateStart);
 
 	reportListenerBroadcasts(entry.listeners.size);
 	for (const taskListener of entry.listeners.values()) {

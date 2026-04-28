@@ -43,9 +43,9 @@ export function shouldAutoRestart(entry: ProcessEntry, preExitState: RuntimeTask
 		return { restart: false, reason: "suppressed" };
 	}
 	// Only restart when the agent was actively working. Any other pre-exit
-	// state means the agent already handed off (hook/exit/error/stalled) or
-	// was stopped by the user (interrupted). The process exiting in those
-	// states is normal cleanup, not a crash.
+	// state means the agent already handed off (hook/exit/error, plus legacy
+	// stalled summaries) or was stopped by the user (interrupted). The process
+	// exiting in those states is normal cleanup, not a crash.
 	if (preExitState !== "running") {
 		return { restart: false, reason: "not_running" };
 	}

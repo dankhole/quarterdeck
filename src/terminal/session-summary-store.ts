@@ -257,9 +257,8 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 			...transition.patch,
 			updatedAt: now(),
 		};
-		// Reset the hook timer on any state-machine transition to running so that
-		// prior idle time (review, attention, etc.) doesn't count toward the
-		// stalled detection threshold.
+		// Reset hook activity timing when a reviewed task returns to running so
+		// diagnostics reflect the current active turn, not the prior review stop.
 		if (transition.patch.state === "running") {
 			updated.lastHookAt = now();
 		}

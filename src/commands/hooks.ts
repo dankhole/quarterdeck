@@ -273,10 +273,6 @@ async function runHooksIngest(
 		return;
 	}
 
-	// Diagnostic stderr logging — always emitted so it shows in the agent's PTY
-	// output. Enable debug logging in the UI to see the matching server-side logs.
-	writeHookCliDiagnostic(args, "parsed");
-
 	try {
 		await ingestHookEvent(args);
 	} catch (error) {

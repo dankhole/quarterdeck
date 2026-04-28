@@ -6,13 +6,10 @@ import {
 	checkInterruptedNoRestart,
 	checkProcesslessActiveSession,
 	checkStaleHookActivity,
-	checkStalledSession,
 	isPermissionActivity,
 	type ReconciliationEntry,
 	reconciliationChecks,
 	reduceSessionTransition,
-	STALLED_HOOK_THRESHOLD_MS,
-	UNRESPONSIVE_THRESHOLD_MS,
 } from "../../../src/terminal";
 import { createTestTaskHookActivity, createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
@@ -325,122 +322,6 @@ describe("checkProcesslessActiveSession", () => {
 	});
 });
 
-// ── checkStalledSession ──────────────────────────────────────────────────
-
-describe("checkStalledSession", () => {
-	describe("went-quiet mode (hooks received, then activity stopped)", () => {
-		it("returns mark_stalled when hook gap exceeds threshold and no recent output", () => {
-			const nowMs = Date.now();
-			const lastHookAt = nowMs - STALLED_HOOK_THRESHOLD_MS - 1;
-			const entry = createEntry({ state: "running", lastHookAt, lastOutputAt: lastHookAt, stalledSince: null });
-			expect(checkStalledSession(entry, nowMs)).toEqual({ type: "mark_stalled" });
-		});
-
-		it("returns null when hook gap is within threshold", () => {
-			const nowMs = Date.now();
-			const lastHookAt = nowMs - STALLED_HOOK_THRESHOLD_MS + 1;
-			const entry = createEntry({ state: "running", lastHookAt, lastOutputAt: lastHookAt, stalledSince: null });
-			expect(checkStalledSession(entry, nowMs)).toBeNull();
-		});
-
-		it("returns null when hooks are stale but terminal output is recent", () => {
-			const nowMs = Date.now();
-			const lastHookAt = nowMs - STALLED_HOOK_THRESHOLD_MS - 1;
-			const lastOutputAt = nowMs - 10_000;
-			const entry = createEntry({ state: "running", lastHookAt, lastOutputAt, stalledSince: null });
-			expect(checkStalledSession(entry, nowMs)).toBeNull();
-		});
-
-		it("returns mark_stalled when both hooks and output exceed threshold", () => {
-			const nowMs = Date.now();
-			const staleTime = nowMs - STALLED_HOOK_THRESHOLD_MS - 1;
-			const entry = createEntry({
-				state: "running",
-				lastHookAt: staleTime,
-				lastOutputAt: staleTime,
-				stalledSince: null,
-			});
-			expect(checkStalledSession(entry, nowMs)).toEqual({ type: "mark_stalled" });
-		});
-
-		it("returns mark_stalled when lastOutputAt is null and hooks exceed threshold", () => {
-			const nowMs = Date.now();
-			const lastHookAt = nowMs - STALLED_HOOK_THRESHOLD_MS - 1;
-			const entry = createEntry({ state: "running", lastHookAt, lastOutputAt: null, stalledSince: null });
-			expect(checkStalledSession(entry, nowMs)).toEqual({ type: "mark_stalled" });
-		});
-	});
-
-	describe("never-started mode (no hooks received, agent failed early)", () => {
-		it("returns mark_stalled when no hooks and startedAt exceeds unresponsive threshold", () => {
-			const nowMs = Date.now();
-			const entry = createEntry({
-				state: "running",
-				lastHookAt: null,
-				startedAt: nowMs - UNRESPONSIVE_THRESHOLD_MS - 1,
-				stalledSince: null,
-			});
-			expect(checkStalledSession(entry, nowMs)).toEqual({ type: "mark_stalled" });
-		});
-
-		it("returns null when no hooks but within unresponsive threshold (still starting up)", () => {
-			const nowMs = Date.now();
-			const entry = createEntry({
-				state: "running",
-				lastHookAt: null,
-				startedAt: nowMs - UNRESPONSIVE_THRESHOLD_MS + 1,
-				stalledSince: null,
-			});
-			expect(checkStalledSession(entry, nowMs)).toBeNull();
-		});
-
-		it("returns null when no hooks and startedAt is null", () => {
-			const entry = createEntry({
-				state: "running",
-				lastHookAt: null,
-				startedAt: null,
-				stalledSince: null,
-			});
-			expect(checkStalledSession(entry, Date.now())).toBeNull();
-		});
-	});
-
-	describe("shared guards", () => {
-		it("returns null when already marked as stalled", () => {
-			const nowMs = Date.now();
-			const lastHookAt = nowMs - STALLED_HOOK_THRESHOLD_MS - 1;
-			const entry = createEntry({ state: "running", lastHookAt, stalledSince: nowMs - 30_000 });
-			expect(checkStalledSession(entry, nowMs)).toBeNull();
-		});
-
-		it("returns null when already marked as stalled (never-started mode)", () => {
-			const nowMs = Date.now();
-			const entry = createEntry({
-				state: "running",
-				lastHookAt: null,
-				startedAt: nowMs - UNRESPONSIVE_THRESHOLD_MS - 1,
-				stalledSince: nowMs - 10_000,
-			});
-			expect(checkStalledSession(entry, nowMs)).toBeNull();
-		});
-
-		it("returns null for non-running states", () => {
-			const nowMs = Date.now();
-			const lastHookAt = nowMs - STALLED_HOOK_THRESHOLD_MS - 1;
-			const awaitingReview = createEntry({
-				state: "awaiting_review",
-				reviewReason: "hook",
-				lastHookAt,
-				stalledSince: null,
-			});
-			expect(checkStalledSession(awaitingReview, nowMs)).toBeNull();
-
-			const idle = createEntry({ state: "idle", lastHookAt, stalledSince: null });
-			expect(checkStalledSession(idle, nowMs)).toBeNull();
-		});
-	});
-});
-
 // ── checkInterruptedNoRestart ────────────────────────────────────────────
 
 describe("checkInterruptedNoRestart", () => {
@@ -476,13 +357,12 @@ describe("checkInterruptedNoRestart", () => {
 // ── reconciliationChecks ordering ─────────────────────────────────────────
 
 describe("reconciliationChecks", () => {
-	it("are ordered by priority: dead process > processless recovery > interrupted cleanup > clear activity > stalled (24)", () => {
+	it("are ordered by priority: dead process > processless recovery > interrupted cleanup > clear activity (24)", () => {
 		expect(reconciliationChecks[0]).toBe(checkDeadProcess);
 		expect(reconciliationChecks[1]).toBe(checkProcesslessActiveSession);
 		expect(reconciliationChecks[2]).toBe(checkInterruptedNoRestart);
 		expect(reconciliationChecks[3]).toBe(checkStaleHookActivity);
-		expect(reconciliationChecks[4]).toBe(checkStalledSession);
-		expect(reconciliationChecks).toHaveLength(5);
+		expect(reconciliationChecks).toHaveLength(4);
 	});
 });
 

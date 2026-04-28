@@ -463,6 +463,28 @@ describe("incidental terminal output does not affect review state", () => {
 		vi.useRealTimers();
 	});
 
+	it("terminal output does not update lastOutputAt or emit state summaries", async () => {
+		const spawnedSessions = setupMockPtySpawn(process.pid);
+
+		const onState = vi.fn();
+		const onOutput = vi.fn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", { onState, onOutput, onExit: vi.fn() });
+		await manager.startTaskSession(defaultTaskRequest);
+
+		expect(manager.store.getSummary("task-1")?.lastOutputAt).toBeNull();
+		onState.mockClear();
+		onOutput.mockClear();
+
+		spawnedSessions[0]?.triggerData("status bar update\n");
+
+		expect(onOutput).toHaveBeenCalled();
+		expect(onState).not.toHaveBeenCalled();
+		expect(manager.store.getSummary("task-1")?.lastOutputAt).toBeNull();
+
+		manager.stopReconciliation();
+	});
+
 	it("continuous status bar updates over 60s do not resume from review (60)", async () => {
 		const spawnedSessions = setupMockPtySpawn(process.pid);
 
