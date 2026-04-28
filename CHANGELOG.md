@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: keep shutdown cleanup from overwriting board state
+
+- Shutdown cleanup now writes only runtime session state when marking active tasks interrupted, leaving browser-owned `board.json` and its revision untouched.
+- This preserves in-progress and review card placement across server restarts even when shutdown races a recent browser board save or works from an older disk snapshot.
+- Added focused state/shutdown coverage to lock in the sessions-only persistence contract and prevent shutdown from bumping board revisions.
+
 ### Fix: seed cross-project notification state on stream connect
 
 - Runtime stream snapshots now include a notification-summary baseline for every managed project, so reconnecting or reloading the browser preserves already-waiting cross-project needs-input state instead of relying only on future live deltas.

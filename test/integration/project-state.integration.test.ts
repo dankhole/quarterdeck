@@ -12,6 +12,7 @@ import {
 	loadProjectContextById,
 	loadProjectState,
 	removeProjectIndexEntry,
+	saveProjectSessions,
 	saveProjectState,
 } from "../../src/state";
 import { initGitRepository } from "../utilities/git-env";
@@ -94,6 +95,44 @@ describe.sequential("project-state integration", () => {
 				const loadedAfterConflict = await loadProjectState(projectPath);
 				expect(loadedAfterConflict.revision).toBe(2);
 				expect(loadedAfterConflict.board.columns[0]?.cards[0]?.prompt).toBe("Task Two");
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("persists sessions without rewriting board state or bumping the board revision", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-project-sessions-");
+			try {
+				const projectPath = join(sandboxRoot, "project-a");
+				mkdirSync(projectPath, { recursive: true });
+				initGitRepository(projectPath);
+
+				const initial = await loadProjectState(projectPath);
+				const saved = await saveProjectState(projectPath, {
+					board: createBoard("Task One"),
+					sessions: {
+						"task-1": createSessionSummary("task-1"),
+					},
+					expectedRevision: initial.revision,
+				});
+
+				await saveProjectSessions(projectPath, {
+					"task-1": createTestTaskSessionSummary({
+						taskId: "task-1",
+						state: "interrupted",
+						reviewReason: "interrupted",
+						pid: null,
+						updatedAt: Date.now(),
+					}),
+				});
+
+				const loaded = await loadProjectState(projectPath);
+				expect(loaded.revision).toBe(saved.revision);
+				expect(loaded.board).toEqual(saved.board);
+				expect(loaded.sessions["task-1"]?.state).toBe("interrupted");
+				expect(loaded.sessions["task-1"]?.reviewReason).toBe("interrupted");
 			} finally {
 				cleanup();
 			}

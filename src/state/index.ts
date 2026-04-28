@@ -10,6 +10,7 @@ export {
 	type RuntimeProjectIndexEntry,
 	removeProjectIndexEntry,
 	removeProjectStateFiles,
+	saveProjectSessions,
 	saveProjectState,
 	updateProjectOrder,
 } from "./project-state";

@@ -12,6 +12,18 @@ Files touched: `AGENTS.md`, `CHANGELOG.md`, `docs/implementation-log.md`, `src/t
 
 Commit: pending
 
+## Fix: keep shutdown cleanup from overwriting board state (2026-04-27)
+
+Dogfooding showed that stopping and restarting the Quarterdeck server could make many in-progress and review cards disappear or move unexpectedly across projects. Startup backups confirmed the server still had large session sets, but some affected project boards were already stale or empty on disk. The root cause was shutdown cleanup violating the board single-writer contract: it loaded project state and called the full `saveProjectState(...)` writer just to persist interrupted runtime sessions. That rewrote `board.json` from whatever snapshot shutdown had read and bumped the board revision, so a stale server-side board snapshot could overwrite the browser-owned durable board layout during shutdown.
+
+The fix adds `saveProjectSessions(...)`, a narrow state writer that validates and atomically writes only `sessions.json` under the existing project directory lock. Shutdown cleanup now uses that sessions-only writer after marking resumable sessions interrupted, leaving `board.json` and `meta.json` untouched. This preserves card placement and avoids revision churn while still giving startup resume the interrupted session records it needs. Integration coverage now asserts that shutdown preserves board revision for both managed and indexed projects, and project-state coverage asserts that sessions-only persistence changes runtime session truth without rewriting board state.
+
+The history check found the shutdown-overwrite risk came from `5bc6c1c1d` (2026-04-13), which changed graceful shutdown to preserve cards but kept a full board/session save. It became a clear architecture violation after `5dfdcc84c` (2026-04-20), when the browser became the durable board owner and the server became the runtime-session owner.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/server/shutdown-coordinator.ts`, `src/state/index.ts`, `src/state/project-state.ts`, `test/integration/project-state.integration.test.ts`, `test/integration/shutdown-coordinator.integration.test.ts`, `test/runtime/shutdown-coordinator-timeout.test.ts`.
+
+Commit: pending
+
 ## Fix: add terminal restore watchdog logging (2026-04-27)
 
 Dogfooding an untrashed Codex task showed the agent terminal could remain behind the loading spinner long enough that switching projects away and back was needed to recover the view. Local `main` already contained the behavioral recovery pieces for the known restore races: queued restore requests during initial connect, IO-open fallback after 1.5 seconds, pooled-slot reconnect on session-instance changes, and guards against empty restore snapshots blanking live output. Reapplying the older worktree's behavioral patch on top of `main` would have risked duplicating or perturbing that flow.

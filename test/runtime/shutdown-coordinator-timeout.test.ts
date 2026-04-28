@@ -7,7 +7,7 @@ import { createTestTaskSessionSummary } from "../utilities/task-session-factory"
 
 vi.mock("../../src/state/project-state.js", () => ({
 	loadProjectState: vi.fn(),
-	saveProjectState: vi.fn(),
+	saveProjectSessions: vi.fn(),
 	listProjectIndexEntries: vi.fn().mockResolvedValue([]),
 }));
 
@@ -71,9 +71,9 @@ describe("shutdown coordinator timeout", () => {
 	it("calls closeRuntimeServer even when cleanup operations hang", async () => {
 		vi.useFakeTimers();
 
-		const { loadProjectState, saveProjectState } = await import("../../src/state/project-state.js");
+		const { loadProjectState, saveProjectSessions } = await import("../../src/state/project-state.js");
 		const mockLoadProjectState = vi.mocked(loadProjectState);
-		const mockSaveProjectState = vi.mocked(saveProjectState);
+		const mockSaveProjectSessions = vi.mocked(saveProjectSessions);
 
 		const board = createBoard(["task-1"]);
 		mockLoadProjectState.mockResolvedValue({
@@ -84,8 +84,8 @@ describe("shutdown coordinator timeout", () => {
 			sessions: {},
 			revision: 1,
 		});
-		// saveProjectState never resolves — simulates hung filesystem I/O
-		mockSaveProjectState.mockReturnValue(new Promise(() => {}));
+		// saveProjectSessions never resolves — simulates hung filesystem I/O
+		mockSaveProjectSessions.mockReturnValue(new Promise(() => {}));
 
 		const closeRuntimeServer = vi.fn().mockResolvedValue(undefined);
 		const warn = vi.fn();
@@ -113,9 +113,9 @@ describe("shutdown coordinator timeout", () => {
 	});
 
 	it("completes normally when cleanup finishes within timeout", async () => {
-		const { loadProjectState, saveProjectState } = await import("../../src/state/project-state.js");
+		const { loadProjectState, saveProjectSessions } = await import("../../src/state/project-state.js");
 		const mockLoadProjectState = vi.mocked(loadProjectState);
-		const mockSaveProjectState = vi.mocked(saveProjectState);
+		const mockSaveProjectSessions = vi.mocked(saveProjectSessions);
 
 		const board = createBoard(["task-1"]);
 		mockLoadProjectState.mockResolvedValue({
@@ -126,7 +126,7 @@ describe("shutdown coordinator timeout", () => {
 			sessions: {},
 			revision: 1,
 		});
-		mockSaveProjectState.mockResolvedValue(undefined as never);
+		mockSaveProjectSessions.mockResolvedValue({} as never);
 
 		const closeRuntimeServer = vi.fn().mockResolvedValue(undefined);
 		const warn = vi.fn();

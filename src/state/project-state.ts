@@ -65,6 +65,10 @@ const persistedProjectStateSaveRequestSchema = z.object({
 	expectedRevision: z.number().int().nonnegative().optional(),
 });
 
+const persistedProjectSessionsSaveRequestSchema = z.object({
+	sessions: z.record(z.string(), runtimeTaskSessionSummarySchema),
+});
+
 interface PersistedProjectStateSaveRequest {
 	board: RuntimeBoardData;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
@@ -230,5 +234,22 @@ export async function saveProjectState(
 		pendingSessionsWarningByProjectId.delete(context.projectId);
 
 		return toProjectStateResponse(context, board, sessions, nextRevision);
+	});
+}
+
+export async function saveProjectSessions(
+	cwd: string,
+	sessions: Record<string, RuntimeTaskSessionSummary>,
+): Promise<Record<string, RuntimeTaskSessionSummary>> {
+	const parsedPayload = parseProjectStateSavePayload({ sessions }, persistedProjectSessionsSaveRequestSchema);
+	const context = await loadProjectContext(cwd);
+	return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(context.projectId), async () => {
+		await lockedFileSystem.writeJsonFileAtomic(getProjectSessionsPath(context.projectId), parsedPayload.sessions, {
+			lock: null,
+		});
+
+		pendingSessionsWarningByProjectId.delete(context.projectId);
+
+		return parsedPayload.sessions;
 	});
 }

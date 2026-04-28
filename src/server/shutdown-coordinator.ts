@@ -1,5 +1,5 @@
 import type { RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "../core";
-import { listProjectIndexEntries, loadProjectState, saveProjectState } from "../state";
+import { listProjectIndexEntries, loadProjectState, saveProjectSessions } from "../state";
 import type { TerminalSessionManager } from "../terminal";
 import { killOrphanedAgentProcesses } from "../terminal";
 import type { ProjectRegistry } from "./project-registry";
@@ -44,10 +44,7 @@ async function persistInterruptedSessions(
 			};
 		}
 	}
-	await saveProjectState(projectPath, {
-		board: projectState.board,
-		sessions: nextSessions,
-	});
+	await saveProjectSessions(projectPath, nextSessions);
 }
 
 /** Review reasons that represent completed agent work — preserve across shutdown. */

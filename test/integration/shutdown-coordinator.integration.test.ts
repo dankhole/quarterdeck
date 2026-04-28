@@ -73,7 +73,7 @@ describe.sequential("shutdown coordinator integration", () => {
 				initGitRepository(indexedProjectPath);
 
 				const managedInitial = await loadProjectState(managedProjectPath);
-				await saveProjectState(managedProjectPath, {
+				const managedSaved = await saveProjectState(managedProjectPath, {
 					board: createBoard({
 						inProgress: ["managed-running", "managed-missing-session"],
 						review: ["managed-idle"],
@@ -86,7 +86,7 @@ describe.sequential("shutdown coordinator integration", () => {
 				});
 
 				const indexedInitial = await loadProjectState(indexedProjectPath);
-				await saveProjectState(indexedProjectPath, {
+				const indexedSaved = await saveProjectState(indexedProjectPath, {
 					board: createBoard({
 						inProgress: ["indexed-missing-session"],
 						review: ["indexed-awaiting-review"],
@@ -135,6 +135,7 @@ describe.sequential("shutdown coordinator integration", () => {
 
 				// Cards stay in their original columns — not moved to trash.
 				const managedAfter = await loadProjectState(managedProjectPath);
+				expect(managedAfter.revision).toBe(managedSaved.revision);
 				const managedInProgress =
 					managedAfter.board.columns.find((column) => column.id === "in_progress")?.cards ?? [];
 				const managedReview = managedAfter.board.columns.find((column) => column.id === "review")?.cards ?? [];
@@ -154,6 +155,7 @@ describe.sequential("shutdown coordinator integration", () => {
 
 				// Indexed (non-managed) projects are also preserved in place.
 				const indexedAfter = await loadProjectState(indexedProjectPath);
+				expect(indexedAfter.revision).toBe(indexedSaved.revision);
 				const indexedInProgress =
 					indexedAfter.board.columns.find((column) => column.id === "in_progress")?.cards ?? [];
 				const indexedReview = indexedAfter.board.columns.find((column) => column.id === "review")?.cards ?? [];
