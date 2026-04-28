@@ -12,6 +12,12 @@
 - The task top-bar base-ref dropdown now groups pinned local, local, and remote refs, so refs such as `origin/main` can be selected directly.
 - The base-ref picker now uses ref-oriented loading, filter, and empty-state copy and preserves the selected remote ref name instead of aliasing it to a local branch.
 
+### Fix: parallelize runtime file and stream loading
+
+- Runtime WebSocket snapshots now load the project list, selected project state, and notification baseline concurrently while still reporting selected-project state load errors separately.
+- Workdir diff content now reads old/new sides concurrently, search file indexing filters deleted tracked files more defensively, and file browser listing uses bounded filesystem traversal that skips VCS/dependency directories without hiding other ignored local files.
+- Added focused runtime coverage for snapshot concurrency, file listing behavior, and file diff content loading.
+
 ### Chore: remove read-only startup task flow
 
 - Removed the task-level read-only startup flag from board cards, browser task editing, runtime start-session requests, and agent launch adapters.

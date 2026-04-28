@@ -485,22 +485,24 @@ export async function getWorkdirFileDiff(
 		if (mergeBase) effectiveFromRef = mergeBase.trim();
 	}
 
-	let oldText: string | null = null;
-	let newText: string | null = null;
+	let oldTextPromise = Promise.resolve<string | null>(null);
+	let newTextPromise = Promise.resolve<string | null>(null);
 
 	if (effectiveFromRef && input.toRef) {
 		// Between two refs
-		if (!isNew) oldText = await readFileAtRef(repoRoot, effectiveFromRef, basePath);
-		if (!isDeleted) newText = await readFileAtRef(repoRoot, input.toRef, input.path);
+		if (!isNew) oldTextPromise = readFileAtRef(repoRoot, effectiveFromRef, basePath);
+		if (!isDeleted) newTextPromise = readFileAtRef(repoRoot, input.toRef, input.path);
 	} else if (effectiveFromRef) {
 		// Ref vs working tree
-		if (!isNew) oldText = await readFileAtRef(repoRoot, effectiveFromRef, basePath);
-		if (!isDeleted) newText = await readWorkingTreeFile(repoRoot, input.path);
+		if (!isNew) oldTextPromise = readFileAtRef(repoRoot, effectiveFromRef, basePath);
+		if (!isDeleted) newTextPromise = readWorkingTreeFile(repoRoot, input.path);
 	} else {
 		// HEAD vs working tree (uncommitted)
-		if (!isNew) oldText = await readHeadFile(repoRoot, basePath);
-		if (!isDeleted) newText = await readWorkingTreeFile(repoRoot, input.path);
+		if (!isNew) oldTextPromise = readHeadFile(repoRoot, basePath);
+		if (!isDeleted) newTextPromise = readWorkingTreeFile(repoRoot, input.path);
 	}
+
+	const [oldText, newText] = await Promise.all([oldTextPromise, newTextPromise]);
 
 	return { path: input.path, oldText, newText };
 }

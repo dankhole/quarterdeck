@@ -2,12 +2,16 @@ import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 
+import pLimit from "p-limit";
+
 import type { RuntimeWorkdirFileSearchMatch } from "../core";
 import { runGit } from "./git-utils";
 
 const CACHE_TTL_MS = 5_000;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
+const FILE_WALK_CONCURRENCY = 16;
+const SKIPPED_WALK_DIRECTORIES = new Set([".git", ".hg", ".svn", "node_modules"]);
 
 // ── Filesystem-based file listing (used by file browser) ────────────────────
 
@@ -18,25 +22,60 @@ interface CachedFileList {
 
 const fsFileListCache = new Map<string, CachedFileList>();
 
-/** Recursively walk a directory tree, collecting all file paths. */
-async function walkDirectory(rootDir: string, dirPath: string, files: string[]): Promise<void> {
+interface DirectoryReadResult {
+	files: string[];
+	directories: string[];
+}
+
+function toWorkdirRelativePath(rootDir: string, fullPath: string): string {
+	const relPath = relative(rootDir, fullPath);
+	return sep === "\\" ? relPath.replaceAll("\\", "/") : relPath;
+}
+
+/** Read one directory, returning visible files and subdirectories for the next bounded batch. */
+async function readDirectory(rootDir: string, dirPath: string): Promise<DirectoryReadResult> {
 	let entries: Dirent[];
 	try {
 		entries = await readdir(dirPath, { withFileTypes: true });
 	} catch {
-		return; // Permission denied, symlink loop, etc.
+		return { files: [], directories: [] }; // Permission denied, symlink loop, etc.
 	}
 
+	const files: string[] = [];
+	const directories: string[] = [];
 	for (const entry of entries) {
 		const fullPath = join(dirPath, entry.name);
 
 		if (entry.isDirectory()) {
-			await walkDirectory(rootDir, fullPath, files);
+			if (!SKIPPED_WALK_DIRECTORIES.has(entry.name)) {
+				directories.push(fullPath);
+			}
 		} else {
-			const relPath = relative(rootDir, fullPath);
-			files.push(sep === "\\" ? relPath.replaceAll("\\", "/") : relPath);
+			files.push(toWorkdirRelativePath(rootDir, fullPath));
 		}
 	}
+	return { files, directories };
+}
+
+/** Walk a directory tree with bounded breadth-first concurrency, collecting all file paths. */
+async function walkDirectory(rootDir: string): Promise<string[]> {
+	const limit = pLimit(FILE_WALK_CONCURRENCY);
+	const files: string[] = [];
+	let directories = [rootDir];
+
+	while (directories.length > 0) {
+		const currentDirectories = directories;
+		directories = [];
+		const results = await Promise.all(
+			currentDirectories.map((dirPath) => limit(() => readDirectory(rootDir, dirPath))),
+		);
+		for (const result of results) {
+			files.push(...result.files);
+			directories.push(...result.directories);
+		}
+	}
+
+	return files;
 }
 
 // ── Git-based file index (used by search for change-status metadata) ────────
@@ -109,7 +148,7 @@ async function loadFileIndex(cwd: string): Promise<{ files: readonly string[]; c
 	fileIndexCache.delete(cwd);
 
 	try {
-		const [filesResult, statusResult] = await Promise.all([
+		const [filesResult, statusResult, deletedResult] = await Promise.all([
 			runGit(cwd, ["ls-files", "--cached", "--others", "--exclude-standard"], {
 				trimStdout: false,
 				timeoutClass: "metadata",
@@ -117,7 +156,11 @@ async function loadFileIndex(cwd: string): Promise<{ files: readonly string[]; c
 			runGit(cwd, ["status", "--porcelain=v1", "--untracked-files=all"], {
 				trimStdout: false,
 				timeoutClass: "metadata",
-			}).catch(() => ({ stdout: "" })),
+			}),
+			runGit(cwd, ["ls-files", "--deleted"], {
+				trimStdout: false,
+				timeoutClass: "metadata",
+			}),
 		]);
 		if (!filesResult.ok) {
 			return {
@@ -126,7 +169,15 @@ async function loadFileIndex(cwd: string): Promise<{ files: readonly string[]; c
 			};
 		}
 		const allFiles = normalizeLines(filesResult.stdout);
-		const { changed: changedPaths, deleted: deletedPaths } = parsePorcelainStatus(statusResult.stdout);
+		const { changed: changedPaths, deleted: statusDeletedPaths } = statusResult.ok
+			? parsePorcelainStatus(statusResult.stdout)
+			: { changed: new Set<string>(), deleted: new Set<string>() };
+		const deletedPaths = new Set(statusDeletedPaths);
+		if (deletedResult.ok) {
+			for (const path of normalizeLines(deletedResult.stdout)) {
+				deletedPaths.add(path);
+			}
+		}
 		// Filter out deleted files — git ls-files --cached still lists them
 		const files = deletedPaths.size > 0 ? allFiles.filter((path) => !deletedPaths.has(path)) : allFiles;
 		fileIndexCache.set(cwd, {
@@ -179,8 +230,7 @@ export async function listAllWorkdirFiles(cwd: string): Promise<string[]> {
 	}
 	fsFileListCache.delete(cwd);
 
-	const files: string[] = [];
-	await walkDirectory(cwd, cwd, files);
+	const files = await walkDirectory(cwd);
 	files.sort();
 
 	fsFileListCache.set(cwd, { expiresAt: Date.now() + CACHE_TTL_MS, files });

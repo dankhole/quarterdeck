@@ -2,6 +2,18 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: parallelize runtime file and stream loading (2026-04-28)
+
+Runtime stream connection now starts the project list, selected project-state snapshot, and cross-project notification baseline concurrently. The selected project-state read still converts failures into the existing `projectStateError` snapshot path, so a corrupt selected project does not block the project list or notification baseline from reaching the browser.
+
+Workdir diff content loading now reads old and new sides concurrently after resolving the effective base ref. File-browser listing keeps its on-disk semantics by using a bounded filesystem walk with VCS/dependency directory skips instead of hiding ignored local files through the git index. The search index remains git-backed, but now combines porcelain status with `git ls-files --deleted` so deleted tracked files are filtered even if status metadata is unavailable.
+
+Validation included focused runtime coverage for snapshot concurrency/error handling, old/new diff content loading, filesystem listing skips, ignored local file visibility, deleted tracked search results, plus root typecheck and fast runtime tests through the commit hook.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/server/runtime-state-hub.ts`, `src/workdir/get-workdir-changes.ts`, `src/workdir/search-workdir-files.ts`, `test/runtime/get-workdir-changes.test.ts`, `test/runtime/search-workdir-files.test.ts`, `test/runtime/server/runtime-state-hub.test.ts`.
+
+Commit: pending
+
 ## Fix: show remote refs in base branch picker (2026-04-28)
 
 Dogfooding exposed that the task top-bar "from {baseRef}" dropdown only rendered local branches even though the git refs API already returned remote tracking refs and the full branch picker already grouped them. This made repositories without a local checkout of the desired base branch look empty or incomplete when setting a task base ref.

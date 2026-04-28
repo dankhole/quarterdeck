@@ -1,10 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { searchWorkdirFiles } from "../../src/workdir";
+import { listAllWorkdirFiles, searchWorkdirFiles } from "../../src/workdir";
 import { createGitTestEnv } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 
@@ -33,6 +33,64 @@ function commitAll(cwd: string, message: string): string {
 }
 
 describe.sequential("search workdir files runtime", () => {
+	it("lists workdir files with bounded filesystem skips in git repositories", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-list-files-git-");
+		try {
+			initRepository(repoPath);
+			mkdirSync(join(repoPath, "src"), { recursive: true });
+			mkdirSync(join(repoPath, "docs"), { recursive: true });
+			mkdirSync(join(repoPath, "node_modules", "package"), { recursive: true });
+			writeFileSync(join(repoPath, ".gitignore"), "node_modules/\n.env.local\n", "utf8");
+			writeFileSync(join(repoPath, "src", "app.ts"), "export const app = true;\n", "utf8");
+			commitAll(repoPath, "add tracked source");
+			writeFileSync(join(repoPath, ".env.local"), "TOKEN=local\n", "utf8");
+			writeFileSync(join(repoPath, "docs", "note.md"), "draft\n", "utf8");
+			writeFileSync(join(repoPath, "node_modules", "package", "index.js"), "ignored\n", "utf8");
+
+			const files = await listAllWorkdirFiles(repoPath);
+
+			expect(files).toEqual([".env.local", ".gitignore", "docs/note.md", "src/app.ts"]);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("skips dependency and VCS directories outside git repositories", async () => {
+		const { path: directoryPath, cleanup } = createTempDir("quarterdeck-list-files-fs-");
+		try {
+			mkdirSync(join(directoryPath, "src"), { recursive: true });
+			mkdirSync(join(directoryPath, ".git"), { recursive: true });
+			mkdirSync(join(directoryPath, "node_modules", "package"), { recursive: true });
+			writeFileSync(join(directoryPath, "src", "app.ts"), "export const app = true;\n", "utf8");
+			writeFileSync(join(directoryPath, ".git", "config"), "[core]\n", "utf8");
+			writeFileSync(join(directoryPath, "node_modules", "package", "index.js"), "ignored\n", "utf8");
+
+			const files = await listAllWorkdirFiles(directoryPath);
+
+			expect(files).toEqual(["src/app.ts"]);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("omits deleted tracked files from search results", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-search-files-deleted-");
+		try {
+			initRepository(repoPath);
+			mkdirSync(join(repoPath, "src"), { recursive: true });
+			writeFileSync(join(repoPath, "src", "removed.ts"), "export const removed = true;\n", "utf8");
+			writeFileSync(join(repoPath, "src", "kept.ts"), "export const kept = true;\n", "utf8");
+			commitAll(repoPath, "add tracked files");
+			unlinkSync(join(repoPath, "src", "removed.ts"));
+
+			const results = await searchWorkdirFiles(repoPath, "removed", 20);
+
+			expect(results).toEqual([]);
+		} finally {
+			cleanup();
+		}
+	});
+
 	it("finds modified tracked files with non-ASCII paths using UTF-8 query text", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-search-files-nonascii-tracked-");
 		try {

@@ -384,31 +384,26 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		notificationSummariesByProject: Record<string, RuntimeTaskSessionSummary[]>;
 	}> {
 		if (resolved.projectId && resolved.projectPath) {
-			const projectsPayload = await this.deps.projectRegistry.buildProjectsPayload(resolved.projectId);
-			let projectState: RuntimeProjectStateResponse | null = null;
-			let projectStateError: string | null = null;
-			try {
-				projectState = await this.deps.projectRegistry.buildProjectStateSnapshot(
-					resolved.projectId,
-					resolved.projectPath,
-				);
-			} catch (error) {
-				projectStateError = error instanceof Error ? error.message : String(error);
-			}
-			const notificationSummariesByProject = await this.collectNotificationSummariesByProject();
+			const [projectsPayload, projectStateResult, notificationSummariesByProject] = await Promise.all([
+				this.deps.projectRegistry.buildProjectsPayload(resolved.projectId),
+				this.loadInitialProjectState(resolved.projectId, resolved.projectPath),
+				this.collectNotificationSummariesByProject(),
+			]);
 			return {
 				currentProjectId: projectsPayload.currentProjectId,
 				projects: projectsPayload.projects,
 				projectId: resolved.projectId,
 				projectPath: resolved.projectPath,
-				projectState,
-				projectStateError,
+				projectState: projectStateResult.projectState,
+				projectStateError: projectStateResult.projectStateError,
 				notificationSummariesByProject,
 			};
 		}
 
-		const projectsPayload = await this.deps.projectRegistry.buildProjectsPayload(null);
-		const notificationSummariesByProject = await this.collectNotificationSummariesByProject();
+		const [projectsPayload, notificationSummariesByProject] = await Promise.all([
+			this.deps.projectRegistry.buildProjectsPayload(null),
+			this.collectNotificationSummariesByProject(),
+		]);
 		return {
 			currentProjectId: projectsPayload.currentProjectId,
 			projects: projectsPayload.projects,
@@ -418,6 +413,23 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			projectStateError: null,
 			notificationSummariesByProject,
 		};
+	}
+
+	private async loadInitialProjectState(
+		projectId: string,
+		projectPath: string,
+	): Promise<{ projectState: RuntimeProjectStateResponse | null; projectStateError: string | null }> {
+		try {
+			return {
+				projectState: await this.deps.projectRegistry.buildProjectStateSnapshot(projectId, projectPath),
+				projectStateError: null,
+			};
+		} catch (error) {
+			return {
+				projectState: null,
+				projectStateError: error instanceof Error ? error.message : String(error),
+			};
+		}
 	}
 
 	private sendMessage(client: WebSocket, payload: RuntimeStateStreamMessage): void {
