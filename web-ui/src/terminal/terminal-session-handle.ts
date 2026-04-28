@@ -11,6 +11,40 @@ import { createClientLogger } from "@/utils/client-logger";
 const log = createClientLogger("terminal-session-handle");
 const CONNECTION_READY_FALLBACK_MS = 1500;
 
+// [perf-investigation] Count reconnect() calls across all slots to see if the
+// session_instance_changed path from terminal-attachment-controller:131 is
+// firing repeatedly on an idle agent. Pairs with the console.trace in that
+// file. Uses console.info instead of client logging/warn capture. Remove if
+// investigation shows reconnect is not the cause.
+const RECONNECT_REPORT_INTERVAL_MS = 5000;
+let reconnectCallTotal = 0;
+let reconnectCallWindow = 0;
+let reconnectWindowStart = performance.now();
+
+function roundPerf(value: number): number {
+	return Math.round(value * 10) / 10;
+}
+
+function reportReconnectRate(slotId: number, reason: "session_instance_changed", taskId: string): void {
+	reconnectCallTotal += 1;
+	reconnectCallWindow += 1;
+	const now = performance.now();
+	const elapsed = now - reconnectWindowStart;
+	if (reconnectCallTotal !== 1 && elapsed < RECONNECT_REPORT_INTERVAL_MS) {
+		return;
+	}
+	console.info(`[perf-investigation] slot ${slotId} terminal reconnect rate`, {
+		reason,
+		taskId,
+		totalReconnects: reconnectCallTotal,
+		reconnectsInWindow: reconnectCallWindow,
+		windowMs: Math.round(elapsed),
+		ratePerSec: elapsed > 0 ? roundPerf((reconnectCallWindow / elapsed) * 1000) : reconnectCallWindow,
+	});
+	reconnectCallWindow = 0;
+	reconnectWindowStart = now;
+}
+
 export interface PersistentTerminalSubscriber {
 	onConnectionReady?: (taskId: string) => void;
 	onLastError?: (message: string | null) => void;
@@ -142,6 +176,7 @@ export class TerminalSessionHandle {
 		if (this.callbacks.isDisposed() || !this.taskId || !this.projectId) {
 			return;
 		}
+		reportReconnectRate(this.slotId, reason, this.taskId);
 		// Session-instance changes can leave a reused pooled slot with a control
 		// socket that is open but restoreCompleted=false. Closing both sockets is
 		// more reliable than requesting another restore on that stale control

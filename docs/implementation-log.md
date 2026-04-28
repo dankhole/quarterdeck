@@ -2,6 +2,18 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Chore: add perf-investigation instrumentation (2026-04-28)
+
+Dogfooding found an idle terminal scrollbar/CPU slowdown that could come from several different layers: child PTY output, terminal mirror writes, runtime session-summary fanout, cross-project notification seeding, hook ingest, browser terminal reconnects, xterm write queues, or restore/snapshot churn. The first instrumentation pass covered only a few browser-side symptoms and PTY input writes, which was not enough to rule out the likely output and fanout hot paths.
+
+The branch now adds temporary `[perf-investigation]` aggregate probes across the suspected path. Runtime terminal output records raw and filtered chunk/byte windows plus `TerminalStateMirror.applyOutput(...)` and session-summary update timing. `RuntimeStateMessageBatcher` reports onChange, queued message, flush, delivery, task-notification, and project-refresh rates. `RuntimeStateHubImpl.collectNotificationSummariesByProject()` records per-call duration, managed-project counts, before/after prune counts, board-read failures, and calls in the last minute with throttled warnings for suspicious connection-time notification snapshots. Existing browser terminal probes were kept low-noise by sampling reconnect stack traces and reporting write-queue, restore, and reconnect rates through direct console output.
+
+All investigation probes are intentionally marked with `[perf-investigation]` comments. Where practical, they bypass Quarterdeck's tagged logger and write directly to `console.*` so the diagnostics do not feed back into the runtime debug-log WebSocket stream while performance is degraded. Remove these marked blocks once the slowdown investigation is complete.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/server/runtime-state-hub.ts`, `src/server/runtime-state-message-batcher.ts`, `src/terminal/pty-session.ts`, `src/terminal/session-output-pipeline.ts`, `src/trpc/hooks-api.ts`, `web-ui/src/terminal/slot-write-queue.ts`, `web-ui/src/terminal/terminal-attachment-controller.ts`, `web-ui/src/terminal/terminal-session-handle.ts`, `web-ui/src/terminal/terminal-viewport.ts`.
+
+Commit: pending
+
 ## Fix: prune orphan session summaries from project state (2026-04-28)
 
 Dogfooding the Codex slowdown investigation found that project state could carry hundreds of session summaries even when the visible board had only a small number of active cards. The terminal-manager store hydrates persisted `sessions.json`, project snapshots merge every live store summary back into the response, browser saves previously wrote every authoritative summary, and cross-project notification snapshots enumerated every managed-project summary. Old deleted-card summaries therefore inflated stream payloads, save payloads, notification baselines, and browser reconciliation work long after the corresponding cards were gone.

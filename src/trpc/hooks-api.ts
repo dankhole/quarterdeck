@@ -21,6 +21,30 @@ import { applyRuntimeMutationEffects, createHookTransitionEffects } from "./runt
 const log = createTaggedLogger("hooks");
 const HOOK_LOG_SNIPPET_MAX_LENGTH = 300;
 
+// [perf-investigation] Count hook ingest events per 5s window to see if
+// idle-agent CPU churn correlates with hook-event volume. Remove this block
+// (and the single reportHookIngest() call below) if investigation shows hook
+// rate is not the cause of the "scrollbar changing on idle" CPU symptom.
+const HOOK_RATE_WINDOW_MS = 5000;
+let hookIngestCount = 0;
+let hookRateWindowStart = Date.now();
+function reportHookIngest(event: RuntimeHookEvent, taskId: string): void {
+	hookIngestCount += 1;
+	const now = Date.now();
+	const elapsed = now - hookRateWindowStart;
+	if (elapsed >= HOOK_RATE_WINDOW_MS) {
+		log.warn("[perf-investigation] hook ingest rate", {
+			eventsInWindow: hookIngestCount,
+			windowMs: elapsed,
+			ratePerSec: Math.round((hookIngestCount / elapsed) * 1000 * 10) / 10,
+			lastEvent: event,
+			lastTaskId: taskId,
+		});
+		hookIngestCount = 0;
+		hookRateWindowStart = now;
+	}
+}
+
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
@@ -140,6 +164,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				const event = body.event;
 				const hookLogData = buildHookLogData({ projectId, taskId, event, metadata: body.metadata });
 				log.info("Hook ingest received", hookLogData);
+				reportHookIngest(event, taskId);
 				const knownProjectPath = deps.projects.getProjectPathById(projectId);
 				const projectContext = knownProjectPath ? null : await loadProjectContextById(projectId);
 				const projectPath = knownProjectPath ?? projectContext?.repoPath ?? null;

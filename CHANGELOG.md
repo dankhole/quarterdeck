@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Chore: add perf-investigation instrumentation
+
+- Added temporary `[perf-investigation]` probes around PTY input/output, terminal mirror application, runtime summary fanout, hook ingest, notification snapshot seeding, terminal reconnects, write queues, and restore guards so idle-scrollbar CPU churn can be isolated across the likely hot paths.
+- The investigation logs use direct console output where practical instead of Quarterdeck's tagged runtime logger, avoiding feedback through the debug-log WebSocket stream while the runtime is degraded.
+- Each probe is marked with `[perf-investigation]` comments so the temporary diagnostics can be removed cleanly after the investigation.
+
 ### Fix: prune orphan session summaries from project state
 
 - Project-state snapshots and cross-project notification baselines now omit stale non-live session summaries whose cards are no longer on the board, reducing old task history in stream payloads.

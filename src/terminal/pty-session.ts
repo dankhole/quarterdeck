@@ -90,6 +90,30 @@ function isIgnorablePtyResizeError(error: unknown): boolean {
 	return error.message.toLowerCase().includes("already exited");
 }
 
+// [perf-investigation] Track total PTY write-queue iterations across all
+// sessions. If idle-agent CPU churn is driven by continuous PTY writes (input
+// side, not output), this counter will climb fast even with no user typing.
+// Remove this block and the processWriteQueueTicks++ line below if
+// investigation shows PTY writes are not contributing.
+const PTY_WRITE_REPORT_INTERVAL_MS = 5000;
+let processWriteQueueTicks = 0;
+let ptyWriteLastReport = Date.now();
+function reportPtyWriteRate(fd: number): void {
+	processWriteQueueTicks += 1;
+	const now = Date.now();
+	const elapsed = now - ptyWriteLastReport;
+	if (elapsed >= PTY_WRITE_REPORT_INTERVAL_MS) {
+		console.warn("[perf-investigation] pty write-queue tick rate", {
+			ticksInWindow: processWriteQueueTicks,
+			windowMs: elapsed,
+			ratePerSec: Math.round((processWriteQueueTicks / elapsed) * 1000 * 10) / 10,
+			lastFd: fd,
+		});
+		processWriteQueueTicks = 0;
+		ptyWriteLastReport = now;
+	}
+}
+
 function installNodePtyWriteErrorGuard(ptyProcess: pty.IPty): void {
 	const writeStream = (ptyProcess as NodePtyWithWriteStream)._writeStream;
 	if (!isNodePtyCustomWriteStream(writeStream)) {
@@ -107,6 +131,7 @@ function installNodePtyWriteErrorGuard(ptyProcess: pty.IPty): void {
 		if (!task) {
 			return;
 		}
+		reportPtyWriteRate(writeStream._fd);
 
 		fs.write(writeStream._fd, task.buffer, task.offset, (error, written) => {
 			if (error) {

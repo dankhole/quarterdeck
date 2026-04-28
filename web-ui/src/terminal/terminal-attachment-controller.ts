@@ -5,6 +5,40 @@ import { type PersistentTerminalAppearance, TerminalViewport } from "@/terminal/
 
 export type { PersistentTerminalSubscriber } from "@/terminal/terminal-session-handle";
 
+// [perf-investigation] Full console.trace stacks are expensive if the reconnect
+// path loops. Keep one breadcrumb, then sample at most once per window while the
+// terminal-session-handle rate counter reports the hot path volume.
+const SESSION_INSTANCE_TRACE_SAMPLE_INTERVAL_MS = 5000;
+let sessionInstanceReconnectTraceCount = 0;
+let sessionInstanceReconnectLastTraceAt = 0;
+
+interface SessionInstanceReconnectTraceData {
+	slotId: number;
+	taskId: string | null;
+	prevPid: number | null;
+	nextPid: number | null;
+	prevStartedAt: number | null;
+	nextStartedAt: number | null;
+	prevState: RuntimeTaskSessionSummary["state"] | null;
+	nextState: RuntimeTaskSessionSummary["state"];
+}
+
+function maybeTraceSessionInstanceReconnect(data: SessionInstanceReconnectTraceData): void {
+	sessionInstanceReconnectTraceCount += 1;
+	const now = performance.now();
+	const shouldTrace =
+		sessionInstanceReconnectTraceCount === 1 ||
+		now - sessionInstanceReconnectLastTraceAt >= SESSION_INSTANCE_TRACE_SAMPLE_INTERVAL_MS;
+	if (!shouldTrace) {
+		return;
+	}
+	sessionInstanceReconnectLastTraceAt = now;
+	console.trace("[quarterdeck-debug] terminal reconnect on session_instance_changed", {
+		...data,
+		traceCount: sessionInstanceReconnectTraceCount,
+	});
+}
+
 interface TerminalAttachmentControllerOptions {
 	isDisposed: () => boolean;
 }
@@ -128,6 +162,16 @@ export class TerminalAttachmentController {
 			// completes. Ignore processless stop/exit summaries here: reconnecting
 			// on pid=null just flashes the old terminal before untrash starts the
 			// real replacement process.
+			maybeTraceSessionInstanceReconnect({
+				slotId: this.slotId,
+				taskId: this.connectedTaskId,
+				prevPid: previousSummary?.pid ?? null,
+				nextPid: summary.pid,
+				prevStartedAt: previousSummary?.startedAt ?? null,
+				nextStartedAt: summary.startedAt,
+				prevState: previousState ?? null,
+				nextState: summary.state,
+			});
 			this.session.reconnect("session_instance_changed");
 		}
 	}

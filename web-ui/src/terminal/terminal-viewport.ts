@@ -22,6 +22,24 @@ const log = createClientLogger("terminal-viewport");
 
 const SHIFT_ENTER_SEQUENCE = "\n";
 
+// [perf-investigation] Count applyRestoreSnapshot invocations across all
+// slots. Every restore calls terminal.reset() + rewrites the buffer, which
+// visibly repaints the scrollbar. If this number climbs while an agent is
+// idle, combined with the reconnect counter in terminal-session-handle.ts,
+// that confirms suspect #2 (session-instance-change reconnect loop). Uses
+// console.info instead of client logging/warn capture. Remove this block and
+// the reportRestoreApplied() call if investigation clears it.
+let restoreApplyCount = 0;
+function reportRestoreApplied(slotId: number, snapshotLength: number, skipped: boolean): void {
+	restoreApplyCount += 1;
+	console.info("[perf-investigation] terminal restore applied", {
+		totalRestores: restoreApplyCount,
+		slotId,
+		snapshotLength,
+		skipped,
+	});
+}
+
 let currentTerminalFontWeight: number = CONFIG_DEFAULTS.terminalFontWeight;
 
 export type { PersistentTerminalAppearance } from "@/terminal/terminal-options";
@@ -233,8 +251,10 @@ export class TerminalViewport {
 			log.warn(`slot ${this.slotId} skipped empty restore over non-empty terminal buffer`, {
 				taskId: this.callbacks.getConnectedTaskId(),
 			});
+			reportRestoreApplied(this.slotId, snapshot.length, true);
 			return;
 		}
+		reportRestoreApplied(this.slotId, snapshot.length, false);
 		this.terminal.reset();
 		if (cols && rows && (this.terminal.cols !== cols || this.terminal.rows !== rows)) {
 			this.terminal.resize(cols, rows);
