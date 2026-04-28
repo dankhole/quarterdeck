@@ -2,15 +2,17 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
-## Fix: bound terminal prewarm slot lifetime (2026-04-28)
+## Fix: bound hidden terminal stream lifetimes (2026-04-28)
 
-Terminal prewarm slots were intentionally kept alive until mouseleave triggered `cancelWarmup()`, which made fast hover-to-click transitions feel good. The missing bound was the opposite edge case: if the caller never sent a cancellation signal, a `PRELOADING` or `READY` slot could remain connected forever even though it had never been acquired as the visible task terminal.
+Terminal prewarm and quick-switch slots were intentionally kept alive briefly to make hover-to-click and task switching feel instant. Dogfooding showed two missing bounds in that policy layer: a `PRELOADING` / `READY` slot could stay connected if the caller never sent `cancelWarmup()`, and a quick switch back to an already-retained slot could leave the formerly visible task marked `ACTIVE` even though it was now hidden.
 
-The terminal pool now starts a separate 60-second max-TTL timer when `warmup(...)` creates a slot. The existing 3-second `cancelWarmup(...)` mouseleave grace path remains unchanged, but it clears the max-TTL timer before scheduling the shorter eviction. All warm-slot cleanup paths now clear both timer families: acquisition, release, eviction, `releaseAll()`, and test/HMR pool reset. The max-TTL callback rechecks that it is still the active timer for the task and only evicts `PRELOADING` / `READY` slots, preserving `ACTIVE` / `PREVIOUS` behavior and leaving dedicated agent PTYs outside the shared pool untouched.
+The terminal pool now starts a 12-second max-TTL timer when `warmup(...)` creates a slot, while the existing 3-second `cancelWarmup(...)` mouseleave grace path remains unchanged. PREVIOUS slots now auto-evict after 8 seconds. Active promotion flows through one pool-policy helper that demotes any other `ACTIVE` slot to `PREVIOUS`, schedules that slot's eviction, promotes the requested slot, and evicts stale previous slots. This keeps the attachment/session mechanism unchanged while making the shared-pool policy maintain the invariant that only the visible task is `ACTIVE`.
 
-Focused terminal-pool tests now cover a warm slot expiring after the max TTL without cancellation, the existing cancel-warmup grace eviction, acquisition clearing the max TTL so active slots are not evicted, and `releaseAll()` clearing delayed timers without a second disconnect.
+The browser terminal write diagnostics were widened at the same boundary. `TerminalViewport` now reports slot/task identity, pool role, visibility, IO/control socket state, readiness, and restore state into the aggregate `[perf-investigation]` xterm write-rate probe. This is diagnostic-only plumbing: it observes the session/viewport state instead of owning lifecycle transitions.
 
-Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `web-ui/src/terminal/terminal-pool.ts`, `web-ui/src/terminal/terminal-pool-acquire.test.ts`, `web-ui/src/terminal/terminal-pool-lifecycle.test.ts`.
+Focused terminal-pool tests now cover warm-slot max-TTL eviction, previous-slot eviction, existing PREVIOUS reacquire demoting the former active slot, warmed-slot promotion demoting the former active slot, cancel-warmup eviction, acquisition cleanup, and `releaseAll()` clearing delayed timers without a second disconnect.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `web-ui/src/terminal/slot-socket-manager.ts`, `web-ui/src/terminal/slot-write-queue.ts`, `web-ui/src/terminal/terminal-attachment-controller.ts`, `web-ui/src/terminal/terminal-pool.ts`, `web-ui/src/terminal/terminal-pool-acquire.test.ts`, `web-ui/src/terminal/terminal-pool-dedicated.test.ts`, `web-ui/src/terminal/terminal-pool-lifecycle.test.ts`, `web-ui/src/terminal/terminal-session-handle.ts`, `web-ui/src/terminal/terminal-slot.ts`, `web-ui/src/terminal/terminal-viewport.ts`, `web-ui/src/terminal/terminal-write-diagnostics.ts`.
 
 Commit: pending
 

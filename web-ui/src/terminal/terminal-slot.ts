@@ -9,6 +9,7 @@ import {
 	hasLikelyShellPrompt,
 } from "@/terminal/terminal-prompt-heuristics";
 import type { PersistentTerminalAppearance } from "@/terminal/terminal-viewport";
+import type { TerminalWritePoolRole } from "@/terminal/terminal-write-diagnostics";
 
 const INTERRUPT_IDLE_SETTLE_MS = 250;
 
@@ -19,11 +20,13 @@ export class TerminalSlot {
 	readonly slotId: number;
 	private readonly attachment: TerminalAttachmentController;
 	private readonly visibilityLifecycle: SlotVisibilityLifecycle;
+	private poolRoleForDiagnostics: TerminalWritePoolRole | null = null;
 	private disposed = false;
 
 	constructor(slotId: number, appearance: PersistentTerminalAppearance) {
 		this.slotId = slotId;
 		this.attachment = new TerminalAttachmentController(this.slotId, appearance, {
+			getPoolRole: () => this.poolRoleForDiagnostics,
 			isDisposed: () => this.disposed,
 		});
 		this.visibilityLifecycle = this.createVisibilityLifecycle();
@@ -158,6 +161,10 @@ export class TerminalSlot {
 
 	resetRenderer(): void {
 		this.attachment.resetRenderer();
+	}
+
+	setPoolRoleForDiagnostics(role: TerminalWritePoolRole | null): void {
+		this.poolRoleForDiagnostics = role;
 	}
 
 	/**

@@ -2,11 +2,13 @@
 
 ## [Unreleased]
 
-### Fix: bound terminal prewarm slot lifetime
+### Fix: bound hidden terminal stream lifetimes
 
-- Terminal prewarm slots now have a 60-second absolute TTL from warmup start, so hover-created `PRELOADING` / `READY` slots cannot stay connected indefinitely when `cancelWarmup()` never arrives.
-- Mouseleave cancellation still uses the existing 3-second grace eviction, and acquiring, releasing, evicting, or clearing the pool now cancels the max-TTL timer so active and previous task terminals are not affected.
-- Added focused terminal-pool lifecycle/acquire coverage for max-TTL eviction, cancel-warmup eviction, acquisition cleanup, and `releaseAll()` timer cleanup.
+- Terminal prewarm slots now have a 12-second absolute TTL from warmup start, so hover-created `PRELOADING` / `READY` slots cannot stay connected indefinitely when `cancelWarmup()` never arrives.
+- PREVIOUS task terminals now auto-evict after 8 seconds, and promoting an already-retained slot back to `ACTIVE` demotes any other active slot first so hidden streams keep the same bounded lifecycle.
+- Mouseleave cancellation still uses the existing 3-second grace eviction, and acquiring, releasing, evicting, or clearing the pool cancels the relevant delayed timers.
+- Temporary terminal write diagnostics now include slot, task, pool role, visibility, socket state, readiness, and restore state so any remaining hidden writer can be identified from browser console output.
+- Added focused terminal-pool lifecycle/acquire coverage for max-TTL eviction, previous-slot eviction, existing-slot promotion, cancel-warmup eviction, acquisition cleanup, and `releaseAll()` timer cleanup.
 
 ### Fix: keep timed-out Codex hooks from pinning cancellation
 

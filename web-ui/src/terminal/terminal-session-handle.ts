@@ -6,6 +6,7 @@ import type {
 } from "@/runtime/types";
 import { SlotSocketManager } from "@/terminal/slot-socket-manager";
 import { generateTerminalClientId } from "@/terminal/terminal-socket-utils";
+import type { TerminalSocketState } from "@/terminal/terminal-write-diagnostics";
 import { createClientLogger } from "@/utils/client-logger";
 
 const log = createClientLogger("terminal-session-handle");
@@ -155,6 +156,18 @@ export class TerminalSessionHandle {
 
 	get isIoOpen(): boolean {
 		return this.sockets.isIoOpen;
+	}
+
+	get ioSocketState(): TerminalSocketState {
+		return this.sockets.ioSocketState;
+	}
+
+	get controlSocketState(): TerminalSocketState {
+		return this.sockets.controlSocketState;
+	}
+
+	get connectionReady(): boolean {
+		return this.sockets.connectionReady;
 	}
 
 	get restoreCompleted(): boolean {

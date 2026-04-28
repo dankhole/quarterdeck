@@ -19,6 +19,7 @@ interface MockSlot {
 	dispose: ReturnType<typeof vi.fn>;
 	resetRenderer: ReturnType<typeof vi.fn>;
 	requestRestore: ReturnType<typeof vi.fn>;
+	setPoolRoleForDiagnostics: ReturnType<typeof vi.fn>;
 	setFontWeight: ReturnType<typeof vi.fn>;
 	writeText: ReturnType<typeof vi.fn>;
 	setAppearance: ReturnType<typeof vi.fn>;
@@ -54,6 +55,7 @@ vi.mock("@/terminal/terminal-slot", () => {
 			dispose: vi.fn(),
 			resetRenderer: vi.fn(),
 			requestRestore: vi.fn(),
+			setPoolRoleForDiagnostics: vi.fn(),
 			setFontWeight: vi.fn(),
 			writeText: vi.fn(),
 			setAppearance: vi.fn(),
@@ -171,6 +173,10 @@ function getCurrentPoolSlots(): MockSlot[] {
 function getSlotRoles(poolSlots: MockSlot[]): SlotRole[] {
 	return poolSlots.map((s) => getSlotRole(s as unknown as TerminalSlot));
 }
+
+const WARMUP_TIMEOUT_MS = 3_000;
+const WARMUP_MAX_TTL_MS = 12_000;
+const PREVIOUS_EVICTION_MS = 8_000;
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -304,23 +310,33 @@ describe("terminal-pool — lifecycle", () => {
 			expect(getSlotRole(getSlotForTask("task-warm-3")!)).toBe("PRELOADING");
 		});
 
-		it("evicts a warm slot after max TTL even without cancelWarmup", () => {
-			warmup("task-1", "ws-1");
-			const slot = getSlotForTask("task-1")!;
-			expect(getSlotRole(slot)).toBe("PRELOADING");
+		it("evicts warm slots after max TTL even without cancelWarmup", () => {
+			warmup("task-preloading", "ws-1");
+			warmup("task-ready", "ws-1");
+			const preloadingSlot = getSlotForTask("task-preloading")!;
+			const readySlot = getSlotForTask("task-ready")!;
+			expect(getSlotRole(preloadingSlot)).toBe("PRELOADING");
+			expect(getSlotRole(readySlot)).toBe("PRELOADING");
 
-			const readyCallback = (slot as unknown as MockSlot).onceConnectionReady.mock.calls[0]?.[0] as
+			const readyCallback = (readySlot as unknown as MockSlot).onceConnectionReady.mock.calls[0]?.[0] as
 				| (() => void)
 				| undefined;
 			readyCallback?.();
-			expect(getSlotRole(slot)).toBe("READY");
+			expect(getSlotRole(readySlot)).toBe("READY");
 
-			vi.advanceTimersByTime(60_000);
+			vi.advanceTimersByTime(WARMUP_MAX_TTL_MS - 1);
 
-			expect(getSlotForTask("task-1")).toBeNull();
-			expect(getSlotRole(slot)).toBe("FREE");
-			const mockSlot = slot as unknown as MockSlot;
-			expect(mockSlot.disconnectFromTask).toHaveBeenCalled();
+			expect(getSlotForTask("task-preloading")).toBe(preloadingSlot);
+			expect(getSlotForTask("task-ready")).toBe(readySlot);
+
+			vi.advanceTimersByTime(1);
+
+			expect(getSlotForTask("task-preloading")).toBeNull();
+			expect(getSlotForTask("task-ready")).toBeNull();
+			expect(getSlotRole(preloadingSlot)).toBe("FREE");
+			expect(getSlotRole(readySlot)).toBe("FREE");
+			expect((preloadingSlot as unknown as MockSlot).disconnectFromTask).toHaveBeenCalled();
+			expect((readySlot as unknown as MockSlot).disconnectFromTask).toHaveBeenCalled();
 		});
 	});
 
@@ -343,7 +359,7 @@ describe("terminal-pool — lifecycle", () => {
 			expect(getSlotForTask("task-1")).not.toBeNull();
 			expect(getSlotRole(slot)).toBe("PRELOADING");
 
-			vi.advanceTimersByTime(3000);
+			vi.advanceTimersByTime(WARMUP_TIMEOUT_MS);
 
 			expect(getSlotForTask("task-1")).toBeNull();
 			expect(getSlotRole(slot)).toBe("FREE");
@@ -358,7 +374,7 @@ describe("terminal-pool — lifecycle", () => {
 			const slot = acquireForTask("task-1", "ws-1");
 			expect(slot).toBeDefined();
 
-			vi.advanceTimersByTime(5000);
+			vi.advanceTimersByTime(WARMUP_TIMEOUT_MS + 2_000);
 			expect(getSlotRole(slot)).toBe("ACTIVE");
 		});
 
@@ -374,6 +390,39 @@ describe("terminal-pool — lifecycle", () => {
 	describe("eviction", () => {
 		beforeEach(() => {
 			initPool();
+		});
+
+		it("evicts PREVIOUS slots after the shorter TTL", () => {
+			const slot = acquireForTask("task-1", "ws-1");
+			acquireForTask("task-2", "ws-1");
+			expect(getSlotRole(slot)).toBe("PREVIOUS");
+
+			vi.advanceTimersByTime(PREVIOUS_EVICTION_MS - 1);
+
+			expect(getSlotForTask("task-1")).toBe(slot);
+			expect(getSlotRole(slot)).toBe("PREVIOUS");
+
+			vi.advanceTimersByTime(1);
+
+			expect(getSlotForTask("task-1")).toBeNull();
+			expect(getSlotRole(slot)).toBe("FREE");
+			expect((slot as unknown as MockSlot).disconnectFromTask).toHaveBeenCalled();
+		});
+
+		it("keeps the newly demoted PREVIOUS timer when stale PREVIOUS is evicted", () => {
+			acquireForTask("task-1", "ws-1");
+			const task2Slot = acquireForTask("task-2", "ws-1");
+			expect(getSlotRole(task2Slot)).toBe("ACTIVE");
+
+			acquireForTask("task-3", "ws-1");
+			expect(getSlotForTask("task-1")).toBeNull();
+			expect(getSlotRole(task2Slot)).toBe("PREVIOUS");
+
+			vi.advanceTimersByTime(PREVIOUS_EVICTION_MS);
+
+			expect(getSlotForTask("task-2")).toBeNull();
+			expect(getSlotRole(task2Slot)).toBe("FREE");
+			expect((task2Slot as unknown as MockSlot).disconnectFromTask).toHaveBeenCalled();
 		});
 
 		it("cancels warmup timeout for evicted task", () => {
@@ -393,7 +442,7 @@ describe("terminal-pool — lifecycle", () => {
 
 			const disconnectCallsBefore = mockW1.disconnectFromTask.mock.calls.length;
 
-			vi.advanceTimersByTime(5000);
+			vi.advanceTimersByTime(WARMUP_TIMEOUT_MS + 2_000);
 
 			expect(mockW1.disconnectFromTask.mock.calls.length).toBe(disconnectCallsBefore);
 		});

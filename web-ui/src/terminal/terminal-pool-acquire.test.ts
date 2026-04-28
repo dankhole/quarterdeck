@@ -19,6 +19,7 @@ interface MockSlot {
 	dispose: ReturnType<typeof vi.fn>;
 	resetRenderer: ReturnType<typeof vi.fn>;
 	requestRestore: ReturnType<typeof vi.fn>;
+	setPoolRoleForDiagnostics: ReturnType<typeof vi.fn>;
 	setFontWeight: ReturnType<typeof vi.fn>;
 	writeText: ReturnType<typeof vi.fn>;
 	setAppearance: ReturnType<typeof vi.fn>;
@@ -51,6 +52,7 @@ vi.mock("@/terminal/terminal-slot", () => {
 			dispose: vi.fn(),
 			resetRenderer: vi.fn(),
 			requestRestore: vi.fn(),
+			setPoolRoleForDiagnostics: vi.fn(),
 			setFontWeight: vi.fn(),
 			writeText: vi.fn(),
 			setAppearance: vi.fn(),
@@ -159,6 +161,9 @@ function getCurrentPoolSlots(): MockSlot[] {
 	const all = TerminalSlotMock.mock.instances as unknown as MockSlot[];
 	return all.slice(all.length - 4);
 }
+
+const WARMUP_MAX_TTL_MS = 12_000;
+const PREVIOUS_EVICTION_MS = 8_000;
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -326,16 +331,36 @@ describe("terminal-pool — acquire & release", () => {
 			expect(mockSlot.requestRestore).toHaveBeenCalledOnce();
 		});
 
-		it("clears max TTL when acquiring a warm slot", () => {
+		it("demotes the current ACTIVE slot when promoting a warm slot", () => {
+			const activeSlot = acquireForTask("task-active", "ws-1");
+			warmup("task-warm", "ws-1");
+			const warmSlot = getSlotForTask("task-warm")!;
+
+			const acquired = acquireForTask("task-warm", "ws-1");
+
+			expect(acquired).toBe(warmSlot);
+			expect(getSlotRole(warmSlot)).toBe("ACTIVE");
+			expect(getSlotRole(activeSlot)).toBe("PREVIOUS");
+			expect(getSlotRoles(getCurrentPoolSlots()).filter((role) => role === "ACTIVE")).toHaveLength(1);
+
+			vi.advanceTimersByTime(PREVIOUS_EVICTION_MS);
+
+			expect(getSlotForTask("task-active")).toBeNull();
+			expect(getSlotRole(activeSlot)).toBe("FREE");
+		});
+
+		it("reuses a prewarm slot when the user quickly clicks after hover", () => {
 			warmup("task-1", "ws-1");
 			const slot = getSlotForTask("task-1")!;
 			const mockSlot = slot as unknown as MockSlot;
+
+			vi.advanceTimersByTime(500);
 
 			const acquired = acquireForTask("task-1", "ws-1");
 			expect(acquired).toBe(slot);
 			expect(getSlotRole(slot)).toBe("ACTIVE");
 
-			vi.advanceTimersByTime(60_000);
+			vi.advanceTimersByTime(WARMUP_MAX_TTL_MS);
 
 			expect(getSlotForTask("task-1")).toBe(slot);
 			expect(getSlotRole(slot)).toBe("ACTIVE");
@@ -353,6 +378,23 @@ describe("terminal-pool — acquire & release", () => {
 			expect(reacquired).toBe(slot1);
 			expect(getSlotRole(slot1)).toBe("ACTIVE");
 			expect(mockSlot1.requestRestore).toHaveBeenCalledOnce();
+		});
+
+		it("demotes the current ACTIVE slot when reacquiring a PREVIOUS slot", () => {
+			const task1Slot = acquireForTask("task-1", "ws-1");
+			const task2Slot = acquireForTask("task-2", "ws-1");
+
+			const reacquired = acquireForTask("task-1", "ws-1");
+
+			expect(reacquired).toBe(task1Slot);
+			expect(getSlotRole(task1Slot)).toBe("ACTIVE");
+			expect(getSlotRole(task2Slot)).toBe("PREVIOUS");
+			expect(getSlotRoles(getCurrentPoolSlots()).filter((role) => role === "ACTIVE")).toHaveLength(1);
+
+			vi.advanceTimersByTime(PREVIOUS_EVICTION_MS);
+
+			expect(getSlotForTask("task-2")).toBeNull();
+			expect(getSlotRole(task2Slot)).toBe("FREE");
 		});
 	});
 
@@ -423,7 +465,7 @@ describe("terminal-pool — acquire & release", () => {
 			releaseAll();
 			const disconnectCallsAfterRelease = mockSlot.disconnectFromTask.mock.calls.length;
 
-			vi.advanceTimersByTime(60_000);
+			vi.advanceTimersByTime(WARMUP_MAX_TTL_MS);
 			expect(getSlotRole(slot)).toBe("FREE");
 			expect(mockSlot.disconnectFromTask.mock.calls.length).toBe(disconnectCallsAfterRelease);
 		});

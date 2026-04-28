@@ -15,6 +15,7 @@ import {
 	TerminalSlot,
 	updateGlobalTerminalFontWeight,
 } from "@/terminal/terminal-slot";
+import type { TerminalWritePoolRole } from "@/terminal/terminal-write-diagnostics";
 import { createClientLogger } from "@/utils/client-logger";
 import { warnToBrowserConsole } from "@/utils/global-error-capture";
 
@@ -61,7 +62,7 @@ declare global {
 // Types
 // ---------------------------------------------------------------------------
 
-export type SlotRole = "FREE" | "PRELOADING" | "READY" | "ACTIVE" | "PREVIOUS";
+export type SlotRole = TerminalWritePoolRole;
 
 // ---------------------------------------------------------------------------
 // Module-level state
@@ -73,7 +74,7 @@ const slotTaskIds = new Map<string, TerminalSlot>(); // taskId -> slot
 const roleTimestamps = new Map<TerminalSlot, number>();
 const warmupTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 const warmupMaxTtlTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
-let previousEvictionTimer: ReturnType<typeof setTimeout> | null = null;
+const previousEvictionTimers = new Map<TerminalSlot, ReturnType<typeof setTimeout>>();
 // Retained for future destroyPool() cleanup.
 let _rotationTimer: ReturnType<typeof setInterval> | null = null;
 let initialized = false;
@@ -89,10 +90,10 @@ let lastTerminalDomAlert: { signature: string; timestamp: number } | null = null
 const POOL_SIZE = 4;
 const ROTATION_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
 const WARMUP_TIMEOUT_MS = 3_000;
-const WARMUP_MAX_TTL_MS = 60_000;
+const WARMUP_MAX_TTL_MS = 12_000;
 /** How long a PREVIOUS slot stays connected before auto-eviction. Keeps instant
- *  switch-back for quick peeks while stopping hidden WebGL rendering long-term. */
-const PREVIOUS_EVICTION_MS = 30_000;
+ *  switch-back for quick peeks while bounding hidden terminal streams tightly. */
+const PREVIOUS_EVICTION_MS = 8_000;
 const TERMINAL_DOM_ALERT_THRESHOLD = 8;
 const TERMINAL_DOM_ALERT_INTERVAL_MS = 60_000;
 const TERMINAL_DOM_ALERT_REPEAT_MS = 5 * 60_000;
@@ -109,6 +110,7 @@ const DEFAULT_POOL_APPEARANCE: PersistentTerminalAppearance = {
 
 function setRole(slot: TerminalSlot, role: SlotRole): void {
 	slotRoles.set(slot, role);
+	slot.setPoolRoleForDiagnostics(role);
 	roleTimestamps.set(slot, Date.now());
 }
 
@@ -131,28 +133,74 @@ function removeSlotFromTaskIndex(slot: TerminalSlot): string | null {
 	return null;
 }
 
-/**
- * Cancel any pending PREVIOUS eviction timer.
- */
-function clearPreviousEvictionTimer(): void {
-	if (previousEvictionTimer !== null) {
-		clearTimeout(previousEvictionTimer);
-		previousEvictionTimer = null;
+function clearPreviousEvictionTimer(slot: TerminalSlot): void {
+	const timeout = previousEvictionTimers.get(slot);
+	if (timeout === undefined) {
+		return;
 	}
+	clearTimeout(timeout);
+	previousEvictionTimers.delete(slot);
+}
+
+function clearAllPreviousEvictionTimers(): void {
+	for (const [, timeout] of previousEvictionTimers) {
+		clearTimeout(timeout);
+	}
+	previousEvictionTimers.clear();
 }
 
 /**
- * Schedule auto-eviction of the current PREVIOUS slot. Cancels any existing timer.
+ * Schedule auto-eviction of a PREVIOUS slot. Timer ownership is per slot so
+ * stale PREVIOUS cleanup cannot cancel the newly demoted PREVIOUS timer.
  */
 function schedulePreviousEviction(slot: TerminalSlot): void {
-	clearPreviousEvictionTimer();
-	previousEvictionTimer = setTimeout(() => {
-		previousEvictionTimer = null;
+	clearPreviousEvictionTimer(slot);
+	const timeout = setTimeout(() => {
+		if (previousEvictionTimers.get(slot) !== timeout) {
+			return;
+		}
+		previousEvictionTimers.delete(slot);
 		if (getRole(slot) === "PREVIOUS") {
 			log.debug(`previous eviction — auto-evicting slot ${slot.slotId} after ${PREVIOUS_EVICTION_MS}ms`);
 			evictSlot(slot);
 		}
 	}, PREVIOUS_EVICTION_MS);
+	previousEvictionTimers.set(slot, timeout);
+}
+
+function demoteActiveSlotsExcept(nextActiveSlot: TerminalSlot | null): TerminalSlot | null {
+	let retainedPrevious: TerminalSlot | null = null;
+	for (const slot of slots) {
+		if (slot === nextActiveSlot || getRole(slot) !== "ACTIVE") {
+			continue;
+		}
+		setRole(slot, "PREVIOUS");
+		schedulePreviousEviction(slot);
+		retainedPrevious = slot;
+		log.debug(`active transition — demoted slot ${slot.slotId} to PREVIOUS`);
+	}
+	return retainedPrevious;
+}
+
+function evictStalePreviousSlots(retainedPrevious: TerminalSlot | null): void {
+	for (const slot of slots) {
+		if (slot !== retainedPrevious && getRole(slot) === "PREVIOUS") {
+			log.debug(`active transition — evicting stale PREVIOUS slot ${slot.slotId}`);
+			evictSlot(slot);
+		}
+	}
+}
+
+function prepareSlotForActiveRole(slot: TerminalSlot): SlotRole {
+	const previousRole = getRole(slot);
+	if (previousRole === "PREVIOUS") {
+		clearPreviousEvictionTimer(slot);
+	}
+	const demotedPrevious = demoteActiveSlotsExcept(slot);
+	setRole(slot, "ACTIVE");
+	const retainedPrevious = demotedPrevious ?? (previousRole === "ACTIVE" ? findNewestSlotByRole("PREVIOUS") : null);
+	evictStalePreviousSlots(retainedPrevious);
+	return previousRole;
 }
 
 /**
@@ -344,6 +392,7 @@ function findFreeOrEvict(): TerminalSlot | null {
  * set to FREE, and kick off async disconnect.
  */
 function evictSlot(slot: TerminalSlot): void {
+	clearPreviousEvictionTimer(slot);
 	const evictedTaskId = removeSlotFromTaskIndex(slot);
 	if (evictedTaskId) {
 		clearWarmupTimers(evictedTaskId);
@@ -413,23 +462,19 @@ export function detachPoolContainer(): void {
  */
 export function acquireForTask(taskId: string, projectId: string): TerminalSlot {
 	const t0 = performance.now();
-	// 1. If task already has a slot: cancel warmup, transition to ACTIVE, return it
+	// 1. If task already has a slot: cancel warmup, transition to ACTIVE, return it.
 	const existing = slotTaskIds.get(taskId);
 	if (existing) {
 		clearWarmupTimers(taskId);
 		// Re-open sockets if they closed (e.g. after sleep/wake).
 		existing.ensureConnected();
-		const previousRole = getRole(existing);
+		const previousRole = prepareSlotForActiveRole(existing);
 		// Hidden pooled task terminals can drift visually while off-screen, especially
 		// when reactivated into a different layout width. Request a fresh restore when
 		// promoting any non-ACTIVE slot back to the visible task view.
-		if (previousRole === "PREVIOUS") {
-			clearPreviousEvictionTimer();
-		}
 		if (previousRole !== "ACTIVE") {
 			existing.requestRestore();
 		}
-		setRole(existing, "ACTIVE");
 		log.debug(`[perf] acquireForTask — reused slot ${existing.slotId} for ${taskId}`, {
 			previousRole,
 			elapsedMs: (performance.now() - t0).toFixed(1),
@@ -437,28 +482,12 @@ export function acquireForTask(taskId: string, projectId: string): TerminalSlot 
 		return existing;
 	}
 
-	// 2. If current ACTIVE exists and is a different task: transition to PREVIOUS
-	const currentActive = findOldestSlotByRole("ACTIVE");
-	if (currentActive) {
-		setRole(currentActive, "PREVIOUS");
-		// Auto-evict after 30s — keeps instant switch-back for quick peeks
-		// while stopping hidden WebGL rendering from burning GPU/WindowServer.
-		schedulePreviousEviction(currentActive);
-		log.debug(`acquireForTask — demoted slot ${currentActive.slotId} to PREVIOUS`);
-	}
+	// 2. Make room for the new active slot while preserving only the latest
+	// PREVIOUS slot for quick switch-back.
+	const retainedPrevious = demoteActiveSlotsExcept(null);
+	evictStalePreviousSlots(retainedPrevious);
 
-	// 3. If current PREVIOUS exists and is a different task from the new PREVIOUS:
-	//    evict the old PREVIOUS
-	//    (After step 2, there may be two PREVIOUS slots — the old one needs eviction)
-	for (const slot of slots) {
-		if (getRole(slot) === "PREVIOUS" && slot !== currentActive) {
-			log.debug(`acquireForTask — evicting stale PREVIOUS slot ${slot.slotId}`);
-			clearPreviousEvictionTimer(); // clear timer for the old PREVIOUS
-			evictSlot(slot);
-		}
-	}
-
-	// 4. Find FREE slot or evict PRELOADING/READY
+	// 3. Find FREE slot or evict PRELOADING/READY.
 	const freeSlot = findFreeOrEvict();
 	if (!freeSlot) {
 		// This should never happen with a pool of 4 (at most ACTIVE + PREVIOUS = 2,
@@ -597,6 +626,7 @@ export function releaseTask(taskId: string): void {
 	if (!slot) {
 		return;
 	}
+	clearPreviousEvictionTimer(slot);
 	clearWarmupTimers(taskId);
 	slotTaskIds.delete(taskId);
 	setRole(slot, "FREE");
@@ -609,7 +639,7 @@ export function releaseTask(taskId: string): void {
  */
 export function releaseAll(): void {
 	clearAllWarmupTimers();
-	clearPreviousEvictionTimer();
+	clearAllPreviousEvictionTimers();
 
 	// Disconnect all non-FREE slots
 	for (const slot of slots) {
@@ -656,6 +686,7 @@ function rotateOldestFreeSlot(): void {
 
 	// Dispose old FIRST, then create new (no temporary 5th slot)
 	slotRoles.delete(oldest);
+	oldest.setPoolRoleForDiagnostics(null);
 	roleTimestamps.delete(oldest);
 	oldest.dispose();
 
@@ -928,7 +959,7 @@ export function _resetPoolForTesting(): void {
 
 function resetPoolState(): void {
 	clearAllWarmupTimers();
-	clearPreviousEvictionTimer();
+	clearAllPreviousEvictionTimers();
 	stopTerminalDomHealthMonitor();
 
 	// Dispose all pool slots
