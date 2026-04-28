@@ -11,6 +11,7 @@ import {
 	loadProjectContext,
 	loadProjectContextById,
 	loadProjectState,
+	pruneProjectSessionsForBoard,
 	removeProjectIndexEntry,
 	saveProjectSessions,
 	saveProjectState,
@@ -133,6 +134,59 @@ describe.sequential("project-state integration", () => {
 				expect(loaded.board).toEqual(saved.board);
 				expect(loaded.sessions["task-1"]?.state).toBe("interrupted");
 				expect(loaded.sessions["task-1"]?.reviewReason).toBe("interrupted");
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("prunes disk session summaries whose task cards are no longer on the board", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-project-prune-sessions-");
+			try {
+				const projectPath = join(sandboxRoot, "project-a");
+				mkdirSync(projectPath, { recursive: true });
+				initGitRepository(projectPath);
+
+				const initial = await loadProjectState(projectPath);
+				const saved = await saveProjectState(projectPath, {
+					board: createBoard("Task One"),
+					sessions: {
+						"task-1": createSessionSummary("task-1"),
+						"deleted-task": createTestTaskSessionSummary({
+							taskId: "deleted-task",
+							state: "awaiting_review",
+							reviewReason: "hook",
+							pid: 12345,
+						}),
+						__home_terminal__: createTestTaskSessionSummary({
+							taskId: "__home_terminal__",
+							state: "running",
+							pid: 23456,
+						}),
+					},
+					expectedRevision: initial.revision,
+				});
+
+				const result = await pruneProjectSessionsForBoard(projectPath);
+
+				expect(result).toMatchObject({
+					beforeCount: 3,
+					afterCount: 1,
+					prunedCount: 2,
+				});
+				expect(result.prunedTaskIds.sort()).toEqual(["__home_terminal__", "deleted-task"].sort());
+				expect(result.backupPath).toMatch(/sessions\.json\.pruned-/);
+				if (!result.backupPath) {
+					throw new Error("Expected sessions prune backup path.");
+				}
+				expect(existsSync(result.backupPath)).toBe(true);
+				expect(readFileSync(result.backupPath, "utf8")).toContain("deleted-task");
+
+				const loaded = await loadProjectState(projectPath);
+				expect(loaded.revision).toBe(saved.revision);
+				expect(loaded.board).toEqual(saved.board);
+				expect(Object.keys(loaded.sessions)).toEqual(["task-1"]);
 			} finally {
 				cleanup();
 			}

@@ -13,6 +13,7 @@
 - Project-state snapshots and cross-project notification baselines now omit stale non-live session summaries whose cards are no longer on the board, reducing old task history in stream payloads.
 - Browser board saves now persist only board-linked task summaries to `sessions.json`, so deleted tasks and ephemeral shell terminals stop accumulating in project state.
 - Shutdown cleanup now applies the same board-linked persistence filter when marking sessions interrupted, preventing home/detail shell summaries from surviving a restart through the sessions-only writer.
+- Runtime startup now applies the board-linked persistence filter before terminal-manager hydration, backs up the old `sessions.json`, and rewrites the file so stale summaries do not re-enter memory after a restart.
 
 ### Fix: explain why title regeneration failed
 

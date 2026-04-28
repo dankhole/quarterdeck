@@ -1,4 +1,6 @@
-import { rm } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { copyFile, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { z } from "zod";
 
 import type {
@@ -8,7 +10,12 @@ import type {
 	RuntimeProjectStateWarning,
 	RuntimeTaskSessionSummary,
 } from "../core";
-import { runtimeBoardDataSchema, runtimeTaskSessionSummarySchema } from "../core";
+import {
+	createTaggedLogger,
+	pruneOrphanSessionsForPersist,
+	runtimeBoardDataSchema,
+	runtimeTaskSessionSummarySchema,
+} from "../core";
 import { lockedFileSystem } from "../fs";
 import {
 	ensureProjectEntry,
@@ -30,6 +37,7 @@ import {
 	getProjectSessionsPath,
 	getProjectsRootLockRequest,
 	resolveProjectPath,
+	SESSIONS_FILENAME,
 } from "./project-state-utils";
 
 export type { RuntimeProjectIndexEntry } from "./project-state-index";
@@ -74,6 +82,21 @@ interface PersistedProjectStateSaveRequest {
 	sessions: Record<string, RuntimeTaskSessionSummary>;
 	expectedRevision?: number;
 }
+
+export interface SaveProjectSessionsOptions {
+	clearPendingWarnings?: boolean;
+}
+
+export interface ProjectSessionsPruneResult {
+	projectId: string;
+	beforeCount: number;
+	afterCount: number;
+	prunedCount: number;
+	prunedTaskIds: string[];
+	backupPath: string | null;
+}
+
+const projectStateLog = createTaggedLogger("project-state");
 
 function toProjectStateResponse(
 	context: RuntimeProjectContext,
@@ -240,7 +263,9 @@ export async function saveProjectState(
 export async function saveProjectSessions(
 	cwd: string,
 	sessions: Record<string, RuntimeTaskSessionSummary>,
+	options: SaveProjectSessionsOptions = {},
 ): Promise<Record<string, RuntimeTaskSessionSummary>> {
+	const clearPendingWarnings = options.clearPendingWarnings ?? true;
 	const parsedPayload = parseProjectStateSavePayload({ sessions }, persistedProjectSessionsSaveRequestSchema);
 	const context = await loadProjectContext(cwd);
 	return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(context.projectId), async () => {
@@ -248,8 +273,67 @@ export async function saveProjectSessions(
 			lock: null,
 		});
 
-		pendingSessionsWarningByProjectId.delete(context.projectId);
+		if (clearPendingWarnings) {
+			pendingSessionsWarningByProjectId.delete(context.projectId);
+		}
 
 		return parsedPayload.sessions;
 	});
+}
+
+async function backUpSessionsBeforePrune(statePath: string): Promise<string | null> {
+	const sessionsPath = join(statePath, SESSIONS_FILENAME);
+	const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+	const backupPath = `${sessionsPath}.pruned-${timestamp}-${randomBytes(3).toString("hex")}`;
+	try {
+		await copyFile(sessionsPath, backupPath);
+		return backupPath;
+	} catch (error) {
+		projectStateLog.warn("failed to back up sessions.json before orphan prune", {
+			sessionsPath,
+			backupPath,
+			error: error instanceof Error ? error.message : String(error),
+		});
+		return null;
+	}
+}
+
+export async function pruneProjectSessionsForBoard(cwd: string): Promise<ProjectSessionsPruneResult> {
+	const context = await loadProjectContext(cwd);
+	const projectState = await loadProjectState(cwd);
+	const prunedSessions = pruneOrphanSessionsForPersist(projectState.sessions, projectState.board);
+	const prunedTaskIds = Object.keys(projectState.sessions).filter((taskId) => !(taskId in prunedSessions));
+	const beforeCount = Object.keys(projectState.sessions).length;
+	const afterCount = Object.keys(prunedSessions).length;
+
+	if (prunedTaskIds.length === 0) {
+		return {
+			projectId: context.projectId,
+			beforeCount,
+			afterCount,
+			prunedCount: 0,
+			prunedTaskIds: [],
+			backupPath: null,
+		};
+	}
+
+	const backupPath = await backUpSessionsBeforePrune(projectState.statePath);
+	await saveProjectSessions(cwd, prunedSessions, { clearPendingWarnings: false });
+	projectStateLog.warn("pruned orphan session summaries from sessions.json", {
+		projectId: context.projectId,
+		statePath: projectState.statePath,
+		beforeCount,
+		afterCount,
+		prunedCount: prunedTaskIds.length,
+		backupPath,
+	});
+
+	return {
+		projectId: context.projectId,
+		beforeCount,
+		afterCount,
+		prunedCount: prunedTaskIds.length,
+		prunedTaskIds,
+		backupPath,
+	};
 }

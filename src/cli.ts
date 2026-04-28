@@ -366,7 +366,7 @@ async function loadRuntimeStartupModules() {
 		{ shutdownRuntimeServer },
 		{ collectProjectWorktreeTaskIdsForRemoval, createProjectRegistry },
 		{ cleanupGlobalStaleLockArtifacts, cleanupProjectStaleLockArtifacts },
-		{ listProjectIndexEntries },
+		{ listProjectIndexEntries, pruneProjectSessionsForBoard },
 		{ setLogLevel },
 		{ createBackup, startPeriodicBackups, stopPeriodicBackups },
 		{ migrateLegacyProjectConfig },
@@ -397,6 +397,7 @@ async function loadRuntimeStartupModules() {
 		cleanupGlobalStaleLockArtifacts,
 		cleanupProjectStaleLockArtifacts,
 		listProjectIndexEntries,
+		pruneProjectSessionsForBoard,
 		migrateLegacyProjectConfig,
 		setLogLevel,
 		createBackup,
@@ -425,6 +426,21 @@ async function runRuntimeStartupCleanup(
 			const migrated = await modules.migrateLegacyProjectConfig(indexEntries);
 			if (migrated > 0) {
 				warn(`Migrated project config for ${migrated} project(s) from repo .quarterdeck/ to state home.`);
+			}
+		}
+		for (const entry of indexEntries) {
+			try {
+				const result = await modules.pruneProjectSessionsForBoard(entry.repoPath);
+				if (result.prunedCount > 0) {
+					const plural = result.prunedCount === 1 ? "summary" : "summaries";
+					const backupText = result.backupPath ? ` Backup: ${result.backupPath}` : "";
+					warn(
+						`Pruned ${result.prunedCount} orphan session ${plural} from ${entry.projectId} sessions.json.${backupText}`,
+					);
+				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				warn(`Could not prune orphan sessions for ${entry.projectId}: ${message}`);
 			}
 		}
 	} catch {
