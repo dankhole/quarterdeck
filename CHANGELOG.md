@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: keep timed-out Codex hooks from pinning cancellation
+
+- Hook CLI timeouts now abort the underlying tRPC HTTP request instead of only racing the promise, so a timed-out `PostToolUse` ingest cannot keep a hook subprocess alive and leave Codex stuck on "Running ... hooks" during cancellation.
+- Added focused coverage for aborting pending hook work when the timeout fires.
+
 ### Fix: harden git metadata polling and command isolation
 
 - Git metadata polling now uses fixed, less aggressive intervals with visibility-aware focused-task polling, hidden-tab backoff, and no user-facing settings for poll cadence.

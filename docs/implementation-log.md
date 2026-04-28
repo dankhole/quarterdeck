@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: abort timed-out hook ingests (2026-04-28)
+
+Investigating a canceled Codex task stuck on `Running 2 PostToolUse hooks` narrowed the likely failure to the hook CLI timeout path. `quarterdeck hooks ingest` wrapped the tRPC mutation in a `Promise.race(...)`, but the losing HTTP request was never aborted. If the runtime request hung or the connection stayed open after the timeout, the hook subprocess could remain alive after the CLI had already decided the attempt had timed out, and Codex would keep waiting for its native `PostToolUse` hooks to finish.
+
+The hook CLI now uses an abortable timeout. Each ingest attempt creates its own tRPC client with a fetch wrapper bound to an `AbortSignal`; when the 3-second hook timeout fires, the signal aborts the underlying HTTP request before the timeout error is returned and the normal single retry path runs. A focused regression test covers the important contract directly: pending hook work receives an aborted signal when the timeout elapses.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/commands/hooks.ts`, `test/runtime/commands/hooks.test.ts`.
+
+Commit: pending
+
 ## Fix: harden git metadata polling and command isolation (2026-04-28)
 
 The git metadata investigation found that Quarterdeck had several separate risks in the same area: aggressive project/task polling, connect-time refreshes that could make runtime snapshots wait on git, metadata probes sharing only a global limiter, and git helpers that either had no timeout or inherited a timeout that was too short for legitimate user-facing inspection reads. A slow or wedged repository could therefore spend process slots and make visible project state feel sluggish even when another project was healthy.

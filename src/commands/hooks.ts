@@ -76,19 +76,30 @@ function formatError(error: unknown): string {
 	return String(error);
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+export async function withAbortableTimeout<T>(
+	taskFactory: (signal: AbortSignal) => Promise<T>,
+	timeoutMs: number,
+	label: string,
+): Promise<T> {
+	// A hook timeout must cancel the underlying HTTP request, not just race it.
+	// Otherwise the hook subprocess can stay alive and block Codex cancellation.
+	const abortController = new AbortController();
 	let timeoutHandle: NodeJS.Timeout | null = null;
+	const timeoutError = new Error(`${label} timed out after ${timeoutMs}ms`);
+	const taskPromise = Promise.resolve().then(() => taskFactory(abortController.signal));
 	const timeoutPromise = new Promise<never>((_, reject) => {
 		timeoutHandle = setTimeout(() => {
-			reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+			abortController.abort(timeoutError);
+			reject(timeoutError);
 		}, timeoutMs);
 	});
 	try {
-		return await Promise.race([promise, timeoutPromise]);
+		return await Promise.race([taskPromise, timeoutPromise]);
 	} finally {
 		if (timeoutHandle) {
 			clearTimeout(timeoutHandle);
 		}
+		void taskPromise.catch(() => {});
 	}
 }
 
@@ -131,23 +142,29 @@ const HOOK_INGEST_TIMEOUT_MS = 3000;
 const HOOK_INGEST_RETRY_DELAY_MS = 1000;
 
 async function ingestHookEvent(args: HooksIngestArgs): Promise<void> {
-	const trpcClient = createTRPCProxyClient<RuntimeAppRouter>({
-		links: [
-			httpBatchLink({
-				url: buildQuarterdeckRuntimeUrl("/api/trpc"),
-				maxItems: 1,
-			}),
-		],
-	});
-
 	const attempt = async (): Promise<void> => {
-		const ingestResponse = await withTimeout(
-			trpcClient.hooks.ingest.mutate({
-				taskId: args.taskId,
-				projectId: args.projectId,
-				event: args.event,
-				metadata: args.metadata,
-			}),
+		const ingestResponse = await withAbortableTimeout(
+			(signal) => {
+				const trpcClient = createTRPCProxyClient<RuntimeAppRouter>({
+					links: [
+						httpBatchLink({
+							url: buildQuarterdeckRuntimeUrl("/api/trpc"),
+							maxItems: 1,
+							fetch: (input, init) =>
+								fetch(input, {
+									...(init ?? {}),
+									signal,
+								}),
+						}),
+					],
+				});
+				return trpcClient.hooks.ingest.mutate({
+					taskId: args.taskId,
+					projectId: args.projectId,
+					event: args.event,
+					metadata: args.metadata,
+				});
+			},
 			HOOK_INGEST_TIMEOUT_MS,
 			"quarterdeck hooks ingest",
 		);
