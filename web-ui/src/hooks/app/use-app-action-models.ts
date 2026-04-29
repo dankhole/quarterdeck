@@ -1,6 +1,6 @@
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import { useCallback, useMemo } from "react";
-import { useDisplaySummaryOnHover, useTitleActions } from "@/hooks/board";
+import { useTitleActions } from "@/hooks/board";
 import type { BoardContextValue } from "@/providers/board-provider";
 import type { InteractionsContextValue } from "@/providers/interactions-provider";
 import type { ProjectContextValue } from "@/providers/project-provider";
@@ -41,13 +41,6 @@ export function useAppActionModels({
 	interactions,
 }: UseAppActionModelsInput): UseAppActionModelsResult {
 	const terminalPrewarmPolicy = getTerminalPrewarmPolicy();
-	const handleRequestDisplaySummary = useDisplaySummaryOnHover(
-		project.currentProjectId,
-		projectRuntime.runtimeProjectConfig?.autoGenerateSummary ?? CONFIG_DEFAULTS.autoGenerateSummary,
-		projectRuntime.runtimeProjectConfig?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds,
-		projectRuntime.llmConfigured,
-	);
-
 	const handleTerminalWarmup = useCallback(
 		(taskId: string) => {
 			if (project.currentProjectId) {
@@ -113,13 +106,11 @@ export function useAppActionModels({
 			onRegenerateTitleTask: handleRegenerateTitleTask,
 			onUpdateTaskTitle: handleUpdateTaskTitle,
 			onTogglePinTask: handleToggleTaskPinned,
-			onRequestDisplaySummary: handleRequestDisplaySummary,
 			onTerminalWarmup: handleTerminalWarmup,
 			onTerminalCancelWarmup: handleTerminalCancelWarmup,
 		}),
 		[
 			handleRegenerateTitleTask,
-			handleRequestDisplaySummary,
 			handleTerminalCancelWarmup,
 			handleTerminalWarmup,
 			handleToggleTaskPinned,

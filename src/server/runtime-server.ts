@@ -171,6 +171,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			hooksApi: createHooksApi({
 				projects: deps.projectRegistry,
 				terminals: deps.projectRegistry,
+				config: deps.projectRegistry,
 				broadcaster: deps.runtimeStateHub,
 			}),
 		};

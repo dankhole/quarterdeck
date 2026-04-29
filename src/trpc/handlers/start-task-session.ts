@@ -11,6 +11,7 @@ import type { TerminalSessionManager } from "../../terminal";
 import { hasFailedStoredCodexResume, STORED_CODEX_RESUME_FAILED_WARNING } from "../../terminal/codex-resume-failure";
 import { captureTaskTurnCheckpoint, pathExists, resolveTaskCwd } from "../../workdir";
 import type { RuntimeTrpcProjectScope } from "../app-router-context";
+import { queueTaskDisplaySummaryPolish } from "../display-summary-polish";
 
 const log = createTaggedLogger("task-session-start");
 
@@ -271,6 +272,15 @@ export async function handleStartTaskSession(
 			agentTerminalRowMultiplier: scopedRuntimeConfig.agentTerminalRowMultiplier,
 			env: body.baseRef ? { QUARTERDECK_BASE_REF: body.baseRef } : undefined,
 		});
+		if (scopedRuntimeConfig.llmSummaryPolishEnabled) {
+			queueTaskDisplaySummaryPolish({
+				projectScope,
+				taskId: body.taskId,
+				deps,
+				reason: "task-started",
+				promptOverride: body.prompt,
+			});
+		}
 
 		let nextSummary = summary;
 		if (shouldCaptureTurnCheckpoint) {

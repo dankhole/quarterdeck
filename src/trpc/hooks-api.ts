@@ -2,6 +2,7 @@ import { extractLastAssistantMessage } from "../commands/claude-transcript-parse
 import type {
 	IProjectResolver,
 	IRuntimeBroadcaster,
+	IRuntimeConfigProvider,
 	ITerminalManagerProvider,
 	RuntimeHookEvent,
 	RuntimeHookIngestResponse,
@@ -14,9 +15,10 @@ import { createTaggedLogger, parseHookIngestRequest } from "../core";
 import { loadProjectScopeById } from "../state";
 import type { SessionSummaryStore } from "../terminal";
 import { canReturnToRunning, isPermissionActivity } from "../terminal";
-import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title";
+import { compactDisplaySummaryText } from "../title";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workdir";
 import type { RuntimeTrpcContext } from "./app-router";
+import { queueTaskDisplaySummaryPolish } from "./display-summary-polish";
 import { applyRuntimeMutationEffects, createHookTransitionEffects } from "./runtime-mutation-effects";
 
 const log = createTaggedLogger("hooks");
@@ -77,10 +79,8 @@ function applyConversationSummaryFromMetadata(
 			capturedAt: Date.now(),
 		});
 	} else if (metadata?.finalMessage) {
-		const fm = metadata.finalMessage.trim();
-		if (fm) {
-			const display =
-				fm.length > DISPLAY_SUMMARY_MAX_LENGTH ? `${fm.slice(0, DISPLAY_SUMMARY_MAX_LENGTH)}\u2026` : fm;
+		const display = compactDisplaySummaryText(metadata.finalMessage);
+		if (display) {
 			store.setDisplaySummary(taskId, display, null);
 		}
 	}
@@ -184,6 +184,7 @@ function queueClaudeTranscriptEnrichment(input: {
 	expectedLastHookAt: number | null;
 	extractClaudeTranscriptSummary: ClaudeTranscriptExtractor;
 	scheduleBackgroundTask: HookBackgroundTaskScheduler;
+	onConversationSummaryApplied?: () => void;
 }): void {
 	const metadata = input.metadata;
 	const transcriptPath = resolveClaudeTranscriptPath(input.event, metadata);
@@ -220,6 +221,7 @@ function queueClaudeTranscriptEnrichment(input: {
 				input.store.applyHookMetadata(input.taskId, enrichedMetadata);
 			}
 			applyConversationSummaryFromMetadata(input.store, input.taskId, enrichedMetadata);
+			input.onConversationSummaryApplied?.();
 			log.info("Claude transcript enrichment applied", input.hookLogData);
 		})().catch((error) => {
 			log.warn("Claude transcript enrichment failed", {
@@ -233,6 +235,7 @@ function queueClaudeTranscriptEnrichment(input: {
 export interface CreateHooksApiDependencies {
 	projects: Pick<IProjectResolver, "getProjectPathById">;
 	terminals: ITerminalManagerProvider;
+	config?: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
 	broadcaster: Pick<IRuntimeBroadcaster, "broadcastRuntimeProjectStateUpdated" | "broadcastTaskReadyForReview">;
 	captureTaskTurnCheckpoint?: (input: {
 		cwd: string;
@@ -270,8 +273,8 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				const hookLogData = buildHookLogData({ projectId, taskId, event, metadata: body.metadata });
 				log.info("Hook ingest received", hookLogData);
 				const knownProjectPath = deps.projects.getProjectPathById(projectId);
-				const projectScope = knownProjectPath ? null : await loadProjectScopeById(projectId);
-				const projectPath = knownProjectPath ?? projectScope?.repoPath ?? null;
+				const loadedProjectScope = knownProjectPath ? null : await loadProjectScopeById(projectId);
+				const projectPath = knownProjectPath ?? loadedProjectScope?.repoPath ?? null;
 				if (!projectPath) {
 					log.warn("Hook ingest rejected: project not found", hookLogData);
 					return {
@@ -294,9 +297,29 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				const incomingSessionId = body.metadata?.sessionId?.trim() || null;
 				const activityMetadata = toHookActivityPatch(body.metadata);
 				const metadataOnlySessionMeta = isMetadataOnlySessionMeta(body.metadata);
-				const queueTranscriptEnrichment = () => {
-					if (!resolveClaudeTranscriptPath(event, body.metadata)) {
+				const runtimeProjectScope = { projectId, projectPath };
+				const hasSummarySourceMetadata = Boolean(
+					body.metadata?.conversationSummaryText?.trim() || body.metadata?.finalMessage?.trim(),
+				);
+				const queueDisplaySummaryPolish = (reason: string) => {
+					if (!deps.config) {
 						return;
+					}
+					queueTaskDisplaySummaryPolish({
+						projectScope: runtimeProjectScope,
+						taskId,
+						reason,
+						deps: {
+							config: deps.config,
+							getScopedTerminalManager: async (scope) =>
+								await deps.terminals.ensureTerminalManagerForProject(scope.projectId, scope.projectPath),
+							scheduleBackgroundTask,
+						},
+					});
+				};
+				const queueTranscriptEnrichment = (): boolean => {
+					if (!resolveClaudeTranscriptPath(event, body.metadata)) {
+						return false;
 					}
 					const queuedSummary = store.getSummary(taskId);
 					queueClaudeTranscriptEnrichment({
@@ -308,7 +331,15 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						expectedLastHookAt: queuedSummary?.lastHookAt ?? null,
 						extractClaudeTranscriptSummary,
 						scheduleBackgroundTask,
+						onConversationSummaryApplied: () => queueDisplaySummaryPolish(`hook.${event}.transcript`),
 					});
+					return true;
+				};
+				const queuePostMetadataSummaryPolish = (reason: string, transitioned: boolean) => {
+					const transcriptQueued = queueTranscriptEnrichment();
+					if (!transcriptQueued && (transitioned || hasSummarySourceMetadata)) {
+						queueDisplaySummaryPolish(reason);
+					}
 				};
 
 				if (incomingSessionId) {
@@ -341,7 +372,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 							currentState: summary.state,
 						});
 						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
-						queueTranscriptEnrichment();
+						queuePostMetadataSummaryPolish("hook.metadata-only", false);
 						return {
 							ok: true,
 						} satisfies RuntimeHookIngestResponse;
@@ -355,7 +386,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						// Skip applyHookActivity — the incoming event is not permission-related
 						// and would clobber the existing permission metadata.
 						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
-						queueTranscriptEnrichment();
+						queuePostMetadataSummaryPolish("hook.permission-guarded", false);
 						return {
 							ok: true,
 						} satisfies RuntimeHookIngestResponse;
@@ -368,7 +399,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						});
 					}
 					applyConversationSummaryFromMetadata(store, taskId, body.metadata);
-					queueTranscriptEnrichment();
+					queuePostMetadataSummaryPolish("hook.metadata", false);
 					return {
 						ok: true,
 					} satisfies RuntimeHookIngestResponse;
@@ -395,6 +426,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 							currentPermissionActivity: currentActivity.hookEventName,
 						});
 						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
+						queuePostMetadataSummaryPolish("hook.permission-transition-guarded", false);
 						return { ok: true } satisfies RuntimeHookIngestResponse;
 					}
 				}
@@ -428,7 +460,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				}
 
 				applyConversationSummaryFromMetadata(store, taskId, body.metadata);
-				queueTranscriptEnrichment();
+				queuePostMetadataSummaryPolish(`hook.${event}`, true);
 				log.info("Hook transition applied", {
 					...hookLogData,
 					toState: transitionedSummary.state,

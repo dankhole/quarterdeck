@@ -31,6 +31,13 @@
 - Codex task launches now disable Codex startup update checks unless the user explicitly overrides that Codex config.
 - Fallback task ID generation no longer mixes timestamp-derived entropy into short task IDs when UUID generation is unavailable.
 
+### Fix: make lightweight LLM helpers reliable
+
+- Lightweight title, branch-name, summary, and commit-message generation now use a provider-neutral OpenAI-compatible helper client configured by `QUARTERDECK_LLM_BASE_URL`, `QUARTERDECK_LLM_API_KEY`, and `QUARTERDECK_LLM_MODEL`.
+- Title and display-summary context now prioritizes the original prompt, first agent summary, and latest agent summaries instead of sending broad chronological transcripts.
+- Title and commit-message generation now fall back to deterministic local text when the helper LLM is unavailable, times out, or returns unusable content.
+- Card summaries now use compact agent conversation text immediately, and optional LLM summary polish runs from task lifecycle changes instead of board-card hover.
+
 ### Docs: track editor-lite backlog
 
 - Added an active todo for an editor-lite review/editing surface, including Monaco, CodeMirror 6, and Eclipse Theia as implementation options.

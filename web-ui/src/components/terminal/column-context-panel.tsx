@@ -46,7 +46,6 @@ function ColumnSection({
 		onRegenerateTitleTask,
 		onUpdateTaskTitle,
 		onTogglePinTask,
-		onRequestDisplaySummary,
 		onTerminalWarmup,
 		onTerminalCancelWarmup,
 	} = useStableCardActions();
@@ -189,7 +188,6 @@ function ColumnSection({
 								onTogglePin={onTogglePinTask}
 								showSummaryOnCards={showSummaryOnCards}
 								uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}
-								onRequestDisplaySummary={onRequestDisplaySummary}
 								onTerminalWarmup={onTerminalWarmup}
 								onTerminalCancelWarmup={onTerminalCancelWarmup}
 								onClick={() => {

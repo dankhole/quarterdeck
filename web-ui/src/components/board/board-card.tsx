@@ -43,7 +43,6 @@ export function BoardCard({
 	isMoveToTrashLoading = false,
 	onDependencyPointerDown,
 	onDependencyPointerEnter,
-	onRequestDisplaySummary,
 	onTerminalWarmup,
 	onTerminalCancelWarmup,
 	isDependencySource = false,
@@ -72,7 +71,6 @@ export function BoardCard({
 	isMoveToTrashLoading?: boolean;
 	onDependencyPointerDown?: (taskId: string, event: MouseEvent<HTMLElement>) => void;
 	onDependencyPointerEnter?: (taskId: string) => void;
-	onRequestDisplaySummary?: (taskId: string) => void;
 	onTerminalWarmup?: (taskId: string) => void;
 	onTerminalCancelWarmup?: (taskId: string) => void;
 	isDependencySource?: boolean;
@@ -245,7 +243,6 @@ export function BoardCard({
 				onMouseEnter={() => {
 					hoverTimerRef.current = setTimeout(() => setIsHovered(true), 200);
 					onDependencyPointerEnter?.(card.id);
-					onRequestDisplaySummary?.(card.id);
 					onTerminalWarmup?.(card.id);
 				}}
 				onMouseMove={() => {

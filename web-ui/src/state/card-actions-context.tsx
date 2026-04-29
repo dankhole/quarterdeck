@@ -19,7 +19,6 @@ export interface StableCardActions {
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	onTogglePinTask?: (taskId: string) => void;
 	onHardDeleteTrashTask?: (taskId: string) => void;
-	onRequestDisplaySummary?: (taskId: string) => void;
 	onTerminalWarmup?: (taskId: string) => void;
 	onTerminalCancelWarmup?: (taskId: string) => void;
 }
@@ -85,7 +84,6 @@ export function CardActionsProvider({
 			stable.onUpdateTaskTitle,
 			stable.onTogglePinTask,
 			stable.onHardDeleteTrashTask,
-			stable.onRequestDisplaySummary,
 			stable.onTerminalWarmup,
 			stable.onTerminalCancelWarmup,
 		],

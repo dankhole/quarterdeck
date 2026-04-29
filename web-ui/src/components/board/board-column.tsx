@@ -57,7 +57,6 @@ export function BoardColumn({
 		onRegenerateTitleTask,
 		onUpdateTaskTitle,
 		onTogglePinTask,
-		onRequestDisplaySummary,
 		onTerminalWarmup,
 		onTerminalCancelWarmup,
 	} = useStableCardActions();
@@ -183,7 +182,6 @@ export function BoardColumn({
 											isDependencyLinking={isDependencyLinking}
 											showSummaryOnCards={showSummaryOnCards}
 											uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}
-											onRequestDisplaySummary={onRequestDisplaySummary}
 											onTerminalWarmup={onTerminalWarmup}
 											onTerminalCancelWarmup={onTerminalCancelWarmup}
 											onClick={() => {

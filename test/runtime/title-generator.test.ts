@@ -5,8 +5,9 @@ describe("generateTaskTitle", () => {
 	const originalEnv = { ...process.env };
 
 	beforeEach(() => {
-		process.env.ANTHROPIC_BEDROCK_BASE_URL = "https://proxy.example.com/bedrock";
-		process.env.ANTHROPIC_AUTH_TOKEN = "test-token";
+		process.env.QUARTERDECK_LLM_BASE_URL = "https://llm.example.com/v1";
+		process.env.QUARTERDECK_LLM_API_KEY = "test-token";
+		process.env.QUARTERDECK_LLM_MODEL = "test-model";
 	});
 
 	afterEach(() => {
@@ -28,7 +29,7 @@ describe("generateTaskTitle", () => {
 		expect(title).toBe("Fix Auth Bug");
 	});
 
-	it("strips the /bedrock suffix to build the completions URL", async () => {
+	it("builds the chat completions URL from a v1 base URL", async () => {
 		const fetchSpy = vi
 			.spyOn(globalThis, "fetch")
 			.mockResolvedValue(
@@ -37,34 +38,63 @@ describe("generateTaskTitle", () => {
 
 		await generateTaskTitle("some prompt");
 		expect(fetchSpy).toHaveBeenCalledWith(
-			"https://proxy.example.com/v1/chat/completions",
+			"https://llm.example.com/v1/chat/completions",
 			expect.objectContaining({ method: "POST" }),
 		);
 	});
 
-	it("returns null when env vars are missing", async () => {
-		delete process.env.ANTHROPIC_BEDROCK_BASE_URL;
-		expect(await generateTaskTitle("some prompt")).toBeNull();
+	it("uses generic OpenAI-compatible LLM env vars when configured", async () => {
+		process.env.QUARTERDECK_LLM_BASE_URL = "https://llm.example.com/v1";
+		process.env.QUARTERDECK_LLM_API_KEY = "generic-token";
+		process.env.QUARTERDECK_LLM_MODEL = "test-model";
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValue(
+				new Response(JSON.stringify({ choices: [{ message: { content: "Generic Title" } }] }), { status: 200 }),
+			);
+
+		await generateTaskTitle("fix the authentication bug in login.ts");
+		expect(fetchSpy).toHaveBeenCalledWith(
+			"https://llm.example.com/v1/chat/completions",
+			expect.objectContaining({
+				headers: expect.objectContaining({ authorization: "Bearer generic-token" }),
+				method: "POST",
+			}),
+		);
+		const body = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string);
+		expect(body.model).toBe("test-model");
 	});
 
-	it("returns null when auth token is missing", async () => {
-		delete process.env.ANTHROPIC_AUTH_TOKEN;
-		expect(await generateTaskTitle("some prompt")).toBeNull();
+	it("falls back when env vars are missing", async () => {
+		delete process.env.QUARTERDECK_LLM_BASE_URL;
+		expect(await generateTaskTitle("fix the authentication bug in login.ts")).toBe("Fix Authentication Bug Login");
 	});
 
-	it("returns null on non-ok response", async () => {
+	it("falls back when API key is missing", async () => {
+		delete process.env.QUARTERDECK_LLM_API_KEY;
+		expect(await generateTaskTitle("fix the authentication bug in login.ts")).toBe("Fix Authentication Bug Login");
+	});
+
+	it("falls back on non-ok response", async () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("error", { status: 500 }));
-		expect(await generateTaskTitle("some prompt")).toBeNull();
+		expect(await generateTaskTitle("fix the authentication bug in login.ts")).toBe("Fix Authentication Bug Login");
 	});
 
-	it("returns null on network error", async () => {
+	it("falls back on network error", async () => {
 		vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network failure"));
-		expect(await generateTaskTitle("some prompt")).toBeNull();
+		expect(await generateTaskTitle("fix the authentication bug in login.ts")).toBe("Fix Authentication Bug Login");
 	});
 
-	it("returns null when response has no choices", async () => {
+	it("falls back on timeout", async () => {
+		vi.spyOn(globalThis, "fetch").mockRejectedValue(
+			new DOMException("The operation was aborted due to timeout", "TimeoutError"),
+		);
+		expect(await generateTaskTitle("fix the authentication bug in login.ts")).toBe("Fix Authentication Bug Login");
+	});
+
+	it("falls back when response has no choices", async () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
-		expect(await generateTaskTitle("some prompt")).toBeNull();
+		expect(await generateTaskTitle("fix the authentication bug in login.ts")).toBe("Fix Authentication Bug Login");
 	});
 
 	it("trims whitespace from the returned title", async () => {
@@ -74,7 +104,7 @@ describe("generateTaskTitle", () => {
 		expect(await generateTaskTitle("some prompt")).toBe("Spaced Title");
 	});
 
-	it("truncates prompts longer than 1600 characters", async () => {
+	it("truncates title prompts longer than 1200 characters", async () => {
 		const fetchSpy = vi
 			.spyOn(globalThis, "fetch")
 			.mockResolvedValue(
@@ -85,7 +115,7 @@ describe("generateTaskTitle", () => {
 		await generateTaskTitle(longPrompt);
 
 		const body = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string);
-		expect(body.messages[1].content).toHaveLength(1600);
+		expect(body.messages[1].content).toHaveLength(1200);
 	});
 });
 
@@ -93,8 +123,9 @@ describe("generateBranchName", () => {
 	const originalEnv = { ...process.env };
 
 	beforeEach(() => {
-		process.env.ANTHROPIC_BEDROCK_BASE_URL = "https://proxy.example.com/bedrock";
-		process.env.ANTHROPIC_AUTH_TOKEN = "test-token";
+		process.env.QUARTERDECK_LLM_BASE_URL = "https://llm.example.com/v1";
+		process.env.QUARTERDECK_LLM_API_KEY = "test-token";
+		process.env.QUARTERDECK_LLM_MODEL = "test-model";
 	});
 
 	afterEach(() => {
@@ -131,7 +162,7 @@ describe("generateBranchName", () => {
 	});
 
 	it("returns null when env vars are missing", async () => {
-		delete process.env.ANTHROPIC_BEDROCK_BASE_URL;
+		delete process.env.QUARTERDECK_LLM_BASE_URL;
 		expect(await generateBranchName("some prompt")).toBeNull();
 	});
 
@@ -143,5 +174,18 @@ describe("generateBranchName", () => {
 	it("returns null on network error", async () => {
 		vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network failure"));
 		expect(await generateBranchName("some prompt")).toBeNull();
+	});
+
+	it("truncates branch prompts longer than 1200 characters", async () => {
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValue(
+				new Response(JSON.stringify({ choices: [{ message: { content: "fix-bug" } }] }), { status: 200 }),
+			);
+
+		await generateBranchName("x".repeat(2000));
+
+		const body = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string);
+		expect(body.messages[1].content).toHaveLength(1200);
 	});
 });

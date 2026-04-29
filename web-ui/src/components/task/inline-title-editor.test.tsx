@@ -71,20 +71,20 @@ describe("InlineTitleEditor", () => {
 		expect(button.disabled).toBe(false);
 	});
 
-	it("renders the regenerate button as disabled when isLlmGenerationDisabled is true", () => {
+	it("keeps the regenerate button enabled when LLM is disabled because the server has a title fallback", () => {
 		renderEditor({ onRegenerate: vi.fn(), isLlmGenerationDisabled: true });
 		const button = container.querySelector("button[aria-label='Auto-generate title']") as HTMLButtonElement;
 		expect(button).not.toBeNull();
-		expect(button.disabled).toBe(true);
+		expect(button.disabled).toBe(false);
 	});
 
-	it("does not fire onRegenerate when button is disabled and clicked", () => {
+	it("fires onRegenerate when LLM is disabled so the server fallback can run", () => {
 		const onRegenerate = vi.fn();
 		renderEditor({ onRegenerate, isLlmGenerationDisabled: true });
 		const button = container.querySelector("button[aria-label='Auto-generate title']") as HTMLButtonElement;
 		act(() => {
 			button.click();
 		});
-		expect(onRegenerate).not.toHaveBeenCalled();
+		expect(onRegenerate).toHaveBeenCalledWith("task-1");
 	});
 });

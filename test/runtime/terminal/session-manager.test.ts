@@ -338,7 +338,7 @@ describe("TerminalSessionManager", () => {
 			expect(result?.displaySummary?.endsWith("\u2026")).toBe(true);
 		});
 
-		it("preserves displaySummaryGeneratedAt when LLM summary exists", () => {
+		it("replaces stale generated display summaries with the latest raw summary", () => {
 			const generatedAt = Date.now();
 			const manager = createTestManager();
 			manager.store.hydrateFromRecord({
@@ -353,7 +353,8 @@ describe("TerminalSessionManager", () => {
 				capturedAt: 1000,
 			});
 
-			expect(result?.displaySummaryGeneratedAt).toBe(generatedAt);
+			expect(result?.displaySummary).toBe("New summary");
+			expect(result?.displaySummaryGeneratedAt).toBeNull();
 		});
 
 		it("retains at most 5 entries", () => {

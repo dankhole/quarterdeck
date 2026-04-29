@@ -20,6 +20,16 @@ Runtime HTTP requests, runtime-state WebSocket upgrades, and terminal WebSocket 
 
 The same upstream review also landed two low-risk launch/identity hardening fixes: Codex launches receive `-c check_for_update_on_startup=false` unless a user override already exists, and UUID-unavailable task ID fallbacks no longer mix `Date.now()` into short IDs. Validation: `npm run check`, `npm run web:typecheck`, `npm run web:test`, `npm run lint`, `node --check scripts/dev-runtime.mjs`, and `git diff --check`.
 
+## 2026-04-29 — Lightweight LLM generation reliability
+
+Lightweight helper generation now has one provider-neutral OpenAI-compatible client in `src/title/llm-client.ts`. `QUARTERDECK_LLM_BASE_URL`, `QUARTERDECK_LLM_API_KEY`, and `QUARTERDECK_LLM_MODEL` are the required configuration path. The timeout classifier now treats both `AbortError` and `TimeoutError` as timeouts, so logs match the real failure mode.
+
+Title, optional summary polish, branch-name, and commit-message generation are the only LLM call sites. Title and display-summary context now orders source material by product value: original user prompt, first agent summary, most recent agent summary, then the previous summary. Title and commit-message generation also have deterministic local fallbacks, so transient helper failures no longer leave task cards untitled or the commit sidebar empty.
+
+The card-summary path is intentionally lighter: board-card hover no longer triggers an LLM mutation, and the old hover staleness control has been removed. Agent transcript/hook summaries are compacted locally for immediate card display. When `llmSummaryPolishEnabled` is on, task starts and hook-driven moves into in-progress/review can enqueue a best-effort background polish using the same weighted context; repeated bounces skip work when the stored LLM summary is already newer than the source text.
+
+Notable files: `src/title/*`, `src/trpc/project-procedures.ts`, `src/trpc/display-summary-polish.ts`, `src/terminal/session-summary-store.ts`, `web-ui/src/components/settings/display-sections.tsx`, and board card action wiring. Validation: focused title, LLM client, summary, commit-message, session-store, hook-summary, and summary-polish tests. Commit: pending.
+
 ## 2026-04-29 — Frontend terminal pool state ownership
 
 Shared pooled task-terminal bookkeeping now lives in `web-ui/src/terminal/terminal-pool-state.ts`. `TerminalPoolState` owns the slot array, role map, role timestamps, task-to-slot index, role-based oldest/newest selection, task assignment/removal, rotation replacement metadata, and test/HMR clearing. `terminal-pool.ts` remains the composition root for creating/disposing `TerminalSlot` instances, socket connect/disconnect, policy timers, diagnostics providers, dedicated terminal compatibility, and the public pool API.

@@ -1,9 +1,8 @@
-// Display summary generation. Currently requires a setup-specific Bedrock
-// proxy — see llm-client.ts for portability notes. When LLM is not configured,
-// returns null and cards show no summary (hover tooltip falls back to raw
-// conversation summary text if available).
+// Optional LLM display summary generation. The board does not trigger this on
+// hover; normal card summaries use compact agent-provided conversation text.
 import { createTaggedLogger } from "../core";
-import { callLlm, DISPLAY_SUMMARY_LLM_BUDGET, DISPLAY_SUMMARY_MAX_LENGTH } from "./llm-client";
+import { compactDisplaySummaryText, DISPLAY_SUMMARY_LLM_BUDGET } from "./display-summary";
+import { callLlm } from "./llm-client";
 
 const log = createTaggedLogger("summary-gen");
 
@@ -45,8 +44,11 @@ export async function generateDisplaySummary(conversationText: string): Promise<
 		log.warn("Summary generation returned null");
 		return null;
 	}
-	const summary =
-		result.length > DISPLAY_SUMMARY_MAX_LENGTH ? `${result.slice(0, DISPLAY_SUMMARY_MAX_LENGTH)}\u2026` : result;
+	const summary = compactDisplaySummaryText(result);
+	if (!summary) {
+		log.warn("Summary generation produced empty compact summary");
+		return null;
+	}
 	log.info("Summary generated", { summary });
 	return summary;
 }

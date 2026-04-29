@@ -94,15 +94,14 @@ Why it matters:
 - it is still hard to say which work should happen server-side, which should be cached, and which should stay view-local
 - the same ambiguity will keep moving lag from one interaction to another
 
-### 7. Shared LLM helper features are still provider-specific
+### 7. Shared LLM helper provider-specificity is closed
 
-Titles, summaries, and small helper generations still depend on an Anthropic/Bedrock-shaped helper client even though the app now supports multiple agent providers.
+Titles, branch-name generation, commit-message generation, and optional summary polish now use a provider-neutral OpenAI-compatible helper client configured through Quarterdeck-specific env vars.
 
 Why it matters:
 
 - auxiliary UX should not disappear just because the primary agent changes
-- the current helper client bakes provider assumptions into a shared supporting path
-- more multi-provider feature work will keep tripping on this boundary until the helper layer is neutral
+- future helper-generation work should keep using the shared client rather than reintroducing provider-specific env assumptions
 
 ### 8. Optimization-shaped architecture is repeating in multiple subsystems
 
@@ -142,14 +141,13 @@ The active order below should match `docs/todo.md`. It is an execution sequence,
 
 1. ProjectProvider / project-runtime ownership follow-up
 2. Terminal session manager / lifecycle boundaries
-3. Shared LLM client abstraction
-4. Branch / base-ref UX state model
-5. File browser + diff viewer data pipeline
+3. Branch / base-ref UX state model
+4. File browser + diff viewer data pipeline
 
 That sequence is deliberate:
 
 - 1 and 2 are the two biggest remaining ownership seams after the recent refactor wave.
-- 3 through 5 are still worthwhile, but they are now narrower follow-on cleanup items rather than “stop feature work until this is fixed” refactors.
+- 3 and 4 are still worthwhile, but they are now narrower follow-on cleanup items rather than “stop feature work until this is fixed” refactors.
 
 In other words: yes, this order is intentional. It is sequenced by leverage and remaining architectural risk, not just by how visible each bug symptom is.
 
@@ -611,11 +609,15 @@ Remaining follow-up worth watching:
 
 ## 12. Shared LLM Client Abstraction
 
+Status:
+
+- Completed on 2026-04-29. `src/title/llm-client.ts` now resolves a provider-neutral OpenAI-compatible helper configuration from `QUARTERDECK_LLM_BASE_URL`, `QUARTERDECK_LLM_API_KEY`, and `QUARTERDECK_LLM_MODEL`. Title and commit-message generation have deterministic local fallbacks, card summaries no longer depend on hover-triggered LLM calls, and optional LLM summary polish is lifecycle-triggered. See `CHANGELOG.md` and `docs/implementation-log.md` for the landed behavior.
+
 Primary file:
 
 - `src/title/llm-client.ts`
 
-Current smell:
+Original smell:
 
 - the shared helper client hardcodes Anthropic/Bedrock-style environment variables and a Bedrock Haiku default model
 - availability checks are based on one provider-specific env pair even though the app now supports more than one agent/runtime

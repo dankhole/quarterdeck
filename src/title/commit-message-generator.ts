@@ -1,7 +1,8 @@
 // Commit message generation from git diffs. Uses the same LLM client as
-// title and summary generation — see llm-client.ts for setup requirements.
-// When LLM is not configured, returns null and the UI stays manual-only.
+// title and optional summary generation — see llm-client.ts for setup requirements.
+// When LLM is not configured or times out, returns an editable diff-derived fallback.
 import { createTaggedLogger } from "../core";
+import { createFallbackCommitMessage } from "./commit-message-fallback";
 import { callLlm } from "./llm-client";
 
 const log = createTaggedLogger("commit-msg-gen");
@@ -37,8 +38,12 @@ export async function generateCommitMessage(diff: string): Promise<string | null
 		timeoutMs: 7_000,
 	});
 	if (!result) {
-		log.warn("Commit message generation returned null");
-		return null;
+		const fallback = createFallbackCommitMessage(diff);
+		log.warn("Commit message generation returned null — using diff-derived fallback", {
+			diffLength: diff.length,
+			fallbackSummary: fallback?.split("\n", 1)[0] ?? null,
+		});
+		return fallback;
 	}
 	log.info("Commit message generated", { message: result });
 	return result;

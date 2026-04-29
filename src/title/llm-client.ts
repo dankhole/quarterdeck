@@ -1,26 +1,16 @@
 /**
- * Shared LLM client for lightweight, single-turn completions (titles, branch
- * names, display summaries).
+ * Provider-neutral client for lightweight, single-turn completions (titles,
+ * branch names, display summaries, commit messages).
  *
- * SETUP-SPECIFIC: This currently assumes a Bedrock/LiteLLM-compatible proxy
- * with Anthropic-specific env vars and a Haiku default model. It should be
- * made portable — support arbitrary OpenAI-compatible endpoints, direct API
- * keys for multiple providers, or a config-driven model selection — so that
- * LLM generation features work regardless of which agent provider a user has
- * configured. See planned-features.md for context.
- *
- * Requires environment variables:
- *   ANTHROPIC_BEDROCK_BASE_URL — proxy URL (e.g. "https://proxy.example.com/bedrock")
- *   ANTHROPIC_AUTH_TOKEN       — bearer token for the proxy
- *
- * Optional:
- *   QUARTERDECK_LLM_MODEL — model override (default: Haiku on Bedrock)
+ * Preferred environment variables:
+ *   QUARTERDECK_LLM_BASE_URL — OpenAI-compatible API base URL
+ *   QUARTERDECK_LLM_API_KEY  — bearer token for the endpoint
+ *   QUARTERDECK_LLM_MODEL    — model to request from the endpoint
  */
 
 import { createTaggedLogger } from "../core";
 
 const log = createTaggedLogger("llm-client");
-const DEFAULT_LLM_MODEL = "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0";
 
 // ── Rate limiter ────────────────────────────────────────────────────────
 // Guards against runaway API costs from bugs or rapid state transitions.
@@ -49,16 +39,6 @@ function acquireSlot(): boolean {
 function releaseSlot(): void {
 	inFlight = Math.max(0, inFlight - 1);
 }
-
-/** Hard display limit — summaries longer than this are truncated with an ellipsis. */
-export const DISPLAY_SUMMARY_MAX_LENGTH = 90;
-
-/**
- * Character budget given to the LLM in the system prompt. Set lower than
- * DISPLAY_SUMMARY_MAX_LENGTH so the model's natural overshoot still lands
- * within the display limit without needing a hard truncation.
- */
-export const DISPLAY_SUMMARY_LLM_BUDGET = 75;
 
 // ── Response sanitizer ─────────────────────────────────────────────────
 // Defense-in-depth: strip common preamble/wrapper patterns even if the
@@ -119,14 +99,60 @@ interface LlmCallOptions {
 	timeoutMs?: number;
 }
 
+interface LightweightLlmConfig {
+	baseUrl: string;
+	apiKey: string;
+	model: string;
+}
+
+function readEnv(name: string): string | null {
+	const value = process.env[name]?.trim();
+	return value ? value : null;
+}
+
+function resolveLlmConfig(): LightweightLlmConfig | null {
+	const model = readEnv("QUARTERDECK_LLM_MODEL");
+	const baseUrl = readEnv("QUARTERDECK_LLM_BASE_URL");
+	const apiKey = readEnv("QUARTERDECK_LLM_API_KEY");
+	if (baseUrl && apiKey && model) {
+		return {
+			baseUrl,
+			apiKey,
+			model,
+		};
+	}
+
+	return null;
+}
+
+function resolveChatCompletionsUrl(baseUrl: string): string {
+	const trimmed = baseUrl.replace(/\/+$/, "").replace(/\/bedrock$/, "");
+	if (trimmed.endsWith("/v1/chat/completions")) {
+		return trimmed;
+	}
+	if (trimmed.endsWith("/v1")) {
+		return `${trimmed}/chat/completions`;
+	}
+	return `${trimmed}/v1/chat/completions`;
+}
+
+function isTimeoutError(error: unknown): boolean {
+	if (error instanceof DOMException) {
+		return error.name === "AbortError" || error.name === "TimeoutError";
+	}
+	if (error instanceof Error) {
+		return error.name === "AbortError" || error.name === "TimeoutError";
+	}
+	return false;
+}
+
 /**
  * Make a single-turn LLM completion call.
  * Returns null on any failure — never throws.
  */
 export async function callLlm(options: LlmCallOptions): Promise<string | null> {
-	const baseUrl = process.env.ANTHROPIC_BEDROCK_BASE_URL;
-	const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
-	if (!baseUrl || !authToken) {
+	const config = resolveLlmConfig();
+	if (!config) {
 		return null;
 	}
 
@@ -141,21 +167,23 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 		return null;
 	}
 
-	const model = process.env.QUARTERDECK_LLM_MODEL || DEFAULT_LLM_MODEL;
 	const startTime = Date.now();
 	const timeoutMs = options.timeoutMs ?? 5_000;
 	try {
-		log.debug("LLM call starting", { model, maxTokens: options.maxTokens, promptLength: options.userPrompt.length });
-		const origin = baseUrl.replace(/\/bedrock\/?$/, "");
-		const response = await fetch(`${origin}/v1/chat/completions`, {
+		log.debug("LLM call starting", {
+			model: config.model,
+			maxTokens: options.maxTokens,
+			promptLength: options.userPrompt.length,
+		});
+		const response = await fetch(resolveChatCompletionsUrl(config.baseUrl), {
 			method: "POST",
 			signal: AbortSignal.timeout(timeoutMs),
 			headers: {
 				"content-type": "application/json",
-				authorization: `Bearer ${authToken}`,
+				authorization: `Bearer ${config.apiKey}`,
 			},
 			body: JSON.stringify({
-				model,
+				model: config.model,
 				max_tokens: options.maxTokens,
 				messages: [
 					{ role: "system", content: options.systemPrompt },
@@ -176,7 +204,7 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 				status: response.status,
 				statusText: response.statusText,
 				durationMs: Date.now() - startTime,
-				model,
+				model: config.model,
 				bodySnippet,
 			});
 			return null;
@@ -189,7 +217,7 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 		if (!rawContent) {
 			log.warn("LLM call returned empty content", {
 				durationMs: Date.now() - startTime,
-				model,
+				model: config.model,
 				hasChoices: Array.isArray(data.choices) && data.choices.length > 0,
 			});
 			return null;
@@ -199,21 +227,24 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 			log.warn("LLM response rejected by sanitizer (looked like a question, refusal, or empty after stripping)", {
 				rawContent,
 				durationMs: Date.now() - startTime,
-				model,
+				model: config.model,
 			});
 			return null;
 		}
 		log.debug("LLM call completed", { durationMs: Date.now() - startTime, resultLength: result.length });
 		return result;
 	} catch (error) {
-		const isTimeout = error instanceof DOMException && error.name === "AbortError";
-		if (isTimeout) {
-			log.warn("LLM call timed out", { timeoutMs, durationMs: Date.now() - startTime, model });
+		if (isTimeoutError(error)) {
+			log.warn("LLM call timed out", {
+				timeoutMs,
+				durationMs: Date.now() - startTime,
+				model: config.model,
+			});
 		} else {
 			log.warn("LLM call error (network or parse failure)", {
 				error: error instanceof Error ? { name: error.name, message: error.message } : String(error),
 				durationMs: Date.now() - startTime,
-				model,
+				model: config.model,
 			});
 		}
 		return null;
@@ -227,7 +258,7 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
  * Useful for UI hints about whether LLM features are available.
  */
 export function isLlmConfigured(): boolean {
-	return Boolean(process.env.ANTHROPIC_BEDROCK_BASE_URL && process.env.ANTHROPIC_AUTH_TOKEN);
+	return resolveLlmConfig() !== null;
 }
 
 // ── Test helpers ────────────────────────────────────────────────────────
@@ -250,4 +281,6 @@ export const _testing = {
 	MAX_CONCURRENT,
 	MAX_PER_MINUTE,
 	WINDOW_MS,
+	resolveChatCompletionsUrl,
+	resolveLlmConfig,
 };

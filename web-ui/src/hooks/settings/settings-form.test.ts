@@ -10,6 +10,7 @@ describe("resolveInitialValues", () => {
 	it("returns an object with all expected keys", () => {
 		const values = resolveInitialValues(null);
 		expect(values).toHaveProperty("showSummaryOnCards");
+		expect(values).toHaveProperty("llmSummaryPolishEnabled");
 		expect(values).toHaveProperty("audibleNotificationEvents");
 		expect(values).toHaveProperty("shortcuts");
 		expect(values).toHaveProperty("worktreeSystemPromptTemplate");

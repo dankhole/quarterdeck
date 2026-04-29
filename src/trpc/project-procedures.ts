@@ -67,7 +67,21 @@ import {
 	runtimeWorktreeEnsureRequestSchema,
 	runtimeWorktreeEnsureResponseSchema,
 } from "../core";
-import { generateBranchName, generateCommitMessage, generateDisplaySummary, generateTaskTitle } from "../title";
+import {
+	buildTaskGenerationContext,
+	generateBranchName,
+	generateCommitMessage,
+	generateDisplaySummary,
+	generateTaskTitle,
+	SUMMARY_FIRST_ACTIVITY_LIMIT,
+	SUMMARY_LATEST_ACTIVITY_LIMIT,
+	SUMMARY_ORIGINAL_PROMPT_LIMIT,
+	SUMMARY_PREVIOUS_ACTIVITY_LIMIT,
+	TITLE_FIRST_ACTIVITY_LIMIT,
+	TITLE_LATEST_ACTIVITY_LIMIT,
+	TITLE_ORIGINAL_PROMPT_LIMIT,
+	TITLE_PREVIOUS_ACTIVITY_LIMIT,
+} from "../title";
 import { projectProcedure, t } from "./app-router-init";
 
 const log = createTaggedLogger("task-gen");
@@ -297,26 +311,18 @@ export const projectRouter = t.router({
 				latestSummary: summaries.at(-1)?.text?.slice(0, 100),
 			});
 
-			// Build context with latest activity FIRST so it survives truncation.
-			let agentContext: string | null = null;
-			if (summaries.length > 0) {
-				const earlier = summaries.slice(0, -1).map((s) => s.text);
-				const latest = summaries.at(-1)?.text ?? "";
-				const parts =
-					earlier.length > 0
-						? [`Most recent activity:\n${latest}`, `Earlier activity:\n${earlier.join("\n")}`]
-						: [`Most recent activity:\n${latest}`];
-				agentContext = parts.join("\n\n");
-			}
-
-			// Fall back to finalMessage if no conversation summaries.
-			agentContext ??= session?.latestHookActivity?.finalMessage
-				? `Most recent activity:\n${session.latestHookActivity.finalMessage.slice(0, 500)}`
-				: null;
-
-			// Put agent context before the original prompt so recent work
-			// is what the LLM sees first (and survives truncation).
-			const context = agentContext ? `${agentContext}\n\nOriginal prompt:\n${prompt}` : prompt;
+			const context =
+				buildTaskGenerationContext({
+					prompt,
+					summaries,
+					finalMessage: session?.latestHookActivity?.finalMessage,
+					limits: {
+						originalPrompt: TITLE_ORIGINAL_PROMPT_LIMIT,
+						firstActivity: TITLE_FIRST_ACTIVITY_LIMIT,
+						latestActivity: TITLE_LATEST_ACTIVITY_LIMIT,
+						previousActivity: TITLE_PREVIOUS_ACTIVITY_LIMIT,
+					},
+				}) ?? prompt;
 			const title = await generateTaskTitle(context);
 			if (!title) {
 				return { ok: false, title: null };
@@ -347,8 +353,9 @@ export const projectRouter = t.router({
 			}
 
 			const summaries = session.conversationSummaries ?? [];
+			const card = findCardInBoard(state.board, input.taskId);
 
-			// Server-side staleness check — always respect the user-configured
+			// Server-side staleness check — always respect the caller-provided
 			// staleAfterSeconds window. Only regenerate after the window expires
 			// AND newer conversation data has arrived since the last generation.
 			if (session.displaySummaryGeneratedAt) {
@@ -363,9 +370,17 @@ export const projectRouter = t.router({
 					return { ok: true, summary: session.displaySummary };
 				}
 			}
-			const conversationText = summaries.length > 0 ? summaries.map((s) => s.text).join("\n") : null;
-			// Fall back to finalMessage if no conversation summaries.
-			const sourceText = conversationText ?? session.latestHookActivity?.finalMessage ?? null;
+			const sourceText = buildTaskGenerationContext({
+				prompt: card?.prompt,
+				summaries,
+				finalMessage: session.latestHookActivity?.finalMessage,
+				limits: {
+					originalPrompt: SUMMARY_ORIGINAL_PROMPT_LIMIT,
+					firstActivity: SUMMARY_FIRST_ACTIVITY_LIMIT,
+					latestActivity: SUMMARY_LATEST_ACTIVITY_LIMIT,
+					previousActivity: SUMMARY_PREVIOUS_ACTIVITY_LIMIT,
+				},
+			});
 			if (!sourceText?.trim()) {
 				return { ok: false, summary: null };
 			}
@@ -373,7 +388,7 @@ export const projectRouter = t.router({
 				taskId: input.taskId,
 				summaryCount: summaries.length,
 				sourceTextSnippet: sourceText.slice(0, 120),
-				usedFinalMessage: conversationText === null,
+				usedFinalMessage: summaries.length === 0 && Boolean(session.latestHookActivity?.finalMessage),
 			});
 
 			// Prevent duplicate concurrent LLM calls for the same task.

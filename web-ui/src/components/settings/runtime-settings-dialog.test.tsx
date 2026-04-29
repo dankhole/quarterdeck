@@ -136,7 +136,7 @@ describe("RuntimeSettingsDialog", () => {
 		expect(checkbox?.getAttribute("data-state")).toBe("unchecked");
 	});
 
-	it("renders the auto-generate summary checkbox", async () => {
+	it("renders the LLM summary polish checkbox and cost reminder", async () => {
 		await act(async () => {
 			root.render(
 				<RuntimeSettingsDialog
@@ -148,9 +148,10 @@ describe("RuntimeSettingsDialog", () => {
 			);
 		});
 
-		const checkbox = document.body.querySelector("#runtime-settings-auto-generate-summary");
+		const checkbox = document.body.querySelector("#runtime-settings-llm-summary-polish");
 		expect(checkbox).toBeInstanceOf(HTMLButtonElement);
 		expect(checkbox?.getAttribute("data-state")).toBe("unchecked");
+		expect(document.body.textContent).toContain("cheap, fast configured model");
 	});
 
 	it("keeps harness selection out of settings and keeps launch tuning", async () => {
@@ -182,39 +183,6 @@ describe("RuntimeSettingsDialog", () => {
 		expect(bodyText).not.toContain("These settings let agents escape their worktree sandbox");
 	});
 
-	it("hides staleness input when auto-generate is unchecked", async () => {
-		await act(async () => {
-			root.render(
-				<RuntimeSettingsDialog
-					open={true}
-					projectId={"project-1"}
-					initialConfig={createSavedConfig({ autoGenerateSummary: false })}
-					onOpenChange={() => {}}
-				/>,
-			);
-		});
-
-		const input = document.body.querySelector("#runtime-settings-summary-stale-seconds");
-		expect(input).toBeNull();
-	});
-
-	it("shows staleness input when auto-generate is checked", async () => {
-		await act(async () => {
-			root.render(
-				<RuntimeSettingsDialog
-					open={true}
-					projectId={"project-1"}
-					initialConfig={createSavedConfig({ autoGenerateSummary: true })}
-					onOpenChange={() => {}}
-				/>,
-			);
-		});
-
-		const input = document.body.querySelector("#runtime-settings-summary-stale-seconds") as HTMLInputElement | null;
-		expect(input).toBeInstanceOf(HTMLInputElement);
-		expect(input?.value).toBe("300");
-	});
-
 	it("shows orange warning when LLM is not configured", async () => {
 		await act(async () => {
 			root.render(
@@ -228,8 +196,9 @@ describe("RuntimeSettingsDialog", () => {
 		});
 
 		const warningText = document.body.textContent;
-		expect(warningText).toContain("ANTHROPIC_BEDROCK_BASE_URL");
-		expect(warningText).toContain("ANTHROPIC_AUTH_TOKEN");
+		expect(warningText).toContain("QUARTERDECK_LLM_BASE_URL");
+		expect(warningText).toContain("QUARTERDECK_LLM_API_KEY");
+		expect(warningText).toContain("QUARTERDECK_LLM_MODEL");
 	});
 
 	it("does not show LLM warning when configured", async () => {
@@ -245,7 +214,7 @@ describe("RuntimeSettingsDialog", () => {
 		});
 
 		const warningText = document.body.textContent;
-		expect(warningText).not.toContain("ANTHROPIC_BEDROCK_BASE_URL");
+		expect(warningText).not.toContain("QUARTERDECK_LLM_BASE_URL");
 	});
 
 	it("calls the layout reset callback when reset layout is clicked", async () => {
@@ -390,6 +359,38 @@ describe("RuntimeSettingsDialog", () => {
 			review: true,
 			failure: true,
 		});
+	});
+
+	it("includes LLM summary polish in save payload", async () => {
+		saveMock.mockReset();
+		saveMock.mockResolvedValue(true);
+
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					projectId={"project-1"}
+					initialConfig={savedConfig}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const checkbox = document.getElementById("runtime-settings-llm-summary-polish") as HTMLButtonElement;
+		await act(async () => {
+			checkbox.click();
+		});
+
+		const saveButton = findButtonByText(document.body, "Save");
+		expect(saveButton).toBeInstanceOf(HTMLButtonElement);
+		await act(async () => {
+			saveButton!.click();
+		});
+
+		expect(saveMock).toHaveBeenCalledTimes(1);
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- accessing mock call args
+		const payload = (saveMock.mock.calls as any)[0][0] as RuntimeConfigSaveRequest;
+		expect(payload.llmSummaryPolishEnabled).toBe(true);
 	});
 
 	it("syncs audible settings from loaded config", async () => {

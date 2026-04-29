@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../src/title/llm-client", () => ({
-	DISPLAY_SUMMARY_MAX_LENGTH: 90,
-	DISPLAY_SUMMARY_LLM_BUDGET: 75,
 	callLlm: vi.fn(),
 }));
 

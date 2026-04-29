@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { _testing, sanitizeLlmResponse } from "../../../src/title";
+import { _testing, isLlmConfigured, sanitizeLlmResponse } from "../../../src/title";
 
-const { acquireSlot, releaseSlot, resetRateLimiter, MAX_CONCURRENT, MAX_PER_MINUTE, WINDOW_MS } = _testing;
+const {
+	acquireSlot,
+	releaseSlot,
+	resetRateLimiter,
+	MAX_CONCURRENT,
+	MAX_PER_MINUTE,
+	WINDOW_MS,
+	resolveChatCompletionsUrl,
+} = _testing;
 
 describe("llm-client rate limiter", () => {
 	beforeEach(() => {
@@ -73,6 +81,41 @@ describe("llm-client rate limiter", () => {
 		// Old timestamps should be pruned, allowing new acquisitions.
 		expect(acquireSlot()).toBe(true);
 		expect(_testing.callTimestamps.length).toBe(1);
+	});
+});
+
+describe("llm-client provider config", () => {
+	const originalEnv = { ...process.env };
+
+	afterEach(() => {
+		process.env = { ...originalEnv };
+	});
+
+	it("accepts generic Quarterdeck LLM env vars", () => {
+		process.env.QUARTERDECK_LLM_BASE_URL = "https://llm.example.com/v1";
+		process.env.QUARTERDECK_LLM_API_KEY = "token";
+		process.env.QUARTERDECK_LLM_MODEL = "helper-model";
+		expect(isLlmConfigured()).toBe(true);
+	});
+
+	it("requires a model for generic Quarterdeck LLM env vars", () => {
+		process.env.QUARTERDECK_LLM_BASE_URL = "https://llm.example.com/v1";
+		process.env.QUARTERDECK_LLM_API_KEY = "token";
+		delete process.env.QUARTERDECK_LLM_MODEL;
+		expect(isLlmConfigured()).toBe(false);
+	});
+
+	it("normalizes supported base URL shapes to chat completions", () => {
+		expect(resolveChatCompletionsUrl("https://llm.example.com")).toBe("https://llm.example.com/v1/chat/completions");
+		expect(resolveChatCompletionsUrl("https://llm.example.com/bedrock")).toBe(
+			"https://llm.example.com/v1/chat/completions",
+		);
+		expect(resolveChatCompletionsUrl("https://llm.example.com/v1")).toBe(
+			"https://llm.example.com/v1/chat/completions",
+		);
+		expect(resolveChatCompletionsUrl("https://llm.example.com/v1/chat/completions")).toBe(
+			"https://llm.example.com/v1/chat/completions",
+		);
 	});
 });
 

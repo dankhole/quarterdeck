@@ -15,8 +15,7 @@ import type { RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/ty
 
 export interface SettingsFormValues {
 	showSummaryOnCards: boolean;
-	autoGenerateSummary: boolean;
-	summaryStaleAfterSeconds: number;
+	llmSummaryPolishEnabled: boolean;
 	shellAutoRestartEnabled: boolean;
 	terminalFontWeight: number;
 	showTrashWorktreeNotice: boolean;
@@ -51,8 +50,7 @@ export interface SettingsFormValues {
 export function resolveInitialValues(config: RuntimeConfigResponse | null): SettingsFormValues {
 	return {
 		showSummaryOnCards: config?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
-		autoGenerateSummary: config?.autoGenerateSummary ?? CONFIG_DEFAULTS.autoGenerateSummary,
-		summaryStaleAfterSeconds: config?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds,
+		llmSummaryPolishEnabled: config?.llmSummaryPolishEnabled ?? CONFIG_DEFAULTS.llmSummaryPolishEnabled,
 		shellAutoRestartEnabled: config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
 		terminalFontWeight: config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight,
 		showTrashWorktreeNotice: config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice,

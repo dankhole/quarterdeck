@@ -14,7 +14,7 @@ import type {
 	RuntimeTaskTurnCheckpoint,
 } from "../core";
 import { createTaggedLogger } from "../core";
-import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title";
+import { compactDisplaySummaryText } from "../title";
 import {
 	reduceSessionTransition,
 	type SessionTransitionEvent,
@@ -399,22 +399,11 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 			entries.splice(1, 1);
 		}
 
-		// Only overwrite displaySummary with raw text if there's no existing LLM-generated
-		// summary. When the user has autoGenerateSummary enabled, we don't want a raw last
-		// message to clobber a nicely condensed LLM summary. We preserve
-		// displaySummaryGeneratedAt so it continues to act as a sentinel — staleness is
-		// detected by comparing the generation timestamp against conversationSummaries
-		// capturedAt in the generateDisplaySummary endpoint.
-		const hasLlmSummary = sessionEntry.displaySummaryGeneratedAt !== null;
-		const rawDisplay =
-			text.length > DISPLAY_SUMMARY_MAX_LENGTH ? `${text.slice(0, DISPLAY_SUMMARY_MAX_LENGTH)}\u2026` : text;
-
 		const patch: Partial<RuntimeTaskSessionSummary> = {
 			conversationSummaries: entries,
+			displaySummary: compactDisplaySummaryText(text),
+			displaySummaryGeneratedAt: null,
 		};
-		if (!hasLlmSummary) {
-			patch.displaySummary = rawDisplay;
-		}
 
 		return this.update(taskId, patch);
 	}

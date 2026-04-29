@@ -56,7 +56,7 @@ describe("createHooksApi — conversation summaries", () => {
 		expect(setDisplaySummary).toHaveBeenCalledWith("task-1", "Done with the work", null);
 	});
 
-	it("truncates long finalMessage to 80 chars with ellipsis in setDisplaySummary", async () => {
+	it("truncates long finalMessage to 90 chars with ellipsis in setDisplaySummary", async () => {
 		const setDisplaySummary = vi.fn();
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),

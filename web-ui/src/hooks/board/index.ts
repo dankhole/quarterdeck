@@ -5,7 +5,6 @@ export { useBoardDragHandler } from "./use-board-drag-handler";
 export type { UseBoardInteractionsResult } from "./use-board-interactions";
 export { useBoardInteractions } from "./use-board-interactions";
 export { useBoardMetadataSync } from "./use-board-metadata-sync";
-export { useDisplaySummaryOnHover } from "./use-display-summary";
 export { useLinkedBacklogTaskActions } from "./use-linked-backlog-task-actions";
 export type { ProgrammaticCardMoveAttemptResult, ProgrammaticCardMoveBehavior } from "./use-programmatic-card-moves";
 export { useProgrammaticCardMoves } from "./use-programmatic-card-moves";

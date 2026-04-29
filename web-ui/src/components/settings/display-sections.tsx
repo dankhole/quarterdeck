@@ -26,13 +26,14 @@ export function AiFeaturesSection({
 			</h6>
 			{!llmConfigured ? (
 				<div className="rounded-md border border-status-orange/30 bg-status-orange/5 px-3 py-2 text-[13px] text-status-orange mb-2">
-					LLM features are unavailable. Set <code className="text-[12px]">ANTHROPIC_BEDROCK_BASE_URL</code> and{" "}
-					<code className="text-[12px]">ANTHROPIC_AUTH_TOKEN</code> in the shell that launches Quarterdeck to
-					enable auto-generated titles, branch names, and summaries.
+					LLM helpers are unavailable. Set <code className="text-[12px]">QUARTERDECK_LLM_BASE_URL</code> and{" "}
+					<code className="text-[12px]">QUARTERDECK_LLM_API_KEY</code> plus{" "}
+					<code className="text-[12px]">QUARTERDECK_LLM_MODEL</code> in the shell that launches Quarterdeck.
 				</div>
 			) : (
 				<p className="text-text-secondary text-[13px] mt-0 mb-2">
-					Titles, branch names, and summaries are generated via a lightweight LLM call.
+					Titles, branch names, commit messages, and optional summary polish use the configured lightweight LLM
+					helper.
 				</p>
 			)}
 
@@ -53,47 +54,21 @@ export function AiFeaturesSection({
 			</p>
 
 			<label
-				htmlFor="runtime-settings-auto-generate-summary"
+				htmlFor="runtime-settings-llm-summary-polish"
 				className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
 			>
 				<SettingsCheckbox
-					id="runtime-settings-auto-generate-summary"
-					checked={fields.autoGenerateSummary}
-					onCheckedChange={(v) => setField("autoGenerateSummary", v)}
+					id="runtime-settings-llm-summary-polish"
+					checked={fields.llmSummaryPolishEnabled}
+					onCheckedChange={(v) => setField("llmSummaryPolishEnabled", v)}
 					disabled={disabled}
 				/>
-				<span>Auto-generate summary with LLM</span>
+				<span>Polish summaries with LLM</span>
 			</label>
 			<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
-				Uses a fast model to condense harness conversation excerpts into a short summary for card tooltips.
+				When enabled, task state changes can trigger background summary polish. Use a cheap, fast configured model
+				such as Haiku because tasks can bounce between in-progress and review.
 			</p>
-			{fields.autoGenerateSummary ? (
-				<div className="flex items-center gap-2 ml-6 mt-1.5">
-					<label htmlFor="runtime-settings-summary-stale-seconds" className="text-[13px] text-text-secondary">
-						Regenerate after
-					</label>
-					<input
-						id="runtime-settings-summary-stale-seconds"
-						type="text"
-						inputMode="numeric"
-						pattern="[0-9]*"
-						value={fields.summaryStaleAfterSeconds}
-						disabled={disabled}
-						onChange={(event) => {
-							const raw = event.target.value.replace(/\D/g, "");
-							if (raw === "") {
-								return;
-							}
-							const value = Number.parseInt(raw, 10);
-							if (Number.isFinite(value)) {
-								setField("summaryStaleAfterSeconds", Math.max(5, Math.min(3600, value)));
-							}
-						}}
-						className="w-20 rounded border border-border bg-surface-2 px-2 py-1 text-[13px] text-text-primary disabled:opacity-40"
-					/>
-					<span className="text-[13px] text-text-secondary">seconds</span>
-				</div>
-			) : null}
 		</>
 	);
 }

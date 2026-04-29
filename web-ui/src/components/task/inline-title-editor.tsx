@@ -88,12 +88,14 @@ export function InlineTitleEditor({
 				placeholder="Task title…"
 			/>
 			{onRegenerate ? (
-				<Tooltip content={isLlmGenerationDisabled ? "LLM not configured" : "Auto-generate title"} side="top">
+				<Tooltip
+					content={isLlmGenerationDisabled ? "Generate title from local fallback" : "Auto-generate title"}
+					side="top"
+				>
 					<Button
 						icon={<Sparkles size={12} />}
 						variant="ghost"
 						size="sm"
-						disabled={isLlmGenerationDisabled}
 						aria-label="Auto-generate title"
 						onMouseDown={(event) => {
 							stopEvent(event);

@@ -51,11 +51,13 @@ Optional variables:
 | `QUARTERDECK_RUNTIME_HOST` | Override the runtime host. Defaults to `127.0.0.1`; the `--host` flag is usually clearer. |
 | `QUARTERDECK_RUNTIME_PORT` | Override the runtime port. Defaults to `3500`; the `--port` flag is usually clearer. |
 | `QUARTERDECK_DEBUG_MODE` | Enable extra debug behavior for agent availability checks. `DEBUG_MODE` and `debug_mode` are also recognized. |
-| `ANTHROPIC_BEDROCK_BASE_URL` | Enable optional LLM helper features through a Bedrock/LiteLLM-compatible proxy. |
-| `ANTHROPIC_AUTH_TOKEN` | Bearer token for the optional LLM helper proxy. |
-| `QUARTERDECK_LLM_MODEL` | Override the optional LLM helper model. Defaults to the built-in Haiku-on-Bedrock model string. |
+| `QUARTERDECK_LLM_BASE_URL` | OpenAI-compatible helper API base URL for generated titles, branch names, commit messages, and optional summary polish. May be a LiteLLM, Bedrock, OpenRouter, or similar gateway. |
+| `QUARTERDECK_LLM_API_KEY` | Bearer token for the optional helper API. |
+| `QUARTERDECK_LLM_MODEL` | Model id sent to the helper API. For Bedrock-backed Anthropic through LiteLLM, `bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0` is a good cheap/fast default. |
 
-The LLM variables are only needed for generated task titles, branch names, summaries, and commit messages. Agent sessions themselves use your installed agent CLI and do not require these variables.
+The LLM variables are only needed for generated task titles, branch names, commit messages, and optional polished card summaries. Agent sessions themselves use your installed agent CLI and do not require these variables. The helper endpoint must support OpenAI-style `/v1/chat/completions`; Anthropic models work when your gateway exposes them through that API shape.
+
+Gateway base URLs that end in `/bedrock` are normalized to the gateway root before Quarterdeck appends `/v1/chat/completions`, matching common Bedrock/LiteLLM proxy layouts.
 
 ## Install From Source
 

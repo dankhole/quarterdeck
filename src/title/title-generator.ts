@@ -1,9 +1,10 @@
-// LLM generation for titles and branch names. Currently requires a
-// setup-specific Bedrock proxy — see llm-client.ts for portability notes.
-// When LLM is not configured, these return null and callers fall back
-// gracefully (cards show truncated prompt text, branch name field stays empty).
+// Lightweight generation for titles and branch names. Titles degrade to a
+// deterministic prompt-derived fallback when the helper LLM is unavailable or
+// slow; branch names remain LLM-only because a bad branch name is more costly
+// than a bad card label.
 import { createTaggedLogger } from "../core";
 import { callLlm, isLlmConfigured } from "./llm-client";
+import { createFallbackTaskTitle, normalizeGeneratedTitle } from "./title-fallback";
 
 const log = createTaggedLogger("title-gen");
 const TITLE_SYSTEM_PROMPT = `Generate a concise 2-4 word title for this coding task.
@@ -28,7 +29,8 @@ CRITICAL RULES:
 - If the input is unclear, vague, or empty, generate your best guess anyway — a bad branch name is better than a non-branch-name response.
 - Your entire response must be the branch name and nothing else.`;
 
-const MAX_PROMPT_LENGTH = 1600;
+const MAX_TITLE_CONTEXT_LENGTH = 1200;
+const MAX_BRANCH_PROMPT_LENGTH = 1200;
 
 export async function generateTaskTitle(prompt: string): Promise<string | null> {
 	const llmConfigured = isLlmConfigured();
@@ -39,9 +41,9 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 	});
 	if (!llmConfigured) {
 		log.warn(
-			"Title generation unavailable: LLM not configured (set ANTHROPIC_BEDROCK_BASE_URL and ANTHROPIC_AUTH_TOKEN)",
+			"Title generation using fallback: LLM not configured (set QUARTERDECK_LLM_BASE_URL, QUARTERDECK_LLM_API_KEY, and QUARTERDECK_LLM_MODEL)",
 		);
-		return null;
+		return createFallbackTaskTitle(prompt);
 	}
 	if (prompt.trim().length === 0) {
 		log.warn("Title generation skipped: prompt is empty after trim");
@@ -49,25 +51,29 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 	}
 	const title = await callLlm({
 		systemPrompt: TITLE_SYSTEM_PROMPT,
-		userPrompt: prompt.slice(0, MAX_PROMPT_LENGTH),
+		userPrompt: prompt.slice(0, MAX_TITLE_CONTEXT_LENGTH),
 		maxTokens: 20,
 		timeoutMs: 5_000,
 	});
 	if (title) {
-		log.info("Title generated", { title });
-	} else {
-		log.warn(
-			"Title generation returned null — see preceding 'llm-client' log for cause (rate limit, HTTP error, timeout, empty content, or sanitizer rejection)",
-			{ promptLength: prompt.length, promptSnippet: prompt.slice(0, 100) },
-		);
+		const normalizedTitle = normalizeGeneratedTitle(title);
+		if (normalizedTitle) {
+			log.info("Title generated", { title: normalizedTitle });
+			return normalizedTitle;
+		}
 	}
-	return title;
+	const fallbackTitle = createFallbackTaskTitle(prompt);
+	log.warn(
+		"Title generation returned null — using prompt-derived fallback; see preceding 'llm-client' log for cause (rate limit, HTTP error, timeout, empty content, or sanitizer rejection)",
+		{ promptLength: prompt.length, promptSnippet: prompt.slice(0, 100), fallbackTitle },
+	);
+	return fallbackTitle;
 }
 
 export async function generateBranchName(prompt: string): Promise<string | null> {
 	return callLlm({
 		systemPrompt: BRANCH_NAME_SYSTEM_PROMPT,
-		userPrompt: prompt.slice(0, MAX_PROMPT_LENGTH),
+		userPrompt: prompt.slice(0, MAX_BRANCH_PROMPT_LENGTH),
 		maxTokens: 20,
 		timeoutMs: 5_000,
 	});
