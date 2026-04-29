@@ -1,5 +1,7 @@
 # Task State System
 
+> Historical context only. This document is known to be stale in places; verify behavior against current code before using it as implementation guidance.
+
 How task state works in Quarterdeck, end to end — from state definitions through persistence, propagation, hooks, restart mechanics, and UI rendering.
 
 ---
