@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Docs: prune stale branch-status todo
+
+- Removed the stale UI branch/status desync backlog item after validating that task git UI now derives branch and change state from assigned task metadata rather than session launch path.
+
 ### Fix: keep debug log controls responsive
 
 - Debug log capture-level changes now update optimistically in the panel, avoid reseeding the recent log buffer on every level broadcast, and render log rows through virtualization so the control remains usable during log floods.

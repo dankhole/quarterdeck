@@ -135,4 +135,57 @@ describe("resolveTaskGitState", () => {
 		expect(state.changedFiles).toBe(3);
 		expect(state.behindBaseCount).toBe(1);
 	});
+
+	it("keeps task git state pinned to assigned metadata when session launch path differs", () => {
+		const state = resolveTaskGitState({
+			projectRootPath: "/repo",
+			card: {
+				branch: "feature/stale",
+				useWorktree: true,
+				workingDirectory: "/repo/.quarterdeck/worktrees/task-1",
+			},
+			repositoryInfo: {
+				taskId: "task-1",
+				path: "/repo/.quarterdeck/worktrees/task-1",
+				exists: true,
+				baseRef: "main",
+				branch: "feature/assigned",
+				isDetached: false,
+				headCommit: "abcdef123456",
+			},
+			worktreeSnapshot: {
+				taskId: "task-1",
+				path: "/repo/.quarterdeck/worktrees/task-1",
+				branch: "feature/assigned",
+				isDetached: false,
+				headCommit: "abcdef123456",
+				changedFiles: 4,
+				additions: 9,
+				deletions: 2,
+				hasUnmergedChanges: false,
+				behindBaseCount: 2,
+				conflictState: null,
+			},
+			homeGitSummary: {
+				currentBranch: "main",
+				upstreamBranch: "origin/main",
+				changedFiles: 0,
+				additions: 0,
+				deletions: 0,
+				aheadCount: 0,
+				behindCount: 0,
+			},
+			sessionSummary: {
+				sessionLaunchPath: "/repo",
+			},
+		});
+
+		expect(state.identity.assignedPath).toBe("/repo/.quarterdeck/worktrees/task-1");
+		expect(state.identity.isAssignedShared).toBe(false);
+		expect(state.identity.isSessionLaunchDiverged).toBe(true);
+		expect(state.branch).toBe("feature/assigned");
+		expect(state.branchLabel).toBe("feature/assigned");
+		expect(state.changedFiles).toBe(4);
+		expect(state.behindBaseCount).toBe(2);
+	});
 });

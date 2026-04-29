@@ -108,13 +108,6 @@ When an agent switches branches inside a task worktree, the metadata monitor cal
 
 **Broader refactor context:** [docs/architecture-roadmap.md#15-branch--base-ref-ux-state-model](./architecture-roadmap.md#15-branch--base-ref-ux-state-model)
 
-## UI branch/status indicators desync when agent leaves worktree
-
-When `worktreeAddQuarterdeckDir` is enabled, agents can `cd` out of their assigned worktree into other directories. The status bar branch pill, task card branch label, and branch selector dropdown all derive their values from the agent's current working directory (via the metadata monitor's git probe), so they start showing the wrong branch state instead of the worktree's. Fix the metadata monitor and/or display logic so that task-scoped UI elements always reflect the assigned worktree path, not wherever the agent's shell happens to be. The statusline (`buildStatuslineCommand`) may also need the same fix.
-
-**Related symptom:** The status bar sometimes shows the wrong project folder — may be the same metadata monitor root cause or a separate project-level resolution bug.
-**Broader refactor context:** [docs/architecture-roadmap.md#10-project--worktree-identity-normalization](./architecture-roadmap.md#10-project--worktree-identity-normalization)
-
 ## Talk to the agent while browsing files
 
 Add a way to send comments or prompts to the active task agent while browsing files and diffs, without leaving the repository/file inspection surface. Consider a workflow similar to compare-tab comments: attach a prompt to the currently viewed file, selection, or diff hunk, then submit it to the task agent with enough context to make the request actionable.
