@@ -15,6 +15,10 @@
 
 - Shared-checkout tasks now resolve branch, diff, compare, and metadata refresh state from the project checkout instead of stale isolated worktree assumptions.
 
+### Fix: lower default Claude terminal rows
+
+- New installs now default the Claude row multiplier to 2, reducing hidden terminal buffer height while still giving Claude extra scrollback room.
+
 ### Chore: refresh web e2e smoke tests
 
 - Playwright web smoke tests now launch an isolated Quarterdeck runtime with disposable state, so e2e runs no longer depend on or mutate a developer's active runtime.

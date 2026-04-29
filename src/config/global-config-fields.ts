@@ -110,7 +110,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	worktreeAddQuarterdeckDir: boolField(false),
 	logLevel: enumField<LogLevel>("warn", LOG_LEVELS),
 	backupIntervalMinutes: numField(30),
-	agentTerminalRowMultiplier: numField(5),
+	agentTerminalRowMultiplier: numField(2),
 } as const;
 
 // --- Derived types ---

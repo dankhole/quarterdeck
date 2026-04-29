@@ -26,6 +26,11 @@ describe("resolveInitialValues", () => {
 		expect(values).toHaveProperty("shortcuts");
 		expect(values).toHaveProperty("worktreeSystemPromptTemplate");
 	});
+
+	it("defaults Claude row multiplier to 2", () => {
+		const values = resolveInitialValues(null, "claude");
+		expect(values.agentTerminalRowMultiplier).toBe(2);
+	});
 });
 
 // ---------------------------------------------------------------------------
