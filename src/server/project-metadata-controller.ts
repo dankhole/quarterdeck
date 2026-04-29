@@ -196,7 +196,11 @@ export class ProjectMetadataController {
 			if (!previous) {
 				continue;
 			}
-			if (previous.baseRef !== task.baseRef || previous.workingDirectory !== task.workingDirectory) {
+			if (
+				previous.baseRef !== task.baseRef ||
+				previous.workingDirectory !== task.workingDirectory ||
+				previous.useWorktree !== task.useWorktree
+			) {
 				this.bumpTaskMetadataFreshness(task.taskId);
 			}
 		}

@@ -28,6 +28,7 @@ const gitSyncMocks = vi.hoisted(() => ({
 vi.mock("../../../src/workdir/task-worktree.js", () => ({
 	deleteTaskWorktree: worktreeMocks.deleteTaskWorktree,
 	ensureTaskWorktreeIfDoesntExist: vi.fn(),
+	getTaskRepositoryInfo: vi.fn(),
 	getTaskWorktreeInfo: vi.fn(),
 	resolveTaskCwd: worktreeMocks.resolveTaskCwd,
 	resolveTaskWorkingDirectory: worktreeMocks.resolveTaskWorkingDirectory,
@@ -145,6 +146,51 @@ const defaultScope = {
 	projectPath: "/tmp/repo",
 };
 
+describe("createProjectApi runGitSyncAction", () => {
+	const defaultSummary = {
+		currentBranch: "feature/test",
+		upstreamBranch: null,
+		changedFiles: 0,
+		additions: 0,
+		deletions: 0,
+		aheadCount: 0,
+		behindCount: 0,
+	};
+
+	beforeEach(() => {
+		worktreeMocks.resolveTaskWorkingDirectory.mockReset();
+		gitSyncMocks.runGitSyncAction.mockReset();
+	});
+
+	it("refreshes task and home metadata when task-scoped sync targets the shared checkout", async () => {
+		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/repo");
+		gitSyncMocks.runGitSyncAction.mockResolvedValue({
+			ok: true,
+			action: "pull",
+			summary: defaultSummary,
+			output: "",
+		});
+
+		const deps = createProjectDeps();
+		const api = createProjectApi(deps);
+
+		const result = await api.runGitSyncAction(defaultScope, {
+			action: "pull",
+			taskScope: { taskId: "task-1", baseRef: "main" },
+			branch: null,
+		});
+
+		expect(result.ok).toBe(true);
+		expect(gitSyncMocks.runGitSyncAction).toHaveBeenCalledWith({
+			cwd: "/tmp/repo",
+			action: "pull",
+			branch: null,
+		});
+		expect(deps.broadcaster.requestTaskRefresh).toHaveBeenCalledWith("project-1", "task-1");
+		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("project-1");
+	});
+});
+
 describe("createProjectApi discardGitChanges", () => {
 	beforeEach(() => {
 		worktreeMocks.resolveTaskWorkingDirectory.mockReset();
@@ -199,9 +245,11 @@ describe("createProjectApi discardGitChanges", () => {
 
 describe("createProjectApi checkoutGitBranch", () => {
 	beforeEach(() => {
+		worktreeMocks.resolveTaskWorkingDirectory.mockReset();
 		projectStateMocks.loadProjectState.mockReset();
 		gitSyncMocks.runGitCheckoutAction.mockReset();
 
+		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
 		projectStateMocks.loadProjectState.mockResolvedValue({ board: { columns: [], dependencies: [] } });
 	});
 
@@ -343,6 +391,41 @@ describe("createProjectApi checkoutGitBranch", () => {
 
 		expect(result.ok).toBe(true);
 		expect(gitSyncMocks.runGitCheckoutAction).toHaveBeenCalled();
+	});
+
+	it("refreshes task and home metadata when task checkout targets the shared checkout", async () => {
+		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/repo");
+		gitSyncMocks.runGitCheckoutAction.mockResolvedValue({
+			ok: true,
+			branch: "feature/other",
+			summary: {
+				currentBranch: "feature/other",
+				upstreamBranch: null,
+				changedFiles: 0,
+				additions: 0,
+				deletions: 0,
+				aheadCount: 0,
+				behindCount: 0,
+			},
+			output: "",
+		});
+
+		const deps = createProjectDeps();
+		const api = createProjectApi(deps);
+
+		const result = await api.checkoutGitBranch(defaultScope, {
+			branch: "feature/other",
+			taskId: "task-1",
+			baseRef: "main",
+		});
+
+		expect(result.ok).toBe(true);
+		expect(gitSyncMocks.runGitCheckoutAction).toHaveBeenCalledWith({
+			cwd: "/tmp/repo",
+			branch: "feature/other",
+		});
+		expect(deps.broadcaster.requestTaskRefresh).toHaveBeenCalledWith("project-1", "task-1");
+		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("project-1");
 	});
 });
 

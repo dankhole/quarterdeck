@@ -19,10 +19,10 @@ import { useSurfaceNavigationContext } from "@/providers/surface-navigation-prov
 import type { RuntimeGitSyncAction } from "@/runtime/types";
 import {
 	useHomeGitSummaryValue,
-	useTaskWorktreeInfoValue,
+	useTaskRepositoryInfoValue,
 	useTaskWorktreeSnapshotValue,
 } from "@/stores/project-metadata-store";
-import { resolveTaskIdentity } from "@/utils/task-identity";
+import { resolveTaskGitState } from "@/utils/task-git-state";
 
 // ---------------------------------------------------------------------------
 // Context value — git actions, git history data, scope context, branch
@@ -102,7 +102,7 @@ interface GitProviderProps {
 }
 
 export function GitProvider({ children }: GitProviderProps): ReactNode {
-	const { currentProjectId, refreshProjectState } = useProjectContext();
+	const { currentProjectId, projectPath, refreshProjectState } = useProjectContext();
 	const { runtimeProjectConfig, skipTaskCheckoutConfirmation, skipHomeCheckoutConfirmation } =
 		useProjectRuntimeContext();
 
@@ -110,9 +110,22 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 	const { isGitHistoryOpen, navigateToGitView } = useSurfaceNavigationContext();
 
 	// Store subscriptions — duplicate calls are cheap (useSyncExternalStore).
-	const selectedTaskWorktreeInfo = useTaskWorktreeInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
+	const selectedTaskRepositoryInfo = useTaskRepositoryInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
 	const selectedTaskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selectedCard?.card.id);
 	const homeGitSummary = useHomeGitSummaryValue();
+	const selectedTaskGitState = useMemo(
+		() =>
+			selectedCard
+				? resolveTaskGitState({
+						projectRootPath: projectPath,
+						card: selectedCard.card,
+						repositoryInfo: selectedTaskRepositoryInfo,
+						worktreeSnapshot: selectedTaskWorktreeSnapshot,
+						homeGitSummary,
+					})
+				: null,
+		[selectedCard, projectPath, selectedTaskRepositoryInfo, selectedTaskWorktreeSnapshot, homeGitSummary],
+	);
 
 	// --- useScopeContext ---
 	const {
@@ -145,8 +158,8 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 		board,
 		selectBranchView: topbarBranchViewNoop,
 		homeGitSummary,
-		taskBranch: selectedCard ? (selectedTaskWorktreeInfo?.branch ?? selectedCard.card.branch ?? null) : undefined,
-		taskChangedFiles: selectedCard ? (selectedTaskWorktreeSnapshot?.changedFiles ?? 0) : undefined,
+		taskBranch: selectedCard ? selectedTaskGitState?.branch : undefined,
+		taskChangedFiles: selectedCard ? selectedTaskGitState?.changedFiles : undefined,
 		taskId: selectedCard?.card.id ?? null,
 		baseRef: selectedCard?.card.baseRef ?? null,
 		skipTaskCheckoutConfirmation,
@@ -157,14 +170,10 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 	// --- topbarBranchLabel ---
 	const topbarBranchLabel = useMemo(() => {
 		if (selectedCard) {
-			return resolveTaskIdentity({
-				card: selectedCard.card,
-				worktreeInfo: selectedTaskWorktreeInfo,
-				worktreeSnapshot: selectedTaskWorktreeSnapshot,
-			}).displayBranchLabel;
+			return selectedTaskGitState?.branchLabel ?? null;
 		}
 		return homeGitSummary?.currentBranch ?? null;
-	}, [selectedCard, selectedTaskWorktreeInfo, selectedTaskWorktreeSnapshot, homeGitSummary]);
+	}, [selectedCard, selectedTaskGitState, homeGitSummary]);
 
 	// --- useFileBrowserData ---
 	const homeFileBrowserData = useFileBrowserData({

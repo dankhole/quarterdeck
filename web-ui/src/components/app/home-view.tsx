@@ -81,6 +81,7 @@ export function HomeView({
 									currentProjectId={project.currentProjectId}
 									selectedCard={null}
 									sessionSummary={null}
+									projectPath={project.projectPath}
 									homeGitSummary={homeGitSummary}
 									board={board}
 									pendingCompareNavigation={navigation.pendingCompareNavigation}

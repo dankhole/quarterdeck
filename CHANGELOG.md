@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: honor shared-checkout repository state
+
+- Shared-checkout tasks now resolve branch, diff, compare, and metadata refresh state from the project checkout instead of stale isolated worktree assumptions.
+
 ### Chore: refresh web e2e smoke tests
 
 - Playwright web smoke tests now launch an isolated Quarterdeck runtime with disposable state, so e2e runs no longer depend on or mutate a developer's active runtime.

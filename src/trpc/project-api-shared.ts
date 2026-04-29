@@ -71,6 +71,10 @@ export function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
+export function isProjectCheckoutCwd(projectPath: string, cwd: string): boolean {
+	return resolve(cwd) === resolve(projectPath);
+}
+
 export async function resolveWorkingDir(
 	projectPath: string,
 	taskScope: { taskId: string; baseRef: string } | null,
@@ -96,7 +100,7 @@ export async function hasActiveSharedCheckoutTask(projectPath: string): Promise<
 		.some((col) =>
 			col.cards.some((card) => {
 				const isSharedCheckout = card.workingDirectory
-					? resolve(card.workingDirectory) === resolve(projectPath)
+					? isProjectCheckoutCwd(projectPath, card.workingDirectory)
 					: card.useWorktree === false;
 				return isSharedCheckout;
 			}),

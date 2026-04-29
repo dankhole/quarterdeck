@@ -11,7 +11,7 @@ describe("resolveTaskIdentity", () => {
 				useWorktree: true,
 				workingDirectory: "/repo/.quarterdeck/worktrees/task-1",
 			},
-			worktreeInfo: {
+			repositoryInfo: {
 				taskId: "task-1",
 				path: "/repo/.quarterdeck/worktrees/task-1",
 				exists: true,
@@ -73,6 +73,55 @@ describe("resolveTaskIdentity", () => {
 		expect(identity.assignedPath).toBe("/repo");
 		expect(identity.isAssignedShared).toBe(true);
 		expect(identity.isSessionLaunchShared).toBe(false);
+	});
+
+	it("ignores stale task worktree metadata for explicitly shared tasks", () => {
+		const identity = resolveTaskIdentity({
+			projectRootPath: "/repo",
+			card: {
+				branch: null,
+				useWorktree: false,
+				workingDirectory: null,
+			},
+			repositoryInfo: {
+				taskId: "task-1",
+				path: "/repo/.quarterdeck/worktrees/task-1",
+				exists: false,
+				baseRef: "main",
+				branch: null,
+				isDetached: false,
+				headCommit: null,
+			},
+		});
+
+		expect(identity.assignedPath).toBe("/repo");
+		expect(identity.isAssignedShared).toBe(true);
+		expect(identity.displayBranchLabel).toBeNull();
+	});
+
+	it("uses shared-checkout metadata when it points at the project root", () => {
+		const identity = resolveTaskIdentity({
+			projectRootPath: "/repo",
+			card: {
+				branch: null,
+				useWorktree: false,
+				workingDirectory: null,
+			},
+			repositoryInfo: {
+				taskId: "task-1",
+				path: "/repo",
+				exists: true,
+				baseRef: "main",
+				branch: "main",
+				isDetached: false,
+				headCommit: "abcdef1234567890",
+			},
+		});
+
+		expect(identity.assignedPath).toBe("/repo");
+		expect(identity.assignedBranch).toBe("main");
+		expect(identity.displayBranchLabel).toBe("main");
+		expect(identity.isAssignedShared).toBe(true);
 	});
 
 	it("keeps assigned shared state separate from live execution drift", () => {

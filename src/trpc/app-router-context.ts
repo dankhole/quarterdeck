@@ -66,6 +66,7 @@ import type {
 	RuntimeStashPopApplyResponse,
 	RuntimeStashPushResponse,
 	RuntimeStashShowResponse,
+	RuntimeTaskRepositoryInfoResponse,
 	RuntimeTaskSessionInputRequest,
 	RuntimeTaskSessionInputResponse,
 	RuntimeTaskSessionStartRequest,
@@ -73,7 +74,6 @@ import type {
 	RuntimeTaskSessionStopRequest,
 	RuntimeTaskSessionStopResponse,
 	RuntimeTaskWorktreeInfoRequest,
-	RuntimeTaskWorktreeInfoResponse,
 	RuntimeWorkdirChangesRequest,
 	RuntimeWorkdirChangesResponse,
 	RuntimeWorkdirFileSearchRequest,
@@ -212,7 +212,7 @@ export interface RuntimeTrpcContext {
 		loadTaskContext: (
 			scope: RuntimeTrpcProjectScope,
 			input: RuntimeTaskWorktreeInfoRequest,
-		) => Promise<RuntimeTaskWorktreeInfoResponse>;
+		) => Promise<RuntimeTaskRepositoryInfoResponse>;
 		searchFiles: (
 			scope: RuntimeTrpcProjectScope,
 			input: RuntimeWorkdirFileSearchRequest,

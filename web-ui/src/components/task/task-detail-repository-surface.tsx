@@ -7,7 +7,7 @@ import type { MainViewId } from "@/resize/use-card-detail-layout";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { getProjectPath } from "@/stores/project-metadata-store";
 import type { CardSelection } from "@/types";
-import { resolveTaskIdentity } from "@/utils/task-identity";
+import { resolveTaskGitState } from "@/utils/task-git-state";
 
 function TaskBranchStatus({
 	branchLabel,
@@ -71,13 +71,16 @@ export function TaskDetailRepositorySurface({
 	const checkoutBrowsingBranch = browsingBranchRef
 		? () => repositoryState.taskBranchActions.handleCheckoutBranch(browsingBranchRef)
 		: undefined;
-	const taskIdentity = resolveTaskIdentity({
-		projectRootPath: getProjectPath(),
+	const projectPath = getProjectPath();
+	const taskGitState = resolveTaskGitState({
+		projectRootPath: projectPath,
 		card: selection.card,
-		worktreeInfo: repositoryState.taskWorktreeInfo,
+		repositoryInfo: repositoryState.taskRepositoryInfo,
 		worktreeSnapshot: repositoryState.taskWorktreeSnapshot,
+		homeGitSummary: repositoryState.homeGitSummary,
 		sessionSummary,
 	});
+	const taskIdentity = taskGitState.identity;
 
 	return (
 		<div
@@ -94,6 +97,7 @@ export function TaskDetailRepositorySurface({
 					currentProjectId={currentProjectId}
 					selectedCard={selection}
 					sessionSummary={sessionSummary}
+					projectPath={projectPath}
 					homeGitSummary={repositoryState.homeGitSummary}
 					board={repositoryState.board}
 					pendingCompareNavigation={repositoryState.pendingCompareNavigation}
@@ -102,15 +106,15 @@ export function TaskDetailRepositorySurface({
 					onFileNavigationConsumed={repositoryState.onFileNavigationConsumed}
 					navigateToFile={repositoryState.navigateToFile}
 					branchStatusSlot={
-						repositoryState.taskWorktreeInfo || repositoryState.taskWorktreeSnapshot ? (
+						taskGitState.hasRepositoryMetadata ? (
 							<TaskBranchStatus
-								branchLabel={taskIdentity.displayBranchLabel ?? "initializing"}
-								changedFiles={repositoryState.taskWorktreeSnapshot?.changedFiles ?? 0}
-								additions={repositoryState.taskWorktreeSnapshot?.additions ?? 0}
-								deletions={repositoryState.taskWorktreeSnapshot?.deletions ?? 0}
+								branchLabel={taskGitState.branchLabel ?? "initializing"}
+								changedFiles={taskGitState.changedFiles}
+								additions={taskGitState.additions}
+								deletions={taskGitState.deletions}
 								isGitHistoryOpen={repositoryState.isGitHistoryOpen}
 								onToggleGitHistory={repositoryState.onToggleGitHistory}
-								isDetached={taskIdentity.assignedIsDetached}
+								isDetached={taskGitState.isDetached}
 								baseRef={selection.card.baseRef}
 							/>
 						) : undefined
@@ -130,11 +134,11 @@ export function TaskDetailRepositorySurface({
 							scopeMode={repositoryState.taskScopeMode}
 							homeGitSummary={repositoryState.homeGitSummary}
 							taskTitle={selection.card.title}
-							taskBranch={taskIdentity.assignedBranch}
+							taskBranch={taskGitState.branch}
 							taskBaseRef={selection.card.baseRef}
-							behindBaseCount={repositoryState.taskWorktreeSnapshot?.behindBaseCount ?? null}
-							isDetachedHead={taskIdentity.assignedIsDetached}
-							taskIsDetached={taskIdentity.assignedIsDetached}
+							behindBaseCount={taskGitState.behindBaseCount}
+							isDetachedHead={taskGitState.isDetached}
+							taskIsDetached={taskGitState.isDetached}
 							onSwitchToHome={repositoryProps.onDeselectTask}
 							onReturnToContextual={repositoryState.taskReturnToContextual}
 							branchPillSlot={

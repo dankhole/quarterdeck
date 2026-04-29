@@ -18,6 +18,7 @@ import {
 	EMPTY_GIT_SUMMARY,
 	errorMessage,
 	hasActiveSharedCheckoutTask,
+	isProjectCheckoutCwd,
 	normalizeOptionalTaskScopeInput,
 	type ProjectApiContext,
 	resolveWorkingDir,
@@ -44,17 +45,26 @@ function invalidateProjectGitRepositoryInfo(projectScope: Pick<RuntimeTrpcProjec
 	invalidateGitRepositoryInfoCache(projectScope.projectPath);
 }
 
+function createTaskGitMetadataRefreshEffects(projectScope: RuntimeTrpcProjectScope, taskId: string, cwd: string) {
+	return createGitMetadataRefreshEffects(
+		projectScope,
+		{ taskId },
+		{ includeHome: isProjectCheckoutCwd(projectScope.projectPath, cwd) },
+	);
+}
+
 export function createGitOps(ctx: ProjectApiContext): GitOps {
 	return {
 		runGitSyncAction: async (projectScope, input) => {
 			try {
-				const cwd = await resolveWorkingDir(
-					projectScope.projectPath,
-					normalizeOptionalTaskScopeInput(input.taskScope ?? null),
-				);
+				const taskScope = normalizeOptionalTaskScopeInput(input.taskScope ?? null);
+				const cwd = await resolveWorkingDir(projectScope.projectPath, taskScope);
 				const response = await runGitSyncAction({ cwd, action: input.action, branch: input.branch ?? null });
 				if (response.ok) {
 					invalidateProjectGitRepositoryInfo(projectScope);
+					if (taskScope) {
+						ctx.applyEffects(createTaskGitMetadataRefreshEffects(projectScope, taskScope.taskId, cwd));
+					}
 				}
 				return response;
 			} catch (error) {
@@ -81,11 +91,7 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					const response = await runGitCheckoutAction({ cwd: taskCwd, branch: body.branch });
 					if (response.ok) {
 						invalidateProjectGitRepositoryInfo(projectScope);
-						ctx.applyEffects(
-							createGitMetadataRefreshEffects(projectScope, {
-								taskId: input.taskId,
-							}),
-						);
+						ctx.applyEffects(createTaskGitMetadataRefreshEffects(projectScope, input.taskId, taskCwd));
 					}
 					return response;
 				}
@@ -126,11 +132,7 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					});
 					const response = await runGitMergeAction({ cwd: taskCwd, branch: branchToMerge });
 					if (response.ok || response.conflictState) {
-						ctx.applyEffects(
-							createGitMetadataRefreshEffects(projectScope, {
-								taskId: input.taskId,
-							}),
-						);
+						ctx.applyEffects(createTaskGitMetadataRefreshEffects(projectScope, input.taskId, taskCwd));
 					}
 					return response;
 				}
@@ -173,11 +175,7 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					});
 					const response = await runGitRebaseAction({ cwd: taskCwd, onto: ontoRef });
 					if (response.ok || response.conflictState) {
-						ctx.applyEffects(
-							createGitMetadataRefreshEffects(projectScope, {
-								taskId: input.taskId,
-							}),
-						);
+						ctx.applyEffects(createTaskGitMetadataRefreshEffects(projectScope, input.taskId, taskCwd));
 					}
 					return response;
 				}
@@ -228,11 +226,7 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					});
 					const response = await resetToRef({ cwd: taskCwd, ref: targetRef });
 					if (response.ok) {
-						ctx.applyEffects(
-							createGitMetadataRefreshEffects(projectScope, {
-								taskId: input.taskId,
-							}),
-						);
+						ctx.applyEffects(createTaskGitMetadataRefreshEffects(projectScope, input.taskId, taskCwd));
 					}
 					return response;
 				}

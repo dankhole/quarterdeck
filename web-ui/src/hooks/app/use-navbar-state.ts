@@ -1,12 +1,12 @@
 import { useMemo } from "react";
 import { getTaskAgentNavbarHint } from "@/runtime/native-agent";
-import type { RuntimeConfigResponse, RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
+import type { RuntimeConfigResponse, RuntimeTaskRepositoryInfoResponse } from "@/runtime/types";
 import type { CardSelection, ReviewTaskWorktreeSnapshot } from "@/types";
 import { resolveTaskIdentity } from "@/utils/task-identity";
 
 interface UseNavbarStateInput {
 	selectedCard: CardSelection | null;
-	selectedTaskWorktreeInfo: RuntimeTaskWorktreeInfoResponse | null;
+	selectedTaskRepositoryInfo: RuntimeTaskRepositoryInfoResponse | null;
 	selectedTaskWorktreeSnapshot: ReviewTaskWorktreeSnapshot | null;
 	projectPath: string | null;
 	shouldUseNavigationPath: boolean;
@@ -33,7 +33,7 @@ interface UseNavbarStateResult {
  */
 export function useNavbarState({
 	selectedCard,
-	selectedTaskWorktreeInfo,
+	selectedTaskRepositoryInfo,
 	selectedTaskWorktreeSnapshot,
 	projectPath,
 	shouldUseNavigationPath,
@@ -56,11 +56,11 @@ export function useNavbarState({
 				? resolveTaskIdentity({
 						projectRootPath: projectPath,
 						card: selectedCard.card,
-						worktreeInfo: selectedTaskWorktreeInfo,
+						repositoryInfo: selectedTaskRepositoryInfo,
 						worktreeSnapshot: selectedTaskWorktreeSnapshot,
 					})
 				: null,
-		[selectedCard, projectPath, selectedTaskWorktreeInfo, selectedTaskWorktreeSnapshot],
+		[selectedCard, projectPath, selectedTaskRepositoryInfo, selectedTaskWorktreeSnapshot],
 	);
 
 	const activeProjectPath = selectedCard
@@ -73,14 +73,17 @@ export function useNavbarState({
 		if (!selectedCard) {
 			return undefined;
 		}
-		if (!selectedTaskWorktreeInfo) {
+		if (selectedCard.card.useWorktree === false) {
 			return undefined;
 		}
-		if (!selectedTaskWorktreeInfo.exists) {
+		if (!selectedTaskRepositoryInfo) {
+			return undefined;
+		}
+		if (!selectedTaskRepositoryInfo.exists) {
 			return selectedCard.column.id === "trash" ? "Task worktree deleted" : "Task worktree not created yet";
 		}
 		return undefined;
-	}, [selectedCard, selectedTaskWorktreeInfo]);
+	}, [selectedCard, selectedTaskRepositoryInfo]);
 
 	const navbarProjectPath = hasNoProjects ? undefined : activeProjectPath;
 	const navbarProjectHint = hasNoProjects ? undefined : activeProjectHint;

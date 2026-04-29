@@ -14,16 +14,17 @@ import { useResizeDrag } from "@/resize/use-resize-drag";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import {
 	useHomeGitSummaryValue,
-	useTaskWorktreeInfoValue,
+	useTaskRepositoryInfoValue,
 	useTaskWorktreeSnapshotValue,
 } from "@/stores/project-metadata-store";
 import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import type { CardSelection } from "@/types";
-import { resolveTaskIdentity } from "@/utils/task-identity";
+import { resolveTaskGitState } from "@/utils/task-git-state";
 
 interface UseCardDetailViewInput {
 	selection: CardSelection;
 	currentProjectId: string | null;
+	projectPath: string | null;
 	sidePanelRatio: number;
 	setSidePanelRatio: (ratio: number) => void;
 	sidebar: "projects" | "task_column" | "commit" | null;
@@ -45,7 +46,7 @@ export interface CardDetailViewSidePanelState {
 
 export interface CardDetailViewRepositoryState {
 	board: ReturnType<typeof useBoardContext>["board"];
-	taskWorktreeInfo: ReturnType<typeof useTaskWorktreeInfoValue>;
+	taskRepositoryInfo: ReturnType<typeof useTaskRepositoryInfoValue>;
 	taskWorktreeSnapshot: ReturnType<typeof useTaskWorktreeSnapshotValue>;
 	homeGitSummary: ReturnType<typeof useHomeGitSummaryValue>;
 	taskScopeMode: ReturnType<typeof useScopeContext>["scopeMode"];
@@ -83,6 +84,7 @@ export interface UseCardDetailViewResult {
 export function useCardDetailView({
 	selection,
 	currentProjectId,
+	projectPath,
 	sidePanelRatio,
 	setSidePanelRatio,
 	sidebar,
@@ -119,17 +121,19 @@ export function useCardDetailView({
 		[setSidePanelRatio, sidePanelRatio, startSidePanelResize],
 	);
 
-	const taskWorktreeInfo = useTaskWorktreeInfoValue(selection.card.id, selection.card.baseRef);
+	const taskRepositoryInfo = useTaskRepositoryInfoValue(selection.card.id, selection.card.baseRef);
 	const taskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selection.card.id);
 	const homeGitSummary = useHomeGitSummaryValue();
-	const taskIdentity = useMemo(
+	const taskGitState = useMemo(
 		() =>
-			resolveTaskIdentity({
+			resolveTaskGitState({
+				projectRootPath: projectPath,
 				card: selection.card,
-				worktreeInfo: taskWorktreeInfo,
+				repositoryInfo: taskRepositoryInfo,
 				worktreeSnapshot: taskWorktreeSnapshot,
+				homeGitSummary,
 			}),
-		[selection.card, taskWorktreeInfo, taskWorktreeSnapshot],
+		[projectPath, selection.card, taskRepositoryInfo, taskWorktreeSnapshot, homeGitSummary],
 	);
 
 	const {
@@ -148,8 +152,8 @@ export function useCardDetailView({
 		board,
 		selectBranchView: taskSelectBranchView,
 		homeGitSummary,
-		taskBranch: taskIdentity.assignedBranch,
-		taskChangedFiles: taskWorktreeSnapshot?.changedFiles ?? 0,
+		taskBranch: taskGitState.branch,
+		taskChangedFiles: taskGitState.changedFiles,
 		skipTaskCheckoutConfirmation,
 		skipHomeCheckoutConfirmation,
 		taskId: selection.card.id,
@@ -171,9 +175,9 @@ export function useCardDetailView({
 		() =>
 			resolveCardDetailBranchPillLabel({
 				resolvedScope: taskResolvedScope,
-				displayBranchLabel: taskIdentity.displayBranchLabel,
+				displayBranchLabel: taskGitState.branchLabel,
 			}),
-		[taskIdentity.displayBranchLabel, taskResolvedScope],
+		[taskGitState.branchLabel, taskResolvedScope],
 	);
 
 	const taskId = selection.card.id;
@@ -231,7 +235,7 @@ export function useCardDetailView({
 		},
 		repository: {
 			board,
-			taskWorktreeInfo,
+			taskRepositoryInfo,
 			taskWorktreeSnapshot,
 			homeGitSummary,
 			taskScopeMode,

@@ -23,6 +23,7 @@ export interface TrackedTaskWorktree {
 	taskId: string;
 	baseRef: string;
 	workingDirectory: string | null;
+	useWorktree?: boolean;
 }
 
 export interface CachedHomeGitMetadata {
@@ -78,6 +79,7 @@ export function collectTrackedTasks(board: RuntimeBoardData): TrackedTaskWorktre
 				taskId: card.id,
 				baseRef: card.baseRef,
 				workingDirectory: card.workingDirectory ?? null,
+				useWorktree: card.useWorktree,
 			});
 		}
 	}
@@ -253,6 +255,9 @@ async function resolveTaskPath(
 	projectPath: string,
 	task: TrackedTaskWorktree,
 ): Promise<{ path: string; exists: boolean; baseRef: string }> {
+	if (task.useWorktree === false) {
+		return { path: projectPath, exists: await pathExists(projectPath), baseRef: task.baseRef };
+	}
 	// Use the card's workingDirectory if available (set at session start).
 	if (task.workingDirectory) {
 		const exists = await pathExists(task.workingDirectory);

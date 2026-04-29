@@ -78,6 +78,7 @@ export {
 	deleteTaskWorktree,
 	ensureTaskWorktreeIfDoesntExist,
 	findTaskPatch,
+	getTaskRepositoryInfo,
 	getTaskWorkingDirectory,
 	getTaskWorktreeInfo,
 	getTaskWorktreePathInfo,

@@ -54,8 +54,8 @@ import {
 	runtimeStashPushRequestSchema,
 	runtimeStashPushResponseSchema,
 	runtimeStashShowResponseSchema,
+	runtimeTaskRepositoryInfoResponseSchema,
 	runtimeTaskWorktreeInfoRequestSchema,
-	runtimeTaskWorktreeInfoResponseSchema,
 	runtimeWorkdirChangesRequestSchema,
 	runtimeWorkdirChangesResponseSchema,
 	runtimeWorkdirFileSearchRequestSchema,
@@ -212,7 +212,7 @@ export const projectRouter = t.router({
 		}),
 	getTaskContext: projectProcedure
 		.input(runtimeTaskWorktreeInfoRequestSchema)
-		.output(runtimeTaskWorktreeInfoResponseSchema)
+		.output(runtimeTaskRepositoryInfoResponseSchema)
 		.query(async ({ ctx, input }) => {
 			return await ctx.projectApi.loadTaskContext(ctx.projectScope, input);
 		}),

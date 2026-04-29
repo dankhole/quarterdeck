@@ -50,6 +50,7 @@ vi.mock("@/runtime/use-runtime-project-changes", () => ({
 
 vi.mock("@/stores/project-metadata-store", () => ({
 	useTaskWorktreeStateVersionValue: () => 0,
+	useTaskRepositoryInfoValue: () => null,
 	useTaskWorktreeInfoValue: () => null,
 	useTaskWorktreeSnapshotValue: () => null,
 	useHomeGitSummaryValue: () => null,
@@ -103,6 +104,7 @@ function createSelection(): CardSelection {
 
 /** Default new required props for CardDetailView */
 const newRequiredProps = {
+	projectPath: "/repo",
 	sessionSummary: null,
 	layoutProps: {
 		mainView: "terminal" as const,

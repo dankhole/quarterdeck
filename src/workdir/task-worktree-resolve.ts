@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 
-import type { RuntimeBoardData, RuntimeTaskWorktreeInfoResponse } from "../core";
+import type { RuntimeBoardData, RuntimeTaskRepositoryInfoResponse } from "../core";
 import { findCardInBoard } from "../core";
 import { loadProjectContext, loadProjectState } from "../state";
 import { readGitHeadInfo } from "./git-utils";
@@ -57,31 +57,22 @@ export async function resolveTaskWorkingDirectory(options: {
 	branch?: string | null;
 }): Promise<string> {
 	const state = await loadProjectState(options.projectPath);
-	const persisted = getTaskWorkingDirectory(state.board, options.taskId);
+	const card = findCardInBoard(state.board, options.taskId);
+	if (card?.useWorktree === false) return resolve(options.projectPath);
+
+	const persisted = card?.workingDirectory ?? null;
 	if (persisted && (await pathExists(persisted))) return resolve(persisted);
 
 	// Fallback for tasks started before workingDirectory was persisted.
-	try {
-		return resolve(
-			await resolveTaskCwd({
-				cwd: options.projectPath,
-				taskId: options.taskId,
-				baseRef: options.baseRef,
-				ensure: options.ensure ?? false,
-				branch: options.branch,
-			}),
-		);
-	} catch (error) {
-		// Legacy non-worktree tasks (useWorktree === false) have no persisted
-		// workingDirectory and no worktree on disk. They use the project path.
-		if (isMissingTaskWorktreeError(error)) {
-			const card = findCardInBoard(state.board, options.taskId);
-			if (card && card.useWorktree === false) {
-				return resolve(options.projectPath);
-			}
-		}
-		throw error;
-	}
+	return resolve(
+		await resolveTaskCwd({
+			cwd: options.projectPath,
+			taskId: options.taskId,
+			baseRef: options.baseRef,
+			ensure: options.ensure ?? false,
+			branch: options.branch,
+		}),
+	);
 }
 
 export function getTaskWorkingDirectory(board: RuntimeBoardData, taskId: string): string | null {
@@ -93,7 +84,7 @@ export async function getTaskWorktreePathInfo(options: {
 	cwd: string;
 	taskId: string;
 	baseRef: string;
-}): Promise<Pick<RuntimeTaskWorktreeInfoResponse, "taskId" | "path" | "exists" | "baseRef">> {
+}): Promise<Pick<RuntimeTaskRepositoryInfoResponse, "taskId" | "path" | "exists" | "baseRef">> {
 	const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 	const normalizedBaseRef = options.baseRef.trim();
 	const repoPath = options.cwd.trim();
@@ -115,12 +106,34 @@ export async function getTaskWorktreePathInfo(options: {
 	};
 }
 
-export async function getTaskWorktreeInfo(options: {
+export async function getTaskRepositoryInfo(options: {
 	cwd: string;
 	taskId: string;
 	baseRef: string;
-}): Promise<RuntimeTaskWorktreeInfoResponse> {
+}): Promise<RuntimeTaskRepositoryInfoResponse> {
 	const projectPathInfo = await getTaskWorktreePathInfo(options);
+	try {
+		const assignedPath = await resolveTaskWorkingDirectory({
+			projectPath: options.cwd,
+			taskId: options.taskId,
+			baseRef: projectPathInfo.baseRef,
+		});
+		if (await pathExists(assignedPath)) {
+			const headInfo = await readGitHeadInfo(assignedPath);
+			return {
+				taskId: projectPathInfo.taskId,
+				path: assignedPath,
+				exists: true,
+				baseRef: projectPathInfo.baseRef,
+				branch: headInfo.branch,
+				isDetached: headInfo.isDetached,
+				headCommit: headInfo.headCommit,
+			};
+		}
+	} catch {
+		// Missing isolated task worktrees still use the explicit not-created shape below.
+	}
+
 	if (!projectPathInfo.exists) {
 		return {
 			taskId: projectPathInfo.taskId,
@@ -144,3 +157,6 @@ export async function getTaskWorktreeInfo(options: {
 		headCommit: headInfo.headCommit,
 	};
 }
+
+/** @deprecated Use getTaskRepositoryInfo. */
+export const getTaskWorktreeInfo = getTaskRepositoryInfo;

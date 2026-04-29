@@ -172,7 +172,7 @@ export const runtimeWorktreeDeleteResponseSchema = z.object({
 });
 export type RuntimeWorktreeDeleteResponse = z.infer<typeof runtimeWorktreeDeleteResponseSchema>;
 
-export const runtimeTaskWorktreeInfoResponseSchema = z.object({
+export const runtimeTaskRepositoryInfoResponseSchema = z.object({
 	taskId: z.string(),
 	path: z.string(),
 	exists: z.boolean(),
@@ -181,4 +181,9 @@ export const runtimeTaskWorktreeInfoResponseSchema = z.object({
 	isDetached: z.boolean(),
 	headCommit: z.string().nullable(),
 });
-export type RuntimeTaskWorktreeInfoResponse = z.infer<typeof runtimeTaskWorktreeInfoResponseSchema>;
+export type RuntimeTaskRepositoryInfoResponse = z.infer<typeof runtimeTaskRepositoryInfoResponseSchema>;
+
+/** @deprecated Use runtimeTaskRepositoryInfoResponseSchema. */
+export const runtimeTaskWorktreeInfoResponseSchema = runtimeTaskRepositoryInfoResponseSchema;
+/** @deprecated Use RuntimeTaskRepositoryInfoResponse. */
+export type RuntimeTaskWorktreeInfoResponse = RuntimeTaskRepositoryInfoResponse;

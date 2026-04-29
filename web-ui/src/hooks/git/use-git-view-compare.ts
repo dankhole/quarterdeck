@@ -5,9 +5,9 @@ import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRef, RuntimeGitRefsResponse, RuntimeGitSyncSummary } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
-import { useTaskWorktreeInfoValue } from "@/stores/project-metadata-store";
+import { useTaskRepositoryInfoValue, useTaskWorktreeSnapshotValue } from "@/stores/project-metadata-store";
 import type { BoardData, CardSelection } from "@/types";
-import { resolveTaskIdentity } from "@/utils/task-identity";
+import { resolveTaskGitState } from "@/utils/task-git-state";
 
 export interface GitViewCompareNavigation {
 	sourceRef?: string;
@@ -17,6 +17,7 @@ export interface GitViewCompareNavigation {
 export interface UseGitViewCompareOptions {
 	selectedCard: CardSelection | null;
 	currentProjectId: string | null;
+	projectPath?: string | null;
 	homeGitSummary: RuntimeGitSyncSummary | null;
 	board: BoardData;
 	isActive: boolean;
@@ -42,27 +43,50 @@ export interface UseGitViewCompareResult {
 	setThreeDotDiff: (value: boolean) => void;
 }
 
+export function resolveDefaultCompareSourceRef(input: {
+	selectedCard: CardSelection | null;
+	projectPath?: string | null;
+	homeGitSummary: RuntimeGitSyncSummary | null;
+	repositoryInfo: ReturnType<typeof useTaskRepositoryInfoValue>;
+	worktreeSnapshot: ReturnType<typeof useTaskWorktreeSnapshotValue>;
+}): string | null {
+	if (!input.selectedCard) {
+		return input.homeGitSummary?.currentBranch ?? null;
+	}
+	return resolveTaskGitState({
+		projectRootPath: input.projectPath,
+		card: input.selectedCard.card,
+		repositoryInfo: input.repositoryInfo,
+		worktreeSnapshot: input.worktreeSnapshot,
+		homeGitSummary: input.homeGitSummary,
+	}).branchLabel;
+}
+
 export function useGitViewCompare({
 	selectedCard,
 	currentProjectId,
+	projectPath,
 	homeGitSummary,
 	board,
 	isActive,
 	pendingNavigation,
 	onNavigationConsumed,
 }: UseGitViewCompareOptions): UseGitViewCompareResult {
-	const taskWorktreeInfo = useTaskWorktreeInfoValue(selectedCard?.card.id ?? null, selectedCard?.card.baseRef);
+	const taskRepositoryInfo = useTaskRepositoryInfoValue(selectedCard?.card.id ?? null, selectedCard?.card.baseRef);
+	const taskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selectedCard?.card.id ?? null);
 
 	// Default refs based on context
-	const defaultSourceRef = useMemo(() => {
-		if (selectedCard) {
-			return resolveTaskIdentity({
-				card: selectedCard.card,
-				worktreeInfo: taskWorktreeInfo,
-			}).displayBranchLabel;
-		}
-		return homeGitSummary?.currentBranch ?? null;
-	}, [selectedCard, taskWorktreeInfo, homeGitSummary]);
+	const defaultSourceRef = useMemo(
+		() =>
+			resolveDefaultCompareSourceRef({
+				selectedCard,
+				projectPath,
+				homeGitSummary,
+				repositoryInfo: taskRepositoryInfo,
+				worktreeSnapshot: taskWorktreeSnapshot,
+			}),
+		[selectedCard, projectPath, homeGitSummary, taskRepositoryInfo, taskWorktreeSnapshot],
+	);
 
 	const defaultTargetRef = useMemo(() => {
 		if (selectedCard) {

@@ -127,7 +127,7 @@ function createFileBrowserData(): UseFileBrowserDataResult {
 function createRepositoryState(): CardDetailViewRepositoryState {
 	return {
 		board: { columns: [], dependencies: [] },
-		taskWorktreeInfo: null,
+		taskRepositoryInfo: null,
 		taskWorktreeSnapshot: null,
 		homeGitSummary: null,
 		taskScopeMode: "contextual",
@@ -264,7 +264,7 @@ describe("TaskDetailRepositorySurface", () => {
 	it("uses assigned metadata identity for detached task file roots", async () => {
 		const selection = createSelection();
 		const repositoryState = createRepositoryState();
-		repositoryState.taskWorktreeInfo = {
+		repositoryState.taskRepositoryInfo = {
 			taskId: selection.card.id,
 			path: "/tmp/assigned-worktree",
 			exists: true,
@@ -298,7 +298,7 @@ describe("TaskDetailRepositorySurface", () => {
 	it("uses assigned metadata identity for detached git branch labels", async () => {
 		const selection = createSelection();
 		const repositoryState = createRepositoryState();
-		repositoryState.taskWorktreeInfo = {
+		repositoryState.taskRepositoryInfo = {
 			taskId: selection.card.id,
 			path: "/tmp/assigned-worktree",
 			exists: true,

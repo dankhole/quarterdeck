@@ -28,6 +28,7 @@ vi.mock("../../../src/title/title-generator.js", () => ({
 vi.mock("../../../src/workdir/task-worktree.js", () => ({
 	deleteTaskWorktree: vi.fn(),
 	ensureTaskWorktreeIfDoesntExist: vi.fn(),
+	getTaskRepositoryInfo: vi.fn(),
 	getTaskWorktreeInfo: vi.fn(),
 }));
 

@@ -87,6 +87,7 @@ vi.mock("../../../src/workdir/git-sync.js", () => ({
 vi.mock("../../../src/workdir/task-worktree.js", () => ({
 	deleteTaskWorktree: worktreeMocks.deleteTaskWorktree,
 	ensureTaskWorktreeIfDoesntExist: vi.fn(),
+	getTaskRepositoryInfo: vi.fn(),
 	getTaskWorktreeInfo: vi.fn(),
 	resolveTaskCwd: worktreeMocks.resolveTaskCwd,
 	resolveTaskWorkingDirectory: worktreeMocks.resolveTaskWorkingDirectory,

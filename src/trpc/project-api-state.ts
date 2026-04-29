@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { parseWorktreeDeleteRequest, parseWorktreeEnsureRequest, pruneOrphanSessionsForPersist } from "../core";
 import { ProjectStateConflictError, saveProjectState } from "../state";
 import { generateTaskTitle } from "../title";
-import { deleteTaskWorktree, ensureTaskWorktreeIfDoesntExist, getTaskWorktreeInfo } from "../workdir";
+import { deleteTaskWorktree, ensureTaskWorktreeIfDoesntExist, getTaskRepositoryInfo } from "../workdir";
 import type { RuntimeTrpcContext } from "./app-router-context";
 import { normalizeRequiredTaskScopeInput, type ProjectApiContext } from "./project-api-shared";
 import {
@@ -57,7 +57,7 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 
 		loadTaskContext: async (projectScope, input) => {
 			const normalizedInput = normalizeRequiredTaskScopeInput(input);
-			return await getTaskWorktreeInfo({
+			return await getTaskRepositoryInfo({
 				cwd: projectScope.projectPath,
 				taskId: normalizedInput.taskId,
 				baseRef: normalizedInput.baseRef,

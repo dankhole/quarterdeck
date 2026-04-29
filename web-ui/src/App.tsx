@@ -47,7 +47,7 @@ import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { CardActionsProvider } from "@/state/card-actions-context";
 import {
 	useHomeGitSummaryValue,
-	useTaskWorktreeInfoValue,
+	useTaskRepositoryInfoValue,
 	useTaskWorktreeSnapshotValue,
 } from "@/stores/project-metadata-store";
 import { initPool } from "@/terminal/terminal-pool";
@@ -196,7 +196,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 
 	// --- Store subscriptions + derived UI state ---
 
-	const selectedTaskWorktreeInfo = useTaskWorktreeInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
+	const selectedTaskRepositoryInfo = useTaskRepositoryInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
 	const selectedTaskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selectedCard?.card.id);
 	const homeGitSummary = useHomeGitSummaryValue();
 
@@ -329,7 +329,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 	const { navbarProjectPath, navbarProjectHint, navbarRuntimeHint, shouldHideProjectDependentTopBarActions } =
 		useNavbarState({
 			selectedCard,
-			selectedTaskWorktreeInfo: selectedTaskWorktreeInfo,
+			selectedTaskRepositoryInfo,
 			selectedTaskWorktreeSnapshot: selectedTaskWorktreeSnapshot,
 			projectPath: project.projectPath,
 			shouldUseNavigationPath: shouldUseNavigationPath,
@@ -504,6 +504,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 						<CardDetailView
 							selection={selectedCard}
 							currentProjectId={project.currentProjectId}
+							projectPath={project.projectPath}
 							sessionSummary={detailSession}
 							layoutProps={{
 								mainView: navigation.mainView,

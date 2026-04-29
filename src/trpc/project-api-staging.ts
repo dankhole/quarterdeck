@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import type {
 	RuntimeStashDropResponse,
 	RuntimeStashListResponse,
@@ -22,6 +21,7 @@ import type { RuntimeTrpcContext } from "./app-router-context";
 import {
 	createGitOutputErrorResponse,
 	errorMessage,
+	isProjectCheckoutCwd,
 	normalizeOptionalTaskScopeInput,
 	type ProjectApiContext,
 	resolveWorkingDir,
@@ -41,19 +41,29 @@ type StagingOps = Pick<
 	| "stashShow"
 >;
 
+function createGitMetadataRefreshEffectsForCwd(
+	projectScope: { projectId: string; projectPath: string },
+	taskScope: { taskId: string; baseRef: string } | null,
+	cwd: string,
+) {
+	return createGitMetadataRefreshEffects(projectScope, taskScope, {
+		includeHome: taskScope !== null && isProjectCheckoutCwd(projectScope.projectPath, cwd),
+	});
+}
+
 export function createStagingOps(ctx: ProjectApiContext): StagingOps {
 	return {
 		discardGitChanges: async (projectScope, input) => {
 			try {
 				const taskScope = normalizeOptionalTaskScopeInput(input);
 				const cwd = await resolveWorkingDir(projectScope.projectPath, taskScope);
-				if (taskScope && resolve(cwd) === resolve(projectScope.projectPath)) {
+				if (taskScope && isProjectCheckoutCwd(projectScope.projectPath, cwd)) {
 					return createGitOutputErrorResponse(
 						new Error("Cannot discard changes in the shared checkout. Isolate the task to a worktree first."),
 					);
 				}
 				const response = await discardGitChanges({ cwd });
-				if (response.ok) ctx.applyEffects(createGitMetadataRefreshEffects(projectScope, taskScope));
+				if (response.ok) ctx.applyEffects(createGitMetadataRefreshEffectsForCwd(projectScope, taskScope, cwd));
 				return response;
 			} catch (error) {
 				return createGitOutputErrorResponse(error);
@@ -64,7 +74,7 @@ export function createStagingOps(ctx: ProjectApiContext): StagingOps {
 			try {
 				const taskScope = normalizeOptionalTaskScopeInput(input.taskScope);
 				const commitCwd = await resolveWorkingDir(projectScope.projectPath, taskScope);
-				if (taskScope && resolve(commitCwd) === resolve(projectScope.projectPath)) {
+				if (taskScope && isProjectCheckoutCwd(projectScope.projectPath, commitCwd)) {
 					return createGitOutputErrorResponse(
 						new Error("Cannot commit in the shared checkout. Isolate the task to a worktree first."),
 					);
@@ -77,7 +87,7 @@ export function createStagingOps(ctx: ProjectApiContext): StagingOps {
 				if (response.ok) {
 					if (input.pushAfterCommit) {
 						const pushResult = await runGitSyncAction({ cwd: commitCwd, action: "push" });
-						ctx.applyEffects(createGitMetadataRefreshEffects(projectScope, taskScope));
+						ctx.applyEffects(createGitMetadataRefreshEffectsForCwd(projectScope, taskScope, commitCwd));
 						return {
 							...response,
 							pushOk: pushResult.ok,
@@ -85,7 +95,7 @@ export function createStagingOps(ctx: ProjectApiContext): StagingOps {
 							summary: pushResult.summary,
 						};
 					}
-					ctx.applyEffects(createGitMetadataRefreshEffects(projectScope, taskScope));
+					ctx.applyEffects(createGitMetadataRefreshEffectsForCwd(projectScope, taskScope, commitCwd));
 				}
 				return response;
 			} catch (error) {
@@ -97,7 +107,7 @@ export function createStagingOps(ctx: ProjectApiContext): StagingOps {
 			try {
 				const taskScope = normalizeOptionalTaskScopeInput(input.taskScope);
 				const cwd = await resolveWorkingDir(projectScope.projectPath, taskScope);
-				if (taskScope && resolve(cwd) === resolve(projectScope.projectPath)) {
+				if (taskScope && isProjectCheckoutCwd(projectScope.projectPath, cwd)) {
 					return createGitOutputErrorResponse(
 						new Error("Cannot discard changes in the shared checkout. Isolate the task to a worktree first."),
 					);
@@ -107,7 +117,7 @@ export function createStagingOps(ctx: ProjectApiContext): StagingOps {
 					path: input.path,
 					fileStatus: input.fileStatus,
 				});
-				if (response.ok) ctx.applyEffects(createGitMetadataRefreshEffects(projectScope, taskScope));
+				if (response.ok) ctx.applyEffects(createGitMetadataRefreshEffectsForCwd(projectScope, taskScope, cwd));
 				return response;
 			} catch (error) {
 				return createGitOutputErrorResponse(error);
@@ -119,7 +129,7 @@ export function createStagingOps(ctx: ProjectApiContext): StagingOps {
 				const taskScope = normalizeOptionalTaskScopeInput(input.taskScope);
 				const cwd = await resolveWorkingDir(projectScope.projectPath, taskScope);
 				const response = await stashPush({ cwd, paths: input.paths, message: input.message });
-				if (response.ok) ctx.applyEffects(createGitMetadataRefreshEffects(projectScope, taskScope));
+				if (response.ok) ctx.applyEffects(createGitMetadataRefreshEffectsForCwd(projectScope, taskScope, cwd));
 				return response;
 			} catch (error) {
 				return { ok: false, error: errorMessage(error) } satisfies RuntimeStashPushResponse;
@@ -144,7 +154,7 @@ export function createStagingOps(ctx: ProjectApiContext): StagingOps {
 				const cwd = await resolveWorkingDir(projectScope.projectPath, taskScope);
 				const response = await stashPop({ cwd, index: input.index });
 				if (response.ok || response.conflicted) {
-					ctx.applyEffects(createGitMetadataRefreshEffects(projectScope, taskScope));
+					ctx.applyEffects(createGitMetadataRefreshEffectsForCwd(projectScope, taskScope, cwd));
 				}
 				return response;
 			} catch (error) {
@@ -158,7 +168,7 @@ export function createStagingOps(ctx: ProjectApiContext): StagingOps {
 				const cwd = await resolveWorkingDir(projectScope.projectPath, taskScope);
 				const response = await stashApply({ cwd, index: input.index });
 				if (response.ok || response.conflicted) {
-					ctx.applyEffects(createGitMetadataRefreshEffects(projectScope, taskScope));
+					ctx.applyEffects(createGitMetadataRefreshEffectsForCwd(projectScope, taskScope, cwd));
 				}
 				return response;
 			} catch (error) {
@@ -171,7 +181,7 @@ export function createStagingOps(ctx: ProjectApiContext): StagingOps {
 				const taskScope = normalizeOptionalTaskScopeInput(input.taskScope);
 				const cwd = await resolveWorkingDir(projectScope.projectPath, taskScope);
 				const response = await stashDrop({ cwd, index: input.index });
-				if (response.ok) ctx.applyEffects(createGitMetadataRefreshEffects(projectScope, taskScope));
+				if (response.ok) ctx.applyEffects(createGitMetadataRefreshEffectsForCwd(projectScope, taskScope, cwd));
 				return response;
 			} catch (error) {
 				return { ok: false, error: errorMessage(error) } satisfies RuntimeStashDropResponse;

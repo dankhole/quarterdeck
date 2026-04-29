@@ -132,15 +132,23 @@ export function createTaskBaseRefUpdatedEffects(input: {
 export function createGitMetadataRefreshEffects(
 	projectScope: Pick<RuntimeTrpcProjectScope, "projectId">,
 	taskScope: { taskId: string } | null,
+	options: { includeHome?: boolean } = {},
 ): readonly RuntimeMutationEffect[] {
 	if (taskScope) {
-		return [
+		const effects: RuntimeMutationEffect[] = [
 			{
 				type: "task_git_metadata_refresh",
 				projectId: projectScope.projectId,
 				taskId: taskScope.taskId,
 			},
 		];
+		if (options.includeHome) {
+			effects.push({
+				type: "home_git_metadata_refresh",
+				projectId: projectScope.projectId,
+			});
+		}
+		return effects;
 	}
 
 	return [

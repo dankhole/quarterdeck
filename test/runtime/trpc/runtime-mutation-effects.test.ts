@@ -45,6 +45,21 @@ describe("runtime mutation effects", () => {
 		expect(broadcaster.requestTaskRefresh).toHaveBeenCalledWith("project-1", "task-1");
 	});
 
+	it("can refresh task and home git metadata for shared-checkout task operations", async () => {
+		const broadcaster = {
+			requestTaskRefresh: vi.fn(),
+			requestHomeRefresh: vi.fn(),
+		};
+
+		await applyRuntimeMutationEffects(
+			broadcaster,
+			createGitMetadataRefreshEffects({ projectId: "project-1" }, { taskId: "task-1" }, { includeHome: true }),
+		);
+
+		expect(broadcaster.requestTaskRefresh).toHaveBeenCalledWith("project-1", "task-1");
+		expect(broadcaster.requestHomeRefresh).toHaveBeenCalledWith("project-1");
+	});
+
 	it("maps review hook transitions to project-state and ready-for-review effects", async () => {
 		expect(
 			createHookTransitionEffects({

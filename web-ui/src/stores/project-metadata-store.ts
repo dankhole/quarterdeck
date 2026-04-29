@@ -4,6 +4,7 @@ import type {
 	RuntimeConflictState,
 	RuntimeGitSyncSummary,
 	RuntimeProjectMetadata,
+	RuntimeTaskRepositoryInfoResponse,
 	RuntimeTaskWorktreeInfoResponse,
 	RuntimeTaskWorktreeMetadata,
 } from "@/runtime/types";
@@ -249,6 +250,13 @@ export function getTaskWorktreeInfo(
 	return value;
 }
 
+export function getTaskRepositoryInfo(
+	taskId: string | null | undefined,
+	baseRef?: string | null,
+): RuntimeTaskRepositoryInfoResponse | null {
+	return getTaskWorktreeInfo(taskId, baseRef);
+}
+
 export function setTaskWorktreeInfo(info: RuntimeTaskWorktreeInfoResponse | null): boolean {
 	if (!info) {
 		return false;
@@ -265,6 +273,10 @@ export function setTaskWorktreeInfo(info: RuntimeTaskWorktreeInfoResponse | null
 	return true;
 }
 
+export function setTaskRepositoryInfo(info: RuntimeTaskRepositoryInfoResponse | null): boolean {
+	return setTaskWorktreeInfo(info);
+}
+
 export function clearTaskWorktreeInfo(taskId: string | null | undefined): boolean {
 	const normalizedTaskId = taskId?.trim();
 	if (!normalizedTaskId || !(normalizedTaskId in projectMetadataState.taskWorktreeInfoByTaskId)) {
@@ -274,6 +286,10 @@ export function clearTaskWorktreeInfo(taskId: string | null | undefined): boolea
 	projectMetadataState.taskWorktreeInfoByTaskId = rest;
 	emitTaskMetadata(normalizedTaskId);
 	return true;
+}
+
+export function clearTaskRepositoryInfo(taskId: string | null | undefined): boolean {
+	return clearTaskWorktreeInfo(taskId);
 }
 
 export function getTaskWorktreeSnapshot(taskId: string | null | undefined): ReviewTaskWorktreeSnapshot | null {
@@ -471,6 +487,13 @@ export function useTaskWorktreeInfoValue(
 		() => getTaskWorktreeInfo(normalizedTaskId, baseRef),
 		() => null,
 	);
+}
+
+export function useTaskRepositoryInfoValue(
+	taskId: string | null | undefined,
+	baseRef?: string | null,
+): RuntimeTaskRepositoryInfoResponse | null {
+	return useTaskWorktreeInfoValue(taskId, baseRef);
 }
 
 export function useTaskWorktreeSnapshotValue(taskId: string | null | undefined): ReviewTaskWorktreeSnapshot | null {

@@ -19,6 +19,7 @@ import type { CardSelection } from "@/types";
 export function CardDetailView({
 	selection,
 	currentProjectId,
+	projectPath,
 	sessionSummary,
 	layoutProps,
 	sidePanelProps,
@@ -27,6 +28,7 @@ export function CardDetailView({
 }: {
 	selection: CardSelection;
 	currentProjectId: string | null;
+	projectPath: string | null;
 	sessionSummary: RuntimeTaskSessionSummary | null;
 	layoutProps: TaskDetailLayoutProps;
 	sidePanelProps: TaskDetailSidePanelProps;
@@ -35,9 +37,14 @@ export function CardDetailView({
 }): React.ReactElement {
 	const { sidebar, sidePanelRatio, setSidePanelRatio } = layoutProps;
 	const { skipTaskCheckoutConfirmation, skipHomeCheckoutConfirmation } = repositoryProps;
+	// Task repository identity needs the project root to distinguish shared-checkout tasks
+	// from isolated worktrees. If more task-detail props need project-scoped identity
+	// context, move this into a task repository identity provider instead of threading
+	// those values through this component.
 	const detail = useCardDetailView({
 		selection,
 		currentProjectId,
+		projectPath,
 		sidePanelRatio,
 		setSidePanelRatio,
 		sidebar,

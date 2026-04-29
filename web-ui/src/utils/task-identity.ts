@@ -1,4 +1,4 @@
-import type { RuntimeTaskSessionSummary, RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
+import type { RuntimeTaskRepositoryInfoResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardCard, ReviewTaskWorktreeSnapshot } from "@/types";
 
 /**
@@ -28,7 +28,7 @@ export interface TaskIdentity {
 interface ResolveTaskIdentityInput {
 	projectRootPath?: string | null;
 	card?: Pick<BoardCard, "branch" | "useWorktree" | "workingDirectory"> | null;
-	worktreeInfo?: RuntimeTaskWorktreeInfoResponse | null;
+	repositoryInfo?: RuntimeTaskRepositoryInfoResponse | null;
 	worktreeSnapshot?: ReviewTaskWorktreeSnapshot | null;
 	sessionSummary?: Pick<RuntimeTaskSessionSummary, "sessionLaunchPath"> | null;
 }
@@ -49,24 +49,48 @@ function areIdentityPathsEqual(left: string | null, right: string | null): boole
 
 export function resolveTaskIdentity(input: ResolveTaskIdentityInput): TaskIdentity {
 	const projectRootPath = normalizeIdentityPath(input.projectRootPath ?? null);
-	const assignedPath =
-		normalizeIdentityPath(input.worktreeInfo?.path) ??
-		normalizeIdentityPath(input.worktreeSnapshot?.path) ??
-		normalizeIdentityPath(input.card?.workingDirectory) ??
-		(input.card?.useWorktree === false ? projectRootPath : null);
-	const assignedHeadCommit = input.worktreeInfo?.headCommit ?? input.worktreeSnapshot?.headCommit ?? null;
-	const assignedIsDetached = input.worktreeInfo?.isDetached ?? input.worktreeSnapshot?.isDetached ?? false;
+	const cardWorkingDirectory = normalizeIdentityPath(input.card?.workingDirectory);
+	const isExplicitlyShared = input.card?.useWorktree === false;
+	const repositoryInfoPath = normalizeIdentityPath(input.repositoryInfo?.path);
+	const worktreeSnapshotPath = normalizeIdentityPath(input.worktreeSnapshot?.path);
+	const sharedMetadataPath = isExplicitlyShared
+		? ([repositoryInfoPath, worktreeSnapshotPath].find(
+				(path) => areIdentityPathsEqual(path, projectRootPath) || areIdentityPathsEqual(path, cardWorkingDirectory),
+			) ?? null)
+		: null;
+	const metadataAssignedPath = isExplicitlyShared
+		? (sharedMetadataPath ?? repositoryInfoPath ?? worktreeSnapshotPath)
+		: (repositoryInfoPath ?? worktreeSnapshotPath);
+	const hasSharedMetadata = sharedMetadataPath !== null;
+	const shouldUseMetadata = !isExplicitlyShared || hasSharedMetadata;
+	const assignedPath = isExplicitlyShared
+		? (projectRootPath ?? cardWorkingDirectory ?? (hasSharedMetadata ? metadataAssignedPath : null))
+		: (metadataAssignedPath ?? cardWorkingDirectory);
+	const assignedHeadCommit = isExplicitlyShared
+		? hasSharedMetadata
+			? (input.repositoryInfo?.headCommit ?? input.worktreeSnapshot?.headCommit ?? null)
+			: null
+		: (input.repositoryInfo?.headCommit ?? input.worktreeSnapshot?.headCommit ?? null);
+	const assignedIsDetached = isExplicitlyShared
+		? hasSharedMetadata
+			? (input.repositoryInfo?.isDetached ?? input.worktreeSnapshot?.isDetached ?? false)
+			: false
+		: (input.repositoryInfo?.isDetached ?? input.worktreeSnapshot?.isDetached ?? false);
 	const persistedBranch = input.card?.branch ?? null;
 	// Until worktree metadata arrives, the card's persisted branch is only a
 	// provisional display hint. It is useful for continuity on just-created or
 	// not-yet-probed tasks, but it is not authoritative git identity.
 	const assignedBranch =
-		input.worktreeInfo?.branch ?? input.worktreeSnapshot?.branch ?? (assignedIsDetached ? null : persistedBranch);
+		!shouldUseMetadata || assignedIsDetached
+			? null
+			: (input.repositoryInfo?.branch ?? input.worktreeSnapshot?.branch ?? persistedBranch);
 	const shortHeadCommit = assignedHeadCommit?.slice(0, 8) ?? null;
 	const displayBranchLabel =
-		input.worktreeInfo?.branch ??
-		input.worktreeSnapshot?.branch ??
-		(assignedIsDetached ? shortHeadCommit : (assignedBranch ?? persistedBranch ?? shortHeadCommit));
+		isExplicitlyShared && !hasSharedMetadata
+			? persistedBranch
+			: (input.repositoryInfo?.branch ??
+				input.worktreeSnapshot?.branch ??
+				(assignedIsDetached ? shortHeadCommit : (assignedBranch ?? persistedBranch ?? shortHeadCommit)));
 	// `sessionSummary.sessionLaunchPath` is the path the agent session was launched in.
 	// Quarterdeck does not currently stream a continuously updated live cwd.
 	const sessionLaunchPath = normalizeIdentityPath(input.sessionSummary?.sessionLaunchPath ?? null);

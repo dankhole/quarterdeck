@@ -45,6 +45,7 @@ export interface UseGitViewOptions {
 	currentProjectId: string | null;
 	selectedCard: CardSelection | null;
 	sessionSummary: RuntimeTaskSessionSummary | null;
+	projectPath?: string | null;
 	homeGitSummary?: RuntimeGitSyncSummary | null;
 	board?: BoardData;
 	pendingCompareNavigation?: GitViewCompareNavigation | null;
@@ -57,6 +58,7 @@ export function useGitView({
 	currentProjectId,
 	selectedCard,
 	sessionSummary,
+	projectPath,
 	homeGitSummary = null,
 	board = { columns: [], dependencies: [] },
 	pendingCompareNavigation,
@@ -190,6 +192,7 @@ export function useGitView({
 	const compare = useGitViewCompare({
 		selectedCard,
 		currentProjectId,
+		projectPath,
 		homeGitSummary,
 		board,
 		isActive: isCompareActive,
