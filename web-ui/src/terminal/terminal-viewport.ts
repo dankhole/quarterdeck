@@ -50,7 +50,11 @@ export class TerminalViewport {
 	private readonly unicode11Addon = new Unicode11Addon();
 	private readonly writeQueue: SlotWriteQueue;
 	private pendingAutoFocus = false;
-	private revealFrameId: number | null = null;
+	private revealFrame: {
+		id: number;
+		resolve: (completed: boolean) => void;
+	} | null = null;
+	private revealSequence = 0;
 	private appearance: PersistentTerminalAppearance;
 
 	constructor(
@@ -164,33 +168,64 @@ export class TerminalViewport {
 	}
 
 	private cancelPendingReveal(): void {
-		if (this.revealFrameId !== null) {
-			cancelAnimationFrame(this.revealFrameId);
-			this.revealFrameId = null;
+		this.revealSequence += 1;
+		if (this.revealFrame !== null) {
+			const frame = this.revealFrame;
+			cancelAnimationFrame(frame.id);
+			this.revealFrame = null;
+			frame.resolve(false);
 		}
 	}
 
-	private scheduleRevealAfterLayout(options: { autoFocus?: boolean }): void {
-		this.cancelPendingReveal();
-		this.revealFrameId = requestAnimationFrame(() => {
-			this.revealFrameId = requestAnimationFrame(() => {
-				this.revealFrameId = null;
-				if (this.callbacks.isDisposed() || !this.visibleContainer) {
-					return;
+	private waitForRevealFrame(sequence: number): Promise<boolean> {
+		return new Promise((resolve) => {
+			const id = requestAnimationFrame(() => {
+				if (this.revealFrame?.id === id) {
+					this.revealFrame = null;
 				}
-				this.resizer.request();
-				this.terminal.scrollToBottom();
-				this.resizer.pendingScrollToBottom = false;
-				this.domHost.reveal();
-				if (options.autoFocus) {
-					this.terminal.focus();
-				}
+				resolve(this.revealSequence === sequence);
 			});
+			this.revealFrame = { id, resolve };
 		});
 	}
 
-	ensureVisible(): void {
+	private canCompleteReveal(sequence: number): boolean {
+		return !this.callbacks.isDisposed() && this.revealSequence === sequence && this.visibleContainer !== null;
+	}
+
+	async revealAfterLayout(options: { autoFocus?: boolean } = {}): Promise<boolean> {
+		this.cancelPendingReveal();
+		const sequence = this.revealSequence;
+		if (this.callbacks.isDisposed()) {
+			return false;
+		}
+		if (this.visibleContainer === null) {
+			return true;
+		}
+
+		this.resizer.pendingScrollToBottom = true;
+		for (let pass = 0; pass < 2; pass += 1) {
+			if (!(await this.waitForRevealFrame(sequence)) || !this.canCompleteReveal(sequence)) {
+				return !this.callbacks.isDisposed() && this.visibleContainer === null;
+			}
+			await this.writeQueue.drain();
+			if (!this.canCompleteReveal(sequence)) {
+				return !this.callbacks.isDisposed() && this.visibleContainer === null;
+			}
+			this.resizer.request();
+			this.terminal.scrollToBottom();
+		}
+
+		this.resizer.pendingScrollToBottom = false;
 		this.domHost.reveal();
+		if (options.autoFocus) {
+			this.terminal.focus();
+		}
+		return true;
+	}
+
+	ensureVisible(): void {
+		void this.revealAfterLayout();
 	}
 
 	invalidateResize(): void {
@@ -239,17 +274,15 @@ export class TerminalViewport {
 		}
 	}
 
-	finalizeRestorePresentation(options: { hasActiveIoSocket: boolean; onInteractive: () => void }): void {
+	async finalizeRestorePresentation(options: { hasActiveIoSocket: boolean }): Promise<boolean> {
 		if (options.hasActiveIoSocket && (this.visibleContainer ?? this.stageContainer)) {
 			this.resizer.request();
 		}
 		this.terminal.scrollToBottom();
 		this.resizer.pendingScrollToBottom = true;
-		this.scheduleRevealAfterLayout({ autoFocus: this.pendingAutoFocus });
+		const presentationSettled = await this.revealAfterLayout({ autoFocus: this.pendingAutoFocus });
 		this.pendingAutoFocus = false;
-		if (options.hasActiveIoSocket) {
-			options.onInteractive();
-		}
+		return options.hasActiveIoSocket && presentationSettled;
 	}
 
 	attachToStageContainer(container: HTMLDivElement): void {
@@ -295,7 +328,7 @@ export class TerminalViewport {
 			}
 		}
 		if (options.restoreCompleted && options.isVisible !== false) {
-			this.scheduleRevealAfterLayout({ autoFocus: this.pendingAutoFocus });
+			void this.revealAfterLayout({ autoFocus: this.pendingAutoFocus });
 			this.pendingAutoFocus = false;
 		}
 	}

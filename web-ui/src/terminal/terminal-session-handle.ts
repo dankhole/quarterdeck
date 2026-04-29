@@ -29,6 +29,7 @@ interface TerminalSessionHandleCallbacks {
 	) => void;
 	onExit: (code: number | null) => void;
 	ensureVisible: () => void;
+	revealTerminal: () => Promise<boolean>;
 	invalidateResize: () => void;
 	requestResize: () => void;
 	getVisibleContainer: () => HTMLDivElement | null;
@@ -281,18 +282,42 @@ export class TerminalSessionHandle {
 				});
 				return;
 			}
-			log.warn(`slot ${this.slotId} terminal restore readiness fallback`, {
-				taskId: this.taskId,
-				projectId: this.projectId,
-				hasControlSocket: this.sockets.hasControlSocket,
-			});
-			// IO is open, so input can work even if the restore/control handshake
-			// is late. Reveal the terminal instead of blocking the user behind a
-			// loading overlay; do not request another restore here because a stale
-			// empty snapshot can erase live Codex output.
-			this.callbacks.ensureVisible();
-			this.notifyConnectionReady();
+			void this.completeConnectionReadyFallback();
 		}, CONNECTION_READY_FALLBACK_MS);
+	}
+
+	private async completeConnectionReadyFallback(): Promise<void> {
+		if (this.callbacks.isDisposed() || !this.taskId || this.sockets.connectionReady) {
+			return;
+		}
+		if (!this.sockets.isIoOpen) {
+			return;
+		}
+		const taskId = this.taskId;
+		const projectId = this.projectId;
+		log.warn(`slot ${this.slotId} terminal restore readiness fallback`, {
+			taskId,
+			projectId,
+			hasControlSocket: this.sockets.hasControlSocket,
+		});
+		// IO is open, so input can work even if the restore/control handshake
+		// is late. Reveal after the local terminal has settled at the bottom;
+		// do not request another restore here because a stale empty snapshot can
+		// erase live Codex output.
+		const presentationSettled = await this.callbacks.revealTerminal();
+		if (!presentationSettled) {
+			return;
+		}
+		if (
+			this.callbacks.isDisposed() ||
+			this.taskId !== taskId ||
+			this.projectId !== projectId ||
+			this.sockets.connectionReady ||
+			!this.sockets.isIoOpen
+		) {
+			return;
+		}
+		this.notifyConnectionReady();
 	}
 
 	private async handleRestore(

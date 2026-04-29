@@ -15,6 +15,10 @@
 - Live task terminal output now batches same-kind xterm writes per frame while preserving output acknowledgements and notification text, reducing browser main-thread churn during high-volume agent output.
 - Restore snapshots, terminal resets, and local status messages still flush pending live output first and then write immediately, preserving terminal ordering around reconnect and restore paths.
 
+### Fix: settle task terminal reveal after restore
+
+- Task terminals now wait for pending xterm writes, resize, and bottom-scroll passes before clearing restore readiness or fallback readiness, preventing Claude sessions from becoming visible before the restored output has settled at the bottom.
+
 ### Fix: honor shared-checkout repository state
 
 - Shared-checkout tasks now resolve branch, diff, compare, and metadata refresh state from the project checkout instead of stale isolated worktree assumptions.

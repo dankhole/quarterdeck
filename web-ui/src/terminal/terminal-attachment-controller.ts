@@ -111,13 +111,13 @@ export class TerminalAttachmentController {
 			},
 			applyRestore: async (snapshot, cols, rows) => {
 				await this.viewport.applyRestoreSnapshot(snapshot, cols, rows);
-				this.viewport.finalizeRestorePresentation({
+				const isInteractive = await this.viewport.finalizeRestorePresentation({
 					hasActiveIoSocket: this.session.hasIoSocket,
-					onInteractive: () => {
-						this.session.notifyConnectionReadyAfterRestore(this.showTimestamp);
-						this.showTimestamp = null;
-					},
 				});
+				if (isInteractive) {
+					this.session.notifyConnectionReadyAfterRestore(this.showTimestamp);
+					this.showTimestamp = null;
+				}
 			},
 			onSummaryStateChange: (summary, previousSummary) => {
 				this.handleSessionStateChange(summary, previousSummary);
@@ -126,6 +126,7 @@ export class TerminalAttachmentController {
 				this.handleSessionExit(code);
 			},
 			ensureVisible: () => this.viewport.ensureVisible(),
+			revealTerminal: () => this.viewport.revealAfterLayout(),
 			invalidateResize: () => this.viewport.invalidateResize(),
 			requestResize: () => this.viewport.requestResize(),
 			getVisibleContainer: () => this.visibleContainer,
