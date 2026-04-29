@@ -1,6 +1,8 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 
+import { resetAgentAvailabilityCache } from "../../../src/config";
+
 export function withTemporaryEnv<T>(
 	input: {
 		home: string;
@@ -12,6 +14,7 @@ export function withTemporaryEnv<T>(
 	const previousHome = process.env.HOME;
 	const previousUserProfile = process.env.USERPROFILE;
 	const previousPath = process.env.PATH;
+	resetAgentAvailabilityCache();
 	process.env.HOME = input.home;
 	process.env.USERPROFILE = input.home;
 	if (input.pathPrefix) {
@@ -39,6 +42,7 @@ export function withTemporaryEnv<T>(
 				process.env.PATH = previousPath;
 			}
 		}
+		resetAgentAvailabilityCache();
 	});
 }
 

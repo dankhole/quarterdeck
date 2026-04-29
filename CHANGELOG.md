@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.12.2] — 2026-04-29
+
+### Docs: version bump to 0.12.2
+
+- Bumped root package metadata to 0.12.2 and promoted the current release notes for release prep.
+
 ### Feature: choose task harness at creation
 
 - Task creation now includes an agent harness selector, persists the chosen harness on each task, and starts fresh sessions with that task-owned harness instead of requiring a global Settings change.
