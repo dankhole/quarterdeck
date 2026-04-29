@@ -24,9 +24,9 @@ Quarterdeck detects installed agent CLIs from your `PATH`, starts a local runtim
 
 ## Status
 
-Quarterdeck is under active development. The main install path is currently from source with `npm run link`; the npm package is not the recommended path yet.
+Quarterdeck is under active development. The main install path is currently from source with `npm run link`; the npm package is not the recommended path yet. Found a bug or have an idea? Open a [GitHub Issue](https://github.com/dankhole/quarterdeck/issues).
 
-Windows support is experimental. Core flows should work, but macOS and Linux receive more day-to-day testing.
+Windows support is experimental and currently untested on native Windows. macOS and Linux receive the day-to-day testing. See the [Windows support audit](docs/windows-support-audit.md) for current limitations and tracked follow-ups.
 
 ## Requirements
 

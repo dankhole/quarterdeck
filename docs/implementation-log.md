@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-04-29 — Windows support audit refresh
+
+The Windows support audit now has a stable record in `docs/windows-support-audit.md` instead of one broad active todo. The current boundary is explicit: Quarterdeck has Windows handling for path normalization, shell selection, folder picking, command-shim PTY launch, junction-based ignored-path mirroring, and process timeout cleanup, but support remains experimental until native Windows CI or smoke testing covers the main runtime flows.
+
+This pass fixed concrete audit findings: agent availability/version probes now route ambiguous Windows command shims through `ComSpec`, worktree-home containment normalizes separators and drive-letter casing before rejecting managed worktrees as projects, `dev:full` uses `npm.cmd` for the web UI child, dev/e2e wrappers avoid SIGHUP on Windows, and startup/shutdown orphan cleanup now has a Windows process discovery/tree-termination path instead of returning no work. The cleanup recognizes direct agent executables plus known agent CLI command lines hosted by `node.exe`/`cmd.exe` wrappers. Remaining risk is tracked as focused follow-ups for Windows CI/manual smoke, shared `cmd.exe` shell-string escaping, ConPTY resize/restore validation, and a scoped PID registry if native smoke shows descendants that cannot be identified safely from known executable names or hosted command lines. Validation: focused runtime tests for agent registry, project-state utilities, shell helpers, Windows command launch, and orphan cleanup.
+
 ## 2026-04-29 — Runtime request and launch hardening
 
 Runtime HTTP requests, runtime-state WebSocket upgrades, and terminal WebSocket upgrades now share a host/origin gate in `src/server/middleware.ts`. Requests without an `Origin` header still work for CLI/local fetches, while browser requests must come from the configured runtime origin, loopback aliases on the runtime port, or explicit development web UI ports when `NODE_ENV=development`. The dev runtime launcher now sets that mode, and Playwright e2e passes its web port so the Vite proxy remains covered without opening the policy broadly in packaged runs.

@@ -128,7 +128,9 @@ async function startRuntime() {
 
 process.once("SIGINT", () => stopChild("SIGINT"));
 process.once("SIGTERM", () => stopChild("SIGTERM"));
-process.once("SIGHUP", () => stopChild("SIGHUP"));
+if (process.platform !== "win32") {
+	process.once("SIGHUP", () => stopChild("SIGHUP"));
+}
 process.once("exit", cleanupTempRoot);
 
 await assertPortAvailable(runtimePort);

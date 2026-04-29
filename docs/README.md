@@ -37,6 +37,7 @@ Use this map when you are planning or evaluating refactor work.
 ### Live architecture and implementation guidance
 
 - [`architecture.md`](./architecture.md): system-wide architecture overview.
+- [`windows-support-audit.md`](./windows-support-audit.md): current Windows support boundary, verified compatibility work, and remaining follow-ups.
 - [`conventions/frontend-hooks.md`](./conventions/frontend-hooks.md): domain-module extraction pattern for frontend hooks and services.
 - [`conventions/web-ui.md`](./conventions/web-ui.md): frontend conventions and hooks architecture guidance.
 - [`conventions/ui-layout.md`](./conventions/ui-layout.md): UI region names, shell layout ownership, and main-view/sidebar rules.

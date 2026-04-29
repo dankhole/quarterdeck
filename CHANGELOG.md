@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fix: refresh Windows compatibility audit
+
+- Windows agent availability probes now launch command shims through `ComSpec`, matching task PTY launch behavior for `.cmd` and `.bat` agent wrappers.
+- Quarterdeck worktree detection now normalizes separators and casing before rejecting managed worktrees as projects, and `npm run dev:full` uses `npm.cmd` on Windows.
+- Dev/e2e wrapper scripts now avoid registering or forwarding `SIGHUP` on Windows.
+- Startup/shutdown orphan cleanup now discovers Windows agent processes with missing parents, including known agent CLIs hosted by `node.exe` or `cmd.exe` shims, and terminates matching process trees instead of skipping Windows entirely.
+- Added a Windows support audit doc with the current compatibility boundary and replaced the broad todo with concrete Windows follow-ups.
+
 ### Fix: improve source viewer word wrap
 
 - File source word wrap now prefers normal word boundaries, uses the full content column, and re-measures wrapped rows after panel resize so Markdown prose no longer wraps too early or breaks awkwardly inside words.

@@ -283,7 +283,9 @@ function runRuntimeCommand(command, args, spawnOptions = {}) {
 
 		process.on("SIGINT", onSigint);
 		process.on("SIGTERM", onSigterm);
-		process.on("SIGHUP", onSighup);
+		if (process.platform !== "win32") {
+			process.on("SIGHUP", onSighup);
+		}
 
 		const cleanup = () => {
 			if (forceKillTimer !== null) {
@@ -292,7 +294,9 @@ function runRuntimeCommand(command, args, spawnOptions = {}) {
 			}
 			process.off("SIGINT", onSigint);
 			process.off("SIGTERM", onSigterm);
-			process.off("SIGHUP", onSighup);
+			if (process.platform !== "win32") {
+				process.off("SIGHUP", onSighup);
+			}
 		};
 
 		child.on("error", (err) => {

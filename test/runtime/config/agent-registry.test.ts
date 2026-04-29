@@ -202,6 +202,45 @@ describe("agent-registry", () => {
 		expect(codex?.statusMessage).toContain("native hook support");
 	});
 
+	it("runs Windows command-shim availability probes through ComSpec", async () => {
+		const originalPlatform = process.platform;
+		const originalEnv = { ...process.env };
+		const comSpec = "C:\\Windows\\System32\\cmd.exe";
+		try {
+			Object.defineProperty(process, "platform", { value: "win32" });
+			process.env = {
+				ComSpec: comSpec,
+				PATH: "",
+				PATHEXT: ".COM;.EXE;.BAT;.CMD",
+			};
+			commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+			childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+				const callback = readExecFileCallback(rest);
+				const commandLine = args.join(" ");
+				if (commandLine.includes("--version")) {
+					callback(null, "0.124.0\n", "");
+					return {} as ChildProcess;
+				}
+				if (commandLine.includes("features") && commandLine.includes("list")) {
+					callback(null, "codex_hooks                         stable             true\n", "");
+					return {} as ChildProcess;
+				}
+				callback(null, "", "");
+				return {} as ChildProcess;
+			});
+
+			const resolved = await resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+
+			expect(resolved?.agentId).toBe("codex");
+			expect(childProcessMocks.execFile).toHaveBeenCalledTimes(2);
+			expect(childProcessMocks.execFile.mock.calls.every((call) => call[0] === comSpec)).toBe(true);
+			expect(childProcessMocks.execFile.mock.calls[0]?.[1]).toEqual(expect.arrayContaining(["/d", "/s", "/c"]));
+		} finally {
+			Object.defineProperty(process, "platform", { value: originalPlatform });
+			process.env = originalEnv;
+		}
+	});
+
 	it("detects Pi from the inherited PATH", async () => {
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "pi");
 

@@ -4,10 +4,13 @@ import { execFile } from "node:child_process";
 import { CODEX_HOOKS_FEATURE_NAME } from "../codex-hooks";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeConfigResponse } from "../core";
 import {
+	buildWindowsCmdArgsArray,
 	createTaggedLogger,
 	getRuntimeLaunchSupportedAgentCatalog,
 	isBinaryAvailableOnPath,
 	RUNTIME_AGENT_CATALOG,
+	resolveWindowsComSpec,
+	shouldUseWindowsCmdLaunch,
 } from "../core";
 import { isLlmConfigured } from "../title";
 import { extractGlobalConfigFields } from "./global-config-fields";
@@ -130,11 +133,22 @@ interface ProbeCommandResult {
 	signal: NodeJS.Signals | null;
 }
 
+function resolveProbeCommand(binary: string, args: string[]): { binary: string; args: string[] } {
+	if (!shouldUseWindowsCmdLaunch(binary, process.platform, process.env)) {
+		return { binary, args };
+	}
+	return {
+		binary: resolveWindowsComSpec(process.env),
+		args: buildWindowsCmdArgsArray(binary, args),
+	};
+}
+
 function runProbeCommand(binary: string, args: string[]): Promise<ProbeCommandResult> {
 	return new Promise((resolve, reject) => {
+		const command = resolveProbeCommand(binary, args);
 		execFile(
-			binary,
-			args,
+			command.binary,
+			command.args,
 			{
 				encoding: "utf8",
 				timeout: CODEX_PROBE_TIMEOUT_MS,

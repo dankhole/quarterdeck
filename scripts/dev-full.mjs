@@ -14,6 +14,7 @@ import {
 } from "./dev-process.mjs";
 
 const children = [];
+const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 let isShuttingDown = false;
 let shutdownExitCode = 0;
 let shutdownPromise = null;
@@ -77,6 +78,6 @@ const uninstallSignalHandlers = installForwardedShutdownHandlers((signal) => {
 });
 
 launch("runtime", process.execPath, ["scripts/dev-runtime.mjs", ...process.argv.slice(2)]);
-launch("web-ui", "npm", ["--prefix", "web-ui", "run", "dev"]);
+launch("web-ui", npmCommand, ["--prefix", "web-ui", "run", "dev"]);
 
 console.log("[dev-full] Starting runtime + web-ui dev servers...");

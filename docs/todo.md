@@ -111,9 +111,15 @@ Add JetBrains-style file tabs to the repository/file browser experience so users
 
 Let debug log filtering control what is actually emitted to the console/log sinks, not just what is visually filtered in the UI. Add configurable source/category/level filters so noisy subsystems can be suppressed before they write logs, while preserving enough default signal for debugging production issues.
 
-## Redo Windows support audit
+## Windows support follow-ups
 
-Reassess Windows support end to end. Check path handling, shell/process launch assumptions, PTY behavior, git/worktree operations, symlink strategy, terminal rendering, file watching, scripts, tests, and documentation so Windows limitations are explicit and fixable items are tracked.
+The broad audit is complete; current findings live in [docs/windows-support-audit.md](./windows-support-audit.md). Remaining fixable work:
+
+- Add a `windows-latest` CI lane and stabilize the currently skipped Windows test scenarios, especially fake agent command/version probes and launch/open integration smoke coverage.
+- Run a native Windows smoke pass covering install/build, `quarterdeck` launch, Codex/Claude/Pi detection, task PTY start/stop, shell terminals, task worktree create/delete, ignored-path junction mirroring, Open in IDE, project shortcuts, and shutdown cleanup.
+- Harden Windows shell-string generation for hook, statusline, and Open-in-IDE commands so `cmd.exe` metacharacters in paths and arguments are escaped through one shared helper instead of ad hoc double quoting.
+- Validate ConPTY resize/reconnect/task-restore behavior and decide whether Windows needs a resize-nudge fallback where Unix uses `SIGWINCH`.
+- Replace best-effort orphan cleanup with a scoped managed PID registry if native smoke testing shows Windows agent wrappers leave descendants that cannot be identified safely from known executable names or hosted command lines.
 
 ## Audit CI/CD and deployment infrastructure
 

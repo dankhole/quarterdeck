@@ -34,9 +34,14 @@ export function getTaskWorktreesHomePath(): string {
 	return join(homedir(), RUNTIME_HOME_DIR, RUNTIME_WORKTREES_DIR);
 }
 
+function normalizePathForContainment(path: string): string {
+	const normalized = resolve(path).replace(/\\/gu, "/").replace(/\/+$/u, "") || "/";
+	return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
 export function isUnderWorktreesHome(repoPath: string): boolean {
-	const worktreesHome = getTaskWorktreesHomePath();
-	const normalized = resolve(repoPath);
+	const worktreesHome = normalizePathForContainment(getTaskWorktreesHomePath());
+	const normalized = normalizePathForContainment(repoPath);
 	return normalized === worktreesHome || normalized.startsWith(`${worktreesHome}/`);
 }
 

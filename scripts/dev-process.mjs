@@ -3,7 +3,8 @@ import { constants as osConstants } from "node:os";
 
 export const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
-const HANDLED_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
+const HANDLED_SIGNALS =
+	process.platform === "win32" ? ["SIGINT", "SIGTERM"] : ["SIGINT", "SIGTERM", "SIGHUP"];
 
 export function getExitCodeForSignal(signal) {
 	if (!signal) {
