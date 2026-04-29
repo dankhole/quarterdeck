@@ -1,8 +1,9 @@
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardCard, BoardColumnId, ReviewTaskWorktreeSnapshot } from "@/types";
-import { getCardHoverTooltip, getRunningActivityLabel, shortenBranchName } from "@/utils/board-card-display";
+import { getCardHoverTooltip, shortenBranchName } from "@/utils/board-card-display";
 import { formatDetachedWorktreeLabel, getDetachedWorktreeTooltip } from "@/utils/detached-worktree-copy";
 import { describeSessionState, getSessionStatusBadgeStyle, getSessionStatusTooltip } from "@/utils/session-status";
+import { getTaskAgentDisplayLabel, getTaskAgentShortLabel } from "@/utils/task-agent-display";
 import { resolveTaskIdentity } from "@/utils/task-identity";
 import { truncateTaskPromptLabel } from "@/utils/task-prompt";
 
@@ -54,7 +55,6 @@ export function resolveBoardCardViewModel({
 	const statusTagStyle = sessionSummary ? getSessionStatusBadgeStyle(sessionSummary) : null;
 	const statusTooltip = sessionSummary ? getSessionStatusTooltip(sessionSummary) : null;
 	const showStatusBadge = Boolean(statusLabel && statusTagStyle && columnId !== "backlog" && !isTrashCard);
-	const runningActivity = getRunningActivityLabel(sessionSummary);
 	const cardHoverTooltip = getCardHoverTooltip(sessionSummary);
 	const latestSummaryText = sessionSummary?.displaySummary ?? null;
 	const isSummaryVisibleOnCard = showSummaryOnCards && Boolean(latestSummaryText);
@@ -91,6 +91,13 @@ export function resolveBoardCardViewModel({
 		showProjectStatus &&
 		!isTrashCard &&
 		(reviewWorktreeSnapshot?.changedFiles ?? 0) > 0;
+	const effectiveAgentId = sessionSummary?.agentId ?? card.agentId ?? null;
+	const agentBadge = effectiveAgentId
+		? {
+				label: getTaskAgentShortLabel(effectiveAgentId),
+				tooltip: `Harness: ${getTaskAgentDisplayLabel(effectiveAgentId)}`,
+			}
+		: null;
 
 	return {
 		isTrashCard,
@@ -102,7 +109,6 @@ export function resolveBoardCardViewModel({
 		statusTagStyle,
 		statusTooltip,
 		showStatusBadge,
-		runningActivity,
 		latestSummaryText,
 		isSummaryVisibleOnCard,
 		effectiveTooltip,
@@ -115,5 +121,6 @@ export function resolveBoardCardViewModel({
 		showDetachedWorktreeHint: detachedWorktreeLabel !== null,
 		reviewChangeSummary,
 		showUncommittedChangesIndicator,
+		agentBadge,
 	};
 }

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { runtimeBoardColumnIdSchema, runtimeTaskImageSchema } from "./shared.js";
+import { runtimeAgentIdSchema, runtimeBoardColumnIdSchema, runtimeTaskImageSchema } from "./shared.js";
 
 export const runtimeBoardCardSchema = z.object({
 	id: z.string(),
@@ -8,6 +8,7 @@ export const runtimeBoardCardSchema = z.object({
 	images: z.array(runtimeTaskImageSchema).optional(),
 	baseRef: z.string(),
 	baseRefPinned: z.boolean().optional(),
+	agentId: runtimeAgentIdSchema.optional(),
 	useWorktree: z.boolean().optional(),
 	workingDirectory: z.string().min(1).nullable().optional(),
 	branch: z.string().min(1).nullable().optional(),

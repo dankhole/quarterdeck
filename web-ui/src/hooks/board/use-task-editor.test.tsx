@@ -34,6 +34,7 @@ interface HookSnapshot {
 	isInlineTaskCreateOpen: boolean;
 	newTaskPrompt: string;
 	newTaskImages: TaskImage[];
+	newTaskAgentId: "claude" | "codex" | "pi";
 	newTaskBranchRef: string;
 	editingTaskId: string | null;
 	editTaskPrompt: string;
@@ -42,6 +43,7 @@ interface HookSnapshot {
 	handleCreateTasks: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
 	setNewTaskPrompt: (value: string) => void;
 	setNewTaskImages: (value: TaskImage[]) => void;
+	setNewTaskAgentId: (value: "claude" | "codex" | "pi") => void;
 	setNewTaskBranchRef: (value: string) => void;
 	handleOpenEditTask: (task: BoardCard) => void;
 	handleSaveEditedTask: () => string | null;
@@ -62,12 +64,14 @@ function HookHarness({
 	queueTaskStartAfterEdit,
 	branchOptions = [{ value: "main", label: "main" }],
 	defaultTaskBranchRef = "main",
+	defaultTaskAgentId = "claude",
 }: {
 	initialBoard: BoardData;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 	queueTaskStartAfterEdit?: (taskId: string) => void;
 	branchOptions?: Array<{ value: string; label: string }>;
 	defaultTaskBranchRef?: string;
+	defaultTaskAgentId?: "claude" | "codex" | "pi";
 }): null {
 	const [board, setBoard] = useState<BoardData>(initialBoard);
 	const [, setSelectedTaskId] = useState<string | null>(null);
@@ -77,6 +81,7 @@ function HookHarness({
 		currentProjectId: "project-1",
 		createTaskBranchOptions: branchOptions,
 		defaultTaskBranchRef,
+		defaultTaskAgentId,
 		setSelectedTaskId,
 		queueTaskStartAfterEdit,
 	});
@@ -87,6 +92,7 @@ function HookHarness({
 			isInlineTaskCreateOpen: editor.isInlineTaskCreateOpen,
 			newTaskPrompt: editor.newTaskPrompt,
 			newTaskImages: editor.newTaskImages,
+			newTaskAgentId: editor.newTaskAgentId,
 			newTaskBranchRef: editor.newTaskBranchRef,
 			editingTaskId: editor.editingTaskId,
 			editTaskPrompt: editor.editTaskPrompt,
@@ -95,6 +101,7 @@ function HookHarness({
 			handleCreateTasks: editor.handleCreateTasks,
 			setNewTaskPrompt: editor.setNewTaskPrompt,
 			setNewTaskImages: editor.setNewTaskImages,
+			setNewTaskAgentId: editor.setNewTaskAgentId,
 			setNewTaskBranchRef: editor.setNewTaskBranchRef,
 			handleOpenEditTask: editor.handleOpenEditTask,
 			handleSaveEditedTask: editor.handleSaveEditedTask,
@@ -114,8 +121,10 @@ function HookHarness({
 		editor.isInlineTaskCreateOpen,
 		editor.newTaskPrompt,
 		editor.newTaskImages,
+		editor.newTaskAgentId,
 		editor.newTaskBranchRef,
 		editor.setEditTaskPrompt,
+		editor.setNewTaskAgentId,
 		editor.setNewTaskBranchRef,
 		editor.setNewTaskImages,
 		editor.setNewTaskPrompt,
@@ -310,6 +319,39 @@ describe("useTaskEditor", () => {
 		const snapshot = requireSnapshot(latestSnapshot);
 		expect(snapshot.board.columns[0]?.cards[0]?.baseRef).toBe("develop");
 		expect(snapshot.newTaskBranchRef).toBe("main");
+	});
+
+	it("persists the selected agent on created tasks and resets to the default agent", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					initialBoard={createBoard()}
+					defaultTaskAgentId="claude"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).handleOpenCreateTask();
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).setNewTaskPrompt("Use Codex for this");
+			requireSnapshot(latestSnapshot).setNewTaskAgentId("codex");
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).handleCreateTask({ keepDialogOpen: true });
+		});
+
+		const snapshot = requireSnapshot(latestSnapshot);
+		expect(snapshot.board.columns[0]?.cards[0]?.agentId).toBe("codex");
+		expect(snapshot.newTaskAgentId).toBe("claude");
 	});
 
 	it("copies attached images to each split task and clears the draft images", async () => {

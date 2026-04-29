@@ -116,6 +116,7 @@ export async function handleStartTaskSession(
 			resumeConversation: body.resumeConversation ?? false,
 			awaitReview: body.awaitReview ?? false,
 			useWorktree: body.useWorktree ?? true,
+			requestedAgentId: body.agentId ?? null,
 			hasPrompt: Boolean(body.prompt && body.prompt.trim().length > 0),
 			imageCount: body.images?.length ?? 0,
 			baseRef: body.baseRef ?? null,
@@ -133,6 +134,7 @@ export async function handleStartTaskSession(
 		const state = await loadProjectState(projectScope.projectPath);
 		const existingCard = findCardInBoard(state.board, body.taskId);
 		const persisted = existingCard?.workingDirectory ?? null;
+		const taskAgentId = existingCard?.agentId ?? body.agentId ?? null;
 		// Branch must be threaded to resolveTaskCwd for branch-aware worktree creation.
 		// The other path to ensureTaskWorktreeIfDoesntExist is workdir-api.ts:ensureWorktree,
 		// which receives branch from the client request instead.
@@ -167,7 +169,7 @@ export async function handleStartTaskSession(
 		const previousSummary = body.resumeConversation ? terminalManager.store.getSummary(body.taskId) : null;
 		const previousTerminalAgentId = previousSummary?.agentId ?? null;
 		const previousResumeSessionId = previousSummary?.resumeSessionId ?? null;
-		const effectiveAgentId = previousTerminalAgentId ?? scopedRuntimeConfig.selectedAgentId;
+		const effectiveAgentId = previousTerminalAgentId ?? taskAgentId ?? scopedRuntimeConfig.selectedAgentId;
 		const failedStoredResumeSession = hasFailedStoredCodexResume(previousSummary);
 		const resumeSessionIdForStart = failedStoredResumeSession ? null : previousResumeSessionId;
 		if (body.resumeConversation) {
@@ -182,6 +184,7 @@ export async function handleStartTaskSession(
 				previousLaunchPath: previousSummary?.sessionLaunchPath ?? null,
 				previousPid: previousSummary?.pid ?? null,
 				previousStartedAt: previousSummary?.startedAt ?? null,
+				taskAgentId,
 				effectiveAgentId,
 			});
 		}
@@ -213,7 +216,7 @@ export async function handleStartTaskSession(
 			return {
 				ok: false,
 				summary: null,
-				error: "No runnable agent command is configured. Open Settings, install a supported CLI, and select it.",
+				error: "No runnable agent command is configured. Install a supported CLI or choose another agent when creating the task.",
 			};
 		}
 		const resumeContextWarning = getResumeContextWarning({

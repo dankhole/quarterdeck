@@ -49,7 +49,7 @@ export function AiFeaturesSection({
 				<span>Show conversation summary on cards</span>
 			</label>
 			<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
-				Display a truncated preview of the agent's latest summary below the title.
+				Display a truncated preview of the task's latest summary below the title.
 			</p>
 
 			<label
@@ -65,7 +65,7 @@ export function AiFeaturesSection({
 				<span>Auto-generate summary with LLM</span>
 			</label>
 			<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
-				Uses a fast model to condense agent conversation excerpts into a short summary for card tooltips.
+				Uses a fast model to condense harness conversation excerpts into a short summary for card tooltips.
 			</p>
 			{fields.autoGenerateSummary ? (
 				<div className="flex items-center gap-2 ml-6 mt-1.5">
@@ -105,7 +105,7 @@ export function AiFeaturesSection({
 const NOTIFICATION_EVENTS = [
 	["permission", "Permissions", "Task is waiting for approval"],
 	["review", "Review", "Task finished or needs attention"],
-	["failure", "Failure", "Agent session failed or errored"],
+	["failure", "Failure", "Harness session failed or errored"],
 ] as const;
 
 export function NotificationsSection({ fields, setField, disabled }: SettingsSectionProps): React.ReactElement {

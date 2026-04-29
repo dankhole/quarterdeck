@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-04-29 — Task-owned agent harness selection
+
+Task creation now owns agent harness choice per task instead of requiring a global Settings change. The selected harness is persisted on `RuntimeBoardCard.agentId`, browser task creation writes it into board state, and fresh task starts prefer the persisted card agent before falling back to the runtime default. Resume still prefers the previous terminal summary agent so existing conversations continue with the same CLI. Settings no longer renders the task-agent picker; it keeps launch tuning such as Claude row multiplier and the worktree context prompt.
+
+Task cards show the effective harness in the lower metadata row and no longer render transient last-tool or agent-message activity there, keeping mixed-agent boards readable without adding another header chip. A refinement pass removed the now-unused task activity formatter after the card stopped displaying last-tool activity, and settings now leads with PATH-based harness detection guidance plus the debug-log shortcut before lower-priority launch tuning. Notable files: `src/core/api/board.ts`, `src/core/api/task-session.ts`, `src/trpc/handlers/start-task-session.ts`, `web-ui/src/components/task/task-create-dialog.tsx`, `web-ui/src/components/task/task-agent-selector.tsx`, and `web-ui/src/components/board/board-card.tsx`. Validation: focused web/runtime tests, `npm run web:typecheck`, `npm run typecheck`, `npm run web:build`, `npm run test:fast`, `git diff --check`, and Biome on touched files.
+
 ## 2026-04-29 — Windows support audit refresh
 
 The Windows support audit now has a stable record in `docs/windows-support-audit.md` instead of one broad active todo. The current boundary is explicit: Quarterdeck has Windows handling for path normalization, shell selection, folder picking, command-shim PTY launch, junction-based ignored-path mirroring, and process timeout cleanup, but support remains experimental until native Windows CI or smoke testing covers the main runtime flows.

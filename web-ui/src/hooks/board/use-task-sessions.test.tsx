@@ -134,12 +134,38 @@ describe("useTaskSessions", () => {
 		expect(startTaskSessionMutateMock).toHaveBeenCalledWith({
 			taskId: "task-1",
 			prompt: "Resume me",
+			agentId: undefined,
 			resumeConversation: undefined,
 			awaitReview: undefined,
 			baseRef: "main",
+			useWorktree: undefined,
 			cols: 120,
 			rows: 40,
 		});
+	});
+
+	it("forwards the task agent when starting a task", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			await latestSnapshot?.startTaskSession({ ...createTask(), agentId: "codex" });
+		});
+
+		expect(startTaskSessionMutateMock).toHaveBeenCalledWith(expect.objectContaining({ agentId: "codex" }));
 	});
 
 	it("forwards task images when starting a task", async () => {

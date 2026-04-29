@@ -1,4 +1,5 @@
 import type {
+	RuntimeAgentId,
 	RuntimeBoardCard,
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
@@ -14,6 +15,7 @@ export interface RuntimeCreateTaskInput {
 	prompt: string;
 	images?: RuntimeTaskImage[];
 	baseRef: string;
+	agentId?: RuntimeAgentId;
 	useWorktree?: boolean;
 	branch?: string;
 	pinned?: boolean;
@@ -286,6 +288,7 @@ export function addTaskToColumn(
 		prompt,
 		images: cloneTaskImages(input.images),
 		baseRef,
+		...(input.agentId ? { agentId: input.agentId } : {}),
 		useWorktree: input.useWorktree,
 		branch: input.branch?.trim() || undefined,
 		pinned: input.pinned || undefined,

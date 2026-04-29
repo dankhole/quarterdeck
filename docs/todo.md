@@ -133,10 +133,6 @@ Rewrite the README so it reflects the current product shape, install flow, core 
 
 Auto-fill a default commit message when the commit sidebar opens (not just via the generate button, which is already implemented). Pre-fill from the task title, diff summary, and optionally agent session context. The message should be fully editable. Consider using the agent's conversation context (why it made changes, not just what changed) to produce better messages than a blind diff summary — this is a differentiator over standard IDE commit message generation.
 
-## Choose agent harness from create task
-
-Add an agent harness selector button/control to the create-task flow so users can choose the task agent/harness before launching, rather than relying on a global/default agent setting or changing settings out of band. Task cards should also show which harness they are using so mixed-agent boards are easy to scan.
-
 ## Search modals: live preview pane
 
 Add a VS Code-style peek preview to the search modals — when a result is highlighted (keyboard or hover), show a read-only preview of the file content alongside the result list, centered on the matched line. Avoids full navigation for scanning multiple matches. Could be a side panel within the overlay or an expandable inline preview.

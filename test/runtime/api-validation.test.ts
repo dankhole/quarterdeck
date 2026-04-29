@@ -124,12 +124,14 @@ describe("parseTaskSessionStartRequest", () => {
 		const parsed = parseTaskSessionStartRequest({
 			taskId: "  task-1  ",
 			prompt: "",
+			agentId: "codex",
 			baseRef: "  main  ",
 			resumeConversation: true,
 		});
 		expect(parsed).toEqual({
 			taskId: "task-1",
 			prompt: "",
+			agentId: "codex",
 			baseRef: "main",
 			resumeConversation: true,
 		});

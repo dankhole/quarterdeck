@@ -44,6 +44,31 @@ vi.mock("@/components/git/branch-select-dropdown", () => ({
 	),
 }));
 
+vi.mock("@/components/task/task-agent-selector", () => ({
+	TaskAgentSelector: ({
+		agents,
+		value,
+		onValueChange,
+	}: {
+		agents: Array<{ id: string; label: string }>;
+		value: string;
+		onValueChange: (value: "claude" | "codex" | "pi") => void;
+	}) => (
+		<select
+			name="agent-harness"
+			aria-label="Task harness"
+			value={value}
+			onChange={(event) => onValueChange(event.currentTarget.value as "claude" | "codex" | "pi")}
+		>
+			{agents.map((agent) => (
+				<option key={agent.id} value={agent.id}>
+					{agent.label}
+				</option>
+			))}
+		</select>
+	),
+}));
+
 vi.mock("@/components/task/task-prompt-composer", () => ({
 	TaskPromptComposer: ({
 		value,
@@ -84,6 +109,7 @@ function createImage(id: string): TaskImage {
 function Harness({ initialPrompt, initialImages = [], onCreate = () => "task-1" }: HarnessProps): React.ReactElement {
 	const [prompt, setPrompt] = useState(initialPrompt);
 	const [images, setImages] = useState<TaskImage[]>(initialImages);
+	const [agentId, setAgentId] = useState<"claude" | "codex" | "pi">("claude");
 	return (
 		<TaskCreateDialog
 			open
@@ -92,6 +118,32 @@ function Harness({ initialPrompt, initialImages = [], onCreate = () => "task-1" 
 			onPromptChange={setPrompt}
 			images={images}
 			onImagesChange={setImages}
+			agentOptions={[
+				{
+					id: "claude",
+					label: "Claude Code",
+					binary: "claude",
+					command: "claude",
+					defaultArgs: [],
+					status: "installed",
+					statusMessage: null,
+					installed: true,
+					configured: true,
+				},
+				{
+					id: "codex",
+					label: "OpenAI Codex",
+					binary: "codex",
+					command: "codex",
+					defaultArgs: [],
+					status: "installed",
+					statusMessage: null,
+					installed: true,
+					configured: false,
+				},
+			]}
+			agentId={agentId}
+			onAgentIdChange={setAgentId}
 			onCreate={onCreate}
 			onCreateAndStart={() => "task-2"}
 			onCreateStartAndOpen={() => "task-3"}
@@ -219,5 +271,23 @@ describe("TaskCreateDialog", () => {
 		expect(requireTextarea(container).value).toBe("");
 		expect(container.querySelector('[data-testid="composer-image-count"]')?.textContent).toBe("0");
 		expect(container.textContent).toContain("New task");
+	});
+
+	it("renders the task harness picker in the create flow", async () => {
+		await act(async () => {
+			root.render(<Harness initialPrompt="Review login flow" />);
+		});
+
+		const selector = container.querySelector('select[aria-label="Task harness"]') as HTMLSelectElement | null;
+		expect(selector).toBeInstanceOf(HTMLSelectElement);
+		expect(selector?.value).toBe("claude");
+
+		await act(async () => {
+			const valueSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+			valueSetter?.call(selector, "codex");
+			selector?.dispatchEvent(new Event("change", { bubbles: true }));
+		});
+
+		expect(selector?.value).toBe("codex");
 	});
 });

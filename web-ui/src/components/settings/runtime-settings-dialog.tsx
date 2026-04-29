@@ -1,12 +1,16 @@
 // Settings dialog composition for Quarterdeck.
-import { getRuntimeLaunchSupportedAgentCatalog } from "@runtime-agent-catalog";
 import { DEFAULT_PROMPT_SHORTCUTS } from "@runtime-config-defaults";
 import { ExternalLink, Settings } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
-import { type AgentRowModel, AgentSection } from "@/components/settings/agent-section";
+import { HarnessSection } from "@/components/settings/agent-section";
 import { AiFeaturesSection, NotificationsSection, TerminalSection } from "@/components/settings/display-sections";
-import { ConfirmationsSection, GitSection, TroubleshootingSection } from "@/components/settings/general-sections";
+import {
+	ConfirmationsSection,
+	DiagnosticsSection,
+	GitSection,
+	TroubleshootingSection,
+} from "@/components/settings/general-sections";
 import { ShortcutsSection } from "@/components/settings/shortcuts-section";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,14 +27,12 @@ import {
 import { useSettingsForm } from "@/hooks/settings/use-settings-form";
 import { useLayoutCustomizations } from "@/resize/layout-customizations";
 import { openFileOnHost, saveRuntimeConfig } from "@/runtime/runtime-config-query";
-import type { RuntimeAgentId, RuntimeConfigResponse } from "@/runtime/types";
+import type { RuntimeConfigResponse } from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { toErrorMessage } from "@/utils/to-error-message";
 
 export type RuntimeSettingsSection = "shortcuts";
-
-const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["claude", "codex", "pi"];
 
 export function RuntimeSettingsDialog({
 	open,
@@ -59,48 +61,8 @@ export function RuntimeSettingsDialog({
 	const shortcutsSectionRef = useRef<HTMLHeadingElement | null>(null);
 	const controlsDisabled = isLoading || isSaving || config === null;
 
-	// Ordered agent list (no dependency on form state — needed to compute fallbackAgentId)
-	const orderedAgents = useMemo(() => {
-		const agents =
-			config?.agents.map((agent) => ({
-				id: agent.id,
-				label: agent.label,
-				binary: agent.binary,
-				command: agent.command,
-				status: agent.status,
-				statusMessage: agent.statusMessage,
-				installed: agent.installed,
-			})) ??
-			getRuntimeLaunchSupportedAgentCatalog().map((agent) => ({
-				id: agent.id,
-				label: agent.label,
-				binary: agent.binary,
-				command: agent.binary,
-				status: "missing" as const,
-				statusMessage: null,
-				installed: null,
-			}));
-		const orderIndexByAgentId = new Map(SETTINGS_AGENT_ORDER.map((agentId, index) => [agentId, index] as const));
-		return [...agents].sort((left, right) => {
-			const leftOrderIndex = orderIndexByAgentId.get(left.id) ?? Number.MAX_SAFE_INTEGER;
-			const rightOrderIndex = orderIndexByAgentId.get(right.id) ?? Number.MAX_SAFE_INTEGER;
-			return leftOrderIndex - rightOrderIndex;
-		});
-	}, [config?.agents]);
-	const firstInstalledAgentId = orderedAgents.find((agent) => agent.installed)?.id;
-	const fallbackAgentId = firstInstalledAgentId ?? orderedAgents[0]?.id ?? "claude";
-
 	// Consolidated form state — dirty check, reset, and save payload are automatic
-	const { fields, setField, hasUnsavedChanges } = useSettingsForm(config, open, fallbackAgentId);
-
-	// Agent display models
-	const supportedAgents = useMemo<AgentRowModel[]>(
-		() =>
-			orderedAgents.map((agent) => ({
-				...agent,
-			})),
-		[orderedAgents],
-	);
+	const { fields, setField, hasUnsavedChanges } = useSettingsForm(config, open);
 
 	// Reset default prompt shortcuts — visibility
 	const hasHiddenDefaults = (config?.hiddenDefaultPromptShortcuts ?? []).length > 0;
@@ -166,11 +128,6 @@ export function RuntimeSettingsDialog({
 			setSaveError("Runtime settings are still loading. Try again in a moment.");
 			return;
 		}
-		const selectedAgent = supportedAgents.find((agent) => agent.id === fields.selectedAgentId);
-		if (!selectedAgent || selectedAgent.installed !== true) {
-			setSaveError("Selected agent is not installed. Install it first or choose an installed agent.");
-			return;
-		}
 		const saved = await save(fields);
 		if (!saved) {
 			setSaveError("Could not save runtime settings. Check runtime logs and try again.");
@@ -214,12 +171,8 @@ export function RuntimeSettingsDialog({
 						{config?.globalConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 					</p>
 
-					<AgentSection
-						{...sectionProps}
-						agents={supportedAgents}
-						configLoaded={config !== null}
-						config={config}
-					/>
+					<HarnessSection {...sectionProps} config={config} />
+					<DiagnosticsSection />
 					<AiFeaturesSection {...sectionProps} llmConfigured={config?.llmConfigured ?? false} />
 					<NotificationsSection {...sectionProps} />
 					<TerminalSection {...sectionProps} />

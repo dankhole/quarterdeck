@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Feature: choose task harness at creation
+
+- Task creation now includes an agent harness selector, persists the chosen harness on each task, and starts fresh sessions with that task-owned harness instead of requiring a global Settings change.
+- Task cards now show the harness in their metadata row, replacing transient last-tool activity text so mixed-agent boards stay scannable without crowding the card header.
+- Settings no longer exposes the task-agent picker; it keeps agent launch tuning such as Claude row multiplier and the worktree context prompt.
+- Settings now leads with PATH-based harness detection guidance, moves debug-log access near the top, and uses harness terminology for task-runner UI copy.
+
 ### Fix: refresh Windows compatibility audit
 
 - Windows agent availability probes now launch command shims through `ComSpec`, matching task PTY launch behavior for `.cmd` and `.bat` agent wrappers.

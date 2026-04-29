@@ -75,6 +75,7 @@ export const runtimeTaskSessionStartRequestSchema = z.object({
 	taskId: z.string(),
 	prompt: z.string(),
 	images: z.array(runtimeTaskImageSchema).optional(),
+	agentId: runtimeAgentIdSchema.optional(),
 	resumeConversation: z.boolean().optional(),
 	awaitReview: z.boolean().optional(),
 	baseRef: z.string(),

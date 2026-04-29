@@ -153,7 +153,7 @@ describe("RuntimeSettingsDialog", () => {
 		expect(checkbox?.getAttribute("data-state")).toBe("unchecked");
 	});
 
-	it("marks Pi support as experimental and unstable", async () => {
+	it("keeps harness selection out of settings and keeps launch tuning", async () => {
 		await act(async () => {
 			root.render(
 				<RuntimeSettingsDialog
@@ -167,30 +167,16 @@ describe("RuntimeSettingsDialog", () => {
 			);
 		});
 
-		expect(document.body.textContent).toContain("Pi");
-		expect(document.body.textContent).toContain("Experimental");
-		expect(document.body.textContent).toContain(
-			"Pi support is experimental and unstable; expect rough edges during task sessions.",
-		);
-	});
-
-	it("groups agent launch controls and omits retired worktree access toggles", async () => {
-		await act(async () => {
-			root.render(
-				<RuntimeSettingsDialog
-					open={true}
-					projectId={"project-1"}
-					initialConfig={savedConfig}
-					onOpenChange={() => {}}
-				/>,
-			);
-		});
-
 		const bodyText = document.body.textContent ?? "";
-		expect(bodyText).toContain("Task Agent");
-		expect(bodyText).toContain("Agent Launch");
+		expect(bodyText).toContain("Harnesses");
+		expect(bodyText).toContain("checks the PATH");
+		expect(bodyText).toContain("Choose a harness in the new task dialog");
+		expect(bodyText).toContain("Diagnostics");
+		expect(bodyText).toContain("Cmd+Shift+D");
 		expect(bodyText).toContain("Claude row multiplier");
 		expect(bodyText).toContain("Worktree context prompt");
+		expect(bodyText).not.toContain("OpenAI Codex");
+		expect(bodyText).not.toContain("Pi support is experimental");
 		expect(bodyText).not.toContain("Allow agents to access the parent repo");
 		expect(bodyText).not.toContain("Rogue writes can corrupt project state");
 		expect(bodyText).not.toContain("These settings let agents escape their worktree sandbox");

@@ -272,6 +272,6 @@ describe("PromptShortcutEditorDialog", () => {
 		const bodyText = document.body.textContent;
 		expect(bodyText).toContain("Enter a full prompt or just invoke a skill");
 		expect(bodyText).toContain("/commit");
-		expect(bodyText).toContain("The text is pasted into the agent terminal and submitted");
+		expect(bodyText).toContain("The text is pasted into the harness terminal and submitted");
 	});
 });

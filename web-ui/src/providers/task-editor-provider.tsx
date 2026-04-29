@@ -6,6 +6,7 @@ import { useTaskBranchOptions } from "@/hooks/git/use-task-branch-options";
 import { useBoardContext } from "@/providers/board-provider";
 import { useProjectContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
+import { resolveDefaultTaskAgentId } from "@/utils/task-agent-display";
 
 // ---------------------------------------------------------------------------
 // Context value - task editor workflow ownership: branch-option derivation,
@@ -36,7 +37,7 @@ interface TaskEditorProviderProps {
 
 export function TaskEditorProvider({ children }: TaskEditorProviderProps): ReactNode {
 	const { currentProjectId, projectGit } = useProjectContext();
-	const { configDefaultBaseRef } = useProjectRuntimeContext();
+	const { configDefaultBaseRef, runtimeProjectConfig } = useProjectRuntimeContext();
 	const { board, setBoard, setSelectedTaskId } = useBoardContext();
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
 
@@ -44,6 +45,7 @@ export function TaskEditorProvider({ children }: TaskEditorProviderProps): React
 		projectGit,
 		configDefaultBaseRef,
 	});
+	const defaultTaskAgentId = useMemo(() => resolveDefaultTaskAgentId(runtimeProjectConfig), [runtimeProjectConfig]);
 
 	const queueTaskStartAfterEdit = useCallback((taskId: string) => {
 		setPendingTaskStartAfterEditId(taskId);
@@ -59,6 +61,7 @@ export function TaskEditorProvider({ children }: TaskEditorProviderProps): React
 		currentProjectId,
 		createTaskBranchOptions,
 		defaultTaskBranchRef,
+		defaultTaskAgentId,
 		setSelectedTaskId,
 		queueTaskStartAfterEdit,
 	});

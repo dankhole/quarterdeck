@@ -35,9 +35,10 @@ function createBoard(tasks: BoardCard[] = []): BoardData {
 
 describe("task-editor-drafts", () => {
 	it("returns stable reset drafts for create and edit flows", () => {
-		expect(createResetTaskCreateDraft("main")).toMatchObject({
+		expect(createResetTaskCreateDraft("main", "claude")).toMatchObject({
 			prompt: "",
 			images: [],
+			agentId: "claude",
 			useWorktree: true,
 			createFeatureBranch: false,
 			branchName: "",
@@ -83,6 +84,7 @@ describe("task-editor-drafts", () => {
 			images: [],
 			branchRef: "main",
 			defaultBranchRef: "main",
+			agentId: "codex",
 			useWorktree: true,
 			branchName: "feature/ship-release",
 			createFeatureBranch: true,
@@ -90,6 +92,7 @@ describe("task-editor-drafts", () => {
 		expect(single.createdTaskId).toBeTruthy();
 		expect(single.baseRef).toBe("main");
 		expect(single.board.columns[0]?.cards[0]?.prompt).toBe("Ship release");
+		expect(single.board.columns[0]?.cards[0]?.agentId).toBe("codex");
 
 		const multi = createTasksOnBoard({
 			board: createBoard(),
@@ -97,6 +100,7 @@ describe("task-editor-drafts", () => {
 			images: [],
 			branchRef: "develop",
 			defaultBranchRef: "main",
+			agentId: "claude",
 			useWorktree: true,
 		});
 		expect(multi.createdTaskIds).toHaveLength(2);

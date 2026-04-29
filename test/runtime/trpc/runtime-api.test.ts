@@ -205,6 +205,39 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 	});
 
+	it("uses the task card agent for fresh starts", async () => {
+		const card = createCard({ agentId: "codex", workingDirectory: "/tmp/codex-worktree" });
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
+		taskWorktreeMocks.pathExists.mockResolvedValue(true);
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
+			agentId: "codex",
+			label: "OpenAI Codex",
+			command: "codex",
+			binary: "codex",
+			args: [],
+		});
+
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => createSummary({ agentId: "codex" })),
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const api = createRuntimeApi(createDeps(terminalManager));
+
+		const response = await api.startTaskSession(defaultScope, {
+			taskId: "task-1",
+			baseRef: "main",
+			prompt: "Do something",
+		});
+
+		expect(response.ok).toBe(true);
+		expect(agentRegistryMocks.resolveAgentCommand).toHaveBeenCalledWith(
+			expect.objectContaining({ selectedAgentId: "codex" }),
+		);
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({ agentId: "codex", binary: "codex" }),
+		);
+	});
+
 	it("falls back to worktree lookup when persisted workingDirectory does not exist on disk", async () => {
 		const card = createCard({ workingDirectory: "/tmp/deleted-worktree" });
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);

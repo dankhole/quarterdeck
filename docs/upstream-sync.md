@@ -63,9 +63,9 @@ Worth doing eventually. Ordered roughly by value.
 
 ### Task-scoped agent/model selection (`a2e4dcf19`)
 **Upstream:** Adds per-task Cline provider/model override UI and persistence.
-**Our current state:** Quarterdeck has an active todo for choosing the agent harness from task creation. Runtime start currently chooses the configured agent, or preserves the previous session's agent on resume/restart.
-**Why it matters:** Mixed-agent boards are now central to Quarterdeck's direction, but a task-level agent contract should come before provider/model-specific controls.
-**Action:** Use this as product validation for the existing "Choose agent harness from create task" backlog item. Do not port the Cline model picker directly.
+**Our current state:** Quarterdeck now chooses the harness from the new task dialog, persists the selected harness per task, shows the effective harness on task cards, and preserves the previous session's harness on resume/restart.
+**Why it matters:** Mixed-harness boards are now supported at the task level. Provider/model-specific controls should build on that task harness contract instead of replacing it.
+**Action:** Treat upstream as validation for task-scoped runner choice, not as portable code. Do not port the Cline model picker directly unless Quarterdeck adds harness-specific model/provider settings later.
 
 ### Settings sidebar navigation (`be6ec58f7`, `148d4d5af`)
 **Upstream:** Experiments with a multi-panel settings dialog and then consolidates into a sidebar-navigation layout.

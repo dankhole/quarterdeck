@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoardCard, getCardHoverTooltip } from "@/components/board/board-card";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { createTestTaskHookActivity, createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
+import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 import type { ReviewTaskWorktreeSnapshot } from "@/types";
 
 let mockWorktreeSnapshot: ReviewTaskWorktreeSnapshot | undefined;
@@ -168,71 +168,19 @@ describe("BoardCard", () => {
 		}
 	});
 
-	it("shows tool input details in the session preview text", async () => {
+	it("shows the task harness badge on backlog cards", async () => {
 		await act(async () => {
 			root.render(
 				<Providers>
-					<BoardCard
-						card={createCard()}
-						index={0}
-						columnId="in_progress"
-						sessionSummary={createTestTaskSessionSummary({
-							taskId: "task-1",
-							state: "running",
-							agentId: "claude",
-							sessionLaunchPath: "/tmp/worktree",
-							startedAt: Date.now(),
-							updatedAt: Date.now(),
-							lastOutputAt: Date.now(),
-							lastHookAt: Date.now(),
-							latestHookActivity: createTestTaskHookActivity({
-								activityText: "Using Read",
-								toolName: "Read",
-								toolInputSummary: "src/index.ts",
-								hookEventName: "tool_call",
-								source: "hook",
-							}),
-						})}
-					/>
+					<BoardCard card={createCard({ agentId: "claude" })} index={0} columnId="backlog" />
 				</Providers>,
 			);
 		});
 
-		expect(container.textContent).toContain("Read(src/index.ts)");
-		expect(container.textContent).not.toContain("Using Read");
+		expect(container.textContent).toContain("Claude");
 	});
 
-	it("shows tool activity in the compact tool label format", async () => {
-		await act(async () => {
-			root.render(
-				<Providers>
-					<BoardCard
-						card={createCard()}
-						index={0}
-						columnId="in_progress"
-						sessionSummary={createSummary("running", {
-							agentId: "claude",
-							latestHookActivity: {
-								activityText: "Completed Read: src/index.ts",
-								toolName: "Read",
-								toolInputSummary: null,
-								finalMessage: null,
-								hookEventName: "PostToolUse",
-								notificationType: null,
-								conversationSummaryText: null,
-								source: "claude",
-							},
-						})}
-					/>
-				</Providers>,
-			);
-		});
-
-		expect(container.textContent).toContain("Read(src/index.ts)");
-		expect(container.textContent).not.toContain("Completed Read");
-	});
-
-	it("parses codex tool activity into the compact tool label format", async () => {
+	it("shows the session harness badge instead of last tool activity", async () => {
 		await act(async () => {
 			root.render(
 				<Providers>
@@ -244,8 +192,8 @@ describe("BoardCard", () => {
 							agentId: "codex",
 							latestHookActivity: {
 								activityText: "Calling Read: src/index.ts",
-								toolName: null,
-								toolInputSummary: null,
+								toolInputSummary: "src/index.ts",
+								toolName: "Read",
 								finalMessage: null,
 								hookEventName: "raw_response_item",
 								notificationType: null,
@@ -258,83 +206,9 @@ describe("BoardCard", () => {
 			);
 		});
 
-		expect(container.textContent).toContain("Read(src/index.ts)");
+		expect(container.textContent).toContain("Codex");
+		expect(container.textContent).not.toContain("Read(src/index.ts)");
 		expect(container.textContent).not.toContain("Calling Read");
-	});
-
-	it("keeps showing the last tool label during assistant streaming", async () => {
-		await act(async () => {
-			root.render(
-				<Providers>
-					<BoardCard
-						card={createCard()}
-						index={0}
-						columnId="in_progress"
-						sessionSummary={{
-							taskId: "task-1",
-							state: "running",
-							agentId: "claude",
-							sessionLaunchPath: "/tmp/worktree",
-							pid: null,
-							startedAt: Date.now(),
-							updatedAt: Date.now(),
-							lastOutputAt: Date.now(),
-							reviewReason: null,
-							exitCode: null,
-							lastHookAt: Date.now(),
-							latestHookActivity: {
-								activityText: "Agent active",
-								toolName: "Read",
-								toolInputSummary: "src/index.ts",
-								finalMessage: "Looking at the file now",
-								hookEventName: "assistant_delta",
-								notificationType: null,
-								conversationSummaryText: null,
-								source: "hook",
-							},
-							stalledSince: null,
-							latestTurnCheckpoint: null,
-							previousTurnCheckpoint: null,
-							conversationSummaries: [],
-							displaySummary: null,
-							displaySummaryGeneratedAt: null,
-						}}
-					/>
-				</Providers>,
-			);
-		});
-
-		expect(container.textContent).toContain("Read(src/index.ts)");
-		expect(container.textContent).not.toContain("Thinking...");
-	});
-
-	it("shows the latest assistant preview on active task cards", async () => {
-		await act(async () => {
-			root.render(
-				<Providers>
-					<BoardCard
-						card={createCard()}
-						index={0}
-						columnId="in_progress"
-						sessionSummary={createSummary("running", {
-							latestHookActivity: {
-								activityText: "Reviewing the final diff",
-								toolName: null,
-								toolInputSummary: null,
-								finalMessage: "Reviewing the final diff",
-								hookEventName: "assistant_delta",
-								notificationType: null,
-								conversationSummaryText: null,
-								source: "hook",
-							},
-						})}
-					/>
-				</Providers>,
-			);
-		});
-
-		expect(container.textContent).toContain("Reviewing the final diff");
-		expect(container.textContent).not.toContain("Thinking...");
 	});
 
 	describe("getCardHoverTooltip", () => {
@@ -550,7 +424,7 @@ describe("BoardCard", () => {
 		});
 	});
 
-	it("shows normal agent messages without the agent prefix", async () => {
+	it("does not show transient agent messages in card metadata", async () => {
 		await act(async () => {
 			root.render(
 				<Providers>
@@ -576,7 +450,8 @@ describe("BoardCard", () => {
 			);
 		});
 
-		expect(container.textContent).toContain("checking the next file");
+		expect(container.textContent).toContain("Codex");
+		expect(container.textContent).not.toContain("checking the next file");
 		expect(container.textContent).not.toContain("Agent:");
 	});
 });

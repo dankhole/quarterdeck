@@ -175,7 +175,7 @@ export function PromptShortcutEditorDialog({
 				<DialogBody>
 					<p id="prompt-shortcut-editor-description" className="text-text-secondary text-[13px] mb-3">
 						Enter a full prompt or just invoke a skill (e.g. <code className="text-text-primary">/commit</code>).
-						The text is pasted into the agent terminal and submitted.
+						The text is pasted into the harness terminal and submitted.
 					</p>
 					<DragDropContext onDragEnd={handleDragEnd}>
 						<Droppable droppableId="prompt-shortcuts">

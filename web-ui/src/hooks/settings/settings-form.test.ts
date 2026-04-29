@@ -7,20 +7,8 @@ import { areFormValuesEqual, resolveInitialValues } from "./settings-form";
 // ---------------------------------------------------------------------------
 
 describe("resolveInitialValues", () => {
-	it("uses fallback agent ID when config is null", () => {
-		const values = resolveInitialValues(null, "claude");
-		expect(values.selectedAgentId).toBe("claude");
-	});
-
-	it("uses config agent ID when config is provided", () => {
-		const config = { selectedAgentId: "codex" } as Parameters<typeof resolveInitialValues>[0];
-		const values = resolveInitialValues(config, "claude");
-		expect(values.selectedAgentId).toBe("codex");
-	});
-
 	it("returns an object with all expected keys", () => {
-		const values = resolveInitialValues(null, "claude");
-		expect(values).toHaveProperty("selectedAgentId");
+		const values = resolveInitialValues(null);
 		expect(values).toHaveProperty("showSummaryOnCards");
 		expect(values).toHaveProperty("audibleNotificationEvents");
 		expect(values).toHaveProperty("shortcuts");
@@ -28,7 +16,7 @@ describe("resolveInitialValues", () => {
 	});
 
 	it("defaults Claude row multiplier to 2", () => {
-		const values = resolveInitialValues(null, "claude");
+		const values = resolveInitialValues(null);
 		expect(values.agentTerminalRowMultiplier).toBe(2);
 	});
 });
@@ -39,7 +27,7 @@ describe("resolveInitialValues", () => {
 
 describe("areFormValuesEqual", () => {
 	function makeValues(overrides: Partial<SettingsFormValues> = {}): SettingsFormValues {
-		return resolveInitialValues(null, "claude") as SettingsFormValues & typeof overrides;
+		return { ...resolveInitialValues(null), ...overrides };
 	}
 
 	it("returns true for identical values", () => {

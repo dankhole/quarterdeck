@@ -1,7 +1,23 @@
-// Settings sections: Git, Confirmations, and Troubleshooting.
+// Settings sections: diagnostics, Git, confirmations, and troubleshooting.
 import { Button } from "@/components/ui/button";
 import { SettingsSwitch } from "@/components/ui/settings-controls";
 import type { SettingsSectionProps } from "./settings-section-props";
+
+// ---------------------------------------------------------------------------
+// Diagnostics
+// ---------------------------------------------------------------------------
+
+export function DiagnosticsSection(): React.ReactElement {
+	return (
+		<>
+			<h6 className="font-semibold text-text-primary mt-4 mb-1">Diagnostics</h6>
+			<p className="text-text-secondary text-[13px] mt-0 mb-0">
+				Press <kbd className="font-mono text-xs bg-surface-3 px-1 rounded">Cmd+Shift+D</kbd> to toggle the log
+				panel. The log level can be changed from the panel header.
+			</p>
+		</>
+	);
+}
 
 // ---------------------------------------------------------------------------
 // Git
@@ -91,10 +107,6 @@ export function TroubleshootingSection({ onResetLayout }: { onResetLayout: () =>
 			</Button>
 			<p className="text-text-secondary text-[13px] mt-2 mb-0">
 				Reset sidebar, split pane, and terminal resize customizations back to their defaults.
-			</p>
-			<p className="text-text-secondary text-[13px] mt-3 mb-0">
-				Press <kbd className="font-mono text-xs bg-surface-3 px-1 rounded">Cmd+Shift+D</kbd> to toggle the log
-				panel. The log level can be changed from the panel header.
 			</p>
 		</>
 	);

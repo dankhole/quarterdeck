@@ -17,13 +17,16 @@ import { useId } from "react";
 
 import type { BranchSelectOption } from "@/components/git/branch-select-dropdown";
 import { BranchSelectDropdown } from "@/components/git/branch-select-dropdown";
+import { TaskAgentSelector } from "@/components/task/task-agent-selector";
 import { ButtonShortcut, DIALOG_STYLE } from "@/components/task/task-create-dialog-utils";
 import { TaskCreateMultiList } from "@/components/task/task-create-multi-list";
 import { TaskPromptComposer } from "@/components/task/task-prompt-composer";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { useTaskCreateDialog } from "@/hooks/board/use-task-create-dialog";
+import type { RuntimeAgentDefinition, RuntimeAgentId } from "@/runtime/types";
 import type { TaskImage } from "@/types";
 import { pasteShortcutLabel } from "@/utils/platform";
 
@@ -34,6 +37,9 @@ export function TaskCreateDialog({
 	onPromptChange,
 	images,
 	onImagesChange,
+	agentOptions,
+	agentId,
+	onAgentIdChange,
 	onCreate,
 	onCreateAndStart,
 	onCreateMultiple,
@@ -62,6 +68,9 @@ export function TaskCreateDialog({
 	onPromptChange: (value: string) => void;
 	images: TaskImage[];
 	onImagesChange: Dispatch<SetStateAction<TaskImage[]>>;
+	agentOptions: RuntimeAgentDefinition[];
+	agentId: RuntimeAgentId;
+	onAgentIdChange: (value: RuntimeAgentId) => void;
 	onCreate: (options?: { keepDialogOpen?: boolean }) => string | null;
 	onCreateAndStart?: (options?: { keepDialogOpen?: boolean }) => string | null;
 	onCreateMultiple: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
@@ -180,8 +189,12 @@ export function TaskCreateDialog({
 					/>
 				)}
 
-				<div className="flex flex-col gap-2.5 mt-4 pt-4 border-t border-border">
-					<div className={!useWorktree ? "opacity-40" : undefined}>
+				<div className="mt-4 border-t border-border pt-4">
+					<div>
+						<span className="text-[11px] text-text-secondary block mb-1">Harness</span>
+						<TaskAgentSelector agents={agentOptions} value={agentId} onValueChange={onAgentIdChange} />
+					</div>
+					<div className={useWorktree ? "mt-3" : "mt-3 opacity-40"}>
 						<span className="text-[11px] text-text-secondary block mb-1">Base ref</span>
 						<BranchSelectDropdown
 							options={branchOptions}
@@ -195,24 +208,44 @@ export function TaskCreateDialog({
 							onSetDefault={onSetDefaultBaseRef}
 						/>
 					</div>
-				</div>
-				<div>
-					<label
-						htmlFor={useWorktreeId}
-						className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
-					>
-						<RadixCheckbox.Root
-							id={useWorktreeId}
-							checked={useWorktree}
-							onCheckedChange={(checked) => onUseWorktreeChange(checked === true)}
-							className="flex h-3.5 w-3.5 shrink-0 translate-y-px cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+					<div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+						<label
+							htmlFor={useWorktreeId}
+							className="flex items-center gap-2 text-[13px] text-text-primary cursor-pointer select-none"
 						>
-							<RadixCheckbox.Indicator className="flex items-center justify-center">
-								<Check size={10} className="block text-white" />
-							</RadixCheckbox.Indicator>
-						</RadixCheckbox.Root>
-						Use isolated worktree
-					</label>
+							<RadixCheckbox.Root
+								id={useWorktreeId}
+								checked={useWorktree}
+								onCheckedChange={(checked) => onUseWorktreeChange(checked === true)}
+								className="flex h-4 w-4 shrink-0 translate-y-px cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+							>
+								<RadixCheckbox.Indicator className="flex items-center justify-center">
+									<Check size={11} className="block text-white" />
+								</RadixCheckbox.Indicator>
+							</RadixCheckbox.Root>
+							Use isolated worktree
+						</label>
+						<label
+							htmlFor={createFeatureBranchId}
+							className={cn(
+								"flex items-center gap-2 text-[13px] text-text-primary select-none",
+								useWorktree ? "cursor-pointer" : "cursor-default opacity-40",
+							)}
+						>
+							<RadixCheckbox.Root
+								id={createFeatureBranchId}
+								checked={createFeatureBranch}
+								onCheckedChange={(checked) => onCreateFeatureBranchChange(checked === true)}
+								disabled={!useWorktree}
+								className="flex h-4 w-4 shrink-0 translate-y-px cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default"
+							>
+								<RadixCheckbox.Indicator className="flex items-center justify-center">
+									<Check size={11} className="block text-white" />
+								</RadixCheckbox.Indicator>
+							</RadixCheckbox.Root>
+							Create feature branch
+						</label>
+					</div>
 					{!useWorktree ? (
 						<div className="mt-1.5 flex items-start gap-1.5 rounded-md bg-status-orange/10 border border-status-orange/20 px-2 py-1.5 text-[11px] text-status-orange leading-snug">
 							<AlertTriangle size={12} className="mt-0.5 shrink-0" />
@@ -225,48 +258,28 @@ export function TaskCreateDialog({
 							</span>
 						</div>
 					) : null}
-				</div>
-				{useWorktree ? (
-					<div>
-						<label
-							htmlFor={createFeatureBranchId}
-							className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
-						>
-							<RadixCheckbox.Root
-								id={createFeatureBranchId}
-								checked={createFeatureBranch}
-								onCheckedChange={(checked) => onCreateFeatureBranchChange(checked === true)}
-								className="flex h-3.5 w-3.5 shrink-0 translate-y-px cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+					{useWorktree && createFeatureBranch ? (
+						<div className="mt-2 flex items-center gap-1.5">
+							<input
+								name="feature-branch-name"
+								type="text"
+								value={branchName}
+								onChange={(e) => onBranchNameEdit(e.currentTarget.value)}
+								placeholder="quarterdeck/branch-name"
+								className="h-7 flex-1 min-w-0 rounded-md border border-border-bright bg-surface-2 px-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+							<button
+								type="button"
+								onClick={onGenerateBranchName}
+								disabled={!prompt.trim() || isGeneratingBranchName || isLlmGenerationDisabled}
+								title={isLlmGenerationDisabled ? "LLM not configured" : "Generate branch name from prompt"}
+								className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-bright bg-surface-2 text-text-secondary hover:bg-surface-3 hover:text-text-primary disabled:opacity-40 disabled:cursor-default cursor-pointer"
 							>
-								<RadixCheckbox.Indicator className="flex items-center justify-center">
-									<Check size={10} className="block text-white" />
-								</RadixCheckbox.Indicator>
-							</RadixCheckbox.Root>
-							Create feature branch
-						</label>
-						{createFeatureBranch ? (
-							<div className="mt-1.5 flex items-center gap-1.5">
-								<input
-									name="feature-branch-name"
-									type="text"
-									value={branchName}
-									onChange={(e) => onBranchNameEdit(e.currentTarget.value)}
-									placeholder="quarterdeck/branch-name"
-									className="h-7 flex-1 min-w-0 rounded-md border border-border-bright bg-surface-2 px-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-								/>
-								<button
-									type="button"
-									onClick={onGenerateBranchName}
-									disabled={!prompt.trim() || isGeneratingBranchName || isLlmGenerationDisabled}
-									title={isLlmGenerationDisabled ? "LLM not configured" : "Generate branch name from prompt"}
-									className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-bright bg-surface-2 text-text-secondary hover:bg-surface-3 hover:text-text-primary disabled:opacity-40 disabled:cursor-default cursor-pointer"
-								>
-									{isGeneratingBranchName ? <Spinner size={12} /> : <Sparkles size={12} />}
-								</button>
-							</div>
-						) : null}
-					</div>
-				) : null}
+								{isGeneratingBranchName ? <Spinner size={12} /> : <Sparkles size={12} />}
+							</button>
+						</div>
+					) : null}
+				</div>
 			</DialogBody>
 			<DialogFooter>
 				<label

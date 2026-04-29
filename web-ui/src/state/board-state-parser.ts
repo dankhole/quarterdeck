@@ -1,4 +1,4 @@
-import { runtimeBoardColumnIdSchema, runtimeTaskImageSchema } from "@runtime-contract";
+import { runtimeAgentIdSchema, runtimeBoardColumnIdSchema, runtimeTaskImageSchema } from "@runtime-contract";
 import { z } from "zod";
 import type { BoardCard, BoardColumnId, BoardDependency, TaskImage } from "@/types";
 
@@ -19,6 +19,7 @@ const rawPersistedBoardCardSchema = z.object({
 	images: z.unknown().optional(),
 	baseRef: z.unknown().optional(),
 	baseRefPinned: z.unknown().optional(),
+	agentId: z.unknown().optional(),
 	useWorktree: z.unknown().optional(),
 	workingDirectory: z.unknown().optional(),
 	branch: z.unknown().optional(),
@@ -84,6 +85,7 @@ export function parsePersistedBoardCard(
 	}
 
 	const now = options.now ?? Date.now();
+	const agentId = parsePersistedAgentId(result.data.agentId);
 
 	return {
 		id: parseNonEmptyString(result.data.id) ?? options.createTaskId(),
@@ -92,6 +94,7 @@ export function parsePersistedBoardCard(
 		images: parsePersistedTaskImages(result.data.images),
 		baseRef,
 		...(typeof result.data.baseRefPinned === "boolean" ? { baseRefPinned: result.data.baseRefPinned } : {}),
+		...(agentId ? { agentId } : {}),
 		useWorktree: typeof result.data.useWorktree === "boolean" ? result.data.useWorktree : undefined,
 		workingDirectory: parseOptionalNullableString(result.data.workingDirectory),
 		branch: parseOptionalNullableString(result.data.branch),
@@ -99,6 +102,11 @@ export function parsePersistedBoardCard(
 		createdAt: typeof result.data.createdAt === "number" ? result.data.createdAt : now,
 		updatedAt: typeof result.data.updatedAt === "number" ? result.data.updatedAt : now,
 	};
+}
+
+function parsePersistedAgentId(value: unknown): BoardCard["agentId"] | null {
+	const result = runtimeAgentIdSchema.safeParse(value);
+	return result.success ? result.data : null;
 }
 
 export function parsePersistedBoardDependency(

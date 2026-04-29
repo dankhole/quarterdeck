@@ -163,6 +163,7 @@ export function useTaskSessions({
 				resumeConversation: options?.resumeConversation ?? false,
 				awaitReview: options?.awaitReview ?? false,
 				useWorktree: task.useWorktree,
+				agentId: task.agentId ?? null,
 				hasPrompt: !options?.resumeConversation && task.prompt.trim().length > 0,
 			});
 			try {
@@ -177,6 +178,7 @@ export function useTaskSessions({
 					taskId: task.id,
 					prompt: kickoffPrompt,
 					images: options?.resumeConversation ? undefined : task.images,
+					agentId: task.agentId,
 					resumeConversation: options?.resumeConversation,
 					awaitReview: options?.awaitReview,
 					baseRef: task.baseRef,

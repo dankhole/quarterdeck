@@ -39,6 +39,8 @@ export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactEleme
 		setNewTaskPrompt,
 		newTaskImages,
 		setNewTaskImages,
+		newTaskAgentId,
+		setNewTaskAgentId,
 		newTaskUseWorktree,
 		setNewTaskUseWorktree,
 		createFeatureBranch,
@@ -84,6 +86,9 @@ export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactEleme
 				onPromptChange={setNewTaskPrompt}
 				images={newTaskImages}
 				onImagesChange={setNewTaskImages}
+				agentOptions={projectRuntime.runtimeProjectConfig?.agents ?? []}
+				agentId={newTaskAgentId}
+				onAgentIdChange={setNewTaskAgentId}
 				onCreate={handleCreateTask}
 				onCreateAndStart={interactions.handleCreateAndStartTask}
 				onCreateStartAndOpen={interactions.handleCreateStartAndOpenTask}

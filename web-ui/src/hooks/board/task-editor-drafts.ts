@@ -1,4 +1,5 @@
 import { isTaskSaveValid, resolveEffectiveBaseRef } from "@/hooks/board/task-editor";
+import type { RuntimeAgentId } from "@/runtime/types";
 import { addTaskToColumnWithResult, updateTask } from "@/state/board-state";
 import type { BoardCard, BoardData, TaskImage } from "@/types";
 
@@ -9,6 +10,7 @@ export interface TaskCreateDraftReset {
 	createFeatureBranch: boolean;
 	branchName: string;
 	branchRef: string;
+	agentId: RuntimeAgentId;
 }
 
 export interface TaskEditDraftState {
@@ -18,7 +20,10 @@ export interface TaskEditDraftState {
 	branchRef: string;
 }
 
-export function createResetTaskCreateDraft(defaultBranchRef: string): TaskCreateDraftReset {
+export function createResetTaskCreateDraft(
+	defaultBranchRef: string,
+	defaultAgentId: RuntimeAgentId,
+): TaskCreateDraftReset {
 	return {
 		prompt: "",
 		images: [],
@@ -26,6 +31,7 @@ export function createResetTaskCreateDraft(defaultBranchRef: string): TaskCreate
 		createFeatureBranch: false,
 		branchName: "",
 		branchRef: defaultBranchRef,
+		agentId: defaultAgentId,
 	};
 }
 
@@ -89,6 +95,7 @@ export function createTaskOnBoard({
 	useWorktree,
 	branchName,
 	createFeatureBranch,
+	agentId,
 }: {
 	board: BoardData;
 	prompt: string;
@@ -98,6 +105,7 @@ export function createTaskOnBoard({
 	useWorktree: boolean;
 	branchName: string;
 	createFeatureBranch: boolean;
+	agentId: RuntimeAgentId;
 }): { board: BoardData; createdTaskId: string | null; baseRef: string } {
 	if (!isTaskSaveValid(prompt, branchRef, defaultBranchRef)) {
 		return { board, createdTaskId: null, baseRef: resolveEffectiveBaseRef(branchRef, defaultBranchRef) };
@@ -109,6 +117,7 @@ export function createTaskOnBoard({
 		prompt: trimmedPrompt,
 		images,
 		baseRef,
+		agentId,
 		useWorktree,
 		branchName: createFeatureBranch && branchName ? branchName : undefined,
 	});
@@ -127,6 +136,7 @@ export function createTasksOnBoard({
 	branchRef,
 	defaultBranchRef,
 	useWorktree,
+	agentId,
 }: {
 	board: BoardData;
 	prompts: string[];
@@ -134,6 +144,7 @@ export function createTasksOnBoard({
 	branchRef: string;
 	defaultBranchRef: string;
 	useWorktree: boolean;
+	agentId: RuntimeAgentId;
 }): { board: BoardData; createdTaskIds: string[]; baseRef: string } {
 	const validPrompts = prompts.map((prompt) => prompt.trim()).filter(Boolean);
 	const baseRef = resolveEffectiveBaseRef(branchRef, defaultBranchRef);
@@ -148,6 +159,7 @@ export function createTasksOnBoard({
 			prompt,
 			images,
 			baseRef,
+			agentId,
 			useWorktree,
 		});
 		updatedBoard = created.board;

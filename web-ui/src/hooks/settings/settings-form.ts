@@ -7,14 +7,13 @@
 
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
-import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
+import type { RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
 
 // ---------------------------------------------------------------------------
 // Form values type — the set of fields managed by the save/dirty/reset cycle
 // ---------------------------------------------------------------------------
 
 export interface SettingsFormValues {
-	selectedAgentId: RuntimeAgentId;
 	showSummaryOnCards: boolean;
 	autoGenerateSummary: boolean;
 	summaryStaleAfterSeconds: number;
@@ -49,12 +48,8 @@ export interface SettingsFormValues {
 // Initial values — the single place where config-to-form mapping lives
 // ---------------------------------------------------------------------------
 
-export function resolveInitialValues(
-	config: RuntimeConfigResponse | null,
-	fallbackAgentId: RuntimeAgentId,
-): SettingsFormValues {
+export function resolveInitialValues(config: RuntimeConfigResponse | null): SettingsFormValues {
 	return {
-		selectedAgentId: config?.selectedAgentId ?? fallbackAgentId,
 		showSummaryOnCards: config?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
 		autoGenerateSummary: config?.autoGenerateSummary ?? CONFIG_DEFAULTS.autoGenerateSummary,
 		summaryStaleAfterSeconds: config?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds,

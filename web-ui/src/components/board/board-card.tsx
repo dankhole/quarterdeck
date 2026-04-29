@@ -97,7 +97,6 @@ export function BoardCard({
 		statusTagStyle,
 		statusTooltip,
 		showStatusBadge,
-		runningActivity,
 		latestSummaryText,
 		effectiveTooltip,
 		isSessionDead,
@@ -109,6 +108,7 @@ export function BoardCard({
 		showDetachedWorktreeHint,
 		reviewChangeSummary,
 		showUncommittedChangesIndicator,
+		agentBadge,
 	} = useBoardCard({
 		card,
 		columnId,
@@ -398,25 +398,26 @@ export function BoardCard({
 						{showSummaryOnCards && latestSummaryText ? (
 							<p className="text-xs text-text-secondary line-clamp-2 mt-1 m-0">{latestSummaryText}</p>
 						) : null}
-						{showStatusBadge ? (
+						{showStatusBadge || agentBadge ? (
 							<div className="flex items-center gap-1.5 mt-1.5">
-								<Tooltip content={statusTooltip}>
-									<span
-										className={cn(
-											"inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
-											statusBadgeClass,
-										)}
-									>
-										{statusLabel}
-									</span>
-								</Tooltip>
-								{runningActivity ? (
-									<span
-										className="text-text-secondary text-xs font-mono kb-line-clamp-1 min-w-0"
-										style={{ overflowWrap: "anywhere" }}
-									>
-										{runningActivity}
-									</span>
+								{showStatusBadge ? (
+									<Tooltip content={statusTooltip}>
+										<span
+											className={cn(
+												"inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
+												statusBadgeClass,
+											)}
+										>
+											{statusLabel}
+										</span>
+									</Tooltip>
+								) : null}
+								{agentBadge ? (
+									<Tooltip content={agentBadge.tooltip}>
+										<span className="inline-flex min-w-0 items-center rounded bg-surface-3 px-1.5 py-0.5 text-xs font-medium text-text-secondary leading-tight">
+											{agentBadge.label}
+										</span>
+									</Tooltip>
 								) : null}
 							</div>
 						) : null}

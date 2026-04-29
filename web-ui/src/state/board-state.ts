@@ -3,6 +3,7 @@ import { createShortTaskId } from "@runtime-task-id";
 import * as runtimeTaskState from "@runtime-task-state";
 
 import { createInitialBoardData } from "@/data/board-data";
+import type { RuntimeAgentId } from "@/runtime/types";
 import {
 	parsePersistedBoardCard,
 	parsePersistedBoardDependency,
@@ -23,6 +24,7 @@ export interface TaskDraft {
 	prompt: string;
 	images?: TaskImage[];
 	baseRef: string;
+	agentId?: RuntimeAgentId;
 	useWorktree?: boolean;
 	branchName?: string;
 }
@@ -178,6 +180,7 @@ export function addTaskToColumnWithResult(
 			prompt,
 			images: draft.images,
 			baseRef: draft.baseRef,
+			agentId: draft.agentId,
 			useWorktree: draft.useWorktree,
 			branch: draft.branchName,
 		},
