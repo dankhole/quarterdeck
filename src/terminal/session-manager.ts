@@ -1,10 +1,12 @@
-// PTY-backed runtime for task sessions and the project shell terminal.
-// It owns process lifecycle, terminal protocol filtering, and summary updates
-// for command-driven agents such as Claude Code, Codex, and shell sessions.
+// PTY-backed runtime composition root for task sessions and the project shell
+// terminal. It wires process lifecycle, terminal protocol filtering, and
+// summary updates for command-driven agents such as Claude Code, Codex, and
+// shell sessions.
 //
 // Responsibility groups are extracted into focused modules:
 //   session-manager-types.ts       — shared types, helpers, factories
-//   session-lifecycle.ts           — task/shell spawn, exit handling, stale recovery, hydration
+//   session-lifecycle-controller.ts — task/shell lifecycle policy orchestration
+//   session-lifecycle.ts           — task/shell spawn, exit handling, stale recovery primitives
 //   session-transition-controller.ts — transition side effects + summary fanout
 //   session-output-pipeline.ts     — PTY output processing pipeline
 //   session-input-pipeline.ts      — user input routing pipeline
@@ -12,25 +14,15 @@
 //   session-interrupt-recovery.ts  — interrupt detection and recovery
 //   session-auto-restart.ts        — auto-restart after unexpected exit
 //   session-reconciliation-sweep.ts — periodic task session/process drift sweep
-import { createTaggedLogger, type RuntimeTaskSessionSummary } from "../core";
-import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
-import type { PtySession } from "./pty-session";
+import type { RuntimeTaskSessionSummary } from "../core";
 import { processSessionInput } from "./session-input-pipeline";
-import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
-import {
-	handleTaskSessionExit,
-	hydrateSessionEntries,
-	recoverStaleSession,
-	spawnShellSession,
-	spawnTaskSession,
-} from "./session-lifecycle";
+import { SessionLifecycleController } from "./session-lifecycle-controller";
 import {
 	createProcessEntry,
 	hasLiveOutputListener,
 	type ProcessEntry,
 	type StartShellSessionRequest,
 	type StartTaskSessionRequest,
-	teardownActiveSession,
 } from "./session-manager-types";
 import { disableOutputOscIntercept, processTaskSessionOutput } from "./session-output-pipeline";
 import { createReconciliationTimer, type ReconciliationTimer } from "./session-reconciliation-sweep";
@@ -40,18 +32,24 @@ import type { TerminalSessionListener, TerminalSessionService } from "./terminal
 
 export type { StartShellSessionRequest, StartTaskSessionRequest };
 
-const sessionLog = createTaggedLogger("session-mgr");
-
 export class TerminalSessionManager implements TerminalSessionService {
 	readonly store: SessionSummaryStore;
 	private readonly entries = new Map<string, ProcessEntry>();
 	private readonly transitions: SessionTransitionController;
+	private readonly lifecycle: SessionLifecycleController;
 	private readonly reconciliation: ReconciliationTimer;
 
 	constructor(store: SessionSummaryStore) {
 		this.store = store;
 		this.transitions = new SessionTransitionController(this.store, this.entries);
 		this.store.onChange((summary) => this.transitions.broadcastSummary(summary));
+		this.lifecycle = new SessionLifecycleController({
+			store: this.store,
+			entries: this.entries,
+			transitions: this.transitions,
+			ensureProcessEntry: (taskId) => this.ensureProcessEntry(taskId),
+			onTaskOutput: (entry, taskId, chunk) => this.handleTaskSessionOutput(entry, taskId, chunk),
+		});
 		this.reconciliation = createReconciliationTimer({
 			entries: this.entries,
 			store: this.store,
@@ -60,11 +58,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 	}
 
 	hydrateFromRecord(record: Record<string, RuntimeTaskSessionSummary>): void {
-		this.store.hydrateFromRecord(record);
-		hydrateSessionEntries(record, {
-			updateStore: (id, patch) => this.store.update(id, patch),
-			ensureProcessEntry: (taskId) => this.ensureProcessEntry(taskId),
-		});
+		this.lifecycle.hydrateFromRecord(record);
 	}
 
 	attach(taskId: string, listener: TerminalSessionListener): (() => void) | null {
@@ -103,101 +97,15 @@ export class TerminalSessionManager implements TerminalSessionService {
 	}
 
 	async startTaskSession(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
-		const entry = this.ensureProcessEntry(request.taskId);
-		entry.restartRequest = {
-			kind: "task",
-			request: {
-				...request,
-				args: [...request.args],
-				images: request.images ? request.images.map((image) => ({ ...image })) : undefined,
-				env: request.env ? { ...request.env } : undefined,
-			},
-		};
-		const currentSummary = this.store.getSummary(request.taskId);
-		sessionLog.debug("startTaskSession called", {
-			taskId: request.taskId,
-			agentId: request.agentId,
-			cwd: request.cwd,
-			resumeConversation: request.resumeConversation ?? false,
-			resumeSessionId: request.resumeSessionId ?? null,
-			awaitReview: request.awaitReview ?? false,
-			entryActive: Boolean(entry.active),
-			entrySuppressAutoRestart: Boolean(entry.suppressAutoRestartOnExit),
-			entryPendingStart: Boolean(entry.pendingSessionStart),
-			pendingExitResolverCount: entry.pendingExitResolvers.length,
-			currentState: currentSummary?.state ?? null,
-			currentReviewReason: currentSummary?.reviewReason ?? null,
-			currentPid: currentSummary?.pid ?? null,
-			currentResumeSessionId: currentSummary?.resumeSessionId ?? null,
-		});
-		if (
-			entry.active &&
-			currentSummary &&
-			(currentSummary.state === "running" || currentSummary.state === "awaiting_review")
-		) {
-			if (entry.suppressAutoRestartOnExit) {
-				sessionLog.warn("task session start requested while previous session is still exiting", {
-					taskId: request.taskId,
-					agentId: request.agentId,
-					currentState: currentSummary.state,
-					currentReviewReason: currentSummary.reviewReason,
-					currentPid: currentSummary.pid,
-					resumeConversation: request.resumeConversation ?? false,
-					awaitReview: request.awaitReview ?? false,
-				});
-				throw new Error("Task session is still shutting down. Wait a moment and try again.");
-			}
-			sessionLog.debug("startTaskSession short-circuit — existing active session reused", {
-				taskId: request.taskId,
-				currentState: currentSummary.state,
-				currentPid: currentSummary.pid,
-			});
-			return currentSummary;
-		}
-
-		teardownActiveSession(entry);
-
-		return spawnTaskSession(entry, request, {
-			getSummary: (id) => this.store.getSummary(id),
-			updateStore: (id, patch) => this.store.update(id, patch),
-			ensureEntry: (id) => this.store.ensureEntry(id),
-			onOutput: (e, taskId, chunk) => this.handleTaskSessionOutput(e, taskId, chunk),
-			onExit: (req, event, session) => this.handleTaskSessionExit(req, event, session),
-		});
+		return this.lifecycle.startTaskSession(request);
 	}
 
 	async startShellSession(request: StartShellSessionRequest): Promise<RuntimeTaskSessionSummary> {
-		const entry = this.ensureProcessEntry(request.taskId);
-		entry.restartRequest = {
-			kind: "shell",
-			request: {
-				...request,
-				args: request.args ? [...request.args] : undefined,
-				env: request.env ? { ...request.env } : undefined,
-			},
-		};
-		const currentSummary = this.store.getSummary(request.taskId);
-		if (entry.active && currentSummary?.state === "running") {
-			return currentSummary;
-		}
-
-		teardownActiveSession(entry);
-
-		return spawnShellSession(entry, request, {
-			updateStore: (id, patch) => this.store.update(id, patch),
-			ensureEntry: (id) => this.store.ensureEntry(id),
-		});
+		return this.lifecycle.startShellSession(request);
 	}
 
 	recoverStaleSession(taskId: string): RuntimeTaskSessionSummary | null {
-		return recoverStaleSession(taskId, {
-			getEntry: (id) => this.entries.get(id),
-			getSummary: (id) => this.store.getSummary(id),
-			recoverStaleSession: (id) => this.store.recoverStaleSession(id),
-			startTaskSession: (r) => this.startTaskSession(r),
-			updateStore: (id, patch) => this.store.update(id, patch),
-			applyTransitionEvent: (entry, event) => this.transitions.applyTransitionEvent(entry, event),
-		});
+		return this.lifecycle.recoverStaleSession(taskId);
 	}
 
 	writeInput(taskId: string, data: Buffer): RuntimeTaskSessionSummary | null {
@@ -270,90 +178,15 @@ export class TerminalSessionManager implements TerminalSessionService {
 	}
 
 	stopTaskSession(taskId: string): RuntimeTaskSessionSummary | null {
-		const entry = this.entries.get(taskId);
-		if (!entry?.active) {
-			sessionLog.debug("stopTaskSession no-op — no active session", {
-				taskId,
-				hasEntry: Boolean(entry),
-			});
-			return this.store.getSummary(taskId);
-		}
-		sessionLog.debug("stopTaskSession invoked", {
-			taskId,
-			pid: entry.active.session.pid,
-		});
-		entry.suppressAutoRestartOnExit = true;
-		const cleanupFn = entry.active.onSessionCleanup;
-		entry.active.onSessionCleanup = null;
-		stopWorkspaceTrustTimers(entry.active);
-		clearInterruptRecoveryTimer(entry.active);
-		entry.active.session.stop();
-		if (cleanupFn) {
-			cleanupFn().catch(() => {});
-		}
-		return this.store.getSummary(taskId);
+		return this.lifecycle.stopTaskSession(taskId);
 	}
 
 	async stopTaskSessionAndWaitForExit(taskId: string, timeoutMs = 3_000): Promise<RuntimeTaskSessionSummary | null> {
-		const entry = this.entries.get(taskId);
-		if (!entry?.active) {
-			sessionLog.debug("stopTaskSessionAndWaitForExit no-op — no active entry", {
-				taskId,
-				hasEntry: Boolean(entry),
-			});
-			return this.store.getSummary(taskId);
-		}
-		sessionLog.debug("stopTaskSessionAndWaitForExit starting", {
-			taskId,
-			timeoutMs,
-			existingResolverCount: entry.pendingExitResolvers.length,
-			currentPid: entry.active.session.pid,
-		});
-		let resolveExit: (() => void) | null = null;
-		const exitPromise = new Promise<void>((resolve) => {
-			resolveExit = resolve;
-			entry.pendingExitResolvers.push(resolve);
-		});
-		this.stopTaskSession(taskId);
-		const didExit = await new Promise<boolean>((resolve) => {
-			const timeoutHandle = setTimeout(() => {
-				if (resolveExit) {
-					entry.pendingExitResolvers = entry.pendingExitResolvers.filter((candidate) => candidate !== resolveExit);
-				}
-				resolve(false);
-			}, timeoutMs);
-			void exitPromise.then(() => {
-				clearTimeout(timeoutHandle);
-				resolve(true);
-			});
-		});
-		if (!didExit) {
-			const latestSummary = this.store.getSummary(taskId);
-			sessionLog.warn("task session did not exit before timeout", {
-				taskId,
-				timeoutMs,
-				currentState: latestSummary?.state ?? null,
-				currentReviewReason: latestSummary?.reviewReason ?? null,
-				currentPid: latestSummary?.pid ?? null,
-			});
-		} else {
-			sessionLog.debug("stopTaskSessionAndWaitForExit observed clean exit", { taskId });
-		}
-		return this.store.getSummary(taskId);
+		return this.lifecycle.stopTaskSessionAndWaitForExit(taskId, timeoutMs);
 	}
 
 	markInterruptedAndStopAll(): RuntimeTaskSessionSummary[] {
-		const activeTaskIds: string[] = [];
-		for (const entry of this.entries.values()) {
-			if (!entry.active) {
-				continue;
-			}
-			activeTaskIds.push(entry.taskId);
-			stopWorkspaceTrustTimers(entry.active);
-			clearInterruptRecoveryTimer(entry.active);
-			entry.active.session.stop({ interrupted: true });
-		}
-		return this.store.markAllInterrupted(activeTaskIds);
+		return this.lifecycle.markInterruptedAndStopAll();
 	}
 
 	startReconciliation(): void {
@@ -370,20 +203,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 		processTaskSessionOutput(entry, taskId, chunk, {
 			getSummary: (id) => this.store.getSummary(id),
 			updateStore: (id, patch) => this.store.update(id, patch),
-			applyTransitionEvent: (e, ev) => this.transitions.applyTransitionEvent(e, ev),
-		});
-	}
-
-	private handleTaskSessionExit(
-		request: StartTaskSessionRequest,
-		event: { exitCode: number | null },
-		session: PtySession,
-	): void {
-		handleTaskSessionExit(request, event, session, {
-			getEntry: (id) => this.entries.get(id),
-			getSummary: (id) => this.store.getSummary(id),
-			updateStore: (id, patch) => this.store.update(id, patch),
-			startTaskSession: (r) => this.startTaskSession(r),
 			applyTransitionEvent: (e, ev) => this.transitions.applyTransitionEvent(e, ev),
 		});
 	}

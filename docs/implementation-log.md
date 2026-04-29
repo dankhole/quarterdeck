@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-04-29 — Terminal lifecycle controller split
+
+`TerminalSessionManager` now delegates task/shell lifecycle orchestration to `src/terminal/session-lifecycle-controller.ts`: start/reuse policy, restart-request capture, explicit stop and wait-for-exit handling, shutdown interruption, hydration, stale recovery, and task exit restart fallback all live behind that boundary. The manager keeps the shared process-entry registry, listener attachment, terminal IO/resize/pause/resume operations, transition-controller wiring, and reconciliation timer wiring.
+
+The key invariant is that lifecycle code still routes state-machine consequences through `SessionTransitionController`; explicit stops still set `suppressAutoRestartOnExit` before killing the PTY, wait-for-exit still resolves through the shared exit finalizer, and stale/replaced PTY exits remain guarded before they can clear a newer active session. Validation: focused terminal manager/shutdown/auto-restart/ordering/transition-controller tests and `npm run typecheck`.
+
 ## 2026-04-29 — Task-owned agent harness selection
 
 Task creation now owns agent harness choice per task instead of requiring a global Settings change. The selected harness is persisted on `RuntimeBoardCard.agentId`, browser task creation writes it into board state, and fresh task starts prefer the persisted card agent before falling back to the runtime default. Resume still prefers the previous terminal summary agent so existing conversations continue with the same CLI. Settings no longer renders the task-agent picker; it keeps launch tuning such as Claude row multiplier and the worktree context prompt.

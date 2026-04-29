@@ -640,7 +640,7 @@ describe("TerminalSessionManager", () => {
 
 		expect(stop).toHaveBeenCalledTimes(1);
 		expect(consoleWarn).toHaveBeenCalledWith(
-			expect.stringContaining("[session-mgr]"),
+			expect.stringContaining("[session-lifecycle]"),
 			"task session did not exit before timeout",
 			expect.objectContaining({
 				taskId: "task-timeout",
@@ -699,7 +699,7 @@ describe("TerminalSessionManager", () => {
 		).rejects.toThrow("Task session is still shutting down. Wait a moment and try again.");
 		expect(stop).toHaveBeenCalledTimes(1);
 		expect(consoleWarn).toHaveBeenCalledWith(
-			expect.stringContaining("[session-mgr]"),
+			expect.stringContaining("[session-lifecycle]"),
 			"task session start requested while previous session is still exiting",
 			expect.objectContaining({
 				taskId: "task-restart",

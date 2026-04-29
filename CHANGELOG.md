@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Chore: continue terminal lifecycle cleanup
+
+- Moved task/shell lifecycle orchestration out of `TerminalSessionManager` into a dedicated lifecycle controller, keeping the manager focused on registry, listener, IO, transition, and reconciliation wiring.
+
 ## [0.12.2] — 2026-04-29
 
 ### Docs: version bump to 0.12.2
