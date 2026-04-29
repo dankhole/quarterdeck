@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: refresh sidebar shortcut tips
+
+- Removed the obsolete plan/act toggle shortcut from the sidebar tips and corrected the start-and-open task shortcut to match the active task-create hotkey.
+
 ### Chore: simplify settings agent launch controls
 
 - Settings now groups task-agent selection, Claude row tuning, and the worktree context prompt together so agent launch behavior is easier to scan.
