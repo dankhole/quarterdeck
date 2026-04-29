@@ -85,6 +85,7 @@
 ### Chore: split terminal pool ownership
 
 - `terminal-pool.ts` now composes pooled task-slot ownership from separate hidden-stream timer policy, DOM/debug diagnostics, and cross-terminal helper modules while preserving existing terminal behavior and compatibility exports.
+- Shared pooled-slot bookkeeping now lives in `terminal-pool-state.ts`, keeping slot arrays, roles, role timestamps, and task-to-slot indexes out of the side-effecting pool facade.
 
 ### Fix: settle task terminal reveal after restore
 

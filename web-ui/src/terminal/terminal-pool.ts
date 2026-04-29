@@ -17,6 +17,7 @@ import {
 	type TerminalDebugState,
 } from "@/terminal/terminal-pool-diagnostics";
 import { TerminalPoolPolicy } from "@/terminal/terminal-pool-policy";
+import { TerminalPoolState } from "@/terminal/terminal-pool-state";
 import type { SlotRole } from "@/terminal/terminal-pool-types";
 import { type PersistentTerminalAppearance, TerminalSlot } from "@/terminal/terminal-slot";
 import {
@@ -36,14 +37,8 @@ interface ViteHotContext {
 
 export type { RegisteredTerminalDebugSnapshot, SlotRole, TerminalDebugState };
 
-// ---------------------------------------------------------------------------
-// Module-level state
-// ---------------------------------------------------------------------------
+const poolState = new TerminalPoolState();
 
-const slots: TerminalSlot[] = [];
-const slotRoles = new Map<TerminalSlot, SlotRole>();
-const slotTaskIds = new Map<string, TerminalSlot>(); // taskId -> slot
-const roleTimestamps = new Map<TerminalSlot, number>();
 // Retained for future destroyPool() cleanup.
 let _rotationTimer: ReturnType<typeof setInterval> | null = null;
 let initialized = false;
@@ -67,66 +62,6 @@ const DEFAULT_POOL_APPEARANCE: PersistentTerminalAppearance = {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function setRole(slot: TerminalSlot, role: SlotRole): void {
-	slotRoles.set(slot, role);
-	roleTimestamps.set(slot, Date.now());
-}
-
-function getRole(slot: TerminalSlot): SlotRole {
-	return slotRoles.get(slot) ?? "FREE";
-}
-
-function getTimestamp(slot: TerminalSlot): number {
-	return roleTimestamps.get(slot) ?? 0;
-}
-
-/** Remove a slot from slotTaskIds by its taskId. Returns the taskId if found. */
-function removeSlotFromTaskIndex(slot: TerminalSlot): string | null {
-	for (const [taskId, s] of slotTaskIds.entries()) {
-		if (s === slot) {
-			slotTaskIds.delete(taskId);
-			return taskId;
-		}
-	}
-	return null;
-}
-
-/**
- * Find the oldest slot with a given role. Returns null if none found.
- */
-function findOldestSlotByRole(role: SlotRole): TerminalSlot | null {
-	let oldest: TerminalSlot | null = null;
-	let oldestTime = Number.POSITIVE_INFINITY;
-	for (const slot of slots) {
-		if (getRole(slot) === role) {
-			const ts = getTimestamp(slot);
-			if (ts < oldestTime) {
-				oldestTime = ts;
-				oldest = slot;
-			}
-		}
-	}
-	return oldest;
-}
-
-/**
- * Find the newest slot with a given role. Returns null if none found.
- */
-function findNewestSlotByRole(role: SlotRole): TerminalSlot | null {
-	let newest: TerminalSlot | null = null;
-	let newestTime = -1;
-	for (const slot of slots) {
-		if (getRole(slot) === role) {
-			const ts = getTimestamp(slot);
-			if (ts > newestTime) {
-				newestTime = ts;
-				newest = slot;
-			}
-		}
-	}
-	return newest;
-}
-
 /**
  * Find a FREE slot or evict PRELOADING (oldest first), then READY (oldest first).
  * When evicting: cancel warmup timeout, remove from task index, disconnect -> FREE.
@@ -134,18 +69,18 @@ function findNewestSlotByRole(role: SlotRole): TerminalSlot | null {
  */
 function findFreeOrEvict(): TerminalSlot | null {
 	// 1. Look for the newest FREE slot — leaves the oldest FREE for rotation to recycle.
-	const free = findNewestSlotByRole("FREE");
+	const free = poolState.findNewestSlotByRole("FREE");
 	if (free) {
 		return free;
 	}
 	// 2. Evict oldest PRELOADING
-	const preloading = findOldestSlotByRole("PRELOADING");
+	const preloading = poolState.findOldestSlotByRole("PRELOADING");
 	if (preloading) {
 		evictSlot(preloading);
 		return preloading;
 	}
 	// 3. Evict oldest READY
-	const ready = findOldestSlotByRole("READY");
+	const ready = poolState.findOldestSlotByRole("READY");
 	if (ready) {
 		evictSlot(ready);
 		return ready;
@@ -159,11 +94,11 @@ function findFreeOrEvict(): TerminalSlot | null {
  */
 function evictSlot(slot: TerminalSlot): void {
 	poolPolicy.clearPreviousEvictionTimer(slot);
-	const evictedTaskId = removeSlotFromTaskIndex(slot);
+	const evictedTaskId = poolState.removeTaskSlotForSlot(slot);
 	if (evictedTaskId) {
 		poolPolicy.clearWarmupTimers(evictedTaskId);
 	}
-	setRole(slot, "FREE");
+	poolState.setRole(slot, "FREE");
 	// Async disconnect — socket close + buffer reset happen in the background.
 	void slot.disconnectFromTask();
 }
@@ -171,15 +106,15 @@ function evictSlot(slot: TerminalSlot): void {
 /** Immediately evict a PRELOADING/READY warmup slot. */
 function evictWarmupSlot(taskId: string, reason: "cancelWarmup" | "warmupMaxTtl" = "cancelWarmup"): void {
 	poolPolicy.clearWarmupTimers(taskId);
-	const slot = slotTaskIds.get(taskId);
+	const slot = poolState.getSlotForTask(taskId);
 	if (!slot) {
 		return;
 	}
-	const role = getRole(slot);
+	const role = poolState.getRole(slot);
 	if (role === "PRELOADING" || role === "READY") {
 		log.debug(`${reason} — releasing slot ${slot.slotId} for ${taskId}`);
-		slotTaskIds.delete(taskId);
-		setRole(slot, "FREE");
+		poolState.removeTaskSlot(taskId);
+		poolState.setRole(slot, "FREE");
 		void slot.disconnectFromTask();
 	}
 }
@@ -193,14 +128,14 @@ function getDedicatedSlotEntries(): { key: string; slot: TerminalSlot }[] {
 }
 
 const terminalDebugProvider: TerminalDebugSnapshotProvider = {
-	getPoolSlots: () => slots,
-	getPoolSlotRole: getRole,
+	getPoolSlots: () => poolState.getSlots(),
+	getPoolSlotRole: (slot) => poolState.getRole(slot),
 	getDedicatedSlots: getDedicatedSlotEntries,
 };
 
 const terminalSurfaceProvider: TerminalSurfaceProvider = {
-	getPoolSlots: () => slots,
-	getPooledSlotForTask: (taskId) => slotTaskIds.get(taskId) ?? null,
+	getPoolSlots: () => poolState.getSlots(),
+	getPooledSlotForTask: (taskId) => poolState.getSlotForTask(taskId),
 	log,
 };
 
@@ -208,10 +143,10 @@ const terminalDomHealthMonitor = createTerminalDomHealthMonitor(terminalDebugPro
 const uninstallTerminalDebugHook = installTerminalDebugHook(terminalDebugProvider);
 
 const poolPolicy = new TerminalPoolPolicy({
-	getSlots: () => slots,
-	getRole,
-	setRole,
-	findNewestSlotByRole,
+	getSlots: () => poolState.getSlots(),
+	getRole: (slot) => poolState.getRole(slot),
+	setRole: (slot, role) => poolState.setRole(slot, role),
+	findNewestSlotByRole: (role) => poolState.findNewestSlotByRole(role),
 	evictSlot,
 	evictWarmupSlot,
 	logDebug: (message, metadata) => {
@@ -238,8 +173,7 @@ export function initPool(): void {
 	for (let i = 0; i < POOL_SIZE; i++) {
 		const slotId = nextSlotId++;
 		const slot = new TerminalSlot(slotId, DEFAULT_POOL_APPEARANCE);
-		slots.push(slot);
-		setRole(slot, "FREE");
+		poolState.addSlot(slot, "FREE");
 	}
 	// Start proactive rotation timer
 	_rotationTimer = setInterval(rotateOldestFreeSlot, ROTATION_INTERVAL_MS);
@@ -254,10 +188,10 @@ export function initPool(): void {
 export function attachPoolContainer(container: HTMLDivElement): void {
 	if (poolContainer === container) return;
 	poolContainer = container;
-	for (const slot of slots) {
+	for (const slot of poolState.getSlots()) {
 		slot.attachToStageContainer(container);
 	}
-	log.info(`pool container attached — ${slots.length} slots staged`);
+	log.info(`pool container attached — ${poolState.getSlots().length} slots staged`);
 }
 
 /**
@@ -280,7 +214,7 @@ export function detachPoolContainer(): void {
 export function acquireForTask(taskId: string, projectId: string): TerminalSlot {
 	const t0 = performance.now();
 	// 1. If task already has a slot: cancel warmup, transition to ACTIVE, return it.
-	const existing = slotTaskIds.get(taskId);
+	const existing = poolState.getSlotForTask(taskId);
 	if (existing) {
 		poolPolicy.clearWarmupTimers(taskId);
 		// Re-open sockets if they closed (e.g. after sleep/wake).
@@ -310,7 +244,7 @@ export function acquireForTask(taskId: string, projectId: string): TerminalSlot 
 		// This should never happen with a pool of 4 (at most ACTIVE + PREVIOUS = 2,
 		// leaving 2 evictable). Fall back to evicting the oldest PREVIOUS to avoid
 		// breaking the 4-slot cap.
-		const previousSlot = findOldestSlotByRole("PREVIOUS");
+		const previousSlot = poolState.findOldestSlotByRole("PREVIOUS");
 		if (previousSlot) {
 			log.warn("acquireForTask — no free slots, evicting PREVIOUS");
 			evictSlot(previousSlot);
@@ -323,7 +257,7 @@ export function acquireForTask(taskId: string, projectId: string): TerminalSlot 
 		// If we reach here, the state machine has a bug. Throw rather than silently
 		// growing the pool array (which would violate the 4-slot cap permanently).
 		throw new Error(
-			`acquireForTask — pool exhausted with ${slots.length} slots, all ACTIVE. This is a pool state machine bug.`,
+			`acquireForTask — pool exhausted with ${poolState.getSlots().length} slots, all ACTIVE. This is a pool state machine bug.`,
 		);
 	}
 
@@ -336,8 +270,8 @@ export function acquireForTask(taskId: string, projectId: string): TerminalSlot 
 
 function acquireForTaskIntoSlot(slot: TerminalSlot, taskId: string, projectId: string): TerminalSlot {
 	slot.connectToTask(taskId, projectId);
-	slotTaskIds.set(taskId, slot);
-	setRole(slot, "ACTIVE");
+	poolState.assignTaskSlot(taskId, slot);
+	poolState.setRole(slot, "ACTIVE");
 	return slot;
 }
 
@@ -349,7 +283,7 @@ function acquireForTaskIntoSlot(slot: TerminalSlot, taskId: string, projectId: s
 export function warmup(taskId: string, projectId: string): void {
 	const t0 = performance.now();
 	// 1. If task already has a slot (any role): no-op
-	if (slotTaskIds.has(taskId)) {
+	if (poolState.hasSlotForTask(taskId)) {
 		return;
 	}
 
@@ -363,16 +297,16 @@ export function warmup(taskId: string, projectId: string): void {
 
 	// 3. Connect and set PRELOADING
 	slot.connectToTask(taskId, projectId);
-	slotTaskIds.set(taskId, slot);
-	setRole(slot, "PRELOADING");
+	poolState.assignTaskSlot(taskId, slot);
+	poolState.setRole(slot, "PRELOADING");
 	log.debug(`[perf] warmup — slot ${slot.slotId} preloading for ${taskId}`, {
 		elapsedMs: (performance.now() - t0).toFixed(1),
 	});
 
 	// 4. Transition to READY when connection is ready
 	slot.onceConnectionReady(() => {
-		if (getRole(slot) === "PRELOADING" && slotTaskIds.get(taskId) === slot) {
-			setRole(slot, "READY");
+		if (poolState.getRole(slot) === "PRELOADING" && poolState.getSlotForTask(taskId) === slot) {
+			poolState.setRole(slot, "READY");
 			log.debug(`[perf] warmup — slot ${slot.slotId} ready for ${taskId}`, {
 				totalMs: (performance.now() - t0).toFixed(1),
 			});
@@ -390,12 +324,12 @@ export function warmup(taskId: string, projectId: string): void {
  * cleared and the warm slot is reused.
  */
 export function cancelWarmup(taskId: string): void {
-	const slot = slotTaskIds.get(taskId);
+	const slot = poolState.getSlotForTask(taskId);
 	if (!slot) {
 		poolPolicy.clearWarmupTimers(taskId);
 		return;
 	}
-	const role = getRole(slot);
+	const role = poolState.getRole(slot);
 	if (role !== "PRELOADING" && role !== "READY") {
 		poolPolicy.clearWarmupTimers(taskId);
 		return;
@@ -407,14 +341,14 @@ export function cancelWarmup(taskId: string): void {
  * Release a task's slot back to FREE. No-op if the task has no slot.
  */
 export function releaseTask(taskId: string): void {
-	const slot = slotTaskIds.get(taskId);
+	const slot = poolState.getSlotForTask(taskId);
 	if (!slot) {
 		return;
 	}
 	poolPolicy.clearPreviousEvictionTimer(slot);
 	poolPolicy.clearWarmupTimers(taskId);
-	slotTaskIds.delete(taskId);
-	setRole(slot, "FREE");
+	poolState.removeTaskSlot(taskId);
+	poolState.setRole(slot, "FREE");
 	log.debug(`releaseTask — freed slot ${slot.slotId} from ${taskId}`);
 	void slot.disconnectFromTask();
 }
@@ -426,10 +360,10 @@ export function releaseAll(): void {
 	poolPolicy.clearAllTimers();
 
 	// Disconnect all non-FREE slots
-	for (const slot of slots) {
-		if (getRole(slot) !== "FREE") {
-			removeSlotFromTaskIndex(slot);
-			setRole(slot, "FREE");
+	for (const slot of poolState.getSlots()) {
+		if (poolState.getRole(slot) !== "FREE") {
+			poolState.removeTaskSlotForSlot(slot);
+			poolState.setRole(slot, "FREE");
 			void slot.disconnectFromTask();
 		}
 	}
@@ -440,14 +374,14 @@ export function releaseAll(): void {
  * Get the pool slot for a task, or null if the task has no slot.
  */
 export function getSlotForTask(taskId: string): TerminalSlot | null {
-	return slotTaskIds.get(taskId) ?? null;
+	return poolState.getSlotForTask(taskId);
 }
 
 /**
  * Get the current role of a pool slot.
  */
 export function getSlotRole(slot: TerminalSlot): SlotRole {
-	return getRole(slot);
+	return poolState.getRole(slot);
 }
 
 /**
@@ -455,28 +389,25 @@ export function getSlotRole(slot: TerminalSlot): SlotRole {
  * This prevents xterm.js canvas/WebGL resource staleness over long sessions.
  */
 function rotateOldestFreeSlot(): void {
-	const oldest = findOldestSlotByRole("FREE");
+	const oldest = poolState.findOldestSlotByRole("FREE");
 	if (!oldest) {
 		log.debug("rotation — no FREE slots to rotate");
 		return;
 	}
 
-	const idx = slots.indexOf(oldest);
-	if (idx === -1) {
+	const replacementIndex = poolState.prepareSlotReplacement(oldest);
+	if (replacementIndex === null) {
 		return;
 	}
 
 	const oldSlotId = oldest.slotId;
 
 	// Dispose old FIRST, then create new (no temporary 5th slot)
-	slotRoles.delete(oldest);
-	roleTimestamps.delete(oldest);
 	oldest.dispose();
 
 	const newSlotId = nextSlotId++;
 	const fresh = new TerminalSlot(newSlotId, DEFAULT_POOL_APPEARANCE);
-	slots[idx] = fresh;
-	setRole(fresh, "FREE");
+	poolState.replaceSlotAt(replacementIndex, fresh, "FREE");
 	if (poolContainer) {
 		fresh.attachToStageContainer(poolContainer);
 	}
@@ -548,7 +479,7 @@ export function isTerminalSessionRunning(projectId: string, taskId: string): boo
 // Test helpers
 // ---------------------------------------------------------------------------
 
-/** @internal — test only. Resets all module-level state so tests start clean. */
+/** @internal — test only. Resets pool-owned state so tests start clean. */
 export function _resetPoolForTesting(): void {
 	resetPoolState();
 }
@@ -558,13 +489,10 @@ function resetPoolState(): void {
 	terminalDomHealthMonitor.stop();
 
 	// Dispose all pool slots
-	for (const slot of slots) {
+	for (const slot of poolState.getSlots()) {
 		slot.dispose();
 	}
-	slots.length = 0;
-	slotRoles.clear();
-	slotTaskIds.clear();
-	roleTimestamps.clear();
+	poolState.clear();
 
 	// Dispose all dedicated terminals
 	_disposeAllDedicatedTerminalsForTesting();

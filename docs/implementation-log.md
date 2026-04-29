@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-04-29 — Frontend terminal pool state ownership
+
+Shared pooled task-terminal bookkeeping now lives in `web-ui/src/terminal/terminal-pool-state.ts`. `TerminalPoolState` owns the slot array, role map, role timestamps, task-to-slot index, role-based oldest/newest selection, task assignment/removal, rotation replacement metadata, and test/HMR clearing. `terminal-pool.ts` remains the composition root for creating/disposing `TerminalSlot` instances, socket connect/disconnect, policy timers, diagnostics providers, dedicated terminal compatibility, and the public pool API.
+
+The key invariant is unchanged behavior: `FREE`, `PRELOADING`, `READY`, `ACTIVE`, and `PREVIOUS` semantics stay the same; warmup max TTL, cancel grace, previous eviction, restore-on-promotion, debug dump hook, HMR cleanup, and dedicated shell terminal separation are preserved. Validation: focused terminal pool/dedicated/diagnostics/session hook suite.
+
 ## 2026-04-29 — Project metadata loader module split
 
 Project metadata loading now keeps the existing refresh architecture while splitting the large loader facade into explicit modules for task path resolution, checkout-level git probing, base-ref lookup, task projection, home metadata, and entry/snapshot helpers. `src/server/project-metadata-loaders.ts` remains the compatibility import surface, and `project-metadata-task-cache.ts` owns the cached task metadata type so the leaf modules avoid circular runtime imports.
