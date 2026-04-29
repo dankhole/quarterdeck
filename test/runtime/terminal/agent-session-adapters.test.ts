@@ -37,6 +37,29 @@ function setupTempHome(): string {
 	return tempHome;
 }
 
+function getCodexConfigOverrideValues(args: string[], key: string): string[] {
+	const values: string[] = [];
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "-c" || arg === "--config") {
+			const next = args[index + 1];
+			if (typeof next === "string" && next.startsWith(`${key}=`)) {
+				values.push(next.slice(key.length + 1));
+			}
+			index += 1;
+			continue;
+		}
+		if (arg?.startsWith("-c=") && arg.slice("-c=".length).startsWith(`${key}=`)) {
+			values.push(arg.slice("-c=".length + key.length + 1));
+			continue;
+		}
+		if (arg?.startsWith("--config=") && arg.slice("--config=".length).startsWith(`${key}=`)) {
+			values.push(arg.slice("--config=".length + key.length + 1));
+		}
+	}
+	return values;
+}
+
 afterEach(() => {
 	if (originalHome === undefined) {
 		delete process.env.HOME;
@@ -117,11 +140,12 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.shouldInspectOutputForTransition).toBeUndefined();
 		expect(launch.args.slice(0, 2)).toEqual(["--enable", "codex_hooks"]);
 		const hookOverrideArgs = launch.args.slice(2);
-		expect(hookOverrideArgs.length).toBe(Object.keys(buildCodexHooksConfig()).length * 2);
+		expect(hookOverrideArgs.length).toBe(Object.keys(buildCodexHooksConfig()).length * 2 + 2);
 		expect(hookOverrideArgs).toContain("-c");
 		expect(hookOverrideArgs.join("\n")).toContain("hooks.SessionStart=");
 		expect(hookOverrideArgs.join("\n")).toContain("hooks.PostToolUse=");
 		expect(hookOverrideArgs.join("\n")).toContain("hooks.PermissionRequest=");
+		expect(getCodexConfigOverrideValues(launch.args, "check_for_update_on_startup")).toEqual(["false"]);
 
 		const quarterdeckHooksPath = join(home, ".quarterdeck", "hooks", "codex", "hooks.json");
 		const codexGlobalHooksPath = join(home, ".codex", "hooks.json");
@@ -144,6 +168,34 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.args.filter((arg) => arg === "--enable")).toHaveLength(1);
 		expect(launch.args.filter((arg) => arg === "codex_hooks")).toHaveLength(1);
 		expect(launch.args.join("\n")).not.toContain("hooks.SessionStart=");
+	});
+
+	it("disables Codex startup update checks for Quarterdeck-launched sessions", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-updates",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		expect(getCodexConfigOverrideValues(launch.args, "check_for_update_on_startup")).toEqual(["false"]);
+	});
+
+	it("preserves an explicit Codex startup update-check override", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-custom-updates",
+			agentId: "codex",
+			binary: "codex",
+			args: ["-c", "check_for_update_on_startup=true"],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		expect(getCodexConfigOverrideValues(launch.args, "check_for_update_on_startup")).toEqual(["true"]);
 	});
 
 	it("writes Claude settings with explicit permission hook", async () => {

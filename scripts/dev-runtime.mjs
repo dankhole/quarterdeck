@@ -21,6 +21,10 @@ try {
 
 const runtime = launchManagedProcess(process.execPath, [tsxCliPath, "watch", "src/cli.ts", ...process.argv.slice(2)], {
 	cwd: repoRoot,
+	env: {
+		...process.env,
+		NODE_ENV: process.env.NODE_ENV ?? "development",
+	},
 	onForceKill: () => {
 		console.error("[dev-runtime] Runtime did not exit before timeout. Force killing...");
 	},

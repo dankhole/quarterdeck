@@ -6,7 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RawData } from "ws";
 import { WebSocket } from "ws";
 
-import type { RuntimeTaskSessionSummary, RuntimeTerminalWsServerMessage } from "../../../src/core";
+import {
+	getQuarterdeckRuntimePort,
+	type RuntimeTaskSessionSummary,
+	type RuntimeTerminalWsServerMessage,
+	setQuarterdeckRuntimePort,
+} from "../../../src/core";
 import type { TerminalRestoreSnapshot, TerminalSessionListener, TerminalSessionService } from "../../../src/terminal";
 import { createTerminalWebSocketBridge, type TerminalWebSocketBridge } from "../../../src/terminal";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
@@ -221,8 +226,10 @@ describe("createTerminalWebSocketBridge", () => {
 	let bridge: TerminalWebSocketBridge;
 	let terminalManager: FakeTerminalManager;
 	let runtimeUrl: string;
+	let originalRuntimePort: number;
 
 	beforeEach(async () => {
+		originalRuntimePort = getQuarterdeckRuntimePort();
 		terminalManager = new FakeTerminalManager();
 		server = createServer((_request, response) => {
 			response.writeHead(404);
@@ -240,10 +247,12 @@ describe("createTerminalWebSocketBridge", () => {
 		if (!address) {
 			throw new Error("Expected websocket server address.");
 		}
+		setQuarterdeckRuntimePort(address.port);
 		runtimeUrl = `ws://127.0.0.1:${address.port}`;
 	});
 
 	afterEach(async () => {
+		setQuarterdeckRuntimePort(originalRuntimePort);
 		await bridge.close();
 		await new Promise<void>((resolve, reject) => {
 			server.close((error) => {

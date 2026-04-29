@@ -24,6 +24,8 @@ export default defineConfig({
 			timeout: 45_000,
 			env: {
 				QUARTERDECK_E2E_RUNTIME_PORT: runtimePort,
+				QUARTERDECK_E2E_WEB_PORT: webPort,
+				NODE_ENV: "development",
 			},
 		},
 		{

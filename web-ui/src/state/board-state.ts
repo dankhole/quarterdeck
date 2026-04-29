@@ -81,7 +81,17 @@ function createBrowserUuid(): string {
 	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
 		return crypto.randomUUID();
 	}
-	return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+	return createRandomId(10);
+}
+
+const RANDOM_ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+function createRandomId(length: number): string {
+	let id = "";
+	for (let index = 0; index < length; index += 1) {
+		id += RANDOM_ID_ALPHABET[Math.floor(Math.random() * RANDOM_ID_ALPHABET.length)] ?? "0";
+	}
+	return id;
 }
 
 function createDependencyId(): string {

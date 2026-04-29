@@ -24,6 +24,7 @@ import {
 	runtimeAppRouter,
 } from "../trpc";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
+import { handleHttpRequest, handleSocketUpgrade } from "./middleware";
 import { normalizeProjectMetadataClientId } from "./project-metadata-visibility";
 import type { ProjectRegistry } from "./project-registry";
 import type { RuntimeStateHub } from "./runtime-state-hub";
@@ -183,6 +184,10 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	const server = createServer(async (req, res) => {
 		try {
+			if (handleHttpRequest(req, res).end) {
+				return;
+			}
+
 			const requestUrl = new URL(req.url ?? "/", "http://localhost");
 			const pathname = normalizeRequestPath(requestUrl.pathname);
 			if (pathname.startsWith("/api/trpc")) {
@@ -207,6 +212,10 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		}
 	});
 	server.on("upgrade", (request, socket, head) => {
+		if (handleSocketUpgrade(request, socket).end) {
+			(request as IncomingMessage & { __quarterdeckUpgradeHandled?: boolean }).__quarterdeckUpgradeHandled = true;
+			return;
+		}
 		let requestUrl: URL;
 		try {
 			requestUrl = new URL(request.url ?? "/", getQuarterdeckRuntimeOrigin());

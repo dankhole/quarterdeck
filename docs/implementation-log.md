@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-04-29 — Runtime request and launch hardening
+
+Runtime HTTP requests, runtime-state WebSocket upgrades, and terminal WebSocket upgrades now share a host/origin gate in `src/server/middleware.ts`. Requests without an `Origin` header still work for CLI/local fetches, while browser requests must come from the configured runtime origin, loopback aliases on the runtime port, or explicit development web UI ports when `NODE_ENV=development`. The dev runtime launcher now sets that mode, and Playwright e2e passes its web port so the Vite proxy remains covered without opening the policy broadly in packaged runs.
+
+The same upstream review also landed two low-risk launch/identity hardening fixes: Codex launches receive `-c check_for_update_on_startup=false` unless a user override already exists, and UUID-unavailable task ID fallbacks no longer mix `Date.now()` into short IDs. Validation: `npm run check`, `npm run web:typecheck`, `npm run web:test`, `npm run lint`, `node --check scripts/dev-runtime.mjs`, and `git diff --check`.
+
 ## 2026-04-29 — Frontend terminal pool state ownership
 
 Shared pooled task-terminal bookkeeping now lives in `web-ui/src/terminal/terminal-pool-state.ts`. `TerminalPoolState` owns the slot array, role map, role timestamps, task-to-slot index, role-based oldest/newest selection, task assignment/removal, rotation replacement metadata, and test/HMR clearing. `terminal-pool.ts` remains the composition root for creating/disposing `TerminalSlot` instances, socket connect/disconnect, policy timers, diagnostics providers, dedicated terminal compatibility, and the public pool API.

@@ -5,6 +5,7 @@ import type { RawData, WebSocket } from "ws";
 import { WebSocketServer } from "ws";
 
 import { getQuarterdeckRuntimeOrigin } from "../core";
+import { handleSocketUpgrade } from "../server/middleware";
 import type { TerminalSessionService } from "./terminal-session-service";
 import { createTerminalWsIoOutputState } from "./terminal-ws-backpressure-policy";
 import { TerminalWsConnectionRegistry } from "./terminal-ws-connection-registry";
@@ -55,11 +56,18 @@ export function createTerminalWebSocketBridge({
 		try {
 			(socket as Socket).setNoDelay(true);
 			const upgradeRequest = request as UpgradeRequest;
+			if (upgradeRequest.__quarterdeckUpgradeHandled) {
+				return;
+			}
 			const url = new URL(request.url ?? "/", getQuarterdeckRuntimeOrigin());
 			const pathname = url.pathname;
 			const isIoRequest = isTerminalIoWebSocketPath(pathname);
 			const isControlRequest = isTerminalControlWebSocketPath(pathname);
 			if (!isIoRequest && !isControlRequest) {
+				return;
+			}
+			if (handleSocketUpgrade(request, socket).end) {
+				upgradeRequest.__quarterdeckUpgradeHandled = true;
 				return;
 			}
 			upgradeRequest.__quarterdeckUpgradeHandled = true;

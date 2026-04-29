@@ -10,6 +10,12 @@
 
 - Reworked the root README around the current source install flow with `npm run link`, optional environment variables, the active agent/worktree workflow, and GitHub/Bitbucket-friendly Markdown.
 
+### Fix: harden runtime request and launch defaults
+
+- Runtime HTTP and WebSocket entry points now reject unexpected Host/Origin headers while preserving local runtime, Vite dev, and e2e proxy flows.
+- Codex task launches now disable Codex startup update checks unless the user explicitly overrides that Codex config.
+- Fallback task ID generation no longer mixes timestamp-derived entropy into short task IDs when UUID generation is unavailable.
+
 ### Docs: track editor-lite backlog
 
 - Added an active todo for an editor-lite review/editing surface, including Monaco, CodeMirror 6, and Eclipse Theia as implementation options.

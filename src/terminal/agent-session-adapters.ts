@@ -376,6 +376,10 @@ const codexAdapter: AgentSessionAdapter = {
 			});
 		}
 
+		if (!hasCodexConfigOverride(codexArgs, "check_for_update_on_startup")) {
+			codexArgs.push("-c", "check_for_update_on_startup=false");
+		}
+
 		if (!hasCodexConfigOverride(codexArgs, "developer_instructions")) {
 			const worktreeContext = await buildWorktreeContextPrompt({
 				cwd: input.cwd,
