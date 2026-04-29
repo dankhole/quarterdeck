@@ -172,12 +172,12 @@ export function CheckoutConfirmationDialog({
 							checked={dontShowAgain}
 							onCheckedChange={(checked) => setDontShowAgain(checked === true)}
 							className={cn(
-								"flex items-center justify-center w-3.5 h-3.5 rounded border",
+								"flex h-3.5 w-3.5 shrink-0 translate-y-px items-center justify-center rounded border",
 								dontShowAgain ? "bg-accent border-accent" : "bg-surface-2 border-border-bright",
 							)}
 						>
-							<RadixCheckbox.Indicator>
-								<Check size={10} className="text-white" />
+							<RadixCheckbox.Indicator className="flex items-center justify-center">
+								<Check size={10} className="block text-white" />
 							</RadixCheckbox.Indicator>
 						</RadixCheckbox.Root>
 						<span className="text-xs text-text-tertiary">Don't show again</span>

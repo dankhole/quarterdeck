@@ -205,10 +205,10 @@ export function TaskCreateDialog({
 							id={useWorktreeId}
 							checked={useWorktree}
 							onCheckedChange={(checked) => onUseWorktreeChange(checked === true)}
-							className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+							className="flex h-3.5 w-3.5 shrink-0 translate-y-px cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
 						>
-							<RadixCheckbox.Indicator>
-								<Check size={10} className="text-white" />
+							<RadixCheckbox.Indicator className="flex items-center justify-center">
+								<Check size={10} className="block text-white" />
 							</RadixCheckbox.Indicator>
 						</RadixCheckbox.Root>
 						Use isolated worktree
@@ -236,10 +236,10 @@ export function TaskCreateDialog({
 								id={createFeatureBranchId}
 								checked={createFeatureBranch}
 								onCheckedChange={(checked) => onCreateFeatureBranchChange(checked === true)}
-								className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+								className="flex h-3.5 w-3.5 shrink-0 translate-y-px cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
 							>
-								<RadixCheckbox.Indicator>
-									<Check size={10} className="text-white" />
+								<RadixCheckbox.Indicator className="flex items-center justify-center">
+									<Check size={10} className="block text-white" />
 								</RadixCheckbox.Indicator>
 							</RadixCheckbox.Root>
 							Create feature branch
