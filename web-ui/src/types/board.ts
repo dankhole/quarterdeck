@@ -40,6 +40,7 @@ export interface BoardData {
 export interface ReviewTaskWorktreeSnapshot {
 	taskId: string;
 	path: string;
+	baseRef?: string;
 	branch: string | null;
 	isDetached: boolean;
 	headCommit: string | null;

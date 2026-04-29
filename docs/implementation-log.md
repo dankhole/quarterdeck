@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-04-29 — Unresolved base refs after task branch changes
+
+Task branch-change reconciliation now treats a failed `resolveBaseRefForBranch(...)` inference as an explicit unresolved base-ref state instead of silently retaining the old base. The monitor broadcasts `baseRef: ""`, the board persists that value, and the top-bar base-ref pill prompts the user to select a base branch. Pinned base refs still ignore automatic updates.
+
+The key invariant is that `""` is only a board/UI state, not a valid base for base-derived operations. Task path operations that can resolve an existing working directory remain task-scoped with an empty base ref, while task starts, worktree creation, base-derived diffs, commits/PRs, and base-derived badges wait for a selected base. Explicit-ref task comparisons stay task-scoped without needing the card base ref. Notable files: `src/server/project-metadata-refresher.ts`, `src/server/project-metadata-loaders.ts`, `src/trpc/project-api-shared.ts`, `web-ui/src/components/app/base-ref-label.tsx`, `web-ui/src/hooks/git/*`, and `web-ui/src/stores/project-metadata-store.ts`. Validation: `npm run check`.
+
 ## 2026-04-29 — Worktree add-dir settings removal
 
 Quarterdeck no longer exposes or honors the Claude-only settings that added the parent repository `.git` directory or `~/.quarterdeck` to worktree-launched agents with `--add-dir`. Those toggles made the settings menu harder to reason about and weakened worktree isolation; task-agent launch now hardcodes those extra directory grants off. The config registry, public config schema, settings form, start-session request, startup resume path, and Claude adapter no longer carry the fields, so old persisted keys are ignored and will be pruned on the next config write.

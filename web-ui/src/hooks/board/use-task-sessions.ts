@@ -125,6 +125,9 @@ export function useTaskSessions({
 			if (!currentProjectId) {
 				return { ok: false, message: "No project selected." };
 			}
+			if (!task.baseRef.trim()) {
+				return { ok: false, message: "Select a base branch before starting this task." };
+			}
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
 				const payload = await trpcClient.project.ensureWorktree.mutate({
@@ -151,6 +154,9 @@ export function useTaskSessions({
 		async (task: BoardCard, options?: StartTaskSessionOptions): Promise<StartTaskSessionResult> => {
 			if (!currentProjectId) {
 				return { ok: false, message: "No project selected." };
+			}
+			if (!task.baseRef.trim()) {
+				return { ok: false, message: "Select a base branch before starting this task." };
 			}
 			log.debug("startTaskSession trpc call", {
 				taskId: task.id,

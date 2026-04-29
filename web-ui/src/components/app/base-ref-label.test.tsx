@@ -136,6 +136,39 @@ describe("BaseRefLabel", () => {
 		expect(onUpdateBaseRef).toHaveBeenCalledWith("task-1", "origin/main", false);
 	});
 
+	it("prompts for a base branch when the current base ref is unresolved", async () => {
+		const onUpdateBaseRef = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<BaseRefLabel
+					card={createCard({ baseRef: "" })}
+					behindBaseCount={3}
+					branches={[createRef("main", "branch")]}
+					isLoadingBranches={false}
+					requestBranches={() => {}}
+					onUpdateBaseRef={onUpdateBaseRef}
+					pinnedBranches={[]}
+				/>,
+			);
+		});
+
+		const trigger = findButtonByText(container, "select base branch");
+		expect(trigger).toBeInstanceOf(HTMLButtonElement);
+
+		await act(async () => {
+			trigger?.click();
+		});
+
+		const baseRef = findButtonByText(document.body, "main");
+		await act(async () => {
+			baseRef?.click();
+		});
+
+		expect(onUpdateBaseRef).toHaveBeenCalledWith("task-1", "main", false);
+		expect(document.body.textContent).not.toContain("Unpinned - auto-updates on branch change");
+	});
+
 	it("filters across local and remote refs", async () => {
 		await act(async () => {
 			root.render(

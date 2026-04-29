@@ -157,9 +157,6 @@ export function parseTaskSessionStartRequest(value: unknown): RuntimeTaskSession
 		throw new Error("Task session taskId cannot be empty.");
 	}
 	const baseRef = parsed.baseRef.trim();
-	if (!baseRef) {
-		throw new Error("Task session baseRef cannot be empty.");
-	}
 	return {
 		...parsed,
 		taskId,
@@ -201,7 +198,7 @@ export function parseShellSessionStartRequest(value: unknown): RuntimeShellSessi
 	}
 	const projectTaskId = parsed.projectTaskId?.trim() || undefined;
 	const baseRef = parsed.baseRef.trim();
-	if (!baseRef) {
+	if (!baseRef && !projectTaskId) {
 		throw new Error("Shell session baseRef cannot be empty.");
 	}
 	return {

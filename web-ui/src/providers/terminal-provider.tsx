@@ -99,7 +99,7 @@ export function TerminalProvider({ children }: TerminalProviderProps): ReactNode
 
 	// Store subscriptions for detail terminal metadata.
 	const selectedTaskWorktreeInfo = useTaskWorktreeInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
-	const selectedTaskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selectedCard?.card.id);
+	const selectedTaskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selectedCard?.card.id, selectedCard?.card.baseRef);
 
 	// --- useTerminalConnectionReady ---
 	const {

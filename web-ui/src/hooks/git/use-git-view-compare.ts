@@ -73,7 +73,7 @@ export function useGitViewCompare({
 	onNavigationConsumed,
 }: UseGitViewCompareOptions): UseGitViewCompareResult {
 	const taskRepositoryInfo = useTaskRepositoryInfoValue(selectedCard?.card.id ?? null, selectedCard?.card.baseRef);
-	const taskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selectedCard?.card.id ?? null);
+	const taskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selectedCard?.card.id ?? null, selectedCard?.card.baseRef);
 
 	// Default refs based on context
 	const defaultSourceRef = useMemo(
@@ -148,10 +148,9 @@ export function useGitViewCompare({
 			throw new Error("Missing project.");
 		}
 		const trpc = getRuntimeTrpcClient(currentProjectId);
-		const taskScope =
-			selectedCard?.card.id && selectedCard?.card.baseRef
-				? { taskId: selectedCard.card.id, baseRef: selectedCard.card.baseRef }
-				: null;
+		const taskScope = selectedCard?.card.id
+			? { taskId: selectedCard.card.id, baseRef: selectedCard.card.baseRef }
+			: null;
 		const payload = await trpc.project.getGitRefs.query(taskScope);
 		if (!payload.ok) {
 			throw new Error(payload.error ?? "Could not load git refs.");

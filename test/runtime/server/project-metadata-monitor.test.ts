@@ -648,6 +648,40 @@ describe("ProjectMetadataMonitor", () => {
 		monitor.close();
 	});
 
+	it("broadcasts an unresolved base ref when branch-change inference has no answer", async () => {
+		const onTaskBaseRefChanged = vi.fn();
+		let branch = "feature/old";
+		loaderMocks.loadTaskWorktreeMetadata.mockImplementation(
+			async (_projectPath: string, task: TrackedTaskWorktree) => {
+				return createTaskMetadata(task, { branch });
+			},
+		);
+		workdirMocks.resolveBaseRefForBranch.mockResolvedValue(null);
+
+		const monitor = createProjectMetadataMonitor({
+			onMetadataUpdated: vi.fn(),
+			onTaskBaseRefChanged,
+			getProjectDefaultBaseRef: () => "main",
+		});
+
+		await monitor.connectProject({
+			projectId: "project-1",
+			projectPath: "/repo-1",
+			board: createBoard([{ taskId: "task-1", columnId: "in_progress" }]),
+		});
+
+		onTaskBaseRefChanged.mockClear();
+		branch = "main";
+		monitor.requestTaskRefresh("project-1", "task-1");
+
+		await vi.waitFor(() => {
+			expect(workdirMocks.resolveBaseRefForBranch).toHaveBeenCalledWith("/worktrees/task-1", "main", "main");
+			expect(onTaskBaseRefChanged).toHaveBeenCalledWith("project-1", "task-1", "");
+		});
+
+		monitor.close();
+	});
+
 	it("follows a successful remote fetch with home and focused-task refreshes", async () => {
 		vi.useFakeTimers();
 

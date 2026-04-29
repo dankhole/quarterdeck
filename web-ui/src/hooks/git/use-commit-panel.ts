@@ -7,6 +7,7 @@ import {
 	computeSelectionSync,
 	formatCommitSuccessMessage,
 } from "@/hooks/git/commit-panel";
+import { isTaskBaseRefResolved, resolveGitChangesQueryProjectId } from "@/hooks/git/git-view";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeWorkdirFileChange } from "@/runtime/types";
 import { useRuntimeProjectChanges } from "@/runtime/use-runtime-project-changes";
@@ -59,7 +60,7 @@ export function useCommitPanel(
 
 	// Branch awareness — determine if push is possible (requires a named branch, not detached HEAD).
 	const homeGitSummary = useHomeGitSummaryValue();
-	const taskSnapshot = useTaskWorktreeSnapshotValue(taskId);
+	const taskSnapshot = useTaskWorktreeSnapshotValue(taskId, baseRef);
 	const isOnNamedBranch = taskId
 		? !!(taskSnapshot?.branch && !taskSnapshot.isDetached)
 		: !!homeGitSummary?.currentBranch;
@@ -82,11 +83,18 @@ export function useCommitPanel(
 	const clearError = useCallback(() => setLastError(null), []);
 	const isMutating = isCommitting || isDiscarding || isRollingBack || isStashing;
 	const pollIntervalMs = isMutating ? null : 1000;
+	const hasResolvedTaskBaseRef = isTaskBaseRefResolved(taskId, baseRef);
+	const scopedProjectId = resolveGitChangesQueryProjectId({
+		currentProjectId: projectId,
+		taskId,
+		baseRef,
+		refMode: "base_derived",
+	});
 
 	// File list data via shared hook.
 	const { changes, isLoading } = useRuntimeProjectChanges(
 		taskId,
-		projectId,
+		scopedProjectId,
 		baseRef,
 		"working_copy",
 		stateVersion,
@@ -140,10 +148,10 @@ export function useCommitPanel(
 	const [message, setMessage] = useState("");
 
 	// Task scope helper — memoized to avoid recreating callbacks that depend on it.
-	const taskScope = useMemo(() => (taskId && baseRef ? { taskId, baseRef } : null), [taskId, baseRef]);
+	const taskScope = useMemo(() => (taskId ? { taskId, baseRef: baseRef ?? "" } : null), [taskId, baseRef]);
 
 	// Validation.
-	const canCommit = canPerformCommit(selectedPaths.length, message, isCommitting);
+	const canCommit = hasResolvedTaskBaseRef && canPerformCommit(selectedPaths.length, message, isCommitting);
 	const canPush = canCommit && isOnNamedBranch;
 
 	// Shared commit implementation — handles both commit-only and commit-and-push flows.
@@ -205,7 +213,7 @@ export function useCommitPanel(
 
 	// Discard all action.
 	const discardAll = useCallback(async () => {
-		if (!projectId || isDiscarding) return;
+		if (!projectId || isDiscarding || !hasResolvedTaskBaseRef) return;
 		setIsDiscarding(true);
 		try {
 			const trpcClient = getRuntimeTrpcClient(projectId);
@@ -228,12 +236,12 @@ export function useCommitPanel(
 		} finally {
 			setIsDiscarding(false);
 		}
-	}, [projectId, isDiscarding, taskScope]);
+	}, [projectId, isDiscarding, hasResolvedTaskBaseRef, taskScope]);
 
 	// Per-file rollback action.
 	const rollbackFile = useCallback(
 		async (path: string, fileStatus: string) => {
-			if (!projectId || isRollingBack) return;
+			if (!projectId || isRollingBack || !hasResolvedTaskBaseRef) return;
 			setIsRollingBack(true);
 			try {
 				const trpcClient = getRuntimeTrpcClient(projectId);
@@ -272,12 +280,12 @@ export function useCommitPanel(
 				setIsRollingBack(false);
 			}
 		},
-		[projectId, isRollingBack, taskScope],
+		[projectId, isRollingBack, hasResolvedTaskBaseRef, taskScope],
 	);
 
 	// Stash changes action.
 	const stashChanges = useCallback(async () => {
-		if (!projectId || isStashing) return;
+		if (!projectId || isStashing || !hasResolvedTaskBaseRef) return;
 		setIsStashing(true);
 		setLastError(null);
 		try {
@@ -307,11 +315,11 @@ export function useCommitPanel(
 		} finally {
 			setIsStashing(false);
 		}
-	}, [projectId, isStashing, taskScope, selectedPaths, files?.length, stashMessage]);
+	}, [projectId, isStashing, hasResolvedTaskBaseRef, taskScope, selectedPaths, files?.length, stashMessage]);
 
 	// Generate commit message via LLM.
 	const generateMessage = useCallback(async () => {
-		if (!projectId || isGeneratingMessage || selectedPaths.length === 0) return;
+		if (!projectId || isGeneratingMessage || selectedPaths.length === 0 || !hasResolvedTaskBaseRef) return;
 		setIsGeneratingMessage(true);
 		try {
 			const trpcClient = getRuntimeTrpcClient(projectId);
@@ -329,7 +337,7 @@ export function useCommitPanel(
 		} finally {
 			setIsGeneratingMessage(false);
 		}
-	}, [projectId, isGeneratingMessage, selectedPaths, taskScope]);
+	}, [projectId, isGeneratingMessage, selectedPaths, hasResolvedTaskBaseRef, taskScope]);
 
 	return {
 		files,

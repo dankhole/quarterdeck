@@ -35,7 +35,80 @@ function createSharedCheckoutBoard(): RuntimeBoardData {
 	};
 }
 
+function createIsolatedTaskBoard(baseRef: string): RuntimeBoardData {
+	return {
+		columns: [
+			{ id: "backlog", title: "Backlog", cards: [] },
+			{
+				id: "in_progress",
+				title: "In Progress",
+				cards: [
+					{
+						id: "task-1",
+						title: null,
+						prompt: "Isolated task",
+						baseRef,
+						useWorktree: true,
+						createdAt: 1,
+						updatedAt: 1,
+					},
+				],
+			},
+			{ id: "review", title: "Review", cards: [] },
+			{ id: "trash", title: "Trash", cards: [] },
+		],
+		dependencies: [],
+	};
+}
+
 describe.sequential("task repository info", () => {
+	it("resolves an existing task worktree when the card base ref is unresolved", async () => {
+		await withTemporaryHome(async () => {
+			const { path: projectPath, cleanup } = createTempDir("quarterdeck-unresolved-task-info-");
+			try {
+				mkdirSync(projectPath, { recursive: true });
+				initGitRepository(projectPath);
+				writeFileSync(join(projectPath, "README.md"), "seed\n", "utf8");
+				commitAll(projectPath, "seed");
+
+				const ensured = await ensureTaskWorktreeIfDoesntExist({
+					cwd: projectPath,
+					taskId: "task-1",
+					baseRef: "main",
+				});
+				expect(ensured.ok).toBe(true);
+				if (!ensured.ok) {
+					throw new Error(ensured.error ?? "Expected task worktree to be created.");
+				}
+
+				const initial = await loadProjectState(projectPath);
+				await saveProjectState(projectPath, {
+					board: createIsolatedTaskBoard(""),
+					sessions: {},
+					expectedRevision: initial.revision,
+				});
+
+				await expect(
+					resolveTaskWorkingDirectory({
+						projectPath,
+						taskId: "task-1",
+						baseRef: "",
+					}),
+				).resolves.toBe(resolve(ensured.path));
+				await expect(
+					resolveTaskWorkingDirectory({
+						projectPath,
+						taskId: "task-1",
+						baseRef: "",
+						ensure: true,
+					}),
+				).resolves.toBe(resolve(ensured.path));
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("uses the project checkout for shared tasks even when an old task worktree still exists", async () => {
 		await withTemporaryHome(async () => {
 			const { path: projectPath, cleanup } = createTempDir("quarterdeck-shared-task-info-");

@@ -115,8 +115,8 @@ export function normalizeOptionalTaskScopeInput(
 	if (!input) return null;
 	const taskId = input.taskId.trim();
 	const baseRef = input.baseRef.trim();
-	if (!taskId || !baseRef) {
-		throw new Error("baseRef query parameter requires taskId.");
+	if (!taskId) {
+		throw new Error("taskScope query parameter requires taskId.");
 	}
 	return { taskId, baseRef };
 }

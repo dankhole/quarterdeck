@@ -122,7 +122,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 			throw new Error("Missing project.");
 		}
 		const trpc = getRuntimeTrpcClient(projectId);
-		const taskScope = taskId && baseRef ? { taskId, baseRef } : null;
+		const taskScope = taskId ? { taskId, baseRef: baseRef ?? "" } : null;
 		const payload = await trpc.project.getGitRefs.query(taskScope);
 		if (!payload.ok) {
 			throw new Error(payload.error ?? "Could not load git refs.");
@@ -286,7 +286,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 			return;
 		}
 		const { branch, scope, taskId: checkoutTaskId, baseRef: checkoutBaseRef } = checkoutDialogState;
-		const taskScope = taskId && baseRef ? { taskId, baseRef } : null;
+		const taskScope = taskId ? { taskId, baseRef: baseRef ?? "" } : null;
 
 		await stashAndCheckoutGuard.run(async () => {
 			try {

@@ -581,13 +581,6 @@ export function updateTask(
 	}
 
 	const baseRef = input.baseRef.trim();
-	if (!baseRef) {
-		return {
-			board,
-			task: null,
-			updated: false,
-		};
-	}
 
 	let updatedTask: RuntimeBoardCard | null = null;
 	const columns = board.columns.map((column) => {

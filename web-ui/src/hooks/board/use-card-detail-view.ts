@@ -122,7 +122,7 @@ export function useCardDetailView({
 	);
 
 	const taskRepositoryInfo = useTaskRepositoryInfoValue(selection.card.id, selection.card.baseRef);
-	const taskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selection.card.id);
+	const taskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selection.card.id, selection.card.baseRef);
 	const homeGitSummary = useHomeGitSummaryValue();
 	const taskGitState = useMemo(
 		() =>

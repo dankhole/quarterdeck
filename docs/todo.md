@@ -92,22 +92,6 @@ Core git-view branch operations have landed. Remaining power-user operations:
 - Branch context menu in `GitRefsPanel`
 - Git view tab bar or toolbar when the operation needs persistent conflict/progress state
 
-## Auto-update base ref when branch changes to an integration branch
-
-When an agent switches branches inside a task worktree, the metadata monitor calls `resolveBaseRefForBranch` to auto-update the card's base ref. If the new branch is an integration branch like `main`, `resolveBaseRefForBranch` returns `null` (it can't find a parent for `main`) and the update is silently skipped — leaving the card with a stale base ref that no longer makes sense.
-
-**Fix:** When `resolveBaseRefForBranch` returns `null`, clear the card's base ref instead of silently keeping the old value. This requires:
-
-- Allow empty-string `baseRef` to mean "unresolved — user needs to pick" (currently `baseRef` is validated as non-empty everywhere: board mutations, worktree creation, API schema).
-- Update the monitor's `checkForBranchChanges` to broadcast `""` when resolved is `null`, instead of skipping.
-- Update `useTaskBaseRefSync` to apply empty base refs instead of skipping them.
-- Update the base ref pill in the top bar to show a prompt (e.g. "select base branch") when empty, opening the existing branch selector.
-- Worktree creation already blocks on empty `baseRef`, so starting a task naturally requires picking one first — no change needed there.
-
-**Key files:** `src/workdir/git-utils.ts` (`resolveBaseRefForBranch`), `src/server/project-metadata-monitor.ts` (`checkForBranchChanges`), `web-ui/src/hooks/board/use-task-base-ref-sync.ts`, `src/core/task-board-mutations.ts` (validation), `web-ui/src/components/app/connected-top-bar.tsx` (base ref pill UI).
-
-**Broader refactor context:** [docs/architecture-roadmap.md#15-branch--base-ref-ux-state-model](./architecture-roadmap.md#15-branch--base-ref-ux-state-model)
-
 ## Talk to the agent while browsing files
 
 Add a way to send comments or prompts to the active task agent while browsing files and diffs, without leaving the repository/file inspection surface. Consider a workflow similar to compare-tab comments: attach a prompt to the currently viewed file, selection, or diff hunk, then submit it to the task agent with enough context to make the request actionable.

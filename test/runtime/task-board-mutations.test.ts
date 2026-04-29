@@ -154,6 +154,23 @@ describe("task images", () => {
 			},
 		]);
 	});
+
+	it("allows existing tasks to be marked with an unresolved base ref", () => {
+		const created = addTaskToColumn(
+			createBoard(),
+			"in_progress",
+			{ prompt: "Task A", baseRef: "main" },
+			() => "aaaaa111",
+		);
+
+		const updated = updateTask(created.board, created.task.id, {
+			prompt: "Task A",
+			baseRef: "",
+		});
+
+		expect(updated.updated).toBe(true);
+		expect(updated.task?.baseRef).toBe("");
+	});
 });
 
 describe("branch persistence on cards", () => {

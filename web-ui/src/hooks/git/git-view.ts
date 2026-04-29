@@ -56,6 +56,38 @@ export function setLastSelectedPath(taskId: string | null, tab: GitViewTab, path
 	persistLastSelectedPathToStorage();
 }
 
+// --- Changes query scope helpers ---
+
+export type GitChangesRefMode = "base_derived" | "explicit_refs";
+
+export function isTaskBaseRefResolved(taskId: string | null, baseRef: string | null): boolean {
+	return !taskId || (baseRef?.trim() ?? "").length > 0;
+}
+
+/**
+ * Base-derived task diffs need the card's base ref. Explicit-ref diffs do not,
+ * but still need to stay scoped to the task worktree instead of falling back home.
+ */
+export function resolveGitChangesQueryProjectId({
+	currentProjectId,
+	taskId,
+	baseRef,
+	refMode,
+}: {
+	currentProjectId: string | null;
+	taskId: string | null;
+	baseRef: string | null;
+	refMode: GitChangesRefMode;
+}): string | null {
+	if (!currentProjectId) {
+		return null;
+	}
+	if (refMode === "explicit_refs" || isTaskBaseRefResolved(taskId, baseRef)) {
+		return currentProjectId;
+	}
+	return null;
+}
+
 // --- Derived state helpers ---
 
 export function deriveActiveFiles(

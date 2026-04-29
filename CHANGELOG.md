@@ -22,6 +22,10 @@
 
 - Removed the stale UI branch/status desync backlog item after validating that task git UI now derives branch and change state from assigned task metadata rather than session launch path.
 
+### Fix: mark unresolved task base refs
+
+- Task branch changes that cannot infer a new base now clear the card base ref, prompt users to select one, and suppress base-derived actions until a base is chosen.
+
 ### Fix: keep debug log controls responsive
 
 - Debug log capture-level changes now update optimistically in the panel, avoid reseeding the recent log buffer on every level broadcast, and render log rows through virtualization so the control remains usable during log floods.

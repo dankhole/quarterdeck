@@ -12,6 +12,7 @@ import {
 	getCommitsBehindBase,
 	getConflictedFiles,
 	getGitSyncSummary,
+	getTaskWorktreePath,
 	getTaskWorktreePathInfo,
 	pathExists,
 	probeGitWorkdirState,
@@ -136,6 +137,23 @@ function areTaskMetadataEqual(a: RuntimeTaskWorktreeMetadata, b: RuntimeTaskWork
 	);
 }
 
+async function loadConflictState(cwd: string): Promise<RuntimeConflictState | null> {
+	const detected = await detectActiveConflict(cwd);
+	if (!detected) {
+		return null;
+	}
+	const conflictedFiles = await getConflictedFiles(cwd);
+	const autoMergedFiles = await computeAutoMergedFiles(cwd, conflictedFiles);
+	return {
+		operation: detected.operation,
+		sourceBranch: detected.sourceBranch,
+		currentStep: detected.currentStep,
+		totalSteps: detected.totalSteps,
+		conflictedFiles,
+		autoMergedFiles,
+	};
+}
+
 export function areProjectMetadataEqual(a: RuntimeProjectMetadata, b: RuntimeProjectMetadata): boolean {
 	if (!areGitSummariesEqual(a.homeGitSummary, b.homeGitSummary)) {
 		return false;
@@ -224,21 +242,10 @@ export async function loadHomeGitMetadata(
 			}
 			return currentHomeGit;
 		}
-		const summary = await getGitSyncSummary(projectPath, { probe });
-		const detected = await detectActiveConflict(projectPath);
-		let conflictState: RuntimeConflictState | null = null;
-		if (detected) {
-			const conflictedFiles = await getConflictedFiles(projectPath);
-			const autoMergedFiles = await computeAutoMergedFiles(projectPath, conflictedFiles);
-			conflictState = {
-				operation: detected.operation,
-				sourceBranch: detected.sourceBranch,
-				currentStep: detected.currentStep,
-				totalSteps: detected.totalSteps,
-				conflictedFiles,
-				autoMergedFiles,
-			};
-		}
+		const [summary, conflictState] = await Promise.all([
+			getGitSyncSummary(projectPath, { probe }),
+			loadConflictState(projectPath),
+		]);
 		return {
 			summary,
 			conflictState,
@@ -262,6 +269,10 @@ async function resolveTaskPath(
 	if (task.workingDirectory) {
 		const exists = await pathExists(task.workingDirectory);
 		return { path: task.workingDirectory, exists, baseRef: task.baseRef };
+	}
+	if (!task.baseRef.trim()) {
+		const worktreePath = getTaskWorktreePath(projectPath, task.taskId);
+		return { path: worktreePath, exists: await pathExists(worktreePath), baseRef: "" };
 	}
 	// Fallback for tasks started before workingDirectory was persisted.
 	return await getTaskWorktreePathInfo({
@@ -312,9 +323,48 @@ export async function loadTaskWorktreeMetadata(
 	}
 
 	try {
+		const probe = await probeGitWorkdirState(pathInfo.path);
+		if (!pathInfo.baseRef.trim()) {
+			if (
+				current &&
+				current.stateToken === probe.stateToken &&
+				current.baseRefCommit === null &&
+				current.originBaseRefCommit === null &&
+				current.data.path === pathInfo.path &&
+				current.data.baseRef === ""
+			) {
+				return current;
+			}
+			const [gitSummary, conflictState] = await Promise.all([
+				getGitSyncSummary(pathInfo.path, { probe }),
+				loadConflictState(pathInfo.path),
+			]);
+			return {
+				data: {
+					taskId: task.taskId,
+					path: pathInfo.path,
+					exists: true,
+					baseRef: "",
+					branch: probe.currentBranch,
+					isDetached: probe.headCommit !== null && probe.currentBranch === null,
+					headCommit: probe.headCommit,
+					changedFiles: gitSummary.changedFiles,
+					additions: gitSummary.additions,
+					deletions: gitSummary.deletions,
+					hasUnmergedChanges: null,
+					behindBaseCount: null,
+					conflictState,
+					stateVersion: Date.now(),
+				},
+				stateToken: probe.stateToken,
+				baseRefCommit: null,
+				originBaseRefCommit: null,
+				lastKnownBranch: probe.currentBranch,
+			};
+		}
+
 		const originRef = `origin/${pathInfo.baseRef}`;
-		const [probe, baseRefResult, originBaseRefResult] = await Promise.all([
-			probeGitWorkdirState(pathInfo.path),
+		const [baseRefResult, originBaseRefResult] = await Promise.all([
 			runGit(pathInfo.path, ["--no-optional-locks", "rev-parse", "--verify", pathInfo.baseRef], {
 				timeoutClass: "metadata",
 			}),
@@ -334,7 +384,7 @@ export async function loadTaskWorktreeMetadata(
 		) {
 			return current;
 		}
-		const [summary, unmergedResult, treeDiffResult, behindBase] = await Promise.all([
+		const [summary, unmergedResult, treeDiffResult, behindBase, conflictState] = await Promise.all([
 			getGitSyncSummary(pathInfo.path, { probe }),
 			runGit(pathInfo.path, ["--no-optional-locks", "diff", "--quiet", `${pathInfo.baseRef}...HEAD`], {
 				timeoutClass: "metadata",
@@ -343,21 +393,8 @@ export async function loadTaskWorktreeMetadata(
 				timeoutClass: "metadata",
 			}),
 			getCommitsBehindBase(pathInfo.path, pathInfo.baseRef),
+			loadConflictState(pathInfo.path),
 		]);
-		const detected = await detectActiveConflict(pathInfo.path);
-		let conflictState: RuntimeConflictState | null = null;
-		if (detected) {
-			const conflictedFiles = await getConflictedFiles(pathInfo.path);
-			const autoMergedFiles = await computeAutoMergedFiles(pathInfo.path, conflictedFiles);
-			conflictState = {
-				operation: detected.operation,
-				sourceBranch: detected.sourceBranch,
-				currentStep: detected.currentStep,
-				totalSteps: detected.totalSteps,
-				conflictedFiles,
-				autoMergedFiles,
-			};
-		}
 		return {
 			data: {
 				taskId: task.taskId,

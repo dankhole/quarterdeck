@@ -25,7 +25,7 @@ export function useBoardCard({
 	const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
 	const [isRestartDelayElapsed, setIsRestartDelayElapsed] = useState(false);
-	const reviewWorktreeSnapshot = useTaskWorktreeSnapshotValue(card.id);
+	const reviewWorktreeSnapshot = useTaskWorktreeSnapshotValue(card.id, card.baseRef);
 	const workspacePath = getProjectPath();
 
 	const viewModel = useMemo(

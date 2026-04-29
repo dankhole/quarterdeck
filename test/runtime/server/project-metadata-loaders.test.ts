@@ -75,4 +75,41 @@ describe("project metadata loaders", () => {
 			cleanup();
 		}
 	});
+
+	it("loads non-base git metadata when a task base ref is unresolved", async () => {
+		const { path: projectPath, cleanup } = createTempDir("quarterdeck-unresolved-base-metadata-");
+		try {
+			mkdirSync(projectPath, { recursive: true });
+			initGitRepository(projectPath);
+			writeFileSync(join(projectPath, "README.md"), "seed\n", "utf8");
+			commitAll(projectPath, "seed");
+			writeFileSync(join(projectPath, "README.md"), "changed\n", "utf8");
+
+			const metadata = await loadTaskWorktreeMetadata(
+				projectPath,
+				{
+					taskId: "task-1",
+					baseRef: "",
+					workingDirectory: null,
+					useWorktree: false,
+				},
+				null,
+			);
+
+			expect(metadata?.data).toMatchObject({
+				taskId: "task-1",
+				path: projectPath,
+				exists: true,
+				baseRef: "",
+				branch: "main",
+				changedFiles: 1,
+				hasUnmergedChanges: null,
+				behindBaseCount: null,
+			});
+			expect(metadata?.baseRefCommit).toBeNull();
+			expect(metadata?.originBaseRefCommit).toBeNull();
+		} finally {
+			cleanup();
+		}
+	});
 });

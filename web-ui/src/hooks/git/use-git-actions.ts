@@ -15,6 +15,7 @@ import {
 	type TaskGitActionLoadingState,
 	type TaskGitActionSource,
 } from "@/hooks/git/git-actions";
+import { isTaskBaseRefResolved } from "@/hooks/git/git-view";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeConfigResponse, RuntimeGitSyncAction, RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
@@ -102,7 +103,10 @@ export function useGitActions({
 	const [gitActionError, setGitActionError] = useState<GitActionErrorState | null>(null);
 	const homeGitSummary = useHomeGitSummaryValue();
 	const homeGitStateVersion = useHomeGitStateVersionValue();
-	const selectedTaskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selectedCard?.card.id ?? null);
+	const selectedTaskWorktreeSnapshot = useTaskWorktreeSnapshotValue(
+		selectedCard?.card.id ?? null,
+		selectedCard?.card.baseRef,
+	);
 	const selectedTaskWorktreeStateVersion = useTaskWorktreeStateVersionValue(selectedCard?.card.id ?? null);
 
 	const gitHistoryTaskScope = useMemo(() => {
@@ -187,8 +191,12 @@ export function useGitActions({
 					showGitWarningToast("Commit and PR actions are only available for tasks in Review.", 5000);
 					return false;
 				}
+				if (!isTaskBaseRefResolved(taskId, selection.card.baseRef)) {
+					showGitWarningToast("Select a base branch before committing or opening a PR for this task.", 5000);
+					return false;
+				}
 
-				const snapshot = getTaskWorktreeSnapshot(taskId);
+				const snapshot = getTaskWorktreeSnapshot(taskId, selection.card.baseRef);
 				const snapshotWorktreeInfo = snapshot
 					? {
 							taskId,

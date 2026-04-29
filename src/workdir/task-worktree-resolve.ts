@@ -18,10 +18,6 @@ export async function resolveTaskCwd(options: {
 	const context = await loadProjectContext(options.cwd);
 
 	const normalizedBaseRef = options.baseRef.trim();
-	if (!normalizedBaseRef) {
-		throw new Error("Task base branch is required for task worktree resolution.");
-	}
-
 	if (options.ensure) {
 		const ensured = await ensureTaskWorktreeIfDoesntExist({
 			cwd: options.cwd,

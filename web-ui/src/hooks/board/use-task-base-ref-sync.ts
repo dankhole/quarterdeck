@@ -10,6 +10,8 @@ interface UseTaskBaseRefSyncInput {
 
 /**
  * Applies base ref updates received via WebSocket to the board.
+ * Empty base refs are intentional: they mean the base is unresolved and the user
+ * needs to pick one.
  * Skips cards with `baseRefPinned: true` — those are manually locked.
  */
 export function useTaskBaseRefSync({ latestTaskBaseRefUpdate, setBoard }: UseTaskBaseRefSyncInput): void {

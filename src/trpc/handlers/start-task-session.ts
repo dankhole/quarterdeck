@@ -122,6 +122,13 @@ export async function handleStartTaskSession(
 		});
 		const scopedRuntimeConfig = await deps.config.loadScopedRuntimeConfig(projectScope);
 		const useWorktree = body.useWorktree !== false;
+		if (!body.baseRef.trim()) {
+			return {
+				ok: false,
+				summary: null,
+				error: "Select a base branch before starting this task.",
+			};
+		}
 		// Prefer the persisted working directory if it still exists on disk.
 		const state = await loadProjectState(projectScope.projectPath);
 		const existingCard = findCardInBoard(state.board, body.taskId);

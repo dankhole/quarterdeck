@@ -111,7 +111,7 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 
 	// Store subscriptions — duplicate calls are cheap (useSyncExternalStore).
 	const selectedTaskRepositoryInfo = useTaskRepositoryInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
-	const selectedTaskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selectedCard?.card.id);
+	const selectedTaskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selectedCard?.card.id, selectedCard?.card.baseRef);
 	const homeGitSummary = useHomeGitSummaryValue();
 	const selectedTaskGitState = useMemo(
 		() =>

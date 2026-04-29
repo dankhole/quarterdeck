@@ -170,6 +170,31 @@ describe("board-state parser helpers", () => {
 		expect(legacyCardField in (card as unknown as Record<string, unknown>)).toBe(false);
 	});
 
+	it("preserves an empty base ref as an unresolved task state", () => {
+		const card = parsePersistedBoardCard(
+			{
+				prompt: "Task A",
+				baseRef: "   ",
+			},
+			{ createTaskId: () => "task-1", now: 42 },
+		);
+
+		expect(card?.baseRef).toBe("");
+	});
+
+	it("preserves pinned base-ref state", () => {
+		const card = parsePersistedBoardCard(
+			{
+				prompt: "Task A",
+				baseRef: "main",
+				baseRefPinned: true,
+			},
+			{ createTaskId: () => "task-1", now: 42 },
+		);
+
+		expect(card?.baseRefPinned).toBe(true);
+	});
+
 	it("filters invalid persisted images and returns undefined when none survive", () => {
 		expect(parsePersistedTaskImages([{ id: "img-1", data: "data", mimeType: "image/png" }, { id: 1 }])).toEqual([
 			{ id: "img-1", data: "data", mimeType: "image/png" },

@@ -18,6 +18,7 @@ const rawPersistedBoardCardSchema = z.object({
 	prompt: z.unknown().optional(),
 	images: z.unknown().optional(),
 	baseRef: z.unknown().optional(),
+	baseRefPinned: z.unknown().optional(),
 	useWorktree: z.unknown().optional(),
 	workingDirectory: z.unknown().optional(),
 	branch: z.unknown().optional(),
@@ -77,8 +78,8 @@ export function parsePersistedBoardCard(
 		return null;
 	}
 
-	const baseRef = parseRequiredTrimmedString(result.data.baseRef);
-	if (!baseRef) {
+	const baseRef = parseTrimmedString(result.data.baseRef);
+	if (baseRef === null) {
 		return null;
 	}
 
@@ -90,6 +91,7 @@ export function parsePersistedBoardCard(
 		prompt,
 		images: parsePersistedTaskImages(result.data.images),
 		baseRef,
+		...(typeof result.data.baseRefPinned === "boolean" ? { baseRefPinned: result.data.baseRefPinned } : {}),
 		useWorktree: typeof result.data.useWorktree === "boolean" ? result.data.useWorktree : undefined,
 		workingDirectory: parseOptionalNullableString(result.data.workingDirectory),
 		branch: parseOptionalNullableString(result.data.branch),
@@ -168,6 +170,10 @@ function parseRequiredTrimmedString(value: unknown): string | null {
 	}
 	const trimmed = value.trim();
 	return trimmed ? trimmed : null;
+}
+
+function parseTrimmedString(value: unknown): string | null {
+	return typeof value === "string" ? value.trim() : null;
 }
 
 function parseOptionalNullableString(value: unknown): string | null | undefined {

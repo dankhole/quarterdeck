@@ -260,8 +260,9 @@ export class ProjectMetadataRefresher {
 		if (!latestTask || !this.isTaskMetadataStillCurrent(taskId, next, expectedFreshness)) {
 			return;
 		}
-		if (resolved && resolved !== latestTask.baseRef) {
-			this.deps.onTaskBaseRefChanged(this.deps.projectId, taskId, resolved);
+		const nextBaseRef = resolved ?? "";
+		if (nextBaseRef !== latestTask.baseRef) {
+			this.deps.onTaskBaseRefChanged(this.deps.projectId, taskId, nextBaseRef);
 		}
 	}
 

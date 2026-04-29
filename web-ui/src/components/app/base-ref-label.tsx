@@ -62,6 +62,7 @@ export function BaseRefLabel({
 	const [filter, setFilter] = useState("");
 	const [isBaseRefPinned, setIsBaseRefPinned] = useState(card.baseRefPinned === true);
 	const inputRef = useRef<HTMLInputElement>(null);
+	const hasBaseRef = card.baseRef.trim().length > 0;
 
 	const handleOpen = useCallback(
 		(open: boolean) => {
@@ -103,11 +104,17 @@ export function BaseRefLabel({
 							: "text-text-tertiary hover:bg-surface-2 hover:text-text-secondary",
 					)}
 				>
-					{card.baseRefPinned ? <Lock size={10} className="text-text-quaternary" /> : null}
-					from <span className="font-mono">{card.baseRef}</span>
-					{(behindBaseCount ?? 0) > 0 ? (
-						<span className="text-status-blue">({behindBaseCount} behind)</span>
-					) : null}
+					{hasBaseRef ? (
+						<>
+							{card.baseRefPinned ? <Lock size={10} className="text-text-quaternary" /> : null}
+							from <span className="font-mono">{card.baseRef}</span>
+							{(behindBaseCount ?? 0) > 0 ? (
+								<span className="text-status-blue">({behindBaseCount} behind)</span>
+							) : null}
+						</>
+					) : (
+						<span className="text-status-orange">select base branch</span>
+					)}
 				</button>
 			</RadixPopover.Trigger>
 			<RadixPopover.Portal>
@@ -168,22 +175,24 @@ export function BaseRefLabel({
 								</>
 							)}
 						</div>
-						<div className="border-t border-border px-2 py-1.5">
-							<button
-								type="button"
-								className="flex cursor-pointer items-center gap-1.5 text-xs text-text-tertiary hover:text-text-secondary"
-								onClick={() => {
-									const next = !isBaseRefPinned;
-									setIsBaseRefPinned(next);
-									if (next !== (card.baseRefPinned === true)) {
-										onUpdateBaseRef(card.id, card.baseRef, next);
-									}
-								}}
-							>
-								{isBaseRefPinned ? <Lock size={11} /> : <LockOpen size={11} />}
-								{isBaseRefPinned ? "Pinned - won't auto-update" : "Unpinned - auto-updates on branch change"}
-							</button>
-						</div>
+						{hasBaseRef ? (
+							<div className="border-t border-border px-2 py-1.5">
+								<button
+									type="button"
+									className="flex cursor-pointer items-center gap-1.5 text-xs text-text-tertiary hover:text-text-secondary"
+									onClick={() => {
+										const next = !isBaseRefPinned;
+										setIsBaseRefPinned(next);
+										if (next !== (card.baseRefPinned === true)) {
+											onUpdateBaseRef(card.id, card.baseRef, next);
+										}
+									}}
+								>
+									{isBaseRefPinned ? <Lock size={11} /> : <LockOpen size={11} />}
+									{isBaseRefPinned ? "Pinned - won't auto-update" : "Unpinned - auto-updates on branch change"}
+								</button>
+							</div>
+						) : null}
 					</div>
 				</RadixPopover.Content>
 			</RadixPopover.Portal>

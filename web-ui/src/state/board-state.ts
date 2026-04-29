@@ -342,9 +342,6 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 		return { board, updated: false };
 	}
 	const baseRef = draft.baseRef.trim();
-	if (!baseRef) {
-		return { board, updated: false };
-	}
 
 	const selection = findCardSelection(board, taskId);
 	if (!selection) {

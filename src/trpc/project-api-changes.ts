@@ -256,12 +256,9 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 				return { files } satisfies RuntimeListFilesResponse;
 			}
 
-			const normalizedInput = normalizeRequiredTaskScopeInput(input);
-			const taskCwd = await tryResolveTaskCwd(
-				projectScope.projectPath,
-				normalizedInput.taskId,
-				normalizedInput.baseRef,
-			);
+			const taskId = input.taskId.trim();
+			if (!taskId) throw new Error("Missing taskId query parameter.");
+			const taskCwd = await tryResolveTaskCwd(projectScope.projectPath, taskId, input.baseRef?.trim() ?? "");
 			if (!taskCwd) return { files: [] } satisfies RuntimeListFilesResponse;
 
 			if (input.ref) {
@@ -289,8 +286,9 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 			if (!input.taskId) {
 				cwd = projectScope.projectPath;
 			} else {
-				const normalizedInput = normalizeRequiredTaskScopeInput(input);
-				cwd = await tryResolveTaskCwd(projectScope.projectPath, normalizedInput.taskId, normalizedInput.baseRef);
+				const taskId = input.taskId.trim();
+				if (!taskId) throw new Error("Missing taskId query parameter.");
+				cwd = await tryResolveTaskCwd(projectScope.projectPath, taskId, input.baseRef?.trim() ?? "");
 			}
 			if (!cwd) return EMPTY_FILE_RESPONSE;
 

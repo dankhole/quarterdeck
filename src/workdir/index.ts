@@ -81,6 +81,7 @@ export {
 	getTaskRepositoryInfo,
 	getTaskWorkingDirectory,
 	getTaskWorktreeInfo,
+	getTaskWorktreePath,
 	getTaskWorktreePathInfo,
 	isMissingTaskWorktreeError,
 	mirrorIgnoredPath,

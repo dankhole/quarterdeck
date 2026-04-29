@@ -7,8 +7,10 @@ import {
 	deriveActiveFiles,
 	type GitViewTab,
 	getLastSelectedPath,
+	isTaskBaseRefResolved,
 	loadGitViewTab,
 	persistGitViewTab,
+	resolveGitChangesQueryProjectId,
 	setLastSelectedPath,
 } from "@/hooks/git/git-view";
 import { type UseConflictResolutionResult, useConflictResolution } from "@/hooks/git/use-conflict-resolution";
@@ -136,13 +138,19 @@ export function useGitView({
 	// --- Data fetching ---
 
 	const baseRef = selectedCard?.card.baseRef ?? null;
+	const baseDerivedProjectId = resolveGitChangesQueryProjectId({
+		currentProjectId,
+		taskId,
+		baseRef,
+		refMode: "base_derived",
+	});
 	const taskWorktreeStateVersion = useTaskWorktreeStateVersionValue(taskId);
 
 	// Uncommitted tab data
 	const isUncommittedActive = activeTab === "uncommitted";
 	const { changes: uncommittedChanges, isRuntimeAvailable: uncommittedAvailable } = useRuntimeProjectChanges(
 		isUncommittedActive ? (taskId ?? null) : null,
-		isUncommittedActive ? currentProjectId : null,
+		isUncommittedActive ? baseDerivedProjectId : null,
 		isUncommittedActive ? baseRef : null,
 		"working_copy",
 		taskWorktreeStateVersion,
@@ -162,7 +170,7 @@ export function useGitView({
 
 	const { changes: lastTurnChanges, isRuntimeAvailable: lastTurnAvailable } = useRuntimeProjectChanges(
 		isLastTurnActive ? taskId : null,
-		isLastTurnActive ? currentProjectId : null,
+		isLastTurnActive ? baseDerivedProjectId : null,
 		isLastTurnActive ? baseRef : null,
 		"last_turn",
 		taskWorktreeStateVersion,
@@ -201,6 +209,14 @@ export function useGitView({
 	});
 
 	const hasCompareRefs = !!compare.sourceRef && !!compare.targetRef;
+	const compareProjectId = hasCompareRefs
+		? resolveGitChangesQueryProjectId({
+				currentProjectId,
+				taskId,
+				baseRef,
+				refMode: "explicit_refs",
+			})
+		: null;
 	const compareIncludeUncommitted = compare.includeUncommitted;
 	const compareThreeDot = compare.threeDotDiff;
 	const compareDiffMode = compareThreeDot ? ("three_dot" as const) : ("two_dot" as const);
@@ -208,7 +224,7 @@ export function useGitView({
 		isCompareActive && compareIncludeUncommitted && isDocumentVisible ? POLL_INTERVAL_MS : null;
 	const { changes: compareChanges, isRuntimeAvailable: compareAvailable } = useRuntimeProjectChanges(
 		isCompareActive && hasCompareRefs ? (taskId ?? null) : null,
-		isCompareActive && hasCompareRefs ? currentProjectId : null,
+		isCompareActive && hasCompareRefs ? compareProjectId : null,
 		isCompareActive ? baseRef : null,
 		"working_copy",
 		taskWorktreeStateVersion,
@@ -233,7 +249,7 @@ export function useGitView({
 
 	// Batch diff content loading
 	const { enrichedFiles, fileLoadingState } = useAllFileDiffContent({
-		projectId: currentProjectId,
+		projectId: activeTab === "compare" ? compareProjectId : baseDerivedProjectId,
 		taskId,
 		baseRef,
 		mode: activeTab === "last_turn" ? "last_turn" : "working_copy",
@@ -270,12 +286,12 @@ export function useGitView({
 
 	// --- File rollback (uncommitted tab only) ---
 
-	const taskScope = useMemo(() => (taskId && baseRef ? { taskId, baseRef } : null), [taskId, baseRef]);
+	const taskScope = useMemo(() => (taskId ? { taskId, baseRef: baseRef ?? "" } : null), [taskId, baseRef]);
 	const isRollingBackRef = useRef(false);
 
 	const handleRollbackFile = useCallback(
 		async (path: string) => {
-			if (!currentProjectId || isRollingBackRef.current) return;
+			if (!currentProjectId || isRollingBackRef.current || !isTaskBaseRefResolved(taskId, baseRef)) return;
 			const file = uncommittedChanges?.files?.find((f) => f.path === path);
 			if (!file) return;
 			isRollingBackRef.current = true;
@@ -305,7 +321,7 @@ export function useGitView({
 				isRollingBackRef.current = false;
 			}
 		},
-		[currentProjectId, taskScope, uncommittedChanges?.files],
+		[currentProjectId, taskId, baseRef, taskScope, uncommittedChanges?.files],
 	);
 
 	// --- Reset on context switches ---

@@ -86,6 +86,7 @@ function toTaskWorktreeSnapshot(metadata: RuntimeTaskWorktreeMetadata): ReviewTa
 	return {
 		taskId: metadata.taskId,
 		path: metadata.path,
+		baseRef: metadata.baseRef,
 		branch: metadata.branch,
 		isDetached: metadata.isDetached,
 		headCommit: metadata.headCommit,
@@ -185,6 +186,7 @@ function areTaskWorktreeSnapshotsEqual(
 	return (
 		a.taskId === b.taskId &&
 		a.path === b.path &&
+		a.baseRef === b.baseRef &&
 		a.branch === b.branch &&
 		a.isDetached === b.isDetached &&
 		a.headCommit === b.headCommit &&
@@ -244,7 +246,7 @@ export function getTaskWorktreeInfo(
 	if (!value) {
 		return null;
 	}
-	if (baseRef && value.baseRef !== baseRef) {
+	if (baseRef !== undefined && baseRef !== null && value.baseRef !== baseRef) {
 		return null;
 	}
 	return value;
@@ -292,12 +294,22 @@ export function clearTaskRepositoryInfo(taskId: string | null | undefined): bool
 	return clearTaskWorktreeInfo(taskId);
 }
 
-export function getTaskWorktreeSnapshot(taskId: string | null | undefined): ReviewTaskWorktreeSnapshot | null {
+export function getTaskWorktreeSnapshot(
+	taskId: string | null | undefined,
+	baseRef?: string | null,
+): ReviewTaskWorktreeSnapshot | null {
 	const normalizedTaskId = taskId?.trim();
 	if (!normalizedTaskId) {
 		return null;
 	}
-	return projectMetadataState.taskWorktreeSnapshotByTaskId[normalizedTaskId] ?? null;
+	const value = projectMetadataState.taskWorktreeSnapshotByTaskId[normalizedTaskId] ?? null;
+	if (!value) {
+		return null;
+	}
+	if (baseRef !== undefined && baseRef !== null && value.baseRef !== undefined && value.baseRef !== baseRef) {
+		return null;
+	}
+	return value;
 }
 
 export function setTaskWorktreeSnapshot(snapshot: ReviewTaskWorktreeSnapshot | null): boolean {
@@ -496,7 +508,10 @@ export function useTaskRepositoryInfoValue(
 	return useTaskWorktreeInfoValue(taskId, baseRef);
 }
 
-export function useTaskWorktreeSnapshotValue(taskId: string | null | undefined): ReviewTaskWorktreeSnapshot | null {
+export function useTaskWorktreeSnapshotValue(
+	taskId: string | null | undefined,
+	baseRef?: string | null,
+): ReviewTaskWorktreeSnapshot | null {
 	const normalizedTaskId = taskId?.trim() ?? "";
 	return useSyncExternalStore(
 		(listener) => {
@@ -505,7 +520,7 @@ export function useTaskWorktreeSnapshotValue(taskId: string | null | undefined):
 			}
 			return subscribeToTaskId(normalizedTaskId, listener);
 		},
-		() => getTaskWorktreeSnapshot(normalizedTaskId),
+		() => getTaskWorktreeSnapshot(normalizedTaskId, baseRef),
 		() => null,
 	);
 }
