@@ -6,6 +6,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { resolveBranchSelectorSections } from "@/hooks/git/branch-selector-popover";
 import type { RuntimeGitRef } from "@/runtime/types";
 import type { BoardCard } from "@/types";
+import { resolveTaskBaseRefDisplayState } from "@/utils/task-base-ref-display";
 
 interface BaseRefLabelProps {
 	card: BoardCard;
@@ -60,30 +61,35 @@ export function BaseRefLabel({
 }: BaseRefLabelProps): ReactElement {
 	const [isOpen, setIsOpen] = useState(false);
 	const [filter, setFilter] = useState("");
-	const [isBaseRefPinned, setIsBaseRefPinned] = useState(card.baseRefPinned === true);
+	const baseRefDisplay = resolveTaskBaseRefDisplayState({
+		baseRef: card.baseRef,
+		baseRefPinned: card.baseRefPinned,
+		behindBaseCount,
+	});
+	const baseRefState = baseRefDisplay.baseRefState;
+	const [isBaseRefPinned, setIsBaseRefPinned] = useState(baseRefState.isPinned);
 	const inputRef = useRef<HTMLInputElement>(null);
-	const hasBaseRef = card.baseRef.trim().length > 0;
 
 	const handleOpen = useCallback(
 		(open: boolean) => {
 			if (open) {
 				setFilter("");
-				setIsBaseRefPinned(card.baseRefPinned === true);
+				setIsBaseRefPinned(baseRefState.isPinned);
 				requestBranches();
 			}
 			setIsOpen(open);
 		},
-		[card.baseRefPinned, requestBranches],
+		[baseRefState.isPinned, requestBranches],
 	);
 
 	const handleSelect = useCallback(
 		(refName: string) => {
-			if (refName !== card.baseRef || isBaseRefPinned !== (card.baseRefPinned === true)) {
+			if (refName !== (baseRefState.baseRef ?? "") || isBaseRefPinned !== baseRefState.isPinned) {
 				onUpdateBaseRef(card.id, refName, isBaseRefPinned);
 			}
 			setIsOpen(false);
 		},
-		[isBaseRefPinned, card.baseRef, card.baseRefPinned, card.id, onUpdateBaseRef],
+		[isBaseRefPinned, baseRefState.baseRef, baseRefState.isPinned, card.id, onUpdateBaseRef],
 	);
 
 	const { pinnedLocal, unpinnedLocal, filteredRemote } = useMemo(
@@ -104,16 +110,16 @@ export function BaseRefLabel({
 							: "text-text-tertiary hover:bg-surface-2 hover:text-text-secondary",
 					)}
 				>
-					{hasBaseRef ? (
+					{baseRefState.isResolved ? (
 						<>
-							{card.baseRefPinned ? <Lock size={10} className="text-text-quaternary" /> : null}
-							from <span className="font-mono">{card.baseRef}</span>
-							{(behindBaseCount ?? 0) > 0 ? (
-								<span className="text-status-blue">({behindBaseCount} behind)</span>
+							{baseRefState.isPinned ? <Lock size={10} className="text-text-quaternary" /> : null}
+							from <span className="font-mono">{baseRefState.baseRef}</span>
+							{baseRefDisplay.behindLabel ? (
+								<span className="text-status-blue">({baseRefDisplay.behindLabel})</span>
 							) : null}
 						</>
 					) : (
-						<span className="text-status-orange">select base branch</span>
+						<span className="text-status-orange">{baseRefDisplay.triggerLabel}</span>
 					)}
 				</button>
 			</RadixPopover.Trigger>
@@ -157,25 +163,25 @@ export function BaseRefLabel({
 									<BaseRefSection
 										title="Pinned"
 										refs={pinnedLocal}
-										currentBaseRef={card.baseRef}
+										currentBaseRef={baseRefState.baseRef ?? ""}
 										onSelectRef={handleSelect}
 									/>
 									<BaseRefSection
 										title="Local"
 										refs={unpinnedLocal}
-										currentBaseRef={card.baseRef}
+										currentBaseRef={baseRefState.baseRef ?? ""}
 										onSelectRef={handleSelect}
 									/>
 									<BaseRefSection
 										title="Remote"
 										refs={filteredRemote}
-										currentBaseRef={card.baseRef}
+										currentBaseRef={baseRefState.baseRef ?? ""}
 										onSelectRef={handleSelect}
 									/>
 								</>
 							)}
 						</div>
-						{hasBaseRef ? (
+						{baseRefState.isResolved ? (
 							<div className="border-t border-border px-2 py-1.5">
 								<button
 									type="button"
@@ -183,13 +189,13 @@ export function BaseRefLabel({
 									onClick={() => {
 										const next = !isBaseRefPinned;
 										setIsBaseRefPinned(next);
-										if (next !== (card.baseRefPinned === true)) {
-											onUpdateBaseRef(card.id, card.baseRef, next);
+										if (next !== baseRefState.isPinned) {
+											onUpdateBaseRef(card.id, baseRefState.baseRef, next);
 										}
 									}}
 								>
 									{isBaseRefPinned ? <Lock size={11} /> : <LockOpen size={11} />}
-									{isBaseRefPinned ? "Pinned - won't auto-update" : "Unpinned - auto-updates on branch change"}
+									{baseRefDisplay.pinToggleLabel}
 								</button>
 							</div>
 						) : null}

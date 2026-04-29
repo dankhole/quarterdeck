@@ -3,6 +3,7 @@ import {
 	createTaggedLogger,
 	findCardInBoard,
 	type IRuntimeConfigProvider,
+	isRuntimeTaskBaseRefResolved,
 	parseTaskSessionStartRequest,
 	type RuntimeTaskSessionSummary,
 } from "../../core";
@@ -124,7 +125,7 @@ export async function handleStartTaskSession(
 		});
 		const scopedRuntimeConfig = await deps.config.loadScopedRuntimeConfig(projectScope);
 		const useWorktree = body.useWorktree !== false;
-		if (!body.baseRef.trim()) {
+		if (!isRuntimeTaskBaseRefResolved({ baseRef: body.baseRef })) {
 			return {
 				ok: false,
 				summary: null,

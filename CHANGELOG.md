@@ -6,6 +6,10 @@
 
 - Moved task/shell lifecycle orchestration out of `TerminalSessionManager` into a dedicated lifecycle controller, keeping the manager focused on registry, listener, IO, transition, and reconciliation wiring.
 
+### Chore: unify branch/base-ref state
+
+- Inferred, pinned, and unresolved task base refs now share one runtime/web UI model with detached-worktree display, so top-bar base-ref pills, branch-change sync, task-start guards, and detached hints interpret task branch state consistently.
+
 ## [0.12.2] — 2026-04-29
 
 ### Docs: version bump to 0.12.2

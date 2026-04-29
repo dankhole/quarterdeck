@@ -1,3 +1,4 @@
+import { isRuntimeTaskBaseRefResolved } from "@runtime-contract";
 import type { RuntimeWorkdirFileChange } from "@/runtime/types";
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 
@@ -61,7 +62,7 @@ export function setLastSelectedPath(taskId: string | null, tab: GitViewTab, path
 export type GitChangesRefMode = "base_derived" | "explicit_refs";
 
 export function isTaskBaseRefResolved(taskId: string | null, baseRef: string | null): boolean {
-	return !taskId || (baseRef?.trim() ?? "").length > 0;
+	return !taskId || isRuntimeTaskBaseRefResolved({ baseRef });
 }
 
 /**

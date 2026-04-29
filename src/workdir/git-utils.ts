@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
-import { createGitProcessEnv } from "../core";
+import { createGitProcessEnv, INTEGRATION_BASE_REF_CANDIDATES } from "../core";
 
 const execFileAsync = promisify(execFile);
 const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
@@ -449,7 +449,7 @@ export async function resolveBaseRefForBranch(
 	if (projectDefaultBaseRef) {
 		candidates.add(projectDefaultBaseRef);
 	}
-	for (const name of ["main", "master"]) {
+	for (const name of INTEGRATION_BASE_REF_CANDIDATES) {
 		candidates.add(name);
 	}
 	// Don't consider the current branch as its own base

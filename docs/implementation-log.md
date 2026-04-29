@@ -8,6 +8,12 @@
 
 The key invariant is that lifecycle code still routes state-machine consequences through `SessionTransitionController`; explicit stops still set `suppressAutoRestartOnExit` before killing the PTY, wait-for-exit still resolves through the shared exit finalizer, and stale/replaced PTY exits remain guarded before they can clear a newer active session. Validation: focused terminal manager/shutdown/auto-restart/ordering/transition-controller tests and `npm run typecheck`.
 
+## 2026-04-29 — Branch/base-ref UX state model
+
+Task base-ref semantics now have a shared runtime contract in `src/core/api/branch-base-ref.ts`: unresolved, inferred, and pinned refs are explicit states, and the known integration-branch inference candidates live in the same model instead of as a local git-utils literal. The server inference path uses that candidate list, task-start guards use the resolved/unresolved helper, and browser base-derived query guards continue to block unresolved task bases through the same predicate.
+
+The web UI display layer now derives top-bar base-ref copy, detached-worktree labels/tooltips, and branch-change board sync from that model. `BaseRefLabel`, `ConnectedTopBar`, `GitProvider`, task detail repository surfaces, and board-card metadata no longer each decide independently how to trim refs, detect pinned state, or suppress detached hints when the base is unresolved. Validation: focused runtime/web tests, `npm run check`, `npm run web:test`, `npm run web:build`, and Biome on touched files. Commit: pending.
+
 ## 2026-04-29 — Task-owned agent harness selection
 
 Task creation now owns agent harness choice per task instead of requiring a global Settings change. The selected harness is persisted on `RuntimeBoardCard.agentId`, browser task creation writes it into board state, and fresh task starts prefer the persisted card agent before falling back to the runtime default. Resume still prefers the previous terminal summary agent so existing conversations continue with the same CLI. Settings no longer renders the task-agent picker; it keeps launch tuning such as Claude row multiplier and the worktree context prompt.

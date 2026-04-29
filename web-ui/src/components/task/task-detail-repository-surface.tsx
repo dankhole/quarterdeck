@@ -9,7 +9,7 @@ import type { MainViewId } from "@/resize/use-card-detail-layout";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { getProjectPath } from "@/stores/project-metadata-store";
 import type { CardSelection } from "@/types";
-import { formatDetachedWorktreeLabel, getDetachedWorktreeTooltip } from "@/utils/detached-worktree-copy";
+import { type DetachedWorktreeDisplayState, resolveDetachedTaskWorktreeDisplay } from "@/utils/task-base-ref-display";
 import { resolveTaskGitState } from "@/utils/task-git-state";
 
 function TaskBranchStatus({
@@ -19,8 +19,7 @@ function TaskBranchStatus({
 	deletions,
 	isGitHistoryOpen,
 	onToggleGitHistory,
-	isDetached,
-	baseRef,
+	detachedWorktree,
 }: {
 	branchLabel: string;
 	changedFiles: number;
@@ -28,12 +27,8 @@ function TaskBranchStatus({
 	deletions: number;
 	isGitHistoryOpen: boolean;
 	onToggleGitHistory?: () => void;
-	isDetached: boolean;
-	baseRef: string | null | undefined;
+	detachedWorktree: DetachedWorktreeDisplayState | null;
 }): React.ReactElement {
-	const detachedLabel = isDetached ? formatDetachedWorktreeLabel(baseRef) : null;
-	const detachedTooltip = detachedLabel ? getDetachedWorktreeTooltip({ baseRef, headCommit: branchLabel }) : null;
-
 	return (
 		<div className="flex items-center gap-1">
 			<GitBranchStatusControl
@@ -44,11 +39,11 @@ function TaskBranchStatus({
 				onToggleGitHistory={onToggleGitHistory}
 				isGitHistoryOpen={isGitHistoryOpen}
 			/>
-			{detachedLabel ? (
-				<Tooltip content={detachedTooltip} side="bottom">
+			{detachedWorktree ? (
+				<Tooltip content={detachedWorktree.tooltip} side="bottom">
 					<span className="inline-flex items-center gap-1 text-xs text-text-tertiary whitespace-nowrap ml-1">
 						<Info size={11} className="text-text-tertiary" />
-						<span>{detachedLabel}</span>
+						<span>{detachedWorktree.label}</span>
 					</span>
 				</Tooltip>
 			) : null}
@@ -90,14 +85,13 @@ export function TaskDetailRepositorySurface({
 		sessionSummary,
 	});
 	const taskIdentity = taskGitState.identity;
-	const isDetachedTaskWorktree =
-		taskGitState.isDetached && !taskIdentity.isAssignedShared && Boolean(selection.card.baseRef.trim());
-	const detachedWorktree = isDetachedTaskWorktree
-		? {
-				baseRef: selection.card.baseRef.trim(),
-				headCommit: taskIdentity.assignedHeadCommit,
-			}
-		: null;
+	const detachedWorktree = resolveDetachedTaskWorktreeDisplay({
+		isDetached: taskGitState.isDetached,
+		isAssignedShared: taskIdentity.isAssignedShared,
+		baseRef: selection.card.baseRef,
+		headCommit: taskIdentity.assignedHeadCommit,
+	});
+	const isDetachedTaskWorktree = detachedWorktree !== null;
 	const showDetachedPillHint = detachedWorktree !== null && repositoryState.taskResolvedScope?.type !== "branch_view";
 
 	return (
@@ -132,8 +126,7 @@ export function TaskDetailRepositorySurface({
 								deletions={taskGitState.deletions}
 								isGitHistoryOpen={repositoryState.isGitHistoryOpen}
 								onToggleGitHistory={repositoryState.onToggleGitHistory}
-								isDetached={isDetachedTaskWorktree}
-								baseRef={selection.card.baseRef}
+								detachedWorktree={detachedWorktree}
 							/>
 						) : undefined
 					}

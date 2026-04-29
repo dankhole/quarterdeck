@@ -1,3 +1,4 @@
+import { isRuntimeTaskBaseRefResolved } from "@runtime-contract";
 import { ArrowDown, ArrowUp, CircleArrowDown } from "lucide-react";
 import { type ReactElement, useCallback } from "react";
 import { BaseRefLabel } from "@/components/app/base-ref-label";
@@ -7,6 +8,7 @@ import { BranchPillTrigger, BranchSelectorPopover } from "@/components/git/panel
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
+import { applyTaskBaseRefSelectionToBoard } from "@/hooks/board/task-base-ref-sync";
 import { useOpenProject } from "@/hooks/project";
 import { useBoardContext } from "@/providers/board-provider";
 import { useDialogContext } from "@/providers/dialog-provider";
@@ -65,7 +67,7 @@ export function ConnectedTopBar({
 	const navigation = useSurfaceNavigationContext();
 	const terminal = useTerminalContext();
 	const dialog = useDialogContext();
-	const selectedTaskHasBaseRef = selectedCard ? selectedCard.card.baseRef.trim().length > 0 : false;
+	const selectedTaskHasBaseRef = selectedCard ? isRuntimeTaskBaseRefResolved(selectedCard.card) : false;
 	const isGitSyncDisabled = git.runningGitAction != null || (selectedCard !== null && !selectedTaskHasBaseRef);
 	const openProject = useOpenProject({
 		currentProjectId: project.currentProjectId,
@@ -76,13 +78,7 @@ export function ConnectedTopBar({
 	const handleUpdateBaseRef = useCallback(
 		(taskId: string, baseRef: string, pinned: boolean) => {
 			setBoard((current) => {
-				const columns = current.columns.map((col) => ({
-					...col,
-					cards: col.cards.map((card) =>
-						card.id === taskId ? { ...card, baseRef, baseRefPinned: pinned || undefined } : card,
-					),
-				}));
-				return { ...current, columns };
+				return applyTaskBaseRefSelectionToBoard(current, { taskId, baseRef, pinned });
 			});
 		},
 		[setBoard],

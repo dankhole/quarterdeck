@@ -22,6 +22,7 @@ import {
 	useTaskRepositoryInfoValue,
 	useTaskWorktreeSnapshotValue,
 } from "@/stores/project-metadata-store";
+import { resolveDetachedTaskWorktreeDisplay } from "@/utils/task-base-ref-display";
 import { resolveTaskGitState } from "@/utils/task-git-state";
 
 // ---------------------------------------------------------------------------
@@ -176,19 +177,15 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 		return homeGitSummary?.currentBranch ?? null;
 	}, [selectedCard, selectedTaskGitState, homeGitSummary]);
 	const topbarDetachedWorktree = useMemo(() => {
-		const baseRef = selectedCard?.card.baseRef.trim();
-		if (
-			!selectedCard ||
-			!baseRef ||
-			!selectedTaskGitState?.isDetached ||
-			selectedTaskGitState.identity.isAssignedShared
-		) {
+		if (!selectedCard || !selectedTaskGitState) {
 			return null;
 		}
-		return {
-			baseRef,
+		return resolveDetachedTaskWorktreeDisplay({
+			isDetached: selectedTaskGitState.isDetached,
+			isAssignedShared: selectedTaskGitState.identity.isAssignedShared,
+			baseRef: selectedCard.card.baseRef,
 			headCommit: selectedTaskGitState.identity.assignedHeadCommit,
-		};
+		});
 	}, [selectedCard, selectedTaskGitState]);
 
 	// --- useFileBrowserData ---

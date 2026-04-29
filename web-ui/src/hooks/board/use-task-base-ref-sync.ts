@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect } from "react";
+import { applyTaskBaseRefUpdateToBoard } from "@/hooks/board/task-base-ref-sync";
 import type { TaskBaseRefUpdate } from "@/runtime/use-runtime-state-stream";
 import type { BoardData } from "@/types";
 
@@ -21,26 +22,7 @@ export function useTaskBaseRefSync({ latestTaskBaseRefUpdate, setBoard }: UseTas
 		}
 		const { taskId, baseRef } = latestTaskBaseRefUpdate;
 		setBoard((current) => {
-			for (const column of current.columns) {
-				const cardIndex = column.cards.findIndex((c) => c.id === taskId);
-				if (cardIndex === -1) {
-					continue;
-				}
-				const card = column.cards[cardIndex]!;
-				if (card.baseRef === baseRef) {
-					return current;
-				}
-				if (card.baseRefPinned) {
-					return current;
-				}
-				const updatedCards = [...column.cards];
-				updatedCards[cardIndex] = { ...card, baseRef };
-				return {
-					...current,
-					columns: current.columns.map((col) => (col.id === column.id ? { ...col, cards: updatedCards } : col)),
-				};
-			}
-			return current;
+			return applyTaskBaseRefUpdateToBoard(current, { taskId, baseRef });
 		});
 	}, [latestTaskBaseRefUpdate, setBoard]);
 }

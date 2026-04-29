@@ -34,15 +34,15 @@ Backlog note:
 
 The previous top-wave refactors around split-brain task state, manual broadcast choreography, provider narrowing, task-detail composition, notification scoping/indicator semantics, and project/worktree identity first-pass normalization have now landed. The ranking below reflects the biggest remaining weaknesses after that cleanup wave.
 
-### 1. Terminal/session lifecycle ownership is still too broad
+### 1. Terminal/session lifecycle ownership cleanup is closed
 
-The terminal transport layer is in much better shape, but `TerminalSessionManager` still carries too much lifecycle coordination at once: spawn/attach, stale recovery, restart ownership, reconciliation timer wiring, listener fanout, and process/session registry responsibilities still meet at one seam.
+The terminal transport layer is in much better shape after the transition-controller and lifecycle-controller extractions. `TerminalSessionManager` now acts more like a composition and registry surface, while state-machine side effects and task/shell lifecycle orchestration have named owners.
 
 Why it matters:
 
 - terminal bugs are still the most likely to become hard-to-reproduce lifecycle bugs
-- restart/recovery changes still carry broader regression risk than they should
-- the manager reads more like a composed system now, but not yet like a mostly honest composition root
+- restart/recovery changes should stay behind the lifecycle controller instead of drifting back into the manager
+- future lifecycle follow-ups should preserve the current owner split rather than adding another private side-effect path
 
 ### 2. Project-level frontend ownership is still broader than ideal
 
@@ -74,15 +74,15 @@ Why it matters:
 - stale artifact bugs can span process/session state, filesystem state, and persistent state references
 - the cleanup taxonomy needs to stay visible so new stale-artifact classes land in the right maintenance path
 
-### 5. Branch/base-ref UX state is still a fragmented domain
+### 5. Branch/base-ref UX state model is closed
 
-Branch identity, pinned refs, inferred base refs, detached-head display, and integration-branch behavior still read more like a pile of fixes than one coherent model.
+Branch identity, pinned refs, inferred base refs, detached-head display, and integration-branch behavior now share an explicit base-ref state model. Keep future git workflow features on that model rather than reintroducing local trimming, unresolved checks, or detached-head copy rules in individual components.
 
 Why it matters:
 
 - recurring branch/base-ref bugs are often model problems, not isolated UI mistakes
-- different surfaces can still render slightly different interpretations of the same git situation
-- future git workflow features will keep rediscovering the same missing state distinctions
+- different surfaces should render the same interpretation of the same git situation
+- future git workflow features should reuse the existing state distinctions
 
 ### 6. File browser/diff viewer transport and view policy are still too mixed
 
@@ -140,14 +140,12 @@ Why it matters:
 The active order below should match `docs/todo.md`. It is an execution sequence, not a duplicate of the risk ranking above.
 
 1. ProjectProvider / project-runtime ownership follow-up
-2. Terminal session manager / lifecycle boundaries
-3. Branch / base-ref UX state model
-4. File browser + diff viewer data pipeline
+2. File browser + diff viewer data pipeline
 
 That sequence is deliberate:
 
-- 1 and 2 are the two biggest remaining ownership seams after the recent refactor wave.
-- 3 and 4 are still worthwhile, but they are now narrower follow-on cleanup items rather than “stop feature work until this is fixed” refactors.
+- Project-level frontend ownership is the biggest remaining ownership seam after the recent refactor wave.
+- File browser/diff viewer is still worthwhile, but it is now a narrower follow-on cleanup item rather than a “stop feature work until this is fixed” refactor.
 
 In other words: yes, this order is intentional. It is sequenced by leverage and remaining architectural risk, not just by how visible each bug symptom is.
 
@@ -180,7 +178,9 @@ These landed recently enough that they are still useful context for what remains
 - Notification / project-scoping ownership
 - Notification / indicator state model
 - Project / worktree identity normalization (first pass)
+- Branch / base-ref UX state model
 - Terminal session transition controller extraction
+- Terminal session manager / lifecycle boundaries
 - Runtime config and task/session fixture dedup
 - Project metadata monitor follow-ups
 - Project sync plus board cache restore
@@ -506,17 +506,18 @@ These are still real refactor targets confirmed against implementation files, bu
 
 Status:
 
-- Still active. A meaningful first slice landed on 2026-04-22 by extracting `src/terminal/session-transition-controller.ts`, but `TerminalSessionManager` remains the broadest runtime lifecycle coordinator left in the codebase.
+- Completed on 2026-04-29. A first slice landed on 2026-04-22 by extracting `src/terminal/session-transition-controller.ts`; the follow-up lifecycle-controller split moved task/shell lifecycle orchestration out of `TerminalSessionManager`.
 
 Primary files:
 
 - `src/terminal/session-manager.ts`
+- `src/terminal/session-lifecycle-controller.ts`
 - `src/terminal/session-lifecycle.ts`
 - `src/terminal/session-summary-store.ts`
 - `src/terminal/session-reconciliation.ts`
 - `src/terminal/session-reconciliation-sweep.ts`
 
-Current smell:
+Historical smell:
 
 - `TerminalSessionManager` is much healthier than it used to be, but it still coordinates listener fanout, restart ownership, attach/restore behavior, spawn routing, input/output flow, stale recovery, and reconciliation timer lifecycle
 - the recent `SessionTransitionController` extraction gave transition side effects and summary fanout a real owner, but session truth, process ownership, restart policy, and reconciliation policy still meet at one coordinator seam
@@ -531,14 +532,15 @@ What “good” looks like:
 - session truth, process lifecycle, and reconciliation policy are easier to explain independently
 - the manager owns registry/wiring responsibilities more than indirect transition rules
 
-Suggested first slice:
+Outcome:
 
-- continue the same pattern as the transition-controller extraction
-- push one cohesive responsibility, likely restart/recovery orchestration or reconciliation action application, behind a clearer ownership seam
+- `src/terminal/session-lifecycle-controller.ts` now owns task/shell start/reuse policy, explicit stop and wait-for-exit handling, hydration, stale recovery, shutdown interruption, and task exit restart fallback
+- `TerminalSessionManager` keeps the shared process-entry registry, listener attachment, terminal IO/resize/pause/resume operations, transition-controller wiring, and reconciliation timer wiring
+- lifecycle code still routes state-machine consequences through `SessionTransitionController`
 
 Key risk:
 
-- splitting into more helper files without clarifying transition ownership would add indirection without improving lifecycle reasoning
+- future restart/recovery fixes can regress the owner split if they attach new side effects directly to `TerminalSessionManager`
 
 ## 10. Project / Worktree Identity Normalization
 
@@ -705,14 +707,20 @@ Remaining follow-up worth watching:
 
 ## 15. Branch / Base-ref UX State Model
 
+Status:
+
+- Completed on 2026-04-29. See `CHANGELOG.md` and `docs/implementation-log.md` for the shared runtime/web UI state model.
+
 Primary files:
 
+- `src/core/api/branch-base-ref.ts`
 - `src/workdir/git-utils.ts`
 - `src/server/project-metadata-refresher.ts`
+- `web-ui/src/components/app/base-ref-label.tsx`
 - `web-ui/src/hooks/board/use-task-base-ref-sync.ts`
 - `web-ui/src/hooks/git/use-task-branch-options.ts`
 
-Current smell:
+Historical smell:
 
 - branch identity, default base branch, inferred base ref, pinned base ref, detached-head display, and integration-branch behavior still feel like separate fixes rather than one domain model
 
@@ -725,10 +733,16 @@ What “good” looks like:
 - the code distinguishes explicit user choice, inferred base ref, unresolved state, and detached-head display cleanly
 - top-bar/base-ref pills and branch-change sync rules consume the same model
 
-Suggested first slice:
+Outcome:
 
-- formalize the “unresolved base ref” state instead of treating it as a skipped update
-- make one UI surface, likely the top-bar/base-ref pill, render directly from that clearer state model
+- `src/core/api/branch-base-ref.ts` defines unresolved, inferred, and pinned task base-ref states plus the shared integration-branch candidate list
+- top-bar/base-ref pills, task-start guards, base-derived git query guards, detached-worktree copy, and branch-change board sync consume the same model
+- task creation default selection remains separate from ongoing branch/base-ref synchronization
+
+Completed slice:
+
+- formalized the “unresolved base ref” state instead of treating it as a skipped update
+- made the top-bar/base-ref pill, sync rules, detached copy, and start/query guards render from that clearer state model
 
 Key risk:
 

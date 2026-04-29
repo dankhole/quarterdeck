@@ -1,9 +1,9 @@
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardCard, BoardColumnId, ReviewTaskWorktreeSnapshot } from "@/types";
 import { getCardHoverTooltip, shortenBranchName } from "@/utils/board-card-display";
-import { formatDetachedWorktreeLabel, getDetachedWorktreeTooltip } from "@/utils/detached-worktree-copy";
 import { describeSessionState, getSessionStatusBadgeStyle, getSessionStatusTooltip } from "@/utils/session-status";
 import { getTaskAgentDisplayLabel, getTaskAgentShortLabel } from "@/utils/task-agent-display";
+import { resolveDetachedTaskWorktreeDisplay } from "@/utils/task-base-ref-display";
 import { resolveTaskIdentity } from "@/utils/task-identity";
 import { truncateTaskPromptLabel } from "@/utils/task-prompt";
 
@@ -67,16 +67,17 @@ export function resolveBoardCardViewModel({
 		hasRestartSessionHandler;
 	const statusMarker = columnId === "in_progress" ? (isSessionRestartable ? "restart" : "spinner") : null;
 	const showProjectStatus = columnId === "in_progress" || columnId === "review" || isTrashCard;
-	const detachedBaseRef = !isSharedCheckout && taskIdentity.assignedIsDetached ? card.baseRef.trim() || null : null;
-	const detachedWorktreeLabel = formatDetachedWorktreeLabel(detachedBaseRef);
+	const detachedWorktreeDisplay = resolveDetachedTaskWorktreeDisplay({
+		isDetached: taskIdentity.assignedIsDetached,
+		isAssignedShared: isSharedCheckout,
+		baseRef: card.baseRef,
+		headCommit: taskIdentity.assignedHeadCommit,
+	});
 	const reviewBranchLabel =
-		detachedWorktreeLabel ??
+		detachedWorktreeDisplay?.label ??
 		(taskIdentity.displayBranchLabel ? shortenBranchName(taskIdentity.displayBranchLabel) : null);
-	const reviewBranchTooltip = detachedWorktreeLabel
-		? getDetachedWorktreeTooltip({
-				baseRef: detachedBaseRef,
-				headCommit: taskIdentity.assignedHeadCommit,
-			})
+	const reviewBranchTooltip = detachedWorktreeDisplay
+		? detachedWorktreeDisplay.tooltip
 		: (taskIdentity.assignedBranch ?? reviewBranchLabel);
 	const reviewChangeSummary =
 		reviewWorktreeSnapshot?.changedFiles == null
@@ -118,7 +119,7 @@ export function resolveBoardCardViewModel({
 		showProjectStatus,
 		reviewBranchLabel,
 		reviewBranchTooltip,
-		showDetachedWorktreeHint: detachedWorktreeLabel !== null,
+		showDetachedWorktreeHint: detachedWorktreeDisplay !== null,
 		reviewChangeSummary,
 		showUncommittedChangesIndicator,
 		agentBadge,

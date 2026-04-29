@@ -1,6 +1,8 @@
 // Frontend facade for task-scoped runtime actions.
 // It owns how the board and detail view start, stop, resize, and route task
 // sessions across PTY-backed agents.
+
+import { isRuntimeTaskBaseRefResolved } from "@runtime-contract";
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback } from "react";
 
@@ -125,7 +127,7 @@ export function useTaskSessions({
 			if (!currentProjectId) {
 				return { ok: false, message: "No project selected." };
 			}
-			if (!task.baseRef.trim()) {
+			if (!isRuntimeTaskBaseRefResolved(task)) {
 				return { ok: false, message: "Select a base branch before starting this task." };
 			}
 			try {
@@ -155,7 +157,7 @@ export function useTaskSessions({
 			if (!currentProjectId) {
 				return { ok: false, message: "No project selected." };
 			}
-			if (!task.baseRef.trim()) {
+			if (!isRuntimeTaskBaseRefResolved(task)) {
 				return { ok: false, message: "Select a base branch before starting this task." };
 			}
 			log.debug("startTaskSession trpc call", {
