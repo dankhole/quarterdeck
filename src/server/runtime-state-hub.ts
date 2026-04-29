@@ -25,6 +25,7 @@ import { loadProjectBoardById } from "../state";
 import type { TerminalSessionManager } from "../terminal";
 import { applyRuntimeMutationEffects, createTaskBaseRefUpdatedEffects } from "../trpc/runtime-mutation-effects";
 import { createProjectMetadataMonitor } from "./project-metadata-monitor";
+import { normalizeProjectMetadataClientId } from "./project-metadata-visibility";
 import type { ProjectRegistry } from "./project-registry";
 import { RuntimeStateClientRegistry } from "./runtime-state-client-registry";
 import { RuntimeStateMessageBatcher } from "./runtime-state-message-batcher";
@@ -70,6 +71,8 @@ export interface RuntimeStateHub extends IRuntimeBroadcaster {
 		head: Buffer,
 		context: {
 			requestedProjectId: string | null;
+			clientId: string | null;
+			isDocumentVisible: boolean;
 		},
 	) => void;
 	disposeProject: (projectId: string, options?: DisposeRuntimeStateProjectOptions) => void;
@@ -91,8 +94,8 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		// with a callback to properly drain connections. Handled in close().
 
 		this.clients = new RuntimeStateClientRegistry({
-			onProjectClientDisconnected: (projectId) => {
-				this.metadataMonitor.disconnectProject(projectId);
+			onProjectClientDisconnected: (projectId, clientId) => {
+				this.metadataMonitor.disconnectProject(projectId, clientId);
 			},
 		});
 
@@ -153,7 +156,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		request: IncomingMessage,
 		socket: Parameters<WebSocketServer["handleUpgrade"]>[1],
 		head: Buffer,
-		context: { requestedProjectId: string | null },
+		context: { requestedProjectId: string | null; clientId: string | null; isDocumentVisible: boolean },
 	): void => {
 		this.wss.handleUpgrade(request, socket, head, (ws) => {
 			this.wss.emit("connection", ws, context);
@@ -234,8 +237,8 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		this.metadataMonitor.setFocusedTask(projectId, taskId);
 	};
 
-	setDocumentVisible = (projectId: string, isDocumentVisible: boolean): void => {
-		this.metadataMonitor.setDocumentVisible(projectId, isDocumentVisible);
+	setDocumentVisible = (projectId: string, clientId: string, isDocumentVisible: boolean): void => {
+		this.metadataMonitor.setDocumentVisible(projectId, clientId, isDocumentVisible);
 	};
 
 	requestTaskRefresh = (projectId: string, taskId: string): void => {
@@ -276,6 +279,8 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 		try {
 			const requestedProjectId = this.parseProjectId(context);
+			const runtimeClientId = this.parseClientId(context);
+			const isDocumentVisible = this.parseDocumentVisible(context);
 			const resolved = await this.deps.projectRegistry.resolveProjectForStream(requestedProjectId, {
 				onRemovedProject: ({ projectId, message }) => {
 					this.disposeProject(projectId, {
@@ -316,7 +321,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 				monitorProjectId = snapshot.projectId;
 				if (monitorProjectId) {
-					this.clients.registerProjectClient(monitorProjectId, client);
+					this.clients.registerProjectClient(monitorProjectId, client, runtimeClientId);
 				}
 
 				if (snapshot.projectStateError) {
@@ -335,6 +340,8 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 							projectId: snapshot.projectId,
 							projectPath: snapshot.projectPath,
 							board: snapshot.projectState.board,
+							clientId: runtimeClientId,
+							isDocumentVisible,
 						})
 						.catch(() => {
 							// Non-fatal: metadata arrives on the next poll cycle.
@@ -362,7 +369,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				}
 			} catch (error) {
 				if (didConnectProjectMonitor && monitorProjectId) {
-					this.metadataMonitor.disconnectProject(monitorProjectId);
+					this.metadataMonitor.disconnectProject(monitorProjectId, runtimeClientId);
 				}
 				const message = error instanceof Error ? error.message : String(error);
 				hubLog.error("Failed to load initial snapshot for client", { message, error });
@@ -524,6 +531,30 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			return (context as { requestedProjectId: string }).requestedProjectId || null;
 		}
 		return null;
+	}
+
+	private parseClientId(context: unknown): string {
+		if (
+			typeof context === "object" &&
+			context !== null &&
+			"clientId" in context &&
+			typeof (context as { clientId?: unknown }).clientId === "string"
+		) {
+			return normalizeProjectMetadataClientId((context as { clientId: string }).clientId);
+		}
+		return normalizeProjectMetadataClientId(null);
+	}
+
+	private parseDocumentVisible(context: unknown): boolean {
+		if (
+			typeof context === "object" &&
+			context !== null &&
+			"isDocumentVisible" in context &&
+			typeof (context as { isDocumentVisible?: unknown }).isDocumentVisible === "boolean"
+		) {
+			return (context as { isDocumentVisible: boolean }).isDocumentVisible;
+		}
+		return true;
 	}
 }
 

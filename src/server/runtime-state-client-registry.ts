@@ -7,13 +7,18 @@ export interface DisconnectProjectClientsOptions {
 }
 
 export interface CreateRuntimeStateClientRegistryDependencies {
-	onProjectClientDisconnected: (projectId: string) => void;
+	onProjectClientDisconnected: (projectId: string, clientId: string) => void;
+}
+
+interface RuntimeStateProjectClient {
+	projectId: string;
+	clientId: string;
 }
 
 export class RuntimeStateClientRegistry {
 	private readonly clientsByProject = new Map<string, Set<WebSocket>>();
 	private readonly allClients = new Set<WebSocket>();
-	private readonly clientToProject = new Map<WebSocket, string>();
+	private readonly clientToProject = new Map<WebSocket, RuntimeStateProjectClient>();
 
 	constructor(private readonly deps: CreateRuntimeStateClientRegistryDependencies) {}
 
@@ -29,22 +34,22 @@ export class RuntimeStateClientRegistry {
 		this.allClients.add(client);
 	}
 
-	registerProjectClient(projectId: string, client: WebSocket): void {
+	registerProjectClient(projectId: string, client: WebSocket, clientId: string): void {
 		const projectClients = this.clientsByProject.get(projectId) ?? new Set<WebSocket>();
 		projectClients.add(client);
 		this.clientsByProject.set(projectId, projectClients);
-		this.clientToProject.set(client, projectId);
+		this.clientToProject.set(client, { projectId, clientId });
 	}
 
 	removeClient(client: WebSocket): void {
-		const projectId = this.clientToProject.get(client);
-		if (projectId) {
-			this.deps.onProjectClientDisconnected(projectId);
-			const clients = this.clientsByProject.get(projectId);
+		const projectClient = this.clientToProject.get(client);
+		if (projectClient) {
+			this.deps.onProjectClientDisconnected(projectClient.projectId, projectClient.clientId);
+			const clients = this.clientsByProject.get(projectClient.projectId);
 			if (clients) {
 				clients.delete(client);
 				if (clients.size === 0) {
-					this.clientsByProject.delete(projectId);
+					this.clientsByProject.delete(projectClient.projectId);
 				}
 			}
 		}

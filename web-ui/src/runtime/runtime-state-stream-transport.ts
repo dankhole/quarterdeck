@@ -1,3 +1,4 @@
+import { getRuntimeBrowserClientId } from "@/runtime/runtime-client-id";
 import { setRuntimeDisconnected } from "@/runtime/runtime-connection-state";
 import type { RuntimeStateStreamMessage } from "@/runtime/types";
 import { createClientLogger } from "@/utils/client-logger";
@@ -14,7 +15,16 @@ function getRuntimeStreamUrl(projectId: string | null): string {
 	if (projectId) {
 		url.searchParams.set("projectId", projectId);
 	}
+	url.searchParams.set("clientId", getRuntimeBrowserClientId());
+	url.searchParams.set("documentVisible", String(readCurrentDocumentVisible()));
 	return url.toString();
+}
+
+function readCurrentDocumentVisible(): boolean {
+	if (typeof document === "undefined") {
+		return true;
+	}
+	return document.visibilityState === "visible";
 }
 
 export interface RuntimeStateStreamTransportCallbacks {

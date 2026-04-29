@@ -34,7 +34,7 @@ export interface IRuntimeBroadcaster {
 	broadcastTaskBaseRefUpdated: (projectId: string, taskId: string, baseRef: string) => void;
 	broadcastLogLevel: (level: LogLevel) => void;
 	setFocusedTask: (projectId: string, taskId: string | null) => void;
-	setDocumentVisible: (projectId: string, isDocumentVisible: boolean) => void;
+	setDocumentVisible: (projectId: string, clientId: string, isDocumentVisible: boolean) => void;
 	requestTaskRefresh: (projectId: string, taskId: string) => void;
 	requestHomeRefresh: (projectId: string) => void;
 }

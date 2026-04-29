@@ -26,8 +26,8 @@ describe("RuntimeStateClientRegistry", () => {
 
 		registry.registerGlobalClient(clientA.socket);
 		registry.registerGlobalClient(clientB.socket);
-		registry.registerProjectClient("project-1", clientA.socket);
-		registry.registerProjectClient("project-1", clientB.socket);
+		registry.registerProjectClient("project-1", clientA.socket, "client-a");
+		registry.registerProjectClient("project-1", clientB.socket, "client-b");
 
 		registry.disconnectProjectClients("project-1", {
 			closeClientPayload: { type: "error", message: "project removed" },
@@ -38,8 +38,8 @@ describe("RuntimeStateClientRegistry", () => {
 		expect(clientA.socket.close).toHaveBeenCalledOnce();
 		expect(clientB.socket.close).toHaveBeenCalledOnce();
 		expect(onProjectClientDisconnected).toHaveBeenCalledTimes(2);
-		expect(onProjectClientDisconnected).toHaveBeenNthCalledWith(1, "project-1");
-		expect(onProjectClientDisconnected).toHaveBeenNthCalledWith(2, "project-1");
+		expect(onProjectClientDisconnected).toHaveBeenNthCalledWith(1, "project-1", "client-a");
+		expect(onProjectClientDisconnected).toHaveBeenNthCalledWith(2, "project-1", "client-b");
 		expect(registry.getProjectClients("project-1")).toBeUndefined();
 		expect(registry.hasClients).toBe(false);
 	});
@@ -53,7 +53,7 @@ describe("RuntimeStateClientRegistry", () => {
 
 		registry.registerGlobalClient(projectClient.socket);
 		registry.registerGlobalClient(otherClient.socket);
-		registry.registerProjectClient("project-1", projectClient.socket);
+		registry.registerProjectClient("project-1", projectClient.socket, "client-a");
 
 		registry.broadcastToProject("project-1", { type: "error", message: "project only" });
 		registry.broadcastToAll({ type: "error", message: "everyone" });

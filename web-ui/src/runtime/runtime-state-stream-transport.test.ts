@@ -27,6 +27,13 @@ class FakeWebSocket {
 	}
 }
 
+function setDocumentVisibilityState(state: DocumentVisibilityState): void {
+	Object.defineProperty(document, "visibilityState", {
+		configurable: true,
+		value: state,
+	});
+}
+
 describe("startRuntimeStateStreamTransport", () => {
 	let originalWebSocket: typeof WebSocket;
 
@@ -39,6 +46,7 @@ describe("startRuntimeStateStreamTransport", () => {
 
 	afterEach(() => {
 		globalThis.WebSocket = originalWebSocket;
+		setDocumentVisibilityState("visible");
 		vi.useRealTimers();
 	});
 
@@ -57,6 +65,21 @@ describe("startRuntimeStateStreamTransport", () => {
 		expect(FakeWebSocket.instances[0]?.close).toHaveBeenCalledTimes(1);
 		expect(FakeWebSocket.instances).toHaveLength(2);
 		expect(FakeWebSocket.instances[1]?.url).toContain("projectId=project-b");
+
+		transport.dispose();
+	});
+
+	it("includes current document visibility in every websocket URL", () => {
+		setDocumentVisibilityState("hidden");
+
+		const transport = startRuntimeStateStreamTransport("project-a", {
+			onConnected: vi.fn(),
+			onDisconnected: vi.fn(),
+			onMessage: vi.fn(),
+		});
+
+		expect(FakeWebSocket.instances).toHaveLength(1);
+		expect(new URL(FakeWebSocket.instances[0]?.url ?? "").searchParams.get("documentVisible")).toBe("false");
 
 		transport.dispose();
 	});

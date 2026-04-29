@@ -10,6 +10,14 @@ import {
 import { ProjectMetadataPoller } from "./project-metadata-poller";
 import { ProjectMetadataRefresher } from "./project-metadata-refresher";
 import { ProjectMetadataRemoteFetchPolicy } from "./project-metadata-remote-fetch";
+import {
+	connectProjectMetadataClient,
+	disconnectProjectMetadataClient,
+	getActiveProjectMetadataClientCount,
+	isProjectMetadataVisible,
+	type ProjectMetadataVisibilityChange,
+	setProjectMetadataClientVisibility,
+} from "./project-metadata-visibility";
 
 export interface CreateProjectMetadataControllerDependencies {
 	projectId: string;
@@ -54,7 +62,7 @@ export class ProjectMetadataController {
 		this.poller = new ProjectMetadataPoller({
 			getPollState: () => ({
 				pollIntervals: this.entry.pollIntervals,
-				isDocumentVisible: this.entry.isDocumentVisible,
+				isDocumentVisible: this.isDocumentVisible(),
 				hasFocusedTask: this.entry.focusedTaskId !== null,
 			}),
 			refreshHome: () => this.refresher.refreshHome(),
@@ -71,19 +79,26 @@ export class ProjectMetadataController {
 		});
 	}
 
-	async connect(input: { projectPath: string; board: RuntimeBoardData }): Promise<RuntimeProjectMetadata> {
+	async connect(input: {
+		projectPath: string;
+		board: RuntimeBoardData;
+		clientId?: string | null;
+		isDocumentVisible?: boolean;
+	}): Promise<RuntimeProjectMetadata> {
 		this.updateTrackedState(input.projectPath, input.board);
-		this.entry.subscriberCount += 1;
-		this.entry.isDocumentVisible = true;
+		const visibilityChange = connectProjectMetadataClient(
+			this.entry.documentVisibilityByClientId,
+			input.clientId,
+			input.isDocumentVisible,
+		);
 		this.poller.start();
-		this.remoteFetchPolicy.start();
-		this.remoteFetchPolicy.requestFetch();
+		this.syncVisibilityPolicies(visibilityChange, { requestVisibleFetch: true });
 		return await this.refresher.refreshProject();
 	}
 
 	async updateProjectState(input: { projectPath: string; board: RuntimeBoardData }): Promise<RuntimeProjectMetadata> {
 		this.updateTrackedState(input.projectPath, input.board);
-		if (this.entry.subscriberCount === 0) {
+		if (!this.hasConnectedClients()) {
 			return buildProjectMetadataSnapshot(this.entry);
 		}
 		return await this.refresher.refreshProject();
@@ -96,7 +111,7 @@ export class ProjectMetadataController {
 			return;
 		}
 		this.entry.focusedTaskId = nextFocusedTaskId;
-		if (this.entry.subscriberCount > 0) {
+		if (this.hasConnectedClients()) {
 			this.poller.start();
 		}
 		if (nextFocusedTaskId) {
@@ -104,22 +119,17 @@ export class ProjectMetadataController {
 		}
 	}
 
-	setDocumentVisible(isDocumentVisible: boolean): void {
-		if (this.entry.isDocumentVisible === isDocumentVisible) {
-			return;
-		}
-		this.entry.isDocumentVisible = isDocumentVisible;
-		if (this.entry.subscriberCount === 0) {
+	setDocumentVisible(clientId: string | null | undefined, isDocumentVisible: boolean): void {
+		const visibilityChange = setProjectMetadataClientVisibility(
+			this.entry.documentVisibilityByClientId,
+			clientId,
+			isDocumentVisible,
+		);
+		if (!this.hasConnectedClients() || !visibilityChange.didEffectiveVisibilityChange) {
 			return;
 		}
 		this.poller.start();
-		if (isDocumentVisible) {
-			this.remoteFetchPolicy.start();
-			this.remoteFetchPolicy.requestFetch();
-			void this.refresher.refreshProject();
-		} else {
-			this.remoteFetchPolicy.stop();
-		}
+		this.syncVisibilityPolicies(visibilityChange, { refreshOnVisible: true, requestVisibleFetch: true });
 	}
 
 	requestTaskRefresh(taskId: string): void {
@@ -130,13 +140,17 @@ export class ProjectMetadataController {
 		void this.refresher.refreshHome();
 	}
 
-	disconnect(): boolean {
-		this.entry.subscriberCount = Math.max(0, this.entry.subscriberCount - 1);
-		if (this.entry.subscriberCount > 0) {
-			return false;
+	disconnect(clientId?: string | null): boolean {
+		const visibilityChange = disconnectProjectMetadataClient(this.entry.documentVisibilityByClientId, clientId);
+		if (!this.hasConnectedClients()) {
+			this.stopPolicies();
+			return true;
 		}
-		this.stopPolicies();
-		return true;
+		if (visibilityChange.didEffectiveVisibilityChange) {
+			this.poller.start();
+			this.syncVisibilityPolicies(visibilityChange, { requestVisibleFetch: true });
+		}
+		return false;
 	}
 
 	dispose(): void {
@@ -146,6 +160,31 @@ export class ProjectMetadataController {
 	private stopPolicies(): void {
 		this.poller.stop();
 		this.remoteFetchPolicy.stop();
+	}
+
+	private hasConnectedClients(): boolean {
+		return getActiveProjectMetadataClientCount(this.entry.documentVisibilityByClientId) > 0;
+	}
+
+	private isDocumentVisible(): boolean {
+		return isProjectMetadataVisible(this.entry.documentVisibilityByClientId);
+	}
+
+	private syncVisibilityPolicies(
+		visibilityChange: ProjectMetadataVisibilityChange,
+		options?: { refreshOnVisible?: boolean; requestVisibleFetch?: boolean },
+	): void {
+		if (visibilityChange.isVisible) {
+			this.remoteFetchPolicy.start();
+			if (options?.requestVisibleFetch) {
+				this.remoteFetchPolicy.requestFetch();
+			}
+			if (options?.refreshOnVisible) {
+				void this.refresher.refreshProject();
+			}
+		} else {
+			this.remoteFetchPolicy.stop();
+		}
 	}
 
 	private getTrackedTask(taskId: string): TrackedTaskWorktree | null {

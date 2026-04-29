@@ -17,6 +17,8 @@ export interface ProjectMetadataMonitor {
 		projectId: string;
 		projectPath: string;
 		board: RuntimeBoardData;
+		clientId?: string | null;
+		isDocumentVisible?: boolean;
 	}) => Promise<RuntimeProjectMetadata>;
 	updateProjectState: (input: {
 		projectId: string;
@@ -24,10 +26,10 @@ export interface ProjectMetadataMonitor {
 		board: RuntimeBoardData;
 	}) => Promise<RuntimeProjectMetadata>;
 	setFocusedTask: (projectId: string, taskId: string | null) => void;
-	setDocumentVisible: (projectId: string, isDocumentVisible: boolean) => void;
+	setDocumentVisible: (projectId: string, clientId: string | null | undefined, isDocumentVisible: boolean) => void;
 	requestTaskRefresh: (projectId: string, taskId: string) => void;
 	requestHomeRefresh: (projectId: string) => void;
-	disconnectProject: (projectId: string) => void;
+	disconnectProject: (projectId: string, clientId?: string | null) => void;
 	disposeProject: (projectId: string) => void;
 	close: () => void;
 }
@@ -77,9 +79,9 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 	};
 
 	return {
-		connectProject: async ({ projectId, projectPath, board }) => {
+		connectProject: async ({ projectId, projectPath, board, clientId, isDocumentVisible }) => {
 			const controller = getOrCreateController(projectId, projectPath);
-			return await controller.connect({ projectPath, board });
+			return await controller.connect({ projectPath, board, clientId, isDocumentVisible });
 		},
 		updateProjectState: async ({ projectId, projectPath, board }) => {
 			const controller = getOrCreateController(projectId, projectPath);
@@ -88,8 +90,8 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 		setFocusedTask: (projectId, taskId) => {
 			projects.get(projectId)?.setFocusedTask(taskId);
 		},
-		setDocumentVisible: (projectId, isDocumentVisible) => {
-			projects.get(projectId)?.setDocumentVisible(isDocumentVisible);
+		setDocumentVisible: (projectId, clientId, isDocumentVisible) => {
+			projects.get(projectId)?.setDocumentVisible(clientId, isDocumentVisible);
 		},
 		requestTaskRefresh: (projectId, taskId) => {
 			projects.get(projectId)?.requestTaskRefresh(taskId);
@@ -97,12 +99,12 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 		requestHomeRefresh: (projectId) => {
 			projects.get(projectId)?.requestHomeRefresh();
 		},
-		disconnectProject: (projectId) => {
+		disconnectProject: (projectId, clientId) => {
 			const controller = projects.get(projectId);
 			if (!controller) {
 				return;
 			}
-			if (controller.disconnect()) {
+			if (controller.disconnect(clientId)) {
 				projects.delete(projectId);
 				projectMetadataProbeLimits.delete(projectId);
 			}

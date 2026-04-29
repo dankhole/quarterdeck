@@ -313,6 +313,7 @@ describe("ProjectMetadataMonitor", () => {
 				{ taskId: "task-1", columnId: "in_progress" },
 				{ taskId: "task-2", columnId: "review" },
 			]),
+			clientId: "client-1",
 		});
 
 		monitor.setFocusedTask("project-1", "task-1");
@@ -567,6 +568,7 @@ describe("ProjectMetadataMonitor", () => {
 				{ taskId: "task-1", columnId: "in_progress" },
 				{ taskId: "task-2", columnId: "review" },
 			]),
+			clientId: "client-1",
 		});
 		refreshedTasks.length = 0;
 		homeRefreshCount = 0;
@@ -578,12 +580,115 @@ describe("ProjectMetadataMonitor", () => {
 		refreshedTasks.length = 0;
 		homeRefreshCount = 0;
 		workdirMocks.runGit.mockClear();
-		monitor.setDocumentVisible("project-1", false);
+		monitor.setDocumentVisible("project-1", "client-1", false);
 
 		await vi.advanceTimersByTimeAsync(59_000);
 		expect(refreshedTasks).toEqual([]);
 		expect(homeRefreshCount).toBe(0);
 		expect(workdirMocks.runGit).not.toHaveBeenCalledWith("/repo-1", ["fetch", "--all", "--prune"], expect.anything());
+
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(refreshedTasks).toEqual(["task-2"]);
+		expect(homeRefreshCount).toBe(1);
+
+		monitor.close();
+	});
+
+	it("keeps visible polling cadence when another client for the same project is hidden", async () => {
+		vi.useFakeTimers();
+
+		const refreshedTasks: string[] = [];
+		loaderMocks.loadTaskWorktreeMetadata.mockImplementation(
+			async (_projectPath: string, task: TrackedTaskWorktree) => {
+				refreshedTasks.push(task.taskId);
+				return createTaskMetadata(task);
+			},
+		);
+		workdirMocks.runGit.mockResolvedValue({ ok: false, stdout: "", stderr: "", exitCode: 1 });
+
+		const monitor = createProjectMetadataMonitor({
+			onMetadataUpdated: vi.fn(),
+		});
+		const board = createBoard([
+			{ taskId: "task-1", columnId: "in_progress" },
+			{ taskId: "task-2", columnId: "review" },
+		]);
+
+		await monitor.connectProject({
+			projectId: "project-1",
+			projectPath: "/repo-1",
+			board,
+			clientId: "client-a",
+		});
+		await monitor.connectProject({
+			projectId: "project-1",
+			projectPath: "/repo-1",
+			board,
+			clientId: "client-b",
+		});
+		refreshedTasks.length = 0;
+		monitor.setFocusedTask("project-1", "task-1");
+		await vi.waitFor(() => {
+			expect(refreshedTasks).toEqual(["task-1"]);
+		});
+
+		refreshedTasks.length = 0;
+		monitor.setDocumentVisible("project-1", "client-b", false);
+
+		await vi.advanceTimersByTimeAsync(10_100);
+		expect(refreshedTasks.filter((taskId) => taskId === "task-1")).toHaveLength(2);
+		expect(refreshedTasks).not.toContain("task-2");
+
+		monitor.close();
+	});
+
+	it("uses hidden client visibility from the connection handshake after reconnect", async () => {
+		vi.useFakeTimers();
+
+		const refreshedTasks: string[] = [];
+		let homeRefreshCount = 0;
+		loaderMocks.loadHomeGitMetadata.mockImplementation(
+			async (projectPath: string, currentHomeGit: CachedHomeGitMetadata) => {
+				homeRefreshCount += 1;
+				return createHomeMetadata(projectPath, `home-${homeRefreshCount}`, currentHomeGit);
+			},
+		);
+		loaderMocks.loadTaskWorktreeMetadata.mockImplementation(
+			async (_projectPath: string, task: TrackedTaskWorktree) => {
+				refreshedTasks.push(task.taskId);
+				return createTaskMetadata(task);
+			},
+		);
+		workdirMocks.runGit.mockResolvedValue({ ok: false, stdout: "", stderr: "", exitCode: 1 });
+
+		const monitor = createProjectMetadataMonitor({
+			onMetadataUpdated: vi.fn(),
+		});
+		const board = createBoard([
+			{ taskId: "task-1", columnId: "in_progress" },
+			{ taskId: "task-2", columnId: "review" },
+		]);
+
+		await monitor.connectProject({
+			projectId: "project-1",
+			projectPath: "/repo-1",
+			board,
+			clientId: "client-a",
+			isDocumentVisible: false,
+		});
+
+		refreshedTasks.length = 0;
+		homeRefreshCount = 0;
+		monitor.setFocusedTask("project-1", "task-1");
+		await vi.waitFor(() => {
+			expect(refreshedTasks).toEqual(["task-1"]);
+		});
+
+		refreshedTasks.length = 0;
+		homeRefreshCount = 0;
+		await vi.advanceTimersByTimeAsync(59_000);
+		expect(refreshedTasks).toEqual([]);
+		expect(homeRefreshCount).toBe(0);
 
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(refreshedTasks).toEqual(["task-2"]);

@@ -255,7 +255,7 @@ export const projectRouter = t.router({
 	setDocumentVisible: projectProcedure
 		.input(z.object({ isDocumentVisible: z.boolean() }))
 		.mutation(({ ctx, input }) => {
-			ctx.projectApi.setDocumentVisible(ctx.projectScope, input.isDocumentVisible);
+			ctx.projectApi.setDocumentVisible(ctx.projectScope, ctx.runtimeClientId, input.isDocumentVisible);
 		}),
 	getWorkdirChanges: projectProcedure.output(runtimeWorkdirChangesResponseSchema).query(async ({ ctx }) => {
 		return await ctx.projectApi.loadWorkdirChanges(ctx.projectScope);

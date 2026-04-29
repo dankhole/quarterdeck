@@ -24,6 +24,7 @@ import {
 	runtimeAppRouter,
 } from "../trpc";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
+import { normalizeProjectMetadataClientId } from "./project-metadata-visibility";
 import type { ProjectRegistry } from "./project-registry";
 import type { RuntimeStateHub } from "./runtime-state-hub";
 
@@ -132,9 +133,14 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
 		const requestUrl = new URL(req.url ?? "/", "http://localhost");
 		const scope = await resolveProjectScopeFromRequest(req, requestUrl);
+		const rawClientId = req.headers["x-quarterdeck-client-id"];
+		const runtimeClientId = normalizeProjectMetadataClientId(
+			Array.isArray(rawClientId) ? rawClientId[0] : rawClientId,
+		);
 		return {
 			requestedProjectId: scope.requestedProjectId,
 			projectScope: scope.projectScope,
+			runtimeClientId,
 			runtimeApi: createRuntimeApi({
 				config: deps.projectRegistry,
 				broadcaster: deps.runtimeStateHub,
@@ -213,7 +219,9 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		}
 		(request as IncomingMessage & { __quarterdeckUpgradeHandled?: boolean }).__quarterdeckUpgradeHandled = true;
 		const requestedProjectId = requestUrl.searchParams.get("projectId")?.trim() || null;
-		deps.runtimeStateHub.handleUpgrade(request, socket, head, { requestedProjectId });
+		const clientId = requestUrl.searchParams.get("clientId")?.trim() || null;
+		const isDocumentVisible = requestUrl.searchParams.get("documentVisible") !== "false";
+		deps.runtimeStateHub.handleUpgrade(request, socket, head, { requestedProjectId, clientId, isDocumentVisible });
 	});
 	const terminalWebSocketBridge = createTerminalWebSocketBridge({
 		server,

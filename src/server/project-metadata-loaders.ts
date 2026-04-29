@@ -22,6 +22,7 @@ import {
 	runGit,
 	stashCount,
 } from "../workdir";
+import type { ProjectMetadataVisibilityReports } from "./project-metadata-visibility";
 
 export interface TrackedTaskWorktree {
 	taskId: string;
@@ -92,9 +93,8 @@ export interface BaseRefWorktreeMetadata {
 export interface ProjectMetadataEntry {
 	projectPath: string;
 	trackedTasks: TrackedTaskWorktree[];
-	subscriberCount: number;
+	documentVisibilityByClientId: ProjectMetadataVisibilityReports;
 	focusedTaskId: string | null;
-	isDocumentVisible: boolean;
 	homeGit: CachedHomeGitMetadata;
 	taskMetadataByTaskId: Map<string, CachedTaskWorktreeMetadata>;
 	pollIntervals: ProjectMetadataPollIntervals;
@@ -249,9 +249,8 @@ export function createProjectEntry(projectPath: string): ProjectMetadataEntry {
 	return {
 		projectPath,
 		trackedTasks: [],
-		subscriberCount: 0,
+		documentVisibilityByClientId: new Map(),
 		focusedTaskId: null,
-		isDocumentVisible: true,
 		homeGit: {
 			summary: null,
 			conflictState: null,

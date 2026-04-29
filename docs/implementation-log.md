@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-04-29 — Project metadata visibility ownership
+
+Project metadata visibility is now owned per browser runtime client instead of as one project-scoped last-writer flag. The web UI sends a per-page client id on the runtime state WebSocket and tRPC visibility calls, plus the current document visibility in the WebSocket handshake so reconnects preserve hidden state; `RuntimeStateClientRegistry` removes that client's contribution on socket disconnect; and `ProjectMetadataController` derives effective project visibility as "any active client visible" before applying the existing poller and remote-fetch cadence policies.
+
+The key invariant is that visibility only tunes metadata refresh policy. Board/task state ownership, task metadata projection, polling intervals, remote-fetch timing, and timeout classes did not move. Notable files: `web-ui/src/runtime/runtime-client-id.ts`, `src/server/project-metadata-visibility.ts`, `src/server/project-metadata-controller.ts`, `src/server/runtime-state-hub.ts`, and `src/server/runtime-state-client-registry.ts`. Validation: focused project metadata visibility/controller tests.
+
 ## 2026-04-29 — Diff content loading priority
 
 Git diff content loading now separates the fetch/cache mechanism from the view policy. `useAllFileDiffContent(...)` keeps per-file cache, abort, stale-response, and `contentRevision` invalidation behavior, while its scheduling input is now an ordered foreground path list plus a capped background prefetch policy. `GitView` supplies selected and visible diff paths, and `DiffViewerPanel` reports visible sections from the scroll surface with overscan. In-flight diff requests are deduped across scroll-driven reprioritization so aborting a local pass does not issue the same backend request twice.

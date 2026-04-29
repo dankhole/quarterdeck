@@ -150,8 +150,8 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 			ctx.deps.broadcaster.setFocusedTask(projectScope.projectId, taskId);
 		},
 
-		setDocumentVisible: (projectScope, isDocumentVisible) => {
-			ctx.deps.broadcaster.setDocumentVisible(projectScope.projectId, isDocumentVisible);
+		setDocumentVisible: (projectScope, clientId, isDocumentVisible) => {
+			ctx.deps.broadcaster.setDocumentVisible(projectScope.projectId, clientId, isDocumentVisible);
 		},
 	};
 }

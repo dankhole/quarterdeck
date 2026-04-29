@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: aggregate project metadata visibility per browser client
+
+- Project metadata polling now treats a project as visible when any connected browser tab reports it visible, so a hidden tab can no longer back off git metadata refreshes for another visible tab on the same project.
+
 ### Fix: prioritize diff content loading
 
 - Git diff tabs now load the selected file and visible diff sections first, while any offscreen diff prefetch is capped and cancelable so large change sets no longer make all file diffs foreground work.
