@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.12.1] — 2026-04-29
+
+### Docs: version bump to 0.12.1
+
+- Bumped root package metadata to 0.12.1 and promoted the current release notes for release prep.
+
 ### Fix: aggregate project metadata visibility per browser client
 
 - Project metadata polling now treats a project as visible when any connected browser tab reports it visible, so a hidden tab can no longer back off git metadata refreshes for another visible tab on the same project.
