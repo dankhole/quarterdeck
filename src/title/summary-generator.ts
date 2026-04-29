@@ -1,7 +1,7 @@
 // Optional LLM display summary generation. The board does not trigger this on
 // hover; normal card summaries use compact agent-provided conversation text.
 import { createTaggedLogger } from "../core";
-import { compactDisplaySummaryText, DISPLAY_SUMMARY_LLM_BUDGET } from "./display-summary";
+import { compactDisplaySummaryText, DISPLAY_SUMMARY_LLM_BUDGET, DISPLAY_SUMMARY_MAX_LENGTH } from "./display-summary";
 import { callLlm } from "./llm-client";
 
 const log = createTaggedLogger("summary-gen");
@@ -44,7 +44,7 @@ export async function generateDisplaySummary(conversationText: string): Promise<
 		log.warn("Summary generation returned null");
 		return null;
 	}
-	const summary = compactDisplaySummaryText(result);
+	const summary = compactDisplaySummaryText(result, DISPLAY_SUMMARY_MAX_LENGTH, { trimTranscriptEcho: true });
 	if (!summary) {
 		log.warn("Summary generation produced empty compact summary");
 		return null;

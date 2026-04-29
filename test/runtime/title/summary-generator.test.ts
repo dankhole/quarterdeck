@@ -4,7 +4,7 @@ vi.mock("../../../src/title/llm-client", () => ({
 	callLlm: vi.fn(),
 }));
 
-import { callLlm, generateDisplaySummary } from "../../../src/title";
+import { callLlm, compactDisplaySummaryText, generateDisplaySummary } from "../../../src/title";
 
 const callLlmMock = vi.mocked(callLlm);
 
@@ -21,6 +21,30 @@ describe("generateDisplaySummary", () => {
 		callLlmMock.mockResolvedValue("Added auth middleware and session validation");
 		const result = await generateDisplaySummary("Long conversation about auth...");
 		expect(result).toBe("Added auth middleware and session validation");
+	});
+
+	it("keeps the summary and drops trailing transcript echoes", async () => {
+		callLlmMock.mockResolvedValue("Fixed title fallback\nHuman generated\nHuman: I see you generated a title.");
+		const result = await generateDisplaySummary("Long conversation about title generation...");
+		expect(result).toBe("Fixed title fallback");
+	});
+
+	it("keeps the summary when an LLM transcript echo is collapsed onto one line", async () => {
+		callLlmMock.mockResolvedValue("Fixed title fallback Human generated Human: I see you generated a title.");
+		const result = await generateDisplaySummary("Long conversation about title generation...");
+		expect(result).toBe("Fixed title fallback");
+	});
+
+	it("returns null when the generated summary is only a transcript echo", async () => {
+		callLlmMock.mockResolvedValue("Human generated\nHuman: I see you generated a title.");
+		const result = await generateDisplaySummary("Long conversation about title generation...");
+		expect(result).toBeNull();
+	});
+
+	it("returns null when the generated summary is only a collapsed transcript echo", async () => {
+		callLlmMock.mockResolvedValue("Human generated Human: I see you generated a title.");
+		const result = await generateDisplaySummary("Long conversation about title generation...");
+		expect(result).toBeNull();
 	});
 
 	it("truncates LLM response exceeding the display limit with ellipsis", async () => {
@@ -65,5 +89,29 @@ describe("generateDisplaySummary", () => {
 		const call = callLlmMock.mock.calls[0][0];
 		expect(call.systemPrompt).toContain("75 characters");
 		expect(call.systemPrompt).toContain("telegram-style");
+	});
+});
+
+describe("compactDisplaySummaryText", () => {
+	it("keeps role-prefixed final-message text by default", () => {
+		expect(compactDisplaySummaryText("User: requested a shorter title")).toBe("User: requested a shorter title");
+	});
+
+	it("keeps legitimate human generated summary text by default", () => {
+		expect(compactDisplaySummaryText("Handled human generated content filter")).toBe(
+			"Handled human generated content filter",
+		);
+	});
+
+	it("can drop transcript echoes for generated summaries", () => {
+		expect(
+			compactDisplaySummaryText(
+				"Fixed title fallback Human generated Human: I see you generated a title.",
+				undefined,
+				{
+					trimTranscriptEcho: true,
+				},
+			),
+		).toBe("Fixed title fallback");
 	});
 });

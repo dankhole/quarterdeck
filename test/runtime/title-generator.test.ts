@@ -104,6 +104,78 @@ describe("generateTaskTitle", () => {
 		expect(await generateTaskTitle("some prompt")).toBe("Spaced Title");
 	});
 
+	it("keeps the title and drops trailing transcript echoes", async () => {
+		vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					choices: [
+						{
+							message: {
+								content: "Generate Title Failure\nHuman generated\nHuman: I see you generated a title.",
+							},
+						},
+					],
+				}),
+				{ status: 200 },
+			),
+		);
+		expect(await generateTaskTitle("investigate title generation failure")).toBe("Generate Title Failure");
+	});
+
+	it("keeps the title when a transcript echo is collapsed onto one line", async () => {
+		vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					choices: [
+						{
+							message: {
+								content: "Generate Title Failure Human generated Human: I see you generated a title.",
+							},
+						},
+					],
+				}),
+				{ status: 200 },
+			),
+		);
+		expect(await generateTaskTitle("investigate title generation failure")).toBe("Generate Title Failure");
+	});
+
+	it("keeps legitimate human generated title text", async () => {
+		vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					choices: [{ message: { content: "Handle Human Generated Content" } }],
+				}),
+				{ status: 200 },
+			),
+		);
+		expect(await generateTaskTitle("handle human generated content")).toBe("Handle Human Generated Content");
+	});
+
+	it("falls back when the returned title is only a transcript echo", async () => {
+		vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					choices: [{ message: { content: "Human generated\nHuman: I see you generated a title." } }],
+				}),
+				{ status: 200 },
+			),
+		);
+		expect(await generateTaskTitle("fix the authentication bug in login.ts")).toBe("Fix Authentication Bug Login");
+	});
+
+	it("falls back when the returned title is only a collapsed transcript echo", async () => {
+		vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					choices: [{ message: { content: "Human generated Human: I see you generated a title." } }],
+				}),
+				{ status: 200 },
+			),
+		);
+		expect(await generateTaskTitle("fix the authentication bug in login.ts")).toBe("Fix Authentication Bug Login");
+	});
+
 	it("truncates title prompts longer than 1200 characters", async () => {
 		const fetchSpy = vi
 			.spyOn(globalThis, "fetch")

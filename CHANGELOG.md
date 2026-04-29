@@ -36,6 +36,7 @@
 - Lightweight title, branch-name, summary, and commit-message generation now use a provider-neutral OpenAI-compatible helper client configured by `QUARTERDECK_LLM_BASE_URL`, `QUARTERDECK_LLM_API_KEY`, and `QUARTERDECK_LLM_MODEL`.
 - Title and display-summary context now prioritizes the original prompt, first agent summary, and latest agent summaries instead of sending broad chronological transcripts.
 - Title and commit-message generation now fall back to deterministic local text when the helper LLM is unavailable, times out, or returns unusable content.
+- Title and summary normalization now drops trailing transcript echo fragments such as `Human:` / `Assistant:` instead of showing them on task cards.
 - Card summaries now use compact agent conversation text immediately, and optional LLM summary polish runs from task lifecycle changes instead of board-card hover.
 
 ### Docs: track editor-lite backlog

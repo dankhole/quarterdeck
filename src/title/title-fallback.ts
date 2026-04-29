@@ -1,3 +1,5 @@
+import { trimGeneratedTranscriptEcho } from "./transcript-echo";
+
 const MAX_TITLE_LENGTH = 80;
 
 const TITLE_STOP_WORDS = new Set([
@@ -102,10 +104,8 @@ const TITLE_ACRONYMS = new Set([
 ]);
 
 export function normalizeGeneratedTitle(raw: string): string | null {
-	const title = raw
-		.replace(/\s+/g, " ")
-		.trim()
-		.replace(/[.!?:;,\-—]+$/u, "")
+	const title = trimGeneratedTranscriptEcho(raw)
+		?.replace(/[.!?:;,\-—]+$/u, "")
 		.trim();
 	if (!title) {
 		return null;

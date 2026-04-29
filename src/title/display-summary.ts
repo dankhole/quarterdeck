@@ -1,3 +1,5 @@
+import { trimGeneratedTranscriptEcho } from "./transcript-echo";
+
 /** Hard display limit for card summaries. Longer summaries are truncated with an ellipsis. */
 export const DISPLAY_SUMMARY_MAX_LENGTH = 90;
 
@@ -14,8 +16,16 @@ const SUMMARY_PREFIX_PATTERNS = [
 	/^(?:done|completed)\s*[:\-—]\s*/i,
 ];
 
-export function compactDisplaySummaryText(raw: string, maxLength = DISPLAY_SUMMARY_MAX_LENGTH): string | null {
-	let text = raw.replace(/\s+/g, " ").trim();
+interface CompactDisplaySummaryOptions {
+	trimTranscriptEcho?: boolean;
+}
+
+export function compactDisplaySummaryText(
+	raw: string,
+	maxLength = DISPLAY_SUMMARY_MAX_LENGTH,
+	options: CompactDisplaySummaryOptions = {},
+): string | null {
+	let text = options.trimTranscriptEcho ? trimGeneratedTranscriptEcho(raw) : raw.replace(/\s+/g, " ").trim();
 	if (!text) {
 		return null;
 	}
