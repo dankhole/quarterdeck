@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: keep debug log controls responsive
+
+- Debug log capture-level changes now update optimistically in the panel, avoid reseeding the recent log buffer on every level broadcast, and render log rows through virtualization so the control remains usable during log floods.
+
 ### Fix: batch live terminal writes
 
 - Live task terminal output now batches same-kind xterm writes per frame while preserving output acknowledgements and notification text, reducing browser main-thread churn during high-volume agent output.

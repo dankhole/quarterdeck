@@ -247,7 +247,9 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	};
 
 	broadcastLogLevel = (level: LogLevel): void => {
-		this.clients.broadcastToAll(buildDebugLoggingStateMessage(level, getRecentLogEntries()));
+		// Keep level changes cheap while logs are flooding; new stream clients
+		// still receive the recent buffer in their initial logging snapshot.
+		this.clients.broadcastToAll(buildDebugLoggingStateMessage(level));
 	};
 
 	close = async (): Promise<void> => {

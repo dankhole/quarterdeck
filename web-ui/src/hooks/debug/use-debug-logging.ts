@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
+import { showAppToast } from "@/components/app-toaster";
 import {
 	type DebugLogLevelFilter,
 	type DebugLogSourceFilter,
@@ -45,6 +46,12 @@ export interface UseDebugLoggingResult {
 
 let clientEntryId = 0;
 
+interface OptimisticLogLevelState {
+	level: LogLevel;
+	requestId: number;
+	confirmed: boolean;
+}
+
 export function useDebugLogging({
 	currentProjectId,
 	logLevel,
@@ -64,10 +71,15 @@ export function useDebugLogging({
 	const [clientEntries, setClientEntries] = useState<RuntimeDebugLogEntry[]>([]);
 	const [clearedAt, setClearedAt] = useState(0);
 	const [disabledTags, setDisabledTags] = useState<Set<string>>(loadDisabledTags);
+	const [optimisticLogLevel, setOptimisticLogLevel] = useState<OptimisticLogLevelState | null>(null);
+	const latestServerLogLevelRef = useRef(logLevel);
+	const logLevelRequestIdRef = useRef(0);
+	const deferredDebugLogEntries = useDeferredValue(debugLogEntries);
+	const effectiveLogLevel = optimisticLogLevel?.level ?? logLevel;
 
 	const allEntries = useMemo(
-		() => mergeLogEntries(debugLogEntries, clientEntries, clearedAt),
-		[debugLogEntries, clientEntries, clearedAt],
+		() => mergeLogEntries(deferredDebugLogEntries, clientEntries, clearedAt),
+		[deferredDebugLogEntries, clientEntries, clearedAt],
 	);
 
 	const availableTags = useMemo(() => extractAvailableTags(allEntries), [allEntries]);
@@ -107,9 +119,38 @@ export function useDebugLogging({
 	// Change the persisted log level on the server.
 	const setLogLevelAction = useCallback(
 		(level: LogLevel) => {
-			void setLogLevelOnServer(currentProjectId, level).catch(() => {
-				// Best effort.
-			});
+			const requestId = ++logLevelRequestIdRef.current;
+			setOptimisticLogLevel({ level, requestId, confirmed: false });
+			setClientLogLevel(level);
+			void setLogLevelOnServer(currentProjectId, level).then(
+				(response) => {
+					const confirmedLevel = response.level;
+					if (logLevelRequestIdRef.current === requestId) {
+						setClientLogLevel(confirmedLevel);
+					}
+					setOptimisticLogLevel((current) => {
+						if (!current || current.requestId !== requestId) {
+							return current;
+						}
+						if (latestServerLogLevelRef.current === confirmedLevel) {
+							return null;
+						}
+						return { level: confirmedLevel, requestId, confirmed: true };
+					});
+				},
+				() => {
+					if (logLevelRequestIdRef.current === requestId) {
+						setClientLogLevel(latestServerLogLevelRef.current);
+						showAppToast({ intent: "danger", message: "Could not update log level" });
+					}
+					setOptimisticLogLevel((current) => {
+						if (!current || current.requestId !== requestId) {
+							return current;
+						}
+						return null;
+					});
+				},
+			);
 		},
 		[currentProjectId],
 	);
@@ -140,10 +181,23 @@ export function useDebugLogging({
 		[isDebugLogPanelOpen],
 	);
 
-	// Keep the client-side logger level in sync with the server level.
 	useEffect(() => {
-		setClientLogLevel(logLevel as "debug" | "info" | "warn" | "error");
+		latestServerLogLevelRef.current = logLevel;
+		setOptimisticLogLevel((current) => {
+			if (!current) {
+				return current;
+			}
+			if (current.level === logLevel || current.confirmed) {
+				return null;
+			}
+			return current;
+		});
 	}, [logLevel]);
+
+	// Keep the client-side logger level in sync with the effective capture level.
+	useEffect(() => {
+		setClientLogLevel(effectiveLogLevel as "debug" | "info" | "warn" | "error");
+	}, [effectiveLogLevel]);
 
 	// Wire the client-side logger module when the panel is open.
 	useEffect(() => {
@@ -164,7 +218,7 @@ export function useDebugLogging({
 	}, [isDebugLogPanelOpen, addClientLogEntry]);
 
 	return {
-		logLevel,
+		logLevel: effectiveLogLevel,
 		isDebugLogPanelOpen,
 		filteredEntries,
 		entryCount: allEntries.length,

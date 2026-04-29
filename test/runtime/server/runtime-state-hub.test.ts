@@ -27,6 +27,13 @@ interface InitialSnapshot {
 }
 
 interface RuntimeStateHubInternals {
+	clients: {
+		registerGlobalClient: (client: {
+			readyState: number;
+			send: (payload: string) => void;
+			terminate: () => void;
+		}) => void;
+	};
 	loadInitialSnapshot: (resolved: {
 		projectId: string | null;
 		projectPath: string | null;
@@ -103,6 +110,39 @@ function createDependencies(input: {
 }
 
 describe("RuntimeStateHub", () => {
+	it("broadcasts log level changes without reseeding recent log entries", async () => {
+		const hub = new RuntimeStateHubImpl(
+			createDependencies({
+				buildProjectsPayload: vi.fn(async () => createProjectsResponse()),
+				buildProjectStateSnapshot: vi.fn(async () => createProjectStateResponse()),
+				listManagedProjects: vi.fn(() => []),
+			}),
+		);
+		const client = {
+			readyState: 1,
+			send: vi.fn(),
+			terminate: vi.fn(),
+		};
+
+		try {
+			(hub as unknown as RuntimeStateHubInternals).clients.registerGlobalClient(client);
+
+			hub.broadcastLogLevel("error");
+
+			expect(client.send).toHaveBeenCalledOnce();
+			const payload = client.send.mock.calls[0]?.[0];
+			if (typeof payload !== "string") {
+				throw new Error("Expected a JSON websocket payload.");
+			}
+			expect(JSON.parse(payload)).toEqual({
+				type: "debug_logging_state",
+				level: "error",
+			});
+		} finally {
+			await hub.close();
+		}
+	});
+
 	it("starts independent initial snapshot loads before awaiting project state", async () => {
 		const projectsDeferred = createDeferred<RuntimeProjectsResponse>();
 		const projectStateDeferred = createDeferred<RuntimeProjectStateResponse>();

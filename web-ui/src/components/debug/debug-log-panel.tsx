@@ -1,5 +1,15 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Bug, Monitor, Trash2, X } from "lucide-react";
-import { type ReactElement, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useRef, useState } from "react";
+import {
+	memo,
+	type ReactElement,
+	type MouseEvent as ReactMouseEvent,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -20,6 +30,9 @@ import { dumpTerminalDebugInfo } from "@/terminal/terminal-pool";
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 800;
 const DEFAULT_WIDTH = 420;
+const LOG_ROW_ESTIMATED_HEIGHT = 24;
+const LOG_ROW_OVERSCAN = 20;
+const LOG_ENTRY_DATA_MAX_CHARS = 2000;
 
 const DEBUG_LOG_WIDTH_PREFERENCE: ResizeNumberPreference = {
 	key: LocalStorageKey.DebugLogPanelWidth,
@@ -43,9 +56,30 @@ function formatTimestamp(ts: number): string {
 	return `${h}:${m}:${s}.${ms}`;
 }
 
-function LogEntry({ entry }: { entry: RuntimeDebugLogEntry }): ReactElement {
+function formatLogEntryData(data: unknown): string | null {
+	if (data === undefined || data === null) {
+		return null;
+	}
+	const text =
+		typeof data === "string"
+			? data
+			: (() => {
+					try {
+						return JSON.stringify(data);
+					} catch {
+						return String(data);
+					}
+				})();
+	if (text.length <= LOG_ENTRY_DATA_MAX_CHARS) {
+		return text;
+	}
+	return `${text.slice(0, LOG_ENTRY_DATA_MAX_CHARS)}...`;
+}
+
+const LogEntry = memo(function LogEntry({ entry }: { entry: RuntimeDebugLogEntry }): ReactElement {
 	const levelColor = LEVEL_COLORS[entry.level] ?? "text-text-primary";
 	const sourceLabel = entry.source === "client" ? "ui" : "";
+	const dataText = useMemo(() => formatLogEntryData(entry.data), [entry.data]);
 	return (
 		<div className="flex gap-2 px-2 py-0.5 text-xs font-mono leading-relaxed hover:bg-surface-2/50 min-w-0">
 			<span className="text-text-tertiary shrink-0">{formatTimestamp(entry.timestamp)}</span>
@@ -54,15 +88,11 @@ function LogEntry({ entry }: { entry: RuntimeDebugLogEntry }): ReactElement {
 			{sourceLabel ? <span className="text-status-purple shrink-0">{sourceLabel}</span> : null}
 			<span className="text-text-primary min-w-0 break-words">
 				{entry.message}
-				{entry.data !== undefined && entry.data !== null ? (
-					<span className="text-text-tertiary ml-1">
-						{typeof entry.data === "string" ? entry.data : JSON.stringify(entry.data)}
-					</span>
-				) : null}
+				{dataText ? <span className="text-text-tertiary ml-1">{dataText}</span> : null}
 			</span>
 		</div>
 	);
-}
+});
 
 function TagFilterChip({
 	tag,
@@ -134,6 +164,14 @@ export function DebugLogPanel({
 	const isAtBottomRef = useRef(true);
 	const [panelWidth, setPanelWidth] = useState(() => loadResizePreference(DEBUG_LOG_WIDTH_PREFERENCE));
 	const { startDrag } = useResizeDrag();
+	const logVirtualizer = useVirtualizer({
+		count: entries.length,
+		getScrollElement: () => scrollRef.current,
+		estimateSize: () => LOG_ROW_ESTIMATED_HEIGHT,
+		overscan: LOG_ROW_OVERSCAN,
+		getItemKey: (index) => entries[index]?.id ?? index,
+		measureElement: (element) => element.getBoundingClientRect().height,
+	});
 
 	const handleResizeMouseDown = useCallback(
 		(event: ReactMouseEvent<HTMLDivElement>) => {
@@ -169,10 +207,16 @@ export function DebugLogPanel({
 	}, []);
 
 	useEffect(() => {
-		if (isAtBottomRef.current && scrollRef.current) {
-			scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+		if (!isAtBottomRef.current || !scrollRef.current) {
+			return;
 		}
-	}, [entries]);
+		const frame = window.requestAnimationFrame(() => {
+			if (isAtBottomRef.current && scrollRef.current) {
+				scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+			}
+		});
+		return () => window.cancelAnimationFrame(frame);
+	}, [entries.length]);
 
 	const hasAnyDisabled = disabledTags.size > 0;
 
@@ -315,7 +359,25 @@ export function DebugLogPanel({
 							No log entries yet. Set a lower log level to capture more.
 						</div>
 					) : (
-						entries.map((entry) => <LogEntry key={entry.id} entry={entry} />)
+						<div className="relative w-full" style={{ height: logVirtualizer.getTotalSize() }}>
+							{logVirtualizer.getVirtualItems().map((virtualItem) => {
+								const entry = entries[virtualItem.index];
+								if (!entry) {
+									return null;
+								}
+								return (
+									<div
+										key={virtualItem.key}
+										data-index={virtualItem.index}
+										ref={logVirtualizer.measureElement}
+										className="absolute top-0 left-0 w-full"
+										style={{ transform: `translateY(${virtualItem.start}px)` }}
+									>
+										<LogEntry entry={entry} />
+									</div>
+								);
+							})}
+						</div>
 					)}
 				</div>
 			</div>
