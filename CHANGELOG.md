@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: batch live terminal writes
+
+- Live task terminal output now batches same-kind xterm writes per frame while preserving output acknowledgements and notification text, reducing browser main-thread churn during high-volume agent output.
+- Restore snapshots, terminal resets, and local status messages still flush pending live output first and then write immediately, preserving terminal ordering around reconnect and restore paths.
+
 ### Fix: honor shared-checkout repository state
 
 - Shared-checkout tasks now resolve branch, diff, compare, and metadata refresh state from the project checkout instead of stale isolated worktree assumptions.

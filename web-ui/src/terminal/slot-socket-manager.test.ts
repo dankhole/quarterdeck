@@ -61,6 +61,25 @@ function flushMicrotasks(): Promise<void> {
 	return new Promise((resolve) => queueMicrotask(resolve));
 }
 
+function createCallbacks() {
+	return {
+		enqueueWrite: vi.fn(),
+		onRestore: vi.fn(async () => {}),
+		onState: vi.fn(),
+		onExit: vi.fn(),
+		onError: vi.fn(),
+		onIoOpen: vi.fn(),
+		onConnectionReady: vi.fn(),
+		onLastError: vi.fn(),
+		ensureVisible: vi.fn(),
+		invalidateResize: vi.fn(),
+		requestResize: vi.fn(),
+		getVisibleContainer: vi.fn(() => document.createElement("div")),
+		getStageContainer: vi.fn(() => document.createElement("div")),
+		isDisposed: vi.fn(() => false),
+	};
+}
+
 describe("SlotSocketManager", () => {
 	const originalWebSocket = globalThis.WebSocket;
 
@@ -82,22 +101,7 @@ describe("SlotSocketManager", () => {
 	});
 
 	it("replays a queued restore request after the initial restore completes", async () => {
-		const callbacks = {
-			enqueueWrite: vi.fn(),
-			onRestore: vi.fn(async () => {}),
-			onState: vi.fn(),
-			onExit: vi.fn(),
-			onError: vi.fn(),
-			onIoOpen: vi.fn(),
-			onConnectionReady: vi.fn(),
-			onLastError: vi.fn(),
-			ensureVisible: vi.fn(),
-			invalidateResize: vi.fn(),
-			requestResize: vi.fn(),
-			getVisibleContainer: vi.fn(() => document.createElement("div")),
-			getStageContainer: vi.fn(() => document.createElement("div")),
-			isDisposed: vi.fn(() => false),
-		};
+		const callbacks = createCallbacks();
 		const manager = new SlotSocketManager(7, "client-1", callbacks);
 
 		manager.connectControl("task-1", "project-1");
@@ -120,5 +124,23 @@ describe("SlotSocketManager", () => {
 		]);
 		expect(manager.restoreCompleted).toBe(false);
 		manager.resetConnectionState();
+	});
+
+	it("marks live IO writes as batchable with ack and decoded text metadata", () => {
+		const callbacks = createCallbacks();
+		const manager = new SlotSocketManager(7, "client-1", callbacks);
+
+		manager.connectIo("task-1", "project-1");
+		const ioSocket = FakeWebSocket.instances[0];
+		if (!ioSocket) {
+			throw new Error("Expected IO socket");
+		}
+		ioSocket.emitMessage("hello");
+
+		expect(callbacks.enqueueWrite).toHaveBeenCalledWith("hello", {
+			ackBytes: 5,
+			notifyText: "hello",
+			batch: true,
+		});
 	});
 });

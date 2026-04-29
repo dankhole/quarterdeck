@@ -5,13 +5,14 @@ import {
 	getTerminalSocketWriteData,
 	getTerminalWebSocketUrl,
 } from "@/terminal/terminal-socket-utils";
+import type { TerminalWriteOptions } from "@/terminal/terminal-write-options";
 import { createClientLogger } from "@/utils/client-logger";
 
 const log = createClientLogger("slot-socket");
 const RESTORE_STALL_WARNING_MS = 10_000;
 
 interface SlotSocketCallbacks {
-	enqueueWrite: (data: string | Uint8Array, options?: { ackBytes?: number; notifyText?: string | null }) => void;
+	enqueueWrite: (data: string | Uint8Array, options?: TerminalWriteOptions) => void;
 	onRestore: (snapshot: string, cols: number | null | undefined, rows: number | null | undefined) => Promise<void>;
 	onState: (payload: RuntimeTerminalWsServerMessage & { type: "state" }) => void;
 	onExit: (code: number | null) => void;
@@ -91,6 +92,7 @@ export class SlotSocketManager {
 			this.callbacks.enqueueWrite(writeData, {
 				ackBytes: getTerminalSocketChunkByteLength(event.data),
 				notifyText: decoded || null,
+				batch: true,
 			});
 		});
 		this.ioSocket = ioSocket;

@@ -15,6 +15,7 @@ import { TERMINAL_SCROLLBACK } from "@/terminal/terminal-constants";
 import { createQuarterdeckTerminalOptions, type PersistentTerminalAppearance } from "@/terminal/terminal-options";
 import { shouldSkipEmptyRestoreSnapshot } from "@/terminal/terminal-restore-policy";
 import { isCopyShortcut } from "@/terminal/terminal-socket-utils";
+import type { TerminalWriteOptions } from "@/terminal/terminal-write-options";
 import { createClientLogger } from "@/utils/client-logger";
 import { isMacPlatform } from "@/utils/platform";
 
@@ -208,13 +209,7 @@ export class TerminalViewport {
 		await this.writeQueue.drain();
 	}
 
-	async enqueueWrite(
-		data: string | Uint8Array,
-		options?: {
-			ackBytes?: number;
-			notifyText?: string | null;
-		},
-	): Promise<void> {
+	async enqueueWrite(data: string | Uint8Array, options?: TerminalWriteOptions): Promise<void> {
 		await this.writeQueue.enqueue(data, options);
 	}
 

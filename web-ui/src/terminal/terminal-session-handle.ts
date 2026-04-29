@@ -6,6 +6,7 @@ import type {
 } from "@/runtime/types";
 import { SlotSocketManager } from "@/terminal/slot-socket-manager";
 import { generateTerminalClientId } from "@/terminal/terminal-socket-utils";
+import type { TerminalWriteOptions } from "@/terminal/terminal-write-options";
 import { createClientLogger } from "@/utils/client-logger";
 
 const log = createClientLogger("terminal-session-handle");
@@ -20,7 +21,7 @@ export interface PersistentTerminalSubscriber {
 }
 
 interface TerminalSessionHandleCallbacks {
-	enqueueWrite: (data: string | Uint8Array, options?: { ackBytes?: number; notifyText?: string | null }) => void;
+	enqueueWrite: (data: string | Uint8Array, options?: TerminalWriteOptions) => void;
 	applyRestore: (snapshot: string, cols: number | null | undefined, rows: number | null | undefined) => Promise<void>;
 	onSummaryStateChange: (
 		summary: RuntimeTaskSessionSummary,
