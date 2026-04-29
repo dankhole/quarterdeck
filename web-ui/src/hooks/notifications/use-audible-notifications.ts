@@ -69,12 +69,7 @@ export function useAudibleNotifications({
 		if (!latestEventsRef.current[eventType]) return;
 		const task = latestNotificationTasksRef.current[taskId];
 		if (
-			isEventSuppressedForProject(
-				eventType,
-				latestSuppressRef.current,
-				task?.projectId,
-				latestProjectIdRef.current,
-			)
+			isEventSuppressedForProject(eventType, latestSuppressRef.current, task?.projectId, latestProjectIdRef.current)
 		) {
 			return;
 		}

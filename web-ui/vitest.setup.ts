@@ -44,6 +44,15 @@ if (!hasWorkingLocalStorage()) {
 	});
 }
 
+if (typeof HTMLCanvasElement !== "undefined") {
+	const getCanvasContext: HTMLCanvasElement["getContext"] = (_contextId: string, _options?: unknown) => null;
+	Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+		writable: true,
+		configurable: true,
+		value: getCanvasContext,
+	});
+}
+
 class MockIntersectionObserver implements IntersectionObserver {
 	readonly root: Element | Document | null = null;
 	readonly rootMargin = "";
