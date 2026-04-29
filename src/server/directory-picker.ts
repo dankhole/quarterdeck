@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 
 interface DirectoryPickerCommandCandidate {
 	command: string;
@@ -10,7 +10,15 @@ type DirectoryPickerCommandResult =
 	| { kind: "cancelled" }
 	| { kind: "unavailable" };
 
-type RunCommand = (command: string, args: string[]) => ReturnType<typeof spawnSync>;
+export interface DirectoryPickerCommandProcessResult {
+	stdout: string;
+	stderr: string;
+	status: number | null;
+	signal: NodeJS.Signals | null;
+	error?: Error;
+}
+
+type RunCommand = (command: string, args: string[]) => Promise<DirectoryPickerCommandProcessResult>;
 
 interface PickDirectoryPathFromSystemDialogOptions {
 	platform?: NodeJS.Platform;
@@ -35,18 +43,55 @@ function parseChildProcessErrorCode(error: unknown): string | null {
 	return typeof code === "string" ? code : null;
 }
 
-function defaultRunCommand(command: string, args: string[]): ReturnType<typeof spawnSync> {
-	return spawnSync(command, args, {
-		encoding: "utf8",
-		stdio: ["ignore", "pipe", "pipe"],
+function defaultRunCommand(command: string, args: string[]): Promise<DirectoryPickerCommandProcessResult> {
+	return new Promise((resolve) => {
+		const child = spawn(command, args, {
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		let stdout = "";
+		let stderr = "";
+		let settled = false;
+		const resolveOnce = (result: DirectoryPickerCommandProcessResult): void => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			resolve(result);
+		};
+
+		child.stdout?.setEncoding("utf8");
+		child.stderr?.setEncoding("utf8");
+		child.stdout?.on("data", (chunk: string | Buffer) => {
+			stdout += String(chunk);
+		});
+		child.stderr?.on("data", (chunk: string | Buffer) => {
+			stderr += String(chunk);
+		});
+		child.on("error", (error) => {
+			resolveOnce({
+				stdout,
+				stderr,
+				status: null,
+				signal: null,
+				error,
+			});
+		});
+		child.on("close", (status, signal) => {
+			resolveOnce({
+				stdout,
+				stderr,
+				status,
+				signal,
+			});
+		});
 	});
 }
 
-function runDirectoryPickerCommand(
+async function runDirectoryPickerCommand(
 	candidate: DirectoryPickerCommandCandidate,
 	runCommand: RunCommand,
-): DirectoryPickerCommandResult {
-	const result = runCommand(candidate.command, candidate.args);
+): Promise<DirectoryPickerCommandResult> {
+	const result = await runCommand(candidate.command, candidate.args);
 
 	const errorCode = parseChildProcessErrorCode(result.error);
 	if (errorCode === "ENOENT") {
@@ -82,15 +127,15 @@ function runDirectoryPickerCommand(
 	return { kind: "selected", path: selectedPath };
 }
 
-export function pickDirectoryPathFromSystemDialog(
+export async function pickDirectoryPathFromSystemDialog(
 	options: PickDirectoryPathFromSystemDialogOptions = {},
-): string | null {
+): Promise<string | null> {
 	const platform = options.platform ?? process.platform;
 	const cwd = options.cwd ?? process.cwd();
 	const runCommand = options.runCommand ?? defaultRunCommand;
 
 	if (platform === "darwin") {
-		const result = runDirectoryPickerCommand(
+		const result = await runDirectoryPickerCommand(
 			{
 				command: "osascript",
 				args: ["-e", 'POSIX path of (choose folder with prompt "Select a project folder")'],
@@ -119,7 +164,7 @@ export function pickDirectoryPathFromSystemDialog(
 		];
 
 		for (const candidate of candidates) {
-			const result = runDirectoryPickerCommand(candidate, runCommand);
+			const result = await runDirectoryPickerCommand(candidate, runCommand);
 			if (result.kind === "unavailable") {
 				continue;
 			}
@@ -145,7 +190,7 @@ export function pickDirectoryPathFromSystemDialog(
 		];
 
 		for (const candidate of candidates) {
-			const result = runDirectoryPickerCommand(candidate, runCommand);
+			const result = await runDirectoryPickerCommand(candidate, runCommand);
 			if (result.kind === "unavailable") {
 				continue;
 			}

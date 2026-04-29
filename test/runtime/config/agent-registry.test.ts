@@ -1,10 +1,11 @@
+import type { ChildProcess, ExecFileException } from "node:child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const commandDiscoveryMocks = vi.hoisted(() => ({
 	isBinaryAvailableOnPath: vi.fn(),
 }));
 const childProcessMocks = vi.hoisted(() => ({
-	spawnSync: vi.fn(),
+	execFile: vi.fn(),
 }));
 
 vi.mock("../../../src/core/command-discovery.js", () => ({
@@ -14,7 +15,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:child_process")>();
 	return {
 		...actual,
-		spawnSync: childProcessMocks.spawnSync,
+		execFile: childProcessMocks.execFile,
 	};
 });
 
@@ -27,29 +28,39 @@ import {
 } from "../../../src/config";
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
 
+type ExecFileCallback = (error: ExecFileException | null, stdout: string, stderr: string) => void;
+
+function readExecFileCallback(args: unknown[]): ExecFileCallback {
+	const callback = args.at(-1);
+	if (typeof callback !== "function") {
+		throw new Error("execFile mock expected a callback");
+	}
+	return callback as ExecFileCallback;
+}
+
+function mockSuccessfulCodexProbe(): void {
+	childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+		const callback = readExecFileCallback(rest);
+		if (args[0] === "--version") {
+			callback(null, "0.124.0\n", "");
+			return {} as ChildProcess;
+		}
+		if (args[0] === "features" && args[1] === "list") {
+			callback(null, "codex_hooks                         stable             true\n", "");
+			return {} as ChildProcess;
+		}
+		callback(null, "", "");
+		return {} as ChildProcess;
+	});
+}
+
 beforeEach(() => {
+	vi.useRealTimers();
 	resetAgentAvailabilityCache();
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReset();
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
-	childProcessMocks.spawnSync.mockReset();
-	childProcessMocks.spawnSync.mockImplementation((_, args: string[]) => {
-		if (args[0] === "--version") {
-			return {
-				stdout: "0.124.0\n",
-				stderr: "",
-			};
-		}
-		if (args[0] === "features" && args[1] === "list") {
-			return {
-				stdout: "codex_hooks                         stable             true\n",
-				stderr: "",
-			};
-		}
-		return {
-			stdout: "",
-			stderr: "",
-		};
-	});
+	childProcessMocks.execFile.mockReset();
+	mockSuccessfulCodexProbe();
 	delete process.env.QUARTERDECK_DEBUG_MODE;
 	delete process.env.DEBUG_MODE;
 	delete process.env.debug_mode;
@@ -65,37 +76,32 @@ describe("agent-registry", () => {
 		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledTimes(3);
 	});
 
-	it("treats shell-only agents as unavailable", () => {
+	it("treats shell-only agents as unavailable", async () => {
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "npx");
 
-		const resolved = resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "claude" }));
+		const resolved = await resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "claude" }));
 
 		expect(resolved).toBeNull();
 	});
 
-	it("disables Codex when the detected version is below the supported floor", () => {
+	it("disables Codex when the detected version is below the supported floor", async () => {
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
-		childProcessMocks.spawnSync.mockImplementation((_, args: string[]) => {
+		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+			const callback = readExecFileCallback(rest);
 			if (args[0] === "--version") {
-				return {
-					stdout: "0.123.0\n",
-					stderr: "",
-				};
+				callback(null, "0.123.0\n", "");
+				return {} as ChildProcess;
 			}
 			if (args[0] === "features" && args[1] === "list") {
-				return {
-					stdout: "codex_hooks                         stable             true\n",
-					stderr: "",
-				};
+				callback(null, "codex_hooks                         stable             true\n", "");
+				return {} as ChildProcess;
 			}
-			return {
-				stdout: "",
-				stderr: "",
-			};
+			callback(null, "", "");
+			return {} as ChildProcess;
 		});
 
-		const resolved = resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
-		const response = buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+		const resolved = await resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
 		const codex = response.agents.find((agent) => agent.id === "codex");
 
 		expect(resolved).toBeNull();
@@ -104,43 +110,90 @@ describe("agent-registry", () => {
 		expect(codex?.statusMessage).toContain("0.124.0");
 	});
 
-	it("caches availability probes across repeated config loads", () => {
+	it("caches availability probes across repeated config loads", async () => {
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
 
-		buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
-		buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+		await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+		await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
 
-		const versionCalls = childProcessMocks.spawnSync.mock.calls.filter((call) => call[1]?.[0] === "--version");
-		const featuresCalls = childProcessMocks.spawnSync.mock.calls.filter(
+		const versionCalls = childProcessMocks.execFile.mock.calls.filter((call) => call[1]?.[0] === "--version");
+		const featuresCalls = childProcessMocks.execFile.mock.calls.filter(
 			(call) => call[1]?.[0] === "features" && call[1]?.[1] === "list",
 		);
 		expect(versionCalls).toHaveLength(1);
 		expect(featuresCalls).toHaveLength(1);
 	});
 
-	it("disables Codex when native hook support cannot be confirmed", () => {
+	it("dedupes concurrent Codex availability probes", async () => {
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
-		childProcessMocks.spawnSync.mockImplementation((_, args: string[]) => {
-			if (args[0] === "--version") {
-				return {
-					stdout: "0.124.0\n",
-					stderr: "",
-				};
-			}
-			if (args[0] === "features" && args[1] === "list") {
-				return {
-					stdout: "shell_tool                          stable             true\n",
-					stderr: "",
-				};
-			}
-			return {
-				stdout: "",
-				stderr: "",
-			};
+		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+			const callback = readExecFileCallback(rest);
+			setTimeout(() => {
+				if (args[0] === "--version") {
+					callback(null, "0.124.0\n", "");
+					return;
+				}
+				if (args[0] === "features" && args[1] === "list") {
+					callback(null, "codex_hooks                         stable             true\n", "");
+					return;
+				}
+				callback(null, "", "");
+			}, 0);
+			return {} as ChildProcess;
 		});
 
-		const resolved = resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
-		const response = buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+		await Promise.all([
+			buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" })),
+			buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" })),
+		]);
+
+		const versionCalls = childProcessMocks.execFile.mock.calls.filter((call) => call[1]?.[0] === "--version");
+		const featuresCalls = childProcessMocks.execFile.mock.calls.filter(
+			(call) => call[1]?.[0] === "features" && call[1]?.[1] === "list",
+		);
+		expect(versionCalls).toHaveLength(1);
+		expect(featuresCalls).toHaveLength(1);
+	});
+
+	it("serves stale cached Codex availability while refreshing in the background", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+
+		const initial = await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+		expect(initial.agents.find((agent) => agent.id === "codex")?.installed).toBe(true);
+
+		vi.setSystemTime(Date.now() + 31_000);
+		childProcessMocks.execFile.mockImplementation(() => ({}) as ChildProcess);
+
+		const stale = await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+		const versionCalls = childProcessMocks.execFile.mock.calls.filter((call) => call[1]?.[0] === "--version");
+		const featuresCalls = childProcessMocks.execFile.mock.calls.filter(
+			(call) => call[1]?.[0] === "features" && call[1]?.[1] === "list",
+		);
+
+		expect(stale.agents.find((agent) => agent.id === "codex")?.installed).toBe(true);
+		expect(versionCalls).toHaveLength(2);
+		expect(featuresCalls).toHaveLength(1);
+	});
+
+	it("disables Codex when native hook support cannot be confirmed", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+			const callback = readExecFileCallback(rest);
+			if (args[0] === "--version") {
+				callback(null, "0.124.0\n", "");
+				return {} as ChildProcess;
+			}
+			if (args[0] === "features" && args[1] === "list") {
+				callback(null, "shell_tool                          stable             true\n", "");
+				return {} as ChildProcess;
+			}
+			callback(null, "", "");
+			return {} as ChildProcess;
+		});
+
+		const resolved = await resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
 		const codex = response.agents.find((agent) => agent.id === "codex");
 
 		expect(resolved).toBeNull();
@@ -151,21 +204,21 @@ describe("agent-registry", () => {
 });
 
 describe("buildRuntimeConfigResponse", () => {
-	it("includes curated agent definitions with empty default args", () => {
+	it("includes curated agent definitions with empty default args", async () => {
 		const config = createTestRuntimeConfigState();
 
-		const response = buildRuntimeConfigResponse(config);
+		const response = await buildRuntimeConfigResponse(config);
 
 		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex"]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
 	});
 
-	it("omits autonomous flags from curated agent commands when disabled", () => {
+	it("omits autonomous flags from curated agent commands when disabled", async () => {
 		const config = createTestRuntimeConfigState();
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "claude");
 
-		const response = buildRuntimeConfigResponse(config);
+		const response = await buildRuntimeConfigResponse(config);
 
 		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex"]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
@@ -174,15 +227,15 @@ describe("buildRuntimeConfigResponse", () => {
 		expect(response.agents.find((agent) => agent.id === "codex")?.command).toBe("codex");
 	});
 
-	it("sets debug mode from runtime environment variables", () => {
+	it("sets debug mode from runtime environment variables", async () => {
 		process.env.QUARTERDECK_DEBUG_MODE = "true";
-		const response = buildRuntimeConfigResponse(createTestRuntimeConfigState());
+		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState());
 		expect(response.debugModeEnabled).toBe(true);
 	});
 
-	it("supports debug_mode fallback env name", () => {
+	it("supports debug_mode fallback env name", async () => {
 		process.env.debug_mode = "1";
-		const response = buildRuntimeConfigResponse(createTestRuntimeConfigState());
+		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState());
 		expect(response.debugModeEnabled).toBe(true);
 	});
 });

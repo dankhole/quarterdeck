@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core";
 import { shutdownRuntimeServer } from "../../src/server";
@@ -12,8 +12,11 @@ vi.mock("../../src/state/project-state.js", () => ({
 }));
 
 vi.mock("../../src/terminal/orphan-cleanup.js", () => ({
-	killOrphanedAgentProcesses: vi.fn().mockResolvedValue(undefined),
+	killOrphanedAgentProcesses: vi.fn().mockResolvedValue(0),
 }));
+
+import { listProjectIndexEntries, loadProjectState, saveProjectSessions } from "../../src/state/project-state.js";
+import { killOrphanedAgentProcesses } from "../../src/terminal/orphan-cleanup.js";
 
 function createBoard(inProgressTaskIds: string[]): RuntimeBoardData {
 	return {
@@ -62,15 +65,53 @@ function createTerminalManagerStub(taskIds: string[]): TerminalSessionManager {
 }
 
 describe("shutdown coordinator timeout", () => {
+	beforeEach(() => {
+		vi.mocked(listProjectIndexEntries).mockResolvedValue([]);
+		vi.mocked(killOrphanedAgentProcesses).mockResolvedValue(0);
+	});
+
 	afterEach(() => {
 		vi.useRealTimers();
-		vi.restoreAllMocks();
+		vi.clearAllMocks();
+	});
+
+	it("awaits async orphan cleanup before resolving shutdown", async () => {
+		const mockKillOrphans = vi.mocked(killOrphanedAgentProcesses);
+		let resolveOrphanCleanup: (killed: number) => void = () => {
+			throw new Error("orphan cleanup did not start");
+		};
+		mockKillOrphans.mockReturnValue(
+			new Promise<number>((resolve) => {
+				resolveOrphanCleanup = resolve;
+			}),
+		);
+
+		const closeRuntimeServer = vi.fn().mockResolvedValue(undefined);
+		let didResolveShutdown = false;
+		const shutdownPromise = shutdownRuntimeServer({
+			projectRegistry: {
+				listManagedProjects: () => [],
+			},
+			warn: vi.fn(),
+			closeRuntimeServer,
+		}).then(() => {
+			didResolveShutdown = true;
+		});
+
+		await vi.waitFor(() => {
+			expect(closeRuntimeServer).toHaveBeenCalledTimes(1);
+			expect(mockKillOrphans).toHaveBeenCalledTimes(1);
+		});
+		expect(didResolveShutdown).toBe(false);
+
+		resolveOrphanCleanup(0);
+		await shutdownPromise;
+		expect(didResolveShutdown).toBe(true);
 	});
 
 	it("calls closeRuntimeServer even when cleanup operations hang", async () => {
 		vi.useFakeTimers();
 
-		const { loadProjectState, saveProjectSessions } = await import("../../src/state/project-state.js");
 		const mockLoadProjectState = vi.mocked(loadProjectState);
 		const mockSaveProjectSessions = vi.mocked(saveProjectSessions);
 
@@ -112,7 +153,6 @@ describe("shutdown coordinator timeout", () => {
 	});
 
 	it("completes normally when cleanup finishes within timeout", async () => {
-		const { loadProjectState, saveProjectSessions } = await import("../../src/state/project-state.js");
 		const mockLoadProjectState = vi.mocked(loadProjectState);
 		const mockSaveProjectSessions = vi.mocked(saveProjectSessions);
 

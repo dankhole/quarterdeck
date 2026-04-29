@@ -1,12 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	loadRuntimeConfig,
 	pickBestInstalledAgentIdFromDetected,
 	resetAgentAvailabilityCache,
+	updateRuntimeConfig,
 } from "../../../src/config";
 import { createTempDir } from "../../utilities/temp-dir";
 import { withTemporaryEnv, writeFakeCommand, writeFakeVersionedCommand } from "./runtime-config-helpers";
@@ -16,6 +17,10 @@ describe.sequential("runtime-config auto agent selection", () => {
 		// Each test simulates a distinct PATH/HOME environment; clear the availability
 		// cache so probes are re-run against the freshly staged fake binaries.
 		resetAgentAvailabilityCache();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
 	});
 
 	it("selects agents using the configured priority order", () => {
@@ -165,6 +170,32 @@ describe.sequential("runtime-config auto agent selection", () => {
 				const state = await loadRuntimeConfig(null);
 				expect(state.selectedAgentId).toBe("claude");
 				expect(existsSync(join(tempHome, ".quarterdeck", "config.json"))).toBe(false);
+			});
+		} finally {
+			cleanupBin();
+			cleanupHome();
+		}
+	});
+
+	it("forces a fresh availability probe when saving a newly installed selected agent", async () => {
+		if (process.platform === "win32") {
+			return;
+		}
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-stale-");
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-stale-");
+
+		try {
+			vi.useFakeTimers({ toFake: ["Date"] });
+			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
+				await loadRuntimeConfig(null);
+				vi.setSystemTime(Date.now() + 31_000);
+				writeFakeVersionedCommand(tempBin, "codex", "0.124.0");
+
+				const updated = await updateRuntimeConfig(null, {
+					selectedAgentId: "codex",
+				});
+
+				expect(updated.selectedAgentId).toBe("codex");
 			});
 		} finally {
 			cleanupBin();

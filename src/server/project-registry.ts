@@ -1,3 +1,5 @@
+import pLimit from "p-limit";
+
 import { type RuntimeConfigState, resolveAgentCommand, toGlobalRuntimeConfigState } from "../config";
 import type {
 	IProjectDataProvider,
@@ -26,6 +28,7 @@ import { InMemorySessionSummaryStore, TerminalSessionManager } from "../terminal
 
 const registryLog = createTaggedLogger("project-registry");
 const STARTUP_RESUME_SKIP_SAMPLE_LIMIT = 5;
+export const PROJECT_STREAM_VALIDATION_CONCURRENCY = 4;
 
 // Startup resume selection is still small enough to live near the registry
 // entry point. If it gains more agent-specific rules or scan outcomes, extract
@@ -88,7 +91,7 @@ export interface CreateProjectRegistryDependencies {
 	cwd: string;
 	loadGlobalRuntimeConfig: () => Promise<RuntimeConfigState>;
 	loadRuntimeConfig: (projectId?: string | null) => Promise<RuntimeConfigState>;
-	hasGitRepository: (path: string) => boolean;
+	hasGitRepository: (path: string) => Promise<boolean>;
 	pathIsDirectory: (path: string) => Promise<boolean>;
 	onTerminalManagerReady?: (projectId: string, manager: TerminalSessionManager) => void;
 }
@@ -134,6 +137,42 @@ export interface ProjectRegistry
 		projectPath: string | null;
 		terminalManager: TerminalSessionManager;
 	}>;
+}
+
+export interface ProjectStreamValidationResult {
+	project: RuntimeProjectIndexEntry;
+	removalMessage: string | null;
+}
+
+async function resolveIndexedProjectRemovalMessage(
+	project: RuntimeProjectIndexEntry,
+	deps: Pick<CreateProjectRegistryDependencies, "hasGitRepository" | "pathIsDirectory">,
+): Promise<string | null> {
+	if (isUnderWorktreesHome(project.repoPath)) {
+		return `Worktree was incorrectly indexed as a project and was removed: ${project.repoPath}`;
+	}
+	if (!(await deps.pathIsDirectory(project.repoPath))) {
+		return `Project no longer exists on disk and was removed: ${project.repoPath}`;
+	}
+	if (!(await deps.hasGitRepository(project.repoPath))) {
+		return `Project is not a git repository and was removed: ${project.repoPath}`;
+	}
+	return null;
+}
+
+export async function validateIndexedProjectsForStream(
+	projects: RuntimeProjectIndexEntry[],
+	deps: Pick<CreateProjectRegistryDependencies, "hasGitRepository" | "pathIsDirectory">,
+): Promise<ProjectStreamValidationResult[]> {
+	const limit = pLimit(PROJECT_STREAM_VALIDATION_CONCURRENCY);
+	return await Promise.all(
+		projects.map((project) =>
+			limit(async () => ({
+				project,
+				removalMessage: await resolveIndexedProjectRemovalMessage(project, deps),
+			})),
+		),
+	);
 }
 
 function createEmptyProjectTaskCounts(): RuntimeProjectTaskCounts {
@@ -227,7 +266,7 @@ function toProjectSummary(project: {
 }
 
 export async function createProjectRegistry(deps: CreateProjectRegistryDependencies): Promise<ProjectRegistry> {
-	const launchedFromGitRepo = deps.hasGitRepository(deps.cwd);
+	const launchedFromGitRepo = await deps.hasGitRepository(deps.cwd);
 	const launchedFromWorktree = isUnderWorktreesHome(deps.cwd);
 	const initialProject = launchedFromGitRepo && !launchedFromWorktree ? await loadProjectContext(deps.cwd) : null;
 	let indexedProject: RuntimeProjectIndexEntry | null = null;
@@ -412,19 +451,11 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		},
 	): Promise<ResolvedProjectStreamTarget> => {
 		const allProjects = await listProjectIndexEntries();
+		const validationResults = await validateIndexedProjectsForStream(allProjects, deps);
 		const existingProjects: RuntimeProjectIndexEntry[] = [];
 		const removedProjects: RuntimeProjectIndexEntry[] = [];
 
-		for (const project of allProjects) {
-			let removalMessage: string | null = null;
-			if (isUnderWorktreesHome(project.repoPath)) {
-				removalMessage = `Worktree was incorrectly indexed as a project and was removed: ${project.repoPath}`;
-			} else if (!(await deps.pathIsDirectory(project.repoPath))) {
-				removalMessage = `Project no longer exists on disk and was removed: ${project.repoPath}`;
-			} else if (!deps.hasGitRepository(project.repoPath)) {
-				removalMessage = `Project is not a git repository and was removed: ${project.repoPath}`;
-			}
-
+		for (const { project, removalMessage } of validationResults) {
 			if (!removalMessage) {
 				existingProjects.push(project);
 				continue;
@@ -511,7 +542,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			return 0;
 		}
 		const runtimeConfig = await deps.loadRuntimeConfig(projectId);
-		const resolved = resolveAgentCommand(runtimeConfig);
+		const resolved = await resolveAgentCommand(runtimeConfig);
 		if (!resolved) {
 			registryLog.warn("startup resume skipped: no agent command resolved", {
 				projectId,

@@ -42,7 +42,7 @@ export interface CreateRuntimeServerDependencies {
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
 	resolveProjectInputPath: (inputPath: string, basePath: string) => string;
 	assertPathIsDirectory: (targetPath: string) => Promise<void>;
-	hasGitRepository: (path: string) => boolean;
+	hasGitRepository: (path: string) => Promise<boolean>;
 	disposeProject: (
 		projectId: string,
 		options?: {
@@ -50,7 +50,7 @@ export interface CreateRuntimeServerDependencies {
 		},
 	) => DisposeTrackedProjectResult;
 	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeProjectStateResponse["board"]) => Set<string>;
-	pickDirectoryPathFromSystemDialog: () => string | null;
+	pickDirectoryPathFromSystemDialog: () => Promise<string | null>;
 }
 
 export interface RuntimeServer {

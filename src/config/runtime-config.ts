@@ -53,12 +53,12 @@ export {
 
 // --- Internal helpers ---
 
-function pickBestInstalledAgentId() {
-	return pickBestInstalledAgentIdFromDetected(detectRunnableAgentIds());
+async function pickBestInstalledAgentId() {
+	return pickBestInstalledAgentIdFromDetected(await detectRunnableAgentIds());
 }
 
-function assertSelectedAgentRunnable(selectedAgentId: RuntimeAgentId): void {
-	const availability = getAgentAvailability(selectedAgentId);
+async function assertSelectedAgentRunnable(selectedAgentId: RuntimeAgentId): Promise<void> {
+	const availability = await getAgentAvailability(selectedAgentId, { allowStale: false });
 	if (!availability.installed) {
 		throw new Error(availability.statusMessage ?? `Selected agent "${selectedAgentId}" is not runnable.`);
 	}
@@ -67,7 +67,7 @@ function assertSelectedAgentRunnable(selectedAgentId: RuntimeAgentId): void {
 async function loadRuntimeConfigLocked(projectId?: string | null): Promise<RuntimeConfigState> {
 	const configFiles = await readRuntimeConfigFiles(projectId ?? null);
 	if (configFiles.globalConfig === null) {
-		const autoSelectedAgentId = pickBestInstalledAgentId();
+		const autoSelectedAgentId = await pickBestInstalledAgentId();
 		if (autoSelectedAgentId) {
 			await writeRuntimeGlobalConfigFile(configFiles.globalConfigPath, {
 				selectedAgentId: autoSelectedAgentId,
@@ -99,7 +99,7 @@ async function applyConfigUpdates({
 
 	const nextSelectedAgentId = updates.selectedAgentId ?? current.selectedAgentId;
 	if (updates.selectedAgentId !== undefined) {
-		assertSelectedAgentRunnable(nextSelectedAgentId);
+		await assertSelectedAgentRunnable(nextSelectedAgentId);
 	}
 	const nextSelectedShortcutLabel =
 		updates.selectedShortcutLabel === undefined ? current.selectedShortcutLabel : updates.selectedShortcutLabel;

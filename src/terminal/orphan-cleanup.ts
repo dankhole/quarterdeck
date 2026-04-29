@@ -2,7 +2,8 @@
 // crashed Quarterdeck instance. Orphaned processes have PPID=1 (reparented to
 // init/launchd after their parent died). Runs at startup and shutdown.
 
-import { spawnSync } from "node:child_process";
+import type { ExecFileException } from "node:child_process";
+import { execFile } from "node:child_process";
 
 import { createTaggedLogger } from "../core";
 import { isProcessAlive } from "./session-reconciliation";
@@ -15,6 +16,23 @@ const AGENT_PROCESS_NAMES = ["claude", "codex"];
 const SIGTERM_GRACE_MS = 3_000;
 const SIGTERM_POLL_MS = 500;
 
+export interface OrphanProcessListResult {
+	ok: boolean;
+	stdout: string;
+}
+
+export type OrphanProcessListRunner = () => Promise<OrphanProcessListResult>;
+
+export interface FindOrphanedAgentPidsOptions {
+	platform?: NodeJS.Platform;
+	runPsCommand?: OrphanProcessListRunner;
+}
+
+export interface KillOrphanedAgentProcessesOptions {
+	findPids?: () => Promise<number[]>;
+	killProcess?: (pid: number) => Promise<boolean>;
+}
+
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -23,14 +41,30 @@ function sleep(ms: number): Promise<void> {
  * Finds agent processes whose parent is PID 1 (orphaned after their
  * Quarterdeck parent crashed). Returns their PIDs.
  */
-function findOrphanedAgentPids(): number[] {
-	if (process.platform === "win32") return [];
-
-	const result = spawnSync("ps", ["-eo", "pid=,ppid=,comm="], {
-		encoding: "utf-8",
-		timeout: 5_000,
+function defaultRunPsCommand(): Promise<OrphanProcessListResult> {
+	return new Promise((resolve) => {
+		execFile(
+			"ps",
+			["-eo", "pid=,ppid=,comm="],
+			{
+				encoding: "utf8",
+				timeout: 5_000,
+			},
+			(error: ExecFileException | null, stdout: string | Buffer) => {
+				resolve({
+					ok: !error,
+					stdout: String(stdout ?? ""),
+				});
+			},
+		);
 	});
-	if (result.status !== 0) return [];
+}
+
+export async function findOrphanedAgentPids(options: FindOrphanedAgentPidsOptions = {}): Promise<number[]> {
+	if ((options.platform ?? process.platform) === "win32") return [];
+
+	const result = await (options.runPsCommand ?? defaultRunPsCommand)();
+	if (!result.ok) return [];
 
 	const pids: number[] = [];
 	for (const line of result.stdout.split("\n")) {
@@ -93,15 +127,16 @@ async function killPid(pid: number): Promise<boolean> {
  * Finds and kills orphaned agent processes. Returns the number killed.
  * Safe to call at both startup and shutdown.
  */
-export async function killOrphanedAgentProcesses(): Promise<number> {
-	const pids = findOrphanedAgentPids();
+export async function killOrphanedAgentProcesses(options: KillOrphanedAgentProcessesOptions = {}): Promise<number> {
+	const pids = await (options.findPids ?? findOrphanedAgentPids)();
 	if (pids.length === 0) return 0;
 
 	log.warn("found orphaned agent processes", { pids });
 
 	let killed = 0;
+	const killProcess = options.killProcess ?? killPid;
 	for (const pid of pids) {
-		const success = await killPid(pid);
+		const success = await killProcess(pid);
 		if (success) {
 			killed++;
 			log.warn("killed orphaned agent process", { pid });

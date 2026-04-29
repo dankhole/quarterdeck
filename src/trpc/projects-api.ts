@@ -33,14 +33,14 @@ export interface CreateProjectsApiDependencies {
 	data: IProjectDataProvider;
 	resolveProjectInputPath: (inputPath: string, cwd: string) => string;
 	assertPathIsDirectory: (path: string) => Promise<void>;
-	hasGitRepository: (path: string) => boolean;
+	hasGitRepository: (path: string) => Promise<boolean>;
 	disposeProject: (
 		projectId: string,
 		options?: DisposeProjectOptions,
 	) => { terminalManager: TerminalSessionManager | null; projectPath: string | null };
 	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeBoardData) => Set<string>;
 	warn: (message: string) => void;
-	pickDirectoryPathFromSystemDialog: () => string | null;
+	pickDirectoryPathFromSystemDialog: () => Promise<string | null>;
 }
 
 export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeTrpcContext["projectsApi"] {
@@ -67,7 +67,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 						error: "This path is inside Quarterdeck's worktree directory and cannot be added as a project.",
 					} satisfies RuntimeProjectAddResponse;
 				}
-				if (!deps.hasGitRepository(projectPath)) {
+				if (!(await deps.hasGitRepository(projectPath))) {
 					if (!body.initializeGit) {
 						return {
 							ok: false,
@@ -206,7 +206,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 		},
 		pickProjectDirectory: async () => {
 			try {
-				const selectedPath = deps.pickDirectoryPathFromSystemDialog();
+				const selectedPath = await deps.pickDirectoryPathFromSystemDialog();
 				if (!selectedPath) {
 					return {
 						ok: false,

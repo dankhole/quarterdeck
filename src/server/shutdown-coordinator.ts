@@ -185,9 +185,14 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 		deps.warn(`Shutdown cleanup timed out after ${CLEANUP_TIMEOUT_MS}ms. Closing server without full cleanup.`);
 	}
 
-	// Best-effort orphan cleanup for agents left by a previously crashed instance.
-	// Fire-and-forget — startup catches any stragglers.
-	killOrphanedAgentProcesses().catch(() => {});
-
 	await deps.closeRuntimeServer();
+
+	// Best-effort orphan cleanup for agents left by a previously crashed instance.
+	// Await it so async process discovery has a chance to signal orphans before
+	// the graceful-shutdown handler exits the process.
+	try {
+		await killOrphanedAgentProcesses();
+	} catch {
+		// Startup catches any stragglers.
+	}
 }

@@ -1,5 +1,3 @@
-import type { spawnSync } from "node:child_process";
-
 import { describe, expect, it } from "vitest";
 
 import { pickDirectoryPathFromSystemDialog } from "../../src/server";
@@ -9,10 +7,16 @@ interface RecordedCommand {
 	args: string[];
 }
 
-function createSpawnResult(overrides: Partial<ReturnType<typeof spawnSync>> = {}): ReturnType<typeof spawnSync> {
+interface FakeDirectoryPickerResult {
+	stdout: string;
+	stderr: string;
+	status: number | null;
+	signal: NodeJS.Signals | null;
+	error?: Error;
+}
+
+function createSpawnResult(overrides: Partial<FakeDirectoryPickerResult> = {}): FakeDirectoryPickerResult {
 	return {
-		pid: 1,
-		output: [null, "", ""],
 		stdout: "",
 		stderr: "",
 		status: 0,
@@ -23,10 +27,10 @@ function createSpawnResult(overrides: Partial<ReturnType<typeof spawnSync>> = {}
 }
 
 function createRunCommand(
-	responses: Record<string, ReturnType<typeof spawnSync>>,
+	responses: Record<string, FakeDirectoryPickerResult>,
 	commands: RecordedCommand[],
-): (command: string, args: string[]) => ReturnType<typeof spawnSync> {
-	return (command: string, args: string[]) => {
+): (command: string, args: string[]) => Promise<FakeDirectoryPickerResult> {
+	return async (command: string, args: string[]) => {
 		commands.push({ command, args });
 		const response = responses[command];
 		if (!response) {
@@ -37,9 +41,9 @@ function createRunCommand(
 }
 
 describe("pickDirectoryPathFromSystemDialog", () => {
-	it("falls back to kdialog when zenity is unavailable on linux", () => {
+	it("falls back to kdialog when zenity is unavailable on linux", async () => {
 		const commands: RecordedCommand[] = [];
-		const selectedPath = pickDirectoryPathFromSystemDialog({
+		const selectedPath = await pickDirectoryPathFromSystemDialog({
 			platform: "linux",
 			cwd: "/tmp",
 			runCommand: createRunCommand(
@@ -71,9 +75,9 @@ describe("pickDirectoryPathFromSystemDialog", () => {
 		]);
 	});
 
-	it("returns null when the picker is cancelled", () => {
+	it("returns null when the picker is cancelled", async () => {
 		const commands: RecordedCommand[] = [];
-		const selectedPath = pickDirectoryPathFromSystemDialog({
+		const selectedPath = await pickDirectoryPathFromSystemDialog({
 			platform: "linux",
 			runCommand: createRunCommand(
 				{
@@ -94,9 +98,9 @@ describe("pickDirectoryPathFromSystemDialog", () => {
 		]);
 	});
 
-	it("throws a clear error when no linux picker commands are installed", () => {
+	it("throws a clear error when no linux picker commands are installed", async () => {
 		const commands: RecordedCommand[] = [];
-		expect(() =>
+		await expect(
 			pickDirectoryPathFromSystemDialog({
 				platform: "linux",
 				runCommand: createRunCommand(
@@ -117,11 +121,11 @@ describe("pickDirectoryPathFromSystemDialog", () => {
 					commands,
 				),
 			}),
-		).toThrow('Could not open directory picker. Install "zenity" or "kdialog" and try again.');
+		).rejects.toThrow('Could not open directory picker. Install "zenity" or "kdialog" and try again.');
 	});
 
-	it("throws command stderr when picker fails for a real error", () => {
-		expect(() =>
+	it("throws command stderr when picker fails for a real error", async () => {
+		await expect(
 			pickDirectoryPathFromSystemDialog({
 				platform: "linux",
 				runCommand: createRunCommand(
@@ -134,13 +138,13 @@ describe("pickDirectoryPathFromSystemDialog", () => {
 					[],
 				),
 			}),
-		).toThrow("Could not open directory picker via zenity: Gtk warning");
+		).rejects.toThrow("Could not open directory picker via zenity: Gtk warning");
 	});
 });
 
-it("uses powershell on windows when available", () => {
+it("uses powershell on windows when available", async () => {
 	const commands: RecordedCommand[] = [];
-	const selectedPath = pickDirectoryPathFromSystemDialog({
+	const selectedPath = await pickDirectoryPathFromSystemDialog({
 		platform: "win32",
 		runCommand: createRunCommand(
 			{
@@ -158,9 +162,9 @@ it("uses powershell on windows when available", () => {
 	expect(commands[0]?.args.slice(0, 3)).toEqual(["-NoProfile", "-STA", "-Command"]);
 });
 
-it("falls back to pwsh when powershell is unavailable on windows", () => {
+it("falls back to pwsh when powershell is unavailable on windows", async () => {
 	const commands: RecordedCommand[] = [];
-	const selectedPath = pickDirectoryPathFromSystemDialog({
+	const selectedPath = await pickDirectoryPathFromSystemDialog({
 		platform: "win32",
 		runCommand: createRunCommand(
 			{
@@ -182,8 +186,8 @@ it("falls back to pwsh when powershell is unavailable on windows", () => {
 	expect(commands.map((entry) => entry.command)).toEqual(["powershell", "pwsh"]);
 });
 
-it("returns null when windows picker is cancelled", () => {
-	const selectedPath = pickDirectoryPathFromSystemDialog({
+it("returns null when windows picker is cancelled", async () => {
+	const selectedPath = await pickDirectoryPathFromSystemDialog({
 		platform: "win32",
 		runCommand: createRunCommand(
 			{
@@ -198,8 +202,8 @@ it("returns null when windows picker is cancelled", () => {
 	expect(selectedPath).toBeNull();
 });
 
-it("throws a clear error when no windows picker commands are installed", () => {
-	expect(() =>
+it("throws a clear error when no windows picker commands are installed", async () => {
+	await expect(
 		pickDirectoryPathFromSystemDialog({
 			platform: "win32",
 			runCommand: createRunCommand(
@@ -220,5 +224,5 @@ it("throws a clear error when no windows picker commands are installed", () => {
 				[],
 			),
 		}),
-	).toThrow('Could not open directory picker. Install PowerShell ("powershell" or "pwsh") and try again.');
+	).rejects.toThrow('Could not open directory picker. Install PowerShell ("powershell" or "pwsh") and try again.');
 });

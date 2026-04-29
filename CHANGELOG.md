@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fix: avoid runtime stalls from sync child processes
+
+- Directory picking now launches OS folder-picker commands asynchronously, so an open picker dialog no longer blocks websockets, terminal streams, polling, or unrelated tRPC requests.
+- Codex availability checks now use async version/feature probes with in-flight deduping, TTL caching, stale-while-revalidate responses for cached display/task-start results, and fresh validation when saving a selected agent.
+- Project stream resolution now validates indexed git repositories through async probes with bounded parallelism, and startup orphan-agent cleanup now runs async `ps` discovery after yielding the boot path.
+- Shutdown orphan-agent cleanup now awaits async discovery before graceful shutdown resolves, so Ctrl+C does not exit before orphan processes are signaled.
+- Added focused coverage for async picker behavior, Codex probe cache/dedupe/stale refresh, bounded project-index validation, and async orphan cleanup.
+
 ### Fix: keep agent hooks off blocking transcript work
 
 - Claude Stop hooks now transition tasks through the normal reliable ingest path before transcript parsing, then enrich conversation summaries from the server in the background.

@@ -1,4 +1,5 @@
-import { spawnSync } from "node:child_process";
+import type { ExecFileException } from "node:child_process";
+import { execFile } from "node:child_process";
 
 import { CODEX_HOOKS_FEATURE_NAME } from "../codex-hooks";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeConfigResponse } from "../core";
@@ -28,6 +29,7 @@ interface AgentAvailability {
 
 const MINIMUM_CODEX_VERSION = "0.124.0";
 const PROBE_OUTPUT_SNIPPET_MAX_LENGTH = 500;
+const CODEX_PROBE_TIMEOUT_MS = 3_000;
 const log = createTaggedLogger("agent-registry");
 
 /** Return the catalog-defined `baseArgs` that Quarterdeck always passes when launching an agent. */
@@ -118,24 +120,50 @@ function compareSemver(left: string, right: string): number {
 	return 0;
 }
 
-function detectCodexVersion(binary: string): string | null {
+interface ProbeCommandResult {
+	stdout: string;
+	stderr: string;
+	exitStatus: number | null;
+	signal: NodeJS.Signals | null;
+}
+
+function runProbeCommand(binary: string, args: string[]): Promise<ProbeCommandResult> {
+	return new Promise((resolve, reject) => {
+		execFile(
+			binary,
+			args,
+			{
+				encoding: "utf8",
+				timeout: CODEX_PROBE_TIMEOUT_MS,
+			},
+			(error: ExecFileException | null, stdout: string | Buffer, stderr: string | Buffer) => {
+				const exitStatus = error ? (typeof error.code === "number" ? error.code : null) : 0;
+				const signal = error?.signal ?? null;
+				if (error && typeof error.code === "string") {
+					reject(error);
+					return;
+				}
+				resolve({
+					stdout: String(stdout ?? ""),
+					stderr: String(stderr ?? ""),
+					exitStatus,
+					signal,
+				});
+			},
+		);
+	});
+}
+
+async function detectCodexVersion(binary: string): Promise<string | null> {
 	try {
-		const result = spawnSync(binary, ["--version"], {
-			encoding: "utf8",
-			timeout: 3000,
-		});
-		if (typeof result.stdout !== "string" && typeof result.stderr !== "string") {
-			return null;
-		}
-		const output = [result.stdout, result.stderr]
-			.filter((chunk): chunk is string => typeof chunk === "string")
-			.join("\n");
+		const result = await runProbeCommand(binary, ["--version"]);
+		const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
 		const version = extractVersion(output);
 		log.debug("Codex version probe completed", {
 			binary,
 			version,
-			exitStatus: result.status ?? null,
-			signal: result.signal ?? null,
+			exitStatus: result.exitStatus,
+			signal: result.signal,
 			stderrSnippet: summarizeProbeOutput(result.stderr),
 		});
 		return version;
@@ -172,24 +200,16 @@ export function parseCodexFeaturesListOutput(output: string): boolean {
 	return enabledToken !== "false";
 }
 
-function codexSupportsNativeHooks(binary: string): boolean {
+async function codexSupportsNativeHooks(binary: string): Promise<boolean> {
 	try {
-		const result = spawnSync(binary, ["features", "list"], {
-			encoding: "utf8",
-			timeout: 3000,
-		});
-		if (typeof result.stdout !== "string" && typeof result.stderr !== "string") {
-			return false;
-		}
-		const output = [result.stdout, result.stderr]
-			.filter((chunk): chunk is string => typeof chunk === "string")
-			.join("\n");
+		const result = await runProbeCommand(binary, ["features", "list"]);
+		const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
 		const supported = parseCodexFeaturesListOutput(output);
 		log.debug("Codex native hook feature probe completed", {
 			binary,
 			supported,
-			exitStatus: result.status ?? null,
-			signal: result.signal ?? null,
+			exitStatus: result.exitStatus,
+			signal: result.signal,
 			stdoutSnippet: summarizeProbeOutput(result.stdout),
 			stderrSnippet: summarizeProbeOutput(result.stderr),
 		});
@@ -210,15 +230,23 @@ interface AvailabilityCacheEntry {
 	checkedAt: number;
 }
 
+interface ResolveAgentAvailabilityOptions {
+	allowStale?: boolean;
+}
+
 const agentAvailabilityCache = new Map<string, AvailabilityCacheEntry>();
+const inFlightAgentAvailabilityProbes = new Map<string, Promise<AvailabilityCacheEntry>>();
+let agentAvailabilityCacheGeneration = 0;
 
 /** Clear the agent-availability cache. Exported for tests; also useful if a future
  *  Settings re-check button needs to force a fresh probe. */
 export function resetAgentAvailabilityCache(): void {
+	agentAvailabilityCacheGeneration += 1;
 	agentAvailabilityCache.clear();
+	inFlightAgentAvailabilityProbes.clear();
 }
 
-function computeAgentAvailability(agentId: RuntimeAgentId, binary: string): AgentAvailability {
+async function computeAgentAvailability(agentId: RuntimeAgentId, binary: string): Promise<AgentAvailability> {
 	const detected = isBinaryAvailableOnPath(binary);
 	if (!detected) {
 		if (agentId === "codex") {
@@ -238,7 +266,7 @@ function computeAgentAvailability(agentId: RuntimeAgentId, binary: string): Agen
 		};
 	}
 
-	const version = detectCodexVersion(binary);
+	const version = await detectCodexVersion(binary);
 	if (!version) {
 		log.debug("Codex availability rejected: version unknown", { binary, minimumVersion: MINIMUM_CODEX_VERSION });
 		return {
@@ -259,7 +287,7 @@ function computeAgentAvailability(agentId: RuntimeAgentId, binary: string): Agen
 			statusMessage: `Detected Codex ${version}, but Quarterdeck currently requires ${MINIMUM_CODEX_VERSION} or newer.`,
 		};
 	}
-	if (!codexSupportsNativeHooks(binary)) {
+	if (!(await codexSupportsNativeHooks(binary))) {
 		log.debug("Codex availability rejected: native hook feature unavailable", {
 			binary,
 			version,
@@ -285,19 +313,62 @@ function computeAgentAvailability(agentId: RuntimeAgentId, binary: string): Agen
 	};
 }
 
-function resolveAgentAvailability(agentId: RuntimeAgentId, binary: string): AgentAvailability {
+function startAvailabilityProbe(
+	cacheKey: string,
+	agentId: RuntimeAgentId,
+	binary: string,
+): Promise<AvailabilityCacheEntry> {
+	const existing = inFlightAgentAvailabilityProbes.get(cacheKey);
+	if (existing) {
+		return existing;
+	}
+	const generation = agentAvailabilityCacheGeneration;
+	const probe = computeAgentAvailability(agentId, binary)
+		.then((result) => {
+			const entry = { result, checkedAt: Date.now() };
+			if (generation === agentAvailabilityCacheGeneration) {
+				agentAvailabilityCache.set(cacheKey, entry);
+			}
+			return entry;
+		})
+		.finally(() => {
+			if (generation === agentAvailabilityCacheGeneration) {
+				inFlightAgentAvailabilityProbes.delete(cacheKey);
+			}
+		});
+	inFlightAgentAvailabilityProbes.set(cacheKey, probe);
+	return probe;
+}
+
+async function resolveAgentAvailability(
+	agentId: RuntimeAgentId,
+	binary: string,
+	options: ResolveAgentAvailabilityOptions = {},
+): Promise<AgentAvailability> {
 	const cacheKey = `${agentId}::${binary}`;
 	const cached = agentAvailabilityCache.get(cacheKey);
 	const now = Date.now();
 	if (cached && now - cached.checkedAt < AGENT_AVAILABILITY_TTL_MS) {
 		return cached.result;
 	}
-	const result = computeAgentAvailability(agentId, binary);
-	agentAvailabilityCache.set(cacheKey, { result, checkedAt: now });
-	return result;
+	if (cached && options.allowStale !== false) {
+		void startAvailabilityProbe(cacheKey, agentId, binary).catch((error) => {
+			log.debug("Agent availability stale refresh failed", {
+				agentId,
+				binary,
+				error: error instanceof Error ? error.message : String(error),
+			});
+		});
+		return cached.result;
+	}
+	const entry = await startAvailabilityProbe(cacheKey, agentId, binary);
+	return entry.result;
 }
 
-export function getAgentAvailability(agentId: RuntimeAgentId): AgentAvailability {
+export async function getAgentAvailability(
+	agentId: RuntimeAgentId,
+	options: ResolveAgentAvailabilityOptions = {},
+): Promise<AgentAvailability> {
 	const entry = getRuntimeLaunchSupportedAgentCatalog().find((candidate) => candidate.id === agentId);
 	if (!entry) {
 		return {
@@ -306,44 +377,50 @@ export function getAgentAvailability(agentId: RuntimeAgentId): AgentAvailability
 			statusMessage: null,
 		};
 	}
-	return resolveAgentAvailability(entry.id, entry.binary);
+	return resolveAgentAvailability(entry.id, entry.binary, options);
 }
 
-export function detectRunnableAgentIds(): RuntimeAgentId[] {
-	return getRuntimeLaunchSupportedAgentCatalog()
-		.filter((entry) => resolveAgentAvailability(entry.id, entry.binary).installed)
-		.map((entry) => entry.id);
+export async function detectRunnableAgentIds(): Promise<RuntimeAgentId[]> {
+	const entries = await Promise.all(
+		getRuntimeLaunchSupportedAgentCatalog().map(async (entry) => ({
+			entry,
+			availability: await resolveAgentAvailability(entry.id, entry.binary),
+		})),
+	);
+	return entries.filter(({ availability }) => availability.installed).map(({ entry }) => entry.id);
 }
 
 /** Build the full agent definition list for the frontend (install status, configured flag, display command). */
-function getCuratedDefinitions(runtimeConfig: RuntimeConfigState): RuntimeAgentDefinition[] {
-	return getRuntimeLaunchSupportedAgentCatalog().map((entry) => {
-		const defaultArgs = getDefaultArgs(entry.id);
-		const command = joinCommand(entry.binary, defaultArgs);
-		const availability = resolveAgentAvailability(entry.id, entry.binary);
-		return {
-			id: entry.id,
-			label: entry.label,
-			binary: entry.binary,
-			command,
-			defaultArgs,
-			status: availability.status,
-			statusMessage: availability.statusMessage,
-			installed: availability.installed,
-			configured: runtimeConfig.selectedAgentId === entry.id,
-		};
-	});
+async function getCuratedDefinitions(runtimeConfig: RuntimeConfigState): Promise<RuntimeAgentDefinition[]> {
+	return await Promise.all(
+		getRuntimeLaunchSupportedAgentCatalog().map(async (entry) => {
+			const defaultArgs = getDefaultArgs(entry.id);
+			const command = joinCommand(entry.binary, defaultArgs);
+			const availability = await resolveAgentAvailability(entry.id, entry.binary);
+			return {
+				id: entry.id,
+				label: entry.label,
+				binary: entry.binary,
+				command,
+				defaultArgs,
+				status: availability.status,
+				statusMessage: availability.statusMessage,
+				installed: availability.installed,
+				configured: runtimeConfig.selectedAgentId === entry.id,
+			};
+		}),
+	);
 }
 
 /** Resolve the user's selected agent into a launchable binary + args. Returns null if not installed. */
-export function resolveAgentCommand(runtimeConfig: RuntimeConfigState): ResolvedAgentCommand | null {
+export async function resolveAgentCommand(runtimeConfig: RuntimeConfigState): Promise<ResolvedAgentCommand | null> {
 	const selected = getRuntimeLaunchSupportedAgentCatalog().find((entry) => entry.id === runtimeConfig.selectedAgentId);
 	if (!selected) {
 		return null;
 	}
 	const defaultArgs = getDefaultArgs(selected.id);
 	const command = joinCommand(selected.binary, defaultArgs);
-	if (resolveAgentAvailability(selected.id, selected.binary).installed) {
+	if ((await resolveAgentAvailability(selected.id, selected.binary)).installed) {
 		return {
 			agentId: selected.id,
 			label: selected.label,
@@ -356,10 +433,12 @@ export function resolveAgentCommand(runtimeConfig: RuntimeConfigState): Resolved
 }
 
 /** Assemble the complete RuntimeConfigResponse sent to the frontend. */
-export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): RuntimeConfigResponse {
+export async function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): Promise<RuntimeConfigResponse> {
 	const detectedCommands = detectInstalledCommands();
-	const agents = getCuratedDefinitions(runtimeConfig);
-	const resolved = resolveAgentCommand(runtimeConfig);
+	const [agents, resolved] = await Promise.all([
+		getCuratedDefinitions(runtimeConfig),
+		resolveAgentCommand(runtimeConfig),
+	]);
 	const effectiveCommand = resolved ? joinCommand(resolved.binary, resolved.args) : null;
 
 	return {

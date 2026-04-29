@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createServer as createNetServer, Socket as NetSocket } from "node:net";
 import { Command, Option } from "commander";
@@ -11,7 +11,6 @@ import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config";
 import type { RuntimeCommandRunResponse } from "./core";
 import {
 	buildQuarterdeckRuntimeUrl,
-	createGitProcessEnv,
 	DEFAULT_QUARTERDECK_RUNTIME_PORT,
 	getQuarterdeckRuntimeHost,
 	getQuarterdeckRuntimeOrigin,
@@ -26,7 +25,7 @@ import type { RuntimeStateHub } from "./server";
 import { terminateProcessForTimeout } from "./server";
 import type { TerminalSessionManager } from "./terminal";
 import { killOrphanedAgentProcesses } from "./terminal";
-import { GIT_COMMAND_TIMEOUTS_MS } from "./workdir/git-utils";
+import { runGit } from "./workdir/git-utils";
 
 interface CliOptions {
 	noOpen: boolean;
@@ -199,15 +198,11 @@ async function pathIsDirectory(path: string): Promise<boolean> {
 	}
 }
 
-function hasGitRepository(path: string): boolean {
-	const result = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], {
-		cwd: path,
-		encoding: "utf8",
-		stdio: ["ignore", "pipe", "ignore"],
-		timeout: GIT_COMMAND_TIMEOUTS_MS.sync,
-		env: createGitProcessEnv(),
+async function hasGitRepository(path: string): Promise<boolean> {
+	const result = await runGit(path, ["rev-parse", "--is-inside-work-tree"], {
+		timeoutClass: "sync",
 	});
-	return result.status === 0 && result.stdout.trim() === "true";
+	return result.ok && result.stdout.trim() === "true";
 }
 
 function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
@@ -245,7 +240,7 @@ async function canReachQuarterdeckServer(projectId: string | null): Promise<bool
 
 async function tryOpenExistingServer(options: { noOpen: boolean; shouldAutoOpenBrowser: boolean }): Promise<boolean> {
 	let projectId: string | null = null;
-	if (hasGitRepository(process.cwd())) {
+	if (await hasGitRepository(process.cwd())) {
 		const { isUnderWorktreesHome, loadProjectContext } = await import("./state/project-state.js");
 		if (!isUnderWorktreesHome(process.cwd())) {
 			const context = await loadProjectContext(process.cwd());
@@ -452,14 +447,17 @@ async function runRuntimeStartupCleanup(
 
 function startOrphanedAgentCleanup(warn: (message: string) => void): void {
 	// Phase 3: Kill orphaned agent processes left by a previously crashed instance.
-	// Non-blocking — runs in the background while the server finishes booting.
-	killOrphanedAgentProcesses()
-		.then((killed) => {
-			if (killed > 0) {
-				warn(`Cleaned up ${killed} orphaned agent process(es) from a previous session.`);
-			}
-		})
-		.catch(() => {});
+	// Non-blocking — scheduled into the background while the server finishes booting.
+	const cleanupTimer = setTimeout(() => {
+		killOrphanedAgentProcesses()
+			.then((killed) => {
+				if (killed > 0) {
+					warn(`Cleaned up ${killed} orphaned agent process(es) from a previous session.`);
+				}
+			})
+			.catch(() => {});
+	}, 0);
+	cleanupTimer.unref?.();
 }
 
 async function createRuntimeBootstrapState(

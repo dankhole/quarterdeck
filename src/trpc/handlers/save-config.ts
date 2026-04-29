@@ -45,5 +45,5 @@ export async function handleSaveConfig(
 	setLogLevel(nextRuntimeConfig.logLevel as LogLevel);
 	effects.push(...createLogLevelBroadcastEffects(nextRuntimeConfig.logLevel as LogLevel));
 	await applyRuntimeMutationEffects(deps.broadcaster, effects);
-	return buildRuntimeConfigResponse(nextRuntimeConfig);
+	return await buildRuntimeConfigResponse(nextRuntimeConfig);
 }

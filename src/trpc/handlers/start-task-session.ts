@@ -201,7 +201,7 @@ export async function handleStartTaskSession(
 			effectiveAgentId !== scopedRuntimeConfig.selectedAgentId
 				? { ...scopedRuntimeConfig, selectedAgentId: effectiveAgentId }
 				: scopedRuntimeConfig;
-		const resolved = resolveAgentCommand(resolvedConfig);
+		const resolved = await resolveAgentCommand(resolvedConfig);
 		if (!resolved) {
 			return {
 				ok: false,

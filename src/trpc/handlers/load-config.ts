@@ -20,5 +20,5 @@ export async function handleLoadConfig(projectScope: RuntimeTrpcProjectScope | n
 	} else {
 		throw new Error("No active runtime config provider is available.");
 	}
-	return buildRuntimeConfigResponse(scopedRuntimeConfig);
+	return await buildRuntimeConfigResponse(scopedRuntimeConfig);
 }
