@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, CircleArrowDown } from "lucide-react";
 import { type ReactElement, useCallback } from "react";
 import { BaseRefLabel } from "@/components/app/base-ref-label";
 import { TopBar } from "@/components/app/top-bar";
+import { showAppToast } from "@/components/app-toaster";
 import { BranchPillTrigger, BranchSelectorPopover } from "@/components/git/panels/branch-selector-popover";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -14,6 +15,7 @@ import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { useTerminalContext } from "@/providers/terminal-provider";
 import type { PromptShortcut, RuntimeGitSyncSummary, RuntimeProjectShortcut } from "@/runtime/types";
+import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import type { ReviewTaskWorktreeSnapshot } from "@/types";
 
 interface ConnectedTopBarProps {
@@ -76,6 +78,24 @@ export function ConnectedTopBar({
 		[setBoard],
 	);
 
+	const handleResyncAgentTerminal = useCallback(() => {
+		const taskId = selectedCard?.card.id;
+		if (!taskId) {
+			return;
+		}
+		const controller = getTerminalController(taskId);
+		if (!controller?.requestRestore) {
+			showAppToast({ intent: "danger", message: "Agent terminal is not connected." });
+			return;
+		}
+		const didRequestRestore = controller.requestRestore();
+		if (!didRequestRestore) {
+			showAppToast({ intent: "danger", message: "Agent terminal is not connected." });
+			return;
+		}
+		showAppToast({ intent: "success", message: "Re-syncing agent terminal", timeout: 3000 });
+	}, [selectedCard]);
+
 	return (
 		<TopBar
 			onBack={onBack}
@@ -95,6 +115,11 @@ export function ConnectedTopBar({
 			}
 			isTerminalOpen={selectedCard ? terminal.isDetailTerminalOpen : terminal.showHomeBottomTerminal}
 			isTerminalLoading={selectedCard ? terminal.isDetailTerminalStarting : terminal.isHomeTerminalStarting}
+			onResyncAgentTerminal={
+				selectedCard && navigation.mainView === "terminal" && !shouldHideProjectDependentTopBarActions
+					? handleResyncAgentTerminal
+					: undefined
+			}
 			onOpenSettings={dialog.handleOpenSettings}
 			showDebugButton={dialog.debugModeEnabled}
 			onOpenDebugDialog={dialog.debugModeEnabled ? dialog.handleOpenDebugDialog : undefined}

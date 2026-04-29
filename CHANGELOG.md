@@ -20,6 +20,11 @@
 - Live task terminal output now batches same-kind xterm writes per frame while preserving output acknowledgements and notification text, reducing browser main-thread churn during high-volume agent output.
 - Restore snapshots, terminal resets, and local status messages still flush pending live output first and then write immediately, preserving terminal ordering around reconnect and restore paths.
 
+### Fix: make terminal re-sync easier to reach
+
+- Task terminal view top bars and shell terminal headers now expose visible re-sync controls that request a fresh server snapshot for the current terminal without opening Settings.
+- Top bars now show only the project/worktree directory name while keeping the full path available on hover, avoiding noisy hidden worktree paths in task views.
+
 ### Fix: settle task terminal reveal after restore
 
 - Task terminals now wait for pending xterm writes, resize, and bottom-scroll passes before clearing restore readiness or fallback readiness, preventing Claude sessions from becoming visible before the restored output has settled at the bottom.

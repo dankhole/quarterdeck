@@ -1,4 +1,4 @@
-import { Bug, Command, Settings, Terminal } from "lucide-react";
+import { Bug, Command, RefreshCw, Settings, Terminal } from "lucide-react";
 import { TopBarProjectShortcutControl } from "@/components/app/top-bar-project-shortcut-control";
 import { TopBarPromptShortcutControl } from "@/components/app/top-bar-prompt-shortcut-control";
 import { getTopBarScopeBorderClass, TopBarScopeSection } from "@/components/app/top-bar-scope-section";
@@ -22,6 +22,7 @@ export function TopBar({
 	onToggleTerminal,
 	isTerminalOpen,
 	isTerminalLoading,
+	onResyncAgentTerminal,
 	onOpenSettings,
 	showDebugButton,
 	onOpenDebugDialog,
@@ -51,6 +52,7 @@ export function TopBar({
 	onToggleTerminal?: () => void;
 	isTerminalOpen?: boolean;
 	isTerminalLoading?: boolean;
+	onResyncAgentTerminal?: () => void;
 	onOpenSettings?: (section?: SettingsSection) => void;
 	showDebugButton?: boolean;
 	onOpenDebugDialog?: () => void;
@@ -144,6 +146,18 @@ export function TopBar({
 							disabled={Boolean(isTerminalLoading)}
 							aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
 							className="ml-2"
+						/>
+					</Tooltip>
+				) : null}
+				{onResyncAgentTerminal ? (
+					<Tooltip side="bottom" content="Re-sync agent terminal content">
+						<Button
+							variant="ghost"
+							size="sm"
+							icon={<RefreshCw size={16} />}
+							onClick={onResyncAgentTerminal}
+							aria-label="Re-sync agent terminal content"
+							className="ml-0.5"
 						/>
 					</Tooltip>
 				) : null}

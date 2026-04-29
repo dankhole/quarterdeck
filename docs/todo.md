@@ -152,10 +152,6 @@ Rework the settings dialog so related controls are easier to scan and understand
 
 Add a VS Code-style peek preview to the search modals — when a result is highlighted (keyboard or hover), show a read-only preview of the file content alongside the result list, centered on the matched line. Avoids full navigation for scanning multiple matches. Could be a side panel within the overlay or an expandable inline preview.
 
-## Make terminal resync easier to reach
-
-Move or duplicate the "resync terminal content" action somewhere more accessible, such as the task card, task detail toolbar, or terminal surface controls, so users can recover stale terminal content without hunting through hidden or low-discoverability UI.
-
 ## Add back open in IDE button
 
 Restore an "Open in IDE" action for the relevant project/task/worktree surfaces so users can quickly jump from Quarterdeck into their configured editor without manually copying paths or opening a terminal.

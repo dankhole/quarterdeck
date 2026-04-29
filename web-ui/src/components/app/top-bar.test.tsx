@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TopBar } from "@/components/app/top-bar";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 function findButtonByText(container: HTMLElement, text: string): HTMLButtonElement | null {
 	return (Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === text) ??
@@ -152,5 +153,36 @@ describe("TopBar script shortcut onboarding", () => {
 		});
 
 		expect(onOpenSettings).toHaveBeenCalledTimes(1);
+	});
+
+	it("shows only the project directory name in the top bar path", async () => {
+		await act(async () => {
+			root.render(<TopBar projectPath="/Users/alice/.quarterdeck/worktrees/fd8c0/quarterdeck" />);
+		});
+
+		const projectPath = container.querySelector<HTMLElement>('[data-testid="project-path"]');
+		expect(projectPath?.textContent).toBe("quarterdeck");
+		expect(projectPath?.title).toBe("/Users/alice/.quarterdeck/worktrees/fd8c0/quarterdeck");
+	});
+
+	it("shows agent terminal re-sync when a handler is provided", async () => {
+		const onResyncAgentTerminal = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<TooltipProvider>
+					<TopBar selectedTaskId="task-1" onResyncAgentTerminal={onResyncAgentTerminal} />
+				</TooltipProvider>,
+			);
+		});
+
+		const resyncButton = container.querySelector<HTMLButtonElement>('[aria-label="Re-sync agent terminal content"]');
+		expect(resyncButton).toBeInstanceOf(HTMLButtonElement);
+
+		await act(async () => {
+			resyncButton?.click();
+		});
+
+		expect(onResyncAgentTerminal).toHaveBeenCalledTimes(1);
 	});
 });

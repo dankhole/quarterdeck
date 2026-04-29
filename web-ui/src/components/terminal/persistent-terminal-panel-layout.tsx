@@ -1,6 +1,6 @@
 import "@xterm/xterm/css/xterm.css";
 
-import { Command, Eraser, Maximize2, MessageSquare, Minimize2, RotateCw, X } from "lucide-react";
+import { Command, Eraser, Maximize2, MessageSquare, Minimize2, RefreshCw, RotateCw, X } from "lucide-react";
 import type { MutableRefObject, ReactElement } from "react";
 import { useMemo } from "react";
 
@@ -18,6 +18,7 @@ export interface PersistentTerminalSessionControls {
 	isLoading: boolean;
 	isStopping: boolean;
 	lastError: string | null;
+	requestRestore: () => boolean;
 	stopTerminal: () => Promise<void>;
 }
 
@@ -55,7 +56,8 @@ export function PersistentTerminalPanelLayout({
 	onToggleExpand,
 	onRestart,
 }: PersistentTerminalPanelLayoutProps): ReactElement {
-	const { containerRef, isLoading, lastError, isStopping, clearTerminal, stopTerminal } = sessionControls;
+	const { containerRef, isLoading, lastError, isStopping, clearTerminal, requestRestore, stopTerminal } =
+		sessionControls;
 	const canStop = summary?.state === "running" || summary?.state === "awaiting_review";
 	const statusLabel = useMemo(() => describeSessionState(summary), [summary]);
 	const statusTagStyle = useMemo(() => getSessionStatusBadgeStyle(summary), [summary]);
@@ -99,6 +101,15 @@ export function PersistentTerminalPanelLayout({
 						<div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
 							<Button variant="default" size="sm" onClick={clearTerminal}>
 								Clear
+							</Button>
+							<Button
+								variant="default"
+								size="sm"
+								icon={<RefreshCw size={14} />}
+								onClick={requestRestore}
+								aria-label="Re-sync terminal content"
+							>
+								Re-sync
 							</Button>
 							<Button
 								variant="default"
@@ -150,6 +161,15 @@ export function PersistentTerminalPanelLayout({
 								/>
 							</Tooltip>
 						) : null}
+						<Tooltip side="top" content="Re-sync terminal content">
+							<Button
+								icon={<RefreshCw size={12} />}
+								variant="ghost"
+								size="sm"
+								onClick={requestRestore}
+								aria-label="Re-sync terminal content"
+							/>
+						</Tooltip>
 						<Tooltip side="top" content="Clear">
 							<Button
 								icon={<Eraser size={12} />}

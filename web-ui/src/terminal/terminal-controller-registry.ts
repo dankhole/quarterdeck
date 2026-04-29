@@ -2,6 +2,7 @@ export interface TerminalController {
 	input: (text: string) => boolean;
 	paste: (text: string) => boolean;
 	focus?: () => void;
+	requestRestore?: () => boolean;
 	waitForLikelyPrompt?: (timeoutMs: number) => Promise<boolean>;
 }
 

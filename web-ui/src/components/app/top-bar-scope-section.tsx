@@ -4,11 +4,14 @@ import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
 import { formatPathForDisplay } from "@/utils/path-display";
 
-function getProjectPathSegments(path: string): string[] {
-	return path
-		.replaceAll("\\", "/")
-		.split("/")
-		.filter((segment) => segment.length > 0);
+function getProjectPathLabel(path: string): string {
+	return (
+		path
+			.replaceAll("\\", "/")
+			.split("/")
+			.filter((segment) => segment.length > 0)
+			.at(-1) ?? path
+	);
 }
 
 export function TopBarScopeSection({
@@ -35,8 +38,7 @@ export function TopBarScopeSection({
 	branchPillSlot?: React.ReactNode;
 }): React.ReactElement {
 	const displayProjectPath = projectPath ? formatPathForDisplay(projectPath) : null;
-	const projectSegments = displayProjectPath ? getProjectPathSegments(displayProjectPath) : [];
-	const hasAbsoluteLeadingSlash = Boolean(displayProjectPath?.startsWith("/"));
+	const projectPathLabel = displayProjectPath ? getProjectPathLabel(displayProjectPath) : null;
 
 	return (
 		<div className="flex flex-nowrap items-center h-10 flex-1 min-w-0 overflow-hidden gap-1.5">
@@ -65,23 +67,14 @@ export function TopBarScopeSection({
 					style={{ height: 14, width: 320, borderRadius: 3 }}
 					aria-hidden
 				/>
-			) : displayProjectPath ? (
-				<div className="shrink min-w-0 max-w-[640px] overflow-hidden">
+			) : projectPathLabel ? (
+				<div className="shrink min-w-0 max-w-[240px] overflow-hidden">
 					<span
 						className="font-mono truncate block w-full min-w-0 text-xs max-w-full text-text-secondary"
 						title={projectPath}
 						data-testid="project-path"
 					>
-						{hasAbsoluteLeadingSlash ? "/" : ""}
-						{projectSegments.map((segment, index) => {
-							const isLast = index === projectSegments.length - 1;
-							return (
-								<span key={`${segment}-${index}`}>
-									{index === 0 ? "" : "/"}
-									<span className={isLast ? "text-text-primary" : undefined}>{segment}</span>
-								</span>
-							);
-						})}
+						{projectPathLabel}
 					</span>
 				</div>
 			) : null}

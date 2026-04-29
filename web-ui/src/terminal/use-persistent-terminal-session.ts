@@ -34,6 +34,7 @@ export interface UsePersistentTerminalSessionResult {
 	isLoading: boolean;
 	isStopping: boolean;
 	clearTerminal: () => void;
+	requestRestore: () => boolean;
 	stopTerminal: () => Promise<void>;
 }
 
@@ -269,6 +270,14 @@ export function usePersistentTerminalSession({
 			input: (text) => terminalRef.current?.input(text) ?? false,
 			paste: (text) => terminalRef.current?.paste(text) ?? false,
 			focus: () => terminalRef.current?.focus(),
+			requestRestore: () => {
+				const terminal = terminalRef.current;
+				if (!terminal) {
+					return false;
+				}
+				terminal.requestRestore();
+				return true;
+			},
 			waitForLikelyPrompt: async (timeoutMs) => await (terminalRef.current?.waitForLikelyPrompt(timeoutMs) ?? false),
 		});
 	}, [taskId]);
@@ -292,12 +301,22 @@ export function usePersistentTerminalSession({
 		terminalRef.current?.clear();
 	}, []);
 
+	const requestRestore = useCallback(() => {
+		const terminal = terminalRef.current;
+		if (!terminal) {
+			return false;
+		}
+		terminal.requestRestore();
+		return true;
+	}, []);
+
 	return {
 		containerRef,
 		lastError,
 		isLoading,
 		isStopping,
 		clearTerminal,
+		requestRestore,
 		stopTerminal,
 	};
 }

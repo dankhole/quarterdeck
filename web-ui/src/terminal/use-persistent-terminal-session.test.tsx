@@ -61,7 +61,7 @@ function HookHarness({
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
 	onConnectionReady?: (taskId: string) => void;
 }) {
-	const { containerRef } = usePersistentTerminalSession({
+	const { containerRef, requestRestore } = usePersistentTerminalSession({
 		taskId,
 		projectId,
 		enabled,
@@ -72,7 +72,14 @@ function HookHarness({
 		cursorColor: "cursor-color",
 	});
 
-	return <div ref={containerRef} />;
+	return (
+		<>
+			<div ref={containerRef} />
+			<button type="button" onClick={requestRestore}>
+				Request restore
+			</button>
+		</>
+	);
 }
 
 describe("usePersistentTerminalSession", () => {
@@ -214,6 +221,46 @@ describe("usePersistentTerminalSession", () => {
 
 		expect(terminal.reset).toHaveBeenCalledTimes(1);
 		expect(terminal.requestRestore).not.toHaveBeenCalled();
+	});
+
+	it("requests a fresh restore on the mounted terminal", async () => {
+		const terminal = createTerminalSlotMock();
+		acquireTaskTerminalMock.mockReturnValue(terminal);
+
+		await act(async () => {
+			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} />);
+		});
+
+		await act(async () => {
+			container.querySelector("button")?.click();
+		});
+
+		expect(terminal.requestRestore).toHaveBeenCalledTimes(1);
+	});
+
+	it("registers terminal restore on the shared terminal controller", async () => {
+		const terminal = createTerminalSlotMock();
+		acquireTaskTerminalMock.mockReturnValue(terminal);
+
+		await act(async () => {
+			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} />);
+		});
+
+		const controller = registerTerminalControllerMock.mock.calls.at(-1)?.[1];
+		expect(controller.requestRestore()).toBe(true);
+
+		expect(terminal.requestRestore).toHaveBeenCalledTimes(1);
+	});
+
+	it("reports failed restore when no terminal is mounted", async () => {
+		await act(async () => {
+			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} enabled={false} />);
+		});
+
+		const controller = registerTerminalControllerMock.mock.calls.at(-1)?.[1];
+
+		expect(controller.requestRestore()).toBe(false);
+		expect(acquireTaskTerminalMock).not.toHaveBeenCalled();
 	});
 
 	it("uses dedicated terminal path for home shell", async () => {
