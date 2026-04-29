@@ -7,6 +7,7 @@ import { BranchPillTrigger, BranchSelectorPopover } from "@/components/git/panel
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
+import { useOpenProject } from "@/hooks/project";
 import { useBoardContext } from "@/providers/board-provider";
 import { useDialogContext } from "@/providers/dialog-provider";
 import { useGitContext } from "@/providers/git-provider";
@@ -29,6 +30,7 @@ interface ConnectedTopBarProps {
 	runPromptShortcut: (taskId: string, shortcutLabel: string) => Promise<void>;
 	selectPromptShortcutLabel: (label: string) => void;
 	navbarProjectPath: string | undefined;
+	openProjectPath: string | undefined;
 	navbarProjectHint: string | undefined;
 	navbarRuntimeHint: string | undefined;
 	shouldHideProjectDependentTopBarActions: boolean;
@@ -48,6 +50,7 @@ export function ConnectedTopBar({
 	runPromptShortcut,
 	selectPromptShortcutLabel,
 	navbarProjectPath,
+	openProjectPath,
 	navbarProjectHint,
 	navbarRuntimeHint,
 	shouldHideProjectDependentTopBarActions,
@@ -62,6 +65,11 @@ export function ConnectedTopBar({
 	const navigation = useSurfaceNavigationContext();
 	const terminal = useTerminalContext();
 	const dialog = useDialogContext();
+	const openProject = useOpenProject({
+		currentProjectId: project.currentProjectId,
+		projectPath: openProjectPath,
+		runtimePlatform: projectRuntime.runtimeProjectConfig?.runtimePlatform,
+	});
 
 	const handleUpdateBaseRef = useCallback(
 		(taskId: string, baseRef: string, pinned: boolean) => {
@@ -135,6 +143,14 @@ export function ConnectedTopBar({
 			isPromptShortcutRunning={isPromptShortcutRunning}
 			onRunPromptShortcut={runPromptShortcut}
 			onManagePromptShortcuts={() => dialog.setPromptShortcutEditorOpen(true)}
+			openTargetOptions={openProject.openTargetOptions}
+			selectedOpenTargetId={openProject.selectedOpenTargetId}
+			onSelectOpenTarget={openProject.onSelectOpenTarget}
+			onOpenProject={openProject.onOpenProject}
+			canOpenProject={
+				openProject.canOpenProject && !navbarProjectHint && Boolean(projectRuntime.runtimeProjectConfig)
+			}
+			isOpeningProject={openProject.isOpeningProject}
 			hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 			branchPillSlot={
 				git.topbarBranchLabel ? (

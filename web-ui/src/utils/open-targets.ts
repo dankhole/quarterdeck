@@ -3,6 +3,7 @@ import finderIcon from "@/assets/open-targets/finder.svg";
 import ghosttyIcon from "@/assets/open-targets/ghostty.svg";
 import intellijIdeaIcon from "@/assets/open-targets/intellijidea.svg";
 import iterm2Icon from "@/assets/open-targets/iterm2.svg";
+import riderIcon from "@/assets/open-targets/rider.svg";
 import terminalIcon from "@/assets/open-targets/terminal.svg";
 import vscodeIcon from "@/assets/open-targets/vscode.svg";
 import warpIcon from "@/assets/open-targets/warp.svg";
@@ -27,6 +28,7 @@ export type OpenTargetId =
 	| "warp"
 	| "xcode"
 	| "intellijidea"
+	| "rider"
 	| "zed";
 
 export interface OpenTargetOption {
@@ -94,6 +96,11 @@ const OPEN_TARGET_OPTIONS: readonly OpenTargetOption[] = [
 		iconSrc: intellijIdeaIcon,
 	},
 	{
+		id: "rider",
+		label: "Rider",
+		iconSrc: riderIcon,
+	},
+	{
 		id: "zed",
 		label: "Zed",
 		iconSrc: zedIcon,
@@ -112,11 +119,12 @@ const OPEN_TARGET_IDS_BY_PLATFORM: Record<OpenTargetPlatform, readonly OpenTarge
 		"warp",
 		"xcode",
 		"intellijidea",
+		"rider",
 		"vscode-insiders",
 		"zed",
 	],
-	windows: ["vscode", "cursor", "windsurf", "finder", "vscode-insiders", "zed"],
-	linux: ["vscode", "cursor", "windsurf", "finder", "vscode-insiders", "zed"],
+	windows: ["vscode", "cursor", "windsurf", "finder", "rider", "vscode-insiders", "zed"],
+	linux: ["vscode", "cursor", "windsurf", "finder", "rider", "vscode-insiders", "zed"],
 	other: ["vscode", "vscode-insiders", "finder"],
 };
 
@@ -180,6 +188,9 @@ export function normalizeOpenTargetId(value: string | null): OpenTargetId | null
 	if (value === "intellij_idea") {
 		return "intellijidea";
 	}
+	if (value === "jetbrains_rider") {
+		return "rider";
+	}
 	if (isOpenTargetId(value)) {
 		return value;
 	}
@@ -227,6 +238,9 @@ function buildOpenLinuxCommand(targetId: OpenTargetId, path: string): string {
 	if (targetId === "zed") {
 		return `zed ${quotedPath}`;
 	}
+	if (targetId === "rider") {
+		return `rider ${quotedPath}`;
+	}
 	return `xdg-open ${quotedPath}`;
 }
 
@@ -249,6 +263,9 @@ function buildOpenWindowsCommand(targetId: OpenTargetId, path: string): string {
 	}
 	if (targetId === "zed") {
 		return `zed ${quotedPath}`;
+	}
+	if (targetId === "rider") {
+		return `rider ${quotedPath}`;
 	}
 	return `explorer ${quotedPath}`;
 }
@@ -335,6 +352,9 @@ export function buildOpenCommand(targetId: OpenTargetId, path: string, platform:
 	}
 	if (targetId === "intellijidea") {
 		return buildOpenAppCommand(path, "IntelliJ IDEA", "IntelliJ IDEA CE");
+	}
+	if (targetId === "rider") {
+		return buildOpenAppCommand(path, "Rider", "JetBrains Rider");
 	}
 	return buildOpenAppCommand(path, "Zed");
 }

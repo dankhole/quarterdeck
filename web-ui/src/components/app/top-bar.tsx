@@ -1,4 +1,5 @@
 import { Bug, Command, RefreshCw, Settings, Terminal } from "lucide-react";
+import { TopBarOpenProjectControl } from "@/components/app/top-bar-open-project-control";
 import { TopBarProjectShortcutControl } from "@/components/app/top-bar-project-shortcut-control";
 import { TopBarPromptShortcutControl } from "@/components/app/top-bar-prompt-shortcut-control";
 import { getTopBarScopeBorderClass, TopBarScopeSection } from "@/components/app/top-bar-scope-section";
@@ -6,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { PromptShortcut, RuntimeProjectShortcut } from "@/runtime/types";
+import type { OpenTargetId, OpenTargetOption } from "@/utils/open-targets";
 import { isMacPlatform } from "@/utils/platform";
 
 type SettingsSection = "shortcuts";
@@ -38,6 +40,12 @@ export function TopBar({
 	isPromptShortcutRunning,
 	onRunPromptShortcut,
 	onManagePromptShortcuts,
+	openTargetOptions,
+	selectedOpenTargetId,
+	onSelectOpenTarget,
+	onOpenProject,
+	canOpenProject,
+	isOpeningProject,
 	selectedTaskId,
 	hideProjectDependentActions = false,
 	branchPillSlot,
@@ -68,6 +76,12 @@ export function TopBar({
 	isPromptShortcutRunning?: boolean;
 	onRunPromptShortcut?: (taskId: string, shortcutLabel: string) => void;
 	onManagePromptShortcuts?: () => void;
+	openTargetOptions?: readonly OpenTargetOption[];
+	selectedOpenTargetId?: OpenTargetId;
+	onSelectOpenTarget?: (targetId: OpenTargetId) => void;
+	onOpenProject?: () => void;
+	canOpenProject?: boolean;
+	isOpeningProject?: boolean;
 	selectedTaskId?: string | null;
 	hideProjectDependentActions?: boolean;
 	branchPillSlot?: React.ReactNode;
@@ -102,6 +116,21 @@ export function TopBar({
 				branchPillSlot={branchPillSlot}
 			/>
 			<div className="flex flex-nowrap items-center h-10 pr-0.5 shrink-0">
+				{!hideProjectDependentActions &&
+				projectPath &&
+				openTargetOptions &&
+				selectedOpenTargetId &&
+				onSelectOpenTarget &&
+				onOpenProject ? (
+					<TopBarOpenProjectControl
+						options={openTargetOptions}
+						selectedOptionId={selectedOpenTargetId}
+						disabled={!canOpenProject || Boolean(isOpeningProject) || isProjectPathLoading}
+						loading={Boolean(isOpeningProject)}
+						onOpen={onOpenProject}
+						onSelectOption={onSelectOpenTarget}
+					/>
+				) : null}
 				{!hideProjectDependentActions ? (
 					<TopBarProjectShortcutControl
 						shortcuts={shortcuts}

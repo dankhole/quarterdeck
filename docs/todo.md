@@ -152,10 +152,6 @@ Rework the settings dialog so related controls are easier to scan and understand
 
 Add a VS Code-style peek preview to the search modals — when a result is highlighted (keyboard or hover), show a read-only preview of the file content alongside the result list, centered on the matched line. Avoids full navigation for scanning multiple matches. Could be a side panel within the overlay or an expandable inline preview.
 
-## Add back open in IDE button
-
-Restore an "Open in IDE" action for the relevant project/task/worktree surfaces so users can quickly jump from Quarterdeck into their configured editor without manually copying paths or opening a terminal.
-
 ## Add clarification when multiple worktrees share the same detached HEAD hash
 
 When tasks are created without a feature branch, their worktrees are all detached at the same base commit. The status bar, card branch pill, and branch dropdown all show the same short commit hash, which looks like a bug. Add a tooltip or subtle label at these display points explaining that the worktrees are independent copies detached from the same base ref — changes in one won't affect others. Consider showing "detached from {baseRef}" instead of just the raw hash.

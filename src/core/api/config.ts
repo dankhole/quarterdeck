@@ -3,6 +3,8 @@ import { promptShortcutSchema, runtimeAgentIdSchema, runtimeProjectShortcutSchem
 
 export const runtimeAgentInstallStatusSchema = z.enum(["installed", "upgrade_required", "missing"]);
 export type RuntimeAgentInstallStatus = z.infer<typeof runtimeAgentInstallStatusSchema>;
+export const runtimeOpenTargetPlatformSchema = z.enum(["mac", "windows", "linux", "other"]);
+export type RuntimeOpenTargetPlatform = z.infer<typeof runtimeOpenTargetPlatformSchema>;
 
 export const runtimeAgentDefinitionSchema = z.object({
 	id: runtimeAgentIdSchema,
@@ -19,6 +21,7 @@ export type RuntimeAgentDefinition = z.infer<typeof runtimeAgentDefinitionSchema
 
 export const runtimeConfigResponseSchema = z.object({
 	selectedAgentId: runtimeAgentIdSchema,
+	runtimePlatform: runtimeOpenTargetPlatformSchema,
 	selectedShortcutLabel: z.string().nullable(),
 	debugModeEnabled: z.boolean().optional(),
 	effectiveCommand: z.string().nullable(),

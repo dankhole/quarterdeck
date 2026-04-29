@@ -12,6 +12,7 @@ describe("open-targets", () => {
 		const windowsOptions = getOpenTargetOptions("windows");
 		expect(windowsOptions.some((option) => option.id === "iterm2")).toBe(false);
 		expect(windowsOptions.some((option) => option.id === "xcode")).toBe(false);
+		expect(windowsOptions.some((option) => option.id === "rider")).toBe(true);
 		expect(windowsOptions.some((option) => option.id === "vscode-insiders")).toBe(true);
 		expect(windowsOptions.some((option) => option.id === "finder")).toBe(true);
 	});
@@ -79,9 +80,14 @@ describe("open-targets (new coverage)", () => {
 			expect(normalizeOpenTargetId("intellij_idea")).toBe("intellijidea");
 		});
 
+		it("normalizes 'jetbrains_rider' to 'rider'", () => {
+			expect(normalizeOpenTargetId("jetbrains_rider")).toBe("rider");
+		});
+
 		it("passes through valid ids unchanged", () => {
 			expect(normalizeOpenTargetId("vscode")).toBe("vscode");
 			expect(normalizeOpenTargetId("cursor")).toBe("cursor");
+			expect(normalizeOpenTargetId("rider")).toBe("rider");
 			expect(normalizeOpenTargetId("zed")).toBe("zed");
 		});
 	});
@@ -145,6 +151,10 @@ describe("open-targets (new coverage)", () => {
 			expect(buildOpenCommand("zed", "/repo", "linux")).toBe("zed '/repo'");
 		});
 
+		it("builds rider command", () => {
+			expect(buildOpenCommand("rider", "/repo", "linux")).toBe("rider '/repo'");
+		});
+
 		it("builds code-insiders command", () => {
 			expect(buildOpenCommand("vscode-insiders", "/repo", "linux")).toBe("code-insiders '/repo'");
 		});
@@ -165,6 +175,10 @@ describe("open-targets (new coverage)", () => {
 
 		it("builds zed command", () => {
 			expect(buildOpenCommand("zed", "C:\\repo", "windows")).toBe('zed "C:\\repo"');
+		});
+
+		it("builds rider command", () => {
+			expect(buildOpenCommand("rider", "C:\\repo", "windows")).toBe('rider "C:\\repo"');
 		});
 	});
 
@@ -200,6 +214,12 @@ describe("open-targets (new coverage)", () => {
 		it("builds intellij command with fallback", () => {
 			expect(buildOpenCommand("intellijidea", "/repo", "mac")).toBe(
 				"(open -a 'IntelliJ IDEA' '/repo' || open -a 'IntelliJ IDEA CE' '/repo')",
+			);
+		});
+
+		it("builds rider command with fallback", () => {
+			expect(buildOpenCommand("rider", "/repo", "mac")).toBe(
+				"(open -a 'Rider' '/repo' || open -a 'JetBrains Rider' '/repo')",
 			);
 		});
 

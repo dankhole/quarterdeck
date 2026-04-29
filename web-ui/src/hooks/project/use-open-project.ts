@@ -9,6 +9,7 @@ import {
 	normalizeOpenTargetId,
 	type OpenTargetId,
 	type OpenTargetOption,
+	type OpenTargetPlatform,
 	PREFERRED_OPEN_TARGET_STORAGE_KEY,
 	resolveOpenTargetPlatform,
 } from "@/utils/open-targets";
@@ -18,6 +19,7 @@ import { toErrorMessage } from "@/utils/to-error-message";
 interface UseOpenProjectParams {
 	currentProjectId: string | null;
 	projectPath?: string;
+	runtimePlatform?: OpenTargetPlatform | null;
 }
 
 interface UseOpenProjectResult {
@@ -38,8 +40,12 @@ function getFirstOutputLine(output: string): string | null {
 	);
 }
 
-export function useOpenProject({ currentProjectId, projectPath }: UseOpenProjectParams): UseOpenProjectResult {
-	const openTargetPlatform = resolveOpenTargetPlatform();
+export function useOpenProject({
+	currentProjectId,
+	projectPath,
+	runtimePlatform,
+}: UseOpenProjectParams): UseOpenProjectResult {
+	const openTargetPlatform = runtimePlatform ?? resolveOpenTargetPlatform();
 	const openTargetOptions = useMemo(() => getOpenTargetOptions(openTargetPlatform), [openTargetPlatform]);
 	const fallbackTargetId = openTargetOptions[0]?.id ?? "vscode";
 	const [preferredOpenTargetId, setPreferredOpenTargetId] = useRawLocalStorageValue<OpenTargetId>(

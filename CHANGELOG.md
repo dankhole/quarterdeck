@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Feature: restore Open in IDE
+
+- The top bar now has an Open button before project script shortcuts, using the current project path or the selected task's assigned worktree path.
+- Added Rider as an open target alongside the existing editor and system targets.
+- Open target commands now use the runtime host platform and stay disabled for isolated tasks until their worktree exists.
+
 ### Fix: improve file browser source selection
 
 - File browser source panes now use a selectable full-file text layer over the virtualized syntax view, so code selection and native copy no longer depend on only the mounted rows.

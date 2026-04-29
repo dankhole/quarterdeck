@@ -473,6 +473,19 @@ export async function resolveAgentCommand(runtimeConfig: RuntimeConfigState): Pr
 	return null;
 }
 
+function resolveRuntimeOpenTargetPlatform(platform: NodeJS.Platform): RuntimeConfigResponse["runtimePlatform"] {
+	if (platform === "darwin") {
+		return "mac";
+	}
+	if (platform === "win32") {
+		return "windows";
+	}
+	if (platform === "linux") {
+		return "linux";
+	}
+	return "other";
+}
+
 /** Assemble the complete RuntimeConfigResponse sent to the frontend. */
 export async function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): Promise<RuntimeConfigResponse> {
 	const detectedCommands = detectInstalledCommands();
@@ -487,6 +500,7 @@ export async function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigSta
 		...extractGlobalConfigFields(runtimeConfig),
 		// Special fields
 		selectedAgentId: runtimeConfig.selectedAgentId,
+		runtimePlatform: resolveRuntimeOpenTargetPlatform(process.platform),
 		selectedShortcutLabel: runtimeConfig.selectedShortcutLabel,
 		debugModeEnabled: isRuntimeDebugModeEnabled(),
 		effectiveCommand,

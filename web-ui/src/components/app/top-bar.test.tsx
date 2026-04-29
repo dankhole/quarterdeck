@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TopBar } from "@/components/app/top-bar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import type { OpenTargetOption } from "@/utils/open-targets";
 
 function findButtonByText(container: HTMLElement, text: string): HTMLButtonElement | null {
 	return (Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === text) ??
@@ -20,6 +21,13 @@ describe("TopBar script shortcut onboarding", () => {
 	let container: HTMLDivElement;
 	let root: Root;
 	let previousActEnvironment: boolean | undefined;
+	const openTargetOptions: readonly OpenTargetOption[] = [
+		{
+			id: "vscode",
+			label: "VS Code",
+			iconSrc: "/vscode.svg",
+		},
+	];
 
 	beforeEach(() => {
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
@@ -92,6 +100,60 @@ describe("TopBar script shortcut onboarding", () => {
 			icon: "play",
 		});
 		expect(onRunShortcut).not.toHaveBeenCalled();
+	});
+
+	it("places Open in IDE before the script shortcut and runs the open action", async () => {
+		const onOpenProject = vi.fn();
+		const onRunShortcut = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<TopBar
+					projectPath="/repo"
+					openTargetOptions={openTargetOptions}
+					selectedOpenTargetId="vscode"
+					onSelectOpenTarget={() => {}}
+					onOpenProject={onOpenProject}
+					canOpenProject
+					isOpeningProject={false}
+					shortcuts={[{ label: "Run", command: "npm run dev", icon: "play" }]}
+					onRunShortcut={onRunShortcut}
+				/>,
+			);
+		});
+
+		const buttons = Array.from(container.querySelectorAll("button"));
+		const openButton = container.querySelector('[aria-label="Open in VS Code"]') as HTMLButtonElement | null;
+		const runButton = findButtonByText(container, "Run");
+		expect(openButton).toBeInstanceOf(HTMLButtonElement);
+		expect(runButton).toBeInstanceOf(HTMLButtonElement);
+		expect(buttons.indexOf(openButton as HTMLButtonElement)).toBeLessThan(
+			buttons.indexOf(runButton as HTMLButtonElement),
+		);
+
+		await act(async () => {
+			openButton?.click();
+		});
+
+		expect(onOpenProject).toHaveBeenCalledTimes(1);
+		expect(onRunShortcut).not.toHaveBeenCalled();
+	});
+
+	it("hides Open in IDE when no project path is available", async () => {
+		await act(async () => {
+			root.render(
+				<TopBar
+					openTargetOptions={openTargetOptions}
+					selectedOpenTargetId="vscode"
+					onSelectOpenTarget={() => {}}
+					onOpenProject={() => {}}
+					canOpenProject={false}
+					isOpeningProject={false}
+				/>,
+			);
+		});
+
+		expect(container.querySelector('[aria-label="Open in VS Code"]')).toBeNull();
 	});
 
 	it("shows prompt shortcut button when a task is selected and shortcuts are configured", async () => {

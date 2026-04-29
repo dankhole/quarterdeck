@@ -30,6 +30,12 @@ const missingRepositoryInfo: RuntimeTaskRepositoryInfoResponse = {
 	headCommit: null,
 };
 
+const existingRepositoryInfo: RuntimeTaskRepositoryInfoResponse = {
+	...missingRepositoryInfo,
+	exists: true,
+	branch: "task-branch",
+};
+
 describe("useNavbarState", () => {
 	let container: HTMLDivElement;
 	let root: Root;
@@ -93,6 +99,45 @@ describe("useNavbarState", () => {
 
 		expect(result.navbarProjectPath).toBe("/repo");
 		expect(result.navbarProjectHint).toBeUndefined();
+	});
+
+	it("uses the project root as the open path for shared-checkout tasks", () => {
+		const result = renderHook({
+			selectedCard: createSelection(false),
+			selectedTaskRepositoryInfo: existingRepositoryInfo,
+		});
+
+		expect(result.activeProjectPath).toBe("/repo");
+		expect(result.openProjectPath).toBe("/repo");
+	});
+
+	it("uses the assigned task worktree as the open path for isolated tasks", () => {
+		const result = renderHook({
+			selectedCard: createSelection(true),
+			selectedTaskRepositoryInfo: existingRepositoryInfo,
+		});
+
+		expect(result.activeProjectPath).toBe("/repo/.quarterdeck/worktrees/task-1");
+		expect(result.openProjectPath).toBe("/repo/.quarterdeck/worktrees/task-1");
+	});
+
+	it("does not fall back to the project root for isolated tasks without repository metadata", () => {
+		const result = renderHook({
+			selectedCard: createSelection(true),
+			selectedTaskRepositoryInfo: null,
+		});
+
+		expect(result.activeProjectPath).toBe("/repo");
+		expect(result.openProjectPath).toBeUndefined();
+	});
+
+	it("does not open missing isolated task worktrees", () => {
+		const result = renderHook({
+			selectedCard: createSelection(true),
+			selectedTaskRepositoryInfo: missingRepositoryInfo,
+		});
+
+		expect(result.openProjectPath).toBeUndefined();
 	});
 
 	it("shows a missing-worktree hint for isolated tasks", () => {

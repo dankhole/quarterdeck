@@ -267,6 +267,20 @@ describe("agent-registry", () => {
 });
 
 describe("buildRuntimeConfigResponse", () => {
+	it("reports the runtime host platform for browser open-target commands", async () => {
+		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState());
+		const expectedPlatform =
+			process.platform === "darwin"
+				? "mac"
+				: process.platform === "win32"
+					? "windows"
+					: process.platform === "linux"
+						? "linux"
+						: "other";
+
+		expect(response.runtimePlatform).toBe(expectedPlatform);
+	});
+
 	it("includes curated agent definitions with empty default args", async () => {
 		const config = createTestRuntimeConfigState();
 

@@ -326,20 +326,25 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		setSidePanelRatio: navigation.setSidePanelRatio,
 	});
 
-	const { navbarProjectPath, navbarProjectHint, navbarRuntimeHint, shouldHideProjectDependentTopBarActions } =
-		useNavbarState({
-			selectedCard,
-			selectedTaskRepositoryInfo,
-			selectedTaskWorktreeSnapshot: selectedTaskWorktreeSnapshot,
-			projectPath: project.projectPath,
-			shouldUseNavigationPath: shouldUseNavigationPath,
-			navigationProjectPath: navigationProjectPath,
-			runtimeProjectConfig: projectRuntime.runtimeProjectConfig,
-			hasNoProjects: project.hasNoProjects,
-			isProjectSwitching: project.isProjectSwitching,
-			isAwaitingProjectSnapshot: isAwaitingProjectSnapshot,
-			isProjectMetadataPending: project.isProjectMetadataPending,
-		});
+	const {
+		openProjectPath,
+		navbarProjectPath,
+		navbarProjectHint,
+		navbarRuntimeHint,
+		shouldHideProjectDependentTopBarActions,
+	} = useNavbarState({
+		selectedCard,
+		selectedTaskRepositoryInfo,
+		selectedTaskWorktreeSnapshot: selectedTaskWorktreeSnapshot,
+		projectPath: project.projectPath,
+		shouldUseNavigationPath: shouldUseNavigationPath,
+		navigationProjectPath: navigationProjectPath,
+		runtimeProjectConfig: projectRuntime.runtimeProjectConfig,
+		hasNoProjects: project.hasNoProjects,
+		isProjectSwitching: project.isProjectSwitching,
+		isAwaitingProjectSnapshot: isAwaitingProjectSnapshot,
+		isProjectMetadataPending: project.isProjectMetadataPending,
+	});
 
 	// Destructure taskEditor for JSX usage
 	const {
@@ -389,6 +394,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 			runPromptShortcut={runPromptShortcut}
 			selectPromptShortcutLabel={selectPromptShortcutLabel}
 			navbarProjectPath={navbarProjectPath}
+			openProjectPath={openProjectPath}
 			navbarProjectHint={navbarProjectHint}
 			navbarRuntimeHint={navbarRuntimeHint}
 			shouldHideProjectDependentTopBarActions={shouldHideProjectDependentTopBarActions}

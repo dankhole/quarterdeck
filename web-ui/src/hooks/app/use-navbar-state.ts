@@ -20,6 +20,7 @@ interface UseNavbarStateInput {
 
 interface UseNavbarStateResult {
 	activeProjectPath: string | undefined;
+	openProjectPath: string | undefined;
 	activeProjectHint: string | undefined;
 	navbarProjectPath: string | undefined;
 	navbarProjectHint: string | undefined;
@@ -68,6 +69,15 @@ export function useNavbarState({
 		: shouldUseNavigationPath
 			? (navigationProjectPath ?? undefined)
 			: (projectPath ?? undefined);
+	const openProjectPath = selectedCard
+		? selectedCard.card.useWorktree === false
+			? (projectPath ?? undefined)
+			: selectedTaskRepositoryInfo?.exists === true
+				? (selectedTaskIdentity?.assignedPath ?? undefined)
+				: undefined
+		: shouldUseNavigationPath
+			? (navigationProjectPath ?? undefined)
+			: (projectPath ?? undefined);
 
 	const activeProjectHint = useMemo(() => {
 		if (!selectedCard) {
@@ -93,6 +103,7 @@ export function useNavbarState({
 
 	return {
 		activeProjectPath,
+		openProjectPath,
 		activeProjectHint,
 		navbarProjectPath,
 		navbarProjectHint,
