@@ -54,13 +54,13 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 
 ## Editor-lite file editing surface
 
-Build an editor-lite path around the existing file browser, git diff, and task review surfaces so Quarterdeck can make small review-time edits without trying to become a full IDE. Evaluate Monaco, CodeMirror 6, and Eclipse Theia as implementation options:
+Build an editor-lite path around the existing file browser, git diff, and task review surfaces so Quarterdeck can make small review-time edits without trying to become a full IDE.
 
-- **Monaco** — likely the best fit for VS Code-like editing inside the current React web UI.
-- **CodeMirror 6** — a lighter embedded editor option if custom review workflows matter more than VS Code parity.
-- **Eclipse Theia** — a re-platforming candidate only if Quarterdeck deliberately chooses a full IDE shell; treat it as a larger architectural fork, not a drop-in widget.
+The current handoff recommendation is to POC CodeMirror 6 behind a narrow editor adapter, while keeping Monaco swappable later if VS Code-like editor depth becomes important. Do not replace the existing file browser, Git compare/diff tabs, or custom review surfaces as part of the first pass.
 
 Scope the first pass to editable file tabs, dirty/save/reload state, search/replace, keyboard shortcuts, selection and diff-hunk context, and "send selection to active agent" prompts. Defer full IDE features such as language server management, debugger integration, extension marketplaces, and remote/dev-container support unless this becomes a deliberate product direction.
+
+**Handoff context:** [docs/editor-lite-file-editing.md](./editor-lite-file-editing.md)
 
 ## General performance audit
 
