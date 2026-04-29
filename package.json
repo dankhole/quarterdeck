@@ -57,6 +57,7 @@
     "web:build": "npm --prefix web-ui run build",
     "web:typecheck": "npm --prefix web-ui run typecheck",
     "web:test": "npm --prefix web-ui run test",
+    "web:e2e": "npm --prefix web-ui run e2e",
     "check:agent-instructions": "node scripts/check-agent-instructions.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "npx @biomejs/biome lint src test web-ui/src web-ui/tests vitest.config.ts web-ui/vite.config.ts web-ui/vitest.config.ts web-ui/playwright.config.ts",

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Chore: refresh web e2e smoke tests
+
+- Playwright web smoke tests now launch an isolated Quarterdeck runtime with disposable state, so e2e runs no longer depend on or mutate a developer's active runtime.
+- Updated the smoke coverage for the current onboarding, task creation, backlog inline editing, board column, and settings-dialog flows.
+
 ### Chore: remove synchronous git helper export
 
 - Removed the obsolete `runGitSync` workdir helper/export so future runtime code cannot accidentally reintroduce synchronous git subprocesses through the shared API.

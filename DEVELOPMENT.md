@@ -28,6 +28,7 @@ npm run test             # All runtime tests
 npm run test:fast        # Runtime + utility tests only
 npm run test:integration # Integration tests only
 npm run web:test         # Web UI unit tests
+npm run web:e2e          # Web UI Playwright smoke tests with isolated runtime state
 npm run web:typecheck    # Web UI typecheck
 npm run typecheck        # Runtime typecheck
 npm run lint             # Biome lint
@@ -182,6 +183,7 @@ npm run unlink
 - `npm run dogfood -- [--project <path>] [--port <number|auto>] [--no-open] [--skip-build]`: build and launch this checkout, optionally targeting a specific project path
 - `npm run dev`: run CLI in watch mode
 - `npm run web:dev`: run web UI dev server
+- `npm run web:e2e`: run Playwright smoke tests against a disposable runtime and git fixture
 - `npm run web:build`: build web UI
 - `npm run typecheck`: typecheck runtime
 - `npm run web:typecheck`: typecheck web UI

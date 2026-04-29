@@ -6,6 +6,8 @@ import { defineConfig, type Plugin, type ResolvedConfig, transformWithEsbuild } 
 
 const rootPkg = JSON.parse(readFileSync(resolve(__dirname, "../package.json"), "utf-8")) as { version: string };
 const XTERM_CHUNK_NAME = "xterm-vendor";
+const runtimeProxyPort = process.env.QUARTERDECK_E2E_RUNTIME_PORT ?? process.env.QUARTERDECK_RUNTIME_PORT ?? "3500";
+const runtimeProxyTarget = `http://127.0.0.1:${runtimeProxyPort}`;
 
 function isXtermModule(id: string): boolean {
 	return id.includes("/node_modules/@xterm/") || id.includes("\\node_modules\\@xterm\\");
@@ -96,7 +98,7 @@ export default defineConfig({
 		strictPort: true,
 		proxy: {
 			"/api": {
-				target: "http://127.0.0.1:3500",
+				target: runtimeProxyTarget,
 				changeOrigin: true,
 				ws: true,
 			},
