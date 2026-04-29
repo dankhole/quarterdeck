@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildCodexHooksConfig } from "../../../src/codex-hooks";
 import { prepareAgentLaunch } from "../../../src/terminal";
+import { QUARTERDECK_PI_HOOK_COMMAND_ENV } from "../../../src/terminal/pi-lifecycle-extension";
 
 const buildWorktreeContextPromptMock = vi.hoisted(() => vi.fn().mockResolvedValue(""));
 vi.mock("../../../src/terminal/worktree-context.js", () => ({
@@ -19,10 +20,17 @@ let tempHome: string | null = null;
 const originalArgv = [...process.argv];
 const originalExecArgv = [...process.execArgv];
 const originalExecPath = process.execPath;
+const originalQuarterdeckStateHome = process.env.QUARTERDECK_STATE_HOME;
+const originalAnthropicBedrockBaseUrl = process.env.ANTHROPIC_BEDROCK_BASE_URL;
+const originalAnthropicAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
+const originalAwsEndpointUrlBedrockRuntime = process.env.AWS_ENDPOINT_URL_BEDROCK_RUNTIME;
+const originalAwsBearerTokenBedrock = process.env.AWS_BEARER_TOKEN_BEDROCK;
+const originalAwsRegion = process.env.AWS_REGION;
 
 function setupTempHome(): string {
 	tempHome = mkdtempSync(join(tmpdir(), "quarterdeck-agent-adapters-"));
 	process.env.HOME = tempHome;
+	delete process.env.QUARTERDECK_STATE_HOME;
 	return tempHome;
 }
 
@@ -52,6 +60,36 @@ afterEach(() => {
 		configurable: true,
 		value: originalExecPath,
 	});
+	if (originalQuarterdeckStateHome === undefined) {
+		delete process.env.QUARTERDECK_STATE_HOME;
+	} else {
+		process.env.QUARTERDECK_STATE_HOME = originalQuarterdeckStateHome;
+	}
+	if (originalAnthropicBedrockBaseUrl === undefined) {
+		delete process.env.ANTHROPIC_BEDROCK_BASE_URL;
+	} else {
+		process.env.ANTHROPIC_BEDROCK_BASE_URL = originalAnthropicBedrockBaseUrl;
+	}
+	if (originalAnthropicAuthToken === undefined) {
+		delete process.env.ANTHROPIC_AUTH_TOKEN;
+	} else {
+		process.env.ANTHROPIC_AUTH_TOKEN = originalAnthropicAuthToken;
+	}
+	if (originalAwsEndpointUrlBedrockRuntime === undefined) {
+		delete process.env.AWS_ENDPOINT_URL_BEDROCK_RUNTIME;
+	} else {
+		process.env.AWS_ENDPOINT_URL_BEDROCK_RUNTIME = originalAwsEndpointUrlBedrockRuntime;
+	}
+	if (originalAwsBearerTokenBedrock === undefined) {
+		delete process.env.AWS_BEARER_TOKEN_BEDROCK;
+	} else {
+		process.env.AWS_BEARER_TOKEN_BEDROCK = originalAwsBearerTokenBedrock;
+	}
+	if (originalAwsRegion === undefined) {
+		delete process.env.AWS_REGION;
+	} else {
+		process.env.AWS_REGION = originalAwsRegion;
+	}
 });
 
 describe("prepareAgentLaunch hook strategies", () => {
@@ -207,6 +245,112 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeConversation: true,
 		});
 		expect(claudeLaunch.args).toContain("--continue");
+	});
+
+	it("launches Pi through the configured system CLI without bundled environment aliases", async () => {
+		setupTempHome();
+		process.env.ANTHROPIC_BEDROCK_BASE_URL = "https://bedrock.example.test";
+		process.env.ANTHROPIC_AUTH_TOKEN = "anthropic-token";
+		delete process.env.AWS_ENDPOINT_URL_BEDROCK_RUNTIME;
+		delete process.env.AWS_BEARER_TOKEN_BEDROCK;
+		delete process.env.AWS_REGION;
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "Try the Pi TUI",
+		});
+
+		expect(launch.binary).toBe("pi");
+		expect(launch.args).toEqual(["Try the Pi TUI"]);
+		expect(launch.env.PI_OFFLINE).toBeUndefined();
+		expect(launch.env.PI_CODING_AGENT_DIR).toBeUndefined();
+		expect(launch.env.AWS_ENDPOINT_URL_BEDROCK_RUNTIME).toBeUndefined();
+		expect(launch.env.AWS_BEARER_TOKEN_BEDROCK).toBeUndefined();
+		expect(launch.env.AWS_REGION).toBeUndefined();
+	});
+
+	it("loads the Quarterdeck Pi lifecycle extension when hook context is available", async () => {
+		const tempHomePath = setupTempHome();
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "Try the Pi TUI",
+			projectId: "project-1",
+		});
+
+		const extensionPath = join(tempHomePath, ".quarterdeck", "hooks", "pi", "quarterdeck-lifecycle.js");
+		expect(launch.args).toEqual(["--extension", extensionPath, "Try the Pi TUI"]);
+		expect(launch.env.QUARTERDECK_HOOK_TASK_ID).toBe("task-pi");
+		expect(launch.env.QUARTERDECK_HOOK_PROJECT_ID).toBe("project-1");
+		const hookCommand = JSON.parse(launch.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] ?? "[]") as string[];
+		expect(hookCommand).toEqual(expect.arrayContaining(["hooks", "notify"]));
+		const extensionSource = readFileSync(extensionPath, "utf8");
+		expect(extensionSource).toContain('pi.on("agent_end"');
+		expect(extensionSource).toContain('pi.on("input"');
+		expect(extensionSource).toContain('pi.on("tool_call"');
+		expect(extensionSource).toContain("PermissionRequest");
+		expect(extensionSource).toContain("enqueueDurableHook");
+		expect(extensionSource).toContain("detached: !waitForExit");
+		expect(extensionSource).toContain(QUARTERDECK_PI_HOOK_COMMAND_ENV);
+		expect(extensionSource).not.toContain("\\${");
+	});
+
+	it("uses a stored Pi session id for resume when available", async () => {
+		setupTempHome();
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "Continue the task",
+			resumeConversation: true,
+			resumeSessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
+		});
+
+		expect(launch.args).toEqual(["--session", "019d6fa0-db65-7f83-9531-35df54674d76", "Continue the task"]);
+		expect(launch.args).not.toContain("--continue");
+	});
+
+	it("falls back to Pi --continue when no stored session id is available", async () => {
+		setupTempHome();
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeConversation: true,
+		});
+
+		expect(launch.args).toEqual(["--continue"]);
+	});
+
+	it("preserves custom Pi args without forcing extension suppression", async () => {
+		setupTempHome();
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi",
+			agentId: "pi",
+			binary: "pi",
+			args: ["--model", "sonnet"],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		expect(launch.binary).toBe("pi");
+		expect(launch.args).toEqual(["--model", "sonnet"]);
 	});
 });
 

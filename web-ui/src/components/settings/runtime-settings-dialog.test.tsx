@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RuntimeSettingsDialog } from "@/components/settings/runtime-settings-dialog";
 import type { RuntimeConfigResponse, RuntimeConfigSaveRequest } from "@/runtime/types";
-import { createTestRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
+import { createTestAgentDef, createTestRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
 
 const resetLayoutCustomizationsMock = vi.hoisted(() => vi.fn());
 const saveMock = vi.hoisted(() => vi.fn(async () => true));
@@ -151,6 +151,27 @@ describe("RuntimeSettingsDialog", () => {
 		const checkbox = document.body.querySelector("#runtime-settings-auto-generate-summary");
 		expect(checkbox).toBeInstanceOf(HTMLButtonElement);
 		expect(checkbox?.getAttribute("data-state")).toBe("unchecked");
+	});
+
+	it("marks Pi support as experimental and unstable", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					projectId={"project-1"}
+					initialConfig={createSavedConfig({
+						agents: [createTestAgentDef("claude"), createTestAgentDef("codex"), createTestAgentDef("pi")],
+					})}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		expect(document.body.textContent).toContain("Pi");
+		expect(document.body.textContent).toContain("Experimental");
+		expect(document.body.textContent).toContain(
+			"Pi support is experimental and unstable; expect rough edges during task sessions.",
+		);
 	});
 
 	it("hides staleness input when auto-generate is unchecked", async () => {

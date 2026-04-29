@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { RuntimeAgentId } from "@/runtime/types";
 
 const viewportInstances: Array<{
 	forceResize: ReturnType<typeof vi.fn>;
@@ -7,7 +8,7 @@ const viewportInstances: Array<{
 const sessionInstances: Array<{
 	requestRestore: ReturnType<typeof vi.fn>;
 	reconnect: ReturnType<typeof vi.fn>;
-	sessionAgentId: "claude" | "codex" | null;
+	sessionAgentId: RuntimeAgentId | null;
 	isIoOpen: boolean;
 	emitSummaryStateChange: (summary: {
 		state: "idle" | "running" | "awaiting_review" | "interrupted" | "failed";
@@ -16,7 +17,7 @@ const sessionInstances: Array<{
 	}) => void;
 }> = [];
 
-let nextSessionAgentId: "claude" | "codex" | null = null;
+let nextSessionAgentId: RuntimeAgentId | null = null;
 
 vi.mock("@/terminal/terminal-viewport", () => ({
 	TerminalViewport: vi.fn(function TerminalViewportMock() {

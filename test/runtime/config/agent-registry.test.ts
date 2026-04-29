@@ -38,11 +38,11 @@ function readExecFileCallback(args: unknown[]): ExecFileCallback {
 	return callback as ExecFileCallback;
 }
 
-function mockSuccessfulCodexProbe(): void {
-	childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+function mockSuccessfulAgentProbe(): void {
+	childProcessMocks.execFile.mockImplementation((binary: string, args: string[], ...rest: unknown[]) => {
 		const callback = readExecFileCallback(rest);
 		if (args[0] === "--version") {
-			callback(null, "0.124.0\n", "");
+			callback(null, binary === "pi" ? "0.70.2\n" : "0.124.0\n", "");
 			return {} as ChildProcess;
 		}
 		if (args[0] === "features" && args[1] === "list") {
@@ -60,7 +60,7 @@ beforeEach(() => {
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReset();
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
 	childProcessMocks.execFile.mockReset();
-	mockSuccessfulCodexProbe();
+	mockSuccessfulAgentProbe();
 	delete process.env.QUARTERDECK_DEBUG_MODE;
 	delete process.env.DEBUG_MODE;
 	delete process.env.debug_mode;
@@ -73,7 +73,7 @@ describe("agent-registry", () => {
 		const detected = detectInstalledCommands();
 
 		expect(detected).toEqual(["claude"]);
-		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledTimes(3);
+		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledTimes(4);
 	});
 
 	it("treats shell-only agents as unavailable", async () => {
@@ -201,6 +201,69 @@ describe("agent-registry", () => {
 		expect(codex?.status).toBe("upgrade_required");
 		expect(codex?.statusMessage).toContain("native hook support");
 	});
+
+	it("detects Pi from the inherited PATH", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "pi");
+
+		const detected = detectInstalledCommands();
+		const resolved = await resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "pi" }));
+
+		expect(detected).toEqual(["pi"]);
+		expect(resolved).toEqual({
+			agentId: "pi",
+			label: "Pi",
+			command: "pi",
+			binary: "pi",
+			args: [],
+		});
+		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledWith("claude");
+		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledWith("codex");
+		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledWith("pi");
+	});
+
+	it("disables Pi when the detected version is below the supported floor", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "pi");
+		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+			const callback = readExecFileCallback(rest);
+			if (args[0] === "--version") {
+				callback(null, "0.70.1\n", "");
+				return {} as ChildProcess;
+			}
+			callback(null, "", "");
+			return {} as ChildProcess;
+		});
+
+		const resolved = await resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "pi" }));
+		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "pi" }));
+		const pi = response.agents.find((agent) => agent.id === "pi");
+
+		expect(resolved).toBeNull();
+		expect(pi?.installed).toBe(false);
+		expect(pi?.status).toBe("upgrade_required");
+		expect(pi?.statusMessage).toContain("0.70.2");
+	});
+
+	it("disables Pi when its version cannot be determined", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "pi");
+		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+			const callback = readExecFileCallback(rest);
+			if (args[0] === "--version") {
+				callback(null, "pi\n", "");
+				return {} as ChildProcess;
+			}
+			callback(null, "", "");
+			return {} as ChildProcess;
+		});
+
+		const resolved = await resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "pi" }));
+		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "pi" }));
+		const pi = response.agents.find((agent) => agent.id === "pi");
+
+		expect(resolved).toBeNull();
+		expect(pi?.installed).toBe(false);
+		expect(pi?.status).toBe("upgrade_required");
+		expect(pi?.statusMessage).toContain("0.70.2");
+	});
 });
 
 describe("buildRuntimeConfigResponse", () => {
@@ -209,9 +272,10 @@ describe("buildRuntimeConfigResponse", () => {
 
 		const response = await buildRuntimeConfigResponse(config);
 
-		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex"]);
+		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "pi"]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
+		expect(response.agents.find((agent) => agent.id === "pi")?.defaultArgs).toEqual([]);
 	});
 
 	it("omits autonomous flags from curated agent commands when disabled", async () => {
@@ -220,11 +284,12 @@ describe("buildRuntimeConfigResponse", () => {
 
 		const response = await buildRuntimeConfigResponse(config);
 
-		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex"]);
+		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "pi"]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.command).toBe("claude");
 		expect(response.agents.find((agent) => agent.id === "codex")?.command).toBe("codex");
+		expect(response.agents.find((agent) => agent.id === "pi")?.command).toBe("pi");
 	});
 
 	it("sets debug mode from runtime environment variables", async () => {

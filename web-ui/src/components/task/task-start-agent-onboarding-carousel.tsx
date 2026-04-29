@@ -72,7 +72,7 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 	},
 ];
 
-const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex"];
+const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "pi"];
 const FALLBACK_ONBOARDING_SLIDE: OnboardingSlide = {
 	kind: "agent-selection",
 	title: "",
@@ -284,6 +284,9 @@ function resolveInstallInstructions(agentId: RuntimeAgentId): string {
 	}
 	if (agentId === "codex") {
 		return "OpenAI's coding agent CLI with access to the latest GPT models.";
+	}
+	if (agentId === "pi") {
+		return "Pi's coding agent CLI running in Quarterdeck's task terminal.";
 	}
 	return "Install from the official docs.";
 }

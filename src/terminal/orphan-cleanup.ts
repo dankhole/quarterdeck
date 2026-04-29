@@ -1,4 +1,4 @@
-// Detects and kills orphaned agent processes (Claude, Codex) left behind by a
+// Detects and kills orphaned agent processes (Claude, Codex, Pi) left behind by a
 // crashed Quarterdeck instance. Orphaned processes have PPID=1 (reparented to
 // init/launchd after their parent died). Runs at startup and shutdown.
 
@@ -10,7 +10,7 @@ import { isProcessAlive } from "./session-reconciliation";
 
 const log = createTaggedLogger("orphan-cleanup");
 
-const AGENT_PROCESS_NAMES = ["claude", "codex"];
+const AGENT_PROCESS_NAMES = ["claude", "codex", "pi"];
 
 /** Grace period after SIGTERM before escalating to SIGKILL. */
 const SIGTERM_GRACE_MS = 3_000;

@@ -6,6 +6,7 @@ import type { RuntimeAgentDefinition, RuntimeConfigResponse } from "@/runtime/ty
 const TEST_AGENT_LABELS: Record<string, { label: string; binary: string }> = {
 	claude: { label: "Claude Code", binary: "claude" },
 	codex: { label: "OpenAI Codex", binary: "codex" },
+	pi: { label: "Pi", binary: "pi" },
 };
 
 export function createTestAgentDef(

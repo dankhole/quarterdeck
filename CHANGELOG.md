@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Chore: mark Pi support experimental in settings
+
+- Settings now labels Pi as experimental and warns that Pi support is unstable, so users see the risk before selecting it as a task agent.
+
 ### Fix: avoid runtime stalls from sync child processes
 
 - Directory picking now launches OS folder-picker commands asynchronously, so an open picker dialog no longer blocks websockets, terminal streams, polling, or unrelated tRPC requests.
@@ -205,6 +209,14 @@
 - Home and task shell terminals now treat close/context switch as a real shell-session boundary: the browser disposes the dedicated terminal view and asks the runtime to stop the backing PTY instead of keeping hidden shells alive.
 - Project shortcuts now reuse an already-open home/task shell without calling `startShellSession` again, avoiding the visible terminal reboot when running a shortcut in an open shell.
 - Shell session exits now use the shared terminal finalizer, so `stopTaskSession({ waitForExit: true })` resolves on shell exits instead of waiting for the timeout fallback.
+
+### Feature: Pi CLI agent harness support
+
+- Pi is now a launch-supported `pi` agent type detected from Quarterdeck's inherited PATH, eligible for auto-selection after Claude Code and Codex, and guarded by a `0.70.2` minimum version check.
+- Removed the checked-in Pi source tree and its build, sync, link, and egress-audit scripts so Quarterdeck works with the user's installed Pi CLI instead of maintaining a bundled copy.
+- The Quarterdeck-owned Pi lifecycle extension still loads launch-scoped with `--extension`, mapping Pi session ids, follow-up input, agent start/end, tool activity, and model-initiated `bash` permission prompts into the shared hook/session flow while leaving user extension discovery enabled.
+- Pi state-changing lifecycle hooks are serialized and awaited with a timeout so permission resolution and turn start/end events cannot overtake one another; high-volume tool update events now only refresh cached input metadata instead of spawning hook processes.
+- Startup/shutdown orphan-process cleanup now recognizes `pi` processes alongside `claude` and `codex`.
 
 ### Fix: log full toast warning/error messages to the debug log
 

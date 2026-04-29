@@ -2,7 +2,6 @@
 import { getRuntimeAgentCatalogEntry } from "@runtime-agent-catalog";
 import { Circle, CircleDot } from "lucide-react";
 import { useCallback, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeConfigResponse } from "@/runtime/types";
 import type { SettingsSectionProps } from "./settings-section-props";
@@ -32,6 +31,7 @@ function AgentRow({
 	const isInstalled = agent.status === "installed";
 	const requiresUpgrade = agent.status === "upgrade_required";
 	const isInstallStatusPending = agent.installed === null;
+	const isPiAgent = agent.id === "pi";
 
 	return (
 		<div
@@ -47,10 +47,10 @@ function AgentRow({
 					onSelect();
 				}
 			}}
-			className="flex items-center justify-between gap-3 py-1.5"
+			className="flex items-start justify-between gap-3 py-1.5"
 			style={{ cursor: isInstalled ? "pointer" : "default" }}
 		>
-			<div className="flex items-start gap-2 min-w-0">
+			<div className="flex min-w-0 flex-1 items-start gap-2">
 				{isSelected ? (
 					<CircleDot size={16} className="text-accent mt-0.5 shrink-0" />
 				) : (
@@ -60,8 +60,13 @@ function AgentRow({
 					/>
 				)}
 				<div className="min-w-0">
-					<div className="flex items-center gap-2">
+					<div className="flex flex-wrap items-center gap-2">
 						<span className="text-[13px] text-text-primary">{agent.label}</span>
+						{isPiAgent ? (
+							<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-status-orange/10 text-status-orange">
+								Experimental
+							</span>
+						) : null}
 						{isInstalled ? (
 							<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-status-green/10 text-status-green">
 								Installed
@@ -77,10 +82,15 @@ function AgentRow({
 						) : null}
 					</div>
 					{agent.command ? (
-						<p className="text-text-secondary font-mono text-xs mt-0.5 m-0">{agent.command}</p>
+						<p className="text-text-secondary font-mono text-xs mt-0.5 m-0 break-all">{agent.command}</p>
+					) : null}
+					{isPiAgent ? (
+						<p className="text-status-orange text-xs mt-1 mb-0 break-words">
+							Pi support is experimental and unstable; expect rough edges during task sessions.
+						</p>
 					) : null}
 					{agent.statusMessage ? (
-						<p className="text-status-orange text-xs mt-1 mb-0">{agent.statusMessage}</p>
+						<p className="text-status-orange text-xs mt-1 mb-0 break-words">{agent.statusMessage}</p>
 					) : null}
 				</div>
 			</div>
@@ -90,14 +100,10 @@ function AgentRow({
 					target="_blank"
 					rel="noreferrer"
 					onClick={(event: React.MouseEvent) => event.stopPropagation()}
-					className="inline-flex items-center justify-center rounded-md font-medium duration-150 cursor-default select-none h-7 px-2 text-xs bg-surface-2 border border-border text-text-primary hover:bg-surface-3 hover:border-border-bright"
+					className="inline-flex h-7 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 px-2 text-xs font-medium text-text-primary duration-150 cursor-default select-none hover:bg-surface-3 hover:border-border-bright"
 				>
 					{requiresUpgrade ? "Upgrade" : "Install"}
 				</a>
-			) : agent.installed === false ? (
-				<Button size="sm" disabled>
-					{requiresUpgrade ? "Upgrade" : "Install"}
-				</Button>
 			) : null}
 		</div>
 	);
@@ -140,8 +146,9 @@ export function AgentSection({
 				<p className="text-text-secondary py-2">Checking which CLIs are installed for this project...</p>
 			) : (
 				<p className="text-text-secondary text-[12px] mt-2 mb-0">
-					Detection checks whether each CLI is available on Quarterdeck&apos;s PATH. Codex also enforces a minimum
-					supported version, verifies native hook support, and enables <code>codex_hooks</code> at launch.
+					Detection checks whether each CLI is available on Quarterdeck&apos;s PATH. Codex and Pi also enforce
+					minimum supported versions; Codex verifies native hook support and enables <code>codex_hooks</code> at
+					launch.
 				</p>
 			)}
 			<div className="mt-3">

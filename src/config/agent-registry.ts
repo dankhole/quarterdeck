@@ -28,6 +28,7 @@ interface AgentAvailability {
 }
 
 const MINIMUM_CODEX_VERSION = "0.124.0";
+const MINIMUM_PI_VERSION = "0.70.2";
 const PROBE_OUTPUT_SNIPPET_MAX_LENGTH = 500;
 const CODEX_PROBE_TIMEOUT_MS = 3_000;
 const log = createTaggedLogger("agent-registry");
@@ -79,13 +80,15 @@ function isRuntimeDebugModeEnabled(): boolean {
 
 /** Check PATH for each known agent binary (plus npx) and return which are available. */
 export function detectInstalledCommands(): string[] {
-	const candidates = [...RUNTIME_AGENT_CATALOG.map((entry) => entry.binary), "npx"];
 	const detected: string[] = [];
 
-	for (const candidate of candidates) {
-		if (isBinaryAvailableOnPath(candidate)) {
-			detected.push(candidate);
+	for (const entry of RUNTIME_AGENT_CATALOG) {
+		if (isBinaryAvailableOnPath(entry.binary)) {
+			detected.push(entry.binary);
 		}
+	}
+	if (isBinaryAvailableOnPath("npx")) {
+		detected.push("npx");
 	}
 
 	return detected;
@@ -154,12 +157,12 @@ function runProbeCommand(binary: string, args: string[]): Promise<ProbeCommandRe
 	});
 }
 
-async function detectCodexVersion(binary: string): Promise<string | null> {
+async function detectAgentVersion(agentName: string, binary: string): Promise<string | null> {
 	try {
 		const result = await runProbeCommand(binary, ["--version"]);
 		const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
 		const version = extractVersion(output);
-		log.debug("Codex version probe completed", {
+		log.debug(`${agentName} version probe completed`, {
 			binary,
 			version,
 			exitStatus: result.exitStatus,
@@ -168,7 +171,7 @@ async function detectCodexVersion(binary: string): Promise<string | null> {
 		});
 		return version;
 	} catch (error) {
-		log.debug("Codex version probe failed", {
+		log.debug(`${agentName} version probe failed`, {
 			binary,
 			error: error instanceof Error ? error.message : String(error),
 		});
@@ -223,6 +226,40 @@ async function codexSupportsNativeHooks(binary: string): Promise<boolean> {
 	}
 }
 
+async function resolvePiAvailability(binary: string): Promise<AgentAvailability> {
+	const version = await detectAgentVersion("Pi", binary);
+	if (!version) {
+		log.debug("Pi availability rejected: version unknown", { binary, minimumVersion: MINIMUM_PI_VERSION });
+		return {
+			installed: false,
+			status: "upgrade_required",
+			statusMessage: `Detected on PATH, but Quarterdeck could not determine the Pi version. Upgrade to ${MINIMUM_PI_VERSION} or newer.`,
+		};
+	}
+	if (compareSemver(version, MINIMUM_PI_VERSION) < 0) {
+		log.debug("Pi availability rejected: version below minimum", {
+			binary,
+			version,
+			minimumVersion: MINIMUM_PI_VERSION,
+		});
+		return {
+			installed: false,
+			status: "upgrade_required",
+			statusMessage: `Detected Pi ${version}, but Quarterdeck currently requires ${MINIMUM_PI_VERSION} or newer.`,
+		};
+	}
+	log.debug("Pi availability confirmed", {
+		binary,
+		version,
+		minimumVersion: MINIMUM_PI_VERSION,
+	});
+	return {
+		installed: true,
+		status: "installed",
+		statusMessage: null,
+	};
+}
+
 const AGENT_AVAILABILITY_TTL_MS = 30_000;
 
 interface AvailabilityCacheEntry {
@@ -258,6 +295,9 @@ async function computeAgentAvailability(agentId: RuntimeAgentId, binary: string)
 			statusMessage: null,
 		};
 	}
+	if (agentId === "pi") {
+		return resolvePiAvailability(binary);
+	}
 	if (agentId !== "codex") {
 		return {
 			installed: true,
@@ -266,7 +306,7 @@ async function computeAgentAvailability(agentId: RuntimeAgentId, binary: string)
 		};
 	}
 
-	const version = await detectCodexVersion(binary);
+	const version = await detectAgentVersion("Codex", binary);
 	if (!version) {
 		log.debug("Codex availability rejected: version unknown", { binary, minimumVersion: MINIMUM_CODEX_VERSION });
 		return {
@@ -419,13 +459,14 @@ export async function resolveAgentCommand(runtimeConfig: RuntimeConfigState): Pr
 		return null;
 	}
 	const defaultArgs = getDefaultArgs(selected.id);
-	const command = joinCommand(selected.binary, defaultArgs);
+	const binary = selected.binary;
+	const command = joinCommand(binary, defaultArgs);
 	if ((await resolveAgentAvailability(selected.id, selected.binary)).installed) {
 		return {
 			agentId: selected.id,
 			label: selected.label,
 			command,
-			binary: selected.binary,
+			binary,
 			args: defaultArgs,
 		};
 	}

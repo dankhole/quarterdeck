@@ -8,7 +8,7 @@
 
 A terminal replacement with light IDE features — run many agents in parallel, review diffs, and manage your full dev workflow without swapping between apps. Each task card gets its own terminal and worktree, all handled for you automatically. Enable auto-commit and link cards together to create dependency chains that complete large amounts of work autonomously.
 
-Supports **Claude Code** and **Codex CLI** out of the box — Quarterdeck detects whichever is installed and launches it for you.
+Supports **Claude Code**, **Codex CLI**, and **Pi** out of the box — Quarterdeck detects whichever is installed and launches it for you.
 
 > [!NOTE]
 > Quarterdeck is under active development. Found a bug or have an idea? Open a [GitHub Issue](https://github.com/dankhole/quarterdeck/issues).

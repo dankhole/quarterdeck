@@ -108,6 +108,11 @@ function isMetadataOnlySessionMeta(metadata: RuntimeHookMetadata | undefined): b
 	);
 }
 
+function isPermissionResolutionHookEvent(hookEventName: string | null | undefined): boolean {
+	const normalized = hookEventName?.toLowerCase() ?? "";
+	return normalized === "userpromptsubmit" || normalized === "permissionresolved" || normalized === "permissiondenied";
+}
+
 type ClaudeTranscriptExtractor = (transcriptPath: string) => Promise<string | null>;
 type HookBackgroundTaskScheduler = (task: () => void) => void;
 
@@ -382,7 +387,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					if (
 						currentActivity != null &&
 						isPermissionActivity(currentActivity) &&
-						incomingHookEvent !== "UserPromptSubmit"
+						!isPermissionResolutionHookEvent(incomingHookEvent)
 					) {
 						log.debug("Hook blocked: permission-aware transition guard prevented stale to_in_progress", {
 							...hookLogData,

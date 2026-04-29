@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Chore: mark Pi support experimental in settings (2026-04-29)
+
+The Pi harness is available from settings, but real CLI dogfooding has not proven it as stable as the Claude and Codex paths. To avoid making Pi look production-ready in the agent picker, the settings agent row now gives Pi an orange "Experimental" badge and a short warning that Pi support is experimental and unstable during task sessions.
+
+Focused settings-dialog coverage renders a config containing Pi and asserts that the badge and warning text are visible.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `web-ui/src/components/settings/agent-section.tsx`, `web-ui/src/components/settings/runtime-settings-dialog.test.tsx`.
+
+Commit: pending
+
 ## Fix: avoid runtime stalls from sync child processes (2026-04-28)
 
 Several runtime paths were still using synchronous child processes in request/startup-adjacent code. The OS directory picker used `spawnSync`, so an open picker dialog could freeze websocket delivery, terminal streaming, polling, and unrelated tRPC handlers. Codex availability probing ran `codex --version` and `codex features list` synchronously during config reads and task starts. Project stream resolution called a synchronous git repo check while pruning indexed projects, and startup orphan cleanup synchronously ran `ps` before its "non-blocking" promise returned.
@@ -324,6 +334,18 @@ Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/server/shutdow
 
 Commit: pending
 
+## Chore: pivot Pi to a system CLI harness (2026-04-27)
+
+Quarterdeck no longer carries its own Pi source tree. The runtime catalog now treats Pi like the other supported local agents: detection checks the inherited PATH for `pi`, the selected command resolves to `pi`, and auto-selection can fall through to Pi after Claude Code and Codex. Availability now runs `pi --version` and requires `0.70.2` or newer, matching the vendored version Quarterdeck originally wired against. The Pi launch adapter no longer rewrites launches through Node, suppresses user extension discovery, or synthesizes Pi-specific offline/provider environment; it passes the configured Pi binary through while still appending the task prompt, resume flags, and Quarterdeck's launch-scoped lifecycle extension. Startup/shutdown orphan-process cleanup now recognizes `pi` processes too, matching the new system-CLI launch shape.
+
+Follow-up review hardened the Pi lifecycle bridge before merge. State-changing Pi hooks now use a serialized durable path that waits for the hook CLI with an 8-second timeout, so permission request/resolution and agent end/start events cannot overtake one another. High-volume `tool_execution_update` events no longer emit Quarterdeck activity hooks; they only refresh cached tool-input metadata, which `tool_execution_end` uses when Pi omits args from the final event. The earlier Pi plan-mode concern became obsolete after the shared read-only startup launch field was removed from the runtime contract.
+
+The repo cleanup removes the checked-in Pi source tree, Pi-specific setup/sync/link/audit scripts, and Pi-specific planning docs. README, LICENSE, settings/onboarding copy, tests, changelog, and agent instructions were updated so there is one supported model: users install Pi themselves and Quarterdeck can harness it when `pi` is available on PATH.
+
+Files touched: `AGENTS.md`, `CHANGELOG.md`, `LICENSE`, `README.md`, `docs/README.md`, `docs/implementation-log.md`, `package.json`, `src/config/agent-registry.ts`, `src/config/runtime-config-normalizers.ts`, `src/core/agent-catalog.ts`, `src/terminal/agent-session-adapters.ts`, `src/terminal/orphan-cleanup.ts`, `src/terminal/pi-lifecycle-extension.ts`, `test/runtime/config/agent-registry.test.ts`, `test/runtime/config/agent-selection.test.ts`, `test/runtime/terminal/agent-session-adapters.test.ts`, `test/runtime/terminal/pi-lifecycle-extension.test.ts`, `web-ui/src/components/settings/agent-section.tsx`, `web-ui/src/components/task/task-start-agent-onboarding-carousel.tsx`, `web-ui/src/test-utils/runtime-config-factory.ts`, plus deleted Pi docs, setup/sync/audit scripts, source-tree files, and the old Pi resolver.
+
+Commit: pending
+
 ## Fix: add terminal restore watchdog logging (2026-04-27)
 
 Dogfooding an untrashed Codex task showed the agent terminal could remain behind the loading spinner long enough that switching projects away and back was needed to recover the view. Local `main` already contained the behavioral recovery pieces for the known restore races: queued restore requests during initial connect, IO-open fallback after 1.5 seconds, pooled-slot reconnect on session-instance changes, and guards against empty restore snapshots blanking live output. Reapplying the older worktree's behavioral patch on top of `main` would have risked duplicating or perturbing that flow.
@@ -489,6 +511,18 @@ Files touched: `AGENTS.md`, `CHANGELOG.md`, `docs/codex-untrash-resume-handoff.m
 
 Commit: `2422d0059`, `ef16a74c0`
 
+## Feature: add Pi CLI harness and lifecycle hook bridge (2026-04-25)
+
+Pi support was added through the same task-terminal launch path as Claude Code and Codex. Quarterdeck registers `pi` as a runtime agent, passes the task prompt as Pi's positional prompt, and keeps restart/resume support by preferring a stored Pi session id via `--session <id>` before falling back to `--continue`.
+
+The Pi launch adapter writes a generated Quarterdeck lifecycle extension into the runtime state directory and loads it explicitly with `--extension`. The bridge sends Pi `session_start`, `input`, `agent_start`, `agent_end`, `tool_execution_*`, and `tool_call` events through `quarterdeck hooks notify`, so review-ready, follow-up input, tool activity, temporary `bash` permission prompts, and resume metadata use the same session store semantics as Claude/Codex without parsing terminal output.
+
+Verified with focused runtime tests for agent registry, auto-selection, Pi launch arguments, hook metadata flags, session reconciliation, and hook permission guard, plus typecheck/Biome coverage over the touched runtime and test files.
+
+Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/commands/hook-metadata.ts`, `src/commands/hooks.ts`, `src/config/agent-registry.ts`, `src/config/runtime-config-normalizers.ts`, `src/core/agent-catalog.ts`, `src/core/api/shared.ts`, `src/terminal/agent-session-adapters.ts`, `src/terminal/pi-lifecycle-extension.ts`, `src/terminal/session-reconciliation.ts`, `src/trpc/hooks-api.ts`, `test/runtime/config/agent-registry.test.ts`, `test/runtime/config/agent-selection.test.ts`, `test/runtime/hook-metadata.test.ts`, `test/runtime/terminal/agent-session-adapters.test.ts`, `test/runtime/terminal/session-reconciliation.test.ts`, `test/runtime/trpc/hooks-api/permission-guard.test.ts`, `web-ui/src/components/settings/runtime-settings-dialog.tsx`, `web-ui/src/components/task/task-start-agent-onboarding-carousel.tsx`, `web-ui/src/runtime/onboarding.test.ts`, `web-ui/src/terminal/terminal-attachment-controller.test.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`
+
+Commit: `183a5bbcc`, `a3050b821`
+
 ## Fix: log full toast warning/error messages to the debug log (2026-04-25)
 
 Toast-delivered warnings and errors were the only surface for certain failures — for example, the server's `Invalid sessions.json file at … Fix or remove the file. Validation errors: …` message that flows from `parsePersistedStateFile` through the WebSocket error channel and lands in `useStreamErrorHandler` → `notifyError`. `sanitizeErrorForToast` collapses the message to its first non-empty line capped at 150 characters, so the actual Zod validation issues were truncated away and there was no debug-log trace, making the failure hard to diagnose after the toast disappeared.
@@ -503,7 +537,7 @@ Verified clean with `npm run typecheck`, `npm run web:typecheck`, `npm run lint`
 
 Files touched: `CHANGELOG.md`, `docs/implementation-log.md`, `src/server/runtime-state-hub.ts`, `web-ui/src/components/app-toaster.ts`, `web-ui/src/components/git/panels/conflict-resolution-panel.tsx`
 
-Commit: pending
+Commit: `70f9cfa4f`
 
 ## Fix: scope Codex hooks to Quarterdeck-launched sessions only (2026-04-24)
 

@@ -85,7 +85,7 @@ export interface RuntimeConfigUpdateInput extends Partial<GlobalConfigFieldValue
 
 // --- Constants ---
 
-export const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex"];
+export const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex", "pi"];
 
 /** Assembled defaults for test fixtures — not used in production paths. */
 export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
@@ -112,7 +112,7 @@ export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
 // --- Normalizers ---
 
 export function normalizeAgentId(agentId: RuntimeAgentId | string | null | undefined): RuntimeAgentId {
-	if ((agentId === "claude" || agentId === "codex") && isRuntimeAgentLaunchSupported(agentId)) {
+	if (typeof agentId === "string" && isRuntimeAgentLaunchSupported(agentId)) {
 		return agentId;
 	}
 	return DEFAULT_AGENT_ID;

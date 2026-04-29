@@ -12,7 +12,7 @@ export const runtimeWorkdirFileStatusSchema = z.enum([
 ]);
 export type RuntimeWorkdirFileStatus = z.infer<typeof runtimeWorkdirFileStatusSchema>;
 
-export const runtimeAgentIdSchema = z.enum(["claude", "codex"]);
+export const runtimeAgentIdSchema = z.enum(["claude", "codex", "pi"]);
 export type RuntimeAgentId = z.infer<typeof runtimeAgentIdSchema>;
 
 export const runtimeBoardColumnIdSchema = z.enum(["backlog", "in_progress", "review", "trash"]);

@@ -35,7 +35,7 @@ import { toErrorMessage } from "@/utils/to-error-message";
 
 export type RuntimeSettingsSection = "shortcuts";
 
-const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["claude", "codex"];
+const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["claude", "codex", "pi"];
 
 export function RuntimeSettingsDialog({
 	open,
@@ -71,6 +71,7 @@ export function RuntimeSettingsDialog({
 				id: agent.id,
 				label: agent.label,
 				binary: agent.binary,
+				command: agent.command,
 				status: agent.status,
 				statusMessage: agent.statusMessage,
 				installed: agent.installed,
@@ -79,6 +80,7 @@ export function RuntimeSettingsDialog({
 				id: agent.id,
 				label: agent.label,
 				binary: agent.binary,
+				command: agent.binary,
 				status: "missing" as const,
 				statusMessage: null,
 				installed: null,
@@ -101,7 +103,6 @@ export function RuntimeSettingsDialog({
 		() =>
 			orderedAgents.map((agent) => ({
 				...agent,
-				command: agent.binary,
 			})),
 		[orderedAgents],
 	);

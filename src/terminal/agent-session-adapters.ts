@@ -7,6 +7,7 @@ import { buildQuarterdeckCommandParts, createTaggedLogger, quoteShellArg } from 
 import { lockedFileSystem } from "../fs";
 import { getRuntimeHomePath } from "../state";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
+import { buildPiLifecycleExtensionSource, QUARTERDECK_PI_HOOK_COMMAND_ENV } from "./pi-lifecycle-extension";
 import type { SessionTransitionEvent } from "./session-state-machine";
 import { prepareTaskPromptWithImages } from "./task-image-prompt";
 import { buildWorktreeContextPrompt } from "./worktree-context";
@@ -54,6 +55,8 @@ interface HookContext {
 interface HookCommandMetadata {
 	source?: string;
 	activityText?: string;
+	toolName?: string;
+	toolInputSummary?: string;
 	hookEventName?: string;
 	notificationType?: string;
 }
@@ -81,6 +84,12 @@ function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadat
 	}
 	if (metadata?.activityText) {
 		parts.push("--activity-text", metadata.activityText);
+	}
+	if (metadata?.toolName) {
+		parts.push("--tool-name", metadata.toolName);
+	}
+	if (metadata?.toolInputSummary) {
+		parts.push("--tool-input-summary", metadata.toolInputSummary);
 	}
 	if (metadata?.hookEventName) {
 		parts.push("--hook-event-name", metadata.hookEventName);
@@ -127,6 +136,10 @@ function hasCodexConfigOverride(args: string[], configKey: string): boolean {
 
 function getHookAgentDirectory(agentId: RuntimeAgentId): string {
 	return join(getRuntimeHomePath(), "hooks", agentId);
+}
+
+function getPiLifecycleExtensionPath(): string {
+	return join(getHookAgentDirectory("pi"), "quarterdeck-lifecycle.js");
 }
 
 async function ensureTextFile(filePath: string, content: string, executable = false): Promise<void> {
@@ -422,9 +435,64 @@ const codexAdapter: AgentSessionAdapter = {
 	},
 };
 
+const piAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		if (input.resumeConversation) {
+			const resumeSessionId = input.resumeSessionId?.trim();
+			if (resumeSessionId && !hasCliOption(args, "--session")) {
+				args.push("--session", resumeSessionId);
+			} else if (
+				!resumeSessionId &&
+				!hasCliOption(args, "--continue") &&
+				!hasCliOption(args, "--session") &&
+				!hasCliOption(args, "--resume")
+			) {
+				args.push("--continue");
+			}
+		}
+		const env: Record<string, string | undefined> = {};
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			const extensionPath = getPiLifecycleExtensionPath();
+			await ensureTextFile(extensionPath, buildPiLifecycleExtensionSource());
+			if (!args.includes(extensionPath)) {
+				args.push("--extension", extensionPath);
+			}
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					projectId: hooks.projectId,
+				}),
+				{
+					[QUARTERDECK_PI_HOOK_COMMAND_ENV]: JSON.stringify(buildQuarterdeckCommandParts(["hooks", "notify"])),
+				},
+			);
+		}
+
+		const launch = withPrompt(args, input.prompt, "append");
+		log.debug("pi adapter prepared launch", {
+			taskId: input.taskId,
+			argCount: launch.args.length,
+			promptLength: input.prompt.trim().length,
+			hookBridge: Boolean(hooks),
+		});
+		return {
+			...launch,
+			binary: input.binary,
+			env: {
+				...launch.env,
+				...env,
+			},
+		};
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
+	pi: piAdapter,
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {

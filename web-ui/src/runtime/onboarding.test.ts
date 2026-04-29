@@ -6,6 +6,7 @@ describe("runtime onboarding helpers", () => {
 	it("treats all agent selections as authenticated", () => {
 		expect(isSelectedAgentAuthenticated("claude")).toBe(true);
 		expect(isSelectedAgentAuthenticated("codex")).toBe(true);
+		expect(isSelectedAgentAuthenticated("pi")).toBe(true);
 	});
 
 	it("shows startup onboarding at least once for configured users", () => {

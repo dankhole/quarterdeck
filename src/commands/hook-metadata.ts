@@ -57,6 +57,7 @@ export interface HookCommandMetadataOptionValues {
 	source?: string;
 	activityText?: string;
 	toolName?: string;
+	toolInputSummary?: string;
 	finalMessage?: string;
 	hookEventName?: string;
 	notificationType?: string;
@@ -69,6 +70,7 @@ export function parseMetadataFromOptions(options: HookCommandMetadataOptionValue
 	const metadata: RuntimeHookMetadata = {};
 	const activityText = options.activityText;
 	const toolName = options.toolName;
+	const toolInputSummary = options.toolInputSummary;
 	const finalMessage = options.finalMessage;
 	const hookEventName = options.hookEventName;
 	const notificationType = options.notificationType;
@@ -81,6 +83,9 @@ export function parseMetadataFromOptions(options: HookCommandMetadataOptionValue
 	}
 	if (toolName) {
 		metadata.toolName = normalizeWhitespace(toolName);
+	}
+	if (toolInputSummary) {
+		metadata.toolInputSummary = normalizeWhitespace(toolInputSummary);
 	}
 	if (finalMessage) {
 		metadata.finalMessage = normalizeWhitespace(finalMessage);
@@ -301,12 +306,15 @@ export function normalizeHookMetadata(
 		: null;
 
 	const inferredSource = inferHookSourceFromPayload(payload);
+	const toolInput = payload ? extractToolInput(payload) : null;
+	const toolInputSummary = describeToolOperation(toolName, toolInput);
 
 	const activityText = inferActivityText(event, payload, toolName, finalMessage, notificationType);
 	const merged: RuntimeHookMetadata = {
 		source: flagMetadata.source ?? inferredSource ?? null,
 		hookEventName: flagMetadata.hookEventName ?? hookEventName ?? null,
 		toolName: flagMetadata.toolName ?? toolName ?? null,
+		toolInputSummary: flagMetadata.toolInputSummary ?? toolInputSummary ?? null,
 		notificationType: flagMetadata.notificationType ?? notificationType ?? null,
 		finalMessage: flagMetadata.finalMessage ?? (finalMessage ? normalizeWhitespace(finalMessage) : null),
 		activityText: flagMetadata.activityText ?? (activityText ? normalizeWhitespace(activityText) : null),
@@ -338,6 +346,9 @@ export function appendMetadataFlags(args: string[], metadata?: RuntimeHookMetada
 	}
 	if (metadata.toolName) {
 		args.push("--tool-name", metadata.toolName);
+	}
+	if (metadata.toolInputSummary) {
+		args.push("--tool-input-summary", metadata.toolInputSummary);
 	}
 	if (metadata.finalMessage) {
 		args.push("--final-message", metadata.finalMessage);

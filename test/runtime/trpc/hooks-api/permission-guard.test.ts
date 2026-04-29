@@ -309,6 +309,36 @@ describe("createHooksApi — permission-aware transition guard", () => {
 		expect(broadcastRuntimeProjectStateUpdated).toHaveBeenCalled();
 	});
 
+	it("allows Pi permission resolution hooks through the permission guard", async () => {
+		const runningSummary = createSummary({ state: "running" });
+		const manager = createMockManager({
+			getSummary: vi.fn(() =>
+				createSummary({
+					state: "awaiting_review",
+					reviewReason: "hook",
+					latestHookActivity: permissionActivity({ source: "pi" }),
+				}),
+			),
+			transitionToReview: vi.fn(),
+			transitionToRunning: vi.fn(() => runningSummary),
+			applyHookActivity: vi.fn(),
+			appendConversationSummary: vi.fn(),
+			setDisplaySummary: vi.fn(),
+		});
+
+		const api = createTestApi(manager);
+
+		const response = await api.ingest({
+			taskId: "task-1",
+			projectId: "project-1",
+			event: "to_in_progress",
+			metadata: { hookEventName: "PermissionResolved", source: "pi" },
+		});
+
+		expect(response).toEqual({ ok: true });
+		expect(mockStore(manager).transitionToRunning).toHaveBeenCalledWith("task-1");
+	});
+
 	it("allows to_in_progress through when activity is not permission-related", async () => {
 		const runningSummary = createSummary({ state: "running" });
 		const manager = createMockManager({

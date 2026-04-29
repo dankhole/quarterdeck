@@ -23,14 +23,21 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		baseArgs: [],
 		installUrl: "https://help.openai.com/en/articles/11096431-openai-codex-ci-getting-started",
 	},
+	{
+		id: "pi",
+		label: "Pi",
+		binary: "pi",
+		baseArgs: [],
+		installUrl: "",
+	},
 ];
 
-export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex"];
+export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "pi"];
 
 const RUNTIME_LAUNCH_SUPPORTED_AGENT_ID_SET = new Set<RuntimeAgentId>(RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS);
 
-export function isRuntimeAgentLaunchSupported(agentId: RuntimeAgentId): boolean {
-	return RUNTIME_LAUNCH_SUPPORTED_AGENT_ID_SET.has(agentId);
+export function isRuntimeAgentLaunchSupported(agentId: string): agentId is RuntimeAgentId {
+	return RUNTIME_LAUNCH_SUPPORTED_AGENT_ID_SET.has(agentId as RuntimeAgentId);
 }
 
 export function getRuntimeLaunchSupportedAgentCatalog(): RuntimeAgentCatalogEntry[] {

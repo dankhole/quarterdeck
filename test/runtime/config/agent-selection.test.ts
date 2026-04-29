@@ -26,6 +26,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 	it("selects agents using the configured priority order", () => {
 		expect(pickBestInstalledAgentIdFromDetected(["codex"])).toBe("codex");
 		expect(pickBestInstalledAgentIdFromDetected(["claude", "codex"])).toBe("claude");
+		expect(pickBestInstalledAgentIdFromDetected(["pi"])).toBe("pi");
 		expect(pickBestInstalledAgentIdFromDetected([])).toBeNull();
 	});
 
