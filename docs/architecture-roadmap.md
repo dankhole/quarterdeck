@@ -64,15 +64,15 @@ Why it matters:
 - knowledge leaks across time and worktrees
 - the system stays dependent on “people remembering”
 
-### 4. Orphan cleanup and reconciliation boundaries are still blurred
+### 4. Orphan cleanup and reconciliation boundaries are split
 
-Session reconciliation, stale lock cleanup, orphan worktree cleanup, and dangling state repair are adjacent but not yet cleanly partitioned into one obvious lifecycle model.
+Session reconciliation, stale lock cleanup, orphan worktree cleanup, and dangling state repair now have clearer owners after the orphan-maintenance split. The remaining risk is regression: new cleanup cases can still blur those boundaries if they attach to whichever sweep is nearest.
 
 Why it matters:
 
-- maintenance-style fixes still want to attach themselves to whatever sweep already exists
+- maintenance-style fixes can still attach themselves to whatever sweep already exists
 - stale artifact bugs can span process/session state, filesystem state, and persistent state references
-- it is not yet obvious which timer or maintenance path should own a new cleanup case
+- the cleanup taxonomy needs to stay visible so new stale-artifact classes land in the right maintenance path
 
 ### 5. Branch/base-ref UX state is still a fragmented domain
 
@@ -126,14 +126,14 @@ Why it matters:
 - good conventions are easy to bypass under delivery pressure
 - design drift happens gradually
 
-### 10. Project/worktree identity follow-through still needs cleanup
+### 10. Project/worktree identity cleanup is closed
 
-The first project/worktree identity pass landed, but the migration is not fully closed out yet. Compatibility cleanup and remaining edge cases can still blur assigned task identity, launch-path identity, and displayed git identity if the distinctions are not kept explicit.
+The project/worktree identity migration is now closed, including the temporary `projectPath` read compatibility removal from the shared session-summary schema. Persisted old `sessions.json` records are rewritten by the state loader so runtime/API session identity still has one field. The main remaining risk is future drift: assigned task identity, launch-path identity, and displayed git identity still need to stay explicit if adjacent code changes.
 
 Why it matters:
 
 - the remaining bugs here now look narrow, which makes them tempting to patch one by one
-- the compatibility tail can keep stale vocabulary alive longer than intended
+- stale vocabulary can creep back into new code even after the compatibility tail is gone
 - if true live-cwd streaming ever returns, the code needs to stay disciplined about assigned identity versus execution identity
 
 ## Current Active Order
@@ -142,15 +142,14 @@ The active order below should match `docs/todo.md`. It is an execution sequence,
 
 1. ProjectProvider / project-runtime ownership follow-up
 2. Terminal session manager / lifecycle boundaries
-3. Remove the temporary legacy `projectPath` read path after the `sessionLaunchPath` migration
-4. Shared LLM client abstraction
-5. Branch / base-ref UX state model
-6. File browser + diff viewer data pipeline
+3. Shared LLM client abstraction
+4. Branch / base-ref UX state model
+5. File browser + diff viewer data pipeline
 
 That sequence is deliberate:
 
 - 1 and 2 are the two biggest remaining ownership seams after the recent refactor wave.
-- 3 through 6 are still worthwhile, but they are now narrower follow-on cleanup items rather than “stop feature work until this is fixed” refactors.
+- 3 through 5 are still worthwhile, but they are now narrower follow-on cleanup items rather than “stop feature work until this is fixed” refactors.
 
 In other words: yes, this order is intentional. It is sequenced by leverage and remaining architectural risk, not just by how visible each bug symptom is.
 
@@ -547,7 +546,7 @@ Key risk:
 
 Status:
 
-- Partially completed on 2026-04-22. The main first pass landed via `web-ui/src/utils/task-identity.ts` plus the `sessionLaunchPath` rename on `RuntimeTaskSessionSummary`, but one compatibility cleanup item remains and some live-execution-vs-assigned-identity boundaries are still easy to blur.
+- Completed on 2026-04-29. The main first pass landed via `web-ui/src/utils/task-identity.ts` plus the `sessionLaunchPath` rename on `RuntimeTaskSessionSummary`; the final cleanup removed the legacy `projectPath` read path from the shared schema while leaving persisted old `sessions.json` records to be rewritten by the state loader.
 
 Primary files:
 
@@ -563,9 +562,9 @@ Historical smell:
 - assigned worktree path, live agent cwd, displayed branch, displayed project folder, and shared-vs-isolated task state used to blur together
 - task-scoped UI sometimes wants assigned worktree identity, while other surfaces want live execution identity, but the code previously did not model that distinction explicitly
 
-Why it still matters:
+Why it mattered:
 
-- the first pass established a shared vocabulary, but the migration is not quite finished
+- the first pass established a shared vocabulary before the migration was fully closed
 - recurring bugs around wrong branch pills, wrong folder labels, and stale “shared” indicators are now narrower follow-up problems instead of proof that no identity layer exists
 
 What the landed slice achieved:
@@ -573,9 +572,8 @@ What the landed slice achieved:
 - the code now distinguishes project root path, assigned task worktree path, launch path, and display git identity explicitly in one shared UI vocabulary
 - task-scoped UI no longer relies on ad hoc fallback chains across many consumers
 
-Remaining follow-up:
+Follow-up to keep in mind:
 
-- remove the temporary legacy `projectPath` read path from `src/core/api/task-session.ts` once the one-time local-state rewrite is complete
 - keep watching places where the UI may still confuse assigned identity with live execution identity if true live cwd ever becomes available again
 
 Key risk:
@@ -667,10 +665,10 @@ What “good” looks like:
 - process/session reconciliation and broader orphan cleanup are separate, named responsibilities
 - new stale artifact classes have an obvious home instead of getting attached to whichever timer already exists
 
-Suggested first slice:
+Outcome:
 
 - document the cleanup taxonomy: session drift, process artifacts, filesystem locks, orphan worktrees, orphan state references
-- decide which classes belong on the session reconciliation timer vs a separate maintenance sweep
+- keep session drift on the session reconciliation timer and stale git lock cleanup on the project orphan-maintenance sweep
 
 Key risk:
 

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Chore: close session launch path migration
+
+- Runtime task session summaries now use only `sessionLaunchPath` for launch identity; the temporary legacy `projectPath` read fallback has been removed from the shared schema, and persisted old `sessions.json` records are rewritten through the state loader.
+
 ### Fix: dedupe shared-checkout metadata polling
 
 - Project metadata refreshes now load checkout-level git state once per physical task path and then project task metadata from that shared result, avoiding duplicate probes for active shared-checkout tasks while preserving task-specific base-ref projections.

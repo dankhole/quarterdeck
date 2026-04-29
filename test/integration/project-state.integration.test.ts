@@ -456,6 +456,56 @@ describe.sequential("project-state integration", () => {
 		});
 	});
 
+	it("migrates legacy session projectPath into sessionLaunchPath before saving sessions.json", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-legacy-session-launch-path-");
+			try {
+				const projectPath = join(sandboxRoot, "project-legacy-session-launch-path");
+				const legacyLaunchPath = join(sandboxRoot, "legacy-launch-path");
+				mkdirSync(projectPath, { recursive: true });
+				initGitRepository(projectPath);
+
+				const context = await loadProjectContext(projectPath);
+				mkdirSync(context.statePath, { recursive: true });
+				const sessionsPath = join(context.statePath, "sessions.json");
+				const legacySession = {
+					...createSessionSummary("task-1"),
+					projectPath: legacyLaunchPath,
+				} as Record<string, unknown>;
+				delete legacySession.sessionLaunchPath;
+				writeFileSync(
+					join(context.statePath, "board.json"),
+					JSON.stringify(createBoard("Legacy launch path task"), null, 2),
+					"utf8",
+				);
+				writeFileSync(
+					sessionsPath,
+					JSON.stringify(
+						{
+							"task-1": legacySession,
+						},
+						null,
+						2,
+					),
+					"utf8",
+				);
+
+				const state = await loadProjectState(projectPath);
+				expect(state.warnings).toBeUndefined();
+				expect(state.sessions["task-1"]?.sessionLaunchPath).toBe(legacyLaunchPath);
+
+				const repairedSessions = JSON.parse(readFileSync(sessionsPath, "utf8")) as Record<
+					string,
+					Record<string, unknown>
+				>;
+				expect(repairedSessions["task-1"]?.sessionLaunchPath).toBe(legacyLaunchPath);
+				expect("projectPath" in (repairedSessions["task-1"] ?? {})).toBe(false);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("drops invalid session entries, backs up the original file, and repairs sessions.json", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-malformed-sessions-");

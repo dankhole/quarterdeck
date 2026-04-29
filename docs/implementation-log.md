@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-04-29 — Session launch path migration closure
+
+The one-time local state rewrite is complete: scanning `/Users/d.cole/.quarterdeck` found no remaining `projectPath` keys in current `sessions.json` files, and the project state files now persist `sessionLaunchPath`. `RuntimeTaskSessionSummary` therefore no longer reads legacy `projectPath` as launch identity; the schema materializes `sessionLaunchPath` directly. For other state homes that still contain old records, persisted session loading rewrites `projectPath` into `sessionLaunchPath` before schema validation and saves the repaired `sessions.json`, keeping the public/runtime contract to one identity field without silently dropping launch identity.
+
+This closes the final compatibility tail from the project/worktree identity normalization work. The invariant is that session launch identity has one public field, while project root path and assigned task worktree identity stay modeled separately. Notable files: `src/core/api/task-session.ts`, `src/state/project-state-index.ts`, `test/runtime/api-validation.test.ts`, `test/integration/project-state.integration.test.ts`, `docs/todo.md`, and `docs/architecture-roadmap.md`. Validation: local state scan for legacy keys, `npx vitest run test/runtime/api-validation.test.ts`, `npx vitest run test/integration/project-state.integration.test.ts`, and `npm run typecheck`.
+
 ## 2026-04-29 — Project metadata path-level projection
 
 Task worktree metadata loading now has an explicit two-step boundary: resolve the task's assigned path, load checkout-level git state once for that normalized physical path, then project per-task metadata with task id and base-ref-specific fields. Full-project and background refreshes group tracked tasks by resolved path before probing, so multiple active shared-checkout tasks no longer run identical path/status/conflict reads against the project root. Base-ref-specific work remains keyed by base ref, preserving different `behindBaseCount` and unmerged-change projections for tasks sharing the same checkout.

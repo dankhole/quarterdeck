@@ -1,6 +1,41 @@
 import { describe, expect, it } from "vitest";
 
-import { parseHookIngestRequest, parseTaskSessionStartRequest, parseWorktreeEnsureRequest } from "../../src/core";
+import {
+	parseHookIngestRequest,
+	parseTaskSessionStartRequest,
+	parseWorktreeEnsureRequest,
+	runtimeTaskSessionSummarySchema,
+} from "../../src/core";
+
+const baseSessionSummaryPayload = {
+	taskId: "task-1",
+	state: "running",
+	agentId: null,
+	pid: 1234,
+	startedAt: 1000,
+	updatedAt: 2000,
+	lastOutputAt: null,
+	reviewReason: null,
+	exitCode: null,
+} satisfies Record<string, unknown>;
+
+describe("runtimeTaskSessionSummarySchema", () => {
+	it("defaults missing sessionLaunchPath to null", () => {
+		const parsed = runtimeTaskSessionSummarySchema.parse(baseSessionSummaryPayload);
+
+		expect(parsed.sessionLaunchPath).toBeNull();
+	});
+
+	it("does not read legacy projectPath as the session launch path", () => {
+		const parsed = runtimeTaskSessionSummarySchema.parse({
+			...baseSessionSummaryPayload,
+			projectPath: "/tmp/legacy-project",
+		});
+
+		expect(parsed.sessionLaunchPath).toBeNull();
+		expect("projectPath" in parsed).toBe(false);
+	});
+});
 
 describe("parseHookIngestRequest", () => {
 	it("parses and trims task and project identifiers", () => {

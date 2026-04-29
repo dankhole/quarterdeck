@@ -127,11 +127,21 @@ const sessionsStateLog = createTaggedLogger("project-state");
 function parseSessionsLeniently(raw: Record<string, unknown>): {
 	sessions: Record<string, RuntimeTaskSessionSummary>;
 	warnings: ReadProjectSessionsWarning[];
+	migratedCount: number;
 } {
 	const sessions: Record<string, RuntimeTaskSessionSummary> = {};
 	const warnings: ReadProjectSessionsWarning[] = [];
+	let migratedCount = 0;
 	for (const [taskId, entry] of Object.entries(raw)) {
-		const parsed = runtimeTaskSessionSummarySchema.safeParse(entry);
+		const normalized = normalizePersistedSessionEntry(entry);
+		if (normalized.warningReason) {
+			warnings.push({ taskId, reason: normalized.warningReason });
+			continue;
+		}
+		if (normalized.migrated) {
+			migratedCount += 1;
+		}
+		const parsed = runtimeTaskSessionSummarySchema.safeParse(normalized.entry);
 		if (!parsed.success) {
 			warnings.push({ taskId, reason: formatSchemaIssues(parsed.error) });
 			continue;
@@ -145,7 +155,7 @@ function parseSessionsLeniently(raw: Record<string, unknown>): {
 		}
 		sessions[taskId] = parsed.data;
 	}
-	return { sessions, warnings };
+	return { sessions, warnings, migratedCount };
 }
 
 async function backUpCorruptSessionsFile(sessionsPath: string): Promise<string | null> {
@@ -180,6 +190,53 @@ async function writeRepairedSessionsFile(
 		});
 		return false;
 	}
+}
+
+interface PersistedSessionEntryNormalization {
+	entry: unknown;
+	migrated: boolean;
+	warningReason?: string;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasOwnRecordKey(record: Record<string, unknown>, key: string): boolean {
+	return Object.hasOwn(record, key);
+}
+
+function omitRecordKey(record: Record<string, unknown>, omittedKey: string): Record<string, unknown> {
+	const next: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(record)) {
+		if (key !== omittedKey) {
+			next[key] = value;
+		}
+	}
+	return next;
+}
+
+function normalizePersistedSessionEntry(entry: unknown): PersistedSessionEntryNormalization {
+	if (!isPlainRecord(entry) || !hasOwnRecordKey(entry, "projectPath")) {
+		return { entry, migrated: false };
+	}
+
+	const normalized = omitRecordKey(entry, "projectPath");
+	if (hasOwnRecordKey(normalized, "sessionLaunchPath")) {
+		return { entry: normalized, migrated: true };
+	}
+
+	const legacyProjectPath = entry.projectPath;
+	if (legacyProjectPath !== null && typeof legacyProjectPath !== "string") {
+		return {
+			entry,
+			migrated: false,
+			warningReason: "Legacy session projectPath must be a string or null.",
+		};
+	}
+
+	normalized.sessionLaunchPath = legacyProjectPath;
+	return { entry: normalized, migrated: true };
 }
 
 // --- JSON parsing helpers ---
@@ -307,7 +364,7 @@ export async function readProjectSessions(projectId: string): Promise<ReadProjec
 				`Fix or remove the file. Validation errors: ${formatSchemaIssues(outer.error)}`,
 		);
 	}
-	const { sessions, warnings } = parseSessionsLeniently(outer.data);
+	const { sessions, warnings, migratedCount } = parseSessionsLeniently(outer.data);
 	let backupPath: string | null = null;
 	let repaired = false;
 	if (warnings.length > 0) {
@@ -319,7 +376,16 @@ export async function readProjectSessions(projectId: string): Promise<ReadProjec
 			backupPath,
 			repaired,
 			droppedCount: warnings.length,
+			migratedCount,
 			warnings,
+		});
+	} else if (migratedCount > 0) {
+		repaired = await writeRepairedSessionsFile(sessionsPath, sessions);
+		sessionsStateLog.info("migrated legacy session launch paths in sessions.json", {
+			projectId,
+			sessionsPath,
+			repaired,
+			migratedCount,
 		});
 	}
 	return {

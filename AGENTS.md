@@ -77,7 +77,7 @@ Board state single-writer rule
   - project root path (`projectPath` in project-level state/providers)
   - assigned task identity path (`taskWorktreeInfo.path` / task metadata snapshot path)
   - session launch path (`RuntimeTaskSessionSummary.sessionLaunchPath`)
-  `RuntimeTaskSessionSummary.sessionLaunchPath` is **not** a continuously updated live cwd stream. It is the path the current agent session was launched in. The shared schema still accepts legacy persisted `projectPath` when reading old `sessions.json`, but new code should speak `sessionLaunchPath` and use it for divergence/restart hints, not as the authoritative source for task branch/folder/shared-vs-isolated display.
+  `RuntimeTaskSessionSummary.sessionLaunchPath` is **not** a continuously updated live cwd stream. It is the path the current agent session was launched in. The public/shared session-summary schema only has `sessionLaunchPath`; persisted-state loading owns the one-time rewrite from legacy `projectPath` in old `sessions.json` files. New code should speak `sessionLaunchPath` and use it for divergence/restart hints, not as the authoritative source for task branch/folder/shared-vs-isolated display.
 
 Completing a feature or fix (release hygiene)
 - When a user-visible feature/fix lands or an active todo item is completed, update the release-tracking files in the same commit or PR:
