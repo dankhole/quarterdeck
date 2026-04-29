@@ -9,8 +9,62 @@ export const CONTEXT_MENU_ITEM_CLASS =
 const CONTEXT_MENU_CONTENT_CLASS =
 	"z-50 min-w-[160px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg";
 
+function copyViaTextArea(text: string): boolean {
+	if (typeof document.execCommand !== "function") {
+		return false;
+	}
+	const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+	const selection = document.getSelection();
+	const selectedRanges =
+		selection != null
+			? Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index).cloneRange())
+			: [];
+	const textarea = document.createElement("textarea");
+	textarea.value = text;
+	textarea.readOnly = true;
+	textarea.style.position = "fixed";
+	textarea.style.top = "-1000px";
+	textarea.style.left = "-1000px";
+	textarea.style.opacity = "0";
+	textarea.style.pointerEvents = "none";
+	document.body.appendChild(textarea);
+	let copied = false;
+	try {
+		textarea.select();
+		copied = document.execCommand("copy");
+	} finally {
+		document.body.removeChild(textarea);
+		activeElement?.focus({ preventScroll: true });
+		if (selection != null) {
+			selection.removeAllRanges();
+			for (const range of selectedRanges) {
+				selection.addRange(range);
+			}
+		}
+	}
+	return copied;
+}
+
+export async function writeClipboardText(text: string): Promise<void> {
+	if (navigator.clipboard?.writeText) {
+		try {
+			await navigator.clipboard.writeText(text);
+			return;
+		} catch {
+			if (copyViaTextArea(text)) {
+				return;
+			}
+			throw new Error("Clipboard write failed");
+		}
+	}
+	if (copyViaTextArea(text)) {
+		return;
+	}
+	throw new Error("Clipboard API unavailable");
+}
+
 export function copyToClipboard(text: string, label: string): void {
-	void navigator.clipboard.writeText(text).then(
+	void writeClipboardText(text).then(
 		() => showAppToast({ intent: "success", message: `${label} copied to clipboard` }),
 		() => showAppToast({ intent: "danger", message: `Failed to copy ${label.toLowerCase()}` }),
 	);

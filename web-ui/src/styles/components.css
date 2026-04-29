@@ -58,6 +58,54 @@
 	color: #fff;
 }
 
+/* -- File content viewer -- */
+
+.kb-file-content-source-shell {
+	isolation: isolate;
+}
+
+.kb-file-content-display-layer {
+	pointer-events: none;
+}
+
+.kb-file-content-selection-layer {
+	position: absolute;
+	top: 0;
+	z-index: 1;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	outline: none;
+	resize: none;
+	appearance: none;
+	overflow: hidden;
+	background: transparent;
+	color: transparent;
+	caret-color: transparent;
+	-webkit-text-fill-color: transparent;
+	white-space: pre;
+	overflow-wrap: normal;
+	word-break: normal;
+	tab-size: 4;
+}
+
+.kb-file-content-selection-layer::selection {
+	background: rgba(0, 132, 255, 0.35);
+	color: transparent;
+	-webkit-text-fill-color: transparent;
+}
+
+.kb-file-content-selection-layer:focus-visible {
+	box-shadow: inset 0 0 0 1px var(--color-border-focus);
+	background: rgba(0, 132, 255, 0.04);
+}
+
+.kb-file-content-selection-layer[data-word-wrap="true"] {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	word-break: break-all;
+}
+
 /* -- Git history rows -- */
 
 .kb-git-ref-row {

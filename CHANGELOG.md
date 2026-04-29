@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: improve file browser source selection
+
+- File browser source panes now use a selectable full-file text layer over the virtualized syntax view, so code selection and native copy no longer depend on only the mounted rows.
+- Added a copy-file-contents toolbar action and file-scoped `Cmd+A` / `Ctrl+A` behavior for the current source pane.
+
 ### Docs: prune stale branch-status todo
 
 - Removed the stale UI branch/status desync backlog item after validating that task git UI now derives branch and change state from assigned task metadata rather than session launch path.

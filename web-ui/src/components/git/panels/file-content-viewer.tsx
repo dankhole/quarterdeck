@@ -1,10 +1,10 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { BookOpen, Clipboard, Code, FileText, WrapText, X } from "lucide-react";
+import { BookOpen, Clipboard, Code, Copy, FileText, WrapText, X } from "lucide-react";
 import Prism from "prismjs";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { showAppToast } from "@/components/app-toaster";
+import { copyToClipboard } from "@/components/git/panels/context-menu-utils";
 import {
 	createHighlightedLineCache,
 	resolvePrismGrammar,
@@ -23,6 +23,10 @@ const REMARK_PLUGINS = [remarkGfm];
 function isMarkdownFile(filePath: string): boolean {
 	const lower = filePath.toLowerCase();
 	return lower.endsWith(".md") || lower.endsWith(".markdown") || lower.endsWith(".mdx");
+}
+
+function isSelectAllKey(event: React.KeyboardEvent): boolean {
+	return (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "a";
 }
 
 function MarkdownCodeBlock({
@@ -103,6 +107,10 @@ export function FileContentViewer({
 		return Math.max(digits * 8 + 20, 40);
 	}, [lines.length]);
 
+	const maxLineLength = useMemo(() => {
+		return lines.reduce((max, line) => Math.max(max, line.length), 1);
+	}, [lines]);
+
 	const virtualizer = useVirtualizer({
 		count: lines.length,
 		getScrollElement: () => scrollContainerRef.current,
@@ -131,11 +139,23 @@ export function FileContentViewer({
 		if (!filePath) {
 			return;
 		}
-		void navigator.clipboard.writeText(filePath).then(
-			() => showAppToast({ intent: "success", message: "Path copied to clipboard" }),
-			() => showAppToast({ intent: "danger", message: "Failed to copy path" }),
-		);
+		copyToClipboard(filePath, "Path");
 	}, [filePath]);
+
+	const handleCopyContent = useCallback(() => {
+		if (content == null) {
+			return;
+		}
+		copyToClipboard(content, "File contents");
+	}, [content]);
+
+	const handleSourceSelectionKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+		if (!isSelectAllKey(event)) {
+			return;
+		}
+		event.preventDefault();
+		event.currentTarget.select();
+	}, []);
 
 	if (!filePath) {
 		return (
@@ -189,6 +209,7 @@ export function FileContentViewer({
 					<Tooltip content={markdownPreview ? "Show source" : "Preview markdown"}>
 						<button
 							type="button"
+							aria-label={markdownPreview ? "Show source" : "Preview markdown"}
 							onClick={toggleMarkdownPreview}
 							className={cn(
 								"shrink-0 p-0.5 rounded",
@@ -199,9 +220,21 @@ export function FileContentViewer({
 						</button>
 					</Tooltip>
 				) : null}
+				<Tooltip content="Copy file contents">
+					<button
+						type="button"
+						aria-label="Copy file contents"
+						onClick={handleCopyContent}
+						disabled={content == null}
+						className="shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+					>
+						<Copy size={13} />
+					</button>
+				</Tooltip>
 				<Tooltip content="Copy path">
 					<button
 						type="button"
+						aria-label="Copy path"
 						onClick={handleCopyPath}
 						className="shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-secondary"
 					>
@@ -212,6 +245,7 @@ export function FileContentViewer({
 					<Tooltip content={wordWrap ? "Disable word wrap" : "Enable word wrap"}>
 						<button
 							type="button"
+							aria-label={wordWrap ? "Disable word wrap" : "Enable word wrap"}
 							onClick={toggleWordWrap}
 							className={cn(
 								"shrink-0 p-0.5 rounded",
@@ -226,6 +260,7 @@ export function FileContentViewer({
 					<Tooltip content="Close file">
 						<button
 							type="button"
+							aria-label="Close file"
 							onClick={onClose}
 							className="shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-secondary"
 						>
@@ -249,50 +284,76 @@ export function FileContentViewer({
 				</div>
 			) : (
 				<div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-auto overscroll-contain">
-					<div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
-						{virtualizer.getVirtualItems().map((virtualItem) => {
-							const lineNumber = virtualItem.index + 1;
-							const line = lines[virtualItem.index] ?? "";
-							const highlightedHtml = highlightCache.get(line);
-							return (
-								<div
-									key={virtualItem.key}
-									data-index={virtualItem.index}
-									ref={wordWrap ? virtualizer.measureElement : undefined}
-									className="absolute top-0 left-0 w-full flex font-mono text-xs"
-									style={{
-										...(wordWrap ? { minHeight: LINE_HEIGHT } : { height: LINE_HEIGHT }),
-										transform: `translateY(${virtualItem.start}px)`,
-										lineHeight: `${LINE_HEIGHT}px`,
-									}}
-								>
-									<span
-										className="select-none text-right text-text-tertiary shrink-0 pr-3 pl-2"
-										style={{ width: gutterWidth }}
+					<div
+						className="kb-file-content-source-shell relative w-full"
+						style={{
+							height: Math.max(virtualizer.getTotalSize(), lines.length > 0 ? LINE_HEIGHT : 0),
+							minWidth: wordWrap ? "100%" : `max(100%, calc(${gutterWidth}px + ${maxLineLength}ch))`,
+						}}
+					>
+						<textarea
+							aria-label={`${filePath} content`}
+							className="kb-file-content-selection-layer font-mono text-xs"
+							data-word-wrap={wordWrap ? "true" : "false"}
+							readOnly
+							spellCheck={false}
+							value={content ?? ""}
+							wrap={wordWrap ? "soft" : "off"}
+							onKeyDown={handleSourceSelectionKeyDown}
+							style={{
+								left: gutterWidth,
+								width: wordWrap
+									? `calc(100% - ${gutterWidth}px)`
+									: `max(calc(100% - ${gutterWidth}px), ${maxLineLength}ch)`,
+								height: Math.max(virtualizer.getTotalSize(), lines.length > 0 ? LINE_HEIGHT : 0),
+								lineHeight: `${LINE_HEIGHT}px`,
+							}}
+						/>
+						<div className="kb-file-content-display-layer" aria-hidden="true">
+							{virtualizer.getVirtualItems().map((virtualItem) => {
+								const lineNumber = virtualItem.index + 1;
+								const line = lines[virtualItem.index] ?? "";
+								const highlightedHtml = highlightCache.get(line);
+								return (
+									<div
+										key={virtualItem.key}
+										data-index={virtualItem.index}
+										ref={wordWrap ? virtualizer.measureElement : undefined}
+										className="absolute top-0 left-0 w-full flex font-mono text-xs"
+										style={{
+											...(wordWrap ? { minHeight: LINE_HEIGHT } : { height: LINE_HEIGHT }),
+											transform: `translateY(${virtualItem.start}px)`,
+											lineHeight: `${LINE_HEIGHT}px`,
+										}}
 									>
-										{lineNumber}
-									</span>
-									{highlightedHtml ? (
 										<span
-											className={cn(
-												"text-text-primary pr-4 kb-syntax",
-												wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre",
-											)}
-											dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-										/>
-									) : (
-										<span
-											className={cn(
-												"text-text-primary pr-4",
-												wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre",
-											)}
+											className="select-none text-right text-text-tertiary shrink-0 pr-3 pl-2"
+											style={{ width: gutterWidth }}
 										>
-											{line || " "}
+											{lineNumber}
 										</span>
-									)}
-								</div>
-							);
-						})}
+										{highlightedHtml ? (
+											<span
+												className={cn(
+													"text-text-primary pr-4 kb-syntax",
+													wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre",
+												)}
+												dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+											/>
+										) : (
+											<span
+												className={cn(
+													"text-text-primary pr-4",
+													wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre",
+												)}
+											>
+												{line || " "}
+											</span>
+										)}
+									</div>
+								);
+							})}
+						</div>
 					</div>
 				</div>
 			)}
