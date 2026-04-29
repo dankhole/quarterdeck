@@ -103,7 +103,13 @@
 .kb-file-content-selection-layer[data-word-wrap="true"] {
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
-	word-break: break-all;
+	word-break: normal;
+}
+
+.kb-file-content-wrapped-line {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	word-break: normal;
 }
 
 /* -- Git history rows -- */

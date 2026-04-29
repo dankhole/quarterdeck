@@ -1,7 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { BookOpen, Clipboard, Code, Copy, FileText, WrapText, X } from "lucide-react";
 import Prism from "prismjs";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { copyToClipboard } from "@/components/git/panels/context-menu-utils";
@@ -82,7 +82,9 @@ export function FileContentViewer({
 	const isMarkdown = filePath ? isMarkdownFile(filePath) : false;
 	const showRendered = isMarkdown && markdownPreview;
 
-	const scrollContainerRef = useRef<HTMLDivElement>(null);
+	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+	const [sourceViewportNode, setSourceViewportNode] = useState<HTMLDivElement | null>(null);
+	const [sourceViewportWidth, setSourceViewportWidth] = useState(0);
 
 	const prismLanguage = useMemo(() => (filePath ? resolvePrismLanguage(filePath) : null), [filePath]);
 	const prismGrammar = useMemo(() => resolvePrismGrammar(prismLanguage), [prismLanguage]);
@@ -121,10 +123,37 @@ export function FileContentViewer({
 		measureElement: wordWrap ? (element: Element) => element.getBoundingClientRect().height : undefined,
 	});
 
-	// Re-measure all items when word wrap is toggled so stale heights are discarded.
+	const setScrollContainerNode = useCallback((node: HTMLDivElement | null) => {
+		scrollContainerRef.current = node;
+		setSourceViewportNode(node);
+		setSourceViewportWidth(node?.clientWidth ?? 0);
+	}, []);
+
+	useEffect(() => {
+		const node = sourceViewportNode;
+		if (!node || typeof ResizeObserver === "undefined") {
+			return;
+		}
+		const observer = new ResizeObserver((entries) => {
+			const width = entries[0]?.contentRect.width ?? node.clientWidth;
+			setSourceViewportWidth(width);
+		});
+		observer.observe(node);
+		return () => observer.disconnect();
+	}, [sourceViewportNode]);
+
+	// Clear stale row heights when wrap mode changes in either direction.
 	useEffect(() => {
 		virtualizer.measure();
 	}, [wordWrap, virtualizer]);
+
+	// Re-measure wrapped items when the viewport width changes so stale row
+	// heights do not preserve old wrap points after panel resize.
+	useEffect(() => {
+		if (wordWrap) {
+			virtualizer.measure();
+		}
+	}, [sourceViewportWidth, wordWrap, virtualizer]);
 
 	useEffect(() => {
 		if (scrollToLine == null || lines.length === 0) return;
@@ -283,7 +312,7 @@ export function FileContentViewer({
 					</div>
 				</div>
 			) : (
-				<div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-auto overscroll-contain">
+				<div ref={setScrollContainerNode} className="flex-1 min-h-0 overflow-auto overscroll-contain">
 					<div
 						className="kb-file-content-source-shell relative w-full"
 						style={{
@@ -335,16 +364,16 @@ export function FileContentViewer({
 										{highlightedHtml ? (
 											<span
 												className={cn(
-													"text-text-primary pr-4 kb-syntax",
-													wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre",
+													"text-text-primary pr-4 kb-syntax min-w-0 flex-1",
+													wordWrap ? "kb-file-content-wrapped-line" : "whitespace-pre",
 												)}
 												dangerouslySetInnerHTML={{ __html: highlightedHtml }}
 											/>
 										) : (
 											<span
 												className={cn(
-													"text-text-primary pr-4",
-													wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre",
+													"text-text-primary pr-4 min-w-0 flex-1",
+													wordWrap ? "kb-file-content-wrapped-line" : "whitespace-pre",
 												)}
 											>
 												{line || " "}

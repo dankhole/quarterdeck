@@ -1,47 +1,65 @@
-> **Fork notice:** This project is a derivative work of [kanban-org/kanban](https://github.com/kanban-org/kanban), originally created by Cline Bot Inc. and licensed under the Apache License 2.0. Significant modifications have been made. See [LICENSE](LICENSE) for terms.
+# Quarterdeck
 
-## Quarterdeck
+![Quarterdeck board screenshot](https://github.com/user-attachments/assets/2aa3dcc7-94e3-4076-bcfe-6d0272007cfe)
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/2aa3dcc7-94e3-4076-bcfe-6d0272007cfe" width="100%" />
-</p>
+Quarterdeck is a local orchestration board for coding agents. It gives each task a card, a terminal, git context, and a review surface so you can run multiple agents in parallel without manually juggling terminals, worktrees, diffs, and follow-up prompts.
 
-A terminal replacement with light IDE features — run many agents in parallel, review diffs, and manage your full dev workflow without swapping between apps. Each task card gets its own terminal and worktree, all handled for you automatically. Enable auto-commit and link cards together to create dependency chains that complete large amounts of work autonomously.
+Quarterdeck currently supports:
 
-Supports **Claude Code**, **Codex CLI**, and **Pi** out of the box — Quarterdeck detects whichever is installed and launches it for you.
+- Claude Code
+- OpenAI Codex
+- Pi, which is experimental
 
-> [!NOTE]
-> Quarterdeck is under active development. Found a bug or have an idea? Open a [GitHub Issue](https://github.com/dankhole/quarterdeck/issues).
->
-> **Windows support** is experimental — basic functionality should work but is largely untested. If you try it on Windows, bug reports are very welcome.
+Quarterdeck detects installed agent CLIs from your `PATH`, starts a local runtime server, and opens the browser UI for the git repository you launch it from.
 
-<div align="left">
-<table>
-<tbody>
-<td align="center">
-<a href="https://github.com/dankhole/quarterdeck" target="_blank">GitHub</a>
-</td>
-<td align="center">
-<a href="https://github.com/dankhole/quarterdeck/issues" target="_blank">Issues</a>
-</td>
-<td align="center">
-<a href="https://github.com/dankhole/quarterdeck/discussions/categories/ideas" target="_blank">Feature Requests</a>
-</td>
-</tbody>
-</table>
-</div>
+## What Quarterdeck Does
 
-## Contributor docs
+- Runs many coding-agent tasks side by side from one browser UI.
+- Gives each task its own terminal, review state, git metadata, and optional isolated worktree.
+- Mirrors common ignored dependencies such as `node_modules` into task worktrees so parallel agents do not need slow reinstall loops.
+- Tracks latest agent activity, permission/input needs, review readiness, and file changes on each card.
+- Provides task diffs, "Last Turn" checkpoint diffs, file browsing, branch comparison, line comments, commit, push, Open PR, and cherry-pick flows.
+- Supports project script shortcuts for commands such as `npm run dev` and prompt shortcuts for repeatable agent instructions such as Commit or Squash Merge.
+- Lets linked cards start after earlier cards complete, which makes larger agent workflows easier to sequence.
 
-If you're working on Quarterdeck itself instead of just using it:
+## Status
 
-- [`DEVELOPMENT.md`](./DEVELOPMENT.md) has the local-dev workflow, command cheatsheet, repo map, and CI notes.
-- [`docs/README.md`](./docs/README.md) is the human-facing index for architecture, refactor docs, and implementation history.
-- [`AGENTS.md`](./AGENTS.md) is the canonical repo-owned agent-instructions file used for shared Claude/Codex guidance.
+Quarterdeck is under active development. The main install path is currently from source with `npm run link`; the npm package is not the recommended path yet.
 
-### 1. Install quarterdeck
+Windows support is experimental. Core flows should work, but macOS and Linux receive more day-to-day testing.
 
-For the best terminal experience, install a [Nerd Font](https://www.nerdfonts.com/) (we recommend **JetBrainsMono Nerd Font**). Nerd Fonts include the glyphs that CLI agents use for status icons and UI elements. Without one installed, the terminal falls back to SF Mono / Menlo.
+## Requirements
+
+- Git
+- Node.js 20 or newer
+- npm 10 or newer
+- At least one supported agent CLI installed and available on `PATH`
+- Optional but recommended: a Nerd Font such as [JetBrainsMono Nerd Font](https://www.nerdfonts.com/) for cleaner terminal glyphs
+
+Codex users need Codex 0.124.0 or newer with native hook support. Pi users need Pi 0.70.2 or newer.
+
+## Environment Variables
+
+Quarterdeck does not require a `.env` file for core usage. It inherits the environment from the shell that launches `quarterdeck`, so make sure your agent CLI (`claude`, `codex`, or `pi`) is available on that shell's `PATH` and already authenticated according to that agent's own setup flow.
+
+Optional variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `QUARTERDECK_STATE_HOME` | Override the runtime state directory. Defaults to `~/.quarterdeck`. |
+| `QUARTERDECK_BACKUP_HOME` | Override the state backup directory. Defaults to `~/.quarterdeck-backups`. |
+| `QUARTERDECK_RUNTIME_HOST` | Override the runtime host. Defaults to `127.0.0.1`; the `--host` flag is usually clearer. |
+| `QUARTERDECK_RUNTIME_PORT` | Override the runtime port. Defaults to `3500`; the `--port` flag is usually clearer. |
+| `QUARTERDECK_DEBUG_MODE` | Enable extra debug behavior for agent availability checks. `DEBUG_MODE` and `debug_mode` are also recognized. |
+| `ANTHROPIC_BEDROCK_BASE_URL` | Enable optional LLM helper features through a Bedrock/LiteLLM-compatible proxy. |
+| `ANTHROPIC_AUTH_TOKEN` | Bearer token for the optional LLM helper proxy. |
+| `QUARTERDECK_LLM_MODEL` | Override the optional LLM helper model. Defaults to the built-in Haiku-on-Bedrock model string. |
+
+The LLM variables are only needed for generated task titles, branch names, summaries, and commit messages. Agent sessions themselves use your installed agent CLI and do not require these variables.
+
+## Install From Source
+
+Clone the repository, install dependencies for the runtime and web UI, then link the local build as the global `quarterdeck` command:
 
 ```bash
 git clone https://github.com/dankhole/quarterdeck.git
@@ -49,38 +67,97 @@ cd quarterdeck
 npm run install:all
 npm run link
 ```
-This builds the project and creates a global `quarterdeck` CLI command. Then open any git repo and run:
+
+`npm run link` runs a production build and then `npm link`, so the global `quarterdeck` command points at this checkout.
+
+Verify the linked command:
+
+```bash
+which quarterdeck
+quarterdeck --version
+```
+
+Run Quarterdeck from any git repository:
+
 ```bash
 cd /path/to/your/project
 quarterdeck
 ```
-Quarterdeck will detect your installed CLI agent, launch a local server, and open it in your browser. No account or setup required.
 
-### 2. Manage projects and create tasks
-Add multiple projects to Quarterdeck and switch between them from the sidebar — each project has its own board, task cards, and configuration. Create a task card manually, or open the sidebar chat and ask your agent to break work down into tasks for you. Quarterdeck injects board-management instructions into that session so you can simply ask it to add tasks, link tasks, or start work on your board.
+Quarterdeck launches a local server, opens the browser UI, and stores runtime state under `~/.quarterdeck` by default. Set `QUARTERDECK_STATE_HOME` to use a different state directory. Quarterdeck itself does not require a separate account; agent access comes from the agent CLIs you have installed and authenticated.
 
-### 3. Start tasks
-Hit the play button on a card. Quarterdeck creates an ephemeral worktree just for that task so agents work in parallel without merge conflicts. Under the hood, it also symlinks gitignored files like `node_modules` so you don’t have to worry about slow `npm install`s for each copy of your project.
+When you pull new Quarterdeck changes, switch worktrees, or want the global command to point at a different checkout, run `npm run link` again from that checkout. To remove the global link:
 
-> [!NOTE]
-> [Symlinks (symbolic links)](https://en.wikipedia.org/wiki/Symbolic_link) are special "shortcuts" pointing to another file or directory, allowing access to the target from a new location without duplicating data. They work great in this case since you typically don’t modify gitignored files in day-to-day work. If your workflow regularly modifies them, you can disable worktree symlinks in settings.
+```bash
+npm run unlink
+```
 
-As agents work, Quarterdeck uses hooks to display the latest message or tool call on each card, so you can monitor all your agents at a glance without opening each one.
+## Everyday Workflow
 
-### 4. Link and automate
-<kbd>⌘</kbd> + click a card to link it to another task. When a card is completed and moved to trash, linked tasks auto-start. Combine with auto-commit for fully autonomous dependency chains: one task completes → commits → kicks off the next → repeat. It’s a pretty magical experience asking your agent to decompose a big task into subtasks that auto-commit - it’ll cleverly do it in a way that parallelizes for maximum efficiency and links tasks together for end-to-end autonomy.
+1. Add projects.
 
-### 5. Review changes
-Click a card to view the agent's TUI and a diff of all the changes in that worktree. Quarterdeck includes its own checkpointing system so you can also see a diff from the last messages you've sent. Click on lines to leave comments and send them back to the agent. Switch to the file browser to explore the full worktree, browse other branches, or inspect individual files.
+   Quarterdeck can track multiple git repositories. Each project has its own board, task cards, settings, shortcuts, and runtime state.
 
-To easily test and debug your app, create a Script Shortcut in settings. Use a command like `npm run dev` so that all you have to do is hit a play button in the navbar instead of remembering commands or asking your agent to do it. Settings also let you configure audible notifications, terminal rendering, git polling intervals, worktree behavior, and more.
+2. Create task cards.
 
-### 6. Ship it
-When the work looks good, hit **Commit** or **Open PR**. Quarterdeck sends a dynamic prompt to the agent to convert the worktree into a commit on your base ref or a new PR branch, and work through any merge conflicts intelligently. Or skip review by enabling auto-commit / auto-PR and the agent ships as soon as it's done. Move the card to trash to clean up the worktree (you can always resume later since Quarterdeck tracks the resume ID).
+   Add cards manually, paste prompts into the sidebar, or ask an agent session to break a larger goal into linked tasks. Link cards when one task should start after another is finished.
 
-### 7. Keep track with the git view
-Open the git view to see uncommitted changes, a diff of what changed since your last message (Last Turn), or compare any two branches side by side with the Compare tab. The integrated file tree lets you navigate diffs by file. Works in both task worktree and home repo contexts.
+3. Start agents.
 
----
+   Starting a card launches the configured agent. By default, Quarterdeck creates an isolated git worktree for the task, mirrors common ignored dependencies such as `node_modules`, and injects worktree context so the agent understands where it is working. If your workflow modifies ignored files directly, worktree symlinks can be disabled in settings.
 
-[Apache 2.0 © 2026 Cline Bot Inc.](./LICENSE)
+4. Monitor progress.
+
+   Cards show task state, latest agent activity, review readiness, permission/input needs, and git change indicators. Opening a card shows the live agent terminal.
+
+5. Review changes.
+
+   The task detail view includes terminal output, git diffs, the "Last Turn" checkpoint diff, a file browser, branch comparison, and line comments that can be sent back to the agent. The git view can also compare branches and inspect uncommitted work in either the home repo or the selected task worktree.
+
+6. Land the work.
+
+   Use Commit, Open PR, Squash Merge, cherry-pick, or the git view to move reviewed work back toward your base branch. Prompt shortcuts and linked-card starts help automate repetitive landing steps and larger dependency chains.
+
+7. Clean up or resume.
+
+   Moving a card to Trash stops the session and removes the task worktree after capturing uncommitted work as needed. Quarterdeck stores resume metadata so interrupted tasks can be resumed later when the agent supports it.
+
+## Useful Commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm run install:all` | Install root and web UI dependencies. |
+| `npm run link` | Build the app and link the local `quarterdeck` CLI globally. |
+| `npm run unlink` | Remove the global `quarterdeck` link. |
+| `npm run dev` | Run the runtime server in watch mode on port 3500. |
+| `npm run dev:full` | Run the runtime and web UI together for local development. |
+| `npm run web:dev` | Run the Vite web UI dev server on port 4173. |
+| `npm run build` | Build the packaged runtime and web UI into `dist`. |
+| `npm run check` | Run agent-instruction checks, Biome, typecheck, and tests. |
+
+For the full development workflow, see [DEVELOPMENT.md](./DEVELOPMENT.md).
+
+## Troubleshooting
+
+If `quarterdeck` is not found, run `npm run link` from the Quarterdeck checkout and make sure your npm global bin directory is on `PATH`.
+
+If no agent is available, install Claude Code, OpenAI Codex, or Pi and confirm the matching binary (`claude`, `codex`, or `pi`) is available on `PATH`.
+
+If terminal symbols look wrong, install a Nerd Font and select it in your browser or system terminal font settings.
+
+## Documentation
+
+- [DEVELOPMENT.md](./DEVELOPMENT.md): local development workflow, scripts, debugging, and repo orientation
+- [docs/README.md](./docs/README.md): architecture docs, conventions, roadmap, and implementation history
+- [AGENTS.md](./AGENTS.md): shared repo-owned instructions for coding agents
+
+## Help and Feedback
+
+- [GitHub Issues](https://github.com/dankhole/quarterdeck/issues): bugs and regressions
+- [GitHub Discussions](https://github.com/dankhole/quarterdeck/discussions/categories/ideas): feature ideas and workflow feedback
+
+## License and Origin
+
+Quarterdeck is a derivative work of [kanban-org/kanban](https://github.com/kanban-org/kanban), originally created by Cline Bot Inc. and licensed under the Apache License 2.0. Significant modifications have been made.
+
+[Apache 2.0](./LICENSE)

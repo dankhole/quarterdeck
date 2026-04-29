@@ -6,9 +6,27 @@ import { FileContentViewer } from "@/components/git/panels/file-content-viewer";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const showAppToastMock = vi.hoisted(() => vi.fn());
+const virtualizerMeasureMock = vi.hoisted(() => vi.fn());
+const virtualizerScrollToIndexMock = vi.hoisted(() => vi.fn());
+const virtualizerMeasureElementMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/components/app-toaster", () => ({
 	showAppToast: showAppToastMock,
+}));
+
+vi.mock("@tanstack/react-virtual", () => ({
+	useVirtualizer: (options: { count: number; estimateSize: () => number }) => ({
+		getTotalSize: () => options.count * options.estimateSize(),
+		getVirtualItems: () =>
+			Array.from({ length: options.count }, (_, index) => ({
+				index,
+				key: index,
+				start: index * options.estimateSize(),
+			})),
+		measure: virtualizerMeasureMock,
+		measureElement: virtualizerMeasureElementMock,
+		scrollToIndex: virtualizerScrollToIndexMock,
+	}),
 }));
 
 describe("FileContentViewer", () => {
@@ -27,6 +45,9 @@ describe("FileContentViewer", () => {
 		root = createRoot(container);
 		localStorage.clear();
 		showAppToastMock.mockReset();
+		virtualizerMeasureMock.mockReset();
+		virtualizerScrollToIndexMock.mockReset();
+		virtualizerMeasureElementMock.mockReset();
 		clipboardWriteText = vi.fn().mockResolvedValue(undefined);
 		originalClipboard = navigator.clipboard;
 		Object.defineProperty(navigator, "clipboard", {
@@ -129,5 +150,22 @@ describe("FileContentViewer", () => {
 			intent: "success",
 			message: "File contents copied to clipboard",
 		});
+	});
+
+	it("remeasures virtual rows when word wrap is disabled", async () => {
+		const content = "const longLine = 'this is a long line that wraps in source mode';\n";
+
+		await renderViewer(content);
+		virtualizerMeasureMock.mockClear();
+
+		const wrapButton = container.querySelector('button[aria-label="Disable word wrap"]');
+		expect(wrapButton).toBeInstanceOf(HTMLButtonElement);
+
+		await act(async () => {
+			(wrapButton as HTMLButtonElement).click();
+		});
+
+		expect(getSourceTextarea().dataset.wordWrap).toBe("false");
+		expect(virtualizerMeasureMock).toHaveBeenCalled();
 	});
 });

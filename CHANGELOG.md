@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fix: improve source viewer word wrap
+
+- File source word wrap now prefers normal word boundaries, uses the full content column, and re-measures wrapped rows after panel resize so Markdown prose no longer wraps too early or breaks awkwardly inside words.
+
+### Docs: refresh README
+
+- Reworked the root README around the current source install flow with `npm run link`, optional environment variables, the active agent/worktree workflow, and GitHub/Bitbucket-friendly Markdown.
+
 ### Docs: track editor-lite backlog
 
 - Added an active todo for an editor-lite review/editing surface, including Monaco, CodeMirror 6, and Eclipse Theia as implementation options.
