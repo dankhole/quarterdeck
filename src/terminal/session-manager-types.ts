@@ -64,8 +64,6 @@ export interface StartTaskSessionRequest {
 	projectId?: string;
 	projectPath?: string;
 	statuslineEnabled?: boolean;
-	worktreeAddParentGitDir?: boolean;
-	worktreeAddQuarterdeckDir?: boolean;
 	worktreeSystemPromptTemplate?: string;
 	agentTerminalRowMultiplier?: number;
 }

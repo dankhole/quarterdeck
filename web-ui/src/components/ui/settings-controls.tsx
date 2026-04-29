@@ -2,6 +2,7 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as RadixSwitch from "@radix-ui/react-switch";
 import { Check } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/components/ui/cn";
 
@@ -66,5 +67,67 @@ export function SettingsCheckbox({
 				<Check size={12} className="text-white" />
 			</RadixCheckbox.Indicator>
 		</RadixCheckbox.Root>
+	);
+}
+
+export function NumericSettingsInput({
+	id,
+	label,
+	value,
+	onChange,
+	disabled,
+	min,
+	max,
+}: {
+	id: string;
+	label: string;
+	value: number;
+	onChange: (v: number) => void;
+	disabled: boolean;
+	min: number;
+	max: number;
+}): React.ReactElement {
+	const [draft, setDraft] = useState(String(value));
+	const inputRef = useRef<HTMLInputElement>(null);
+
+	useEffect(() => {
+		if (document.activeElement !== inputRef.current) {
+			setDraft(String(value));
+		}
+	}, [value]);
+
+	const commit = () => {
+		const parsed = Number(draft);
+		if (Number.isFinite(parsed) && parsed >= min && parsed <= max) {
+			onChange(parsed);
+			setDraft(String(parsed));
+		} else {
+			setDraft(String(value));
+		}
+	};
+
+	return (
+		<div className="flex items-center justify-between gap-3 mt-3">
+			<label htmlFor={id} className="text-text-primary text-[13px] shrink-0">
+				{label}
+			</label>
+			<input
+				ref={inputRef}
+				id={id}
+				type="text"
+				inputMode="numeric"
+				value={draft}
+				onChange={(e) => setDraft(e.target.value)}
+				onBlur={commit}
+				onKeyDown={(e) => {
+					if (e.key === "Enter") {
+						commit();
+						inputRef.current?.blur();
+					}
+				}}
+				disabled={disabled}
+				className="h-7 w-14 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right tabular-nums focus:border-border-focus focus:outline-none disabled:opacity-40"
+			/>
+		</div>
 	);
 }

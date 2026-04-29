@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Chore: simplify settings agent launch controls
+
+- Settings now groups task-agent selection, Claude row tuning, and the worktree context prompt together so agent launch behavior is easier to scan.
+- Removed the parent `.git` and `~/.quarterdeck` agent access toggles from settings/config; Quarterdeck no longer passes those extra `--add-dir` directories to Claude task sessions, and stale config keys are dropped on the next save.
+
 ### Feature: restore Open in IDE
 
 - The top bar now has an Open button before project script shortcuts, using the current project path or the selected task's assigned worktree path.
@@ -30,6 +35,7 @@
 
 - Task terminal view top bars and shell terminal headers now expose visible re-sync controls that request a fresh server snapshot for the current terminal without opening Settings.
 - Top bars now show only the project/worktree directory name while keeping the full path available on hover, avoiding noisy hidden worktree paths in task views.
+- Settings no longer includes the old all-terminal re-sync button now that each terminal surface exposes its own contextual re-sync control.
 
 ### Fix: settle task terminal reveal after restore
 

@@ -1,8 +1,10 @@
 // Settings section: agent selection and worktree system prompt.
+import * as RadixCollapsible from "@radix-ui/react-collapsible";
 import { getRuntimeAgentCatalogEntry } from "@runtime-agent-catalog";
-import { Circle, CircleDot } from "lucide-react";
+import { ChevronDown, ChevronRight, Circle, CircleDot } from "lucide-react";
 import { useCallback, useState } from "react";
 import { cn } from "@/components/ui/cn";
+import { NumericSettingsInput } from "@/components/ui/settings-controls";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeConfigResponse } from "@/runtime/types";
 import type { SettingsSectionProps } from "./settings-section-props";
 
@@ -130,9 +132,11 @@ export function AgentSection({
 		setField("worktreeSystemPromptTemplate", defaultTemplate);
 	}, [setField, defaultTemplate]);
 
+	const PromptChevron = systemPromptExpanded ? ChevronDown : ChevronRight;
+
 	return (
 		<>
-			<h6 className="font-semibold text-text-primary mt-3 mb-0">Agent</h6>
+			<h6 className="font-semibold text-text-primary mt-3 mb-1">Task Agent</h6>
 			{agents.map((agent) => (
 				<AgentRow
 					key={agent.id}
@@ -151,50 +155,70 @@ export function AgentSection({
 					launch.
 				</p>
 			)}
-			<div className="mt-3">
-				<div className="flex items-center justify-between">
+
+			<h6 className="font-semibold text-text-primary mt-4 mb-2">Agent Launch</h6>
+			<NumericSettingsInput
+				id="agent-terminal-row-multiplier"
+				label="Claude row multiplier"
+				value={fields.agentTerminalRowMultiplier}
+				onChange={(v) => setField("agentTerminalRowMultiplier", v)}
+				disabled={disabled}
+				min={1}
+				max={20}
+			/>
+			<p className="text-text-secondary text-[13px] mt-1 mb-3">
+				Makes Claude Code output more content before pausing, so you can scroll back and see more of what it did.
+				Codex ignores this setting. Set to 1 if Claude's UI looks broken. Applies to new Claude sessions only.
+			</p>
+
+			<RadixCollapsible.Root open={systemPromptExpanded} onOpenChange={setSystemPromptExpanded} className="mt-2">
+				<RadixCollapsible.Trigger asChild>
 					<button
 						type="button"
-						onClick={() => setSystemPromptExpanded((v) => !v)}
-						className="text-[13px] text-text-primary font-medium cursor-pointer bg-transparent border-none p-0 hover:text-accent"
+						className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-2 text-left text-[13px] text-text-primary hover:border-border-bright hover:bg-surface-3"
 					>
-						{systemPromptExpanded ? "▾" : "▸"} Worktree system prompt
-						{isCustomized ? (
-							<span className="ml-1.5 text-[11px] text-status-blue font-normal">(customized)</span>
-						) : null}
+						<span className="min-w-0">
+							<span className="block font-medium">Worktree context prompt</span>
+							<span className="block truncate text-[12px] text-text-secondary">
+								{isCustomized ? "Custom launch context template" : "Default launch context template"}
+							</span>
+						</span>
+						<PromptChevron size={16} className="shrink-0 text-text-secondary" />
 					</button>
-					{systemPromptExpanded && isCustomized ? (
-						<button
-							type="button"
-							onClick={handleResetToDefault}
-							disabled={disabled}
-							className="text-[12px] text-accent hover:text-accent-hover bg-transparent border-none p-0 cursor-pointer disabled:opacity-40"
-						>
-							Reset to default
-						</button>
-					) : null}
-				</div>
-				{systemPromptExpanded ? (
-					<>
-						<p className="text-text-secondary text-[13px] mt-1 mb-2">
+				</RadixCollapsible.Trigger>
+				<RadixCollapsible.Content className="mt-2">
+					<div className="flex items-center justify-between gap-3">
+						<p className="text-text-secondary text-[13px] my-0">
 							Sent to worktree-launched agents as Claude system-prompt context or Codex developer instructions.
-							Supports <code className="text-[12px] bg-surface-3 px-1 rounded">{"{{cwd}}"}</code>,{" "}
-							<code className="text-[12px] bg-surface-3 px-1 rounded">{"{{project_path}}"}</code>, and{" "}
-							<code className="text-[12px] bg-surface-3 px-1 rounded">{"{{detached_head_note}}"}</code>{" "}
-							placeholders.
 						</p>
-						<textarea
-							id="runtime-settings-worktree-system-prompt"
-							value={fields.worktreeSystemPromptTemplate}
-							onChange={(e) => setField("worktreeSystemPromptTemplate", e.target.value)}
-							disabled={disabled}
-							rows={8}
-							className="w-full rounded-md border border-border bg-surface-2 px-3 py-2 text-[13px] text-text-primary font-mono leading-relaxed resize-y focus:border-border-focus focus:outline-none disabled:opacity-40"
-							placeholder="System prompt template for worktree agents..."
-						/>
-					</>
-				) : null}
-			</div>
+						{isCustomized ? (
+							<button
+								type="button"
+								onClick={handleResetToDefault}
+								disabled={disabled}
+								className="shrink-0 text-[12px] text-accent hover:text-accent-hover bg-transparent border-none p-0 cursor-pointer disabled:opacity-40"
+							>
+								Reset to default
+							</button>
+						) : null}
+					</div>
+					<p className="text-text-secondary text-[13px] mt-1 mb-2">
+						Supports <code className="text-[12px] bg-surface-3 px-1 rounded">{"{{cwd}}"}</code>,{" "}
+						<code className="text-[12px] bg-surface-3 px-1 rounded">{"{{project_path}}"}</code>, and{" "}
+						<code className="text-[12px] bg-surface-3 px-1 rounded">{"{{detached_head_note}}"}</code>{" "}
+						placeholders.
+					</p>
+					<textarea
+						id="runtime-settings-worktree-system-prompt"
+						value={fields.worktreeSystemPromptTemplate}
+						onChange={(e) => setField("worktreeSystemPromptTemplate", e.target.value)}
+						disabled={disabled}
+						rows={8}
+						className="w-full rounded-md border border-border bg-surface-2 px-3 py-2 text-[13px] text-text-primary font-mono leading-relaxed resize-y focus:border-border-focus focus:outline-none disabled:opacity-40"
+						placeholder="System prompt template for worktree agents..."
+					/>
+				</RadixCollapsible.Content>
+			</RadixCollapsible.Root>
 		</>
 	);
 }

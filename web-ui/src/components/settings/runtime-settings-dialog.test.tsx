@@ -174,6 +174,28 @@ describe("RuntimeSettingsDialog", () => {
 		);
 	});
 
+	it("groups agent launch controls and omits retired worktree access toggles", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					projectId={"project-1"}
+					initialConfig={savedConfig}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const bodyText = document.body.textContent ?? "";
+		expect(bodyText).toContain("Task Agent");
+		expect(bodyText).toContain("Agent Launch");
+		expect(bodyText).toContain("Claude row multiplier");
+		expect(bodyText).toContain("Worktree context prompt");
+		expect(bodyText).not.toContain("Allow agents to access the parent repo");
+		expect(bodyText).not.toContain("Rogue writes can corrupt project state");
+		expect(bodyText).not.toContain("These settings let agents escape their worktree sandbox");
+	});
+
 	it("hides staleness input when auto-generate is unchecked", async () => {
 		await act(async () => {
 			root.render(
@@ -260,6 +282,22 @@ describe("RuntimeSettingsDialog", () => {
 		});
 
 		expect(resetLayoutCustomizationsMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not render the old terminal re-sync action in settings", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					projectId={"project-1"}
+					initialConfig={savedConfig}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		expect(findButtonByText(document.body, "Reset terminal rendering")).toBeInstanceOf(HTMLButtonElement);
+		expect(findButtonByText(document.body, "Re-sync terminal content")).toBeNull();
 	});
 
 	it("renders audible notification controls when dialog is open", async () => {

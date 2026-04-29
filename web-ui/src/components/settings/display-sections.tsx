@@ -1,11 +1,10 @@
 // Settings sections: AI Features, Notifications, and Terminal.
 import { Sparkles, Volume2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
-import { SettingsCheckbox, SettingsSwitch } from "@/components/ui/settings-controls";
-import { resetAllTerminalRenderers, restoreAllTerminals } from "@/terminal/terminal-pool";
+import { NumericSettingsInput, SettingsCheckbox, SettingsSwitch } from "@/components/ui/settings-controls";
+import { resetAllTerminalRenderers } from "@/terminal/terminal-pool";
 import { notificationAudioPlayer } from "@/utils/notification-audio";
 import type { SettingsSectionProps } from "./settings-section-props";
 
@@ -248,72 +247,6 @@ function NotificationEventRow({
 	);
 }
 
-// ---------------------------------------------------------------------------
-// Terminal
-// ---------------------------------------------------------------------------
-
-function NumericSettingsInput({
-	id,
-	label,
-	value,
-	onChange,
-	disabled,
-	min,
-	max,
-}: {
-	id: string;
-	label: string;
-	value: number;
-	onChange: (v: number) => void;
-	disabled: boolean;
-	min: number;
-	max: number;
-}) {
-	const [draft, setDraft] = useState(String(value));
-	const inputRef = useRef<HTMLInputElement>(null);
-
-	useEffect(() => {
-		if (document.activeElement !== inputRef.current) {
-			setDraft(String(value));
-		}
-	}, [value]);
-
-	const commit = () => {
-		const parsed = Number(draft);
-		if (Number.isFinite(parsed) && parsed >= min && parsed <= max) {
-			onChange(parsed);
-			setDraft(String(parsed));
-		} else {
-			setDraft(String(value));
-		}
-	};
-
-	return (
-		<div className="flex items-center justify-between gap-3 mt-3">
-			<label htmlFor={id} className="text-text-primary text-[13px] shrink-0">
-				{label}
-			</label>
-			<input
-				ref={inputRef}
-				id={id}
-				type="text"
-				inputMode="numeric"
-				value={draft}
-				onChange={(e) => setDraft(e.target.value)}
-				onBlur={commit}
-				onKeyDown={(e) => {
-					if (e.key === "Enter") {
-						commit();
-						inputRef.current?.blur();
-					}
-				}}
-				disabled={disabled}
-				className="h-7 w-14 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right tabular-nums focus:border-border-focus focus:outline-none"
-			/>
-		</div>
-	);
-}
-
 export function TerminalSection({ fields, setField, disabled }: SettingsSectionProps): React.ReactElement {
 	return (
 		<>
@@ -337,19 +270,6 @@ export function TerminalSection({ fields, setField, disabled }: SettingsSectionP
 			<p className="text-text-secondary text-[13px] mt-1 mb-0">
 				CSS font weight for terminal text. Lower values are thinner. Typical range: 300–400.
 			</p>
-			<NumericSettingsInput
-				id="agent-terminal-row-multiplier"
-				label="Claude row multiplier"
-				value={fields.agentTerminalRowMultiplier}
-				onChange={(v) => setField("agentTerminalRowMultiplier", v)}
-				disabled={disabled}
-				min={1}
-				max={20}
-			/>
-			<p className="text-text-secondary text-[13px] mt-1 mb-0">
-				Makes Claude Code output more content before pausing, so you can scroll back and see more of what it did.
-				Codex ignores this setting. Set to 1 if Claude's UI looks broken. Applies to new Claude sessions only.
-			</p>
 			<Button
 				size="sm"
 				className="mt-3"
@@ -367,24 +287,6 @@ export function TerminalSection({ fields, setField, disabled }: SettingsSectionP
 			<p className="text-text-secondary text-[13px] mt-2 mb-0">
 				Clear cached font textures and re-render all terminals. Use this if terminal text looks blurry or distorted
 				after moving between monitors.
-			</p>
-			<Button
-				size="sm"
-				className="mt-3"
-				onClick={() => {
-					restoreAllTerminals();
-					showAppToast({
-						intent: "success",
-						message: "Restoring terminals from server",
-						timeout: 3000,
-					});
-				}}
-			>
-				Re-sync terminal content
-			</Button>
-			<p className="text-text-secondary text-[13px] mt-2 mb-0">
-				Fetch a fresh snapshot from the server for all terminals. Use this if terminal content looks wrong or out of
-				sync with the agent.
 			</p>
 		</>
 	);

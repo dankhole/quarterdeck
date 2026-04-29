@@ -106,8 +106,6 @@ export const GLOBAL_CONFIG_FIELDS = {
 	audibleNotificationsOnlyWhenHidden: boolField(true),
 	statuslineEnabled: boolField(true),
 	terminalFontWeight: numField(325),
-	worktreeAddParentGitDir: boolField(false),
-	worktreeAddQuarterdeckDir: boolField(false),
 	logLevel: enumField<LogLevel>("warn", LOG_LEVELS),
 	backupIntervalMinutes: numField(30),
 	agentTerminalRowMultiplier: numField(2),

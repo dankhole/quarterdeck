@@ -12,9 +12,9 @@ import type { ActiveProcessState } from "./session-manager-types";
 const sessionLog = createTaggedLogger("session-trust");
 
 export const MAX_WORKSPACE_TRUST_BUFFER_CHARS = 16_384;
-// Maximum number of trust prompts to auto-confirm per session. Covers the CWD
-// trust plus any --add-dir directories. Capped to prevent infinite loops if
-// the trust prompt pattern matches non-trust output.
+// Maximum number of trust prompts to auto-confirm per session. Some CLIs can
+// prompt more than once while resolving launch context. Cap confirmations to
+// prevent infinite loops if the pattern matches non-trust output.
 export const MAX_AUTO_TRUST_CONFIRMS = 5;
 
 export interface WorkspaceTrustCallbacks {
@@ -73,9 +73,9 @@ export function processWorkspaceTrustOutput(
 			activeEntry.workspaceTrustBuffer = "";
 		}
 		activeEntry.workspaceTrustConfirmTimer = null;
-		// Allow subsequent trust prompts (e.g. from --add-dir directories)
-		// to be auto-confirmed. Cap at MAX_AUTO_TRUST_CONFIRMS to prevent
-		// infinite confirm loops if the pattern matches non-trust output.
+		// Allow subsequent trust prompts to be auto-confirmed. Cap at
+		// MAX_AUTO_TRUST_CONFIRMS to prevent infinite confirm loops if the
+		// pattern matches non-trust output.
 		if (activeEntry.workspaceTrustConfirmCount < MAX_AUTO_TRUST_CONFIRMS) {
 			activeEntry.autoConfirmedWorkspaceTrust = false;
 		} else {

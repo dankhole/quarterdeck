@@ -108,8 +108,6 @@ export async function spawnTaskSession(
 			projectId: request.projectId,
 			projectPath: request.projectPath,
 			statuslineEnabled: request.statuslineEnabled,
-			worktreeAddParentGitDir: request.worktreeAddParentGitDir,
-			worktreeAddQuarterdeckDir: request.worktreeAddQuarterdeckDir,
 			worktreeSystemPromptTemplate: request.worktreeSystemPromptTemplate,
 		});
 	} catch (error) {
@@ -131,8 +129,6 @@ export async function spawnTaskSession(
 		projectPath: request.projectPath ?? null,
 		argCount: commandArgs.length,
 		willAutoTrust,
-		worktreeAddParentGitDir: request.worktreeAddParentGitDir ?? false,
-		worktreeAddQuarterdeckDir: request.worktreeAddQuarterdeckDir ?? false,
 	};
 	sessionLog.debug("spawning task session", {
 		taskId: request.taskId,

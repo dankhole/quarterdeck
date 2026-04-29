@@ -257,8 +257,6 @@ export async function handleStartTaskSession(
 			projectId: projectScope.projectId,
 			projectPath: projectScope.projectPath,
 			statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
-			worktreeAddParentGitDir: scopedRuntimeConfig.worktreeAddParentGitDir,
-			worktreeAddQuarterdeckDir: scopedRuntimeConfig.worktreeAddQuarterdeckDir,
 			worktreeSystemPromptTemplate: scopedRuntimeConfig.worktreeSystemPromptTemplate,
 			agentTerminalRowMultiplier: scopedRuntimeConfig.agentTerminalRowMultiplier,
 			env: body.baseRef ? { QUARTERDECK_BASE_REF: body.baseRef } : undefined,

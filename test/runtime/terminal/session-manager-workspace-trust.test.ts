@@ -150,7 +150,7 @@ describe("TerminalSessionManager workspace trust auto-confirm", () => {
 		expect(session?.write).not.toHaveBeenCalled();
 	});
 
-	it("re-arms between trust prompts for --add-dir", async () => {
+	it("re-arms between repeated trust prompts", async () => {
 		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
 		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
 			const session = createMockPtySession(444, request);
@@ -178,7 +178,7 @@ describe("TerminalSessionManager workspace trust auto-confirm", () => {
 		expect(session?.write).toHaveBeenCalledWith("\r");
 		expect(session?.write).toHaveBeenCalledTimes(1);
 
-		// Second trust prompt (e.g. from --add-dir)
+		// Second trust prompt from the same launch
 		session?.triggerData("Do you want to trust this folder? Yes, I trust this folder");
 		await vi.advanceTimersByTimeAsync(100);
 		expect(session?.write).toHaveBeenCalledTimes(2);

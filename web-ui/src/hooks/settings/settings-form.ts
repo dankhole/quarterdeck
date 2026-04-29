@@ -40,8 +40,6 @@ export interface SettingsFormValues {
 		review: boolean;
 		failure: boolean;
 	};
-	worktreeAddParentGitDir: boolean;
-	worktreeAddQuarterdeckDir: boolean;
 	worktreeSystemPromptTemplate: string;
 	agentTerminalRowMultiplier: number;
 	shortcuts: RuntimeProjectShortcut[];
@@ -83,8 +81,6 @@ export function resolveInitialValues(
 		audibleNotificationSuppressCurrentProject: config?.audibleNotificationSuppressCurrentProject ?? {
 			...CONFIG_DEFAULTS.audibleNotificationSuppressCurrentProject,
 		},
-		worktreeAddParentGitDir: config?.worktreeAddParentGitDir ?? CONFIG_DEFAULTS.worktreeAddParentGitDir,
-		worktreeAddQuarterdeckDir: config?.worktreeAddQuarterdeckDir ?? CONFIG_DEFAULTS.worktreeAddQuarterdeckDir,
 		worktreeSystemPromptTemplate: config?.worktreeSystemPromptTemplate ?? "",
 		agentTerminalRowMultiplier: config?.agentTerminalRowMultiplier ?? CONFIG_DEFAULTS.agentTerminalRowMultiplier,
 		shortcuts: config?.shortcuts ?? [],

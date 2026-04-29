@@ -435,6 +435,25 @@ describe("worktree context system prompt", () => {
 		expect(separatorIndex).toBeGreaterThan(flagIndex);
 	});
 
+	it("does not grant extra directories to Claude worktree launches", async () => {
+		setupTempHome();
+		buildWorktreeContextPromptMock.mockResolvedValue("Worktree context");
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-no-add-dir",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/repo/.quarterdeck/worktrees/task-no-add-dir",
+			prompt: "Fix the bug",
+			projectId: "ws-1",
+			projectPath: "/repo",
+		});
+
+		expect(launch.args).not.toContain("--add-dir");
+		expect(launch.args.join("\n")).not.toContain("/repo/.git");
+	});
+
 	it("does not inject --append-system-prompt when context builder returns empty", async () => {
 		setupTempHome();
 		buildWorktreeContextPromptMock.mockResolvedValue("");

@@ -1,4 +1,4 @@
-// Settings sections: Git, Confirmations, Troubleshooting, and Advanced.
+// Settings sections: Git, Confirmations, and Troubleshooting.
 import { Button } from "@/components/ui/button";
 import { SettingsSwitch } from "@/components/ui/settings-controls";
 import type { SettingsSectionProps } from "./settings-section-props";
@@ -96,56 +96,6 @@ export function TroubleshootingSection({ onResetLayout }: { onResetLayout: () =>
 				Press <kbd className="font-mono text-xs bg-surface-3 px-1 rounded">Cmd+Shift+D</kbd> to toggle the log
 				panel. The log level can be changed from the panel header.
 			</p>
-		</>
-	);
-}
-
-// ---------------------------------------------------------------------------
-// Advanced
-// ---------------------------------------------------------------------------
-
-export function AdvancedSection({ fields, setField, disabled }: SettingsSectionProps): React.ReactElement {
-	return (
-		<>
-			<h6 className="font-semibold text-text-primary mt-4 mb-1">Advanced</h6>
-			<p className="text-text-secondary text-[13px] mt-1 mb-3">
-				These settings let agents escape their worktree sandbox. Enabling them means the agent can{" "}
-				<code className="text-xs bg-surface-3 px-1 rounded">cd</code> out of the task worktree into shared
-				directories, which breaks worktree isolation — the status bar, branch display, and "shared" indicators may
-				desync because they assume the agent stays in its assigned worktree.
-			</p>
-			<SettingsSwitch
-				checked={fields.worktreeAddParentGitDir}
-				onCheckedChange={(v) => setField("worktreeAddParentGitDir", v)}
-				disabled={disabled}
-				label={
-					<>
-						Allow agents to access the parent repo's{" "}
-						<code className="text-xs bg-surface-3 px-1 rounded">.git</code> directory
-					</>
-				}
-				description={
-					<>
-						Passes only the parent repo's <code className="text-xs bg-surface-3 px-1 rounded">.git</code>{" "}
-						directory via <code className="text-xs bg-surface-3 px-1 rounded">--add-dir</code> instead of the
-						entire repo. Agents can read git history, branches, and refs without full file access. Ignored when
-						the full parent repo option above is enabled. Claude Code only.
-					</>
-				}
-			/>
-			<SettingsSwitch
-				className="mt-3"
-				checked={fields.worktreeAddQuarterdeckDir}
-				onCheckedChange={(v) => setField("worktreeAddQuarterdeckDir", v)}
-				disabled={disabled}
-				label={
-					<>
-						Allow agents to access the <code className="text-xs bg-surface-3 px-1 rounded">~/.quarterdeck</code>{" "}
-						directory
-					</>
-				}
-				description="Gives agents read/write access to Quarterdeck state files (board data, session state, other worktrees). Rogue writes can corrupt project state and cause revision conflicts. The agent can also navigate into other task worktrees, breaking isolation. Claude Code only."
-			/>
 		</>
 	);
 }

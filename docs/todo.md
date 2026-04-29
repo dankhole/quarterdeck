@@ -144,10 +144,6 @@ Take another pass at generated task titles and summaries. Review the prompts, so
 
 Add an agent harness selector button/control to the create-task flow so users can choose the task agent/harness before launching, rather than relying on a global/default agent setting or changing settings out of band. Task cards should also show which harness they are using so mixed-agent boards are easy to scan.
 
-## Refactor settings menu organization
-
-Rework the settings dialog so related controls are easier to scan and understand. Group agent-specific settings together, make the worktree prompt control more obviously a dropdown/selector, and consider accordion sections to minimize rarely used settings without hiding important defaults.
-
 ## Search modals: live preview pane
 
 Add a VS Code-style peek preview to the search modals — when a result is highlighted (keyboard or hover), show a read-only preview of the file content alongside the result list, centered on the matched line. Avoids full navigation for scanning multiple matches. Could be a side panel within the overlay or an expandable inline preview.

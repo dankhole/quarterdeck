@@ -116,6 +116,36 @@ describe.sequential("runtime-config persistence", () => {
 		}
 	});
 
+	it("prunes retired worktree add-dir keys from existing global config", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-prune-add-dir-");
+		const projectId = "test-project";
+
+		try {
+			const runtimeConfigDir = join(tempHome, ".quarterdeck");
+			mkdirSync(runtimeConfigDir, { recursive: true });
+			writeFileSync(
+				join(runtimeConfigDir, "config.json"),
+				JSON.stringify({
+					worktreeAddParentGitDir: true,
+					worktreeAddQuarterdeckDir: true,
+				}),
+				"utf8",
+			);
+
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				await saveRuntimeConfig(projectId, createDefaultRuntimeConfigSaveRequest());
+
+				const globalPayload = JSON.parse(
+					readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8"),
+				) as Record<string, unknown>;
+				expect(globalPayload).not.toHaveProperty("worktreeAddParentGitDir");
+				expect(globalPayload).not.toHaveProperty("worktreeAddQuarterdeckDir");
+			});
+		} finally {
+			cleanupHome();
+		}
+	});
+
 	it("removes an existing empty project config file when no shortcuts are saved", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-cleanup-empty-");
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-cleanup-empty-");

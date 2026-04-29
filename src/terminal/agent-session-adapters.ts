@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 import { buildCodexHookConfigOverrides, CODEX_HOOKS_FEATURE_NAME, serializeCodexTomlValue } from "../codex-hooks";
 import { buildStatuslineCommand } from "../commands/statusline";
@@ -26,8 +26,6 @@ export interface AgentAdapterLaunchInput {
 	projectId?: string;
 	projectPath?: string;
 	statuslineEnabled?: boolean;
-	worktreeAddParentGitDir?: boolean;
-	worktreeAddQuarterdeckDir?: boolean;
 	worktreeSystemPromptTemplate?: string;
 }
 
@@ -277,29 +275,6 @@ const claudeAdapter: AgentSessionAdapter = {
 			);
 		}
 
-		// When running in a worktree, optionally give the agent access to the
-		// parent repo directory and/or the ~/.quarterdeck state directory via --add-dir.
-		const isWorktree = input.projectPath && resolve(input.cwd) !== resolve(input.projectPath);
-		log.debug("claude adapter --add-dir check", {
-			cwd: input.cwd,
-			projectPath: input.projectPath ?? null,
-			isWorktree,
-			worktreeAddParentGitDir: input.worktreeAddParentGitDir ?? false,
-			worktreeAddQuarterdeckDir: input.worktreeAddQuarterdeckDir ?? false,
-		});
-		if (isWorktree && input.projectPath) {
-			if (input.worktreeAddParentGitDir) {
-				const gitDir = join(input.projectPath, ".git");
-				log.debug("adding --add-dir for parent .git dir", { path: gitDir });
-				args.push("--add-dir", gitDir);
-			}
-			if (input.worktreeAddQuarterdeckDir) {
-				const quarterdeckPath = getRuntimeHomePath();
-				log.debug("adding --add-dir for quarterdeck dir", { path: quarterdeckPath });
-				args.push("--add-dir", quarterdeckPath);
-			}
-		}
-
 		// Inject worktree context so the agent knows it's in an isolated worktree,
 		// not the main repo. Must go before "--" which terminates option parsing.
 		if (!hasCliOption(args, "--append-system-prompt") && !hasCliOption(args, "--system-prompt")) {
@@ -314,7 +289,7 @@ const claudeAdapter: AgentSessionAdapter = {
 		}
 
 		// "--" terminates option parsing so the prompt positional arg can't be
-		// consumed by variadic flags like --add-dir.
+		// consumed by variadic flags.
 		if (input.prompt.trim()) {
 			args.push("--");
 		}
@@ -503,8 +478,6 @@ export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promis
 		agentId: input.agentId,
 		cwd: input.cwd,
 		projectPath: input.projectPath ?? null,
-		worktreeAddParentGitDir: input.worktreeAddParentGitDir ?? false,
-		worktreeAddQuarterdeckDir: input.worktreeAddQuarterdeckDir ?? false,
 		hasPrompt: input.prompt.trim().length > 0,
 		imageCount: input.images?.length ?? 0,
 		resumeConversation: input.resumeConversation ?? false,

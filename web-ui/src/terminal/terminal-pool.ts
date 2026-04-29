@@ -750,23 +750,6 @@ export function resetAllTerminalRenderers(): void {
 }
 
 /**
- * Request a restore on all connected terminals (pool + dedicated).
- */
-export function restoreAllTerminals(): void {
-	const count = slots.length + getDedicatedTerminalCount();
-	if (count === 0) {
-		log.warn("restoreAllTerminals — no terminals");
-		return;
-	}
-	log.info(`requesting restore for ${count} terminal(s)`);
-	for (const slot of allSlots()) {
-		if (slot.connectedTaskId) {
-			slot.requestRestore();
-		}
-	}
-}
-
-/**
  * Set font weight on all terminals (pool + dedicated).
  */
 export function setTerminalFontWeight(weight: number): void {

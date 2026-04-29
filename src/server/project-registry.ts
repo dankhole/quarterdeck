@@ -650,8 +650,6 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 					projectId,
 					projectPath,
 					statuslineEnabled: runtimeConfig.statuslineEnabled,
-					worktreeAddParentGitDir: runtimeConfig.worktreeAddParentGitDir,
-					worktreeAddQuarterdeckDir: runtimeConfig.worktreeAddQuarterdeckDir,
 					agentTerminalRowMultiplier: runtimeConfig.agentTerminalRowMultiplier,
 				})
 				.catch((error) => {

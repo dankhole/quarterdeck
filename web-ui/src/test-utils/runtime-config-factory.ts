@@ -109,8 +109,6 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	summaryStaleAfterSeconds: CONFIG_DEFAULTS.summaryStaleAfterSeconds,
 	statuslineEnabled: CONFIG_DEFAULTS.statuslineEnabled,
 	terminalFontWeight: CONFIG_DEFAULTS.terminalFontWeight,
-	worktreeAddParentGitDir: CONFIG_DEFAULTS.worktreeAddParentGitDir,
-	worktreeAddQuarterdeckDir: CONFIG_DEFAULTS.worktreeAddQuarterdeckDir,
 	logLevel: CONFIG_DEFAULTS.logLevel,
 	defaultBaseRef: CONFIG_DEFAULTS.defaultBaseRef,
 	backupIntervalMinutes: CONFIG_DEFAULTS.backupIntervalMinutes,

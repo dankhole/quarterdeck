@@ -6,12 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import { type AgentRowModel, AgentSection } from "@/components/settings/agent-section";
 import { AiFeaturesSection, NotificationsSection, TerminalSection } from "@/components/settings/display-sections";
-import {
-	AdvancedSection,
-	ConfirmationsSection,
-	GitSection,
-	TroubleshootingSection,
-} from "@/components/settings/general-sections";
+import { ConfirmationsSection, GitSection, TroubleshootingSection } from "@/components/settings/general-sections";
 import { ShortcutsSection } from "@/components/settings/shortcuts-section";
 import { Button } from "@/components/ui/button";
 import {
@@ -231,7 +226,6 @@ export function RuntimeSettingsDialog({
 					<GitSection {...sectionProps} />
 					<ConfirmationsSection {...sectionProps} />
 					<TroubleshootingSection {...sectionProps} onResetLayout={resetLayoutCustomizations} />
-					<AdvancedSection {...sectionProps} />
 
 					<h5 className="font-semibold text-text-primary mt-4 mb-0">Project</h5>
 					<p
