@@ -1,17 +1,22 @@
-// Pure reconciliation check functions for detecting and correcting session state drift.
+// Pure reconciliation check functions for detecting and correcting task-session drift.
 // Each check takes a session entry + timestamp and returns an action or null.
 // The sweep in TerminalSessionManager applies the first non-null action per entry.
 //
 // ADDING NEW CHECKS: When adding dynamic UI state or session-dependent features,
-// consider whether stale/orphaned state needs cleanup here. Currently covers:
-//   - Dead processes (PID no longer exists)
-//   - Processless active sessions (state says running, no PTY)
-//   - Interrupted sessions with no pending auto-restart (failed or denied)
-//   - Stale hook activity metadata
+// put only live session/process drift checks here. Stale lock artifacts, orphan
+// worktrees, orphan agent processes, and dangling persisted-state references
+// belong to the project orphan-maintenance/startup-shutdown cleanup paths.
+// Currently covers:
+//   - Dead task processes (PID no longer exists)
+//   - Processless active task sessions (state says running, no PTY)
+//   - Interrupted task sessions with no pending auto-restart (failed or denied)
+//   - Stale task hook activity metadata
 // Future candidates: auto-restart loop breaking, frontend panel state reconciliation.
 import { isPermissionActivity, type RuntimeTaskSessionSummary } from "../core";
+import { isProcessAlive } from "./process-liveness";
 
 export { isPermissionActivity } from "../core";
+export { isProcessAlive } from "./process-liveness";
 
 export type ReconciliationAction =
 	| { type: "clear_hook_activity" }
@@ -29,22 +34,6 @@ export interface ReconciliationEntry {
 }
 
 export type ReconciliationCheck = (entry: ReconciliationEntry, nowMs: number) => ReconciliationAction | null;
-
-export function isProcessAlive(pid: number): boolean {
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch (error: unknown) {
-		// EPERM means the process exists but we lack permission — it's alive.
-		// ESRCH means no such process — it's dead.
-		// This distinction matters on Windows where access-denied is common.
-		if (typeof error === "object" && error !== null && "code" in error) {
-			if ((error as NodeJS.ErrnoException).code === "EPERM") return true;
-			if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
-		}
-		return false;
-	}
-}
 
 /**
  * Detects dead processes in any active state (running or awaiting_review).

@@ -14,6 +14,12 @@ The key invariant is unchanged launch-scoped behavior: `agent-session-adapters.t
 
 The key invariant is unchanged behavior: prewarm remains optional optimization around correct acquire/release semantics, the 12s warmup TTL / 3s cancel grace / 8s PREVIOUS eviction bounds are preserved, DOM monitoring still uses provider snapshots and HMR cleanup, and dedicated shell terminals remain separate from pooled task-agent terminals. Validation: focused terminal suite before and after the split.
 
+## 2026-04-29 — Orphan maintenance boundary
+
+Session reconciliation now covers only live task session/process drift: dead task PIDs, processless running sessions, interrupted sessions without pending restart, and stale hook activity. Generic process liveness moved to `src/terminal/process-liveness.ts`, so orphan-process cleanup no longer imports reconciliation policy. Periodic stale git `index.lock` cleanup moved out of `session-reconciliation-sweep.ts` into a named project orphan-maintenance timer wired from `ProjectRegistry`.
+
+The cleanup taxonomy is documented in `src/server/project-orphan-maintenance.ts`: session drift stays on the reconciliation timer; orphan agent processes stay in startup/shutdown cleanup; filesystem locks stay in `src/fs/lock-cleanup.ts` with a project-level maintenance scheduler; orphan worktrees stay in explicit task/project removal flows; dangling state references stay in state prune/broadcast boundaries. Validation: focused runtime tests for session reconciliation, orphan cleanup, lock cleanup, shutdown coordination, and project orphan maintenance; typecheck; Biome on touched TypeScript files.
+
 ## 2026-04-29 — Unresolved base refs after task branch changes
 
 Task branch-change reconciliation now treats a failed `resolveBaseRefForBranch(...)` inference as an explicit unresolved base-ref state instead of silently retaining the old base. The monitor broadcasts `baseRef: ""`, the board persists that value, and the top-bar base-ref pill prompts the user to select a base branch. Pinned base refs still ignore automatic updates.

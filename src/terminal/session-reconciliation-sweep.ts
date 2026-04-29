@@ -4,7 +4,6 @@
 
 import type { RuntimeTaskSessionSummary } from "../core";
 import { createTaggedLogger } from "../core";
-import { cleanStaleGitIndexLocks } from "../fs";
 import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
 import type { ProcessEntry } from "./session-manager-types";
@@ -26,14 +25,7 @@ export interface ReconciliationSweepContext {
 }
 
 /** Run one reconciliation sweep across all active entries. */
-export function reconcileSessionStates(ctx: ReconciliationSweepContext, repoPath: string | null): void {
-	// Sweep stale git index.lock files from worktrees. This is fire-and-forget
-	// and cheap (just stat + unlink per worktree dir). Runs alongside session
-	// reconciliation to catch locks orphaned by killed agent processes.
-	if (repoPath) {
-		void cleanStaleGitIndexLocks([repoPath]).catch(() => {});
-	}
-
+export function reconcileSessionStates(ctx: ReconciliationSweepContext): void {
 	const nowMs = Date.now();
 	for (const entry of ctx.entries.values()) {
 		try {
@@ -115,25 +107,21 @@ export function applyReconciliationAction(
 }
 
 export interface ReconciliationTimer {
-	start(repoPath?: string): void;
+	start(): void;
 	stop(): void;
 }
 
 /** Creates and manages the periodic reconciliation interval timer. */
 export function createReconciliationTimer(ctx: ReconciliationSweepContext): ReconciliationTimer {
 	let timer: NodeJS.Timeout | null = null;
-	let storedRepoPath: string | null = null;
 
 	return {
-		start(repoPath?: string) {
+		start() {
 			if (timer) {
 				return;
 			}
-			if (repoPath) {
-				storedRepoPath = repoPath;
-			}
 			timer = setInterval(() => {
-				reconcileSessionStates(ctx, storedRepoPath);
+				reconcileSessionStates(ctx);
 			}, SESSION_RECONCILIATION_INTERVAL_MS);
 			timer.unref();
 		},

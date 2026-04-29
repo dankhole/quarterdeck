@@ -25,6 +25,7 @@ import {
 	removeProjectStateFiles,
 } from "../state";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../terminal";
+import { createProjectOrphanMaintenanceTimer, type ProjectOrphanMaintenanceTimer } from "./project-orphan-maintenance";
 
 const registryLog = createTaggedLogger("project-registry");
 const STARTUP_RESUME_SKIP_SAMPLE_LIMIT = 5;
@@ -132,6 +133,7 @@ export interface ProjectRegistry
 		},
 	) => Promise<ResolvedProjectStreamTarget>;
 	resumeInterruptedSessions: (projectId: string, projectPath: string) => Promise<number>;
+	stopMaintenance: () => void;
 	listManagedProjects: () => Array<{
 		projectId: string;
 		projectPath: string | null;
@@ -285,9 +287,22 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	const projectTaskCountsByProjectId = new Map<string, RuntimeProjectTaskCounts>();
 	const terminalManagersByProjectId = new Map<string, TerminalSessionManager>();
 	const terminalManagerLoadPromises = new Map<string, Promise<TerminalSessionManager>>();
+	const projectOrphanMaintenance: ProjectOrphanMaintenanceTimer = createProjectOrphanMaintenanceTimer({
+		getProjectRepoPaths: () => projectPathsById.values(),
+	});
+	if (projectPathsById.size > 0) {
+		projectOrphanMaintenance.start();
+	}
 
 	const rememberProject = (projectId: string, repoPath: string): void => {
 		projectPathsById.set(projectId, repoPath);
+		projectOrphanMaintenance.start();
+	};
+
+	const stopOrphanMaintenanceIfIdle = (): void => {
+		if (projectPathsById.size === 0) {
+			projectOrphanMaintenance.stop();
+		}
 	};
 
 	const notifyTerminalManagerReady = (projectId: string, manager: TerminalSessionManager): void => {
@@ -325,7 +340,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			} catch {
 				// Project state will be created on demand.
 			}
-			manager.startReconciliation(repoPath);
+			manager.startReconciliation();
 			terminalManagersByProjectId.set(projectId, manager);
 			registryLog.warn("terminal manager created", { projectId, repoPath, hydratedSessionCount });
 			return manager;
@@ -368,6 +383,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		projectTaskCountsByProjectId.delete(projectId);
 		const projectPath = projectPathsById.get(projectId) ?? null;
 		projectPathsById.delete(projectId);
+		stopOrphanMaintenanceIfIdle();
 		return {
 			terminalManager,
 			projectPath,
@@ -705,6 +721,9 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		buildProjectsPayload,
 		resolveProjectForStream,
 		resumeInterruptedSessions,
+		stopMaintenance: () => {
+			projectOrphanMaintenance.stop();
+		},
 		listManagedProjects: () => {
 			return Array.from(terminalManagersByProjectId.entries()).map(([projectId, terminalManager]) => ({
 				projectId,

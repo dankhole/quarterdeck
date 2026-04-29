@@ -9,7 +9,9 @@ import { killOrphanedAgentProcesses } from "../terminal";
 import type { ProjectRegistry } from "./project-registry";
 
 export interface RuntimeShutdownCoordinatorDependencies {
-	projectRegistry: Pick<ProjectRegistry, "listManagedProjects">;
+	projectRegistry: Pick<ProjectRegistry, "listManagedProjects"> & {
+		stopMaintenance?: () => void;
+	};
 	warn: (message: string) => void;
 	closeRuntimeServer: () => Promise<void>;
 	skipSessionCleanup?: boolean;
@@ -104,6 +106,8 @@ function collectWorkColumnTaskIds(projectState: RuntimeProjectStateResponse): st
 }
 
 export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDependencies): Promise<void> {
+	deps.projectRegistry.stopMaintenance?.();
+
 	if (deps.skipSessionCleanup) {
 		await deps.closeRuntimeServer();
 		return;

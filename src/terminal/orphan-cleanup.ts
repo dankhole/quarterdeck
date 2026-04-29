@@ -6,7 +6,7 @@ import type { ExecFileException } from "node:child_process";
 import { execFile } from "node:child_process";
 
 import { createTaggedLogger } from "../core";
-import { isProcessAlive } from "./session-reconciliation";
+import { isProcessAlive } from "./process-liveness";
 
 const log = createTaggedLogger("orphan-cleanup");
 

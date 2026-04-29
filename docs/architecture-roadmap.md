@@ -144,14 +144,13 @@ The active order below should match `docs/todo.md`. It is an execution sequence,
 2. Terminal session manager / lifecycle boundaries
 3. Remove the temporary legacy `projectPath` read path after the `sessionLaunchPath` migration
 4. Shared LLM client abstraction
-5. Orphan cleanup / reconciliation boundary
-6. Branch / base-ref UX state model
-7. File browser + diff viewer data pipeline
+5. Branch / base-ref UX state model
+6. File browser + diff viewer data pipeline
 
 That sequence is deliberate:
 
 - 1 and 2 are the two biggest remaining ownership seams after the recent refactor wave.
-- 3 through 7 are still worthwhile, but they are now narrower follow-on cleanup items rather than “stop feature work until this is fixed” refactors.
+- 3 through 6 are still worthwhile, but they are now narrower follow-on cleanup items rather than “stop feature work until this is fixed” refactors.
 
 In other words: yes, this order is intentional. It is sequenced by leverage and remaining architectural risk, not just by how visible each bug symptom is.
 
@@ -643,13 +642,18 @@ Key risk:
 
 ## 13. Orphan Cleanup / Reconciliation Boundary
 
+Status:
+
+- Completed on 2026-04-29. Session reconciliation is now limited to live task session/process drift, and periodic stale git lock cleanup runs through a separate project orphan-maintenance timer. See `CHANGELOG.md`, `docs/implementation-log.md`, and `src/server/project-orphan-maintenance.ts` for the landed cleanup taxonomy.
+
 Primary files:
 
 - `src/terminal/session-reconciliation.ts`
 - `src/terminal/session-reconciliation-sweep.ts`
 - `src/fs/lock-cleanup.ts`
+- `src/server/project-orphan-maintenance.ts`
 
-Current smell:
+Historical smell:
 
 - session reconciliation and broader filesystem/worktree cleanup are adjacent but not clearly owned by one lifecycle model
 - some orphan cleanup is session-driven, some is periodic, and some lives in one-off repair paths

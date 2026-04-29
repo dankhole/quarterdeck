@@ -11,7 +11,7 @@
 //   session-workspace-trust.ts     — workspace trust auto-confirm
 //   session-interrupt-recovery.ts  — interrupt detection and recovery
 //   session-auto-restart.ts        — auto-restart after unexpected exit
-//   session-reconciliation-sweep.ts — periodic reconciliation sweep
+//   session-reconciliation-sweep.ts — periodic task session/process drift sweep
 import { createTaggedLogger, type RuntimeTaskSessionSummary } from "../core";
 import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
 import type { PtySession } from "./pty-session";
@@ -356,8 +356,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return this.store.markAllInterrupted(activeTaskIds);
 	}
 
-	startReconciliation(repoPath?: string): void {
-		this.reconciliation.start(repoPath);
+	startReconciliation(): void {
+		this.reconciliation.start();
 	}
 
 	stopReconciliation(): void {
