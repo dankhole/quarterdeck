@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Chore: remove synchronous git helper export
+
+- Removed the obsolete `runGitSync` workdir helper/export so future runtime code cannot accidentally reintroduce synchronous git subprocesses through the shared API.
+
 ## [0.12.0] — 2026-04-29
 
 ### Docs: version bump to 0.12.0

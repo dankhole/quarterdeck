@@ -1,4 +1,4 @@
-import { execFile, spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { createGitProcessEnv } from "../core";
@@ -30,11 +30,6 @@ interface GitCommandResult {
 export interface RunGitOptions {
 	trimStdout?: boolean;
 	env?: NodeJS.ProcessEnv;
-	timeoutMs?: number;
-	timeoutClass?: GitCommandTimeoutClass;
-}
-
-export interface RunGitSyncOptions {
 	timeoutMs?: number;
 	timeoutClass?: GitCommandTimeoutClass;
 }
@@ -491,23 +486,4 @@ export async function resolveBaseRefForBranch(
 	// Pick the candidate with the smallest distance (closest ancestor)
 	valid.sort((a, b) => a.distance - b.distance);
 	return valid[0]?.candidate ?? null;
-}
-
-/**
- * Synchronous git command execution — returns trimmed stdout or null on failure.
- * Use sparingly; prefer the async {@link runGit} for most operations.
- */
-export function runGitSync(cwd: string, args: string[], options: RunGitSyncOptions = {}): string | null {
-	const result = spawnSync("git", args, {
-		cwd,
-		encoding: "utf8",
-		stdio: ["ignore", "pipe", "ignore"],
-		timeout: resolveGitTimeoutMs({ timeoutClass: options.timeoutClass ?? "sync", timeoutMs: options.timeoutMs }),
-		env: createGitProcessEnv(),
-	});
-	if (result.status !== 0 || typeof result.stdout !== "string") {
-		return null;
-	}
-	const value = result.stdout.trim();
-	return value.length > 0 ? value : null;
 }

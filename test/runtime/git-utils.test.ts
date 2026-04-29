@@ -5,17 +5,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const childProcessMocks = vi.hoisted(() => ({
 	execFile: vi.fn(),
 	execFilePromise: vi.fn(),
-	spawnSync: vi.fn(),
 }));
 
 vi.mock("node:child_process", () => ({
 	execFile: Object.assign(childProcessMocks.execFile, {
 		[promisify.custom]: childProcessMocks.execFilePromise,
 	}),
-	spawnSync: childProcessMocks.spawnSync,
 }));
 
-import { GIT_COMMAND_TIMEOUTS_MS, runGit, runGitSync } from "../../src/workdir";
+import * as workdirExports from "../../src/workdir";
+import { GIT_COMMAND_TIMEOUTS_MS, runGit } from "../../src/workdir";
 
 function createExecError(options: {
 	code: string | number;
@@ -38,7 +37,6 @@ describe("runGit", () => {
 	beforeEach(() => {
 		childProcessMocks.execFile.mockReset();
 		childProcessMocks.execFilePromise.mockReset();
-		childProcessMocks.spawnSync.mockReset();
 	});
 
 	it("preserves raw stdout on exit code 1 when trimStdout is false", async () => {
@@ -126,23 +124,8 @@ describe("runGit", () => {
 	});
 });
 
-describe("runGitSync", () => {
-	beforeEach(() => {
-		childProcessMocks.execFile.mockReset();
-		childProcessMocks.execFilePromise.mockReset();
-		childProcessMocks.spawnSync.mockReset();
-	});
-
-	it("passes the sync timeout to child_process spawnSync", () => {
-		childProcessMocks.spawnSync.mockReturnValueOnce({ status: 0, stdout: "main\n" });
-
-		const result = runGitSync("/repo", ["symbolic-ref", "--short", "HEAD"]);
-
-		expect(result).toBe("main");
-		expect(childProcessMocks.spawnSync).toHaveBeenCalledWith(
-			"git",
-			["symbolic-ref", "--short", "HEAD"],
-			expect.objectContaining({ timeout: GIT_COMMAND_TIMEOUTS_MS.sync }),
-		);
+describe("workdir git exports", () => {
+	it("does not expose a synchronous git helper from the workdir barrel", () => {
+		expect(workdirExports).not.toHaveProperty("runGitSync");
 	});
 });

@@ -61,12 +61,10 @@ export {
 	parseNumstatPerFile,
 	parseNumstatTotals,
 	type RunGitOptions,
-	type RunGitSyncOptions,
 	readGitHeadInfo,
 	resolveBaseRefForBranch,
 	resolveRepoRoot,
 	runGit,
-	runGitSync,
 	validateGitPath,
 	validateGitRef,
 } from "./git-utils";
