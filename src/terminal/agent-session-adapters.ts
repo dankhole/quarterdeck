@@ -414,7 +414,9 @@ const codexAdapter: AgentSessionAdapter = {
 
 		const trimmed = input.prompt.trim();
 		if (trimmed) {
-			codexArgs.push(trimmed);
+			// Terminate Codex option parsing before the prompt positional. This is
+			// harmless for regular prompts and required for prompts that start with "-".
+			codexArgs.push("--", trimmed);
 		}
 
 		log.debug("codex adapter prepared launch", {

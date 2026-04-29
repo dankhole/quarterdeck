@@ -19,6 +19,10 @@
 
 - Shared-checkout tasks now resolve branch, diff, compare, and metadata refresh state from the project checkout instead of stale isolated worktree assumptions.
 
+### Fix: separate Codex prompt arguments
+
+- Codex task prompts that begin with `-` now launch and resume correctly because Quarterdeck terminates Codex option parsing before passing the prompt positional.
+
 ### Fix: lower default Claude terminal rows
 
 - New installs now default the Claude row multiplier to 2, reducing hidden terminal buffer height while still giving Claude extra scrollback room.

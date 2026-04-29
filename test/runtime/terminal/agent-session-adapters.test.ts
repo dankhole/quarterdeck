@@ -232,6 +232,57 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(codexLaunch.args).toEqual(expect.arrayContaining(["resume", "--last"]));
 	});
 
+	it("separates regular Codex prompts from options", async () => {
+		setupTempHome();
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-regular-prompt",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "Investigate this failure",
+		});
+
+		expect(launch.args.at(-2)).toBe("--");
+		expect(launch.args.at(-1)).toBe("Investigate this failure");
+	});
+
+	it("separates Codex prompts that look like options", async () => {
+		setupTempHome();
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-dash-prompt",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "- investigate this failure",
+		});
+
+		expect(launch.args.at(-2)).toBe("--");
+		expect(launch.args.at(-1)).toBe("- investigate this failure");
+	});
+
+	it("separates Codex resume prompts that look like options", async () => {
+		setupTempHome();
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-resume-dash-prompt",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "- continue after restart",
+			resumeConversation: true,
+			resumeSessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
+		});
+
+		expect(launch.args).toEqual(expect.arrayContaining(["resume", "019d6fa0-db65-7f83-9531-35df54674d76"]));
+		expect(launch.args.at(-2)).toBe("--");
+		expect(launch.args.at(-1)).toBe("- continue after restart");
+	});
+
 	it("adds Claude continue flags for resume", async () => {
 		setupTempHome();
 
