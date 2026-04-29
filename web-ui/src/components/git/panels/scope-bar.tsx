@@ -1,9 +1,10 @@
-import { AlertTriangle, CornerDownLeft, House, LogIn } from "lucide-react";
+import { AlertTriangle, CornerDownLeft, House, Info, LogIn } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { ResolvedScope, ScopeMode } from "@/hooks/git/use-scope-context";
 import type { RuntimeGitSyncSummary } from "@/runtime/types";
+import { formatDetachedWorktreeLabel, getDetachedWorktreeTooltip } from "@/utils/detached-worktree-copy";
 
 /**
  * Breadcrumb bar at the top of the **Files tab** (both home and task detail views).
@@ -125,8 +126,8 @@ function TaskContent({
 		);
 	}
 
-	// "based on {baseRef}" only for headless worktrees — named branches are self-describing
-	const showBaseRef = taskIsDetached && taskBaseRef;
+	// Detached worktrees need base context because several tasks may share one HEAD hash.
+	const detachedLabel = taskIsDetached ? formatDetachedWorktreeLabel(taskBaseRef) : null;
 	const behindText = behindBaseCount !== null && behindBaseCount > 0 ? ` (${behindBaseCount} behind)` : "";
 
 	return (
@@ -136,18 +137,23 @@ function TaskContent({
 			<span className="text-text-primary truncate">{title}</span>
 			<span className="text-text-tertiary">&middot;</span>
 			{branchPillSlot ?? <span className="text-text-tertiary truncate">on {taskBranch}</span>}
-			{showBaseRef ? (
+			{detachedLabel ? (
 				<>
 					<span className="text-text-tertiary">&middot;</span>
-					<span
-						className={cn(
-							"truncate",
-							behindBaseCount && behindBaseCount > 0 ? "text-status-blue" : "text-text-tertiary",
-						)}
-					>
-						based on {taskBaseRef}
-						{behindText}
-					</span>
+					<Tooltip content={getDetachedWorktreeTooltip({ baseRef: taskBaseRef })}>
+						<span
+							className={cn(
+								"inline-flex min-w-0 items-center gap-1 truncate",
+								behindBaseCount && behindBaseCount > 0 ? "text-status-blue" : "text-text-tertiary",
+							)}
+						>
+							<Info size={11} className="shrink-0" />
+							<span className="truncate">
+								{detachedLabel}
+								{behindText}
+							</span>
+						</span>
+					</Tooltip>
 				</>
 			) : null}
 		</>

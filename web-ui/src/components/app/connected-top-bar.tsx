@@ -182,11 +182,15 @@ export function ConnectedTopBar({
 							}}
 							pinnedBranches={projectRuntime.pinnedBranches}
 							onTogglePinBranch={projectRuntime.handleTogglePinBranch}
+							detachedWorktreeBaseRef={git.topbarDetachedWorktree?.baseRef}
+							detachedWorktreeHeadCommit={git.topbarDetachedWorktree?.headCommit}
 							trigger={
 								<BranchPillTrigger
 									label={git.topbarBranchLabel}
 									aheadCount={!selectedCard ? homeGitSummary?.aheadCount : undefined}
 									behindCount={!selectedCard ? homeGitSummary?.behindCount : undefined}
+									detachedWorktreeBaseRef={git.topbarDetachedWorktree?.baseRef}
+									detachedWorktreeHeadCommit={git.topbarDetachedWorktree?.headCommit}
 								/>
 							}
 						/>

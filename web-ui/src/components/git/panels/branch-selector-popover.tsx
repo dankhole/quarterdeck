@@ -11,6 +11,7 @@ import {
 	GitBranchPlus,
 	GitCompareArrows,
 	GitMerge,
+	Info,
 	Locate,
 	LogIn,
 	Pencil,
@@ -26,6 +27,7 @@ import { cn } from "@/components/ui/cn";
 import { Tooltip, TruncateTooltip } from "@/components/ui/tooltip";
 import { useBranchSelectorPopover } from "@/hooks/git/use-branch-selector-popover";
 import type { RuntimeGitRef } from "@/runtime/types";
+import { formatDetachedWorktreeLabel, getDetachedWorktreeTooltip } from "@/utils/detached-worktree-copy";
 
 /**
  * Full-featured branch picker used in the file browser scope bar (home + task
@@ -69,6 +71,10 @@ interface BranchSelectorPopoverProps {
 	pinnedBranches?: string[];
 	/** When provided, shows "Pin to top" / "Unpin" in the branch right-click menu. */
 	onTogglePinBranch?: (branchName: string) => void;
+	/** Base ref for task worktrees currently on detached HEAD. */
+	detachedWorktreeBaseRef?: string | null;
+	/** Full or short HEAD commit for detached task worktree tooltip copy. */
+	detachedWorktreeHeadCommit?: string | null;
 	/** When true, suppresses right-click context menus on branch items. */
 	disableContextMenu?: boolean;
 	trigger: React.ReactNode;
@@ -93,6 +99,8 @@ export function BranchSelectorPopover({
 	onPush,
 	pinnedBranches,
 	onTogglePinBranch,
+	detachedWorktreeBaseRef,
+	detachedWorktreeHeadCommit,
 	disableContextMenu,
 	trigger,
 }: BranchSelectorPopoverProps): React.ReactElement {
@@ -133,6 +141,24 @@ export function BranchSelectorPopover({
 		onPull,
 		onPush,
 	});
+	const detachedWorktreeLabel = formatDetachedWorktreeLabel(detachedWorktreeBaseRef);
+	const detachedWorktreeTooltip = detachedWorktreeLabel
+		? getDetachedWorktreeTooltip({
+				baseRef: detachedWorktreeBaseRef,
+				headCommit: detachedWorktreeHeadCommit ?? detachedRef?.hash,
+			})
+		: null;
+	const detachedWorktreeHint = detachedWorktreeLabel ? (
+		<Tooltip content={detachedWorktreeTooltip} side="right">
+			<div className="mx-2 mb-1 mt-0.5 flex items-start gap-1.5 rounded-sm bg-surface-2/60 px-2 py-1 text-[11px] leading-snug text-text-tertiary">
+				<Info size={11} className="mt-0.5 shrink-0 text-text-tertiary" />
+				<span>
+					<span className="font-medium text-text-secondary">{detachedWorktreeLabel}</span>. Independent task
+					worktree.
+				</span>
+			</div>
+		</Tooltip>
+	) : null;
 
 	return (
 		<RadixPopover.Root open={isOpen} onOpenChange={handleOpenChange}>
@@ -168,11 +194,16 @@ export function BranchSelectorPopover({
 									Working tree
 								</div>
 								{disableContextMenu ? (
-									<div className="flex items-center gap-1.5 w-full px-2 py-1 text-xs text-text-secondary">
-										<Locate size={12} className="shrink-0 text-status-orange" />
-										<span className="truncate font-mono text-status-orange">HEAD ({detachedRef.name})</span>
-										<Check size={12} className="shrink-0 text-accent ml-auto" />
-									</div>
+									<>
+										<div className="flex items-center gap-1.5 w-full px-2 py-1 text-xs text-text-secondary">
+											<Locate size={12} className="shrink-0 text-status-orange" />
+											<span className="truncate font-mono text-status-orange">
+												HEAD ({detachedRef.name})
+											</span>
+											<Check size={12} className="shrink-0 text-accent ml-auto" />
+										</div>
+										{detachedWorktreeHint}
+									</>
 								) : (
 									<ContextMenu.Root>
 										<ContextMenu.Trigger asChild>
@@ -221,6 +252,7 @@ export function BranchSelectorPopover({
 												</ContextMenu.Content>
 											</ContextMenu.Portal>
 										) : null}
+										{detachedWorktreeHint}
 									</ContextMenu.Root>
 								)}
 							</>
@@ -322,10 +354,25 @@ export function BranchSelectorPopover({
 
 export const BranchPillTrigger = forwardRef<
 	HTMLButtonElement,
-	{ label: string; aheadCount?: number; behindCount?: number } & React.ComponentPropsWithoutRef<"button">
->(function BranchPillTrigger({ label, aheadCount, behindCount, className, ...rest }, ref) {
+	{
+		label: string;
+		aheadCount?: number;
+		behindCount?: number;
+		detachedWorktreeBaseRef?: string | null;
+		detachedWorktreeHeadCommit?: string | null;
+	} & React.ComponentPropsWithoutRef<"button">
+>(function BranchPillTrigger(
+	{ label, aheadCount, behindCount, detachedWorktreeBaseRef, detachedWorktreeHeadCommit, className, ...rest },
+	ref,
+) {
 	const ahead = aheadCount ?? 0;
 	const behind = behindCount ?? 0;
+	const detachedTooltip = formatDetachedWorktreeLabel(detachedWorktreeBaseRef)
+		? getDetachedWorktreeTooltip({
+				baseRef: detachedWorktreeBaseRef,
+				headCommit: detachedWorktreeHeadCommit ?? label,
+			})
+		: null;
 	return (
 		<button
 			ref={ref}
@@ -341,6 +388,13 @@ export const BranchPillTrigger = forwardRef<
 			<TruncateTooltip content={label} side="bottom">
 				<span className="truncate">{label}</span>
 			</TruncateTooltip>
+			{detachedTooltip ? (
+				<Tooltip content={detachedTooltip} side="bottom">
+					<span className="inline-flex shrink-0 text-text-tertiary" role="img" aria-label="Detached worktree">
+						<Info size={10} />
+					</span>
+				</Tooltip>
+			) : null}
 			{behind > 0 ? (
 				<span className="inline-flex items-center gap-px shrink-0 text-[10px] text-status-blue">
 					<ArrowDown size={10} />

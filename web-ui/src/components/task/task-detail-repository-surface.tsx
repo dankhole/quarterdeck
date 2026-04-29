@@ -1,12 +1,15 @@
+import { Info } from "lucide-react";
 import { GitBranchStatusControl } from "@/components/app/top-bar";
 import { FilesView, GitView } from "@/components/git";
 import { BranchPillTrigger, BranchSelectorPopover, ScopeBar } from "@/components/git/panels";
 import type { TaskDetailRepositoryProps } from "@/components/task/task-detail-screen";
+import { Tooltip } from "@/components/ui/tooltip";
 import type { CardDetailViewLayoutState, CardDetailViewRepositoryState } from "@/hooks/board/use-card-detail-view";
 import type { MainViewId } from "@/resize/use-card-detail-layout";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { getProjectPath } from "@/stores/project-metadata-store";
 import type { CardSelection } from "@/types";
+import { formatDetachedWorktreeLabel, getDetachedWorktreeTooltip } from "@/utils/detached-worktree-copy";
 import { resolveTaskGitState } from "@/utils/task-git-state";
 
 function TaskBranchStatus({
@@ -28,6 +31,9 @@ function TaskBranchStatus({
 	isDetached: boolean;
 	baseRef: string | null | undefined;
 }): React.ReactElement {
+	const detachedLabel = isDetached ? formatDetachedWorktreeLabel(baseRef) : null;
+	const detachedTooltip = detachedLabel ? getDetachedWorktreeTooltip({ baseRef, headCommit: branchLabel }) : null;
+
 	return (
 		<div className="flex items-center gap-1">
 			<GitBranchStatusControl
@@ -38,10 +44,13 @@ function TaskBranchStatus({
 				onToggleGitHistory={onToggleGitHistory}
 				isGitHistoryOpen={isGitHistoryOpen}
 			/>
-			{isDetached && baseRef ? (
-				<span className="text-xs text-text-tertiary whitespace-nowrap ml-1">
-					based on <span className="font-mono">{baseRef}</span>
-				</span>
+			{detachedLabel ? (
+				<Tooltip content={detachedTooltip} side="bottom">
+					<span className="inline-flex items-center gap-1 text-xs text-text-tertiary whitespace-nowrap ml-1">
+						<Info size={11} className="text-text-tertiary" />
+						<span>{detachedLabel}</span>
+					</span>
+				</Tooltip>
 			) : null}
 		</div>
 	);
@@ -81,6 +90,15 @@ export function TaskDetailRepositorySurface({
 		sessionSummary,
 	});
 	const taskIdentity = taskGitState.identity;
+	const isDetachedTaskWorktree =
+		taskGitState.isDetached && !taskIdentity.isAssignedShared && Boolean(selection.card.baseRef.trim());
+	const detachedWorktree = isDetachedTaskWorktree
+		? {
+				baseRef: selection.card.baseRef.trim(),
+				headCommit: taskIdentity.assignedHeadCommit,
+			}
+		: null;
+	const showDetachedPillHint = detachedWorktree !== null && repositoryState.taskResolvedScope?.type !== "branch_view";
 
 	return (
 		<div
@@ -114,7 +132,7 @@ export function TaskDetailRepositorySurface({
 								deletions={taskGitState.deletions}
 								isGitHistoryOpen={repositoryState.isGitHistoryOpen}
 								onToggleGitHistory={repositoryState.onToggleGitHistory}
-								isDetached={taskGitState.isDetached}
+								isDetached={isDetachedTaskWorktree}
 								baseRef={selection.card.baseRef}
 							/>
 						) : undefined
@@ -137,8 +155,10 @@ export function TaskDetailRepositorySurface({
 							taskBranch={taskGitState.branch}
 							taskBaseRef={selection.card.baseRef}
 							behindBaseCount={taskGitState.behindBaseCount}
-							isDetachedHead={taskGitState.isDetached}
-							taskIsDetached={taskGitState.isDetached}
+							isDetachedHead={
+								repositoryState.homeGitSummary !== null && repositoryState.homeGitSummary.currentBranch === null
+							}
+							taskIsDetached={isDetachedTaskWorktree}
 							onSwitchToHome={repositoryProps.onDeselectTask}
 							onReturnToContextual={repositoryState.taskReturnToContextual}
 							branchPillSlot={
@@ -171,7 +191,19 @@ export function TaskDetailRepositorySurface({
 										}}
 										pinnedBranches={repositoryProps.pinnedBranches}
 										onTogglePinBranch={repositoryProps.onTogglePinBranch}
-										trigger={<BranchPillTrigger label={repositoryState.pillBranchLabel} />}
+										detachedWorktreeBaseRef={detachedWorktree?.baseRef}
+										detachedWorktreeHeadCommit={detachedWorktree?.headCommit}
+										trigger={
+											<BranchPillTrigger
+												label={repositoryState.pillBranchLabel}
+												detachedWorktreeBaseRef={
+													showDetachedPillHint ? detachedWorktree.baseRef : undefined
+												}
+												detachedWorktreeHeadCommit={
+													showDetachedPillHint ? detachedWorktree.headCommit : undefined
+												}
+											/>
+										}
 									/>
 								) : undefined
 							}

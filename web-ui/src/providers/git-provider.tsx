@@ -75,6 +75,7 @@ export interface GitContextValue {
 	fileBrowserBranchActions: UseBranchActionsResult;
 	topbarBranchActions: UseBranchActionsResult;
 	topbarBranchLabel: string | null;
+	topbarDetachedWorktree: { baseRef: string; headCommit: string | null } | null;
 
 	// --- useFileBrowserData ---
 	homeFileBrowserData: UseFileBrowserDataResult;
@@ -174,6 +175,21 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 		}
 		return homeGitSummary?.currentBranch ?? null;
 	}, [selectedCard, selectedTaskGitState, homeGitSummary]);
+	const topbarDetachedWorktree = useMemo(() => {
+		const baseRef = selectedCard?.card.baseRef.trim();
+		if (
+			!selectedCard ||
+			!baseRef ||
+			!selectedTaskGitState?.isDetached ||
+			selectedTaskGitState.identity.isAssignedShared
+		) {
+			return null;
+		}
+		return {
+			baseRef,
+			headCommit: selectedTaskGitState.identity.assignedHeadCommit,
+		};
+	}, [selectedCard, selectedTaskGitState]);
 
 	// --- useFileBrowserData ---
 	const homeFileBrowserData = useFileBrowserData({
@@ -238,6 +254,7 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 			fileBrowserBranchActions,
 			topbarBranchActions,
 			topbarBranchLabel,
+			topbarDetachedWorktree,
 			homeFileBrowserData,
 		}),
 		[
@@ -262,6 +279,7 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 			fileBrowserBranchActions,
 			topbarBranchActions,
 			topbarBranchLabel,
+			topbarDetachedWorktree,
 			homeFileBrowserData,
 		],
 	);

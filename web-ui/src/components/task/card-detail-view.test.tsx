@@ -301,6 +301,7 @@ const noopGitContext: GitContextValue = {
 		closeResetToRefDialog: () => {},
 	},
 	topbarBranchLabel: null,
+	topbarDetachedWorktree: null,
 	homeFileBrowserData: {
 		files: null,
 		selectedPath: null,

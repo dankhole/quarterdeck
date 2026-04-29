@@ -15,6 +15,10 @@
 - Session reconciliation now owns only task session/process drift, while a project orphan-maintenance sweep owns periodic stale git lock cleanup.
 - Documented the cleanup taxonomy for session drift, process artifacts, filesystem locks, orphan worktrees, and dangling state references.
 
+### Fix: clarify detached task worktrees
+
+- Detached task worktrees now show subtle "detached from {baseRef}" context and tooltips in task cards, task branch/status bars, and branch dropdowns so matching HEAD hashes read as independent task copies.
+
 ### Fix: refresh sidebar shortcut tips
 
 - Removed the obsolete plan/act toggle shortcut from the sidebar tips and corrected the start-and-open task shortcut to match the active task-create hotkey.

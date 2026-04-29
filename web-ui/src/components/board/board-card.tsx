@@ -1,5 +1,5 @@
 import { Draggable, type DraggableProvided, type DraggableStateSnapshot } from "@hello-pangea/dnd";
-import { AlertCircle, GitBranch, Pencil, Pin, PinOff, RotateCw } from "lucide-react";
+import { AlertCircle, GitBranch, Info, Pencil, Pin, PinOff, RotateCw } from "lucide-react";
 import type { MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { BoardCardActions } from "@/components/board/board-card-actions";
@@ -106,6 +106,7 @@ export function BoardCard({
 		showProjectStatus,
 		reviewBranchLabel,
 		reviewBranchTooltip,
+		showDetachedWorktreeHint,
 		reviewChangeSummary,
 		showUncommittedChangesIndicator,
 	} = useBoardCard({
@@ -117,6 +118,68 @@ export function BoardCard({
 		onRestartSession,
 	});
 	const statusBadgeClass = isTrashCard ? "bg-surface-3 text-text-tertiary" : statusBadgeColors[statusTagStyle!];
+
+	const renderBranchStatus = () => {
+		if (!showProjectStatus || !reviewBranchLabel) {
+			return null;
+		}
+
+		const content = (
+			<p
+				className="font-mono kb-line-clamp-1"
+				style={{
+					margin: "4px 0 0",
+					fontSize: 12,
+					lineHeight: 1.4,
+					color: isTrashCard ? CARD_TEXT_COLOR.muted : undefined,
+				}}
+			>
+				<GitBranch
+					size={10}
+					style={{
+						display: "inline",
+						color: isTrashCard ? CARD_TEXT_COLOR.muted : CARD_TEXT_COLOR.secondary,
+						margin: "0px 4px 2px 0",
+						verticalAlign: "middle",
+					}}
+				/>
+				<span
+					style={{
+						color: isTrashCard ? CARD_TEXT_COLOR.muted : CARD_TEXT_COLOR.secondary,
+						textDecoration: isTrashCard ? "line-through" : undefined,
+					}}
+				>
+					{reviewBranchLabel}
+				</span>
+				{showDetachedWorktreeHint && !isTrashCard ? (
+					<Info
+						size={10}
+						aria-label="Detached worktree"
+						className="ml-1 inline text-text-tertiary"
+						style={{ verticalAlign: -1 }}
+					/>
+				) : null}
+				{reviewChangeSummary && !isTrashCard ? (
+					<>
+						<span style={{ color: CARD_TEXT_COLOR.muted }}> · </span>
+						<span style={{ color: CARD_TEXT_COLOR.muted }}>{reviewChangeSummary.filesLabel}</span>
+						<span className="text-status-green"> +{reviewChangeSummary.additions}</span>
+						<span className="text-status-red"> -{reviewChangeSummary.deletions}</span>
+					</>
+				) : null}
+			</p>
+		);
+
+		return showDetachedWorktreeHint ? (
+			<Tooltip content={reviewBranchTooltip} side="top">
+				{content}
+			</Tooltip>
+		) : (
+			<TruncateTooltip content={reviewBranchTooltip ?? reviewBranchLabel} side="top">
+				{content}
+			</TruncateTooltip>
+		);
+	};
 
 	const renderShell = (provided?: DraggableProvided, snapshot?: DraggableStateSnapshot) => {
 		const isDragging = snapshot?.isDragging ?? false;
@@ -357,45 +420,7 @@ export function BoardCard({
 								) : null}
 							</div>
 						) : null}
-						{showProjectStatus && reviewBranchLabel ? (
-							<TruncateTooltip content={reviewBranchTooltip ?? reviewBranchLabel} side="top">
-								<p
-									className="font-mono kb-line-clamp-1"
-									style={{
-										margin: "4px 0 0",
-										fontSize: 12,
-										lineHeight: 1.4,
-										color: isTrashCard ? CARD_TEXT_COLOR.muted : undefined,
-									}}
-								>
-									<GitBranch
-										size={10}
-										style={{
-											display: "inline",
-											color: isTrashCard ? CARD_TEXT_COLOR.muted : CARD_TEXT_COLOR.secondary,
-											margin: "0px 4px 2px 0",
-											verticalAlign: "middle",
-										}}
-									/>
-									<span
-										style={{
-											color: isTrashCard ? CARD_TEXT_COLOR.muted : CARD_TEXT_COLOR.secondary,
-											textDecoration: isTrashCard ? "line-through" : undefined,
-										}}
-									>
-										{reviewBranchLabel}
-									</span>
-									{reviewChangeSummary && !isTrashCard ? (
-										<>
-											<span style={{ color: CARD_TEXT_COLOR.muted }}> · </span>
-											<span style={{ color: CARD_TEXT_COLOR.muted }}>{reviewChangeSummary.filesLabel}</span>
-											<span className="text-status-green"> +{reviewChangeSummary.additions}</span>
-											<span className="text-status-red"> -{reviewChangeSummary.deletions}</span>
-										</>
-									) : null}
-								</p>
-							</TruncateTooltip>
-						) : null}
+						{renderBranchStatus()}
 					</div>
 				</Tooltip>
 			</div>

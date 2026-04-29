@@ -1,6 +1,7 @@
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardCard, BoardColumnId, ReviewTaskWorktreeSnapshot } from "@/types";
 import { getCardHoverTooltip, getRunningActivityLabel, shortenBranchName } from "@/utils/board-card-display";
+import { formatDetachedWorktreeLabel, getDetachedWorktreeTooltip } from "@/utils/detached-worktree-copy";
 import { describeSessionState, getSessionStatusBadgeStyle, getSessionStatusTooltip } from "@/utils/session-status";
 import { resolveTaskIdentity } from "@/utils/task-identity";
 import { truncateTaskPromptLabel } from "@/utils/task-prompt";
@@ -66,10 +67,17 @@ export function resolveBoardCardViewModel({
 		hasRestartSessionHandler;
 	const statusMarker = columnId === "in_progress" ? (isSessionRestartable ? "restart" : "spinner") : null;
 	const showProjectStatus = columnId === "in_progress" || columnId === "review" || isTrashCard;
-	const reviewBranchLabel = taskIdentity.displayBranchLabel
-		? shortenBranchName(taskIdentity.displayBranchLabel)
-		: null;
-	const reviewBranchTooltip = taskIdentity.assignedBranch ?? reviewBranchLabel;
+	const detachedBaseRef = !isSharedCheckout && taskIdentity.assignedIsDetached ? card.baseRef.trim() || null : null;
+	const detachedWorktreeLabel = formatDetachedWorktreeLabel(detachedBaseRef);
+	const reviewBranchLabel =
+		detachedWorktreeLabel ??
+		(taskIdentity.displayBranchLabel ? shortenBranchName(taskIdentity.displayBranchLabel) : null);
+	const reviewBranchTooltip = detachedWorktreeLabel
+		? getDetachedWorktreeTooltip({
+				baseRef: detachedBaseRef,
+				headCommit: taskIdentity.assignedHeadCommit,
+			})
+		: (taskIdentity.assignedBranch ?? reviewBranchLabel);
 	const reviewChangeSummary =
 		reviewWorktreeSnapshot?.changedFiles == null
 			? null
@@ -104,6 +112,7 @@ export function resolveBoardCardViewModel({
 		showProjectStatus,
 		reviewBranchLabel,
 		reviewBranchTooltip,
+		showDetachedWorktreeHint: detachedWorktreeLabel !== null,
 		reviewChangeSummary,
 		showUncommittedChangesIndicator,
 	};

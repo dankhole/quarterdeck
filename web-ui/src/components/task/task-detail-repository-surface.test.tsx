@@ -4,15 +4,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TaskDetailRepositorySurface } from "@/components/task/task-detail-repository-surface";
 import type { TaskDetailRepositoryProps } from "@/components/task/task-detail-screen";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { CardDetailViewLayoutState, CardDetailViewRepositoryState } from "@/hooks/board/use-card-detail-view";
 import type { UseBranchActionsResult } from "@/hooks/git/use-branch-actions";
 import type { UseFileBrowserDataResult } from "@/hooks/git/use-file-browser-data";
 import type { BoardCard, BoardColumn, CardSelection } from "@/types";
 
-const { mockGitView, mockFilesView } = vi.hoisted(() => ({
-	mockGitView: vi.fn(),
-	mockFilesView: vi.fn(),
-}));
+const { mockGitView, mockFilesView, mockBranchPillTrigger, mockBranchSelectorPopover, mockScopeBar } = vi.hoisted(
+	() => ({
+		mockGitView: vi.fn(),
+		mockFilesView: vi.fn(),
+		mockBranchPillTrigger: vi.fn(),
+		mockBranchSelectorPopover: vi.fn(),
+		mockScopeBar: vi.fn(),
+	}),
+);
 
 vi.mock("@/components/app/top-bar", () => ({
 	GitBranchStatusControl: ({ branchLabel }: { branchLabel: string }) => (
@@ -32,11 +38,36 @@ vi.mock("@/components/git", () => ({
 }));
 
 vi.mock("@/components/git/panels", () => ({
-	BranchPillTrigger: ({ label }: { label: string }) => <div data-testid="branch-pill-trigger">{label}</div>,
-	BranchSelectorPopover: ({ trigger }: { trigger: ReactNode }) => <div data-testid="branch-selector">{trigger}</div>,
-	ScopeBar: ({ branchPillSlot }: { branchPillSlot?: ReactNode }) => (
-		<div data-testid="scope-bar">{branchPillSlot}</div>
-	),
+	BranchPillTrigger: (props: {
+		label: string;
+		detachedWorktreeBaseRef?: string | null;
+		detachedWorktreeHeadCommit?: string | null;
+	}) => {
+		mockBranchPillTrigger(props);
+		return <div data-testid="branch-pill-trigger">{props.label}</div>;
+	},
+	BranchSelectorPopover: ({
+		trigger,
+		...props
+	}: {
+		trigger: ReactNode;
+		detachedWorktreeBaseRef?: string | null;
+		detachedWorktreeHeadCommit?: string | null;
+	}) => {
+		mockBranchSelectorPopover(props);
+		return <div data-testid="branch-selector">{trigger}</div>;
+	},
+	ScopeBar: ({
+		branchPillSlot,
+		...props
+	}: {
+		branchPillSlot?: ReactNode;
+		taskIsDetached?: boolean;
+		isDetachedHead?: boolean;
+	}) => {
+		mockScopeBar(props);
+		return <div data-testid="scope-bar">{branchPillSlot}</div>;
+	},
 }));
 
 function createCard(id: string): BoardCard {
@@ -186,6 +217,9 @@ describe("TaskDetailRepositorySurface", () => {
 		root = createRoot(container);
 		mockGitView.mockClear();
 		mockFilesView.mockClear();
+		mockBranchPillTrigger.mockClear();
+		mockBranchSelectorPopover.mockClear();
+		mockScopeBar.mockClear();
 	});
 
 	afterEach(() => {
@@ -194,6 +228,9 @@ describe("TaskDetailRepositorySurface", () => {
 		});
 		mockGitView.mockClear();
 		mockFilesView.mockClear();
+		mockBranchPillTrigger.mockClear();
+		mockBranchSelectorPopover.mockClear();
+		mockScopeBar.mockClear();
 		container.remove();
 		if (previousActEnvironment === undefined) {
 			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
@@ -209,15 +246,17 @@ describe("TaskDetailRepositorySurface", () => {
 
 		await act(async () => {
 			root.render(
-				<TaskDetailRepositorySurface
-					detailLayout={createLayoutState()}
-					repositoryState={createRepositoryState()}
-					repositoryProps={repositoryProps}
-					selection={selection}
-					currentProjectId="project-1"
-					sessionSummary={null}
-					mainView="git"
-				/>,
+				<TooltipProvider>
+					<TaskDetailRepositorySurface
+						detailLayout={createLayoutState()}
+						repositoryState={createRepositoryState()}
+						repositoryProps={repositoryProps}
+						selection={selection}
+						currentProjectId="project-1"
+						sessionSummary={null}
+						mainView="git"
+					/>
+				</TooltipProvider>,
 			);
 		});
 
@@ -238,15 +277,17 @@ describe("TaskDetailRepositorySurface", () => {
 
 		await act(async () => {
 			root.render(
-				<TaskDetailRepositorySurface
-					detailLayout={createLayoutState()}
-					repositoryState={createRepositoryState()}
-					repositoryProps={createRepositoryProps()}
-					selection={selection}
-					currentProjectId="project-1"
-					sessionSummary={null}
-					mainView="files"
-				/>,
+				<TooltipProvider>
+					<TaskDetailRepositorySurface
+						detailLayout={createLayoutState()}
+						repositoryState={createRepositoryState()}
+						repositoryProps={createRepositoryProps()}
+						selection={selection}
+						currentProjectId="project-1"
+						sessionSummary={null}
+						mainView="files"
+					/>
+				</TooltipProvider>,
 			);
 		});
 
@@ -276,15 +317,17 @@ describe("TaskDetailRepositorySurface", () => {
 
 		await act(async () => {
 			root.render(
-				<TaskDetailRepositorySurface
-					detailLayout={createLayoutState()}
-					repositoryState={repositoryState}
-					repositoryProps={createRepositoryProps()}
-					selection={selection}
-					currentProjectId="project-1"
-					sessionSummary={null}
-					mainView="files"
-				/>,
+				<TooltipProvider>
+					<TaskDetailRepositorySurface
+						detailLayout={createLayoutState()}
+						repositoryState={repositoryState}
+						repositoryProps={createRepositoryProps()}
+						selection={selection}
+						currentProjectId="project-1"
+						sessionSummary={null}
+						mainView="files"
+					/>
+				</TooltipProvider>,
 			);
 		});
 
@@ -310,18 +353,113 @@ describe("TaskDetailRepositorySurface", () => {
 
 		await act(async () => {
 			root.render(
-				<TaskDetailRepositorySurface
-					detailLayout={createLayoutState()}
-					repositoryState={repositoryState}
-					repositoryProps={createRepositoryProps()}
-					selection={selection}
-					currentProjectId="project-1"
-					sessionSummary={null}
-					mainView="git"
-				/>,
+				<TooltipProvider>
+					<TaskDetailRepositorySurface
+						detailLayout={createLayoutState()}
+						repositoryState={repositoryState}
+						repositoryProps={createRepositoryProps()}
+						selection={selection}
+						currentProjectId="project-1"
+						sessionSummary={null}
+						mainView="git"
+					/>
+				</TooltipProvider>,
 			);
 		});
 
 		expect(container.querySelector('[data-testid="git-branch-status"]')?.textContent).toContain("deadbeef");
+		expect(container.textContent).toContain("detached from main");
+	});
+
+	it("does not call shared checkout detached HEAD an independent task worktree", async () => {
+		const selection = createSelection();
+		selection.card = {
+			...selection.card,
+			branch: null,
+			useWorktree: false,
+			workingDirectory: null,
+		};
+		const repositoryState = createRepositoryState();
+		repositoryState.homeGitSummary = {
+			currentBranch: null,
+			upstreamBranch: null,
+			changedFiles: 0,
+			additions: 0,
+			deletions: 0,
+			aheadCount: 0,
+			behindCount: 0,
+		};
+		repositoryState.pillBranchLabel = "detached HEAD";
+
+		await act(async () => {
+			root.render(
+				<TooltipProvider>
+					<TaskDetailRepositorySurface
+						detailLayout={createLayoutState()}
+						repositoryState={repositoryState}
+						repositoryProps={createRepositoryProps()}
+						selection={selection}
+						currentProjectId="project-1"
+						sessionSummary={null}
+						mainView="files"
+					/>
+				</TooltipProvider>,
+			);
+		});
+
+		expect(mockScopeBar).toHaveBeenCalledWith(expect.objectContaining({ taskIsDetached: false }));
+		expect(mockBranchSelectorPopover).toHaveBeenCalledWith(
+			expect.objectContaining({ detachedWorktreeBaseRef: undefined }),
+		);
+		expect(mockBranchPillTrigger).toHaveBeenCalledWith(
+			expect.objectContaining({ detachedWorktreeBaseRef: undefined }),
+		);
+	});
+
+	it("keeps detached task tooltip off branch-view pill labels", async () => {
+		const selection = createSelection();
+		const repositoryState = createRepositoryState();
+		repositoryState.taskResolvedScope = { type: "branch_view", ref: "origin/main", projectId: "project-1" };
+		repositoryState.taskScopeMode = "branch_view";
+		repositoryState.pillBranchLabel = "origin/main";
+		repositoryState.taskRepositoryInfo = {
+			taskId: selection.card.id,
+			path: "/tmp/assigned-worktree",
+			exists: true,
+			baseRef: selection.card.baseRef,
+			branch: null,
+			isDetached: true,
+			headCommit: "deadbeef12345678",
+		};
+
+		await act(async () => {
+			root.render(
+				<TooltipProvider>
+					<TaskDetailRepositorySurface
+						detailLayout={createLayoutState()}
+						repositoryState={repositoryState}
+						repositoryProps={createRepositoryProps()}
+						selection={selection}
+						currentProjectId="project-1"
+						sessionSummary={null}
+						mainView="files"
+					/>
+				</TooltipProvider>,
+			);
+		});
+
+		expect(mockBranchSelectorPopover).toHaveBeenCalledWith(
+			expect.objectContaining({
+				detachedWorktreeBaseRef: "main",
+				detachedWorktreeHeadCommit: "deadbeef12345678",
+			}),
+		);
+		expect(mockBranchPillTrigger).toHaveBeenCalledWith(
+			expect.objectContaining({
+				label: "origin/main",
+				detachedWorktreeBaseRef: undefined,
+				detachedWorktreeHeadCommit: undefined,
+			}),
+		);
 	});
 });

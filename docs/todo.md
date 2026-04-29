@@ -126,9 +126,9 @@ Add an agent harness selector button/control to the create-task flow so users ca
 
 Add a VS Code-style peek preview to the search modals — when a result is highlighted (keyboard or hover), show a read-only preview of the file content alongside the result list, centered on the matched line. Avoids full navigation for scanning multiple matches. Could be a side panel within the overlay or an expandable inline preview.
 
-## Add clarification when multiple worktrees share the same detached HEAD hash
+## Explain file-tab vs git-tab dot indicators
 
-When tasks are created without a feature branch, their worktrees are all detached at the same base commit. The status bar, card branch pill, and branch dropdown all show the same short commit hash, which looks like a bug. Add a tooltip or subtle label at these display points explaining that the worktrees are independent copies detached from the same base ref — changes in one won't affect others. Consider showing "detached from {baseRef}" instead of just the raw hash.
+Add a tip, tooltip, or small help affordance that explains the difference between the dot indicators on the file tab and git tab. The copy should make clear what each dot means, why they can differ, and what action the user should take from each surface.
 
 ## Upstream sync: periodic review of cline/kanban (recurring)
 

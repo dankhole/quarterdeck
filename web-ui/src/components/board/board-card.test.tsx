@@ -497,6 +497,30 @@ describe("BoardCard", () => {
 			expect(container.textContent).toContain("deadbeef");
 		});
 
+		it("clarifies detached task worktrees by base ref", async () => {
+			mockWorktreeSnapshot = createSnapshot({
+				branch: null,
+				isDetached: true,
+				headCommit: "deadbeef12345678",
+			});
+			await act(async () => {
+				root.render(
+					<Providers>
+						<BoardCard
+							card={createCard({ baseRef: "main" })}
+							index={0}
+							columnId="review"
+							sessionSummary={createSummary("awaiting_review")}
+						/>
+					</Providers>,
+				);
+			});
+
+			expect(container.textContent).toContain("detached from main");
+			expect(container.textContent).not.toContain("deadbeef");
+			expect(container.querySelector('[aria-label="Detached worktree"]')).not.toBeNull();
+		});
+
 		it("keeps assigned isolation separate from session launch drift", async () => {
 			mockWorktreeSnapshot = createSnapshot({
 				path: "/mock/project/.quarterdeck/worktrees/task-1",
