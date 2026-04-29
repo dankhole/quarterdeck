@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildCodexHooksConfig } from "../../../src/codex-hooks";
 import { prepareAgentLaunch } from "../../../src/terminal";
-import { QUARTERDECK_PI_HOOK_COMMAND_ENV } from "../../../src/terminal/pi-lifecycle-extension";
+import {
+	buildPiLifecycleExtensionSource,
+	QUARTERDECK_PI_HOOK_COMMAND_ENV,
+} from "../../../src/terminal/pi-lifecycle-extension";
 
 const buildWorktreeContextPromptMock = vi.hoisted(() => vi.fn().mockResolvedValue(""));
 vi.mock("../../../src/terminal/worktree-context.js", () => ({
@@ -344,6 +347,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const hookCommand = JSON.parse(launch.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] ?? "[]") as string[];
 		expect(hookCommand).toEqual(expect.arrayContaining(["hooks", "notify"]));
 		const extensionSource = readFileSync(extensionPath, "utf8");
+		expect(extensionSource).toBe(buildPiLifecycleExtensionSource());
 		expect(extensionSource).toContain('pi.on("agent_end"');
 		expect(extensionSource).toContain('pi.on("input"');
 		expect(extensionSource).toContain('pi.on("tool_call"');

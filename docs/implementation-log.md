@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-04-29 — Pi lifecycle extension source extraction
+
+The Pi lifecycle hook bridge now lives in `src/terminal/pi-lifecycle-extension.runtime.js` as normal JavaScript source instead of a generated `String.raw` template in TypeScript. `src/terminal/pi-lifecycle-extension.ts` loads that asset, substitutes only the explicit hook-command env placeholder, and `scripts/build.mjs` copies the asset into `dist/terminal` so bundled `dist/cli.js` / `dist/index.js` can still write the extension before launching Pi.
+
+The key invariant is unchanged launch-scoped behavior: `agent-session-adapters.ts` still writes `quarterdeck-lifecycle.js` under the Quarterdeck runtime hooks directory, passes it to Pi with `--extension`, and injects `QUARTERDECK_PI_HOOK_COMMAND_JSON` with the hook command. Validation: focused Pi lifecycle and adapter tests, `npm run check`, and `npm run build`.
+
 ## 2026-04-29 — Unresolved base refs after task branch changes
 
 Task branch-change reconciliation now treats a failed `resolveBaseRefForBranch(...)` inference as an explicit unresolved base-ref state instead of silently retaining the old base. The monitor broadcasts `baseRef: ""`, the board persists that value, and the top-bar base-ref pill prompts the user to select a base branch. Pinned base refs still ignore automatic updates.

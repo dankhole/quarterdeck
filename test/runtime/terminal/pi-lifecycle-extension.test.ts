@@ -1,6 +1,33 @@
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
-import { buildPiLifecycleExtensionSource } from "../../../src/terminal/pi-lifecycle-extension";
+import {
+	buildPiLifecycleExtensionSource,
+	QUARTERDECK_PI_HOOK_COMMAND_ENV,
+} from "../../../src/terminal/pi-lifecycle-extension";
+
+const HOOK_COMMAND_ENV_PLACEHOLDER = "__QUARTERDECK_PI_HOOK_COMMAND_ENV__";
+const PI_LIFECYCLE_RUNTIME_ASSET_URL = new URL(
+	"../../../src/terminal/pi-lifecycle-extension.runtime.js",
+	import.meta.url,
+);
+
+function readPiLifecycleRuntimeAsset(): string {
+	return readFileSync(fileURLToPath(PI_LIFECYCLE_RUNTIME_ASSET_URL), "utf8");
+}
+
+function expectNodeSyntaxCheck(filePath: string): void {
+	const result = spawnSync(process.execPath, ["--check", filePath], {
+		encoding: "utf8",
+	});
+	expect(result.status, result.stderr || result.stdout).toBe(0);
+}
 
 function listenerBlock(source: string, eventName: string): string {
 	const start = source.indexOf(`pi.on("${eventName}"`);
@@ -10,6 +37,50 @@ function listenerBlock(source: string, eventName: string): string {
 }
 
 describe("Pi lifecycle extension source", () => {
+	it("emits the runtime asset with only the hook command env placeholder substituted", () => {
+		const assetSource = readPiLifecycleRuntimeAsset();
+		const source = buildPiLifecycleExtensionSource();
+
+		expect(assetSource.split(HOOK_COMMAND_ENV_PLACEHOLDER)).toHaveLength(2);
+		expect(assetSource).not.toContain(QUARTERDECK_PI_HOOK_COMMAND_ENV);
+		expect(source).toBe(assetSource.replace(HOOK_COMMAND_ENV_PLACEHOLDER, QUARTERDECK_PI_HOOK_COMMAND_ENV));
+		expect(source).toContain(`const HOOK_COMMAND_ENV = "${QUARTERDECK_PI_HOOK_COMMAND_ENV}";`);
+		expect(source).not.toContain(HOOK_COMMAND_ENV_PLACEHOLDER);
+	});
+
+	it("keeps the runtime asset and emitted extension parseable by Node", async () => {
+		const assetPath = fileURLToPath(PI_LIFECYCLE_RUNTIME_ASSET_URL);
+		const tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-pi-extension-"));
+		const emittedPath = join(tempDir, "quarterdeck-lifecycle.mjs");
+
+		try {
+			await writeFile(emittedPath, buildPiLifecycleExtensionSource(), "utf8");
+
+			expectNodeSyntaxCheck(assetPath);
+			expectNodeSyntaxCheck(emittedPath);
+		} finally {
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	it("registers the Pi lifecycle events Quarterdeck maps into hook state", () => {
+		const source = buildPiLifecycleExtensionSource();
+		const eventNames = [
+			"session_start",
+			"input",
+			"agent_start",
+			"agent_end",
+			"tool_execution_start",
+			"tool_execution_update",
+			"tool_execution_end",
+			"tool_call",
+		];
+
+		for (const eventName of eventNames) {
+			expect(source).toContain(`pi.on("${eventName}"`);
+		}
+	});
+
 	it("serializes durable state hooks so lifecycle transitions cannot overtake each other", () => {
 		const source = buildPiLifecycleExtensionSource();
 

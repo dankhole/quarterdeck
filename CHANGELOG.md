@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Chore: extract Pi lifecycle extension source
+
+- Moved the Quarterdeck Pi lifecycle extension into a standalone runtime JavaScript asset and copied it into packaged builds while preserving the launch-scoped hook bridge behavior.
+
 ### Fix: refresh sidebar shortcut tips
 
 - Removed the obsolete plan/act toggle shortcut from the sidebar tips and corrected the start-and-open task shortcut to match the active task-create hotkey.

@@ -1,3 +1,6 @@
+import { copyFile, mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
+
 import * as esbuild from "esbuild";
 
 /** Modules that must stay external (native addons, large runtime deps). */
@@ -39,6 +42,13 @@ const shared = {
 	banner: { js: cjsShimBanner },
 };
 
+const runtimeAssets = [
+	{
+		source: "src/terminal/pi-lifecycle-extension.runtime.js",
+		output: "dist/terminal/pi-lifecycle-extension.runtime.js",
+	},
+];
+
 await Promise.all([
 	// CLI binary
 	esbuild.build({
@@ -55,4 +65,9 @@ await Promise.all([
 	}),
 ]);
 
-console.log("esbuild: bundled dist/cli.js and dist/index.js");
+for (const asset of runtimeAssets) {
+	await mkdir(dirname(asset.output), { recursive: true });
+	await copyFile(asset.source, asset.output);
+}
+
+console.log("esbuild: bundled dist/cli.js and dist/index.js and copied runtime assets");
