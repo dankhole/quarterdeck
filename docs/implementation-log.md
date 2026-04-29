@@ -8,6 +8,12 @@ The Pi lifecycle hook bridge now lives in `src/terminal/pi-lifecycle-extension.r
 
 The key invariant is unchanged launch-scoped behavior: `agent-session-adapters.ts` still writes `quarterdeck-lifecycle.js` under the Quarterdeck runtime hooks directory, passes it to Pi with `--extension`, and injects `QUARTERDECK_PI_HOOK_COMMAND_JSON` with the hook command. Validation: focused Pi lifecycle and adapter tests, `npm run check`, and `npm run build`.
 
+## 2026-04-29 — Frontend terminal pool ownership split
+
+`web-ui/src/terminal/terminal-pool.ts` now acts as the pooled task-terminal composition root instead of owning every terminal policy and diagnostic path directly. The pool keeps slot roles, task-slot indexing, acquire/release/releaseAll, restore-on-promotion decisions, and dedicated terminal compatibility exports. Hidden-stream bounds moved to `terminal-pool-policy.ts`, DOM/debug state and `window.__quarterdeckDumpTerminalState` moved to `terminal-pool-diagnostics.ts`, and pool-plus-dedicated helpers moved to `terminal-surface-helpers.ts`.
+
+The key invariant is unchanged behavior: prewarm remains optional optimization around correct acquire/release semantics, the 12s warmup TTL / 3s cancel grace / 8s PREVIOUS eviction bounds are preserved, DOM monitoring still uses provider snapshots and HMR cleanup, and dedicated shell terminals remain separate from pooled task-agent terminals. Validation: focused terminal suite before and after the split.
+
 ## 2026-04-29 — Unresolved base refs after task branch changes
 
 Task branch-change reconciliation now treats a failed `resolveBaseRefForBranch(...)` inference as an explicit unresolved base-ref state instead of silently retaining the old base. The monitor broadcasts `baseRef: ""`, the board persists that value, and the top-bar base-ref pill prompts the user to select a base branch. Pinned base refs still ignore automatic updates.

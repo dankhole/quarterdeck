@@ -57,6 +57,10 @@
 - Top bars now show only the project/worktree directory name while keeping the full path available on hover, avoiding noisy hidden worktree paths in task views.
 - Settings no longer includes the old all-terminal re-sync button now that each terminal surface exposes its own contextual re-sync control.
 
+### Chore: split terminal pool ownership
+
+- `terminal-pool.ts` now composes pooled task-slot ownership from separate hidden-stream timer policy, DOM/debug diagnostics, and cross-terminal helper modules while preserving existing terminal behavior and compatibility exports.
+
 ### Fix: settle task terminal reveal after restore
 
 - Task terminals now wait for pending xterm writes, resize, and bottom-scroll passes before clearing restore readiness or fallback readiness, preventing Claude sessions from becoming visible before the restored output has settled at the bottom.
