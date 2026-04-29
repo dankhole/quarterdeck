@@ -6,6 +6,7 @@ test-results
 playwright-report
 .worktrees
 .sentry-artifacts
+.husky/_
 .env
 .env.*
 !.env.example
@@ -16,3 +17,10 @@ web-ui/.env.*
 docs/archive
 .kanban
 .quarterdeck
+
+# Keep the checked-in Codex environment bootstrap that symlinks worktree dependencies,
+# but ignore local Codex config/session state spillover.
+.codex/*
+!.codex/environments/
+.codex/environments/*
+!.codex/environments/environment.toml

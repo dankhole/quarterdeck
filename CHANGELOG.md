@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Docs: track editor-lite backlog
+
+- Added an active todo for an editor-lite review/editing surface, including Monaco, CodeMirror 6, and Eclipse Theia as implementation options.
+
+### Chore: ignore local tool state
+
+- Ignored generated Husky install shims and local Codex config/session spillover while preserving the checked-in Codex environment bootstrap that symlinks worktree dependencies.
+
 ## [0.12.1] — 2026-04-29
 
 ### Docs: version bump to 0.12.1
