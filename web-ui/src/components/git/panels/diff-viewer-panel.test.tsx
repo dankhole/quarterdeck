@@ -16,15 +16,15 @@ vi.mock("react-hotkeys-hook", () => ({
 	},
 }));
 
-function createRect(top: number): DOMRect {
+function createRect(top: number, height = 24): DOMRect {
 	return {
 		x: 0,
 		y: top,
 		width: 600,
-		height: 24,
+		height,
 		top,
 		right: 600,
-		bottom: top + 24,
+		bottom: top + height,
 		left: 0,
 		toJSON: () => ({}),
 	};
@@ -140,6 +140,84 @@ describe("DiffViewerPanel", () => {
 		});
 
 		expect(scrollContainer.scrollTop).toBe(547);
+	});
+
+	it("reports visible file paths when the diff panel scrolls", async () => {
+		const projectFiles: RuntimeWorkdirFileChange[] = [
+			{
+				path: "src/a.ts",
+				status: "modified",
+				additions: 1,
+				deletions: 0,
+				oldText: null,
+				newText: null,
+			},
+			{
+				path: "src/b.ts",
+				status: "modified",
+				additions: 1,
+				deletions: 0,
+				oldText: null,
+				newText: null,
+			},
+			{
+				path: "src/c.ts",
+				status: "modified",
+				additions: 1,
+				deletions: 0,
+				oldText: null,
+				newText: null,
+			},
+		];
+		const onVisiblePathsChange = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<DiffViewerPanel
+					projectFiles={projectFiles}
+					selectedPath={null}
+					onSelectedPathChange={() => {}}
+					onVisiblePathsChange={onVisiblePathsChange}
+					comments={new Map<string, DiffLineComment>()}
+					onCommentsChange={() => {}}
+				/>,
+			);
+		});
+
+		const sections = Array.from(container.querySelectorAll("section"));
+		expect(sections).toHaveLength(3);
+		const scrollContainer = sections[0]?.parentElement;
+		expect(scrollContainer).toBeInstanceOf(HTMLDivElement);
+		if (!(scrollContainer instanceof HTMLDivElement)) {
+			throw new Error("Expected a diff scroll container.");
+		}
+		Object.defineProperty(scrollContainer, "clientHeight", {
+			configurable: true,
+			value: 240,
+		});
+		Object.defineProperty(scrollContainer, "scrollTop", {
+			configurable: true,
+			writable: true,
+			value: 0,
+		});
+		vi.spyOn(scrollContainer, "getBoundingClientRect").mockReturnValue(createRect(100, 240));
+		const sectionARect = vi.spyOn(sections[0]!, "getBoundingClientRect").mockReturnValue(createRect(120, 80));
+		const sectionBRect = vi.spyOn(sections[1]!, "getBoundingClientRect").mockReturnValue(createRect(300, 80));
+		const sectionCRect = vi.spyOn(sections[2]!, "getBoundingClientRect").mockReturnValue(createRect(900, 80));
+
+		await act(async () => {
+			scrollContainer.dispatchEvent(new Event("scroll", { bubbles: true }));
+		});
+		expect(onVisiblePathsChange).toHaveBeenLastCalledWith(["src/a.ts", "src/b.ts"]);
+
+		sectionARect.mockReturnValue(createRect(-500, 80));
+		sectionBRect.mockReturnValue(createRect(140, 80));
+		sectionCRect.mockReturnValue(createRect(430, 80));
+
+		await act(async () => {
+			scrollContainer.dispatchEvent(new Event("scroll", { bubbles: true }));
+		});
+		expect(onVisiblePathsChange).toHaveBeenLastCalledWith(["src/b.ts", "src/c.ts"]);
 	});
 
 	it("renders replaced lines side by side in split view", async () => {

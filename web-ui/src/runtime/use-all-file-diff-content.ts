@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
 	applyFileDiff,
 	areFileArraysSameReference,
 	buildDiffCacheKey,
+	buildDiffFetchPlan,
 	buildFileMetadataFingerprint,
 	type CachedDiff,
 	getChangedMetadataPaths,
@@ -30,6 +31,12 @@ export interface UseAllFileDiffContentOptions {
 	files: RuntimeWorkdirFileChange[] | null;
 	/** Revision token from the source change list. Used to detect content refreshes when stats are unchanged. */
 	filesRevision?: number | null;
+	/** Paths that must be loaded for the current view, ordered by foreground priority. */
+	priorityPaths?: readonly string[];
+	/** Enables capped best-effort prefetch for paths outside the foreground set. Defaults to true. */
+	prefetchRemaining?: boolean;
+	/** Maximum number of non-priority paths to prefetch for one scheduling pass. Defaults to 4. */
+	backgroundPrefetchLimit?: number;
 }
 
 export interface FileLoadingState {
@@ -47,6 +54,8 @@ export interface UseAllFileDiffContentResult {
 }
 
 const EMPTY_LOADING_STATE: FileLoadingState = { loaded: new Set(), loading: new Set() };
+const EMPTY_PRIORITY_PATHS: readonly string[] = [];
+const DEFAULT_BACKGROUND_PREFETCH_LIMIT = 4;
 
 function areSetsEqual(previous: ReadonlySet<string>, next: ReadonlySet<string>): boolean {
 	if (previous.size !== next.size) {
@@ -64,23 +73,57 @@ function areLoadingStatesEqual(previous: FileLoadingState, next: FileLoadingStat
 	return areSetsEqual(previous.loaded, next.loaded) && areSetsEqual(previous.loading, next.loading);
 }
 
+function buildDiffRequestKey({
+	contextKey,
+	cacheKey,
+	file,
+	filesRevision,
+}: {
+	contextKey: string;
+	cacheKey: string;
+	file: RuntimeWorkdirFileChange;
+	filesRevision: number | null;
+}): string {
+	return [
+		contextKey,
+		cacheKey,
+		file.previousPath ?? "",
+		file.status,
+		file.contentRevision ?? "",
+		filesRevision ?? "",
+	].join("\0");
+}
+
 /**
- * Fetches diff content for ALL files in a project changes list, progressively.
+ * Fetches diff content for requested files first, then optionally prefetches a bounded number of remaining files.
  * Files are fetched sequentially to avoid overwhelming the server with concurrent requests.
  * Results are cached per context and incrementally merged into the file list.
  */
 export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): UseAllFileDiffContentResult {
-	const { projectId, taskId, baseRef, mode, fromRef, toRef, diffMode, files, filesRevision = null } = options;
+	const {
+		projectId,
+		taskId,
+		baseRef,
+		mode,
+		fromRef,
+		toRef,
+		diffMode,
+		files,
+		filesRevision = null,
+		priorityPaths = EMPTY_PRIORITY_PATHS,
+		prefetchRemaining = true,
+		backgroundPrefetchLimit = DEFAULT_BACKGROUND_PREFETCH_LIMIT,
+	} = options;
 
 	const [enrichedFiles, setEnrichedFiles] = useState<RuntimeWorkdirFileChange[] | null>(null);
 	const [fileLoadingState, setFileLoadingState] = useState<FileLoadingState>(EMPTY_LOADING_STATE);
 
 	const enrichedFilesRef = useRef<RuntimeWorkdirFileChange[] | null>(null);
 	const cacheRef = useRef(new Map<string, CachedDiff>());
+	const inFlightRequestsRef = useRef(new Map<string, Promise<CachedDiff>>());
+	const forceFetchPathsRef = useRef(new Set<string>());
 	const abortRef = useRef<AbortController | null>(null);
 	const isMountedRef = useRef(true);
-	/** Whether the current fetch pass is a background refetch (stale-while-revalidate). */
-	const isBackgroundRefetchRef = useRef(false);
 
 	// Track context so we can clear cache when it changes.
 	const contextKey = `${projectId}::${taskId}::${baseRef}::${mode}::${fromRef ?? ""}::${toRef ?? ""}::${diffMode ?? ""}`;
@@ -88,6 +131,11 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 	const prevFileMetadataFingerprintRef = useRef<string>("");
 	const prevFilesRef = useRef<RuntimeWorkdirFileChange[] | null>(null);
 	const prevFilesRevisionRef = useRef<number | null>(filesRevision);
+	const priorityPathsKey = priorityPaths.join("\0");
+	const normalizedPriorityPaths = useMemo(
+		() => (priorityPathsKey.length === 0 ? EMPTY_PRIORITY_PATHS : priorityPathsKey.split("\0")),
+		[priorityPathsKey],
+	);
 
 	useEffect(() => {
 		isMountedRef.current = true;
@@ -105,72 +153,99 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 			prevFilesRef.current = null;
 			prevFilesRevisionRef.current = filesRevision;
 			enrichedFilesRef.current = null;
+			inFlightRequestsRef.current.clear();
+			forceFetchPathsRef.current.clear();
 			abortRef.current?.abort();
 			abortRef.current = null;
 		}
 	}, [contextKey, filesRevision]);
 
-	const fetchAllDiffs = useCallback(
-		async (filesToFetch: RuntimeWorkdirFileChange[], signal: AbortSignal, forceFetchPaths = new Set<string>()) => {
+	const fetchDiffs = useCallback(
+		async ({
+			priorityFiles,
+			prefetchFiles,
+			signal,
+		}: {
+			priorityFiles: RuntimeWorkdirFileChange[];
+			prefetchFiles: RuntimeWorkdirFileChange[];
+			signal: AbortSignal;
+		}) => {
 			if (!projectId) return;
 
 			const cache = cacheRef.current;
-			const isBackground = isBackgroundRefetchRef.current;
-			isBackgroundRefetchRef.current = false;
-
-			// Build the queue: files not yet cached.
-			const queue: RuntimeWorkdirFileChange[] = [];
-			for (const file of filesToFetch) {
-				const cacheKey = buildDiffCacheKey(file.path, mode, fromRef, toRef);
-				if (forceFetchPaths.has(file.path) || !cache.has(cacheKey)) {
-					queue.push(file);
-				}
-			}
+			const queue = [
+				...priorityFiles.map((file) => ({ file, isPriority: true })),
+				...prefetchFiles.map((file) => ({ file, isPriority: false })),
+			];
 
 			if (queue.length === 0) return;
 
-			// Mark queued files as loading — skip for background refetches to avoid skeleton flash.
-			if (!isBackground && isMountedRef.current) {
-				setFileLoadingState((prev) => {
-					const loading = new Set(prev.loading);
-					for (const file of queue) loading.add(file.path);
-					const next = { loaded: prev.loaded, loading };
-					return areLoadingStatesEqual(prev, next) ? prev : next;
-				});
-			}
+			setFileLoadingState((prev) => {
+				const loading = new Set<string>();
+				for (const file of priorityFiles) {
+					const cacheKey = buildDiffCacheKey(file.path, mode, fromRef, toRef);
+					if (!cache.has(cacheKey)) {
+						loading.add(file.path);
+					}
+				}
+				const next = { loaded: prev.loaded, loading };
+				return areLoadingStatesEqual(prev, next) ? prev : next;
+			});
 
 			const trpcClient = getRuntimeTrpcClient(projectId);
 
-			for (const file of queue) {
+			for (const { file, isPriority } of queue) {
 				if (signal.aborted || !isMountedRef.current) return;
 
 				const cacheKey = buildDiffCacheKey(file.path, mode, fromRef, toRef);
 				// Double-check cache in case a concurrent run filled it.
-				if (!forceFetchPaths.has(file.path) && cache.has(cacheKey)) continue;
+				if (!forceFetchPathsRef.current.has(file.path) && cache.has(cacheKey)) continue;
 
 				let diff: CachedDiff;
 				try {
-					const response: RuntimeFileDiffResponse = await trpcClient.project.getFileDiff.query({
-						taskId,
-						baseRef: baseRef ?? undefined,
-						mode,
-						path: file.path,
-						previousPath: file.previousPath,
-						status: file.status,
-						...(fromRef ? { fromRef } : {}),
-						...(toRef ? { toRef } : {}),
-						...(diffMode ? { diffMode } : {}),
-					});
-					diff = { oldText: response.oldText, newText: response.newText };
+					const requestKey = buildDiffRequestKey({ contextKey, cacheKey, file, filesRevision });
+					let request = inFlightRequestsRef.current.get(requestKey);
+					if (!request) {
+						request = trpcClient.project.getFileDiff
+							.query({
+								taskId,
+								baseRef: baseRef ?? undefined,
+								mode,
+								path: file.path,
+								previousPath: file.previousPath,
+								status: file.status,
+								...(fromRef ? { fromRef } : {}),
+								...(toRef ? { toRef } : {}),
+								...(diffMode ? { diffMode } : {}),
+							})
+							.then((response: RuntimeFileDiffResponse) => ({
+								oldText: response.oldText,
+								newText: response.newText,
+							}))
+							.finally(() => {
+								if (inFlightRequestsRef.current.get(requestKey) === request) {
+									inFlightRequestsRef.current.delete(requestKey);
+								}
+							});
+						inFlightRequestsRef.current.set(requestKey, request);
+					}
+					diff = await request;
 				} catch {
 					const existing = cache.get(cacheKey);
 					// Preserve previously loaded content during background refresh failures.
-					diff = existing ?? { oldText: null, newText: null };
+					if (existing) {
+						diff = existing;
+					} else if (isPriority) {
+						diff = { oldText: null, newText: null };
+					} else {
+						continue;
+					}
 				}
 
 				if (signal.aborted || !isMountedRef.current) return;
 
 				cache.set(cacheKey, diff);
+				forceFetchPathsRef.current.delete(file.path);
 
 				// Update state incrementally after each file.
 				setFileLoadingState((prev) => {
@@ -188,25 +263,23 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 				});
 			}
 		},
-		[projectId, taskId, baseRef, mode, fromRef, toRef, diffMode],
+		[projectId, taskId, baseRef, mode, fromRef, toRef, diffMode, contextKey, filesRevision],
 	);
 
 	// Main effect: when files change, merge new metadata with cached diff content
-	// and start fetching only files whose metadata or source revision changed.
+	// and record which paths need fresh content before the fetch policy runs.
 	useEffect(() => {
 		if (!files || files.length === 0 || !projectId) {
-			if (prevFileMetadataFingerprintRef.current !== "") {
-				abortRef.current?.abort();
-				abortRef.current = null;
-				enrichedFilesRef.current = files;
-				setEnrichedFiles((prevFiles) => (prevFiles === files ? prevFiles : files));
-				setFileLoadingState((prev) =>
-					areLoadingStatesEqual(prev, EMPTY_LOADING_STATE) ? prev : EMPTY_LOADING_STATE,
-				);
-				prevFileMetadataFingerprintRef.current = "";
-				prevFilesRef.current = files;
-				prevFilesRevisionRef.current = filesRevision;
-			}
+			abortRef.current?.abort();
+			abortRef.current = null;
+			inFlightRequestsRef.current.clear();
+			forceFetchPathsRef.current.clear();
+			enrichedFilesRef.current = files;
+			setEnrichedFiles((prevFiles) => (prevFiles === files ? prevFiles : files));
+			setFileLoadingState((prev) => (areLoadingStatesEqual(prev, EMPTY_LOADING_STATE) ? prev : EMPTY_LOADING_STATE));
+			prevFileMetadataFingerprintRef.current = "";
+			prevFilesRef.current = files;
+			prevFilesRevisionRef.current = filesRevision;
 			return;
 		}
 
@@ -228,7 +301,6 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 			: revisionChanged && !hasFileContentRevisions
 				? new Set(files.map((file) => file.path))
 				: new Set<string>();
-		const isBackgroundRefetch = prevFileMetadataFingerprintRef.current !== "" && cache.size > 0;
 		prevFileMetadataFingerprintRef.current = metadataFingerprint;
 		prevFilesRef.current = files;
 		prevFilesRevisionRef.current = filesRevision;
@@ -241,11 +313,14 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 					cache.delete(key);
 				}
 			}
-			if (isBackgroundRefetch && forceFetchPaths.size > 0) {
-				isBackgroundRefetchRef.current = true;
+			for (const path of Array.from(forceFetchPathsRef.current)) {
+				if (!currentPaths.has(path)) {
+					forceFetchPathsRef.current.delete(path);
+				}
 			}
-		} else if (isBackgroundRefetch && revisionChanged && forceFetchPaths.size > 0) {
-			isBackgroundRefetchRef.current = true;
+		}
+		for (const path of forceFetchPaths) {
+			forceFetchPathsRef.current.add(path);
 		}
 
 		const initial = mergeFilesWithCachedDiffs({
@@ -269,23 +344,60 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 			const next = { loaded: initial.loaded, loading: new Set<string>() };
 			return areLoadingStatesEqual(prev, next) ? prev : next;
 		});
+	}, [files, filesRevision, projectId, mode, fromRef, toRef]);
 
-		const hasUncached = files.some((file) => {
-			const cacheKey = buildDiffCacheKey(file.path, mode, fromRef, toRef);
-			return forceFetchPaths.has(file.path) || !cache.has(cacheKey);
+	useEffect(() => {
+		if (!files || files.length === 0 || !projectId) {
+			return;
+		}
+
+		abortRef.current?.abort();
+		abortRef.current = null;
+
+		const plan = buildDiffFetchPlan({
+			files,
+			priorityPaths: normalizedPriorityPaths,
+			cache: cacheRef.current,
+			forceFetchPaths: forceFetchPathsRef.current,
+			mode,
+			fromRef,
+			toRef,
+			prefetchRemaining,
+			backgroundPrefetchLimit,
 		});
 
-		if (hasUncached) {
-			const controller = new AbortController();
-			abortRef.current = controller;
-			void fetchAllDiffs(files, controller.signal, forceFetchPaths);
+		if (plan.priorityFiles.length === 0 && plan.prefetchFiles.length === 0) {
+			setFileLoadingState((prev) => {
+				const next = { loaded: prev.loaded, loading: new Set<string>() };
+				return areLoadingStatesEqual(prev, next) ? prev : next;
+			});
+			return;
 		}
+
+		const controller = new AbortController();
+		abortRef.current = controller;
+		void fetchDiffs({
+			priorityFiles: plan.priorityFiles,
+			prefetchFiles: plan.prefetchFiles,
+			signal: controller.signal,
+		});
 
 		return () => {
 			abortRef.current?.abort();
 			abortRef.current = null;
 		};
-	}, [files, filesRevision, projectId, mode, fromRef, toRef, diffMode, fetchAllDiffs]);
+	}, [
+		files,
+		filesRevision,
+		projectId,
+		mode,
+		fromRef,
+		toRef,
+		normalizedPriorityPaths,
+		prefetchRemaining,
+		backgroundPrefetchLimit,
+		fetchDiffs,
+	]);
 
 	return { enrichedFiles: projectId && files ? enrichedFiles : null, fileLoadingState };
 }

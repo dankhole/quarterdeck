@@ -81,6 +81,7 @@ export function GitView({
 		handleFileTreeSeparatorMouseDown,
 		selectedPath,
 		setSelectedPath,
+		handleVisibleDiffPathsChange,
 		diffComments,
 		setDiffComments,
 		conflictResolution,
@@ -235,6 +236,7 @@ export function GitView({
 									projectFiles={isRuntimeAvailable ? enrichedFiles : null}
 									selectedPath={selectedPath}
 									onSelectedPathChange={setSelectedPath}
+									onVisiblePathsChange={handleVisibleDiffPathsChange}
 									onRollbackFile={activeTab === "uncommitted" ? handleRollbackFile : undefined}
 									viewMode="split"
 									comments={diffComments}

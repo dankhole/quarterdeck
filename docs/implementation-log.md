@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-04-29 — Diff content loading priority
+
+Git diff content loading now separates the fetch/cache mechanism from the view policy. `useAllFileDiffContent(...)` keeps per-file cache, abort, stale-response, and `contentRevision` invalidation behavior, while its scheduling input is now an ordered foreground path list plus a capped background prefetch policy. `GitView` supplies selected and visible diff paths, and `DiffViewerPanel` reports visible sections from the scroll surface with overscan. In-flight diff requests are deduped across scroll-driven reprioritization so aborting a local pass does not issue the same backend request twice.
+
+The key invariant is that correctness depends only on requested paths: selecting or revealing a file requests its diff promptly, and offscreen prefetch can be reduced or disabled without breaking the tab. Cached content remains visible during refresh, failed background refreshes keep the last good diff, and failed uncached prefetches do not poison the cache or mark the file loaded. Notable files: `web-ui/src/runtime/use-all-file-diff-content.ts`, `web-ui/src/runtime/all-file-diff-content.ts`, `web-ui/src/hooks/git/use-git-view.ts`, and `web-ui/src/components/git/panels/diff-viewer-panel.tsx`. Validation: `npm run web:test -- src/runtime/use-all-file-diff-content.test.tsx src/components/git/panels/diff-viewer-panel.test.tsx`; `npm run check`; `npm run build`.
+
 ## 2026-04-29 — Session launch path migration closure
 
 The one-time local state rewrite is complete: scanning `/Users/d.cole/.quarterdeck` found no remaining `projectPath` keys in current `sessions.json` files, and the project state files now persist `sessionLaunchPath`. `RuntimeTaskSessionSummary` therefore no longer reads legacy `projectPath` as launch identity; the schema materializes `sessionLaunchPath` directly. For other state homes that still contain old records, persisted session loading rewrites `projectPath` into `sessionLaunchPath` before schema validation and saves the repaired `sessions.json`, keeping the public/runtime contract to one identity field without silently dropping launch identity.

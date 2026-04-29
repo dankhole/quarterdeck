@@ -1,7 +1,7 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { ChevronDown, ChevronRight, Command, CornerDownLeft, Undo2 } from "lucide-react";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CONTEXT_MENU_ITEM_CLASS, FileContextMenuItems } from "@/components/git/panels/context-menu-utils";
 import { truncatePathMiddle } from "@/components/shared/diff-renderer";
@@ -22,14 +22,22 @@ import {
 	type DiffViewMode,
 	type FileDiffGroup,
 	flattenFilePathsForDisplay,
+	getVisibleDiffGroupPaths,
 } from "./diff-viewer-utils";
 
 export type { DiffLineComment, DiffViewMode } from "./diff-viewer-utils";
+
+const VISIBLE_DIFF_PATH_OVERSCAN_PX = 360;
+
+function arePathListsEqual(previous: readonly string[], next: readonly string[]): boolean {
+	return previous.length === next.length && previous.every((path, index) => path === next[index]);
+}
 
 export function DiffViewerPanel({
 	projectFiles,
 	selectedPath,
 	onSelectedPathChange,
+	onVisiblePathsChange,
 	onAddToTerminal,
 	onSendToTerminal,
 	onRollbackFile,
@@ -43,6 +51,7 @@ export function DiffViewerPanel({
 	projectFiles: RuntimeWorkdirFileChange[] | null;
 	selectedPath: string | null;
 	onSelectedPathChange: (path: string) => void;
+	onVisiblePathsChange?: (paths: string[]) => void;
 	onAddToTerminal?: (formatted: string) => void;
 	onSendToTerminal?: (formatted: string) => void;
 	onRollbackFile?: (path: string) => void;
@@ -56,6 +65,7 @@ export function DiffViewerPanel({
 	fileLoadingState?: FileLoadingState;
 }): React.ReactElement {
 	const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
+	const lastReportedVisiblePathsRef = useRef<string[]>([]);
 
 	const fileStatusByPath = useMemo(() => {
 		const map = new Map<string, string>();
@@ -121,6 +131,40 @@ export function DiffViewerPanel({
 		selectedPath,
 		onSelectedPathChange,
 	});
+
+	const reportVisiblePaths = useCallback(() => {
+		if (!onVisiblePathsChange) {
+			return;
+		}
+		const container = scrollContainerRef.current;
+		if (!container) {
+			return;
+		}
+		const visiblePaths = getVisibleDiffGroupPaths({
+			container,
+			groupedByPath,
+			sectionElements: sectionElementsRef.current,
+			overscanPx: VISIBLE_DIFF_PATH_OVERSCAN_PX,
+		});
+		if (arePathListsEqual(lastReportedVisiblePathsRef.current, visiblePaths)) {
+			return;
+		}
+		lastReportedVisiblePathsRef.current = visiblePaths;
+		onVisiblePathsChange(visiblePaths);
+	}, [groupedByPath, onVisiblePathsChange, scrollContainerRef, sectionElementsRef]);
+
+	const handlePanelScroll = useCallback(() => {
+		handleDiffScroll();
+		reportVisiblePaths();
+	}, [handleDiffScroll, reportVisiblePaths]);
+
+	useEffect(() => {
+		reportVisiblePaths();
+		const frame = window.requestAnimationFrame(reportVisiblePaths);
+		return () => {
+			window.cancelAnimationFrame(frame);
+		};
+	}, [reportVisiblePaths, selectedPath]);
 
 	const {
 		handleAddComment,
@@ -195,7 +239,7 @@ export function DiffViewerPanel({
 				<>
 					<div
 						ref={scrollContainerRef}
-						onScroll={handleDiffScroll}
+						onScroll={handlePanelScroll}
 						style={{
 							flex: "1 1 0",
 							minHeight: 0,

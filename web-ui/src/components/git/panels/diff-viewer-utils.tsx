@@ -65,6 +65,41 @@ export function getSectionTopWithinScrollContainer(container: HTMLElement, secti
 	return container.scrollTop + sectionRect.top - (containerRect.top + container.clientTop);
 }
 
+export function getVisibleDiffGroupPaths({
+	container,
+	groupedByPath,
+	sectionElements,
+	overscanPx = 0,
+}: {
+	container: HTMLElement;
+	groupedByPath: readonly FileDiffGroup[];
+	sectionElements: Readonly<Record<string, HTMLElement | null>>;
+	overscanPx?: number;
+}): string[] {
+	const containerRect = container.getBoundingClientRect();
+	const viewportHeight = container.clientHeight || Math.max(0, containerRect.height);
+	if (viewportHeight <= 0) {
+		return [];
+	}
+
+	const visibleTop = containerRect.top - overscanPx;
+	const visibleBottom = containerRect.top + viewportHeight + overscanPx;
+	const visiblePaths: string[] = [];
+
+	for (const group of groupedByPath) {
+		const section = sectionElements[group.path];
+		if (!section) {
+			continue;
+		}
+		const sectionRect = section.getBoundingClientRect();
+		if (sectionRect.bottom >= visibleTop && sectionRect.top <= visibleBottom) {
+			visiblePaths.push(group.path);
+		}
+	}
+
+	return visiblePaths;
+}
+
 export interface DiffCommentCallbacks {
 	onAddComment: (lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => void;
 	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;

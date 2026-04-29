@@ -5,6 +5,23 @@ export interface CachedDiff {
 	newText: string | null;
 }
 
+export interface DiffFetchPlanInput {
+	files: RuntimeWorkdirFileChange[];
+	priorityPaths: readonly string[];
+	cache: ReadonlyMap<string, CachedDiff>;
+	forceFetchPaths: ReadonlySet<string>;
+	mode: RuntimeWorkdirChangesMode;
+	fromRef: string | null | undefined;
+	toRef: string | null | undefined;
+	prefetchRemaining: boolean;
+	backgroundPrefetchLimit: number;
+}
+
+export interface DiffFetchPlan {
+	priorityFiles: RuntimeWorkdirFileChange[];
+	prefetchFiles: RuntimeWorkdirFileChange[];
+}
+
 export function buildDiffCacheKey(
 	path: string,
 	mode: RuntimeWorkdirChangesMode,
@@ -12,6 +29,53 @@ export function buildDiffCacheKey(
 	toRef: string | null | undefined,
 ): string {
 	return `${path}::${mode}::${fromRef ?? ""}::${toRef ?? ""}`;
+}
+
+export function buildDiffFetchPlan(input: DiffFetchPlanInput): DiffFetchPlan {
+	const fileByPath = new Map(input.files.map((file) => [file.path, file]));
+	const queuedPaths = new Set<string>();
+	const priorityFiles: RuntimeWorkdirFileChange[] = [];
+	const prefetchFiles: RuntimeWorkdirFileChange[] = [];
+
+	const shouldFetch = (file: RuntimeWorkdirFileChange): boolean => {
+		if (input.forceFetchPaths.has(file.path)) {
+			return true;
+		}
+		const cacheKey = buildDiffCacheKey(file.path, input.mode, input.fromRef, input.toRef);
+		return !input.cache.has(cacheKey);
+	};
+
+	for (const path of input.priorityPaths) {
+		if (queuedPaths.has(path)) {
+			continue;
+		}
+		const file = fileByPath.get(path);
+		if (!file || !shouldFetch(file)) {
+			continue;
+		}
+		queuedPaths.add(path);
+		priorityFiles.push(file);
+	}
+
+	const prefetchLimit = Number.isFinite(input.backgroundPrefetchLimit)
+		? Math.max(0, Math.floor(input.backgroundPrefetchLimit))
+		: 0;
+	if (!input.prefetchRemaining || prefetchLimit <= 0) {
+		return { priorityFiles, prefetchFiles };
+	}
+
+	for (const file of input.files) {
+		if (prefetchFiles.length >= prefetchLimit) {
+			break;
+		}
+		if (queuedPaths.has(file.path) || !shouldFetch(file)) {
+			continue;
+		}
+		queuedPaths.add(file.path);
+		prefetchFiles.push(file);
+	}
+
+	return { priorityFiles, prefetchFiles };
 }
 
 export function buildFileMetadataFingerprint(files: RuntimeWorkdirFileChange[]): string {

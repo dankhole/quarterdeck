@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: prioritize diff content loading
+
+- Git diff tabs now load the selected file and visible diff sections first, while any offscreen diff prefetch is capped and cancelable so large change sets no longer make all file diffs foreground work.
+
 ### Chore: close session launch path migration
 
 - Runtime task session summaries now use only `sessionLaunchPath` for launch identity; the temporary legacy `projectPath` read fallback has been removed from the shared schema, and persisted old `sessions.json` records are rewritten through the state loader.

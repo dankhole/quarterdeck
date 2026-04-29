@@ -43,6 +43,10 @@ const GIT_VIEW_FILE_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
 	normalize: (value) => clampBetween(value, 0.12, 0.5),
 };
 
+function arePathListsEqual(previous: readonly string[], next: readonly string[]): boolean {
+	return previous.length === next.length && previous.every((path, index) => path === next[index]);
+}
+
 export interface UseGitViewOptions {
 	currentProjectId: string | null;
 	selectedCard: CardSelection | null;
@@ -74,6 +78,7 @@ export function useGitView({
 		loadResizePreference(GIT_VIEW_FILE_TREE_RATIO_PREFERENCE),
 	);
 	const [selectedPath, setSelectedPathRaw] = useState<string | null>(null);
+	const [visibleDiffPaths, setVisibleDiffPaths] = useState<readonly string[]>([]);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 
 	const contentRowRef = useRef<HTMLDivElement | null>(null);
@@ -253,7 +258,28 @@ export function useGitView({
 				? (lastTurnChanges?.generatedAt ?? null)
 				: (compareChanges?.generatedAt ?? null);
 
-	// Batch diff content loading
+	const diffPriorityPaths = useMemo(() => {
+		const paths: string[] = [];
+		const seen = new Set<string>();
+		const addPath = (path: string | null | undefined) => {
+			if (!path || seen.has(path)) {
+				return;
+			}
+			seen.add(path);
+			paths.push(path);
+		};
+		addPath(selectedPath);
+		for (const path of visibleDiffPaths) {
+			addPath(path);
+		}
+		return paths;
+	}, [selectedPath, visibleDiffPaths]);
+
+	const handleVisibleDiffPathsChange = useCallback((paths: string[]) => {
+		setVisibleDiffPaths((previous) => (arePathListsEqual(previous, paths) ? previous : paths));
+	}, []);
+
+	// Diff content loading: selected/visible paths are foreground; remaining files are capped background prefetch.
 	const { enrichedFiles, fileLoadingState } = useAllFileDiffContent({
 		projectId: activeTab === "compare" ? compareProjectId : baseDerivedProjectId,
 		taskId,
@@ -264,6 +290,7 @@ export function useGitView({
 		diffMode: activeTab === "compare" ? compareDiffMode : undefined,
 		files: activeFiles,
 		filesRevision: activeFilesRevision,
+		priorityPaths: diffPriorityPaths,
 	});
 
 	const isRuntimeAvailable =
@@ -335,11 +362,13 @@ export function useGitView({
 
 	useEffect(() => {
 		setSelectedPathRaw(getLastSelectedPath(taskId, activeTab) ?? null);
+		setVisibleDiffPaths([]);
 		setDiffComments(new Map());
 	}, [taskId, activeTab]);
 
 	useEffect(() => {
 		setSelectedPathRaw(null);
+		setVisibleDiffPaths([]);
 		if (!pendingCompareNavigationRef.current) {
 			setActiveTab("uncommitted");
 		}
@@ -357,6 +386,7 @@ export function useGitView({
 		handleFileTreeSeparatorMouseDown,
 		selectedPath,
 		setSelectedPath,
+		handleVisibleDiffPathsChange,
 		diffComments,
 		setDiffComments,
 		conflictResolution,
@@ -384,6 +414,7 @@ export interface UseGitViewResult {
 	handleFileTreeSeparatorMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
 	selectedPath: string | null;
 	setSelectedPath: (path: string | null) => void;
+	handleVisibleDiffPathsChange: (paths: string[]) => void;
 	diffComments: Map<string, DiffLineComment>;
 	setDiffComments: React.Dispatch<React.SetStateAction<Map<string, DiffLineComment>>>;
 	conflictResolution: UseConflictResolutionResult;
