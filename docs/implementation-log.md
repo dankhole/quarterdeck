@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-04-29 — Project metadata loader module split
+
+Project metadata loading now keeps the existing refresh architecture while splitting the large loader facade into explicit modules for task path resolution, checkout-level git probing, base-ref lookup, task projection, home metadata, and entry/snapshot helpers. `src/server/project-metadata-loaders.ts` remains the compatibility import surface, and `project-metadata-task-cache.ts` owns the cached task metadata type so the leaf modules avoid circular runtime imports.
+
+The key invariant is unchanged behavior: refreshers still resolve each task's assigned path, group loads by `normalizedPath`, probe each physical checkout once, project task/base-ref-specific fields separately, and leave freshness/stale-write ownership in `ProjectMetadataRefresher` and `ProjectMetadataController`. Notable files: `src/server/project-metadata-*.ts`. Validation: `npm run test:fast -- project-metadata`, `npm run check`, and independent code review.
+
 ## 2026-04-29 — Project metadata visibility ownership
 
 Project metadata visibility is now owned per browser runtime client instead of as one project-scoped last-writer flag. The web UI sends a per-page client id on the runtime state WebSocket and tRPC visibility calls, plus the current document visibility in the WebSocket handshake so reconnects preserve hidden state; `RuntimeStateClientRegistry` removes that client's contribution on socket disconnect; and `ProjectMetadataController` derives effective project visibility as "any active client visible" before applying the existing poller and remote-fetch cadence policies.
