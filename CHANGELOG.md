@@ -7,6 +7,10 @@
 - Settings now groups task-agent selection, Claude row tuning, and the worktree context prompt together so agent launch behavior is easier to scan.
 - Removed the parent `.git` and `~/.quarterdeck` agent access toggles from settings/config; Quarterdeck no longer passes those extra `--add-dir` directories to Claude task sessions, and stale config keys are dropped on the next save.
 
+### Fix: reduce compare diff refresh churn
+
+- Compare and diff views now preserve unchanged enriched file entries across background refreshes and only replace file diff content when a fetched diff actually changes, reducing scroll interruptions while sync updates arrive.
+
 ### Feature: restore Open in IDE
 
 - The top bar now has an Open button before project script shortcuts, using the current project path or the selected task's assigned worktree path.

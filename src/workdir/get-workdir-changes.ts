@@ -184,8 +184,26 @@ async function batchReadNumstat(repoRoot: string, args: string[]): Promise<Map<s
 	}
 }
 
+function buildContentRevision(baseRevision: string | null, fingerprint: FileFingerprint | undefined): string {
+	return [
+		baseRevision ?? "no-base",
+		fingerprint?.path ?? "no-path",
+		fingerprint?.size ?? "null",
+		fingerprint?.mtimeMs ?? "null",
+		fingerprint?.ctimeMs ?? "null",
+	].join(":");
+}
+
+function buildFingerprintMap(fingerprints: FileFingerprint[]): Map<string, FileFingerprint> {
+	return new Map(fingerprints.map((fingerprint) => [fingerprint.path, fingerprint]));
+}
+
 /** Build a metadata-only file change entry (no oldText/newText). */
-function buildFileMetadata(entry: NameStatusEntry, stats: DiffStat | undefined): RuntimeWorkdirFileChange {
+function buildFileMetadata(
+	entry: NameStatusEntry,
+	stats: DiffStat | undefined,
+	contentRevision?: string,
+): RuntimeWorkdirFileChange {
 	return {
 		path: entry.path,
 		previousPath: entry.previousPath,
@@ -194,6 +212,7 @@ function buildFileMetadata(entry: NameStatusEntry, stats: DiffStat | undefined):
 		deletions: stats?.deletions ?? 0,
 		oldText: null,
 		newText: null,
+		contentRevision,
 	};
 }
 
@@ -256,6 +275,8 @@ export async function getWorkdirChanges(cwd: string): Promise<RuntimeWorkdirChan
 	}
 
 	const numstatMap = await batchReadNumstat(repoRoot, ["HEAD", "--"]);
+	const fingerprintByPath = buildFingerprintMap(fingerprints);
+	const headCommit = headCommitOutput.trim() || null;
 	const untrackedLineCounts = await Promise.all(
 		allChanges
 			.filter((entry) => entry.status === "untracked")
@@ -266,6 +287,7 @@ export async function getWorkdirChanges(cwd: string): Promise<RuntimeWorkdirChan
 		buildFileMetadata(
 			entry,
 			entry.status === "untracked" ? untrackedStatsMap.get(entry.path) : numstatMap.get(entry.path),
+			buildContentRevision(headCommit, fingerprintByPath.get(entry.path)),
 		),
 	);
 	files.sort((left, right) => left.path.localeCompare(right.path));
@@ -319,7 +341,8 @@ export async function getWorkdirChangesBetweenRefs(
 	}
 
 	const numstatMap = await batchReadNumstat(repoRoot, ["--find-renames", ...diffSpec, "--"]);
-	const files = trackedChanges.map((entry) => buildFileMetadata(entry, numstatMap.get(entry.path)));
+	const contentRevision = `${fromHash.trim()}..${toHash.trim()}:${threeDot ? "3dot" : "2dot"}`;
+	const files = trackedChanges.map((entry) => buildFileMetadata(entry, numstatMap.get(entry.path), contentRevision));
 	files.sort((left, right) => left.path.localeCompare(right.path));
 
 	const response: RuntimeWorkdirChangesResponse = {
@@ -427,6 +450,7 @@ export async function getWorkdirChangesFromRef(input: ChangesFromRefInput): Prom
 	}
 
 	const numstatMap = await batchReadNumstat(repoRoot, ["--find-renames", effectiveFromRef, "--"]);
+	const fingerprintByPath = buildFingerprintMap(fingerprints);
 	const untrackedLineCounts = await Promise.all(
 		allChanges
 			.filter((entry) => entry.status === "untracked")
@@ -437,6 +461,7 @@ export async function getWorkdirChangesFromRef(input: ChangesFromRefInput): Prom
 		buildFileMetadata(
 			entry,
 			entry.status === "untracked" ? untrackedStatsMap.get(entry.path) : numstatMap.get(entry.path),
+			buildContentRevision(resolvedFromHash, fingerprintByPath.get(entry.path)),
 		),
 	);
 	files.sort((left, right) => left.path.localeCompare(right.path));

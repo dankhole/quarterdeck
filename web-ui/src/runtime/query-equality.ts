@@ -1,10 +1,20 @@
 import type { RuntimeGitRefsResponse, RuntimeListFilesResponse, RuntimeWorkdirChangesResponse } from "@/runtime/types";
 
+function haveWorkdirContentRevisions(data: RuntimeWorkdirChangesResponse): boolean {
+	return data.files.every((file) => typeof file.contentRevision === "string" && file.contentRevision.length > 0);
+}
+
 export function areWorkdirChangesRevisionsEqual(
 	previousData: RuntimeWorkdirChangesResponse,
 	nextData: RuntimeWorkdirChangesResponse,
 ): boolean {
-	if (previousData.repoRoot !== nextData.repoRoot || previousData.generatedAt !== nextData.generatedAt) {
+	if (previousData.repoRoot !== nextData.repoRoot) {
+		return false;
+	}
+	if (
+		previousData.generatedAt !== nextData.generatedAt &&
+		(!haveWorkdirContentRevisions(previousData) || !haveWorkdirContentRevisions(nextData))
+	) {
 		return false;
 	}
 	if (previousData.files.length !== nextData.files.length) {
@@ -21,6 +31,7 @@ export function areWorkdirChangesRevisionsEqual(
 			previousFile.status !== nextFile.status ||
 			previousFile.additions !== nextFile.additions ||
 			previousFile.deletions !== nextFile.deletions ||
+			previousFile.contentRevision !== nextFile.contentRevision ||
 			(previousFile.oldText?.length ?? null) !== (nextFile.oldText?.length ?? null) ||
 			(previousFile.newText?.length ?? null) !== (nextFile.newText?.length ?? null)
 		) {

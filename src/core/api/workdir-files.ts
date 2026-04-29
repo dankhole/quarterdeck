@@ -9,6 +9,7 @@ export const runtimeWorkdirFileChangeSchema = z.object({
 	deletions: z.number(),
 	oldText: z.string().nullable(),
 	newText: z.string().nullable(),
+	contentRevision: z.string().optional(),
 });
 export type RuntimeWorkdirFileChange = z.infer<typeof runtimeWorkdirFileChangeSchema>;
 

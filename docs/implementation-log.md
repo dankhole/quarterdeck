@@ -14,6 +14,13 @@ Quarterdeck no longer exposes or honors the Claude-only settings that added the 
 
 Settings now groups task-agent selection, Claude row tuning, and the worktree context prompt in one launch section. Notable files: `src/config/global-config-fields.ts`, `src/core/api/config.ts`, `src/terminal/agent-session-adapters.ts`, `src/terminal/session-lifecycle.ts`, and `web-ui/src/components/settings/agent-section.tsx`. Validation: `npm run check`, `npm run web:test`, and `npm run web:build`.
 
+## 2026-04-29 - Compare Diff Refresh Targeting
+
+- Compare/uncommitted diff loading now uses per-file `contentRevision` metadata from workdir change responses to decide which file diffs need refetching. Response-wide `generatedAt` remains a compatibility fallback only when content revisions are missing.
+- Browser diff refreshes preserve enriched file object identity when fetched content is unchanged and keep the last good cached diff if a background refresh fails, reducing compare-tab scroll interruptions without hiding real file edits.
+- Key files: `src/workdir/get-workdir-changes.ts`, `src/core/api/workdir-files.ts`, `web-ui/src/runtime/use-all-file-diff-content.ts`, `web-ui/src/runtime/all-file-diff-content.ts`, `web-ui/src/runtime/query-equality.ts`.
+- Validation: focused diff-refresh tests during implementation, then squash-prep validation with `npm run check`, `npm run web:test`, and `npm run web:build`.
+
 ## 2026-04-29 - Task Terminal Restore Reveal Ordering
 
 - Changed browser task-terminal restore presentation so readiness is reported after the xterm write queue drains, resize runs, the viewport scrolls to bottom across animation frames, and the host is revealed. The IO-open fallback now uses the same settled reveal path instead of immediately clearing the loading overlay. This protects Claude sessions, which can emit redraw/output bursts around restore, from becoming visible before the restored buffer has reached the bottom.

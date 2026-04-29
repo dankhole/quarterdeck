@@ -246,6 +246,12 @@ export function useGitView({
 		() => deriveActiveFiles(activeTab, uncommittedFiles, lastTurnFiles, compareFiles),
 		[activeTab, uncommittedFiles, lastTurnFiles, compareFiles],
 	);
+	const activeFilesRevision =
+		activeTab === "uncommitted"
+			? (uncommittedChanges?.generatedAt ?? null)
+			: activeTab === "last_turn"
+				? (lastTurnChanges?.generatedAt ?? null)
+				: (compareChanges?.generatedAt ?? null);
 
 	// Batch diff content loading
 	const { enrichedFiles, fileLoadingState } = useAllFileDiffContent({
@@ -257,6 +263,7 @@ export function useGitView({
 		toRef: activeTab === "compare" && !compareIncludeUncommitted ? compare.sourceRef : undefined,
 		diffMode: activeTab === "compare" ? compareDiffMode : undefined,
 		files: activeFiles,
+		filesRevision: activeFilesRevision,
 	});
 
 	const isRuntimeAvailable =

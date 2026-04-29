@@ -54,7 +54,6 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 - **Diff viewer**: Large diffs cause noticeable UI lag. Full file text (old + new) is sent inline and diff computation happens client-side. Consider server-side diff computation, virtualized rendering for large files, or lazy-loading diffs per file instead of all at once.
 - **Interaction between the two**: Selecting a file in the browser triggers a diff load — if this round-trips to the server each time, latency compounds. Consider pre-fetching diffs for visible files or caching previously viewed diffs.
 - **Commit from sidebar is slow**: The commit action triggered from the sidebar loads for a while before completing. Profile whether the bottleneck is the git commit itself, pre-commit hooks, diff recomputation after commit, or UI update.
-- **Compare tab scroll interruptions**: Server-side sync frequency can make scrolling the compare tab annoying. Investigate whether refreshes are re-rendering/resetting scroll state too aggressively and throttle, debounce, preserve scroll position, or narrow refresh scope as appropriate.
 
 **Broader refactor context:** [docs/architecture-roadmap.md#16-file-browser--diff-viewer-data-pipeline](./architecture-roadmap.md#16-file-browser--diff-viewer-data-pipeline)
 
