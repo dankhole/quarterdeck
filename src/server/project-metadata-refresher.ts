@@ -4,8 +4,12 @@ import {
 	areProjectMetadataEqual,
 	type CachedHomeGitMetadata,
 	type CachedTaskWorktreeMetadata,
+	type LoadedTaskWorktreeMetadata,
 	loadHomeGitMetadata,
 	loadTaskWorktreeMetadata,
+	loadTaskWorktreeMetadataBatch,
+	type ResolvedTaskWorktreeMetadataInput,
+	resolveTaskWorktreeMetadataInput,
 	type TrackedTaskWorktree,
 } from "./project-metadata-loaders";
 
@@ -114,19 +118,14 @@ export class ProjectMetadataRefresher {
 			return await this.backgroundRefreshPromise;
 		}
 		const focusedTaskId = this.deps.getFocusedTaskId();
-		const taskIds = this.deps
-			.getTrackedTasks()
-			.filter((task) => task.taskId !== focusedTaskId)
-			.map((task) => task.taskId);
-		if (taskIds.length === 0) {
+		const tasks = this.deps.getTrackedTasks().filter((task) => task.taskId !== focusedTaskId);
+		if (tasks.length === 0) {
 			return;
 		}
 
-		this.backgroundRefreshPromise = Promise.all(taskIds.map((taskId) => this.refreshTask(taskId)))
-			.then(() => {})
-			.finally(() => {
-				this.backgroundRefreshPromise = null;
-			});
+		this.backgroundRefreshPromise = this.performBackgroundTaskRefresh(tasks).finally(() => {
+			this.backgroundRefreshPromise = null;
+		});
 		await this.backgroundRefreshPromise;
 	}
 
@@ -173,6 +172,40 @@ export class ProjectMetadataRefresher {
 		this.broadcastIfChanged(previousSnapshot);
 	}
 
+	private async performBackgroundTaskRefresh(tasks: TrackedTaskWorktree[]): Promise<void> {
+		const previousSnapshot = this.snapshot;
+		const projectPath = this.deps.getProjectPath();
+		const taskFreshnessByTaskId = new Map(
+			tasks.map((task) => [task.taskId, this.deps.getTaskFreshness(task.taskId)] as const),
+		);
+		const resolvedInputs = await Promise.all(
+			tasks.map((task) =>
+				resolveTaskWorktreeMetadataInput(projectPath, task, this.deps.getTaskMetadata(task.taskId)),
+			),
+		);
+		const loadedEntries = await this.loadGroupedTaskMetadata(resolvedInputs);
+
+		for (const result of loadedEntries) {
+			if (!result.metadata) {
+				continue;
+			}
+			const taskId = result.taskId;
+			const commit = this.deps.commitTaskMetadata(taskId, result.metadata, {
+				expectedVersion: taskFreshnessByTaskId.get(taskId) ?? 0,
+				// Background refreshes are freshness-gated, but they must not
+				// supersede a manual targeted refresh that started while the
+				// grouped background probe was in flight.
+				bumpVersion: false,
+			});
+			if (!commit.applied) {
+				continue;
+			}
+			await this.checkForBranchChanges(taskId, commit.previous, result.metadata, this.deps.getTaskFreshness(taskId));
+		}
+
+		this.broadcastIfChanged(previousSnapshot);
+	}
+
 	private async performFullRefresh(): Promise<RuntimeProjectMetadata> {
 		const previousSnapshot = this.snapshot;
 		const trackedTasks = this.deps.getTrackedTasks();
@@ -191,31 +224,29 @@ export class ProjectMetadataRefresher {
 		// apply in the same per-entity way here.
 		this.deps.commitHomeGit(nextHomeGit);
 
-		const nextTaskEntries = await Promise.all(
+		const resolvedInputs = await Promise.all(
 			trackedTasks.map((task) =>
-				this.deps.limitTaskProbe(async () => {
-					const previousCached = previousTaskMetadata.get(task.taskId) ?? null;
-					// This cache input is captured once per refresh pass. A targeted refresh may
-					// commit newer metadata while this load is in flight, which can cost us a
-					// cache-hit and extra git work. We accept that probe-efficiency tradeoff so
-					// the controller freshness gate can stay the single source of commit truth.
-					const next = await loadTaskWorktreeMetadata(projectPath, task, previousCached);
-					return next ? ([task.taskId, next] as const) : null;
-				}),
+				resolveTaskWorktreeMetadataInput(projectPath, task, previousTaskMetadata.get(task.taskId) ?? null),
 			),
 		);
+		const nextTaskEntries = await this.loadGroupedTaskMetadata(resolvedInputs);
 
 		for (const result of nextTaskEntries) {
-			if (!result) {
+			if (!result.metadata) {
 				continue;
 			}
-			const [taskId, next] = result;
-			const commit = this.deps.commitTaskMetadata(taskId, next, {
+			const taskId = result.taskId;
+			const commit = this.deps.commitTaskMetadata(taskId, result.metadata, {
 				expectedVersion: taskFreshnessByTaskId.get(taskId) ?? 0,
 				bumpVersion: false,
 			});
 			if (commit.applied) {
-				void this.checkForBranchChanges(taskId, commit.previous, next, this.deps.getTaskFreshness(taskId));
+				void this.checkForBranchChanges(
+					taskId,
+					commit.previous,
+					result.metadata,
+					this.deps.getTaskFreshness(taskId),
+				);
 			}
 		}
 
@@ -224,6 +255,28 @@ export class ProjectMetadataRefresher {
 			this.deps.onMetadataUpdated(this.deps.projectId, nextSnapshot);
 		}
 		return nextSnapshot;
+	}
+
+	private async loadGroupedTaskMetadata(
+		resolvedInputs: ResolvedTaskWorktreeMetadataInput[],
+	): Promise<LoadedTaskWorktreeMetadata[]> {
+		const groups = new Map<string, ResolvedTaskWorktreeMetadataInput[]>();
+		for (const input of resolvedInputs) {
+			const currentGroup = groups.get(input.pathInfo.normalizedPath);
+			if (currentGroup) {
+				currentGroup.push(input);
+			} else {
+				groups.set(input.pathInfo.normalizedPath, [input]);
+			}
+		}
+		const loadedGroups = await Promise.all(
+			Array.from(groups.values()).map((group) =>
+				this.deps.limitTaskProbe(async () => {
+					return await loadTaskWorktreeMetadataBatch(group);
+				}),
+			),
+		);
+		return loadedGroups.flat();
 	}
 
 	private async checkForBranchChanges(

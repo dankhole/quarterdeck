@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: dedupe shared-checkout metadata polling
+
+- Project metadata refreshes now load checkout-level git state once per physical task path and then project task metadata from that shared result, avoiding duplicate probes for active shared-checkout tasks while preserving task-specific base-ref projections.
+
 ### Chore: extract Pi lifecycle extension source
 
 - Moved the Quarterdeck Pi lifecycle extension into a standalone runtime JavaScript asset and copied it into packaged builds while preserving the launch-scoped hook bridge behavior.

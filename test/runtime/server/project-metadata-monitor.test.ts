@@ -4,6 +4,8 @@ import type { RuntimeBoardData, RuntimeGitSyncSummary } from "../../../src/core"
 import type {
 	CachedHomeGitMetadata,
 	CachedTaskWorktreeMetadata,
+	LoadedTaskWorktreeMetadata,
+	ResolvedTaskWorktreeMetadataInput,
 	TrackedTaskWorktree,
 } from "../../../src/server/project-metadata-loaders";
 import { createProjectMetadataMonitor } from "../../../src/server/project-metadata-monitor";
@@ -11,6 +13,8 @@ import { createProjectMetadataMonitor } from "../../../src/server/project-metada
 const loaderMocks = vi.hoisted(() => ({
 	loadHomeGitMetadata: vi.fn(),
 	loadTaskWorktreeMetadata: vi.fn(),
+	loadTaskWorktreeMetadataBatch: vi.fn(),
+	resolveTaskWorktreeMetadataInput: vi.fn(),
 }));
 
 const workdirMocks = vi.hoisted(() => ({
@@ -24,6 +28,8 @@ vi.mock("../../../src/server/project-metadata-loaders", async (importOriginal) =
 		...actual,
 		loadHomeGitMetadata: loaderMocks.loadHomeGitMetadata,
 		loadTaskWorktreeMetadata: loaderMocks.loadTaskWorktreeMetadata,
+		loadTaskWorktreeMetadataBatch: loaderMocks.loadTaskWorktreeMetadataBatch,
+		resolveTaskWorktreeMetadataInput: loaderMocks.resolveTaskWorktreeMetadataInput,
 	};
 });
 
@@ -36,47 +42,57 @@ vi.mock("../../../src/workdir", async (importOriginal) => {
 	};
 });
 
-function createBoard(
-	tasks: Array<{ taskId: string; columnId: "backlog" | "in_progress" | "review" | "trash" }>,
-): RuntimeBoardData {
+type TestTaskInput = {
+	taskId: string;
+	columnId: "backlog" | "in_progress" | "review" | "trash";
+	baseRef?: string;
+	workingDirectory?: string | null;
+	useWorktree?: boolean;
+};
+
+function createBoard(tasks: TestTaskInput[]): RuntimeBoardData {
 	const now = Date.now();
 	return {
 		columns: [
 			{
 				id: "backlog",
 				title: "Backlog",
-				cards: tasks.filter((task) => task.columnId === "backlog").map((task) => createCard(task.taskId, now)),
+				cards: tasks.filter((task) => task.columnId === "backlog").map((task) => createCard(task, now)),
 			},
 			{
 				id: "in_progress",
 				title: "In Progress",
-				cards: tasks.filter((task) => task.columnId === "in_progress").map((task) => createCard(task.taskId, now)),
+				cards: tasks.filter((task) => task.columnId === "in_progress").map((task) => createCard(task, now)),
 			},
 			{
 				id: "review",
 				title: "Review",
-				cards: tasks.filter((task) => task.columnId === "review").map((task) => createCard(task.taskId, now)),
+				cards: tasks.filter((task) => task.columnId === "review").map((task) => createCard(task, now)),
 			},
 			{
 				id: "trash",
 				title: "Trash",
-				cards: tasks.filter((task) => task.columnId === "trash").map((task) => createCard(task.taskId, now)),
+				cards: tasks.filter((task) => task.columnId === "trash").map((task) => createCard(task, now)),
 			},
 		],
 		dependencies: [],
 	};
 }
 
-function createCard(taskId: string, now: number) {
-	return {
-		id: taskId,
+function createCard(task: TestTaskInput, now: number) {
+	const card = {
+		id: task.taskId,
 		title: null,
-		prompt: `Prompt for ${taskId}`,
-		baseRef: "main",
-		workingDirectory: `/worktrees/${taskId}`,
+		prompt: `Prompt for ${task.taskId}`,
+		baseRef: task.baseRef ?? "main",
+		workingDirectory: task.workingDirectory === undefined ? `/worktrees/${task.taskId}` : task.workingDirectory,
 		createdAt: now,
 		updatedAt: now,
 	};
+	if (task.useWorktree !== undefined) {
+		return { ...card, useWorktree: task.useWorktree };
+	}
+	return card;
 }
 
 function createGitSummary(branch: string): RuntimeGitSyncSummary {
@@ -164,6 +180,8 @@ describe("ProjectMetadataMonitor", () => {
 		versionCounter = 1;
 		loaderMocks.loadHomeGitMetadata.mockReset();
 		loaderMocks.loadTaskWorktreeMetadata.mockReset();
+		loaderMocks.loadTaskWorktreeMetadataBatch.mockReset();
+		loaderMocks.resolveTaskWorktreeMetadataInput.mockReset();
 		workdirMocks.resolveBaseRefForBranch.mockReset();
 		workdirMocks.runGit.mockReset();
 
@@ -172,9 +190,36 @@ describe("ProjectMetadataMonitor", () => {
 				return createHomeMetadata(projectPath, `home-${projectPath}`, currentHomeGit);
 			},
 		);
-		loaderMocks.loadTaskWorktreeMetadata.mockImplementation(
-			async (_projectPath: string, task: TrackedTaskWorktree) => {
-				return createTaskMetadata(task);
+		loaderMocks.loadTaskWorktreeMetadata.mockImplementation(async (path: string, task: TrackedTaskWorktree) => {
+			return createTaskMetadata(task, { path: task.useWorktree === false ? path : undefined });
+		});
+		loaderMocks.resolveTaskWorktreeMetadataInput.mockImplementation(
+			async (projectPath: string, task: TrackedTaskWorktree, current: CachedTaskWorktreeMetadata | null) => {
+				const path =
+					task.useWorktree === false ? projectPath : (task.workingDirectory ?? `/worktrees/${task.taskId}`);
+				return {
+					task,
+					current,
+					pathInfo: {
+						taskId: task.taskId,
+						path,
+						normalizedPath: path,
+						exists: true,
+						baseRef: task.baseRef,
+					},
+				};
+			},
+		);
+		loaderMocks.loadTaskWorktreeMetadataBatch.mockImplementation(
+			async (inputs: ResolvedTaskWorktreeMetadataInput[]) => {
+				const loaded: LoadedTaskWorktreeMetadata[] = [];
+				for (const input of inputs) {
+					loaded.push({
+						taskId: input.task.taskId,
+						metadata: await loaderMocks.loadTaskWorktreeMetadata(input.pathInfo.path, input.task, input.current),
+					});
+				}
+				return loaded;
 			},
 		);
 		workdirMocks.resolveBaseRefForBranch.mockResolvedValue(null);
@@ -320,6 +365,178 @@ describe("ProjectMetadataMonitor", () => {
 		monitor.close();
 	});
 
+	it("groups shared-checkout background task refreshes by physical project path", async () => {
+		vi.useFakeTimers();
+
+		const monitor = createProjectMetadataMonitor({
+			onMetadataUpdated: vi.fn(),
+		});
+
+		const snapshot = await monitor.connectProject({
+			projectId: "project-1",
+			projectPath: "/repo-1",
+			board: createBoard([
+				{
+					taskId: "task-1",
+					columnId: "in_progress",
+					workingDirectory: null,
+					useWorktree: false,
+				},
+				{
+					taskId: "task-2",
+					columnId: "review",
+					workingDirectory: null,
+					useWorktree: false,
+				},
+			]),
+		});
+
+		expect(snapshot.taskWorktrees).toEqual([
+			expect.objectContaining({ taskId: "task-1", path: "/repo-1", baseRef: "main" }),
+			expect.objectContaining({ taskId: "task-2", path: "/repo-1", baseRef: "main" }),
+		]);
+
+		loaderMocks.loadTaskWorktreeMetadataBatch.mockClear();
+		await vi.advanceTimersByTimeAsync(20_000);
+
+		expect(loaderMocks.loadTaskWorktreeMetadataBatch).toHaveBeenCalledTimes(1);
+		const group = loaderMocks.loadTaskWorktreeMetadataBatch.mock.calls[0]?.[0] as
+			| ResolvedTaskWorktreeMetadataInput[]
+			| undefined;
+		expect(group).toBeDefined();
+		if (!group) {
+			throw new Error("Expected one shared checkout metadata group.");
+		}
+		expect(group.map((input: ResolvedTaskWorktreeMetadataInput) => input.task.taskId)).toEqual(["task-1", "task-2"]);
+		expect(new Set(group.map((input: ResolvedTaskWorktreeMetadataInput) => input.pathInfo.normalizedPath))).toEqual(
+			new Set(["/repo-1"]),
+		);
+
+		monitor.close();
+	});
+
+	it("does not collapse isolated task refreshes with different worktree paths", async () => {
+		const monitor = createProjectMetadataMonitor({
+			onMetadataUpdated: vi.fn(),
+		});
+
+		await monitor.connectProject({
+			projectId: "project-1",
+			projectPath: "/repo-1",
+			board: createBoard([
+				{ taskId: "task-1", columnId: "in_progress", workingDirectory: "/worktrees/task-1" },
+				{ taskId: "task-2", columnId: "review", workingDirectory: "/worktrees/task-2" },
+			]),
+		});
+
+		expect(loaderMocks.loadTaskWorktreeMetadataBatch).toHaveBeenCalledTimes(2);
+		const loadedGroups = loaderMocks.loadTaskWorktreeMetadataBatch.mock.calls.map(([group]) =>
+			group.map((input: ResolvedTaskWorktreeMetadataInput) => input.pathInfo.normalizedPath),
+		);
+		expect(loadedGroups).toEqual(expect.arrayContaining([["/worktrees/task-1"], ["/worktrees/task-2"]]));
+
+		monitor.close();
+	});
+
+	it("lets a targeted task refresh win when background polling resolves first", async () => {
+		vi.useFakeTimers();
+
+		const onMetadataUpdated = vi.fn();
+		const monitor = createProjectMetadataMonitor({
+			onMetadataUpdated,
+		});
+
+		await monitor.connectProject({
+			projectId: "project-1",
+			projectPath: "/repo-1",
+			board: createBoard([{ taskId: "task-1", columnId: "in_progress" }]),
+		});
+
+		onMetadataUpdated.mockClear();
+		const backgroundRefresh = createDeferred<LoadedTaskWorktreeMetadata[]>();
+		const targetedRefresh = createDeferred<CachedTaskWorktreeMetadata>();
+		let sawBackgroundRefresh = false;
+		let sawTargetedRefresh = false;
+		const task = {
+			taskId: "task-1",
+			baseRef: "main",
+			workingDirectory: "/worktrees/task-1",
+		};
+
+		loaderMocks.loadTaskWorktreeMetadataBatch.mockImplementation(
+			async (inputs: ResolvedTaskWorktreeMetadataInput[]) => {
+				sawBackgroundRefresh = inputs.some((input) => input.task.taskId === "task-1");
+				return await backgroundRefresh.promise;
+			},
+		);
+		loaderMocks.loadTaskWorktreeMetadata.mockImplementation(
+			async (_path: string, refreshedTask: TrackedTaskWorktree, current: CachedTaskWorktreeMetadata | null) => {
+				if (refreshedTask.taskId === "task-1" && current?.stateToken === null) {
+					sawTargetedRefresh = true;
+					return await targetedRefresh.promise;
+				}
+				return createTaskMetadata(refreshedTask);
+			},
+		);
+
+		await vi.advanceTimersByTimeAsync(20_000);
+		await vi.waitFor(() => {
+			expect(sawBackgroundRefresh).toBe(true);
+		});
+
+		monitor.requestTaskRefresh("project-1", "task-1");
+		await vi.waitFor(() => {
+			expect(sawTargetedRefresh).toBe(true);
+		});
+
+		backgroundRefresh.resolve([
+			{
+				taskId: "task-1",
+				metadata: createTaskMetadata(task, {
+					branch: "feature/task-1-background",
+					changedFiles: 1,
+				}),
+			},
+		]);
+		await vi.waitFor(() => {
+			expect(onMetadataUpdated).toHaveBeenCalledWith(
+				"project-1",
+				expect.objectContaining({
+					taskWorktrees: [
+						expect.objectContaining({
+							taskId: "task-1",
+							branch: "feature/task-1-background",
+							changedFiles: 1,
+						}),
+					],
+				}),
+			);
+		});
+
+		targetedRefresh.resolve(
+			createTaskMetadata(task, {
+				branch: "feature/task-1-targeted",
+				changedFiles: 9,
+			}),
+		);
+		await vi.waitFor(() => {
+			expect(onMetadataUpdated).toHaveBeenLastCalledWith(
+				"project-1",
+				expect.objectContaining({
+					taskWorktrees: [
+						expect.objectContaining({
+							taskId: "task-1",
+							branch: "feature/task-1-targeted",
+							changedFiles: 9,
+						}),
+					],
+				}),
+			);
+		});
+
+		monitor.close();
+	});
+
 	it("backs off metadata polling and pauses focused polling while the document is hidden", async () => {
 		vi.useFakeTimers();
 
@@ -403,26 +620,24 @@ describe("ProjectMetadataMonitor", () => {
 		let maxActiveProjectARefreshes = 0;
 		let projectBRefreshed = false;
 		let blockProjectARefreshes = true;
-		loaderMocks.loadTaskWorktreeMetadata.mockImplementation(
-			async (projectPath: string, task: TrackedTaskWorktree) => {
-				if (projectPath === "/repo-b") {
-					projectBRefreshed = true;
-					return createTaskMetadata(task);
-				}
-				if (!blockProjectARefreshes) {
-					return createTaskMetadata(task);
-				}
-				const blocked = { task, deferred: createDeferred<CachedTaskWorktreeMetadata>() };
-				blockedProjectARefreshes.push(blocked);
-				activeProjectARefreshes += 1;
-				maxActiveProjectARefreshes = Math.max(maxActiveProjectARefreshes, activeProjectARefreshes);
-				try {
-					return await blocked.deferred.promise;
-				} finally {
-					activeProjectARefreshes -= 1;
-				}
-			},
-		);
+		loaderMocks.loadTaskWorktreeMetadata.mockImplementation(async (_path: string, task: TrackedTaskWorktree) => {
+			if (task.taskId.startsWith("task-b-")) {
+				projectBRefreshed = true;
+				return createTaskMetadata(task);
+			}
+			if (!blockProjectARefreshes) {
+				return createTaskMetadata(task);
+			}
+			const blocked = { task, deferred: createDeferred<CachedTaskWorktreeMetadata>() };
+			blockedProjectARefreshes.push(blocked);
+			activeProjectARefreshes += 1;
+			maxActiveProjectARefreshes = Math.max(maxActiveProjectARefreshes, activeProjectARefreshes);
+			try {
+				return await blocked.deferred.promise;
+			} finally {
+				activeProjectARefreshes -= 1;
+			}
+		});
 
 		monitor.requestTaskRefresh("project-a", "task-a-1");
 		monitor.requestTaskRefresh("project-a", "task-a-2");

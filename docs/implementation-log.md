@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-04-29 — Project metadata path-level projection
+
+Task worktree metadata loading now has an explicit two-step boundary: resolve the task's assigned path, load checkout-level git state once for that normalized physical path, then project per-task metadata with task id and base-ref-specific fields. Full-project and background refreshes group tracked tasks by resolved path before probing, so multiple active shared-checkout tasks no longer run identical path/status/conflict reads against the project root. Base-ref-specific work remains keyed by base ref, preserving different `behindBaseCount` and unmerged-change projections for tasks sharing the same checkout.
+
+The key invariant is that freshness and mutation ownership did not move: `ProjectMetadataController.commitTaskMetadata(...)` still gates each task result, stale full refreshes still cannot overwrite newer targeted task metadata, and background polling does not bump task freshness over an in-flight manual targeted refresh. Notable files: `src/server/project-metadata-loaders.ts`, `src/server/project-metadata-refresher.ts`, and focused monitor/loader tests under `test/runtime/server`. Validation: `npm run test:fast -- project-metadata`, `npm run check`.
+
 ## 2026-04-29 — Pi lifecycle extension source extraction
 
 The Pi lifecycle hook bridge now lives in `src/terminal/pi-lifecycle-extension.runtime.js` as normal JavaScript source instead of a generated `String.raw` template in TypeScript. `src/terminal/pi-lifecycle-extension.ts` loads that asset, substitutes only the explicit hook-command env placeholder, and `scripts/build.mjs` copies the asset into `dist/terminal` so bundled `dist/cli.js` / `dist/index.js` can still write the extension before launching Pi.

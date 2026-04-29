@@ -1,3 +1,6 @@
+import { realpath } from "node:fs/promises";
+import { resolve as resolvePath } from "node:path";
+
 import type {
 	RuntimeBoardData,
 	RuntimeConflictState,
@@ -41,6 +44,49 @@ export interface CachedTaskWorktreeMetadata {
 	baseRefCommit: string | null;
 	originBaseRefCommit: string | null;
 	lastKnownBranch: string | null;
+}
+
+export interface ResolvedTaskWorktreePath {
+	taskId: string;
+	path: string;
+	normalizedPath: string;
+	exists: boolean;
+	baseRef: string;
+}
+
+export interface ResolvedTaskWorktreeMetadataInput {
+	task: TrackedTaskWorktree;
+	pathInfo: ResolvedTaskWorktreePath;
+	current: CachedTaskWorktreeMetadata | null;
+}
+
+export interface LoadedTaskWorktreeMetadata {
+	taskId: string;
+	metadata: CachedTaskWorktreeMetadata | null;
+}
+
+export interface CachedPathWorktreeMetadata {
+	path: string;
+	normalizedPath: string;
+	exists: boolean;
+	probeFailed: boolean;
+	branch: string | null;
+	isDetached: boolean;
+	headCommit: string | null;
+	changedFiles: number | null;
+	additions: number | null;
+	deletions: number | null;
+	conflictState: RuntimeConflictState | null;
+	stateToken: string | null;
+	stateVersion: number;
+	lastKnownBranch: string | null;
+}
+
+export interface BaseRefWorktreeMetadata {
+	baseRefCommit: string | null;
+	originBaseRefCommit: string | null;
+	hasUnmergedChanges: boolean | null;
+	behindBaseCount: number | null;
 }
 
 export interface ProjectMetadataEntry {
@@ -154,6 +200,18 @@ async function loadConflictState(cwd: string): Promise<RuntimeConflictState | nu
 	};
 }
 
+async function normalizePhysicalPath(path: string, exists: boolean): Promise<string> {
+	const absolutePath = resolvePath(path);
+	if (!exists) {
+		return absolutePath;
+	}
+	try {
+		return await realpath(absolutePath);
+	} catch {
+		return absolutePath;
+	}
+}
+
 export function areProjectMetadataEqual(a: RuntimeProjectMetadata, b: RuntimeProjectMetadata): boolean {
 	if (!areGitSummariesEqual(a.homeGitSummary, b.homeGitSummary)) {
 		return false;
@@ -258,28 +316,412 @@ export async function loadHomeGitMetadata(
 	}
 }
 
-async function resolveTaskPath(
+export async function resolveTaskWorktreePath(
 	projectPath: string,
 	task: TrackedTaskWorktree,
-): Promise<{ path: string; exists: boolean; baseRef: string }> {
+): Promise<ResolvedTaskWorktreePath> {
 	if (task.useWorktree === false) {
-		return { path: projectPath, exists: await pathExists(projectPath), baseRef: task.baseRef };
+		const exists = await pathExists(projectPath);
+		return {
+			taskId: task.taskId,
+			path: projectPath,
+			normalizedPath: await normalizePhysicalPath(projectPath, exists),
+			exists,
+			baseRef: task.baseRef,
+		};
 	}
 	// Use the card's workingDirectory if available (set at session start).
 	if (task.workingDirectory) {
 		const exists = await pathExists(task.workingDirectory);
-		return { path: task.workingDirectory, exists, baseRef: task.baseRef };
+		return {
+			taskId: task.taskId,
+			path: task.workingDirectory,
+			normalizedPath: await normalizePhysicalPath(task.workingDirectory, exists),
+			exists,
+			baseRef: task.baseRef,
+		};
 	}
 	if (!task.baseRef.trim()) {
 		const worktreePath = getTaskWorktreePath(projectPath, task.taskId);
-		return { path: worktreePath, exists: await pathExists(worktreePath), baseRef: "" };
+		const exists = await pathExists(worktreePath);
+		return {
+			taskId: task.taskId,
+			path: worktreePath,
+			normalizedPath: await normalizePhysicalPath(worktreePath, exists),
+			exists,
+			baseRef: "",
+		};
 	}
 	// Fallback for tasks started before workingDirectory was persisted.
-	return await getTaskWorktreePathInfo({
+	const pathInfo = await getTaskWorktreePathInfo({
 		cwd: projectPath,
 		taskId: task.taskId,
 		baseRef: task.baseRef,
 	});
+	return {
+		taskId: pathInfo.taskId,
+		path: pathInfo.path,
+		normalizedPath: await normalizePhysicalPath(pathInfo.path, pathInfo.exists),
+		exists: pathInfo.exists,
+		baseRef: pathInfo.baseRef,
+	};
+}
+
+export async function resolveTaskWorktreeMetadataInput(
+	projectPath: string,
+	task: TrackedTaskWorktree,
+	current: CachedTaskWorktreeMetadata | null,
+): Promise<ResolvedTaskWorktreeMetadataInput> {
+	return {
+		task,
+		pathInfo: await resolveTaskWorktreePath(projectPath, task),
+		current,
+	};
+}
+
+function derivePathMetadataFromTask(
+	pathInfo: ResolvedTaskWorktreePath,
+	current: CachedTaskWorktreeMetadata | null,
+): CachedPathWorktreeMetadata | null {
+	if (!current || current.data.path !== pathInfo.path || current.data.exists !== pathInfo.exists) {
+		return null;
+	}
+	return {
+		path: current.data.path,
+		normalizedPath: pathInfo.normalizedPath,
+		exists: current.data.exists,
+		probeFailed: false,
+		branch: current.data.branch,
+		isDetached: current.data.isDetached,
+		headCommit: current.data.headCommit,
+		changedFiles: current.data.changedFiles,
+		additions: current.data.additions,
+		deletions: current.data.deletions,
+		conflictState: current.data.conflictState ?? null,
+		stateToken: current.stateToken,
+		stateVersion: current.data.stateVersion,
+		lastKnownBranch: current.lastKnownBranch,
+	};
+}
+
+function createMissingPathMetadata(
+	pathInfo: ResolvedTaskWorktreePath,
+	currentPathMetadata: CachedPathWorktreeMetadata | null,
+): CachedPathWorktreeMetadata {
+	if (currentPathMetadata?.exists === false) {
+		return currentPathMetadata;
+	}
+	return {
+		path: pathInfo.path,
+		normalizedPath: pathInfo.normalizedPath,
+		exists: false,
+		probeFailed: false,
+		branch: null,
+		isDetached: false,
+		headCommit: null,
+		changedFiles: null,
+		additions: null,
+		deletions: null,
+		conflictState: null,
+		stateToken: null,
+		stateVersion: Date.now(),
+		lastKnownBranch: null,
+	};
+}
+
+export async function loadPathWorktreeMetadata(
+	pathInfo: ResolvedTaskWorktreePath,
+	currentPathMetadata: CachedPathWorktreeMetadata | null,
+): Promise<CachedPathWorktreeMetadata> {
+	if (!pathInfo.exists) {
+		return createMissingPathMetadata(pathInfo, currentPathMetadata);
+	}
+
+	try {
+		const probe = await probeGitWorkdirState(pathInfo.path);
+		if (
+			currentPathMetadata?.exists &&
+			currentPathMetadata.path === pathInfo.path &&
+			currentPathMetadata.stateToken === probe.stateToken
+		) {
+			return currentPathMetadata;
+		}
+		const [gitSummary, conflictState] = await Promise.all([
+			getGitSyncSummary(pathInfo.path, { probe }),
+			loadConflictState(pathInfo.path),
+		]);
+		return {
+			path: pathInfo.path,
+			normalizedPath: pathInfo.normalizedPath,
+			exists: true,
+			probeFailed: false,
+			branch: probe.currentBranch,
+			isDetached: probe.headCommit !== null && probe.currentBranch === null,
+			headCommit: probe.headCommit,
+			changedFiles: gitSummary.changedFiles,
+			additions: gitSummary.additions,
+			deletions: gitSummary.deletions,
+			conflictState,
+			stateToken: probe.stateToken,
+			stateVersion: Date.now(),
+			lastKnownBranch: probe.currentBranch,
+		};
+	} catch {
+		if (currentPathMetadata && currentPathMetadata.path === pathInfo.path) {
+			return { ...currentPathMetadata, probeFailed: true };
+		}
+		return {
+			path: pathInfo.path,
+			normalizedPath: pathInfo.normalizedPath,
+			exists: true,
+			probeFailed: true,
+			branch: null,
+			isDetached: false,
+			headCommit: null,
+			changedFiles: null,
+			additions: null,
+			deletions: null,
+			conflictState: null,
+			stateToken: null,
+			stateVersion: Date.now(),
+			lastKnownBranch: null,
+		};
+	}
+}
+
+function canReuseTaskMetadata(
+	task: TrackedTaskWorktree,
+	pathInfo: ResolvedTaskWorktreePath,
+	pathMetadata: CachedPathWorktreeMetadata,
+	baseRefMetadata: BaseRefWorktreeMetadata,
+	current: CachedTaskWorktreeMetadata | null,
+): current is CachedTaskWorktreeMetadata {
+	return (
+		current !== null &&
+		current.data.taskId === task.taskId &&
+		current.data.path === pathInfo.path &&
+		current.data.exists === pathMetadata.exists &&
+		current.data.baseRef === pathInfo.baseRef &&
+		current.stateToken === pathMetadata.stateToken &&
+		current.baseRefCommit === baseRefMetadata.baseRefCommit &&
+		current.originBaseRefCommit === baseRefMetadata.originBaseRefCommit
+	);
+}
+
+async function loadBaseRefWorktreeMetadata(
+	pathInfo: ResolvedTaskWorktreePath,
+	pathMetadata: CachedPathWorktreeMetadata,
+	current: CachedTaskWorktreeMetadata | null,
+): Promise<BaseRefWorktreeMetadata> {
+	if (!pathMetadata.exists || !pathInfo.baseRef.trim()) {
+		return {
+			baseRefCommit: null,
+			originBaseRefCommit: null,
+			hasUnmergedChanges: null,
+			behindBaseCount: null,
+		};
+	}
+
+	const originRef = `origin/${pathInfo.baseRef}`;
+	const [baseRefResult, originBaseRefResult] = await Promise.all([
+		runGit(pathInfo.path, ["--no-optional-locks", "rev-parse", "--verify", pathInfo.baseRef], {
+			timeoutClass: "metadata",
+		}),
+		runGit(pathInfo.path, ["--no-optional-locks", "rev-parse", "--verify", originRef], {
+			timeoutClass: "metadata",
+		}),
+	]);
+	const baseRefCommit = baseRefResult.ok ? baseRefResult.stdout : null;
+	const originBaseRefCommit = originBaseRefResult.ok ? originBaseRefResult.stdout : null;
+	if (
+		current &&
+		current.stateToken === pathMetadata.stateToken &&
+		current.baseRefCommit === baseRefCommit &&
+		current.originBaseRefCommit === originBaseRefCommit &&
+		current.data.path === pathInfo.path &&
+		current.data.baseRef === pathInfo.baseRef
+	) {
+		return {
+			baseRefCommit,
+			originBaseRefCommit,
+			hasUnmergedChanges: current.data.hasUnmergedChanges,
+			behindBaseCount: current.data.behindBaseCount,
+		};
+	}
+
+	const [unmergedResult, treeDiffResult, behindBase] = await Promise.all([
+		runGit(pathInfo.path, ["--no-optional-locks", "diff", "--quiet", `${pathInfo.baseRef}...HEAD`], {
+			timeoutClass: "metadata",
+		}),
+		runGit(pathInfo.path, ["--no-optional-locks", "diff", "--quiet", pathInfo.baseRef, "HEAD"], {
+			timeoutClass: "metadata",
+		}),
+		getCommitsBehindBase(pathInfo.path, pathInfo.baseRef),
+	]);
+	return {
+		baseRefCommit,
+		originBaseRefCommit,
+		hasUnmergedChanges:
+			unmergedResult.exitCode === 0
+				? false
+				: unmergedResult.exitCode === 1
+					? treeDiffResult.exitCode !== 0 // suppress when trees are identical (already landed)
+					: null,
+		behindBaseCount: behindBase?.behindCount ?? null,
+	};
+}
+
+export function projectTaskWorktreeMetadata(input: {
+	task: TrackedTaskWorktree;
+	pathInfo: ResolvedTaskWorktreePath;
+	pathMetadata: CachedPathWorktreeMetadata;
+	baseRefMetadata: BaseRefWorktreeMetadata;
+	current: CachedTaskWorktreeMetadata | null;
+}): CachedTaskWorktreeMetadata {
+	const { task, pathInfo, pathMetadata, baseRefMetadata, current } = input;
+	if (canReuseTaskMetadata(task, pathInfo, pathMetadata, baseRefMetadata, current)) {
+		return current;
+	}
+	return {
+		data: {
+			taskId: task.taskId,
+			path: pathInfo.path,
+			exists: pathMetadata.exists,
+			baseRef: pathInfo.baseRef,
+			branch: pathMetadata.branch,
+			isDetached: pathMetadata.isDetached,
+			headCommit: pathMetadata.headCommit,
+			changedFiles: pathMetadata.changedFiles,
+			additions: pathMetadata.additions,
+			deletions: pathMetadata.deletions,
+			hasUnmergedChanges: baseRefMetadata.hasUnmergedChanges,
+			behindBaseCount: baseRefMetadata.behindBaseCount,
+			conflictState: pathMetadata.conflictState,
+			stateVersion: Date.now(),
+		},
+		stateToken: pathMetadata.stateToken,
+		baseRefCommit: baseRefMetadata.baseRefCommit,
+		originBaseRefCommit: baseRefMetadata.originBaseRefCommit,
+		lastKnownBranch: pathMetadata.lastKnownBranch,
+	};
+}
+
+function selectCurrentPathMetadata(inputs: ResolvedTaskWorktreeMetadataInput[]): CachedPathWorktreeMetadata | null {
+	for (const input of inputs) {
+		const currentPathMetadata = derivePathMetadataFromTask(input.pathInfo, input.current);
+		if (currentPathMetadata) {
+			return currentPathMetadata;
+		}
+	}
+	return null;
+}
+
+function selectCurrentBaseRefMetadataInput(
+	inputs: ResolvedTaskWorktreeMetadataInput[],
+	pathMetadata: CachedPathWorktreeMetadata,
+	baseRef: string,
+): CachedTaskWorktreeMetadata | null {
+	for (const input of inputs) {
+		if (
+			input.pathInfo.baseRef === baseRef &&
+			input.current &&
+			input.current.data.path === input.pathInfo.path &&
+			input.current.data.baseRef === baseRef &&
+			input.current.stateToken === pathMetadata.stateToken
+		) {
+			return input.current;
+		}
+	}
+	return null;
+}
+
+async function loadTaskWorktreeMetadataForResolvedPath(
+	inputs: ResolvedTaskWorktreeMetadataInput[],
+): Promise<LoadedTaskWorktreeMetadata[]> {
+	if (inputs.length === 0) {
+		return [];
+	}
+	const pathInfo = inputs[0]?.pathInfo;
+	if (!pathInfo) {
+		return [];
+	}
+	const pathMetadata = await loadPathWorktreeMetadata(pathInfo, selectCurrentPathMetadata(inputs));
+	if (pathMetadata.probeFailed) {
+		return inputs.map((input) => ({
+			taskId: input.task.taskId,
+			metadata:
+				input.current ??
+				projectTaskWorktreeMetadata({
+					task: input.task,
+					pathInfo: input.pathInfo,
+					pathMetadata: {
+						...pathMetadata,
+						path: input.pathInfo.path,
+						normalizedPath: input.pathInfo.normalizedPath,
+						branch: null,
+						isDetached: false,
+						headCommit: null,
+						changedFiles: null,
+						additions: null,
+						deletions: null,
+						conflictState: null,
+						stateToken: null,
+						lastKnownBranch: null,
+					},
+					baseRefMetadata: {
+						baseRefCommit: null,
+						originBaseRefCommit: null,
+						hasUnmergedChanges: null,
+						behindBaseCount: null,
+					},
+					current: input.current,
+				}),
+		}));
+	}
+	const baseRefMetadataByRef = new Map<string, BaseRefWorktreeMetadata>();
+	const results: LoadedTaskWorktreeMetadata[] = [];
+
+	for (const input of inputs) {
+		let baseRefMetadata = baseRefMetadataByRef.get(input.pathInfo.baseRef);
+		if (!baseRefMetadata) {
+			baseRefMetadata = await loadBaseRefWorktreeMetadata(
+				input.pathInfo,
+				pathMetadata,
+				selectCurrentBaseRefMetadataInput(inputs, pathMetadata, input.pathInfo.baseRef),
+			);
+			baseRefMetadataByRef.set(input.pathInfo.baseRef, baseRefMetadata);
+		}
+		results.push({
+			taskId: input.task.taskId,
+			metadata: projectTaskWorktreeMetadata({
+				task: input.task,
+				pathInfo: input.pathInfo,
+				pathMetadata,
+				baseRefMetadata,
+				current: input.current,
+			}),
+		});
+	}
+	return results;
+}
+
+export async function loadTaskWorktreeMetadataBatch(
+	inputs: ResolvedTaskWorktreeMetadataInput[],
+): Promise<LoadedTaskWorktreeMetadata[]> {
+	const groups = new Map<string, ResolvedTaskWorktreeMetadataInput[]>();
+	for (const input of inputs) {
+		const currentGroup = groups.get(input.pathInfo.normalizedPath);
+		if (currentGroup) {
+			currentGroup.push(input);
+		} else {
+			groups.set(input.pathInfo.normalizedPath, [input]);
+		}
+	}
+	const loaded: LoadedTaskWorktreeMetadata[] = [];
+	for (const group of groups.values()) {
+		loaded.push(...(await loadTaskWorktreeMetadataForResolvedPath(group)));
+	}
+	return loaded;
 }
 
 export async function loadTaskWorktreeMetadata(
@@ -287,166 +729,7 @@ export async function loadTaskWorktreeMetadata(
 	task: TrackedTaskWorktree,
 	current: CachedTaskWorktreeMetadata | null,
 ): Promise<CachedTaskWorktreeMetadata | null> {
-	const pathInfo = await resolveTaskPath(projectPath, task);
-
-	if (!pathInfo.exists) {
-		if (
-			current &&
-			current.data.exists === false &&
-			current.data.path === pathInfo.path &&
-			current.data.baseRef === pathInfo.baseRef
-		) {
-			return current;
-		}
-		return {
-			data: {
-				taskId: task.taskId,
-				path: pathInfo.path,
-				exists: false,
-				baseRef: pathInfo.baseRef,
-				branch: null,
-				isDetached: false,
-				headCommit: null,
-				changedFiles: null,
-				additions: null,
-				deletions: null,
-				hasUnmergedChanges: null,
-				behindBaseCount: null,
-				conflictState: null,
-				stateVersion: Date.now(),
-			},
-			stateToken: null,
-			baseRefCommit: null,
-			originBaseRefCommit: null,
-			lastKnownBranch: null,
-		};
-	}
-
-	try {
-		const probe = await probeGitWorkdirState(pathInfo.path);
-		if (!pathInfo.baseRef.trim()) {
-			if (
-				current &&
-				current.stateToken === probe.stateToken &&
-				current.baseRefCommit === null &&
-				current.originBaseRefCommit === null &&
-				current.data.path === pathInfo.path &&
-				current.data.baseRef === ""
-			) {
-				return current;
-			}
-			const [gitSummary, conflictState] = await Promise.all([
-				getGitSyncSummary(pathInfo.path, { probe }),
-				loadConflictState(pathInfo.path),
-			]);
-			return {
-				data: {
-					taskId: task.taskId,
-					path: pathInfo.path,
-					exists: true,
-					baseRef: "",
-					branch: probe.currentBranch,
-					isDetached: probe.headCommit !== null && probe.currentBranch === null,
-					headCommit: probe.headCommit,
-					changedFiles: gitSummary.changedFiles,
-					additions: gitSummary.additions,
-					deletions: gitSummary.deletions,
-					hasUnmergedChanges: null,
-					behindBaseCount: null,
-					conflictState,
-					stateVersion: Date.now(),
-				},
-				stateToken: probe.stateToken,
-				baseRefCommit: null,
-				originBaseRefCommit: null,
-				lastKnownBranch: probe.currentBranch,
-			};
-		}
-
-		const originRef = `origin/${pathInfo.baseRef}`;
-		const [baseRefResult, originBaseRefResult] = await Promise.all([
-			runGit(pathInfo.path, ["--no-optional-locks", "rev-parse", "--verify", pathInfo.baseRef], {
-				timeoutClass: "metadata",
-			}),
-			runGit(pathInfo.path, ["--no-optional-locks", "rev-parse", "--verify", originRef], {
-				timeoutClass: "metadata",
-			}),
-		]);
-		const baseRefCommit = baseRefResult.ok ? baseRefResult.stdout : null;
-		const originBaseRefCommit = originBaseRefResult.ok ? originBaseRefResult.stdout : null;
-		if (
-			current &&
-			current.stateToken === probe.stateToken &&
-			current.baseRefCommit === baseRefCommit &&
-			current.originBaseRefCommit === originBaseRefCommit &&
-			current.data.path === pathInfo.path &&
-			current.data.baseRef === pathInfo.baseRef
-		) {
-			return current;
-		}
-		const [summary, unmergedResult, treeDiffResult, behindBase, conflictState] = await Promise.all([
-			getGitSyncSummary(pathInfo.path, { probe }),
-			runGit(pathInfo.path, ["--no-optional-locks", "diff", "--quiet", `${pathInfo.baseRef}...HEAD`], {
-				timeoutClass: "metadata",
-			}),
-			runGit(pathInfo.path, ["--no-optional-locks", "diff", "--quiet", pathInfo.baseRef, "HEAD"], {
-				timeoutClass: "metadata",
-			}),
-			getCommitsBehindBase(pathInfo.path, pathInfo.baseRef),
-			loadConflictState(pathInfo.path),
-		]);
-		return {
-			data: {
-				taskId: task.taskId,
-				path: pathInfo.path,
-				exists: true,
-				baseRef: pathInfo.baseRef,
-				branch: probe.currentBranch,
-				isDetached: probe.headCommit !== null && probe.currentBranch === null,
-				headCommit: probe.headCommit,
-				changedFiles: summary.changedFiles,
-				additions: summary.additions,
-				deletions: summary.deletions,
-				hasUnmergedChanges:
-					unmergedResult.exitCode === 0
-						? false
-						: unmergedResult.exitCode === 1
-							? treeDiffResult.exitCode !== 0 // suppress when trees are identical (already landed)
-							: null,
-				behindBaseCount: behindBase?.behindCount ?? null,
-				conflictState,
-				stateVersion: Date.now(),
-			},
-			stateToken: probe.stateToken,
-			baseRefCommit,
-			originBaseRefCommit,
-			lastKnownBranch: probe.currentBranch,
-		};
-	} catch {
-		if (current) {
-			return current;
-		}
-		return {
-			data: {
-				taskId: task.taskId,
-				path: pathInfo.path,
-				exists: true,
-				baseRef: pathInfo.baseRef,
-				branch: null,
-				isDetached: false,
-				headCommit: null,
-				changedFiles: null,
-				additions: null,
-				deletions: null,
-				hasUnmergedChanges: null,
-				behindBaseCount: null,
-				conflictState: null,
-				stateVersion: Date.now(),
-			},
-			stateToken: null,
-			baseRefCommit: null,
-			originBaseRefCommit: null,
-			lastKnownBranch: null,
-		};
-	}
+	const input = await resolveTaskWorktreeMetadataInput(projectPath, task, current);
+	const [loaded] = await loadTaskWorktreeMetadataBatch([input]);
+	return loaded?.metadata ?? null;
 }
