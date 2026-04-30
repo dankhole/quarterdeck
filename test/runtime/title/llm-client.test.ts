@@ -144,6 +144,10 @@ describe("sanitizeLlmResponse", () => {
 		expect(sanitizeLlmResponse("Summary: Added auth middleware")).toBe("Added auth middleware");
 	});
 
+	it("strips 'Commit message:' prefix", () => {
+		expect(sanitizeLlmResponse("Commit message: improve commit generation")).toBe("improve commit generation");
+	});
+
 	it("strips 'Here\\'s a title:' preamble", () => {
 		expect(sanitizeLlmResponse("Here's a title: Fix Auth Bug")).toBe("Fix Auth Bug");
 	});

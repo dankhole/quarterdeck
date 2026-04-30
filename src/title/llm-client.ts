@@ -45,8 +45,8 @@ function releaseSlot(): void {
 // model ignores the system prompt instructions.
 
 const PREAMBLE_PATTERNS = [
-	/^(?:here(?:'s| is)(?: a| the)?|the)\s+(?:title|branch\s*name|summary|result)\s*(?:is|would be|could be)?[:\-—]\s*/i,
-	/^(?:title|branch\s*name|summary|result)\s*[:\-—]\s*/i,
+	/^(?:here(?:'s| is)(?: a| the)?|the)\s+(?:title|branch\s*name|summary|commit\s*message|result)\s*(?:is|would be|could be)?[:\-—]\s*/i,
+	/^(?:title|branch\s*name|summary|commit\s*message|result)\s*[:\-—]\s*/i,
 	/^(?:sure|okay|of course|certainly|absolutely)[!,.]?\s*(?:here(?:'s| is))?[:\-—]?\s*/i,
 ];
 

@@ -330,7 +330,7 @@ export function useCommitPanel(
 			if (result.ok && result.message) {
 				setMessage(result.message);
 			} else {
-				showAppToast({ intent: "warning", message: "Could not generate commit message.", timeout: 4000 });
+				showAppToast({ intent: "danger", message: "Could not generate commit message.", timeout: 5000 });
 			}
 		} catch {
 			showAppToast({ intent: "danger", message: "Commit message generation failed.", timeout: 5000 });

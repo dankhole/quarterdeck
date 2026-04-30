@@ -2,9 +2,11 @@ import { TRPCError } from "@trpc/server";
 import type {
 	RuntimeFileContentResponse,
 	RuntimeListFilesResponse,
+	RuntimeWorkdirFileChange,
 	RuntimeWorkdirFileSearchResponse,
 	RuntimeWorkdirTextSearchResponse,
 } from "../core";
+import type { RuntimeCommitMessageGenerationContext } from "../title";
 import {
 	assertValidGitRef,
 	createEmptyWorkdirChangesResponse,
@@ -16,11 +18,13 @@ import {
 	getGitStdout,
 	getWorkdirChanges,
 	getWorkdirChangesBetweenRefs,
+	getWorkdirChangesForPaths,
 	getWorkdirChangesFromRef,
 	getWorkdirFileDiff,
 	listAllWorkdirFiles,
 	listFilesAtRef,
 	readWorkdirFile,
+	readWorkdirFileExcerpt,
 	searchWorkdirFiles,
 	searchWorkdirText,
 	validateGitPath,
@@ -38,7 +42,7 @@ type ChangesOps = Pick<
 	RuntimeTrpcContext["projectApi"],
 	| "loadChanges"
 	| "loadFileDiff"
-	| "getDiffText"
+	| "getCommitMessageContext"
 	| "loadWorkdirChanges"
 	| "loadGitLog"
 	| "loadGitRefs"
@@ -48,6 +52,63 @@ type ChangesOps = Pick<
 	| "listFiles"
 	| "getFileContent"
 >;
+
+const MAX_UNTRACKED_CONTENT_FILES = 12;
+const MAX_UNTRACKED_FILE_CONTENT_LENGTH = 4_000;
+
+function toCommitMessageFileContext(file: RuntimeWorkdirFileChange) {
+	return {
+		path: file.path,
+		...(file.previousPath ? { previousPath: file.previousPath } : {}),
+		status: file.status,
+		additions: file.additions,
+		deletions: file.deletions,
+	};
+}
+
+function selectCommitMessageFiles(files: RuntimeWorkdirFileChange[], paths: string[] | undefined) {
+	if (!paths || paths.length === 0) {
+		return files.map(toCommitMessageFileContext);
+	}
+
+	const fileByPath = new Map(files.map((file) => [file.path, file]));
+	return paths.flatMap((path) => {
+		const file = fileByPath.get(path);
+		return file ? [toCommitMessageFileContext(file)] : [];
+	});
+}
+
+async function loadUntrackedFileContents(
+	cwd: string,
+	files: RuntimeCommitMessageGenerationContext["files"],
+): Promise<Pick<RuntimeCommitMessageGenerationContext, "untrackedFileContents" | "untrackedContentOmittedCount">> {
+	const untrackedFiles = files.filter((file) => file.status === "untracked");
+	const filesWithContent = untrackedFiles.slice(0, MAX_UNTRACKED_CONTENT_FILES);
+	const entries = await Promise.all(
+		filesWithContent.map(async (file) => {
+			try {
+				const excerpt = await readWorkdirFileExcerpt(cwd, file.path, MAX_UNTRACKED_FILE_CONTENT_LENGTH);
+				return {
+					path: file.path,
+					content: excerpt.content,
+					truncated: excerpt.truncated,
+					...(excerpt.omittedReason ? { omittedReason: excerpt.omittedReason } : {}),
+				};
+			} catch {
+				return {
+					path: file.path,
+					content: "",
+					truncated: false,
+					omittedReason: "unreadable" as const,
+				};
+			}
+		}),
+	);
+	return {
+		untrackedFileContents: entries.filter((entry) => entry !== null),
+		untrackedContentOmittedCount: Math.max(0, untrackedFiles.length - filesWithContent.length),
+	};
+}
 
 export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 	return {
@@ -192,13 +253,27 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 			});
 		},
 
-		getDiffText: async (projectScope, taskScope, paths) => {
+		getCommitMessageContext: async (projectScope, taskScope, paths) => {
 			const cwd = await resolveWorkingDir(projectScope.projectPath, taskScope);
 			const args = ["diff", "HEAD", "--"];
 			if (paths && paths.length > 0) {
 				args.push(...paths);
 			}
-			return await getGitStdout(args, cwd, GIT_INSPECTION_OPTIONS);
+			const [changes, diffText] = await Promise.all([
+				paths && paths.length > 0
+					? getWorkdirChangesForPaths(cwd, paths, { countUntrackedLines: false })
+					: getWorkdirChanges(cwd),
+				getGitStdout(args, cwd, GIT_INSPECTION_OPTIONS),
+			]);
+			const files = selectCommitMessageFiles(changes.files, paths);
+			const untrackedContext = await loadUntrackedFileContents(cwd, files);
+			return {
+				taskTitle: null,
+				taskContext: null,
+				files,
+				diffText,
+				...untrackedContext,
+			};
 		},
 
 		loadWorkdirChanges: async (projectScope) => {

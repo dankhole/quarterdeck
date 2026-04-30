@@ -1,4 +1,4 @@
-import { readFile, realpath, stat } from "node:fs/promises";
+import { lstat, open, readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, normalize, relative, resolve } from "node:path";
 
 import type { RuntimeFileContentResponse } from "../core";
@@ -6,6 +6,14 @@ import type { RuntimeFileContentResponse } from "../core";
 const MAX_FILE_SIZE = 1_048_576; // 1 MB
 const MAX_READ_SIZE = 10_485_760; // 10 MB — reject files larger than this to avoid OOM
 const BINARY_CHECK_BYTES = 8192;
+
+export interface WorkdirFileExcerpt {
+	content: string;
+	binary: boolean;
+	size: number;
+	truncated: boolean;
+	omittedReason?: "binary" | "symlink" | "unreadable";
+}
 
 const EXTENSION_TO_LANGUAGE: Record<string, string> = {
 	bash: "bash",
@@ -87,12 +95,17 @@ function isBinaryBuffer(buffer: Buffer): boolean {
 	return false;
 }
 
-async function validatePath(worktreePath: string, relativePath: string): Promise<string> {
+function resolveContainedPath(worktreePath: string, relativePath: string): string {
 	const absolutePath = resolve(worktreePath, normalize(relativePath));
 	const rel = relative(worktreePath, absolutePath);
 	if (!rel || rel.startsWith("..") || isAbsolute(rel)) {
 		throw new Error("Path resolves outside the worktree.");
 	}
+	return absolutePath;
+}
+
+async function validatePath(worktreePath: string, relativePath: string): Promise<string> {
+	const absolutePath = resolveContainedPath(worktreePath, relativePath);
 	// Resolve symlinks so a link inside the worktree cannot escape to an arbitrary target
 	const realWorktree = await realpath(worktreePath);
 	const realAbsolute = await realpath(absolutePath);
@@ -101,6 +114,59 @@ async function validatePath(worktreePath: string, relativePath: string): Promise
 		throw new Error("Path resolves outside the worktree.");
 	}
 	return realAbsolute;
+}
+
+export async function readWorkdirFileExcerpt(
+	worktreePath: string,
+	relativePath: string,
+	maxContentBytes: number,
+): Promise<WorkdirFileExcerpt> {
+	const absolutePath = resolveContainedPath(worktreePath, relativePath);
+	const linkStat = await lstat(absolutePath);
+	if (linkStat.isSymbolicLink()) {
+		return {
+			content: "",
+			binary: false,
+			size: linkStat.size,
+			truncated: false,
+			omittedReason: "symlink",
+		};
+	}
+
+	const realAbsolute = await validatePath(worktreePath, relativePath);
+	const fileStat = await stat(realAbsolute);
+	if (!fileStat.isFile()) {
+		throw new Error("Path is not a regular file.");
+	}
+
+	const maxBytes = Math.max(1, Math.floor(maxContentBytes));
+	const readLength = Math.min(fileStat.size, Math.max(maxBytes + 4, BINARY_CHECK_BYTES));
+	const buffer = Buffer.alloc(readLength);
+	const file = await open(realAbsolute, "r");
+	try {
+		const { bytesRead } = await file.read(buffer, 0, readLength, 0);
+		const contentBuffer = buffer.subarray(0, bytesRead);
+		if (isBinaryBuffer(contentBuffer)) {
+			return {
+				content: "",
+				binary: true,
+				size: fileStat.size,
+				truncated: false,
+				omittedReason: "binary",
+			};
+		}
+
+		const contentByteLength = Math.min(bytesRead, maxBytes);
+		const boundary = findUtf8Boundary(contentBuffer, contentByteLength);
+		return {
+			content: contentBuffer.subarray(0, boundary).toString("utf-8"),
+			binary: false,
+			size: fileStat.size,
+			truncated: fileStat.size > boundary,
+		};
+	} finally {
+		await file.close();
+	}
 }
 
 // TODO: add unit tests for validatePath (traversal, symlink escape) and readWorkdirFile (binary detection, truncation, UTF-8 boundary)

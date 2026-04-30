@@ -428,11 +428,31 @@ export const projectRouter = t.router({
 		.output(z.object({ ok: z.boolean(), message: z.string().nullable() }))
 		.mutation(async ({ ctx, input }) => {
 			const taskScope = input.taskScope ?? null;
-			const diffText = await ctx.projectApi.getDiffText(ctx.projectScope, taskScope, input.paths);
-			if (!diffText.trim()) {
+			let generationContext = await ctx.projectApi.getCommitMessageContext(ctx.projectScope, taskScope, input.paths);
+			if (generationContext.files.length === 0 && !generationContext.diffText.trim()) {
 				return { ok: false, message: null };
 			}
-			const message = await generateCommitMessage(diffText);
+			if (taskScope) {
+				const state = await ctx.projectApi.loadState(ctx.projectScope);
+				const card = findCardInBoard(state.board, taskScope.taskId);
+				const session = state.sessions[taskScope.taskId];
+				generationContext = {
+					...generationContext,
+					taskTitle: card?.title ?? null,
+					taskContext: buildTaskGenerationContext({
+						prompt: card?.prompt,
+						summaries: session?.conversationSummaries ?? [],
+						finalMessage: session?.latestHookActivity?.finalMessage,
+						limits: {
+							originalPrompt: SUMMARY_ORIGINAL_PROMPT_LIMIT,
+							firstActivity: SUMMARY_FIRST_ACTIVITY_LIMIT,
+							latestActivity: SUMMARY_LATEST_ACTIVITY_LIMIT,
+							previousActivity: SUMMARY_PREVIOUS_ACTIVITY_LIMIT,
+						},
+					}),
+				};
+			}
+			const message = await generateCommitMessage(generationContext);
 			return { ok: message !== null, message };
 		}),
 	stashPush: projectProcedure

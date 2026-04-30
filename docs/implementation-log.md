@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-04-30 — Commit message generation context
+
+Commit-message generation is now intentionally heavier because it is user-triggered rather than automatic. The backend builds a structured context with task title/prompt/summary context, the complete selected-file list outside the truncation budget, a larger bounded diff section, and bounded untracked-file content excerpts. The prompt tells the helper model that the file list is authoritative when details are truncated, so large changes still preserve scope.
+
+The commit panel no longer accepts deterministic local fallback messages for helper failures. If the LLM is unconfigured, times out, or returns unusable content, the mutation returns no message and the UI shows a failure toast instead of filling the textarea with generic stats. Notable files: `src/title/commit-message-generator.ts`, `src/trpc/project-api-changes.ts`, `src/trpc/project-procedures.ts`, `src/workdir/get-workdir-changes.ts`, `src/workdir/read-workdir-file.ts`, and `web-ui/src/hooks/git/use-commit-panel.ts`. Validation: focused runtime/web tests plus root and web typechecks. Commit: pending.
+
 ## 2026-04-29 — Terminal lifecycle controller split
 
 `TerminalSessionManager` now delegates task/shell lifecycle orchestration to `src/terminal/session-lifecycle-controller.ts`: start/reuse policy, restart-request capture, explicit stop and wait-for-exit handling, shutdown interruption, hydration, stale recovery, and task exit restart fallback all live behind that boundary. The manager keeps the shared process-entry registry, listener attachment, terminal IO/resize/pause/resume operations, transition-controller wiring, and reconciliation timer wiring.
@@ -36,7 +42,7 @@ The same upstream review also landed two low-risk launch/identity hardening fixe
 
 Lightweight helper generation now has one provider-neutral OpenAI-compatible client in `src/title/llm-client.ts`. `QUARTERDECK_LLM_BASE_URL`, `QUARTERDECK_LLM_API_KEY`, and `QUARTERDECK_LLM_MODEL` are the required configuration path. The timeout classifier now treats both `AbortError` and `TimeoutError` as timeouts, so logs match the real failure mode.
 
-Title, optional summary polish, branch-name, and commit-message generation are the only LLM call sites. Title and display-summary context now orders source material by product value: original user prompt, first agent summary, most recent agent summary, then the previous summary. Title and commit-message generation also have deterministic local fallbacks, so transient helper failures no longer leave task cards untitled or the commit sidebar empty. Title and summary compaction also trims trailing transcript echo fragments such as `Human:` / `Assistant:` and rejects outputs that are only a transcript echo.
+Title, optional summary polish, branch-name, and commit-message generation are the only LLM call sites. Title and display-summary context now orders source material by product value: original user prompt, first agent summary, most recent agent summary, then the previous summary. Title generation also has deterministic local fallback, so transient helper failures no longer leave task cards untitled; commit-message failure behavior is superseded by the 2026-04-30 entry above. Title and summary compaction also trims trailing transcript echo fragments such as `Human:` / `Assistant:` and rejects outputs that are only a transcript echo.
 
 The card-summary path is intentionally lighter: board-card hover no longer triggers an LLM mutation, and the old hover staleness control has been removed. Agent transcript/hook summaries are compacted locally for immediate card display. When `llmSummaryPolishEnabled` is on, task starts and hook-driven moves into in-progress/review can enqueue a best-effort background polish using the same weighted context; repeated bounces skip work when the stored LLM summary is already newer than the source text.
 

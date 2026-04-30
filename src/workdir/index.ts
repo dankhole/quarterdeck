@@ -2,6 +2,7 @@ export {
 	createEmptyWorkdirChangesResponse,
 	getWorkdirChanges,
 	getWorkdirChangesBetweenRefs,
+	getWorkdirChangesForPaths,
 	getWorkdirChangesFromRef,
 	getWorkdirFileDiff,
 	type WorkdirFileDiffInput,
@@ -69,7 +70,7 @@ export {
 	validateGitRef,
 } from "./git-utils";
 export { ensureInitialCommit, initializeGitRepository } from "./initialize-repo";
-export { readWorkdirFile } from "./read-workdir-file";
+export { readWorkdirFile, readWorkdirFileExcerpt, type WorkdirFileExcerpt } from "./read-workdir-file";
 export { listAllWorkdirFiles, searchWorkdirFiles } from "./search-workdir-files";
 export { searchWorkdirText } from "./search-workdir-text";
 export {

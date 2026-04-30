@@ -305,6 +305,87 @@ export async function getWorkdirChanges(cwd: string): Promise<RuntimeWorkdirChan
 	return response;
 }
 
+export async function getWorkdirChangesForPaths(
+	cwd: string,
+	paths: string[],
+	options: { countUntrackedLines?: boolean } = {},
+): Promise<RuntimeWorkdirChangesResponse> {
+	const repoRoot = await resolveRepoRoot(cwd);
+	const selectedPaths = paths.filter(Boolean);
+	if (selectedPaths.length === 0) {
+		return {
+			repoRoot,
+			generatedAt: Date.now(),
+			files: [],
+		};
+	}
+
+	const [trackedChangesOutput, untrackedOutput, headCommitOutput] = await Promise.all([
+		getGitStdout(["diff", "--name-status", "HEAD", "--", ...selectedPaths], repoRoot, GIT_INSPECTION_OPTIONS),
+		getGitStdout(
+			["ls-files", "--others", "--exclude-standard", "--", ...selectedPaths],
+			repoRoot,
+			GIT_INSPECTION_OPTIONS,
+		),
+		getGitStdout(["rev-parse", "--verify", "HEAD"], repoRoot, GIT_INSPECTION_OPTIONS).catch(() => ""),
+	]);
+	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
+	const untrackedPaths = untrackedOutput
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean);
+
+	const trackedPaths = new Set(trackedChanges.map((entry) => entry.path));
+	const allChanges: NameStatusEntry[] = [
+		...trackedChanges,
+		...untrackedPaths
+			.filter((path) => !trackedPaths.has(path))
+			.map((path) => ({
+				path,
+				status: "untracked" as const,
+			})),
+	];
+
+	if (allChanges.length === 0) {
+		return {
+			repoRoot,
+			generatedAt: Date.now(),
+			files: [],
+		};
+	}
+
+	const fingerprintPaths = allChanges.flatMap((entry) => [entry.path, entry.previousPath].filter(Boolean) as string[]);
+	const fingerprints = await buildFileFingerprints(repoRoot, fingerprintPaths);
+	const numstatMap = await batchReadNumstat(repoRoot, ["HEAD", "--", ...selectedPaths]);
+	const fingerprintByPath = buildFingerprintMap(fingerprints);
+	const headCommit = headCommitOutput.trim() || null;
+	const untrackedLineCounts =
+		options.countUntrackedLines === false
+			? []
+			: await Promise.all(
+					allChanges
+						.filter((entry) => entry.status === "untracked")
+						.map(async (entry) => ({
+							path: entry.path,
+							lines: await countUntrackedFileLines(repoRoot, entry.path),
+						})),
+				);
+	const untrackedStatsMap = new Map(untrackedLineCounts.map((u) => [u.path, { additions: u.lines, deletions: 0 }]));
+	const files = allChanges.map((entry) =>
+		buildFileMetadata(
+			entry,
+			entry.status === "untracked" ? untrackedStatsMap.get(entry.path) : numstatMap.get(entry.path),
+			buildContentRevision(headCommit, fingerprintByPath.get(entry.path)),
+		),
+	);
+	files.sort((left, right) => left.path.localeCompare(right.path));
+	return {
+		repoRoot,
+		generatedAt: Date.now(),
+		files,
+	};
+}
+
 export async function getWorkdirChangesBetweenRefs(
 	input: ChangesBetweenRefsInput,
 ): Promise<RuntimeWorkdirChangesResponse> {

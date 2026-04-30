@@ -49,6 +49,11 @@ const commitMutateMock = vi.hoisted(() =>
 			({ ok: true }) as { ok: boolean; pushOk?: boolean; commitHash?: string; error?: string; pushError?: string },
 	),
 );
+const generateCommitMessageMutateMock = vi.hoisted(() =>
+	vi.fn(
+		async (): Promise<{ ok: boolean; message: string | null }> => ({ ok: true, message: "update selected files" }),
+	),
+);
 const discardGitChangesMutateMock = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
 const discardFileMutateMock = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
 
@@ -56,6 +61,7 @@ vi.mock("@/runtime/trpc-client", () => ({
 	getRuntimeTrpcClient: () => ({
 		project: {
 			commitSelectedFiles: { mutate: commitMutateMock },
+			generateCommitMessage: { mutate: generateCommitMessageMutateMock },
 			discardGitChanges: { mutate: discardGitChangesMutateMock },
 			discardFile: { mutate: discardFileMutateMock },
 		},
@@ -70,6 +76,7 @@ vi.mock("@/components/app-toaster", () => ({
 // Import the hook under test (after mocks are installed).
 // ---------------------------------------------------------------------------
 
+import { showAppToast } from "@/components/app-toaster";
 import { useCommitPanel } from "@/hooks/git/use-commit-panel";
 
 // ---------------------------------------------------------------------------
@@ -124,8 +131,10 @@ describe("useCommitPanel", () => {
 		root = createRoot(container);
 
 		commitMutateMock.mockClear();
+		generateCommitMessageMutateMock.mockClear();
 		discardGitChangesMutateMock.mockClear();
 		discardFileMutateMock.mockClear();
+		vi.mocked(showAppToast).mockClear();
 
 		// Default: return the three mock files.
 		useRuntimeProjectChangesMock.mockReturnValue({
@@ -359,5 +368,24 @@ describe("useCommitPanel", () => {
 
 		expect(commitMutateMock).toHaveBeenCalledTimes(1);
 		expect(commitMutateMock).toHaveBeenCalledWith(expect.objectContaining({ pushAfterCommit: true }));
+	});
+
+	it("shows a danger toast when commit message generation returns no message", async () => {
+		generateCommitMessageMutateMock.mockResolvedValueOnce({ ok: false, message: null });
+		render();
+
+		await act(async () => {
+			await latest.generateMessage();
+		});
+
+		expect(generateCommitMessageMutateMock).toHaveBeenCalledWith({
+			taskScope: { taskId: "task-1", baseRef: "main" },
+			paths: ["src/foo.ts", "src/bar.ts", "README.md"],
+		});
+		expect(showAppToast).toHaveBeenCalledWith({
+			intent: "danger",
+			message: "Could not generate commit message.",
+			timeout: 5000,
+		});
 	});
 });

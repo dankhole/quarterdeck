@@ -1,5 +1,9 @@
-export { createFallbackCommitMessage } from "./commit-message-fallback";
-export { generateCommitMessage } from "./commit-message-generator";
+export type {
+	RuntimeCommitMessageFileContentContext,
+	RuntimeCommitMessageFileContext,
+	RuntimeCommitMessageGenerationContext,
+} from "./commit-message-context";
+export { buildCommitMessagePromptContext, generateCommitMessage } from "./commit-message-generator";
 export { compactDisplaySummaryText, DISPLAY_SUMMARY_LLM_BUDGET, DISPLAY_SUMMARY_MAX_LENGTH } from "./display-summary";
 export {
 	_testing,

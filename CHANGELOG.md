@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: improve generated commit messages
+
+- Commit-message generation now sends task context, the complete selected-file list, and a larger bounded diff/content context, including untracked file excerpts when available.
+- Untracked commit-message excerpts now use bounded, binary-aware reads and omit symlink contents instead of following them into the prompt.
+- Commit-message generation no longer falls back to mechanical local text when the helper LLM is unavailable or fails; the commit panel now surfaces a failure toast instead.
+
 ### Fix: improve commit sidebar resizing
 
 - Moved commit controls resizing from the commit-message textarea corner to a draggable top divider with bounded, persisted heights.

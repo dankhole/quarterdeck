@@ -85,6 +85,7 @@ import type {
 	RuntimeWorktreeEnsureRequest,
 	RuntimeWorktreeEnsureResponse,
 } from "../core";
+import type { RuntimeCommitMessageGenerationContext } from "../title";
 
 export interface RuntimeTrpcProjectScope {
 	projectId: string;
@@ -242,11 +243,11 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcProjectScope,
 			input: RuntimeGitCommitDiffRequest,
 		) => Promise<RuntimeGitCommitDiffResponse>;
-		getDiffText: (
+		getCommitMessageContext: (
 			scope: RuntimeTrpcProjectScope,
 			taskScope: { taskId: string; baseRef: string } | null,
 			paths?: string[],
-		) => Promise<string>;
+		) => Promise<RuntimeCommitMessageGenerationContext>;
 		notifyTaskTitleUpdated: (scope: RuntimeTrpcProjectScope, taskId: string, title: string) => void;
 		setTaskDisplaySummary: (
 			scope: RuntimeTrpcProjectScope,
