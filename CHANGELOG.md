@@ -14,6 +14,11 @@
 
 - Inferred, pinned, and unresolved task base refs now share one runtime/web UI model with detached-worktree display, so top-bar base-ref pills, branch-change sync, task-start guards, and detached hints interpret task branch state consistently.
 
+### Fix: remove stale keyboard shortcuts
+
+- Removed the `Cmd+G` / `Ctrl+G` git view toggle and `Cmd+M` / `Ctrl+M` terminal expand hotkeys, plus their sidebar reminders, while keeping explicit UI controls intact.
+- Pruned sidebar-only reminders for start-and-open task and Escape close/back without changing those behaviors, and now show the remaining sidebar shortcuts without a collapsed "All shortcuts" section.
+
 ## [0.12.2] — 2026-04-29
 
 ### Docs: version bump to 0.12.2

@@ -61,7 +61,7 @@ export function useGitNavigation({
 	);
 	const clearPendingFileNavigation = useCallback(() => setPendingFileNavigation(null), []);
 
-	// Auto-switch to git main view when git history is toggled on (e.g. via Cmd+G)
+	// Auto-switch to git main view when git history is toggled on from the branch status control.
 	useEffect(() => {
 		if (isGitHistoryOpen) {
 			setMainView("git", { setSelectedTaskId });

@@ -4,17 +4,12 @@ import type { CardSelection } from "@/types";
 
 interface UseAppHotkeysInput {
 	selectedCard: CardSelection | null;
-	isDetailTerminalOpen: boolean;
-	isHomeTerminalOpen: boolean;
 	canUseCreateTaskShortcut: boolean;
 	currentProjectId: string | null;
 	handleToggleDetailTerminal: () => void;
 	handleToggleHomeTerminal: () => void;
-	handleToggleExpandDetailTerminal: () => void;
-	handleToggleExpandHomeTerminal: () => void;
 	handleOpenCreateTask: () => void;
 	handleOpenSettings: () => void;
-	handleToggleGitHistory: () => void;
 	onStartAllTasks: () => void;
 	handleToggleDebugLogPanel?: () => void;
 	handleToggleFileFinder: () => void;
@@ -23,17 +18,12 @@ interface UseAppHotkeysInput {
 
 export function useAppHotkeys({
 	selectedCard,
-	isDetailTerminalOpen,
-	isHomeTerminalOpen,
 	canUseCreateTaskShortcut,
 	currentProjectId,
 	handleToggleDetailTerminal,
 	handleToggleHomeTerminal,
-	handleToggleExpandDetailTerminal,
-	handleToggleExpandHomeTerminal,
 	handleOpenCreateTask,
 	handleOpenSettings,
-	handleToggleGitHistory,
 	onStartAllTasks,
 	handleToggleDebugLogPanel,
 	handleToggleFileFinder,
@@ -68,33 +58,6 @@ export function useAppHotkeys({
 	);
 
 	useHotkeys(
-		"mod+m",
-		() => {
-			if (selectedCard) {
-				if (isDetailTerminalOpen) {
-					handleToggleExpandDetailTerminal();
-				}
-				return;
-			}
-			if (isHomeTerminalOpen) {
-				handleToggleExpandHomeTerminal();
-			}
-		},
-		{
-			enableOnFormTags: true,
-			enableOnContentEditable: true,
-			preventDefault: true,
-		},
-		[
-			handleToggleExpandDetailTerminal,
-			handleToggleExpandHomeTerminal,
-			isDetailTerminalOpen,
-			isHomeTerminalOpen,
-			selectedCard,
-		],
-	);
-
-	useHotkeys(
 		"c",
 		() => {
 			if (!canUseCreateTaskShortcut) {
@@ -104,19 +67,6 @@ export function useAppHotkeys({
 		},
 		{ preventDefault: true },
 		[canUseCreateTaskShortcut, handleOpenCreateTask],
-	);
-
-	useHotkeys(
-		"mod+g",
-		() => {
-			handleToggleGitHistory();
-		},
-		{
-			enableOnFormTags: true,
-			enableOnContentEditable: true,
-			preventDefault: true,
-		},
-		[handleToggleGitHistory],
 	);
 
 	useHotkeys(

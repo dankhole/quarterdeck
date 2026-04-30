@@ -44,24 +44,18 @@ describe("useAppHotkeys", () => {
 		}
 	});
 
-	it("registers git history and settings shortcuts", async () => {
-		const handleToggleGitHistory = vi.fn();
+	it("registers settings shortcut and leaves removed view shortcuts unbound", async () => {
 		const handleOpenSettings = vi.fn();
 
 		await act(async () => {
 			root.render(
 				<HookHarness
 					selectedCard={null}
-					isDetailTerminalOpen={false}
-					isHomeTerminalOpen={false}
 					canUseCreateTaskShortcut
 					handleToggleDetailTerminal={() => {}}
 					handleToggleHomeTerminal={() => {}}
-					handleToggleExpandDetailTerminal={() => {}}
-					handleToggleExpandHomeTerminal={() => {}}
 					handleOpenCreateTask={() => {}}
 					handleOpenSettings={handleOpenSettings}
-					handleToggleGitHistory={handleToggleGitHistory}
 					onStartAllTasks={() => {}}
 					currentProjectId="test-project"
 					handleToggleFileFinder={() => {}}
@@ -71,22 +65,19 @@ describe("useAppHotkeys", () => {
 		});
 
 		const gitHistoryCall = mockUseHotkeys.mock.calls.find(([shortcut]) => shortcut === "mod+g");
-		if (!gitHistoryCall || typeof gitHistoryCall[1] !== "function") {
-			throw new Error("Expected git history shortcut to be registered.");
-		}
+		const expandTerminalCall = mockUseHotkeys.mock.calls.find(([shortcut]) => shortcut === "mod+m");
 		const settingsCall = mockUseHotkeys.mock.calls.find(([shortcut]) => shortcut === "mod+shift+s");
 		if (!settingsCall || typeof settingsCall[1] !== "function") {
 			throw new Error("Expected settings shortcut to be registered.");
 		}
 
 		act(() => {
-			const gitHistoryHandler = gitHistoryCall[1] as () => void;
 			const settingsHandler = settingsCall[1] as () => void;
-			gitHistoryHandler();
 			settingsHandler();
 		});
 
-		expect(handleToggleGitHistory).toHaveBeenCalledTimes(1);
+		expect(gitHistoryCall).toBeUndefined();
+		expect(expandTerminalCall).toBeUndefined();
 		expect(handleOpenSettings).toHaveBeenCalledTimes(1);
 	});
 
@@ -97,16 +88,11 @@ describe("useAppHotkeys", () => {
 			root.render(
 				<HookHarness
 					selectedCard={null}
-					isDetailTerminalOpen={false}
-					isHomeTerminalOpen={false}
 					canUseCreateTaskShortcut
 					handleToggleDetailTerminal={() => {}}
 					handleToggleHomeTerminal={() => {}}
-					handleToggleExpandDetailTerminal={() => {}}
-					handleToggleExpandHomeTerminal={() => {}}
 					handleOpenCreateTask={() => {}}
 					handleOpenSettings={() => {}}
-					handleToggleGitHistory={() => {}}
 					onStartAllTasks={onStartAllTasks}
 					currentProjectId="test-project"
 					handleToggleFileFinder={() => {}}
@@ -135,16 +121,11 @@ describe("useAppHotkeys", () => {
 			root.render(
 				<HookHarness
 					selectedCard={null}
-					isDetailTerminalOpen={false}
-					isHomeTerminalOpen={false}
 					canUseCreateTaskShortcut={false}
 					handleToggleDetailTerminal={() => {}}
 					handleToggleHomeTerminal={() => {}}
-					handleToggleExpandDetailTerminal={() => {}}
-					handleToggleExpandHomeTerminal={() => {}}
 					handleOpenCreateTask={handleOpenCreateTask}
 					handleOpenSettings={() => {}}
-					handleToggleGitHistory={() => {}}
 					onStartAllTasks={() => {}}
 					currentProjectId="test-project"
 					handleToggleFileFinder={() => {}}

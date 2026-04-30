@@ -1,6 +1,4 @@
-import * as Collapsible from "@radix-ui/react-collapsible";
-import { ChevronDown, ChevronUp, ExternalLink, Lightbulb, X } from "lucide-react";
-import { useState } from "react";
+import { ExternalLink, Lightbulb, X } from "lucide-react";
 import { Kbd } from "@/components/ui/kbd";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
@@ -14,26 +12,19 @@ const ONBOARDING_TIPS = [
 
 const MOD = isMacPlatform ? "⌘" : modifierKeyLabel;
 
-const ESSENTIAL_SHORTCUTS = [
+const SIDEBAR_SHORTCUTS = [
 	{ keys: ["C"], label: "New task" },
 	{ keys: [MOD, "B"], label: "Start backlog tasks" },
 	{ keys: [MOD, "Shift", "S"], label: "Settings" },
 	{ keys: ["Click", MOD], label: "Hold to link tasks" },
-	{ keys: [MOD, "G"], label: "Toggle git view" },
 	{ keys: [MOD, "J"], label: "Toggle terminal" },
-];
-
-const MORE_SHORTCUTS = [
 	{ keys: [MOD, "P"], label: "Find file" },
 	{ keys: [MOD, "Shift", "F"], label: "Search in files" },
-	{ keys: [MOD, "Shift", "Enter"], label: "Start and open task" },
-	{ keys: [MOD, "M"], label: "Expand terminal" },
-	{ keys: ["Esc"], label: "Close / back" },
-];
+] as const;
 
 const GITHUB_ISSUES_URL = "https://github.com/dankhole/quarterdeck/issues";
 
-function ShortcutHint({ keys, label }: { keys: string[]; label: string }): React.ReactElement {
+function ShortcutHint({ keys, label }: { keys: readonly string[]; label: string }): React.ReactElement {
 	return (
 		<div className="flex justify-between items-center py-px">
 			<span className="text-text-tertiary text-xs">{label}</span>
@@ -94,34 +85,14 @@ function OnboardingTips(): React.ReactElement | null {
 }
 
 function ShortcutsCard(): React.ReactElement {
-	const [expanded, setExpanded] = useState(false);
-
 	return (
 		<div style={{ padding: "8px 12px" }}>
 			<div style={{ padding: "0 8px" }}>
 				<div className="flex flex-col gap-0.5">
-					{ESSENTIAL_SHORTCUTS.map((shortcut) => (
+					{SIDEBAR_SHORTCUTS.map((shortcut) => (
 						<ShortcutHint key={shortcut.label} keys={shortcut.keys} label={shortcut.label} />
 					))}
 				</div>
-				<Collapsible.Root open={expanded} onOpenChange={setExpanded}>
-					<Collapsible.Content>
-						<div className="flex flex-col gap-0.5">
-							{MORE_SHORTCUTS.map((shortcut) => (
-								<ShortcutHint key={shortcut.label} keys={shortcut.keys} label={shortcut.label} />
-							))}
-						</div>
-					</Collapsible.Content>
-					<Collapsible.Trigger asChild>
-						<button
-							type="button"
-							className="flex items-center gap-1 mt-1.5 text-xs text-text-tertiary hover:text-text-secondary cursor-pointer bg-transparent border-none p-0"
-						>
-							{expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-							{expanded ? "Less" : "All shortcuts"}
-						</button>
-					</Collapsible.Trigger>
-				</Collapsible.Root>
 			</div>
 		</div>
 	);

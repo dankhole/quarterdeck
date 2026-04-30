@@ -112,17 +112,12 @@ export function useAppSideEffects({
 
 	useAppHotkeys({
 		selectedCard: board.selectedCard,
-		isDetailTerminalOpen: terminal.isDetailTerminalOpen,
-		isHomeTerminalOpen: terminal.showHomeBottomTerminal,
 		canUseCreateTaskShortcut: !project.hasNoProjects && project.currentProjectId !== null,
 		currentProjectId: project.currentProjectId,
 		handleToggleDetailTerminal: terminal.handleToggleDetailTerminal,
 		handleToggleHomeTerminal: terminal.handleToggleHomeTerminal,
-		handleToggleExpandDetailTerminal: terminal.handleToggleExpandDetailTerminal,
-		handleToggleExpandHomeTerminal: terminal.handleToggleExpandHomeTerminal,
 		handleOpenCreateTask: taskEditor.taskEditor.handleOpenCreateTask,
 		handleOpenSettings: dialog.handleOpenSettings,
-		handleToggleGitHistory: navigation.handleToggleGitHistory,
 		onStartAllTasks: interactions.handleStartAllBacklogTasksFromBoard,
 		handleToggleDebugLogPanel: dialog.debugLogging.toggleDebugLogPanel,
 		handleToggleFileFinder,
