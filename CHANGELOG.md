@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: improve commit sidebar resizing
+
+- Moved commit controls resizing from the commit-message textarea corner to a draggable top divider with bounded, persisted heights.
+
 ### Chore: continue terminal lifecycle cleanup
 
 - Moved task/shell lifecycle orchestration out of `TerminalSessionManager` into a dedicated lifecycle controller, keeping the manager focused on registry, listener, IO, transition, and reconciliation wiring.

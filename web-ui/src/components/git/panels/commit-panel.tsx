@@ -8,6 +8,7 @@ import {
 	FileSearch,
 	FileText,
 	GitCompare,
+	GripHorizontal,
 	MessageSquare,
 	Minus,
 	Sparkles,
@@ -31,6 +32,8 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useCommitPanel } from "@/hooks/git/use-commit-panel";
+import { useCommitPanelLayout } from "@/hooks/git/use-commit-panel-layout";
+import { ResizeHandle } from "@/resize/resize-handle";
 import type { RuntimeWorkdirFileChange } from "@/runtime/types";
 import { useHomeStashCount } from "@/stores/project-metadata-store";
 import { StashListSection } from "./stash-list-section";
@@ -178,6 +181,8 @@ export function CommitPanel({ projectId, taskId, baseRef, navigateToFile }: Comm
 	} = useCommitPanel(taskId, projectId, baseRef);
 
 	const stashCount = useHomeStashCount();
+	const { changesListRef, commitControlsRef, commitControlsHeight, handleCommitControlsResizeMouseDown } =
+		useCommitPanelLayout();
 	const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
 	const [errorExpanded, setErrorExpanded] = useState(false);
 	const [stashMessageVisible, setStashMessageVisible] = useState(false);
@@ -220,7 +225,7 @@ export function CommitPanel({ projectId, taskId, baseRef, navigateToFile }: Comm
 			) : null}
 
 			{/* File list */}
-			<div className="flex-1 overflow-y-auto min-h-0">
+			<div ref={changesListRef} className="flex-1 overflow-y-auto min-h-0">
 				{isLoading && !files ? (
 					<div className="flex items-center justify-center h-full">
 						<Spinner size={20} />
@@ -246,7 +251,22 @@ export function CommitPanel({ projectId, taskId, baseRef, navigateToFile }: Comm
 			</div>
 
 			{/* Bottom section — stash/discard, then commit message + commit buttons */}
-			<div className="shrink-0 border-t border-border p-3 flex flex-col gap-2">
+			<ResizeHandle
+				orientation="horizontal"
+				ariaLabel="Resize commit controls"
+				hitArea={6}
+				onMouseDown={handleCommitControlsResizeMouseDown}
+				className="z-20 overflow-visible"
+			>
+				<div className="pointer-events-none absolute left-1/2 top-1/2 flex h-4 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-sm border border-border bg-surface-0 text-text-tertiary group-hover:border-border-bright group-hover:text-text-secondary">
+					<GripHorizontal size={14} />
+				</div>
+			</ResizeHandle>
+			<div
+				ref={commitControlsRef}
+				className="shrink-0 p-3 flex min-h-0 flex-col gap-2 overflow-y-auto"
+				style={{ height: commitControlsHeight }}
+			>
 				{lastError ? (
 					<div className="rounded-md border border-status-red/40 bg-status-red/10 text-[12px]">
 						<div className="flex items-center gap-1 px-2 py-1.5">
@@ -332,14 +352,14 @@ export function CommitPanel({ projectId, taskId, baseRef, navigateToFile }: Comm
 					</>
 				) : null}
 				{/* Commit message + generate button */}
-				<div className="relative">
+				<div className="relative min-h-[4.5rem] flex-1">
 					<textarea
 						name="commit-message"
 						value={message}
 						onChange={(e) => setMessage(e.target.value)}
 						placeholder="Commit message"
 						rows={3}
-						className="w-full bg-surface-2 border border-border rounded-md p-2 pr-8 text-[13px] text-text-primary placeholder:text-text-tertiary resize-y min-h-[4.5rem] focus:outline-none focus:border-border-focus"
+						className="h-full min-h-[4.5rem] w-full bg-surface-2 border border-border rounded-md p-2 pr-8 text-[13px] text-text-primary placeholder:text-text-tertiary resize-none focus:outline-none focus:border-border-focus"
 					/>
 					<Tooltip content="Generate commit message from diff">
 						<button

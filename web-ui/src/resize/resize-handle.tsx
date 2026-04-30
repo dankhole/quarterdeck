@@ -1,4 +1,4 @@
-import type { MouseEvent as ReactMouseEvent } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { cn } from "@/components/ui/cn";
 
 export function ResizeHandle({
@@ -8,6 +8,7 @@ export function ResizeHandle({
 	onMouseDown,
 	showBaseLine = true,
 	className,
+	children,
 }: {
 	orientation: "vertical" | "horizontal";
 	ariaLabel: string;
@@ -15,6 +16,7 @@ export function ResizeHandle({
 	onMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
 	showBaseLine?: boolean;
 	className?: string;
+	children?: ReactNode;
 }): React.ReactElement {
 	const overlap = Math.max(0, hitArea);
 	const interactiveAreaStyle =
@@ -48,6 +50,7 @@ export function ResizeHandle({
 			style={{ cursor: orientation === "vertical" ? "ew-resize" : "ns-resize" }}
 		>
 			{showBaseLine ? <div className="pointer-events-none absolute inset-0 bg-border" /> : null}
+			{children}
 			<div aria-hidden style={{ position: "absolute", zIndex: 10, ...interactiveAreaStyle }} />
 		</div>
 	);
