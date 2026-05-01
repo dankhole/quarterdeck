@@ -13,7 +13,7 @@ import { useOpenProject } from "@/hooks/project";
 import { useBoardContext } from "@/providers/board-provider";
 import { useDialogContext } from "@/providers/dialog-provider";
 import { useGitContext } from "@/providers/git-provider";
-import { useProjectContext } from "@/providers/project-provider";
+import { useProjectNavigationContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { useTerminalContext } from "@/providers/terminal-provider";
@@ -60,7 +60,7 @@ export function ConnectedTopBar({
 	homeGitSummary,
 	selectedTaskWorktreeSnapshot,
 }: ConnectedTopBarProps): ReactElement {
-	const project = useProjectContext();
+	const projectNavigation = useProjectNavigationContext();
 	const projectRuntime = useProjectRuntimeContext();
 	const { selectedCard, setBoard } = useBoardContext();
 	const git = useGitContext();
@@ -70,7 +70,7 @@ export function ConnectedTopBar({
 	const selectedTaskHasBaseRef = selectedCard ? isRuntimeTaskBaseRefResolved(selectedCard.card) : false;
 	const isGitSyncDisabled = git.runningGitAction != null || (selectedCard !== null && !selectedTaskHasBaseRef);
 	const openProject = useOpenProject({
-		currentProjectId: project.currentProjectId,
+		currentProjectId: projectNavigation.currentProjectId,
 		projectPath: openProjectPath,
 		runtimePlatform: projectRuntime.runtimeProjectConfig?.runtimePlatform,
 	});
@@ -113,7 +113,7 @@ export function ConnectedTopBar({
 			scopeType={selectedCard ? "task" : (git.fileBrowserResolvedScope?.type ?? "home")}
 			taskTitle={selectedCard?.card.title ?? null}
 			onToggleTerminal={
-				project.hasNoProjects
+				projectNavigation.hasNoProjects
 					? undefined
 					: selectedCard
 						? terminal.handleToggleDetailTerminal
@@ -134,7 +134,7 @@ export function ConnectedTopBar({
 			onSelectShortcutLabel={handleSelectShortcutLabel}
 			runningShortcutLabel={runningShortcutLabel}
 			onRunShortcut={handleRunShortcut}
-			onCreateFirstShortcut={project.currentProjectId ? handleCreateShortcut : undefined}
+			onCreateFirstShortcut={projectNavigation.currentProjectId ? handleCreateShortcut : undefined}
 			promptShortcuts={projectRuntime.runtimeProjectConfig?.promptShortcuts ?? []}
 			activePromptShortcut={activePromptShortcut}
 			onSelectPromptShortcutLabel={selectPromptShortcutLabel}

@@ -9,6 +9,9 @@ import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
 import type { RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 
+// Intentionally broad only for runtime config, onboarding, and access-gate
+// state. New project navigation/sync/stream state belongs in the narrower
+// project contexts from project-provider.tsx instead of here.
 export interface ProjectRuntimeContextValue {
 	runtimeProjectConfig: RuntimeConfigResponse | null;
 	isRuntimeProjectConfigLoading: boolean;

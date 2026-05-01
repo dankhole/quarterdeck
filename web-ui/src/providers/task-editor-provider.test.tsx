@@ -3,7 +3,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BoardContext, type BoardContextValue } from "@/providers/board-provider";
-import { ProjectContext, type ProjectContextValue } from "@/providers/project-provider";
+import {
+	ProjectNavigationContext,
+	type ProjectNavigationContextValue,
+	ProjectSyncContext,
+	type ProjectSyncContextValue,
+} from "@/providers/project-provider";
 import { ProjectRuntimeContext, type ProjectRuntimeContextValue } from "@/providers/project-runtime-provider";
 import {
 	type TaskEditorContextValue,
@@ -39,16 +44,24 @@ function createBoardContextValue(overrides: Partial<BoardContextValue> = {}): Bo
 	} as unknown as BoardContextValue;
 }
 
-function createProjectContextValue(overrides: Partial<ProjectContextValue> = {}): ProjectContextValue {
+function createProjectNavigationContextValue(
+	overrides: Partial<ProjectNavigationContextValue> = {},
+): ProjectNavigationContextValue {
 	return {
 		currentProjectId: "project-1",
+		...overrides,
+	} as unknown as ProjectNavigationContextValue;
+}
+
+function createProjectSyncContextValue(overrides: Partial<ProjectSyncContextValue> = {}): ProjectSyncContextValue {
+	return {
 		projectGit: {
 			currentBranch: "feature/current",
 			defaultBranch: "main",
 			branches: [],
 		},
 		...overrides,
-	} as unknown as ProjectContextValue;
+	} as unknown as ProjectSyncContextValue;
 }
 
 function createProjectRuntimeContextValue(
@@ -94,27 +107,33 @@ describe("TaskEditorProvider", () => {
 	function renderProvider({
 		board = {},
 		project = {},
+		projectSync = {},
 		projectRuntime = {},
 	}: {
 		board?: Partial<BoardContextValue>;
-		project?: Partial<ProjectContextValue>;
+		project?: Partial<ProjectNavigationContextValue>;
+		projectSync?: Partial<ProjectSyncContextValue>;
 		projectRuntime?: Partial<ProjectRuntimeContextValue>;
 	} = {}): void {
 		act(() => {
 			root.render(
 				createElement(
-					ProjectContext.Provider,
-					{ value: createProjectContextValue(project) },
+					ProjectNavigationContext.Provider,
+					{ value: createProjectNavigationContextValue(project) },
 					createElement(
-						ProjectRuntimeContext.Provider,
-						{ value: createProjectRuntimeContextValue(projectRuntime) },
+						ProjectSyncContext.Provider,
+						{ value: createProjectSyncContextValue(projectSync) },
 						createElement(
-							BoardContext.Provider,
-							{ value: createBoardContextValue(board) },
+							ProjectRuntimeContext.Provider,
+							{ value: createProjectRuntimeContextValue(projectRuntime) },
 							createElement(
-								TaskEditorProvider,
-								null,
-								createElement(HookHarness, { onValue: (value) => (latestValue = value) }),
+								BoardContext.Provider,
+								{ value: createBoardContextValue(board) },
+								createElement(
+									TaskEditorProvider,
+									null,
+									createElement(HookHarness, { onValue: (value) => (latestValue = value) }),
+								),
 							),
 						),
 					),

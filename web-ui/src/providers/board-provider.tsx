@@ -2,7 +2,11 @@ import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { createContext, useCallback, useContext, useMemo } from "react";
 import { useTaskSessions } from "@/hooks/board";
 import { useDetailTaskNavigation } from "@/hooks/project";
-import { useProjectContext } from "@/providers/project-provider";
+import {
+	useProjectNavigationContext,
+	useProjectRuntimeStreamContext,
+	useProjectSyncContext,
+} from "@/providers/project-provider";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { reconcileTaskWorkingDirectory } from "@/state/board-state";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
@@ -69,8 +73,9 @@ interface BoardProviderProps {
 }
 
 export function BoardProvider({ board, setBoard, sessions, setSessions, children }: BoardProviderProps): ReactNode {
-	const { currentProjectId, projects, streamedProjectState, hasReceivedSnapshot, streamError, projectPath } =
-		useProjectContext();
+	const { currentProjectId, projects } = useProjectNavigationContext();
+	const { streamedProjectState, hasReceivedSnapshot, streamError } = useProjectRuntimeStreamContext();
+	const { projectPath } = useProjectSyncContext();
 
 	// --- useDetailTaskNavigation ---
 	const { selectedTaskId, selectedCard, setSelectedTaskId } = useDetailTaskNavigation({

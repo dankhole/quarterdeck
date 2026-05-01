@@ -9,31 +9,17 @@ import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runt
 import type { BoardData } from "@/types";
 
 // ---------------------------------------------------------------------------
-// Context value — project-level state: navigation, runtime stream/project sync,
-// project selection, and persistence/hydration state.
+// Context values - project-level ownership seams.
 //
-// The value is constructed inside ProjectProvider, which owns all project-level
-// hooks. Child components read project state via useProjectContext().
+// ProjectProvider remains the composition point for project-level hooks, but it
+// exposes narrow contracts so consumers do not regather project navigation,
+// runtime stream ingress, persistence gates, and notification projection behind
+// one broad context bag.
 // ---------------------------------------------------------------------------
 
-export interface ProjectContextValue {
-	// --- useProjectNavigation ---
+export interface ProjectNavigationContextValue {
 	currentProjectId: UseProjectNavigationResult["currentProjectId"];
 	projects: UseProjectNavigationResult["projects"];
-	streamedProjectState: UseProjectNavigationResult["projectState"];
-	projectMetadata: UseProjectNavigationResult["projectMetadata"];
-	notificationProjects: RuntimeProjectNotificationStateMap;
-	needsInputByProject: Record<string, number>;
-	currentProjectHasNeedsInput: boolean;
-	otherProjectsHaveNeedsInput: boolean;
-	latestTaskReadyForReview: UseProjectNavigationResult["latestTaskReadyForReview"];
-	latestTaskTitleUpdate: UseProjectNavigationResult["latestTaskTitleUpdate"];
-	latestTaskBaseRefUpdate: UseProjectNavigationResult["latestTaskBaseRefUpdate"];
-	logLevel: UseProjectNavigationResult["logLevel"];
-	debugLogEntries: UseProjectNavigationResult["debugLogEntries"];
-	streamError: UseProjectNavigationResult["streamError"];
-	isRuntimeDisconnected: UseProjectNavigationResult["isRuntimeDisconnected"];
-	hasReceivedSnapshot: UseProjectNavigationResult["hasReceivedSnapshot"];
 	navigationCurrentProjectId: UseProjectNavigationResult["navigationCurrentProjectId"];
 	removingProjectId: UseProjectNavigationResult["removingProjectId"];
 	hasNoProjects: UseProjectNavigationResult["hasNoProjects"];
@@ -48,13 +34,32 @@ export interface ProjectContextValue {
 	pendingGitInitializationPath: UseProjectNavigationResult["pendingGitInitializationPath"];
 	isInitializingGitProject: UseProjectNavigationResult["isInitializingGitProject"];
 	resetProjectNavigationState: UseProjectNavigationResult["resetProjectNavigationState"];
+}
 
-	// --- useProjectSync (subset exposed via context) ---
+export interface ProjectRuntimeStreamContextValue {
+	streamedProjectState: UseProjectNavigationResult["projectState"];
+	projectMetadata: UseProjectNavigationResult["projectMetadata"];
+	latestTaskReadyForReview: UseProjectNavigationResult["latestTaskReadyForReview"];
+	latestTaskTitleUpdate: UseProjectNavigationResult["latestTaskTitleUpdate"];
+	latestTaskBaseRefUpdate: UseProjectNavigationResult["latestTaskBaseRefUpdate"];
+	logLevel: UseProjectNavigationResult["logLevel"];
+	debugLogEntries: UseProjectNavigationResult["debugLogEntries"];
+	streamError: UseProjectNavigationResult["streamError"];
+	isRuntimeDisconnected: UseProjectNavigationResult["isRuntimeDisconnected"];
+	hasReceivedSnapshot: UseProjectNavigationResult["hasReceivedSnapshot"];
+}
+
+export interface ProjectNotificationContextValue {
+	notificationProjects: RuntimeProjectNotificationStateMap;
+	needsInputByProject: Record<string, number>;
+	currentProjectHasNeedsInput: boolean;
+	otherProjectsHaveNeedsInput: boolean;
+}
+
+export interface ProjectSyncContextValue {
 	projectPath: string | null;
 	projectGit: RuntimeGitRepositoryInfo | null;
 	refreshProjectState: () => Promise<void>;
-
-	// --- useProjectSync (additional outputs needed by AppContent) ---
 	projectRevision: number | null;
 	setProjectRevision: Dispatch<SetStateAction<number | null>>;
 	projectHydrationNonce: number;
@@ -62,29 +67,52 @@ export interface ProjectContextValue {
 	isProjectStateRefreshing: boolean;
 	isProjectMetadataPending: boolean;
 	resetProjectSyncState: (targetProjectId?: string | null) => void;
-
-	// --- Document visibility ---
 	isDocumentVisible: boolean;
-
-	// --- Board-level state bridged through for downstream consumers ---
 	canPersistProjectState: boolean;
 	isServedFromBoardCache: boolean;
 }
 
-export const ProjectContext = createContext<ProjectContextValue | null>(null);
+export const ProjectNavigationContext = createContext<ProjectNavigationContextValue | null>(null);
+export const ProjectRuntimeStreamContext = createContext<ProjectRuntimeStreamContextValue | null>(null);
+export const ProjectNotificationContext = createContext<ProjectNotificationContextValue | null>(null);
+export const ProjectSyncContext = createContext<ProjectSyncContextValue | null>(null);
 
-export function useProjectContext(): ProjectContextValue {
-	const ctx = useContext(ProjectContext);
+export function useProjectNavigationContext(): ProjectNavigationContextValue {
+	const ctx = useContext(ProjectNavigationContext);
 	if (!ctx) {
-		throw new Error("useProjectContext must be used within a ProjectContext.Provider");
+		throw new Error("useProjectNavigationContext must be used within a ProjectNavigationContext.Provider");
+	}
+	return ctx;
+}
+
+export function useProjectRuntimeStreamContext(): ProjectRuntimeStreamContextValue {
+	const ctx = useContext(ProjectRuntimeStreamContext);
+	if (!ctx) {
+		throw new Error("useProjectRuntimeStreamContext must be used within a ProjectRuntimeStreamContext.Provider");
+	}
+	return ctx;
+}
+
+export function useProjectNotificationContext(): ProjectNotificationContextValue {
+	const ctx = useContext(ProjectNotificationContext);
+	if (!ctx) {
+		throw new Error("useProjectNotificationContext must be used within a ProjectNotificationContext.Provider");
+	}
+	return ctx;
+}
+
+export function useProjectSyncContext(): ProjectSyncContextValue {
+	const ctx = useContext(ProjectSyncContext);
+	if (!ctx) {
+		throw new Error("useProjectSyncContext must be used within a ProjectSyncContext.Provider");
 	}
 	return ctx;
 }
 
 // ---------------------------------------------------------------------------
-// Provider component — calls all project-level hooks and exposes the combined
-// value via ProjectContext. This is the foundation layer: it reads from nothing
-// (no parent contexts), and all other providers depend on it.
+// Provider component - calls all project-level hooks and exposes them through
+// explicit project seams. This is the foundation layer: it reads from nothing
+// (no parent contexts), and other providers depend on the slice they need.
 //
 // Props bridge values that are owned above the provider tree:
 // - onProjectSwitchStart: cleanup callback defined in App
@@ -117,7 +145,6 @@ export function ProjectProvider({
 	setCanPersistProjectState,
 	children,
 }: ProjectProviderProps): ReactNode {
-	// --- Core project navigation ---
 	const {
 		currentProjectId,
 		projects,
@@ -155,10 +182,8 @@ export function ProjectProvider({
 		[currentProjectId, notificationProjects],
 	);
 
-	// --- Document visibility ---
 	const isDocumentVisible = useDocumentVisibility();
 
-	// --- Project sync ---
 	const {
 		projectPath,
 		projectGit,
@@ -182,25 +207,10 @@ export function ProjectProvider({
 		setCanPersistProjectState,
 	});
 
-	// --- Context value ---
-	const value = useMemo<ProjectContextValue>(
+	const navigationValue = useMemo<ProjectNavigationContextValue>(
 		() => ({
 			currentProjectId,
 			projects,
-			streamedProjectState,
-			projectMetadata,
-			notificationProjects,
-			needsInputByProject: notificationProjection.needsInputByProject,
-			currentProjectHasNeedsInput: notificationProjection.currentProjectHasNeedsInput,
-			otherProjectsHaveNeedsInput: notificationProjection.otherProjectsHaveNeedsInput,
-			latestTaskReadyForReview,
-			latestTaskTitleUpdate,
-			latestTaskBaseRefUpdate,
-			logLevel,
-			debugLogEntries,
-			streamError,
-			isRuntimeDisconnected,
-			hasReceivedSnapshot,
 			navigationCurrentProjectId,
 			removingProjectId,
 			hasNoProjects,
@@ -215,6 +225,66 @@ export function ProjectProvider({
 			pendingGitInitializationPath,
 			isInitializingGitProject,
 			resetProjectNavigationState,
+		}),
+		[
+			currentProjectId,
+			projects,
+			navigationCurrentProjectId,
+			removingProjectId,
+			hasNoProjects,
+			isProjectSwitching,
+			handleSelectProject,
+			handlePreloadProject,
+			handleAddProject,
+			handleConfirmInitializeGitProject,
+			handleCancelInitializeGitProject,
+			handleRemoveProject,
+			handleReorderProjects,
+			pendingGitInitializationPath,
+			isInitializingGitProject,
+			resetProjectNavigationState,
+		],
+	);
+
+	const streamValue = useMemo<ProjectRuntimeStreamContextValue>(
+		() => ({
+			streamedProjectState,
+			projectMetadata,
+			latestTaskReadyForReview,
+			latestTaskTitleUpdate,
+			latestTaskBaseRefUpdate,
+			logLevel,
+			debugLogEntries,
+			streamError,
+			isRuntimeDisconnected,
+			hasReceivedSnapshot,
+		}),
+		[
+			streamedProjectState,
+			projectMetadata,
+			latestTaskReadyForReview,
+			latestTaskTitleUpdate,
+			latestTaskBaseRefUpdate,
+			logLevel,
+			debugLogEntries,
+			streamError,
+			isRuntimeDisconnected,
+			hasReceivedSnapshot,
+		],
+	);
+
+	const notificationValue = useMemo<ProjectNotificationContextValue>(
+		() => ({
+			notificationProjects,
+			needsInputByProject: notificationProjection.needsInputByProject,
+			currentProjectHasNeedsInput: notificationProjection.currentProjectHasNeedsInput,
+			otherProjectsHaveNeedsInput: notificationProjection.otherProjectsHaveNeedsInput,
+		}),
+		[notificationProjects, notificationProjection],
+	);
+
+	const syncValue = useMemo<ProjectSyncContextValue>(
+		() => ({
 			projectPath,
 			projectGit,
 			refreshProjectState,
@@ -230,34 +300,6 @@ export function ProjectProvider({
 			isServedFromBoardCache,
 		}),
 		[
-			currentProjectId,
-			projects,
-			streamedProjectState,
-			projectMetadata,
-			notificationProjects,
-			notificationProjection,
-			latestTaskReadyForReview,
-			latestTaskTitleUpdate,
-			latestTaskBaseRefUpdate,
-			logLevel,
-			debugLogEntries,
-			streamError,
-			isRuntimeDisconnected,
-			hasReceivedSnapshot,
-			navigationCurrentProjectId,
-			removingProjectId,
-			hasNoProjects,
-			isProjectSwitching,
-			handleSelectProject,
-			handlePreloadProject,
-			handleAddProject,
-			handleConfirmInitializeGitProject,
-			handleCancelInitializeGitProject,
-			handleRemoveProject,
-			handleReorderProjects,
-			pendingGitInitializationPath,
-			isInitializingGitProject,
-			resetProjectNavigationState,
 			projectPath,
 			projectGit,
 			refreshProjectState,
@@ -275,13 +317,19 @@ export function ProjectProvider({
 	);
 
 	return (
-		<ProjectContext.Provider value={value}>
-			<ProjectRuntimeProvider
-				currentProjectId={currentProjectId}
-				navigationCurrentProjectId={navigationCurrentProjectId}
-			>
-				{children}
-			</ProjectRuntimeProvider>
-		</ProjectContext.Provider>
+		<ProjectNavigationContext.Provider value={navigationValue}>
+			<ProjectRuntimeStreamContext.Provider value={streamValue}>
+				<ProjectNotificationContext.Provider value={notificationValue}>
+					<ProjectSyncContext.Provider value={syncValue}>
+						<ProjectRuntimeProvider
+							currentProjectId={currentProjectId}
+							navigationCurrentProjectId={navigationCurrentProjectId}
+						>
+							{children}
+						</ProjectRuntimeProvider>
+					</ProjectSyncContext.Provider>
+				</ProjectNotificationContext.Provider>
+			</ProjectRuntimeStreamContext.Provider>
+		</ProjectNavigationContext.Provider>
 	);
 }

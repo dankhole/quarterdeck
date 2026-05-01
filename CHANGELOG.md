@@ -33,6 +33,11 @@
 
 - Moved task/shell lifecycle orchestration out of `TerminalSessionManager` into a dedicated lifecycle controller, keeping the manager focused on registry, listener, IO, transition, and reconciliation wiring.
 
+### Chore: tighten project provider ownership
+
+- Project-level browser state now exposes separate navigation, runtime-stream/debug, sync/persistence, and notification contexts, so app/providers no longer consume one broad `ProjectContext` bag.
+- App-level project notification, sync, and persistence side effects now live behind focused hooks instead of widening the app shell side-effect boundary.
+
 ### Chore: unify branch/base-ref state
 
 - Inferred, pinned, and unresolved task base refs now share one runtime/web UI model with detached-worktree display, so top-bar base-ref pills, branch-change sync, task-start guards, and detached hints interpret task branch state consistently.

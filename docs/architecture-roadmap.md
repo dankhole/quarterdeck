@@ -44,15 +44,15 @@ Why it matters:
 - restart/recovery changes should stay behind the lifecycle controller instead of drifting back into the manager
 - future lifecycle follow-ups should preserve the current owner split rather than adding another private side-effect path
 
-### 2. Project-level frontend ownership is still broader than ideal
+### 2. Project-level frontend ownership cleanup is closed
 
-The provider split helped a lot, but `ProjectProvider` remains the broadest frontend ownership seam. Project navigation, runtime ingress, authoritative sync outputs, notification projection, persistence gating, and metadata/debug-log exposure are still close enough together that “project-level everything” can regather there.
+Project-level browser ownership now has explicit context seams for project selection/navigation, runtime stream ingress and debug metadata, notification projection, and sync/persistence state. `ProjectProvider` remains the composition point for the project hooks, but downstream consumers no longer read one broad project bag by default.
 
 Why it matters:
 
-- it is still the easiest place for project-scoped feature work to attach “just one more field/action”
-- consumers can still depend on more project-level surface area than they actually need
-- future provider cleanup will be harder if this seam regrows breadth quietly
+- future project-scoped feature work should attach to the narrow owning seam instead of rebuilding a mixed context
+- notification projection, debug metadata, runtime ingress, and persistence gates now have named browser-side contracts
+- `ProjectRuntimeContext` remains broad but domain-coherent around runtime config/onboarding/access-gate concerns
 
 ### 3. Too many critical invariants still live in docs and team memory
 
@@ -139,13 +139,12 @@ Why it matters:
 
 The active order below should match `docs/todo.md`. It is an execution sequence, not a duplicate of the risk ranking above.
 
-1. ProjectProvider / project-runtime ownership follow-up
-2. File browser + diff viewer data pipeline
+1. File browser + diff viewer data pipeline
 
 That sequence is deliberate:
 
-- Project-level frontend ownership is the biggest remaining ownership seam after the recent refactor wave.
-- File browser/diff viewer is still worthwhile, but it is now a narrower follow-on cleanup item rather than a “stop feature work until this is fixed” refactor.
+- Project-level frontend ownership was closed by splitting the remaining broad browser context seam.
+- File browser/diff viewer is the next active ownership cleanup because its data-flow boundary remains fuzzy and it still has visible performance symptoms.
 
 In other words: yes, this order is intentional. It is sequenced by leverage and remaining architectural risk, not just by how visible each bug symptom is.
 
@@ -447,14 +446,15 @@ Outcome:
 
 - git consumers now read layout/history/file-navigation state from a dedicated surface-navigation seam instead of from `GitContext`
 - project consumers now read runtime config/onboarding/access-gate concerns from `ProjectRuntimeContext` instead of from `ProjectContext`
+- project consumers now read navigation, runtime-stream/debug, sync/persistence, and notification projection through separate project context seams instead of from one broad project bag
 - `GitProvider` is materially narrower and easier to explain as git-domain ownership
-- `ProjectProvider` is materially narrower and easier to explain as navigation + sync ownership
+- `ProjectProvider` is materially narrower and easier to explain as the composition point for named project seams
 - the remaining provider/context cleanup can continue as smaller follow-on slices instead of one broad umbrella item
 
 Deferred follow-up notes:
 
 - `ProjectRuntimeContext` is still a broad runtime/config seam. That is acceptable for now because the ownership is domain-coherent, but if future churn or rerender pressure justifies another pass, the first candidate split is likely runtime-config data versus runtime-config mutation/actions, or settings-scope config versus onboarding/access-gate concerns.
-- `SurfaceNavigationProvider` still depends on `ProjectContext` and `BoardContext` for project-switch reset behavior and selected-task layout coordination. Keep that coupling under watch, but do not split it further unless a clearer ownership seam emerges than “make the provider rerender less.”
+- `SurfaceNavigationProvider` still depends on `ProjectNavigationContext` and `BoardContext` for project-switch reset behavior and selected-task layout coordination. Keep that coupling under watch, but do not split it further unless a clearer ownership seam emerges than “make the provider rerender less.”
 
 Key risk:
 
@@ -833,7 +833,7 @@ Key risk:
 
 Status:
 
-- Still active. The first provider-narrowing pass landed on 2026-04-21, but `ProjectProvider` remains the broadest frontend ownership seam left in active use.
+- Completed on 2026-05-01. The first provider-narrowing pass landed on 2026-04-21, and this follow-up split the remaining broad `ProjectContext` surface into explicit project-owned seams.
 
 Primary files:
 
@@ -843,7 +843,7 @@ Primary files:
 - `web-ui/src/hooks/project/use-project-sync.ts`
 - `web-ui/src/hooks/project/use-project-navigation-panel.ts`
 
-Current smell:
+Historical smell:
 
 - `ProjectProvider` is much narrower than before, but it still combines project navigation, runtime ingress, authoritative project sync outputs, persistence gating, metadata/debug-log exposure, and notification projection in one context seam
 - `ProjectRuntimeProvider` helped pull runtime-config and onboarding/access-gate concerns out, but the combined project-level ownership story is still broader than ideal
@@ -859,10 +859,11 @@ What “good” looks like:
 - runtime ingress, notification projection, persistence gating, and metadata/debug-log exposure are either more clearly grouped or pushed behind narrower seams
 - consumers ask for smaller project-owned contracts instead of one large project bag
 
-Suggested first slice:
+What this slice landed:
 
-- inventory which parts of `ProjectContext` are true project-navigation/project-sync ownership versus bridge state that only happens to live there now
-- extract or regroup one coherent seam, likely project-level runtime projection versus project selection/navigation, without re-centralizing logic back into `App.tsx`
+- replaced the single `ProjectContext` bag with `ProjectNavigationContext`, `ProjectRuntimeStreamContext`, `ProjectSyncContext`, and `ProjectNotificationContext`
+- updated app orchestration hooks, providers, top bar/home/dialog components, and focused provider tests to depend on the smallest project-owned contract they need
+- kept `ProjectProvider` as the composition point for project navigation, runtime stream ingress, authoritative sync, document visibility, and notification projection instead of moving that wiring back into `App.tsx`
 
 Key risk:
 

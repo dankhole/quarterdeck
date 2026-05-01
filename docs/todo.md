@@ -8,17 +8,6 @@ Tracking note:
 - Historical completion context belongs in `docs/implementation-log.md`, `CHANGELOG.md`, or `docs/archive/`, not in this active todo list.
 - For newly completed user-visible work, remove the active todo item and record the result in `CHANGELOG.md` rather than adding a new struck-through history line here. Add `docs/implementation-log.md` only when the change has high-signal forensic context: architecture or ownership boundaries, persistence/recovery, terminal/session lifecycle, races, dogfooding incidents, broad cross-cutting edits, or non-obvious investigations.
 
-## Architecture follow-ups from the architecture roadmap
-
-Use this section together with:
-
-- [docs/architecture-roadmap.md](./architecture-roadmap.md)
-- [docs/task-state-system-stale.md](./task-state-system-stale.md)
-
-These items are broader ownership-boundary refactors that do not yet need full implementation briefs, but they need enough written context that a fresh agent can pick them up without rediscovering the problem from scratch.
-
-- Tighten the remaining project-level ownership seam around `web-ui/src/providers/project-provider.tsx` and `web-ui/src/providers/project-runtime-provider.tsx` so project navigation, runtime ingress, persistence gating, notification projection, and metadata/debug-log exposure do not keep regathering behind one broad context bag. Backlog context: [docs/architecture-roadmap.md#18-projectprovider--project-runtime-ownership-follow-up](./architecture-roadmap.md#18-projectprovider--project-runtime-ownership-follow-up)
-
 ## Additional code-validated refactor backlog
 
 Use this section together with:

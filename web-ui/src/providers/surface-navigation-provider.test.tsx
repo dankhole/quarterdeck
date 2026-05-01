@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { BoardContext, type BoardContextValue } from "@/providers/board-provider";
-import { ProjectContext, type ProjectContextValue } from "@/providers/project-provider";
+import { ProjectNavigationContext, type ProjectNavigationContextValue } from "@/providers/project-provider";
 import {
 	type SurfaceNavigationContextValue,
 	SurfaceNavigationProvider,
@@ -26,12 +26,14 @@ function createBoardContextValue(overrides: Partial<BoardContextValue> = {}): Bo
 	} as unknown as BoardContextValue;
 }
 
-function createProjectContextValue(overrides: Partial<ProjectContextValue> = {}): ProjectContextValue {
+function createProjectNavigationContextValue(
+	overrides: Partial<ProjectNavigationContextValue> = {},
+): ProjectNavigationContextValue {
 	return {
 		hasNoProjects: false,
 		isProjectSwitching: false,
 		...overrides,
-	} as unknown as ProjectContextValue;
+	} as unknown as ProjectNavigationContextValue;
 }
 
 describe("SurfaceNavigationProvider", () => {
@@ -69,13 +71,13 @@ describe("SurfaceNavigationProvider", () => {
 		project = {},
 	}: {
 		board?: Partial<BoardContextValue>;
-		project?: Partial<ProjectContextValue>;
+		project?: Partial<ProjectNavigationContextValue>;
 	} = {}): void {
 		act(() => {
 			root.render(
 				createElement(
-					ProjectContext.Provider,
-					{ value: createProjectContextValue(project) },
+					ProjectNavigationContext.Provider,
+					{ value: createProjectNavigationContextValue(project) },
 					createElement(
 						BoardContext.Provider,
 						{ value: createBoardContextValue(board) },

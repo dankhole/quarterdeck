@@ -8,7 +8,7 @@ import {
 	useTaskStartActions,
 } from "@/hooks/board";
 import { useBoardContext } from "@/providers/board-provider";
-import { useProjectContext } from "@/providers/project-provider";
+import { useProjectNavigationContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { useTaskEditorContext } from "@/providers/task-editor-provider";
@@ -73,9 +73,9 @@ export function useInteractionsContext(): InteractionsContextValue {
 // ---------------------------------------------------------------------------
 // Provider component — calls useBoardInteractions, useTaskStartActions, and
 // owns the clear-trash dialog state. Reads board/session data from
-// BoardContext and project-level inputs from ProjectContext.
+// BoardContext and project-level inputs from ProjectNavigationContext.
 //
-// Must render inside BoardContext.Provider and ProjectContext.Provider.
+// Must render inside BoardContext.Provider and ProjectProvider.
 // Must render above DialogProvider (which reads isClearTrashDialogOpen).
 // ---------------------------------------------------------------------------
 
@@ -101,7 +101,7 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 	const { taskEditor, pendingTaskStartAfterEditId, clearPendingTaskStartAfterEditId } = useTaskEditorContext();
 	const { handleCreateTask, handleCreateTasks } = taskEditor;
 
-	const { currentProjectId } = useProjectContext();
+	const { currentProjectId } = useProjectNavigationContext();
 	const { showTrashWorktreeNotice, saveTrashWorktreeNoticeDismissed } = useProjectRuntimeContext();
 	const { closeGitHistory } = useSurfaceNavigationContext();
 

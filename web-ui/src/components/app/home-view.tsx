@@ -11,7 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useBoardContext } from "@/providers/board-provider";
 import { useGitContext } from "@/providers/git-provider";
 import { useInteractionsContext } from "@/providers/interactions-provider";
-import { useProjectContext } from "@/providers/project-provider";
+import { useProjectNavigationContext, useProjectSyncContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { useTerminalContext } from "@/providers/terminal-provider";
@@ -39,7 +39,8 @@ export function HomeView({
 	handleOpenEditTask,
 	homeGitSummary,
 }: HomeViewProps): ReactElement {
-	const project = useProjectContext();
+	const projectNavigation = useProjectNavigationContext();
+	const { projectPath } = useProjectSyncContext();
 	const projectRuntime = useProjectRuntimeContext();
 	const { board, sessions, upsertSession, selectedTaskId } = useBoardContext();
 	const git = useGitContext();
@@ -62,7 +63,7 @@ export function HomeView({
 					<div className="flex flex-1 min-h-0 items-center justify-center bg-surface-0">
 						<Spinner size={30} />
 					</div>
-				) : project.hasNoProjects ? (
+				) : projectNavigation.hasNoProjects ? (
 					<div className="flex flex-1 min-h-0 items-center justify-center bg-surface-0 p-6">
 						<div className="flex flex-col items-center justify-center gap-3 text-text-tertiary">
 							<FolderOpen size={48} strokeWidth={1} />
@@ -71,7 +72,7 @@ export function HomeView({
 							<Button
 								variant="primary"
 								onClick={() => {
-									void project.handleAddProject();
+									void projectNavigation.handleAddProject();
 								}}
 							>
 								Add Project
@@ -83,10 +84,10 @@ export function HomeView({
 						<div className="flex flex-1 min-h-0 min-w-0">
 							{navigation.mainView === "git" ? (
 								<GitView
-									currentProjectId={project.currentProjectId}
+									currentProjectId={projectNavigation.currentProjectId}
 									selectedCard={null}
 									sessionSummary={null}
-									projectPath={project.projectPath}
+									projectPath={projectPath}
 									homeGitSummary={homeGitSummary}
 									board={board}
 									pendingCompareNavigation={navigation.pendingCompareNavigation}
@@ -111,7 +112,7 @@ export function HomeView({
 									gitHistoryPanel={
 										navigation.isGitHistoryOpen ? (
 											<GitHistoryView
-												projectId={project.currentProjectId}
+												projectId={projectNavigation.currentProjectId}
 												gitHistory={git.gitHistory}
 												onCheckoutBranch={(branch) => {
 													void git.switchHomeBranch(branch);
@@ -131,7 +132,7 @@ export function HomeView({
 								/>
 							) : navigation.mainView === "files" ? (
 								<FilesView
-									key={project.currentProjectId ?? "no-project"}
+									key={projectNavigation.currentProjectId ?? "no-project"}
 									showScopeBar={git.fileBrowserScopeMode !== "contextual"}
 									scopeBar={
 										<ScopeBar
@@ -218,10 +219,10 @@ export function HomeView({
 										projectRuntime.runtimeProjectConfig?.fileEditorAutosaveMode ??
 										CONFIG_DEFAULTS.fileEditorAutosaveMode
 									}
-									rootPath={project.projectPath}
+									rootPath={projectPath}
 									pendingFileNavigation={navigation.pendingFileNavigation}
 									onFileNavigationConsumed={navigation.clearPendingFileNavigation}
-									scopeKey={`home-${project.currentProjectId ?? "no-project"}`}
+									scopeKey={`home-${projectNavigation.currentProjectId ?? "no-project"}`}
 								/>
 							) : (
 								<QuarterdeckBoard
@@ -261,7 +262,7 @@ export function HomeView({
 									<ShellTerminalPanel
 										key={`home-shell-${terminal.homeTerminalTaskId}`}
 										taskId={terminal.homeTerminalTaskId}
-										projectId={project.currentProjectId}
+										projectId={projectNavigation.currentProjectId}
 										summary={terminal.homeTerminalSummary}
 										onSummary={upsertSession}
 										autoFocus

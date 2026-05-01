@@ -38,7 +38,13 @@ import { BoardProvider, useBoardContext } from "@/providers/board-provider";
 import { DialogProvider, useDialogContext } from "@/providers/dialog-provider";
 import { GitProvider, useGitContext } from "@/providers/git-provider";
 import { InteractionsProvider, useInteractionsContext } from "@/providers/interactions-provider";
-import { ProjectProvider, useProjectContext } from "@/providers/project-provider";
+import {
+	ProjectProvider,
+	useProjectNavigationContext,
+	useProjectNotificationContext,
+	useProjectRuntimeStreamContext,
+	useProjectSyncContext,
+} from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { SurfaceNavigationProvider, useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { TaskEditorProvider, useTaskEditorContext } from "@/providers/task-editor-provider";
@@ -77,11 +83,11 @@ interface AppContentProps {
 
 // ---------------------------------------------------------------------------
 // AppEarlyBailout — renders fallback UIs for disconnected/blocked states.
-// Must be inside ProjectProvider so it can read useProjectContext().
+// Must be inside ProjectProvider so it can read project runtime status.
 // ---------------------------------------------------------------------------
 
 function AppEarlyBailout({ children }: { children: ReactNode }): ReactNode {
-	const { isRuntimeDisconnected } = useProjectContext();
+	const { isRuntimeDisconnected } = useProjectRuntimeStreamContext();
 	const { isQuarterdeckAccessBlocked } = useProjectRuntimeContext();
 
 	if (isRuntimeDisconnected) {
@@ -185,7 +191,10 @@ function AppInner(): ReactElement {
 // ---------------------------------------------------------------------------
 
 function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
-	const project = useProjectContext();
+	const projectNavigation = useProjectNavigationContext();
+	const projectStream = useProjectRuntimeStreamContext();
+	const projectSync = useProjectSyncContext();
+	const projectNotifications = useProjectNotificationContext();
 	const projectRuntime = useProjectRuntimeContext();
 	const boardContext = useBoardContext();
 	const taskEditorContext = useTaskEditorContext();
@@ -212,22 +221,22 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		shouldUseNavigationPath,
 	} = useProjectUiState({
 		board,
-		canPersistProjectState: project.canPersistProjectState,
-		currentProjectId: project.currentProjectId,
-		projects: project.projects,
-		navigationCurrentProjectId: project.navigationCurrentProjectId,
+		canPersistProjectState: projectSync.canPersistProjectState,
+		currentProjectId: projectNavigation.currentProjectId,
+		projects: projectNavigation.projects,
+		navigationCurrentProjectId: projectNavigation.navigationCurrentProjectId,
 		selectedTaskId,
-		streamError: project.streamError,
-		isProjectSwitching: project.isProjectSwitching,
+		streamError: projectStream.streamError,
+		isProjectSwitching: projectNavigation.isProjectSwitching,
 		isInitialRuntimeLoad:
-			!project.hasReceivedSnapshot &&
-			project.currentProjectId === null &&
-			project.projects.length === 0 &&
-			!project.streamError,
+			!projectStream.hasReceivedSnapshot &&
+			projectNavigation.currentProjectId === null &&
+			projectNavigation.projects.length === 0 &&
+			!projectStream.streamError,
 		isAwaitingProjectSnapshot,
-		isProjectMetadataPending: project.isProjectMetadataPending,
-		isServedFromBoardCache: project.isServedFromBoardCache,
-		hasReceivedSnapshot: project.hasReceivedSnapshot,
+		isProjectMetadataPending: projectSync.isProjectMetadataPending,
+		isServedFromBoardCache: projectSync.isServedFromBoardCache,
+		hasReceivedSnapshot: projectStream.hasReceivedSnapshot,
 	});
 
 	const serverMutationInFlightRef = useRef(false);
@@ -269,7 +278,10 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		terminalFontWeight: projectRuntime.terminalFontWeight,
 	});
 	useAppSideEffects({
-		project,
+		projectNavigation,
+		projectStream,
+		projectSync,
+		projectNotifications,
 		projectRuntime,
 		board: boardContext,
 		taskEditor: taskEditorContext,
@@ -285,7 +297,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 
 	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut, handleCreateShortcut } =
 		useShortcutActions({
-			currentProjectId: project.currentProjectId,
+			currentProjectId: projectNavigation.currentProjectId,
 			selectedShortcutLabel: projectRuntime.runtimeProjectConfig?.selectedShortcutLabel,
 			shortcuts: projectRuntime.shortcuts,
 			refreshRuntimeProjectConfig: projectRuntime.refreshRuntimeProjectConfig,
@@ -301,7 +313,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		selectShortcutLabel: selectPromptShortcutLabel,
 		savePromptShortcuts,
 	} = usePromptShortcuts({
-		currentProjectId: project.currentProjectId,
+		currentProjectId: projectNavigation.currentProjectId,
 		promptShortcuts: projectRuntime.runtimeProjectConfig?.promptShortcuts ?? [],
 		refreshRuntimeConfig: projectRuntime.refreshRuntimeProjectConfig,
 		sendTaskSessionInput,
@@ -318,7 +330,8 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		boardBadgeColor,
 		detailSession,
 	} = useAppActionModels({
-		project,
+		projectNavigation,
+		projectNotifications,
 		projectRuntime,
 		board: boardContext,
 		navigation,
@@ -340,14 +353,14 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		selectedCard,
 		selectedTaskRepositoryInfo,
 		selectedTaskWorktreeSnapshot: selectedTaskWorktreeSnapshot,
-		projectPath: project.projectPath,
+		projectPath: projectSync.projectPath,
 		shouldUseNavigationPath: shouldUseNavigationPath,
 		navigationProjectPath: navigationProjectPath,
 		runtimeProjectConfig: projectRuntime.runtimeProjectConfig,
-		hasNoProjects: project.hasNoProjects,
-		isProjectSwitching: project.isProjectSwitching,
+		hasNoProjects: projectNavigation.hasNoProjects,
+		isProjectSwitching: projectNavigation.isProjectSwitching,
 		isAwaitingProjectSnapshot: isAwaitingProjectSnapshot,
-		isProjectMetadataPending: project.isProjectMetadataPending,
+		isProjectMetadataPending: projectSync.isProjectMetadataPending,
 	});
 
 	// Destructure taskEditor for JSX usage
@@ -375,7 +388,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 			onCreate={handleSaveEditedTask}
 			onCreateAndStart={handleSaveAndStartEditedTask}
 			onCancel={handleCancelEditTask}
-			projectId={project.currentProjectId}
+			projectId={projectNavigation.currentProjectId}
 			branchRef={editTaskBranchRef}
 			branchOptions={createTaskBranchOptions}
 			onBranchRefChange={setEditTaskBranchRef}
@@ -457,7 +470,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 									}}
 								>
 									<CommitPanel
-										projectId={project.currentProjectId ?? ""}
+										projectId={projectNavigation.currentProjectId ?? ""}
 										taskId={null}
 										baseRef={null}
 										navigateToFile={navigation.navigateToFile}
@@ -485,18 +498,18 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 									<ProjectNavigationPanel
 										projects={displayedProjects}
 										isLoadingProjects={isProjectListLoading}
-										currentProjectId={project.navigationCurrentProjectId}
-										removingProjectId={project.removingProjectId}
+										currentProjectId={projectNavigation.navigationCurrentProjectId}
+										removingProjectId={projectNavigation.removingProjectId}
 										onSelectProject={(projectId) => {
-											void project.handleSelectProject(projectId);
+											void projectNavigation.handleSelectProject(projectId);
 										}}
-										onPreloadProject={project.handlePreloadProject}
-										onRemoveProject={project.handleRemoveProject}
-										onReorderProjects={project.handleReorderProjects}
+										onPreloadProject={projectNavigation.handlePreloadProject}
+										onRemoveProject={projectNavigation.handleRemoveProject}
+										onReorderProjects={projectNavigation.handleReorderProjects}
 										onAddProject={() => {
-											void project.handleAddProject();
+											void projectNavigation.handleAddProject();
 										}}
-										needsInputByProject={project.needsInputByProject}
+										needsInputByProject={projectNotifications.needsInputByProject}
 									/>
 								</div>
 								<ResizeHandle
@@ -513,8 +526,8 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 					{selectedCard && detailSession ? (
 						<CardDetailView
 							selection={selectedCard}
-							currentProjectId={project.currentProjectId}
-							projectPath={project.projectPath}
+							currentProjectId={projectNavigation.currentProjectId}
+							projectPath={projectSync.projectPath}
 							sessionSummary={detailSession}
 							layoutProps={{
 								mainView: navigation.mainView,
@@ -539,7 +552,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 							repositoryProps={{
 								gitHistoryPanel: navigation.isGitHistoryOpen ? (
 									<GitHistoryView
-										projectId={project.currentProjectId}
+										projectId={projectNavigation.currentProjectId}
 										gitHistory={git.gitHistory}
 										onCreateBranch={git.fileBrowserBranchActions.handleCreateBranchFrom}
 										onPullLatest={() => {
@@ -594,7 +607,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 					<AppDialogs savePromptShortcuts={savePromptShortcuts} />
 					{isFileFinderOpen && (
 						<FileFinderOverlay
-							projectId={project.currentProjectId}
+							projectId={projectNavigation.currentProjectId}
 							searchScope={navigation.activeFileSearchScope}
 							onSelect={handleSearchFileSelect}
 							onDismiss={() => setIsFileFinderOpen(false)}
@@ -602,7 +615,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 					)}
 					{isTextSearchOpen && (
 						<TextSearchOverlay
-							projectId={project.currentProjectId}
+							projectId={projectNavigation.currentProjectId}
 							searchScope={navigation.activeFileSearchScope}
 							onSelect={handleSearchFileSelect}
 							onDismiss={() => setIsTextSearchOpen(false)}

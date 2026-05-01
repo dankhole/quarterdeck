@@ -5,7 +5,7 @@ import type { RuntimeSettingsSection } from "@/components/settings";
 import { useAppDialogs } from "@/hooks/app";
 import { type UseDebugLoggingResult, useDebugLogging, useDebugTools } from "@/hooks/debug";
 import { useInteractionsContext } from "@/providers/interactions-provider";
-import { useProjectContext } from "@/providers/project-provider";
+import { useProjectNavigationContext, useProjectRuntimeStreamContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { useTaskEditorContext } from "@/providers/task-editor-provider";
 
@@ -58,7 +58,7 @@ export function useDialogContext(): DialogContextValue {
 // and exposes the combined value via DialogContext.
 //
 // Reads project-level inputs (config, log entries, onboarding handler) from
-// ProjectContext. Clear-trash dialog state is read from InteractionsContext
+// project contexts. Clear-trash dialog state is read from InteractionsContext
 // (owned by InteractionsProvider which must render above DialogProvider).
 // ---------------------------------------------------------------------------
 
@@ -67,7 +67,8 @@ export interface DialogProviderProps {
 }
 
 export function DialogProvider({ children }: DialogProviderProps): ReactNode {
-	const project = useProjectContext();
+	const { currentProjectId } = useProjectNavigationContext();
+	const { logLevel, debugLogEntries } = useProjectRuntimeStreamContext();
 	const projectRuntime = useProjectRuntimeContext();
 	const { taskEditor } = useTaskEditorContext();
 	const { isClearTrashDialogOpen, setIsClearTrashDialogOpen } = useInteractionsContext();
@@ -96,9 +97,9 @@ export function DialogProvider({ children }: DialogProviderProps): ReactNode {
 	});
 
 	const debugLogging = useDebugLogging({
-		currentProjectId: project.currentProjectId,
-		logLevel: project.logLevel,
-		debugLogEntries: project.debugLogEntries,
+		currentProjectId,
+		logLevel,
+		debugLogEntries,
 	});
 
 	const value = useMemo<DialogContextValue>(

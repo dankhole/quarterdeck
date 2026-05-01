@@ -13,7 +13,7 @@ import {
 	useScopeContext,
 } from "@/hooks/git";
 import { useBoardContext } from "@/providers/board-provider";
-import { useProjectContext } from "@/providers/project-provider";
+import { useProjectNavigationContext, useProjectSyncContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import type { RuntimeGitSyncAction } from "@/runtime/types";
@@ -104,7 +104,8 @@ interface GitProviderProps {
 }
 
 export function GitProvider({ children }: GitProviderProps): ReactNode {
-	const { currentProjectId, projectPath, refreshProjectState } = useProjectContext();
+	const { currentProjectId } = useProjectNavigationContext();
+	const { projectPath, refreshProjectState } = useProjectSyncContext();
 	const { runtimeProjectConfig, skipTaskCheckoutConfirmation, skipHomeCheckoutConfirmation } =
 		useProjectRuntimeContext();
 

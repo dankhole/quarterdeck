@@ -3,7 +3,7 @@ import { useCallback, useMemo } from "react";
 import { useTitleActions } from "@/hooks/board";
 import type { BoardContextValue } from "@/providers/board-provider";
 import type { InteractionsContextValue } from "@/providers/interactions-provider";
-import type { ProjectContextValue } from "@/providers/project-provider";
+import type { ProjectNavigationContextValue, ProjectNotificationContextValue } from "@/providers/project-provider";
 import type { ProjectRuntimeContextValue } from "@/providers/project-runtime-provider";
 import type { SurfaceNavigationContextValue } from "@/providers/surface-navigation-provider";
 import type { MainViewId } from "@/resize/use-card-detail-layout";
@@ -14,7 +14,8 @@ import { getTerminalPrewarmPolicy } from "@/terminal/terminal-prewarm-policy";
 import { createIdleTaskSession } from "@/utils/app-utils";
 
 interface UseAppActionModelsInput {
-	project: ProjectContextValue;
+	projectNavigation: ProjectNavigationContextValue;
+	projectNotifications: ProjectNotificationContextValue;
 	projectRuntime: ProjectRuntimeContextValue;
 	board: BoardContextValue;
 	navigation: SurfaceNavigationContextValue;
@@ -34,7 +35,8 @@ export interface UseAppActionModelsResult {
 }
 
 export function useAppActionModels({
-	project,
+	projectNavigation,
+	projectNotifications,
 	projectRuntime,
 	board,
 	navigation,
@@ -43,24 +45,24 @@ export function useAppActionModels({
 	const terminalPrewarmPolicy = getTerminalPrewarmPolicy();
 	const handleTerminalWarmup = useCallback(
 		(taskId: string) => {
-			if (project.currentProjectId) {
-				terminalPrewarmPolicy.requestTaskHoverPrewarm(taskId, project.currentProjectId);
+			if (projectNavigation.currentProjectId) {
+				terminalPrewarmPolicy.requestTaskHoverPrewarm(taskId, projectNavigation.currentProjectId);
 			}
 		},
-		[project.currentProjectId, terminalPrewarmPolicy],
+		[projectNavigation.currentProjectId, terminalPrewarmPolicy],
 	);
 
 	const handleTerminalCancelWarmup = useCallback(
 		(taskId: string) => {
-			if (project.currentProjectId) {
+			if (projectNavigation.currentProjectId) {
 				terminalPrewarmPolicy.cancelTaskHoverPrewarm(taskId);
 			}
 		},
-		[project.currentProjectId, terminalPrewarmPolicy],
+		[projectNavigation.currentProjectId, terminalPrewarmPolicy],
 	);
 
 	const { handleRegenerateTitleTask, handleUpdateTaskTitle } = useTitleActions({
-		currentProjectId: project.currentProjectId,
+		currentProjectId: projectNavigation.currentProjectId,
 	});
 
 	const handleToggleTaskPinned = useCallback(
@@ -142,13 +144,13 @@ export function useAppActionModels({
 	);
 
 	const projectsBadgeColor: "orange" | undefined = useMemo(
-		() => (project.otherProjectsHaveNeedsInput ? "orange" : undefined),
-		[project.otherProjectsHaveNeedsInput],
+		() => (projectNotifications.otherProjectsHaveNeedsInput ? "orange" : undefined),
+		[projectNotifications.otherProjectsHaveNeedsInput],
 	);
 
 	const boardBadgeColor: "orange" | undefined = useMemo(
-		() => (project.currentProjectHasNeedsInput ? "orange" : undefined),
-		[project.currentProjectHasNeedsInput],
+		() => (projectNotifications.currentProjectHasNeedsInput ? "orange" : undefined),
+		[projectNotifications.currentProjectHasNeedsInput],
 	);
 
 	const handleBack = useCallback(() => {

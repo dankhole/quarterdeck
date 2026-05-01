@@ -1,31 +1,31 @@
-import type { Dispatch, MutableRefObject, SetStateAction } from "react";
-import { useCallback, useEffect, useMemo } from "react";
-import { showAppToast } from "@/components/app-toaster";
-import { useBoardMetadataSync, useTaskBaseRefSync, useTaskTitleSync } from "@/hooks/board";
-import {
-	useAudibleNotifications,
-	useFocusedTaskNotification,
-	useProjectMetadataVisibility,
-	useReviewReadyNotifications,
-	useStreamErrorHandler,
-} from "@/hooks/notifications";
-import { useProjectSwitchCleanup } from "@/hooks/project";
+import type { MutableRefObject } from "react";
 import type { BoardContextValue } from "@/providers/board-provider";
 import type { DialogContextValue } from "@/providers/dialog-provider";
 import type { GitContextValue } from "@/providers/git-provider";
 import type { InteractionsContextValue } from "@/providers/interactions-provider";
-import type { ProjectContextValue } from "@/providers/project-provider";
+import type {
+	ProjectNavigationContextValue,
+	ProjectNotificationContextValue,
+	ProjectRuntimeStreamContextValue,
+	ProjectSyncContextValue,
+} from "@/providers/project-provider";
 import type { ProjectRuntimeContextValue } from "@/providers/project-runtime-provider";
 import type { SurfaceNavigationContextValue } from "@/providers/surface-navigation-provider";
 import type { TaskEditorContextValue } from "@/providers/task-editor-provider";
 import type { TerminalContextValue } from "@/providers/terminal-provider";
-import { saveProjectState } from "@/runtime/project-state-query";
-import { useProjectPersistence } from "@/runtime/use-project-persistence";
 import { useAppHotkeys } from "./use-app-hotkeys";
+import { useAppProjectNotificationEffects } from "./use-app-project-notification-effects";
+import { useAppProjectPersistenceEffects } from "./use-app-project-persistence-effects";
+import { useAppProjectSyncEffects } from "./use-app-project-sync-effects";
 import { useEscapeHandler } from "./use-escape-handler";
 
+// App shell orchestration only. If another effect family needs to land here,
+// prefer extracting a focused hook over widening this input surface further.
 interface UseAppSideEffectsInput {
-	project: ProjectContextValue;
+	projectNavigation: ProjectNavigationContextValue;
+	projectStream: ProjectRuntimeStreamContextValue;
+	projectSync: ProjectSyncContextValue;
+	projectNotifications: ProjectNotificationContextValue;
 	projectRuntime: ProjectRuntimeContextValue;
 	board: BoardContextValue;
 	taskEditor: TaskEditorContextValue;
@@ -40,7 +40,10 @@ interface UseAppSideEffectsInput {
 }
 
 export function useAppSideEffects({
-	project,
+	projectNavigation,
+	projectStream,
+	projectSync,
+	projectNotifications,
 	projectRuntime,
 	board,
 	taskEditor,
@@ -53,67 +56,48 @@ export function useAppSideEffects({
 	handleToggleFileFinder,
 	handleToggleTextSearch,
 }: UseAppSideEffectsInput): void {
-	useFocusedTaskNotification({ currentProjectId: project.currentProjectId, selectedTaskId: board.selectedTaskId });
-	useProjectMetadataVisibility({
-		currentProjectId: project.currentProjectId,
-		isDocumentVisible: project.isDocumentVisible,
-	});
-	useBoardMetadataSync({ projectMetadata: project.projectMetadata, setBoard: board.setBoard });
-	useReviewReadyNotifications({
-		activeProjectId: project.navigationCurrentProjectId,
-		latestTaskReadyForReview: project.latestTaskReadyForReview,
-		projectPath: project.projectPath,
-	});
-
-	const trashTaskIdSet = useMemo(() => {
-		const trashColumn = board.board.columns.find((column) => column.id === "trash");
-		return trashColumn ? new Set(trashColumn.cards.map((card) => card.id)) : new Set<string>();
-	}, [board.board.columns]);
-
-	useAudibleNotifications({
-		notificationProjects: project.notificationProjects,
+	useAppProjectNotificationEffects({
+		board: board.board,
+		selectedTaskId: board.selectedTaskId,
+		currentProjectId: projectNavigation.currentProjectId,
+		navigationCurrentProjectId: projectNavigation.navigationCurrentProjectId,
+		projectPath: projectSync.projectPath,
+		latestTaskReadyForReview: projectStream.latestTaskReadyForReview,
+		streamError: projectStream.streamError,
+		isRuntimeDisconnected: projectStream.isRuntimeDisconnected,
+		notificationProjects: projectNotifications.notificationProjects,
 		audibleNotificationsEnabled: projectRuntime.audibleNotificationsEnabled,
 		audibleNotificationVolume: projectRuntime.audibleNotificationVolume,
 		audibleNotificationEvents: projectRuntime.audibleNotificationEvents,
 		audibleNotificationsOnlyWhenHidden: projectRuntime.audibleNotificationsOnlyWhenHidden,
 		audibleNotificationSuppressCurrentProject: projectRuntime.audibleNotificationSuppressCurrentProject,
-		currentProjectId: project.currentProjectId,
-		suppressedTaskIds: trashTaskIdSet,
 	});
 
-	useTaskTitleSync({ latestTaskTitleUpdate: project.latestTaskTitleUpdate, setBoard: board.setBoard });
-	useTaskBaseRefSync({ latestTaskBaseRefUpdate: project.latestTaskBaseRefUpdate, setBoard: board.setBoard });
-	useStreamErrorHandler({ streamError: project.streamError, isRuntimeDisconnected: project.isRuntimeDisconnected });
-
-	useProjectSwitchCleanup({
-		currentProjectId: project.currentProjectId,
-		navigationCurrentProjectId: project.navigationCurrentProjectId,
-		isProjectSwitching: project.isProjectSwitching,
+	useAppProjectSyncEffects({
+		currentProjectId: projectNavigation.currentProjectId,
+		navigationCurrentProjectId: projectNavigation.navigationCurrentProjectId,
+		hasNoProjects: projectNavigation.hasNoProjects,
+		isProjectSwitching: projectNavigation.isProjectSwitching,
+		isDocumentVisible: projectSync.isDocumentVisible,
+		projectMetadata: projectStream.projectMetadata,
+		latestTaskTitleUpdate: projectStream.latestTaskTitleUpdate,
+		latestTaskBaseRefUpdate: projectStream.latestTaskBaseRefUpdate,
+		selectedCard: board.selectedCard,
+		isHomeTerminalOpen: terminal.isHomeTerminalOpen,
+		closeHomeTerminal: terminal.closeHomeTerminal,
+		setBoard: board.setBoard,
 		resetTaskEditorWorkflow: taskEditor.resetTaskEditorWorkflow,
-		setIsClearTrashDialogOpen: dialog.setIsClearTrashDialogOpen as Dispatch<SetStateAction<boolean>>,
+		setIsClearTrashDialogOpen: dialog.setIsClearTrashDialogOpen,
 		resetGitActionState: git.resetGitActionState,
-		resetProjectNavigationState: project.resetProjectNavigationState,
+		resetProjectNavigationState: projectNavigation.resetProjectNavigationState,
 		resetTerminalPanelsState: terminal.resetTerminalPanelsState,
-		resetProjectSyncState: project.resetProjectSyncState,
+		resetProjectSyncState: projectSync.resetProjectSyncState,
 	});
-
-	useEffect(() => {
-		if (board.selectedCard) return;
-		if (project.hasNoProjects || !project.currentProjectId) {
-			if (terminal.isHomeTerminalOpen) terminal.closeHomeTerminal();
-		}
-	}, [
-		board.selectedCard,
-		project.currentProjectId,
-		project.hasNoProjects,
-		terminal.closeHomeTerminal,
-		terminal.isHomeTerminalOpen,
-	]);
 
 	useAppHotkeys({
 		selectedCard: board.selectedCard,
-		canUseCreateTaskShortcut: !project.hasNoProjects && project.currentProjectId !== null,
-		currentProjectId: project.currentProjectId,
+		canUseCreateTaskShortcut: !projectNavigation.hasNoProjects && projectNavigation.currentProjectId !== null,
+		currentProjectId: projectNavigation.currentProjectId,
 		handleToggleDetailTerminal: terminal.handleToggleDetailTerminal,
 		handleToggleHomeTerminal: terminal.handleToggleHomeTerminal,
 		handleOpenCreateTask: taskEditor.taskEditor.handleOpenCreateTask,
@@ -131,38 +115,17 @@ export function useAppSideEffects({
 		setSelectedTaskId: board.setSelectedTaskId,
 	});
 
-	const persistProjectStateAsync = useCallback(
-		async (input: { projectId: string; payload: Parameters<typeof saveProjectState>[1] }) =>
-			await saveProjectState(input.projectId, input.payload),
-		[],
-	);
-
-	const handleProjectStateConflict = useCallback(() => {
-		if (serverMutationInFlightRef.current) return;
-		showAppToast(
-			{
-				intent: "warning",
-				icon: "warning-sign",
-				message:
-					"Project changed elsewhere (e.g. another tab). Synced latest state. Retry your last edit if needed.",
-				timeout: 5000,
-			},
-			"project-state-conflict",
-		);
-	}, [serverMutationInFlightRef]);
-
-	useProjectPersistence({
+	useAppProjectPersistenceEffects({
 		board: board.board,
-		currentProjectId: project.currentProjectId,
-		projectRevision: project.projectRevision,
-		hydrationNonce: project.projectHydrationNonce,
-		shouldSkipPersistOnHydration: project.shouldSkipPersistOnHydration,
-		canPersistProjectState: project.canPersistProjectState,
-		isDocumentVisible: project.isDocumentVisible,
-		isProjectStateRefreshing: project.isProjectStateRefreshing,
-		persistProjectState: persistProjectStateAsync,
-		refetchProjectState: project.refreshProjectState,
-		onProjectRevisionChange: project.setProjectRevision,
-		onProjectStateConflict: handleProjectStateConflict,
+		currentProjectId: projectNavigation.currentProjectId,
+		projectRevision: projectSync.projectRevision,
+		hydrationNonce: projectSync.projectHydrationNonce,
+		shouldSkipPersistOnHydration: projectSync.shouldSkipPersistOnHydration,
+		canPersistProjectState: projectSync.canPersistProjectState,
+		isDocumentVisible: projectSync.isDocumentVisible,
+		isProjectStateRefreshing: projectSync.isProjectStateRefreshing,
+		refetchProjectState: projectSync.refreshProjectState,
+		onProjectRevisionChange: projectSync.setProjectRevision,
+		serverMutationInFlightRef,
 	});
 }

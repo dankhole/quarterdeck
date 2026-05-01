@@ -1,12 +1,12 @@
 import type { ReactElement } from "react";
 import { StartupOnboardingDialog } from "@/components/app/startup-onboarding-dialog";
 import { GitInitDialog } from "@/components/git/git-init-dialog";
-import { useProjectContext } from "@/providers/project-provider";
+import { useProjectNavigationContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 
 /**
  * Renders the startup onboarding and git-init dialogs, reading all state from
- * ProjectContext. Extracted from App.tsx to reduce its JSX surface.
+ * project contexts. Extracted from App.tsx to reduce its JSX surface.
  */
 export function ProjectDialogs(): ReactElement {
 	const {
@@ -21,7 +21,7 @@ export function ProjectDialogs(): ReactElement {
 		isInitializingGitProject,
 		handleCancelInitializeGitProject,
 		handleConfirmInitializeGitProject,
-	} = useProjectContext();
+	} = useProjectNavigationContext();
 
 	return (
 		<>

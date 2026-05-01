@@ -179,6 +179,8 @@ In C# you might split `IBoardService` into `IBoardReader`, `IBoardWriter`, `ITas
 
 React contexts are not C# interfaces. They're closer to observable state containers. Fewer, coarser contexts means fewer re-render triggers. Providers should map to domain areas of the app, not to individual operations.
 
+Split a context only when the current context is hiding multiple domain ownership seams, not just because a large interface could be segregated. A valid split should name different sources of truth or policy boundaries, such as project navigation, runtime stream ingress, persistence gating, or notification projection. Do not split state/actions for one domain into separate contexts just to reduce field count.
+
 ### Don't add a DI container library
 
 Libraries like InversifyJS or TSyringe bring C#-style `[Inject]` decorators and service locators to TypeScript. They work, but they fight React's paradigm:

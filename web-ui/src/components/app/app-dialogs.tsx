@@ -16,7 +16,7 @@ import { ClearTrashDialog, HardDeleteTaskDialog, TaskCreateDialog, TaskTrashWarn
 import { useDialogContext } from "@/providers/dialog-provider";
 import { useGitContext } from "@/providers/git-provider";
 import { useInteractionsContext } from "@/providers/interactions-provider";
-import { useProjectContext } from "@/providers/project-provider";
+import { useProjectNavigationContext, useProjectSyncContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { useTaskEditorContext } from "@/providers/task-editor-provider";
 import type { PromptShortcut } from "@/runtime/types";
@@ -26,7 +26,8 @@ interface AppDialogsProps {
 }
 
 export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactElement {
-	const project = useProjectContext();
+	const { currentProjectId } = useProjectNavigationContext();
+	const { projectGit } = useProjectSyncContext();
 	const projectRuntime = useProjectRuntimeContext();
 	const { createTaskBranchOptions, taskEditor } = useTaskEditorContext();
 	const git = useGitContext();
@@ -96,7 +97,7 @@ export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactEleme
 				onCreateAndStartMultiple={interactions.handleCreateAndStartTasks}
 				useWorktree={newTaskUseWorktree}
 				onUseWorktreeChange={setNewTaskUseWorktree}
-				currentBranch={project.projectGit?.currentBranch ?? null}
+				currentBranch={projectGit?.currentBranch ?? null}
 				createFeatureBranch={createFeatureBranch}
 				onCreateFeatureBranchChange={setCreateFeatureBranch}
 				branchName={branchName}
@@ -104,7 +105,7 @@ export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactEleme
 				onGenerateBranchName={generateBranchNameFromPrompt}
 				isGeneratingBranchName={isGeneratingBranchName}
 				isLlmGenerationDisabled={projectRuntime.isLlmGenerationDisabled}
-				projectId={project.currentProjectId}
+				projectId={currentProjectId}
 				branchRef={newTaskBranchRef}
 				branchOptions={createTaskBranchOptions}
 				onBranchRefChange={setNewTaskBranchRef}
@@ -146,13 +147,13 @@ export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactEleme
 			/>
 			<CreateBranchDialog
 				state={git.fileBrowserBranchActions.createBranchDialogState}
-				projectId={project.currentProjectId}
+				projectId={currentProjectId}
 				onClose={git.fileBrowserBranchActions.closeCreateBranchDialog}
 				onBranchCreated={git.fileBrowserBranchActions.handleBranchCreated}
 			/>
 			<CreateBranchDialog
 				state={git.topbarBranchActions.createBranchDialogState}
-				projectId={project.currentProjectId}
+				projectId={currentProjectId}
 				onClose={git.topbarBranchActions.closeCreateBranchDialog}
 				onBranchCreated={git.topbarBranchActions.handleBranchCreated}
 			/>

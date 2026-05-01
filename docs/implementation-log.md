@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-05-01 — Project provider ownership split
+
+`ProjectProvider` no longer exposes one broad `ProjectContext` bag. The browser project seam now has separate `ProjectNavigationContext`, `ProjectRuntimeStreamContext`, `ProjectSyncContext`, and `ProjectNotificationContext` contracts, while `ProjectProvider` remains the composition point for `useProjectNavigation`, runtime stream ingress, authoritative project sync, document visibility, and notification projection.
+
+The key invariant is that project-level wiring did not move back into `App.tsx`: consumers now ask for the narrow project-owned slice they need, `ProjectRuntimeContext` continues to own runtime config/onboarding/access-gate concerns, and project notification/sync/persistence side effects stay behind focused app hooks rather than expanding one side-effect bag. Notable files: `web-ui/src/providers/project-provider.tsx`, `web-ui/src/App.tsx`, app orchestration hooks, app shell components, and project-dependent providers. Validation: focused provider tests, `npm run web:typecheck`, `npm run web:test`, `npm run web:build`, and `npm run check`. Commit: pending.
+
 ## 2026-05-01 — General performance audit
 
 The broad pass covered startup, project switching, board interaction surfaces, task detail navigation, terminal rendering, git/file views, background polling, and runtime WebSocket fanout. The clearest low-risk fix was hidden file-browser work: `GitProvider` and `CardDetailView` were mounting `useFileBrowserData(...)` even outside the Files surface, which kicked off `project.listFiles` and a 5-second refresh interval from Home, Terminal, and Git. `useFileBrowserData(...)` now accepts an `enabled` gate so scope/search state remains available while file-list/content IO and polling only run when Files is active.

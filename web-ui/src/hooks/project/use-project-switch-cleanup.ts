@@ -1,4 +1,3 @@
-import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { resetProjectMetadataStore } from "@/stores/project-metadata-store";
 import { disposeAllDedicatedTerminalsForProject, releaseAll } from "@/terminal/terminal-pool";
@@ -8,7 +7,7 @@ interface UseProjectSwitchCleanupInput {
 	navigationCurrentProjectId: string | null;
 	isProjectSwitching: boolean;
 	resetTaskEditorWorkflow: () => void;
-	setIsClearTrashDialogOpen: Dispatch<SetStateAction<boolean>>;
+	setIsClearTrashDialogOpen: (open: boolean) => void;
 	resetGitActionState: () => void;
 	resetProjectNavigationState: () => void;
 	resetTerminalPanelsState: () => void;

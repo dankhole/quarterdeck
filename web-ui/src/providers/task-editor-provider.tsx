@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useMemo, useState } from "react
 import { type UseTaskEditorResult, useTaskEditor } from "@/hooks/board/use-task-editor";
 import { useTaskBranchOptions } from "@/hooks/git/use-task-branch-options";
 import { useBoardContext } from "@/providers/board-provider";
-import { useProjectContext } from "@/providers/project-provider";
+import { useProjectNavigationContext, useProjectSyncContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { resolveDefaultTaskAgentId } from "@/utils/task-agent-display";
 
@@ -36,7 +36,8 @@ interface TaskEditorProviderProps {
 }
 
 export function TaskEditorProvider({ children }: TaskEditorProviderProps): ReactNode {
-	const { currentProjectId, projectGit } = useProjectContext();
+	const { currentProjectId } = useProjectNavigationContext();
+	const { projectGit } = useProjectSyncContext();
 	const { configDefaultBaseRef, runtimeProjectConfig } = useProjectRuntimeContext();
 	const { board, setBoard, setSelectedTaskId } = useBoardContext();
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
