@@ -34,6 +34,7 @@ export function BranchSelectDropdown({
 	dropdownStyle,
 	menuStyle,
 	onPopoverOpenChange,
+	portalContainer,
 	defaultValue,
 	onSetDefault,
 	ghostUntilOpen = false,
@@ -56,6 +57,7 @@ export function BranchSelectDropdown({
 	dropdownStyle?: CSSProperties;
 	menuStyle?: CSSProperties;
 	onPopoverOpenChange?: (isOpen: boolean) => void;
+	portalContainer?: HTMLElement | null;
 	/** The branch currently set as the default base ref. */
 	defaultValue?: string | null;
 	/** Called when the user pins/unpins a branch as the default. Null means clear. */
@@ -107,6 +109,7 @@ export function BranchSelectDropdown({
 			dropdownStyle={dropdownStyle}
 			menuStyle={menuStyle}
 			onPopoverOpenChange={onPopoverOpenChange}
+			portalContainer={portalContainer}
 			renderOptionAction={renderOptionAction}
 			ghostUntilOpen={ghostUntilOpen}
 		/>

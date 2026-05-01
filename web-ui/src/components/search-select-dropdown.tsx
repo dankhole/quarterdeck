@@ -45,6 +45,7 @@ export function SearchSelectDropdown({
 	dropdownStyle,
 	menuStyle,
 	onPopoverOpenChange,
+	portalContainer,
 	footerAction,
 	renderOptionAction,
 	ghostUntilOpen = false,
@@ -73,6 +74,7 @@ export function SearchSelectDropdown({
 	dropdownStyle?: CSSProperties;
 	menuStyle?: CSSProperties;
 	onPopoverOpenChange?: (isOpen: boolean) => void;
+	portalContainer?: HTMLElement | null;
 	footerAction?: {
 		label: string;
 		onClick: () => void;
@@ -320,7 +322,7 @@ export function SearchSelectDropdown({
 					<span className="flex-1 truncate text-left">{resolvedButtonText}</span>
 				</Button>
 			</RadixPopover.Trigger>
-			<RadixPopover.Portal>
+			<RadixPopover.Portal container={portalContainer}>
 				<RadixPopover.Content
 					className="z-50 max-h-[300px] rounded-lg border border-border bg-surface-1 shadow-xl overflow-hidden"
 					onWheelCapture={handleWheelCapture}

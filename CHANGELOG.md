@@ -81,6 +81,7 @@
 ### Fix: remember task harness selection
 
 - New task creation now remembers the last selected harness locally and falls back to the runtime harness fallback when the remembered harness is unavailable.
+- Changing the harness or base ref in the new task dialog now keeps the dialog open instead of dismissing the draft.
 
 ## [0.12.2] — 2026-04-29
 

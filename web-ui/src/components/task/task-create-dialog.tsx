@@ -13,7 +13,7 @@ import {
 	Sparkles,
 } from "lucide-react";
 import type { Dispatch, ReactElement, SetStateAction } from "react";
-import { useId } from "react";
+import { useId, useState } from "react";
 
 import type { BranchSelectOption } from "@/components/git/branch-select-dropdown";
 import { BranchSelectDropdown } from "@/components/git/branch-select-dropdown";
@@ -96,6 +96,7 @@ export function TaskCreateDialog({
 	const useWorktreeId = useId();
 	const createFeatureBranchId = useId();
 	const createMoreId = useId();
+	const [dropdownPortalContainer, setDropdownPortalContainer] = useState<HTMLDivElement | null>(null);
 	const {
 		mode,
 		createMore,
@@ -189,10 +190,15 @@ export function TaskCreateDialog({
 					/>
 				)}
 
-				<div className="mt-4 border-t border-border pt-4">
+				<div ref={setDropdownPortalContainer} className="mt-4 border-t border-border pt-4">
 					<div>
 						<span className="text-[11px] text-text-secondary block mb-1">Harness</span>
-						<TaskAgentSelector agents={agentOptions} value={agentId} onValueChange={onAgentIdChange} />
+						<TaskAgentSelector
+							agents={agentOptions}
+							value={agentId}
+							onValueChange={onAgentIdChange}
+							portalContainer={dropdownPortalContainer}
+						/>
 					</div>
 					<div className={useWorktree ? "mt-3" : "mt-3 opacity-40"}>
 						<span className="text-[11px] text-text-secondary block mb-1">Base ref</span>
@@ -206,6 +212,7 @@ export function TaskCreateDialog({
 							emptyText="No branches detected"
 							defaultValue={defaultBaseRef || null}
 							onSetDefault={onSetDefaultBaseRef}
+							portalContainer={dropdownPortalContainer}
 						/>
 					</div>
 					<div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
