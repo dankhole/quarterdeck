@@ -69,7 +69,6 @@ export const runtimeConfigResponseSchema = z.object({
 	fileEditorAutosaveMode: z.enum(["off", "delay", "focus"]),
 	defaultBaseRef: z.string(),
 	backupIntervalMinutes: z.number(),
-	agentTerminalRowMultiplier: z.number(),
 	llmConfigured: z.boolean(),
 });
 export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
@@ -118,6 +117,5 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	fileEditorAutosaveMode: z.enum(["off", "delay", "focus"]).optional(),
 	defaultBaseRef: z.string().optional(),
 	backupIntervalMinutes: z.number().min(0).optional(),
-	agentTerminalRowMultiplier: z.number().min(1).max(20).optional(),
 });
 export type RuntimeConfigSaveRequest = z.infer<typeof runtimeConfigSaveRequestSchema>;

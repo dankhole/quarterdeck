@@ -112,7 +112,6 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	fileEditorAutosaveMode: CONFIG_DEFAULTS.fileEditorAutosaveMode,
 	defaultBaseRef: CONFIG_DEFAULTS.defaultBaseRef,
 	backupIntervalMinutes: CONFIG_DEFAULTS.backupIntervalMinutes,
-	agentTerminalRowMultiplier: CONFIG_DEFAULTS.agentTerminalRowMultiplier,
 	llmConfigured: false,
 };
 

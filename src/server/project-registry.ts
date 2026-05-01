@@ -666,7 +666,6 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 					projectId,
 					projectPath,
 					statuslineEnabled: runtimeConfig.statuslineEnabled,
-					agentTerminalRowMultiplier: runtimeConfig.agentTerminalRowMultiplier,
 				})
 				.catch((error) => {
 					const message = error instanceof Error ? error.message : String(error);

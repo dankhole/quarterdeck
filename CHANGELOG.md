@@ -36,6 +36,11 @@
 
 - Home and task detail views now load and poll file-tree/content data only while the Files surface is active, avoiding hidden 5-second file-list refreshes from Terminal, Git, and board-focused views while keeping global file search scoped correctly.
 
+### Fix: keep Claude TUI geometry aligned
+
+- Claude detached terminal sessions now use a fixed 3x row multiplier for extra hidden scrollback, while attached browser terminals always use real rows so Claude Code, the server mirror, and xterm stay bottom-aligned.
+- Removed the Claude row multiplier setting from config and Settings; stale saved values are ignored and dropped on the next config save.
+
 ### Fix: improve generated commit messages
 
 - Commit-message generation now sends task context, the complete selected-file list, and a larger bounded diff/content context, including untracked file excerpts when available.
@@ -78,7 +83,7 @@
 
 - Task creation now includes an agent harness selector, persists the chosen harness on each task, and starts fresh sessions with that task-owned harness instead of requiring a global Settings change.
 - Task cards now show the harness in their metadata row, replacing transient last-tool activity text so mixed-agent boards stay scannable without crowding the card header.
-- Settings no longer exposes the task-agent picker; it keeps agent launch tuning such as Claude row multiplier and the worktree context prompt.
+- Settings no longer exposes the task-agent picker; it keeps the worktree context prompt while Claude terminal row tuning is handled automatically.
 - Settings now leads with PATH-based harness detection guidance, moves debug-log access near the top, and uses harness terminology for task-runner UI copy.
 
 ### Fix: refresh Windows compatibility audit

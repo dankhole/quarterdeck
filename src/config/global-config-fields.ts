@@ -111,7 +111,6 @@ export const GLOBAL_CONFIG_FIELDS = {
 	logLevel: enumField<LogLevel>("warn", LOG_LEVELS),
 	fileEditorAutosaveMode: enumField<FileEditorAutosaveMode>("off", FILE_EDITOR_AUTOSAVE_MODES),
 	backupIntervalMinutes: numField(30),
-	agentTerminalRowMultiplier: numField(2),
 } as const;
 
 // --- Derived types ---

@@ -16,11 +16,6 @@ describe("resolveInitialValues", () => {
 		expect(values).toHaveProperty("worktreeSystemPromptTemplate");
 		expect(values).toHaveProperty("fileEditorAutosaveMode");
 	});
-
-	it("defaults Claude row multiplier to 2", () => {
-		const values = resolveInitialValues(null);
-		expect(values.agentTerminalRowMultiplier).toBe(2);
-	});
 });
 
 // ---------------------------------------------------------------------------

@@ -40,7 +40,6 @@ export interface SettingsFormValues {
 		failure: boolean;
 	};
 	worktreeSystemPromptTemplate: string;
-	agentTerminalRowMultiplier: number;
 	shortcuts: RuntimeProjectShortcut[];
 }
 
@@ -77,7 +76,6 @@ export function resolveInitialValues(config: RuntimeConfigResponse | null): Sett
 			...CONFIG_DEFAULTS.audibleNotificationSuppressCurrentProject,
 		},
 		worktreeSystemPromptTemplate: config?.worktreeSystemPromptTemplate ?? "",
-		agentTerminalRowMultiplier: config?.agentTerminalRowMultiplier ?? CONFIG_DEFAULTS.agentTerminalRowMultiplier,
 		shortcuts: config?.shortcuts ?? [],
 	};
 }

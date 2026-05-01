@@ -3,7 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
 import { buildShellCommandLine } from "../../../src/core";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
-import { resolveAgentTerminalRowMultiplier } from "../../../src/terminal/session-manager-types";
+import {
+	DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER,
+	resolveEffectiveTerminalRowMultiplier,
+	resolveEffectiveTerminalRows,
+} from "../../../src/terminal/session-manager-types";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 function createTestManager(): TerminalSessionManager {
@@ -179,12 +183,13 @@ describe("TerminalSessionManager", () => {
 		expect(after).toEqual(before);
 	});
 
-	it("uses the configured row multiplier for Claude", () => {
-		expect(resolveAgentTerminalRowMultiplier("claude", 5)).toBe(5);
-	});
-
-	it("ignores the configured row multiplier for Codex", () => {
-		expect(resolveAgentTerminalRowMultiplier("codex", 5)).toBe(1);
+	it("uses a fixed detached row multiplier only for Claude without browser output", () => {
+		expect(resolveEffectiveTerminalRowMultiplier("claude", false)).toBe(DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER);
+		expect(resolveEffectiveTerminalRowMultiplier("claude", true)).toBe(1);
+		expect(resolveEffectiveTerminalRowMultiplier("codex", false)).toBe(1);
+		expect(resolveEffectiveTerminalRowMultiplier(null, false)).toBe(1);
+		expect(resolveEffectiveTerminalRows("claude", 40, false)).toBe(40 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER);
+		expect(resolveEffectiveTerminalRows("claude", 40, true)).toBe(40);
 	});
 
 	it("transitionToReview preserves latestHookActivity (RC4 invariant — no null-window)", () => {
@@ -278,7 +283,13 @@ describe("TerminalSessionManager", () => {
 		const entry = {
 			taskId: "task-probe",
 			active: {
-				session: {},
+				session: {
+					resize: vi.fn(),
+				},
+				agentId: "claude",
+				cols: 80,
+				baseRows: 24,
+				rows: 24 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER,
 				terminalProtocolFilter: {
 					pendingChunk: null,
 					interceptOscColorQueries: true,
@@ -518,9 +529,10 @@ describe("TerminalSessionManager", () => {
 				session: {
 					resize: resizeSpy,
 				},
+				agentId: null,
 				cols: 80,
+				baseRows: 24,
 				rows: 24,
-				agentTerminalRowMultiplier: 1,
 			},
 			terminalStateMirror: {
 				resize: resizeMirrorSpy,
@@ -540,7 +552,7 @@ describe("TerminalSessionManager", () => {
 		expect(resizeMirrorSpy).toHaveBeenCalledWith(100, 30);
 	});
 
-	it("applies agentTerminalRowMultiplier to resize rows", () => {
+	it("applies the detached Claude row multiplier to resize rows", () => {
 		const manager = createTestManager();
 		const resizeSpy = vi.fn();
 		const resizeMirrorSpy = vi.fn();
@@ -550,9 +562,10 @@ describe("TerminalSessionManager", () => {
 				session: {
 					resize: resizeSpy,
 				},
+				agentId: "claude",
 				cols: 80,
+				baseRows: 24,
 				rows: 24,
-				agentTerminalRowMultiplier: 5,
 			},
 			terminalStateMirror: {
 				resize: resizeMirrorSpy,
@@ -565,11 +578,97 @@ describe("TerminalSessionManager", () => {
 				entries: Map<string, typeof entry>;
 			}
 		).entries.set("task-resize-mult", entry);
+		manager.store.hydrateFromRecord({
+			"task-resize-mult": createSummary({ taskId: "task-resize-mult", agentId: "claude" }),
+		});
 
 		const resized = manager.resize("task-resize-mult", 100, 30);
 		expect(resized).toBe(true);
-		expect(resizeSpy).toHaveBeenCalledWith(100, 150, undefined, undefined);
-		expect(resizeMirrorSpy).toHaveBeenCalledWith(100, 150);
+		expect(resizeSpy).toHaveBeenCalledWith(100, 30 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER, undefined, undefined);
+		expect(resizeMirrorSpy).toHaveBeenCalledWith(100, 30 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER);
+	});
+
+	it("keeps resize rows unmultiplied while browser output is attached", () => {
+		const manager = createTestManager();
+		const resizeSpy = vi.fn();
+		const resizeMirrorSpy = vi.fn();
+		const entry = {
+			taskId: "task-resize-live",
+			active: {
+				session: {
+					resize: resizeSpy,
+				},
+				agentId: "claude",
+				cols: 80,
+				baseRows: 24,
+				rows: 24,
+			},
+			terminalStateMirror: {
+				resize: resizeMirrorSpy,
+			},
+			listenerIdCounter: 1,
+			listeners: new Map([[1, { onOutput: vi.fn() }]]),
+		};
+		(
+			manager as unknown as {
+				entries: Map<string, typeof entry>;
+			}
+		).entries.set("task-resize-live", entry);
+		manager.store.hydrateFromRecord({
+			"task-resize-live": createSummary({ taskId: "task-resize-live", agentId: "claude" }),
+		});
+
+		const resized = manager.resize("task-resize-live", 100, 30);
+		expect(resized).toBe(true);
+		expect(resizeSpy).toHaveBeenCalledWith(100, 30, undefined, undefined);
+		expect(resizeMirrorSpy).toHaveBeenCalledWith(100, 30);
+	});
+
+	it("expands Claude rows again when the last browser output listener detaches", () => {
+		const manager = createTestManager();
+		const resizeSpy = vi.fn();
+		const resizeMirrorSpy = vi.fn();
+		const entry = {
+			taskId: "task-detach",
+			active: {
+				session: {
+					resize: resizeSpy,
+				},
+				agentId: "claude",
+				cols: 100,
+				baseRows: 30,
+				rows: 30 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER,
+				terminalProtocolFilter: {
+					pendingChunk: null,
+					interceptOscColorQueries: true,
+					suppressDeviceAttributeQueries: false,
+				},
+			},
+			terminalStateMirror: {
+				resize: resizeMirrorSpy,
+				setBatching: vi.fn(),
+			},
+			listenerIdCounter: 1,
+			listeners: new Map(),
+		};
+		(
+			manager as unknown as {
+				entries: Map<string, typeof entry>;
+			}
+		).entries.set("task-detach", entry);
+
+		const detach = manager.attach("task-detach", { onOutput: vi.fn() });
+		expect(resizeSpy).toHaveBeenLastCalledWith(100, 30, undefined, undefined);
+		expect(resizeMirrorSpy).toHaveBeenLastCalledWith(100, 30);
+
+		detach?.();
+		expect(resizeSpy).toHaveBeenLastCalledWith(
+			100,
+			30 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER,
+			undefined,
+			undefined,
+		);
+		expect(resizeMirrorSpy).toHaveBeenLastCalledWith(100, 30 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER);
 	});
 
 	it("returns the latest terminal restore snapshot when available", async () => {

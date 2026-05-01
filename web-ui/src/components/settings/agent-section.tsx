@@ -2,7 +2,6 @@
 import * as RadixCollapsible from "@radix-ui/react-collapsible";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useCallback, useState } from "react";
-import { NumericSettingsInput } from "@/components/ui/settings-controls";
 import type { RuntimeConfigResponse } from "@/runtime/types";
 import type { SettingsSectionProps } from "./settings-section-props";
 
@@ -83,20 +82,6 @@ export function HarnessSection({
 					/>
 				</RadixCollapsible.Content>
 			</RadixCollapsible.Root>
-
-			<NumericSettingsInput
-				id="agent-terminal-row-multiplier"
-				label="Claude row multiplier"
-				value={fields.agentTerminalRowMultiplier}
-				onChange={(v) => setField("agentTerminalRowMultiplier", v)}
-				disabled={disabled}
-				min={1}
-				max={20}
-			/>
-			<p className="text-text-secondary text-[13px] mt-1 mb-0">
-				Makes Claude Code output more content before pausing, so you can scroll back and see more of what it did.
-				Codex ignores this setting. Set to 1 if Claude's UI looks broken. Applies to new Claude sessions only.
-			</p>
 		</>
 	);
 }

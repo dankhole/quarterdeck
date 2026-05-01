@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-05-01 — Claude terminal row multiplier visibility boundary
+
+Claude Code's fullscreen TUI needs the PTY, server-side headless xterm mirror, and browser xterm viewport to agree on row count. The old configurable Claude row multiplier inflated the runtime PTY/mirror even while the browser was attached, so restore and live redraws could target rows that did not exist in the visible viewport and leave the TUI misaligned from the bottom.
+
+The user setting was removed from config/API/settings. Claude now gets a fixed 3x multiplier only before a browser output listener is attached; once a browser terminal is connected, spawn, resize, and first/last output-listener transitions reconcile against the real reported rows. Notable files: `src/terminal/session-lifecycle.ts`, `src/terminal/session-manager.ts`, `src/terminal/session-manager-types.ts`, config schemas, and settings form/UI. Validation: focused runtime/settings tests, root and web typechecks, root and web test suites, web production build, Biome check/lint, the agent-instruction bridge check, and `git diff --check`.
+
 ## 2026-05-01 — Files and Git diff data pipeline split
 
 The Files view data path now has explicit browser-side boundaries for scope policy, last-selected-path persistence, file-tree loading, file-content loading, and mutation orchestration. `useFileBrowserData(...)` remains the compatibility composition hook, but the transport query hooks and pure scope helpers can now be tuned independently without mixing mutable-worktree and read-only ref semantics back into the view.
@@ -58,7 +64,7 @@ The web UI display layer now derives top-bar base-ref copy, detached-worktree la
 
 ## 2026-04-29 — Task-owned agent harness selection
 
-Task creation now owns agent harness choice per task instead of requiring a global Settings change. The selected harness is persisted on `RuntimeBoardCard.agentId`, browser task creation writes it into board state, and fresh task starts prefer the persisted card agent before falling back to the runtime default. Resume still prefers the previous terminal summary agent so existing conversations continue with the same CLI. Settings no longer renders the task-agent picker; it keeps launch tuning such as Claude row multiplier and the worktree context prompt.
+Task creation now owns agent harness choice per task instead of requiring a global Settings change. The selected harness is persisted on `RuntimeBoardCard.agentId`, browser task creation writes it into board state, and fresh task starts prefer the persisted card agent before falling back to the runtime default. Resume still prefers the previous terminal summary agent so existing conversations continue with the same CLI. Settings no longer renders the task-agent picker; it keeps launch tuning such as the worktree context prompt.
 
 Task cards show the effective harness in the lower metadata row and no longer render transient last-tool or agent-message activity there, keeping mixed-agent boards readable without adding another header chip. A refinement pass removed the now-unused task activity formatter after the card stopped displaying last-tool activity, and settings now leads with PATH-based harness detection guidance plus the debug-log shortcut before lower-priority launch tuning. Notable files: `src/core/api/board.ts`, `src/core/api/task-session.ts`, `src/trpc/handlers/start-task-session.ts`, `web-ui/src/components/task/task-create-dialog.tsx`, `web-ui/src/components/task/task-agent-selector.tsx`, and `web-ui/src/components/board/board-card.tsx`. Validation: focused web/runtime tests, `npm run web:typecheck`, `npm run typecheck`, `npm run web:build`, `npm run test:fast`, `git diff --check`, and Biome on touched files.
 

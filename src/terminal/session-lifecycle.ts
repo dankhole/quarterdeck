@@ -21,7 +21,7 @@ import {
 	hasLiveOutputListener,
 	normalizeDimension,
 	type ProcessEntry,
-	resolveAgentTerminalRowMultiplier,
+	resolveEffectiveTerminalRowMultiplier,
 	type StartShellSessionRequest,
 	type StartTaskSessionRequest,
 } from "./session-manager-types";
@@ -80,8 +80,9 @@ export async function spawnTaskSession(
 	entry.pendingSessionStart = true;
 
 	const cols = normalizeDimension(request.cols, 120);
-	const rowMultiplier = resolveAgentTerminalRowMultiplier(request.agentId, request.agentTerminalRowMultiplier ?? 1);
-	const rows = normalizeDimension(request.rows, 40) * rowMultiplier;
+	const baseRows = normalizeDimension(request.rows, 40);
+	const effectiveRowMultiplier = resolveEffectiveTerminalRowMultiplier(request.agentId, hasLiveOutputListener(entry));
+	const rows = baseRows * effectiveRowMultiplier;
 	let terminalStateMirror: TerminalStateMirror;
 	let launch: PreparedAgentLaunch;
 	try {
@@ -201,11 +202,12 @@ export async function spawnTaskSession(
 
 	entry.active = createActiveProcessState({
 		session,
+		agentId: request.agentId,
 		cols,
+		baseRows,
 		rows,
 		willAutoTrust,
 		launch,
-		agentTerminalRowMultiplier: rowMultiplier,
 	});
 	entry.pendingSessionStart = false;
 	entry.terminalStateMirror = terminalStateMirror;
@@ -493,7 +495,14 @@ export async function spawnShellSession(
 		cwd: request.cwd,
 	});
 
-	entry.active = createActiveProcessState({ session, cols, rows, willAutoTrust: false });
+	entry.active = createActiveProcessState({
+		session,
+		agentId: null,
+		cols,
+		baseRows: rows,
+		rows,
+		willAutoTrust: false,
+	});
 	entry.terminalStateMirror = terminalStateMirror;
 	if (!hasLiveOutputListener(entry)) {
 		terminalStateMirror.setBatching(true);

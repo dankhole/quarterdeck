@@ -17,8 +17,10 @@ import type { TerminalStateMirror } from "./terminal-state-mirror";
 
 export interface ActiveProcessState {
 	session: PtySession;
+	agentId: StartTaskSessionRequest["agentId"] | null;
 	workspaceTrustBuffer: string | null;
 	cols: number;
+	baseRows: number;
 	rows: number;
 	terminalProtocolFilter: TerminalProtocolFilterState;
 	onSessionCleanup: (() => Promise<void>) | null;
@@ -28,7 +30,6 @@ export interface ActiveProcessState {
 	workspaceTrustConfirmCount: number;
 	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
 	interruptRecoveryTimer: NodeJS.Timeout | null;
-	agentTerminalRowMultiplier: number;
 }
 
 export interface ProcessEntry {
@@ -65,7 +66,6 @@ export interface StartTaskSessionRequest {
 	projectPath?: string;
 	statuslineEnabled?: boolean;
 	worktreeSystemPromptTemplate?: string;
-	agentTerminalRowMultiplier?: number;
 }
 
 export interface StartShellSessionRequest {
@@ -147,14 +147,24 @@ export function createProcessEntry(taskId: string): ProcessEntry {
 	};
 }
 
-export function resolveAgentTerminalRowMultiplier(
-	agentId: StartTaskSessionRequest["agentId"],
-	configuredValue: number,
+export const DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER = 3;
+
+export function resolveEffectiveTerminalRowMultiplier(
+	agentId: StartTaskSessionRequest["agentId"] | null,
+	hasBrowserOutputListener: boolean,
 ): number {
-	if (agentId !== "claude") {
+	if (hasBrowserOutputListener || agentId !== "claude") {
 		return 1;
 	}
-	return Math.max(1, Math.floor(configuredValue));
+	return DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER;
+}
+
+export function resolveEffectiveTerminalRows(
+	agentId: StartTaskSessionRequest["agentId"] | null,
+	baseRows: number,
+	hasBrowserOutputListener: boolean,
+): number {
+	return Math.max(1, Math.floor(baseRows)) * resolveEffectiveTerminalRowMultiplier(agentId, hasBrowserOutputListener);
 }
 
 /** Check whether any listener has an output handler attached. */
@@ -174,18 +184,21 @@ import { createTerminalProtocolFilterState } from "./terminal-protocol-filter";
 
 export interface CreateActiveProcessStateOptions {
 	session: PtySession;
+	agentId: StartTaskSessionRequest["agentId"] | null;
 	cols: number;
+	baseRows: number;
 	rows: number;
 	willAutoTrust: boolean;
 	launch?: PreparedAgentLaunch;
-	agentTerminalRowMultiplier?: number;
 }
 
 export function createActiveProcessState(opts: CreateActiveProcessStateOptions): ActiveProcessState {
 	return {
 		session: opts.session,
+		agentId: opts.agentId,
 		workspaceTrustBuffer: opts.willAutoTrust ? "" : null,
 		cols: opts.cols,
+		baseRows: opts.baseRows,
 		rows: opts.rows,
 		terminalProtocolFilter: createTerminalProtocolFilterState({
 			interceptOscColorQueries: true,
@@ -198,7 +211,6 @@ export function createActiveProcessState(opts: CreateActiveProcessStateOptions):
 		workspaceTrustConfirmCount: 0,
 		workspaceTrustConfirmTimer: null,
 		interruptRecoveryTimer: null,
-		agentTerminalRowMultiplier: opts.agentTerminalRowMultiplier ?? 1,
 	};
 }
 

@@ -154,7 +154,7 @@ describe("RuntimeSettingsDialog", () => {
 		expect(document.body.textContent).toContain("cheap, fast configured model");
 	});
 
-	it("keeps harness selection out of settings and keeps launch tuning", async () => {
+	it("keeps harness selection out of settings and keeps worktree context tuning", async () => {
 		await act(async () => {
 			root.render(
 				<RuntimeSettingsDialog
@@ -174,8 +174,8 @@ describe("RuntimeSettingsDialog", () => {
 		expect(bodyText).toContain("Choose a harness in the new task dialog");
 		expect(bodyText).toContain("Diagnostics");
 		expect(bodyText).toContain("Cmd+Shift+D");
-		expect(bodyText).toContain("Claude row multiplier");
 		expect(bodyText).toContain("Worktree context prompt");
+		expect(bodyText).not.toContain("Claude row multiplier");
 		expect(bodyText).not.toContain("OpenAI Codex");
 		expect(bodyText).not.toContain("Pi support is experimental");
 		expect(bodyText).not.toContain("Allow agents to access the parent repo");

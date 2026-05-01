@@ -52,7 +52,9 @@ function createEntry(taskId = "task-1"): ProcessEntry {
 	const entry = createProcessEntry(taskId);
 	entry.active = createActiveProcessState({
 		session: createMockSession(),
+		agentId: "claude",
 		cols: 120,
+		baseRows: 40,
 		rows: 40,
 		willAutoTrust: true,
 	});

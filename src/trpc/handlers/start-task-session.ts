@@ -270,7 +270,6 @@ export async function handleStartTaskSession(
 			projectPath: projectScope.projectPath,
 			statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
 			worktreeSystemPromptTemplate: scopedRuntimeConfig.worktreeSystemPromptTemplate,
-			agentTerminalRowMultiplier: scopedRuntimeConfig.agentTerminalRowMultiplier,
 			env: body.baseRef ? { QUARTERDECK_BASE_REF: body.baseRef } : undefined,
 		});
 		if (scopedRuntimeConfig.llmSummaryPolishEnabled) {
