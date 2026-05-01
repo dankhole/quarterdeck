@@ -38,6 +38,13 @@ import {
 } from "../workdir";
 import type { RuntimeTrpcContext } from "./app-router-context";
 import {
+	createUnavailableFileListResponse,
+	EMPTY_FILE_CONTENT_RESPONSE,
+	resolveMutableWorkdirEntryCwd,
+	resolveProjectFileCwd,
+	resolveProjectFileScope,
+} from "./project-api-file-scopes";
+import {
 	isProjectCheckoutCwd,
 	normalizeOptionalTaskScopeInput,
 	normalizeRequiredTaskScopeInput,
@@ -65,18 +72,6 @@ type ChangesOps = Pick<
 	| "renameWorkdirEntry"
 	| "deleteWorkdirEntry"
 >;
-
-async function resolveMutableWorkdirEntryCwd(
-	projectPath: string,
-	input: { taskId: string | null; baseRef?: string },
-): Promise<string> {
-	if (!input.taskId) {
-		return projectPath;
-	}
-	const taskId = input.taskId.trim();
-	if (!taskId) throw new Error("Missing taskId query parameter.");
-	return await resolveWorkingDir(projectPath, { taskId, baseRef: input.baseRef?.trim() ?? "" });
-}
 
 function createFileMutationGitMetadataRefreshEffects(
 	projectScope: { projectId: string; projectPath: string },
@@ -346,14 +341,7 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 
 		searchFiles: async (projectScope, input) => {
 			const query = input.query.trim();
-			let cwd: string | null;
-			if (!input.taskId) {
-				cwd = projectScope.projectPath;
-			} else {
-				const taskId = input.taskId.trim();
-				if (!taskId) throw new Error("Missing taskId query parameter.");
-				cwd = await tryResolveTaskCwd(projectScope.projectPath, taskId, input.baseRef?.trim() ?? "");
-			}
+			const cwd = await resolveProjectFileCwd(projectScope.projectPath, input);
 			if (!cwd) {
 				return { query, files: [] } satisfies RuntimeWorkdirFileSearchResponse;
 			}
@@ -364,14 +352,7 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 		},
 
 		searchText: async (projectScope, input) => {
-			let cwd: string | null;
-			if (!input.taskId) {
-				cwd = projectScope.projectPath;
-			} else {
-				const taskId = input.taskId.trim();
-				if (!taskId) throw new Error("Missing taskId query parameter.");
-				cwd = await tryResolveTaskCwd(projectScope.projectPath, taskId, input.baseRef?.trim() ?? "");
-			}
+			const cwd = await resolveProjectFileCwd(projectScope.projectPath, input);
 			if (!cwd) {
 				return {
 					query: input.query,
@@ -389,69 +370,33 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 		},
 
 		listFiles: async (projectScope, input) => {
-			if (!input.taskId) {
-				if (input.ref) {
-					const files = await listFilesAtRef(projectScope.projectPath, input.ref);
-					return {
-						files,
-						mutable: false,
-						mutationBlockedReason: "Branch/ref browsing is read-only.",
-					} satisfies RuntimeListFilesResponse;
-				}
-				const entries = await listAllWorkdirFileEntries(projectScope.projectPath);
-				return { ...entries, mutable: true } satisfies RuntimeListFilesResponse;
+			const scope = await resolveProjectFileScope(projectScope.projectPath, input);
+			if (!scope.cwd) {
+				return createUnavailableFileListResponse(scope.mutationBlockedReason ?? "Worktree is unavailable.");
 			}
-
-			const taskId = input.taskId.trim();
-			if (!taskId) throw new Error("Missing taskId query parameter.");
-			const taskCwd = await tryResolveTaskCwd(projectScope.projectPath, taskId, input.baseRef?.trim() ?? "");
-			if (!taskCwd) {
-				return {
-					files: [],
-					directories: [],
-					mutable: false,
-					mutationBlockedReason: "Worktree is unavailable.",
-				} satisfies RuntimeListFilesResponse;
-			}
-
-			if (input.ref) {
-				const files = await listFilesAtRef(taskCwd, input.ref);
+			if (scope.ref) {
+				const files = await listFilesAtRef(scope.cwd, scope.ref);
 				return {
 					files,
 					mutable: false,
-					mutationBlockedReason: "Branch/ref browsing is read-only.",
+					mutationBlockedReason: scope.mutationBlockedReason ?? "Branch/ref browsing is read-only.",
 				} satisfies RuntimeListFilesResponse;
 			}
 
-			const entries = await listAllWorkdirFileEntries(taskCwd);
-			return { ...entries, mutable: true } satisfies RuntimeListFilesResponse;
+			const entries = await listAllWorkdirFileEntries(scope.cwd);
+			return { ...entries, mutable: scope.mutable } satisfies RuntimeListFilesResponse;
 		},
 
 		getFileContent: async (projectScope, input) => {
 			const filePath = input.path.trim();
 			if (!filePath) throw new Error("Missing path parameter.");
 
-			const EMPTY_FILE_RESPONSE = {
-				content: "",
-				language: "",
-				binary: false,
-				size: 0,
-				truncated: false,
-			} satisfies RuntimeFileContentResponse;
+			const scope = await resolveProjectFileScope(projectScope.projectPath, input);
+			if (!scope.cwd) return EMPTY_FILE_CONTENT_RESPONSE;
 
-			let cwd: string | null;
-			if (!input.taskId) {
-				cwd = projectScope.projectPath;
-			} else {
-				const taskId = input.taskId.trim();
-				if (!taskId) throw new Error("Missing taskId query parameter.");
-				cwd = await tryResolveTaskCwd(projectScope.projectPath, taskId, input.baseRef?.trim() ?? "");
-			}
-			if (!cwd) return EMPTY_FILE_RESPONSE;
-
-			if (input.ref) {
-				const refContent = await getFileContentAtRef(cwd, input.ref, filePath);
-				if (!refContent) return EMPTY_FILE_RESPONSE;
+			if (scope.ref) {
+				const refContent = await getFileContentAtRef(scope.cwd, scope.ref, filePath);
+				if (!refContent) return EMPTY_FILE_CONTENT_RESPONSE;
 				return {
 					content: refContent.content,
 					language: "",
@@ -461,7 +406,7 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 				} satisfies RuntimeFileContentResponse;
 			}
 
-			return await readWorkdirFile(cwd, filePath);
+			return await readWorkdirFile(scope.cwd, filePath);
 		},
 
 		saveFileContent: async (projectScope, input) => {

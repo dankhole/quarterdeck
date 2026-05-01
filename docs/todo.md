@@ -12,12 +12,6 @@ Tracking note:
 
 These are broader architecture refactor targets confirmed against implementation files and worth keeping visible.
 
-- Rework the Files view file tree/editor data path and Git diff viewer pipeline so scope resolution, tree loading, file-content fetching, diff/content fetching, and caching are easier to optimize without mixing transport and view policy.
-  - Primary files: `src/trpc/project-api-changes.ts`, `web-ui/src/hooks/git/use-file-browser-data.ts`, `web-ui/src/components/git/files-view.tsx`, and `web-ui/src/components/git/git-view.tsx`.
-  - Current smell: file tree state, diff loading, caching, scope identity, and transport timing are intertwined enough that it is not obvious which work should happen server-side, which should be cached, and which should stay view-local.
-  - What good looks like: file tree listing, file-content loading, and diff loading are separable concerns, with mutable-worktree versus fixed-ref browsing semantics modeled explicitly.
-  - Suggested first slice: instrument first-open tree load, file selection, and diff selection, then separate scope resolution from content loading in the frontend hook layer.
-  - Key risk: optimizing one hot path locally without clarifying scope identity and transport boundaries will just move lag to another interaction.
 - Defer or lazy-initialize pooled task-terminal slots after initial app render. The current app entry calls `initPool()` at module load, which constructs four xterm-backed `TerminalSlot` instances and starts pool timers before the user opens a task terminal. Preserve restore/reuse behavior, warmup TTLs, and dedicated shell-terminal separation when moving this work off the startup hot path.
 - Rebuild stalled/unresponsive task detection without PTY-output-driven session-summary writes. The removed watchdog used `lastOutputAt` to avoid false stalled cards during long-running output, but every output chunk updated and fanned out a full runtime session summary; any replacement should use a cheap internal signal or low-frequency health check that does not wake browser notification/project state on idle terminal redraws.
 - Investigate hook-activity fanout after the PTY-output hot path is quiet. Activity-only hooks still mutate `latestHookActivity` / `lastHookAt`, emit full session summaries, trigger runtime stream batches, and can refresh browser notification/project state even when no column/count-changing transition happened. The 2026-05-01 profiling pass confirmed `RuntimeStateTaskSessionEventDelivery` currently delivers every coalesced summary batch to active project sessions, cross-project notifications, and project refresh requests. Prefer batching or classifying delivery/broadcast after immediate server-side hook ingest rather than delaying permission/review/resume-critical hook processing; if hook bursts are still expensive, also explore a tiny per-task ingest queue/backpressure layer that preserves state-changing hooks immediately while coalescing or dropping superseded activity-only hooks.
@@ -42,7 +36,7 @@ The editable Files view uses the newer file tree/editor path, while compare, unc
 - **Files-to-diff interaction**: Compare the newer Files view path with the Git diff viewer path before merging surfaces. Selecting a file in Git diff views now prioritizes that file's diff content over background work; continue profiling remaining selection latency and tune nearby/offscreen prefetch.
 - **Commit from sidebar is slow**: The commit action triggered from the sidebar loads for a while before completing. Profile whether the bottleneck is the git commit itself, pre-commit hooks, diff recomputation after commit, or UI update.
 
-If profiling points to mixed ownership rather than a local hot path, use the Files/editor data-pipeline refactor item above as the broader cleanup context.
+If profiling points to mixed ownership rather than a local hot path, keep fixes aligned with the split Files/editor scope, tree, content, and diff-data boundaries rather than folding policy back into a view component.
 
 ## Editor-lite follow-ups
 

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Chore: split Files and Git diff data pipelines
+
+- Files view loading now separates scope policy, last-selected-file caching, file-tree queries, file-content queries, and mutation orchestration behind narrower hooks.
+- Git diff tabs now route active-tab changes queries and diff-content scheduling through a dedicated diff-data hook with pure helpers for view keys, priority paths, and loading-state policy.
+- Runtime file APIs now share one file-scope resolver for home, task, and read-only ref browsing across tree, content, and search handlers.
+
 ### Chore: tighten CI/CD release hygiene
 
 - CI now runs agent-instruction checks, Biome, runtime typecheck/tests, web UI typecheck, and web UI tests through the reusable test workflow.

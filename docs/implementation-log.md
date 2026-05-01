@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-05-01 — Files and Git diff data pipeline split
+
+The Files view data path now has explicit browser-side boundaries for scope policy, last-selected-path persistence, file-tree loading, file-content loading, and mutation orchestration. `useFileBrowserData(...)` remains the compatibility composition hook, but the transport query hooks and pure scope helpers can now be tuned independently without mixing mutable-worktree and read-only ref semantics back into the view.
+
+Git diff tabs now route active-tab changes queries, compare/last-turn view keys, selected/visible diff priorities, and diff-content scheduling through a dedicated `useGitDiffData(...)` hook plus pure policy helpers. The runtime API mirrors that split with a shared file-scope resolver for home, task, and ref browsing across list/content/search handlers. Notable files: `web-ui/src/hooks/git/file-browser-scope.ts`, `use-file-tree-data.ts`, `use-file-content-data.ts`, `use-git-diff-data.ts`, `src/trpc/project-api-file-scopes.ts`, and `src/trpc/project-api-changes.ts`. Validation: focused web/runtime tests, root and web typechecks, Biome on touched TypeScript files, and `git diff --check`. Commit: `f3fcb0b617ab36e20049bca01cf79286c79811c2`.
+
 ## 2026-05-01 — Project provider ownership split
 
 `ProjectProvider` no longer exposes one broad `ProjectContext` bag. The browser project seam now has separate `ProjectNavigationContext`, `ProjectRuntimeStreamContext`, `ProjectSyncContext`, and `ProjectNotificationContext` contracts, while `ProjectProvider` remains the composition point for `useProjectNavigation`, runtime stream ingress, authoritative project sync, document visibility, and notification projection.

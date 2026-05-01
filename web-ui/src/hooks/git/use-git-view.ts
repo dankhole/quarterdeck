@@ -3,23 +3,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
 import type { DiffLineComment } from "@/components/git/panels/diff-viewer-panel";
+import { arePathListsEqual } from "@/hooks/git/git-diff-data";
 import {
-	deriveActiveFiles,
 	type GitViewTab,
 	getLastSelectedPath,
 	isTaskBaseRefResolved,
 	loadGitViewTab,
 	persistGitViewTab,
-	resolveGitChangesQueryProjectId,
 	setLastSelectedPath,
 } from "@/hooks/git/git-view";
 import { type UseConflictResolutionResult, useConflictResolution } from "@/hooks/git/use-conflict-resolution";
+import { useGitDiffData } from "@/hooks/git/use-git-diff-data";
 import {
 	type GitViewCompareNavigation,
 	type UseGitViewCompareResult,
 	useGitViewCompare,
 } from "@/hooks/git/use-git-view-compare";
-import { useDocumentVisibility } from "@/hooks/notifications/use-document-visibility";
 import { clampBetween } from "@/resize/resize-persistence";
 import {
 	loadResizePreference,
@@ -29,23 +28,15 @@ import {
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitSyncSummary, RuntimeTaskSessionSummary, RuntimeWorkdirFileChange } from "@/runtime/types";
-import { type FileLoadingState, useAllFileDiffContent } from "@/runtime/use-all-file-diff-content";
-import { useRuntimeProjectChanges } from "@/runtime/use-runtime-project-changes";
+import type { FileLoadingState } from "@/runtime/use-all-file-diff-content";
 import { LocalStorageKey } from "@/storage/local-storage-store";
-import { useTaskWorktreeStateVersionValue } from "@/stores/project-metadata-store";
 import type { BoardData, CardSelection } from "@/types";
-
-const POLL_INTERVAL_MS = 1_000;
 
 const GIT_VIEW_FILE_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
 	key: LocalStorageKey.GitViewFileTreeRatio,
 	defaultValue: 0.22,
 	normalize: (value) => clampBetween(value, 0.12, 0.5),
 };
-
-function arePathListsEqual(previous: readonly string[], next: readonly string[]): boolean {
-	return previous.length === next.length && previous.every((path, index) => path === next[index]);
-}
 
 export interface UseGitViewOptions {
 	currentProjectId: string | null;
@@ -85,7 +76,6 @@ export function useGitView({
 	const pendingCompareNavigationRef = useRef(pendingCompareNavigation);
 	pendingCompareNavigationRef.current = pendingCompareNavigation;
 	const { startDrag: startFileTreeResize } = useResizeDrag();
-	const isDocumentVisible = useDocumentVisibility();
 
 	const taskId = selectedCard?.card.id ?? null;
 
@@ -143,46 +133,6 @@ export function useGitView({
 	// --- Data fetching ---
 
 	const baseRef = selectedCard?.card.baseRef ?? null;
-	const baseDerivedProjectId = resolveGitChangesQueryProjectId({
-		currentProjectId,
-		taskId,
-		baseRef,
-		refMode: "base_derived",
-	});
-	const taskWorktreeStateVersion = useTaskWorktreeStateVersionValue(taskId);
-
-	// Uncommitted tab data
-	const isUncommittedActive = activeTab === "uncommitted";
-	const { changes: uncommittedChanges, isRuntimeAvailable: uncommittedAvailable } = useRuntimeProjectChanges(
-		isUncommittedActive ? (taskId ?? null) : null,
-		isUncommittedActive ? baseDerivedProjectId : null,
-		isUncommittedActive ? baseRef : null,
-		"working_copy",
-		taskWorktreeStateVersion,
-		isUncommittedActive && isDocumentVisible ? POLL_INTERVAL_MS : null,
-	);
-
-	// Last Turn tab data
-	const isLastTurnActive = activeTab === "last_turn";
-	const lastTurnViewKey = useMemo(() => {
-		if (!isLastTurnActive || !sessionSummary) return null;
-		return [
-			sessionSummary.state ?? "none",
-			sessionSummary.latestTurnCheckpoint?.commit ?? "none",
-			sessionSummary.previousTurnCheckpoint?.commit ?? "none",
-		].join(":");
-	}, [isLastTurnActive, sessionSummary]);
-
-	const { changes: lastTurnChanges, isRuntimeAvailable: lastTurnAvailable } = useRuntimeProjectChanges(
-		isLastTurnActive ? taskId : null,
-		isLastTurnActive ? baseDerivedProjectId : null,
-		isLastTurnActive ? baseRef : null,
-		"last_turn",
-		taskWorktreeStateVersion,
-		isLastTurnActive && isDocumentVisible ? POLL_INTERVAL_MS : null,
-		lastTurnViewKey,
-		true,
-	);
 
 	// Switch to compare tab when external navigation arrives
 	useEffect(() => {
@@ -213,94 +163,29 @@ export function useGitView({
 		onNavigationConsumed: onCompareNavigationConsumed,
 	});
 
-	const hasCompareRefs = !!compare.sourceRef && !!compare.targetRef;
-	const compareProjectId = hasCompareRefs
-		? resolveGitChangesQueryProjectId({
-				currentProjectId,
-				taskId,
-				baseRef,
-				refMode: "explicit_refs",
-			})
-		: null;
-	const compareIncludeUncommitted = compare.includeUncommitted;
-	const compareThreeDot = compare.threeDotDiff;
-	const compareDiffMode = compareThreeDot ? ("three_dot" as const) : ("two_dot" as const);
-	const comparePollInterval =
-		isCompareActive && compareIncludeUncommitted && isDocumentVisible ? POLL_INTERVAL_MS : null;
-	const { changes: compareChanges, isRuntimeAvailable: compareAvailable } = useRuntimeProjectChanges(
-		isCompareActive && hasCompareRefs ? (taskId ?? null) : null,
-		isCompareActive && hasCompareRefs ? compareProjectId : null,
-		isCompareActive ? baseRef : null,
-		"working_copy",
-		taskWorktreeStateVersion,
-		comparePollInterval,
-		isCompareActive
-			? `compare:${compare.sourceRef}:${compare.targetRef}:${compareIncludeUncommitted ? "wt" : "refs"}:${compareDiffMode}`
-			: null,
-		true,
-		compare.targetRef,
-		compareIncludeUncommitted ? undefined : compare.sourceRef,
-		compareDiffMode,
-	);
-
-	// Derive active file list for file tree
-	const uncommittedFiles = uncommittedChanges?.files ?? null;
-	const lastTurnFiles = lastTurnChanges?.files ?? null;
-	const compareFiles = compareChanges?.files ?? null;
-	const activeFiles: RuntimeWorkdirFileChange[] | null = useMemo(
-		() => deriveActiveFiles(activeTab, uncommittedFiles, lastTurnFiles, compareFiles),
-		[activeTab, uncommittedFiles, lastTurnFiles, compareFiles],
-	);
-	const activeFilesRevision =
-		activeTab === "uncommitted"
-			? (uncommittedChanges?.generatedAt ?? null)
-			: activeTab === "last_turn"
-				? (lastTurnChanges?.generatedAt ?? null)
-				: (compareChanges?.generatedAt ?? null);
-
-	const diffPriorityPaths = useMemo(() => {
-		const paths: string[] = [];
-		const seen = new Set<string>();
-		const addPath = (path: string | null | undefined) => {
-			if (!path || seen.has(path)) {
-				return;
-			}
-			seen.add(path);
-			paths.push(path);
-		};
-		addPath(selectedPath);
-		for (const path of visibleDiffPaths) {
-			addPath(path);
-		}
-		return paths;
-	}, [selectedPath, visibleDiffPaths]);
-
 	const handleVisibleDiffPathsChange = useCallback((paths: string[]) => {
 		setVisibleDiffPaths((previous) => (arePathListsEqual(previous, paths) ? previous : paths));
 	}, []);
 
-	// Diff content loading: selected/visible paths are foreground; remaining files are capped background prefetch.
-	const { enrichedFiles, fileLoadingState } = useAllFileDiffContent({
-		projectId: activeTab === "compare" ? compareProjectId : baseDerivedProjectId,
+	const {
+		hasCompareRefs,
+		activeFiles,
+		enrichedFiles,
+		fileLoadingState,
+		isRuntimeAvailable,
+		isChangesPending,
+		hasNoChanges,
+		uncommittedChanges,
+	} = useGitDiffData({
+		activeTab,
+		currentProjectId,
 		taskId,
 		baseRef,
-		mode: activeTab === "last_turn" ? "last_turn" : "working_copy",
-		fromRef: activeTab === "compare" ? compare.targetRef : undefined,
-		toRef: activeTab === "compare" && !compareIncludeUncommitted ? compare.sourceRef : undefined,
-		diffMode: activeTab === "compare" ? compareDiffMode : undefined,
-		files: activeFiles,
-		filesRevision: activeFilesRevision,
-		priorityPaths: diffPriorityPaths,
+		sessionSummary,
+		selectedPath,
+		visibleDiffPaths,
+		compare,
 	});
-
-	const isRuntimeAvailable =
-		activeTab === "uncommitted"
-			? uncommittedAvailable
-			: activeTab === "last_turn"
-				? lastTurnAvailable
-				: compareAvailable;
-	const isChangesPending = isRuntimeAvailable && activeFiles === null && !(activeTab === "compare" && !hasCompareRefs);
-	const hasNoChanges = isRuntimeAvailable && activeFiles !== null && activeFiles.length === 0;
 
 	// Auto-select file when file list changes
 	const availablePaths = useMemo(() => {
