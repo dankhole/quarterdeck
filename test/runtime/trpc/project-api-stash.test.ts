@@ -150,6 +150,7 @@ function createProjectDeps(overrides: Record<string, unknown> = {}) {
 		},
 		broadcaster: {
 			broadcastRuntimeProjectStateUpdated: vi.fn(),
+			broadcastRuntimeProjectNotificationsUpdated: vi.fn(),
 			broadcastRuntimeProjectsUpdated: vi.fn(),
 			broadcastTaskTitleUpdated: vi.fn(),
 			setFocusedTask: vi.fn(),

@@ -13,6 +13,7 @@ describe("runtime mutation effects", () => {
 	it("delivers board-save effects in order", async () => {
 		const broadcaster = {
 			broadcastRuntimeProjectStateUpdated: vi.fn(async () => undefined),
+			broadcastRuntimeProjectNotificationsUpdated: vi.fn(async () => undefined),
 			broadcastRuntimeProjectsUpdated: vi.fn(async () => undefined),
 		};
 
@@ -25,8 +26,12 @@ describe("runtime mutation effects", () => {
 		);
 
 		expect(broadcaster.broadcastRuntimeProjectStateUpdated).toHaveBeenCalledWith("project-1", "/tmp/repo");
+		expect(broadcaster.broadcastRuntimeProjectNotificationsUpdated).toHaveBeenCalledWith("project-1");
 		expect(broadcaster.broadcastRuntimeProjectsUpdated).toHaveBeenCalledWith("project-1");
 		expect(broadcaster.broadcastRuntimeProjectStateUpdated.mock.invocationCallOrder[0]).toBeLessThan(
+			broadcaster.broadcastRuntimeProjectNotificationsUpdated.mock.invocationCallOrder[0],
+		);
+		expect(broadcaster.broadcastRuntimeProjectNotificationsUpdated.mock.invocationCallOrder[0]).toBeLessThan(
 			broadcaster.broadcastRuntimeProjectsUpdated.mock.invocationCallOrder[0],
 		);
 	});

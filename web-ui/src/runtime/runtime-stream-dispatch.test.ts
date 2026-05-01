@@ -100,4 +100,25 @@ describe("resolveStreamMessage", () => {
 			},
 		]);
 	});
+
+	it("preserves authoritative task notification replacement markers", () => {
+		const result = resolveStreamMessage(
+			{
+				type: "task_notification",
+				projectId: "project-b",
+				summaries: [],
+				replace: true,
+			},
+			{ activeProjectId: "project-a" },
+		);
+
+		expect(result.actions).toEqual([
+			{
+				type: "task_notification",
+				projectId: "project-b",
+				summaries: [],
+				replace: true,
+			},
+		]);
+	});
 });

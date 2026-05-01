@@ -1,3 +1,4 @@
+import { pruneOrphanSessionsForNotification } from "@runtime-task-state";
 import type { RuntimeProjectStateResponse, RuntimeProjectSummary, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { mergeTaskSessionSummaryMap } from "@/utils/session-summary-utils";
 
@@ -18,21 +19,8 @@ function mergeProjectSessions(
 	return mergeTaskSessionSummaryMap(currentSessions, summaries);
 }
 
-function collectProjectStateBoardTaskIds(projectState: RuntimeProjectStateResponse): Set<string> {
-	const taskIds = new Set<string>();
-	for (const column of projectState.board.columns) {
-		for (const card of column.cards) {
-			taskIds.add(card.id);
-		}
-	}
-	return taskIds;
-}
-
-function selectBoardLinkedProjectStateSummaries(
-	projectState: RuntimeProjectStateResponse,
-): RuntimeTaskSessionSummary[] {
-	const boardTaskIds = collectProjectStateBoardTaskIds(projectState);
-	return Object.values(projectState.sessions ?? {}).filter((summary) => boardTaskIds.has(summary.taskId));
+function selectActionableProjectStateSummaries(projectState: RuntimeProjectStateResponse): RuntimeTaskSessionSummary[] {
+	return Object.values(pruneOrphanSessionsForNotification(projectState.sessions ?? {}, projectState.board));
 }
 
 function replaceProjectSessions(
@@ -131,7 +119,7 @@ export function replaceRuntimeProjectNotificationStateMapFromProjectState(
 	return replaceRuntimeProjectNotificationStateMap(
 		currentProjects,
 		projectId,
-		selectBoardLinkedProjectStateSummaries(projectState),
+		selectActionableProjectStateSummaries(projectState),
 	);
 }
 

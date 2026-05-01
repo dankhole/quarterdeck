@@ -19,6 +19,7 @@ import {
 	getRecentLogEntries,
 	onLogEntry,
 	pruneOrphanSessionsForNotification,
+	pruneOrphanSessionsForNotificationDelta,
 	toDisposable,
 } from "../core";
 import { loadProjectBoardById } from "../state";
@@ -202,6 +203,14 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		} catch {
 			// Ignore transient state read failures; next update will resync.
 		}
+	};
+
+	broadcastRuntimeProjectNotificationsUpdated = async (projectId: string): Promise<void> => {
+		if (!this.clients.hasClients) {
+			return;
+		}
+		const summaries = await this.collectNotificationSummariesForProject(projectId);
+		this.clients.broadcastToAll(buildTaskNotificationMessage(projectId, summaries, { replace: true }));
 	};
 
 	broadcastRuntimeProjectsUpdated = async (preferredCurrentProjectId: string | null): Promise<void> => {
@@ -459,7 +468,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		try {
 			const board = await loadProjectBoardById(projectId);
 			const summaryMap = Object.fromEntries(summaries.map((summary) => [summary.taskId, summary]));
-			const pruned = pruneOrphanSessionsForNotification(summaryMap, board);
+			const pruned = pruneOrphanSessionsForNotificationDelta(summaryMap, board);
 			const prunedSummaries = Object.values(pruned);
 			const removedTaskIds = summaries.map((summary) => summary.taskId).filter((taskId) => !(taskId in pruned));
 			if (prunedSummaries.length === 0 && removedTaskIds.length === 0) {
@@ -473,6 +482,23 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		}
 	}
 
+	private async collectNotificationSummariesForProject(projectId: string): Promise<RuntimeTaskSessionSummary[]> {
+		const project = this.deps.projectRegistry
+			.listManagedProjects()
+			.find((candidate) => candidate.projectId === projectId);
+		const summaries = project?.terminalManager.store.listSummaries() ?? [];
+		try {
+			const board = await loadProjectBoardById(projectId);
+			const summaryMap = Object.fromEntries(summaries.map((summary) => [summary.taskId, summary]));
+			return Object.values(pruneOrphanSessionsForNotification(summaryMap, board));
+		} catch {
+			// Board reads should normally succeed immediately after board save. If
+			// they do not, replace with the live store view rather than leaving stale
+			// browser notification entries that no longer exist server-side.
+			return summaries;
+		}
+	}
+
 	private async collectNotificationSummariesByProject(): Promise<Record<string, RuntimeTaskSessionSummary[]>> {
 		const managedProjects = this.deps.projectRegistry.listManagedProjects();
 		const projectEntries = await Promise.all(
@@ -481,9 +507,8 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				if (summaries.length === 0) {
 					return null;
 				}
-				// Filter out summaries whose cards are no longer on the board.
-				// Without this, the connect-time notification snapshot grows in
-				// proportion to every task ever run in the project.
+				// Keep connect-time notification snapshots actionable. Live deltas
+				// use a laxer filter so they can survive board-save debounce races.
 				try {
 					const board = await loadProjectBoardById(project.projectId);
 					const summaryMap = Object.fromEntries(summaries.map((summary) => [summary.taskId, summary]));

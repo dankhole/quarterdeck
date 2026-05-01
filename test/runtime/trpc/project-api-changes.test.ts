@@ -173,6 +173,7 @@ function createProjectDeps() {
 		},
 		broadcaster: {
 			broadcastRuntimeProjectStateUpdated: vi.fn(),
+			broadcastRuntimeProjectNotificationsUpdated: vi.fn(),
 			broadcastRuntimeProjectsUpdated: vi.fn(),
 			broadcastTaskTitleUpdated: vi.fn(),
 			setFocusedTask: vi.fn(),
@@ -292,6 +293,7 @@ describe("createProjectApi loadChanges", () => {
 			},
 			broadcaster: {
 				broadcastRuntimeProjectStateUpdated: vi.fn(),
+				broadcastRuntimeProjectNotificationsUpdated: vi.fn(),
 				broadcastRuntimeProjectsUpdated: vi.fn(),
 				broadcastTaskTitleUpdated: vi.fn(),
 				setFocusedTask: vi.fn(),
@@ -352,6 +354,7 @@ describe("createProjectApi loadChanges", () => {
 			},
 			broadcaster: {
 				broadcastRuntimeProjectStateUpdated: vi.fn(),
+				broadcastRuntimeProjectNotificationsUpdated: vi.fn(),
 				broadcastRuntimeProjectsUpdated: vi.fn(),
 				broadcastTaskTitleUpdated: vi.fn(),
 				setFocusedTask: vi.fn(),
@@ -397,6 +400,7 @@ describe("createProjectApi loadChanges", () => {
 			},
 			broadcaster: {
 				broadcastRuntimeProjectStateUpdated: vi.fn(),
+				broadcastRuntimeProjectNotificationsUpdated: vi.fn(),
 				broadcastRuntimeProjectsUpdated: vi.fn(),
 				broadcastTaskTitleUpdated: vi.fn(),
 				setFocusedTask: vi.fn(),
@@ -432,6 +436,7 @@ describe("createProjectApi loadChanges", () => {
 			},
 			broadcaster: {
 				broadcastRuntimeProjectStateUpdated: vi.fn(),
+				broadcastRuntimeProjectNotificationsUpdated: vi.fn(),
 				broadcastRuntimeProjectsUpdated: vi.fn(),
 				broadcastTaskTitleUpdated: vi.fn(),
 				setFocusedTask: vi.fn(),
@@ -463,6 +468,7 @@ describe("createProjectApi loadChanges", () => {
 			},
 			broadcaster: {
 				broadcastRuntimeProjectStateUpdated: vi.fn(),
+				broadcastRuntimeProjectNotificationsUpdated: vi.fn(),
 				broadcastRuntimeProjectsUpdated: vi.fn(),
 				broadcastTaskTitleUpdated: vi.fn(),
 				setFocusedTask: vi.fn(),
@@ -500,6 +506,7 @@ describe("createProjectApi loadChanges", () => {
 			},
 			broadcaster: {
 				broadcastRuntimeProjectStateUpdated: vi.fn(),
+				broadcastRuntimeProjectNotificationsUpdated: vi.fn(),
 				broadcastRuntimeProjectsUpdated: vi.fn(),
 				broadcastTaskTitleUpdated: vi.fn(),
 				setFocusedTask: vi.fn(),

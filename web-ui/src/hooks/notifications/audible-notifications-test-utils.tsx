@@ -25,6 +25,7 @@ export interface HookProps extends TestAudibleNotificationConfig {
 	notificationSessions?: Record<string, RuntimeTaskSessionSummary>;
 	notificationProjectIds?: Record<string, string>;
 	currentProjectId: string | null;
+	suppressedTaskIds?: ReadonlySet<string>;
 }
 
 type HookPropsOverrides = Omit<
@@ -72,6 +73,7 @@ export function HookHarness({ onRender, ...props }: HookProps & { onRender?: () 
 		audibleNotificationsOnlyWhenHidden: props.audibleNotificationsOnlyWhenHidden,
 		audibleNotificationSuppressCurrentProject: props.audibleNotificationSuppressCurrentProject,
 		currentProjectId: props.currentProjectId,
+		suppressedTaskIds: props.suppressedTaskIds,
 	});
 	useEffect(() => {
 		onRender?.();

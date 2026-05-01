@@ -205,6 +205,52 @@ describe("reduceSessionTransition", () => {
 		});
 	});
 
+	describe("user.stop", () => {
+		it("marks running sessions as interrupted review and clears hook activity", () => {
+			const summary = createSummary({
+				state: "running",
+				latestHookActivity: {
+					activityText: "Waiting for approval",
+					toolName: null,
+					toolInputSummary: null,
+					finalMessage: null,
+					hookEventName: "PermissionRequest",
+					notificationType: "permission.asked",
+					source: "claude",
+					conversationSummaryText: null,
+				},
+			});
+			const result = reduceSessionTransition(summary, { type: "user.stop" });
+
+			expect(result.changed).toBe(true);
+			expect(result.patch).toEqual({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				latestHookActivity: null,
+				stalledSince: null,
+			});
+			expect(result.patch.pid).toBeUndefined();
+			expect(result.clearAttentionBuffer).toBe(true);
+		});
+
+		it("preserves completed awaiting review sessions", () => {
+			const summary = createSummary({ state: "awaiting_review", reviewReason: "hook" });
+			const result = reduceSessionTransition(summary, { type: "user.stop" });
+
+			expect(result.changed).toBe(false);
+			expect(result.patch).toEqual({});
+		});
+
+		it("marks awaiting input review sessions as interrupted review", () => {
+			const summary = createSummary({ state: "awaiting_review", reviewReason: "attention" });
+			const result = reduceSessionTransition(summary, { type: "user.stop" });
+
+			expect(result.changed).toBe(true);
+			expect(result.patch.state).toBe("awaiting_review");
+			expect(result.patch.reviewReason).toBe("interrupted");
+		});
+	});
+
 	describe("hook.to_in_progress from legacy stalled review", () => {
 		it("transitions from awaiting_review (reason 'stalled') to running", () => {
 			const summary = createSummary({ state: "awaiting_review", reviewReason: "stalled", stalledSince: Date.now() });
@@ -277,6 +323,28 @@ describe("reduceSessionTransition", () => {
 			expect(result.changed).toBe(true);
 			// Process dying after the agent already handed off is cleanup noise —
 			// the review reason should stay as "hook", not flip to "exit".
+			expect(result.patch.state).toBeUndefined();
+			expect(result.patch.reviewReason).toBeUndefined();
+			expect(result.patch.pid).toBeNull();
+			expect(result.patch.exitCode).toBe(0);
+		});
+
+		it("preserves interrupted state after an explicit stop", () => {
+			const summary = createSummary({ state: "interrupted", reviewReason: "interrupted", pid: null });
+			const result = reduceSessionTransition(summary, { type: "process.exit", exitCode: 0, interrupted: false });
+
+			expect(result.changed).toBe(true);
+			expect(result.patch.state).toBeUndefined();
+			expect(result.patch.reviewReason).toBeUndefined();
+			expect(result.patch.pid).toBeNull();
+			expect(result.patch.exitCode).toBe(0);
+		});
+
+		it("preserves interrupted review after an explicit stop", () => {
+			const summary = createSummary({ state: "awaiting_review", reviewReason: "interrupted", pid: 1234 });
+			const result = reduceSessionTransition(summary, { type: "process.exit", exitCode: 0, interrupted: true });
+
+			expect(result.changed).toBe(true);
 			expect(result.patch.state).toBeUndefined();
 			expect(result.patch.reviewReason).toBeUndefined();
 			expect(result.patch.pid).toBeNull();

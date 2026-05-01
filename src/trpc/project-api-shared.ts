@@ -23,6 +23,7 @@ export interface CreateProjectApiDependencies {
 	broadcaster: Pick<
 		IRuntimeBroadcaster,
 		| "broadcastRuntimeProjectStateUpdated"
+		| "broadcastRuntimeProjectNotificationsUpdated"
 		| "broadcastRuntimeProjectsUpdated"
 		| "broadcastTaskTitleUpdated"
 		| "setFocusedTask"

@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-05-01 — Actionable task notification ownership
+
+Project/board needs-input indicators now consume an actionable notification projection instead of raw retained session summaries. Authoritative notification snapshots/replacements keep only in-progress/review cards, live notification deltas stay lax enough to survive the browser board-save debounce, and explicit task stops enter an interrupted review path that clears permission hook activity before PTY exit cleanup can replay review state.
+
+The key invariant is that session summaries may remain for terminal restore/history, but project-level badges and sounds must represent tasks the user can act on from active board columns. Notable files: `src/core/task-board-mutations.ts`, `src/server/runtime-state-hub.ts`, `web-ui/src/runtime/runtime-state-stream-store.ts`, `web-ui/src/runtime/runtime-notification-projects.ts`, and `src/terminal/session-state-machine.ts`. Validation: focused runtime/web tests, root typecheck, Biome on touched files, and `git diff --check`. Commit: pending.
+
 ## 2026-05-01 — Claude terminal row multiplier visibility boundary
 
 Claude Code's fullscreen TUI needs the PTY, server-side headless xterm mirror, and browser xterm viewport to agree on row count. The old configurable Claude row multiplier inflated the runtime PTY/mirror even while the browser was attached, so restore and live redraws could target rows that did not exist in the visible viewport and leave the TUI misaligned from the bottom.

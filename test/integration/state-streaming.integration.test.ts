@@ -204,7 +204,7 @@ describe.sequential("state streaming integration", () => {
 				type: "mutation",
 				projectId: projectBId,
 				payload: {
-					board: createBoard("Project B notification task"),
+					board: createReviewBoard(startedTaskId, "Project B notification task"),
 					expectedRevision: projectBState.payload.revision,
 				},
 			});

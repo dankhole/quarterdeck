@@ -87,6 +87,7 @@ const streamMessageHandlers: {
 			projectId: msg.projectId,
 			summaries: msg.summaries,
 			...(msg.removedTaskIds?.length ? { removedTaskIds: msg.removedTaskIds } : undefined),
+			...(msg.replace ? { replace: true } : undefined),
 		};
 		return createDispatchResult([action], state.activeProjectId);
 	},

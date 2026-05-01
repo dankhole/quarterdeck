@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { findTrashTaskIds } from "@/hooks/board/trash-workflow";
 import {
 	useAudibleNotifications,
 	useFocusedTaskNotification,
@@ -49,10 +50,7 @@ export function useAppProjectNotificationEffects({
 		projectPath,
 	});
 
-	const trashTaskIdSet = useMemo(() => {
-		const trashColumn = board.columns.find((column) => column.id === "trash");
-		return trashColumn ? new Set(trashColumn.cards.map((card) => card.id)) : new Set<string>();
-	}, [board.columns]);
+	const trashTaskIdSet = useMemo(() => new Set(findTrashTaskIds(board)), [board]);
 
 	useAudibleNotifications({
 		notificationProjects,

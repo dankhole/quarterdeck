@@ -36,7 +36,7 @@ function createBoardWithTasks(taskIds: readonly string[]): BoardData {
 	return {
 		...board,
 		columns: board.columns.map((column) =>
-			column.id === "backlog"
+			column.id === "in_progress"
 				? {
 						...column,
 						cards: taskIds.map((taskId) => ({
@@ -306,7 +306,7 @@ describe("runtimeStateStreamReducer", () => {
 		expect(nextState.notificationMemory.projects["project-b"]?.sessions["stale-task"]).toBeUndefined();
 	});
 
-	it("replaces active project notifications from board-linked project state sessions", () => {
+	it("replaces active project notifications from actionable project state sessions", () => {
 		const withStaleNotification = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
 			type: "task_notification",
 			projectId: "project-a",
@@ -342,6 +342,33 @@ describe("runtimeStateStreamReducer", () => {
 		});
 
 		expect(nextState.notificationMemory.projects["project-a"]).toBeUndefined();
+	});
+
+	it("replaces notification buckets from authoritative notification deltas", () => {
+		const withNotification = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
+			type: "task_notification",
+			projectId: "project-a",
+			summaries: [createSessionSummary("stale-task", 100)],
+		});
+
+		const replaced = runtimeStateStreamReducer(withNotification, {
+			type: "task_notification",
+			projectId: "project-a",
+			summaries: [createSessionSummary("live-task", 200)],
+			replace: true,
+		});
+
+		expect(replaced.notificationMemory.projects["project-a"]?.sessions["live-task"]?.updatedAt).toBe(200);
+		expect(replaced.notificationMemory.projects["project-a"]?.sessions["stale-task"]).toBeUndefined();
+
+		const cleared = runtimeStateStreamReducer(replaced, {
+			type: "task_notification",
+			projectId: "project-a",
+			summaries: [],
+			replace: true,
+		});
+
+		expect(cleared.notificationMemory.projects["project-a"]).toBeUndefined();
 	});
 
 	it("prunes notification state for removed projects on projects_updated", () => {

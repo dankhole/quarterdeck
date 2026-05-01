@@ -73,6 +73,20 @@ function createInterruptedShellSession(taskId: string): RuntimeTaskSessionSummar
 	});
 }
 
+function createExplicitlyStoppedSession(taskId: string): RuntimeTaskSessionSummary {
+	return createTestTaskSessionSummary({
+		taskId,
+		state: "awaiting_review",
+		agentId: "codex",
+		sessionLaunchPath: `/tmp/${taskId}`,
+		pid: null,
+		startedAt: Date.now() - 1_000,
+		updatedAt: Date.now(),
+		lastOutputAt: Date.now(),
+		reviewReason: "interrupted",
+	});
+}
+
 describe.sequential("shutdown coordinator integration", () => {
 	it("preserves cards in their columns and marks sessions interrupted on shutdown", async () => {
 		await withTemporaryHome(async () => {
@@ -89,11 +103,12 @@ describe.sequential("shutdown coordinator integration", () => {
 				const managedSaved = await saveProjectState(managedProjectPath, {
 					board: createBoard({
 						inProgress: ["managed-running", "managed-missing-session"],
-						review: ["managed-idle"],
+						review: ["managed-idle", "managed-explicit-stopped"],
 					}),
 					sessions: {
 						"managed-running": createSession("managed-running", "running"),
 						"managed-idle": createSession("managed-idle", "idle"),
+						"managed-explicit-stopped": createExplicitlyStoppedSession("managed-explicit-stopped"),
 					},
 					expectedRevision: managedInitial.revision,
 				});
@@ -114,6 +129,7 @@ describe.sequential("shutdown coordinator integration", () => {
 				const interruptedManagedRunning = createSession("managed-running", "interrupted");
 				const interruptedHomeShell = createInterruptedShellSession("__home_terminal__");
 				const interruptedDetailShell = createInterruptedShellSession("__detail_terminal__:managed-running");
+				const explicitlyStoppedManaged = createExplicitlyStoppedSession("managed-explicit-stopped");
 				const managedTerminalManager = {
 					stopReconciliation: () => {},
 					markInterruptedAndStopAll: () => [
@@ -135,6 +151,9 @@ describe.sequential("shutdown coordinator integration", () => {
 							}
 							if (taskId === "managed-idle") {
 								return createSession("managed-idle", "idle");
+							}
+							if (taskId === "managed-explicit-stopped") {
+								return explicitlyStoppedManaged;
 							}
 							return null;
 						},
@@ -168,13 +187,16 @@ describe.sequential("shutdown coordinator integration", () => {
 				expect(managedInProgress.map((card) => card.id).sort()).toEqual(
 					["managed-missing-session", "managed-running"].sort(),
 				);
-				expect(managedReview.map((card) => card.id)).toEqual(["managed-idle"]);
+				expect(managedReview.map((card) => card.id)).toEqual(["managed-idle", "managed-explicit-stopped"]);
 				expect(managedTrash).toEqual([]);
 
 				// Running sessions are marked interrupted on shutdown.
 				expect(managedAfter.sessions["managed-running"]?.state).toBe("interrupted");
 				// Idle sessions are not actively working — left as-is.
 				expect(managedAfter.sessions["managed-idle"]?.state).toBe("idle");
+				// Explicitly stopped review sessions stay non-resumable review records.
+				expect(managedAfter.sessions["managed-explicit-stopped"]?.state).toBe("awaiting_review");
+				expect(managedAfter.sessions["managed-explicit-stopped"]?.reviewReason).toBe("interrupted");
 				// Tasks without a pre-existing session record are unchanged.
 				expect(managedAfter.sessions["managed-missing-session"]).toBeUndefined();
 				// Dedicated shell summaries are runtime-only and do not survive restart.

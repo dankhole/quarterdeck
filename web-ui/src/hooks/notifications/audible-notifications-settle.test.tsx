@@ -101,6 +101,124 @@ describe("useAudibleNotifications — settle window & timing", () => {
 		expect(playMock).toHaveBeenCalledTimes(1);
 	});
 
+	it("keeps the higher-priority queued sound if later stopped data downgrades before flush", async () => {
+		const props = defaultProps();
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({
+							taskId: "task-1",
+							state: "awaiting_review",
+							reviewReason: "hook",
+							latestHookActivity: {
+								hookEventName: "PermissionRequest",
+								notificationType: "permission.asked",
+								activityText: "waiting for approval",
+								toolName: null,
+								toolInputSummary: null,
+								finalMessage: null,
+								source: null,
+								conversationSummaryText: null,
+							},
+						}),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({
+							taskId: "task-1",
+							state: "awaiting_review",
+							reviewReason: "hook",
+							latestHookActivity: {
+								hookEventName: "SomeHook",
+								notificationType: null,
+								activityText: null,
+								toolName: null,
+								toolInputSummary: null,
+								finalMessage: null,
+								source: null,
+								conversationSummaryText: null,
+							},
+						}),
+					}}
+				/>,
+			);
+		});
+
+		harness.flushSettleWindow();
+		expect(playMock).toHaveBeenCalledWith("permission", 0.7);
+		expect(playMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("cancels pending sound immediately when task is locally suppressed", async () => {
+		const props = defaultProps();
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({
+							taskId: "task-1",
+							state: "awaiting_review",
+							reviewReason: "hook",
+						}),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					suppressedTaskIds={new Set(["task-1"])}
+					notificationSessions={{
+						"task-1": createMockSession({
+							taskId: "task-1",
+							state: "awaiting_review",
+							reviewReason: "hook",
+						}),
+					}}
+				/>,
+			);
+		});
+
+		harness.flushSettleWindow();
+		expect(playMock).not.toHaveBeenCalled();
+	});
+
 	it("cancels pending sound if task resumes during settle window", async () => {
 		const props = defaultProps();
 
@@ -146,6 +264,65 @@ describe("useAudibleNotifications — settle window & timing", () => {
 					{...props}
 					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
+					}}
+				/>,
+			);
+		});
+
+		harness.flushSettleWindow();
+		expect(playMock).not.toHaveBeenCalled();
+	});
+
+	it("cancels pending sound if task is explicitly stopped during settle window", async () => {
+		const props = defaultProps();
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({
+							taskId: "task-1",
+							state: "awaiting_review",
+							reviewReason: "hook",
+							latestHookActivity: {
+								hookEventName: "PermissionRequest",
+								notificationType: "permission.asked",
+								activityText: "waiting for approval",
+								toolName: null,
+								toolInputSummary: null,
+								finalMessage: null,
+								source: null,
+								conversationSummaryText: null,
+							},
+						}),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({
+							taskId: "task-1",
+							state: "awaiting_review",
+							reviewReason: "interrupted",
+							latestHookActivity: null,
+						}),
 					}}
 				/>,
 			);

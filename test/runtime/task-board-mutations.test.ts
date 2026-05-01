@@ -8,6 +8,8 @@ import {
 	deleteTasksFromBoard,
 	moveTaskToColumn,
 	pruneOrphanSessionsForBroadcast,
+	pruneOrphanSessionsForNotification,
+	pruneOrphanSessionsForNotificationDelta,
 	pruneOrphanSessionsForPersist,
 	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
@@ -433,6 +435,107 @@ describe("pruneOrphanSessionsForBroadcast", () => {
 		};
 
 		const pruned = pruneOrphanSessionsForBroadcast(sessions, board);
+
+		expect(pruned).toEqual({});
+	});
+});
+
+describe("pruneOrphanSessionsForNotification", () => {
+	function boardWithCard(columnId: RuntimeBoardData["columns"][number]["id"], cardId: string): RuntimeBoardData {
+		return addTaskToColumn(createBoard(), columnId, { prompt: cardId, baseRef: "main" }, () => `${cardId}1234`).board;
+	}
+
+	it("keeps summaries for tasks in active work columns", () => {
+		const board = boardWithCard("in_progress", "aaaaa");
+		const taskId = board.columns.find((column) => column.id === "in_progress")?.cards[0]?.id ?? "";
+		const sessions = {
+			[taskId]: createTestTaskSessionSummary({
+				taskId,
+				state: "awaiting_review",
+				reviewReason: "hook",
+			}),
+		};
+
+		const pruned = pruneOrphanSessionsForNotification(sessions, board);
+
+		expect(Object.keys(pruned)).toEqual([taskId]);
+	});
+
+	it("drops summaries for backlog and trash cards", () => {
+		const backlogBoard = boardWithCard("backlog", "aaaaa");
+		const backlogTaskId = backlogBoard.columns.find((column) => column.id === "backlog")?.cards[0]?.id ?? "";
+		const trashBoard = boardWithCard("trash", "bbbbb");
+		const trashTaskId = trashBoard.columns.find((column) => column.id === "trash")?.cards[0]?.id ?? "";
+
+		expect(
+			pruneOrphanSessionsForNotification(
+				{
+					[backlogTaskId]: createTestTaskSessionSummary({ taskId: backlogTaskId }),
+				},
+				backlogBoard,
+			),
+		).toEqual({});
+		expect(
+			pruneOrphanSessionsForNotification(
+				{
+					[trashTaskId]: createTestTaskSessionSummary({ taskId: trashTaskId }),
+				},
+				trashBoard,
+			),
+		).toEqual({});
+	});
+});
+
+describe("pruneOrphanSessionsForNotificationDelta", () => {
+	function boardWithCard(columnId: RuntimeBoardData["columns"][number]["id"], cardId: string): RuntimeBoardData {
+		return addTaskToColumn(createBoard(), columnId, { prompt: cardId, baseRef: "main" }, () => `${cardId}1234`).board;
+	}
+
+	it("keeps live backlog-linked deltas while board save catches up", () => {
+		const board = boardWithCard("backlog", "aaaaa");
+		const taskId = board.columns.find((column) => column.id === "backlog")?.cards[0]?.id ?? "";
+		const sessions = {
+			[taskId]: createTestTaskSessionSummary({
+				taskId,
+				state: "running",
+				pid: 1234,
+			}),
+		};
+
+		const pruned = pruneOrphanSessionsForNotificationDelta(sessions, board);
+
+		expect(Object.keys(pruned)).toEqual([taskId]);
+	});
+
+	it("keeps processless board-linked review deltas until authoritative replacement", () => {
+		const board = boardWithCard("backlog", "aaaaa");
+		const taskId = board.columns.find((column) => column.id === "backlog")?.cards[0]?.id ?? "";
+		const sessions = {
+			[taskId]: createTestTaskSessionSummary({
+				taskId,
+				state: "awaiting_review",
+				reviewReason: "hook",
+				pid: null,
+			}),
+		};
+
+		const pruned = pruneOrphanSessionsForNotificationDelta(sessions, board);
+
+		expect(Object.keys(pruned)).toEqual([taskId]);
+	});
+
+	it("drops non-live orphan deltas", () => {
+		const board = boardWithCard("in_progress", "aaaaa");
+		const sessions = {
+			orphan: createTestTaskSessionSummary({
+				taskId: "orphan",
+				state: "awaiting_review",
+				reviewReason: "hook",
+				pid: null,
+			}),
+		};
+
+		const pruned = pruneOrphanSessionsForNotificationDelta(sessions, board);
 
 		expect(pruned).toEqual({});
 	});

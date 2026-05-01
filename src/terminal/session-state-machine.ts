@@ -1,9 +1,10 @@
-import type { RuntimeTaskSessionReviewReason, RuntimeTaskSessionSummary } from "../core";
+import { deriveTaskIndicatorState, type RuntimeTaskSessionReviewReason, type RuntimeTaskSessionSummary } from "../core";
 
 export type SessionTransitionEvent =
 	| { type: "hook.to_review" }
 	| { type: "hook.to_in_progress" }
 	| { type: "agent.prompt-ready" }
+	| { type: "user.stop" }
 	| { type: "process.exit"; exitCode: number | null; interrupted: boolean }
 	| { type: "interrupt.recovery" }
 	| { type: "autorestart.denied" };
@@ -17,10 +18,9 @@ export interface SessionTransitionResult {
 export function canReturnToRunning(reason: RuntimeTaskSessionReviewReason): boolean {
 	// "exit" was previously excluded, creating a permanent dead state — a task
 	// that exited cleanly could never transition back to running via hooks.
-	// Note: "interrupted" maps to state "interrupted" (not "awaiting_review"),
-	// so it's handled by a different path and isn't relevant here. "stalled" is
-	// kept for older persisted summaries; new sessions no longer enter that
-	// review reason via reconciliation.
+	// Explicit stops use "interrupted" as a non-returnable review reason.
+	// "stalled" is kept for older persisted summaries; new sessions no longer
+	// enter that review reason via reconciliation.
 	return (
 		reason === "attention" || reason === "hook" || reason === "error" || reason === "exit" || reason === "stalled"
 	);
@@ -79,7 +79,35 @@ export function reduceSessionTransition(
 				clearAttentionBuffer: true,
 			};
 		}
+		case "user.stop": {
+			if (summary.state !== "running" && summary.state !== "awaiting_review") {
+				return { changed: false, patch: {}, clearAttentionBuffer: false };
+			}
+			if (summary.state === "awaiting_review" && !deriveTaskIndicatorState(summary).needsInput) {
+				return { changed: false, patch: {}, clearAttentionBuffer: false };
+			}
+			return {
+				changed: true,
+				patch: {
+					state: "awaiting_review",
+					reviewReason: "interrupted",
+					latestHookActivity: null,
+					stalledSince: null,
+				},
+				clearAttentionBuffer: true,
+			};
+		}
 		case "process.exit": {
+			if (summary.state === "interrupted") {
+				return {
+					changed: true,
+					patch: {
+						exitCode: event.exitCode,
+						pid: null,
+					},
+					clearAttentionBuffer: false,
+				};
+			}
 			// If the session is already in awaiting_review, the agent already
 			// handed off (via hook, clean exit, etc.). The process dying after
 			// that is just cleanup noise — preserve the existing review reason

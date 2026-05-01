@@ -24,7 +24,7 @@ interface UseAudibleNotificationsOptions {
 	audibleNotificationSuppressCurrentProject: AudibleNotificationEventConfig;
 	/** The currently viewed project ID. */
 	currentProjectId: string | null;
-	/** Task IDs for which sounds should be suppressed (e.g. tasks being trashed). */
+	/** Task IDs for which sounds should be suppressed immediately, such as locally trashed tasks. */
 	suppressedTaskIds?: ReadonlySet<string>;
 }
 
@@ -55,21 +55,35 @@ export function useAudibleNotifications({
 	const latestSuppressRef = useRef(audibleNotificationSuppressCurrentProject);
 	const latestNotificationTasksRef = useRef(notificationTasks);
 	const latestProjectIdRef = useRef(currentProjectId);
+	const latestSuppressedTaskIdsRef = useRef(suppressedTaskIds);
 	latestVolumeRef.current = audibleNotificationVolume;
 	latestEventsRef.current = audibleNotificationEvents;
 	latestSuppressRef.current = audibleNotificationSuppressCurrentProject;
 	latestNotificationTasksRef.current = notificationTasks;
 	latestProjectIdRef.current = currentProjectId;
+	latestSuppressedTaskIdsRef.current = suppressedTaskIds;
+
+	const cancelPendingSound = (taskId: string) => {
+		const existing = pendingSoundsRef.current.get(taskId);
+		if (!existing) {
+			return;
+		}
+		clearTimeout(existing.timer);
+		pendingSoundsRef.current.delete(taskId);
+	};
 
 	const fireSound = (taskId: string) => {
 		const pending = pendingSoundsRef.current.get(taskId);
 		if (!pending) return;
 		pendingSoundsRef.current.delete(taskId);
+		const task = latestNotificationTasksRef.current[taskId];
+		if (!task || latestSuppressedTaskIdsRef.current?.has(taskId) || deriveColumn(task.summary) !== "stopped") {
+			return;
+		}
 		const eventType = pending.eventType;
 		if (!latestEventsRef.current[eventType]) return;
-		const task = latestNotificationTasksRef.current[taskId];
 		if (
-			isEventSuppressedForProject(eventType, latestSuppressRef.current, task?.projectId, latestProjectIdRef.current)
+			isEventSuppressedForProject(eventType, latestSuppressRef.current, task.projectId, latestProjectIdRef.current)
 		) {
 			return;
 		}
@@ -98,11 +112,7 @@ export function useAudibleNotifications({
 			previousColumns.set(taskId, currentColumn);
 
 			if (soundsSuppressed || suppressedTaskIds?.has(taskId)) {
-				const existing = pendingSoundsRef.current.get(taskId);
-				if (existing) {
-					clearTimeout(existing.timer);
-					pendingSoundsRef.current.delete(taskId);
-				}
+				cancelPendingSound(taskId);
 				continue;
 			}
 
@@ -110,15 +120,17 @@ export function useAudibleNotifications({
 			// Open a settle window and record the initial sound event.
 			if (previousColumn === "active" && currentColumn === "stopped") {
 				// Cancel any existing pending sound (shouldn't happen, but defensive).
-				const existing = pendingSoundsRef.current.get(taskId);
-				if (existing) {
-					clearTimeout(existing.timer);
-				}
+				cancelPendingSound(taskId);
 				const eventType = resolveSessionSoundEvent(task.summary);
 				if (eventType) {
 					const timer = setTimeout(() => fireSound(taskId), getSettleWindowMs(task.summary));
 					pendingSoundsRef.current.set(taskId, { eventType, timer });
 				}
+				continue;
+			}
+
+			if (currentColumn !== "stopped") {
+				cancelPendingSound(taskId);
 				continue;
 			}
 
@@ -131,16 +143,6 @@ export function useAudibleNotifications({
 				if (eventType && EVENT_PRIORITY[eventType] > EVENT_PRIORITY[pending.eventType]) {
 					pending.eventType = eventType;
 				}
-				continue;
-			}
-
-			// Case 3: Task went back to active (resumed) — cancel pending sound.
-			if (currentColumn === "active") {
-				const existing = pendingSoundsRef.current.get(taskId);
-				if (existing) {
-					clearTimeout(existing.timer);
-					pendingSoundsRef.current.delete(taskId);
-				}
 			}
 		}
 
@@ -149,11 +151,7 @@ export function useAudibleNotifications({
 		for (const taskId of previousColumns.keys()) {
 			if (!(taskId in notificationTasks)) {
 				previousColumns.delete(taskId);
-				const existing = pendingSoundsRef.current.get(taskId);
-				if (existing) {
-					clearTimeout(existing.timer);
-					pendingSoundsRef.current.delete(taskId);
-				}
+				cancelPendingSound(taskId);
 			}
 		}
 	}, [audibleNotificationsEnabled, audibleNotificationsOnlyWhenHidden, notificationTasks, suppressedTaskIds]);

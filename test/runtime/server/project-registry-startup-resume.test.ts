@@ -51,6 +51,17 @@ describe("shouldResumeSessionOnStartup", () => {
 
 		expect(shouldResumeSessionOnStartup(summary)).toBe(false);
 	});
+
+	it("preserves deliberately stopped awaiting-review sessions", () => {
+		const summary = createTestTaskSessionSummary({
+			state: "awaiting_review",
+			reviewReason: "interrupted",
+			pid: null,
+			resumeSessionId: "session-id",
+		});
+
+		expect(shouldResumeSessionOnStartup(summary)).toBe(false);
+	});
 });
 
 describe("validateIndexedProjectsForStream", () => {

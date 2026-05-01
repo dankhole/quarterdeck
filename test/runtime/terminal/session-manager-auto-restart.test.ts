@@ -22,14 +22,19 @@ interface MockSpawnRequest {
 }
 
 function createMockPtySession(pid: number, request: MockSpawnRequest) {
+	let interrupted = false;
 	return {
 		pid,
 		write: vi.fn(),
 		resize: vi.fn(),
 		pause: vi.fn(),
 		resume: vi.fn(),
-		stop: vi.fn(),
-		wasInterrupted: vi.fn(() => false),
+		stop: vi.fn((options?: { interrupted?: boolean }) => {
+			if (options?.interrupted) {
+				interrupted = true;
+			}
+		}),
+		wasInterrupted: vi.fn(() => interrupted),
 		triggerData: (chunk: string | Buffer) => {
 			request.onData?.(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8"));
 		},
@@ -190,6 +195,7 @@ describe("TerminalSessionManager auto-restart", () => {
 
 		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
 		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
 		expect(manager.store.getSummary("task-1")?.pid).toBeNull();
 	});
 
@@ -229,6 +235,7 @@ describe("TerminalSessionManager auto-restart", () => {
 
 		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
 		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
 		expect(manager.store.getSummary("task-1")?.pid).toBeNull();
 		expect(manager.store.getSummary("task-1")?.resumeSessionId).toBe("codex-session-1");
 	});

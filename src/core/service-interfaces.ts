@@ -23,6 +23,7 @@ import type { LogLevel } from "./runtime-logger";
  */
 export interface IRuntimeBroadcaster {
 	broadcastRuntimeProjectStateUpdated: (projectId: string, projectPath: string) => Promise<void>;
+	broadcastRuntimeProjectNotificationsUpdated: (projectId: string) => Promise<void>;
 	broadcastRuntimeProjectsUpdated: (preferredCurrentProjectId: string | null) => Promise<void>;
 	broadcastTaskReadyForReview: (projectId: string, taskId: string) => void;
 	broadcastTaskTitleUpdated: (

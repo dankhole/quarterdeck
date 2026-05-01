@@ -806,4 +806,46 @@ describe("TerminalSessionManager", () => {
 			}),
 		);
 	});
+
+	it("does not rewrite an inactive review session on duplicate stop", () => {
+		const manager = createTestManager();
+		const hookActivity = {
+			activityText: "Ready for review",
+			toolName: null,
+			toolInputSummary: null,
+			finalMessage: "Done",
+			hookEventName: "Stop",
+			notificationType: "review.ready",
+			source: "claude",
+			conversationSummaryText: null,
+		} as const;
+		(
+			manager as unknown as {
+				entries: Map<string, unknown>;
+			}
+		).entries.set("task-inactive-review", {
+			taskId: "task-inactive-review",
+			active: null,
+			pendingExitResolvers: [],
+			suppressAutoRestartOnExit: false,
+			listeners: new Map(),
+			listenerIdCounter: 1,
+			terminalStateMirror: null,
+		});
+		manager.store.hydrateFromRecord({
+			"task-inactive-review": createSummary({
+				taskId: "task-inactive-review",
+				state: "awaiting_review",
+				reviewReason: "hook",
+				pid: null,
+				latestHookActivity: hookActivity,
+			}),
+		});
+
+		const summary = manager.stopTaskSession("task-inactive-review");
+
+		expect(summary?.state).toBe("awaiting_review");
+		expect(summary?.reviewReason).toBe("hook");
+		expect(summary?.latestHookActivity).toEqual(hookActivity);
+	});
 });

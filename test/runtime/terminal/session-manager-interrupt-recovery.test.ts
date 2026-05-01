@@ -441,14 +441,28 @@ describe("recoverStaleSession with launched sessions", () => {
 		manager.hydrateFromRecord({
 			"task-1": createSummary({
 				state: "awaiting_review",
+				reviewReason: null,
+			}),
+		});
+
+		// Missing review reasons indicate the session was mid-restart.
+		// Mark as interrupted so resumeInterruptedSessions can restart them.
+		const summary = manager.store.getSummary("task-1");
+		expect(summary?.state).toBe("interrupted");
+		expect(summary?.reviewReason).toBe("interrupted");
+	});
+
+	it("hydrated awaiting_review interrupted entries preserve explicit stop state", () => {
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "awaiting_review",
 				reviewReason: "interrupted",
 			}),
 		});
 
-		// Non-terminal review reasons indicate the session was mid-restart.
-		// Mark as interrupted so resumeInterruptedSessions can restart them.
 		const summary = manager.store.getSummary("task-1");
-		expect(summary?.state).toBe("interrupted");
+		expect(summary?.state).toBe("awaiting_review");
 		expect(summary?.reviewReason).toBe("interrupted");
 	});
 });

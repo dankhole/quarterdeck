@@ -273,6 +273,37 @@ describe("reconciliation sweep lifecycle", () => {
 		manager.stopReconciliation();
 	});
 
+	it("explicitly stopped sessions are not promoted by reconciliation", async () => {
+		const spawnedSessions = setupMockPtySpawn(process.pid);
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
+		await manager.startTaskSession(defaultTaskRequest);
+
+		manager.store.applyHookActivity("task-1", {
+			hookEventName: "PermissionRequest",
+			activityText: "Waiting for approval",
+			source: "claude",
+		});
+		manager.stopTaskSession("task-1");
+		spawnedSessions[0]?.triggerExit(0);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
+		expect(manager.store.getSummary("task-1")?.latestHookActivity).toBeNull();
+
+		manager.startReconciliation();
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
+		expect(manager.store.getSummary("task-1")?.latestHookActivity).toBeNull();
+
+		manager.stopReconciliation();
+	});
+
 	it("legitimate awaiting_review with no output is not touched (34)", async () => {
 		setupMockPtySpawn(process.pid);
 
@@ -326,12 +357,12 @@ describe("reconciliation sweep lifecycle", () => {
 
 	it("hydrated awaiting_review sessions with non-terminal review reasons become interrupted (35b)", async () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
-		// Sessions with reviewReason "interrupted" or null were mid-restart —
-		// mark them interrupted so resumeInterruptedSessions can restart them.
+		// Sessions with no terminal review reason were mid-restart — mark them
+		// interrupted so resumeInterruptedSessions can restart them.
 		manager.hydrateFromRecord({
 			"task-1": createSummary({
 				state: "awaiting_review",
-				reviewReason: "interrupted",
+				reviewReason: null,
 				pid: null,
 				exitCode: null,
 			}),
@@ -347,6 +378,29 @@ describe("reconciliation sweep lifecycle", () => {
 		// in "interrupted" so resumeInterruptedSessions can restart them on
 		// first UI connection.
 		expect(manager.store.getSummary("task-1")?.state).toBe("interrupted");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
+
+		manager.stopReconciliation();
+	});
+
+	it("hydrated explicitly stopped review sessions are preserved", async () => {
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				pid: null,
+				exitCode: 0,
+			}),
+		});
+
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
+
+		manager.startReconciliation();
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
 
 		manager.stopReconciliation();

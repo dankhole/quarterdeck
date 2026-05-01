@@ -115,6 +115,7 @@ describe("createStateOps.saveState", () => {
 				},
 				broadcaster: {
 					broadcastRuntimeProjectStateUpdated: vi.fn(),
+					broadcastRuntimeProjectNotificationsUpdated: vi.fn(),
 					broadcastRuntimeProjectsUpdated: vi.fn(async () => undefined),
 					broadcastTaskTitleUpdated: vi.fn(),
 					setFocusedTask: vi.fn(),

@@ -1,6 +1,7 @@
 import {
 	pruneOrphanSessionsForPersist,
 	type RuntimeProjectStateResponse,
+	type RuntimeTaskSessionReviewReason,
 	type RuntimeTaskSessionSummary,
 } from "../core";
 import { listProjectIndexEntries, loadProjectState, saveProjectSessions } from "../state";
@@ -54,11 +55,19 @@ async function persistInterruptedSessions(
 }
 
 /**
- * Review reasons that represent completed agent work — preserve across
- * shutdown. "stalled" is kept only for older persisted summaries; new sessions
- * no longer enter stalled review via reconciliation.
+ * Review reasons that should not be startup-resumed after shutdown. Most
+ * represent completed agent work; "interrupted" represents an explicit user
+ * stop. "stalled" is kept only for older persisted summaries; new sessions no
+ * longer enter stalled review via reconciliation.
  */
-const TERMINAL_REVIEW_REASONS = new Set(["hook", "exit", "error", "attention", "stalled"]);
+const TERMINAL_REVIEW_REASONS = new Set<RuntimeTaskSessionReviewReason>([
+	"hook",
+	"exit",
+	"error",
+	"attention",
+	"interrupted",
+	"stalled",
+]);
 
 function shouldInterruptSessionOnShutdown(summary: RuntimeTaskSessionSummary): boolean {
 	if (summary.state === "interrupted") {
@@ -71,8 +80,8 @@ function shouldInterruptSessionOnShutdown(summary: RuntimeTaskSessionSummary): b
 		return true;
 	}
 	if (summary.state === "awaiting_review") {
-		// Terminal review reasons represent completed agent work — don't overwrite.
-		return !TERMINAL_REVIEW_REASONS.has(summary.reviewReason as string);
+		// Terminal review reasons are already non-resumable — don't overwrite.
+		return !TERMINAL_REVIEW_REASONS.has(summary.reviewReason);
 	}
 	return false;
 }

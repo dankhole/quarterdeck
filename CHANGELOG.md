@@ -36,6 +36,11 @@
 
 - Home and task detail views now load and poll file-tree/content data only while the Files surface is active, avoiding hidden 5-second file-list refreshes from Terminal, Git, and board-focused views while keeping global file search scoped correctly.
 
+### Fix: clear stale task input indicators
+
+- Needs-input project and board dots now derive from actionable in-progress/review tasks only, so trashed, deleted, or backlog cards cannot keep yellow indicators or notification sounds alive.
+- Board saves now publish an authoritative notification-bucket replacement across projects, and explicit task stops now clear permission/review activity instead of re-entering needs-input through process-exit cleanup.
+
 ### Fix: keep Claude TUI geometry aligned
 
 - Claude detached terminal sessions now use a fixed 3x row multiplier for extra hidden scrollback, while attached browser terminals always use real rows so Claude Code, the server mirror, and xterm stay bottom-aligned.

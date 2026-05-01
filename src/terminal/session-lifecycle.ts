@@ -42,6 +42,7 @@ const TERMINAL_REVIEW_REASONS = new Set<RuntimeTaskSessionReviewReason>([
 	"exit",
 	"error",
 	"attention",
+	"interrupted",
 	// Legacy persisted sessions may still carry this reason, but new sessions
 	// no longer enter stalled review via reconciliation.
 	"stalled",
@@ -345,7 +346,7 @@ export function handleTaskSessionExit(
 			updateStore: (id, patch) => deps.updateStore(id, patch),
 			applyDenied: () => deps.applyTransitionEvent(currentEntry, { type: "autorestart.denied" }),
 		});
-	} else if (exitSummary?.state === "interrupted") {
+	} else if (!wasExplicitStop && exitSummary?.state === "interrupted") {
 		deps.applyTransitionEvent(currentEntry, { type: "autorestart.denied" });
 	} else if (
 		!wasExplicitStop &&

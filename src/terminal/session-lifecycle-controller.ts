@@ -82,23 +82,23 @@ export class SessionLifecycleController {
 			currentPid: currentSummary?.pid ?? null,
 			currentResumeSessionId: currentSummary?.resumeSessionId ?? null,
 		});
+		if (entry.active && entry.suppressAutoRestartOnExit) {
+			sessionLog.warn("task session start requested while previous session is still exiting", {
+				taskId: request.taskId,
+				agentId: request.agentId,
+				currentState: currentSummary?.state ?? null,
+				currentReviewReason: currentSummary?.reviewReason ?? null,
+				currentPid: currentSummary?.pid ?? entry.active.session.pid,
+				resumeConversation: request.resumeConversation ?? false,
+				awaitReview: request.awaitReview ?? false,
+			});
+			throw new Error("Task session is still shutting down. Wait a moment and try again.");
+		}
 		if (
 			entry.active &&
 			currentSummary &&
 			(currentSummary.state === "running" || currentSummary.state === "awaiting_review")
 		) {
-			if (entry.suppressAutoRestartOnExit) {
-				sessionLog.warn("task session start requested while previous session is still exiting", {
-					taskId: request.taskId,
-					agentId: request.agentId,
-					currentState: currentSummary.state,
-					currentReviewReason: currentSummary.reviewReason,
-					currentPid: currentSummary.pid,
-					resumeConversation: request.resumeConversation ?? false,
-					awaitReview: request.awaitReview ?? false,
-				});
-				throw new Error("Task session is still shutting down. Wait a moment and try again.");
-			}
 			sessionLog.debug("startTaskSession short-circuit — existing active session reused", {
 				taskId: request.taskId,
 				currentState: currentSummary.state,
@@ -157,6 +157,7 @@ export class SessionLifecycleController {
 			});
 			return this.store.getSummary(taskId);
 		}
+		const stopResult = this.transitions.applyTransitionEvent(entry, { type: "user.stop" });
 		sessionLog.debug("stopTaskSession invoked", {
 			taskId,
 			pid: entry.active.session.pid,
@@ -166,11 +167,11 @@ export class SessionLifecycleController {
 		entry.active.onSessionCleanup = null;
 		stopWorkspaceTrustTimers(entry.active);
 		clearInterruptRecoveryTimer(entry.active);
-		entry.active.session.stop();
+		entry.active.session.stop({ interrupted: true });
 		if (cleanupFn) {
 			cleanupFn().catch(() => {});
 		}
-		return this.store.getSummary(taskId);
+		return stopResult?.summary ?? this.store.getSummary(taskId);
 	}
 
 	async stopTaskSessionAndWaitForExit(taskId: string, timeoutMs = 3_000): Promise<RuntimeTaskSessionSummary | null> {

@@ -2,6 +2,7 @@ import {
 	applyRuntimeProjectNotificationDelta,
 	pruneRuntimeProjectNotificationStateMap,
 	type RuntimeProjectNotificationStateMap,
+	replaceRuntimeProjectNotificationStateMap,
 	replaceRuntimeProjectNotificationStateMapFromProjectState,
 	replaceRuntimeProjectNotificationStateMapFromProjectSummaries,
 } from "@/runtime/runtime-notification-projects";
@@ -74,6 +75,7 @@ export type RuntimeStateStreamAction =
 			projectId: string;
 			summaries: readonly RuntimeTaskSessionSummary[];
 			removedTaskIds?: readonly string[];
+			replace?: boolean;
 	  }
 	| {
 			type: "debug_logging_state";
@@ -113,7 +115,14 @@ function mergeNotificationMemory(
 	projectId: string,
 	summaries: readonly RuntimeTaskSessionSummary[],
 	removedTaskIds: readonly string[] = [],
+	replace = false,
 ): RuntimeNotificationMemory {
+	if (replace) {
+		return {
+			projects: replaceRuntimeProjectNotificationStateMap(currentMemory.projects, projectId, summaries),
+		};
+	}
+
 	if (summaries.length === 0 && removedTaskIds.length === 0) {
 		return currentMemory;
 	}
@@ -342,6 +351,7 @@ export function runtimeStateStreamReducer(
 				action.projectId,
 				action.summaries,
 				action.removedTaskIds ?? [],
+				action.replace ?? false,
 			),
 		};
 	}

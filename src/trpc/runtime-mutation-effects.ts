@@ -10,6 +10,10 @@ export type RuntimeMutationEffect =
 			projectPath: string;
 	  }
 	| {
+			type: "project_notifications_updated";
+			projectId: string;
+	  }
+	| {
 			type: "projects_updated";
 			preferredCurrentProjectId: string | null;
 	  }
@@ -49,6 +53,7 @@ type RuntimeMutationEffectBroadcaster = Partial<
 	Pick<
 		IRuntimeBroadcaster,
 		| "broadcastRuntimeProjectStateUpdated"
+		| "broadcastRuntimeProjectNotificationsUpdated"
 		| "broadcastRuntimeProjectsUpdated"
 		| "broadcastTaskReadyForReview"
 		| "broadcastTaskTitleUpdated"
@@ -94,7 +99,14 @@ export function createProjectsUpdatedEffects(
 }
 
 export function createBoardStateSavedEffects(projectScope: RuntimeTrpcProjectScope): readonly RuntimeMutationEffect[] {
-	return [...createProjectStateUpdatedEffects(projectScope), ...createProjectsUpdatedEffects(projectScope.projectId)];
+	return [
+		...createProjectStateUpdatedEffects(projectScope),
+		{
+			type: "project_notifications_updated",
+			projectId: projectScope.projectId,
+		},
+		...createProjectsUpdatedEffects(projectScope.projectId),
+	];
 }
 
 export function createTaskTitleUpdatedEffects(input: {
@@ -195,6 +207,8 @@ function getEffectKey(effect: RuntimeMutationEffect): string {
 	switch (effect.type) {
 		case "project_state_updated":
 			return `${effect.type}:${effect.projectId}:${effect.projectPath}`;
+		case "project_notifications_updated":
+			return `${effect.type}:${effect.projectId}`;
 		case "projects_updated":
 			return `${effect.type}:${effect.preferredCurrentProjectId ?? ""}`;
 		case "task_ready_for_review":
@@ -231,6 +245,12 @@ export async function applyRuntimeMutationEffects(
 					effect.projectId,
 					effect.projectPath,
 				);
+				break;
+			case "project_notifications_updated":
+				await requireBroadcasterMethod(
+					broadcaster,
+					"broadcastRuntimeProjectNotificationsUpdated",
+				)(effect.projectId);
 				break;
 			case "projects_updated":
 				await requireBroadcasterMethod(

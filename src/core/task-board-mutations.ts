@@ -636,6 +636,19 @@ function collectBoardTaskIds(board: RuntimeBoardData): Set<string> {
 	return taskIds;
 }
 
+function collectActionableNotificationTaskIds(board: RuntimeBoardData): Set<string> {
+	const taskIds = new Set<string>();
+	for (const column of board.columns) {
+		if (column.id !== "in_progress" && column.id !== "review") {
+			continue;
+		}
+		for (const card of column.cards) {
+			taskIds.add(card.id);
+		}
+	}
+	return taskIds;
+}
+
 function isLiveSessionSummary(summary: RuntimeTaskSessionSummary): boolean {
 	return summary.pid !== null || summary.state === "running";
 }
@@ -662,19 +675,39 @@ export function pruneOrphanSessionsForBroadcast(
 }
 
 /**
- * Board-linked filter for notification projections. Cross-project badges and
- * sounds must only represent tasks the user can find on a board; live orphan
- * process summaries remain useful for terminal restore paths, but they should
- * not keep project-level NI/R/F badges alive after the card is gone.
+ * Actionable board filter for notification projections. Cross-project badges
+ * and sounds must only represent tasks the user can act on from active work
+ * columns; live orphan process summaries and trashed/backlog cards remain
+ * useful elsewhere, but they should not keep project-level NI/R/F badges alive.
  */
 export function pruneOrphanSessionsForNotification(
+	sessions: Record<string, RuntimeTaskSessionSummary>,
+	board: RuntimeBoardData,
+): Record<string, RuntimeTaskSessionSummary> {
+	const boardTaskIds = collectActionableNotificationTaskIds(board);
+	const pruned: Record<string, RuntimeTaskSessionSummary> = {};
+	for (const [taskId, summary] of Object.entries(sessions)) {
+		if (boardTaskIds.has(taskId)) {
+			pruned[taskId] = summary;
+		}
+	}
+	return pruned;
+}
+
+/**
+ * Lax filter for live notification deltas. A task can move out of backlog in
+ * the browser before the debounced board save reaches disk, so live deltas must
+ * keep board-linked and currently live summaries. The next authoritative
+ * notification replacement applies the stricter actionable filter.
+ */
+export function pruneOrphanSessionsForNotificationDelta(
 	sessions: Record<string, RuntimeTaskSessionSummary>,
 	board: RuntimeBoardData,
 ): Record<string, RuntimeTaskSessionSummary> {
 	const boardTaskIds = collectBoardTaskIds(board);
 	const pruned: Record<string, RuntimeTaskSessionSummary> = {};
 	for (const [taskId, summary] of Object.entries(sessions)) {
-		if (boardTaskIds.has(taskId)) {
+		if (boardTaskIds.has(taskId) || isLiveSessionSummary(summary)) {
 			pruned[taskId] = summary;
 		}
 	}
