@@ -42,6 +42,7 @@ If profiling points to mixed ownership rather than a local hot path, keep fixes 
 
 The first editable Files-view milestone has landed with CodeMirror tabs, dirty/save/reload/discard behavior, live-worktree-only saves, and basic file/folder create, rename/move, and delete operations. Remaining follow-ups:
 
+- Add bring-your-own LSP code navigation to the Files editor for go-to-definition, find-references, and hover without bundling language servers. Plan: [docs/lsp-code-navigation-plan.md](./lsp-code-navigation-plan.md).
 - Add selected-range, file-level, and diff-hunk context actions that can send focused prompts to the active task agent.
 - Own the dirty editor-tab cache lifecycle for deleted project/task/worktree scopes so hidden unsaved tabs are surfaced before destructive actions or pruned safely when clean.
 - Profile whether the 5 MB soft edit cap needs tuning for generated, minified, or unusually long-line files while preserving the 10 MB display safety cap.
