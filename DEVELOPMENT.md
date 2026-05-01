@@ -221,7 +221,7 @@ How it works end to end:
 2. Hook handlers call `quarterdeck hooks ...` subcommands.
 3. `quarterdeck hooks ingest --event <to_review|to_in_progress>` reads hook context from env:
    - `QUARTERDECK_HOOK_TASK_ID`
-   - `QUARTERDECK_HOOK_WORKSPACE_ID`
+   - `QUARTERDECK_HOOK_PROJECT_ID`
    - `QUARTERDECK_HOOK_PORT`
 4. The ingest command calls runtime TRPC `hooks.ingest`.
 5. The runtime applies guarded transitions and ignores duplicates or invalid transitions as no-ops.
@@ -243,7 +243,3 @@ Important behavior details:
 - Hook notify paths are asynchronous to keep agent UX responsive.
 - Runtime transition guards are authoritative and prevent state flapping from duplicate events.
 - Hook transport is implemented in Node and invoked through `quarterdeck hooks ...`, so the behavior is consistent across Windows and non-Windows environments.
-
-For a full technical breakdown, see:
-
-- `.plan/docs/runtime-hooks-architecture.md`

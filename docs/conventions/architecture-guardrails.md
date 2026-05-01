@@ -146,5 +146,4 @@ When working in those areas, prefer:
 
 ## Companion Docs
 
-- `docs/architecture-roadmap.md`
 - `docs/todo.md`

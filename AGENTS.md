@@ -44,7 +44,7 @@ Documentation lookup cheat sheet
 - `docs/conventions/frontend-hooks.md`: read when extracting hook/domain logic, changing provider/context contracts, or applying the frontend domain-module pattern.
 - `docs/conventions/ui-layout.md`: read before adding or modifying main views, sidebar panels, toolbar tabs, task-detail layout routing, or surface-navigation behavior.
 - `docs/conventions/architecture-guardrails.md`: read when adding caching, batching, retry, preload, recovery, lifecycle policy, or any clever behavior that could start defining the architecture.
-- `docs/architecture-roadmap.md`: read when choosing, reprioritizing, or touching active architecture refactor backlog items.
+- `docs/todo.md`: read when choosing, reprioritizing, or touching active architecture refactor backlog items.
 - `docs/task-state-system-stale.md`: historical task/session state context only; verify against current code before relying on it.
 
 Git guardrails

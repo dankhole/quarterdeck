@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Docs: trim active refactor docs
+
+- Moved the remaining active architecture-refactor pickup context into `docs/todo.md` and archived stale editor-lite and roadmap handoff docs out of the active docs map.
+
 ### Feature: edit files from the Files view
 
 - Files view now opens worktree files in editable CodeMirror tabs with dirty indicators, save/reload/discard flows, word wrap, markdown preview, and branch/ref browsing kept read-only.
