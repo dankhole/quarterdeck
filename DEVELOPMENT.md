@@ -201,7 +201,7 @@ npm run unlink
 
 - `ci.yml`: runs on pushes to `main` and PRs targeting `main`, delegating to reusable test workflow(s)
 - `test.yml`: Ubuntu and macOS matrix covering build, lint, typecheck, runtime tests, and web-ui tests
-- `publish.yml`: manual release workflow that verifies the tag, runs tests, publishes to npm via OIDC, creates the GitHub Release, and posts to Slack
+- `publish.yml`: manual release workflow that verifies the tag, runs tests, publishes to npm via OIDC, and creates the GitHub Release
 
 ## Agent tracking and runtime hooks
 

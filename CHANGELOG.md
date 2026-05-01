@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Chore: tighten CI/CD release hygiene
+
+- CI now runs agent-instruction checks, Biome, runtime typecheck/tests, web UI typecheck, and web UI tests through the reusable test workflow.
+- The npm publish workflow now uses the `npm-publish` environment gate and installs an npm CLI version compatible with OIDC trusted publishing while staying on the tested Node 22 line.
+- Added Dependabot coverage for runtime, web UI, and GitHub Actions dependencies, plus a PR template and security reporting policy.
+
 ### Docs: trim active refactor docs
 
 - Moved the remaining active architecture-refactor pickup context into `docs/todo.md` and archived stale editor-lite and roadmap handoff docs out of the active docs map.
