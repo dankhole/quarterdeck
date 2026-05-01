@@ -169,6 +169,7 @@ export function useCardDetailView({
 		taskId: fileBrowserScope.taskId,
 		baseRef: fileBrowserScope.baseRef,
 		ref: fileBrowserScope.ref,
+		enabled: navigation.mainView === "files",
 	});
 
 	useEffect(() => {

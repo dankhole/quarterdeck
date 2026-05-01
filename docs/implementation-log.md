@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-05-01 — General performance audit
+
+The broad pass covered startup, project switching, board interaction surfaces, task detail navigation, terminal rendering, git/file views, background polling, and runtime WebSocket fanout. The clearest low-risk fix was hidden file-browser work: `GitProvider` and `CardDetailView` were mounting `useFileBrowserData(...)` even outside the Files surface, which kicked off `project.listFiles` and a 5-second refresh interval from Home, Terminal, and Git. `useFileBrowserData(...)` now accepts an `enabled` gate so scope/search state remains available while file-list/content IO and polling only run when Files is active.
+
+Ranked audit findings: hidden file-tree/content polling was fixed in this pass; eager task-terminal pool creation during app startup is the next likely startup cost but needs terminal lifecycle care; runtime session-summary fanout still refreshes notification/project projections for activity-only changes and is already tracked as a backlog item; large diff/file rendering remains the known Git/Files pipeline bottleneck; per-client WebSocket JSON serialization is a small server-side cleanup opportunity but lower impact than the other items. Validation: `npm run web:typecheck` and `npm run web:test -- src/hooks/git/use-file-browser-data.test.tsx src/components/task/card-detail-view.test.tsx`. Commit: pending.
+
 ## 2026-04-30 — Editor-lite scope ownership hardening
 
 Editor dirty state can outlive the `FilesView` component because open tabs are cached per file-browser scope. The page-unload guard now lives at the app shell and checks the shared editor cache instead of the mounted Files view, so unsaved cached tabs still warn before browser close/reload after navigating to Terminal, Git, or Home. Autosave also suppresses delay/focus saves while a discard prompt is active, preserving the user's explicit close/reload decision.

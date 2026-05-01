@@ -92,8 +92,10 @@ export function useFileBrowserData(options: {
 	baseRef?: string;
 	/** Browse files at a git ref (read-only). */
 	ref?: string | null;
+	/** Keep cheap scope state available while skipping file-list/content IO. */
+	enabled?: boolean;
 }): UseFileBrowserDataResult {
-	const { projectId, taskId, baseRef, ref: browseRef } = options;
+	const { projectId, taskId, baseRef, ref: browseRef, enabled = true } = options;
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const contentScopeKey = useMemo(
 		() => createContentScopeKey({ projectId, taskId, baseRef, ref: browseRef }),
@@ -137,7 +139,7 @@ export function useFileBrowserData(options: {
 	}, [projectId, taskId, baseRef, browseRef]);
 
 	const fileListQuery = useTrpcQuery<RuntimeListFilesResponse>({
-		enabled: projectId !== null,
+		enabled: enabled && projectId !== null,
 		queryFn: listFilesQueryFn,
 		isDataEqual: areListFilesResponsesEqual,
 	});
@@ -168,6 +170,9 @@ export function useFileBrowserData(options: {
 	const refetchRef = useRef(fileListQuery.refetch);
 	refetchRef.current = fileListQuery.refetch;
 	useEffect(() => {
+		if (!enabled) {
+			return;
+		}
 		if (browseRef) {
 			return; // Branch view: ref tree is immutable, no polling needed
 		}
@@ -175,7 +180,7 @@ export function useFileBrowserData(options: {
 			refetchRef.current();
 		}, FILE_LIST_POLL_INTERVAL_MS);
 		return () => clearInterval(id);
-	}, [browseRef]);
+	}, [browseRef, enabled]);
 
 	const fileContentQueryFn = useCallback(async () => {
 		if (!selectedPath || !projectId) {
@@ -191,7 +196,7 @@ export function useFileBrowserData(options: {
 	}, [projectId, taskId, baseRef, selectedPath, browseRef]);
 
 	const fileContentQuery = useTrpcQuery<RuntimeFileContentResponse>({
-		enabled: selectedPath !== null && projectId !== null,
+		enabled: enabled && selectedPath !== null && projectId !== null,
 		queryFn: fileContentQueryFn,
 	});
 	const setFileContentData = fileContentQuery.setData;
@@ -203,13 +208,15 @@ export function useFileBrowserData(options: {
 	const mutationBlockedReason =
 		(projectId === null
 			? "No project selected."
-			: browseRef
-				? "Branch/ref browsing is read-only."
-				: fileListData === null
-					? "Files are still loading."
-					: fileListData.mutable === false
-						? (fileListData.mutationBlockedReason ?? "File operations are unavailable.")
-						: null) ?? null;
+			: !enabled
+				? "Files view is not active."
+				: browseRef
+					? "Branch/ref browsing is read-only."
+					: fileListData === null
+						? "Files are still loading."
+						: fileListData.mutable === false
+							? (fileListData.mutationBlockedReason ?? "File operations are unavailable.")
+							: null) ?? null;
 	const canMutateEntries = mutationBlockedReason === null;
 
 	// Hide content/error state from the previous file while the next selection is loading.
@@ -221,8 +228,9 @@ export function useFileBrowserData(options: {
 	const fileContent = hasActiveContentCache ? (fileContentQuery.data ?? null) : null;
 	const isContentError = hasActiveContentCache && fileContentQuery.isError;
 	const isContentLoading =
-		fileContentQuery.isLoading ||
-		(projectId !== null && selectedPath !== null && fileContent === null && !isContentError);
+		enabled &&
+		(fileContentQuery.isLoading ||
+			(projectId !== null && selectedPath !== null && fileContent === null && !isContentError));
 
 	const handleCloseFile = useCallback(() => {
 		setSelectedPathPersisted(null);
@@ -230,6 +238,7 @@ export function useFileBrowserData(options: {
 
 	const getFileContent = useCallback(
 		async (path: string): Promise<RuntimeFileContentResponse | null> => {
+			if (!enabled) return null;
 			if (!projectId) return null;
 			try {
 				const trpcClient = getRuntimeTrpcClient(projectId);
@@ -243,11 +252,12 @@ export function useFileBrowserData(options: {
 				return null;
 			}
 		},
-		[projectId, taskId, baseRef, browseRef],
+		[enabled, projectId, taskId, baseRef, browseRef],
 	);
 
 	const reloadFileContent = useCallback(
 		async (path: string): Promise<RuntimeFileContentResponse | null> => {
+			if (!enabled) return null;
 			const requestScopeKey = contentScopeKey;
 			const result = await getFileContent(path);
 			if (result && path === selectedPathRef.current && requestScopeKey === contentScopeKeyRef.current) {
@@ -255,11 +265,12 @@ export function useFileBrowserData(options: {
 			}
 			return result;
 		},
-		[contentScopeKey, getFileContent, setFileContentData],
+		[contentScopeKey, enabled, getFileContent, setFileContentData],
 	);
 
 	const saveFileContent = useCallback(
 		async (path: string, content: string, expectedContentHash: string): Promise<RuntimeFileContentResponse> => {
+			if (!enabled) throw new Error("Files view is not active.");
 			if (!projectId) throw new Error("Missing project.");
 			if (browseRef) throw new Error("Branch/ref browsing is read-only.");
 			const requestScopeKey = contentScopeKey;
@@ -276,7 +287,7 @@ export function useFileBrowserData(options: {
 			}
 			return result;
 		},
-		[baseRef, browseRef, contentScopeKey, projectId, setFileContentData, taskId],
+		[baseRef, browseRef, contentScopeKey, enabled, projectId, setFileContentData, taskId],
 	);
 
 	const reloadFileListForScope = useCallback(

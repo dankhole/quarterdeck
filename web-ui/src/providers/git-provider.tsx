@@ -109,7 +109,7 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 		useProjectRuntimeContext();
 
 	const { board, selectedCard, sendTaskSessionInput, fetchTaskWorktreeInfo } = useBoardContext();
-	const { isGitHistoryOpen, navigateToGitView } = useSurfaceNavigationContext();
+	const { isGitHistoryOpen, mainView, navigateToGitView } = useSurfaceNavigationContext();
 
 	// Store subscriptions — duplicate calls are cheap (useSyncExternalStore).
 	const selectedTaskRepositoryInfo = useTaskRepositoryInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
@@ -194,6 +194,7 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 		taskId: fileBrowserResolvedScope?.type === "task" ? fileBrowserResolvedScope.taskId : null,
 		baseRef: fileBrowserResolvedScope?.type === "task" ? fileBrowserResolvedScope.baseRef : undefined,
 		ref: fileBrowserResolvedScope?.type === "branch_view" ? fileBrowserResolvedScope.ref : undefined,
+		enabled: selectedCard === null && mainView === "files",
 	});
 
 	// --- useGitActions ---

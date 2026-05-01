@@ -15,6 +15,10 @@
 - File tab close, close-all, and reload controls now wait for in-flight saves to finish so discard/reload actions cannot race a write that is still completing.
 - File editor autosave now lives in Settings, the normal Files view omits the duplicate scope bar, and CodeMirror search/selection styling is higher contrast.
 
+### Fix: reduce background file polling
+
+- Home and task detail views now load and poll file-tree/content data only while the Files surface is active, avoiding hidden 5-second file-list refreshes from Terminal, Git, and board-focused views while keeping global file search scoped correctly.
+
 ### Fix: improve generated commit messages
 
 - Commit-message generation now sends task context, the complete selected-file list, and a larger bounded diff/content context, including untracked file excerpts when available.
