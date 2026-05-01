@@ -42,7 +42,29 @@ export function getTaskAgentShortLabel(agentId: RuntimeAgentId): string {
 	return agentId;
 }
 
-export function resolveDefaultTaskAgentId(
+export function normalizeTaskAgentId(value: string): RuntimeAgentId | null {
+	return TASK_AGENT_ORDER.includes(value as RuntimeAgentId) ? (value as RuntimeAgentId) : null;
+}
+
+export function resolveTaskCreateAgentId({
+	rememberedAgentId,
+	fallbackAgentId,
+	availableAgentIds,
+}: {
+	rememberedAgentId: RuntimeAgentId | null;
+	fallbackAgentId: RuntimeAgentId;
+	availableAgentIds?: readonly RuntimeAgentId[] | null;
+}): RuntimeAgentId {
+	if (!rememberedAgentId) {
+		return fallbackAgentId;
+	}
+	if (availableAgentIds && !availableAgentIds.includes(rememberedAgentId)) {
+		return fallbackAgentId;
+	}
+	return rememberedAgentId;
+}
+
+export function resolveTaskAgentFallbackId(
 	config: Pick<RuntimeConfigResponse, "selectedAgentId" | "agents"> | null | undefined,
 ): RuntimeAgentId {
 	const selectedAgentId = config?.selectedAgentId ?? "claude";

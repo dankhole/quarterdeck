@@ -1,5 +1,6 @@
 export enum LocalStorageKey {
 	TaskCreatePrimaryStartAction = "quarterdeck.task-create-primary-start-action",
+	TaskCreateLastAgentId = "quarterdeck.task-create-last-agent-id",
 	BottomTerminalPaneHeight = "quarterdeck.bottom-terminal-pane-height",
 	DetailSidePanelRatio = "quarterdeck.detail-side-panel-ratio",
 	DetailActivePanel = "quarterdeck.detail-active-panel",

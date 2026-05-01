@@ -20,10 +20,7 @@ export interface TaskEditDraftState {
 	branchRef: string;
 }
 
-export function createResetTaskCreateDraft(
-	defaultBranchRef: string,
-	defaultAgentId: RuntimeAgentId,
-): TaskCreateDraftReset {
+export function createResetTaskCreateDraft(defaultBranchRef: string, agentId: RuntimeAgentId): TaskCreateDraftReset {
 	return {
 		prompt: "",
 		images: [],
@@ -31,7 +28,7 @@ export function createResetTaskCreateDraft(
 		createFeatureBranch: false,
 		branchName: "",
 		branchRef: defaultBranchRef,
-		agentId: defaultAgentId,
+		agentId,
 	};
 }
 

@@ -8,6 +8,12 @@
 
 The key invariant is that project-level wiring did not move back into `App.tsx`: consumers now ask for the narrow project-owned slice they need, `ProjectRuntimeContext` continues to own runtime config/onboarding/access-gate concerns, and project notification/sync/persistence side effects stay behind focused app hooks rather than expanding one side-effect bag. Notable files: `web-ui/src/providers/project-provider.tsx`, `web-ui/src/App.tsx`, app orchestration hooks, app shell components, and project-dependent providers. Validation: focused provider tests, `npm run web:typecheck`, `npm run web:test`, `npm run web:build`, and `npm run check`. Commit: pending.
 
+## 2026-05-01 — Task-create harness memory
+
+The new task dialog now treats the selected harness like a browser-local workflow preference. `web-ui/src/hooks/board/use-task-editor.ts` persists the last selected task harness under `quarterdeck.task-create-last-agent-id`, restores it when the create dialog resets, and falls back to the runtime harness fallback only if the remembered harness is unavailable.
+
+The key invariant is that `selectedAgentId` remains a runtime compatibility fallback for legacy cards without `agentId`, startup onboarding, and server-side launch fallback; it is not the normal user-facing task-create default now that harness choice lives in the create dialog. Notable files: `web-ui/src/hooks/board/use-task-editor.ts`, `web-ui/src/providers/task-editor-provider.tsx`, and `web-ui/src/utils/task-agent-display.ts`. Validation: focused task-editor tests, `npm run check`, `npm run web:typecheck`, `npm run web:test`, and `npm run web:build`.
+
 ## 2026-05-01 — General performance audit
 
 The broad pass covered startup, project switching, board interaction surfaces, task detail navigation, terminal rendering, git/file views, background polling, and runtime WebSocket fanout. The clearest low-risk fix was hidden file-browser work: `GitProvider` and `CardDetailView` were mounting `useFileBrowserData(...)` even outside the Files surface, which kicked off `project.listFiles` and a 5-second refresh interval from Home, Terminal, and Git. `useFileBrowserData(...)` now accepts an `enabled` gate so scope/search state remains available while file-list/content IO and polling only run when Files is active.

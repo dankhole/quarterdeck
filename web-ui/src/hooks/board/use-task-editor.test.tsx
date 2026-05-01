@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useTaskEditor } from "@/hooks/board/use-task-editor";
+import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { BoardCard, BoardData, TaskImage } from "@/types";
 
 function createTask(taskId: string, prompt: string, createdAt: number, overrides: Partial<BoardCard> = {}): BoardCard {
@@ -64,14 +65,16 @@ function HookHarness({
 	queueTaskStartAfterEdit,
 	branchOptions = [{ value: "main", label: "main" }],
 	defaultTaskBranchRef = "main",
-	defaultTaskAgentId = "claude",
+	fallbackTaskAgentId = "claude",
+	availableTaskAgentIds = ["claude", "codex", "pi"],
 }: {
 	initialBoard: BoardData;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 	queueTaskStartAfterEdit?: (taskId: string) => void;
 	branchOptions?: Array<{ value: string; label: string }>;
 	defaultTaskBranchRef?: string;
-	defaultTaskAgentId?: "claude" | "codex" | "pi";
+	fallbackTaskAgentId?: "claude" | "codex" | "pi";
+	availableTaskAgentIds?: Array<"claude" | "codex" | "pi"> | null;
 }): null {
 	const [board, setBoard] = useState<BoardData>(initialBoard);
 	const [, setSelectedTaskId] = useState<string | null>(null);
@@ -81,7 +84,8 @@ function HookHarness({
 		currentProjectId: "project-1",
 		createTaskBranchOptions: branchOptions,
 		defaultTaskBranchRef,
-		defaultTaskAgentId,
+		fallbackTaskAgentId,
+		availableTaskAgentIds,
 		setSelectedTaskId,
 		queueTaskStartAfterEdit,
 	});
@@ -321,14 +325,14 @@ describe("useTaskEditor", () => {
 		expect(snapshot.newTaskBranchRef).toBe("main");
 	});
 
-	it("persists the selected agent on created tasks and resets to the default agent", async () => {
+	it("persists the selected agent on created tasks and remembers it for the next task", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
 			root.render(
 				<HookHarness
 					initialBoard={createBoard()}
-					defaultTaskAgentId="claude"
+					fallbackTaskAgentId="claude"
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -351,7 +355,78 @@ describe("useTaskEditor", () => {
 
 		const snapshot = requireSnapshot(latestSnapshot);
 		expect(snapshot.board.columns[0]?.cards[0]?.agentId).toBe("codex");
-		expect(snapshot.newTaskAgentId).toBe("claude");
+		expect(snapshot.newTaskAgentId).toBe("codex");
+		expect(localStorage.getItem(LocalStorageKey.TaskCreateLastAgentId)).toBe("codex");
+	});
+
+	it("uses the remembered agent when opening the create dialog", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		localStorage.setItem(LocalStorageKey.TaskCreateLastAgentId, "codex");
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					initialBoard={createBoard()}
+					fallbackTaskAgentId="claude"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).handleOpenCreateTask();
+		});
+
+		expect(requireSnapshot(latestSnapshot).newTaskAgentId).toBe("codex");
+	});
+
+	it("does not store the fallback agent as last used before selection", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					initialBoard={createBoard()}
+					fallbackTaskAgentId="claude"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).handleOpenCreateTask();
+		});
+
+		expect(requireSnapshot(latestSnapshot).newTaskAgentId).toBe("claude");
+		expect(localStorage.getItem(LocalStorageKey.TaskCreateLastAgentId)).toBeNull();
+	});
+
+	it("falls back to the fallback agent when the remembered agent is unavailable", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		localStorage.setItem(LocalStorageKey.TaskCreateLastAgentId, "codex");
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					initialBoard={createBoard()}
+					fallbackTaskAgentId="claude"
+					availableTaskAgentIds={["claude"]}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).handleOpenCreateTask();
+		});
+
+		expect(requireSnapshot(latestSnapshot).newTaskAgentId).toBe("claude");
 	});
 
 	it("copies attached images to each split task and clears the draft images", async () => {

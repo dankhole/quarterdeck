@@ -52,6 +52,10 @@
 - Removed the `Cmd+G` / `Ctrl+G` git view toggle and `Cmd+M` / `Ctrl+M` terminal expand hotkeys, plus their sidebar reminders, while keeping explicit UI controls intact.
 - Pruned sidebar-only reminders for start-and-open task and Escape close/back without changing those behaviors, and now show the remaining sidebar shortcuts without a collapsed "All shortcuts" section.
 
+### Fix: remember task harness selection
+
+- New task creation now remembers the last selected harness locally and falls back to the runtime harness fallback when the remembered harness is unavailable.
+
 ## [0.12.2] — 2026-04-29
 
 ### Docs: version bump to 0.12.2
