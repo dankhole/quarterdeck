@@ -5,6 +5,7 @@
 ### Docs: trim active refactor docs
 
 - Moved the remaining active architecture-refactor pickup context into `docs/todo.md` and archived stale editor-lite and roadmap handoff docs out of the active docs map.
+- Removed completed README, commit-sidebar auto-fill, and file/git dot-indicator items from the active todo list.
 
 ### Feature: edit files from the Files view
 

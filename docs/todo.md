@@ -106,21 +106,9 @@ The broad audit is complete; current findings live in [docs/windows-support-audi
 
 Review the existing GitHub Actions workflows (`ci.yml`, `test.yml`, `publish.yml`), issue templates, CODEOWNERS, and the changelog extraction script. Decide what's still relevant from the upstream fork, what needs updating (e.g. Slack webhook, CODEOWNERS), and whether anything is missing (e.g. automated changelog generation, release notes workflow).
 
-## Rewrite README and refresh demo media
-
-Rewrite the README so it reflects the current product shape, install flow, core workflows, and architecture tradeoffs. Consider generating fresh GIFs or short screen recordings that show the current board, task agent, terminal, git, and file-browsing flows instead of relying on stale screenshots or outdated copy.
-
-## Commit sidebar: Auto-fill commit message on open
-
-Auto-fill a default commit message when the commit sidebar opens (not just via the generate button, which is already implemented). Pre-fill from the task title, diff summary, and optionally agent session context. The message should be fully editable. Consider using the agent's conversation context (why it made changes, not just what changed) to produce better messages than a blind diff summary — this is a differentiator over standard IDE commit message generation.
-
 ## Search modals: live preview pane
 
 Add a VS Code-style peek preview to the search modals — when a result is highlighted (keyboard or hover), show a read-only preview of the file content alongside the result list, centered on the matched line. Avoids full navigation for scanning multiple matches. Could be a side panel within the overlay or an expandable inline preview.
-
-## Explain file-tab vs git-tab dot indicators
-
-Add a tip, tooltip, or small help affordance that explains the difference between the dot indicators on the file tab and git tab. The copy should make clear what each dot means, why they can differ, and what action the user should take from each surface.
 
 ## Upstream sync: periodic review of cline/kanban (recurring)
 
