@@ -1,7 +1,7 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp, Cloud, GitBranch, Locate } from "lucide-react";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import { Virtuoso } from "react-virtuoso";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -149,6 +149,7 @@ function buildGraph(commits: RuntimeGitCommit[]): GraphRow[] {
 }
 
 const ROW_HEIGHT = 50;
+const COMMIT_ROW_OVERSCAN = 8;
 const LANE_WIDTH = 12;
 const NODE_RADIUS = 4;
 const GRAPH_LEFT_PAD = 8;
@@ -261,6 +262,263 @@ function getRefBadgeColor(ref: RuntimeGitRef, isSelected: boolean): string {
 	return "var(--color-text-secondary)";
 }
 
+function CommitRow({
+	commit,
+	index,
+	selectedCommitHash,
+	refsByHash,
+	graphRows,
+	maxLanes,
+	onSelectCommit,
+}: {
+	commit: RuntimeGitCommit;
+	index: number;
+	selectedCommitHash: string | null;
+	refsByHash: Map<string, RuntimeGitRef[]>;
+	graphRows: GraphRow[];
+	maxLanes: number;
+	onSelectCommit: (commit: RuntimeGitCommit) => void;
+}): React.ReactElement {
+	const isSelected = commit.hash === selectedCommitHash;
+	const commitRefs = refsByHash.get(commit.hash);
+	const graphRow = graphRows[index];
+	const sortedCommitRefs = commitRefs
+		? [...commitRefs].sort((left, right) => {
+				const orderDifference = getRefDisplayOrder(left) - getRefDisplayOrder(right);
+				return orderDifference !== 0 ? orderDifference : left.name.localeCompare(right.name);
+			})
+		: null;
+	const isUpstreamCommit = commit.relation === "upstream";
+
+	return (
+		<button
+			type="button"
+			onClick={() => onSelectCommit(commit)}
+			className={isSelected ? "kb-git-commit-row kb-git-commit-row-selected" : "kb-git-commit-row"}
+			style={{
+				position: "relative",
+				display: "flex",
+				alignItems: "center",
+				width: "100%",
+				height: ROW_HEIGHT,
+				padding: 0,
+				paddingLeft: graphRow ? graphContentLeft(graphRow) : GRAPH_LEFT_PAD,
+				border: "none",
+				color: "inherit",
+				textAlign: "left",
+				fontFamily: "inherit",
+				fontSize: 12,
+				cursor: "pointer",
+				gap: 6,
+				borderBottom: "1px solid var(--color-border)",
+				opacity: isSelected || !isUpstreamCommit ? 1 : 0.82,
+			}}
+		>
+			{graphRow ? <GraphSvg row={graphRow} maxLanes={maxLanes} /> : null}
+			<div
+				style={{
+					width: 28,
+					height: 28,
+					borderRadius: "50%",
+					background: hashToColor(commit.authorEmail || commit.authorName),
+					display: "flex",
+					alignItems: "center",
+					justifyContent: "center",
+					flexShrink: 0,
+					fontSize: 10,
+					fontWeight: 600,
+					color: "white",
+				}}
+			>
+				{getInitials(commit.authorName)}
+			</div>
+			<div
+				style={{
+					flex: 1,
+					minWidth: 0,
+					display: "flex",
+					flexDirection: "column",
+					justifyContent: "center",
+					paddingLeft: 6,
+					paddingRight: 10,
+					gap: 2,
+				}}
+			>
+				<div
+					style={{
+						display: "flex",
+						alignItems: "center",
+						gap: 6,
+						fontSize: 12,
+					}}
+				>
+					<span className="kb-line-clamp-1 kb-git-commit-row-meta" style={{ color: "var(--color-text-tertiary)" }}>
+						{commit.authorName}
+					</span>
+					{commit.relation === "selected" ? (
+						<span
+							className="inline-flex items-center shrink-0"
+							style={{
+								color: isSelected ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
+							}}
+						>
+							<ArrowUp size={12} />
+						</span>
+					) : commit.relation === "upstream" ? (
+						<span
+							className="inline-flex items-center shrink-0"
+							style={{
+								color: isSelected ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
+							}}
+						>
+							<ArrowDown size={12} />
+						</span>
+					) : null}
+					{sortedCommitRefs && sortedCommitRefs.length > 0
+						? sortedCommitRefs.map((ref) => (
+								<span
+									key={ref.name}
+									className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs shrink-0"
+									style={{
+										fontSize: 9,
+										backgroundColor: getRefBadgeBackground(ref, isSelected),
+										color: getRefBadgeColor(ref, isSelected),
+									}}
+								>
+									{ref.type === "detached" ? (
+										<Locate size={10} />
+									) : ref.type === "remote" ? (
+										<Cloud size={10} />
+									) : (
+										<GitBranch size={10} />
+									)}
+									{ref.type === "detached" ? "HEAD" : ref.name}
+								</span>
+							))
+						: null}
+					<span
+						className="kb-git-commit-row-meta"
+						style={{
+							display: "inline-flex",
+							alignItems: "center",
+							flexShrink: 0,
+							marginLeft: "auto",
+							color: "var(--color-text-tertiary)",
+						}}
+					>
+						{formatRelativeDate(commit.date)}
+					</span>
+				</div>
+				<div
+					style={{
+						display: "flex",
+						alignItems: "center",
+						gap: 6,
+						fontSize: 12,
+						color: "var(--color-text-tertiary)",
+					}}
+				>
+					<code
+						className="kb-git-commit-row-meta font-mono"
+						style={{
+							flexShrink: 0,
+						}}
+					>
+						{commit.shortHash}
+					</code>
+					<span
+						className="kb-line-clamp-1 kb-git-commit-row-message"
+						style={{
+							color: isSelected
+								? "var(--color-text-primary)"
+								: isUpstreamCommit
+									? "var(--color-text-secondary)"
+									: "var(--color-text-primary)",
+						}}
+					>
+						{commit.message}
+					</span>
+				</div>
+			</div>
+		</button>
+	);
+}
+
+function CommitListFooter({
+	commitsLength,
+	isLoadingMore,
+	canLoadMore,
+	errorMessage,
+	onLoadMore,
+}: {
+	commitsLength: number;
+	isLoadingMore: boolean;
+	canLoadMore: boolean;
+	errorMessage?: string | null;
+	onLoadMore?: () => void;
+}): React.ReactElement | null {
+	if (isLoadingMore) {
+		return (
+			<div
+				style={{
+					display: "flex",
+					alignItems: "center",
+					justifyContent: "center",
+					gap: 8,
+					padding: "10px 12px",
+					color: "var(--color-text-tertiary)",
+				}}
+			>
+				<Spinner size={16} />
+				<span style={{ fontSize: 12 }}>Loading more commits...</span>
+			</div>
+		);
+	}
+	if (errorMessage && commitsLength > 0) {
+		return (
+			<div
+				style={{
+					display: "flex",
+					alignItems: "center",
+					justifyContent: "space-between",
+					gap: 8,
+					padding: "10px 12px",
+					color: "var(--color-text-tertiary)",
+				}}
+			>
+				<span
+					style={{
+						fontSize: 12,
+						color: "var(--color-status-red)",
+					}}
+				>
+					{errorMessage}
+				</span>
+				{canLoadMore ? (
+					<Button size="sm" variant="ghost" onClick={() => onLoadMore?.()}>
+						Retry
+					</Button>
+				) : null}
+			</div>
+		);
+	}
+	if (!canLoadMore) {
+		return (
+			<div
+				style={{
+					padding: "10px 12px",
+					textAlign: "center",
+					color: "var(--color-text-tertiary)",
+					fontSize: 12,
+				}}
+			>
+				End of history
+			</div>
+		);
+	}
+	return null;
+}
+
 export function GitCommitListPanel({
 	commits,
 	totalCount,
@@ -309,6 +567,23 @@ export function GitCommitListPanel({
 	}, [graphRows]);
 
 	const commitListRef = useRef<HTMLDivElement | null>(null);
+	const rowVirtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
+		count: commits.length,
+		getScrollElement: () => commitListRef.current,
+		estimateSize: () => ROW_HEIGHT,
+		initialRect: { width: 0, height: ROW_HEIGHT },
+		overscan: COMMIT_ROW_OVERSCAN,
+		getItemKey: (index) => commits[index]?.hash ?? index,
+	});
+	const virtualItems = rowVirtualizer.getVirtualItems();
+	const lastVirtualIndex = virtualItems.length > 0 ? virtualItems[virtualItems.length - 1]!.index : -1;
+
+	useEffect(() => {
+		if (isLoading || !canLoadMore || isLoadingMore || errorMessage || lastVirtualIndex < commits.length - 1) {
+			return;
+		}
+		onLoadMore?.();
+	}, [canLoadMore, commits.length, errorMessage, isLoading, isLoadingMore, lastVirtualIndex, onLoadMore]);
 
 	useHotkeys(
 		"up,down",
@@ -392,7 +667,7 @@ export function GitCommitListPanel({
 							</div>
 						))}
 					</div>
-				) : errorMessage ? (
+				) : errorMessage && commits.length === 0 ? (
 					<div
 						style={{
 							display: "flex",
@@ -427,253 +702,41 @@ export function GitCommitListPanel({
 						No commits
 					</div>
 				) : (
-					<Virtuoso
-						style={{ height: "100%" }}
-						data={commits}
-						endReached={() => {
-							if (canLoadMore) {
-								onLoadMore?.();
-							}
-						}}
-						computeItemKey={(_, commit) => commit.hash}
-						itemContent={(index, commit) => {
-							const isSelected = commit.hash === selectedCommitHash;
-							const commitRefs = refsByHash.get(commit.hash);
-							const graphRow = graphRows[index];
-							const sortedCommitRefs = commitRefs
-								? [...commitRefs].sort((left, right) => {
-										const orderDifference = getRefDisplayOrder(left) - getRefDisplayOrder(right);
-										return orderDifference !== 0 ? orderDifference : left.name.localeCompare(right.name);
-									})
-								: null;
-							const isUpstreamCommit = commit.relation === "upstream";
-
-							return (
-								<button
-									key={commit.hash}
-									type="button"
-									onClick={() => onSelectCommit(commit)}
-									className={isSelected ? "kb-git-commit-row kb-git-commit-row-selected" : "kb-git-commit-row"}
-									style={{
-										position: "relative",
-										display: "flex",
-										alignItems: "center",
-										width: "100%",
-										height: ROW_HEIGHT,
-										padding: 0,
-										paddingLeft: graphRow ? graphContentLeft(graphRow) : GRAPH_LEFT_PAD,
-										border: "none",
-										color: "inherit",
-										textAlign: "left",
-										fontFamily: "inherit",
-										fontSize: 12,
-										cursor: "pointer",
-										gap: 6,
-										borderBottom: "1px solid var(--color-border)",
-										opacity: isSelected || !isUpstreamCommit ? 1 : 0.82,
-									}}
-								>
-									{graphRow ? <GraphSvg row={graphRow} maxLanes={maxLanes} /> : null}
+					<>
+						<div className="relative w-full" style={{ height: rowVirtualizer.getTotalSize() }}>
+							{virtualItems.map((virtualItem) => {
+								const commit = commits[virtualItem.index];
+								if (!commit) {
+									return null;
+								}
+								return (
 									<div
-										style={{
-											width: 28,
-											height: 28,
-											borderRadius: "50%",
-											background: hashToColor(commit.authorEmail || commit.authorName),
-											display: "flex",
-											alignItems: "center",
-											justifyContent: "center",
-											flexShrink: 0,
-											fontSize: 10,
-											fontWeight: 600,
-											color: "white",
-										}}
+										key={commit.hash}
+										data-index={virtualItem.index}
+										className="absolute top-0 left-0 w-full"
+										style={{ height: ROW_HEIGHT, transform: `translateY(${virtualItem.start}px)` }}
 									>
-										{getInitials(commit.authorName)}
+										<CommitRow
+											commit={commit}
+											index={virtualItem.index}
+											selectedCommitHash={selectedCommitHash}
+											refsByHash={refsByHash}
+											graphRows={graphRows}
+											maxLanes={maxLanes}
+											onSelectCommit={onSelectCommit}
+										/>
 									</div>
-									<div
-										style={{
-											flex: 1,
-											minWidth: 0,
-											display: "flex",
-											flexDirection: "column",
-											justifyContent: "center",
-											paddingLeft: 6,
-											paddingRight: 10,
-											gap: 2,
-										}}
-									>
-										<div
-											style={{
-												display: "flex",
-												alignItems: "center",
-												gap: 6,
-												fontSize: 12,
-											}}
-										>
-											<span
-												className="kb-line-clamp-1 kb-git-commit-row-meta"
-												style={{ color: "var(--color-text-tertiary)" }}
-											>
-												{commit.authorName}
-											</span>
-											{commit.relation === "selected" ? (
-												<span
-													className="inline-flex items-center shrink-0"
-													style={{
-														color: isSelected
-															? "var(--color-text-primary)"
-															: "var(--color-text-tertiary)",
-													}}
-												>
-													<ArrowUp size={12} />
-												</span>
-											) : commit.relation === "upstream" ? (
-												<span
-													className="inline-flex items-center shrink-0"
-													style={{
-														color: isSelected
-															? "var(--color-text-primary)"
-															: "var(--color-text-tertiary)",
-													}}
-												>
-													<ArrowDown size={12} />
-												</span>
-											) : null}
-											{sortedCommitRefs && sortedCommitRefs.length > 0
-												? sortedCommitRefs.map((ref) => (
-														<span
-															key={ref.name}
-															className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs shrink-0"
-															style={{
-																fontSize: 9,
-																backgroundColor: getRefBadgeBackground(ref, isSelected),
-																color: getRefBadgeColor(ref, isSelected),
-															}}
-														>
-															{ref.type === "detached" ? (
-																<Locate size={10} />
-															) : ref.type === "remote" ? (
-																<Cloud size={10} />
-															) : (
-																<GitBranch size={10} />
-															)}
-															{ref.type === "detached" ? "HEAD" : ref.name}
-														</span>
-													))
-												: null}
-											<span
-												className="kb-git-commit-row-meta"
-												style={{
-													display: "inline-flex",
-													alignItems: "center",
-													flexShrink: 0,
-													marginLeft: "auto",
-													color: "var(--color-text-tertiary)",
-												}}
-											>
-												{formatRelativeDate(commit.date)}
-											</span>
-										</div>
-										<div
-											style={{
-												display: "flex",
-												alignItems: "center",
-												gap: 6,
-												fontSize: 12,
-												color: "var(--color-text-tertiary)",
-											}}
-										>
-											<code
-												className="kb-git-commit-row-meta font-mono"
-												style={{
-													flexShrink: 0,
-												}}
-											>
-												{commit.shortHash}
-											</code>
-											<span
-												className="kb-line-clamp-1 kb-git-commit-row-message"
-												style={{
-													color: isSelected
-														? "var(--color-text-primary)"
-														: isUpstreamCommit
-															? "var(--color-text-secondary)"
-															: "var(--color-text-primary)",
-												}}
-											>
-												{commit.message}
-											</span>
-										</div>
-									</div>
-								</button>
-							);
-						}}
-						components={{
-							Footer: () => {
-								if (isLoadingMore) {
-									return (
-										<div
-											style={{
-												display: "flex",
-												alignItems: "center",
-												justifyContent: "center",
-												gap: 8,
-												padding: "10px 12px",
-												color: "var(--color-text-tertiary)",
-											}}
-										>
-											<Spinner size={16} />
-											<span style={{ fontSize: 12 }}>Loading more commits...</span>
-										</div>
-									);
-								}
-								if (errorMessage && commits.length > 0) {
-									return (
-										<div
-											style={{
-												display: "flex",
-												alignItems: "center",
-												justifyContent: "space-between",
-												gap: 8,
-												padding: "10px 12px",
-												color: "var(--color-text-tertiary)",
-											}}
-										>
-											<span
-												style={{
-													fontSize: 12,
-													color: "var(--color-status-red)",
-												}}
-											>
-												{errorMessage}
-											</span>
-											{canLoadMore ? (
-												<Button size="sm" variant="ghost" onClick={() => onLoadMore?.()}>
-													Retry
-												</Button>
-											) : null}
-										</div>
-									);
-								}
-								if (!canLoadMore) {
-									return (
-										<div
-											style={{
-												padding: "10px 12px",
-												textAlign: "center",
-												color: "var(--color-text-tertiary)",
-												fontSize: 12,
-											}}
-										>
-											End of history
-										</div>
-									);
-								}
-								return null;
-							},
-						}}
-					/>
+								);
+							})}
+						</div>
+						<CommitListFooter
+							commitsLength={commits.length}
+							isLoadingMore={isLoadingMore}
+							canLoadMore={canLoadMore}
+							errorMessage={errorMessage}
+							onLoadMore={onLoadMore}
+						/>
+					</>
 				)}
 			</div>
 		</div>
