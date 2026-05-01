@@ -16,6 +16,8 @@ import {
 	runtimeFileContentResponseSchema,
 	runtimeFileDiffRequestSchema,
 	runtimeFileDiffResponseSchema,
+	runtimeFileSaveRequestSchema,
+	runtimeFileSaveResponseSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeGitCheckoutResponseSchema,
 	runtimeGitCherryPickRequestSchema,
@@ -58,6 +60,10 @@ import {
 	runtimeTaskWorktreeInfoRequestSchema,
 	runtimeWorkdirChangesRequestSchema,
 	runtimeWorkdirChangesResponseSchema,
+	runtimeWorkdirEntryCreateRequestSchema,
+	runtimeWorkdirEntryDeleteRequestSchema,
+	runtimeWorkdirEntryMutationResponseSchema,
+	runtimeWorkdirEntryRenameRequestSchema,
 	runtimeWorkdirFileSearchRequestSchema,
 	runtimeWorkdirFileSearchResponseSchema,
 	runtimeWorkdirTextSearchRequestSchema,
@@ -253,6 +259,30 @@ export const projectRouter = t.router({
 		.output(runtimeFileContentResponseSchema)
 		.query(async ({ ctx, input }) => {
 			return await ctx.projectApi.getFileContent(ctx.projectScope, input);
+		}),
+	saveFileContent: projectProcedure
+		.input(runtimeFileSaveRequestSchema)
+		.output(runtimeFileSaveResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.projectApi.saveFileContent(ctx.projectScope, input);
+		}),
+	createWorkdirEntry: projectProcedure
+		.input(runtimeWorkdirEntryCreateRequestSchema)
+		.output(runtimeWorkdirEntryMutationResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.projectApi.createWorkdirEntry(ctx.projectScope, input);
+		}),
+	renameWorkdirEntry: projectProcedure
+		.input(runtimeWorkdirEntryRenameRequestSchema)
+		.output(runtimeWorkdirEntryMutationResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.projectApi.renameWorkdirEntry(ctx.projectScope, input);
+		}),
+	deleteWorkdirEntry: projectProcedure
+		.input(runtimeWorkdirEntryDeleteRequestSchema)
+		.output(runtimeWorkdirEntryMutationResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.projectApi.deleteWorkdirEntry(ctx.projectScope, input);
 		}),
 	getState: projectProcedure.output(runtimeProjectStateResponseSchema).query(async ({ ctx }) => {
 		return await ctx.projectApi.loadState(ctx.projectScope);

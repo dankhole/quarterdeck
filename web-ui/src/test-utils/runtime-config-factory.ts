@@ -109,6 +109,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	statuslineEnabled: CONFIG_DEFAULTS.statuslineEnabled,
 	terminalFontWeight: CONFIG_DEFAULTS.terminalFontWeight,
 	logLevel: CONFIG_DEFAULTS.logLevel,
+	fileEditorAutosaveMode: CONFIG_DEFAULTS.fileEditorAutosaveMode,
 	defaultBaseRef: CONFIG_DEFAULTS.defaultBaseRef,
 	backupIntervalMinutes: CONFIG_DEFAULTS.backupIntervalMinutes,
 	agentTerminalRowMultiplier: CONFIG_DEFAULTS.agentTerminalRowMultiplier,

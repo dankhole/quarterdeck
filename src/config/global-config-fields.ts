@@ -20,6 +20,9 @@
 export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
+export const FILE_EDITOR_AUTOSAVE_MODES = ["off", "delay", "focus"] as const;
+export type FileEditorAutosaveMode = (typeof FILE_EDITOR_AUTOSAVE_MODES)[number];
+
 // --- Normalize helpers (also used by special-case fields in runtime-config.ts) ---
 
 export function normalizeBoolean(value: unknown, fallback: boolean): boolean {
@@ -106,6 +109,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	statuslineEnabled: boolField(true),
 	terminalFontWeight: numField(325),
 	logLevel: enumField<LogLevel>("warn", LOG_LEVELS),
+	fileEditorAutosaveMode: enumField<FileEditorAutosaveMode>("off", FILE_EDITOR_AUTOSAVE_MODES),
 	backupIntervalMinutes: numField(30),
 	agentTerminalRowMultiplier: numField(2),
 } as const;

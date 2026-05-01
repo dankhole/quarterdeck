@@ -119,6 +119,18 @@ describe("SurfaceNavigationProvider", () => {
 		});
 	});
 
+	it("stores the active file search scope for global search overlays", () => {
+		renderProvider();
+
+		expect(latestValue.activeFileSearchScope).toEqual({ taskId: null });
+
+		act(() => {
+			latestValue.setActiveFileSearchScope({ taskId: "task-1", baseRef: "main" });
+		});
+
+		expect(latestValue.activeFileSearchScope).toEqual({ taskId: "task-1", baseRef: "main" });
+	});
+
 	it("keeps git history closed when no project is available", () => {
 		renderProvider({ project: { hasNoProjects: true } });
 

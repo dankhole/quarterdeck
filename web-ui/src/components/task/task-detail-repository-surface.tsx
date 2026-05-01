@@ -139,6 +139,7 @@ export function TaskDetailRepositorySurface({
 			) : (
 				<FilesView
 					key={`${selection.card.id}-${repositoryState.taskScopeMode}`}
+					showScopeBar={repositoryState.taskScopeMode !== "contextual"}
 					scopeBar={
 						<ScopeBar
 							resolvedScope={repositoryState.taskResolvedScope}
@@ -204,6 +205,7 @@ export function TaskDetailRepositorySurface({
 						/>
 					}
 					fileBrowserData={repositoryState.fileBrowserData}
+					fileEditorAutosaveMode={repositoryProps.fileEditorAutosaveMode}
 					rootPath={taskIdentity.assignedPath ?? undefined}
 					pendingFileNavigation={repositoryState.pendingFileNavigation}
 					onFileNavigationConsumed={repositoryState.onFileNavigationConsumed}

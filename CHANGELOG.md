@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Feature: edit files from the Files view
+
+- Files view now opens worktree files in editable CodeMirror tabs with dirty indicators, save/reload/discard flows, word wrap, markdown preview, and branch/ref browsing kept read-only.
+- Files view now supports creating files/folders, renaming or moving files/folders, and deleting files/folders behind an explicit confirmation in live worktree scopes.
+- Runtime file saves now use a full-content hash check plus locked atomic writes, rejecting binary, oversized, skipped-path, escaped, or concurrently changed files instead of overwriting agent or external-editor edits.
+- File editor saves now preserve edits typed while a save is in flight, keep tabs isolated per file-browser scope, preserve CRLF line endings and executable permissions on edited scripts, and open files over 5 MB read-only with an explicit edit-limit message.
+- File editor autosave is now optional, defaults off, and supports delayed saves or save-on-focus-change using the same conflict-aware save path as manual saves.
+- Files view now has toolbar access to active-file find/replace, save all, close all, dirty unload protection, and scope-aware Cmd+P/Cmd+Shift+F search across home, task worktree, and read-only ref browsing.
+- Editor dirty-unload protection now survives leaving the Files view, focus autosave no longer saves while discard prompts are active, and global file search keeps the active home/task/ref scope outside the Files surface.
+- In-app file saves and file/folder mutations now refresh git metadata and quick-open caches promptly instead of waiting for normal polling.
+- File tab close, close-all, and reload controls now wait for in-flight saves to finish so discard/reload actions cannot race a write that is still completing.
+- File editor autosave now lives in Settings, the normal Files view omits the duplicate scope bar, and CodeMirror search/selection styling is higher contrast.
+
 ### Fix: improve generated commit messages
 
 - Commit-message generation now sends task context, the complete selected-file list, and a larger bounded diff/content context, including untracked file excerpts when available.

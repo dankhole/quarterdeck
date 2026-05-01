@@ -118,6 +118,7 @@ const newRequiredProps = {
 		onCardSelect: () => {},
 	},
 	repositoryProps: {
+		fileEditorAutosaveMode: "off" as const,
 		skipTaskCheckoutConfirmation: false,
 		skipHomeCheckoutConfirmation: false,
 		onDeselectTask: () => {},
@@ -304,13 +305,32 @@ const noopGitContext: GitContextValue = {
 	topbarDetachedWorktree: null,
 	homeFileBrowserData: {
 		files: null,
+		directories: null,
+		contentScopeKey: "test-home",
+		searchScope: { taskId: null },
+		canMutateEntries: true,
+		mutationBlockedReason: null,
 		selectedPath: null,
 		onSelectPath: () => {},
 		fileContent: null,
 		isContentLoading: false,
 		isContentError: false,
 		onCloseFile: () => {},
+		isReadOnly: false,
 		getFileContent: async () => null,
+		reloadFileContent: async () => null,
+		saveFileContent: async () => {
+			throw new Error("not implemented");
+		},
+		createEntry: async () => {
+			throw new Error("not implemented");
+		},
+		renameEntry: async () => {
+			throw new Error("not implemented");
+		},
+		deleteEntry: async () => {
+			throw new Error("not implemented");
+		},
 	},
 };
 
@@ -326,6 +346,8 @@ const noopSurfaceNavigationContext: SurfaceNavigationContextValue = {
 	navigateToFile: () => {},
 	clearPendingFileNavigation: () => {},
 	navigateToGitView: () => {},
+	activeFileSearchScope: { taskId: null },
+	setActiveFileSearchScope: () => {},
 	mainView: "home",
 	sidebar: null,
 	setMainView: () => {},
@@ -337,10 +359,14 @@ const noopSurfaceNavigationContext: SurfaceNavigationContextValue = {
 	resetSurfaceNavigationToDefaults: () => {},
 };
 
-function renderWithProviders(root: Root, ui: ReactNode): void {
+function renderWithProviders(
+	root: Root,
+	ui: ReactNode,
+	options: { surfaceNavigation?: Partial<SurfaceNavigationContextValue> } = {},
+): void {
 	root.render(
 		<BoardContext.Provider value={noopBoardContext}>
-			<SurfaceNavigationContext.Provider value={noopSurfaceNavigationContext}>
+			<SurfaceNavigationContext.Provider value={{ ...noopSurfaceNavigationContext, ...options.surfaceNavigation }}>
 				<GitContext.Provider value={noopGitContext}>
 					<CardActionsProvider stable={noopStableActions} reactive={noopReactiveState}>
 						<TooltipProvider>{ui}</TooltipProvider>
@@ -461,5 +487,19 @@ describe("CardDetailView", () => {
 		});
 
 		expect(setSidePanelRatio).toHaveBeenCalled();
+	});
+
+	it("registers the selected task file scope for global file search outside the files view", async () => {
+		const setActiveFileSearchScope = vi.fn();
+
+		await act(async () => {
+			renderWithProviders(
+				root,
+				<CardDetailView selection={createSelection()} currentProjectId="project-1" {...newRequiredProps} />,
+				{ surfaceNavigation: { setActiveFileSearchScope } },
+			);
+		});
+
+		expect(setActiveFileSearchScope).toHaveBeenCalledWith({ taskId: "task-1", baseRef: "main" });
 	});
 });

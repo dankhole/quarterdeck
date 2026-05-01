@@ -57,7 +57,12 @@ export function areListFilesResponsesEqual(
 	previousData: RuntimeListFilesResponse,
 	nextData: RuntimeListFilesResponse,
 ): boolean {
-	return areStringArraysEqual(previousData.files, nextData.files);
+	return (
+		previousData.mutable === nextData.mutable &&
+		previousData.mutationBlockedReason === nextData.mutationBlockedReason &&
+		areStringArraysEqual(previousData.files, nextData.files) &&
+		areStringArraysEqual(previousData.directories ?? [], nextData.directories ?? [])
+	);
 }
 
 export function areGitRefsResponsesEqual(

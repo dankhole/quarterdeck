@@ -14,8 +14,8 @@ export function resolveCardDetailFileBrowserScope(resolvedScope: ResolvedScope |
 
 	if (resolvedScope?.type === "branch_view") {
 		return {
-			taskId: null,
-			baseRef: undefined,
+			taskId: resolvedScope.taskId ?? null,
+			baseRef: resolvedScope.baseRef,
 			ref: resolvedScope.ref,
 		};
 	}

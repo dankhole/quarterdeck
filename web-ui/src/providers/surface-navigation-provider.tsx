@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState } from "react";
 import { type FileNavigation, useGitNavigation } from "@/hooks/git/use-git-navigation";
 import type { GitViewCompareNavigation } from "@/hooks/git/use-git-view-compare";
+import { DEFAULT_WORKDIR_SEARCH_SCOPE, type WorkdirSearchScope } from "@/hooks/search/search-scope";
 import { useBoardContext } from "@/providers/board-provider";
 import { useProjectContext } from "@/providers/project-provider";
 import { type MainViewId, type SidebarId, useCardDetailLayout } from "@/resize/use-card-detail-layout";
@@ -18,6 +19,8 @@ export interface SurfaceNavigationContextValue {
 	navigateToFile: (nav: FileNavigation) => void;
 	clearPendingFileNavigation: () => void;
 	navigateToGitView: () => void;
+	activeFileSearchScope: WorkdirSearchScope;
+	setActiveFileSearchScope: (scope: WorkdirSearchScope) => void;
 	mainView: MainViewId;
 	sidebar: SidebarId | null;
 	setMainView: (view: MainViewId, callbacks?: { setSelectedTaskId?: (id: string | null) => void }) => void;
@@ -47,6 +50,7 @@ export function SurfaceNavigationProvider({ children }: SurfaceNavigationProvide
 	const { hasNoProjects, isProjectSwitching } = useProjectContext();
 	const { selectedTaskId, setSelectedTaskId } = useBoardContext();
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
+	const [activeFileSearchScope, setActiveFileSearchScope] = useState<WorkdirSearchScope>(DEFAULT_WORKDIR_SEARCH_SCOPE);
 
 	const {
 		mainView,
@@ -103,6 +107,8 @@ export function SurfaceNavigationProvider({ children }: SurfaceNavigationProvide
 			navigateToFile,
 			clearPendingFileNavigation,
 			navigateToGitView,
+			activeFileSearchScope,
+			setActiveFileSearchScope,
 			mainView,
 			sidebar,
 			setMainView,
@@ -125,6 +131,8 @@ export function SurfaceNavigationProvider({ children }: SurfaceNavigationProvide
 			navigateToFile,
 			clearPendingFileNavigation,
 			navigateToGitView,
+			activeFileSearchScope,
+			setActiveFileSearchScope,
 			mainView,
 			sidebar,
 			setMainView,

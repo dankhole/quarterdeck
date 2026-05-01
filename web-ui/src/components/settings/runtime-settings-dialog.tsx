@@ -8,6 +8,7 @@ import { AiFeaturesSection, NotificationsSection, TerminalSection } from "@/comp
 import {
 	ConfirmationsSection,
 	DiagnosticsSection,
+	EditorSection,
 	GitSection,
 	TroubleshootingSection,
 } from "@/components/settings/general-sections";
@@ -177,6 +178,7 @@ export function RuntimeSettingsDialog({
 					<NotificationsSection {...sectionProps} />
 					<TerminalSection {...sectionProps} />
 					<GitSection {...sectionProps} />
+					<EditorSection {...sectionProps} />
 					<ConfirmationsSection {...sectionProps} />
 					<TroubleshootingSection {...sectionProps} onResetLayout={resetLayoutCustomizations} />
 

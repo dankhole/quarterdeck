@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import type {
 	RuntimeFileContentResponse,
+	RuntimeFileSaveResponse,
 	RuntimeListFilesResponse,
 	RuntimeWorkdirFileChange,
 	RuntimeWorkdirFileSearchResponse,
@@ -10,6 +11,8 @@ import type { RuntimeCommitMessageGenerationContext } from "../title";
 import {
 	assertValidGitRef,
 	createEmptyWorkdirChangesResponse,
+	createWorkdirEntry,
+	deleteWorkdirEntry,
 	GIT_INSPECTION_OPTIONS,
 	getCommitDiff,
 	getFileContentAtRef,
@@ -21,22 +24,28 @@ import {
 	getWorkdirChangesForPaths,
 	getWorkdirChangesFromRef,
 	getWorkdirFileDiff,
-	listAllWorkdirFiles,
+	listAllWorkdirFileEntries,
 	listFilesAtRef,
 	readWorkdirFile,
 	readWorkdirFileExcerpt,
+	renameWorkdirEntry,
+	saveWorkdirFile,
+	searchFilePaths,
 	searchWorkdirFiles,
 	searchWorkdirText,
 	validateGitPath,
+	WorkdirFileConflictError,
 } from "../workdir";
 import type { RuntimeTrpcContext } from "./app-router-context";
 import {
+	isProjectCheckoutCwd,
 	normalizeOptionalTaskScopeInput,
 	normalizeRequiredTaskScopeInput,
 	type ProjectApiContext,
 	resolveWorkingDir,
 	tryResolveTaskCwd,
 } from "./project-api-shared";
+import { createGitMetadataRefreshEffects } from "./runtime-mutation-effects";
 
 type ChangesOps = Pick<
 	RuntimeTrpcContext["projectApi"],
@@ -51,7 +60,35 @@ type ChangesOps = Pick<
 	| "searchText"
 	| "listFiles"
 	| "getFileContent"
+	| "saveFileContent"
+	| "createWorkdirEntry"
+	| "renameWorkdirEntry"
+	| "deleteWorkdirEntry"
 >;
+
+async function resolveMutableWorkdirEntryCwd(
+	projectPath: string,
+	input: { taskId: string | null; baseRef?: string },
+): Promise<string> {
+	if (!input.taskId) {
+		return projectPath;
+	}
+	const taskId = input.taskId.trim();
+	if (!taskId) throw new Error("Missing taskId query parameter.");
+	return await resolveWorkingDir(projectPath, { taskId, baseRef: input.baseRef?.trim() ?? "" });
+}
+
+function createFileMutationGitMetadataRefreshEffects(
+	projectScope: { projectId: string; projectPath: string },
+	input: { taskId: string | null },
+	cwd: string,
+) {
+	const taskId = input.taskId?.trim() ?? "";
+	const taskScope = taskId ? { taskId } : null;
+	return createGitMetadataRefreshEffects(projectScope, taskScope, {
+		includeHome: taskScope !== null && isProjectCheckoutCwd(projectScope.projectPath, cwd),
+	});
+}
 
 const MAX_UNTRACKED_CONTENT_FILES = 12;
 const MAX_UNTRACKED_FILE_CONTENT_LENGTH = 4_000;
@@ -309,15 +346,45 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 
 		searchFiles: async (projectScope, input) => {
 			const query = input.query.trim();
-			const files = await searchWorkdirFiles(projectScope.projectPath, query, input.limit);
+			let cwd: string | null;
+			if (!input.taskId) {
+				cwd = projectScope.projectPath;
+			} else {
+				const taskId = input.taskId.trim();
+				if (!taskId) throw new Error("Missing taskId query parameter.");
+				cwd = await tryResolveTaskCwd(projectScope.projectPath, taskId, input.baseRef?.trim() ?? "");
+			}
+			if (!cwd) {
+				return { query, files: [] } satisfies RuntimeWorkdirFileSearchResponse;
+			}
+			const files = input.ref
+				? searchFilePaths(await listFilesAtRef(cwd, input.ref), query, input.limit)
+				: await searchWorkdirFiles(cwd, query, input.limit);
 			return { query, files } satisfies RuntimeWorkdirFileSearchResponse;
 		},
 
 		searchText: async (projectScope, input) => {
-			return (await searchWorkdirText(projectScope.projectPath, input.query, {
+			let cwd: string | null;
+			if (!input.taskId) {
+				cwd = projectScope.projectPath;
+			} else {
+				const taskId = input.taskId.trim();
+				if (!taskId) throw new Error("Missing taskId query parameter.");
+				cwd = await tryResolveTaskCwd(projectScope.projectPath, taskId, input.baseRef?.trim() ?? "");
+			}
+			if (!cwd) {
+				return {
+					query: input.query,
+					files: [],
+					totalMatches: 0,
+					truncated: false,
+				} satisfies RuntimeWorkdirTextSearchResponse;
+			}
+			return (await searchWorkdirText(cwd, input.query, {
 				caseSensitive: input.caseSensitive,
 				isRegex: input.isRegex,
 				limit: input.limit,
+				ref: input.ref,
 			})) satisfies RuntimeWorkdirTextSearchResponse;
 		},
 
@@ -325,24 +392,39 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 			if (!input.taskId) {
 				if (input.ref) {
 					const files = await listFilesAtRef(projectScope.projectPath, input.ref);
-					return { files } satisfies RuntimeListFilesResponse;
+					return {
+						files,
+						mutable: false,
+						mutationBlockedReason: "Branch/ref browsing is read-only.",
+					} satisfies RuntimeListFilesResponse;
 				}
-				const files = await listAllWorkdirFiles(projectScope.projectPath);
-				return { files } satisfies RuntimeListFilesResponse;
+				const entries = await listAllWorkdirFileEntries(projectScope.projectPath);
+				return { ...entries, mutable: true } satisfies RuntimeListFilesResponse;
 			}
 
 			const taskId = input.taskId.trim();
 			if (!taskId) throw new Error("Missing taskId query parameter.");
 			const taskCwd = await tryResolveTaskCwd(projectScope.projectPath, taskId, input.baseRef?.trim() ?? "");
-			if (!taskCwd) return { files: [] } satisfies RuntimeListFilesResponse;
+			if (!taskCwd) {
+				return {
+					files: [],
+					directories: [],
+					mutable: false,
+					mutationBlockedReason: "Worktree is unavailable.",
+				} satisfies RuntimeListFilesResponse;
+			}
 
 			if (input.ref) {
 				const files = await listFilesAtRef(taskCwd, input.ref);
-				return { files } satisfies RuntimeListFilesResponse;
+				return {
+					files,
+					mutable: false,
+					mutationBlockedReason: "Branch/ref browsing is read-only.",
+				} satisfies RuntimeListFilesResponse;
 			}
 
-			const files = await listAllWorkdirFiles(taskCwd);
-			return { files } satisfies RuntimeListFilesResponse;
+			const entries = await listAllWorkdirFileEntries(taskCwd);
+			return { ...entries, mutable: true } satisfies RuntimeListFilesResponse;
 		},
 
 		getFileContent: async (projectScope, input) => {
@@ -380,6 +462,55 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 			}
 
 			return await readWorkdirFile(cwd, filePath);
+		},
+
+		saveFileContent: async (projectScope, input) => {
+			const filePath = input.path.trim();
+			if (!filePath) throw new Error("Missing path parameter.");
+
+			let cwd: string | null;
+			if (!input.taskId) {
+				cwd = projectScope.projectPath;
+			} else {
+				const taskId = input.taskId.trim();
+				if (!taskId) throw new Error("Missing taskId query parameter.");
+				cwd = await tryResolveTaskCwd(projectScope.projectPath, taskId, input.baseRef?.trim() ?? "");
+			}
+			if (!cwd) {
+				throw new TRPCError({ code: "NOT_FOUND", message: "Worktree is unavailable." });
+			}
+
+			try {
+				const saved = await saveWorkdirFile(cwd, filePath, input.content, input.expectedContentHash);
+				ctx.applyEffects(createFileMutationGitMetadataRefreshEffects(projectScope, input, cwd));
+				return saved satisfies RuntimeFileSaveResponse;
+			} catch (error) {
+				if (error instanceof WorkdirFileConflictError) {
+					throw new TRPCError({ code: "CONFLICT", message: error.message });
+				}
+				throw error;
+			}
+		},
+
+		createWorkdirEntry: async (projectScope, input) => {
+			const cwd = await resolveMutableWorkdirEntryCwd(projectScope.projectPath, input);
+			const result = await createWorkdirEntry(cwd, input.path, input.kind);
+			ctx.applyEffects(createFileMutationGitMetadataRefreshEffects(projectScope, input, cwd));
+			return result;
+		},
+
+		renameWorkdirEntry: async (projectScope, input) => {
+			const cwd = await resolveMutableWorkdirEntryCwd(projectScope.projectPath, input);
+			const result = await renameWorkdirEntry(cwd, input.path, input.nextPath, input.kind);
+			ctx.applyEffects(createFileMutationGitMetadataRefreshEffects(projectScope, input, cwd));
+			return result;
+		},
+
+		deleteWorkdirEntry: async (projectScope, input) => {
+			const cwd = await resolveMutableWorkdirEntryCwd(projectScope.projectPath, input);
+			const result = await deleteWorkdirEntry(cwd, input.path, input.kind);
+			ctx.applyEffects(createFileMutationGitMetadataRefreshEffects(projectScope, input, cwd));
+			return result;
 		},
 	};
 }

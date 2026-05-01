@@ -18,7 +18,7 @@ export {
 	getSectionTopWithinScrollContainer,
 } from "./diff-viewer-utils";
 export { FileBrowserTreePanel } from "./file-browser-tree-panel";
-export { FileContentViewer } from "./file-content-viewer";
+export { FileEditorPanel } from "./file-editor-panel";
 export { FileTreePanel } from "./file-tree-panel";
 export { MergeBranchDialog } from "./merge-branch-dialog";
 export { RebaseBranchDialog } from "./rebase-branch-dialog";

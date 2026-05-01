@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client.js";
 import type { RuntimeWorkdirTextSearchFile } from "@/runtime/types";
+import type { WorkdirSearchScope } from "./search-scope";
 
 export interface FlatMatch {
 	path: string;
@@ -32,10 +33,11 @@ export interface UseTextSearchResult {
 
 interface UseTextSearchOptions {
 	projectId: string | null;
+	searchScope: WorkdirSearchScope;
 	onSelect: (filePath: string, lineNumber?: number) => void;
 }
 
-export function useTextSearch({ projectId, onSelect }: UseTextSearchOptions): UseTextSearchResult {
+export function useTextSearch({ projectId, searchScope, onSelect }: UseTextSearchOptions): UseTextSearchResult {
 	const [query, setQuery] = useState("");
 	const [caseSensitive, setCaseSensitive] = useState(false);
 	const [isRegex, setIsRegex] = useState(false);
@@ -68,7 +70,14 @@ export function useTextSearch({ projectId, onSelect }: UseTextSearchOptions): Us
 		setIsLoading(true);
 		try {
 			const trpcClient = getRuntimeTrpcClient(projectId);
-			const response = await trpcClient.project.searchText.query({ query, caseSensitive, isRegex });
+			const response = await trpcClient.project.searchText.query({
+				query,
+				caseSensitive,
+				isRegex,
+				taskId: searchScope.taskId,
+				...(searchScope.baseRef ? { baseRef: searchScope.baseRef } : {}),
+				...(searchScope.ref ? { ref: searchScope.ref } : {}),
+			});
 			if (requestId !== requestIdRef.current) return;
 			setResults(response.files);
 			setTotalMatches(response.totalMatches);
@@ -86,7 +95,7 @@ export function useTextSearch({ projectId, onSelect }: UseTextSearchOptions): Us
 				setIsLoading(false);
 			}
 		}
-	}, [query, projectId, caseSensitive, isRegex]);
+	}, [query, projectId, caseSensitive, isRegex, searchScope]);
 
 	const executeSearchRef = useRef(executeSearch);
 	executeSearchRef.current = executeSearch;

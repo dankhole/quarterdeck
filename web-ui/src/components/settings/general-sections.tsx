@@ -1,6 +1,11 @@
 // Settings sections: diagnostics, Git, confirmations, and troubleshooting.
 import { Button } from "@/components/ui/button";
 import { SettingsSwitch } from "@/components/ui/settings-controls";
+import {
+	FILE_EDITOR_AUTOSAVE_MODES,
+	type FileEditorAutosaveMode,
+	normalizeFileEditorAutosaveMode,
+} from "@/hooks/git/file-editor-workspace";
 import type { SettingsSectionProps } from "./settings-section-props";
 
 // ---------------------------------------------------------------------------
@@ -58,6 +63,48 @@ export function GitSection({ fields, setField, disabled }: SettingsSectionProps)
 					description={description}
 				/>
 			))}
+		</>
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Editor
+// ---------------------------------------------------------------------------
+
+const FILE_EDITOR_AUTOSAVE_LABELS: Record<FileEditorAutosaveMode, string> = {
+	off: "Off",
+	delay: "After a short delay",
+	focus: "When focus leaves the editor",
+};
+
+export function EditorSection({ fields, setField, disabled }: SettingsSectionProps): React.ReactElement {
+	return (
+		<>
+			<h6 className="font-semibold text-text-primary mt-4 mb-2">Editor</h6>
+			<div className="flex items-center justify-between gap-3">
+				<label htmlFor="runtime-settings-file-editor-autosave" className="text-text-primary text-[13px]">
+					File editor autosave
+				</label>
+				<select
+					id="runtime-settings-file-editor-autosave"
+					name="fileEditorAutosaveMode"
+					value={fields.fileEditorAutosaveMode}
+					onChange={(event) => {
+						setField("fileEditorAutosaveMode", normalizeFileEditorAutosaveMode(event.currentTarget.value));
+					}}
+					disabled={disabled}
+					className="h-7 min-w-48 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary outline-none hover:border-border-bright focus:border-border-focus disabled:opacity-40"
+				>
+					{FILE_EDITOR_AUTOSAVE_MODES.map((mode) => (
+						<option key={mode} value={mode}>
+							{FILE_EDITOR_AUTOSAVE_LABELS[mode]}
+						</option>
+					))}
+				</select>
+			</div>
+			<p className="text-text-secondary text-[13px] mt-1 mb-0">
+				Controls saves made by the in-app Files editor. Manual save remains available in every mode.
+			</p>
 		</>
 	);
 }

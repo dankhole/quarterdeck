@@ -10,6 +10,8 @@ export type { UseDiffScrollSyncOptions, UseDiffScrollSyncResult } from "./use-di
 export { useDiffScrollSync } from "./use-diff-scroll-sync";
 export type { UseFileBrowserDataResult } from "./use-file-browser-data";
 export { useFileBrowserData } from "./use-file-browser-data";
+export type { FileEditorDiscardPrompt, UseFileEditorWorkspaceResult } from "./use-file-editor-workspace";
+export { useFileEditorDirtyUnloadGuard, useFileEditorWorkspace } from "./use-file-editor-workspace";
 export type { UseGitActionsResult } from "./use-git-actions";
 export { useGitActions } from "./use-git-actions";
 export type { FileNavigation } from "./use-git-navigation";

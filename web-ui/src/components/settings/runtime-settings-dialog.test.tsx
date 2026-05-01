@@ -393,6 +393,40 @@ describe("RuntimeSettingsDialog", () => {
 		expect(payload.llmSummaryPolishEnabled).toBe(true);
 	});
 
+	it("includes file editor autosave mode in save payload", async () => {
+		saveMock.mockReset();
+		saveMock.mockResolvedValue(true);
+
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					projectId={"project-1"}
+					initialConfig={savedConfig}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const autosaveSelect = document.getElementById("runtime-settings-file-editor-autosave") as HTMLSelectElement;
+		expect(autosaveSelect).toBeInstanceOf(HTMLSelectElement);
+		await act(async () => {
+			autosaveSelect.value = "focus";
+			autosaveSelect.dispatchEvent(new Event("change", { bubbles: true }));
+		});
+
+		const saveButton = findButtonByText(document.body, "Save");
+		expect(saveButton).toBeInstanceOf(HTMLButtonElement);
+		await act(async () => {
+			saveButton!.click();
+		});
+
+		expect(saveMock).toHaveBeenCalledTimes(1);
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- accessing mock call args
+		const payload = (saveMock.mock.calls as any)[0][0] as RuntimeConfigSaveRequest;
+		expect(payload.fileEditorAutosaveMode).toBe("focus");
+	});
+
 	it("syncs audible settings from loaded config", async () => {
 		const customConfig: RuntimeConfigResponse = {
 			...savedConfig,

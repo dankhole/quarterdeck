@@ -6,9 +6,13 @@ import {
 	ChevronsDownUp,
 	ChevronsUpDown,
 	ClipboardCopy,
+	FilePlus,
 	FileText,
 	FolderOpen,
+	FolderPlus,
+	Pencil,
 	Search,
+	Trash2,
 	X,
 } from "lucide-react";
 import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -18,15 +22,40 @@ import {
 	copyToClipboard,
 	FileContextMenuItems,
 } from "@/components/git/panels/context-menu-utils";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
+import { AlertDialogDescription, Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Tooltip } from "@/components/ui/tooltip";
-import type { RuntimeFileContentResponse } from "@/runtime/types";
+import type {
+	RuntimeFileContentResponse,
+	RuntimeWorkdirEntryKind,
+	RuntimeWorkdirEntryMutationResponse,
+} from "@/runtime/types";
 import { buildFileTree, type FileTreeNode } from "@/utils/file-tree";
 import { useDebouncedEffect } from "@/utils/react-use";
 
 interface FlatTreeItem {
 	node: FileTreeNode;
 	depth: number;
+}
+
+type EntryFormDialogState =
+	| {
+			mode: "create";
+			kind: RuntimeWorkdirEntryKind;
+			value: string;
+	  }
+	| {
+			mode: "rename";
+			kind: RuntimeWorkdirEntryKind;
+			path: string;
+			value: string;
+	  };
+
+interface DeleteEntryPrompt {
+	path: string;
+	kind: RuntimeWorkdirEntryKind;
 }
 
 /** Single-pass traversal that produces both the visible item list and the file-only path list. */
@@ -60,8 +89,18 @@ const ROW_HEIGHT = 28;
 /** Module-level cache of scroll positions per scope key. */
 const scrollPositionByScope = new Map<string, number>();
 
+function parentPathOf(path: string): string | null {
+	const index = path.lastIndexOf("/");
+	return index < 0 ? null : path.slice(0, index);
+}
+
+function entryKindLabel(kind: RuntimeWorkdirEntryKind): string {
+	return kind === "directory" ? "folder" : "file";
+}
+
 export function FileBrowserTreePanel({
 	files,
+	directories,
 	selectedPath,
 	onSelectPath,
 	panelFlex,
@@ -71,9 +110,13 @@ export function FileBrowserTreePanel({
 	onInitializedExpansion,
 	rootPath,
 	getFileContent,
+	onCreateEntry,
+	onRenameEntry,
+	onDeleteEntry,
 	scopeKey,
 }: {
 	files: string[] | null;
+	directories?: string[] | null;
 	selectedPath: string | null;
 	onSelectPath: (path: string | null) => void;
 	panelFlex?: string;
@@ -85,12 +128,23 @@ export function FileBrowserTreePanel({
 	rootPath?: string | null;
 	/** Fetch file content for a given path (used by "Copy file contents" context menu action). */
 	getFileContent?: (path: string) => Promise<RuntimeFileContentResponse | null>;
+	onCreateEntry?: (path: string, kind: RuntimeWorkdirEntryKind) => Promise<RuntimeWorkdirEntryMutationResponse>;
+	onRenameEntry?: (
+		path: string,
+		nextPath: string,
+		kind: RuntimeWorkdirEntryKind,
+	) => Promise<RuntimeWorkdirEntryMutationResponse>;
+	onDeleteEntry?: (path: string, kind: RuntimeWorkdirEntryKind) => Promise<RuntimeWorkdirEntryMutationResponse>;
 	/** Scope key for persisting scroll position across unmount/remount cycles. */
 	scopeKey?: string;
 }): React.ReactElement {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [debouncedQuery, setDebouncedQuery] = useState("");
 	const [focusedIndex, setFocusedIndex] = useState(-1);
+	// TODO(editor-lite): Extract entry mutation dialogs/handlers when file operations add more flows.
+	const [entryFormDialog, setEntryFormDialog] = useState<EntryFormDialogState | null>(null);
+	const [deletePrompt, setDeletePrompt] = useState<DeleteEntryPrompt | null>(null);
+	const [isMutatingEntry, setIsMutatingEntry] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -143,7 +197,16 @@ export function FileBrowserTreePanel({
 		return allFiles.filter((path) => path.toLowerCase().includes(query));
 	}, [files, debouncedQuery]);
 
-	const tree = useMemo(() => buildFileTree(filteredFiles), [filteredFiles]);
+	const filteredDirectories = useMemo(() => {
+		const allDirectories = directories ?? [];
+		if (!debouncedQuery.trim()) {
+			return allDirectories;
+		}
+		const query = debouncedQuery.toLowerCase();
+		return allDirectories.filter((path) => path.toLowerCase().includes(query));
+	}, [directories, debouncedQuery]);
+
+	const tree = useMemo(() => buildFileTree(filteredFiles, filteredDirectories), [filteredFiles, filteredDirectories]);
 
 	// Auto-expand directories on first load (limited depth) or fully when searching
 	useEffect(() => {
@@ -236,6 +299,61 @@ export function FileBrowserTreePanel({
 		inputRef.current?.focus();
 	}, []);
 
+	const openCreateEntryDialog = useCallback((kind: RuntimeWorkdirEntryKind, parentPath: string | null = null) => {
+		setEntryFormDialog({ mode: "create", kind, value: parentPath ? `${parentPath}/` : "" });
+	}, []);
+
+	const openRenameEntryDialog = useCallback((path: string, kind: RuntimeWorkdirEntryKind) => {
+		setEntryFormDialog({ mode: "rename", kind, path, value: path });
+	}, []);
+
+	const handleEntryFormSubmit = useCallback(
+		async (event: React.FormEvent<HTMLFormElement>) => {
+			event.preventDefault();
+			if (!entryFormDialog) return;
+			const nextPath = entryFormDialog.value.trim();
+			if (!nextPath) {
+				showAppToast({ intent: "danger", message: "Path is required." });
+				return;
+			}
+			setIsMutatingEntry(true);
+			try {
+				if (entryFormDialog.mode === "create") {
+					if (!onCreateEntry) return;
+					await onCreateEntry(nextPath, entryFormDialog.kind);
+					showAppToast({ intent: "success", message: `${entryKindLabel(entryFormDialog.kind)} created.` });
+				} else {
+					if (!onRenameEntry) return;
+					await onRenameEntry(entryFormDialog.path, nextPath, entryFormDialog.kind);
+					showAppToast({ intent: "success", message: `${entryKindLabel(entryFormDialog.kind)} renamed.` });
+				}
+				setEntryFormDialog(null);
+			} catch (error) {
+				showAppToast({ intent: "danger", message: error instanceof Error ? error.message : String(error) });
+			} finally {
+				setIsMutatingEntry(false);
+			}
+		},
+		[entryFormDialog, onCreateEntry, onRenameEntry],
+	);
+
+	const handleConfirmDeleteEntry = useCallback(async () => {
+		if (!deletePrompt || !onDeleteEntry) return;
+		setIsMutatingEntry(true);
+		try {
+			await onDeleteEntry(deletePrompt.path, deletePrompt.kind);
+			showAppToast({ intent: "success", message: `${entryKindLabel(deletePrompt.kind)} deleted.` });
+			setDeletePrompt(null);
+		} catch (error) {
+			showAppToast({ intent: "danger", message: error instanceof Error ? error.message : String(error) });
+		} finally {
+			setIsMutatingEntry(false);
+		}
+	}, [deletePrompt, onDeleteEntry]);
+
+	// FilesView wires entry mutation callbacks as an all-or-none capability for mutable worktree scopes.
+	const canMutateEntries = Boolean(onCreateEntry || onRenameEntry || onDeleteEntry);
+
 	const virtualizer = useVirtualizer({
 		count: visibleItems.length,
 		getScrollElement: () => scrollContainerRef.current,
@@ -246,7 +364,67 @@ export function FileBrowserTreePanel({
 
 	return (
 		<div className="flex flex-col min-w-0 min-h-0 bg-surface-0" style={{ flex: panelFlex ?? "0.6 1 0" }}>
-			{(files?.length ?? 0) > 0 ? (
+			<Dialog open={entryFormDialog !== null} onOpenChange={(open) => !open && setEntryFormDialog(null)}>
+				<DialogHeader
+					title={
+						entryFormDialog
+							? `${entryFormDialog.mode === "create" ? "Create" : "Rename"} ${entryKindLabel(entryFormDialog.kind)}`
+							: "File operation"
+					}
+				/>
+				<form onSubmit={(event) => void handleEntryFormSubmit(event)}>
+					<DialogBody className="flex flex-col gap-2">
+						<label className="flex flex-col gap-1 text-xs text-text-secondary">
+							Path
+							<input
+								name="workdir-entry-path"
+								value={entryFormDialog?.value ?? ""}
+								onChange={(event) =>
+									setEntryFormDialog((current) =>
+										current ? { ...current, value: event.target.value } : current,
+									)
+								}
+								disabled={isMutatingEntry}
+								autoFocus
+								className="rounded-md border border-border bg-surface-2 px-2 py-1.5 font-mono text-sm text-text-primary outline-none focus:border-border-focus"
+							/>
+						</label>
+					</DialogBody>
+					<DialogFooter>
+						<Button
+							type="button"
+							variant="default"
+							onClick={() => setEntryFormDialog(null)}
+							disabled={isMutatingEntry}
+						>
+							Cancel
+						</Button>
+						<Button type="submit" variant="primary" disabled={isMutatingEntry}>
+							{entryFormDialog?.mode === "create" ? "Create" : "Rename"}
+						</Button>
+					</DialogFooter>
+				</form>
+			</Dialog>
+			<ConfirmationDialog
+				open={deletePrompt !== null}
+				title={`Delete ${deletePrompt ? entryKindLabel(deletePrompt.kind) : "entry"}?`}
+				confirmLabel="Delete"
+				onCancel={() => setDeletePrompt(null)}
+				onConfirm={() => void handleConfirmDeleteEntry()}
+				isLoading={isMutatingEntry}
+			>
+				<AlertDialogDescription>
+					{deletePrompt ? (
+						<>
+							Delete <span className="font-mono text-text-primary">{deletePrompt.path}</span>
+							{deletePrompt.kind === "directory" ? " and everything inside it" : ""}?
+						</>
+					) : (
+						"Delete this entry?"
+					)}
+				</AlertDialogDescription>
+			</ConfirmationDialog>
+			{(files?.length ?? 0) > 0 || (directories?.length ?? 0) > 0 || canMutateEntries ? (
 				<div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-border">
 					<Search size={12} className="text-text-tertiary shrink-0" />
 					<input
@@ -259,13 +437,36 @@ export function FileBrowserTreePanel({
 						placeholder="Filter files..."
 						className="flex-1 min-w-0 bg-transparent text-xs text-text-primary placeholder-text-tertiary outline-none border-0 p-0"
 					/>
+					{canMutateEntries ? (
+						<>
+							<Tooltip content="New file">
+								<button
+									type="button"
+									onClick={() => openCreateEntryDialog("file")}
+									className="shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-secondary"
+								>
+									<FilePlus size={12} />
+								</button>
+							</Tooltip>
+							<Tooltip content="New folder">
+								<button
+									type="button"
+									onClick={() => openCreateEntryDialog("directory")}
+									className="shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-secondary"
+								>
+									<FolderPlus size={12} />
+								</button>
+							</Tooltip>
+						</>
+					) : null}
 					{searchQuery ? (
 						<button
 							type="button"
 							onClick={handleClearSearch}
-							className="text-text-tertiary hover:text-text-secondary"
+							className="shrink-0 rounded-md p-1 text-text-tertiary hover:text-text-primary hover:bg-surface-3"
+							aria-label="Clear file filter"
 						>
-							<X size={12} />
+							<X size={14} />
 						</button>
 					) : null}
 					{hasDirectories ? (
@@ -350,6 +551,63 @@ export function FileBrowserTreePanel({
 											fileName={node.name}
 											filePath={rootPath ? `${rootPath}/${node.path}` : node.path}
 										>
+											{canMutateEntries ? (
+												<>
+													<ContextMenu.Separator className="h-px bg-border my-1" />
+													{isDirectory && onCreateEntry ? (
+														<>
+															<ContextMenu.Item
+																className={CONTEXT_MENU_ITEM_CLASS}
+																onSelect={() => openCreateEntryDialog("file", node.path)}
+															>
+																<FilePlus size={14} className="text-text-secondary" />
+																New file
+															</ContextMenu.Item>
+															<ContextMenu.Item
+																className={CONTEXT_MENU_ITEM_CLASS}
+																onSelect={() => openCreateEntryDialog("directory", node.path)}
+															>
+																<FolderPlus size={14} className="text-text-secondary" />
+																New folder
+															</ContextMenu.Item>
+														</>
+													) : null}
+													{!isDirectory && onCreateEntry ? (
+														<ContextMenu.Item
+															className={CONTEXT_MENU_ITEM_CLASS}
+															onSelect={() => openCreateEntryDialog("file", parentPathOf(node.path))}
+														>
+															<FilePlus size={14} className="text-text-secondary" />
+															New file
+														</ContextMenu.Item>
+													) : null}
+													{onRenameEntry ? (
+														<ContextMenu.Item
+															className={CONTEXT_MENU_ITEM_CLASS}
+															onSelect={() =>
+																openRenameEntryDialog(node.path, isDirectory ? "directory" : "file")
+															}
+														>
+															<Pencil size={14} className="text-text-secondary" />
+															Rename / move
+														</ContextMenu.Item>
+													) : null}
+													{onDeleteEntry ? (
+														<ContextMenu.Item
+															className={CONTEXT_MENU_ITEM_CLASS}
+															onSelect={() =>
+																setDeletePrompt({
+																	path: node.path,
+																	kind: isDirectory ? "directory" : "file",
+																})
+															}
+														>
+															<Trash2 size={14} className="text-status-red" />
+															Delete
+														</ContextMenu.Item>
+													) : null}
+												</>
+											) : null}
 											{!isDirectory && getFileContent ? (
 												<ContextMenu.Item
 													className={CONTEXT_MENU_ITEM_CLASS}

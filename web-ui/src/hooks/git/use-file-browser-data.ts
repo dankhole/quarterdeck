@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createWorkdirSearchScope, type WorkdirSearchScope } from "@/hooks/search/search-scope";
 import { areListFilesResponsesEqual } from "@/runtime/query-equality";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeFileContentResponse, RuntimeListFilesResponse } from "@/runtime/types";
+import type {
+	RuntimeFileContentResponse,
+	RuntimeListFilesResponse,
+	RuntimeWorkdirEntryKind,
+	RuntimeWorkdirEntryMutationResponse,
+} from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 
@@ -33,20 +39,47 @@ function persistCacheToStorage(): void {
 	);
 }
 
-function scopeKey(taskId: string | null): string {
-	return taskId ?? "__home__";
+function createContentScopeKey(input: {
+	projectId: string | null;
+	taskId: string | null;
+	baseRef?: string;
+	ref?: string | null;
+}): string {
+	return JSON.stringify({
+		projectId: input.projectId ?? "__no_project__",
+		taskId: input.taskId ?? "__home__",
+		baseRef: input.baseRef ?? "__default_base__",
+		ref: input.ref ?? "__live__",
+	});
 }
 
 export interface UseFileBrowserDataResult {
 	files: string[] | null;
+	directories: string[] | null;
+	contentScopeKey: string;
+	searchScope: WorkdirSearchScope;
+	canMutateEntries: boolean;
+	mutationBlockedReason: string | null;
 	selectedPath: string | null;
 	onSelectPath: (path: string | null) => void;
 	fileContent: RuntimeFileContentResponse | null;
 	isContentLoading: boolean;
 	isContentError: boolean;
 	onCloseFile: () => void;
+	isReadOnly: boolean;
 	/** Fetch file content for an arbitrary path (used by "Copy file contents" context menu action). */
 	getFileContent: (path: string) => Promise<RuntimeFileContentResponse | null>;
+	/** Reload file content from disk without changing the active selection. */
+	reloadFileContent: (path: string) => Promise<RuntimeFileContentResponse | null>;
+	/** Save text content for a live worktree file. Unavailable while browsing a branch/ref snapshot. */
+	saveFileContent: (path: string, content: string, expectedContentHash: string) => Promise<RuntimeFileContentResponse>;
+	createEntry: (path: string, kind: RuntimeWorkdirEntryKind) => Promise<RuntimeWorkdirEntryMutationResponse>;
+	renameEntry: (
+		path: string,
+		nextPath: string,
+		kind: RuntimeWorkdirEntryKind,
+	) => Promise<RuntimeWorkdirEntryMutationResponse>;
+	deleteEntry: (path: string, kind: RuntimeWorkdirEntryKind) => Promise<RuntimeWorkdirEntryMutationResponse>;
 }
 
 /**
@@ -62,12 +95,25 @@ export function useFileBrowserData(options: {
 }): UseFileBrowserDataResult {
 	const { projectId, taskId, baseRef, ref: browseRef } = options;
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
+	const contentScopeKey = useMemo(
+		() => createContentScopeKey({ projectId, taskId, baseRef, ref: browseRef }),
+		[baseRef, browseRef, projectId, taskId],
+	);
+	const searchScope = useMemo(
+		() => createWorkdirSearchScope({ taskId, baseRef, ref: browseRef ?? undefined }),
+		[baseRef, browseRef, taskId],
+	);
+	const selectedPathRef = useRef(selectedPath);
+	const contentScopeKeyRef = useRef(contentScopeKey);
+	selectedPathRef.current = selectedPath;
+	contentScopeKeyRef.current = contentScopeKey;
 
 	// Wrap setSelectedPath to also persist in the module-level cache + localStorage.
 	const setSelectedPathPersisted = useCallback(
 		(path: string | null) => {
+			selectedPathRef.current = path;
 			setSelectedPath(path);
-			const key = scopeKey(taskId);
+			const key = contentScopeKey;
 			if (path) {
 				lastSelectedPathByScope.set(key, path);
 			} else {
@@ -75,7 +121,7 @@ export function useFileBrowserData(options: {
 			}
 			persistCacheToStorage();
 		},
-		[taskId],
+		[contentScopeKey],
 	);
 
 	const listFilesQueryFn = useCallback(async () => {
@@ -95,15 +141,23 @@ export function useFileBrowserData(options: {
 		queryFn: listFilesQueryFn,
 		isDataEqual: areListFilesResponsesEqual,
 	});
+	const setFileListData = fileListQuery.setData;
+	const [fileListCacheKey, setFileListCacheKey] = useState(contentScopeKey);
+	useEffect(() => {
+		setFileListData(null);
+		setFileListCacheKey(contentScopeKey);
+	}, [contentScopeKey, setFileListData]);
+	const hasActiveFileListCache = fileListCacheKey === contentScopeKey;
+	const fileListData = hasActiveFileListCache ? fileListQuery.data : null;
 
 	// Restore last selected file when the scope changes, or clear if none was remembered.
 	useEffect(() => {
-		const restored = lastSelectedPathByScope.get(scopeKey(taskId)) ?? null;
+		const restored = lastSelectedPathByScope.get(contentScopeKey) ?? null;
 		setSelectedPathPersisted(restored);
-	}, [taskId, browseRef, projectId, setSelectedPathPersisted]);
+	}, [contentScopeKey, setSelectedPathPersisted]);
 
 	// Clear restored selection if the file no longer exists in the loaded file list.
-	const files = fileListQuery.data?.files;
+	const files = fileListData?.files;
 	useEffect(() => {
 		if (selectedPath && files && !files.includes(selectedPath)) {
 			setSelectedPathPersisted(null);
@@ -140,13 +194,35 @@ export function useFileBrowserData(options: {
 		enabled: selectedPath !== null && projectId !== null,
 		queryFn: fileContentQueryFn,
 	});
+	const setFileContentData = fileContentQuery.setData;
+	const activeContentCacheKey = useMemo(
+		() => JSON.stringify({ contentScopeKey, selectedPath }),
+		[contentScopeKey, selectedPath],
+	);
+	const [contentCacheKey, setContentCacheKey] = useState(activeContentCacheKey);
+	const mutationBlockedReason =
+		(projectId === null
+			? "No project selected."
+			: browseRef
+				? "Branch/ref browsing is read-only."
+				: fileListData === null
+					? "Files are still loading."
+					: fileListData.mutable === false
+						? (fileListData.mutationBlockedReason ?? "File operations are unavailable.")
+						: null) ?? null;
+	const canMutateEntries = mutationBlockedReason === null;
 
-	// Clear stale content immediately when the selected file changes
-	const [prevSelectedPath, setPrevSelectedPath] = useState(selectedPath);
-	if (selectedPath !== prevSelectedPath) {
-		setPrevSelectedPath(selectedPath);
-		fileContentQuery.setData(null);
-	}
+	// Hide content/error state from the previous file while the next selection is loading.
+	useEffect(() => {
+		setFileContentData(null);
+		setContentCacheKey(activeContentCacheKey);
+	}, [activeContentCacheKey, setFileContentData]);
+	const hasActiveContentCache = contentCacheKey === activeContentCacheKey;
+	const fileContent = hasActiveContentCache ? (fileContentQuery.data ?? null) : null;
+	const isContentError = hasActiveContentCache && fileContentQuery.isError;
+	const isContentLoading =
+		fileContentQuery.isLoading ||
+		(projectId !== null && selectedPath !== null && fileContent === null && !isContentError);
 
 	const handleCloseFile = useCallback(() => {
 		setSelectedPathPersisted(null);
@@ -170,14 +246,180 @@ export function useFileBrowserData(options: {
 		[projectId, taskId, baseRef, browseRef],
 	);
 
+	const reloadFileContent = useCallback(
+		async (path: string): Promise<RuntimeFileContentResponse | null> => {
+			const requestScopeKey = contentScopeKey;
+			const result = await getFileContent(path);
+			if (result && path === selectedPathRef.current && requestScopeKey === contentScopeKeyRef.current) {
+				setFileContentData(result);
+			}
+			return result;
+		},
+		[contentScopeKey, getFileContent, setFileContentData],
+	);
+
+	const saveFileContent = useCallback(
+		async (path: string, content: string, expectedContentHash: string): Promise<RuntimeFileContentResponse> => {
+			if (!projectId) throw new Error("Missing project.");
+			if (browseRef) throw new Error("Branch/ref browsing is read-only.");
+			const requestScopeKey = contentScopeKey;
+			const trpcClient = getRuntimeTrpcClient(projectId);
+			const result = await trpcClient.project.saveFileContent.mutate({
+				taskId,
+				...(baseRef ? { baseRef } : {}),
+				path,
+				content,
+				expectedContentHash,
+			});
+			if (path === selectedPathRef.current && requestScopeKey === contentScopeKeyRef.current) {
+				setFileContentData(result);
+			}
+			return result;
+		},
+		[baseRef, browseRef, contentScopeKey, projectId, setFileContentData, taskId],
+	);
+
+	const reloadFileListForScope = useCallback(
+		async (requestScopeKey: string): Promise<RuntimeListFilesResponse | null> => {
+			if (requestScopeKey !== contentScopeKeyRef.current) {
+				return null;
+			}
+			const result = await listFilesQueryFn();
+			if (requestScopeKey === contentScopeKeyRef.current) {
+				setFileListData(result);
+			}
+			return result;
+		},
+		[listFilesQueryFn, setFileListData],
+	);
+
+	const createEntry = useCallback(
+		async (path: string, kind: RuntimeWorkdirEntryKind): Promise<RuntimeWorkdirEntryMutationResponse> => {
+			if (mutationBlockedReason) throw new Error(mutationBlockedReason);
+			if (!projectId) throw new Error("No project selected.");
+			const requestScopeKey = contentScopeKey;
+			const trpcClient = getRuntimeTrpcClient(projectId);
+			const result = await trpcClient.project.createWorkdirEntry.mutate({
+				taskId,
+				...(baseRef ? { baseRef } : {}),
+				path,
+				kind,
+			});
+			await reloadFileListForScope(requestScopeKey);
+			if (requestScopeKey === contentScopeKeyRef.current && kind === "file") {
+				setSelectedPathPersisted(result.path);
+			}
+			return result;
+		},
+		[
+			baseRef,
+			contentScopeKey,
+			mutationBlockedReason,
+			projectId,
+			reloadFileListForScope,
+			setSelectedPathPersisted,
+			taskId,
+		],
+	);
+
+	const renameEntry = useCallback(
+		async (
+			path: string,
+			nextPath: string,
+			kind: RuntimeWorkdirEntryKind,
+		): Promise<RuntimeWorkdirEntryMutationResponse> => {
+			if (mutationBlockedReason) throw new Error(mutationBlockedReason);
+			if (!projectId) throw new Error("No project selected.");
+			const requestScopeKey = contentScopeKey;
+			const trpcClient = getRuntimeTrpcClient(projectId);
+			const result = await trpcClient.project.renameWorkdirEntry.mutate({
+				taskId,
+				...(baseRef ? { baseRef } : {}),
+				path,
+				nextPath,
+				kind,
+			});
+			await reloadFileListForScope(requestScopeKey);
+			if (requestScopeKey !== contentScopeKeyRef.current) {
+				return result;
+			}
+			const currentPath = selectedPathRef.current;
+			if (currentPath === path || (kind === "directory" && currentPath?.startsWith(`${path}/`))) {
+				const renamedPath =
+					currentPath === path ? result.path : `${result.path}/${currentPath.slice(path.length + 1)}`;
+				setSelectedPathPersisted(renamedPath);
+				setFileContentData(null);
+			}
+			return result;
+		},
+		[
+			baseRef,
+			contentScopeKey,
+			mutationBlockedReason,
+			projectId,
+			reloadFileListForScope,
+			setFileContentData,
+			setSelectedPathPersisted,
+			taskId,
+		],
+	);
+
+	const deleteEntry = useCallback(
+		async (path: string, kind: RuntimeWorkdirEntryKind): Promise<RuntimeWorkdirEntryMutationResponse> => {
+			if (mutationBlockedReason) throw new Error(mutationBlockedReason);
+			if (!projectId) throw new Error("No project selected.");
+			const requestScopeKey = contentScopeKey;
+			const trpcClient = getRuntimeTrpcClient(projectId);
+			const result = await trpcClient.project.deleteWorkdirEntry.mutate({
+				taskId,
+				...(baseRef ? { baseRef } : {}),
+				path,
+				kind,
+			});
+			await reloadFileListForScope(requestScopeKey);
+			if (requestScopeKey !== contentScopeKeyRef.current) {
+				return result;
+			}
+			if (
+				selectedPathRef.current === path ||
+				(kind === "directory" && selectedPathRef.current?.startsWith(`${path}/`))
+			) {
+				setSelectedPathPersisted(null);
+				setFileContentData(null);
+			}
+			return result;
+		},
+		[
+			baseRef,
+			contentScopeKey,
+			mutationBlockedReason,
+			projectId,
+			reloadFileListForScope,
+			setFileContentData,
+			setSelectedPathPersisted,
+			taskId,
+		],
+	);
+
 	return {
-		files: fileListQuery.data?.files ?? null,
+		files: fileListData?.files ?? null,
+		directories: fileListData?.directories ?? null,
+		contentScopeKey,
+		searchScope,
+		canMutateEntries,
+		mutationBlockedReason,
 		selectedPath,
 		onSelectPath: setSelectedPathPersisted,
-		fileContent: fileContentQuery.data ?? null,
-		isContentLoading: fileContentQuery.isLoading,
-		isContentError: fileContentQuery.isError,
+		fileContent,
+		isContentLoading,
+		isContentError,
 		onCloseFile: handleCloseFile,
+		isReadOnly: Boolean(browseRef),
 		getFileContent,
+		reloadFileContent,
+		saveFileContent,
+		createEntry,
+		renameEntry,
+		deleteEntry,
 	};
 }

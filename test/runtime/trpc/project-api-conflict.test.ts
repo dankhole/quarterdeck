@@ -113,6 +113,7 @@ vi.mock("../../../src/workdir/git-history.js", () => ({
 
 vi.mock("../../../src/workdir/search-workdir-files.js", () => ({
 	searchWorkdirFiles: vi.fn(),
+	searchFilePaths: vi.fn(),
 	listAllWorkdirFiles: vi.fn(),
 }));
 

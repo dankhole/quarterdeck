@@ -70,8 +70,22 @@ export {
 	validateGitRef,
 } from "./git-utils";
 export { ensureInitialCommit, initializeGitRepository } from "./initialize-repo";
-export { readWorkdirFile, readWorkdirFileExcerpt, type WorkdirFileExcerpt } from "./read-workdir-file";
-export { listAllWorkdirFiles, searchWorkdirFiles } from "./search-workdir-files";
+export { createWorkdirEntry, deleteWorkdirEntry, renameWorkdirEntry } from "./mutate-workdir-entry";
+export {
+	MAX_WORKDIR_FILE_EDIT_SIZE,
+	MAX_WORKDIR_FILE_READ_SIZE,
+	readWorkdirFile,
+	readWorkdirFileExcerpt,
+	WORKDIR_FILE_TOO_LARGE_TO_EDIT_MESSAGE,
+	type WorkdirFileExcerpt,
+} from "./read-workdir-file";
+export { saveWorkdirFile, WorkdirFileConflictError } from "./save-workdir-file";
+export {
+	listAllWorkdirFileEntries,
+	listAllWorkdirFiles,
+	searchFilePaths,
+	searchWorkdirFiles,
+} from "./search-workdir-files";
 export { searchWorkdirText } from "./search-workdir-text";
 export {
 	applyTaskPatch,

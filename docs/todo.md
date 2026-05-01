@@ -27,7 +27,7 @@ Use this section together with:
 
 These are broader architecture refactor targets confirmed against implementation files and worth keeping visible.
 
-- Rework the file browser + diff viewer data pipeline so scope resolution, tree loading, diff/content fetching, and caching are easier to optimize without mixing transport and view policy. Backlog context: [docs/architecture-roadmap.md#16-file-browser--diff-viewer-data-pipeline](./architecture-roadmap.md#16-file-browser--diff-viewer-data-pipeline)
+- Rework the Files view file tree/editor data path and Git diff viewer pipeline so scope resolution, tree loading, file-content fetching, diff/content fetching, and caching are easier to optimize without mixing transport and view policy. Backlog context: [docs/architecture-roadmap.md#16-file-browser--diff-viewer-data-pipeline](./architecture-roadmap.md#16-file-browser--diff-viewer-data-pipeline)
 - Rebuild stalled/unresponsive task detection without PTY-output-driven session-summary writes. The removed watchdog used `lastOutputAt` to avoid false stalled cards during long-running output, but every output chunk updated and fanned out a full runtime session summary; any replacement should use a cheap internal signal or low-frequency health check that does not wake browser notification/project state on idle terminal redraws.
 - Investigate hook-activity fanout after the PTY-output hot path is quiet. Activity-only hooks still mutate `latestHookActivity` / `lastHookAt`, emit full session summaries, trigger runtime stream batches, and can refresh browser notification/project state even when no column/count-changing transition happened. Prefer batching or classifying delivery/broadcast after immediate server-side hook ingest rather than delaying permission/review/resume-critical hook processing; if hook bursts are still expensive, also explore a tiny per-task ingest queue/backpressure layer that preserves state-changing hooks immediately while coalescing or dropping superseded activity-only hooks.
 - Investigate project-summary refresh fanout from session-summary batches. Runtime session batches currently request project-list refreshes even for non-count-changing summary mutations such as hook activity, resume metadata, or checkpoints; classify summary changes so project count refreshes run for state/column-impacting updates while lightweight activity updates skip the scoreboard rebuild.
@@ -40,27 +40,27 @@ These are broader architecture refactor targets confirmed against implementation
 - Revisit Codex slash-command lifecycle parity before declaring full Claude Code parity. Native Codex hooks do not expose stable start/finish boundaries for `/compact`, `/resume`, plugin reloads, or future TUI-local slash commands. Quarterdeck treats those as session-maintenance operations rather than agent turns: they should not move review-ready cards to running, but the UI also cannot show a precise in-progress/completed lifecycle for them until Codex exposes compact/slash-command hooks.
 - Revisit Codex turn-lifecycle granularity if the native hook API grows beyond tool/user/stop hooks. The deleted wrapper/parser path could infer `task_started`, `turn_aborted`, and `task_complete` from Codex event logs; native hooks are cleaner and launch-scoped, but currently provide less detail for non-tool turn progress and failure attribution.
 
-## File browser and diff viewer performance
+## Files view and Git diff performance
 
-The file browser and diff viewer are laggy, especially for tasks with many changed files or large diffs. Investigate and address:
+The editable Files view uses the newer file tree/editor path, while compare, uncommitted changes, and commit diffs still use the Git diff viewer pipeline. Profile both where dogfood shows lag, especially for tasks with many files or large diffs.
 
 - **First-open latency**: Opening the compare view or uncommitted-changes view for the first time is noticeably slow. Add debug logging to identify where time is spent (git commands, data serialization, WebSocket transfer, React rendering) before optimizing.
-- **File browser**: Slow to load and navigate. Profile whether the bottleneck is git command execution (status, ls-files), data transfer over WebSocket, or React rendering. Tree expansion and file selection should feel instant.
+- **Files view file tree/editor**: Revalidate load/navigation performance on large repositories now that the editable Files view uses `listFiles` and `getFileContent`. Profile whether bottlenecks are git/filesystem traversal, tRPC transfer, CodeMirror loading, or React rendering. Tree expansion and file selection should feel instant.
 - **Diff viewer**: Large diffs cause noticeable UI lag. Diff content now loads selected and visible files before a capped offscreen prefetch, but old/new file text is still diffed client-side and all file sections still render in one scroll surface. Consider server-side diff computation and virtualized rendering for large files.
-- **Interaction between the two**: Selecting a file in the browser now prioritizes that file's diff content over background work, with visible diff sections requested next. Continue profiling the remaining selection latency and tune whether nearby/offscreen prefetch should be broader, idle-only, or disabled for very large change sets.
+- **Files-to-diff interaction**: Compare the newer Files view path with the Git diff viewer path before merging surfaces. Selecting a file in Git diff views now prioritizes that file's diff content over background work; continue profiling remaining selection latency and tune nearby/offscreen prefetch.
 - **Commit from sidebar is slow**: The commit action triggered from the sidebar loads for a while before completing. Profile whether the bottleneck is the git commit itself, pre-commit hooks, diff recomputation after commit, or UI update.
 
 **Broader refactor context:** [docs/architecture-roadmap.md#16-file-browser--diff-viewer-data-pipeline](./architecture-roadmap.md#16-file-browser--diff-viewer-data-pipeline)
 
-## Editor-lite file editing surface
+## Editor-lite follow-ups
 
-Build an editor-lite path around the existing file browser, git diff, and task review surfaces so Quarterdeck can make small review-time edits without trying to become a full IDE.
+The first editable Files-view milestone has landed with CodeMirror tabs, dirty/save/reload/discard behavior, live-worktree-only saves, and basic file/folder create, rename/move, and delete operations. Remaining follow-ups:
 
-The current handoff recommendation is to POC CodeMirror 6 behind a narrow editor adapter, while keeping Monaco swappable later if VS Code-like editor depth becomes important. Do not replace the existing file browser, Git compare/diff tabs, or custom review surfaces as part of the first pass.
-
-Scope the first pass to editable file tabs, dirty/save/reload state, search/replace, keyboard shortcuts, selection and diff-hunk context, and "send selection to active agent" prompts. Defer full IDE features such as language server management, debugger integration, extension marketplaces, and remote/dev-container support unless this becomes a deliberate product direction.
-
-**Handoff context:** [docs/editor-lite-file-editing.md](./editor-lite-file-editing.md)
+- Add selected-range, file-level, and diff-hunk context actions that can send focused prompts to the active task agent.
+- Own the dirty editor-tab cache lifecycle for deleted project/task/worktree scopes so hidden unsaved tabs are surfaced before destructive actions or pruned safely when clean.
+- Profile whether the 5 MB soft edit cap needs tuning for generated, minified, or unusually long-line files while preserving the 10 MB display safety cap.
+- Keep tuning the CodeMirror dark theme against dogfood feedback and common IDE dark palettes if token families or selections remain too low-contrast.
+- Move compare, merge/conflict resolution, commit diff, and other file-viewing surfaces onto the Files/editor foundation where it reduces duplication without losing review-specific workflows.
 
 ## General performance audit
 
@@ -99,10 +99,6 @@ Core git-view branch operations have landed. Remaining power-user operations:
 ## Talk to the agent while browsing files
 
 Add a way to send comments or prompts to the active task agent while browsing files and diffs, without leaving the repository/file inspection surface. Consider a workflow similar to compare-tab comments: attach a prompt to the currently viewed file, selection, or diff hunk, then submit it to the task agent with enough context to make the request actionable.
-
-## File browser tabs like JetBrains
-
-Add JetBrains-style file tabs to the repository/file browser experience so users can keep multiple files or diffs open while navigating, switch between recent inspection contexts quickly, and avoid losing their place when moving through the tree.
 
 ## Add source-level debug log filtering
 

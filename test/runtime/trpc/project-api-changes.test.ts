@@ -20,6 +20,14 @@ const workdirChangesMocks = vi.hoisted(() => ({
 	getWorkdirChangesFromRef: vi.fn(),
 }));
 
+const fileMutationMocks = vi.hoisted(() => ({
+	createWorkdirEntry: vi.fn(),
+	deleteWorkdirEntry: vi.fn(),
+	renameWorkdirEntry: vi.fn(),
+	saveWorkdirFile: vi.fn(),
+	WorkdirFileConflictError: class extends Error {},
+}));
+
 const projectStateMocks = vi.hoisted(() => ({
 	loadProjectState: vi.fn(),
 	saveProjectState: vi.fn(),
@@ -100,7 +108,9 @@ vi.mock("../../../src/workdir/git-history.js", () => ({
 
 vi.mock("../../../src/workdir/search-workdir-files.js", () => ({
 	searchWorkdirFiles: vi.fn(),
+	searchFilePaths: vi.fn(),
 	listAllWorkdirFiles: vi.fn(),
+	listAllWorkdirFileEntries: vi.fn(),
 }));
 
 vi.mock("../../../src/title/title-generator.js", () => ({
@@ -118,6 +128,18 @@ vi.mock("../../../src/workdir/git-utils.js", () => ({
 
 vi.mock("../../../src/workdir/read-workdir-file.js", () => ({
 	readWorkdirFile: vi.fn(),
+	readWorkdirFileExcerpt: vi.fn(),
+}));
+
+vi.mock("../../../src/workdir/save-workdir-file.js", () => ({
+	saveWorkdirFile: fileMutationMocks.saveWorkdirFile,
+	WorkdirFileConflictError: fileMutationMocks.WorkdirFileConflictError,
+}));
+
+vi.mock("../../../src/workdir/mutate-workdir-entry.js", () => ({
+	createWorkdirEntry: fileMutationMocks.createWorkdirEntry,
+	renameWorkdirEntry: fileMutationMocks.renameWorkdirEntry,
+	deleteWorkdirEntry: fileMutationMocks.deleteWorkdirEntry,
 }));
 
 import { createProjectApi } from "../../../src/trpc";
@@ -142,6 +164,84 @@ function createChangesResponse(): RuntimeWorkdirChangesResponse {
 		files: [],
 	};
 }
+
+function createProjectDeps() {
+	return {
+		terminals: {
+			getTerminalManagerForProject: vi.fn(() => null),
+			ensureTerminalManagerForProject: vi.fn(async () => ({}) as never),
+		},
+		broadcaster: {
+			broadcastRuntimeProjectStateUpdated: vi.fn(),
+			broadcastRuntimeProjectsUpdated: vi.fn(),
+			broadcastTaskTitleUpdated: vi.fn(),
+			setFocusedTask: vi.fn(),
+			setDocumentVisible: vi.fn(),
+			requestTaskRefresh: vi.fn(),
+			requestHomeRefresh: vi.fn(),
+		},
+		data: { buildProjectStateSnapshot: vi.fn() },
+	};
+}
+
+describe("createProjectApi file content mutations", () => {
+	beforeEach(() => {
+		worktreeMocks.resolveTaskWorkingDirectory.mockReset();
+		fileMutationMocks.saveWorkdirFile.mockReset();
+		fileMutationMocks.createWorkdirEntry.mockReset();
+
+		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/repo");
+		fileMutationMocks.saveWorkdirFile.mockResolvedValue({
+			content: "updated\n",
+			language: "typescript",
+			binary: false,
+			size: 8,
+			truncated: false,
+			contentHash: "hash-saved",
+			editable: true,
+		});
+		fileMutationMocks.createWorkdirEntry.mockResolvedValue({ ok: true, path: "src/new.ts", kind: "file" });
+	});
+
+	it("refreshes task and home git metadata after saving a shared-checkout task file", async () => {
+		const deps = createProjectDeps();
+		const api = createProjectApi(deps);
+
+		await api.saveFileContent(
+			{ projectId: "project-1", projectPath: "/tmp/repo" },
+			{
+				taskId: "task-1",
+				baseRef: "main",
+				path: "src/app.ts",
+				content: "updated\n",
+				expectedContentHash: "hash-before",
+			},
+		);
+
+		expect(fileMutationMocks.saveWorkdirFile).toHaveBeenCalledWith(
+			"/tmp/repo",
+			"src/app.ts",
+			"updated\n",
+			"hash-before",
+		);
+		expect(deps.broadcaster.requestTaskRefresh).toHaveBeenCalledWith("project-1", "task-1");
+		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("project-1");
+	});
+
+	it("refreshes home git metadata after creating a home file", async () => {
+		const deps = createProjectDeps();
+		const api = createProjectApi(deps);
+
+		await api.createWorkdirEntry(
+			{ projectId: "project-1", projectPath: "/tmp/repo" },
+			{ taskId: null, path: "src/new.ts", kind: "file" },
+		);
+
+		expect(fileMutationMocks.createWorkdirEntry).toHaveBeenCalledWith("/tmp/repo", "src/new.ts", "file");
+		expect(deps.broadcaster.requestTaskRefresh).not.toHaveBeenCalled();
+		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("project-1");
+	});
+});
 
 describe("createProjectApi loadChanges", () => {
 	beforeEach(() => {

@@ -56,7 +56,14 @@ export const runtimeFileDiffResponseSchema = z.object({
 });
 export type RuntimeFileDiffResponse = z.infer<typeof runtimeFileDiffResponseSchema>;
 
-export const runtimeWorkdirFileSearchRequestSchema = z.object({
+const runtimeWorkdirSearchScopeSchema = z.object({
+	taskId: z.string().nullable().optional(),
+	baseRef: z.string().optional(),
+	ref: z.string().optional(),
+});
+export type RuntimeWorkdirSearchScope = z.infer<typeof runtimeWorkdirSearchScopeSchema>;
+
+export const runtimeWorkdirFileSearchRequestSchema = runtimeWorkdirSearchScopeSchema.extend({
 	query: z.string(),
 	limit: z.number().int().positive().optional(),
 });
@@ -84,8 +91,14 @@ export type RuntimeListFilesRequest = z.infer<typeof runtimeListFilesRequestSche
 
 export const runtimeListFilesResponseSchema = z.object({
 	files: z.array(z.string()),
+	directories: z.array(z.string()).optional(),
+	mutable: z.boolean().optional(),
+	mutationBlockedReason: z.string().optional(),
 });
 export type RuntimeListFilesResponse = z.infer<typeof runtimeListFilesResponseSchema>;
+
+export const runtimeWorkdirEntryKindSchema = z.enum(["file", "directory"]);
+export type RuntimeWorkdirEntryKind = z.infer<typeof runtimeWorkdirEntryKindSchema>;
 
 export const runtimeFileContentRequestSchema = z.object({
 	taskId: z.string().nullable(),
@@ -101,10 +114,50 @@ export const runtimeFileContentResponseSchema = z.object({
 	binary: z.boolean(),
 	size: z.number(),
 	truncated: z.boolean(),
+	contentHash: z.string().optional(),
+	editable: z.boolean().optional(),
+	editBlockedReason: z.string().optional(),
 });
 export type RuntimeFileContentResponse = z.infer<typeof runtimeFileContentResponseSchema>;
 
-export const runtimeWorkdirTextSearchRequestSchema = z.object({
+export const runtimeFileSaveRequestSchema = z.object({
+	taskId: z.string().nullable(),
+	baseRef: z.string().optional(),
+	path: z.string().min(1),
+	content: z.string(),
+	expectedContentHash: z.string().min(1),
+});
+export type RuntimeFileSaveRequest = z.infer<typeof runtimeFileSaveRequestSchema>;
+
+export const runtimeFileSaveResponseSchema = runtimeFileContentResponseSchema;
+export type RuntimeFileSaveResponse = z.infer<typeof runtimeFileSaveResponseSchema>;
+
+const runtimeMutableWorkdirEntryRequestBaseSchema = z.object({
+	taskId: z.string().nullable(),
+	baseRef: z.string().optional(),
+	path: z.string().min(1),
+	kind: runtimeWorkdirEntryKindSchema,
+});
+
+export const runtimeWorkdirEntryCreateRequestSchema = runtimeMutableWorkdirEntryRequestBaseSchema;
+export type RuntimeWorkdirEntryCreateRequest = z.infer<typeof runtimeWorkdirEntryCreateRequestSchema>;
+
+export const runtimeWorkdirEntryRenameRequestSchema = runtimeMutableWorkdirEntryRequestBaseSchema.extend({
+	nextPath: z.string().min(1),
+});
+export type RuntimeWorkdirEntryRenameRequest = z.infer<typeof runtimeWorkdirEntryRenameRequestSchema>;
+
+export const runtimeWorkdirEntryDeleteRequestSchema = runtimeMutableWorkdirEntryRequestBaseSchema;
+export type RuntimeWorkdirEntryDeleteRequest = z.infer<typeof runtimeWorkdirEntryDeleteRequestSchema>;
+
+export const runtimeWorkdirEntryMutationResponseSchema = z.object({
+	ok: z.boolean(),
+	path: z.string(),
+	kind: runtimeWorkdirEntryKindSchema,
+});
+export type RuntimeWorkdirEntryMutationResponse = z.infer<typeof runtimeWorkdirEntryMutationResponseSchema>;
+
+export const runtimeWorkdirTextSearchRequestSchema = runtimeWorkdirSearchScopeSchema.extend({
 	query: z.string().min(1).max(500),
 	caseSensitive: z.boolean().optional(),
 	isRegex: z.boolean().optional(),

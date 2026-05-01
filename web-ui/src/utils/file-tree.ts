@@ -5,33 +5,46 @@ export interface FileTreeNode {
 	children: FileTreeNode[];
 }
 
-export function buildFileTree(paths: string[]): FileTreeNode[] {
+function upsertNode(nodes: FileTreeNode[], name: string, path: string, type: FileTreeNode["type"]): FileTreeNode {
+	let node = nodes.find((candidate) => candidate.name === name);
+	if (!node) {
+		node = {
+			name,
+			path,
+			type,
+			children: [],
+		};
+		nodes.push(node);
+	} else if (node.type === "file" && type === "directory") {
+		node.type = "directory";
+	}
+	return node;
+}
+
+function insertPath(root: FileTreeNode[], rawPath: string, type: FileTreeNode["type"]): void {
+	const parts = rawPath.split("/").filter(Boolean);
+	let currentLevel = root;
+	let currentPath = "";
+
+	for (const [index, part] of parts.entries()) {
+		currentPath = currentPath ? `${currentPath}/${part}` : part;
+		const isLeaf = index === parts.length - 1;
+		const node = upsertNode(currentLevel, part, currentPath, isLeaf ? type : "directory");
+
+		if (!isLeaf) {
+			currentLevel = node.children;
+		}
+	}
+}
+
+export function buildFileTree(paths: string[], directoryPaths: string[] = []): FileTreeNode[] {
 	const root: FileTreeNode[] = [];
 
+	for (const rawPath of directoryPaths) {
+		insertPath(root, rawPath, "directory");
+	}
 	for (const rawPath of paths) {
-		const parts = rawPath.split("/").filter(Boolean);
-		let currentLevel = root;
-		let currentPath = "";
-
-		for (const [index, part] of parts.entries()) {
-			currentPath = currentPath ? `${currentPath}/${part}` : part;
-			const isLeaf = index === parts.length - 1;
-
-			let node = currentLevel.find((candidate) => candidate.name === part);
-			if (!node) {
-				node = {
-					name: part,
-					path: currentPath,
-					type: isLeaf ? "file" : "directory",
-					children: [],
-				};
-				currentLevel.push(node);
-			}
-
-			if (!isLeaf) {
-				currentLevel = node.children;
-			}
-		}
+		insertPath(root, rawPath, "file");
 	}
 
 	function sortNodes(nodes: FileTreeNode[]): FileTreeNode[] {

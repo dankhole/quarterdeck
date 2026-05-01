@@ -16,6 +16,8 @@ import type {
 	RuntimeFileContentResponse,
 	RuntimeFileDiffRequest,
 	RuntimeFileDiffResponse,
+	RuntimeFileSaveRequest,
+	RuntimeFileSaveResponse,
 	RuntimeGitCheckoutRequest,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitCherryPickRequest,
@@ -76,6 +78,10 @@ import type {
 	RuntimeTaskWorktreeInfoRequest,
 	RuntimeWorkdirChangesRequest,
 	RuntimeWorkdirChangesResponse,
+	RuntimeWorkdirEntryCreateRequest,
+	RuntimeWorkdirEntryDeleteRequest,
+	RuntimeWorkdirEntryMutationResponse,
+	RuntimeWorkdirEntryRenameRequest,
 	RuntimeWorkdirFileSearchRequest,
 	RuntimeWorkdirFileSearchResponse,
 	RuntimeWorkdirTextSearchRequest,
@@ -228,6 +234,22 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcProjectScope,
 			input: RuntimeFileContentRequest,
 		) => Promise<RuntimeFileContentResponse>;
+		saveFileContent: (
+			scope: RuntimeTrpcProjectScope,
+			input: RuntimeFileSaveRequest,
+		) => Promise<RuntimeFileSaveResponse>;
+		createWorkdirEntry: (
+			scope: RuntimeTrpcProjectScope,
+			input: RuntimeWorkdirEntryCreateRequest,
+		) => Promise<RuntimeWorkdirEntryMutationResponse>;
+		renameWorkdirEntry: (
+			scope: RuntimeTrpcProjectScope,
+			input: RuntimeWorkdirEntryRenameRequest,
+		) => Promise<RuntimeWorkdirEntryMutationResponse>;
+		deleteWorkdirEntry: (
+			scope: RuntimeTrpcProjectScope,
+			input: RuntimeWorkdirEntryDeleteRequest,
+		) => Promise<RuntimeWorkdirEntryMutationResponse>;
 		loadState: (scope: RuntimeTrpcProjectScope) => Promise<RuntimeProjectStateResponse>;
 		saveState: (
 			scope: RuntimeTrpcProjectScope,

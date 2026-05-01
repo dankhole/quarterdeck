@@ -6,18 +6,19 @@ import pLimit from "p-limit";
 
 import type { RuntimeWorkdirFileSearchMatch } from "../core";
 import { runGit } from "./git-utils";
+import { SKIPPED_WORKDIR_DIRECTORIES } from "./workdir-path-policy";
 
 const CACHE_TTL_MS = 5_000;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const FILE_WALK_CONCURRENCY = 16;
-const SKIPPED_WALK_DIRECTORIES = new Set([".git", ".hg", ".svn", "node_modules"]);
 
 // ── Filesystem-based file listing (used by file browser) ────────────────────
 
 interface CachedFileList {
 	expiresAt: number;
 	files: string[];
+	directories: string[];
 }
 
 const fsFileListCache = new Map<string, CachedFileList>();
@@ -47,7 +48,7 @@ async function readDirectory(rootDir: string, dirPath: string): Promise<Director
 		const fullPath = join(dirPath, entry.name);
 
 		if (entry.isDirectory()) {
-			if (!SKIPPED_WALK_DIRECTORIES.has(entry.name)) {
+			if (!SKIPPED_WORKDIR_DIRECTORIES.has(entry.name)) {
 				directories.push(fullPath);
 			}
 		} else {
@@ -58,9 +59,10 @@ async function readDirectory(rootDir: string, dirPath: string): Promise<Director
 }
 
 /** Walk a directory tree with bounded breadth-first concurrency, collecting all file paths. */
-async function walkDirectory(rootDir: string): Promise<string[]> {
+async function walkDirectory(rootDir: string): Promise<{ files: string[]; directories: string[] }> {
 	const limit = pLimit(FILE_WALK_CONCURRENCY);
 	const files: string[] = [];
+	const collectedDirectories: string[] = [];
 	let directories = [rootDir];
 
 	while (directories.length > 0) {
@@ -71,11 +73,12 @@ async function walkDirectory(rootDir: string): Promise<string[]> {
 		);
 		for (const result of results) {
 			files.push(...result.files);
+			collectedDirectories.push(...result.directories.map((dirPath) => toWorkdirRelativePath(rootDir, dirPath)));
 			directories.push(...result.directories);
 		}
 	}
 
-	return files;
+	return { files, directories: collectedDirectories };
 }
 
 // ── Git-based file index (used by search for change-status metadata) ────────
@@ -230,21 +233,42 @@ export async function listAllWorkdirFiles(cwd: string): Promise<string[]> {
 	}
 	fsFileListCache.delete(cwd);
 
-	const files = await walkDirectory(cwd);
+	const { files, directories } = await walkDirectory(cwd);
 	files.sort();
+	directories.sort();
 
-	fsFileListCache.set(cwd, { expiresAt: Date.now() + CACHE_TTL_MS, files });
+	fsFileListCache.set(cwd, { expiresAt: Date.now() + CACHE_TTL_MS, files, directories });
 	return [...files];
 }
 
-export async function searchWorkdirFiles(
-	cwd: string,
+export async function listAllWorkdirFileEntries(cwd: string): Promise<{ files: string[]; directories: string[] }> {
+	const cached = fsFileListCache.get(cwd);
+	if (cached && cached.expiresAt > Date.now()) {
+		return { files: [...cached.files], directories: [...cached.directories] };
+	}
+	fsFileListCache.delete(cwd);
+
+	const entries = await walkDirectory(cwd);
+	entries.files.sort();
+	entries.directories.sort();
+
+	fsFileListCache.set(cwd, { expiresAt: Date.now() + CACHE_TTL_MS, ...entries });
+	return { files: [...entries.files], directories: [...entries.directories] };
+}
+
+export function invalidateWorkdirFileListCache(cwd: string): void {
+	fsFileListCache.delete(cwd);
+	fileIndexCache.delete(cwd);
+}
+
+export function searchFilePaths(
+	files: readonly string[],
 	query: string,
 	limit?: number,
-): Promise<RuntimeWorkdirFileSearchMatch[]> {
+	changedPaths: ReadonlySet<string> = new Set<string>(),
+): RuntimeWorkdirFileSearchMatch[] {
 	const trimmedQuery = query.trim();
 	const normalizedLimit = normalizeLimit(limit);
-	const { files, changedPaths } = await loadFileIndex(cwd);
 	if (files.length === 0) {
 		return [];
 	}
@@ -292,4 +316,13 @@ export async function searchWorkdirFiles(
 		name: entry.path.slice(entry.path.lastIndexOf("/") + 1) || entry.path,
 		changed: entry.changed,
 	}));
+}
+
+export async function searchWorkdirFiles(
+	cwd: string,
+	query: string,
+	limit?: number,
+): Promise<RuntimeWorkdirFileSearchMatch[]> {
+	const { files, changedPaths } = await loadFileIndex(cwd);
+	return searchFilePaths(files, query, limit, changedPaths);
 }

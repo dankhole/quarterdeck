@@ -1,5 +1,5 @@
 import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import {
 	formatCardDetailSidePanelPercent,
@@ -170,6 +170,10 @@ export function useCardDetailView({
 		baseRef: fileBrowserScope.baseRef,
 		ref: fileBrowserScope.ref,
 	});
+
+	useEffect(() => {
+		navigation.setActiveFileSearchScope(fileBrowserData.searchScope);
+	}, [fileBrowserData.searchScope, navigation.setActiveFileSearchScope]);
 
 	const pillBranchLabel = useMemo(
 		() =>

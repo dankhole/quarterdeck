@@ -1,17 +1,25 @@
 import type { ReactElement } from "react";
 import { useEffect, useRef } from "react";
 import { SearchOverlayShell } from "@/components/search/search-overlay-shell";
+import type { WorkdirSearchScope } from "@/hooks/search/search-scope";
 import { useFileFinder } from "@/hooks/search/use-file-finder";
 
 export interface FileFinderOverlayProps {
 	projectId: string | null;
+	searchScope: WorkdirSearchScope;
 	onSelect: (filePath: string) => void;
 	onDismiss: () => void;
 }
 
-export function FileFinderOverlay({ projectId, onSelect, onDismiss }: FileFinderOverlayProps): ReactElement {
+export function FileFinderOverlay({
+	projectId,
+	searchScope,
+	onSelect,
+	onDismiss,
+}: FileFinderOverlayProps): ReactElement {
 	const { query, setQuery, results, isLoading, selectedIndex, setSelectedIndex, handleKeyDown } = useFileFinder({
 		projectId,
+		searchScope,
 		onSelect,
 	});
 

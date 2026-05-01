@@ -1,5 +1,6 @@
+import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import { FolderOpen } from "lucide-react";
-import type { ReactElement, ReactNode } from "react";
+import { type ReactElement, type ReactNode, useEffect } from "react";
 import { GitBranchStatusControl } from "@/components/app/top-bar";
 import { QuarterdeckBoard } from "@/components/board";
 import { ConflictBanner, FilesView, GitHistoryView, GitView } from "@/components/git";
@@ -45,6 +46,10 @@ export function HomeView({
 	const navigation = useSurfaceNavigationContext();
 	const terminal = useTerminalContext();
 	const interactions = useInteractionsContext();
+
+	useEffect(() => {
+		navigation.setActiveFileSearchScope(git.homeFileBrowserData.searchScope);
+	}, [git.homeFileBrowserData.searchScope, navigation.setActiveFileSearchScope]);
 
 	return (
 		<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -127,6 +132,7 @@ export function HomeView({
 							) : navigation.mainView === "files" ? (
 								<FilesView
 									key={project.currentProjectId ?? "no-project"}
+									showScopeBar={git.fileBrowserScopeMode !== "contextual"}
 									scopeBar={
 										<ScopeBar
 											resolvedScope={git.fileBrowserResolvedScope}
@@ -208,6 +214,10 @@ export function HomeView({
 										/>
 									}
 									fileBrowserData={git.homeFileBrowserData}
+									fileEditorAutosaveMode={
+										projectRuntime.runtimeProjectConfig?.fileEditorAutosaveMode ??
+										CONFIG_DEFAULTS.fileEditorAutosaveMode
+									}
 									rootPath={project.projectPath}
 									pendingFileNavigation={navigation.pendingFileNavigation}
 									onFileNavigationConsumed={navigation.clearPendingFileNavigation}

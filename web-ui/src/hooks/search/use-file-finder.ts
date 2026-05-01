@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from "react";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeWorkdirFileSearchMatch } from "@/runtime/types";
 import { useDebouncedEffect } from "@/utils/react-use";
+import type { WorkdirSearchScope } from "./search-scope";
 
 const SEARCH_DEBOUNCE_MS = 150;
 const SEARCH_RESULT_LIMIT = 50;
@@ -20,9 +21,10 @@ export interface UseFileFinderResult {
 
 export function useFileFinder(options: {
 	projectId: string | null;
+	searchScope: WorkdirSearchScope;
 	onSelect: (filePath: string) => void;
 }): UseFileFinderResult {
-	const { projectId, onSelect } = options;
+	const { projectId, searchScope, onSelect } = options;
 
 	const [query, setQuery] = useState("");
 	const [results, setResults] = useState<RuntimeWorkdirFileSearchMatch[]>([]);
@@ -49,6 +51,9 @@ export function useFileFinder(options: {
 					const payload = await trpcClient.project.searchFiles.query({
 						query: trimmed,
 						limit: SEARCH_RESULT_LIMIT,
+						taskId: searchScope.taskId,
+						...(searchScope.baseRef ? { baseRef: searchScope.baseRef } : {}),
+						...(searchScope.ref ? { ref: searchScope.ref } : {}),
 					});
 					if (requestId !== requestIdRef.current) {
 						return;
@@ -68,7 +73,7 @@ export function useFileFinder(options: {
 			})();
 		},
 		SEARCH_DEBOUNCE_MS,
-		[query, projectId],
+		[query, projectId, searchScope],
 	);
 
 	const confirmSelection = useCallback(() => {

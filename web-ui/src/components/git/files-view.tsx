@@ -3,9 +3,11 @@ import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { FileBrowserTreePanel } from "@/components/git/panels/file-browser-tree-panel";
-import { FileContentViewer } from "@/components/git/panels/file-content-viewer";
+import { FileEditorPanel } from "@/components/git/panels/file-editor-panel";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
+import { useFileEditorWorkspace } from "@/hooks/git";
+import type { FileEditorAutosaveMode } from "@/hooks/git/file-editor-workspace";
 import type { UseFileBrowserDataResult } from "@/hooks/git/use-file-browser-data";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { clampBetween } from "@/resize/resize-persistence";
@@ -15,6 +17,7 @@ import {
 	type ResizeNumberPreference,
 } from "@/resize/resize-preferences";
 import { useResizeDrag } from "@/resize/use-resize-drag";
+import type { RuntimeWorkdirEntryKind, RuntimeWorkdirEntryMutationResponse } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 
 // --- Constants ---
@@ -35,8 +38,10 @@ const initializedExpansionByScope = new Set<string>();
 export interface FilesViewProps {
 	/** Pre-built ScopeBar element — parents construct this with their own scope/branch context. */
 	scopeBar: ReactNode;
+	showScopeBar?: boolean;
 	/** File browser data from useFileBrowserData — file list, selection, content. */
 	fileBrowserData: UseFileBrowserDataResult;
+	fileEditorAutosaveMode: FileEditorAutosaveMode;
 	/** Absolute path to the worktree/project root, used for "Copy path" context menu action. */
 	rootPath?: string | null;
 	/** External file navigation from commit panel — selects a file when arriving from another view. */
@@ -49,7 +54,9 @@ export interface FilesViewProps {
 
 export function FilesView({
 	scopeBar,
+	showScopeBar = true,
 	fileBrowserData,
+	fileEditorAutosaveMode,
 	rootPath,
 	pendingFileNavigation,
 	onFileNavigationConsumed,
@@ -68,7 +75,22 @@ export function FilesView({
 
 	const [pendingScrollLine, setPendingScrollLine] = useState<number | null>(null);
 	const contentRowRef = useRef<HTMLDivElement | null>(null);
+	const contentScopeKeyRef = useRef(fileBrowserData.contentScopeKey);
+	contentScopeKeyRef.current = fileBrowserData.contentScopeKey;
 	const { startDrag: startFileTreeResize } = useResizeDrag();
+	const editorWorkspace = useFileEditorWorkspace({
+		scopeKey: fileBrowserData.contentScopeKey,
+		selectedPath: fileBrowserData.selectedPath,
+		fileContent: fileBrowserData.fileContent,
+		isContentLoading: fileBrowserData.isContentLoading,
+		isContentError: fileBrowserData.isContentError,
+		isReadOnly: fileBrowserData.isReadOnly,
+		autosaveMode: fileEditorAutosaveMode,
+		onSelectPath: fileBrowserData.onSelectPath,
+		onCloseFile: fileBrowserData.onCloseFile,
+		reloadFileContent: fileBrowserData.reloadFileContent,
+		saveFileContent: fileBrowserData.saveFileContent,
+	});
 
 	// Persist expanded dirs to module-level cache whenever they change.
 	useEffect(() => {
@@ -118,14 +140,108 @@ export function FilesView({
 	const fileTreePercent = `${(fileTreeRatio * 100).toFixed(1)}%`;
 	const contentPercent = `${((1 - fileTreeRatio) * 100).toFixed(1)}%`;
 
+	const expandDirectoryPath = useCallback(
+		(path: string) => {
+			if (!path) return;
+			setExpandedDirs((current) => {
+				const next = new Set(current);
+				next.add(path);
+				return next;
+			});
+		},
+		[setExpandedDirs],
+	);
+
+	const handleCreateEntry = useCallback(
+		async (path: string, kind: RuntimeWorkdirEntryKind): Promise<RuntimeWorkdirEntryMutationResponse> => {
+			const requestScopeKey = fileBrowserData.contentScopeKey;
+			const result = await fileBrowserData.createEntry(path, kind);
+			if (requestScopeKey !== contentScopeKeyRef.current) {
+				return result;
+			}
+			const parentPath = result.path.includes("/") ? result.path.slice(0, result.path.lastIndexOf("/")) : "";
+			expandDirectoryPath(parentPath);
+			if (kind === "directory") {
+				expandDirectoryPath(result.path);
+			}
+			return result;
+		},
+		[expandDirectoryPath, fileBrowserData],
+	);
+
+	const handleRenameEntry = useCallback(
+		async (
+			path: string,
+			nextPath: string,
+			kind: RuntimeWorkdirEntryKind,
+		): Promise<RuntimeWorkdirEntryMutationResponse> => {
+			if (editorWorkspace.hasDirtyPath(path, kind)) {
+				throw new Error("Save or close unsaved files before renaming.");
+			}
+			const requestScopeKey = fileBrowserData.contentScopeKey;
+			const result = await fileBrowserData.renameEntry(path, nextPath, kind);
+			if (requestScopeKey !== contentScopeKeyRef.current) {
+				return result;
+			}
+			editorWorkspace.handleRenameEntryPath(path, result.path, kind);
+			if (kind === "directory") {
+				setExpandedDirs((current) => {
+					const next = new Set<string>();
+					for (const expandedPath of current) {
+						if (expandedPath === path) {
+							next.add(result.path);
+						} else if (expandedPath.startsWith(`${path}/`)) {
+							next.add(`${result.path}/${expandedPath.slice(path.length + 1)}`);
+						} else {
+							next.add(expandedPath);
+						}
+					}
+					return next;
+				});
+			}
+			const parentPath = result.path.includes("/") ? result.path.slice(0, result.path.lastIndexOf("/")) : "";
+			expandDirectoryPath(parentPath);
+			return result;
+		},
+		[editorWorkspace, expandDirectoryPath, fileBrowserData],
+	);
+
+	const handleDeleteEntry = useCallback(
+		async (path: string, kind: RuntimeWorkdirEntryKind): Promise<RuntimeWorkdirEntryMutationResponse> => {
+			if (editorWorkspace.hasDirtyPath(path, kind)) {
+				throw new Error("Save or close unsaved files before deleting.");
+			}
+			const requestScopeKey = fileBrowserData.contentScopeKey;
+			const result = await fileBrowserData.deleteEntry(path, kind);
+			if (requestScopeKey !== contentScopeKeyRef.current) {
+				return result;
+			}
+			editorWorkspace.handleDeleteEntryPath(path, kind);
+			if (kind === "directory") {
+				setExpandedDirs((current) => {
+					const next = new Set(current);
+					for (const expandedPath of current) {
+						if (expandedPath === path || expandedPath.startsWith(`${path}/`)) {
+							next.delete(expandedPath);
+						}
+					}
+					return next;
+				});
+			}
+			return result;
+		},
+		[editorWorkspace, fileBrowserData],
+	);
+
 	// --- Render ---
 
-	const hasFiles = (fileBrowserData.files?.length ?? 0) > 0;
+	const hasEntries = (fileBrowserData.files?.length ?? 0) > 0 || (fileBrowserData.directories?.length ?? 0) > 0;
+	const canMutateEntries = fileBrowserData.canMutateEntries;
 
 	return (
 		<div className="flex flex-col flex-1 min-h-0 min-w-0">
 			{/* Scope bar slot */}
-			{scopeBar}
+			{showScopeBar ? scopeBar : null}
 
 			{/* Toolbar with file tree toggle */}
 			<div className="flex items-center gap-1 px-3 h-8 border-b border-border bg-surface-1 shrink-0">
@@ -148,7 +264,7 @@ export function FilesView({
 
 			{/* Content area: file tree + file viewer */}
 			<div ref={contentRowRef} className="flex flex-1 min-h-0">
-				{!hasFiles && !fileBrowserData.selectedPath ? (
+				{!hasEntries && !fileBrowserData.selectedPath && !canMutateEntries ? (
 					<div className="flex flex-1 items-center justify-center">
 						<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary">
 							<FolderOpen size={40} />
@@ -169,6 +285,7 @@ export function FilesView({
 								>
 									<FileBrowserTreePanel
 										files={fileBrowserData.files}
+										directories={fileBrowserData.directories}
 										selectedPath={fileBrowserData.selectedPath}
 										onSelectPath={fileBrowserData.onSelectPath}
 										panelFlex="1 1 0"
@@ -178,6 +295,9 @@ export function FilesView({
 										onInitializedExpansion={handleInitializedExpansion}
 										rootPath={rootPath}
 										getFileContent={fileBrowserData.getFileContent}
+										onCreateEntry={canMutateEntries ? handleCreateEntry : undefined}
+										onRenameEntry={canMutateEntries ? handleRenameEntry : undefined}
+										onDeleteEntry={canMutateEntries ? handleDeleteEntry : undefined}
 										scopeKey={scopeKey}
 									/>
 								</div>
@@ -197,16 +317,30 @@ export function FilesView({
 								minHeight: 0,
 							}}
 						>
-							<FileContentViewer
-								content={fileBrowserData.fileContent?.content ?? null}
-								binary={fileBrowserData.fileContent?.binary ?? false}
-								truncated={fileBrowserData.fileContent?.truncated ?? false}
+							<FileEditorPanel
+								tabs={editorWorkspace.tabs}
+								activeTab={editorWorkspace.activeTab}
+								activePath={editorWorkspace.activePath}
 								isLoading={fileBrowserData.isContentLoading}
 								isError={fileBrowserData.isContentError}
-								filePath={fileBrowserData.selectedPath}
-								onClose={fileBrowserData.onCloseFile}
+								isReadOnly={fileBrowserData.isReadOnly}
+								canEditActiveTab={editorWorkspace.canEditActiveTab}
+								isActiveTabDirty={editorWorkspace.isActiveTabDirty}
+								hasDirtyTabs={editorWorkspace.hasDirtyTabs}
+								discardPrompt={editorWorkspace.discardPrompt}
+								autosaveMode={fileEditorAutosaveMode}
 								scrollToLine={pendingScrollLine}
 								onScrollToLineConsumed={() => setPendingScrollLine(null)}
+								onSelectTab={editorWorkspace.handleSelectTab}
+								onCloseTab={editorWorkspace.handleCloseTab}
+								onChangeActiveContent={editorWorkspace.handleChangeActiveContent}
+								onSaveActiveTab={editorWorkspace.handleSaveActiveTab}
+								onSaveAllTabs={editorWorkspace.handleSaveAllTabs}
+								onCloseAllTabs={editorWorkspace.handleCloseAllTabs}
+								onAutosaveFocusChange={editorWorkspace.handleAutosaveFocusChange}
+								onReloadActiveTab={editorWorkspace.handleReloadActiveTab}
+								onCancelDiscardPrompt={editorWorkspace.handleCancelDiscardPrompt}
+								onConfirmDiscardPrompt={editorWorkspace.handleConfirmDiscardPrompt}
 							/>
 						</div>
 					</>

@@ -43,6 +43,7 @@ interface NormalizedLockRequest {
 export interface AtomicTextWriteOptions {
 	lock?: LockRequest | null;
 	executable?: boolean;
+	mode?: number;
 }
 
 function createLockOptions(request: LockRequest, lockfilePath: string): LockOptions {
@@ -168,6 +169,8 @@ export class LockedFileSystem {
 			if (existingContent === content) {
 				if (options.executable && process.platform !== "win32") {
 					await chmod(path, 0o755);
+				} else if (options.mode !== undefined && process.platform !== "win32") {
+					await chmod(path, options.mode);
 				}
 				return;
 			}
@@ -177,6 +180,8 @@ export class LockedFileSystem {
 			await rename(tempPath, path);
 			if (options.executable && process.platform !== "win32") {
 				await chmod(path, 0o755);
+			} else if (options.mode !== undefined && process.platform !== "win32") {
+				await chmod(path, options.mode);
 			}
 		};
 		if (lockRequest) {

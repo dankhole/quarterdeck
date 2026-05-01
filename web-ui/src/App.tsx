@@ -2,6 +2,7 @@
 // Keep this file focused on wiring top-level hooks and surfaces together, and
 // push runtime-specific orchestration down into hooks and service modules.
 
+import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import type { ReactElement, ReactNode, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -28,6 +29,7 @@ import {
 	useSingleTabGuard,
 } from "@/hooks/app";
 import { usePromptShortcuts } from "@/hooks/board";
+import { useFileEditorDirtyUnloadGuard } from "@/hooks/git";
 import { useProjectUiState } from "@/hooks/project";
 import type { ProjectBoardSessionsState } from "@/hooks/project/project-sync";
 import { useShortcutActions } from "@/hooks/settings";
@@ -102,6 +104,8 @@ export default function App(): ReactElement {
 }
 
 function AppInner(): ReactElement {
+	useFileEditorDirtyUnloadGuard();
+
 	const [projectBoardSessions, setProjectBoardSessionsState] = useState<ProjectBoardSessionsState>(() => ({
 		board: createInitialBoardData(),
 		sessions: {},
@@ -550,6 +554,9 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 								) : undefined,
 								pinnedBranches: projectRuntime.pinnedBranches,
 								onTogglePinBranch: projectRuntime.handleTogglePinBranch,
+								fileEditorAutosaveMode:
+									projectRuntime.runtimeProjectConfig?.fileEditorAutosaveMode ??
+									CONFIG_DEFAULTS.fileEditorAutosaveMode,
 								skipTaskCheckoutConfirmation: projectRuntime.skipTaskCheckoutConfirmation,
 								skipHomeCheckoutConfirmation: projectRuntime.skipHomeCheckoutConfirmation,
 								onSkipTaskCheckoutConfirmationChange: projectRuntime.handleSkipTaskCheckoutConfirmationChange,
@@ -588,6 +595,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 					{isFileFinderOpen && (
 						<FileFinderOverlay
 							projectId={project.currentProjectId}
+							searchScope={navigation.activeFileSearchScope}
 							onSelect={handleSearchFileSelect}
 							onDismiss={() => setIsFileFinderOpen(false)}
 						/>
@@ -595,6 +603,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 					{isTextSearchOpen && (
 						<TextSearchOverlay
 							projectId={project.currentProjectId}
+							searchScope={navigation.activeFileSearchScope}
 							onSelect={handleSearchFileSelect}
 							onDismiss={() => setIsTextSearchOpen(false)}
 						/>

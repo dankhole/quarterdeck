@@ -5,7 +5,7 @@ export type ScopeMode = "contextual" | "home_override" | "branch_view";
 export type ResolvedScope =
 	| { type: "home"; projectId: string }
 	| { type: "task"; taskId: string; baseRef: string; projectId: string; branch: string | null }
-	| { type: "branch_view"; ref: string; projectId: string };
+	| { type: "branch_view"; ref: string; projectId: string; taskId?: string; baseRef?: string };
 
 interface ScopeState {
 	mode: ScopeMode;
@@ -45,7 +45,12 @@ export function useScopeContext(options: {
 		}
 
 		if (state.mode === "branch_view" && state.branchViewRef !== null) {
-			return { type: "branch_view", ref: state.branchViewRef, projectId: currentProjectId };
+			return {
+				type: "branch_view",
+				ref: state.branchViewRef,
+				projectId: currentProjectId,
+				...(selectedTaskId && selectedCard ? { taskId: selectedTaskId, baseRef: selectedCard.baseRef } : {}),
+			};
 		}
 
 		if (state.mode === "home_override") {

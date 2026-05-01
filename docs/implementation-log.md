@@ -2,6 +2,18 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-04-30 — Editor-lite scope ownership hardening
+
+Editor dirty state can outlive the `FilesView` component because open tabs are cached per file-browser scope. The page-unload guard now lives at the app shell and checks the shared editor cache instead of the mounted Files view, so unsaved cached tabs still warn before browser close/reload after navigating to Terminal, Git, or Home. Autosave also suppresses delay/focus saves while a discard prompt is active, preserving the user's explicit close/reload decision.
+
+Global file search scope is owned by the current Home/CardDetail repository context instead of by `FilesView` mount effects. Cmd+P and Cmd+Shift+F therefore keep searching the active home, task worktree, or read-only ref scope even when opened from Git or Terminal. Notable files: `web-ui/src/hooks/git/file-editor-workspace.ts`, `web-ui/src/hooks/git/use-file-editor-workspace.ts`, `web-ui/src/hooks/board/use-card-detail-view.ts`, and `web-ui/src/components/app/home-view.tsx`. Validation: focused web tests, `npm run web:typecheck`, `npm run lint`, `npm run web:test`, and `git diff --check`. Commit: `6aac6d242e65b923963dd6a605ccb18a0e757651`.
+
+## 2026-04-30 — Editor-lite save boundary
+
+Files view editing now keeps repository workflow state in Quarterdeck-owned hooks while CodeMirror is isolated behind `SourceEditor`. The browser owns tabs, dirty tracking, reload/discard prompts, and branch/ref read-only policy; the runtime owns path validation, binary/size rejection, full-content hashes, and locked atomic writes through `saveWorkdirFile(...)`.
+
+The key invariant is that browser saves only target the live worktree and must present the hash from the full file content that was opened. If an agent, terminal, or external editor changes the file first, the save endpoint returns a conflict instead of silently overwriting. Non-binary text/code files are no longer truncated at the old 1MB viewer boundary; files over 5 MB open read-only, and the existing 10 MB hard read/display cap remains the safety cap. Validation: focused runtime/web tests, `npm run web:typecheck`, and `npm run typecheck`.
+
 ## 2026-04-30 — Commit message generation context
 
 Commit-message generation is now intentionally heavier because it is user-triggered rather than automatic. The backend builds a structured context with task title/prompt/summary context, the complete selected-file list outside the truncation budget, a larger bounded diff section, and bounded untracked-file content excerpts. The prompt tells the helper model that the file list is authoritative when details are truncated, so large changes still preserve scope.

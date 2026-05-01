@@ -18,6 +18,7 @@ export interface SettingsFormValues {
 	llmSummaryPolishEnabled: boolean;
 	shellAutoRestartEnabled: boolean;
 	terminalFontWeight: number;
+	fileEditorAutosaveMode: RuntimeConfigResponse["fileEditorAutosaveMode"];
 	showTrashWorktreeNotice: boolean;
 	uncommittedChangesOnCardsEnabled: boolean;
 	unmergedChangesIndicatorEnabled: boolean;
@@ -53,6 +54,7 @@ export function resolveInitialValues(config: RuntimeConfigResponse | null): Sett
 		llmSummaryPolishEnabled: config?.llmSummaryPolishEnabled ?? CONFIG_DEFAULTS.llmSummaryPolishEnabled,
 		shellAutoRestartEnabled: config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
 		terminalFontWeight: config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight,
+		fileEditorAutosaveMode: config?.fileEditorAutosaveMode ?? CONFIG_DEFAULTS.fileEditorAutosaveMode,
 		showTrashWorktreeNotice: config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice,
 		uncommittedChangesOnCardsEnabled:
 			config?.uncommittedChangesOnCardsEnabled ?? CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,

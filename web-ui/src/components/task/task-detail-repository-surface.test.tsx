@@ -31,9 +31,9 @@ vi.mock("@/components/git", () => ({
 		mockGitView(props);
 		return <div data-testid="git-view">{branchStatusSlot}</div>;
 	},
-	FilesView: ({ scopeBar, ...props }: { scopeBar: ReactNode }) => {
-		mockFilesView(props);
-		return <div data-testid="files-view">{scopeBar}</div>;
+	FilesView: ({ scopeBar, showScopeBar = true, ...props }: { scopeBar: ReactNode; showScopeBar?: boolean }) => {
+		mockFilesView({ showScopeBar, ...props });
+		return <div data-testid="files-view">{showScopeBar ? scopeBar : null}</div>;
 	},
 }));
 
@@ -145,13 +145,32 @@ function createBranchActions(): UseBranchActionsResult {
 function createFileBrowserData(): UseFileBrowserDataResult {
 	return {
 		files: null,
+		directories: null,
+		contentScopeKey: "test-task",
+		searchScope: { taskId: "task-1", baseRef: "main" },
+		canMutateEntries: true,
+		mutationBlockedReason: null,
 		selectedPath: null,
 		onSelectPath: () => {},
 		fileContent: null,
 		isContentLoading: false,
 		isContentError: false,
 		onCloseFile: () => {},
+		isReadOnly: false,
 		getFileContent: async () => null,
+		reloadFileContent: async () => null,
+		saveFileContent: async () => {
+			throw new Error("not implemented");
+		},
+		createEntry: async () => {
+			throw new Error("not implemented");
+		},
+		renameEntry: async () => {
+			throw new Error("not implemented");
+		},
+		deleteEntry: async () => {
+			throw new Error("not implemented");
+		},
 	};
 }
 
@@ -197,6 +216,7 @@ function createRepositoryProps(): TaskDetailRepositoryProps {
 		gitHistoryPanel: <div data-testid="git-history-panel" />,
 		pinnedBranches: ["main"],
 		onTogglePinBranch: () => {},
+		fileEditorAutosaveMode: "off",
 		skipTaskCheckoutConfirmation: false,
 		skipHomeCheckoutConfirmation: false,
 		onDeselectTask: () => {},
@@ -292,10 +312,12 @@ describe("TaskDetailRepositorySurface", () => {
 		});
 
 		expect(container.querySelector('[data-testid="files-view"]')).not.toBeNull();
-		expect(container.querySelector('[data-testid="scope-bar"]')).not.toBeNull();
-		expect(container.querySelector('[data-testid="branch-selector"]')).not.toBeNull();
+		expect(container.querySelector('[data-testid="scope-bar"]')).toBeNull();
+		expect(container.querySelector('[data-testid="branch-selector"]')).toBeNull();
 		expect(mockFilesView).toHaveBeenCalledWith(
 			expect.objectContaining({
+				showScopeBar: false,
+				fileEditorAutosaveMode: "off",
 				rootPath: "/tmp/task-detail",
 				scopeKey: "task-1-contextual",
 			}),
@@ -407,13 +429,10 @@ describe("TaskDetailRepositorySurface", () => {
 			);
 		});
 
-		expect(mockScopeBar).toHaveBeenCalledWith(expect.objectContaining({ taskIsDetached: false }));
-		expect(mockBranchSelectorPopover).toHaveBeenCalledWith(
-			expect.objectContaining({ detachedWorktreeBaseRef: undefined }),
-		);
-		expect(mockBranchPillTrigger).toHaveBeenCalledWith(
-			expect.objectContaining({ detachedWorktreeBaseRef: undefined }),
-		);
+		expect(mockFilesView).toHaveBeenCalledWith(expect.objectContaining({ showScopeBar: false }));
+		expect(mockScopeBar).not.toHaveBeenCalled();
+		expect(mockBranchSelectorPopover).not.toHaveBeenCalled();
+		expect(mockBranchPillTrigger).not.toHaveBeenCalled();
 	});
 
 	it("keeps detached task tooltip off branch-view pill labels", async () => {

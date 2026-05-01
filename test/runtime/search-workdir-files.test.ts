@@ -4,7 +4,13 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { listAllWorkdirFiles, searchWorkdirFiles } from "../../src/workdir";
+import {
+	createWorkdirEntry,
+	deleteWorkdirEntry,
+	listAllWorkdirFiles,
+	searchFilePaths,
+	searchWorkdirFiles,
+} from "../../src/workdir";
 import { createGitTestEnv } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 
@@ -33,6 +39,15 @@ function commitAll(cwd: string, message: string): string {
 }
 
 describe.sequential("search workdir files runtime", () => {
+	it("searches precomputed ref file paths without working-tree change metadata", () => {
+		const results = searchFilePaths(["src/app.ts", "docs/app-notes.md", "README.md"], "app", 20);
+
+		expect(results).toEqual([
+			{ path: "src/app.ts", name: "app.ts", changed: false },
+			{ path: "docs/app-notes.md", name: "app-notes.md", changed: false },
+		]);
+	});
+
 	it("lists workdir files with bounded filesystem skips in git repositories", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-list-files-git-");
 		try {
@@ -86,6 +101,32 @@ describe.sequential("search workdir files runtime", () => {
 			const results = await searchWorkdirFiles(repoPath, "removed", 20);
 
 			expect(results).toEqual([]);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("refreshes quick-open cache after file browser mutations", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-search-files-mutation-cache-");
+		try {
+			initRepository(repoPath);
+			mkdirSync(join(repoPath, "src"), { recursive: true });
+			writeFileSync(join(repoPath, "src", "removed.ts"), "export const removed = true;\n", "utf8");
+			commitAll(repoPath, "add tracked files");
+
+			expect(await searchWorkdirFiles(repoPath, "created", 20)).toEqual([]);
+
+			await createWorkdirEntry(repoPath, "src/created.ts", "file");
+			expect(await searchWorkdirFiles(repoPath, "created", 20)).toEqual([
+				{ path: "src/created.ts", name: "created.ts", changed: true },
+			]);
+
+			expect(await searchWorkdirFiles(repoPath, "removed", 20)).toEqual([
+				{ path: "src/removed.ts", name: "removed.ts", changed: false },
+			]);
+
+			await deleteWorkdirEntry(repoPath, "src/removed.ts", "file");
+			expect(await searchWorkdirFiles(repoPath, "removed", 20)).toEqual([]);
 		} finally {
 			cleanup();
 		}

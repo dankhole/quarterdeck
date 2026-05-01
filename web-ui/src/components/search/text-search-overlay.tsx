@@ -2,11 +2,13 @@ import type React from "react";
 import { useEffect, useMemo, useRef } from "react";
 
 import { SearchOverlayShell } from "@/components/search/search-overlay-shell.js";
+import type { WorkdirSearchScope } from "@/hooks/search/search-scope";
 import { useTextSearch } from "@/hooks/search/use-text-search.js";
 import type { RuntimeWorkdirTextSearchFile } from "@/runtime/types";
 
 export interface TextSearchOverlayProps {
 	projectId: string | null;
+	searchScope: WorkdirSearchScope;
 	onSelect: (filePath: string, lineNumber?: number) => void;
 	onDismiss: () => void;
 }
@@ -39,8 +41,13 @@ function highlightMatches(content: string, query: string, isRegex: boolean, case
 	}
 }
 
-export function TextSearchOverlay({ projectId, onSelect, onDismiss }: TextSearchOverlayProps): React.ReactElement {
-	const search = useTextSearch({ projectId, onSelect });
+export function TextSearchOverlay({
+	projectId,
+	searchScope,
+	onSelect,
+	onDismiss,
+}: TextSearchOverlayProps): React.ReactElement {
+	const search = useTextSearch({ projectId, searchScope, onSelect });
 	const inputRef = useRef<HTMLInputElement>(null);
 	const selectedRowRef = useRef<HTMLDivElement>(null);
 

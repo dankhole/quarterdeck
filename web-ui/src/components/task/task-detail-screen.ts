@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { MainViewId, SidebarId } from "@/resize/use-card-detail-layout";
-import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeConfigResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardCard } from "@/types";
 
 export interface TaskDetailLayoutProps {
@@ -27,6 +27,7 @@ export interface TaskDetailRepositoryProps {
 	gitHistoryPanel?: ReactNode;
 	pinnedBranches?: string[];
 	onTogglePinBranch?: (branchName: string) => void;
+	fileEditorAutosaveMode: RuntimeConfigResponse["fileEditorAutosaveMode"];
 	skipTaskCheckoutConfirmation: boolean;
 	skipHomeCheckoutConfirmation: boolean;
 	onSkipTaskCheckoutConfirmationChange?: (skip: boolean) => void;
