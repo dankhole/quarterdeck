@@ -10,7 +10,7 @@ This pass checked the runtime and developer-facing app surface end to end: insta
 
 ## Current Assessment
 
-- **Install/build:** Root and web package lockfiles include Windows-native optional packages from the toolchain, and package scripts use cross-platform `shx` for build file operations. `node-pty` remains the main native dependency to verify on real Windows hosts.
+- **Install/build:** Root and web package lockfiles include Windows-native optional packages from the toolchain, and package scripts keep build file operations in Node scripts. `node-pty` remains the main native dependency to verify on real Windows hosts.
 - **Path handling:** Runtime path code mostly uses `node:path`, Git path output is kept as forward-slash repository paths for UI/file-tree use, and browser display utilities normalize Windows separators. This pass fixed worktree-home containment so `~/.quarterdeck/worktrees/...` detection normalizes separators and drive-letter casing.
 - **Shell and process launch:** Interactive shell startup uses `COMSPEC` on Windows and falls back to PowerShell. Project shortcuts run through Node's platform shell. Task PTY launch wraps ambiguous Windows `.cmd`/`.bat` shims through `cmd.exe`; this pass extended the same wrapping to agent availability/version probes and made `dev:full` launch `npm.cmd`.
 - **PTY behavior:** Task and shell terminals use `node-pty`. Windows launch avoids Unix process-group termination, but ConPTY behavior still needs native validation for resize, reconnect, task restore, and shutdown. Forced same-size resize currently sends `SIGWINCH`, which is useful on Unix and effectively best-effort on Windows.

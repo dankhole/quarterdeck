@@ -1,5 +1,5 @@
-import { copyFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { chmod, copyFile, cp, mkdir, readdir, rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import * as esbuild from "esbuild";
 
@@ -48,6 +48,21 @@ const runtimeAssets = [
 		output: "dist/terminal/pi-lifecycle-extension.runtime.js",
 	},
 ];
+const webUiDistSource = "web-ui/dist";
+const webUiDistOutput = "dist/web-ui";
+
+async function copyDirectoryContents(source, output) {
+	const entries = await readdir(source, { withFileTypes: true });
+	await mkdir(output, { recursive: true });
+	await Promise.all(
+		entries.map((entry) =>
+			cp(join(source, entry.name), join(output, entry.name), {
+				recursive: true,
+				dereference: true,
+			}),
+		),
+	);
+}
 
 await Promise.all([
 	// CLI binary
@@ -69,5 +84,9 @@ for (const asset of runtimeAssets) {
 	await mkdir(dirname(asset.output), { recursive: true });
 	await copyFile(asset.source, asset.output);
 }
+
+await rm(webUiDistOutput, { recursive: true, force: true });
+await copyDirectoryContents(webUiDistSource, webUiDistOutput);
+await chmod("dist/cli.js", 0o755);
 
 console.log("esbuild: bundled dist/cli.js and dist/index.js and copied runtime assets");

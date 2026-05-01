@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Chore: trim build dependencies
+
+- Removed stale root-owned optional platform binaries and replaced `shx` build script usage with Node-based clean, copy, and chmod steps.
+
 ### Chore: split Files and Git diff data pipelines
 
 - Files view loading now separates scope policy, last-selected-file caching, file-tree queries, file-content queries, and mutation orchestration behind narrower hooks.
