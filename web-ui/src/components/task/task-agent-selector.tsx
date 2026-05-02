@@ -59,7 +59,7 @@ export function TaskAgentSelector({
 
 	return (
 		<div ref={setLocalPortalContainer} className="w-full">
-			<DropdownMenu.Root>
+			<DropdownMenu.Root modal={false}>
 				<DropdownMenu.Trigger asChild>
 					<button
 						type="button"

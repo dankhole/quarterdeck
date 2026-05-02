@@ -199,6 +199,7 @@ describe("TaskAgentSelector", () => {
 		const dialogContent = requireElement(document.body.querySelector('[role="dialog"]'), "the create dialog content");
 		const codexItem = findMenuItemByText("OpenAI Codex");
 		expect(dialogContent.contains(codexItem)).toBe(true);
+		expect(trigger.closest('[aria-hidden="true"]')).toBeNull();
 
 		await act(async () => {
 			dispatchPointerEvent(codexItem, "pointerdown");
