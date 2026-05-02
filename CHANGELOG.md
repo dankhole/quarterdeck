@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.12.3] — 2026-05-02
+
+### Docs: version bump to 0.12.3
+
+- Bumped root package metadata to 0.12.3 and promoted the current release notes for release prep.
+
 ### Chore: trim build dependencies
 
 - Removed stale root-owned optional platform binaries and replaced `shx` build script usage with Node-based clean, copy, and chmod steps.
