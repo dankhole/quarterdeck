@@ -54,6 +54,22 @@ function readRememberedTaskAgentId(): RuntimeAgentId | null {
 	return rawAgentId ? normalizeTaskAgentId(rawAgentId) : null;
 }
 
+function resolveRememberedTaskAgentId({
+	inSessionAgentId,
+	fallbackAgentId,
+	availableAgentIds,
+}: {
+	inSessionAgentId?: RuntimeAgentId | null;
+	fallbackAgentId: RuntimeAgentId;
+	availableAgentIds?: readonly RuntimeAgentId[] | null;
+}): RuntimeAgentId {
+	return resolveTaskCreateAgentId({
+		rememberedAgentId: inSessionAgentId ?? readRememberedTaskAgentId(),
+		fallbackAgentId,
+		availableAgentIds,
+	});
+}
+
 export interface UseTaskEditorResult {
 	isInlineTaskCreateOpen: boolean;
 	newTaskPrompt: string;
@@ -101,18 +117,25 @@ export function useTaskEditor({
 	setSelectedTaskId,
 	queueTaskStartAfterEdit,
 }: UseTaskEditorInput): UseTaskEditorResult {
-	const [rememberedTaskAgentId, setRememberedTaskAgentIdState] = useState<RuntimeAgentId | null>(
-		readRememberedTaskAgentId,
+	const inSessionRememberedTaskAgentIdRef = useRef<RuntimeAgentId | null>(null);
+	const getDefaultTaskAgentId = useCallback(
+		() =>
+			resolveRememberedTaskAgentId({
+				inSessionAgentId: inSessionRememberedTaskAgentIdRef.current,
+				fallbackAgentId: fallbackTaskAgentId,
+				availableAgentIds: availableTaskAgentIds,
+			}),
+		[fallbackTaskAgentId, availableTaskAgentIds],
 	);
-	const resolvedCreateTaskAgentId = resolveTaskCreateAgentId({
-		rememberedAgentId: rememberedTaskAgentId,
-		fallbackAgentId: fallbackTaskAgentId,
-		availableAgentIds: availableTaskAgentIds,
-	});
 	const [isInlineTaskCreateOpen, setIsInlineTaskCreateOpen] = useState(false);
 	const [newTaskPrompt, setNewTaskPrompt] = useState("");
 	const [newTaskImages, setNewTaskImages] = useState<TaskImage[]>([]);
-	const [newTaskAgentId, setNewTaskAgentIdState] = useState<RuntimeAgentId>(resolvedCreateTaskAgentId);
+	const [newTaskAgentId, setNewTaskAgentIdState] = useState<RuntimeAgentId>(() =>
+		resolveRememberedTaskAgentId({
+			fallbackAgentId: fallbackTaskAgentId,
+			availableAgentIds: availableTaskAgentIds,
+		}),
+	);
 	const [newTaskUseWorktree, setNewTaskUseWorktree] = useState(true);
 	const [createFeatureBranch, setCreateFeatureBranch] = useState(false);
 	const [branchName, setBranchName] = useState("");
@@ -135,7 +158,7 @@ export function useTaskEditor({
 		(nextAgentId) => {
 			const resolvedAgentId = resolveTaskAgentStateAction(nextAgentId, newTaskAgentIdRef.current);
 			resetNewTaskAgentId(resolvedAgentId);
-			setRememberedTaskAgentIdState(resolvedAgentId);
+			inSessionRememberedTaskAgentIdRef.current = resolvedAgentId;
 			writeLocalStorageItem(LocalStorageKey.TaskCreateLastAgentId, resolvedAgentId);
 		},
 		[resetNewTaskAgentId],
@@ -143,9 +166,9 @@ export function useTaskEditor({
 
 	useEffect(() => {
 		if (!isInlineTaskCreateOpen) {
-			resetNewTaskAgentId(resolvedCreateTaskAgentId);
+			resetNewTaskAgentId(getDefaultTaskAgentId());
 		}
-	}, [isInlineTaskCreateOpen, resetNewTaskAgentId, resolvedCreateTaskAgentId]);
+	}, [getDefaultTaskAgentId, isInlineTaskCreateOpen, resetNewTaskAgentId]);
 
 	useEffect(() => {
 		if (isBranchRefValid(newTaskBranchRef, createTaskBranchOptions)) {
@@ -228,16 +251,16 @@ export function useTaskEditor({
 		setEditingTaskId(null);
 		setEditTaskPrompt("");
 		setEditTaskImages([]);
-		const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, resolvedCreateTaskAgentId);
+		const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, getDefaultTaskAgentId());
 		setCreateFeatureBranch(resetCreateDraft.createFeatureBranch);
 		setBranchName(resetCreateDraft.branchName);
 		setNewTaskBranchRef(resetCreateDraft.branchRef);
 		resetNewTaskAgentId(resetCreateDraft.agentId);
 		setIsInlineTaskCreateOpen(true);
-	}, [resetNewTaskAgentId, resolvedCreateTaskAgentId, resolvedDefaultTaskBranchRef]);
+	}, [getDefaultTaskAgentId, resetNewTaskAgentId, resolvedDefaultTaskBranchRef]);
 
 	const handleCancelCreateTask = useCallback(() => {
-		const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, resolvedCreateTaskAgentId);
+		const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, getDefaultTaskAgentId());
 		setIsInlineTaskCreateOpen(false);
 		setNewTaskPrompt(resetCreateDraft.prompt);
 		setNewTaskImages(resetCreateDraft.images);
@@ -246,7 +269,7 @@ export function useTaskEditor({
 		setCreateFeatureBranch(resetCreateDraft.createFeatureBranch);
 		setBranchName(resetCreateDraft.branchName);
 		setNewTaskBranchRef(resetCreateDraft.branchRef);
-	}, [resetNewTaskAgentId, resolvedCreateTaskAgentId, resolvedDefaultTaskBranchRef]);
+	}, [getDefaultTaskAgentId, resetNewTaskAgentId, resolvedDefaultTaskBranchRef]);
 
 	const handleOpenEditTask = useCallback(
 		(task: BoardCard, options?: OpenEditTaskOptions) => {
@@ -327,7 +350,7 @@ export function useTaskEditor({
 				return null;
 			}
 			setBoard(nextBoard);
-			const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, resolvedCreateTaskAgentId);
+			const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, getDefaultTaskAgentId());
 			setNewTaskPrompt(resetCreateDraft.prompt);
 			setNewTaskImages(resetCreateDraft.images);
 			resetNewTaskAgentId(resetCreateDraft.agentId);
@@ -344,13 +367,13 @@ export function useTaskEditor({
 			board,
 			branchName,
 			createFeatureBranch,
+			getDefaultTaskAgentId,
 			newTaskBranchRef,
 			newTaskAgentId,
 			newTaskImages,
 			newTaskPrompt,
 			newTaskUseWorktree,
 			resetNewTaskAgentId,
-			resolvedCreateTaskAgentId,
 			resolvedDefaultTaskBranchRef,
 			setBoard,
 		],
@@ -371,7 +394,7 @@ export function useTaskEditor({
 				return [];
 			}
 			setBoard(nextBoard);
-			const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, resolvedCreateTaskAgentId);
+			const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, getDefaultTaskAgentId());
 			setNewTaskPrompt(resetCreateDraft.prompt);
 			setNewTaskImages(resetCreateDraft.images);
 			resetNewTaskAgentId(resetCreateDraft.agentId);
@@ -386,12 +409,12 @@ export function useTaskEditor({
 		},
 		[
 			board,
+			getDefaultTaskAgentId,
 			newTaskAgentId,
 			newTaskBranchRef,
 			newTaskImages,
 			newTaskUseWorktree,
 			resetNewTaskAgentId,
-			resolvedCreateTaskAgentId,
 			resolvedDefaultTaskBranchRef,
 			setBoard,
 		],
@@ -400,7 +423,7 @@ export function useTaskEditor({
 	const resetTaskEditorState = useCallback(() => {
 		setIsInlineTaskCreateOpen(false);
 		const emptyEditDraft = createEmptyTaskEditDraft();
-		const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, resolvedCreateTaskAgentId);
+		const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, getDefaultTaskAgentId());
 		setEditingTaskId(emptyEditDraft.editingTaskId);
 		setEditTaskPrompt(emptyEditDraft.prompt);
 		setEditTaskImages(emptyEditDraft.images);
@@ -409,7 +432,7 @@ export function useTaskEditor({
 		resetNewTaskAgentId(resetCreateDraft.agentId);
 		setCreateFeatureBranch(resetCreateDraft.createFeatureBranch);
 		setBranchName(resetCreateDraft.branchName);
-	}, [resetNewTaskAgentId, resolvedCreateTaskAgentId, resolvedDefaultTaskBranchRef]);
+	}, [getDefaultTaskAgentId, resetNewTaskAgentId, resolvedDefaultTaskBranchRef]);
 
 	return {
 		isInlineTaskCreateOpen,

@@ -359,6 +359,47 @@ describe("useTaskEditor", () => {
 		expect(localStorage.getItem(LocalStorageKey.TaskCreateLastAgentId)).toBe("codex");
 	});
 
+	it("remembers the selected agent in session when localStorage writes fail", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+			throw new Error("localStorage unavailable");
+		});
+
+		try {
+			await act(async () => {
+				root.render(
+					<HookHarness
+						initialBoard={createBoard()}
+						fallbackTaskAgentId="claude"
+						onSnapshot={(snapshot) => {
+							latestSnapshot = snapshot;
+						}}
+					/>,
+				);
+			});
+
+			await act(async () => {
+				requireSnapshot(latestSnapshot).handleOpenCreateTask();
+			});
+
+			await act(async () => {
+				requireSnapshot(latestSnapshot).setNewTaskPrompt("Use Codex without storage");
+				requireSnapshot(latestSnapshot).setNewTaskAgentId("codex");
+			});
+
+			await act(async () => {
+				requireSnapshot(latestSnapshot).handleCreateTask({ keepDialogOpen: true });
+			});
+
+			const snapshot = requireSnapshot(latestSnapshot);
+			expect(snapshot.board.columns[0]?.cards[0]?.agentId).toBe("codex");
+			expect(snapshot.newTaskAgentId).toBe("codex");
+			expect(localStorage.getItem(LocalStorageKey.TaskCreateLastAgentId)).toBeNull();
+		} finally {
+			setItemSpy.mockRestore();
+		}
+	});
+
 	it("uses the remembered agent when opening the create dialog", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		localStorage.setItem(LocalStorageKey.TaskCreateLastAgentId, "codex");
@@ -374,6 +415,30 @@ describe("useTaskEditor", () => {
 				/>,
 			);
 		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).handleOpenCreateTask();
+		});
+
+		expect(requireSnapshot(latestSnapshot).newTaskAgentId).toBe("codex");
+	});
+
+	it("reads the remembered agent from storage when opening the create dialog", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					initialBoard={createBoard()}
+					fallbackTaskAgentId="claude"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		localStorage.setItem(LocalStorageKey.TaskCreateLastAgentId, "codex");
 
 		await act(async () => {
 			requireSnapshot(latestSnapshot).handleOpenCreateTask();
