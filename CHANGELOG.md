@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: allow shared-checkout task commits
+
+- Commit panel actions can now commit selected files for non-isolated tasks running in the home checkout, refreshing both task and home git metadata afterward.
+
 ## [0.12.3] — 2026-05-02
 
 ### Docs: version bump to 0.12.3

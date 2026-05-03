@@ -74,11 +74,6 @@ export function createStagingOps(ctx: ProjectApiContext): StagingOps {
 			try {
 				const taskScope = normalizeOptionalTaskScopeInput(input.taskScope);
 				const commitCwd = await resolveWorkingDir(projectScope.projectPath, taskScope);
-				if (taskScope && isProjectCheckoutCwd(projectScope.projectPath, commitCwd)) {
-					return createGitOutputErrorResponse(
-						new Error("Cannot commit in the shared checkout. Isolate the task to a worktree first."),
-					);
-				}
 				const response = await commitSelectedFiles({
 					cwd: commitCwd,
 					paths: input.paths,

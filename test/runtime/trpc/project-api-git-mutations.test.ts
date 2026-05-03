@@ -535,10 +535,17 @@ describe("createProjectApi commitSelectedFiles", () => {
 		});
 	});
 
-	it("blocks shared-checkout tasks", async () => {
+	it("allows task-scoped commits in the shared checkout and refreshes task and home metadata", async () => {
 		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/repo");
+		gitSyncMocks.commitSelectedFiles.mockResolvedValue({
+			ok: true,
+			commitHash: "abc1234",
+			summary: defaultSummary,
+			output: "",
+		});
 
-		const api = createProjectApi(createProjectDeps());
+		const deps = createProjectDeps();
+		const api = createProjectApi(deps);
 
 		const result = await api.commitSelectedFiles(defaultScope, {
 			taskScope: { taskId: "task-1", baseRef: "main" },
@@ -546,9 +553,14 @@ describe("createProjectApi commitSelectedFiles", () => {
 			message: "test commit",
 		});
 
-		expect(result.ok).toBe(false);
-		expect(result.error).toMatch(/shared checkout/);
-		expect(gitSyncMocks.commitSelectedFiles).not.toHaveBeenCalled();
+		expect(result.ok).toBe(true);
+		expect(gitSyncMocks.commitSelectedFiles).toHaveBeenCalledWith({
+			cwd: "/tmp/repo",
+			paths: ["src/file.ts"],
+			message: "test commit",
+		});
+		expect(deps.broadcaster.requestTaskRefresh).toHaveBeenCalledWith("project-1", "task-1");
+		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("project-1");
 	});
 
 	it("refreshes home git metadata on success (home-scoped commit)", async () => {
