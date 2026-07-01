@@ -138,7 +138,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.binary).toBe("codex");
 		expect(launch.detectOutputTransition).toBeUndefined();
 		expect(launch.shouldInspectOutputForTransition).toBeUndefined();
-		expect(launch.args.slice(0, 2)).toEqual(["--enable", "codex_hooks"]);
+		expect(launch.args.slice(0, 2)).toEqual(["--enable", "hooks"]);
 		const hookOverrideArgs = launch.args.slice(2);
 		expect(hookOverrideArgs.length).toBe(Object.keys(buildCodexHooksConfig()).length * 2 + 2);
 		expect(hookOverrideArgs).toContain("-c");
@@ -154,19 +154,19 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(existsSync(join(repoPath, ".codex", "hooks.json"))).toBe(false);
 	});
 
-	it("does not duplicate codex_hooks enable flag when already configured", async () => {
+	it("does not duplicate hooks enable flag when already configured", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
 			taskId: "task-codex-flags",
 			agentId: "codex",
 			binary: "codex",
-			args: ["--enable", "codex_hooks"],
+			args: ["--enable", "hooks"],
 			cwd: "/tmp",
 			prompt: "",
 		});
 
 		expect(launch.args.filter((arg) => arg === "--enable")).toHaveLength(1);
-		expect(launch.args.filter((arg) => arg === "codex_hooks")).toHaveLength(1);
+		expect(launch.args.filter((arg) => arg === "hooks")).toHaveLength(1);
 		expect(launch.args.join("\n")).not.toContain("hooks.SessionStart=");
 	});
 

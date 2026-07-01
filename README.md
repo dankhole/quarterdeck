@@ -36,7 +36,7 @@ Windows support is experimental and currently untested on native Windows. macOS 
 - At least one supported agent CLI installed and available on `PATH`
 - Optional but recommended: a Nerd Font such as [JetBrainsMono Nerd Font](https://www.nerdfonts.com/) for cleaner terminal glyphs
 
-Codex users need Codex 0.124.0 or newer with native hook support. Pi users need Pi 0.70.2 or newer.
+Codex users need Codex 0.142.5 or newer with native hook support. Pi users need Pi 0.70.2 or newer.
 
 ## Environment Variables
 

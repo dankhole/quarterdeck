@@ -38,7 +38,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-");
 
 		try {
-			writeFakeVersionedCommand(tempBin, "codex", "0.124.0");
+			writeFakeVersionedCommand(tempBin, "codex", "0.142.5");
 
 			const previousShell = process.env.SHELL;
 			try {
@@ -70,7 +70,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-");
 
 		try {
-			writeFakeVersionedCommand(tempBin, "codex", "0.124.0");
+			writeFakeVersionedCommand(tempBin, "codex", "0.142.5");
 
 			const previousShell = process.env.SHELL;
 			try {
@@ -165,7 +165,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-old-codex-");
 
 		try {
-			writeFakeVersionedCommand(tempBin, "codex", "0.123.0");
+			writeFakeVersionedCommand(tempBin, "codex", "0.142.4");
 
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
 				const state = await loadRuntimeConfig(null);
@@ -190,7 +190,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
 				await loadRuntimeConfig(null);
 				vi.setSystemTime(Date.now() + 31_000);
-				writeFakeVersionedCommand(tempBin, "codex", "0.124.0");
+				writeFakeVersionedCommand(tempBin, "codex", "0.142.5");
 
 				const updated = await updateRuntimeConfig(null, {
 					selectedAgentId: "codex",

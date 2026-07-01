@@ -72,7 +72,7 @@ export function writeFakeVersionedCommand(
 			scriptPath,
 			`@echo off
 if "%1"=="--version" echo ${version}
-if "%1"=="features" if "%2"=="list" echo codex_hooks  stable  ${codexHooksSupported ? "true" : "false"}
+if "%1"=="features" if "%2"=="list" echo hooks  stable  ${codexHooksSupported ? "true" : "false"}
 exit /b 0
 `,
 			"utf8",
@@ -87,7 +87,7 @@ if [ "$1" = "--version" ]; then
 	echo "${version}"
 fi
 if [ "$1" = "features" ] && [ "$2" = "list" ]; then
-	echo "codex_hooks                         stable             ${codexHooksSupported ? "true" : "false"}"
+	echo "hooks                                stable             ${codexHooksSupported ? "true" : "false"}"
 fi
 exit 0
 `,

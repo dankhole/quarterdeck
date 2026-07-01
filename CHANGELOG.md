@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: track Codex `hooks` feature rename
+
+- Codex renamed the `codex_hooks` feature flag to `hooks` in the 0.14x line and now warns when the old name is used. Quarterdeck's launch flag, feature-availability probe, and inline hook config now use `hooks`, and the minimum supported Codex version is 0.142.5.
+
 ### Fix: allow shared-checkout task commits
 
 - Commit panel actions can now commit selected files for non-isolated tasks running in the home checkout, refreshing both task and home git metadata afterward.

@@ -218,7 +218,7 @@ The full mapping:
 
 ### Codex hooks: native hook configuration via launch-scoped inline config
 
-Codex now has a native hook system, so Quarterdeck no longer wraps the CLI or scrapes internal logs. Instead, the Codex adapter injects its hook configuration inline on the `codex` command line using `-c hooks.<Event>=...` overrides, injects the same `QUARTERDECK_HOOK_TASK_ID` / `QUARTERDECK_HOOK_PROJECT_ID` environment variables used by Claude, forces `--enable codex_hooks`, and then launches `codex` directly. This keeps Quarterdeck's Codex hooks scoped to Quarterdeck-launched sessions instead of leaking into standalone Codex app/GUI usage through `~/.codex/hooks.json`.
+Codex now has a native hook system, so Quarterdeck no longer wraps the CLI or scrapes internal logs. Instead, the Codex adapter injects its hook configuration inline on the `codex` command line using `-c hooks.<Event>=...` overrides, injects the same `QUARTERDECK_HOOK_TASK_ID` / `QUARTERDECK_HOOK_PROJECT_ID` environment variables used by Claude, forces `--enable hooks` (the feature flag was renamed from `codex_hooks` in the 0.14x line), and then launches `codex` directly. This keeps Quarterdeck's Codex hooks scoped to Quarterdeck-launched sessions instead of leaking into standalone Codex app/GUI usage through `~/.codex/hooks.json`.
 
 The generated inline Codex hook config maps native events into Quarterdeck's three internal hook events:
 

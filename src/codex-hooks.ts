@@ -1,7 +1,7 @@
 import type { RuntimeHookEvent } from "./core";
 import { buildQuarterdeckCommandParts, quoteShellArg } from "./core";
 
-export const CODEX_HOOKS_FEATURE_NAME = "codex_hooks";
+export const CODEX_HOOKS_FEATURE_NAME = "hooks";
 
 function buildHookCommand(event: RuntimeHookEvent, metadata?: { source?: string; reliable?: boolean }): string {
 	const subcommand = metadata?.reliable || event !== "activity" ? "ingest" : "notify";

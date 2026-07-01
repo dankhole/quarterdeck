@@ -42,11 +42,11 @@ function mockSuccessfulAgentProbe(): void {
 	childProcessMocks.execFile.mockImplementation((binary: string, args: string[], ...rest: unknown[]) => {
 		const callback = readExecFileCallback(rest);
 		if (args[0] === "--version") {
-			callback(null, binary === "pi" ? "0.70.2\n" : "0.124.0\n", "");
+			callback(null, binary === "pi" ? "0.70.2\n" : "0.142.5\n", "");
 			return {} as ChildProcess;
 		}
 		if (args[0] === "features" && args[1] === "list") {
-			callback(null, "codex_hooks                         stable             true\n", "");
+			callback(null, "hooks                                stable             true\n", "");
 			return {} as ChildProcess;
 		}
 		callback(null, "", "");
@@ -89,11 +89,11 @@ describe("agent-registry", () => {
 		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
 			const callback = readExecFileCallback(rest);
 			if (args[0] === "--version") {
-				callback(null, "0.123.0\n", "");
+				callback(null, "0.142.4\n", "");
 				return {} as ChildProcess;
 			}
 			if (args[0] === "features" && args[1] === "list") {
-				callback(null, "codex_hooks                         stable             true\n", "");
+				callback(null, "hooks                                stable             true\n", "");
 				return {} as ChildProcess;
 			}
 			callback(null, "", "");
@@ -107,7 +107,7 @@ describe("agent-registry", () => {
 		expect(resolved).toBeNull();
 		expect(codex?.installed).toBe(false);
 		expect(codex?.status).toBe("upgrade_required");
-		expect(codex?.statusMessage).toContain("0.124.0");
+		expect(codex?.statusMessage).toContain("0.142.5");
 	});
 
 	it("caches availability probes across repeated config loads", async () => {
@@ -130,11 +130,11 @@ describe("agent-registry", () => {
 			const callback = readExecFileCallback(rest);
 			setTimeout(() => {
 				if (args[0] === "--version") {
-					callback(null, "0.124.0\n", "");
+					callback(null, "0.142.5\n", "");
 					return;
 				}
 				if (args[0] === "features" && args[1] === "list") {
-					callback(null, "codex_hooks                         stable             true\n", "");
+					callback(null, "hooks                                stable             true\n", "");
 					return;
 				}
 				callback(null, "", "");
@@ -181,7 +181,7 @@ describe("agent-registry", () => {
 		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
 			const callback = readExecFileCallback(rest);
 			if (args[0] === "--version") {
-				callback(null, "0.124.0\n", "");
+				callback(null, "0.142.5\n", "");
 				return {} as ChildProcess;
 			}
 			if (args[0] === "features" && args[1] === "list") {
@@ -218,11 +218,11 @@ describe("agent-registry", () => {
 				const callback = readExecFileCallback(rest);
 				const commandLine = args.join(" ");
 				if (commandLine.includes("--version")) {
-					callback(null, "0.124.0\n", "");
+					callback(null, "0.142.5\n", "");
 					return {} as ChildProcess;
 				}
 				if (commandLine.includes("features") && commandLine.includes("list")) {
-					callback(null, "codex_hooks                         stable             true\n", "");
+					callback(null, "hooks                                stable             true\n", "");
 					return {} as ChildProcess;
 				}
 				callback(null, "", "");
@@ -360,27 +360,27 @@ describe("buildRuntimeConfigResponse", () => {
 
 describe("parseCodexFeaturesListOutput", () => {
 	it("accepts column output where the feature row is not `removed`", () => {
-		expect(parseCodexFeaturesListOutput("codex_hooks                         stable             true\n")).toBe(true);
+		expect(parseCodexFeaturesListOutput("hooks                                stable             true\n")).toBe(true);
 	});
 
 	it("rejects output where the feature row is marked removed (aligned columns)", () => {
-		expect(parseCodexFeaturesListOutput("codex_hooks                         removed            false\n")).toBe(
+		expect(parseCodexFeaturesListOutput("hooks                                removed            false\n")).toBe(
 			false,
 		);
 	});
 
 	it("tolerates tab-separated columns", () => {
-		expect(parseCodexFeaturesListOutput("codex_hooks\tstable\ttrue\n")).toBe(true);
-		expect(parseCodexFeaturesListOutput("codex_hooks\tremoved\tfalse\n")).toBe(false);
+		expect(parseCodexFeaturesListOutput("hooks\tstable\ttrue\n")).toBe(true);
+		expect(parseCodexFeaturesListOutput("hooks\tremoved\tfalse\n")).toBe(false);
 	});
 
 	it("tolerates single-space-separated columns", () => {
-		expect(parseCodexFeaturesListOutput("codex_hooks stable true\n")).toBe(true);
-		expect(parseCodexFeaturesListOutput("codex_hooks removed false\n")).toBe(false);
+		expect(parseCodexFeaturesListOutput("hooks stable true\n")).toBe(true);
+		expect(parseCodexFeaturesListOutput("hooks removed false\n")).toBe(false);
 	});
 
 	it("rejects output where the feature row is present but disabled", () => {
-		expect(parseCodexFeaturesListOutput("codex_hooks stable false\n")).toBe(false);
+		expect(parseCodexFeaturesListOutput("hooks stable false\n")).toBe(false);
 	});
 
 	it("treats missing feature rows as unsupported", () => {
@@ -388,7 +388,8 @@ describe("parseCodexFeaturesListOutput", () => {
 		expect(parseCodexFeaturesListOutput("")).toBe(false);
 	});
 
-	it("does not false-match on a feature whose name is a prefix of codex_hooks", () => {
-		expect(parseCodexFeaturesListOutput("codex_hooks_other stable true\n")).toBe(false);
+	it("does not false-match on other feature names that contain `hooks`", () => {
+		expect(parseCodexFeaturesListOutput("plugin_hooks stable true\n")).toBe(false);
+		expect(parseCodexFeaturesListOutput("codex_hooks stable true\n")).toBe(false);
 	});
 });

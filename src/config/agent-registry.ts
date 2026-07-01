@@ -30,7 +30,7 @@ interface AgentAvailability {
 	statusMessage: string | null;
 }
 
-const MINIMUM_CODEX_VERSION = "0.124.0";
+const MINIMUM_CODEX_VERSION = "0.142.5";
 const MINIMUM_PI_VERSION = "0.70.2";
 const PROBE_OUTPUT_SNIPPET_MAX_LENGTH = 500;
 const CODEX_PROBE_TIMEOUT_MS = 3_000;
@@ -351,7 +351,7 @@ async function computeAgentAvailability(agentId: RuntimeAgentId, binary: string)
 			installed: false,
 			status: "upgrade_required",
 			statusMessage:
-				"Detected Codex, but Quarterdeck could not confirm native hook support. Upgrade Codex to a build with the codex_hooks feature.",
+				"Detected Codex, but Quarterdeck could not confirm native hook support. Upgrade Codex to a build with the hooks feature.",
 		};
 	}
 	log.debug("Codex availability confirmed", {
