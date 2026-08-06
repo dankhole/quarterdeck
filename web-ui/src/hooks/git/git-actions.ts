@@ -28,6 +28,16 @@ export interface GitActionErrorState {
 	dirtyTree?: boolean;
 }
 
+export interface TopbarGitSyncScopeInput {
+	selectedTaskId: string | null;
+	selectedTaskBaseRef: string | null;
+	selectedTaskHasBaseRef: boolean;
+}
+
+export interface GitSyncSummaryPolicyOptions {
+	updateHomeSummary?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Project info matching
 // ---------------------------------------------------------------------------
@@ -44,6 +54,39 @@ export function matchesWorktreeInfoSelection(
 		return false;
 	}
 	return worktreeInfo.taskId === card.id && worktreeInfo.baseRef === card.baseRef;
+}
+
+export function isTopbarGitSyncDisabled(input: {
+	runningGitAction: RuntimeGitSyncAction | null;
+	selectedTaskId: string | null;
+	selectedTaskHasBaseRef: boolean;
+	selectedTaskUsesSharedCheckout: boolean;
+}): boolean {
+	return (
+		input.runningGitAction !== null ||
+		(input.selectedTaskId !== null && !input.selectedTaskHasBaseRef && !input.selectedTaskUsesSharedCheckout)
+	);
+}
+
+export function resolveTopbarGitSyncTaskScope({
+	selectedTaskId,
+	selectedTaskBaseRef,
+	selectedTaskHasBaseRef,
+}: TopbarGitSyncScopeInput): { taskId: string; baseRef: string } | null {
+	if (!selectedTaskId || !selectedTaskHasBaseRef) {
+		return null;
+	}
+	return {
+		taskId: selectedTaskId,
+		baseRef: selectedTaskBaseRef ?? "",
+	};
+}
+
+export function shouldApplyHomeGitSummaryFromSync(
+	taskScope: { taskId: string; baseRef: string } | null | undefined,
+	options?: GitSyncSummaryPolicyOptions,
+): boolean {
+	return !taskScope || options?.updateHomeSummary === true;
 }
 
 // ---------------------------------------------------------------------------

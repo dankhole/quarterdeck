@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-08-06 — Codex hook and shared-checkout git sync stabilization
+
+Shared-checkout task sync now treats the project checkout as the visible git state even when the task is selected. The top-bar fetch/pull/push controls no longer block just because a non-isolated task has an unresolved base ref, and task-scoped sync responses that target the shared checkout update the home git summary immediately instead of waiting for metadata refresh.
+
+Codex hook ingestion now treats Codex `PostToolUse` as a source-specific permission-resolution event so an approved tool can transition a permission-waiting task back to running. Codex `Stop` still maps to review, including when the payload has no final/conversation metadata, because current Codex payloads do not expose a reliable root-vs-subagent Stop discriminator; that parity gap remains tracked in `docs/todo.md`. Notable files: `web-ui/src/components/app/connected-top-bar.tsx`, `web-ui/src/hooks/git/*`, `src/trpc/hooks-api.ts`, and `src/codex-hooks.ts`. Validation: focused runtime/web tests, root and web typechecks, Biome lint, agent-instruction bridge check, and `git diff --check`.
+
 ## 2026-05-01 — Actionable task notification ownership
 
 Project/board needs-input indicators now consume an actionable notification projection instead of raw retained session summaries. Authoritative notification snapshots/replacements keep only in-progress/review cards, live notification deltas stay lax enough to survive the browser board-save debounce, and explicit task stops enter an interrupted review path that clears permission hook activity before PTY exit cleanup can replay review state.

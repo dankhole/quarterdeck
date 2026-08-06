@@ -55,6 +55,7 @@ export interface GitContextValue {
 		action: RuntimeGitSyncAction,
 		taskScope?: { taskId: string; baseRef: string } | null,
 		branch?: string | null,
+		options?: { updateHomeSummary?: boolean },
 	) => Promise<void>;
 	switchHomeBranch: (branch: string) => Promise<void>;
 	resetGitActionState: () => void;

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { applyTaskBaseRefSelectionToBoard } from "@/hooks/board/task-base-ref-sync";
+import { isTopbarGitSyncDisabled, resolveTopbarGitSyncTaskScope } from "@/hooks/git/git-actions";
 import { useOpenProject } from "@/hooks/project";
 import { useBoardContext } from "@/providers/board-provider";
 import { useDialogContext } from "@/providers/dialog-provider";
@@ -17,7 +18,12 @@ import { useProjectNavigationContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { useTerminalContext } from "@/providers/terminal-provider";
-import type { PromptShortcut, RuntimeGitSyncSummary, RuntimeProjectShortcut } from "@/runtime/types";
+import type {
+	PromptShortcut,
+	RuntimeGitSyncAction,
+	RuntimeGitSyncSummary,
+	RuntimeProjectShortcut,
+} from "@/runtime/types";
 import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import type { ReviewTaskWorktreeSnapshot } from "@/types";
 
@@ -68,7 +74,18 @@ export function ConnectedTopBar({
 	const terminal = useTerminalContext();
 	const dialog = useDialogContext();
 	const selectedTaskHasBaseRef = selectedCard ? isRuntimeTaskBaseRefResolved(selectedCard.card) : false;
-	const isGitSyncDisabled = git.runningGitAction != null || (selectedCard !== null && !selectedTaskHasBaseRef);
+	const selectedTaskUsesSharedCheckout = selectedCard?.card.useWorktree === false;
+	const isGitSyncDisabled = isTopbarGitSyncDisabled({
+		runningGitAction: git.runningGitAction,
+		selectedTaskId: selectedCard?.card.id ?? null,
+		selectedTaskHasBaseRef,
+		selectedTaskUsesSharedCheckout,
+	});
+	const topbarGitSyncTaskScope = resolveTopbarGitSyncTaskScope({
+		selectedTaskId: selectedCard?.card.id ?? null,
+		selectedTaskBaseRef: selectedCard?.card.baseRef ?? null,
+		selectedTaskHasBaseRef,
+	});
 	const openProject = useOpenProject({
 		currentProjectId: projectNavigation.currentProjectId,
 		projectPath: openProjectPath,
@@ -101,6 +118,18 @@ export function ConnectedTopBar({
 		}
 		showAppToast({ intent: "success", message: "Re-syncing agent terminal", timeout: 3000 });
 	}, [selectedCard]);
+
+	const runTopbarGitSyncAction = useCallback(
+		(action: RuntimeGitSyncAction, branch?: string | null) => {
+			if (isGitSyncDisabled) {
+				return;
+			}
+			void git.runGitAction(action, topbarGitSyncTaskScope, branch, {
+				updateHomeSummary: selectedTaskUsesSharedCheckout,
+			});
+		},
+		[git.runGitAction, isGitSyncDisabled, selectedTaskUsesSharedCheckout, topbarGitSyncTaskScope],
+	);
 
 	return (
 		<TopBar
@@ -169,12 +198,10 @@ export function ConnectedTopBar({
 							onRenameBranch={git.topbarBranchActions.handleRenameBranch}
 							onResetToRef={git.topbarBranchActions.handleResetToRef}
 							onPull={(branch) => {
-								if (selectedCard && !selectedTaskHasBaseRef) return;
-								void git.runGitAction("pull", git.gitSyncTaskScope ?? null, branch);
+								runTopbarGitSyncAction("pull", branch);
 							}}
 							onPush={(branch) => {
-								if (selectedCard && !selectedTaskHasBaseRef) return;
-								void git.runGitAction("push", git.gitSyncTaskScope ?? null, branch);
+								runTopbarGitSyncAction("push", branch);
 							}}
 							pinnedBranches={projectRuntime.pinnedBranches}
 							onTogglePinBranch={projectRuntime.handleTogglePinBranch}
@@ -211,8 +238,7 @@ export function ConnectedTopBar({
 										git.runningGitAction === "fetch" ? <Spinner size={12} /> : <CircleArrowDown size={14} />
 									}
 									onClick={() => {
-										if (selectedCard && !selectedTaskHasBaseRef) return;
-										void git.runGitAction("fetch", git.gitSyncTaskScope);
+										runTopbarGitSyncAction("fetch");
 									}}
 									disabled={isGitSyncDisabled}
 									aria-label="Fetch from upstream"
@@ -225,8 +251,7 @@ export function ConnectedTopBar({
 									className="h-6"
 									icon={git.runningGitAction === "pull" ? <Spinner size={12} /> : <ArrowDown size={12} />}
 									onClick={() => {
-										if (selectedCard && !selectedTaskHasBaseRef) return;
-										void git.runGitAction("pull", git.gitSyncTaskScope);
+										runTopbarGitSyncAction("pull");
 									}}
 									disabled={isGitSyncDisabled}
 									aria-label="Pull from upstream"
@@ -239,8 +264,7 @@ export function ConnectedTopBar({
 									className="h-6"
 									icon={git.runningGitAction === "push" ? <Spinner size={12} /> : <ArrowUp size={12} />}
 									onClick={() => {
-										if (selectedCard && !selectedTaskHasBaseRef) return;
-										void git.runGitAction("push", git.gitSyncTaskScope);
+										runTopbarGitSyncAction("push");
 									}}
 									disabled={isGitSyncDisabled}
 									aria-label="Push to upstream"

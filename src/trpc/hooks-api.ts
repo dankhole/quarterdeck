@@ -108,9 +108,21 @@ function isMetadataOnlySessionMeta(metadata: RuntimeHookMetadata | undefined): b
 	);
 }
 
-function isPermissionResolutionHookEvent(hookEventName: string | null | undefined): boolean {
+function isCodexSource(source: string | null | undefined): boolean {
+	return source?.trim().toLowerCase() === "codex";
+}
+
+function isPermissionResolutionHook(
+	hookEventName: string | null | undefined,
+	source: string | null | undefined,
+): boolean {
 	const normalized = hookEventName?.toLowerCase() ?? "";
-	return normalized === "userpromptsubmit" || normalized === "permissionresolved" || normalized === "permissiondenied";
+	return (
+		normalized === "userpromptsubmit" ||
+		normalized === "permissionresolved" ||
+		normalized === "permissiondenied" ||
+		(isCodexSource(source) && normalized === "posttooluse")
+	);
 }
 
 type ClaudeTranscriptExtractor = (transcriptPath: string) => Promise<string | null>;
@@ -411,14 +423,16 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				// certainly a stale PostToolUse from a tool that completed before the
 				// permission prompt appeared. UserPromptSubmit is exempted because it
 				// means the user actively sent input (covers the edge case where
-				// writeInput's synchronous transition didn't fire).
+				// writeInput's synchronous transition didn't fire). Codex PostToolUse is
+				// also exempt because native Codex permission approval can resume via
+				// the approved tool's completion rather than a separate resolution hook.
 				if (event === "to_in_progress") {
 					const currentActivity = summary.latestHookActivity;
 					const incomingHookEvent = body.metadata?.hookEventName ?? null;
 					if (
 						currentActivity != null &&
 						isPermissionActivity(currentActivity) &&
-						!isPermissionResolutionHookEvent(incomingHookEvent)
+						!isPermissionResolutionHook(incomingHookEvent, body.metadata?.source)
 					) {
 						log.debug("Hook blocked: permission-aware transition guard prevented stale to_in_progress", {
 							...hookLogData,

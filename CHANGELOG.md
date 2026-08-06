@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: stabilize shared-checkout git sync and Codex hooks
+
+- Top-bar fetch/pull/push controls now stay usable from shared-checkout agent chats even when the task base ref is unresolved, and shared-checkout task sync updates the visible home git summary immediately.
+- Codex permission prompts can now return to running from Codex `PostToolUse` events; Codex `Stop` still maps to review because current payloads lack a reliable root-vs-subagent discriminator.
+
 ### Fix: track Codex `hooks` feature rename
 
 - Codex renamed the `codex_hooks` feature flag to `hooks` in the 0.14x line and now warns when the old name is used. Quarterdeck's launch flag, feature-availability probe, and inline hook config now use `hooks`, and the minimum supported Codex version is 0.142.5.

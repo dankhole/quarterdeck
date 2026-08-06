@@ -5,10 +5,12 @@ import {
 	computeNextTaskGitActionLoading,
 	deriveLoadingByTaskId,
 	type GitActionErrorState,
+	type GitSyncSummaryPolicyOptions,
 	getGitActionErrorTitle,
 	getGitSyncSuccessLabel,
 	isTaskGitActionInFlight,
 	matchesWorktreeInfoSelection,
+	shouldApplyHomeGitSummaryFromSync,
 	showGitErrorToast,
 	showGitSuccessToast,
 	showGitWarningToast,
@@ -70,6 +72,7 @@ export interface UseGitActionsResult {
 		action: RuntimeGitSyncAction,
 		taskScope?: { taskId: string; baseRef: string } | null,
 		branch?: string | null,
+		options?: GitSyncSummaryPolicyOptions,
 	) => Promise<void>;
 	switchHomeBranch: (branch: string) => Promise<void>;
 	discardHomeWorkingChanges: () => Promise<void>;
@@ -292,10 +295,12 @@ export function useGitActions({
 			action: RuntimeGitSyncAction,
 			taskScope?: { taskId: string; baseRef: string } | null,
 			branch?: string | null,
+			options?: GitSyncSummaryPolicyOptions,
 		) => {
 			if (!currentProjectId || runningGitAction || isSwitchingHomeBranch) {
 				return;
 			}
+			const shouldUpdateHomeSummary = shouldApplyHomeGitSummaryFromSync(taskScope, options);
 			setRunningGitAction(action);
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
@@ -308,7 +313,7 @@ export function useGitActions({
 					const errorMessage = payload.error ?? `${action} failed.`;
 					const output = payload.output ?? "";
 					const fallbackSummary = payload.summary ?? null;
-					if (fallbackSummary && !taskScope) {
+					if (fallbackSummary && shouldUpdateHomeSummary) {
 						setHomeGitSummary(fallbackSummary);
 					}
 					setGitActionError({
@@ -319,7 +324,7 @@ export function useGitActions({
 					});
 					return;
 				}
-				if (!taskScope) {
+				if (shouldUpdateHomeSummary) {
 					setHomeGitSummary(payload.summary);
 				}
 				refreshGitHistory();

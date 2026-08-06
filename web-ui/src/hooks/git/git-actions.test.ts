@@ -6,7 +6,10 @@ import {
 	getGitActionErrorTitle,
 	getGitSyncSuccessLabel,
 	isTaskGitActionInFlight,
+	isTopbarGitSyncDisabled,
 	matchesWorktreeInfoSelection,
+	resolveTopbarGitSyncTaskScope,
+	shouldApplyHomeGitSummaryFromSync,
 	type TaskGitActionLoadingState,
 } from "./git-actions";
 
@@ -46,6 +49,59 @@ describe("matchesWorktreeInfoSelection", () => {
 	it("returns false when either argument is null", () => {
 		expect(matchesWorktreeInfoSelection(null, null)).toBe(false);
 		expect(matchesWorktreeInfoSelection(null, { id: "t1", baseRef: "main" } as never)).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// top-bar git sync policy
+// ---------------------------------------------------------------------------
+
+describe("top-bar git sync policy", () => {
+	it("allows shared-checkout task sync even when the task base ref is unresolved", () => {
+		expect(
+			isTopbarGitSyncDisabled({
+				runningGitAction: null,
+				selectedTaskId: "task-1",
+				selectedTaskHasBaseRef: false,
+				selectedTaskUsesSharedCheckout: true,
+			}),
+		).toBe(false);
+		expect(
+			resolveTopbarGitSyncTaskScope({
+				selectedTaskId: "task-1",
+				selectedTaskBaseRef: null,
+				selectedTaskHasBaseRef: false,
+			}),
+		).toBeNull();
+	});
+
+	it("blocks isolated task sync until the task base ref is resolved", () => {
+		expect(
+			isTopbarGitSyncDisabled({
+				runningGitAction: null,
+				selectedTaskId: "task-1",
+				selectedTaskHasBaseRef: false,
+				selectedTaskUsesSharedCheckout: false,
+			}),
+		).toBe(true);
+	});
+
+	it("keeps resolved task sync task-scoped", () => {
+		expect(
+			resolveTopbarGitSyncTaskScope({
+				selectedTaskId: "task-1",
+				selectedTaskBaseRef: "main",
+				selectedTaskHasBaseRef: true,
+			}),
+		).toEqual({ taskId: "task-1", baseRef: "main" });
+	});
+
+	it("updates home git summary for home or explicitly shared-checkout task sync", () => {
+		expect(shouldApplyHomeGitSummaryFromSync(null)).toBe(true);
+		expect(shouldApplyHomeGitSummaryFromSync({ taskId: "task-1", baseRef: "main" })).toBe(false);
+		expect(
+			shouldApplyHomeGitSummaryFromSync({ taskId: "task-1", baseRef: "main" }, { updateHomeSummary: true }),
+		).toBe(true);
 	});
 });
 
