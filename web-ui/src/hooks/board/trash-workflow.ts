@@ -45,6 +45,8 @@ export const INITIAL_HARD_DELETE_DIALOG_STATE: HardDeleteDialogState = {
 	taskTitle: null,
 };
 
+export const CLEAR_TRASH_CLEANUP_CONCURRENCY = 4;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -55,4 +57,25 @@ export const INITIAL_HARD_DELETE_DIALOG_STATE: HardDeleteDialogState = {
 export function findTrashTaskIds(board: BoardData): string[] {
 	const trashColumn = board.columns.find((column) => column.id === "trash");
 	return trashColumn ? trashColumn.cards.map((card) => card.id) : [];
+}
+
+export async function runClearTrashCleanup(
+	taskIds: readonly string[],
+	cleanupTask: (taskId: string) => Promise<void>,
+	concurrency: number = CLEAR_TRASH_CLEANUP_CONCURRENCY,
+): Promise<void> {
+	const workerCount = Math.min(taskIds.length, Math.max(1, Math.floor(concurrency)));
+	let nextTaskIndex = 0;
+
+	await Promise.all(
+		Array.from({ length: workerCount }, async () => {
+			while (nextTaskIndex < taskIds.length) {
+				const taskId = taskIds[nextTaskIndex];
+				nextTaskIndex += 1;
+				if (taskId !== undefined) {
+					await cleanupTask(taskId);
+				}
+			}
+		}),
+	);
 }

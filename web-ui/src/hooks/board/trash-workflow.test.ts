@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { BoardData } from "@/types";
-import { findTrashTaskIds, INITIAL_HARD_DELETE_DIALOG_STATE, INITIAL_TRASH_WARNING_STATE } from "./trash-workflow";
+import {
+	CLEAR_TRASH_CLEANUP_CONCURRENCY,
+	findTrashTaskIds,
+	INITIAL_HARD_DELETE_DIALOG_STATE,
+	INITIAL_TRASH_WARNING_STATE,
+	runClearTrashCleanup,
+} from "./trash-workflow";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -40,6 +46,50 @@ describe("findTrashTaskIds", () => {
 
 	it("returns empty array when trash is empty", () => {
 		expect(findTrashTaskIds(makeBoard([]))).toEqual([]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// runClearTrashCleanup
+// ---------------------------------------------------------------------------
+
+describe("runClearTrashCleanup", () => {
+	it("bounds cleanup concurrency while still cleaning every task", async () => {
+		const taskIds = Array.from({ length: 25 }, (_, index) => `task-${index}`);
+		const cleanedTaskIds: string[] = [];
+		let inFlight = 0;
+		let maxInFlight = 0;
+
+		await runClearTrashCleanup(taskIds, async (taskId) => {
+			inFlight += 1;
+			maxInFlight = Math.max(maxInFlight, inFlight);
+			await Promise.resolve();
+			cleanedTaskIds.push(taskId);
+			inFlight -= 1;
+		});
+
+		expect(cleanedTaskIds.sort()).toEqual([...taskIds].sort());
+		expect(maxInFlight).toBeGreaterThan(0);
+		expect(maxInFlight).toBeLessThanOrEqual(CLEAR_TRASH_CLEANUP_CONCURRENCY);
+	});
+
+	it("treats invalid concurrency as one worker", async () => {
+		const taskIds = ["task-1", "task-2", "task-3"];
+		let inFlight = 0;
+		let maxInFlight = 0;
+
+		await runClearTrashCleanup(
+			taskIds,
+			async () => {
+				inFlight += 1;
+				maxInFlight = Math.max(maxInFlight, inFlight);
+				await Promise.resolve();
+				inFlight -= 1;
+			},
+			0,
+		);
+
+		expect(maxInFlight).toBe(1);
 	});
 });
 

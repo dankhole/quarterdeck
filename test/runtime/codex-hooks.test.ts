@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCodexHookConfigOverrides, buildCodexHooksConfig, serializeCodexTomlValue } from "../../src/codex-hooks";
+import {
+	buildCodexHookConfigOverrides,
+	buildCodexHooksConfig,
+	buildCodexHookTrustEntries,
+	CODEX_HOOK_TIMEOUT_SECONDS,
+	type CodexHooksConfig,
+	serializeCodexTomlValue,
+} from "../../src/codex-hooks";
+
+const SESSION_FLAGS_CONFIG_SOURCE =
+	process.platform === "win32" ? "C:\\<session-flags>\\config.toml" : "/<session-flags>/config.toml";
 
 describe("serializeCodexTomlValue", () => {
 	it("JSON-quotes plain strings", () => {
@@ -46,9 +56,9 @@ describe("serializeCodexTomlValue", () => {
 		expect(
 			serializeCodexTomlValue({
 				matcher: "*",
-				hooks: [{ type: "command", command: `echo "hi"` }],
+				hooks: [{ type: "command", command: `echo "hi"`, timeout: CODEX_HOOK_TIMEOUT_SECONDS }],
 			}),
-		).toBe(`{matcher = "*", hooks = [{type = "command", command = "echo \\"hi\\""}]}`);
+		).toBe(`{matcher = "*", hooks = [{type = "command", command = "echo \\"hi\\"", timeout = 5}]}`);
 	});
 
 	it("throws on unsupported values (null/undefined)", () => {
@@ -58,23 +68,75 @@ describe("serializeCodexTomlValue", () => {
 });
 
 describe("buildCodexHookConfigOverrides", () => {
-	it("emits one `-c` flag per configured event", () => {
+	it("emits one `-c` flag for trust state plus one per configured event", () => {
 		const overrides = buildCodexHookConfigOverrides();
 		const eventCount = Object.keys(buildCodexHooksConfig()).length;
 
 		// Alternating `-c` + key=value pairs.
-		expect(overrides.length).toBe(eventCount * 2);
+		expect(overrides.length).toBe((eventCount + 1) * 2);
 		for (let i = 0; i < overrides.length; i += 2) {
 			expect(overrides[i]).toBe("-c");
 		}
 	});
 
-	it("prefixes each override value with the event's hooks path", () => {
+	it("pre-seeds trust state before event hook overrides", () => {
+		const overrides = buildCodexHookConfigOverrides();
+		const values = overrides.filter((_, index) => index % 2 === 1);
+
+		expect(values[0]?.split("=", 1)[0]).toBe("hooks.state");
+		expect(values[0]).toContain(JSON.stringify(`${SESSION_FLAGS_CONFIG_SOURCE}:permission_request:0:0`));
+		expect(values[0]).toContain("trusted_hash");
+		expect(values[0]).toContain("sha256:");
+	});
+
+	it("prefixes each event override value with the event's hooks path", () => {
 		const overrides = buildCodexHookConfigOverrides();
 		const values = overrides.filter((_, index) => index % 2 === 1);
 		const expectedEvents = Object.keys(buildCodexHooksConfig());
-		const seenEvents = values.map((value) => value.split("=", 1)[0]);
+		const seenEvents = values.slice(1).map((value) => value.split("=", 1)[0]);
 		expect(seenEvents).toEqual(expectedEvents.map((event) => `hooks.${event}`));
+	});
+
+	it("sets a bounded timeout on every generated command hook", () => {
+		const config = buildCodexHooksConfig();
+		for (const hookGroups of Object.values(config)) {
+			for (const group of hookGroups) {
+				for (const hook of group.hooks) {
+					expect(hook.timeout).toBe(CODEX_HOOK_TIMEOUT_SECONDS);
+				}
+			}
+		}
+	});
+
+	it("matches Codex's currentHash formula for launch-scoped hook identities", () => {
+		const config: CodexHooksConfig = {
+			SessionStart: [],
+			PreToolUse: [
+				{
+					matcher: "*",
+					hooks: [{ type: "command", command: "true", timeout: CODEX_HOOK_TIMEOUT_SECONDS }],
+				},
+			],
+			PermissionRequest: [],
+			PostToolUse: [],
+			UserPromptSubmit: [],
+			Stop: [
+				{
+					hooks: [{ type: "command", command: "true", timeout: CODEX_HOOK_TIMEOUT_SECONDS }],
+				},
+			],
+		};
+
+		expect(buildCodexHookTrustEntries(config)).toEqual([
+			{
+				key: `${SESSION_FLAGS_CONFIG_SOURCE}:pre_tool_use:0:0`,
+				trustedHash: "sha256:850b1716209f4847d4d149c3cdda0149f6b98907148354b02778ee6509ec09e9",
+			},
+			{
+				key: `${SESSION_FLAGS_CONFIG_SOURCE}:stop:0:0`,
+				trustedHash: "sha256:99551a51b888f6dc725f1199663b7b1e1ef9bb9b9cab0612d84e5e9218aca6f5",
+			},
+		]);
 	});
 
 	it("SessionStart matcher excludes Codex's `clear` event", () => {

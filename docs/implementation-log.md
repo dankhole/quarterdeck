@@ -2,6 +2,12 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-08-06 — Upstream sync hardening pass
+
+Reviewed upstream `cline/kanban` through `87cfd6420` and reimplemented the small portable fixes that matched Quarterdeck's architecture. Codex launches now insert launch-scoped global flags/config before `resume`/`fork` subcommands so hook config, update suppression, worktree developer instructions, and hook trust pre-seeding stay in the global option segment; prompt text still lands after the resume target and `--`. The Codex hook trust port was validated against Codex CLI `0.146.1`: inline session-flag hooks use keys like `/<session-flags>/config.toml:pre_tool_use:0:0`, with `trusted_hash` set to the sha256 of the canonical hook identity including `event_name`, optional `matcher`, and the command handler's default `async = false` plus `timeout = 5`. Clearing Trash now runs task stop/worktree cleanup through a bounded four-worker queue instead of fanning out every cleanup concurrently. The publish workflow now passes the manually supplied tag through `env` before shell use, matching GitHub's safer pattern for workflow inputs.
+
+The key non-portable upstream items remain documented in `docs/upstream-sync.md`: desktop packaging, Cline SDK/model/account work, the Trash-to-Done rename, remote project browsing/clone flow, and CLI signal re-raise semantics. Notable files: `src/codex-hooks.ts`, `src/terminal/agent-session-adapters.ts`, `web-ui/src/hooks/board/trash-workflow.ts`, `web-ui/src/hooks/board/use-trash-workflow.ts`, `.github/workflows/publish.yml`, and `docs/upstream-sync.md`. Validation: `npm run check`, `npm run web:typecheck`, focused runtime/web trash/interaction/Codex adapter tests, targeted Biome lint, and `git diff --check`.
+
 ## 2026-08-06 — Codex hook and shared-checkout git sync stabilization
 
 Shared-checkout task sync now treats the project checkout as the visible git state even when the task is selected. The top-bar fetch/pull/push controls no longer block just because a non-isolated task has an unresolved base ref, and task-scoped sync responses that target the shared checkout update the home git summary immediately instead of waiting for metadata refresh.

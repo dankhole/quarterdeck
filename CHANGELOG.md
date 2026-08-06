@@ -6,6 +6,13 @@
 
 - LLM helpers now default to Claude Haiku 4.5 when `QUARTERDECK_LLM_MODEL` is unset, failure logs include a concrete replacement hint when the retired Claude 3.5 Haiku Bedrock model fails, and setup docs/UI now only require the helper base URL and API key.
 
+### Fix: port selected upstream hardening
+
+- Codex resume/fork launches now keep launch-scoped global flags and `-c` config overrides before the subcommand while still separating prompt positionals with `--`.
+- Codex hook launches now pre-seed trust state for Quarterdeck-generated inline hooks so fresh sessions do not stop at hook-review prompts before task-state hooks can run.
+- Clearing Trash now bounds task stop/worktree cleanup fanout so large Trash columns do not launch every cleanup RPC and git delete concurrently.
+- The publish workflow now passes the dispatch tag through an environment variable instead of interpolating it directly into shell.
+
 ### Fix: stabilize shared-checkout git sync and Codex hooks
 
 - Top-bar fetch/pull/push controls now stay usable from shared-checkout agent chats even when the task base ref is unresolved, and shared-checkout task sync updates the visible home git summary immediately.

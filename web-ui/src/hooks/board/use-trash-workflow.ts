@@ -6,6 +6,7 @@ import {
 	type HardDeleteDialogState,
 	INITIAL_HARD_DELETE_DIALOG_STATE,
 	INITIAL_TRASH_WARNING_STATE,
+	runClearTrashCleanup,
 	type TrashWarningState,
 } from "@/hooks/board/trash-workflow";
 import type { UseTaskLifecycleResult } from "@/hooks/board/use-task-lifecycle";
@@ -274,14 +275,10 @@ export function useTrashWorkflow({
 			clearTaskWorktreeInfo(selectedTaskId);
 		}
 
-		void (async () => {
-			await Promise.all(
-				taskIds.map(async (taskId) => {
-					await stopTaskSession(taskId, { waitForExit: true });
-					await cleanupTaskWorktree(taskId);
-				}),
-			);
-		})();
+		void runClearTrashCleanup(taskIds, async (taskId) => {
+			await stopTaskSession(taskId, { waitForExit: true });
+			await cleanupTaskWorktree(taskId);
+		});
 	}, [
 		cleanupTaskWorktree,
 		selectedTaskId,

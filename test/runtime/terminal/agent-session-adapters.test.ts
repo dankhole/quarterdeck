@@ -29,6 +29,8 @@ const originalAnthropicAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
 const originalAwsEndpointUrlBedrockRuntime = process.env.AWS_ENDPOINT_URL_BEDROCK_RUNTIME;
 const originalAwsBearerTokenBedrock = process.env.AWS_BEARER_TOKEN_BEDROCK;
 const originalAwsRegion = process.env.AWS_REGION;
+const codexSessionFlagsConfigSource =
+	process.platform === "win32" ? "C:\\<session-flags>\\config.toml" : "/<session-flags>/config.toml";
 
 function setupTempHome(): string {
 	tempHome = mkdtempSync(join(tmpdir(), "quarterdeck-agent-adapters-"));
@@ -140,9 +142,15 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.shouldInspectOutputForTransition).toBeUndefined();
 		expect(launch.args.slice(0, 2)).toEqual(["--enable", "hooks"]);
 		const hookOverrideArgs = launch.args.slice(2);
-		expect(hookOverrideArgs.length).toBe(Object.keys(buildCodexHooksConfig()).length * 2 + 2);
+		expect(hookOverrideArgs.length).toBe(Object.keys(buildCodexHooksConfig()).length * 2 + 4);
 		expect(hookOverrideArgs).toContain("-c");
 		expect(hookOverrideArgs.join("\n")).toContain("hooks.SessionStart=");
+		expect(hookOverrideArgs.join("\n")).toContain("hooks.state=");
+		expect(hookOverrideArgs.join("\n")).toContain(
+			JSON.stringify(`${codexSessionFlagsConfigSource}:permission_request:0:0`),
+		);
+		expect(hookOverrideArgs.join("\n")).toContain("trusted_hash");
+		expect(hookOverrideArgs.join("\n")).toContain("timeout = 5");
 		expect(hookOverrideArgs.join("\n")).toContain("hooks.PostToolUse=");
 		expect(hookOverrideArgs.join("\n")).toContain("hooks.PermissionRequest=");
 		expect(getCodexConfigOverrideValues(launch.args, "check_for_update_on_startup")).toEqual(["false"]);
@@ -334,6 +342,48 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 
 		expect(launch.args).toEqual(expect.arrayContaining(["resume", "019d6fa0-db65-7f83-9531-35df54674d76"]));
+		expect(launch.args.at(-2)).toBe("--");
+		expect(launch.args.at(-1)).toBe("- continue after restart");
+	});
+
+	it("places Codex global config before the resume subcommand", async () => {
+		setupTempHome();
+		buildWorktreeContextPromptMock.mockResolvedValueOnce("Worktree context");
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-resume-hooks",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "- continue after restart",
+			projectId: "project-1",
+			projectPath: "/repo",
+			resumeConversation: true,
+			resumeSessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
+		});
+
+		const resumeIndex = launch.args.indexOf("resume");
+		expect(resumeIndex).toBeGreaterThan(0);
+		expect(launch.args.slice(resumeIndex, resumeIndex + 2)).toEqual([
+			"resume",
+			"019d6fa0-db65-7f83-9531-35df54674d76",
+		]);
+		const enableIndex = launch.args.indexOf("--enable");
+		expect(enableIndex).toBeGreaterThan(-1);
+		expect(enableIndex).toBeLessThan(resumeIndex);
+		for (const key of [
+			"hooks.state",
+			"hooks.SessionStart",
+			"hooks.PostToolUse",
+			"hooks.PermissionRequest",
+			"check_for_update_on_startup",
+			"developer_instructions",
+		]) {
+			const configIndex = launch.args.findIndex((arg) => arg.startsWith(`${key}=`));
+			expect(configIndex).toBeGreaterThan(-1);
+			expect(configIndex).toBeLessThan(resumeIndex);
+		}
 		expect(launch.args.at(-2)).toBe("--");
 		expect(launch.args.at(-1)).toBe("- continue after restart");
 	});

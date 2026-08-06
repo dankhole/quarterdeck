@@ -4,11 +4,24 @@ Quarterdeck forked from [cline/kanban](https://github.com/cline/kanban) at commi
 
 This is a living document. Each upstream review updates the sections below rather than creating a new file. See todo.md for the recurring review cadence.
 
-**Last checked:** 2026-04-29 — upstream commit `e8976aeef` (68 commits reviewed since `2c68b039`)
+**Last checked:** 2026-08-06 — upstream commit `87cfd6420` (20 commits reviewed since `e8976aeef`; 88 since `2c68b039`)
 
 ---
 
 ## Latest Review Summary
+
+The 2026-08-06 review covered upstream `ba2308d67` through `87cfd6420`. Most new commits were release notes, Cline SDK/model work, desktop packaging, or product-direction changes. Reimplemented from that review:
+
+- Codex global flag/config ordering before `resume`/`fork`, adapted from the `00598a369` hook-config placement fix.
+- Codex hook trust pre-seeding, adapted from `7cb95e1ae` after validating the current `hooks.state` key/hash schema against Codex CLI `0.146.1`.
+- Bounded clear-Trash cleanup concurrency, adapted from `cf853c049`.
+- GitHub Actions publish input hardening, adapted from `a40c3c49b`.
+
+Already covered locally before this pass:
+
+- Dev runtime origin support for `127.0.0.1:4173` (`ba2308d67`) is superseded by Quarterdeck's loopback/development-port allowlist.
+- Stale worktree setup locks (`d5f3aabbf`) are handled by Quarterdeck's centralized startup stale-lock cleanup.
+- Native Codex hooks (`5afdde698`) are superseded by Quarterdeck's launch-scoped inline hook config, feature rename handling, and Codex-specific permission transition fixes.
 
 The 2026-04-29 review found a few portable ideas, but no clean cherry-pick candidates. Reimplemented from that review:
 
@@ -18,6 +31,7 @@ The 2026-04-29 review found a few portable ideas, but no clean cherry-pick candi
 Best remaining product ideas:
 
 - Remote project directory browsing / clone flow (`6cdc8fe40`), Kiro CLI agent support (`52d9d6cfd`), and task-scoped agent/model selection (`a2e4dcf19`).
+- CLI signal re-raise semantics (`886e48c67`) may be worth a focused local validation pass before porting.
 
 Most other commits were Cline SDK/account/model-catalog work, WorkOS auth, release notes, desktop packaging, or reverted UI experiments.
 
@@ -42,6 +56,10 @@ Features we pulled from upstream, or arrived at independently before upstream sh
 | `c54b7669e` | Runtime Host/Origin allowlist | Reimplemented 2026-04-29 | `src/server/middleware.ts` now gates HTTP requests plus runtime-state and terminal WebSocket upgrades by known Host/Origin values. Development Vite and e2e proxy origins stay explicit through `NODE_ENV=development` and configured web UI ports. |
 | `4cb3f4fc3` | Disable Codex startup update checks | Reimplemented 2026-04-29 | Codex launches now add `-c check_for_update_on_startup=false` unless the user already supplied that Codex config override. |
 | `f0c44311c` | Timestamp-free fallback task IDs | Reimplemented 2026-04-29 | Runtime and browser fallback task ID generation no longer mixes `Date.now()` into the UUID-unavailable fallback path. |
+| `00598a369` | Keep Codex hook config before `resume` | Reimplemented 2026-08-06 | Current Quarterdeck keeps all launch-scoped Codex global flags/config (`--enable hooks`, `-c hooks.*`, update suppression, developer instructions) before `resume`/`fork`, while keeping the prompt positional after the resume target and `--`. |
+| `7cb95e1ae` | Pre-seed Codex hook trust state | Reimplemented 2026-08-06 | Quarterdeck now computes `hooks.state` entries from its launch-scoped inline hook config using Codex's session-flag source keys and canonical hook-identity hashes, avoiding hook-review prompts for Quarterdeck-generated hooks without enabling global hook trust bypass. |
+| `a40c3c49b` | Publish workflow input hardening | Reimplemented 2026-08-06 | `.github/workflows/publish.yml` now passes the workflow-dispatch tag through `env` before shell use instead of interpolating `${{ inputs.tag }}` inside the script body. |
+| `cf853c049` | Bound clear-Done cleanup concurrency | Reimplemented 2026-08-06 | Quarterdeck keeps the local "Trash" terminology but now clears task sessions/worktrees through a bounded four-worker queue so large Trash columns do not launch every cleanup RPC and git delete concurrently. |
 
 ---
 
@@ -78,6 +96,12 @@ Worth doing eventually. Ordered roughly by value.
 **Our current state:** Quarterdeck is not published to npm yet; `docs/todo.md` still tracks the first npm publish.
 **Why it matters:** Useful after a real distribution channel exists.
 **Action:** Revisit after npm publishing. Upstream's UI flow is useful conceptually, but the update command and package identity need Quarterdeck-specific design.
+
+### CLI signal re-raise semantics (`886e48c67`)
+**Upstream:** Stops handling `SIGQUIT` and reraises handled shutdown signals after cleanup so parent shells/process managers see signal termination rather than a plain `process.exit(...)`.
+**Our current state:** Quarterdeck has custom duplicate-signal suppression for `npx`/wrapper launches, stdin-parent-disconnect shutdown, and Windows signal filtering.
+**Why it matters:** More faithful signal semantics are useful for scripts and supervisors, but they overlap with Quarterdeck-specific shutdown behavior.
+**Action:** Revisit with focused tests for direct launch, `npx`/npm wrapper launch, parent-stdin close, and Windows before porting.
 
 ### Mobile / responsive foundations (`ff0ff810`)
 **Upstream:** Comprehensive mobile view (+1155/-550 lines, 22 files) — hamburger menu, tab bar, slide-up sheets, scroll-snap columns. New `useIsMobile()` hook (768px breakpoint via `useMedia`).
@@ -137,10 +161,16 @@ Cline provider/model-catalog maintenance, plus `7ccde0648` (jsdom guard in the C
 ### Minor upstream-only UI/dev/test fixes (`0bc562c51`, `940132371`, `aed656f19`, `bcd955ae2`)
 Hook notify process cleanup, agent tips styling, `dev-full` shutdown-cleanup defaults/bootstrap behavior, and a task-card layout-shift rewrite. Quarterdeck's hook path, dev scripts, onboarding tips, and board-card layout have diverged enough that these are not portable. Revisit only if the same local symptom appears.
 
-### Release notes, dependency, and branding churn
-`fbade8fe2`, `3f7b14061`, `e3f03dc53`, `8d7b5fc9a`, `861c8a095`, `023e2eede`, `50cf9835e`, `1059203a9`, `cd86dbcf7`, `6ab59c5d4`, `1b69cd8b1`, `9e94d7bc1`, `14b3d0daa`, `d8b1605b0`, `264053393`
+### New upstream-only desktop/product changes (`62f4095d3`, `b37dc95b8`, `b5e4b2e32`, `1f1f171ba`)
+Window primitives, the consolidated Electron desktop app, Electron-only dependency alert fixes, and the Trash-to-Done rename are product-direction changes rather than portable fixes. Quarterdeck remains a CLI-served web app and intentionally still uses Trash language. The risky auto-trash piece of `b5e4b2e32` had already been removed locally in `581fff7f9`.
 
-Release-note updates, lockfile/dependency churn, upstream branding fallback, Node-version bump, and a repo-local Kanban shortcut. No Quarterdeck action.
+### New Cline/model/autonomous-mode work (`f86c7a107`, `b71997b97`, `28e4bf874`)
+Custom Cline model fallback input, Cline SDK 0.0.38, and Claude autonomous-mode permission changes do not apply to current Quarterdeck. The Cline setup/model UI is gone, and Quarterdeck removed the autonomous/bypass-permissions feature in `9bda5fcfd`.
+
+### Release notes, dependency, and branding churn
+`fbade8fe2`, `3f7b14061`, `e3f03dc53`, `8d7b5fc9a`, `861c8a095`, `023e2eede`, `50cf9835e`, `1059203a9`, `cd86dbcf7`, `6ab59c5d4`, `1b69cd8b1`, `9e94d7bc1`, `14b3d0daa`, `d8b1605b0`, `264053393`, `fabf453de`, `ae25770cc`, `651a9b1b8`, `87cfd6420`, `cb1bf3dae`
+
+Release-note updates, lockfile/dependency churn, upstream branding fallback, Node-version bump, Electron-only advisory cleanup, `protobufjs` override churn for dependencies Quarterdeck no longer carries, and a repo-local Kanban shortcut. No Quarterdeck action.
 
 ---
 

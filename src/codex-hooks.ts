@@ -1,7 +1,27 @@
+import { createHash } from "node:crypto";
+
 import type { RuntimeHookEvent } from "./core";
 import { buildQuarterdeckCommandParts, quoteShellArg } from "./core";
 
 export const CODEX_HOOKS_FEATURE_NAME = "hooks";
+export const CODEX_HOOK_TIMEOUT_SECONDS = 5;
+
+export type CodexHookConfigEvent =
+	| "SessionStart"
+	| "PreToolUse"
+	| "PermissionRequest"
+	| "PostToolUse"
+	| "UserPromptSubmit"
+	| "Stop";
+
+const CODEX_HOOK_EVENT_LABELS = {
+	SessionStart: "session_start",
+	PreToolUse: "pre_tool_use",
+	PermissionRequest: "permission_request",
+	PostToolUse: "post_tool_use",
+	UserPromptSubmit: "user_prompt_submit",
+	Stop: "stop",
+} as const satisfies Record<CodexHookConfigEvent, string>;
 
 function buildHookCommand(event: RuntimeHookEvent, metadata?: { source?: string; reliable?: boolean }): string {
 	const subcommand = metadata?.reliable || event !== "activity" ? "ingest" : "notify";
@@ -15,6 +35,7 @@ function buildHookCommand(event: RuntimeHookEvent, metadata?: { source?: string;
 type CodexHookCommand = {
 	type: "command";
 	command: string;
+	timeout: number;
 };
 
 type CodexHookMatcherGroup = {
@@ -22,14 +43,23 @@ type CodexHookMatcherGroup = {
 	hooks: CodexHookCommand[];
 };
 
-type CodexHooksConfig = {
-	SessionStart: CodexHookMatcherGroup[];
-	PreToolUse: CodexHookMatcherGroup[];
-	PermissionRequest: CodexHookMatcherGroup[];
-	PostToolUse: CodexHookMatcherGroup[];
-	UserPromptSubmit: CodexHookMatcherGroup[];
-	Stop: CodexHookMatcherGroup[];
+export type CodexHooksConfig = Record<CodexHookConfigEvent, CodexHookMatcherGroup[]>;
+
+export type CodexHookTrustEntry = {
+	key: string;
+	trustedHash: string;
 };
+
+function buildCodexCommandHook(
+	event: RuntimeHookEvent,
+	metadata?: { source?: string; reliable?: boolean },
+): CodexHookCommand {
+	return {
+		type: "command",
+		command: buildHookCommand(event, metadata),
+		timeout: CODEX_HOOK_TIMEOUT_SECONDS,
+	};
+}
 
 export function buildCodexHooksConfig(): CodexHooksConfig {
 	return {
@@ -39,30 +69,30 @@ export function buildCodexHooksConfig(): CodexHooksConfig {
 				// back to running. Codex can emit SessionStart around session
 				// maintenance flows such as compaction, where no agent turn starts.
 				matcher: "startup|resume",
-				hooks: [{ type: "command", command: buildHookCommand("activity", { source: "codex", reliable: true }) }],
+				hooks: [buildCodexCommandHook("activity", { source: "codex", reliable: true })],
 			},
 		],
 		PreToolUse: [
 			{
 				matcher: "*",
-				hooks: [{ type: "command", command: buildHookCommand("activity", { source: "codex" }) }],
+				hooks: [buildCodexCommandHook("activity", { source: "codex" })],
 			},
 		],
 		PermissionRequest: [
 			{
 				matcher: "*",
-				hooks: [{ type: "command", command: buildHookCommand("to_review", { source: "codex" }) }],
+				hooks: [buildCodexCommandHook("to_review", { source: "codex" })],
 			},
 		],
 		PostToolUse: [
 			{
 				matcher: "*",
-				hooks: [{ type: "command", command: buildHookCommand("to_in_progress", { source: "codex" }) }],
+				hooks: [buildCodexCommandHook("to_in_progress", { source: "codex" })],
 			},
 		],
 		UserPromptSubmit: [
 			{
-				hooks: [{ type: "command", command: buildHookCommand("to_in_progress", { source: "codex" }) }],
+				hooks: [buildCodexCommandHook("to_in_progress", { source: "codex" })],
 			},
 		],
 		Stop: [
@@ -72,10 +102,89 @@ export function buildCodexHooksConfig(): CodexHooksConfig {
 				// main-agent completion working, but subagent-heavy sessions can
 				// produce premature review transitions until upstream exposes a
 				// reliable discriminator. Tracked in docs/todo.md.
-				hooks: [{ type: "command", command: buildHookCommand("to_review", { source: "codex" }) }],
+				hooks: [buildCodexCommandHook("to_review", { source: "codex" })],
 			},
 		],
 	};
+}
+
+type JsonPrimitive = string | number | boolean | null;
+type JsonObject = { [key: string]: JsonValue };
+type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
+
+function canonicalizeJsonValue(value: JsonValue): JsonValue {
+	if (Array.isArray(value)) {
+		return value.map((entry) => canonicalizeJsonValue(entry));
+	}
+	if (value && typeof value === "object") {
+		const sorted: JsonObject = {};
+		for (const key of Object.keys(value).sort()) {
+			const entry = value[key];
+			if (entry !== undefined) {
+				sorted[key] = canonicalizeJsonValue(entry);
+			}
+		}
+		return sorted;
+	}
+	return value;
+}
+
+function versionForCodexHookIdentity(identity: JsonObject): string {
+	const canonical = JSON.stringify(canonicalizeJsonValue(identity));
+	const hash = createHash("sha256").update(canonical).digest("hex");
+	return `sha256:${hash}`;
+}
+
+function codexSessionFlagsConfigSource(): string {
+	return process.platform === "win32" ? "C:\\<session-flags>\\config.toml" : "/<session-flags>/config.toml";
+}
+
+function buildCodexHookTrustIdentity(
+	eventName: CodexHookConfigEvent,
+	group: CodexHookMatcherGroup,
+	hook: CodexHookCommand,
+): JsonObject {
+	const identity: JsonObject = {
+		event_name: CODEX_HOOK_EVENT_LABELS[eventName],
+		hooks: [
+			{
+				async: false,
+				command: hook.command,
+				timeout: hook.timeout,
+				type: hook.type,
+			},
+		],
+	};
+	if (group.matcher !== undefined) {
+		identity.matcher = group.matcher;
+	}
+	return identity;
+}
+
+export function buildCodexHookTrustEntries(config: CodexHooksConfig = buildCodexHooksConfig()): CodexHookTrustEntry[] {
+	const configSource = codexSessionFlagsConfigSource();
+	const entries: CodexHookTrustEntry[] = [];
+	for (const [eventName, hookGroups] of Object.entries(config) as Array<
+		[CodexHookConfigEvent, CodexHookMatcherGroup[]]
+	>) {
+		const eventLabel = CODEX_HOOK_EVENT_LABELS[eventName];
+		hookGroups.forEach((group, groupIndex) => {
+			group.hooks.forEach((hook, hookIndex) => {
+				entries.push({
+					key: `${configSource}:${eventLabel}:${groupIndex}:${hookIndex}`,
+					trustedHash: versionForCodexHookIdentity(buildCodexHookTrustIdentity(eventName, group, hook)),
+				});
+			});
+		});
+	}
+	return entries;
+}
+
+export function buildCodexHookTrustStateConfigValue(config: CodexHooksConfig = buildCodexHooksConfig()): string {
+	const entries = buildCodexHookTrustEntries(config);
+	return `{${entries
+		.map(({ key, trustedHash }) => `${JSON.stringify(key)} = {trusted_hash = ${JSON.stringify(trustedHash)}}`)
+		.join(", ")}}`;
 }
 
 export function serializeCodexTomlValue(value: unknown): string {
@@ -97,8 +206,12 @@ export function serializeCodexTomlValue(value: unknown): string {
 }
 
 export function buildCodexHookConfigOverrides(): string[] {
-	return Object.entries(buildCodexHooksConfig()).flatMap(([eventName, hookGroups]) => [
+	const config = buildCodexHooksConfig();
+	return [
 		"-c",
-		`hooks.${eventName}=${serializeCodexTomlValue(hookGroups)}`,
-	]);
+		`hooks.state=${buildCodexHookTrustStateConfigValue(config)}`,
+		...(Object.entries(config) as Array<[CodexHookConfigEvent, CodexHookMatcherGroup[]]>).flatMap(
+			([eventName, hookGroups]) => ["-c", `hooks.${eventName}=${serializeCodexTomlValue(hookGroups)}`],
+		),
+	];
 }

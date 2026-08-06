@@ -172,6 +172,15 @@ function hasCodexFeatureEnabled(args: string[], featureName: string): boolean {
 	return false;
 }
 
+function findCodexGlobalArgInsertIndex(args: string[]): number {
+	const subcommandIndex = args.findIndex((arg) => arg === "resume" || arg === "fork");
+	return subcommandIndex === -1 ? args.length : subcommandIndex;
+}
+
+function insertCodexGlobalArgs(args: string[], values: string[]): void {
+	args.splice(findCodexGlobalArgInsertIndex(args), 0, ...values);
+}
+
 function withPrompt(args: string[], prompt: string, mode: "append" | "flag", flag?: string): PreparedAgentLaunch {
 	const trimmed = prompt.trim();
 	if (!trimmed) {
@@ -354,18 +363,18 @@ const codexAdapter: AgentSessionAdapter = {
 			);
 		}
 		if (!hasCodexFeatureEnabled(codexArgs, CODEX_HOOKS_FEATURE_NAME)) {
-			codexArgs.push("--enable", CODEX_HOOKS_FEATURE_NAME);
+			insertCodexGlobalArgs(codexArgs, ["--enable", CODEX_HOOKS_FEATURE_NAME]);
 		}
 		if (hooks) {
 			// Keep Quarterdeck's Codex hooks launch-scoped so standalone Codex app/GUI
 			// sessions are unaffected. Codex supports inline [hooks] config via -c.
 			const hookOverrides = buildCodexHookConfigOverrides();
-			codexArgs.push(...hookOverrides);
+			insertCodexGlobalArgs(codexArgs, hookOverrides);
 			log.debug("Codex hook launch config prepared", {
 				taskId: hooks.taskId,
 				projectId: hooks.projectId,
 				featureName: CODEX_HOOKS_FEATURE_NAME,
-				hookEventCount: hookOverrides.length / 2,
+				hookOverrideCount: hookOverrides.length / 2,
 				resumeConversation: input.resumeConversation ?? false,
 				hasResumeSessionId: !!input.resumeSessionId?.trim(),
 			});
@@ -377,7 +386,7 @@ const codexAdapter: AgentSessionAdapter = {
 		}
 
 		if (!hasCodexConfigOverride(codexArgs, "check_for_update_on_startup")) {
-			codexArgs.push("-c", "check_for_update_on_startup=false");
+			insertCodexGlobalArgs(codexArgs, ["-c", "check_for_update_on_startup=false"]);
 		}
 
 		if (!hasCodexConfigOverride(codexArgs, "developer_instructions")) {
@@ -387,7 +396,10 @@ const codexAdapter: AgentSessionAdapter = {
 				template: input.worktreeSystemPromptTemplate,
 			});
 			if (worktreeContext) {
-				codexArgs.push("-c", `developer_instructions=${serializeCodexTomlValue(worktreeContext)}`);
+				insertCodexGlobalArgs(codexArgs, [
+					"-c",
+					`developer_instructions=${serializeCodexTomlValue(worktreeContext)}`,
+				]);
 			}
 		}
 
