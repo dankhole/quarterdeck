@@ -94,7 +94,7 @@ The same upstream review also landed two low-risk launch/identity hardening fixe
 
 ## 2026-04-29 — Lightweight LLM generation reliability
 
-Lightweight helper generation now has one provider-neutral OpenAI-compatible client in `src/title/llm-client.ts`. `QUARTERDECK_LLM_BASE_URL`, `QUARTERDECK_LLM_API_KEY`, and `QUARTERDECK_LLM_MODEL` are the required configuration path. The timeout classifier now treats both `AbortError` and `TimeoutError` as timeouts, so logs match the real failure mode.
+Lightweight helper generation now has one provider-neutral OpenAI-compatible client in `src/title/llm-client.ts`. `QUARTERDECK_LLM_BASE_URL` and `QUARTERDECK_LLM_API_KEY` are the required configuration path; `QUARTERDECK_LLM_MODEL` is optional and falls back to the built-in helper default. The timeout classifier now treats both `AbortError` and `TimeoutError` as timeouts, so logs match the real failure mode.
 
 Title, optional summary polish, branch-name, and commit-message generation are the only LLM call sites. Title and display-summary context now orders source material by product value: original user prompt, first agent summary, most recent agent summary, then the previous summary. Title generation also has deterministic local fallback, so transient helper failures no longer leave task cards untitled; commit-message failure behavior is superseded by the 2026-04-30 entry above. Title and summary compaction also trims trailing transcript echo fragments such as `Human:` / `Assistant:` and rejects outputs that are only a transcript echo.
 

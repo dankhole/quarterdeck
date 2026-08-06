@@ -198,7 +198,7 @@ describe("RuntimeSettingsDialog", () => {
 		const warningText = document.body.textContent;
 		expect(warningText).toContain("QUARTERDECK_LLM_BASE_URL");
 		expect(warningText).toContain("QUARTERDECK_LLM_API_KEY");
-		expect(warningText).toContain("QUARTERDECK_LLM_MODEL");
+		expect(warningText).not.toContain("QUARTERDECK_LLM_MODEL");
 	});
 
 	it("does not show LLM warning when configured", async () => {

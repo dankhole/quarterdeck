@@ -8,7 +8,7 @@ import { createDefaultMockConfig } from "../../utilities/runtime-config-factory"
 const LLM_ENV = {
 	QUARTERDECK_LLM_BASE_URL: "https://llm.example.test",
 	QUARTERDECK_LLM_API_KEY: "test-key",
-	QUARTERDECK_LLM_MODEL: "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0",
+	QUARTERDECK_LLM_MODEL: "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0",
 } as const;
 
 const originalEnv = {

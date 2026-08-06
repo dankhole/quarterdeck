@@ -41,7 +41,7 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 	});
 	if (!llmConfigured) {
 		log.warn(
-			"Title generation using fallback: LLM not configured (set QUARTERDECK_LLM_BASE_URL, QUARTERDECK_LLM_API_KEY, and QUARTERDECK_LLM_MODEL)",
+			"Title generation using fallback: LLM not configured (set QUARTERDECK_LLM_BASE_URL and QUARTERDECK_LLM_API_KEY; QUARTERDECK_LLM_MODEL is optional)",
 		);
 		return createFallbackTaskTitle(prompt);
 	}

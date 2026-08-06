@@ -5,12 +5,13 @@
  * Preferred environment variables:
  *   QUARTERDECK_LLM_BASE_URL — OpenAI-compatible API base URL
  *   QUARTERDECK_LLM_API_KEY  — bearer token for the endpoint
- *   QUARTERDECK_LLM_MODEL    — model to request from the endpoint
+ *   QUARTERDECK_LLM_MODEL    — optional model override
  */
 
 import { createTaggedLogger } from "../core";
 
 const log = createTaggedLogger("llm-client");
+const DEFAULT_LLM_MODEL = "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0";
 
 // ── Rate limiter ────────────────────────────────────────────────────────
 // Guards against runaway API costs from bugs or rapid state transitions.
@@ -105,20 +106,43 @@ interface LightweightLlmConfig {
 	model: string;
 }
 
+interface RetiredModelReplacement {
+	replacementModel: string;
+	reason: string;
+}
+
+const RETIRED_MODEL_REPLACEMENTS: Record<string, RetiredModelReplacement> = {
+	"bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0": {
+		replacementModel: "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+		reason: "Claude 3.5 Haiku reached Bedrock EOL; Claude Haiku 4.5 is the current low-latency replacement.",
+	},
+	"us.anthropic.claude-3-5-haiku-20241022-v1:0": {
+		replacementModel: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+		reason: "Claude 3.5 Haiku reached Bedrock EOL; Claude Haiku 4.5 is the current low-latency replacement.",
+	},
+	"anthropic.claude-3-5-haiku-20241022-v1:0": {
+		replacementModel: "anthropic.claude-haiku-4-5-20251001-v1:0",
+		reason: "Claude 3.5 Haiku reached Bedrock EOL; Claude Haiku 4.5 is the current low-latency replacement.",
+	},
+	"claude-3-5-haiku-20241022": {
+		replacementModel: "claude-haiku-4-5-20251001",
+		reason: "Claude 3.5 Haiku is retired; Claude Haiku 4.5 is the current low-latency replacement.",
+	},
+};
+
 function readEnv(name: string): string | null {
 	const value = process.env[name]?.trim();
 	return value ? value : null;
 }
 
 function resolveLlmConfig(): LightweightLlmConfig | null {
-	const model = readEnv("QUARTERDECK_LLM_MODEL");
 	const baseUrl = readEnv("QUARTERDECK_LLM_BASE_URL");
 	const apiKey = readEnv("QUARTERDECK_LLM_API_KEY");
-	if (baseUrl && apiKey && model) {
+	if (baseUrl && apiKey) {
 		return {
 			baseUrl,
 			apiKey,
-			model,
+			model: readEnv("QUARTERDECK_LLM_MODEL") ?? DEFAULT_LLM_MODEL,
 		};
 	}
 
@@ -144,6 +168,10 @@ function isTimeoutError(error: unknown): boolean {
 		return error.name === "AbortError" || error.name === "TimeoutError";
 	}
 	return false;
+}
+
+function resolveRetiredModelReplacement(model: string): RetiredModelReplacement | null {
+	return RETIRED_MODEL_REPLACEMENTS[model] ?? null;
 }
 
 /**
@@ -200,12 +228,20 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 					(readErr: unknown) =>
 						`<failed to read body: ${readErr instanceof Error ? readErr.message : String(readErr)}>`,
 				);
+			const retiredModelReplacement = resolveRetiredModelReplacement(config.model);
 			log.warn("LLM call failed: non-2xx response", {
 				status: response.status,
 				statusText: response.statusText,
 				durationMs: Date.now() - startTime,
 				model: config.model,
 				bodySnippet,
+				...(retiredModelReplacement
+					? {
+							modelReplacementHint: `Set QUARTERDECK_LLM_MODEL=${retiredModelReplacement.replacementModel}`,
+							replacementModel: retiredModelReplacement.replacementModel,
+							replacementReason: retiredModelReplacement.reason,
+						}
+					: {}),
 			});
 			return null;
 		}
@@ -254,7 +290,7 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 }
 
 /**
- * Returns true if the LLM client has the required env vars configured.
+ * Returns true if the LLM client has the required endpoint and auth env vars configured.
  * Useful for UI hints about whether LLM features are available.
  */
 export function isLlmConfigured(): boolean {
@@ -281,6 +317,8 @@ export const _testing = {
 	MAX_CONCURRENT,
 	MAX_PER_MINUTE,
 	WINDOW_MS,
+	DEFAULT_LLM_MODEL,
+	resolveRetiredModelReplacement,
 	resolveChatCompletionsUrl,
 	resolveLlmConfig,
 };

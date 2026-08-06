@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: refresh LLM helper model guidance
+
+- LLM helpers now default to Claude Haiku 4.5 when `QUARTERDECK_LLM_MODEL` is unset, failure logs include a concrete replacement hint when the retired Claude 3.5 Haiku Bedrock model fails, and setup docs/UI now only require the helper base URL and API key.
+
 ### Fix: stabilize shared-checkout git sync and Codex hooks
 
 - Top-bar fetch/pull/push controls now stay usable from shared-checkout agent chats even when the task base ref is unresolved, and shared-checkout task sync updates the visible home git summary immediately.
@@ -144,7 +148,7 @@
 
 ### Fix: make lightweight LLM helpers reliable
 
-- Lightweight title, branch-name, summary, and commit-message generation now use a provider-neutral OpenAI-compatible helper client configured by `QUARTERDECK_LLM_BASE_URL`, `QUARTERDECK_LLM_API_KEY`, and `QUARTERDECK_LLM_MODEL`.
+- Lightweight title, branch-name, summary, and commit-message generation now use a provider-neutral OpenAI-compatible helper client configured by `QUARTERDECK_LLM_BASE_URL`, `QUARTERDECK_LLM_API_KEY`, and an optional `QUARTERDECK_LLM_MODEL` override.
 - Title and display-summary context now prioritizes the original prompt, first agent summary, and latest agent summaries instead of sending broad chronological transcripts.
 - Title and commit-message generation now fall back to deterministic local text when the helper LLM is unavailable, times out, or returns unusable content.
 - Title and summary normalization now drops trailing transcript echo fragments such as `Human:` / `Assistant:` instead of showing them on task cards.

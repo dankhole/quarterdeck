@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { _testing, isLlmConfigured, sanitizeLlmResponse } from "../../../src/title";
+import { _resetLoggerForTests, getRecentLogEntries } from "../../../src/core";
+import { _testing, callLlm, isLlmConfigured, sanitizeLlmResponse } from "../../../src/title";
 
 const {
 	acquireSlot,
@@ -8,7 +9,9 @@ const {
 	MAX_CONCURRENT,
 	MAX_PER_MINUTE,
 	WINDOW_MS,
+	DEFAULT_LLM_MODEL,
 	resolveChatCompletionsUrl,
+	resolveLlmConfig,
 } = _testing;
 
 describe("llm-client rate limiter", () => {
@@ -89,6 +92,9 @@ describe("llm-client provider config", () => {
 
 	afterEach(() => {
 		process.env = { ...originalEnv };
+		resetRateLimiter();
+		_resetLoggerForTests();
+		vi.restoreAllMocks();
 	});
 
 	it("accepts generic Quarterdeck LLM env vars", () => {
@@ -98,11 +104,12 @@ describe("llm-client provider config", () => {
 		expect(isLlmConfigured()).toBe(true);
 	});
 
-	it("requires a model for generic Quarterdeck LLM env vars", () => {
+	it("uses the default model when no model override is set", () => {
 		process.env.QUARTERDECK_LLM_BASE_URL = "https://llm.example.com/v1";
 		process.env.QUARTERDECK_LLM_API_KEY = "token";
 		delete process.env.QUARTERDECK_LLM_MODEL;
-		expect(isLlmConfigured()).toBe(false);
+		expect(isLlmConfigured()).toBe(true);
+		expect(resolveLlmConfig()?.model).toBe(DEFAULT_LLM_MODEL);
 	});
 
 	it("normalizes supported base URL shapes to chat completions", () => {
@@ -116,6 +123,34 @@ describe("llm-client provider config", () => {
 		expect(resolveChatCompletionsUrl("https://llm.example.com/v1/chat/completions")).toBe(
 			"https://llm.example.com/v1/chat/completions",
 		);
+	});
+
+	it("logs a replacement hint when a known retired Bedrock helper model fails", async () => {
+		_resetLoggerForTests();
+		vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					error: {
+						message: "This model version has reached the end of its life.",
+					},
+				}),
+				{ status: 404, statusText: "Not Found" },
+			),
+		);
+		process.env.QUARTERDECK_LLM_BASE_URL = "https://llm.example.com/v1";
+		process.env.QUARTERDECK_LLM_API_KEY = "token";
+		process.env.QUARTERDECK_LLM_MODEL = "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0";
+
+		await callLlm({ systemPrompt: "Return a title.", userPrompt: "fix auth", maxTokens: 20 });
+
+		const logEntry = getRecentLogEntries().find((entry) => entry.tag === "llm-client");
+		expect(logEntry?.data).toMatchObject({
+			status: 404,
+			model: "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0",
+			modelReplacementHint: "Set QUARTERDECK_LLM_MODEL=bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+			replacementModel: "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+		});
 	});
 });
 

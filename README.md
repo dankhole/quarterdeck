@@ -53,11 +53,22 @@ Optional variables:
 | `QUARTERDECK_DEBUG_MODE` | Enable extra debug behavior for agent availability checks. `DEBUG_MODE` and `debug_mode` are also recognized. |
 | `QUARTERDECK_LLM_BASE_URL` | OpenAI-compatible helper API base URL for generated titles, branch names, commit messages, and optional summary polish. May be a LiteLLM, Bedrock, OpenRouter, or similar gateway. |
 | `QUARTERDECK_LLM_API_KEY` | Bearer token for the optional helper API. |
-| `QUARTERDECK_LLM_MODEL` | Model id sent to the helper API. For Bedrock-backed Anthropic through LiteLLM, `bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0` is a good cheap/fast default. |
+| `QUARTERDECK_LLM_MODEL` | Optional model override. Defaults to `bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0`, which is a cheap/fast Bedrock-backed Anthropic default through LiteLLM. |
 
-The LLM variables are only needed for generated task titles, branch names, commit messages, and optional polished card summaries. Agent sessions themselves use your installed agent CLI and do not require these variables. The helper endpoint must support OpenAI-style `/v1/chat/completions`; Anthropic models work when your gateway exposes them through that API shape.
+The LLM variables are only needed for generated task titles, branch names, commit messages, and optional polished card summaries. Agent sessions themselves use your installed agent CLI and do not require these variables. The helper endpoint must support OpenAI-style `/v1/chat/completions`; Anthropic models work when your gateway exposes them through that API shape. Set `QUARTERDECK_LLM_BASE_URL` and `QUARTERDECK_LLM_API_KEY` to enable these helpers; leave `QUARTERDECK_LLM_MODEL` unset to use the default Haiku 4.5 model.
 
 Gateway base URLs that end in `/bedrock` are normalized to the gateway root before Quarterdeck appends `/v1/chat/completions`, matching common Bedrock/LiteLLM proxy layouts.
+
+To keep helper LLM configuration across shell sessions, add exports to your shell startup file. For the default macOS zsh setup, `~/.zshrc` is usually the right file when launching Quarterdeck from Terminal:
+
+```bash
+export QUARTERDECK_LLM_BASE_URL=https://your-llm-gateway.example.com
+export QUARTERDECK_LLM_API_KEY=your-token
+# Optional. Omit this line to use the built-in Haiku 4.5 default.
+export QUARTERDECK_LLM_MODEL=bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
+```
+
+Open a new shell, or run `source ~/.zshrc`, before launching `quarterdeck` so the exported values are present in the Quarterdeck runtime process.
 
 ## Install From Source
 

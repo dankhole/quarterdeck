@@ -27,8 +27,7 @@ export function AiFeaturesSection({
 			{!llmConfigured ? (
 				<div className="rounded-md border border-status-orange/30 bg-status-orange/5 px-3 py-2 text-[13px] text-status-orange mb-2">
 					LLM helpers are unavailable. Set <code className="text-[12px]">QUARTERDECK_LLM_BASE_URL</code> and{" "}
-					<code className="text-[12px]">QUARTERDECK_LLM_API_KEY</code> plus{" "}
-					<code className="text-[12px]">QUARTERDECK_LLM_MODEL</code> in the shell that launches Quarterdeck.
+					<code className="text-[12px]">QUARTERDECK_LLM_API_KEY</code> in the shell that launches Quarterdeck.
 				</div>
 			) : (
 				<p className="text-text-secondary text-[13px] mt-0 mb-2">
