@@ -1,4 +1,4 @@
-import type { IRuntimeBroadcaster, RuntimeHookEvent } from "../core";
+import type { IRuntimeBroadcaster, RuntimeHookEvent, RuntimeTaskSessionReviewReason } from "../core";
 import type { RuntimeTrpcProjectScope } from "./app-router-context";
 
 type RuntimeLogLevel = Parameters<IRuntimeBroadcaster["broadcastLogLevel"]>[0];
@@ -176,6 +176,7 @@ export function createHookTransitionEffects(input: {
 	projectPath: string;
 	taskId: string;
 	event: RuntimeHookEvent;
+	reviewReason?: RuntimeTaskSessionReviewReason;
 }): readonly RuntimeMutationEffect[] {
 	const effects: RuntimeMutationEffect[] = [
 		{
@@ -184,7 +185,7 @@ export function createHookTransitionEffects(input: {
 			projectPath: input.projectPath,
 		},
 	];
-	if (input.event === "to_review") {
+	if (input.event === "to_review" && (input.reviewReason ?? "hook") === "hook") {
 		effects.push({
 			type: "task_ready_for_review",
 			projectId: input.projectId,

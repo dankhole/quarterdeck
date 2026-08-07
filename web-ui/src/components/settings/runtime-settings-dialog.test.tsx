@@ -215,7 +215,7 @@ describe("RuntimeSettingsDialog", () => {
 		expect(fullscreenSwitch?.getAttribute("data-state")).toBe("unchecked");
 		expect(statuslineSwitch?.getAttribute("data-state")).toBe("unchecked");
 		expect(document.body.textContent).toContain("virtualized transcript");
-		expect(document.body.textContent).toContain("Claude Code 2.1.89 or newer");
+		expect(document.body.textContent).toContain("classic renderer");
 		expect(document.body.textContent).toContain("new or restarted Claude sessions");
 
 		await act(async () => {

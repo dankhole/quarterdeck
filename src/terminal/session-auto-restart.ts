@@ -79,9 +79,9 @@ export interface ScheduleAutoRestartOptions {
  * a warning message and terminal output to listeners.
  *
  * When `skipContinueAttempt` is true, the restart goes straight to a fresh
- * session without `--continue`. Used when `--continue` already failed at the
- * process level (e.g. server-restart resume where the conversation no longer
- * exists).
+ * session without asking the agent to resume. Used when resume already failed
+ * at the process level (e.g. server-restart resume where the conversation no
+ * longer exists).
  */
 export function scheduleAutoRestart(
 	entry: ProcessEntry,
@@ -100,8 +100,9 @@ export function scheduleAutoRestart(
 		try {
 			const request = cloneStartTaskSessionRequest(restartRequest.request);
 			// Resume conversation so the agent has context. awaitReview=true
-			// because --continue opens the prompt — it doesn't resume active work.
-			// If --continue fails, fall back to a fresh start (still in review).
+			// because resume opens the prompt — it doesn't resume active work. If
+			// resume fails before the process stays interactive, fall back to a
+			// fresh start (still in review).
 			request.resumeConversation = !options?.skipContinueAttempt;
 			request.awaitReview = true;
 			if (options?.skipContinueAttempt) {

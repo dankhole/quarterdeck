@@ -39,7 +39,7 @@ export function HarnessSection({
 				onCheckedChange={(value) => setField("claudeFullscreenEnabled", value)}
 				disabled={disabled}
 				label="Use Claude fullscreen rendering (experimental)"
-				description="Uses Claude Code's flicker-free alternate-screen renderer and virtualized transcript for new or restarted Claude sessions. Requires Claude Code 2.1.89 or newer."
+				description="Uses Claude Code's alternate-screen, virtualized transcript for new or restarted sessions. When off, Quarterdeck keeps Claude on the classic renderer."
 			/>
 
 			<SettingsSwitch

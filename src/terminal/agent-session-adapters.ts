@@ -1,9 +1,10 @@
 import { join } from "node:path";
 
+import { buildClaudeHooksSettings } from "../claude-hooks";
 import { buildCodexHookConfigOverrides, CODEX_HOOKS_FEATURE_NAME, serializeCodexTomlValue } from "../codex-hooks";
 import { buildStatuslineCommand } from "../commands/statusline";
-import type { RuntimeAgentId, RuntimeHookEvent, RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core";
-import { buildQuarterdeckCommandParts, createTaggedLogger, quoteShellArg } from "../core";
+import type { RuntimeAgentId, RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core";
+import { buildQuarterdeckCommandParts, createTaggedLogger } from "../core";
 import { lockedFileSystem } from "../fs";
 import { getRuntimeHomePath } from "../state";
 import { createClaudeRendererEnvironment, resolveClaudeRendererPolicy } from "./claude-renderer-policy";
@@ -52,15 +53,6 @@ interface HookContext {
 	projectId: string;
 }
 
-interface HookCommandMetadata {
-	source?: string;
-	activityText?: string;
-	toolName?: string;
-	toolInputSummary?: string;
-	hookEventName?: string;
-	notificationType?: string;
-}
-
 interface AgentSessionAdapter {
 	prepare(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch>;
 }
@@ -74,34 +66,6 @@ function resolveHookContext(input: AgentAdapterLaunchInput): HookContext | null 
 		taskId: input.taskId,
 		projectId,
 	};
-}
-
-function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadata): string {
-	const subcommand = event === "activity" ? "notify" : "ingest";
-	const parts = buildHooksCommandParts([subcommand, "--event", event]);
-	if (metadata?.source) {
-		parts.push("--source", metadata.source);
-	}
-	if (metadata?.activityText) {
-		parts.push("--activity-text", metadata.activityText);
-	}
-	if (metadata?.toolName) {
-		parts.push("--tool-name", metadata.toolName);
-	}
-	if (metadata?.toolInputSummary) {
-		parts.push("--tool-input-summary", metadata.toolInputSummary);
-	}
-	if (metadata?.hookEventName) {
-		parts.push("--hook-event-name", metadata.hookEventName);
-	}
-	if (metadata?.notificationType) {
-		parts.push("--notification-type", metadata.notificationType);
-	}
-	return parts.map(quoteShellArg).join(" ");
-}
-
-function buildHooksCommandParts(args: string[]): string[] {
-	return buildQuarterdeckCommandParts(["hooks", ...args]);
 }
 
 function hasCliOption(args: string[], optionName: string): boolean {
@@ -216,71 +180,38 @@ const claudeAdapter: AgentSessionAdapter = {
 			FORCE_HYPERLINK: "1",
 			...createClaudeRendererEnvironment(rendererPolicy.mode),
 		};
-		if (input.resumeConversation && !hasCliOption(args, "--continue")) {
-			args.push("--continue");
-			log.debug("claude resume via --continue (relies on cwd match)", {
+		if (input.resumeConversation && !hasCliOption(args, "--continue") && !hasCliOption(args, "--resume")) {
+			const resumeTarget = input.resumeSessionId?.trim();
+			if (resumeTarget) {
+				args.push("--resume", resumeTarget);
+				log.debug("claude resume using stored session id", {
+					taskId: input.taskId,
+					cwd: input.cwd,
+					resumeSessionId: resumeTarget,
+				});
+			} else {
+				args.push("--continue");
+				log.warn("claude resume falling back to --continue (no stored resumeSessionId)", {
+					taskId: input.taskId,
+					cwd: input.cwd,
+					projectPath: input.projectPath ?? null,
+				});
+			}
+		} else if (input.resumeConversation) {
+			log.debug("claude resume option already configured", {
 				taskId: input.taskId,
 				cwd: input.cwd,
 				projectPath: input.projectPath ?? null,
+				hasStoredResumeSessionId: Boolean(input.resumeSessionId?.trim()),
 			});
 		}
 
 		const hooks = resolveHookContext(input);
 		if (hooks) {
 			const settingsPath = join(getHookAgentDirectory("claude"), "settings.json");
-			const hooksSettings = {
-				hooks: {
-					Stop: [{ hooks: [{ type: "command", command: buildHookCommand("to_review", { source: "claude" }) }] }],
-					SubagentStop: [
-						{ hooks: [{ type: "command", command: buildHookCommand("activity", { source: "claude" }) }] },
-					],
-					PreToolUse: [
-						{
-							matcher: "*",
-							hooks: [{ type: "command", command: buildHookCommand("activity", { source: "claude" }) }],
-						},
-					],
-					PermissionRequest: [
-						{
-							matcher: "*",
-							hooks: [{ type: "command", command: buildHookCommand("to_review", { source: "claude" }) }],
-						},
-					],
-					PostToolUse: [
-						{
-							matcher: "*",
-							hooks: [{ type: "command", command: buildHookCommand("to_in_progress", { source: "claude" }) }],
-						},
-					],
-					PostToolUseFailure: [
-						{
-							matcher: "*",
-							hooks: [{ type: "command", command: buildHookCommand("to_in_progress", { source: "claude" }) }],
-						},
-					],
-					Notification: [
-						{
-							matcher: "permission_prompt",
-							hooks: [{ type: "command", command: buildHookCommand("to_review", { source: "claude" }) }],
-						},
-						{
-							matcher: "*",
-							hooks: [{ type: "command", command: buildHookCommand("activity", { source: "claude" }) }],
-						},
-					],
-					UserPromptSubmit: [
-						{
-							hooks: [{ type: "command", command: buildHookCommand("to_in_progress", { source: "claude" }) }],
-						},
-					],
-				},
-				...(input.statuslineEnabled === true && {
-					statusLine: {
-						type: "command",
-						command: buildStatuslineCommand(),
-					},
-				}),
-			};
+			const hooksSettings = buildClaudeHooksSettings({
+				statusLineCommand: input.statuslineEnabled === true ? buildStatuslineCommand() : null,
+			});
 			await ensureTextFile(settingsPath, JSON.stringify(hooksSettings, null, 2));
 			args.push("--settings", settingsPath);
 			Object.assign(

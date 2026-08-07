@@ -9,7 +9,11 @@ import type { PreparedAgentLaunch } from "./agent-session-adapters";
 import { prepareAgentLaunch } from "./agent-session-adapters";
 import { resolveClaudeRendererPolicy } from "./claude-renderer-policy";
 import { shouldAutoConfirmClaudeWorkspaceTrust, stopWorkspaceTrustTimers } from "./claude-workspace-trust";
-import { isCodexResumeFailureSummary, STORED_CODEX_RESUME_FAILED_WARNING } from "./codex-resume-failure";
+import {
+	isCodexResumeFailureSummary,
+	STORED_CLAUDE_RESUME_FAILED_WARNING,
+	STORED_CODEX_RESUME_FAILED_WARNING,
+} from "./codex-resume-failure";
 import { shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust";
 import { PtySession, type PtySession as PtySessionInstance } from "./pty-session";
 import { scheduleAutoRestart, shouldAutoRestart } from "./session-auto-restart";
@@ -358,8 +362,8 @@ export function handleTaskSessionExit(
 	const cleanupFn = finalizeProcessExit(currentEntry, exitSummary, event.exitCode);
 	// Trash/stop flows intentionally suppress auto-restart while the old PTY exits.
 	// Do not let the resume-failure fallback below convert that explicit stop
-	// into a fresh non-resume Codex start; that is what cleared resumeSessionId
-	// before the real untrash resume could use it.
+	// into a fresh non-resume start; that is what cleared resumeSessionId before
+	// the real untrash resume could use it.
 	const wasExplicitStop = !autoRestartDecision.restart && autoRestartDecision.reason === "suppressed";
 
 	if (autoRestartDecision.restart) {
@@ -387,8 +391,8 @@ export function handleTaskSessionExit(
 			resumeSessionId: request.resumeSessionId ?? null,
 		};
 		if (event.exitCode === 0) {
-			// Keep this fallback for startup resume: a clean `codex resume`/Claude
-			// `--continue` process can exit without leaving an interactive session,
+			// Keep this fallback for startup resume: a clean targeted resume or
+			// continuation process can exit without leaving an interactive session,
 			// and server-start restore previously relied on opening a fresh review
 			// prompt in that case. The explicit-stop guard above is the important
 			// trash/untrash protection.
@@ -403,18 +407,21 @@ export function handleTaskSessionExit(
 				{ skipContinueAttempt: true },
 			);
 		} else {
-			const failedStoredCodexResume = request.agentId === "codex" && Boolean(request.resumeSessionId?.trim());
-			const message = failedStoredCodexResume
-				? STORED_CODEX_RESUME_FAILED_WARNING
+			const failedStoredTargetedResume =
+				(request.agentId === "codex" || request.agentId === "claude") && Boolean(request.resumeSessionId?.trim());
+			const message = failedStoredTargetedResume
+				? request.agentId === "claude"
+					? STORED_CLAUDE_RESUME_FAILED_WARNING
+					: STORED_CODEX_RESUME_FAILED_WARNING
 				: `Resume failed before opening an interactive session (exit code ${event.exitCode}).`;
 			sessionLog.warn("resume exited before interactive session; preserving failed resume", {
 				...resumeExitData,
-				clearedResumeSessionId: failedStoredCodexResume,
+				clearedResumeSessionId: failedStoredTargetedResume,
 			});
 			const failedSummary = deps.updateStore(request.taskId, {
 				state: "awaiting_review",
 				reviewReason: "error",
-				...(failedStoredCodexResume ? { resumeSessionId: null } : {}),
+				...(failedStoredTargetedResume ? { resumeSessionId: null } : {}),
 				warningMessage: message,
 			});
 			writeSystemOutput(currentEntry, message, failedSummary);

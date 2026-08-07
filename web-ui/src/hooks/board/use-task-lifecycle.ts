@@ -32,7 +32,7 @@ export function shouldWarnForNonIsolatedResume(
 	agentId: string | null | undefined,
 	resumeSessionId: string | null | undefined,
 ): boolean {
-	return agentId !== "codex" || !resumeSessionId;
+	return !agentId || !resumeSessionId;
 }
 
 interface UseTaskLifecycleInput {

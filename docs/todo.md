@@ -23,9 +23,8 @@ These are broader architecture refactor targets confirmed against implementation
 
 ## Codex native hooks parity follow-ups
 
-- Revisit Codex subagent hook scoping before declaring full Claude Code parity. Current Codex hook payloads do not reliably identify root-agent vs subagent `Stop` events, and missing final/conversation metadata is not a documented discriminator. Quarterdeck maps `Stop` to review for main-agent completion while accepting that subagent-heavy Codex sessions can prematurely mark a task review-ready. Track upstream Codex support for a root/subagent discriminator and split or suppress subagent `Stop` once that metadata exists.
-- Revisit Codex slash-command lifecycle parity before declaring full Claude Code parity. Native Codex hooks do not expose stable start/finish boundaries for `/compact`, `/resume`, plugin reloads, or future TUI-local slash commands. Quarterdeck treats those as session-maintenance operations rather than agent turns: they should not move review-ready cards to running, but the UI also cannot show a precise in-progress/completed lifecycle for them until Codex exposes compact/slash-command hooks.
-- Revisit Codex turn-lifecycle granularity if the native hook API grows beyond tool/user/stop hooks. The deleted wrapper/parser path could infer `task_started`, `turn_aborted`, and `task_complete` from Codex event logs; native hooks are cleaner and launch-scoped, but currently provide less detail for non-tool turn progress and failure attribution.
+- Revisit remaining Codex slash-command lifecycle parity before declaring full Claude Code parity. Codex now exposes `PreCompact` and `PostCompact`, but `/resume`, plugin reloads, and other TUI-local commands still lack stable start/finish boundaries. Quarterdeck should keep maintenance hooks activity-only if it adopts them; they must not move review-ready cards to running.
+- Revisit Codex turn-failure granularity if the native hook API adds explicit abort/failure events. The current surface covers tool, prompt, compaction, subagent, and stop lifecycle, but the deleted wrapper/parser path could also infer `task_started`, `turn_aborted`, and `task_complete` from event logs. Native hooks remain cleaner and launch-scoped while providing less detail for non-tool failure attribution.
 
 ## Files view and Git diff performance
 
@@ -49,14 +48,6 @@ The first editable Files-view milestone has landed with CodeMirror tabs, dirty/s
 - Profile whether the 5 MB soft edit cap needs tuning for generated, minified, or unusually long-line files while preserving the 10 MB display safety cap.
 - Keep tuning the CodeMirror dark theme against dogfood feedback and common IDE dark palettes if token families or selections remain too low-contrast.
 - Move compare, merge/conflict resolution, commit diff, and other file-viewing surfaces onto the Files/editor foundation where it reduces duplication without losing review-specific workflows.
-
-## Per-task session identity for non-isolated tasks
-
-The client-side trash/untrash/start bugs for non-isolated tasks are fixed — `ensureTaskWorktree` is no longer called (no orphan worktrees), dialog/toast messaging is correct, cleanup is skipped. However, the deeper session-scoping problem remains:
-
-- **Session clobbering**: `--continue` picks the most recent conversation by CWD. Non-isolated tasks sharing the home repo all compete for the same "most recent" session. A warning toast now discloses this limitation on restore and restart, but there's no per-task session targeting.
-- **Possible fix**: If Claude Code adds a `--session-id` or `--resume <id>` flag in the future, Quarterdeck could store the session ID per task and resume the correct conversation. Until then, this is a known limitation for non-isolated tasks.
-- **Claude resume by session id**: Investigate whether Claude should move from cwd-scoped `--continue` resume behavior to session-id-based resume when available, matching Codex's stored resume-id model. Clarify how this would affect isolated vs non-isolated tasks, trash/untrash, startup resume, and stale/missing session-id fallback behavior.
 
 ## Create agent functional testing framework
 

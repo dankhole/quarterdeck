@@ -25,11 +25,15 @@ function getResumeContextWarning(options: {
 	resumeConversation: boolean | undefined;
 	useWorktree: boolean;
 	agentId: string;
+	resumeSessionId: string | null | undefined;
 	persistedWorkingDirectory: string | null;
 	previousSessionLaunchPath: string | null | undefined;
 	projectPath: string;
 }): string | null {
 	if (!options.resumeConversation || !options.useWorktree || options.agentId !== "claude") {
+		return null;
+	}
+	if (options.resumeSessionId) {
 		return null;
 	}
 	if (options.persistedWorkingDirectory) {
@@ -39,25 +43,32 @@ function getResumeContextWarning(options: {
 	if (!previousSessionLaunchPath || previousSessionLaunchPath === options.projectPath) {
 		return null;
 	}
-	return "Claude resume after trash restore is best-effort only: the original task worktree was deleted, so --continue may not reopen the previous chat.";
+	return "Claude resume after trash restore is best-effort only: no stored session id is available and the original task worktree was deleted, so --continue may not reopen the previous chat.";
 }
 
-function getCodexResumeSessionWarning(options: {
+function getResumeSessionWarning(options: {
 	resumeConversation: boolean | undefined;
+	useWorktree: boolean;
 	agentId: string;
 	resumeSessionId: string | null | undefined;
 	failedStoredResumeSession: boolean;
 }): string | null {
-	if (!options.resumeConversation || options.agentId !== "codex") {
+	if (!options.resumeConversation) {
 		return null;
 	}
-	if (options.failedStoredResumeSession) {
-		return STORED_CODEX_RESUME_FAILED_WARNING;
+	if (options.agentId === "codex") {
+		if (options.failedStoredResumeSession) {
+			return STORED_CODEX_RESUME_FAILED_WARNING;
+		}
+		if (options.resumeSessionId) {
+			return null;
+		}
+		return "Codex resume did not have a stored session id, so Quarterdeck fell back to the most recent Codex session for this checkout. If this opens the wrong conversation, start a fresh task.";
 	}
-	if (options.resumeSessionId) {
-		return null;
+	if (options.agentId === "claude" && !options.useWorktree && !options.resumeSessionId) {
+		return "Claude resume did not have a stored session id, so Quarterdeck fell back to the most recent Claude session for this checkout. If this opens the wrong conversation, start a fresh task.";
 	}
-	return "Codex resume did not have a stored session id, so Quarterdeck fell back to the most recent Codex session for this checkout. If this opens the wrong conversation, start a fresh task.";
+	return null;
 }
 
 function errorMessage(error: unknown): string {
@@ -199,7 +210,11 @@ export async function handleStartTaskSession(
 				previousReviewReason: previousSummary?.reviewReason ?? null,
 				previousLaunchPath: previousSummary?.sessionLaunchPath ?? null,
 			});
-		} else if (body.resumeConversation && effectiveAgentId === "codex" && !resumeSessionIdForStart) {
+		} else if (
+			body.resumeConversation &&
+			(effectiveAgentId === "codex" || effectiveAgentId === "claude") &&
+			!resumeSessionIdForStart
+		) {
 			log.warn("resume requested without stored resumeSessionId", {
 				taskId: body.taskId,
 				agentId: effectiveAgentId,
@@ -225,6 +240,7 @@ export async function handleStartTaskSession(
 			resumeConversation: body.resumeConversation,
 			useWorktree,
 			agentId: resolved.agentId,
+			resumeSessionId: resumeSessionIdForStart,
 			persistedWorkingDirectory: persisted,
 			previousSessionLaunchPath: previousSummary?.sessionLaunchPath,
 			projectPath: projectScope.projectPath,
@@ -238,8 +254,9 @@ export async function handleStartTaskSession(
 				resolvedTaskCwd: taskCwd,
 			});
 		}
-		const codexResumeSessionWarning = getCodexResumeSessionWarning({
+		const resumeSessionWarning = getResumeSessionWarning({
 			resumeConversation: body.resumeConversation,
+			useWorktree,
 			agentId: resolved.agentId,
 			resumeSessionId: resumeSessionIdForStart,
 			failedStoredResumeSession,
@@ -297,10 +314,10 @@ export async function handleStartTaskSession(
 				terminalManager.store.update(body.taskId, {
 					warningMessage: resumeContextWarning,
 				}) ?? nextSummary;
-		} else if (codexResumeSessionWarning) {
+		} else if (resumeSessionWarning) {
 			nextSummary =
 				terminalManager.store.update(body.taskId, {
-					warningMessage: codexResumeSessionWarning,
+					warningMessage: resumeSessionWarning,
 				}) ?? nextSummary;
 		}
 		log.debug("start-task-session returning ok", {

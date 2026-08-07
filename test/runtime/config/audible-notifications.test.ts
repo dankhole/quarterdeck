@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { loadRuntimeConfig, updateRuntimeConfig } from "../../../src/config";
 import { createTempDir } from "../../utilities/temp-dir";
-import { withTemporaryEnv, writeFakeCommand } from "./runtime-config-helpers";
+import { withTemporaryEnv, writeFakeVersionedCommand } from "./runtime-config-helpers";
 
 describe.sequential("audible notification config", () => {
 	it("loads default audible notification settings when config is empty", async () => {
@@ -124,7 +124,7 @@ describe.sequential("audible notification config", () => {
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-audible-preserve-");
 
 		try {
-			writeFakeCommand(tempBin, "claude");
+			writeFakeVersionedCommand(tempBin, "claude", "2.1.198 (Claude Code)");
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
 				await updateRuntimeConfig(null, { selectedAgentId: "claude" });
 

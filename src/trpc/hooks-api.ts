@@ -1,4 +1,3 @@
-import { extractLastAssistantMessage } from "../commands/claude-transcript-parser";
 import type {
 	IProjectResolver,
 	IRuntimeBroadcaster,
@@ -8,6 +7,7 @@ import type {
 	RuntimeHookIngestResponse,
 	RuntimeHookMetadata,
 	RuntimeTaskHookActivity,
+	RuntimeTaskSessionReviewReason,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core";
@@ -94,8 +94,9 @@ function toHookActivityPatch(metadata: RuntimeHookMetadata | undefined): Partial
 	return activity;
 }
 
-function isMetadataOnlySessionMeta(metadata: RuntimeHookMetadata | undefined): boolean {
-	if (!metadata || metadata.hookEventName !== "session_meta" || !metadata.sessionId) {
+function isSessionIdentityOnlyMetadata(metadata: RuntimeHookMetadata | undefined): boolean {
+	const normalizedHookEvent = metadata?.hookEventName?.toLowerCase() ?? "";
+	if (!metadata?.sessionId || (normalizedHookEvent !== "session_meta" && normalizedHookEvent !== "sessionstart")) {
 		return false;
 	}
 	return (
@@ -104,7 +105,7 @@ function isMetadataOnlySessionMeta(metadata: RuntimeHookMetadata | undefined): b
 		typeof metadata.toolInputSummary !== "string" &&
 		typeof metadata.finalMessage !== "string" &&
 		typeof metadata.notificationType !== "string" &&
-		typeof metadata.transcriptPath !== "string"
+		typeof metadata.conversationSummaryText !== "string"
 	);
 }
 
@@ -125,7 +126,54 @@ function isPermissionResolutionHook(
 	);
 }
 
-type ClaudeTranscriptExtractor = (transcriptPath: string) => Promise<string | null>;
+type ClaudeAttentionWait =
+	| { type: "interactive_tool"; toolName: "askuserquestion" | "exitplanmode" }
+	| { type: "elicitation" }
+	| { type: "background_agent" };
+
+function getClaudeAttentionWait(activity: RuntimeTaskHookActivity | null | undefined): ClaudeAttentionWait | null {
+	if (activity?.source?.trim().toLowerCase() !== "claude") {
+		return null;
+	}
+	const hookEventName = activity.hookEventName?.toLowerCase() ?? "";
+	const toolName = activity.toolName?.toLowerCase() ?? "";
+	const notificationType = activity.notificationType?.toLowerCase() ?? "";
+	if (
+		(hookEventName === "pretooluse" || hookEventName === "permissionrequest") &&
+		(toolName === "askuserquestion" || toolName === "exitplanmode")
+	) {
+		return { type: "interactive_tool", toolName };
+	}
+	if (hookEventName === "elicitation" || notificationType === "elicitation_dialog") {
+		return { type: "elicitation" };
+	}
+	if (notificationType === "agent_needs_input") {
+		return { type: "background_agent" };
+	}
+	return null;
+}
+
+function isClaudeAttentionResolutionHook(
+	wait: ClaudeAttentionWait,
+	metadata: RuntimeHookMetadata | undefined,
+): boolean {
+	if (metadata?.source?.trim().toLowerCase() !== "claude") {
+		return false;
+	}
+	const hookEventName = metadata.hookEventName?.toLowerCase() ?? "";
+	if (hookEventName === "userpromptsubmit") {
+		return true;
+	}
+	if (wait.type === "interactive_tool") {
+		const toolName = metadata.toolName?.toLowerCase() ?? "";
+		return (hookEventName === "posttooluse" || hookEventName === "posttoolusefailure") && toolName === wait.toolName;
+	}
+	if (wait.type === "elicitation") {
+		return hookEventName === "elicitationresult";
+	}
+	return false;
+}
+
 type HookBackgroundTaskScheduler = (task: () => void) => void;
 
 function scheduleHookBackgroundTask(task: () => void): void {
@@ -159,89 +207,48 @@ function isPermissionGuardedActivityOverwrite(
 	return !isPermissionActivity(incomingActivity);
 }
 
-function resolveClaudeTranscriptPath(
-	event: RuntimeHookEvent,
-	metadata: RuntimeHookMetadata | undefined,
-): string | null {
-	if (event !== "to_review") {
-		return null;
+function isAttentionGuardedActivityOverwrite(
+	summary: RuntimeTaskSessionSummary,
+	activityMetadata: Partial<RuntimeTaskHookActivity> | undefined,
+): boolean {
+	if (summary.state !== "awaiting_review" || summary.reviewReason !== "attention" || !activityMetadata) {
+		return false;
 	}
-	if (metadata?.source?.toLowerCase() !== "claude") {
-		return null;
+	const currentWait = getClaudeAttentionWait(summary.latestHookActivity);
+	if (!currentWait) {
+		return false;
 	}
-	if (metadata.conversationSummaryText?.trim()) {
-		return null;
-	}
-	return metadata.transcriptPath?.trim() || null;
-}
-
-function buildClaudeTranscriptMetadata(metadata: RuntimeHookMetadata, extractedText: string): RuntimeHookMetadata {
-	// finalMessage and activityText are set alongside conversationSummaryText for backward
-	// compatibility — legacy consumers and the activity feed read these fields rather than
-	// conversationSummaryText, so the redundancy is deliberate.
-	return {
-		...metadata,
-		conversationSummaryText: extractedText,
-		finalMessage: metadata.finalMessage ?? extractedText,
-		activityText: metadata.activityText ?? `Final: ${extractedText}`,
+	const incomingActivity: RuntimeTaskHookActivity = {
+		hookEventName: activityMetadata.hookEventName ?? null,
+		notificationType: activityMetadata.notificationType ?? null,
+		activityText: activityMetadata.activityText ?? null,
+		toolName: activityMetadata.toolName ?? null,
+		toolInputSummary: activityMetadata.toolInputSummary ?? null,
+		finalMessage: activityMetadata.finalMessage ?? null,
+		source: activityMetadata.source ?? null,
+		conversationSummaryText: activityMetadata.conversationSummaryText ?? null,
 	};
+	return getClaudeAttentionWait(incomingActivity) === null;
 }
 
-function queueClaudeTranscriptEnrichment(input: {
-	store: SessionSummaryStore;
-	taskId: string;
-	event: RuntimeHookEvent;
-	metadata: RuntimeHookMetadata | undefined;
-	hookLogData: Record<string, unknown>;
-	expectedLastHookAt: number | null;
-	extractClaudeTranscriptSummary: ClaudeTranscriptExtractor;
-	scheduleBackgroundTask: HookBackgroundTaskScheduler;
-	onConversationSummaryApplied?: () => void;
-}): void {
-	const metadata = input.metadata;
-	const transcriptPath = resolveClaudeTranscriptPath(input.event, metadata);
-	if (!transcriptPath || !metadata) {
-		return;
+function getReviewReasonForHookEvent(metadata: RuntimeHookMetadata | undefined): RuntimeTaskSessionReviewReason {
+	const hookEventName = metadata?.hookEventName?.toLowerCase() ?? "";
+	const notificationType = metadata?.notificationType?.toLowerCase() ?? "";
+	const toolName = metadata?.toolName?.toLowerCase() ?? "";
+	const isClaude = metadata?.source?.trim().toLowerCase() === "claude";
+	if (hookEventName === "stopfailure") {
+		return "error";
 	}
-
-	input.scheduleBackgroundTask(() => {
-		void (async () => {
-			const extractedText = await input.extractClaudeTranscriptSummary(transcriptPath);
-			if (!extractedText) {
-				log.debug("Claude transcript enrichment skipped: no assistant summary found", input.hookLogData);
-				return;
-			}
-			const enrichedMetadata = buildClaudeTranscriptMetadata(metadata, extractedText);
-			const summary = input.store.getSummary(input.taskId);
-			if (!summary) {
-				log.debug("Claude transcript enrichment skipped: task missing", input.hookLogData);
-				return;
-			}
-			if ((summary.lastHookAt ?? null) !== input.expectedLastHookAt) {
-				log.debug("Claude transcript enrichment skipped: newer hook activity observed", {
-					...input.hookLogData,
-					expectedLastHookAt: input.expectedLastHookAt,
-					currentLastHookAt: summary.lastHookAt ?? null,
-				});
-				return;
-			}
-
-			const activityMetadata = toHookActivityPatch(enrichedMetadata);
-			if (isPermissionGuardedActivityOverwrite(summary, activityMetadata)) {
-				log.debug("Claude transcript enrichment preserved permission activity", input.hookLogData);
-			} else {
-				input.store.applyHookMetadata(input.taskId, enrichedMetadata);
-			}
-			applyConversationSummaryFromMetadata(input.store, input.taskId, enrichedMetadata);
-			input.onConversationSummaryApplied?.();
-			log.info("Claude transcript enrichment applied", input.hookLogData);
-		})().catch((error) => {
-			log.warn("Claude transcript enrichment failed", {
-				...input.hookLogData,
-				error: errorMessage(error),
-			});
-		});
-	});
+	if (
+		isClaude &&
+		(hookEventName === "elicitation" ||
+			(hookEventName === "pretooluse" && (toolName === "askuserquestion" || toolName === "exitplanmode")) ||
+			(hookEventName === "notification" &&
+				(notificationType === "agent_needs_input" || notificationType === "elicitation_dialog")))
+	) {
+		return "attention";
+	}
+	return "hook";
 }
 
 export interface CreateHooksApiDependencies {
@@ -255,7 +262,6 @@ export interface CreateHooksApiDependencies {
 		turn: number;
 	}) => Promise<RuntimeTaskTurnCheckpoint>;
 	deleteTaskTurnCheckpointRef?: (input: { cwd: string; ref: string }) => Promise<void>;
-	extractClaudeTranscriptSummary?: ClaudeTranscriptExtractor;
 	scheduleHookBackgroundTask?: HookBackgroundTaskScheduler;
 }
 
@@ -272,7 +278,6 @@ function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event
 export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcContext["hooksApi"] {
 	const checkpointCapture = deps.captureTaskTurnCheckpoint ?? captureTaskTurnCheckpoint;
 	const checkpointRefDelete = deps.deleteTaskTurnCheckpointRef ?? deleteTaskTurnCheckpointRef;
-	const extractClaudeTranscriptSummary = deps.extractClaudeTranscriptSummary ?? extractLastAssistantMessage;
 	const scheduleBackgroundTask = deps.scheduleHookBackgroundTask ?? scheduleHookBackgroundTask;
 
 	return {
@@ -308,7 +313,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 
 				const incomingSessionId = body.metadata?.sessionId?.trim() || null;
 				const activityMetadata = toHookActivityPatch(body.metadata);
-				const metadataOnlySessionMeta = isMetadataOnlySessionMeta(body.metadata);
+				const sessionIdentityOnlyMetadata = isSessionIdentityOnlyMetadata(body.metadata);
 				const runtimeProjectScope = { projectId, projectPath };
 				const hasSummarySourceMetadata = Boolean(
 					body.metadata?.conversationSummaryText?.trim() || body.metadata?.finalMessage?.trim(),
@@ -329,27 +334,8 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						},
 					});
 				};
-				const queueTranscriptEnrichment = (): boolean => {
-					if (!resolveClaudeTranscriptPath(event, body.metadata)) {
-						return false;
-					}
-					const queuedSummary = store.getSummary(taskId);
-					queueClaudeTranscriptEnrichment({
-						store,
-						taskId,
-						event,
-						metadata: body.metadata,
-						hookLogData,
-						expectedLastHookAt: queuedSummary?.lastHookAt ?? null,
-						extractClaudeTranscriptSummary,
-						scheduleBackgroundTask,
-						onConversationSummaryApplied: () => queueDisplaySummaryPolish(`hook.${event}.transcript`),
-					});
-					return true;
-				};
 				const queuePostMetadataSummaryPolish = (reason: string, transitioned: boolean) => {
-					const transcriptQueued = queueTranscriptEnrichment();
-					if (!transcriptQueued && (transitioned || hasSummarySourceMetadata)) {
+					if (transitioned || hasSummarySourceMetadata) {
 						queueDisplaySummaryPolish(reason);
 					}
 				};
@@ -360,7 +346,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						projectId,
 						incomingSessionId,
 						storedResumeSessionId: summary.resumeSessionId ?? null,
-						metadataOnly: metadataOnlySessionMeta,
+						metadataOnly: sessionIdentityOnlyMetadata,
 						hookEventName: body.metadata?.hookEventName ?? null,
 						source: body.metadata?.source ?? null,
 					});
@@ -377,7 +363,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						currentState: summary.state,
 						currentReviewReason: summary.reviewReason,
 					});
-					if (body.metadata && metadataOnlySessionMeta) {
+					if (body.metadata && sessionIdentityOnlyMetadata) {
 						store.applyHookMetadata(taskId, body.metadata);
 						log.debug("Hook metadata-only session id applied", {
 							...hookLogData,
@@ -403,6 +389,18 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 							ok: true,
 						} satisfies RuntimeHookIngestResponse;
 					}
+					if (isAttentionGuardedActivityOverwrite(summary, activityMetadata)) {
+						log.debug("Hook blocked: attention guard prevented activity overwrite", {
+							...hookLogData,
+							incomingHookEvent: activityMetadata?.hookEventName,
+							currentAttentionActivity: summary.latestHookActivity?.hookEventName ?? null,
+						});
+						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
+						queuePostMetadataSummaryPolish("hook.attention-guarded", false);
+						return {
+							ok: true,
+						} satisfies RuntimeHookIngestResponse;
+					}
 					if (body.metadata && (incomingSessionId || activityMetadata)) {
 						store.applyHookMetadata(taskId, body.metadata);
 						log.debug("Hook metadata applied without state transition", {
@@ -417,7 +415,9 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					} satisfies RuntimeHookIngestResponse;
 				}
 
-				// Patch A: Permission-aware transition guard.
+				// Patch A: Input-wait-aware transition guards.
+				// Claude questions and MCP/background input waits only resolve through
+				// their matching native lifecycle event or a real user prompt.
 				// When to_in_progress arrives while the task is awaiting review with
 				// permission-related activity, block the transition — this is almost
 				// certainly a stale PostToolUse from a tool that completed before the
@@ -429,10 +429,27 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				if (event === "to_in_progress") {
 					const currentActivity = summary.latestHookActivity;
 					const incomingHookEvent = body.metadata?.hookEventName ?? null;
+					const attentionWait =
+						summary.reviewReason === "attention" ? getClaudeAttentionWait(currentActivity) : null;
+					const isAttentionResolution = attentionWait
+						? isClaudeAttentionResolutionHook(attentionWait, body.metadata)
+						: false;
+					if (attentionWait && !isAttentionResolution) {
+						log.debug("Hook blocked: attention-aware transition guard prevented unrelated to_in_progress", {
+							...hookLogData,
+							incomingHookEvent,
+							attentionWaitType: attentionWait.type,
+							currentAttentionActivity: currentActivity?.hookEventName ?? null,
+						});
+						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
+						queuePostMetadataSummaryPolish("hook.attention-transition-guarded", false);
+						return { ok: true } satisfies RuntimeHookIngestResponse;
+					}
 					if (
 						currentActivity != null &&
 						isPermissionActivity(currentActivity) &&
-						!isPermissionResolutionHook(incomingHookEvent, body.metadata?.source)
+						!isPermissionResolutionHook(incomingHookEvent, body.metadata?.source) &&
+						!isAttentionResolution
 					) {
 						log.debug("Hook blocked: permission-aware transition guard prevented stale to_in_progress", {
 							...hookLogData,
@@ -454,8 +471,11 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				};
 				log.info("Hook transitioning", { ...hookLogData, ...transitionData });
 
+				const reviewReason = event === "to_review" ? getReviewReasonForHookEvent(body.metadata) : null;
 				const transitionedSummary =
-					event === "to_review" ? store.transitionToReview(taskId, "hook") : store.transitionToRunning(taskId);
+					event === "to_review"
+						? store.transitionToReview(taskId, reviewReason)
+						: store.transitionToRunning(taskId);
 				if (!transitionedSummary) {
 					log.warn("Hook transition failed", { ...hookLogData, ...transitionData });
 					return {
@@ -493,6 +513,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					projectPath,
 					taskId,
 					event,
+					reviewReason,
 				});
 				void applyRuntimeMutationEffects(deps.broadcaster, effects).catch((error) => {
 					log.error("Failed to deliver hook transition effects", {

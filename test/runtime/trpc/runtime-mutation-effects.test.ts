@@ -87,6 +87,42 @@ describe("runtime mutation effects", () => {
 		]);
 	});
 
+	it("does not emit ready-for-review effects for hook error reviews", async () => {
+		expect(
+			createHookTransitionEffects({
+				projectId: "project-1",
+				projectPath: "/tmp/repo",
+				taskId: "task-1",
+				event: "to_review",
+				reviewReason: "error",
+			}),
+		).toEqual([
+			{
+				type: "project_state_updated",
+				projectId: "project-1",
+				projectPath: "/tmp/repo",
+			},
+		]);
+	});
+
+	it("does not emit ready-for-review effects for attention reviews", async () => {
+		expect(
+			createHookTransitionEffects({
+				projectId: "project-1",
+				projectPath: "/tmp/repo",
+				taskId: "task-1",
+				event: "to_review",
+				reviewReason: "attention",
+			}),
+		).toEqual([
+			{
+				type: "project_state_updated",
+				projectId: "project-1",
+				projectPath: "/tmp/repo",
+			},
+		]);
+	});
+
 	it("delivers lightweight task base-ref sync effects", async () => {
 		const broadcaster = {
 			broadcastTaskBaseRefUpdated: vi.fn(),

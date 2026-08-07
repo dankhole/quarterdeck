@@ -31,6 +31,7 @@ interface AgentAvailability {
 }
 
 const MINIMUM_CODEX_VERSION = "0.142.5";
+const MINIMUM_CLAUDE_VERSION = "2.1.198";
 const MINIMUM_PI_VERSION = "0.70.2";
 const PROBE_OUTPUT_SNIPPET_MAX_LENGTH = 500;
 const CODEX_PROBE_TIMEOUT_MS = 3_000;
@@ -240,38 +241,50 @@ async function codexSupportsNativeHooks(binary: string): Promise<boolean> {
 	}
 }
 
-async function resolvePiAvailability(binary: string): Promise<AgentAvailability> {
-	const version = await detectAgentVersion("Pi", binary);
+async function resolveMinimumVersionAvailability(
+	agentName: string,
+	binary: string,
+	minimumVersion: string,
+): Promise<AgentAvailability> {
+	const version = await detectAgentVersion(agentName, binary);
 	if (!version) {
-		log.debug("Pi availability rejected: version unknown", { binary, minimumVersion: MINIMUM_PI_VERSION });
+		log.debug(`${agentName} availability rejected: version unknown`, { binary, minimumVersion });
 		return {
 			installed: false,
 			status: "upgrade_required",
-			statusMessage: `Detected on PATH, but Quarterdeck could not determine the Pi version. Upgrade to ${MINIMUM_PI_VERSION} or newer.`,
+			statusMessage: `Detected on PATH, but Quarterdeck could not determine the ${agentName} version. Upgrade to ${minimumVersion} or newer.`,
 		};
 	}
-	if (compareSemver(version, MINIMUM_PI_VERSION) < 0) {
-		log.debug("Pi availability rejected: version below minimum", {
+	if (compareSemver(version, minimumVersion) < 0) {
+		log.debug(`${agentName} availability rejected: version below minimum`, {
 			binary,
 			version,
-			minimumVersion: MINIMUM_PI_VERSION,
+			minimumVersion,
 		});
 		return {
 			installed: false,
 			status: "upgrade_required",
-			statusMessage: `Detected Pi ${version}, but Quarterdeck currently requires ${MINIMUM_PI_VERSION} or newer.`,
+			statusMessage: `Detected ${agentName} ${version}, but Quarterdeck currently requires ${minimumVersion} or newer.`,
 		};
 	}
-	log.debug("Pi availability confirmed", {
+	log.debug(`${agentName} availability confirmed`, {
 		binary,
 		version,
-		minimumVersion: MINIMUM_PI_VERSION,
+		minimumVersion,
 	});
 	return {
 		installed: true,
 		status: "installed",
 		statusMessage: null,
 	};
+}
+
+async function resolveClaudeAvailability(binary: string): Promise<AgentAvailability> {
+	return resolveMinimumVersionAvailability("Claude Code", binary, MINIMUM_CLAUDE_VERSION);
+}
+
+async function resolvePiAvailability(binary: string): Promise<AgentAvailability> {
+	return resolveMinimumVersionAvailability("Pi", binary, MINIMUM_PI_VERSION);
 }
 
 const AGENT_AVAILABILITY_TTL_MS = 30_000;
@@ -311,6 +324,9 @@ async function computeAgentAvailability(agentId: RuntimeAgentId, binary: string)
 	}
 	if (agentId === "pi") {
 		return resolvePiAvailability(binary);
+	}
+	if (agentId === "claude") {
+		return resolveClaudeAvailability(binary);
 	}
 	if (agentId !== "codex") {
 		return {

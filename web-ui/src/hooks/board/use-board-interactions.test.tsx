@@ -174,15 +174,16 @@ describe("useBoardInteractions", () => {
 	});
 
 	describe("shouldWarnForNonIsolatedResume", () => {
-		it("returns true for non-Codex agents", () => {
-			expect(shouldWarnForNonIsolatedResume("claude", "session-1")).toBe(true);
+		it("returns true when no agent is known", () => {
+			expect(shouldWarnForNonIsolatedResume(null, "session-1")).toBe(true);
 		});
 
-		it("returns true for Codex when no stored session id exists", () => {
-			expect(shouldWarnForNonIsolatedResume("codex", null)).toBe(true);
+		it("returns true when no stored session id exists", () => {
+			expect(shouldWarnForNonIsolatedResume("claude", null)).toBe(true);
 		});
 
-		it("returns false for Codex when a stored session id exists", () => {
+		it("returns false for any known agent when a stored session id exists", () => {
+			expect(shouldWarnForNonIsolatedResume("claude", "session-1")).toBe(false);
 			expect(shouldWarnForNonIsolatedResume("codex", "session-1")).toBe(false);
 		});
 	});

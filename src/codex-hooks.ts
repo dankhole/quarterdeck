@@ -97,11 +97,8 @@ export function buildCodexHooksConfig(): CodexHooksConfig {
 		],
 		Stop: [
 			{
-				// Known limitation: current Codex hook payloads do not identify
-				// root-agent vs subagent Stop events. Mapping Stop to review keeps
-				// main-agent completion working, but subagent-heavy sessions can
-				// produce premature review transitions until upstream exposes a
-				// reliable discriminator. Tracked in docs/todo.md.
+				// Codex 0.142.5+ dispatches root Stop and SubagentStop separately.
+				// Quarterdeck only maps root-turn completion to review.
 				hooks: [buildCodexCommandHook("to_review", { source: "codex" })],
 			},
 		],

@@ -45,7 +45,7 @@ describe("inferHookSourceFromPayload", () => {
 		).toBeNull();
 	});
 
-	it("preserves Claude transcript paths for server-side enrichment", () => {
+	it("preserves Claude transcript paths as metadata without requiring parser enrichment", () => {
 		const metadata = normalizeHookMetadata(
 			"to_review",
 			{

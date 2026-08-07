@@ -1,7 +1,16 @@
 import type { RuntimeHookEvent, RuntimeHookMetadata } from "../core";
 
+const HOOK_METADATA_TEXT_MAX_LENGTH = 500;
+
 function normalizeWhitespace(value: string): string {
 	return value.replace(/\s+/g, " ").trim();
+}
+
+function compactHookMetadataText(value: string): string {
+	const normalized = normalizeWhitespace(value);
+	return normalized.length > HOOK_METADATA_TEXT_MAX_LENGTH
+		? `${normalized.slice(0, HOOK_METADATA_TEXT_MAX_LENGTH)}\u2026`
+		: normalized;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -45,6 +54,36 @@ function readNestedString(record: Record<string, unknown>, path: string[]): stri
 	return normalized.length > 0 ? normalized : null;
 }
 
+function readHookEventName(payload: Record<string, unknown> | null): string | null {
+	return payload
+		? (readStringField(payload, "hook_event_name") ??
+				readStringField(payload, "hookEventName") ??
+				readStringField(payload, "hookName"))
+		: null;
+}
+
+function isClaudeStopWaitingForBackgroundWork(
+	payload: Record<string, unknown> | null,
+	source: string | null | undefined,
+	hookEventName = readHookEventName(payload),
+): boolean {
+	if (source?.trim().toLowerCase() !== "claude" || hookEventName?.toLowerCase() !== "stop" || !payload) {
+		return false;
+	}
+	return (
+		(Array.isArray(payload.background_tasks) && payload.background_tasks.length > 0) ||
+		(Array.isArray(payload.session_crons) && payload.session_crons.length > 0)
+	);
+}
+
+export function resolveHookEventFromPayload(
+	event: RuntimeHookEvent,
+	payload: Record<string, unknown> | null,
+	source: string | null | undefined,
+): RuntimeHookEvent {
+	return event === "to_review" && isClaudeStopWaitingForBackgroundWork(payload, source) ? "activity" : event;
+}
+
 export function parseJsonObject(value: string): Record<string, unknown> | null {
 	try {
 		return asRecord(JSON.parse(value));
@@ -79,16 +118,16 @@ export function parseMetadataFromOptions(options: HookCommandMetadataOptionValue
 	const transcriptPath = options.transcriptPath;
 
 	if (activityText) {
-		metadata.activityText = normalizeWhitespace(activityText);
+		metadata.activityText = compactHookMetadataText(activityText);
 	}
 	if (toolName) {
 		metadata.toolName = normalizeWhitespace(toolName);
 	}
 	if (toolInputSummary) {
-		metadata.toolInputSummary = normalizeWhitespace(toolInputSummary);
+		metadata.toolInputSummary = compactHookMetadataText(toolInputSummary);
 	}
 	if (finalMessage) {
-		metadata.finalMessage = normalizeWhitespace(finalMessage);
+		metadata.finalMessage = compactHookMetadataText(finalMessage);
 	}
 	if (hookEventName) {
 		metadata.hookEventName = normalizeWhitespace(hookEventName);
@@ -183,13 +222,11 @@ function inferActivityText(
 	toolName: string | null,
 	finalMessage: string | null,
 	notificationType: string | null,
+	waitingForBackgroundWork: boolean,
 ): string | null {
-	const hookEventName = payload
-		? (readStringField(payload, "hook_event_name") ??
-			readStringField(payload, "hookEventName") ??
-			readStringField(payload, "hookName"))
-		: null;
+	const hookEventName = readHookEventName(payload);
 	const normalizedHookEvent = hookEventName?.toLowerCase() ?? "";
+	const normalizedToolName = toolName?.toLowerCase() ?? "";
 	const codexType = payload ? readStringField(payload, "type") : null;
 	const normalizedCodexType = codexType?.toLowerCase() ?? "";
 	const toolInput = payload ? extractToolInput(payload) : null;
@@ -206,6 +243,12 @@ function inferActivityText(
 	}
 
 	if (normalizedHookEvent === "pretooluse" || normalizedHookEvent === "beforetool") {
+		if (normalizedToolName === "askuserquestion") {
+			return "Needs input";
+		}
+		if (normalizedToolName === "exitplanmode") {
+			return "Waiting for plan approval";
+		}
 		return toolOperation ? `Using ${toolOperation}` : "Using tool";
 	}
 	if (normalizedHookEvent === "posttooluse" || normalizedHookEvent === "aftertool") {
@@ -224,15 +267,46 @@ function inferActivityText(
 	if (normalizedHookEvent === "permissionrequest") {
 		return "Waiting for approval";
 	}
+	if (normalizedHookEvent === "permissiondenied") {
+		return "Permission denied";
+	}
 	if (normalizedHookEvent === "userpromptsubmit" || normalizedHookEvent === "beforeagent") {
 		return "Resumed after user input";
+	}
+	if (normalizedHookEvent === "subagentstart") {
+		const agentType = payload ? readStringField(payload, "agent_type") : null;
+		return agentType ? `Subagent started: ${agentType}` : "Subagent started";
 	}
 	if (
 		normalizedHookEvent === "stop" ||
 		normalizedHookEvent === "subagentstop" ||
 		normalizedHookEvent === "afteragent"
 	) {
+		if (normalizedHookEvent === "stop" && waitingForBackgroundWork) {
+			return "Waiting for background work";
+		}
 		return finalMessage ? `Final: ${finalMessage}` : null;
+	}
+	if (normalizedHookEvent === "stopfailure") {
+		const reason = payload ? readStringField(payload, "reason") : null;
+		const error = payload ? readStringField(payload, "error") : null;
+		const errorType = payload ? readStringField(payload, "error_type") : null;
+		const errorMessage = payload ? readStringField(payload, "error_message") : null;
+		return `Claude turn failed${
+			reason || error || errorType || errorMessage ? `: ${reason ?? error ?? errorType ?? errorMessage}` : ""
+		}`;
+	}
+	if (normalizedHookEvent === "precompact") {
+		return "Compacting context";
+	}
+	if (normalizedHookEvent === "postcompact") {
+		return "Compacted context";
+	}
+	if (normalizedHookEvent === "elicitation") {
+		return "Needs input";
+	}
+	if (normalizedHookEvent === "elicitationresult") {
+		return "Resumed after user input";
 	}
 	if (normalizedHookEvent === "taskcomplete") {
 		return finalMessage ? `Final: ${finalMessage}` : null;
@@ -240,6 +314,18 @@ function inferActivityText(
 
 	if (notificationType === "permission_prompt" || notificationType === "permission.asked") {
 		return "Waiting for approval";
+	}
+	if (notificationType === "agent_needs_input") {
+		return "Needs input";
+	}
+	if (notificationType === "elicitation_dialog") {
+		return "Needs input";
+	}
+	if (notificationType === "elicitation_complete" || notificationType === "elicitation_response") {
+		return "Resumed after user input";
+	}
+	if (notificationType === "agent_completed") {
+		return "Background agent completed";
 	}
 	if (notificationType === "user_attention") {
 		return null;
@@ -252,6 +338,18 @@ function inferActivityText(
 		return "Agent active";
 	}
 	return null;
+}
+
+function isClaudeMainStopSummary(input: {
+	source: string | null;
+	hookEventName: string | null;
+	finalMessage: string | null;
+}): boolean {
+	return (
+		input.source?.toLowerCase() === "claude" &&
+		input.hookEventName?.toLowerCase() === "stop" &&
+		!!input.finalMessage?.trim()
+	);
 }
 
 export function inferHookSourceFromPayload(payload: Record<string, unknown> | null): string | null {
@@ -273,11 +371,7 @@ export function normalizeHookMetadata(
 	payload: Record<string, unknown> | null,
 	flagMetadata: RuntimeHookMetadata,
 ): RuntimeHookMetadata | undefined {
-	const hookEventName = payload
-		? (readStringField(payload, "hook_event_name") ??
-			readStringField(payload, "hookEventName") ??
-			readStringField(payload, "hookName"))
-		: null;
+	const hookEventName = readHookEventName(payload);
 	const toolName = payload
 		? (readStringField(payload, "tool_name") ??
 			readStringField(payload, "toolName") ??
@@ -294,32 +388,59 @@ export function normalizeHookMetadata(
 			readNestedString(payload, ["event", "type"]) ??
 			readNestedString(payload, ["notification", "event"]))
 		: null;
-	const finalMessage = payload
+	const inferredSource = inferHookSourceFromPayload(payload);
+	const source = flagMetadata.source ?? inferredSource ?? null;
+	const waitingForBackgroundWork = isClaudeStopWaitingForBackgroundWork(payload, source, hookEventName);
+	const extractedFinalMessage = payload
 		? (readStringField(payload, "last_assistant_message") ??
 			readStringField(payload, "lastAssistantMessage") ??
 			readStringField(payload, "last-assistant-message") ??
 			readNestedString(payload, ["taskComplete", "taskMetadata", "result"]) ??
 			readNestedString(payload, ["taskComplete", "result"]))
 		: null;
+	const finalMessage =
+		!waitingForBackgroundWork && extractedFinalMessage ? compactHookMetadataText(extractedFinalMessage) : null;
 	const transcriptPath = payload
 		? (readTrimmedStringField(payload, "transcript_path") ?? readTrimmedStringField(payload, "transcriptPath"))
 		: null;
 
-	const inferredSource = inferHookSourceFromPayload(payload);
 	const toolInput = payload ? extractToolInput(payload) : null;
 	const toolInputSummary = describeToolOperation(toolName, toolInput);
+	const conversationSummaryText = waitingForBackgroundWork
+		? null
+		: isClaudeMainStopSummary({ source, hookEventName, finalMessage })
+			? finalMessage
+			: payload
+				? (readStringField(payload, "conversation_summary_text") ??
+					readStringField(payload, "conversationSummaryText") ??
+					readNestedString(payload, ["taskComplete", "taskMetadata", "summary"]))
+				: null;
 
-	const activityText = inferActivityText(event, payload, toolName, finalMessage, notificationType);
+	const activityText = inferActivityText(
+		event,
+		payload,
+		toolName,
+		finalMessage,
+		notificationType,
+		waitingForBackgroundWork,
+	);
 	const merged: RuntimeHookMetadata = {
-		source: flagMetadata.source ?? inferredSource ?? null,
+		source,
 		hookEventName: flagMetadata.hookEventName ?? hookEventName ?? null,
 		toolName: flagMetadata.toolName ?? toolName ?? null,
-		toolInputSummary: flagMetadata.toolInputSummary ?? toolInputSummary ?? null,
+		toolInputSummary:
+			flagMetadata.toolInputSummary ?? (toolInputSummary ? compactHookMetadataText(toolInputSummary) : null),
 		notificationType: flagMetadata.notificationType ?? notificationType ?? null,
-		finalMessage: flagMetadata.finalMessage ?? (finalMessage ? normalizeWhitespace(finalMessage) : null),
-		activityText: flagMetadata.activityText ?? (activityText ? normalizeWhitespace(activityText) : null),
+		finalMessage: waitingForBackgroundWork
+			? null
+			: (flagMetadata.finalMessage ?? (finalMessage ? compactHookMetadataText(finalMessage) : null)),
+		activityText: flagMetadata.activityText ?? (activityText ? compactHookMetadataText(activityText) : null),
 		sessionId: flagMetadata.sessionId ?? null,
 		transcriptPath: flagMetadata.transcriptPath ?? transcriptPath ?? null,
+		conversationSummaryText: waitingForBackgroundWork
+			? null
+			: (flagMetadata.conversationSummaryText ??
+				(conversationSummaryText ? compactHookMetadataText(conversationSummaryText) : null)),
 	};
 
 	const hasValue = Object.values(merged).some((value) => typeof value === "string" && value.trim().length > 0);

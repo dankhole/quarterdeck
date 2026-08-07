@@ -108,14 +108,16 @@ function buildNextHookActivity(
 	previous: RuntimeTaskHookActivity | null,
 	activity: Partial<RuntimeTaskHookActivity>,
 ): RuntimeTaskHookActivity | null {
-	const isMetadataOnlySessionMeta =
-		activity.hookEventName === "session_meta" &&
+	const normalizedHookEvent = activity.hookEventName?.toLowerCase() ?? "";
+	const isSessionIdentityOnly =
+		(normalizedHookEvent === "session_meta" || normalizedHookEvent === "sessionstart") &&
 		typeof activity.activityText !== "string" &&
 		typeof activity.toolName !== "string" &&
 		typeof activity.toolInputSummary !== "string" &&
 		typeof activity.finalMessage !== "string" &&
+		typeof activity.conversationSummaryText !== "string" &&
 		typeof activity.notificationType !== "string";
-	if (isMetadataOnlySessionMeta) {
+	if (isSessionIdentityOnly) {
 		return previous;
 	}
 
@@ -366,7 +368,7 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 			return null;
 		}
 
-		// Truncate text to 500 chars as a safety net (parser already caps at 500).
+		// Truncate hook-provided text to 500 chars as a UI/state safety net.
 		const text = entry.text.length > 500 ? `${entry.text.slice(0, 500)}\u2026` : entry.text;
 
 		// Auto-assign sessionIndex from the highest existing index.

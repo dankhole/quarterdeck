@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { buildClaudeHooksSettings } from "../../../src/claude-hooks";
 import { buildCodexHooksConfig } from "../../../src/codex-hooks";
 import { prepareAgentLaunch } from "../../../src/terminal";
 import {
@@ -223,13 +224,27 @@ describe("prepareAgentLaunch hook strategies", () => {
 			hooks?: Record<string, unknown>;
 		};
 		expect(settings.hooks?.PermissionRequest).toBeDefined();
+		expect(settings.hooks?.SessionStart).toBeDefined();
+		expect(settings.hooks?.Stop).toBeDefined();
+		expect(settings.hooks?.StopFailure).toBeDefined();
+		expect(settings.hooks?.SubagentStart).toBeDefined();
 		expect(settings.hooks?.PreToolUse).toBeDefined();
 		expect(settings.hooks?.PostToolUse).toBeDefined();
 		expect(settings.hooks?.PostToolUseFailure).toBeDefined();
+		expect(settings.hooks?.PreCompact).toBeDefined();
+		expect(settings.hooks?.PostCompact).toBeDefined();
 		const serializedSettings = JSON.stringify(settings);
 		expect(serializedSettings).toContain("'notify' '--event' 'activity'");
 		expect(serializedSettings).toContain("'ingest' '--event' 'to_review'");
 		expect(serializedSettings).toContain("'ingest' '--event' 'to_in_progress'");
+		expect(JSON.stringify(settings.hooks?.SessionStart)).toContain("'ingest' '--event' 'activity'");
+	});
+
+	it("keeps Claude SessionStart reliable so session ids are not best-effort", () => {
+		const settings = buildClaudeHooksSettings();
+		expect(settings.hooks.SessionStart[0]?.matcher).toBe("startup|resume|clear|compact|fork");
+		expect(settings.hooks.SessionStart[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'activity'");
+		expect(settings.hooks.SessionStart[0]?.hooks[0]?.command).not.toContain("'notify' '--event' 'activity'");
 	});
 
 	it("leaves the Quarterdeck Claude status line disabled unless explicitly enabled", async () => {
@@ -335,6 +350,17 @@ describe("prepareAgentLaunch hook strategies", () => {
 		};
 		expect(settings.statusLine?.type).toBe("command");
 		expect(settings.statusLine?.command).toContain("statusline");
+	});
+
+	it("registers reliable Claude input-wait and resolution hooks", () => {
+		const settings = buildClaudeHooksSettings();
+		expect(settings.hooks.PreToolUse[0]?.matcher).toBe("AskUserQuestion|ExitPlanMode");
+		expect(settings.hooks.PreToolUse[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_review'");
+		expect(settings.hooks.Notification[0]?.matcher).toBe("permission_prompt|elicitation_dialog|agent_needs_input");
+		expect(settings.hooks.Notification[1]?.matcher).toBe("*");
+		expect(settings.hooks.Elicitation[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_review'");
+		expect(settings.hooks.ElicitationResult[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_in_progress'");
+		expect(settings.hooks.Stop[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_review'");
 	});
 
 	it("materializes task images for CLI prompts", async () => {
@@ -493,7 +519,25 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.args.at(-1)).toBe("- continue after restart");
 	});
 
-	it("adds Claude continue flags for resume", async () => {
+	it("uses a stored Claude session id for resume when available", async () => {
+		setupTempHome();
+
+		const claudeLaunch = await prepareAgentLaunch({
+			taskId: "task-claude",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
+		});
+
+		expect(claudeLaunch.args).toEqual(expect.arrayContaining(["--resume", "019d6fa0-db65-7f83-9531-35df54674d76"]));
+		expect(claudeLaunch.args).not.toContain("--continue");
+	});
+
+	it("falls back to Claude continue flags for legacy resume without a stored session id", async () => {
 		setupTempHome();
 
 		const claudeLaunch = await prepareAgentLaunch({

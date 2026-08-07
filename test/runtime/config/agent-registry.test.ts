@@ -42,6 +42,10 @@ function mockSuccessfulAgentProbe(): void {
 	childProcessMocks.execFile.mockImplementation((binary: string, args: string[], ...rest: unknown[]) => {
 		const callback = readExecFileCallback(rest);
 		if (args[0] === "--version") {
+			if (binary === "claude") {
+				callback(null, "2.1.198 (Claude Code)\n", "");
+				return {} as ChildProcess;
+			}
 			callback(null, binary === "pi" ? "0.70.2\n" : "0.142.5\n", "");
 			return {} as ChildProcess;
 		}
@@ -82,6 +86,50 @@ describe("agent-registry", () => {
 		const resolved = await resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "claude" }));
 
 		expect(resolved).toBeNull();
+	});
+
+	it("disables Claude when the detected version is below the supported floor", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "claude");
+		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+			const callback = readExecFileCallback(rest);
+			if (args[0] === "--version") {
+				callback(null, "2.1.197 (Claude Code)\n", "");
+				return {} as ChildProcess;
+			}
+			callback(null, "", "");
+			return {} as ChildProcess;
+		});
+
+		const resolved = await resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "claude" }));
+		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "claude" }));
+		const claude = response.agents.find((agent) => agent.id === "claude");
+
+		expect(resolved).toBeNull();
+		expect(claude?.installed).toBe(false);
+		expect(claude?.status).toBe("upgrade_required");
+		expect(claude?.statusMessage).toContain("2.1.198");
+	});
+
+	it("disables Claude when its version cannot be determined", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "claude");
+		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+			const callback = readExecFileCallback(rest);
+			if (args[0] === "--version") {
+				callback(null, "Claude Code\n", "");
+				return {} as ChildProcess;
+			}
+			callback(null, "", "");
+			return {} as ChildProcess;
+		});
+
+		const resolved = await resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "claude" }));
+		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "claude" }));
+		const claude = response.agents.find((agent) => agent.id === "claude");
+
+		expect(resolved).toBeNull();
+		expect(claude?.installed).toBe(false);
+		expect(claude?.status).toBe("upgrade_required");
+		expect(claude?.statusMessage).toContain("2.1.198");
 	});
 
 	it("disables Codex when the detected version is below the supported floor", async () => {

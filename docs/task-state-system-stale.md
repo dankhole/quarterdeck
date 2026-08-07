@@ -174,24 +174,38 @@ The challenge is that different agents have completely different extensibility m
 
 Claude Code has a built-in hook system. You can give it a JSON settings file that maps Claude lifecycle events to shell commands, and Claude will execute those commands at the right moments. Quarterdeck takes advantage of this.
 
-**Setup:** Before spawning Claude, Quarterdeck generates a hooks settings JSON file at `~/.quarterdeck/hooks/claude/settings.json` and passes it via the `--settings` CLI flag. The file maps Claude events to `quarterdeck hooks ingest` commands:
+Quarterdeck requires Claude Code 2.1.198 or newer for Claude task launches because the native hook mapping uses the documented `agent_needs_input` notification type.
+
+**Setup:** Before spawning Claude, Quarterdeck generates a hooks settings JSON file at `~/.quarterdeck/hooks/claude/settings.json` and passes it via the `--settings` CLI flag. The file maps state-changing Claude events to reliable `quarterdeck hooks ingest` commands and maps activity-only events to best-effort `quarterdeck hooks notify` commands:
 
 ```json
 {
   "hooks": {
+    "SessionStart": [{
+      "matcher": "startup|resume|clear|compact|fork",
+      "hooks": [{ "type": "command", "command": "quarterdeck hooks ingest --event activity --source claude" }]
+    }],
     "Stop": [{
+      "hooks": [{ "type": "command", "command": "quarterdeck hooks ingest --event to_review --source claude" }]
+    }],
+    "StopFailure": [{
+      "matcher": "*",
       "hooks": [{ "type": "command", "command": "quarterdeck hooks ingest --event to_review --source claude" }]
     }],
     "PermissionRequest": [{
       "matcher": "*",
       "hooks": [{ "type": "command", "command": "quarterdeck hooks ingest --event to_review --source claude" }]
     }],
+    "PreToolUse": [{
+      "matcher": "*",
+      "hooks": [{ "type": "command", "command": "quarterdeck hooks notify --event activity --source claude" }]
+    }],
     "PostToolUse": [{
       "matcher": "*",
       "hooks": [{ "type": "command", "command": "quarterdeck hooks ingest --event to_in_progress --source claude" }]
     }],
     "Notification": [{
-      "matcher": "permission_prompt",
+      "matcher": "permission_prompt|agent_needs_input",
       "hooks": [{ "type": "command", "command": "quarterdeck hooks ingest --event to_review --source claude" }]
     }]
   }
@@ -202,19 +216,24 @@ The full mapping:
 
 | Claude Event | Hook Event | Why |
 |---|---|---|
+| `SessionStart` | `activity` | Capture session id metadata without changing task state |
 | `Stop` | `to_review` | Claude finished its turn, waiting for user |
+| `StopFailure` | `to_review` with review reason `error` | Claude turn failed before a normal stop |
 | `PermissionRequest` | `to_review` | Claude needs permission to use a tool |
-| `Notification` (permission_prompt) | `to_review` | Permission prompt surfaced |
+| `Notification` (`permission_prompt` / `agent_needs_input`) | `to_review` | Permission or attention prompt surfaced |
 | `Notification` (*) | `activity` | General notification (progress info) |
 | `PostToolUse` | `to_in_progress` | Tool completed, Claude is working again |
 | `PostToolUseFailure` | `to_in_progress` | Tool failed, Claude is working again |
+| `PermissionDenied` | `activity` | Permission request resolved without granting access |
 | `UserPromptSubmit` | `to_in_progress` | User provided input, Claude resumes |
 | `PreToolUse` | `activity` | About to call a tool (informational) |
+| `SubagentStart` | `activity` | A sub-agent started (informational) |
 | `SubagentStop` | `activity` | A sub-agent finished (informational) |
+| `PreCompact` / `PostCompact` | `activity` | Context compaction started or finished |
 
-**Execution model:** Synchronous and blocking. When Claude fires a hook event, it executes the `quarterdeck hooks ingest` command and waits for it to finish before continuing. The ingest command has a 3-second timeout per attempt and does a single retry after 1 second if the first attempt fails. This means in the worst case, a hook call blocks Claude for ~7 seconds. In practice, it's near-instant.
+**Execution model:** Synchronous and blocking from Claude's perspective. State-changing hooks and Claude `SessionStart` use reliable ingest: a 3-second timeout per attempt and a single retry after 1 second if the first attempt fails. Activity-only hooks use best-effort notify with a short timeout and no retry so incidental tool/subagent/compact events do not block the TUI for long.
 
-**Metadata extraction:** When Claude stops (`to_review` from the `Stop` event), the hook payload includes a `transcript_path` pointing to Claude's JSONL conversation transcript. The ingest command reads this file, finds the last assistant message (skipping short preambles like "I'll read that file"), caps it at 500 characters, and includes it as `conversationSummaryText` in the hook metadata. This is how the UI shows a summary of what the agent last said.
+**Metadata extraction:** Claude hook stdin includes `session_id` on lifecycle events and `last_assistant_message` on `Stop`. Quarterdeck stores the session id as `resumeSessionId` and promotes the main-agent `Stop` message to `conversationSummaryText`. `transcript_path` is retained as metadata for diagnostics, but Quarterdeck no longer reads or parses the JSONL transcript because Claude documents that the transcript file can lag the hook payload.
 
 ### Codex hooks: native hook configuration via launch-scoped inline config
 
@@ -241,11 +260,13 @@ Because Codex includes `session_id` in each hook payload, Quarterdeck also persi
 |---|---|---|
 | Integration type | Native hook system | Native hook system |
 | How hooks are configured | `--settings` JSON file | Inline `-c hooks...` launch overrides |
+| Minimum checked version | 2.1.198+ | 0.142.5+ with native `hooks` feature |
 | Execution model | Synchronous (Claude waits) | Synchronous (Codex waits) |
 | Latency | Near-instant (<100ms typical) | Near-instant (<100ms typical) |
 | Failure handling | 3s timeout, 1 retry, blocks on failure | 3s timeout, 1 retry, blocks on failure |
-| Metadata source | Transcript file (parsed on `to_review`) | Native hook stdin payload |
-| Fallback | None needed (native) | None for supported hook boundaries; slash-command lifecycle is a known gap |
+| Metadata source | Native hook stdin payload | Native hook stdin payload |
+| Resume target | Stored `session_id` via `claude --resume <id>`; `--continue` only when no id exists | Stored `session_id` via `codex resume <id>`; `--last` only when no id exists |
+| Fallback | None for supported hook boundaries | None for supported hook boundaries; slash-command lifecycle is a known gap |
 | Subagent filtering | Dedicated `SubagentStop` event maps to `activity` | Known limitation: current Codex payloads do not identify root-agent vs subagent `Stop`, so subagent-heavy sessions can prematurely transition to review |
 
 > Known Codex parity gap: Quarterdeck currently maps Codex `Stop` to `to_review` so main-agent turn completion works. Until Codex exposes a reliable root-agent/subagent discriminator in hook payloads, a Codex subagent `Stop` can look identical to main-agent completion. This is tracked in `docs/todo.md` and should be revisited before claiming full Claude parity for subagent-heavy Codex workflows.
@@ -262,9 +283,9 @@ Hook CLI command (ingest or notify)
     ▼
 1. Read `QUARTERDECK_HOOK_TASK_ID` and `QUARTERDECK_HOOK_PROJECT_ID` from env
 2. Parse metadata from flags / base64 payload / stdin / positional arg
-3. Agent-specific enrichment:
-   - Claude: read transcript file for last assistant message
-   - Codex: use native hook payload fields (`session_id`, `tool_name`, `tool_input`, etc.)
+3. Agent-specific normalization from native hook payload fields:
+   - Claude: `session_id`, `hook_event_name`, `tool_name`, `notification_type`, `last_assistant_message`
+   - Codex: `session_id`, `type`, `tool_name`, `tool_input`, and related native fields
 4. POST to tRPC hooks.ingest endpoint (3s timeout, 1 retry)
     │
     ▼
@@ -278,7 +299,7 @@ Server hooks-api.ts:
 8. Apply state machine transition
 9. Update hook activity metadata on the session summary
 10. Broadcast state change to all connected WebSocket clients
-11. If to_review: broadcast task_ready_for_review (for UI notifications)
+11. If to_review with normal hook review: broadcast task_ready_for_review (error reviews skip the normal review-ready notification)
 12. Capture turn checkpoint in background (git stash create)
 13. Return immediately (checkpoint runs async)
 ```
@@ -304,10 +325,10 @@ When an agent process exits, `session-lifecycle.ts` checks `shouldAutoRestart()`
 ### What auto-restart does
 
 1. Clones the original start request
-2. Sets `resumeConversation = true` (passes `--continue` flag to the agent so it picks up where it left off)
+2. Sets `resumeConversation = true` (uses the stored session id when available, otherwise the agent's best-effort continuation flag)
 3. Sets `awaitReview = true` (new session starts in `awaiting_review` state)
 4. Calls `startTaskSession()` to spawn a new process
-5. If `--continue` fails, retries without it (fresh start)
+5. If resume fails before the process stays interactive, retries without resume (fresh start)
 
 ### Manual restart
 

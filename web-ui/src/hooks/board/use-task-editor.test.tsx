@@ -361,7 +361,7 @@ describe("useTaskEditor", () => {
 
 	it("remembers the selected agent in session when localStorage writes fail", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+		const setItemSpy = vi.spyOn(localStorage, "setItem").mockImplementation(() => {
 			throw new Error("localStorage unavailable");
 		});
 

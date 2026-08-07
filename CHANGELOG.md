@@ -8,7 +8,7 @@
 
 ### Feature: add experimental Claude fullscreen rendering
 
-- Settings now exposes a default-off Claude fullscreen renderer toggle that enables Claude Code's alternate-screen, virtualized transcript mode for new and restarted Claude sessions.
+- Settings now exposes a default-off Claude fullscreen renderer toggle that authoritatively selects Claude Code's alternate-screen or classic renderer for new and restarted sessions, keeping renderer choice aligned with Quarterdeck's terminal row policy.
 - Fullscreen Claude sessions keep the real terminal row count while detached and preserve the launch mode through startup resume and automatic restart; classic Claude sessions retain the existing detached history multiplier.
 - The renderer choice is launch-deterministic across the supported preview versions: disabling the experiment forces Claude's classic renderer, while the documented `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` escape hatch overrides fullscreen and keeps the matching classic row policy.
 
@@ -35,7 +35,16 @@
 ### Fix: stabilize shared-checkout git sync and Codex hooks
 
 - Top-bar fetch/pull/push controls now stay usable from shared-checkout agent chats even when the task base ref is unresolved, and shared-checkout task sync updates the visible home git summary immediately.
-- Codex permission prompts can now return to running from Codex `PostToolUse` events; Codex `Stop` still maps to review because current payloads lack a reliable root-vs-subagent discriminator.
+- Codex permission prompts can now return to running from Codex `PostToolUse` events; Codex 0.142.5+ dispatches root `Stop` separately from `SubagentStop`, so root completion can map to review without subagent completion moving the task.
+
+### Fix: use native Claude hook payloads for resume and summaries
+
+- Claude `SessionStart` hooks now persist the native session id and task restarts prefer `claude --resume <id>`, falling back to `--continue` only for legacy sessions that have no stored id.
+- Claude `Stop` summaries now use the native `last_assistant_message` hook payload instead of parsing JSONL transcripts, and the old transcript parser/enrichment path has been removed.
+- Claude hook coverage now includes session start, permission denial, subagent start/stop, compact, and stop-failure events, with `StopFailure` entering error review instead of sending a normal review-ready notification.
+- Claude `Stop` hooks with active `background_tasks` or `session_crons` now remain in progress until Claude emits a completed stop, preventing background work from marking a task review-ready early.
+- Claude questions, plan approval, and MCP elicitation now enter needs-input review and return to running through native completion hooks; hook-provided messages are bounded before persistence, and compact summaries no longer masquerade as completed-turn messages.
+- Claude availability now requires Claude Code 2.1.198 or newer, matching the documented hook notification payloads Quarterdeck uses for input/attention detection.
 
 ### Fix: track Codex `hooks` feature rename
 

@@ -136,7 +136,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-set-");
 
 		try {
-			writeFakeCommand(tempBin, "claude");
+			writeFakeVersionedCommand(tempBin, "claude", "2.1.198 (Claude Code)");
 			writeFakeCommand(tempBin, "codex");
 
 			const runtimeConfigDir = join(tempHome, ".quarterdeck");

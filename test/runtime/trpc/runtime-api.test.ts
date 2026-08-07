@@ -354,6 +354,55 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(response.summary?.warningMessage).toContain("original task worktree was deleted");
 	});
 
+	it("does not warn when Claude trash restore has a stored session id", async () => {
+		const card = createCard({ workingDirectory: null, useWorktree: true });
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
+		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/recreated-worktree");
+
+		const update = vi.fn();
+		const terminalManager = {
+			startTaskSession: vi.fn(async () =>
+				createSummary({
+					taskId: "task-1",
+					agentId: "claude",
+					sessionLaunchPath: "/tmp/recreated-worktree",
+					resumeSessionId: "claude-session-1",
+				}),
+			),
+			getSummary: vi.fn(() =>
+				createSummary({
+					taskId: "task-1",
+					agentId: "claude",
+					sessionLaunchPath: "/tmp/old-worktree",
+					resumeSessionId: "claude-session-1",
+				}),
+			),
+			update,
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const api = createRuntimeApi(createDeps(terminalManager));
+
+		const response = await api.startTaskSession(defaultScope, {
+			taskId: "task-1",
+			baseRef: "main",
+			prompt: "",
+			resumeConversation: true,
+			awaitReview: true,
+			useWorktree: true,
+		});
+
+		expect(response.ok).toBe(true);
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				agentId: "claude",
+				resumeConversation: true,
+				resumeSessionId: "claude-session-1",
+			}),
+		);
+		expect(update).not.toHaveBeenCalled();
+		expect(response.summary?.warningMessage).toBeNull();
+	});
+
 	it("surfaces a warning when Codex resume has no stored session id", async () => {
 		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
 			agentId: "codex",

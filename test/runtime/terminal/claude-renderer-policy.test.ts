@@ -44,8 +44,7 @@ describe("Claude renderer policy", () => {
 	it.each([
 		{ args: ["--ax-screen-reader"], envOverrides: undefined },
 		{ args: [], envOverrides: { CLAUDE_AX_SCREEN_READER: "1" } },
-		{ args: [], envOverrides: { CLAUDE_CODE_ACCESSIBILITY: "true" } },
-	])("keeps accessibility launches on the classic renderer", ({ args, envOverrides }) => {
+	])("keeps screen-reader launches on the classic renderer", ({ args, envOverrides }) => {
 		expect(
 			resolveClaudeRendererPolicy({
 				fullscreenEnabled: true,
@@ -53,7 +52,17 @@ describe("Claude renderer policy", () => {
 				envOverrides,
 				inheritedEnv: {},
 			}),
-		).toEqual({ mode: "classic", reason: "accessibility_mode" });
+		).toEqual({ mode: "classic", reason: "screen_reader_mode" });
+	});
+
+	it("does not treat the screen-magnifier cursor aid as a classic-renderer constraint", () => {
+		expect(
+			resolveClaudeRendererPolicy({
+				fullscreenEnabled: true,
+				envOverrides: { CLAUDE_CODE_ACCESSIBILITY: "1" },
+				inheritedEnv: {},
+			}),
+		).toEqual({ mode: "fullscreen", reason: "fullscreen_enabled" });
 	});
 
 	it("creates a deterministic launch environment for either mode", () => {

@@ -6,11 +6,13 @@ import { parseHookRuntimeContextFromEnv } from "../terminal";
 import type { RuntimeAppRouter } from "../trpc";
 import {
 	type HookCommandMetadataOptionValues,
+	inferHookSourceFromPayload,
 	normalizeHookMetadata,
 	parseJsonObject,
 	parseMetadataFromBase64,
 	parseMetadataFromOptions,
 	readPayloadStringField,
+	resolveHookEventFromPayload,
 } from "./hook-metadata";
 
 // Re-exports for backward compatibility (tests and other consumers).
@@ -124,12 +126,18 @@ function parseHooksIngestArgs(
 	const payloadSessionId = payload
 		? (readPayloadStringField(payload, "session_id") ?? readPayloadStringField(payload, "sessionId"))
 		: null;
-	const metadata = normalizeHookMetadata(event, payload, {
+	const metadataContext = {
 		...flagMetadata,
 		sessionId: flagMetadata.sessionId ?? payloadSessionId ?? null,
-	});
-	return {
+	};
+	const resolvedEvent = resolveHookEventFromPayload(
 		event,
+		payload,
+		metadataContext.source ?? inferHookSourceFromPayload(payload),
+	);
+	const metadata = normalizeHookMetadata(resolvedEvent, payload, metadataContext);
+	return {
+		event: resolvedEvent,
 		taskId: context.taskId,
 		projectId: context.projectId,
 		metadata,

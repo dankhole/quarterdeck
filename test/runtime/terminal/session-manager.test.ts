@@ -183,6 +183,37 @@ describe("TerminalSessionManager", () => {
 		expect(after).toEqual(before);
 	});
 
+	it("stores Claude SessionStart session ids without clobbering existing hook activity", () => {
+		const manager = createTestManager();
+		manager.store.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "running",
+				agentId: "claude",
+				latestHookActivity: {
+					source: "claude",
+					activityText: "Using Bash: npm test",
+					hookEventName: "PreToolUse",
+					notificationType: null,
+					toolName: "Bash",
+					toolInputSummary: "Bash: npm test",
+					finalMessage: null,
+					conversationSummaryText: null,
+				},
+			}),
+		});
+
+		const updated = manager.store.applyHookMetadata("task-1", {
+			source: "claude",
+			hookEventName: "SessionStart",
+			sessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
+			transcriptPath: "/Users/dev/.claude/projects/repo/019d6fa0-db65-7f83-9531-35df54674d76.jsonl",
+		});
+
+		expect(updated?.resumeSessionId).toBe("019d6fa0-db65-7f83-9531-35df54674d76");
+		expect(updated?.latestHookActivity?.activityText).toBe("Using Bash: npm test");
+		expect(updated?.latestHookActivity?.hookEventName).toBe("PreToolUse");
+	});
+
 	it("uses a fixed detached row multiplier only for Claude without browser output", () => {
 		expect(resolveEffectiveTerminalRowMultiplier("claude", false)).toBe(DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER);
 		expect(resolveEffectiveTerminalRowMultiplier("claude", true)).toBe(1);

@@ -11,7 +11,7 @@ import {
 } from "../../../src/config";
 import { createDefaultRuntimeConfigSaveRequest } from "../../utilities/runtime-config-factory";
 import { createTempDir } from "../../utilities/temp-dir";
-import { withTemporaryEnv, writeFakeCommand } from "./runtime-config-helpers";
+import { withTemporaryEnv, writeFakeVersionedCommand } from "./runtime-config-helpers";
 
 describe.sequential("runtime-config persistence", () => {
 	it("treats null projectId as global-only config scope", async () => {
@@ -19,7 +19,7 @@ describe.sequential("runtime-config persistence", () => {
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-home-scope-");
 
 		try {
-			writeFakeCommand(tempBin, "claude");
+			writeFakeVersionedCommand(tempBin, "claude", "2.1.198 (Claude Code)");
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
 				const state = await loadRuntimeConfig(null);
 				expect(state.globalConfigPath).toBe(join(tempHome, ".quarterdeck", "config.json"));
@@ -182,7 +182,7 @@ describe.sequential("runtime-config persistence", () => {
 			mkdirSync(projectDir, { recursive: true });
 			writeFileSync(join(projectDir, "config.json"), "{}", "utf8");
 
-			writeFakeCommand(tempBin, "claude");
+			writeFakeVersionedCommand(tempBin, "claude", "2.1.198 (Claude Code)");
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
 				await loadRuntimeConfig(projectId);
 				await saveRuntimeConfig(
@@ -209,7 +209,7 @@ describe.sequential("runtime-config persistence", () => {
 			const projectDir = join(tempHome, ".quarterdeck", "projects", projectId);
 			mkdirSync(projectDir, { recursive: true });
 
-			writeFakeCommand(tempBin, "claude");
+			writeFakeVersionedCommand(tempBin, "claude", "2.1.198 (Claude Code)");
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
 				await loadRuntimeConfig(projectId);
 				await saveRuntimeConfig(
@@ -238,7 +238,7 @@ describe.sequential("runtime-config persistence", () => {
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-partial-");
 
 		try {
-			writeFakeCommand(tempBin, "claude");
+			writeFakeVersionedCommand(tempBin, "claude", "2.1.198 (Claude Code)");
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
 				await loadRuntimeConfig(null);
 
@@ -267,7 +267,7 @@ describe.sequential("runtime-config persistence", () => {
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-concurrent-");
 
 		try {
-			writeFakeCommand(tempBin, "claude");
+			writeFakeVersionedCommand(tempBin, "claude", "2.1.198 (Claude Code)");
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
 				await loadRuntimeConfig(null);
 

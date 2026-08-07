@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { STORED_CODEX_RESUME_FAILED_WARNING } from "../../../src/terminal/codex-resume-failure";
+import {
+	STORED_CLAUDE_RESUME_FAILED_WARNING,
+	STORED_CODEX_RESUME_FAILED_WARNING,
+} from "../../../src/terminal/codex-resume-failure";
 
 const prepareAgentLaunchMock = vi.hoisted(() => vi.fn());
 const ptySessionSpawnMock = vi.hoisted(() => vi.fn());
@@ -302,6 +305,50 @@ describe("TerminalSessionManager auto-restart", () => {
 		const restore = await manager.getRestoreSnapshot("task-1");
 		expect(restore?.snapshot).toContain("No session found");
 		expect(restore?.snapshot).toContain("Could not resume the stored Codex session");
+	});
+
+	it("clears a bad stored Claude session id after a non-zero startup resume failure", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		const onOutput = vi.fn();
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111 + spawnedSessions.length, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", {
+			onState: vi.fn(),
+			onOutput,
+			onExit: vi.fn(),
+		});
+
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "claude-session-1",
+			awaitReview: true,
+		});
+
+		spawnedSessions[0]?.triggerData("No Claude session found\n");
+		spawnedSessions[0]?.triggerExit(1);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		const summary = manager.store.getSummary("task-1");
+		expect(summary?.state).toBe("awaiting_review");
+		expect(summary?.reviewReason).toBe("error");
+		expect(summary?.resumeSessionId).toBeNull();
+		expect(summary?.warningMessage).toBe(STORED_CLAUDE_RESUME_FAILED_WARNING);
+
+		const outputText = Buffer.concat(onOutput.mock.calls.map(([chunk]) => chunk as Buffer)).toString("utf8");
+		expect(outputText).toContain("No Claude session found");
+		expect(outputText).toContain("Could not resume the stored Claude session");
 	});
 
 	it("does not reconnect-auto-restart a failed Codex stored-id resume", async () => {

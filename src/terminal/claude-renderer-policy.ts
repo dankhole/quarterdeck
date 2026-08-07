@@ -1,13 +1,13 @@
 export const CLAUDE_FULLSCREEN_ENV_VAR = "CLAUDE_CODE_NO_FLICKER";
 export const CLAUDE_CLASSIC_RENDERER_ENV_VAR = "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN";
-const CLAUDE_ACCESSIBILITY_ENV_VARS = ["CLAUDE_AX_SCREEN_READER", "CLAUDE_CODE_ACCESSIBILITY"] as const;
+const CLAUDE_SCREEN_READER_ENV_VAR = "CLAUDE_AX_SCREEN_READER";
 const CLAUDE_SCREEN_READER_ARG = "--ax-screen-reader";
 
 export type ClaudeRendererMode = "classic" | "fullscreen";
 export type ClaudeRendererReason =
 	| "setting_disabled"
 	| "classic_escape_hatch"
-	| "accessibility_mode"
+	| "screen_reader_mode"
 	| "fullscreen_enabled";
 
 export interface ClaudeRendererPolicy {
@@ -57,13 +57,11 @@ export function resolveClaudeRendererPolicy({
 	if (classicEscapeHatch?.trim() === "1") {
 		return { mode: "classic", reason: "classic_escape_hatch" };
 	}
-	const accessibilityModeEnabled =
+	const screenReaderModeEnabled =
 		args.includes(CLAUDE_SCREEN_READER_ARG) ||
-		CLAUDE_ACCESSIBILITY_ENV_VARS.some((key) =>
-			isEnabledEnvironmentValue(resolveEnvironmentValue(key, envOverrides, inheritedEnv)),
-		);
-	if (accessibilityModeEnabled) {
-		return { mode: "classic", reason: "accessibility_mode" };
+		isEnabledEnvironmentValue(resolveEnvironmentValue(CLAUDE_SCREEN_READER_ENV_VAR, envOverrides, inheritedEnv));
+	if (screenReaderModeEnabled) {
+		return { mode: "classic", reason: "screen_reader_mode" };
 	}
 
 	return { mode: "fullscreen", reason: "fullscreen_enabled" };
