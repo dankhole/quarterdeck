@@ -361,7 +361,7 @@ describe("useTaskEditor", () => {
 
 	it("remembers the selected agent in session when localStorage writes fail", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const setItemSpy = vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+		const setItemSpy = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
 			throw new Error("localStorage unavailable");
 		});
 
@@ -394,7 +394,7 @@ describe("useTaskEditor", () => {
 			const snapshot = requireSnapshot(latestSnapshot);
 			expect(snapshot.board.columns[0]?.cards[0]?.agentId).toBe("codex");
 			expect(snapshot.newTaskAgentId).toBe("codex");
-			expect(localStorage.getItem(LocalStorageKey.TaskCreateLastAgentId)).toBeNull();
+			expect(window.localStorage.getItem(LocalStorageKey.TaskCreateLastAgentId)).toBeNull();
 		} finally {
 			setItemSpy.mockRestore();
 		}
