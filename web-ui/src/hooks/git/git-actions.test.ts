@@ -10,6 +10,7 @@ import {
 	matchesWorktreeInfoSelection,
 	resolveTopbarGitSyncTaskScope,
 	shouldApplyHomeGitSummaryFromSync,
+	shouldShowHomeBranchTracking,
 	type TaskGitActionLoadingState,
 } from "./git-actions";
 
@@ -102,6 +103,16 @@ describe("top-bar git sync policy", () => {
 		expect(
 			shouldApplyHomeGitSummaryFromSync({ taskId: "task-1", baseRef: "main" }, { updateHomeSummary: true }),
 		).toBe(true);
+	});
+
+	it("shows home branch tracking from home and shared-checkout task views only", () => {
+		expect(shouldShowHomeBranchTracking({ selectedTaskId: null, selectedTaskUsesSharedCheckout: false })).toBe(true);
+		expect(shouldShowHomeBranchTracking({ selectedTaskId: "task-1", selectedTaskUsesSharedCheckout: true })).toBe(
+			true,
+		);
+		expect(shouldShowHomeBranchTracking({ selectedTaskId: "task-1", selectedTaskUsesSharedCheckout: false })).toBe(
+			false,
+		);
 	});
 });
 

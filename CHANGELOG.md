@@ -38,6 +38,7 @@
 ### Fix: stabilize shared-checkout git sync and Codex hooks
 
 - Top-bar fetch/pull/push controls now stay usable from shared-checkout agent chats even when the task base ref is unresolved, and shared-checkout task sync updates the visible home git summary immediately.
+- Shared-checkout agent chats now keep the Home repository branch pill's upstream ahead/behind arrows visible, matching the project Home view.
 - Codex permission prompts can now return to running from Codex `PostToolUse` events; Codex 0.142.5+ dispatches root `Stop` separately from `SubagentStop`, so root completion can map to review without subagent completion moving the task.
 
 ### Fix: use native Claude hook payloads for resume and summaries

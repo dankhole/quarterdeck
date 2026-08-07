@@ -9,7 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { applyTaskBaseRefSelectionToBoard } from "@/hooks/board/task-base-ref-sync";
-import { isTopbarGitSyncDisabled, resolveTopbarGitSyncTaskScope } from "@/hooks/git/git-actions";
+import {
+	isTopbarGitSyncDisabled,
+	resolveTopbarGitSyncTaskScope,
+	shouldShowHomeBranchTracking,
+} from "@/hooks/git/git-actions";
 import { useOpenProject } from "@/hooks/project";
 import { useBoardContext } from "@/providers/board-provider";
 import { useDialogContext } from "@/providers/dialog-provider";
@@ -75,6 +79,10 @@ export function ConnectedTopBar({
 	const dialog = useDialogContext();
 	const selectedTaskHasBaseRef = selectedCard ? isRuntimeTaskBaseRefResolved(selectedCard.card) : false;
 	const selectedTaskUsesSharedCheckout = selectedCard?.card.useWorktree === false;
+	const showHomeBranchTracking = shouldShowHomeBranchTracking({
+		selectedTaskId: selectedCard?.card.id ?? null,
+		selectedTaskUsesSharedCheckout,
+	});
 	const isGitSyncDisabled = isTopbarGitSyncDisabled({
 		runningGitAction: git.runningGitAction,
 		selectedTaskId: selectedCard?.card.id ?? null,
@@ -210,8 +218,8 @@ export function ConnectedTopBar({
 							trigger={
 								<BranchPillTrigger
 									label={git.topbarBranchLabel}
-									aheadCount={!selectedCard ? homeGitSummary?.aheadCount : undefined}
-									behindCount={!selectedCard ? homeGitSummary?.behindCount : undefined}
+									aheadCount={showHomeBranchTracking ? homeGitSummary?.aheadCount : undefined}
+									behindCount={showHomeBranchTracking ? homeGitSummary?.behindCount : undefined}
 									detachedWorktreeBaseRef={git.topbarDetachedWorktree?.baseRef}
 									detachedWorktreeHeadCommit={git.topbarDetachedWorktree?.headCommit}
 								/>

@@ -68,6 +68,13 @@ export function isTopbarGitSyncDisabled(input: {
 	);
 }
 
+export function shouldShowHomeBranchTracking(input: {
+	selectedTaskId: string | null;
+	selectedTaskUsesSharedCheckout: boolean;
+}): boolean {
+	return input.selectedTaskId === null || input.selectedTaskUsesSharedCheckout;
+}
+
 export function resolveTopbarGitSyncTaskScope({
 	selectedTaskId,
 	selectedTaskBaseRef,
