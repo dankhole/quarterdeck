@@ -230,7 +230,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 		const cols = options.cols ?? entry.active.cols;
 		const baseRows = options.baseRows ?? entry.active.baseRows;
-		const rows = resolveEffectiveTerminalRows(entry.active.agentId, baseRows, hasLiveOutputListener(entry));
+		const rows = resolveEffectiveTerminalRows(entry.active.agentId, baseRows, hasLiveOutputListener(entry), {
+			claudeFullscreenEnabled: entry.active.claudeFullscreenEnabled,
+		});
 		const dimensionsUnchanged = cols === entry.active.cols && rows === entry.active.rows;
 		entry.active.session.resize(cols, rows, options.pixelWidth, options.pixelHeight);
 		if (options.force && dimensionsUnchanged) {

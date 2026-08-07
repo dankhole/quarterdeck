@@ -6,6 +6,7 @@ import type { RuntimeAgentId, RuntimeHookEvent, RuntimeTaskImage, RuntimeTaskSes
 import { buildQuarterdeckCommandParts, createTaggedLogger, quoteShellArg } from "../core";
 import { lockedFileSystem } from "../fs";
 import { getRuntimeHomePath } from "../state";
+import { createClaudeRendererEnvironment, resolveClaudeRendererPolicy } from "./claude-renderer-policy";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
 import { buildPiLifecycleExtensionSource, QUARTERDECK_PI_HOOK_COMMAND_ENV } from "./pi-lifecycle-extension";
 import type { SessionTransitionEvent } from "./session-state-machine";
@@ -25,6 +26,7 @@ export interface AgentAdapterLaunchInput {
 	env?: Record<string, string | undefined>;
 	projectId?: string;
 	projectPath?: string;
+	claudeFullscreenEnabled?: boolean;
 	statuslineEnabled?: boolean;
 	worktreeSystemPromptTemplate?: string;
 }
@@ -205,8 +207,14 @@ const log = createTaggedLogger("agent-launch");
 const claudeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
+		const rendererPolicy = resolveClaudeRendererPolicy({
+			fullscreenEnabled: input.claudeFullscreenEnabled,
+			args,
+			envOverrides: input.env,
+		});
 		const env: Record<string, string | undefined> = {
 			FORCE_HYPERLINK: "1",
+			...createClaudeRendererEnvironment(rendererPolicy.mode),
 		};
 		if (input.resumeConversation && !hasCliOption(args, "--continue")) {
 			args.push("--continue");
@@ -305,6 +313,8 @@ const claudeAdapter: AgentSessionAdapter = {
 		const withPromptLaunch = withPrompt(args, input.prompt, "append");
 		log.debug("claude adapter prepared launch", {
 			taskId: input.taskId,
+			claudeRendererMode: rendererPolicy.mode,
+			claudeRendererReason: rendererPolicy.reason,
 			argCount: withPromptLaunch.args.length,
 			promptLength: input.prompt.trim().length,
 			args: withPromptLaunch.args.map((a) => (a.length > 200 ? `${a.slice(0, 200)}…(${a.length})` : a)),

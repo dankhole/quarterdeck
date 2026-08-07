@@ -35,6 +35,14 @@ export function HarnessSection({
 			</p>
 
 			<SettingsSwitch
+				checked={fields.claudeFullscreenEnabled}
+				onCheckedChange={(value) => setField("claudeFullscreenEnabled", value)}
+				disabled={disabled}
+				label="Use Claude fullscreen rendering (experimental)"
+				description="Uses Claude Code's flicker-free alternate-screen renderer and virtualized transcript for new or restarted Claude sessions. Requires Claude Code 2.1.89 or newer."
+			/>
+
+			<SettingsSwitch
 				checked={fields.statuslineEnabled}
 				onCheckedChange={(value) => setField("statuslineEnabled", value)}
 				disabled={disabled}

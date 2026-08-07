@@ -106,6 +106,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	pinnedBranches: [],
 	showSummaryOnCards: CONFIG_DEFAULTS.showSummaryOnCards,
 	llmSummaryPolishEnabled: CONFIG_DEFAULTS.llmSummaryPolishEnabled,
+	claudeFullscreenEnabled: CONFIG_DEFAULTS.claudeFullscreenEnabled,
 	statuslineEnabled: CONFIG_DEFAULTS.statuslineEnabled,
 	terminalFontWeight: CONFIG_DEFAULTS.terminalFontWeight,
 	logLevel: CONFIG_DEFAULTS.logLevel,

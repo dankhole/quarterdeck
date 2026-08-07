@@ -17,6 +17,7 @@ export interface SettingsFormValues {
 	showSummaryOnCards: boolean;
 	llmSummaryPolishEnabled: boolean;
 	shellAutoRestartEnabled: boolean;
+	claudeFullscreenEnabled: boolean;
 	statuslineEnabled: boolean;
 	terminalFontWeight: number;
 	fileEditorAutosaveMode: RuntimeConfigResponse["fileEditorAutosaveMode"];
@@ -53,6 +54,7 @@ export function resolveInitialValues(config: RuntimeConfigResponse | null): Sett
 		showSummaryOnCards: config?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
 		llmSummaryPolishEnabled: config?.llmSummaryPolishEnabled ?? CONFIG_DEFAULTS.llmSummaryPolishEnabled,
 		shellAutoRestartEnabled: config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
+		claudeFullscreenEnabled: config?.claudeFullscreenEnabled ?? CONFIG_DEFAULTS.claudeFullscreenEnabled,
 		statuslineEnabled: config?.statuslineEnabled ?? CONFIG_DEFAULTS.statuslineEnabled,
 		terminalFontWeight: config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight,
 		fileEditorAutosaveMode: config?.fileEditorAutosaveMode ?? CONFIG_DEFAULTS.fileEditorAutosaveMode,

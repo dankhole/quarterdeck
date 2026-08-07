@@ -106,6 +106,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	audibleNotificationsEnabled: boolField(true),
 	audibleNotificationVolume: volumeField(0.7),
 	audibleNotificationsOnlyWhenHidden: boolField(true),
+	claudeFullscreenEnabled: boolField(false),
 	statuslineEnabled: boolField(false),
 	terminalFontWeight: numField(325),
 	logLevel: enumField<LogLevel>("warn", LOG_LEVELS),

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Feature: add experimental Claude fullscreen rendering
+
+- Settings now exposes a default-off Claude fullscreen renderer toggle that enables Claude Code's alternate-screen, virtualized transcript mode for new and restarted Claude sessions.
+- Fullscreen Claude sessions keep the real terminal row count while detached and preserve the launch mode through startup resume and automatic restart; classic Claude sessions retain the existing detached history multiplier.
+- The renderer choice is launch-deterministic across the supported preview versions: disabling the experiment forces Claude's classic renderer, while the documented `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` escape hatch overrides fullscreen and keeps the matching classic row policy.
+
 ### Fix: improve Claude terminal presentation controls
 
 - Claude restores now force the current browser geometry before requesting the server snapshot, matching Codex so geometry-sensitive redraws target the visible terminal before restoration.

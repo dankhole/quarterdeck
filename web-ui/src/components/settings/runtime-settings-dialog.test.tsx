@@ -193,7 +193,7 @@ describe("RuntimeSettingsDialog", () => {
 		expect(bodyText).not.toContain("These settings let agents escape their worktree sandbox");
 	});
 
-	it("shows the Quarterdeck Claude status line as an opt-in harness setting", async () => {
+	it("shows Claude fullscreen rendering and the Quarterdeck status line as opt-in harness settings", async () => {
 		saveMock.mockReset();
 		saveMock.mockResolvedValue(true);
 
@@ -208,21 +208,30 @@ describe("RuntimeSettingsDialog", () => {
 			);
 		});
 
+		const fullscreenSwitch = findSwitchByLabel(document.body, "Use Claude fullscreen rendering (experimental)");
 		const statuslineSwitch = findSwitchByLabel(document.body, "Show Quarterdeck status line in Claude Code");
+		expect(fullscreenSwitch).toBeInstanceOf(HTMLButtonElement);
 		expect(statuslineSwitch).toBeInstanceOf(HTMLButtonElement);
+		expect(fullscreenSwitch?.getAttribute("data-state")).toBe("unchecked");
 		expect(statuslineSwitch?.getAttribute("data-state")).toBe("unchecked");
+		expect(document.body.textContent).toContain("virtualized transcript");
+		expect(document.body.textContent).toContain("Claude Code 2.1.89 or newer");
 		expect(document.body.textContent).toContain("new or restarted Claude sessions");
 
 		await act(async () => {
+			fullscreenSwitch?.click();
 			statuslineSwitch?.click();
 		});
+		expect(fullscreenSwitch?.getAttribute("data-state")).toBe("checked");
 		expect(statuslineSwitch?.getAttribute("data-state")).toBe("checked");
 
 		const saveButton = findButtonByText(document.body, "Save");
 		await act(async () => {
 			saveButton?.click();
 		});
-		expect(saveMock).toHaveBeenCalledWith(expect.objectContaining({ statuslineEnabled: true }));
+		expect(saveMock).toHaveBeenCalledWith(
+			expect.objectContaining({ claudeFullscreenEnabled: true, statuslineEnabled: true }),
+		);
 	});
 
 	it("shows orange warning when LLM is not configured", async () => {

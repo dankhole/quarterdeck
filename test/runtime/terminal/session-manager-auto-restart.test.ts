@@ -72,11 +72,13 @@ describe("TerminalSessionManager auto-restart", () => {
 
 		await manager.startTaskSession({
 			taskId: "task-1",
-			agentId: "codex",
-			binary: "codex",
+			agentId: "claude",
+			binary: "claude",
 			args: [],
 			cwd: "/tmp/task-1",
 			prompt: "Fix the bug",
+			claudeFullscreenEnabled: true,
+			env: { CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "0" },
 		});
 
 		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
@@ -89,6 +91,10 @@ describe("TerminalSessionManager auto-restart", () => {
 		// actively working, so it lands in review for the user to re-engage.
 		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 		expect(manager.store.getSummary("task-1")?.pid).toBe(222);
+		expect(prepareAgentLaunchMock).toHaveBeenNthCalledWith(
+			2,
+			expect.objectContaining({ claudeFullscreenEnabled: true }),
+		);
 	});
 
 	it("does not restart when the agent already transitioned to review before exit", async () => {

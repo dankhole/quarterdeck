@@ -15,6 +15,7 @@ describe("resolveInitialValues", () => {
 		expect(values).toHaveProperty("shortcuts");
 		expect(values).toHaveProperty("worktreeSystemPromptTemplate");
 		expect(values).toHaveProperty("fileEditorAutosaveMode");
+		expect(values.claudeFullscreenEnabled).toBe(false);
 		expect(values.statuslineEnabled).toBe(false);
 	});
 });

@@ -186,10 +186,12 @@ describe("TerminalSessionManager", () => {
 	it("uses a fixed detached row multiplier only for Claude without browser output", () => {
 		expect(resolveEffectiveTerminalRowMultiplier("claude", false)).toBe(DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER);
 		expect(resolveEffectiveTerminalRowMultiplier("claude", true)).toBe(1);
+		expect(resolveEffectiveTerminalRowMultiplier("claude", false, { claudeFullscreenEnabled: true })).toBe(1);
 		expect(resolveEffectiveTerminalRowMultiplier("codex", false)).toBe(1);
 		expect(resolveEffectiveTerminalRowMultiplier(null, false)).toBe(1);
 		expect(resolveEffectiveTerminalRows("claude", 40, false)).toBe(40 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER);
 		expect(resolveEffectiveTerminalRows("claude", 40, true)).toBe(40);
+		expect(resolveEffectiveTerminalRows("claude", 40, false, { claudeFullscreenEnabled: true })).toBe(40);
 	});
 
 	it("transitionToReview preserves latestHookActivity (RC4 invariant — no null-window)", () => {
@@ -619,6 +621,43 @@ describe("TerminalSessionManager", () => {
 		});
 
 		const resized = manager.resize("task-resize-live", 100, 30);
+		expect(resized).toBe(true);
+		expect(resizeSpy).toHaveBeenCalledWith(100, 30, undefined, undefined);
+		expect(resizeMirrorSpy).toHaveBeenCalledWith(100, 30);
+	});
+
+	it("keeps detached fullscreen Claude rows unmultiplied", () => {
+		const manager = createTestManager();
+		const resizeSpy = vi.fn();
+		const resizeMirrorSpy = vi.fn();
+		const entry = {
+			taskId: "task-resize-fullscreen",
+			active: {
+				session: {
+					resize: resizeSpy,
+				},
+				agentId: "claude",
+				claudeFullscreenEnabled: true,
+				cols: 80,
+				baseRows: 24,
+				rows: 24,
+			},
+			terminalStateMirror: {
+				resize: resizeMirrorSpy,
+			},
+			listenerIdCounter: 1,
+			listeners: new Map(),
+		};
+		(
+			manager as unknown as {
+				entries: Map<string, typeof entry>;
+			}
+		).entries.set("task-resize-fullscreen", entry);
+		manager.store.hydrateFromRecord({
+			"task-resize-fullscreen": createSummary({ taskId: "task-resize-fullscreen", agentId: "claude" }),
+		});
+
+		const resized = manager.resize("task-resize-fullscreen", 100, 30);
 		expect(resized).toBe(true);
 		expect(resizeSpy).toHaveBeenCalledWith(100, 30, undefined, undefined);
 		expect(resizeMirrorSpy).toHaveBeenCalledWith(100, 30);

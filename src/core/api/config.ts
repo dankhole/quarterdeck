@@ -63,6 +63,7 @@ export const runtimeConfigResponseSchema = z.object({
 	hiddenDefaultPromptShortcuts: z.array(z.string()),
 	showSummaryOnCards: z.boolean(),
 	llmSummaryPolishEnabled: z.boolean(),
+	claudeFullscreenEnabled: z.boolean(),
 	statuslineEnabled: z.boolean(),
 	terminalFontWeight: z.number(),
 	logLevel: z.enum(["debug", "info", "warn", "error"]),
@@ -111,6 +112,7 @@ export const runtimeConfigSaveRequestSchema = z.object({
 			failure: z.boolean(),
 		})
 		.optional(),
+	claudeFullscreenEnabled: z.boolean().optional(),
 	statuslineEnabled: z.boolean().optional(),
 	terminalFontWeight: z.number().min(100).max(900).optional(),
 	logLevel: z.enum(["debug", "info", "warn", "error"]).optional(),

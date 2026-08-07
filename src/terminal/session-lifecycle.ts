@@ -7,6 +7,7 @@ import { createTaggedLogger } from "../core";
 import { cleanStaleIndexLockForWorktree } from "../fs";
 import type { PreparedAgentLaunch } from "./agent-session-adapters";
 import { prepareAgentLaunch } from "./agent-session-adapters";
+import { resolveClaudeRendererPolicy } from "./claude-renderer-policy";
 import { shouldAutoConfirmClaudeWorkspaceTrust, stopWorkspaceTrustTimers } from "./claude-workspace-trust";
 import { isCodexResumeFailureSummary, STORED_CODEX_RESUME_FAILED_WARNING } from "./codex-resume-failure";
 import { shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust";
@@ -82,7 +83,25 @@ export async function spawnTaskSession(
 
 	const cols = normalizeDimension(request.cols, 120);
 	const baseRows = normalizeDimension(request.rows, 40);
-	const effectiveRowMultiplier = resolveEffectiveTerminalRowMultiplier(request.agentId, hasLiveOutputListener(entry));
+	const claudeRendererPolicy =
+		request.agentId === "claude"
+			? resolveClaudeRendererPolicy({
+					fullscreenEnabled: request.claudeFullscreenEnabled,
+					args: request.args,
+					envOverrides: request.env,
+				})
+			: null;
+	const claudeFullscreenEnabled = claudeRendererPolicy?.mode === "fullscreen";
+	if (request.claudeFullscreenEnabled === true && claudeRendererPolicy?.mode === "classic") {
+		sessionLog.warn("Claude fullscreen setting overridden by a classic-renderer constraint", {
+			taskId: request.taskId,
+			agentId: request.agentId,
+			reason: claudeRendererPolicy.reason,
+		});
+	}
+	const effectiveRowMultiplier = resolveEffectiveTerminalRowMultiplier(request.agentId, hasLiveOutputListener(entry), {
+		claudeFullscreenEnabled,
+	});
 	const rows = baseRows * effectiveRowMultiplier;
 	let terminalStateMirror: TerminalStateMirror;
 	let launch: PreparedAgentLaunch;
@@ -109,6 +128,7 @@ export async function spawnTaskSession(
 			env: request.env,
 			projectId: request.projectId,
 			projectPath: request.projectPath,
+			claudeFullscreenEnabled,
 			statuslineEnabled: request.statuslineEnabled,
 			worktreeSystemPromptTemplate: request.worktreeSystemPromptTemplate,
 		});
@@ -126,6 +146,7 @@ export async function spawnTaskSession(
 		shouldAutoConfirmCodexWorkspaceTrust(request.agentId, request.cwd);
 	const spawnData = {
 		agentId: request.agentId,
+		claudeFullscreenEnabled,
 		binary: commandBinary,
 		cwd: request.cwd,
 		projectPath: request.projectPath ?? null,
@@ -204,6 +225,7 @@ export async function spawnTaskSession(
 	entry.active = createActiveProcessState({
 		session,
 		agentId: request.agentId,
+		claudeFullscreenEnabled,
 		cols,
 		baseRows,
 		rows,

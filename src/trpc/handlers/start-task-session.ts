@@ -268,6 +268,7 @@ export async function handleStartTaskSession(
 			rows: body.rows,
 			projectId: projectScope.projectId,
 			projectPath: projectScope.projectPath,
+			claudeFullscreenEnabled: scopedRuntimeConfig.claudeFullscreenEnabled,
 			statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
 			worktreeSystemPromptTemplate: scopedRuntimeConfig.worktreeSystemPromptTemplate,
 			env: body.baseRef ? { QUARTERDECK_BASE_REF: body.baseRef } : undefined,

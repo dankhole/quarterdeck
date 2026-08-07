@@ -54,7 +54,31 @@ describe.sequential("runtime-config persistence", () => {
 				expect(state.globalConfigPath).toBe(join(tempHome, ".quarterdeck", "config.json"));
 				expect(state.projectConfigPath).toBeNull();
 				expect(state.shortcuts).toEqual([]);
+				expect(state.claudeFullscreenEnabled).toBe(false);
 				expect(state.statuslineEnabled).toBe(false);
+			});
+		} finally {
+			cleanupHome();
+		}
+	});
+
+	it("persists the Claude fullscreen renderer opt-in globally", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-claude-fullscreen-");
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const updated = await updateRuntimeConfig(null, {
+					claudeFullscreenEnabled: true,
+				});
+				expect(updated.claudeFullscreenEnabled).toBe(true);
+
+				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
+					claudeFullscreenEnabled?: boolean;
+				};
+				expect(globalPayload.claudeFullscreenEnabled).toBe(true);
+
+				const reloaded = await loadGlobalRuntimeConfig();
+				expect(reloaded.claudeFullscreenEnabled).toBe(true);
 			});
 		} finally {
 			cleanupHome();

@@ -251,6 +251,71 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(settings.statusLine).toBeUndefined();
 	});
 
+	it("leaves Claude fullscreen rendering disabled unless explicitly enabled", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-claude-fullscreen-default",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		expect(launch.env.CLAUDE_CODE_NO_FLICKER).toBe("0");
+		expect(launch.env.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN).toBe("1");
+	});
+
+	it("enables Claude fullscreen rendering through the launch environment", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-claude-fullscreen-enabled",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			claudeFullscreenEnabled: true,
+			env: { CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "0" },
+		});
+
+		expect(launch.env.CLAUDE_CODE_NO_FLICKER).toBe("1");
+		expect(launch.env.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN).toBeUndefined();
+	});
+
+	it("honors Claude's explicit classic-renderer escape hatch", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-claude-fullscreen-escape-hatch",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			claudeFullscreenEnabled: true,
+			env: { CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "1" },
+		});
+
+		expect(launch.env.CLAUDE_CODE_NO_FLICKER).toBe("0");
+		expect(launch.env.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN).toBe("1");
+	});
+
+	it("does not apply the Claude fullscreen environment to other agents", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-fullscreen-ignored",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			claudeFullscreenEnabled: true,
+		});
+
+		expect(launch.env.CLAUDE_CODE_NO_FLICKER).toBeUndefined();
+		expect(launch.env.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN).toBeUndefined();
+	});
+
 	it("injects the Quarterdeck Claude status line when explicitly enabled", async () => {
 		setupTempHome();
 		await prepareAgentLaunch({

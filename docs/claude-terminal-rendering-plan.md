@@ -1,12 +1,12 @@
 # Claude terminal rendering plan
 
-Status: investigated; recommended direction is staged dogfooding, not yet implemented.
+Status: implemented behind a default-off setting; interactive dogfooding and rollout decision remain.
 
 ## Decision
 
 Use Claude Code's fullscreen renderer as the durable fix for redraw noise and scrollback presentation. Do not try to infer and remove redraw frames from the raw PTY byte stream.
 
-Quarterdeck should first expose fullscreen rendering as an opt-in Claude setting. Once mouse input, selection, restore, and pooled-terminal behavior are stable in dogfood, it can become the default with an explicit classic-renderer escape hatch.
+Quarterdeck now exposes fullscreen rendering as an opt-in Claude setting. Once mouse input, selection, restore, and pooled-terminal behavior are stable in dogfood, it can become the default with an explicit classic-renderer escape hatch.
 
 ## Why the classic renderer cannot provide both clean redraws and native scrollback
 
@@ -22,15 +22,16 @@ Quarterdeck's existing restore model is compatible with that boundary: the serve
 
 The separate `--ax-screen-reader` mode is not the primary presentation fix. It deliberately flattens decorations and animation for assistive technology; it is useful as an accessibility option or diagnostic fallback, but does not preserve the intended Claude TUI appearance.
 
-## Proposed implementation
+## Implemented experiment boundary
 
-1. Add a global `claudeFullscreenEnabled` setting using the existing config/settings-form pattern. Start it disabled while the upstream feature remains a research preview.
-2. When enabled, add `CLAUDE_CODE_NO_FLICKER=1` to Claude's launch environment. Keep the status-line setting independent so either renderer can run with or without Quarterdeck's injected status line.
-3. Carry the selected renderer mode into the active terminal-session record. Fullscreen sessions should always use the real reported row count; disable Claude's detached 3x row multiplier for them because virtualized history belongs to Claude and extra hidden rows only create unnecessary resize/redraw work.
-4. Keep the current browser/server terminal options aligned. Do not special-case `scrollOnEraseInDisplay` until fullscreen dogfood proves whether any normal-buffer output still needs it.
-5. After dogfood, consider enabling fullscreen by default. Preserve a visible classic-renderer toggle and support the upstream `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` escape hatch for regressions.
+1. The global `claudeFullscreenEnabled` setting defaults off and is exposed under Harnesses. It applies to new or restarted sessions and documents the Claude Code 2.1.89 minimum without adding another launch-path version probe.
+2. Enabled Claude launches receive `CLAUDE_CODE_NO_FLICKER=1`; disabled launches receive `CLAUDE_CODE_NO_FLICKER=0` plus `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1`. The explicit false works across the full 2.1.89+ preview range, while the newer force-classic variable also overrides a saved `/tui` preference. Codex, Pi, and shell sessions receive no renderer environment override. The status-line setting remains independent.
+3. The selected launch mode is carried through the task-session request, active process record, startup resume, and automatic restart. The documented `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` escape hatch and Claude's screen-reader/accessibility modes take precedence over the setting and select the matching classic row policy. The state is runtime-only and requires no persisted session migration.
+4. Fullscreen sessions always use real reported rows, including while detached. Classic Claude alone retains the detached 3x row multiplier for native scrollback history.
+5. Browser and server terminal options remain aligned, and both renderer modes retain Claude's pre-restore forced resize. `scrollOnEraseInDisplay` is unchanged until dogfood establishes whether fullscreen normal-buffer output needs different treatment.
+6. `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` remains an upstream environment-level escape hatch, and Quarterdeck logs when it overrides the enabled setting. After dogfood, consider enabling fullscreen by default while retaining a visible classic renderer choice.
 
-## Validation gates
+## Dogfood and rollout gates
 
 - New, resumed, restarted, pooled, parked, and reattached Claude sessions restore to the bottom without duplicated frames or a premature loading-overlay reveal.
 - Trackpad and mouse-wheel scrolling, Page Up/Down, Ctrl+Home/End, and Claude's transcript search work through xterm mouse reporting.

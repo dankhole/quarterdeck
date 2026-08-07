@@ -18,6 +18,7 @@ import type { TerminalStateMirror } from "./terminal-state-mirror";
 export interface ActiveProcessState {
 	session: PtySession;
 	agentId: StartTaskSessionRequest["agentId"] | null;
+	claudeFullscreenEnabled: boolean;
 	workspaceTrustBuffer: string | null;
 	cols: number;
 	baseRows: number;
@@ -64,6 +65,7 @@ export interface StartTaskSessionRequest {
 	env?: Record<string, string | undefined>;
 	projectId?: string;
 	projectPath?: string;
+	claudeFullscreenEnabled?: boolean;
 	statuslineEnabled?: boolean;
 	worktreeSystemPromptTemplate?: string;
 }
@@ -149,11 +151,16 @@ export function createProcessEntry(taskId: string): ProcessEntry {
 
 export const DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER = 3;
 
+export interface EffectiveTerminalRowPolicy {
+	claudeFullscreenEnabled?: boolean;
+}
+
 export function resolveEffectiveTerminalRowMultiplier(
 	agentId: StartTaskSessionRequest["agentId"] | null,
 	hasBrowserOutputListener: boolean,
+	policy: EffectiveTerminalRowPolicy = {},
 ): number {
-	if (hasBrowserOutputListener || agentId !== "claude") {
+	if (hasBrowserOutputListener || agentId !== "claude" || policy.claudeFullscreenEnabled === true) {
 		return 1;
 	}
 	return DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER;
@@ -163,8 +170,12 @@ export function resolveEffectiveTerminalRows(
 	agentId: StartTaskSessionRequest["agentId"] | null,
 	baseRows: number,
 	hasBrowserOutputListener: boolean,
+	policy: EffectiveTerminalRowPolicy = {},
 ): number {
-	return Math.max(1, Math.floor(baseRows)) * resolveEffectiveTerminalRowMultiplier(agentId, hasBrowserOutputListener);
+	return (
+		Math.max(1, Math.floor(baseRows)) *
+		resolveEffectiveTerminalRowMultiplier(agentId, hasBrowserOutputListener, policy)
+	);
 }
 
 /** Check whether any listener has an output handler attached. */
@@ -185,6 +196,7 @@ import { createTerminalProtocolFilterState } from "./terminal-protocol-filter";
 export interface CreateActiveProcessStateOptions {
 	session: PtySession;
 	agentId: StartTaskSessionRequest["agentId"] | null;
+	claudeFullscreenEnabled?: boolean;
 	cols: number;
 	baseRows: number;
 	rows: number;
@@ -196,6 +208,7 @@ export function createActiveProcessState(opts: CreateActiveProcessStateOptions):
 	return {
 		session: opts.session,
 		agentId: opts.agentId,
+		claudeFullscreenEnabled: opts.agentId === "claude" && opts.claudeFullscreenEnabled === true,
 		workspaceTrustBuffer: opts.willAutoTrust ? "" : null,
 		cols: opts.cols,
 		baseRows: opts.baseRows,

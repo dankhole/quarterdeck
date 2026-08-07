@@ -665,6 +665,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 					awaitReview: true,
 					projectId,
 					projectPath,
+					claudeFullscreenEnabled: runtimeConfig.claudeFullscreenEnabled,
 					statuslineEnabled: runtimeConfig.statuslineEnabled,
 				})
 				.catch((error) => {

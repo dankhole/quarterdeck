@@ -1,0 +1,66 @@
+import { describe, expect, it } from "vitest";
+
+import {
+	CLAUDE_CLASSIC_RENDERER_ENV_VAR,
+	CLAUDE_FULLSCREEN_ENV_VAR,
+	createClaudeRendererEnvironment,
+	resolveClaudeRendererPolicy,
+} from "../../../src/terminal/claude-renderer-policy";
+
+describe("Claude renderer policy", () => {
+	it("selects classic mode when the Quarterdeck setting is off", () => {
+		expect(resolveClaudeRendererPolicy({ fullscreenEnabled: false, inheritedEnv: {} })).toEqual({
+			mode: "classic",
+			reason: "setting_disabled",
+		});
+	});
+
+	it("selects fullscreen mode when enabled", () => {
+		expect(resolveClaudeRendererPolicy({ fullscreenEnabled: true, inheritedEnv: {} })).toEqual({
+			mode: "fullscreen",
+			reason: "fullscreen_enabled",
+		});
+	});
+
+	it("honors Claude's explicit classic-renderer escape hatch", () => {
+		expect(
+			resolveClaudeRendererPolicy({
+				fullscreenEnabled: true,
+				inheritedEnv: { [CLAUDE_CLASSIC_RENDERER_ENV_VAR]: "1" },
+			}),
+		).toEqual({ mode: "classic", reason: "classic_escape_hatch" });
+	});
+
+	it("lets a launch override disable an inherited escape hatch", () => {
+		expect(
+			resolveClaudeRendererPolicy({
+				fullscreenEnabled: true,
+				inheritedEnv: { [CLAUDE_CLASSIC_RENDERER_ENV_VAR]: "1" },
+				envOverrides: { [CLAUDE_CLASSIC_RENDERER_ENV_VAR]: "0" },
+			}),
+		).toEqual({ mode: "fullscreen", reason: "fullscreen_enabled" });
+	});
+
+	it.each([
+		{ args: ["--ax-screen-reader"], envOverrides: undefined },
+		{ args: [], envOverrides: { CLAUDE_AX_SCREEN_READER: "1" } },
+		{ args: [], envOverrides: { CLAUDE_CODE_ACCESSIBILITY: "true" } },
+	])("keeps accessibility launches on the classic renderer", ({ args, envOverrides }) => {
+		expect(
+			resolveClaudeRendererPolicy({
+				fullscreenEnabled: true,
+				args,
+				envOverrides,
+				inheritedEnv: {},
+			}),
+		).toEqual({ mode: "classic", reason: "accessibility_mode" });
+	});
+
+	it("creates a deterministic launch environment for either mode", () => {
+		expect(createClaudeRendererEnvironment("fullscreen")).toEqual({ [CLAUDE_FULLSCREEN_ENV_VAR]: "1" });
+		expect(createClaudeRendererEnvironment("classic")).toEqual({
+			[CLAUDE_FULLSCREEN_ENV_VAR]: "0",
+			[CLAUDE_CLASSIC_RENDERER_ENV_VAR]: "1",
+		});
+	});
+});

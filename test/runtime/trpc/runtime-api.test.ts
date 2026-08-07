@@ -238,6 +238,36 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 	});
 
+	it("passes the Claude fullscreen setting into the task session launch", async () => {
+		const card = createCard({ agentId: "claude", workingDirectory: "/tmp/claude-worktree" });
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
+		taskWorktreeMocks.pathExists.mockResolvedValue(true);
+
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => createSummary()),
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const deps = createDeps(terminalManager);
+		deps.config.loadScopedRuntimeConfig.mockResolvedValue(
+			createTestRuntimeConfigState({ claudeFullscreenEnabled: true }),
+		);
+		const api = createRuntimeApi(deps);
+
+		const response = await api.startTaskSession(defaultScope, {
+			taskId: "task-1",
+			baseRef: "main",
+			prompt: "Do something",
+		});
+
+		expect(response.ok).toBe(true);
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				agentId: "claude",
+				claudeFullscreenEnabled: true,
+			}),
+		);
+	});
+
 	it("falls back to worktree lookup when persisted workingDirectory does not exist on disk", async () => {
 		const card = createCard({ workingDirectory: "/tmp/deleted-worktree" });
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
