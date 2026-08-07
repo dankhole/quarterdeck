@@ -221,8 +221,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		shouldUseNavigationPath,
 	} = useProjectUiState({
 		board,
-		canPersistProjectState: projectSync.canPersistProjectState,
-		currentProjectId: projectNavigation.currentProjectId,
+		boardProjectId: projectSync.boardProjectId,
 		projects: projectNavigation.projects,
 		navigationCurrentProjectId: projectNavigation.navigationCurrentProjectId,
 		selectedTaskId,

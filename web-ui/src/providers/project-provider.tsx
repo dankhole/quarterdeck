@@ -57,6 +57,7 @@ export interface ProjectNotificationContextValue {
 }
 
 export interface ProjectSyncContextValue {
+	boardProjectId: string | null;
 	projectPath: string | null;
 	projectGit: RuntimeGitRepositoryInfo | null;
 	refreshProjectState: () => Promise<void>;
@@ -185,6 +186,7 @@ export function ProjectProvider({
 	const isDocumentVisible = useDocumentVisibility();
 
 	const {
+		boardProjectId,
 		projectPath,
 		projectGit,
 		projectRevision,
@@ -285,6 +287,7 @@ export function ProjectProvider({
 
 	const syncValue = useMemo<ProjectSyncContextValue>(
 		() => ({
+			boardProjectId,
 			projectPath,
 			projectGit,
 			refreshProjectState,
@@ -300,6 +303,7 @@ export function ProjectProvider({
 			isServedFromBoardCache,
 		}),
 		[
+			boardProjectId,
 			projectPath,
 			projectGit,
 			refreshProjectState,

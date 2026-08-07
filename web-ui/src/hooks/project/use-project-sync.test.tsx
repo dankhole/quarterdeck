@@ -157,6 +157,7 @@ function createDeferred<T>() {
 
 interface HookSnapshot {
 	board: BoardData;
+	boardProjectId: string | null;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
 	canPersistProjectState: boolean;
 	projectRevision: number | null;
@@ -202,6 +203,7 @@ function HookHarness({
 		[],
 	);
 	const {
+		boardProjectId,
 		refreshProjectState,
 		resetProjectSyncState,
 		projectRevision,
@@ -221,6 +223,7 @@ function HookHarness({
 	useEffect(() => {
 		onSnapshot({
 			board,
+			boardProjectId,
 			sessions,
 			canPersistProjectState,
 			projectRevision,
@@ -231,6 +234,7 @@ function HookHarness({
 		});
 	}, [
 		board,
+		boardProjectId,
 		canPersistProjectState,
 		isServedFromBoardCache,
 		onSnapshot,
@@ -293,6 +297,7 @@ describe("useProjectSync", () => {
 		assertSnapshot(latestSnapshot, "Expected an initial hook snapshot.");
 		const initialSnapshot: HookSnapshot = latestSnapshot;
 		expect(initialSnapshot.board.columns[0]?.cards[0]?.id).toBe("persisted-task");
+		expect(initialSnapshot.boardProjectId).toBe("project-a");
 		expect(initialSnapshot.canPersistProjectState).toBe(true);
 
 		await act(async () => {
@@ -312,6 +317,126 @@ describe("useProjectSync", () => {
 		const snapshot: HookSnapshot = latestSnapshot;
 		expect(snapshot.board.columns[0]?.cards[0]?.id).toBe("persisted-task");
 		expect(snapshot.board.columns[0]?.cards[0]?.id).not.toBe("stale-task");
+	});
+
+	it("clears board ownership while an uncached switch target loads", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId="project-a"
+					streamedProjectState={createProjectState("persisted-task", 1)}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		assertSnapshot(latestSnapshot, "Expected an initial hook snapshot.");
+		const initialSnapshot: HookSnapshot = latestSnapshot;
+
+		await act(async () => {
+			initialSnapshot.resetProjectSyncState("project-b");
+		});
+
+		assertSnapshot(latestSnapshot, "Expected an uncached target snapshot.");
+		const targetSnapshot: HookSnapshot = latestSnapshot;
+		expect(targetSnapshot.board.columns.every((column) => column.cards.length === 0)).toBe(true);
+		expect(targetSnapshot.boardProjectId).toBeNull();
+		expect(targetSnapshot.canPersistProjectState).toBe(false);
+		expect(targetSnapshot.isServedFromBoardCache).toBe(false);
+	});
+
+	it("keeps board ownership on the latest target across rapid switches and stale snapshots", async () => {
+		for (const [projectId, taskId, revision] of [
+			["project-b", "cached-b-task", 3],
+			["project-c", "cached-c-task", 4],
+		] as const) {
+			stashProjectBoard(projectId, {
+				board: createBoard(taskId),
+				sessions: {},
+				authoritativeRevision: revision,
+				projectPath: `/tmp/${projectId}`,
+				projectGit: {
+					currentBranch: "main",
+					defaultBranch: "main",
+					branches: ["main"],
+				},
+			});
+		}
+
+		let latestSnapshot: HookSnapshot | null = null;
+		const onSnapshot = (snapshot: HookSnapshot) => {
+			latestSnapshot = snapshot;
+		};
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId="project-a"
+					streamedProjectState={createProjectState("persisted-task", 1)}
+					onSnapshot={onSnapshot}
+				/>,
+			);
+		});
+
+		assertSnapshot(latestSnapshot, "Expected an initial hook snapshot.");
+		const initialSnapshot: HookSnapshot = latestSnapshot;
+		await act(async () => {
+			initialSnapshot.resetProjectSyncState("project-b");
+		});
+
+		assertSnapshot(latestSnapshot, "Expected the first cached target snapshot.");
+		const firstTargetSnapshot: HookSnapshot = latestSnapshot;
+		expect(firstTargetSnapshot.board.columns[0]?.cards[0]?.id).toBe("cached-b-task");
+		expect(firstTargetSnapshot.boardProjectId).toBe("project-b");
+
+		await act(async () => {
+			firstTargetSnapshot.resetProjectSyncState("project-c");
+		});
+
+		assertSnapshot(latestSnapshot, "Expected the latest cached target snapshot.");
+		const latestTargetSnapshot: HookSnapshot = latestSnapshot;
+		expect(latestTargetSnapshot.board.columns[0]?.cards[0]?.id).toBe("cached-c-task");
+		expect(latestTargetSnapshot.boardProjectId).toBe("project-c");
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId="project-b"
+					streamedProjectState={createProjectState("stale-b-task", 4)}
+					onSnapshot={onSnapshot}
+				/>,
+			);
+		});
+
+		assertSnapshot(latestSnapshot, "Expected stale project B state to be ignored.");
+		const staleSnapshot: HookSnapshot = latestSnapshot;
+		expect(staleSnapshot.board.columns[0]?.cards[0]?.id).toBe("cached-c-task");
+		expect(staleSnapshot.boardProjectId).toBe("project-c");
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId="project-c"
+					streamedProjectState={{
+						...createProjectState("authoritative-c-task", 4),
+						repoPath: "/tmp/project-c",
+						statePath: "/tmp/project-c/.quarterdeck",
+					}}
+					onSnapshot={onSnapshot}
+				/>,
+			);
+		});
+
+		assertSnapshot(latestSnapshot, "Expected the project C authoritative handoff.");
+		const authoritativeSnapshot: HookSnapshot = latestSnapshot;
+		expect(authoritativeSnapshot.board.columns[0]?.cards[0]?.id).toBe("cached-c-task");
+		expect(authoritativeSnapshot.boardProjectId).toBe("project-c");
+		expect(authoritativeSnapshot.canPersistProjectState).toBe(true);
+		expect(authoritativeSnapshot.isServedFromBoardCache).toBe(false);
 	});
 
 	it("treats a restored cached board as non-authoritative until matching project state arrives", async () => {
@@ -351,6 +476,7 @@ describe("useProjectSync", () => {
 		assertSnapshot(latestSnapshot, "Expected a cached hook snapshot.");
 		const cachedSnapshot: HookSnapshot = latestSnapshot;
 		expect(cachedSnapshot.board.columns[0]?.cards[0]?.id).toBe("cached-task");
+		expect(cachedSnapshot.boardProjectId).toBe("project-b");
 		expect(cachedSnapshot.canPersistProjectState).toBe(false);
 		expect(cachedSnapshot.projectRevision).toBeNull();
 		expect(cachedSnapshot.isServedFromBoardCache).toBe(true);
@@ -374,6 +500,7 @@ describe("useProjectSync", () => {
 		assertSnapshot(latestSnapshot, "Expected an authoritative hook snapshot.");
 		const authoritativeSnapshot: HookSnapshot = latestSnapshot;
 		expect(authoritativeSnapshot.board.columns[0]?.cards[0]?.id).toBe("cached-task");
+		expect(authoritativeSnapshot.boardProjectId).toBe("project-b");
 		expect(authoritativeSnapshot.canPersistProjectState).toBe(true);
 		expect(authoritativeSnapshot.projectRevision).toBe(3);
 		expect(authoritativeSnapshot.isServedFromBoardCache).toBe(false);

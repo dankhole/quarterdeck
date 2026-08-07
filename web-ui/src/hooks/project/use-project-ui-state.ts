@@ -8,8 +8,7 @@ type ProjectSummaries = ComponentProps<typeof ProjectNavigationPanel>["projects"
 
 interface UseProjectUiStateInput {
 	board: BoardData;
-	canPersistProjectState: boolean;
-	currentProjectId: string | null;
+	boardProjectId: string | null;
 	projects: ProjectSummaries;
 	navigationCurrentProjectId: string | null;
 	selectedTaskId: string | null;
@@ -32,8 +31,7 @@ interface UseProjectUiStateResult {
 
 export function useProjectUiState({
 	board,
-	canPersistProjectState,
-	currentProjectId,
+	boardProjectId,
 	projects,
 	navigationCurrentProjectId,
 	selectedTaskId,
@@ -46,19 +44,19 @@ export function useProjectUiState({
 	hasReceivedSnapshot,
 }: UseProjectUiStateInput): UseProjectUiStateResult {
 	const displayedProjects = useMemo(() => {
-		if (!canPersistProjectState || !currentProjectId) {
+		if (!boardProjectId) {
 			return projects;
 		}
 		const localCounts = countTasksByColumn(board);
 		return projects.map((project) =>
-			project.id === currentProjectId
+			project.id === boardProjectId
 				? {
 						...project,
 						taskCounts: localCounts,
 					}
 				: project,
 		);
-	}, [board, canPersistProjectState, currentProjectId, projects]);
+	}, [board, boardProjectId, projects]);
 
 	const navigationProjectPath = useMemo(() => {
 		if (!navigationCurrentProjectId) {

@@ -28,6 +28,7 @@ interface UseProjectSyncInput {
 }
 
 interface UseProjectSyncResult {
+	boardProjectId: string | null;
 	projectPath: string | null;
 	projectGit: RuntimeGitRepositoryInfo | null;
 	projectRevision: number | null;
@@ -56,6 +57,7 @@ export function useProjectSync({
 	setProjectBoardSessions,
 	setCanPersistProjectState,
 }: UseProjectSyncInput): UseProjectSyncResult {
+	const [boardProjectId, setBoardProjectId] = useState<string | null>(null);
 	const [projectPath, setProjectPath] = useState<string | null>(null);
 	const [projectGit, setProjectGit] = useState<RuntimeGitRepositoryInfo | null>(null);
 	const [appliedProjectId, setAppliedProjectId] = useState<string | null>(null);
@@ -93,6 +95,7 @@ export function useProjectSync({
 				syncTargetProjectIdRef.current = null;
 				cachedBoardRestoreRef.current = null;
 				setCanPersistProjectState(false);
+				setBoardProjectId(null);
 				setProjectPath(null);
 				setStoreProjectPath(null);
 				setProjectGit(null);
@@ -149,6 +152,7 @@ export function useProjectSync({
 				return;
 			}
 			setProjectBoardSessions(applyResult.nextState);
+			setBoardProjectId(currentProjectId);
 			if (applyResult.shouldBumpHydrationNonce) {
 				setProjectHydrationState((current) => ({
 					nonce: current.nonce + 1,
@@ -248,6 +252,7 @@ export function useProjectSync({
 					board: cached.board,
 					sessions: cached.sessions,
 				});
+				setBoardProjectId(restoreId);
 				setProjectPath(cached.projectPath);
 				setStoreProjectPath(cached.projectPath);
 				setProjectGit(cached.projectGit);
@@ -261,6 +266,7 @@ export function useProjectSync({
 					board: createInitialBoardData(),
 					sessions: {},
 				});
+				setBoardProjectId(null);
 				setProjectPath(null);
 				setStoreProjectPath(null);
 				setProjectGit(null);
@@ -289,6 +295,7 @@ export function useProjectSync({
 	}, [hasReceivedSnapshot, isDocumentVisible, refreshProjectState, streamedProjectState]);
 
 	return {
+		boardProjectId,
 		projectPath,
 		projectGit,
 		projectRevision,

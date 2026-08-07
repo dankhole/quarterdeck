@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: keep project sidebar task pills current
+
+- Project sidebar task-count pills now follow the board that is actually displayed, including cached boards shown immediately during project switches, instead of waiting for the authoritative project snapshot to finish loading.
+
 ### Feature: add experimental Claude fullscreen rendering
 
 - Settings now exposes a default-off Claude fullscreen renderer toggle that enables Claude Code's alternate-screen, virtualized transcript mode for new and restarted Claude sessions.
