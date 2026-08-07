@@ -45,7 +45,16 @@ interface UseTrashWorkflowInput {
 		toColumnId: BoardColumnId,
 		options?: { skipKickoff?: boolean; skipTrashWorkflow?: boolean; skipWorkingChangeWarning?: boolean },
 	) => "started" | "blocked" | "unavailable";
-	requestMoveTaskToTrashWithAnimation: (taskId: string, fromColumnId: BoardColumnId) => Promise<void>;
+	requestMoveTaskToTrash: (
+		taskId: string,
+		fromColumnId: BoardColumnId,
+		options?: { optimisticMoveApplied?: boolean; skipWorkingChangeWarning?: boolean },
+	) => Promise<void>;
+	requestMoveTaskToTrashWithAnimation: (
+		taskId: string,
+		fromColumnId: BoardColumnId,
+		options?: { optimisticMoveApplied?: boolean; skipWorkingChangeWarning?: boolean },
+	) => Promise<void>;
 	confirmMoveTaskToTrash: (task: BoardCard, currentBoard?: BoardData) => Promise<void>;
 }
 
@@ -81,6 +90,7 @@ export function useTrashWorkflow({
 	cleanupTaskWorktree,
 	resumeTaskFromTrash,
 	tryProgrammaticCardMove,
+	requestMoveTaskToTrash,
 	requestMoveTaskToTrashWithAnimation,
 	confirmMoveTaskToTrash,
 }: UseTrashWorkflowInput): UseTrashWorkflowResult {
@@ -130,10 +140,10 @@ export function useTrashWorkflow({
 			return;
 		}
 		setTaskMoveToTrashLoading(selectedCard.card.id, true);
-		void requestMoveTaskToTrashWithAnimation(selectedCard.card.id, selectedCard.column.id).finally(() => {
+		void requestMoveTaskToTrash(selectedCard.card.id, selectedCard.column.id).finally(() => {
 			setTaskMoveToTrashLoading(selectedCard.card.id, false);
 		});
-	}, [requestMoveTaskToTrashWithAnimation, selectedCard, setTaskMoveToTrashLoading, trashWarningState.open]);
+	}, [requestMoveTaskToTrash, selectedCard, setTaskMoveToTrashLoading, trashWarningState.open]);
 
 	const handleMoveReviewCardToTrash = useCallback(
 		(taskId: string) => {
@@ -143,11 +153,11 @@ export function useTrashWorkflow({
 			const selection = findCardSelection(board, taskId);
 			const fromColumnId = selection?.column.id ?? "review";
 			setTaskMoveToTrashLoading(taskId, true);
-			void requestMoveTaskToTrashWithAnimation(taskId, fromColumnId).finally(() => {
+			void requestMoveTaskToTrash(taskId, fromColumnId).finally(() => {
 				setTaskMoveToTrashLoading(taskId, false);
 			});
 		},
-		[board, requestMoveTaskToTrashWithAnimation, setTaskMoveToTrashLoading, trashWarningState.open],
+		[board, requestMoveTaskToTrash, setTaskMoveToTrashLoading, trashWarningState.open],
 	);
 
 	const handleRestoreTaskFromTrash = useCallback(
@@ -321,15 +331,31 @@ export function useTrashWorkflow({
 			log.debug("trash warning confirm skipped without open card");
 			return;
 		}
-		const { card } = trashWarningState;
-		log.debug("trash warning confirm accepted", { cardId: card.id });
+		const { card, fromColumnId, optimisticMoveApplied } = trashWarningState;
+		log.debug("trash warning confirm accepted", { cardId: card.id, fromColumnId, optimisticMoveApplied });
 		trashWarningConfirmedRef.current = true;
 		setTrashWarningState(INITIAL_TRASH_WARNING_STATE);
+
+		if (!optimisticMoveApplied && fromColumnId) {
+			setTaskMoveToTrashLoading(card.id, true);
+			void requestMoveTaskToTrashWithAnimation(card.id, fromColumnId, {
+				skipWorkingChangeWarning: true,
+			})
+				.then(
+					() => log.debug("confirmed trash move resolved", { cardId: card.id }),
+					(err) => log.error("confirmed trash move failed", { cardId: card.id, err }),
+				)
+				.finally(() => {
+					setTaskMoveToTrashLoading(card.id, false);
+				});
+			return;
+		}
+
 		void confirmMoveTaskToTrash(card).then(
 			() => log.debug("trash warning confirm move resolved", { cardId: card.id }),
 			(err) => log.error("trash warning confirm move failed", { cardId: card.id, err }),
 		);
-	}, [confirmMoveTaskToTrash, trashWarningState]);
+	}, [confirmMoveTaskToTrash, requestMoveTaskToTrashWithAnimation, setTaskMoveToTrashLoading, trashWarningState]);
 
 	const resetTrashWorkflowState = useCallback(() => {
 		moveToTrashLoadingByIdRef.current = {};

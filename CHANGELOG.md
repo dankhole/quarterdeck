@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: confirm task trash moves before moving
+
+- Trash buttons now keep tasks in their current column while the confirmation dialog is open, then run the existing animated move and session/worktree cleanup only after confirmation; drag-to-Trash keeps its existing optimistic cancel/revert behavior.
+
 ### Fix: refresh LLM helper model guidance
 
 - LLM helpers now default to Claude Haiku 4.5 when `QUARTERDECK_LLM_MODEL` is unset, failure logs include a concrete replacement hint when the retired Claude 3.5 Haiku Bedrock model fails, and setup docs/UI now only require the helper base URL and API key.

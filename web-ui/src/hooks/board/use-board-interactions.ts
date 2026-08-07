@@ -196,6 +196,7 @@ export function useBoardInteractions({
 		cleanupTaskWorktree,
 		resumeTaskFromTrash,
 		tryProgrammaticCardMove,
+		requestMoveTaskToTrash,
 		requestMoveTaskToTrashWithAnimation,
 		confirmMoveTaskToTrash,
 	});
