@@ -144,7 +144,7 @@ describe("useTaskEditor", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
-		localStorage.clear();
+		window.localStorage.clear();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -164,7 +164,7 @@ describe("useTaskEditor", () => {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
-		localStorage.clear();
+		window.localStorage.clear();
 	});
 
 	it("returns the edited task id when saving a task", async () => {
@@ -356,14 +356,22 @@ describe("useTaskEditor", () => {
 		const snapshot = requireSnapshot(latestSnapshot);
 		expect(snapshot.board.columns[0]?.cards[0]?.agentId).toBe("codex");
 		expect(snapshot.newTaskAgentId).toBe("codex");
-		expect(localStorage.getItem(LocalStorageKey.TaskCreateLastAgentId)).toBe("codex");
+		expect(window.localStorage.getItem(LocalStorageKey.TaskCreateLastAgentId)).toBe("codex");
 	});
 
 	it("remembers the selected agent in session when localStorage writes fail", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const setItemSpy = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
-			throw new Error("localStorage unavailable");
-		});
+		const unavailableLocalStorage: Storage = {
+			clear: vi.fn(),
+			getItem: vi.fn(() => null),
+			key: vi.fn(() => null),
+			length: 0,
+			removeItem: vi.fn(),
+			setItem: vi.fn(() => {
+				throw new Error("localStorage unavailable");
+			}),
+		};
+		const localStorageSpy = vi.spyOn(window, "localStorage", "get").mockReturnValue(unavailableLocalStorage);
 
 		try {
 			await act(async () => {
@@ -394,15 +402,16 @@ describe("useTaskEditor", () => {
 			const snapshot = requireSnapshot(latestSnapshot);
 			expect(snapshot.board.columns[0]?.cards[0]?.agentId).toBe("codex");
 			expect(snapshot.newTaskAgentId).toBe("codex");
-			expect(window.localStorage.getItem(LocalStorageKey.TaskCreateLastAgentId)).toBeNull();
+			expect(unavailableLocalStorage.setItem).toHaveBeenCalledWith(LocalStorageKey.TaskCreateLastAgentId, "codex");
+			expect(unavailableLocalStorage.getItem(LocalStorageKey.TaskCreateLastAgentId)).toBeNull();
 		} finally {
-			setItemSpy.mockRestore();
+			localStorageSpy.mockRestore();
 		}
 	});
 
 	it("uses the remembered agent when opening the create dialog", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		localStorage.setItem(LocalStorageKey.TaskCreateLastAgentId, "codex");
+		window.localStorage.setItem(LocalStorageKey.TaskCreateLastAgentId, "codex");
 
 		await act(async () => {
 			root.render(
@@ -438,7 +447,7 @@ describe("useTaskEditor", () => {
 			);
 		});
 
-		localStorage.setItem(LocalStorageKey.TaskCreateLastAgentId, "codex");
+		window.localStorage.setItem(LocalStorageKey.TaskCreateLastAgentId, "codex");
 
 		await act(async () => {
 			requireSnapshot(latestSnapshot).handleOpenCreateTask();
@@ -467,12 +476,12 @@ describe("useTaskEditor", () => {
 		});
 
 		expect(requireSnapshot(latestSnapshot).newTaskAgentId).toBe("claude");
-		expect(localStorage.getItem(LocalStorageKey.TaskCreateLastAgentId)).toBeNull();
+		expect(window.localStorage.getItem(LocalStorageKey.TaskCreateLastAgentId)).toBeNull();
 	});
 
 	it("falls back to the fallback agent when the remembered agent is unavailable", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		localStorage.setItem(LocalStorageKey.TaskCreateLastAgentId, "codex");
+		window.localStorage.setItem(LocalStorageKey.TaskCreateLastAgentId, "codex");
 
 		await act(async () => {
 			root.render(
