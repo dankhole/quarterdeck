@@ -15,7 +15,8 @@
 ### Fix: improve Claude terminal presentation controls
 
 - Claude restores now force the current browser geometry before requesting the server snapshot, matching Codex so geometry-sensitive redraws target the visible terminal before restoration.
-- Quarterdeck's injected Claude status line now defaults off and is available as an opt-in Harnesses setting for new or restarted Claude sessions.
+- Fullscreen Claude sessions now default to Claude's documented 3x wheel multiplier so xterm mouse forwarding scrolls conversations at a practical speed while preserving explicit `CLAUDE_CODE_SCROLL_SPEED` overrides.
+- Harness settings now group fullscreen rendering and Quarterdeck's opt-in status line into a compact, collapsed-by-default Claude Code subsection; disabling the Quarterdeck line continues to preserve the user's own Claude status-line settings.
 
 ### Fix: confirm task trash moves before moving
 
@@ -24,6 +25,8 @@
 ### Fix: refresh LLM helper model guidance
 
 - LLM helpers now default to Claude Haiku 4.5 when `QUARTERDECK_LLM_MODEL` is unset, failure logs include a concrete replacement hint when the retired Claude 3.5 Haiku Bedrock model fails, and setup docs/UI now only require the helper base URL and API key.
+- Task-title generation now allows six seconds before falling back, and timeout logs report the configured deadline without a redundant `durationMs` value that merely mirrored the abort timer.
+- Automatic titles now coalesce overlapping board-save triggers per project/task, preventing repeated saves while a title is still pending from launching duplicate LLM requests; later saves can retry after the active request settles.
 
 ### Fix: port selected upstream hardening
 

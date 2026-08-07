@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
 	CLAUDE_CLASSIC_RENDERER_ENV_VAR,
 	CLAUDE_FULLSCREEN_ENV_VAR,
+	CLAUDE_SCROLL_SPEED_ENV_VAR,
 	createClaudeRendererEnvironment,
+	DEFAULT_CLAUDE_FULLSCREEN_SCROLL_SPEED,
 	resolveClaudeRendererPolicy,
 } from "../../../src/terminal/claude-renderer-policy";
 
@@ -66,10 +68,33 @@ describe("Claude renderer policy", () => {
 	});
 
 	it("creates a deterministic launch environment for either mode", () => {
-		expect(createClaudeRendererEnvironment("fullscreen")).toEqual({ [CLAUDE_FULLSCREEN_ENV_VAR]: "1" });
+		expect(createClaudeRendererEnvironment("fullscreen", { inheritedEnv: {} })).toEqual({
+			[CLAUDE_FULLSCREEN_ENV_VAR]: "1",
+			[CLAUDE_SCROLL_SPEED_ENV_VAR]: DEFAULT_CLAUDE_FULLSCREEN_SCROLL_SPEED,
+		});
 		expect(createClaudeRendererEnvironment("classic")).toEqual({
 			[CLAUDE_FULLSCREEN_ENV_VAR]: "0",
 			[CLAUDE_CLASSIC_RENDERER_ENV_VAR]: "1",
+		});
+	});
+
+	it("preserves an explicit fullscreen scroll-speed override", () => {
+		expect(
+			createClaudeRendererEnvironment("fullscreen", {
+				inheritedEnv: { [CLAUDE_SCROLL_SPEED_ENV_VAR]: "5" },
+			}),
+		).toEqual({
+			[CLAUDE_FULLSCREEN_ENV_VAR]: "1",
+			[CLAUDE_SCROLL_SPEED_ENV_VAR]: "5",
+		});
+		expect(
+			createClaudeRendererEnvironment("fullscreen", {
+				envOverrides: { [CLAUDE_SCROLL_SPEED_ENV_VAR]: "7" },
+				inheritedEnv: { [CLAUDE_SCROLL_SPEED_ENV_VAR]: "5" },
+			}),
+		).toEqual({
+			[CLAUDE_FULLSCREEN_ENV_VAR]: "1",
+			[CLAUDE_SCROLL_SPEED_ENV_VAR]: "7",
 		});
 	});
 });

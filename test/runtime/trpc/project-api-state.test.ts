@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeBoardData, RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "../../../src/core";
 import type { ProjectApiContext } from "../../../src/trpc/project-api-shared";
-import { createBoardStateSavedEffects } from "../../../src/trpc/runtime-mutation-effects";
+import {
+	createBoardStateSavedEffects,
+	createTaskTitleUpdatedEffects,
+} from "../../../src/trpc/runtime-mutation-effects";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 const stateMocks = vi.hoisted(() => ({
@@ -88,6 +91,68 @@ function createSavedState(board: RuntimeBoardData): RuntimeProjectStateResponse 
 	};
 }
 
+function createUntitledBoard(): RuntimeBoardData {
+	const board = createBoard();
+	const firstColumn = board.columns[0];
+	const firstCard = firstColumn?.cards[0];
+	if (!firstColumn || !firstCard) {
+		throw new Error("Expected the test board to contain a card.");
+	}
+	firstColumn.cards[0] = { ...firstCard, title: null };
+	return board;
+}
+
+function createDeferred<T>() {
+	let resolve: ((value: T) => void) | null = null;
+	let reject: ((error: unknown) => void) | null = null;
+	const promise = new Promise<T>((promiseResolve, promiseReject) => {
+		resolve = promiseResolve;
+		reject = promiseReject;
+	});
+	if (!resolve || !reject) {
+		throw new Error("Expected deferred handlers to be assigned.");
+	}
+	return {
+		promise,
+		resolve: resolve as (value: T) => void,
+		reject: reject as (error: unknown) => void,
+	};
+}
+
+function createStateOpsHarness(summary = createSummary("task-1")) {
+	const ensureTerminalManagerForProject = vi.fn(async () => ({
+		store: {
+			listSummaries: vi.fn(() => [summary]),
+		},
+	}));
+	const applyEffects = vi.fn();
+	const stateOps = createStateOps({
+		deps: {
+			terminals: {
+				getTerminalManagerForProject: vi.fn(() => null),
+				ensureTerminalManagerForProject:
+					ensureTerminalManagerForProject as unknown as ProjectApiContext["deps"]["terminals"]["ensureTerminalManagerForProject"],
+			},
+			broadcaster: {
+				broadcastRuntimeProjectStateUpdated: vi.fn(),
+				broadcastRuntimeProjectNotificationsUpdated: vi.fn(),
+				broadcastRuntimeProjectsUpdated: vi.fn(async () => undefined),
+				broadcastTaskTitleUpdated: vi.fn(),
+				setFocusedTask: vi.fn(),
+				setDocumentVisible: vi.fn(),
+				requestTaskRefresh: vi.fn(),
+				requestHomeRefresh: vi.fn(),
+			},
+			data: {
+				buildProjectStateSnapshot: vi.fn(),
+			},
+		},
+		applyEffects,
+	} satisfies ProjectApiContext);
+
+	return { applyEffects, ensureTerminalManagerForProject, stateOps };
+}
+
 describe("createStateOps.saveState", () => {
 	beforeEach(() => {
 		stateMocks.saveProjectState.mockReset();
@@ -98,37 +163,7 @@ describe("createStateOps.saveState", () => {
 		const board = createBoard();
 		const summary = createSummary("task-1");
 		stateMocks.saveProjectState.mockResolvedValue(createSavedState(board));
-
-		const ensureTerminalManagerForProject = vi.fn(async () => ({
-			store: {
-				listSummaries: vi.fn(() => [summary]),
-			},
-		}));
-		const applyEffects = vi.fn();
-
-		const stateOps = createStateOps({
-			deps: {
-				terminals: {
-					getTerminalManagerForProject: vi.fn(() => null),
-					ensureTerminalManagerForProject:
-						ensureTerminalManagerForProject as unknown as ProjectApiContext["deps"]["terminals"]["ensureTerminalManagerForProject"],
-				},
-				broadcaster: {
-					broadcastRuntimeProjectStateUpdated: vi.fn(),
-					broadcastRuntimeProjectNotificationsUpdated: vi.fn(),
-					broadcastRuntimeProjectsUpdated: vi.fn(async () => undefined),
-					broadcastTaskTitleUpdated: vi.fn(),
-					setFocusedTask: vi.fn(),
-					setDocumentVisible: vi.fn(),
-					requestTaskRefresh: vi.fn(),
-					requestHomeRefresh: vi.fn(),
-				},
-				data: {
-					buildProjectStateSnapshot: vi.fn(),
-				},
-			},
-			applyEffects,
-		} satisfies ProjectApiContext);
+		const { applyEffects, ensureTerminalManagerForProject, stateOps } = createStateOpsHarness(summary);
 
 		await stateOps.saveState(
 			{
@@ -155,5 +190,58 @@ describe("createStateOps.saveState", () => {
 				projectPath: "/tmp/project-a",
 			}),
 		);
+	});
+
+	it("deduplicates overlapping automatic title requests for the same project task", async () => {
+		const board = createUntitledBoard();
+		stateMocks.saveProjectState.mockResolvedValue(createSavedState(board));
+		const deferredTitle = createDeferred<string | null>();
+		titleMocks.generateTaskTitle.mockReturnValue(deferredTitle.promise);
+		const { applyEffects, stateOps } = createStateOpsHarness();
+		const projectScope = {
+			projectId: "project-a",
+			projectPath: "/tmp/project-a",
+		};
+
+		await Promise.all([
+			stateOps.saveState(projectScope, { board, expectedRevision: 1 }),
+			stateOps.saveState(projectScope, { board, expectedRevision: 2 }),
+		]);
+
+		expect(titleMocks.generateTaskTitle).toHaveBeenCalledTimes(1);
+
+		deferredTitle.resolve("Generated Title");
+		await vi.waitFor(() => {
+			expect(applyEffects).toHaveBeenCalledWith(
+				createTaskTitleUpdatedEffects({
+					projectId: "project-a",
+					taskId: "task-1",
+					title: "Generated Title",
+					autoGenerated: true,
+				}),
+			);
+		});
+
+		titleMocks.generateTaskTitle.mockResolvedValue("Retry Title");
+		await stateOps.saveState(projectScope, { board, expectedRevision: 3 });
+		await vi.waitFor(() => {
+			expect(titleMocks.generateTaskTitle).toHaveBeenCalledTimes(2);
+		});
+	});
+
+	it("keeps automatic title guards scoped by project", async () => {
+		const board = createUntitledBoard();
+		stateMocks.saveProjectState.mockResolvedValue(createSavedState(board));
+		const deferredTitle = createDeferred<string | null>();
+		titleMocks.generateTaskTitle.mockReturnValue(deferredTitle.promise);
+		const { stateOps } = createStateOpsHarness();
+
+		await Promise.all([
+			stateOps.saveState({ projectId: "project-a", projectPath: "/tmp/project-a" }, { board, expectedRevision: 1 }),
+			stateOps.saveState({ projectId: "project-b", projectPath: "/tmp/project-b" }, { board, expectedRevision: 1 }),
+		]);
+
+		expect(titleMocks.generateTaskTitle).toHaveBeenCalledTimes(2);
+		deferredTitle.resolve(null);
 	});
 });

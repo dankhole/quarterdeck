@@ -296,6 +296,26 @@ describe("prepareAgentLaunch hook strategies", () => {
 
 		expect(launch.env.CLAUDE_CODE_NO_FLICKER).toBe("1");
 		expect(launch.env.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN).toBeUndefined();
+		expect(launch.env.CLAUDE_CODE_SCROLL_SPEED).toBe("3");
+	});
+
+	it("preserves an explicit Claude fullscreen scroll speed", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-claude-fullscreen-scroll-speed",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			claudeFullscreenEnabled: true,
+			env: {
+				CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "0",
+				CLAUDE_CODE_SCROLL_SPEED: "8",
+			},
+		});
+
+		expect(launch.env.CLAUDE_CODE_SCROLL_SPEED).toBe("8");
 	});
 
 	it("honors Claude's explicit classic-renderer escape hatch", async () => {

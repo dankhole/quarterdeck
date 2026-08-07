@@ -2,6 +2,18 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-08-07 — Automatic title request coalescing
+
+Automatic title generation is launched after browser-owned board saves whenever a card still has `title === null`. Consecutive saves could therefore start overlapping helper-LLM calls for the same card before the first title update returned. `createStateOps(...)` now owns a per-project/task in-flight set around automatic generation: overlapping saves skip the duplicate, the key clears in `finally` after success/fallback/failure, and later saves can retry. Manual regeneration remains independent because it is an explicit awaited action and may use richer session context.
+
+The invariant is one active automatic title request per project/task without serializing unrelated cards or projects. Notable files: `src/trpc/project-api-state.ts` and `test/runtime/trpc/project-api-state.test.ts`. Validation: root typecheck, 1,050 runtime tests, targeted Biome checks, the agent-instruction bridge check, and `git diff --check`.
+
+## 2026-08-07 — Claude fullscreen dogfood follow-up
+
+Fullscreen dogfood exposed an interaction-default mismatch: xterm forwards captured wheel input conservatively, so Claude's default 1x in-app scroll distance felt much slower than native terminal history. Quarterdeck now supplies Claude's documented `CLAUDE_CODE_SCROLL_SPEED=3` default only for fullscreen launches and preserves an explicit inherited or launch override. The nearby fullscreen and Quarterdeck status-line controls are grouped into a compact, collapsed-by-default Claude Code subsection so their shared launch scope is clear without suppressing the user's own Claude status-line configuration.
+
+The invariant is that fullscreen interaction defaults are launch-scoped and deterministic while user scroll-speed and status-line settings remain respected. Notable files: `src/terminal/claude-renderer-policy.ts`, `src/terminal/agent-session-adapters.ts`, `web-ui/src/components/settings/agent-section.tsx`, and focused adapter/policy/settings tests. Validation: root and web typechecks, 1,048 runtime tests, 15 focused settings-dialog tests, the web production build, targeted Biome checks, the agent-instruction bridge check, and `git diff --check`. The full web run passed 1,052 of 1,053 tests; the unrelated `useTaskEditor` localStorage-write-failure assertion also reproduced when run alone.
+
 ## 2026-08-07 — Codex subagent hook parity revalidation
 
 The final Claude/Codex parity pass corrected a stale Codex limitation rather than changing runtime behavior. The current Codex hook reference and the configured minimum release source (`0.142.5`) both show dedicated `SubagentStart` and `SubagentStop` dispatch: root turns emit `Stop`, thread-spawned child turns emit `SubagentStop`, and internal subagents emit neither. Quarterdeck already installs `to_review` only for `Stop`, so subagent completion cannot trigger that transition and no payload-field heuristic is needed. The active parity todo, code comment, agent guidance, and unreleased changelog now describe the actual event boundary. Remaining Codex gaps are narrower: Quarterdeck does not consume its compaction hooks, and Codex still lacks explicit general turn-abort/failure hooks. Validation: official current hook documentation, the `rust-v0.142.5` config schema and hook runtime, installed Codex CLI `0.146.1`, focused Codex hook tests, and root typecheck.

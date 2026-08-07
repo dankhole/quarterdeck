@@ -273,7 +273,6 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 		if (isTimeoutError(error)) {
 			log.warn("LLM call timed out", {
 				timeoutMs,
-				durationMs: Date.now() - startTime,
 				model: config.model,
 			});
 		} else {

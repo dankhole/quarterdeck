@@ -14,6 +14,7 @@ export function HarnessSection({
 }: SettingsSectionProps & {
 	config: RuntimeConfigResponse | null;
 }): React.ReactElement {
+	const [claudeSettingsExpanded, setClaudeSettingsExpanded] = useState(false);
 	const [systemPromptExpanded, setSystemPromptExpanded] = useState(false);
 
 	const defaultTemplate = config?.worktreeSystemPromptTemplateDefault ?? "";
@@ -23,7 +24,9 @@ export function HarnessSection({
 		setField("worktreeSystemPromptTemplate", defaultTemplate);
 	}, [setField, defaultTemplate]);
 
+	const ClaudeChevron = claudeSettingsExpanded ? ChevronDown : ChevronRight;
 	const PromptChevron = systemPromptExpanded ? ChevronDown : ChevronRight;
+	const claudeSettingsSummary = `New/restarted sessions only · ${fields.claudeFullscreenEnabled ? "Fullscreen on" : "Fullscreen off"} · ${fields.statuslineEnabled ? "Status line on" : "Status line off"}`;
 
 	return (
 		<>
@@ -34,21 +37,42 @@ export function HarnessSection({
 				unavailable harnesses are shown there with install or upgrade status.
 			</p>
 
-			<SettingsSwitch
-				checked={fields.claudeFullscreenEnabled}
-				onCheckedChange={(value) => setField("claudeFullscreenEnabled", value)}
-				disabled={disabled}
-				label="Use Claude fullscreen rendering (experimental)"
-				description="Uses Claude Code's alternate-screen, virtualized transcript for new or restarted sessions. When off, Quarterdeck keeps Claude on the classic renderer."
-			/>
-
-			<SettingsSwitch
-				checked={fields.statuslineEnabled}
-				onCheckedChange={(value) => setField("statuslineEnabled", value)}
-				disabled={disabled}
-				label="Show Quarterdeck status line in Claude Code"
-				description="Adds repository, model, context, cost, token, and change metrics to new or restarted Claude sessions."
-			/>
+			<RadixCollapsible.Root open={claudeSettingsExpanded} onOpenChange={setClaudeSettingsExpanded} className="mt-2">
+				<RadixCollapsible.Trigger asChild>
+					<button
+						type="button"
+						className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-2 text-left text-[13px] text-text-primary hover:border-border-bright hover:bg-surface-3 data-[state=open]:rounded-b-none"
+					>
+						<span className="min-w-0">
+							<span className="block font-medium">Claude Code</span>
+							<span className="block truncate text-[12px] text-text-secondary">{claudeSettingsSummary}</span>
+						</span>
+						<ClaudeChevron size={16} className="shrink-0 text-text-secondary" />
+					</button>
+				</RadixCollapsible.Trigger>
+				<RadixCollapsible.Content className="overflow-hidden rounded-b-md border-x border-b border-border bg-surface-1">
+					<div className="divide-y divide-border">
+						<div className="px-3 py-3">
+							<SettingsSwitch
+								checked={fields.claudeFullscreenEnabled}
+								onCheckedChange={(value) => setField("claudeFullscreenEnabled", value)}
+								disabled={disabled}
+								label="Fullscreen rendering (experimental)"
+								description="Uses Claude Code's alternate-screen, virtualized transcript for new or restarted sessions. When off, Quarterdeck keeps Claude on the classic renderer."
+							/>
+						</div>
+						<div className="px-3 py-3">
+							<SettingsSwitch
+								checked={fields.statuslineEnabled}
+								onCheckedChange={(value) => setField("statuslineEnabled", value)}
+								disabled={disabled}
+								label="Show Quarterdeck status line"
+								description="Adds repository, model, context, cost, token, and change metrics to new or restarted Claude sessions."
+							/>
+						</div>
+					</div>
+				</RadixCollapsible.Content>
+			</RadixCollapsible.Root>
 
 			<RadixCollapsible.Root open={systemPromptExpanded} onOpenChange={setSystemPromptExpanded} className="mt-2">
 				<RadixCollapsible.Trigger asChild>

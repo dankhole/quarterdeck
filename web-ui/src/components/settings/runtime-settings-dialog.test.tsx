@@ -193,7 +193,7 @@ describe("RuntimeSettingsDialog", () => {
 		expect(bodyText).not.toContain("These settings let agents escape their worktree sandbox");
 	});
 
-	it("shows Claude fullscreen rendering and the Quarterdeck status line as opt-in harness settings", async () => {
+	it("groups Claude fullscreen rendering and the Quarterdeck status line in a collapsible subsection", async () => {
 		saveMock.mockReset();
 		saveMock.mockResolvedValue(true);
 
@@ -208,10 +208,23 @@ describe("RuntimeSettingsDialog", () => {
 			);
 		});
 
-		const fullscreenSwitch = findSwitchByLabel(document.body, "Use Claude fullscreen rendering (experimental)");
-		const statuslineSwitch = findSwitchByLabel(document.body, "Show Quarterdeck status line in Claude Code");
+		const claudeSectionButton = Array.from(document.body.querySelectorAll("button")).find((button) =>
+			button.textContent?.includes("Claude Code"),
+		);
+		expect(claudeSectionButton).toBeInstanceOf(HTMLButtonElement);
+		expect(claudeSectionButton?.getAttribute("aria-expanded")).toBe("false");
+		expect(document.body.textContent).toContain("New/restarted sessions only · Fullscreen off · Status line off");
+		expect(findSwitchByLabel(document.body, "Fullscreen rendering (experimental)")).toBeNull();
+
+		await act(async () => {
+			claudeSectionButton?.click();
+		});
+
+		const fullscreenSwitch = findSwitchByLabel(document.body, "Fullscreen rendering (experimental)");
+		const statuslineSwitch = findSwitchByLabel(document.body, "Show Quarterdeck status line");
 		expect(fullscreenSwitch).toBeInstanceOf(HTMLButtonElement);
 		expect(statuslineSwitch).toBeInstanceOf(HTMLButtonElement);
+		expect(claudeSectionButton?.getAttribute("aria-expanded")).toBe("true");
 		expect(fullscreenSwitch?.getAttribute("data-state")).toBe("unchecked");
 		expect(statuslineSwitch?.getAttribute("data-state")).toBe("unchecked");
 		expect(document.body.textContent).toContain("virtualized transcript");

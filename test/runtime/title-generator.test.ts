@@ -29,6 +29,17 @@ describe("generateTaskTitle", () => {
 		expect(title).toBe("Fix Auth Bug");
 	});
 
+	it("allows six seconds for task-title generation", async () => {
+		const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockReturnValue(new AbortController().signal);
+		vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response(JSON.stringify({ choices: [{ message: { content: "Fix Auth Bug" } }] }), { status: 200 }),
+		);
+
+		await generateTaskTitle("fix the authentication bug in login.ts");
+
+		expect(timeoutSpy).toHaveBeenCalledWith(6_000);
+	});
+
 	it("builds the chat completions URL from a v1 base URL", async () => {
 		const fetchSpy = vi
 			.spyOn(globalThis, "fetch")

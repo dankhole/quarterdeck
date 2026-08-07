@@ -152,6 +152,27 @@ describe("llm-client provider config", () => {
 			replacementModel: "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0",
 		});
 	});
+
+	it("logs the configured deadline without a misleading measured duration on timeout", async () => {
+		_resetLoggerForTests();
+		vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		vi.spyOn(globalThis, "fetch").mockRejectedValue(new DOMException("Timed out", "TimeoutError"));
+		process.env.QUARTERDECK_LLM_BASE_URL = "https://llm.example.com/v1";
+		process.env.QUARTERDECK_LLM_API_KEY = "token";
+		process.env.QUARTERDECK_LLM_MODEL = "helper-model";
+
+		await callLlm({
+			systemPrompt: "Return a title.",
+			userPrompt: "fix auth",
+			maxTokens: 20,
+			timeoutMs: 6_000,
+		});
+
+		const logEntry = getRecentLogEntries().find(
+			(entry) => entry.tag === "llm-client" && entry.message === "LLM call timed out",
+		);
+		expect(logEntry?.data).toEqual({ timeoutMs: 6_000, model: "helper-model" });
+	});
 });
 
 describe("sanitizeLlmResponse", () => {

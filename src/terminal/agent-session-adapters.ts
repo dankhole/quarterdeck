@@ -178,7 +178,7 @@ const claudeAdapter: AgentSessionAdapter = {
 		});
 		const env: Record<string, string | undefined> = {
 			FORCE_HYPERLINK: "1",
-			...createClaudeRendererEnvironment(rendererPolicy.mode),
+			...createClaudeRendererEnvironment(rendererPolicy.mode, { envOverrides: input.env }),
 		};
 		if (input.resumeConversation && !hasCliOption(args, "--continue") && !hasCliOption(args, "--resume")) {
 			const resumeTarget = input.resumeSessionId?.trim();

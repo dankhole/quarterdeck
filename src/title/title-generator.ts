@@ -31,6 +31,7 @@ CRITICAL RULES:
 
 const MAX_TITLE_CONTEXT_LENGTH = 1200;
 const MAX_BRANCH_PROMPT_LENGTH = 1200;
+const TITLE_GENERATION_TIMEOUT_MS = 6_000;
 
 export async function generateTaskTitle(prompt: string): Promise<string | null> {
 	const llmConfigured = isLlmConfigured();
@@ -53,7 +54,7 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 		systemPrompt: TITLE_SYSTEM_PROMPT,
 		userPrompt: prompt.slice(0, MAX_TITLE_CONTEXT_LENGTH),
 		maxTokens: 20,
-		timeoutMs: 5_000,
+		timeoutMs: TITLE_GENERATION_TIMEOUT_MS,
 	});
 	if (title) {
 		const normalizedTitle = normalizeGeneratedTitle(title);

@@ -1,5 +1,7 @@
 export const CLAUDE_FULLSCREEN_ENV_VAR = "CLAUDE_CODE_NO_FLICKER";
 export const CLAUDE_CLASSIC_RENDERER_ENV_VAR = "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN";
+export const CLAUDE_SCROLL_SPEED_ENV_VAR = "CLAUDE_CODE_SCROLL_SPEED";
+export const DEFAULT_CLAUDE_FULLSCREEN_SCROLL_SPEED = "3";
 const CLAUDE_SCREEN_READER_ENV_VAR = "CLAUDE_AX_SCREEN_READER";
 const CLAUDE_SCREEN_READER_ARG = "--ax-screen-reader";
 
@@ -68,9 +70,23 @@ export function resolveClaudeRendererPolicy({
 }
 
 /** Return the launch-local environment that makes the resolved mode deterministic. */
-export function createClaudeRendererEnvironment(mode: ClaudeRendererMode): Record<string, string> {
+export function createClaudeRendererEnvironment(
+	mode: ClaudeRendererMode,
+	options: {
+		envOverrides?: Record<string, string | undefined>;
+		inheritedEnv?: Record<string, string | undefined>;
+	} = {},
+): Record<string, string> {
 	if (mode === "fullscreen") {
-		return { [CLAUDE_FULLSCREEN_ENV_VAR]: "1" };
+		return {
+			[CLAUDE_FULLSCREEN_ENV_VAR]: "1",
+			[CLAUDE_SCROLL_SPEED_ENV_VAR]:
+				resolveEnvironmentValue(
+					CLAUDE_SCROLL_SPEED_ENV_VAR,
+					options.envOverrides,
+					options.inheritedEnv ?? process.env,
+				)?.trim() || DEFAULT_CLAUDE_FULLSCREEN_SCROLL_SPEED,
+		};
 	}
 	return {
 		// NO_FLICKER=0 is understood by every fullscreen-capable release (2.1.89+).
