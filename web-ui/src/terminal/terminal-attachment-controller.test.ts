@@ -151,8 +151,8 @@ describe("TerminalAttachmentController", () => {
 		nextSessionAgentId = null;
 	});
 
-	it("forces a redraw before requesting restore for Codex sessions", () => {
-		nextSessionAgentId = "codex";
+	it.each(["claude", "codex"] as const)("forces a redraw before requesting restore for %s sessions", (agentId) => {
+		nextSessionAgentId = agentId;
 		const callOrder: string[] = [];
 		const controller = new TerminalAttachmentController(
 			1,
@@ -175,8 +175,8 @@ describe("TerminalAttachmentController", () => {
 		expect(callOrder).toEqual(["forceResize", "requestRestore"]);
 	});
 
-	it("keeps restore-only behavior for non-Codex sessions", () => {
-		nextSessionAgentId = "claude";
+	it("keeps restore-only behavior for other sessions", () => {
+		nextSessionAgentId = "pi";
 		const controller = new TerminalAttachmentController(
 			1,
 			{ cursorColor: "cursor", terminalBackgroundColor: "background" },

@@ -54,6 +54,7 @@ describe.sequential("runtime-config persistence", () => {
 				expect(state.globalConfigPath).toBe(join(tempHome, ".quarterdeck", "config.json"));
 				expect(state.projectConfigPath).toBeNull();
 				expect(state.shortcuts).toEqual([]);
+				expect(state.statuslineEnabled).toBe(false);
 			});
 		} finally {
 			cleanupHome();

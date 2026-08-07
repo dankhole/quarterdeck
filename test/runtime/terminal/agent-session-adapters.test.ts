@@ -232,6 +232,46 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(serializedSettings).toContain("'ingest' '--event' 'to_in_progress'");
 	});
 
+	it("leaves the Quarterdeck Claude status line disabled unless explicitly enabled", async () => {
+		setupTempHome();
+		await prepareAgentLaunch({
+			taskId: "task-claude-statusline-default",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			projectId: "project-1",
+		});
+
+		const settingsPath = join(homedir(), ".quarterdeck", "hooks", "claude", "settings.json");
+		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
+			statusLine?: unknown;
+		};
+		expect(settings.statusLine).toBeUndefined();
+	});
+
+	it("injects the Quarterdeck Claude status line when explicitly enabled", async () => {
+		setupTempHome();
+		await prepareAgentLaunch({
+			taskId: "task-claude-statusline-enabled",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			projectId: "project-1",
+			statuslineEnabled: true,
+		});
+
+		const settingsPath = join(homedir(), ".quarterdeck", "hooks", "claude", "settings.json");
+		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
+			statusLine?: { type?: string; command?: string };
+		};
+		expect(settings.statusLine?.type).toBe("command");
+		expect(settings.statusLine?.command).toContain("statusline");
+	});
+
 	it("materializes task images for CLI prompts", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({

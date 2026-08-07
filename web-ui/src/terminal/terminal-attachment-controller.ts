@@ -1,5 +1,6 @@
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { clearTerminalGeometry, reportTerminalGeometry } from "@/terminal/terminal-geometry-registry";
+import { shouldForceResizeBeforeRestore } from "@/terminal/terminal-restore-policy";
 import { type PersistentTerminalSubscriber, TerminalSessionHandle } from "@/terminal/terminal-session-handle";
 import { type PersistentTerminalAppearance, TerminalViewport } from "@/terminal/terminal-viewport";
 
@@ -284,10 +285,7 @@ export class TerminalAttachmentController {
 	}
 
 	requestRestore(): void {
-		// Keep agent-specific restore tuning narrow here. If more agents need
-		// custom restore behavior, extract a dedicated restore-policy module
-		// instead of growing TerminalAttachmentController into that owner.
-		if (this.sessionAgentId === "codex") {
+		if (shouldForceResizeBeforeRestore(this.sessionAgentId)) {
 			this.viewport.forceResize();
 		}
 		this.session.requestRestore();

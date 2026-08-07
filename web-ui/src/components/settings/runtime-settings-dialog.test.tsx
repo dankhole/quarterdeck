@@ -61,6 +61,16 @@ function findButtonByText(container: ParentNode, text: string): HTMLButtonElemen
 		null) as HTMLButtonElement | null;
 }
 
+function findSwitchByLabel(container: ParentNode, label: string): HTMLButtonElement | null {
+	const labelElement = Array.from(container.querySelectorAll("span")).find(
+		(element) => element.textContent?.trim() === label,
+	);
+	const switchElement = labelElement?.previousElementSibling;
+	return switchElement instanceof HTMLButtonElement && switchElement.getAttribute("role") === "switch"
+		? switchElement
+		: null;
+}
+
 function createSavedConfig(overrides?: Partial<RuntimeConfigResponse>): RuntimeConfigResponse {
 	return createTestRuntimeConfigResponse({
 		detectedCommands: [],
@@ -181,6 +191,38 @@ describe("RuntimeSettingsDialog", () => {
 		expect(bodyText).not.toContain("Allow agents to access the parent repo");
 		expect(bodyText).not.toContain("Rogue writes can corrupt project state");
 		expect(bodyText).not.toContain("These settings let agents escape their worktree sandbox");
+	});
+
+	it("shows the Quarterdeck Claude status line as an opt-in harness setting", async () => {
+		saveMock.mockReset();
+		saveMock.mockResolvedValue(true);
+
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					projectId={"project-1"}
+					initialConfig={createSavedConfig()}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const statuslineSwitch = findSwitchByLabel(document.body, "Show Quarterdeck status line in Claude Code");
+		expect(statuslineSwitch).toBeInstanceOf(HTMLButtonElement);
+		expect(statuslineSwitch?.getAttribute("data-state")).toBe("unchecked");
+		expect(document.body.textContent).toContain("new or restarted Claude sessions");
+
+		await act(async () => {
+			statuslineSwitch?.click();
+		});
+		expect(statuslineSwitch?.getAttribute("data-state")).toBe("checked");
+
+		const saveButton = findButtonByText(document.body, "Save");
+		await act(async () => {
+			saveButton?.click();
+		});
+		expect(saveMock).toHaveBeenCalledWith(expect.objectContaining({ statuslineEnabled: true }));
 	});
 
 	it("shows orange warning when LLM is not configured", async () => {

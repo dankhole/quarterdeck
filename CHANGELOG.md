@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: improve Claude terminal presentation controls
+
+- Claude restores now force the current browser geometry before requesting the server snapshot, matching Codex so geometry-sensitive redraws target the visible terminal before restoration.
+- Quarterdeck's injected Claude status line now defaults off and is available as an opt-in Harnesses setting for new or restarted Claude sessions.
+
 ### Fix: confirm task trash moves before moving
 
 - Trash buttons now keep tasks in their current column while the confirmation dialog is open, then run the existing animated move and session/worktree cleanup only after confirmation; drag-to-Trash keeps its existing optimistic cancel/revert behavior.

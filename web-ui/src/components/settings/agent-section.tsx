@@ -2,6 +2,7 @@
 import * as RadixCollapsible from "@radix-ui/react-collapsible";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useCallback, useState } from "react";
+import { SettingsSwitch } from "@/components/ui/settings-controls";
 import type { RuntimeConfigResponse } from "@/runtime/types";
 import type { SettingsSectionProps } from "./settings-section-props";
 
@@ -32,6 +33,14 @@ export function HarnessSection({
 				the shell that launched it to detect Claude, Codex, and Pi. Choose a harness in the new task dialog;
 				unavailable harnesses are shown there with install or upgrade status.
 			</p>
+
+			<SettingsSwitch
+				checked={fields.statuslineEnabled}
+				onCheckedChange={(value) => setField("statuslineEnabled", value)}
+				disabled={disabled}
+				label="Show Quarterdeck status line in Claude Code"
+				description="Adds repository, model, context, cost, token, and change metrics to new or restarted Claude sessions."
+			/>
 
 			<RadixCollapsible.Root open={systemPromptExpanded} onOpenChange={setSystemPromptExpanded} className="mt-2">
 				<RadixCollapsible.Trigger asChild>

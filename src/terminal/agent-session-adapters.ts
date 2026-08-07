@@ -266,7 +266,7 @@ const claudeAdapter: AgentSessionAdapter = {
 						},
 					],
 				},
-				...(input.statuslineEnabled !== false && {
+				...(input.statuslineEnabled === true && {
 					statusLine: {
 						type: "command",
 						command: buildStatuslineCommand(),
