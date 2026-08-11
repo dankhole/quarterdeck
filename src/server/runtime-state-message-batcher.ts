@@ -1,4 +1,4 @@
-import type { LogEntry, RuntimeTaskSessionSummary } from "../core";
+import { deriveTaskIndicatorState, type LogEntry, type RuntimeTaskSessionSummary } from "../core";
 import type { TerminalSessionManager } from "../terminal";
 
 const TASK_SESSION_STREAM_BATCH_MS = 150;
@@ -7,6 +7,51 @@ const DEBUG_LOG_BATCH_MS = 150;
 interface RuntimeTaskSessionEvent {
 	projectId: string;
 	summaries: RuntimeTaskSessionSummary[];
+	notificationSummaries: RuntimeTaskSessionSummary[];
+	refreshProjects: boolean;
+}
+
+interface RuntimeTaskSessionDeliveryClassification {
+	broadcastNotification: boolean;
+	refreshProjects: boolean;
+}
+
+interface PendingRuntimeTaskSessionUpdate extends RuntimeTaskSessionDeliveryClassification {
+	summary: RuntimeTaskSessionSummary;
+}
+
+function classifyTaskSessionUpdate(
+	previous: RuntimeTaskSessionSummary | null,
+	next: RuntimeTaskSessionSummary,
+): RuntimeTaskSessionDeliveryClassification {
+	if (!previous) {
+		// A newly observed session may affect both project counts and notification
+		// memory. Prefer one conservative refresh over starting either projection
+		// from an incomplete baseline.
+		return {
+			broadcastNotification: true,
+			refreshProjects: true,
+		};
+	}
+
+	const previousIndicator = deriveTaskIndicatorState(previous);
+	const nextIndicator = deriveTaskIndicatorState(next);
+	const broadcastNotification =
+		previousIndicator.kind !== nextIndicator.kind ||
+		previousIndicator.column !== nextIndicator.column ||
+		previousIndicator.notification !== nextIndicator.notification ||
+		previousIndicator.approvalRequired !== nextIndicator.approvalRequired ||
+		previousIndicator.hookReview !== nextIndicator.hookReview;
+
+	// Project summaries currently project an in-progress board card into Review
+	// only while its live session is awaiting_review. Other summary fields do not
+	// affect project-list counts and should not rebuild every project's scoreboard.
+	const refreshProjects = (previous.state === "awaiting_review") !== (next.state === "awaiting_review");
+
+	return {
+		broadcastNotification,
+		refreshProjects,
+	};
 }
 
 interface CreateRuntimeStateTaskSessionEventDeliveryDependencies {
@@ -19,12 +64,16 @@ class RuntimeStateTaskSessionEventDelivery {
 	constructor(private readonly deps: CreateRuntimeStateTaskSessionEventDeliveryDependencies) {}
 
 	deliver(event: RuntimeTaskSessionEvent): void {
-		// These three outputs intentionally share one delivery moment: the active
-		// project session delta, cross-project notification memory, and project
-		// summary refresh should continue to observe the same coalesced event.
+		// The active project consumes the complete session delta, including useful
+		// activity text. Cross-project notification memory and project-list counts
+		// only consume changes that can affect their semantic projections.
 		this.deps.onTaskSessionBatch(event.projectId, event.summaries);
-		this.deps.onTaskNotificationBatch(event.projectId, event.summaries);
-		this.deps.onProjectsRefreshRequested(event.projectId);
+		if (event.notificationSummaries.length > 0) {
+			this.deps.onTaskNotificationBatch(event.projectId, event.notificationSummaries);
+		}
+		if (event.refreshProjects) {
+			this.deps.onProjectsRefreshRequested(event.projectId);
+		}
 	}
 }
 
@@ -33,18 +82,27 @@ interface CreateRuntimeTaskSessionBatchQueueDependencies {
 }
 
 class RuntimeTaskSessionBatchQueue {
-	private readonly pendingSummaries = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
+	private readonly pendingUpdates = new Map<string, Map<string, PendingRuntimeTaskSessionUpdate>>();
 	private readonly flushTimers = new Map<string, NodeJS.Timeout>();
 
 	constructor(private readonly deps: CreateRuntimeTaskSessionBatchQueueDependencies) {}
 
-	queue(projectId: string, summary: RuntimeTaskSessionSummary): void {
-		let pending = this.pendingSummaries.get(projectId);
+	queue(
+		projectId: string,
+		summary: RuntimeTaskSessionSummary,
+		classification: RuntimeTaskSessionDeliveryClassification,
+	): void {
+		let pending = this.pendingUpdates.get(projectId);
 		if (!pending) {
-			pending = new Map<string, RuntimeTaskSessionSummary>();
-			this.pendingSummaries.set(projectId, pending);
+			pending = new Map<string, PendingRuntimeTaskSessionUpdate>();
+			this.pendingUpdates.set(projectId, pending);
 		}
-		pending.set(summary.taskId, summary);
+		const existing = pending.get(summary.taskId);
+		pending.set(summary.taskId, {
+			summary,
+			broadcastNotification: classification.broadcastNotification || existing?.broadcastNotification === true,
+			refreshProjects: classification.refreshProjects || existing?.refreshProjects === true,
+		});
 		if (this.flushTimers.has(projectId)) {
 			return;
 		}
@@ -62,7 +120,7 @@ class RuntimeTaskSessionBatchQueue {
 			clearTimeout(timer);
 		}
 		this.flushTimers.delete(projectId);
-		this.pendingSummaries.delete(projectId);
+		this.pendingUpdates.delete(projectId);
 	}
 
 	close(): void {
@@ -70,18 +128,23 @@ class RuntimeTaskSessionBatchQueue {
 			clearTimeout(timer);
 		}
 		this.flushTimers.clear();
-		this.pendingSummaries.clear();
+		this.pendingUpdates.clear();
 	}
 
 	private flush(projectId: string): void {
-		const pending = this.pendingSummaries.get(projectId);
+		const pending = this.pendingUpdates.get(projectId);
 		if (!pending || pending.size === 0) {
 			return;
 		}
-		this.pendingSummaries.delete(projectId);
+		this.pendingUpdates.delete(projectId);
+		const updates = Array.from(pending.values());
 		this.deps.onTaskSessionEventReady({
 			projectId,
-			summaries: Array.from(pending.values()),
+			summaries: updates.map((update) => update.summary),
+			notificationSummaries: updates
+				.filter((update) => update.broadcastNotification)
+				.map((update) => update.summary),
+			refreshProjects: updates.some((update) => update.refreshProjects),
 		});
 	}
 }
@@ -154,8 +217,13 @@ export class RuntimeStateMessageBatcher {
 		if (this.terminalSummaryUnsubscribes.has(projectId)) {
 			return;
 		}
+		const latestSummariesByTaskId = new Map(
+			manager.store.listSummaries().map((summary) => [summary.taskId, summary]),
+		);
 		const unsubscribe = manager.store.onChange((summary) => {
-			this.taskSessionBatchQueue.queue(projectId, summary);
+			const previous = latestSummariesByTaskId.get(summary.taskId) ?? null;
+			latestSummariesByTaskId.set(summary.taskId, summary);
+			this.taskSessionBatchQueue.queue(projectId, summary, classifyTaskSessionUpdate(previous, summary));
 		});
 		this.terminalSummaryUnsubscribes.set(projectId, unsubscribe);
 	}

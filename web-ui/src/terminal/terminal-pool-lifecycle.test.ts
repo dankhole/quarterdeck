@@ -201,6 +201,11 @@ describe("terminal-pool — lifecycle", () => {
 	// -----------------------------------------------------------------------
 
 	describe("initPool", () => {
+		it("does not construct pooled terminals before the first pool demand", () => {
+			expect(TerminalSlotMock).not.toHaveBeenCalled();
+			expect(collectTerminalDebugState().registered.pool).toBe(0);
+		});
+
 		it("creates 4 slots all FREE", () => {
 			initPool();
 			expect(TerminalSlotMock).toHaveBeenCalledTimes(4);
@@ -274,6 +279,16 @@ describe("terminal-pool — lifecycle", () => {
 			const mockSlot = slot as unknown as MockSlot;
 			expect(mockSlot.connectToTask).toHaveBeenCalledWith("task-1", "ws-1");
 			expect(mockSlot.onceConnectionReady).toHaveBeenCalledWith(expect.any(Function));
+		});
+
+		it("initializes the pool on first warmup", () => {
+			_resetPoolForTesting();
+			TerminalSlotMock.mockClear();
+
+			warmup("task-1", "ws-1");
+
+			expect(TerminalSlotMock).toHaveBeenCalledTimes(4);
+			expect(getSlotRole(getSlotForTask("task-1")!)).toBe("PRELOADING");
 		});
 
 		it("is no-op for ACTIVE task", () => {
@@ -513,6 +528,17 @@ describe("terminal-pool — lifecycle", () => {
 	// -----------------------------------------------------------------------
 
 	describe("attachPoolContainer", () => {
+		it("initializes and stages the pool on first task-terminal mount", () => {
+			const container = document.createElement("div");
+
+			attachPoolContainer(container);
+
+			expect(TerminalSlotMock).toHaveBeenCalledTimes(4);
+			for (const slot of getCurrentPoolSlots()) {
+				expect(slot.attachToStageContainer).toHaveBeenCalledWith(container);
+			}
+		});
+
 		it("calls attachToStageContainer on all pool slots", () => {
 			initPool();
 			const poolSlots = getCurrentPoolSlots();

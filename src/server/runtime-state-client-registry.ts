@@ -63,10 +63,11 @@ export class RuntimeStateClientRegistry {
 			this.clientsByProject.delete(projectId);
 			return;
 		}
+		const closeClientPayload = options?.closeClientPayload ? this.serialize(options.closeClientPayload) : null;
 
 		for (const client of Array.from(projectClients)) {
-			if (options?.closeClientPayload) {
-				this.send(client, options.closeClientPayload);
+			if (closeClientPayload !== null) {
+				this.send(client, closeClientPayload);
 			}
 			try {
 				client.close();
@@ -83,14 +84,25 @@ export class RuntimeStateClientRegistry {
 		if (!clients || clients.size === 0) {
 			return;
 		}
+		const message = this.serialize(payload);
+		if (message === null) {
+			return;
+		}
 		for (const client of clients) {
-			this.send(client, payload);
+			this.send(client, message);
 		}
 	}
 
 	broadcastToAll(payload: RuntimeStateStreamMessage): void {
+		if (this.allClients.size === 0) {
+			return;
+		}
+		const message = this.serialize(payload);
+		if (message === null) {
+			return;
+		}
 		for (const client of this.allClients) {
-			this.send(client, payload);
+			this.send(client, message);
 		}
 	}
 
@@ -107,12 +119,20 @@ export class RuntimeStateClientRegistry {
 		this.clientToProject.clear();
 	}
 
-	private send(client: WebSocket, payload: RuntimeStateStreamMessage): void {
+	private serialize(payload: RuntimeStateStreamMessage): string | null {
+		try {
+			return JSON.stringify(payload);
+		} catch {
+			return null;
+		}
+	}
+
+	private send(client: WebSocket, payload: string): void {
 		if (client.readyState !== WebSocket.OPEN) {
 			return;
 		}
 		try {
-			client.send(JSON.stringify(payload));
+			client.send(payload);
 		} catch {
 			// Ignore websocket write errors; close handlers clean up disconnected sockets.
 		}

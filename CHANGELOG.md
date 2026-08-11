@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fix: reduce runtime session fanout
+
+- Activity-only task-session updates still reach the active project, but no longer trigger cross-project notification board reads or full project-list count refreshes; approval, review, failure, and `awaiting_review` boundary changes continue to update their dependent projections.
+- Runtime-state project and global broadcasts now serialize each WebSocket message once per delivery instead of once per connected browser.
+
+### Fix: defer task terminal pool startup
+
+- Quarterdeck now constructs and monitors the four-slot task-agent terminal pool on first mount, acquire, or prewarm instead of during application module startup; dedicated shell terminals remain independent and do not initialize the shared pool.
+
 ### Fix: keep project sidebar task pills current
 
 - Project sidebar task-count pills now follow the board that is actually displayed, including cached boards shown immediately during project switches, instead of waiting for the authoritative project snapshot to finish loading.

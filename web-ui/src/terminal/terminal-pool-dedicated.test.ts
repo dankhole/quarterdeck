@@ -134,6 +134,7 @@ vi.mock("@/utils/client-logger", () => ({
 import {
 	_resetPoolForTesting,
 	acquireForTask,
+	collectTerminalDebugState,
 	disposeAllDedicatedTerminalsForProject,
 	disposeDedicatedTerminal,
 	ensureDedicatedTerminal,
@@ -182,7 +183,7 @@ describe("terminal-pool — dedicated terminals", () => {
 	// -----------------------------------------------------------------------
 
 	describe("ensureDedicatedTerminal", () => {
-		it("creates and connects TerminalSlot", () => {
+		it("creates a dedicated slot without initializing the shared pool", () => {
 			const slot = ensureDedicatedTerminal({
 				taskId: "__home_terminal__",
 				projectId: "ws-1",
@@ -193,6 +194,11 @@ describe("terminal-pool — dedicated terminals", () => {
 			expect(slot).toBeDefined();
 			const mockSlot = slot as unknown as MockSlot;
 			expect(mockSlot.connectToTask).toHaveBeenCalledWith("__home_terminal__", "ws-1");
+			expect(collectTerminalDebugState().registered).toEqual({
+				total: 1,
+				pool: 0,
+				dedicated: 1,
+			});
 		});
 
 		it("reuses existing for same key", () => {

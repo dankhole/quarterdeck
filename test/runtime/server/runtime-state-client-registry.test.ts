@@ -64,4 +64,22 @@ describe("RuntimeStateClientRegistry", () => {
 		]);
 		expect(otherClient.sent).toEqual([JSON.stringify({ type: "error", message: "everyone" })]);
 	});
+
+	it("serializes a broadcast payload once for all connected clients", () => {
+		const registry = new RuntimeStateClientRegistry({
+			onProjectClientDisconnected: vi.fn(),
+		});
+		const clientA = createFakeSocket();
+		const clientB = createFakeSocket();
+		registry.registerGlobalClient(clientA.socket);
+		registry.registerGlobalClient(clientB.socket);
+		const stringify = vi.spyOn(JSON, "stringify");
+
+		registry.broadcastToAll({ type: "error", message: "everyone" });
+
+		expect(stringify).toHaveBeenCalledOnce();
+		expect(clientA.sent).toEqual(['{"type":"error","message":"everyone"}']);
+		expect(clientB.sent).toEqual(['{"type":"error","message":"everyone"}']);
+		stringify.mockRestore();
+	});
 });

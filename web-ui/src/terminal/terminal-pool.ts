@@ -159,15 +159,11 @@ const poolPolicy = new TerminalPoolPolicy({
 // ---------------------------------------------------------------------------
 
 /**
- * Initialize the pool with POOL_SIZE slots, all FREE.
- * Starts the proactive rotation timer.
- * No-op if already initialized.
+ * Construct the shared task-terminal pool and start pool-owned maintenance.
+ * Callers should normally use ensurePoolInitialized() so ordinary application
+ * startup does not pay for xterm instances before a task terminal is needed.
  */
-export function initPool(): void {
-	if (initialized) {
-		log.warn("initPool called but pool is already initialized");
-		return;
-	}
+function initializePool(): void {
 	initialized = true;
 	log.info(`initializing pool with ${POOL_SIZE} slots`);
 	for (let i = 0; i < POOL_SIZE; i++) {
@@ -180,12 +176,32 @@ export function initPool(): void {
 	terminalDomHealthMonitor.start();
 }
 
+function ensurePoolInitialized(): void {
+	if (!initialized) {
+		initializePool();
+	}
+}
+
+/**
+ * Explicitly initialize the task-terminal pool. Production paths initialize on
+ * first attach, acquire, or warmup; this entry point remains useful for tests
+ * and diagnostics that intentionally exercise an idle initialized pool.
+ */
+export function initPool(): void {
+	if (initialized) {
+		log.warn("initPool called but pool is already initialized");
+		return;
+	}
+	initializePool();
+}
+
 /**
  * Register the DOM container for pool terminals. Moves all pool slots
  * into the container. Called via React ref callback when the terminal
  * panel mounts. Idempotent for the same container.
  */
 export function attachPoolContainer(container: HTMLDivElement): void {
+	ensurePoolInitialized();
 	if (poolContainer === container) return;
 	poolContainer = container;
 	for (const slot of poolState.getSlots()) {
@@ -213,6 +229,7 @@ export function detachPoolContainer(): void {
  */
 export function acquireForTask(taskId: string, projectId: string): TerminalSlot {
 	const t0 = performance.now();
+	ensurePoolInitialized();
 	// 1. If task already has a slot: cancel warmup, transition to ACTIVE, return it.
 	const existing = poolState.getSlotForTask(taskId);
 	if (existing) {
@@ -282,6 +299,7 @@ function acquireForTaskIntoSlot(slot: TerminalSlot, taskId: string, projectId: s
  */
 export function warmup(taskId: string, projectId: string): void {
 	const t0 = performance.now();
+	ensurePoolInitialized();
 	// 1. If task already has a slot (any role): no-op
 	if (poolState.hasSlotForTask(taskId)) {
 		return;
@@ -426,6 +444,9 @@ export { disposeAllDedicatedTerminalsForProject, disposeDedicatedTerminal, isDed
  * Dedicated terminals are NOT managed by the shared-slot pool.
  */
 export function ensureDedicatedTerminal(input: EnsureDedicatedTerminalInput): TerminalSlot {
+	// Dedicated shell terminals do not initialize the shared task-terminal pool,
+	// but they still participate in terminal DOM health diagnostics.
+	terminalDomHealthMonitor.start();
 	return ensureDedicatedTerminalInRegistry(input, (appearance) => {
 		const slotId = nextSlotId++;
 		return new TerminalSlot(slotId, appearance);

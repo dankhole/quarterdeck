@@ -2,6 +2,18 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-08-11 — Lazy task-terminal pool initialization
+
+The browser app no longer calls `initPool()` at module load, which previously constructed four xterm-backed `TerminalSlot` instances and started rotation/DOM-health timers before any task terminal was visible. Pool-owned entry points now initialize on the first task-terminal container attach, direct acquire, or prewarm, preserving the existing four-slot roles, warmup/previous TTLs, restore behavior, staging, and rotation policy. Dedicated home/detail shell terminals continue through their separate registry and start shared DOM diagnostics without initializing the task-agent pool.
+
+The invariant is that deferred construction changes only when pool resources are allocated, not terminal attachment or reuse semantics, and shell terminals must not become pooled task terminals as a side effect. Notable files: `web-ui/src/App.tsx`, `web-ui/src/terminal/terminal-pool.ts`, and focused pool/session tests. Validation: 64 focused web terminal tests, all 1,057 web tests, web typecheck and production build, targeted Biome checks, and `git diff --check`.
+
+## 2026-08-11 — Runtime session delivery classification
+
+Runtime session ingest remains immediate and the active project still receives every coalesced summary update, including activity text. The delivery layer now compares each summary with the last store snapshot and only updates cross-project notification memory when the shared semantic task indicator changes; it only rebuilds project-list counts when a session crosses the `awaiting_review` boundary that can reproject an in-progress card into Review. Activity, resume metadata, checkpoints, and other count-neutral changes therefore avoid global notification board reads and project scoreboard rebuilds without weakening approval, review, failure, or resume behavior. Runtime-state broadcasts also serialize one shared frame per project/global delivery while retaining per-client send failure isolation.
+
+The invariant is that classification may skip dependent projections only when their observable semantic inputs are unchanged; it must never suppress the active project's authoritative session delta or infer lifecycle from PTY output. Notable files: `src/server/runtime-state-message-batcher.ts`, `src/server/runtime-state-client-registry.ts`, and focused runtime server tests. Validation: focused runtime tests, all 1,054 root tests, root typecheck, targeted Biome checks, and `git diff --check`.
+
 ## 2026-08-07 — Automatic title request coalescing
 
 Automatic title generation is launched after browser-owned board saves whenever a card still has `title === null`. Consecutive saves could therefore start overlapping helper-LLM calls for the same card before the first title update returned. `createStateOps(...)` now owns a per-project/task in-flight set around automatic generation: overlapping saves skip the duplicate, the key clears in `finally` after success/fallback/failure, and later saves can retry. Manual regeneration remains independent because it is an explicit awaited action and may use richer session context.

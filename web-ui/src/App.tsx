@@ -58,10 +58,7 @@ import {
 	useTaskRepositoryInfoValue,
 	useTaskWorktreeSnapshotValue,
 } from "@/stores/project-metadata-store";
-import { initPool } from "@/terminal/terminal-pool";
 import type { BoardData } from "@/types";
-
-initPool();
 
 /**
  * Bridge component that connects `useCardDetailLayout`'s reset callback to the
