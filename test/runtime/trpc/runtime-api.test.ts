@@ -565,6 +565,56 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(expect.objectContaining({ cwd: "/tmp/repo" }));
 	});
 
+	it("starts a shared-checkout task when its base branch is unresolved", async () => {
+		const card = createCard({ baseRef: "", workingDirectory: null, useWorktree: false });
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
+
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => createSummary({ sessionLaunchPath: "/tmp/repo" })),
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const api = createRuntimeApi(createDeps(terminalManager));
+
+		const response = await api.startTaskSession(defaultScope, {
+			taskId: "task-1",
+			baseRef: "",
+			prompt: "Do something",
+			useWorktree: false,
+		});
+
+		expect(response.ok).toBe(true);
+		expect(taskWorktreeMocks.resolveTaskCwd).not.toHaveBeenCalled();
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				cwd: "/tmp/repo",
+				env: undefined,
+			}),
+		);
+	});
+
+	it("still rejects an unresolved base branch for isolated tasks", async () => {
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => createSummary()),
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const api = createRuntimeApi(createDeps(terminalManager));
+
+		const response = await api.startTaskSession(defaultScope, {
+			taskId: "task-1",
+			baseRef: "",
+			prompt: "Do something",
+			useWorktree: true,
+		});
+
+		expect(response).toEqual({
+			ok: false,
+			summary: null,
+			error: "Select a base branch before starting this task.",
+		});
+		expect(projectStateMocks.loadProjectState).not.toHaveBeenCalled();
+		expect(terminalManager.startTaskSession).not.toHaveBeenCalled();
+	});
+
 	it("reuses an existing worktree path before falling back to ensure (legacy card without workingDirectory)", async () => {
 		// No card found — legacy behavior.
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(null);

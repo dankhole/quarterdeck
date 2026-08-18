@@ -2,6 +2,10 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-08-18 — Shared-checkout unresolved-base task starts
+
+Task-start validation now follows the checkout mode: an unresolved base ref still blocks isolated tasks because Quarterdeck needs a commit from which to create their worktree, while shared-checkout tasks may start or resume directly in the project root without one. The browser and runtime both enforce that same boundary so a stale or direct client request cannot reintroduce the false error. Notable files: `web-ui/src/hooks/board/use-task-sessions.ts`, `src/trpc/handlers/start-task-session.ts`, and focused start-session tests. Validation: focused start-session tests, all 1,057 root tests, all 1,059 web tests, root and web typechecks, the web production build, full Biome checks, the agent-instruction bridge check, and `git diff --check`.
+
 ## 2026-08-11 — Lazy task-terminal pool initialization
 
 The browser app no longer calls `initPool()` at module load, which previously constructed four xterm-backed `TerminalSlot` instances and started rotation/DOM-health timers before any task terminal was visible. Pool-owned entry points now initialize on the first task-terminal container attach, direct acquire, or prewarm, preserving the existing four-slot roles, warmup/previous TTLs, restore behavior, staging, and rotation policy. Dedicated home/detail shell terminals continue through their separate registry and start shared DOM diagnostics without initializing the task-agent pool.

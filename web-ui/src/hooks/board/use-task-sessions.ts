@@ -157,7 +157,7 @@ export function useTaskSessions({
 			if (!currentProjectId) {
 				return { ok: false, message: "No project selected." };
 			}
-			if (!isRuntimeTaskBaseRefResolved(task)) {
+			if (task.useWorktree !== false && !isRuntimeTaskBaseRefResolved(task)) {
 				return { ok: false, message: "Select a base branch before starting this task." };
 			}
 			log.debug("startTaskSession trpc call", {

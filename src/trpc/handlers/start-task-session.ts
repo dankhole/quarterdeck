@@ -136,7 +136,7 @@ export async function handleStartTaskSession(
 		});
 		const scopedRuntimeConfig = await deps.config.loadScopedRuntimeConfig(projectScope);
 		const useWorktree = body.useWorktree !== false;
-		if (!isRuntimeTaskBaseRefResolved({ baseRef: body.baseRef })) {
+		if (useWorktree && !isRuntimeTaskBaseRefResolved({ baseRef: body.baseRef })) {
 			return {
 				ok: false,
 				summary: null,

@@ -168,6 +168,77 @@ describe("useTaskSessions", () => {
 		expect(startTaskSessionMutateMock).toHaveBeenCalledWith(expect.objectContaining({ agentId: "codex" }));
 	});
 
+	it("allows shared-checkout tasks to start without a resolved base branch", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a hook snapshot.");
+		}
+		const snapshot = latestSnapshot as HookSnapshot;
+
+		let result: Awaited<ReturnType<HookSnapshot["startTaskSession"]>> | null = null;
+		await act(async () => {
+			result = await snapshot.startTaskSession({
+				...createTask(),
+				baseRef: "",
+				useWorktree: false,
+			});
+		});
+
+		expect(result).toMatchObject({ ok: true });
+		expect(startTaskSessionMutateMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				baseRef: "",
+				useWorktree: false,
+			}),
+		);
+	});
+
+	it("still requires a resolved base branch for isolated tasks", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a hook snapshot.");
+		}
+		const snapshot = latestSnapshot as HookSnapshot;
+
+		let result: Awaited<ReturnType<HookSnapshot["startTaskSession"]>> | null = null;
+		await act(async () => {
+			result = await snapshot.startTaskSession({
+				...createTask(),
+				baseRef: "",
+				useWorktree: true,
+			});
+		});
+
+		expect(result).toEqual({
+			ok: false,
+			message: "Select a base branch before starting this task.",
+		});
+		expect(resolveTaskStartGeometryMock).not.toHaveBeenCalled();
+		expect(startTaskSessionMutateMock).not.toHaveBeenCalled();
+	});
+
 	it("forwards task images when starting a task", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 

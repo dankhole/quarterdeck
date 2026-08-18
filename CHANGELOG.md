@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: start shared-checkout tasks without a base branch
+
+- Shared-checkout tasks can now start or resume when their base ref is unresolved; isolated tasks still require a selected base branch before Quarterdeck creates their worktree.
+
 ### Fix: reduce runtime session fanout
 
 - Activity-only task-session updates still reach the active project, but no longer trigger cross-project notification board reads or full project-list count refreshes; approval, review, failure, and `awaiting_review` boundary changes continue to update their dependent projections.
