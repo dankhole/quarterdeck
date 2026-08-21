@@ -168,7 +168,7 @@ describe("BoardCard", () => {
 		}
 	});
 
-	it("wraps the non-shrinking edit and restart action rail when the card is narrow", async () => {
+	it("groups edit and restart controls in a responsive action rail", async () => {
 		vi.useFakeTimers();
 		try {
 			await act(async () => {
@@ -194,8 +194,11 @@ describe("BoardCard", () => {
 			});
 
 			const cardHeader = container.querySelector("[data-board-card-header]");
+			const cardTitle = cardHeader?.querySelector("[data-board-card-title]");
 			const actionRail = cardHeader?.querySelector("[data-board-card-action-rail]");
 			expect(cardHeader?.classList.contains("flex-wrap")).toBe(true);
+			expect(cardTitle?.classList.contains("min-w-0")).toBe(true);
+			expect(cardTitle?.classList.contains("basis-0")).toBe(true);
 			expect(actionRail?.classList.contains("shrink-0")).toBe(true);
 			expect(actionRail?.classList.contains("max-w-full")).toBe(true);
 			expect(actionRail?.classList.contains("flex-wrap")).toBe(true);

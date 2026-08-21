@@ -84,13 +84,25 @@ test("card action controls wrap without overlapping or overflowing", async ({ pa
 	const actionRailBox = await actionRail.boundingBox();
 	expect(titleBox).not.toBeNull();
 	expect(actionRailBox).not.toBeNull();
-	expect(actionRailBox!.y).toBeGreaterThan(titleBox!.y);
+	expect(titleBox!.width).toBeLessThan(64);
+	const titleCenterY = titleBox!.y + titleBox!.height / 2;
+	const actionRailCenterY = actionRailBox!.y + actionRailBox!.height / 2;
+	expect(Math.abs(actionRailCenterY - titleCenterY)).toBeLessThan(1);
+	const wideActionTops = await actionRail
+		.getByRole("button")
+		.evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().top));
+	expect(new Set(wideActionTops).size).toBe(1);
 
 	await card.evaluate((element) => {
 		element.style.width = "90px";
 	});
 
 	await expect.poll(() => header.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+	const narrowTitleBox = await title.boundingBox();
+	const narrowActionRailBox = await actionRail.boundingBox();
+	expect(narrowTitleBox).not.toBeNull();
+	expect(narrowActionRailBox).not.toBeNull();
+	expect(narrowActionRailBox!.y).toBeGreaterThanOrEqual(narrowTitleBox!.y + narrowTitleBox!.height);
 
 	const actionBoxes = await actionRail.getByRole("button").evaluateAll((buttons) =>
 		buttons.map((button) => {

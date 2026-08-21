@@ -9,7 +9,7 @@
 
 ### Fix: keep task-card actions separated
 
-- Compact task cards now keep edit, pin, restart, and trash controls in a responsive action rail that moves onto a right-aligned second row and wraps its controls internally when needed, so hover actions cannot overlap or overflow when space runs out.
+- Compact task cards now let the title truncate completely before moving edit, pin, restart, and trash controls onto a right-aligned second row; the action rail wraps its controls internally only when the controls themselves cannot fit, preventing icon overlap and overflow without making cards taller unnecessarily.
 
 ### Fix: start shared-checkout tasks without a base branch
 

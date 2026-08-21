@@ -337,7 +337,7 @@ export function BoardCard({
 									stopEvent={stopEvent}
 								/>
 							) : (
-								<div className="min-w-16 flex-1 basis-16" data-board-card-title>
+								<div className="min-w-0 flex-1 basis-0" data-board-card-title>
 									<p
 										className={cn(
 											"kb-line-clamp-1 m-0 font-medium text-sm",
