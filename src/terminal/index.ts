@@ -20,6 +20,7 @@ export {
 	type HookRuntimeContext,
 	parseHookRuntimeContextFromEnv,
 	QUARTERDECK_HOOK_PROJECT_ID_ENV,
+	QUARTERDECK_HOOK_SESSION_INSTANCE_ID_ENV,
 	QUARTERDECK_HOOK_TASK_ID_ENV,
 } from "./hook-runtime-context";
 export { killOrphanedAgentProcesses } from "./orphan-cleanup";

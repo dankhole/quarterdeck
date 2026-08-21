@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: make native hook transitions replay-safe
+
+- Reliable Codex state-transition hooks now use two bounded delivery attempts backed by an expiring local replay outbox, so a brief runtime stall no longer leaves a task permanently running or awaiting input after the native hook fired.
+- Every task process now has a launch-scoped hook identity, and documented Codex turn plus canonical-tool metadata protects replay and delayed delivery from applying an old permission, tool completion, or root `Stop` over newer task state; legacy hook payloads keep their existing behavior.
+
 ### Fix: keep task-card actions separated
 
 - Compact task cards now keep edit, pin, restart, and trash controls in a responsive action rail that moves onto a right-aligned second row and wraps its controls internally when needed, so hover actions cannot overlap or overflow when space runs out.

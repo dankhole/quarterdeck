@@ -101,6 +101,9 @@ export interface HookCommandMetadataOptionValues {
 	hookEventName?: string;
 	notificationType?: string;
 	sessionId?: string;
+	sessionInstanceId?: string;
+	turnId?: string;
+	toolUseId?: string;
 	transcriptPath?: string;
 	metadataBase64?: string;
 }
@@ -115,6 +118,9 @@ export function parseMetadataFromOptions(options: HookCommandMetadataOptionValue
 	const notificationType = options.notificationType;
 	const source = options.source;
 	const sessionId = options.sessionId;
+	const sessionInstanceId = options.sessionInstanceId;
+	const turnId = options.turnId;
+	const toolUseId = options.toolUseId;
 	const transcriptPath = options.transcriptPath;
 
 	if (activityText) {
@@ -140,6 +146,15 @@ export function parseMetadataFromOptions(options: HookCommandMetadataOptionValue
 	}
 	if (sessionId) {
 		metadata.sessionId = normalizeWhitespace(sessionId);
+	}
+	if (sessionInstanceId) {
+		metadata.sessionInstanceId = normalizeWhitespace(sessionInstanceId);
+	}
+	if (turnId) {
+		metadata.turnId = normalizeWhitespace(turnId);
+	}
+	if (toolUseId) {
+		metadata.toolUseId = normalizeWhitespace(toolUseId);
 	}
 	if (transcriptPath) {
 		metadata.transcriptPath = transcriptPath.trim();
@@ -403,6 +418,12 @@ export function normalizeHookMetadata(
 	const transcriptPath = payload
 		? (readTrimmedStringField(payload, "transcript_path") ?? readTrimmedStringField(payload, "transcriptPath"))
 		: null;
+	const turnId = payload
+		? (readTrimmedStringField(payload, "turn_id") ?? readTrimmedStringField(payload, "turnId"))
+		: null;
+	const toolUseId = payload
+		? (readTrimmedStringField(payload, "tool_use_id") ?? readTrimmedStringField(payload, "toolUseId"))
+		: null;
 
 	const toolInput = payload ? extractToolInput(payload) : null;
 	const toolInputSummary = describeToolOperation(toolName, toolInput);
@@ -436,6 +457,9 @@ export function normalizeHookMetadata(
 			: (flagMetadata.finalMessage ?? (finalMessage ? compactHookMetadataText(finalMessage) : null)),
 		activityText: flagMetadata.activityText ?? (activityText ? compactHookMetadataText(activityText) : null),
 		sessionId: flagMetadata.sessionId ?? null,
+		sessionInstanceId: flagMetadata.sessionInstanceId ?? null,
+		turnId: flagMetadata.turnId ?? turnId ?? null,
+		toolUseId: flagMetadata.toolUseId ?? toolUseId ?? null,
 		transcriptPath: flagMetadata.transcriptPath ?? transcriptPath ?? null,
 		conversationSummaryText: waitingForBackgroundWork
 			? null
@@ -482,6 +506,15 @@ export function appendMetadataFlags(args: string[], metadata?: RuntimeHookMetada
 	}
 	if (metadata.sessionId) {
 		args.push("--session-id", metadata.sessionId);
+	}
+	if (metadata.sessionInstanceId) {
+		args.push("--session-instance-id", metadata.sessionInstanceId);
+	}
+	if (metadata.turnId) {
+		args.push("--turn-id", metadata.turnId);
+	}
+	if (metadata.toolUseId) {
+		args.push("--tool-use-id", metadata.toolUseId);
 	}
 	if (metadata.transcriptPath) {
 		args.push("--transcript-path", metadata.transcriptPath);

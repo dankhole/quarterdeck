@@ -65,6 +65,45 @@ describe("TerminalSessionManager ordering invariants", () => {
 		vi.useRealTimers();
 	});
 
+	it("assigns an isolated hook identity to every spawned task process", async () => {
+		setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+
+		for (const taskId of ["task-1", "task-2"]) {
+			await manager.startTaskSession({
+				taskId,
+				agentId: "codex",
+				binary: "codex",
+				args: [],
+				cwd: `/tmp/${taskId}`,
+				prompt: "Fix the bug",
+			});
+		}
+
+		const firstInstanceId = prepareAgentLaunchMock.mock.calls[0]?.[0].hookSessionInstanceId as string;
+		const secondInstanceId = prepareAgentLaunchMock.mock.calls[1]?.[0].hookSessionInstanceId as string;
+		expect(firstInstanceId).toEqual(expect.any(String));
+		expect(secondInstanceId).toEqual(expect.any(String));
+		expect(firstInstanceId).not.toBe(secondInstanceId);
+		expect(
+			manager.evaluateHookEventOrder("task-1", {
+				taskId: "task-1",
+				projectId: "project-1",
+				event: "to_review",
+				metadata: {
+					source: "codex",
+					hookEventName: "Stop",
+					sessionInstanceId: secondInstanceId,
+					turnId: "turn-1",
+				},
+				delivery: {
+					id: "00000000-0000-4000-8000-000000000001",
+					occurredAt: 100,
+				},
+			}),
+		).toEqual({ accepted: false, reason: "stale_session" });
+	});
+
 	it("uses real detached rows when launching Claude fullscreen sessions", async () => {
 		setupMockPtySpawn();
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());

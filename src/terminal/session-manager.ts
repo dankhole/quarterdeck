@@ -14,7 +14,8 @@
 //   session-interrupt-recovery.ts  — interrupt detection and recovery
 //   session-auto-restart.ts        — auto-restart after unexpected exit
 //   session-reconciliation-sweep.ts — periodic task session/process drift sweep
-import type { RuntimeTaskSessionSummary } from "../core";
+import type { RuntimeHookIngestRequest, RuntimeTaskSessionSummary } from "../core";
+import { commitHookEventOrder, evaluateHookEventOrder, type HookEventOrderDecision } from "./hook-event-order";
 import { processSessionInput } from "./session-input-pipeline";
 import { SessionLifecycleController } from "./session-lifecycle-controller";
 import {
@@ -135,6 +136,14 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (entry) {
 			entry.hookCount += 1;
 		}
+	}
+
+	evaluateHookEventOrder(taskId: string, input: RuntimeHookIngestRequest): HookEventOrderDecision {
+		return evaluateHookEventOrder(this.entries.get(taskId)?.hookEventOrder ?? null, input);
+	}
+
+	commitHookEventOrder(taskId: string, input: RuntimeHookIngestRequest, advanceTurn: boolean): void {
+		commitHookEventOrder(this.entries.get(taskId)?.hookEventOrder ?? null, input, { advanceTurn });
 	}
 
 	resize(

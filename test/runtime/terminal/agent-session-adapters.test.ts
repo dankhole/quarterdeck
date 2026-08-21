@@ -134,10 +134,12 @@ describe("prepareAgentLaunch hook strategies", () => {
 			cwd: repoPath,
 			prompt: "",
 			projectId: "project-1",
+			hookSessionInstanceId: "process-1",
 		});
 
 		expect(launch.env.QUARTERDECK_HOOK_TASK_ID).toBe("task-1");
 		expect(launch.env.QUARTERDECK_HOOK_PROJECT_ID).toBe("project-1");
+		expect(launch.env.QUARTERDECK_HOOK_SESSION_INSTANCE_ID).toBe("process-1");
 		expect(launch.binary).toBe("codex");
 		expect(launch.detectOutputTransition).toBeUndefined();
 		expect(launch.shouldInspectOutputForTransition).toBeUndefined();

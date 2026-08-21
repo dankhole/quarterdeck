@@ -27,6 +27,7 @@ export interface AgentAdapterLaunchInput {
 	env?: Record<string, string | undefined>;
 	projectId?: string;
 	projectPath?: string;
+	hookSessionInstanceId?: string;
 	claudeFullscreenEnabled?: boolean;
 	statuslineEnabled?: boolean;
 	worktreeSystemPromptTemplate?: string;
@@ -51,6 +52,7 @@ export interface PreparedAgentLaunch {
 interface HookContext {
 	taskId: string;
 	projectId: string;
+	sessionInstanceId?: string;
 }
 
 interface AgentSessionAdapter {
@@ -65,6 +67,7 @@ function resolveHookContext(input: AgentAdapterLaunchInput): HookContext | null 
 	return {
 		taskId: input.taskId,
 		projectId,
+		sessionInstanceId: input.hookSessionInstanceId,
 	};
 }
 
@@ -219,6 +222,7 @@ const claudeAdapter: AgentSessionAdapter = {
 				createHookRuntimeEnv({
 					taskId: hooks.taskId,
 					projectId: hooks.projectId,
+					sessionInstanceId: hooks.sessionInstanceId,
 				}),
 			);
 		}
@@ -300,6 +304,7 @@ const codexAdapter: AgentSessionAdapter = {
 				createHookRuntimeEnv({
 					taskId: hooks.taskId,
 					projectId: hooks.projectId,
+					sessionInstanceId: hooks.sessionInstanceId,
 				}),
 			);
 		}
@@ -398,6 +403,7 @@ const piAdapter: AgentSessionAdapter = {
 				createHookRuntimeEnv({
 					taskId: hooks.taskId,
 					projectId: hooks.projectId,
+					sessionInstanceId: hooks.sessionInstanceId,
 				}),
 				{
 					[QUARTERDECK_PI_HOOK_COMMAND_ENV]: JSON.stringify(buildQuarterdeckCommandParts(["hooks", "notify"])),

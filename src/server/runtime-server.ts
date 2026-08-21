@@ -11,6 +11,7 @@ import {
 	getQuarterdeckRuntimeOrigin,
 	getQuarterdeckRuntimePort,
 } from "../core";
+import { createHookTransitionOutboxReplayer } from "../hook-transition-outbox";
 import { loadProjectScopeById } from "../state";
 import type { TerminalSessionManager } from "../terminal";
 import { createTerminalWebSocketBridge } from "../terminal";
@@ -131,6 +132,15 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	const getScopedTerminalManager = async (scope: RuntimeTrpcProjectScope): Promise<TerminalSessionManager> =>
 		await deps.projectRegistry.ensureTerminalManagerForProject(scope.projectId, scope.projectPath);
+	const hooksApi = createHooksApi({
+		projects: deps.projectRegistry,
+		terminals: deps.projectRegistry,
+		config: deps.projectRegistry,
+		broadcaster: deps.runtimeStateHub,
+	});
+	const hookTransitionOutboxReplayer = createHookTransitionOutboxReplayer({
+		ingest: hooksApi.ingest,
+	});
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
 		const requestUrl = new URL(req.url ?? "/", "http://localhost");
 		const scope = await resolveProjectScopeFromRequest(req, requestUrl);
@@ -168,12 +178,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				warn: deps.warn,
 				pickDirectoryPathFromSystemDialog: deps.pickDirectoryPathFromSystemDialog,
 			}),
-			hooksApi: createHooksApi({
-				projects: deps.projectRegistry,
-				terminals: deps.projectRegistry,
-				config: deps.projectRegistry,
-				broadcaster: deps.runtimeStateHub,
-			}),
+			hooksApi,
 		};
 	};
 
@@ -262,6 +267,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	}
 	const serverPort = typeof address === "object" ? address.port : null;
 	serverLog.warn("server started", { port: serverPort, pid: process.pid });
+	hookTransitionOutboxReplayer.start();
 	const activeProjectId = deps.projectRegistry.getActiveProjectId();
 	const url = activeProjectId
 		? buildQuarterdeckRuntimeUrl(`/${encodeURIComponent(activeProjectId)}`)
@@ -270,6 +276,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	return {
 		url,
 		close: async () => {
+			await hookTransitionOutboxReplayer.close();
 			await deps.runtimeStateHub.close();
 			await terminalWebSocketBridge.close();
 			await new Promise<void>((resolveClose, rejectClose) => {

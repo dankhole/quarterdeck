@@ -10,11 +10,23 @@ export function createMockManager(storeMethods: Partial<SessionSummaryStore>): T
 		applyHookMetadata:
 			storeMethods.applyHookMetadata ??
 			vi.fn((taskId: string, metadata: Parameters<SessionSummaryStore["applyHookMetadata"]>[1]) => {
-				const { sessionId: _sessionId, ...activity } = metadata;
+				const {
+					sessionId: _sessionId,
+					sessionInstanceId: _sessionInstanceId,
+					turnId: _turnId,
+					toolUseId: _toolUseId,
+					transcriptPath: _transcriptPath,
+					...activity
+				} = metadata;
 				return storeMethods.applyHookActivity?.(taskId, activity);
 			}),
 	};
-	return { store, recordHookReceived: vi.fn() } as unknown as TerminalSessionManager;
+	return {
+		store,
+		recordHookReceived: vi.fn(),
+		evaluateHookEventOrder: vi.fn(() => ({ accepted: true })),
+		commitHookEventOrder: vi.fn(),
+	} as unknown as TerminalSessionManager;
 }
 
 export function mockStore(manager: TerminalSessionManager): Record<string, ReturnType<typeof vi.fn>> {

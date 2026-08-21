@@ -3,6 +3,44 @@ import { describe, expect, it, vi } from "vitest";
 import { createMockManager, createSummary, createTestApi, mockStore } from "./_helpers";
 
 describe("createHooksApi — transitions", () => {
+	it.each([
+		["stale_observation", false],
+		["unrelated_tool_completion", true],
+	] as const)("ignores %s deliveries without touching task state", async (reason, commitObservation) => {
+		const manager = createMockManager({
+			getSummary: vi.fn(() => createSummary({ state: "running", agentId: "codex" })),
+			transitionToReview: vi.fn(),
+			transitionToRunning: vi.fn(),
+			applyHookActivity: vi.fn(),
+		});
+		vi.mocked(manager.evaluateHookEventOrder).mockReturnValue({
+			accepted: false,
+			reason,
+		});
+		const api = createTestApi(manager);
+
+		const response = await api.ingest({
+			taskId: "task-1",
+			projectId: "project-1",
+			event: "to_review",
+			metadata: {
+				source: "codex",
+				hookEventName: "PermissionRequest",
+				sessionInstanceId: "process-1",
+				turnId: "turn-1",
+			},
+			delivery: {
+				id: "00000000-0000-4000-8000-000000000001",
+				occurredAt: 100,
+			},
+		});
+
+		expect(response).toEqual({ ok: true });
+		expect(manager.recordHookReceived).not.toHaveBeenCalled();
+		expect(mockStore(manager).transitionToReview).not.toHaveBeenCalled();
+		expect(manager.commitHookEventOrder).toHaveBeenCalledWith("task-1", expect.any(Object), commitObservation);
+	});
+
 	it("treats ineligible hook transitions as successful no-ops", async () => {
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
@@ -22,6 +60,7 @@ describe("createHooksApi — transitions", () => {
 		expect(response).toEqual({ ok: true });
 		expect(mockStore(manager).transitionToRunning).not.toHaveBeenCalled();
 		expect(mockStore(manager).transitionToReview).not.toHaveBeenCalled();
+		expect(manager.commitHookEventOrder).toHaveBeenCalledWith("task-1", expect.any(Object), true);
 	});
 
 	it("stores activity metadata without changing session state", async () => {

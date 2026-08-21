@@ -229,6 +229,9 @@ export function parseHookIngestRequest(value: unknown): RuntimeHookIngestRequest
 				notificationType: parsed.metadata.notificationType?.trim(),
 				source: parsed.metadata.source?.trim(),
 				sessionId: parsed.metadata.sessionId?.trim() || null,
+				sessionInstanceId: parsed.metadata.sessionInstanceId?.trim() || null,
+				turnId: parsed.metadata.turnId?.trim() || null,
+				toolUseId: parsed.metadata.toolUseId?.trim() || null,
 				transcriptPath: parsed.metadata.transcriptPath?.trim() || null,
 				conversationSummaryText: parsed.metadata.conversationSummaryText?.trim() || null,
 			}

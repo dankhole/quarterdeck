@@ -24,10 +24,19 @@ export type RuntimeTaskHookActivity = z.infer<typeof runtimeTaskHookActivitySche
 export const runtimeHookMetadataSchema = runtimeTaskHookActivitySchema
 	.extend({
 		sessionId: z.string().nullable().default(null),
+		sessionInstanceId: z.string().nullable().default(null),
+		turnId: z.string().nullable().default(null),
+		toolUseId: z.string().nullable().default(null),
 		transcriptPath: z.string().nullable().default(null),
 	})
 	.partial();
 export type RuntimeHookMetadata = z.infer<typeof runtimeHookMetadataSchema>;
+
+export const runtimeHookDeliverySchema = z.object({
+	id: z.string().uuid(),
+	occurredAt: z.number().int().nonnegative(),
+});
+export type RuntimeHookDelivery = z.infer<typeof runtimeHookDeliverySchema>;
 
 export const conversationSummaryEntrySchema = z.object({
 	/** The extracted assistant message text, capped at 500 chars. */
@@ -144,6 +153,7 @@ export const runtimeHookIngestRequestSchema = z.object({
 	projectId: z.string(),
 	event: runtimeHookEventSchema,
 	metadata: runtimeHookMetadataSchema.optional(),
+	delivery: runtimeHookDeliverySchema.optional(),
 });
 export type RuntimeHookIngestRequest = z.infer<typeof runtimeHookIngestRequestSchema>;
 

@@ -1,7 +1,11 @@
+import { randomUUID } from "node:crypto";
+
 import { createTRPCProxyClient, httpBatchLink, TRPCClientError } from "@trpc/client";
 import type { Command } from "commander";
-import type { RuntimeHookEvent, RuntimeHookMetadata } from "../core";
+
+import type { RuntimeHookDelivery, RuntimeHookEvent, RuntimeHookMetadata } from "../core";
 import { buildQuarterdeckRuntimeUrl } from "../core";
+import { acknowledgeHookTransition, enqueueHookTransition } from "../hook-transition-outbox";
 import { parseHookRuntimeContextFromEnv } from "../terminal";
 import type { RuntimeAppRouter } from "../trpc";
 import {
@@ -25,6 +29,7 @@ interface HooksIngestArgs {
 	taskId: string;
 	projectId: string;
 	metadata?: RuntimeHookMetadata;
+	delivery?: RuntimeHookDelivery;
 	payload?: Record<string, unknown> | null;
 }
 
@@ -48,6 +53,9 @@ function formatHookDiagnosticFields(
 		task: args.taskId,
 		source: metadata?.source ?? null,
 		session: metadata?.sessionId ?? null,
+		instance: metadata?.sessionInstanceId ?? null,
+		turn: metadata?.turnId ?? null,
+		delivery: args.delivery?.id ?? null,
 		hookEvent: metadata?.hookEventName ?? null,
 		tool: metadata?.toolName ?? null,
 		notifType: metadata?.notificationType ?? null,
@@ -129,6 +137,7 @@ function parseHooksIngestArgs(
 	const metadataContext = {
 		...flagMetadata,
 		sessionId: flagMetadata.sessionId ?? payloadSessionId ?? null,
+		sessionInstanceId: flagMetadata.sessionInstanceId ?? context.sessionInstanceId ?? null,
 	};
 	const resolvedEvent = resolveHookEventFromPayload(
 		event,
@@ -141,12 +150,18 @@ function parseHooksIngestArgs(
 		taskId: context.taskId,
 		projectId: context.projectId,
 		metadata,
+		delivery: context.sessionInstanceId
+			? {
+					id: randomUUID(),
+					occurredAt: Date.now(),
+				}
+			: undefined,
 		payload,
 	};
 }
 
-const HOOK_INGEST_TIMEOUT_MS = 3000;
-const HOOK_INGEST_RETRY_DELAY_MS = 1000;
+export const HOOK_INGEST_ATTEMPT_TIMEOUT_MS = 1_500;
+export const HOOK_INGEST_RETRY_DELAY_MS = 250;
 const HOOK_NOTIFY_TIMEOUT_MS = 250;
 
 interface HookIngestPolicy {
@@ -156,7 +171,7 @@ interface HookIngestPolicy {
 }
 
 const RELIABLE_HOOK_INGEST_POLICY: HookIngestPolicy = {
-	timeoutMs: HOOK_INGEST_TIMEOUT_MS,
+	timeoutMs: HOOK_INGEST_ATTEMPT_TIMEOUT_MS,
 	retry: true,
 	retryDelayMs: HOOK_INGEST_RETRY_DELAY_MS,
 };
@@ -191,6 +206,7 @@ async function ingestHookEvent(
 					projectId: args.projectId,
 					event: args.event,
 					metadata: args.metadata,
+					delivery: args.delivery,
 				});
 			},
 			policy.timeoutMs,
@@ -263,7 +279,35 @@ async function runHooksIngest(
 	try {
 		const stdinPayload = await readStdinText();
 		const args = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
-		await ingestHookEvent(args);
+		const request = {
+			taskId: args.taskId,
+			projectId: args.projectId,
+			event: args.event,
+			metadata: args.metadata,
+			delivery: args.delivery,
+		};
+		let queuedForReplay = false;
+		try {
+			queuedForReplay = await enqueueHookTransition(request);
+		} catch (error) {
+			writeHookCliDiagnostic(args, "failed to persist transition for replay", {
+				error: formatError(error),
+			});
+		}
+		try {
+			await ingestHookEvent(args);
+			if (queuedForReplay && args.delivery) {
+				await acknowledgeHookTransition(args.delivery.id);
+			}
+		} catch (error) {
+			if (!queuedForReplay) {
+				throw error;
+			}
+			writeHookCliDiagnostic(args, "ingest deferred to durable replay", {
+				error: formatError(error),
+				delivery: args.delivery?.id ?? null,
+			});
+		}
 	} catch (error) {
 		process.stderr.write(`quarterdeck hooks ingest: ${formatError(error)}\n`);
 		process.exitCode = 1;
@@ -285,6 +329,9 @@ export function registerHooksCommand(program: Command): void {
 		.option("--hook-event-name <name>", "Original hook event name.")
 		.option("--notification-type <type>", "Notification type.")
 		.option("--session-id <id>", "Resumable agent session id.")
+		.option("--session-instance-id <id>", "Quarterdeck task-process instance id.")
+		.option("--turn-id <id>", "Agent turn id.")
+		.option("--tool-use-id <id>", "Agent tool-use id.")
 		.option("--transcript-path <path>", "Agent transcript JSONL path.")
 		.option("--metadata-base64 <base64>", "Base64-encoded JSON metadata payload.")
 		.action(
@@ -308,6 +355,9 @@ export function registerHooksCommand(program: Command): void {
 		.option("--hook-event-name <name>", "Original hook event name.")
 		.option("--notification-type <type>", "Notification type.")
 		.option("--session-id <id>", "Resumable agent session id.")
+		.option("--session-instance-id <id>", "Quarterdeck task-process instance id.")
+		.option("--turn-id <id>", "Agent turn id.")
+		.option("--tool-use-id <id>", "Agent tool-use id.")
 		.option("--transcript-path <path>", "Agent transcript JSONL path.")
 		.option("--metadata-base64 <base64>", "Base64-encoded JSON metadata payload.")
 		.action(

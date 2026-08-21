@@ -2,6 +2,8 @@
 // Extracted from session-manager.ts — handles PTY process creation, exit
 // processing, auto-restart decisions, and stale session recovery.
 
+import { randomUUID } from "node:crypto";
+
 import type { RuntimeTaskSessionReviewReason, RuntimeTaskSessionSummary } from "../core";
 import { createTaggedLogger } from "../core";
 import { cleanStaleIndexLockForWorktree } from "../fs";
@@ -15,6 +17,7 @@ import {
 	STORED_CODEX_RESUME_FAILED_WARNING,
 } from "./codex-resume-failure";
 import { shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust";
+import { createHookEventOrderState } from "./hook-event-order";
 import { PtySession, type PtySession as PtySessionInstance } from "./pty-session";
 import { scheduleAutoRestart, shouldAutoRestart } from "./session-auto-restart";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
@@ -84,6 +87,8 @@ export async function spawnTaskSession(
 	deps: SpawnTaskSessionDeps,
 ): Promise<RuntimeTaskSessionSummary> {
 	entry.pendingSessionStart = true;
+	const hookSessionInstanceId = randomUUID();
+	entry.hookEventOrder = createHookEventOrderState(hookSessionInstanceId);
 
 	const cols = normalizeDimension(request.cols, 120);
 	const baseRows = normalizeDimension(request.rows, 40);
@@ -132,12 +137,14 @@ export async function spawnTaskSession(
 			env: request.env,
 			projectId: request.projectId,
 			projectPath: request.projectPath,
+			hookSessionInstanceId,
 			claudeFullscreenEnabled,
 			statuslineEnabled: request.statuslineEnabled,
 			worktreeSystemPromptTemplate: request.worktreeSystemPromptTemplate,
 		});
 	} catch (error) {
 		entry.pendingSessionStart = false;
+		entry.hookEventOrder = null;
 		throw error;
 	}
 
@@ -197,6 +204,7 @@ export async function spawnTaskSession(
 			error: errorMessage,
 		});
 		entry.pendingSessionStart = false;
+		entry.hookEventOrder = null;
 		if (launch.cleanup) {
 			void launch.cleanup().catch(() => {});
 		}

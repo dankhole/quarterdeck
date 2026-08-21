@@ -8,6 +8,7 @@ import type {
 	AgentOutputTransitionDetector,
 	AgentOutputTransitionInspectionPredicate,
 } from "./agent-session-adapters";
+import type { HookEventOrderState } from "./hook-event-order";
 import type { PtySession } from "./pty-session";
 import type { TerminalProtocolFilterState } from "./terminal-protocol-filter";
 import type { TerminalSessionListener } from "./terminal-session-service";
@@ -47,6 +48,7 @@ export interface ProcessEntry {
 	pendingSessionStart: boolean;
 	pendingExitResolvers: Array<() => void>;
 	hookCount: number;
+	hookEventOrder: HookEventOrderState | null;
 }
 
 export interface StartTaskSessionRequest {
@@ -146,6 +148,7 @@ export function createProcessEntry(taskId: string): ProcessEntry {
 		pendingSessionStart: false,
 		pendingExitResolvers: [],
 		hookCount: 0,
+		hookEventOrder: null,
 	};
 }
 
@@ -243,6 +246,7 @@ export function teardownActiveSession(entry: ProcessEntry): void {
 	}
 	entry.terminalStateMirror?.dispose();
 	entry.terminalStateMirror = null;
+	entry.hookEventOrder = null;
 }
 
 /**
@@ -267,6 +271,7 @@ export function finalizeProcessExit(
 		entry.active.onSessionCleanup = null;
 	}
 	entry.active = null;
+	entry.hookEventOrder = null;
 
 	for (const resolve of entry.pendingExitResolvers) {
 		resolve();

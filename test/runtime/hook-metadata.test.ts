@@ -56,6 +56,36 @@ describe("hook metadata", () => {
 		);
 	});
 
+	it("preserves native turn and tool-use identities", () => {
+		const metadata = normalizeHookMetadata(
+			"to_in_progress",
+			{
+				hook_event_name: "PostToolUse",
+				turn_id: "turn-123",
+				tool_use_id: "tool-456",
+			},
+			{ source: "codex", sessionInstanceId: "process-789" },
+		);
+
+		expect(metadata).toEqual(
+			expect.objectContaining({
+				sessionInstanceId: "process-789",
+				turnId: "turn-123",
+				toolUseId: "tool-456",
+			}),
+		);
+		expect(appendMetadataFlags(["hooks", "ingest"], metadata)).toEqual(
+			expect.arrayContaining([
+				"--session-instance-id",
+				"process-789",
+				"--turn-id",
+				"turn-123",
+				"--tool-use-id",
+				"tool-456",
+			]),
+		);
+	});
+
 	it("uses Claude Stop last_assistant_message as conversation summary metadata", () => {
 		const metadata = normalizeHookMetadata(
 			"to_review",

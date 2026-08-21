@@ -4,6 +4,7 @@ import type {
 	IRuntimeConfigProvider,
 	ITerminalManagerProvider,
 	RuntimeHookEvent,
+	RuntimeHookIngestRequest,
 	RuntimeHookIngestResponse,
 	RuntimeHookMetadata,
 	RuntimeTaskHookActivity,
@@ -44,6 +45,7 @@ function buildHookLogData(input: {
 	taskId: string;
 	event: RuntimeHookEvent;
 	metadata: RuntimeHookMetadata | undefined;
+	delivery: RuntimeHookIngestRequest["delivery"];
 }): Record<string, unknown> {
 	const metadata = input.metadata;
 	return {
@@ -52,6 +54,11 @@ function buildHookLogData(input: {
 		event: input.event,
 		source: metadata?.source ?? null,
 		sessionId: metadata?.sessionId ?? null,
+		sessionInstanceId: metadata?.sessionInstanceId ?? null,
+		turnId: metadata?.turnId ?? null,
+		toolUseId: metadata?.toolUseId ?? null,
+		deliveryId: input.delivery?.id ?? null,
+		occurredAt: input.delivery?.occurredAt ?? null,
 		hookEventName: metadata?.hookEventName ?? null,
 		notificationType: metadata?.notificationType ?? null,
 		toolName: metadata?.toolName ?? null,
@@ -90,7 +97,14 @@ function toHookActivityPatch(metadata: RuntimeHookMetadata | undefined): Partial
 	if (!metadata) {
 		return undefined;
 	}
-	const { sessionId: _sessionId, transcriptPath: _transcriptPath, ...activity } = metadata;
+	const {
+		sessionId: _sessionId,
+		sessionInstanceId: _sessionInstanceId,
+		turnId: _turnId,
+		toolUseId: _toolUseId,
+		transcriptPath: _transcriptPath,
+		...activity
+	} = metadata;
 	return activity;
 }
 
@@ -287,7 +301,13 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				const taskId = body.taskId;
 				const projectId = body.projectId;
 				const event = body.event;
-				const hookLogData = buildHookLogData({ projectId, taskId, event, metadata: body.metadata });
+				const hookLogData = buildHookLogData({
+					projectId,
+					taskId,
+					event,
+					metadata: body.metadata,
+					delivery: body.delivery,
+				});
 				log.info("Hook ingest received", hookLogData);
 				const knownProjectPath = deps.projects.getProjectPathById(projectId);
 				const loadedProjectScope = knownProjectPath ? null : await loadProjectScopeById(projectId);
@@ -309,6 +329,19 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						ok: false,
 						error: `Task "${taskId}" not found in project "${projectId}"`,
 					} satisfies RuntimeHookIngestResponse;
+				}
+
+				const completeHookIngest = (advanceTurn: boolean): RuntimeHookIngestResponse => {
+					manager.commitHookEventOrder(taskId, body, advanceTurn);
+					return { ok: true } satisfies RuntimeHookIngestResponse;
+				};
+				const orderDecision = manager.evaluateHookEventOrder(taskId, body);
+				if (!orderDecision.accepted) {
+					log.info("Hook ingest ignored by delivery ordering", {
+						...hookLogData,
+						reason: orderDecision.reason,
+					});
+					return completeHookIngest(orderDecision.reason === "unrelated_tool_completion");
 				}
 
 				const incomingSessionId = body.metadata?.sessionId?.trim() || null;
@@ -371,9 +404,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						});
 						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 						queuePostMetadataSummaryPolish("hook.metadata-only", false);
-						return {
-							ok: true,
-						} satisfies RuntimeHookIngestResponse;
+						return completeHookIngest(true);
 					}
 					if (isPermissionGuardedActivityOverwrite(summary, activityMetadata)) {
 						log.debug("Hook blocked: permission guard prevented activity overwrite", {
@@ -385,9 +416,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						// and would clobber the existing permission metadata.
 						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 						queuePostMetadataSummaryPolish("hook.permission-guarded", false);
-						return {
-							ok: true,
-						} satisfies RuntimeHookIngestResponse;
+						return completeHookIngest(true);
 					}
 					if (isAttentionGuardedActivityOverwrite(summary, activityMetadata)) {
 						log.debug("Hook blocked: attention guard prevented activity overwrite", {
@@ -397,9 +426,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						});
 						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 						queuePostMetadataSummaryPolish("hook.attention-guarded", false);
-						return {
-							ok: true,
-						} satisfies RuntimeHookIngestResponse;
+						return completeHookIngest(true);
 					}
 					if (body.metadata && (incomingSessionId || activityMetadata)) {
 						store.applyHookMetadata(taskId, body.metadata);
@@ -410,9 +437,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					}
 					applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 					queuePostMetadataSummaryPolish("hook.metadata", false);
-					return {
-						ok: true,
-					} satisfies RuntimeHookIngestResponse;
+					return completeHookIngest(true);
 				}
 
 				// Patch A: Input-wait-aware transition guards.
@@ -443,7 +468,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						});
 						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 						queuePostMetadataSummaryPolish("hook.attention-transition-guarded", false);
-						return { ok: true } satisfies RuntimeHookIngestResponse;
+						return completeHookIngest(true);
 					}
 					if (
 						currentActivity != null &&
@@ -458,7 +483,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						});
 						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 						queuePostMetadataSummaryPolish("hook.permission-transition-guarded", false);
-						return { ok: true } satisfies RuntimeHookIngestResponse;
+						return completeHookIngest(true);
 					}
 				}
 
@@ -504,7 +529,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 
 				// Patch B: Broadcast and return BEFORE checkpoint capture.
 				// Checkpoint capture runs git operations (stash create) that routinely
-				// exceed the hook CLI's 3s timeout. Returning early prevents timeout-
+				// exceed a hook HTTP attempt's deadline. Returning early prevents timeout-
 				// triggered retries while the state transition has already succeeded.
 				// The checkpoint fires in the background and applies via store.update
 				// which triggers onChange listeners for downstream consumers.
@@ -574,7 +599,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					})();
 				}
 
-				return { ok: true } satisfies RuntimeHookIngestResponse;
+				return completeHookIngest(true);
 			} catch (error) {
 				const message = errorMessage(error);
 				log.error("Hook ingest crashed", { error: message });
