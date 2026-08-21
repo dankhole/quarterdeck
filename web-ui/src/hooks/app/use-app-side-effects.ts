@@ -1,4 +1,3 @@
-import type { MutableRefObject } from "react";
 import type { BoardContextValue } from "@/providers/board-provider";
 import type { DialogContextValue } from "@/providers/dialog-provider";
 import type { GitContextValue } from "@/providers/git-provider";
@@ -15,7 +14,6 @@ import type { TaskEditorContextValue } from "@/providers/task-editor-provider";
 import type { TerminalContextValue } from "@/providers/terminal-provider";
 import { useAppHotkeys } from "./use-app-hotkeys";
 import { useAppProjectNotificationEffects } from "./use-app-project-notification-effects";
-import { useAppProjectPersistenceEffects } from "./use-app-project-persistence-effects";
 import { useAppProjectSyncEffects } from "./use-app-project-sync-effects";
 import { useEscapeHandler } from "./use-escape-handler";
 
@@ -34,7 +32,6 @@ interface UseAppSideEffectsInput {
 	terminal: TerminalContextValue;
 	interactions: InteractionsContextValue;
 	dialog: DialogContextValue;
-	serverMutationInFlightRef: MutableRefObject<boolean>;
 	handleToggleFileFinder: () => void;
 	handleToggleTextSearch: () => void;
 }
@@ -52,7 +49,6 @@ export function useAppSideEffects({
 	terminal,
 	interactions,
 	dialog,
-	serverMutationInFlightRef,
 	handleToggleFileFinder,
 	handleToggleTextSearch,
 }: UseAppSideEffectsInput): void {
@@ -80,12 +76,9 @@ export function useAppSideEffects({
 		isProjectSwitching: projectNavigation.isProjectSwitching,
 		isDocumentVisible: projectSync.isDocumentVisible,
 		projectMetadata: projectStream.projectMetadata,
-		latestTaskTitleUpdate: projectStream.latestTaskTitleUpdate,
-		latestTaskBaseRefUpdate: projectStream.latestTaskBaseRefUpdate,
 		selectedCard: board.selectedCard,
 		isHomeTerminalOpen: terminal.isHomeTerminalOpen,
 		closeHomeTerminal: terminal.closeHomeTerminal,
-		setBoard: board.setBoard,
 		resetTaskEditorWorkflow: taskEditor.resetTaskEditorWorkflow,
 		setIsClearTrashDialogOpen: dialog.setIsClearTrashDialogOpen,
 		resetGitActionState: git.resetGitActionState,
@@ -113,19 +106,5 @@ export function useAppSideEffects({
 		closeGitHistory: navigation.closeGitHistory,
 		selectedCard: board.selectedCard,
 		setSelectedTaskId: board.setSelectedTaskId,
-	});
-
-	useAppProjectPersistenceEffects({
-		board: board.board,
-		currentProjectId: projectNavigation.currentProjectId,
-		projectRevision: projectSync.projectRevision,
-		hydrationNonce: projectSync.projectHydrationNonce,
-		shouldSkipPersistOnHydration: projectSync.shouldSkipPersistOnHydration,
-		canPersistProjectState: projectSync.canPersistProjectState,
-		isDocumentVisible: projectSync.isDocumentVisible,
-		isProjectStateRefreshing: projectSync.isProjectStateRefreshing,
-		refetchProjectState: projectSync.refreshProjectState,
-		onProjectRevisionChange: projectSync.setProjectRevision,
-		serverMutationInFlightRef,
 	});
 }

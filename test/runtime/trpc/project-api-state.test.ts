@@ -1,26 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RuntimeBoardData, RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "../../../src/core";
+import type { RuntimeBoardData, RuntimeProjectStateResponse } from "../../../src/core";
 import type { ProjectApiContext } from "../../../src/trpc/project-api-shared";
+import { createStateOps } from "../../../src/trpc/project-api-state";
 import {
-	createBoardStateSavedEffects,
+	createBoardCommandCommittedEffects,
 	createTaskTitleUpdatedEffects,
 } from "../../../src/trpc/runtime-mutation-effects";
-import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
-
-const stateMocks = vi.hoisted(() => ({
-	saveProjectState: vi.fn(),
-	ProjectStateConflictError: class extends Error {},
-}));
 
 const titleMocks = vi.hoisted(() => ({
 	generateTaskTitle: vi.fn(),
-}));
-
-vi.mock("../../../src/state/project-state.js", () => ({
-	loadProjectState: vi.fn(),
-	saveProjectState: stateMocks.saveProjectState,
-	ProjectStateConflictError: stateMocks.ProjectStateConflictError,
 }));
 
 vi.mock("../../../src/title/title-generator.js", () => ({
@@ -35,9 +24,7 @@ vi.mock("../../../src/workdir/task-worktree.js", () => ({
 	getTaskWorktreeInfo: vi.fn(),
 }));
 
-import { createStateOps } from "../../../src/trpc/project-api-state";
-
-function createBoard(): RuntimeBoardData {
+function createBoard(title: string | null = "Task One"): RuntimeBoardData {
 	return {
 		columns: [
 			{
@@ -46,7 +33,7 @@ function createBoard(): RuntimeBoardData {
 				cards: [
 					{
 						id: "task-1",
-						title: "Task One",
+						title,
 						prompt: "Do the thing",
 						baseRef: "main",
 						createdAt: 1,
@@ -62,156 +49,113 @@ function createBoard(): RuntimeBoardData {
 	};
 }
 
-function createSummary(taskId: string): RuntimeTaskSessionSummary {
-	return createTestTaskSessionSummary({
-		taskId,
-		state: "awaiting_review",
-		agentId: "codex",
-		sessionLaunchPath: "/tmp/project-a",
-		pid: null,
-		startedAt: 100,
-		updatedAt: 200,
-		lastOutputAt: 200,
-		reviewReason: "hook",
-	});
-}
-
-function createSavedState(board: RuntimeBoardData): RuntimeProjectStateResponse {
+function createState(board: RuntimeBoardData, revision = 2): RuntimeProjectStateResponse {
 	return {
 		repoPath: "/tmp/project-a",
-		statePath: "/tmp/project-a/.quarterdeck",
-		git: {
-			currentBranch: "main",
-			defaultBranch: "main",
-			branches: ["main"],
-		},
+		statePath: "/tmp/state/project-a",
+		git: { currentBranch: "main", defaultBranch: "main", branches: ["main"] },
 		board,
-		sessions: { "task-1": createSummary("task-1") },
-		revision: 2,
+		sessions: {},
+		revision,
 	};
-}
-
-function createUntitledBoard(): RuntimeBoardData {
-	const board = createBoard();
-	const firstColumn = board.columns[0];
-	const firstCard = firstColumn?.cards[0];
-	if (!firstColumn || !firstCard) {
-		throw new Error("Expected the test board to contain a card.");
-	}
-	firstColumn.cards[0] = { ...firstCard, title: null };
-	return board;
 }
 
 function createDeferred<T>() {
-	let resolve: ((value: T) => void) | null = null;
-	let reject: ((error: unknown) => void) | null = null;
-	const promise = new Promise<T>((promiseResolve, promiseReject) => {
-		resolve = promiseResolve;
-		reject = promiseReject;
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((nextResolve) => {
+		resolve = nextResolve;
 	});
-	if (!resolve || !reject) {
-		throw new Error("Expected deferred handlers to be assigned.");
-	}
-	return {
-		promise,
-		resolve: resolve as (value: T) => void,
-		reject: reject as (error: unknown) => void,
-	};
+	return { promise, resolve };
 }
 
-function createStateOpsHarness(summary = createSummary("task-1")) {
-	const ensureTerminalManagerForProject = vi.fn(async () => ({
-		store: {
-			listSummaries: vi.fn(() => [summary]),
-		},
-	}));
+function createHarness(board = createBoard()) {
 	const applyEffects = vi.fn();
-	const stateOps = createStateOps({
+	const buildProjectStateSnapshot = vi.fn(async () => createState(board));
+	const executeBatch = vi.fn(async () => ({
+		state: createState(board),
+		changed: true,
+		acceptedChange: true,
+		replayed: false,
+	}));
+	const setGeneratedTaskTitle = vi.fn(async () => ({
+		state: createState(board),
+		changed: true,
+		acceptedChange: true,
+		replayed: false,
+	}));
+	const context = {
 		deps: {
 			terminals: {
 				getTerminalManagerForProject: vi.fn(() => null),
-				ensureTerminalManagerForProject:
-					ensureTerminalManagerForProject as unknown as ProjectApiContext["deps"]["terminals"]["ensureTerminalManagerForProject"],
+				ensureTerminalManagerForProject: vi.fn(),
 			},
 			broadcaster: {
 				broadcastRuntimeProjectStateUpdated: vi.fn(),
 				broadcastRuntimeProjectNotificationsUpdated: vi.fn(),
-				broadcastRuntimeProjectsUpdated: vi.fn(async () => undefined),
+				broadcastRuntimeProjectsUpdated: vi.fn(),
 				broadcastTaskTitleUpdated: vi.fn(),
 				setFocusedTask: vi.fn(),
 				setDocumentVisible: vi.fn(),
 				requestTaskRefresh: vi.fn(),
 				requestHomeRefresh: vi.fn(),
 			},
-			data: {
-				buildProjectStateSnapshot: vi.fn(),
-			},
+			data: { buildProjectStateSnapshot },
+			boardCommands: { executeBatch, setGeneratedTaskTitle },
 		},
 		applyEffects,
-	} satisfies ProjectApiContext);
-
-	return { applyEffects, ensureTerminalManagerForProject, stateOps };
+	} as unknown as ProjectApiContext;
+	return {
+		applyEffects,
+		buildProjectStateSnapshot,
+		executeBatch,
+		setGeneratedTaskTitle,
+		stateOps: createStateOps(context),
+	};
 }
 
-describe("createStateOps.saveState", () => {
+const scope = { projectId: "project-a", projectPath: "/tmp/project-a" };
+
+describe("createStateOps runtime board ownership", () => {
 	beforeEach(() => {
-		stateMocks.saveProjectState.mockReset();
 		titleMocks.generateTaskTitle.mockReset();
 	});
 
-	it("persists authoritative sessions from the terminal manager store", async () => {
-		const board = createBoard();
-		const summary = createSummary("task-1");
-		stateMocks.saveProjectState.mockResolvedValue(createSavedState(board));
-		const { applyEffects, ensureTerminalManagerForProject, stateOps } = createStateOpsHarness(summary);
-
-		await stateOps.saveState(
-			{
-				projectId: "project-a",
-				projectPath: "/tmp/project-a",
-			},
-			{
-				board,
-				expectedRevision: 1,
-			},
-		);
-
-		expect(ensureTerminalManagerForProject).toHaveBeenCalledWith("project-a", "/tmp/project-a");
-		expect(stateMocks.saveProjectState).toHaveBeenCalledWith("/tmp/project-a", {
-			board,
-			sessions: {
-				"task-1": summary,
-			},
+	it("delegates browser commands to the runtime authority and emits non-duplicate side effects", async () => {
+		const { applyEffects, executeBatch, stateOps } = createHarness();
+		const input = {
+			commandId: "browser:1",
 			expectedRevision: 1,
-		});
-		expect(applyEffects).toHaveBeenCalledWith(
-			createBoardStateSavedEffects({
-				projectId: "project-a",
-				projectPath: "/tmp/project-a",
-			}),
-		);
-	});
-
-	it("deduplicates overlapping automatic title requests for the same project task", async () => {
-		const board = createUntitledBoard();
-		stateMocks.saveProjectState.mockResolvedValue(createSavedState(board));
-		const deferredTitle = createDeferred<string | null>();
-		titleMocks.generateTaskTitle.mockReturnValue(deferredTitle.promise);
-		const { applyEffects, stateOps } = createStateOpsHarness();
-		const projectScope = {
-			projectId: "project-a",
-			projectPath: "/tmp/project-a",
+			commands: [{ kind: "delete_tasks" as const, taskIds: ["missing-task"] }],
 		};
 
-		await Promise.all([
-			stateOps.saveState(projectScope, { board, expectedRevision: 1 }),
-			stateOps.saveState(projectScope, { board, expectedRevision: 2 }),
-		]);
+		await stateOps.applyBoardCommands(scope, input);
 
+		expect(executeBatch).toHaveBeenCalledWith(scope, input);
+		expect(applyEffects).toHaveBeenCalledWith(createBoardCommandCommittedEffects(scope));
+	});
+
+	it("deduplicates overlapping automatic title generation and persists the winner", async () => {
+		const board = createBoard(null);
+		const deferredTitle = createDeferred<string | null>();
+		titleMocks.generateTaskTitle.mockReturnValue(deferredTitle.promise);
+		const { applyEffects, setGeneratedTaskTitle, stateOps } = createHarness(board);
+		const first = stateOps.applyBoardCommands(scope, {
+			commandId: "browser:1",
+			expectedRevision: 1,
+			commands: [{ kind: "reorder_task", taskId: "task-1", columnId: "backlog", targetIndex: 0 }],
+		});
+		const second = stateOps.applyBoardCommands(scope, {
+			commandId: "browser:2",
+			expectedRevision: 2,
+			commands: [{ kind: "reorder_task", taskId: "task-1", columnId: "backlog", targetIndex: 0 }],
+		});
+
+		await Promise.all([first, second]);
 		expect(titleMocks.generateTaskTitle).toHaveBeenCalledTimes(1);
 
 		deferredTitle.resolve("Generated Title");
 		await vi.waitFor(() => {
+			expect(setGeneratedTaskTitle).toHaveBeenCalledWith(scope, "task-1", "Generated Title");
 			expect(applyEffects).toHaveBeenCalledWith(
 				createTaskTitleUpdatedEffects({
 					projectId: "project-a",
@@ -221,27 +165,21 @@ describe("createStateOps.saveState", () => {
 				}),
 			);
 		});
-
-		titleMocks.generateTaskTitle.mockResolvedValue("Retry Title");
-		await stateOps.saveState(projectScope, { board, expectedRevision: 3 });
-		await vi.waitFor(() => {
-			expect(titleMocks.generateTaskTitle).toHaveBeenCalledTimes(2);
-		});
 	});
 
-	it("keeps automatic title guards scoped by project", async () => {
-		const board = createUntitledBoard();
-		stateMocks.saveProjectState.mockResolvedValue(createSavedState(board));
-		const deferredTitle = createDeferred<string | null>();
-		titleMocks.generateTaskTitle.mockReturnValue(deferredTitle.promise);
-		const { stateOps } = createStateOpsHarness();
+	it("persists manual title updates before publishing the lightweight update", async () => {
+		const { applyEffects, executeBatch, stateOps } = createHarness();
 
-		await Promise.all([
-			stateOps.saveState({ projectId: "project-a", projectPath: "/tmp/project-a" }, { board, expectedRevision: 1 }),
-			stateOps.saveState({ projectId: "project-b", projectPath: "/tmp/project-b" }, { board, expectedRevision: 1 }),
-		]);
+		await expect(stateOps.updateTaskTitle(scope, "task-1", "Renamed")).resolves.toBe(true);
 
-		expect(titleMocks.generateTaskTitle).toHaveBeenCalledTimes(2);
-		deferredTitle.resolve(null);
+		expect(executeBatch).toHaveBeenCalledWith(
+			scope,
+			expect.objectContaining({
+				commands: [expect.objectContaining({ kind: "patch_task", taskId: "task-1", title: "Renamed" })],
+			}),
+		);
+		expect(applyEffects).toHaveBeenCalledWith(
+			createTaskTitleUpdatedEffects({ projectId: "project-a", taskId: "task-1", title: "Renamed" }),
+		);
 	});
 });

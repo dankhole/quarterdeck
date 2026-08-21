@@ -14,6 +14,7 @@ export default defineConfig({
 		alias: {
 			"@": resolve(__dirname, "src"),
 			"@runtime-agent-catalog": resolve(__dirname, "../src/core/agent-catalog.ts"),
+			"@runtime-board-commands": resolve(__dirname, "../src/core/project-board-command.ts"),
 			"@runtime-contract": resolve(__dirname, "../src/core/api-contract.ts"),
 			"@runtime-config-defaults": resolve(__dirname, "../src/config/config-defaults.ts"),
 			"@runtime-shortcuts": resolve(__dirname, "../src/config/shortcut-utils.ts"),

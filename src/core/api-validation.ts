@@ -8,7 +8,6 @@ import {
 	type RuntimeProjectAddRequest,
 	type RuntimeProjectRemoveRequest,
 	type RuntimeProjectReorderRequest,
-	type RuntimeProjectStateSaveRequest,
 	type RuntimeShellSessionStartRequest,
 	type RuntimeTaskSessionInputRequest,
 	type RuntimeTaskSessionStartRequest,
@@ -24,7 +23,6 @@ import {
 	runtimeProjectAddRequestSchema,
 	runtimeProjectRemoveRequestSchema,
 	runtimeProjectReorderRequestSchema,
-	runtimeProjectStateSaveRequestSchema,
 	runtimeShellSessionStartRequestSchema,
 	runtimeTaskSessionInputRequestSchema,
 	runtimeTaskSessionStartRequestSchema,
@@ -95,10 +93,6 @@ export function parseWorktreeDeleteRequest(value: unknown): RuntimeWorktreeDelet
 	return {
 		taskId,
 	};
-}
-
-export function parseProjectStateSaveRequest(value: unknown): RuntimeProjectStateSaveRequest {
-	return parseWithSchema(runtimeProjectStateSaveRequestSchema, value);
 }
 
 export function parseProjectAddRequest(value: unknown): RuntimeProjectAddRequest {

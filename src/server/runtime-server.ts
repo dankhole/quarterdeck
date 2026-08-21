@@ -11,6 +11,7 @@ import {
 	getQuarterdeckRuntimeOrigin,
 	getQuarterdeckRuntimePort,
 } from "../core";
+import type { ProjectBoardCommandService } from "../state";
 import { loadProjectScopeById } from "../state";
 import type { TerminalSessionManager } from "../terminal";
 import { createTerminalWebSocketBridge } from "../terminal";
@@ -39,6 +40,7 @@ interface DisposeTrackedProjectResult {
 export interface CreateRuntimeServerDependencies {
 	projectRegistry: ProjectRegistry;
 	runtimeStateHub: RuntimeStateHub;
+	boardCommands: ProjectBoardCommandService;
 	warn: (message: string) => void;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
@@ -154,6 +156,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				terminals: deps.projectRegistry,
 				broadcaster: deps.runtimeStateHub,
 				data: deps.projectRegistry,
+				boardCommands: deps.boardCommands,
 			}),
 			projectsApi: createProjectsApi({
 				projects: deps.projectRegistry,

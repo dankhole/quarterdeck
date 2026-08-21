@@ -10,6 +10,7 @@ import type {
 	RuntimeWorkdirChangesMode,
 } from "../core";
 import { createTaggedLogger } from "../core";
+import type { ProjectBoardCommandService } from "../state";
 import { loadProjectState } from "../state";
 import { isMissingTaskWorktreeError, resolveTaskWorkingDirectory } from "../workdir";
 import { applyRuntimeMutationEffects } from "./runtime-mutation-effects";
@@ -32,6 +33,7 @@ export interface CreateProjectApiDependencies {
 		| "requestHomeRefresh"
 	>;
 	data: Pick<IProjectDataProvider, "buildProjectStateSnapshot">;
+	boardCommands?: ProjectBoardCommandService;
 }
 
 // ── Shared context ──────────────────────────────────────────────────────────────

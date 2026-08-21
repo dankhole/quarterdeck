@@ -58,7 +58,6 @@ import {
 	useTaskRepositoryInfoValue,
 	useTaskWorktreeSnapshotValue,
 } from "@/stores/project-metadata-store";
-import type { BoardData } from "@/types";
 
 /**
  * Bridge component that connects `useCardDetailLayout`'s reset callback to the
@@ -113,7 +112,6 @@ function AppInner(): ReactElement {
 		board: createInitialBoardData(),
 		sessions: {},
 	}));
-	const [canPersistProjectState, setCanPersistProjectState] = useState(false);
 	const projectBoardSessionsRef = useRef(projectBoardSessions);
 	const { board, sessions } = projectBoardSessions;
 
@@ -125,16 +123,6 @@ function AppInner(): ReactElement {
 		projectBoardSessionsRef.current = resolved;
 		setProjectBoardSessionsState(resolved);
 	}, []);
-
-	const setBoard = useCallback(
-		(nextBoard: SetStateAction<BoardData>) => {
-			setProjectBoardSessions((current) => ({
-				...current,
-				board: typeof nextBoard === "function" ? nextBoard(current.board) : nextBoard,
-			}));
-		},
-		[setProjectBoardSessions],
-	);
 
 	const setSessions = useCallback(
 		(nextSessions: SetStateAction<Record<string, RuntimeTaskSessionSummary>>) => {
@@ -149,7 +137,6 @@ function AppInner(): ReactElement {
 	const searchOverlayResetRef = useRef<() => void>(() => {});
 
 	const handleProjectSwitchStart = useCallback(() => {
-		setCanPersistProjectState(false);
 		searchOverlayResetRef.current();
 	}, []);
 
@@ -158,11 +145,9 @@ function AppInner(): ReactElement {
 			onProjectSwitchStart={handleProjectSwitchStart}
 			projectBoardSessionsRef={projectBoardSessionsRef}
 			setProjectBoardSessions={setProjectBoardSessions}
-			canPersistProjectState={canPersistProjectState}
-			setCanPersistProjectState={setCanPersistProjectState}
 		>
 			<AppEarlyBailout>
-				<BoardProvider board={board} setBoard={setBoard} sessions={sessions} setSessions={setSessions}>
+				<BoardProvider board={board} sessions={sessions} setSessions={setSessions}>
 					<TaskEditorProvider>
 						<SurfaceNavigationProvider>
 							<GitProvider>
@@ -235,8 +220,6 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		hasReceivedSnapshot: projectStream.hasReceivedSnapshot,
 	});
 
-	const serverMutationInFlightRef = useRef(false);
-
 	// --- Search overlay state ---
 
 	const [isFileFinderOpen, setIsFileFinderOpen] = useState(false);
@@ -286,7 +269,6 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		terminal,
 		interactions,
 		dialog,
-		serverMutationInFlightRef,
 		handleToggleFileFinder,
 		handleToggleTextSearch,
 	});

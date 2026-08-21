@@ -61,16 +61,12 @@ export interface ProjectSyncContextValue {
 	projectPath: string | null;
 	projectGit: RuntimeGitRepositoryInfo | null;
 	refreshProjectState: () => Promise<void>;
-	projectRevision: number | null;
-	setProjectRevision: Dispatch<SetStateAction<number | null>>;
-	projectHydrationNonce: number;
-	shouldSkipPersistOnHydration: boolean;
-	isProjectStateRefreshing: boolean;
 	isProjectMetadataPending: boolean;
 	resetProjectSyncState: (targetProjectId?: string | null) => void;
 	isDocumentVisible: boolean;
-	canPersistProjectState: boolean;
 	isServedFromBoardCache: boolean;
+	setBoard: Dispatch<SetStateAction<BoardData>>;
+	flushBoardCommands: () => Promise<{ ok: boolean; message?: string }>;
 }
 
 export const ProjectNavigationContext = createContext<ProjectNavigationContextValue | null>(null);
@@ -117,8 +113,8 @@ export function useProjectSyncContext(): ProjectSyncContextValue {
 //
 // Props bridge values that are owned above the provider tree:
 // - onProjectSwitchStart: cleanup callback defined in App
-// - projectBoardSessionsRef/setProjectBoardSessions/setCanPersistProjectState:
-//   app-shell-owned state seam needed by useProjectSync
+// - projectBoardSessionsRef/setProjectBoardSessions: app-shell-owned optimistic
+//   state seam used by the runtime-authoritative command synchronizer
 // ---------------------------------------------------------------------------
 
 export interface ProjectProviderProps {
@@ -133,8 +129,6 @@ export interface ProjectProviderProps {
 			sessions: Record<string, RuntimeTaskSessionSummary>;
 		}>
 	>;
-	canPersistProjectState: boolean;
-	setCanPersistProjectState: Dispatch<SetStateAction<boolean>>;
 	children: ReactNode;
 }
 
@@ -142,8 +136,6 @@ export function ProjectProvider({
 	onProjectSwitchStart,
 	projectBoardSessionsRef,
 	setProjectBoardSessions,
-	canPersistProjectState,
-	setCanPersistProjectState,
 	children,
 }: ProjectProviderProps): ReactNode {
 	const {
@@ -189,15 +181,12 @@ export function ProjectProvider({
 		boardProjectId,
 		projectPath,
 		projectGit,
-		projectRevision,
-		setProjectRevision,
-		projectHydrationNonce,
-		shouldSkipPersistOnHydration,
-		isProjectStateRefreshing,
 		isProjectMetadataPending,
 		isServedFromBoardCache,
 		refreshProjectState,
 		resetProjectSyncState,
+		setBoard,
+		flushBoardCommands,
 	} = useProjectSync({
 		currentProjectId,
 		streamedProjectState,
@@ -206,7 +195,6 @@ export function ProjectProvider({
 		isDocumentVisible,
 		projectBoardSessionsRef,
 		setProjectBoardSessions,
-		setCanPersistProjectState,
 	});
 
 	const navigationValue = useMemo<ProjectNavigationContextValue>(
@@ -291,32 +279,24 @@ export function ProjectProvider({
 			projectPath,
 			projectGit,
 			refreshProjectState,
-			projectRevision,
-			setProjectRevision,
-			projectHydrationNonce,
-			shouldSkipPersistOnHydration,
-			isProjectStateRefreshing,
 			isProjectMetadataPending,
 			resetProjectSyncState,
 			isDocumentVisible,
-			canPersistProjectState,
 			isServedFromBoardCache,
+			setBoard,
+			flushBoardCommands,
 		}),
 		[
 			boardProjectId,
 			projectPath,
 			projectGit,
 			refreshProjectState,
-			projectRevision,
-			setProjectRevision,
-			projectHydrationNonce,
-			shouldSkipPersistOnHydration,
-			isProjectStateRefreshing,
 			isProjectMetadataPending,
 			resetProjectSyncState,
 			isDocumentVisible,
-			canPersistProjectState,
 			isServedFromBoardCache,
+			setBoard,
+			flushBoardCommands,
 		],
 	);
 

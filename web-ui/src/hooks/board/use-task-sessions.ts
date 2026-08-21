@@ -27,8 +27,7 @@ const log = createClientLogger("task-session");
 interface UseTaskSessionsInput {
 	currentProjectId: string | null;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
-	/** Called after startTaskSession resolves the working directory so the caller can persist it on the card. */
-	onWorkingDirectoryResolved?: (taskId: string, workingDirectory: string) => void;
+	flushBoardCommands: () => Promise<{ ok: boolean; message?: string }>;
 }
 
 interface EnsureTaskWorktreeResult {
@@ -70,7 +69,7 @@ export interface UseTaskSessionsResult {
 export function useTaskSessions({
 	currentProjectId,
 	setSessions,
-	onWorkingDirectoryResolved,
+	flushBoardCommands,
 }: UseTaskSessionsInput): UseTaskSessionsResult {
 	/*
 		This merge needs to stay monotonic.
@@ -130,6 +129,10 @@ export function useTaskSessions({
 			if (!isRuntimeTaskBaseRefResolved(task)) {
 				return { ok: false, message: "Select a base branch before starting this task." };
 			}
+			const flushed = await flushBoardCommands();
+			if (!flushed.ok) {
+				return { ok: false, message: flushed.message ?? "Could not save the task before starting it." };
+			}
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
 				const payload = await trpcClient.project.ensureWorktree.mutate({
@@ -149,7 +152,7 @@ export function useTaskSessions({
 				return { ok: false, message };
 			}
 		},
-		[currentProjectId],
+		[currentProjectId, flushBoardCommands],
 	);
 
 	const startTaskSession = useCallback(
@@ -159,6 +162,10 @@ export function useTaskSessions({
 			}
 			if (!isRuntimeTaskBaseRefResolved(task)) {
 				return { ok: false, message: "Select a base branch before starting this task." };
+			}
+			const flushed = await flushBoardCommands();
+			if (!flushed.ok) {
+				return { ok: false, message: flushed.message ?? "Could not save the task before starting it." };
 			}
 			log.debug("startTaskSession trpc call", {
 				taskId: task.id,
@@ -204,11 +211,6 @@ export function useTaskSessions({
 					};
 				}
 				upsertSession(payload.summary);
-				// The server resolves the working directory but no longer persists
-				// it — the client caches it on the card through its normal persist.
-				if (payload.summary.sessionLaunchPath) {
-					onWorkingDirectoryResolved?.(task.id, payload.summary.sessionLaunchPath);
-				}
 				return { ok: true, summary: payload.summary };
 			} catch (error) {
 				const message = toErrorMessage(error);
@@ -216,12 +218,20 @@ export function useTaskSessions({
 				return { ok: false, message };
 			}
 		},
-		[currentProjectId, onWorkingDirectoryResolved, upsertSession],
+		[currentProjectId, flushBoardCommands, upsertSession],
 	);
 
 	const stopTaskSession = useCallback(
 		async (taskId: string, options?: { waitForExit?: boolean }): Promise<void> => {
 			if (!currentProjectId) {
+				return;
+			}
+			const flushed = await flushBoardCommands();
+			if (!flushed.ok) {
+				log.warn("stopTaskSession skipped because the board command failed", {
+					taskId,
+					error: flushed.message ?? "Unknown board command failure.",
+				});
 				return;
 			}
 			log.debug("stopTaskSession trpc call", {
@@ -245,7 +255,7 @@ export function useTaskSessions({
 				// Ignore stop errors during cleanup.
 			}
 		},
-		[currentProjectId],
+		[currentProjectId, flushBoardCommands],
 	);
 
 	const sendTaskSessionInput = useCallback(
@@ -292,6 +302,14 @@ export function useTaskSessions({
 			if (!currentProjectId) {
 				return null;
 			}
+			const flushed = await flushBoardCommands();
+			if (!flushed.ok) {
+				log.error("cleanupTaskWorktree skipped because the board command failed", {
+					taskId,
+					error: flushed.message ?? "Unknown board command failure.",
+				});
+				return null;
+			}
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
 				const payload = await trpcClient.project.deleteWorktree.mutate({ taskId });
@@ -307,7 +325,7 @@ export function useTaskSessions({
 				return null;
 			}
 		},
-		[currentProjectId],
+		[currentProjectId, flushBoardCommands],
 	);
 
 	const fetchTaskWorktreeInfo = useCallback(

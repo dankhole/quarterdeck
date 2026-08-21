@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Feature: make the runtime authoritative for board persistence
+
+- Desktop board edits now remain optimistic in the UI but persist as typed, revision-checked command batches through one runtime-owned board authority; the public whole-board save procedure and browser persistence debounce have been removed.
+- Durable command receipts make identical retries safe after a lost response or runtime restart, while authoritative conflict recovery removes rejected optimistic state instead of leaving unsaved board changes on screen.
+- Runtime session, generated-title, base-ref, branch, and worktree metadata projections now persist under the same project lock, and task session start/stop plus worktree lifecycle effects wait for pending board commands before acting.
+
 ### Fix: reduce runtime session fanout
 
 - Activity-only task-session updates still reach the active project, but no longer trigger cross-project notification board reads or full project-list count refreshes; approval, review, failure, and `awaiting_review` boundary changes continue to update their dependent projections.
@@ -35,7 +41,7 @@
 
 - LLM helpers now default to Claude Haiku 4.5 when `QUARTERDECK_LLM_MODEL` is unset, failure logs include a concrete replacement hint when the retired Claude 3.5 Haiku Bedrock model fails, and setup docs/UI now only require the helper base URL and API key.
 - Task-title generation now allows six seconds before falling back, and timeout logs report the configured deadline without a redundant `durationMs` value that merely mirrored the abort timer.
-- Automatic titles now coalesce overlapping board-save triggers per project/task, preventing repeated saves while a title is still pending from launching duplicate LLM requests; later saves can retry after the active request settles.
+- Automatic titles now coalesce overlapping command triggers per project/task, preventing repeated edits while a title is still pending from launching duplicate LLM requests; the lock-held generated-title update cannot overwrite a concurrent manual rename, and later commands can retry after the active request settles.
 
 ### Fix: port selected upstream hardening
 

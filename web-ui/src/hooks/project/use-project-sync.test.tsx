@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createInitialBoardData } from "@/data/board-data";
 import type { ProjectBoardSessionsState } from "@/hooks/project/project-sync";
 import { useProjectSync } from "@/hooks/project/use-project-sync";
-import { clearProjectBoardCache, stashProjectBoard } from "@/runtime/project-board-cache";
+import { clearProjectBoardCache, restoreProjectBoard, stashProjectBoard } from "@/runtime/project-board-cache";
+import { ProjectStateConflictError } from "@/runtime/project-state-query";
 import type { RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
 import {
 	createTestProjectStateResponse,
@@ -14,9 +15,19 @@ import {
 import type { BoardData } from "@/types";
 
 const fetchProjectStateMock = vi.hoisted(() => vi.fn());
+const applyProjectBoardCommandsMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/runtime/project-state-query", () => ({
 	fetchProjectState: fetchProjectStateMock,
+	applyProjectBoardCommands: applyProjectBoardCommandsMock,
+	ProjectStateConflictError: class extends Error {
+		readonly currentRevision: number;
+
+		constructor(currentRevision: number) {
+			super("Project state revision conflict.");
+			this.currentRevision = currentRevision;
+		}
+	},
 }));
 
 function createBoard(taskId: string): BoardData {
@@ -159,12 +170,11 @@ interface HookSnapshot {
 	board: BoardData;
 	boardProjectId: string | null;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
-	canPersistProjectState: boolean;
-	projectRevision: number | null;
 	isServedFromBoardCache: boolean;
-	shouldSkipPersistOnHydration: boolean;
 	refreshProjectState: () => Promise<void>;
 	resetProjectSyncState: (targetProjectId?: string | null) => void;
+	setBoard: ReturnType<typeof useProjectSync>["setBoard"];
+	flushBoardCommands: ReturnType<typeof useProjectSync>["flushBoardCommands"];
 }
 
 function assertSnapshot(snapshot: HookSnapshot | null, message: string): asserts snapshot is HookSnapshot {
@@ -190,7 +200,6 @@ function HookHarness({
 		board: createInitialBoardData(),
 		sessions: {},
 	}));
-	const [canPersistProjectState, setCanPersistProjectState] = useState(false);
 	const projectBoardSessionsRef = useRef(projectBoardSessions);
 	const { board, sessions } = projectBoardSessions;
 
@@ -206,9 +215,9 @@ function HookHarness({
 		boardProjectId,
 		refreshProjectState,
 		resetProjectSyncState,
-		projectRevision,
 		isServedFromBoardCache,
-		shouldSkipPersistOnHydration,
+		setBoard,
+		flushBoardCommands,
 	} = useProjectSync({
 		currentProjectId,
 		streamedProjectState,
@@ -217,7 +226,6 @@ function HookHarness({
 		isDocumentVisible,
 		projectBoardSessionsRef,
 		setProjectBoardSessions,
-		setCanPersistProjectState,
 	});
 
 	useEffect(() => {
@@ -225,22 +233,21 @@ function HookHarness({
 			board,
 			boardProjectId,
 			sessions,
-			canPersistProjectState,
-			projectRevision,
 			isServedFromBoardCache,
-			shouldSkipPersistOnHydration,
 			refreshProjectState,
 			resetProjectSyncState,
+			setBoard,
+			flushBoardCommands,
 		});
 	}, [
 		board,
 		boardProjectId,
-		canPersistProjectState,
 		isServedFromBoardCache,
 		onSnapshot,
-		projectRevision,
 		refreshProjectState,
 		resetProjectSyncState,
+		setBoard,
+		flushBoardCommands,
 		sessions,
 	]);
 
@@ -254,6 +261,7 @@ describe("useProjectSync", () => {
 
 	beforeEach(() => {
 		fetchProjectStateMock.mockReset();
+		applyProjectBoardCommandsMock.mockReset();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -298,7 +306,6 @@ describe("useProjectSync", () => {
 		const initialSnapshot: HookSnapshot = latestSnapshot;
 		expect(initialSnapshot.board.columns[0]?.cards[0]?.id).toBe("persisted-task");
 		expect(initialSnapshot.boardProjectId).toBe("project-a");
-		expect(initialSnapshot.canPersistProjectState).toBe(true);
 
 		await act(async () => {
 			refreshPromise = initialSnapshot.refreshProjectState();
@@ -345,7 +352,6 @@ describe("useProjectSync", () => {
 		const targetSnapshot: HookSnapshot = latestSnapshot;
 		expect(targetSnapshot.board.columns.every((column) => column.cards.length === 0)).toBe(true);
 		expect(targetSnapshot.boardProjectId).toBeNull();
-		expect(targetSnapshot.canPersistProjectState).toBe(false);
 		expect(targetSnapshot.isServedFromBoardCache).toBe(false);
 	});
 
@@ -435,7 +441,6 @@ describe("useProjectSync", () => {
 		const authoritativeSnapshot: HookSnapshot = latestSnapshot;
 		expect(authoritativeSnapshot.board.columns[0]?.cards[0]?.id).toBe("cached-c-task");
 		expect(authoritativeSnapshot.boardProjectId).toBe("project-c");
-		expect(authoritativeSnapshot.canPersistProjectState).toBe(true);
 		expect(authoritativeSnapshot.isServedFromBoardCache).toBe(false);
 	});
 
@@ -477,8 +482,6 @@ describe("useProjectSync", () => {
 		const cachedSnapshot: HookSnapshot = latestSnapshot;
 		expect(cachedSnapshot.board.columns[0]?.cards[0]?.id).toBe("cached-task");
 		expect(cachedSnapshot.boardProjectId).toBe("project-b");
-		expect(cachedSnapshot.canPersistProjectState).toBe(false);
-		expect(cachedSnapshot.projectRevision).toBeNull();
 		expect(cachedSnapshot.isServedFromBoardCache).toBe(true);
 
 		await act(async () => {
@@ -501,12 +504,10 @@ describe("useProjectSync", () => {
 		const authoritativeSnapshot: HookSnapshot = latestSnapshot;
 		expect(authoritativeSnapshot.board.columns[0]?.cards[0]?.id).toBe("cached-task");
 		expect(authoritativeSnapshot.boardProjectId).toBe("project-b");
-		expect(authoritativeSnapshot.canPersistProjectState).toBe(true);
-		expect(authoritativeSnapshot.projectRevision).toBe(3);
 		expect(authoritativeSnapshot.isServedFromBoardCache).toBe(false);
 	});
 
-	it("re-projects a restored cached board when same-revision authoritative sessions disagree", async () => {
+	it("keeps a restored cached board stable when only same-revision session data changes", async () => {
 		stashProjectBoard("project-b", {
 			board: createBoardInColumn("in_progress", "task-1"),
 			sessions: {
@@ -545,7 +546,6 @@ describe("useProjectSync", () => {
 		assertSnapshot(latestSnapshot, "Expected a cached hook snapshot.");
 		const cachedSnapshot: HookSnapshot = latestSnapshot;
 		expect(cachedSnapshot.board.columns.find((column) => column.id === "in_progress")?.cards[0]?.id).toBe("task-1");
-		expect(cachedSnapshot.projectRevision).toBeNull();
 
 		await act(async () => {
 			root.render(
@@ -569,10 +569,10 @@ describe("useProjectSync", () => {
 
 		assertSnapshot(latestSnapshot, "Expected an authoritative hook snapshot.");
 		const authoritativeSnapshot: HookSnapshot = latestSnapshot;
-		expect(authoritativeSnapshot.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
-		expect(authoritativeSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("task-1");
-		expect(authoritativeSnapshot.projectRevision).toBe(3);
-		expect(authoritativeSnapshot.shouldSkipPersistOnHydration).toBe(false);
+		expect(authoritativeSnapshot.board.columns.find((column) => column.id === "in_progress")?.cards[0]?.id).toBe(
+			"task-1",
+		);
+		expect(authoritativeSnapshot.board.columns.find((column) => column.id === "review")?.cards).toHaveLength(0);
 	});
 
 	it("ignores streamed project state for the previous project after a switch reset targets a new project", async () => {
@@ -625,7 +625,6 @@ describe("useProjectSync", () => {
 		const snapshot: HookSnapshot = latestSnapshot;
 		expect(snapshot.board.columns[0]?.cards[0]?.id).toBe("cached-task");
 		expect(snapshot.board.columns[0]?.cards[0]?.id).not.toBe("stale-project-a-task");
-		expect(snapshot.canPersistProjectState).toBe(false);
 	});
 
 	it("clears task sessions missing from refreshed authoritative project state", async () => {
@@ -721,7 +720,7 @@ describe("useProjectSync", () => {
 		expect(authoritativeSnapshot.sessions["task-1"]).toBeUndefined();
 	});
 
-	it("does not let an older streamed session summary mis-project the board against a newer in-memory one", async () => {
+	it("keeps session reconciliation monotonic without overriding the newer runtime board", async () => {
 		const newerReviewSummary = createSessionSummary("task-1", 2000, "Ready for review");
 		const staleRunningSummary = createSessionSummary("task-1", 1000, null);
 
@@ -769,8 +768,10 @@ describe("useProjectSync", () => {
 		const rerenderedSnapshot: HookSnapshot = latestSnapshot;
 		expect(rerenderedSnapshot.sessions["task-1"]?.updatedAt).toBe(2000);
 		expect(rerenderedSnapshot.sessions["task-1"]?.state).toBe("awaiting_review");
-		expect(rerenderedSnapshot.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
-		expect(rerenderedSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("task-1");
+		expect(rerenderedSnapshot.board.columns.find((column) => column.id === "in_progress")?.cards[0]?.id).toBe(
+			"task-1",
+		);
+		expect(rerenderedSnapshot.board.columns.find((column) => column.id === "review")?.cards).toHaveLength(0);
 	});
 
 	it("does not refresh project state before the initial runtime snapshot resolves", async () => {
@@ -813,7 +814,7 @@ describe("useProjectSync", () => {
 		expect(latestSnapshot).not.toBeNull();
 	});
 
-	it("projects runtime-owned work-column placement during authoritative hydrate", async () => {
+	it("accepts runtime-owned work-column placement during authoritative hydrate", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
@@ -835,9 +836,207 @@ describe("useProjectSync", () => {
 
 		assertSnapshot(latestSnapshot, "Expected a projected hook snapshot.");
 		const snapshot: HookSnapshot = latestSnapshot;
-		expect(snapshot.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
-		expect(snapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("task-1");
-		expect(snapshot.canPersistProjectState).toBe(true);
-		expect(snapshot.shouldSkipPersistOnHydration).toBe(false);
+		expect(snapshot.board.columns.find((column) => column.id === "in_progress")?.cards[0]?.id).toBe("task-1");
+		expect(snapshot.board.columns.find((column) => column.id === "review")?.cards).toHaveLength(0);
+	});
+
+	it("renders optimistically, commits an explicit command batch, and flushes the result", async () => {
+		const committed = createProjectState("persisted-task", 2);
+		committed.board = createBoardInColumn("in_progress", "persisted-task");
+		const commandResult = createDeferred<{
+			state: RuntimeProjectStateResponse;
+			changed: boolean;
+			acceptedChange: boolean;
+			replayed: boolean;
+		}>();
+		applyProjectBoardCommandsMock.mockReturnValue(commandResult.promise);
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					streamedProjectState={createProjectState("persisted-task", 1)}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		assertSnapshot(latestSnapshot, "Expected an initial hook snapshot.");
+		const initialSnapshot: HookSnapshot = latestSnapshot;
+		let flushPromise: Promise<{ ok: boolean; message?: string }> | null = null;
+		await act(async () => {
+			initialSnapshot.setBoard(createBoardInColumn("in_progress", "persisted-task"));
+			flushPromise = initialSnapshot.flushBoardCommands();
+		});
+
+		const optimisticSnapshot = latestSnapshot as HookSnapshot | null;
+		assertSnapshot(optimisticSnapshot, "Expected an optimistic hook snapshot.");
+		expect(optimisticSnapshot.board.columns.find((column) => column.id === "in_progress")?.cards[0]?.id).toBe(
+			"persisted-task",
+		);
+		expect(applyProjectBoardCommandsMock).toHaveBeenCalledWith(
+			"project-a",
+			expect.objectContaining({
+				expectedRevision: 1,
+				commandId: expect.stringMatching(/^browser:/),
+				commands: [
+					expect.objectContaining({
+						kind: "move_task",
+						taskId: "persisted-task",
+						sourceColumnId: "backlog",
+						targetColumnId: "in_progress",
+					}),
+				],
+			}),
+		);
+
+		commandResult.resolve({ state: committed, changed: true, acceptedChange: true, replayed: false });
+		const pendingFlush = flushPromise as Promise<{ ok: boolean; message?: string }> | null;
+		if (!pendingFlush) throw new Error("Expected a pending board command flush.");
+		await act(async () => {
+			await pendingFlush;
+		});
+		expect(await pendingFlush).toEqual({ ok: true });
+	});
+
+	it("never caches an optimistic overlay as authoritative during a project switch", async () => {
+		const committed = createProjectState("persisted-task", 2);
+		committed.board = createBoardInColumn("in_progress", "persisted-task");
+		const commandResult = createDeferred<{
+			state: RuntimeProjectStateResponse;
+			changed: boolean;
+			acceptedChange: boolean;
+			replayed: boolean;
+		}>();
+		applyProjectBoardCommandsMock.mockReturnValue(commandResult.promise);
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					streamedProjectState={createProjectState("persisted-task", 1)}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		assertSnapshot(latestSnapshot, "Expected an initial hook snapshot.");
+		const initialSnapshot: HookSnapshot = latestSnapshot;
+		await act(async () => {
+			initialSnapshot.setBoard(createBoardInColumn("in_progress", "persisted-task"));
+		});
+		assertSnapshot(latestSnapshot, "Expected an optimistic hook snapshot.");
+		const optimisticSnapshot: HookSnapshot = latestSnapshot;
+		await act(async () => {
+			optimisticSnapshot.resetProjectSyncState("project-b");
+		});
+
+		const cachedBeforeCommit = restoreProjectBoard("project-a");
+		expect(cachedBeforeCommit?.authoritativeRevision).toBe(1);
+		expect(cachedBeforeCommit?.board.columns.find((column) => column.id === "backlog")?.cards[0]?.id).toBe(
+			"persisted-task",
+		);
+		expect(cachedBeforeCommit?.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
+
+		commandResult.resolve({ state: committed, changed: true, acceptedChange: true, replayed: false });
+		await vi.waitFor(() => {
+			const cachedAfterCommit = restoreProjectBoard("project-a");
+			expect(cachedAfterCommit?.authoritativeRevision).toBe(2);
+			expect(cachedAfterCommit?.board.columns.find((column) => column.id === "in_progress")?.cards[0]?.id).toBe(
+				"persisted-task",
+			);
+		});
+	});
+
+	it("restores authoritative state and rebases the queue after a revision conflict", async () => {
+		const refresh = createDeferred<RuntimeProjectStateResponse>();
+		fetchProjectStateMock.mockReturnValue(refresh.promise);
+		applyProjectBoardCommandsMock.mockRejectedValue(new ProjectStateConflictError(2));
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					streamedProjectState={createProjectState("persisted-task", 1)}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		assertSnapshot(latestSnapshot, "Expected an initial hook snapshot.");
+		const initialSnapshot: HookSnapshot = latestSnapshot;
+		let flushPromise: Promise<{ ok: boolean; message?: string }> | null = null;
+		await act(async () => {
+			initialSnapshot.setBoard(createBoardInColumn("in_progress", "persisted-task"));
+			flushPromise = initialSnapshot.flushBoardCommands();
+			await Promise.resolve();
+		});
+
+		await vi.waitFor(() => {
+			assertSnapshot(latestSnapshot, "Expected a restored hook snapshot.");
+			expect(latestSnapshot.board.columns[0]?.cards[0]?.id).toBe("persisted-task");
+		});
+
+		refresh.resolve(createProjectState("remote-task", 2));
+		const pendingFlush = flushPromise as Promise<{ ok: boolean; message?: string }> | null;
+		if (!pendingFlush) throw new Error("Expected a pending board command flush.");
+		await act(async () => {
+			await pendingFlush;
+		});
+		expect(await pendingFlush).toMatchObject({ ok: false });
+		const refreshedSnapshot = latestSnapshot as HookSnapshot | null;
+		assertSnapshot(refreshedSnapshot, "Expected a refreshed hook snapshot.");
+		expect(refreshedSnapshot.board.columns[0]?.cards[0]?.id).toBe("remote-task");
+
+		applyProjectBoardCommandsMock.mockResolvedValue({
+			state: createProjectState("remote-task", 3),
+			changed: false,
+			acceptedChange: false,
+			replayed: false,
+		});
+		await act(async () => {
+			refreshedSnapshot.setBoard(createBoardInColumn("in_progress", "remote-task"));
+			await refreshedSnapshot.flushBoardCommands();
+		});
+		expect(applyProjectBoardCommandsMock).toHaveBeenLastCalledWith(
+			"project-a",
+			expect.objectContaining({ expectedRevision: 2 }),
+		);
+	});
+
+	it("retries an ambiguous transport failure with the same durable command identity", async () => {
+		const committed = createProjectState("persisted-task", 2);
+		committed.board = createBoardInColumn("in_progress", "persisted-task");
+		applyProjectBoardCommandsMock
+			.mockRejectedValueOnce(new Error("response lost"))
+			.mockResolvedValueOnce({ state: committed, changed: false, acceptedChange: true, replayed: true });
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					streamedProjectState={createProjectState("persisted-task", 1)}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		assertSnapshot(latestSnapshot, "Expected an initial hook snapshot.");
+		const initialSnapshot: HookSnapshot = latestSnapshot;
+		await act(async () => {
+			initialSnapshot.setBoard(createBoardInColumn("in_progress", "persisted-task"));
+			await initialSnapshot.flushBoardCommands();
+		});
+
+		expect(applyProjectBoardCommandsMock).toHaveBeenCalledTimes(2);
+		expect(applyProjectBoardCommandsMock.mock.calls[1]).toEqual(applyProjectBoardCommandsMock.mock.calls[0]);
 	});
 });

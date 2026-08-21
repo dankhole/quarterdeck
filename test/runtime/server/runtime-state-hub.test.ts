@@ -126,11 +126,100 @@ function createDependencies(input: {
 			resumeInterruptedSessions: async () => 0,
 			getActiveRuntimeConfig: () => DEFAULT_RUNTIME_CONFIG_STATE,
 			listManagedProjects: input.listManagedProjects,
+			getProjectPathById: (projectId) => (projectId === "project-1" ? "/repo" : null),
+		},
+		boardCommands: {
+			reconcileRuntimeSessions: vi.fn(async () => createBoardCommandResult()),
+			reconcileRuntimeMetadata: vi.fn(async () => createBoardCommandResult()),
+			reconcileRuntimeTaskBaseRef: vi.fn(async () => createBoardCommandResult()),
 		},
 	};
 }
 
+function createBoardCommandResult() {
+	return {
+		state: createProjectStateResponse(),
+		changed: false,
+		acceptedChange: false,
+		replayed: false,
+	};
+}
+
 describe("RuntimeStateHub", () => {
+	it("broadcasts an already-committed authoritative snapshot without rebuilding it", async () => {
+		const buildProjectStateSnapshot = vi.fn(async () => createProjectStateResponse());
+		const hub = new RuntimeStateHubImpl(
+			createDependencies({
+				buildProjectsPayload: vi.fn(async () => createProjectsResponse()),
+				buildProjectStateSnapshot,
+				listManagedProjects: vi.fn(() => []),
+			}),
+		);
+		const projectClient = createRuntimeClient();
+		(hub as unknown as RuntimeStateHubInternals).clients.registerProjectClient(
+			"project-1",
+			projectClient.client,
+			"client-1",
+		);
+		const committed = { ...createProjectStateResponse(), revision: 7 };
+
+		try {
+			hub.broadcastRuntimeProjectStateSnapshot("project-1", committed);
+
+			expect(buildProjectStateSnapshot).not.toHaveBeenCalled();
+			expect(projectClient.messages).toEqual([
+				expect.objectContaining({
+					type: "project_state_updated",
+					projectId: "project-1",
+					projectState: committed,
+				}),
+			]);
+		} finally {
+			await hub.close();
+		}
+	});
+
+	it("persists terminal-store changes through the runtime board authority without a browser client", async () => {
+		vi.useFakeTimers();
+		const dependencies = createDependencies({
+			buildProjectsPayload: vi.fn(async () => createProjectsResponse()),
+			buildProjectStateSnapshot: vi.fn(async () => createProjectStateResponse()),
+			listManagedProjects: vi.fn(() => []),
+		});
+		const reconcileRuntimeSessions = vi.mocked(dependencies.boardCommands.reconcileRuntimeSessions);
+		const hub = new RuntimeStateHubImpl(dependencies);
+		const store = new InMemorySessionSummaryStore();
+		store.hydrateFromRecord({
+			"task-1": createTestTaskSessionSummary({
+				taskId: "task-1",
+				state: "running",
+				sessionLaunchPath: "/repo",
+			}),
+		});
+		hub.trackTerminalManager("project-1", new TerminalSessionManager(store));
+
+		try {
+			await vi.advanceTimersByTimeAsync(1);
+			expect(reconcileRuntimeSessions).toHaveBeenCalledOnce();
+			expect(reconcileRuntimeSessions).toHaveBeenLastCalledWith({
+				projectId: "project-1",
+				projectPath: "/repo",
+			});
+
+			store.update("task-1", { warningMessage: "Needs attention" });
+			await vi.advanceTimersByTimeAsync(100);
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(2);
+
+			hub.disposeProject("project-1");
+			store.update("task-1", { warningMessage: "No longer tracked" });
+			await vi.advanceTimersByTimeAsync(200);
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(2);
+		} finally {
+			await hub.close();
+			vi.useRealTimers();
+		}
+	});
+
 	it("keeps activity local while fanning semantic review changes and project counts across clients", async () => {
 		vi.useFakeTimers();
 		const board = createBoard("Tracked task");

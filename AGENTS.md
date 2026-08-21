@@ -38,6 +38,11 @@ Architecture opinions
 - Prefer extracting domain logic (state, effects, async orchestration) over presentation-only pass-through layers.
 - Do not optimize for line count alone. Optimize for codebase navigability and clarity.
 
+Agent support status
+- Claude Code and Codex are Quarterdeck's supported forward-looking task-agent targets.
+- The existing Pi integration is legacy and experimental. Do not treat Pi as supported or include it in new features, architectural contracts, compatibility matrices, release promises, or routine dogfood gates unless the user explicitly requests Pi work.
+- Preserve existing Pi behavior when a shared change touches it incidentally and doing so is low-risk, but do not expand the integration or let Pi compatibility block work for Claude Code and Codex.
+
 Documentation lookup cheat sheet
 - Read the area-specific docs when you enter that area; do not bulk-read every convention doc by default.
 - `docs/conventions/web-ui.md`: read before frontend work in `web-ui` for stack, design tokens, UI primitives, Radix gotchas, dialog suppression, dark theme, and hook directory rules.
@@ -64,15 +69,17 @@ web-ui conventions
 - **When modifying or creating hooks** in `web-ui/src/hooks/`: if the hook has >50 lines of non-React logic (validation, data transforms, state machine guards), extract that logic into a companion domain module (`foo-bar.ts` alongside `use-foo-bar.ts`). Domain modules are pure TS with no React imports — testable with plain `describe`/`it`. See `docs/conventions/web-ui.md` § "Hooks architecture" for the full pattern, and `docs/conventions/frontend-hooks.md` for the deeper methodology.
 
 Board state single-writer rule
-- When the browser UI is connected, the UI is the **single writer** of board state via `saveProjectState` (optimistic concurrency with `expectedRevision`). Server code must **never** write board state directly — doing so bumps the server-side revision and causes the UI's next persist to hit a `ProjectStateConflictError`, surfacing a disruptive "Project changed elsewhere" toast.
-- Instead of writing board state from the server, send a lightweight WebSocket message (via `RuntimeStateHub.broadcast*`) with just the data the UI needs, and let the UI apply it to its local board + persist through its normal debounced cycle. `task_title_updated` is the main reference pattern for task-scoped lightweight sync.
-- The board/session join point is easy to miss: authoritative project hydrate in `web-ui` must apply the server-owned runtime session projection for the `in_progress` ⇄ `review` work columns before the UI decides whether to skip the next persist. If the projection changes the hydrated board, treat it as a client-owned reconciliation that should persist through the normal UI save path; otherwise `board.json` stays stale even though the runtime truth moved the card.
+- `ProjectBoardCommandService` is the only production authority that writes durable board state. Browser clients are optimistic views: `setBoard` derives typed command batches, sends them with `expectedRevision`, and reconciles the returned authoritative snapshot. Do not reintroduce a public whole-board save route or let a browser payload replace `board.json`.
+- Board-command receipt metadata is server-owned and bounded. Check a repeated command ID and payload fingerprint before expected-revision rejection so a retry after a lost response works across runtime restarts; reject the same ID with different content. A first-seen accepted command, including a semantic no-op, consumes one revision so its receipt and ordering are durable.
+- Board-command receipts retain whether the originally accepted command changed the board. Lifecycle orchestration must use that recorded result, source-column preconditions, and authoritative session state before running a post-commit process effect; `replayed` alone is not enough. Coalesce same-process duplicate create/start calls, never blindly relaunch after a persisted move, and recover an interrupted pre-launch move to backlog without deleting worktree or branch state.
+- Runtime-owned session, generated-title, branch/base-ref, and worktree metadata projections must go through the same command service/internal mutation lock before the newer board is published. The runtime state hub schedules session persistence from terminal-store changes; do not move that projection back into browser effects.
+- Board-changing lifecycle effects must wait for the optimistic command queue to flush before starting or stopping a task session, creating/restoring a worktree, or deleting a worktree. Otherwise the side effect can observe the old durable card or outlive a rejected optimistic move.
 - In `web-ui/src/hooks/project/project-sync.ts`, `applyAuthoritativeProjectState(...)` is the single browser-side entry point for authoritative project state. Do not re-split that pipeline in `use-project-sync.ts` or nearby code:
   - authoritative session reconciliation must use the latest local session state
-  - board projection must use the reconciled session set, not raw snapshot sessions
-  - same-revision cache confirmation can still require board reprojection when runtime session truth changed
-  - hydration flags, cache updates, and revision/persistence re-entry should all come from that one apply result
-- `project.saveState` is intentionally **board-only** on the public/browser side. Runtime session truth must come from the server-owned terminal/session store, not from browser payloads or cached board restore data. If a test or shutdown path needs to seed/persist sessions directly, use the low-level state writer (`src/state/saveProjectState`) and point it at the actual runtime state root (`$HOME/.quarterdeck` or `QUARTERDECK_STATE_HOME`), not the browser API.
+  - the runtime board is authoritative; pending local command batches may be overlaid only as an optimistic presentation
+  - a command response or conflict refresh must be able to force exact authoritative hydration even at a revision the browser has already displayed
+  - hydration flags, cache updates, queue revision re-entry, and optimistic overlay must all come from that one apply path
+- Runtime session truth comes from the server-owned terminal/session store, never browser payloads or cached board restore data. Low-level `saveProjectState` remains only for migrations, isolated tests, and controlled maintenance paths; production board mutations must use `ProjectBoardCommandService`. Tests that seed state directly must point it at the actual isolated runtime state root (`QUARTERDECK_STATE_HOME`), not a browser API.
 - Task identity has multiple path concepts that are easy to blur:
   - project root path (`projectPath` in project-level state/providers)
   - assigned task identity path (`taskWorktreeInfo.path` / task metadata snapshot path)
@@ -110,7 +117,7 @@ Session reconciliation
 - Claude fullscreen scrolling is app-owned rather than xterm scrollback. xterm forwards captured wheel input conservatively, so fullscreen launches should default `CLAUDE_CODE_SCROLL_SPEED` to Claude's documented `3` multiplier while preserving an explicit user override; do not apply that environment default to classic Claude, Codex, Pi, or shell terminals.
 
 Misc. tribal knowledge
-- Automatic task-title generation is triggered after board saves while a card title is still `null`. Keep the per-project/task in-flight guard in `src/trpc/project-api-state.ts`; without it, consecutive saves can launch duplicate helper-LLM calls before the browser applies the first title update. Clear the guard in `finally` so later saves can retry, and keep explicit manual regeneration independent because it may use richer session context.
+- Automatic task-title generation is triggered after accepted browser command batches while a card title is still `null`. Keep the per-project/task in-flight guard in `src/trpc/project-api-state.ts`; without it, consecutive commands can launch duplicate helper-LLM calls before the first generated title commits. Persist the generated title through `ProjectBoardCommandService.setGeneratedTaskTitle(...)` so the lock-held `expectedTitle: null` guard cannot overwrite a concurrent manual rename. Clear the in-flight guard in `finally` so later commands can retry, and keep explicit manual regeneration independent because it may use richer session context.
 - Notification ownership is intentionally split:
   - `web-ui/src/runtime/runtime-state-stream-store.ts` keeps cross-project notification state bucketed by project, not as one flat task map plus a separate task→project lookup.
   - UI consumers should read the provider-owned projection (`needsInputByProject`, current-project/other-project needs-input flags) instead of re-deriving project ownership from raw notification buckets.

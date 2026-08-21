@@ -1,6 +1,10 @@
 import { TRPCClientError } from "@trpc/client";
 import { createProjectTrpcClient, readTrpcConflictRevision } from "@/runtime/trpc-client";
-import type { RuntimeProjectStateResponse, RuntimeProjectStateSaveRequest } from "@/runtime/types";
+import type {
+	RuntimeProjectBoardCommandBatchEnvelope,
+	RuntimeProjectBoardCommandExecutionResult,
+	RuntimeProjectStateResponse,
+} from "@/runtime/types";
 
 export class ProjectStateConflictError extends Error {
 	readonly currentRevision: number;
@@ -17,13 +21,13 @@ export async function fetchProjectState(projectId: string): Promise<RuntimeProje
 	return await trpcClient.project.getState.query();
 }
 
-export async function saveProjectState(
+export async function applyProjectBoardCommands(
 	projectId: string,
-	payload: RuntimeProjectStateSaveRequest,
-): Promise<RuntimeProjectStateResponse> {
+	payload: RuntimeProjectBoardCommandBatchEnvelope,
+): Promise<RuntimeProjectBoardCommandExecutionResult> {
 	const trpcClient = createProjectTrpcClient(projectId);
 	try {
-		return await trpcClient.project.saveState.mutate(payload);
+		return await trpcClient.project.applyBoardCommands.mutate(payload);
 	} catch (error) {
 		if (error instanceof TRPCClientError) {
 			const conflictRevision = readTrpcConflictRevision(error);

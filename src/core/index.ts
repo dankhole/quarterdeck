@@ -39,10 +39,21 @@ export {
 	shouldSuppressImmediateDuplicateShutdownSignals,
 } from "./graceful-shutdown";
 export {
+	applyProjectBoardCommand,
+	applyProjectBoardCommands,
+	type RuntimeProjectBoardCommandResult,
+} from "./project-board-command";
+export {
 	buildQuarterdeckCommandParts,
 	type RuntimeInvocationContext,
 	resolveQuarterdeckCommandParts,
 } from "./quarterdeck-command";
+export {
+	projectRuntimeSessionsOntoBoard,
+	projectRuntimeTaskBaseRefOntoBoard,
+	projectRuntimeTaskMetadataOntoBoard,
+	type RuntimeBoardProjectionResult,
+} from "./runtime-board-projection";
 export {
 	buildQuarterdeckRuntimeUrl,
 	buildQuarterdeckRuntimeWsUrl,
@@ -87,11 +98,14 @@ export {
 	getReadyLinkedTaskIdsForTaskInTrash,
 	getTaskColumnId,
 	moveTaskToColumn,
+	patchTask,
 	pruneOrphanSessionsForBroadcast,
 	pruneOrphanSessionsForNotification,
 	pruneOrphanSessionsForNotificationDelta,
 	pruneOrphanSessionsForPersist,
 	removeTaskDependency,
+	reorderTaskInColumn,
+	reorderTasksInColumn,
 	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
 	updateTaskDependencies,

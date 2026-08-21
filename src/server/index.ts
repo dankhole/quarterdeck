@@ -17,6 +17,15 @@ export {
 	type ResolvedProjectStreamTarget,
 } from "./project-registry";
 export {
+	type ProjectTaskCreateAndStartFailureCode,
+	type ProjectTaskCreateAndStartInput,
+	type ProjectTaskCreateAndStartResult,
+	type ProjectTaskCreateSpec,
+	ProjectTaskLifecycleIdentityConflictError,
+	ProjectTaskLifecycleService,
+	type ProjectTaskLifecycleServiceDependencies,
+} from "./project-task-lifecycle-service";
+export {
 	type CreateRuntimeServerDependencies,
 	createRuntimeServer,
 	type RuntimeServer,

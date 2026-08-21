@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import type {
 	RuntimeHookIngestResponse,
 	RuntimeProjectAddResponse,
+	RuntimeProjectBoardCommandExecutionResult,
 	RuntimeProjectStateResponse,
 	RuntimeProjectsResponse,
 	RuntimeShellSessionStartResponse,
@@ -20,6 +21,7 @@ import { loadProjectContext } from "../../src/state";
 import { createBoard, createReviewBoard } from "../utilities/board-factory";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
 import { getAvailablePort, startQuarterdeckServer } from "../utilities/integration-server";
+import { createBoardSeedCommandBatch } from "../utilities/project-board-command";
 import { connectRuntimeStream, type RuntimeStreamClient } from "../utilities/runtime-stream-client";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir } from "../utilities/temp-dir";
@@ -97,18 +99,15 @@ describe.sequential("state streaming integration", () => {
 				projectId: projectBId,
 			});
 			const previousRevision = currentProjectBState.payload.revision;
-			const saveProjectBResponse = await requestJson<RuntimeProjectStateResponse>({
+			const saveProjectBResponse = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "project.saveState",
+				procedure: "project.applyBoardCommands",
 				type: "mutation",
 				projectId: projectBId,
-				payload: {
-					board: createBoard("Realtime Task"),
-					expectedRevision: previousRevision,
-				},
+				payload: createBoardSeedCommandBatch(createBoard("Realtime Task"), previousRevision, "seed-realtime-task"),
 			});
 			expect(saveProjectBResponse.status).toBe(200);
-			expect(saveProjectBResponse.payload.revision).toBe(previousRevision + 1);
+			expect(saveProjectBResponse.payload.state.revision).toBe(previousRevision + 1);
 
 			const projectUpdateB = (await streamB.waitForMessage(
 				(message): message is RuntimeStateStreamProjectStateMessage =>
@@ -198,15 +197,16 @@ describe.sequential("state streaming integration", () => {
 				projectId: projectBId,
 			});
 			expect(projectBState.status).toBe(200);
-			const seedProjectBBoard = await requestJson<RuntimeProjectStateResponse>({
+			const seedProjectBBoard = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "project.saveState",
+				procedure: "project.applyBoardCommands",
 				type: "mutation",
 				projectId: projectBId,
-				payload: {
-					board: createReviewBoard(startedTaskId, "Project B notification task"),
-					expectedRevision: projectBState.payload.revision,
-				},
+				payload: createBoardSeedCommandBatch(
+					createReviewBoard(startedTaskId, "Project B notification task"),
+					projectBState.payload.revision,
+					"seed-project-b-notification",
+				),
 			});
 			expect(seedProjectBBoard.status).toBe(200);
 
@@ -550,15 +550,12 @@ describe.sequential("state streaming integration", () => {
 			}
 			trashColumn.cards[0].baseRef = baseRef;
 
-			const saveResponse = await requestJson<RuntimeProjectStateResponse>({
+			const saveResponse = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "project.saveState",
+				procedure: "project.applyBoardCommands",
 				type: "mutation",
 				projectId,
-				payload: {
-					board,
-					expectedRevision: stateResponse.payload.revision,
-				},
+				payload: createBoardSeedCommandBatch(board, stateResponse.payload.revision, "seed-metadata-board"),
 			});
 			expect(saveResponse.status).toBe(200);
 

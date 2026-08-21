@@ -99,16 +99,16 @@ project provider, board, detail view, badges, and terminal panels
 
 Quarterdeck is easiest to understand if you separate it into three layers of responsibility.
 
-The browser layer is the presentation and orchestration layer. It renders the board, detail view, settings, git panels, and terminal surfaces. It also owns short-lived UI state such as panel visibility, form drafts, and optimistic message rendering. For durable board layout, it is the writer: browser saves send board truth through `project.saveState` with optimistic revision checks.
+The browser layer is the presentation and interaction layer. It renders the board, detail view, settings, git panels, and terminal surfaces. It owns short-lived UI state such as panel visibility, form drafts, and optimistic board rendering. Board edits become typed intent commands; the browser never sends an authoritative replacement board.
 
-The runtime layer is the control layer. It decides what session to start, where it should run, what worktree or project it belongs to, what command should be used, what git metadata should be refreshed, and what state should be streamed back to the browser.
+The runtime layer is the control and persistence layer. It serializes board commands, owns durable board/session truth, decides what session to start, where it should run, what worktree or project it belongs to, what command should be used, what git metadata should be refreshed, and what state should be streamed back to clients.
 
 The execution layer is the actual agent implementation: a CLI process attached to a PTY for every task agent or shell session.
 
 That split explains a lot of the architecture:
 
 - the browser should not be the source of truth for session lifecycle
-- the runtime should not rewrite board state behind an attached browser
+- every durable board mutation must pass through the runtime command authority
 - the runtime should coordinate work, not render UI
 
 ## Runtime Modes
@@ -139,7 +139,7 @@ One of the biggest cleanup themes was making ownership clearer. The system is mu
 
 | Concern | Primary owner | Notes |
 | --- | --- | --- |
-| durable board state | browser through `project.saveState` | the public save contract is board-only and uses `expectedRevision` |
+| durable board state | runtime `ProjectBoardCommandService` | clients send typed command batches with `expectedRevision`; no public whole-board save exists |
 | runtime session truth | terminal runtime | task/session summaries come from the server-owned terminal store |
 | project registration and project state files | Quarterdeck runtime | state is stored under the runtime state home, outside repos |
 | worktree lifecycle | Quarterdeck | task worktrees are a Quarterdeck concept |
@@ -159,7 +159,9 @@ Project-specific git, worktree, state, and file operations live behind `project-
 
 ### Project registry
 
-`server/project-registry.ts` is the runtime's project directory. It tracks indexed projects, the active project, runtime config for the active project, and the per-project `TerminalSessionManager` instances. It also builds project snapshots by loading persisted board state, overlaying live terminal summaries, and pruning session summaries to the board/runtime view that is appropriate for broadcasting.
+`server/project-registry.ts` is the runtime's project directory. It tracks indexed projects, the active project, runtime config for the active project, and the per-project `TerminalSessionManager` instances. It also builds project snapshots by loading the authoritative persisted board, overlaying live terminal summaries, and pruning session summaries to the board/runtime view that is appropriate for broadcasting.
+
+`state/project-board-command-service.ts` is the durable board mutation boundary. It validates prepared command batches, holds the per-project state lock across revision/receipt checks and pure reduction, snapshots authoritative sessions, writes the resulting board/session/meta files, and publishes the authoritative result. Runtime-owned session, title, base-ref, branch, and worktree projections enter through the same locked boundary.
 
 ### Terminal runtime
 
@@ -172,7 +174,7 @@ The `src/terminal/` area owns everything process-oriented:
 - handling project shell terminals
 - reconciling stale/dead/processless sessions
 
-This is the path for all agents: Claude Code, Codex, and any other command-driven agent.
+This is the supported path for Claude Code and Codex. The repository still loads a legacy experimental Pi integration, but new architecture and compatibility work does not target it.
 
 `session-manager.ts` is the public terminal-service facade, but much of the behavior is split into focused modules:
 
@@ -206,7 +208,7 @@ Hooks in `web-ui/src/hooks/` are where most domain logic lives. Hooks are organi
 
 Components in `web-ui/src/components/` are mostly rendering and composition. Good frontend changes often mean moving runtime-aware logic into hooks and leaving the component to render a view model.
 
-`web-ui/src/runtime/` holds client-side query helpers, stream transport/reducer code, project persistence, board cache, and runtime config glue. Raw project tRPC client creation should stay concentrated in these runtime helpers rather than spread through arbitrary components.
+`web-ui/src/runtime/` holds client-side query helpers, stream transport/reducer code, the optimistic board-command transport, board cache, and runtime config glue. Raw project tRPC client creation should stay concentrated in these runtime helpers rather than spread through arbitrary components.
 
 `web-ui/src/terminal/` owns the browser terminal implementation: pooled task terminal slots, dedicated shell terminals, socket/restore handling, xterm viewport plumbing, and DOM diagnostics.
 
@@ -214,19 +216,19 @@ Components in `web-ui/src/components/` are mostly rendering and composition. Goo
 
 ### Starting a task session
 
-When the user starts a task, the browser asks the runtime to start a task session. The runtime resolves the task cwd, chooses the right command, and starts a PTY-backed process inside the task worktree. As the process runs, the terminal runtime emits summary updates. The runtime state hub streams those summaries back to the browser so the board and detail view stay live.
+When the user starts a task, the browser first flushes the command that created or moved the card, then asks the runtime to start a task session. The runtime resolves the task cwd from durable task state, chooses the right command, and starts a PTY-backed process inside the task worktree. As the process runs, the terminal runtime emits summary updates. The runtime state hub persists the server-owned session/work-column projection and streams summaries and authoritative board updates back to the browser.
 
 Raw PTY output does not travel through the runtime state hub. It streams through the terminal WebSocket path and browser terminal slot/restore layer, while the runtime state hub carries the product-shaped summaries and metadata that the rest of the UI needs.
 
-### Saving board state
+### Applying board commands
 
-When the user changes the board, the browser persists through `project.saveState` with the current `expectedRevision`. The public save payload contains board data only. On the server, the project API reads authoritative session summaries from the terminal manager, prunes them for persistence, and writes the combined state through the low-level project-state writer. If the revision has moved, the save fails with a conflict and the browser refetches authoritative state.
+When the user changes the board, `useProjectSync(...)` applies the edit optimistically and derives an explicit `ProjectBoardCommand` batch from the old and new board. It sends that batch through `project.applyBoardCommands` with a durable command ID and the last authoritative revision. The runtime applies it under the project lock through the shared pure reducer, snapshots authoritative sessions, stores a bounded receipt, and returns/publishes the authoritative result.
 
-Server code that needs to notify the UI about a task-scoped board change should prefer a lightweight runtime stream message, such as `task_title_updated`, and let the browser apply and persist that board change through the normal save path.
+Command IDs make a lost-response retry safe: an identical retry replays the receipt, while the same ID with different content is rejected. A real revision conflict clears the rejected optimistic overlay and refetches runtime state. Task start, worktree ensure, and destructive worktree cleanup wait for the relevant queue to flush so side effects cannot overtake persistence.
 
 ### Applying authoritative project state
 
-Authoritative project snapshots enter the browser through `applyAuthoritativeProjectState(...)` in `web-ui/src/hooks/project/project-sync.ts`. That function reconciles session truth, projects runtime state onto the `in_progress`/`review` columns, decides whether to hydrate from server state or keep a cached board, and tells the persistence layer whether the next save should be skipped.
+Authoritative project snapshots enter the browser through `applyAuthoritativeProjectState(...)` in `web-ui/src/hooks/project/project-sync.ts`. That function reconciles session truth, accepts the runtime-owned board, decides whether to hydrate from server state or confirm a cached view, and gives `useProjectSync(...)` one atomic base on which to overlay still-pending local commands. Command responses and conflict recovery can force exact hydration even when a revision has already been displayed.
 
 ## Configuration and Persistence
 
@@ -236,7 +238,7 @@ Different state lives in different places on purpose.
 | --- | --- | --- |
 | selected agent, global prompt shortcuts, Quarterdeck prompt templates | global runtime config | these are cross-project Quarterdeck preferences |
 | project shortcuts, default base ref, pinned branches | project config under the project state directory | these are project-scoped preferences |
-| board columns and cards | project `board.json`, written by the browser save path | the board is durable product state |
+| board columns and cards | project `board.json`, written by the runtime command authority | the board is durable product state shared by local and future remote clients |
 | task runtime summaries | terminal runtime memory plus project `sessions.json` | runtime session truth is server-owned |
 | git metadata | streamed project metadata | it is refreshed by runtime policy instead of browser polling |
 
@@ -271,7 +273,7 @@ These are the architectural rules that are most important to preserve.
 - keep `runtime-api.ts` as a coordinator, not a god file
 - keep project-specific behavior behind project APIs, registry, and providers instead of ad hoc globals
 - treat the browser as a client of streamed runtime state, not the source of truth for long-running sessions
-- treat the browser as the writer for durable board changes when it is connected
+- treat the browser as an optimistic command client, never a durable board writer
 - when adding new agent behavior, prefer capability-oriented reasoning over agent-specific branching
 
 ## Common Change Guide
@@ -282,7 +284,7 @@ When you are making a change, this table is often more useful than a file list.
 | --- | --- | --- |
 | task startup for any agent | the PTY runtime and agent launch path | accidentally adding agent-specific special cases |
 | live board updates | the runtime state hub and browser stream consumers | falling back to polling or duplicating summary logic |
-| board persistence | browser `project.saveState`, revision conflicts, and session overlay | writing board state directly from server code |
+| board persistence | typed commands, `ProjectBoardCommandService`, receipt replay, and authoritative hydration | adding a whole-board writer or bypassing the locked command authority |
 | session lifecycle or transient session UI | terminal manager, transition controller, and reconciliation sweep | using terminal output timestamps as work-state truth |
 | git metadata indicators | project metadata monitor and workdir git helpers | adding browser polling or unbounded git probes |
 

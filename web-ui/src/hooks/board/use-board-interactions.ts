@@ -7,7 +7,6 @@ import type { TaskTrashWarningViewModel } from "@/components/task";
 import { useBoardDragHandler } from "@/hooks/board/use-board-drag-handler";
 import { useLinkedBacklogTaskActions } from "@/hooks/board/use-linked-backlog-task-actions";
 import { useProgrammaticCardMoves } from "@/hooks/board/use-programmatic-card-moves";
-import { useSessionColumnSync } from "@/hooks/board/use-session-column-sync";
 import {
 	shouldWarnForNonIsolatedResume,
 	showNonIsolatedResumeWarning,
@@ -33,7 +32,6 @@ interface SelectedBoardCard {
 interface UseBoardInteractionsInput {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
-	sessions: Record<string, RuntimeTaskSessionSummary>;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
 	selectedCard: SelectedBoardCard | null;
 	selectedTaskId: string | null;
@@ -79,7 +77,6 @@ export interface UseBoardInteractionsResult {
 export function useBoardInteractions({
 	board,
 	setBoard,
-	sessions,
 	setSessions,
 	selectedCard,
 	selectedTaskId,
@@ -104,7 +101,6 @@ export function useBoardInteractions({
 		waitForProgrammaticCardMoveAvailability,
 		resetProgrammaticCardMoves,
 		requestMoveTaskToTrashWithAnimation,
-		programmaticCardMoveCycle,
 	} = useProgrammaticCardMoves();
 
 	// ── Core lifecycle operations ────────────────────────────────────────
@@ -212,16 +208,6 @@ export function useBoardInteractions({
 		consumeProgrammaticCardMove,
 		requestMoveTaskToTrash,
 		resolvePendingProgrammaticTrashMove,
-	});
-
-	// ── Session → column sync ────────────────────────────────────────────
-	// Startup resume is handled server-side (triggered on first UI connection).
-	useSessionColumnSync({
-		board,
-		setBoard,
-		sessions,
-		tryProgrammaticCardMove,
-		programmaticCardMoveCycle,
 	});
 
 	// ── Remaining small handlers ─────────────────────────────────────────

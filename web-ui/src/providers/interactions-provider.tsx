@@ -87,7 +87,6 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 	const {
 		board,
 		setBoard,
-		sessions,
 		setSessions,
 		selectedCard,
 		selectedTaskId,
@@ -132,7 +131,6 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 	} = useBoardInteractions({
 		board,
 		setBoard,
-		sessions,
 		setSessions,
 		selectedCard,
 		selectedTaskId,

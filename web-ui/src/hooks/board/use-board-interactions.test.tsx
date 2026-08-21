@@ -102,7 +102,7 @@ function HookHarness({
 	setSelectedTaskIdOverride?: Dispatch<SetStateAction<string | null>>;
 	onSnapshot?: (snapshot: HookSnapshot) => void;
 }): null {
-	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
+	const [, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const [, setSelectedTaskId] = useState<string | null>(null);
 	const [, setIsClearTrashDialogOpen] = useState(false);
 	const closeGitHistory = () => {};
@@ -110,7 +110,6 @@ function HookHarness({
 	const actions = useBoardInteractions({
 		board,
 		setBoard,
-		sessions,
 		setSessions,
 		selectedCard,
 		selectedTaskId: null,

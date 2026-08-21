@@ -8,7 +8,8 @@ Quarterdeck currently supports:
 
 - Claude Code
 - OpenAI Codex
-- Pi, which is experimental
+
+A legacy Pi integration remains available experimentally, but Pi is not a supported forward-looking target and is not included in new feature or compatibility commitments.
 
 Quarterdeck detects installed agent CLIs from your `PATH`, starts a local runtime server, and opens the browser UI for the git repository you launch it from.
 
@@ -36,11 +37,11 @@ Windows support is experimental and currently untested on native Windows. macOS 
 - At least one supported agent CLI installed and available on `PATH`
 - Optional but recommended: a Nerd Font such as [JetBrainsMono Nerd Font](https://www.nerdfonts.com/) for cleaner terminal glyphs
 
-Codex users need Codex 0.142.5 or newer with native hook support. Pi users need Pi 0.70.2 or newer.
+Codex users need Codex 0.142.5 or newer with native hook support.
 
 ## Environment Variables
 
-Quarterdeck does not require a `.env` file for core usage. It inherits the environment from the shell that launches `quarterdeck`, so make sure your agent CLI (`claude`, `codex`, or `pi`) is available on that shell's `PATH` and already authenticated according to that agent's own setup flow.
+Quarterdeck does not require a `.env` file for core usage. It inherits the environment from the shell that launches `quarterdeck`, so make sure your supported agent CLI (`claude` or `codex`) is available on that shell's `PATH` and already authenticated according to that agent's own setup flow.
 
 Optional variables:
 
@@ -154,7 +155,7 @@ For the full development workflow, see [DEVELOPMENT.md](./DEVELOPMENT.md).
 
 If `quarterdeck` is not found, run `npm run link` from the Quarterdeck checkout and make sure your npm global bin directory is on `PATH`.
 
-If no agent is available, install Claude Code, OpenAI Codex, or Pi and confirm the matching binary (`claude`, `codex`, or `pi`) is available on `PATH`. Quarterdeck currently requires Claude Code 2.1.198+, Codex 0.142.5+, or Pi 0.70.2+ for supported task-agent launches.
+If no agent is available, install Claude Code or OpenAI Codex and confirm the matching binary (`claude` or `codex`) is available on `PATH`. Quarterdeck currently requires Claude Code 2.1.198+ or Codex 0.142.5+ for supported task-agent launches.
 
 If terminal symbols look wrong, install a Nerd Font and select it in your browser or system terminal font settings.
 

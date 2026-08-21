@@ -4,6 +4,7 @@ export * from "./config.js";
 export * from "./git-history.js";
 export * from "./git-merge.js";
 export * from "./git-sync.js";
+export * from "./project-board-command.js";
 export * from "./project-state.js";
 export * from "./shared.js";
 export * from "./streams.js";

@@ -1,4 +1,14 @@
 export {
+	type ExecuteProjectBoardCommandBatchInput,
+	type ExecuteProjectBoardCommandInput,
+	type ProjectBoardCommandScope,
+	ProjectBoardCommandService,
+	type ProjectBoardCommandServiceDependencies,
+} from "./project-board-command-service";
+export {
+	type ApplyProjectBoardMutationInput,
+	type ApplyProjectBoardMutationResult,
+	applyProjectBoardMutation,
 	type LoadProjectContextOptions,
 	listProjectIndexEntries,
 	loadProjectBoardById,
@@ -6,6 +16,7 @@ export {
 	loadProjectContextById,
 	loadProjectScopeById,
 	loadProjectState,
+	ProjectBoardCommandIdentityConflictError,
 	type ProjectSessionsPruneResult,
 	ProjectStateConflictError,
 	pruneProjectSessionsForBoard,

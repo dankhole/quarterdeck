@@ -17,9 +17,9 @@ const cache = new Map<string, ProjectBoardCacheEntry>();
 
 /**
  * Cache entries can outlive the last authoritative apply. The cached board may
- * include local UI changes made after that apply, so the stored revision is the
- * server revision the cached view was last aligned with, not proof that the
- * cached board itself is authoritative for persistence.
+ * include optimistic command overlays made after that apply, so the stored
+ * revision is the server revision the cached view was last aligned with, not
+ * proof that the cached board itself is an authoritative command base.
  */
 export function stashProjectBoard(projectId: string, entry: Omit<ProjectBoardCacheEntry, "cachedAt">): void {
 	if (entry.authoritativeRevision == null) {

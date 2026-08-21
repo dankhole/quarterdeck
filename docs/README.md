@@ -30,6 +30,7 @@ Use this map when you are planning or evaluating refactor work.
 
 - Start here for current refactor status: [`todo.md`](./todo.md).
 - [`todo.md`](./todo.md): active engineering backlog, including currently tracked refactor work.
+- [`remote-companion-plan.md`](./remote-companion-plan.md): behavior-preserving prerequisites and phased implementation plan for the text-only mobile remote companion.
 - [`lsp-code-navigation-plan.md`](./lsp-code-navigation-plan.md): plan for bring-your-own language server code navigation in the Files editor.
 - [`conventions/architecture-guardrails.md`](./conventions/architecture-guardrails.md): reusable design rules for preventing optimization-shaped architecture.
 

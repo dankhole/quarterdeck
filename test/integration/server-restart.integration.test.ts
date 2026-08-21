@@ -4,15 +4,17 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type {
+	RuntimeProjectBoardCommandExecutionResult,
 	RuntimeProjectStateResponse,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskWorktreeInfoResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "../../src/core";
-import { saveProjectState } from "../../src/state";
+import { saveProjectSessions } from "../../src/state";
 import { createBoard, createReviewBoard } from "../utilities/board-factory";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
 import { getAvailablePort, startQuarterdeckServer } from "../utilities/integration-server";
+import { createBoardSeedCommandBatch } from "../utilities/project-board-command";
 import { createTempDir } from "../utilities/temp-dir";
 import { requestJson } from "../utilities/trpc-request";
 
@@ -102,15 +104,12 @@ describe.sequential("server restart integration", () => {
 			backlogColumn.cards[0].id = taskId;
 			backlogColumn.cards[0].baseRef = baseRef;
 
-			const saveResponse = await requestJson<RuntimeProjectStateResponse>({
+			const saveResponse = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "project.saveState",
+				procedure: "project.applyBoardCommands",
 				type: "mutation",
 				projectId,
-				payload: {
-					board,
-					expectedRevision: stateResponse.payload.revision,
-				},
+				payload: createBoardSeedCommandBatch(board, stateResponse.payload.revision, "seed-preserve-worktree"),
 			});
 			expect(saveResponse.status).toBe(200);
 
@@ -208,30 +207,27 @@ describe.sequential("server restart integration", () => {
 			});
 			expect(currentState.status).toBe(200);
 
-			const boardSeedResponse = await requestJson<RuntimeProjectStateResponse>({
+			const boardSeedResponse = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
-				procedure: "project.saveState",
+				procedure: "project.applyBoardCommands",
 				type: "mutation",
 				projectId,
-				payload: {
-					board: createReviewBoard(taskId, taskTitle),
-					expectedRevision: currentState.payload.revision,
-				},
+				payload: createBoardSeedCommandBatch(
+					createReviewBoard(taskId, taskTitle),
+					currentState.payload.revision,
+					"seed-exit-review",
+				),
 			});
 			expect(boardSeedResponse.status).toBe(200);
 
-			const seedResponse = await withStateHomeOverride(
+			const persistedSessions = await withStateHomeOverride(
 				tempHome,
 				async () =>
-					await saveProjectState(projectPath, {
-						board: boardSeedResponse.payload.board,
-						sessions: {
-							[taskId]: createPersistedReviewSession(taskId, projectPath, now, "exit"),
-						},
-						expectedRevision: boardSeedResponse.payload.revision,
+					await saveProjectSessions(projectPath, {
+						[taskId]: createPersistedReviewSession(taskId, projectPath, now, "exit"),
 					}),
 			);
-			expect(seedResponse.revision).toBe(boardSeedResponse.payload.revision + 1);
+			expect(persistedSessions[taskId]?.reviewReason).toBe("exit");
 			const taskWorktreeInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
 				procedure: "project.getTaskContext",
@@ -325,30 +321,27 @@ describe.sequential("server restart integration", () => {
 			});
 			expect(currentState.status).toBe(200);
 
-			const boardSeedResponse = await requestJson<RuntimeProjectStateResponse>({
+			const boardSeedResponse = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
-				procedure: "project.saveState",
+				procedure: "project.applyBoardCommands",
 				type: "mutation",
 				projectId,
-				payload: {
-					board: createReviewBoard(taskId, taskTitle),
-					expectedRevision: currentState.payload.revision,
-				},
+				payload: createBoardSeedCommandBatch(
+					createReviewBoard(taskId, taskTitle),
+					currentState.payload.revision,
+					"seed-skip-cleanup-review",
+				),
 			});
 			expect(boardSeedResponse.status).toBe(200);
 
-			const seedResponse = await withStateHomeOverride(
+			const persistedSessions = await withStateHomeOverride(
 				tempHome,
 				async () =>
-					await saveProjectState(projectPath, {
-						board: boardSeedResponse.payload.board,
-						sessions: {
-							[taskId]: createPersistedReviewSession(taskId, projectPath, now, "hook"),
-						},
-						expectedRevision: boardSeedResponse.payload.revision,
+					await saveProjectSessions(projectPath, {
+						[taskId]: createPersistedReviewSession(taskId, projectPath, now, "hook"),
 					}),
 			);
-			expect(seedResponse.revision).toBe(boardSeedResponse.payload.revision + 1);
+			expect(persistedSessions[taskId]?.reviewReason).toBe("hook");
 
 			const taskWorktreeInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,

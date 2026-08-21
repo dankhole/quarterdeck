@@ -22,6 +22,7 @@ import {
 	pruneOrphanSessionsForNotificationDelta,
 	toDisposable,
 } from "../core";
+import type { ProjectBoardCommandService } from "../state";
 import { loadProjectBoardById } from "../state";
 import type { TerminalSessionManager } from "../terminal";
 import { applyRuntimeMutationEffects, createTaskBaseRefUpdatedEffects } from "../trpc/runtime-mutation-effects";
@@ -61,11 +62,17 @@ export interface CreateRuntimeStateHubDependencies {
 		| "resumeInterruptedSessions"
 		| "getActiveRuntimeConfig"
 		| "listManagedProjects"
+		| "getProjectPathById"
+	>;
+	boardCommands: Pick<
+		ProjectBoardCommandService,
+		"reconcileRuntimeSessions" | "reconcileRuntimeMetadata" | "reconcileRuntimeTaskBaseRef"
 	>;
 }
 
 export interface RuntimeStateHub extends IRuntimeBroadcaster {
 	trackTerminalManager: (projectId: string, manager: TerminalSessionManager) => void;
+	broadcastRuntimeProjectStateSnapshot: (projectId: string, state: RuntimeProjectStateResponse) => void;
 	handleUpgrade: (
 		request: IncomingMessage,
 		socket: Parameters<WebSocketServer["handleUpgrade"]>[1],
@@ -86,6 +93,8 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	private readonly clients: RuntimeStateClientRegistry;
 	private readonly batcher: RuntimeStateMessageBatcher;
 	private readonly metadataMonitor: ReturnType<typeof createProjectMetadataMonitor>;
+	private readonly sessionPersistenceUnsubscribes = new Map<string, () => void>();
+	private readonly sessionPersistenceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 	constructor(private readonly deps: CreateRuntimeStateHubDependencies) {
 		super();
@@ -119,16 +128,42 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		this.metadataMonitor = createProjectMetadataMonitor({
 			onMetadataUpdated: (projectId, projectMetadata) => {
 				this.clients.broadcastToProject(projectId, buildProjectMetadataUpdatedMessage(projectId, projectMetadata));
+				const projectPath = this.deps.projectRegistry.getProjectPathById(projectId);
+				if (projectPath) {
+					void this.deps.boardCommands
+						.reconcileRuntimeMetadata({ projectId, projectPath }, projectMetadata)
+						.catch((error) => {
+							hubLog.warn("runtime task metadata persistence failed", {
+								projectId,
+								error: error instanceof Error ? error.message : String(error),
+							});
+						});
+				}
 			},
 			onTaskBaseRefChanged: (projectId, taskId, newBaseRef) => {
-				void applyRuntimeMutationEffects(
-					this,
-					createTaskBaseRefUpdatedEffects({
-						projectId,
-						taskId,
-						baseRef: newBaseRef,
-					}),
-				);
+				const projectPath = this.deps.projectRegistry.getProjectPathById(projectId);
+				if (!projectPath) {
+					return;
+				}
+				void this.deps.boardCommands
+					.reconcileRuntimeTaskBaseRef({ projectId, projectPath }, taskId, newBaseRef)
+					.then(async () => {
+						await applyRuntimeMutationEffects(
+							this,
+							createTaskBaseRefUpdatedEffects({
+								projectId,
+								taskId,
+								baseRef: newBaseRef,
+							}),
+						);
+					})
+					.catch((error) => {
+						hubLog.warn("runtime task base ref persistence failed", {
+							projectId,
+							taskId,
+							error: error instanceof Error ? error.message : String(error),
+						});
+					});
 			},
 			getProjectDefaultBaseRef: () => {
 				return this.deps.projectRegistry.getActiveRuntimeConfig().defaultBaseRef ?? "";
@@ -151,6 +186,14 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 	trackTerminalManager = (projectId: string, manager: TerminalSessionManager): void => {
 		this.batcher.trackTerminalManager(projectId, manager);
+		if (this.sessionPersistenceUnsubscribes.has(projectId)) {
+			return;
+		}
+		const persist = () => this.scheduleRuntimeSessionPersistence(projectId);
+		this.sessionPersistenceUnsubscribes.set(projectId, manager.store.onChange(persist));
+		if (manager.store.listSummaries().length > 0) {
+			this.scheduleRuntimeSessionPersistence(projectId, 0);
+		}
 	};
 
 	handleUpgrade = (
@@ -166,6 +209,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 	disposeProject = (projectId: string, options?: DisposeRuntimeStateProjectOptions): void => {
 		this.batcher.disposeProject(projectId);
+		this.disposeRuntimeSessionPersistence(projectId);
 		this.resumeAttempted.delete(projectId);
 		this.metadataMonitor.disposeProject(projectId);
 
@@ -190,19 +234,27 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		}
 		try {
 			const projectState = await this.deps.projectRegistry.buildProjectStateSnapshot(projectId, projectPath);
-			this.clients.broadcastToProject(projectId, buildProjectStateUpdatedMessage(projectId, projectState));
-			void this.metadataMonitor
-				.updateProjectState({
-					projectId,
-					projectPath,
-					board: projectState.board,
-				})
-				.catch(() => {
-					// Metadata is eventual; the next scheduled/manual refresh will resync.
-				});
+			this.broadcastRuntimeProjectStateSnapshot(projectId, projectState);
 		} catch {
 			// Ignore transient state read failures; next update will resync.
 		}
+	};
+
+	broadcastRuntimeProjectStateSnapshot = (projectId: string, projectState: RuntimeProjectStateResponse): void => {
+		const clients = this.clients.getProjectClients(projectId);
+		if (!clients || clients.size === 0) {
+			return;
+		}
+		this.clients.broadcastToProject(projectId, buildProjectStateUpdatedMessage(projectId, projectState));
+		void this.metadataMonitor
+			.updateProjectState({
+				projectId,
+				projectPath: projectState.repoPath,
+				board: projectState.board,
+			})
+			.catch(() => {
+				// Metadata is eventual; the next scheduled/manual refresh will resync.
+			});
 	};
 
 	broadcastRuntimeProjectNotificationsUpdated = async (projectId: string): Promise<void> => {
@@ -265,6 +317,9 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	};
 
 	close = async (): Promise<void> => {
+		for (const projectId of this.sessionPersistenceUnsubscribes.keys()) {
+			this.disposeRuntimeSessionPersistence(projectId);
+		}
 		// Dispose base class resources (metadata monitor, debug log subscription)
 		this.dispose();
 		this.batcher.close();
@@ -280,6 +335,45 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	};
 
 	// ── Private helpers ───────────────────────────────────────────────────
+
+	private scheduleRuntimeSessionPersistence(projectId: string, delayMs = 100): void {
+		const currentTimer = this.sessionPersistenceTimers.get(projectId);
+		if (currentTimer) {
+			clearTimeout(currentTimer);
+		}
+		const timer = setTimeout(() => {
+			this.sessionPersistenceTimers.delete(projectId);
+			const projectPath = this.deps.projectRegistry.getProjectPathById(projectId);
+			if (!projectPath) {
+				return;
+			}
+			void this.deps.boardCommands.reconcileRuntimeSessions({ projectId, projectPath }).catch((error) => {
+				hubLog.warn("runtime session persistence failed", {
+					projectId,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			});
+		}, delayMs);
+		timer.unref?.();
+		this.sessionPersistenceTimers.set(projectId, timer);
+	}
+
+	private disposeRuntimeSessionPersistence(projectId: string): void {
+		const unsubscribe = this.sessionPersistenceUnsubscribes.get(projectId);
+		if (unsubscribe) {
+			try {
+				unsubscribe();
+			} catch {
+				// Ignore listener cleanup failures during project removal/shutdown.
+			}
+		}
+		this.sessionPersistenceUnsubscribes.delete(projectId);
+		const timer = this.sessionPersistenceTimers.get(projectId);
+		if (timer) {
+			clearTimeout(timer);
+		}
+		this.sessionPersistenceTimers.delete(projectId);
+	}
 
 	private async handleConnection(client: WebSocket, context: unknown): Promise<void> {
 		client.on("close", () => {
@@ -492,7 +586,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			const summaryMap = Object.fromEntries(summaries.map((summary) => [summary.taskId, summary]));
 			return Object.values(pruneOrphanSessionsForNotification(summaryMap, board));
 		} catch {
-			// Board reads should normally succeed immediately after board save. If
+			// Board reads should normally succeed immediately after an authoritative mutation. If
 			// they do not, replace with the live store view rather than leaving stale
 			// browser notification entries that no longer exist server-side.
 			return summaries;
@@ -508,7 +602,8 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 					return null;
 				}
 				// Keep connect-time notification snapshots actionable. Live deltas
-				// use a laxer filter so they can survive board-save debounce races.
+				// use a laxer filter because session delivery can race board projection
+				// publication even though both are owned by the runtime.
 				try {
 					const board = await loadProjectBoardById(project.projectId);
 					const summaryMap = Object.fromEntries(summaries.map((summary) => [summary.taskId, summary]));
