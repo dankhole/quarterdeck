@@ -12,6 +12,8 @@ export type CodexHookConfigEvent =
 	| "PermissionRequest"
 	| "PostToolUse"
 	| "UserPromptSubmit"
+	| "PreCompact"
+	| "PostCompact"
 	| "Stop";
 
 const CODEX_HOOK_EVENT_LABELS = {
@@ -20,6 +22,8 @@ const CODEX_HOOK_EVENT_LABELS = {
 	PermissionRequest: "permission_request",
 	PostToolUse: "post_tool_use",
 	UserPromptSubmit: "user_prompt_submit",
+	PreCompact: "pre_compact",
+	PostCompact: "post_compact",
 	Stop: "stop",
 } as const satisfies Record<CodexHookConfigEvent, string>;
 
@@ -93,6 +97,20 @@ export function buildCodexHooksConfig(): CodexHooksConfig {
 		UserPromptSubmit: [
 			{
 				hooks: [buildCodexCommandHook("to_in_progress", { source: "codex" })],
+			},
+		],
+		PreCompact: [
+			{
+				// Manual `/compact` starts from the interactive prompt. Automatic
+				// compaction can happen mid-turn and must not change task state.
+				matcher: "manual",
+				hooks: [buildCodexCommandHook("to_in_progress", { source: "codex" })],
+			},
+		],
+		PostCompact: [
+			{
+				matcher: "manual",
+				hooks: [buildCodexCommandHook("to_review", { source: "codex" })],
 			},
 		],
 		Stop: [

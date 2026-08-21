@@ -21,6 +21,11 @@ export const EVENT_PRIORITY: Record<AudibleNotificationEventType, number> = {
 
 export type TaskColumn = RuntimeTaskIndicatorColumn;
 
+export interface AudibleTaskNotificationState {
+	column: TaskColumn;
+	eventType: AudibleNotificationEventType | null;
+}
+
 export function deriveColumn(summary: RuntimeTaskSessionSummary): TaskColumn {
 	return deriveTaskIndicatorState(summary).column;
 }
@@ -34,6 +39,35 @@ export function isTabVisible(): boolean {
 
 export function resolveSessionSoundEvent(summary: RuntimeTaskSessionSummary): AudibleNotificationEventType | null {
 	return deriveTaskIndicatorState(summary).notification;
+}
+
+export function deriveAudibleTaskNotificationState(summary: RuntimeTaskSessionSummary): AudibleTaskNotificationState {
+	const indicator = deriveTaskIndicatorState(summary);
+	return {
+		column: indicator.column,
+		eventType: indicator.notification,
+	};
+}
+
+/**
+ * Detects a new actionable sound edge for a task already known to the UI.
+ * Besides active → stopped, a stopped task can refine into a stronger event
+ * (for example review → permission) and still needs to alert the user.
+ */
+export function isNewAudibleNotification(
+	previous: AudibleTaskNotificationState,
+	current: AudibleTaskNotificationState,
+): boolean {
+	if (current.column !== "stopped" || current.eventType === null) {
+		return false;
+	}
+	if (previous.column === "active") {
+		return true;
+	}
+	if (previous.eventType === null) {
+		return true;
+	}
+	return EVENT_PRIORITY[current.eventType] > EVENT_PRIORITY[previous.eventType];
 }
 
 export interface AudibleNotificationEventConfig {

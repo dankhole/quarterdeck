@@ -312,12 +312,10 @@ describe("TerminalSessionManager ordering invariants", () => {
 		});
 	});
 
-	// ── Gap 2: writeInput does NOT optimistically transition state ──────
-	// State transitions are driven exclusively by hooks (to_in_progress,
-	// to_review). writeInput just forwards data to the PTY.
+	// ── Direct user-response ordering ───────────────────────────────────
 
-	describe("writeInput does not transition state on Enter", () => {
-		it("CR on non-Codex agent stays in awaiting_review", async () => {
+	describe("writeInput resolves only actionable input waits", () => {
+		it("keeps an ordinary review-ready task in review", async () => {
 			const spawnedSessions = setupMockPtySpawn();
 			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 
@@ -335,10 +333,99 @@ describe("TerminalSessionManager ordering invariants", () => {
 
 			manager.writeInput("task-1", Buffer.from([0x0d]));
 
-			// State stays in awaiting_review — only hooks move to running
 			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
-			// Input is still forwarded to the PTY
 			expect(spawnedSessions[0]?.write).toHaveBeenCalledTimes(1);
+		});
+
+		it("moves a Codex approval wait to running only when the response is submitted", async () => {
+			const spawnedSessions = setupMockPtySpawn();
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+
+			await manager.startTaskSession({
+				taskId: "task-1",
+				agentId: "codex",
+				binary: "codex",
+				args: [],
+				cwd: "/tmp/task-1",
+				prompt: "Fix the bug",
+			});
+
+			manager.store.transitionToReview("task-1", "hook");
+			manager.store.applyHookActivity("task-1", {
+				hookEventName: "PermissionRequest",
+				notificationType: "permission.asked",
+				activityText: "Waiting for approval",
+				toolName: "Bash",
+				source: "codex",
+			});
+
+			manager.writeInput("task-1", Buffer.from([0x1b, 0x5b, 0x42]));
+			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+			expect(manager.store.getSummary("task-1")?.latestHookActivity?.hookEventName).toBe("PermissionRequest");
+
+			manager.writeInput("task-1", Buffer.from("pasted\rtext"));
+			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+
+			manager.writeInput("task-1", Buffer.from([0x0d]));
+
+			expect(manager.store.getSummary("task-1")?.state).toBe("running");
+			expect(manager.store.getSummary("task-1")?.latestHookActivity).toBeNull();
+			expect(spawnedSessions[0]?.write).toHaveBeenCalledTimes(3);
+		});
+
+		it("rejects a delayed permission observation from before a Codex submission", async () => {
+			setupMockPtySpawn();
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+
+			await manager.startTaskSession({
+				taskId: "task-1",
+				agentId: "codex",
+				binary: "codex",
+				args: [],
+				cwd: "/tmp/task-1",
+				prompt: "Fix the bug",
+			});
+			const sessionInstanceId = prepareAgentLaunchMock.mock.calls[0]?.[0].hookSessionInstanceId as string;
+			const preToolUse = {
+				taskId: "task-1",
+				projectId: "project-1",
+				event: "activity" as const,
+				metadata: {
+					source: "codex",
+					hookEventName: "PreToolUse",
+					sessionInstanceId,
+					turnId: "turn-1",
+					toolName: "Bash",
+				},
+				delivery: {
+					id: "00000000-0000-4000-8000-000000000001",
+					occurredAt: 100,
+				},
+			};
+			expect(manager.evaluateHookEventOrder("task-1", preToolUse)).toEqual({ accepted: true });
+			manager.commitHookEventOrder("task-1", preToolUse, true);
+
+			vi.setSystemTime(300);
+			manager.writeInput("task-1", Buffer.from([0x0d]));
+
+			expect(
+				manager.evaluateHookEventOrder("task-1", {
+					taskId: "task-1",
+					projectId: "project-1",
+					event: "to_review",
+					metadata: {
+						source: "codex",
+						hookEventName: "PermissionRequest",
+						sessionInstanceId,
+						turnId: "turn-1",
+						toolName: "Bash",
+					},
+					delivery: {
+						id: "00000000-0000-4000-8000-000000000002",
+						occurredAt: 200,
+					},
+				}),
+			).toEqual({ accepted: false, reason: "resolved_by_user_input" });
 		});
 	});
 });

@@ -156,6 +156,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(hookOverrideArgs.join("\n")).toContain("timeout = 5");
 		expect(hookOverrideArgs.join("\n")).toContain("hooks.PostToolUse=");
 		expect(hookOverrideArgs.join("\n")).toContain("hooks.PermissionRequest=");
+		expect(hookOverrideArgs.join("\n")).toContain("hooks.PreCompact=");
+		expect(hookOverrideArgs.join("\n")).toContain("hooks.PostCompact=");
 		expect(getCodexConfigOverrideValues(launch.args, "check_for_update_on_startup")).toEqual(["false"]);
 
 		const quarterdeckHooksPath = join(home, ".quarterdeck", "hooks", "codex", "hooks.json");
@@ -530,6 +532,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 			"hooks.SessionStart",
 			"hooks.PostToolUse",
 			"hooks.PermissionRequest",
+			"hooks.PreCompact",
+			"hooks.PostCompact",
 			"check_for_update_on_startup",
 			"developer_instructions",
 		]) {

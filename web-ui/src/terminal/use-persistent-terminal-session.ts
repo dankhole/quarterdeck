@@ -236,6 +236,14 @@ export function usePersistentTerminalSession({
 		const terminal = acquireTaskTerminal(taskId, projectId);
 		if (didSessionRestart) {
 			terminal.reset();
+			// The control socket can observe the new pid/startedAt and finish its
+			// reconnect restore before this React effect runs. Resetting afterward
+			// would then erase the authoritative snapshot and leave the task pane
+			// blank until another manual re-sync. Requesting a restore here is safe
+			// in either order: the socket manager queues it behind an in-flight
+			// restore, sends it after one already completed, or the reconnect's
+			// upcoming initial restore supplies the same snapshot.
+			terminal.requestRestore();
 		}
 		previousSessionRef.current = { projectId, taskId, sessionStartedAt };
 		terminalRef.current = terminal;

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fix: reconcile interactive Codex lifecycle
+
+- Submitting a response while a task is genuinely waiting for input now moves it back to running immediately, while ordinary review-card input and terminal redraws remain state-neutral; delayed Codex permission hooks from before that response are rejected by launch-scoped ordering.
+- Manual Codex `/compact` now uses the native paired compact hooks to show running only for the duration of compaction, while automatic mid-turn compaction remains state-neutral.
+- Audible notifications now detect semantic upgrades on already-stopped tasks, so a review card that becomes approval-required alerts once without replaying retained or unchanged notification state.
+- Restarted task terminals now re-request the authoritative snapshot after their local reset, preventing a late React effect from erasing an already restored Codex chat and leaving a blank pane.
+
 ### Fix: make native hook transitions replay-safe
 
 - Reliable Codex state-transition hooks now use two bounded delivery attempts backed by an expiring local replay outbox, so a brief runtime stall no longer leaves a task permanently running or awaiting input after the native hook fired.

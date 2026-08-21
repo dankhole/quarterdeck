@@ -176,6 +176,54 @@ describe("reduceSessionTransition", () => {
 		});
 	});
 
+	describe("user.responded", () => {
+		it("moves an approval wait to running and clears its hook activity", () => {
+			const summary = createSummary({
+				state: "awaiting_review",
+				reviewReason: "hook",
+				latestHookActivity: {
+					activityText: "Waiting for approval",
+					toolName: "Bash",
+					toolInputSummary: "npm test",
+					finalMessage: null,
+					hookEventName: "PermissionRequest",
+					notificationType: "permission.asked",
+					source: "codex",
+					conversationSummaryText: null,
+				},
+			});
+
+			const result = reduceSessionTransition(summary, { type: "user.responded" });
+
+			expect(result.changed).toBe(true);
+			expect(result.patch).toEqual({
+				state: "running",
+				reviewReason: null,
+				latestHookActivity: null,
+				stalledSince: null,
+			});
+			expect(result.clearAttentionBuffer).toBe(true);
+		});
+
+		it("moves an attention wait to running", () => {
+			const summary = createSummary({ state: "awaiting_review", reviewReason: "attention" });
+
+			const result = reduceSessionTransition(summary, { type: "user.responded" });
+
+			expect(result.changed).toBe(true);
+			expect(result.patch.state).toBe("running");
+		});
+
+		it("does not move an ordinary review-ready card", () => {
+			const summary = createSummary({ state: "awaiting_review", reviewReason: "hook" });
+
+			const result = reduceSessionTransition(summary, { type: "user.responded" });
+
+			expect(result.changed).toBe(false);
+			expect(result.patch).toEqual({});
+		});
+	});
+
 	describe("interrupt.recovery", () => {
 		it("transitions from running to awaiting_review with reason 'attention'", () => {
 			const summary = createSummary({ state: "running" });

@@ -15,8 +15,10 @@ export interface HookEventOrderState {
 	sessionInstanceId: string;
 	activeTurnId: string | null;
 	activeTurnLatestOccurredAt: number | null;
+	activeTurnLatestCompactOccurredAt: number | null;
 	activeTurnCompleted: boolean;
 	pendingPermission: PendingPermission | null;
+	latestUserSubmissionAt: number | null;
 	retiredTurnIds: Map<string, number>;
 	completedToolOccurredAt: Map<string, number>;
 	processedDeliveryIds: Map<string, number>;
@@ -29,6 +31,7 @@ export type HookEventOrderRejectionReason =
 	| "stale_observation"
 	| "completed_turn"
 	| "completed_tool"
+	| "resolved_by_user_input"
 	| "unrelated_tool_completion";
 
 export type HookEventOrderDecision = { accepted: true } | { accepted: false; reason: HookEventOrderRejectionReason };
@@ -38,8 +41,10 @@ export function createHookEventOrderState(sessionInstanceId: string): HookEventO
 		sessionInstanceId,
 		activeTurnId: null,
 		activeTurnLatestOccurredAt: null,
+		activeTurnLatestCompactOccurredAt: null,
 		activeTurnCompleted: false,
 		pendingPermission: null,
+		latestUserSubmissionAt: null,
 		retiredTurnIds: new Map(),
 		completedToolOccurredAt: new Map(),
 		processedDeliveryIds: new Map(),
@@ -87,6 +92,18 @@ function toolKey(turnId: string, toolName: string | null): string | null {
 	return toolName ? JSON.stringify([turnId, toolName]) : null;
 }
 
+/**
+ * Records a prompt submission observed directly at the task PTY. This is not
+ * an agent-working heuristic: it only gives ordering a causal boundary for
+ * hook events that occurred before the user's response but arrived later.
+ */
+export function recordHookUserSubmission(state: HookEventOrderState | null, occurredAt = Date.now()): void {
+	if (!state) {
+		return;
+	}
+	state.latestUserSubmissionAt = Math.max(state.latestUserSubmissionAt ?? occurredAt, occurredAt);
+}
+
 export function evaluateHookEventOrder(
 	state: HookEventOrderState | null,
 	input: RuntimeHookIngestRequest,
@@ -128,11 +145,21 @@ export function evaluateHookEventOrder(
 
 	const hookEventName = normalizedHookEventName(input);
 	const toolName = normalizedToolName(input);
+	if (
+		(hookEventName === "precompact" || hookEventName === "postcompact") &&
+		state.activeTurnLatestCompactOccurredAt !== null &&
+		occurredAt < state.activeTurnLatestCompactOccurredAt
+	) {
+		return { accepted: false, reason: "stale_observation" };
+	}
 	// PermissionRequest does not expose tool_use_id. Canonical tool_name is the
 	// strongest documented correlation it shares with PostToolUse.
 	const currentToolKey = toolKey(turnId, toolName);
 	const completedToolOccurredAt = currentToolKey ? state.completedToolOccurredAt.get(currentToolKey) : undefined;
 	if (hookEventName === "permissionrequest") {
+		if (state.latestUserSubmissionAt !== null && occurredAt < state.latestUserSubmissionAt) {
+			return { accepted: false, reason: "resolved_by_user_input" };
+		}
 		if (completedToolOccurredAt !== undefined && occurredAt <= completedToolOccurredAt) {
 			return { accepted: false, reason: "completed_tool" };
 		}
@@ -194,6 +221,7 @@ export function commitHookEventOrder(
 		}
 		state.activeTurnId = turnId;
 		state.activeTurnLatestOccurredAt = occurredAt;
+		state.activeTurnLatestCompactOccurredAt = null;
 		state.activeTurnCompleted = false;
 		state.pendingPermission = null;
 		state.completedToolOccurredAt.clear();
@@ -203,6 +231,12 @@ export function commitHookEventOrder(
 
 	const hookEventName = normalizedHookEventName(input);
 	const toolName = normalizedToolName(input);
+	if (hookEventName === "precompact" || hookEventName === "postcompact") {
+		state.activeTurnLatestCompactOccurredAt = Math.max(
+			state.activeTurnLatestCompactOccurredAt ?? occurredAt,
+			occurredAt,
+		);
+	}
 	if (hookEventName === "permissionrequest") {
 		state.pendingPermission = { turnId, toolName, occurredAt };
 	} else if (hookEventName === "posttooluse") {

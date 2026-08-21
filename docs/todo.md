@@ -19,7 +19,7 @@ These are broader architecture refactor targets confirmed against implementation
 
 ## Codex native hooks parity follow-ups
 
-- Revisit remaining Codex slash-command lifecycle parity before declaring full Claude Code parity. Codex now exposes `PreCompact` and `PostCompact`, but `/resume`, plugin reloads, and other TUI-local commands still lack stable start/finish boundaries. Quarterdeck should keep maintenance hooks activity-only if it adopts them; they must not move review-ready cards to running.
+- Revisit remaining Codex slash-command lifecycle parity before declaring full Claude Code parity. Manual `/compact` now uses its dedicated paired hooks while automatic compaction stays state-neutral, but `/resume`, plugin reloads, and other TUI-local commands still lack stable start/finish boundaries. Keep those unpaired maintenance signals activity-only; they must not move review-ready cards to running.
 - Revisit Codex turn-failure granularity if the native hook API adds explicit abort/failure events. The current surface covers tool, prompt, compaction, subagent, and stop lifecycle, but the deleted wrapper/parser path could also infer `task_started`, `turn_aborted`, and `task_complete` from event logs. Native hooks remain cleaner and launch-scoped while providing less detail for non-tool failure attribution.
 
 ## Files view and Git diff performance

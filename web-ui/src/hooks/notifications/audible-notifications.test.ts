@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	areSoundsSuppressed,
+	deriveAudibleTaskNotificationState,
 	deriveColumn,
 	EVENT_PRIORITY,
 	getSettleWindowMs,
 	isEventSuppressedForProject,
+	isNewAudibleNotification,
 	isTabVisible,
 	resolveSessionSoundEvent,
 	SETTLE_WINDOW_HOOK_MS,
@@ -178,6 +180,44 @@ describe("EVENT_PRIORITY", () => {
 	it("failure > permission > review", () => {
 		expect(EVENT_PRIORITY.failure).toBeGreaterThan(EVENT_PRIORITY.permission);
 		expect(EVENT_PRIORITY.permission).toBeGreaterThan(EVENT_PRIORITY.review);
+	});
+});
+
+describe("isNewAudibleNotification", () => {
+	it("detects active-to-stopped notifications", () => {
+		expect(
+			isNewAudibleNotification({ column: "active", eventType: null }, { column: "stopped", eventType: "review" }),
+		).toBe(true);
+	});
+
+	it("detects a stronger notification while the task remains stopped", () => {
+		expect(
+			isNewAudibleNotification(
+				{ column: "stopped", eventType: "review" },
+				{ column: "stopped", eventType: "permission" },
+			),
+		).toBe(true);
+	});
+
+	it("ignores unchanged and downgraded stopped notifications", () => {
+		expect(
+			isNewAudibleNotification(
+				{ column: "stopped", eventType: "permission" },
+				{ column: "stopped", eventType: "permission" },
+			),
+		).toBe(false);
+		expect(
+			isNewAudibleNotification(
+				{ column: "stopped", eventType: "permission" },
+				{ column: "stopped", eventType: "review" },
+			),
+		).toBe(false);
+	});
+
+	it("derives the semantic notification and column together", () => {
+		expect(
+			deriveAudibleTaskNotificationState(mockSummary({ state: "awaiting_review", reviewReason: "error" })),
+		).toEqual({ column: "stopped", eventType: "failure" });
 	});
 });
 

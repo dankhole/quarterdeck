@@ -204,7 +204,7 @@ describe("usePersistentTerminalSession", () => {
 		expect(terminal.hide).not.toHaveBeenCalled();
 	});
 
-	it("resets without requesting another restore for a restarted task session", async () => {
+	it("restores authoritative content after resetting a restarted task session", async () => {
 		const terminal = createTerminalSlotMock();
 		acquireTaskTerminalMock.mockReturnValue(terminal);
 
@@ -220,7 +220,7 @@ describe("usePersistentTerminalSession", () => {
 		});
 
 		expect(terminal.reset).toHaveBeenCalledTimes(1);
-		expect(terminal.requestRestore).not.toHaveBeenCalled();
+		expect(terminal.requestRestore).toHaveBeenCalledTimes(1);
 	});
 
 	it("requests a fresh restore on the mounted terminal", async () => {

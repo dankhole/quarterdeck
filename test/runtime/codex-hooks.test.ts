@@ -120,6 +120,8 @@ describe("buildCodexHookConfigOverrides", () => {
 			PermissionRequest: [],
 			PostToolUse: [],
 			UserPromptSubmit: [],
+			PreCompact: [],
+			PostCompact: [],
 			Stop: [
 				{
 					hooks: [{ type: "command", command: "true", timeout: CODEX_HOOK_TIMEOUT_SECONDS }],
@@ -169,5 +171,16 @@ describe("buildCodexHookConfigOverrides", () => {
 		expect(PostToolUse[0]?.hooks).toHaveLength(1);
 		expect(PostToolUse[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_in_progress'");
 		expect(PostToolUse[0]?.hooks[0]?.command).toContain("'--event' 'to_in_progress'");
+	});
+
+	it("brackets manual compaction without changing state for automatic compaction", () => {
+		const { PreCompact, PostCompact } = buildCodexHooksConfig();
+
+		expect(PreCompact).toHaveLength(1);
+		expect(PreCompact[0]?.matcher).toBe("manual");
+		expect(PreCompact[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_in_progress'");
+		expect(PostCompact).toHaveLength(1);
+		expect(PostCompact[0]?.matcher).toBe("manual");
+		expect(PostCompact[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_review'");
 	});
 });

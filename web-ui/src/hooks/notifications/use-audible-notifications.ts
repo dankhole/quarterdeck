@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef } from "react";
 import {
 	type AudibleNotificationEventConfig,
+	type AudibleTaskNotificationState,
 	areSoundsSuppressed,
+	deriveAudibleTaskNotificationState,
 	deriveColumn,
 	EVENT_PRIORITY,
 	getSettleWindowMs,
 	isEventSuppressedForProject,
-	resolveSessionSoundEvent,
-	type TaskColumn,
+	isNewAudibleNotification,
 } from "@/hooks/notifications/audible-notifications";
 import { flattenProjectNotificationTasks } from "@/hooks/notifications/project-notifications";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
@@ -47,7 +48,7 @@ export function useAudibleNotifications({
 		() => flattenProjectNotificationTasks(notificationProjects),
 		[notificationProjects],
 	);
-	const previousColumnsRef = useRef<Map<string, TaskColumn>>(new Map());
+	const previousStatesRef = useRef<Map<string, AudibleTaskNotificationState>>(new Map());
 	const isInitialLoadRef = useRef(true);
 	const pendingSoundsRef = useRef<Map<string, PendingSound>>(new Map());
 	const latestVolumeRef = useRef(audibleNotificationVolume);
@@ -91,15 +92,15 @@ export function useAudibleNotifications({
 		notificationAudioPlayer.play(eventType, latestVolumeRef.current);
 	};
 
-	// Single detection path: column-based transitions with settle window.
+	// Single detection path: semantic notification edges with a settle window.
 	useEffect(() => {
-		const previousColumns = previousColumnsRef.current;
+		const previousStates = previousStatesRef.current;
 
-		// On initial load, populate columns without playing sounds.
+		// On initial load, populate state without playing sounds.
 		if (isInitialLoadRef.current) {
 			isInitialLoadRef.current = false;
 			for (const [taskId, task] of Object.entries(notificationTasks)) {
-				previousColumns.set(taskId, deriveColumn(task.summary));
+				previousStates.set(taskId, deriveAudibleTaskNotificationState(task.summary));
 			}
 			return;
 		}
@@ -107,50 +108,49 @@ export function useAudibleNotifications({
 		const soundsSuppressed = areSoundsSuppressed(audibleNotificationsEnabled, audibleNotificationsOnlyWhenHidden);
 
 		for (const [taskId, task] of Object.entries(notificationTasks)) {
-			const currentColumn = deriveColumn(task.summary);
-			const previousColumn = previousColumns.get(taskId);
-			previousColumns.set(taskId, currentColumn);
+			const currentState = deriveAudibleTaskNotificationState(task.summary);
+			const previousState = previousStates.get(taskId);
+			previousStates.set(taskId, currentState);
+
+			// Newly discovered tasks are seeded silently, matching initial-load
+			// behavior and avoiding alerts for retained historical state.
+			if (!previousState) {
+				continue;
+			}
 
 			if (soundsSuppressed || suppressedTaskIds?.has(taskId)) {
 				cancelPendingSound(taskId);
 				continue;
 			}
 
-			// Case 1: Task just transitioned from active → stopped.
-			// Open a settle window and record the initial sound event.
-			if (previousColumn === "active" && currentColumn === "stopped") {
-				// Cancel any existing pending sound (shouldn't happen, but defensive).
-				cancelPendingSound(taskId);
-				const eventType = resolveSessionSoundEvent(task.summary);
-				if (eventType) {
-					const timer = setTimeout(() => fireSound(taskId), getSettleWindowMs(task.summary));
-					pendingSoundsRef.current.set(taskId, { eventType, timer });
-				}
-				continue;
-			}
-
-			if (currentColumn !== "stopped") {
+			if (currentState.column !== "stopped") {
 				cancelPendingSound(taskId);
 				continue;
 			}
 
-			// Case 2: Task is still stopped and we have a pending sound —
+			// A task is still stopped and we have a pending sound —
 			// session data is refining (e.g. hook activity arrived). Upgrade
 			// the pending sound if the new event is higher priority.
-			if (currentColumn === "stopped" && pendingSoundsRef.current.has(taskId)) {
+			if (pendingSoundsRef.current.has(taskId)) {
 				const pending = pendingSoundsRef.current.get(taskId)!;
-				const eventType = resolveSessionSoundEvent(task.summary);
+				const eventType = currentState.eventType;
 				if (eventType && EVENT_PRIORITY[eventType] > EVENT_PRIORITY[pending.eventType]) {
 					pending.eventType = eventType;
 				}
+				continue;
+			}
+
+			if (isNewAudibleNotification(previousState, currentState) && currentState.eventType) {
+				const timer = setTimeout(() => fireSound(taskId), getSettleWindowMs(task.summary));
+				pendingSoundsRef.current.set(taskId, { eventType: currentState.eventType, timer });
 			}
 		}
 
 		// Clean up removed tasks. In practice notification state grows monotonically,
 		// so this loop is defensive — retained for correctness if pruning is added later.
-		for (const taskId of previousColumns.keys()) {
+		for (const taskId of previousStates.keys()) {
 			if (!(taskId in notificationTasks)) {
-				previousColumns.delete(taskId);
+				previousStates.delete(taskId);
 				cancelPendingSound(taskId);
 			}
 		}

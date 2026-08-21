@@ -284,6 +284,59 @@ describe("Codex hook event ordering", () => {
 		).toEqual({ accepted: false, reason: "completed_turn" });
 	});
 
+	it("does not let a delayed compact start arrive after compact completion", () => {
+		const state = createHookEventOrderState(SESSION_INSTANCE_ID);
+		acceptAndCommit(
+			state,
+			hook({
+				event: "to_review",
+				hookEventName: "PostCompact",
+				turnId: "turn-1",
+				deliveryIndex: 2,
+				occurredAt: 200,
+			}),
+		);
+
+		expect(
+			evaluateHookEventOrder(
+				state,
+				hook({
+					event: "to_in_progress",
+					hookEventName: "PreCompact",
+					turnId: "turn-1",
+					deliveryIndex: 1,
+					occurredAt: 100,
+				}),
+			),
+		).toEqual({ accepted: false, reason: "stale_observation" });
+	});
+
+	it("accepts the normal manual compact lifecycle", () => {
+		const state = createHookEventOrderState(SESSION_INSTANCE_ID);
+		acceptAndCommit(
+			state,
+			hook({
+				event: "to_in_progress",
+				hookEventName: "PreCompact",
+				turnId: "turn-1",
+				deliveryIndex: 1,
+				occurredAt: 100,
+			}),
+		);
+		acceptAndCommit(
+			state,
+			hook({
+				event: "to_review",
+				hookEventName: "PostCompact",
+				turnId: "turn-1",
+				deliveryIndex: 2,
+				occurredAt: 200,
+			}),
+		);
+
+		expect(state.activeTurnLatestCompactOccurredAt).toBe(200);
+	});
+
 	it("accepts the normal permission, completion, and Stop sequence", () => {
 		const state = createHookEventOrderState(SESSION_INSTANCE_ID);
 		acceptAndCommit(

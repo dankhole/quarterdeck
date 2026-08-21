@@ -101,6 +101,61 @@ describe("useAudibleNotifications — settle window & timing", () => {
 		expect(playMock).toHaveBeenCalledTimes(1);
 	});
 
+	it("plays permission when an already-stopped task becomes approval-required", async () => {
+		const props = defaultProps();
+		const reviewSummary = createMockSession({
+			taskId: "task-1",
+			state: "awaiting_review",
+			reviewReason: "hook",
+			latestHookActivity: {
+				hookEventName: "SomeHook",
+				notificationType: null,
+				activityText: null,
+				toolName: null,
+				toolInputSummary: null,
+				finalMessage: null,
+				source: null,
+				conversationSummaryText: null,
+			},
+		});
+
+		await act(async () => {
+			harness.root.render(<HookHarness {...props} notificationSessions={{ "task-1": reviewSummary }} />);
+		});
+
+		const permissionSummary = createMockSession({
+			...reviewSummary,
+			latestHookActivity: {
+				hookEventName: "PermissionRequest",
+				notificationType: "permission.asked",
+				activityText: "Waiting for approval",
+				toolName: "Bash",
+				toolInputSummary: "npm test",
+				finalMessage: null,
+				source: "codex",
+				conversationSummaryText: null,
+			},
+		});
+		await act(async () => {
+			harness.root.render(<HookHarness {...props} notificationSessions={{ "task-1": permissionSummary }} />);
+		});
+
+		harness.flushSettleWindow();
+		expect(playMock).toHaveBeenCalledWith("permission", 0.7);
+		expect(playMock).toHaveBeenCalledTimes(1);
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{ "task-1": { ...permissionSummary, updatedAt: Date.now() + 1 } }}
+				/>,
+			);
+		});
+		harness.flushSettleWindow();
+		expect(playMock).toHaveBeenCalledTimes(1);
+	});
+
 	it("keeps the higher-priority queued sound if later stopped data downgrades before flush", async () => {
 		const props = defaultProps();
 

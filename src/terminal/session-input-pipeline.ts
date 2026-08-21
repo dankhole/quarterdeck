@@ -1,9 +1,10 @@
 // Input routing pipeline for PTY sessions.
 // Extracted from session-manager.ts — processes user keyboard input through
-// an ordered pipeline: terminal protocol response detection → permission
-// activity clearing → interrupt detection → PTY write.
+// an ordered pipeline: terminal protocol response detection → interrupt
+// detection → PTY write → explicit user-response transition.
 
-import type { RuntimeTaskSessionSummary } from "../core";
+import { deriveTaskIndicatorState, type RuntimeTaskSessionSummary } from "../core";
+import { recordHookUserSubmission } from "./hook-event-order";
 import { detectInterruptSignal, scheduleInterruptRecovery } from "./session-interrupt-recovery";
 import type { ProcessEntry } from "./session-manager-types";
 import { isPermissionActivity } from "./session-reconciliation";
@@ -11,6 +12,7 @@ import type { SessionTransitionEvent, SessionTransitionResult } from "./session-
 
 const ESC = 0x1b;
 const CSI_BRACKET = 0x5b; // [
+const CARRIAGE_RETURN = 0x0d;
 
 /**
  * Detects whether a writeInput buffer is entirely a terminal protocol response
@@ -45,6 +47,11 @@ export function isTerminalProtocolResponse(data: Buffer): boolean {
 	return false;
 }
 
+/** A normal Enter submission. Shift+Enter/newline remains ordinary editing. */
+export function isExplicitUserSubmission(data: Buffer): boolean {
+	return data.length === 1 && data[0] === CARRIAGE_RETURN;
+}
+
 export interface InputPipelineDeps {
 	getSummary: (taskId: string) => RuntimeTaskSessionSummary | null;
 	updateStore: (taskId: string, patch: Partial<RuntimeTaskSessionSummary>) => RuntimeTaskSessionSummary | null;
@@ -56,8 +63,8 @@ export interface InputPipelineDeps {
 }
 
 /**
- * Process user input for a session. Handles permission activity clearing and
- * interrupt detection before writing to the PTY.
+ * Process user input for a session. Handles permission compatibility,
+ * interrupt detection, and explicit response transitions around the PTY write.
  * Returns the current summary, or null if the session has no active process.
  */
 export function processSessionInput(
@@ -71,20 +78,24 @@ export function processSessionInput(
 	}
 	const summary = deps.getSummary(taskId);
 
-	// 1. Permission activity clearing — when the user types into a permission
-	//    prompt, clear the metadata so hooks can transition the task back to running.
-	//    Skip terminal protocol responses (focus events, cursor reports) that xterm.js
-	//    sends automatically.
-	if (
+	const protocolResponse = isTerminalProtocolResponse(data);
+	const explicitSubmission = !protocolResponse && isExplicitUserSubmission(data);
+	const resolvesInputWait =
+		explicitSubmission && summary?.state === "awaiting_review" && deriveTaskIndicatorState(summary).needsInput;
+	const clearsNonCodexPermission =
+		summary?.agentId !== "codex" &&
 		summary?.state === "awaiting_review" &&
-		summary.latestHookActivity != null &&
 		isPermissionActivity(summary.latestHookActivity) &&
-		!isTerminalProtocolResponse(data)
-	) {
+		!protocolResponse &&
+		!explicitSubmission;
+	if (clearsNonCodexPermission) {
+		// Claude and Pi can resolve permission menus with a single keypress and
+		// rely on the following native hook to confirm running. Preserve that
+		// behavior while Codex uses its source-specific PostToolUse guard.
 		deps.updateStore(taskId, { latestHookActivity: null });
 	}
 
-	// 2. Interrupt detection — Ctrl+C or bare Escape while running suppresses
+	// 1. Interrupt detection — Ctrl+C or bare Escape while running suppresses
 	//    auto-restart and schedules a recovery timer.
 	const { isCtrlC, isBareEscape } = detectInterruptSignal(data);
 	if (summary?.state === "running" && (isCtrlC || isBareEscape)) {
@@ -96,7 +107,22 @@ export function processSessionInput(
 		});
 	}
 
-	// 3. PTY write
+	// 2. PTY write. Only mark the response after it has been handed to the
+	//    process; a failed write must not claim the wait was resolved.
 	entry.active.session.write(data);
+
+	// 3. Record the direct user submission as an ordering boundary for Codex.
+	//    This prevents an older PermissionRequest that was delayed in transport
+	//    from restoring the wait after the user already answered it.
+	if (explicitSubmission && summary?.agentId === "codex") {
+		recordHookUserSubmission(entry.hookEventOrder);
+	}
+
+	// 4. A submitted response to an actionable input wait is authoritative user
+	//    interaction. Route it through the state machine; ordinary review cards,
+	//    cursor navigation, terminal protocol traffic, and PTY output do not move.
+	if (resolvesInputWait) {
+		deps.applyTransitionEvent(entry, { type: "user.responded" });
+	}
 	return deps.getSummary(taskId);
 }
