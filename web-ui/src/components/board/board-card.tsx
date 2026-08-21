@@ -271,9 +271,13 @@ export function BoardCard({
 							isDependencyTarget && "kb-board-card-dependency-target",
 						)}
 					>
-						<div className="flex items-center gap-2" style={{ minHeight: 24 }}>
+						<div
+							className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
+							data-board-card-header
+							style={{ minHeight: 24 }}
+						>
 							{statusMarker === "restart" ? (
-								<div className="inline-flex items-center">
+								<div className="inline-flex shrink-0 items-center">
 									<Tooltip content="Restart session">
 										<Button
 											icon={<RotateCw size={12} />}
@@ -290,7 +294,7 @@ export function BoardCard({
 									</Tooltip>
 								</div>
 							) : statusMarker === "spinner" ? (
-								<div className="inline-flex items-center">
+								<div className="inline-flex shrink-0 items-center">
 									<Spinner size={12} />
 								</div>
 							) : null}
@@ -333,64 +337,67 @@ export function BoardCard({
 									stopEvent={stopEvent}
 								/>
 							) : (
-								<div className="flex flex-1 items-center gap-1 min-w-0">
-									<div className="flex-1 min-w-0">
-										<p
-											className={cn(
-												"kb-line-clamp-1 m-0 font-medium text-sm",
-												isTrashCard && "line-through text-text-tertiary",
-											)}
-										>
-											{displayTitle}
-										</p>
-									</div>
-									{isHovered && !isTrashCard ? (
-										<>
-											{onTogglePin ? (
-												<Tooltip content={card.pinned ? "Unpin" : "Pin to top"}>
-													<Button
-														icon={card.pinned ? <PinOff size={12} /> : <Pin size={12} />}
-														variant="ghost"
-														size="sm"
-														aria-label={card.pinned ? "Unpin task" : "Pin task to top"}
-														onMouseDown={stopEvent}
-														onClick={(event) => {
-															stopEvent(event);
-															onTogglePin(card.id);
-														}}
-													/>
-												</Tooltip>
-											) : null}
-											{onUpdateTitle ? (
+								<div className="min-w-16 flex-1 basis-16" data-board-card-title>
+									<p
+										className={cn(
+											"kb-line-clamp-1 m-0 font-medium text-sm",
+											isTrashCard && "line-through text-text-tertiary",
+										)}
+									>
+										{displayTitle}
+									</p>
+								</div>
+							)}
+							<div
+								className="ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 [&>button]:shrink-0"
+								data-board-card-action-rail
+							>
+								{!isEditingTitle && isHovered && !isTrashCard ? (
+									<>
+										{onTogglePin ? (
+											<Tooltip content={card.pinned ? "Unpin" : "Pin to top"}>
 												<Button
-													icon={<Pencil size={12} />}
+													icon={card.pinned ? <PinOff size={12} /> : <Pin size={12} />}
 													variant="ghost"
 													size="sm"
-													aria-label="Edit title"
+													aria-label={card.pinned ? "Unpin task" : "Pin task to top"}
 													onMouseDown={stopEvent}
 													onClick={(event) => {
 														stopEvent(event);
-														openTitleEditor();
+														onTogglePin(card.id);
 													}}
 												/>
-											) : null}
-										</>
-									) : null}
-								</div>
-							)}
-							<BoardCardActions
-								cardId={card.id}
-								columnId={columnId}
-								isHovered={isHovered}
-								isSessionDead={isSessionDead}
-								isSessionRestartable={isSessionRestartable}
-								isMoveToTrashLoading={isMoveToTrashLoading}
-								onStart={onStart}
-								onRestartSession={onRestartSession}
-								onMoveToTrash={onMoveToTrash}
-								onRestoreFromTrash={onRestoreFromTrash}
-								onHardDelete={onHardDelete}
-							/>
+											</Tooltip>
+										) : null}
+										{onUpdateTitle ? (
+											<Button
+												icon={<Pencil size={12} />}
+												variant="ghost"
+												size="sm"
+												aria-label="Edit title"
+												onMouseDown={stopEvent}
+												onClick={(event) => {
+													stopEvent(event);
+													openTitleEditor();
+												}}
+											/>
+										) : null}
+									</>
+								) : null}
+								<BoardCardActions
+									cardId={card.id}
+									columnId={columnId}
+									isHovered={isHovered}
+									isSessionDead={isSessionDead}
+									isSessionRestartable={isSessionRestartable}
+									isMoveToTrashLoading={isMoveToTrashLoading}
+									onStart={onStart}
+									onRestartSession={onRestartSession}
+									onMoveToTrash={onMoveToTrash}
+									onRestoreFromTrash={onRestoreFromTrash}
+									onHardDelete={onHardDelete}
+								/>
+							</div>
 						</div>
 						{showSummaryOnCards && latestSummaryText ? (
 							<p className="text-xs text-text-secondary line-clamp-2 mt-1 m-0">{latestSummaryText}</p>

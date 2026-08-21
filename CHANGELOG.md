@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: keep task-card actions separated
+
+- Compact task cards now keep edit, pin, restart, and trash controls in a responsive action rail that moves onto a right-aligned second row and wraps its controls internally when needed, so hover actions cannot overlap or overflow when space runs out.
+
 ### Fix: start shared-checkout tasks without a base branch
 
 - Shared-checkout tasks can now start or resume when their base ref is unresolved; isolated tasks still require a selected base branch before Quarterdeck creates their worktree.

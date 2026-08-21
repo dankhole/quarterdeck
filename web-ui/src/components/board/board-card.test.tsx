@@ -168,6 +168,48 @@ describe("BoardCard", () => {
 		}
 	});
 
+	it("wraps the non-shrinking edit and restart action rail when the card is narrow", async () => {
+		vi.useFakeTimers();
+		try {
+			await act(async () => {
+				root.render(
+					<Providers>
+						<BoardCard
+							card={createCard()}
+							index={0}
+							columnId="in_progress"
+							sessionSummary={createSummary("running")}
+							onUpdateTitle={() => {}}
+							onRestartSession={() => {}}
+							onMoveToTrash={() => {}}
+						/>
+					</Providers>,
+				);
+			});
+
+			const cardShell = container.querySelector('[data-task-id="task-1"]');
+			await act(async () => {
+				cardShell?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+				vi.advanceTimersByTime(250);
+			});
+
+			const cardHeader = container.querySelector("[data-board-card-header]");
+			const actionRail = cardHeader?.querySelector("[data-board-card-action-rail]");
+			expect(cardHeader?.classList.contains("flex-wrap")).toBe(true);
+			expect(actionRail?.classList.contains("shrink-0")).toBe(true);
+			expect(actionRail?.classList.contains("max-w-full")).toBe(true);
+			expect(actionRail?.classList.contains("flex-wrap")).toBe(true);
+			expect(actionRail?.classList.contains("justify-end")).toBe(true);
+			expect(actionRail?.classList.contains("ml-auto")).toBe(true);
+			expect(actionRail?.querySelector('button[aria-label="Edit title"]')).toBeInstanceOf(HTMLButtonElement);
+			expect(actionRail?.querySelector('button[aria-label="Force restart agent session"]')).toBeInstanceOf(
+				HTMLButtonElement,
+			);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("shows the task harness badge on backlog cards", async () => {
 		await act(async () => {
 			root.render(

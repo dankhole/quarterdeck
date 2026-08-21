@@ -64,6 +64,55 @@ test("creating and opening a backlog task shows the inline editor", async ({ pag
 	await expect(page.getByRole("button", { name: "Start", exact: true })).toBeVisible();
 });
 
+test("card action controls wrap without overlapping or overflowing", async ({ page }) => {
+	await openBoard(page);
+	const taskTitle = `card-layout-${Date.now()}`;
+	await createTaskFromBacklog(page, taskTitle);
+
+	const card = page.locator(BACKLOG_COLUMN).locator("[data-task-id]").filter({ hasText: taskTitle }).first();
+	await card.evaluate((element) => {
+		element.style.width = "150px";
+	});
+	await card.hover();
+
+	const header = card.locator("[data-board-card-header]");
+	const title = header.locator("[data-board-card-title]");
+	const actionRail = header.locator("[data-board-card-action-rail]");
+	await expect(actionRail.getByRole("button", { name: "Edit title" })).toBeVisible();
+
+	const titleBox = await title.boundingBox();
+	const actionRailBox = await actionRail.boundingBox();
+	expect(titleBox).not.toBeNull();
+	expect(actionRailBox).not.toBeNull();
+	expect(actionRailBox!.y).toBeGreaterThan(titleBox!.y);
+
+	await card.evaluate((element) => {
+		element.style.width = "90px";
+	});
+
+	await expect.poll(() => header.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+
+	const actionBoxes = await actionRail.getByRole("button").evaluateAll((buttons) =>
+		buttons.map((button) => {
+			const rect = button.getBoundingClientRect();
+			return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left };
+		}),
+	);
+	expect(new Set(actionBoxes.map((box) => box.top)).size).toBeGreaterThan(1);
+	for (let index = 0; index < actionBoxes.length; index += 1) {
+		for (let comparisonIndex = index + 1; comparisonIndex < actionBoxes.length; comparisonIndex += 1) {
+			const first = actionBoxes[index]!;
+			const second = actionBoxes[comparisonIndex]!;
+			const intersects =
+				first.left < second.right &&
+				first.right > second.left &&
+				first.top < second.bottom &&
+				first.bottom > second.top;
+			expect(intersects).toBe(false);
+		}
+	}
+});
+
 test("escape key closes the backlog inline editor", async ({ page }) => {
 	await openBoard(page);
 	const taskTitle = `escape-${Date.now()}`;
