@@ -792,7 +792,7 @@ Replaced 5 fragmented investigation docs (written during iterative debugging) wi
 - `docs/terminal-scrollback-and-history.md` — how scrollback duplication occurs (ED2 mechanism + alternate screen transitions), Claude's output model (needs verification), dedup approaches (row-by-row erase, content-aware filtering)
 - `docs/terminal-unfocused-task-strategy.md` — parking root resource costs, agent throttling from offscreen backpressure, visibility toggle design, IO socket management, hover prefetch idea
 
-Old docs moved to `docs/archived/` with supersession notes. Architecture reference docs (`terminal-architecture.md`, `terminal-architecture-explained.md`) unchanged.
+Old docs moved to `docs/history/` with supersession notes. Architecture reference docs (`terminal-architecture.md`, `terminal-architecture-explained.md`) unchanged.
 
 ## Fix: truncated branch name tooltips — unreliable show/hide and missing coverage (2026-04-13)
 

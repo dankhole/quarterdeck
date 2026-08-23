@@ -3,8 +3,8 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 import type { RuntimeGitRepositoryInfo } from "../core";
-import type { LockRequest } from "../fs";
-import { runGit } from "../workdir";
+import type { LockRequest } from "../fs/locked-file-system";
+import { runGit } from "../workdir/git-utils";
 
 // --- Path constants and getters ---
 

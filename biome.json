@@ -14,7 +14,7 @@
 				"useConst": "error"
 			},
 			"suspicious": {
-				"noExplicitAny": "off"
+				"noExplicitAny": "error"
 			}
 		}
 	},

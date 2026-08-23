@@ -74,7 +74,6 @@ export function CardActionsProvider({
 	// NOT get memoised — it is expected to change on most renders.
 	const stableValue = useMemo(
 		() => stable,
-		// eslint-disable-next-line react-hooks/exhaustive-deps -- individual handler references
 		[
 			stable.onStartTask,
 			stable.onRestartSessionTask,

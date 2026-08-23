@@ -75,13 +75,13 @@ interface ShutdownIndicator {
 /**
  * Decide whether this CLI invocation should auto-open a browser tab.
  *
- * This uses a positive allowlist for app-launch shapes like `quarterdeck`,
- * `quarterdeck --agent codex`, and `quarterdeck --port 3500`. Any subcommand or
+ * This uses a positive allowlist for app-launch shapes like `quarterdeck` and
+ * `quarterdeck --port 3500`. Any subcommand or
  * unexpected argument is treated as a command-style invocation instead.
  */
 function shouldAutoOpenBrowserTabForInvocation(argv: string[]): boolean {
 	const launchFlags = new Set(["--open", "--no-open", "--no-native-ui", "--skip-shutdown-cleanup"]);
-	const launchOptionsWithValues = new Set(["--host", "--port", "--agent", "--simulate-host-integrations"]);
+	const launchOptionsWithValues = new Set(["--host", "--port", "--simulate-host-integrations"]);
 
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
@@ -736,7 +736,6 @@ function createProgram(invocationArgs: string[]): Command {
 		.showHelpAfterError()
 		.addHelpText("after", `\nRuntime URL: ${getQuarterdeckRuntimeOrigin()}`);
 
-	program.addOption(new Option("--agent <id>", "Deprecated compatibility flag. Ignored.").hideHelp());
 	program.addOption(
 		new Option(
 			"--simulate-host-integrations <config-path>",

@@ -34,7 +34,6 @@ vi.mock("../../../src/workdir/task-worktree.js", () => ({
 	deleteTaskWorktree: vi.fn(),
 	ensureTaskWorktreeIfDoesntExist: vi.fn(),
 	getTaskRepositoryInfo: vi.fn(),
-	getTaskWorktreeInfo: vi.fn(),
 }));
 
 import { createStateOps } from "../../../src/trpc/project-api-state";

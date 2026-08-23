@@ -16,7 +16,7 @@ import {
 	runtimeBoardDataSchema,
 	runtimeTaskSessionSummarySchema,
 } from "../core";
-import { lockedFileSystem } from "../fs";
+import { lockedFileSystem } from "../fs/locked-file-system";
 import {
 	ensureProjectEntry,
 	findProjectEntry,

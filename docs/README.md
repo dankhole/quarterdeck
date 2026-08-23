@@ -8,7 +8,7 @@ This follows the usual split a small engineering team would want:
 - `DEVELOPMENT.md` is the human-facing developer guide for local commands, workflow, and repo orientation.
 - `docs/` holds stable onboarding and architecture references for humans.
 - `AGENTS.md` is the canonical repo-owned shared agent-instructions file. `CLAUDE.md` is only a Claude Code compatibility shim that imports it.
-- Completed plans, handoffs, and deeper investigation context belong in `docs/archive/` or `docs/history/`, not in the active docs map.
+- Completed plans, handoffs, and deeper investigation context belong in tracked `docs/history/`, not in the active docs map.
 
 If you are new to the codebase, read these in order:
 
@@ -17,7 +17,7 @@ If you are new to the codebase, read these in order:
 3. [`todo.md`](./todo.md) for the active engineering backlog and current refactor queue.
 4. [`conventions/architecture-guardrails.md`](./conventions/architecture-guardrails.md) for reusable rules on adding clever features without letting optimization define the architecture.
 
-For live-instance diagnostics, use [`../DEVELOPMENT.md#unified-diagnostics`](../DEVELOPMENT.md#unified-diagnostics). For isolated browser, terminal, Git, Files, lifecycle, and visual regression testing, use [`agent-functional-testing.md`](./agent-functional-testing.md). The exhaustive shared architecture, privacy, schema, retention, and migration decisions are retained in [`agent-diagnostics-plan.md`](./agent-diagnostics-plan.md).
+For live-instance diagnostics, use [`../DEVELOPMENT.md#unified-diagnostics`](../DEVELOPMENT.md#unified-diagnostics). The stable architecture and privacy boundary is in [`diagnostics.md`](./diagnostics.md). For isolated browser, terminal, Git, Files, lifecycle, and visual regression testing, use [`agent-functional-testing.md`](./agent-functional-testing.md).
 
 If you only need the current refactor state, start with:
 
@@ -38,22 +38,19 @@ Use this map when you are planning or evaluating refactor work.
 ### Live architecture and implementation guidance
 
 - [`architecture.md`](./architecture.md): system-wide architecture overview.
-- [`agent-diagnostics-plan.md`](./agent-diagnostics-plan.md): exhaustive implemented design for the unified flight recorder, live inspection, bundle contract, privacy boundary, and lab enrichment.
+- [`diagnostics.md`](./diagnostics.md): stable unified diagnostics contract, privacy boundary, ownership, and validation entry points.
 - [`agent-functional-testing.md`](./agent-functional-testing.md): disposable Quarterdeck lab, deterministic fake agent, browser UI driving, visual artifacts, and failure evidence.
 - [`windows-support-audit.md`](./windows-support-audit.md): current Windows support boundary, verified compatibility work, and remaining follow-ups.
 - [`conventions/frontend-hooks.md`](./conventions/frontend-hooks.md): domain-module extraction pattern for frontend hooks and services.
 - [`conventions/web-ui.md`](./conventions/web-ui.md): frontend conventions and hooks architecture guidance.
 - [`conventions/ui-layout.md`](./conventions/ui-layout.md): UI region names, shell layout ownership, and main-view/sidebar rules.
-- [`task-state-system-stale.md`](./task-state-system-stale.md): end-to-end task/session state explanation. Marked stale — verify against current code before acting on it.
 
 ### Forensic history
 
 - [`implementation-log.md`](./implementation-log.md): current detailed implementation history.
 - [`history/`](./history): frozen historical records — version-scoped implementation logs and changelogs from earlier milestones.
-
-### Historical refactor and investigation context
-
-- [`archive/`](./archive): older focused design investigations, debugging notes, and completed refactor context that may still be useful for background but is not the current source of truth.
+- [`history/agent-diagnostics-plan.md`](./history/agent-diagnostics-plan.md): exhaustive completed diagnostics implementation plan and migration decisions.
+- [`history/task-state-system-stale.md`](./history/task-state-system-stale.md): superseded task/session state explanation, retained only for forensic context.
 
 This `docs/` folder should stand on its own for normal onboarding. A new engineer should not need archived handoffs or historical plans to understand the current architecture.
 

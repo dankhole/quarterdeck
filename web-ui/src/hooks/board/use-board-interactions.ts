@@ -17,7 +17,7 @@ import {
 import type { UseTaskSessionsResult } from "@/hooks/board/use-task-sessions";
 import { useTaskStart } from "@/hooks/board/use-task-start";
 import { type HardDeleteDialogState, type TrashWarningState, useTrashWorkflow } from "@/hooks/board/use-trash-workflow";
-import type { RuntimeTaskSessionSummary, RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
+import type { RuntimeTaskRepositoryInfoResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { createClientLogger } from "@/utils/client-logger";
@@ -48,7 +48,7 @@ interface UseBoardInteractionsInput {
 	cleanupTaskWorktree: UseTaskSessionsResult["cleanupTaskWorktree"];
 	ensureTaskWorktree: UseTaskSessionsResult["ensureTaskWorktree"];
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
-	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
+	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskRepositoryInfoResponse | null>;
 	showTrashWorktreeNotice: boolean;
 	saveTrashWorktreeNoticeDismissed: () => void;
 }

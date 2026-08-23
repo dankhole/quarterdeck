@@ -1,12 +1,12 @@
-# Unified Agent Diagnostics Plan
+# Historical Unified Agent Diagnostics Plan
 
-Status: implemented on 2026-08-23; retained as the exhaustive architecture and operations source of truth
+Status: implemented on 2026-08-23; retained as historical design and decision context
 
 Last reviewed: 2026-08-23
 
-This document is the architecture source of truth for Quarterdeck's unified runtime, browser, terminal, and agent-lab diagnostics. It intentionally records more detail than an ordinary architecture overview so later maintenance can survive conversation compaction, a fresh agent, or a multi-stage investigation without losing the decisions and constraints that motivated it.
+This document preserves the exhaustive implementation plan for Quarterdeck's unified runtime, browser, terminal, and agent-lab diagnostics. It is not the current operating contract. Use [`../diagnostics.md`](../diagnostics.md) for stable invariants and entry points, then consult this plan only when the original decisions and migration details matter.
 
-The operator workflow for isolated testing is documented in [`agent-functional-testing.md`](./agent-functional-testing.md), while the live-instance CLI workflow is documented in [`DEVELOPMENT.md`](../DEVELOPMENT.md#unified-diagnostics). The implementation follows the shared foundation described here: the user's runtime and isolated lab use the same schemas, recorder, providers, doctor, and canonical bundle writer, with synthetic-only evidence added by the lab.
+The operator workflow for isolated testing is documented in [`../agent-functional-testing.md`](../agent-functional-testing.md), while the live-instance CLI workflow is documented in [`DEVELOPMENT.md`](../../DEVELOPMENT.md#unified-diagnostics). The implementation follows the shared foundation described here: the user's runtime and isolated lab use the same schemas, recorder, providers, doctor, and canonical bundle writer, with synthetic-only evidence added by the lab.
 
 Implementation outcome: the legacy runtime/browser debug-log buffers and panel were removed rather than kept as a parallel system. Console verbosity remains a separate presentation setting, but all retained diagnostic records flow through the unified recorder. The lightweight flight recorder starts automatically with every runtime and needs no user toggle. The lab automatically uses the richer bounded `agent-lab` tier. Temporary production deep recording and explicit lab pixel/trace capture require deliberate action. Live content-enrichment flags are intentionally not exposed until a concrete provider can honor each flag through a reviewed allowlist; synthetic lab enrichment is the only implemented content-bearing tier.
 
@@ -1509,8 +1509,8 @@ Diagnostics must degrade safely:
 
 When implementation begins and lands:
 
-- update [`architecture.md`](./architecture.md) with the stable diagnostics ownership boundary;
-- update [`agent-functional-testing.md`](./agent-functional-testing.md) with the new shared bundle/snapshot workflow;
+- update [`architecture.md`](../architecture.md) with the stable diagnostics ownership boundary;
+- update [`agent-functional-testing.md`](../agent-functional-testing.md) with the new shared bundle/snapshot workflow;
 - update the repo-owned `quarterdeck-functional-testing` skill with canonical commands and artifact interpretation;
 - update `DEVELOPMENT.md` with diagnostics CLI and performance/privacy expectations;
 - replace the active todo item with any genuinely remaining follow-ups;
@@ -1625,6 +1625,6 @@ A future implementing agent should begin by re-reading this plan, the architectu
 - `web-ui/tests/fixtures.ts`
 - `web-ui/playwright.config.ts`
 
-Before frontend implementation, also read [`conventions/web-ui.md`](./conventions/web-ui.md) and [`conventions/frontend-hooks.md`](./conventions/frontend-hooks.md). Before changing the Diagnostics panel's place in the app layout, read [`conventions/ui-layout.md`](./conventions/ui-layout.md).
+Before frontend implementation, also read [`conventions/web-ui.md`](../conventions/web-ui.md) and [`conventions/frontend-hooks.md`](../conventions/frontend-hooks.md). Before changing the Diagnostics panel's place in the app layout, read [`conventions/ui-layout.md`](../conventions/ui-layout.md).
 
 The first concrete code task should be the shared record schema and bounded serializer with privacy tests. Do not begin by adding new log calls throughout the codebase; producers should be added only after the recorder, limits, redaction, and causal context are established.

@@ -1,169 +1,137 @@
-.TH QUARTERDECK 1 "March 2026" "quarterdeck 0.1.10" "User Commands"
+.TH QUARTERDECK 1 "August 2026" "quarterdeck 0.12.3" "User Commands"
 .SH NAME
 quarterdeck \- local orchestration board for coding agents
 .SH SYNOPSIS
 .B quarterdeck
+.RI [ --host " " ip ]
 .RI [ --port " " number|auto ]
 .RI [ --no-open ]
-.RI [ command ]
-.br
-.B quarterdeck task
-.RI " " list|create|update|link|unlink|start
-.RI " " [ options ]
+.RI [ --no-native-ui ]
+.RI [ --skip-shutdown-cleanup ]
 .br
 .B quarterdeck hooks
-.RI " " ingest|notify|codex-wrapper
+.RI " " ingest|notify
 .RI " " [ options ]
 .br
-.B quarterdeck mcp
+.B quarterdeck statusline
+.br
+.B quarterdeck backup
+.RI " " create|list|restore
+.RI " " [ options ]
 .br
 .B quarterdeck diagnostics
 .RI " " list|status|doctor|capture|watch|record|mark
 .RI " " [ options ]
 .SH DESCRIPTION
 .B quarterdeck
-starts the local Quarterdeck runtime server and serves the web UI.
-
-When launched inside a git repository, it opens that repository's indexed workspace.
-When launched outside git, it starts with no active workspace or falls back to the first indexed project.
+starts the local Quarterdeck runtime and serves the web UI. When launched inside a Git repository, it opens that repository's indexed workspace. When launched outside Git, it starts without an active workspace or uses an indexed project.
 .SH OPTIONS
 .TP
+.B --host <ip>
+Bind the runtime to an IP address. The default is 127.0.0.1.
+.TP
 .B --port <number|auto>
-Bind to a specific local port or pick the first available port starting at 3500.
+Bind to a port from 1 through 65535, or select an available port automatically.
 .TP
 .B --no-open
 Do not open the browser automatically.
 .TP
-.B --help, -h
+.B --no-native-ui
+Disable integrations that launch or interact with host-native UI.
+.TP
+.B --skip-shutdown-cleanup
+Skip graceful shutdown cleanup, including session marking and orphan-process cleanup. Intended for controlled testing and recovery only.
+.TP
+.B -h, --help
 Show help text and exit.
 .TP
-.B --version, -v
-Show version and exit.
+.B -v, --version
+Show the version and exit.
 .SH COMMANDS
 .TP
-.B task|tasks
-Manage Quarterdeck board tasks from the CLI.
-
-Subcommands:
-.br
-.B list
-.RI [ --project-path " " path ]
-.RI [ --column " " backlog|in_progress|review ]
-.br
-.B create
-.B --prompt
-.RI " " text
-.RI [ --project-path " " path ]
-.RI [ --base-ref " " branch ]
-.br
-.B update
-.B --task-id
-.RI " " id
-.RI [ --prompt " " text ]
-.RI [ --project-path " " path ]
-.RI [ --base-ref " " branch ]
-.br
-.B link
-.B --task-id
-.RI " " id
-.B --linked-task-id
-.RI " " id
-.RI [ --project-path " " path ]
-.br
-.B unlink
-.B --dependency-id
-.RI " " id
-.RI [ --project-path " " path ]
-.br
-.B start
-.B --task-id
-.RI " " id
-.RI [ --project-path " " path ]
-
-All task commands return JSON.
-
-Use kebab-case flags only.
-
+.B hooks ingest [payload]
+Ingest an agent hook event into a running Quarterdeck instance. The payload may be supplied as an argument or on standard input. Hook adapters can also provide structured fields with options including
+.BR --source ,
+.BR --activity-text ,
+.BR --tool-name ,
+.BR --tool-input-summary ,
+.BR --final-message ,
+.BR --hook-event-name ,
+.BR --notification-type ,
+.BR --session-id ,
+.BR --session-instance-id ,
+.BR --turn-id ,
+.BR --tool-use-id ,
+.BR --transcript-path ,
+and
+.BR --metadata-base64 .
 .TP
-.B hooks
-Runtime hook helpers used by agent adapters.
-
-Subcommands:
-.br
-.B ingest
-.RI [ payload ]
-.B --event
-.RI " " to_review|to_in_progress|activity
-.RI [ --source " " source ]
-.RI [ --activity-text " " text ]
-.RI [ --tool-name " " name ]
-.RI [ --final-message " " text ]
-.RI [ --hook-event-name " " name ]
-.RI [ --notification-type " " type ]
-.RI [ --metadata-base64 " " base64 ]
-.br
-.B notify
-same options as
-.BR ingest ,
-but best-effort.
-.br
-.B codex-wrapper
-.B --real-binary
-.RI " " path
-.RI [ agentArgs... ]
-
+.B hooks notify [payload]
+Best-effort variant of
+.BR "hooks ingest" .
+It accepts the same hook fields and does not fail the calling agent when delivery is unavailable.
 .TP
-.B mcp
-Deprecated compatibility command. Prints a deprecation warning and exits.
+.B statusline
+Read Claude Code status JSON from standard input and render the Quarterdeck statusline.
 .TP
-.B diagnostics
-Discover and inspect Quarterdeck's private local diagnostic flight recorder.
-
-Subcommands:
-.br
-.B list
-lists active and recently retained stopped, failed, or crashed runtime instances.
-.br
-.B status
-shows recorder and journal health.
-.br
-.B doctor
-runs read-only subsystem checks; use
+.B backup create
+Create a manual snapshot of Quarterdeck state.
+.TP
+.B backup list
+List available state backups.
+.TP
+.B backup restore [backup]
+Restore a named backup directory, an explicit backup path, or the most recent backup when omitted. The Quarterdeck server must not be running.
+.TP
+.B diagnostics list
+List active and recently retained runtime instances.
+.TP
+.B diagnostics status
+Show recorder and journal health for a selected runtime.
+.TP
+.B diagnostics doctor
+Run read-only subsystem checks. Use
 .B --request-browser
-for a fresh metadata-only browser snapshot.
-.br
-.B capture
-writes a canonical local bundle containing a correlated JSONL timeline, findings, bounded snapshots, and a hashed manifest.
-.br
-.B watch
-watches bounded records for a limited duration.
-.br
-.B record
-starts, reports, or stops an automatically expiring deep-recording window.
-.br
-.B mark
-adds a bounded timeline marker.
-
-The lightweight metadata-only flight recorder starts automatically. Opening the Diagnostics panel is not required. Deep recording is explicit, scoped, capped at 15 minutes, and does not enable terminal transcripts or Git diffs. Bundles are private local directories and are never uploaded automatically.
+to request a fresh metadata-only browser snapshot and
+.B --fail-on-error
+to return exit status 5 when an error-severity finding exists.
+.TP
+.B diagnostics capture
+Write a canonical local bundle containing the correlated JSONL timeline, findings, bounded snapshots, and a hashed manifest. Use
+.B --output
+to select a new output directory.
+.TP
+.B diagnostics watch
+Watch bounded records for a limited duration. Use
+.B --jsonl
+for one JSON object per line.
+.TP
+.B diagnostics record
+Start, inspect, or stop an automatically expiring deep-recording window. Recording can be scoped by project, task, and category and is capped at 15 minutes.
+.TP
+.B diagnostics mark <message>
+Add a bounded correlation marker to the diagnostic timeline.
+.PP
+Diagnostic selection commands accept options for a specific runtime instance and scoped project, task, session, operation, source, level, event, and time range. Use each subcommand's
+.B --help
+for the complete option set.
+.PP
+The lightweight metadata-only flight recorder starts automatically. Deep recording remains content-safe and does not enable terminal transcripts or Git diffs. Bundles are private local directories and are never uploaded automatically.
 .SH EXAMPLES
 .TP
-Start server on the default port:
+Start the runtime on the default loopback address:
 .B quarterdeck
 .TP
-Start server without auto-opening a browser:
-.B quarterdeck --no-open
+Start without browser or host-native integrations:
+.B quarterdeck --no-open --no-native-ui
 .TP
-Start server on a custom port:
-.B quarterdeck --port 9000
+Bind to a custom address and port:
+.B quarterdeck --host 0.0.0.0 --port 9000
 .TP
-List tasks for the current workspace:
-.B quarterdeck task list
-.TP
-Create and start a task manually:
-.B quarterdeck task create --prompt "Implement API pagination"
-.TP
-Ingest a hook event:
-.B quarterdeck hooks ingest --event to_review
+Create and list state backups:
+.B quarterdeck backup create
+.br
+.B quarterdeck backup list
 .TP
 Capture current diagnostic evidence:
 .B quarterdeck diagnostics capture --request-browser
@@ -171,5 +139,13 @@ Capture current diagnostic evidence:
 .TP
 .B 0
 Successful execution.
+.TP
+.B 1
+Command or runtime operation failed.
+.TP
+.B 5
+.B diagnostics doctor --fail-on-error
+found an error-severity issue.
 .SH SEE ALSO
+.BR git (1),
 .BR npm (1)

@@ -1,0 +1,29 @@
+{
+	"$schema": "https://unpkg.com/knip@5/schema.json",
+	"include": ["files", "dependencies", "unlisted", "unresolved"],
+	"workspaces": {
+		".": {
+			"entry": [
+				"src/cli.ts",
+				"src/index.ts",
+				"scripts/*.{ts,mjs}",
+				"scripts/agent-lab/**/*.{ts,cjs}",
+				"test/**/*.test.ts",
+				"test/**/*.integration.test.ts",
+				"test/**/*.cjs"
+			],
+			"project": ["src/**/*.ts", "scripts/**/*.{ts,mjs,cjs}", "test/**/*.{ts,cjs}"]
+		},
+		"web-ui": {
+			"ignoreDependencies": ["@playwright/cli"],
+			"playwright": false,
+			"entry": [
+				"src/**/*.test.{ts,tsx}",
+				"tests/**/*.{ts,tsx}",
+				"*.config.ts",
+				"public/sw.js"
+			],
+			"project": ["src/**/*.{ts,tsx,css}", "tests/**/*.{ts,tsx}", "*.ts"]
+		}
+	}
+}

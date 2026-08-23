@@ -111,7 +111,6 @@ export function useTextSearch({ projectId, searchScope, onSelect }: UseTextSearc
 			void executeSearchRef.current();
 		}
 		// Only re-run when toggle values change, not on every render
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [caseSensitive, isRegex]);
 
 	const toggleCaseSensitive = useCallback(() => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 
-import { type FileDiffGroup, getSectionTopWithinScrollContainer } from "@/components/git/panels";
+import { type FileDiffGroup, getSectionTopWithinScrollContainer } from "@/components/git/panels/diff-viewer-utils";
 
 export interface UseDiffScrollSyncOptions {
 	groupedByPath: FileDiffGroup[];

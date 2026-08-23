@@ -5,7 +5,6 @@ import type {
 	RuntimeGitSyncSummary,
 	RuntimeProjectMetadata,
 	RuntimeTaskRepositoryInfoResponse,
-	RuntimeTaskWorktreeInfoResponse,
 	RuntimeTaskWorktreeMetadata,
 } from "@/runtime/types";
 import type { ReviewTaskWorktreeSnapshot } from "@/types";
@@ -18,7 +17,7 @@ interface ProjectMetadataState {
 	homeGitSummary: RuntimeGitSyncSummary | null;
 	homeGitStateVersion: number;
 	homeStashCount: number;
-	taskWorktreeInfoByTaskId: Record<string, RuntimeTaskWorktreeInfoResponse | null>;
+	taskWorktreeInfoByTaskId: Record<string, RuntimeTaskRepositoryInfoResponse | null>;
 	taskWorktreeSnapshotByTaskId: Record<string, ReviewTaskWorktreeSnapshot | null>;
 	taskWorktreeStateVersionByTaskId: Record<string, number>;
 }
@@ -70,7 +69,7 @@ function emitTaskMetadata(taskId: string): void {
 	}
 }
 
-function toTaskWorktreeInfo(metadata: RuntimeTaskWorktreeMetadata): RuntimeTaskWorktreeInfoResponse {
+function toTaskWorktreeInfo(metadata: RuntimeTaskWorktreeMetadata): RuntimeTaskRepositoryInfoResponse {
 	return {
 		taskId: metadata.taskId,
 		path: metadata.path,
@@ -134,8 +133,8 @@ function areGitSummariesEqual(a: RuntimeGitSyncSummary | null, b: RuntimeGitSync
 }
 
 function areTaskWorktreeInfosEqual(
-	a: RuntimeTaskWorktreeInfoResponse | null,
-	b: RuntimeTaskWorktreeInfoResponse | null,
+	a: RuntimeTaskRepositoryInfoResponse | null,
+	b: RuntimeTaskRepositoryInfoResponse | null,
 ): boolean {
 	if (a === b) {
 		return true;
@@ -237,7 +236,7 @@ export function clearHomeGitSummary(): void {
 export function getTaskWorktreeInfo(
 	taskId: string | null | undefined,
 	baseRef?: string | null,
-): RuntimeTaskWorktreeInfoResponse | null {
+): RuntimeTaskRepositoryInfoResponse | null {
 	const normalizedTaskId = taskId?.trim();
 	if (!normalizedTaskId) {
 		return null;
@@ -259,7 +258,7 @@ export function getTaskRepositoryInfo(
 	return getTaskWorktreeInfo(taskId, baseRef);
 }
 
-export function setTaskWorktreeInfo(info: RuntimeTaskWorktreeInfoResponse | null): boolean {
+export function setTaskWorktreeInfo(info: RuntimeTaskRepositoryInfoResponse | null): boolean {
 	if (!info) {
 		return false;
 	}
@@ -406,7 +405,7 @@ export function replaceProjectMetadata(metadata: RuntimeProjectMetadata | null):
 		emitHomeStashCount();
 	}
 
-	const nextTaskWorktreeInfoByTaskId: Record<string, RuntimeTaskWorktreeInfoResponse | null> = {};
+	const nextTaskWorktreeInfoByTaskId: Record<string, RuntimeTaskRepositoryInfoResponse | null> = {};
 	const nextTaskWorktreeSnapshotByTaskId: Record<string, ReviewTaskWorktreeSnapshot | null> = {};
 	const nextTaskWorktreeStateVersionByTaskId: Record<string, number> = {};
 
@@ -487,7 +486,7 @@ export function useHomeGitStateVersionValue(): number {
 export function useTaskWorktreeInfoValue(
 	taskId: string | null | undefined,
 	baseRef?: string | null,
-): RuntimeTaskWorktreeInfoResponse | null {
+): RuntimeTaskRepositoryInfoResponse | null {
 	const normalizedTaskId = taskId?.trim() ?? "";
 	return useSyncExternalStore(
 		(listener) => {

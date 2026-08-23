@@ -95,7 +95,6 @@ export {
 	findTaskPatch,
 	getTaskRepositoryInfo,
 	getTaskWorkingDirectory,
-	getTaskWorktreeInfo,
 	getTaskWorktreePath,
 	getTaskWorktreePathInfo,
 	isMissingTaskWorktreeError,

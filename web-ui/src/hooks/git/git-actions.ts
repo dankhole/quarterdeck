@@ -7,7 +7,7 @@
  */
 
 import { showAppToast } from "@/components/app-toaster";
-import type { RuntimeGitSyncAction, RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
+import type { RuntimeGitSyncAction, RuntimeTaskRepositoryInfoResponse } from "@/runtime/types";
 import type { BoardCard } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -44,12 +44,12 @@ export interface GitSyncSummaryPolicyOptions {
 
 /**
  * Check whether cached worktree info matches the currently selected card.
- * Returns a type-narrowed `RuntimeTaskWorktreeInfoResponse` when it matches.
+ * Returns a type-narrowed `RuntimeTaskRepositoryInfoResponse` when it matches.
  */
 export function matchesWorktreeInfoSelection(
-	worktreeInfo: RuntimeTaskWorktreeInfoResponse | null,
+	worktreeInfo: RuntimeTaskRepositoryInfoResponse | null,
 	card: BoardCard | null,
-): worktreeInfo is RuntimeTaskWorktreeInfoResponse {
+): worktreeInfo is RuntimeTaskRepositoryInfoResponse {
 	if (!worktreeInfo || !card) {
 		return false;
 	}

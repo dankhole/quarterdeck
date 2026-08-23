@@ -45,7 +45,7 @@ Documentation lookup cheat sheet
 - `docs/conventions/ui-layout.md`: read before adding or modifying main views, sidebar panels, toolbar tabs, task-detail layout routing, or surface-navigation behavior.
 - `docs/conventions/architecture-guardrails.md`: read when adding caching, batching, retry, preload, recovery, lifecycle policy, or any clever behavior that could start defining the architecture.
 - `docs/todo.md`: read when choosing, reprioritizing, or touching active architecture refactor backlog items.
-- `docs/task-state-system-stale.md`: historical task/session state context only; verify against current code before relying on it.
+- `docs/history/task-state-system-stale.md`: historical task/session state context only; verify against current code before relying on it.
 
 Git guardrails
 - NEVER commit unless user asks.
@@ -162,7 +162,7 @@ Misc. tribal knowledge
 - Codex `SessionStart` must stay metadata-only in Quarterdeck. Codex can emit it for launch/resume and around session-maintenance flows; mapping it to `to_in_progress` makes review-ready cards jump to running with no matching finish. Manual `/compact` is handled by its dedicated `PreCompact`/`PostCompact` pair, both matched only on `manual`; automatic mid-turn compaction must not change task state. `/resume`, plugin reloads, and other TUI-local commands still lack stable paired boundaries, so do not infer state from typed command text, prompt redraws, or TUI output.
 - When Quarterdeck runs on a headless remote Linux instance (for example over SSH+tunnel), native folder picker commands may be unavailable (`zenity`/`kdialog`). Treat this as a normal remote-runtime limitation and use manual path entry fallback instead of requiring desktop packages.
 - **Terminal output ≠ agent working.** Agents (especially Claude Code) produce constant incidental terminal output — spinners, status bar updates, prompt redraws, ANSI cursor movements — even while idle or genuinely waiting for user input. Do not use `lastOutputAt` timestamps or output presence/volume as a heuristic for whether an agent has resumed working. Native hooks (`to_review` / `to_in_progress`) and explicit submitted responses to a known input wait are authoritative state signals. If a hook is missed, fix it at the hook/ordering layer.
-- `docs/archive/` is gitignored and contains historical context only. Do not read or reference it unless the user explicitly asks for archival material.
+- Tracked historical context lives in `docs/history/`. Read it only when current docs or code do not answer the question, or when the user explicitly asks for archival context.
 - Two distinct shortcut systems exist — do not confuse them:
   - **Project shortcuts** (`RuntimeProjectShortcut`, `useShortcutActions`): Terminal commands executed in the dev shell via the top bar. Per-project config. Uses `appendNewline: true`.
   - **Prompt shortcuts** (`PromptShortcut`, `usePromptShortcuts`): Agent prompt injection via sidebar review cards. Global config. Uses paste mode + auto-submit.

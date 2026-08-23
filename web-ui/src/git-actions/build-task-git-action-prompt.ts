@@ -1,4 +1,4 @@
-import type { RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
+import type { RuntimeTaskRepositoryInfoResponse } from "@/runtime/types";
 
 export type TaskGitAction = "commit" | "pr";
 
@@ -23,7 +23,7 @@ export interface TaskGitPromptTemplates {
 
 interface BuildTaskGitActionPromptInput {
 	action: TaskGitAction;
-	worktreeInfo: RuntimeTaskWorktreeInfoResponse;
+	worktreeInfo: RuntimeTaskRepositoryInfoResponse;
 	templates?: TaskGitPromptTemplates | null;
 }
 

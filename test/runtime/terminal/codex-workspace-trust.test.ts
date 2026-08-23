@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { RuntimeAgentId } from "../../../src/core";
 import { hasCodexWorkspaceTrustPrompt, shouldAutoConfirmCodexWorkspaceTrust } from "../../../src/terminal";
 
 describe("hasCodexWorkspaceTrustPrompt", () => {
@@ -58,6 +59,6 @@ describe("shouldAutoConfirmCodexWorkspaceTrust", () => {
 	});
 
 	it("returns false for other agent ids", () => {
-		expect(shouldAutoConfirmCodexWorkspaceTrust("other" as any, "/any/path")).toBe(false);
+		expect(shouldAutoConfirmCodexWorkspaceTrust("other" as RuntimeAgentId, "/any/path")).toBe(false);
 	});
 });

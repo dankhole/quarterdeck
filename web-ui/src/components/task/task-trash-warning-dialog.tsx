@@ -1,13 +1,13 @@
 import type { ReactElement } from "react";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { AlertDialogDescription } from "@/components/ui/dialog";
-import type { RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
+import type { RuntimeTaskRepositoryInfoResponse } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 
 export interface TaskTrashWarningViewModel {
 	taskTitle: string;
 	fileCount: number;
-	worktreeInfo: RuntimeTaskWorktreeInfoResponse | null;
+	worktreeInfo: RuntimeTaskRepositoryInfoResponse | null;
 	isNonIsolated: boolean;
 }
 

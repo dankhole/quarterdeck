@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
-import { commentKey, type DiffLineComment, formatCommentsForTerminal } from "@/components/git/panels";
+import { commentKey, type DiffLineComment, formatCommentsForTerminal } from "@/components/git/panels/diff-viewer-utils";
 
 export interface UseDiffCommentsOptions {
 	comments: Map<string, DiffLineComment>;

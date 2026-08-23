@@ -151,8 +151,7 @@ describe("source CLI commands", () => {
 				for (const [args, expectedOpenCount] of [
 					[[], 1],
 					[["--help"], 1],
-					[["--agent", "codex"], 2],
-					[["--port", port], 3],
+					[["--port", port], 2],
 				] as const) {
 					const result = await runCliCommandAndCollectOutput({
 						args: [...args],

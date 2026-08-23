@@ -19,7 +19,7 @@ import {
 } from "@/hooks/git/git-actions";
 import { isTaskBaseRefResolved } from "@/hooks/git/git-view";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeConfigResponse, RuntimeGitSyncAction, RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
+import type { RuntimeConfigResponse, RuntimeGitSyncAction, RuntimeTaskRepositoryInfoResponse } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
 import {
 	getTaskWorktreeInfo,
@@ -47,7 +47,7 @@ interface UseGitActionsInput {
 		text: string,
 		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
-	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
+	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskRepositoryInfoResponse | null>;
 	isGitHistoryOpen: boolean;
 	refreshProjectState: () => Promise<void>;
 }

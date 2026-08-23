@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 
 import type {
 	RuntimeProjectStateResponse,
+	RuntimeTaskRepositoryInfoResponse,
 	RuntimeTaskSessionSummary,
-	RuntimeTaskWorktreeInfoResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "../../src/core";
 import { saveProjectState } from "../../src/state";
@@ -158,7 +158,7 @@ describe.sequential("server restart integration", () => {
 			expect(secondEnsure.payload.path).toBe(firstEnsure.payload.path);
 			expect(secondEnsure.payload.baseCommit).toBe(taskWorktreeCommit);
 
-			const taskContext = await requestJson<RuntimeTaskWorktreeInfoResponse>({
+			const taskContext = await requestJson<RuntimeTaskRepositoryInfoResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "project.getTaskContext",
 				type: "query",
@@ -232,7 +232,7 @@ describe.sequential("server restart integration", () => {
 					}),
 			);
 			expect(seedResponse.revision).toBe(boardSeedResponse.payload.revision + 1);
-			const taskWorktreeInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
+			const taskWorktreeInfo = await requestJson<RuntimeTaskRepositoryInfoResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
 				procedure: "project.getTaskContext",
 				type: "query",
@@ -274,7 +274,7 @@ describe.sequential("server restart integration", () => {
 			expect(trashCards.some((card) => card.id === taskId)).toBe(false);
 			expect(finalState.payload.sessions[taskId]?.state).toBe("awaiting_review");
 			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("exit");
-			const worktreeInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
+			const worktreeInfo = await requestJson<RuntimeTaskRepositoryInfoResponse>({
 				baseUrl: `http://127.0.0.1:${secondPort}`,
 				procedure: "project.getTaskContext",
 				type: "query",
@@ -350,7 +350,7 @@ describe.sequential("server restart integration", () => {
 			);
 			expect(seedResponse.revision).toBe(boardSeedResponse.payload.revision + 1);
 
-			const taskWorktreeInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
+			const taskWorktreeInfo = await requestJson<RuntimeTaskRepositoryInfoResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
 				procedure: "project.getTaskContext",
 				type: "query",
@@ -393,7 +393,7 @@ describe.sequential("server restart integration", () => {
 			expect(finalState.payload.sessions[taskId]?.state).toBe("awaiting_review");
 			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("hook");
 
-			const worktreeInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
+			const worktreeInfo = await requestJson<RuntimeTaskRepositoryInfoResponse>({
 				baseUrl: `http://127.0.0.1:${secondPort}`,
 				procedure: "project.getTaskContext",
 				type: "query",

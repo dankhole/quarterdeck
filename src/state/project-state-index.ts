@@ -10,7 +10,8 @@ import {
 	runtimeBoardDataSchema,
 	runtimeTaskSessionSummarySchema,
 } from "../core";
-import { isNodeError, lockedFileSystem } from "../fs";
+import { lockedFileSystem } from "../fs/locked-file-system";
+import { isNodeError } from "../fs/node-error";
 import {
 	getProjectBoardPath,
 	getProjectIndexLockRequest,

@@ -79,7 +79,6 @@ vi.mock("../../../src/workdir/task-worktree.js", () => ({
 	deleteTaskWorktree: worktreeMocks.deleteTaskWorktree,
 	ensureTaskWorktreeIfDoesntExist: vi.fn(),
 	getTaskRepositoryInfo: vi.fn(),
-	getTaskWorktreeInfo: vi.fn(),
 	resolveTaskCwd: worktreeMocks.resolveTaskCwd,
 	resolveTaskWorkingDirectory: worktreeMocks.resolveTaskWorkingDirectory,
 	isMissingTaskWorktreeError: worktreeMocks.isMissingTaskWorktreeError,

@@ -1,7 +1,8 @@
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BoardData } from "@/types";
+import type { RuntimeTaskRepositoryInfoResponse } from "@/runtime/types";
+import type { BoardData, ReviewTaskWorktreeSnapshot } from "@/types";
 
 import {
 	createTask,
@@ -11,11 +12,14 @@ import {
 	useTestEnvironment,
 } from "./linked-backlog-actions-test-harness";
 
+type TestWorktreeSnapshot = Pick<
+	ReviewTaskWorktreeSnapshot,
+	"taskId" | "path" | "branch" | "isDetached" | "headCommit" | "changedFiles"
+>;
+
 const toastMock = vi.hoisted(() => vi.fn());
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock needs flexible return type
-const getTaskWorktreeSnapshotMock = vi.hoisted(() => vi.fn((): any => null));
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock needs flexible return type
-const getTaskWorktreeInfoMock = vi.hoisted(() => vi.fn((): any => null));
+const getTaskWorktreeSnapshotMock = vi.hoisted(() => vi.fn((): TestWorktreeSnapshot | null => null));
+const getTaskWorktreeInfoMock = vi.hoisted(() => vi.fn((): RuntimeTaskRepositoryInfoResponse | null => null));
 
 vi.mock("sonner", () => ({
 	toast: toastMock,

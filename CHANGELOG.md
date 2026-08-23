@@ -15,6 +15,12 @@
 - Agent Lab lifecycle commands remain able to list, inspect, snapshot, and stop runs created with the previous manifest schema, so updating the checkout cannot strand an active disposable runtime.
 - Browser coverage drives the real UI for IDE opening, Settings file opening and sound testing, Files copy plus xterm OSC 52 clipboard readback, browser-contained documentation links, and Add Project's prompt fallback without touching native desktop state.
 
+### Maintenance: streamline repository history and compatibility surfaces
+
+- Replaced stale CLI and test documentation, moved completed diagnostics and task-state plans into tracked history, repaired historical links, and rotated older forensic implementation entries out of the live log.
+- Removed obsolete task-worktree response aliases, the hidden legacy `--agent` option, unused browser exports and barrel files, and a deprecated diff-view loading prop; the web app now declares its direct Zod dependency.
+- Added a repository-owned Knip dead-code check, and removed the known state/worktree/filesystem and Git-view import cycles.
+
 ### Add: unified automatic agent diagnostics
 
 - Every Quarterdeck runtime now keeps a private, bounded, metadata-only flight recorder and rotating journal automatically, so a newly started agent can discover the active or most recent runtime, inspect correlated lifecycle evidence, run read-only health checks, watch records, add marks, and create a canonical local bundle without requiring the user to enable logging before an incident.

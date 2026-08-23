@@ -10,9 +10,9 @@ import { notifyError, showAppToast } from "@/components/app-toaster";
 import { resolveTaskStartGeometry } from "@/hooks/board/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
+	RuntimeTaskRepositoryInfoResponse,
 	RuntimeTaskSessionStopResponse,
 	RuntimeTaskSessionSummary,
-	RuntimeTaskWorktreeInfoResponse,
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "@/runtime/types";
@@ -65,7 +65,7 @@ export interface UseTaskSessionsResult {
 		options?: SendTerminalInputOptions,
 	) => Promise<SendTaskSessionInputResult>;
 	cleanupTaskWorktree: (taskId: string) => Promise<RuntimeWorktreeDeleteResponse | null>;
-	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
+	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskRepositoryInfoResponse | null>;
 }
 
 export function useTaskSessions({
@@ -328,7 +328,7 @@ export function useTaskSessions({
 	);
 
 	const fetchTaskWorktreeInfo = useCallback(
-		async (task: BoardCard): Promise<RuntimeTaskWorktreeInfoResponse | null> => {
+		async (task: BoardCard): Promise<RuntimeTaskRepositoryInfoResponse | null> => {
 			if (!currentProjectId) {
 				return null;
 			}

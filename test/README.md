@@ -1,9 +1,7 @@
 # Test Layout
 
-- `test/core`: unit tests for core logic
-- `test/cli`: unit tests for CLI parsing and output
-- `test/integration`: integration tests that touch filesystem or process boundaries
-- `test/fixtures`: stable test data
-- `test/utilities`: shared test helpers
+- `test/runtime`: unit and focused integration tests grouped by runtime subsystem, including config, diagnostics, Git/worktrees, server, state, terminal, and tRPC
+- `test/integration`: cross-subsystem tests that exercise filesystem, process, WebSocket, or CLI boundaries
+- `test/utilities`: shared test helpers and fixtures used by both suites
 
-Use `*.test.ts` for deterministic unit tests. Use `*.integration.test.ts` for optional env-dependent tests.
+Use `*.test.ts` for deterministic focused tests and `*.integration.test.ts` for cross-boundary behavior. Keep test-only support code in `test/utilities` instead of inventing parallel fixture directories.

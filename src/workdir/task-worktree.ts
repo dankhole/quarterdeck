@@ -3,7 +3,6 @@ export { applyTaskPatch, captureTaskPatch, findTaskPatch } from "./task-worktree
 export {
 	getTaskRepositoryInfo,
 	getTaskWorkingDirectory,
-	getTaskWorktreeInfo,
 	getTaskWorktreePathInfo,
 	isMissingTaskWorktreeError,
 	resolveTaskCwd,

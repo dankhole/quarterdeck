@@ -3,7 +3,7 @@ import { useCallback } from "react";
 
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import type { UseTaskSessionsResult } from "@/hooks/board/use-task-sessions";
-import type { RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
+import type { RuntimeTaskRepositoryInfoResponse } from "@/runtime/types";
 import { setTaskWorktreeInfo } from "@/stores/project-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { createClientLogger } from "@/utils/client-logger";
@@ -41,7 +41,7 @@ interface UseTaskLifecycleInput {
 	stopTaskSession: UseTaskSessionsResult["stopTaskSession"];
 	ensureTaskWorktree: UseTaskSessionsResult["ensureTaskWorktree"];
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
-	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
+	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskRepositoryInfoResponse | null>;
 	runTaskLifecycleOperation: RunTaskLifecycleOperation;
 }
 

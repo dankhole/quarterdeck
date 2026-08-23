@@ -6,7 +6,7 @@
  * state, side effects, and async orchestration.
  */
 
-import type { RuntimeTaskWorktreeInfoResponse, RuntimeWorktreeEnsureResponse } from "@/runtime/types";
+import type { RuntimeTaskRepositoryInfoResponse, RuntimeWorktreeEnsureResponse } from "@/runtime/types";
 import { getTaskColumnId, moveTaskToColumn } from "@/state/board-state";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 
@@ -26,7 +26,7 @@ export function isNonIsolatedTask(task: BoardCard): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Build a `RuntimeTaskWorktreeInfoResponse` from the result of an
+ * Build a `RuntimeTaskRepositoryInfoResponse` from the result of an
  * `ensureWorktree` call. This bridges the shape difference between the
  * ensure response (which carries `baseCommit`) and the worktree-info
  * shape (which uses `headCommit`).
@@ -34,7 +34,7 @@ export function isNonIsolatedTask(task: BoardCard): boolean {
 export function buildWorktreeInfoFromEnsureResponse(
 	taskId: string,
 	response: Extract<RuntimeWorktreeEnsureResponse, { ok: true }>,
-): RuntimeTaskWorktreeInfoResponse {
+): RuntimeTaskRepositoryInfoResponse {
 	return {
 		taskId,
 		path: response.path,

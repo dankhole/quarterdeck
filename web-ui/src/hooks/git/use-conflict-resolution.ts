@@ -110,7 +110,6 @@ export function useConflictResolution(options: {
 		return () => {
 			cancelled = true;
 		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on conflictedFiles identity
 	}, [conflictState?.conflictedFiles, isActive, options.taskId, options.projectId]);
 
 	// 7. Detect external resolutions (metadata poll shows fewer conflicted files).
@@ -163,7 +162,6 @@ export function useConflictResolution(options: {
 		return () => {
 			cancelled = true;
 		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on autoMergedFiles identity
 	}, [conflictState?.autoMergedFiles, isActive, options.taskId, options.projectId]);
 
 	// 9. Accept auto-merged file callback.

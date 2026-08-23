@@ -45,7 +45,6 @@ export function DiffViewerPanel({
 	onCommentsChange,
 	viewMode = "unified",
 	navigateToFile,
-	isContentLoading,
 	fileLoadingState,
 }: {
 	projectFiles: RuntimeWorkdirFileChange[] | null;
@@ -59,8 +58,6 @@ export function DiffViewerPanel({
 	onCommentsChange: (comments: Map<string, DiffLineComment>) => void;
 	viewMode?: DiffViewMode;
 	navigateToFile?: (nav: FileNavigation) => void;
-	/** @deprecated Use fileLoadingState instead. Kept for backward compatibility (git-history-view). */
-	isContentLoading?: boolean;
 	/** Per-file loading state from useAllFileDiffContent. When provided, shows per-file skeletons. */
 	fileLoadingState?: FileLoadingState;
 }): React.ReactElement {
@@ -200,10 +197,9 @@ export function DiffViewerPanel({
 				// No content and not loaded — it's pending fetch.
 				return true;
 			}
-			// Legacy single-file mode (git-history-view).
-			return isContentLoading === true && selectedPath === path;
+			return false;
 		},
-		[fileLoadingState, isContentLoading, selectedPath, groupedByPath],
+		[fileLoadingState, groupedByPath],
 	);
 
 	return (

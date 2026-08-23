@@ -199,8 +199,3 @@ export const runtimeTaskRepositoryInfoResponseSchema = z.object({
 	headCommit: z.string().nullable(),
 });
 export type RuntimeTaskRepositoryInfoResponse = z.infer<typeof runtimeTaskRepositoryInfoResponseSchema>;
-
-/** @deprecated Use runtimeTaskRepositoryInfoResponseSchema. */
-export const runtimeTaskWorktreeInfoResponseSchema = runtimeTaskRepositoryInfoResponseSchema;
-/** @deprecated Use RuntimeTaskRepositoryInfoResponse. */
-export type RuntimeTaskWorktreeInfoResponse = RuntimeTaskRepositoryInfoResponse;

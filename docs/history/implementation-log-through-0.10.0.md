@@ -1,6 +1,6 @@
 # Implementation Log
 
-> Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
+> Prior entries in `docs/history/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
 ## Fix lint warnings and flaky integration test (2026-04-20)
 
@@ -466,7 +466,7 @@
 
 **Changes:**
 - `CLAUDE.md` — replaced ~140 lines with an 11-line shim that imports `@AGENTS.md` and points to `@README.md`, `@DEVELOPMENT.md`, `@docs/README.md`.
-- `AGENTS.md` — added "Agent instruction files" section documenting the canonical/shim relationship and the check script. Added `docs/archive/` gitignored note.
+- `AGENTS.md` — added "Agent instruction files" section documenting the canonical/shim relationship and the check script. Added `docs/history/` gitignored note.
 - `DEVELOPMENT.md` — added quick reference, repo orientation, and CI/CD sections (content relocated from `CLAUDE.md`).
 - `README.md` — added "Contributor docs" section linking to `DEVELOPMENT.md`, `docs/README.md`, and `AGENTS.md`.
 - `docs/README.md` — added `DEVELOPMENT.md` and `AGENTS.md` to the file-purpose list.

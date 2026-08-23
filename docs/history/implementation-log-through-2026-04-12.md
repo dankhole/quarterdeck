@@ -2,7 +2,7 @@
 
 Detailed implementation notes for completed features and fixes. Listed in reverse chronological order. Each entry records what changed, why, and what files were touched — useful for understanding past decisions and debugging regressions.
 
-For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
+For the concise, user-facing summary of each release, see [CHANGELOG.md](../../CHANGELOG.md).
 
 ## Fix: crash recovery auto-restart (2026-04-12)
 

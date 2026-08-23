@@ -19,9 +19,6 @@ import {
 	resolveHookEventFromPayload,
 } from "./hook-metadata";
 
-// Re-exports for backward compatibility (tests and other consumers).
-export { inferHookSourceFromPayload } from "./hook-metadata";
-
 const VALID_EVENTS = new Set<RuntimeHookEvent>(["to_review", "to_in_progress", "activity"]);
 
 interface HooksIngestArgs {

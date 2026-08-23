@@ -5,7 +5,7 @@ Ordered hardest-first so broad/high-risk work is at the top and quick follow-ups
 Tracking note:
 
 - The sections at the top of this file are the active backlog.
-- Historical completion context belongs in `docs/implementation-log.md`, `CHANGELOG.md`, or `docs/archive/`, not in this active todo list.
+- Historical completion context belongs in `docs/implementation-log.md`, `CHANGELOG.md`, or tracked `docs/history/`, not in this active todo list.
 - For newly completed user-visible work, remove the active todo item and record the result in `CHANGELOG.md` rather than adding a new struck-through history line here. Add `docs/implementation-log.md` only when the change has high-signal forensic context: architecture or ownership boundaries, persistence/recovery, terminal/session lifecycle, races, dogfooding incidents, broad cross-cutting edits, or non-obvious investigations.
 
 ## Additional code-validated refactor backlog

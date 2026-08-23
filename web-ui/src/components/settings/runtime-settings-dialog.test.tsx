@@ -7,7 +7,7 @@ import type { RuntimeConfigResponse, RuntimeConfigSaveRequest } from "@/runtime/
 import { createTestAgentDef, createTestRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
 
 const resetLayoutCustomizationsMock = vi.hoisted(() => vi.fn());
-const saveMock = vi.hoisted(() => vi.fn(async () => true));
+const saveMock = vi.hoisted(() => vi.fn(async (_request: RuntimeConfigSaveRequest): Promise<boolean> => true));
 const refreshMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@runtime-agent-catalog", () => ({
@@ -414,8 +414,8 @@ describe("RuntimeSettingsDialog", () => {
 		});
 
 		expect(saveMock).toHaveBeenCalledTimes(1);
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- accessing mock call args
-		const payload = (saveMock.mock.calls as any)[0][0] as RuntimeConfigSaveRequest;
+		const payload = saveMock.mock.calls[0]?.[0];
+		if (!payload) throw new Error("Expected a runtime config save payload.");
 		expect(payload.audibleNotificationsEnabled).toBe(false);
 		expect(payload.audibleNotificationVolume).toBe(0.7);
 		expect(payload.audibleNotificationEvents).toEqual({
@@ -452,8 +452,8 @@ describe("RuntimeSettingsDialog", () => {
 		});
 
 		expect(saveMock).toHaveBeenCalledTimes(1);
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- accessing mock call args
-		const payload = (saveMock.mock.calls as any)[0][0] as RuntimeConfigSaveRequest;
+		const payload = saveMock.mock.calls[0]?.[0];
+		if (!payload) throw new Error("Expected a runtime config save payload.");
 		expect(payload.llmSummaryPolishEnabled).toBe(true);
 	});
 
@@ -486,8 +486,8 @@ describe("RuntimeSettingsDialog", () => {
 		});
 
 		expect(saveMock).toHaveBeenCalledTimes(1);
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- accessing mock call args
-		const payload = (saveMock.mock.calls as any)[0][0] as RuntimeConfigSaveRequest;
+		const payload = saveMock.mock.calls[0]?.[0];
+		if (!payload) throw new Error("Expected a runtime config save payload.");
 		expect(payload.fileEditorAutosaveMode).toBe("focus");
 	});
 

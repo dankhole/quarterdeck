@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-
-import { normalizeHookMetadata } from "../../src/commands/hook-metadata";
-import { inferHookSourceFromPayload } from "../../src/commands/hooks";
+import { inferHookSourceFromPayload, normalizeHookMetadata } from "../../src/commands/hook-metadata";
 
 describe("inferHookSourceFromPayload", () => {
 	it("infers claude from unix transcript path", () => {

@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 
 import type { RuntimeBoardData, RuntimeTaskRepositoryInfoResponse } from "../core";
 import { findCardInBoard } from "../core";
-import { loadProjectContext, loadProjectState } from "../state";
+import { loadProjectContext, loadProjectState } from "../state/project-state";
 import { readGitHeadInfo } from "./git-utils";
 import { ensureTaskWorktreeIfDoesntExist, getTaskWorktreePath } from "./task-worktree-lifecycle";
 import { normalizeTaskIdForWorktreePath } from "./task-worktree-path";
@@ -153,6 +153,3 @@ export async function getTaskRepositoryInfo(options: {
 		headCommit: headInfo.headCommit,
 	};
 }
-
-/** @deprecated Use getTaskRepositoryInfo. */
-export const getTaskWorktreeInfo = getTaskRepositoryInfo;
