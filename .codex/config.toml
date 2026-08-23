@@ -1,0 +1,14 @@
+[mcp_servers.draftkings-multitool]
+enabled = false
+
+[mcp_servers.atlassian]
+enabled = false
+
+[mcp_servers.slack]
+enabled = false
+
+[mcp_servers.datadog-mcp]
+enabled = false
+
+[mcp_servers.kafka-mcp]
+enabled = false
