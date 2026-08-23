@@ -20,7 +20,7 @@ export function useDependencyLayout({
 	activeTaskEffectiveColumnId,
 	isMotionActive,
 }: {
-	containerRef: RefObject<HTMLElement>;
+	containerRef: RefObject<HTMLElement | null>;
 	dependencies: BoardDependency[];
 	draft: DependencyLinkDraft | null;
 	activeTaskId?: string | null;

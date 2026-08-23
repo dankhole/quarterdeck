@@ -1,6 +1,6 @@
 import type { ResolvedScope } from "@/hooks/git";
 export function formatCardDetailSidePanelPercent(sidePanelRatio: number): string {
-	return `${(sidePanelRatio * 100).toFixed(1)}%`;
+	return `${Number((sidePanelRatio * 100).toFixed(1))}%`;
 }
 
 export function resolveCardDetailFileBrowserScope(resolvedScope: ResolvedScope | null) {

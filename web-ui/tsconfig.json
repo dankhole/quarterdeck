@@ -10,9 +10,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
+      "@/*": ["./src/*"],
       "@runtime-agent-catalog": ["../src/core/agent-catalog.ts"],
       "@runtime-contract": ["../src/core/api-contract.ts"],
       "@runtime-trpc": ["../src/trpc/app-router.ts"],

@@ -9,7 +9,7 @@ class FakeWebSocket {
 	static readonly CLOSED = 3;
 	static instances: FakeWebSocket[] = [];
 
-	readonly sentMessages: string[] = [];
+	readonly sentMessages: (string | ArrayBufferView)[] = [];
 	readyState = FakeWebSocket.CONNECTING;
 	binaryType = "";
 	onopen: (() => void) | null = null;
@@ -28,7 +28,7 @@ class FakeWebSocket {
 		this.listeners.set(type, listeners);
 	}
 
-	send(data: string): void {
+	send(data: string | ArrayBufferView): void {
 		this.sentMessages.push(data);
 	}
 
@@ -142,5 +142,24 @@ describe("SlotSocketManager", () => {
 			notifyText: "hello",
 			batch: true,
 		});
+	});
+
+	it("copies binary IO writes into a WebSocket-compatible buffer", () => {
+		const manager = new SlotSocketManager(7, "client-1", createCallbacks());
+
+		manager.connectIo("task-1", "project-1");
+		const ioSocket = FakeWebSocket.instances[0];
+		if (!ioSocket) {
+			throw new Error("Expected IO socket");
+		}
+		ioSocket.open();
+
+		const payload = new Uint8Array([1, 2, 3]);
+		expect(manager.sendIo(payload)).toBe(true);
+
+		const sentPayload = ioSocket.sentMessages[0];
+		expect(sentPayload).toBeInstanceOf(Uint8Array);
+		expect(Array.from(sentPayload as Uint8Array)).toEqual([1, 2, 3]);
+		expect(sentPayload).not.toBe(payload);
 	});
 });

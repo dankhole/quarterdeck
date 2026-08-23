@@ -3,7 +3,9 @@ import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
-const rootPkg = JSON.parse(readFileSync(resolve(__dirname, "../package.json"), "utf-8")) as { version: string };
+const rootPkg = JSON.parse(readFileSync(resolve(import.meta.dirname, "../package.json"), "utf-8")) as {
+	version: string;
+};
 
 export default defineConfig({
 	plugins: [react()],
@@ -12,19 +14,19 @@ export default defineConfig({
 	},
 	resolve: {
 		alias: {
-			"@": resolve(__dirname, "src"),
-			"@runtime-agent-catalog": resolve(__dirname, "../src/core/agent-catalog.ts"),
-			"@runtime-contract": resolve(__dirname, "../src/core/api-contract.ts"),
-			"@runtime-config-defaults": resolve(__dirname, "../src/config/config-defaults.ts"),
+			"@": resolve(import.meta.dirname, "src"),
+			"@runtime-agent-catalog": resolve(import.meta.dirname, "../src/core/agent-catalog.ts"),
+			"@runtime-contract": resolve(import.meta.dirname, "../src/core/api-contract.ts"),
+			"@runtime-config-defaults": resolve(import.meta.dirname, "../src/config/config-defaults.ts"),
 			"@runtime-task-resource-operation-coordinator": resolve(
-				__dirname,
+				import.meta.dirname,
 				"../src/core/task-resource-operation-coordinator.ts",
 			),
-			"@runtime-shortcuts": resolve(__dirname, "../src/config/shortcut-utils.ts"),
-			"@runtime-task-id": resolve(__dirname, "../src/core/task-id.ts"),
-			"@runtime-task-worktree-path": resolve(__dirname, "../src/workdir/task-worktree-path.ts"),
-			"@runtime-task-state": resolve(__dirname, "../src/core/task-board-mutations.ts"),
-			"@runtime-terminal-utils": resolve(__dirname, "../src/terminal/output-utils.ts"),
+			"@runtime-shortcuts": resolve(import.meta.dirname, "../src/config/shortcut-utils.ts"),
+			"@runtime-task-id": resolve(import.meta.dirname, "../src/core/task-id.ts"),
+			"@runtime-task-worktree-path": resolve(import.meta.dirname, "../src/workdir/task-worktree-path.ts"),
+			"@runtime-task-state": resolve(import.meta.dirname, "../src/core/task-board-mutations.ts"),
+			"@runtime-terminal-utils": resolve(import.meta.dirname, "../src/terminal/output-utils.ts"),
 		},
 		conditions: ["import", "module", "browser", "default"],
 	},

@@ -9,7 +9,7 @@ export interface UseDiffScrollSyncOptions {
 }
 
 export interface UseDiffScrollSyncResult {
-	scrollContainerRef: React.RefObject<HTMLDivElement>;
+	scrollContainerRef: React.RefObject<HTMLDivElement | null>;
 	sectionElementsRef: React.MutableRefObject<Record<string, HTMLElement | null>>;
 	handleDiffScroll: () => void;
 	suppressScrollSyncUntilRef: React.MutableRefObject<number>;

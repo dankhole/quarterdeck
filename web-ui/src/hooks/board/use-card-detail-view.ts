@@ -33,8 +33,8 @@ interface UseCardDetailViewInput {
 }
 
 export interface CardDetailViewLayoutState {
-	detailLayoutRef: RefObject<HTMLDivElement>;
-	mainRowRef: RefObject<HTMLDivElement>;
+	detailLayoutRef: RefObject<HTMLDivElement | null>;
+	mainRowRef: RefObject<HTMLDivElement | null>;
 	handleSidePanelSeparatorMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
 	sidePanelPercent: string;
 	isTaskSidePanelOpen: boolean;

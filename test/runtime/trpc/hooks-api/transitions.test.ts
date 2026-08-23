@@ -432,47 +432,50 @@ describe("createHooksApi — transitions", () => {
 		["matching", "PreToolUse", "AskUserQuestion", "AskUserQuestion", true],
 		["unrelated", "PreToolUse", "AskUserQuestion", "Bash", false],
 		["matching plan-permission", "PermissionRequest", "ExitPlanMode", "ExitPlanMode", true],
-	] as const)("handles %s PostToolUse while Claude is asking a question", async (_label, currentHookEvent, currentToolName, incomingToolName, shouldResolve) => {
-		const manager = createMockManager({
-			getSummary: vi.fn(() =>
-				createSummary({
-					state: "awaiting_review",
-					reviewReason: "attention",
-					agentId: "claude",
-					latestHookActivity: {
-						source: "claude",
-						hookEventName: currentHookEvent,
-						notificationType: null,
-						activityText: currentHookEvent === "PermissionRequest" ? "Waiting for approval" : "Needs input",
-						toolName: currentToolName,
-						toolInputSummary: currentToolName,
-						finalMessage: null,
-						conversationSummaryText: null,
-					},
-				}),
-			),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(() => createSummary({ state: "running", agentId: "claude" })),
-			applyHookActivity: vi.fn(),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary: vi.fn(),
-		});
-		const api = createTestApi(manager);
+	] as const)(
+		"handles %s PostToolUse while Claude is asking a question",
+		async (_label, currentHookEvent, currentToolName, incomingToolName, shouldResolve) => {
+			const manager = createMockManager({
+				getSummary: vi.fn(() =>
+					createSummary({
+						state: "awaiting_review",
+						reviewReason: "attention",
+						agentId: "claude",
+						latestHookActivity: {
+							source: "claude",
+							hookEventName: currentHookEvent,
+							notificationType: null,
+							activityText: currentHookEvent === "PermissionRequest" ? "Waiting for approval" : "Needs input",
+							toolName: currentToolName,
+							toolInputSummary: currentToolName,
+							finalMessage: null,
+							conversationSummaryText: null,
+						},
+					}),
+				),
+				transitionToReview: vi.fn(),
+				transitionToRunning: vi.fn(() => createSummary({ state: "running", agentId: "claude" })),
+				applyHookActivity: vi.fn(),
+				appendConversationSummary: vi.fn(),
+				setDisplaySummary: vi.fn(),
+			});
+			const api = createTestApi(manager);
 
-		const response = await api.ingest({
-			taskId: "task-1",
-			projectId: "project-1",
-			event: "to_in_progress",
-			metadata: { source: "claude", hookEventName: "PostToolUse", toolName: incomingToolName },
-		});
+			const response = await api.ingest({
+				taskId: "task-1",
+				projectId: "project-1",
+				event: "to_in_progress",
+				metadata: { source: "claude", hookEventName: "PostToolUse", toolName: incomingToolName },
+			});
 
-		expect(response).toEqual({ ok: true });
-		if (shouldResolve) {
-			expect(mockStore(manager).transitionToRunning).toHaveBeenCalledWith("task-1");
-		} else {
-			expect(mockStore(manager).transitionToRunning).not.toHaveBeenCalled();
-		}
-	});
+			expect(response).toEqual({ ok: true });
+			if (shouldResolve) {
+				expect(mockStore(manager).transitionToRunning).toHaveBeenCalledWith("task-1");
+			} else {
+				expect(mockStore(manager).transitionToRunning).not.toHaveBeenCalled();
+			}
+		},
+	);
 
 	it("allows Claude UserPromptSubmit to resolve a background-agent input wait", async () => {
 		const manager = createMockManager({

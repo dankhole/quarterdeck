@@ -110,28 +110,28 @@ describe("hook metadata", () => {
 		);
 	});
 
-	it.each([
-		"background_tasks",
-		"session_crons",
-	] as const)("keeps Claude Stop with pending %s in progress", (pendingField) => {
-		const payload = {
-			hook_event_name: "Stop",
-			last_assistant_message: "I started background work and will continue when it finishes.",
-			background_tasks: [],
-			session_crons: [],
-			[pendingField]: [{ id: "pending-1" }],
-		};
+	it.each(["background_tasks", "session_crons"] as const)(
+		"keeps Claude Stop with pending %s in progress",
+		(pendingField) => {
+			const payload = {
+				hook_event_name: "Stop",
+				last_assistant_message: "I started background work and will continue when it finishes.",
+				background_tasks: [],
+				session_crons: [],
+				[pendingField]: [{ id: "pending-1" }],
+			};
 
-		expect(resolveHookEventFromPayload("to_review", payload, "claude")).toBe("activity");
-		expect(normalizeHookMetadata("activity", payload, { source: "claude" })).toEqual(
-			expect.objectContaining({
-				hookEventName: "Stop",
-				activityText: "Waiting for background work",
-				finalMessage: null,
-				conversationSummaryText: null,
-			}),
-		);
-	});
+			expect(resolveHookEventFromPayload("to_review", payload, "claude")).toBe("activity");
+			expect(normalizeHookMetadata("activity", payload, { source: "claude" })).toEqual(
+				expect.objectContaining({
+					hookEventName: "Stop",
+					activityText: "Waiting for background work",
+					finalMessage: null,
+					conversationSummaryText: null,
+				}),
+			);
+		},
+	);
 
 	it("keeps a completed Claude Stop as a review transition when pending-work arrays are empty", () => {
 		const payload = {

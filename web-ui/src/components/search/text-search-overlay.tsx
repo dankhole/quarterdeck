@@ -151,7 +151,7 @@ interface FileGroupProps {
 	caseSensitive: boolean;
 	selectedIndex: number;
 	flatIndexStart: number;
-	selectedRowRef: React.RefObject<HTMLDivElement>;
+	selectedRowRef: React.RefObject<HTMLDivElement | null>;
 	onClickMatch: (path: string, lineNumber: number) => void;
 	onHoverMatch: (index: number) => void;
 }

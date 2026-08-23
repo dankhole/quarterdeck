@@ -13,6 +13,15 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # Keep development types aligned with the supported Node 20/22 runtime line.
+      - dependency-name: "@types/node"
+        update-types:
+          - "version-update:semver-major"
+      # Commander 15 requires Node >=22.12, while Quarterdeck still supports Node 20.
+      - dependency-name: commander
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: npm
     directory: "/web-ui"
@@ -28,6 +37,11 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # jsdom 30 requires Node >=22.22; jsdom 29 is the newest Node 20-compatible line.
+      - dependency-name: jsdom
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: github-actions
     directory: "/"

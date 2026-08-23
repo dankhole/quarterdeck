@@ -18,7 +18,7 @@ export function DependencyOverlay({
 	isMotionActive = false,
 	onDeleteDependency,
 }: {
-	containerRef: RefObject<HTMLElement>;
+	containerRef: RefObject<HTMLElement | null>;
 	dependencies: BoardDependency[];
 	draft: DependencyLinkDraft | null;
 	activeTaskId?: string | null;

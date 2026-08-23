@@ -2,9 +2,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig, type Plugin, type ResolvedConfig, transformWithEsbuild } from "vite";
+import { defineConfig, minify, type Plugin, type ResolvedConfig } from "vite";
 
-const rootPkg = JSON.parse(readFileSync(resolve(__dirname, "../package.json"), "utf-8")) as { version: string };
+const rootPkg = JSON.parse(readFileSync(resolve(import.meta.dirname, "../package.json"), "utf-8")) as {
+	version: string;
+};
 const XTERM_CHUNK_NAME = "xterm-vendor";
 const runtimeProxyPort = process.env.QUARTERDECK_E2E_RUNTIME_PORT ?? process.env.QUARTERDECK_RUNTIME_PORT ?? "3500";
 const runtimeProxyTarget = `http://127.0.0.1:${runtimeProxyPort}`;
@@ -29,18 +31,16 @@ function selectiveBuildMinifyPlugin(): Plugin {
 			if (Object.keys(chunk.modules).some((id) => isXtermModule(id))) {
 				return null;
 			}
-			const minified = await transformWithEsbuild(
-				code,
-				chunk.fileName,
-				{
-					format: outputOptions.format === "cjs" ? "cjs" : "esm",
-					minify: true,
-					sourcemap: Boolean(resolvedConfig.build.sourcemap),
-					treeShaking: true,
-				},
-				undefined,
-				resolvedConfig,
-			);
+			const minified = await minify(chunk.fileName, code, {
+				module: outputOptions.format !== "cjs",
+				compress: true,
+				mangle: true,
+				codegen: true,
+				sourcemap: Boolean(resolvedConfig.build.sourcemap),
+			});
+			if (minified.errors.length > 0) {
+				throw new Error(minified.errors.map((error) => error.message).join("\n"));
+			}
 			return {
 				code: minified.code,
 				map: minified.map ?? null,
@@ -81,19 +81,19 @@ export default defineConfig({
 	},
 	resolve: {
 		alias: {
-			"@": resolve(__dirname, "src"),
-			"@runtime-agent-catalog": resolve(__dirname, "../src/core/agent-catalog.ts"),
-			"@runtime-contract": resolve(__dirname, "../src/core/api-contract.ts"),
-			"@runtime-config-defaults": resolve(__dirname, "../src/config/config-defaults.ts"),
+			"@": resolve(import.meta.dirname, "src"),
+			"@runtime-agent-catalog": resolve(import.meta.dirname, "../src/core/agent-catalog.ts"),
+			"@runtime-contract": resolve(import.meta.dirname, "../src/core/api-contract.ts"),
+			"@runtime-config-defaults": resolve(import.meta.dirname, "../src/config/config-defaults.ts"),
 			"@runtime-task-resource-operation-coordinator": resolve(
-				__dirname,
+				import.meta.dirname,
 				"../src/core/task-resource-operation-coordinator.ts",
 			),
-			"@runtime-shortcuts": resolve(__dirname, "../src/config/shortcut-utils.ts"),
-			"@runtime-task-id": resolve(__dirname, "../src/core/task-id.ts"),
-			"@runtime-task-worktree-path": resolve(__dirname, "../src/workdir/task-worktree-path.ts"),
-			"@runtime-task-state": resolve(__dirname, "../src/core/task-board-mutations.ts"),
-			"@runtime-terminal-utils": resolve(__dirname, "../src/terminal/output-utils.ts"),
+			"@runtime-shortcuts": resolve(import.meta.dirname, "../src/config/shortcut-utils.ts"),
+			"@runtime-task-id": resolve(import.meta.dirname, "../src/core/task-id.ts"),
+			"@runtime-task-worktree-path": resolve(import.meta.dirname, "../src/workdir/task-worktree-path.ts"),
+			"@runtime-task-state": resolve(import.meta.dirname, "../src/core/task-board-mutations.ts"),
+			"@runtime-terminal-utils": resolve(import.meta.dirname, "../src/terminal/output-utils.ts"),
 		},
 	},
 	server: {

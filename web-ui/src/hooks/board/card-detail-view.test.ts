@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveCardDetailBranchPillLabel, resolveCardDetailFileBrowserScope } from "@/hooks/board/card-detail-view";
+import {
+	formatCardDetailSidePanelPercent,
+	resolveCardDetailBranchPillLabel,
+	resolveCardDetailFileBrowserScope,
+} from "@/hooks/board/card-detail-view";
+
+describe("formatCardDetailSidePanelPercent", () => {
+	it("omits an unnecessary decimal while retaining fractional percentages", () => {
+		expect(formatCardDetailSidePanelPercent(0.3)).toBe("30%");
+		expect(formatCardDetailSidePanelPercent(0.255)).toBe("25.5%");
+	});
+});
 
 describe("resolveCardDetailBranchPillLabel", () => {
 	it("prefers an explicit branch-view ref", () => {

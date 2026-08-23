@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Chore: consolidate dependency upgrades
+
+- Runtime and web dependencies now move forward together, including Biome 2.5, TypeScript 7, Knip 6, Vite 8, plugin-react 6, Lucide 1, Diff 9, and the current minor/patch update groups; the Vite build keeps xterm isolated from minification while using the supported Oxc minifier for other chunks.
+- React and React DOM are now on 19.2, node-pty is on the latest 1.2 beta, and jsdom is on the newest Node 20-compatible release; the migration also corrects nullable React ref contracts and keeps panel percentage formatting stable across browser and jsdom implementations.
+- npm 11 installs now explicitly deny the unnecessary `fsevents` fallback rebuild scripts, eliminating unreviewed-script warnings while continuing to use the packaged macOS binaries.
+- GitHub Actions now use their Node 24 runtime releases, while Quarterdeck continues testing Node 20 and 22 and keeps `@types/node` on major 22 until the runtime support policy changes.
+- Dependabot now holds Commander 14 and jsdom 29 while Node 20 remains supported because their next majors require Node 22; security and compatible patch updates continue normally.
+
 ### Fix: make the task sidebar a complete board surface
 
 - Backlog cards now expose a direct Trash action alongside Start, using the same confirmation and cleanup workflow as every other move to Trash.

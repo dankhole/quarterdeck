@@ -69,7 +69,7 @@ export class SlotSocketManager {
 		if (!this.ioSocket || this.ioSocket.readyState !== WebSocket.OPEN) {
 			return false;
 		}
-		this.ioSocket.send(data);
+		this.ioSocket.send(typeof data === "string" ? data : new Uint8Array(data));
 		return true;
 	}
 
