@@ -143,6 +143,7 @@ vi.mock("../../../src/workdir/mutate-workdir-entry.js", () => ({
 }));
 
 import { TaskResourceOperationCoordinator } from "../../../src/core";
+import { AutomaticTitleGenerationCoordinator } from "../../../src/title";
 import { createProjectApi } from "../../../src/trpc";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
@@ -184,6 +185,7 @@ function createProjectDeps() {
 		},
 		data: { buildProjectStateSnapshot: vi.fn() },
 		taskResourceOperations: new TaskResourceOperationCoordinator(),
+		automaticTitleGeneration: new AutomaticTitleGenerationCoordinator(),
 	};
 }
 
@@ -305,6 +307,7 @@ describe("createProjectApi loadChanges", () => {
 			},
 			data: { buildProjectStateSnapshot: vi.fn() },
 			taskResourceOperations: new TaskResourceOperationCoordinator(),
+			automaticTitleGeneration: new AutomaticTitleGenerationCoordinator(),
 		});
 
 		await api.loadChanges(
@@ -367,6 +370,7 @@ describe("createProjectApi loadChanges", () => {
 			},
 			data: { buildProjectStateSnapshot: vi.fn() },
 			taskResourceOperations: new TaskResourceOperationCoordinator(),
+			automaticTitleGeneration: new AutomaticTitleGenerationCoordinator(),
 		});
 
 		await api.loadChanges(
@@ -414,6 +418,7 @@ describe("createProjectApi loadChanges", () => {
 			},
 			data: { buildProjectStateSnapshot: vi.fn() },
 			taskResourceOperations: new TaskResourceOperationCoordinator(),
+			automaticTitleGeneration: new AutomaticTitleGenerationCoordinator(),
 		});
 
 		const response = await api.loadChanges(
@@ -451,6 +456,7 @@ describe("createProjectApi loadChanges", () => {
 			},
 			data: { buildProjectStateSnapshot: vi.fn() },
 			taskResourceOperations: new TaskResourceOperationCoordinator(),
+			automaticTitleGeneration: new AutomaticTitleGenerationCoordinator(),
 		});
 
 		await api.loadChanges(
@@ -484,6 +490,7 @@ describe("createProjectApi loadChanges", () => {
 			},
 			data: { buildProjectStateSnapshot: vi.fn() },
 			taskResourceOperations: new TaskResourceOperationCoordinator(),
+			automaticTitleGeneration: new AutomaticTitleGenerationCoordinator(),
 		});
 
 		await api.loadChanges(
@@ -523,6 +530,7 @@ describe("createProjectApi loadChanges", () => {
 			},
 			data: { buildProjectStateSnapshot: vi.fn() },
 			taskResourceOperations: new TaskResourceOperationCoordinator(),
+			automaticTitleGeneration: new AutomaticTitleGenerationCoordinator(),
 		});
 
 		const response = await api.loadChanges(

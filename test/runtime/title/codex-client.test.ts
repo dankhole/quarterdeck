@@ -1,5 +1,8 @@
 import type { ChildProcess, ExecFileException } from "node:child_process";
+import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { _resetLoggerForTests, type RuntimeDiagnosticLogSink, setRuntimeDiagnosticLogSink } from "../../../src/core";
 
 const childProcessMocks = vi.hoisted(() => ({
 	execFile: vi.fn(),
@@ -35,10 +38,12 @@ function createExecutor(
 	result: Partial<{
 		stdout: string;
 		stderr: string;
+		stdoutBytes: number;
+		stderrBytes: number;
 		exitStatus: number | null;
 		signal: NodeJS.Signals | null;
 		timedOut: boolean;
-		errorMessage: string | null;
+		errorClass: string | null;
 	}> = {},
 ) {
 	return {
@@ -46,18 +51,33 @@ function createExecutor(
 		run: vi.fn(async (_args: string[], _timeoutMs: number) => ({
 			stdout: "Reliable Task Titles\n",
 			stderr: "",
+			stdoutBytes: 21,
+			stderrBytes: 0,
 			exitStatus: 0,
 			signal: null,
 			timedOut: false,
-			errorMessage: null,
+			errorClass: null,
 			...result,
 		})),
 	};
 }
 
+type LogCandidate = Parameters<RuntimeDiagnosticLogSink["recordLog"]>[0];
+
+function collectRuntimeLogs(): LogCandidate[] {
+	const logs: LogCandidate[] = [];
+	setRuntimeDiagnosticLogSink({
+		recordLog: (candidate) => {
+			logs.push(candidate);
+		},
+	});
+	return logs;
+}
+
 afterEach(() => {
 	vi.useRealTimers();
 	childProcessMocks.execFile.mockReset();
+	_resetLoggerForTests();
 });
 
 describe("callCodex", () => {
@@ -89,6 +109,8 @@ describe("callCodex", () => {
 		expect(args.at(-1)).toContain("<input-context>\nmake title generation reliable\n</input-context>");
 		const modelIndex = args.indexOf("--model");
 		expect(args[modelIndex + 1]).toBe("gpt-5.6-luna");
+		const reasoningConfig = args.find((arg) => arg.startsWith("model_reasoning_effort="));
+		expect(reasoningConfig).toBe('model_reasoning_effort="none"');
 		const developerConfig = args.find((arg) => arg.startsWith("developer_instructions="));
 		expect(developerConfig).toContain("Return only a concise title");
 		expect(developerConfig).toContain("Do not use tools or inspect files");
@@ -103,14 +125,27 @@ describe("callCodex", () => {
 	});
 
 	it("returns null when the Codex process fails", async () => {
+		const logs = collectRuntimeLogs();
+		vi.spyOn(console, "warn").mockImplementation(() => undefined);
 		const executor = createExecutor({
-			stdout: "",
-			stderr: "authentication required",
+			stdout: "private generated title",
+			stderr: "private task context",
+			stdoutBytes: 23,
+			stderrBytes: 20,
 			exitStatus: 1,
-			errorMessage: "Command failed",
+			errorClass: "ExecFileError",
 		});
 
 		expect(await callCodex(OPTIONS, executor)).toBeNull();
+		const failure = logs.find(
+			(entry) => entry.tag === "codex-helper" && entry.message === "Codex helper call failed",
+		);
+		expect(failure?.data).toMatchObject({
+			errorClass: "ExecFileError",
+			stdoutBytes: 23,
+			stderrBytes: 20,
+		});
+		expect(JSON.stringify(failure?.data)).not.toContain("private");
 	});
 
 	it("keeps the prompt after an explicit option separator", () => {
@@ -124,6 +159,8 @@ describe("callCodex", () => {
 		vi.useFakeTimers();
 		const kill = vi.fn(() => true);
 		const unref = vi.fn();
+		const stdout = new PassThrough();
+		const stderr = new PassThrough();
 		let callback: ExecCallback | null = null;
 		childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
 			const candidate = args.at(-1);
@@ -131,15 +168,27 @@ describe("callCodex", () => {
 				throw new Error("Expected execFile callback");
 			}
 			callback = candidate as typeof callback;
-			return { pid: 123, kill, unref } as unknown as ChildProcess;
+			return { pid: 123, kill, unref, stdout, stderr } as unknown as ChildProcess;
 		});
 
 		const resultPromise = _testing.runCodexCommand(["exec", "--", "title"], 20_000);
+		const partialStdout = "private stdout ".repeat(60);
+		const partialStderr = "private stderr ".repeat(60);
+		stdout.write(partialStdout);
+		stderr.write(partialStderr);
 		await vi.advanceTimersByTimeAsync(20_000);
 
 		expect(kill).toHaveBeenCalledWith("SIGTERM");
 		expect(unref).toHaveBeenCalledOnce();
-		await expect(resultPromise).resolves.toMatchObject({ timedOut: true, signal: null });
+		await expect(resultPromise).resolves.toMatchObject({
+			timedOut: true,
+			signal: null,
+			stdout: "",
+			stderr: "",
+			stdoutBytes: Buffer.byteLength(partialStdout),
+			stderrBytes: Buffer.byteLength(partialStderr),
+			errorClass: "TimeoutError",
+		});
 
 		// A late callback after the bounded result must be harmless.
 		const timeoutError = Object.assign(new Error("timed out"), {

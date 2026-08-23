@@ -1,3 +1,7 @@
+export {
+	AutomaticTitleGenerationCoordinator,
+	type AutomaticTitleGenerationRunner,
+} from "./automatic-title-generation-coordinator";
 export type {
 	RuntimeCommitMessageFileContentContext,
 	RuntimeCommitMessageFileContext,

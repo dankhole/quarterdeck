@@ -30,6 +30,7 @@
 - Task titles now use one explicit provider—an isolated, ephemeral Codex CLI turn by default, the existing OpenAI-compatible helper when selected, or local-only generation—and every remote failure falls back directly to the deterministic local title without crossing provider failure domains.
 - Codex title generation now pins the lightweight `gpt-5.6-luna` model by default instead of inheriting a moving CLI default; `QUARTERDECK_CODEX_TITLE_MODEL` provides an explicit override.
 - Codex title calls share Quarterdeck's platform command-resolution and process-tree termination mechanisms, settle at a bounded deadline even if a child ignores termination, and apply the same provider-neutral response cleanup as HTTP generation.
+- Automatic titles now share a runtime-owned per-project/task single-flight guard across board-save requests, preventing rapid saves from launching duplicate Codex helpers. Title calls explicitly use `none` reasoning for this latency-sensitive workload, and failure logs retain content-free error classes plus accurate output byte counts for diagnosis.
 
 ### Fix: keep Agent Lab host UI isolated
 

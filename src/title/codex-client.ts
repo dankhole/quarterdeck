@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import {
 	createTaggedLogger,
 	isBinaryAvailableOnPath,
+	normalizeDiagnosticErrorClass,
 	resolveWindowsCompatibleCommand,
 	terminateProcessForTimeout,
 } from "../core";
@@ -13,6 +14,7 @@ const log = createTaggedLogger("codex-helper");
 const CODEX_BINARY = "codex";
 const CODEX_OUTPUT_SNIPPET_MAX_LENGTH = 500;
 const CODEX_MAX_BUFFER_BYTES = 1_000_000;
+const CODEX_TITLE_REASONING_EFFORT = "none";
 
 interface CodexCallOptions {
 	systemPrompt: string;
@@ -24,10 +26,12 @@ interface CodexCallOptions {
 interface CodexCommandResult {
 	stdout: string;
 	stderr: string;
+	stdoutBytes: number;
+	stderrBytes: number;
 	exitStatus: number | null;
 	signal: NodeJS.Signals | null;
 	timedOut: boolean;
-	errorMessage: string | null;
+	errorClass: string | null;
 }
 
 interface CodexCommandExecutor {
@@ -45,12 +49,18 @@ function summarizeOutput(value: string): string | null {
 		: `${trimmed.slice(0, CODEX_OUTPUT_SNIPPET_MAX_LENGTH)}...`;
 }
 
+function outputByteLength(chunk: string | Buffer): number {
+	return Buffer.isBuffer(chunk) ? chunk.byteLength : Buffer.byteLength(chunk);
+}
+
 function runCodexCommand(args: string[], timeoutMs: number): Promise<CodexCommandResult> {
 	return new Promise((resolve) => {
 		const command = resolveWindowsCompatibleCommand(CODEX_BINARY, args);
 		let child: ChildProcess | null = null;
 		let timeoutHandle: NodeJS.Timeout | null = null;
 		let settled = false;
+		let streamedStdoutBytes = 0;
+		let streamedStderrBytes = 0;
 		const finish = (result: CodexCommandResult): void => {
 			if (settled) {
 				return;
@@ -74,13 +84,21 @@ function runCodexCommand(args: string[], timeoutMs: number): Promise<CodexComman
 				finish({
 					stdout: String(stdout ?? ""),
 					stderr: String(stderr ?? ""),
+					stdoutBytes: outputByteLength(stdout ?? ""),
+					stderrBytes: outputByteLength(stderr ?? ""),
 					exitStatus: error ? (typeof error.code === "number" ? error.code : null) : 0,
 					signal: error?.signal ?? null,
 					timedOut: false,
-					errorMessage: error?.message ?? null,
+					errorClass: error ? normalizeDiagnosticErrorClass(error.name) : null,
 				});
 			},
 		);
+		child.stdout?.on("data", (chunk: string | Buffer) => {
+			streamedStdoutBytes += outputByteLength(chunk);
+		});
+		child.stderr?.on("data", (chunk: string | Buffer) => {
+			streamedStderrBytes += outputByteLength(chunk);
+		});
 		timeoutHandle = setTimeout(() => {
 			if (child) {
 				terminateProcessForTimeout(child);
@@ -92,10 +110,12 @@ function runCodexCommand(args: string[], timeoutMs: number): Promise<CodexComman
 			finish({
 				stdout: "",
 				stderr: "",
+				stdoutBytes: streamedStdoutBytes,
+				stderrBytes: streamedStderrBytes,
 				exitStatus: null,
 				signal: null,
 				timedOut: true,
-				errorMessage: `Timed out after ${timeoutMs}ms`,
+				errorClass: "TimeoutError",
 			});
 		}, timeoutMs);
 	});
@@ -123,6 +143,8 @@ function buildCodexExecArgs(options: CodexCallOptions): string[] {
 		"never",
 		"-c",
 		`developer_instructions=${JSON.stringify(developerInstructions)}`,
+		"-c",
+		`model_reasoning_effort=${JSON.stringify(CODEX_TITLE_REASONING_EFFORT)}`,
 		"--",
 		taskContext,
 	];
@@ -158,8 +180,9 @@ export async function callCodex(
 				timeoutMs: options.timeoutMs,
 				exitStatus: result.exitStatus,
 				signal: result.signal,
-				errorMessage: result.errorMessage,
-				stderrSnippet: summarizeOutput(result.stderr),
+				errorClass: result.errorClass,
+				stdoutBytes: result.stdoutBytes,
+				stderrBytes: result.stderrBytes,
 				model: options.model,
 			});
 			return null;

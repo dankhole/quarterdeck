@@ -17,6 +17,7 @@ import { createHookTransitionOutboxReplayer } from "../hook-transition-outbox";
 import { loadProjectScopeById } from "../state";
 import type { TerminalSessionManager } from "../terminal";
 import { createTerminalWebSocketBridge } from "../terminal";
+import { AutomaticTitleGenerationCoordinator } from "../title";
 import {
 	createHooksApi,
 	createProjectApi,
@@ -92,6 +93,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	}
 	const webUiDir = getWebUiDir();
 	const taskResourceOperations = new TaskResourceOperationCoordinator();
+	const automaticTitleGeneration = new AutomaticTitleGenerationCoordinator();
 
 	try {
 		await readFile(join(webUiDir, "index.html"));
@@ -182,6 +184,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				data: deps.projectRegistry,
 				diagnostics: deps.diagnostics,
 				taskResourceOperations,
+				automaticTitleGeneration,
 			}),
 			projectsApi: createProjectsApi({
 				projects: deps.projectRegistry,

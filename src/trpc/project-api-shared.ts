@@ -14,6 +14,7 @@ import type {
 import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import { loadProjectState } from "../state";
+import type { AutomaticTitleGenerationRunner } from "../title";
 import { isMissingTaskWorktreeError, resolveTaskWorkingDirectory } from "../workdir";
 import { applyRuntimeMutationEffects } from "./runtime-mutation-effects";
 
@@ -38,6 +39,7 @@ export interface CreateProjectApiDependencies {
 	data: Pick<IProjectDataProvider, "buildProjectStateSnapshot">;
 	diagnostics?: RuntimeDiagnostics;
 	taskResourceOperations: TaskResourceOperationRunner;
+	automaticTitleGeneration: AutomaticTitleGenerationRunner;
 }
 
 // ── Shared context ──────────────────────────────────────────────────────────────
