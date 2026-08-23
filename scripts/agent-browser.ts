@@ -5,18 +5,18 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { beginAgentBrowserAction, completeAgentBrowserAction } from "./agent-lab/browser-actions";
-import { AGENT_LAB_REPO_ROOT, getAgentLabBrowserCachePath } from "./agent-lab/paths";
+import { AGENT_LAB_REPO_ROOT, getAgentBrowserLocalPaths, prepareAgentLabBrowserCache } from "./agent-lab/paths";
 
-const browserCachePath = getAgentLabBrowserCachePath();
-const daemonSessionPath = join(AGENT_LAB_REPO_ROOT, "test-results", "agent-lab", "browser-daemon");
-const browserHomePath = join(AGENT_LAB_REPO_ROOT, "test-results", "agent-lab", "browser-home");
+const browserCache = await prepareAgentLabBrowserCache();
+const browserCachePath = browserCache.path;
+const { daemonSessionPath, browserHomePath } = getAgentBrowserLocalPaths();
 const cliPath = join(AGENT_LAB_REPO_ROOT, "web-ui", "node_modules", "@playwright", "cli", "playwright-cli.js");
 
-await Promise.all([
-	mkdir(browserCachePath, { recursive: true }),
-	mkdir(daemonSessionPath, { recursive: true }),
-	mkdir(browserHomePath, { recursive: true }),
-]);
+await Promise.all([mkdir(daemonSessionPath, { recursive: true }), mkdir(browserHomePath, { recursive: true })]);
+
+if (browserCache.status === "migrated") {
+	process.stderr.write("[agent-browser] Reused the complete legacy Chromium cache in its durable shared location.\n");
+}
 
 const environment: NodeJS.ProcessEnv = {
 	PATH: process.env.PATH,

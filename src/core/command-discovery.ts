@@ -1,17 +1,30 @@
 import { accessSync, constants } from "node:fs";
 import { delimiter, join } from "node:path";
 
-function canAccessPath(path: string): boolean {
+function canAccessPath(path: string, platform: NodeJS.Platform = process.platform): boolean {
 	try {
-		accessSync(path, process.platform === "win32" ? constants.F_OK : constants.X_OK);
+		accessSync(path, platform === "win32" ? constants.F_OK : constants.X_OK);
 		return true;
 	} catch {
 		return false;
 	}
 }
 
-function getWindowsExecutableCandidates(binary: string): string[] {
-	const pathext = process.env.PATHEXT?.split(";").filter(Boolean) ?? [".COM", ".EXE", ".BAT", ".CMD"];
+function getEnvironmentValue(env: NodeJS.ProcessEnv, key: string, platform: NodeJS.Platform): string | undefined {
+	if (platform !== "win32") {
+		return env[key];
+	}
+	const normalizedKey = key.toLowerCase();
+	return Object.entries(env).find(([entryKey]) => entryKey.toLowerCase() === normalizedKey)?.[1];
+}
+
+function getWindowsExecutableCandidates(binary: string, env: NodeJS.ProcessEnv): string[] {
+	const pathext = getEnvironmentValue(env, "PATHEXT", "win32")?.split(";").filter(Boolean) ?? [
+		".COM",
+		".EXE",
+		".BAT",
+		".CMD",
+	];
 	const lowerBinary = binary.toLowerCase();
 	if (pathext.some((extension) => lowerBinary.endsWith(extension.toLowerCase()))) {
 		return [binary];
@@ -43,25 +56,32 @@ function getWindowsExecutableCandidates(binary: string): string[] {
 // unavailable for task-agent startup. That keeps behavior predictable and aligned with the
 // environment the Quarterdeck process already has, instead of silently relying on hidden shell
 // side effects.
-export function isBinaryAvailableOnPath(binary: string): boolean {
+export function isBinaryAvailableOnPath(
+	binary: string,
+	options: { env?: NodeJS.ProcessEnv; platform?: NodeJS.Platform } = {},
+): boolean {
+	const env = options.env ?? process.env;
+	const platform = options.platform ?? process.platform;
 	const trimmed = binary.trim();
 	if (!trimmed) {
 		return false;
 	}
 	if (trimmed.includes("/") || trimmed.includes("\\")) {
-		return canAccessPath(trimmed);
+		return canAccessPath(trimmed, platform);
 	}
 
-	const pathEntries = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+	const pathEntries = (getEnvironmentValue(env, "PATH", platform) ?? "")
+		.split(platform === "win32" ? ";" : delimiter)
+		.filter(Boolean);
 	if (pathEntries.length === 0) {
 		return false;
 	}
 
-	if (process.platform === "win32") {
-		const candidates = getWindowsExecutableCandidates(trimmed);
+	if (platform === "win32") {
+		const candidates = getWindowsExecutableCandidates(trimmed, env);
 		for (const entry of pathEntries) {
 			for (const candidate of candidates) {
-				if (canAccessPath(join(entry, candidate))) {
+				if (canAccessPath(join(entry, candidate), platform)) {
 					return true;
 				}
 			}
@@ -70,7 +90,7 @@ export function isBinaryAvailableOnPath(binary: string): boolean {
 	}
 
 	for (const entry of pathEntries) {
-		if (canAccessPath(join(entry, trimmed))) {
+		if (canAccessPath(join(entry, trimmed), platform)) {
 			return true;
 		}
 	}

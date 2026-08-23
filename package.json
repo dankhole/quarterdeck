@@ -46,10 +46,11 @@
   },
   "scripts": {
     "clean": "node scripts/clean.mjs",
-    "install:all": "npm install && npm --prefix web-ui install",
+    "bootstrap": "node scripts/dependency-workflow.mjs bootstrap",
+    "install:all": "node scripts/dependency-workflow.mjs bootstrap",
     "build": "npm run clean && npm run web:build && node scripts/build.mjs",
     "dogfood": "node scripts/dogfood.mjs",
-    "link": "npm run build && npm link",
+    "link": "node scripts/dependency-workflow.mjs link",
     "unlink": "npm unlink -g quarterdeck",
     "dev": "node scripts/dev-runtime.mjs",
     "dev:full": "node scripts/dev-full.mjs",

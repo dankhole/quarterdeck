@@ -103,5 +103,4 @@ export {
 	resolveTaskCwd,
 	resolveTaskWorkingDirectory,
 } from "./task-worktree";
-export { listTurbopackNodeModulesSymlinkSkipPaths } from "./task-worktree-turbopack";
 export { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "./turn-checkpoints";

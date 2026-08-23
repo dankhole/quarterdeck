@@ -1,7 +1,25 @@
 import * as fs from "node:fs";
-import * as pty from "node-pty";
+import { createRequire } from "node:module";
+import type * as NodePty from "node-pty";
 
 import { buildWindowsCmdArgsCommandLine, resolveWindowsComSpec, shouldUseWindowsCmdLaunch } from "../core";
+import { classifyPtySpawnFailure, preflightPtyLaunch } from "./pty-runtime-health";
+
+const require = createRequire(import.meta.url);
+let nodePtyModule: typeof NodePty | null = null;
+let nodePtySpawnOverride: typeof NodePty.spawn | null = null;
+
+function getNodePtySpawn(): typeof NodePty.spawn {
+	if (nodePtySpawnOverride) return nodePtySpawnOverride;
+	nodePtyModule ??= require("node-pty") as typeof NodePty;
+	return nodePtyModule.spawn;
+}
+
+export const _testing = {
+	setNodePtySpawnOverride(spawn: typeof NodePty.spawn | null): void {
+		nodePtySpawnOverride = spawn;
+	},
+};
 
 export interface PtyExitEvent {
 	exitCode: number;
@@ -33,7 +51,7 @@ interface NodePtyCustomWriteStream {
 	_processWriteQueue: () => void;
 }
 
-interface NodePtyWithWriteStream extends pty.IPty {
+interface NodePtyWithWriteStream extends NodePty.IPty {
 	_writeStream?: unknown;
 }
 
@@ -90,7 +108,7 @@ function isIgnorablePtyResizeError(error: unknown): boolean {
 	return error.message.toLowerCase().includes("already exited");
 }
 
-function installNodePtyWriteErrorGuard(ptyProcess: pty.IPty): void {
+function installNodePtyWriteErrorGuard(ptyProcess: NodePty.IPty): void {
 	const writeStream = (ptyProcess as NodePtyWithWriteStream)._writeStream;
 	if (!isNodePtyCustomWriteStream(writeStream)) {
 		return;
@@ -131,7 +149,7 @@ function installNodePtyWriteErrorGuard(ptyProcess: pty.IPty): void {
 	};
 }
 
-function terminatePtyProcess(ptyProcess: pty.IPty): void {
+function terminatePtyProcess(ptyProcess: NodePty.IPty): void {
 	const pid = ptyProcess.pid;
 	ptyProcess.kill();
 	if (process.platform !== "win32" && Number.isFinite(pid) && pid > 0) {
@@ -144,12 +162,12 @@ function terminatePtyProcess(ptyProcess: pty.IPty): void {
 }
 
 export class PtySession {
-	private readonly ptyProcess: pty.IPty;
+	private readonly ptyProcess: NodePty.IPty;
 	private interrupted = false;
 	private exited = false;
 
 	private constructor(
-		ptyProcess: pty.IPty,
+		ptyProcess: NodePty.IPty,
 		private readonly onDataCallback?: (chunk: Buffer) => void,
 		private readonly onExitCallback?: (event: PtyExitEvent) => void,
 	) {
@@ -171,7 +189,8 @@ export class PtySession {
 		const useWindowsShellLaunch = shouldUseWindowsCmdLaunch(binary, process.platform, launchEnv);
 		const spawnBinary = useWindowsShellLaunch ? resolveWindowsComSpec(launchEnv) : binary;
 		const spawnArgs = useWindowsShellLaunch ? buildWindowsCmdArgsCommandLine(binary, normalizedArgs) : normalizedArgs;
-		const ptyOptions: pty.IPtyForkOptions = {
+		preflightPtyLaunch({ binary, cwd, env: launchEnv, platform: process.platform });
+		const ptyOptions: NodePty.IPtyForkOptions = {
 			name: terminalName,
 			cwd,
 			env,
@@ -180,7 +199,12 @@ export class PtySession {
 			encoding: null,
 		};
 
-		const ptyProcess = pty.spawn(spawnBinary, spawnArgs, ptyOptions);
+		let ptyProcess: NodePty.IPty;
+		try {
+			ptyProcess = getNodePtySpawn()(spawnBinary, spawnArgs, ptyOptions);
+		} catch (error) {
+			throw classifyPtySpawnFailure(error, { binary, cwd, env: launchEnv, platform: process.platform });
+		}
 		installNodePtyWriteErrorGuard(ptyProcess);
 		return new PtySession(ptyProcess, onData, onExit);
 	}

@@ -11,7 +11,7 @@ Use the repo-owned agent lab instead of `npm run dev`, `npm run dev:full`, `npm 
 
 Run `npm run --silent agent:lab -- start --name <short-name> --json`. Parse the returned manifest and retain `runId`, `projectUrl`, `browserConfigPath`, `browserOutputPath`, `browserSession`, `hostEventLedgerPath`, and `forbiddenHostLaunchLogPath`.
 
-If Chromium has not been installed for this clone, ask before downloading it, then run `npm run agent:browser -- install-browser chromium`. The wrapper stores browser binaries in the primary checkout's ignored cache so linked worktrees reuse one download; browser profiles, daemon state, and artifacts remain worktree-local. Do not invoke `playwright-cli` directly.
+If Chromium has not been installed for this clone, ask before downloading it, then run `npm run agent:browser -- install-browser chromium`. The wrapper stores only browser binaries under Git's common directory at `quarterdeck/agent-lab/playwright-browsers`, outside every `node_modules`, so linked worktrees reuse one download and dependency reinstalls cannot remove it. A complete symlink-free legacy cache may be copied there on first use without deleting the source. Browser profiles, daemon state, and artifacts remain worktree-local. Do not invoke `playwright-cli` directly.
 
 Open the run once with configuration:
 

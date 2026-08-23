@@ -137,6 +137,21 @@ export function evaluateDiagnosticSnapshot(
 	const findings: DiagnosticFinding[] = [];
 	const now = Date.now();
 	const projectSessions = currentProjectSessions(snapshot);
+	const terminalRuntimeEvidenceIds = evidenceIds(records, ["terminal.runtime_dependency_missing"]);
+	let terminalRuntimeFindingAdded = false;
+	if (terminalRuntimeEvidenceIds.length > 0) {
+		findings.push(
+			createFinding(
+				"TERMINAL_RUNTIME_DEPENDENCY_MISSING",
+				"error",
+				"Quarterdeck’s terminal runtime dependency is incomplete",
+				"An installed node-pty runtime asset is unavailable. Restore both Quarterdeck dependency trees, relink the development checkout if applicable, and restart Quarterdeck before starting another task.",
+				{},
+				terminalRuntimeEvidenceIds,
+			),
+		);
+		terminalRuntimeFindingAdded = true;
+	}
 	for (const record of latestStartupRecoveryRecords(records)) {
 		if (!isUnresolvedStartupRecoveryExhaustion(record, projectSessions)) continue;
 		findings.push(
@@ -218,6 +233,24 @@ export function evaluateDiagnosticSnapshot(
 					),
 				);
 			}
+		}
+		if (
+			provider.name === "terminal_runtime" &&
+			isRecord(provider.data) &&
+			booleanValue(provider.data.available) === false &&
+			!terminalRuntimeFindingAdded
+		) {
+			findings.push(
+				createFinding(
+					"TERMINAL_RUNTIME_DEPENDENCY_MISSING",
+					"error",
+					"Quarterdeck’s terminal runtime dependency is incomplete",
+					"An installed node-pty runtime asset is unavailable. Restore both Quarterdeck dependency trees, relink the development checkout if applicable, and restart Quarterdeck before starting another task.",
+					{},
+					terminalRuntimeEvidenceIds,
+				),
+			);
+			terminalRuntimeFindingAdded = true;
 		}
 		if (provider.name === "projects" && isRecord(provider.data) && Array.isArray(provider.data.sessions)) {
 			if (Array.isArray(provider.data.managedProjects)) {

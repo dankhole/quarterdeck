@@ -12,13 +12,15 @@
 ## Install
 
 ```bash
-npm run install:all
+npm run bootstrap
 ```
+
+Quarterdeck has two independent dependency trees: the repository root and `web-ui/`. Bootstrap runs `npm ci` for both. Task worktrees start without shared `node_modules`; run bootstrap (or the individual `npm ci` commands) inside a worktree before building or testing there. Stop a globally linked Quarterdeck runtime before reinstalling or relinking its checkout.
 
 ## Quick reference
 
 ```bash
-npm run install:all      # Install root + web-ui deps
+npm run bootstrap        # Locked install of root + web-ui deps
 npm run dev              # Runtime server (watch mode, port 3500)
 npm run dev:full         # Runtime + web UI together
 npm run web:dev          # Web UI dev server (Vite HMR, port 4173)
@@ -225,6 +227,8 @@ After cloning and installing dependencies, create/update the global CLI link fro
 ```bash
 npm run link
 ```
+
+`npm run link` does not install dependencies. It checks both dependency trees, builds, and then updates the development symlink. If either tree is missing, it prints the exact `npm ci` remediation. If the globally linked runtime is currently running from this checkout, stop it before relinking.
 
 Verify:
 

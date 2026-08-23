@@ -102,6 +102,25 @@ describe("diagnostic snapshots, doctor, and bundles", () => {
 		expect(JSON.stringify(snapshot.providers[1])).not.toContain("/private/state");
 	});
 
+	it("reports a crash-surviving terminal runtime failure without a live provider", () => {
+		const snapshot: DiagnosticSnapshot = {
+			version: 1,
+			runtimeInstanceId: "runtime-test",
+			capturedAt: 2_000,
+			providers: [],
+		};
+		const runtimeFailure = record("terminal.runtime_dependency_missing", 1, {
+			payload: { issue: "native_module_missing", platform: "darwin", arch: "arm64" },
+		});
+
+		expect(evaluateDiagnosticSnapshot(snapshot, [runtimeFailure])).toEqual([
+			expect.objectContaining({
+				code: "TERMINAL_RUNTIME_DEPENDENCY_MISSING",
+				evidenceRecordIds: [runtimeFailure.id],
+			}),
+		]);
+	});
+
 	it("removes findings explicitly attributed outside the requested scope", () => {
 		const finding = (projectId: string, taskId: string) => ({
 			code: `TEST_${projectId}_${taskId}`,
@@ -174,6 +193,20 @@ describe("diagnostic snapshots, doctor, and bundles", () => {
 								mirror: {},
 							},
 						],
+					},
+				},
+				{
+					name: "terminal_runtime",
+					status: "completed",
+					durationMs: 1,
+					data: {
+						available: false,
+						issue: "spawn_helper_missing",
+						platform: "darwin",
+						arch: "arm64",
+						nativeModuleAvailable: true,
+						spawnHelperRequired: true,
+						spawnHelperAvailable: false,
 					},
 				},
 				{
@@ -293,6 +326,7 @@ describe("diagnostic snapshots, doctor, and bundles", () => {
 				"PROJECT_STATE_LOAD_FAILED",
 				"RUNTIME_STREAM_RECONNECT_LOOP",
 				"DIAGNOSTIC_PROVIDER_TIMED_OUT",
+				"TERMINAL_RUNTIME_DEPENDENCY_MISSING",
 			]),
 		);
 	});

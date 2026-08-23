@@ -27,7 +27,12 @@ import {
 import { createRuntimeDiagnostics, type RuntimeDiagnostics } from "./diagnostics";
 import type { RuntimeStateHub } from "./server";
 import type { TerminalSessionManager } from "./terminal";
-import { killOrphanedAgentProcesses } from "./terminal";
+import { killOrphanedAgentProcesses } from "./terminal/orphan-cleanup";
+import {
+	inspectPtyRuntimeHealth,
+	PTY_RUNTIME_REMEDIATION,
+	PtyRuntimeDependencyError,
+} from "./terminal/pty-runtime-health";
 import { runGit } from "./workdir/git-utils";
 
 interface CliOptions {
@@ -571,7 +576,6 @@ async function startServer(hostLaunch: {
 	capabilities: RuntimeCapabilities;
 	simulationConfigPath: string | null;
 }): Promise<RuntimeServerHandle> {
-	const modules = await loadRuntimeStartupModules();
 	const warn = createRuntimeWarnLogger();
 	const diagnostics = await createRuntimeDiagnostics({
 		host: getQuarterdeckRuntimeHost(),
@@ -581,6 +585,30 @@ async function startServer(hostLaunch: {
 	});
 	setRuntimeDiagnosticLogSink(diagnostics);
 	try {
+		diagnostics.registerSnapshotProvider({
+			name: "terminal_runtime",
+			capture: () => inspectPtyRuntimeHealth(),
+		});
+		const terminalRuntimeHealth = inspectPtyRuntimeHealth();
+		if (!terminalRuntimeHealth.available) {
+			diagnostics.recordEvent(
+				"terminal.runtime_dependency_missing",
+				{
+					issue: terminalRuntimeHealth.issue,
+					platform: terminalRuntimeHealth.platform,
+					arch: terminalRuntimeHealth.arch,
+				},
+				{},
+				{ level: "warn", essential: true },
+			);
+			warn(PTY_RUNTIME_REMEDIATION);
+			throw new PtyRuntimeDependencyError(terminalRuntimeHealth);
+		}
+
+		// Keep node-pty-owning server modules behind the standalone on-disk
+		// health check. A missing native addon must remain diagnosable instead
+		// of failing while the runtime import graph is still being evaluated.
+		const modules = await loadRuntimeStartupModules();
 		await runRuntimeStartupCleanup(modules, warn);
 		const startupAgentCleanup = startOrphanedAgentCleanup(warn);
 		const bootstrap = await createRuntimeBootstrapState(modules, warn, startupAgentCleanup, diagnostics);

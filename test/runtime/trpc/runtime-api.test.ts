@@ -635,6 +635,31 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(startTaskSession).toHaveBeenCalledTimes(1);
 	});
 
+	it("checks terminal runtime health before creating a task worktree", async () => {
+		const runtimeFailure = new Error("terminal runtime unavailable");
+		const deps = {
+			...createDeps(),
+			assertTerminalRuntimeAvailable: vi.fn(() => {
+				throw runtimeFailure;
+			}),
+		};
+
+		await expect(
+			startTaskSessionThroughService(
+				defaultScope,
+				{
+					taskId: "task-1",
+					baseRef: "main",
+					prompt: "Do something",
+					useWorktree: true,
+				},
+				deps,
+			),
+		).rejects.toBe(runtimeFailure);
+		expect(taskWorktreeMocks.resolveTaskCwd).not.toHaveBeenCalled();
+		expect(projectStateMocks.loadProjectState).not.toHaveBeenCalled();
+	});
+
 	it("falls back to projectPath when non-worktree task's persisted directory is deleted", async () => {
 		const card = createCard({ workingDirectory: "/tmp/deleted-dir", useWorktree: false });
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);

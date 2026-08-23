@@ -81,11 +81,11 @@ Clone the repository, install dependencies for the runtime and web UI, then link
 ```bash
 git clone https://github.com/dankhole/quarterdeck.git
 cd quarterdeck
-npm run install:all
+npm run bootstrap
 npm run link
 ```
 
-`npm run link` runs a production build and then `npm link`, so the global `quarterdeck` command points at this checkout.
+`npm run bootstrap` performs locked installs for both the runtime and the separate web UI dependency tree. `npm run link` verifies those prerequisites, runs a production build, and then creates the development symlink used by the global `quarterdeck` command. Stop a Quarterdeck runtime launched from this linked checkout before bootstrapping or relinking; the scripts refuse to replace files underneath that live process.
 
 Verify the linked command:
 
@@ -121,7 +121,7 @@ npm run unlink
 
 3. Start agents.
 
-   Starting a card launches the configured agent. By default, Quarterdeck creates an isolated git worktree for the task, mirrors common ignored dependencies such as `node_modules`, and injects worktree context so the agent understands where it is working. If your workflow modifies ignored files directly, worktree symlinks can be disabled in settings.
+   Starting a card launches the configured agent. By default, Quarterdeck creates an isolated git worktree for the task, mirrors eligible ignored setup paths, and injects worktree context so the agent understands where it is working. Mutable installed dependency directories such as `node_modules` are never shared; install task-specific dependencies inside the worktree when needed. If your workflow modifies other ignored files directly, worktree symlinks can be disabled in settings.
 
 4. Monitor progress.
 
@@ -143,7 +143,8 @@ npm run unlink
 
 | Command | Purpose |
 | --- | --- |
-| `npm run install:all` | Install root and web UI dependencies. |
+| `npm run bootstrap` | Locked install of root and web UI dependencies; refuses to run beneath an active linked runtime. |
+| `npm run install:all` | Backward-compatible alias for `npm run bootstrap`. |
 | `npm run link` | Build the app and link the local `quarterdeck` CLI globally. |
 | `npm run unlink` | Remove the global `quarterdeck` link. |
 | `npm run dev` | Run the runtime server in watch mode on port 3500. |

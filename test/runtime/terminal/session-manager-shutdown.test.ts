@@ -218,7 +218,7 @@ describe("task session spawn failure", () => {
 		expect(summary?.pid).toBeNull();
 	});
 
-	it("includes 'not found' in error message for ENOENT failures", async () => {
+	it("does not mislabel an unclassified ENOENT as a missing agent command", async () => {
 		ptySessionSpawnMock.mockImplementation(() => {
 			throw new Error("spawn ENOENT");
 		});
@@ -234,7 +234,7 @@ describe("task session spawn failure", () => {
 				cwd: "/tmp/task-1",
 				prompt: "Fix the bug",
 			}),
-		).rejects.toThrow("not found");
+		).rejects.toThrow("Error: spawn ENOENT");
 	});
 
 	it("calls launch cleanup on spawn failure", async () => {

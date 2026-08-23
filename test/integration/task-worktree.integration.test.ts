@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -107,7 +107,7 @@ describe.sequential("task-worktree integration", () => {
 		});
 	});
 
-	it("keeps symlinked directory-only ignored paths ignored in task worktrees", async () => {
+	it("mirrors safe ignored paths without sharing root node_modules", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-root-ignore-");
 			try {
@@ -141,14 +141,11 @@ describe.sequential("task-worktree integration", () => {
 				const nextPath = join(ensured.path, ".next");
 				const nodeModulesPath = join(ensured.path, "node_modules");
 				expectMirroredPathBehavior(nextPath);
-				expectMirroredPathBehavior(nodeModulesPath);
+				expect(existsSync(nodeModulesPath)).toBe(false);
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".next"])).toBe("");
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", "node_modules"])).toBe("");
 				if (existsSync(nextPath)) {
 					expect(runGit(ensured.path, ["check-ignore", "-v", ".next"])).toContain("info/exclude");
-				}
-				if (existsSync(nodeModulesPath)) {
-					expect(runGit(ensured.path, ["check-ignore", "-v", "node_modules"])).toContain("info/exclude");
 				}
 			} finally {
 				cleanup();
@@ -211,7 +208,7 @@ describe.sequential("task-worktree integration", () => {
 				expect(existsSync(join(ensured.path, "src", "Service", "bin"))).toBe(false);
 				expect(existsSync(join(ensured.path, "src", "Service", "obj"))).toBe(false);
 				expect(existsSync(join(ensured.path, "tests", "ServiceTests", "TestResults"))).toBe(false);
-				expectMirroredPathBehavior(join(ensured.path, "node_modules"));
+				expect(existsSync(join(ensured.path, "node_modules"))).toBe(false);
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", "src/Service/bin"])).toBe("");
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", "src/Service/obj"])).toBe("");
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", "tests/ServiceTests/TestResults"])).toBe("");
@@ -221,7 +218,7 @@ describe.sequential("task-worktree integration", () => {
 		});
 	});
 
-	it("skips symlinking root node_modules for root Next apps without a next config file", async () => {
+	it("removes an existing worktree node_modules symlink after its ignore rule changes", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-root-turbopack-");
 			try {
@@ -233,16 +230,10 @@ describe.sequential("task-worktree integration", () => {
 				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
 				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
-				writeFileSync(
-					join(repoPath, "package.json"),
-					'{\n  "dependencies": {\n    "next": "15.0.0"\n  },\n  "scripts": {\n    "dev": "next dev"\n  }\n}\n',
-					"utf8",
-				);
-				writeFileSync(join(repoPath, ".gitignore"), "/.next/\n/node_modules/\n", "utf8");
-				mkdirSync(join(repoPath, ".next"), { recursive: true });
+				writeFileSync(join(repoPath, "package.json"), '{\n  "private": true\n}\n', "utf8");
+				writeFileSync(join(repoPath, ".gitignore"), "/node_modules/\n", "utf8");
 				mkdirSync(join(repoPath, "node_modules"), { recursive: true });
-				writeFileSync(join(repoPath, ".next", "BUILD_ID"), "build\n", "utf8");
-				writeFileSync(join(repoPath, "node_modules", "package.json"), '{\n  "name": "fixture"\n}\n', "utf8");
+				writeFileSync(join(repoPath, "node_modules", "sentinel.txt"), "primary dependencies intact\n", "utf8");
 
 				runGit(repoPath, ["add", "README.md", "package.json", ".gitignore"]);
 				runGit(repoPath, ["commit", "-m", "init"]);
@@ -257,19 +248,35 @@ describe.sequential("task-worktree integration", () => {
 					throw new Error("Task worktree was not created");
 				}
 
-				const nextPath = join(ensured.path, ".next");
 				const nodeModulesPath = join(ensured.path, "node_modules");
-				expectMirroredPathBehavior(nextPath);
 				expect(existsSync(nodeModulesPath)).toBe(false);
-				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".next"])).toBe("");
-				expect(runGit(ensured.path, ["status", "--porcelain", "--", "node_modules"])).toBe("");
+
+				symlinkSync(
+					join(repoPath, "node_modules"),
+					nodeModulesPath,
+					process.platform === "win32" ? "junction" : "dir",
+				);
+				expect(lstatSync(nodeModulesPath).isSymbolicLink()).toBe(true);
+				unlinkSync(join(repoPath, ".gitignore"));
+				unlinkSync(join(ensured.path, ".gitignore"));
+
+				const ensuredAgain = await ensureTaskWorktreeIfDoesntExist({
+					cwd: repoPath,
+					taskId: "task-root-turbopack",
+					baseRef: "HEAD",
+				});
+				expect(ensuredAgain.ok).toBe(true);
+				expect(existsSync(nodeModulesPath)).toBe(false);
+				expect(readFileSync(join(repoPath, "node_modules", "sentinel.txt"), "utf8")).toBe(
+					"primary dependencies intact\n",
+				);
 			} finally {
 				cleanup();
 			}
 		});
 	});
 
-	it("skips only nested Turbopack app node_modules while keeping root node_modules symlinked", async () => {
+	it("does not share node_modules at root or nested package roots", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-nested-turbopack-");
 			try {
@@ -283,11 +290,7 @@ describe.sequential("task-worktree integration", () => {
 
 				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
 				writeFileSync(join(repoPath, "package.json"), '{\n  "private": true\n}\n', "utf8");
-				writeFileSync(
-					join(appPath, "package.json"),
-					'{\n  "dependencies": {\n    "next": "15.0.0"\n  },\n  "scripts": {\n    "dev": "next dev --turbopack"\n  }\n}\n',
-					"utf8",
-				);
+				writeFileSync(join(appPath, "package.json"), '{\n  "private": true\n}\n', "utf8");
 				writeFileSync(join(repoPath, ".gitignore"), "/node_modules/\n/apps/web/node_modules/\n", "utf8");
 				mkdirSync(join(repoPath, "node_modules"), { recursive: true });
 				mkdirSync(join(appPath, "node_modules"), { recursive: true });
@@ -309,13 +312,20 @@ describe.sequential("task-worktree integration", () => {
 
 				const rootNodeModulesPath = join(ensured.path, "node_modules");
 				const appNodeModulesPath = join(ensured.path, "apps", "web", "node_modules");
-				expectMirroredPathBehavior(rootNodeModulesPath);
+				expect(existsSync(rootNodeModulesPath)).toBe(false);
 				expect(existsSync(appNodeModulesPath)).toBe(false);
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", "node_modules"])).toBe("");
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", "apps/web/node_modules"])).toBe("");
-				if (existsSync(rootNodeModulesPath)) {
-					expect(runGit(ensured.path, ["check-ignore", "-v", "node_modules"])).toContain("info/exclude");
-				}
+
+				mkdirSync(appNodeModulesPath, { recursive: true });
+				writeFileSync(join(appNodeModulesPath, "local-install.txt"), "task-owned\n", "utf8");
+				const ensuredAgain = await ensureTaskWorktreeIfDoesntExist({
+					cwd: repoPath,
+					taskId: "task-nested-turbopack",
+					baseRef: "HEAD",
+				});
+				expect(ensuredAgain.ok).toBe(true);
+				expect(readFileSync(join(appNodeModulesPath, "local-install.txt"), "utf8")).toBe("task-owned\n");
 			} finally {
 				cleanup();
 			}

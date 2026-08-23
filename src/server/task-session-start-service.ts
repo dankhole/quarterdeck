@@ -9,7 +9,13 @@ import {
 	type TaskResourceOperationRunner,
 } from "../core";
 import { loadProjectState } from "../state";
-import { cloneStartTaskSessionRequest, type StartTaskSessionRequest, type TerminalSessionManager } from "../terminal";
+import {
+	assertPtyRuntimeAvailable,
+	cloneStartTaskSessionRequest,
+	PtyRuntimeDependencyError,
+	type StartTaskSessionRequest,
+	type TerminalSessionManager,
+} from "../terminal";
 import { hasFailedStoredCodexResume, STORED_CODEX_RESUME_FAILED_WARNING } from "../terminal/codex-resume-failure";
 import { pathExists, resolveTaskCwd } from "../workdir";
 
@@ -23,6 +29,7 @@ export interface TaskSessionProjectScope {
 export interface TaskSessionStartServiceDependencies {
 	config: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
 	getScopedTerminalManager: (scope: TaskSessionProjectScope) => Promise<TerminalSessionManager>;
+	assertTerminalRuntimeAvailable?: () => void;
 }
 
 export interface SerializedTaskSessionStartServiceDependencies extends TaskSessionStartServiceDependencies {
@@ -124,6 +131,19 @@ export async function prepareTaskSessionStart(
 	const useWorktree = body.useWorktree !== false;
 	if (useWorktree && !isRuntimeTaskBaseRefResolved({ baseRef: body.baseRef })) {
 		throw new Error("Select a base branch before starting this task.");
+	}
+	try {
+		(deps.assertTerminalRuntimeAvailable ?? assertPtyRuntimeAvailable)();
+	} catch (error) {
+		if (error instanceof PtyRuntimeDependencyError) {
+			log.error("terminal runtime dependency health check failed before task preparation", {
+				taskId: body.taskId,
+				issue: error.health.issue,
+				platform: error.health.platform,
+				arch: error.health.arch,
+			});
+		}
+		throw error;
 	}
 
 	const state = await loadProjectState(projectScope.projectPath);

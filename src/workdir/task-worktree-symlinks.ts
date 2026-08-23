@@ -1,9 +1,8 @@
-import { access, lstat, mkdir, readFile, symlink } from "node:fs/promises";
+import { access, lstat, mkdir, readFile, symlink, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
 import { lockedFileSystem } from "../fs";
 import { getGitStdout, runGit } from "./git-utils";
-import { listTurbopackNodeModulesSymlinkSkipPaths } from "./task-worktree-turbopack";
 
 const QUARTERDECK_MANAGED_EXCLUDE_BLOCK_START = "# quarterdeck-managed-symlinked-ignored-paths:start";
 const QUARTERDECK_MANAGED_EXCLUDE_BLOCK_END = "# quarterdeck-managed-symlinked-ignored-paths:end";
@@ -18,7 +17,7 @@ const SYMLINK_PATH_SEGMENT_BLACKLIST = new Set([
 	".Spotlight-V100",
 	".Trashes",
 ]);
-const MUTABLE_BUILD_OUTPUT_SEGMENT_BLACKLIST = new Set(["bin", "obj", "testresults"]);
+const MUTABLE_WORKTREE_SEGMENT_BLACKLIST = new Set(["bin", "node_modules", "obj", "testresults"]);
 
 type CreateSymlink = (target: string, path: string, type: "dir" | "file" | "junction") => Promise<void>;
 
@@ -65,9 +64,15 @@ function shouldSkipSymlink(relativePath: string): boolean {
 	}
 	return segments.some(
 		(segment) =>
-			SYMLINK_PATH_SEGMENT_BLACKLIST.has(segment) ||
-			MUTABLE_BUILD_OUTPUT_SEGMENT_BLACKLIST.has(segment.toLowerCase()),
+			SYMLINK_PATH_SEGMENT_BLACKLIST.has(segment) || MUTABLE_WORKTREE_SEGMENT_BLACKLIST.has(segment.toLowerCase()),
 	);
+}
+
+function isInstalledDependencyPath(relativePath: string): boolean {
+	return relativePath
+		.split("/")
+		.filter(Boolean)
+		.some((segment) => segment.toLowerCase() === "node_modules");
 }
 
 function isPathWithinRoot(path: string, root: string): boolean {
@@ -102,6 +107,14 @@ async function listIgnoredPaths(repoPath: string): Promise<string[]> {
 		repoPath,
 		USER_GIT_ACTION_OPTIONS,
 	);
+	return output
+		.split("\n")
+		.map((line) => toPlatformRelativePath(line))
+		.filter((line) => line.length > 0);
+}
+
+async function listUntrackedPaths(repoPath: string): Promise<string[]> {
+	const output = await getGitStdout(["ls-files", "--others", "--directory"], repoPath, USER_GIT_ACTION_OPTIONS);
 	return output
 		.split("\n")
 		.map((line) => toPlatformRelativePath(line))
@@ -170,11 +183,30 @@ async function syncManagedIgnoredPathExcludes(repoPath: string, relativePaths: s
 }
 
 export async function syncIgnoredPathsIntoWorktree(repoPath: string, worktreePath: string): Promise<void> {
-	const ignoredPaths = getUniquePaths(await listIgnoredPaths(repoPath)).filter(
-		(relativePath) => !shouldSkipSymlink(relativePath),
-	);
-	const turbopackNodeModulesSkipPaths = new Set(await listTurbopackNodeModulesSymlinkSkipPaths(repoPath));
-	const mirroredIgnoredPaths = ignoredPaths.filter((relativePath) => !turbopackNodeModulesSkipPaths.has(relativePath));
+	const ignoredPaths = getUniquePaths(await listIgnoredPaths(repoPath));
+	const [worktreeIgnoredPaths, worktreeUntrackedPaths] = await Promise.all([
+		listIgnoredPaths(worktreePath),
+		listUntrackedPaths(worktreePath),
+	]);
+	const installedDependencyPaths = getUniquePaths([
+		...ignoredPaths,
+		...worktreeIgnoredPaths,
+		...worktreeUntrackedPaths,
+	]).filter(isInstalledDependencyPath);
+
+	// Older Quarterdeck versions mirrored node_modules into task worktrees. Remove
+	// only those worktree-local links during the next ensure/start; never recurse
+	// into or mutate the dependency tree they reference. Real local directories are
+	// preserved so a task can install and own its dependencies independently.
+	for (const relativePath of installedDependencyPaths) {
+		const targetPath = join(worktreePath, relativePath);
+		const targetStat = await lstat(targetPath).catch(() => null);
+		if (targetStat?.isSymbolicLink()) {
+			await unlink(targetPath);
+		}
+	}
+
+	const mirroredIgnoredPaths = ignoredPaths.filter((relativePath) => !shouldSkipSymlink(relativePath));
 
 	await syncManagedIgnoredPathExcludes(repoPath, mirroredIgnoredPaths);
 	for (const relativePath of mirroredIgnoredPaths) {

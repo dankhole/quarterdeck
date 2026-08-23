@@ -25,6 +25,21 @@ export {
 } from "./hook-runtime-context";
 export { killOrphanedAgentProcesses } from "./orphan-cleanup";
 export { stripAnsi } from "./output-utils";
+export {
+	assertPtyRuntimeAvailable,
+	classifyPtySpawnFailure,
+	inspectPtyRuntimeHealth,
+	PTY_RUNTIME_REMEDIATION,
+	PtyLaunchCommandError,
+	PtyLaunchCwdError,
+	PtyLaunchError,
+	type PtyLaunchErrorCode,
+	PtyRuntimeDependencyError,
+	type PtyRuntimeHealth,
+	type PtyRuntimeHealthIssue,
+	PtySpawnError,
+	preflightPtyLaunch,
+} from "./pty-runtime-health";
 export { type PtyExitEvent, PtySession, type SpawnPtySessionRequest } from "./pty-session";
 export {
 	TerminalSessionManager,

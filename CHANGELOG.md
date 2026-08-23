@@ -7,6 +7,13 @@
 - Backlog cards now expose a direct Trash action alongside Start, using the same confirmation and cleanup workflow as every other move to Trash.
 - Task cards in the Board side panel are draggable again for reordering and allowed cross-column moves, so the sidebar supports the primary board interactions without returning to the full-board view.
 
+### Fix: isolate task dependencies and diagnose terminal runtime damage
+
+- Task worktrees no longer mirror any root or nested `node_modules` directory from the primary checkout. Existing dependency symlinks are detached on the next ensure/start without following or modifying their targets, while other eligible ignored setup paths continue to mirror.
+- Terminal startup now preflights the launch directory, selected executable, and installed `node-pty` runtime assets as distinct failure domains. Missing runtime assets fail before avoidable worktree creation, produce actionable recovery guidance, emit metadata-only warning diagnostics, and appear as a dedicated Doctor finding instead of being mislabeled as a missing agent CLI.
+- `npm run bootstrap` installs both locked dependency trees, while `npm run link` verifies both trees and refuses to rebuild or relink the checkout underneath its active globally linked Quarterdeck runtime.
+- Agent Lab now stores only its shared Playwright browser binaries under Git's common directory, outside every `node_modules` tree, so Chromium downloads survive dependency reinstalls, builds, relinks, and task-worktree cleanup. The first browser invocation atomically copies a complete, symlink-free legacy cache without deleting it; browser profiles, daemon state, disposable state, and artifacts remain worktree-local.
+
 ### Fix: recover stale review chats on startup
 
 - Review tasks that still referenced an interactive agent process from the previous runtime now enter the existing bounded startup-recovery coordinator, including completed-hook and attention states that previously stayed in Review with an empty terminal until manually restarted.

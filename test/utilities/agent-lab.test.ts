@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 
@@ -14,9 +14,13 @@ import {
 } from "../../scripts/agent-lab/fake-agent-protocol";
 import { resolveLoopbackPort } from "../../scripts/agent-lab/loopback-port";
 import {
+	AGENT_LAB_BROWSER_INSTALL_COMMAND,
 	assertSafeRunId,
 	createAgentLabRunId,
+	getAgentBrowserLocalPaths,
 	getAgentLabBrowserCachePath,
+	getAgentLabBrowserCachePaths,
+	prepareAgentLabBrowserCache,
 	readAgentLabManifest,
 } from "../../scripts/agent-lab/paths";
 
@@ -24,13 +28,128 @@ describe("agent-lab browser cache", () => {
 	it("shares browser binaries through the primary checkout", () => {
 		expect(
 			getAgentLabBrowserCachePath("/repo/.quarterdeck/worktrees/task/quarterdeck", "/repo/quarterdeck/.git"),
-		).toBe("/repo/quarterdeck/web-ui/node_modules/.cache/agent-lab-playwright");
+		).toBe("/repo/quarterdeck/.git/quarterdeck/agent-lab/playwright-browsers");
 	});
 
 	it("falls back to the active checkout for nonstandard Git layouts", () => {
 		expect(getAgentLabBrowserCachePath("/repo/quarterdeck", "/repo/quarterdeck.git")).toBe(
-			"/repo/quarterdeck/web-ui/node_modules/.cache/agent-lab-playwright",
+			"/repo/quarterdeck.git/quarterdeck/agent-lab/playwright-browsers",
 		);
+	});
+
+	it("keeps the durable cache outside every node_modules tree", () => {
+		const paths = getAgentLabBrowserCachePaths(
+			"/repo/.quarterdeck/worktrees/task/quarterdeck",
+			"/repo/quarterdeck/.git",
+		);
+		expect(paths.stablePath.split("/")).not.toContain("node_modules");
+		expect(paths.legacyPath).toBe("/repo/quarterdeck/web-ui/node_modules/.cache/agent-lab-playwright");
+	});
+
+	it("resolves the same cache for two worktrees sharing a Git common directory", () => {
+		const commonDirectory = "/repo/quarterdeck/.git";
+		expect(getAgentLabBrowserCachePath("/worktrees/one/quarterdeck", commonDirectory)).toBe(
+			getAgentLabBrowserCachePath("/worktrees/two/quarterdeck", commonDirectory),
+		);
+	});
+
+	it("keeps browser profiles, daemon state, and artifacts worktree-local", () => {
+		const first = getAgentBrowserLocalPaths("/worktrees/one/quarterdeck");
+		const second = getAgentBrowserLocalPaths("/worktrees/two/quarterdeck");
+		expect(first).toEqual({
+			artifactRoot: "/worktrees/one/quarterdeck/test-results/agent-lab",
+			browserHomePath: "/worktrees/one/quarterdeck/test-results/agent-lab/browser-home",
+			daemonSessionPath: "/worktrees/one/quarterdeck/test-results/agent-lab/browser-daemon",
+		});
+		expect(second.artifactRoot).not.toBe(first.artifactRoot);
+	});
+
+	it("survives root and web dependency reinstalls", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-browser-cache-survival-"));
+		const repoRoot = join(root, "repo");
+		const commonDirectory = join(repoRoot, ".git");
+		try {
+			await mkdir(join(repoRoot, "node_modules"), { recursive: true });
+			await mkdir(join(repoRoot, "web-ui", "node_modules"), { recursive: true });
+			const prepared = await prepareAgentLabBrowserCache(repoRoot, commonDirectory);
+			const sentinelPath = join(prepared.path, "cache-sentinel");
+			await writeFile(sentinelPath, "browser-binary-cache\n", "utf8");
+			await rm(join(repoRoot, "node_modules"), { recursive: true, force: true });
+			await rm(join(repoRoot, "web-ui", "node_modules"), { recursive: true, force: true });
+			expect(await readFile(sentinelPath, "utf8")).toBe("browser-binary-cache\n");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("migrates a complete legacy Chromium cache without deleting it", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-browser-cache-migration-"));
+		const repoRoot = join(root, "repo");
+		const commonDirectory = join(repoRoot, ".git");
+		const paths = getAgentLabBrowserCachePaths(repoRoot, commonDirectory);
+		const legacyInstallation = join(paths.legacyPath, "chromium-1237");
+		try {
+			await mkdir(legacyInstallation, { recursive: true });
+			await writeFile(join(legacyInstallation, "INSTALLATION_COMPLETE"), "", "utf8");
+			await writeFile(join(legacyInstallation, "browser-binary"), "complete\n", "utf8");
+
+			const prepared = await prepareAgentLabBrowserCache(repoRoot, commonDirectory);
+			expect(prepared).toEqual({ path: paths.stablePath, status: "migrated" });
+			const launchPreparation = await prepareAgentLabBrowserCache(repoRoot, commonDirectory);
+			expect(launchPreparation).toEqual({ path: prepared.path, status: "ready" });
+			expect(await readFile(join(paths.stablePath, "chromium-1237", "browser-binary"), "utf8")).toBe("complete\n");
+			expect(await readFile(join(legacyInstallation, "browser-binary"), "utf8")).toBe("complete\n");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("does not migrate a partial Playwright installation", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-browser-cache-partial-"));
+		const repoRoot = join(root, "repo");
+		const commonDirectory = join(repoRoot, ".git");
+		const paths = getAgentLabBrowserCachePaths(repoRoot, commonDirectory);
+		try {
+			await mkdir(join(paths.legacyPath, "chromium-1237"), { recursive: true });
+			await writeFile(join(paths.legacyPath, "chromium-1237", "browser-binary"), "partial\n", "utf8");
+			const prepared = await prepareAgentLabBrowserCache(repoRoot, commonDirectory);
+			expect(prepared).toEqual({ path: paths.stablePath, status: "empty" });
+			expect(await readFile(join(paths.legacyPath, "chromium-1237", "browser-binary"), "utf8")).toBe("partial\n");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects a symlink at the stable cache path without following it", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-browser-cache-symlink-"));
+		const repoRoot = join(root, "repo");
+		const commonDirectory = join(repoRoot, ".git");
+		const paths = getAgentLabBrowserCachePaths(repoRoot, commonDirectory);
+		const externalDirectory = join(root, "external-cache-target");
+		try {
+			await mkdir(externalDirectory, { recursive: true });
+			await writeFile(join(externalDirectory, "sentinel"), "untouched\n", "utf8");
+			await mkdir(join(commonDirectory, "quarterdeck", "agent-lab"), { recursive: true });
+			await symlink(externalDirectory, paths.stablePath, process.platform === "win32" ? "junction" : "dir");
+
+			await expect(prepareAgentLabBrowserCache(repoRoot, commonDirectory)).rejects.toThrow(
+				"must be a real directory",
+			);
+			expect(await readFile(join(externalDirectory, "sentinel"), "utf8")).toBe("untouched\n");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("keeps the explicit install flow when no browser cache exists", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-browser-cache-empty-"));
+		try {
+			const prepared = await prepareAgentLabBrowserCache(join(root, "repo"), join(root, "repo", ".git"));
+			expect(prepared.status).toBe("empty");
+			expect(AGENT_LAB_BROWSER_INSTALL_COMMAND).toBe("npm run agent:browser -- install-browser chromium");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 });
 

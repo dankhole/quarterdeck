@@ -9,6 +9,7 @@ import type {
 	AgentOutputTransitionInspectionPredicate,
 } from "./agent-session-adapters";
 import type { HookEventOrderState } from "./hook-event-order";
+import { PtyLaunchError, PtySpawnError } from "./pty-runtime-health";
 import type { PtySession } from "./pty-session";
 import { markTaskSessionLaunchSuperseded, type TaskSessionLaunchMonitor } from "./session-launch-readiness";
 import type { TerminalProtocolFilterState } from "./terminal-protocol-filter";
@@ -125,14 +126,9 @@ export function normalizeDimension(value: number | undefined, fallback: number):
 
 /** Format a PTY spawn failure for display. */
 export function formatSpawnFailure(binary: string, error: unknown, context: "task" | "shell"): string {
-	const message = error instanceof Error ? error.message : String(error);
-	const normalized = message.toLowerCase();
-	if (normalized.includes("posix_spawnp failed") || normalized.includes("enoent")) {
-		return context === "task"
-			? `Failed to launch "${binary}". Command not found. Install a supported agent CLI and select it in Settings.`
-			: `Failed to launch "${binary}". Command not found on this system.`;
-	}
-	return `Failed to launch "${binary}": ${message}`;
+	const classified = error instanceof PtyLaunchError ? error : new PtySpawnError(error);
+	const subject = context === "task" ? "task terminal" : "shell terminal";
+	return `Failed to launch ${subject} "${binary}". ${classified.message}`;
 }
 
 export function buildTerminalEnvironment(

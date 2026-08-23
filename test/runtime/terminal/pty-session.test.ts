@@ -14,6 +14,7 @@ const ptyMocks = vi.hoisted(() => ({
 	spawn: vi.fn(),
 }));
 const fsWriteMock = vi.hoisted(() => vi.fn<MockFsWrite>());
+const preflightPtyLaunchMock = vi.hoisted(() => vi.fn());
 
 vi.mock("node:fs", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:fs")>();
@@ -23,11 +24,16 @@ vi.mock("node:fs", async (importOriginal) => {
 	};
 });
 
-vi.mock("node-pty", () => ({
-	spawn: ptyMocks.spawn,
-}));
+vi.mock("../../../src/terminal/pty-runtime-health", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../../src/terminal/pty-runtime-health")>();
+	return {
+		...actual,
+		preflightPtyLaunch: preflightPtyLaunchMock,
+	};
+});
 
 import { PtySession } from "../../../src/terminal";
+import { _testing as ptySessionTesting } from "../../../src/terminal/pty-session";
 
 const originalPlatform = process.platform;
 const originalComSpec = process.env.ComSpec;
@@ -89,7 +95,9 @@ function createMockPtyProcess(writeStream?: MockNodePtyWriteStream) {
 describe("PtySession", () => {
 	beforeEach(() => {
 		ptyMocks.spawn.mockReset();
+		ptySessionTesting.setNodePtySpawnOverride(ptyMocks.spawn);
 		fsWriteMock.mockReset();
+		preflightPtyLaunchMock.mockReset();
 		setPlatform(originalPlatform);
 		if (originalComSpec === undefined) {
 			delete process.env.ComSpec;
@@ -114,6 +122,7 @@ describe("PtySession", () => {
 	});
 
 	afterEach(() => {
+		ptySessionTesting.setNodePtySpawnOverride(null);
 		setPlatform(originalPlatform);
 	});
 
