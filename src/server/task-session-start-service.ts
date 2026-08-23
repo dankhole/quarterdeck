@@ -6,6 +6,7 @@ import {
 	isRuntimeTaskBaseRefResolved,
 	type RuntimeTaskSessionStartRequest,
 	type RuntimeTaskSessionSummary,
+	type TaskResourceOperationRunner,
 } from "../core";
 import { loadProjectState } from "../state";
 import { cloneStartTaskSessionRequest, type StartTaskSessionRequest, type TerminalSessionManager } from "../terminal";
@@ -22,6 +23,10 @@ export interface TaskSessionProjectScope {
 export interface TaskSessionStartServiceDependencies {
 	config: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
 	getScopedTerminalManager: (scope: TaskSessionProjectScope) => Promise<TerminalSessionManager>;
+}
+
+export interface SerializedTaskSessionStartServiceDependencies extends TaskSessionStartServiceDependencies {
+	taskResourceOperations: TaskResourceOperationRunner;
 }
 
 export interface TaskSessionStartServiceOptions {
@@ -326,9 +331,11 @@ export async function launchPreparedTaskSession(
 export async function startTaskSessionThroughService(
 	projectScope: TaskSessionProjectScope,
 	body: RuntimeTaskSessionStartRequest,
-	deps: TaskSessionStartServiceDependencies,
+	deps: SerializedTaskSessionStartServiceDependencies,
 	options: TaskSessionStartServiceOptions = {},
 ): Promise<TaskSessionStartServiceResult> {
-	const prepared = await prepareTaskSessionStart(projectScope, body, deps, options);
-	return await launchPreparedTaskSession(prepared);
+	return await deps.taskResourceOperations.run(projectScope.projectId, body.taskId, async () => {
+		const prepared = await prepareTaskSessionStart(projectScope, body, deps, options);
+		return await launchPreparedTaskSession(prepared);
+	});
 }

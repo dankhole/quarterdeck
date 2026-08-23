@@ -4,9 +4,9 @@ import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { AGENT_LAB_REPO_ROOT } from "./agent-lab/paths";
+import { AGENT_LAB_REPO_ROOT, getAgentLabBrowserCachePath } from "./agent-lab/paths";
 
-const browserCachePath = join(AGENT_LAB_REPO_ROOT, "web-ui", "node_modules", ".cache", "agent-lab-playwright");
+const browserCachePath = getAgentLabBrowserCachePath();
 const daemonSessionPath = join(AGENT_LAB_REPO_ROOT, "test-results", "agent-lab", "browser-daemon");
 const browserHomePath = join(AGENT_LAB_REPO_ROOT, "test-results", "agent-lab", "browser-home");
 const cliPath = join(AGENT_LAB_REPO_ROOT, "web-ui", "node_modules", "@playwright", "cli", "playwright-cli.js");

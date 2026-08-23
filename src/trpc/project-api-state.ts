@@ -35,26 +35,36 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 		// which reads branch from persisted board state server-side instead.
 		ensureWorktree: async (projectScope, input) => {
 			const body = parseWorktreeEnsureRequest(input);
-			return await ensureTaskWorktreeIfDoesntExist({
-				cwd: projectScope.projectPath,
-				taskId: body.taskId,
-				baseRef: body.baseRef,
-				branch: body.branch ?? undefined,
+			return await ctx.deps.taskResourceOperations.run(projectScope.projectId, body.taskId, async () => {
+				return await ensureTaskWorktreeIfDoesntExist({
+					cwd: projectScope.projectPath,
+					taskId: body.taskId,
+					baseRef: body.baseRef,
+					branch: body.branch ?? undefined,
+				});
 			});
 		},
 
 		deleteWorktree: async (projectScope, input) => {
 			const body = parseWorktreeDeleteRequest(input);
-			const result = await deleteTaskWorktree({
-				repoPath: projectScope.projectPath,
-				taskId: body.taskId,
+			return await ctx.deps.taskResourceOperations.run(projectScope.projectId, body.taskId, async () => {
+				const terminalManager = ctx.deps.terminals.getTerminalManagerForProject(projectScope.projectId);
+				if (terminalManager?.hasTaskSessionLifecycleActivity(body.taskId)) {
+					return {
+						ok: false,
+						removed: false,
+						error: "Task worktree cleanup was skipped because an agent session is active.",
+					};
+				}
+				const result = await deleteTaskWorktree({
+					repoPath: projectScope.projectPath,
+					taskId: body.taskId,
+				});
+				// workingDirectory is cleared by the client when it moves the card
+				// to trash. The client persists through its normal board state cycle,
+				// avoiding a second server-side board writer.
+				return result;
 			});
-			// workingDirectory is cleared by the client when it moves the card
-			// to trash (moveTaskToColumn sets workingDirectory = null for trash).
-			// The client persists through its normal board state cycle, avoiding
-			// a dual-writer race where the server bumps the revision while the
-			// client's persist debounce is in flight.
-			return result;
 		},
 
 		loadTaskContext: async (projectScope, input) => {

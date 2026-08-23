@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	parseHookIngestRequest,
 	parseTaskSessionStartRequest,
+	parseTaskSessionStopRequest,
 	parseWorktreeEnsureRequest,
 	runtimeTaskSessionSummarySchema,
 } from "../../src/core";
@@ -137,6 +138,15 @@ describe("parseTaskSessionStartRequest", () => {
 			agentId: "codex",
 			baseRef: "main",
 			resumeConversation: true,
+		});
+	});
+});
+
+describe("parseTaskSessionStopRequest", () => {
+	it("preserves waitForExit while trimming the task id", () => {
+		expect(parseTaskSessionStopRequest({ taskId: "  task-1  ", waitForExit: true })).toEqual({
+			taskId: "task-1",
+			waitForExit: true,
 		});
 	});
 });

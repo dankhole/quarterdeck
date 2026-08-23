@@ -1,6 +1,7 @@
 import type { DropResult } from "@hello-pangea/dnd";
+import { TaskResourceOperationCoordinator } from "@runtime-task-resource-operation-coordinator";
 import type { Dispatch, SetStateAction } from "react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { notifyError } from "@/components/app-toaster";
 import type { TaskTrashWarningViewModel } from "@/components/task";
@@ -20,6 +21,8 @@ import type { RuntimeTaskSessionSummary, RuntimeTaskWorktreeInfoResponse } from 
 import { findCardSelection } from "@/state/board-state";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { createClientLogger } from "@/utils/client-logger";
+
+import type { RunTaskLifecycleOperation } from "./task-lifecycle";
 
 const log = createClientLogger("board-interactions");
 
@@ -41,8 +44,8 @@ interface UseBoardInteractionsInput {
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 	setIsClearTrashDialogOpen: Dispatch<SetStateAction<boolean>>;
 	closeGitHistory: () => void;
-	stopTaskSession: (taskId: string, options?: { waitForExit?: boolean }) => Promise<void>;
-	cleanupTaskWorktree: (taskId: string) => Promise<unknown>;
+	stopTaskSession: UseTaskSessionsResult["stopTaskSession"];
+	cleanupTaskWorktree: UseTaskSessionsResult["cleanupTaskWorktree"];
 	ensureTaskWorktree: UseTaskSessionsResult["ensureTaskWorktree"];
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
 	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
@@ -95,6 +98,17 @@ export function useBoardInteractions({
 	showTrashWorktreeNotice,
 	saveTrashWorktreeNoticeDismissed,
 }: UseBoardInteractionsInput): UseBoardInteractionsResult {
+	const taskLifecycleOperationQueueRef = useRef<TaskResourceOperationCoordinator | null>(null);
+	if (!taskLifecycleOperationQueueRef.current) {
+		taskLifecycleOperationQueueRef.current = new TaskResourceOperationCoordinator();
+	}
+	const runTaskLifecycleOperation: RunTaskLifecycleOperation = useCallback(
+		(taskId, operation) => {
+			return taskLifecycleOperationQueueRef.current!.run(currentProjectId, taskId, operation);
+		},
+		[currentProjectId],
+	);
+
 	const {
 		handleProgrammaticCardMoveReady,
 		setRequestMoveTaskToTrashHandler,
@@ -115,6 +129,7 @@ export function useBoardInteractions({
 		ensureTaskWorktree,
 		startTaskSession,
 		fetchTaskWorktreeInfo,
+		runTaskLifecycleOperation,
 	});
 
 	// ── Backlog task start + animation ───────────────────────────────────
@@ -141,6 +156,7 @@ export function useBoardInteractions({
 			setSelectedTaskId,
 			stopTaskSession,
 			cleanupTaskWorktree,
+			runTaskLifecycleOperation,
 			kickoffTaskInProgress,
 			startBacklogTaskWithAnimation,
 			waitForBacklogStartAnimationAvailability: waitForProgrammaticCardMoveAvailability,
@@ -188,12 +204,12 @@ export function useBoardInteractions({
 		board,
 		setBoard,
 		selectedCard,
-		selectedTaskId,
 		setSelectedTaskId,
 		setSessions,
 		setIsClearTrashDialogOpen,
 		stopTaskSession,
 		cleanupTaskWorktree,
+		runTaskLifecycleOperation,
 		resumeTaskFromTrash,
 		tryProgrammaticCardMove,
 		requestMoveTaskToTrash,
@@ -245,8 +261,12 @@ export function useBoardInteractions({
 				return;
 			}
 			const awaitReview = selection.column.id === "review";
-			void (async () => {
-				await stopTaskSession(taskId, { waitForExit: true });
+			void runTaskLifecycleOperation(taskId, async () => {
+				const stopped = await stopTaskSession(taskId, { waitForExit: true });
+				if (!stopped.ok) {
+					notifyError(stopped.error ?? "Could not stop the previous task session.");
+					return;
+				}
 				const started = await startTaskSession(selection.card, { resumeConversation: true, awaitReview });
 				if (!started.ok) {
 					notifyError(started.message ?? "Could not restart task session.");
@@ -256,9 +276,9 @@ export function useBoardInteractions({
 				) {
 					showNonIsolatedResumeWarning();
 				}
-			})();
+			});
 		},
-		[board, startTaskSession, stopTaskSession],
+		[board, runTaskLifecycleOperation, startTaskSession, stopTaskSession],
 	);
 
 	// ── Reset on project change ──────────────────────────────────────────

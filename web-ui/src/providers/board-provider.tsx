@@ -42,7 +42,7 @@ export interface BoardContextValue {
 		text: string,
 		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
-	stopTaskSession: (taskId: string, options?: { waitForExit?: boolean }) => Promise<void>;
+	stopTaskSession: ReturnType<typeof useTaskSessions>["stopTaskSession"];
 
 	// --- Derived loading flags ---
 	isInitialRuntimeLoad: boolean;

@@ -179,4 +179,31 @@ describe("SessionTransitionController", () => {
 		expect(result?.summary.state).toBe("idle");
 		expect(entry.active?.workspaceTrustBuffer).toBe("keep");
 	});
+
+	it("owns missing-launch-path recovery and keeps the pid until process exit", () => {
+		const store = new InMemorySessionSummaryStore();
+		store.hydrateFromRecord({
+			"task-1": createSummary({ state: "running", reviewReason: null, pid: 1234 }),
+		});
+		const entry = createEntry("task-1");
+		const active = entry.active;
+		expect(active).not.toBeNull();
+		if (!active) return;
+		active.interruptRecoveryTimer = setTimeout(() => {}, 5_000);
+		active.workspaceTrustConfirmTimer = setTimeout(() => {}, 5_000);
+		const controller = new SessionTransitionController(store, new Map([["task-1", entry]]));
+
+		const summary = controller.recoverMissingLaunchPath(entry, "Launch folder missing.");
+
+		expect(summary).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "error",
+			pid: 1234,
+			warningMessage: "Launch folder missing.",
+		});
+		expect(entry.suppressAutoRestartOnExit).toBe(true);
+		expect(active.interruptRecoveryTimer).toBeNull();
+		expect(active.workspaceTrustConfirmTimer).toBeNull();
+		expect(active.session.stop).toHaveBeenCalledWith({ interrupted: true });
+	});
 });

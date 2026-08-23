@@ -4,6 +4,7 @@ import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../../.
 import {
 	checkDeadProcess,
 	checkInterruptedNoRestart,
+	checkMissingSessionLaunchPath,
 	checkProcesslessActiveSession,
 	checkStaleHookActivity,
 	isPermissionActivity,
@@ -34,6 +35,8 @@ function createEntry(
 		pendingAutoRestart?: unknown;
 		pendingSessionStart?: boolean;
 		pendingStartupRecoveryToken?: string | null;
+		suppressAutoRestartOnExit?: boolean;
+		sessionLaunchPathExists?: boolean | null;
 	} = {},
 ): ReconciliationEntry {
 	return {
@@ -43,6 +46,8 @@ function createEntry(
 		pendingAutoRestart: options.pendingAutoRestart !== undefined ? options.pendingAutoRestart : null,
 		pendingSessionStart: options.pendingSessionStart ?? false,
 		pendingStartupRecoveryToken: options.pendingStartupRecoveryToken ?? null,
+		suppressAutoRestartOnExit: options.suppressAutoRestartOnExit ?? false,
+		sessionLaunchPathExists: options.sessionLaunchPathExists ?? true,
 	};
 }
 
@@ -154,6 +159,56 @@ describe("checkDeadProcess", () => {
 	it("returns null for failed state (6a)", () => {
 		const entry = createEntry({ state: "failed", pid: null, latestHookActivity: null });
 		expect(checkDeadProcess(entry, Date.now())).toBeNull();
+	});
+});
+
+// ── checkMissingSessionLaunchPath ───────────────────────────────────────
+
+describe("checkMissingSessionLaunchPath", () => {
+	it("recovers a running process whose launch directory disappeared", () => {
+		const entry = createEntry({ state: "running" }, { sessionLaunchPathExists: false });
+		expect(checkMissingSessionLaunchPath(entry, Date.now())).toEqual({ type: "recover_missing_launch_path" });
+	});
+
+	it("also stops an awaiting-review process whose launch directory disappeared", () => {
+		const entry = createEntry({ state: "awaiting_review", reviewReason: "hook" }, { sessionLaunchPathExists: false });
+		expect(checkMissingSessionLaunchPath(entry, Date.now())).toEqual({ type: "recover_missing_launch_path" });
+	});
+
+	it("does nothing while the session is already being stopped", () => {
+		const entry = createEntry(
+			{ state: "running" },
+			{ sessionLaunchPathExists: false, suppressAutoRestartOnExit: true },
+		);
+		expect(checkMissingSessionLaunchPath(entry, Date.now())).toBeNull();
+	});
+
+	it("does nothing for an existing, absent, or inactive launch directory", () => {
+		expect(checkMissingSessionLaunchPath(createEntry(), Date.now())).toBeNull();
+		expect(
+			checkMissingSessionLaunchPath(
+				createEntry({ sessionLaunchPath: null }, { sessionLaunchPathExists: null }),
+				Date.now(),
+			),
+		).toBeNull();
+		expect(
+			checkMissingSessionLaunchPath(createEntry({}, { active: null, sessionLaunchPathExists: false }), Date.now()),
+		).toBeNull();
+	});
+
+	it("does nothing during another start or recovery operation", () => {
+		expect(
+			checkMissingSessionLaunchPath(
+				createEntry({}, { sessionLaunchPathExists: false, pendingSessionStart: true }),
+				Date.now(),
+			),
+		).toBeNull();
+		expect(
+			checkMissingSessionLaunchPath(
+				createEntry({}, { sessionLaunchPathExists: false, pendingStartupRecoveryToken: "recovery" }),
+				Date.now(),
+			),
+		).toBeNull();
 	});
 });
 
@@ -379,12 +434,13 @@ describe("checkInterruptedNoRestart", () => {
 // ── reconciliationChecks ordering ─────────────────────────────────────────
 
 describe("reconciliationChecks", () => {
-	it("are ordered by priority: dead process > processless recovery > interrupted cleanup > clear activity (24)", () => {
+	it("are ordered by priority: dead process > missing cwd > processless recovery > interrupted cleanup > clear activity (24)", () => {
 		expect(reconciliationChecks[0]).toBe(checkDeadProcess);
-		expect(reconciliationChecks[1]).toBe(checkProcesslessActiveSession);
-		expect(reconciliationChecks[2]).toBe(checkInterruptedNoRestart);
-		expect(reconciliationChecks[3]).toBe(checkStaleHookActivity);
-		expect(reconciliationChecks).toHaveLength(4);
+		expect(reconciliationChecks[1]).toBe(checkMissingSessionLaunchPath);
+		expect(reconciliationChecks[2]).toBe(checkProcesslessActiveSession);
+		expect(reconciliationChecks[3]).toBe(checkInterruptedNoRestart);
+		expect(reconciliationChecks[4]).toBe(checkStaleHookActivity);
+		expect(reconciliationChecks).toHaveLength(5);
 	});
 });
 

@@ -4,7 +4,10 @@ import {
 	parseTaskSessionStartRequest,
 	type RuntimeTaskSessionSummary,
 } from "../../core";
-import { startTaskSessionThroughService } from "../../server/task-session-start-service";
+import {
+	type SerializedTaskSessionStartServiceDependencies,
+	startTaskSessionThroughService,
+} from "../../server/task-session-start-service";
 import type { TerminalSessionManager } from "../../terminal";
 import { captureTaskTurnCheckpoint } from "../../workdir";
 import type { RuntimeTrpcProjectScope } from "../app-router-context";
@@ -12,7 +15,7 @@ import { queueTaskDisplaySummaryPolish } from "../display-summary-polish";
 
 const log = createTaggedLogger("task-session-start");
 
-export interface StartTaskSessionDeps {
+export interface StartTaskSessionDeps extends SerializedTaskSessionStartServiceDependencies {
 	config: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
 	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
 }

@@ -1,11 +1,19 @@
-import { createTaggedLogger, parseTaskSessionStopRequest } from "../../core";
+import {
+	createTaggedLogger,
+	parseTaskSessionStopRequest,
+	type RuntimeTaskSessionStopOutcome,
+	type RuntimeTaskSessionStopResponse,
+	type TaskResourceOperationRunner,
+} from "../../core";
 import type { TerminalSessionManager } from "../../terminal";
 import type { RuntimeTrpcProjectScope } from "../app-router-context";
 
 const log = createTaggedLogger("task-session-stop");
+type StopOperationResult = Omit<RuntimeTaskSessionStopResponse, "ok">;
 
 export interface StopTaskSessionDeps {
 	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
+	taskResourceOperations: TaskResourceOperationRunner;
 }
 
 export async function handleStopTaskSession(
@@ -20,20 +28,34 @@ export async function handleStopTaskSession(
 			projectId: projectScope.projectId,
 			waitForExit: body.waitForExit ?? false,
 		});
-		const terminalManager = await deps.getScopedTerminalManager(projectScope);
-		const summary = body.waitForExit
-			? await terminalManager.stopTaskSessionAndWaitForExit(body.taskId)
-			: terminalManager.stopTaskSession(body.taskId);
+		const result = await deps.taskResourceOperations.run<StopOperationResult>(
+			projectScope.projectId,
+			body.taskId,
+			async () => {
+				const terminalManager = await deps.getScopedTerminalManager(projectScope);
+				if (body.waitForExit) {
+					return await terminalManager.stopTaskSessionAndWaitForExit(body.taskId);
+				}
+				const summary = terminalManager.stopTaskSession(body.taskId);
+				const outcome: RuntimeTaskSessionStopOutcome = summary ? "requested" : "not_running";
+				return { summary, didExit: summary ? null : true, outcome };
+			},
+		);
 		log.debug("stop-task-session returning", {
 			taskId: body.taskId,
-			ok: Boolean(summary),
-			state: summary?.state ?? null,
-			pid: summary?.pid ?? null,
-			resumeSessionIdOnSummary: summary?.resumeSessionId ?? null,
+			ok: result.outcome !== "timed_out" && result.outcome !== "failed",
+			outcome: result.outcome,
+			didExit: result.didExit,
+			state: result.summary?.state ?? null,
+			pid: result.summary?.pid ?? null,
+			resumeSessionIdOnSummary: result.summary?.resumeSessionId ?? null,
 		});
 		return {
-			ok: Boolean(summary),
-			summary,
+			ok: result.outcome !== "timed_out" && result.outcome !== "failed",
+			summary: result.summary,
+			didExit: result.didExit,
+			outcome: result.outcome,
+			...(result.error ? { error: result.error } : {}),
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -41,6 +63,8 @@ export async function handleStopTaskSession(
 		return {
 			ok: false,
 			summary: null,
+			didExit: false,
+			outcome: "failed" as const,
 			error: message,
 		};
 	}

@@ -170,7 +170,7 @@ const noopBoardContext: BoardContextValue = {
 	cleanupTaskWorktree: async () => null,
 	fetchTaskWorktreeInfo: async () => null,
 	sendTaskSessionInput: async () => ({ ok: true }),
-	stopTaskSession: async () => {},
+	stopTaskSession: async () => ({ ok: true, summary: null, didExit: true, outcome: "exited" }),
 	isInitialRuntimeLoad: false,
 	isAwaitingProjectSnapshot: false,
 };

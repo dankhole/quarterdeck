@@ -8,6 +8,7 @@ import type {
 	RuntimeGitDiscardResponse,
 	RuntimeGitMergeResponse,
 	RuntimeWorkdirChangesMode,
+	TaskResourceOperationRunner,
 } from "../core";
 import { createTaggedLogger } from "../core";
 import { loadProjectState } from "../state";
@@ -32,6 +33,7 @@ export interface CreateProjectApiDependencies {
 		| "requestHomeRefresh"
 	>;
 	data: Pick<IProjectDataProvider, "buildProjectStateSnapshot">;
+	taskResourceOperations: TaskResourceOperationRunner;
 }
 
 // ── Shared context ──────────────────────────────────────────────────────────────

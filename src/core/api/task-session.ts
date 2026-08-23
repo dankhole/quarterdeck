@@ -107,9 +107,20 @@ export const runtimeTaskSessionStopRequestSchema = z.object({
 });
 export type RuntimeTaskSessionStopRequest = z.infer<typeof runtimeTaskSessionStopRequestSchema>;
 
+export const runtimeTaskSessionStopOutcomeSchema = z.enum([
+	"requested",
+	"not_running",
+	"exited",
+	"timed_out",
+	"failed",
+]);
+export type RuntimeTaskSessionStopOutcome = z.infer<typeof runtimeTaskSessionStopOutcomeSchema>;
+
 export const runtimeTaskSessionStopResponseSchema = z.object({
 	ok: z.boolean(),
 	summary: runtimeTaskSessionSummarySchema.nullable(),
+	didExit: z.boolean().nullable(),
+	outcome: runtimeTaskSessionStopOutcomeSchema,
 	error: z.string().optional(),
 });
 export type RuntimeTaskSessionStopResponse = z.infer<typeof runtimeTaskSessionStopResponseSchema>;

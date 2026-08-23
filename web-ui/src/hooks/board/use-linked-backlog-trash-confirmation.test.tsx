@@ -120,7 +120,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 	it("skips confirmation dialog when skipWorkingChangeWarning is true", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
-		const cleanupTaskWorktree = vi.fn(async () => null);
+		const cleanupTaskWorktree = vi.fn(async () => ({ ok: true, removed: true }));
 		getTaskWorktreeSnapshotMock.mockReturnValue({
 			taskId: "task-2",
 			path: "/tmp/task-2",
@@ -275,8 +275,13 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 	it("updates selection when trashing a task that is already in trash from optimistic move", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const setSelectedTaskId = vi.fn<Dispatch<SetStateAction<string | null>>>();
-		const stopTaskSession = vi.fn(async () => {});
-		const cleanupTaskWorktree = vi.fn(async () => null);
+		const stopTaskSession = vi.fn(async () => ({
+			ok: true,
+			summary: null,
+			didExit: true,
+			outcome: "exited" as const,
+		}));
+		const cleanupTaskWorktree = vi.fn(async () => ({ ok: true, removed: true }));
 
 		const boardFactory = (): BoardData => ({
 			columns: [

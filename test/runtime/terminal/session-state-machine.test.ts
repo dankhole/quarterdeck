@@ -44,6 +44,38 @@ describe("canReturnToRunning", () => {
 });
 
 describe("reduceSessionTransition", () => {
+	describe("reconciliation.launch_path_missing", () => {
+		it("moves an active session to error review without claiming the process exited", () => {
+			const summary = createSummary({
+				state: "running",
+				pid: 1234,
+				latestHookActivity: {
+					activityText: "Working",
+					toolName: null,
+					toolInputSummary: null,
+					finalMessage: null,
+					hookEventName: "PreToolUse",
+					notificationType: null,
+					source: "codex",
+					conversationSummaryText: null,
+				},
+			});
+
+			const result = reduceSessionTransition(summary, {
+				type: "reconciliation.launch_path_missing",
+				warningMessage: "Launch folder missing.",
+			});
+
+			expect(result.patch).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "error",
+				latestHookActivity: null,
+				warningMessage: "Launch folder missing.",
+			});
+			expect(result.patch).not.toHaveProperty("pid");
+		});
+	});
+
 	describe("hook.to_review", () => {
 		it("transitions from running to awaiting_review with reason 'hook'", () => {
 			const summary = createSummary({ state: "running" });

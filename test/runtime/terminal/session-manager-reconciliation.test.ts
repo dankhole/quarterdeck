@@ -15,6 +15,7 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
+import { MISSING_SESSION_LAUNCH_PATH_WARNING } from "../../../src/terminal/session-reconciliation-sweep";
 
 // PID that is guaranteed to NOT exist — used for dead process tests.
 const DEAD_PID = 999_999_999;
@@ -82,7 +83,7 @@ const defaultTaskRequest = {
 	agentId: "claude" as const,
 	binary: "claude",
 	args: [] as string[],
-	cwd: "/tmp/task-1",
+	cwd: process.cwd(),
 	prompt: "Fix the bug",
 };
 
@@ -218,6 +219,30 @@ describe("reconciliation sweep lifecycle", () => {
 		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("hook");
 		expect(onExit).toHaveBeenCalledWith(null);
+
+		manager.stopReconciliation();
+	});
+
+	it("stops a live session and moves it to error review when its launch directory disappears", async () => {
+		const spawnedSessions = setupMockPtySpawn(process.pid);
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
+		await manager.startTaskSession({
+			...defaultTaskRequest,
+			cwd: "/tmp/quarterdeck-reconciliation-missing-launch-path",
+		});
+
+		manager.startReconciliation();
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		expect(spawnedSessions[0]?.stop).toHaveBeenCalledWith({ interrupted: true });
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "error",
+			pid: process.pid,
+			latestHookActivity: null,
+			warningMessage: MISSING_SESSION_LAUNCH_PATH_WARNING,
+		});
 
 		manager.stopReconciliation();
 	});

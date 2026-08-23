@@ -1,4 +1,5 @@
 import { createTaggedLogger, type RuntimeTaskSessionSummary } from "../core";
+import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
 import type { ProcessEntry } from "./session-manager-types";
 import {
@@ -60,5 +61,26 @@ export class SessionTransitionController {
 			clearInterruptRecoveryTimer(active);
 		}
 		return result;
+	}
+
+	recoverMissingLaunchPath(entry: ProcessEntry, warningMessage: string): RuntimeTaskSessionSummary | null {
+		if (!entry.active) {
+			return this.store.getSummary(entry.taskId);
+		}
+		const summary = this.store.getSummary(entry.taskId);
+		transitionLog.warn("stopping task session because its launch folder no longer exists", {
+			taskId: entry.taskId,
+			sessionLaunchPath: summary?.sessionLaunchPath ?? null,
+			pid: summary?.pid ?? entry.active.session.pid,
+		});
+		entry.suppressAutoRestartOnExit = true;
+		stopWorkspaceTrustTimers(entry.active);
+		clearInterruptRecoveryTimer(entry.active);
+		const result = this.applyTransitionEvent(entry, {
+			type: "reconciliation.launch_path_missing",
+			warningMessage,
+		});
+		entry.active.session.stop({ interrupted: true });
+		return result?.summary ?? this.store.getSummary(entry.taskId);
 	}
 }

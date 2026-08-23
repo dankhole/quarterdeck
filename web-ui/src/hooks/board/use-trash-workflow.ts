@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useMemo, useRef, useState } from "react";
 
+import { notifyError } from "@/components/app-toaster";
 import {
 	findTrashTaskIds,
 	type HardDeleteDialogState,
@@ -10,11 +11,14 @@ import {
 	type TrashWarningState,
 } from "@/hooks/board/trash-workflow";
 import type { UseTaskLifecycleResult } from "@/hooks/board/use-task-lifecycle";
+import type { UseTaskSessionsResult } from "@/hooks/board/use-task-sessions";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { clearColumnTasks, findCardSelection, moveTaskToColumn, removeTask } from "@/state/board-state";
+import { findCardSelection, moveTaskToColumn, removeTask } from "@/state/board-state";
 import { clearTaskWorktreeInfo } from "@/stores/project-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { createClientLogger } from "@/utils/client-logger";
+
+import type { RunTaskLifecycleOperation } from "./task-lifecycle";
 
 export type { HardDeleteDialogState, TrashWarningState } from "@/hooks/board/trash-workflow";
 export { INITIAL_HARD_DELETE_DIALOG_STATE, INITIAL_TRASH_WARNING_STATE } from "@/hooks/board/trash-workflow";
@@ -32,12 +36,12 @@ interface UseTrashWorkflowInput {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	selectedCard: SelectedBoardCard | null;
-	selectedTaskId: string | null;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
 	setIsClearTrashDialogOpen: Dispatch<SetStateAction<boolean>>;
-	stopTaskSession: (taskId: string, options?: { waitForExit?: boolean }) => Promise<void>;
-	cleanupTaskWorktree: (taskId: string) => Promise<unknown>;
+	stopTaskSession: UseTaskSessionsResult["stopTaskSession"];
+	cleanupTaskWorktree: UseTaskSessionsResult["cleanupTaskWorktree"];
+	runTaskLifecycleOperation: RunTaskLifecycleOperation;
 	resumeTaskFromTrash: UseTaskLifecycleResult["resumeTaskFromTrash"];
 	tryProgrammaticCardMove: (
 		taskId: string,
@@ -82,12 +86,12 @@ export function useTrashWorkflow({
 	board,
 	setBoard,
 	selectedCard,
-	selectedTaskId,
 	setSelectedTaskId,
 	setSessions,
 	setIsClearTrashDialogOpen,
 	stopTaskSession,
 	cleanupTaskWorktree,
+	runTaskLifecycleOperation,
 	resumeTaskFromTrash,
 	tryProgrammaticCardMove,
 	requestMoveTaskToTrash,
@@ -186,25 +190,16 @@ export function useTrashWorkflow({
 		[board, resumeTaskFromTrash, setBoard, tryProgrammaticCardMove],
 	);
 
-	const executeHardDelete = useCallback(
+	const removeTrashTaskFromClientState = useCallback(
 		(taskId: string) => {
-			let didRemove = false;
 			setBoard((currentBoard) => {
 				const selection = findCardSelection(currentBoard, taskId);
 				if (!selection || selection.column.id !== "trash") {
 					return currentBoard;
 				}
 				const result = removeTask(currentBoard, taskId);
-				if (!result.removed) {
-					return currentBoard;
-				}
-				didRemove = true;
-				return result.board;
+				return result.removed ? result.board : currentBoard;
 			});
-			if (!didRemove) {
-				return;
-			}
-
 			setSessions((currentSessions) => {
 				const nextSessions = { ...currentSessions };
 				delete nextSessions[taskId];
@@ -217,13 +212,38 @@ export function useTrashWorkflow({
 				}
 				return current;
 			});
-
-			void (async () => {
-				await stopTaskSession(taskId, { waitForExit: true });
-				await cleanupTaskWorktree(taskId);
-			})();
 		},
-		[cleanupTaskWorktree, setBoard, setSelectedTaskId, setSessions, stopTaskSession],
+		[setBoard, setSelectedTaskId, setSessions],
+	);
+
+	const permanentlyDeleteTrashTask = useCallback(
+		async (taskId: string): Promise<boolean> => {
+			return await runTaskLifecycleOperation(taskId, async () => {
+				const stopped = await stopTaskSession(taskId, { waitForExit: true });
+				if (!stopped.ok) {
+					notifyError(stopped.error ?? "Could not stop the task session; the task was not deleted.");
+					return false;
+				}
+				const cleaned = await cleanupTaskWorktree(taskId);
+				if (!cleaned) {
+					notifyError("Could not clean up the task worktree; the task was not deleted.");
+					return false;
+				}
+				// Keep the client-state commit inside the same operation boundary as
+				// resource cleanup. A queued restore must not start after the worktree
+				// is deleted but before the trash card/session state is removed.
+				removeTrashTaskFromClientState(taskId);
+				return true;
+			});
+		},
+		[cleanupTaskWorktree, removeTrashTaskFromClientState, runTaskLifecycleOperation, stopTaskSession],
+	);
+
+	const executeHardDelete = useCallback(
+		(taskId: string) => {
+			void permanentlyDeleteTrashTask(taskId);
+		},
+		[permanentlyDeleteTrashTask],
 	);
 
 	const handleHardDeleteTrashTask = useCallback(
@@ -272,33 +292,10 @@ export function useTrashWorkflow({
 			return;
 		}
 
-		setBoard((currentBoard) => clearColumnTasks(currentBoard, "trash").board);
-		setSessions((currentSessions) => {
-			const nextSessions = { ...currentSessions };
-			for (const taskId of taskIds) {
-				delete nextSessions[taskId];
-			}
-			return nextSessions;
-		});
-		if (selectedTaskId && taskIds.includes(selectedTaskId)) {
-			setSelectedTaskId(null);
-			clearTaskWorktreeInfo(selectedTaskId);
-		}
-
 		void runClearTrashCleanup(taskIds, async (taskId) => {
-			await stopTaskSession(taskId, { waitForExit: true });
-			await cleanupTaskWorktree(taskId);
+			await permanentlyDeleteTrashTask(taskId);
 		});
-	}, [
-		cleanupTaskWorktree,
-		selectedTaskId,
-		setBoard,
-		setIsClearTrashDialogOpen,
-		setSelectedTaskId,
-		setSessions,
-		stopTaskSession,
-		trashTaskIds,
-	]);
+	}, [permanentlyDeleteTrashTask, setIsClearTrashDialogOpen, trashTaskIds]);
 
 	const handleCancelTrashWarning = useCallback(() => {
 		// When the user clicks confirm, Radix AlertDialog fires onOpenChange(false) which triggers

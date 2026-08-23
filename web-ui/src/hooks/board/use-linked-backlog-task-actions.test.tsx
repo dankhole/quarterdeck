@@ -133,7 +133,12 @@ describe("useLinkedBacklogTaskActions", () => {
 
 	it("stops the main task session and its detail terminal shell when a task is trashed", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const stopTaskSession = vi.fn(async (_taskId: string) => {});
+		const stopTaskSession = vi.fn(async (_taskId: string) => ({
+			ok: true,
+			summary: null,
+			didExit: true,
+			outcome: "exited" as const,
+		}));
 
 		await act(async () => {
 			ctx.root.render(
@@ -164,9 +169,50 @@ describe("useLinkedBacklogTaskActions", () => {
 		expect(stopTaskSession).toHaveBeenNthCalledWith(2, getDetailTerminalTaskId(reviewTask.id));
 	});
 
+	it("does not delete the worktree when the task session does not exit", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const stopTaskSession = vi.fn(async (taskId: string) =>
+			taskId === "task-2"
+				? {
+						ok: false,
+						summary: null,
+						didExit: false,
+						outcome: "timed_out" as const,
+						error: "Task session did not exit before the timeout.",
+					}
+				: { ok: true, summary: null, didExit: null, outcome: "requested" as const },
+		);
+		const cleanupTaskWorktree = vi.fn(async () => ({ ok: true, removed: true }));
+
+		await act(async () => {
+			ctx.root.render(
+				<HookHarness
+					stopTaskSession={stopTaskSession}
+					cleanupTaskWorktree={cleanupTaskWorktree}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (!latestSnapshot) {
+			throw new Error("Expected a hook snapshot.");
+		}
+		const initialSnapshot = latestSnapshot as HookSnapshot;
+		await act(async () => {
+			await initialSnapshot.confirmMoveTaskToTrash(
+				initialSnapshot.board.columns.find((column) => column.id === "review")!.cards[0]!,
+				initialSnapshot.board,
+			);
+		});
+
+		expect(cleanupTaskWorktree).not.toHaveBeenCalled();
+	});
+
 	it("trashes tasks directly through the request handler", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const cleanupTaskWorktree = vi.fn(async (_taskId: string) => null);
+		const cleanupTaskWorktree = vi.fn(async (_taskId: string) => ({ ok: true, removed: true }));
 
 		await act(async () => {
 			ctx.root.render(

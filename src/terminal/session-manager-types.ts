@@ -2,7 +2,7 @@
 // These are internal to the terminal layer — external consumers should only
 // import TerminalSessionManager from session-manager.ts.
 
-import type { RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core";
+import type { RuntimeTaskImage, RuntimeTaskSessionStopOutcome, RuntimeTaskSessionSummary } from "../core";
 import type {
 	AgentAdapterLaunchInput,
 	AgentOutputTransitionDetector,
@@ -89,6 +89,13 @@ export interface StartShellSessionRequest {
 export type RestartableSessionRequest =
 	| { kind: "task"; request: StartTaskSessionRequest }
 	| { kind: "shell"; request: StartShellSessionRequest };
+
+export interface StopTaskSessionResult {
+	summary: RuntimeTaskSessionSummary | null;
+	didExit: boolean;
+	outcome: Extract<RuntimeTaskSessionStopOutcome, "not_running" | "exited" | "timed_out">;
+	error?: string;
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

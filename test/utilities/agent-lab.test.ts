@@ -8,7 +8,21 @@ import {
 	parseFakeAgentCommand,
 	resolveFakeAgentScenario,
 } from "../../scripts/agent-lab/fake-agent-protocol";
-import { assertSafeRunId, createAgentLabRunId } from "../../scripts/agent-lab/paths";
+import { assertSafeRunId, createAgentLabRunId, getAgentLabBrowserCachePath } from "../../scripts/agent-lab/paths";
+
+describe("agent-lab browser cache", () => {
+	it("shares browser binaries through the primary checkout", () => {
+		expect(
+			getAgentLabBrowserCachePath("/repo/.quarterdeck/worktrees/task/quarterdeck", "/repo/quarterdeck/.git"),
+		).toBe("/repo/quarterdeck/web-ui/node_modules/.cache/agent-lab-playwright");
+	});
+
+	it("falls back to the active checkout for nonstandard Git layouts", () => {
+		expect(getAgentLabBrowserCachePath("/repo/quarterdeck", "/repo/quarterdeck.git")).toBe(
+			"/repo/quarterdeck/web-ui/node_modules/.cache/agent-lab-playwright",
+		);
+	});
+});
 
 describe("agent-lab environment", () => {
 	it("forwards only the small host allowlist and injects isolated paths", () => {

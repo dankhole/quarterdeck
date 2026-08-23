@@ -2,6 +2,7 @@
 // corrective actions. The individual check functions live in session-reconciliation.ts;
 // this module owns the timer lifecycle and action execution.
 
+import { existsSync } from "node:fs";
 import type { RuntimeTaskSessionSummary } from "../core";
 import { createTaggedLogger } from "../core";
 import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
@@ -14,6 +15,8 @@ import type { SessionSummaryStore, SessionTransitionEvent, SessionTransitionResu
 const sessionLog = createTaggedLogger("session-reconciliation");
 
 export const SESSION_RECONCILIATION_INTERVAL_MS = 10_000;
+export const MISSING_SESSION_LAUNCH_PATH_WARNING =
+	"The session launch folder no longer exists. Quarterdeck stopped the agent to prevent work in an invalid checkout. Restore the task or recreate the folder, then restart.";
 
 export interface ReconciliationSweepContext {
 	entries: Map<string, ProcessEntry>;
@@ -22,6 +25,7 @@ export interface ReconciliationSweepContext {
 		entry: ProcessEntry,
 		event: SessionTransitionEvent,
 	) => (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null;
+	recoverMissingLaunchPath: (entry: ProcessEntry, warningMessage: string) => RuntimeTaskSessionSummary | null;
 }
 
 /** Run one reconciliation sweep across all active entries. */
@@ -37,6 +41,7 @@ export function reconcileSessionStates(ctx: ReconciliationSweepContext): void {
 				continue;
 			}
 
+			const sessionLaunchPathExists = summary.sessionLaunchPath ? existsSync(summary.sessionLaunchPath) : null;
 			for (const check of reconciliationChecks) {
 				const action = check(
 					{
@@ -46,6 +51,8 @@ export function reconcileSessionStates(ctx: ReconciliationSweepContext): void {
 						pendingAutoRestart: entry.pendingAutoRestart,
 						pendingSessionStart: entry.pendingSessionStart,
 						pendingStartupRecoveryToken: entry.pendingStartupRecoveryToken,
+						suppressAutoRestartOnExit: entry.suppressAutoRestartOnExit,
+						sessionLaunchPathExists,
 					},
 					nowMs,
 				);
@@ -83,6 +90,11 @@ export function applyReconciliationAction(
 			if (cleanupFn) {
 				cleanupFn().catch(() => {});
 			}
+			break;
+		}
+		case "recover_missing_launch_path": {
+			if (!entry.active) break;
+			ctx.recoverMissingLaunchPath(entry, MISSING_SESSION_LAUNCH_PATH_WARNING);
 			break;
 		}
 		case "mark_processless_error": {

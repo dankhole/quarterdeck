@@ -120,6 +120,7 @@ vi.mock("../../../src/workdir/read-workdir-file.js", () => ({
 	readWorkdirFile: vi.fn(),
 }));
 
+import { TaskResourceOperationCoordinator } from "../../../src/core";
 import { createProjectApi } from "../../../src/trpc";
 
 function createProjectDeps(overrides: Record<string, unknown> = {}) {
@@ -139,6 +140,7 @@ function createProjectDeps(overrides: Record<string, unknown> = {}) {
 			requestHomeRefresh: vi.fn(),
 		},
 		data: { buildProjectStateSnapshot: vi.fn() },
+		taskResourceOperations: new TaskResourceOperationCoordinator(),
 		...overrides,
 	};
 }
@@ -461,6 +463,49 @@ describe("createProjectApi deleteWorktree", () => {
 		const result = await api.deleteWorktree(defaultScope, { taskId: "task-1" });
 
 		expect(result.ok).toBe(false);
+	});
+
+	it("refuses to delete a worktree while its task session lifecycle is active", async () => {
+		const hasTaskSessionLifecycleActivity = vi.fn(() => true);
+		const api = createProjectApi(
+			createProjectDeps({
+				terminals: {
+					getTerminalManagerForProject: vi.fn(() => ({ hasTaskSessionLifecycleActivity })),
+					ensureTerminalManagerForProject: vi.fn(async () => ({}) as never),
+				},
+			}),
+		);
+
+		const result = await api.deleteWorktree(defaultScope, { taskId: "task-1" });
+
+		expect(result).toEqual({
+			ok: false,
+			removed: false,
+			error: "Task worktree cleanup was skipped because an agent session is active.",
+		});
+		expect(hasTaskSessionLifecycleActivity).toHaveBeenCalledWith("task-1");
+		expect(worktreeMocks.deleteTaskWorktree).not.toHaveBeenCalled();
+	});
+
+	it("waits for an earlier server-side task resource operation before deleting", async () => {
+		const taskResourceOperations = new TaskResourceOperationCoordinator();
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const blocker = taskResourceOperations.run("project-1", "task-1", async () => await gate);
+		await Promise.resolve();
+		worktreeMocks.deleteTaskWorktree.mockResolvedValue({ ok: true });
+		const api = createProjectApi(createProjectDeps({ taskResourceOperations }));
+
+		const deletion = api.deleteWorktree(defaultScope, { taskId: "task-1" });
+		await Promise.resolve();
+		expect(worktreeMocks.deleteTaskWorktree).not.toHaveBeenCalled();
+
+		release();
+		await blocker;
+		await expect(deletion).resolves.toMatchObject({ ok: true });
+		expect(worktreeMocks.deleteTaskWorktree).toHaveBeenCalledTimes(1);
 	});
 });
 

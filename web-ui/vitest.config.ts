@@ -16,6 +16,10 @@ export default defineConfig({
 			"@runtime-agent-catalog": resolve(__dirname, "../src/core/agent-catalog.ts"),
 			"@runtime-contract": resolve(__dirname, "../src/core/api-contract.ts"),
 			"@runtime-config-defaults": resolve(__dirname, "../src/config/config-defaults.ts"),
+			"@runtime-task-resource-operation-coordinator": resolve(
+				__dirname,
+				"../src/core/task-resource-operation-coordinator.ts",
+			),
 			"@runtime-shortcuts": resolve(__dirname, "../src/config/shortcut-utils.ts"),
 			"@runtime-task-id": resolve(__dirname, "../src/core/task-id.ts"),
 			"@runtime-task-worktree-path": resolve(__dirname, "../src/workdir/task-worktree-path.ts"),

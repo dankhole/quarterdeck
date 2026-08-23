@@ -9,6 +9,7 @@ export type SessionTransitionEvent =
 	| { type: "process.exit"; exitCode: number | null; interrupted: boolean }
 	| { type: "interrupt.recovery" }
 	| { type: "autorestart.denied" }
+	| { type: "reconciliation.launch_path_missing"; warningMessage: string }
 	| {
 			type: "startup_recovery.exhausted";
 			processStillRunning: boolean;
@@ -171,6 +172,22 @@ export function reduceSessionTransition(
 					reviewReason: "interrupted",
 				},
 				clearAttentionBuffer: false,
+			};
+		}
+		case "reconciliation.launch_path_missing": {
+			if (summary.state !== "running" && summary.state !== "awaiting_review") {
+				return { changed: false, patch: {}, clearAttentionBuffer: false };
+			}
+			return {
+				changed: true,
+				patch: {
+					state: "awaiting_review",
+					reviewReason: "error",
+					latestHookActivity: null,
+					stalledSince: null,
+					warningMessage: event.warningMessage,
+				},
+				clearAttentionBuffer: true,
 			};
 		}
 		case "startup_recovery.exhausted": {

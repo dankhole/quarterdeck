@@ -1,6 +1,7 @@
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { type AgentLabManifest, AgentLabManifestSchema } from "./types";
@@ -10,6 +11,36 @@ export const AGENT_LAB_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url
 export function getAgentLabArtifactRoot(repoRoot = AGENT_LAB_REPO_ROOT): string {
 	const override = process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT?.trim();
 	return override ? resolve(override) : join(repoRoot, "test-results", "agent-lab");
+}
+
+function resolveGitCommonDirectory(repoRoot: string): string | null {
+	try {
+		const output = execFileSync("git", ["rev-parse", "--git-common-dir"], {
+			cwd: repoRoot,
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		}).trim();
+		return output ? resolve(repoRoot, output) : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Keep the large Playwright browser download in the primary checkout so all
+ * linked worktrees for this clone reuse it. Source archives and unusual Git
+ * layouts safely fall back to the active checkout's ignored node_modules.
+ */
+export function getAgentLabBrowserCachePath(
+	repoRoot = AGENT_LAB_REPO_ROOT,
+	gitCommonDirectory = resolveGitCommonDirectory(repoRoot),
+): string {
+	const normalizedCommonDirectory = gitCommonDirectory ? resolve(repoRoot, gitCommonDirectory) : null;
+	const sharedRepoRoot =
+		normalizedCommonDirectory && basename(normalizedCommonDirectory) === ".git"
+			? dirname(normalizedCommonDirectory)
+			: repoRoot;
+	return join(sharedRepoRoot, "web-ui", "node_modules", ".cache", "agent-lab-playwright");
 }
 
 function sanitizeRunName(value: string): string {

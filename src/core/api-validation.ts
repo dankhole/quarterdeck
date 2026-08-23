@@ -172,6 +172,7 @@ export function parseTaskSessionStopRequest(value: unknown): RuntimeTaskSessionS
 	}
 	return {
 		taskId,
+		waitForExit: parsed.waitForExit,
 	};
 }
 

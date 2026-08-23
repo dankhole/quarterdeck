@@ -3,7 +3,12 @@
 // is a thin dispatcher that delegates to them, providing the shared
 // dependency bag each handler needs.
 
-import type { IRuntimeBroadcaster, IRuntimeConfigProvider, RuntimeCommandRunResponse } from "../core";
+import type {
+	IRuntimeBroadcaster,
+	IRuntimeConfigProvider,
+	RuntimeCommandRunResponse,
+	TaskResourceOperationRunner,
+} from "../core";
 import type { TerminalSessionManager } from "../terminal";
 import type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
 import { handleLoadConfig } from "./handlers/load-config";
@@ -21,6 +26,7 @@ export interface CreateRuntimeApiDependencies {
 	broadcaster: Pick<IRuntimeBroadcaster, "broadcastRuntimeProjectStateUpdated" | "broadcastLogLevel">;
 	getActiveProjectId: () => string | null;
 	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
+	taskResourceOperations: TaskResourceOperationRunner;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
 }

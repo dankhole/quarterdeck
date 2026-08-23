@@ -131,6 +131,7 @@ vi.mock("../../../src/workdir/read-workdir-file.js", () => ({
 	readWorkdirFile: vi.fn(),
 }));
 
+import { TaskResourceOperationCoordinator } from "../../../src/core";
 import { createProjectApi } from "../../../src/trpc";
 
 function createProjectDeps(overrides: Record<string, unknown> = {}) {
@@ -152,6 +153,7 @@ function createProjectDeps(overrides: Record<string, unknown> = {}) {
 		data: {
 			buildProjectStateSnapshot: vi.fn(),
 		},
+		taskResourceOperations: new TaskResourceOperationCoordinator(),
 		...overrides,
 	};
 }

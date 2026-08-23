@@ -16,6 +16,7 @@ import {
 	type ProcessEntry,
 	type StartShellSessionRequest,
 	type StartTaskSessionRequest,
+	type StopTaskSessionResult,
 	teardownActiveSession,
 } from "./session-manager-types";
 import type { SessionSummaryStore } from "./session-summary-store";
@@ -212,14 +213,18 @@ export class SessionLifecycleController {
 		taskId: string,
 		timeoutMs = 3_000,
 		options?: { preserveStartupRecovery?: boolean },
-	): Promise<RuntimeTaskSessionSummary | null> {
+	): Promise<StopTaskSessionResult> {
 		const entry = this.entries.get(taskId);
 		if (!entry?.active) {
 			sessionLog.debug("stopTaskSessionAndWaitForExit no-op — no active entry", {
 				taskId,
 				hasEntry: Boolean(entry),
 			});
-			return this.store.getSummary(taskId);
+			return {
+				summary: this.store.getSummary(taskId),
+				didExit: true,
+				outcome: "not_running",
+			};
 		}
 		sessionLog.debug("stopTaskSessionAndWaitForExit starting", {
 			taskId,
@@ -257,7 +262,12 @@ export class SessionLifecycleController {
 		} else {
 			sessionLog.debug("stopTaskSessionAndWaitForExit observed clean exit", { taskId });
 		}
-		return this.store.getSummary(taskId);
+		return {
+			summary: this.store.getSummary(taskId),
+			didExit,
+			outcome: didExit ? "exited" : "timed_out",
+			...(didExit ? {} : { error: "Task session did not exit before the timeout." }),
+		};
 	}
 
 	markInterruptedAndStopAll(): RuntimeTaskSessionSummary[] {

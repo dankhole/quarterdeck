@@ -31,6 +31,7 @@ import {
 	resolveEffectiveTerminalRows,
 	type StartShellSessionRequest,
 	type StartTaskSessionRequest,
+	type StopTaskSessionResult,
 } from "./session-manager-types";
 import { disableOutputOscIntercept, processTaskSessionOutput } from "./session-output-pipeline";
 import { createReconciliationTimer, type ReconciliationTimer } from "./session-reconciliation-sweep";
@@ -62,6 +63,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 			entries: this.entries,
 			store: this.store,
 			applyTransitionEvent: (entry, event) => this.transitions.applyTransitionEvent(entry, event),
+			recoverMissingLaunchPath: (entry, warningMessage) =>
+				this.transitions.recoverMissingLaunchPath(entry, warningMessage),
 		});
 	}
 
@@ -126,6 +129,17 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 	recoverStaleSession(taskId: string): RuntimeTaskSessionSummary | null {
 		return this.lifecycle.recoverStaleSession(taskId);
+	}
+
+	/**
+	 * Returns true while deleting the task's launch directory could invalidate
+	 * an active or in-flight agent lifecycle operation.
+	 */
+	hasTaskSessionLifecycleActivity(taskId: string): boolean {
+		const entry = this.entries.get(taskId);
+		return Boolean(
+			entry?.active || entry?.pendingSessionStart || entry?.pendingAutoRestart || entry?.pendingStartupRecoveryToken,
+		);
 	}
 
 	writeInput(taskId: string, data: Buffer): RuntimeTaskSessionSummary | null {
@@ -312,7 +326,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return this.lifecycle.stopTaskSession(taskId);
 	}
 
-	async stopTaskSessionAndWaitForExit(taskId: string, timeoutMs = 3_000): Promise<RuntimeTaskSessionSummary | null> {
+	async stopTaskSessionAndWaitForExit(taskId: string, timeoutMs = 3_000): Promise<StopTaskSessionResult> {
 		return this.lifecycle.stopTaskSessionAndWaitForExit(taskId, timeoutMs);
 	}
 

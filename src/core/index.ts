@@ -38,6 +38,7 @@ export {
 	installGracefulShutdownHandlers,
 	shouldSuppressImmediateDuplicateShutdownSignals,
 } from "./graceful-shutdown";
+export { KeyedOperationCoordinator } from "./keyed-operation-coordinator";
 export { terminateProcessForTimeout } from "./process-termination";
 export {
 	buildQuarterdeckCommandParts,
@@ -98,6 +99,10 @@ export {
 	updateTaskDependencies,
 } from "./task-board-mutations";
 export { createShortTaskId, createUniqueTaskId } from "./task-id";
+export {
+	TaskResourceOperationCoordinator,
+	type TaskResourceOperationRunner,
+} from "./task-resource-operation-coordinator";
 export {
 	buildWindowsCmdArgsArray,
 	buildWindowsCmdArgsCommandLine,

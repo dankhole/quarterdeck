@@ -42,6 +42,7 @@ export {
 export {
 	checkDeadProcess,
 	checkInterruptedNoRestart,
+	checkMissingSessionLaunchPath,
 	checkProcesslessActiveSession,
 	checkStaleHookActivity,
 	isPermissionActivity,

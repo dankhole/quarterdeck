@@ -10,6 +10,7 @@ import {
 	getQuarterdeckRuntimeHost,
 	getQuarterdeckRuntimeOrigin,
 	getQuarterdeckRuntimePort,
+	TaskResourceOperationCoordinator,
 } from "../core";
 import { createHookTransitionOutboxReplayer } from "../hook-transition-outbox";
 import { loadProjectScopeById } from "../state";
@@ -82,6 +83,7 @@ function readProjectIdFromRequest(request: IncomingMessage, requestUrl: URL): st
 
 export async function createRuntimeServer(deps: CreateRuntimeServerDependencies): Promise<RuntimeServer> {
 	const webUiDir = getWebUiDir();
+	const taskResourceOperations = new TaskResourceOperationCoordinator();
 
 	try {
 		await readFile(join(webUiDir, "index.html"));
@@ -157,6 +159,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				broadcaster: deps.runtimeStateHub,
 				getActiveProjectId: deps.projectRegistry.getActiveProjectId,
 				getScopedTerminalManager,
+				taskResourceOperations,
 				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
 				runCommand: deps.runCommand,
 			}),
@@ -164,6 +167,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				terminals: deps.projectRegistry,
 				broadcaster: deps.runtimeStateHub,
 				data: deps.projectRegistry,
+				taskResourceOperations,
 			}),
 			projectsApi: createProjectsApi({
 				projects: deps.projectRegistry,

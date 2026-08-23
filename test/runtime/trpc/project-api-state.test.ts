@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeBoardData, RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "../../../src/core";
+import { TaskResourceOperationCoordinator } from "../../../src/core";
 import type { ProjectApiContext } from "../../../src/trpc/project-api-shared";
 import {
 	createBoardStateSavedEffects,
@@ -146,6 +147,7 @@ function createStateOpsHarness(summary = createSummary("task-1")) {
 			data: {
 				buildProjectStateSnapshot: vi.fn(),
 			},
+			taskResourceOperations: new TaskResourceOperationCoordinator(),
 		},
 		applyEffects,
 	} satisfies ProjectApiContext);

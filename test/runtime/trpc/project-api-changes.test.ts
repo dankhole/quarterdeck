@@ -142,6 +142,7 @@ vi.mock("../../../src/workdir/mutate-workdir-entry.js", () => ({
 	deleteWorkdirEntry: fileMutationMocks.deleteWorkdirEntry,
 }));
 
+import { TaskResourceOperationCoordinator } from "../../../src/core";
 import { createProjectApi } from "../../../src/trpc";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
@@ -182,6 +183,7 @@ function createProjectDeps() {
 			requestHomeRefresh: vi.fn(),
 		},
 		data: { buildProjectStateSnapshot: vi.fn() },
+		taskResourceOperations: new TaskResourceOperationCoordinator(),
 	};
 }
 
@@ -302,6 +304,7 @@ describe("createProjectApi loadChanges", () => {
 				requestHomeRefresh: vi.fn(),
 			},
 			data: { buildProjectStateSnapshot: vi.fn() },
+			taskResourceOperations: new TaskResourceOperationCoordinator(),
 		});
 
 		await api.loadChanges(
@@ -363,6 +366,7 @@ describe("createProjectApi loadChanges", () => {
 				requestHomeRefresh: vi.fn(),
 			},
 			data: { buildProjectStateSnapshot: vi.fn() },
+			taskResourceOperations: new TaskResourceOperationCoordinator(),
 		});
 
 		await api.loadChanges(
@@ -409,6 +413,7 @@ describe("createProjectApi loadChanges", () => {
 				requestHomeRefresh: vi.fn(),
 			},
 			data: { buildProjectStateSnapshot: vi.fn() },
+			taskResourceOperations: new TaskResourceOperationCoordinator(),
 		});
 
 		const response = await api.loadChanges(
@@ -445,6 +450,7 @@ describe("createProjectApi loadChanges", () => {
 				requestHomeRefresh: vi.fn(),
 			},
 			data: { buildProjectStateSnapshot: vi.fn() },
+			taskResourceOperations: new TaskResourceOperationCoordinator(),
 		});
 
 		await api.loadChanges(
@@ -477,6 +483,7 @@ describe("createProjectApi loadChanges", () => {
 				requestHomeRefresh: vi.fn(),
 			},
 			data: { buildProjectStateSnapshot: vi.fn() },
+			taskResourceOperations: new TaskResourceOperationCoordinator(),
 		});
 
 		await api.loadChanges(
@@ -515,6 +522,7 @@ describe("createProjectApi loadChanges", () => {
 				requestHomeRefresh: vi.fn(),
 			},
 			data: { buildProjectStateSnapshot: vi.fn() },
+			taskResourceOperations: new TaskResourceOperationCoordinator(),
 		});
 
 		const response = await api.loadChanges(

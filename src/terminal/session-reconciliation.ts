@@ -8,6 +8,7 @@
 // belong to the project orphan-maintenance/startup-shutdown cleanup paths.
 // Currently covers:
 //   - Dead task processes (PID no longer exists)
+//   - Live task processes whose launch directory disappeared
 //   - Processless active task sessions (state says running, no PTY)
 //   - Interrupted task sessions with no pending auto-restart (failed or denied)
 //   - Stale task hook activity metadata
@@ -21,6 +22,7 @@ export { isProcessAlive } from "./process-liveness";
 export type ReconciliationAction =
 	| { type: "clear_hook_activity" }
 	| { type: "recover_dead_process" }
+	| { type: "recover_missing_launch_path" }
 	| { type: "mark_processless_error" }
 	| { type: "move_interrupted_to_review" };
 
@@ -32,6 +34,8 @@ export interface ReconciliationEntry {
 	pendingAutoRestart: unknown;
 	pendingSessionStart: boolean;
 	pendingStartupRecoveryToken: string | null;
+	suppressAutoRestartOnExit: boolean;
+	sessionLaunchPathExists: boolean | null;
 }
 
 export type ReconciliationCheck = (entry: ReconciliationEntry, nowMs: number) => ReconciliationAction | null;
@@ -55,6 +59,31 @@ export function checkDeadProcess(entry: ReconciliationEntry, _nowMs: number): Re
 		return null;
 	}
 	return { type: "recover_dead_process" };
+}
+
+/**
+ * Detects a live agent whose launch directory was deleted after spawn. The
+ * process itself may remain alive and keep accepting input, but Codex cannot
+ * begin another turn from an invalid cwd and therefore cannot emit its normal
+ * completion hook.
+ */
+export function checkMissingSessionLaunchPath(entry: ReconciliationEntry, _nowMs: number): ReconciliationAction | null {
+	const { summary } = entry;
+	if (summary.state !== "running" && summary.state !== "awaiting_review") {
+		return null;
+	}
+	if (!entry.active || !summary.sessionLaunchPath || entry.sessionLaunchPathExists !== false) {
+		return null;
+	}
+	if (
+		entry.suppressAutoRestartOnExit ||
+		entry.pendingAutoRestart ||
+		entry.pendingSessionStart ||
+		entry.pendingStartupRecoveryToken
+	) {
+		return null;
+	}
+	return { type: "recover_missing_launch_path" };
 }
 
 /**
@@ -149,9 +178,10 @@ export function checkInterruptedNoRestart(entry: ReconciliationEntry, _nowMs: nu
 	return { type: "move_interrupted_to_review" };
 }
 
-/** Ordered by priority: dead process > processless recovery > interrupted cleanup > clear activity. */
+/** Ordered by priority: dead process > missing cwd > processless recovery > interrupted cleanup > clear activity. */
 export const reconciliationChecks: ReconciliationCheck[] = [
 	checkDeadProcess,
+	checkMissingSessionLaunchPath,
 	checkProcesslessActiveSession,
 	checkInterruptedNoRestart,
 	checkStaleHookActivity,

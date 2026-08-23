@@ -805,7 +805,11 @@ describe("TerminalSessionManager", () => {
 
 		const waitPromise = manager.stopTaskSessionAndWaitForExit("task-timeout", 1_000);
 		await vi.advanceTimersByTimeAsync(1_000);
-		await waitPromise;
+		await expect(waitPromise).resolves.toMatchObject({
+			didExit: false,
+			outcome: "timed_out",
+			error: "Task session did not exit before the timeout.",
+		});
 
 		expect(stop).toHaveBeenCalledTimes(1);
 		expect(consoleWarn).toHaveBeenCalledWith(

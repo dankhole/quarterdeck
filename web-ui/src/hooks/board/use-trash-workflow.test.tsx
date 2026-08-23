@@ -1,9 +1,11 @@
-import { act, useState } from "react";
+import { act, type Dispatch, type SetStateAction, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
+import type { RunTaskLifecycleOperation } from "./task-lifecycle";
+import type { UseTaskSessionsResult } from "./use-task-sessions";
 
 import { type UseTrashWorkflowResult, useTrashWorkflow } from "./use-trash-workflow";
 
@@ -51,16 +53,28 @@ function HookHarness({
 	requestMoveTaskToTrash,
 	requestMoveTaskToTrashWithAnimation,
 	confirmMoveTaskToTrash,
+	stopTaskSession,
+	cleanupTaskWorktree,
+	runTaskLifecycleOperation,
+	onBoardStateWrite,
 	onSnapshot,
 }: {
 	initialBoard: BoardData;
 	requestMoveTaskToTrash: RequestMoveTaskToTrash;
 	requestMoveTaskToTrashWithAnimation: RequestMoveTaskToTrash;
 	confirmMoveTaskToTrash: (task: BoardCard, currentBoard?: BoardData) => Promise<void>;
+	stopTaskSession?: UseTaskSessionsResult["stopTaskSession"];
+	cleanupTaskWorktree?: UseTaskSessionsResult["cleanupTaskWorktree"];
+	runTaskLifecycleOperation?: RunTaskLifecycleOperation;
+	onBoardStateWrite?: () => void;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
-	const [board, setBoard] = useState(initialBoard);
-	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(task.id);
+	const [board, setBoardState] = useState(initialBoard);
+	const setBoard: Dispatch<SetStateAction<BoardData>> = (nextBoard) => {
+		onBoardStateWrite?.();
+		setBoardState(nextBoard);
+	};
+	const [, setSelectedTaskId] = useState<string | null>(task.id);
 	const [, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const [, setIsClearTrashDialogOpen] = useState(false);
 
@@ -68,12 +82,12 @@ function HookHarness({
 		board,
 		setBoard,
 		selectedCard: { card: task, column: { id: "review" } },
-		selectedTaskId,
 		setSelectedTaskId,
 		setSessions,
 		setIsClearTrashDialogOpen,
-		stopTaskSession: async () => {},
-		cleanupTaskWorktree: async () => null,
+		stopTaskSession: stopTaskSession ?? (async () => ({ ok: true, summary: null, didExit: true, outcome: "exited" })),
+		cleanupTaskWorktree: cleanupTaskWorktree ?? (async () => ({ ok: true, removed: true })),
+		runTaskLifecycleOperation: runTaskLifecycleOperation ?? (async (_taskId, operation) => await operation()),
 		resumeTaskFromTrash: async () => {},
 		tryProgrammaticCardMove: () => "unavailable",
 		requestMoveTaskToTrash,
@@ -229,5 +243,88 @@ describe("useTrashWorkflow", () => {
 
 		expect(confirmMoveTaskToTrash).toHaveBeenCalledWith(task);
 		expect(requestMoveTaskToTrashWithAnimation).not.toHaveBeenCalled();
+	});
+
+	it("keeps a permanently deleted task visible when its session does not exit", async () => {
+		let snapshot: HookSnapshot | null = null;
+		const stopTaskSession = vi.fn(async () => ({
+			ok: false,
+			summary: null,
+			didExit: false,
+			outcome: "timed_out" as const,
+			error: "Task session did not exit before the timeout.",
+		}));
+		const cleanupTaskWorktree = vi.fn(async () => ({ ok: true, removed: true }));
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					initialBoard={createBoard("trash")}
+					requestMoveTaskToTrash={async () => {}}
+					requestMoveTaskToTrashWithAnimation={async () => {}}
+					confirmMoveTaskToTrash={async () => {}}
+					stopTaskSession={stopTaskSession}
+					cleanupTaskWorktree={cleanupTaskWorktree}
+					onSnapshot={(nextSnapshot) => {
+						snapshot = nextSnapshot;
+					}}
+				/>,
+			);
+		});
+		await act(async () => {
+			requireSnapshot(snapshot).actions.handleHardDeleteTrashTask(task.id);
+		});
+		await act(async () => {
+			requireSnapshot(snapshot).actions.handleConfirmHardDelete();
+			for (let index = 0; index < 5; index += 1) {
+				await Promise.resolve();
+			}
+		});
+
+		expect(cleanupTaskWorktree).not.toHaveBeenCalled();
+		expect(requireSnapshot(snapshot).board.columns.find((column) => column.id === "trash")?.cards).toEqual([task]);
+	});
+
+	it("commits permanent deletion before releasing the task lifecycle operation", async () => {
+		let snapshot: HookSnapshot | null = null;
+		const events: string[] = [];
+		const runTaskLifecycleOperation: RunTaskLifecycleOperation = async (_taskId, operation) => {
+			events.push("operation:start");
+			const result = await operation();
+			events.push("operation:end");
+			return result;
+		};
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					initialBoard={createBoard("trash")}
+					requestMoveTaskToTrash={async () => {}}
+					requestMoveTaskToTrashWithAnimation={async () => {}}
+					confirmMoveTaskToTrash={async () => {}}
+					cleanupTaskWorktree={async () => {
+						events.push("worktree:deleted");
+						return { ok: true, removed: true };
+					}}
+					runTaskLifecycleOperation={runTaskLifecycleOperation}
+					onBoardStateWrite={() => events.push("board:remove")}
+					onSnapshot={(nextSnapshot) => {
+						snapshot = nextSnapshot;
+					}}
+				/>,
+			);
+		});
+		await act(async () => {
+			requireSnapshot(snapshot).actions.handleHardDeleteTrashTask(task.id);
+		});
+		await act(async () => {
+			requireSnapshot(snapshot).actions.handleConfirmHardDelete();
+			for (let index = 0; index < 5; index += 1) {
+				await Promise.resolve();
+			}
+		});
+
+		expect(events).toEqual(["operation:start", "worktree:deleted", "board:remove", "operation:end"]);
+		expect(requireSnapshot(snapshot).board.columns.find((column) => column.id === "trash")?.cards).toEqual([]);
 	});
 });

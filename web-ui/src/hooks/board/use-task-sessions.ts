@@ -10,6 +10,7 @@ import { notifyError, showAppToast } from "@/components/app-toaster";
 import { resolveTaskStartGeometry } from "@/hooks/board/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
+	RuntimeTaskSessionStopResponse,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskWorktreeInfoResponse,
 	RuntimeWorktreeDeleteResponse,
@@ -57,7 +58,7 @@ export interface UseTaskSessionsResult {
 	upsertSession: (summary: RuntimeTaskSessionSummary) => void;
 	ensureTaskWorktree: (task: BoardCard) => Promise<EnsureTaskWorktreeResult>;
 	startTaskSession: (task: BoardCard, options?: StartTaskSessionOptions) => Promise<StartTaskSessionResult>;
-	stopTaskSession: (taskId: string, options?: { waitForExit?: boolean }) => Promise<void>;
+	stopTaskSession: (taskId: string, options?: { waitForExit?: boolean }) => Promise<RuntimeTaskSessionStopResponse>;
 	sendTaskSessionInput: (
 		taskId: string,
 		text: string,
@@ -220,9 +221,15 @@ export function useTaskSessions({
 	);
 
 	const stopTaskSession = useCallback(
-		async (taskId: string, options?: { waitForExit?: boolean }): Promise<void> => {
+		async (taskId: string, options?: { waitForExit?: boolean }): Promise<RuntimeTaskSessionStopResponse> => {
 			if (!currentProjectId) {
-				return;
+				return {
+					ok: false,
+					summary: null,
+					didExit: false,
+					outcome: "failed",
+					error: "No project selected.",
+				};
 			}
 			log.debug("stopTaskSession trpc call", {
 				taskId,
@@ -239,13 +246,23 @@ export function useTaskSessions({
 					ok: response.ok,
 					state: response.summary?.state ?? null,
 				});
+				if (response.summary) {
+					upsertSession(response.summary);
+				}
+				return response;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				log.warn("stopTaskSession trpc rejected", { taskId, error: message });
-				// Ignore stop errors during cleanup.
+				return {
+					ok: false,
+					summary: null,
+					didExit: false,
+					outcome: "failed",
+					error: message,
+				};
 			}
 		},
-		[currentProjectId],
+		[currentProjectId, upsertSession],
 	);
 
 	const sendTaskSessionInput = useCallback(

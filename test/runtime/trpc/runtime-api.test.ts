@@ -57,6 +57,7 @@ vi.mock("../../../src/server/browser.js", () => ({
 	openInBrowser: vi.fn(),
 }));
 
+import { TaskResourceOperationCoordinator } from "../../../src/core";
 import { startTaskSessionThroughService } from "../../../src/server/task-session-start-service";
 import { createRuntimeApi } from "../../../src/trpc";
 
@@ -142,6 +143,7 @@ function createDeps(flat: Record<string, unknown> = {}) {
 		},
 		getActiveProjectId: vi.fn(() => "project-1"),
 		getScopedTerminalManager: vi.fn(async () => manager as never),
+		taskResourceOperations: new TaskResourceOperationCoordinator(),
 		resolveInteractiveShellCommand: vi.fn(),
 		runCommand: vi.fn(),
 	};
@@ -598,6 +600,39 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 	});
 
+	it("waits for an earlier task resource operation before preparing and launching", async () => {
+		const taskResourceOperations = new TaskResourceOperationCoordinator();
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const blocker = taskResourceOperations.run("project-1", "task-1", async () => await gate);
+		await Promise.resolve();
+		const card = createCard({ workingDirectory: "/tmp/worktree" });
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
+		const startTaskSession = vi.fn(async () => createSummary());
+		const deps = { ...createDeps({ startTaskSession }), taskResourceOperations };
+
+		const start = startTaskSessionThroughService(
+			defaultScope,
+			{
+				taskId: "task-1",
+				baseRef: "main",
+				prompt: "Do something",
+				useWorktree: true,
+			},
+			deps,
+		);
+		await Promise.resolve();
+		expect(projectStateMocks.loadProjectState).not.toHaveBeenCalled();
+		expect(startTaskSession).not.toHaveBeenCalled();
+
+		release();
+		await blocker;
+		await expect(start).resolves.toMatchObject({ taskCwd: "/tmp/worktree" });
+		expect(startTaskSession).toHaveBeenCalledTimes(1);
+	});
+
 	it("falls back to projectPath when non-worktree task's persisted directory is deleted", async () => {
 		const card = createCard({ workingDirectory: "/tmp/deleted-dir", useWorktree: false });
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
@@ -858,6 +893,41 @@ describe("createRuntimeApi startTaskSession", () => {
 				images,
 			}),
 		);
+	});
+});
+
+describe("createRuntimeApi stopTaskSession", () => {
+	it("preserves waitForExit and reports a confirmed exit", async () => {
+		const stopTaskSessionAndWaitForExit = vi.fn(async () => ({
+			summary: createSummary({ state: "awaiting_review", reviewReason: "interrupted", pid: null }),
+			didExit: true,
+			outcome: "exited" as const,
+		}));
+		const api = createRuntimeApi(createDeps({ stopTaskSessionAndWaitForExit }));
+
+		const response = await api.stopTaskSession(defaultScope, { taskId: "task-1", waitForExit: true });
+
+		expect(stopTaskSessionAndWaitForExit).toHaveBeenCalledWith("task-1");
+		expect(response).toMatchObject({ ok: true, didExit: true, outcome: "exited" });
+	});
+
+	it("reports a stop timeout as a failed response", async () => {
+		const stopTaskSessionAndWaitForExit = vi.fn(async () => ({
+			summary: createSummary({ state: "awaiting_review", reviewReason: "interrupted", pid: 1234 }),
+			didExit: false,
+			outcome: "timed_out" as const,
+			error: "Task session did not exit before the timeout.",
+		}));
+		const api = createRuntimeApi(createDeps({ stopTaskSessionAndWaitForExit }));
+
+		const response = await api.stopTaskSession(defaultScope, { taskId: "task-1", waitForExit: true });
+
+		expect(response).toMatchObject({
+			ok: false,
+			didExit: false,
+			outcome: "timed_out",
+			error: "Task session did not exit before the timeout.",
+		});
 	});
 });
 

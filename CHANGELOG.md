@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: serialize task close and reopen lifecycle
+
+- Trash, restore, restart, hard-delete, clear-trash, and initial task starts now share a per-project/task operation boundary, so reopening a task waits for the complete earlier close—including worktree cleanup—before recreating the worktree and resuming the conversation.
+- Server-side task start, stop, worktree creation, and deletion now use the same keyed operation boundary across clients and UI remounts. Stop requests preserve `waitForExit` and return an explicit outcome, so cleanup, replacement starts, and permanent card removal do not continue after a timeout or failure.
+- Stale cleanup is rejected while a replacement session is active or starting, and reconciliation routes a vanished launch directory through the terminal transition owner instead of leaving its card Running.
+
 ### Fix: generate task titles without the helper VPN path
 
 - Task titles now use one explicit provider—an isolated, ephemeral Codex CLI turn by default, the existing OpenAI-compatible helper when selected, or local-only generation—and every remote failure falls back directly to the deterministic local title without crossing provider failure domains.
@@ -16,6 +22,7 @@
 
 - Agents can now launch a disposable Quarterdeck runtime, Vite UI, Git fixture, worktree state, and deterministic fake Codex on dynamic loopback ports without touching the user's active app, agent credentials, or Quarterdeck state.
 - A repo-scoped Playwright CLI wrapper provides semantic snapshots, pixel screenshots, console/network inspection, tracing, video, responsive resizing, and named isolated browser sessions; run artifacts include continuous runtime/web logs plus on-demand and final state/Git snapshots.
+- Linked worktrees now reuse the primary checkout's ignored Playwright browser cache, avoiding a separate Chromium download per task while keeping browser profiles, daemon state, and test artifacts isolated per worktree.
 - The normal Playwright E2E suite now consumes the same lifecycle boundary, retains trace/screenshot/video evidence on failure, blocks non-loopback browser requests, and verifies a real task can launch the fake agent through xterm and transition into Review.
 
 ### Fix: reconcile interactive Codex lifecycle

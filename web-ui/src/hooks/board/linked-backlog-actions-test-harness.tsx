@@ -3,7 +3,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach } from "vitest";
 
 import type { TaskTrashWarningViewModel } from "@/components/task";
+import type { RunTaskLifecycleOperation } from "@/hooks/board/task-lifecycle";
 import { useLinkedBacklogTaskActions } from "@/hooks/board/use-linked-backlog-task-actions";
+import type { UseTaskSessionsResult } from "@/hooks/board/use-task-sessions";
 import type { BoardCard, BoardColumnId, BoardData, BoardDependency } from "@/types";
 
 export interface RequestMoveTaskToTrashOptions {
@@ -83,8 +85,9 @@ export interface HookHarnessProps {
 	) => Promise<boolean>;
 	startBacklogTaskWithAnimation?: (task: BoardCard) => Promise<boolean>;
 	waitForBacklogStartAnimationAvailability?: () => Promise<void>;
-	stopTaskSession?: (taskId: string) => Promise<void>;
-	cleanupTaskWorktree?: (taskId: string) => Promise<unknown>;
+	stopTaskSession?: UseTaskSessionsResult["stopTaskSession"];
+	cleanupTaskWorktree?: UseTaskSessionsResult["cleanupTaskWorktree"];
+	runTaskLifecycleOperation?: RunTaskLifecycleOperation;
 	onRequestTrashConfirmation?: (
 		viewModel: TaskTrashWarningViewModel,
 		card: BoardCard,
@@ -104,6 +107,7 @@ export function HookHarness({
 	waitForBacklogStartAnimationAvailability,
 	stopTaskSession,
 	cleanupTaskWorktree,
+	runTaskLifecycleOperation,
 	onRequestTrashConfirmation,
 	showTrashWorktreeNotice,
 	saveTrashWorktreeNoticeDismissed,
@@ -115,8 +119,9 @@ export function HookHarness({
 		board,
 		setBoard,
 		setSelectedTaskId: setSelectedTaskIdOverride ?? setSelectedTaskId,
-		stopTaskSession: stopTaskSession ?? (async () => {}),
-		cleanupTaskWorktree: cleanupTaskWorktree ?? (async () => null),
+		stopTaskSession: stopTaskSession ?? (async () => ({ ok: true, summary: null, didExit: true, outcome: "exited" })),
+		cleanupTaskWorktree: cleanupTaskWorktree ?? (async () => ({ ok: true, removed: true })),
+		runTaskLifecycleOperation: runTaskLifecycleOperation ?? (async (_taskId, operation) => await operation()),
 		kickoffTaskInProgress: kickoffTaskInProgress ?? (async (_task: BoardCard, _taskId: string) => true),
 		startBacklogTaskWithAnimation,
 		waitForBacklogStartAnimationAvailability,

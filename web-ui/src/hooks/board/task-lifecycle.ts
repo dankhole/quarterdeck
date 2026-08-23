@@ -10,6 +10,8 @@ import type { RuntimeTaskWorktreeInfoResponse, RuntimeWorktreeEnsureResponse } f
 import { getTaskColumnId, moveTaskToColumn } from "@/state/board-state";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 
+export type RunTaskLifecycleOperation = <T>(taskId: string, operation: () => Promise<T>) => Promise<T>;
+
 // ---------------------------------------------------------------------------
 // Predicates
 // ---------------------------------------------------------------------------
