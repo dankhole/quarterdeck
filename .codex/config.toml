@@ -1,8 +1,0 @@
-[mcp_servers.draftkings-multitool]
-enabled = false
-
-[mcp_servers.atlassian]
-enabled = false
-
-[mcp_servers.slack]
-enabled = false
