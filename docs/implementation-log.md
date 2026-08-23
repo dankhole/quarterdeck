@@ -2,6 +2,10 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-2026-05-01.md`, `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-08-23 — Codex title helper stdin lifecycle
+
+Title helpers consistently reached their 20-second deadline with no stdout and exactly 39 stderr bytes. Those bytes matched Codex's `Reading additional input from stdin...` diagnostic: `execFile` creates an open stdin pipe by default, and current Codex appends piped stdin to a positional prompt, so it waited indefinitely for EOF even though Quarterdeck had already supplied the complete context in argv. The helper process boundary now closes stdin immediately after launch, while retaining piped stdout/stderr for bounded output accounting and sanitization. A regression test models the child streams and requires stdin to reach its ended state before the helper completes. Notable files: `src/title/codex-client.ts` and `test/runtime/title/codex-client.test.ts`. Validation: full root check (agent-instruction bridge, Biome, TypeScript, 1,217 tests), `git diff --check`, and isolated Agent Lab run `title-stdin-eof-20260823T221540Z-3ffcbb`, where the automatic helper completed in 512 ms, updated the board, produced no Doctor findings, and stopped cleanly with no forbidden host launches.
+
 ## 2026-08-23 — Repository history and compatibility cleanup
 
 Repository cleanup now preserves abandoned Git state under `refs/archive/cleanup-2026-08-23/` rather than leaving old worktrees, branches, and stashes in active lists. Shared historical documentation lives only in tracked `docs/history/`; the live diagnostics document contains stable invariants while the completed plan remains available for forensic context.

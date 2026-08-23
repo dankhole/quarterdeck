@@ -198,4 +198,29 @@ describe("callCodex", () => {
 		});
 		requireExecCallback(callback)(timeoutError, "", "");
 	});
+
+	it("closes helper stdin so Codex does not wait for additional prompt input", async () => {
+		const stdin = new PassThrough();
+		const stdout = new PassThrough();
+		const stderr = new PassThrough();
+		let callback: ExecCallback | null = null;
+		childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
+			const candidate = args.at(-1);
+			if (typeof candidate !== "function") {
+				throw new Error("Expected execFile callback");
+			}
+			callback = candidate as typeof callback;
+			return { stdin, stdout, stderr } as unknown as ChildProcess;
+		});
+
+		const resultPromise = _testing.runCodexCommand(["exec", "--", "title"], 20_000);
+
+		expect(stdin.writableEnded).toBe(true);
+		requireExecCallback(callback)(null, "Reliable Task Titles\n", "");
+		await expect(resultPromise).resolves.toMatchObject({
+			exitStatus: 0,
+			stdout: "Reliable Task Titles\n",
+			timedOut: false,
+		});
+	});
 });

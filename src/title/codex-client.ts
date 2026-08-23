@@ -93,6 +93,10 @@ function runCodexCommand(args: string[], timeoutMs: number): Promise<CodexComman
 				});
 			},
 		);
+		// `codex exec` appends piped stdin to a positional prompt. Node leaves the
+		// execFile stdin pipe open by default, so Codex otherwise waits for EOF
+		// until our timeout even though the complete prompt is already in argv.
+		child.stdin?.end();
 		child.stdout?.on("data", (chunk: string | Buffer) => {
 			streamedStdoutBytes += outputByteLength(chunk);
 		});

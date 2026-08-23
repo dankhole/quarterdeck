@@ -48,6 +48,7 @@
 - Codex title generation now pins the lightweight `gpt-5.6-luna` model by default instead of inheriting a moving CLI default; `QUARTERDECK_CODEX_TITLE_MODEL` provides an explicit override.
 - Codex title calls share Quarterdeck's platform command-resolution and process-tree termination mechanisms, settle at a bounded deadline even if a child ignores termination, and apply the same provider-neutral response cleanup as HTTP generation.
 - Automatic titles now share a runtime-owned per-project/task single-flight guard across board-save requests, preventing rapid saves from launching duplicate Codex helpers. Title calls explicitly use `none` reasoning for this latency-sensitive workload, and failure logs retain content-free error classes plus accurate output byte counts for diagnosis.
+- Codex title helpers now close their unused stdin pipe immediately, preventing the CLI from waiting for additional prompt input until the 20-second deadline when the complete title context was already passed as an argument.
 
 ### Fix: keep Agent Lab host UI isolated
 
