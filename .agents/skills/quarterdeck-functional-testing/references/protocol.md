@@ -15,6 +15,7 @@ Interactive terminal commands:
 
 - `/help` — print the protocol in the terminal.
 - `/needs-input [message]` — send `PermissionRequest`/`permission_prompt` metadata.
+- `/approval-overlay` — render Codex's canonical command approval overlay without sending a native hook, for compatibility-fallback coverage.
 - `/working [message]` — send `PostToolUse` and transition to running.
 - `/review [message]` — send root `Stop` with final-message metadata.
 - `/write <relative-path> <contents>` — write inside the disposable task checkout; absolute paths and escapes are rejected.

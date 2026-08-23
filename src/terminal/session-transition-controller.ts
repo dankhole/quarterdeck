@@ -31,6 +31,22 @@ export class SessionTransitionController {
 		}
 	}
 
+	/**
+	 * Applies process-side consequences for every authoritative store mutation,
+	 * including hook API writes that do not originate in this controller.
+	 */
+	observeSummaryChange(previous: RuntimeTaskSessionSummary | null, summary: RuntimeTaskSessionSummary): void {
+		if (previous?.state === summary.state || summary.state !== "running") {
+			return;
+		}
+		const active = this.entries.get(summary.taskId)?.active;
+		if (!active) {
+			return;
+		}
+		clearInterruptRecoveryTimer(active);
+		active.resetOutputTransitionDetection?.();
+	}
+
 	applyTransitionEvent(
 		entry: ProcessEntry,
 		event: SessionTransitionEvent,
@@ -56,9 +72,6 @@ export class SessionTransitionController {
 		});
 		if (result.clearAttentionBuffer && active && active.workspaceTrustBuffer !== null) {
 			active.workspaceTrustBuffer = "";
-		}
-		if (active && result.patch.state === "running") {
-			clearInterruptRecoveryTimer(active);
 		}
 		return result;
 	}

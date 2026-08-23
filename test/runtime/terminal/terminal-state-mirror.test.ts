@@ -17,6 +17,31 @@ afterEach(() => {
 });
 
 describe("TerminalStateMirror", () => {
+	it("reports the settled rendered viewport after an output write", async () => {
+		const mirror = createMirror(40, 10);
+
+		const rendered = await new Promise<string[]>((resolve) => {
+			mirror.applyOutput(Buffer.from("\u001b[2J\u001b[Htitle\u001b[10;1Hfooter", "utf8"), (screen) =>
+				resolve(screen.lines),
+			);
+		});
+
+		expect(rendered[0]).toBe("title");
+		expect(rendered[9]).toBe("footer");
+	});
+
+	it("reports rendered output after a detached batch flush", async () => {
+		const mirror = createMirror(40, 10);
+		mirror.setBatching(true);
+
+		const renderedPromise = new Promise<string[]>((resolve) => {
+			mirror.applyOutput(Buffer.from("batched", "utf8"), (screen) => resolve(screen.lines));
+		});
+		mirror.setBatching(false);
+
+		expect((await renderedPromise)[0]).toBe("batched");
+	});
+
 	it("serializes inline terminal content and dimensions", async () => {
 		const mirror = createMirror(100, 30);
 

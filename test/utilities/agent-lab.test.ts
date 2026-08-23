@@ -85,6 +85,7 @@ describe("agent-lab fake agent protocol", () => {
 	});
 
 	it("parses bounded deterministic commands", () => {
+		expect(parseFakeAgentCommand("/approval-overlay")).toEqual({ kind: "approval-overlay" });
 		expect(parseFakeAgentCommand("/write nested/result.txt hello world")).toEqual({
 			kind: "write",
 			relativePath: "nested/result.txt",

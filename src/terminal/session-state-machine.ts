@@ -4,7 +4,9 @@ export type SessionTransitionEvent =
 	| { type: "hook.to_review" }
 	| { type: "hook.to_in_progress" }
 	| { type: "agent.prompt-ready" }
+	| { type: "agent.permission-prompt" }
 	| { type: "user.responded" }
+	| { type: "user.submitted" }
 	| { type: "user.stop" }
 	| { type: "process.exit"; exitCode: number | null; interrupted: boolean }
 	| { type: "interrupt.recovery" }
@@ -46,6 +48,29 @@ export function reduceSessionTransition(
 	event: SessionTransitionEvent,
 ): SessionTransitionResult {
 	switch (event.type) {
+		case "agent.permission-prompt": {
+			if (summary.state !== "running" || summary.agentId !== "codex") {
+				return { changed: false, patch: {}, clearAttentionBuffer: false };
+			}
+			return {
+				changed: true,
+				patch: {
+					state: "awaiting_review",
+					reviewReason: "hook",
+					latestHookActivity: {
+						activityText: "Waiting for approval",
+						toolName: null,
+						toolInputSummary: null,
+						finalMessage: null,
+						hookEventName: "PermissionRequest",
+						notificationType: "permission.asked",
+						source: "codex",
+						conversationSummaryText: null,
+					},
+				},
+				clearAttentionBuffer: true,
+			};
+		}
 		case "hook.to_review": {
 			if (summary.state !== "running") {
 				return { changed: false, patch: {}, clearAttentionBuffer: false };
@@ -76,6 +101,21 @@ export function reduceSessionTransition(
 		}
 		case "user.responded": {
 			if (summary.state !== "awaiting_review" || !deriveTaskIndicatorState(summary).needsInput) {
+				return { changed: false, patch: {}, clearAttentionBuffer: false };
+			}
+			return {
+				changed: true,
+				patch: {
+					state: "running",
+					reviewReason: null,
+					latestHookActivity: null,
+					stalledSince: null,
+				},
+				clearAttentionBuffer: true,
+			};
+		}
+		case "user.submitted": {
+			if (summary.state !== "awaiting_review" || !canReturnToRunning(summary.reviewReason)) {
 				return { changed: false, patch: {}, clearAttentionBuffer: false };
 			}
 			return {

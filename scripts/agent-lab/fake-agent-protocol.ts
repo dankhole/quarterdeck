@@ -3,6 +3,7 @@ import { type AgentLabScenario, AgentLabScenarioSchema } from "./types";
 export type FakeAgentCommand =
 	| { kind: "help" }
 	| { kind: "needs-input"; message: string }
+	| { kind: "approval-overlay" }
 	| { kind: "review"; message: string }
 	| { kind: "working"; message: string }
 	| { kind: "write"; relativePath: string; contents: string }
@@ -52,6 +53,9 @@ export function parseFakeAgentCommand(rawInput: string): FakeAgentCommand {
 	}
 	if (input.startsWith("/needs-input")) {
 		return { kind: "needs-input", message: restAfterCommand(input) || "Waiting for approval" };
+	}
+	if (input === "/approval-overlay") {
+		return { kind: "approval-overlay" };
 	}
 	if (input.startsWith("/review")) {
 		return { kind: "review", message: restAfterCommand(input) || "Agent-lab task is ready for review" };

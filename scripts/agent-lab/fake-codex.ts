@@ -18,6 +18,7 @@ const taskId = process.env.QUARTERDECK_HOOK_TASK_ID ?? "unknown-task";
 const sessionId = `agent-lab-${taskId}`;
 let turn = 0;
 let closing = false;
+let approvalOverlayActive = false;
 
 function writeLine(message = ""): void {
 	process.stdout.write(`${message}\r\n`);
@@ -130,6 +131,7 @@ async function runGit(args: string[]): Promise<{ output: string; code: number }>
 function printHelp(): void {
 	writeLine("Agent-lab commands:");
 	writeLine("  /needs-input [message]       request approval/input");
+	writeLine("  /approval-overlay            render approval without a native hook");
 	writeLine("  /working [message]           transition back to running");
 	writeLine("  /review [message]            finish the turn for review");
 	writeLine("  /write <path> <contents>     write inside the disposable checkout");
@@ -155,6 +157,19 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 				activityText: "Waiting for approval",
 				notificationType: "permission_prompt",
 			});
+			return;
+		case "approval-overlay":
+			approvalOverlayActive = true;
+			{
+				const rows = Math.max(10, process.stdout.rows ?? 40);
+				const startRow = rows - 8;
+				process.stdout.write("\u001b[2J\u001b[H");
+				process.stdout.write(`\u001b[${startRow};1H  Would you like to run the following command?`);
+				process.stdout.write(`\u001b[${startRow + 2};1H  $ echo agent-lab-approval`);
+				process.stdout.write(`\u001b[${startRow + 4};1H› 1. Yes, proceed (y)`);
+				process.stdout.write(`\u001b[${startRow + 5};1H  2. No, and tell Codex what to do differently (esc)`);
+				process.stdout.write(`\u001b[${rows};1H  Press enter to confirm or esc to cancel`);
+			}
 			return;
 		case "review":
 			writeLine(`AGENT LAB REVIEW READY: ${command.message}`);
@@ -295,7 +310,14 @@ async function main(): Promise<void> {
 	const terminal = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
 	let clipboardResponseBuffer = "";
 	process.stdin.on("data", (chunk: Buffer | string) => {
-		clipboardResponseBuffer = `${clipboardResponseBuffer}${String(chunk)}`.slice(-4096);
+		const input = String(chunk);
+		if (approvalOverlayActive && input === "\u001b") {
+			approvalOverlayActive = false;
+			process.stdout.write("\u001b[2J\u001b[H");
+			writeLine("AGENT LAB APPROVAL DISMISSED");
+			terminal.prompt();
+		}
+		clipboardResponseBuffer = `${clipboardResponseBuffer}${input}`.slice(-4096);
 		const responsePrefix = "\u001b]52;c;";
 		const responseStart = clipboardResponseBuffer.indexOf(responsePrefix);
 		const responseEnd = clipboardResponseBuffer.indexOf("\u0007", responseStart + responsePrefix.length);
@@ -322,7 +344,7 @@ async function main(): Promise<void> {
 				writeLine(`AGENT LAB ERROR: ${error instanceof Error ? error.message : String(error)}`),
 			)
 			.finally(() => {
-				if (!closing) {
+				if (!closing && !approvalOverlayActive) {
 					terminal.prompt();
 				}
 			});

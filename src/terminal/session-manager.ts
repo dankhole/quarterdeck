@@ -550,6 +550,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 	private observeSummaryChange(summary: RuntimeTaskSessionSummary): void {
 		const previousObservation = this.previousSummaries.get(summary.taskId) ?? null;
 		const previous = previousObservation?.summary ?? null;
+		this.transitions.observeSummaryChange(previous, summary);
 		const entry = this.entries.get(summary.taskId);
 		const sessionInstanceId = entry?.launchMonitor?.sessionInstanceId ?? null;
 		this.previousSummaries.set(summary.taskId, { summary, sessionInstanceId });

@@ -44,6 +44,35 @@ describe("canReturnToRunning", () => {
 });
 
 describe("reduceSessionTransition", () => {
+	describe("agent.permission-prompt", () => {
+		it("projects a visible Codex approval into an actionable review wait", () => {
+			const summary = createSummary({ agentId: "codex" });
+
+			const result = reduceSessionTransition(summary, { type: "agent.permission-prompt" });
+
+			expect(result.changed).toBe(true);
+			expect(result.patch).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "hook",
+				latestHookActivity: {
+					activityText: "Waiting for approval",
+					hookEventName: "PermissionRequest",
+					notificationType: "permission.asked",
+					source: "codex",
+				},
+			});
+			expect(result.clearAttentionBuffer).toBe(true);
+		});
+
+		it("does not infer approval state for another agent", () => {
+			const result = reduceSessionTransition(createSummary({ agentId: "claude" }), {
+				type: "agent.permission-prompt",
+			});
+
+			expect(result).toEqual({ changed: false, patch: {}, clearAttentionBuffer: false });
+		});
+	});
+
 	describe("reconciliation.launch_path_missing", () => {
 		it("moves an active session to error review without claiming the process exited", () => {
 			const summary = createSummary({
@@ -253,6 +282,40 @@ describe("reduceSessionTransition", () => {
 
 			expect(result.changed).toBe(false);
 			expect(result.patch).toEqual({});
+		});
+	});
+
+	describe("user.submitted", () => {
+		it("starts a new turn immediately from a review-ready live session", () => {
+			const summary = createSummary({
+				state: "awaiting_review",
+				reviewReason: "hook",
+				latestHookActivity: {
+					activityText: "Ready for review",
+					toolName: null,
+					toolInputSummary: null,
+					finalMessage: "Finished",
+					hookEventName: "Stop",
+					notificationType: null,
+					source: "codex",
+					conversationSummaryText: "Finished",
+				},
+			});
+
+			const result = reduceSessionTransition(summary, { type: "user.submitted" });
+
+			expect(result.changed).toBe(true);
+			expect(result.patch).toMatchObject({
+				state: "running",
+				reviewReason: null,
+				latestHookActivity: null,
+			});
+		});
+
+		it("does not revive an explicitly interrupted session", () => {
+			const summary = createSummary({ state: "interrupted", reviewReason: "interrupted" });
+
+			expect(reduceSessionTransition(summary, { type: "user.submitted" }).changed).toBe(false);
 		});
 	});
 

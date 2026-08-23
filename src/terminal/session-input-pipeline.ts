@@ -80,8 +80,13 @@ export function processSessionInput(
 
 	const protocolResponse = isTerminalProtocolResponse(data);
 	const explicitSubmission = !protocolResponse && isExplicitUserSubmission(data);
+	const { isCtrlC, isBareEscape } = detectInterruptSignal(data);
+	const waitsForActionableInput = summary?.state === "awaiting_review" && deriveTaskIndicatorState(summary).needsInput;
 	const resolvesInputWait =
-		explicitSubmission && summary?.state === "awaiting_review" && deriveTaskIndicatorState(summary).needsInput;
+		waitsForActionableInput && (explicitSubmission || (summary?.agentId === "codex" && isBareEscape));
+	const submitsReviewPrompt = explicitSubmission && summary?.state === "awaiting_review" && !waitsForActionableInput;
+	const recordsCodexSubmission =
+		summary?.agentId === "codex" && (explicitSubmission || (isBareEscape && resolvesInputWait));
 	const clearsNonCodexPermission =
 		summary?.agentId !== "codex" &&
 		summary?.state === "awaiting_review" &&
@@ -97,7 +102,6 @@ export function processSessionInput(
 
 	// 1. Interrupt detection — Ctrl+C or bare Escape while running suppresses
 	//    auto-restart and schedules a recovery timer.
-	const { isCtrlC, isBareEscape } = detectInterruptSignal(data);
 	if (summary?.state === "running" && (isCtrlC || isBareEscape)) {
 		entry.suppressAutoRestartOnExit = true;
 		scheduleInterruptRecovery(entry, {
@@ -114,15 +118,18 @@ export function processSessionInput(
 	// 3. Record the direct user submission as an ordering boundary for Codex.
 	//    This prevents an older PermissionRequest that was delayed in transport
 	//    from restoring the wait after the user already answered it.
-	if (explicitSubmission && summary?.agentId === "codex") {
+	if (recordsCodexSubmission) {
 		recordHookUserSubmission(entry.hookEventOrder);
 	}
 
-	// 4. A submitted response to an actionable input wait is authoritative user
-	//    interaction. Route it through the state machine; ordinary review cards,
-	//    cursor navigation, terminal protocol traffic, and PTY output do not move.
+	// 4. Enter is an authoritative submission boundary. It resolves actionable
+	//    waits and also starts a new turn from a review-ready live session without
+	//    waiting for the agent's first hook. Cursor navigation, terminal protocol
+	//    traffic, and unsubmitted editing remain state-neutral.
 	if (resolvesInputWait) {
 		deps.applyTransitionEvent(entry, { type: "user.responded" });
+	} else if (submitsReviewPrompt) {
+		deps.applyTransitionEvent(entry, { type: "user.submitted" });
 	}
 	return deps.getSummary(taskId);
 }

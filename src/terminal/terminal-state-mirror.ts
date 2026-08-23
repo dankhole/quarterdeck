@@ -34,6 +34,14 @@ export interface TerminalRestoreSnapshot {
 	rows: number;
 }
 
+/** Rendered primary/alternate-screen viewport after an output write settles. */
+export interface TerminalScreenSnapshot {
+	lines: string[];
+	cursorRow: number;
+	cols: number;
+	rows: number;
+}
+
 export interface TerminalStateMirrorDiagnosticSnapshot {
 	disposed: boolean;
 	batching: boolean;
@@ -63,6 +71,7 @@ export class TerminalStateMirror {
 
 	private batching = false;
 	private batchBuffer: Uint8Array[] = [];
+	private batchAppliedCallbacks: Array<(screen: TerminalScreenSnapshot) => void> = [];
 	private batchTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(cols: number, rows: number, options: TerminalStateMirrorOptions = {}) {
@@ -89,11 +98,14 @@ export class TerminalStateMirror {
 		}
 	}
 
-	applyOutput(chunk: Buffer): void {
+	applyOutput(chunk: Buffer, onApplied?: (screen: TerminalScreenSnapshot) => void): void {
 		if (this.disposed) return;
 
 		if (this.batching) {
 			this.batchBuffer.push(new Uint8Array(chunk));
+			if (onApplied) {
+				this.batchAppliedCallbacks.push(onApplied);
+			}
 			if (this.batchTimer === null) {
 				this.batchTimer = setTimeout(() => this.flushBatch(), BATCH_FLUSH_INTERVAL_MS);
 			}
@@ -105,6 +117,13 @@ export class TerminalStateMirror {
 			() =>
 				new Promise<void>((resolve) => {
 					this.terminal.write(chunkCopy, () => {
+						try {
+							if (onApplied) {
+								onApplied(this.captureVisibleScreen());
+							}
+						} catch {
+							log.warn("terminal applied-output callback failed");
+						}
 						resolve();
 					});
 				}),
@@ -161,6 +180,7 @@ export class TerminalStateMirror {
 			this.batchTimer = null;
 		}
 		this.batchBuffer.length = 0;
+		this.batchAppliedCallbacks.length = 0;
 		this.terminal.dispose();
 	}
 
@@ -173,6 +193,8 @@ export class TerminalStateMirror {
 
 		const chunks = this.batchBuffer;
 		this.batchBuffer = [];
+		const appliedCallbacks = this.batchAppliedCallbacks;
+		this.batchAppliedCallbacks = [];
 
 		let totalLength = 0;
 		for (const chunk of chunks) {
@@ -189,10 +211,34 @@ export class TerminalStateMirror {
 			() =>
 				new Promise<void>((resolve) => {
 					this.terminal.write(merged, () => {
+						if (appliedCallbacks.length > 0) {
+							const screen = this.captureVisibleScreen();
+							for (const callback of appliedCallbacks) {
+								try {
+									callback(screen);
+								} catch {
+									log.warn("terminal applied-output callback failed");
+								}
+							}
+						}
 						resolve();
 					});
 				}),
 		);
+	}
+
+	private captureVisibleScreen(): TerminalScreenSnapshot {
+		const buffer = this.terminal.buffer.active;
+		const lines: string[] = [];
+		for (let row = 0; row < this.terminal.rows; row += 1) {
+			lines.push(buffer.getLine(buffer.viewportY + row)?.translateToString(true) ?? "");
+		}
+		return {
+			lines,
+			cursorRow: buffer.cursorY,
+			cols: this.terminal.cols,
+			rows: this.terminal.rows,
+		};
 	}
 
 	private enqueueOperation(operation: () => void | Promise<void>): void {

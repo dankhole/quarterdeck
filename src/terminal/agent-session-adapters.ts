@@ -8,10 +8,12 @@ import { buildQuarterdeckCommandParts, createTaggedLogger } from "../core";
 import { lockedFileSystem } from "../fs";
 import { getRuntimeHomePath } from "../state";
 import { createClaudeRendererEnvironment, resolveClaudeRendererPolicy } from "./claude-renderer-policy";
+import { createCodexApprovalPromptDetector } from "./codex-approval-prompt";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
 import { buildPiLifecycleExtensionSource, QUARTERDECK_PI_HOOK_COMMAND_ENV } from "./pi-lifecycle-extension";
 import type { SessionTransitionEvent } from "./session-state-machine";
 import { prepareTaskPromptWithImages } from "./task-image-prompt";
+import type { TerminalScreenSnapshot } from "./terminal-state-mirror";
 import { buildWorktreeContextPrompt } from "./worktree-context";
 
 export interface AgentAdapterLaunchInput {
@@ -34,7 +36,7 @@ export interface AgentAdapterLaunchInput {
 }
 
 export type AgentOutputTransitionDetector = (
-	data: string,
+	screen: TerminalScreenSnapshot,
 	summary: RuntimeTaskSessionSummary,
 ) => SessionTransitionEvent | null;
 
@@ -47,6 +49,7 @@ export interface PreparedAgentLaunch {
 	cleanup?: () => Promise<void>;
 	detectOutputTransition?: AgentOutputTransitionDetector;
 	shouldInspectOutputForTransition?: AgentOutputTransitionInspectionPredicate;
+	resetOutputTransitionDetection?: () => void;
 }
 
 interface HookContext {
@@ -269,6 +272,7 @@ const codexAdapter: AgentSessionAdapter = {
 		const codexArgs = [...input.args];
 		const env: Record<string, string | undefined> = {};
 		const binary = input.binary;
+		const approvalPromptDetector = createCodexApprovalPromptDetector();
 
 		if (input.resumeConversation) {
 			if (!codexArgs.includes("resume")) {
@@ -370,6 +374,9 @@ const codexAdapter: AgentSessionAdapter = {
 			binary,
 			args: codexArgs,
 			env,
+			detectOutputTransition: approvalPromptDetector.detect,
+			shouldInspectOutputForTransition: (summary) => summary.state === "running",
+			resetOutputTransitionDetection: approvalPromptDetector.reset,
 		};
 	},
 };

@@ -46,23 +46,52 @@ export function processTaskSessionOutput(
 		return;
 	}
 
-	// 2. Terminal state mirror — feed filtered output to the headless xterm
-	//    so screen state stays current for restore snapshots.
+	// 2. Resolve whether this write needs a rendered-screen inspection. Approval
+	//    overlays are terminal UI, so transcript chunks are not lifecycle truth.
+	const liveSummary = deps.getSummary(taskId);
+	const activeAtWrite = entry.active;
+	const inspectRenderedScreen =
+		entry.terminalStateMirror !== null &&
+		activeAtWrite.detectOutputTransition !== null &&
+		liveSummary !== null &&
+		(activeAtWrite.shouldInspectOutputForTransition?.(liveSummary) ?? true);
+	const outputListeners = inspectRenderedScreen
+		? Array.from(entry.listeners.entries()).filter(([, listener]) => listener.onOutput)
+		: [];
+
+	// 3. Terminal state mirror — feed filtered output to the headless xterm.
+	//    When inspection is required, transition before the same chunk becomes
+	//    visible to listeners so the card cannot briefly claim it is Running.
 	if (entry.terminalStateMirror) {
-		entry.terminalStateMirror.applyOutput(filteredChunk);
+		entry.terminalStateMirror.applyOutput(
+			filteredChunk,
+			inspectRenderedScreen
+				? (screen) => {
+						if (entry.active !== activeAtWrite) {
+							return;
+						}
+						const summary = deps.getSummary(taskId);
+						if (summary && (activeAtWrite.shouldInspectOutputForTransition?.(summary) ?? true)) {
+							const adapterEvent = activeAtWrite.detectOutputTransition?.(screen, summary) ?? null;
+							if (adapterEvent) {
+								deps.applyTransitionEvent(entry, adapterEvent);
+							}
+						}
+						for (const [listenerId, listener] of outputListeners) {
+							if (entry.listeners.get(listenerId) === listener) {
+								listener.onOutput?.(filteredChunk);
+							}
+						}
+					}
+				: undefined,
+		);
 	}
 
-	// 3. Decode to text only when needed — avoid toString("utf8") cost unless
-	//    trust or transition detection actually need the text.
-	const liveSummary = deps.getSummary(taskId);
-	const needsDecodedOutput =
-		entry.active.workspaceTrustBuffer !== null ||
-		(entry.active.detectOutputTransition !== null &&
-			liveSummary !== null &&
-			(entry.active.shouldInspectOutputForTransition?.(liveSummary) ?? true));
+	// 4. Decode only for workspace trust, which still consumes raw output.
+	const needsDecodedOutput = entry.active.workspaceTrustBuffer !== null;
 	const data = needsDecodedOutput ? filteredChunk.toString("utf8") : "";
 
-	// 4. Workspace trust auto-confirm
+	// 5. Workspace trust auto-confirm
 	processWorkspaceTrustOutput(entry.active, taskId, data, {
 		updateStore: (id, patch) => deps.updateStore(id, patch),
 		getActive: (id) => {
@@ -73,15 +102,12 @@ export function processTaskSessionOutput(
 		},
 	});
 
-	// 5. Agent output transition detection
-	const adapterEvent = liveSummary ? (entry.active.detectOutputTransition?.(data, liveSummary) ?? null) : null;
-	if (adapterEvent) {
-		deps.applyTransitionEvent(entry, adapterEvent);
-	}
-
-	// 6. Listener broadcast
-	for (const taskListener of entry.listeners.values()) {
-		taskListener.onOutput?.(filteredChunk);
+	// 6. Listener broadcast. Render-inspected output is broadcast from the
+	//    mirror callback after any state transition has been applied.
+	if (!inspectRenderedScreen) {
+		for (const taskListener of entry.listeners.values()) {
+			taskListener.onOutput?.(filteredChunk);
+		}
 	}
 }
 

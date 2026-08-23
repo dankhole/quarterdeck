@@ -122,7 +122,7 @@ describe("SessionTransitionController", () => {
 		expect(entry.active?.workspaceTrustBuffer).toBe("");
 	});
 
-	it("clears interrupt recovery when a transition returns the session to running", () => {
+	it("owns running-transition side effects for direct store mutations", () => {
 		const store = new InMemorySessionSummaryStore();
 		store.hydrateFromRecord({
 			"task-1": createSummary({
@@ -148,14 +148,22 @@ describe("SessionTransitionController", () => {
 			return;
 		}
 		active.interruptRecoveryTimer = setTimeout(() => {}, 5_000);
+		active.resetOutputTransitionDetection = vi.fn();
 
 		const controller = new SessionTransitionController(store, new Map([["task-1", entry]]));
-		const result = controller.applyTransitionEvent(entry, { type: "hook.to_in_progress" });
+		const previous = store.getSummary("task-1");
+		const summary = store.transitionToRunning("task-1");
+		expect(previous).not.toBeNull();
+		expect(summary).not.toBeNull();
+		if (!summary) {
+			return;
+		}
+		controller.observeSummaryChange(previous, summary);
 
-		expect(result?.changed).toBe(true);
-		expect(result?.summary.state).toBe("running");
-		expect(result?.summary.reviewReason).toBeNull();
+		expect(summary.state).toBe("running");
+		expect(summary.reviewReason).toBeNull();
 		expect(entry.active?.interruptRecoveryTimer).toBeNull();
+		expect(active.resetOutputTransitionDetection).toHaveBeenCalledTimes(1);
 	});
 
 	it("leaves process-side flags untouched when the transition is a no-op", () => {

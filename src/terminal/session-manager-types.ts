@@ -29,6 +29,7 @@ export interface ActiveProcessState {
 	onSessionCleanup: (() => Promise<void>) | null;
 	detectOutputTransition: AgentOutputTransitionDetector | null;
 	shouldInspectOutputForTransition: AgentOutputTransitionInspectionPredicate | null;
+	resetOutputTransitionDetection: (() => void) | null;
 	autoConfirmedWorkspaceTrust: boolean;
 	workspaceTrustConfirmCount: number;
 	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
@@ -238,6 +239,7 @@ export function createActiveProcessState(opts: CreateActiveProcessStateOptions):
 		onSessionCleanup: opts.launch?.cleanup ?? null,
 		detectOutputTransition: opts.launch?.detectOutputTransition ?? null,
 		shouldInspectOutputForTransition: opts.launch?.shouldInspectOutputForTransition ?? null,
+		resetOutputTransitionDetection: opts.launch?.resetOutputTransitionDetection ?? null,
 		autoConfirmedWorkspaceTrust: false,
 		workspaceTrustConfirmCount: 0,
 		workspaceTrustConfirmTimer: null,

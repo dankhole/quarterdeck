@@ -141,8 +141,9 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.env.QUARTERDECK_HOOK_PROJECT_ID).toBe("project-1");
 		expect(launch.env.QUARTERDECK_HOOK_SESSION_INSTANCE_ID).toBe("process-1");
 		expect(launch.binary).toBe("codex");
-		expect(launch.detectOutputTransition).toBeUndefined();
-		expect(launch.shouldInspectOutputForTransition).toBeUndefined();
+		expect(launch.detectOutputTransition).toEqual(expect.any(Function));
+		expect(launch.shouldInspectOutputForTransition).toEqual(expect.any(Function));
+		expect(launch.resetOutputTransitionDetection).toEqual(expect.any(Function));
 		expect(launch.args.slice(0, 2)).toEqual(["--enable", "hooks"]);
 		const hookOverrideArgs = launch.args.slice(2);
 		expect(hookOverrideArgs.length).toBe(Object.keys(buildCodexHooksConfig()).length * 2 + 4);

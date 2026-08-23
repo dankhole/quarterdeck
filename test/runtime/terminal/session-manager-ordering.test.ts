@@ -350,13 +350,76 @@ describe("TerminalSessionManager ordering invariants", () => {
 	});
 
 	describe("onData transition-before-broadcast ordering", () => {
+		it("moves visible Codex approvals before broadcast and resets after a hook-driven return", async () => {
+			let detected = false;
+			const resetDetection = vi.fn(() => {
+				detected = false;
+			});
+			prepareAgentLaunchMock.mockImplementation(async (input: { args: string[]; binary?: string }) => ({
+				binary: input.binary,
+				args: [...input.args],
+				env: {},
+				detectOutputTransition: (screen: { lines: string[] }) => {
+					if (detected || !screen.lines.some((line) => line.includes("APPROVAL_OVERLAY"))) {
+						return null;
+					}
+					detected = true;
+					return { type: "agent.permission-prompt" as const };
+				},
+				shouldInspectOutputForTransition: (summary: { state: string }) => summary.state === "running",
+				resetOutputTransitionDetection: resetDetection,
+			}));
+
+			const spawnedSessions = setupMockPtySpawn();
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+			const statesSeenInOnOutput: Array<string | undefined> = [];
+			manager.attach("task-approval", {
+				onOutput: () => statesSeenInOnOutput.push(manager.store.getSummary("task-approval")?.state),
+			});
+
+			await manager.startTaskSession({
+				taskId: "task-approval",
+				agentId: "codex",
+				binary: "codex",
+				args: [],
+				cwd: "/tmp/task-approval",
+				prompt: "Fix the bug",
+			});
+			resetDetection.mockClear();
+			spawnedSessions[0]?.triggerData("APPROVAL_OVERLAY");
+			await vi.advanceTimersByTimeAsync(1);
+
+			expect(statesSeenInOnOutput).toEqual(["awaiting_review"]);
+			expect(manager.store.getSummary("task-approval")).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "hook",
+				latestHookActivity: {
+					notificationType: "permission.asked",
+				},
+			});
+			expect(resetDetection).not.toHaveBeenCalled();
+
+			// Native PostToolUse writes through the shared store rather than calling
+			// applyTransitionEvent. The transition observer must still reset the latch.
+			manager.store.transitionToRunning("task-approval");
+
+			expect(manager.store.getSummary("task-approval")?.state).toBe("running");
+			expect(resetDetection).toHaveBeenCalledTimes(1);
+
+			spawnedSessions[0]?.triggerData("\r\nAPPROVAL_OVERLAY_SECOND");
+			await vi.advanceTimersByTimeAsync(1);
+
+			expect(manager.store.getSummary("task-approval")?.state).toBe("awaiting_review");
+			expect(statesSeenInOnOutput).toEqual(["awaiting_review", "awaiting_review"]);
+		});
+
 		it("listeners see post-transition state when onData triggers a state machine transition", async () => {
 			prepareAgentLaunchMock.mockImplementation(async (input: { args: string[]; binary?: string }) => ({
 				binary: input.binary,
 				args: [...input.args],
 				env: {},
-				detectOutputTransition: (data: string) => {
-					if (data.includes("PROMPT_READY")) {
+				detectOutputTransition: (screen: { lines: string[] }) => {
+					if (screen.lines.some((line) => line.includes("PROMPT_READY"))) {
 						return { type: "agent.prompt-ready" as const };
 					}
 					return null;
@@ -390,6 +453,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 
 			// Trigger data that includes the transition text
 			spawnedSessions[0]?.triggerData("PROMPT_READY");
+			await vi.advanceTimersByTimeAsync(1);
 
 			// The listener's onOutput must have seen the post-transition state
 			expect(statesSeenInOnOutput).toHaveLength(1);
@@ -401,8 +465,8 @@ describe("TerminalSessionManager ordering invariants", () => {
 				binary: input.binary,
 				args: [...input.args],
 				env: {},
-				detectOutputTransition: (data: string) => {
-					if (data.includes("PROMPT_READY")) {
+				detectOutputTransition: (screen: { lines: string[] }) => {
+					if (screen.lines.some((line) => line.includes("PROMPT_READY"))) {
 						return { type: "agent.prompt-ready" as const };
 					}
 					return null;
@@ -432,6 +496,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 
 			// Send data that does NOT contain the transition trigger
 			spawnedSessions[0]?.triggerData("some ordinary output");
+			await vi.advanceTimersByTimeAsync(1);
 
 			expect(statesSeenInOnOutput).toHaveLength(1);
 			expect(statesSeenInOnOutput[0]).toBe("awaiting_review");
@@ -440,8 +505,8 @@ describe("TerminalSessionManager ordering invariants", () => {
 
 	// ── Direct user-response ordering ───────────────────────────────────
 
-	describe("writeInput resolves only actionable input waits", () => {
-		it("keeps an ordinary review-ready task in review", async () => {
+	describe("writeInput resolves submitted review turns and actionable input waits", () => {
+		it("moves an ordinary review-ready live task to running on Enter", async () => {
 			const spawnedSessions = setupMockPtySpawn();
 			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 
@@ -459,7 +524,8 @@ describe("TerminalSessionManager ordering invariants", () => {
 
 			manager.writeInput("task-1", Buffer.from([0x0d]));
 
-			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+			expect(manager.store.getSummary("task-1")?.state).toBe("running");
+			expect(manager.store.getSummary("task-1")?.reviewReason).toBeNull();
 			expect(spawnedSessions[0]?.write).toHaveBeenCalledTimes(1);
 		});
 
@@ -497,6 +563,25 @@ describe("TerminalSessionManager ordering invariants", () => {
 			expect(manager.store.getSummary("task-1")?.state).toBe("running");
 			expect(manager.store.getSummary("task-1")?.latestHookActivity).toBeNull();
 			expect(spawnedSessions[0]?.write).toHaveBeenCalledTimes(3);
+		});
+
+		it("preserves Enter resolution for non-Codex actionable waits", async () => {
+			setupMockPtySpawn();
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+
+			await manager.startTaskSession({
+				taskId: "task-claude-input",
+				agentId: "claude",
+				binary: "claude",
+				args: [],
+				cwd: "/tmp/task-claude-input",
+				prompt: "Fix the bug",
+			});
+			manager.store.transitionToReview("task-claude-input", "attention");
+
+			manager.writeInput("task-claude-input", Buffer.from([0x0d]));
+
+			expect(manager.store.getSummary("task-claude-input")?.state).toBe("running");
 		});
 
 		it("rejects a delayed permission observation from before a Codex submission", async () => {
