@@ -51,6 +51,7 @@ describe("generateTaskTitle", () => {
 
 	it("prefers an ephemeral Codex title by default", async () => {
 		delete process.env.QUARTERDECK_TITLE_PROVIDER;
+		delete process.env.QUARTERDECK_CODEX_TITLE_MODEL;
 		codexMocks.callCodex.mockResolvedValue("Improve Title Reliability");
 		const fetchSpy = vi.spyOn(globalThis, "fetch");
 
@@ -61,9 +62,19 @@ describe("generateTaskTitle", () => {
 			expect.objectContaining({
 				userPrompt: "make automatic title generation more reliable",
 				timeoutMs: 20_000,
+				model: "gpt-5.6-luna",
 			}),
 		);
 		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it("supports a Codex title model override", async () => {
+		delete process.env.QUARTERDECK_TITLE_PROVIDER;
+		process.env.QUARTERDECK_CODEX_TITLE_MODEL = "  custom-title-model  ";
+		codexMocks.callCodex.mockResolvedValue("Custom Model Title");
+
+		expect(await generateTaskTitle("use a custom model for task titles")).toBe("Custom Model Title");
+		expect(codexMocks.callCodex).toHaveBeenCalledWith(expect.objectContaining({ model: "custom-title-model" }));
 	});
 
 	it("falls back from Codex directly to the deterministic local title", async () => {

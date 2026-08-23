@@ -11,6 +11,7 @@
 ### Fix: generate task titles without the helper VPN path
 
 - Task titles now use one explicit provider—an isolated, ephemeral Codex CLI turn by default, the existing OpenAI-compatible helper when selected, or local-only generation—and every remote failure falls back directly to the deterministic local title without crossing provider failure domains.
+- Codex title generation now pins the lightweight `gpt-5.6-luna` model by default instead of inheriting a moving CLI default; `QUARTERDECK_CODEX_TITLE_MODEL` provides an explicit override.
 - Codex title calls share Quarterdeck's platform command-resolution and process-tree termination mechanisms, settle at a bounded deadline even if a child ignores termination, and apply the same provider-neutral response cleanup as HTTP generation.
 
 ### Fix: keep Agent Lab host UI isolated

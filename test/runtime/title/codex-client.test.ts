@@ -19,6 +19,7 @@ const OPTIONS = {
 	systemPrompt: "Return only a concise title.",
 	userPrompt: "make title generation reliable",
 	timeoutMs: 20_000,
+	model: "gpt-5.6-luna",
 };
 
 type ExecCallback = (error: ExecFileException | null, stdout: string, stderr: string) => void;
@@ -86,6 +87,8 @@ describe("callCodex", () => {
 		);
 		expect(args.at(-2)).toBe("--");
 		expect(args.at(-1)).toContain("<input-context>\nmake title generation reliable\n</input-context>");
+		const modelIndex = args.indexOf("--model");
+		expect(args[modelIndex + 1]).toBe("gpt-5.6-luna");
 		const developerConfig = args.find((arg) => arg.startsWith("developer_instructions="));
 		expect(developerConfig).toContain("Return only a concise title");
 		expect(developerConfig).toContain("Do not use tools or inspect files");

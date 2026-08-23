@@ -18,6 +18,7 @@ interface CodexCallOptions {
 	systemPrompt: string;
 	userPrompt: string;
 	timeoutMs: number;
+	model: string;
 }
 
 interface CodexCommandResult {
@@ -110,6 +111,8 @@ function buildCodexExecArgs(options: CodexCallOptions): string[] {
 	const taskContext = `Use only this input context for the requested text generation:\n\n<input-context>\n${options.userPrompt}\n</input-context>`;
 	return [
 		"exec",
+		"--model",
+		options.model,
 		"--ephemeral",
 		"--ignore-user-config",
 		"--ignore-rules",
@@ -134,7 +137,10 @@ export async function callCodex(
 	executor: CodexCommandExecutor = defaultExecutor,
 ): Promise<string | null> {
 	if (!executor.isAvailable()) {
-		log.debug("Codex helper unavailable: binary not detected on PATH", { binary: CODEX_BINARY });
+		log.debug("Codex helper unavailable: binary not detected on PATH", {
+			binary: CODEX_BINARY,
+			model: options.model,
+		});
 		return null;
 	}
 
@@ -142,6 +148,7 @@ export async function callCodex(
 	log.debug("Codex helper call starting", {
 		promptLength: options.userPrompt.length,
 		timeoutMs: options.timeoutMs,
+		model: options.model,
 	});
 	try {
 		const result = await executor.run(buildCodexExecArgs(options), options.timeoutMs);
@@ -153,6 +160,7 @@ export async function callCodex(
 				signal: result.signal,
 				errorMessage: result.errorMessage,
 				stderrSnippet: summarizeOutput(result.stderr),
+				model: options.model,
 			});
 			return null;
 		}
@@ -162,18 +170,21 @@ export async function callCodex(
 			log.warn("Codex helper response was empty or rejected by sanitizer", {
 				durationMs: Date.now() - startTime,
 				stdoutSnippet: summarizeOutput(result.stdout),
+				model: options.model,
 			});
 			return null;
 		}
 		log.debug("Codex helper call completed", {
 			durationMs: Date.now() - startTime,
 			resultLength: response.length,
+			model: options.model,
 		});
 		return response;
 	} catch (error) {
 		log.warn("Codex helper call error", {
 			durationMs: Date.now() - startTime,
 			error: error instanceof Error ? { name: error.name, message: error.message } : String(error),
+			model: options.model,
 		});
 		return null;
 	}

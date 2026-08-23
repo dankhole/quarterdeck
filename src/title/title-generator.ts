@@ -34,6 +34,7 @@ const MAX_TITLE_CONTEXT_LENGTH = 1200;
 const MAX_BRANCH_PROMPT_LENGTH = 1200;
 const CODEX_TITLE_GENERATION_TIMEOUT_MS = 20_000;
 const TITLE_GENERATION_TIMEOUT_MS = 6_000;
+const DEFAULT_CODEX_TITLE_MODEL = "gpt-5.6-luna";
 
 type TitleProvider = "codex" | "llm" | "local";
 
@@ -51,6 +52,10 @@ function resolveTitleProvider(): TitleProvider {
 		supportedProviders: ["codex", "llm", "local"],
 	});
 	return "codex";
+}
+
+function resolveCodexTitleModel(): string {
+	return process.env.QUARTERDECK_CODEX_TITLE_MODEL?.trim() || DEFAULT_CODEX_TITLE_MODEL;
 }
 
 function normalizeTitle(title: string | null): string | null {
@@ -78,6 +83,7 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 				systemPrompt: TITLE_SYSTEM_PROMPT,
 				userPrompt: titleContext,
 				timeoutMs: CODEX_TITLE_GENERATION_TIMEOUT_MS,
+				model: resolveCodexTitleModel(),
 			}),
 		);
 		if (codexTitle) {
