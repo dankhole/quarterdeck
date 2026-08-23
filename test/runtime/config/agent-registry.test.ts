@@ -20,13 +20,22 @@ vi.mock("node:child_process", async (importOriginal) => {
 });
 
 import {
-	buildRuntimeConfigResponse,
+	buildRuntimeConfigResponse as buildRuntimeConfigResponseWithCapabilities,
 	detectInstalledCommands,
 	parseCodexFeaturesListOutput,
 	resetAgentAvailabilityCache,
 	resolveAgentCommand,
 } from "../../../src/config";
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
+
+function buildRuntimeConfigResponse(
+	runtimeConfig: Parameters<typeof buildRuntimeConfigResponseWithCapabilities>[0],
+	runtimeCapabilities: Parameters<typeof buildRuntimeConfigResponseWithCapabilities>[1] = {
+		nativeUiAvailable: true,
+	},
+) {
+	return buildRuntimeConfigResponseWithCapabilities(runtimeConfig, runtimeCapabilities);
+}
 
 type ExecFileCallback = (error: ExecFileException | null, stdout: string, stderr: string) => void;
 
@@ -354,6 +363,14 @@ describe("agent-registry", () => {
 });
 
 describe("buildRuntimeConfigResponse", () => {
+	it("reports launch-config-derived native UI availability", async () => {
+		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState(), {
+			nativeUiAvailable: false,
+		});
+
+		expect(response.runtimeCapabilities).toEqual({ nativeUiAvailable: false });
+	});
+
 	it("reports the runtime host platform for browser open-target commands", async () => {
 		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState());
 		const expectedPlatform =

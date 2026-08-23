@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { pickDirectoryPathFromSystemDialog } from "../../src/server";
+import { pickDirectoryPathFromSystemDialog } from "../../src/server/directory-picker";
 
 interface RecordedCommand {
 	command: string;
@@ -62,7 +62,7 @@ describe("pickDirectoryPathFromSystemDialog", () => {
 			),
 		});
 
-		expect(selectedPath).toBe("/tmp/my-repo");
+		expect(selectedPath).toEqual({ kind: "selected", path: "/tmp/my-repo" });
 		expect(commands).toEqual([
 			{
 				command: "zenity",
@@ -89,7 +89,7 @@ describe("pickDirectoryPathFromSystemDialog", () => {
 			),
 		});
 
-		expect(selectedPath).toBeNull();
+		expect(selectedPath).toEqual({ kind: "cancelled" });
 		expect(commands).toEqual([
 			{
 				command: "zenity",
@@ -98,10 +98,10 @@ describe("pickDirectoryPathFromSystemDialog", () => {
 		]);
 	});
 
-	it("throws a clear error when no linux picker commands are installed", async () => {
+	it("returns a typed unavailable result when no linux picker commands are installed", async () => {
 		const commands: RecordedCommand[] = [];
-		await expect(
-			pickDirectoryPathFromSystemDialog({
+		expect(
+			await pickDirectoryPathFromSystemDialog({
 				platform: "linux",
 				runCommand: createRunCommand(
 					{
@@ -121,7 +121,10 @@ describe("pickDirectoryPathFromSystemDialog", () => {
 					commands,
 				),
 			}),
-		).rejects.toThrow('Could not open directory picker. Install "zenity" or "kdialog" and try again.');
+		).toEqual({
+			kind: "unavailable",
+			error: 'Could not open directory picker. Install "zenity" or "kdialog" and try again.',
+		});
 	});
 
 	it("throws command stderr when picker fails for a real error", async () => {
@@ -156,7 +159,7 @@ it("uses powershell on windows when available", async () => {
 		),
 	});
 
-	expect(selectedPath).toBe("C:\\Users\\dev\\repo");
+	expect(selectedPath).toEqual({ kind: "selected", path: "C:\\Users\\dev\\repo" });
 	expect(commands).toHaveLength(1);
 	expect(commands[0]?.command).toBe("powershell");
 	expect(commands[0]?.args.slice(0, 3)).toEqual(["-NoProfile", "-STA", "-Command"]);
@@ -182,7 +185,7 @@ it("falls back to pwsh when powershell is unavailable on windows", async () => {
 		),
 	});
 
-	expect(selectedPath).toBe("C:\\Users\\dev\\repo");
+	expect(selectedPath).toEqual({ kind: "selected", path: "C:\\Users\\dev\\repo" });
 	expect(commands.map((entry) => entry.command)).toEqual(["powershell", "pwsh"]);
 });
 
@@ -199,12 +202,12 @@ it("returns null when windows picker is cancelled", async () => {
 		),
 	});
 
-	expect(selectedPath).toBeNull();
+	expect(selectedPath).toEqual({ kind: "cancelled" });
 });
 
-it("throws a clear error when no windows picker commands are installed", async () => {
-	await expect(
-		pickDirectoryPathFromSystemDialog({
+it("returns a typed unavailable result when no windows picker commands are installed", async () => {
+	expect(
+		await pickDirectoryPathFromSystemDialog({
 			platform: "win32",
 			runCommand: createRunCommand(
 				{
@@ -224,5 +227,24 @@ it("throws a clear error when no windows picker commands are installed", async (
 				[],
 			),
 		}),
-	).rejects.toThrow('Could not open directory picker. Install PowerShell ("powershell" or "pwsh") and try again.');
+	).toEqual({
+		kind: "unavailable",
+		error: 'Could not open directory picker. Install PowerShell ("powershell" or "pwsh") and try again.',
+	});
+});
+
+it("uses osascript for a normal macOS picker", async () => {
+	const commands: RecordedCommand[] = [];
+	const selectedPath = await pickDirectoryPathFromSystemDialog({
+		platform: "darwin",
+		runCommand: createRunCommand(
+			{
+				osascript: createSpawnResult({ stdout: "/Users/dev/repo/\n" }),
+			},
+			commands,
+		),
+	});
+
+	expect(selectedPath).toEqual({ kind: "selected", path: "/Users/dev/repo/" });
+	expect(commands.map((entry) => entry.command)).toEqual(["osascript"]);
 });

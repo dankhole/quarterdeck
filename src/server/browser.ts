@@ -2,14 +2,12 @@ import open from "open";
 import { isBinaryAvailableOnPath } from "../core";
 
 type BrowserOpenDeps = {
-	warn?: (message: string) => void;
 	openUrl?: typeof open;
 	platform?: NodeJS.Platform;
 	isBinaryAvailable?: (binary: string) => boolean;
 };
 
-export function openInBrowser(url: string, deps?: BrowserOpenDeps): void {
-	const warn = deps?.warn ?? (() => {});
+export async function openTargetOnHost(target: string, deps?: BrowserOpenDeps): Promise<void> {
 	const openUrl = deps?.openUrl ?? open;
 	const platform = deps?.platform ?? process.platform;
 	const isBinaryAvailable = deps?.isBinaryAvailable ?? isBinaryAvailableOnPath;
@@ -18,7 +16,5 @@ export function openInBrowser(url: string, deps?: BrowserOpenDeps): void {
 	// Prefer system xdg-open when present so PATH-based overrides still work.
 	const options = platform === "linux" && isBinaryAvailable("xdg-open") ? { app: { name: "xdg-open" } } : undefined;
 
-	void openUrl(url, options).catch(() => {
-		warn(`Could not open browser automatically. Open this URL manually: ${url}`);
-	});
+	await openUrl(target, options);
 }

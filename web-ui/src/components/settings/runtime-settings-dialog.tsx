@@ -218,7 +218,9 @@ export function RuntimeSettingsDialog({
 						variant="ghost"
 						className="mr-auto mt-[3px]"
 						icon={<ExternalLink size={14} />}
-						onClick={() => window.open("https://github.com/dankhole/quarterdeck", "_blank")}
+						onClick={() =>
+							window.open("https://github.com/dankhole/quarterdeck", "_blank", "noopener,noreferrer")
+						}
 					>
 						Read the docs
 					</Button>

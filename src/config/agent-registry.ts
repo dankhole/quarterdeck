@@ -2,7 +2,7 @@ import type { ExecFileException } from "node:child_process";
 import { execFile } from "node:child_process";
 
 import { CODEX_HOOKS_FEATURE_NAME } from "../codex-hooks";
-import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeConfigResponse } from "../core";
+import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeCapabilities, RuntimeConfigResponse } from "../core";
 import {
 	createTaggedLogger,
 	getRuntimeLaunchSupportedAgentCatalog,
@@ -505,7 +505,10 @@ function resolveRuntimeOpenTargetPlatform(platform: NodeJS.Platform): RuntimeCon
 }
 
 /** Assemble the complete RuntimeConfigResponse sent to the frontend. */
-export async function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): Promise<RuntimeConfigResponse> {
+export async function buildRuntimeConfigResponse(
+	runtimeConfig: RuntimeConfigState,
+	runtimeCapabilities: RuntimeCapabilities,
+): Promise<RuntimeConfigResponse> {
 	const detectedCommands = detectInstalledCommands();
 	const [agents, resolved] = await Promise.all([
 		getCuratedDefinitions(runtimeConfig),
@@ -519,6 +522,7 @@ export async function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigSta
 		// Special fields
 		selectedAgentId: runtimeConfig.selectedAgentId,
 		runtimePlatform: resolveRuntimeOpenTargetPlatform(process.platform),
+		runtimeCapabilities,
 		selectedShortcutLabel: runtimeConfig.selectedShortcutLabel,
 		debugModeEnabled: isRuntimeDebugModeEnabled(),
 		effectiveCommand,

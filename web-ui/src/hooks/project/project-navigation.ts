@@ -1,5 +1,5 @@
 /**
- * Pure domain logic for project navigation (error parsing, picker detection).
+ * Pure domain logic for project navigation.
  *
  * No React imports — functions here take explicit parameters and return
  * plain data. The companion hook (`use-project-navigation.ts`) handles
@@ -11,13 +11,6 @@
 // ---------------------------------------------------------------------------
 
 const REMOVED_PROJECT_ERROR_PREFIX = "Project no longer exists on disk and was removed:";
-
-const DIRECTORY_PICKER_UNAVAILABLE_MARKERS = [
-	"could not open directory picker",
-	'install "zenity" or "kdialog"',
-	'install powershell ("powershell" or "pwsh")',
-	'command "osascript" is not available',
-] as const;
 
 export const MANUAL_PROJECT_PATH_PROMPT_MESSAGE =
 	"Quarterdeck could not open a directory picker on this runtime. Enter a project path to add:";
@@ -35,21 +28,6 @@ export function parseRemovedProjectPathFromStreamError(streamError: string | nul
 		return null;
 	}
 	return streamError.slice(REMOVED_PROJECT_ERROR_PREFIX.length).trim();
-}
-
-/**
- * Detect whether an error message indicates the native directory picker
- * is unavailable on the current platform (headless Linux, missing tools).
- */
-export function isDirectoryPickerUnavailableErrorMessage(message: string | null | undefined): boolean {
-	if (!message) {
-		return false;
-	}
-	const normalized = message.trim().toLowerCase();
-	if (!normalized) {
-		return false;
-	}
-	return DIRECTORY_PICKER_UNAVAILABLE_MARKERS.some((marker) => normalized.includes(marker));
 }
 
 // ---------------------------------------------------------------------------

@@ -10,6 +10,11 @@ type DirectoryPickerCommandResult =
 	| { kind: "cancelled" }
 	| { kind: "unavailable" };
 
+export type SystemDirectoryPickerResult =
+	| { kind: "selected"; path: string }
+	| { kind: "cancelled" }
+	| { kind: "unavailable"; error: string };
+
 export interface DirectoryPickerCommandProcessResult {
 	stdout: string;
 	stderr: string;
@@ -129,7 +134,7 @@ async function runDirectoryPickerCommand(
 
 export async function pickDirectoryPathFromSystemDialog(
 	options: PickDirectoryPathFromSystemDialogOptions = {},
-): Promise<string | null> {
+): Promise<SystemDirectoryPickerResult> {
 	const platform = options.platform ?? process.platform;
 	const cwd = options.cwd ?? process.cwd();
 	const runCommand = options.runCommand ?? defaultRunCommand;
@@ -143,12 +148,15 @@ export async function pickDirectoryPathFromSystemDialog(
 			runCommand,
 		);
 		if (result.kind === "selected") {
-			return result.path;
+			return result;
 		}
 		if (result.kind === "cancelled") {
-			return null;
+			return result;
 		}
-		throw new Error('Could not open directory picker. Command "osascript" is not available.');
+		return {
+			kind: "unavailable",
+			error: 'Could not open directory picker. Command "osascript" is not available.',
+		};
 	}
 
 	if (platform === "linux") {
@@ -169,12 +177,15 @@ export async function pickDirectoryPathFromSystemDialog(
 				continue;
 			}
 			if (result.kind === "selected") {
-				return result.path;
+				return result;
 			}
-			return null;
+			return result;
 		}
 
-		throw new Error('Could not open directory picker. Install "zenity" or "kdialog" and try again.');
+		return {
+			kind: "unavailable",
+			error: 'Could not open directory picker. Install "zenity" or "kdialog" and try again.',
+		};
 	}
 
 	if (platform === "win32") {
@@ -195,13 +206,19 @@ export async function pickDirectoryPathFromSystemDialog(
 				continue;
 			}
 			if (result.kind === "selected") {
-				return result.path;
+				return result;
 			}
-			return null;
+			return result;
 		}
 
-		throw new Error('Could not open directory picker. Install PowerShell ("powershell" or "pwsh") and try again.');
+		return {
+			kind: "unavailable",
+			error: 'Could not open directory picker. Install PowerShell ("powershell" or "pwsh") and try again.',
+		};
 	}
 
-	return null;
+	return {
+		kind: "unavailable",
+		error: `Could not open directory picker on platform "${platform}".`,
+	};
 }

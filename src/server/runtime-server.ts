@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage } from "node:http";
 import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
-import type { RuntimeCommandRunResponse, RuntimeProjectStateResponse } from "../core";
+import type { IRuntimeHostIntegrations, RuntimeProjectStateResponse } from "../core";
 import {
 	buildQuarterdeckRuntimeUrl,
 	createTaggedLogger,
@@ -43,7 +43,7 @@ export interface CreateRuntimeServerDependencies {
 	runtimeStateHub: RuntimeStateHub;
 	warn: (message: string) => void;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
-	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
+	hostIntegrations: IRuntimeHostIntegrations;
 	resolveProjectInputPath: (inputPath: string, basePath: string) => string;
 	assertPathIsDirectory: (targetPath: string) => Promise<void>;
 	hasGitRepository: (path: string) => Promise<boolean>;
@@ -54,7 +54,6 @@ export interface CreateRuntimeServerDependencies {
 		},
 	) => DisposeTrackedProjectResult;
 	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeProjectStateResponse["board"]) => Set<string>;
-	pickDirectoryPathFromSystemDialog: () => Promise<string | null>;
 }
 
 export interface RuntimeServer {
@@ -161,7 +160,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				getScopedTerminalManager,
 				taskResourceOperations,
 				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
-				runCommand: deps.runCommand,
+				hostIntegrations: deps.hostIntegrations,
 			}),
 			projectApi: createProjectApi({
 				terminals: deps.projectRegistry,
@@ -180,7 +179,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				disposeProject: deps.disposeProject,
 				collectProjectWorktreeTaskIdsForRemoval: deps.collectProjectWorktreeTaskIdsForRemoval,
 				warn: deps.warn,
-				pickDirectoryPathFromSystemDialog: deps.pickDirectoryPathFromSystemDialog,
+				hostIntegrations: deps.hostIntegrations,
 			}),
 			hooksApi,
 		};

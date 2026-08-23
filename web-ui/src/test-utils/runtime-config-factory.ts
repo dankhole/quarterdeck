@@ -71,6 +71,7 @@ type TestAudibleNotificationConfigOverrides = Omit<
 };
 
 const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
+	runtimeCapabilities: { nativeUiAvailable: true },
 	selectedAgentId: CONFIG_DEFAULTS.selectedAgentId,
 	runtimePlatform: "mac",
 	selectedShortcutLabel: null,

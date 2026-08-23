@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { notifyError, showAppToast } from "@/components/app-toaster";
-import {
-	isDirectoryPickerUnavailableErrorMessage,
-	promptForManualProjectPath,
-} from "@/hooks/project/project-navigation";
+import { promptForManualProjectPath } from "@/hooks/project/project-navigation";
 import { preloadProjectState } from "@/runtime/project-preload-cache";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
@@ -21,10 +18,7 @@ import { buildProjectPathname, parseProjectIdFromPathname } from "@/utils/app-ut
 import { useWindowEvent } from "@/utils/react-use";
 import { toErrorMessage } from "@/utils/to-error-message";
 
-export {
-	isDirectoryPickerUnavailableErrorMessage,
-	parseRemovedProjectPathFromStreamError,
-} from "@/hooks/project/project-navigation";
+export { parseRemovedProjectPathFromStreamError } from "@/hooks/project/project-navigation";
 
 interface UseProjectNavigationInput {
 	onProjectSwitchStart: () => void;
@@ -141,11 +135,14 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 			const picked = await trpcClient.projects.pickDirectory.mutate();
 
 			let projectPath: string | null = null;
-			if (picked.ok && picked.path) {
+			if (picked.ok) {
 				projectPath = picked.path;
-			} else if (!picked.ok && picked.error === "No directory was selected.") {
+			} else if (!picked.ok && picked.reason === "cancelled") {
 				return;
-			} else if (!picked.ok && isDirectoryPickerUnavailableErrorMessage(picked.error)) {
+			} else if (
+				!picked.ok &&
+				(picked.reason === "native_ui_unavailable" || picked.reason === "launcher_unavailable")
+			) {
 				showAppToast({
 					intent: "warning",
 					icon: "warning-sign",
@@ -157,7 +154,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 					return;
 				}
 			} else {
-				throw new Error(picked.error ?? "Could not pick project directory.");
+				throw new Error(picked.error);
 			}
 			if (!projectPath) {
 				return;

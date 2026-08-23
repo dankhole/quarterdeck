@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useOpenProject } from "@/hooks/project/use-open-project";
 
-const runCommandMutateMock = vi.hoisted(() => vi.fn());
+const openProjectMutateMock = vi.hoisted(() => vi.fn());
 const getRuntimeTrpcClientMock = vi.hoisted(() => vi.fn());
 const showAppToastMock = vi.hoisted(() => vi.fn());
 
@@ -50,19 +50,13 @@ describe("useOpenProject", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
-		runCommandMutateMock.mockReset();
-		runCommandMutateMock.mockResolvedValue({
-			exitCode: 0,
-			stdout: "",
-			stderr: "",
-			combinedOutput: "",
-			durationMs: 1,
-		});
+		openProjectMutateMock.mockReset();
+		openProjectMutateMock.mockResolvedValue({ ok: true });
 		getRuntimeTrpcClientMock.mockReset();
 		getRuntimeTrpcClientMock.mockReturnValue({
 			runtime: {
-				runCommand: {
-					mutate: runCommandMutateMock,
+				openProject: {
+					mutate: openProjectMutateMock,
 				},
 			},
 		});
@@ -113,7 +107,7 @@ describe("useOpenProject", () => {
 		});
 
 		expect(getRuntimeTrpcClientMock).toHaveBeenCalledWith("project-1");
-		expect(runCommandMutateMock).toHaveBeenCalledWith({ command: "code '/repo'" });
+		expect(openProjectMutateMock).toHaveBeenCalledWith({ targetId: "vscode" });
 		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
 });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { runtimeHostIntegrationActionResponseSchema, runtimeOpenTargetIdSchema } from "./host-integrations.js";
 
 export const runtimeWorkdirFileStatusSchema = z.enum([
 	"modified",
@@ -53,29 +54,23 @@ export const promptShortcutSchema = z.object({
 });
 export type PromptShortcut = z.infer<typeof promptShortcutSchema>;
 
-export const runtimeCommandRunRequestSchema = z.object({
-	command: z.string(),
-});
-export type RuntimeCommandRunRequest = z.infer<typeof runtimeCommandRunRequestSchema>;
-
-export const runtimeCommandRunResponseSchema = z.object({
-	exitCode: z.number(),
-	stdout: z.string(),
-	stderr: z.string(),
-	combinedOutput: z.string(),
-	durationMs: z.number(),
-});
-export type RuntimeCommandRunResponse = z.infer<typeof runtimeCommandRunResponseSchema>;
-
 export const runtimeOpenFileRequestSchema = z.object({
 	filePath: z.string(),
 });
 export type RuntimeOpenFileRequest = z.infer<typeof runtimeOpenFileRequestSchema>;
 
-export const runtimeOpenFileResponseSchema = z.object({
-	ok: z.boolean(),
-});
+export const runtimeOpenFileResponseSchema = runtimeHostIntegrationActionResponseSchema;
 export type RuntimeOpenFileResponse = z.infer<typeof runtimeOpenFileResponseSchema>;
+
+export const runtimeOpenProjectRequestSchema = z
+	.object({
+		targetId: runtimeOpenTargetIdSchema,
+	})
+	.strict();
+export type RuntimeOpenProjectRequest = z.infer<typeof runtimeOpenProjectRequestSchema>;
+
+export const runtimeOpenProjectResponseSchema = runtimeHostIntegrationActionResponseSchema;
+export type RuntimeOpenProjectResponse = z.infer<typeof runtimeOpenProjectResponseSchema>;
 
 export const runtimeTaskWorktreeInfoRequestSchema = z.object({
 	taskId: z.string(),

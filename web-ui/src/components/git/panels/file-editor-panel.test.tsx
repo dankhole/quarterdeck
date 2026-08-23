@@ -6,6 +6,7 @@ import { FileEditorPanel } from "@/components/git/panels/file-editor-panel";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { FileEditorDiscardPrompt } from "@/hooks/git";
 import type { FileEditorAutosaveMode, FileEditorTab } from "@/hooks/git/file-editor-workspace";
+import { browserHostIntegrations } from "@/runtime/browser-host-integrations";
 
 const sourceEditorRenderMock = vi.hoisted(() => vi.fn());
 const sourceEditorOpenSearchPanelMock = vi.hoisted(() => vi.fn());
@@ -74,6 +75,7 @@ describe("FileEditorPanel", () => {
 	let clipboardWriteText: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
+		browserHostIntegrations.configureCapabilities({ nativeUiAvailable: true });
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -93,6 +95,7 @@ describe("FileEditorPanel", () => {
 	});
 
 	afterEach(() => {
+		browserHostIntegrations.configureCapabilities({ nativeUiAvailable: false });
 		act(() => {
 			root.unmount();
 		});

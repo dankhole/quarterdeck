@@ -1,11 +1,9 @@
 import { z } from "zod";
+import { runtimeCapabilitiesSchema, runtimeOpenTargetPlatformSchema } from "./host-integrations.js";
 import { promptShortcutSchema, runtimeAgentIdSchema, runtimeProjectShortcutSchema } from "./shared.js";
 
 export const runtimeAgentInstallStatusSchema = z.enum(["installed", "upgrade_required", "missing"]);
 export type RuntimeAgentInstallStatus = z.infer<typeof runtimeAgentInstallStatusSchema>;
-export const runtimeOpenTargetPlatformSchema = z.enum(["mac", "windows", "linux", "other"]);
-export type RuntimeOpenTargetPlatform = z.infer<typeof runtimeOpenTargetPlatformSchema>;
-
 export const runtimeAgentDefinitionSchema = z.object({
 	id: runtimeAgentIdSchema,
 	label: z.string(),
@@ -22,6 +20,7 @@ export type RuntimeAgentDefinition = z.infer<typeof runtimeAgentDefinitionSchema
 export const runtimeConfigResponseSchema = z.object({
 	selectedAgentId: runtimeAgentIdSchema,
 	runtimePlatform: runtimeOpenTargetPlatformSchema,
+	runtimeCapabilities: runtimeCapabilitiesSchema,
 	selectedShortcutLabel: z.string().nullable(),
 	debugModeEnabled: z.boolean().optional(),
 	effectiveCommand: z.string().nullable(),

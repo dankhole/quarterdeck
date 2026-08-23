@@ -153,6 +153,37 @@ test("settings button opens runtime settings dialog", async ({ page }) => {
 	await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
 });
 
+test("agent lab adds a synthetic project through the browser manual-path fallback", async ({ page }) => {
+	await openBoard(page);
+	const additionalProjectPath = await page.evaluate(async () => {
+		const injectedPath = (window as typeof window & { __quarterdeckAgentLab?: { additionalProjectPath?: string } })
+			.__quarterdeckAgentLab?.additionalProjectPath;
+		if (injectedPath) {
+			return injectedPath;
+		}
+		const response = await fetch("/api/trpc/projects.list");
+		const payload = (await response.json()) as {
+			result?: { data?: { projects?: Array<{ path?: string }> } };
+		};
+		const currentPath = payload.result?.data?.projects?.[0]?.path;
+		return currentPath?.replace(/project$/, "project-secondary");
+	});
+	expect(additionalProjectPath).toBeTruthy();
+
+	let promptHandled = false;
+	page.once("dialog", async (dialog) => {
+		expect(dialog.type()).toBe("prompt");
+		expect(dialog.message()).toContain("Enter a project path to add");
+		promptHandled = true;
+		await dialog.accept(additionalProjectPath);
+	});
+	await page.getByRole("button", { name: "Add Project" }).click();
+
+	await expect.poll(() => promptHandled, { timeout: 3_000 }).toBe(true);
+	await expect(page.getByRole("button", { name: /^project-secondary\b/ })).toBeVisible({ timeout: 10_000 });
+	await expect(page).toHaveURL(/\/project-secondary(?:[?#]|$)/);
+});
+
 test("drives the deterministic agent terminal through review", async ({ page }, testInfo) => {
 	await openBoard(page);
 	const taskPrompt = `[agent-lab:idle] functional-${Date.now()}`;

@@ -10,14 +10,18 @@ Each `start` creates:
 
 - two dynamically selected loopback ports for the runtime and Vite UI;
 - a temporary HOME, `QUARTERDECK_STATE_HOME`, Git project, and task-worktree root;
+- a second synthetic Git project for Add Project and project-switching tests;
 - a minimal child environment that omits API keys, cloud credentials, SSH agent access, user Git config, and real agent configuration;
 - a fake `codex` executable injected at the front of that runtime's PATH only;
+- native UI disabled by launch configuration, plus recording fakes for known picker, open, and IDE launchers that fail the run if invoked;
 - an atomic manifest and stop-request control channel;
 - continuously captured supervisor, runtime, and web logs;
 - a named, in-memory Playwright browser session restricted to loopback origins;
 - semantic page snapshots, screenshots, traces, videos, console/network records, and state/Git snapshots under one artifact directory.
 
 The runtime and browser still use Quarterdeck's real project registry, tRPC/WebSocket transport, board persistence, worktree lifecycle, Codex adapter, PTY, native-hook ingest, session state machine, xterm renderer, Git APIs, and Files APIs. Only the external coding agent is replaced.
+
+Native folder/file dialogs, external host openers, Open in IDE, clipboard integration, and notification audio are unavailable in the lab. UI flows must handle the typed unavailable result and stay browser-manageable—for example, Add Project uses the JavaScript manual-path prompt. Ordinary browser links and terminal links remain browser-contained, observable by Playwright, and subject to the lab's loopback-only page-request policy. The manifest records the disabled capability, second project path, and forbidden-launch log path.
 
 ## First-time setup
 
@@ -101,7 +105,7 @@ The interactive protocol includes `/needs-input`, `/working`, `/review`, `/write
 
 ## Automated regression suite
 
-`npm run web:e2e` uses the same supervisor with explicit CI ports. Playwright Test blocks non-loopback page requests, attaches browser console/network logs, and retains screenshots, video, and traces on failure. The functional smoke path creates and starts a task, waits for the fake agent's rendered xterm marker, types a review command through the browser terminal, and verifies the card moves to Review.
+`npm run web:e2e` uses the same supervisor with explicit CI ports. Playwright Test blocks non-loopback page requests, attaches browser console/network logs, and retains screenshots, video, and traces on failure. Functional smoke paths add the second synthetic repository through the browser manual-path prompt, verify the forbidden-launch log stays empty, and create/start a task through the fake agent until its card moves to Review.
 
 ## Failure reports
 

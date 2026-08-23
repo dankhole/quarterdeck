@@ -3,7 +3,6 @@ import { useCallback, useMemo, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import {
-	buildOpenCommand,
 	getOpenTargetOption,
 	getOpenTargetOptions,
 	normalizeOpenTargetId,
@@ -29,15 +28,6 @@ interface UseOpenProjectResult {
 	onOpenProject: () => void;
 	canOpenProject: boolean;
 	isOpeningProject: boolean;
-}
-
-function getFirstOutputLine(output: string): string | null {
-	return (
-		output
-			.split("\n")
-			.map((line) => line.trim())
-			.find(Boolean) ?? null
-	);
 }
 
 export function useOpenProject({
@@ -94,12 +84,11 @@ export function useOpenProject({
 			setIsOpeningProject(true);
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				const payload = await trpcClient.runtime.runCommand.mutate({
-					command: buildOpenCommand(selectedOpenTarget.id, projectPath, openTargetPlatform),
+				const payload = await trpcClient.runtime.openProject.mutate({
+					targetId: selectedOpenTarget.id,
 				});
-				if (payload.exitCode !== 0) {
-					const details = getFirstOutputLine(payload.combinedOutput) ?? `Exited with code ${payload.exitCode}.`;
-					showOpenFailureToast(details);
+				if (!payload.ok) {
+					showOpenFailureToast(payload.error);
 				}
 			} catch (error) {
 				const message = toErrorMessage(error);
@@ -108,14 +97,7 @@ export function useOpenProject({
 				setIsOpeningProject(false);
 			}
 		})();
-	}, [
-		currentProjectId,
-		isOpeningProject,
-		openTargetPlatform,
-		selectedOpenTarget.id,
-		showOpenFailureToast,
-		projectPath,
-	]);
+	}, [currentProjectId, isOpeningProject, selectedOpenTarget.id, showOpenFailureToast, projectPath]);
 
 	return {
 		openTargetOptions,

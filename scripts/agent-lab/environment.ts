@@ -5,7 +5,9 @@ interface AgentLabEnvironmentPaths {
 	homePath: string;
 	statePath: string;
 	projectPath: string;
+	additionalProjectPath: string;
 	fakeBinPath: string;
+	forbiddenHostLaunchLogPath: string;
 	repoRoot: string;
 	tsxCliPath: string;
 	fakeCodexPath: string;
@@ -60,6 +62,8 @@ export function buildAgentLabEnvironment(
 		QUARTERDECK_AGENT_LAB: "1",
 		VITE_QUARTERDECK_AGENT_LAB: "1",
 		QUARTERDECK_AGENT_LAB_PROJECT: paths.projectPath,
+		QUARTERDECK_AGENT_LAB_ADDITIONAL_PROJECT: paths.additionalProjectPath,
+		QUARTERDECK_AGENT_LAB_FORBIDDEN_HOST_LAUNCH_LOG: paths.forbiddenHostLaunchLogPath,
 		QUARTERDECK_AGENT_LAB_REPO_ROOT: paths.repoRoot,
 		QUARTERDECK_AGENT_LAB_NODE: process.execPath,
 		QUARTERDECK_AGENT_LAB_TSX_CLI: paths.tsxCliPath,

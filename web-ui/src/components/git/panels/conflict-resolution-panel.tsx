@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 
-import { showAppToast } from "@/components/app-toaster";
+import { copyToClipboard } from "@/components/git/panels/context-menu-utils";
 import { buildUnifiedDiffRows, ReadOnlyUnifiedDiff } from "@/components/shared/diff-renderer";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -146,8 +146,7 @@ function ConflictDetailPane({
 	const rows = hasContent ? buildUnifiedDiffRows(selectedFile.oursContent, selectedFile.theirsContent) : [];
 
 	const handleCopyPath = (): void => {
-		void navigator.clipboard.writeText(selectedPath);
-		showAppToast({ intent: "success", message: "Path copied to clipboard" });
+		copyToClipboard(selectedPath, "Path");
 	};
 
 	return (

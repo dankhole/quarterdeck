@@ -8,9 +8,9 @@ export {
 } from "./agent-catalog";
 export * from "./api-contract";
 export {
-	parseCommandRunRequest,
 	parseGitCheckoutRequest,
 	parseHookIngestRequest,
+	parseOpenProjectRequest,
 	parseProjectAddRequest,
 	parseProjectRemoveRequest,
 	parseProjectReorderRequest,
@@ -76,6 +76,7 @@ export type {
 	IProjectResolver,
 	IRuntimeBroadcaster,
 	IRuntimeConfigProvider,
+	IRuntimeHostIntegrations,
 	ITerminalManagerProvider,
 } from "./service-interfaces";
 export { buildShellCommandLine, quoteShellArg, resolveInteractiveShellCommand } from "./shell";

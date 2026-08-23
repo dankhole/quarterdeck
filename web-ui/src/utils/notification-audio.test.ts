@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { browserHostIntegrations } from "@/runtime/browser-host-integrations";
 import { NotificationAudioPlayer } from "@/utils/notification-audio";
 
 // --- Web Audio API mocks ---
@@ -61,11 +62,13 @@ function stubAudioContext(stateOverride: AudioContextState = "running"): void {
 }
 
 beforeEach(() => {
+	browserHostIntegrations.configureCapabilities({ nativeUiAvailable: true });
 	mockAudioContextInstance = null;
 	stubAudioContext();
 });
 
 afterEach(() => {
+	browserHostIntegrations.configureCapabilities({ nativeUiAvailable: false });
 	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
 });

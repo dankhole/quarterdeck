@@ -11,9 +11,28 @@ export interface AgentLabFixturePaths {
 	homePath: string;
 	statePath: string;
 	projectPath: string;
+	additionalProjectPath: string;
 	fakeBinPath: string;
 	browserConfigPath: string;
+	forbiddenHostLaunchLogPath: string;
 }
+
+const FORBIDDEN_HOST_LAUNCHERS = [
+	"code",
+	"code-insiders",
+	"cursor",
+	"explorer",
+	"kdialog",
+	"open",
+	"osascript",
+	"powershell",
+	"pwsh",
+	"rider",
+	"windsurf",
+	"xdg-open",
+	"zed",
+	"zenity",
+] as const;
 
 async function runGit(projectPath: string, args: string[]): Promise<void> {
 	await execFileAsync("git", args, {
@@ -43,30 +62,32 @@ async function writeFakeCodexLaunchers(fakeBinPath: string): Promise<void> {
 	);
 }
 
-export async function prepareAgentLabFixture(
-	config: AgentLabLaunchConfig,
-	webUrl: string,
-): Promise<AgentLabFixturePaths> {
-	const homePath = join(config.tempRoot, "home");
-	const statePath = join(config.tempRoot, "state");
-	const projectPath = join(config.tempRoot, "project");
-	const fakeBinPath = join(config.tempRoot, "bin");
-	const browserConfigPath = join(config.artifactDir, "playwright-cli.config.json");
-	const browserInitPath = join(config.artifactDir, "browser-init.js");
-	const browserOutputPath = join(config.artifactDir, "browser");
-	await Promise.all([
-		mkdir(homePath, { recursive: true }),
-		mkdir(statePath, { recursive: true }),
-		mkdir(projectPath, { recursive: true }),
-		mkdir(fakeBinPath, { recursive: true }),
-		mkdir(browserOutputPath, { recursive: true }),
-		writeFile(join(config.tempRoot, "empty-gitconfig"), "", "utf8"),
-	]);
+async function writeForbiddenHostLaunchers(fakeBinPath: string): Promise<void> {
+	await Promise.all(
+		FORBIDDEN_HOST_LAUNCHERS.flatMap((launcher) => {
+			const shellLauncherPath = join(fakeBinPath, launcher);
+			const windowsLauncherPath = join(fakeBinPath, `${launcher}.cmd`);
+			return [
+				writeFile(
+					shellLauncherPath,
+					'#!/bin/sh\nprintf "%s\\t%s\\n" "$0" "$*" >> "$QUARTERDECK_AGENT_LAB_FORBIDDEN_HOST_LAUNCH_LOG"\nexit 97\n',
+					"utf8",
+				).then(async () => await chmod(shellLauncherPath, 0o755)),
+				writeFile(
+					windowsLauncherPath,
+					'@echo off\r\n>>"%QUARTERDECK_AGENT_LAB_FORBIDDEN_HOST_LAUNCH_LOG%" echo %~nx0 %*\r\nexit /b 97\r\n',
+					"utf8",
+				),
+			];
+		}),
+	);
+}
 
+async function seedGitRepository(projectPath: string, label: string): Promise<void> {
 	await Promise.all([
 		writeFile(
 			join(projectPath, "README.md"),
-			"# Quarterdeck agent lab fixture\n\nThis repository is disposable and exists only for functional testing.\n",
+			`# ${label}\n\nThis repository is disposable and exists only for functional testing.\n`,
 			"utf8",
 		),
 		writeFile(
@@ -74,11 +95,45 @@ export async function prepareAgentLabFixture(
 			'export function greeting(name: string): string {\n\treturn "Hello, " + name;\n}\n',
 			"utf8",
 		),
+	]);
+	await runGit(projectPath, ["init", "-b", "main"]);
+	await runGit(projectPath, ["config", "user.email", "agent-lab@example.invalid"]);
+	await runGit(projectPath, ["config", "user.name", "Quarterdeck Agent Lab"]);
+	await runGit(projectPath, ["add", "README.md", "example.ts"]);
+	await runGit(projectPath, ["commit", "-m", "seed agent-lab fixture"]);
+}
+
+export async function prepareAgentLabFixture(
+	config: AgentLabLaunchConfig,
+	webUrl: string,
+): Promise<AgentLabFixturePaths> {
+	const homePath = join(config.tempRoot, "home");
+	const statePath = join(config.tempRoot, "state");
+	const projectPath = join(config.tempRoot, "project");
+	const additionalProjectPath = join(config.tempRoot, "project-secondary");
+	const fakeBinPath = join(config.tempRoot, "bin");
+	const forbiddenHostLaunchLogPath = join(config.artifactDir, "forbidden-host-launches.log");
+	const browserConfigPath = join(config.artifactDir, "playwright-cli.config.json");
+	const browserInitPath = join(config.artifactDir, "browser-init.js");
+	const browserOutputPath = join(config.artifactDir, "browser");
+	await Promise.all([
+		mkdir(homePath, { recursive: true }),
+		mkdir(statePath, { recursive: true }),
+		mkdir(projectPath, { recursive: true }),
+		mkdir(additionalProjectPath, { recursive: true }),
+		mkdir(fakeBinPath, { recursive: true }),
+		mkdir(browserOutputPath, { recursive: true }),
+		writeFile(join(config.tempRoot, "empty-gitconfig"), "", "utf8"),
+		writeFile(forbiddenHostLaunchLogPath, "", "utf8"),
+	]);
+
+	await Promise.all([
 		writeFile(join(statePath, "config.json"), `${JSON.stringify({ selectedAgentId: "codex" }, null, 2)}\n`, "utf8"),
 		writeFile(
 			browserInitPath,
 			`try {
 	if (location.hostname === "127.0.0.1" || location.hostname === "localhost") {
+		window.__quarterdeckAgentLab = ${JSON.stringify({ additionalProjectPath })};
 		localStorage.setItem("quarterdeck.onboarding.dialog.shown", "true");
 		localStorage.setItem("quarterdeck.onboarding.tips.dismissed", "true");
 		localStorage.removeItem("quarterdeck-active-tab");
@@ -113,12 +168,19 @@ export async function prepareAgentLabFixture(
 			"utf8",
 		),
 	]);
-	await writeFakeCodexLaunchers(fakeBinPath);
-	await runGit(projectPath, ["init", "-b", "main"]);
-	await runGit(projectPath, ["config", "user.email", "agent-lab@example.invalid"]);
-	await runGit(projectPath, ["config", "user.name", "Quarterdeck Agent Lab"]);
-	await runGit(projectPath, ["add", "README.md", "example.ts"]);
-	await runGit(projectPath, ["commit", "-m", "seed agent-lab fixture"]);
+	await Promise.all([writeFakeCodexLaunchers(fakeBinPath), writeForbiddenHostLaunchers(fakeBinPath)]);
+	await Promise.all([
+		seedGitRepository(projectPath, "Quarterdeck agent lab fixture"),
+		seedGitRepository(additionalProjectPath, "Quarterdeck agent lab secondary fixture"),
+	]);
 
-	return { homePath, statePath, projectPath, fakeBinPath, browserConfigPath };
+	return {
+		homePath,
+		statePath,
+		projectPath,
+		additionalProjectPath,
+		fakeBinPath,
+		browserConfigPath,
+		forbiddenHostLaunchLogPath,
+	};
 }

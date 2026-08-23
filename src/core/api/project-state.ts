@@ -2,6 +2,7 @@ import { z } from "zod";
 import { runtimeBoardDataSchema } from "./board.js";
 import { runtimeConflictStateSchema } from "./git-merge.js";
 import { runtimeGitRepositoryInfoSchema, runtimeGitSyncSummarySchema } from "./git-sync.js";
+import { runtimeHostIntegrationFailureReasonSchema } from "./host-integrations.js";
 import { runtimeTaskSessionSummarySchema } from "./task-session.js";
 
 export const runtimeProjectTaskCountsSchema = z.object({
@@ -104,11 +105,26 @@ export const runtimeProjectAddResponseSchema = z.object({
 });
 export type RuntimeProjectAddResponse = z.infer<typeof runtimeProjectAddResponseSchema>;
 
-export const runtimeProjectDirectoryPickerResponseSchema = z.object({
-	ok: z.boolean(),
-	path: z.string().nullable(),
-	error: z.string().optional(),
-});
+export const runtimeProjectDirectoryPickerFailureReasonSchema = z.union([
+	z.literal("cancelled"),
+	runtimeHostIntegrationFailureReasonSchema,
+]);
+export type RuntimeProjectDirectoryPickerFailureReason = z.infer<
+	typeof runtimeProjectDirectoryPickerFailureReasonSchema
+>;
+
+export const runtimeProjectDirectoryPickerResponseSchema = z.discriminatedUnion("ok", [
+	z.object({
+		ok: z.literal(true),
+		path: z.string(),
+	}),
+	z.object({
+		ok: z.literal(false),
+		path: z.null(),
+		reason: runtimeProjectDirectoryPickerFailureReasonSchema,
+		error: z.string(),
+	}),
+]);
 export type RuntimeProjectDirectoryPickerResponse = z.infer<typeof runtimeProjectDirectoryPickerResponseSchema>;
 
 export const runtimeProjectRemoveRequestSchema = z.object({

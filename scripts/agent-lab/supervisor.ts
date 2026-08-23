@@ -203,6 +203,13 @@ async function loadSupervisorConfig(configPath: string): Promise<AgentLabLaunchC
 	return AgentLabLaunchConfigSchema.parse(JSON.parse(contents) as unknown);
 }
 
+async function assertNoForbiddenHostLaunches(logPath: string): Promise<void> {
+	const launches = (await readFile(logPath, "utf8")).trim();
+	if (launches) {
+		throw new Error(`Agent Lab invoked a forbidden host launcher. See ${logPath}:\n${launches}`);
+	}
+}
+
 export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promise<void> {
 	let manifest: AgentLabManifest | null = null;
 	let runtime: ManagedChild | null = null;
@@ -246,6 +253,9 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 			homePath: fixture.homePath,
 			statePath: fixture.statePath,
 			projectPath: fixture.projectPath,
+			additionalProjectPath: fixture.additionalProjectPath,
+			forbiddenHostLaunchLogPath: fixture.forbiddenHostLaunchLogPath,
+			runtimeCapabilities: config.runtimeCapabilities,
 			projectUrl: `${webUrl}/project`,
 			runtimeUrl,
 			webUrl,
@@ -262,11 +272,20 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 			failure: null,
 		};
 		await writeJsonAtomic(config.manifestPath, manifest);
+		const nativeUiArgs = config.runtimeCapabilities.nativeUiAvailable ? [] : ["--no-native-ui"];
 
 		runtime = createManagedChild(
 			"Quarterdeck runtime",
 			process.execPath,
-			[tsxCliPath, cliEntrypointPath, "--no-open", "--skip-shutdown-cleanup", "--port", String(runtimePort)],
+			[
+				tsxCliPath,
+				cliEntrypointPath,
+				"--no-open",
+				...nativeUiArgs,
+				"--skip-shutdown-cleanup",
+				"--port",
+				String(runtimePort),
+			],
 			{
 				cwd: fixture.projectPath,
 				env: environment,
@@ -305,6 +324,7 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 		await writeJsonAtomic(config.manifestPath, manifest);
 		control = createSupervisorControl(config.stopRequestPath);
 		await Promise.race([control.promise, childFailure(runtime), childFailure(web)]);
+		await assertNoForbiddenHostLaunches(fixture.forbiddenHostLaunchLogPath);
 		manifest.status = "stopping";
 		await writeJsonAtomic(config.manifestPath, manifest);
 	} catch (error) {

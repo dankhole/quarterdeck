@@ -6,14 +6,14 @@
 import type {
 	IRuntimeBroadcaster,
 	IRuntimeConfigProvider,
-	RuntimeCommandRunResponse,
+	IRuntimeHostIntegrations,
 	TaskResourceOperationRunner,
 } from "../core";
 import type { TerminalSessionManager } from "../terminal";
 import type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
 import { handleLoadConfig } from "./handlers/load-config";
 import { handleOpenFile } from "./handlers/open-file";
-import { handleRunCommand } from "./handlers/run-command";
+import { handleOpenProject } from "./handlers/open-project";
 import { handleSaveConfig } from "./handlers/save-config";
 import { handleSendTaskSessionInput } from "./handlers/send-task-session-input";
 import { handleSetLogLevel } from "./handlers/set-log-level";
@@ -28,7 +28,7 @@ export interface CreateRuntimeApiDependencies {
 	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
 	taskResourceOperations: TaskResourceOperationRunner;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
-	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
+	hostIntegrations: IRuntimeHostIntegrations;
 }
 
 type RuntimeApi = RuntimeTrpcContext["runtimeApi"];
@@ -39,11 +39,17 @@ class RuntimeApiImpl implements RuntimeApi {
 	// ── Config ────────────────────────────────────────────────────────────
 
 	async loadConfig(projectScope: RuntimeTrpcProjectScope | null) {
-		return handleLoadConfig(projectScope, this.deps);
+		return handleLoadConfig(projectScope, {
+			...this.deps,
+			runtimeCapabilities: this.deps.hostIntegrations.capabilities,
+		});
 	}
 
 	async saveConfig(projectScope: RuntimeTrpcProjectScope | null, input: unknown) {
-		return handleSaveConfig(projectScope, input, this.deps);
+		return handleSaveConfig(projectScope, input, {
+			...this.deps,
+			runtimeCapabilities: this.deps.hostIntegrations.capabilities,
+		});
 	}
 
 	// ── Sessions ──────────────────────────────────────────────────────────
@@ -66,8 +72,8 @@ class RuntimeApiImpl implements RuntimeApi {
 		return handleStartShellSession(projectScope, input, this.deps);
 	}
 
-	async runCommand(projectScope: RuntimeTrpcProjectScope, input: unknown) {
-		return handleRunCommand(projectScope, input, this.deps);
+	async openProject(projectScope: RuntimeTrpcProjectScope, input: unknown) {
+		return handleOpenProject(projectScope, input, this.deps);
 	}
 
 	// ── Debug / utility ───────────────────────────────────────────────────
@@ -77,7 +83,7 @@ class RuntimeApiImpl implements RuntimeApi {
 	}
 
 	async openFile(input: { filePath: string }) {
-		return handleOpenFile(input);
+		return handleOpenFile(input, this.deps);
 	}
 }
 

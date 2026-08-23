@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import type { RuntimeConfigState } from "../../config";
 import { buildRuntimeConfigResponse, updateGlobalRuntimeConfig, updateRuntimeConfig } from "../../config";
-import type { IRuntimeBroadcaster, IRuntimeConfigProvider } from "../../core";
+import type { IRuntimeBroadcaster, IRuntimeConfigProvider, RuntimeCapabilities } from "../../core";
 import { type LogLevel, parseRuntimeConfigSaveRequest, setLogLevel } from "../../core";
 import type { RuntimeTrpcProjectScope } from "../app-router-context";
 import {
@@ -14,6 +14,7 @@ export interface SaveConfigDeps {
 	config: IRuntimeConfigProvider;
 	broadcaster: Pick<IRuntimeBroadcaster, "broadcastLogLevel">;
 	getActiveProjectId: () => string | null;
+	runtimeCapabilities: RuntimeCapabilities;
 }
 
 export async function handleSaveConfig(
@@ -45,5 +46,5 @@ export async function handleSaveConfig(
 	setLogLevel(nextRuntimeConfig.logLevel as LogLevel);
 	effects.push(...createLogLevelBroadcastEffects(nextRuntimeConfig.logLevel as LogLevel));
 	await applyRuntimeMutationEffects(deps.broadcaster, effects);
-	return await buildRuntimeConfigResponse(nextRuntimeConfig);
+	return await buildRuntimeConfigResponse(nextRuntimeConfig, deps.runtimeCapabilities);
 }

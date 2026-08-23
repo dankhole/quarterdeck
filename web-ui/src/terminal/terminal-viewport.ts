@@ -1,10 +1,10 @@
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
-import { ClipboardAddon } from "@xterm/addon-clipboard";
+import { ClipboardAddon, type ClipboardSelectionType, type IClipboardProvider } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
-
+import { browserHostIntegrations } from "@/runtime/browser-host-integrations";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import type { RuntimeTerminalWsClientMessage } from "@/runtime/types";
 import { SlotDomHost } from "@/terminal/slot-dom-host";
@@ -22,6 +22,21 @@ import { isMacPlatform } from "@/utils/platform";
 const log = createClientLogger("terminal-viewport");
 
 const SHIFT_ENTER_SEQUENCE = "\n";
+
+const terminalClipboardProvider: IClipboardProvider = {
+	async readText(selection: ClipboardSelectionType): Promise<string> {
+		if (selection !== "c") {
+			return "";
+		}
+		return await browserHostIntegrations.readClipboardText().catch(() => "");
+	},
+	async writeText(selection: ClipboardSelectionType, text: string): Promise<void> {
+		if (selection !== "c") {
+			return;
+		}
+		await browserHostIntegrations.writeClipboardText(text).catch(() => {});
+	},
+};
 
 let currentTerminalFontWeight: number = CONFIG_DEFAULTS.terminalFontWeight;
 
@@ -106,7 +121,7 @@ export class TerminalViewport {
 
 	private initializeTerminalAddons(): void {
 		this.terminal.loadAddon(this.fitAddon);
-		this.terminal.loadAddon(new ClipboardAddon());
+		this.terminal.loadAddon(new ClipboardAddon(undefined, terminalClipboardProvider));
 		this.terminal.loadAddon(new WebLinksAddon());
 		this.terminal.loadAddon(this.unicode11Addon);
 		this.terminal.unicode.activeVersion = "11";
@@ -134,7 +149,7 @@ export class TerminalViewport {
 				return false;
 			}
 			if (isCopyShortcut(event) && this.terminal.hasSelection()) {
-				void navigator.clipboard.writeText(this.terminal.getSelection()).catch(() => {
+				void browserHostIntegrations.writeClipboardText(this.terminal.getSelection()).catch(() => {
 					// Ignore clipboard failures.
 				});
 				return false;

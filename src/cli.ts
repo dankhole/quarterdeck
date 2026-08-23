@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createServer as createNetServer, Socket as NetSocket } from "node:net";
 import { Command, Option } from "commander";
@@ -8,7 +7,7 @@ import { registerBackupCommand } from "./commands/backup";
 import { registerHooksCommand } from "./commands/hooks";
 import { registerStatuslineCommand } from "./commands/statusline";
 import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config";
-import type { RuntimeCommandRunResponse } from "./core";
+import type { IRuntimeHostIntegrations, RuntimeCapabilities } from "./core";
 import {
 	buildQuarterdeckRuntimeUrl,
 	DEFAULT_QUARTERDECK_RUNTIME_PORT,
@@ -20,7 +19,6 @@ import {
 	setQuarterdeckRuntimeHost,
 	setQuarterdeckRuntimePort,
 	shouldSuppressImmediateDuplicateShutdownSignals,
-	terminateProcessForTimeout,
 } from "./core";
 import type { RuntimeStateHub } from "./server";
 import type { TerminalSessionManager } from "./terminal";
@@ -29,6 +27,7 @@ import { runGit } from "./workdir/git-utils";
 
 interface CliOptions {
 	noOpen: boolean;
+	nativeUiAvailable: boolean;
 	skipShutdownCleanup: boolean;
 	host: string | null;
 	port: { mode: "fixed"; value: number } | { mode: "auto" } | null;
@@ -55,6 +54,7 @@ interface RootCommandOptions {
 	host?: string;
 	port?: { mode: "fixed"; value: number } | { mode: "auto" };
 	open?: boolean;
+	nativeUi?: boolean;
 	skipShutdownCleanup?: boolean;
 }
 
@@ -73,7 +73,7 @@ interface ShutdownIndicator {
  * unexpected argument is treated as a command-style invocation instead.
  */
 function shouldAutoOpenBrowserTabForInvocation(argv: string[]): boolean {
-	const launchFlags = new Set(["--open", "--no-open", "--skip-shutdown-cleanup"]);
+	const launchFlags = new Set(["--open", "--no-open", "--no-native-ui", "--skip-shutdown-cleanup"]);
 	const launchOptionsWithValues = new Set(["--host", "--port", "--agent"]);
 
 	for (let index = 0; index < argv.length; index += 1) {
@@ -238,7 +238,22 @@ async function canReachQuarterdeckServer(projectId: string | null): Promise<bool
 	}
 }
 
-async function tryOpenExistingServer(options: { noOpen: boolean; shouldAutoOpenBrowser: boolean }): Promise<boolean> {
+async function openExternalTarget(
+	target: string,
+	runtimeCapabilities: RuntimeCapabilities,
+): Promise<Awaited<ReturnType<IRuntimeHostIntegrations["openExternalUrl"]>>> {
+	const { createRuntimeHostIntegrations } = await import("./server/runtime-host-integrations.js");
+	return await createRuntimeHostIntegrations({
+		capabilities: runtimeCapabilities,
+		warn: createRuntimeWarnLogger(),
+	}).openExternalUrl(target);
+}
+
+async function tryOpenExistingServer(options: {
+	noOpen: boolean;
+	shouldAutoOpenBrowser: boolean;
+	runtimeCapabilities: RuntimeCapabilities;
+}): Promise<boolean> {
 	let projectId: string | null = null;
 	if (await hasGitRepository(process.cwd())) {
 		const { isUnderWorktreesHome, loadProjectContext } = await import("./state/project-state.js");
@@ -256,83 +271,18 @@ async function tryOpenExistingServer(options: { noOpen: boolean; shouldAutoOpenB
 		: getQuarterdeckRuntimeOrigin();
 	console.log(`Quarterdeck already running at ${getQuarterdeckRuntimeOrigin()}`);
 	if (!options.noOpen && options.shouldAutoOpenBrowser) {
-		try {
-			const { openInBrowser } = await import("./server/browser.js");
-			openInBrowser(projectUrl, {
-				warn: (message) => {
-					console.warn(message);
-				},
-			});
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			console.warn(`Could not open browser automatically: ${message}`);
+		const result = await openExternalTarget(projectUrl, options.runtimeCapabilities);
+		if (!result.ok) {
+			console.warn(`Could not open browser automatically: ${result.error}`);
 		}
 	}
 	console.log(`Project URL: ${projectUrl}`);
 	return true;
 }
 
-async function runScopedCommand(command: string, cwd: string): Promise<RuntimeCommandRunResponse> {
-	const startedAt = Date.now();
-	const outputLimitBytes = 64 * 1024;
-
-	return await new Promise<RuntimeCommandRunResponse>((resolve, reject) => {
-		const child = spawn(command, {
-			cwd,
-			shell: true,
-			env: process.env,
-			stdio: ["ignore", "pipe", "pipe"],
-		});
-
-		if (!child.stdout || !child.stderr) {
-			reject(new Error("Shortcut process did not expose stdout/stderr."));
-			return;
-		}
-
-		let stdout = "";
-		let stderr = "";
-
-		const appendOutput = (current: string, chunk: string): string => {
-			const next = current + chunk;
-			if (next.length <= outputLimitBytes) {
-				return next;
-			}
-			return next.slice(0, outputLimitBytes);
-		};
-
-		child.stdout.on("data", (chunk: Buffer | string) => {
-			stdout = appendOutput(stdout, String(chunk));
-		});
-
-		child.stderr.on("data", (chunk: Buffer | string) => {
-			stderr = appendOutput(stderr, String(chunk));
-		});
-
-		child.on("error", (error) => {
-			reject(error);
-		});
-
-		const timeout = setTimeout(() => {
-			terminateProcessForTimeout(child);
-		}, 60_000);
-
-		child.on("close", (code) => {
-			clearTimeout(timeout);
-			const exitCode = typeof code === "number" ? code : 1;
-			const combinedOutput = [stdout.trim(), stderr.trim()].filter(Boolean).join("\n");
-			resolve({
-				exitCode,
-				stdout: stdout.trim(),
-				stderr: stderr.trim(),
-				combinedOutput,
-				durationMs: Date.now() - startedAt,
-			});
-		});
-	});
-}
-
 interface RuntimeServerHandle {
 	url: string;
+	hostIntegrations: Pick<IRuntimeHostIntegrations, "openExternalUrl">;
 	close: () => Promise<void>;
 	shutdown: (options?: { skipSessionCleanup?: boolean }) => Promise<void>;
 }
@@ -356,8 +306,7 @@ async function loadRuntimeStartupModules() {
 	*/
 	const [
 		{ resolveProjectInputPath },
-		{ pickDirectoryPathFromSystemDialog },
-		{ createRuntimeServer },
+		{ createRuntimeHostIntegrations, createRuntimeServer },
 		{ createRuntimeStateHub },
 		{ resolveInteractiveShellCommand },
 		{ shutdownRuntimeServer },
@@ -369,8 +318,7 @@ async function loadRuntimeStartupModules() {
 		{ migrateLegacyProjectConfig },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
-		import("./server/directory-picker.js"),
-		import("./server/runtime-server.js"),
+		import("./server/index.js"),
 		import("./server/runtime-state-hub.js"),
 		import("./server/shell.js"),
 		import("./server/shutdown-coordinator.js"),
@@ -384,7 +332,7 @@ async function loadRuntimeStartupModules() {
 
 	return {
 		resolveProjectInputPath,
-		pickDirectoryPathFromSystemDialog,
+		createRuntimeHostIntegrations,
 		createRuntimeServer,
 		createRuntimeStateHub,
 		resolveInteractiveShellCommand,
@@ -530,19 +478,23 @@ async function createRuntimeBootstrapState(
 async function createRuntimeServerHandle(
 	modules: Awaited<ReturnType<typeof loadRuntimeStartupModules>>,
 	bootstrap: Awaited<ReturnType<typeof createRuntimeBootstrapState>>,
+	runtimeCapabilities: RuntimeCapabilities,
 ): Promise<RuntimeServerHandle> {
+	const hostIntegrations = modules.createRuntimeHostIntegrations({
+		capabilities: runtimeCapabilities,
+		warn: bootstrap.warn,
+	});
 	const runtimeServer = await modules.createRuntimeServer({
 		projectRegistry: bootstrap.projectRegistry,
 		runtimeStateHub: bootstrap.runtimeHub,
 		warn: bootstrap.warn,
 		resolveInteractiveShellCommand: modules.resolveInteractiveShellCommand,
-		runCommand: runScopedCommand,
+		hostIntegrations,
 		resolveProjectInputPath: modules.resolveProjectInputPath,
 		assertPathIsDirectory,
 		hasGitRepository,
 		disposeProject: bootstrap.disposeTrackedProject,
 		collectProjectWorktreeTaskIdsForRemoval: modules.collectProjectWorktreeTaskIdsForRemoval,
-		pickDirectoryPathFromSystemDialog: modules.pickDirectoryPathFromSystemDialog,
 	});
 
 	const close = async () => {
@@ -561,28 +513,30 @@ async function createRuntimeServerHandle(
 
 	return {
 		url: runtimeServer.url,
+		hostIntegrations,
 		close,
 		shutdown,
 	};
 }
 
-async function startServer(): Promise<RuntimeServerHandle> {
+async function startServer(runtimeCapabilities: RuntimeCapabilities): Promise<RuntimeServerHandle> {
 	const modules = await loadRuntimeStartupModules();
 	const warn = createRuntimeWarnLogger();
 	await runRuntimeStartupCleanup(modules, warn);
 	const startupAgentCleanup = startOrphanedAgentCleanup(warn);
 	const bootstrap = await createRuntimeBootstrapState(modules, warn, startupAgentCleanup);
-	return await createRuntimeServerHandle(modules, bootstrap);
+	return await createRuntimeServerHandle(modules, bootstrap, runtimeCapabilities);
 }
 
 async function startServerWithAutoPortRetry(options: CliOptions): Promise<RuntimeServerHandle> {
+	const runtimeCapabilities = { nativeUiAvailable: options.nativeUiAvailable };
 	if (options.port?.mode !== "auto") {
-		return await startServer();
+		return await startServer(runtimeCapabilities);
 	}
 
 	while (true) {
 		try {
-			return await startServer();
+			return await startServer(runtimeCapabilities);
 		} catch (error) {
 			if (!isAddressInUseError(error)) {
 				throw error;
@@ -601,8 +555,6 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		console.log(`Binding to host ${options.host}.`);
 	}
 
-	const { openInBrowser } = await import("./server/browser.js");
-
 	const selectedPort = await applyRuntimePortOption(options.port);
 	if (selectedPort !== null) {
 		console.log(`Using runtime port ${selectedPort}.`);
@@ -615,7 +567,11 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		if (
 			options.port?.mode !== "auto" &&
 			isAddressInUseError(error) &&
-			(await tryOpenExistingServer({ noOpen: options.noOpen, shouldAutoOpenBrowser }))
+			(await tryOpenExistingServer({
+				noOpen: options.noOpen,
+				shouldAutoOpenBrowser,
+				runtimeCapabilities: { nativeUiAvailable: options.nativeUiAvailable },
+			}))
 		) {
 			process.exit(0);
 		}
@@ -623,15 +579,9 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 	}
 	console.log(`Quarterdeck running at ${runtime.url}`);
 	if (!options.noOpen && shouldAutoOpenBrowser) {
-		try {
-			openInBrowser(runtime.url, {
-				warn: (message) => {
-					console.warn(message);
-				},
-			});
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			console.warn(`Could not open browser automatically: ${message}`);
+		const result = await runtime.hostIntegrations.openExternalUrl(runtime.url);
+		if (!result.ok) {
+			console.warn(`Could not open browser automatically: ${result.error}`);
 		}
 	}
 	console.log("Press Ctrl+C to stop.");
@@ -710,6 +660,7 @@ function createProgram(invocationArgs: string[]): Command {
 		.option("--host <ip>", "Host IP to bind the server to (default: 127.0.0.1).")
 		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
 		.option("--no-open", "Do not open browser automatically.")
+		.option("--no-native-ui", "Disable integrations that launch or interact with host-native UI.")
 		.option("--skip-shutdown-cleanup", "Skip graceful shutdown cleanup (session marking, orphan process cleanup).")
 		.showHelpAfterError()
 		.addHelpText("after", `\nRuntime URL: ${getQuarterdeckRuntimeOrigin()}`);
@@ -726,6 +677,7 @@ function createProgram(invocationArgs: string[]): Command {
 				host: options.host ?? null,
 				port: options.port ?? null,
 				noOpen: options.open === false,
+				nativeUiAvailable: options.nativeUi !== false,
 				skipShutdownCleanup: options.skipShutdownCleanup === true,
 			},
 			shouldAutoOpenBrowser,

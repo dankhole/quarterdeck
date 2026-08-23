@@ -67,6 +67,12 @@ function printManifestSummary(manifest: AgentLabManifest): void {
 	process.stdout.write(`Browser: ${browserCommand(manifest)}\n`);
 }
 
+function assertAgentLabDidNotFail(manifest: AgentLabManifest): void {
+	if (manifest.status === "failed") {
+		throw new Error(`Agent lab failed: ${manifest.failure ?? "unknown failure"}. Inspect ${manifest.artifactDir}.`);
+	}
+}
+
 async function waitForManifest(
 	manifestPath: string,
 	predicate: (manifest: AgentLabManifest) => boolean,
@@ -168,9 +174,7 @@ async function startAgentLab(options: StartOptions): Promise<void> {
 		}).catch(() => {});
 		throw error;
 	}
-	if (manifest.status === "failed") {
-		throw new Error(`Agent lab failed: ${manifest.failure ?? "unknown failure"}. Inspect ${manifest.artifactDir}.`);
-	}
+	assertAgentLabDidNotFail(manifest);
 	if (options.json) {
 		printJson(manifest);
 		return;
@@ -200,6 +204,7 @@ async function stopAgentLab(runId: string | undefined, options: OutputOptions): 
 		} else {
 			printManifestSummary(manifest);
 		}
+		assertAgentLabDidNotFail(manifest);
 		return;
 	}
 	if (!isProcessAlive(manifest.supervisorPid)) {
@@ -224,6 +229,7 @@ async function stopAgentLab(runId: string | undefined, options: OutputOptions): 
 		} else {
 			printManifestSummary(manifest);
 		}
+		assertAgentLabDidNotFail(manifest);
 		return;
 	}
 	await writeJsonAtomic(manifest.stopRequestPath, { requestedAt: new Date().toISOString(), requestedBy: process.pid });
@@ -234,9 +240,10 @@ async function stopAgentLab(runId: string | undefined, options: OutputOptions): 
 	);
 	if (options.json) {
 		printJson(stopped);
-		return;
+	} else {
+		printManifestSummary(stopped);
 	}
-	printManifestSummary(stopped);
+	assertAgentLabDidNotFail(stopped);
 }
 
 async function snapshotAgentLab(runId: string | undefined, label: string, options: OutputOptions): Promise<void> {

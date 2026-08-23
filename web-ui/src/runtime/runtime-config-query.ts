@@ -1,12 +1,19 @@
 // Browser-side query helpers for runtime settings.
 // Keep TRPC request details here so components and controller hooks can focus
 // on state orchestration instead of transport plumbing.
+
+import { browserHostIntegrations } from "@/runtime/browser-host-integrations";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeConfigResponse, RuntimeConfigSaveRequest } from "@/runtime/types";
 
+function applyRuntimeCapabilities(response: RuntimeConfigResponse): RuntimeConfigResponse {
+	browserHostIntegrations.configureCapabilities(response.runtimeCapabilities);
+	return response;
+}
+
 export async function fetchRuntimeConfig(projectId: string | null): Promise<RuntimeConfigResponse> {
 	const trpcClient = getRuntimeTrpcClient(projectId);
-	return await trpcClient.runtime.getConfig.query();
+	return applyRuntimeCapabilities(await trpcClient.runtime.getConfig.query());
 }
 
 export async function saveRuntimeConfig(
@@ -14,7 +21,7 @@ export async function saveRuntimeConfig(
 	nextConfig: RuntimeConfigSaveRequest,
 ): Promise<RuntimeConfigResponse> {
 	const trpcClient = getRuntimeTrpcClient(projectId);
-	return await trpcClient.runtime.saveConfig.mutate(nextConfig);
+	return applyRuntimeCapabilities(await trpcClient.runtime.saveConfig.mutate(nextConfig));
 }
 
 export async function setLogLevel(
@@ -27,5 +34,8 @@ export async function setLogLevel(
 
 export async function openFileOnHost(projectId: string | null, filePath: string): Promise<void> {
 	const trpcClient = getRuntimeTrpcClient(projectId);
-	await trpcClient.runtime.openFile.mutate({ filePath });
+	const response = await trpcClient.runtime.openFile.mutate({ filePath });
+	if (!response.ok) {
+		throw new Error(response.error);
+	}
 }

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { writeClipboardText } from "@/components/git/panels/context-menu-utils";
+import { browserHostIntegrations } from "@/runtime/browser-host-integrations";
 
 vi.mock("@/components/app-toaster", () => ({
 	showAppToast: vi.fn(),
@@ -11,12 +12,14 @@ describe("writeClipboardText", () => {
 	let originalExecCommand: Document["execCommand"] | undefined;
 
 	beforeEach(() => {
+		browserHostIntegrations.configureCapabilities({ nativeUiAvailable: true });
 		originalClipboard = navigator.clipboard;
 		originalExecCommand = document.execCommand;
 		document.body.innerHTML = "";
 	});
 
 	afterEach(() => {
+		browserHostIntegrations.configureCapabilities({ nativeUiAvailable: false });
 		Object.defineProperty(navigator, "clipboard", {
 			configurable: true,
 			value: originalClipboard,

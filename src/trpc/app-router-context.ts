@@ -1,8 +1,6 @@
 import type {
 	RuntimeAutoMergedFilesRequest,
 	RuntimeAutoMergedFilesResponse,
-	RuntimeCommandRunRequest,
-	RuntimeCommandRunResponse,
 	RuntimeConfigResponse,
 	RuntimeConfigSaveRequest,
 	RuntimeConflictAbortRequest,
@@ -51,6 +49,8 @@ import type {
 	RuntimeListFilesResponse,
 	RuntimeOpenFileRequest,
 	RuntimeOpenFileResponse,
+	RuntimeOpenProjectRequest,
+	RuntimeOpenProjectResponse,
 	RuntimeProjectAddRequest,
 	RuntimeProjectAddResponse,
 	RuntimeProjectDirectoryPickerResponse,
@@ -124,10 +124,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcProjectScope,
 			input: RuntimeShellSessionStartRequest,
 		) => Promise<RuntimeShellSessionStartResponse>;
-		runCommand: (
+		openProject: (
 			scope: RuntimeTrpcProjectScope,
-			input: RuntimeCommandRunRequest,
-		) => Promise<RuntimeCommandRunResponse>;
+			input: RuntimeOpenProjectRequest,
+		) => Promise<RuntimeOpenProjectResponse>;
 		openFile: (input: RuntimeOpenFileRequest) => Promise<RuntimeOpenFileResponse>;
 		setLogLevel: (level: "debug" | "info" | "warn" | "error") => Promise<{
 			ok: boolean;

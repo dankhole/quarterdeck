@@ -1,10 +1,10 @@
 import { z } from "zod";
 
 import {
-	type RuntimeCommandRunRequest,
 	type RuntimeConfigSaveRequest,
 	type RuntimeGitCheckoutRequest,
 	type RuntimeHookIngestRequest,
+	type RuntimeOpenProjectRequest,
 	type RuntimeProjectAddRequest,
 	type RuntimeProjectRemoveRequest,
 	type RuntimeProjectReorderRequest,
@@ -17,10 +17,10 @@ import {
 	type RuntimeTerminalWsClientMessage,
 	type RuntimeWorktreeDeleteRequest,
 	type RuntimeWorktreeEnsureRequest,
-	runtimeCommandRunRequestSchema,
 	runtimeConfigSaveRequestSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeHookIngestRequestSchema,
+	runtimeOpenProjectRequestSchema,
 	runtimeProjectAddRequestSchema,
 	runtimeProjectRemoveRequestSchema,
 	runtimeProjectReorderRequestSchema,
@@ -139,15 +139,8 @@ export function parseRuntimeConfigSaveRequest(value: unknown): RuntimeConfigSave
 	return parseWithSchema(runtimeConfigSaveRequestSchema, value);
 }
 
-export function parseCommandRunRequest(value: unknown): RuntimeCommandRunRequest {
-	const parsed = parseWithSchema(runtimeCommandRunRequestSchema, value);
-	const command = parsed.command.trim();
-	if (!command) {
-		throw new Error("Command cannot be empty.");
-	}
-	return {
-		command,
-	};
+export function parseOpenProjectRequest(value: unknown): RuntimeOpenProjectRequest {
+	return parseWithSchema(runtimeOpenProjectRequestSchema, value);
 }
 
 export function parseTaskSessionStartRequest(value: unknown): RuntimeTaskSessionStartRequest {

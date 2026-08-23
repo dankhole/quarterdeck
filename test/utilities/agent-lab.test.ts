@@ -38,7 +38,9 @@ describe("agent-lab environment", () => {
 				homePath: "/tmp/lab/home",
 				statePath: "/tmp/lab/state",
 				projectPath: "/tmp/lab/project",
+				additionalProjectPath: "/tmp/lab/project-secondary",
 				fakeBinPath: "/tmp/lab/bin",
+				forbiddenHostLaunchLogPath: "/tmp/lab/forbidden-host-launches.log",
 				repoRoot: "/repo",
 				tsxCliPath: "/repo/node_modules/tsx/cli.mjs",
 				fakeCodexPath: "/repo/scripts/fake-codex.ts",
@@ -54,6 +56,7 @@ describe("agent-lab environment", () => {
 		expect(environment.HOME).toBe("/tmp/lab/home");
 		expect(environment.QUARTERDECK_STATE_HOME).toBe("/tmp/lab/state");
 		expect(environment.QUARTERDECK_RUNTIME_PORT).toBe("35001");
+		expect(environment.QUARTERDECK_AGENT_LAB_ADDITIONAL_PROJECT).toBe("/tmp/lab/project-secondary");
 		expect(environment.PATH).toBe(["/tmp/lab/bin", "/host/bin"].join(delimiter));
 	});
 });

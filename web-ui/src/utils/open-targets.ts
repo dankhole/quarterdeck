@@ -1,3 +1,8 @@
+import {
+	RUNTIME_OPEN_TARGET_IDS_BY_PLATFORM,
+	type RuntimeOpenTargetId,
+	type RuntimeOpenTargetPlatform,
+} from "@runtime-contract";
 import cursorIcon from "@/assets/open-targets/cursor.svg";
 import finderIcon from "@/assets/open-targets/finder.svg";
 import ghosttyIcon from "@/assets/open-targets/ghostty.svg";
@@ -14,22 +19,8 @@ import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/
 
 export const PREFERRED_OPEN_TARGET_STORAGE_KEY = LocalStorageKey.PreferredOpenTarget;
 
-export type OpenTargetPlatform = "mac" | "windows" | "linux" | "other";
-
-export type OpenTargetId =
-	| "vscode"
-	| "vscode-insiders"
-	| "cursor"
-	| "windsurf"
-	| "finder"
-	| "terminal"
-	| "iterm2"
-	| "ghostty"
-	| "warp"
-	| "xcode"
-	| "intellijidea"
-	| "rider"
-	| "zed";
+export type OpenTargetPlatform = RuntimeOpenTargetPlatform;
+export type OpenTargetId = RuntimeOpenTargetId;
 
 export interface OpenTargetOption {
 	id: OpenTargetId;
@@ -107,27 +98,6 @@ const OPEN_TARGET_OPTIONS: readonly OpenTargetOption[] = [
 	},
 ];
 
-const OPEN_TARGET_IDS_BY_PLATFORM: Record<OpenTargetPlatform, readonly OpenTargetId[]> = {
-	mac: [
-		"vscode",
-		"cursor",
-		"windsurf",
-		"finder",
-		"terminal",
-		"iterm2",
-		"ghostty",
-		"warp",
-		"xcode",
-		"intellijidea",
-		"rider",
-		"vscode-insiders",
-		"zed",
-	],
-	windows: ["vscode", "cursor", "windsurf", "finder", "rider", "vscode-insiders", "zed"],
-	linux: ["vscode", "cursor", "windsurf", "finder", "rider", "vscode-insiders", "zed"],
-	other: ["vscode", "vscode-insiders", "finder"],
-};
-
 const openTargetById = new Map<OpenTargetId, OpenTargetOption>(
 	OPEN_TARGET_OPTIONS.map((option) => [option.id, option]),
 );
@@ -150,7 +120,7 @@ export function resolveOpenTargetPlatform(): OpenTargetPlatform {
 }
 
 function getDefaultOpenTargetId(platform: OpenTargetPlatform): OpenTargetId {
-	const firstId = OPEN_TARGET_IDS_BY_PLATFORM[platform][0];
+	const firstId = RUNTIME_OPEN_TARGET_IDS_BY_PLATFORM[platform][0];
 	return firstId ?? DEFAULT_OPEN_TARGET.id;
 }
 
@@ -168,7 +138,8 @@ function getOpenTargetLabel(targetId: OpenTargetId, platform: OpenTargetPlatform
 }
 
 function isOpenTargetSupported(targetId: OpenTargetId, platform: OpenTargetPlatform): boolean {
-	return OPEN_TARGET_IDS_BY_PLATFORM[platform].includes(targetId);
+	const supportedTargets: readonly OpenTargetId[] = RUNTIME_OPEN_TARGET_IDS_BY_PLATFORM[platform];
+	return supportedTargets.includes(targetId);
 }
 
 function isOpenTargetId(value: string | null): value is OpenTargetId {
@@ -197,81 +168,8 @@ export function normalizeOpenTargetId(value: string | null): OpenTargetId | null
 	return null;
 }
 
-function quoteShellArgument(value: string): string {
-	return `'${value.replaceAll("'", "'\"'\"'")}'`;
-}
-
-function quoteWindowsShellArgument(value: string): string {
-	return `"${value.replaceAll('"', '""')}"`;
-}
-
-function buildOpenAppCommand(path: string, ...appNames: string[]): string {
-	const quotedPath = quoteShellArgument(path);
-	if (appNames.length === 0) {
-		return `open ${quotedPath}`;
-	}
-	const openAttempts = appNames.map((appName) => `open -a ${quoteShellArgument(appName)} ${quotedPath}`);
-	if (openAttempts.length === 1) {
-		const command = openAttempts[0];
-		return command ?? `open ${quotedPath}`;
-	}
-	return `(${openAttempts.join(" || ")})`;
-}
-
-function buildOpenLinuxCommand(targetId: OpenTargetId, path: string): string {
-	const quotedPath = quoteShellArgument(path);
-	if (targetId === "finder") {
-		return `xdg-open ${quotedPath}`;
-	}
-	if (targetId === "vscode") {
-		return `code ${quotedPath}`;
-	}
-	if (targetId === "vscode-insiders") {
-		return `code-insiders ${quotedPath}`;
-	}
-	if (targetId === "cursor") {
-		return `cursor ${quotedPath}`;
-	}
-	if (targetId === "windsurf") {
-		return `windsurf ${quotedPath}`;
-	}
-	if (targetId === "zed") {
-		return `zed ${quotedPath}`;
-	}
-	if (targetId === "rider") {
-		return `rider ${quotedPath}`;
-	}
-	return `xdg-open ${quotedPath}`;
-}
-
-function buildOpenWindowsCommand(targetId: OpenTargetId, path: string): string {
-	const quotedPath = quoteWindowsShellArgument(path);
-	if (targetId === "finder") {
-		return `explorer ${quotedPath}`;
-	}
-	if (targetId === "vscode") {
-		return `code ${quotedPath}`;
-	}
-	if (targetId === "vscode-insiders") {
-		return `code-insiders ${quotedPath}`;
-	}
-	if (targetId === "cursor") {
-		return `cursor ${quotedPath}`;
-	}
-	if (targetId === "windsurf") {
-		return `windsurf ${quotedPath}`;
-	}
-	if (targetId === "zed") {
-		return `zed ${quotedPath}`;
-	}
-	if (targetId === "rider") {
-		return `rider ${quotedPath}`;
-	}
-	return `explorer ${quotedPath}`;
-}
-
 export function getOpenTargetOptions(platform: OpenTargetPlatform): readonly OpenTargetOption[] {
-	return OPEN_TARGET_IDS_BY_PLATFORM[platform].map((targetId) => {
+	return RUNTIME_OPEN_TARGET_IDS_BY_PLATFORM[platform].map((targetId) => {
 		const option = openTargetById.get(targetId) ?? DEFAULT_OPEN_TARGET;
 		return {
 			...option,
@@ -305,56 +203,4 @@ export function loadPersistedOpenTarget(platform: OpenTargetPlatform): OpenTarge
 
 export function persistOpenTarget(targetId: OpenTargetId): void {
 	writeLocalStorageItem(PREFERRED_OPEN_TARGET_STORAGE_KEY, targetId);
-}
-
-export function buildOpenCommand(targetId: OpenTargetId, path: string, platform: OpenTargetPlatform): string {
-	if (!isOpenTargetSupported(targetId, platform)) {
-		return buildOpenCommand(getDefaultOpenTargetId(platform), path, platform);
-	}
-
-	if (platform === "windows") {
-		return buildOpenWindowsCommand(targetId, path);
-	}
-
-	if (platform === "linux" || platform === "other") {
-		return buildOpenLinuxCommand(targetId, path);
-	}
-
-	if (targetId === "vscode") {
-		return buildOpenAppCommand(path, "Visual Studio Code");
-	}
-	if (targetId === "vscode-insiders") {
-		return buildOpenAppCommand(path, "Visual Studio Code - Insiders");
-	}
-	if (targetId === "cursor") {
-		return buildOpenAppCommand(path, "Cursor");
-	}
-	if (targetId === "windsurf") {
-		return buildOpenAppCommand(path, "Windsurf");
-	}
-	if (targetId === "finder") {
-		return buildOpenAppCommand(path);
-	}
-	if (targetId === "terminal") {
-		return buildOpenAppCommand(path, "Terminal");
-	}
-	if (targetId === "iterm2") {
-		return buildOpenAppCommand(path, "iTerm", "iTerm2");
-	}
-	if (targetId === "ghostty") {
-		return buildOpenAppCommand(path, "Ghostty", "Ghostie");
-	}
-	if (targetId === "warp") {
-		return buildOpenAppCommand(path, "Warp");
-	}
-	if (targetId === "xcode") {
-		return buildOpenAppCommand(path, "Xcode");
-	}
-	if (targetId === "intellijidea") {
-		return buildOpenAppCommand(path, "IntelliJ IDEA", "IntelliJ IDEA CE");
-	}
-	if (targetId === "rider") {
-		return buildOpenAppCommand(path, "Rider", "JetBrains Rider");
-	}
-	return buildOpenAppCommand(path, "Zed");
 }

@@ -34,6 +34,9 @@ export const AgentLabManifestSchema = z.object({
 	homePath: z.string().min(1),
 	statePath: z.string().min(1),
 	projectPath: z.string().min(1),
+	additionalProjectPath: z.string().min(1),
+	forbiddenHostLaunchLogPath: z.string().min(1),
+	runtimeCapabilities: z.object({ nativeUiAvailable: z.literal(false) }),
 	projectUrl: z.string().url(),
 	runtimeUrl: z.string().url(),
 	webUrl: z.string().url(),
@@ -68,6 +71,7 @@ export const AgentLabLaunchConfigSchema = z.object({
 	runtimePort: z.number().int().min(0).max(65_535).nullable(),
 	webPort: z.number().int().min(0).max(65_535).nullable(),
 	forwardLogs: z.boolean(),
+	runtimeCapabilities: z.object({ nativeUiAvailable: z.literal(false) }),
 });
 
 export type AgentLabLaunchConfig = z.infer<typeof AgentLabLaunchConfigSchema>;

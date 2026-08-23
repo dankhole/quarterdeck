@@ -12,7 +12,16 @@
 
 import type { RuntimeConfigState } from "../config";
 import type { TerminalSessionManager } from "../terminal";
-import type { RuntimeProjectStateResponse, RuntimeProjectSummary, RuntimeProjectTaskCounts } from "./api-contract";
+import type {
+	RuntimeCapabilities,
+	RuntimeOpenFileResponse,
+	RuntimeOpenProjectResponse,
+	RuntimeOpenTargetId,
+	RuntimeProjectDirectoryPickerResponse,
+	RuntimeProjectStateResponse,
+	RuntimeProjectSummary,
+	RuntimeProjectTaskCounts,
+} from "./api-contract";
 import type { LogLevel } from "./runtime-logger";
 
 // ── Broadcasting ─────────────────────────────────────────────────────────────
@@ -76,6 +85,21 @@ export interface IRuntimeConfigProvider {
 	getActiveRuntimeConfig: () => RuntimeConfigState;
 	setActiveRuntimeConfig: (config: RuntimeConfigState) => void;
 	loadScopedRuntimeConfig: (scope: { projectId: string; projectPath: string }) => Promise<RuntimeConfigState>;
+}
+
+// ── Host Integrations ───────────────────────────────────────────────────────────────────
+
+/**
+ * The capability-gated boundary for runtime actions that can launch host UI.
+ * The Agent Lab supplies `nativeUiAvailable: false`, so every method must fail
+ * before invoking its platform launcher.
+ */
+export interface IRuntimeHostIntegrations {
+	readonly capabilities: RuntimeCapabilities;
+	pickDirectory: () => Promise<RuntimeProjectDirectoryPickerResponse>;
+	openPath: (targetPath: string) => Promise<RuntimeOpenFileResponse>;
+	openExternalUrl: (url: string) => Promise<RuntimeOpenFileResponse>;
+	openProject: (targetId: RuntimeOpenTargetId, cwd: string) => Promise<RuntimeOpenProjectResponse>;
 }
 
 // ── Project Data ───────────────────────────────────────────────────────────

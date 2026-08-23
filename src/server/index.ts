@@ -1,4 +1,3 @@
-export { openInBrowser } from "./browser";
 export { pickDirectoryPathFromSystemDialog } from "./directory-picker";
 export {
 	type CreateProjectMetadataMonitorDependencies,
@@ -15,6 +14,12 @@ export {
 	type RemovedProjectNotice,
 	type ResolvedProjectStreamTarget,
 } from "./project-registry";
+export {
+	type CreateRuntimeHostIntegrationsOptions,
+	createRuntimeHostIntegrations,
+	type RuntimeHostIntegrationAttempt,
+	type RuntimeHostIntegrationKind,
+} from "./runtime-host-integrations";
 export {
 	type CreateRuntimeServerDependencies,
 	createRuntimeServer,

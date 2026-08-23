@@ -13,6 +13,13 @@
 - Task titles now use one explicit provider—an isolated, ephemeral Codex CLI turn by default, the existing OpenAI-compatible helper when selected, or local-only generation—and every remote failure falls back directly to the deterministic local title without crossing provider failure domains.
 - Codex title calls share Quarterdeck's platform command-resolution and process-tree termination mechanisms, settle at a bounded deadline even if a child ignores termination, and apply the same provider-neutral response cleanup as HTTP generation.
 
+### Fix: keep Agent Lab host UI isolated
+
+- Agent Lab runtimes now disable an explicit native-UI capability at launch, so Add Project returns the typed `native_ui_unavailable` result immediately and opens the browser-manageable manual-path prompt instead of invoking a macOS, Linux, or Windows folder picker.
+- Folder/file host opening, external host URLs, Open in IDE, browser clipboard access, and notification audio now pass through capability-gated host-integration boundaries; Open in IDE accepts only a typed target ID and resolves trusted executable/argument arrays in the runtime instead of accepting browser-supplied shell text.
+- Browser-contained links, including xterm links, remain inside the isolated Playwright browser and its loopback-only network policy. The lab separately shadows known native launchers and fails the run if one is invoked.
+- Functional coverage adds a second synthetic Git repository and verifies the manual-path flow adds it without hanging or spawning host UI, while normal native macOS picker behavior remains covered separately.
+
 ### Fix: recover interrupted chats safely at startup
 
 - Interrupted work-column tasks now wait for orphan-process cleanup and resolve the same per-task agent, worktree recreation, and stored conversation used by manual Restart exactly once, with startup launches serialized instead of spawned in a burst and deterministic preparation failures left for manual correction.

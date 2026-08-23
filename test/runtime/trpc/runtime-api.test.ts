@@ -53,10 +53,6 @@ vi.mock("../../../src/core/task-board-mutations.js", () => ({
 	findCardInBoard: taskBoardMutationMocks.findCardInBoard,
 }));
 
-vi.mock("../../../src/server/browser.js", () => ({
-	openInBrowser: vi.fn(),
-}));
-
 import { TaskResourceOperationCoordinator } from "../../../src/core";
 import { startTaskSessionThroughService } from "../../../src/server/task-session-start-service";
 import { createRuntimeApi } from "../../../src/trpc";
@@ -145,7 +141,13 @@ function createDeps(flat: Record<string, unknown> = {}) {
 		getScopedTerminalManager: vi.fn(async () => manager as never),
 		taskResourceOperations: new TaskResourceOperationCoordinator(),
 		resolveInteractiveShellCommand: vi.fn(),
-		runCommand: vi.fn(),
+		hostIntegrations: {
+			capabilities: { nativeUiAvailable: true },
+			pickDirectory: vi.fn(),
+			openPath: vi.fn(),
+			openExternalUrl: vi.fn(),
+			openProject: vi.fn(),
+		},
 	};
 }
 
@@ -981,5 +983,41 @@ describe("createRuntimeApi startShellSession", () => {
 		expect(result.ok).toBe(true);
 		expect(taskWorktreeMocks.resolveTaskWorkingDirectory).not.toHaveBeenCalled();
 		expect(terminalManager.startShellSession).toHaveBeenCalledWith(expect.objectContaining({ cwd: "/tmp/repo" }));
+	});
+});
+
+describe("createRuntimeApi openProject", () => {
+	it("accepts only a typed target and derives the project path from server scope", async () => {
+		const deps = createDeps();
+		deps.hostIntegrations.openProject.mockResolvedValue({ ok: true });
+		const api = createRuntimeApi(deps);
+
+		await api.openProject(defaultScope, { targetId: "cursor" });
+
+		expect(deps.hostIntegrations.openProject).toHaveBeenCalledWith("cursor", "/tmp/repo");
+	});
+
+	it("rejects browser-supplied shell commands and working directories", async () => {
+		const deps = createDeps();
+		const api = createRuntimeApi(deps);
+
+		await expect(
+			api.openProject(defaultScope, {
+				targetId: "cursor",
+				command: "touch /tmp/should-not-run",
+				cwd: "/tmp/untrusted",
+			} as never),
+		).rejects.toThrow();
+		expect(deps.hostIntegrations.openProject).not.toHaveBeenCalled();
+	});
+
+	it("rejects unknown open targets", async () => {
+		const deps = createDeps();
+		const api = createRuntimeApi(deps);
+
+		await expect(api.openProject(defaultScope, { targetId: "shell-command" } as never)).rejects.toThrow(
+			"Invalid option",
+		);
+		expect(deps.hostIntegrations.openProject).not.toHaveBeenCalled();
 	});
 });

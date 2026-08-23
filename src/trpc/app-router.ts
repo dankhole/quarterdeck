@@ -4,14 +4,14 @@
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { z } from "zod";
 import {
-	runtimeCommandRunRequestSchema,
-	runtimeCommandRunResponseSchema,
 	runtimeConfigResponseSchema,
 	runtimeConfigSaveRequestSchema,
 	runtimeHookIngestRequestSchema,
 	runtimeHookIngestResponseSchema,
 	runtimeOpenFileRequestSchema,
 	runtimeOpenFileResponseSchema,
+	runtimeOpenProjectRequestSchema,
+	runtimeOpenProjectResponseSchema,
 	runtimeProjectAddRequestSchema,
 	runtimeProjectAddResponseSchema,
 	runtimeProjectDirectoryPickerResponseSchema,
@@ -69,11 +69,11 @@ const runtimeRouter = t.router({
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.runtimeApi.startShellSession(ctx.projectScope, input);
 		}),
-	runCommand: projectProcedure
-		.input(runtimeCommandRunRequestSchema)
-		.output(runtimeCommandRunResponseSchema)
+	openProject: projectProcedure
+		.input(runtimeOpenProjectRequestSchema)
+		.output(runtimeOpenProjectResponseSchema)
 		.mutation(async ({ ctx, input }) => {
-			return await ctx.runtimeApi.runCommand(ctx.projectScope, input);
+			return await ctx.runtimeApi.openProject(ctx.projectScope, input);
 		}),
 	setLogLevel: t.procedure
 		.input(z.object({ level: z.enum(["debug", "info", "warn", "error"]) }))

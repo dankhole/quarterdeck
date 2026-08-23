@@ -2,6 +2,7 @@ import type {
 	IProjectDataProvider,
 	IProjectResolver,
 	IRuntimeBroadcaster,
+	IRuntimeHostIntegrations,
 	ITerminalManagerProvider,
 	RuntimeBoardData,
 	RuntimeProjectAddResponse,
@@ -40,7 +41,7 @@ export interface CreateProjectsApiDependencies {
 	) => { terminalManager: TerminalSessionManager | null; projectPath: string | null };
 	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeBoardData) => Set<string>;
 	warn: (message: string) => void;
-	pickDirectoryPathFromSystemDialog: () => Promise<string | null>;
+	hostIntegrations: Pick<IRuntimeHostIntegrations, "pickDirectory">;
 }
 
 export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeTrpcContext["projectsApi"] {
@@ -205,27 +206,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 			}
 		},
 		pickProjectDirectory: async () => {
-			try {
-				const selectedPath = await deps.pickDirectoryPathFromSystemDialog();
-				if (!selectedPath) {
-					return {
-						ok: false,
-						path: null,
-						error: "No directory was selected.",
-					};
-				}
-				return {
-					ok: true,
-					path: selectedPath,
-				};
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				return {
-					ok: false,
-					path: null,
-					error: message,
-				};
-			}
+			return await deps.hostIntegrations.pickDirectory();
 		},
 		reorderProjects: async (_preferredProjectId, input) => {
 			try {
