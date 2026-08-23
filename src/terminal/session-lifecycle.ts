@@ -22,6 +22,12 @@ import { PtySession, type PtySession as PtySessionInstance } from "./pty-session
 import { scheduleAutoRestart, shouldAutoRestart } from "./session-auto-restart";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
 import {
+	createTaskSessionLaunchMonitor,
+	markTaskSessionLaunchCancelled,
+	markTaskSessionLaunchExited,
+	markTaskSessionLaunchSuperseded,
+} from "./session-launch-readiness";
+import {
 	buildTerminalEnvironment,
 	createActiveProcessState,
 	finalizeProcessExit,
@@ -81,13 +87,24 @@ export interface SpawnTaskSessionDeps {
 	onExit: (request: StartTaskSessionRequest, event: { exitCode: number | null }, session: PtySessionInstance) => void;
 }
 
+export interface SpawnTaskSessionResult {
+	summary: RuntimeTaskSessionSummary;
+	sessionInstanceId: string;
+}
+
 export async function spawnTaskSession(
 	entry: ProcessEntry,
 	request: StartTaskSessionRequest,
 	deps: SpawnTaskSessionDeps,
-): Promise<RuntimeTaskSessionSummary> {
+): Promise<SpawnTaskSessionResult> {
 	entry.pendingSessionStart = true;
 	const hookSessionInstanceId = randomUUID();
+	markTaskSessionLaunchSuperseded(entry.launchMonitor);
+	entry.launchMonitor = createTaskSessionLaunchMonitor({
+		sessionInstanceId: hookSessionInstanceId,
+		expectedSessionId:
+			request.startupRecoveryToken && request.resumeConversation ? request.resumeSessionId : undefined,
+	});
 	entry.hookEventOrder = createHookEventOrderState(hookSessionInstanceId);
 
 	const cols = normalizeDimension(request.cols, 120);
@@ -145,6 +162,7 @@ export async function spawnTaskSession(
 	} catch (error) {
 		entry.pendingSessionStart = false;
 		entry.hookEventOrder = null;
+		markTaskSessionLaunchCancelled(entry.launchMonitor);
 		throw error;
 	}
 
@@ -205,6 +223,7 @@ export async function spawnTaskSession(
 		});
 		entry.pendingSessionStart = false;
 		entry.hookEventOrder = null;
+		markTaskSessionLaunchCancelled(entry.launchMonitor);
 		if (launch.cleanup) {
 			void launch.cleanup().catch(() => {});
 		}
@@ -244,6 +263,9 @@ export async function spawnTaskSession(
 		willAutoTrust,
 		launch,
 	});
+	if (entry.launchMonitor?.sessionInstanceId === hookSessionInstanceId) {
+		entry.launchMonitor.pid = session.pid;
+	}
 	entry.pendingSessionStart = false;
 	entry.terminalStateMirror = terminalStateMirror;
 	if (!hasLiveOutputListener(entry)) {
@@ -277,7 +299,10 @@ export async function spawnTaskSession(
 		previousTurnCheckpoint: null,
 	});
 
-	return summary ?? deps.ensureEntry(request.taskId);
+	return {
+		summary: summary ?? deps.ensureEntry(request.taskId),
+		sessionInstanceId: hookSessionInstanceId,
+	};
 }
 
 // ── Task session exit ───────────────────────────────────────────────────────
@@ -322,6 +347,7 @@ export function handleTaskSessionExit(
 		});
 		return;
 	}
+	markTaskSessionLaunchExited(currentEntry.launchMonitor, event.exitCode);
 
 	const exitEventData = {
 		exitCode: event.exitCode,
@@ -347,6 +373,12 @@ export function handleTaskSessionExit(
 	});
 
 	const preExitState = currentSummaryAtExit?.state ?? "idle";
+	if (request.startupRecoveryToken && currentEntry.pendingStartupRecoveryToken === request.startupRecoveryToken) {
+		// The startup coordinator owns this process until readiness has remained
+		// stable. Suppress the generic crash restart so it cannot race the
+		// coordinator's exact-target retry.
+		currentEntry.suppressAutoRestartOnExit = true;
+	}
 	const autoRestartDecision = shouldAutoRestart(currentEntry, preExitState);
 	if (!autoRestartDecision.restart) {
 		const skipData = {
@@ -398,12 +430,11 @@ export function handleTaskSessionExit(
 			preExitReviewReason: currentSummaryAtExit.reviewReason,
 			resumeSessionId: request.resumeSessionId ?? null,
 		};
-		if (event.exitCode === 0) {
-			// Keep this fallback for startup resume: a clean targeted resume or
-			// continuation process can exit without leaving an interactive session,
-			// and server-start restore previously relied on opening a fresh review
-			// prompt in that case. The explicit-stop guard above is the important
-			// trash/untrash protection.
+		if (event.exitCode === 0 && !request.startupRecoveryToken) {
+			// Keep the legacy fallback for explicit resume flows: a clean targeted
+			// resume or continuation process can exit without leaving an interactive
+			// session. Startup recovery owns its own exact-target bounded retry and
+			// must never convert that failure into a fresh non-resume prompt.
 			sessionLog.warn("resume exited before interactive session; scheduling fallback start", resumeExitData);
 			scheduleAutoRestart(
 				currentEntry,
@@ -414,7 +445,7 @@ export function handleTaskSessionExit(
 				},
 				{ skipContinueAttempt: true },
 			);
-		} else {
+		} else if (event.exitCode !== 0) {
 			const failedStoredTargetedResume =
 				(request.agentId === "codex" || request.agentId === "claude") && Boolean(request.resumeSessionId?.trim());
 			const message = failedStoredTargetedResume

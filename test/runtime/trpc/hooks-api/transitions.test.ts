@@ -37,8 +37,47 @@ describe("createHooksApi — transitions", () => {
 
 		expect(response).toEqual({ ok: true });
 		expect(manager.recordHookReceived).not.toHaveBeenCalled();
+		expect(manager.observeTaskSessionLaunchHook).not.toHaveBeenCalled();
 		expect(mockStore(manager).transitionToReview).not.toHaveBeenCalled();
 		expect(manager.commitHookEventOrder).toHaveBeenCalledWith("task-1", expect.any(Object), commitObservation);
+	});
+
+	it("does not persist hook metadata from an unexpected startup conversation", async () => {
+		const applyHookMetadata = vi.fn();
+		const manager = createMockManager({
+			getSummary: vi.fn(() =>
+				createSummary({
+					state: "awaiting_review",
+					reviewReason: "attention",
+					resumeSessionId: "expected-session",
+				}),
+			),
+			applyHookMetadata,
+			applyHookActivity: vi.fn(),
+		});
+		vi.mocked(manager.observeTaskSessionLaunchHook).mockReturnValue(false);
+		const api = createTestApi(manager);
+
+		const response = await api.ingest({
+			taskId: "task-1",
+			projectId: "project-1",
+			event: "activity",
+			metadata: {
+				source: "codex",
+				hookEventName: "SessionStart",
+				sessionInstanceId: "launch-1",
+				sessionId: "wrong-session",
+			},
+			delivery: {
+				id: "00000000-0000-4000-8000-000000000002",
+				occurredAt: 100,
+			},
+		});
+
+		expect(response).toEqual({ ok: true });
+		expect(manager.recordHookReceived).toHaveBeenCalledWith("task-1");
+		expect(applyHookMetadata).not.toHaveBeenCalled();
+		expect(manager.commitHookEventOrder).toHaveBeenCalledWith("task-1", expect.any(Object), false);
 	});
 
 	it("treats ineligible hook transitions as successful no-ops", async () => {

@@ -57,6 +57,7 @@ vi.mock("../../../src/server/browser.js", () => ({
 	openInBrowser: vi.fn(),
 }));
 
+import { startTaskSessionThroughService } from "../../../src/server/task-session-start-service";
 import { createRuntimeApi } from "../../../src/trpc";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
@@ -540,6 +541,61 @@ describe("createRuntimeApi startTaskSession", () => {
 			}),
 		);
 		expect(response.summary?.warningMessage).toBe(STORED_CODEX_RESUME_FAILED_WARNING);
+	});
+
+	it("pins a bounded startup retry to the original stored Codex session id", async () => {
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
+			agentId: "codex",
+			label: "OpenAI Codex",
+			command: "codex",
+			binary: "codex",
+			args: [],
+		});
+		const card = createCard({ workingDirectory: "/tmp/codex-worktree", useWorktree: true });
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
+		const failedSummary = createSummary({
+			taskId: "task-1",
+			agentId: "codex",
+			state: "awaiting_review",
+			reviewReason: "error",
+			resumeSessionId: null,
+			warningMessage: STORED_CODEX_RESUME_FAILED_WARNING,
+		});
+		const startTaskSessionWithReadiness = vi.fn(async () => ({
+			summary: createSummary({ agentId: "codex", resumeSessionId: "original-session-id" }),
+			sessionInstanceId: "launch-2",
+			startedNewSession: true,
+		}));
+		const deps = createDeps({
+			getSummary: vi.fn(() => failedSummary),
+			startTaskSessionWithReadiness,
+		});
+
+		const result = await startTaskSessionThroughService(
+			defaultScope,
+			{
+				taskId: "task-1",
+				baseRef: "main",
+				prompt: "",
+				resumeConversation: true,
+				awaitReview: true,
+				useWorktree: true,
+			},
+			deps,
+			{
+				startupRecoveryToken: "recovery-token",
+				resumeSessionIdOverride: "original-session-id",
+			},
+		);
+
+		expect(result.sessionInstanceId).toBe("launch-2");
+		expect(startTaskSessionWithReadiness).toHaveBeenCalledWith(
+			expect.objectContaining({
+				resumeConversation: true,
+				resumeSessionId: "original-session-id",
+				startupRecoveryToken: "recovery-token",
+			}),
+		);
 	});
 
 	it("falls back to projectPath when non-worktree task's persisted directory is deleted", async () => {

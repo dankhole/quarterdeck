@@ -31,6 +31,7 @@ export interface ReconciliationEntry {
 	restartRequest: unknown;
 	pendingAutoRestart: unknown;
 	pendingSessionStart: boolean;
+	pendingStartupRecoveryToken: string | null;
 }
 
 export type ReconciliationCheck = (entry: ReconciliationEntry, nowMs: number) => ReconciliationAction | null;
@@ -104,7 +105,7 @@ export function checkProcesslessActiveSession(entry: ReconciliationEntry, _nowMs
 	if (!entry.restartRequest) {
 		return null;
 	}
-	if (entry.pendingAutoRestart || entry.pendingSessionStart) {
+	if (entry.pendingAutoRestart || entry.pendingSessionStart || entry.pendingStartupRecoveryToken) {
 		return null;
 	}
 	// A processless awaiting_review session is expected — the agent finished
@@ -135,6 +136,9 @@ export function checkInterruptedNoRestart(entry: ReconciliationEntry, _nowMs: nu
 		return null;
 	}
 	if (entry.pendingAutoRestart) {
+		return null;
+	}
+	if (entry.pendingStartupRecoveryToken) {
 		return null;
 	}
 	// Sessions hydrated from disk after a server restart don't have a

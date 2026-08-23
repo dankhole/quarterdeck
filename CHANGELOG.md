@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: recover interrupted chats safely at startup
+
+- Interrupted work-column tasks now wait for orphan-process cleanup and resolve the same per-task agent, worktree recreation, and stored conversation used by manual Restart exactly once, with startup launches serialized instead of spawned in a burst and deterministic preparation failures left for manual correction.
+- Startup recovery gives the first launch a conservative readiness window, logs its observed initialization timing, and confirms a launch-scoped native hook—and the expected stored conversation id when available—before advancing. An uninitialized launch gets one retry of the frozen launch request, explicit user actions cancel recovery, and a second unconfirmed process is left running with a warning instead of entering a restart loop.
+
 ### Add: isolated agent functional testing
 
 - Agents can now launch a disposable Quarterdeck runtime, Vite UI, Git fixture, worktree state, and deterministic fake Codex on dynamic loopback ports without touching the user's active app, agent credentials, or Quarterdeck state.

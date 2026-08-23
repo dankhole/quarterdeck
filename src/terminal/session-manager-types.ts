@@ -10,6 +10,7 @@ import type {
 } from "./agent-session-adapters";
 import type { HookEventOrderState } from "./hook-event-order";
 import type { PtySession } from "./pty-session";
+import { markTaskSessionLaunchSuperseded, type TaskSessionLaunchMonitor } from "./session-launch-readiness";
 import type { TerminalProtocolFilterState } from "./terminal-protocol-filter";
 import type { TerminalSessionListener } from "./terminal-session-service";
 import type { TerminalStateMirror } from "./terminal-state-mirror";
@@ -49,6 +50,8 @@ export interface ProcessEntry {
 	pendingExitResolvers: Array<() => void>;
 	hookCount: number;
 	hookEventOrder: HookEventOrderState | null;
+	launchMonitor: TaskSessionLaunchMonitor | null;
+	pendingStartupRecoveryToken: string | null;
 }
 
 export interface StartTaskSessionRequest {
@@ -70,6 +73,7 @@ export interface StartTaskSessionRequest {
 	claudeFullscreenEnabled?: boolean;
 	statuslineEnabled?: boolean;
 	worktreeSystemPromptTemplate?: string;
+	startupRecoveryToken?: string;
 }
 
 export interface StartShellSessionRequest {
@@ -149,6 +153,8 @@ export function createProcessEntry(taskId: string): ProcessEntry {
 		pendingExitResolvers: [],
 		hookCount: 0,
 		hookEventOrder: null,
+		launchMonitor: null,
+		pendingStartupRecoveryToken: null,
 	};
 }
 
@@ -238,6 +244,7 @@ import { cloneSummary } from "./session-summary-store";
 
 /** Stop timers and kill the PTY for an active session. Nulls out entry.active and disposes the mirror. */
 export function teardownActiveSession(entry: ProcessEntry): void {
+	markTaskSessionLaunchSuperseded(entry.launchMonitor);
 	if (entry.active) {
 		stopWorkspaceTrustTimers(entry.active);
 		clearInterruptRecoveryTimer(entry.active);

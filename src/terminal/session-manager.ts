@@ -14,10 +14,16 @@
 //   session-interrupt-recovery.ts  — interrupt detection and recovery
 //   session-auto-restart.ts        — auto-restart after unexpected exit
 //   session-reconciliation-sweep.ts — periodic task session/process drift sweep
-import type { RuntimeHookIngestRequest, RuntimeTaskSessionSummary } from "../core";
+import type { RuntimeHookIngestRequest, RuntimeHookMetadata, RuntimeTaskSessionSummary } from "../core";
 import { commitHookEventOrder, evaluateHookEventOrder, type HookEventOrderDecision } from "./hook-event-order";
 import { processSessionInput } from "./session-input-pipeline";
-import { SessionLifecycleController } from "./session-lifecycle-controller";
+import {
+	markTaskSessionLaunchReady,
+	markTaskSessionLaunchUserEngaged,
+	type TaskSessionLaunchReadinessOutcome,
+	waitForTaskSessionLaunchReadiness,
+} from "./session-launch-readiness";
+import { SessionLifecycleController, type TaskSessionStartWithReadinessResult } from "./session-lifecycle-controller";
 import {
 	createProcessEntry,
 	hasLiveOutputListener,
@@ -110,6 +116,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return this.lifecycle.startTaskSession(request);
 	}
 
+	async startTaskSessionWithReadiness(request: StartTaskSessionRequest): Promise<TaskSessionStartWithReadinessResult> {
+		return await this.lifecycle.startTaskSessionWithReadiness(request);
+	}
+
 	async startShellSession(request: StartShellSessionRequest): Promise<RuntimeTaskSessionSummary> {
 		return this.lifecycle.startShellSession(request);
 	}
@@ -120,7 +130,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 	writeInput(taskId: string, data: Buffer): RuntimeTaskSessionSummary | null {
 		const entry = this.entries.get(taskId);
-		if (!entry?.active) {
+		if (!entry) {
+			return null;
+		}
+		entry.pendingStartupRecoveryToken = null;
+		markTaskSessionLaunchUserEngaged(entry.launchMonitor);
+		if (!entry.active) {
 			return null;
 		}
 		return processSessionInput(entry, taskId, data, {
@@ -136,6 +151,105 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (entry) {
 			entry.hookCount += 1;
 		}
+	}
+
+	observeTaskSessionLaunchHook(taskId: string, metadata?: RuntimeHookMetadata): boolean {
+		const entry = this.entries.get(taskId);
+		if (!entry) {
+			return true;
+		}
+		markTaskSessionLaunchReady(entry.launchMonitor, metadata);
+		return entry.launchMonitor?.outcome?.status !== "identity_mismatch";
+	}
+
+	beginStartupRecovery(taskId: string, token: string): boolean {
+		const entry = this.ensureProcessEntry(taskId);
+		if (entry.pendingStartupRecoveryToken && entry.pendingStartupRecoveryToken !== token) {
+			return false;
+		}
+		entry.pendingStartupRecoveryToken = token;
+		return true;
+	}
+
+	isStartupRecoveryCurrent(taskId: string, token: string): boolean {
+		return this.entries.get(taskId)?.pendingStartupRecoveryToken === token;
+	}
+
+	isTaskSessionLaunchActive(taskId: string, sessionInstanceId: string, token: string): boolean {
+		const entry = this.entries.get(taskId);
+		return (
+			entry?.pendingStartupRecoveryToken === token &&
+			entry.launchMonitor?.sessionInstanceId === sessionInstanceId &&
+			entry.launchMonitor.pid !== null &&
+			entry.active?.session.pid === entry.launchMonitor.pid
+		);
+	}
+
+	completeStartupRecovery(taskId: string, token: string): void {
+		const entry = this.entries.get(taskId);
+		if (entry?.pendingStartupRecoveryToken === token) {
+			entry.pendingStartupRecoveryToken = null;
+		}
+	}
+
+	finalizeStartupRecoveryFailure(
+		taskId: string,
+		token: string,
+		options: {
+			processStillRunning: boolean;
+			clearResumeSessionId: boolean;
+			warningMessage: string;
+		},
+	): RuntimeTaskSessionSummary | null {
+		const entry = this.entries.get(taskId);
+		if (!entry || entry.pendingStartupRecoveryToken !== token) {
+			return null;
+		}
+		return (
+			this.transitions.applyTransitionEvent(entry, {
+				type: "startup_recovery.exhausted",
+				...options,
+			})?.summary ?? null
+		);
+	}
+
+	async waitForTaskSessionLaunch(
+		taskId: string,
+		sessionInstanceId: string,
+		timeoutMs: number,
+	): Promise<TaskSessionLaunchReadinessOutcome> {
+		const monitor = this.entries.get(taskId)?.launchMonitor ?? null;
+		if (!monitor || monitor.sessionInstanceId !== sessionInstanceId) {
+			return { status: "superseded", sessionInstanceId };
+		}
+		return await waitForTaskSessionLaunchReadiness(monitor, timeoutMs);
+	}
+
+	async stopTaskSessionForStartupRecovery(
+		taskId: string,
+		sessionInstanceId: string,
+		token: string,
+		timeoutMs = 3_000,
+	): Promise<"stopped" | "inactive" | "superseded" | "timeout"> {
+		const entry = this.entries.get(taskId);
+		if (
+			!entry ||
+			entry.pendingStartupRecoveryToken !== token ||
+			entry.launchMonitor?.sessionInstanceId !== sessionInstanceId ||
+			entry.launchMonitor.pid === null
+		) {
+			return "superseded";
+		}
+		if (!entry.active) {
+			return "inactive";
+		}
+		if (entry.active.session.pid !== entry.launchMonitor.pid) {
+			return "superseded";
+		}
+		await this.lifecycle.stopTaskSessionAndWaitForExit(taskId, timeoutMs, {
+			preserveStartupRecovery: true,
+		});
+		return entry.active ? "timeout" : "stopped";
 	}
 
 	evaluateHookEventOrder(taskId: string, input: RuntimeHookIngestRequest): HookEventOrderDecision {

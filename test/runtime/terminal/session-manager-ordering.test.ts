@@ -104,6 +104,132 @@ describe("TerminalSessionManager ordering invariants", () => {
 		).toEqual({ accepted: false, reason: "stale_session" });
 	});
 
+	it("confirms startup readiness only from the spawned conversation identity", async () => {
+		setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		const recoveryToken = "recovery-token";
+		expect(manager.beginStartupRecovery("task-1", recoveryToken)).toBe(true);
+
+		const started = await manager.startTaskSessionWithReadiness({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "session-1",
+			startupRecoveryToken: recoveryToken,
+		});
+		expect(started.sessionInstanceId).toEqual(expect.any(String));
+		const waiting = manager.waitForTaskSessionLaunch("task-1", started.sessionInstanceId ?? "", 1_000);
+
+		manager.recordHookReceived("task-1");
+		manager.observeTaskSessionLaunchHook("task-1", {
+			sessionInstanceId: started.sessionInstanceId,
+			sessionId: "session-1",
+		});
+
+		await expect(waiting).resolves.toEqual({
+			status: "ready",
+			sessionInstanceId: started.sessionInstanceId,
+			observedSessionId: "session-1",
+		});
+	});
+
+	it("rejects hooks that report a different targeted startup conversation", async () => {
+		setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		const recoveryToken = "recovery-token";
+		manager.beginStartupRecovery("task-1", recoveryToken);
+		const started = await manager.startTaskSessionWithReadiness({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "expected-session",
+			startupRecoveryToken: recoveryToken,
+		});
+		const waiting = manager.waitForTaskSessionLaunch("task-1", started.sessionInstanceId ?? "", 1_000);
+
+		manager.recordHookReceived("task-1");
+		expect(
+			manager.observeTaskSessionLaunchHook("task-1", {
+				sessionInstanceId: started.sessionInstanceId,
+				sessionId: "wrong-session",
+			}),
+		).toBe(false);
+		await expect(waiting).resolves.toMatchObject({
+			status: "identity_mismatch",
+			expectedSessionId: "expected-session",
+			observedSessionId: "wrong-session",
+		});
+	});
+
+	it("cancels startup retry ownership when the user submits input", async () => {
+		setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		const recoveryToken = "recovery-token";
+		manager.beginStartupRecovery("task-1", recoveryToken);
+		const started = await manager.startTaskSessionWithReadiness({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			startupRecoveryToken: recoveryToken,
+		});
+		const waiting = manager.waitForTaskSessionLaunch("task-1", started.sessionInstanceId ?? "", 1_000);
+
+		manager.writeInput("task-1", Buffer.from("continue\r"));
+
+		await expect(waiting).resolves.toEqual({
+			status: "user_engaged",
+			sessionInstanceId: started.sessionInstanceId,
+		});
+		expect(manager.isStartupRecoveryCurrent("task-1", recoveryToken)).toBe(false);
+	});
+
+	it("cancels queued startup recovery when the manager is disposed", () => {
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		const recoveryToken = "recovery-token";
+		manager.beginStartupRecovery("task-1", recoveryToken);
+
+		manager.markInterruptedAndStopAll();
+
+		expect(manager.isStartupRecoveryCurrent("task-1", recoveryToken)).toBe(false);
+	});
+
+	it("routes startup recovery exhaustion through the session transition owner", () => {
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.store.ensureEntry("task-1");
+		manager.store.update("task-1", {
+			state: "failed",
+			pid: null,
+			resumeSessionId: "missing-session",
+		});
+		const recoveryToken = "recovery-token";
+		manager.beginStartupRecovery("task-1", recoveryToken);
+
+		const summary = manager.finalizeStartupRecoveryFailure("task-1", recoveryToken, {
+			processStillRunning: false,
+			clearResumeSessionId: true,
+			warningMessage: "Recovery failed.",
+		});
+
+		expect(summary).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "interrupted",
+			pid: null,
+			resumeSessionId: null,
+			warningMessage: "Recovery failed.",
+		});
+	});
+
 	it("uses real detached rows when launching Claude fullscreen sessions", async () => {
 		setupMockPtySpawn();
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());

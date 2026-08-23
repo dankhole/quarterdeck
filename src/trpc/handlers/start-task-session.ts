@@ -1,16 +1,12 @@
-import { resolveAgentCommand } from "../../config";
 import {
 	createTaggedLogger,
-	findCardInBoard,
 	type IRuntimeConfigProvider,
-	isRuntimeTaskBaseRefResolved,
 	parseTaskSessionStartRequest,
 	type RuntimeTaskSessionSummary,
 } from "../../core";
-import { loadProjectState } from "../../state";
+import { startTaskSessionThroughService } from "../../server/task-session-start-service";
 import type { TerminalSessionManager } from "../../terminal";
-import { hasFailedStoredCodexResume, STORED_CODEX_RESUME_FAILED_WARNING } from "../../terminal/codex-resume-failure";
-import { captureTaskTurnCheckpoint, pathExists, resolveTaskCwd } from "../../workdir";
+import { captureTaskTurnCheckpoint } from "../../workdir";
 import type { RuntimeTrpcProjectScope } from "../app-router-context";
 import { queueTaskDisplaySummaryPolish } from "../display-summary-polish";
 
@@ -19,56 +15,6 @@ const log = createTaggedLogger("task-session-start");
 export interface StartTaskSessionDeps {
 	config: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
 	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
-}
-
-function getResumeContextWarning(options: {
-	resumeConversation: boolean | undefined;
-	useWorktree: boolean;
-	agentId: string;
-	resumeSessionId: string | null | undefined;
-	persistedWorkingDirectory: string | null;
-	previousSessionLaunchPath: string | null | undefined;
-	projectPath: string;
-}): string | null {
-	if (!options.resumeConversation || !options.useWorktree || options.agentId !== "claude") {
-		return null;
-	}
-	if (options.resumeSessionId) {
-		return null;
-	}
-	if (options.persistedWorkingDirectory) {
-		return null;
-	}
-	const previousSessionLaunchPath = options.previousSessionLaunchPath?.trim() ?? "";
-	if (!previousSessionLaunchPath || previousSessionLaunchPath === options.projectPath) {
-		return null;
-	}
-	return "Claude resume after trash restore is best-effort only: no stored session id is available and the original task worktree was deleted, so --continue may not reopen the previous chat.";
-}
-
-function getResumeSessionWarning(options: {
-	resumeConversation: boolean | undefined;
-	useWorktree: boolean;
-	agentId: string;
-	resumeSessionId: string | null | undefined;
-	failedStoredResumeSession: boolean;
-}): string | null {
-	if (!options.resumeConversation) {
-		return null;
-	}
-	if (options.agentId === "codex") {
-		if (options.failedStoredResumeSession) {
-			return STORED_CODEX_RESUME_FAILED_WARNING;
-		}
-		if (options.resumeSessionId) {
-			return null;
-		}
-		return "Codex resume did not have a stored session id, so Quarterdeck fell back to the most recent Codex session for this checkout. If this opens the wrong conversation, start a fresh task.";
-	}
-	if (options.agentId === "claude" && !options.useWorktree && !options.resumeSessionId) {
-		return "Claude resume did not have a stored session id, so Quarterdeck fell back to the most recent Claude session for this checkout. If this opens the wrong conversation, start a fresh task.";
-	}
-	return null;
 }
 
 function errorMessage(error: unknown): string {
@@ -130,167 +76,13 @@ export async function handleStartTaskSession(
 			awaitReview: body.awaitReview ?? false,
 			useWorktree: body.useWorktree ?? true,
 			requestedAgentId: body.agentId ?? null,
-			hasPrompt: Boolean(body.prompt && body.prompt.trim().length > 0),
+			hasPrompt: Boolean(body.prompt.trim()),
 			imageCount: body.images?.length ?? 0,
-			baseRef: body.baseRef ?? null,
+			baseRef: body.baseRef,
 		});
-		const scopedRuntimeConfig = await deps.config.loadScopedRuntimeConfig(projectScope);
-		const useWorktree = body.useWorktree !== false;
-		if (useWorktree && !isRuntimeTaskBaseRefResolved({ baseRef: body.baseRef })) {
-			return {
-				ok: false,
-				summary: null,
-				error: "Select a base branch before starting this task.",
-			};
-		}
-		// Prefer the persisted working directory if it still exists on disk.
-		const state = await loadProjectState(projectScope.projectPath);
-		const existingCard = findCardInBoard(state.board, body.taskId);
-		const persisted = existingCard?.workingDirectory ?? null;
-		const taskAgentId = existingCard?.agentId ?? body.agentId ?? null;
-		// Branch must be threaded to resolveTaskCwd for branch-aware worktree creation.
-		// The other path to ensureTaskWorktreeIfDoesntExist is workdir-api.ts:ensureWorktree,
-		// which receives branch from the client request instead.
-		const savedBranch = existingCard?.branch ?? null;
-		const persistedExists = persisted !== null && (await pathExists(persisted));
 
-		// The persisted workingDirectory is the source of truth. We only fall
-		// back to useWorktree for legacy or first-run cards.
-		let taskCwd: string;
-		if (persistedExists) {
-			taskCwd = persisted;
-		} else if (useWorktree) {
-			taskCwd = await resolveTaskCwd({
-				cwd: projectScope.projectPath,
-				taskId: body.taskId,
-				baseRef: body.baseRef,
-				ensure: true,
-				branch: savedBranch,
-			});
-		} else {
-			taskCwd = projectScope.projectPath;
-		}
-
-		// workingDirectory is persisted by the client after the response
-		// arrives (via summary.sessionLaunchPath). This avoids a dual-writer
-		// race where the server bumps the revision while the client's
-		// persist debounce is in flight.
-
-		const shouldCaptureTurnCheckpoint = !body.resumeConversation;
-
-		const terminalManager = await deps.getScopedTerminalManager(projectScope);
-		const previousSummary = body.resumeConversation ? terminalManager.store.getSummary(body.taskId) : null;
-		const previousTerminalAgentId = previousSummary?.agentId ?? null;
-		const previousResumeSessionId = previousSummary?.resumeSessionId ?? null;
-		const effectiveAgentId = previousTerminalAgentId ?? taskAgentId ?? scopedRuntimeConfig.selectedAgentId;
-		const failedStoredResumeSession = hasFailedStoredCodexResume(previousSummary);
-		const resumeSessionIdForStart = failedStoredResumeSession ? null : previousResumeSessionId;
-		if (body.resumeConversation) {
-			log.debug("resume path: loaded previous session summary", {
-				taskId: body.taskId,
-				hasPreviousSummary: Boolean(previousSummary),
-				previousAgentId: previousTerminalAgentId,
-				previousResumeSessionId,
-				failedStoredResumeSession,
-				previousState: previousSummary?.state ?? null,
-				previousReviewReason: previousSummary?.reviewReason ?? null,
-				previousLaunchPath: previousSummary?.sessionLaunchPath ?? null,
-				previousPid: previousSummary?.pid ?? null,
-				previousStartedAt: previousSummary?.startedAt ?? null,
-				taskAgentId,
-				effectiveAgentId,
-			});
-		}
-		if (body.resumeConversation && effectiveAgentId === "codex" && failedStoredResumeSession) {
-			log.warn("stored Codex resumeSessionId disabled after previous resume failure", {
-				taskId: body.taskId,
-				agentId: effectiveAgentId,
-				previousResumeSessionId,
-				previousState: previousSummary?.state ?? null,
-				previousReviewReason: previousSummary?.reviewReason ?? null,
-				previousLaunchPath: previousSummary?.sessionLaunchPath ?? null,
-			});
-		} else if (
-			body.resumeConversation &&
-			(effectiveAgentId === "codex" || effectiveAgentId === "claude") &&
-			!resumeSessionIdForStart
-		) {
-			log.warn("resume requested without stored resumeSessionId", {
-				taskId: body.taskId,
-				agentId: effectiveAgentId,
-				previousState: previousSummary?.state ?? null,
-				previousReviewReason: previousSummary?.reviewReason ?? null,
-				previousLaunchPath: previousSummary?.sessionLaunchPath ?? null,
-			});
-		}
-
-		const resolvedConfig =
-			effectiveAgentId !== scopedRuntimeConfig.selectedAgentId
-				? { ...scopedRuntimeConfig, selectedAgentId: effectiveAgentId }
-				: scopedRuntimeConfig;
-		const resolved = await resolveAgentCommand(resolvedConfig);
-		if (!resolved) {
-			return {
-				ok: false,
-				summary: null,
-				error: "No runnable agent command is configured. Install a supported CLI or choose another agent when creating the task.",
-			};
-		}
-		const resumeContextWarning = getResumeContextWarning({
-			resumeConversation: body.resumeConversation,
-			useWorktree,
-			agentId: resolved.agentId,
-			resumeSessionId: resumeSessionIdForStart,
-			persistedWorkingDirectory: persisted,
-			previousSessionLaunchPath: previousSummary?.sessionLaunchPath,
-			projectPath: projectScope.projectPath,
-		});
-		if (resumeContextWarning) {
-			log.warn("resume requested after task worktree identity was lost", {
-				taskId: body.taskId,
-				agentId: resolved.agentId,
-				previousSessionLaunchPath: previousSummary?.sessionLaunchPath ?? null,
-				projectPath: projectScope.projectPath,
-				resolvedTaskCwd: taskCwd,
-			});
-		}
-		const resumeSessionWarning = getResumeSessionWarning({
-			resumeConversation: body.resumeConversation,
-			useWorktree,
-			agentId: resolved.agentId,
-			resumeSessionId: resumeSessionIdForStart,
-			failedStoredResumeSession,
-		});
-		log.debug("handing start-task-session request to terminal manager", {
-			taskId: body.taskId,
-			agentId: resolved.agentId,
-			binary: resolved.binary,
-			taskCwd,
-			resumeConversation: body.resumeConversation ?? false,
-			resumeSessionIdPassed: resumeSessionIdForStart ?? null,
-			awaitReview: body.awaitReview ?? false,
-		});
-		const summary = await terminalManager.startTaskSession({
-			taskId: body.taskId,
-			agentId: resolved.agentId,
-			binary: resolved.binary,
-			args: resolved.args,
-			cwd: taskCwd,
-			prompt: body.prompt,
-			images: body.images,
-			resumeConversation: body.resumeConversation,
-			resumeSessionId: resumeSessionIdForStart ?? undefined,
-			awaitReview: body.awaitReview,
-			cols: body.cols,
-			rows: body.rows,
-			projectId: projectScope.projectId,
-			projectPath: projectScope.projectPath,
-			claudeFullscreenEnabled: scopedRuntimeConfig.claudeFullscreenEnabled,
-			statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
-			worktreeSystemPromptTemplate: scopedRuntimeConfig.worktreeSystemPromptTemplate,
-			env: body.baseRef ? { QUARTERDECK_BASE_REF: body.baseRef } : undefined,
-		});
-		if (scopedRuntimeConfig.llmSummaryPolishEnabled) {
+		const result = await startTaskSessionThroughService(projectScope, body, deps);
+		if (result.llmSummaryPolishEnabled) {
 			queueTaskDisplaySummaryPolish({
 				projectScope,
 				taskId: body.taskId,
@@ -299,43 +91,30 @@ export async function handleStartTaskSession(
 				promptOverride: body.prompt,
 			});
 		}
-
-		let nextSummary = summary;
-		if (shouldCaptureTurnCheckpoint) {
+		if (!body.resumeConversation) {
 			queueStartTurnCheckpointCapture({
-				terminalManager,
+				terminalManager: result.terminalManager,
 				taskId: body.taskId,
-				taskCwd,
-				summary,
+				taskCwd: result.taskCwd,
+				summary: result.summary,
 			});
-		}
-		if (resumeContextWarning) {
-			nextSummary =
-				terminalManager.store.update(body.taskId, {
-					warningMessage: resumeContextWarning,
-				}) ?? nextSummary;
-		} else if (resumeSessionWarning) {
-			nextSummary =
-				terminalManager.store.update(body.taskId, {
-					warningMessage: resumeSessionWarning,
-				}) ?? nextSummary;
 		}
 		log.debug("start-task-session returning ok", {
 			taskId: body.taskId,
-			agentId: nextSummary?.agentId ?? null,
-			state: nextSummary?.state ?? null,
-			reviewReason: nextSummary?.reviewReason ?? null,
-			pid: nextSummary?.pid ?? null,
-			startedAt: nextSummary?.startedAt ?? null,
-			resumeSessionIdOnSummary: nextSummary?.resumeSessionId ?? null,
-			sessionLaunchPath: nextSummary?.sessionLaunchPath ?? null,
+			agentId: result.summary.agentId,
+			state: result.summary.state,
+			reviewReason: result.summary.reviewReason,
+			pid: result.summary.pid,
+			startedAt: result.summary.startedAt,
+			resumeSessionIdOnSummary: result.summary.resumeSessionId ?? null,
+			sessionLaunchPath: result.summary.sessionLaunchPath,
 		});
 		return {
 			ok: true,
-			summary: nextSummary,
+			summary: result.summary,
 		};
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		log.warn("start-task-session returning error", { error: message });
 		return {
 			ok: false,

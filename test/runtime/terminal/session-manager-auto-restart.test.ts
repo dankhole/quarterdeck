@@ -430,6 +430,85 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(manager.store.getSummary("task-1")?.resumeSessionId).toBeNull();
 	});
 
+	it("lets bounded startup recovery own a clean resume exit without a fresh-prompt fallback", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111 + spawnedSessions.length, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		const recoveryToken = "recovery-token";
+		manager.beginStartupRecovery("task-1", recoveryToken);
+		const started = await manager.startTaskSessionWithReadiness({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "codex-session-1",
+			awaitReview: true,
+			startupRecoveryToken: recoveryToken,
+		});
+		const readiness = manager.waitForTaskSessionLaunch("task-1", started.sessionInstanceId ?? "", 1_000);
+
+		spawnedSessions[0]?.triggerExit(0);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+		await expect(readiness).resolves.toEqual({
+			status: "exited",
+			sessionInstanceId: started.sessionInstanceId,
+			exitCode: 0,
+		});
+	});
+
+	it("does not race generic crash restart during startup readiness stabilization", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111 + spawnedSessions.length, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", {
+			onState: vi.fn(),
+			onOutput: vi.fn(),
+			onExit: vi.fn(),
+		});
+		const recoveryToken = "recovery-token";
+		manager.beginStartupRecovery("task-1", recoveryToken);
+		const started = await manager.startTaskSessionWithReadiness({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "codex-session-1",
+			awaitReview: true,
+			startupRecoveryToken: recoveryToken,
+		});
+		manager.recordHookReceived("task-1");
+		manager.observeTaskSessionLaunchHook("task-1", {
+			sessionInstanceId: started.sessionInstanceId,
+			sessionId: "codex-session-1",
+		});
+		manager.store.update("task-1", { state: "running", reviewReason: null });
+
+		spawnedSessions[0]?.triggerExit(1);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+	});
+
 	describe("auto-restart error handling and rate limiting", () => {
 		beforeEach(() => {
 			vi.useFakeTimers();

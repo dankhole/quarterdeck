@@ -445,24 +445,30 @@ async function runRuntimeStartupCleanup(
 	}
 }
 
-function startOrphanedAgentCleanup(warn: (message: string) => void): void {
+function startOrphanedAgentCleanup(warn: (message: string) => void): Promise<void> {
 	// Phase 3: Kill orphaned agent processes left by a previously crashed instance.
-	// Non-blocking — scheduled into the background while the server finishes booting.
-	const cleanupTimer = setTimeout(() => {
-		killOrphanedAgentProcesses()
-			.then((killed) => {
-				if (killed > 0) {
-					warn(`Cleaned up ${killed} orphaned agent process(es) from a previous session.`);
-				}
-			})
-			.catch(() => {});
-	}, 0);
-	cleanupTimer.unref?.();
+	// Server boot remains non-blocking, but startup task recovery awaits this
+	// promise so it cannot race an orphan sweep and launch into a checkout that
+	// still has the previous agent process alive.
+	return new Promise((resolve) => {
+		const cleanupTimer = setTimeout(() => {
+			void killOrphanedAgentProcesses()
+				.then((killed) => {
+					if (killed > 0) {
+						warn(`Cleaned up ${killed} orphaned agent process(es) from a previous session.`);
+					}
+				})
+				.catch(() => {})
+				.finally(resolve);
+		}, 0);
+		cleanupTimer.unref?.();
+	});
 }
 
 async function createRuntimeBootstrapState(
 	modules: Awaited<ReturnType<typeof loadRuntimeStartupModules>>,
 	warn: (message: string) => void,
+	startupAgentCleanup: Promise<void>,
 ) {
 	let runtimeStateHub: RuntimeStateHub | undefined;
 	const projectRegistry = await modules.createProjectRegistry({
@@ -471,6 +477,7 @@ async function createRuntimeBootstrapState(
 		loadRuntimeConfig,
 		hasGitRepository,
 		pathIsDirectory,
+		waitForStartupAgentCleanup: async () => await startupAgentCleanup,
 		onTerminalManagerReady: (projectId, manager) => {
 			runtimeStateHub?.trackTerminalManager(projectId, manager);
 		},
@@ -563,8 +570,8 @@ async function startServer(): Promise<RuntimeServerHandle> {
 	const modules = await loadRuntimeStartupModules();
 	const warn = createRuntimeWarnLogger();
 	await runRuntimeStartupCleanup(modules, warn);
-	startOrphanedAgentCleanup(warn);
-	const bootstrap = await createRuntimeBootstrapState(modules, warn);
+	const startupAgentCleanup = startOrphanedAgentCleanup(warn);
+	const bootstrap = await createRuntimeBootstrapState(modules, warn, startupAgentCleanup);
 	return await createRuntimeServerHandle(modules, bootstrap);
 }
 

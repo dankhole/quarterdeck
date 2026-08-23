@@ -385,10 +385,15 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					});
 				}
 
-				// Record before transition guards. Even a no-op or blocked hook proves
-				// the agent hook system is alive, so the "never started" reconciliation
-				// path must not treat this session as pre-hook.
+				// Hook accounting is independent from launch admission: even a no-op or
+				// blocked hook proves the hook system is alive, while the launch observer
+				// can still reject metadata from an unexpected resumed conversation before
+				// it overwrites the stored target.
 				manager.recordHookReceived(taskId);
+				if (!manager.observeTaskSessionLaunchHook(taskId, body.metadata)) {
+					log.warn("Hook ignored: startup resume opened an unexpected conversation", hookLogData);
+					return completeHookIngest(false);
+				}
 				const canTransition = canTransitionTaskForHookEvent(summary, event);
 				if (!canTransition) {
 					log.debug("Hook blocked: cannot transition from current state", {

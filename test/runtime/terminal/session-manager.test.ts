@@ -845,6 +845,9 @@ describe("TerminalSessionManager", () => {
 			pendingAutoRestart: null,
 			pendingSessionStart: false,
 			hookCount: 0,
+			hookEventOrder: null,
+			launchMonitor: null,
+			pendingStartupRecoveryToken: null,
 		});
 		manager.store.hydrateFromRecord({
 			"task-restart": createSummary({

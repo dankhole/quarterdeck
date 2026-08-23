@@ -45,6 +45,7 @@ export function reconcileSessionStates(ctx: ReconciliationSweepContext): void {
 						restartRequest: entry.restartRequest,
 						pendingAutoRestart: entry.pendingAutoRestart,
 						pendingSessionStart: entry.pendingSessionStart,
+						pendingStartupRecoveryToken: entry.pendingStartupRecoveryToken,
 					},
 					nowMs,
 				);

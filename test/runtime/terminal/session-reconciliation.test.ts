@@ -33,6 +33,7 @@ function createEntry(
 		restartRequest?: unknown;
 		pendingAutoRestart?: unknown;
 		pendingSessionStart?: boolean;
+		pendingStartupRecoveryToken?: string | null;
 	} = {},
 ): ReconciliationEntry {
 	return {
@@ -41,6 +42,7 @@ function createEntry(
 		restartRequest: options.restartRequest !== undefined ? options.restartRequest : null,
 		pendingAutoRestart: options.pendingAutoRestart !== undefined ? options.pendingAutoRestart : null,
 		pendingSessionStart: options.pendingSessionStart ?? false,
+		pendingStartupRecoveryToken: options.pendingStartupRecoveryToken ?? null,
 	};
 }
 
@@ -320,6 +322,18 @@ describe("checkProcesslessActiveSession", () => {
 		);
 		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
 	});
+
+	it("does not mark a queued startup recovery as processless", () => {
+		const entry = createEntry(
+			{ state: "running" },
+			{
+				active: null,
+				restartRequest: { kind: "task" },
+				pendingStartupRecoveryToken: "recovery-token",
+			},
+		);
+		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
+	});
 });
 
 // ── checkInterruptedNoRestart ────────────────────────────────────────────
@@ -344,6 +358,14 @@ describe("checkInterruptedNoRestart", () => {
 	it("returns null when pendingAutoRestart is set", () => {
 		const entry = createEntry({ state: "interrupted", reviewReason: "interrupted" }, { restartRequest: {} });
 		entry.pendingAutoRestart = Promise.resolve();
+		expect(checkInterruptedNoRestart(entry, Date.now())).toBeNull();
+	});
+
+	it("keeps an interrupted session eligible while startup recovery is queued", () => {
+		const entry = createEntry(
+			{ state: "interrupted", reviewReason: "interrupted" },
+			{ restartRequest: {}, pendingStartupRecoveryToken: "recovery-token" },
+		);
 		expect(checkInterruptedNoRestart(entry, Date.now())).toBeNull();
 	});
 

@@ -1,6 +1,6 @@
 import pLimit from "p-limit";
 
-import { type RuntimeConfigState, resolveAgentCommand, toGlobalRuntimeConfigState } from "../config";
+import { type RuntimeConfigState, toGlobalRuntimeConfigState } from "../config";
 import type {
 	IProjectDataProvider,
 	IProjectResolver,
@@ -26,6 +26,8 @@ import {
 } from "../state";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../terminal";
 import { createProjectOrphanMaintenanceTimer, type ProjectOrphanMaintenanceTimer } from "./project-orphan-maintenance";
+import { type StartupSessionRecoveryCandidate, StartupSessionRecoveryCoordinator } from "./startup-session-recovery";
+import { launchPreparedTaskSession, prepareTaskSessionStart } from "./task-session-start-service";
 
 const registryLog = createTaggedLogger("project-registry");
 const STARTUP_RESUME_SKIP_SAMPLE_LIMIT = 5;
@@ -34,7 +36,7 @@ export const PROJECT_STREAM_VALIDATION_CONCURRENCY = 4;
 // Startup resume selection is still small enough to live near the registry
 // entry point. If it gains more agent-specific rules or scan outcomes, extract
 // this block into a dedicated startup-resume policy module with focused tests.
-type StartupResumeSkipReason = "missing_summary" | "not_interrupted" | "missing_working_directory";
+type StartupResumeSkipReason = "missing_summary" | "not_interrupted";
 
 interface StartupResumeSkipSample {
 	taskId: string;
@@ -52,7 +54,6 @@ interface StartupResumeScanStats {
 	resumableTaskCount: number;
 	skippedMissingSummaryCount: number;
 	skippedNotInterruptedCount: number;
-	skippedMissingWorkingDirectoryCount: number;
 	skippedSamples: StartupResumeSkipSample[];
 }
 
@@ -62,7 +63,6 @@ function createStartupResumeScanStats(): StartupResumeScanStats {
 		resumableTaskCount: 0,
 		skippedMissingSummaryCount: 0,
 		skippedNotInterruptedCount: 0,
-		skippedMissingWorkingDirectoryCount: 0,
 		skippedSamples: [],
 	};
 }
@@ -94,6 +94,7 @@ export interface CreateProjectRegistryDependencies {
 	loadRuntimeConfig: (projectId?: string | null) => Promise<RuntimeConfigState>;
 	hasGitRepository: (path: string) => Promise<boolean>;
 	pathIsDirectory: (path: string) => Promise<boolean>;
+	waitForStartupAgentCleanup?: () => Promise<void>;
 	onTerminalManagerReady?: (projectId: string, manager: TerminalSessionManager) => void;
 }
 
@@ -353,6 +354,28 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		return loaded;
 	};
 
+	const loadScopedRuntimeConfig = async (scope: ProjectRegistryScope): Promise<RuntimeConfigState> => {
+		if (scope.projectId === activeProjectId) {
+			return activeRuntimeConfig;
+		}
+		return await deps.loadRuntimeConfig(scope.projectId);
+	};
+
+	const startupRecoveryCoordinator = new StartupSessionRecoveryCoordinator({
+		waitForPrerequisite: deps.waitForStartupAgentCleanup,
+		prepare: async (candidate, options) =>
+			await prepareTaskSessionStart(
+				candidate.scope,
+				candidate.request,
+				{
+					config: { loadScopedRuntimeConfig },
+					getScopedTerminalManager: async () => candidate.manager,
+				},
+				options,
+			),
+		launch: launchPreparedTaskSession,
+	});
+
 	const setActiveProject = async (projectId: string, repoPath: string): Promise<void> => {
 		activeProjectId = projectId;
 		activeProjectPath = repoPath;
@@ -535,17 +558,13 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	};
 
 	/**
-	 * Resume interrupted sessions after a server restart. Called once per
-	 * project when the first UI client connects. Finds sessions persisted
-	 * as "interrupted" in work columns, resolves the agent command, and
-	 * restarts each with --continue (awaitReview=true so they land in review).
+	 * Resume only persisted work-column sessions that were interrupted by the
+	 * previous runtime. Each selected task enters the global recovery
+	 * coordinator, which waits for orphan cleanup, serializes launches, confirms
+	 * a launch-scoped hook, and permits one exact-target retry.
 	 */
 	const resumeInterruptedSessions = async (projectId: string, projectPath: string): Promise<number> => {
-		const manager = getTerminalManagerForProject(projectId);
-		if (!manager) {
-			registryLog.warn("startup resume skipped: no terminal manager", { projectId, projectPath });
-			return 0;
-		}
+		const manager = await ensureTerminalManagerForProject(projectId, projectPath);
 		let state: RuntimeProjectStateResponse;
 		try {
 			state = await loadProjectState(projectPath);
@@ -557,17 +576,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			});
 			return 0;
 		}
-		const runtimeConfig = await deps.loadRuntimeConfig(projectId);
-		const resolved = await resolveAgentCommand(runtimeConfig);
-		if (!resolved) {
-			registryLog.warn("startup resume skipped: no agent command resolved", {
-				projectId,
-				projectPath,
-				selectedAgentId: runtimeConfig.selectedAgentId,
-			});
-			return 0;
-		}
-		const resumable: Array<{ taskId: string; cwd: string; resumeSessionId?: string }> = [];
+		const resumable: StartupSessionRecoveryCandidate[] = [];
 		// Startup resume runs before a user can inspect task terminals, so keep
 		// enough scan detail to tell whether we never selected a task or failed
 		// after selection.
@@ -603,28 +612,19 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 					});
 					continue;
 				}
-				if (!card.workingDirectory) {
-					scanStats.skippedMissingWorkingDirectoryCount += 1;
-					const skipData = {
-						projectId,
-						taskId: card.id,
-						columnId: column.id,
-						state: summary.state,
-						reviewReason: summary.reviewReason,
-						pid: summary.pid,
-						hasResumeSessionId: Boolean(summary.resumeSessionId),
-					};
-					recordStartupResumeSkip(scanStats, {
-						...skipData,
-						reason: "missing_working_directory",
-					});
-					registryLog.warn("startup resume skipped interrupted task: missing working directory", skipData);
-					continue;
-				}
 				resumable.push({
-					taskId: card.id,
-					cwd: card.workingDirectory,
-					resumeSessionId: summary.resumeSessionId ?? undefined,
+					scope: { projectId, projectPath },
+					manager,
+					originalResumeSessionId: summary.resumeSessionId ?? null,
+					request: {
+						taskId: card.id,
+						prompt: "",
+						agentId: card.agentId,
+						resumeConversation: true,
+						awaitReview: true,
+						baseRef: card.baseRef,
+						useWorktree: card.useWorktree,
+					},
 				});
 			}
 		}
@@ -635,7 +635,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			...scanStats,
 		});
 		if (resumable.length === 0) {
-			if (scanStats.consideredTaskCount > scanStats.skippedMissingSummaryCount) {
+			if (scanStats.consideredTaskCount > 0) {
 				registryLog.warn("startup resume found work-column sessions but no resumable interrupted tasks", {
 					projectId,
 					projectPath,
@@ -644,49 +644,15 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			}
 			return 0;
 		}
-		for (const { taskId, cwd, resumeSessionId } of resumable) {
-			registryLog.info("startup resume launching task", {
+		for (const candidate of resumable) {
+			registryLog.info("startup resume queued task", {
 				projectId,
-				taskId,
-				agentId: resolved.agentId,
-				cwd,
-				resumeSessionId: resumeSessionId ?? null,
+				taskId: candidate.request.taskId,
+				cardAgentId: candidate.request.agentId ?? null,
+				resumeSessionId: candidate.originalResumeSessionId,
 			});
-			void manager
-				.startTaskSession({
-					taskId,
-					agentId: resolved.agentId,
-					binary: resolved.binary,
-					args: resolved.args,
-					cwd,
-					prompt: "",
-					resumeConversation: true,
-					resumeSessionId,
-					awaitReview: true,
-					projectId,
-					projectPath,
-					claudeFullscreenEnabled: runtimeConfig.claudeFullscreenEnabled,
-					statuslineEnabled: runtimeConfig.statuslineEnabled,
-				})
-				.catch((error) => {
-					const message = error instanceof Error ? error.message : String(error);
-					registryLog.warn("startup resume failed to launch task session", {
-						projectId,
-						taskId,
-						agentId: resolved.agentId,
-						cwd,
-						resumeSessionId: resumeSessionId ?? null,
-						error: message,
-					});
-					// Transition immediately so the card moves to review without
-					// waiting for the reconciliation sweep to catch it.
-					manager.store.update(taskId, {
-						state: "awaiting_review",
-						reviewReason: "interrupted",
-						warningMessage: `Resume failed: ${message}`,
-					});
-				});
 		}
+		await Promise.all(resumable.map(async (candidate) => await startupRecoveryCoordinator.enqueue(candidate)));
 		return resumable.length;
 	};
 
@@ -704,12 +670,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			globalRuntimeConfig = toGlobalRuntimeConfigState(config);
 			activeRuntimeConfig = activeProjectId ? config : globalRuntimeConfig;
 		},
-		loadScopedRuntimeConfig: async (scope: ProjectRegistryScope) => {
-			if (scope.projectId === activeProjectId) {
-				return activeRuntimeConfig;
-			}
-			return await deps.loadRuntimeConfig(scope.projectId);
-		},
+		loadScopedRuntimeConfig,
 		getTerminalManagerForProject,
 		ensureTerminalManagerForProject,
 		setActiveProject,
@@ -722,6 +683,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		resolveProjectForStream,
 		resumeInterruptedSessions,
 		stopMaintenance: () => {
+			startupRecoveryCoordinator.close();
 			projectOrphanMaintenance.stop();
 		},
 		listManagedProjects: () => {

@@ -399,4 +399,43 @@ describe("reduceSessionTransition", () => {
 			expect(result.patch.exitCode).toBe(0);
 		});
 	});
+
+	describe("startup_recovery.exhausted", () => {
+		it("preserves a still-running final process while surfacing the warning", () => {
+			const summary = createSummary({
+				state: "awaiting_review",
+				reviewReason: "attention",
+				pid: 4321,
+				resumeSessionId: "session-1",
+			});
+			const result = reduceSessionTransition(summary, {
+				type: "startup_recovery.exhausted",
+				processStillRunning: true,
+				clearResumeSessionId: false,
+				warningMessage: "Recovery remains unconfirmed.",
+			});
+
+			expect(result.patch).toEqual({ warningMessage: "Recovery remains unconfirmed." });
+			expect(result.clearAttentionBuffer).toBe(false);
+		});
+
+		it("moves a stopped launch to interrupted review and can clear its failed target", () => {
+			const summary = createSummary({ state: "failed", pid: null, resumeSessionId: "missing-session" });
+			const result = reduceSessionTransition(summary, {
+				type: "startup_recovery.exhausted",
+				processStillRunning: false,
+				clearResumeSessionId: true,
+				warningMessage: "Recovery failed.",
+			});
+
+			expect(result.patch).toEqual({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				pid: null,
+				resumeSessionId: null,
+				warningMessage: "Recovery failed.",
+			});
+			expect(result.clearAttentionBuffer).toBe(true);
+		});
+	});
 });

@@ -2,6 +2,7 @@ import { createTaggedLogger, type RuntimeTaskSessionSummary } from "../core";
 import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
 import type { PtySession } from "./pty-session";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
+import { markTaskSessionLaunchCancelled } from "./session-launch-readiness";
 import {
 	handleTaskSessionExit,
 	hydrateSessionEntries,
@@ -28,6 +29,12 @@ export interface SessionLifecycleControllerOptions {
 	transitions: SessionTransitionController;
 	ensureProcessEntry: (taskId: string) => ProcessEntry;
 	onTaskOutput: (entry: ProcessEntry, taskId: string, chunk: Buffer) => void;
+}
+
+export interface TaskSessionStartWithReadinessResult {
+	summary: RuntimeTaskSessionSummary;
+	sessionInstanceId: string | null;
+	startedNewSession: boolean;
 }
 
 /**
@@ -60,10 +67,24 @@ export class SessionLifecycleController {
 	}
 
 	async startTaskSession(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
+		return (await this.startTaskSessionWithReadiness(request)).summary;
+	}
+
+	async startTaskSessionWithReadiness(request: StartTaskSessionRequest): Promise<TaskSessionStartWithReadinessResult> {
 		const entry = this.ensureProcessEntry(request.taskId);
+		const startupRecoveryToken = request.startupRecoveryToken?.trim() || null;
+		if (startupRecoveryToken && entry.pendingStartupRecoveryToken !== startupRecoveryToken) {
+			throw new Error("Startup recovery was cancelled before the task session could start.");
+		}
+		if (!startupRecoveryToken) {
+			entry.pendingStartupRecoveryToken = null;
+			markTaskSessionLaunchCancelled(entry.launchMonitor);
+		}
+		const restartRequest = cloneStartTaskSessionRequest(request);
+		restartRequest.startupRecoveryToken = undefined;
 		entry.restartRequest = {
 			kind: "task",
-			request: cloneStartTaskSessionRequest(request),
+			request: restartRequest,
 		};
 		const currentSummary = this.store.getSummary(request.taskId);
 		sessionLog.debug("startTaskSession called", {
@@ -104,18 +125,27 @@ export class SessionLifecycleController {
 				currentState: currentSummary.state,
 				currentPid: currentSummary.pid,
 			});
-			return currentSummary;
+			return {
+				summary: currentSummary,
+				sessionInstanceId: entry.launchMonitor?.sessionInstanceId ?? null,
+				startedNewSession: false,
+			};
 		}
 
 		teardownActiveSession(entry);
 
-		return spawnTaskSession(entry, request, {
+		const spawned = await spawnTaskSession(entry, request, {
 			getSummary: (id) => this.store.getSummary(id),
 			updateStore: (id, patch) => this.store.update(id, patch),
 			ensureEntry: (id) => this.store.ensureEntry(id),
 			onOutput: (e, taskId, chunk) => this.onTaskOutput(e, taskId, chunk),
 			onExit: (req, event, session) => this.handleTaskSessionExit(req, event, session),
 		});
+		return {
+			summary: spawned.summary,
+			sessionInstanceId: spawned.sessionInstanceId,
+			startedNewSession: true,
+		};
 	}
 
 	async startShellSession(request: StartShellSessionRequest): Promise<RuntimeTaskSessionSummary> {
@@ -148,8 +178,12 @@ export class SessionLifecycleController {
 		});
 	}
 
-	stopTaskSession(taskId: string): RuntimeTaskSessionSummary | null {
+	stopTaskSession(taskId: string, options?: { preserveStartupRecovery?: boolean }): RuntimeTaskSessionSummary | null {
 		const entry = this.entries.get(taskId);
+		if (entry && !options?.preserveStartupRecovery) {
+			entry.pendingStartupRecoveryToken = null;
+		}
+		markTaskSessionLaunchCancelled(entry?.launchMonitor ?? null);
 		if (!entry?.active) {
 			sessionLog.debug("stopTaskSession no-op — no active session", {
 				taskId,
@@ -174,7 +208,11 @@ export class SessionLifecycleController {
 		return stopResult?.summary ?? this.store.getSummary(taskId);
 	}
 
-	async stopTaskSessionAndWaitForExit(taskId: string, timeoutMs = 3_000): Promise<RuntimeTaskSessionSummary | null> {
+	async stopTaskSessionAndWaitForExit(
+		taskId: string,
+		timeoutMs = 3_000,
+		options?: { preserveStartupRecovery?: boolean },
+	): Promise<RuntimeTaskSessionSummary | null> {
 		const entry = this.entries.get(taskId);
 		if (!entry?.active) {
 			sessionLog.debug("stopTaskSessionAndWaitForExit no-op — no active entry", {
@@ -194,7 +232,7 @@ export class SessionLifecycleController {
 			resolveExit = resolve;
 			entry.pendingExitResolvers.push(resolve);
 		});
-		this.stopTaskSession(taskId);
+		this.stopTaskSession(taskId, options);
 		const didExit = await new Promise<boolean>((resolve) => {
 			const timeoutHandle = setTimeout(() => {
 				if (resolveExit) {
@@ -225,6 +263,8 @@ export class SessionLifecycleController {
 	markInterruptedAndStopAll(): RuntimeTaskSessionSummary[] {
 		const activeTaskIds: string[] = [];
 		for (const entry of this.entries.values()) {
+			entry.pendingStartupRecoveryToken = null;
+			markTaskSessionLaunchCancelled(entry.launchMonitor);
 			if (!entry.active) {
 				continue;
 			}

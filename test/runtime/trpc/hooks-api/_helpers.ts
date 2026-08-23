@@ -24,6 +24,7 @@ export function createMockManager(storeMethods: Partial<SessionSummaryStore>): T
 	return {
 		store,
 		recordHookReceived: vi.fn(),
+		observeTaskSessionLaunchHook: vi.fn(() => true),
 		evaluateHookEventOrder: vi.fn(() => ({ accepted: true })),
 		commitHookEventOrder: vi.fn(),
 	} as unknown as TerminalSessionManager;

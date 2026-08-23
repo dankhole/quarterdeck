@@ -8,7 +8,13 @@ export type SessionTransitionEvent =
 	| { type: "user.stop" }
 	| { type: "process.exit"; exitCode: number | null; interrupted: boolean }
 	| { type: "interrupt.recovery" }
-	| { type: "autorestart.denied" };
+	| { type: "autorestart.denied" }
+	| {
+			type: "startup_recovery.exhausted";
+			processStillRunning: boolean;
+			clearResumeSessionId: boolean;
+			warningMessage: string;
+	  };
 
 export interface SessionTransitionResult {
 	changed: boolean;
@@ -165,6 +171,23 @@ export function reduceSessionTransition(
 					reviewReason: "interrupted",
 				},
 				clearAttentionBuffer: false,
+			};
+		}
+		case "startup_recovery.exhausted": {
+			return {
+				changed: true,
+				patch: {
+					...(event.processStillRunning
+						? {}
+						: {
+								state: "awaiting_review" as const,
+								reviewReason: "interrupted" as const,
+								pid: null,
+							}),
+					...(event.clearResumeSessionId ? { resumeSessionId: null } : {}),
+					warningMessage: event.warningMessage,
+				},
+				clearAttentionBuffer: !event.processStillRunning,
 			};
 		}
 		default: {
