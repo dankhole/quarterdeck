@@ -380,6 +380,43 @@ describe("reconciliation sweep lifecycle", () => {
 		manager.stopReconciliation();
 	});
 
+	it("hydrates an interactive hook review with a stale pid as interrupted for bounded startup recovery", () => {
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "awaiting_review",
+				reviewReason: "hook",
+				pid: 1234,
+				resumeSessionId: "session-1",
+			}),
+		});
+
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "interrupted",
+			reviewReason: "interrupted",
+			pid: null,
+			latestHookActivity: null,
+		});
+	});
+
+	it("hydrates a processless attention wait as interrupted for bounded startup recovery", () => {
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "awaiting_review",
+				reviewReason: "attention",
+				pid: null,
+				resumeSessionId: "session-1",
+			}),
+		});
+
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "interrupted",
+			reviewReason: "interrupted",
+			pid: null,
+		});
+	});
+
 	it("hydrated awaiting_review sessions with non-terminal review reasons become interrupted (35b)", async () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		// Sessions with no terminal review reason were mid-restart — mark them

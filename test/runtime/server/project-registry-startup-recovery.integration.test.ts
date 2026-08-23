@@ -210,4 +210,58 @@ describe("project registry startup recovery integration", () => {
 		expect(workdirMocks.resolveTaskCwd).not.toHaveBeenCalled();
 		expect(stateMocks.loadProjectState).toHaveBeenCalledTimes(3);
 	});
+
+	it("recovers an awaiting-review chat whose persisted pid belonged to the previous runtime", async () => {
+		const staleState = createProjectState();
+		const inProgressColumn = staleState.board.columns.find((column) => column.id === "in_progress");
+		const reviewColumn = staleState.board.columns.find((column) => column.id === "review");
+		const [card] = inProgressColumn?.cards ?? [];
+		if (!inProgressColumn || !reviewColumn || !card) {
+			throw new Error("Expected the startup recovery fixture to contain work columns and a task card.");
+		}
+		inProgressColumn.cards = [];
+		reviewColumn.cards = [card];
+		staleState.sessions["task-1"] = createTestTaskSessionSummary({
+			taskId: "task-1",
+			state: "awaiting_review",
+			reviewReason: "hook",
+			agentId: "codex",
+			pid: 98_765,
+			resumeSessionId: "session-1",
+		});
+		stateMocks.loadProjectState.mockResolvedValue(staleState);
+
+		const config = createRuntimeConfig();
+		registry = await createProjectRegistry({
+			cwd: "/tmp/runtime",
+			loadGlobalRuntimeConfig: async () => config,
+			loadRuntimeConfig: async () => config,
+			hasGitRepository: async () => false,
+			pathIsDirectory: async () => true,
+			onTerminalManagerReady: (_projectId, readyManager) => {
+				manager = readyManager;
+			},
+		});
+
+		const recovery = registry.resumeInterruptedSessions("project-1", "/tmp/project");
+		await vi.waitFor(() => expect(prepareAgentLaunchMock).toHaveBeenCalledTimes(1));
+		const launchInput = prepareAgentLaunchMock.mock.calls[0]?.[0] as {
+			hookSessionInstanceId: string;
+			resumeSessionId?: string;
+		};
+		expect(launchInput.resumeSessionId).toBe("session-1");
+		manager?.recordHookReceived("task-1");
+		manager?.observeTaskSessionLaunchHook("task-1", {
+			sessionInstanceId: launchInput.hookSessionInstanceId,
+			sessionId: "session-1",
+		});
+
+		await expect(recovery).resolves.toBe(1);
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+		expect(manager?.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "attention",
+			pid: 1234,
+		});
+	});
 });

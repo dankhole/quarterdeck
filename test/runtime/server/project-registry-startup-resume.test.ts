@@ -30,7 +30,7 @@ describe("shouldResumeSessionOnStartup", () => {
 		expect(shouldResumeSessionOnStartup(summary)).toBe(true);
 	});
 
-	it("preserves completed awaiting-review hook sessions", () => {
+	it("resumes awaiting-review hook sessions that still referenced a live chat", () => {
 		const summary = createTestTaskSessionSummary({
 			state: "awaiting_review",
 			reviewReason: "hook",
@@ -38,13 +38,24 @@ describe("shouldResumeSessionOnStartup", () => {
 			resumeSessionId: "session-id",
 		});
 
-		expect(shouldResumeSessionOnStartup(summary)).toBe(false);
+		expect(shouldResumeSessionOnStartup(summary)).toBe(true);
 	});
 
-	it("preserves processless awaiting-review attention sessions", () => {
+	it("resumes processless awaiting-review attention sessions", () => {
 		const summary = createTestTaskSessionSummary({
 			state: "awaiting_review",
 			reviewReason: "attention",
+			pid: null,
+			resumeSessionId: "session-id",
+		});
+
+		expect(shouldResumeSessionOnStartup(summary)).toBe(true);
+	});
+
+	it("preserves processless completed awaiting-review hook sessions", () => {
+		const summary = createTestTaskSessionSummary({
+			state: "awaiting_review",
+			reviewReason: "hook",
 			pid: null,
 			resumeSessionId: "session-id",
 		});
@@ -56,7 +67,7 @@ describe("shouldResumeSessionOnStartup", () => {
 		const summary = createTestTaskSessionSummary({
 			state: "awaiting_review",
 			reviewReason: "interrupted",
-			pid: null,
+			pid: 12345,
 			resumeSessionId: "session-id",
 		});
 

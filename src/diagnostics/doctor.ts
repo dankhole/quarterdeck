@@ -30,6 +30,66 @@ function evidenceIds(records: readonly DiagnosticRecordEnvelope[], names: readon
 		.map((record) => record.id);
 }
 
+function diagnosticTaskKey(context: DiagnosticContext): string | null {
+	const projectId = stringValue(context.projectId);
+	const taskId = stringValue(context.taskId);
+	return projectId && taskId ? `${projectId}\u0000${taskId}` : null;
+}
+
+function isLaterRecord(candidate: DiagnosticRecordEnvelope, current: DiagnosticRecordEnvelope): boolean {
+	return (
+		candidate.timestamp > current.timestamp ||
+		(candidate.timestamp === current.timestamp && candidate.sequence > current.sequence)
+	);
+}
+
+function latestStartupRecoveryRecords(records: readonly DiagnosticRecordEnvelope[]): DiagnosticRecordEnvelope[] {
+	const latestByTask = new Map<string, DiagnosticRecordEnvelope>();
+	for (const record of records) {
+		if (record.name !== "session.startup_recovery_completed" || !isRecord(record.payload)) continue;
+		const taskKey = diagnosticTaskKey(record.context) ?? `record:${record.id}`;
+		const current = latestByTask.get(taskKey);
+		if (!current || isLaterRecord(record, current)) {
+			latestByTask.set(taskKey, record);
+		}
+	}
+	return Array.from(latestByTask.values());
+}
+
+function currentProjectSessions(snapshot: DiagnosticSnapshot): Map<string, Record<string, unknown>> | null {
+	const provider = snapshot.providers.find((candidate) => candidate.name === "projects");
+	if (
+		!provider ||
+		provider.status !== "completed" ||
+		!isRecord(provider.data) ||
+		!Array.isArray(provider.data.sessions)
+	) {
+		return null;
+	}
+	const sessions = new Map<string, Record<string, unknown>>();
+	for (const rawSession of provider.data.sessions) {
+		if (!isRecord(rawSession)) continue;
+		const taskKey = diagnosticTaskKey({
+			projectId: stringValue(rawSession.projectId) ?? undefined,
+			taskId: stringValue(rawSession.taskId) ?? undefined,
+		});
+		if (taskKey) sessions.set(taskKey, rawSession);
+	}
+	return sessions;
+}
+
+function isUnresolvedStartupRecoveryExhaustion(
+	record: DiagnosticRecordEnvelope,
+	sessions: ReadonlyMap<string, Record<string, unknown>> | null,
+): boolean {
+	if (!isRecord(record.payload) || stringValue(record.payload.status) !== "exhausted") return false;
+	if (!sessions) return true;
+	const taskKey = diagnosticTaskKey(record.context);
+	if (!taskKey) return true;
+	const session = sessions.get(taskKey);
+	return stringValue(session?.state) === "awaiting_review" && stringValue(session?.reviewReason) === "error";
+}
+
 function createFinding(
 	code: string,
 	severity: DiagnosticFinding["severity"],
@@ -76,6 +136,20 @@ export function evaluateDiagnosticSnapshot(
 ): DiagnosticFinding[] {
 	const findings: DiagnosticFinding[] = [];
 	const now = Date.now();
+	const projectSessions = currentProjectSessions(snapshot);
+	for (const record of latestStartupRecoveryRecords(records)) {
+		if (!isUnresolvedStartupRecoveryExhaustion(record, projectSessions)) continue;
+		findings.push(
+			createFinding(
+				"STARTUP_SESSION_RECOVERY_EXHAUSTED",
+				"error",
+				"A task chat could not be restored during startup",
+				"Quarterdeck exhausted its bounded recovery attempts and surfaced the task as an error instead of retrying indefinitely.",
+				record.context,
+				[record.id],
+			),
+		);
+	}
 	for (const provider of snapshot.providers) {
 		if (provider.status === "timed_out") {
 			findings.push(
@@ -201,7 +275,8 @@ export function evaluateDiagnosticSnapshot(
 					);
 				}
 				if (
-					stringValue(rawSession.state) === "running" &&
+					(stringValue(rawSession.state) === "running" ||
+						(stringValue(rawSession.state) === "awaiting_review" && numberValue(rawSession.pid) !== null)) &&
 					booleanValue(rawSession.hasActiveProcess) === false &&
 					booleanValue(rawSession.pendingSessionStart) !== true &&
 					booleanValue(rawSession.exiting) !== true
@@ -210,8 +285,8 @@ export function evaluateDiagnosticSnapshot(
 						createFinding(
 							"SESSION_PROCESS_ENTRY_MISSING",
 							"error",
-							"A running session has no process entry",
-							"The runtime summary says the task is running, but no live or pending process is represented. Diagnostics did not reconcile or restart it.",
+							"An active session summary has no process entry",
+							"The runtime summary references an active or interactive task process, but no live or pending process is represented. Diagnostics did not reconcile or restart it.",
 							context,
 							evidenceIds(records, ["session.process_spawned", "session.process_exit_observed"]),
 						),

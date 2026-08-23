@@ -194,17 +194,15 @@ export function reduceSessionTransition(
 			return {
 				changed: true,
 				patch: {
-					...(event.processStillRunning
-						? {}
-						: {
-								state: "awaiting_review" as const,
-								reviewReason: "interrupted" as const,
-								pid: null,
-							}),
+					state: "awaiting_review",
+					reviewReason: "error",
+					...(event.processStillRunning ? {} : { pid: null }),
+					latestHookActivity: null,
+					stalledSince: null,
 					...(event.clearResumeSessionId ? { resumeSessionId: null } : {}),
 					warningMessage: event.warningMessage,
 				},
-				clearAttentionBuffer: !event.processStillRunning,
+				clearAttentionBuffer: true,
 			};
 		}
 		default: {

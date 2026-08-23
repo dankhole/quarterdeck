@@ -132,7 +132,20 @@ export class TerminalSessionManager implements TerminalSessionService {
 	}
 
 	hydrateFromRecord(record: Record<string, RuntimeTaskSessionSummary>): void {
-		this.lifecycle.hydrateFromRecord(record);
+		const corrections = this.lifecycle.hydrateFromRecord(record);
+		for (const correction of corrections) {
+			this.record(
+				"session.persisted_state_reconciled",
+				{
+					action: correction.action,
+					previousState: correction.previousState,
+					previousReviewReason: correction.previousReviewReason,
+					hadPersistedPid: correction.hadPersistedPid,
+				},
+				correction.taskId,
+				{ level: "warn" },
+			);
+		}
 		for (const summary of this.store.listSummaries()) {
 			this.previousSummaries.set(summary.taskId, {
 				summary,
@@ -323,6 +336,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (!entry || entry.pendingStartupRecoveryToken !== token) {
 			return null;
 		}
+		// Exhaustion is the terminal outcome for coordinator-owned recovery.
+		// Discard the cached automatic restart request so a later socket attach
+		// or delayed process exit cannot replay it outside the bounded policy.
+		// An explicit user Restart prepares and installs a fresh request.
+		entry.pendingStartupRecoveryToken = null;
+		entry.restartRequest = null;
 		return (
 			this.transitions.applyTransitionEvent(entry, {
 				type: "startup_recovery.exhausted",

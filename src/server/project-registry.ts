@@ -13,7 +13,7 @@ import type {
 	RuntimeProjectTaskCounts,
 	RuntimeTaskSessionSummary,
 } from "../core";
-import { createTaggedLogger, pruneOrphanSessionsForBroadcast } from "../core";
+import { createTaggedLogger, deriveTaskIndicatorState, pruneOrphanSessionsForBroadcast } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import {
 	isUnderWorktreesHome,
@@ -79,10 +79,15 @@ export function shouldResumeSessionOnStartup(summary: RuntimeTaskSessionSummary)
 	if (summary.state === "interrupted") {
 		return summary.reviewReason === "interrupted";
 	}
-	// A hard server/process exit can leave the last persisted summary as
-	// awaiting_review/attention even though the agent process was live. On the
-	// next boot that pid is stale, so resume it the same way trash-restore does.
-	return summary.state === "awaiting_review" && summary.reviewReason === "attention" && summary.pid !== null;
+	// Be defensive when this predicate is used before terminal hydration. A
+	// hard runtime exit can persist an interactive review session with its old
+	// PID, while attention waits require a live chat even if that PID was
+	// already cleared. Both cases enter the bounded startup coordinator.
+	return (
+		summary.state === "awaiting_review" &&
+		(summary.reviewReason === "attention" ||
+			(summary.reviewReason === "hook" && (summary.pid !== null || deriveTaskIndicatorState(summary).needsInput)))
+	);
 }
 
 export interface ProjectRegistryScope {
@@ -643,6 +648,17 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			}
 		}
 		scanStats.resumableTaskCount = resumable.length;
+		deps.diagnostics?.recordEvent(
+			"session.startup_recovery_scan_completed",
+			{
+				consideredTaskCount: scanStats.consideredTaskCount,
+				resumableTaskCount: scanStats.resumableTaskCount,
+				skippedMissingSummaryCount: scanStats.skippedMissingSummaryCount,
+				skippedNotInterruptedCount: scanStats.skippedNotInterruptedCount,
+			},
+			{ projectId },
+			{ essential: true },
+		);
 		registryLog.info("startup resume scan complete", {
 			projectId,
 			projectPath,
@@ -659,6 +675,18 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			return 0;
 		}
 		for (const candidate of resumable) {
+			const persistedSummary = state.sessions[candidate.request.taskId] ?? null;
+			deps.diagnostics?.recordEvent(
+				"session.startup_recovery_queued",
+				{
+					state: persistedSummary?.state ?? null,
+					reviewReason: persistedSummary?.reviewReason ?? null,
+					hadPersistedPid: persistedSummary?.pid != null,
+					hasResumeSessionId: candidate.originalResumeSessionId !== null,
+				},
+				{ projectId, taskId: candidate.request.taskId },
+				{ essential: true },
+			);
 			registryLog.info("startup resume queued task", {
 				projectId,
 				taskId: candidate.request.taskId,
@@ -666,7 +694,22 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				resumeSessionId: candidate.originalResumeSessionId,
 			});
 		}
-		await Promise.all(resumable.map(async (candidate) => await startupRecoveryCoordinator.enqueue(candidate)));
+		await Promise.all(
+			resumable.map(async (candidate) => {
+				const result = await startupRecoveryCoordinator.enqueue(candidate);
+				const failed = result.status === "exhausted";
+				deps.diagnostics?.recordEvent(
+					"session.startup_recovery_completed",
+					{
+						status: result.status,
+						attempts: result.attempts,
+						reason: failed ? result.reason : null,
+					},
+					{ projectId, taskId: candidate.request.taskId },
+					{ level: failed ? "error" : "info", essential: true },
+				);
+			}),
+		);
 		return resumable.length;
 	};
 

@@ -393,6 +393,109 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("error");
 	});
 
+	it("does not reconnect-auto-restart after bounded startup recovery is exhausted", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111 + spawnedSessions.length, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", {
+			onState: vi.fn(),
+			onOutput: vi.fn(),
+			onExit: vi.fn(),
+		});
+		const recoveryToken = "recovery-token";
+		manager.beginStartupRecovery("task-1", recoveryToken);
+		await manager.startTaskSessionWithReadiness({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "codex-session-1",
+			awaitReview: true,
+			startupRecoveryToken: recoveryToken,
+		});
+
+		manager.finalizeStartupRecoveryFailure("task-1", recoveryToken, {
+			processStillRunning: true,
+			clearResumeSessionId: false,
+			warningMessage: "Recovery remains unconfirmed.",
+		});
+		spawnedSessions[0]?.triggerExit(1);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		manager.recoverStaleSession("task-1");
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+		expect(manager.isStartupRecoveryCurrent("task-1", recoveryToken)).toBe(false);
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "error",
+			pid: null,
+		});
+
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			resumeConversation: true,
+			awaitReview: true,
+		});
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not reconnect-auto-restart between bounded startup recovery attempts", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111 + spawnedSessions.length, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", {
+			onState: vi.fn(),
+			onOutput: vi.fn(),
+			onExit: vi.fn(),
+		});
+		const recoveryToken = "recovery-token";
+		manager.beginStartupRecovery("task-1", recoveryToken);
+		await manager.startTaskSessionWithReadiness({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "codex-session-1",
+			awaitReview: true,
+			startupRecoveryToken: recoveryToken,
+		});
+		spawnedSessions[0]?.triggerExit(1);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		manager.recoverStaleSession("task-1");
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+		expect(manager.isStartupRecoveryCurrent("task-1", recoveryToken)).toBe(true);
+	});
+
 	it("keeps the fresh prompt fallback for clean startup resume exits", async () => {
 		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
 		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {

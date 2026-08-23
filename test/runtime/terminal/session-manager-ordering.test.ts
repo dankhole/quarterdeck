@@ -223,7 +223,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 
 		expect(summary).toMatchObject({
 			state: "awaiting_review",
-			reviewReason: "interrupted",
+			reviewReason: "error",
 			pid: null,
 			resumeSessionId: null,
 			warningMessage: "Recovery failed.",

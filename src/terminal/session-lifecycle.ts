@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { RuntimeTaskSessionReviewReason, RuntimeTaskSessionSummary } from "../core";
-import { createTaggedLogger } from "../core";
+import { createTaggedLogger, deriveTaskIndicatorState } from "../core";
 import { cleanStaleIndexLockForWorktree } from "../fs";
 import type { PreparedAgentLaunch } from "./agent-session-adapters";
 import { prepareAgentLaunch } from "./agent-session-adapters";
@@ -625,7 +625,7 @@ export function recoverStaleSession(taskId: string, deps: RecoverStaleSessionDep
 		return summary;
 	}
 
-	if (entry?.pendingSessionStart) {
+	if (entry?.pendingSessionStart || entry?.pendingStartupRecoveryToken) {
 		return summary;
 	}
 
@@ -662,18 +662,40 @@ export interface HydrationDeps {
 	ensureProcessEntry: (taskId: string) => ProcessEntry;
 }
 
+export interface SessionHydrationCorrection {
+	taskId: string;
+	action: "marked_interrupted" | "stale_pid_cleared";
+	previousState: RuntimeTaskSessionSummary["state"];
+	previousReviewReason: RuntimeTaskSessionReviewReason;
+	hadPersistedPid: boolean;
+}
+
 /**
  * Hydrate both the summary store and the process entry map from persisted
  * session records. Sessions persisted as "running" are crash survivors — mark
- * them interrupted. Sessions persisted as "awaiting_review" with terminal
- * review reasons are preserved as-is.
+ * them interrupted. Review sessions that still referenced a process, or that
+ * require a live process for user interaction, are also interrupted so the
+ * bounded startup coordinator can restore them. Completed processless review
+ * sessions remain reviewable without relaunching an agent.
  */
-export function hydrateSessionEntries(record: Record<string, RuntimeTaskSessionSummary>, deps: HydrationDeps): void {
+export function hydrateSessionEntries(
+	record: Record<string, RuntimeTaskSessionSummary>,
+	deps: HydrationDeps,
+): SessionHydrationCorrection[] {
+	const corrections: SessionHydrationCorrection[] = [];
 	for (const [taskId, summary] of Object.entries(record)) {
 		deps.ensureProcessEntry(taskId);
+		const indicator = deriveTaskIndicatorState(summary);
+		const reviewRequiresLiveProcess =
+			summary.state === "awaiting_review" &&
+			(summary.reviewReason === "attention" || indicator.approvalRequired || summary.pid !== null);
 		const shouldInterrupt =
 			summary.state === "running" ||
-			(summary.state === "awaiting_review" && !isTerminalReviewReason(summary.reviewReason));
+			(summary.state === "awaiting_review" &&
+				(!isTerminalReviewReason(summary.reviewReason) || reviewRequiresLiveProcess) &&
+				summary.reviewReason !== "interrupted" &&
+				summary.reviewReason !== "error" &&
+				summary.reviewReason !== "exit");
 		if (shouldInterrupt) {
 			deps.updateStore(taskId, {
 				state: "interrupted",
@@ -682,6 +704,25 @@ export function hydrateSessionEntries(record: Record<string, RuntimeTaskSessionS
 				stalledSince: null,
 				latestHookActivity: null,
 			});
+			corrections.push({
+				taskId,
+				action: "marked_interrupted",
+				previousState: summary.state,
+				previousReviewReason: summary.reviewReason,
+				hadPersistedPid: summary.pid !== null,
+			});
+		} else if (summary.pid !== null) {
+			// A persisted PID never represents a process owned by this runtime.
+			// Clear impossible liveness without changing terminal review meaning.
+			deps.updateStore(taskId, { pid: null });
+			corrections.push({
+				taskId,
+				action: "stale_pid_cleared",
+				previousState: summary.state,
+				previousReviewReason: summary.reviewReason,
+				hadPersistedPid: true,
+			});
 		}
 	}
+	return corrections;
 }

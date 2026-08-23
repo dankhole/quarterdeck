@@ -433,7 +433,7 @@ describe("reduceSessionTransition", () => {
 	});
 
 	describe("startup_recovery.exhausted", () => {
-		it("preserves a still-running final process while surfacing the warning", () => {
+		it("marks an unconfirmed final process as an error while leaving it available for manual restart", () => {
 			const summary = createSummary({
 				state: "awaiting_review",
 				reviewReason: "attention",
@@ -447,11 +447,17 @@ describe("reduceSessionTransition", () => {
 				warningMessage: "Recovery remains unconfirmed.",
 			});
 
-			expect(result.patch).toEqual({ warningMessage: "Recovery remains unconfirmed." });
-			expect(result.clearAttentionBuffer).toBe(false);
+			expect(result.patch).toEqual({
+				state: "awaiting_review",
+				reviewReason: "error",
+				latestHookActivity: null,
+				stalledSince: null,
+				warningMessage: "Recovery remains unconfirmed.",
+			});
+			expect(result.clearAttentionBuffer).toBe(true);
 		});
 
-		it("moves a stopped launch to interrupted review and can clear its failed target", () => {
+		it("moves a stopped launch to error review and can clear its failed target", () => {
 			const summary = createSummary({ state: "failed", pid: null, resumeSessionId: "missing-session" });
 			const result = reduceSessionTransition(summary, {
 				type: "startup_recovery.exhausted",
@@ -462,8 +468,10 @@ describe("reduceSessionTransition", () => {
 
 			expect(result.patch).toEqual({
 				state: "awaiting_review",
-				reviewReason: "interrupted",
+				reviewReason: "error",
 				pid: null,
+				latestHookActivity: null,
+				stalledSince: null,
 				resumeSessionId: null,
 				warningMessage: "Recovery failed.",
 			});

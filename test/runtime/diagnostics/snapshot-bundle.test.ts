@@ -39,7 +39,11 @@ function descriptor(): PublicRuntimeDiagnosticDescriptor {
 function record(
 	name: string,
 	sequence: number,
-	options: { timestamp?: number; context?: DiagnosticRecordEnvelope["context"] } = {},
+	options: {
+		timestamp?: number;
+		context?: DiagnosticRecordEnvelope["context"];
+		payload?: DiagnosticRecordEnvelope["payload"];
+	} = {},
 ): DiagnosticRecordEnvelope {
 	return {
 		version: 1,
@@ -53,7 +57,7 @@ function record(
 		level: "warn",
 		name,
 		context: options.context ?? {},
-		payload: {},
+		payload: options.payload ?? {},
 	};
 }
 
@@ -145,6 +149,8 @@ describe("diagnostic snapshots, doctor, and bundles", () => {
 							{
 								projectId: "p1",
 								taskId: "t1",
+								state: "awaiting_review",
+								reviewReason: "error",
 								pid: 999,
 								pidAlive: false,
 								pendingSessionStart: true,
@@ -252,10 +258,14 @@ describe("diagnostic snapshots, doctor, and bundles", () => {
 		};
 		const findings = evaluateDiagnosticSnapshot(snapshot, [
 			record("diagnostics.records_dropped", 1),
-			record("project.board_save_conflict", 2, { timestamp: now - 1_000, context: { projectId: "p1" } }),
-			record("project.state_load_failed", 3, { timestamp: now - 1_000, context: { projectId: "p2" } }),
+			record("session.startup_recovery_completed", 2, {
+				context: { projectId: "p1", taskId: "t1" },
+				payload: { status: "exhausted", attempts: 2, reason: "timeout" },
+			}),
+			record("project.board_save_conflict", 3, { timestamp: now - 1_000, context: { projectId: "p1" } }),
+			record("project.state_load_failed", 4, { timestamp: now - 1_000, context: { projectId: "p2" } }),
 			...Array.from({ length: 5 }, (_, index) =>
-				record("browser.runtime_stream_reconnecting", 4 + index, { timestamp: now - index * 1_000 }),
+				record("browser.runtime_stream_reconnecting", 5 + index, { timestamp: now - index * 1_000 }),
 			),
 		]);
 		expect(new Set(findings.map((finding) => finding.code))).toEqual(
@@ -264,6 +274,7 @@ describe("diagnostic snapshots, doctor, and bundles", () => {
 				"DIAGNOSTIC_RECORDS_DROPPED",
 				"DIAGNOSTIC_STREAM_DELIVERIES_DROPPED",
 				"RUNTIME_DESCRIPTOR_PERSISTENCE_DEGRADED",
+				"STARTUP_SESSION_RECOVERY_EXHAUSTED",
 				"SESSION_PID_NOT_ALIVE",
 				"SESSION_START_PENDING_TOO_LONG",
 				"SESSION_LAUNCH_PATH_MISSING",
@@ -284,6 +295,99 @@ describe("diagnostic snapshots, doctor, and bundles", () => {
 				"DIAGNOSTIC_PROVIDER_TIMED_OUT",
 			]),
 		);
+	});
+
+	it("reports only the latest unresolved startup recovery exhaustion per task", () => {
+		const snapshot: DiagnosticSnapshot = {
+			version: 1,
+			runtimeInstanceId: "runtime-test",
+			capturedAt: 5_000,
+			providers: [
+				{
+					name: "projects",
+					status: "completed",
+					durationMs: 1,
+					data: {
+						sessions: [
+							{
+								projectId: "p1",
+								taskId: "unresolved",
+								state: "awaiting_review",
+								reviewReason: "error",
+							},
+							{
+								projectId: "p1",
+								taskId: "manually-restarted",
+								state: "running",
+								reviewReason: null,
+							},
+						],
+					},
+				},
+			],
+		};
+		const findings = evaluateDiagnosticSnapshot(snapshot, [
+			record("session.startup_recovery_completed", 1, {
+				timestamp: 1_000,
+				context: { projectId: "p1", taskId: "unresolved" },
+				payload: { status: "exhausted" },
+			}),
+			record("session.startup_recovery_completed", 2, {
+				timestamp: 2_000,
+				context: { projectId: "p1", taskId: "unresolved" },
+				payload: { status: "exhausted" },
+			}),
+			record("session.startup_recovery_completed", 3, {
+				timestamp: 3_000,
+				context: { projectId: "p1", taskId: "manually-restarted" },
+				payload: { status: "exhausted" },
+			}),
+			record("session.startup_recovery_completed", 4, {
+				timestamp: 4_000,
+				context: { projectId: "p1", taskId: "later-recovered" },
+				payload: { status: "exhausted" },
+			}),
+			record("session.startup_recovery_completed", 5, {
+				timestamp: 5_000,
+				context: { projectId: "p1", taskId: "later-recovered" },
+				payload: { status: "ready" },
+			}),
+		]);
+
+		const recoveryFindings = findings.filter((finding) => finding.code === "STARTUP_SESSION_RECOVERY_EXHAUSTED");
+		expect(recoveryFindings).toHaveLength(1);
+		expect(recoveryFindings[0]).toMatchObject({
+			context: { projectId: "p1", taskId: "unresolved" },
+			evidenceRecordIds: ["runtime-test:2"],
+		});
+	});
+
+	it("retains the latest exhausted startup recovery evidence when current session state is unavailable", () => {
+		const snapshot: DiagnosticSnapshot = {
+			version: 1,
+			runtimeInstanceId: "runtime-test",
+			capturedAt: 3_000,
+			providers: [{ name: "projects", status: "unavailable", durationMs: 0 }],
+		};
+		const findings = evaluateDiagnosticSnapshot(snapshot, [
+			record("session.startup_recovery_completed", 1, {
+				timestamp: 1_000,
+				context: { projectId: "p1", taskId: "t1" },
+				payload: { status: "exhausted" },
+			}),
+			record("session.startup_recovery_completed", 2, {
+				timestamp: 2_000,
+				context: { projectId: "p1", taskId: "t1" },
+				payload: { status: "exhausted" },
+			}),
+		]);
+
+		expect(findings).toEqual([
+			expect.objectContaining({
+				code: "STARTUP_SESSION_RECOVERY_EXHAUSTED",
+				evidenceRecordIds: ["runtime-test:2"],
+			}),
+		]);
 	});
 
 	it("reports offline runtime evidence as partial rather than healthy", () => {

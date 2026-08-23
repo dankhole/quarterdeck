@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: recover stale review chats on startup
+
+- Review tasks that still referenced an interactive agent process from the previous runtime now enter the existing bounded startup-recovery coordinator, including completed-hook and attention states that previously stayed in Review with an empty terminal until manually restarted.
+- Hydration clears impossible previous-runtime PID ownership and records each recovery correction, scan, queued task, and final outcome in unified diagnostics. Doctor now reports both process-backed summaries without a process entry and only the latest still-unresolved exhausted recovery per task, while retaining deduplicated historical evidence when live session state is unavailable.
+- Startup recovery still permits at most two launch attempts, but an unconfirmed or failed final launch now surfaces as Error with an actionable warning instead of misleadingly showing Ready for review, Waiting for input, or Interrupted. Reconnect recovery defers while the startup coordinator owns a task, and exhaustion closes that ownership and discards its cached automatic restart request, so terminal reconnects or delayed exits cannot silently launch outside the two-attempt bound; explicit Restart installs a fresh request.
+
 ### Feature: complete Agent Lab headless host workflows
 
 - Agent Lab now exercises Open in IDE, scoped file/folder opening, CLI-owned external browser launch, browser clipboard reads/writes, and notification audio through injected simulated host integrations while continuing to report `nativeUiAvailable: false` and keeping production native and fail-closed modes distinct.

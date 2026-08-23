@@ -404,7 +404,7 @@ describe("recoverStaleSession with launched sessions", () => {
 		expect(spawnedSessions).toHaveLength(1);
 	});
 
-	it("hydrated awaiting_review entries with terminal review reasons are preserved", () => {
+	it("hydrates awaiting_review entries with stale process ownership as interrupted", () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.hydrateFromRecord({
 			"task-1": createSummary({
@@ -413,14 +413,15 @@ describe("recoverStaleSession with launched sessions", () => {
 			}),
 		});
 
-		// Terminal review reasons (hook, exit, error, etc.) represent completed
-		// agent work and are preserved across server restarts.
+		// A hook review with a persisted PID still owned an interactive chat when
+		// the previous runtime ended, so bounded startup recovery should resume it.
 		const summary = manager.store.getSummary("task-1");
-		expect(summary?.state).toBe("awaiting_review");
-		expect(summary?.reviewReason).toBe("hook");
+		expect(summary?.state).toBe("interrupted");
+		expect(summary?.reviewReason).toBe("interrupted");
+		expect(summary?.pid).toBeNull();
 	});
 
-	it("hydrated awaiting_review with terminal reason survives recoverStaleSession", () => {
+	it("keeps a hydrated recovery candidate interrupted when a viewer connects before startup recovery", () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.hydrateFromRecord({
 			"task-1": createSummary({
@@ -429,11 +430,11 @@ describe("recoverStaleSession with launched sessions", () => {
 			}),
 		});
 
-		// Simulates a viewer connecting after server restart — restartRequest is
-		// null because it's in-memory only, but the review state should be preserved.
+		// A viewer attachment must not silently turn the candidate idle or launch a
+		// competing recovery outside the startup coordinator.
 		const recovered = manager.recoverStaleSession("task-1");
-		expect(recovered?.state).toBe("awaiting_review");
-		expect(recovered?.reviewReason).toBe("hook");
+		expect(recovered?.state).toBe("interrupted");
+		expect(recovered?.reviewReason).toBe("interrupted");
 	});
 
 	it("hydrated awaiting_review entries with non-terminal review reasons are marked interrupted", () => {

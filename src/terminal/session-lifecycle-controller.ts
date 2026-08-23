@@ -7,6 +7,7 @@ import {
 	handleTaskSessionExit,
 	hydrateSessionEntries,
 	recoverStaleSession,
+	type SessionHydrationCorrection,
 	spawnShellSession,
 	spawnTaskSession,
 } from "./session-lifecycle";
@@ -59,9 +60,9 @@ export class SessionLifecycleController {
 		this.onTaskOutput = options.onTaskOutput;
 	}
 
-	hydrateFromRecord(record: Record<string, RuntimeTaskSessionSummary>): void {
+	hydrateFromRecord(record: Record<string, RuntimeTaskSessionSummary>): SessionHydrationCorrection[] {
 		this.store.hydrateFromRecord(record);
-		hydrateSessionEntries(record, {
+		return hydrateSessionEntries(record, {
 			updateStore: (id, patch) => this.store.update(id, patch),
 			ensureProcessEntry: (taskId) => this.ensureProcessEntry(taskId),
 		});
