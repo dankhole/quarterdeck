@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import { ProjectDialogs } from "@/components/app/project-dialogs";
-import { DebugShelf } from "@/components/debug";
+import { DiagnosticsShelf } from "@/components/diagnostics";
 import { GitActionErrorDialog } from "@/components/git";
 import {
 	CheckoutConfirmationDialog,
@@ -58,7 +58,7 @@ export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactEleme
 
 	return (
 		<>
-			<DebugShelf />
+			<DiagnosticsShelf />
 			<RuntimeSettingsDialog
 				open={dialog.isSettingsOpen}
 				projectId={projectRuntime.settingsProjectId}

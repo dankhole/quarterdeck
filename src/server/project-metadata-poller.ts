@@ -16,12 +16,26 @@ export interface CreateProjectMetadataPollerDependencies {
 	refreshBackgroundTasks: () => Promise<void>;
 }
 
+export interface ProjectMetadataPollerDiagnosticSnapshot {
+	homeTimerActive: boolean;
+	focusedTaskTimerActive: boolean;
+	backgroundTaskTimerActive: boolean;
+}
+
 export class ProjectMetadataPoller {
 	private homeTimer: NodeJS.Timeout | null = null;
 	private focusedTaskTimer: NodeJS.Timeout | null = null;
 	private backgroundTaskTimer: NodeJS.Timeout | null = null;
 
 	constructor(private readonly deps: CreateProjectMetadataPollerDependencies) {}
+
+	getDiagnosticSnapshot(): ProjectMetadataPollerDiagnosticSnapshot {
+		return {
+			homeTimerActive: this.homeTimer !== null,
+			focusedTaskTimerActive: this.focusedTaskTimer !== null,
+			backgroundTaskTimerActive: this.backgroundTaskTimer !== null,
+		};
+	}
 
 	start(): void {
 		this.stop();

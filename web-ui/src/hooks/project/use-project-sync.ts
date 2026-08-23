@@ -1,8 +1,10 @@
+import { normalizeDiagnosticErrorClass } from "@runtime-contract";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import { createInitialBoardData } from "@/data/board-data";
+import { recordBrowserEvent } from "@/diagnostics";
 import { restoreProjectBoard, stashProjectBoard, updateProjectBoardCache } from "@/runtime/project-board-cache";
 import { fetchProjectState } from "@/runtime/project-state-query";
 import type { RuntimeGitRepositoryInfo, RuntimeProjectStateResponse } from "@/runtime/types";
@@ -92,6 +94,12 @@ export function useProjectSync({
 	const applyProjectState = useCallback(
 		(nextProjectState: RuntimeProjectStateResponse | null) => {
 			if (!nextProjectState) {
+				recordBrowserEvent(
+					"browser.project_hydration_cleared",
+					{},
+					{ projectId: currentProjectId ?? undefined },
+					{ essential: true },
+				);
 				syncTargetProjectIdRef.current = null;
 				cachedBoardRestoreRef.current = null;
 				setCanPersistProjectState(false);
@@ -149,8 +157,24 @@ export function useProjectSync({
 				cachedRestore: cachedBoardRestoreRef.current,
 			});
 			if (!applyResult) {
+				recordBrowserEvent(
+					"browser.project_hydration_ignored",
+					{ incomingRevision: nextProjectState.revision },
+					{ projectId: currentProjectId ?? undefined },
+				);
 				return;
 			}
+			recordBrowserEvent(
+				"browser.project_hydration_applied",
+				{
+					incomingRevision: nextProjectState.revision,
+					shouldBumpHydrationNonce: applyResult.shouldBumpHydrationNonce,
+					shouldSkipPersistOnHydration: applyResult.shouldSkipPersistOnHydration,
+					servedFromCache: cachedBoardRestoreRef.current !== null,
+				},
+				{ projectId: currentProjectId ?? undefined },
+				{ essential: true },
+			);
 			setProjectBoardSessions(applyResult.nextState);
 			setBoardProjectId(currentProjectId);
 			if (applyResult.shouldBumpHydrationNonce) {
@@ -207,6 +231,12 @@ export function useProjectSync({
 				return;
 			}
 			const message = toErrorMessage(error);
+			recordBrowserEvent(
+				"browser.project_refresh_failed",
+				{ errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError" },
+				{ projectId: requestedProjectId },
+				{ level: "warn", essential: true },
+			);
 			notifyError(message);
 		} finally {
 			if (projectRefreshRequestIdRef.current === requestId) {

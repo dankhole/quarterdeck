@@ -21,10 +21,9 @@ export enum LocalStorageKey {
 	PromptShortcutLastLabel = "quarterdeck.prompt-shortcut-last-label",
 	GitViewFileTreeRatio = "quarterdeck.git-view-file-tree-ratio",
 	GitViewActiveTab = "quarterdeck.git-view-active-tab",
-	DebugLogPanelWidth = "quarterdeck.debug-log-panel-width",
+	DiagnosticsPanelWidth = "quarterdeck.diagnostics-panel-width",
 	FileBrowserWordWrap = "quarterdeck.file-browser-word-wrap",
 	FileBrowserMarkdownPreview = "quarterdeck.file-browser-markdown-preview",
-	DebugLogDisabledTags = "quarterdeck.debug-log-disabled-tags",
 	CompareIncludeUncommitted = "quarterdeck.compare-include-uncommitted",
 	CompareThreeDotDiff = "quarterdeck.compare-three-dot-diff",
 	FileBrowserLastSelectedPath = "quarterdeck.file-browser-last-selected-path",
@@ -42,7 +41,7 @@ export const LAYOUT_CUSTOMIZATION_LOCAL_STORAGE_KEYS = [
 	LocalStorageKey.CommitPanelControlsHeight,
 	LocalStorageKey.DetailFileBrowserTreePanelRatio,
 	LocalStorageKey.GitViewFileTreeRatio,
-	LocalStorageKey.DebugLogPanelWidth,
+	LocalStorageKey.DiagnosticsPanelWidth,
 ] as const;
 
 function getLocalStorage(): Storage | null {

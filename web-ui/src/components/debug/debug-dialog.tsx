@@ -1,4 +1,4 @@
-import { Bug } from "lucide-react";
+import { Wrench } from "lucide-react";
 import type { ReactElement } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ export function DebugDialog({
 }): ReactElement {
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogHeader title="Debug tools" icon={<Bug size={16} />} />
+			<DialogHeader title="Developer tools" icon={<Wrench size={16} />} />
 			<DialogBody className="space-y-4">
 				<div className="rounded-md border border-border bg-surface-2 p-3">
 					<p className="text-sm font-medium text-text-primary">Show onboarding dialog</p>

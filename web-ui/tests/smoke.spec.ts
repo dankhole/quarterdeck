@@ -153,6 +153,24 @@ test("settings button opens runtime settings dialog", async ({ page }) => {
 	await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
 });
 
+test("opens the unified diagnostics panel with health and capture controls", async ({ page }, testInfo) => {
+	await openBoard(page);
+	await page.getByTestId("open-diagnostics-button").click();
+	const panel = page.getByTestId("diagnostics-panel");
+	await expect(panel).toBeVisible();
+	await expect(panel.getByText("Diagnostics", { exact: true })).toBeVisible();
+	await expect(panel.getByRole("button", { name: "Refresh diagnostics" })).toBeEnabled();
+	await panel.getByRole("button", { name: "Health" }).click();
+	await expect(panel.getByText("Connection", { exact: true })).toBeVisible();
+	await panel.getByRole("button", { name: "Capture" }).click();
+	await expect(panel.getByText("Always-on flight recorder", { exact: true })).toBeVisible();
+	await expect(panel.getByRole("button", { name: "Export diagnostic bundle" })).toBeEnabled();
+
+	const screenshotPath = testInfo.outputPath("diagnostics-panel.png");
+	await panel.screenshot({ path: screenshotPath });
+	await testInfo.attach("diagnostics-panel", { path: screenshotPath, contentType: "image/png" });
+});
+
 test("agent lab adds a synthetic project through the browser manual-path fallback", async ({ page }) => {
 	await openBoard(page);
 	const additionalProjectPath = await page.evaluate(async () => {

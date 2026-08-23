@@ -190,9 +190,19 @@ This is the path for all agents: Claude Code, Codex, and any other command-drive
 
 ### State streaming
 
-`runtime-state-hub.ts` is the central fanout point for live updates. It listens to terminal summaries, project metadata, project state changes, debug logs, and lightweight task events, then broadcasts websocket messages that keep the browser in sync. It delegates batching to `runtime-state-message-batcher.ts` and git metadata policy to the project metadata monitor modules.
+`runtime-state-hub.ts` is the central fanout point for live updates. It listens to terminal summaries, project metadata, project state changes, unified diagnostic records, and lightweight task events, then broadcasts websocket messages that keep the browser in sync. Diagnostic record batches are a replaceable projection sent only to connection-scoped subscribers with the Diagnostics panel open; they are bounded and dropped under socket backpressure before primary state. The durable recorder/journal remains canonical. The hub delegates batching to `runtime-state-message-batcher.ts` and git metadata policy to the project metadata monitor modules.
 
 This is important because Quarterdeck is not designed around browser polling. The runtime is long-lived and streams state outward.
+
+### Diagnostics
+
+`src/diagnostics/` owns the single local diagnostics pipeline. Every runtime automatically creates a private versioned instance descriptor, a 2,000-record memory flight recorder, and a bounded rotating JSONL journal under the runtime state home. The runtime logger offers content-free level/tag/shape summaries independently of console verbosity; structured lifecycle producers use the same envelope and correlation fields. Default admission keeps essential lifecycle events, marks, recorder health, warnings, and errors while excluding arbitrary logger messages/data, terminal output, prompts, environment values, file contents, Git diffs, request bodies, and render-loop noise. Capture flushes and merges the rotating journal with the memory tail so ring eviction does not erase still-retained evidence; journal recovery retries automatically with bounded backoff.
+
+Snapshot providers remain beside the subsystem that owns the state they summarize. The coordinator passes project/task capture scope into those bounded metadata-only projections, and `doctor` derives correspondingly scoped findings without repairing state or becoming another state owner. The runtime exposes authenticated loopback-only diagnostic routes using the private capability in its on-disk descriptor. `quarterdeck diagnostics ...` discovers the active or most recent instance from that descriptor; finalized runtimes remain inspectable through their journal even after the server is gone.
+
+The browser recorder starts independently of the Diagnostics panel. It retains essential browser lifecycle, persistence, connectivity, and error evidence, batches candidates through a per-connection capability, and keeps a bounded session-storage tail for reconnects. The panel is a viewer and capture controller; while open, its exact connection opts into bounded live timeline delivery, and closing it opts out. Temporary deep recording admits scoped lower-level candidates for at most 15 minutes and expires automatically; panel delivery subscription does not enable or disable recording.
+
+The isolated agent lab selects the richer `agent-lab` admission profile automatically and feeds the same bundle writer. Its bundle can safely add synthetic terminal viewport text, fixture state, Git diffs, Playwright action transcripts, screenshots, traces, videos, and process logs. Production capture never treats that lab exception as permission to collect user content.
 
 ## Frontend Architecture
 
@@ -202,7 +212,7 @@ The frontend is also easier to navigate if you think in responsibilities instead
 
 Providers in `web-ui/src/providers/` own broad UI state domains. `ProjectProvider` owns project navigation, stream state, hydration, and project sync. `ProjectRuntimeProvider` owns project-scoped runtime config and onboarding/access gates. Board, dialog, git, terminal, and interaction providers layer on top of that project foundation.
 
-Hooks in `web-ui/src/hooks/` are where most domain logic lives. Hooks are organized by domain subdirectory: `app`, `board`, `debug`, `git`, `notifications`, `project`, `search`, `settings`, and `terminal`. If you are looking for "how does this behavior actually work?", the answer is usually in a hook or its pure companion domain module, not a component.
+Hooks in `web-ui/src/hooks/` are where most domain logic lives. Hooks are organized by domain subdirectory: `app`, `board`, `diagnostics`, `debug`, `git`, `notifications`, `project`, `search`, `settings`, and `terminal`. `diagnostics` owns the flight-recorder UI and capture controls; `debug` is limited to explicitly enabled developer tools. If you are looking for "how does this behavior actually work?", the answer is usually in a hook or its pure companion domain module, not a component.
 
 Components in `web-ui/src/components/` are mostly rendering and composition. Good frontend changes often mean moving runtime-aware logic into hooks and leaving the component to render a view model.
 

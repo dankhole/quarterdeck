@@ -17,8 +17,9 @@ export function DiagnosticsSection(): React.ReactElement {
 		<>
 			<h6 className="font-semibold text-text-primary mt-4 mb-1">Diagnostics</h6>
 			<p className="text-text-secondary text-[13px] mt-0 mb-0">
-				Press <kbd className="font-mono text-xs bg-surface-3 px-1 rounded">Cmd+Shift+D</kbd> to toggle the log
-				panel. The log level can be changed from the panel header.
+				Press <kbd className="font-mono text-xs bg-surface-3 px-1 rounded">Cmd+Shift+D</kbd> to toggle the
+				Diagnostics panel. Console verbosity can be changed from the Timeline tab without changing flight-recorder
+				capture.
 			</p>
 		</>
 	);

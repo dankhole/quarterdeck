@@ -1,3 +1,5 @@
+import { getRuntimeSessionWorkColumn } from "@runtime-contract";
+
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { getTaskColumnId, moveTaskToColumn } from "@/state/board-state";
 import type { BoardData } from "@/types";
@@ -20,7 +22,8 @@ export function resolveSessionColumnProjectionMove(
 	summary: Pick<RuntimeTaskSessionSummary, "taskId" | "state">,
 ): SessionColumnProjectionMove | null {
 	const columnId = getTaskColumnId(board, summary.taskId);
-	if (summary.state === "awaiting_review" && columnId === "in_progress") {
+	const projectedColumnId = getRuntimeSessionWorkColumn(summary.state);
+	if (projectedColumnId === "review" && columnId === "in_progress") {
 		return {
 			taskId: summary.taskId,
 			fromColumnId: "in_progress",
@@ -28,7 +31,7 @@ export function resolveSessionColumnProjectionMove(
 			skipKickoff: false,
 		};
 	}
-	if (summary.state === "running" && columnId === "review") {
+	if (projectedColumnId === "in_progress" && columnId === "review") {
 		return {
 			taskId: summary.taskId,
 			fromColumnId: "review",

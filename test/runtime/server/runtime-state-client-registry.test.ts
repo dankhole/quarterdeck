@@ -3,10 +3,11 @@ import { WebSocket } from "ws";
 
 import { RuntimeStateClientRegistry } from "../../../src/server/runtime-state-client-registry";
 
-function createFakeSocket() {
+function createFakeSocket(bufferedAmount = 0) {
 	const sent: string[] = [];
 	const socket = {
 		readyState: WebSocket.OPEN,
+		bufferedAmount,
 		send: vi.fn((payload: string) => {
 			sent.push(payload);
 		}),
@@ -81,5 +82,34 @@ describe("RuntimeStateClientRegistry", () => {
 		expect(clientA.sent).toEqual(['{"type":"error","message":"everyone"}']);
 		expect(clientB.sent).toEqual(['{"type":"error","message":"everyone"}']);
 		stringify.mockRestore();
+	});
+
+	it("drops only best-effort diagnostic batches when a socket is backpressured", () => {
+		const registry = new RuntimeStateClientRegistry({ onProjectClientDisconnected: vi.fn() });
+		const client = createFakeSocket(600 * 1024);
+		const healthyClient = createFakeSocket();
+		registry.registerGlobalClient(client.socket);
+		registry.registerGlobalClient(healthyClient.socket);
+		registry.registerProjectClient("project-1", client.socket, "client-1");
+		registry.registerProjectClient("project-2", healthyClient.socket, "client-2");
+
+		expect(registry.sendDiagnosticToClient(client.socket, { type: "diagnostic_record_batch", records: [] })).toBe(
+			false,
+		);
+		registry.sendToClient(client.socket, { type: "error", message: "primary state remains deliverable" });
+
+		expect(client.sent).toEqual([JSON.stringify({ type: "error", message: "primary state remains deliverable" })]);
+		expect(registry.getDiagnosticSnapshot().diagnosticBackpressureDrops).toBe(1);
+		expect(registry.getDiagnosticSnapshot({ projectId: "project-1", taskId: "task-1" })).toMatchObject({
+			globalClientCount: 1,
+			projectClientCount: 1,
+			diagnosticBackpressureDrops: 1,
+		});
+		expect(registry.getDiagnosticSnapshot({ projectId: "project-2" }).diagnosticBackpressureDrops).toBe(0);
+		expect(registry.getDiagnosticSnapshot({ taskId: "task-1" })).toMatchObject({
+			globalClientCount: 0,
+			projectClientCount: 0,
+			diagnosticBackpressureDrops: 0,
+		});
 	});
 });

@@ -1,6 +1,8 @@
 import { WebSocket } from "ws";
 
-import type { RuntimeStateStreamMessage } from "../core";
+import type { DiagnosticCaptureScope, RuntimeStateStreamMessage } from "../core";
+
+const MAX_DIAGNOSTIC_SOCKET_BUFFERED_BYTES = 512 * 1024;
 
 export interface DisconnectProjectClientsOptions {
 	closeClientPayload?: RuntimeStateStreamMessage;
@@ -13,12 +15,23 @@ export interface CreateRuntimeStateClientRegistryDependencies {
 interface RuntimeStateProjectClient {
 	projectId: string;
 	clientId: string;
+	connectedAt: number;
+}
+
+export interface RuntimeStateClientRegistryDiagnosticSnapshot {
+	globalClientCount: number;
+	projectClientCount: number;
+	projects: Array<{ projectId: string; clientCount: number }>;
+	clients: Array<{ projectId: string; clientId: string; connectedAt: number }>;
+	diagnosticBackpressureDrops: number;
 }
 
 export class RuntimeStateClientRegistry {
 	private readonly clientsByProject = new Map<string, Set<WebSocket>>();
 	private readonly allClients = new Set<WebSocket>();
 	private readonly clientToProject = new Map<WebSocket, RuntimeStateProjectClient>();
+	private readonly diagnosticBackpressureDropsByClient = new WeakMap<WebSocket, number>();
+	private diagnosticBackpressureDrops = 0;
 
 	constructor(private readonly deps: CreateRuntimeStateClientRegistryDependencies) {}
 
@@ -38,7 +51,7 @@ export class RuntimeStateClientRegistry {
 		const projectClients = this.clientsByProject.get(projectId) ?? new Set<WebSocket>();
 		projectClients.add(client);
 		this.clientsByProject.set(projectId, projectClients);
-		this.clientToProject.set(client, { projectId, clientId });
+		this.clientToProject.set(client, { projectId, clientId, connectedAt: Date.now() });
 	}
 
 	removeClient(client: WebSocket): void {
@@ -104,6 +117,67 @@ export class RuntimeStateClientRegistry {
 		for (const client of this.allClients) {
 			this.send(client, message);
 		}
+	}
+
+	sendToClient(client: WebSocket, payload: RuntimeStateStreamMessage): void {
+		const message = this.serialize(payload);
+		if (message !== null) this.send(client, message);
+	}
+
+	sendDiagnosticToClient(client: WebSocket, payload: RuntimeStateStreamMessage): boolean {
+		if (client.readyState !== WebSocket.OPEN) return false;
+		if (client.bufferedAmount > MAX_DIAGNOSTIC_SOCKET_BUFFERED_BYTES) {
+			this.diagnosticBackpressureDrops += 1;
+			this.diagnosticBackpressureDropsByClient.set(
+				client,
+				(this.diagnosticBackpressureDropsByClient.get(client) ?? 0) + 1,
+			);
+			return false;
+		}
+		const message = this.serialize(payload);
+		if (message === null) return false;
+		try {
+			client.send(message);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	forEachClient(callback: (client: WebSocket) => void): void {
+		for (const client of this.allClients) callback(client);
+	}
+
+	getDiagnosticSnapshot(scope: Readonly<DiagnosticCaptureScope> = {}): RuntimeStateClientRegistryDiagnosticSnapshot {
+		const scopedProjectClients =
+			scope.taskId && !scope.projectId
+				? []
+				: Array.from(this.clientToProject.entries()).filter(
+						([, client]) => !scope.projectId || client.projectId === scope.projectId,
+					);
+		const clients = scopedProjectClients.map(([, client]) => client);
+		const projects =
+			scope.taskId && !scope.projectId
+				? []
+				: Array.from(this.clientsByProject.entries()).filter(
+						([projectId]) => !scope.projectId || projectId === scope.projectId,
+					);
+		return {
+			globalClientCount: scope.projectId || scope.taskId ? clients.length : this.allClients.size,
+			projectClientCount: clients.length,
+			projects: projects.map(([projectId, projectClients]) => ({
+				projectId,
+				clientCount: projectClients.size,
+			})),
+			clients: clients.map((client) => ({ ...client })),
+			diagnosticBackpressureDrops:
+				scope.projectId || scope.taskId
+					? scopedProjectClients.reduce(
+							(total, [socket]) => total + (this.diagnosticBackpressureDropsByClient.get(socket) ?? 0),
+							0,
+						)
+					: this.diagnosticBackpressureDrops,
+		};
 	}
 
 	terminateAllClients(): void {

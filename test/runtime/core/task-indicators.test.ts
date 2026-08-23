@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
-import { deriveTaskIndicatorState, isPermissionActivity } from "../../../src/core";
+import { deriveTaskIndicatorState, getRuntimeSessionWorkColumn, isPermissionActivity } from "../../../src/core";
 import { createTestTaskHookActivity, createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 function makeSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
@@ -40,6 +40,14 @@ describe("isPermissionActivity", () => {
 				conversationSummaryText: null,
 			}),
 		).toBe(true);
+	});
+});
+
+describe("getRuntimeSessionWorkColumn", () => {
+	it("centralizes the board projection for runtime-owned work states", () => {
+		expect(getRuntimeSessionWorkColumn("running")).toBe("in_progress");
+		expect(getRuntimeSessionWorkColumn("awaiting_review")).toBe("review");
+		expect(getRuntimeSessionWorkColumn("idle")).toBeNull();
 	});
 });
 

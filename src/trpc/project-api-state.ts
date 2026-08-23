@@ -1,5 +1,12 @@
+import { randomUUID } from "node:crypto";
+
 import { TRPCError } from "@trpc/server";
-import { parseWorktreeDeleteRequest, parseWorktreeEnsureRequest, pruneOrphanSessionsForPersist } from "../core";
+import {
+	normalizeDiagnosticErrorClass,
+	parseWorktreeDeleteRequest,
+	parseWorktreeEnsureRequest,
+	pruneOrphanSessionsForPersist,
+} from "../core";
 import { ProjectStateConflictError, saveProjectState } from "../state";
 import { generateTaskTitle } from "../title";
 import { deleteTaskWorktree, ensureTaskWorktreeIfDoesntExist, getTaskRepositoryInfo } from "../workdir";
@@ -77,10 +84,32 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 		},
 
 		loadState: async (projectScope) => {
-			return await ctx.deps.data.buildProjectStateSnapshot(projectScope.projectId, projectScope.projectPath);
+			try {
+				const state = await ctx.deps.data.buildProjectStateSnapshot(
+					projectScope.projectId,
+					projectScope.projectPath,
+				);
+				return state;
+			} catch (error) {
+				ctx.deps.diagnostics?.recordEvent(
+					"project.state_load_failed",
+					{ errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError" },
+					{ projectId: projectScope.projectId },
+					{ level: "error", essential: true },
+				);
+				throw error;
+			}
 		},
 
 		saveState: async (projectScope, input) => {
+			const operationId = randomUUID();
+			const startedAt = Date.now();
+			ctx.deps.diagnostics?.recordEvent(
+				"project.board_save_started",
+				{ expectedRevision: input.expectedRevision },
+				{ projectId: projectScope.projectId, operationId },
+				{ essential: true },
+			);
 			try {
 				const terminalManager = await ctx.deps.terminals.ensureTerminalManagerForProject(
 					projectScope.projectId,
@@ -95,6 +124,16 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 					expectedRevision: input.expectedRevision,
 				});
 				ctx.applyEffects(createBoardStateSavedEffects(projectScope));
+				ctx.deps.diagnostics?.recordEvent(
+					"project.board_save_completed",
+					{
+						expectedRevision: input.expectedRevision,
+						resultRevision: response.revision,
+						durationMs: Date.now() - startedAt,
+					},
+					{ projectId: projectScope.projectId, operationId },
+					{ essential: true },
+				);
 
 				// Fire-and-forget: generate titles for any new cards that have title === null.
 				// Cap concurrency to avoid flooding the LLM proxy when many cards are created at once.
@@ -135,12 +174,31 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 				return response;
 			} catch (error) {
 				if (error instanceof ProjectStateConflictError) {
+					ctx.deps.diagnostics?.recordEvent(
+						"project.board_save_conflict",
+						{
+							expectedRevision: input.expectedRevision,
+							currentRevision: error.currentRevision,
+							durationMs: Date.now() - startedAt,
+						},
+						{ projectId: projectScope.projectId, operationId },
+						{ level: "warn", essential: true },
+					);
 					throw new TRPCError({
 						code: "CONFLICT",
 						message: error.message,
 						cause: { currentRevision: error.currentRevision },
 					});
 				}
+				ctx.deps.diagnostics?.recordEvent(
+					"project.board_save_failed",
+					{
+						errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+						durationMs: Date.now() - startedAt,
+					},
+					{ projectId: projectScope.projectId, operationId },
+					{ level: "error", essential: true },
+				);
 				throw error;
 			}
 		},

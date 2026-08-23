@@ -4,9 +4,12 @@ import { Toaster } from "sonner";
 import App from "@/App";
 import { AppErrorBoundary } from "@/components/app";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { installGlobalErrorCapture } from "@/utils/global-error-capture";
+import { initializeBrowserDiagnostics, recordBrowserLog } from "@/diagnostics";
+import { installGlobalErrorCapture, setGlobalErrorCallback } from "@/utils/global-error-capture";
 import "@/styles/globals.css";
 
+initializeBrowserDiagnostics();
+setGlobalErrorCallback(recordBrowserLog);
 installGlobalErrorCapture();
 
 const root = document.getElementById("root");

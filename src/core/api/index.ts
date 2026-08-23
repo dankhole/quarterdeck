@@ -1,6 +1,7 @@
 export * from "./board.js";
 export * from "./branch-base-ref.js";
 export * from "./config.js";
+export * from "./diagnostics.js";
 export * from "./git-history.js";
 export * from "./git-merge.js";
 export * from "./git-sync.js";

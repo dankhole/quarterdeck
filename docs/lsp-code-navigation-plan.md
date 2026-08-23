@@ -139,7 +139,7 @@ Language servers are the heavy part. Guardrails should be part of the MVP, not f
 - Debounce `didChange` for large edits.
 - Do not sync files above the existing editor safety limits.
 - Keep diagnostics disabled or ignored in the first milestone unless explicitly needed.
-- Make status observable in debug logs and, later, a small settings/status surface.
+- Make status observable through bounded unified diagnostic events and a snapshot provider, then add a small settings/status surface if dogfood needs one.
 
 Expected cost:
 

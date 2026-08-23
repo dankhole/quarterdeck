@@ -1049,4 +1049,31 @@ describe("ProjectMetadataMonitor", () => {
 
 		monitor.close();
 	});
+
+	it("reports remote fetch failures through the owning metadata subsystem", async () => {
+		workdirMocks.runGit.mockResolvedValue({ ok: false, stdout: "", stderr: "offline", exitCode: 1 });
+		const onRemoteFetchCompleted = vi.fn();
+		const monitor = createProjectMetadataMonitor({
+			onMetadataUpdated: vi.fn(),
+			onRemoteFetchCompleted,
+		});
+
+		await monitor.connectProject({
+			projectId: "project-1",
+			projectPath: "/repo-1",
+			board: createBoard([]),
+		});
+		await vi.waitFor(() => {
+			expect(onRemoteFetchCompleted).toHaveBeenCalledWith(
+				"project-1",
+				expect.objectContaining({ succeeded: false, errorClass: "GitCommandFailed" }),
+			);
+		});
+		expect(monitor.getDiagnosticSnapshot().projects[0]?.remoteFetch).toMatchObject({
+			lastSucceeded: false,
+			lastErrorClass: "GitCommandFailed",
+		});
+
+		monitor.close();
+	});
 });

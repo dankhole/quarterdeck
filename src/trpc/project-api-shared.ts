@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import type {
 	IProjectDataProvider,
@@ -10,12 +11,14 @@ import type {
 	RuntimeWorkdirChangesMode,
 	TaskResourceOperationRunner,
 } from "../core";
-import { createTaggedLogger } from "../core";
+import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
+import type { RuntimeDiagnostics } from "../diagnostics";
 import { loadProjectState } from "../state";
 import { isMissingTaskWorktreeError, resolveTaskWorkingDirectory } from "../workdir";
 import { applyRuntimeMutationEffects } from "./runtime-mutation-effects";
 
 const log = createTaggedLogger("project-api-effects");
+export const GIT_DIAGNOSTIC_SLOW_MS = 2_000;
 
 // ── Dependencies ────────────────────────────────────────────────────────────────
 
@@ -33,6 +36,7 @@ export interface CreateProjectApiDependencies {
 		| "requestHomeRefresh"
 	>;
 	data: Pick<IProjectDataProvider, "buildProjectStateSnapshot">;
+	diagnostics?: RuntimeDiagnostics;
 	taskResourceOperations: TaskResourceOperationRunner;
 }
 
@@ -54,6 +58,61 @@ export function createProjectApiContext(deps: CreateProjectApiDependencies): Pro
 	};
 
 	return { deps, applyEffects };
+}
+
+function diagnosticOperationOutcome(result: unknown): "succeeded" | "conflict" | "rejected" | "completed" {
+	if (typeof result !== "object" || result === null || !("ok" in result) || typeof result.ok !== "boolean") {
+		return "completed";
+	}
+	if ("pushOk" in result && result.pushOk === false) return "rejected";
+	if (result.ok) return "succeeded";
+	if ("conflictState" in result && result.conflictState !== null && result.conflictState !== undefined)
+		return "conflict";
+	if ("conflicted" in result && result.conflicted === true) return "conflict";
+	return "rejected";
+}
+
+export async function observeProjectOperation<T>(
+	ctx: ProjectApiContext,
+	projectScope: { projectId: string },
+	operation: string,
+	options: { taskId?: string | null },
+	perform: () => Promise<T>,
+): Promise<T> {
+	const operationId = randomUUID();
+	const context = {
+		projectId: projectScope.projectId,
+		...(options.taskId ? { taskId: options.taskId } : {}),
+		operationId,
+	};
+	const startedAt = Date.now();
+	ctx.deps.diagnostics?.recordEvent("git.operation_started", { operation }, context, { essential: false });
+	try {
+		const result = await perform();
+		const outcome = diagnosticOperationOutcome(result);
+		const durationMs = Date.now() - startedAt;
+		const abnormal = outcome === "rejected" || outcome === "conflict";
+		const slow = durationMs >= GIT_DIAGNOSTIC_SLOW_MS;
+		ctx.deps.diagnostics?.recordEvent(
+			slow && !abnormal ? "git.operation_slow" : "git.operation_completed",
+			{ operation, outcome, durationMs },
+			context,
+			{ level: abnormal || slow ? "warn" : "info", essential: abnormal || slow },
+		);
+		return result;
+	} catch (error) {
+		ctx.deps.diagnostics?.recordEvent(
+			"git.operation_failed",
+			{
+				operation,
+				durationMs: Date.now() - startedAt,
+				errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+			},
+			context,
+			{ level: "error", essential: true },
+		);
+		throw error;
+	}
 }
 
 // ── Constants ───────────────────────────────────────────────────────────────────

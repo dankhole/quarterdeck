@@ -14,6 +14,12 @@ export interface TerminalViewerRestoreState {
 
 export interface TerminalViewerState {
 	clientId: string;
+	ioConnectionId: string | null;
+	controlConnectionId: string | null;
+	ioConnectedAt: number | null;
+	controlConnectedAt: number | null;
+	lastProtocolActivityAt: number | null;
+	restoreStartedAt: number | null;
 	restore: TerminalViewerRestoreState;
 	ioState: IoOutputState | null;
 	ioSocket: WebSocket | null;
@@ -30,6 +36,12 @@ export interface TerminalStreamState {
 export function createTerminalViewerState(clientId: string): TerminalViewerState {
 	return {
 		clientId,
+		ioConnectionId: null,
+		controlConnectionId: null,
+		ioConnectedAt: null,
+		controlConnectedAt: null,
+		lastProtocolActivityAt: null,
+		restoreStartedAt: null,
 		restore: {
 			pendingOutputChunks: [],
 			restoreComplete: false,

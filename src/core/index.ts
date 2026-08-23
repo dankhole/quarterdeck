@@ -62,13 +62,10 @@ export {
 	_resetLoggerForTests,
 	createTaggedLogger,
 	getLogLevel,
-	getRecentLogEntries,
-	isDebugLoggingEnabled,
-	type LogEntry,
 	type LogLevel,
-	onLogEntry,
-	setDebugLoggingEnabled,
+	type RuntimeDiagnosticLogSink,
 	setLogLevel,
+	setRuntimeDiagnosticLogSink,
 	type TaggedLogger,
 } from "./runtime-logger";
 export type {

@@ -12,7 +12,13 @@ import {
 	resolveConflictFile as gitResolveConflictFile,
 } from "../workdir";
 import type { RuntimeTrpcContext } from "./app-router-context";
-import { EMPTY_GIT_SUMMARY, errorMessage, type ProjectApiContext, resolveWorkingDir } from "./project-api-shared";
+import {
+	EMPTY_GIT_SUMMARY,
+	errorMessage,
+	observeProjectOperation,
+	type ProjectApiContext,
+	resolveWorkingDir,
+} from "./project-api-shared";
 import { createProjectStateUpdatedEffects } from "./runtime-mutation-effects";
 
 type ConflictOps = Pick<
@@ -25,7 +31,7 @@ type ConflictOps = Pick<
 >;
 
 export function createConflictOps(ctx: ProjectApiContext): ConflictOps {
-	return {
+	const operations: ConflictOps = {
 		getConflictFiles: async (projectScope, input) => {
 			try {
 				const cwd = await resolveWorkingDir(
@@ -103,5 +109,33 @@ export function createConflictOps(ctx: ProjectApiContext): ConflictOps {
 				} satisfies RuntimeConflictAbortResponse;
 			}
 		},
+	};
+
+	return {
+		...operations,
+		resolveConflictFile: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"conflict_resolve_file",
+				{ taskId: input.taskId },
+				async () => await operations.resolveConflictFile(scope, input),
+			),
+		continueConflictResolution: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"conflict_continue",
+				{ taskId: input.taskId },
+				async () => await operations.continueConflictResolution(scope, input),
+			),
+		abortConflictResolution: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"conflict_abort",
+				{ taskId: input.taskId },
+				async () => await operations.abortConflictResolution(scope, input),
+			),
 	};
 }

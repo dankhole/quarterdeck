@@ -17,7 +17,9 @@ Each `start` creates:
 - an atomic manifest and stop-request control channel;
 - continuously captured supervisor, runtime, and web logs;
 - a named, in-memory Playwright browser session restricted to loopback origins;
-- semantic page snapshots, screenshots, traces, videos, console/network records, and state/Git snapshots under one artifact directory.
+- the unified diagnostic recorder in its bounded rich `agent-lab` profile, enabled automatically for the run;
+- semantic page snapshots, screenshots, traces, videos, console/network records, and a marked browser-action transcript;
+- canonical diagnostic bundles at ready, failure, pre-shutdown, final, and explicitly requested checkpoints.
 
 The runtime and browser still use Quarterdeck's real project registry, tRPC/WebSocket transport, board persistence, worktree lifecycle, Codex adapter, PTY, native-hook ingest, session state machine, xterm renderer, Git APIs, and Files APIs. Only the external coding agent is replaced.
 
@@ -53,7 +55,17 @@ npm run --silent agent:lab -- stop <run-id> --json
 npm run --silent agent:lab -- list --json
 ```
 
-`snapshot` copies bounded JSON state and captures Git status, recent log, working-tree diff, and staged diff. Shutdown closes the named browser session, captures a final snapshot, terminates both child process trees, and removes temporary files unless `--keep-temp` was selected. Evidence under `test-results/agent-lab/<run-id>/` is retained.
+`snapshot` writes a canonical diagnostic bundle at `test-results/agent-lab/<run-id>/snapshots/<timestamp>-<checkpoint>/`. Start with its `manifest.json`, which hashes and indexes every retained artifact. In addition to the shared timeline, doctor findings, and live subsystem snapshots, the synthetic lab bundle can include:
+
+- the public lab manifest and checkpoint metadata;
+- bounded fixture state, excluding the private diagnostic descriptor/token directory;
+- Git status, recent log, working-tree diff, and staged diff for the main fixture and task worktrees;
+- supervisor, runtime, and web logs;
+- Playwright semantic snapshots, screenshots, traces, videos, console/network records, and browser actions available at that checkpoint.
+
+The supervisor automatically captures `ready`, `failure` when applicable, `pre-shutdown`, and `final`. The pre-shutdown checkpoint preserves the last connected browser snapshot. The supervisor then closes the browser, stops the web/runtime child trees, finalizes the lab manifest, and captures `final` from the stopped runtime's descriptor and crash-surviving journal while the disposable state still exists. Manual labels are normalized and de-duplicated so a checkpoint never overwrites an earlier one. A missing or timed-out provider produces a partial bundle with a warning instead of failing the run.
+
+Shutdown closes the named browser session, terminates both child process trees, finalizes and captures its offline evidence, and removes temporary files unless `--keep-temp` was selected. Evidence under `test-results/agent-lab/<run-id>/` is retained.
 
 ## Drive and visually inspect the UI
 
@@ -74,6 +86,8 @@ npm run --silent agent:browser -- -s=<session> press Enter
 
 Snapshots expose accessible roles, names, states, and stable action refs. Refresh the snapshot after navigation or a large state change rather than reusing stale refs.
 
+Every session-linked browser command is appended to `browser-actions.jsonl` with a stable action id, start/end timestamps, monotonic offset, bounded arguments, exit/signal/error outcome, and diagnostic mark ids immediately before and after the action. Artifact paths are rewritten to `$LAB_ARTIFACT`, temporary paths to `$LAB_TMP`, and repo paths to `$REPO`; unrelated absolute paths are replaced. Synthetic `fill`, `type`, and `eval` values may be retained because the lab forbids real data. This transcript is copied into each later canonical checkpoint so runtime events can be correlated with the exact browser action without relying on shell history.
+
 For visual debugging, save to an absolute path inside `browserOutputPath`, then inspect the PNG with the agent's local image-viewing capability:
 
 ```bash
@@ -84,11 +98,15 @@ npm run --silent agent:browser -- -s=<session> screenshot --filename=<browser-ou
 
 This lets an agent directly assess pixel-level spacing, clipping, layering, contrast, terminal paint, and responsive behavior. For intermittent failures, bracket the reproduction with `tracing-start` / `tracing-stop`, and inspect `console` plus `requests`. Playwright traces contain DOM snapshots, screenshots, console output, and network activity.
 
+The unified recorder cannot reconstruct historical pixels from a browser that was never screenshotted. Capture explicit last-good and failed-state PNGs when the problem is visual. The runtime/browser metadata snapshot can explain layout bounds, visibility, connection state, persistence state, and terminal metrics, but the PNG or Playwright trace remains visual truth.
+
 The lab also extends `window.__quarterdeckDumpTerminalState()` with bounded visible viewport lines. Query it through browser `eval` to correlate pixels with exact xterm buffer/session state:
 
 ```bash
 npm run --silent agent:browser -- -s=<session> eval "JSON.stringify(window.__quarterdeckDumpTerminalState?.())"
 ```
+
+The same terminal provider exists in production, but visible terminal lines are deliberately omitted there. Do not copy lab assumptions about terminal content into live-instance diagnostics.
 
 ## Deterministic fake agent
 
@@ -105,7 +123,7 @@ The interactive protocol includes `/needs-input`, `/working`, `/review`, `/write
 
 ## Automated regression suite
 
-`npm run web:e2e` uses the same supervisor with explicit CI ports. Playwright Test blocks non-loopback page requests, attaches browser console/network logs, and retains screenshots, video, and traces on failure. Functional smoke paths add the second synthetic repository through the browser manual-path prompt, verify the forbidden-launch log stays empty, and create/start a task through the fake agent until its card moves to Review.
+`npm run web:e2e` uses the same supervisor and allocates dynamic loopback ports before Playwright loads its configuration. CI can still pin them with `QUARTERDECK_E2E_RUNTIME_PORT` and `QUARTERDECK_E2E_WEB_PORT` when its runner requires explicit ports. Playwright Test blocks non-loopback page requests, attaches browser console/network logs, and retains screenshots, video, and traces on failure. Functional smoke paths add the second synthetic repository through the browser manual-path prompt, verify the forbidden-launch log stays empty, open the unified Diagnostics panel, and create/start a task through the fake agent until its card moves to Review.
 
 ## Failure reports
 
@@ -116,7 +134,7 @@ Include:
 3. last-good and failed screenshot paths;
 4. trace, console, and request evidence;
 5. runtime/web log excerpts;
-6. state/Git snapshot path;
+6. canonical checkpoint path and any doctor findings;
 7. whether the failure reproduces in a fresh run.
 
 This is enough for another agent to replay the failure without the original browser or runtime process.

@@ -145,7 +145,7 @@ import {
 	acquireForTask,
 	attachPoolContainer,
 	cancelWarmup,
-	collectTerminalDebugState,
+	collectTerminalDiagnosticState,
 	detachPoolContainer,
 	getSlotForTask,
 	getSlotRole,
@@ -205,7 +205,7 @@ describe("terminal-pool — lifecycle", () => {
 	describe("initPool", () => {
 		it("does not construct pooled terminals before the first pool demand", () => {
 			expect(TerminalSlotMock).not.toHaveBeenCalled();
-			expect(collectTerminalDebugState().registered.pool).toBe(0);
+			expect(collectTerminalDiagnosticState().registered.pool).toBe(0);
 		});
 
 		it("creates 4 slots all FREE", () => {
@@ -223,7 +223,7 @@ describe("terminal-pool — lifecycle", () => {
 			helperTextarea.className = "xterm-helper-textarea";
 			document.body.appendChild(helperTextarea);
 
-			const state = collectTerminalDebugState();
+			const state = collectTerminalDiagnosticState();
 
 			expect(typeof window.__quarterdeckDumpTerminalState).toBe("function");
 			expect(state.registered).toEqual({

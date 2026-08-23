@@ -1,5 +1,6 @@
 import type { Dispatch, MutableRefObject, ReactNode, SetStateAction } from "react";
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useEffect, useMemo } from "react";
+import { updateBrowserSnapshotContext } from "@/diagnostics";
 import { useDocumentVisibility } from "@/hooks/notifications";
 import { buildProjectNotificationProjection } from "@/hooks/notifications/project-notifications";
 import { type UseProjectNavigationResult, useProjectNavigation, useProjectSync } from "@/hooks/project";
@@ -42,8 +43,6 @@ export interface ProjectRuntimeStreamContextValue {
 	latestTaskReadyForReview: UseProjectNavigationResult["latestTaskReadyForReview"];
 	latestTaskTitleUpdate: UseProjectNavigationResult["latestTaskTitleUpdate"];
 	latestTaskBaseRefUpdate: UseProjectNavigationResult["latestTaskBaseRefUpdate"];
-	logLevel: UseProjectNavigationResult["logLevel"];
-	debugLogEntries: UseProjectNavigationResult["debugLogEntries"];
 	streamError: UseProjectNavigationResult["streamError"];
 	isRuntimeDisconnected: UseProjectNavigationResult["isRuntimeDisconnected"];
 	hasReceivedSnapshot: UseProjectNavigationResult["hasReceivedSnapshot"];
@@ -155,8 +154,6 @@ export function ProjectProvider({
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
 		latestTaskBaseRefUpdate,
-		logLevel,
-		debugLogEntries,
 		streamError,
 		isRuntimeDisconnected,
 		hasReceivedSnapshot,
@@ -209,6 +206,13 @@ export function ProjectProvider({
 		setCanPersistProjectState,
 	});
 
+	useEffect(() => {
+		updateBrowserSnapshotContext({
+			activeProjectId: currentProjectId,
+			boardRevision: projectRevision,
+		});
+	}, [currentProjectId, projectRevision]);
+
 	const navigationValue = useMemo<ProjectNavigationContextValue>(
 		() => ({
 			currentProjectId,
@@ -255,8 +259,6 @@ export function ProjectProvider({
 			latestTaskReadyForReview,
 			latestTaskTitleUpdate,
 			latestTaskBaseRefUpdate,
-			logLevel,
-			debugLogEntries,
 			streamError,
 			isRuntimeDisconnected,
 			hasReceivedSnapshot,
@@ -267,8 +269,6 @@ export function ProjectProvider({
 			latestTaskReadyForReview,
 			latestTaskTitleUpdate,
 			latestTaskBaseRefUpdate,
-			logLevel,
-			debugLogEntries,
 			streamError,
 			isRuntimeDisconnected,
 			hasReceivedSnapshot,

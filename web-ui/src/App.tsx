@@ -21,6 +21,7 @@ import { TextSearchOverlay } from "@/components/search/text-search-overlay";
 import { CardDetailView, TaskInlineCreateCard } from "@/components/task";
 import { DetailToolbar } from "@/components/terminal";
 import { createInitialBoardData } from "@/data/board-data";
+import { updateBrowserSnapshotContext } from "@/diagnostics";
 import {
 	useAppActionModels,
 	useAppSideEffects,
@@ -203,6 +204,10 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 	const terminal = useTerminalContext();
 	const interactions = useInteractionsContext();
 	const dialog = useDialogContext();
+
+	useEffect(() => {
+		updateBrowserSnapshotContext({ activeTaskId: selectedTaskId });
+	}, [selectedTaskId]);
 
 	// --- Store subscriptions + derived UI state ---
 

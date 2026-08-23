@@ -2,12 +2,14 @@ import { delimiter } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { _testing as browserActionTesting } from "../../scripts/agent-lab/browser-actions";
 import { buildAgentLabEnvironment } from "../../scripts/agent-lab/environment";
 import {
 	extractPromptArgument,
 	parseFakeAgentCommand,
 	resolveFakeAgentScenario,
 } from "../../scripts/agent-lab/fake-agent-protocol";
+import { resolveLoopbackPort } from "../../scripts/agent-lab/loopback-port";
 import { assertSafeRunId, createAgentLabRunId, getAgentLabBrowserCachePath } from "../../scripts/agent-lab/paths";
 
 describe("agent-lab browser cache", () => {
@@ -95,5 +97,33 @@ describe("agent-lab run ids", () => {
 		expect(runId).toMatch(/^visual-debug-20260823T123456Z-[a-f0-9]{6}$/);
 		expect(assertSafeRunId(runId)).toBe(runId);
 		expect(() => assertSafeRunId("../escape")).toThrow("Invalid agent-lab run id");
+	});
+});
+
+describe("agent-lab loopback ports", () => {
+	it("allocates an ephemeral port through the shared supervisor boundary", async () => {
+		const port = await resolveLoopbackPort(null, "test");
+		expect(port).toBeGreaterThan(0);
+		expect(port).toBeLessThanOrEqual(65_535);
+	});
+});
+
+describe("agent-lab browser action summaries", () => {
+	it("keeps synthetic interaction text while aliasing lab paths", () => {
+		const manifest = {
+			artifactDir: "/repo/test-results/agent-lab/run-1",
+			tempRoot: "/tmp/lab-run",
+			repoRoot: "/repo",
+		} as Parameters<typeof browserActionTesting.summarizeArguments>[0];
+		const summary = browserActionTesting.summarizeArguments(manifest, [
+			"-s=qd-run-1",
+			"fill",
+			"e12",
+			"synthetic prompt",
+			"--filename=/repo/test-results/agent-lab/run-1/browser/checkpoint.png",
+		]);
+		expect(summary).toContain("synthetic prompt");
+		expect(summary).toContain("--filename=$LAB_ARTIFACT/browser/checkpoint.png");
+		expect(summary.join(" ")).not.toContain("/repo/test-results");
 	});
 });

@@ -14,6 +14,7 @@ import type {
 	RuntimeTaskSessionSummary,
 } from "../core";
 import { createTaggedLogger, pruneOrphanSessionsForBroadcast } from "../core";
+import type { RuntimeDiagnostics } from "../diagnostics";
 import {
 	isUnderWorktreesHome,
 	listProjectIndexEntries,
@@ -26,6 +27,7 @@ import {
 } from "../state";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../terminal";
 import { createProjectOrphanMaintenanceTimer, type ProjectOrphanMaintenanceTimer } from "./project-orphan-maintenance";
+import { ProjectStateDiagnosticTracker } from "./project-state-diagnostics";
 import { type StartupSessionRecoveryCandidate, StartupSessionRecoveryCoordinator } from "./startup-session-recovery";
 import { launchPreparedTaskSession, prepareTaskSessionStart } from "./task-session-start-service";
 
@@ -96,6 +98,7 @@ export interface CreateProjectRegistryDependencies {
 	pathIsDirectory: (path: string) => Promise<boolean>;
 	waitForStartupAgentCleanup?: () => Promise<void>;
 	onTerminalManagerReady?: (projectId: string, manager: TerminalSessionManager) => void;
+	diagnostics?: RuntimeDiagnostics;
 }
 
 export interface DisposeProjectRegistryOptions {
@@ -286,6 +289,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		activeProjectId && activeProjectPath ? [[activeProjectId, activeProjectPath]] : [],
 	);
 	const projectTaskCountsByProjectId = new Map<string, RuntimeProjectTaskCounts>();
+	const projectStateDiagnostics = new ProjectStateDiagnosticTracker();
 	const terminalManagersByProjectId = new Map<string, TerminalSessionManager>();
 	const terminalManagerLoadPromises = new Map<string, Promise<TerminalSessionManager>>();
 	const projectOrphanMaintenance: ProjectOrphanMaintenanceTimer = createProjectOrphanMaintenanceTimer({
@@ -296,8 +300,10 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	}
 
 	const rememberProject = (projectId: string, repoPath: string): void => {
+		const wasKnown = projectPathsById.has(projectId);
 		projectPathsById.set(projectId, repoPath);
 		projectOrphanMaintenance.start();
+		if (!wasKnown) deps.diagnostics?.recordEvent("project.registered", {}, { projectId }, { essential: true });
 	};
 
 	const stopOrphanMaintenanceIfIdle = (): void => {
@@ -332,7 +338,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		}
 		const loading = (async () => {
 			const store = new InMemorySessionSummaryStore();
-			const manager = new TerminalSessionManager(store);
+			const manager = new TerminalSessionManager(store, { projectId, diagnostics: deps.diagnostics });
 			let hydratedSessionCount = 0;
 			try {
 				const existingProject = await loadProjectState(repoPath);
@@ -404,8 +410,15 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			terminalManagerLoadPromises.delete(projectId);
 		}
 		projectTaskCountsByProjectId.delete(projectId);
+		projectStateDiagnostics.remove(projectId);
 		const projectPath = projectPathsById.get(projectId) ?? null;
 		projectPathsById.delete(projectId);
+		deps.diagnostics?.recordEvent(
+			"project.removed",
+			{ stoppedSessions: options?.stopTerminalSessions !== false },
+			{ projectId },
+			{ essential: true },
+		);
 		stopOrphanMaintenanceIfIdle();
 		return {
 			terminalManager,
@@ -455,6 +468,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			response.sessions[summary.taskId] = summary;
 		}
 		response.sessions = pruneOrphanSessionsForBroadcast(response.sessions, response.board);
+		projectStateDiagnostics.observe(projectId, response);
 		return response;
 	};
 
@@ -660,6 +674,33 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		await ensureTerminalManagerForProject(initialProject.projectId, initialProject.repoPath);
 	}
 
+	const disposeDiagnosticProvider = deps.diagnostics?.registerSnapshotProvider({
+		name: "projects",
+		capture: (scope) => {
+			const sessions = Array.from(terminalManagersByProjectId.entries()).flatMap(([projectId, manager]) =>
+				!scope.projectId || projectId === scope.projectId ? manager.getDiagnosticSnapshot(scope).sessions : [],
+			);
+			const taskProjectIds = new Set(sessions.map((session) => session.projectId));
+			const visibleProjectIds = Array.from(projectPathsById.keys()).filter(
+				(projectId) =>
+					(!scope.projectId || projectId === scope.projectId) &&
+					(!scope.taskId || Boolean(scope.projectId) || taskProjectIds.has(projectId)),
+			);
+			return {
+				activeProjectId: activeProjectId && visibleProjectIds.includes(activeProjectId) ? activeProjectId : null,
+				managedProjects: visibleProjectIds.map((projectId) => ({
+					projectId,
+					hasTerminalManager: terminalManagersByProjectId.has(projectId),
+				})),
+				sessions,
+			};
+		},
+	});
+	const disposeProjectStateDiagnosticProvider = deps.diagnostics?.registerSnapshotProvider({
+		name: "project_state",
+		capture: (scope) => projectStateDiagnostics.getSnapshot(scope),
+	});
+
 	return {
 		getActiveProjectId: () => activeProjectId,
 		getActiveProjectPath: () => activeProjectPath,
@@ -683,6 +724,8 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		resolveProjectForStream,
 		resumeInterruptedSessions,
 		stopMaintenance: () => {
+			disposeDiagnosticProvider?.();
+			disposeProjectStateDiagnosticProvider?.();
 			startupRecoveryCoordinator.close();
 			projectOrphanMaintenance.stop();
 		},

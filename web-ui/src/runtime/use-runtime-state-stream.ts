@@ -1,4 +1,5 @@
 import { useEffect, useReducer } from "react";
+import { handleBrowserDiagnosticsStreamMessage } from "@/diagnostics";
 import { consumeProjectPreload } from "@/runtime/project-preload-cache";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import {
@@ -13,7 +14,6 @@ import {
 } from "@/runtime/runtime-state-stream-transport";
 import { resolveStreamMessage } from "@/runtime/runtime-stream-dispatch";
 import type {
-	RuntimeDebugLogEntry,
 	RuntimeProjectMetadata,
 	RuntimeProjectStateResponse,
 	RuntimeProjectSummary,
@@ -31,8 +31,6 @@ export interface UseRuntimeStateStreamResult {
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	latestTaskTitleUpdate: TaskTitleUpdate | null;
 	latestTaskBaseRefUpdate: TaskBaseRefUpdate | null;
-	logLevel: "debug" | "info" | "warn" | "error";
-	debugLogEntries: RuntimeDebugLogEntry[];
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
@@ -66,6 +64,9 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 				});
 			},
 			onMessage: (payload) => {
+				if (handleBrowserDiagnosticsStreamMessage(payload)) {
+					return;
+				}
 				const result = resolveStreamMessage(payload, {
 					activeProjectId,
 				});
@@ -98,8 +99,6 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 		latestTaskReadyForReview: state.latestTaskReadyForReview,
 		latestTaskTitleUpdate: state.latestTaskTitleUpdate,
 		latestTaskBaseRefUpdate: state.latestTaskBaseRefUpdate,
-		logLevel: state.logLevel,
-		debugLogEntries: state.debugLogEntries,
 		streamError: state.streamError,
 		isRuntimeDisconnected: state.isRuntimeDisconnected,
 		hasReceivedSnapshot: state.hasReceivedSnapshot,

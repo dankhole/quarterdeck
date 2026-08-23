@@ -1,6 +1,6 @@
 import type { WebSocket } from "ws";
 
-import { createTaggedLogger } from "../core";
+import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
 import type { TerminalSessionService } from "./terminal-session-service";
 import { SNAPSHOT_DEFER_TIMEOUT_MS, sendControlMessage } from "./terminal-ws-protocol";
 import type { TerminalViewerState } from "./terminal-ws-types";
@@ -22,9 +22,25 @@ interface HandleResizeRequest extends ViewerSessionRequest {
 	force?: boolean;
 }
 
+export interface TerminalRestoreSnapshotObservation {
+	taskId: string;
+	clientId: string;
+	connectionId: string | null;
+	durationMs: number;
+	snapshotBytes: number;
+}
+
+export interface TerminalWsRestoreCoordinatorObserver {
+	onSnapshotSent?: (observation: TerminalRestoreSnapshotObservation) => void;
+	onSnapshotFailed?: (observation: TerminalRestoreSnapshotObservation & { errorClass: string }) => void;
+}
+
 export class TerminalWsRestoreCoordinator {
+	constructor(private readonly observer: TerminalWsRestoreCoordinatorObserver = {}) {}
+
 	beginInitialRestore({ viewerState, ws, terminalManager, taskId }: ViewerSessionRequest): void {
 		this.resetRestoreState(viewerState);
+		viewerState.restoreStartedAt = Date.now();
 		viewerState.restore.deferredSnapshotTimer = setTimeout(() => {
 			viewerState.restore.deferredSnapshotTimer = null;
 			void this.sendRestoreSnapshot({ viewerState, ws, terminalManager, taskId });
@@ -53,11 +69,14 @@ export class TerminalWsRestoreCoordinator {
 
 	requestRestore({ viewerState, ws, terminalManager, taskId }: ViewerSessionRequest): void {
 		this.resetRestoreState(viewerState);
+		viewerState.restoreStartedAt = Date.now();
 		void this.sendRestoreSnapshot({ viewerState, ws, terminalManager, taskId });
 	}
 
 	completeRestore(viewerState: TerminalViewerState): void {
 		viewerState.restore.restoreComplete = true;
+		viewerState.restoreStartedAt = null;
+		viewerState.lastProtocolActivityAt = Date.now();
 		this.flushPendingOutput(viewerState);
 	}
 
@@ -90,6 +109,7 @@ export class TerminalWsRestoreCoordinator {
 		this.clearDeferredSnapshot(viewerState);
 		viewerState.restore.restoreComplete = false;
 		viewerState.restore.pendingOutputChunks = [];
+		viewerState.lastProtocolActivityAt = Date.now();
 	}
 
 	private flushPendingOutput(viewerState: TerminalViewerState): void {
@@ -134,7 +154,14 @@ export class TerminalWsRestoreCoordinator {
 				cols: snapshot?.cols ?? null,
 				rows: snapshot?.rows ?? null,
 			});
-		} catch {
+			this.observer.onSnapshotSent?.({
+				taskId,
+				clientId: viewerState.clientId,
+				connectionId: viewerState.controlConnectionId,
+				durationMs: totalMs,
+				snapshotBytes: Buffer.byteLength(snapshot?.snapshot ?? ""),
+			});
+		} catch (error) {
 			if (viewerState.controlSocket !== ws) {
 				return;
 			}
@@ -143,6 +170,14 @@ export class TerminalWsRestoreCoordinator {
 				snapshot: "",
 				cols: null,
 				rows: null,
+			});
+			this.observer.onSnapshotFailed?.({
+				taskId,
+				clientId: viewerState.clientId,
+				connectionId: viewerState.controlConnectionId,
+				durationMs: Math.round((performance.now() - t0) * 100) / 100,
+				snapshotBytes: 0,
+				errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
 			});
 		}
 	}

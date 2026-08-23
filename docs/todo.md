@@ -27,7 +27,7 @@ These are broader architecture refactor targets confirmed against implementation
 
 The editable Files view uses the newer file tree/editor path, while compare, uncommitted changes, and commit diffs still use the Git diff viewer pipeline. Profile both where dogfood shows lag, especially for tasks with many files or large diffs. The 2026-05-01 profiling pass fixed hidden file-tree/content polling outside the Files surface; remaining work should focus on active Files/Git view latency rather than background non-Files refreshes.
 
-- **First-open latency**: Opening the compare view or uncommitted-changes view for the first time is noticeably slow. Add debug logging to identify where time is spent (git commands, data serialization, WebSocket transfer, React rendering) before optimizing.
+- **First-open latency**: Opening the compare view or uncommitted-changes view for the first time is noticeably slow. Use bounded diagnostic marks and a category-scoped deep-recording window to identify where time is spent (git commands, data serialization, WebSocket transfer, React rendering) before optimizing.
 - **Files view file tree/editor**: Revalidate load/navigation performance on large repositories now that the editable Files view uses `listFiles` and `getFileContent`. Profile whether bottlenecks are git/filesystem traversal, tRPC transfer, CodeMirror loading, or React rendering. Tree expansion and file selection should feel instant. Hidden 5-second file-list polling from Home, Terminal, and Git has been removed, so measure active Files-view cost separately from global search scope updates.
 - **Diff viewer**: Large diffs cause noticeable UI lag. Diff content now loads selected and visible files before a capped offscreen prefetch, but old/new file text is still diffed client-side and all file sections still render in one scroll surface. Consider server-side diff computation and virtualized rendering for large files.
 - **Files-to-diff interaction**: Compare the newer Files view path with the Git diff viewer path before merging surfaces. Selecting a file in Git diff views now prioritizes that file's diff content over background work; continue profiling remaining selection latency and tune nearby/offscreen prefetch.
@@ -68,15 +68,12 @@ Core git-view branch operations have landed. Remaining power-user operations:
 
 Add a way to send comments or prompts to the active task agent while browsing files and diffs, without leaving the repository/file inspection surface. Consider a workflow similar to compare-tab comments: attach a prompt to the currently viewed file, selection, or diff hunk, then submit it to the task agent with enough context to make the request actionable.
 
-## Add source-level debug log filtering
-
-Let debug log filtering control what is actually emitted to the console/log sinks, not just what is visually filtered in the UI. Add configurable source/category/level filters so noisy subsystems can be suppressed before they write logs, while preserving enough default signal for debugging production issues.
-
 ## Windows support follow-ups
 
 The broad audit is complete; current findings live in [docs/windows-support-audit.md](./windows-support-audit.md). Remaining fixable work:
 
 - Add a `windows-latest` CI lane and stabilize the currently skipped Windows test scenarios, especially fake agent command/version probes and launch/open integration smoke coverage.
+- Validate and enforce private ACL semantics for diagnostic runtime descriptors, journal segments/manifests, browser-tail equivalents, and exported bundles on Windows; POSIX `0o600`/`0o700` modes alone are not evidence that another local account cannot read them.
 - Run a native Windows smoke pass covering install/build, `quarterdeck` launch, Codex/Claude/Pi detection, task PTY start/stop, shell terminals, task worktree create/delete, ignored-path junction mirroring, Open in IDE, project shortcuts, and shutdown cleanup.
 - Harden Windows shell-string generation for hook and statusline commands so `cmd.exe` metacharacters in paths and arguments are escaped through one shared helper instead of ad hoc double quoting. Open in IDE no longer browser-generates shell text; its typed runtime launcher uses the shared command-shim adapter when Windows requires one.
 - Validate ConPTY resize/reconnect/task-restore behavior and decide whether Windows needs a resize-nudge fallback where Unix uses `SIGWINCH`.

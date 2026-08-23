@@ -6,7 +6,6 @@ import { preloadProjectState } from "@/runtime/project-preload-cache";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
-	RuntimeDebugLogEntry,
 	RuntimeProjectMetadata,
 	RuntimeProjectStateResponse,
 	RuntimeProjectSummary,
@@ -37,8 +36,6 @@ export interface UseProjectNavigationResult {
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	latestTaskTitleUpdate: TaskTitleUpdate | null;
 	latestTaskBaseRefUpdate: TaskBaseRefUpdate | null;
-	logLevel: "debug" | "info" | "warn" | "error";
-	debugLogEntries: RuntimeDebugLogEntry[];
 	notificationProjects: RuntimeProjectNotificationStateMap;
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
@@ -76,8 +73,6 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
 		latestTaskBaseRefUpdate,
-		logLevel,
-		debugLogEntries,
 		streamError,
 		isRuntimeDisconnected,
 		hasReceivedSnapshot,
@@ -324,8 +319,6 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
 		latestTaskBaseRefUpdate,
-		logLevel,
-		debugLogEntries,
 		notificationProjects,
 		streamError,
 		isRuntimeDisconnected,

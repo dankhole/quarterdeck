@@ -34,6 +34,14 @@ export interface TerminalRestoreSnapshot {
 	rows: number;
 }
 
+export interface TerminalStateMirrorDiagnosticSnapshot {
+	disposed: boolean;
+	batching: boolean;
+	pendingBatchBytes: number;
+	cols: number;
+	rows: number;
+}
+
 interface TerminalStateMirrorOptions {
 	onInputResponse?: (data: string) => void;
 	/**
@@ -134,6 +142,16 @@ export class TerminalStateMirror {
 			rows,
 		});
 		return { snapshot, cols, rows };
+	}
+
+	getDiagnosticSnapshot(): TerminalStateMirrorDiagnosticSnapshot {
+		return {
+			disposed: this.disposed,
+			batching: this.batching,
+			pendingBatchBytes: this.batchBuffer.reduce((total, chunk) => total + chunk.byteLength, 0),
+			cols: this.terminal.cols,
+			rows: this.terminal.rows,
+		};
 	}
 
 	dispose(): void {

@@ -7,9 +7,16 @@ import {
 	type ProjectMetadataEntry,
 	type TrackedTaskWorktree,
 } from "./project-metadata-loaders";
-import { ProjectMetadataPoller } from "./project-metadata-poller";
-import { ProjectMetadataRefresher } from "./project-metadata-refresher";
-import { ProjectMetadataRemoteFetchPolicy } from "./project-metadata-remote-fetch";
+import { ProjectMetadataPoller, type ProjectMetadataPollerDiagnosticSnapshot } from "./project-metadata-poller";
+import {
+	ProjectMetadataRefresher,
+	type ProjectMetadataRefresherDiagnosticSnapshot,
+} from "./project-metadata-refresher";
+import {
+	type ProjectMetadataRemoteFetchDiagnosticSnapshot,
+	ProjectMetadataRemoteFetchPolicy,
+	type ProjectMetadataRemoteFetchResult,
+} from "./project-metadata-remote-fetch";
 import {
 	connectProjectMetadataClient,
 	disconnectProjectMetadataClient,
@@ -26,10 +33,24 @@ export interface CreateProjectMetadataControllerDependencies {
 	limitTaskProbe: <T>(probe: () => Promise<T>) => Promise<T>;
 	onMetadataUpdated: (projectId: string, metadata: RuntimeProjectMetadata) => void;
 	onTaskBaseRefChanged?: (projectId: string, taskId: string, newBaseRef: string) => void;
+	onRemoteFetchCompleted?: (projectId: string, result: ProjectMetadataRemoteFetchResult) => void;
 	getProjectDefaultBaseRef?: (projectId: string) => string;
 }
 
+export interface ProjectMetadataControllerDiagnosticSnapshot {
+	projectId: string;
+	connectedClientCount: number;
+	documentVisible: boolean;
+	focusedTaskId: string | null;
+	trackedTaskCount: number;
+	cachedTaskCount: number;
+	poller: ProjectMetadataPollerDiagnosticSnapshot;
+	refresher: ProjectMetadataRefresherDiagnosticSnapshot;
+	remoteFetch: ProjectMetadataRemoteFetchDiagnosticSnapshot;
+}
+
 export class ProjectMetadataController {
+	private readonly projectId: string;
 	private readonly entry: ProjectMetadataEntry;
 	private readonly taskMetadataFreshness = new Map<string, number>();
 	private nextTaskMetadataFreshness = 1;
@@ -38,6 +59,7 @@ export class ProjectMetadataController {
 	private readonly remoteFetchPolicy: ProjectMetadataRemoteFetchPolicy;
 
 	constructor(deps: CreateProjectMetadataControllerDependencies) {
+		this.projectId = deps.projectId;
 		this.entry = createProjectEntry(deps.projectPath);
 		this.refresher = new ProjectMetadataRefresher({
 			projectId: deps.projectId,
@@ -76,7 +98,22 @@ export class ProjectMetadataController {
 				await this.refresher.refreshHome({ invalidate: true });
 				void this.refresher.refreshFocusedTask();
 			},
+			onFetchCompleted: (result) => deps.onRemoteFetchCompleted?.(deps.projectId, result),
 		});
+	}
+
+	getDiagnosticSnapshot(): ProjectMetadataControllerDiagnosticSnapshot {
+		return {
+			projectId: this.projectId,
+			connectedClientCount: getActiveProjectMetadataClientCount(this.entry.documentVisibilityByClientId),
+			documentVisible: this.isDocumentVisible(),
+			focusedTaskId: this.entry.focusedTaskId,
+			trackedTaskCount: this.entry.trackedTasks.length,
+			cachedTaskCount: this.entry.taskMetadataByTaskId.size,
+			poller: this.poller.getDiagnosticSnapshot(),
+			refresher: this.refresher.getDiagnosticSnapshot(),
+			remoteFetch: this.remoteFetchPolicy.getDiagnosticSnapshot(),
+		};
 	}
 
 	async connect(input: {

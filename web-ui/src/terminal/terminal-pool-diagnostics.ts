@@ -11,36 +11,35 @@ const TERMINAL_DOM_ALERT_INTERVAL_MS = 60_000;
 const TERMINAL_DOM_ALERT_REPEAT_MS = 5 * 60_000;
 const INCLUDE_VISIBLE_TERMINAL_LINES = import.meta.env.VITE_QUARTERDECK_AGENT_LAB === "1";
 
-type TerminalBufferDebugInfo = ReturnType<TerminalSlot["getBufferDebugInfo"]>;
+type TerminalBufferDiagnosticInfo = ReturnType<TerminalSlot["getBufferDebugInfo"]>;
 
 interface TerminalDiagnosticsLogger {
-	info: (message: string, metadata?: unknown) => void;
 	warn: (message: string, metadata?: unknown) => void;
 }
 
-interface DedicatedTerminalDebugEntry {
+interface DedicatedTerminalDiagnosticEntry {
 	key: string;
 	slot: TerminalSlot;
 }
 
-export interface TerminalDebugSnapshotProvider {
+export interface TerminalDiagnosticSnapshotProvider {
 	getPoolSlots: () => readonly TerminalSlot[];
 	getPoolSlotRole: (slot: TerminalSlot) => SlotRole;
-	getDedicatedSlots: () => readonly DedicatedTerminalDebugEntry[];
+	getDedicatedSlots: () => readonly DedicatedTerminalDiagnosticEntry[];
 }
 
-export interface RegisteredTerminalDebugSnapshot {
+export interface RegisteredTerminalDiagnosticSnapshot {
 	kind: "pool" | "dedicated";
 	key: string | null;
 	slotId: number;
 	role: SlotRole | null;
 	taskId: string | null;
 	projectId: string | null;
-	buffer: TerminalBufferDebugInfo;
+	buffer: TerminalBufferDiagnosticInfo;
 	visibleLines: string[];
 }
 
-export interface TerminalDebugState {
+export interface TerminalDiagnosticState {
 	generatedAt: string;
 	registered: {
 		total: number;
@@ -48,21 +47,21 @@ export interface TerminalDebugState {
 		dedicated: number;
 	};
 	dom: TerminalDomDiagnostics;
-	poolSlots: RegisteredTerminalDebugSnapshot[];
-	dedicatedSlots: RegisteredTerminalDebugSnapshot[];
+	poolSlots: RegisteredTerminalDiagnosticSnapshot[];
+	dedicatedSlots: RegisteredTerminalDiagnosticSnapshot[];
 }
 
 declare global {
 	interface Window {
-		__quarterdeckDumpTerminalState?: () => TerminalDebugState;
+		__quarterdeckDumpTerminalState?: () => TerminalDiagnosticState;
 	}
 }
 
-function buildSlotDebugSnapshot(
+function buildSlotDiagnosticSnapshot(
 	kind: "pool" | "dedicated",
 	slot: TerminalSlot,
 	options: { key?: string; role?: SlotRole } = {},
-): RegisteredTerminalDebugSnapshot {
+): RegisteredTerminalDiagnosticSnapshot {
 	return {
 		kind,
 		key: options.key ?? null,
@@ -80,7 +79,7 @@ function buildSlotDebugSnapshot(
 	};
 }
 
-function getRegisteredCounts(provider: TerminalDebugSnapshotProvider): {
+function getRegisteredCounts(provider: TerminalDiagnosticSnapshotProvider): {
 	total: number;
 	pool: number;
 	dedicated: number;
@@ -94,7 +93,7 @@ function getRegisteredCounts(provider: TerminalDebugSnapshotProvider): {
 	};
 }
 
-export function collectTerminalDebugState(provider: TerminalDebugSnapshotProvider): TerminalDebugState {
+export function collectTerminalDiagnosticState(provider: TerminalDiagnosticSnapshotProvider): TerminalDiagnosticState {
 	const poolSlots = provider.getPoolSlots();
 	const dedicatedSlots = provider.getDedicatedSlots();
 	const registered = getRegisteredCounts(provider);
@@ -104,100 +103,14 @@ export function collectTerminalDebugState(provider: TerminalDebugSnapshotProvide
 		registered,
 		dom: collectTerminalDomDiagnostics(),
 		poolSlots: poolSlots.map((slot) =>
-			buildSlotDebugSnapshot("pool", slot, { role: provider.getPoolSlotRole(slot) }),
+			buildSlotDiagnosticSnapshot("pool", slot, { role: provider.getPoolSlotRole(slot) }),
 		),
-		dedicatedSlots: dedicatedSlots.map(({ key, slot }) => buildSlotDebugSnapshot("dedicated", slot, { key })),
+		dedicatedSlots: dedicatedSlots.map(({ key, slot }) => buildSlotDiagnosticSnapshot("dedicated", slot, { key })),
 	};
 }
 
-export function dumpTerminalDebugInfo(
-	provider: TerminalDebugSnapshotProvider,
-	log: TerminalDiagnosticsLogger,
-): TerminalDebugState {
-	const state = collectTerminalDebugState(provider);
-	logTerminalDebugState(state, log);
-	dumpTerminalDebugStateToConsole(state);
-	return state;
-}
-
-function logTerminalDebugState(state: TerminalDebugState, log: TerminalDiagnosticsLogger): void {
-	if (state.registered.total === 0) {
-		log.info("No active terminals");
-		return;
-	}
-
-	log.info("terminal instance counts", {
-		total: state.registered.total,
-		pool: state.registered.pool,
-		dedicated: state.registered.dedicated,
-		helperTextareas: state.dom.helperTextareaCount,
-		helperTextareasMissingId: state.dom.helperTextareasMissingId,
-		helperTextareasMissingName: state.dom.helperTextareasMissingName,
-		parkingRootChildren: state.dom.parkingRoot?.childElementCount ?? 0,
-	});
-
-	for (const slot of state.poolSlots) {
-		log.info(`pool slot ${slot.slotId} [${slot.role ?? "unknown"}]`, {
-			taskId: slot.taskId ?? "(none)",
-			projectId: slot.projectId ?? "(none)",
-			buffer: slot.buffer.activeBuffer,
-			scrollback: `${slot.buffer.normalScrollbackLines} lines (max ${slot.buffer.scrollbackOption})`,
-			normal: `len=${slot.buffer.normalLength} baseY=${slot.buffer.normalBaseY}`,
-			alternate: `len=${slot.buffer.alternateLength}`,
-			viewport: slot.buffer.viewportRows,
-			session: slot.buffer.sessionState,
-		});
-	}
-
-	for (const slot of state.dedicatedSlots) {
-		log.info(`dedicated ${slot.key ?? "(unknown)"}`, {
-			taskId: slot.taskId ?? "(none)",
-			projectId: slot.projectId ?? "(none)",
-			buffer: slot.buffer.activeBuffer,
-			scrollback: `${slot.buffer.normalScrollbackLines} lines (max ${slot.buffer.scrollbackOption})`,
-			normal: `len=${slot.buffer.normalLength} baseY=${slot.buffer.normalBaseY}`,
-			alternate: `len=${slot.buffer.alternateLength}`,
-			viewport: slot.buffer.viewportRows,
-			session: slot.buffer.sessionState,
-		});
-	}
-}
-
-function summarizeHelperForConsole(helper: TerminalDomDiagnostics["helperTextareas"][number]): {
-	index: number;
-	id: string;
-	name: string;
-	inParkingRoot: boolean;
-	isConnected: boolean;
-	parentPath: string;
-} {
-	return {
-		index: helper.index,
-		id: helper.id || "(missing)",
-		name: helper.name || "(missing)",
-		inParkingRoot: helper.inParkingRoot,
-		isConnected: helper.isConnected,
-		parentPath: helper.parentPath,
-	};
-}
-
-function dumpTerminalDebugStateToConsole(state: TerminalDebugState): TerminalDebugState {
-	console.groupCollapsed(
-		`[quarterdeck] terminal state: ${state.registered.total} registered, ${state.dom.helperTextareaCount} helper textarea(s)`,
-	);
-	console.info(state);
-	if (state.dom.helperTextareas.length > 0) {
-		console.table(state.dom.helperTextareas.map(summarizeHelperForConsole));
-	}
-	if (state.dom.parkingRoot?.children.length) {
-		console.table(state.dom.parkingRoot.children);
-	}
-	console.groupEnd();
-	return state;
-}
-
-export function installTerminalDebugHook(provider: TerminalDebugSnapshotProvider): () => void {
-	const dump = () => dumpTerminalDebugStateToConsole(collectTerminalDebugState(provider));
+export function installTerminalDiagnosticHook(provider: TerminalDiagnosticSnapshotProvider): () => void {
+	const dump = () => collectTerminalDiagnosticState(provider);
 	window.__quarterdeckDumpTerminalState = dump;
 
 	return () => {
@@ -213,7 +126,7 @@ export interface TerminalDomHealthMonitor {
 }
 
 export function createTerminalDomHealthMonitor(
-	provider: TerminalDebugSnapshotProvider,
+	provider: TerminalDiagnosticSnapshotProvider,
 	log: TerminalDiagnosticsLogger,
 ): TerminalDomHealthMonitor {
 	let terminalDomHealthTimer: ReturnType<typeof setInterval> | null = null;
@@ -283,7 +196,7 @@ export function createTerminalDomHealthMonitor(
 
 		lastTerminalDomAlert = { signature, timestamp: now };
 		// Raw console first because this alert is specifically for cases where the
-		// debug panel or Quarterdeck logging path may be too slow to use.
+		// Diagnostics panel or structured recorder path may be too slow to use.
 		warnToBrowserConsole(TERMINAL_DOM_ALERT_CONSOLE_MESSAGE, payload);
 		queueQuarterdeckTerminalDomAlert(payload);
 	}

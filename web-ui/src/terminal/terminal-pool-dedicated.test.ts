@@ -134,7 +134,7 @@ vi.mock("@/utils/client-logger", () => ({
 import {
 	_resetPoolForTesting,
 	acquireForTask,
-	collectTerminalDebugState,
+	collectTerminalDiagnosticState,
 	disposeAllDedicatedTerminalsForProject,
 	disposeDedicatedTerminal,
 	ensureDedicatedTerminal,
@@ -194,7 +194,7 @@ describe("terminal-pool — dedicated terminals", () => {
 			expect(slot).toBeDefined();
 			const mockSlot = slot as unknown as MockSlot;
 			expect(mockSlot.connectToTask).toHaveBeenCalledWith("__home_terminal__", "ws-1");
-			expect(collectTerminalDebugState().registered).toEqual({
+			expect(collectTerminalDiagnosticState().registered).toEqual({
 				total: 1,
 				pool: 0,
 				dedicated: 1,

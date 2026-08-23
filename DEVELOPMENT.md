@@ -31,6 +31,7 @@ npm run web:test         # Web UI unit tests
 npm run web:e2e          # Web UI Playwright smoke tests with isolated runtime state
 npm run agent:lab -- --help       # Disposable Quarterdeck runtime/UI/fake-agent lab
 npm run agent:browser -- --help   # Isolated Playwright CLI for semantic + visual UI driving
+quarterdeck diagnostics --help    # Discover and inspect local runtime diagnostics
 npm run web:typecheck    # Web UI typecheck
 npm run typecheck        # Runtime typecheck
 npm run lint             # Biome lint
@@ -148,6 +149,75 @@ Dogfood launcher behavior:
 - supports `--no-open`
 - supports `--skip-build` when you already built and want faster restarts
 
+## Unified diagnostics
+
+Quarterdeck has one local diagnostic system shared by normal runtimes and the isolated agent lab. It replaces the former runtime/browser debug-log buffers and panel; do not add a second ring buffer, WebSocket log feed, or panel-owned recorder.
+
+### What happens automatically
+
+Every normal runtime creates a private descriptor and starts a lightweight flight recorder before startup cleanup. No setting, panel, or reproduction step is required. A fresh coding agent can therefore investigate an event that happened earlier in the current run, or read the bounded journal from a recently finalized run.
+
+The default recorder keeps metadata rather than content:
+
+- essential runtime, project-save, task/session, hook-delivery, terminal-transport, browser-connectivity, Git-operation, backup, and recorder-health events;
+- content-free shape summaries for warning/error compatibility logs, plus explicit diagnostic marks;
+- at most 2,000 recent records in memory;
+- an asynchronous journal with a 1,000-record queue, 250 ms/64-record batching, and four rotating 2 MiB JSONL segments;
+- bounded/redacted records: 8 KiB maximum, 2 KiB strings, limited object depth/key/array counts, and path aliases.
+
+It excludes prompts, task text, arbitrary logger messages/data, terminal output/transcripts, file contents, Git diffs, environment values, full process arguments, request bodies, DOM text, secrets, render-loop noise, PTY output chunks, and polling samples. Diagnostics failure is isolated from application behavior; queue or journal pressure is reported and bounded rather than allowed to block the runtime. Transient journal failures keep their bounded pending evidence and retry with capped exponential backoff without waiting for a new event.
+
+The browser recorder also starts automatically, independently of whether its panel is open. It retains essential connectivity, persistence, navigation, and browser-error evidence, batches up to 25 records or one second through a connection-scoped capability, and keeps a bounded 24-hour session-storage tail for reconnect. The runtime can request a fresh metadata-only browser snapshot, but inspection never becomes a second board writer, resizes a PTY, starts/stops a session, or repairs state.
+
+The top-bar Activity button and `Cmd/Ctrl+Shift+D` open Diagnostics. The panel shows the unified timeline, filters, recorder health, doctor findings, and subsystem snapshots. Opening it explicitly subscribes that connection to bounded best-effort timeline batches; closing it unsubscribes, and socket backpressure drops this replaceable projection before it can compete with application state. Neither action changes capture policy: the recorder and journal remain automatic either way. Console verbosity is still a separate setting and does not control flight-recorder admission.
+
+### Investigate a current or recent runtime
+
+The CLI discovers runtime descriptors under `QUARTERDECK_STATE_HOME` (normally `~/.quarterdeck`) and defaults to the newest active instance, then the newest retained stopped, failed, or crashed instance. Quarterdeck retains the latest three dead instances and prunes older journals at the next startup. Use `--instance <runtime-id>` when more than one instance matters. Every inspection command has stable JSON output where applicable.
+
+```bash
+quarterdeck diagnostics list --json
+quarterdeck diagnostics status --json
+quarterdeck diagnostics doctor --request-browser --json
+quarterdeck diagnostics capture --request-browser --json
+quarterdeck diagnostics watch --duration 60s --jsonl
+quarterdeck diagnostics mark "before restarting task" --task <task-id> --json
+```
+
+`list` and finalized-instance capture can use the private on-disk descriptor/journal without the server. Live status, browser requests, marks, and recording controls use an authenticated loopback endpoint; the token never appears in public descriptors, CLI output, bundle manifests, or lab evidence. Read-only commands do not connect as a normal browser client and cannot bump the board revision.
+
+Useful filters are `--project`, `--task`, `--session`, `--operation`, `--source`, `--level`, `--event`, `--since`, and `--until`. Project/task scope is applied both to timeline records and to subsystem-owned snapshot projections and findings, rather than packaging unrelated projects beside filtered records. Names use hierarchical prefixes, so `--event terminal` matches terminal events. `watch` is polling-based and bounded to 15 minutes; it does not subscribe to or attach to a task PTY.
+
+`doctor` captures bounded subsystem snapshots with per-provider deadlines and derives findings. It reports partial/unavailable providers instead of mutating or repairing them. Use `--fail-on-error` for automation that should exit 5 on error-severity findings.
+
+`capture` writes a new private directory atomically, normally under `~/.quarterdeck/diagnostics/bundles/`. Start with `manifest.json`, then use:
+
+- `records.jsonl` for the sequence-ordered correlated timeline;
+- `doctor.json` for findings;
+- `runtime/descriptor.json` and `runtime/recorder-health.json` for discovery/retention state;
+- the provider JSON files under `runtime/`, `projects/`, and `browser/`;
+- `README.md` for capture limitations and disclosure notes.
+
+The manifest records capture tier, time range, filters, content flags, warnings, counts, every file's size, and SHA-256. A timeout or unavailable browser creates a clearly marked partial bundle rather than an apparently complete one. Bundles are local and never uploaded automatically; review them before sharing.
+
+### Temporary deep recording
+
+When the always-on metadata is insufficient, explicitly start a bounded window:
+
+```bash
+quarterdeck diagnostics record --duration 5m --project <project-id> --category terminal --category browser --json
+quarterdeck diagnostics record --status --json
+quarterdeck diagnostics record --stop --json
+```
+
+Deep recording admits lower-level candidates matching the optional project/task/category scope. It expires automatically, is capped at 15 minutes, is not persisted across runtime restart, and still passes through the same size limits, redaction, and prohibited-value policy. It does not enable terminal transcripts or Git diffs. Live capture does not expose content-enrichment flags until a concrete provider can honor each flag with its own reviewed allowlist; manifest content flags therefore describe data actually collected rather than inert authorization intent.
+
+### Isolated lab behavior and visual evidence
+
+`QUARTERDECK_AGENT_LAB=1` is set only by the agent-lab supervisor. It automatically selects the richer bounded `agent-lab` admission profile for synthetic data and cannot be stopped through deep-recording controls. Lab ready/failure/pre-shutdown/final/manual checkpoints use the same canonical bundle format and may additionally contain synthetic fixture state, Git diffs, terminal viewport text, process logs, Playwright artifacts, and a causally marked browser-action transcript. Pre-shutdown preserves the connected browser view; the final checkpoint is deliberately captured only after the browser and child processes stop and the lab manifest is finalized, while disposable state still exists.
+
+Live diagnostics can describe viewport/layout bounds, terminal buffer metrics, and application state, but they cannot recreate pixels that were never captured. For spacing, clipping, contrast, stacking, responsive, or terminal-paint failures, use the isolated lab and save explicit screenshots or a Playwright trace as described in [`docs/agent-functional-testing.md`](./docs/agent-functional-testing.md).
+
 ## Run `quarterdeck` from any directory
 
 After cloning and installing dependencies, create/update the global CLI link from this repo:
@@ -190,6 +260,7 @@ npm run unlink
 - `npm run web:e2e`: run Playwright smoke tests against a disposable runtime and git fixture
 - `npm run agent:lab -- <start|status|snapshot|stop|list>`: manage a disposable functional-testing lab with dynamic loopback ports and a deterministic fake Codex
 - `npm run agent:browser -- <command>`: drive the lab's isolated Chromium session; run `install-browser chromium` once per checkout before first use
+- `quarterdeck diagnostics <list|status|doctor|capture|watch|record|mark>`: inspect or temporarily enrich the private local diagnostic recorder
 - `npm run web:build`: build web UI
 - `npm run typecheck`: typecheck runtime
 - `npm run web:typecheck`: typecheck web UI

@@ -80,4 +80,7 @@ export interface AgentLabSnapshotResult {
 	label: string;
 	path: string;
 	createdAt: string;
+	bundleId: string;
+	status: "complete" | "partial";
+	warnings: string[];
 }

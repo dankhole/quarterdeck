@@ -16,6 +16,10 @@ quarterdeck \- local orchestration board for coding agents
 .RI " " [ options ]
 .br
 .B quarterdeck mcp
+.br
+.B quarterdeck diagnostics
+.RI " " list|status|doctor|capture|watch|record|mark
+.RI " " [ options ]
 .SH DESCRIPTION
 .B quarterdeck
 starts the local Quarterdeck runtime server and serves the web UI.
@@ -111,6 +115,36 @@ but best-effort.
 .TP
 .B mcp
 Deprecated compatibility command. Prints a deprecation warning and exits.
+.TP
+.B diagnostics
+Discover and inspect Quarterdeck's private local diagnostic flight recorder.
+
+Subcommands:
+.br
+.B list
+lists active and recently retained stopped, failed, or crashed runtime instances.
+.br
+.B status
+shows recorder and journal health.
+.br
+.B doctor
+runs read-only subsystem checks; use
+.B --request-browser
+for a fresh metadata-only browser snapshot.
+.br
+.B capture
+writes a canonical local bundle containing a correlated JSONL timeline, findings, bounded snapshots, and a hashed manifest.
+.br
+.B watch
+watches bounded records for a limited duration.
+.br
+.B record
+starts, reports, or stops an automatically expiring deep-recording window.
+.br
+.B mark
+adds a bounded timeline marker.
+
+The lightweight metadata-only flight recorder starts automatically. Opening the Diagnostics panel is not required. Deep recording is explicit, scoped, capped at 15 minutes, and does not enable terminal transcripts or Git diffs. Bundles are private local directories and are never uploaded automatically.
 .SH EXAMPLES
 .TP
 Start server on the default port:
@@ -130,6 +164,9 @@ Create and start a task manually:
 .TP
 Ingest a hook event:
 .B quarterdeck hooks ingest --event to_review
+.TP
+Capture current diagnostic evidence:
+.B quarterdeck diagnostics capture --request-browser
 .SH EXIT STATUS
 .TP
 .B 0

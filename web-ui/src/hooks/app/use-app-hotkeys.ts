@@ -11,7 +11,7 @@ interface UseAppHotkeysInput {
 	handleOpenCreateTask: () => void;
 	handleOpenSettings: () => void;
 	onStartAllTasks: () => void;
-	handleToggleDebugLogPanel?: () => void;
+	handleToggleDiagnosticsPanel?: () => void;
 	handleToggleFileFinder: () => void;
 	handleToggleTextSearch: () => void;
 }
@@ -25,7 +25,7 @@ export function useAppHotkeys({
 	handleOpenCreateTask,
 	handleOpenSettings,
 	onStartAllTasks,
-	handleToggleDebugLogPanel,
+	handleToggleDiagnosticsPanel,
 	handleToggleFileFinder,
 	handleToggleTextSearch,
 }: UseAppHotkeysInput): void {
@@ -85,14 +85,14 @@ export function useAppHotkeys({
 	useHotkeys(
 		"mod+shift+d",
 		() => {
-			handleToggleDebugLogPanel?.();
+			handleToggleDiagnosticsPanel?.();
 		},
 		{
 			enableOnFormTags: true,
 			enableOnContentEditable: true,
 			preventDefault: true,
 		},
-		[handleToggleDebugLogPanel],
+		[handleToggleDiagnosticsPanel],
 	);
 
 	useHotkeys(

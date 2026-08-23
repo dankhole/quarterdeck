@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import { beginAgentBrowserAction, completeAgentBrowserAction } from "./agent-lab/browser-actions";
 import { AGENT_LAB_REPO_ROOT, getAgentLabBrowserCachePath } from "./agent-lab/paths";
 
 const browserCachePath = getAgentLabBrowserCachePath();
@@ -40,21 +41,33 @@ const environment: NodeJS.ProcessEnv = {
 	PWTEST_DAEMON_SESSION_DIR: daemonSessionPath,
 };
 
-const child = spawn(process.execPath, [cliPath, ...process.argv.slice(2)], {
+const browserArguments = process.argv.slice(2);
+const actionContext = await beginAgentBrowserAction(browserArguments).catch(() => null);
+const child = spawn(process.execPath, [cliPath, ...browserArguments], {
 	cwd: AGENT_LAB_REPO_ROOT,
 	env: environment,
 	stdio: "inherit",
 });
 
-child.once("error", (error) => {
-	process.stderr.write(`[agent-browser] ${error.message}\n`);
-	process.exitCode = 1;
-});
+const result = await new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null; error: Error | null }>(
+	(resolveResult) => {
+		let settled = false;
+		const settle = (value: { exitCode: number | null; signal: NodeJS.Signals | null; error: Error | null }) => {
+			if (settled) return;
+			settled = true;
+			resolveResult(value);
+		};
+		child.once("error", (error) => settle({ exitCode: null, signal: null, error }));
+		child.once("exit", (exitCode, signal) => settle({ exitCode, signal, error: null }));
+	},
+);
 
-child.once("exit", (code, signal) => {
-	if (signal) {
-		process.kill(process.pid, signal);
-		return;
-	}
-	process.exitCode = code ?? 1;
-});
+await completeAgentBrowserAction(actionContext, result).catch(() => {});
+if (result.error) {
+	process.stderr.write(`[agent-browser] ${result.error.message}\n`);
+	process.exitCode = 1;
+} else if (result.signal) {
+	process.kill(process.pid, result.signal);
+} else {
+	process.exitCode = result.exitCode ?? 1;
+}

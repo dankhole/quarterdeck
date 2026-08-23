@@ -30,6 +30,21 @@ export interface RuntimeTaskIndicatorState {
 	hookReview: boolean;
 }
 
+export type RuntimeSessionWorkColumn = "in_progress" | "review";
+
+/**
+ * Returns the browser-owned work column implied by authoritative runtime
+ * session state. Keeping this mapping in the shared semantic layer prevents
+ * hydration, live projection, and diagnostics from inventing separate rules.
+ */
+export function getRuntimeSessionWorkColumn(
+	state: RuntimeTaskSessionSummary["state"],
+): RuntimeSessionWorkColumn | null {
+	if (state === "running") return "in_progress";
+	if (state === "awaiting_review") return "review";
+	return null;
+}
+
 function createIndicatorState(
 	kind: RuntimeTaskIndicatorKind,
 	{

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { LogEntry, RuntimeTaskSessionSummary } from "../../../src/core";
+import type { DiagnosticRecordEnvelope, RuntimeTaskSessionSummary } from "../../../src/core";
 import { RuntimeStateMessageBatcher } from "../../../src/server/runtime-state-message-batcher";
 import type { TerminalSessionManager } from "../../../src/terminal";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
@@ -18,14 +18,20 @@ function createSummary(taskId: string, updatedAt: number): RuntimeTaskSessionSum
 	});
 }
 
-function createLogEntry(id: string): LogEntry {
+function createDiagnosticRecord(id: string): DiagnosticRecordEnvelope {
 	return {
+		version: 1,
 		id,
+		sequence: Number(id),
 		timestamp: Number(id),
+		monotonicOffsetMs: Number(id),
+		runtimeInstanceId: "runtime-test",
+		source: "runtime",
+		kind: "event",
 		level: "info",
-		tag: "test",
-		message: `entry-${id}`,
-		source: "server",
+		name: `test.entry-${id}`,
+		context: {},
+		payload: {},
 	};
 }
 
@@ -70,11 +76,11 @@ describe("RuntimeStateMessageBatcher", () => {
 		const onTaskNotificationBatch = vi.fn();
 		const onProjectsRefreshRequested = vi.fn();
 		const batcher = new RuntimeStateMessageBatcher({
-			hasClients: () => true,
+			hasDiagnosticSubscribers: () => true,
 			onTaskSessionBatch,
 			onTaskNotificationBatch,
 			onProjectsRefreshRequested,
-			onDebugLogBatch: vi.fn(),
+			onDiagnosticRecordBatch: vi.fn(),
 		});
 
 		const terminal = createTerminalManagerStub();
@@ -104,11 +110,11 @@ describe("RuntimeStateMessageBatcher", () => {
 		const onTaskNotificationBatch = vi.fn();
 		const onProjectsRefreshRequested = vi.fn();
 		const batcher = new RuntimeStateMessageBatcher({
-			hasClients: () => true,
+			hasDiagnosticSubscribers: () => true,
 			onTaskSessionBatch,
 			onTaskNotificationBatch,
 			onProjectsRefreshRequested,
-			onDebugLogBatch: vi.fn(),
+			onDiagnosticRecordBatch: vi.fn(),
 		});
 		const terminal = createTerminalManagerStub([initial]);
 		batcher.trackTerminalManager("project-1", terminal.manager);
@@ -145,11 +151,11 @@ describe("RuntimeStateMessageBatcher", () => {
 		const onTaskNotificationBatch = vi.fn();
 		const onProjectsRefreshRequested = vi.fn();
 		const batcher = new RuntimeStateMessageBatcher({
-			hasClients: () => true,
+			hasDiagnosticSubscribers: () => true,
 			onTaskSessionBatch: vi.fn(),
 			onTaskNotificationBatch,
 			onProjectsRefreshRequested,
-			onDebugLogBatch: vi.fn(),
+			onDiagnosticRecordBatch: vi.fn(),
 		});
 		const terminal = createTerminalManagerStub([initial]);
 		batcher.trackTerminalManager("project-1", terminal.manager);
@@ -175,11 +181,11 @@ describe("RuntimeStateMessageBatcher", () => {
 		const onTaskNotificationBatch = vi.fn();
 		const onProjectsRefreshRequested = vi.fn();
 		const batcher = new RuntimeStateMessageBatcher({
-			hasClients: () => true,
+			hasDiagnosticSubscribers: () => true,
 			onTaskSessionBatch: vi.fn(),
 			onTaskNotificationBatch,
 			onProjectsRefreshRequested,
-			onDebugLogBatch: vi.fn(),
+			onDiagnosticRecordBatch: vi.fn(),
 		});
 		const terminal = createTerminalManagerStub([initial]);
 		batcher.trackTerminalManager("project-1", terminal.manager);
@@ -198,28 +204,55 @@ describe("RuntimeStateMessageBatcher", () => {
 		expect(onProjectsRefreshRequested).toHaveBeenCalledWith("project-1");
 	});
 
-	it("batches debug log entries only while clients are connected", async () => {
+	it("batches canonical diagnostic records only while clients are connected", async () => {
 		let hasClients = false;
-		const onDebugLogBatch = vi.fn();
+		const onDiagnosticRecordBatch = vi.fn();
 		const batcher = new RuntimeStateMessageBatcher({
-			hasClients: () => hasClients,
+			hasDiagnosticSubscribers: () => hasClients,
 			onTaskSessionBatch: vi.fn(),
 			onTaskNotificationBatch: vi.fn(),
 			onProjectsRefreshRequested: vi.fn(),
-			onDebugLogBatch,
+			onDiagnosticRecordBatch,
 		});
 
-		batcher.queueDebugLogEntry(createLogEntry("1"));
+		batcher.queueDiagnosticRecord(createDiagnosticRecord("1"));
 		await vi.advanceTimersByTimeAsync(150);
-		expect(onDebugLogBatch).not.toHaveBeenCalled();
+		expect(onDiagnosticRecordBatch).not.toHaveBeenCalled();
 
 		hasClients = true;
-		batcher.queueDebugLogEntry(createLogEntry("2"));
-		batcher.queueDebugLogEntry(createLogEntry("3"));
+		batcher.queueDiagnosticRecord(createDiagnosticRecord("2"));
+		batcher.queueDiagnosticRecord(createDiagnosticRecord("3"));
 		await vi.advanceTimersByTimeAsync(150);
 
-		expect(onDebugLogBatch).toHaveBeenCalledOnce();
-		expect(onDebugLogBatch).toHaveBeenCalledWith([createLogEntry("2"), createLogEntry("3")]);
+		expect(onDiagnosticRecordBatch).toHaveBeenCalledOnce();
+		expect(onDiagnosticRecordBatch).toHaveBeenCalledWith([createDiagnosticRecord("2"), createDiagnosticRecord("3")]);
+	});
+
+	it("bounds live diagnostic delivery while preserving a warning over queued info", async () => {
+		const onDiagnosticRecordBatch = vi.fn();
+		const batcher = new RuntimeStateMessageBatcher({
+			hasDiagnosticSubscribers: () => true,
+			onTaskSessionBatch: vi.fn(),
+			onTaskNotificationBatch: vi.fn(),
+			onProjectsRefreshRequested: vi.fn(),
+			onDiagnosticRecordBatch,
+		});
+
+		for (let sequence = 1; sequence <= 65; sequence += 1) {
+			batcher.queueDiagnosticRecord(createDiagnosticRecord(String(sequence)));
+		}
+		batcher.queueDiagnosticRecord({ ...createDiagnosticRecord("66"), level: "warn" });
+		expect(batcher.getDiagnosticSnapshot().diagnosticRecords).toEqual({
+			pendingRecords: 64,
+			flushScheduled: true,
+			droppedRecords: 2,
+		});
+
+		await vi.advanceTimersByTimeAsync(150);
+		const delivered = onDiagnosticRecordBatch.mock.calls[0]?.[0] as DiagnosticRecordEnvelope[];
+		expect(delivered).toHaveLength(64);
+		expect(delivered.some((record) => record.sequence === 66 && record.level === "warn")).toBe(true);
+		expect(delivered.some((record) => record.sequence === 1 || record.sequence === 65)).toBe(false);
 	});
 
 	it("drops queued task-session updates when a project is disposed before flush", async () => {
@@ -227,11 +260,11 @@ describe("RuntimeStateMessageBatcher", () => {
 		const onTaskNotificationBatch = vi.fn();
 		const onProjectsRefreshRequested = vi.fn();
 		const batcher = new RuntimeStateMessageBatcher({
-			hasClients: () => true,
+			hasDiagnosticSubscribers: () => true,
 			onTaskSessionBatch,
 			onTaskNotificationBatch,
 			onProjectsRefreshRequested,
-			onDebugLogBatch: vi.fn(),
+			onDiagnosticRecordBatch: vi.fn(),
 		});
 
 		const terminal = createTerminalManagerStub();

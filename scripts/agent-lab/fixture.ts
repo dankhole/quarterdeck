@@ -128,7 +128,11 @@ export async function prepareAgentLabFixture(
 	]);
 
 	await Promise.all([
-		writeFile(join(statePath, "config.json"), `${JSON.stringify({ selectedAgentId: "codex" }, null, 2)}\n`, "utf8"),
+		writeFile(
+			join(statePath, "config.json"),
+			`${JSON.stringify({ selectedAgentId: "codex", logLevel: "debug" }, null, 2)}\n`,
+			"utf8",
+		),
 		writeFile(
 			browserInitPath,
 			`try {

@@ -1,4 +1,4 @@
-import { Bug, Command, RefreshCw, Settings, Terminal } from "lucide-react";
+import { Activity, Command, RefreshCw, Settings, Terminal, Wrench } from "lucide-react";
 import { TopBarOpenProjectControl } from "@/components/app/top-bar-open-project-control";
 import { TopBarProjectShortcutControl } from "@/components/app/top-bar-project-shortcut-control";
 import { TopBarPromptShortcutControl } from "@/components/app/top-bar-prompt-shortcut-control";
@@ -26,6 +26,7 @@ export function TopBar({
 	isTerminalLoading,
 	onResyncAgentTerminal,
 	onOpenSettings,
+	onOpenDiagnostics,
 	showDebugButton,
 	onOpenDebugDialog,
 	shortcuts,
@@ -62,6 +63,7 @@ export function TopBar({
 	isTerminalLoading?: boolean;
 	onResyncAgentTerminal?: () => void;
 	onOpenSettings?: (section?: SettingsSection) => void;
+	onOpenDiagnostics?: () => void;
 	showDebugButton?: boolean;
 	onOpenDebugDialog?: () => void;
 	shortcuts?: RuntimeProjectShortcut[];
@@ -190,16 +192,31 @@ export function TopBar({
 						/>
 					</Tooltip>
 				) : null}
+				{onOpenDiagnostics ? (
+					<Tooltip side="bottom" content="Diagnostics (⌘⇧D)">
+						<Button
+							variant="ghost"
+							size="sm"
+							icon={<Activity size={16} />}
+							onClick={onOpenDiagnostics}
+							aria-label="Open diagnostics"
+							data-testid="open-diagnostics-button"
+							className="ml-0.5"
+						/>
+					</Tooltip>
+				) : null}
 				{showDebugButton && onOpenDebugDialog ? (
-					<Button
-						variant="ghost"
-						size="sm"
-						icon={<Bug size={16} />}
-						onClick={onOpenDebugDialog}
-						aria-label="Debug"
-						data-testid="open-debug-dialog-button"
-						className="ml-0.5 mr-0.5"
-					/>
+					<Tooltip side="bottom" content="Developer tools">
+						<Button
+							variant="ghost"
+							size="sm"
+							icon={<Wrench size={16} />}
+							onClick={onOpenDebugDialog}
+							aria-label="Developer tools"
+							data-testid="open-debug-dialog-button"
+							className="ml-0.5 mr-0.5"
+						/>
+					</Tooltip>
 				) : null}
 				<Button
 					variant="ghost"

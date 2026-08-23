@@ -7,7 +7,6 @@ import {
 	replaceRuntimeProjectNotificationStateMapFromProjectSummaries,
 } from "@/runtime/runtime-notification-projects";
 import type {
-	RuntimeDebugLogEntry,
 	RuntimeProjectMetadata,
 	RuntimeProjectStateResponse,
 	RuntimeProjectSummary,
@@ -17,8 +16,6 @@ import type {
 	RuntimeTaskSessionSummary,
 } from "@/runtime/types";
 import { mergeTaskSessionSummaryMap, reconcileAuthoritativeTaskSessionSummaryMap } from "@/utils/session-summary-utils";
-
-const DEBUG_LOG_ENTRIES_MAX = 500;
 
 export interface TaskTitleUpdate {
 	taskId: string;
@@ -44,8 +41,6 @@ export interface RuntimeStateStreamStore {
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	latestTaskTitleUpdate: TaskTitleUpdate | null;
 	latestTaskBaseRefUpdate: TaskBaseRefUpdate | null;
-	logLevel: "debug" | "info" | "warn" | "error";
-	debugLogEntries: RuntimeDebugLogEntry[];
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
@@ -77,12 +72,6 @@ export type RuntimeStateStreamAction =
 			removedTaskIds?: readonly string[];
 			replace?: boolean;
 	  }
-	| {
-			type: "debug_logging_state";
-			level: "debug" | "info" | "warn" | "error";
-			recentEntries?: readonly RuntimeDebugLogEntry[];
-	  }
-	| { type: "debug_log_batch"; entries: readonly RuntimeDebugLogEntry[] }
 	| { type: "stream_error"; message: string }
 	| { type: "stream_disconnected"; message: string };
 
@@ -169,19 +158,6 @@ function pruneNotificationMemory(
 	};
 }
 
-function mergeDebugLogEntries(
-	currentEntries: RuntimeDebugLogEntry[],
-	incomingEntries: readonly RuntimeDebugLogEntry[],
-): RuntimeDebugLogEntry[] {
-	if (incomingEntries.length === 0) {
-		return currentEntries;
-	}
-
-	const existingIds = new Set(currentEntries.map((entry) => entry.id));
-	const newEntries = incomingEntries.filter((entry) => !existingIds.has(entry.id));
-	return [...currentEntries, ...newEntries].slice(-DEBUG_LOG_ENTRIES_MAX);
-}
-
 function applyRequestedProjectChange(
 	state: RuntimeStateStreamStore,
 	preloadedProjectState: RuntimeProjectStateResponse | null,
@@ -255,8 +231,6 @@ export function createInitialRuntimeStateStreamStore(requestedProjectId: string 
 		latestTaskReadyForReview: null,
 		latestTaskTitleUpdate: null,
 		latestTaskBaseRefUpdate: null,
-		logLevel: "warn",
-		debugLogEntries: [],
 		streamError: null,
 		isRuntimeDisconnected: false,
 		hasReceivedSnapshot: false,
@@ -353,19 +327,6 @@ export function runtimeStateStreamReducer(
 				action.removedTaskIds ?? [],
 				action.replace ?? false,
 			),
-		};
-	}
-	if (action.type === "debug_logging_state") {
-		return {
-			...state,
-			logLevel: action.level,
-			debugLogEntries: mergeDebugLogEntries(state.debugLogEntries, action.recentEntries ?? []),
-		};
-	}
-	if (action.type === "debug_log_batch") {
-		return {
-			...state,
-			debugLogEntries: [...state.debugLogEntries, ...action.entries].slice(-DEBUG_LOG_ENTRIES_MAX),
 		};
 	}
 	if (action.type === "stream_error") {

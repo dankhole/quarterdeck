@@ -1,3 +1,4 @@
+import { registerBrowserTerminalSnapshotProvider } from "@/diagnostics";
 import {
 	_disposeAllDedicatedTerminalsForTesting,
 	disposeAllDedicatedTerminalsForProject,
@@ -8,13 +9,12 @@ import {
 	isDedicatedTerminalTaskId,
 } from "@/terminal/terminal-dedicated-registry";
 import {
-	collectTerminalDebugState as collectTerminalDebugStateFromProvider,
+	collectTerminalDiagnosticState as collectTerminalDiagnosticStateFromProvider,
 	createTerminalDomHealthMonitor,
-	dumpTerminalDebugInfo as dumpTerminalDebugInfoFromProvider,
-	installTerminalDebugHook,
-	type RegisteredTerminalDebugSnapshot,
-	type TerminalDebugSnapshotProvider,
-	type TerminalDebugState,
+	installTerminalDiagnosticHook,
+	type RegisteredTerminalDiagnosticSnapshot,
+	type TerminalDiagnosticSnapshotProvider,
+	type TerminalDiagnosticState,
 } from "@/terminal/terminal-pool-diagnostics";
 import { TerminalPoolPolicy } from "@/terminal/terminal-pool-policy";
 import { TerminalPoolState } from "@/terminal/terminal-pool-state";
@@ -35,7 +35,7 @@ interface ViteHotContext {
 	dispose(callback: () => void): void;
 }
 
-export type { RegisteredTerminalDebugSnapshot, SlotRole, TerminalDebugState };
+export type { RegisteredTerminalDiagnosticSnapshot, SlotRole, TerminalDiagnosticState };
 
 const poolState = new TerminalPoolState();
 
@@ -127,11 +127,13 @@ function getDedicatedSlotEntries(): { key: string; slot: TerminalSlot }[] {
 	return dedicatedSlots;
 }
 
-const terminalDebugProvider: TerminalDebugSnapshotProvider = {
+const terminalDiagnosticProvider: TerminalDiagnosticSnapshotProvider = {
 	getPoolSlots: () => poolState.getSlots(),
 	getPoolSlotRole: (slot) => poolState.getRole(slot),
 	getDedicatedSlots: getDedicatedSlotEntries,
 };
+
+registerBrowserTerminalSnapshotProvider(() => collectTerminalDiagnosticStateFromProvider(terminalDiagnosticProvider));
 
 const terminalSurfaceProvider: TerminalSurfaceProvider = {
 	getPoolSlots: () => poolState.getSlots(),
@@ -139,8 +141,8 @@ const terminalSurfaceProvider: TerminalSurfaceProvider = {
 	log,
 };
 
-const terminalDomHealthMonitor = createTerminalDomHealthMonitor(terminalDebugProvider, log);
-const uninstallTerminalDebugHook = installTerminalDebugHook(terminalDebugProvider);
+const terminalDomHealthMonitor = createTerminalDomHealthMonitor(terminalDiagnosticProvider, log);
+const uninstallTerminalDiagnosticHook = installTerminalDiagnosticHook(terminalDiagnosticProvider);
 
 const poolPolicy = new TerminalPoolPolicy({
 	getSlots: () => poolState.getSlots(),
@@ -471,15 +473,8 @@ export function setTerminalFontWeight(weight: number): void {
 	setTerminalFontWeightAcrossSurfaces(terminalSurfaceProvider, weight);
 }
 
-/**
- * Log debug info for all pool slots and dedicated terminals.
- */
-export function dumpTerminalDebugInfo(): TerminalDebugState {
-	return dumpTerminalDebugInfoFromProvider(terminalDebugProvider, log);
-}
-
-export function collectTerminalDebugState(): TerminalDebugState {
-	return collectTerminalDebugStateFromProvider(terminalDebugProvider);
+export function collectTerminalDiagnosticState(): TerminalDiagnosticState {
+	return collectTerminalDiagnosticStateFromProvider(terminalDiagnosticProvider);
 }
 
 /**
@@ -534,6 +529,6 @@ const hot = (import.meta as ImportMeta & { hot?: ViteHotContext }).hot;
 if (hot) {
 	hot.dispose(() => {
 		resetPoolState();
-		uninstallTerminalDebugHook();
+		uninstallTerminalDiagnosticHook();
 	});
 }

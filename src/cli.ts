@@ -4,6 +4,7 @@ import { Command, Option } from "commander";
 import ora, { type Ora } from "ora";
 import packageJson from "../package.json" with { type: "json" };
 import { registerBackupCommand } from "./commands/backup";
+import { registerDiagnosticsCommand } from "./commands/diagnostics";
 import { registerHooksCommand } from "./commands/hooks";
 import { registerStatuslineCommand } from "./commands/statusline";
 import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config";
@@ -15,11 +16,14 @@ import {
 	getQuarterdeckRuntimeOrigin,
 	getQuarterdeckRuntimePort,
 	installGracefulShutdownHandlers,
+	normalizeDiagnosticErrorClass,
 	parseRuntimePort,
 	setQuarterdeckRuntimeHost,
 	setQuarterdeckRuntimePort,
+	setRuntimeDiagnosticLogSink,
 	shouldSuppressImmediateDuplicateShutdownSignals,
 } from "./core";
+import { createRuntimeDiagnostics, type RuntimeDiagnostics } from "./diagnostics";
 import type { RuntimeStateHub } from "./server";
 import type { TerminalSessionManager } from "./terminal";
 import { killOrphanedAgentProcesses } from "./terminal";
@@ -314,7 +318,7 @@ async function loadRuntimeStartupModules() {
 		{ cleanupGlobalStaleLockArtifacts, cleanupProjectStaleLockArtifacts },
 		{ listProjectIndexEntries, pruneProjectSessionsForBoard },
 		{ setLogLevel },
-		{ createBackup, startPeriodicBackups, stopPeriodicBackups },
+		{ createBackup, listBackups, startPeriodicBackups, stopPeriodicBackups },
 		{ migrateLegacyProjectConfig },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
@@ -346,6 +350,7 @@ async function loadRuntimeStartupModules() {
 		migrateLegacyProjectConfig,
 		setLogLevel,
 		createBackup,
+		listBackups,
 		startPeriodicBackups,
 		stopPeriodicBackups,
 	};
@@ -417,6 +422,7 @@ async function createRuntimeBootstrapState(
 	modules: Awaited<ReturnType<typeof loadRuntimeStartupModules>>,
 	warn: (message: string) => void,
 	startupAgentCleanup: Promise<void>,
+	diagnostics: RuntimeDiagnostics,
 ) {
 	let runtimeStateHub: RuntimeStateHub | undefined;
 	const projectRegistry = await modules.createProjectRegistry({
@@ -425,6 +431,7 @@ async function createRuntimeBootstrapState(
 		loadRuntimeConfig,
 		hasGitRepository,
 		pathIsDirectory,
+		diagnostics,
 		waitForStartupAgentCleanup: async () => await startupAgentCleanup,
 		onTerminalManagerReady: (projectId, manager) => {
 			runtimeStateHub?.trackTerminalManager(projectId, manager);
@@ -432,19 +439,45 @@ async function createRuntimeBootstrapState(
 	});
 	const activeConfig = projectRegistry.getActiveRuntimeConfig();
 	modules.setLogLevel(activeConfig.logLevel as "debug" | "info" | "warn" | "error");
+	diagnostics.registerSnapshotProvider({
+		name: "backups",
+		capture: async () => {
+			const backups = await modules.listBackups();
+			const latest = backups[0]?.manifest ?? null;
+			return {
+				count: backups.length,
+				latest: latest
+					? {
+							timestamp: latest.timestamp,
+							trigger: latest.trigger,
+							projectCount: latest.projectIds.length,
+						}
+					: null,
+			};
+		},
+	});
 
 	// Phase 4: State backup — snapshot before any mutations, then start periodic timer.
 	modules
 		.createBackup({ trigger: "startup" })
 		.then((path) => {
 			if (path) {
+				diagnostics.recordEvent("backup.startup_created", {}, {}, { essential: true });
 				console.log(`[quarterdeck] Startup backup created: ${path}`);
 			}
 		})
-		.catch(() => {});
+		.catch((error: unknown) => {
+			diagnostics.recordEvent(
+				"backup.startup_failed",
+				{ errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError" },
+				{},
+				{ level: "warn", essential: true },
+			);
+		});
 	modules.startPeriodicBackups(activeConfig.backupIntervalMinutes);
 	runtimeStateHub = modules.createRuntimeStateHub({
 		projectRegistry,
+		diagnostics,
 	});
 	const runtimeHub = runtimeStateHub;
 	for (const { projectId, terminalManager } of projectRegistry.listManagedProjects()) {
@@ -467,6 +500,7 @@ async function createRuntimeBootstrapState(
 	return {
 		projectRegistry,
 		runtimeHub,
+		diagnostics,
 		disposeTrackedProject,
 		warn,
 		stopPeriodicBackups: () => {
@@ -487,6 +521,7 @@ async function createRuntimeServerHandle(
 	const runtimeServer = await modules.createRuntimeServer({
 		projectRegistry: bootstrap.projectRegistry,
 		runtimeStateHub: bootstrap.runtimeHub,
+		diagnostics: bootstrap.diagnostics,
 		warn: bootstrap.warn,
 		resolveInteractiveShellCommand: modules.resolveInteractiveShellCommand,
 		hostIntegrations,
@@ -498,7 +533,11 @@ async function createRuntimeServerHandle(
 	});
 
 	const close = async () => {
-		await runtimeServer.close();
+		try {
+			await runtimeServer.close();
+		} finally {
+			setRuntimeDiagnosticLogSink(null);
+		}
 	};
 
 	const shutdown = async (options?: { skipSessionCleanup?: boolean }) => {
@@ -522,10 +561,23 @@ async function createRuntimeServerHandle(
 async function startServer(runtimeCapabilities: RuntimeCapabilities): Promise<RuntimeServerHandle> {
 	const modules = await loadRuntimeStartupModules();
 	const warn = createRuntimeWarnLogger();
-	await runRuntimeStartupCleanup(modules, warn);
-	const startupAgentCleanup = startOrphanedAgentCleanup(warn);
-	const bootstrap = await createRuntimeBootstrapState(modules, warn, startupAgentCleanup);
-	return await createRuntimeServerHandle(modules, bootstrap, runtimeCapabilities);
+	const diagnostics = await createRuntimeDiagnostics({
+		host: getQuarterdeckRuntimeHost(),
+		port: getQuarterdeckRuntimePort(),
+		quarterdeckVersion: QUARTERDECK_VERSION,
+		captureTier: process.env.QUARTERDECK_AGENT_LAB === "1" ? "agent-lab" : "flight",
+	});
+	setRuntimeDiagnosticLogSink(diagnostics);
+	try {
+		await runRuntimeStartupCleanup(modules, warn);
+		const startupAgentCleanup = startOrphanedAgentCleanup(warn);
+		const bootstrap = await createRuntimeBootstrapState(modules, warn, startupAgentCleanup, diagnostics);
+		return await createRuntimeServerHandle(modules, bootstrap, runtimeCapabilities);
+	} catch (error) {
+		setRuntimeDiagnosticLogSink(null);
+		await diagnostics.fail(error).catch(() => undefined);
+		throw error;
+	}
 }
 
 async function startServerWithAutoPortRetry(options: CliOptions): Promise<RuntimeServerHandle> {
@@ -670,6 +722,7 @@ function createProgram(invocationArgs: string[]): Command {
 	registerHooksCommand(program);
 	registerStatuslineCommand(program);
 	registerBackupCommand(program);
+	registerDiagnosticsCommand(program);
 
 	program.action(async (options: RootCommandOptions) => {
 		await runMainCommand(

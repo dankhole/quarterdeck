@@ -26,7 +26,11 @@ export {
 export { killOrphanedAgentProcesses } from "./orphan-cleanup";
 export { stripAnsi } from "./output-utils";
 export { type PtyExitEvent, PtySession, type SpawnPtySessionRequest } from "./pty-session";
-export { TerminalSessionManager } from "./session-manager";
+export {
+	TerminalSessionManager,
+	type TerminalSessionManagerDiagnosticSnapshot,
+	type TerminalSessionManagerOptions,
+} from "./session-manager";
 export {
 	type ActiveProcessState,
 	buildTerminalEnvironment,
@@ -72,7 +76,11 @@ export {
 	type TerminalProtocolFilterState,
 } from "./terminal-protocol-filter";
 export type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service";
-export { type TerminalRestoreSnapshot, TerminalStateMirror } from "./terminal-state-mirror";
+export {
+	type TerminalRestoreSnapshot,
+	TerminalStateMirror,
+	type TerminalStateMirrorDiagnosticSnapshot,
+} from "./terminal-state-mirror";
 export { buildWorktreeContextPrompt, type WorktreeContextInput } from "./worktree-context";
 export {
 	type CreateTerminalWebSocketBridgeRequest,

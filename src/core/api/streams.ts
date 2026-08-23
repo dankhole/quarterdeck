@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { diagnosticRecordEnvelopeSchema, diagnosticRecordingStateSchema } from "./diagnostics.js";
 import {
 	runtimeProjectMetadataSchema,
 	runtimeProjectStateResponseSchema,
@@ -92,33 +93,43 @@ export const runtimeStateStreamErrorMessageSchema = z.object({
 });
 export type RuntimeStateStreamErrorMessage = z.infer<typeof runtimeStateStreamErrorMessageSchema>;
 
-export const runtimeDebugLogLevelSchema = z.enum(["debug", "info", "warn", "error"]);
-export type RuntimeDebugLogLevel = z.infer<typeof runtimeDebugLogLevelSchema>;
+export const runtimeConsoleLogLevelSchema = z.enum(["debug", "info", "warn", "error"]);
+export type RuntimeConsoleLogLevel = z.infer<typeof runtimeConsoleLogLevelSchema>;
 
-export const runtimeDebugLogEntrySchema = z.object({
-	id: z.string(),
-	timestamp: z.number(),
-	level: runtimeDebugLogLevelSchema,
-	tag: z.string(),
-	message: z.string(),
-	data: z.unknown().optional(),
-	source: z.enum(["server", "client"]),
+export const runtimeStateStreamDiagnosticsStateMessageSchema = z.object({
+	type: z.literal("diagnostics_state"),
+	runtimeInstanceId: z.string(),
+	browserCapability: z.string(),
+	consoleLogLevel: runtimeConsoleLogLevelSchema,
+	recording: diagnosticRecordingStateSchema,
+	recentRecords: z.array(diagnosticRecordEnvelopeSchema),
 });
-export type RuntimeDebugLogEntry = z.infer<typeof runtimeDebugLogEntrySchema>;
+export type RuntimeStateStreamDiagnosticsStateMessage = z.infer<typeof runtimeStateStreamDiagnosticsStateMessageSchema>;
 
-export const runtimeStateStreamDebugLogBatchMessageSchema = z.object({
-	type: z.literal("debug_log_batch"),
-	entries: z.array(runtimeDebugLogEntrySchema),
+export const runtimeStateStreamDiagnosticRecordBatchMessageSchema = z.object({
+	type: z.literal("diagnostic_record_batch"),
+	records: z.array(diagnosticRecordEnvelopeSchema),
 });
-export type RuntimeStateStreamDebugLogBatchMessage = z.infer<typeof runtimeStateStreamDebugLogBatchMessageSchema>;
+export type RuntimeStateStreamDiagnosticRecordBatchMessage = z.infer<
+	typeof runtimeStateStreamDiagnosticRecordBatchMessageSchema
+>;
 
-export const runtimeStateStreamDebugLoggingStateMessageSchema = z.object({
-	type: z.literal("debug_logging_state"),
-	level: runtimeDebugLogLevelSchema,
-	recentEntries: z.array(runtimeDebugLogEntrySchema).optional(),
+export const runtimeStateStreamDiagnosticCaptureStateMessageSchema = z.object({
+	type: z.literal("diagnostic_capture_state"),
+	consoleLogLevel: runtimeConsoleLogLevelSchema,
+	recording: diagnosticRecordingStateSchema,
 });
-export type RuntimeStateStreamDebugLoggingStateMessage = z.infer<
-	typeof runtimeStateStreamDebugLoggingStateMessageSchema
+export type RuntimeStateStreamDiagnosticCaptureStateMessage = z.infer<
+	typeof runtimeStateStreamDiagnosticCaptureStateMessageSchema
+>;
+
+export const runtimeStateStreamDiagnosticSnapshotRequestMessageSchema = z.object({
+	type: z.literal("diagnostic_snapshot_request"),
+	nonce: z.string(),
+	deadline: z.number().int().nonnegative(),
+});
+export type RuntimeStateStreamDiagnosticSnapshotRequestMessage = z.infer<
+	typeof runtimeStateStreamDiagnosticSnapshotRequestMessageSchema
 >;
 
 export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
@@ -132,8 +143,10 @@ export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
 	runtimeStateStreamTaskBaseRefUpdatedMessageSchema,
 	runtimeStateStreamTaskNotificationMessageSchema,
 	runtimeStateStreamErrorMessageSchema,
-	runtimeStateStreamDebugLogBatchMessageSchema,
-	runtimeStateStreamDebugLoggingStateMessageSchema,
+	runtimeStateStreamDiagnosticsStateMessageSchema,
+	runtimeStateStreamDiagnosticRecordBatchMessageSchema,
+	runtimeStateStreamDiagnosticCaptureStateMessageSchema,
+	runtimeStateStreamDiagnosticSnapshotRequestMessageSchema,
 ]);
 export type RuntimeStateStreamMessage = z.infer<typeof runtimeStateStreamMessageSchema>;
 

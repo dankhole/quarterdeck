@@ -12,6 +12,7 @@ import {
 	getQuarterdeckRuntimePort,
 	TaskResourceOperationCoordinator,
 } from "../core";
+import { handleDiagnosticsHttpRequest, type RuntimeDiagnostics } from "../diagnostics";
 import { createHookTransitionOutboxReplayer } from "../hook-transition-outbox";
 import { loadProjectScopeById } from "../state";
 import type { TerminalSessionManager } from "../terminal";
@@ -29,6 +30,7 @@ import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
 import { handleHttpRequest, handleSocketUpgrade } from "./middleware";
 import { normalizeProjectMetadataClientId } from "./project-metadata-visibility";
 import type { ProjectRegistry } from "./project-registry";
+import { observeRuntimeApiRequest } from "./runtime-request-diagnostics";
 import type { RuntimeStateHub } from "./runtime-state-hub";
 
 const serverLog = createTaggedLogger("runtime-server");
@@ -41,6 +43,7 @@ interface DisposeTrackedProjectResult {
 export interface CreateRuntimeServerDependencies {
 	projectRegistry: ProjectRegistry;
 	runtimeStateHub: RuntimeStateHub;
+	diagnostics: RuntimeDiagnostics;
 	warn: (message: string) => void;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	hostIntegrations: IRuntimeHostIntegrations;
@@ -138,9 +141,14 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		terminals: deps.projectRegistry,
 		config: deps.projectRegistry,
 		broadcaster: deps.runtimeStateHub,
+		diagnostics: deps.diagnostics,
 	});
 	const hookTransitionOutboxReplayer = createHookTransitionOutboxReplayer({
 		ingest: hooksApi.ingest,
+	});
+	const disposeHookOutboxDiagnosticProvider = deps.diagnostics.registerSnapshotProvider({
+		name: "hook_outbox",
+		capture: (scope) => hookTransitionOutboxReplayer.getDiagnosticSnapshot(scope),
 	});
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
 		const requestUrl = new URL(req.url ?? "/", "http://localhost");
@@ -166,6 +174,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				terminals: deps.projectRegistry,
 				broadcaster: deps.runtimeStateHub,
 				data: deps.projectRegistry,
+				diagnostics: deps.diagnostics,
 				taskResourceOperations,
 			}),
 			projectsApi: createProjectsApi({
@@ -199,6 +208,10 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 			const requestUrl = new URL(req.url ?? "/", "http://localhost");
 			const pathname = normalizeRequestPath(requestUrl.pathname);
+			observeRuntimeApiRequest(req, res, pathname, deps.diagnostics);
+			if (await handleDiagnosticsHttpRequest(req, res, requestUrl, deps.diagnostics)) {
+				return;
+			}
 			if (pathname.startsWith("/api/trpc")) {
 				await trpcHttpHandler(req, res);
 				return;
@@ -243,6 +256,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	});
 	const terminalWebSocketBridge = createTerminalWebSocketBridge({
 		server,
+		diagnostics: deps.diagnostics,
 		resolveTerminalManager: (projectId) => deps.projectRegistry.getTerminalManagerForProject(projectId),
 		isTerminalIoWebSocketPath: (pathname) => normalizeRequestPath(pathname) === "/api/terminal/io",
 		isTerminalControlWebSocketPath: (pathname) => normalizeRequestPath(pathname) === "/api/terminal/control",
@@ -269,6 +283,8 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		throw new Error("Failed to start local server.");
 	}
 	const serverPort = typeof address === "object" ? address.port : null;
+	if (serverPort === null) throw new Error("Failed to resolve local server port.");
+	await deps.diagnostics.markReady(getQuarterdeckRuntimeHost(), serverPort);
 	serverLog.warn("server started", { port: serverPort, pid: process.pid });
 	hookTransitionOutboxReplayer.start();
 	const activeProjectId = deps.projectRegistry.getActiveProjectId();
@@ -279,18 +295,25 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	return {
 		url,
 		close: async () => {
-			await hookTransitionOutboxReplayer.close();
-			await deps.runtimeStateHub.close();
-			await terminalWebSocketBridge.close();
-			await new Promise<void>((resolveClose, rejectClose) => {
-				server.close((error) => {
-					if (error) {
-						rejectClose(error);
-						return;
-					}
-					resolveClose();
+			try {
+				await hookTransitionOutboxReplayer.close();
+				disposeHookOutboxDiagnosticProvider();
+				await deps.runtimeStateHub.close();
+				await terminalWebSocketBridge.close();
+				await new Promise<void>((resolveClose, rejectClose) => {
+					server.close((error) => {
+						if (error) {
+							rejectClose(error);
+							return;
+						}
+						resolveClose();
+					});
 				});
-			});
+				await deps.diagnostics.close();
+			} catch (error) {
+				await deps.diagnostics.markFailed(error).catch(() => undefined);
+				throw error;
+			}
 		},
 	};
 }

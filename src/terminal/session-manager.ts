@@ -14,7 +14,16 @@
 //   session-interrupt-recovery.ts  — interrupt detection and recovery
 //   session-auto-restart.ts        — auto-restart after unexpected exit
 //   session-reconciliation-sweep.ts — periodic task session/process drift sweep
-import type { RuntimeHookIngestRequest, RuntimeHookMetadata, RuntimeTaskSessionSummary } from "../core";
+import { randomUUID } from "node:crypto";
+
+import type {
+	DiagnosticCaptureScope,
+	RuntimeHookIngestRequest,
+	RuntimeHookMetadata,
+	RuntimeTaskSessionSummary,
+} from "../core";
+import { normalizeDiagnosticErrorClass } from "../core";
+import type { RuntimeDiagnostics } from "../diagnostics";
 import { commitHookEventOrder, evaluateHookEventOrder, type HookEventOrderDecision } from "./hook-event-order";
 import { processSessionInput } from "./session-input-pipeline";
 import {
@@ -41,17 +50,71 @@ import type { TerminalSessionListener, TerminalSessionService } from "./terminal
 
 export type { StartShellSessionRequest, StartTaskSessionRequest };
 
+export interface TerminalSessionManagerOptions {
+	projectId?: string;
+	diagnostics?: RuntimeDiagnostics;
+}
+
+export interface TerminalSessionManagerDiagnosticSnapshot {
+	projectId: string | null;
+	sessions: Array<{
+		projectId: string | null;
+		taskId: string;
+		sessionInstanceId: string | null;
+		hasSummary: boolean;
+		hasProcessEntry: boolean;
+		hasActiveProcess: boolean;
+		state: RuntimeTaskSessionSummary["state"];
+		reviewReason: RuntimeTaskSessionSummary["reviewReason"];
+		agentId: RuntimeTaskSessionSummary["agentId"];
+		pid: number | null;
+		pidAlive: boolean | null;
+		pendingSessionStart: boolean;
+		pendingSince: number | null;
+		exiting: boolean;
+		suppressAutoRestartOnExit: boolean;
+		autoRestartCount: number;
+		listenerCount: number;
+		hookCount: number;
+		hookOrderingActive: boolean;
+		hasLaunchPath: boolean;
+		mirror: ReturnType<NonNullable<ProcessEntry["terminalStateMirror"]>["getDiagnosticSnapshot"]> | null;
+	}>;
+}
+
+interface ObservedSessionSummary {
+	summary: RuntimeTaskSessionSummary;
+	sessionInstanceId: string | null;
+}
+
+function isProcessAliveForDiagnostics(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		return typeof error === "object" && error !== null && "code" in error && error.code === "EPERM";
+	}
+}
+
 export class TerminalSessionManager implements TerminalSessionService {
 	readonly store: SessionSummaryStore;
 	private readonly entries = new Map<string, ProcessEntry>();
 	private readonly transitions: SessionTransitionController;
 	private readonly lifecycle: SessionLifecycleController;
 	private readonly reconciliation: ReconciliationTimer;
+	private readonly projectId: string | null;
+	private readonly diagnostics: RuntimeDiagnostics | null;
+	private readonly previousSummaries = new Map<string, ObservedSessionSummary>();
 
-	constructor(store: SessionSummaryStore) {
+	constructor(store: SessionSummaryStore, options: TerminalSessionManagerOptions = {}) {
 		this.store = store;
+		this.projectId = options.projectId ?? null;
+		this.diagnostics = options.diagnostics ?? null;
 		this.transitions = new SessionTransitionController(this.store, this.entries);
-		this.store.onChange((summary) => this.transitions.broadcastSummary(summary));
+		this.store.onChange((summary) => {
+			this.observeSummaryChange(summary);
+			this.transitions.broadcastSummary(summary);
+		});
 		this.lifecycle = new SessionLifecycleController({
 			store: this.store,
 			entries: this.entries,
@@ -70,6 +133,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 	hydrateFromRecord(record: Record<string, RuntimeTaskSessionSummary>): void {
 		this.lifecycle.hydrateFromRecord(record);
+		for (const summary of this.store.listSummaries()) {
+			this.previousSummaries.set(summary.taskId, {
+				summary,
+				sessionInstanceId: this.entries.get(summary.taskId)?.launchMonitor?.sessionInstanceId ?? null,
+			});
+		}
 	}
 
 	attach(taskId: string, listener: TerminalSessionListener): (() => void) | null {
@@ -116,11 +185,43 @@ export class TerminalSessionManager implements TerminalSessionService {
 	}
 
 	async startTaskSession(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
-		return this.lifecycle.startTaskSession(request);
+		return (await this.startTaskSessionWithReadiness(request)).summary;
 	}
 
 	async startTaskSessionWithReadiness(request: StartTaskSessionRequest): Promise<TaskSessionStartWithReadinessResult> {
-		return await this.lifecycle.startTaskSessionWithReadiness(request);
+		const operationId = randomUUID();
+		this.record(
+			"session.start_requested",
+			{
+				agentId: request.agentId,
+				resumeRequested: request.resumeConversation === true,
+				hasTargetResumeId: Boolean(request.resumeSessionId),
+				startupRecovery: Boolean(request.startupRecoveryToken),
+			},
+			request.taskId,
+			{ operationId },
+		);
+		try {
+			const result = await this.lifecycle.startTaskSessionWithReadiness(request);
+			this.record(
+				"session.launch_prepared",
+				{
+					startedNewSession: result.startedNewSession,
+					agentId: request.agentId,
+				},
+				request.taskId,
+				{ operationId, sessionInstanceId: result.sessionInstanceId ?? undefined },
+			);
+			return result;
+		} catch (error) {
+			this.record(
+				"session.start_rejected",
+				{ errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError" },
+				request.taskId,
+				{ operationId, level: "warn" },
+			);
+			throw error;
+		}
 	}
 
 	async startShellSession(request: StartShellSessionRequest): Promise<RuntimeTaskSessionSummary> {
@@ -151,6 +252,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 		markTaskSessionLaunchUserEngaged(entry.launchMonitor);
 		if (!entry.active) {
 			return null;
+		}
+		if (data.includes(10) || data.includes(13)) {
+			this.record("session.input_submitted", {}, taskId);
 		}
 		return processSessionInput(entry, taskId, data, {
 			getSummary: (id) => this.store.getSummary(id),
@@ -267,7 +371,23 @@ export class TerminalSessionManager implements TerminalSessionService {
 	}
 
 	evaluateHookEventOrder(taskId: string, input: RuntimeHookIngestRequest): HookEventOrderDecision {
-		return evaluateHookEventOrder(this.entries.get(taskId)?.hookEventOrder ?? null, input);
+		const decision = evaluateHookEventOrder(this.entries.get(taskId)?.hookEventOrder ?? null, input);
+		this.record(
+			decision.accepted ? "hook.order_accepted" : "hook.order_rejected",
+			{
+				event: input.event,
+				hookEventName: input.metadata?.hookEventName ?? null,
+				reason: decision.accepted ? null : decision.reason,
+			},
+			taskId,
+			{
+				deliveryId: input.delivery?.id,
+				sessionInstanceId: input.metadata?.sessionInstanceId ?? undefined,
+				level: decision.accepted ? "debug" : "warn",
+				essential: !decision.accepted,
+			},
+		);
+		return decision;
 	}
 
 	commitHookEventOrder(taskId: string, input: RuntimeHookIngestRequest, advanceTurn: boolean): void {
@@ -323,11 +443,25 @@ export class TerminalSessionManager implements TerminalSessionService {
 	}
 
 	stopTaskSession(taskId: string): RuntimeTaskSessionSummary | null {
+		this.record("session.stop_requested", { waitForExit: false }, taskId);
 		return this.lifecycle.stopTaskSession(taskId);
 	}
 
 	async stopTaskSessionAndWaitForExit(taskId: string, timeoutMs = 3_000): Promise<StopTaskSessionResult> {
-		return this.lifecycle.stopTaskSessionAndWaitForExit(taskId, timeoutMs);
+		const startedAt = Date.now();
+		this.record("session.stop_requested", { waitForExit: true, timeoutMs }, taskId);
+		const result = await this.lifecycle.stopTaskSessionAndWaitForExit(taskId, timeoutMs);
+		const timedOut = result.outcome === "timed_out";
+		this.record(
+			timedOut ? "session.stop_wait_timed_out" : "session.stop_wait_completed",
+			{
+				durationMs: Date.now() - startedAt,
+				outcome: result.outcome,
+			},
+			taskId,
+			{ level: timedOut ? "warn" : "info" },
+		);
+		return result;
 	}
 
 	markInterruptedAndStopAll(): RuntimeTaskSessionSummary[] {
@@ -342,6 +476,48 @@ export class TerminalSessionManager implements TerminalSessionService {
 		this.reconciliation.stop();
 	}
 
+	getDiagnosticSnapshot(scope: Readonly<DiagnosticCaptureScope> = {}): TerminalSessionManagerDiagnosticSnapshot {
+		const summaries = new Map(this.store.listSummaries().map((summary) => [summary.taskId, summary]));
+		const taskIds = new Set([...summaries.keys(), ...this.entries.keys()]);
+		return {
+			projectId: this.projectId,
+			sessions: Array.from(taskIds)
+				.filter((taskId) => !scope.taskId || taskId === scope.taskId)
+				.flatMap((taskId) => {
+					const summary = summaries.get(taskId) ?? null;
+					const entry = this.entries.get(taskId) ?? null;
+					const sessionInstanceId = entry?.launchMonitor?.sessionInstanceId ?? null;
+					if (scope.sessionInstanceId && sessionInstanceId !== scope.sessionInstanceId) return [];
+					const pid = summary?.pid ?? entry?.active?.session.pid ?? null;
+					return [
+						{
+							projectId: this.projectId,
+							taskId,
+							sessionInstanceId,
+							hasSummary: summary !== null,
+							hasProcessEntry: entry !== null,
+							hasActiveProcess: entry?.active !== null && entry?.active !== undefined,
+							state: summary?.state ?? "idle",
+							reviewReason: summary?.reviewReason ?? null,
+							agentId: summary?.agentId ?? null,
+							pid,
+							pidAlive: pid === null ? null : isProcessAliveForDiagnostics(pid),
+							pendingSessionStart: entry?.pendingSessionStart ?? false,
+							pendingSince: entry?.pendingSessionStartSince ?? null,
+							exiting: Boolean(entry?.active && entry.suppressAutoRestartOnExit),
+							suppressAutoRestartOnExit: entry?.suppressAutoRestartOnExit ?? false,
+							autoRestartCount: entry?.autoRestartTimestamps.length ?? 0,
+							listenerCount: entry?.listeners.size ?? 0,
+							hookCount: entry?.hookCount ?? 0,
+							hookOrderingActive: entry?.hookEventOrder !== null && entry?.hookEventOrder !== undefined,
+							hasLaunchPath: Boolean(summary?.sessionLaunchPath),
+							mirror: entry?.terminalStateMirror?.getDiagnosticSnapshot() ?? null,
+						},
+					];
+				}),
+		};
+	}
+
 	// ── Private helpers ──────────────────────────────────────────────────
 
 	private handleTaskSessionOutput(entry: ProcessEntry, taskId: string, chunk: Buffer): void {
@@ -350,6 +526,84 @@ export class TerminalSessionManager implements TerminalSessionService {
 			updateStore: (id, patch) => this.store.update(id, patch),
 			applyTransitionEvent: (e, ev) => this.transitions.applyTransitionEvent(e, ev),
 		});
+	}
+
+	private observeSummaryChange(summary: RuntimeTaskSessionSummary): void {
+		const previousObservation = this.previousSummaries.get(summary.taskId) ?? null;
+		const previous = previousObservation?.summary ?? null;
+		const entry = this.entries.get(summary.taskId);
+		const sessionInstanceId = entry?.launchMonitor?.sessionInstanceId ?? null;
+		this.previousSummaries.set(summary.taskId, { summary, sessionInstanceId });
+		if (summary.pid !== null && summary.pid !== previous?.pid) {
+			this.record(
+				"session.process_spawned",
+				{
+					pid: summary.pid,
+					agentId: summary.agentId,
+					state: summary.state,
+				},
+				summary.taskId,
+				{ sessionInstanceId: sessionInstanceId ?? undefined },
+			);
+		}
+		if (previous?.pid !== null && previous?.pid !== undefined && previous.pid !== summary.pid) {
+			this.record(
+				"session.process_exit_observed",
+				{
+					pid: previous.pid,
+					exitCode: summary.exitCode,
+					nextState: summary.state,
+					nextReviewReason: summary.reviewReason,
+				},
+				summary.taskId,
+				{
+					sessionInstanceId: previousObservation?.sessionInstanceId ?? undefined,
+					level: summary.exitCode === 0 ? "info" : "warn",
+				},
+			);
+		}
+		if (previous && (previous.state !== summary.state || previous.reviewReason !== summary.reviewReason)) {
+			this.record(
+				"session.transition_applied",
+				{
+					previousState: previous.state,
+					previousReviewReason: previous.reviewReason,
+					nextState: summary.state,
+					nextReviewReason: summary.reviewReason,
+				},
+				summary.taskId,
+				{ sessionInstanceId: sessionInstanceId ?? undefined },
+			);
+		}
+	}
+
+	private record(
+		name: string,
+		payload: unknown,
+		taskId: string,
+		options: {
+			operationId?: string;
+			sessionInstanceId?: string;
+			deliveryId?: string;
+			level?: "debug" | "info" | "warn" | "error";
+			essential?: boolean;
+		} = {},
+	): void {
+		this.diagnostics?.recordEvent(
+			name,
+			payload,
+			{
+				...(this.projectId ? { projectId: this.projectId } : {}),
+				taskId,
+				...(options.operationId ? { operationId: options.operationId } : {}),
+				...(options.sessionInstanceId ? { sessionInstanceId: options.sessionInstanceId } : {}),
+				...(options.deliveryId ? { deliveryId: options.deliveryId } : {}),
+			},
+			{
+				level: options.level,
+				essential: options.essential ?? true,
+			},
+		);
 	}
 
 	private applyActiveTerminalGeometry(

@@ -6,9 +6,14 @@ import { getQuarterdeckRuntimeHost, getQuarterdeckRuntimeOrigin, getQuarterdeckR
 const VITE_DEV_PORT = 4173;
 const PREFLIGHT_MAX_AGE_SECONDS = "600";
 const ALLOWED_METHODS = ["GET", "POST", "OPTIONS"].join(", ");
-const ALLOWED_HEADERS = ["Authorization", "Content-Type", "X-Quarterdeck-Client-Id", "X-Quarterdeck-Project-Id"].join(
-	", ",
-);
+const ALLOWED_HEADERS = [
+	"Authorization",
+	"Content-Type",
+	"X-Quarterdeck-Client-Id",
+	"X-Quarterdeck-Diagnostic-Capability",
+	"X-Quarterdeck-Diagnostic-Token",
+	"X-Quarterdeck-Project-Id",
+].join(", ");
 
 export type CorsDecision =
 	| { kind: "allow"; origin: string | null }

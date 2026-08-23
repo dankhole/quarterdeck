@@ -1,8 +1,17 @@
-import { deriveTaskIndicatorState, type LogEntry, type RuntimeTaskSessionSummary } from "../core";
+import {
+	type DiagnosticCaptureScope,
+	type DiagnosticRecordEnvelope,
+	deriveTaskIndicatorState,
+	type RuntimeTaskSessionSummary,
+} from "../core";
 import type { TerminalSessionManager } from "../terminal";
+import {
+	isHighPriorityDiagnosticRecord,
+	MAX_PENDING_DIAGNOSTIC_STREAM_RECORDS,
+} from "./runtime-diagnostic-stream-policy";
 
 const TASK_SESSION_STREAM_BATCH_MS = 150;
-const DEBUG_LOG_BATCH_MS = 150;
+const DIAGNOSTIC_RECORD_BATCH_MS = 150;
 
 interface RuntimeTaskSessionEvent {
 	projectId: string;
@@ -131,6 +140,25 @@ class RuntimeTaskSessionBatchQueue {
 		this.pendingUpdates.clear();
 	}
 
+	getDiagnosticSnapshot(scope: Readonly<DiagnosticCaptureScope> = {}): {
+		pendingProjects: number;
+		pendingUpdates: number;
+		oldestPendingAgeMs: null;
+	} {
+		const pending = Array.from(this.pendingUpdates.entries()).filter(
+			([projectId, updates]) =>
+				(!scope.projectId || projectId === scope.projectId) && (!scope.taskId || updates.has(scope.taskId)),
+		);
+		return {
+			pendingProjects: pending.length,
+			pendingUpdates: pending.reduce(
+				(total, [, updates]) => total + (scope.taskId ? Number(updates.has(scope.taskId)) : updates.size),
+				0,
+			),
+			oldestPendingAgeMs: null,
+		};
+	}
+
 	private flush(projectId: string): void {
 		const pending = this.pendingUpdates.get(projectId);
 		if (!pending || pending.size === 0) {
@@ -149,26 +177,38 @@ class RuntimeTaskSessionBatchQueue {
 	}
 }
 
-interface CreateRuntimeDebugLogBatchQueueDependencies {
-	hasClients: () => boolean;
-	onDebugLogBatch: (entries: LogEntry[]) => void;
+interface CreateRuntimeDiagnosticRecordBatchQueueDependencies {
+	hasDiagnosticSubscribers: () => boolean;
+	onDiagnosticRecordBatch: (records: DiagnosticRecordEnvelope[]) => void;
 }
 
-class RuntimeDebugLogBatchQueue {
-	private readonly pendingEntries: LogEntry[] = [];
+class RuntimeDiagnosticRecordBatchQueue {
+	private readonly pendingRecords: DiagnosticRecordEnvelope[] = [];
 	private flushTimer: NodeJS.Timeout | null = null;
+	private droppedRecords = 0;
 
-	constructor(private readonly deps: CreateRuntimeDebugLogBatchQueueDependencies) {}
+	constructor(private readonly deps: CreateRuntimeDiagnosticRecordBatchQueueDependencies) {}
 
-	queue(entry: LogEntry): void {
-		if (!this.deps.hasClients()) {
+	queue(record: DiagnosticRecordEnvelope): void {
+		if (!this.deps.hasDiagnosticSubscribers()) {
 			return;
 		}
-		this.pendingEntries.push(entry);
+		if (this.pendingRecords.length >= MAX_PENDING_DIAGNOSTIC_STREAM_RECORDS) {
+			const replaceableIndex = isHighPriorityDiagnosticRecord(record)
+				? this.pendingRecords.findIndex((candidate) => !isHighPriorityDiagnosticRecord(candidate))
+				: -1;
+			if (replaceableIndex < 0) {
+				this.droppedRecords += 1;
+				return;
+			}
+			this.pendingRecords.splice(replaceableIndex, 1);
+			this.droppedRecords += 1;
+		}
+		this.pendingRecords.push(record);
 		if (this.flushTimer !== null) {
 			return;
 		}
-		this.flushTimer = setTimeout(() => this.flush(), DEBUG_LOG_BATCH_MS);
+		this.flushTimer = setTimeout(() => this.flush(), DIAGNOSTIC_RECORD_BATCH_MS);
 		this.flushTimer.unref();
 	}
 
@@ -177,31 +217,44 @@ class RuntimeDebugLogBatchQueue {
 			clearTimeout(this.flushTimer);
 			this.flushTimer = null;
 		}
-		this.pendingEntries.length = 0;
+		this.pendingRecords.length = 0;
+	}
+
+	getDiagnosticSnapshot(): { pendingRecords: number; flushScheduled: boolean; droppedRecords: number } {
+		return {
+			pendingRecords: this.pendingRecords.length,
+			flushScheduled: this.flushTimer !== null,
+			droppedRecords: this.droppedRecords,
+		};
 	}
 
 	private flush(): void {
 		this.flushTimer = null;
-		if (this.pendingEntries.length === 0 || !this.deps.hasClients()) {
-			// Debug log batching is a best-effort live stream only. Reconnecting
-			// clients are reseeded from the runtime logger ring buffer via the
-			// separate debug_logging_state snapshot path in RuntimeStateHub.
-			this.pendingEntries.length = 0;
+		if (this.pendingRecords.length === 0 || !this.deps.hasDiagnosticSubscribers()) {
+			// Live delivery is best effort. A later subscription explicitly
+			// hydrates a bounded tail from the canonical recorder over HTTP.
+			this.pendingRecords.length = 0;
 			return;
 		}
-		this.deps.onDebugLogBatch(this.pendingEntries.splice(0));
+		this.deps.onDiagnosticRecordBatch(this.pendingRecords.splice(0));
 	}
 }
 
 export interface CreateRuntimeStateMessageBatcherDependencies
 	extends CreateRuntimeStateTaskSessionEventDeliveryDependencies,
-		CreateRuntimeDebugLogBatchQueueDependencies {}
+		CreateRuntimeDiagnosticRecordBatchQueueDependencies {}
+
+export interface RuntimeStateMessageBatcherDiagnosticSnapshot {
+	trackedTerminalManagers: number;
+	taskSessions: ReturnType<RuntimeTaskSessionBatchQueue["getDiagnosticSnapshot"]>;
+	diagnosticRecords: ReturnType<RuntimeDiagnosticRecordBatchQueue["getDiagnosticSnapshot"]>;
+}
 
 export class RuntimeStateMessageBatcher {
 	private readonly terminalSummaryUnsubscribes = new Map<string, () => void>();
 	private readonly taskSessionEventDelivery: RuntimeStateTaskSessionEventDelivery;
 	private readonly taskSessionBatchQueue: RuntimeTaskSessionBatchQueue;
-	private readonly debugLogBatchQueue: RuntimeDebugLogBatchQueue;
+	private readonly diagnosticRecordBatchQueue: RuntimeDiagnosticRecordBatchQueue;
 
 	constructor(deps: CreateRuntimeStateMessageBatcherDependencies) {
 		this.taskSessionEventDelivery = new RuntimeStateTaskSessionEventDelivery(deps);
@@ -210,7 +263,7 @@ export class RuntimeStateMessageBatcher {
 				this.taskSessionEventDelivery.deliver(event);
 			},
 		});
-		this.debugLogBatchQueue = new RuntimeDebugLogBatchQueue(deps);
+		this.diagnosticRecordBatchQueue = new RuntimeDiagnosticRecordBatchQueue(deps);
 	}
 
 	trackTerminalManager(projectId: string, manager: TerminalSessionManager): void {
@@ -228,8 +281,20 @@ export class RuntimeStateMessageBatcher {
 		this.terminalSummaryUnsubscribes.set(projectId, unsubscribe);
 	}
 
-	queueDebugLogEntry(entry: LogEntry): void {
-		this.debugLogBatchQueue.queue(entry);
+	queueDiagnosticRecord(record: DiagnosticRecordEnvelope): void {
+		this.diagnosticRecordBatchQueue.queue(record);
+	}
+
+	getDiagnosticSnapshot(scope: Readonly<DiagnosticCaptureScope> = {}): RuntimeStateMessageBatcherDiagnosticSnapshot {
+		return {
+			trackedTerminalManagers: scope.projectId
+				? Number(this.terminalSummaryUnsubscribes.has(scope.projectId))
+				: scope.taskId
+					? 0
+					: this.terminalSummaryUnsubscribes.size,
+			taskSessions: this.taskSessionBatchQueue.getDiagnosticSnapshot(scope),
+			diagnosticRecords: this.diagnosticRecordBatchQueue.getDiagnosticSnapshot(),
+		};
 	}
 
 	disposeProject(projectId: string): void {
@@ -246,7 +311,7 @@ export class RuntimeStateMessageBatcher {
 	}
 
 	close(): void {
-		this.debugLogBatchQueue.close();
+		this.diagnosticRecordBatchQueue.close();
 		this.taskSessionBatchQueue.close();
 
 		for (const unsubscribe of this.terminalSummaryUnsubscribes.values()) {

@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { z } from "zod";
 import {
 	createTaggedLogger,
+	type DiagnosticCaptureScope,
+	normalizeDiagnosticErrorClass,
 	type RuntimeHookDelivery,
 	type RuntimeHookIngestRequest,
 	type RuntimeHookIngestResponse,
@@ -184,6 +186,55 @@ export interface HookTransitionOutboxReplayer {
 	start: () => void;
 	replayOnce: () => Promise<void>;
 	close: () => Promise<void>;
+	getDiagnosticSnapshot: (scope?: Readonly<DiagnosticCaptureScope>) => HookTransitionOutboxDiagnosticSnapshot;
+}
+
+export interface HookTransitionOutboxDiagnosticSnapshot {
+	running: boolean;
+	replayInFlight: boolean;
+	lastScanStartedAt: number | null;
+	lastScanCompletedAt: number | null;
+	lastScanErrorClass: string | null;
+	pendingRecords: number | null;
+	oldestPendingAgeMs: number | null;
+	lastAttempted: number;
+	lastAcknowledged: number;
+	lastDeferred: number;
+}
+
+interface HookTransitionDiagnosticIdentity {
+	deliveryId: string;
+	projectId: string;
+	taskId: string;
+	sessionInstanceId: string | null;
+	occurredAt: number;
+}
+
+interface HookTransitionDiagnosticAttempt extends HookTransitionDiagnosticIdentity {
+	outcome: "attempting" | "acknowledged" | "deferred";
+}
+
+function diagnosticIdentity(record: PersistedHookTransition): HookTransitionDiagnosticIdentity {
+	return {
+		deliveryId: record.request.delivery.id,
+		projectId: record.request.projectId,
+		taskId: record.request.taskId,
+		sessionInstanceId: record.request.metadata?.sessionInstanceId ?? null,
+		occurredAt: record.request.delivery.occurredAt,
+	};
+}
+
+function matchesDiagnosticScope(
+	identity: HookTransitionDiagnosticIdentity,
+	scope: Readonly<DiagnosticCaptureScope>,
+): boolean {
+	if (scope.projectId && identity.projectId !== scope.projectId) return false;
+	if (scope.taskId && identity.taskId !== scope.taskId) return false;
+	if (scope.sessionInstanceId && identity.sessionInstanceId !== scope.sessionInstanceId) return false;
+	// Outbox deliveries do not have a diagnostic operation id. Do not attribute
+	// unrelated aggregate state to an operation-scoped capture.
+	if (scope.operationId) return false;
+	return true;
 }
 
 export function createHookTransitionOutboxReplayer(deps: {
@@ -192,27 +243,59 @@ export function createHookTransitionOutboxReplayer(deps: {
 }): HookTransitionOutboxReplayer {
 	let timer: NodeJS.Timeout | null = null;
 	let activeReplay: Promise<void> | null = null;
+	let running = false;
+	let lastScanStartedAt: number | null = null;
+	let lastScanCompletedAt: number | null = null;
+	let lastScanErrorClass: string | null = null;
+	let lastPendingRecords: HookTransitionDiagnosticIdentity[] | null = null;
+	let lastAttempts: HookTransitionDiagnosticAttempt[] = [];
 
 	const replayOnce = async (): Promise<void> => {
 		if (activeReplay) {
 			return await activeReplay;
 		}
 		activeReplay = (async () => {
-			const records = await loadPendingHookTransitions();
-			for (const record of records) {
-				try {
-					const response = await deps.ingest(record.request);
-					if (response.ok) {
-						await acknowledgeHookTransition(record.request.delivery.id);
+			lastScanStartedAt = Date.now();
+			lastScanErrorClass = null;
+			lastAttempts = [];
+			try {
+				const records = await loadPendingHookTransitions();
+				lastPendingRecords = records.map(diagnosticIdentity);
+				for (const record of records) {
+					const identity = diagnosticIdentity(record);
+					const attempt: HookTransitionDiagnosticAttempt = { ...identity, outcome: "attempting" };
+					lastAttempts.push(attempt);
+					try {
+						const response = await deps.ingest(record.request);
+						if (response.ok) {
+							await acknowledgeHookTransition(record.request.delivery.id);
+							attempt.outcome = "acknowledged";
+							lastPendingRecords = lastPendingRecords.filter(
+								(candidate) => candidate.deliveryId !== identity.deliveryId,
+							);
+							outboxLog.info("hook transition replay delivered", {
+								deliveryId: record.request.delivery.id,
+								projectId: record.request.projectId,
+								taskId: record.request.taskId,
+							});
+						} else {
+							attempt.outcome = "deferred";
+						}
+					} catch (error) {
+						attempt.outcome = "deferred";
+						outboxLog.debug("hook transition replay deferred", {
+							deliveryId: record.request.delivery.id,
+							projectId: record.request.projectId,
+							taskId: record.request.taskId,
+							error: error instanceof Error ? error.message : String(error),
+						});
 					}
-				} catch (error) {
-					outboxLog.debug("hook transition replay deferred", {
-						deliveryId: record.request.delivery.id,
-						projectId: record.request.projectId,
-						taskId: record.request.taskId,
-						error: error instanceof Error ? error.message : String(error),
-					});
 				}
+			} catch (error) {
+				lastScanErrorClass = error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError";
+				throw error;
+			} finally {
+				lastScanCompletedAt = Date.now();
 			}
 		})().finally(() => {
 			activeReplay = null;
@@ -225,6 +308,7 @@ export function createHookTransitionOutboxReplayer(deps: {
 			if (timer) {
 				return;
 			}
+			running = true;
 			void replayOnce().catch((error) => {
 				outboxLog.warn("initial hook transition replay failed", {
 					error: error instanceof Error ? error.message : String(error),
@@ -241,6 +325,7 @@ export function createHookTransitionOutboxReplayer(deps: {
 		},
 		replayOnce,
 		close: async () => {
+			running = false;
 			if (timer) {
 				clearInterval(timer);
 				timer = null;
@@ -248,6 +333,25 @@ export function createHookTransitionOutboxReplayer(deps: {
 			if (activeReplay) {
 				await activeReplay;
 			}
+		},
+		getDiagnosticSnapshot: (scope = {}) => {
+			const pending = lastPendingRecords?.filter((record) => matchesDiagnosticScope(record, scope)) ?? null;
+			const attempts = lastAttempts.filter((attempt) => matchesDiagnosticScope(attempt, scope));
+			return {
+				running,
+				replayInFlight: activeReplay !== null,
+				lastScanStartedAt,
+				lastScanCompletedAt,
+				lastScanErrorClass,
+				pendingRecords: pending?.length ?? null,
+				oldestPendingAgeMs:
+					pending && pending.length > 0
+						? Math.max(0, Date.now() - Math.min(...pending.map((record) => record.occurredAt)))
+						: null,
+				lastAttempted: attempts.length,
+				lastAcknowledged: attempts.filter((attempt) => attempt.outcome === "acknowledged").length,
+				lastDeferred: attempts.filter((attempt) => attempt.outcome === "deferred").length,
+			};
 		},
 	};
 }

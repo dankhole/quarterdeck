@@ -7,13 +7,16 @@
  * message shape in one place.
  */
 import type {
-	LogEntry,
+	DiagnosticRecordEnvelope,
+	DiagnosticRecordingState,
 	LogLevel,
 	RuntimeProjectMetadata,
 	RuntimeProjectStateResponse,
 	RuntimeProjectSummary,
-	RuntimeStateStreamDebugLogBatchMessage,
-	RuntimeStateStreamDebugLoggingStateMessage,
+	RuntimeStateStreamDiagnosticCaptureStateMessage,
+	RuntimeStateStreamDiagnosticRecordBatchMessage,
+	RuntimeStateStreamDiagnosticSnapshotRequestMessage,
+	RuntimeStateStreamDiagnosticsStateMessage,
 	RuntimeStateStreamErrorMessage,
 	RuntimeStateStreamProjectMetadataMessage,
 	RuntimeStateStreamProjectStateMessage,
@@ -148,20 +151,46 @@ export function buildErrorMessage(message: string): RuntimeStateStreamErrorMessa
 	};
 }
 
-export function buildDebugLoggingStateMessage(
-	level: LogLevel,
-	recentEntries?: LogEntry[],
-): RuntimeStateStreamDebugLoggingStateMessage {
+export function buildDiagnosticsStateMessage(input: {
+	runtimeInstanceId: string;
+	browserCapability: string;
+	consoleLogLevel: LogLevel;
+	recording: DiagnosticRecordingState;
+	recentRecords: DiagnosticRecordEnvelope[];
+}): RuntimeStateStreamDiagnosticsStateMessage {
 	return {
-		type: "debug_logging_state",
-		level,
-		recentEntries,
+		type: "diagnostics_state",
+		...input,
 	};
 }
 
-export function buildDebugLogBatchMessage(entries: LogEntry[]): RuntimeStateStreamDebugLogBatchMessage {
+export function buildDiagnosticRecordBatchMessage(
+	records: DiagnosticRecordEnvelope[],
+): RuntimeStateStreamDiagnosticRecordBatchMessage {
 	return {
-		type: "debug_log_batch",
-		entries,
+		type: "diagnostic_record_batch",
+		records,
+	};
+}
+
+export function buildDiagnosticCaptureStateMessage(
+	consoleLogLevel: LogLevel,
+	recording: DiagnosticRecordingState,
+): RuntimeStateStreamDiagnosticCaptureStateMessage {
+	return {
+		type: "diagnostic_capture_state",
+		consoleLogLevel,
+		recording,
+	};
+}
+
+export function buildDiagnosticSnapshotRequestMessage(
+	nonce: string,
+	deadline: number,
+): RuntimeStateStreamDiagnosticSnapshotRequestMessage {
+	return {
+		type: "diagnostic_snapshot_request",
+		nonce,
+		deadline,
 	};
 }

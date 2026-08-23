@@ -3,14 +3,15 @@ import { createContext, useContext, useMemo } from "react";
 
 import type { RuntimeSettingsSection } from "@/components/settings";
 import { useAppDialogs } from "@/hooks/app";
-import { type UseDebugLoggingResult, useDebugLogging, useDebugTools } from "@/hooks/debug";
+import { useDebugTools } from "@/hooks/debug";
+import { type UseDiagnosticsResult, useDiagnostics } from "@/hooks/diagnostics";
 import { useInteractionsContext } from "@/providers/interactions-provider";
-import { useProjectNavigationContext, useProjectRuntimeStreamContext } from "@/providers/project-provider";
+import { useProjectNavigationContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { useTaskEditorContext } from "@/providers/task-editor-provider";
 
 // ---------------------------------------------------------------------------
-// Context value — dialog open/close state, debug tools, and debug logging.
+// Context value — dialog state, developer tools, and unified diagnostics.
 // ---------------------------------------------------------------------------
 
 export interface DialogContextValue {
@@ -39,8 +40,8 @@ export interface DialogContextValue {
 	handleShowStartupOnboardingDialog: () => void;
 	handleDebugDialogOpenChange: (nextOpen: boolean) => void;
 
-	// Debug logging
-	debugLogging: UseDebugLoggingResult;
+	// Unified runtime and browser diagnostics
+	diagnostics: UseDiagnosticsResult;
 }
 
 export const DialogContext = createContext<DialogContextValue | null>(null);
@@ -54,10 +55,10 @@ export function useDialogContext(): DialogContextValue {
 }
 
 // ---------------------------------------------------------------------------
-// Provider component — calls useAppDialogs, useDebugTools, useDebugLogging
+// Provider component — composes app dialogs, developer tools, and diagnostics
 // and exposes the combined value via DialogContext.
 //
-// Reads project-level inputs (config, log entries, onboarding handler) from
+// Reads project-level inputs (config and onboarding handler) from
 // project contexts. Clear-trash dialog state is read from InteractionsContext
 // (owned by InteractionsProvider which must render above DialogProvider).
 // ---------------------------------------------------------------------------
@@ -68,7 +69,6 @@ export interface DialogProviderProps {
 
 export function DialogProvider({ children }: DialogProviderProps): ReactNode {
 	const { currentProjectId } = useProjectNavigationContext();
-	const { logLevel, debugLogEntries } = useProjectRuntimeStreamContext();
 	const projectRuntime = useProjectRuntimeContext();
 	const { taskEditor } = useTaskEditorContext();
 	const { isClearTrashDialogOpen, setIsClearTrashDialogOpen } = useInteractionsContext();
@@ -96,11 +96,7 @@ export function DialogProvider({ children }: DialogProviderProps): ReactNode {
 		onOpenStartupOnboardingDialog: projectRuntime.handleOpenStartupOnboardingDialog,
 	});
 
-	const debugLogging = useDebugLogging({
-		currentProjectId,
-		logLevel,
-		debugLogEntries,
-	});
+	const diagnostics = useDiagnostics(currentProjectId);
 
 	const value = useMemo<DialogContextValue>(
 		() => ({
@@ -119,7 +115,7 @@ export function DialogProvider({ children }: DialogProviderProps): ReactNode {
 			handleOpenDebugDialog,
 			handleShowStartupOnboardingDialog,
 			handleDebugDialogOpenChange,
-			debugLogging,
+			diagnostics,
 		}),
 		[
 			isSettingsOpen,
@@ -137,7 +133,7 @@ export function DialogProvider({ children }: DialogProviderProps): ReactNode {
 			handleOpenDebugDialog,
 			handleShowStartupOnboardingDialog,
 			handleDebugDialogOpenChange,
-			debugLogging,
+			diagnostics,
 		],
 	);
 

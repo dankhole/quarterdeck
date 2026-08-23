@@ -1,9 +1,8 @@
 /**
- * Captures uncaught errors and unhandled promise rejections into the debug log panel.
- * Also intercepts console.error/console.warn so library errors surface in the panel.
+ * Captures uncaught errors, promise rejections, and console warnings/errors.
  *
  * Call `installGlobalErrorCapture()` once at app startup.
- * Call `setGlobalErrorCallback()` to wire/unwire the debug log callback.
+ * The app wires the callback once to the always-on browser diagnostic recorder.
  *
  * ## Cross-module coupling with client-logger
  *
@@ -12,17 +11,17 @@
  * patched console method here would re-capture that same message. The flag
  * suppresses capture during client-logger's `emit()` call.
  *
- * If you add another module that calls `console.error` and also pushes entries
- * to the debug panel via `addClientLogEntry`, you'll need the same
- * `setIsEmitting(true/false)` wrapper around the console call to avoid dupes.
+ * If another module both calls `console.error` and submits a structured
+ * diagnostic record, use the same `setIsEmitting(true/false)` wrapper around
+ * the console call to avoid duplicate candidates.
  *
  * ## Console intercept noise
  *
  * When the callback is active, EVERY `console.warn` and `console.error` from
- * any source (React dev warnings, xterm.js, third-party libraries) appears in
- * the debug panel tagged as "console". This can drown out app-level entries.
- * The debug panel exposes a "Show console" toggle (off by default) so users
- * opt into this noise rather than being overwhelmed by it.
+ * any source (React dev warnings, xterm.js, third-party libraries) is offered
+ * to unified diagnostics tagged as "console". The normal flight policy admits
+ * only warnings/errors; the Diagnostics timeline can filter `log.console`
+ * separately from structured app events.
  */
 
 type ErrorCallback = (level: "error" | "warn", tag: string, message: string, data?: unknown) => void;
@@ -35,7 +34,7 @@ const rawConsoleWarn = console.warn.bind(console);
 
 /**
  * Escape hatch for diagnostics that must reach the browser console even when
- * Quarterdeck's debug panel or console-capture path may be degraded. Prefer
+ * Quarterdeck's Diagnostics panel or structured recorder path may be degraded. Prefer
  * createClientLogger for ordinary app logging; use this only for critical
  * degraded-UI breadcrumbs or short-lived investigations.
  */

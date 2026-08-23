@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import type { Socket } from "node:net";
 
@@ -5,10 +6,11 @@ import type { RawData, WebSocket } from "ws";
 import { WebSocketServer } from "ws";
 
 import { getQuarterdeckRuntimeOrigin } from "../core";
+import type { RuntimeDiagnostics } from "../diagnostics";
 import { handleSocketUpgrade } from "../server/middleware";
 import type { TerminalSessionService } from "./terminal-session-service";
 import { createTerminalWsIoOutputState } from "./terminal-ws-backpressure-policy";
-import { TerminalWsConnectionRegistry } from "./terminal-ws-connection-registry";
+import { TerminalWsConnectionRegistry, type TerminalWsDiagnosticSnapshot } from "./terminal-ws-connection-registry";
 import { ensureTerminalWsOutputListener } from "./terminal-ws-output-fanout";
 import {
 	buildConnectionKey,
@@ -26,10 +28,12 @@ export interface CreateTerminalWebSocketBridgeRequest {
 	resolveTerminalManager: (projectId: string) => TerminalSessionService | null;
 	isTerminalIoWebSocketPath: (pathname: string) => boolean;
 	isTerminalControlWebSocketPath: (pathname: string) => boolean;
+	diagnostics?: RuntimeDiagnostics;
 }
 
 export interface TerminalWebSocketBridge {
 	close: () => Promise<void>;
+	getDiagnosticSnapshot: () => TerminalWsDiagnosticSnapshot;
 }
 
 export function createTerminalWebSocketBridge({
@@ -37,10 +41,32 @@ export function createTerminalWebSocketBridge({
 	resolveTerminalManager,
 	isTerminalIoWebSocketPath,
 	isTerminalControlWebSocketPath,
+	diagnostics,
 }: CreateTerminalWebSocketBridgeRequest): TerminalWebSocketBridge {
 	const activeSockets = new Set<Socket>();
 	const registry = new TerminalWsConnectionRegistry();
-	const restoreCoordinator = new TerminalWsRestoreCoordinator();
+	const restoreCoordinator = new TerminalWsRestoreCoordinator({
+		onSnapshotSent: ({ taskId, clientId, connectionId, durationMs, snapshotBytes }) => {
+			diagnostics?.recordEvent(
+				"terminal.restore_sent",
+				{ durationMs, snapshotBytes },
+				{ taskId, clientId, connectionId: connectionId ?? undefined },
+				{ essential: true },
+			);
+		},
+		onSnapshotFailed: ({ taskId, clientId, connectionId, durationMs, errorClass }) => {
+			diagnostics?.recordEvent(
+				"terminal.restore_failed",
+				{ durationMs, errorClass },
+				{ taskId, clientId, connectionId: connectionId ?? undefined },
+				{ level: "warn", essential: true },
+			);
+		},
+	});
+	const disposeDiagnosticProvider = diagnostics?.registerSnapshotProvider({
+		name: "terminal_transport",
+		capture: (scope) => registry.getDiagnosticSnapshot(scope),
+	});
 	server.on("connection", (socket: Socket) => {
 		socket.setNoDelay(true);
 		activeSockets.add(socket);
@@ -100,6 +126,7 @@ export function createTerminalWebSocketBridge({
 		const clientId = (context as TerminalWebSocketConnectionContext).clientId;
 		const terminalManager = (context as TerminalWebSocketConnectionContext).terminalManager;
 		const connectionKey = buildConnectionKey(projectId, taskId);
+		const connectionId = randomUUID();
 		terminalManager.recoverStaleSession(taskId);
 		const { streamState, viewerState } = registry.getOrCreateViewer(connectionKey, clientId);
 		const ioState = createTerminalWsIoOutputState({
@@ -108,8 +135,24 @@ export function createTerminalWebSocketBridge({
 			clientId,
 			taskId,
 			terminalManager,
+			onBackpressureChanged: (paused, metrics) => {
+				diagnostics?.recordEvent(
+					paused ? "terminal.backpressure_entered" : "terminal.backpressure_cleared",
+					metrics,
+					{ projectId, taskId, clientId, connectionId },
+					{ essential: true },
+				);
+			},
 		});
-		const previousIoSocket = registry.replaceIoConnection(viewerState, ws, ioState);
+		const previousIoSocket = registry.replaceIoConnection(viewerState, ws, ioState, connectionId);
+		diagnostics?.recordEvent(
+			"terminal.io_connected",
+			{},
+			{ projectId, taskId, clientId, connectionId },
+			{
+				essential: true,
+			},
+		);
 		restoreCoordinator.onIoSocketConnected(viewerState);
 		ensureTerminalWsOutputListener({ streamState, taskId, terminalManager, restoreCoordinator });
 		if (previousIoSocket && previousIoSocket !== ws) {
@@ -117,6 +160,7 @@ export function createTerminalWebSocketBridge({
 		}
 
 		ws.on("message", (rawMessage: RawData) => {
+			viewerState.lastProtocolActivityAt = Date.now();
 			try {
 				const summary = terminalManager.writeInput(taskId, rawDataToBuffer(rawMessage));
 				if (!summary) {
@@ -130,6 +174,14 @@ export function createTerminalWebSocketBridge({
 
 		ws.on("close", () => {
 			registry.detachIoSocket(connectionKey, viewerState, ws);
+			diagnostics?.recordEvent(
+				"terminal.io_disconnected",
+				{},
+				{ projectId, taskId, clientId, connectionId },
+				{
+					essential: true,
+				},
+			);
 		});
 	});
 
@@ -139,12 +191,21 @@ export function createTerminalWebSocketBridge({
 		const clientId = (context as TerminalWebSocketConnectionContext).clientId;
 		const terminalManager = (context as TerminalWebSocketConnectionContext).terminalManager;
 		const connectionKey = buildConnectionKey(projectId, taskId);
+		const connectionId = randomUUID();
 		terminalManager.recoverStaleSession(taskId);
 		const { streamState, viewerState } = registry.getOrCreateViewer(connectionKey, clientId);
 		// If this client is replacing an in-flight control socket, drop the old
 		// socket's deferred restore timer before we transfer connection ownership.
 		restoreCoordinator.clearDeferredSnapshot(viewerState);
-		const previousControlSocket = registry.replaceControlConnection(viewerState, ws);
+		const previousControlSocket = registry.replaceControlConnection(viewerState, ws, connectionId);
+		diagnostics?.recordEvent(
+			"terminal.control_connected",
+			{},
+			{ projectId, taskId, clientId, connectionId },
+			{
+				essential: true,
+			},
+		);
 		ensureTerminalWsOutputListener({ streamState, taskId, terminalManager, restoreCoordinator });
 		registry.replaceControlListener(
 			viewerState,
@@ -167,10 +228,28 @@ export function createTerminalWebSocketBridge({
 			previousControlSocket.close(1000, "Replaced by newer terminal control connection.");
 		}
 		restoreCoordinator.beginInitialRestore({ viewerState, ws, terminalManager, taskId });
+		diagnostics?.recordEvent(
+			"terminal.restore_started",
+			{ reason: "initial" },
+			{
+				projectId,
+				taskId,
+				clientId,
+				connectionId,
+			},
+			{ essential: true },
+		);
 
 		ws.on("message", (rawMessage: RawData) => {
+			viewerState.lastProtocolActivityAt = Date.now();
 			const message = parseTerminalControlMessage(rawMessage);
 			if (!message) {
+				diagnostics?.recordEvent(
+					"terminal.protocol_message_rejected",
+					{},
+					{ projectId, taskId, clientId, connectionId },
+					{ level: "warn", essential: true },
+				);
 				sendControlMessage(ws, {
 					type: "error",
 					message: "Invalid terminal control payload.",
@@ -190,6 +269,14 @@ export function createTerminalWebSocketBridge({
 					pixelHeight: message.pixelHeight,
 					force: message.force,
 				});
+				if (message.force) {
+					diagnostics?.recordEvent(
+						"terminal.resize_applied",
+						{ cols: message.cols, rows: message.rows, forced: true },
+						{ projectId, taskId, clientId, connectionId },
+						{ essential: false },
+					);
+				}
 				return;
 			}
 
@@ -204,23 +291,63 @@ export function createTerminalWebSocketBridge({
 			}
 
 			if (message.type === "request_restore") {
+				diagnostics?.recordEvent(
+					"terminal.restore_requested",
+					{},
+					{ projectId, taskId, clientId, connectionId },
+					{
+						essential: true,
+					},
+				);
 				restoreCoordinator.requestRestore({ viewerState, ws, terminalManager, taskId });
+				diagnostics?.recordEvent(
+					"terminal.restore_started",
+					{ reason: "requested" },
+					{
+						projectId,
+						taskId,
+						clientId,
+						connectionId,
+					},
+					{ essential: true },
+				);
 				return;
 			}
 
 			if (message.type === "restore_complete") {
 				restoreCoordinator.completeRestore(viewerState);
+				diagnostics?.recordEvent(
+					"terminal.restore_completed",
+					{},
+					{ projectId, taskId, clientId, connectionId },
+					{
+						essential: true,
+					},
+				);
 			}
 		});
 
 		ws.on("close", () => {
 			restoreCoordinator.clearDeferredSnapshot(viewerState, ws);
 			registry.detachControlSocket(connectionKey, viewerState, ws);
+			diagnostics?.recordEvent(
+				"terminal.control_disconnected",
+				{},
+				{
+					projectId,
+					taskId,
+					clientId,
+					connectionId,
+				},
+				{ essential: true },
+			);
 		});
 	});
 
 	return {
+		getDiagnosticSnapshot: () => registry.getDiagnosticSnapshot(),
 		close: async () => {
+			disposeDiagnosticProvider?.();
 			for (const client of ioServer.clients) {
 				try {
 					client.terminate();

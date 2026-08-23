@@ -20,6 +20,7 @@ export {
 	type RuntimeHostIntegrationAttempt,
 	type RuntimeHostIntegrationKind,
 } from "./runtime-host-integrations";
+export { observeRuntimeApiRequest } from "./runtime-request-diagnostics";
 export {
 	type CreateRuntimeServerDependencies,
 	createRuntimeServer,
@@ -33,8 +34,10 @@ export {
 	RuntimeStateHubImpl,
 } from "./runtime-state-hub";
 export {
-	buildDebugLogBatchMessage,
-	buildDebugLoggingStateMessage,
+	buildDiagnosticCaptureStateMessage,
+	buildDiagnosticRecordBatchMessage,
+	buildDiagnosticSnapshotRequestMessage,
+	buildDiagnosticsStateMessage,
 	buildErrorMessage,
 	buildProjectMetadataUpdatedMessage,
 	buildProjectStateUpdatedMessage,

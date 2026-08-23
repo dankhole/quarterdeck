@@ -103,7 +103,7 @@ export function useAppSideEffects({
 		handleOpenCreateTask: taskEditor.taskEditor.handleOpenCreateTask,
 		handleOpenSettings: dialog.handleOpenSettings,
 		onStartAllTasks: interactions.handleStartAllBacklogTasksFromBoard,
-		handleToggleDebugLogPanel: dialog.debugLogging.toggleDebugLogPanel,
+		handleToggleDiagnosticsPanel: dialog.diagnostics.togglePanel,
 		handleToggleFileFinder,
 		handleToggleTextSearch,
 	});

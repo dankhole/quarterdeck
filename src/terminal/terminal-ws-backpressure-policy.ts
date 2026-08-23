@@ -19,6 +19,7 @@ interface CreateIoOutputStateRequest {
 	clientId: string;
 	taskId: string;
 	terminalManager: TerminalSessionService;
+	onBackpressureChanged?: (paused: boolean, metrics: { bufferedBytes: number; unacknowledgedBytes: number }) => void;
 }
 
 export function createTerminalWsIoOutputState({
@@ -27,6 +28,7 @@ export function createTerminalWsIoOutputState({
 	clientId,
 	taskId,
 	terminalManager,
+	onBackpressureChanged,
 }: CreateIoOutputStateRequest): IoOutputState {
 	let pendingOutputChunks: Buffer[] = [];
 	let outputFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -75,6 +77,10 @@ export function createTerminalWsIoOutputState({
 		}
 		if (canResumeOutput()) {
 			outputPaused = false;
+			onBackpressureChanged?.(false, {
+				bufferedBytes: ws.bufferedAmount,
+				unacknowledgedBytes: unacknowledgedOutputBytes,
+			});
 			clearResumeCheck();
 			streamState.backpressuredViewerIds.delete(clientId);
 			if (streamState.backpressuredViewerIds.size === 0) {
@@ -92,6 +98,10 @@ export function createTerminalWsIoOutputState({
 		unacknowledgedOutputBytes += chunk.byteLength;
 		if (shouldPauseOutput()) {
 			outputPaused = true;
+			onBackpressureChanged?.(true, {
+				bufferedBytes: ws.bufferedAmount,
+				unacknowledgedBytes: unacknowledgedOutputBytes,
+			});
 			const previouslyPaused = streamState.backpressuredViewerIds.size > 0;
 			streamState.backpressuredViewerIds.add(clientId);
 			if (!previouslyPaused) {

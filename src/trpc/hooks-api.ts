@@ -12,7 +12,8 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core";
-import { createTaggedLogger, parseHookIngestRequest } from "../core";
+import { createTaggedLogger, normalizeDiagnosticErrorClass, parseHookIngestRequest } from "../core";
+import type { RuntimeDiagnostics } from "../diagnostics";
 import { loadProjectScopeById } from "../state";
 import type { SessionSummaryStore } from "../terminal";
 import { canReturnToRunning, isPermissionActivity } from "../terminal";
@@ -23,21 +24,9 @@ import { queueTaskDisplaySummaryPolish } from "./display-summary-polish";
 import { applyRuntimeMutationEffects, createHookTransitionEffects } from "./runtime-mutation-effects";
 
 const log = createTaggedLogger("hooks");
-const HOOK_LOG_SNIPPET_MAX_LENGTH = 300;
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
-}
-
-function logSnippet(value: string | null | undefined): string | null {
-	if (!value) {
-		return null;
-	}
-	const trimmed = value.trim();
-	if (trimmed.length <= HOOK_LOG_SNIPPET_MAX_LENGTH) {
-		return trimmed;
-	}
-	return `${trimmed.slice(0, HOOK_LOG_SNIPPET_MAX_LENGTH)}...`;
 }
 
 function buildHookLogData(input: {
@@ -62,11 +51,10 @@ function buildHookLogData(input: {
 		hookEventName: metadata?.hookEventName ?? null,
 		notificationType: metadata?.notificationType ?? null,
 		toolName: metadata?.toolName ?? null,
-		activityTextSnippet: logSnippet(metadata?.activityText),
-		toolInputSummarySnippet: logSnippet(metadata?.toolInputSummary),
-		finalMessageSnippet: logSnippet(metadata?.finalMessage),
+		hasActivityText: Boolean(metadata?.activityText),
+		hasToolInputSummary: Boolean(metadata?.toolInputSummary),
+		hasFinalMessage: Boolean(metadata?.finalMessage),
 		hasConversationSummaryText: !!metadata?.conversationSummaryText,
-		conversationSummarySnippet: logSnippet(metadata?.conversationSummaryText),
 		hasTranscriptPath: !!metadata?.transcriptPath,
 	};
 }
@@ -277,6 +265,7 @@ export interface CreateHooksApiDependencies {
 	}) => Promise<RuntimeTaskTurnCheckpoint>;
 	deleteTaskTurnCheckpointRef?: (input: { cwd: string; ref: string }) => Promise<void>;
 	scheduleHookBackgroundTask?: HookBackgroundTaskScheduler;
+	diagnostics?: RuntimeDiagnostics;
 }
 
 function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event: RuntimeHookEvent): boolean {
@@ -296,11 +285,37 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 
 	return {
 		ingest: async (input) => {
+			let diagnosticContext: {
+				projectId?: string;
+				taskId?: string;
+				sessionInstanceId?: string;
+				deliveryId?: string;
+			} = {};
 			try {
 				const body = parseHookIngestRequest(input);
 				const taskId = body.taskId;
 				const projectId = body.projectId;
 				const event = body.event;
+				diagnosticContext = {
+					projectId,
+					taskId,
+					...(body.metadata?.sessionInstanceId ? { sessionInstanceId: body.metadata.sessionInstanceId } : {}),
+					...(body.delivery?.id ? { deliveryId: body.delivery.id } : {}),
+				};
+				deps.diagnostics?.recordEvent(
+					"hook.received",
+					{
+						event,
+						source: body.metadata?.source ?? null,
+						hookEventName: body.metadata?.hookEventName ?? null,
+						notificationType: body.metadata?.notificationType ?? null,
+						turnId: body.metadata?.turnId ?? null,
+						toolUseId: body.metadata?.toolUseId ?? null,
+						hasSessionId: Boolean(body.metadata?.sessionId),
+					},
+					diagnosticContext,
+					{ essential: true },
+				);
 				const hookLogData = buildHookLogData({
 					projectId,
 					taskId,
@@ -608,6 +623,12 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 			} catch (error) {
 				const message = errorMessage(error);
 				log.error("Hook ingest crashed", { error: message });
+				deps.diagnostics?.recordEvent(
+					"hook.ingest_failed",
+					{ errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError" },
+					diagnosticContext,
+					{ level: "error", essential: true },
+				);
 				return { ok: false, error: message } satisfies RuntimeHookIngestResponse;
 			}
 		},

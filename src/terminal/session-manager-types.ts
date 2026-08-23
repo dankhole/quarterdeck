@@ -47,6 +47,7 @@ export interface ProcessEntry {
 	pendingAutoRestart: Promise<void> | null;
 	/** True while startTaskSession is awaiting prepareAgentLaunch / PtySession.spawn. */
 	pendingSessionStart: boolean;
+	pendingSessionStartSince: number | null;
 	pendingExitResolvers: Array<() => void>;
 	hookCount: number;
 	hookEventOrder: HookEventOrderState | null;
@@ -157,6 +158,7 @@ export function createProcessEntry(taskId: string): ProcessEntry {
 		autoRestartTimestamps: [],
 		pendingAutoRestart: null,
 		pendingSessionStart: false,
+		pendingSessionStartSince: null,
 		pendingExitResolvers: [],
 		hookCount: 0,
 		hookEventOrder: null,

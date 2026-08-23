@@ -164,6 +164,7 @@ export function ConnectedTopBar({
 					: undefined
 			}
 			onOpenSettings={dialog.handleOpenSettings}
+			onOpenDiagnostics={dialog.diagnostics.openPanel}
 			showDebugButton={dialog.debugModeEnabled}
 			onOpenDebugDialog={dialog.debugModeEnabled ? dialog.handleOpenDebugDialog : undefined}
 			shortcuts={projectRuntime.shortcuts}

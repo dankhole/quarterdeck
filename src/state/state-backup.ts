@@ -16,7 +16,7 @@
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-
+import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
 import { isNodeError } from "../fs";
 import {
 	BOARD_FILENAME,
@@ -35,6 +35,7 @@ import {
 const DEFAULT_BACKUP_HOME = join(homedir(), ".quarterdeck-backups");
 const DEFAULT_MAX_BACKUPS = 10;
 const PROJECT_STATE_FILENAMES = [BOARD_FILENAME, SESSIONS_FILENAME, META_FILENAME, PINNED_BRANCHES_FILENAME];
+const backupLog = createTaggedLogger("state-backup");
 
 export interface BackupManifest {
 	timestamp: number;
@@ -314,7 +315,11 @@ export function startPeriodicBackups(intervalMinutes: number): void {
 		.then((fp) => {
 			lastFingerprint = fp;
 		})
-		.catch(() => {});
+		.catch((error: unknown) => {
+			backupLog.warn("failed to establish periodic backup fingerprint", {
+				errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+			});
+		});
 
 	periodicTimer = setInterval(
 		() => {
@@ -344,9 +349,13 @@ async function runPeriodicBackupTick(): Promise<void> {
 			lastFingerprint = fingerprint;
 			return;
 		}
-		await createBackup({ trigger: "periodic" });
+		const path = await createBackup({ trigger: "periodic" });
 		lastFingerprint = fingerprint;
-	} catch {
+		backupLog.info("periodic backup completed", { created: path !== null });
+	} catch (error) {
 		// Periodic backup failure is non-critical.
+		backupLog.warn("periodic backup failed", {
+			errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+		});
 	}
 }

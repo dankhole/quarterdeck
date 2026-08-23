@@ -1,10 +1,13 @@
 // Streams live runtime state to browser clients over websocket.
 // It listens to terminal updates, normalizes them into the shared API contract,
 // and fans out project-scoped snapshots and deltas.
+
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 
 import type {
+	DiagnosticCaptureScope,
 	IRuntimeBroadcaster,
 	LogLevel,
 	RuntimeProjectStateResponse,
@@ -16,12 +19,11 @@ import {
 	createTaggedLogger,
 	Disposable,
 	getLogLevel,
-	getRecentLogEntries,
-	onLogEntry,
 	pruneOrphanSessionsForNotification,
 	pruneOrphanSessionsForNotificationDelta,
 	toDisposable,
 } from "../core";
+import type { RuntimeDiagnostics } from "../diagnostics";
 import { loadProjectBoardById } from "../state";
 import type { TerminalSessionManager } from "../terminal";
 import { applyRuntimeMutationEffects, createTaskBaseRefUpdatedEffects } from "../trpc/runtime-mutation-effects";
@@ -31,8 +33,10 @@ import type { ProjectRegistry } from "./project-registry";
 import { RuntimeStateClientRegistry } from "./runtime-state-client-registry";
 import { RuntimeStateMessageBatcher } from "./runtime-state-message-batcher";
 import {
-	buildDebugLogBatchMessage,
-	buildDebugLoggingStateMessage,
+	buildDiagnosticCaptureStateMessage,
+	buildDiagnosticRecordBatchMessage,
+	buildDiagnosticSnapshotRequestMessage,
+	buildDiagnosticsStateMessage,
 	buildErrorMessage,
 	buildProjectMetadataUpdatedMessage,
 	buildProjectStateUpdatedMessage,
@@ -46,10 +50,17 @@ import {
 } from "./runtime-state-messages";
 
 const hubLog = createTaggedLogger("runtime-state-hub");
+const SLOW_REMOTE_FETCH_MS = 2_000;
 
 export interface DisposeRuntimeStateProjectOptions {
 	disconnectClients?: boolean;
 	closeClientErrorMessage?: string;
+}
+
+export interface RuntimeStateHubDiagnosticSnapshot {
+	clients: ReturnType<RuntimeStateClientRegistry["getDiagnosticSnapshot"]>;
+	batcher: ReturnType<RuntimeStateMessageBatcher["getDiagnosticSnapshot"]>;
+	resumeAttemptedProjectIds: string[];
 }
 
 export interface CreateRuntimeStateHubDependencies {
@@ -62,6 +73,7 @@ export interface CreateRuntimeStateHubDependencies {
 		| "getActiveRuntimeConfig"
 		| "listManagedProjects"
 	>;
+	diagnostics: RuntimeDiagnostics;
 }
 
 export interface RuntimeStateHub extends IRuntimeBroadcaster {
@@ -78,6 +90,7 @@ export interface RuntimeStateHub extends IRuntimeBroadcaster {
 	) => void;
 	disposeProject: (projectId: string, options?: DisposeRuntimeStateProjectOptions) => void;
 	close: () => Promise<void>;
+	getDiagnosticSnapshot: (scope?: Readonly<DiagnosticCaptureScope>) => RuntimeStateHubDiagnosticSnapshot;
 }
 
 export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
@@ -86,6 +99,10 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	private readonly clients: RuntimeStateClientRegistry;
 	private readonly batcher: RuntimeStateMessageBatcher;
 	private readonly metadataMonitor: ReturnType<typeof createProjectMetadataMonitor>;
+	private readonly diagnosticClientBySocket = new WeakMap<
+		WebSocket,
+		{ clientId: string; capability: string; connectionId: string }
+	>();
 
 	constructor(private readonly deps: CreateRuntimeStateHubDependencies) {
 		super();
@@ -101,7 +118,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		});
 
 		this.batcher = new RuntimeStateMessageBatcher({
-			hasClients: () => this.clients.hasClients,
+			hasDiagnosticSubscribers: () => this.deps.diagnostics.hasBrowserLiveSubscribers(),
 			onTaskSessionBatch: (projectId, summaries) => {
 				this.clients.broadcastToProject(projectId, buildTaskSessionsUpdatedMessage(projectId, summaries));
 			},
@@ -111,8 +128,17 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			onProjectsRefreshRequested: (preferredCurrentProjectId) => {
 				void this.broadcastRuntimeProjectsUpdated(preferredCurrentProjectId);
 			},
-			onDebugLogBatch: (entries) => {
-				this.clients.broadcastToAll(buildDebugLogBatchMessage(entries));
+			onDiagnosticRecordBatch: (records) => {
+				const message = buildDiagnosticRecordBatchMessage(records);
+				this.clients.forEachClient((client) => {
+					const diagnosticClient = this.diagnosticClientBySocket.get(client);
+					if (
+						!diagnosticClient ||
+						!this.deps.diagnostics.isBrowserLiveSubscribed(diagnosticClient.clientId, diagnosticClient.capability)
+					)
+						return;
+					this.clients.sendDiagnosticToClient(client, message);
+				});
 			},
 		});
 
@@ -130,6 +156,25 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 					}),
 				);
 			},
+			onRemoteFetchCompleted: (projectId, result) => {
+				if (!result.succeeded) {
+					this.deps.diagnostics.recordEvent(
+						"metadata.remote_fetch_failed",
+						{ durationMs: result.durationMs, errorClass: result.errorClass },
+						{ projectId },
+						{ level: "warn", essential: true },
+					);
+					return;
+				}
+				if (result.durationMs >= SLOW_REMOTE_FETCH_MS) {
+					this.deps.diagnostics.recordEvent(
+						"metadata.remote_fetch_slow",
+						{ durationMs: result.durationMs },
+						{ projectId },
+						{ essential: false },
+					);
+				}
+			},
 			getProjectDefaultBaseRef: () => {
 				return this.deps.projectRegistry.getActiveRuntimeConfig().defaultBaseRef ?? "";
 			},
@@ -138,11 +183,38 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 		this._register(
 			toDisposable(
-				onLogEntry((entry) => {
-					this.batcher.queueDebugLogEntry(entry);
+				this.deps.diagnostics.recorder.onRecord((record) => {
+					this.batcher.queueDiagnosticRecord(record);
 				}),
 			),
 		);
+		this._register(
+			toDisposable(
+				this.deps.diagnostics.recorder.onRecordingStateChange((recording) => {
+					this.clients.broadcastToAll(buildDiagnosticCaptureStateMessage(getLogLevel(), recording));
+				}),
+			),
+		);
+		this._register(
+			toDisposable(
+				this.deps.diagnostics.registerSnapshotProvider({
+					name: "runtime_stream",
+					capture: (scope) => this.getDiagnosticSnapshot(scope),
+				}),
+			),
+		);
+		this._register(
+			toDisposable(
+				this.deps.diagnostics.registerSnapshotProvider({
+					name: "project_metadata",
+					capture: (scope) => this.metadataMonitor.getDiagnosticSnapshot(scope),
+				}),
+			),
+		);
+		this.deps.diagnostics.setBrowserSnapshotRequester(({ nonce, deadline }) => {
+			this.clients.broadcastToAll(buildDiagnosticSnapshotRequestMessage(nonce, deadline));
+		});
+		this._register(toDisposable(() => this.deps.diagnostics.setBrowserSnapshotRequester(null)));
 
 		this.wss.on("connection", (client: WebSocket, context: unknown) => this.handleConnection(client, context));
 	}
@@ -259,13 +331,22 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	};
 
 	broadcastLogLevel = (level: LogLevel): void => {
-		// Keep level changes cheap while logs are flooding; new stream clients
-		// still receive the recent buffer in their initial logging snapshot.
-		this.clients.broadcastToAll(buildDebugLoggingStateMessage(level));
+		this.clients.broadcastToAll(
+			buildDiagnosticCaptureStateMessage(level, this.deps.diagnostics.recorder.getRecordingState()),
+		);
 	};
 
+	getDiagnosticSnapshot = (scope: Readonly<DiagnosticCaptureScope> = {}): RuntimeStateHubDiagnosticSnapshot => ({
+		clients: this.clients.getDiagnosticSnapshot(scope),
+		batcher: this.batcher.getDiagnosticSnapshot(scope),
+		resumeAttemptedProjectIds:
+			scope.taskId && !scope.projectId
+				? []
+				: Array.from(this.resumeAttempted).filter((projectId) => !scope.projectId || projectId === scope.projectId),
+	});
+
 	close = async (): Promise<void> => {
-		// Dispose base class resources (metadata monitor, debug log subscription)
+		// Dispose base class resources (metadata monitor and diagnostics subscriptions).
 		this.dispose();
 		this.batcher.close();
 		this.clients.terminateAllClients();
@@ -283,12 +364,35 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 	private async handleConnection(client: WebSocket, context: unknown): Promise<void> {
 		client.on("close", () => {
+			const diagnosticClient = this.diagnosticClientBySocket.get(client);
+			if (diagnosticClient) {
+				this.deps.diagnostics.revokeBrowserCapability(diagnosticClient.clientId, diagnosticClient.capability);
+				this.deps.diagnostics.recordEvent(
+					"browser.runtime_stream_disconnected",
+					{},
+					{ clientId: diagnosticClient.clientId, connectionId: diagnosticClient.connectionId },
+					{ essential: true },
+				);
+			}
 			this.clients.removeClient(client);
 		});
 
 		try {
 			const requestedProjectId = this.parseProjectId(context);
 			const runtimeClientId = this.parseClientId(context);
+			const connectionId = randomUUID();
+			const browserCapability = this.deps.diagnostics.issueBrowserCapability(runtimeClientId);
+			this.diagnosticClientBySocket.set(client, {
+				clientId: runtimeClientId,
+				capability: browserCapability,
+				connectionId,
+			});
+			this.deps.diagnostics.recordEvent(
+				"browser.runtime_stream_connected",
+				{},
+				{ clientId: runtimeClientId, connectionId },
+				{ essential: true },
+			);
 			const isDocumentVisible = this.parseDocumentVisible(context);
 			const resolved = await this.deps.projectRegistry.resolveProjectForStream(requestedProjectId, {
 				onRemovedProject: ({ projectId, message }) => {
@@ -357,7 +461,16 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 						});
 				}
 
-				this.sendMessage(client, buildDebugLoggingStateMessage(getLogLevel(), getRecentLogEntries()));
+				this.sendMessage(
+					client,
+					buildDiagnosticsStateMessage({
+						runtimeInstanceId: this.deps.diagnostics.runtimeInstanceId,
+						browserCapability,
+						consoleLogLevel: getLogLevel(),
+						recording: this.deps.diagnostics.recorder.getRecordingState(),
+						recentRecords: [],
+					}),
+				);
 
 				if (resolved.removedRequestedProjectPath) {
 					const message = `Project no longer exists on disk and was removed: ${resolved.removedRequestedProjectPath}`;

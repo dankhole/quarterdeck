@@ -151,6 +151,7 @@ npm run unlink
 | `npm run web:dev` | Run the Vite web UI dev server on port 4173. |
 | `npm run build` | Build the packaged runtime and web UI into `dist`. |
 | `npm run check` | Run agent-instruction checks, Biome, typecheck, and tests. |
+| `quarterdeck diagnostics --help` | Discover and inspect private local runtime diagnostics. |
 
 For the full development workflow, see [DEVELOPMENT.md](./DEVELOPMENT.md).
 
@@ -161,6 +162,8 @@ If `quarterdeck` is not found, run `npm run link` from the Quarterdeck checkout 
 If no agent is available, install Claude Code, OpenAI Codex, or Pi and confirm the matching binary (`claude`, `codex`, or `pi`) is available on `PATH`. Quarterdeck currently requires Claude Code 2.1.198+, Codex 0.142.5+, or Pi 0.70.2+ for supported task-agent launches.
 
 If terminal symbols look wrong, install a Nerd Font and select it in your browser or system terminal font settings.
+
+If an incident is difficult to explain, run `quarterdeck diagnostics doctor --request-browser` or `quarterdeck diagnostics capture --request-browser`. Quarterdeck automatically retains a small recent metadata-only history; you do not need to enable logging before the incident. Diagnostic bundles stay local under the Quarterdeck state directory and exclude prompts, terminal transcripts, files, diffs, environment values, and secrets by default. See [DEVELOPMENT.md](./DEVELOPMENT.md#unified-diagnostics) for filters, temporary deep recording, privacy limits, and isolated visual testing.
 
 ## Documentation
 

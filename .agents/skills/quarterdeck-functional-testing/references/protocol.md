@@ -27,3 +27,5 @@ Interactive terminal commands:
 - `/exit [0-255]` — exit with a chosen code.
 
 Every marker begins with `AGENT LAB`, making terminal-buffer checks deterministic. The initial marker is `AGENT LAB READY task=<id> scenario=<scenario>`.
+
+The browser wrapper records synthetic terminal input actions and surrounds each action with unified diagnostic marks. A later lab checkpoint therefore contains both the deterministic `AGENT LAB` marker evidence and the causally adjacent runtime/browser records. Keep command payloads synthetic even though they are bounded and path-aliased in the action transcript.

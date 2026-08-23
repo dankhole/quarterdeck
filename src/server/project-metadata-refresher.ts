@@ -47,6 +47,21 @@ export interface CreateProjectMetadataRefresherDependencies {
 	) => { applied: boolean; previous: CachedTaskWorktreeMetadata | null };
 }
 
+export interface ProjectMetadataRefresherDiagnosticSnapshot {
+	fullRefreshInFlight: boolean;
+	fullRefreshRerunQueued: boolean;
+	backgroundRefreshInFlight: boolean;
+	homeRefreshInFlight: boolean;
+	homeRefreshRerunQueued: boolean;
+	homeRefreshInvalidationQueued: boolean;
+	taskRefreshes: Array<{
+		taskId: string;
+		inFlight: boolean;
+		rerunQueued: boolean;
+		invalidationQueued: boolean;
+	}>;
+}
+
 export class ProjectMetadataRefresher {
 	private readonly fullRefreshState: QueuedFullRefreshState = {
 		promise: null,
@@ -64,6 +79,23 @@ export class ProjectMetadataRefresher {
 
 	get snapshot(): RuntimeProjectMetadata {
 		return this.deps.getSnapshot();
+	}
+
+	getDiagnosticSnapshot(): ProjectMetadataRefresherDiagnosticSnapshot {
+		return {
+			fullRefreshInFlight: this.fullRefreshState.promise !== null,
+			fullRefreshRerunQueued: this.fullRefreshState.rerun,
+			backgroundRefreshInFlight: this.backgroundRefreshPromise !== null,
+			homeRefreshInFlight: this.homeRefreshState.promise !== null,
+			homeRefreshRerunQueued: this.homeRefreshState.rerun,
+			homeRefreshInvalidationQueued: this.homeRefreshState.invalidate,
+			taskRefreshes: Array.from(this.taskRefreshStates.entries()).map(([taskId, state]) => ({
+				taskId,
+				inFlight: state.promise !== null,
+				rerunQueued: state.rerun,
+				invalidationQueued: state.invalidate,
+			})),
+		};
 	}
 
 	async refreshProject(): Promise<RuntimeProjectMetadata> {

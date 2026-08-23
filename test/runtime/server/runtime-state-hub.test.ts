@@ -2,11 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_RUNTIME_CONFIG_STATE } from "../../../src/config";
 import type {
+	DiagnosticRecordEnvelope,
 	RuntimeProjectStateResponse,
 	RuntimeProjectsResponse,
 	RuntimeStateStreamMessage,
 	RuntimeTaskSessionSummary,
 } from "../../../src/core";
+import type { RuntimeDiagnostics } from "../../../src/diagnostics";
 import type { CreateRuntimeStateHubDependencies } from "../../../src/server";
 import { RuntimeStateHubImpl } from "../../../src/server";
 import * as state from "../../../src/state";
@@ -35,6 +37,10 @@ interface RuntimeStateHubInternals {
 		registerGlobalClient: (client: TestRuntimeClient) => void;
 		registerProjectClient: (projectId: string, client: TestRuntimeClient, clientId: string) => void;
 	};
+	batcher: {
+		queueDiagnosticRecord: (record: DiagnosticRecordEnvelope) => void;
+	};
+	diagnosticClientBySocket: WeakMap<TestRuntimeClient, { clientId: string; capability: string; connectionId: string }>;
 	loadInitialSnapshot: (resolved: {
 		projectId: string | null;
 		projectPath: string | null;
@@ -108,12 +114,30 @@ function createProjectStateResponse(): RuntimeProjectStateResponse {
 	};
 }
 
+function createDiagnosticsStub(): RuntimeDiagnostics {
+	return {
+		runtimeInstanceId: "runtime-test",
+		recorder: {
+			onRecord: () => () => undefined,
+			onRecordingStateChange: () => () => undefined,
+			getRecordingState: () => ({ active: false, startedAt: null, expiresAt: null, scope: null }),
+		},
+		registerSnapshotProvider: () => () => undefined,
+		setBrowserSnapshotRequester: vi.fn(),
+		issueBrowserCapability: () => "browser-capability",
+		revokeBrowserCapability: vi.fn(),
+		recordEvent: vi.fn(),
+		getRecords: () => [],
+	} as unknown as RuntimeDiagnostics;
+}
+
 function createDependencies(input: {
 	buildProjectsPayload: (preferredCurrentProjectId: string | null) => Promise<RuntimeProjectsResponse>;
 	buildProjectStateSnapshot: (projectId: string, projectPath: string) => Promise<RuntimeProjectStateResponse>;
 	listManagedProjects: CreateRuntimeStateHubDependencies["projectRegistry"]["listManagedProjects"];
 }): CreateRuntimeStateHubDependencies {
 	return {
+		diagnostics: createDiagnosticsStub(),
 		projectRegistry: {
 			resolveProjectForStream: async () => ({
 				projectId: null,
@@ -131,6 +155,61 @@ function createDependencies(input: {
 }
 
 describe("RuntimeStateHub", () => {
+	it("delivers live diagnostic batches only to the explicitly subscribed connection", async () => {
+		vi.useFakeTimers();
+		const dependencies = createDependencies({
+			buildProjectsPayload: vi.fn(async () => createProjectsResponse()),
+			buildProjectStateSnapshot: vi.fn(async () => createProjectStateResponse()),
+			listManagedProjects: vi.fn(() => []),
+		});
+		dependencies.diagnostics = {
+			...dependencies.diagnostics,
+			hasBrowserLiveSubscribers: () => true,
+			isBrowserLiveSubscribed: (_clientId: string, capability: string) => capability === "subscribed-capability",
+		} as unknown as RuntimeDiagnostics;
+		const hub = new RuntimeStateHubImpl(dependencies);
+		const subscribed = createRuntimeClient();
+		const passive = createRuntimeClient();
+		const internals = hub as unknown as RuntimeStateHubInternals;
+		internals.clients.registerGlobalClient(subscribed.client);
+		internals.clients.registerGlobalClient(passive.client);
+		internals.diagnosticClientBySocket.set(subscribed.client, {
+			clientId: "subscribed",
+			capability: "subscribed-capability",
+			connectionId: "connection-1",
+		});
+		internals.diagnosticClientBySocket.set(passive.client, {
+			clientId: "passive",
+			capability: "passive-capability",
+			connectionId: "connection-2",
+		});
+		const record: DiagnosticRecordEnvelope = {
+			version: 1,
+			id: "runtime:1",
+			sequence: 1,
+			timestamp: 1,
+			monotonicOffsetMs: 1,
+			runtimeInstanceId: "runtime",
+			source: "runtime",
+			kind: "event",
+			level: "warn",
+			name: "runtime.test",
+			context: {},
+			payload: {},
+		};
+
+		try {
+			internals.batcher.queueDiagnosticRecord(record);
+			await vi.advanceTimersByTimeAsync(150);
+
+			expect(subscribed.messages).toEqual([{ type: "diagnostic_record_batch", records: [record] }]);
+			expect(passive.messages).toEqual([]);
+		} finally {
+			await hub.close();
+			vi.useRealTimers();
+		}
+	});
+
 	it("keeps activity local while fanning semantic review changes and project counts across clients", async () => {
 		vi.useFakeTimers();
 		const board = createBoard("Tracked task");
@@ -255,7 +334,7 @@ describe("RuntimeStateHub", () => {
 		}
 	});
 
-	it("broadcasts log level changes without reseeding recent log entries", async () => {
+	it("broadcasts console verbosity with the current diagnostic recording state", async () => {
 		const hub = new RuntimeStateHubImpl(
 			createDependencies({
 				buildProjectsPayload: vi.fn(async () => createProjectsResponse()),
@@ -280,8 +359,14 @@ describe("RuntimeStateHub", () => {
 				throw new Error("Expected a JSON websocket payload.");
 			}
 			expect(JSON.parse(payload)).toEqual({
-				type: "debug_logging_state",
-				level: "error",
+				type: "diagnostic_capture_state",
+				consoleLogLevel: "error",
+				recording: {
+					active: false,
+					startedAt: null,
+					expiresAt: null,
+					scope: null,
+				},
 			});
 		} finally {
 			await hub.close();

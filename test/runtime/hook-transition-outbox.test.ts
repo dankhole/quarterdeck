@@ -129,6 +129,41 @@ describe("hook transition outbox", () => {
 		await replayer.close();
 	});
 
+	it("scopes diagnostic aggregates to the requested project, task, and session", async () => {
+		await enqueueHookTransition(request(1));
+		await enqueueHookTransition({
+			...request(2),
+			projectId: "project-2",
+			taskId: "task-2",
+			metadata: { ...request(2).metadata, sessionInstanceId: "process-2" },
+		});
+		const replayer = createHookTransitionOutboxReplayer({
+			ingest: vi.fn(async (input) =>
+				input.projectId === "project-1" ? { ok: true as const } : { ok: false as const, error: "not ready" },
+			),
+		});
+
+		await replayer.replayOnce();
+
+		expect(replayer.getDiagnosticSnapshot({ projectId: "project-1", taskId: "task-1" })).toMatchObject({
+			pendingRecords: 0,
+			lastAttempted: 1,
+			lastAcknowledged: 1,
+			lastDeferred: 0,
+		});
+		expect(replayer.getDiagnosticSnapshot({ sessionInstanceId: "process-2" })).toMatchObject({
+			pendingRecords: 1,
+			lastAttempted: 1,
+			lastAcknowledged: 0,
+			lastDeferred: 1,
+		});
+		expect(replayer.getDiagnosticSnapshot({ operationId: "unrelated-operation" })).toMatchObject({
+			pendingRecords: 0,
+			lastAttempted: 0,
+		});
+		await replayer.close();
+	});
+
 	it("expires transitions instead of replaying them indefinitely", async () => {
 		const input = request(1, 1_000);
 		await enqueueHookTransition(input);

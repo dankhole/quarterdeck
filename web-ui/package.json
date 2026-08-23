@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "playwright test"
+		"e2e": "node --import tsx ../scripts/playwright-e2e.ts"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",

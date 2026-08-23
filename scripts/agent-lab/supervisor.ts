@@ -3,7 +3,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { createWriteStream, type WriteStream } from "node:fs";
 import { access, readFile, rm } from "node:fs/promises";
-import { createServer } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,6 +11,7 @@ import treeKill from "tree-kill";
 import { closeAgentLabBrowserSession } from "./browser-session";
 import { buildAgentLabEnvironment } from "./environment";
 import { prepareAgentLabFixture } from "./fixture";
+import { resolveLoopbackPort } from "./loopback-port";
 import { writeJsonAtomic } from "./paths";
 import { captureAgentLabSnapshot } from "./snapshot";
 import { type AgentLabLaunchConfig, AgentLabLaunchConfigSchema, type AgentLabManifest } from "./types";
@@ -36,34 +36,20 @@ interface SupervisorControl {
 	dispose: () => void;
 }
 
+interface AgentLabShutdownSequence {
+	capturePreShutdown: () => Promise<void>;
+	closeBrowser: () => Promise<void>;
+	stopChildren: () => Promise<void>;
+	finalizeManifest: () => Promise<void>;
+	captureFinal: () => Promise<void>;
+	removeTemporaryFixture: () => Promise<void>;
+}
+
 const STARTUP_TIMEOUT_MS = 60_000;
 const STOP_TIMEOUT_MS = 10_000;
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
-}
-
-async function resolvePort(requestedPort: number | null, label: string): Promise<number> {
-	return new Promise((resolvePortPromise, rejectPort) => {
-		const server = createServer();
-		server.once("error", (error) => rejectPort(new Error(`${label} port is unavailable: ${errorMessage(error)}`)));
-		server.listen(requestedPort ?? 0, "127.0.0.1", () => {
-			const address = server.address();
-			if (!address || typeof address === "string") {
-				server.close();
-				rejectPort(new Error(`Could not resolve ${label} port.`));
-				return;
-			}
-			const selectedPort = address.port;
-			server.close((error) => {
-				if (error) {
-					rejectPort(error);
-					return;
-				}
-				resolvePortPromise(selectedPort);
-			});
-		});
-	});
 }
 
 function createManagedChild(
@@ -210,6 +196,16 @@ async function assertNoForbiddenHostLaunches(logPath: string): Promise<void> {
 	}
 }
 
+/** Preserves the forensic boundary: the final bundle observes a stopped runtime and finalized manifest. */
+export async function executeAgentLabShutdownSequence(sequence: AgentLabShutdownSequence): Promise<void> {
+	await sequence.capturePreShutdown();
+	await sequence.closeBrowser();
+	await sequence.stopChildren();
+	await sequence.finalizeManifest();
+	await sequence.captureFinal();
+	await sequence.removeTemporaryFixture();
+}
+
 export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promise<void> {
 	let manifest: AgentLabManifest | null = null;
 	let runtime: ManagedChild | null = null;
@@ -217,8 +213,8 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 	let control: SupervisorControl | null = null;
 	let failure: string | null = null;
 	try {
-		const runtimePort = await resolvePort(config.runtimePort, "runtime");
-		const webPort = await resolvePort(config.webPort, "web");
+		const runtimePort = await resolveLoopbackPort(config.runtimePort, "runtime");
+		const webPort = await resolveLoopbackPort(config.webPort, "web");
 		if (runtimePort === webPort) {
 			throw new Error(`Runtime and web resolved to the same port (${runtimePort}).`);
 		}
@@ -322,6 +318,9 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 		manifest.status = "ready";
 		manifest.readyAt = new Date().toISOString();
 		await writeJsonAtomic(config.manifestPath, manifest);
+		await captureAgentLabSnapshot(manifest, "ready").catch((error: unknown) => {
+			process.stderr.write(`[agent-lab supervisor] ready diagnostic capture failed: ${errorMessage(error)}\n`);
+		});
 		control = createSupervisorControl(config.stopRequestPath);
 		await Promise.race([control.promise, childFailure(runtime), childFailure(web)]);
 		await assertNoForbiddenHostLaunches(fixture.forbiddenHostLaunchLogPath);
@@ -333,26 +332,51 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 			manifest.status = "failed";
 			manifest.failure = failure;
 			await writeJsonAtomic(config.manifestPath, manifest).catch(() => {});
+			await captureAgentLabSnapshot(manifest, "failure").catch((snapshotError: unknown) => {
+				process.stderr.write(
+					`[agent-lab supervisor] failure diagnostic capture failed: ${errorMessage(snapshotError)}\n`,
+				);
+			});
 		}
 	} finally {
 		control?.dispose();
-		if (manifest) {
-			await closeAgentLabBrowserSession(manifest.repoRoot, manifest.browserSession).catch(() => {});
-			await captureAgentLabSnapshot(manifest, failure ? "failure" : "final").catch(() => {});
-		}
-		await Promise.all([
-			web ? stopManagedChild(web) : Promise.resolve(),
-			runtime ? stopManagedChild(runtime) : Promise.resolve(),
-		]);
-		if (!config.keepTemp) {
-			await rm(config.tempRoot, { recursive: true, force: true });
-		}
-		if (manifest) {
-			manifest.status = failure ? "failed" : "stopped";
-			manifest.failure = failure;
-			manifest.stoppedAt = new Date().toISOString();
-			await writeJsonAtomic(config.manifestPath, manifest).catch(() => {});
-		}
+		await executeAgentLabShutdownSequence({
+			capturePreShutdown: async () => {
+				if (!manifest) return;
+				await captureAgentLabSnapshot(manifest, "pre-shutdown").catch((snapshotError: unknown) => {
+					process.stderr.write(
+						`[agent-lab supervisor] pre-shutdown diagnostic capture failed: ${errorMessage(snapshotError)}\n`,
+					);
+				});
+			},
+			closeBrowser: async () => {
+				if (manifest) await closeAgentLabBrowserSession(manifest.repoRoot, manifest.browserSession).catch(() => {});
+			},
+			stopChildren: async () => {
+				await Promise.all([
+					web ? stopManagedChild(web) : Promise.resolve(),
+					runtime ? stopManagedChild(runtime) : Promise.resolve(),
+				]);
+			},
+			finalizeManifest: async () => {
+				if (!manifest) return;
+				manifest.status = failure ? "failed" : "stopped";
+				manifest.failure = failure;
+				manifest.stoppedAt = new Date().toISOString();
+				await writeJsonAtomic(config.manifestPath, manifest).catch(() => {});
+			},
+			captureFinal: async () => {
+				if (!manifest) return;
+				await captureAgentLabSnapshot(manifest, "final").catch((snapshotError: unknown) => {
+					process.stderr.write(
+						`[agent-lab supervisor] final diagnostic capture failed: ${errorMessage(snapshotError)}\n`,
+					);
+				});
+			},
+			removeTemporaryFixture: async () => {
+				if (!config.keepTemp) await rm(config.tempRoot, { recursive: true, force: true });
+			},
+		});
 	}
 	if (failure) {
 		throw new Error(failure);

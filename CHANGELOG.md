@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Add: unified automatic agent diagnostics
+
+- Every Quarterdeck runtime now keeps a private, bounded, metadata-only flight recorder and rotating journal automatically, so a newly started agent can discover the active or most recent runtime, inspect correlated lifecycle evidence, run read-only health checks, watch records, add marks, and create a canonical local bundle without requiring the user to enable logging before an incident.
+- Runtime, browser, terminal transport, project persistence, native hooks, Git operations, metadata refresh, backups, and recorder health now share one versioned diagnostic vocabulary with bounded payloads and subsystem-owned snapshots; the previous runtime/browser debug-log buffers, transport messages, hooks, and panel were removed instead of retained as a competing system.
+- The Diagnostics panel is always available for timeline filtering, health and subsystem snapshots, bounded deep recording, and bundle export. Opening it has no capture side effect; production deep recording is explicit, scoped, limited to 15 minutes, and excludes prompts, terminal text, files, diffs, environment values, arguments, and secrets by default.
+- Isolated agent-lab runs automatically use the richer synthetic-data tier. Ready, failure, pre-shutdown, final, and manual checkpoints are canonical diagnostic bundles that index state, Git, logs, browser artifacts, and a causally marked Playwright action transcript; screenshots and traces continue to provide the pixel-level evidence needed for visual debugging.
+- The post-implementation architecture pass moved project-state observation into the registry that owns it, split browser queue and snapshot collection from the UI store, validates browser HTTP responses against shared schemas, bounds journal/browser/live-stream fanout with priority-aware loss reporting, authenticates active-runtime selection in parallel with offline fallback, and reports descriptor/journal degradation without recursively writing to failed storage.
+- Doctor now compares board placement through the same shared runtime-session projection used by browser hydration, distinguishes session summaries from process entries and terminal mirrors, and receives remote-fetch failure/latency events from the metadata subsystem that owns those operations.
+- The final audit makes the privacy and performance boundaries enforceable: production compatibility logs retain only content-free shape metadata, capture merges the rotating journal with the memory tail, project/task filters propagate through providers and findings, journal failures retry automatically, live timeline batches are sent only while Diagnostics is open and yield to socket backpressure, and Agent Lab's final bundle is taken after runtime shutdown and manifest finalization.
+
 ### Fix: serialize task close and reopen lifecycle
 
 - Trash, restore, restart, hard-delete, clear-trash, and initial task starts now share a per-project/task operation boundary, so reopening a task waits for the complete earlier close—including worktree cleanup—before recreating the worktree and resuming the conversation.

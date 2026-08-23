@@ -41,7 +41,9 @@ Quarterdeck exposes `window.__quarterdeckDumpTerminalState()` in the lab. Use `e
 
 Use a prompt directive such as `[agent-lab:idle] investigate terminal restore` when creating the task. Then type deterministic commands into the task's `Terminal input` textbox. See [references/protocol.md](references/protocol.md) for scenarios and commands.
 
-Capture runtime/state evidence with `npm run --silent agent:lab -- snapshot <runId> --label <checkpoint> --json`. This copies bounded JSON state plus Git status, log, and diffs into the run artifact directory. Runtime and Vite logs are collected continuously.
+Capture runtime/state evidence with `npm run --silent agent:lab -- snapshot <runId> --label <checkpoint> --json`. The checkpoint directory is a canonical unified diagnostic bundle: start with `manifest.json`, then correlate `records.jsonl`, `doctor.json`, live provider snapshots, fixture state/Git evidence, process logs, and Playwright artifacts. The lab enables the bounded rich diagnostic profile automatically; never start a separate deep-recording mode for it.
+
+Every session-linked `agent:browser` command is recorded in `browser-actions.jsonl` with bounded arguments, outcome, and diagnostic marks before and after the action. Checkpoints copy the transcript available at capture time. Do not put real credentials or data into browser actions: the lab retains synthetic fill/type/eval text to make failures replayable.
 
 ## Finish and report
 
@@ -51,6 +53,6 @@ Always stop the run, even after a failed reproduction:
 npm run --silent agent:lab -- stop <runId> --json
 ```
 
-Shutdown closes the named browser session, snapshots final state, terminates both child process trees, and removes temporary state unless `--keep-temp` was explicitly requested. Artifacts remain under `test-results/agent-lab/<runId>/`.
+Shutdown captures connected-browser evidence, closes the named browser session, writes the final canonical bundle, terminates both child process trees, and removes temporary state unless `--keep-temp` was explicitly requested. The supervisor also captures ready, failure when applicable, and pre-shutdown checkpoints. Artifacts remain under `test-results/agent-lab/<runId>/`.
 
-A useful failure report includes the run id, exact UI/terminal actions, expected and observed behavior, relevant screenshot/trace paths, console or request errors, runtime log excerpt, and state-snapshot path. Treat the lab as data/process isolation from the user's app, not as a hardened security sandbox; use only synthetic data.
+A useful failure report includes the run id, exact UI/terminal actions, expected and observed behavior, relevant screenshot/trace paths, console or request errors, canonical checkpoint path, and doctor findings. Treat the lab as data/process isolation from the user's app, not as a hardened security sandbox; use only synthetic data.

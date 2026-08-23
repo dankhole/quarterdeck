@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { _resetLoggerForTests, getRecentLogEntries } from "../../../src/core";
+import { _resetLoggerForTests, type RuntimeDiagnosticLogSink, setRuntimeDiagnosticLogSink } from "../../../src/core";
 import { _testing, callLlm, isLlmConfigured } from "../../../src/title";
 
 const {
@@ -13,6 +13,18 @@ const {
 	resolveChatCompletionsUrl,
 	resolveLlmConfig,
 } = _testing;
+
+type LogCandidate = Parameters<RuntimeDiagnosticLogSink["recordLog"]>[0];
+
+function collectRuntimeLogs(): LogCandidate[] {
+	const entries: LogCandidate[] = [];
+	setRuntimeDiagnosticLogSink({
+		recordLog: (entry) => {
+			entries.push(entry);
+		},
+	});
+	return entries;
+}
 
 describe("llm-client rate limiter", () => {
 	beforeEach(() => {
@@ -127,6 +139,7 @@ describe("llm-client provider config", () => {
 
 	it("logs a replacement hint when a known retired Bedrock helper model fails", async () => {
 		_resetLoggerForTests();
+		const logs = collectRuntimeLogs();
 		vi.spyOn(console, "warn").mockImplementation(() => undefined);
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(
 			new Response(
@@ -144,7 +157,9 @@ describe("llm-client provider config", () => {
 
 		await callLlm({ systemPrompt: "Return a title.", userPrompt: "fix auth", maxTokens: 20 });
 
-		const logEntry = getRecentLogEntries().find((entry) => entry.tag === "llm-client");
+		const logEntry = logs.find(
+			(entry) => entry.tag === "llm-client" && entry.message === "LLM call failed: non-2xx response",
+		);
 		expect(logEntry?.data).toMatchObject({
 			status: 404,
 			model: "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0",
@@ -155,6 +170,7 @@ describe("llm-client provider config", () => {
 
 	it("logs the configured deadline without a misleading measured duration on timeout", async () => {
 		_resetLoggerForTests();
+		const logs = collectRuntimeLogs();
 		vi.spyOn(console, "warn").mockImplementation(() => undefined);
 		vi.spyOn(globalThis, "fetch").mockRejectedValue(new DOMException("Timed out", "TimeoutError"));
 		process.env.QUARTERDECK_LLM_BASE_URL = "https://llm.example.com/v1";
@@ -168,9 +184,7 @@ describe("llm-client provider config", () => {
 			timeoutMs: 6_000,
 		});
 
-		const logEntry = getRecentLogEntries().find(
-			(entry) => entry.tag === "llm-client" && entry.message === "LLM call timed out",
-		);
+		const logEntry = logs.find((entry) => entry.tag === "llm-client" && entry.message === "LLM call timed out");
 		expect(logEntry?.data).toEqual({ timeoutMs: 6_000, model: "helper-model" });
 	});
 });

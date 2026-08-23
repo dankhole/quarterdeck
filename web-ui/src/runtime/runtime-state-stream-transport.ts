@@ -1,3 +1,5 @@
+import { normalizeDiagnosticErrorClass } from "@runtime-contract";
+import { noteBrowserRuntimeReconnect, recordBrowserEvent, setBrowserDiagnosticsConnected } from "@/diagnostics";
 import { getRuntimeBrowserClientId } from "@/runtime/runtime-client-id";
 import { setRuntimeDisconnected } from "@/runtime/runtime-connection-state";
 import type { RuntimeStateStreamMessage } from "@/runtime/types";
@@ -68,6 +70,7 @@ export function startRuntimeStateStreamTransport(
 
 		const delay = Math.min(STREAM_RECONNECT_MAX_DELAY_MS, STREAM_RECONNECT_BASE_DELAY_MS * 2 ** reconnectAttempt);
 		reconnectAttempt += 1;
+		noteBrowserRuntimeReconnect(reconnectAttempt, delay);
 		reconnectTimer = window.setTimeout(() => {
 			connect();
 		}, delay);
@@ -88,6 +91,7 @@ export function startRuntimeStateStreamTransport(
 			disconnectReportedForSocket = false;
 		} catch (error) {
 			setRuntimeDisconnected(true);
+			setBrowserDiagnosticsConnected(false, toErrorMessage(error));
 			callbacks.onDisconnected(toErrorMessage(error));
 			scheduleReconnect();
 			return;
@@ -96,6 +100,7 @@ export function startRuntimeStateStreamTransport(
 		socket.onopen = () => {
 			reconnectAttempt = 0;
 			setRuntimeDisconnected(false);
+			setBrowserDiagnosticsConnected(true);
 			callbacks.onConnected();
 		};
 
@@ -104,6 +109,12 @@ export function startRuntimeStateStreamTransport(
 				callbacks.onMessage(JSON.parse(String(event.data)) as RuntimeStateStreamMessage);
 			} catch (error) {
 				log.warn("Malformed stream message", error);
+				recordBrowserEvent(
+					"browser.runtime_message_rejected",
+					{ errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError" },
+					{},
+					{ level: "warn", essential: true },
+				);
 			}
 		};
 
@@ -112,6 +123,7 @@ export function startRuntimeStateStreamTransport(
 				return;
 			}
 			setRuntimeDisconnected(true);
+			setBrowserDiagnosticsConnected(false, "Runtime stream disconnected.");
 			if (!disconnectReportedForSocket) {
 				disconnectReportedForSocket = true;
 				callbacks.onDisconnected("Runtime stream disconnected.");
@@ -124,6 +136,7 @@ export function startRuntimeStateStreamTransport(
 				return;
 			}
 			setRuntimeDisconnected(true);
+			setBrowserDiagnosticsConnected(false, "Runtime stream connection failed.");
 			log.error("WebSocket connection failed");
 			if (!disconnectReportedForSocket) {
 				disconnectReportedForSocket = true;

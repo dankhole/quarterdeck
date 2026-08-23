@@ -1,7 +1,11 @@
 import pLimit from "p-limit";
 
-import type { RuntimeBoardData, RuntimeProjectMetadata } from "../core";
-import { ProjectMetadataController } from "./project-metadata-controller";
+import type { DiagnosticCaptureScope, RuntimeBoardData, RuntimeProjectMetadata } from "../core";
+import {
+	ProjectMetadataController,
+	type ProjectMetadataControllerDiagnosticSnapshot,
+} from "./project-metadata-controller";
+import type { ProjectMetadataRemoteFetchResult } from "./project-metadata-remote-fetch";
 
 const GLOBAL_METADATA_PROBE_CONCURRENCY_LIMIT = 4;
 const PROJECT_METADATA_PROBE_CONCURRENCY_LIMIT = 2;
@@ -9,7 +13,19 @@ const PROJECT_METADATA_PROBE_CONCURRENCY_LIMIT = 2;
 export interface CreateProjectMetadataMonitorDependencies {
 	onMetadataUpdated: (projectId: string, metadata: RuntimeProjectMetadata) => void;
 	onTaskBaseRefChanged?: (projectId: string, taskId: string, newBaseRef: string) => void;
+	onRemoteFetchCompleted?: (projectId: string, result: ProjectMetadataRemoteFetchResult) => void;
 	getProjectDefaultBaseRef?: (projectId: string) => string;
+}
+
+interface MetadataProbeLimitDiagnosticSnapshot {
+	activeCount: number;
+	pendingCount: number;
+	concurrency: number;
+}
+
+export interface ProjectMetadataMonitorDiagnosticSnapshot {
+	globalProbeLimit: MetadataProbeLimitDiagnosticSnapshot;
+	projects: Array<ProjectMetadataControllerDiagnosticSnapshot & { probeLimit: MetadataProbeLimitDiagnosticSnapshot }>;
 }
 
 export interface ProjectMetadataMonitor {
@@ -31,6 +47,7 @@ export interface ProjectMetadataMonitor {
 	requestHomeRefresh: (projectId: string) => void;
 	disconnectProject: (projectId: string, clientId?: string | null) => void;
 	disposeProject: (projectId: string) => void;
+	getDiagnosticSnapshot: (scope?: Readonly<DiagnosticCaptureScope>) => ProjectMetadataMonitorDiagnosticSnapshot;
 	close: () => void;
 }
 
@@ -72,6 +89,7 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 			},
 			onMetadataUpdated: deps.onMetadataUpdated,
 			onTaskBaseRefChanged: deps.onTaskBaseRefChanged,
+			onRemoteFetchCompleted: deps.onRemoteFetchCompleted,
 			getProjectDefaultBaseRef: deps.getProjectDefaultBaseRef,
 		});
 		projects.set(projectId, controller);
@@ -117,6 +135,47 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 			controller.dispose();
 			projects.delete(projectId);
 			projectMetadataProbeLimits.delete(projectId);
+		},
+		getDiagnosticSnapshot: (scope = {}) => {
+			const scopedProjects = Array.from(projects.entries()).flatMap(([projectId, controller]) => {
+				if (scope.projectId && projectId !== scope.projectId) return [];
+				const projectLimit = projectMetadataProbeLimits.get(projectId);
+				const snapshot = controller.getDiagnosticSnapshot();
+				if (scope.taskId && !scope.projectId && snapshot.focusedTaskId !== scope.taskId) return [];
+				return [
+					{
+						...snapshot,
+						focusedTaskId:
+							!scope.taskId || snapshot.focusedTaskId === scope.taskId ? snapshot.focusedTaskId : null,
+						probeLimit: {
+							activeCount: projectLimit?.activeCount ?? 0,
+							pendingCount: projectLimit?.pendingCount ?? 0,
+							concurrency: PROJECT_METADATA_PROBE_CONCURRENCY_LIMIT,
+						},
+					},
+				];
+			});
+			const scopedProbeCounts = scopedProjects.reduce(
+				(counts, project) => ({
+					activeCount: counts.activeCount + project.probeLimit.activeCount,
+					pendingCount: counts.pendingCount + project.probeLimit.pendingCount,
+				}),
+				{ activeCount: 0, pendingCount: 0 },
+			);
+			return {
+				globalProbeLimit: {
+					activeCount:
+						scope.projectId || scope.taskId
+							? scopedProbeCounts.activeCount
+							: globalMetadataProbeLimit.activeCount,
+					pendingCount:
+						scope.projectId || scope.taskId
+							? scopedProbeCounts.pendingCount
+							: globalMetadataProbeLimit.pendingCount,
+					concurrency: GLOBAL_METADATA_PROBE_CONCURRENCY_LIMIT,
+				},
+				projects: scopedProjects,
+			};
 		},
 		close: () => {
 			for (const controller of projects.values()) {

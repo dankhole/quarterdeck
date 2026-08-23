@@ -23,6 +23,7 @@ import {
 	errorMessage,
 	isProjectCheckoutCwd,
 	normalizeOptionalTaskScopeInput,
+	observeProjectOperation,
 	type ProjectApiContext,
 	resolveWorkingDir,
 } from "./project-api-shared";
@@ -52,7 +53,7 @@ function createGitMetadataRefreshEffectsForCwd(
 }
 
 export function createStagingOps(ctx: ProjectApiContext): StagingOps {
-	return {
+	const operations: StagingOps = {
 		discardGitChanges: async (projectScope, input) => {
 			try {
 				const taskScope = normalizeOptionalTaskScopeInput(input);
@@ -194,5 +195,65 @@ export function createStagingOps(ctx: ProjectApiContext): StagingOps {
 				return { ok: false, error: errorMessage(error) } satisfies RuntimeStashShowResponse;
 			}
 		},
+	};
+
+	return {
+		...operations,
+		discardGitChanges: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"discard_all",
+				{ taskId: input?.taskId },
+				async () => await operations.discardGitChanges(scope, input),
+			),
+		commitSelectedFiles: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				input.pushAfterCommit ? "commit_and_push" : "commit",
+				{ taskId: input.taskScope?.taskId },
+				async () => await operations.commitSelectedFiles(scope, input),
+			),
+		discardFile: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"discard_file",
+				{ taskId: input.taskScope?.taskId },
+				async () => await operations.discardFile(scope, input),
+			),
+		stashPush: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"stash_push",
+				{ taskId: input.taskScope?.taskId },
+				async () => await operations.stashPush(scope, input),
+			),
+		stashPop: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"stash_pop",
+				{ taskId: input.taskScope?.taskId },
+				async () => await operations.stashPop(scope, input),
+			),
+		stashApply: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"stash_apply",
+				{ taskId: input.taskScope?.taskId },
+				async () => await operations.stashApply(scope, input),
+			),
+		stashDrop: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"stash_drop",
+				{ taskId: input.taskScope?.taskId },
+				async () => await operations.stashDrop(scope, input),
+			),
 	};
 }

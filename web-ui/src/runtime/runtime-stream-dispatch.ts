@@ -126,14 +126,10 @@ const streamMessageHandlers: {
 					state.activeProjectId,
 				),
 
-	debug_logging_state: (msg, state) =>
-		createDispatchResult(
-			[{ type: "debug_logging_state", level: msg.level, recentEntries: msg.recentEntries }],
-			state.activeProjectId,
-		),
-
-	debug_log_batch: (msg, state) =>
-		createDispatchResult([{ type: "debug_log_batch", entries: msg.entries }], state.activeProjectId),
+	diagnostics_state: (_msg, state) => createDispatchResult([], state.activeProjectId),
+	diagnostic_record_batch: (_msg, state) => createDispatchResult([], state.activeProjectId),
+	diagnostic_capture_state: (_msg, state) => createDispatchResult([], state.activeProjectId),
+	diagnostic_snapshot_request: (_msg, state) => createDispatchResult([], state.activeProjectId),
 
 	error: (msg, state) => createDispatchResult([{ type: "stream_error", message: msg.message }], state.activeProjectId),
 };

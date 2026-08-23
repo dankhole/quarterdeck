@@ -1,4 +1,6 @@
+import { normalizeDiagnosticErrorClass } from "@runtime-contract";
 import { useEffect, useRef, useState } from "react";
+import { recordBrowserEvent, updateBrowserSnapshotContext } from "@/diagnostics";
 import { ProjectStateConflictError } from "@/runtime/project-state-query";
 import type { RuntimeProjectStateResponse, RuntimeProjectStateSaveRequest } from "@/runtime/types";
 import type { BoardData } from "@/types";
@@ -71,6 +73,11 @@ export function useProjectPersistence({
 		}
 		if (persistInFlightRef.current) {
 			persistQueuedRef.current = true;
+			recordBrowserEvent(
+				"browser.project_persist_queued",
+				{ expectedRevision: projectRevision },
+				{ projectId: currentProjectId ?? undefined },
+			);
 			return;
 		}
 		if (skipNextPersistRef.current) {
@@ -95,8 +102,15 @@ export function useProjectPersistence({
 				board,
 				expectedRevision: projectRevision,
 			};
+			recordBrowserEvent(
+				"browser.project_persist_started",
+				{ expectedRevision: projectRevision },
+				{ projectId: persistProjectId },
+				{ essential: false },
+			);
 			void (async () => {
 				persistInFlightRef.current = true;
+				updateBrowserSnapshotContext({ pendingProjectPersistence: true });
 				try {
 					const saved = await persistProjectState({
 						projectId: persistProjectId,
@@ -111,8 +125,20 @@ export function useProjectPersistence({
 					lastPersistedProjectIdRef.current = persistProjectId;
 					lastPersistedBoardRef.current = board;
 					onProjectRevisionChange(saved.revision);
+					recordBrowserEvent(
+						"browser.project_persist_completed",
+						{ expectedRevision: projectRevision, savedRevision: saved.revision },
+						{ projectId: persistProjectId },
+						{ essential: false },
+					);
 				} catch (error) {
 					if (error instanceof ProjectStateConflictError) {
+						recordBrowserEvent(
+							"browser.project_persist_conflict",
+							{ expectedRevision: projectRevision, currentRevision: error.currentRevision },
+							{ projectId: persistProjectId },
+							{ level: "warn", essential: true },
+						);
 						if (
 							requestId === latestPersistRequestIdRef.current &&
 							currentProjectIdRef.current === persistProjectId
@@ -129,9 +155,19 @@ export function useProjectPersistence({
 						await refetchProjectState();
 						return;
 					}
+					recordBrowserEvent(
+						"browser.project_persist_failed",
+						{
+							expectedRevision: projectRevision,
+							errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+						},
+						{ projectId: persistProjectId },
+						{ level: "warn", essential: true },
+					);
 					// Keep the UI usable even if persistence is temporarily unavailable.
 				} finally {
 					persistInFlightRef.current = false;
+					updateBrowserSnapshotContext({ pendingProjectPersistence: false });
 					if (persistQueuedRef.current) {
 						persistQueuedRef.current = false;
 						setPersistCycle((current) => current + 1);

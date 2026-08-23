@@ -67,7 +67,8 @@ Hooks live in `src/hooks/` organized by domain. Every hook belongs to a domain s
 
 - `hooks/app/` — app-wide wiring (hotkeys, side effects, action models, layout resize)
 - `hooks/board/` — task lifecycle, board state, drag-and-drop, trash workflow
-- `hooks/debug/` — debug logging and tooling
+- `hooks/diagnostics/` — unified flight-recorder panel, filters, snapshots, and bounded capture controls
+- `hooks/debug/` — explicitly enabled developer-only tooling; do not add a second logging or diagnostic buffer here
 - `hooks/git/` — branch operations, diffs, conflict resolution, commit panel
 - `hooks/notifications/` — alerts, sound, browser notifications
 - `hooks/project/` — project navigation, project switching, sync

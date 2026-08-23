@@ -98,6 +98,7 @@ export async function spawnTaskSession(
 	deps: SpawnTaskSessionDeps,
 ): Promise<SpawnTaskSessionResult> {
 	entry.pendingSessionStart = true;
+	entry.pendingSessionStartSince = Date.now();
 	const hookSessionInstanceId = randomUUID();
 	markTaskSessionLaunchSuperseded(entry.launchMonitor);
 	entry.launchMonitor = createTaskSessionLaunchMonitor({
@@ -161,6 +162,7 @@ export async function spawnTaskSession(
 		});
 	} catch (error) {
 		entry.pendingSessionStart = false;
+		entry.pendingSessionStartSince = null;
 		entry.hookEventOrder = null;
 		markTaskSessionLaunchCancelled(entry.launchMonitor);
 		throw error;
@@ -222,6 +224,7 @@ export async function spawnTaskSession(
 			error: errorMessage,
 		});
 		entry.pendingSessionStart = false;
+		entry.pendingSessionStartSince = null;
 		entry.hookEventOrder = null;
 		markTaskSessionLaunchCancelled(entry.launchMonitor);
 		if (launch.cleanup) {
@@ -267,6 +270,7 @@ export async function spawnTaskSession(
 		entry.launchMonitor.pid = session.pid;
 	}
 	entry.pendingSessionStart = false;
+	entry.pendingSessionStartSince = null;
 	entry.terminalStateMirror = terminalStateMirror;
 	if (!hasLiveOutputListener(entry)) {
 		terminalStateMirror.setBatching(true);

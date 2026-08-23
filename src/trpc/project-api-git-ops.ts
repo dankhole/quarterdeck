@@ -20,6 +20,7 @@ import {
 	hasActiveSharedCheckoutTask,
 	isProjectCheckoutCwd,
 	normalizeOptionalTaskScopeInput,
+	observeProjectOperation,
 	type ProjectApiContext,
 	resolveWorkingDir,
 } from "./project-api-shared";
@@ -54,7 +55,7 @@ function createTaskGitMetadataRefreshEffects(projectScope: RuntimeTrpcProjectSco
 }
 
 export function createGitOps(ctx: ProjectApiContext): GitOps {
-	return {
+	const operations: GitOps = {
 		runGitSyncAction: async (projectScope, input) => {
 			try {
 				const taskScope = normalizeOptionalTaskScopeInput(input.taskScope ?? null);
@@ -327,5 +328,80 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 				return { ok: false as const, oldName: input.oldName, newName: input.newName, error: errorMessage(error) };
 			}
 		},
+	};
+
+	return {
+		runGitSyncAction: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				`sync.${input.action}`,
+				{ taskId: input.taskScope?.taskId },
+				async () => await operations.runGitSyncAction(scope, input),
+			),
+		checkoutGitBranch: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"checkout",
+				{ taskId: input.taskId },
+				async () => await operations.checkoutGitBranch(scope, input),
+			),
+		mergeBranch: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"merge",
+				{ taskId: input.taskId },
+				async () => await operations.mergeBranch(scope, input),
+			),
+		rebaseBranch: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"rebase",
+				{ taskId: input.taskId },
+				async () => await operations.rebaseBranch(scope, input),
+			),
+		resetToRef: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"reset",
+				{ taskId: input.taskId },
+				async () => await operations.resetToRef(scope, input),
+			),
+		cherryPickCommit: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"cherry_pick",
+				{ taskId: input.taskScope?.taskId },
+				async () => await operations.cherryPickCommit(scope, input),
+			),
+		createBranch: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"branch_create",
+				{},
+				async () => await operations.createBranch(scope, input),
+			),
+		deleteBranch: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"branch_delete",
+				{},
+				async () => await operations.deleteBranch(scope, input),
+			),
+		renameBranch: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"branch_rename",
+				{},
+				async () => await operations.renameBranch(scope, input),
+			),
 	};
 }
