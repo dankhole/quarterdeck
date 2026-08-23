@@ -196,10 +196,12 @@ describe("BoardCard", () => {
 			const cardHeader = container.querySelector("[data-board-card-header]");
 			const cardTitle = cardHeader?.querySelector("[data-board-card-title]");
 			const actionRail = cardHeader?.querySelector("[data-board-card-action-rail]");
-			expect(cardHeader?.classList.contains("flex-wrap")).toBe(true);
+			expect(cardHeader?.classList.contains("flex-nowrap")).toBe(true);
 			expect(cardTitle?.classList.contains("min-w-0")).toBe(true);
 			expect(cardTitle?.classList.contains("basis-0")).toBe(true);
-			expect(actionRail?.classList.contains("shrink-0")).toBe(true);
+			expect(actionRail?.classList.contains("shrink")).toBe(true);
+			expect(actionRail?.classList.contains("w-max")).toBe(true);
+			expect(actionRail?.classList.contains("min-w-0")).toBe(true);
 			expect(actionRail?.classList.contains("max-w-full")).toBe(true);
 			expect(actionRail?.classList.contains("flex-wrap")).toBe(true);
 			expect(actionRail?.classList.contains("justify-end")).toBe(true);

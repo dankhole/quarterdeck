@@ -64,14 +64,24 @@ test("creating and opening a backlog task shows the inline editor", async ({ pag
 	await expect(page.getByRole("button", { name: "Start", exact: true })).toBeVisible();
 });
 
-test("card action controls wrap without overlapping or overflowing", async ({ page }) => {
+test("side-panel card actions only wrap when the controls cannot fit", async ({ page }) => {
 	await openBoard(page);
 	const taskTitle = `card-layout-${Date.now()}`;
 	await createTaskFromBacklog(page, taskTitle);
 
-	const card = page.locator(BACKLOG_COLUMN).locator("[data-task-id]").filter({ hasText: taskTitle }).first();
+	const boardCard = page.locator(BACKLOG_COLUMN).locator("[data-task-id]").filter({ hasText: taskTitle }).first();
+	const taskId = await boardCard.getAttribute("data-task-id");
+	expect(taskId).not.toBeNull();
+	await page.evaluate((selectedTaskId) => {
+		const url = new URL(window.location.href);
+		url.searchParams.set("task", selectedTaskId);
+		window.history.pushState(window.history.state, "", url);
+		window.dispatchEvent(new PopStateEvent("popstate"));
+	}, taskId!);
+	const card = page.locator(`[data-task-id="${taskId}"]`).filter({ hasText: taskTitle }).first();
+	await expect(card).toBeVisible();
 	await card.evaluate((element) => {
-		element.style.width = "150px";
+		element.style.width = "126px";
 	});
 	await card.hover();
 
@@ -84,7 +94,7 @@ test("card action controls wrap without overlapping or overflowing", async ({ pa
 	const actionRailBox = await actionRail.boundingBox();
 	expect(titleBox).not.toBeNull();
 	expect(actionRailBox).not.toBeNull();
-	expect(titleBox!.width).toBeLessThan(64);
+	expect(titleBox!.width).toBeLessThan(8);
 	const titleCenterY = titleBox!.y + titleBox!.height / 2;
 	const actionRailCenterY = actionRailBox!.y + actionRailBox!.height / 2;
 	expect(Math.abs(actionRailCenterY - titleCenterY)).toBeLessThan(1);
@@ -98,11 +108,6 @@ test("card action controls wrap without overlapping or overflowing", async ({ pa
 	});
 
 	await expect.poll(() => header.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-	const narrowTitleBox = await title.boundingBox();
-	const narrowActionRailBox = await actionRail.boundingBox();
-	expect(narrowTitleBox).not.toBeNull();
-	expect(narrowActionRailBox).not.toBeNull();
-	expect(narrowActionRailBox!.y).toBeGreaterThanOrEqual(narrowTitleBox!.y + narrowTitleBox!.height);
 
 	const actionBoxes = await actionRail.getByRole("button").evaluateAll((buttons) =>
 		buttons.map((button) => {

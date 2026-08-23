@@ -272,7 +272,7 @@ export function BoardCard({
 						)}
 					>
 						<div
-							className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
+							className="flex min-w-0 flex-nowrap items-center gap-x-1"
 							data-board-card-header
 							style={{ minHeight: 24 }}
 						>
@@ -349,7 +349,7 @@ export function BoardCard({
 								</div>
 							)}
 							<div
-								className="ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 [&>button]:shrink-0"
+								className="ml-auto flex w-max min-w-0 max-w-full shrink flex-wrap items-center justify-end gap-1 [&>button]:shrink-0"
 								data-board-card-action-rail
 							>
 								{!isEditingTitle && isHovered && !isTrashCard ? (
