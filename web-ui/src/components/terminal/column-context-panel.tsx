@@ -1,14 +1,16 @@
+import { type BeforeCapture, DragDropContext, Droppable, type DropResult } from "@hello-pangea/dnd";
 import { ChevronDown, ChevronRight, Play, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { BoardCard } from "@/components/board/board-card";
 import { Button } from "@/components/ui/button";
 import { ColumnIndicator } from "@/components/ui/column-indicator";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useReactiveCardState, useStableCardActions } from "@/state/card-actions-context";
+import { findCardColumnId, isCardDropDisabled } from "@/state/drag-rules";
 import { sortColumnCards } from "@/state/sort-column-cards";
-import type { BoardCard as BoardCardModel, BoardColumn, CardSelection } from "@/types";
+import type { BoardCard as BoardCardModel, BoardColumn, BoardColumnId, CardSelection } from "@/types";
 
 function ColumnSection({
 	column,
@@ -23,6 +25,8 @@ function ColumnSection({
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
+	activeDragTaskId,
+	activeDragSourceColumnId,
 }: {
 	column: BoardColumn;
 	selectedCardId: string;
@@ -36,6 +40,8 @@ function ColumnSection({
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCardModel) => void;
+	activeDragTaskId?: string | null;
+	activeDragSourceColumnId?: BoardColumnId | null;
 }): React.ReactElement {
 	const {
 		onStartTask,
@@ -54,6 +60,9 @@ function ColumnSection({
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
+	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null, {
+		activeDragTaskId,
+	});
 
 	useEffect(() => {
 		if (!column.cards.some((card) => card.id === selectedCardId)) {
@@ -130,86 +139,86 @@ function ColumnSection({
 					/>
 				) : null}
 			</div>
-			<div
-				style={{
-					display: open ? "flex" : "none",
-					flexDirection: "column",
-					padding: 8,
-				}}
-			>
-				{canCreate ? (
-					<Button
-						icon={<span style={{ fontSize: 16, lineHeight: 1 }}>+</span>}
-						aria-label="Create task"
-						fill
-						onClick={onCreateTask}
-						style={{ marginBottom: 8 }}
-					>
-						<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-							<span>Create task</span>
-							<span aria-hidden className="text-text-secondary">
-								(c)
-							</span>
-						</span>
-					</Button>
-				) : null}
-				{(() => {
-					const items: ReactNode[] = [];
-					let cardIndex = 0;
-					const cards = sortColumnCards(column.cards, column.id);
-					for (const card of cards) {
-						if (column.id === "backlog" && editingTaskId === card.id) {
-							items.push(
-								<div key={card.id} style={{ marginBottom: 8 }}>
-									{inlineTaskEditor}
-								</div>,
-							);
-							continue;
-						}
-						items.push(
-							<BoardCard
-								key={card.id}
-								card={card}
-								index={cardIndex}
-								columnId={column.id}
-								draggable={false}
-								sessionSummary={taskSessions[card.id]}
-								selected={card.id === selectedCardId}
-								onStart={onStartTask}
-								onRestartSession={onRestartSessionTask}
-								onMoveToTrash={onMoveToTrashTask}
-								onRestoreFromTrash={onRestoreFromTrashTask}
-								onHardDelete={onHardDeleteTrashTask}
-								isMoveToTrashLoading={moveToTrashLoadingById[card.id] ?? false}
-								onRegenerateTitle={onRegenerateTitleTask}
-								onUpdateTitle={onUpdateTaskTitle}
-								onTogglePin={onTogglePinTask}
-								showSummaryOnCards={showSummaryOnCards}
-								uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}
-								onTerminalWarmup={onTerminalWarmup}
-								onTerminalCancelWarmup={onTerminalCancelWarmup}
-								onClick={() => {
-									if (column.id === "backlog") {
-										onEditTask?.(card);
-										return;
+			<div style={{ display: open ? "block" : "none" }}>
+				<Droppable droppableId={column.id} type="CARD" isDropDisabled={isDropDisabled}>
+					{(provided) => (
+						<div ref={provided.innerRef} {...provided.droppableProps} className="flex flex-col p-2">
+							{canCreate ? (
+								<Button
+									icon={<span style={{ fontSize: 16, lineHeight: 1 }}>+</span>}
+									aria-label="Create task"
+									fill
+									onClick={onCreateTask}
+									style={{ marginBottom: 8 }}
+								>
+									<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+										<span>Create task</span>
+										<span aria-hidden className="text-text-secondary">
+											(c)
+										</span>
+									</span>
+								</Button>
+							) : null}
+							{(() => {
+								const items: ReactNode[] = [];
+								let cardIndex = 0;
+								const cards = sortColumnCards(column.cards, column.id);
+								for (const card of cards) {
+									if (column.id === "backlog" && editingTaskId === card.id) {
+										items.push(
+											<div key={card.id} style={{ marginBottom: 8 }}>
+												{inlineTaskEditor}
+											</div>,
+										);
+										continue;
 									}
-									onCardClick(card);
-								}}
-								onDoubleClick={() => {
-									if (column.id === "backlog") {
-										return;
-									}
-									onCardDoubleClick?.(card);
-								}}
-							/>,
-						);
-						cardIndex += 1;
-					}
-					return items;
-				})()}
-				{column.cards.length === 0 ? (
-					<div className="flex items-center justify-center py-4 text-text-tertiary text-xs">Empty</div>
-				) : null}
+									items.push(
+										<BoardCard
+											key={card.id}
+											card={card}
+											index={cardIndex}
+											columnId={column.id}
+											sessionSummary={taskSessions[card.id]}
+											selected={card.id === selectedCardId}
+											onStart={onStartTask}
+											onRestartSession={onRestartSessionTask}
+											onMoveToTrash={onMoveToTrashTask}
+											onRestoreFromTrash={onRestoreFromTrashTask}
+											onHardDelete={onHardDeleteTrashTask}
+											isMoveToTrashLoading={moveToTrashLoadingById[card.id] ?? false}
+											onRegenerateTitle={onRegenerateTitleTask}
+											onUpdateTitle={onUpdateTaskTitle}
+											onTogglePin={onTogglePinTask}
+											showSummaryOnCards={showSummaryOnCards}
+											uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}
+											onTerminalWarmup={onTerminalWarmup}
+											onTerminalCancelWarmup={onTerminalCancelWarmup}
+											onClick={() => {
+												if (column.id === "backlog") {
+													onEditTask?.(card);
+													return;
+												}
+												onCardClick(card);
+											}}
+											onDoubleClick={() => {
+												if (column.id === "backlog") {
+													return;
+												}
+												onCardDoubleClick?.(card);
+											}}
+										/>,
+									);
+									cardIndex += 1;
+								}
+								return items;
+							})()}
+							{provided.placeholder}
+							{column.cards.length === 0 ? (
+								<div className="flex items-center justify-center py-4 text-text-tertiary text-xs">Empty</div>
+							) : null}
+						</div>
+					)}
+				</Droppable>
 			</div>
 		</div>
 	);
@@ -219,6 +228,7 @@ export function ColumnContextPanel({
 	selection,
 	onCardSelect,
 	onCardDoubleClick,
+	onTaskDragEnd,
 	taskSessions,
 	onCreateTask,
 	onStartAllTasks,
@@ -231,6 +241,7 @@ export function ColumnContextPanel({
 	selection: CardSelection;
 	onCardSelect: (taskId: string) => void;
 	onCardDoubleClick?: (taskId: string) => void;
+	onTaskDragEnd: (result: DropResult) => void;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCreateTask?: () => void;
 	onStartAllTasks?: () => void;
@@ -240,7 +251,26 @@ export function ColumnContextPanel({
 	onEditTask?: (card: BoardCardModel) => void;
 	panelWidth?: string;
 }): React.ReactElement {
+	const [activeDragTaskId, setActiveDragTaskId] = useState<string | null>(null);
+	const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<BoardColumnId | null>(null);
 	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+	const handleBeforeCapture = useCallback(
+		(start: BeforeCapture) => {
+			setActiveDragTaskId(start.draggableId);
+			setActiveDragSourceColumnId(findCardColumnId(selection.allColumns, start.draggableId));
+		},
+		[selection.allColumns],
+	);
+
+	const handleDragEnd = useCallback(
+		(result: DropResult) => {
+			setActiveDragTaskId(null);
+			setActiveDragSourceColumnId(null);
+			onTaskDragEnd(result);
+		},
+		[onTaskDragEnd],
+	);
 
 	useEffect(() => {
 		const scrollContainer = scrollContainerRef.current;
@@ -276,35 +306,39 @@ export function ColumnContextPanel({
 				background: "var(--color-surface-0)",
 			}}
 		>
-			<div
-				ref={scrollContainerRef}
-				className="flex flex-col gap-2 p-2"
-				style={{
-					flex: "1 1 0",
-					minHeight: 0,
-					overflowY: "auto",
-					overscrollBehavior: "contain",
-					overflowAnchor: "none",
-				}}
-			>
-				{selection.allColumns.map((column) => (
-					<ColumnSection
-						key={column.id}
-						column={column}
-						selectedCardId={selection.card.id}
-						defaultOpen={column.id !== "trash"}
-						onCardClick={(card) => onCardSelect(card.id)}
-						onCardDoubleClick={onCardDoubleClick ? (card) => onCardDoubleClick(card.id) : undefined}
-						taskSessions={taskSessions}
-						onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
-						onStartAllTasks={column.id === "backlog" ? onStartAllTasks : undefined}
-						onClearTrash={column.id === "trash" ? onClearTrash : undefined}
-						editingTaskId={column.id === "backlog" ? editingTaskId : null}
-						inlineTaskEditor={column.id === "backlog" ? inlineTaskEditor : undefined}
-						onEditTask={column.id === "backlog" ? onEditTask : undefined}
-					/>
-				))}
-			</div>
+			<DragDropContext onBeforeCapture={handleBeforeCapture} onDragEnd={handleDragEnd}>
+				<div
+					ref={scrollContainerRef}
+					className="flex flex-col gap-2 p-2"
+					style={{
+						flex: "1 1 0",
+						minHeight: 0,
+						overflowY: "auto",
+						overscrollBehavior: "contain",
+						overflowAnchor: "none",
+					}}
+				>
+					{selection.allColumns.map((column) => (
+						<ColumnSection
+							key={column.id}
+							column={column}
+							selectedCardId={selection.card.id}
+							defaultOpen={column.id !== "trash"}
+							onCardClick={(card) => onCardSelect(card.id)}
+							onCardDoubleClick={onCardDoubleClick ? (card) => onCardDoubleClick(card.id) : undefined}
+							taskSessions={taskSessions}
+							onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
+							onStartAllTasks={column.id === "backlog" ? onStartAllTasks : undefined}
+							onClearTrash={column.id === "trash" ? onClearTrash : undefined}
+							editingTaskId={column.id === "backlog" ? editingTaskId : null}
+							inlineTaskEditor={column.id === "backlog" ? inlineTaskEditor : undefined}
+							onEditTask={column.id === "backlog" ? onEditTask : undefined}
+							activeDragTaskId={activeDragTaskId}
+							activeDragSourceColumnId={activeDragSourceColumnId}
+						/>
+					))}
+				</div>
+			</DragDropContext>
 			<div className="px-3 py-2 text-text-tertiary text-[11px] text-center shrink-0">
 				Double-click a task to open agent chat
 			</div>

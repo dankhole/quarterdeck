@@ -1,10 +1,46 @@
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ColumnContextPanel } from "@/components/terminal/column-context-panel";
 import { CardActionsProvider, type ReactiveCardState, type StableCardActions } from "@/state/card-actions-context";
 import type { BoardColumn, CardSelection } from "@/types";
+
+const dndMock = vi.hoisted(() => ({
+	onBeforeCapture: null as ((start: { draggableId: string }) => void) | null,
+	onDragEnd: null as ((result: object) => void) | null,
+}));
+
+vi.mock("@hello-pangea/dnd", () => {
+	return {
+		DragDropContext: ({
+			children,
+			onBeforeCapture,
+			onDragEnd,
+		}: {
+			children: ReactNode;
+			onBeforeCapture: (start: { draggableId: string }) => void;
+			onDragEnd: (result: object) => void;
+		}) => {
+			dndMock.onBeforeCapture = onBeforeCapture;
+			dndMock.onDragEnd = onDragEnd;
+			return <>{children}</>;
+		},
+		Droppable: ({
+			children,
+			droppableId,
+			isDropDisabled,
+		}: {
+			children: (provided: { innerRef: () => void; droppableProps: object; placeholder: ReactNode }) => ReactNode;
+			droppableId: string;
+			isDropDisabled: boolean;
+		}) => (
+			<div data-droppable-id={droppableId} data-drop-disabled={isDropDisabled ? "true" : "false"}>
+				{children({ innerRef: () => {}, droppableProps: {}, placeholder: null })}
+			</div>
+		),
+	};
+});
 
 const noopStableActions: StableCardActions = {};
 const noopReactiveState: ReactiveCardState = {
@@ -18,12 +54,18 @@ vi.mock("@/components/board/board-card", () => ({
 	BoardCard: ({
 		card,
 		selected,
+		draggable,
 	}: {
 		card: { id: string; prompt: string };
 		selected?: boolean;
+		draggable?: boolean;
 	}): React.ReactElement => {
 		return (
-			<div data-task-id={card.id} data-selected={selected ? "true" : "false"}>
+			<div
+				data-task-id={card.id}
+				data-selected={selected ? "true" : "false"}
+				data-draggable={draggable === false ? "false" : "true"}
+			>
 				{card.prompt}
 			</div>
 		);
@@ -89,6 +131,8 @@ describe("ColumnContextPanel", () => {
 			root.unmount();
 		});
 		vi.restoreAllMocks();
+		dndMock.onBeforeCapture = null;
+		dndMock.onDragEnd = null;
 		container.remove();
 		if (previousActEnvironment === undefined) {
 			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
@@ -96,6 +140,56 @@ describe("ColumnContextPanel", () => {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
+	});
+
+	it("keeps sidebar cards draggable and forwards allowed board moves", async () => {
+		const columns: BoardColumn[] = [
+			{ id: "backlog", title: "Backlog", cards: [createCard("task-1", "Backlog task")] },
+			{ id: "in_progress", title: "In Progress", cards: [] },
+			{ id: "review", title: "Review", cards: [] },
+			{ id: "trash", title: "Trash", cards: [] },
+		];
+		const onTaskDragEnd = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<CardActionsProvider stable={noopStableActions} reactive={noopReactiveState}>
+					<ColumnContextPanel
+						selection={createSelection(columns, "task-1")}
+						onCardSelect={() => {}}
+						onTaskDragEnd={onTaskDragEnd}
+						taskSessions={{}}
+					/>
+				</CardActionsProvider>,
+			);
+		});
+
+		expect(container.querySelector('[data-task-id="task-1"]')?.getAttribute("data-draggable")).toBe("true");
+
+		await act(async () => {
+			dndMock.onBeforeCapture?.({ draggableId: "task-1" });
+		});
+
+		expect(container.querySelector('[data-droppable-id="in_progress"]')?.getAttribute("data-drop-disabled")).toBe(
+			"false",
+		);
+		expect(container.querySelector('[data-droppable-id="review"]')?.getAttribute("data-drop-disabled")).toBe("true");
+		expect(container.querySelector('[data-droppable-id="trash"]')?.getAttribute("data-drop-disabled")).toBe("false");
+
+		const result = {
+			draggableId: "task-1",
+			type: "CARD",
+			source: { droppableId: "backlog", index: 0 },
+			destination: { droppableId: "in_progress", index: 0 },
+			reason: "DROP",
+			mode: "FLUID",
+			combine: null,
+		};
+		await act(async () => {
+			dndMock.onDragEnd?.(result);
+		});
+
+		expect(onTaskDragEnd).toHaveBeenCalledWith(result);
 	});
 
 	it("centers the selected detail card when the selection changes", async () => {
@@ -112,6 +206,7 @@ describe("ColumnContextPanel", () => {
 					<ColumnContextPanel
 						selection={createSelection(columns, "task-2")}
 						onCardSelect={() => {}}
+						onTaskDragEnd={() => {}}
 						taskSessions={{}}
 					/>
 				</CardActionsProvider>,
@@ -130,6 +225,7 @@ describe("ColumnContextPanel", () => {
 					<ColumnContextPanel
 						selection={createSelection(columns, "task-3")}
 						onCardSelect={() => {}}
+						onTaskDragEnd={() => {}}
 						taskSessions={{}}
 					/>
 				</CardActionsProvider>,

@@ -71,6 +71,7 @@ function createSidePanelProps(): TaskDetailSidePanelProps {
 		navigateToFile: () => {},
 		onCardSelect: () => {},
 		onCardDoubleClick: () => {},
+		onTaskDragEnd: () => {},
 		onCreateTask: () => {},
 		onStartAllTasks: () => {},
 		onClearTrash: () => {},

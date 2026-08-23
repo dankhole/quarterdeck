@@ -79,17 +79,34 @@ export function BoardCardActions({
 
 	if (columnId === "backlog") {
 		return (
-			<Button
-				icon={<Play size={14} />}
-				variant="ghost"
-				size="sm"
-				aria-label="Start task"
-				onMouseDown={stopEvent}
-				onClick={(event) => {
-					stopEvent(event);
-					onStart?.(cardId);
-				}}
-			/>
+			<>
+				<Button
+					icon={<Play size={14} />}
+					variant="ghost"
+					size="sm"
+					aria-label="Start task"
+					onMouseDown={stopEvent}
+					onClick={(event) => {
+						stopEvent(event);
+						onStart?.(cardId);
+					}}
+				/>
+				<Tooltip content="Move to Trash">
+					<Button
+						icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Trash2 size={13} />}
+						variant="ghost"
+						size="sm"
+						className="text-status-red hover:text-text-primary"
+						disabled={isMoveToTrashLoading}
+						aria-label="Move task to trash"
+						onMouseDown={stopEvent}
+						onClick={(event) => {
+							stopEvent(event);
+							onMoveToTrash?.(cardId);
+						}}
+					/>
+				</Tooltip>
+			</>
 		);
 	}
 

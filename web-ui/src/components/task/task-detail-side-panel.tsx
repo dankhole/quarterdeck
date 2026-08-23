@@ -51,6 +51,7 @@ export function TaskDetailSidePanelSurface({
 						selection={selection}
 						onCardSelect={sidePanelProps.onCardSelect}
 						onCardDoubleClick={sidePanelProps.onCardDoubleClick}
+						onTaskDragEnd={sidePanelProps.onTaskDragEnd}
 						taskSessions={sidePanelState.taskSessions}
 						onCreateTask={sidePanelProps.onCreateTask}
 						onStartAllTasks={sidePanelProps.onStartAllTasks}

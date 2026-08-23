@@ -1,3 +1,4 @@
+import type { DropResult } from "@hello-pangea/dnd";
 import type { ReactNode } from "react";
 import type { MainViewId, SidebarId } from "@/resize/use-card-detail-layout";
 import type { RuntimeConfigResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -15,6 +16,7 @@ export interface TaskDetailSidePanelProps {
 	navigateToFile: (nav: { targetView: "git" | "files"; filePath: string; lineNumber?: number }) => void;
 	onCardSelect: (taskId: string) => void;
 	onCardDoubleClick?: (taskId: string) => void;
+	onTaskDragEnd: (result: DropResult) => void;
 	onCreateTask?: () => void;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;

@@ -541,6 +541,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 								navigateToFile: navigation.navigateToFile,
 								onCardSelect: handleCardSelectWithFocus,
 								onCardDoubleClick: handleCardDoubleClick,
+								onTaskDragEnd: interactions.handleDragEnd,
 								onCreateTask: handleOpenCreateTask,
 								onStartAllTasks: interactions.handleStartAllBacklogTasksFromBoard,
 								onClearTrash: interactions.handleOpenClearTrash,

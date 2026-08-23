@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: make the task sidebar a complete board surface
+
+- Backlog cards now expose a direct Trash action alongside Start, using the same confirmation and cleanup workflow as every other move to Trash.
+- Task cards in the Board side panel are draggable again for reordering and allowed cross-column moves, so the sidebar supports the primary board interactions without returning to the full-board view.
+
 ### Fix: recover stale review chats on startup
 
 - Review tasks that still referenced an interactive agent process from the previous runtime now enter the existing bounded startup-recovery coordinator, including completed-hook and attention states that previously stayed in Review with an empty terminal until manually restarted.

@@ -130,6 +130,26 @@ describe("BoardCard", () => {
 		expect(trashButton?.querySelector("svg.animate-spin")).toBeTruthy();
 	});
 
+	it("lets an unstarted task move directly to trash", async () => {
+		const onMoveToTrash = vi.fn();
+		await act(async () => {
+			root.render(
+				<Providers>
+					<BoardCard card={createCard()} index={0} columnId="backlog" onMoveToTrash={onMoveToTrash} />
+				</Providers>,
+			);
+		});
+
+		const trashButton = container.querySelector<HTMLButtonElement>('button[aria-label="Move task to trash"]');
+		expect(trashButton).toBeInstanceOf(HTMLButtonElement);
+
+		await act(async () => {
+			trashButton?.click();
+		});
+
+		expect(onMoveToTrash).toHaveBeenCalledWith("task-1");
+	});
+
 	it("always shows running-task restart and trash actions on hover", async () => {
 		vi.useFakeTimers();
 		try {

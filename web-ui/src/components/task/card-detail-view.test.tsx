@@ -116,6 +116,7 @@ const newRequiredProps = {
 	sidePanelProps: {
 		navigateToFile: () => {},
 		onCardSelect: () => {},
+		onTaskDragEnd: () => {},
 	},
 	repositoryProps: {
 		fileEditorAutosaveMode: "off" as const,
