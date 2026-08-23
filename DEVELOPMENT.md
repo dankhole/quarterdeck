@@ -6,8 +6,8 @@
 
 ## Requirements
 
-- Node.js 20+
-- npm 10+
+- Node.js 22.22.2+ (`nvm use` reads the repository `.nvmrc`)
+- npm 11.19.0 (pinned by `packageManager`)
 
 ## Install
 
@@ -15,7 +15,7 @@
 npm run bootstrap
 ```
 
-Quarterdeck has two independent dependency trees: the repository root and `web-ui/`. Bootstrap runs `npm ci` for both. Task worktrees start without shared `node_modules`; run bootstrap (or the individual `npm ci` commands) inside a worktree before building or testing there. Stop a globally linked Quarterdeck runtime before reinstalling or relinking its checkout.
+Quarterdeck has two independent dependency trees: the repository root and `web-ui/`. Bootstrap preserves or migrates the clone-wide Agent Lab browser cache before running `npm ci` for both trees. Task worktrees start without shared `node_modules`; run bootstrap (or the individual `npm ci` commands) inside a worktree before building or testing there. Stop a globally linked Quarterdeck runtime before reinstalling or relinking its checkout.
 
 ## Quick reference
 

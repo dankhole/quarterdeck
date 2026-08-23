@@ -5,10 +5,9 @@
 ### Chore: consolidate dependency upgrades
 
 - Runtime and web dependencies now move forward together, including Biome 2.5, TypeScript 7, Knip 6, Vite 8, plugin-react 6, Lucide 1, Diff 9, and the current minor/patch update groups; the Vite build keeps xterm isolated from minification while using the supported Oxc minifier for other chunks.
-- React and React DOM are now on 19.2, node-pty is on the latest 1.2 beta, and jsdom is on the newest Node 20-compatible release; the migration also corrects nullable React ref contracts and keeps panel percentage formatting stable across browser and jsdom implementations.
-- npm 11 installs now explicitly deny the unnecessary `fsevents` fallback rebuild scripts, eliminating unreviewed-script warnings while continuing to use the packaged macOS binaries.
-- GitHub Actions now use their Node 24 runtime releases, while Quarterdeck continues testing Node 20 and 22 and keeps `@types/node` on major 22 until the runtime support policy changes.
-- Dependabot now holds Commander 14 and jsdom 29 while Node 20 remains supported because their next majors require Node 22; security and compatible patch updates continue normally.
+- React and React DOM are now on 19.2, node-pty is on the latest 1.2 beta, Commander is on 15, and jsdom is on 30; the migration also corrects nullable React ref contracts and keeps panel percentage formatting stable across browser and jsdom implementations.
+- Node.js 22.22.2 is now the minimum supported runtime, with CI coverage on Node 22 and 24. npm is pinned to 11.19.0, and required `esbuild`/`node-pty` install scripts plus the denied `fsevents` fallback are declared explicitly so installs are warning-free and reproducible.
+- `@types/node` remains on major 22 to prevent development types from admitting APIs unavailable on the minimum runtime; compatible security, patch, and major updates continue normally.
 
 ### Fix: make the task sidebar a complete board surface
 
@@ -20,7 +19,7 @@
 - Task worktrees no longer mirror any root or nested `node_modules` directory from the primary checkout. Existing dependency symlinks are detached on the next ensure/start without following or modifying their targets, while other eligible ignored setup paths continue to mirror.
 - Terminal startup now preflights the launch directory, selected executable, and installed `node-pty` runtime assets as distinct failure domains. Missing runtime assets fail before avoidable worktree creation, produce actionable recovery guidance, emit metadata-only warning diagnostics, and appear as a dedicated Doctor finding instead of being mislabeled as a missing agent CLI.
 - `npm run bootstrap` installs both locked dependency trees, while `npm run link` verifies both trees and refuses to rebuild or relink the checkout underneath its active globally linked Quarterdeck runtime.
-- Agent Lab now stores only its shared Playwright browser binaries under Git's common directory, outside every `node_modules` tree, so Chromium downloads survive dependency reinstalls, builds, relinks, and task-worktree cleanup. The first browser invocation atomically copies a complete, symlink-free legacy cache without deleting it; browser profiles, daemon state, disposable state, and artifacts remain worktree-local.
+- Agent Lab now stores only its shared Playwright browser binaries under Git's common directory, outside every `node_modules` tree, so Chromium downloads survive dependency reinstalls, builds, relinks, and task-worktree cleanup. Bootstrap migrates a complete, symlink-free legacy cache before replacing dependencies, while browser startup retains the same preparation fallback; browser profiles, daemon state, disposable state, and artifacts remain worktree-local.
 
 ### Fix: recover stale review chats on startup
 

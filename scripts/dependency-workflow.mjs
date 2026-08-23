@@ -6,6 +6,8 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { prepareAgentLabBrowserCache } from "./agent-lab/browser-cache.mjs";
+
 const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(scriptPath), "..");
 const npmBinary = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -107,18 +109,25 @@ export function getMissingDependencyMessage(health) {
 	return null;
 }
 
-function runNpm(args) {
-	const result = spawnSync(npmBinary, args, { cwd: repoRoot, stdio: "inherit" });
+function runNpm(args, checkoutRoot = repoRoot) {
+	const result = spawnSync(npmBinary, args, { cwd: checkoutRoot, stdio: "inherit" });
 	if (result.error) throw result.error;
 	if (result.status !== 0) {
 		throw new Error(`npm ${args.join(" ")} failed with exit code ${result.status ?? "unknown"}.`);
 	}
 }
 
+export async function bootstrapDependencies(checkoutRoot, options = {}) {
+	await assertLinkedRuntimeIsStopped(checkoutRoot, options.runtime);
+	const browserCache = await prepareAgentLabBrowserCache(checkoutRoot, options.gitCommonDirectory);
+	const executeNpm = options.executeNpm ?? ((args) => runNpm(args, checkoutRoot));
+	executeNpm(["ci"]);
+	executeNpm(["ci", "--prefix", "web-ui"]);
+	return browserCache;
+}
+
 async function runBootstrap() {
-	await assertLinkedRuntimeIsStopped(repoRoot);
-	runNpm(["ci"]);
-	runNpm(["ci", "--prefix", "web-ui"]);
+	await bootstrapDependencies(repoRoot);
 }
 
 async function runLink() {

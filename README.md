@@ -16,7 +16,7 @@ Quarterdeck detects installed agent CLIs from your `PATH`, starts a local runtim
 
 - Runs many coding-agent tasks side by side from one browser UI.
 - Gives each task its own terminal, review state, git metadata, and optional isolated worktree.
-- Mirrors common ignored dependencies such as `node_modules` into task worktrees so parallel agents do not need slow reinstall loops.
+- Mirrors eligible ignored project setup paths into task worktrees while keeping mutable dependency trees such as `node_modules` isolated per checkout.
 - Tracks latest agent activity, permission/input needs, review readiness, and file changes on each card.
 - Provides task diffs, "Last Turn" checkpoint diffs, file browsing, branch comparison, line comments, commit, push, Open PR, and cherry-pick flows.
 - Supports project script shortcuts for commands such as `npm run dev` and prompt shortcuts for repeatable agent instructions such as Commit or Squash Merge.
@@ -31,8 +31,8 @@ Windows support is experimental and currently untested on native Windows. macOS 
 ## Requirements
 
 - Git
-- Node.js 20 or newer
-- npm 10 or newer
+- Node.js 22.22.2 or newer (pinned by `.nvmrc` for local development)
+- npm 11.19.0 (pinned by `packageManager`)
 - At least one supported agent CLI installed and available on `PATH`
 - Optional but recommended: a Nerd Font such as [JetBrainsMono Nerd Font](https://www.nerdfonts.com/) for cleaner terminal glyphs
 
@@ -85,7 +85,7 @@ npm run bootstrap
 npm run link
 ```
 
-`npm run bootstrap` performs locked installs for both the runtime and the separate web UI dependency tree. `npm run link` verifies those prerequisites, runs a production build, and then creates the development symlink used by the global `quarterdeck` command. Stop a Quarterdeck runtime launched from this linked checkout before bootstrapping or relinking; the scripts refuse to replace files underneath that live process.
+`npm run bootstrap` preserves or migrates the clone-wide Agent Lab browser cache, then performs locked installs for both the runtime and the separate web UI dependency tree. `npm run link` verifies those prerequisites, runs a production build, and then creates the development symlink used by the global `quarterdeck` command. Stop a Quarterdeck runtime launched from this linked checkout before bootstrapping or relinking; the scripts refuse to replace files underneath that live process.
 
 Verify the linked command:
 
@@ -143,7 +143,7 @@ npm run unlink
 
 | Command | Purpose |
 | --- | --- |
-| `npm run bootstrap` | Locked install of root and web UI dependencies; refuses to run beneath an active linked runtime. |
+| `npm run bootstrap` | Preserve the Agent Lab browser cache, then install locked root and web UI dependencies; refuses to run beneath an active linked runtime. |
 | `npm run install:all` | Backward-compatible alias for `npm run bootstrap`. |
 | `npm run link` | Build the app and link the local `quarterdeck` CLI globally. |
 | `npm run unlink` | Remove the global `quarterdeck` link. |

@@ -60,12 +60,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: "22.x"
+          node-version: "22.22.2"
           registry-url: "https://registry.npmjs.org"
           cache: npm
 
-      - name: Install npm with trusted publishing support
-        run: npm install -g npm@^11.5.1
+      - name: Install pinned npm with trusted publishing support
+        run: npm install --global npm@11.19.0
 
       - name: Verify trusted publishing toolchain
         run: |

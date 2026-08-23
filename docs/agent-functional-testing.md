@@ -62,7 +62,7 @@ npm run bootstrap
 npm run agent:browser -- install-browser chromium
 ```
 
-The Chromium build lives under Git's common directory at `.git/quarterdeck/agent-lab/playwright-browsers`, so all worktrees for the clone reuse it while `npm ci`, builds, and relinks leave it intact. On first use, a complete symlink-free cache from the legacy `web-ui/node_modules/.cache/agent-lab-playwright` location is copied atomically and retained at the source. Only downloaded browser binaries are shared: browser profiles, daemon state, disposable runtime/project state, screenshots, traces, and other artifacts stay under the active worktree's `test-results/agent-lab/` or its disposable temp root.
+The Chromium build lives under Git's common directory at `.git/quarterdeck/agent-lab/playwright-browsers`, so all worktrees for the clone reuse it while `npm ci`, builds, and relinks leave it intact. Before replacing either dependency tree, `npm run bootstrap` copies a complete symlink-free cache from the legacy `web-ui/node_modules/.cache/agent-lab-playwright` location atomically and retains the source; browser startup performs the same preparation for clones that have not bootstrapped. Only downloaded browser binaries are shared: browser profiles, daemon state, disposable runtime/project state, screenshots, traces, and other artifacts stay under the active worktree's `test-results/agent-lab/` or its disposable temp root.
 
 Each task worktree still needs its own root and web UI npm dependencies to invoke Agent Lab. Do not restore shared `node_modules` links to avoid that local bootstrap.
 

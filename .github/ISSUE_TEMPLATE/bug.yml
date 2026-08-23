@@ -42,6 +42,6 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Example `macOS 15.3, Node 22.13.0, npm 10.9.2`
+      description: Example `macOS 15.3, Node 22.22.2, npm 11.19.0`
     validations:
       required: false

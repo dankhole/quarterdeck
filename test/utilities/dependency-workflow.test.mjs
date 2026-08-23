@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
 	assertLinkedRuntimeIsStopped,
+	bootstrapDependencies,
 	getMissingDependencyMessage,
 	inspectDependencyTrees,
 } from "../../scripts/dependency-workflow.mjs";
@@ -67,5 +68,35 @@ describe("dependency workflow preflight", () => {
 		} finally {
 			await rm(otherCheckout, { recursive: true, force: true });
 		}
+	});
+
+	it("migrates the legacy browser cache before replacing either dependency tree", async () => {
+		const gitCommonDirectory = join(checkoutRoot, ".git");
+		const legacyInstallation = join(
+			checkoutRoot,
+			"web-ui",
+			"node_modules",
+			".cache",
+			"agent-lab-playwright",
+			"chromium-1237",
+		);
+		await mkdir(legacyInstallation, { recursive: true });
+		await writeFile(join(legacyInstallation, "INSTALLATION_COMPLETE"), "", "utf8");
+		await writeFile(join(legacyInstallation, "browser-binary"), "complete\n", "utf8");
+		const npmCalls = [];
+
+		const prepared = await bootstrapDependencies(checkoutRoot, {
+			runtime: { activeRuntimePids: [], linkedCheckout: null },
+			gitCommonDirectory,
+			executeNpm(args) {
+				npmCalls.push(args);
+			},
+		});
+
+		expect(prepared.status).toBe("migrated");
+		expect(npmCalls).toEqual([["ci"], ["ci", "--prefix", "web-ui"]]);
+		expect(
+			await readFile(join(prepared.path, "chromium-1237", "browser-binary"), "utf8"),
+		).toBe("complete\n");
 	});
 });

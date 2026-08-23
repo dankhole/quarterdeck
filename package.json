@@ -1,6 +1,7 @@
 {
   "name": "quarterdeck",
   "version": "0.12.3",
+  "packageManager": "npm@11.19.0",
   "description": "A quarterdeck foundation for coding agents",
   "publishConfig": {
     "access": "public",
@@ -42,7 +43,13 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.22.2",
+    "npm": ">=11.19.0 <12"
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "fsevents": false,
+    "node-pty": true
   },
   "scripts": {
     "clean": "node scripts/clean.mjs",
@@ -94,7 +101,7 @@
     "@trpc/server": "^11.11.0",
     "@xterm/addon-serialize": "^0.14.0",
     "@xterm/headless": "^6.0.0",
-    "commander": "^14.0.3",
+    "commander": "^15.0.0",
     "node-pty": "^1.2.0-beta.15",
     "open": "^11.0.1",
     "ora": "^9.4.1",

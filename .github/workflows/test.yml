@@ -16,13 +16,13 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            node-version: 20
+            node-version: 22.22.2
           - os: ubuntu-latest
-            node-version: 22
+            node-version: 24.15.0
           # - os: windows-latest
-          #   node-version: 22
+          #   node-version: 22.22.2
           - os: macos-latest
-            node-version: 22
+            node-version: 22.22.2
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -32,6 +32,9 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
+
+      - name: Install pinned npm
+        run: npm install --global npm@11.19.0
 
       - name: Install dependencies
         run: npm ci
