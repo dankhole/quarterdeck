@@ -1,4 +1,4 @@
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
 
@@ -11,31 +11,29 @@ const baseURL = `http://127.0.0.1:${webPort}`;
 export default defineConfig({
 	testDir: "./tests",
 	timeout: 30_000,
+	outputDir: resolve(repoRoot, "test-results", "playwright"),
+	reporter: [["list"], ["html", { open: "never", outputFolder: resolve(repoRoot, "playwright-report") }]],
 	use: {
 		baseURL,
 		headless: true,
+		screenshot: "only-on-failure",
+		trace: "retain-on-failure",
+		video: "retain-on-failure",
 	},
-	webServer: [
-		{
-			command: "node scripts/playwright-e2e-runtime.mjs",
-			cwd: repoRoot,
-			url: `http://127.0.0.1:${runtimePort}/api/trpc/projects.list`,
-			reuseExistingServer: false,
-			timeout: 45_000,
-			env: {
-				QUARTERDECK_E2E_RUNTIME_PORT: runtimePort,
-				QUARTERDECK_E2E_WEB_PORT: webPort,
-				NODE_ENV: "development",
-			},
+	webServer: {
+		command: "node --import tsx scripts/playwright-e2e-runtime.ts",
+		cwd: repoRoot,
+		url: baseURL,
+		reuseExistingServer: false,
+		timeout: 75_000,
+		gracefulShutdown: {
+			signal: "SIGTERM",
+			timeout: 20_000,
 		},
-		{
-			command: `npm run dev -- --host 127.0.0.1 --port ${webPort}`,
-			cwd: currentDir,
-			url: baseURL,
-			reuseExistingServer: false,
-			env: {
-				QUARTERDECK_E2E_RUNTIME_PORT: runtimePort,
-			},
+		env: {
+			QUARTERDECK_E2E_RUNTIME_PORT: runtimePort,
+			QUARTERDECK_E2E_WEB_PORT: webPort,
+			NODE_ENV: "development",
 		},
-	],
+	},
 });

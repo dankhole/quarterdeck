@@ -9,6 +9,7 @@ const TERMINAL_DOM_ALERT_CONSOLE_MESSAGE =
 const TERMINAL_DOM_ALERT_THRESHOLD = 8;
 const TERMINAL_DOM_ALERT_INTERVAL_MS = 60_000;
 const TERMINAL_DOM_ALERT_REPEAT_MS = 5 * 60_000;
+const INCLUDE_VISIBLE_TERMINAL_LINES = import.meta.env.VITE_QUARTERDECK_AGENT_LAB === "1";
 
 type TerminalBufferDebugInfo = ReturnType<TerminalSlot["getBufferDebugInfo"]>;
 
@@ -36,6 +37,7 @@ export interface RegisteredTerminalDebugSnapshot {
 	taskId: string | null;
 	projectId: string | null;
 	buffer: TerminalBufferDebugInfo;
+	visibleLines: string[];
 }
 
 export interface TerminalDebugState {
@@ -69,6 +71,12 @@ function buildSlotDebugSnapshot(
 		taskId: slot.connectedTaskId,
 		projectId: slot.connectedProjectId,
 		buffer: slot.getBufferDebugInfo(),
+		visibleLines: INCLUDE_VISIBLE_TERMINAL_LINES
+			? slot
+					.readBufferLines()
+					.slice(-200)
+					.map((line) => line.slice(0, 500))
+			: [],
 	};
 }
 

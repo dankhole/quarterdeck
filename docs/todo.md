@@ -45,10 +45,6 @@ The first editable Files-view milestone has landed with CodeMirror tabs, dirty/s
 - Keep tuning the CodeMirror dark theme against dogfood feedback and common IDE dark palettes if token families or selections remain too low-contrast.
 - Move compare, merge/conflict resolution, commit diff, and other file-viewing surfaces onto the Files/editor foundation where it reduces duplication without losing review-specific workflows.
 
-## Create agent functional testing framework
-
-Build a framework for agents to dogfood Quarterdeck changes through the UI. The system should let an agent launch a test project, interact with the app like a user, drive task creation/terminal/git/file workflows, capture screenshots/logs/state snapshots, and report reproducible failures for functional regression testing.
-
 ## Publish to npm
 
 Register the `quarterdeck` package on npm, configure OIDC trusted publishing for the GitHub repo, and do the first publish via the existing `publish.yml` workflow. Once published, update the README install instructions to use `npx quarterdeck` / `npm i -g quarterdeck` instead of the current clone-and-build steps.

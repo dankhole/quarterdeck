@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Add: isolated agent functional testing
+
+- Agents can now launch a disposable Quarterdeck runtime, Vite UI, Git fixture, worktree state, and deterministic fake Codex on dynamic loopback ports without touching the user's active app, agent credentials, or Quarterdeck state.
+- A repo-scoped Playwright CLI wrapper provides semantic snapshots, pixel screenshots, console/network inspection, tracing, video, responsive resizing, and named isolated browser sessions; run artifacts include continuous runtime/web logs plus on-demand and final state/Git snapshots.
+- The normal Playwright E2E suite now consumes the same lifecycle boundary, retains trace/screenshot/video evidence on failure, blocks non-loopback browser requests, and verifies a real task can launch the fake agent through xterm and transition into Review.
+
 ### Fix: reconcile interactive Codex lifecycle
 
 - Submitting a response while a task is genuinely waiting for input now moves it back to running immediately, while ordinary review-card input and terminal redraws remain state-neutral; delayed Codex permission hooks from before that response are rejected by launch-scoped ordering.

@@ -23,6 +23,7 @@ interface MockSlot {
 	writeText: ReturnType<typeof vi.fn>;
 	setAppearance: ReturnType<typeof vi.fn>;
 	getBufferDebugInfo: ReturnType<typeof vi.fn>;
+	readBufferLines: ReturnType<typeof vi.fn>;
 	connectedTaskId: string | null;
 	connectedProjectId: string | null;
 	sessionState: string | null;
@@ -67,6 +68,7 @@ vi.mock("@/terminal/terminal-slot", () => {
 				scrollbackOption: 3_000,
 				sessionState: null,
 			})),
+			readBufferLines: vi.fn(() => []),
 			get connectedTaskId() {
 				return mock._taskId;
 			},

@@ -1,4 +1,6 @@
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+
+import { expect, test } from "./fixtures";
 
 const BACKLOG_COLUMN = 'section[data-column-id="backlog"]';
 const E2E_PROJECT_PATH = "/project";
@@ -149,4 +151,56 @@ test("settings button opens runtime settings dialog", async ({ page }) => {
 	await openBoard(page);
 	await page.getByTestId("open-settings-button").click();
 	await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+});
+
+test("drives the deterministic agent terminal through review", async ({ page }, testInfo) => {
+	await openBoard(page);
+	const taskPrompt = `[agent-lab:idle] functional-${Date.now()}`;
+	const backlogColumn = page.locator(BACKLOG_COLUMN).first();
+	await backlogColumn.getByRole("button", { name: "Create task" }).click();
+	const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "New task" }) });
+	await dialog.getByPlaceholder("Describe the task").fill(taskPrompt);
+	await dialog.getByRole("button", { name: "Start task" }).click();
+	await expect(dialog).toBeHidden();
+
+	const inProgressColumn = page.locator('section[data-column-id="in_progress"]').first();
+	const runningCard = inProgressColumn.locator("[data-task-id]").first();
+	await expect(runningCard).toBeVisible({ timeout: 20_000 });
+	const taskId = await runningCard.getAttribute("data-task-id");
+	expect(taskId).not.toBeNull();
+	await runningCard.click();
+	await expect(page.getByRole("textbox", { name: "Terminal input" })).toBeVisible();
+
+	await expect
+		.poll(
+			() =>
+				page.evaluate((activeTaskId) => {
+					const state = window.__quarterdeckDumpTerminalState?.();
+					return state?.poolSlots.find((slot) => slot.taskId === activeTaskId)?.visibleLines.join("\n") ?? "";
+				}, taskId),
+			{ timeout: 20_000 },
+		)
+		.toContain("AGENT LAB READY");
+
+	await page.getByRole("textbox", { name: "Terminal input" }).focus();
+	await page.keyboard.type("/write agent-lab-e2e.txt created-by-playwright");
+	await page.keyboard.press("Enter");
+	await expect
+		.poll(
+			() =>
+				page.evaluate((activeTaskId) => {
+					const state = window.__quarterdeckDumpTerminalState?.();
+					return state?.poolSlots.find((slot) => slot.taskId === activeTaskId)?.visibleLines.join("\n") ?? "";
+				}, taskId),
+			{ timeout: 20_000 },
+		)
+		.toContain("AGENT LAB WROTE: agent-lab-e2e.txt");
+
+	await page.keyboard.type("/review Playwright lifecycle verified");
+	await page.keyboard.press("Enter");
+
+	const reviewCard = page.locator(`[data-task-id="${taskId}"]`).filter({ hasText: "Ready for review" }).first();
+	await expect(reviewCard).toBeVisible({ timeout: 20_000 });
+	await expect(reviewCard).toContainText("Ready for review");
+	await page.screenshot({ path: testInfo.outputPath("fake-agent-review.png"), fullPage: true });
 });

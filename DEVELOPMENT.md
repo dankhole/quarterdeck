@@ -29,6 +29,8 @@ npm run test:fast        # Runtime + utility tests only
 npm run test:integration # Integration tests only
 npm run web:test         # Web UI unit tests
 npm run web:e2e          # Web UI Playwright smoke tests with isolated runtime state
+npm run agent:lab -- --help       # Disposable Quarterdeck runtime/UI/fake-agent lab
+npm run agent:browser -- --help   # Isolated Playwright CLI for semantic + visual UI driving
 npm run web:typecheck    # Web UI typecheck
 npm run typecheck        # Runtime typecheck
 npm run lint             # Biome lint
@@ -61,6 +63,8 @@ Major directories:
 - `test/`: runtime and integration tests
 - `docs/`: human-facing architecture, conventions, plans, and implementation history
 - `scripts/`: build/dev utility scripts
+
+For agent-driven functional and visual debugging, see [`docs/agent-functional-testing.md`](./docs/agent-functional-testing.md). That workflow is isolated from the normal dev/dogfood runtime and the user's Quarterdeck state.
 
 ## Hot reload workflow
 
@@ -184,6 +188,8 @@ npm run unlink
 - `npm run dev`: run CLI in watch mode
 - `npm run web:dev`: run web UI dev server
 - `npm run web:e2e`: run Playwright smoke tests against a disposable runtime and git fixture
+- `npm run agent:lab -- <start|status|snapshot|stop|list>`: manage a disposable functional-testing lab with dynamic loopback ports and a deterministic fake Codex
+- `npm run agent:browser -- <command>`: drive the lab's isolated Chromium session; run `install-browser chromium` once per checkout before first use
 - `npm run web:build`: build web UI
 - `npm run typecheck`: typecheck runtime
 - `npm run web:typecheck`: typecheck web UI

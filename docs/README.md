@@ -17,6 +17,8 @@ If you are new to the codebase, read these in order:
 3. [`todo.md`](./todo.md) for the active engineering backlog and current refactor queue.
 4. [`conventions/architecture-guardrails.md`](./conventions/architecture-guardrails.md) for reusable rules on adding clever features without letting optimization define the architecture.
 
+For isolated browser, terminal, Git, Files, lifecycle, and visual regression testing, use [`agent-functional-testing.md`](./agent-functional-testing.md).
+
 If you only need the current refactor state, start with:
 
 1. [`todo.md`](./todo.md) for the active backlog.
@@ -36,6 +38,7 @@ Use this map when you are planning or evaluating refactor work.
 ### Live architecture and implementation guidance
 
 - [`architecture.md`](./architecture.md): system-wide architecture overview.
+- [`agent-functional-testing.md`](./agent-functional-testing.md): disposable Quarterdeck lab, deterministic fake agent, browser UI driving, visual artifacts, and failure evidence.
 - [`windows-support-audit.md`](./windows-support-audit.md): current Windows support boundary, verified compatibility work, and remaining follow-ups.
 - [`conventions/frontend-hooks.md`](./conventions/frontend-hooks.md): domain-module extraction pattern for frontend hooks and services.
 - [`conventions/web-ui.md`](./conventions/web-ui.md): frontend conventions and hooks architecture guidance.
