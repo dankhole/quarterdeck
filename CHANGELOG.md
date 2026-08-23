@@ -17,6 +17,7 @@
 ### Fix: keep task-card actions separated
 
 - Compact task cards now keep their header on one line and let the title truncate completely before the edit, pin, restart, and trash action rail gives up space; only the action controls wrap, and only when they cannot fit at full size, preventing icon overlap and unnecessary extra rows on narrow side-panel cards.
+- Status and harness badges now wrap only between whole badges, keeping labels such as “Waiting for approval” on one line inside a compact pill.
 
 ### Fix: start shared-checkout tasks without a base branch
 

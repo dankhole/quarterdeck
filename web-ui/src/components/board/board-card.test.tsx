@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoardCard, getCardHoverTooltip } from "@/components/board/board-card";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
+import { createTestTaskHookActivity, createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 import type { ReviewTaskWorktreeSnapshot } from "@/types";
 
 let mockWorktreeSnapshot: ReviewTaskWorktreeSnapshot | undefined;
@@ -256,6 +256,36 @@ describe("BoardCard", () => {
 		expect(container.textContent).toContain("Codex");
 		expect(container.textContent).not.toContain("Read(src/index.ts)");
 		expect(container.textContent).not.toContain("Calling Read");
+	});
+
+	it("wraps between approval and harness badges without breaking badge text", async () => {
+		await act(async () => {
+			root.render(
+				<Providers>
+					<BoardCard
+						card={createCard()}
+						index={0}
+						columnId="review"
+						sessionSummary={createSummary("awaiting_review", {
+							agentId: "codex",
+							reviewReason: "hook",
+							latestHookActivity: createTestTaskHookActivity({ hookEventName: "permissionRequest" }),
+						})}
+					/>
+				</Providers>,
+			);
+		});
+
+		const statusRow = container.querySelector("[data-board-card-status-row]");
+		const statusBadge = statusRow?.querySelector("[data-board-card-status-badge]");
+		const agentBadge = statusRow?.querySelector("[data-board-card-agent-badge]");
+		expect(statusRow?.classList.contains("flex-wrap")).toBe(true);
+		expect(statusBadge?.textContent).toBe("Waiting for approval");
+		expect(statusBadge?.classList.contains("shrink-0")).toBe(true);
+		expect(statusBadge?.classList.contains("whitespace-nowrap")).toBe(true);
+		expect(agentBadge?.textContent).toBe("Codex");
+		expect(agentBadge?.classList.contains("shrink-0")).toBe(true);
+		expect(agentBadge?.classList.contains("whitespace-nowrap")).toBe(true);
 	});
 
 	describe("getCardHoverTooltip", () => {

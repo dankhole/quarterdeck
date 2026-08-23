@@ -403,14 +403,15 @@ export function BoardCard({
 							<p className="text-xs text-text-secondary line-clamp-2 mt-1 m-0">{latestSummaryText}</p>
 						) : null}
 						{showStatusBadge || agentBadge ? (
-							<div className="flex items-center gap-1.5 mt-1.5">
+							<div className="mt-1.5 flex flex-wrap items-center gap-1.5" data-board-card-status-row>
 								{showStatusBadge ? (
 									<Tooltip content={statusTooltip}>
 										<span
 											className={cn(
-												"inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
+												"inline-flex shrink-0 items-center whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium leading-tight",
 												statusBadgeClass,
 											)}
+											data-board-card-status-badge
 										>
 											{statusLabel}
 										</span>
@@ -418,7 +419,10 @@ export function BoardCard({
 								) : null}
 								{agentBadge ? (
 									<Tooltip content={agentBadge.tooltip}>
-										<span className="inline-flex min-w-0 items-center rounded bg-surface-3 px-1.5 py-0.5 text-xs font-medium text-text-secondary leading-tight">
+										<span
+											className="inline-flex shrink-0 items-center whitespace-nowrap rounded bg-surface-3 px-1.5 py-0.5 text-xs font-medium text-text-secondary leading-tight"
+											data-board-card-agent-badge
+										>
 											{agentBadge.label}
 										</span>
 									</Tooltip>
