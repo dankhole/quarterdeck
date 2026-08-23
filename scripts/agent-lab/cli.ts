@@ -18,7 +18,13 @@ import {
 	writeJsonAtomic,
 } from "./paths";
 import { captureAgentLabSnapshot } from "./snapshot";
-import { type AgentLabManifest, type AgentLabScenario, AgentLabScenarioSchema } from "./types";
+import {
+	AGENT_LAB_SCHEMA_VERSION,
+	type AgentLabManifest,
+	type AgentLabScenario,
+	AgentLabScenarioSchema,
+	type ReadableAgentLabManifest,
+} from "./types";
 
 const START_TIMEOUT_MS = 75_000;
 const STOP_TIMEOUT_MS = 20_000;
@@ -55,11 +61,11 @@ function printJson(value: unknown): void {
 	process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
-function browserCommand(manifest: AgentLabManifest): string {
+function browserCommand(manifest: ReadableAgentLabManifest): string {
 	return `npm run agent:browser -- --config ${JSON.stringify(manifest.browserConfigPath)} -s=${JSON.stringify(manifest.browserSession)} open ${JSON.stringify(manifest.projectUrl)}`;
 }
 
-function printManifestSummary(manifest: AgentLabManifest): void {
+function printManifestSummary(manifest: ReadableAgentLabManifest): void {
 	process.stdout.write(`Agent lab ${manifest.runId}: ${manifest.status}\n`);
 	process.stdout.write(`UI: ${manifest.projectUrl}\n`);
 	process.stdout.write(`Manifest: ${manifest.manifestPath}\n`);
@@ -67,7 +73,7 @@ function printManifestSummary(manifest: AgentLabManifest): void {
 	process.stdout.write(`Browser: ${browserCommand(manifest)}\n`);
 }
 
-function assertAgentLabDidNotFail(manifest: AgentLabManifest): void {
+function assertAgentLabDidNotFail(manifest: ReadableAgentLabManifest): void {
 	if (manifest.status === "failed") {
 		throw new Error(`Agent lab failed: ${manifest.failure ?? "unknown failure"}. Inspect ${manifest.artifactDir}.`);
 	}
@@ -75,12 +81,12 @@ function assertAgentLabDidNotFail(manifest: AgentLabManifest): void {
 
 async function waitForManifest(
 	manifestPath: string,
-	predicate: (manifest: AgentLabManifest) => boolean,
+	predicate: (manifest: ReadableAgentLabManifest) => boolean,
 	timeoutMs: number,
 	supervisorPid?: number,
-): Promise<AgentLabManifest> {
+): Promise<ReadableAgentLabManifest> {
 	const deadline = Date.now() + timeoutMs;
-	let lastManifest: AgentLabManifest | null = null;
+	let lastManifest: ReadableAgentLabManifest | null = null;
 	while (Date.now() < deadline) {
 		try {
 			lastManifest = await readAgentLabManifest(manifestPath);
@@ -160,12 +166,18 @@ async function startAgentLab(options: StartOptions): Promise<void> {
 	await writeLatestPointer({ runId: config.runId, manifestPath: config.manifestPath });
 	let manifest: AgentLabManifest;
 	try {
-		manifest = await waitForManifest(
+		const readyManifest = await waitForManifest(
 			config.manifestPath,
 			(value) => value.status === "ready" || value.status === "failed",
 			START_TIMEOUT_MS,
 			supervisor.pid,
 		);
+		if (readyManifest.schemaVersion !== AGENT_LAB_SCHEMA_VERSION) {
+			throw new Error(
+				`New Agent Lab run ${config.runId} wrote unexpected manifest schema ${readyManifest.schemaVersion}.`,
+			);
+		}
+		manifest = readyManifest;
 	} catch (error) {
 		await writeJsonAtomic(config.stopRequestPath, {
 			requestedAt: new Date().toISOString(),
@@ -281,7 +293,7 @@ async function listAgentLabs(options: OutputOptions): Promise<void> {
 				.map((entry) => readAgentLabManifest(join(artifactRoot, entry.name, "manifest.json")).catch(() => null)),
 		)
 	)
-		.filter((manifest): manifest is AgentLabManifest => manifest !== null)
+		.filter((manifest): manifest is ReadableAgentLabManifest => manifest !== null)
 		.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 	const summaries = manifests.map((manifest) => ({
 		runId: manifest.runId,

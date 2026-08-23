@@ -4,7 +4,7 @@
 
 import { browserHostIntegrations } from "@/runtime/browser-host-integrations";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeConfigResponse, RuntimeConfigSaveRequest } from "@/runtime/types";
+import type { RuntimeConfigResponse, RuntimeConfigSaveRequest, RuntimeOpenFileResponse } from "@/runtime/types";
 
 function applyRuntimeCapabilities(response: RuntimeConfigResponse): RuntimeConfigResponse {
 	browserHostIntegrations.configureCapabilities(response.runtimeCapabilities);
@@ -32,10 +32,14 @@ export async function setLogLevel(
 	return await trpcClient.runtime.setLogLevel.mutate({ level });
 }
 
-export async function openFileOnHost(projectId: string | null, filePath: string): Promise<void> {
+export async function openFileOnHost(
+	projectId: string | null,
+	filePath: string,
+): Promise<Extract<RuntimeOpenFileResponse, { ok: true }>> {
 	const trpcClient = getRuntimeTrpcClient(projectId);
 	const response = await trpcClient.runtime.openFile.mutate({ filePath });
 	if (!response.ok) {
 		throw new Error(response.error);
 	}
+	return response;
 }

@@ -30,6 +30,8 @@ import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
 import { handleHttpRequest, handleSocketUpgrade } from "./middleware";
 import { normalizeProjectMetadataClientId } from "./project-metadata-visibility";
 import type { ProjectRegistry } from "./project-registry";
+import { handleRuntimeHostEventRequest } from "./runtime-host-event-endpoint";
+import type { RuntimeHostEventLedger } from "./runtime-host-event-ledger";
 import { observeRuntimeApiRequest } from "./runtime-request-diagnostics";
 import type { RuntimeStateHub } from "./runtime-state-hub";
 
@@ -47,6 +49,7 @@ export interface CreateRuntimeServerDependencies {
 	warn: (message: string) => void;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	hostIntegrations: IRuntimeHostIntegrations;
+	hostEventLedger?: RuntimeHostEventLedger;
 	resolveProjectInputPath: (inputPath: string, basePath: string) => string;
 	assertPathIsDirectory: (targetPath: string) => Promise<void>;
 	hasGitRepository: (path: string) => Promise<boolean>;
@@ -84,6 +87,9 @@ function readProjectIdFromRequest(request: IncomingMessage, requestUrl: URL): st
 }
 
 export async function createRuntimeServer(deps: CreateRuntimeServerDependencies): Promise<RuntimeServer> {
+	if (deps.hostEventLedger && deps.hostIntegrations.capabilities.hostIntegrationMode !== "simulated") {
+		throw new Error("The Agent Lab host-event endpoint requires simulated host integrations.");
+	}
 	const webUiDir = getWebUiDir();
 	const taskResourceOperations = new TaskResourceOperationCoordinator();
 
@@ -209,6 +215,12 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			const requestUrl = new URL(req.url ?? "/", "http://localhost");
 			const pathname = normalizeRequestPath(requestUrl.pathname);
 			observeRuntimeApiRequest(req, res, pathname, deps.diagnostics);
+			if (
+				deps.hostEventLedger &&
+				(await handleRuntimeHostEventRequest(req, res, requestUrl, deps.hostEventLedger))
+			) {
+				return;
+			}
 			if (await handleDiagnosticsHttpRequest(req, res, requestUrl, deps.diagnostics)) {
 				return;
 			}

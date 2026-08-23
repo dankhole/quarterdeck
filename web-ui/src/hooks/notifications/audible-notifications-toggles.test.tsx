@@ -13,7 +13,10 @@ const playMock = vi.hoisted(() => vi.fn());
 const ensureContextMock = vi.hoisted(() => vi.fn());
 vi.mock("@/utils/notification-audio", () => ({
 	notificationAudioPlayer: {
-		play: playMock,
+		play: (eventType: string, volume: number) => {
+			playMock(eventType, volume);
+			return Promise.resolve("native" as const);
+		},
 		ensureContext: ensureContextMock,
 		dispose: vi.fn(),
 	},

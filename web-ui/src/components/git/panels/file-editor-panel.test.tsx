@@ -75,7 +75,7 @@ describe("FileEditorPanel", () => {
 	let clipboardWriteText: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
-		browserHostIntegrations.configureCapabilities({ nativeUiAvailable: true });
+		browserHostIntegrations.configureCapabilities({ nativeUiAvailable: true, hostIntegrationMode: "native" });
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -95,7 +95,7 @@ describe("FileEditorPanel", () => {
 	});
 
 	afterEach(() => {
-		browserHostIntegrations.configureCapabilities({ nativeUiAvailable: false });
+		browserHostIntegrations.configureCapabilities({ nativeUiAvailable: false, hostIntegrationMode: "unavailable" });
 		act(() => {
 			root.unmount();
 		});

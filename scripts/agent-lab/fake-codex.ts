@@ -135,6 +135,7 @@ function printHelp(): void {
 	writeLine("  /write <path> <contents>     write inside the disposable checkout");
 	writeLine("  /commit [message]            commit all disposable changes");
 	writeLine("  /status                      show git status");
+	writeLine("  /clipboard-read              read the lab clipboard through OSC 52");
 	writeLine("  /spam [1-2000]               produce terminal scrollback");
 	writeLine("  /alt-on | /alt-off           exercise the alternate screen");
 	writeLine("  /delay-review <ms> [message] schedule a review hook");
@@ -208,6 +209,10 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			}
 			return;
 		}
+		case "clipboard-read":
+			process.stdout.write("\u001b]52;c;?\u0007");
+			writeLine("AGENT LAB CLIPBOARD READ REQUESTED");
+			return;
 		case "spam":
 			for (let index = 1; index <= command.count; index += 1) {
 				writeLine(`AGENT LAB OUTPUT ${String(index).padStart(4, "0")}/${String(command.count).padStart(4, "0")}`);
@@ -288,6 +293,26 @@ async function main(): Promise<void> {
 	void emitHook("activity", { hookEventName: "SessionStart", activityText: "Agent-lab session started" });
 
 	const terminal = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+	let clipboardResponseBuffer = "";
+	process.stdin.on("data", (chunk: Buffer | string) => {
+		clipboardResponseBuffer = `${clipboardResponseBuffer}${String(chunk)}`.slice(-4096);
+		const responsePrefix = "\u001b]52;c;";
+		const responseStart = clipboardResponseBuffer.indexOf(responsePrefix);
+		const responseEnd = clipboardResponseBuffer.indexOf("\u0007", responseStart + responsePrefix.length);
+		if (responseStart === -1 || responseEnd === -1) {
+			return;
+		}
+		const encodedText = clipboardResponseBuffer.slice(responseStart + responsePrefix.length, responseEnd);
+		clipboardResponseBuffer = clipboardResponseBuffer.slice(responseEnd + 1);
+		const clipboardText = Array.from(Buffer.from(encodedText, "base64").toString("utf8"))
+			.map((character) => {
+				const code = character.charCodeAt(0);
+				return code < 32 || code === 127 ? " " : character;
+			})
+			.join("")
+			.slice(0, 200);
+		writeLine(`AGENT LAB CLIPBOARD READ: ${clipboardText}`);
+	});
 	terminal.setPrompt("lab> ");
 	let commandQueue = Promise.resolve();
 	terminal.on("line", (line) => {

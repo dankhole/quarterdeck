@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Feature: complete Agent Lab headless host workflows
+
+- Agent Lab now exercises Open in IDE, scoped file/folder opening, CLI-owned external browser launch, browser clipboard reads/writes, and notification audio through injected simulated host integrations while continuing to report `nativeUiAvailable: false` and keeping production native and fail-closed modes distinct.
+- A typed lab-only event ledger records monotonic, sanitized semantic outcomes for deterministic Playwright assertions. Events become observable only after an atomic bounded snapshot succeeds, browser simulations wait for acknowledgement, canonical live checkpoints flush and validate the ledger, the offline final bundle retains the durable ledger, and the separate forbidden-launcher log remains a hard shutdown failure.
+- Agent Lab lifecycle commands remain able to list, inspect, snapshot, and stop runs created with the previous manifest schema, so updating the checkout cannot strand an active disposable runtime.
+- Browser coverage drives the real UI for IDE opening, Settings file opening and sound testing, Files copy plus xterm OSC 52 clipboard readback, browser-contained documentation links, and Add Project's prompt fallback without touching native desktop state.
+
 ### Add: unified automatic agent diagnostics
 
 - Every Quarterdeck runtime now keeps a private, bounded, metadata-only flight recorder and rotating journal automatically, so a newly started agent can discover the active or most recent runtime, inspect correlated lifecycle evidence, run read-only health checks, watch records, add marks, and create a canonical local bundle without requiring the user to enable logging before an incident.

@@ -89,6 +89,11 @@ export function useOpenProject({
 				});
 				if (!payload.ok) {
 					showOpenFailureToast(payload.error);
+				} else if (payload.outcome === "simulated") {
+					showAppToast({
+						intent: "success",
+						message: `Agent Lab recorded Open in ${selectedOpenTarget.label}; no desktop app was launched.`,
+					});
 				}
 			} catch (error) {
 				const message = toErrorMessage(error);
@@ -97,7 +102,14 @@ export function useOpenProject({
 				setIsOpeningProject(false);
 			}
 		})();
-	}, [currentProjectId, isOpeningProject, selectedOpenTarget.id, showOpenFailureToast, projectPath]);
+	}, [
+		currentProjectId,
+		isOpeningProject,
+		selectedOpenTarget.id,
+		selectedOpenTarget.label,
+		showOpenFailureToast,
+		projectPath,
+	]);
 
 	return {
 		openTargetOptions,

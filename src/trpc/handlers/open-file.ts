@@ -1,7 +1,9 @@
 import { TRPCError } from "@trpc/server";
 import type { IRuntimeHostIntegrations } from "../../core";
+import type { RuntimeTrpcProjectScope } from "../app-router-context";
 
 export async function handleOpenFile(
+	projectScope: RuntimeTrpcProjectScope | null,
 	input: { filePath: string },
 	deps: { hostIntegrations: Pick<IRuntimeHostIntegrations, "openPath"> },
 ) {
@@ -12,5 +14,7 @@ export async function handleOpenFile(
 			message: "File path cannot be empty.",
 		});
 	}
-	return await deps.hostIntegrations.openPath(filePath);
+	return await deps.hostIntegrations.openPath(filePath, {
+		projectId: projectScope?.projectId,
+	});
 }

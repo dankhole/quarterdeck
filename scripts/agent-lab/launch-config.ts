@@ -40,7 +40,7 @@ export async function createAgentLabLaunchConfig(
 		runtimePort: options.runtimePort ?? null,
 		webPort: options.webPort ?? null,
 		forwardLogs: options.forwardLogs ?? false,
-		runtimeCapabilities: { nativeUiAvailable: false },
+		runtimeCapabilities: { nativeUiAvailable: false, hostIntegrationMode: "simulated" },
 	};
 }
 

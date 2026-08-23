@@ -12,14 +12,14 @@ describe("writeClipboardText", () => {
 	let originalExecCommand: Document["execCommand"] | undefined;
 
 	beforeEach(() => {
-		browserHostIntegrations.configureCapabilities({ nativeUiAvailable: true });
+		browserHostIntegrations.configureCapabilities({ nativeUiAvailable: true, hostIntegrationMode: "native" });
 		originalClipboard = navigator.clipboard;
 		originalExecCommand = document.execCommand;
 		document.body.innerHTML = "";
 	});
 
 	afterEach(() => {
-		browserHostIntegrations.configureCapabilities({ nativeUiAvailable: false });
+		browserHostIntegrations.configureCapabilities({ nativeUiAvailable: false, hostIntegrationMode: "unavailable" });
 		Object.defineProperty(navigator, "clipboard", {
 			configurable: true,
 			value: originalClipboard,

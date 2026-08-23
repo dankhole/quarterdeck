@@ -251,6 +251,7 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 			projectPath: fixture.projectPath,
 			additionalProjectPath: fixture.additionalProjectPath,
 			forbiddenHostLaunchLogPath: fixture.forbiddenHostLaunchLogPath,
+			hostEventLedgerPath: fixture.hostEventLedgerPath,
 			runtimeCapabilities: config.runtimeCapabilities,
 			projectUrl: `${webUrl}/project`,
 			runtimeUrl,
@@ -276,8 +277,9 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 			[
 				tsxCliPath,
 				cliEntrypointPath,
-				"--no-open",
 				...nativeUiArgs,
+				"--simulate-host-integrations",
+				fixture.hostSimulationConfigPath,
 				"--skip-shutdown-cleanup",
 				"--port",
 				String(runtimePort),
@@ -367,11 +369,13 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 			},
 			captureFinal: async () => {
 				if (!manifest) return;
-				await captureAgentLabSnapshot(manifest, "final").catch((snapshotError: unknown) => {
-					process.stderr.write(
-						`[agent-lab supervisor] final diagnostic capture failed: ${errorMessage(snapshotError)}\n`,
-					);
-				});
+				await captureAgentLabSnapshot(manifest, "final", { flushHostEvents: false }).catch(
+					(snapshotError: unknown) => {
+						process.stderr.write(
+							`[agent-lab supervisor] final diagnostic capture failed: ${errorMessage(snapshotError)}\n`,
+						);
+					},
+				);
 			},
 			removeTemporaryFixture: async () => {
 				if (!config.keepTemp) await rm(config.tempRoot, { recursive: true, force: true });

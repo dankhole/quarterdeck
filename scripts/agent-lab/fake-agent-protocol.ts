@@ -8,6 +8,7 @@ export type FakeAgentCommand =
 	| { kind: "write"; relativePath: string; contents: string }
 	| { kind: "commit"; message: string }
 	| { kind: "status" }
+	| { kind: "clipboard-read" }
 	| { kind: "spam"; count: number }
 	| { kind: "alternate-screen"; enabled: boolean }
 	| { kind: "delay-review"; delayMs: number; message: string }
@@ -39,6 +40,9 @@ export function parseFakeAgentCommand(rawInput: string): FakeAgentCommand {
 	}
 	if (input === "/status") {
 		return { kind: "status" };
+	}
+	if (input === "/clipboard-read") {
+		return { kind: "clipboard-read" };
 	}
 	if (input === "/alt-on") {
 		return { kind: "alternate-screen", enabled: true };

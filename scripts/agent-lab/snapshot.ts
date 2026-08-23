@@ -4,7 +4,11 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/
 import { dirname, join, relative, sep } from "node:path";
 import { promisify } from "node:util";
 
-import type { DiagnosticSnapshot, PublicRuntimeDiagnosticDescriptor } from "../../src/core";
+import {
+	type DiagnosticSnapshot,
+	type PublicRuntimeDiagnosticDescriptor,
+	runtimeHostIntegrationEventLedgerFileSchema,
+} from "../../src/core";
 import {
 	type CollectedDiagnosticCapture,
 	collectDiagnosticCapture,
@@ -13,7 +17,7 @@ import {
 	selectRuntimeDiagnosticInstance,
 	writeDiagnosticBundle,
 } from "../../src/diagnostics";
-import type { AgentLabManifest, AgentLabSnapshotResult } from "./types";
+import type { AgentLabSnapshotResult, ReadableAgentLabManifest } from "./types";
 
 const execFileAsync = promisify(execFile);
 const MAX_STATE_FILE_BYTES = 2 * 1024 * 1024;
@@ -79,7 +83,7 @@ async function captureGitCommand(projectPath: string, destinationPath: string, a
 	}
 }
 
-async function captureTaskWorktreeGitState(manifest: AgentLabManifest, gitPath: string): Promise<void> {
+async function captureTaskWorktreeGitState(manifest: ReadableAgentLabManifest, gitPath: string): Promise<void> {
 	const worktreesRoot = join(manifest.statePath, "worktrees");
 	let entries: Dirent[];
 	try {
@@ -108,6 +112,28 @@ async function captureTaskWorktreeGitState(manifest: AgentLabManifest, gitPath: 
 	);
 }
 
+async function captureHostEventLedger(
+	manifest: ReadableAgentLabManifest,
+	labPath: string,
+	flushRuntime: boolean,
+): Promise<void> {
+	if (manifest.schemaVersion === 1) {
+		return;
+	}
+	if (flushRuntime) {
+		const flushResponse = await fetch(`${manifest.runtimeUrl}/api/agent-lab/host-events/flush`, {
+			method: "POST",
+			signal: AbortSignal.timeout(5_000),
+		});
+		if (!flushResponse.ok) {
+			throw new Error(`Could not flush Agent Lab host events (HTTP ${flushResponse.status}).`);
+		}
+	}
+	const contents = await readFile(manifest.hostEventLedgerPath, "utf8");
+	const ledger = runtimeHostIntegrationEventLedgerFileSchema.parse(JSON.parse(contents) as unknown);
+	await writeFile(join(labPath, "host-events.json"), `${JSON.stringify(ledger, null, 2)}\n`, "utf8");
+}
+
 function platformFamily(): PublicRuntimeDiagnosticDescriptor["platform"] {
 	if (process.platform === "darwin") return "mac";
 	if (process.platform === "linux") return "linux";
@@ -124,7 +150,7 @@ async function readQuarterdeckVersion(repoRoot: string): Promise<string> {
 	}
 }
 
-async function createMissingRuntimeCapture(manifest: AgentLabManifest): Promise<CollectedDiagnosticCapture> {
+async function createMissingRuntimeCapture(manifest: ReadableAgentLabManifest): Promise<CollectedDiagnosticCapture> {
 	const runtimeInstanceId = `agent-lab-${manifest.runId}`;
 	const descriptor: PublicRuntimeDiagnosticDescriptor = {
 		version: 1,
@@ -164,7 +190,7 @@ async function createMissingRuntimeCapture(manifest: AgentLabManifest): Promise<
 	};
 }
 
-async function collectSharedDiagnostics(manifest: AgentLabManifest): Promise<CollectedDiagnosticCapture> {
+async function collectSharedDiagnostics(manifest: ReadableAgentLabManifest): Promise<CollectedDiagnosticCapture> {
 	const instance = await selectRuntimeDiagnosticInstance({
 		stateHome: manifest.statePath,
 		runtimePid: manifest.processes.runtime?.pid,
@@ -173,7 +199,7 @@ async function collectSharedDiagnostics(manifest: AgentLabManifest): Promise<Col
 	return await collectDiagnosticCapture(instance, { requestBrowser: true, fallbackToJournal: true });
 }
 
-function evidenceSources(manifest: AgentLabManifest, labPath: string): DiagnosticBundleEvidenceSource[] {
+function evidenceSources(manifest: ReadableAgentLabManifest, labPath: string): DiagnosticBundleEvidenceSource[] {
 	return [
 		{ sourcePath: labPath, bundlePath: "lab", required: true },
 		{ sourcePath: join(manifest.artifactDir, ACTION_TRANSCRIPT_NAME), bundlePath: `lab/${ACTION_TRANSCRIPT_NAME}` },
@@ -185,8 +211,9 @@ function evidenceSources(manifest: AgentLabManifest, labPath: string): Diagnosti
 }
 
 export async function captureAgentLabSnapshot(
-	manifest: AgentLabManifest,
+	manifest: ReadableAgentLabManifest,
 	requestedLabel: string,
+	options: { flushHostEvents?: boolean } = {},
 ): Promise<AgentLabSnapshotResult> {
 	const createdAt = new Date().toISOString();
 	const timestamp = createdAt.replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
@@ -204,6 +231,7 @@ export async function captureAgentLabSnapshot(
 		await copyJsonState(manifest.statePath, stateDestination);
 		await writeFile(join(labPath, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 		await Promise.all([
+			captureHostEventLedger(manifest, labPath, options.flushHostEvents !== false),
 			captureGitCommand(manifest.projectPath, join(gitPath, "main", "status.txt"), [
 				"status",
 				"--short",

@@ -14,7 +14,10 @@ vi.mock("@/runtime/trpc-client", () => ({
 describe("runtime config host capabilities", () => {
 	beforeEach(() => {
 		vi.spyOn(console, "warn").mockImplementation(() => {});
-		browserHostIntegrations.configureCapabilities({ nativeUiAvailable: false });
+		browserHostIntegrations.configureCapabilities({
+			nativeUiAvailable: false,
+			hostIntegrationMode: "unavailable",
+		});
 		getConfigQueryMock.mockReset();
 		getRuntimeTrpcClientMock.mockReset();
 		getRuntimeTrpcClientMock.mockReturnValue({
@@ -28,28 +31,41 @@ describe("runtime config host capabilities", () => {
 
 	it("keeps browser integrations fail-closed until launch-derived config enables them", async () => {
 		const action = vi.fn(() => "played");
-		expect(browserHostIntegrations.runNotificationAudio(action)).toBeNull();
+		expect(browserHostIntegrations.runNotificationAudio(null, action)).toEqual({
+			outcome: "unavailable",
+			value: null,
+		});
 		expect(action).not.toHaveBeenCalled();
 
 		getConfigQueryMock.mockResolvedValue(
-			createTestRuntimeConfigResponse({ runtimeCapabilities: { nativeUiAvailable: true } }),
+			createTestRuntimeConfigResponse({
+				runtimeCapabilities: { nativeUiAvailable: true, hostIntegrationMode: "native" },
+			}),
 		);
 		await fetchRuntimeConfig("project-1");
 
-		expect(browserHostIntegrations.runNotificationAudio(action)).toBe("played");
+		expect(browserHostIntegrations.runNotificationAudio(null, action)).toEqual({
+			outcome: "native",
+			value: "played",
+		});
 		expect(action).toHaveBeenCalledOnce();
 	});
 
 	it("applies a disabled capability from runtime config", async () => {
-		browserHostIntegrations.configureCapabilities({ nativeUiAvailable: true });
+		browserHostIntegrations.configureCapabilities({ nativeUiAvailable: true, hostIntegrationMode: "native" });
 		const action = vi.fn(() => "played");
 		getConfigQueryMock.mockResolvedValue(
-			createTestRuntimeConfigResponse({ runtimeCapabilities: { nativeUiAvailable: false } }),
+			createTestRuntimeConfigResponse({
+				runtimeCapabilities: { nativeUiAvailable: false, hostIntegrationMode: "unavailable" },
+			}),
 		);
 
 		await fetchRuntimeConfig(null);
 
-		expect(browserHostIntegrations.runNotificationAudio(action)).toBeNull();
+		expect(browserHostIntegrations.runNotificationAudio(null, action)).toEqual({
+			outcome: "unavailable",
+			value: null,
+		});
 		expect(action).not.toHaveBeenCalled();
 	});
 });

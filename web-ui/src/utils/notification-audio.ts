@@ -1,6 +1,14 @@
 import { browserHostIntegrations } from "@/runtime/browser-host-integrations";
+import type { RuntimeHostIntegrationSuccessOutcome } from "@/runtime/types";
 
 export type AudibleNotificationEventType = "permission" | "review" | "failure";
+
+export interface AudibleNotificationContext {
+	projectId?: string | null;
+	taskId?: string | null;
+}
+
+export type NotificationAudioOutcome = RuntimeHostIntegrationSuccessOutcome | "unavailable";
 
 interface ToneDefinition {
 	/** Frequency in Hz for each beat. */
@@ -49,7 +57,7 @@ export class NotificationAudioPlayer {
 	) {}
 
 	ensureContext(): AudioContext | null {
-		return this.hostIntegrations.runNotificationAudio(() => {
+		return this.hostIntegrations.runNotificationAudio(null, () => {
 			if (this.audioContext) {
 				if (this.audioContext.state === "suspended") {
 					this.audioContext.resume().catch(() => {});
@@ -65,55 +73,71 @@ export class NotificationAudioPlayer {
 			} catch {
 				return null;
 			}
-		});
+		}).value;
 	}
 
-	play(eventType: AudibleNotificationEventType, volume: number): void {
-		if (!this.audioContext) {
-			return;
+	play(
+		eventType: AudibleNotificationEventType,
+		volume: number,
+		context: AudibleNotificationContext = {},
+	): Promise<NotificationAudioOutcome> {
+		try {
+			const result = this.hostIntegrations.runNotificationAudio(
+				{
+					eventType,
+					volume,
+					projectId: context.projectId,
+					taskId: context.taskId,
+				},
+				() => {
+					if (!this.audioContext) {
+						return;
+					}
+					if (this.audioContext.state === "suspended") {
+						this.audioContext.resume().catch(() => {});
+					}
+
+					const ctx = this.audioContext;
+					const def = TONE_DEFINITIONS[eventType];
+					const clampedVolume = Math.max(0, Math.min(1, volume));
+
+					// Queue: schedule after the previous sound finishes (or now if nothing is queued).
+					const now = ctx.currentTime;
+					const startTime = Math.max(now, this.nextAvailableTime);
+
+					let offset = 0;
+					for (const freq of def.frequencies) {
+						const osc = ctx.createOscillator();
+						const gain = ctx.createGain();
+
+						osc.type = "sine";
+						osc.frequency.value = freq;
+
+						// Ramp in and out to avoid clicks.
+						const beatStart = startTime + offset;
+						const beatEnd = beatStart + def.beatDuration;
+						gain.gain.setValueAtTime(0, beatStart);
+						gain.gain.linearRampToValueAtTime(clampedVolume * 0.4, beatStart + 0.01);
+						gain.gain.setValueAtTime(clampedVolume * 0.4, beatEnd - 0.02);
+						gain.gain.linearRampToValueAtTime(0, beatEnd);
+
+						osc.connect(gain);
+						gain.connect(ctx.destination);
+						osc.start(beatStart);
+						osc.stop(beatEnd);
+
+						offset += def.beatDuration + def.beatGap;
+					}
+
+					this.nextAvailableTime = startTime + toneDuration(def) + QUEUE_GAP;
+				},
+			);
+			return result.outcome === "simulated"
+				? result.acknowledgement.then(() => result.outcome)
+				: Promise.resolve(result.outcome);
+		} catch (error) {
+			return Promise.reject(error);
 		}
-		this.hostIntegrations.runNotificationAudio(() => {
-			if (!this.audioContext) {
-				return;
-			}
-			if (this.audioContext.state === "suspended") {
-				this.audioContext.resume().catch(() => {});
-			}
-
-			const ctx = this.audioContext;
-			const def = TONE_DEFINITIONS[eventType];
-			const clampedVolume = Math.max(0, Math.min(1, volume));
-
-			// Queue: schedule after the previous sound finishes (or now if nothing is queued).
-			const now = ctx.currentTime;
-			const startTime = Math.max(now, this.nextAvailableTime);
-
-			let offset = 0;
-			for (const freq of def.frequencies) {
-				const osc = ctx.createOscillator();
-				const gain = ctx.createGain();
-
-				osc.type = "sine";
-				osc.frequency.value = freq;
-
-				// Ramp in and out to avoid clicks.
-				const beatStart = startTime + offset;
-				const beatEnd = beatStart + def.beatDuration;
-				gain.gain.setValueAtTime(0, beatStart);
-				gain.gain.linearRampToValueAtTime(clampedVolume * 0.4, beatStart + 0.01);
-				gain.gain.setValueAtTime(clampedVolume * 0.4, beatEnd - 0.02);
-				gain.gain.linearRampToValueAtTime(0, beatEnd);
-
-				osc.connect(gain);
-				gain.connect(ctx.destination);
-				osc.start(beatStart);
-				osc.stop(beatEnd);
-
-				offset += def.beatDuration + def.beatGap;
-			}
-
-			this.nextAvailableTime = startTime + toneDuration(def) + QUEUE_GAP;
-		});
 	}
 
 	dispose(): void {

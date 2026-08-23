@@ -89,7 +89,16 @@ export function useAudibleNotifications({
 			return;
 		}
 		notificationAudioPlayer.ensureContext();
-		notificationAudioPlayer.play(eventType, latestVolumeRef.current);
+		void notificationAudioPlayer
+			.play(eventType, latestVolumeRef.current, {
+				projectId: task.projectId,
+				taskId,
+			})
+			.catch((error: unknown) => {
+				console.warn(
+					`[host-integration] Could not complete notification audio: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			});
 	};
 
 	// Single detection path: semantic notification edges with a settle window.

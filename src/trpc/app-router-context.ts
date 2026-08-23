@@ -128,7 +128,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcProjectScope,
 			input: RuntimeOpenProjectRequest,
 		) => Promise<RuntimeOpenProjectResponse>;
-		openFile: (input: RuntimeOpenFileRequest) => Promise<RuntimeOpenFileResponse>;
+		openFile: (
+			scope: RuntimeTrpcProjectScope | null,
+			input: RuntimeOpenFileRequest,
+		) => Promise<RuntimeOpenFileResponse>;
 		setLogLevel: (level: "debug" | "info" | "warn" | "error") => Promise<{
 			ok: boolean;
 			level: "debug" | "info" | "warn" | "error";

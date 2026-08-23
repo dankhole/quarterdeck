@@ -75,6 +75,7 @@ export type {
 	IRuntimeConfigProvider,
 	IRuntimeHostIntegrations,
 	ITerminalManagerProvider,
+	RuntimeHostActionContext,
 } from "./service-interfaces";
 export { buildShellCommandLine, quoteShellArg, resolveInteractiveShellCommand } from "./shell";
 export {

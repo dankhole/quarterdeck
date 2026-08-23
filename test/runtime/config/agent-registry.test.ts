@@ -32,6 +32,7 @@ function buildRuntimeConfigResponse(
 	runtimeConfig: Parameters<typeof buildRuntimeConfigResponseWithCapabilities>[0],
 	runtimeCapabilities: Parameters<typeof buildRuntimeConfigResponseWithCapabilities>[1] = {
 		nativeUiAvailable: true,
+		hostIntegrationMode: "native",
 	},
 ) {
 	return buildRuntimeConfigResponseWithCapabilities(runtimeConfig, runtimeCapabilities);
@@ -366,9 +367,13 @@ describe("buildRuntimeConfigResponse", () => {
 	it("reports launch-config-derived native UI availability", async () => {
 		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState(), {
 			nativeUiAvailable: false,
+			hostIntegrationMode: "unavailable",
 		});
 
-		expect(response.runtimeCapabilities).toEqual({ nativeUiAvailable: false });
+		expect(response.runtimeCapabilities).toEqual({
+			nativeUiAvailable: false,
+			hostIntegrationMode: "unavailable",
+		});
 	});
 
 	it("reports the runtime host platform for browser open-target commands", async () => {

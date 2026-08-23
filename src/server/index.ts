@@ -14,12 +14,18 @@ export {
 	type RemovedProjectNotice,
 	type ResolvedProjectStreamTarget,
 } from "./project-registry";
+export { RuntimeHostEventLedger, type RuntimeHostEventQuery } from "./runtime-host-event-ledger";
 export {
 	type CreateRuntimeHostIntegrationsOptions,
 	createRuntimeHostIntegrations,
 	type RuntimeHostIntegrationAttempt,
 	type RuntimeHostIntegrationKind,
+	type RuntimeHostIntegrationSimulator,
 } from "./runtime-host-integrations";
+export {
+	loadRuntimeHostSimulation,
+	type RuntimeHostSimulationConfig,
+} from "./runtime-host-simulation";
 export { observeRuntimeApiRequest } from "./runtime-request-diagnostics";
 export {
 	type CreateRuntimeServerDependencies,

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const AGENT_LAB_SCHEMA_VERSION = 1;
+export const AGENT_LAB_SCHEMA_VERSION = 2;
 
 export const AgentLabScenarioSchema = z.enum([
 	"idle",
@@ -22,8 +22,7 @@ const AgentLabProcessSchema = z.object({
 	logPath: z.string().min(1),
 });
 
-export const AgentLabManifestSchema = z.object({
-	schemaVersion: z.literal(AGENT_LAB_SCHEMA_VERSION),
+const AgentLabManifestBaseSchema = z.object({
 	runId: z.string().min(1),
 	status: AgentLabStatusSchema,
 	repoRoot: z.string().min(1),
@@ -36,7 +35,6 @@ export const AgentLabManifestSchema = z.object({
 	projectPath: z.string().min(1),
 	additionalProjectPath: z.string().min(1),
 	forbiddenHostLaunchLogPath: z.string().min(1),
-	runtimeCapabilities: z.object({ nativeUiAvailable: z.literal(false) }),
 	projectUrl: z.string().url(),
 	runtimeUrl: z.string().url(),
 	webUrl: z.string().url(),
@@ -56,7 +54,28 @@ export const AgentLabManifestSchema = z.object({
 	failure: z.string().nullable(),
 });
 
+export const AgentLabManifestV1Schema = AgentLabManifestBaseSchema.extend({
+	schemaVersion: z.literal(1),
+	runtimeCapabilities: z.object({ nativeUiAvailable: z.literal(false) }),
+});
+export type AgentLabManifestV1 = z.infer<typeof AgentLabManifestV1Schema>;
+
+export const AgentLabManifestSchema = AgentLabManifestBaseSchema.extend({
+	schemaVersion: z.literal(AGENT_LAB_SCHEMA_VERSION),
+	hostEventLedgerPath: z.string().min(1),
+	runtimeCapabilities: z.object({
+		nativeUiAvailable: z.literal(false),
+		hostIntegrationMode: z.literal("simulated"),
+	}),
+});
+
 export type AgentLabManifest = z.infer<typeof AgentLabManifestSchema>;
+
+export const ReadableAgentLabManifestSchema = z.discriminatedUnion("schemaVersion", [
+	AgentLabManifestV1Schema,
+	AgentLabManifestSchema,
+]);
+export type ReadableAgentLabManifest = z.infer<typeof ReadableAgentLabManifestSchema>;
 
 export const AgentLabLaunchConfigSchema = z.object({
 	schemaVersion: z.literal(AGENT_LAB_SCHEMA_VERSION),
@@ -71,7 +90,10 @@ export const AgentLabLaunchConfigSchema = z.object({
 	runtimePort: z.number().int().min(0).max(65_535).nullable(),
 	webPort: z.number().int().min(0).max(65_535).nullable(),
 	forwardLogs: z.boolean(),
-	runtimeCapabilities: z.object({ nativeUiAvailable: z.literal(false) }),
+	runtimeCapabilities: z.object({
+		nativeUiAvailable: z.literal(false),
+		hostIntegrationMode: z.literal("simulated"),
+	}),
 });
 
 export type AgentLabLaunchConfig = z.infer<typeof AgentLabLaunchConfigSchema>;

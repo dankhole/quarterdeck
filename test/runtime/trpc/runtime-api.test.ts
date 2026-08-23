@@ -142,7 +142,7 @@ function createDeps(flat: Record<string, unknown> = {}) {
 		taskResourceOperations: new TaskResourceOperationCoordinator(),
 		resolveInteractiveShellCommand: vi.fn(),
 		hostIntegrations: {
-			capabilities: { nativeUiAvailable: true },
+			capabilities: { nativeUiAvailable: true, hostIntegrationMode: "native" } as const,
 			pickDirectory: vi.fn(),
 			openPath: vi.fn(),
 			openExternalUrl: vi.fn(),
@@ -989,12 +989,14 @@ describe("createRuntimeApi startShellSession", () => {
 describe("createRuntimeApi openProject", () => {
 	it("accepts only a typed target and derives the project path from server scope", async () => {
 		const deps = createDeps();
-		deps.hostIntegrations.openProject.mockResolvedValue({ ok: true });
+		deps.hostIntegrations.openProject.mockResolvedValue({ ok: true, outcome: "native" });
 		const api = createRuntimeApi(deps);
 
 		await api.openProject(defaultScope, { targetId: "cursor" });
 
-		expect(deps.hostIntegrations.openProject).toHaveBeenCalledWith("cursor", "/tmp/repo");
+		expect(deps.hostIntegrations.openProject).toHaveBeenCalledWith("cursor", "/tmp/repo", {
+			projectId: "project-1",
+		});
 	});
 
 	it("rejects browser-supplied shell commands and working directories", async () => {

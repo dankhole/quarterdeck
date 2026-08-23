@@ -51,7 +51,7 @@ describe("useOpenProject", () => {
 
 	beforeEach(() => {
 		openProjectMutateMock.mockReset();
-		openProjectMutateMock.mockResolvedValue({ ok: true });
+		openProjectMutateMock.mockResolvedValue({ ok: true, outcome: "native" });
 		getRuntimeTrpcClientMock.mockReset();
 		getRuntimeTrpcClientMock.mockReturnValue({
 			runtime: {

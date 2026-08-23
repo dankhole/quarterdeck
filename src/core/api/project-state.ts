@@ -117,6 +117,7 @@ export const runtimeProjectDirectoryPickerResponseSchema = z.discriminatedUnion(
 	z.object({
 		ok: z.literal(true),
 		path: z.string(),
+		outcome: z.literal("native"),
 	}),
 	z.object({
 		ok: z.literal(false),

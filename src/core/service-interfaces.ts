@@ -90,16 +90,24 @@ export interface IRuntimeConfigProvider {
 // ── Host Integrations ───────────────────────────────────────────────────────────────────
 
 /**
- * The capability-gated boundary for runtime actions that can launch host UI.
- * The Agent Lab supplies `nativeUiAvailable: false`, so every method must fail
- * before invoking its platform launcher.
+ * The policy-gated boundary for runtime actions that can launch host UI.
+ * Native, unavailable, and simulated modes all use this same contract.
  */
 export interface IRuntimeHostIntegrations {
 	readonly capabilities: RuntimeCapabilities;
 	pickDirectory: () => Promise<RuntimeProjectDirectoryPickerResponse>;
-	openPath: (targetPath: string) => Promise<RuntimeOpenFileResponse>;
-	openExternalUrl: (url: string) => Promise<RuntimeOpenFileResponse>;
-	openProject: (targetId: RuntimeOpenTargetId, cwd: string) => Promise<RuntimeOpenProjectResponse>;
+	openPath: (targetPath: string, context?: RuntimeHostActionContext) => Promise<RuntimeOpenFileResponse>;
+	openExternalUrl: (url: string, context?: RuntimeHostActionContext) => Promise<RuntimeOpenFileResponse>;
+	openProject: (
+		targetId: RuntimeOpenTargetId,
+		cwd: string,
+		context?: RuntimeHostActionContext,
+	) => Promise<RuntimeOpenProjectResponse>;
+}
+
+export interface RuntimeHostActionContext {
+	projectId?: string;
+	taskId?: string;
 }
 
 // ── Project Data ───────────────────────────────────────────────────────────

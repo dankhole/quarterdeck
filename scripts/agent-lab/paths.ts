@@ -4,7 +4,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { type AgentLabManifest, AgentLabManifestSchema } from "./types";
+import { type ReadableAgentLabManifest, ReadableAgentLabManifestSchema } from "./types";
 
 export const AGENT_LAB_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -85,9 +85,9 @@ export async function writeJsonAtomic(path: string, value: unknown): Promise<voi
 	await rename(temporaryPath, path);
 }
 
-export async function readAgentLabManifest(path: string): Promise<AgentLabManifest> {
+export async function readAgentLabManifest(path: string): Promise<ReadableAgentLabManifest> {
 	const contents = await readFile(path, "utf8");
-	return AgentLabManifestSchema.parse(JSON.parse(contents) as unknown);
+	return ReadableAgentLabManifestSchema.parse(JSON.parse(contents) as unknown);
 }
 
 export function isProcessAlive(pid: number): boolean {

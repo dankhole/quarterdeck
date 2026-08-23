@@ -85,7 +85,7 @@ const runtimeRouter = t.router({
 		.input(runtimeOpenFileRequestSchema)
 		.output(runtimeOpenFileResponseSchema)
 		.mutation(async ({ ctx, input }) => {
-			return await ctx.runtimeApi.openFile(input);
+			return await ctx.runtimeApi.openFile(ctx.projectScope, input);
 		}),
 });
 

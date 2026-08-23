@@ -3,6 +3,7 @@ import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
+import type { RuntimeHostSimulationConfig } from "../../src/server/runtime-host-simulation";
 import type { AgentLabLaunchConfig } from "./types";
 
 const execFileAsync = promisify(execFile);
@@ -15,6 +16,8 @@ export interface AgentLabFixturePaths {
 	fakeBinPath: string;
 	browserConfigPath: string;
 	forbiddenHostLaunchLogPath: string;
+	hostEventLedgerPath: string;
+	hostSimulationConfigPath: string;
 }
 
 const FORBIDDEN_HOST_LAUNCHERS = [
@@ -113,6 +116,8 @@ export async function prepareAgentLabFixture(
 	const additionalProjectPath = join(config.tempRoot, "project-secondary");
 	const fakeBinPath = join(config.tempRoot, "bin");
 	const forbiddenHostLaunchLogPath = join(config.artifactDir, "forbidden-host-launches.log");
+	const hostEventLedgerPath = join(config.artifactDir, "host-events.json");
+	const hostSimulationConfigPath = join(config.artifactDir, "host-simulation-config.json");
 	const browserConfigPath = join(config.artifactDir, "playwright-cli.config.json");
 	const browserInitPath = join(config.artifactDir, "browser-init.js");
 	const browserOutputPath = join(config.artifactDir, "browser");
@@ -125,6 +130,24 @@ export async function prepareAgentLabFixture(
 		mkdir(browserOutputPath, { recursive: true }),
 		writeFile(join(config.tempRoot, "empty-gitconfig"), "", "utf8"),
 		writeFile(forbiddenHostLaunchLogPath, "", "utf8"),
+		writeFile(
+			hostSimulationConfigPath,
+			`${JSON.stringify(
+				{
+					schemaVersion: 1,
+					ledgerPath: hostEventLedgerPath,
+					pathScopes: [
+						{ id: "primary_project", rootPath: projectPath },
+						{ id: "secondary_project", rootPath: additionalProjectPath },
+						{ id: "runtime_state", rootPath: statePath },
+						{ id: "runtime_home", rootPath: homePath },
+					],
+				} satisfies RuntimeHostSimulationConfig,
+				null,
+				2,
+			)}\n`,
+			"utf8",
+		),
 	]);
 
 	await Promise.all([
@@ -186,5 +209,7 @@ export async function prepareAgentLabFixture(
 		fakeBinPath,
 		browserConfigPath,
 		forbiddenHostLaunchLogPath,
+		hostEventLedgerPath,
+		hostSimulationConfigPath,
 	};
 }

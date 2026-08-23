@@ -20,6 +20,7 @@ Interactive terminal commands:
 - `/write <relative-path> <contents>` — write inside the disposable task checkout; absolute paths and escapes are rejected.
 - `/commit [message]` — stage and commit all disposable changes.
 - `/status` — print short Git status.
+- `/clipboard-read` — request the browser-owned clipboard through xterm's OSC 52 protocol and print a bounded `AGENT LAB CLIPBOARD READ` marker.
 - `/spam [1-2000]` — produce bounded terminal output.
 - `/alt-on` and `/alt-off` — enter and leave xterm's alternate screen.
 - `/delay-review <milliseconds> [message]` — schedule a review hook, bounded to 30 seconds.

@@ -165,7 +165,22 @@ export function NotificationsSection({ fields, setField, disabled }: SettingsSec
 					disabled={masterOff}
 					onClick={() => {
 						notificationAudioPlayer.ensureContext();
-						notificationAudioPlayer.play("permission", fields.audibleNotificationVolume);
+						void notificationAudioPlayer
+							.play("permission", fields.audibleNotificationVolume)
+							.then((outcome) => {
+								if (outcome === "simulated") {
+									showAppToast({
+										intent: "success",
+										message: "Agent Lab simulated the notification sound; no audio was played.",
+									});
+								}
+							})
+							.catch((error: unknown) => {
+								showAppToast({
+									intent: "danger",
+									message: `Could not record the simulated notification sound: ${error instanceof Error ? error.message : String(error)}`,
+								});
+							});
 					}}
 				>
 					Test sound

@@ -10,10 +10,15 @@ import {
 } from "./audible-notifications-test-utils";
 
 const playMock = vi.hoisted(() => vi.fn());
+const playContextMock = vi.hoisted(() => vi.fn());
 const ensureContextMock = vi.hoisted(() => vi.fn());
 vi.mock("@/utils/notification-audio", () => ({
 	notificationAudioPlayer: {
-		play: playMock,
+		play: (eventType: string, volume: number, context: unknown) => {
+			playContextMock(context);
+			playMock(eventType, volume);
+			return Promise.resolve("native" as const);
+		},
 		ensureContext: ensureContextMock,
 		dispose: vi.fn(),
 	},
@@ -24,6 +29,7 @@ describe("useAudibleNotifications — basic sound events", () => {
 
 	beforeEach(() => {
 		playMock.mockReset();
+		playContextMock.mockReset();
 		ensureContextMock.mockReset();
 		harness = setupTestHarness();
 	});
@@ -73,6 +79,7 @@ describe("useAudibleNotifications — basic sound events", () => {
 
 		harness.flushSettleWindow();
 		expect(playMock).toHaveBeenCalledWith("permission", 0.7);
+		expect(playContextMock).toHaveBeenCalledWith({ projectId: "project-unknown", taskId: "task-1" });
 		expect(playMock).toHaveBeenCalledTimes(1);
 	});
 

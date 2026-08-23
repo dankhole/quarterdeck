@@ -11,6 +11,7 @@ import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config";
 import type { IRuntimeHostIntegrations, RuntimeCapabilities } from "./core";
 import {
 	buildQuarterdeckRuntimeUrl,
+	createRuntimeCapabilities,
 	DEFAULT_QUARTERDECK_RUNTIME_PORT,
 	getQuarterdeckRuntimeHost,
 	getQuarterdeckRuntimeOrigin,
@@ -32,6 +33,7 @@ import { runGit } from "./workdir/git-utils";
 interface CliOptions {
 	noOpen: boolean;
 	nativeUiAvailable: boolean;
+	hostSimulationConfigPath: string | null;
 	skipShutdownCleanup: boolean;
 	host: string | null;
 	port: { mode: "fixed"; value: number } | { mode: "auto" } | null;
@@ -59,6 +61,7 @@ interface RootCommandOptions {
 	port?: { mode: "fixed"; value: number } | { mode: "auto" };
 	open?: boolean;
 	nativeUi?: boolean;
+	simulateHostIntegrations?: string;
 	skipShutdownCleanup?: boolean;
 }
 
@@ -78,7 +81,7 @@ interface ShutdownIndicator {
  */
 function shouldAutoOpenBrowserTabForInvocation(argv: string[]): boolean {
 	const launchFlags = new Set(["--open", "--no-open", "--no-native-ui", "--skip-shutdown-cleanup"]);
-	const launchOptionsWithValues = new Set(["--host", "--port", "--agent"]);
+	const launchOptionsWithValues = new Set(["--host", "--port", "--agent", "--simulate-host-integrations"]);
 
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
@@ -310,7 +313,7 @@ async function loadRuntimeStartupModules() {
 	*/
 	const [
 		{ resolveProjectInputPath },
-		{ createRuntimeHostIntegrations, createRuntimeServer },
+		{ createRuntimeHostIntegrations, createRuntimeServer, loadRuntimeHostSimulation },
 		{ createRuntimeStateHub },
 		{ resolveInteractiveShellCommand },
 		{ shutdownRuntimeServer },
@@ -338,6 +341,7 @@ async function loadRuntimeStartupModules() {
 		resolveProjectInputPath,
 		createRuntimeHostIntegrations,
 		createRuntimeServer,
+		loadRuntimeHostSimulation,
 		createRuntimeStateHub,
 		resolveInteractiveShellCommand,
 		shutdownRuntimeServer,
@@ -512,11 +516,15 @@ async function createRuntimeBootstrapState(
 async function createRuntimeServerHandle(
 	modules: Awaited<ReturnType<typeof loadRuntimeStartupModules>>,
 	bootstrap: Awaited<ReturnType<typeof createRuntimeBootstrapState>>,
-	runtimeCapabilities: RuntimeCapabilities,
+	hostLaunch: { capabilities: RuntimeCapabilities; simulationConfigPath: string | null },
 ): Promise<RuntimeServerHandle> {
+	const simulation = hostLaunch.simulationConfigPath
+		? await modules.loadRuntimeHostSimulation(hostLaunch.simulationConfigPath)
+		: null;
 	const hostIntegrations = modules.createRuntimeHostIntegrations({
-		capabilities: runtimeCapabilities,
+		capabilities: hostLaunch.capabilities,
 		warn: bootstrap.warn,
+		simulator: simulation?.simulator,
 	});
 	const runtimeServer = await modules.createRuntimeServer({
 		projectRegistry: bootstrap.projectRegistry,
@@ -525,6 +533,7 @@ async function createRuntimeServerHandle(
 		warn: bootstrap.warn,
 		resolveInteractiveShellCommand: modules.resolveInteractiveShellCommand,
 		hostIntegrations,
+		hostEventLedger: simulation?.ledger,
 		resolveProjectInputPath: modules.resolveProjectInputPath,
 		assertPathIsDirectory,
 		hasGitRepository,
@@ -558,7 +567,10 @@ async function createRuntimeServerHandle(
 	};
 }
 
-async function startServer(runtimeCapabilities: RuntimeCapabilities): Promise<RuntimeServerHandle> {
+async function startServer(hostLaunch: {
+	capabilities: RuntimeCapabilities;
+	simulationConfigPath: string | null;
+}): Promise<RuntimeServerHandle> {
 	const modules = await loadRuntimeStartupModules();
 	const warn = createRuntimeWarnLogger();
 	const diagnostics = await createRuntimeDiagnostics({
@@ -572,7 +584,7 @@ async function startServer(runtimeCapabilities: RuntimeCapabilities): Promise<Ru
 		await runRuntimeStartupCleanup(modules, warn);
 		const startupAgentCleanup = startOrphanedAgentCleanup(warn);
 		const bootstrap = await createRuntimeBootstrapState(modules, warn, startupAgentCleanup, diagnostics);
-		return await createRuntimeServerHandle(modules, bootstrap, runtimeCapabilities);
+		return await createRuntimeServerHandle(modules, bootstrap, hostLaunch);
 	} catch (error) {
 		setRuntimeDiagnosticLogSink(null);
 		await diagnostics.fail(error).catch(() => undefined);
@@ -581,14 +593,19 @@ async function startServer(runtimeCapabilities: RuntimeCapabilities): Promise<Ru
 }
 
 async function startServerWithAutoPortRetry(options: CliOptions): Promise<RuntimeServerHandle> {
-	const runtimeCapabilities = { nativeUiAvailable: options.nativeUiAvailable };
+	const hostLaunch = {
+		capabilities: createRuntimeCapabilities(
+			options.hostSimulationConfigPath ? "simulated" : options.nativeUiAvailable ? "native" : "unavailable",
+		),
+		simulationConfigPath: options.hostSimulationConfigPath,
+	};
 	if (options.port?.mode !== "auto") {
-		return await startServer(runtimeCapabilities);
+		return await startServer(hostLaunch);
 	}
 
 	while (true) {
 		try {
-			return await startServer(runtimeCapabilities);
+			return await startServer(hostLaunch);
 		} catch (error) {
 			if (!isAddressInUseError(error)) {
 				throw error;
@@ -622,7 +639,9 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 			(await tryOpenExistingServer({
 				noOpen: options.noOpen,
 				shouldAutoOpenBrowser,
-				runtimeCapabilities: { nativeUiAvailable: options.nativeUiAvailable },
+				runtimeCapabilities: createRuntimeCapabilities(
+					options.hostSimulationConfigPath ? "simulated" : options.nativeUiAvailable ? "native" : "unavailable",
+				),
 			}))
 		) {
 			process.exit(0);
@@ -718,6 +737,12 @@ function createProgram(invocationArgs: string[]): Command {
 		.addHelpText("after", `\nRuntime URL: ${getQuarterdeckRuntimeOrigin()}`);
 
 	program.addOption(new Option("--agent <id>", "Deprecated compatibility flag. Ignored.").hideHelp());
+	program.addOption(
+		new Option(
+			"--simulate-host-integrations <config-path>",
+			"Use injected host-integration simulation policy.",
+		).hideHelp(),
+	);
 
 	registerHooksCommand(program);
 	registerStatuslineCommand(program);
@@ -725,12 +750,16 @@ function createProgram(invocationArgs: string[]): Command {
 	registerDiagnosticsCommand(program);
 
 	program.action(async (options: RootCommandOptions) => {
+		if (options.simulateHostIntegrations && options.nativeUi !== false) {
+			throw new Error("--simulate-host-integrations requires --no-native-ui.");
+		}
 		await runMainCommand(
 			{
 				host: options.host ?? null,
 				port: options.port ?? null,
 				noOpen: options.open === false,
 				nativeUiAvailable: options.nativeUi !== false,
+				hostSimulationConfigPath: options.simulateHostIntegrations ?? null,
 				skipShutdownCleanup: options.skipShutdownCleanup === true,
 			},
 			shouldAutoOpenBrowser,

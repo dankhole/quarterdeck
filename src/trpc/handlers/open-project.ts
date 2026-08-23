@@ -10,7 +10,9 @@ export async function handleOpenProject(
 ) {
 	try {
 		const body = parseOpenProjectRequest(input);
-		return await deps.hostIntegrations.openProject(body.targetId, projectScope.projectPath);
+		return await deps.hostIntegrations.openProject(body.targetId, projectScope.projectPath, {
+			projectId: projectScope.projectId,
+		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		throw new TRPCError({

@@ -62,13 +62,13 @@ function stubAudioContext(stateOverride: AudioContextState = "running"): void {
 }
 
 beforeEach(() => {
-	browserHostIntegrations.configureCapabilities({ nativeUiAvailable: true });
+	browserHostIntegrations.configureCapabilities({ nativeUiAvailable: true, hostIntegrationMode: "native" });
 	mockAudioContextInstance = null;
 	stubAudioContext();
 });
 
 afterEach(() => {
-	browserHostIntegrations.configureCapabilities({ nativeUiAvailable: false });
+	browserHostIntegrations.configureCapabilities({ nativeUiAvailable: false, hostIntegrationMode: "unavailable" });
 	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
 });

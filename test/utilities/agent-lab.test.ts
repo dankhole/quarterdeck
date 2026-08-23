@@ -1,8 +1,11 @@
-import { delimiter } from "node:path";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { _testing as browserActionTesting } from "../../scripts/agent-lab/browser-actions";
+import { runAgentLabCli } from "../../scripts/agent-lab/cli";
 import { buildAgentLabEnvironment } from "../../scripts/agent-lab/environment";
 import {
 	extractPromptArgument,
@@ -10,7 +13,12 @@ import {
 	resolveFakeAgentScenario,
 } from "../../scripts/agent-lab/fake-agent-protocol";
 import { resolveLoopbackPort } from "../../scripts/agent-lab/loopback-port";
-import { assertSafeRunId, createAgentLabRunId, getAgentLabBrowserCachePath } from "../../scripts/agent-lab/paths";
+import {
+	assertSafeRunId,
+	createAgentLabRunId,
+	getAgentLabBrowserCachePath,
+	readAgentLabManifest,
+} from "../../scripts/agent-lab/paths";
 
 describe("agent-lab browser cache", () => {
 	it("shares browser binaries through the primary checkout", () => {
@@ -97,6 +105,82 @@ describe("agent-lab run ids", () => {
 		expect(runId).toMatch(/^visual-debug-20260823T123456Z-[a-f0-9]{6}$/);
 		expect(assertSafeRunId(runId)).toBe(runId);
 		expect(() => assertSafeRunId("../escape")).toThrow("Invalid agent-lab run id");
+	});
+});
+
+describe("agent-lab manifest compatibility", () => {
+	it("keeps version-1 runs readable for status, list, and stop lifecycle operations", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-manifest-test-"));
+		const runDirectory = join(root, "legacy-run");
+		const manifestPath = join(runDirectory, "manifest.json");
+		const previousArtifactRoot = process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT;
+		const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		try {
+			await mkdir(runDirectory, { recursive: true });
+			process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT = root;
+			await writeFile(
+				manifestPath,
+				`${JSON.stringify({
+					schemaVersion: 1,
+					runId: "legacy-run",
+					status: "stopped",
+					repoRoot: "/repo",
+					artifactDir: root,
+					manifestPath,
+					stopRequestPath: join(root, "stop-request.json"),
+					tempRoot: join(root, "temp"),
+					homePath: join(root, "home"),
+					statePath: join(root, "state"),
+					projectPath: join(root, "project"),
+					additionalProjectPath: join(root, "project-secondary"),
+					forbiddenHostLaunchLogPath: join(root, "forbidden-host-launches.log"),
+					runtimeCapabilities: { nativeUiAvailable: false },
+					projectUrl: "http://127.0.0.1:4174/project",
+					runtimeUrl: "http://127.0.0.1:3597",
+					webUrl: "http://127.0.0.1:4174",
+					browserConfigPath: join(root, "browser.json"),
+					browserOutputPath: join(root, "browser"),
+					browserSession: "legacy-browser",
+					scenario: "idle",
+					keepTemp: true,
+					supervisorPid: process.pid,
+					processes: { runtime: null, web: null },
+					createdAt: "2026-08-23T12:34:56.000Z",
+					readyAt: "2026-08-23T12:34:57.000Z",
+					stoppedAt: "2026-08-23T12:35:00.000Z",
+					failure: null,
+				})}\n`,
+				"utf8",
+			);
+
+			await expect(readAgentLabManifest(manifestPath)).resolves.toMatchObject({
+				schemaVersion: 1,
+				runId: "legacy-run",
+				status: "stopped",
+				stopRequestPath: join(root, "stop-request.json"),
+			});
+
+			for (const args of [
+				["node", "agent-lab", "status", "legacy-run", "--json"],
+				["node", "agent-lab", "list", "--json"],
+				["node", "agent-lab", "stop", "legacy-run", "--json"],
+			]) {
+				stdout.mockClear();
+				await runAgentLabCli(args);
+				expect(stdout.mock.calls.map(([value]) => String(value)).join("")).toContain('"runId": "legacy-run"');
+			}
+			stdout.mockClear();
+			await runAgentLabCli(["node", "agent-lab", "snapshot", "legacy-run", "--label", "legacy", "--json"]);
+			expect(stdout.mock.calls.map(([value]) => String(value)).join("")).toContain('"label": "legacy"');
+		} finally {
+			stdout.mockRestore();
+			if (previousArtifactRoot === undefined) {
+				delete process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT;
+			} else {
+				process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT = previousArtifactRoot;
+			}
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 });
 

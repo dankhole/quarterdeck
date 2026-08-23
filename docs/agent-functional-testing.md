@@ -21,9 +21,37 @@ Each `start` creates:
 - semantic page snapshots, screenshots, traces, videos, console/network records, and a marked browser-action transcript;
 - canonical diagnostic bundles at ready, failure, pre-shutdown, final, and explicitly requested checkpoints.
 
-The runtime and browser still use Quarterdeck's real project registry, tRPC/WebSocket transport, board persistence, worktree lifecycle, Codex adapter, PTY, native-hook ingest, session state machine, xterm renderer, Git APIs, and Files APIs. Only the external coding agent is replaced.
+The runtime and browser still use Quarterdeck's real project registry, tRPC/WebSocket transport, board persistence, worktree lifecycle, Codex adapter, PTY, native-hook ingest, session state machine, xterm renderer, Git APIs, and Files APIs. Only the external coding agent and host-facing side effects are replaced.
 
-Native folder/file dialogs, external host openers, Open in IDE, clipboard integration, and notification audio are unavailable in the lab. UI flows must handle the typed unavailable result and stay browser-manageable—for example, Add Project uses the JavaScript manual-path prompt. Ordinary browser links and terminal links remain browser-contained, observable by Playwright, and subject to the lab's loopback-only page-request policy. The manifest records the disabled capability, second project path, and forbidden-launch log path.
+Agent Lab keeps `nativeUiAvailable: false` and selects the separate `simulated` host-integration mode. Open in IDE, scoped file/folder opening, CLI-owned external browser launch, clipboard reads/writes, and notification audio complete through the same typed production contracts while recording a simulated outcome instead of touching the desktop. The native directory picker intentionally remains unavailable: Add Project records that attempt, then completes through the existing browser-managed manual-path prompt. Ordinary browser links and terminal links remain browser-contained, observable by Playwright, and subject to the lab's loopback-only page-request policy.
+
+## Host-integration modes and event ledger
+
+The launch-derived host integration policy has three modes:
+
+- `native` uses normal desktop integrations and reports `nativeUiAvailable: true`;
+- `unavailable` blocks before launcher, clipboard, or audio implementations and returns typed failures;
+- `simulated` keeps `nativeUiAvailable: false`, substitutes the Agent Lab implementations, and reports simulated success without invoking native launchers.
+
+Every simulated action is written to `host-events.json`, whose absolute path is exposed as `hostEventLedgerPath` in the run manifest. Events have a monotonically increasing sequence, timestamp, origin, typed kind/outcome, and bounded semantic fields. Paths are represented only as a named fixture scope plus relative path; external URLs retain only an `http`/`https` origin and bounded path; clipboard contents are represented only by character count. Project/task identifiers are included when the public action supplies them. A candidate event is runtime-validated and atomically persisted before the endpoint or UI can acknowledge it. The ledger has a fixed capacity; validation, persistence, or overflow failures mark it unhealthy and fail final evidence capture instead of silently producing partial diagnostics.
+
+The lab-only `/api/agent-lab/host-events` endpoint supports listing or long-polling events with `afterSequence`, `kind`, and a bounded `timeoutMs`. A `POST` to `/reset` atomically clears the ledger and restarts sequencing at one; a `POST` to `/flush` waits for queued mutations and rejects an unhealthy ledger. The endpoint is mounted only when the explicit simulation config injects the ledger; native and fail-closed runtimes return the normal API 404. Browser-owned simulations post their semantic events to this surface, while runtime-owned simulations write directly through the same ledger. Clipboard state changes only after its event is accepted, and simulated audio UI feedback waits for the notification event acknowledgement.
+
+Each canonical checkpoint flushes and validates the current ledger while the runtime is live, then stores it at `lab/host-events.json`. The offline final checkpoint validates and copies the already durable ledger after the runtime stops. `forbidden-host-launches.log` remains a separate hard-failure signal: simulated success never calls a shadow launcher, and shutdown fails if that log is non-empty.
+
+### Audited host crossings
+
+| Integration class | Agent Lab disposition |
+| --- | --- |
+| macOS, Linux, and Windows directory pickers (`osascript`, `zenity`, `kdialog`, and PowerShell dialogs) | Intentionally unsupported with a typed result; the attempt is recorded and Add Project uses manual path entry. |
+| Host file/folder open or reveal (`open`, `xdg-open`, Explorer) | Simulated through the runtime boundary; targets must resolve inside a named disposable scope. Settings exposes the reachable file-open flow; folder targets are covered at the public boundary because no current UI action reveals a folder directly. |
+| Open in IDE/Finder/terminal | Simulated through the existing typed target ID and server-owned project path. No executable or command comes from the browser. |
+| CLI-owned external browser launch | Simulated after URL scheme validation and credential/query/fragment removal. |
+| Ordinary browser links and xterm web links | Browser-contained by design and still governed by the lab's loopback network policy; they never produce a host event. |
+| Clipboard read/write, including xterm OSC 52 | Simulated by one in-memory browser clipboard; ledger events store character counts, never contents. |
+| Notification sound | Simulated semantically with event type, volume, and optional project/task identity; no audio context is created. Quarterdeck has no desktop Notification API workflow; its title update remains browser-contained. |
+| Credential/keychain access | No interactive host completion path exists. The lab child environment omits credentials, cloud variables, SSH agent access, and real agent configuration. |
+| Agent discovery, Git, PTY, and other runtime subprocesses | Not desktop integrations. They remain on the real runtime path inside the disposable environment; only the task agent and audited native launchers are shadowed. Binary presence never grants native-UI capability. |
 
 ## First-time setup
 
@@ -44,7 +72,7 @@ Start a detached run and ask for machine-readable discovery data:
 npm run --silent agent:lab -- start --name terminal-restore --json
 ```
 
-The manifest includes the run id, status, URLs, temporary paths, artifact paths, browser config/session/output paths, PIDs, scenario, timestamps, and any startup failure. Ports default to `auto`; fixed `--runtime-port` and `--web-port` values exist for E2E and targeted debugging. `--keep-temp` retains the synthetic project/state after shutdown when filesystem inspection is necessary.
+The manifest includes the run id, status, URLs, temporary paths, artifact paths, browser config/session/output paths, host-event ledger and forbidden-launch log paths, launch capabilities, PIDs, scenario, timestamps, and any startup failure. Ports default to `auto`; fixed `--runtime-port` and `--web-port` values exist for E2E and targeted debugging. `--keep-temp` retains the synthetic project/state after shutdown when filesystem inspection is necessary. Lifecycle commands accept both the current manifest and version 1, allowing an older active run to be listed, inspected, snapshotted, and stopped after the checkout is updated; legacy snapshots naturally omit the ledger that did not yet exist.
 
 Use an explicit run id when several agents are testing concurrently:
 
@@ -119,11 +147,11 @@ Select a default with `start --scenario <name>` or override one task by includin
 - `git-dirty` — synthetic file edit;
 - `terminal-stress` — bounded scrollback output.
 
-The interactive protocol includes `/needs-input`, `/working`, `/review`, `/write`, `/commit`, `/status`, `/spam`, `/alt-on`, `/alt-off`, `/delay-review`, `/fail`, and `/exit`. Run `/help` inside the fake terminal for exact syntax. File writes are restricted to the disposable checkout. All stable terminal markers begin with `AGENT LAB`; startup prints `AGENT LAB READY`.
+The interactive protocol includes `/needs-input`, `/working`, `/review`, `/write`, `/commit`, `/status`, `/clipboard-read`, `/spam`, `/alt-on`, `/alt-off`, `/delay-review`, `/fail`, and `/exit`. `/clipboard-read` exercises the browser clipboard through xterm's OSC 52 path and prints a bounded `AGENT LAB CLIPBOARD READ` marker. Run `/help` inside the fake terminal for exact syntax. File writes are restricted to the disposable checkout. All stable terminal markers begin with `AGENT LAB`; startup prints `AGENT LAB READY`.
 
 ## Automated regression suite
 
-`npm run web:e2e` uses the same supervisor and allocates dynamic loopback ports before Playwright loads its configuration. CI can still pin them with `QUARTERDECK_E2E_RUNTIME_PORT` and `QUARTERDECK_E2E_WEB_PORT` when its runner requires explicit ports. Playwright Test blocks non-loopback page requests, attaches browser console/network logs, and retains screenshots, video, and traces on failure. Functional smoke paths add the second synthetic repository through the browser manual-path prompt, verify the forbidden-launch log stays empty, open the unified Diagnostics panel, and create/start a task through the fake agent until its card moves to Review.
+`npm run web:e2e` uses the same supervisor and allocates dynamic loopback ports before Playwright loads its configuration. CI can still pin them with `QUARTERDECK_E2E_RUNTIME_PORT` and `QUARTERDECK_E2E_WEB_PORT` when its runner requires explicit ports. Playwright Test blocks non-loopback page requests, attaches browser console/network logs, and retains screenshots, video, and traces on failure. Functional smoke paths assert the startup host-URL simulation while ordinary links remain browser-contained, Open in IDE, config-file opening, notification audio, in-memory clipboard write/read through xterm, Add Project's manual fallback, the unified Diagnostics panel, and a task lifecycle through Review. Shutdown verifies the forbidden-launch log stays empty.
 
 ## Failure reports
 
@@ -135,6 +163,8 @@ Include:
 4. trace, console, and request evidence;
 5. runtime/web log excerpts;
 6. canonical checkpoint path and any doctor findings;
-7. whether the failure reproduces in a fresh run.
+7. relevant host-event sequence(s) and `lab/host-events.json` path;
+8. whether the forbidden-launch log is empty;
+9. whether the failure reproduces in a fresh run.
 
 This is enough for another agent to replay the failure without the original browser or runtime process.

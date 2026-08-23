@@ -141,10 +141,20 @@ export function RuntimeSettingsDialog({
 	const handleOpenFilePath = useCallback(
 		(filePath: string) => {
 			setSaveError(null);
-			void openFileOnHost(projectId, filePath).catch((error) => {
-				const message = toErrorMessage(error);
-				setSaveError(`Could not open file on host: ${message}`);
-			});
+			void openFileOnHost(projectId, filePath).then(
+				(response) => {
+					if (response.outcome === "simulated") {
+						showAppToast({
+							intent: "success",
+							message: "Agent Lab recorded the file-open request; no desktop window was opened.",
+						});
+					}
+				},
+				(error) => {
+					const message = toErrorMessage(error);
+					setSaveError(`Could not open file on host: ${message}`);
+				},
+			);
 		},
 		[projectId],
 	);

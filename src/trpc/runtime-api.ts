@@ -82,8 +82,8 @@ class RuntimeApiImpl implements RuntimeApi {
 		return await handleSetLogLevel(level, this.deps);
 	}
 
-	async openFile(input: { filePath: string }) {
-		return handleOpenFile(input, this.deps);
+	async openFile(projectScope: RuntimeTrpcProjectScope | null, input: { filePath: string }) {
+		return handleOpenFile(projectScope, input, this.deps);
 	}
 }
 

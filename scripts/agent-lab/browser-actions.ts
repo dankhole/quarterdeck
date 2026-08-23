@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 
 import { requestRuntimeDiagnostic, selectRuntimeDiagnosticInstance } from "../../src/diagnostics";
 import { AGENT_LAB_REPO_ROOT, getAgentLabArtifactRoot, readAgentLabManifest, resolveRunArtifactDir } from "./paths";
-import type { AgentLabManifest } from "./types";
+import type { ReadableAgentLabManifest } from "./types";
 
 const ACTION_TRANSCRIPT_NAME = "browser-actions.jsonl";
 const MAX_ARGUMENTS = 30;
@@ -31,7 +31,7 @@ const BROWSER_COMMANDS = new Set([
 
 export interface AgentBrowserActionContext {
 	actionId: string;
-	manifest: AgentLabManifest;
+	manifest: ReadableAgentLabManifest;
 	category: string;
 	arguments: string[];
 	artifacts: string[];
@@ -87,7 +87,7 @@ function isWithin(root: string, candidate: string): boolean {
 	);
 }
 
-function aliasPath(manifest: AgentLabManifest, candidate: string): string | null {
+function aliasPath(manifest: ReadableAgentLabManifest, candidate: string): string | null {
 	if (!isAbsolute(candidate)) return null;
 	for (const [root, alias] of [
 		[manifest.artifactDir, "$LAB_ARTIFACT"],
@@ -102,7 +102,7 @@ function aliasPath(manifest: AgentLabManifest, candidate: string): string | null
 	return "[external-path]";
 }
 
-function summarizeArgument(manifest: AgentLabManifest, argument: string): string {
+function summarizeArgument(manifest: ReadableAgentLabManifest, argument: string): string {
 	const equals = argument.indexOf("=");
 	if (equals > 0) {
 		const option = argument.slice(0, equals + 1);
@@ -113,11 +113,11 @@ function summarizeArgument(manifest: AgentLabManifest, argument: string): string
 	return (aliasPath(manifest, argument) ?? argument).slice(0, MAX_ARGUMENT_LENGTH);
 }
 
-function summarizeArguments(manifest: AgentLabManifest, args: readonly string[]): string[] {
+function summarizeArguments(manifest: ReadableAgentLabManifest, args: readonly string[]): string[] {
 	return args.slice(0, MAX_ARGUMENTS).map((argument) => summarizeArgument(manifest, argument));
 }
 
-function collectArtifactArguments(manifest: AgentLabManifest, args: readonly string[]): string[] {
+function collectArtifactArguments(manifest: ReadableAgentLabManifest, args: readonly string[]): string[] {
 	const artifacts: string[] = [];
 	for (let index = 0; index < args.length; index += 1) {
 		const argument = args[index];
@@ -133,7 +133,7 @@ function collectArtifactArguments(manifest: AgentLabManifest, args: readonly str
 	return artifacts;
 }
 
-async function resolveManifest(args: readonly string[]): Promise<AgentLabManifest | null> {
+async function resolveManifest(args: readonly string[]): Promise<ReadableAgentLabManifest | null> {
 	const session = readSession(args);
 	if (!session) return null;
 	const configPath = readOption(args, "--config");
@@ -151,7 +151,7 @@ async function resolveManifest(args: readonly string[]): Promise<AgentLabManifes
 	}
 }
 
-async function appendRecord(manifest: AgentLabManifest, record: BrowserActionRecord): Promise<void> {
+async function appendRecord(manifest: ReadableAgentLabManifest, record: BrowserActionRecord): Promise<void> {
 	await appendFile(join(manifest.artifactDir, ACTION_TRANSCRIPT_NAME), `${JSON.stringify(record)}\n`, {
 		encoding: "utf8",
 		mode: 0o600,
@@ -159,7 +159,7 @@ async function appendRecord(manifest: AgentLabManifest, record: BrowserActionRec
 }
 
 async function addDiagnosticMark(
-	manifest: AgentLabManifest,
+	manifest: ReadableAgentLabManifest,
 	context: AgentBrowserActionContext,
 	stage: "before" | "after",
 ): Promise<string | null> {
@@ -180,7 +180,7 @@ async function addDiagnosticMark(
 	}
 }
 
-function monotonicOffset(manifest: AgentLabManifest, timestampMs: number): number {
+function monotonicOffset(manifest: ReadableAgentLabManifest, timestampMs: number): number {
 	return Math.max(0, timestampMs - Date.parse(manifest.createdAt));
 }
 
