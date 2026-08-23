@@ -26,13 +26,14 @@ export function AiFeaturesSection({
 			</h6>
 			{!llmConfigured ? (
 				<div className="rounded-md border border-status-orange/30 bg-status-orange/5 px-3 py-2 text-[13px] text-status-orange mb-2">
-					LLM helpers are unavailable. Set <code className="text-[12px]">QUARTERDECK_LLM_BASE_URL</code> and{" "}
-					<code className="text-[12px]">QUARTERDECK_LLM_API_KEY</code> in the shell that launches Quarterdeck.
+					By default, task titles use Codex with a local fallback. Other LLM helpers are unavailable. Set{" "}
+					<code className="text-[12px]">QUARTERDECK_LLM_BASE_URL</code> and{" "}
+					<code className="text-[12px]">QUARTERDECK_LLM_API_KEY</code> to enable them.
 				</div>
 			) : (
 				<p className="text-text-secondary text-[13px] mt-0 mb-2">
-					Titles, branch names, commit messages, and optional summary polish use the configured lightweight LLM
-					helper.
+					Task titles use Codex by default or the configured helper when selected; either has a local fallback.
+					Branch names, commit messages, and optional summary polish use the configured helper directly.
 				</p>
 			)}
 

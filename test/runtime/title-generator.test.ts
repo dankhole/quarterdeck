@@ -1,13 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { generateBranchName, generateTaskTitle } from "../../src/title";
+
+const codexMocks = vi.hoisted(() => ({
+	callCodex: vi.fn(),
+}));
+
+vi.mock("../../src/title/codex-client", () => ({
+	callCodex: codexMocks.callCodex,
+}));
+
+import { generateBranchName, generateTaskTitle, _testing as llmTesting } from "../../src/title";
+
+beforeEach(() => {
+	llmTesting.resetRateLimiter();
+});
+
+afterEach(() => {
+	llmTesting.resetRateLimiter();
+});
 
 describe("generateTaskTitle", () => {
 	const originalEnv = { ...process.env };
 
 	beforeEach(() => {
+		process.env.QUARTERDECK_TITLE_PROVIDER = "llm";
 		process.env.QUARTERDECK_LLM_BASE_URL = "https://llm.example.com/v1";
 		process.env.QUARTERDECK_LLM_API_KEY = "test-token";
 		process.env.QUARTERDECK_LLM_MODEL = "test-model";
+		codexMocks.callCodex.mockReset();
+		codexMocks.callCodex.mockResolvedValue(null);
 	});
 
 	afterEach(() => {
@@ -27,6 +47,46 @@ describe("generateTaskTitle", () => {
 
 		const title = await generateTaskTitle("fix the authentication bug in login.ts");
 		expect(title).toBe("Fix Auth Bug");
+	});
+
+	it("prefers an ephemeral Codex title by default", async () => {
+		delete process.env.QUARTERDECK_TITLE_PROVIDER;
+		codexMocks.callCodex.mockResolvedValue("Improve Title Reliability");
+		const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+		const title = await generateTaskTitle("make automatic title generation more reliable");
+
+		expect(title).toBe("Improve Title Reliability");
+		expect(codexMocks.callCodex).toHaveBeenCalledWith(
+			expect.objectContaining({
+				userPrompt: "make automatic title generation more reliable",
+				timeoutMs: 20_000,
+			}),
+		);
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it("falls back from Codex directly to the deterministic local title", async () => {
+		delete process.env.QUARTERDECK_TITLE_PROVIDER;
+		codexMocks.callCodex.mockResolvedValue(null);
+		const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+		expect(await generateTaskTitle("make automatic title generation more reliable")).toBe(
+			"Make Automatic Title Generation",
+		);
+		expect(codexMocks.callCodex).toHaveBeenCalledOnce();
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it("supports a local-only title provider", async () => {
+		process.env.QUARTERDECK_TITLE_PROVIDER = "local";
+		const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+		expect(await generateTaskTitle("make automatic title generation more reliable")).toBe(
+			"Make Automatic Title Generation",
+		);
+		expect(codexMocks.callCodex).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
 	it("allows six seconds for task-title generation", async () => {

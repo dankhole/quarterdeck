@@ -10,7 +10,6 @@ interface InlineTitleEditorProps {
 	onSave: (taskId: string, title: string) => void;
 	onClose: () => void;
 	onRegenerate?: (taskId: string) => void;
-	isLlmGenerationDisabled?: boolean;
 	/** Stop mouse/click events from bubbling to the card's click handler. */
 	stopEvent: (event: React.MouseEvent<HTMLElement>) => void;
 }
@@ -21,7 +20,6 @@ export function InlineTitleEditor({
 	onSave,
 	onClose,
 	onRegenerate,
-	isLlmGenerationDisabled = false,
 	stopEvent,
 }: InlineTitleEditorProps): React.ReactElement {
 	const [value, setValue] = useState(currentTitle || "");
@@ -88,10 +86,7 @@ export function InlineTitleEditor({
 				placeholder="Task title…"
 			/>
 			{onRegenerate ? (
-				<Tooltip
-					content={isLlmGenerationDisabled ? "Generate title from local fallback" : "Auto-generate title"}
-					side="top"
-				>
+				<Tooltip content="Auto-generate title" side="top">
 					<Button
 						icon={<Sparkles size={12} />}
 						variant="ghost"

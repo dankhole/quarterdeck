@@ -12,6 +12,11 @@ interface TerminateProcessForTimeoutOptions {
 	killProcessTree?: KillProcessTree;
 }
 
+/**
+ * Terminate a timed-out child and, on Windows, its command-shim descendants.
+ * Windows agent CLIs commonly launch through `.cmd` wrappers, so killing only
+ * the wrapper can leave the real process alive.
+ */
 export function terminateProcessForTimeout(
 	child: TimeoutTerminatedChildProcess,
 	options: TerminateProcessForTimeoutOptions = {},

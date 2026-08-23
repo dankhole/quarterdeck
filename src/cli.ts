@@ -20,9 +20,9 @@ import {
 	setQuarterdeckRuntimeHost,
 	setQuarterdeckRuntimePort,
 	shouldSuppressImmediateDuplicateShutdownSignals,
+	terminateProcessForTimeout,
 } from "./core";
 import type { RuntimeStateHub } from "./server";
-import { terminateProcessForTimeout } from "./server";
 import type { TerminalSessionManager } from "./terminal";
 import { killOrphanedAgentProcesses } from "./terminal";
 import { runGit } from "./workdir/git-utils";

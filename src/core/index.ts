@@ -38,6 +38,7 @@ export {
 	installGracefulShutdownHandlers,
 	shouldSuppressImmediateDuplicateShutdownSignals,
 } from "./graceful-shutdown";
+export { terminateProcessForTimeout } from "./process-termination";
 export {
 	buildQuarterdeckCommandParts,
 	type RuntimeInvocationContext,
@@ -100,6 +101,7 @@ export { createShortTaskId, createUniqueTaskId } from "./task-id";
 export {
 	buildWindowsCmdArgsArray,
 	buildWindowsCmdArgsCommandLine,
+	resolveWindowsCompatibleCommand,
 	resolveWindowsComSpec,
 	shouldUseWindowsCmdLaunch,
 } from "./windows-cmd-launch";

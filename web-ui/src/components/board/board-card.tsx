@@ -37,7 +37,6 @@ export function BoardCard({
 	onRestoreFromTrash,
 	onHardDelete,
 	onRegenerateTitle,
-	isLlmGenerationDisabled,
 	onUpdateTitle,
 	onTogglePin,
 	isMoveToTrashLoading = false,
@@ -65,7 +64,6 @@ export function BoardCard({
 	onRestoreFromTrash?: (taskId: string) => void;
 	onHardDelete?: (taskId: string) => void;
 	onRegenerateTitle?: (taskId: string) => void;
-	isLlmGenerationDisabled?: boolean;
 	onUpdateTitle?: (taskId: string, title: string) => void;
 	onTogglePin?: (taskId: string) => void;
 	isMoveToTrashLoading?: boolean;
@@ -333,7 +331,6 @@ export function BoardCard({
 									onSave={onUpdateTitle}
 									onClose={closeTitleEditor}
 									onRegenerate={onRegenerateTitle}
-									isLlmGenerationDisabled={isLlmGenerationDisabled}
 									stopEvent={stopEvent}
 								/>
 							) : (

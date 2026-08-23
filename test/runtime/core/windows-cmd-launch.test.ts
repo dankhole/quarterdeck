@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { shouldUseWindowsCmdLaunch } from "../../../src/core";
+import { resolveWindowsCompatibleCommand, shouldUseWindowsCmdLaunch } from "../../../src/core";
 
 function createWindowsBinary(directory: string, fileName: string): string {
 	const filePath = join(directory, fileName);
@@ -98,5 +98,26 @@ describe("shouldUseWindowsCmdLaunch", () => {
 				ComSpec: "C:\\Windows\\System32\\cmd.exe",
 			}),
 		).toBe(true);
+	});
+
+	it("resolves an unchanged direct command outside Windows", () => {
+		expect(resolveWindowsCompatibleCommand("codex", ["--version"], "darwin")).toEqual({
+			binary: "codex",
+			args: ["--version"],
+		});
+	});
+
+	it("wraps a Windows command shim with ComSpec", () => {
+		const env = {
+			PATH: "",
+			PATHEXT: ".com;.exe;.bat;.cmd",
+			ComSpec: "C:\\Windows\\System32\\cmd.exe",
+		};
+		const resolved = resolveWindowsCompatibleCommand("codex", ["--version"], "win32", env);
+
+		expect(resolved.binary).toBe(env.ComSpec);
+		expect(resolved.args.slice(0, 3)).toEqual(["/d", "/s", "/c"]);
+		expect(resolved.args.at(-1)).toContain("codex");
+		expect(resolved.args.at(-1)).toContain("--version");
 	});
 });

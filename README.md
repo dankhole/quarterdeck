@@ -51,11 +51,14 @@ Optional variables:
 | `QUARTERDECK_RUNTIME_HOST` | Override the runtime host. Defaults to `127.0.0.1`; the `--host` flag is usually clearer. |
 | `QUARTERDECK_RUNTIME_PORT` | Override the runtime port. Defaults to `3500`; the `--port` flag is usually clearer. |
 | `QUARTERDECK_DEBUG_MODE` | Enable extra debug behavior for agent availability checks. `DEBUG_MODE` and `debug_mode` are also recognized. |
-| `QUARTERDECK_LLM_BASE_URL` | OpenAI-compatible helper API base URL for generated titles, branch names, commit messages, and optional summary polish. May be a LiteLLM, Bedrock, OpenRouter, or similar gateway. |
+| `QUARTERDECK_TITLE_PROVIDER` | Select task-title generation: `codex` (default), `llm`, or `local`. Either remote provider falls back directly to deterministic local generation. |
+| `QUARTERDECK_LLM_BASE_URL` | OpenAI-compatible helper API base URL for generated branch names, commit messages, optional summary polish, and fallback title generation. May be a LiteLLM, Bedrock, OpenRouter, or similar gateway. |
 | `QUARTERDECK_LLM_API_KEY` | Bearer token for the optional helper API. |
 | `QUARTERDECK_LLM_MODEL` | Optional model override. Defaults to `bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0`, which is a cheap/fast Bedrock-backed Anthropic default through LiteLLM. |
 
-The LLM variables are only needed for generated task titles, branch names, commit messages, and optional polished card summaries. Agent sessions themselves use your installed agent CLI and do not require these variables. The helper endpoint must support OpenAI-style `/v1/chat/completions`; Anthropic models work when your gateway exposes them through that API shape. Set `QUARTERDECK_LLM_BASE_URL` and `QUARTERDECK_LLM_API_KEY` to enable these helpers; leave `QUARTERDECK_LLM_MODEL` unset to use the default Haiku 4.5 model.
+Task titles use `codex exec --ephemeral` by default, reusing the installed Codex CLI's saved authentication without calling the configured helper endpoint. A failed or unavailable Codex invocation falls back directly to a deterministic local title, keeping the Codex and LiteLLM failure domains separate. Set `QUARTERDECK_TITLE_PROVIDER=llm` to use the OpenAI-compatible helper instead, or `QUARTERDECK_TITLE_PROVIDER=local` to avoid remote title generation entirely.
+
+The LLM variables are needed for generated branch names, commit messages, optional polished card summaries, and task titles when `QUARTERDECK_TITLE_PROVIDER=llm`. Agent sessions themselves use your installed agent CLI and do not require these variables. The helper endpoint must support OpenAI-style `/v1/chat/completions`; Anthropic models work when your gateway exposes them through that API shape. Set `QUARTERDECK_LLM_BASE_URL` and `QUARTERDECK_LLM_API_KEY` to enable these helpers; leave `QUARTERDECK_LLM_MODEL` unset to use the default Haiku 4.5 model.
 
 Gateway base URLs that end in `/bedrock` are normalized to the gateway root before Quarterdeck appends `/v1/chat/completions`, matching common Bedrock/LiteLLM proxy layouts.
 

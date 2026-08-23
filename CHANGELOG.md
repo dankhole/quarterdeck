@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: generate task titles without the helper VPN path
+
+- Task titles now use one explicit provider—an isolated, ephemeral Codex CLI turn by default, the existing OpenAI-compatible helper when selected, or local-only generation—and every remote failure falls back directly to the deterministic local title without crossing provider failure domains.
+- Codex title calls share Quarterdeck's platform command-resolution and process-tree termination mechanisms, settle at a bounded deadline even if a child ignores termination, and apply the same provider-neutral response cleanup as HTTP generation.
+
 ### Fix: recover interrupted chats safely at startup
 
 - Interrupted work-column tasks now wait for orphan-process cleanup and resolve the same per-task agent, worktree recreation, and stored conversation used by manual Restart exactly once, with startup launches serialized instead of spawned in a burst and deterministic preparation failures left for manual correction.

@@ -32,7 +32,7 @@ describe("InlineTitleEditor", () => {
 		}
 	});
 
-	function renderEditor(props: { onRegenerate?: (taskId: string) => void; isLlmGenerationDisabled?: boolean }): void {
+	function renderEditor(props: { onRegenerate?: (taskId: string) => void }): void {
 		act(() => {
 			root.render(
 				<TooltipProvider>
@@ -64,23 +64,16 @@ describe("InlineTitleEditor", () => {
 		expect(button).toBeNull();
 	});
 
-	it("renders the regenerate button as enabled when isLlmGenerationDisabled is false", () => {
-		renderEditor({ onRegenerate: vi.fn(), isLlmGenerationDisabled: false });
+	it("renders the regenerate button as enabled", () => {
+		renderEditor({ onRegenerate: vi.fn() });
 		const button = container.querySelector("button[aria-label='Auto-generate title']") as HTMLButtonElement;
 		expect(button).not.toBeNull();
 		expect(button.disabled).toBe(false);
 	});
 
-	it("keeps the regenerate button enabled when LLM is disabled because the server has a title fallback", () => {
-		renderEditor({ onRegenerate: vi.fn(), isLlmGenerationDisabled: true });
-		const button = container.querySelector("button[aria-label='Auto-generate title']") as HTMLButtonElement;
-		expect(button).not.toBeNull();
-		expect(button.disabled).toBe(false);
-	});
-
-	it("fires onRegenerate when LLM is disabled so the server fallback can run", () => {
+	it("fires onRegenerate so the server provider chain can run", () => {
 		const onRegenerate = vi.fn();
-		renderEditor({ onRegenerate, isLlmGenerationDisabled: true });
+		renderEditor({ onRegenerate });
 		const button = container.querySelector("button[aria-label='Auto-generate title']") as HTMLButtonElement;
 		act(() => {
 			button.click();

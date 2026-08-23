@@ -132,6 +132,21 @@ export function buildWindowsCmdArgsArray(binary: string, args: string[]): string
 	return ["/d", "/s", "/c", `"${shellCommand}"`];
 }
 
+export function resolveWindowsCompatibleCommand(
+	binary: string,
+	args: string[],
+	platform: NodeJS.Platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+): { binary: string; args: string[] } {
+	if (!shouldUseWindowsCmdLaunch(binary, platform, env)) {
+		return { binary, args };
+	}
+	return {
+		binary: resolveWindowsComSpec(env),
+		args: buildWindowsCmdArgsArray(binary, args),
+	};
+}
+
 export function shouldUseWindowsCmdLaunch(
 	binary: string,
 	platform: NodeJS.Platform = process.platform,

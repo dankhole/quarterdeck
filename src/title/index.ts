@@ -5,11 +5,11 @@ export type {
 } from "./commit-message-context";
 export { buildCommitMessagePromptContext, generateCommitMessage } from "./commit-message-generator";
 export { compactDisplaySummaryText, DISPLAY_SUMMARY_LLM_BUDGET, DISPLAY_SUMMARY_MAX_LENGTH } from "./display-summary";
+export { sanitizeGenerationResponse } from "./generation-response";
 export {
 	_testing,
 	callLlm,
 	isLlmConfigured,
-	sanitizeLlmResponse,
 } from "./llm-client";
 export { generateDisplaySummary } from "./summary-generator";
 export {

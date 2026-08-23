@@ -1,8 +1,9 @@
-// Lightweight generation for titles and branch names. Titles degrade to a
-// deterministic prompt-derived fallback when the helper LLM is unavailable or
-// slow; branch names remain LLM-only because a bad branch name is more costly
-// than a bad card label.
+// Lightweight generation for titles and branch names. Title generation uses
+// one selected remote provider plus a deterministic local fallback. Branch
+// names remain LLM-only because a bad branch name is more costly than a bad
+// card label.
 import { createTaggedLogger } from "../core";
+import { callCodex } from "./codex-client";
 import { callLlm, isLlmConfigured } from "./llm-client";
 import { createFallbackTaskTitle, normalizeGeneratedTitle } from "./title-fallback";
 
@@ -31,43 +32,81 @@ CRITICAL RULES:
 
 const MAX_TITLE_CONTEXT_LENGTH = 1200;
 const MAX_BRANCH_PROMPT_LENGTH = 1200;
+const CODEX_TITLE_GENERATION_TIMEOUT_MS = 20_000;
 const TITLE_GENERATION_TIMEOUT_MS = 6_000;
 
+type TitleProvider = "codex" | "llm" | "local";
+
+function resolveTitleProvider(): TitleProvider {
+	const configured = process.env.QUARTERDECK_TITLE_PROVIDER?.trim().toLowerCase();
+	if (!configured || configured === "codex") {
+		return "codex";
+	}
+	if (configured === "llm" || configured === "local") {
+		return configured;
+	}
+	log.warn("Ignoring unsupported QUARTERDECK_TITLE_PROVIDER value", {
+		configured,
+		fallbackProvider: "codex",
+		supportedProviders: ["codex", "llm", "local"],
+	});
+	return "codex";
+}
+
+function normalizeTitle(title: string | null): string | null {
+	return title ? normalizeGeneratedTitle(title) : null;
+}
+
 export async function generateTaskTitle(prompt: string): Promise<string | null> {
+	const titleProvider = resolveTitleProvider();
 	const llmConfigured = isLlmConfigured();
 	log.debug("Generating task title", {
 		promptLength: prompt.length,
 		promptSnippet: prompt.slice(0, 100),
+		titleProvider,
 		llmConfigured,
 	});
-	if (!llmConfigured) {
-		log.warn(
-			"Title generation using fallback: LLM not configured (set QUARTERDECK_LLM_BASE_URL and QUARTERDECK_LLM_API_KEY; QUARTERDECK_LLM_MODEL is optional)",
-		);
-		return createFallbackTaskTitle(prompt);
-	}
 	if (prompt.trim().length === 0) {
 		log.warn("Title generation skipped: prompt is empty after trim");
 		return null;
 	}
-	const title = await callLlm({
-		systemPrompt: TITLE_SYSTEM_PROMPT,
-		userPrompt: prompt.slice(0, MAX_TITLE_CONTEXT_LENGTH),
-		maxTokens: 20,
-		timeoutMs: TITLE_GENERATION_TIMEOUT_MS,
-	});
-	if (title) {
-		const normalizedTitle = normalizeGeneratedTitle(title);
-		if (normalizedTitle) {
-			log.info("Title generated", { title: normalizedTitle });
-			return normalizedTitle;
+
+	const titleContext = prompt.slice(0, MAX_TITLE_CONTEXT_LENGTH);
+	if (titleProvider === "codex") {
+		const codexTitle = normalizeTitle(
+			await callCodex({
+				systemPrompt: TITLE_SYSTEM_PROMPT,
+				userPrompt: titleContext,
+				timeoutMs: CODEX_TITLE_GENERATION_TIMEOUT_MS,
+			}),
+		);
+		if (codexTitle) {
+			log.info("Title generated", { title: codexTitle, provider: "codex" });
+			return codexTitle;
+		}
+	} else if (titleProvider === "llm" && llmConfigured) {
+		const llmTitle = normalizeTitle(
+			await callLlm({
+				systemPrompt: TITLE_SYSTEM_PROMPT,
+				userPrompt: titleContext,
+				maxTokens: 20,
+				timeoutMs: TITLE_GENERATION_TIMEOUT_MS,
+			}),
+		);
+		if (llmTitle) {
+			log.info("Title generated", { title: llmTitle, provider: "llm" });
+			return llmTitle;
 		}
 	}
+
 	const fallbackTitle = createFallbackTaskTitle(prompt);
-	log.warn(
-		"Title generation returned null — using prompt-derived fallback; see preceding 'llm-client' log for cause (rate limit, HTTP error, timeout, empty content, or sanitizer rejection)",
-		{ promptLength: prompt.length, promptSnippet: prompt.slice(0, 100), fallbackTitle },
-	);
+	log.warn("Remote title generation unavailable — using prompt-derived fallback", {
+		promptLength: prompt.length,
+		promptSnippet: prompt.slice(0, 100),
+		titleProvider,
+		llmConfigured,
+		fallbackTitle,
+	});
 	return fallbackTitle;
 }
 

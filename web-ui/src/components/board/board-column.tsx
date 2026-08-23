@@ -60,8 +60,7 @@ export function BoardColumn({
 		onTerminalWarmup,
 		onTerminalCancelWarmup,
 	} = useStableCardActions();
-	const { moveToTrashLoadingById, isLlmGenerationDisabled, showSummaryOnCards, uncommittedChangesOnCardsEnabled } =
-		useReactiveCardState();
+	const { moveToTrashLoadingById, showSummaryOnCards, uncommittedChangesOnCardsEnabled } = useReactiveCardState();
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
@@ -171,7 +170,6 @@ export function BoardColumn({
 											onRestoreFromTrash={onRestoreFromTrashTask}
 											onHardDelete={onHardDeleteTrashTask}
 											onRegenerateTitle={onRegenerateTitleTask}
-											isLlmGenerationDisabled={isLlmGenerationDisabled}
 											onUpdateTitle={onUpdateTaskTitle}
 											onTogglePin={onTogglePinTask}
 											isMoveToTrashLoading={moveToTrashLoadingById[card.id] ?? false}

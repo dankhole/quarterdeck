@@ -1,6 +1,5 @@
 export { openInBrowser } from "./browser";
 export { pickDirectoryPathFromSystemDialog } from "./directory-picker";
-export { terminateProcessForTimeout } from "./process-termination";
 export {
 	type CreateProjectMetadataMonitorDependencies,
 	createProjectMetadataMonitor,

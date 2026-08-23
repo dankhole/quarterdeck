@@ -49,8 +49,7 @@ function ColumnSection({
 		onTerminalWarmup,
 		onTerminalCancelWarmup,
 	} = useStableCardActions();
-	const { moveToTrashLoadingById, isLlmGenerationDisabled, showSummaryOnCards, uncommittedChangesOnCardsEnabled } =
-		useReactiveCardState();
+	const { moveToTrashLoadingById, showSummaryOnCards, uncommittedChangesOnCardsEnabled } = useReactiveCardState();
 	const [open, setOpen] = useState(defaultOpen);
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
@@ -183,7 +182,6 @@ function ColumnSection({
 								onHardDelete={onHardDeleteTrashTask}
 								isMoveToTrashLoading={moveToTrashLoadingById[card.id] ?? false}
 								onRegenerateTitle={onRegenerateTitleTask}
-								isLlmGenerationDisabled={isLlmGenerationDisabled}
 								onUpdateTitle={onUpdateTaskTitle}
 								onTogglePin={onTogglePinTask}
 								showSummaryOnCards={showSummaryOnCards}

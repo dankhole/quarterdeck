@@ -24,7 +24,7 @@ export function useTitleActions({ currentProjectId }: UseTitleActionsInput): Use
 				.then((result) => {
 					if (!result.ok) {
 						console.warn(
-							"[title-actions] regenerate returned ok=false — server could not generate a title (LLM unconfigured, rate-limited, timed out, empty, or sanitizer-rejected; check runtime logs tagged 'title-gen' / 'llm-client')",
+							"[title-actions] regenerate returned ok=false — server could not generate a title; check runtime logs tagged 'title-gen', 'codex-helper', or 'llm-client'",
 							{ taskId, projectId: currentProjectId, result },
 						);
 						showAppToast({ message: "Could not regenerate title", intent: "danger" });
