@@ -28,7 +28,6 @@ export type StartupRecoveryFailureReason =
 	| "launch_failed"
 	| "exited"
 	| "identity_mismatch"
-	| "timeout"
 	| "stop_timeout";
 
 export type StartupRecoveryTerminalManager = Pick<
@@ -52,6 +51,13 @@ export interface StartupSessionRecoveryCandidate {
 
 export type StartupSessionRecoveryResult =
 	| { status: "ready" | "user_engaged"; attempts: number; taskId: string }
+	| {
+			status: "unconfirmed";
+			attempts: number;
+			taskId: string;
+			reason: "timeout";
+			sessionInstanceId: string;
+	  }
 	| { status: "cancelled" | "duplicate" | "closed"; attempts: number; taskId: string }
 	| {
 			status: "exhausted";
@@ -87,16 +93,12 @@ function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-function readinessFailureReason(
-	outcome: TaskSessionLaunchReadinessOutcome,
-): "exited" | "identity_mismatch" | "timeout" | null {
+function readinessFailureReason(outcome: TaskSessionLaunchReadinessOutcome): "exited" | "identity_mismatch" | null {
 	switch (outcome.status) {
 		case "exited":
 			return "exited";
 		case "identity_mismatch":
 			return "identity_mismatch";
-		case "timeout":
-			return "timeout";
 		default:
 			return null;
 	}
@@ -108,8 +110,6 @@ function recoveryWarning(reason: StartupRecoveryFailureReason, detail?: string):
 			return `Startup restore could not prepare this task${detail ? `: ${detail}` : "."} Use Restart to try again.`;
 		case "identity_mismatch":
 			return "Startup restore did not reopen the expected conversation after its bounded retry, so Quarterdeck stopped. Use Restart to try the task again.";
-		case "timeout":
-			return "Startup restore could not confirm that the chat initialized after two attempts. The current process was left running to avoid a restart loop; use Restart if the chat is not usable.";
 		case "stop_timeout":
 			return "Startup restore could not stop the previous launch safely, so Quarterdeck did not start another copy. Use Restart after the process finishes exiting.";
 		case "exited":
@@ -136,10 +136,11 @@ function shouldClearFailedResumeSessionId(
 }
 
 /**
- * Serializes automatic startup recovery across every project, waits for a
- * launch-scoped hook before considering a chat usable, and permits exactly one
- * retry of the same conversation target. Explicit input/start/stop actions
- * clear the manager token and cancel queued or in-flight recovery.
+ * Coordinates automatic startup recovery across every project. Actual process
+ * launches are serialized globally while task readiness waits proceed
+ * independently. A launch-scoped hook confirms conversation identity; a live
+ * hookless launch remains available as unconfirmed. Explicit input/start/stop
+ * actions clear the manager token and cancel queued or in-flight recovery.
  */
 export class StartupSessionRecoveryCoordinator {
 	private readonly waitForPrerequisite: () => Promise<void>;
@@ -154,7 +155,7 @@ export class StartupSessionRecoveryCoordinator {
 	private readonly now: () => number;
 	private readonly delay: (milliseconds: number) => Promise<void>;
 	private prerequisite: Promise<void> | null = null;
-	private queueTail: Promise<void> = Promise.resolve();
+	private launchQueueTail: Promise<void> = Promise.resolve();
 	private readonly attemptedTasksByManager = new WeakMap<TerminalSessionManager, Set<string>>();
 	private lastLaunchAt = 0;
 	private closed = false;
@@ -191,12 +192,7 @@ export class StartupSessionRecoveryCoordinator {
 		if (!candidate.manager.beginStartupRecovery(candidate.request.taskId, token)) {
 			return Promise.resolve({ status: "duplicate", attempts: 0, taskId: candidate.request.taskId });
 		}
-		const queued = this.queueTail.then(async () => await this.recover(candidate, token));
-		this.queueTail = queued.then(
-			() => {},
-			() => {},
-		);
-		return queued;
+		return this.recover(candidate, token);
 	}
 
 	private async awaitPrerequisite(): Promise<void> {
@@ -208,12 +204,32 @@ export class StartupSessionRecoveryCoordinator {
 		await this.prerequisite;
 	}
 
-	private async waitForLaunchSlot(): Promise<void> {
-		const remaining = this.lastLaunchAt + this.launchSpacingMs - this.now();
-		if (remaining > 0) {
-			await this.delay(remaining);
+	private async launchInGlobalSlot(
+		candidate: StartupSessionRecoveryCandidate,
+		token: string,
+		prepared: PreparedTaskSessionStart,
+		onLaunchStart: () => void,
+	): Promise<TaskSessionStartServiceResult | null> {
+		let releaseSlot: (() => void) | undefined;
+		const previousSlot = this.launchQueueTail;
+		this.launchQueueTail = new Promise<void>((resolve) => {
+			releaseSlot = resolve;
+		});
+		await previousSlot;
+		try {
+			const remaining = this.lastLaunchAt + this.launchSpacingMs - this.now();
+			if (remaining > 0) {
+				await this.delay(remaining);
+			}
+			if (this.closed || !candidate.manager.isStartupRecoveryCurrent(candidate.request.taskId, token)) {
+				return null;
+			}
+			this.lastLaunchAt = this.now();
+			onLaunchStart();
+			return await this.launch(prepared);
+		} finally {
+			releaseSlot?.();
 		}
-		this.lastLaunchAt = this.now();
 	}
 
 	private async stopFailedLaunch(
@@ -311,16 +327,16 @@ export class StartupSessionRecoveryCoordinator {
 				if (attempt > 1 && this.retryDelayMs > 0) {
 					await this.delay(this.retryDelayMs);
 				}
-				await this.waitForLaunchSlot();
-				if (this.closed || !candidate.manager.isStartupRecoveryCurrent(taskId, token)) {
-					return { status: "cancelled", attempts, taskId };
-				}
-
-				attempts = attempt;
 				let started: TaskSessionStartServiceResult;
 				const launchStartedAt = this.now();
 				try {
-					started = await this.launch(prepared);
+					const launchResult = await this.launchInGlobalSlot(candidate, token, prepared, () => {
+						attempts = attempt;
+					});
+					if (!launchResult) {
+						return { status: "cancelled", attempts, taskId };
+					}
+					started = launchResult;
 				} catch (error) {
 					finalReason = "launch_failed";
 					failureDetail = errorMessage(error);
@@ -401,6 +417,38 @@ export class StartupSessionRecoveryCoordinator {
 					readinessElapsedMs,
 					readinessTimeoutMs,
 				});
+				if (
+					outcome.status === "timeout" &&
+					candidate.manager.isTaskSessionLaunchActive(taskId, started.sessionInstanceId, token)
+				) {
+					// A resumed interactive TUI can be fully restored and idle without
+					// emitting a launch hook. Absence of that optional identity confirmation is not
+					// positive evidence that the live PTY failed. Keep the process that the
+					// user can inspect instead of destroying it and replaying the same launch.
+					candidate.manager.completeStartupRecovery(taskId, token);
+					log.warn("startup recovery left live task chat running without hook confirmation", {
+						projectId: candidate.scope.projectId,
+						taskId,
+						attempt,
+						sessionInstanceId: started.sessionInstanceId,
+						readinessElapsedMs,
+						readinessTimeoutMs,
+					});
+					return {
+						status: "unconfirmed",
+						attempts,
+						taskId,
+						reason: "timeout",
+						sessionInstanceId: started.sessionInstanceId,
+					};
+				}
+				if (outcome.status === "timeout") {
+					// The process disappeared without settling the launch monitor. Treat
+					// that race as an exit so timeout warnings never claim a process was
+					// preserved when no matching launch remains active.
+					finalReason = "exited";
+					lastExitCode = candidate.manager.store.getSummary(taskId)?.exitCode;
+				}
 				if (attempt === STARTUP_RECOVERY_MAX_ATTEMPTS) {
 					if (outcome.status === "identity_mismatch") {
 						const stopResult = await this.stopFailedLaunch(candidate, token, started.sessionInstanceId);

@@ -238,10 +238,18 @@ afterEach(() => {
 });
 
 describe("StartupSessionRecoveryCoordinator", () => {
-	it("waits for startup cleanup and serializes task launches", async () => {
+	it("waits for startup cleanup and serializes launches without blocking later tasks on readiness", async () => {
 		const prerequisite = createDeferred();
 		const first = createManagerHarness(["ready"]);
 		const second = createManagerHarness(["ready"]);
+		const firstLaunch = createDeferred();
+		const firstReadiness = createDeferred();
+		first.waitForTaskSessionLaunch.mockImplementation(
+			async (_taskId: string, sessionInstanceId: string): Promise<TaskSessionLaunchReadinessOutcome> => {
+				await firstReadiness.promise;
+				return readinessOutcome("ready", sessionInstanceId);
+			},
+		);
 		second.store.hydrateFromRecord({
 			"task-2": createTestTaskSessionSummary({
 				taskId: "task-2",
@@ -250,10 +258,19 @@ describe("StartupSessionRecoveryCoordinator", () => {
 			}),
 		});
 		const starts: string[] = [];
+		let activeLaunches = 0;
+		let maximumActiveLaunches = 0;
 		const coordinator = createCoordinator(
 			async (candidate) => {
+				activeLaunches += 1;
+				maximumActiveLaunches = Math.max(maximumActiveLaunches, activeLaunches);
 				starts.push(candidate.request.taskId);
-				return createStartedResult(candidate, `launch-${starts.length}`);
+				if (candidate.request.taskId === "task-1") {
+					await firstLaunch.promise;
+				}
+				const result = createStartedResult(candidate, `launch-${starts.length}`);
+				activeLaunches -= 1;
+				return result;
 			},
 			{ waitForPrerequisite: async () => await prerequisite.promise },
 		);
@@ -264,9 +281,13 @@ describe("StartupSessionRecoveryCoordinator", () => {
 		expect(starts).toEqual([]);
 
 		prerequisite.resolve();
+		await vi.waitFor(() => expect(starts).toEqual(["task-1"]));
+		firstLaunch.resolve();
+		await vi.waitFor(() => expect(starts).toEqual(["task-1", "task-2"]));
+		expect(maximumActiveLaunches).toBe(1);
+		firstReadiness.resolve();
 		await expect(firstRecovery).resolves.toMatchObject({ status: "ready", attempts: 1 });
 		await expect(secondRecovery).resolves.toMatchObject({ status: "ready", attempts: 1 });
-		expect(starts).toEqual(["task-1", "task-2"]);
 	});
 
 	it("attempts each task at most once per terminal-manager lifetime", async () => {
@@ -284,8 +305,47 @@ describe("StartupSessionRecoveryCoordinator", () => {
 		expect(launchTask).toHaveBeenCalledTimes(1);
 	});
 
-	it("retries the same resume target exactly once after a readiness timeout", async () => {
-		const harness = createManagerHarness(["timeout", "ready"]);
+	it("does not count a queued recovery cancelled before its launch slot opens", async () => {
+		const first = createManagerHarness(["ready"]);
+		const second = createManagerHarness(["ready"]);
+		const firstLaunch = createDeferred();
+		const preparedTaskIds: string[] = [];
+		const starts: string[] = [];
+		const prepare = vi.fn(
+			async (
+				candidate: StartupSessionRecoveryCandidate,
+				options: { startupRecoveryToken: string },
+			): Promise<PreparedTaskSessionStart> => {
+				preparedTaskIds.push(candidate.request.taskId);
+				return createPrepared(candidate, options.startupRecoveryToken);
+			},
+		);
+		const coordinator = createCoordinator(
+			async (prepared) => {
+				starts.push(prepared.request.taskId);
+				if (prepared.request.taskId === "task-1") {
+					await firstLaunch.promise;
+				}
+				return createStartedResult(prepared, `launch-${starts.length}`);
+			},
+			{ prepare },
+		);
+
+		const firstRecovery = coordinator.enqueue(createCandidate(first));
+		await vi.waitFor(() => expect(starts).toEqual(["task-1"]));
+		const secondRecovery = coordinator.enqueue(createCandidate(second, "task-2"));
+		await vi.waitFor(() => expect(preparedTaskIds).toEqual(["task-1", "task-2"]));
+		await Promise.resolve();
+		second.cancel();
+		firstLaunch.resolve();
+
+		await expect(firstRecovery).resolves.toMatchObject({ status: "ready", attempts: 1 });
+		await expect(secondRecovery).resolves.toEqual({ status: "cancelled", attempts: 0, taskId: "task-2" });
+		expect(starts).toEqual(["task-1"]);
+	});
+
+	it("keeps a live hookless resume instead of destroying and replaying it", async () => {
+		const harness = createManagerHarness(["timeout"]);
 		let launch = 0;
 		const prepare = vi.fn(
 			async (
@@ -303,20 +363,16 @@ describe("StartupSessionRecoveryCoordinator", () => {
 		const coordinator = createCoordinator(launchTask, { prepare });
 
 		await expect(coordinator.enqueue(createCandidate(harness))).resolves.toEqual({
-			status: "ready",
-			attempts: 2,
+			status: "unconfirmed",
+			attempts: 1,
 			taskId: "task-1",
+			reason: "timeout",
+			sessionInstanceId: "launch-1",
 		});
 		expect(prepare).toHaveBeenCalledTimes(1);
-		expect(launchTask).toHaveBeenCalledTimes(2);
-		expect(launchTask.mock.calls[0]?.[0]).toBe(launchTask.mock.calls[1]?.[0]);
-		expect(harness.stopTaskSessionForStartupRecovery).toHaveBeenCalledTimes(1);
-		expect(harness.stopTaskSessionForStartupRecovery).toHaveBeenCalledWith(
-			"task-1",
-			"launch-1",
-			expect.any(String),
-			1,
-		);
+		expect(launchTask).toHaveBeenCalledTimes(1);
+		expect(harness.stopTaskSessionForStartupRecovery).not.toHaveBeenCalled();
+		expect(harness.store.getSummary("task-1")).toMatchObject({ state: "running", pid: 1 });
 	});
 
 	it("prepares once and does not retry deterministic setup failures", async () => {
@@ -393,34 +449,37 @@ describe("StartupSessionRecoveryCoordinator", () => {
 		expect(harness.stopTaskSessionForStartupRecovery).not.toHaveBeenCalled();
 	});
 
-	it("leaves the second unconfirmed process running instead of looping", async () => {
-		const harness = createManagerHarness(["timeout", "timeout"]);
+	it("retries a launch that disappeared at the deadline but preserves a live unconfirmed retry", async () => {
+		const harness = createManagerHarness(["timeout", "timeout"], ["inactive"], [false, true]);
 		let launch = 0;
-		const coordinator = createCoordinator(async (candidate) => {
+		const launchTask = vi.fn(async (candidate: PreparedTaskSessionStart) => {
 			launch += 1;
 			return createStartedResult(candidate, `launch-${launch}`);
 		});
+		const coordinator = createCoordinator(launchTask);
 
 		await expect(coordinator.enqueue(createCandidate(harness))).resolves.toEqual({
-			status: "exhausted",
+			status: "unconfirmed",
 			attempts: 2,
 			taskId: "task-1",
 			reason: "timeout",
+			sessionInstanceId: "launch-2",
 		});
 		expect(harness.stopTaskSessionForStartupRecovery).toHaveBeenCalledTimes(1);
 		const summary = harness.store.getSummary("task-1");
 		expect(summary?.state).toBe("running");
 		expect(summary?.pid).toBe(2);
-		expect(summary?.warningMessage).toContain("left running to avoid a restart loop");
+		expect(summary?.warningMessage).toBeNull();
 	});
 
 	it("clears a stored target only after the bounded targeted resume exits non-zero", async () => {
 		const harness = createManagerHarness(["exited", "exited"], ["stopped"], [false]);
 		let launch = 0;
-		const coordinator = createCoordinator(async (candidate) => {
+		const launchTask = vi.fn(async (candidate: PreparedTaskSessionStart) => {
 			launch += 1;
 			return createStartedResult(candidate, `launch-${launch}`);
 		});
+		const coordinator = createCoordinator(launchTask);
 
 		await expect(coordinator.enqueue(createCandidate(harness))).resolves.toMatchObject({
 			status: "exhausted",
@@ -434,10 +493,11 @@ describe("StartupSessionRecoveryCoordinator", () => {
 			resumeSessionId: null,
 			warningMessage: expect.stringContaining("best-effort resume path"),
 		});
+		expect(launchTask.mock.calls[0]?.[0]).toBe(launchTask.mock.calls[1]?.[0]);
 	});
 
 	it("does not launch another process when the failed PTY cannot stop safely", async () => {
-		const harness = createManagerHarness(["timeout"], ["timeout"]);
+		const harness = createManagerHarness(["timeout"], ["timeout"], [false]);
 		const launchTask = vi.fn(async (prepared: PreparedTaskSessionStart) => createStartedResult(prepared, "launch-1"));
 		const coordinator = createCoordinator(launchTask);
 

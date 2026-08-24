@@ -698,15 +698,20 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			resumable.map(async (candidate) => {
 				const result = await startupRecoveryCoordinator.enqueue(candidate);
 				const failed = result.status === "exhausted";
+				const unconfirmed = result.status === "unconfirmed";
 				deps.diagnostics?.recordEvent(
 					"session.startup_recovery_completed",
 					{
 						status: result.status,
 						attempts: result.attempts,
-						reason: failed ? result.reason : null,
+						reason: failed || unconfirmed ? result.reason : null,
 					},
-					{ projectId, taskId: candidate.request.taskId },
-					{ level: failed ? "error" : "info", essential: true },
+					{
+						projectId,
+						taskId: candidate.request.taskId,
+						...(unconfirmed ? { sessionInstanceId: result.sessionInstanceId } : {}),
+					},
+					{ level: failed ? "error" : unconfirmed ? "warn" : "info", essential: true },
 				);
 			}),
 		);
