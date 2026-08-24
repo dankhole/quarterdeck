@@ -103,9 +103,14 @@ export function createTaskOnBoard({
 	branchName: string;
 	createFeatureBranch: boolean;
 	agentId: RuntimeAgentId;
-}): { board: BoardData; createdTaskId: string | null; baseRef: string } {
+}): { board: BoardData; createdTaskId: string | null; createdTask: BoardCard | null; baseRef: string } {
 	if (!isTaskSaveValid(prompt, branchRef, defaultBranchRef)) {
-		return { board, createdTaskId: null, baseRef: resolveEffectiveBaseRef(branchRef, defaultBranchRef) };
+		return {
+			board,
+			createdTaskId: null,
+			createdTask: null,
+			baseRef: resolveEffectiveBaseRef(branchRef, defaultBranchRef),
+		};
 	}
 
 	const trimmedPrompt = prompt.trim();
@@ -122,6 +127,7 @@ export function createTaskOnBoard({
 	return {
 		board: created.board,
 		createdTaskId: created.task.id,
+		createdTask: created.task,
 		baseRef,
 	};
 }
@@ -142,15 +148,16 @@ export function createTasksOnBoard({
 	defaultBranchRef: string;
 	useWorktree: boolean;
 	agentId: RuntimeAgentId;
-}): { board: BoardData; createdTaskIds: string[]; baseRef: string } {
+}): { board: BoardData; createdTaskIds: string[]; createdTasks: BoardCard[]; baseRef: string } {
 	const validPrompts = prompts.map((prompt) => prompt.trim()).filter(Boolean);
 	const baseRef = resolveEffectiveBaseRef(branchRef, defaultBranchRef);
 	if (validPrompts.length === 0 || !baseRef) {
-		return { board, createdTaskIds: [], baseRef };
+		return { board, createdTaskIds: [], createdTasks: [], baseRef };
 	}
 
 	let updatedBoard = board;
 	const createdTaskIds: string[] = [];
+	const createdTasks: BoardCard[] = [];
 	for (const prompt of validPrompts) {
 		const created = addTaskToColumnWithResult(updatedBoard, "backlog", {
 			prompt,
@@ -161,11 +168,13 @@ export function createTasksOnBoard({
 		});
 		updatedBoard = created.board;
 		createdTaskIds.push(created.task.id);
+		createdTasks.push(created.task);
 	}
 
 	return {
 		board: updatedBoard,
 		createdTaskIds,
+		createdTasks,
 		baseRef,
 	};
 }

@@ -9,6 +9,7 @@ import { detectInterruptSignal, scheduleInterruptRecovery } from "./session-inte
 import type { ProcessEntry } from "./session-manager-types";
 import { isPermissionActivity } from "./session-reconciliation";
 import type { SessionTransitionEvent, SessionTransitionResult } from "./session-summary-store";
+import type { TerminalSessionInputOptions } from "./terminal-session-service";
 
 const ESC = 0x1b;
 const CSI_BRACKET = 0x5b; // [
@@ -72,6 +73,7 @@ export function processSessionInput(
 	taskId: string,
 	data: Buffer,
 	deps: InputPipelineDeps,
+	options: TerminalSessionInputOptions = {},
 ): RuntimeTaskSessionSummary | null {
 	if (!entry.active) {
 		return null;
@@ -79,7 +81,8 @@ export function processSessionInput(
 	const summary = deps.getSummary(taskId);
 
 	const protocolResponse = isTerminalProtocolResponse(data);
-	const explicitSubmission = !protocolResponse && isExplicitUserSubmission(data);
+	const explicitSubmission =
+		!protocolResponse && (options.explicitUserSubmission === true || isExplicitUserSubmission(data));
 	const { isCtrlC, isBareEscape } = detectInterruptSignal(data);
 	const waitsForActionableInput = summary?.state === "awaiting_review" && deriveTaskIndicatorState(summary).needsInput;
 	const resolvesInputWait =

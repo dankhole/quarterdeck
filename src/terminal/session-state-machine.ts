@@ -1,8 +1,16 @@
-import { deriveTaskIndicatorState, type RuntimeTaskSessionReviewReason, type RuntimeTaskSessionSummary } from "../core";
+import {
+	deriveTaskIndicatorState,
+	type RuntimeHookMetadata,
+	type RuntimeTaskSessionReviewReason,
+	type RuntimeTaskSessionSummary,
+} from "../core";
+import { removeLegacySemanticStateWarning, type StartupRecoveryReviewState } from "./session-startup-recovery-policy";
+
+export type HookSessionReviewReason = Extract<RuntimeTaskSessionReviewReason, "hook" | "attention" | "error">;
 
 export type SessionTransitionEvent =
-	| { type: "hook.to_review" }
-	| { type: "hook.to_in_progress" }
+	| { type: "hook.to_review"; reason?: HookSessionReviewReason; metadata?: RuntimeHookMetadata }
+	| { type: "hook.to_in_progress"; metadata?: RuntimeHookMetadata }
 	| { type: "agent.prompt-ready" }
 	| { type: "agent.permission-prompt" }
 	| { type: "user.responded" }
@@ -17,7 +25,13 @@ export type SessionTransitionEvent =
 			processStillRunning: boolean;
 			clearResumeSessionId: boolean;
 			warningMessage: string;
+			fallbackReviewState: StartupRecoveryReviewState | null;
 	  };
+
+export type HookSessionTransitionEvent = Extract<
+	SessionTransitionEvent,
+	{ type: "hook.to_review" | "hook.to_in_progress" }
+>;
 
 export interface SessionTransitionResult {
 	changed: boolean;
@@ -43,18 +57,30 @@ function asReviewState(reason: RuntimeTaskSessionReviewReason): RuntimeTaskSessi
 	return "awaiting_review";
 }
 
+function clearSemanticUncertainty(summary: RuntimeTaskSessionSummary): Partial<RuntimeTaskSessionSummary> {
+	if (summary.startupRecoverySemanticStateUncertain !== true) return {};
+	return {
+		startupRecoverySemanticStateUncertain: false,
+		warningMessage: removeLegacySemanticStateWarning(summary.warningMessage),
+	};
+}
+
 export function reduceSessionTransition(
 	summary: RuntimeTaskSessionSummary,
 	event: SessionTransitionEvent,
 ): SessionTransitionResult {
 	switch (event.type) {
 		case "agent.permission-prompt": {
-			if (summary.state !== "running" || summary.agentId !== "codex") {
+			if (
+				(summary.state !== "running" && summary.startupRecoverySemanticStateUncertain !== true) ||
+				summary.agentId !== "codex"
+			) {
 				return { changed: false, patch: {}, clearAttentionBuffer: false };
 			}
 			return {
 				changed: true,
 				patch: {
+					...clearSemanticUncertainty(summary),
 					state: "awaiting_review",
 					reviewReason: "hook",
 					latestHookActivity: {
@@ -72,28 +98,35 @@ export function reduceSessionTransition(
 			};
 		}
 		case "hook.to_review": {
-			if (summary.state !== "running") {
+			if (summary.state !== "running" && summary.startupRecoverySemanticStateUncertain !== true) {
 				return { changed: false, patch: {}, clearAttentionBuffer: false };
 			}
+			const reason = event.reason ?? "hook";
 			return {
 				changed: true,
 				patch: {
-					state: "awaiting_review",
-					reviewReason: "hook",
+					...clearSemanticUncertainty(summary),
+					state: asReviewState(reason),
+					reviewReason: reason,
 				},
 				clearAttentionBuffer: true,
 			};
 		}
 		case "hook.to_in_progress":
 		case "agent.prompt-ready": {
-			if (summary.state !== "awaiting_review" || !canReturnToRunning(summary.reviewReason)) {
+			if (
+				(summary.state !== "awaiting_review" || !canReturnToRunning(summary.reviewReason)) &&
+				summary.startupRecoverySemanticStateUncertain !== true
+			) {
 				return { changed: false, patch: {}, clearAttentionBuffer: false };
 			}
 			return {
 				changed: true,
 				patch: {
+					...clearSemanticUncertainty(summary),
 					state: "running",
 					reviewReason: null,
+					latestHookActivity: null,
 					stalledSince: null,
 				},
 				clearAttentionBuffer: true,
@@ -115,12 +148,16 @@ export function reduceSessionTransition(
 			};
 		}
 		case "user.submitted": {
-			if (summary.state !== "awaiting_review" || !canReturnToRunning(summary.reviewReason)) {
+			if (
+				(summary.state !== "awaiting_review" || !canReturnToRunning(summary.reviewReason)) &&
+				summary.startupRecoverySemanticStateUncertain !== true
+			) {
 				return { changed: false, patch: {}, clearAttentionBuffer: false };
 			}
 			return {
 				changed: true,
 				patch: {
+					...clearSemanticUncertainty(summary),
 					state: "running",
 					reviewReason: null,
 					latestHookActivity: null,
@@ -231,6 +268,25 @@ export function reduceSessionTransition(
 			};
 		}
 		case "startup_recovery.exhausted": {
+			if (event.fallbackReviewState) {
+				return {
+					changed: true,
+					patch: {
+						state: "awaiting_review",
+						reviewReason: event.fallbackReviewState.reviewReason,
+						...(event.processStillRunning ? {} : { pid: null }),
+						lastHookAt: event.fallbackReviewState.lastHookAt,
+						latestHookActivity: event.fallbackReviewState.latestHookActivity
+							? { ...event.fallbackReviewState.latestHookActivity }
+							: null,
+						stalledSince: null,
+						startupRecoveryRequired: false,
+						...(event.clearResumeSessionId ? { resumeSessionId: null } : {}),
+						warningMessage: event.warningMessage,
+					},
+					clearAttentionBuffer: true,
+				};
+			}
 			return {
 				changed: true,
 				patch: {
@@ -239,6 +295,7 @@ export function reduceSessionTransition(
 					...(event.processStillRunning ? {} : { pid: null }),
 					latestHookActivity: null,
 					stalledSince: null,
+					startupRecoveryRequired: false,
 					...(event.clearResumeSessionId ? { resumeSessionId: null } : {}),
 					warningMessage: event.warningMessage,
 				},

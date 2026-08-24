@@ -18,12 +18,14 @@ import type {
 import {
 	createTaggedLogger,
 	Disposable,
+	deriveProjectSummary,
 	getLogLevel,
 	pruneOrphanSessionsForNotification,
 	pruneOrphanSessionsForNotificationDelta,
 	toDisposable,
 } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
+import type { ProjectBoardCommandService } from "../state";
 import { loadProjectBoardById } from "../state";
 import type { TerminalSessionManager } from "../terminal";
 import { applyRuntimeMutationEffects, createTaskBaseRefUpdatedEffects } from "../trpc/runtime-mutation-effects";
@@ -72,12 +74,18 @@ export interface CreateRuntimeStateHubDependencies {
 		| "resumeInterruptedSessions"
 		| "getActiveRuntimeConfig"
 		| "listManagedProjects"
+		| "getProjectPathById"
+	>;
+	boardCommands: Pick<
+		ProjectBoardCommandService,
+		"reconcileRuntimeSessions" | "reconcileRuntimeMetadata" | "reconcileRuntimeTaskBaseRef"
 	>;
 	diagnostics: RuntimeDiagnostics;
 }
 
 export interface RuntimeStateHub extends IRuntimeBroadcaster {
 	trackTerminalManager: (projectId: string, manager: TerminalSessionManager) => void;
+	broadcastRuntimeProjectStateSnapshot: (projectId: string, state: RuntimeProjectStateResponse) => void;
 	handleUpgrade: (
 		request: IncomingMessage,
 		socket: Parameters<WebSocketServer["handleUpgrade"]>[1],
@@ -99,6 +107,9 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	private readonly clients: RuntimeStateClientRegistry;
 	private readonly batcher: RuntimeStateMessageBatcher;
 	private readonly metadataMonitor: ReturnType<typeof createProjectMetadataMonitor>;
+	private readonly sessionPersistenceUnsubscribes = new Map<string, () => void>();
+	private readonly sessionPersistenceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	private readonly notificationRevisionsByProject = new Map<string, number>();
 	private readonly diagnosticClientBySocket = new WeakMap<
 		WebSocket,
 		{ clientId: string; capability: string; connectionId: string }
@@ -123,7 +134,8 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				this.clients.broadcastToProject(projectId, buildTaskSessionsUpdatedMessage(projectId, summaries));
 			},
 			onTaskNotificationBatch: (projectId, summaries) => {
-				void this.broadcastTaskNotifications(projectId, summaries);
+				const notificationRevision = this.nextNotificationRevision(projectId);
+				void this.broadcastTaskNotifications(projectId, notificationRevision, summaries);
 			},
 			onProjectsRefreshRequested: (preferredCurrentProjectId) => {
 				void this.broadcastRuntimeProjectsUpdated(preferredCurrentProjectId);
@@ -145,16 +157,42 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		this.metadataMonitor = createProjectMetadataMonitor({
 			onMetadataUpdated: (projectId, projectMetadata) => {
 				this.clients.broadcastToProject(projectId, buildProjectMetadataUpdatedMessage(projectId, projectMetadata));
+				const projectPath = this.deps.projectRegistry.getProjectPathById(projectId);
+				if (projectPath) {
+					void this.deps.boardCommands
+						.reconcileRuntimeMetadata({ projectId, projectPath }, projectMetadata)
+						.catch((error) => {
+							hubLog.warn("runtime task metadata persistence failed", {
+								projectId,
+								error: error instanceof Error ? error.message : String(error),
+							});
+						});
+				}
 			},
 			onTaskBaseRefChanged: (projectId, taskId, newBaseRef) => {
-				void applyRuntimeMutationEffects(
-					this,
-					createTaskBaseRefUpdatedEffects({
-						projectId,
-						taskId,
-						baseRef: newBaseRef,
-					}),
-				);
+				const projectPath = this.deps.projectRegistry.getProjectPathById(projectId);
+				if (!projectPath) {
+					return;
+				}
+				void this.deps.boardCommands
+					.reconcileRuntimeTaskBaseRef({ projectId, projectPath }, taskId, newBaseRef)
+					.then(async () => {
+						await applyRuntimeMutationEffects(
+							this,
+							createTaskBaseRefUpdatedEffects({
+								projectId,
+								taskId,
+								baseRef: newBaseRef,
+							}),
+						);
+					})
+					.catch((error) => {
+						hubLog.warn("runtime task base ref persistence failed", {
+							projectId,
+							taskId,
+							error: error instanceof Error ? error.message : String(error),
+						});
+					});
 			},
 			onRemoteFetchCompleted: (projectId, result) => {
 				if (!result.succeeded) {
@@ -223,6 +261,14 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 	trackTerminalManager = (projectId: string, manager: TerminalSessionManager): void => {
 		this.batcher.trackTerminalManager(projectId, manager);
+		if (this.sessionPersistenceUnsubscribes.has(projectId)) {
+			return;
+		}
+		const persist = () => this.scheduleRuntimeSessionPersistence(projectId);
+		this.sessionPersistenceUnsubscribes.set(projectId, manager.store.onChange(persist));
+		if (manager.store.listSummaries().length > 0) {
+			this.scheduleRuntimeSessionPersistence(projectId, 0);
+		}
 	};
 
 	handleUpgrade = (
@@ -238,7 +284,9 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 	disposeProject = (projectId: string, options?: DisposeRuntimeStateProjectOptions): void => {
 		this.batcher.disposeProject(projectId);
+		this.disposeRuntimeSessionPersistence(projectId);
 		this.resumeAttempted.delete(projectId);
+		this.notificationRevisionsByProject.delete(projectId);
 		this.metadataMonitor.disposeProject(projectId);
 
 		if (!options?.disconnectClients) {
@@ -256,33 +304,51 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	};
 
 	broadcastRuntimeProjectStateUpdated = async (projectId: string, projectPath: string): Promise<void> => {
-		const clients = this.clients.getProjectClients(projectId);
-		if (!clients || clients.size === 0) {
+		if (!this.clients.hasClients) {
 			return;
 		}
 		try {
 			const projectState = await this.deps.projectRegistry.buildProjectStateSnapshot(projectId, projectPath);
+			this.broadcastRuntimeProjectStateSnapshot(projectId, projectState);
+		} catch (error) {
+			hubLog.warn("runtime project state publication failed", {
+				projectId,
+				projectPath,
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+	};
+
+	broadcastRuntimeProjectStateSnapshot = (projectId: string, projectState: RuntimeProjectStateResponse): void => {
+		const clients = this.clients.getProjectClients(projectId);
+		if (clients && clients.size > 0) {
 			this.clients.broadcastToProject(projectId, buildProjectStateUpdatedMessage(projectId, projectState));
 			void this.metadataMonitor
 				.updateProjectState({
 					projectId,
-					projectPath,
+					projectPath: projectState.repoPath,
 					board: projectState.board,
 				})
-				.catch(() => {
-					// Metadata is eventual; the next scheduled/manual refresh will resync.
+				.catch((error) => {
+					hubLog.warn("runtime project metadata refresh failed", {
+						projectId,
+						boardRevision: projectState.revision,
+						error: error instanceof Error ? error.message : String(error),
+					});
 				});
-		} catch {
-			// Ignore transient state read failures; next update will resync.
 		}
+		void this.broadcastRuntimeProjectsForState(projectId, projectState);
 	};
 
 	broadcastRuntimeProjectNotificationsUpdated = async (projectId: string): Promise<void> => {
 		if (!this.clients.hasClients) {
 			return;
 		}
+		const notificationRevision = this.nextNotificationRevision(projectId);
 		const summaries = await this.collectNotificationSummariesForProject(projectId);
-		this.clients.broadcastToAll(buildTaskNotificationMessage(projectId, summaries, { replace: true }));
+		this.clients.broadcastToAll(
+			buildTaskNotificationMessage(projectId, notificationRevision, summaries, { replace: true }),
+		);
 	};
 
 	broadcastRuntimeProjectsUpdated = async (preferredCurrentProjectId: string | null): Promise<void> => {
@@ -292,8 +358,11 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		try {
 			const payload = await this.deps.projectRegistry.buildProjectsPayload(preferredCurrentProjectId);
 			this.clients.broadcastToAll(buildProjectsUpdatedMessage(payload.currentProjectId, payload.projects));
-		} catch {
-			// Ignore transient project summary failures; next update will resync.
+		} catch (error) {
+			hubLog.warn("runtime project list publication failed", {
+				preferredCurrentProjectId,
+				error: error instanceof Error ? error.message : String(error),
+			});
 		}
 	};
 
@@ -346,6 +415,9 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	});
 
 	close = async (): Promise<void> => {
+		for (const projectId of this.sessionPersistenceUnsubscribes.keys()) {
+			this.disposeRuntimeSessionPersistence(projectId);
+		}
 		// Dispose base class resources (metadata monitor and diagnostics subscriptions).
 		this.dispose();
 		this.batcher.close();
@@ -361,6 +433,45 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	};
 
 	// ── Private helpers ───────────────────────────────────────────────────
+
+	private scheduleRuntimeSessionPersistence(projectId: string, delayMs = 100): void {
+		const currentTimer = this.sessionPersistenceTimers.get(projectId);
+		if (currentTimer) {
+			clearTimeout(currentTimer);
+		}
+		const timer = setTimeout(() => {
+			this.sessionPersistenceTimers.delete(projectId);
+			const projectPath = this.deps.projectRegistry.getProjectPathById(projectId);
+			if (!projectPath) {
+				return;
+			}
+			void this.deps.boardCommands.reconcileRuntimeSessions({ projectId, projectPath }).catch((error) => {
+				hubLog.warn("runtime session persistence failed", {
+					projectId,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			});
+		}, delayMs);
+		timer.unref?.();
+		this.sessionPersistenceTimers.set(projectId, timer);
+	}
+
+	private disposeRuntimeSessionPersistence(projectId: string): void {
+		const unsubscribe = this.sessionPersistenceUnsubscribes.get(projectId);
+		if (unsubscribe) {
+			try {
+				unsubscribe();
+			} catch {
+				// Ignore listener cleanup failures during project removal/shutdown.
+			}
+		}
+		this.sessionPersistenceUnsubscribes.delete(projectId);
+		const timer = this.sessionPersistenceTimers.get(projectId);
+		if (timer) {
+			clearTimeout(timer);
+		}
+		this.sessionPersistenceTimers.delete(projectId);
+	}
 
 	private async handleConnection(client: WebSocket, context: unknown): Promise<void> {
 		client.on("close", () => {
@@ -425,6 +536,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 						snapshot.projects,
 						snapshot.projectState,
 						snapshot.notificationSummariesByProject,
+						snapshot.notificationRevisionsByProject,
 					),
 				);
 				if (client.readyState !== WebSocket.OPEN) {
@@ -513,21 +625,31 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		projectState: RuntimeProjectStateResponse | null;
 		projectStateError: string | null;
 		notificationSummariesByProject: Record<string, RuntimeTaskSessionSummary[]>;
+		notificationRevisionsByProject: Record<string, number>;
 	}> {
+		const notificationRevisionsByProject = Object.fromEntries(this.notificationRevisionsByProject);
 		if (resolved.projectId && resolved.projectPath) {
 			const [projectsPayload, projectStateResult, notificationSummariesByProject] = await Promise.all([
 				this.deps.projectRegistry.buildProjectsPayload(resolved.projectId),
 				this.loadInitialProjectState(resolved.projectId, resolved.projectPath),
 				this.collectNotificationSummariesByProject(),
 			]);
+			const projects = projectStateResult.projectState
+				? this.mergeProjectSummaryForState(
+						projectsPayload.projects,
+						resolved.projectId,
+						projectStateResult.projectState,
+					)
+				: projectsPayload.projects;
 			return {
 				currentProjectId: projectsPayload.currentProjectId,
-				projects: projectsPayload.projects,
+				projects,
 				projectId: resolved.projectId,
 				projectPath: resolved.projectPath,
 				projectState: projectStateResult.projectState,
 				projectStateError: projectStateResult.projectStateError,
 				notificationSummariesByProject,
+				notificationRevisionsByProject,
 			};
 		}
 
@@ -543,7 +665,53 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			projectState: null,
 			projectStateError: null,
 			notificationSummariesByProject,
+			notificationRevisionsByProject,
 		};
+	}
+
+	private mergeProjectSummaryForState(
+		projects: RuntimeProjectSummary[],
+		projectId: string,
+		projectState: RuntimeProjectStateResponse,
+	): RuntimeProjectSummary[] {
+		const exact = deriveProjectSummary({
+			projectId,
+			repoPath: projectState.repoPath,
+			board: projectState.board,
+			boardRevision: projectState.revision,
+		});
+		let found = false;
+		const merged = projects.map((project) => {
+			if (project.id !== projectId) {
+				return project;
+			}
+			found = true;
+			// A state-driven publication must advertise the counts for that exact
+			// state revision. Another concurrent commit will publish its own newer
+			// state/summary pair, while clients already reject lower revisions.
+			return exact;
+		});
+		return found ? merged : [...merged, exact];
+	}
+
+	private async broadcastRuntimeProjectsForState(
+		projectId: string,
+		projectState: RuntimeProjectStateResponse,
+	): Promise<void> {
+		if (!this.clients.hasClients) {
+			return;
+		}
+		try {
+			const payload = await this.deps.projectRegistry.buildProjectsPayload(projectId);
+			const projects = this.mergeProjectSummaryForState(payload.projects, projectId, projectState);
+			this.clients.broadcastToAll(buildProjectsUpdatedMessage(payload.currentProjectId, projects));
+		} catch (error) {
+			hubLog.warn("authoritative project summary publication failed", {
+				projectId,
+				boardRevision: projectState.revision,
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
 	}
 
 	private async loadInitialProjectState(
@@ -574,7 +742,17 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		}
 	}
 
-	private async broadcastTaskNotifications(projectId: string, summaries: RuntimeTaskSessionSummary[]): Promise<void> {
+	private nextNotificationRevision(projectId: string): number {
+		const nextRevision = (this.notificationRevisionsByProject.get(projectId) ?? 0) + 1;
+		this.notificationRevisionsByProject.set(projectId, nextRevision);
+		return nextRevision;
+	}
+
+	private async broadcastTaskNotifications(
+		projectId: string,
+		notificationRevision: number,
+		summaries: RuntimeTaskSessionSummary[],
+	): Promise<void> {
 		if (summaries.length === 0) {
 			return;
 		}
@@ -587,11 +765,19 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			if (prunedSummaries.length === 0 && removedTaskIds.length === 0) {
 				return;
 			}
-			this.clients.broadcastToAll(buildTaskNotificationMessage(projectId, prunedSummaries, { removedTaskIds }));
-		} catch {
+			this.clients.broadcastToAll(
+				buildTaskNotificationMessage(projectId, notificationRevision, prunedSummaries, { removedTaskIds }),
+			);
+		} catch (error) {
 			// Board read failed — keep live notifications flowing. The next
 			// authoritative snapshot/project-state update will repair stale entries.
-			this.clients.broadcastToAll(buildTaskNotificationMessage(projectId, summaries));
+			hubLog.warn("runtime notification delta board reconciliation failed", {
+				projectId,
+				notificationRevision,
+				summaryCount: summaries.length,
+				error: error instanceof Error ? error.message : String(error),
+			});
+			this.clients.broadcastToAll(buildTaskNotificationMessage(projectId, notificationRevision, summaries));
 		}
 	}
 
@@ -604,10 +790,15 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			const board = await loadProjectBoardById(projectId);
 			const summaryMap = Object.fromEntries(summaries.map((summary) => [summary.taskId, summary]));
 			return Object.values(pruneOrphanSessionsForNotification(summaryMap, board));
-		} catch {
-			// Board reads should normally succeed immediately after board save. If
+		} catch (error) {
+			// Board reads should normally succeed immediately after an authoritative mutation. If
 			// they do not, replace with the live store view rather than leaving stale
 			// browser notification entries that no longer exist server-side.
+			hubLog.warn("runtime notification snapshot board reconciliation failed", {
+				projectId,
+				summaryCount: summaries.length,
+				error: error instanceof Error ? error.message : String(error),
+			});
 			return summaries;
 		}
 	}
@@ -621,25 +812,25 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 					return null;
 				}
 				// Keep connect-time notification snapshots actionable. Live deltas
-				// use a laxer filter so they can survive board-save debounce races.
+				// use a laxer filter because session delivery can race board projection
+				// publication even though both are owned by the runtime.
 				try {
 					const board = await loadProjectBoardById(project.projectId);
 					const summaryMap = Object.fromEntries(summaries.map((summary) => [summary.taskId, summary]));
 					const pruned = pruneOrphanSessionsForNotification(summaryMap, board);
 					const prunedList = Object.values(pruned);
-					if (prunedList.length === 0) {
-						return {
-							projectId: project.projectId,
-							summaries: prunedList,
-						};
-					}
 					return {
 						projectId: project.projectId,
 						summaries: prunedList,
 					};
-				} catch {
+				} catch (error) {
 					// Board read failed — fall back to full list rather than
 					// silently dropping notifications.
+					hubLog.warn("initial runtime notification board reconciliation failed", {
+						projectId: project.projectId,
+						summaryCount: summaries.length,
+						error: error instanceof Error ? error.message : String(error),
+					});
 					return {
 						projectId: project.projectId,
 						summaries,

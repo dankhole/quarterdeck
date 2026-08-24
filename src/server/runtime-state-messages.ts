@@ -35,6 +35,7 @@ export function buildSnapshotMessage(
 	projects: RuntimeProjectSummary[],
 	projectState: RuntimeProjectStateResponse | null,
 	notificationSummariesByProject: Record<string, RuntimeTaskSessionSummary[]> = {},
+	notificationRevisionsByProject: Record<string, number> = {},
 ): RuntimeStateStreamSnapshotMessage {
 	return {
 		type: "snapshot",
@@ -43,6 +44,7 @@ export function buildSnapshotMessage(
 		projectState,
 		projectMetadata: null,
 		notificationSummariesByProject,
+		notificationRevisionsByProject,
 	};
 }
 
@@ -132,12 +134,14 @@ export function buildTaskBaseRefUpdatedMessage(
 
 export function buildTaskNotificationMessage(
 	projectId: string,
+	notificationRevision: number,
 	summaries: RuntimeTaskSessionSummary[],
 	options?: { removedTaskIds?: string[]; replace?: boolean },
 ): RuntimeStateStreamTaskNotificationMessage {
 	return {
 		type: "task_notification",
 		projectId,
+		notificationRevision,
 		summaries,
 		...(options?.removedTaskIds?.length ? { removedTaskIds: options.removedTaskIds } : undefined),
 		...(options?.replace ? { replace: true } : undefined),

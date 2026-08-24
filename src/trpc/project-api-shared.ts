@@ -13,6 +13,7 @@ import type {
 } from "../core";
 import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
+import type { ProjectBoardCommandService } from "../state";
 import { loadProjectState } from "../state";
 import type { AutomaticTitleGenerationRunner } from "../title";
 import { isMissingTaskWorktreeError, resolveTaskWorkingDirectory } from "../workdir";
@@ -37,6 +38,7 @@ export interface CreateProjectApiDependencies {
 		| "requestHomeRefresh"
 	>;
 	data: Pick<IProjectDataProvider, "buildProjectStateSnapshot">;
+	boardCommands?: ProjectBoardCommandService;
 	diagnostics?: RuntimeDiagnostics;
 	taskResourceOperations: TaskResourceOperationRunner;
 	automaticTitleGeneration: AutomaticTitleGenerationRunner;

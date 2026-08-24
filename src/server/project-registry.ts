@@ -13,19 +13,24 @@ import type {
 	RuntimeProjectTaskCounts,
 	RuntimeTaskSessionSummary,
 } from "../core";
-import { createTaggedLogger, deriveTaskIndicatorState, pruneOrphanSessionsForBroadcast } from "../core";
+import { createTaggedLogger, deriveProjectSummary, pruneOrphanSessionsForBroadcast } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import {
 	isUnderWorktreesHome,
 	listProjectIndexEntries,
-	loadProjectBoardById,
+	loadProjectBoardSnapshotById,
 	loadProjectContext,
 	loadProjectState,
 	type RuntimeProjectIndexEntry,
 	removeProjectIndexEntry,
 	removeProjectStateFiles,
 } from "../state";
-import { InMemorySessionSummaryStore, TerminalSessionManager } from "../terminal";
+import {
+	deriveStartupRecoveryPolicy,
+	InMemorySessionSummaryStore,
+	LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
+	TerminalSessionManager,
+} from "../terminal";
 import { createProjectOrphanMaintenanceTimer, type ProjectOrphanMaintenanceTimer } from "./project-orphan-maintenance";
 import { ProjectStateDiagnosticTracker } from "./project-state-diagnostics";
 import { type StartupSessionRecoveryCandidate, StartupSessionRecoveryCoordinator } from "./startup-session-recovery";
@@ -76,18 +81,7 @@ function recordStartupResumeSkip(stats: StartupResumeScanStats, sample: StartupR
 }
 
 export function shouldResumeSessionOnStartup(summary: RuntimeTaskSessionSummary): boolean {
-	if (summary.state === "interrupted") {
-		return summary.reviewReason === "interrupted";
-	}
-	// Be defensive when this predicate is used before terminal hydration. A
-	// hard runtime exit can persist an interactive review session with its old
-	// PID, while attention waits require a live chat even if that PID was
-	// already cleared. Both cases enter the bounded startup coordinator.
-	return (
-		summary.state === "awaiting_review" &&
-		(summary.reviewReason === "attention" ||
-			(summary.reviewReason === "hook" && (summary.pid !== null || deriveTaskIndicatorState(summary).needsInput)))
-	);
+	return deriveStartupRecoveryPolicy(summary).required;
 }
 
 export interface ProjectRegistryScope {
@@ -195,28 +189,6 @@ function createEmptyProjectTaskCounts(): RuntimeProjectTaskCounts {
 	};
 }
 
-function countTasksByColumn(board: RuntimeBoardData): RuntimeProjectTaskCounts {
-	const counts = createEmptyProjectTaskCounts();
-	for (const column of board.columns) {
-		const count = column.cards.length;
-		switch (column.id) {
-			case "backlog":
-				counts.backlog += count;
-				break;
-			case "in_progress":
-				counts.in_progress += count;
-				break;
-			case "review":
-				counts.review += count;
-				break;
-			case "trash":
-				counts.trash += count;
-				break;
-		}
-	}
-	return counts;
-}
-
 export function collectProjectWorktreeTaskIdsForRemoval(board: RuntimeBoardData): Set<string> {
 	const taskIds = new Set<string>();
 	for (const column of board.columns) {
@@ -231,38 +203,10 @@ export function collectProjectWorktreeTaskIdsForRemoval(board: RuntimeBoardData)
 	return taskIds;
 }
 
-function applyLiveSessionStateToProjectTaskCounts(
-	counts: RuntimeProjectTaskCounts,
-	board: RuntimeBoardData,
-	sessionSummaries: RuntimeProjectStateResponse["sessions"],
-): RuntimeProjectTaskCounts {
-	const taskColumnById = new Map<string, RuntimeBoardColumnId>();
-	for (const column of board.columns) {
-		for (const card of column.cards) {
-			taskColumnById.set(card.id, column.id);
-		}
-	}
-	const next = {
-		...counts,
-	};
-	for (const summary of Object.values(sessionSummaries)) {
-		const columnId = taskColumnById.get(summary.taskId);
-		if (!columnId) {
-			continue;
-		}
-		if (summary.state === "awaiting_review" && columnId === "in_progress") {
-			next.in_progress = Math.max(0, next.in_progress - 1);
-			next.review += 1;
-		}
-		// Don't adjust counts for interrupted sessions — they stay in their
-		// work columns for auto-resume, not trash.
-	}
-	return next;
-}
-
 function toProjectSummary(project: {
 	projectId: string;
 	repoPath: string;
+	boardRevision: number;
 	taskCounts: RuntimeProjectTaskCounts;
 }): RuntimeProjectSummary {
 	const normalized = project.repoPath.replaceAll("\\", "/").replace(/\/+$/g, "");
@@ -272,6 +216,7 @@ function toProjectSummary(project: {
 		id: project.projectId,
 		path: project.repoPath,
 		name,
+		boardRevision: project.boardRevision,
 		taskCounts: project.taskCounts,
 	};
 }
@@ -293,7 +238,6 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	const projectPathsById = new Map<string, string>(
 		activeProjectId && activeProjectPath ? [[activeProjectId, activeProjectPath]] : [],
 	);
-	const projectTaskCountsByProjectId = new Map<string, RuntimeProjectTaskCounts>();
 	const projectStateDiagnostics = new ProjectStateDiagnosticTracker();
 	const terminalManagersByProjectId = new Map<string, TerminalSessionManager>();
 	const terminalManagerLoadPromises = new Map<string, Promise<TerminalSessionManager>>();
@@ -414,7 +358,6 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			terminalManagersByProjectId.delete(projectId);
 			terminalManagerLoadPromises.delete(projectId);
 		}
-		projectTaskCountsByProjectId.delete(projectId);
 		projectStateDiagnostics.remove(projectId);
 		const projectPath = projectPathsById.get(projectId) ?? null;
 		projectPathsById.delete(projectId);
@@ -431,35 +374,27 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		};
 	};
 
-	const summarizeProjectTaskCounts = async (
-		projectId: string,
-		_repoPath: string,
-	): Promise<RuntimeProjectTaskCounts> => {
+	const buildProjectSummary = async (projectId: string, repoPath: string): Promise<RuntimeProjectSummary> => {
 		try {
-			const terminalManager = getTerminalManagerForProject(projectId);
-			// For projects without active sessions, board state is stable —
-			// serve cached counts to avoid repeated disk reads on every broadcast.
-			if (!terminalManager) {
-				const cached = projectTaskCountsByProjectId.get(projectId);
-				if (cached) {
-					return cached;
-				}
-			}
-			const board = await loadProjectBoardById(projectId);
-			const persistedCounts = countTasksByColumn(board);
-			if (!terminalManager) {
-				projectTaskCountsByProjectId.set(projectId, persistedCounts);
-				return persistedCounts;
-			}
-			const liveSessionsByTaskId: RuntimeProjectStateResponse["sessions"] = {};
-			for (const summary of terminalManager.store.listSummaries()) {
-				liveSessionsByTaskId[summary.taskId] = summary;
-			}
-			const nextCounts = applyLiveSessionStateToProjectTaskCounts(persistedCounts, board, liveSessionsByTaskId);
-			projectTaskCountsByProjectId.set(projectId, nextCounts);
-			return nextCounts;
-		} catch {
-			return projectTaskCountsByProjectId.get(projectId) ?? createEmptyProjectTaskCounts();
+			const snapshot = await loadProjectBoardSnapshotById(projectId);
+			return deriveProjectSummary({
+				projectId,
+				repoPath,
+				board: snapshot.board,
+				boardRevision: snapshot.revision,
+			});
+		} catch (error) {
+			registryLog.warn("project summary board snapshot failed", {
+				projectId,
+				repoPath,
+				error: error instanceof Error ? error.message : String(error),
+			});
+			return toProjectSummary({
+				projectId,
+				repoPath,
+				boardRevision: 0,
+				taskCounts: createEmptyProjectTaskCounts(),
+			});
 		}
 	};
 
@@ -487,14 +422,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				preferredCurrentProjectId) ||
 			fallbackProjectId;
 		const projectSummaries = await Promise.all(
-			projects.map(async (project) => {
-				const taskCounts = await summarizeProjectTaskCounts(project.projectId, project.repoPath);
-				return toProjectSummary({
-					projectId: project.projectId,
-					repoPath: project.repoPath,
-					taskCounts,
-				});
-			}),
+			projects.map(async (project) => await buildProjectSummary(project.projectId, project.repoPath)),
 		);
 		return {
 			currentProjectId: resolvedCurrentProjectId,
@@ -631,10 +559,16 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 					});
 					continue;
 				}
+				const recoveryPolicy = deriveStartupRecoveryPolicy(summary);
 				resumable.push({
 					scope: { projectId, projectPath },
 					manager,
 					originalResumeSessionId: summary.resumeSessionId ?? null,
+					reviewState: recoveryPolicy.reviewState,
+					fallbackReviewState: recoveryPolicy.fallbackReviewState,
+					semanticStateWarning: recoveryPolicy.semanticStateUncertain
+						? LEGACY_STARTUP_SEMANTIC_STATE_WARNING
+						: undefined,
 					request: {
 						taskId: card.id,
 						prompt: "",
@@ -683,6 +617,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 					reviewReason: persistedSummary?.reviewReason ?? null,
 					hadPersistedPid: persistedSummary?.pid != null,
 					hasResumeSessionId: candidate.originalResumeSessionId !== null,
+					semanticStateUncertain: candidate.semanticStateWarning !== undefined,
 				},
 				{ projectId, taskId: candidate.request.taskId },
 				{ essential: true },
@@ -692,6 +627,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				taskId: candidate.request.taskId,
 				cardAgentId: candidate.request.agentId ?? null,
 				resumeSessionId: candidate.originalResumeSessionId,
+				semanticStateUncertain: candidate.semanticStateWarning !== undefined,
 			});
 		}
 		await Promise.all(
@@ -765,8 +701,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		setActiveProject,
 		clearActiveProject,
 		disposeProject,
-		summarizeProjectTaskCounts,
-		createProjectSummary: toProjectSummary,
+		buildProjectSummary,
 		buildProjectStateSnapshot,
 		buildProjectsPayload,
 		resolveProjectForStream,

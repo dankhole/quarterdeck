@@ -1,28 +1,23 @@
 import type { DropResult } from "@hello-pangea/dnd";
-import { TaskResourceOperationCoordinator } from "@runtime-task-resource-operation-coordinator";
 import type { Dispatch, SetStateAction } from "react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect } from "react";
 
-import { notifyError } from "@/components/app-toaster";
 import type { TaskTrashWarningViewModel } from "@/components/task";
 import { useBoardDragHandler } from "@/hooks/board/use-board-drag-handler";
 import { useLinkedBacklogTaskActions } from "@/hooks/board/use-linked-backlog-task-actions";
 import { useProgrammaticCardMoves } from "@/hooks/board/use-programmatic-card-moves";
-import { useSessionColumnSync } from "@/hooks/board/use-session-column-sync";
 import {
 	shouldWarnForNonIsolatedResume,
 	showNonIsolatedResumeWarning,
 	useTaskLifecycle,
 } from "@/hooks/board/use-task-lifecycle";
-import type { UseTaskSessionsResult } from "@/hooks/board/use-task-sessions";
+import type { UseTaskLifecycleOperationsResult } from "@/hooks/board/use-task-lifecycle-operations";
 import { useTaskStart } from "@/hooks/board/use-task-start";
 import { type HardDeleteDialogState, type TrashWarningState, useTrashWorkflow } from "@/hooks/board/use-trash-workflow";
-import type { RuntimeTaskRepositoryInfoResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { createClientLogger } from "@/utils/client-logger";
-
-import type { RunTaskLifecycleOperation } from "./task-lifecycle";
 
 const log = createClientLogger("board-interactions");
 
@@ -37,25 +32,24 @@ interface UseBoardInteractionsInput {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
-	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
 	selectedCard: SelectedBoardCard | null;
 	selectedTaskId: string | null;
 	currentProjectId: string | null;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 	setIsClearTrashDialogOpen: Dispatch<SetStateAction<boolean>>;
 	closeGitHistory: () => void;
-	stopTaskSession: UseTaskSessionsResult["stopTaskSession"];
-	cleanupTaskWorktree: UseTaskSessionsResult["cleanupTaskWorktree"];
-	ensureTaskWorktree: UseTaskSessionsResult["ensureTaskWorktree"];
-	startTaskSession: UseTaskSessionsResult["startTaskSession"];
-	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskRepositoryInfoResponse | null>;
+	executeTaskLifecycle: UseTaskLifecycleOperationsResult["executeTaskLifecycle"];
 	showTrashWorktreeNotice: boolean;
 	saveTrashWorktreeNoticeDismissed: () => void;
 }
 
 export interface UseBoardInteractionsResult {
 	handleProgrammaticCardMoveReady: ReturnType<typeof useProgrammaticCardMoves>["handleProgrammaticCardMoveReady"];
-	confirmMoveTaskToTrash: (task: BoardCard, currentBoard?: BoardData) => Promise<void>;
+	confirmMoveTaskToTrash: (
+		task: BoardCard,
+		currentBoard?: BoardData,
+		sourceColumnId?: Exclude<BoardColumnId, "trash">,
+	) => Promise<void>;
 	handleCreateDependency: (fromTaskId: string, toTaskId: string) => void;
 	handleDeleteDependency: (dependencyId: string) => void;
 	handleDragEnd: (result: DropResult, options?: { selectDroppedTask?: boolean }) => void;
@@ -83,32 +77,16 @@ export function useBoardInteractions({
 	board,
 	setBoard,
 	sessions,
-	setSessions,
 	selectedCard,
 	selectedTaskId,
 	currentProjectId,
 	setSelectedTaskId,
 	setIsClearTrashDialogOpen,
 	closeGitHistory,
-	stopTaskSession,
-	cleanupTaskWorktree,
-	ensureTaskWorktree,
-	startTaskSession,
-	fetchTaskWorktreeInfo,
+	executeTaskLifecycle,
 	showTrashWorktreeNotice,
 	saveTrashWorktreeNoticeDismissed,
 }: UseBoardInteractionsInput): UseBoardInteractionsResult {
-	const taskLifecycleOperationQueueRef = useRef<TaskResourceOperationCoordinator | null>(null);
-	if (!taskLifecycleOperationQueueRef.current) {
-		taskLifecycleOperationQueueRef.current = new TaskResourceOperationCoordinator();
-	}
-	const runTaskLifecycleOperation: RunTaskLifecycleOperation = useCallback(
-		(taskId, operation) => {
-			return taskLifecycleOperationQueueRef.current!.run(currentProjectId, taskId, operation);
-		},
-		[currentProjectId],
-	);
-
 	const {
 		handleProgrammaticCardMoveReady,
 		setRequestMoveTaskToTrashHandler,
@@ -118,35 +96,21 @@ export function useBoardInteractions({
 		waitForProgrammaticCardMoveAvailability,
 		resetProgrammaticCardMoves,
 		requestMoveTaskToTrashWithAnimation,
-		programmaticCardMoveCycle,
 	} = useProgrammaticCardMoves();
 
 	// ── Core lifecycle operations ────────────────────────────────────────
-	const { kickoffTaskInProgress, resumeTaskFromTrash } = useTaskLifecycle({
-		setBoard,
-		selectedTaskId,
-		stopTaskSession,
-		ensureTaskWorktree,
-		startTaskSession,
-		fetchTaskWorktreeInfo,
-		runTaskLifecycleOperation,
-	});
+	const { kickoffTaskInProgress, resumeTaskFromTrash } = useTaskLifecycle({ executeTaskLifecycle });
 
 	// ── Backlog task start + animation ───────────────────────────────────
-	const {
-		handleStartTask,
-		handleStartAllBacklogTasks,
-		startBacklogTaskWithAnimation,
-		resolvePendingProgrammaticStartMove,
-		resetPendingStartMoves,
-	} = useTaskStart({
-		board,
-		setBoard,
-		selectedCard,
-		kickoffTaskInProgress,
-		tryProgrammaticCardMove,
-		waitForProgrammaticCardMoveAvailability,
-	});
+	const { handleStartTask, handleStartAllBacklogTasks, resolvePendingProgrammaticStartMove, resetPendingStartMoves } =
+		useTaskStart({
+			board,
+			setBoard,
+			selectedCard,
+			kickoffTaskInProgress,
+			tryProgrammaticCardMove,
+			waitForProgrammaticCardMoveAvailability,
+		});
 
 	// ── Linked backlog task actions (dependency graph, trash workflow) ───
 	const { confirmMoveTaskToTrash, handleCreateDependency, handleDeleteDependency, requestMoveTaskToTrash } =
@@ -154,12 +118,7 @@ export function useBoardInteractions({
 			board,
 			setBoard,
 			setSelectedTaskId,
-			stopTaskSession,
-			cleanupTaskWorktree,
-			runTaskLifecycleOperation,
-			kickoffTaskInProgress,
-			startBacklogTaskWithAnimation,
-			waitForBacklogStartAnimationAvailability: waitForProgrammaticCardMoveAvailability,
+			executeTaskLifecycle,
 			onRequestTrashConfirmation: (
 				viewModel: TaskTrashWarningViewModel,
 				card: BoardCard,
@@ -204,12 +163,10 @@ export function useBoardInteractions({
 		board,
 		setBoard,
 		selectedCard,
+		selectedTaskId,
 		setSelectedTaskId,
-		setSessions,
 		setIsClearTrashDialogOpen,
-		stopTaskSession,
-		cleanupTaskWorktree,
-		runTaskLifecycleOperation,
+		executeTaskLifecycle,
 		resumeTaskFromTrash,
 		tryProgrammaticCardMove,
 		requestMoveTaskToTrash,
@@ -228,16 +185,6 @@ export function useBoardInteractions({
 		consumeProgrammaticCardMove,
 		requestMoveTaskToTrash,
 		resolvePendingProgrammaticTrashMove,
-	});
-
-	// ── Session → column sync ────────────────────────────────────────────
-	// Startup resume is handled server-side (triggered on first UI connection).
-	useSessionColumnSync({
-		board,
-		setBoard,
-		sessions,
-		tryProgrammaticCardMove,
-		programmaticCardMoveCycle,
 	});
 
 	// ── Remaining small handlers ─────────────────────────────────────────
@@ -260,25 +207,23 @@ export function useBoardInteractions({
 			if (!selection || (selection.column.id !== "in_progress" && selection.column.id !== "review")) {
 				return;
 			}
-			const awaitReview = selection.column.id === "review";
-			void runTaskLifecycleOperation(taskId, async () => {
-				const stopped = await stopTaskSession(taskId, { waitForExit: true });
-				if (!stopped.ok) {
-					notifyError(stopped.error ?? "Could not stop the previous task session.");
-					return;
-				}
-				const started = await startTaskSession(selection.card, { resumeConversation: true, awaitReview });
-				if (!started.ok) {
-					notifyError(started.message ?? "Could not restart task session.");
-				} else if (
+			void (async () => {
+				const result = await executeTaskLifecycle({
+					kind: "restart",
+					taskId,
+					taskCreatedAt: selection.card.createdAt,
+					sessionInstanceId: sessions[taskId]?.sessionInstanceId ?? null,
+				});
+				if (
+					result?.ok &&
 					selection.card.useWorktree === false &&
-					shouldWarnForNonIsolatedResume(started.summary?.agentId, started.summary?.resumeSessionId)
+					shouldWarnForNonIsolatedResume(result.summary?.agentId, result.summary?.resumeSessionId)
 				) {
 					showNonIsolatedResumeWarning();
 				}
-			});
+			})();
 		},
-		[board, runTaskLifecycleOperation, startTaskSession, stopTaskSession],
+		[board, executeTaskLifecycle, sessions],
 	);
 
 	// ── Reset on project change ──────────────────────────────────────────

@@ -16,6 +16,10 @@ export const runtimeStateStreamSnapshotMessageSchema = z.object({
 	// Connection-time baseline for all managed projects; live updates continue
 	// to arrive through task_notification messages.
 	notificationSummariesByProject: z.record(z.string(), z.array(runtimeTaskSessionSummarySchema)).optional(),
+	// Per-project ordering fence for the notification baseline. This prevents a
+	// connection snapshot from replacing a newer live delta that reached the
+	// browser while the snapshot was being assembled.
+	notificationRevisionsByProject: z.record(z.string(), z.number().int().nonnegative()).optional(),
 });
 export type RuntimeStateStreamSnapshotMessage = z.infer<typeof runtimeStateStreamSnapshotMessageSchema>;
 
@@ -81,6 +85,7 @@ export const runtimeStateStreamTaskNotificationMessageSchema = z.object({
 	// Included for consistency with other message schemas and to support future
 	// per-project notification settings (currently out of scope).
 	projectId: z.string(),
+	notificationRevision: z.number().int().nonnegative(),
 	summaries: z.array(runtimeTaskSessionSummarySchema),
 	removedTaskIds: z.array(z.string()).optional(),
 	replace: z.boolean().optional(),

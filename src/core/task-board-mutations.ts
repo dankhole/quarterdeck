@@ -30,6 +30,17 @@ export interface RuntimeUpdateTaskInput {
 	pinned?: boolean;
 }
 
+export interface RuntimePatchTaskInput {
+	title?: string | null;
+	agentId?: RuntimeAgentId | null;
+	baseRef?: string;
+	baseRefPinned?: boolean | null;
+	useWorktree?: boolean | null;
+	workingDirectory?: string | null;
+	branch?: string | null;
+	pinned?: boolean | null;
+}
+
 // Copy image metadata so board tasks do not retain caller-owned array or object references.
 function cloneTaskImages(images?: RuntimeTaskImage[]): RuntimeTaskImage[] | undefined {
 	return images && images.length > 0 ? images.map((image) => ({ ...image })) : undefined;
@@ -51,6 +62,16 @@ export interface RuntimeUpdateTaskResult {
 	board: RuntimeBoardData;
 	task: RuntimeBoardCard | null;
 	updated: boolean;
+}
+
+export interface RuntimeReorderTaskResult {
+	board: RuntimeBoardData;
+	reordered: boolean;
+}
+
+export interface RuntimeReorderColumnResult {
+	board: RuntimeBoardData;
+	reordered: boolean;
 }
 
 export interface RuntimeAddTaskDependencyResult {
@@ -333,6 +354,7 @@ export function addTaskDependency(
 	board: RuntimeBoardData,
 	firstTaskId: string,
 	secondTaskId: string,
+	options: { dependencyId?: string; createdAt?: number } = {},
 ): RuntimeAddTaskDependencyResult {
 	const normalizedFirstTaskId = firstTaskId.trim();
 	const normalizedSecondTaskId = secondTaskId.trim();
@@ -350,10 +372,10 @@ export function addTaskDependency(
 		return { board, added: false, reason: "duplicate" };
 	}
 	const dependency: RuntimeBoardDependency = {
-		id: createDependencyId(),
+		id: options.dependencyId?.trim() || createDependencyId(),
 		fromTaskId: resolved.backlogTaskId,
 		toTaskId: resolved.linkedTaskId,
-		createdAt: Date.now(),
+		createdAt: options.createdAt ?? Date.now(),
 	};
 	return {
 		board: {
@@ -392,8 +414,15 @@ export function removeTaskDependency(board: RuntimeBoardData, dependencyId: stri
 	};
 }
 
-export function getReadyLinkedTaskIdsForTaskInTrash(board: RuntimeBoardData, taskId: string): string[] {
-	return getLinkedBacklogTaskIdsReadyAfterTaskTrashed(board, taskId, getTaskColumnId(board, taskId));
+export function getReadyLinkedTaskIdsForTrashTransition(
+	board: RuntimeBoardData,
+	taskId: string,
+	sourceColumnId: RuntimeBoardColumnId,
+): string[] {
+	if (getTaskColumnId(board, taskId) !== sourceColumnId) {
+		return [];
+	}
+	return getLinkedBacklogTaskIdsReadyAfterTaskTrashed(board, taskId, sourceColumnId);
 }
 
 export function trashTaskAndGetReadyLinkedTaskIds(
@@ -402,7 +431,7 @@ export function trashTaskAndGetReadyLinkedTaskIds(
 	now: number = Date.now(),
 ): RuntimeTrashTaskResult {
 	const fromColumnId = getTaskColumnId(board, taskId);
-	const readyTaskIds = getLinkedBacklogTaskIdsReadyAfterTaskTrashed(board, taskId, fromColumnId);
+	const readyTaskIds = fromColumnId ? getReadyLinkedTaskIdsForTrashTransition(board, taskId, fromColumnId) : [];
 	const movedToTrash = moveTaskToColumn(board, taskId, "trash", now);
 	return {
 		...movedToTrash,
@@ -463,6 +492,7 @@ export function moveTaskToColumn(
 	taskId: string,
 	targetColumnId: RuntimeBoardColumnId,
 	now: number = Date.now(),
+	options: { targetIndex?: number } = {},
 ): RuntimeMoveTaskResult {
 	const normalizedTaskId = taskId.trim();
 	if (!normalizedTaskId) {
@@ -525,12 +555,15 @@ export function moveTaskToColumn(
 	const movedTask: RuntimeBoardCard = {
 		...task,
 		updatedAt: now,
-		// Clear workingDirectory when trashing — the worktree will be deleted
-		// and the client is the single writer for board state.
+		// Clear workingDirectory as part of the same runtime-owned board command
+		// that moves the card. Worktree cleanup runs only after that command flushes.
 		...(targetColumnId === "trash" ? { workingDirectory: null } : undefined),
 	};
-	const targetCards =
-		targetColumnId === "trash" ? [movedTask, ...targetColumn.cards] : [...targetColumn.cards, movedTask];
+	const targetCards = [...targetColumn.cards];
+	const defaultTargetIndex = targetColumnId === "trash" ? 0 : targetCards.length;
+	const requestedTargetIndex = options.targetIndex ?? defaultTargetIndex;
+	const targetIndex = Math.max(0, Math.min(requestedTargetIndex, targetCards.length));
+	targetCards.splice(targetIndex, 0, movedTask);
 
 	const columns = board.columns.map((column, index) => {
 		if (index === found.columnIndex) {
@@ -557,6 +590,73 @@ export function moveTaskToColumn(
 		task: movedTask,
 		fromColumnId: found.columnId,
 	};
+}
+
+export function reorderTaskInColumn(
+	board: RuntimeBoardData,
+	taskId: string,
+	columnId: RuntimeBoardColumnId,
+	targetIndex: number,
+): RuntimeReorderTaskResult {
+	const found = findTaskLocation(board, taskId.trim());
+	if (!found || found.columnId !== columnId) {
+		return { board, reordered: false };
+	}
+	const column = board.columns[found.columnIndex];
+	if (!column) {
+		return { board, reordered: false };
+	}
+	const boundedTargetIndex = Math.max(0, Math.min(targetIndex, column.cards.length - 1));
+	if (found.taskIndex === boundedTargetIndex) {
+		return { board, reordered: false };
+	}
+	const cards = [...column.cards];
+	const [task] = cards.splice(found.taskIndex, 1);
+	if (!task) {
+		return { board, reordered: false };
+	}
+	cards.splice(boundedTargetIndex, 0, task);
+	const columns = [...board.columns];
+	columns[found.columnIndex] = { ...column, cards };
+	return {
+		board: { ...board, columns },
+		reordered: true,
+	};
+}
+
+export function reorderTasksInColumn(
+	board: RuntimeBoardData,
+	columnId: RuntimeBoardColumnId,
+	taskIds: readonly string[],
+): RuntimeReorderColumnResult {
+	const columnIndex = board.columns.findIndex((column) => column.id === columnId);
+	const column = board.columns[columnIndex];
+	if (!column) {
+		return { board, reordered: false };
+	}
+	if (taskIds.length !== column.cards.length) {
+		return { board, reordered: false };
+	}
+	const cardsById = new Map(column.cards.map((card) => [card.id, card]));
+	const seenTaskIds = new Set<string>();
+	const cards: RuntimeBoardCard[] = [];
+	for (const taskId of taskIds) {
+		if (seenTaskIds.has(taskId)) {
+			return { board, reordered: false };
+		}
+		seenTaskIds.add(taskId);
+		const card = cardsById.get(taskId);
+		if (!card) {
+			return { board, reordered: false };
+		}
+		cards.push(card);
+	}
+	if (cards.every((card, index) => card === column.cards[index])) {
+		return { board, reordered: false };
+	}
+	const columns = [...board.columns];
+	columns[columnIndex] = { ...column, cards };
+	return { board: { ...board, columns }, reordered: true };
 }
 
 export function updateTask(
@@ -621,6 +721,66 @@ export function updateTask(
 			...board,
 			columns,
 		},
+		task: updatedTask,
+		updated: true,
+	};
+}
+
+export function patchTask(
+	board: RuntimeBoardData,
+	taskId: string,
+	input: RuntimePatchTaskInput,
+	now: number = Date.now(),
+): RuntimeUpdateTaskResult {
+	const normalizedTaskId = taskId.trim();
+	if (!normalizedTaskId) {
+		return { board, task: null, updated: false };
+	}
+
+	let updatedTask: RuntimeBoardCard | null = null;
+	const columns = board.columns.map((column) => {
+		let columnUpdated = false;
+		const cards = column.cards.map((card) => {
+			if (card.id !== normalizedTaskId) {
+				return card;
+			}
+			const nextTask: RuntimeBoardCard = {
+				...card,
+				...(input.title !== undefined ? { title: input.title?.trim() || null } : {}),
+				...(input.agentId !== undefined ? { agentId: input.agentId ?? undefined } : {}),
+				...(input.baseRef !== undefined ? { baseRef: input.baseRef.trim() } : {}),
+				...(input.baseRefPinned !== undefined ? { baseRefPinned: input.baseRefPinned ? true : undefined } : {}),
+				...(input.useWorktree !== undefined
+					? { useWorktree: input.useWorktree === null ? undefined : input.useWorktree }
+					: {}),
+				...(input.workingDirectory !== undefined ? { workingDirectory: input.workingDirectory } : {}),
+				...(input.branch !== undefined ? { branch: input.branch } : {}),
+				...(input.pinned !== undefined ? { pinned: input.pinned ? true : undefined } : {}),
+			};
+			if (
+				nextTask.title === card.title &&
+				nextTask.agentId === card.agentId &&
+				nextTask.baseRef === card.baseRef &&
+				nextTask.baseRefPinned === card.baseRefPinned &&
+				nextTask.useWorktree === card.useWorktree &&
+				nextTask.workingDirectory === card.workingDirectory &&
+				nextTask.branch === card.branch &&
+				nextTask.pinned === card.pinned
+			) {
+				return card;
+			}
+			columnUpdated = true;
+			updatedTask = { ...nextTask, updatedAt: now };
+			return updatedTask;
+		});
+		return columnUpdated ? { ...column, cards } : column;
+	});
+
+	if (!updatedTask) {
+		return { board, task: null, updated: false };
+	}
+	return {
+		board: { ...board, columns },
 		task: updatedTask,
 		updated: true,
 	};
@@ -695,9 +855,10 @@ export function pruneOrphanSessionsForNotification(
 }
 
 /**
- * Lax filter for live notification deltas. A task can move out of backlog in
- * the browser before the debounced board save reaches disk, so live deltas must
- * keep board-linked and currently live summaries. The next authoritative
+ * Lax filter for live notification deltas. Session-store delivery and durable
+ * runtime board projection are separately scheduled, so a live delta can arrive
+ * while the corresponding authoritative projection is still committing. Keep
+ * board-linked and currently live summaries until the next authoritative
  * notification replacement applies the stricter actionable filter.
  */
 export function pruneOrphanSessionsForNotificationDelta(

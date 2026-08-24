@@ -125,9 +125,11 @@ describe("useShortcutActions", () => {
 
 		expect(waitForTerminalLikelyPromptMock).toHaveBeenCalledWith("__home_terminal__", 3000);
 		expect(sendTaskSessionInput).toHaveBeenNthCalledWith(1, "__home_terminal__", "\u0003", {
+			intent: "write",
 			appendNewline: false,
 		});
 		expect(sendTaskSessionInput).toHaveBeenNthCalledWith(2, "__home_terminal__", "npm run ship", {
+			intent: "submit",
 			appendNewline: true,
 		});
 		expect(showAppToastMock).not.toHaveBeenCalled();
@@ -161,6 +163,7 @@ describe("useShortcutActions", () => {
 		expect(waitForTerminalLikelyPromptMock).toHaveBeenCalledWith("__home_terminal__", 3000);
 		expect(sendTaskSessionInput).toHaveBeenCalledTimes(1);
 		expect(sendTaskSessionInput).toHaveBeenNthCalledWith(1, "__home_terminal__", "npm run ship", {
+			intent: "submit",
 			appendNewline: true,
 		});
 	});

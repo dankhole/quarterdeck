@@ -83,6 +83,7 @@ export default defineConfig({
 		alias: {
 			"@": resolve(import.meta.dirname, "src"),
 			"@runtime-agent-catalog": resolve(import.meta.dirname, "../src/core/agent-catalog.ts"),
+			"@runtime-board-commands": resolve(import.meta.dirname, "../src/core/project-board-command.ts"),
 			"@runtime-contract": resolve(import.meta.dirname, "../src/core/api-contract.ts"),
 			"@runtime-config-defaults": resolve(import.meta.dirname, "../src/config/config-defaults.ts"),
 			"@runtime-task-resource-operation-coordinator": resolve(

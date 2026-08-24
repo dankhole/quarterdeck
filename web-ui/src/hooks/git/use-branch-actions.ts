@@ -181,7 +181,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 				});
 				// Update the status bar line diff immediately from the response summary
 				if (scope === "home" && result.summary) {
-					setHomeGitSummary(result.summary);
+					setHomeGitSummary(projectId, result.summary);
 				}
 				if (result.ok) {
 					showGitSuccessToast(`Switched to ${branch}`);

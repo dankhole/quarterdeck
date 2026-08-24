@@ -84,22 +84,10 @@ export interface InteractionsProviderProps {
 }
 
 export function InteractionsProvider({ children }: InteractionsProviderProps): ReactNode {
-	const {
-		board,
-		setBoard,
-		sessions,
-		setSessions,
-		selectedCard,
-		selectedTaskId,
-		setSelectedTaskId,
-		stopTaskSession,
-		ensureTaskWorktree,
-		startTaskSession,
-		fetchTaskWorktreeInfo,
-		cleanupTaskWorktree,
-	} = useBoardContext();
+	const { board, setBoard, sessions, selectedCard, selectedTaskId, setSelectedTaskId, taskLifecycle } =
+		useBoardContext();
 	const { taskEditor, pendingTaskStartAfterEditId, clearPendingTaskStartAfterEditId } = useTaskEditorContext();
-	const { handleCreateTask, handleCreateTasks } = taskEditor;
+	const { prepareCreateTaskForLifecycle, prepareCreateTasksForLifecycle } = taskEditor;
 
 	const { currentProjectId } = useProjectNavigationContext();
 	const { showTrashWorktreeNotice, saveTrashWorktreeNoticeDismissed } = useProjectRuntimeContext();
@@ -133,18 +121,13 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 		board,
 		setBoard,
 		sessions,
-		setSessions,
 		selectedCard,
 		selectedTaskId,
 		currentProjectId,
 		setSelectedTaskId,
 		setIsClearTrashDialogOpen,
 		closeGitHistory,
-		stopTaskSession,
-		cleanupTaskWorktree,
-		ensureTaskWorktree,
-		startTaskSession,
-		fetchTaskWorktreeInfo,
+		executeTaskLifecycle: taskLifecycle.executeTaskLifecycle,
 		showTrashWorktreeNotice,
 		saveTrashWorktreeNoticeDismissed,
 	});
@@ -157,8 +140,10 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 		handleStartAllBacklogTasksFromBoard,
 	} = useTaskStartActions({
 		board,
-		handleCreateTask,
-		handleCreateTasks,
+		setBoard,
+		prepareCreateTaskForLifecycle,
+		prepareCreateTasksForLifecycle,
+		executeTaskLifecycle: taskLifecycle.executeTaskLifecycle,
 		handleStartTask,
 		handleStartAllBacklogTasks,
 		setSelectedTaskId,

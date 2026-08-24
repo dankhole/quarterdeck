@@ -98,14 +98,15 @@ export function createProjectsUpdatedEffects(
 	];
 }
 
-export function createBoardStateSavedEffects(projectScope: RuntimeTrpcProjectScope): readonly RuntimeMutationEffect[] {
+/** Side effects not already delivered by ProjectBoardCommandService publication. */
+export function createBoardCommandCommittedEffects(
+	projectScope: RuntimeTrpcProjectScope,
+): readonly RuntimeMutationEffect[] {
 	return [
-		...createProjectStateUpdatedEffects(projectScope),
 		{
 			type: "project_notifications_updated",
 			projectId: projectScope.projectId,
 		},
-		...createProjectsUpdatedEffects(projectScope.projectId),
 	];
 }
 

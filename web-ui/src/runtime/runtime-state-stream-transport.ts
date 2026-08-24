@@ -87,8 +87,65 @@ export function startRuntimeStateStreamTransport(
 		cleanupSocket();
 
 		try {
-			socket = new WebSocket(getRuntimeStreamUrl(connectionProjectId));
+			const connectedSocket = new WebSocket(getRuntimeStreamUrl(connectionProjectId));
+			socket = connectedSocket;
 			disconnectReportedForSocket = false;
+			const isCurrentConnection = (): boolean => !cancelled && socket === connectedSocket;
+
+			connectedSocket.onopen = () => {
+				if (!isCurrentConnection()) {
+					return;
+				}
+				reconnectAttempt = 0;
+				setRuntimeDisconnected(false);
+				setBrowserDiagnosticsConnected(true);
+				callbacks.onConnected();
+			};
+
+			connectedSocket.onmessage = (event) => {
+				if (!isCurrentConnection()) {
+					return;
+				}
+				try {
+					callbacks.onMessage(JSON.parse(String(event.data)) as RuntimeStateStreamMessage);
+				} catch (error) {
+					log.warn("Malformed stream message", error);
+					recordBrowserEvent(
+						"browser.runtime_message_rejected",
+						{
+							errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+						},
+						{},
+						{ level: "warn", essential: true },
+					);
+				}
+			};
+
+			connectedSocket.onclose = () => {
+				if (!isCurrentConnection()) {
+					return;
+				}
+				setRuntimeDisconnected(true);
+				setBrowserDiagnosticsConnected(false, "Runtime stream disconnected.");
+				if (!disconnectReportedForSocket) {
+					disconnectReportedForSocket = true;
+					callbacks.onDisconnected("Runtime stream disconnected.");
+				}
+				scheduleReconnect();
+			};
+
+			connectedSocket.onerror = () => {
+				if (!isCurrentConnection()) {
+					return;
+				}
+				setRuntimeDisconnected(true);
+				setBrowserDiagnosticsConnected(false, "Runtime stream connection failed.");
+				log.error("WebSocket connection failed");
+				if (!disconnectReportedForSocket) {
+					disconnectReportedForSocket = true;
+					callbacks.onDisconnected("Runtime stream connection failed.");
+				}
+			};
 		} catch (error) {
 			setRuntimeDisconnected(true);
 			setBrowserDiagnosticsConnected(false, toErrorMessage(error));
@@ -96,53 +153,6 @@ export function startRuntimeStateStreamTransport(
 			scheduleReconnect();
 			return;
 		}
-
-		socket.onopen = () => {
-			reconnectAttempt = 0;
-			setRuntimeDisconnected(false);
-			setBrowserDiagnosticsConnected(true);
-			callbacks.onConnected();
-		};
-
-		socket.onmessage = (event) => {
-			try {
-				callbacks.onMessage(JSON.parse(String(event.data)) as RuntimeStateStreamMessage);
-			} catch (error) {
-				log.warn("Malformed stream message", error);
-				recordBrowserEvent(
-					"browser.runtime_message_rejected",
-					{ errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError" },
-					{},
-					{ level: "warn", essential: true },
-				);
-			}
-		};
-
-		socket.onclose = () => {
-			if (cancelled) {
-				return;
-			}
-			setRuntimeDisconnected(true);
-			setBrowserDiagnosticsConnected(false, "Runtime stream disconnected.");
-			if (!disconnectReportedForSocket) {
-				disconnectReportedForSocket = true;
-				callbacks.onDisconnected("Runtime stream disconnected.");
-			}
-			scheduleReconnect();
-		};
-
-		socket.onerror = () => {
-			if (cancelled) {
-				return;
-			}
-			setRuntimeDisconnected(true);
-			setBrowserDiagnosticsConnected(false, "Runtime stream connection failed.");
-			log.error("WebSocket connection failed");
-			if (!disconnectReportedForSocket) {
-				disconnectReportedForSocket = true;
-				callbacks.onDisconnected("Runtime stream connection failed.");
-			}
-		};
 	};
 
 	connect();

@@ -128,10 +128,14 @@ describe("usePromptShortcuts", () => {
 		await runPromise;
 
 		expect(sendTaskSessionInput).toHaveBeenNthCalledWith(1, "task-1", "/commit", {
+			intent: "write",
 			appendNewline: false,
 			mode: "paste",
 		});
-		expect(sendTaskSessionInput).toHaveBeenNthCalledWith(2, "task-1", "\r", { appendNewline: false });
+		expect(sendTaskSessionInput).toHaveBeenNthCalledWith(2, "task-1", "\r", {
+			intent: "submit",
+			appendNewline: false,
+		});
 		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
 

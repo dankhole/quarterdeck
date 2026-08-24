@@ -1,14 +1,15 @@
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { getDetailTerminalTaskId } from "@/hooks/terminal/use-terminal-panels";
-import type { BoardCard } from "@/types";
+import type { TaskTrashWarningViewModel } from "@/components/task";
+import type { UseTaskLifecycleOperationsResult } from "@/hooks/board/use-task-lifecycle-operations";
+import type { BoardCard, BoardColumnId } from "@/types";
 
 import {
 	createBoard,
-	createDeferred,
 	HookHarness,
 	type HookSnapshot,
+	requireSnapshot,
 	useTestEnvironment,
 } from "./linked-backlog-actions-test-harness";
 
@@ -17,7 +18,6 @@ describe("useLinkedBacklogTaskActions", () => {
 
 	it("creates a dependency link between tasks", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-
 		await act(async () => {
 			ctx.root.render(
 				<HookHarness
@@ -28,82 +28,95 @@ describe("useLinkedBacklogTaskActions", () => {
 			);
 		});
 
-		if (latestSnapshot === null) {
-			throw new Error("Expected a hook snapshot.");
-		}
-		const initialSnapshot = latestSnapshot as HookSnapshot;
-
 		await act(async () => {
-			initialSnapshot.handleCreateDependency("task-1", "task-2");
+			requireSnapshot(latestSnapshot).handleCreateDependency("task-1", "task-2");
 		});
 
-		if (latestSnapshot === null) {
-			throw new Error("Expected an updated hook snapshot.");
-		}
-		const snapshot = latestSnapshot as HookSnapshot;
-
-		expect(snapshot.board.dependencies).toHaveLength(1);
-		expect(snapshot.board.dependencies[0]).toMatchObject({
-			fromTaskId: "task-1",
-			toTaskId: "task-2",
-		});
+		expect(requireSnapshot(latestSnapshot).board.dependencies).toEqual([
+			expect.objectContaining({ fromTaskId: "task-1", toTaskId: "task-2" }),
+		]);
 	});
 
-	it("auto-starts linked backlog tasks when a parent task is trashed", async () => {
+	it("trashes through one server-owned lifecycle command while keeping the optimistic move", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const kickoffTaskInProgress = vi.fn(async () => true);
+		const executeTaskLifecycle = vi.fn<UseTaskLifecycleOperationsResult["executeTaskLifecycle"]>(async () => null);
+		await act(async () => {
+			ctx.root.render(
+				<HookHarness
+					executeTaskLifecycle={executeTaskLifecycle}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+		const initial = requireSnapshot(latestSnapshot);
+		const reviewTask = initial.board.columns.find((column) => column.id === "review")?.cards[0];
+		if (!reviewTask) {
+			throw new Error("Expected a review task.");
+		}
+
+		await act(async () => {
+			await initial.confirmMoveTaskToTrash(reviewTask, initial.board, "review");
+		});
+
+		expect(executeTaskLifecycle).toHaveBeenCalledOnce();
+		expect(executeTaskLifecycle).toHaveBeenCalledWith({
+			kind: "trash",
+			taskId: reviewTask.id,
+			taskCreatedAt: reviewTask.createdAt,
+			sourceColumnId: "review",
+		});
+		const next = requireSnapshot(latestSnapshot).board;
+		expect(next.columns.find((column) => column.id === "review")?.cards).toEqual([]);
+		expect(next.columns.find((column) => column.id === "trash")?.cards[0]?.id).toBe(reviewTask.id);
+	});
+
+	it("sends only the parent trash intent when dependencies become unblocked", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const executeTaskLifecycle = vi.fn<UseTaskLifecycleOperationsResult["executeTaskLifecycle"]>(async () => null);
 		const boardFactory = () =>
 			createBoard([
 				{ id: "dep-1", fromTaskId: "task-1", toTaskId: "task-2", createdAt: 10 },
 				{ id: "dep-2", fromTaskId: "task-3", toTaskId: "task-2", createdAt: 11 },
 			]);
-
 		await act(async () => {
 			ctx.root.render(
 				<HookHarness
 					boardFactory={boardFactory}
-					kickoffTaskInProgress={kickoffTaskInProgress}
+					executeTaskLifecycle={executeTaskLifecycle}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
 				/>,
 			);
 		});
-
-		if (latestSnapshot === null) {
-			throw new Error("Expected a hook snapshot.");
-		}
-		const initialSnapshot = latestSnapshot as HookSnapshot;
-		const reviewTask = initialSnapshot.board.columns.find((column) => column.id === "review")?.cards[0];
+		const initial = requireSnapshot(latestSnapshot);
+		const reviewTask = initial.board.columns.find((column) => column.id === "review")?.cards[0];
 		if (!reviewTask) {
 			throw new Error("Expected a review task.");
 		}
 
 		await act(async () => {
-			await initialSnapshot.confirmMoveTaskToTrash(reviewTask, initialSnapshot.board);
+			await initial.confirmMoveTaskToTrash(reviewTask, initial.board, "review");
 		});
 
-		expect(kickoffTaskInProgress).toHaveBeenCalledTimes(2);
+		// Linked-child discovery and starts are part of the same durable server
+		// operation. React must not launch child sessions independently.
+		expect(executeTaskLifecycle).toHaveBeenCalledOnce();
+		expect(executeTaskLifecycle.mock.calls[0]?.[0]).toMatchObject({
+			kind: "trash",
+			taskId: "task-2",
+		});
 	});
 
-	it("uses animated backlog starts for dependency-unblocked tasks when available", async () => {
+	it("routes a direct request through the same lifecycle boundary", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const kickoffTaskInProgress = vi.fn(async () => true);
-		const startBacklogTaskWithAnimation = vi.fn(async (task: BoardCard) => task.id === "task-1");
-		const waitForBacklogStartAnimationAvailability = vi.fn(async () => {});
-		const boardFactory = () =>
-			createBoard([
-				{ id: "dep-1", fromTaskId: "task-1", toTaskId: "task-2", createdAt: 10 },
-				{ id: "dep-2", fromTaskId: "task-3", toTaskId: "task-2", createdAt: 11 },
-			]);
-
+		const executeTaskLifecycle = vi.fn<UseTaskLifecycleOperationsResult["executeTaskLifecycle"]>(async () => null);
 		await act(async () => {
 			ctx.root.render(
 				<HookHarness
-					boardFactory={boardFactory}
-					kickoffTaskInProgress={kickoffTaskInProgress}
-					startBacklogTaskWithAnimation={startBacklogTaskWithAnimation}
-					waitForBacklogStartAnimationAvailability={waitForBacklogStartAnimationAvailability}
+					executeTaskLifecycle={executeTaskLifecycle}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -111,113 +124,80 @@ describe("useLinkedBacklogTaskActions", () => {
 			);
 		});
 
-		if (latestSnapshot === null) {
-			throw new Error("Expected a hook snapshot.");
-		}
-		const initialSnapshot = latestSnapshot as HookSnapshot;
-		const reviewTask = initialSnapshot.board.columns.find((column) => column.id === "review")?.cards[0];
-		if (!reviewTask) {
-			throw new Error("Expected a review task.");
-		}
-
 		await act(async () => {
-			await initialSnapshot.confirmMoveTaskToTrash(reviewTask, initialSnapshot.board);
+			await requireSnapshot(latestSnapshot).requestMoveTaskToTrash("task-2", "review");
 		});
 
-		expect(startBacklogTaskWithAnimation).toHaveBeenCalledTimes(2);
-		expect(startBacklogTaskWithAnimation.mock.calls[0]?.[0]).toMatchObject({ id: "task-1" });
-		expect(startBacklogTaskWithAnimation.mock.calls[1]?.[0]).toMatchObject({ id: "task-3" });
-		expect(waitForBacklogStartAnimationAvailability).toHaveBeenCalledTimes(1);
-		expect(kickoffTaskInProgress).not.toHaveBeenCalled();
+		expect(executeTaskLifecycle).toHaveBeenCalledWith({
+			kind: "trash",
+			taskId: "task-2",
+			taskCreatedAt: 2,
+			sourceColumnId: "review",
+		});
 	});
 
-	it("stops the main task session and its detail terminal shell when a task is trashed", async () => {
+	it("defers the durable command until the trash confirmation is accepted", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const stopTaskSession = vi.fn(async (_taskId: string) => ({
-			ok: true,
-			summary: null,
-			didExit: true,
-			outcome: "exited" as const,
-		}));
-
-		await act(async () => {
-			ctx.root.render(
-				<HookHarness
-					stopTaskSession={stopTaskSession}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-		});
-
-		if (latestSnapshot === null) {
-			throw new Error("Expected a hook snapshot.");
-		}
-		const initialSnapshot = latestSnapshot as HookSnapshot;
-		const reviewTask = initialSnapshot.board.columns.find((column) => column.id === "review")?.cards[0];
-		if (!reviewTask) {
-			throw new Error("Expected a review task.");
-		}
-
-		await act(async () => {
-			await initialSnapshot.confirmMoveTaskToTrash(reviewTask, initialSnapshot.board);
-		});
-
-		expect(stopTaskSession).toHaveBeenCalledTimes(2);
-		expect(stopTaskSession).toHaveBeenNthCalledWith(1, reviewTask.id, { waitForExit: true });
-		expect(stopTaskSession).toHaveBeenNthCalledWith(2, getDetailTerminalTaskId(reviewTask.id));
-	});
-
-	it("does not delete the worktree when the task session does not exit", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-		const stopTaskSession = vi.fn(async (taskId: string) =>
-			taskId === "task-2"
-				? {
-						ok: false,
-						summary: null,
-						didExit: false,
-						outcome: "timed_out" as const,
-						error: "Task session did not exit before the timeout.",
-					}
-				: { ok: true, summary: null, didExit: null, outcome: "requested" as const },
+		let requestedCard: BoardCard | null = null;
+		let requestedSource: BoardColumnId | null = null;
+		const executeTaskLifecycle = vi.fn<UseTaskLifecycleOperationsResult["executeTaskLifecycle"]>(async () => null);
+		const onRequestTrashConfirmation = vi.fn(
+			(_viewModel: TaskTrashWarningViewModel, card: BoardCard, fromColumnId: BoardColumnId) => {
+				requestedCard = card;
+				requestedSource = fromColumnId;
+			},
 		);
-		const cleanupTaskWorktree = vi.fn(async () => ({ ok: true, removed: true }));
-
 		await act(async () => {
 			ctx.root.render(
 				<HookHarness
-					stopTaskSession={stopTaskSession}
-					cleanupTaskWorktree={cleanupTaskWorktree}
+					executeTaskLifecycle={executeTaskLifecycle}
+					onRequestTrashConfirmation={onRequestTrashConfirmation}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
 				/>,
 			);
 		});
+		const initial = requireSnapshot(latestSnapshot);
 
-		if (!latestSnapshot) {
-			throw new Error("Expected a hook snapshot.");
-		}
-		const initialSnapshot = latestSnapshot as HookSnapshot;
 		await act(async () => {
-			await initialSnapshot.confirmMoveTaskToTrash(
-				initialSnapshot.board.columns.find((column) => column.id === "review")!.cards[0]!,
-				initialSnapshot.board,
-			);
+			await initial.requestMoveTaskToTrash("task-2", "review");
 		});
+		expect(onRequestTrashConfirmation).toHaveBeenCalledOnce();
+		expect(executeTaskLifecycle).not.toHaveBeenCalled();
+		if (!requestedCard || requestedSource === "trash") {
+			throw new Error("Expected a confirmed non-trash task.");
+		}
+		const confirmedCard = requestedCard as BoardCard;
+		const confirmedSource = requestedSource as unknown as Exclude<BoardColumnId, "trash">;
 
-		expect(cleanupTaskWorktree).not.toHaveBeenCalled();
+		await act(async () => {
+			await requireSnapshot(latestSnapshot).confirmMoveTaskToTrash(confirmedCard, initial.board, confirmedSource);
+		});
+		expect(executeTaskLifecycle).toHaveBeenCalledOnce();
 	});
 
-	it("trashes tasks directly through the request handler", async () => {
+	it("keeps the original source identity for an already-optimistic drag", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const cleanupTaskWorktree = vi.fn(async (_taskId: string) => ({ ok: true, removed: true }));
-
+		let confirmation: { card: BoardCard; source: BoardColumnId; optimisticMoveApplied: boolean } | undefined;
+		const executeTaskLifecycle = vi.fn<UseTaskLifecycleOperationsResult["executeTaskLifecycle"]>(async () => null);
 		await act(async () => {
 			ctx.root.render(
 				<HookHarness
-					cleanupTaskWorktree={cleanupTaskWorktree}
+					boardFactory={() => {
+						const board = createBoard();
+						const review = board.columns.find((column) => column.id === "review");
+						const trash = board.columns.find((column) => column.id === "trash");
+						if (review && trash) {
+							trash.cards = review.cards;
+							review.cards = [];
+						}
+						return board;
+					}}
+					executeTaskLifecycle={executeTaskLifecycle}
+					onRequestTrashConfirmation={(_viewModel, card, source, optimisticMoveApplied) => {
+						confirmation = { card, source, optimisticMoveApplied };
+					}}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -225,87 +205,29 @@ describe("useLinkedBacklogTaskActions", () => {
 			);
 		});
 
-		if (latestSnapshot === null) {
-			throw new Error("Expected a hook snapshot.");
-		}
-		const initialSnapshot = latestSnapshot as HookSnapshot;
-
 		await act(async () => {
-			await initialSnapshot.requestMoveTaskToTrash("task-2", "review");
+			await requireSnapshot(latestSnapshot).requestMoveTaskToTrash("task-2", "review", {
+				optimisticMoveApplied: true,
+			});
 		});
-
-		if (latestSnapshot === null) {
-			throw new Error("Expected an updated hook snapshot.");
+		expect(confirmation).toMatchObject({ source: "review", optimisticMoveApplied: true });
+		if (!confirmation || confirmation.source === "trash") {
+			throw new Error("Expected an optimistic trash confirmation.");
 		}
-		const nextSnapshot = latestSnapshot as HookSnapshot;
-		expect(nextSnapshot.board.columns.find((column) => column.id === "review")?.cards).toHaveLength(0);
-		expect(nextSnapshot.board.columns.find((column) => column.id === "trash")?.cards[0]?.id).toBe("task-2");
-		expect(cleanupTaskWorktree).toHaveBeenCalledWith("task-2");
-	});
-
-	it("can queue the next dependency-unblocked animation before the previous start resolves", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-		const firstKickoff = createDeferred<boolean>();
-		const secondKickoff = createDeferred<boolean>();
-		const waitForSecondAnimation = createDeferred<void>();
-		const startBacklogTaskWithAnimation = vi.fn((task: BoardCard) => {
-			if (task.id === "task-1") {
-				return firstKickoff.promise;
-			}
-			return secondKickoff.promise;
-		});
-		const waitForBacklogStartAnimationAvailability = vi.fn(async () => {
-			await waitForSecondAnimation.promise;
-		});
-		const boardFactory = () =>
-			createBoard([
-				{ id: "dep-1", fromTaskId: "task-1", toTaskId: "task-2", createdAt: 10 },
-				{ id: "dep-2", fromTaskId: "task-3", toTaskId: "task-2", createdAt: 11 },
-			]);
-
+		const confirmed = confirmation as {
+			card: BoardCard;
+			source: Exclude<BoardColumnId, "trash">;
+			optimisticMoveApplied: boolean;
+		};
 		await act(async () => {
-			ctx.root.render(
-				<HookHarness
-					boardFactory={boardFactory}
-					startBacklogTaskWithAnimation={startBacklogTaskWithAnimation}
-					waitForBacklogStartAnimationAvailability={waitForBacklogStartAnimationAvailability}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
+			await requireSnapshot(latestSnapshot).confirmMoveTaskToTrash(
+				confirmed.card,
+				requireSnapshot(latestSnapshot).board,
+				confirmed.source,
 			);
 		});
-
-		if (latestSnapshot === null) {
-			throw new Error("Expected a hook snapshot.");
-		}
-		const initialSnapshot = latestSnapshot as HookSnapshot;
-		const reviewTask = initialSnapshot.board.columns.find((column) => column.id === "review")?.cards[0];
-		if (!reviewTask) {
-			throw new Error("Expected a review task.");
-		}
-
-		let movePromise: Promise<void> | null = null;
-		await act(async () => {
-			movePromise = initialSnapshot.confirmMoveTaskToTrash(reviewTask, initialSnapshot.board);
-			await Promise.resolve();
-		});
-
-		expect(startBacklogTaskWithAnimation).toHaveBeenCalledTimes(1);
-		expect(startBacklogTaskWithAnimation.mock.calls[0]?.[0]).toMatchObject({ id: "task-1" });
-
-		await act(async () => {
-			waitForSecondAnimation.resolve();
-			await Promise.resolve();
-		});
-
-		expect(startBacklogTaskWithAnimation).toHaveBeenCalledTimes(2);
-		expect(startBacklogTaskWithAnimation.mock.calls[1]?.[0]).toMatchObject({ id: "task-3" });
-
-		await act(async () => {
-			firstKickoff.resolve(true);
-			secondKickoff.resolve(true);
-			await movePromise;
-		});
+		expect(executeTaskLifecycle).toHaveBeenCalledWith(
+			expect.objectContaining({ kind: "trash", sourceColumnId: "review" }),
+		);
 	});
 });

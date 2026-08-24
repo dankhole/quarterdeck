@@ -14,8 +14,6 @@ describe("createHooksApi — permission metadata guard", () => {
 					latestHookActivity: permissionActivity(),
 				}),
 			),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
@@ -43,8 +41,6 @@ describe("createHooksApi — permission metadata guard", () => {
 					latestHookActivity: permissionActivity(),
 				}),
 			),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
@@ -81,8 +77,6 @@ describe("createHooksApi — permission metadata guard", () => {
 					},
 				}),
 			),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
@@ -109,8 +103,6 @@ describe("createHooksApi — permission metadata guard", () => {
 					latestHookActivity: permissionActivity(),
 				}),
 			),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
@@ -138,8 +130,6 @@ describe("createHooksApi — permission metadata guard", () => {
 					latestHookActivity: permissionActivity(),
 				}),
 			),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary,
 			setDisplaySummary: vi.fn(),
@@ -173,8 +163,6 @@ describe("createHooksApi — permission metadata guard", () => {
 					latestHookActivity: permissionActivity(),
 				}),
 			),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
@@ -206,8 +194,7 @@ describe("createHooksApi — permission-aware transition guard", () => {
 						latestHookActivity: null,
 					}),
 				),
-			transitionToReview: vi.fn(() => transitionedSummary),
-			transitionToRunning: vi.fn(),
+			toReviewSummary: vi.fn(() => transitionedSummary),
 			applyHookActivity: vi.fn(),
 			applyTurnCheckpoint: vi.fn(),
 			appendConversationSummary: vi.fn(),
@@ -233,7 +220,10 @@ describe("createHooksApi — permission-aware transition guard", () => {
 			metadata: { hookEventName: "PermissionRequest", source: "claude" },
 		});
 		expect(r1).toEqual({ ok: true });
-		expect(mockStore(manager).transitionToReview).toHaveBeenCalledWith("task-1", "hook");
+		expect(manager.applyHookTransition).toHaveBeenCalledWith(
+			"task-1",
+			expect.objectContaining({ type: "hook.to_review", reason: "hook" }),
+		);
 		expect(broadcastTaskReadyForReview).toHaveBeenCalledWith("project-1", "task-1");
 
 		const r2 = await api.ingest({
@@ -243,7 +233,7 @@ describe("createHooksApi — permission-aware transition guard", () => {
 			metadata: { hookEventName: "PostToolUse", source: "claude" },
 		});
 		expect(r2).toEqual({ ok: true });
-		expect(mockStore(manager).transitionToRunning).not.toHaveBeenCalled();
+		expect(manager.applyHookTransition).toHaveBeenCalledTimes(1);
 	});
 
 	it("blocks stale PostToolUse from bouncing permission state back to running", async () => {
@@ -255,8 +245,6 @@ describe("createHooksApi — permission-aware transition guard", () => {
 					latestHookActivity: permissionActivity(),
 				}),
 			),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
@@ -272,7 +260,7 @@ describe("createHooksApi — permission-aware transition guard", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(mockStore(manager).transitionToRunning).not.toHaveBeenCalled();
+		expect(manager.applyHookTransition).not.toHaveBeenCalled();
 	});
 
 	it("allows UserPromptSubmit through the permission guard", async () => {
@@ -285,8 +273,7 @@ describe("createHooksApi — permission-aware transition guard", () => {
 					latestHookActivity: permissionActivity(),
 				}),
 			),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(() => runningSummary),
+			toRunningSummary: vi.fn(() => runningSummary),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
@@ -305,7 +292,10 @@ describe("createHooksApi — permission-aware transition guard", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(mockStore(manager).transitionToRunning).toHaveBeenCalledWith("task-1");
+		expect(manager.applyHookTransition).toHaveBeenCalledWith(
+			"task-1",
+			expect.objectContaining({ type: "hook.to_in_progress" }),
+		);
 		expect(broadcastRuntimeProjectStateUpdated).toHaveBeenCalled();
 	});
 
@@ -319,8 +309,7 @@ describe("createHooksApi — permission-aware transition guard", () => {
 					latestHookActivity: permissionActivity({ source: "pi" }),
 				}),
 			),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(() => runningSummary),
+			toRunningSummary: vi.fn(() => runningSummary),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
@@ -336,7 +325,10 @@ describe("createHooksApi — permission-aware transition guard", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(mockStore(manager).transitionToRunning).toHaveBeenCalledWith("task-1");
+		expect(manager.applyHookTransition).toHaveBeenCalledWith(
+			"task-1",
+			expect.objectContaining({ type: "hook.to_in_progress" }),
+		);
 	});
 
 	it("allows Codex PostToolUse through the permission guard", async () => {
@@ -352,8 +344,7 @@ describe("createHooksApi — permission-aware transition guard", () => {
 					}),
 				}),
 			),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(() => runningSummary),
+			toRunningSummary: vi.fn(() => runningSummary),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
@@ -369,7 +360,10 @@ describe("createHooksApi — permission-aware transition guard", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(mockStore(manager).transitionToRunning).toHaveBeenCalledWith("task-1");
+		expect(manager.applyHookTransition).toHaveBeenCalledWith(
+			"task-1",
+			expect.objectContaining({ type: "hook.to_in_progress" }),
+		);
 	});
 
 	it("allows to_in_progress through when activity is not permission-related", async () => {
@@ -391,8 +385,7 @@ describe("createHooksApi — permission-aware transition guard", () => {
 					},
 				}),
 			),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(() => runningSummary),
+			toRunningSummary: vi.fn(() => runningSummary),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
@@ -408,6 +401,9 @@ describe("createHooksApi — permission-aware transition guard", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(mockStore(manager).transitionToRunning).toHaveBeenCalledWith("task-1");
+		expect(manager.applyHookTransition).toHaveBeenCalledWith(
+			"task-1",
+			expect.objectContaining({ type: "hook.to_in_progress" }),
+		);
 	});
 });

@@ -16,6 +16,11 @@ export type RuntimeWorkdirFileStatus = z.infer<typeof runtimeWorkdirFileStatusSc
 export const runtimeAgentIdSchema = z.enum(["claude", "codex", "pi"]);
 export type RuntimeAgentId = z.infer<typeof runtimeAgentIdSchema>;
 
+// Pi remains in RuntimeAgentId so persisted experimental sessions keep loading,
+// but new cross-agent architecture targets only maintained integrations.
+export const runtimeMaintainedAgentIdSchema = z.enum(["claude", "codex"]);
+export type RuntimeMaintainedAgentId = z.infer<typeof runtimeMaintainedAgentIdSchema>;
+
 export const runtimeBoardColumnIdSchema = z.enum(["backlog", "in_progress", "review", "trash"]);
 export type RuntimeBoardColumnId = z.infer<typeof runtimeBoardColumnIdSchema>;
 

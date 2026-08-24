@@ -6,9 +6,9 @@ export interface TaskResourceOperationRunner {
 
 /**
  * Serializes operations that can create, launch from, stop within, or delete
- * one task's checkout. Browser and server each own an instance at their
- * composition root so the same project/task key semantics protect both sides
- * of the request boundary without sharing mutable state between runtimes.
+ * one task's checkout. The runtime composition root owns the production
+ * instance so lifecycle commands and lower-level server handlers share one
+ * project/task boundary across every client.
  */
 export class TaskResourceOperationCoordinator implements TaskResourceOperationRunner {
 	private readonly operations = new KeyedOperationCoordinator();

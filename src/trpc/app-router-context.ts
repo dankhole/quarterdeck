@@ -53,13 +53,14 @@ import type {
 	RuntimeOpenProjectResponse,
 	RuntimeProjectAddRequest,
 	RuntimeProjectAddResponse,
+	RuntimeProjectBoardCommandBatchEnvelope,
+	RuntimeProjectBoardCommandExecutionResult,
 	RuntimeProjectDirectoryPickerResponse,
 	RuntimeProjectRemoveRequest,
 	RuntimeProjectRemoveResponse,
 	RuntimeProjectReorderRequest,
 	RuntimeProjectReorderResponse,
 	RuntimeProjectStateResponse,
-	RuntimeProjectStateSaveRequest,
 	RuntimeProjectsResponse,
 	RuntimeShellSessionStartRequest,
 	RuntimeShellSessionStartResponse,
@@ -68,6 +69,8 @@ import type {
 	RuntimeStashPopApplyResponse,
 	RuntimeStashPushResponse,
 	RuntimeStashShowResponse,
+	RuntimeTaskLifecycleCommand,
+	RuntimeTaskLifecycleResult,
 	RuntimeTaskRepositoryInfoResponse,
 	RuntimeTaskSessionInputRequest,
 	RuntimeTaskSessionInputResponse,
@@ -116,6 +119,14 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcProjectScope,
 			input: RuntimeTaskSessionStopRequest,
 		) => Promise<RuntimeTaskSessionStopResponse>;
+		executeTaskLifecycle: (
+			scope: RuntimeTrpcProjectScope,
+			input: RuntimeTaskLifecycleCommand,
+		) => Promise<RuntimeTaskLifecycleResult>;
+		getTaskLifecycleOperation: (
+			scope: RuntimeTrpcProjectScope,
+			operationId: string,
+		) => Promise<RuntimeTaskLifecycleResult | null>;
 		sendTaskSessionInput: (
 			scope: RuntimeTrpcProjectScope,
 			input: RuntimeTaskSessionInputRequest,
@@ -254,10 +265,10 @@ export interface RuntimeTrpcContext {
 			input: RuntimeWorkdirEntryDeleteRequest,
 		) => Promise<RuntimeWorkdirEntryMutationResponse>;
 		loadState: (scope: RuntimeTrpcProjectScope) => Promise<RuntimeProjectStateResponse>;
-		saveState: (
+		applyBoardCommands: (
 			scope: RuntimeTrpcProjectScope,
-			input: RuntimeProjectStateSaveRequest,
-		) => Promise<RuntimeProjectStateResponse>;
+			input: RuntimeProjectBoardCommandBatchEnvelope,
+		) => Promise<RuntimeProjectBoardCommandExecutionResult>;
 		loadWorkdirChanges: (scope: RuntimeTrpcProjectScope) => Promise<RuntimeWorkdirChangesResponse>;
 		loadGitLog: (scope: RuntimeTrpcProjectScope, input: RuntimeGitLogRequest) => Promise<RuntimeGitLogResponse>;
 		loadGitRefs: (
@@ -273,7 +284,7 @@ export interface RuntimeTrpcContext {
 			taskScope: { taskId: string; baseRef: string } | null,
 			paths?: string[],
 		) => Promise<RuntimeCommitMessageGenerationContext>;
-		notifyTaskTitleUpdated: (scope: RuntimeTrpcProjectScope, taskId: string, title: string) => void;
+		updateTaskTitle: (scope: RuntimeTrpcProjectScope, taskId: string, title: string) => Promise<boolean>;
 		setTaskDisplaySummary: (
 			scope: RuntimeTrpcProjectScope,
 			taskId: string,

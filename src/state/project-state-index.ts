@@ -51,11 +51,35 @@ interface ProjectIndexFile {
 export interface ProjectStateMeta {
 	revision: number;
 	updatedAt: number;
+	recentBoardCommands: ProjectBoardCommandReceipt[];
 }
+
+export interface ProjectBoardCommandReceipt {
+	commandId: string;
+	fingerprint: string;
+	revision: number;
+	appliedAt: number;
+	acceptedChange: boolean;
+}
+
+export const MAX_RECENT_BOARD_COMMAND_RECEIPTS = 256;
+
+const projectBoardCommandReceiptSchema = z.object({
+	commandId: z.string().min(1).max(128),
+	fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+	revision: z.number().int().nonnegative(),
+	appliedAt: z.number().finite().nonnegative(),
+	acceptedChange: z.boolean(),
+});
 
 export const projectStateMetaSchema = z.object({
 	revision: z.number().int().nonnegative(),
 	updatedAt: z.number(),
+	recentBoardCommands: z
+		.array(projectBoardCommandReceiptSchema)
+		.max(MAX_RECENT_BOARD_COMMAND_RECEIPTS)
+		.optional()
+		.default([]),
 });
 
 const projectIndexEntrySchema = z.object({
@@ -403,6 +427,7 @@ export async function readProjectMeta(projectId: string): Promise<ProjectStateMe
 	return parsePersistedStateFile(metaPath, "meta.json", rawMeta, projectStateMetaSchema, {
 		revision: 0,
 		updatedAt: 0,
+		recentBoardCommands: [],
 	});
 }
 

@@ -1,14 +1,27 @@
 import { vi } from "vitest";
 
 import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../../../../src/core";
-import type { SessionSummaryStore, TerminalSessionManager } from "../../../../src/terminal";
+import {
+	type HookSessionReviewReason,
+	reduceSessionTransition,
+	type SessionSummaryStore,
+	type TerminalSessionManager,
+} from "../../../../src/terminal";
 import { type CreateHooksApiDependencies, createHooksApi } from "../../../../src/trpc";
 
-export function createMockManager(storeMethods: Partial<SessionSummaryStore>): TerminalSessionManager {
+type HookTransitionSummaryFactories = {
+	toReviewSummary?: (taskId: string, reason: HookSessionReviewReason) => RuntimeTaskSessionSummary | null;
+	toRunningSummary?: (taskId: string) => RuntimeTaskSessionSummary | null;
+};
+
+type MockStoreMethods = Partial<SessionSummaryStore> & HookTransitionSummaryFactories;
+
+export function createMockManager(storeMethods: MockStoreMethods): TerminalSessionManager {
+	const { toReviewSummary, toRunningSummary, ...sessionStoreMethods } = storeMethods;
 	const store = {
-		...storeMethods,
+		...sessionStoreMethods,
 		applyHookMetadata:
-			storeMethods.applyHookMetadata ??
+			sessionStoreMethods.applyHookMetadata ??
 			vi.fn((taskId: string, metadata: Parameters<SessionSummaryStore["applyHookMetadata"]>[1]) => {
 				const {
 					sessionId: _sessionId,
@@ -18,11 +31,34 @@ export function createMockManager(storeMethods: Partial<SessionSummaryStore>): T
 					transcriptPath: _transcriptPath,
 					...activity
 				} = metadata;
-				return storeMethods.applyHookActivity?.(taskId, activity);
+				return sessionStoreMethods.applyHookActivity?.(taskId, activity);
 			}),
 	};
 	return {
 		store,
+		applyHookTransition: vi.fn((taskId, transition) => {
+			const configuredSummary =
+				transition.type === "hook.to_review"
+					? toReviewSummary?.(taskId, transition.reason ?? "hook")
+					: toRunningSummary?.(taskId);
+			if (configuredSummary) {
+				return {
+					changed: true,
+					patch: {},
+					clearAttentionBuffer: true,
+					summary: configuredSummary,
+				};
+			}
+			const summary = store.getSummary?.(taskId) ?? null;
+			if (!summary) {
+				return null;
+			}
+			const result = reduceSessionTransition(summary, transition);
+			return {
+				...result,
+				summary: result.changed ? { ...summary, ...result.patch } : summary,
+			};
+		}),
 		recordHookReceived: vi.fn(),
 		observeTaskSessionLaunchHook: vi.fn(() => true),
 		evaluateHookEventOrder: vi.fn(() => ({ accepted: true })),

@@ -14,7 +14,15 @@ import { prepareAgentLabFixture } from "./fixture";
 import { resolveLoopbackPort } from "./loopback-port";
 import { writeJsonAtomic } from "./paths";
 import { captureAgentLabSnapshot } from "./snapshot";
-import { type AgentLabLaunchConfig, AgentLabLaunchConfigSchema, type AgentLabManifest } from "./types";
+import {
+	type AgentLabLaunchConfig,
+	AgentLabLaunchConfigSchema,
+	type AgentLabManifest,
+	type AgentLabRuntimeRestartRecord,
+	type AgentLabRuntimeRestartRequest,
+	AgentLabRuntimeRestartRequestSchema,
+	type AgentLabRuntimeRestartResult,
+} from "./types";
 
 interface ManagedChild {
 	label: string;
@@ -32,9 +40,13 @@ interface ManagedChildExit {
 }
 
 interface SupervisorControl {
-	promise: Promise<string>;
+	promise: Promise<SupervisorAction>;
 	dispose: () => void;
 }
+
+type SupervisorAction =
+	| { kind: "stop"; reason: string }
+	| { kind: "restart_runtime"; request: AgentLabRuntimeRestartRequest };
 
 interface AgentLabShutdownSequence {
 	capturePreShutdown: () => Promise<void>;
@@ -115,6 +127,43 @@ async function stopManagedChild(child: ManagedChild): Promise<void> {
 	child.logStream.end();
 }
 
+async function stopManagedChildGracefully(child: ManagedChild): Promise<void> {
+	if (child.getExitResult() || child.process.pid === undefined) {
+		child.logStream.end();
+		return;
+	}
+	const pid = child.process.pid;
+	try {
+		child.process.kill("SIGTERM");
+	} catch {
+		// The process may have exited between the liveness check and signal.
+	}
+	const exited = await Promise.race([
+		child.exit.then(() => true),
+		new Promise<false>((resolveTimeout) => {
+			const timeout = setTimeout(() => resolveTimeout(false), STOP_TIMEOUT_MS);
+			timeout.unref();
+		}),
+	]);
+	if (!exited) {
+		await new Promise<void>((resolveKill) => {
+			treeKill(pid, "SIGKILL", () => resolveKill());
+		});
+	}
+	child.logStream.end();
+}
+
+async function waitForManagedChildExit(child: ManagedChild, timeoutMs = 2_000): Promise<boolean> {
+	if (child.getExitResult()) return true;
+	return await Promise.race([
+		child.exit.then(() => true),
+		new Promise<false>((resolveTimeout) => {
+			const timeout = setTimeout(() => resolveTimeout(false), timeoutMs);
+			timeout.unref();
+		}),
+	]);
+}
+
 async function waitForUrl(url: string, child: ManagedChild, label: string): Promise<void> {
 	const deadline = Date.now() + STARTUP_TIMEOUT_MS;
 	let lastFailure = "not reachable";
@@ -138,22 +187,39 @@ async function waitForUrl(url: string, child: ManagedChild, label: string): Prom
 	throw new Error(`${label} did not become ready at ${url}: ${lastFailure}. See ${child.logPath}`);
 }
 
-function createSupervisorControl(stopRequestPath: string): SupervisorControl {
+function createSupervisorControl(stopRequestPath: string, runtimeRestartRequestPath: string): SupervisorControl {
 	let interval: NodeJS.Timeout | null = null;
 	let disposed = false;
+	let reading = false;
 	const signalHandlers = new Map<NodeJS.Signals, () => void>();
-	const promise = new Promise<string>((resolveControlPromise) => {
+	const promise = new Promise<SupervisorAction>((resolveControlPromise, rejectControlPromise) => {
 		interval = setInterval(() => {
+			if (reading) return;
+			reading = true;
 			void access(stopRequestPath)
-				.then(() => resolveControlPromise("stop request"))
-				.catch(() => {});
+				.then(() => resolveControlPromise({ kind: "stop", reason: "stop request" }))
+				.catch(async () => {
+					try {
+						const contents = await readFile(runtimeRestartRequestPath, "utf8");
+						const request = AgentLabRuntimeRestartRequestSchema.parse(JSON.parse(contents) as unknown);
+						resolveControlPromise({ kind: "restart_runtime", request });
+					} catch (error) {
+						if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+							return;
+						}
+						rejectControlPromise(error);
+					}
+				})
+				.finally(() => {
+					reading = false;
+				});
 		}, 200);
 		for (const signal of [
 			"SIGINT",
 			"SIGTERM",
 			...(process.platform === "win32" ? [] : ["SIGHUP"]),
 		] as NodeJS.Signals[]) {
-			const handler = () => resolveControlPromise(signal);
+			const handler = () => resolveControlPromise({ kind: "stop", reason: signal });
 			signalHandlers.set(signal, handler);
 			process.once(signal, handler);
 		}
@@ -235,7 +301,6 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 			webPort,
 			scenario: config.scenario,
 		});
-		const runtimeLogPath = join(config.artifactDir, "runtime.log");
 		const webLogPath = join(config.artifactDir, "web.log");
 		manifest = {
 			schemaVersion: config.schemaVersion,
@@ -245,6 +310,8 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 			artifactDir: config.artifactDir,
 			manifestPath: config.manifestPath,
 			stopRequestPath: config.stopRequestPath,
+			runtimeRestartRequestPath: config.runtimeRestartRequestPath,
+			runtimeRestartResultPath: config.runtimeRestartResultPath,
 			tempRoot: config.tempRoot,
 			homePath: fixture.homePath,
 			statePath: fixture.statePath,
@@ -263,40 +330,48 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 			keepTemp: config.keepTemp,
 			supervisorPid: process.pid,
 			processes: { runtime: null, web: null },
+			runtimeGeneration: 1,
+			runtimeRestarts: [],
 			createdAt: new Date().toISOString(),
 			readyAt: null,
 			stoppedAt: null,
 			failure: null,
 		};
 		await writeJsonAtomic(config.manifestPath, manifest);
+		const runManifest = manifest;
 		const nativeUiArgs = config.runtimeCapabilities.nativeUiAvailable ? [] : ["--no-native-ui"];
+		const startRuntimeGeneration = async (generation: number): Promise<ManagedChild> => {
+			const runtimeLogPath = join(config.artifactDir, `runtime-${generation}.log`);
+			const child = createManagedChild(
+				`Quarterdeck runtime generation ${generation}`,
+				process.execPath,
+				[
+					tsxCliPath,
+					cliEntrypointPath,
+					...nativeUiArgs,
+					"--simulate-host-integrations",
+					fixture.hostSimulationConfigPath,
+					"--port",
+					String(runtimePort),
+				],
+				{
+					cwd: fixture.projectPath,
+					env: environment,
+					logPath: runtimeLogPath,
+					forwardLogs: config.forwardLogs,
+				},
+			);
+			if (child.process.pid === undefined) {
+				throw new Error(`Quarterdeck runtime generation ${generation} did not receive a process id.`);
+			}
+			runManifest.runtimeGeneration = generation;
+			runManifest.processes.runtime = { pid: child.process.pid, logPath: runtimeLogPath };
+			await writeJsonAtomic(config.manifestPath, runManifest);
+			await waitForUrl(`${runtimeUrl}/api/trpc/projects.list`, child, child.label);
+			return child;
+		};
 
-		runtime = createManagedChild(
-			"Quarterdeck runtime",
-			process.execPath,
-			[
-				tsxCliPath,
-				cliEntrypointPath,
-				...nativeUiArgs,
-				"--simulate-host-integrations",
-				fixture.hostSimulationConfigPath,
-				"--skip-shutdown-cleanup",
-				"--port",
-				String(runtimePort),
-			],
-			{
-				cwd: fixture.projectPath,
-				env: environment,
-				logPath: runtimeLogPath,
-				forwardLogs: config.forwardLogs,
-			},
-		);
-		if (runtime.process.pid === undefined) {
-			throw new Error("Quarterdeck runtime did not receive a process id.");
-		}
-		manifest.processes.runtime = { pid: runtime.process.pid, logPath: runtimeLogPath };
-		await writeJsonAtomic(config.manifestPath, manifest);
-		await waitForUrl(`${runtimeUrl}/api/trpc/projects.list`, runtime, "Quarterdeck runtime");
+		runtime = await startRuntimeGeneration(1);
 
 		const viteCliPath = join(config.repoRoot, "web-ui", "node_modules", "vite", "bin", "vite.js");
 		web = createManagedChild(
@@ -323,8 +398,81 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 		await captureAgentLabSnapshot(manifest, "ready").catch((error: unknown) => {
 			process.stderr.write(`[agent-lab supervisor] ready diagnostic capture failed: ${errorMessage(error)}\n`);
 		});
-		control = createSupervisorControl(config.stopRequestPath);
-		await Promise.race([control.promise, childFailure(runtime), childFailure(web)]);
+		while (true) {
+			control = createSupervisorControl(config.stopRequestPath, config.runtimeRestartRequestPath);
+			const action = await Promise.race([control.promise, childFailure(runtime), childFailure(web)]);
+			control.dispose();
+			control = null;
+			if (action.kind === "stop") {
+				break;
+			}
+
+			const request = action.request;
+			const previousProcess = manifest.processes.runtime;
+			if (!previousProcess) {
+				throw new Error("Agent Lab cannot restart a runtime that has no managed process.");
+			}
+			const restartRecord: AgentLabRuntimeRestartRecord = {
+				requestId: request.requestId,
+				mode: request.mode,
+				status: "pending",
+				fromGeneration: manifest.runtimeGeneration,
+				toGeneration: null,
+				requestedAt: request.requestedAt,
+				completedAt: null,
+				previousProcess: { ...previousProcess },
+				replacementProcess: null,
+				error: null,
+			};
+			manifest.runtimeRestarts.push(restartRecord);
+			manifest.status = "restarting";
+			await writeJsonAtomic(config.manifestPath, manifest);
+			await captureAgentLabSnapshot(manifest, `pre-runtime-restart-${manifest.runtimeGeneration}`).catch(
+				(error: unknown) => {
+					process.stderr.write(
+						`[agent-lab supervisor] pre-runtime-restart diagnostic capture failed: ${errorMessage(error)}\n`,
+					);
+				},
+			);
+
+			try {
+				await stopManagedChildGracefully(runtime);
+				if (!(await waitForManagedChildExit(runtime))) {
+					throw new Error(`Runtime generation ${manifest.runtimeGeneration} did not confirm process exit.`);
+				}
+				const nextGeneration = manifest.runtimeGeneration + 1;
+				runtime = await startRuntimeGeneration(nextGeneration);
+				restartRecord.status = "completed";
+				restartRecord.toGeneration = nextGeneration;
+				restartRecord.completedAt = new Date().toISOString();
+				restartRecord.replacementProcess = manifest.processes.runtime ? { ...manifest.processes.runtime } : null;
+				manifest.status = "ready";
+				await writeJsonAtomic(config.manifestPath, manifest);
+				await captureAgentLabSnapshot(manifest, `post-runtime-restart-${nextGeneration}`).catch(
+					(error: unknown) => {
+						process.stderr.write(
+							`[agent-lab supervisor] post-runtime-restart diagnostic capture failed: ${errorMessage(error)}\n`,
+						);
+					},
+				);
+				await writeJsonAtomic(config.runtimeRestartResultPath, {
+					schemaVersion: 1,
+					...restartRecord,
+				} satisfies AgentLabRuntimeRestartResult);
+				await rm(config.runtimeRestartRequestPath, { force: true });
+			} catch (error) {
+				const restartFailure = errorMessage(error);
+				restartRecord.status = "failed";
+				restartRecord.completedAt = new Date().toISOString();
+				restartRecord.error = restartFailure;
+				await writeJsonAtomic(config.runtimeRestartResultPath, {
+					schemaVersion: 1,
+					...restartRecord,
+				} satisfies AgentLabRuntimeRestartResult).catch(() => {});
+				await rm(config.runtimeRestartRequestPath, { force: true }).catch(() => {});
+				throw error;
+			}
+		}
 		await assertNoForbiddenHostLaunches(fixture.forbiddenHostLaunchLogPath);
 		manifest.status = "stopping";
 		await writeJsonAtomic(config.manifestPath, manifest);
@@ -357,7 +505,7 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 			stopChildren: async () => {
 				await Promise.all([
 					web ? stopManagedChild(web) : Promise.resolve(),
-					runtime ? stopManagedChild(runtime) : Promise.resolve(),
+					runtime ? stopManagedChildGracefully(runtime) : Promise.resolve(),
 				]);
 			},
 			finalizeManifest: async () => {

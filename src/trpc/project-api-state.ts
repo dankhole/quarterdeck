@@ -2,23 +2,25 @@ import { randomUUID } from "node:crypto";
 
 import { TRPCError } from "@trpc/server";
 import {
+	findCardInBoard,
 	normalizeDiagnosticErrorClass,
 	parseWorktreeDeleteRequest,
 	parseWorktreeEnsureRequest,
-	pruneOrphanSessionsForPersist,
 } from "../core";
-import { ProjectStateConflictError, saveProjectState } from "../state";
-import { generateTaskTitle } from "../title";
-import { deleteTaskWorktree, ensureTaskWorktreeIfDoesntExist, getTaskRepositoryInfo } from "../workdir";
-import type { RuntimeTrpcContext } from "./app-router-context";
+import { scheduleAutomaticTaskTitles } from "../server/automatic-task-title-scheduler";
+import {
+	ProjectBoardCommandIdentityConflictError,
+	ProjectBoardLifecycleCommandRequiredError,
+	ProjectStateConflictError,
+} from "../state";
+import { archiveTaskWorktreeForTrash, ensureTaskWorktreeIfDoesntExist, getTaskRepositoryInfo } from "../workdir";
+import type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
 import { normalizeRequiredTaskScopeInput, type ProjectApiContext } from "./project-api-shared";
 import {
-	createBoardStateSavedEffects,
+	createBoardCommandCommittedEffects,
 	createProjectStateUpdatedEffects,
 	createTaskTitleUpdatedEffects,
 } from "./runtime-mutation-effects";
-
-const MAX_CONCURRENT_TITLE_REQUESTS = 3;
 
 type StateOps = Pick<
 	RuntimeTrpcContext["projectApi"],
@@ -26,18 +28,73 @@ type StateOps = Pick<
 	| "deleteWorktree"
 	| "loadTaskContext"
 	| "loadState"
-	| "saveState"
-	| "notifyTaskTitleUpdated"
+	| "applyBoardCommands"
+	| "updateTaskTitle"
 	| "setTaskDisplaySummary"
 	| "setFocusedTask"
 	| "setDocumentVisible"
 >;
 
+function requireBoardCommands(ctx: ProjectApiContext) {
+	if (!ctx.deps.boardCommands) {
+		throw new Error("Project board command authority is not configured.");
+	}
+	return ctx.deps.boardCommands;
+}
+
+async function persistTaskTitle(
+	ctx: ProjectApiContext,
+	projectScope: RuntimeTrpcProjectScope,
+	input: {
+		taskId: string;
+		title: string;
+		commandId: string;
+	},
+): Promise<boolean> {
+	const updatedAt = Date.now();
+	for (let attempt = 0; attempt < 3; attempt += 1) {
+		const current = await ctx.deps.data.buildProjectStateSnapshot(projectScope.projectId, projectScope.projectPath);
+		const card = findCardInBoard(current.board, input.taskId);
+		if (!card) {
+			return false;
+		}
+		try {
+			const result = await requireBoardCommands(ctx).executeBatch(projectScope, {
+				commandId: input.commandId,
+				expectedRevision: current.revision,
+				commands: [
+					{
+						kind: "patch_task",
+						taskId: input.taskId,
+						title: input.title,
+						updatedAt,
+					},
+				],
+			});
+			if (!result.acceptedChange) {
+				return false;
+			}
+			ctx.applyEffects(
+				createTaskTitleUpdatedEffects({
+					projectId: projectScope.projectId,
+					taskId: input.taskId,
+					title: input.title,
+				}),
+			);
+			return true;
+		} catch (error) {
+			if (!(error instanceof ProjectStateConflictError) || attempt === 2) {
+				throw error;
+			}
+		}
+	}
+	return false;
+}
+
 export function createStateOps(ctx: ProjectApiContext): StateOps {
 	return {
-		// Called by the UI's ensureTaskWorktree (use-task-sessions.ts) for restore-from-trash.
-		// The other path to ensureTaskWorktreeIfDoesntExist is startTaskSession in runtime-api.ts,
-		// which reads branch from persisted board state server-side instead.
+		// Low-level compatibility surface for controlled maintenance callers. Browser
+		// task lifecycle actions use ProjectTaskLifecycleService instead.
 		ensureWorktree: async (projectScope, input) => {
 			const body = parseWorktreeEnsureRequest(input);
 			return await ctx.deps.taskResourceOperations.run(projectScope.projectId, body.taskId, async () => {
@@ -61,14 +118,13 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 						error: "Task worktree cleanup was skipped because an agent session is active.",
 					};
 				}
-				const result = await deleteTaskWorktree({
+				// This compatibility endpoint is trash-safe: it archives recoverable
+				// work rather than permanently purging it. Production task deletion is
+				// owned by ProjectTaskLifecycleService.
+				return await archiveTaskWorktreeForTrash({
 					repoPath: projectScope.projectPath,
 					taskId: body.taskId,
 				});
-				// workingDirectory is cleared by the client when it moves the card
-				// to trash. The client persists through its normal board state cycle,
-				// avoiding a second server-side board writer.
-				return result;
 			});
 		},
 
@@ -99,7 +155,7 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 			}
 		},
 
-		saveState: async (projectScope, input) => {
+		applyBoardCommands: async (projectScope, input) => {
 			const operationId = randomUUID();
 			const startedAt = Date.now();
 			ctx.deps.diagnostics?.recordEvent(
@@ -109,65 +165,39 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 				{ essential: true },
 			);
 			try {
-				const terminalManager = await ctx.deps.terminals.ensureTerminalManagerForProject(
-					projectScope.projectId,
-					projectScope.projectPath,
-				);
-				const authoritativeSessions = Object.fromEntries(
-					terminalManager.store.listSummaries().map((summary) => [summary.taskId, summary]),
-				);
-				const response = await saveProjectState(projectScope.projectPath, {
-					board: input.board,
-					sessions: pruneOrphanSessionsForPersist(authoritativeSessions, input.board),
-					expectedRevision: input.expectedRevision,
-				});
-				ctx.applyEffects(createBoardStateSavedEffects(projectScope));
+				const result = await requireBoardCommands(ctx).executeClientBatch(projectScope, input);
+				ctx.applyEffects(createBoardCommandCommittedEffects(projectScope));
 				ctx.deps.diagnostics?.recordEvent(
 					"project.board_save_completed",
 					{
 						expectedRevision: input.expectedRevision,
-						resultRevision: response.revision,
+						resultRevision: result.state.revision,
+						acceptedChange: result.acceptedChange,
+						replayed: result.replayed,
 						durationMs: Date.now() - startedAt,
 					},
 					{ projectId: projectScope.projectId, operationId },
 					{ essential: true },
 				);
-
-				// Fire-and-forget: generate titles for any new cards that have title === null.
-				// Cap concurrency to avoid flooding the selected remote provider when many cards are created at once.
-				const untitledCards = input.board.columns.flatMap((col) => col.cards.filter((card) => card.title === null));
-				const generateTitle = async (card: (typeof untitledCards)[number]) => {
-					const generation = ctx.deps.automaticTitleGeneration.runIfIdle(
-						projectScope.projectId,
-						card.id,
-						async () => {
-							const title = await generateTaskTitle(card.prompt);
-							if (!title) return;
-							// Send the title to the UI via the explicit post-mutation effect path.
-							// The client still applies it to board state and persists through
-							// its normal single-writer cycle.
+				scheduleAutomaticTaskTitles(
+					{
+						automaticTitleGeneration: ctx.deps.automaticTitleGeneration,
+						boardCommands: requireBoardCommands(ctx),
+						diagnostics: ctx.deps.diagnostics,
+						publishTitleUpdated: ({ projectId, taskId, title }) =>
 							ctx.applyEffects(
 								createTaskTitleUpdatedEffects({
-									projectId: projectScope.projectId,
-									taskId: card.id,
+									projectId,
+									taskId,
 									title,
 									autoGenerated: true,
 								}),
-							);
-						},
-					);
-					if (generation) await generation;
-				};
-				if (untitledCards.length > 0) {
-					void (async () => {
-						for (let i = 0; i < untitledCards.length; i += MAX_CONCURRENT_TITLE_REQUESTS) {
-							const batch = untitledCards.slice(i, i + MAX_CONCURRENT_TITLE_REQUESTS);
-							await Promise.allSettled(batch.map(generateTitle));
-						}
-					})();
-				}
-
-				return response;
+							),
+					},
+					projectScope,
+					result.state,
+				);
+				return result;
 			} catch (error) {
 				if (error instanceof ProjectStateConflictError) {
 					ctx.deps.diagnostics?.recordEvent(
@@ -195,19 +225,22 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 					{ projectId: projectScope.projectId, operationId },
 					{ level: "error", essential: true },
 				);
+				if (error instanceof ProjectBoardCommandIdentityConflictError) {
+					throw new TRPCError({ code: "CONFLICT", message: error.message });
+				}
+				if (error instanceof ProjectBoardLifecycleCommandRequiredError) {
+					throw new TRPCError({ code: "PRECONDITION_FAILED", message: error.message });
+				}
 				throw error;
 			}
 		},
 
-		notifyTaskTitleUpdated: (projectScope, taskId, title) => {
-			ctx.applyEffects(
-				createTaskTitleUpdatedEffects({
-					projectId: projectScope.projectId,
-					taskId,
-					title,
-				}),
-			);
-		},
+		updateTaskTitle: async (projectScope, taskId, title) =>
+			await persistTaskTitle(ctx, projectScope, {
+				taskId,
+				title,
+				commandId: `title:${randomUUID()}`,
+			}),
 
 		setTaskDisplaySummary: async (projectScope, taskId, text, generatedAt) => {
 			const manager = await ctx.deps.terminals.ensureTerminalManagerForProject(

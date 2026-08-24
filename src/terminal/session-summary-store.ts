@@ -9,12 +9,12 @@ import type {
 	ConversationSummaryEntry,
 	RuntimeHookMetadata,
 	RuntimeTaskHookActivity,
-	RuntimeTaskSessionReviewReason,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core";
 import { createTaggedLogger } from "../core";
 import { compactDisplaySummaryText } from "../title";
+import { deriveStartupRecoveryPolicy } from "./session-startup-recovery-policy";
 import {
 	reduceSessionTransition,
 	type SessionTransitionEvent,
@@ -44,8 +44,6 @@ export interface SessionSummaryStore {
 	): (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null;
 
 	// Domain mutations
-	transitionToReview(taskId: string, reason: RuntimeTaskSessionReviewReason): RuntimeTaskSessionSummary | null;
-	transitionToRunning(taskId: string): RuntimeTaskSessionSummary | null;
 	applyHookActivity(taskId: string, activity: Partial<RuntimeTaskHookActivity>): RuntimeTaskSessionSummary | null;
 	applyHookMetadata(taskId: string, metadata: RuntimeHookMetadata): RuntimeTaskSessionSummary | null;
 	appendConversationSummary(
@@ -74,6 +72,8 @@ function now(): number {
 function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 	return {
 		taskId,
+		sessionInstanceId: null,
+		launchOperationId: null,
 		state: "idle",
 		agentId: null,
 		sessionLaunchPath: null,
@@ -188,6 +188,47 @@ function didHookActivityChange(
 	);
 }
 
+function buildHookMetadataPatch(
+	taskId: string,
+	entry: RuntimeTaskSessionSummary,
+	metadata: RuntimeHookMetadata,
+	timestamp: number,
+): Partial<RuntimeTaskSessionSummary> | null {
+	const previousActivity = entry.latestHookActivity;
+	const nextActivity = buildNextHookActivity(previousActivity, metadata);
+	const normalizedSessionId = typeof metadata.sessionId === "string" ? metadata.sessionId : null;
+	const nextResumeSessionId = normalizedSessionId ?? entry.resumeSessionId ?? null;
+	const activityChanged = didHookActivityChange(previousActivity, nextActivity);
+	const resumeSessionIdChanged = nextResumeSessionId !== (entry.resumeSessionId ?? null);
+	if (metadata.sessionId || resumeSessionIdChanged) {
+		storeLog.debug("applyHookMetadata session-id check", {
+			taskId,
+			incomingSessionId: metadata.sessionId ?? null,
+			normalizedSessionId,
+			previousResumeSessionId: entry.resumeSessionId ?? null,
+			nextResumeSessionId,
+			resumeSessionIdChanged,
+			activityChanged,
+			hookEventName: metadata.hookEventName ?? null,
+			source: metadata.source ?? null,
+		});
+	}
+	if (!activityChanged && !resumeSessionIdChanged) {
+		return null;
+	}
+
+	return {
+		...(activityChanged
+			? {
+					lastHookAt: timestamp,
+					latestHookActivity: nextActivity,
+					stalledSince: null,
+				}
+			: {}),
+		...(resumeSessionIdChanged ? { resumeSessionId: nextResumeSessionId } : {}),
+	};
+}
+
 // ── Implementation ───────────────────────────────────────────────────────────
 
 export class InMemorySessionSummaryStore implements SessionSummaryStore {
@@ -254,15 +295,22 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		if (!transition.changed) {
 			return { ...transition, summary: cloneSummary(entry) };
 		}
+		const timestamp = now();
 		const updated: RuntimeTaskSessionSummary = {
 			...entry,
 			...transition.patch,
-			updatedAt: now(),
+			updatedAt: timestamp,
 		};
 		// Reset hook activity timing when a reviewed task returns to running so
 		// diagnostics reflect the current active turn, not the prior review stop.
 		if (transition.patch.state === "running") {
-			updated.lastHookAt = now();
+			updated.lastHookAt = timestamp;
+		}
+		if ((event.type === "hook.to_review" || event.type === "hook.to_in_progress") && event.metadata) {
+			const metadataPatch = buildHookMetadataPatch(taskId, updated, event.metadata, timestamp);
+			if (metadataPatch) {
+				Object.assign(updated, metadataPatch);
+			}
 		}
 		this.entries.set(taskId, updated);
 		this.emit(updated);
@@ -270,31 +318,6 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 	}
 
 	// ── Domain mutations ──────────────────────────────────────────────────
-
-	transitionToReview(taskId: string, reason: RuntimeTaskSessionReviewReason): RuntimeTaskSessionSummary | null {
-		if (reason !== "hook") {
-			const entry = this.entries.get(taskId);
-			return entry ? cloneSummary(entry) : null;
-		}
-		const result = this.applySessionEvent(taskId, { type: "hook.to_review" });
-		return result ? result.summary : null;
-	}
-
-	transitionToRunning(taskId: string): RuntimeTaskSessionSummary | null {
-		const entry = this.entries.get(taskId);
-		if (!entry) {
-			return null;
-		}
-		const result = this.applySessionEvent(taskId, { type: "hook.to_in_progress" });
-		if (!result) {
-			return null;
-		}
-		if (result.changed && result.summary.latestHookActivity) {
-			// Clear hook activity on transition to running — matches original session-manager behavior.
-			return this.update(taskId, { latestHookActivity: null });
-		}
-		return result.summary;
-	}
 
 	applyHookActivity(taskId: string, activity: Partial<RuntimeTaskHookActivity>): RuntimeTaskSessionSummary | null {
 		const entry = this.entries.get(taskId);
@@ -324,39 +347,13 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 			return null;
 		}
 
-		const previousActivity = entry.latestHookActivity;
-		const nextActivity = buildNextHookActivity(previousActivity, metadata);
-		const normalizedSessionId = typeof metadata.sessionId === "string" ? metadata.sessionId : null;
-		const nextResumeSessionId = normalizedSessionId ?? entry.resumeSessionId ?? null;
-		const activityChanged = didHookActivityChange(previousActivity, nextActivity);
-		const resumeSessionIdChanged = nextResumeSessionId !== (entry.resumeSessionId ?? null);
-		if (metadata.sessionId || resumeSessionIdChanged) {
-			storeLog.debug("applyHookMetadata session-id check", {
-				taskId,
-				incomingSessionId: metadata.sessionId ?? null,
-				normalizedSessionId,
-				previousResumeSessionId: entry.resumeSessionId ?? null,
-				nextResumeSessionId,
-				resumeSessionIdChanged,
-				activityChanged,
-				hookEventName: metadata.hookEventName ?? null,
-				source: metadata.source ?? null,
-			});
-		}
-		if (!activityChanged && !resumeSessionIdChanged) {
+		const timestamp = now();
+		const patch = buildHookMetadataPatch(taskId, entry, metadata, timestamp);
+		if (!patch) {
 			return cloneSummary(entry);
 		}
 
-		return this.update(taskId, {
-			...(activityChanged
-				? {
-						lastHookAt: now(),
-						latestHookActivity: nextActivity,
-						stalledSince: null,
-					}
-				: {}),
-			...(resumeSessionIdChanged ? { resumeSessionId: nextResumeSessionId } : {}),
-		});
+		return this.update(taskId, patch);
 	}
 
 	appendConversationSummary(
@@ -443,11 +440,29 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 			if (!entry) {
 				continue;
 			}
-			const updated = this.update(taskId, {
-				state: "interrupted",
-				reviewReason: "interrupted",
-				pid: null,
-			});
+			// Runtime shutdown invalidates process ownership, not the semantic
+			// handoff already shown to the user. Preserve Review/Needs Input/Error
+			// meaning and persist whether a replacement runtime should restore the
+			// interactive chat. Only work that was actually running becomes
+			// interrupted.
+			const preserveReviewState = entry.state === "awaiting_review";
+			const startupRecoveryRequired = deriveStartupRecoveryPolicy(entry).required;
+			const updated = this.update(
+				taskId,
+				preserveReviewState
+					? {
+							pid: null,
+							startupRecoveryRequired,
+						}
+					: {
+							state: "interrupted",
+							reviewReason: "interrupted",
+							pid: null,
+							latestHookActivity: null,
+							stalledSince: null,
+							startupRecoveryRequired: true,
+						},
+			);
 			if (updated) {
 				results.push(updated);
 			}

@@ -362,7 +362,7 @@ describe("recoverStaleSession with launched sessions", () => {
 
 		// Agent completes work and sends to_review hook, then process exits
 		// (code 1 is typical Claude Code shutdown noise — not a crash).
-		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
 		spawnedSessions[0]?.triggerExit(1);
 
 		// Review reason should be preserved as "hook", not overwritten to "error"
@@ -391,7 +391,7 @@ describe("recoverStaleSession with launched sessions", () => {
 		});
 
 		// Transition to review, then process exits cleanly
-		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
 		spawnedSessions[0]?.triggerExit(0);
 
 		// Reason stays "hook" — process dying after handoff doesn't change the reason
@@ -404,7 +404,7 @@ describe("recoverStaleSession with launched sessions", () => {
 		expect(spawnedSessions).toHaveLength(1);
 	});
 
-	it("hydrates awaiting_review entries with stale process ownership as interrupted", () => {
+	it("hydrates awaiting_review entries with stale process ownership without changing review meaning", () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.hydrateFromRecord({
 			"task-1": createSummary({
@@ -414,14 +414,16 @@ describe("recoverStaleSession with launched sessions", () => {
 		});
 
 		// A hook review with a persisted PID still owned an interactive chat when
-		// the previous runtime ended, so bounded startup recovery should resume it.
+		// the previous runtime ended. Recovery eligibility is process state; the
+		// review reason remains authoritative user-facing meaning.
 		const summary = manager.store.getSummary("task-1");
-		expect(summary?.state).toBe("interrupted");
-		expect(summary?.reviewReason).toBe("interrupted");
+		expect(summary?.state).toBe("awaiting_review");
+		expect(summary?.reviewReason).toBe("hook");
 		expect(summary?.pid).toBeNull();
+		expect(summary?.startupRecoveryRequired).toBe(true);
 	});
 
-	it("keeps a hydrated recovery candidate interrupted when a viewer connects before startup recovery", () => {
+	it("keeps a hydrated recovery candidate in review when a viewer connects before startup recovery", () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.hydrateFromRecord({
 			"task-1": createSummary({
@@ -430,11 +432,12 @@ describe("recoverStaleSession with launched sessions", () => {
 			}),
 		});
 
-		// A viewer attachment must not silently turn the candidate idle or launch a
-		// competing recovery outside the startup coordinator.
+		// A viewer attachment must not change semantic state or launch a competing
+		// recovery outside the startup coordinator.
 		const recovered = manager.recoverStaleSession("task-1");
-		expect(recovered?.state).toBe("interrupted");
-		expect(recovered?.reviewReason).toBe("interrupted");
+		expect(recovered?.state).toBe("awaiting_review");
+		expect(recovered?.reviewReason).toBe("hook");
+		expect(recovered?.startupRecoveryRequired).toBe(true);
 	});
 
 	it("hydrated awaiting_review entries with non-terminal review reasons are marked interrupted", () => {

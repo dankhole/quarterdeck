@@ -12,6 +12,7 @@ import type { HookEventOrderState } from "./hook-event-order";
 import { PtyLaunchError, PtySpawnError } from "./pty-runtime-health";
 import type { PtySession } from "./pty-session";
 import { markTaskSessionLaunchSuperseded, type TaskSessionLaunchMonitor } from "./session-launch-readiness";
+import type { StartupRecoveryReviewState } from "./session-startup-recovery-policy";
 import type { TerminalProtocolFilterState } from "./terminal-protocol-filter";
 import type { TerminalSessionListener } from "./terminal-session-service";
 import type { TerminalStateMirror } from "./terminal-state-mirror";
@@ -20,6 +21,8 @@ import type { TerminalStateMirror } from "./terminal-state-mirror";
 
 export interface ActiveProcessState {
 	session: PtySession;
+	sessionInstanceId: string;
+	launchOperationId: string | null;
 	agentId: StartTaskSessionRequest["agentId"] | null;
 	claudeFullscreenEnabled: boolean;
 	workspaceTrustBuffer: string | null;
@@ -59,6 +62,7 @@ export interface ProcessEntry {
 
 export interface StartTaskSessionRequest {
 	taskId: string;
+	launchOperationId?: string;
 	agentId: AgentAdapterLaunchInput["agentId"];
 	binary: string;
 	args: string[];
@@ -77,6 +81,10 @@ export interface StartTaskSessionRequest {
 	statuslineEnabled?: boolean;
 	worktreeSystemPromptTemplate?: string;
 	startupRecoveryToken?: string;
+	/** Preserve user-visible review meaning while startup recovery restores only the agent process. */
+	startupRecoveryReviewState?: StartupRecoveryReviewState;
+	/** Retained when legacy persistence no longer contains enough information to classify the restored task. */
+	startupRecoveryWarningMessage?: string;
 }
 
 export interface StartShellSessionRequest {
@@ -95,8 +103,9 @@ export type RestartableSessionRequest =
 
 export interface StopTaskSessionResult {
 	summary: RuntimeTaskSessionSummary | null;
+	requestedSessionInstanceId: string | null;
 	didExit: boolean;
-	outcome: Extract<RuntimeTaskSessionStopOutcome, "not_running" | "exited" | "timed_out">;
+	outcome: Exclude<RuntimeTaskSessionStopOutcome, "requested">;
 	error?: string;
 }
 
@@ -108,6 +117,14 @@ export function cloneStartTaskSessionRequest(request: StartTaskSessionRequest): 
 		args: [...request.args],
 		images: request.images ? request.images.map((image) => ({ ...image })) : undefined,
 		env: request.env ? { ...request.env } : undefined,
+		startupRecoveryReviewState: request.startupRecoveryReviewState
+			? {
+					...request.startupRecoveryReviewState,
+					latestHookActivity: request.startupRecoveryReviewState.latestHookActivity
+						? { ...request.startupRecoveryReviewState.latestHookActivity }
+						: null,
+				}
+			: undefined,
 	};
 }
 
@@ -210,6 +227,8 @@ import { createTerminalProtocolFilterState } from "./terminal-protocol-filter";
 
 export interface CreateActiveProcessStateOptions {
 	session: PtySession;
+	sessionInstanceId: string;
+	launchOperationId?: string | null;
 	agentId: StartTaskSessionRequest["agentId"] | null;
 	claudeFullscreenEnabled?: boolean;
 	cols: number;
@@ -222,6 +241,8 @@ export interface CreateActiveProcessStateOptions {
 export function createActiveProcessState(opts: CreateActiveProcessStateOptions): ActiveProcessState {
 	return {
 		session: opts.session,
+		sessionInstanceId: opts.sessionInstanceId,
+		launchOperationId: opts.launchOperationId ?? null,
 		agentId: opts.agentId,
 		claudeFullscreenEnabled: opts.agentId === "claude" && opts.claudeFullscreenEnabled === true,
 		workspaceTrustBuffer: opts.willAutoTrust ? "" : null,

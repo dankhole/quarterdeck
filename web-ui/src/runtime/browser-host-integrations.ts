@@ -1,5 +1,4 @@
 import type { RuntimeBrowserHostIntegrationEventRequest, RuntimeCapabilities } from "@/runtime/types";
-
 export type BrowserHostIntegrationKind = "clipboard_read" | "clipboard_write" | "notification_audio";
 
 export interface BrowserHostIntegrationAttempt {
@@ -80,7 +79,7 @@ export class BrowserHostIntegrations {
 		const blocked = mode === "unavailable";
 		this.dependencies.onAttempt?.({ kind, blocked, mode });
 		if (blocked) {
-			console.warn(`[host-integration] Blocked ${kind}: native UI is disabled by launch configuration.`);
+			console.warn(`[browser-integration] Blocked ${kind}: browser-local integrations are disabled.`);
 		}
 		return mode;
 	}

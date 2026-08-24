@@ -324,7 +324,7 @@ async function loadRuntimeStartupModules() {
 		{ shutdownRuntimeServer },
 		{ collectProjectWorktreeTaskIdsForRemoval, createProjectRegistry },
 		{ cleanupGlobalStaleLockArtifacts, cleanupProjectStaleLockArtifacts },
-		{ listProjectIndexEntries, pruneProjectSessionsForBoard },
+		{ listProjectIndexEntries, ProjectBoardCommandService, pruneProjectSessionsForBoard },
 		{ setLogLevel },
 		{ createBackup, listBackups, startPeriodicBackups, stopPeriodicBackups },
 		{ migrateLegacyProjectConfig },
@@ -336,7 +336,7 @@ async function loadRuntimeStartupModules() {
 		import("./server/shutdown-coordinator.js"),
 		import("./server/project-registry.js"),
 		import("./fs/lock-cleanup.js"),
-		import("./state/project-state.js"),
+		import("./state/index.js"),
 		import("./core/runtime-logger.js"),
 		import("./state/state-backup.js"),
 		import("./config/index.js"),
@@ -355,6 +355,7 @@ async function loadRuntimeStartupModules() {
 		cleanupGlobalStaleLockArtifacts,
 		cleanupProjectStaleLockArtifacts,
 		listProjectIndexEntries,
+		ProjectBoardCommandService,
 		pruneProjectSessionsForBoard,
 		migrateLegacyProjectConfig,
 		setLogLevel,
@@ -484,8 +485,18 @@ async function createRuntimeBootstrapState(
 			);
 		});
 	modules.startPeriodicBackups(activeConfig.backupIntervalMinutes);
+	const boardCommands = new modules.ProjectBoardCommandService({
+		getAuthoritativeSessions: async ({ projectId, projectPath }) => {
+			const manager = await projectRegistry.ensureTerminalManagerForProject(projectId, projectPath);
+			return Object.fromEntries(manager.store.listSummaries().map((summary) => [summary.taskId, summary]));
+		},
+		publishAuthoritativeState: ({ projectId }, result) => {
+			runtimeStateHub?.broadcastRuntimeProjectStateSnapshot(projectId, result.state);
+		},
+	});
 	runtimeStateHub = modules.createRuntimeStateHub({
 		projectRegistry,
+		boardCommands,
 		diagnostics,
 	});
 	const runtimeHub = runtimeStateHub;
@@ -509,6 +520,7 @@ async function createRuntimeBootstrapState(
 	return {
 		projectRegistry,
 		runtimeHub,
+		boardCommands,
 		diagnostics,
 		disposeTrackedProject,
 		warn,
@@ -534,6 +546,7 @@ async function createRuntimeServerHandle(
 	const runtimeServer = await modules.createRuntimeServer({
 		projectRegistry: bootstrap.projectRegistry,
 		runtimeStateHub: bootstrap.runtimeHub,
+		boardCommands: bootstrap.boardCommands,
 		diagnostics: bootstrap.diagnostics,
 		warn: bootstrap.warn,
 		resolveInteractiveShellCommand: modules.resolveInteractiveShellCommand,
@@ -561,6 +574,7 @@ async function createRuntimeServerHandle(
 			warn: bootstrap.warn,
 			closeRuntimeServer: close,
 			skipSessionCleanup: options?.skipSessionCleanup ?? false,
+			skipOrphanProcessCleanup: process.env.QUARTERDECK_AGENT_LAB === "1",
 		});
 	};
 
@@ -610,7 +624,8 @@ async function startServer(hostLaunch: {
 		// of failing while the runtime import graph is still being evaluated.
 		const modules = await loadRuntimeStartupModules();
 		await runRuntimeStartupCleanup(modules, warn);
-		const startupAgentCleanup = startOrphanedAgentCleanup(warn);
+		const startupAgentCleanup =
+			process.env.QUARTERDECK_AGENT_LAB === "1" ? Promise.resolve() : startOrphanedAgentCleanup(warn);
 		const bootstrap = await createRuntimeBootstrapState(modules, warn, startupAgentCleanup, diagnostics);
 		return await createRuntimeServerHandle(modules, bootstrap, hostLaunch);
 	} catch (error) {

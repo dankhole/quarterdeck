@@ -13,8 +13,12 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 	},
 }));
 
-import type { RuntimeTaskSessionSummary } from "../../../src/core";
-import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
+import { deriveTaskIndicatorState, type RuntimeTaskSessionSummary } from "../../../src/core";
+import {
+	InMemorySessionSummaryStore,
+	LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
+	TerminalSessionManager,
+} from "../../../src/terminal";
 import { MISSING_SESSION_LAUNCH_PATH_WARNING } from "../../../src/terminal/session-reconciliation-sweep";
 
 // PID that is guaranteed to NOT exist — used for dead process tests.
@@ -92,7 +96,7 @@ const defaultTaskRequest = {
  * triggers Escape → 5s interrupt recovery → "awaiting_review"/"attention"
  * with stale latestHookActivity. This is the Path 1 sequence from the spec.
  * Escape only triggers interrupt recovery from state === "running", so this
- * must be called before any transitionToReview.
+ * must be called before any hook.to_review transition.
  */
 async function setupStalePermissionAfterEscape(manager: TerminalSessionManager, taskId: string): Promise<void> {
 	manager.store.applyHookActivity(taskId, {
@@ -207,7 +211,7 @@ describe("reconciliation sweep lifecycle", () => {
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
 		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("hook");
 
@@ -279,7 +283,7 @@ describe("reconciliation sweep lifecycle", () => {
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
 		manager.store.applyHookActivity("task-1", {
 			hookEventName: "PermissionRequest",
 			source: "claude",
@@ -336,7 +340,7 @@ describe("reconciliation sweep lifecycle", () => {
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
 		manager.store.applyHookActivity("task-1", {
 			hookEventName: "PermissionRequest",
 			activityText: "Waiting for approval",
@@ -380,7 +384,7 @@ describe("reconciliation sweep lifecycle", () => {
 		manager.stopReconciliation();
 	});
 
-	it("hydrates an interactive hook review with a stale pid as interrupted for bounded startup recovery", () => {
+	it("preserves an interactive hook review while marking its stale process for startup recovery", () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.hydrateFromRecord({
 			"task-1": createSummary({
@@ -392,14 +396,58 @@ describe("reconciliation sweep lifecycle", () => {
 		});
 
 		expect(manager.store.getSummary("task-1")).toMatchObject({
-			state: "interrupted",
-			reviewReason: "interrupted",
+			state: "awaiting_review",
+			reviewReason: "hook",
 			pid: null,
-			latestHookActivity: null,
+			startupRecoveryRequired: true,
+		});
+		expect(manager.beginStartupRecovery("task-1", "recovery-1")).toBe(true);
+		manager.completeStartupRecovery("task-1", "recovery-1");
+		expect(manager.store.getSummary("task-1")?.startupRecoveryRequired).toBe(false);
+	});
+
+	it("keeps startup recovery eligibility durable after a second runtime hydration", () => {
+		const firstRuntime = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		firstRuntime.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "awaiting_review",
+				reviewReason: "hook",
+				pid: 1234,
+			}),
+		});
+		const persisted = firstRuntime.store.getSummary("task-1");
+		if (!persisted) {
+			throw new Error("Expected the first runtime to hydrate the task.");
+		}
+
+		const secondRuntime = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		secondRuntime.hydrateFromRecord({ "task-1": persisted });
+
+		expect(secondRuntime.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "hook",
+			pid: null,
+			startupRecoveryRequired: true,
 		});
 	});
 
-	it("hydrates a processless attention wait as interrupted for bounded startup recovery", () => {
+	it("clears a durable recovery handoff when the user explicitly stops the task", () => {
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "awaiting_review",
+				reviewReason: "hook",
+				pid: null,
+				startupRecoveryRequired: true,
+			}),
+		});
+
+		manager.stopTaskSession("task-1");
+
+		expect(manager.store.getSummary("task-1")?.startupRecoveryRequired).toBe(false);
+	});
+
+	it("preserves a processless attention wait for bounded startup recovery", () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.hydrateFromRecord({
 			"task-1": createSummary({
@@ -411,10 +459,64 @@ describe("reconciliation sweep lifecycle", () => {
 		});
 
 		expect(manager.store.getSummary("task-1")).toMatchObject({
-			state: "interrupted",
-			reviewReason: "interrupted",
+			state: "awaiting_review",
+			reviewReason: "attention",
 			pid: null,
 		});
+	});
+
+	it("preserves the cold-start semantic matrix used by cards, project pills, and notifications", () => {
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.hydrateFromRecord({
+			running: createSummary({ taskId: "running", state: "running", reviewReason: null, pid: 111 }),
+			review: createSummary({
+				taskId: "review",
+				state: "awaiting_review",
+				reviewReason: "hook",
+				pid: 222,
+			}),
+			needsInput: createSummary({
+				taskId: "needsInput",
+				state: "awaiting_review",
+				reviewReason: "hook",
+				pid: null,
+				latestHookActivity: {
+					hookEventName: "PermissionRequest",
+					activityText: "Waiting for approval",
+					toolName: null,
+					toolInputSummary: null,
+					finalMessage: null,
+					notificationType: "permission_prompt",
+					source: "claude",
+					conversationSummaryText: null,
+				},
+			}),
+			error: createSummary({
+				taskId: "error",
+				state: "awaiting_review",
+				reviewReason: "error",
+				pid: 333,
+			}),
+		});
+
+		const running = manager.store.getSummary("running");
+		const review = manager.store.getSummary("review");
+		const needsInput = manager.store.getSummary("needsInput");
+		const error = manager.store.getSummary("error");
+		if (!running || !review || !needsInput || !error) {
+			throw new Error("Expected the complete cold-start state matrix to hydrate.");
+		}
+
+		expect(running).toMatchObject({ state: "interrupted", reviewReason: "interrupted", pid: null });
+		expect(review).toMatchObject({ state: "awaiting_review", reviewReason: "hook", pid: null });
+		expect(needsInput).toMatchObject({ state: "awaiting_review", reviewReason: "hook", pid: null });
+		expect(error).toMatchObject({ state: "awaiting_review", reviewReason: "error", pid: null });
+		expect(deriveTaskIndicatorState(review)).toMatchObject({ reviewReady: true, needsInput: false });
+		expect(deriveTaskIndicatorState(needsInput)).toMatchObject({ reviewReady: false, needsInput: true });
+		expect(deriveTaskIndicatorState(error)).toMatchObject({ failure: true, needsInput: false });
+		expect(running.startupRecoveryRequired).toBe(true);
+		expect(review.startupRecoveryRequired).toBe(true);
+		expect(error.startupRecoveryRequired).toBe(false);
 	});
 
 	it("hydrated awaiting_review sessions with non-terminal review reasons become interrupted (35b)", async () => {
@@ -443,6 +545,60 @@ describe("reconciliation sweep lifecycle", () => {
 		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
 
 		manager.stopReconciliation();
+	});
+
+	it("marks legacy interrupted persistence as semantically uncertain without inventing a review state", () => {
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "interrupted",
+				reviewReason: "interrupted",
+				pid: null,
+				startupRecoveryRequired: undefined,
+			}),
+		});
+
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "interrupted",
+			reviewReason: "interrupted",
+			pid: null,
+			startupRecoveryRequired: true,
+			startupRecoverySemanticStateUncertain: true,
+			warningMessage: LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
+		});
+	});
+
+	it("keeps a restored legacy chat interrupted until new agent evidence establishes semantic state", async () => {
+		setupMockPtySpawn(process.pid);
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "interrupted",
+				reviewReason: "interrupted",
+				pid: null,
+				startupRecoveryRequired: undefined,
+			}),
+		});
+
+		await manager.startTaskSession({
+			...defaultTaskRequest,
+			awaitReview: true,
+			startupRecoveryReviewState: {
+				reviewReason: "interrupted",
+				lastHookAt: null,
+				latestHookActivity: null,
+			},
+			startupRecoveryWarningMessage: LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
+		});
+
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "interrupted",
+			reviewReason: "interrupted",
+			pid: process.pid,
+			startupRecoveryRequired: false,
+			startupRecoverySemanticStateUncertain: true,
+			warningMessage: LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
+		});
 	});
 
 	it("hydrated explicitly stopped review sessions are preserved", async () => {
@@ -608,7 +764,7 @@ describe("incidental terminal output does not affect review state", () => {
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
 		manager.store.applyHookActivity("task-1", {
 			hookEventName: "PermissionRequest",
 			activityText: "Waiting for approval",
@@ -636,7 +792,7 @@ describe("incidental terminal output does not affect review state", () => {
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
 		manager.store.applyHookActivity("task-1", {
 			hookEventName: "PermissionRequest",
 			source: "claude",
@@ -667,7 +823,7 @@ describe("incidental terminal output does not affect review state", () => {
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
 		manager.store.applyHookActivity("task-1", {
 			hookEventName: "PermissionRequest",
 			activityText: "Waiting for approval",
@@ -697,7 +853,7 @@ describe("incidental terminal output does not affect review state", () => {
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
 		manager.store.applyHookActivity("task-1", {
 			hookEventName: "PermissionRequest",
 			source: "claude",
@@ -713,7 +869,7 @@ describe("incidental terminal output does not affect review state", () => {
 		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 
 		// Only an explicit hook transition should move it to running
-		manager.store.transitionToRunning("task-1");
+		manager.store.applySessionEvent("task-1", { type: "hook.to_in_progress" });
 		expect(manager.store.getSummary("task-1")?.state).toBe("running");
 
 		manager.stopReconciliation();
@@ -809,14 +965,14 @@ describe("Phase 3: proactive latestHookActivity clearing", () => {
 		vi.useRealTimers();
 	});
 
-	it("transitionToRunning clears latestHookActivity (50)", async () => {
+	it("hook.to_in_progress clears latestHookActivity (50)", async () => {
 		setupMockPtySpawn(process.pid);
 
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
 		manager.store.applyHookActivity("task-1", {
 			hookEventName: "PermissionRequest",
 			activityText: "Waiting for approval",
@@ -824,24 +980,24 @@ describe("Phase 3: proactive latestHookActivity clearing", () => {
 		});
 		expect(manager.store.getSummary("task-1")?.latestHookActivity).not.toBeNull();
 
-		manager.store.transitionToRunning("task-1");
+		manager.store.applySessionEvent("task-1", { type: "hook.to_in_progress" });
 
 		expect(manager.store.getSummary("task-1")?.state).toBe("running");
 		expect(manager.store.getSummary("task-1")?.latestHookActivity).toBeNull();
 	});
 
-	it("transitionToRunning with null latestHookActivity is a no-op (51)", async () => {
+	it("hook.to_in_progress with null latestHookActivity is a no-op (51)", async () => {
 		setupMockPtySpawn(process.pid);
 
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		// transitionToReview clears latestHookActivity before hook transition
-		manager.store.transitionToReview("task-1", "hook");
+		// hook.to_review preserves the current activity before the running transition.
+		manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
 		expect(manager.store.getSummary("task-1")?.latestHookActivity).toBeNull();
 
-		manager.store.transitionToRunning("task-1");
+		manager.store.applySessionEvent("task-1", { type: "hook.to_in_progress" });
 
 		expect(manager.store.getSummary("task-1")?.state).toBe("running");
 		expect(manager.store.getSummary("task-1")?.latestHookActivity).toBeNull();

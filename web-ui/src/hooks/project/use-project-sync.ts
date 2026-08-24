@@ -1,22 +1,87 @@
-import { normalizeDiagnosticErrorClass } from "@runtime-contract";
+import { isLifecycleManagedBoardCommand, normalizeDiagnosticErrorClass } from "@runtime-contract";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import { createInitialBoardData } from "@/data/board-data";
 import { recordBrowserEvent } from "@/diagnostics";
 import { restoreProjectBoard, stashProjectBoard, updateProjectBoardCache } from "@/runtime/project-board-cache";
-import { fetchProjectState } from "@/runtime/project-state-query";
-import type { RuntimeGitRepositoryInfo, RuntimeProjectStateResponse } from "@/runtime/types";
+import { applyProjectBoardCommands, fetchProjectState, ProjectStateConflictError } from "@/runtime/project-state-query";
+import type {
+	RuntimeGitRepositoryInfo,
+	RuntimeProjectBoardCommand,
+	RuntimeProjectStateResponse,
+} from "@/runtime/types";
 import { setProjectPath as setStoreProjectPath } from "@/stores/project-metadata-store";
+import type { BoardData } from "@/types";
 import { toErrorMessage } from "@/utils/to-error-message";
-
+import { applyPendingProjectBoardCommands, deriveProjectBoardCommands } from "./project-board-command-sync";
 import {
 	applyAuthoritativeProjectState,
 	type CachedProjectBoardRestore,
 	type ProjectBoardSessionsState,
 	type ProjectVersion,
 } from "./project-sync";
+
+export interface FlushProjectBoardCommandsResult {
+	ok: boolean;
+	message?: string;
+}
+
+interface PendingProjectBoardCommandBatch {
+	commandId: string;
+	commands: RuntimeProjectBoardCommand[];
+}
+
+interface ProjectBoardCommandQueue {
+	revision: number;
+	pending: PendingProjectBoardCommandBatch[];
+	running: boolean;
+	waiters: Array<(result: FlushProjectBoardCommandsResult) => void>;
+}
+
+async function sendProjectBoardCommandBatch(
+	projectId: string,
+	revision: number,
+	batch: PendingProjectBoardCommandBatch,
+) {
+	try {
+		return await applyProjectBoardCommands(projectId, {
+			commandId: batch.commandId,
+			expectedRevision: revision,
+			commands: batch.commands,
+		});
+	} catch (error) {
+		if (error instanceof ProjectStateConflictError) {
+			throw error;
+		}
+		// A lost response is ambiguous: the runtime may already have committed
+		// the command. Retry the identical ID and revision once so the durable
+		// receipt can turn that case into a safe replay. A genuinely competing
+		// write still returns a revision conflict.
+		return await applyProjectBoardCommands(projectId, {
+			commandId: batch.commandId,
+			expectedRevision: revision,
+			commands: batch.commands,
+		});
+	}
+}
+
+function createBrowserCommandId(): string {
+	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+		return `browser:${crypto.randomUUID()}`;
+	}
+	return `browser:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`;
+}
+
+function cacheAuthoritativeProjectState(projectId: string, state: RuntimeProjectStateResponse): void {
+	updateProjectBoardCache(projectId, {
+		board: state.board,
+		sessions: state.sessions,
+		authoritativeRevision: state.revision,
+		projectPath: state.repoPath,
+		projectGit: state.git,
+	});
+}
 
 interface UseProjectSyncInput {
 	currentProjectId: string | null;
@@ -26,27 +91,20 @@ interface UseProjectSyncInput {
 	isDocumentVisible: boolean;
 	projectBoardSessionsRef: MutableRefObject<ProjectBoardSessionsState>;
 	setProjectBoardSessions: Dispatch<SetStateAction<ProjectBoardSessionsState>>;
-	setCanPersistProjectState: Dispatch<SetStateAction<boolean>>;
 }
 
 interface UseProjectSyncResult {
 	boardProjectId: string | null;
 	projectPath: string | null;
 	projectGit: RuntimeGitRepositoryInfo | null;
-	projectRevision: number | null;
-	setProjectRevision: Dispatch<SetStateAction<number | null>>;
-	projectHydrationNonce: number;
-	shouldSkipPersistOnHydration: boolean;
-	isProjectStateRefreshing: boolean;
 	isProjectMetadataPending: boolean;
 	isServedFromBoardCache: boolean;
 	refreshProjectState: () => Promise<void>;
 	resetProjectSyncState: (targetProjectId?: string | null) => void;
-}
-
-interface ProjectHydrationState {
-	nonce: number;
-	shouldSkipPersistOnHydration: boolean;
+	setBoard: Dispatch<SetStateAction<BoardData>>;
+	flushBoardCommands: () => Promise<FlushProjectBoardCommandsResult>;
+	getAuthoritativeRevision: () => number | null;
+	applyLifecycleProjectState: (state: RuntimeProjectStateResponse) => void;
 }
 
 export function useProjectSync({
@@ -57,18 +115,12 @@ export function useProjectSync({
 	isDocumentVisible,
 	projectBoardSessionsRef,
 	setProjectBoardSessions,
-	setCanPersistProjectState,
 }: UseProjectSyncInput): UseProjectSyncResult {
 	const [boardProjectId, setBoardProjectId] = useState<string | null>(null);
 	const [projectPath, setProjectPath] = useState<string | null>(null);
 	const [projectGit, setProjectGit] = useState<RuntimeGitRepositoryInfo | null>(null);
 	const [appliedProjectId, setAppliedProjectId] = useState<string | null>(null);
-	const [projectRevision, setProjectRevision] = useState<number | null>(null);
-	const [projectHydrationState, setProjectHydrationState] = useState<ProjectHydrationState>({
-		nonce: 0,
-		shouldSkipPersistOnHydration: true,
-	});
-	const [isProjectStateRefreshing, setIsProjectStateRefreshing] = useState(false);
+	const [, setIsProjectStateRefreshing] = useState(false);
 	const [isServedFromBoardCache, setIsServedFromBoardCache] = useState(false);
 	const authoritativeProjectVersionRef = useRef<ProjectVersion>({
 		projectId: null,
@@ -77,19 +129,89 @@ export function useProjectSync({
 	const cachedBoardRestoreRef = useRef<CachedProjectBoardRestore | null>(null);
 	const syncTargetProjectIdRef = useRef<string | null>(currentProjectId);
 	const projectRefreshRequestIdRef = useRef(0);
+	const projectRefreshSuccessCountRef = useRef(0);
 	const warnedProjectIdsRef = useRef<Set<string>>(new Set());
+	const commandQueuesRef = useRef(new Map<string, ProjectBoardCommandQueue>());
+	const lastAuthoritativeProjectStateRef = useRef<{
+		projectId: string;
+		state: RuntimeProjectStateResponse;
+	} | null>(null);
+	const applyProjectStateRef = useRef<(state: RuntimeProjectStateResponse) => void>(() => {});
+	const refreshProjectStateRef = useRef<() => Promise<void>>(async () => {});
 
 	const isProjectMetadataPending = currentProjectId !== null && appliedProjectId !== currentProjectId;
 
-	useEffect(() => {
-		if (authoritativeProjectVersionRef.current.projectId !== currentProjectId) {
+	const pumpProjectBoardCommandQueue = useCallback((projectId: string) => {
+		const queue = commandQueuesRef.current.get(projectId);
+		if (!queue || queue.running) {
 			return;
 		}
-		authoritativeProjectVersionRef.current = {
-			projectId: currentProjectId,
-			revision: projectRevision,
-		};
-	}, [currentProjectId, projectRevision]);
+		queue.running = true;
+		void (async () => {
+			let failure: FlushProjectBoardCommandsResult | null = null;
+			while (queue.pending.length > 0) {
+				const batch = queue.pending[0];
+				if (!batch) {
+					break;
+				}
+				try {
+					const result = await sendProjectBoardCommandBatch(projectId, queue.revision, batch);
+					queue.pending.shift();
+					queue.revision = result.state.revision;
+					// A command can finish after the user switches projects. Keep the
+					// inactive project's cache authoritative too; otherwise a later
+					// switch could revive the pre-command board until the stream catches up.
+					cacheAuthoritativeProjectState(projectId, result.state);
+					if (syncTargetProjectIdRef.current === projectId) {
+						const currentRevision = authoritativeProjectVersionRef.current.revision;
+						if (currentRevision === null || currentRevision <= result.state.revision) {
+							authoritativeProjectVersionRef.current = { projectId, revision: null };
+						}
+						applyProjectStateRef.current(result.state);
+					}
+				} catch (error) {
+					const message = toErrorMessage(error);
+					queue.pending.splice(0);
+					failure = { ok: false, message };
+					if (syncTargetProjectIdRef.current === projectId) {
+						authoritativeProjectVersionRef.current = { projectId, revision: null };
+						const lastAuthoritative = lastAuthoritativeProjectStateRef.current;
+						if (lastAuthoritative?.projectId === projectId) {
+							applyProjectStateRef.current(lastAuthoritative.state);
+						}
+						showAppToast(
+							{
+								intent: "warning",
+								icon: "warning-sign",
+								message:
+									error instanceof ProjectStateConflictError
+										? "Project changed elsewhere. Synced the latest board; retry the last edit if needed."
+										: `Could not save the board change: ${message}`,
+								timeout: 6000,
+							},
+							"project-board-command-failed",
+						);
+						const successCountBeforeRefresh = projectRefreshSuccessCountRef.current;
+						await refreshProjectStateRef.current();
+						if (projectRefreshSuccessCountRef.current > successCountBeforeRefresh) {
+							const refreshedVersion = authoritativeProjectVersionRef.current;
+							if (refreshedVersion.projectId === projectId && refreshedVersion.revision !== null) {
+								queue.revision = refreshedVersion.revision;
+							}
+						} else {
+							authoritativeProjectVersionRef.current = { projectId, revision: null };
+						}
+					}
+					break;
+				}
+			}
+			queue.running = false;
+			const waiters = queue.waiters.splice(0);
+			for (const resolveWaiter of waiters) {
+				resolveWaiter(failure ?? { ok: true });
+			}
+		})();
+	}, []);
 
 	const applyProjectState = useCallback(
 		(nextProjectState: RuntimeProjectStateResponse | null) => {
@@ -102,33 +224,28 @@ export function useProjectSync({
 				);
 				syncTargetProjectIdRef.current = null;
 				cachedBoardRestoreRef.current = null;
-				setCanPersistProjectState(false);
 				setBoardProjectId(null);
 				setProjectPath(null);
-				setStoreProjectPath(null);
+				setStoreProjectPath(currentProjectId, null);
 				setProjectGit(null);
 				setAppliedProjectId(null);
 				setProjectBoardSessions({
 					board: createInitialBoardData(),
 					sessions: {},
 				});
-				setProjectRevision(null);
-				setProjectHydrationState((current) => ({
-					nonce: current.nonce,
-					shouldSkipPersistOnHydration: true,
-				}));
 				setIsServedFromBoardCache(false);
 				authoritativeProjectVersionRef.current = {
 					projectId: null,
 					revision: null,
 				};
+				lastAuthoritativeProjectStateRef.current = null;
 				return;
 			}
 			if (currentProjectId !== syncTargetProjectIdRef.current) {
 				return;
 			}
 			setProjectPath(nextProjectState.repoPath);
-			setStoreProjectPath(nextProjectState.repoPath);
+			setStoreProjectPath(currentProjectId, nextProjectState.repoPath);
 			setProjectGit(nextProjectState.git);
 			if (currentProjectId && !warnedProjectIdsRef.current.has(currentProjectId)) {
 				const sessionsWarning = nextProjectState.warnings?.find(
@@ -164,34 +281,49 @@ export function useProjectSync({
 				);
 				return;
 			}
+			const queue = currentProjectId ? commandQueuesRef.current.get(currentProjectId) : undefined;
+			const optimisticBoard = queue?.pending.length
+				? applyPendingProjectBoardCommands(
+						applyResult.nextState.board,
+						queue.pending.map((batch) => batch.commands),
+					)
+				: applyResult.nextState.board;
 			recordBrowserEvent(
 				"browser.project_hydration_applied",
 				{
 					incomingRevision: nextProjectState.revision,
-					shouldBumpHydrationNonce: applyResult.shouldBumpHydrationNonce,
-					shouldSkipPersistOnHydration: applyResult.shouldSkipPersistOnHydration,
+					boardAction: applyResult.boardAction,
+					hasOptimisticOverlay: Boolean(queue?.pending.length),
 					servedFromCache: cachedBoardRestoreRef.current !== null,
 				},
 				{ projectId: currentProjectId ?? undefined },
 				{ essential: true },
 			);
-			setProjectBoardSessions(applyResult.nextState);
+			setProjectBoardSessions({
+				...applyResult.nextState,
+				board: optimisticBoard,
+			});
 			setBoardProjectId(currentProjectId);
-			if (applyResult.shouldBumpHydrationNonce) {
-				setProjectHydrationState((current) => ({
-					nonce: current.nonce + 1,
-					shouldSkipPersistOnHydration: applyResult.shouldSkipPersistOnHydration,
-				}));
+			if (queue && !queue.running && queue.pending.length === 0) {
+				queue.revision = nextProjectState.revision;
 			}
-			setProjectRevision(nextProjectState.revision);
 			authoritativeProjectVersionRef.current = {
 				projectId: currentProjectId,
 				revision: nextProjectState.revision,
 			};
+			if (currentProjectId) {
+				lastAuthoritativeProjectStateRef.current = {
+					projectId: currentProjectId,
+					state: {
+						...nextProjectState,
+						board: applyResult.authoritativeBoard,
+						sessions: applyResult.nextState.sessions,
+					},
+				};
+			}
 			syncTargetProjectIdRef.current = currentProjectId;
 			cachedBoardRestoreRef.current = null;
 			setAppliedProjectId(currentProjectId);
-			setCanPersistProjectState(true);
 			setIsServedFromBoardCache(false);
 			if (currentProjectId) {
 				updateProjectBoardCache(currentProjectId, {
@@ -203,8 +335,9 @@ export function useProjectSync({
 				});
 			}
 		},
-		[currentProjectId, setCanPersistProjectState, setProjectBoardSessions],
+		[currentProjectId, setProjectBoardSessions],
 	);
+	applyProjectStateRef.current = (state) => applyProjectState(state);
 
 	const refreshProjectState = useCallback(async () => {
 		if (!currentProjectId) {
@@ -223,6 +356,7 @@ export function useProjectSync({
 				return;
 			}
 			applyProjectState(refreshed);
+			projectRefreshSuccessCountRef.current += 1;
 		} catch (error) {
 			if (
 				projectRefreshRequestIdRef.current !== requestId ||
@@ -244,18 +378,111 @@ export function useProjectSync({
 			}
 		}
 	}, [applyProjectState, currentProjectId]);
+	refreshProjectStateRef.current = refreshProjectState;
+
+	const setBoard = useCallback<Dispatch<SetStateAction<BoardData>>>(
+		(nextBoardAction) => {
+			const projectId = currentProjectId;
+			const version = authoritativeProjectVersionRef.current;
+			if (!projectId || version.projectId !== projectId || version.revision === null) {
+				return;
+			}
+			const currentState = projectBoardSessionsRef.current;
+			const nextBoard =
+				typeof nextBoardAction === "function" ? nextBoardAction(currentState.board) : nextBoardAction;
+			if (nextBoard === currentState.board) {
+				return;
+			}
+			let commands: RuntimeProjectBoardCommand[];
+			try {
+				commands = deriveProjectBoardCommands(currentState.board, nextBoard);
+			} catch (error) {
+				showAppToast({ intent: "danger", message: `Could not prepare board change: ${toErrorMessage(error)}` });
+				return;
+			}
+			if (commands.length === 0) {
+				return;
+			}
+			const ordinaryCommands = commands.filter((command) => !isLifecycleManagedBoardCommand(command));
+			setProjectBoardSessions({ ...currentState, board: nextBoard });
+			if (ordinaryCommands.length > 0) {
+				let queue = commandQueuesRef.current.get(projectId);
+				if (!queue) {
+					queue = {
+						revision: version.revision,
+						pending: [],
+						running: false,
+						waiters: [],
+					};
+					commandQueuesRef.current.set(projectId, queue);
+				}
+				queue.pending.push({ commandId: createBrowserCommandId(), commands: ordinaryCommands });
+				pumpProjectBoardCommandQueue(projectId);
+			}
+		},
+		[currentProjectId, projectBoardSessionsRef, pumpProjectBoardCommandQueue, setProjectBoardSessions],
+	);
+
+	const flushBoardCommands = useCallback(async (): Promise<FlushProjectBoardCommandsResult> => {
+		if (!currentProjectId) {
+			return { ok: false, message: "No project selected." };
+		}
+		const queue = commandQueuesRef.current.get(currentProjectId);
+		if (!queue || (!queue.running && queue.pending.length === 0)) {
+			return { ok: true };
+		}
+		return await new Promise<FlushProjectBoardCommandsResult>((resolve) => {
+			queue.waiters.push(resolve);
+			pumpProjectBoardCommandQueue(currentProjectId);
+		});
+	}, [currentProjectId, pumpProjectBoardCommandQueue]);
+
+	const getAuthoritativeRevision = useCallback((): number | null => {
+		const version = authoritativeProjectVersionRef.current;
+		return version.projectId === currentProjectId ? version.revision : null;
+	}, [currentProjectId]);
+
+	const applyLifecycleProjectState = useCallback(
+		(state: RuntimeProjectStateResponse): void => {
+			if (!currentProjectId || syncTargetProjectIdRef.current !== currentProjectId) {
+				return;
+			}
+			const currentVersion = authoritativeProjectVersionRef.current;
+			if (
+				currentVersion.projectId === currentProjectId &&
+				currentVersion.revision !== null &&
+				state.revision < currentVersion.revision
+			) {
+				return;
+			}
+			// A lifecycle response must remove its optimistic presentation even when
+			// the stream already advertised the same revision. Re-enter the one
+			// authoritative apply seam with exact hydration enabled.
+			authoritativeProjectVersionRef.current = { projectId: currentProjectId, revision: null };
+			applyProjectState(state);
+		},
+		[applyProjectState, currentProjectId],
+	);
 
 	const resetProjectSyncState = useCallback(
 		(targetProjectId?: string | null) => {
 			const prevProjectId = authoritativeProjectVersionRef.current.projectId;
 			const prevRevision = authoritativeProjectVersionRef.current.revision;
 			if (prevProjectId && prevRevision != null) {
+				const lastAuthoritative = lastAuthoritativeProjectStateRef.current;
+				const stateForCache =
+					lastAuthoritative?.projectId === prevProjectId && lastAuthoritative.state.revision === prevRevision
+						? lastAuthoritative.state
+						: null;
 				stashProjectBoard(prevProjectId, {
-					board: projectBoardSessionsRef.current.board,
-					sessions: projectBoardSessionsRef.current.sessions,
+					// Never label an optimistic overlay as an authoritative cache entry.
+					// Pending commands continue in the per-project queue after a switch
+					// and replace this cache with their committed result.
+					board: stateForCache?.board ?? projectBoardSessionsRef.current.board,
+					sessions: stateForCache?.sessions ?? projectBoardSessionsRef.current.sessions,
 					authoritativeRevision: prevRevision,
-					projectPath: projectPath,
-					projectGit: projectGit,
+					projectPath: stateForCache?.repoPath ?? projectPath,
+					projectGit: stateForCache?.git ?? projectGit,
 				});
 			}
 
@@ -266,15 +493,10 @@ export function useProjectSync({
 				revision: null,
 			};
 			cachedBoardRestoreRef.current = null;
+			lastAuthoritativeProjectStateRef.current = null;
 			projectRefreshRequestIdRef.current += 1;
-			setCanPersistProjectState(false);
 			setIsProjectStateRefreshing(false);
 			setAppliedProjectId(null);
-			setProjectRevision(null);
-			setProjectHydrationState((current) => ({
-				nonce: current.nonce,
-				shouldSkipPersistOnHydration: true,
-			}));
 
 			const cached = restoreId ? restoreProjectBoard(restoreId) : null;
 			if (cached && restoreId) {
@@ -284,7 +506,7 @@ export function useProjectSync({
 				});
 				setBoardProjectId(restoreId);
 				setProjectPath(cached.projectPath);
-				setStoreProjectPath(cached.projectPath);
+				setStoreProjectPath(restoreId, cached.projectPath);
 				setProjectGit(cached.projectGit);
 				cachedBoardRestoreRef.current = {
 					projectId: restoreId,
@@ -298,12 +520,12 @@ export function useProjectSync({
 				});
 				setBoardProjectId(null);
 				setProjectPath(null);
-				setStoreProjectPath(null);
+				setStoreProjectPath(restoreId, null);
 				setProjectGit(null);
 				setIsServedFromBoardCache(false);
 			}
 		},
-		[currentProjectId, setCanPersistProjectState, setProjectBoardSessions, projectGit, projectPath],
+		[currentProjectId, setProjectBoardSessions, projectGit, projectPath],
 	);
 
 	useEffect(() => {
@@ -328,14 +550,13 @@ export function useProjectSync({
 		boardProjectId,
 		projectPath,
 		projectGit,
-		projectRevision,
-		setProjectRevision,
-		projectHydrationNonce: projectHydrationState.nonce,
-		shouldSkipPersistOnHydration: projectHydrationState.shouldSkipPersistOnHydration,
-		isProjectStateRefreshing,
 		isProjectMetadataPending,
 		isServedFromBoardCache,
 		refreshProjectState,
 		resetProjectSyncState,
+		setBoard,
+		flushBoardCommands,
+		getAuthoritativeRevision,
+		applyLifecycleProjectState,
 	};
 }

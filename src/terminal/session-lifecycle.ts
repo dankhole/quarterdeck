@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { RuntimeTaskSessionReviewReason, RuntimeTaskSessionSummary } from "../core";
-import { createTaggedLogger, deriveTaskIndicatorState } from "../core";
+import { createTaggedLogger } from "../core";
 import { cleanStaleIndexLockForWorktree } from "../fs";
 import type { PreparedAgentLaunch } from "./agent-session-adapters";
 import { prepareAgentLaunch } from "./agent-session-adapters";
@@ -40,6 +40,7 @@ import {
 	type StartTaskSessionRequest,
 } from "./session-manager-types";
 import { processShellSessionOutput } from "./session-output-pipeline";
+import { appendLegacySemanticStateWarning, deriveStartupRecoveryPolicy } from "./session-startup-recovery-policy";
 import { cloneSummary, type SessionTransitionEvent, type SessionTransitionResult } from "./session-summary-store";
 import { TerminalStateMirror } from "./terminal-state-mirror";
 
@@ -232,6 +233,8 @@ export async function spawnTaskSession(
 		}
 		terminalStateMirror.dispose();
 		deps.updateStore(request.taskId, {
+			sessionInstanceId: hookSessionInstanceId,
+			launchOperationId: request.launchOperationId ?? null,
 			state: "failed",
 			agentId: request.agentId,
 			sessionLaunchPath: request.cwd,
@@ -258,6 +261,8 @@ export async function spawnTaskSession(
 
 	entry.active = createActiveProcessState({
 		session,
+		sessionInstanceId: hookSessionInstanceId,
+		launchOperationId: request.launchOperationId,
 		agentId: request.agentId,
 		claudeFullscreenEnabled,
 		cols,
@@ -277,28 +282,35 @@ export async function spawnTaskSession(
 	}
 
 	const postSpawnResumeSessionId = request.resumeConversation ? (request.resumeSessionId ?? null) : null;
+	const restoredSemanticStateIsUncertain = request.startupRecoveryReviewState?.reviewReason === "interrupted";
 	sessionLog.debug("seeding summary for spawned task session", {
 		taskId: request.taskId,
-		state: request.awaitReview ? "awaiting_review" : "running",
+		state: restoredSemanticStateIsUncertain ? "interrupted" : request.awaitReview ? "awaiting_review" : "running",
 		resumeConversation: request.resumeConversation ?? false,
 		resumeSessionId: postSpawnResumeSessionId,
 		sessionLaunchPath: request.cwd,
 		pid: session.pid,
 	});
 	const summary = deps.updateStore(request.taskId, {
-		state: request.awaitReview ? "awaiting_review" : "running",
+		sessionInstanceId: hookSessionInstanceId,
+		launchOperationId: request.launchOperationId ?? null,
+		state: restoredSemanticStateIsUncertain ? "interrupted" : request.awaitReview ? "awaiting_review" : "running",
 		agentId: request.agentId,
 		sessionLaunchPath: request.cwd,
 		resumeSessionId: postSpawnResumeSessionId,
 		pid: session.pid,
 		startedAt: Date.now(),
 		lastOutputAt: null,
-		reviewReason: request.awaitReview ? "attention" : null,
+		reviewReason: request.awaitReview ? (request.startupRecoveryReviewState?.reviewReason ?? "attention") : null,
 		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
+		lastHookAt: request.startupRecoveryReviewState?.lastHookAt ?? null,
+		latestHookActivity: request.startupRecoveryReviewState?.latestHookActivity
+			? { ...request.startupRecoveryReviewState.latestHookActivity }
+			: null,
 		stalledSince: null,
-		warningMessage: null,
+		startupRecoveryRequired: false,
+		startupRecoverySemanticStateUncertain: restoredSemanticStateIsUncertain,
+		warningMessage: request.startupRecoveryWarningMessage ?? null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 	});
@@ -501,6 +513,7 @@ export async function spawnShellSession(
 	const env = buildTerminalEnvironment(request.env);
 
 	let session: PtySession;
+	const sessionInstanceId = randomUUID();
 	try {
 		sessionLog.info("spawning shell session", {
 			taskId: request.taskId,
@@ -546,6 +559,8 @@ export async function spawnShellSession(
 	} catch (error) {
 		terminalStateMirror.dispose();
 		deps.updateStore(request.taskId, {
+			sessionInstanceId,
+			launchOperationId: null,
 			state: "failed",
 			agentId: null,
 			sessionLaunchPath: request.cwd,
@@ -570,6 +585,8 @@ export async function spawnShellSession(
 
 	entry.active = createActiveProcessState({
 		session,
+		sessionInstanceId,
+		launchOperationId: null,
 		agentId: null,
 		cols,
 		baseRows: rows,
@@ -582,6 +599,8 @@ export async function spawnShellSession(
 	}
 
 	const summary = deps.updateStore(request.taskId, {
+		sessionInstanceId,
+		launchOperationId: null,
 		state: "running",
 		agentId: null,
 		sessionLaunchPath: request.cwd,
@@ -664,19 +683,21 @@ export interface HydrationDeps {
 
 export interface SessionHydrationCorrection {
 	taskId: string;
-	action: "marked_interrupted" | "stale_pid_cleared";
+	action: "marked_interrupted" | "stale_pid_cleared" | "legacy_semantic_state_uncertain";
 	previousState: RuntimeTaskSessionSummary["state"];
 	previousReviewReason: RuntimeTaskSessionReviewReason;
 	hadPersistedPid: boolean;
+	/** The old runtime owned a process that should be restored without changing review semantics. */
+	requiresStartupRecovery: boolean;
 }
 
 /**
  * Hydrate both the summary store and the process entry map from persisted
  * session records. Sessions persisted as "running" are crash survivors — mark
- * them interrupted. Review sessions that still referenced a process, or that
- * require a live process for user interaction, are also interrupted so the
- * bounded startup coordinator can restore them. Completed processless review
- * sessions remain reviewable without relaunching an agent.
+ * them interrupted. Review state is durable user-facing meaning, so hydration
+ * never rewrites a valid review reason merely because its old process is gone.
+ * Instead, corrections flag interactive review processes for the bounded
+ * startup coordinator while clearing their impossible persisted PID.
  */
 export function hydrateSessionEntries(
 	record: Record<string, RuntimeTaskSessionSummary>,
@@ -685,14 +706,15 @@ export function hydrateSessionEntries(
 	const corrections: SessionHydrationCorrection[] = [];
 	for (const [taskId, summary] of Object.entries(record)) {
 		deps.ensureProcessEntry(taskId);
-		const indicator = deriveTaskIndicatorState(summary);
-		const reviewRequiresLiveProcess =
-			summary.state === "awaiting_review" &&
-			(summary.reviewReason === "attention" || indicator.approvalRequired || summary.pid !== null);
+		const recoveryPolicy = deriveStartupRecoveryPolicy(summary);
+		const requiresStartupRecovery = recoveryPolicy.required;
+		const uncertaintyWarning = recoveryPolicy.semanticStateUncertain
+			? appendLegacySemanticStateWarning(summary.warningMessage)
+			: summary.warningMessage;
 		const shouldInterrupt =
 			summary.state === "running" ||
 			(summary.state === "awaiting_review" &&
-				(!isTerminalReviewReason(summary.reviewReason) || reviewRequiresLiveProcess) &&
+				!isTerminalReviewReason(summary.reviewReason) &&
 				summary.reviewReason !== "interrupted" &&
 				summary.reviewReason !== "error" &&
 				summary.reviewReason !== "exit");
@@ -703,6 +725,9 @@ export function hydrateSessionEntries(
 				pid: null,
 				stalledSince: null,
 				latestHookActivity: null,
+				startupRecoveryRequired: true,
+				startupRecoverySemanticStateUncertain: recoveryPolicy.semanticStateUncertain,
+				warningMessage: uncertaintyWarning,
 			});
 			corrections.push({
 				taskId,
@@ -710,17 +735,38 @@ export function hydrateSessionEntries(
 				previousState: summary.state,
 				previousReviewReason: summary.reviewReason,
 				hadPersistedPid: summary.pid !== null,
+				requiresStartupRecovery: true,
 			});
 		} else if (summary.pid !== null) {
 			// A persisted PID never represents a process owned by this runtime.
 			// Clear impossible liveness without changing terminal review meaning.
-			deps.updateStore(taskId, { pid: null });
+			deps.updateStore(taskId, {
+				pid: null,
+				startupRecoveryRequired: requiresStartupRecovery,
+				startupRecoverySemanticStateUncertain: recoveryPolicy.semanticStateUncertain,
+				warningMessage: uncertaintyWarning,
+			});
 			corrections.push({
 				taskId,
 				action: "stale_pid_cleared",
 				previousState: summary.state,
 				previousReviewReason: summary.reviewReason,
 				hadPersistedPid: true,
+				requiresStartupRecovery,
+			});
+		} else if (recoveryPolicy.semanticStateUncertain) {
+			deps.updateStore(taskId, {
+				startupRecoveryRequired: true,
+				startupRecoverySemanticStateUncertain: true,
+				warningMessage: uncertaintyWarning,
+			});
+			corrections.push({
+				taskId,
+				action: "legacy_semantic_state_uncertain",
+				previousState: summary.state,
+				previousReviewReason: summary.reviewReason,
+				hadPersistedPid: false,
+				requiresStartupRecovery: true,
 			});
 		}
 	}

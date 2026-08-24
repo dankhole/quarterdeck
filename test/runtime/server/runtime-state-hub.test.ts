@@ -30,6 +30,7 @@ interface InitialSnapshot {
 	projectState: RuntimeProjectStateResponse | null;
 	projectStateError: string | null;
 	notificationSummariesByProject: Record<string, RuntimeTaskSessionSummary[]>;
+	notificationRevisionsByProject: Record<string, number>;
 }
 
 interface RuntimeStateHubInternals {
@@ -88,6 +89,7 @@ function createProjectsResponse(): RuntimeProjectsResponse {
 				id: "project-1",
 				path: "/repo",
 				name: "repo",
+				boardRevision: 0,
 				taskCounts: {
 					backlog: 0,
 					in_progress: 0,
@@ -150,11 +152,116 @@ function createDependencies(input: {
 			resumeInterruptedSessions: async () => 0,
 			getActiveRuntimeConfig: () => DEFAULT_RUNTIME_CONFIG_STATE,
 			listManagedProjects: input.listManagedProjects,
+			getProjectPathById: (projectId) => (projectId === "project-1" ? "/repo" : null),
+		},
+		boardCommands: {
+			reconcileRuntimeSessions: vi.fn(async () => createBoardCommandResult()),
+			reconcileRuntimeMetadata: vi.fn(async () => createBoardCommandResult()),
+			reconcileRuntimeTaskBaseRef: vi.fn(async () => createBoardCommandResult()),
 		},
 	};
 }
 
+function createBoardCommandResult() {
+	return {
+		state: createProjectStateResponse(),
+		changed: false,
+		acceptedChange: false,
+		replayed: false,
+	};
+}
+
 describe("RuntimeStateHub", () => {
+	it("broadcasts an already-committed authoritative snapshot without rebuilding it", async () => {
+		const buildProjectStateSnapshot = vi.fn(async () => createProjectStateResponse());
+		const hub = new RuntimeStateHubImpl(
+			createDependencies({
+				buildProjectsPayload: vi.fn(async () => createProjectsResponse()),
+				buildProjectStateSnapshot,
+				listManagedProjects: vi.fn(() => []),
+			}),
+		);
+		const projectClient = createRuntimeClient();
+		const globalClient = createRuntimeClient();
+		(hub as unknown as RuntimeStateHubInternals).clients.registerProjectClient(
+			"project-1",
+			projectClient.client,
+			"client-1",
+		);
+		(hub as unknown as RuntimeStateHubInternals).clients.registerGlobalClient(globalClient.client);
+		const committed = { ...createProjectStateResponse(), revision: 7 };
+
+		try {
+			hub.broadcastRuntimeProjectStateSnapshot("project-1", committed);
+
+			expect(buildProjectStateSnapshot).not.toHaveBeenCalled();
+			expect(projectClient.messages).toEqual([
+				expect.objectContaining({
+					type: "project_state_updated",
+					projectId: "project-1",
+					projectState: committed,
+				}),
+			]);
+			await vi.waitFor(() => {
+				expect(globalClient.messages).toContainEqual(
+					expect.objectContaining({
+						type: "projects_updated",
+						projects: [
+							expect.objectContaining({
+								id: "project-1",
+								boardRevision: 7,
+								taskCounts: { backlog: 1, in_progress: 0, review: 0, trash: 0 },
+							}),
+						],
+					}),
+				);
+			});
+		} finally {
+			await hub.close();
+		}
+	});
+
+	it("persists terminal-store changes through the runtime board authority without a browser client", async () => {
+		vi.useFakeTimers();
+		const dependencies = createDependencies({
+			buildProjectsPayload: vi.fn(async () => createProjectsResponse()),
+			buildProjectStateSnapshot: vi.fn(async () => createProjectStateResponse()),
+			listManagedProjects: vi.fn(() => []),
+		});
+		const reconcileRuntimeSessions = vi.mocked(dependencies.boardCommands.reconcileRuntimeSessions);
+		const hub = new RuntimeStateHubImpl(dependencies);
+		const store = new InMemorySessionSummaryStore();
+		store.hydrateFromRecord({
+			"task-1": createTestTaskSessionSummary({
+				taskId: "task-1",
+				state: "running",
+				sessionLaunchPath: "/repo",
+			}),
+		});
+		hub.trackTerminalManager("project-1", new TerminalSessionManager(store));
+
+		try {
+			await vi.advanceTimersByTimeAsync(1);
+			expect(reconcileRuntimeSessions).toHaveBeenCalledOnce();
+			expect(reconcileRuntimeSessions).toHaveBeenLastCalledWith({
+				projectId: "project-1",
+				projectPath: "/repo",
+			});
+
+			store.update("task-1", { warningMessage: "Needs attention" });
+			await vi.advanceTimersByTimeAsync(100);
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(2);
+
+			hub.disposeProject("project-1");
+			store.update("task-1", { warningMessage: "No longer tracked" });
+			await vi.advanceTimersByTimeAsync(200);
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(2);
+		} finally {
+			await hub.close();
+			vi.useRealTimers();
+		}
+	});
+
 	it("delivers live diagnostic batches only to the explicitly subscribed connection", async () => {
 		vi.useFakeTimers();
 		const dependencies = createDependencies({
@@ -214,6 +321,7 @@ describe("RuntimeStateHub", () => {
 		vi.useFakeTimers();
 		const board = createBoard("Tracked task");
 		const loadProjectBoard = vi.spyOn(state, "loadProjectBoardById").mockResolvedValue(board);
+		let isProjectedReview = true;
 		const buildProjectsPayload = vi.fn(async (preferredCurrentProjectId: string | null) => ({
 			currentProjectId: preferredCurrentProjectId,
 			projects: [
@@ -221,12 +329,19 @@ describe("RuntimeStateHub", () => {
 					id: "project-1",
 					path: "/repo-1",
 					name: "repo-1",
-					taskCounts: { backlog: 0, in_progress: 0, review: 1, trash: 0 },
+					boardRevision: 1,
+					taskCounts: {
+						backlog: 0,
+						in_progress: isProjectedReview ? 0 : 1,
+						review: isProjectedReview ? 1 : 0,
+						trash: 0,
+					},
 				},
 				{
 					id: "project-2",
 					path: "/repo-2",
 					name: "repo-2",
+					boardRevision: 0,
 					taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
 				},
 			],
@@ -299,6 +414,7 @@ describe("RuntimeStateHub", () => {
 				expect(notification).toMatchObject({
 					type: "task_notification",
 					projectId: "project-1",
+					notificationRevision: 1,
 					summaries: [
 						{
 							taskId: "task-1",
@@ -327,6 +443,45 @@ describe("RuntimeStateHub", () => {
 			expect(loadProjectBoard).toHaveBeenCalledWith("project-1");
 			expect(buildProjectsPayload).toHaveBeenCalledOnce();
 			expect(buildProjectsPayload).toHaveBeenCalledWith("project-1");
+
+			project1Client.messages.length = 0;
+			project2Client.messages.length = 0;
+			isProjectedReview = false;
+			store.applySessionEvent("task-1", { type: "user.responded" });
+			await vi.advanceTimersByTimeAsync(150);
+			await vi.waitFor(() => {
+				expect(project2Client.messages.some((message) => message.type === "task_notification")).toBe(true);
+				expect(project2Client.messages.some((message) => message.type === "projects_updated")).toBe(true);
+			});
+
+			expect(project1Client.messages).toContainEqual(
+				expect.objectContaining({
+					type: "task_sessions_updated",
+					summaries: [expect.objectContaining({ taskId: "task-1", state: "running" })],
+				}),
+			);
+			for (const client of [project1Client, project2Client]) {
+				expect(client.messages).toContainEqual(
+					expect.objectContaining({
+						type: "task_notification",
+						projectId: "project-1",
+						notificationRevision: 2,
+						summaries: [expect.objectContaining({ taskId: "task-1", state: "running" })],
+					}),
+				);
+				expect(client.messages).toContainEqual(
+					expect.objectContaining({
+						type: "projects_updated",
+						projects: [
+							expect.objectContaining({
+								id: "project-1",
+								taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+							}),
+							expect.anything(),
+						],
+					}),
+				);
+			}
 		} finally {
 			loadProjectBoard.mockRestore();
 			await hub.close();
@@ -410,6 +565,46 @@ describe("RuntimeStateHub", () => {
 			expect(snapshot.projectState).toBeNull();
 			expect(snapshot.projectStateError).toBe("state failed");
 			expect(snapshot.notificationSummariesByProject).toEqual({});
+		} finally {
+			await hub.close();
+		}
+	});
+
+	it("pairs initial project counts with the exact included board revision", async () => {
+		const projectState = { ...createProjectStateResponse(), revision: 7 };
+		const hub = new RuntimeStateHubImpl(
+			createDependencies({
+				buildProjectsPayload: vi.fn(async () => ({
+					currentProjectId: "project-1",
+					projects: [
+						{
+							id: "project-1",
+							path: "/repo",
+							name: "repo",
+							boardRevision: 8,
+							taskCounts: { backlog: 0, in_progress: 0, review: 1, trash: 0 },
+						},
+					],
+				})),
+				buildProjectStateSnapshot: vi.fn(async () => projectState),
+				listManagedProjects: vi.fn(() => []),
+			}),
+		);
+
+		try {
+			const snapshot = await (hub as unknown as RuntimeStateHubInternals).loadInitialSnapshot({
+				projectId: "project-1",
+				projectPath: "/repo",
+			});
+
+			expect(snapshot.projectState?.revision).toBe(7);
+			expect(snapshot.projects).toEqual([
+				expect.objectContaining({
+					id: "project-1",
+					boardRevision: 7,
+					taskCounts: { backlog: 1, in_progress: 0, review: 0, trash: 0 },
+				}),
+			]);
 		} finally {
 			await hub.close();
 		}

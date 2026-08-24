@@ -14,6 +14,7 @@ import {
 	cloneStartTaskSessionRequest,
 	PtyRuntimeDependencyError,
 	type StartTaskSessionRequest,
+	type StartupRecoveryReviewState,
 	type TerminalSessionManager,
 } from "../terminal";
 import { hasFailedStoredCodexResume, STORED_CODEX_RESUME_FAILED_WARNING } from "../terminal/codex-resume-failure";
@@ -48,6 +49,10 @@ export interface TaskSessionStartServiceOptions {
 	 * target intentionally repeats the same best-effort resume strategy.
 	 */
 	resumeSessionIdOverride?: string | null;
+	/** Restore the process without changing the review meaning already shown to the user. */
+	startupRecoveryReviewState?: StartupRecoveryReviewState;
+	/** Explain why a legacy recovery remains semantically neutral until new agent evidence arrives. */
+	startupRecoveryWarningMessage?: string;
 }
 
 export interface TaskSessionStartServiceResult {
@@ -66,6 +71,7 @@ export interface PreparedTaskSessionStart {
 	llmSummaryPolishEnabled: boolean;
 	resumeContextWarning: string | null;
 	resumeSessionWarning: string | null;
+	startupRecoveryWarningMessage?: string | null;
 }
 
 function getResumeContextWarning(options: {
@@ -148,6 +154,25 @@ export async function prepareTaskSessionStart(
 
 	const state = await loadProjectState(projectScope.projectPath);
 	const existingCard = findCardInBoard(state.board, body.taskId);
+	const taskColumnId = state.board.columns.find((column) => column.cards.some((card) => card.id === body.taskId))?.id;
+	// Lifecycle-owned launches carry an operation id. Re-check the durable board
+	// after acquiring the task resource lock so a rejected or superseded board
+	// transition can never leak into a process launch.
+	if (body.launchOperationId && (!existingCard || taskColumnId === "backlog" || taskColumnId === "trash")) {
+		const error = !existingCard
+			? "Task no longer exists."
+			: taskColumnId === "trash"
+				? "Restore the task before starting its session."
+				: "Move the task to in progress before starting its session.";
+		log.warn("task session start rejected by durable board state", {
+			projectId: projectScope.projectId,
+			taskId: body.taskId,
+			taskColumnId,
+			launchOperationId: body.launchOperationId,
+			error,
+		});
+		throw new Error(error);
+	}
 	const persisted = existingCard?.workingDirectory ?? null;
 	const taskAgentId = existingCard?.agentId ?? body.agentId ?? null;
 	const savedBranch = existingCard?.branch ?? null;
@@ -170,9 +195,9 @@ export async function prepareTaskSessionStart(
 	} else {
 		taskCwd = projectScope.projectPath;
 	}
-	// Do not write the recreated working directory into board state here. The
-	// browser remains the single board writer and persists summary.sessionLaunchPath
-	// through its normal optimistic save cycle.
+	// Do not write the recreated working directory directly here. RuntimeStateHub
+	// projects launch metadata through ProjectBoardCommandService, which remains
+	// the sole durable board writer.
 
 	const terminalManager = await deps.getScopedTerminalManager(projectScope);
 	const previousSummary = body.resumeConversation ? terminalManager.store.getSummary(body.taskId) : null;
@@ -277,6 +302,7 @@ export async function prepareTaskSessionStart(
 
 	const request: StartTaskSessionRequest = {
 		taskId: body.taskId,
+		launchOperationId: body.launchOperationId,
 		agentId: resolved.agentId,
 		binary: resolved.binary,
 		args: resolved.args,
@@ -295,6 +321,8 @@ export async function prepareTaskSessionStart(
 		worktreeSystemPromptTemplate: scopedRuntimeConfig.worktreeSystemPromptTemplate,
 		env: body.baseRef ? { QUARTERDECK_BASE_REF: body.baseRef } : undefined,
 		startupRecoveryToken: options.startupRecoveryToken,
+		startupRecoveryReviewState: options.startupRecoveryReviewState,
+		startupRecoveryWarningMessage: options.startupRecoveryWarningMessage,
 	};
 
 	return {
@@ -304,6 +332,7 @@ export async function prepareTaskSessionStart(
 		llmSummaryPolishEnabled: scopedRuntimeConfig.llmSummaryPolishEnabled,
 		resumeContextWarning,
 		resumeSessionWarning,
+		startupRecoveryWarningMessage: options.startupRecoveryWarningMessage ?? null,
 	};
 }
 
@@ -330,12 +359,15 @@ export async function launchPreparedTaskSession(
 	}
 
 	let nextSummary = summary;
-	if (prepared.resumeContextWarning) {
-		nextSummary =
-			terminalManager.store.update(request.taskId, { warningMessage: prepared.resumeContextWarning }) ?? nextSummary;
-	} else if (prepared.resumeSessionWarning) {
-		nextSummary =
-			terminalManager.store.update(request.taskId, { warningMessage: prepared.resumeSessionWarning }) ?? nextSummary;
+	const warningMessage = [
+		prepared.startupRecoveryWarningMessage,
+		prepared.resumeContextWarning,
+		prepared.resumeSessionWarning,
+	]
+		.filter((warning): warning is string => Boolean(warning))
+		.join(" ");
+	if (warningMessage && nextSummary.warningMessage !== warningMessage) {
+		nextSummary = terminalManager.store.update(request.taskId, { warningMessage }) ?? nextSummary;
 	}
 
 	return {

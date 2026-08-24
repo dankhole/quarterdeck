@@ -3,7 +3,6 @@ import { createInitialBoardData } from "@/data/board-data";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { createTestProjectStateResponse, createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 import {
-	applyAuthoritativeProjectBoard,
 	applyAuthoritativeProjectState,
 	type CachedProjectBoardRestore,
 	type ProjectVersion,
@@ -139,47 +138,8 @@ describe("resolveAuthoritativeBoardAction", () => {
 	});
 });
 
-describe("applyAuthoritativeProjectBoard", () => {
-	it("projects runtime-owned work-column placement onto the hydrated board", () => {
-		const board = createInitialBoardData();
-		const inProgressColumn = board.columns.find((column) => column.id === "in_progress");
-		if (!inProgressColumn) {
-			throw new Error("Missing in-progress column.");
-		}
-		inProgressColumn.cards.push({
-			id: "task-1",
-			title: null,
-			prompt: "Prompt",
-			baseRef: "main",
-			createdAt: 1,
-			updatedAt: 1,
-		});
-
-		const result = applyAuthoritativeProjectBoard(board, {
-			"task-1": {
-				...makeSession("task-1", 100, 100),
-				state: "awaiting_review",
-				reviewReason: "hook",
-			},
-		});
-
-		expect(result.shouldSkipPersistOnHydration).toBe(false);
-		expect(result.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
-		expect(result.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("task-1");
-	});
-
-	it("skips persistence when authoritative hydrate already matches runtime projection", () => {
-		const board = createInitialBoardData();
-
-		const result = applyAuthoritativeProjectBoard(board, {});
-
-		expect(result.board).toBe(board);
-		expect(result.shouldSkipPersistOnHydration).toBe(true);
-	});
-});
-
 describe("applyAuthoritativeProjectState", () => {
-	it("derives sessions and board projection from the same current local snapshot", () => {
+	it("reconciles sessions while accepting the runtime-owned board", () => {
 		const currentBoard = createInitialBoardData();
 		const reviewColumn = currentBoard.columns.find((column) => column.id === "review");
 		if (!reviewColumn) {
@@ -231,9 +191,10 @@ describe("applyAuthoritativeProjectState", () => {
 
 		expect(result).not.toBeNull();
 		expect(result?.nextState.sessions["task-1"]?.state).toBe("awaiting_review");
-		expect(result?.nextState.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
-		expect(result?.nextState.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("task-1");
-		expect(result?.shouldBumpHydrationNonce).toBe(true);
+		expect(result?.nextState.board.columns.find((column) => column.id === "in_progress")?.cards[0]?.id).toBe(
+			"task-1",
+		);
+		expect(result?.nextState.board.columns.find((column) => column.id === "review")?.cards).toHaveLength(0);
 	});
 
 	it("confirms a cached board without hydrating when runtime projection already matches", () => {
@@ -253,11 +214,9 @@ describe("applyAuthoritativeProjectState", () => {
 
 		expect(result).not.toBeNull();
 		expect(result?.boardAction).toBe("confirm_cache");
-		expect(result?.shouldBumpHydrationNonce).toBe(false);
-		expect(result?.shouldSkipPersistOnHydration).toBe(true);
 	});
 
-	it("re-projects a same-revision cached board when authoritative runtime truth changes work-column placement", () => {
+	it("does not let a session delta rewrite a same-revision cached board", () => {
 		const cachedBoard = createInitialBoardData();
 		const inProgressColumn = cachedBoard.columns.find((column) => column.id === "in_progress");
 		if (!inProgressColumn) {
@@ -299,8 +258,9 @@ describe("applyAuthoritativeProjectState", () => {
 
 		expect(result).not.toBeNull();
 		expect(result?.boardAction).toBe("confirm_cache");
-		expect(result?.shouldBumpHydrationNonce).toBe(true);
-		expect(result?.nextState.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
-		expect(result?.nextState.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("task-1");
+		expect(result?.nextState.board.columns.find((column) => column.id === "in_progress")?.cards[0]?.id).toBe(
+			"task-1",
+		);
+		expect(result?.nextState.board.columns.find((column) => column.id === "review")?.cards).toHaveLength(0);
 	});
 });

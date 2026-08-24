@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { ManualProjectPathDialog } from "@/components/app/manual-project-path-dialog";
 import { StartupOnboardingDialog } from "@/components/app/startup-onboarding-dialog";
 import { GitInitDialog } from "@/components/git/git-init-dialog";
 import { useProjectNavigationContext } from "@/providers/project-provider";
@@ -21,6 +22,10 @@ export function ProjectDialogs(): ReactElement {
 		isInitializingGitProject,
 		handleCancelInitializeGitProject,
 		handleConfirmInitializeGitProject,
+		isManualProjectPathDialogOpen,
+		isAddingManualProject,
+		handleCancelManualProjectPath,
+		handleConfirmManualProjectPath,
 	} = useProjectNavigationContext();
 
 	return (
@@ -42,6 +47,15 @@ export function ProjectDialogs(): ReactElement {
 				onCancel={handleCancelInitializeGitProject}
 				onConfirm={() => {
 					void handleConfirmInitializeGitProject();
+				}}
+			/>
+
+			<ManualProjectPathDialog
+				open={isManualProjectPathDialogOpen}
+				isAdding={isAddingManualProject}
+				onCancel={handleCancelManualProjectPath}
+				onConfirm={(path) => {
+					void handleConfirmManualProjectPath(path);
 				}}
 			/>
 		</>

@@ -1,11 +1,24 @@
 export {
+	type ExecuteProjectBoardCommandBatchInput,
+	type ExecuteProjectBoardCommandInput,
+	type ProjectBoardCommandScope,
+	ProjectBoardCommandService,
+	type ProjectBoardCommandServiceDependencies,
+	ProjectBoardLifecycleCommandRequiredError,
+} from "./project-board-command-service";
+export {
+	type ApplyProjectBoardMutationInput,
+	type ApplyProjectBoardMutationResult,
+	applyProjectBoardMutation,
 	type LoadProjectContextOptions,
 	listProjectIndexEntries,
 	loadProjectBoardById,
+	loadProjectBoardSnapshotById,
 	loadProjectContext,
 	loadProjectContextById,
 	loadProjectScopeById,
 	loadProjectState,
+	ProjectBoardCommandIdentityConflictError,
 	type ProjectSessionsPruneResult,
 	ProjectStateConflictError,
 	pruneProjectSessionsForBoard,
@@ -29,6 +42,14 @@ export {
 	isUnderWorktreesHome,
 	resolveProjectPath,
 } from "./project-state-utils";
+export {
+	fingerprintTaskLifecycleCommand,
+	type PersistedTaskLifecycleOperation,
+	ProjectTaskLifecycleBusyError,
+	ProjectTaskLifecycleIdentityConflictError,
+	ProjectTaskLifecycleJournalCorruptionError,
+	ProjectTaskLifecycleOperationStore,
+} from "./project-task-lifecycle-operation-store";
 export {
 	type BackupListEntry,
 	type BackupManifest,

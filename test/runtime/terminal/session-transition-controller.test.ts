@@ -52,6 +52,7 @@ function createEntry(taskId = "task-1"): ProcessEntry {
 	const entry = createProcessEntry(taskId);
 	entry.active = createActiveProcessState({
 		session: createMockSession(),
+		sessionInstanceId: "session-test",
 		agentId: "claude",
 		cols: 120,
 		baseRows: 40,
@@ -152,7 +153,7 @@ describe("SessionTransitionController", () => {
 
 		const controller = new SessionTransitionController(store, new Map([["task-1", entry]]));
 		const previous = store.getSummary("task-1");
-		const summary = store.transitionToRunning("task-1");
+		const summary = store.applySessionEvent("task-1", { type: "hook.to_in_progress" })?.summary ?? null;
 		expect(previous).not.toBeNull();
 		expect(summary).not.toBeNull();
 		if (!summary) {

@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { runtimeAgentIdSchema, runtimeTaskImageSchema } from "./shared.js";
 
+export const RUNTIME_DETAIL_TERMINAL_TASK_PREFIX = "__detail_terminal__:";
+
+export function getRuntimeDetailTerminalTaskId(taskId: string): string {
+	return `${RUNTIME_DETAIL_TERMINAL_TASK_PREFIX}${taskId}`;
+}
+
 export const runtimeTaskSessionStateSchema = z.enum(["idle", "running", "awaiting_review", "failed", "interrupted"]);
 export type RuntimeTaskSessionState = z.infer<typeof runtimeTaskSessionStateSchema>;
 
@@ -58,6 +64,10 @@ export type RuntimeTaskTurnCheckpoint = z.infer<typeof runtimeTaskTurnCheckpoint
 
 export const runtimeTaskSessionSummarySchema = z.object({
 	taskId: z.string(),
+	/** Stable identity for the exact PTY process represented by this summary. */
+	sessionInstanceId: z.string().nullable().optional(),
+	/** Stable lifecycle operation that launched this session, when applicable. */
+	launchOperationId: z.string().nullable().optional(),
 	state: runtimeTaskSessionStateSchema,
 	agentId: runtimeAgentIdSchema.nullable(),
 	sessionLaunchPath: z.string().nullable().default(null),
@@ -71,6 +81,10 @@ export const runtimeTaskSessionSummarySchema = z.object({
 	lastHookAt: z.number().nullable().default(null),
 	latestHookActivity: runtimeTaskHookActivitySchema.nullable().default(null),
 	stalledSince: z.number().nullable().default(null),
+	/** Durable handoff indicating that the next runtime must restore the task's interactive agent session. */
+	startupRecoveryRequired: z.boolean().optional(),
+	/** Legacy persistence erased the prior semantic state; remain neutral until a new event establishes meaning. */
+	startupRecoverySemanticStateUncertain: z.boolean().optional(),
 	warningMessage: z.string().nullable().optional(),
 	latestTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
 	previousTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
@@ -82,6 +96,7 @@ export type RuntimeTaskSessionSummary = z.infer<typeof runtimeTaskSessionSummary
 
 export const runtimeTaskSessionStartRequestSchema = z.object({
 	taskId: z.string(),
+	launchOperationId: z.string().trim().min(1).max(128).optional(),
 	prompt: z.string(),
 	images: z.array(runtimeTaskImageSchema).optional(),
 	agentId: runtimeAgentIdSchema.optional(),
@@ -104,6 +119,7 @@ export type RuntimeTaskSessionStartResponse = z.infer<typeof runtimeTaskSessionS
 export const runtimeTaskSessionStopRequestSchema = z.object({
 	taskId: z.string(),
 	waitForExit: z.boolean().optional(),
+	sessionInstanceId: z.string().trim().min(1).optional(),
 });
 export type RuntimeTaskSessionStopRequest = z.infer<typeof runtimeTaskSessionStopRequestSchema>;
 
@@ -129,6 +145,7 @@ export const runtimeTaskSessionInputRequestSchema = z.object({
 	taskId: z.string(),
 	text: z.string(),
 	appendNewline: z.boolean().optional(),
+	intent: z.enum(["write", "submit"]),
 });
 export type RuntimeTaskSessionInputRequest = z.infer<typeof runtimeTaskSessionInputRequestSchema>;
 

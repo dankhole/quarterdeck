@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core";
 import { shutdownRuntimeServer } from "../../src/server";
@@ -103,11 +103,12 @@ describe.sequential("shutdown coordinator integration", () => {
 				const managedSaved = await saveProjectState(managedProjectPath, {
 					board: createBoard({
 						inProgress: ["managed-running", "managed-missing-session"],
-						review: ["managed-idle", "managed-explicit-stopped"],
+						review: ["managed-idle", "managed-active-review", "managed-explicit-stopped"],
 					}),
 					sessions: {
 						"managed-running": createSession("managed-running", "running"),
 						"managed-idle": createSession("managed-idle", "idle"),
+						"managed-active-review": createSession("managed-active-review", "awaiting_review"),
 						"managed-explicit-stopped": createExplicitlyStoppedSession("managed-explicit-stopped"),
 					},
 					expectedRevision: managedInitial.revision,
@@ -127,36 +128,50 @@ describe.sequential("shutdown coordinator integration", () => {
 
 				let didCloseRuntimeServer = false;
 				const interruptedManagedRunning = createSession("managed-running", "interrupted");
+				interruptedManagedRunning.startupRecoveryRequired = true;
+				const recoverableManagedReview = createSession("managed-active-review", "awaiting_review");
+				recoverableManagedReview.pid = null;
+				recoverableManagedReview.startupRecoveryRequired = true;
 				const interruptedHomeShell = createInterruptedShellSession("__home_terminal__");
 				const interruptedDetailShell = createInterruptedShellSession("__detail_terminal__:managed-running");
 				const explicitlyStoppedManaged = createExplicitlyStoppedSession("managed-explicit-stopped");
+				const getManagedSummary = vi.fn((taskId: string) => {
+					if (taskId === "managed-running") {
+						return interruptedManagedRunning;
+					}
+					if (taskId === "managed-active-review") {
+						return recoverableManagedReview;
+					}
+					if (taskId === "__home_terminal__") {
+						return interruptedHomeShell;
+					}
+					if (taskId === "__detail_terminal__:managed-running") {
+						return interruptedDetailShell;
+					}
+					if (taskId === "managed-idle") {
+						return createSession("managed-idle", "idle");
+					}
+					if (taskId === "managed-explicit-stopped") {
+						return explicitlyStoppedManaged;
+					}
+					return null;
+				});
 				const managedTerminalManager = {
 					stopReconciliation: () => {},
 					markInterruptedAndStopAll: () => [
 						interruptedManagedRunning,
+						recoverableManagedReview,
 						interruptedHomeShell,
 						interruptedDetailShell,
 					],
 					store: {
-						listSummaries: () => [interruptedManagedRunning, interruptedHomeShell, interruptedDetailShell],
-						getSummary: (taskId: string) => {
-							if (taskId === "managed-running") {
-								return interruptedManagedRunning;
-							}
-							if (taskId === "__home_terminal__") {
-								return interruptedHomeShell;
-							}
-							if (taskId === "__detail_terminal__:managed-running") {
-								return interruptedDetailShell;
-							}
-							if (taskId === "managed-idle") {
-								return createSession("managed-idle", "idle");
-							}
-							if (taskId === "managed-explicit-stopped") {
-								return explicitlyStoppedManaged;
-							}
-							return null;
-						},
+						listSummaries: () => [
+							interruptedManagedRunning,
+							recoverableManagedReview,
+							interruptedHomeShell,
+							interruptedDetailShell,
+						],
+						getSummary: getManagedSummary,
 					},
 				} as unknown as TerminalSessionManager;
 				await shutdownRuntimeServer({
@@ -176,6 +191,7 @@ describe.sequential("shutdown coordinator integration", () => {
 				});
 
 				expect(didCloseRuntimeServer).toBe(true);
+				expect(getManagedSummary).toHaveBeenCalledWith("managed-active-review");
 
 				// Cards stay in their original columns — not moved to trash.
 				const managedAfter = await loadProjectState(managedProjectPath);
@@ -187,13 +203,25 @@ describe.sequential("shutdown coordinator integration", () => {
 				expect(managedInProgress.map((card) => card.id).sort()).toEqual(
 					["managed-missing-session", "managed-running"].sort(),
 				);
-				expect(managedReview.map((card) => card.id)).toEqual(["managed-idle", "managed-explicit-stopped"]);
+				expect(managedReview.map((card) => card.id)).toEqual([
+					"managed-idle",
+					"managed-active-review",
+					"managed-explicit-stopped",
+				]);
 				expect(managedTrash).toEqual([]);
 
 				// Running sessions are marked interrupted on shutdown.
 				expect(managedAfter.sessions["managed-running"]?.state).toBe("interrupted");
+				expect(managedAfter.sessions["managed-running"]?.startupRecoveryRequired).toBe(true);
 				// Idle sessions are not actively working — left as-is.
 				expect(managedAfter.sessions["managed-idle"]?.state).toBe("idle");
+				// Active review keeps its completed-work meaning while the process handoff is persisted.
+				expect(managedAfter.sessions["managed-active-review"]).toMatchObject({
+					state: "awaiting_review",
+					reviewReason: "hook",
+					pid: null,
+					startupRecoveryRequired: true,
+				});
 				// Explicitly stopped review sessions stay non-resumable review records.
 				expect(managedAfter.sessions["managed-explicit-stopped"]?.state).toBe("awaiting_review");
 				expect(managedAfter.sessions["managed-explicit-stopped"]?.reviewReason).toBe("interrupted");

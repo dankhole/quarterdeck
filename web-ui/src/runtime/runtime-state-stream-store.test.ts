@@ -93,6 +93,7 @@ describe("runtimeStateStreamReducer", () => {
 						id: "project-a",
 						path: "/tmp/project-a",
 						name: "Project A",
+						boardRevision: 0,
 						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
 					},
 				],
@@ -107,6 +108,36 @@ describe("runtimeStateStreamReducer", () => {
 		expect(nextState.notificationMemory.projects["project-a"]?.sessions["task-1"]?.updatedAt).toBe(200);
 	});
 
+	it("never reconciles same-shaped task sessions across project snapshots", () => {
+		const projectAState = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
+			type: "snapshot",
+			payload: {
+				type: "snapshot",
+				currentProjectId: "project-a",
+				projects: [],
+				projectState: createProjectState(3, {
+					"shared-task-id": createSessionSummary("shared-task-id", 500),
+				}),
+				projectMetadata: null,
+			},
+		});
+		const projectBState = runtimeStateStreamReducer(projectAState, {
+			type: "snapshot",
+			payload: {
+				type: "snapshot",
+				currentProjectId: "project-b",
+				projects: [],
+				projectState: createProjectState(1, {
+					"shared-task-id": createSessionSummary("shared-task-id", 100),
+				}),
+				projectMetadata: null,
+			},
+		});
+
+		expect(projectBState.currentProjectId).toBe("project-b");
+		expect(projectBState.projectState?.sessions["shared-task-id"]?.updatedAt).toBe(100);
+	});
+
 	it("keeps newer current sessions when a project-state update replays older data", () => {
 		const currentState = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
 			type: "requested_project_changed",
@@ -118,6 +149,7 @@ describe("runtimeStateStreamReducer", () => {
 
 		const nextState = runtimeStateStreamReducer(currentState, {
 			type: "project_state_updated",
+			projectId: "project-a",
 			projectState: createProjectState(3, {
 				"task-1": createSessionSummary("task-1", 100),
 			}),
@@ -148,6 +180,7 @@ describe("runtimeStateStreamReducer", () => {
 						id: "project-a",
 						path: "/tmp/project-a",
 						name: "Project A",
+						boardRevision: 0,
 						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
 					},
 				],
@@ -173,6 +206,7 @@ describe("runtimeStateStreamReducer", () => {
 						id: "project-a",
 						path: "/tmp/project-a",
 						name: "Project A",
+						boardRevision: 0,
 						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
 					},
 				],
@@ -185,16 +219,19 @@ describe("runtimeStateStreamReducer", () => {
 
 		const withDelta = runtimeStateStreamReducer(snapshotState, {
 			type: "task_sessions_updated",
+			projectId: "project-a",
 			summaries: [createSessionSummary("task-1", 250)],
 		});
 		const withInitialNotification = runtimeStateStreamReducer(withDelta, {
 			type: "task_notification",
 			projectId: "project-a",
+			notificationRevision: 1,
 			summaries: [createSessionSummary("task-1", 200)],
 		});
 		const withOlderNotification = runtimeStateStreamReducer(withInitialNotification, {
 			type: "task_notification",
 			projectId: "project-a",
+			notificationRevision: 2,
 			summaries: [createSessionSummary("task-1", 150)],
 		});
 
@@ -205,6 +242,7 @@ describe("runtimeStateStreamReducer", () => {
 		const withNewerNotification = runtimeStateStreamReducer(withOlderNotification, {
 			type: "task_notification",
 			projectId: "project-a",
+			notificationRevision: 3,
 			summaries: [createSessionSummary("task-1", 300)],
 		});
 
@@ -222,12 +260,14 @@ describe("runtimeStateStreamReducer", () => {
 						id: "project-a",
 						path: "/tmp/project-a",
 						name: "Project A",
+						boardRevision: 0,
 						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
 					},
 					{
 						id: "project-b",
 						path: "/tmp/project-b",
 						name: "Project B",
+						boardRevision: 0,
 						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
 					},
 				],
@@ -256,12 +296,14 @@ describe("runtimeStateStreamReducer", () => {
 						id: "project-a",
 						path: "/tmp/project-a",
 						name: "Project A",
+						boardRevision: 0,
 						taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
 					},
 					{
 						id: "project-b",
 						path: "/tmp/project-b",
 						name: "Project B",
+						boardRevision: 0,
 						taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
 					},
 				],
@@ -272,6 +314,7 @@ describe("runtimeStateStreamReducer", () => {
 		const withStaleNotification = runtimeStateStreamReducer(snapshotState, {
 			type: "task_notification",
 			projectId: "project-b",
+			notificationRevision: 1,
 			summaries: [createSessionSummary("stale-task", 100)],
 		});
 
@@ -285,12 +328,14 @@ describe("runtimeStateStreamReducer", () => {
 						id: "project-a",
 						path: "/tmp/project-a",
 						name: "Project A",
+						boardRevision: 0,
 						taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
 					},
 					{
 						id: "project-b",
 						path: "/tmp/project-b",
 						name: "Project B",
+						boardRevision: 0,
 						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
 					},
 				],
@@ -299,6 +344,9 @@ describe("runtimeStateStreamReducer", () => {
 				notificationSummariesByProject: {
 					"project-b": [createSessionSummary("live-task", 200)],
 				},
+				notificationRevisionsByProject: {
+					"project-b": 2,
+				},
 			},
 		});
 
@@ -306,22 +354,20 @@ describe("runtimeStateStreamReducer", () => {
 		expect(nextState.notificationMemory.projects["project-b"]?.sessions["stale-task"]).toBeUndefined();
 	});
 
-	it("replaces active project notifications from actionable project state sessions", () => {
+	it("clears stale active-project notifications through the notification projection owner", () => {
 		const withStaleNotification = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
 			type: "task_notification",
 			projectId: "project-a",
+			notificationRevision: 1,
 			summaries: [createSessionSummary("orphan-task", 100)],
 		});
 
 		const nextState = runtimeStateStreamReducer(withStaleNotification, {
-			type: "project_state_updated",
-			projectState: createProjectState(
-				2,
-				{
-					"orphan-task": createSessionSummary("orphan-task", 200),
-				},
-				[],
-			),
+			type: "task_notification",
+			projectId: "project-a",
+			notificationRevision: 2,
+			summaries: [],
+			replace: true,
 		});
 
 		expect(nextState.notificationMemory.projects["project-a"]).toBeUndefined();
@@ -331,12 +377,14 @@ describe("runtimeStateStreamReducer", () => {
 		const withNotification = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
 			type: "task_notification",
 			projectId: "project-a",
+			notificationRevision: 1,
 			summaries: [createSessionSummary("task-1", 100)],
 		});
 
 		const nextState = runtimeStateStreamReducer(withNotification, {
 			type: "task_notification",
 			projectId: "project-a",
+			notificationRevision: 2,
 			summaries: [],
 			removedTaskIds: ["task-1"],
 		});
@@ -348,12 +396,14 @@ describe("runtimeStateStreamReducer", () => {
 		const withNotification = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
 			type: "task_notification",
 			projectId: "project-a",
+			notificationRevision: 1,
 			summaries: [createSessionSummary("stale-task", 100)],
 		});
 
 		const replaced = runtimeStateStreamReducer(withNotification, {
 			type: "task_notification",
 			projectId: "project-a",
+			notificationRevision: 2,
 			summaries: [createSessionSummary("live-task", 200)],
 			replace: true,
 		});
@@ -364,6 +414,7 @@ describe("runtimeStateStreamReducer", () => {
 		const cleared = runtimeStateStreamReducer(replaced, {
 			type: "task_notification",
 			projectId: "project-a",
+			notificationRevision: 3,
 			summaries: [],
 			replace: true,
 		});
@@ -382,12 +433,14 @@ describe("runtimeStateStreamReducer", () => {
 						id: "project-a",
 						path: "/tmp/project-a",
 						name: "Project A",
+						boardRevision: 0,
 						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
 					},
 					{
 						id: "project-b",
 						path: "/tmp/project-b",
 						name: "Project B",
+						boardRevision: 0,
 						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
 					},
 				],
@@ -401,6 +454,7 @@ describe("runtimeStateStreamReducer", () => {
 		const withOtherProjectNotification = runtimeStateStreamReducer(snapshotState, {
 			type: "task_notification",
 			projectId: "project-b",
+			notificationRevision: 1,
 			summaries: [createSessionSummary("task-2", 150)],
 		});
 
@@ -414,6 +468,7 @@ describe("runtimeStateStreamReducer", () => {
 						id: "project-a",
 						path: "/tmp/project-a",
 						name: "Project A",
+						boardRevision: 0,
 						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
 					},
 				],
@@ -423,5 +478,243 @@ describe("runtimeStateStreamReducer", () => {
 
 		expect(nextState.notificationMemory.projects["project-a"]?.sessions["task-1"]?.updatedAt).toBe(100);
 		expect(nextState.notificationMemory.projects["project-b"]).toBeUndefined();
+	});
+
+	it("pairs project pills with the board revision included in a snapshot", () => {
+		const nextState = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
+			type: "snapshot",
+			payload: {
+				type: "snapshot",
+				currentProjectId: "project-a",
+				projects: [
+					{
+						id: "project-a",
+						path: "/tmp/project-a",
+						name: "Project A",
+						boardRevision: 1,
+						taskCounts: { backlog: 0, in_progress: 0, review: 1, trash: 0 },
+					},
+				],
+				projectState: createProjectState(3, {
+					"task-1": createSessionSummary("task-1", 100),
+				}),
+				projectMetadata: null,
+			},
+		});
+
+		expect(nextState.projects[0]).toMatchObject({
+			boardRevision: 3,
+			taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+		});
+	});
+
+	it("does not regress pills or board state when stream messages arrive out of order", () => {
+		const current = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
+			type: "snapshot",
+			payload: {
+				type: "snapshot",
+				currentProjectId: "project-a",
+				projects: [
+					{
+						id: "project-a",
+						path: "/tmp/project-a",
+						name: "Project A",
+						boardRevision: 5,
+						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+					},
+				],
+				projectState: createProjectState(5, {
+					"task-1": createSessionSummary("task-1", 100),
+				}),
+				projectMetadata: null,
+			},
+		});
+		const afterStaleProjects = runtimeStateStreamReducer(current, {
+			type: "projects_updated",
+			nextProjectId: "project-a",
+			payload: {
+				type: "projects_updated",
+				currentProjectId: "project-a",
+				projects: [
+					{
+						id: "project-a",
+						path: "/tmp/project-a",
+						name: "Project A",
+						boardRevision: 4,
+						taskCounts: { backlog: 0, in_progress: 0, review: 1, trash: 0 },
+					},
+				],
+			},
+		});
+		const afterStaleState = runtimeStateStreamReducer(afterStaleProjects, {
+			type: "project_state_updated",
+			projectId: "project-a",
+			projectState: createProjectState(4, {}),
+		});
+
+		expect(afterStaleProjects.projects[0]?.boardRevision).toBe(5);
+		expect(afterStaleProjects.projects[0]?.taskCounts.in_progress).toBe(1);
+		expect(afterStaleState).toBe(afterStaleProjects);
+	});
+
+	it("keeps exact counts for a project after switching away at the same board revision", () => {
+		const projectAState = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
+			type: "snapshot",
+			payload: {
+				type: "snapshot",
+				currentProjectId: "project-a",
+				projects: [
+					{
+						id: "project-a",
+						path: "/tmp/project-a",
+						name: "Project A",
+						boardRevision: 5,
+						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+					},
+				],
+				projectState: createProjectState(5, {
+					"task-a": createSessionSummary("task-a", 100),
+				}),
+				projectMetadata: null,
+			},
+		});
+		const switching = runtimeStateStreamReducer(projectAState, {
+			type: "requested_project_changed",
+			requestedProjectId: "project-b",
+			preloadedProjectState: null,
+		});
+		expect(switching.currentProjectId).toBe("project-b");
+
+		const projectBState = runtimeStateStreamReducer(switching, {
+			type: "snapshot",
+			payload: {
+				type: "snapshot",
+				currentProjectId: "project-b",
+				projects: [
+					{
+						id: "project-a",
+						path: "/tmp/project-a-renamed",
+						name: "Project A Renamed",
+						boardRevision: 5,
+						taskCounts: { backlog: 0, in_progress: 0, review: 1, trash: 0 },
+					},
+					{
+						id: "project-b",
+						path: "/tmp/project-b",
+						name: "Project B",
+						boardRevision: 2,
+						taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
+					},
+				],
+				projectState: createProjectState(2, {}),
+				projectMetadata: null,
+			},
+		});
+
+		expect(projectBState.projects.find((project) => project.id === "project-a")).toMatchObject({
+			path: "/tmp/project-a-renamed",
+			name: "Project A Renamed",
+			boardRevision: 5,
+			taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+		});
+	});
+
+	it("allows an unproven same-revision project summary to self-heal", () => {
+		const fallbackState = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
+			type: "projects_updated",
+			payload: {
+				type: "projects_updated",
+				currentProjectId: "project-a",
+				projects: [
+					{
+						id: "project-a",
+						path: "/tmp/project-a",
+						name: "Project A",
+						boardRevision: 0,
+						taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
+					},
+				],
+			},
+			nextProjectId: "project-a",
+		});
+		const recovered = runtimeStateStreamReducer(fallbackState, {
+			type: "projects_updated",
+			payload: {
+				type: "projects_updated",
+				currentProjectId: "project-a",
+				projects: [
+					{
+						id: "project-a",
+						path: "/tmp/project-a",
+						name: "Project A",
+						boardRevision: 0,
+						taskCounts: { backlog: 2, in_progress: 0, review: 0, trash: 0 },
+					},
+				],
+			},
+			nextProjectId: "project-a",
+		});
+
+		expect(recovered.projects[0]?.taskCounts.backlog).toBe(2);
+	});
+
+	it("rejects every action delivered by an obsolete stream generation", () => {
+		const current = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
+			type: "stream_generation_changed",
+			streamGeneration: 2,
+			requestedProjectId: "project-a",
+			preloadedProjectState: null,
+		});
+		const stale = runtimeStateStreamReducer(current, {
+			type: "stream_action",
+			streamGeneration: 1,
+			action: {
+				type: "task_title_updated",
+				projectId: "project-a",
+				taskId: "task-a",
+				title: "Stale title",
+			},
+		});
+
+		expect(stale).toBe(current);
+	});
+
+	it("rejects project-scoped actions that do not match the active project", () => {
+		const current = createInitialRuntimeStateStreamStore("project-b");
+		const stale = runtimeStateStreamReducer(current, {
+			type: "task_base_ref_updated",
+			projectId: "project-a",
+			taskId: "shared-task-id",
+			baseRef: "stale-base",
+		});
+
+		expect(stale).toBe(current);
+	});
+
+	it("ignores stale notification replacements and resets ordering on reconnect", () => {
+		const current = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
+			type: "task_notification",
+			projectId: "project-a",
+			notificationRevision: 5,
+			summaries: [createSessionSummary("new-task", 500)],
+		});
+		const stale = runtimeStateStreamReducer(current, {
+			type: "task_notification",
+			projectId: "project-a",
+			notificationRevision: 4,
+			summaries: [createSessionSummary("stale-task", 400)],
+			replace: true,
+		});
+		expect(stale).toBe(current);
+
+		const reconnected = runtimeStateStreamReducer(stale, { type: "stream_connected" });
+		const newRuntimeBaseline = runtimeStateStreamReducer(reconnected, {
+			type: "task_notification",
+			projectId: "project-a",
+			notificationRevision: 1,
+			summaries: [],
+			replace: true,
+		});
+		expect(newRuntimeBaseline.notificationMemory.projects["project-a"]).toBeUndefined();
 	});
 });

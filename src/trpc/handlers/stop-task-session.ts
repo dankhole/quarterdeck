@@ -34,7 +34,7 @@ export async function handleStopTaskSession(
 			async () => {
 				const terminalManager = await deps.getScopedTerminalManager(projectScope);
 				if (body.waitForExit) {
-					return await terminalManager.stopTaskSessionAndWaitForExit(body.taskId);
+					return await terminalManager.stopTaskSessionAndWaitForExit(body.taskId, 3_000, body.sessionInstanceId);
 				}
 				const summary = terminalManager.stopTaskSession(body.taskId);
 				const outcome: RuntimeTaskSessionStopOutcome = summary ? "requested" : "not_running";

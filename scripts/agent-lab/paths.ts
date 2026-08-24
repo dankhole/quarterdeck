@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { lstatSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,7 +46,17 @@ export function prepareAgentLabBrowserCache(
 
 export function getAgentLabArtifactRoot(repoRoot = AGENT_LAB_REPO_ROOT): string {
 	const override = process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT?.trim();
-	return override ? resolve(override) : join(repoRoot, "test-results", "agent-lab");
+	if (override) return resolve(override);
+	const testResultsPath = join(repoRoot, "test-results");
+	const agentLabPath = join(testResultsPath, "agent-lab");
+	const followsSharedSymlink = [testResultsPath, agentLabPath].some((path) => {
+		try {
+			return lstatSync(path).isSymbolicLink();
+		} catch {
+			return false;
+		}
+	});
+	return followsSharedSymlink ? join(repoRoot, ".agent-lab-results") : agentLabPath;
 }
 
 export function getAgentBrowserLocalPaths(repoRoot = AGENT_LAB_REPO_ROOT): {

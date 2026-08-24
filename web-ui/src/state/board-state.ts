@@ -211,10 +211,6 @@ export function removeTaskDependency(board: BoardData, dependencyId: string): { 
 	return runtimeTaskState.removeTaskDependency(board, dependencyId);
 }
 
-export function getReadyLinkedTaskIdsForTaskInTrash(board: BoardData, taskId: string): string[] {
-	return runtimeTaskState.getReadyLinkedTaskIdsForTaskInTrash(board, taskId);
-}
-
 export function trashTaskAndGetReadyLinkedTaskIds(
 	board: BoardData,
 	taskId: string,

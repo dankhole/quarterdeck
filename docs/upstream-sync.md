@@ -75,7 +75,7 @@ Worth doing eventually. Ordered roughly by value.
 
 ### Kiro CLI agent support (`52d9d6cfd`)
 **Upstream:** Adds `kiro-cli chat` as a task agent with a Kiro-specific hook adapter and metadata normalizer.
-**Our current state:** Quarterdeck supports Claude, Codex, and Pi. Adding a new task agent touches `runtimeAgentIdSchema`, the catalog, availability probing, launch adapters, hook metadata, settings/onboarding UI, and tests.
+**Our current state:** Quarterdeck's supported forward-looking agents are Claude and Codex. A legacy experimental Pi integration remains in the repository but is not a target for new feature or compatibility work. Adding a new supported task agent touches `runtimeAgentIdSchema`, the catalog, availability probing, launch adapters, hook metadata, settings/onboarding UI, and tests.
 **Why it matters:** Kiro is a plausible additional agent in the same multi-agent architecture, but only if its hook/resume behavior is reliable enough for Quarterdeck's session-state invariants.
 **Action:** Reassess when there is actual Kiro user demand. Treat upstream as a reference for hook payload shape, not as portable code.
 

@@ -7,7 +7,6 @@ export interface RuntimeProjectNotificationState {
 }
 
 export type RuntimeProjectNotificationStateMap = Record<string, RuntimeProjectNotificationState>;
-export type RuntimeProjectNotificationSummariesByProject = Record<string, readonly RuntimeTaskSessionSummary[]>;
 
 function mergeProjectSessions(
 	currentSessions: Record<string, RuntimeTaskSessionSummary>,
@@ -103,55 +102,8 @@ export function seedRuntimeProjectNotificationStateMapFromProjectState(
 	return mergeRuntimeProjectNotificationStateMap(
 		currentProjects,
 		projectId,
-		Object.values(projectState.sessions ?? {}),
-	);
-}
-
-export function replaceRuntimeProjectNotificationStateMapFromProjectState(
-	currentProjects: RuntimeProjectNotificationStateMap,
-	projectId: string | null,
-	projectState: RuntimeProjectStateResponse | null,
-): RuntimeProjectNotificationStateMap {
-	if (!projectId || !projectState) {
-		return currentProjects;
-	}
-
-	return replaceRuntimeProjectNotificationStateMap(
-		currentProjects,
-		projectId,
 		selectActionableProjectStateSummaries(projectState),
 	);
-}
-
-export function seedRuntimeProjectNotificationStateMapFromProjectSummaries(
-	currentProjects: RuntimeProjectNotificationStateMap,
-	summariesByProject: RuntimeProjectNotificationSummariesByProject | null | undefined,
-): RuntimeProjectNotificationStateMap {
-	if (!summariesByProject) {
-		return currentProjects;
-	}
-
-	let nextProjects = currentProjects;
-	for (const [projectId, summaries] of Object.entries(summariesByProject)) {
-		nextProjects = mergeRuntimeProjectNotificationStateMap(nextProjects, projectId, summaries);
-	}
-	return nextProjects;
-}
-
-export function replaceRuntimeProjectNotificationStateMapFromProjectSummaries(
-	currentProjects: RuntimeProjectNotificationStateMap,
-	projects: readonly RuntimeProjectSummary[],
-	summariesByProject: RuntimeProjectNotificationSummariesByProject | null | undefined,
-): RuntimeProjectNotificationStateMap {
-	let nextProjects = currentProjects;
-	for (const project of projects) {
-		nextProjects = replaceRuntimeProjectNotificationStateMap(
-			nextProjects,
-			project.id,
-			summariesByProject?.[project.id] ?? [],
-		);
-	}
-	return nextProjects;
 }
 
 export function pruneRuntimeProjectNotificationStateMap(

@@ -34,7 +34,7 @@ This pass checked the runtime and developer-facing app surface end to end: insta
 ## Tracked Follow-Ups
 
 - Add a `windows-latest` CI lane and stabilize the currently skipped Windows test scenarios, especially fake agent command/version probes and launch/open integration smoke coverage.
-- Run a native Windows smoke pass covering install/build, `quarterdeck` launch, Codex/Claude/Pi detection, task PTY start/stop, shell terminals, task worktree create/delete, ignored-path junction mirroring, Open in IDE, project shortcuts, and shutdown cleanup.
+- Run a native Windows smoke pass covering install/build, `quarterdeck` launch, Codex/Claude detection, task PTY start/stop, shell terminals, task worktree create/delete, ignored-path junction mirroring, Open in IDE, project shortcuts, and shutdown cleanup.
 - Harden Windows shell-string generation for hook and statusline commands so `cmd.exe` metacharacters in paths and arguments are escaped through one shared helper instead of ad hoc double quoting. Open in IDE no longer browser-generates shell text; its typed runtime launcher uses the shared command-shim adapter when Windows requires one.
 - Validate ConPTY resize/reconnect/task-restore behavior and decide whether Windows needs a resize-nudge fallback where Unix uses `SIGWINCH`.
 - Replace best-effort orphan cleanup with a scoped managed PID registry if native smoke testing shows Windows agent wrappers leave descendants that cannot be identified safely from known executable names or hosted command lines.

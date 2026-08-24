@@ -9,19 +9,21 @@ export { useLinkedBacklogTaskActions } from "./use-linked-backlog-task-actions";
 export type { ProgrammaticCardMoveAttemptResult, ProgrammaticCardMoveBehavior } from "./use-programmatic-card-moves";
 export { useProgrammaticCardMoves } from "./use-programmatic-card-moves";
 export { usePromptShortcuts } from "./use-prompt-shortcuts";
-export { useSessionColumnSync } from "./use-session-column-sync";
-export { useTaskBaseRefSync } from "./use-task-base-ref-sync";
 export type { UseTaskEditorResult } from "./use-task-editor";
 export { useTaskEditor } from "./use-task-editor";
 export type { UseTaskLifecycleResult } from "./use-task-lifecycle";
 export { useTaskLifecycle } from "./use-task-lifecycle";
+export type {
+	PendingTaskLifecycleOperation,
+	UseTaskLifecycleOperationsResult,
+} from "./use-task-lifecycle-operations";
+export { useTaskLifecycleOperations } from "./use-task-lifecycle-operations";
 export type { UseTaskSessionsResult } from "./use-task-sessions";
 export { useTaskSessions } from "./use-task-sessions";
 export type { UseTaskStartResult } from "./use-task-start";
 export { useTaskStart } from "./use-task-start";
 export type { UseTaskStartActionsResult } from "./use-task-start-actions";
 export { useTaskStartActions } from "./use-task-start-actions";
-export { useTaskTitleSync } from "./use-task-title-sync";
 export { useTitleActions } from "./use-title-actions";
 export type { UseTrashWorkflowResult } from "./use-trash-workflow";
 export { useTrashWorkflow } from "./use-trash-workflow";

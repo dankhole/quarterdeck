@@ -41,10 +41,22 @@ export {
 export { KeyedOperationCoordinator } from "./keyed-operation-coordinator";
 export { terminateProcessForTimeout } from "./process-termination";
 export {
+	applyProjectBoardCommand,
+	applyProjectBoardCommands,
+	type RuntimeProjectBoardCommandResult,
+} from "./project-board-command";
+export { countProjectTasksByColumn, deriveProjectSummary } from "./project-summary";
+export {
 	buildQuarterdeckCommandParts,
 	type RuntimeInvocationContext,
 	resolveQuarterdeckCommandParts,
 } from "./quarterdeck-command";
+export {
+	projectRuntimeSessionsOntoBoard,
+	projectRuntimeTaskBaseRefOntoBoard,
+	projectRuntimeTaskMetadataOntoBoard,
+	type RuntimeBoardProjectionResult,
+} from "./runtime-board-projection";
 export {
 	buildQuarterdeckRuntimeUrl,
 	buildQuarterdeckRuntimeWsUrl,
@@ -85,14 +97,17 @@ export {
 	canonicalizeTaskBoard,
 	deleteTasksFromBoard,
 	findCardInBoard,
-	getReadyLinkedTaskIdsForTaskInTrash,
+	getReadyLinkedTaskIdsForTrashTransition,
 	getTaskColumnId,
 	moveTaskToColumn,
+	patchTask,
 	pruneOrphanSessionsForBroadcast,
 	pruneOrphanSessionsForNotification,
 	pruneOrphanSessionsForNotificationDelta,
 	pruneOrphanSessionsForPersist,
 	removeTaskDependency,
+	reorderTaskInColumn,
+	reorderTasksInColumn,
 	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
 	updateTaskDependencies,

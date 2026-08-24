@@ -22,6 +22,9 @@ import {
 	runtimeProjectsResponseSchema,
 	runtimeShellSessionStartRequestSchema,
 	runtimeShellSessionStartResponseSchema,
+	runtimeTaskLifecycleCommandSchema,
+	runtimeTaskLifecycleGetRequestSchema,
+	runtimeTaskLifecycleResultSchema,
 	runtimeTaskSessionInputRequestSchema,
 	runtimeTaskSessionInputResponseSchema,
 	runtimeTaskSessionStartRequestSchema,
@@ -56,6 +59,18 @@ const runtimeRouter = t.router({
 		.output(runtimeTaskSessionStopResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.runtimeApi.stopTaskSession(ctx.projectScope, input);
+		}),
+	executeTaskLifecycle: projectProcedure
+		.input(runtimeTaskLifecycleCommandSchema)
+		.output(runtimeTaskLifecycleResultSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.runtimeApi.executeTaskLifecycle(ctx.projectScope, input);
+		}),
+	getTaskLifecycleOperation: projectProcedure
+		.input(runtimeTaskLifecycleGetRequestSchema)
+		.output(runtimeTaskLifecycleResultSchema.nullable())
+		.query(async ({ ctx, input }) => {
+			return await ctx.runtimeApi.getTaskLifecycleOperation(ctx.projectScope, input.operationId);
 		}),
 	sendTaskSessionInput: projectProcedure
 		.input(runtimeTaskSessionInputRequestSchema)

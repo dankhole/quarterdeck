@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
-import { canReturnToRunning, reduceSessionTransition } from "../../../src/terminal";
+import {
+	canReturnToRunning,
+	LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
+	reduceSessionTransition,
+} from "../../../src/terminal";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
@@ -106,12 +110,38 @@ describe("reduceSessionTransition", () => {
 	});
 
 	describe("hook.to_review", () => {
+		it("lets new hook evidence classify a semantically uncertain legacy recovery", () => {
+			const summary = createSummary({
+				state: "interrupted",
+				reviewReason: "interrupted",
+				startupRecoverySemanticStateUncertain: true,
+				warningMessage: LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
+			});
+			const result = reduceSessionTransition(summary, { type: "hook.to_review", reason: "hook" });
+
+			expect(result.patch).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "hook",
+				startupRecoverySemanticStateUncertain: false,
+				warningMessage: null,
+			});
+		});
+
 		it("transitions from running to awaiting_review with reason 'hook'", () => {
 			const summary = createSummary({ state: "running" });
 			const result = reduceSessionTransition(summary, { type: "hook.to_review" });
 
 			expect(result.changed).toBe(true);
 			expect(result.patch).toEqual({ state: "awaiting_review", reviewReason: "hook" });
+			expect(result.clearAttentionBuffer).toBe(true);
+		});
+
+		it.each(["attention", "error"] as const)("preserves the classified '%s' review reason", (reason) => {
+			const summary = createSummary({ state: "running" });
+			const result = reduceSessionTransition(summary, { type: "hook.to_review", reason });
+
+			expect(result.changed).toBe(true);
+			expect(result.patch).toEqual({ state: "awaiting_review", reviewReason: reason });
 			expect(result.clearAttentionBuffer).toBe(true);
 		});
 
@@ -153,12 +183,34 @@ describe("reduceSessionTransition", () => {
 	});
 
 	describe("hook.to_in_progress", () => {
+		it("lets new running evidence classify a semantically uncertain legacy recovery", () => {
+			const summary = createSummary({
+				state: "interrupted",
+				reviewReason: "interrupted",
+				startupRecoverySemanticStateUncertain: true,
+				warningMessage: LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
+			});
+			const result = reduceSessionTransition(summary, { type: "hook.to_in_progress" });
+
+			expect(result.patch).toMatchObject({
+				state: "running",
+				reviewReason: null,
+				startupRecoverySemanticStateUncertain: false,
+				warningMessage: null,
+			});
+		});
+
 		it("transitions from awaiting_review (reason 'hook') to running", () => {
 			const summary = createSummary({ state: "awaiting_review", reviewReason: "hook" });
 			const result = reduceSessionTransition(summary, { type: "hook.to_in_progress" });
 
 			expect(result.changed).toBe(true);
-			expect(result.patch).toEqual({ state: "running", reviewReason: null, stalledSince: null });
+			expect(result.patch).toEqual({
+				state: "running",
+				reviewReason: null,
+				latestHookActivity: null,
+				stalledSince: null,
+			});
 			expect(result.clearAttentionBuffer).toBe(true);
 		});
 
@@ -167,7 +219,12 @@ describe("reduceSessionTransition", () => {
 			const result = reduceSessionTransition(summary, { type: "hook.to_in_progress" });
 
 			expect(result.changed).toBe(true);
-			expect(result.patch).toEqual({ state: "running", reviewReason: null, stalledSince: null });
+			expect(result.patch).toEqual({
+				state: "running",
+				reviewReason: null,
+				latestHookActivity: null,
+				stalledSince: null,
+			});
 			expect(result.clearAttentionBuffer).toBe(true);
 		});
 
@@ -176,7 +233,12 @@ describe("reduceSessionTransition", () => {
 			const result = reduceSessionTransition(summary, { type: "hook.to_in_progress" });
 
 			expect(result.changed).toBe(true);
-			expect(result.patch).toEqual({ state: "running", reviewReason: null, stalledSince: null });
+			expect(result.patch).toEqual({
+				state: "running",
+				reviewReason: null,
+				latestHookActivity: null,
+				stalledSince: null,
+			});
 			expect(result.clearAttentionBuffer).toBe(true);
 		});
 
@@ -185,7 +247,12 @@ describe("reduceSessionTransition", () => {
 			const result = reduceSessionTransition(summary, { type: "hook.to_in_progress" });
 
 			expect(result.changed).toBe(true);
-			expect(result.patch).toEqual({ state: "running", reviewReason: null, stalledSince: null });
+			expect(result.patch).toEqual({
+				state: "running",
+				reviewReason: null,
+				latestHookActivity: null,
+				stalledSince: null,
+			});
 			expect(result.clearAttentionBuffer).toBe(true);
 		});
 
@@ -214,7 +281,12 @@ describe("reduceSessionTransition", () => {
 			const result = reduceSessionTransition(summary, { type: "agent.prompt-ready" });
 
 			expect(result.changed).toBe(true);
-			expect(result.patch).toEqual({ state: "running", reviewReason: null, stalledSince: null });
+			expect(result.patch).toEqual({
+				state: "running",
+				reviewReason: null,
+				latestHookActivity: null,
+				stalledSince: null,
+			});
 			expect(result.clearAttentionBuffer).toBe(true);
 		});
 
@@ -400,7 +472,12 @@ describe("reduceSessionTransition", () => {
 			const result = reduceSessionTransition(summary, { type: "hook.to_in_progress" });
 
 			expect(result.changed).toBe(true);
-			expect(result.patch).toEqual({ state: "running", reviewReason: null, stalledSince: null });
+			expect(result.patch).toEqual({
+				state: "running",
+				reviewReason: null,
+				latestHookActivity: null,
+				stalledSince: null,
+			});
 			expect(result.clearAttentionBuffer).toBe(true);
 		});
 	});
@@ -508,6 +585,7 @@ describe("reduceSessionTransition", () => {
 				processStillRunning: true,
 				clearResumeSessionId: false,
 				warningMessage: "Recovery remains unconfirmed.",
+				fallbackReviewState: null,
 			});
 
 			expect(result.patch).toEqual({
@@ -515,6 +593,7 @@ describe("reduceSessionTransition", () => {
 				reviewReason: "error",
 				latestHookActivity: null,
 				stalledSince: null,
+				startupRecoveryRequired: false,
 				warningMessage: "Recovery remains unconfirmed.",
 			});
 			expect(result.clearAttentionBuffer).toBe(true);
@@ -527,6 +606,7 @@ describe("reduceSessionTransition", () => {
 				processStillRunning: false,
 				clearResumeSessionId: true,
 				warningMessage: "Recovery failed.",
+				fallbackReviewState: null,
 			});
 
 			expect(result.patch).toEqual({
@@ -535,8 +615,54 @@ describe("reduceSessionTransition", () => {
 				pid: null,
 				latestHookActivity: null,
 				stalledSince: null,
+				startupRecoveryRequired: false,
 				resumeSessionId: null,
 				warningMessage: "Recovery failed.",
+			});
+			expect(result.clearAttentionBuffer).toBe(true);
+		});
+
+		it("preserves completed review meaning when only the interactive chat failed to restore", () => {
+			const activity = {
+				activityText: "Completed",
+				toolName: null,
+				toolInputSummary: null,
+				finalMessage: "Implemented and verified.",
+				hookEventName: "Stop",
+				notificationType: null,
+				source: "codex",
+				conversationSummaryText: "Implemented and verified.",
+			};
+			const result = reduceSessionTransition(
+				createSummary({
+					state: "awaiting_review",
+					reviewReason: "hook",
+					pid: 4321,
+					lastHookAt: 500,
+					latestHookActivity: activity,
+					startupRecoveryRequired: true,
+				}),
+				{
+					type: "startup_recovery.exhausted",
+					processStillRunning: true,
+					clearResumeSessionId: false,
+					warningMessage: "Chat restoration failed.",
+					fallbackReviewState: {
+						reviewReason: "hook",
+						lastHookAt: 500,
+						latestHookActivity: activity,
+					},
+				},
+			);
+
+			expect(result.patch).toEqual({
+				state: "awaiting_review",
+				reviewReason: "hook",
+				lastHookAt: 500,
+				latestHookActivity: activity,
+				stalledSince: null,
+				startupRecoveryRequired: false,
+				warningMessage: "Chat restoration failed.",
 			});
 			expect(result.clearAttentionBuffer).toBe(true);
 		});

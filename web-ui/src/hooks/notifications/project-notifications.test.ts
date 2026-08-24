@@ -65,4 +65,23 @@ describe("project-notifications", () => {
 		expect(flattened["task-b-review"]?.projectId).toBe("project-b");
 		expect(flattened["task-b-review"]?.summary.taskId).toBe("task-b-review");
 	});
+
+	it("counts attention waits as needs input without reinterpreting hook fields", () => {
+		const projection = buildProjectNotificationProjection(
+			{
+				"project-a": {
+					sessions: {
+						"task-question": createSummary("task-question", {
+							state: "awaiting_review",
+							reviewReason: "attention",
+						}),
+					},
+				},
+			},
+			"project-a",
+		);
+
+		expect(projection.needsInputByProject).toEqual({ "project-a": 1 });
+		expect(projection.currentProjectHasNeedsInput).toBe(true);
+	});
 });

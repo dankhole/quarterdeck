@@ -223,7 +223,9 @@ test("side-panel card actions only wrap when the controls cannot fit", async ({ 
 		window.history.pushState(window.history.state, "", url);
 		window.dispatchEvent(new PopStateEvent("popstate"));
 	}, taskId!);
-	const card = page.locator(`[data-task-id="${taskId}"]`).filter({ hasText: taskTitle }).first();
+	// Automatic title generation may replace the initial prompt while this
+	// layout test is running. Task identity is stable; visible title text is not.
+	const card = page.locator(`[data-task-id="${taskId}"]`).first();
 	await expect(card).toBeVisible();
 	await card.evaluate((element) => {
 		element.style.width = "126px";
@@ -331,16 +333,14 @@ test("agent lab adds a synthetic project through the browser manual-path fallbac
 	});
 	expect(additionalProjectPath).toBeTruthy();
 
-	let promptHandled = false;
-	page.once("dialog", async (dialog) => {
-		expect(dialog.type()).toBe("prompt");
-		expect(dialog.message()).toContain("Enter a project path to add");
-		promptHandled = true;
-		await dialog.accept(additionalProjectPath);
-	});
 	await page.getByRole("button", { name: "Add Project" }).click();
-
-	await expect.poll(() => promptHandled, { timeout: 3_000 }).toBe(true);
+	const pathDialog = page
+		.getByRole("dialog")
+		.filter({ has: page.getByRole("heading", { name: "Add project by path" }) });
+	await expect(pathDialog).toBeVisible();
+	await pathDialog.getByLabel("Project path").fill(additionalProjectPath);
+	await pathDialog.getByRole("button", { name: "Add project" }).click();
+	await expect(pathDialog).toBeHidden();
 	await expect(page.getByRole("button", { name: /^project-secondary\b/ })).toBeVisible({ timeout: 10_000 });
 	await expect(page).toHaveURL(/\/project-secondary(?:[?#]|$)/);
 	const pickerEvent = await waitForHostEvent(page, "directory_picker");

@@ -166,12 +166,12 @@ const noopBoardContext: BoardContextValue = {
 	selectedCard: null,
 	setSelectedTaskId: () => {},
 	setSessions: () => {},
-	ensureTaskWorktree: async () => ({ ok: false }),
-	startTaskSession: async () => ({ ok: false }),
-	cleanupTaskWorktree: async () => null,
 	fetchTaskWorktreeInfo: async () => null,
 	sendTaskSessionInput: async () => ({ ok: true }),
-	stopTaskSession: async () => ({ ok: true, summary: null, didExit: true, outcome: "exited" }),
+	taskLifecycle: {
+		executeTaskLifecycle: async () => null,
+		pendingTaskLifecycleById: {},
+	},
 	isInitialRuntimeLoad: false,
 	isAwaitingProjectSnapshot: false,
 };

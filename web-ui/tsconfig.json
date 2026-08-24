@@ -13,6 +13,7 @@
     "paths": {
       "@/*": ["./src/*"],
       "@runtime-agent-catalog": ["../src/core/agent-catalog.ts"],
+      "@runtime-board-commands": ["../src/core/project-board-command.ts"],
       "@runtime-contract": ["../src/core/api-contract.ts"],
       "@runtime-trpc": ["../src/trpc/app-router.ts"],
       "@runtime-config-defaults": ["../src/config/config-defaults.ts"],

@@ -16,7 +16,7 @@ interface UsePromptShortcutsInput {
 	sendTaskSessionInput: (
 		taskId: string,
 		text: string,
-		options?: SendTerminalInputOptions,
+		options: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
 }
 
@@ -61,6 +61,7 @@ export function usePromptShortcuts({
 			setIsRunning(true);
 			try {
 				const pasteResult = await sendTaskSessionInput(taskId, shortcut.prompt, {
+					intent: "write",
 					appendNewline: false,
 					mode: "paste",
 				});
@@ -78,7 +79,10 @@ export function usePromptShortcuts({
 					setTimeout(resolve, 200);
 				});
 
-				const submitResult = await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
+				const submitResult = await sendTaskSessionInput(taskId, "\r", {
+					intent: "submit",
+					appendNewline: false,
+				});
 				if (!submitResult.ok) {
 					showAppToast({
 						intent: "danger",

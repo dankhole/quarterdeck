@@ -46,6 +46,40 @@ describe("TerminalSessionManager", () => {
 		expect(result?.clearAttentionBuffer).toBe(true);
 	});
 
+	it("applies classified hook transitions through the manager transition boundary", () => {
+		const manager = createTestManager();
+		manager.attach("task-1", {});
+		manager.store.hydrateFromRecord({
+			"task-1": createSummary({ state: "running", reviewReason: null }),
+		});
+
+		const waiting = manager.applyHookTransition("task-1", { type: "hook.to_review", reason: "attention" });
+		expect(waiting?.changed).toBe(true);
+		expect(waiting?.summary.state).toBe("awaiting_review");
+		expect(waiting?.summary.reviewReason).toBe("attention");
+
+		manager.store.applyHookActivity("task-1", {
+			source: "claude",
+			hookEventName: "PreToolUse",
+			toolName: "AskUserQuestion",
+		});
+		const running = manager.applyHookTransition("task-1", { type: "hook.to_in_progress" });
+		expect(running?.changed).toBe(true);
+		expect(running?.summary.state).toBe("running");
+		expect(running?.summary.reviewReason).toBeNull();
+		expect(running?.summary.latestHookActivity).toBeNull();
+	});
+
+	it("reports a rejected hook transition instead of presenting its current summary as success", () => {
+		const manager = createTestManager();
+		manager.attach("task-1", {});
+
+		const result = manager.applyHookTransition("task-1", { type: "hook.to_review", reason: "hook" });
+
+		expect(result?.changed).toBe(false);
+		expect(result?.summary.state).toBe("idle");
+	});
+
 	it("builds shell kickoff command lines with quoted arguments", () => {
 		const commandLine = buildShellCommandLine("claude", ["--auto", "high", "hello world"]);
 		expect(commandLine).toContain("claude");
@@ -225,7 +259,7 @@ describe("TerminalSessionManager", () => {
 		expect(resolveEffectiveTerminalRows("claude", 40, false, { claudeFullscreenEnabled: true })).toBe(40);
 	});
 
-	it("transitionToReview preserves latestHookActivity (RC4 invariant — no null-window)", () => {
+	it("applies hook state, activity, and session identity in one store emission", () => {
 		const manager = createTestManager();
 		manager.store.hydrateFromRecord({
 			"task-1": createSummary({
@@ -242,30 +276,29 @@ describe("TerminalSessionManager", () => {
 				},
 			}),
 		});
+		const onChange = vi.fn();
+		manager.store.onChange(onChange);
 
-		// Transition to review — must NOT clear latestHookActivity (RC4 invariant).
-		// The caller (hooks-api.ts) applies new activity via applyHookActivity in
-		// the same synchronous tick, which replaces it atomically.
-		const reviewed = manager.store.transitionToReview("task-1", "hook");
+		const reviewed = manager.store.applySessionEvent("task-1", {
+			type: "hook.to_review",
+			reason: "hook",
+			metadata: {
+				source: "claude",
+				hookEventName: "Stop",
+				activityText: "Task complete",
+				finalMessage: "Done with the work",
+				sessionId: "claude-session-1",
+			},
+		})?.summary;
 		expect(reviewed?.state).toBe("awaiting_review");
 		expect(reviewed?.reviewReason).toBe("hook");
-		// Activity is preserved — no null-window
-		expect(reviewed?.latestHookActivity).not.toBeNull();
-		expect(reviewed?.latestHookActivity?.hookEventName).toBe("PermissionRequest");
-
-		// applyHookActivity with a new event clears stale fields via isNewEvent=true
-		const updated = manager.store.applyHookActivity("task-1", {
-			source: "claude",
-			hookEventName: "Stop",
-			activityText: "Task complete",
-			finalMessage: "Done with the work",
-		});
-
-		// isNewEvent=true: hookEventName replaced, old notificationType cleared
-		expect(updated?.latestHookActivity?.hookEventName).toBe("Stop");
-		expect(updated?.latestHookActivity?.notificationType).toBeNull();
-		expect(updated?.latestHookActivity?.activityText).toBe("Task complete");
-		expect(updated?.latestHookActivity?.finalMessage).toBe("Done with the work");
+		expect(reviewed?.resumeSessionId).toBe("claude-session-1");
+		expect(reviewed?.latestHookActivity?.hookEventName).toBe("Stop");
+		expect(reviewed?.latestHookActivity?.notificationType).toBeNull();
+		expect(reviewed?.latestHookActivity?.activityText).toBe("Task complete");
+		expect(reviewed?.latestHookActivity?.finalMessage).toBe("Done with the work");
+		expect(onChange).toHaveBeenCalledTimes(1);
+		expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ state: "awaiting_review" }));
 	});
 
 	it("marks crash-recovered running sessions as interrupted during hydration", () => {
@@ -805,13 +838,14 @@ describe("TerminalSessionManager", () => {
 
 		const waitPromise = manager.stopTaskSessionAndWaitForExit("task-timeout", 1_000);
 		await vi.advanceTimersByTimeAsync(1_000);
-		await expect(waitPromise).resolves.toMatchObject({
+		const result = await waitPromise;
+
+		expect(stop).toHaveBeenCalledTimes(1);
+		expect(result).toMatchObject({
 			didExit: false,
 			outcome: "timed_out",
 			error: "Task session did not exit before the timeout.",
 		});
-
-		expect(stop).toHaveBeenCalledTimes(1);
 		expect(consoleWarn).toHaveBeenCalledWith(
 			expect.stringContaining("[session-lifecycle]"),
 			"task session did not exit before timeout",

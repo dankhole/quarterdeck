@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import type { Dirent } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { promisify } from "node:util";
 
 import {
@@ -200,11 +200,25 @@ async function collectSharedDiagnostics(manifest: ReadableAgentLabManifest): Pro
 }
 
 function evidenceSources(manifest: ReadableAgentLabManifest, labPath: string): DiagnosticBundleEvidenceSource[] {
+	const runtimeLogPaths = new Set<string>();
+	if (manifest.processes.runtime?.logPath) {
+		runtimeLogPaths.add(manifest.processes.runtime.logPath);
+	}
+	if (manifest.schemaVersion === 3) {
+		for (const restart of manifest.runtimeRestarts) {
+			runtimeLogPaths.add(restart.previousProcess.logPath);
+			if (restart.replacementProcess) runtimeLogPaths.add(restart.replacementProcess.logPath);
+		}
+	}
+	const runtimeLogs = Array.from(runtimeLogPaths).map((sourcePath) => ({
+		sourcePath,
+		bundlePath: `lab/process/${basename(sourcePath)}`,
+	}));
 	return [
 		{ sourcePath: labPath, bundlePath: "lab", required: true },
 		{ sourcePath: join(manifest.artifactDir, ACTION_TRANSCRIPT_NAME), bundlePath: `lab/${ACTION_TRANSCRIPT_NAME}` },
 		{ sourcePath: manifest.browserOutputPath, bundlePath: "lab/playwright" },
-		{ sourcePath: join(manifest.artifactDir, "runtime.log"), bundlePath: "lab/process/runtime.log" },
+		...runtimeLogs,
 		{ sourcePath: join(manifest.artifactDir, "web.log"), bundlePath: "lab/process/web.log" },
 		{ sourcePath: join(manifest.artifactDir, "supervisor.log"), bundlePath: "lab/process/supervisor.log" },
 	];

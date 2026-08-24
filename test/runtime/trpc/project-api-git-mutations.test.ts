@@ -8,6 +8,7 @@ const worktreeMocks = vi.hoisted(() => ({
 	),
 	getTaskWorkingDirectory: vi.fn((): string | null => null),
 	deleteTaskWorktree: vi.fn(),
+	archiveTaskWorktreeForTrash: vi.fn(),
 }));
 
 const projectStateMocks = vi.hoisted(() => ({
@@ -27,6 +28,7 @@ const gitSyncMocks = vi.hoisted(() => ({
 
 vi.mock("../../../src/workdir/task-worktree.js", () => ({
 	deleteTaskWorktree: worktreeMocks.deleteTaskWorktree,
+	archiveTaskWorktreeForTrash: worktreeMocks.archiveTaskWorktreeForTrash,
 	ensureTaskWorktreeIfDoesntExist: vi.fn(),
 	getTaskRepositoryInfo: vi.fn(),
 	resolveTaskCwd: worktreeMocks.resolveTaskCwd,
@@ -436,25 +438,25 @@ describe("createProjectApi checkoutGitBranch", () => {
 
 describe("createProjectApi deleteWorktree", () => {
 	beforeEach(() => {
-		worktreeMocks.deleteTaskWorktree.mockReset();
+		worktreeMocks.archiveTaskWorktreeForTrash.mockReset();
 	});
 
-	it("delegates to deleteTaskWorktree", async () => {
-		worktreeMocks.deleteTaskWorktree.mockResolvedValue({ ok: true });
+	it("delegates to the trash-safe worktree archive", async () => {
+		worktreeMocks.archiveTaskWorktreeForTrash.mockResolvedValue({ ok: true });
 
 		const api = createProjectApi(createProjectDeps());
 
 		const result = await api.deleteWorktree(defaultScope, { taskId: "task-1" });
 
 		expect(result.ok).toBe(true);
-		expect(worktreeMocks.deleteTaskWorktree).toHaveBeenCalledWith({
+		expect(worktreeMocks.archiveTaskWorktreeForTrash).toHaveBeenCalledWith({
 			repoPath: "/tmp/repo",
 			taskId: "task-1",
 		});
 	});
 
 	it("returns error when delete fails", async () => {
-		worktreeMocks.deleteTaskWorktree.mockResolvedValue({
+		worktreeMocks.archiveTaskWorktreeForTrash.mockResolvedValue({
 			ok: false,
 			error: "worktree not found",
 		});
@@ -485,7 +487,7 @@ describe("createProjectApi deleteWorktree", () => {
 			error: "Task worktree cleanup was skipped because an agent session is active.",
 		});
 		expect(hasTaskSessionLifecycleActivity).toHaveBeenCalledWith("task-1");
-		expect(worktreeMocks.deleteTaskWorktree).not.toHaveBeenCalled();
+		expect(worktreeMocks.archiveTaskWorktreeForTrash).not.toHaveBeenCalled();
 	});
 
 	it("waits for an earlier server-side task resource operation before deleting", async () => {
@@ -496,17 +498,17 @@ describe("createProjectApi deleteWorktree", () => {
 		});
 		const blocker = taskResourceOperations.run("project-1", "task-1", async () => await gate);
 		await Promise.resolve();
-		worktreeMocks.deleteTaskWorktree.mockResolvedValue({ ok: true });
+		worktreeMocks.archiveTaskWorktreeForTrash.mockResolvedValue({ ok: true });
 		const api = createProjectApi(createProjectDeps({ taskResourceOperations }));
 
 		const deletion = api.deleteWorktree(defaultScope, { taskId: "task-1" });
 		await Promise.resolve();
-		expect(worktreeMocks.deleteTaskWorktree).not.toHaveBeenCalled();
+		expect(worktreeMocks.archiveTaskWorktreeForTrash).not.toHaveBeenCalled();
 
 		release();
 		await blocker;
 		await expect(deletion).resolves.toMatchObject({ ok: true });
-		expect(worktreeMocks.deleteTaskWorktree).toHaveBeenCalledTimes(1);
+		expect(worktreeMocks.archiveTaskWorktreeForTrash).toHaveBeenCalledTimes(1);
 	});
 });
 

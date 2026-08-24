@@ -129,6 +129,42 @@ describe("markInterruptedAndStopAll", () => {
 		expect(results.every((s) => s.state === "interrupted")).toBe(true);
 	});
 
+	it("preserves completed review semantics while making its chat recoverable", async () => {
+		let spawned: ReturnType<typeof createMockPtySession> | null = null;
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			spawned = createMockPtySession(111, request);
+			return spawned;
+		});
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		});
+		manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
+		manager.store.applyHookActivity("task-1", {
+			hookEventName: "Stop",
+			finalMessage: "Implemented and verified.",
+		});
+
+		const [summary] = manager.markInterruptedAndStopAll();
+
+		expect(spawned).not.toBeNull();
+		expect(summary).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "hook",
+			pid: null,
+			startupRecoveryRequired: true,
+			latestHookActivity: {
+				hookEventName: "Stop",
+				finalMessage: "Implemented and verified.",
+			},
+		});
+	});
+
 	it("skips entries with no active process", async () => {
 		let sessionCounter = 0;
 		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];

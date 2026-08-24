@@ -13,6 +13,7 @@ type StoreListener = () => void;
 type TaskMetadataListener = (taskId: string) => void;
 
 interface ProjectMetadataState {
+	projectId: string | null;
 	projectPath: string | null;
 	homeGitSummary: RuntimeGitSyncSummary | null;
 	homeGitStateVersion: number;
@@ -23,6 +24,7 @@ interface ProjectMetadataState {
 }
 
 const projectMetadataState: ProjectMetadataState = {
+	projectId: null,
 	projectPath: null,
 	homeGitSummary: null,
 	homeGitStateVersion: 0,
@@ -202,8 +204,16 @@ export function getProjectPath(): string | null {
 	return projectMetadataState.projectPath;
 }
 
-export function setProjectPath(path: string | null): void {
+export function getProjectMetadataProjectId(): string | null {
+	return projectMetadataState.projectId;
+}
+
+export function setProjectPath(projectId: string | null, path: string | null): boolean {
+	if (projectMetadataState.projectId !== projectId) {
+		return false;
+	}
 	projectMetadataState.projectPath = path;
+	return true;
 }
 
 export function getHomeGitStateVersion(): number {
@@ -222,15 +232,20 @@ function setHomeGitMetadata(summary: RuntimeGitSyncSummary | null, stateVersion:
 	return true;
 }
 
-export function setHomeGitSummary(summary: RuntimeGitSyncSummary | null): boolean {
+export function setHomeGitSummary(projectId: string, summary: RuntimeGitSyncSummary | null): boolean {
+	if (projectMetadataState.projectId !== projectId) {
+		return false;
+	}
 	const nextStateVersion = areGitSummariesEqual(projectMetadataState.homeGitSummary, summary)
 		? projectMetadataState.homeGitStateVersion
 		: Date.now();
 	return setHomeGitMetadata(summary, nextStateVersion);
 }
 
-export function clearHomeGitSummary(): void {
-	setHomeGitMetadata(null, 0);
+export function clearHomeGitSummary(projectId: string): void {
+	if (projectMetadataState.projectId === projectId) {
+		setHomeGitMetadata(null, 0);
+	}
 }
 
 export function getTaskWorktreeInfo(
@@ -258,8 +273,8 @@ export function getTaskRepositoryInfo(
 	return getTaskWorktreeInfo(taskId, baseRef);
 }
 
-export function setTaskWorktreeInfo(info: RuntimeTaskRepositoryInfoResponse | null): boolean {
-	if (!info) {
+export function setTaskWorktreeInfo(projectId: string, info: RuntimeTaskRepositoryInfoResponse | null): boolean {
+	if (projectMetadataState.projectId !== projectId || !info) {
 		return false;
 	}
 	const existing = projectMetadataState.taskWorktreeInfoByTaskId[info.taskId] ?? null;
@@ -274,11 +289,14 @@ export function setTaskWorktreeInfo(info: RuntimeTaskRepositoryInfoResponse | nu
 	return true;
 }
 
-export function setTaskRepositoryInfo(info: RuntimeTaskRepositoryInfoResponse | null): boolean {
-	return setTaskWorktreeInfo(info);
+export function setTaskRepositoryInfo(projectId: string, info: RuntimeTaskRepositoryInfoResponse | null): boolean {
+	return setTaskWorktreeInfo(projectId, info);
 }
 
-export function clearTaskWorktreeInfo(taskId: string | null | undefined): boolean {
+export function clearTaskWorktreeInfo(projectId: string, taskId: string | null | undefined): boolean {
+	if (projectMetadataState.projectId !== projectId) {
+		return false;
+	}
 	const normalizedTaskId = taskId?.trim();
 	if (!normalizedTaskId || !(normalizedTaskId in projectMetadataState.taskWorktreeInfoByTaskId)) {
 		return false;
@@ -289,8 +307,8 @@ export function clearTaskWorktreeInfo(taskId: string | null | undefined): boolea
 	return true;
 }
 
-export function clearTaskRepositoryInfo(taskId: string | null | undefined): boolean {
-	return clearTaskWorktreeInfo(taskId);
+export function clearTaskRepositoryInfo(projectId: string, taskId: string | null | undefined): boolean {
+	return clearTaskWorktreeInfo(projectId, taskId);
 }
 
 export function getTaskWorktreeSnapshot(
@@ -311,8 +329,8 @@ export function getTaskWorktreeSnapshot(
 	return value;
 }
 
-export function setTaskWorktreeSnapshot(snapshot: ReviewTaskWorktreeSnapshot | null): boolean {
-	if (!snapshot) {
+export function setTaskWorktreeSnapshot(projectId: string, snapshot: ReviewTaskWorktreeSnapshot | null): boolean {
+	if (projectMetadataState.projectId !== projectId || !snapshot) {
 		return false;
 	}
 	const existing = projectMetadataState.taskWorktreeSnapshotByTaskId[snapshot.taskId] ?? null;
@@ -331,7 +349,10 @@ export function setTaskWorktreeSnapshot(snapshot: ReviewTaskWorktreeSnapshot | n
 	return true;
 }
 
-export function clearTaskWorktreeSnapshot(taskId: string | null | undefined): boolean {
+export function clearTaskWorktreeSnapshot(projectId: string, taskId: string | null | undefined): boolean {
+	if (projectMetadataState.projectId !== projectId) {
+		return false;
+	}
 	const normalizedTaskId = taskId?.trim();
 	if (!normalizedTaskId || !(normalizedTaskId in projectMetadataState.taskWorktreeSnapshotByTaskId)) {
 		return false;
@@ -369,12 +390,14 @@ export function clearInactiveTaskWorktreeSnapshots(activeTaskIds: Set<string>): 
 	}
 }
 
-export function resetProjectMetadataStore(): void {
+export function resetProjectMetadataStore(projectId: string | null = null): void {
 	const taskIds = new Set([
 		...Object.keys(projectMetadataState.taskWorktreeInfoByTaskId),
 		...Object.keys(projectMetadataState.taskWorktreeSnapshotByTaskId),
 		...Object.keys(projectMetadataState.taskWorktreeStateVersionByTaskId),
 	]);
+	projectMetadataState.projectId = projectId;
+	projectMetadataState.projectPath = null;
 	projectMetadataState.homeGitSummary = null;
 	projectMetadataState.homeGitStateVersion = 0;
 	projectMetadataState.homeStashCount = 0;
@@ -390,7 +413,17 @@ export function resetProjectMetadataStore(): void {
 	}
 }
 
-export function replaceProjectMetadata(metadata: RuntimeProjectMetadata | null): void {
+export function setProjectMetadataScope(projectId: string | null): void {
+	if (projectMetadataState.projectId === projectId) {
+		return;
+	}
+	resetProjectMetadataStore(projectId);
+}
+
+export function replaceProjectMetadata(projectId: string | null, metadata: RuntimeProjectMetadata | null): boolean {
+	if (projectMetadataState.projectId !== projectId) {
+		return false;
+	}
 	setHomeGitMetadata(metadata?.homeGitSummary ?? null, metadata?.homeGitStateVersion ?? 0);
 
 	const nextHomeConflictState = metadata?.homeConflictState ?? null;
@@ -448,6 +481,7 @@ export function replaceProjectMetadata(metadata: RuntimeProjectMetadata | null):
 	for (const taskId of changedTaskIds) {
 		emitTaskMetadata(taskId);
 	}
+	return true;
 }
 
 export function subscribeToAnyTaskMetadata(listener: TaskMetadataListener): () => void {

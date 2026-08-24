@@ -189,7 +189,11 @@ export function useCardDetailView({
 
 	const handleAddToTerminal = useCallback(
 		async (text: string) => {
-			const result = await sendTaskSessionInput(taskId, text, { appendNewline: false, mode: "paste" });
+			const result = await sendTaskSessionInput(taskId, text, {
+				intent: "write",
+				appendNewline: false,
+				mode: "paste",
+			});
 			if (!result.ok) {
 				showAppToast({
 					intent: "danger",
@@ -203,7 +207,11 @@ export function useCardDetailView({
 
 	const handleSendToTerminal = useCallback(
 		async (text: string) => {
-			const result = await sendTaskSessionInput(taskId, text, { appendNewline: false, mode: "paste" });
+			const result = await sendTaskSessionInput(taskId, text, {
+				intent: "write",
+				appendNewline: false,
+				mode: "paste",
+			});
 			if (!result.ok) {
 				showAppToast({
 					intent: "danger",
@@ -213,7 +221,10 @@ export function useCardDetailView({
 				return;
 			}
 			await new Promise<void>((resolve) => setTimeout(resolve, 200));
-			const submitted = await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
+			const submitted = await sendTaskSessionInput(taskId, "\r", {
+				intent: "submit",
+				appendNewline: false,
+			});
 			if (!submitted.ok) {
 				showAppToast({
 					intent: "danger",

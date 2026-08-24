@@ -25,6 +25,10 @@ class FakeWebSocket {
 	emitError(): void {
 		this.onerror?.(new Event("error"));
 	}
+
+	emitMessage(data: unknown): void {
+		this.onmessage?.(new MessageEvent("message", { data: JSON.stringify(data) }));
+	}
 }
 
 function setDocumentVisibilityState(state: DocumentVisibilityState): void {
@@ -66,6 +70,26 @@ describe("startRuntimeStateStreamTransport", () => {
 		expect(FakeWebSocket.instances).toHaveLength(2);
 		expect(FakeWebSocket.instances[1]?.url).toContain("projectId=project-b");
 
+		transport.dispose();
+	});
+
+	it("rejects a queued message from a socket superseded by a project switch", () => {
+		const onMessage = vi.fn();
+		const transport = startRuntimeStateStreamTransport("project-a", {
+			onConnected: vi.fn(),
+			onDisconnected: vi.fn(),
+			onMessage,
+		});
+		const firstSocket = FakeWebSocket.instances[0];
+		const staleHandler = firstSocket?.onmessage;
+		if (!firstSocket || !staleHandler) {
+			throw new Error("Expected an initial websocket message handler.");
+		}
+
+		transport.switchProject("project-b");
+		staleHandler(new MessageEvent("message", { data: JSON.stringify({ type: "error", message: "stale" }) }));
+
+		expect(onMessage).not.toHaveBeenCalled();
 		transport.dispose();
 	});
 

@@ -1,5 +1,44 @@
 import { describe, expect, it } from "vitest";
-import { parseRemovedProjectPathFromStreamError } from "./project-navigation";
+import { parseRemovedProjectPathFromStreamError, resolveProjectDirectoryPickerDecision } from "./project-navigation";
+
+describe("resolveProjectDirectoryPickerDecision", () => {
+	it("selects a returned path", () => {
+		expect(resolveProjectDirectoryPickerDecision({ ok: true, path: "/repo", outcome: "native" })).toEqual({
+			kind: "selected",
+			path: "/repo",
+		});
+	});
+
+	it("distinguishes cancellation from the manual-path fallback", () => {
+		expect(
+			resolveProjectDirectoryPickerDecision({
+				ok: false,
+				path: null,
+				reason: "cancelled",
+				error: "No directory was selected.",
+			}),
+		).toEqual({ kind: "cancelled" });
+		expect(
+			resolveProjectDirectoryPickerDecision({
+				ok: false,
+				path: null,
+				reason: "native_ui_unavailable",
+				error: "Picker unavailable",
+			}),
+		).toEqual({ kind: "manual_path" });
+	});
+
+	it("preserves a typed picker failure message", () => {
+		expect(
+			resolveProjectDirectoryPickerDecision({
+				ok: false,
+				path: null,
+				reason: "launch_failed",
+				error: "Picker crashed",
+			}),
+		).toEqual({ kind: "failed", message: "Picker crashed" });
+	});
+});
 
 // ---------------------------------------------------------------------------
 // parseRemovedProjectPathFromStreamError

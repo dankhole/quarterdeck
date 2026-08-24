@@ -18,6 +18,7 @@ import {
 	assertSafeRunId,
 	createAgentLabRunId,
 	getAgentBrowserLocalPaths,
+	getAgentLabArtifactRoot,
 	getAgentLabBrowserCachePath,
 	getAgentLabBrowserCachePaths,
 	prepareAgentLabBrowserCache,
@@ -62,6 +63,32 @@ describe("agent-lab browser cache", () => {
 			daemonSessionPath: "/worktrees/one/quarterdeck/test-results/agent-lab/browser-daemon",
 		});
 		expect(second.artifactRoot).not.toBe(first.artifactRoot);
+	});
+
+	it("uses a worktree-local fallback when legacy test-results is a shared symlink", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-artifact-root-"));
+		const repoRoot = join(root, "worktree");
+		const sharedResults = join(root, "shared-results");
+		const previousOverride = process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT;
+		try {
+			delete process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT;
+			await mkdir(repoRoot, { recursive: true });
+			await mkdir(sharedResults, { recursive: true });
+			await symlink(
+				sharedResults,
+				join(repoRoot, "test-results"),
+				process.platform === "win32" ? "junction" : "dir",
+			);
+
+			expect(getAgentLabArtifactRoot(repoRoot)).toBe(join(repoRoot, ".agent-lab-results"));
+		} finally {
+			if (previousOverride === undefined) {
+				delete process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT;
+			} else {
+				process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT = previousOverride;
+			}
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 
 	it("survives root and web dependency reinstalls", async () => {
@@ -292,6 +319,25 @@ describe("agent-lab manifest compatibility", () => {
 			stdout.mockClear();
 			await runAgentLabCli(["node", "agent-lab", "snapshot", "legacy-run", "--label", "legacy", "--json"]);
 			expect(stdout.mock.calls.map(([value]) => String(value)).join("")).toContain('"label": "legacy"');
+
+			const versionOneManifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
+			await writeFile(
+				manifestPath,
+				`${JSON.stringify({
+					...versionOneManifest,
+					schemaVersion: 2,
+					hostEventLedgerPath: join(root, "host-events.jsonl"),
+					runtimeCapabilities: { nativeUiAvailable: false, hostIntegrationMode: "simulated" },
+				})}\n`,
+				"utf8",
+			);
+			await expect(readAgentLabManifest(manifestPath)).resolves.toMatchObject({
+				schemaVersion: 2,
+				runId: "legacy-run",
+			});
+			await expect(runAgentLabCli(["node", "agent-lab", "restart-runtime", "legacy-run", "--json"])).rejects.toThrow(
+				"predates same-state runtime restart support",
+			);
 		} finally {
 			stdout.mockRestore();
 			if (previousArtifactRoot === undefined) {

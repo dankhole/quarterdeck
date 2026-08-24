@@ -47,9 +47,9 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 }));
 
 import type { RuntimeConfigState } from "../../../src/config";
-import type { RuntimeBoardCard, RuntimeProjectStateResponse } from "../../../src/core";
+import { deriveTaskIndicatorState, type RuntimeBoardCard, type RuntimeProjectStateResponse } from "../../../src/core";
 import { createProjectRegistry, type ProjectRegistry } from "../../../src/server/project-registry";
-import type { TerminalSessionManager } from "../../../src/terminal";
+import { LEGACY_STARTUP_SEMANTIC_STATE_WARNING, type TerminalSessionManager } from "../../../src/terminal";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 interface MockSpawnRequest {
@@ -209,9 +209,103 @@ describe("project registry startup recovery integration", () => {
 		expect(workdirMocks.pathExists).toHaveBeenCalledTimes(1);
 		expect(workdirMocks.resolveTaskCwd).not.toHaveBeenCalled();
 		expect(stateMocks.loadProjectState).toHaveBeenCalledTimes(3);
+		expect(manager?.store.getSummary("task-1")).toMatchObject({
+			state: "interrupted",
+			reviewReason: "interrupted",
+			pid: 1234,
+			startupRecoveryRequired: false,
+			startupRecoverySemanticStateUncertain: true,
+			warningMessage: LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
+		});
 	});
 
-	it("recovers an awaiting-review chat whose persisted pid belonged to the previous runtime", async () => {
+	it.each([
+		{
+			label: "ordinary review",
+			latestHookActivity: null,
+			expectedIndicator: { reviewReady: true, needsInput: false },
+		},
+		{
+			label: "genuine permission wait",
+			latestHookActivity: {
+				hookEventName: "PermissionRequest",
+				activityText: "Waiting for approval",
+				toolName: null,
+				toolInputSummary: null,
+				finalMessage: null,
+				notificationType: "permission_prompt",
+				source: "codex",
+				conversationSummaryText: null,
+			},
+			expectedIndicator: { reviewReady: false, needsInput: true },
+		},
+	])(
+		"recovers a persisted $label chat without changing its semantic state",
+		async ({ latestHookActivity, expectedIndicator }) => {
+			const staleState = createProjectState();
+			const inProgressColumn = staleState.board.columns.find((column) => column.id === "in_progress");
+			const reviewColumn = staleState.board.columns.find((column) => column.id === "review");
+			const [card] = inProgressColumn?.cards ?? [];
+			if (!inProgressColumn || !reviewColumn || !card) {
+				throw new Error("Expected the startup recovery fixture to contain work columns and a task card.");
+			}
+			inProgressColumn.cards = [];
+			reviewColumn.cards = [card];
+			staleState.sessions["task-1"] = createTestTaskSessionSummary({
+				taskId: "task-1",
+				state: "awaiting_review",
+				reviewReason: "hook",
+				agentId: "codex",
+				pid: 98_765,
+				resumeSessionId: "session-1",
+				lastHookAt: 321,
+				latestHookActivity,
+			});
+			stateMocks.loadProjectState.mockResolvedValue(staleState);
+
+			const config = createRuntimeConfig();
+			registry = await createProjectRegistry({
+				cwd: "/tmp/runtime",
+				loadGlobalRuntimeConfig: async () => config,
+				loadRuntimeConfig: async () => config,
+				hasGitRepository: async () => false,
+				pathIsDirectory: async () => true,
+				onTerminalManagerReady: (_projectId, readyManager) => {
+					manager = readyManager;
+				},
+			});
+
+			const recovery = registry.resumeInterruptedSessions("project-1", "/tmp/project");
+			await vi.waitFor(() => expect(prepareAgentLaunchMock).toHaveBeenCalledTimes(1));
+			const launchInput = prepareAgentLaunchMock.mock.calls[0]?.[0] as {
+				hookSessionInstanceId: string;
+				resumeSessionId?: string;
+			};
+			expect(launchInput.resumeSessionId).toBe("session-1");
+			manager?.recordHookReceived("task-1");
+			manager?.observeTaskSessionLaunchHook("task-1", {
+				sessionInstanceId: launchInput.hookSessionInstanceId,
+				sessionId: "session-1",
+			});
+
+			await expect(recovery).resolves.toBe(1);
+			expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+			const restored = manager?.store.getSummary("task-1") ?? null;
+			if (!restored) {
+				throw new Error("Expected startup recovery to retain the restored task summary.");
+			}
+			expect(restored).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "hook",
+				pid: 1234,
+			});
+			expect(restored.lastHookAt).toBe(321);
+			expect(restored.latestHookActivity).toEqual(latestHookActivity);
+			expect(deriveTaskIndicatorState(restored)).toMatchObject(expectedIndicator);
+		},
+	);
+
+	it("keeps completed work in Review when its historical chat cannot be restored", async () => {
 		const staleState = createProjectState();
 		const inProgressColumn = staleState.board.columns.find((column) => column.id === "in_progress");
 		const reviewColumn = staleState.board.columns.find((column) => column.id === "review");
@@ -228,8 +322,14 @@ describe("project registry startup recovery integration", () => {
 			agentId: "codex",
 			pid: 98_765,
 			resumeSessionId: "session-1",
+			lastHookAt: 321,
+			latestHookActivity: {
+				hookEventName: "Stop",
+				finalMessage: "Implemented and verified.",
+			},
 		});
 		stateMocks.loadProjectState.mockResolvedValue(staleState);
+		prepareAgentLaunchMock.mockRejectedValue(new Error("stored conversation unavailable"));
 
 		const config = createRuntimeConfig();
 		registry = await createProjectRegistry({
@@ -243,25 +343,27 @@ describe("project registry startup recovery integration", () => {
 			},
 		});
 
-		const recovery = registry.resumeInterruptedSessions("project-1", "/tmp/project");
-		await vi.waitFor(() => expect(prepareAgentLaunchMock).toHaveBeenCalledTimes(1));
-		const launchInput = prepareAgentLaunchMock.mock.calls[0]?.[0] as {
-			hookSessionInstanceId: string;
-			resumeSessionId?: string;
-		};
-		expect(launchInput.resumeSessionId).toBe("session-1");
-		manager?.recordHookReceived("task-1");
-		manager?.observeTaskSessionLaunchHook("task-1", {
-			sessionInstanceId: launchInput.hookSessionInstanceId,
-			sessionId: "session-1",
-		});
-
-		await expect(recovery).resolves.toBe(1);
-		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
-		expect(manager?.store.getSummary("task-1")).toMatchObject({
+		await expect(registry.resumeInterruptedSessions("project-1", "/tmp/project")).resolves.toBe(1);
+		const restored = manager?.store.getSummary("task-1") ?? null;
+		if (!restored) {
+			throw new Error("Expected the failed recovery to retain the task summary.");
+		}
+		expect(restored).toMatchObject({
 			state: "awaiting_review",
-			reviewReason: "attention",
-			pid: 1234,
+			reviewReason: "hook",
+			pid: null,
+			lastHookAt: 321,
+			startupRecoveryRequired: false,
+			warningMessage: expect.stringContaining("Use Restart"),
+			latestHookActivity: {
+				hookEventName: "Stop",
+				finalMessage: "Implemented and verified.",
+			},
+		});
+		expect(deriveTaskIndicatorState(restored)).toMatchObject({
+			reviewReady: true,
+			needsInput: false,
+			failure: false,
 		});
 	});
 });

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { closeSync, openSync } from "node:fs";
 import { access, readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -21,6 +22,8 @@ import { captureAgentLabSnapshot } from "./snapshot";
 import {
 	AGENT_LAB_SCHEMA_VERSION,
 	type AgentLabManifest,
+	type AgentLabRuntimeRestartResult,
+	AgentLabRuntimeRestartResultSchema,
 	type AgentLabScenario,
 	AgentLabScenarioSchema,
 	type ReadableAgentLabManifest,
@@ -39,6 +42,10 @@ interface StartOptions extends OutputOptions {
 	keepTemp?: boolean;
 	runtimePort: number | null;
 	webPort: number | null;
+}
+
+interface RestartRuntimeOptions extends OutputOptions {
+	mode: "graceful";
 }
 
 interface LatestRunPointer {
@@ -258,6 +265,80 @@ async function stopAgentLab(runId: string | undefined, options: OutputOptions): 
 	assertAgentLabDidNotFail(stopped);
 }
 
+async function waitForRuntimeRestart(
+	manifestPath: string,
+	resultPath: string,
+	requestId: string,
+	supervisorPid: number,
+): Promise<AgentLabRuntimeRestartResult> {
+	const deadline = Date.now() + START_TIMEOUT_MS;
+	while (Date.now() < deadline) {
+		try {
+			const contents = await readFile(resultPath, "utf8");
+			const result = AgentLabRuntimeRestartResultSchema.parse(JSON.parse(contents) as unknown);
+			if (result.requestId === requestId) return result;
+		} catch (error) {
+			const isMissing = typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+			if (!isMissing) throw error;
+		}
+		const manifest = await readAgentLabManifest(manifestPath);
+		if (manifest.status === "failed") {
+			throw new Error(`Agent lab failed during runtime restart: ${manifest.failure ?? "unknown failure"}.`);
+		}
+		if (!isProcessAlive(supervisorPid)) {
+			throw new Error(`Agent-lab supervisor ${supervisorPid} exited during runtime restart.`);
+		}
+		await new Promise((resolveDelay) => setTimeout(resolveDelay, 150));
+	}
+	throw new Error(`Timed out waiting for Agent Lab runtime restart request ${requestId}.`);
+}
+
+async function restartAgentLabRuntime(runId: string | undefined, options: RestartRuntimeOptions): Promise<void> {
+	const manifestPath = await resolveManifestPath(runId);
+	const manifest = await readAgentLabManifest(manifestPath);
+	if (manifest.schemaVersion !== AGENT_LAB_SCHEMA_VERSION) {
+		throw new Error("This Agent Lab run predates same-state runtime restart support; start a new run.");
+	}
+	if (manifest.status !== "ready") {
+		throw new Error(`Agent Lab runtime can restart only from ready status; current status is ${manifest.status}.`);
+	}
+	if (!isProcessAlive(manifest.supervisorPid)) {
+		throw new Error(`Agent-lab supervisor ${manifest.supervisorPid} is not running.`);
+	}
+	try {
+		await access(manifest.runtimeRestartRequestPath);
+		throw new Error("An Agent Lab runtime restart request is already pending.");
+	} catch (error) {
+		if (!(typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT")) {
+			throw error;
+		}
+	}
+	const requestId = randomUUID();
+	await writeJsonAtomic(manifest.runtimeRestartRequestPath, {
+		schemaVersion: 1,
+		requestId,
+		mode: options.mode,
+		requestedAt: new Date().toISOString(),
+		requestedBy: process.pid,
+	});
+	const result = await waitForRuntimeRestart(
+		manifestPath,
+		manifest.runtimeRestartResultPath,
+		requestId,
+		manifest.supervisorPid,
+	);
+	if (options.json) {
+		printJson(result);
+	} else {
+		process.stdout.write(
+			`Runtime restarted: generation ${result.fromGeneration} -> ${result.toGeneration ?? "failed"} (${result.status})\n`,
+		);
+	}
+	if (result.status !== "completed") {
+		throw new Error(result.error ?? "Agent Lab runtime restart failed.");
+	}
+}
+
 async function snapshotAgentLab(runId: string | undefined, label: string, options: OutputOptions): Promise<void> {
 	const manifest = await readAgentLabManifest(await resolveManifestPath(runId));
 	if (!isProcessAlive(manifest.supervisorPid) && !manifest.keepTemp) {
@@ -345,6 +426,14 @@ export async function runAgentLabCli(argv = process.argv): Promise<void> {
 		.description("Request graceful shutdown; defaults to the most recently started run.")
 		.option("--json", "Print the final manifest as JSON.")
 		.action(async (runId: string | undefined, options: OutputOptions) => stopAgentLab(runId, options));
+	program
+		.command("restart-runtime [run-id]")
+		.description("Gracefully restart only the runtime against the same disposable state and browser session.")
+		.addOption(new Option("--mode <mode>", "Restart mode.").choices(["graceful"]).default("graceful"))
+		.option("--json", "Print the completed restart record as JSON.")
+		.action(async (runId: string | undefined, options: RestartRuntimeOptions) =>
+			restartAgentLabRuntime(runId, options),
+		);
 	program
 		.command("snapshot [run-id]")
 		.description("Capture Quarterdeck state and git diagnostics without stopping the run.")

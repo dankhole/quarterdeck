@@ -19,6 +19,17 @@ describe("shouldResumeSessionOnStartup", () => {
 		expect(shouldResumeSessionOnStartup(summary)).toBe(true);
 	});
 
+	it("retains recovery eligibility after a prior runtime already cleared the stale pid", () => {
+		const summary = createTestTaskSessionSummary({
+			state: "awaiting_review",
+			reviewReason: "hook",
+			pid: null,
+			startupRecoveryRequired: true,
+		});
+
+		expect(shouldResumeSessionOnStartup(summary)).toBe(true);
+	});
+
 	it("resumes stale awaiting-review attention sessions from an unclean shutdown", () => {
 		const summary = createTestTaskSessionSummary({
 			state: "awaiting_review",

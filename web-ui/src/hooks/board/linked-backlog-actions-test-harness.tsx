@@ -3,9 +3,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach } from "vitest";
 
 import type { TaskTrashWarningViewModel } from "@/components/task";
-import type { RunTaskLifecycleOperation } from "@/hooks/board/task-lifecycle";
+import type { TaskLifecycleCommandDraft } from "@/hooks/board/task-lifecycle-operations";
 import { useLinkedBacklogTaskActions } from "@/hooks/board/use-linked-backlog-task-actions";
-import type { UseTaskSessionsResult } from "@/hooks/board/use-task-sessions";
+import type { UseTaskLifecycleOperationsResult } from "@/hooks/board/use-task-lifecycle-operations";
+import type { RuntimeTaskLifecycleResult } from "@/runtime/types";
+import { createTestProjectStateResponse } from "@/test-utils/task-session-factory";
 import type { BoardCard, BoardColumnId, BoardData, BoardDependency } from "@/types";
 
 export interface RequestMoveTaskToTrashOptions {
@@ -17,17 +19,16 @@ export interface HookSnapshot {
 	board: BoardData;
 	selectedTaskId: string | null;
 	handleCreateDependency: (fromTaskId: string, toTaskId: string) => void;
-	confirmMoveTaskToTrash: (task: BoardCard, currentBoard?: BoardData) => Promise<void>;
+	confirmMoveTaskToTrash: (
+		task: BoardCard,
+		currentBoard?: BoardData,
+		sourceColumnId?: Exclude<BoardColumnId, "trash">,
+	) => Promise<void>;
 	requestMoveTaskToTrash: (
 		taskId: string,
 		fromColumnId: BoardColumnId,
 		options?: RequestMoveTaskToTrashOptions,
 	) => Promise<void>;
-}
-
-export interface Deferred<T> {
-	promise: Promise<T>;
-	resolve: (value: T | PromiseLike<T>) => void;
 }
 
 export function createTask(taskId: string, prompt: string, createdAt: number): BoardCard {
@@ -66,28 +67,10 @@ export function requireSnapshot(snapshot: HookSnapshot | null): HookSnapshot {
 	return snapshot;
 }
 
-export function createDeferred<T>(): Deferred<T> {
-	let resolve!: (value: T | PromiseLike<T>) => void;
-	const promise = new Promise<T>((nextResolve) => {
-		resolve = nextResolve;
-	});
-	return { promise, resolve };
-}
-
 export interface HookHarnessProps {
 	boardFactory?: () => BoardData;
 	onSnapshot: (snapshot: HookSnapshot) => void;
-	kickoffTaskInProgress?: (
-		task: BoardCard,
-		taskId: string,
-		fromColumnId: "backlog" | "in_progress" | "review" | "trash",
-		options?: { optimisticMove?: boolean },
-	) => Promise<boolean>;
-	startBacklogTaskWithAnimation?: (task: BoardCard) => Promise<boolean>;
-	waitForBacklogStartAnimationAvailability?: () => Promise<void>;
-	stopTaskSession?: UseTaskSessionsResult["stopTaskSession"];
-	cleanupTaskWorktree?: UseTaskSessionsResult["cleanupTaskWorktree"];
-	runTaskLifecycleOperation?: RunTaskLifecycleOperation;
+	executeTaskLifecycle?: UseTaskLifecycleOperationsResult["executeTaskLifecycle"];
 	onRequestTrashConfirmation?: (
 		viewModel: TaskTrashWarningViewModel,
 		card: BoardCard,
@@ -99,15 +82,42 @@ export interface HookHarnessProps {
 	setSelectedTaskIdOverride?: Dispatch<SetStateAction<string | null>>;
 }
 
+function createSuccessfulLifecycleResult(
+	draft: TaskLifecycleCommandDraft,
+	board: BoardData,
+): RuntimeTaskLifecycleResult {
+	const identity =
+		draft.kind === "create_and_start"
+			? { taskId: draft.task.taskId, taskCreatedAt: draft.task.createdAt }
+			: { taskId: draft.taskId, taskCreatedAt: draft.taskCreatedAt };
+	return {
+		ok: true,
+		operation: {
+			operationId: "test-lifecycle-operation",
+			projectId: "test-project",
+			...identity,
+			kind: draft.kind,
+			status: "completed",
+			phase: "finished",
+			sourceColumnId: null,
+			targetColumnId: null,
+			acceptedBoardRevision: 2,
+			launchOperationId: null,
+			childOperationIds: [],
+			outcomeCode: "completed",
+			requestedAt: 1,
+			updatedAt: 2,
+			completedAt: 2,
+		},
+		state: createTestProjectStateResponse({ board, revision: 2 }),
+		summary: null,
+	};
+}
+
 export function HookHarness({
 	boardFactory,
 	onSnapshot,
-	kickoffTaskInProgress,
-	startBacklogTaskWithAnimation,
-	waitForBacklogStartAnimationAvailability,
-	stopTaskSession,
-	cleanupTaskWorktree,
-	runTaskLifecycleOperation,
+	executeTaskLifecycle,
 	onRequestTrashConfirmation,
 	showTrashWorktreeNotice,
 	saveTrashWorktreeNoticeDismissed,
@@ -119,12 +129,7 @@ export function HookHarness({
 		board,
 		setBoard,
 		setSelectedTaskId: setSelectedTaskIdOverride ?? setSelectedTaskId,
-		stopTaskSession: stopTaskSession ?? (async () => ({ ok: true, summary: null, didExit: true, outcome: "exited" })),
-		cleanupTaskWorktree: cleanupTaskWorktree ?? (async () => ({ ok: true, removed: true })),
-		runTaskLifecycleOperation: runTaskLifecycleOperation ?? (async (_taskId, operation) => await operation()),
-		kickoffTaskInProgress: kickoffTaskInProgress ?? (async (_task: BoardCard, _taskId: string) => true),
-		startBacklogTaskWithAnimation,
-		waitForBacklogStartAnimationAvailability,
+		executeTaskLifecycle: executeTaskLifecycle ?? (async (draft) => createSuccessfulLifecycleResult(draft, board)),
 		onRequestTrashConfirmation,
 		showTrashWorktreeNotice,
 		saveTrashWorktreeNoticeDismissed,

@@ -51,6 +51,10 @@ export class SessionLifecycleController {
 	private readonly transitions: SessionTransitionController;
 	private readonly ensureProcessEntry: (taskId: string) => ProcessEntry;
 	private readonly onTaskOutput: (entry: ProcessEntry, taskId: string, chunk: Buffer) => void;
+	private readonly inFlightTaskStarts = new Map<
+		string,
+		{ launchOperationId: string | null; promise: Promise<TaskSessionStartWithReadinessResult> }
+	>();
 
 	constructor(options: SessionLifecycleControllerOptions) {
 		this.store = options.store;
@@ -73,6 +77,30 @@ export class SessionLifecycleController {
 	}
 
 	async startTaskSessionWithReadiness(request: StartTaskSessionRequest): Promise<TaskSessionStartWithReadinessResult> {
+		const launchOperationId = request.launchOperationId?.trim() || null;
+		const inFlight = this.inFlightTaskStarts.get(request.taskId);
+		if (inFlight) {
+			if (inFlight.launchOperationId !== launchOperationId) {
+				throw new Error("A different task session launch is already in progress.");
+			}
+			return await inFlight.promise;
+		}
+
+		const promise = this.startTaskSessionOnce({
+			...request,
+			launchOperationId: launchOperationId ?? undefined,
+		});
+		this.inFlightTaskStarts.set(request.taskId, { launchOperationId, promise });
+		try {
+			return await promise;
+		} finally {
+			if (this.inFlightTaskStarts.get(request.taskId)?.promise === promise) {
+				this.inFlightTaskStarts.delete(request.taskId);
+			}
+		}
+	}
+
+	private async startTaskSessionOnce(request: StartTaskSessionRequest): Promise<TaskSessionStartWithReadinessResult> {
 		const entry = this.ensureProcessEntry(request.taskId);
 		const startupRecoveryToken = request.startupRecoveryToken?.trim() || null;
 		if (startupRecoveryToken && entry.pendingStartupRecoveryToken !== startupRecoveryToken) {
@@ -84,6 +112,8 @@ export class SessionLifecycleController {
 		}
 		const restartRequest = cloneStartTaskSessionRequest(request);
 		restartRequest.startupRecoveryToken = undefined;
+		restartRequest.startupRecoveryReviewState = undefined;
+		restartRequest.startupRecoveryWarningMessage = undefined;
 		entry.restartRequest = {
 			kind: "task",
 			request: restartRequest,
@@ -104,6 +134,8 @@ export class SessionLifecycleController {
 			currentReviewReason: currentSummary?.reviewReason ?? null,
 			currentPid: currentSummary?.pid ?? null,
 			currentResumeSessionId: currentSummary?.resumeSessionId ?? null,
+			launchOperationId: request.launchOperationId ?? null,
+			currentLaunchOperationId: currentSummary?.launchOperationId ?? null,
 		});
 		if (entry.active && entry.suppressAutoRestartOnExit) {
 			sessionLog.warn("task session start requested while previous session is still exiting", {
@@ -122,6 +154,9 @@ export class SessionLifecycleController {
 			currentSummary &&
 			(currentSummary.state === "running" || currentSummary.state === "awaiting_review")
 		) {
+			if (request.launchOperationId && entry.active.launchOperationId !== request.launchOperationId) {
+				throw new Error("A different task session is already active.");
+			}
 			sessionLog.debug("startTaskSession short-circuit — existing active session reused", {
 				taskId: request.taskId,
 				currentState: currentSummary.state,
@@ -129,7 +164,7 @@ export class SessionLifecycleController {
 			});
 			return {
 				summary: currentSummary,
-				sessionInstanceId: entry.launchMonitor?.sessionInstanceId ?? null,
+				sessionInstanceId: entry.active.sessionInstanceId,
 				startedNewSession: false,
 			};
 		}
@@ -213,6 +248,7 @@ export class SessionLifecycleController {
 	async stopTaskSessionAndWaitForExit(
 		taskId: string,
 		timeoutMs = 3_000,
+		requestedSessionInstanceId?: string,
 		options?: { preserveStartupRecovery?: boolean },
 	): Promise<StopTaskSessionResult> {
 		const entry = this.entries.get(taskId);
@@ -223,15 +259,34 @@ export class SessionLifecycleController {
 			});
 			return {
 				summary: this.store.getSummary(taskId),
+				requestedSessionInstanceId: requestedSessionInstanceId ?? null,
 				didExit: true,
 				outcome: "not_running",
 			};
 		}
+		if (requestedSessionInstanceId && entry.active.sessionInstanceId !== requestedSessionInstanceId) {
+			const message = "The requested task session was replaced before it could be stopped.";
+			sessionLog.warn("task session stop rejected for stale session instance", {
+				taskId,
+				requestedSessionInstanceId,
+				activeSessionInstanceId: entry.active.sessionInstanceId,
+				currentPid: entry.active.session.pid,
+			});
+			return {
+				summary: this.store.getSummary(taskId),
+				requestedSessionInstanceId,
+				didExit: false,
+				outcome: "failed",
+				error: message,
+			};
+		}
+		const stoppedSessionInstanceId = entry.active.sessionInstanceId;
 		sessionLog.debug("stopTaskSessionAndWaitForExit starting", {
 			taskId,
 			timeoutMs,
 			existingResolverCount: entry.pendingExitResolvers.length,
 			currentPid: entry.active.session.pid,
+			sessionInstanceId: stoppedSessionInstanceId,
 		});
 		let resolveExit: (() => void) | null = null;
 		const exitPromise = new Promise<void>((resolve) => {
@@ -265,6 +320,7 @@ export class SessionLifecycleController {
 		}
 		return {
 			summary: this.store.getSummary(taskId),
+			requestedSessionInstanceId: requestedSessionInstanceId ?? stoppedSessionInstanceId,
 			didExit,
 			outcome: didExit ? "exited" : "timed_out",
 			...(didExit ? {} : { error: "Task session did not exit before the timeout." }),
@@ -272,6 +328,9 @@ export class SessionLifecycleController {
 	}
 
 	markInterruptedAndStopAll(): RuntimeTaskSessionSummary[] {
+		// The store preserves durable review semantics while clearing process
+		// ownership; the historical method name remains for compatibility with
+		// the shutdown coordinator boundary.
 		const activeTaskIds: string[] = [];
 		for (const entry of this.entries.values()) {
 			entry.pendingStartupRecoveryToken = null;

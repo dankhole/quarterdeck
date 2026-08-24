@@ -107,9 +107,9 @@ async function prepareNewTaskWorktree(repoPath: string, worktreePath: string): P
 	}
 }
 
-// Two call sites reach this function — both must pass `branch` for branch-aware checkout:
-//   1. startTaskSession (runtime-api.ts) — reads branch from persisted board state server-side
-//   2. ensureWorktree tRPC endpoint (workdir-api.ts) — receives branch from the client request
+// Lifecycle orchestration and low-level compatibility callers must both pass
+// `branch` for branch-aware checkout. The server reads it from durable board
+// state; browser task actions do not supply workspace identity.
 export async function ensureTaskWorktreeIfDoesntExist(options: {
 	cwd: string;
 	taskId: string;
@@ -322,16 +322,20 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 	}
 }
 
-export async function deleteTaskWorktree(options: {
+/**
+ * Archive a task workspace for Trash while preserving any saved restore patch.
+ * Replaying this after the worktree is gone must not delete that patch.
+ */
+export async function archiveTaskWorktreeForTrash(options: {
 	repoPath: string;
 	taskId: string;
+	operationId?: string;
 }): Promise<RuntimeWorktreeDeleteResponse> {
 	try {
 		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 		const rootPath = getWorktreesBaseRootPath();
 		const worktreePath = getTaskWorktreePath(options.repoPath, taskId);
 		if (!(await pathExists(worktreePath))) {
-			await deleteTaskPatchFiles(taskId);
 			await pruneEmptyParents(rootPath, dirname(worktreePath));
 			return {
 				ok: true,
@@ -365,3 +369,31 @@ export async function deleteTaskWorktree(options: {
 		};
 	}
 }
+
+/** Permanently remove a task workspace and every saved restore patch. */
+export async function purgeTaskWorkspaceForDelete(options: {
+	repoPath: string;
+	taskId: string;
+	operationId?: string;
+}): Promise<RuntimeWorktreeDeleteResponse> {
+	try {
+		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
+		const rootPath = getWorktreesBaseRootPath();
+		const worktreePath = getTaskWorktreePath(options.repoPath, taskId);
+		const removed = (await pathExists(worktreePath))
+			? await removeTaskWorktreeInternal(options.repoPath, worktreePath)
+			: false;
+		await deleteTaskPatchFiles(taskId);
+		await pruneEmptyParents(rootPath, dirname(worktreePath));
+		return { ok: true, removed };
+	} catch (error) {
+		return {
+			ok: false,
+			removed: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+/** @deprecated Use the intent-specific archive or purge operation. */
+export const deleteTaskWorktree = archiveTaskWorktreeForTrash;

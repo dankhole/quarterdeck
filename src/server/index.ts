@@ -1,3 +1,8 @@
+export {
+	type AutomaticTaskTitleSchedulerDependencies,
+	scheduleAutomaticTaskTitle,
+	scheduleAutomaticTaskTitles,
+} from "./automatic-task-title-scheduler";
 export { pickDirectoryPathFromSystemDialog } from "./directory-picker";
 export {
 	type CreateProjectMetadataMonitorDependencies,
@@ -14,6 +19,15 @@ export {
 	type RemovedProjectNotice,
 	type ResolvedProjectStreamTarget,
 } from "./project-registry";
+export {
+	type ProjectTaskCreateAndStartFailureCode,
+	type ProjectTaskCreateAndStartInput,
+	type ProjectTaskCreateAndStartResult,
+	type ProjectTaskCreateSpec,
+	ProjectTaskLifecycleIdentityConflictError,
+	ProjectTaskLifecycleService,
+	type ProjectTaskLifecycleServiceDependencies,
+} from "./project-task-lifecycle-service";
 export { RuntimeHostEventLedger, type RuntimeHostEventQuery } from "./runtime-host-event-ledger";
 export {
 	type CreateRuntimeHostIntegrationsOptions,

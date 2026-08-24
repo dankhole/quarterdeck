@@ -29,7 +29,7 @@ describe("runtime config host capabilities", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("keeps browser integrations fail-closed until launch-derived config enables them", async () => {
+	it("applies native host capabilities from runtime config", async () => {
 		const action = vi.fn(() => "played");
 		expect(browserHostIntegrations.runNotificationAudio(null, action)).toEqual({
 			outcome: "unavailable",

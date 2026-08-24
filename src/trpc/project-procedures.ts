@@ -47,8 +47,9 @@ import {
 	runtimeGitSyncResponseSchema,
 	runtimeListFilesRequestSchema,
 	runtimeListFilesResponseSchema,
+	runtimeProjectBoardCommandBatchEnvelopeSchema,
+	runtimeProjectBoardCommandExecutionResultSchema,
 	runtimeProjectStateResponseSchema,
-	runtimeProjectStateSaveRequestSchema,
 	runtimeStashActionRequestSchema,
 	runtimeStashDropResponseSchema,
 	runtimeStashListResponseSchema,
@@ -287,11 +288,11 @@ export const projectRouter = t.router({
 	getState: projectProcedure.output(runtimeProjectStateResponseSchema).query(async ({ ctx }) => {
 		return await ctx.projectApi.loadState(ctx.projectScope);
 	}),
-	saveState: projectProcedure
-		.input(runtimeProjectStateSaveRequestSchema)
-		.output(runtimeProjectStateResponseSchema)
+	applyBoardCommands: projectProcedure
+		.input(runtimeProjectBoardCommandBatchEnvelopeSchema)
+		.output(runtimeProjectBoardCommandExecutionResultSchema)
 		.mutation(async ({ ctx, input }) => {
-			return await ctx.projectApi.saveState(ctx.projectScope, input);
+			return await ctx.projectApi.applyBoardCommands(ctx.projectScope, input);
 		}),
 	setFocusedTask: projectProcedure.input(z.object({ taskId: z.string().nullable() })).mutation(({ ctx, input }) => {
 		ctx.projectApi.setFocusedTask(ctx.projectScope, input.taskId);
@@ -357,15 +358,14 @@ export const projectRouter = t.router({
 			if (!title) {
 				return { ok: false, title: null };
 			}
-			ctx.projectApi.notifyTaskTitleUpdated(ctx.projectScope, input.taskId, title);
-			return { ok: true, title };
+			const updated = await ctx.projectApi.updateTaskTitle(ctx.projectScope, input.taskId, title);
+			return { ok: updated, title: updated ? title : null };
 		}),
 	updateTaskTitle: projectProcedure
 		.input(z.object({ taskId: z.string(), title: z.string().min(1).max(200) }))
 		.output(z.object({ ok: z.boolean() }))
 		.mutation(async ({ ctx, input }) => {
-			ctx.projectApi.notifyTaskTitleUpdated(ctx.projectScope, input.taskId, input.title);
-			return { ok: true };
+			return { ok: await ctx.projectApi.updateTaskTitle(ctx.projectScope, input.taskId, input.title) };
 		}),
 	generateDisplaySummary: projectProcedure
 		.input(

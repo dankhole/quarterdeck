@@ -19,7 +19,7 @@ import {
 	updateProjectOrder,
 } from "../state";
 import type { TerminalSessionManager } from "../terminal";
-import { deleteTaskWorktree, ensureInitialCommit, initializeGitRepository } from "../workdir";
+import { ensureInitialCommit, initializeGitRepository, purgeTaskWorkspaceForDelete } from "../workdir";
 import type { RuntimeTrpcContext } from "./app-router";
 import { applyRuntimeMutationEffects, createProjectsUpdatedEffects } from "./runtime-mutation-effects";
 
@@ -105,15 +105,11 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 				if (!hasActiveProject) {
 					await deps.projects.setActiveProject(context.projectId, context.repoPath);
 				}
-				const taskCounts = await deps.data.summarizeProjectTaskCounts(context.projectId, context.repoPath);
+				const project = await deps.data.buildProjectSummary(context.projectId, context.repoPath);
 				void applyRuntimeMutationEffects(deps.broadcaster, createProjectsUpdatedEffects(context.projectId));
 				return {
 					ok: true,
-					project: deps.data.createProjectSummary({
-						projectId: context.projectId,
-						repoPath: context.repoPath,
-						taskCounts,
-					}),
+					project,
 				} satisfies RuntimeProjectAddResponse;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
@@ -179,7 +175,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 						const deletions = await Promise.all(
 							cleanupTaskIds.map(async (taskId) => ({
 								taskId,
-								deleted: await deleteTaskWorktree({
+								deleted: await purgeTaskWorkspaceForDelete({
 									repoPath: projectToRemove.repoPath,
 									taskId,
 								}),

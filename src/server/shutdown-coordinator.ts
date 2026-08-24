@@ -16,6 +16,8 @@ export interface RuntimeShutdownCoordinatorDependencies {
 	warn: (message: string) => void;
 	closeRuntimeServer: () => Promise<void>;
 	skipSessionCleanup?: boolean;
+	/** Agent Lab owns its synthetic child tree and must not scan unrelated host processes. */
+	skipOrphanProcessCleanup?: boolean;
 }
 
 /**
@@ -40,13 +42,24 @@ async function persistInterruptedSessions(
 		...projectState.sessions,
 	};
 	for (const taskId of interruptedTaskIds) {
-		const summary = options?.resolveSummary?.(taskId) ?? projectState.sessions[taskId] ?? null;
+		const runtimeSummary = options?.resolveSummary?.(taskId) ?? null;
+		if (runtimeSummary) {
+			// The runtime store already projected process shutdown while preserving
+			// Review/Needs Input/Error meaning. Persist that authoritative summary
+			// verbatim instead of reclassifying it from the older disk snapshot.
+			nextSessions[taskId] = runtimeSummary;
+			continue;
+		}
+		const summary = projectState.sessions[taskId] ?? null;
 		if (summary && shouldInterruptSessionOnShutdown(summary)) {
 			nextSessions[taskId] = {
 				...summary,
 				state: "interrupted",
 				reviewReason: "interrupted",
 				pid: null,
+				latestHookActivity: null,
+				stalledSince: null,
+				startupRecoveryRequired: true,
 				updatedAt: Date.now(),
 			};
 		}
@@ -54,12 +67,7 @@ async function persistInterruptedSessions(
 	await saveProjectSessions(projectPath, pruneOrphanSessionsForPersist(nextSessions, projectState.board));
 }
 
-/**
- * Review reasons that should not be startup-resumed after shutdown. Most
- * represent completed agent work; "interrupted" represents an explicit user
- * stop. "stalled" is kept only for older persisted summaries; new sessions no
- * longer enter stalled review via reconciliation.
- */
+/** Review reasons whose semantic meaning must survive shutdown unchanged. */
 const TERMINAL_REVIEW_REASONS = new Set<RuntimeTaskSessionReviewReason>([
 	"hook",
 	"exit",
@@ -128,16 +136,16 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 		projectState?: RuntimeProjectStateResponse;
 		resolveSummary?: (taskId: string) => RuntimeTaskSessionSummary | null;
 	}> = [];
-	const managedProjectPaths = new Set<string>();
+	const managedProjectIds = new Set<string>();
 
-	for (const { projectPath, terminalManager } of deps.projectRegistry.listManagedProjects()) {
+	for (const { projectId, projectPath, terminalManager } of deps.projectRegistry.listManagedProjects()) {
 		terminalManager.stopReconciliation();
 		const interrupted = terminalManager.markInterruptedAndStopAll();
 		const interruptedTaskIds = new Set(collectShutdownInterruptedTaskIds(interrupted, terminalManager));
 		if (!projectPath) {
 			continue;
 		}
-		managedProjectPaths.add(projectPath);
+		managedProjectIds.add(projectId);
 		try {
 			const projectState = await loadProjectState(projectPath);
 			for (const taskId of collectWorkColumnTaskIds(projectState)) {
@@ -157,7 +165,7 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 
 	const indexedProjects = await listProjectIndexEntries();
 	for (const indexed of indexedProjects) {
-		if (managedProjectPaths.has(indexed.repoPath)) {
+		if (managedProjectIds.has(indexed.projectId)) {
 			continue;
 		}
 		try {
@@ -203,9 +211,11 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 	// Best-effort orphan cleanup for agents left by a previously crashed instance.
 	// Await it so async process discovery has a chance to signal orphans before
 	// the graceful-shutdown handler exits the process.
-	try {
-		await killOrphanedAgentProcesses();
-	} catch {
-		// Startup catches any stragglers.
+	if (!deps.skipOrphanProcessCleanup) {
+		try {
+			await killOrphanedAgentProcesses();
+		} catch {
+			// Startup catches any stragglers.
+		}
 	}
 }

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import type { RuntimeCapabilities } from "@/runtime/types";
 import {
 	getOpenTargetOption,
 	getOpenTargetOptions,
@@ -19,6 +20,7 @@ interface UseOpenProjectParams {
 	currentProjectId: string | null;
 	projectPath?: string;
 	runtimePlatform?: OpenTargetPlatform | null;
+	hostIntegrationMode: RuntimeCapabilities["hostIntegrationMode"];
 }
 
 interface UseOpenProjectResult {
@@ -34,6 +36,7 @@ export function useOpenProject({
 	currentProjectId,
 	projectPath,
 	runtimePlatform,
+	hostIntegrationMode,
 }: UseOpenProjectParams): UseOpenProjectResult {
 	const openTargetPlatform = runtimePlatform ?? resolveOpenTargetPlatform();
 	const openTargetOptions = useMemo(() => getOpenTargetOptions(openTargetPlatform), [openTargetPlatform]);
@@ -48,7 +51,7 @@ export function useOpenProject({
 		() => getOpenTargetOption(preferredOpenTargetId, openTargetPlatform),
 		[openTargetPlatform, preferredOpenTargetId],
 	);
-	const canOpenProject = Boolean(currentProjectId && projectPath);
+	const canOpenProject = Boolean(hostIntegrationMode !== "unavailable" && currentProjectId && projectPath);
 
 	const onSelectOpenTarget = useCallback(
 		(targetId: OpenTargetId) => {
@@ -76,7 +79,7 @@ export function useOpenProject({
 	);
 
 	const onOpenProject = useCallback(() => {
-		if (isOpeningProject || !currentProjectId || !projectPath) {
+		if (isOpeningProject || hostIntegrationMode === "unavailable" || !currentProjectId || !projectPath) {
 			return;
 		}
 
@@ -104,6 +107,7 @@ export function useOpenProject({
 		})();
 	}, [
 		currentProjectId,
+		hostIntegrationMode,
 		isOpeningProject,
 		selectedOpenTarget.id,
 		selectedOpenTarget.label,

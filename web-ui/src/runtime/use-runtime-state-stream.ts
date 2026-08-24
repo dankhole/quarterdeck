@@ -1,9 +1,10 @@
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useRef } from "react";
 import { handleBrowserDiagnosticsStreamMessage } from "@/diagnostics";
 import { consumeProjectPreload } from "@/runtime/project-preload-cache";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import {
 	createInitialRuntimeStateStreamStore,
+	type RuntimeStateStreamDomainAction,
 	runtimeStateStreamReducer,
 	type TaskBaseRefUpdate,
 	type TaskTitleUpdate,
@@ -37,6 +38,7 @@ export interface UseRuntimeStateStreamResult {
 }
 
 export function useRuntimeStateStream(requestedProjectId: string | null): UseRuntimeStateStreamResult {
+	const streamGenerationRef = useRef(0);
 	const [state, dispatch] = useReducer(
 		runtimeStateStreamReducer,
 		requestedProjectId,
@@ -44,21 +46,27 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 	);
 
 	useEffect(() => {
+		const streamGeneration = streamGenerationRef.current + 1;
+		streamGenerationRef.current = streamGeneration;
 		let activeProjectId = requestedProjectId;
 		let transport: RuntimeStateStreamTransport | null = null;
+		const dispatchStreamAction = (action: RuntimeStateStreamDomainAction): void => {
+			dispatch({ type: "stream_action", streamGeneration, action });
+		};
 
 		dispatch({
-			type: "requested_project_changed",
+			type: "stream_generation_changed",
+			streamGeneration,
 			preloadedProjectState: requestedProjectId ? consumeProjectPreload(requestedProjectId) : null,
 			requestedProjectId,
 		});
 
 		transport = startRuntimeStateStreamTransport(requestedProjectId, {
 			onConnected: () => {
-				dispatch({ type: "stream_connected" });
+				dispatchStreamAction({ type: "stream_connected" });
 			},
 			onDisconnected: (message) => {
-				dispatch({
+				dispatchStreamAction({
 					type: "stream_disconnected",
 					message,
 				});
@@ -72,10 +80,10 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 				});
 				activeProjectId = result.nextActiveProjectId;
 				for (const action of result.actions) {
-					dispatch(action);
+					dispatchStreamAction(action);
 				}
 				if (result.reconnectProjectId) {
-					dispatch({
+					dispatchStreamAction({
 						type: "requested_project_changed",
 						preloadedProjectState: null,
 						requestedProjectId: result.reconnectProjectId,

@@ -29,5 +29,5 @@ In scope:
 
 Out of scope:
 
-- Vulnerabilities in third-party agent CLIs (`claude`, `codex`, `pi`). Report those to the respective upstream projects.
+- Vulnerabilities in third-party agent CLIs (`claude`, `codex`, or the legacy experimental `pi` integration). Report those to the respective upstream projects.
 - Issues that require already having local code execution on the machine running Quarterdeck, since the runtime is intended to be run locally by the user who owns the repository.

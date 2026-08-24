@@ -3,6 +3,7 @@ dist
 coverage
 .DS_Store
 test-results
+.agent-lab-results
 playwright-report
 .worktrees
 .sentry-artifacts
@@ -14,6 +15,7 @@ web-ui/.env
 web-ui/.env.*
 !web-ui/.env.example
 .idea
+docs/archive
 .kanban
 .quarterdeck
 

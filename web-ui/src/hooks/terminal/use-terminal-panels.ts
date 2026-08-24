@@ -50,7 +50,7 @@ interface UseTerminalPanelsInput {
 	sendTaskSessionInput: (
 		taskId: string,
 		text: string,
-		options?: SendTerminalInputOptions,
+		options: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
 }
 
@@ -595,7 +595,7 @@ export function useTerminalPanels({
 		if (!agentCommand) {
 			return;
 		}
-		void sendTaskSessionInput(HOME_TERMINAL_TASK_ID, agentCommand, { appendNewline: true });
+		void sendTaskSessionInput(HOME_TERMINAL_TASK_ID, agentCommand, { intent: "submit", appendNewline: true });
 	}, [agentCommand, sendTaskSessionInput]);
 
 	const handleSendAgentCommandToDetailTerminal = useCallback(() => {
@@ -603,7 +603,7 @@ export function useTerminalPanels({
 			return;
 		}
 		const terminalTaskId = getDetailTerminalTaskId(selectedCard.card.id);
-		void sendTaskSessionInput(terminalTaskId, agentCommand, { appendNewline: true });
+		void sendTaskSessionInput(terminalTaskId, agentCommand, { intent: "submit", appendNewline: true });
 	}, [agentCommand, selectedCard, sendTaskSessionInput]);
 
 	const prepareTerminalForShortcut = useCallback(

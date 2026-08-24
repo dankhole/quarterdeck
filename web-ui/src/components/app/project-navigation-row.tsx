@@ -2,6 +2,7 @@ import type { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Ellipsis, GripVertical } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { resolveProjectNavigationTaskCounts } from "@/components/app/project-navigation-counts";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
@@ -47,6 +48,7 @@ export function ProjectRow({
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const isRemovingProject = removingProjectId === project.id;
 	const hasAnyProjectRemoval = removingProjectId !== null;
+	const displayCounts = resolveProjectNavigationTaskCounts(project.taskCounts, needsInputCount);
 
 	useEffect(() => {
 		return () => {
@@ -62,28 +64,28 @@ export function ProjectRow({
 			title: "Backlog",
 			shortLabel: "B",
 			toneClassName: statusPillColors.backlog,
-			count: project.taskCounts.backlog,
+			count: displayCounts.backlog,
 		},
 		{
 			id: "in_progress",
 			title: "In Progress",
 			shortLabel: "IP",
 			toneClassName: statusPillColors.in_progress,
-			count: project.taskCounts.in_progress,
+			count: displayCounts.inProgress,
 		},
 		{
 			id: "review",
 			title: "Review",
 			shortLabel: "R",
 			toneClassName: statusPillColors.review,
-			count: Math.max(0, project.taskCounts.review - needsInputCount),
+			count: displayCounts.review,
 		},
 		{
 			id: "needs_input",
 			title: "Needs Input",
 			shortLabel: "NI",
 			toneClassName: statusPillColors.needs_input,
-			count: needsInputCount,
+			count: displayCounts.needsInput,
 		},
 	].filter((item) => item.count > 0);
 
@@ -141,10 +143,10 @@ export function ProjectRow({
 			) : null}
 			<div className="flex-1 min-w-0">
 				<div className="flex items-center gap-1.5">
-					{needsInputCount > 0 ? (
+					{displayCounts.needsInput > 0 ? (
 						<span
 							className="shrink-0 w-2 h-2 rounded-full bg-status-orange"
-							title={`${needsInputCount} task${needsInputCount > 1 ? "s" : ""} need${needsInputCount === 1 ? "s" : ""} input`}
+							title={`${displayCounts.needsInput} task${displayCounts.needsInput > 1 ? "s" : ""} need${displayCounts.needsInput === 1 ? "s" : ""} input`}
 						/>
 					) : null}
 					<span

@@ -98,6 +98,8 @@ export function ConnectedTopBar({
 		currentProjectId: projectNavigation.currentProjectId,
 		projectPath: openProjectPath,
 		runtimePlatform: projectRuntime.runtimeProjectConfig?.runtimePlatform,
+		hostIntegrationMode:
+			projectRuntime.runtimeProjectConfig?.runtimeCapabilities.hostIntegrationMode ?? "unavailable",
 	});
 
 	const handleUpdateBaseRef = useCallback(

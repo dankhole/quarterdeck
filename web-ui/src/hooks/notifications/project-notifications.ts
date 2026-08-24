@@ -41,7 +41,7 @@ export function buildProjectNotificationProjection(
 
 	for (const [projectId, projectState] of Object.entries(notificationProjects)) {
 		for (const summary of Object.values(projectState.sessions)) {
-			if (!deriveTaskIndicatorState(summary).approvalRequired) {
+			if (!deriveTaskIndicatorState(summary).needsInput) {
 				continue;
 			}
 

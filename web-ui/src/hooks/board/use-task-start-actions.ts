@@ -1,13 +1,20 @@
 import type { Dispatch, SetStateAction } from "react";
-import { useCallback, useEffect, useState } from "react";
-
+import { useCallback } from "react";
+import type { TaskLifecycleCommandDraft } from "@/hooks/board/task-lifecycle-operations";
+import type { PreparedTaskCreation } from "@/hooks/board/use-task-editor";
+import type { UseTaskLifecycleOperationsResult } from "@/hooks/board/use-task-lifecycle-operations";
 import { findCardSelection } from "@/state/board-state";
-import type { BoardData } from "@/types";
+import type { BoardCard, BoardData } from "@/types";
 
 interface UseTaskStartActionsInput {
 	board: BoardData;
-	handleCreateTask: (options?: { keepDialogOpen?: boolean }) => string | null;
-	handleCreateTasks: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
+	setBoard: Dispatch<SetStateAction<BoardData>>;
+	prepareCreateTaskForLifecycle: (options?: { keepDialogOpen?: boolean }) => PreparedTaskCreation | null;
+	prepareCreateTasksForLifecycle: (
+		prompts: string[],
+		options?: { keepDialogOpen?: boolean },
+	) => PreparedTaskCreation[];
+	executeTaskLifecycle: UseTaskLifecycleOperationsResult["executeTaskLifecycle"];
 	handleStartTask: (taskId: string) => void;
 	handleStartAllBacklogTasks: (taskIds?: string[]) => void;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
@@ -49,16 +56,47 @@ export function getStartableBacklogTaskIds(board: BoardData): string[] {
 	return startableTaskIds;
 }
 
+function presentCreatedTaskInProgress(board: BoardData, task: BoardCard): BoardData {
+	if (findCardSelection(board, task.id)) {
+		return board;
+	}
+	return {
+		...board,
+		columns: board.columns.map((column) =>
+			column.id === "in_progress" ? { ...column, cards: [task, ...column.cards] } : column,
+		),
+	};
+}
+
+function createAndStartDraft(task: BoardCard): Extract<TaskLifecycleCommandDraft, { kind: "create_and_start" }> {
+	return {
+		kind: "create_and_start",
+		startedAt: task.createdAt,
+		task: {
+			taskId: task.id,
+			title: task.title,
+			prompt: task.prompt,
+			images: task.images,
+			baseRef: task.baseRef,
+			agentId: task.agentId === "claude" || task.agentId === "codex" ? task.agentId : undefined,
+			useWorktree: task.useWorktree,
+			branch: task.branch ?? undefined,
+			pinned: task.pinned,
+			createdAt: task.createdAt,
+		},
+	};
+}
+
 export function useTaskStartActions({
 	board,
-	handleCreateTask,
-	handleCreateTasks,
+	setBoard,
+	prepareCreateTaskForLifecycle,
+	prepareCreateTasksForLifecycle,
+	executeTaskLifecycle,
 	handleStartTask,
 	handleStartAllBacklogTasks,
 	setSelectedTaskId,
 }: UseTaskStartActionsInput): UseTaskStartActionsResult {
-	const [pendingTaskStartAfterCreateIds, setPendingTaskStartAfterCreateIds] = useState<string[] | null>(null);
-
 	const startBacklogTasks = useCallback(
 		(taskIds: string[]) => {
 			const backlogTaskIds = [...new Set(taskIds.filter((taskId) => taskId.trim().length > 0))].filter((taskId) => {
@@ -106,57 +144,52 @@ export function useTaskStartActions({
 
 	const handleCreateAndStartTask = useCallback(
 		(options?: { keepDialogOpen?: boolean }): string | null => {
-			const taskId = handleCreateTask(options);
-			if (!taskId) {
+			const prepared = prepareCreateTaskForLifecycle(options);
+			if (!prepared) {
 				return null;
 			}
-			setPendingTaskStartAfterCreateIds([taskId]);
-			return taskId;
+			setBoard((current) => presentCreatedTaskInProgress(current, prepared.task));
+			void executeTaskLifecycle(createAndStartDraft(prepared.task));
+			return prepared.task.id;
 		},
-		[handleCreateTask],
+		[executeTaskLifecycle, prepareCreateTaskForLifecycle, setBoard],
 	);
 
 	const handleCreateAndStartTasks = useCallback(
 		(prompts: string[], options?: { keepDialogOpen?: boolean }): string[] => {
-			const taskIds = handleCreateTasks(prompts, options);
-			if (taskIds.length === 0) {
+			const prepared = prepareCreateTasksForLifecycle(prompts, options);
+			if (prepared.length === 0) {
 				return [];
 			}
-			setPendingTaskStartAfterCreateIds(taskIds);
-			return taskIds;
+			void (async () => {
+				// Each create-and-start consumes two durable board revisions. Run the
+				// batch in order so every operation begins from the state returned by
+				// the previous one instead of racing on a shared expected revision.
+				for (const { task } of prepared) {
+					setBoard((current) => presentCreatedTaskInProgress(current, task));
+					await executeTaskLifecycle(createAndStartDraft(task));
+				}
+			})();
+			return prepared.map(({ task }) => task.id);
 		},
-		[handleCreateTasks],
+		[executeTaskLifecycle, prepareCreateTasksForLifecycle, setBoard],
 	);
 
 	const handleCreateStartAndOpenTask = useCallback(
 		(options?: { keepDialogOpen?: boolean }): string | null => {
-			const taskId = handleCreateTask(options);
-			if (!taskId) {
+			const prepared = prepareCreateTaskForLifecycle(options);
+			if (!prepared) {
 				return null;
 			}
-			setPendingTaskStartAfterCreateIds([taskId]);
+			setBoard((current) => presentCreatedTaskInProgress(current, prepared.task));
+			void executeTaskLifecycle(createAndStartDraft(prepared.task));
 			if (!options?.keepDialogOpen) {
-				setSelectedTaskId(taskId);
+				setSelectedTaskId(prepared.task.id);
 			}
-			return taskId;
+			return prepared.task.id;
 		},
-		[handleCreateTask, setSelectedTaskId],
+		[executeTaskLifecycle, prepareCreateTaskForLifecycle, setBoard, setSelectedTaskId],
 	);
-
-	useEffect(() => {
-		if (!pendingTaskStartAfterCreateIds || pendingTaskStartAfterCreateIds.length === 0) {
-			return;
-		}
-		const allInBacklog = pendingTaskStartAfterCreateIds.every((taskId) => {
-			const selection = findCardSelection(board, taskId);
-			return selection?.column.id === "backlog";
-		});
-		if (!allInBacklog) {
-			return;
-		}
-		startBacklogTasks(pendingTaskStartAfterCreateIds);
-		setPendingTaskStartAfterCreateIds(null);
-	}, [board, pendingTaskStartAfterCreateIds, startBacklogTasks]);
 
 	return {
 		handleCreateAndStartTask,

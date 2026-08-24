@@ -7,8 +7,6 @@ describe("createHooksApi — conversation summaries", () => {
 		const appendConversationSummary = vi.fn();
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary,
 			setDisplaySummary: vi.fn(),
@@ -35,8 +33,6 @@ describe("createHooksApi — conversation summaries", () => {
 		const setDisplaySummary = vi.fn();
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary,
@@ -60,8 +56,6 @@ describe("createHooksApi — conversation summaries", () => {
 		const setDisplaySummary = vi.fn();
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary,
@@ -90,8 +84,6 @@ describe("createHooksApi — conversation summaries", () => {
 		const setDisplaySummary = vi.fn();
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary,
 			setDisplaySummary,
@@ -118,8 +110,7 @@ describe("createHooksApi — conversation summaries", () => {
 		const transitionedSummary = createSummary({ state: "awaiting_review", reviewReason: "hook" });
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			transitionToReview: vi.fn(() => transitionedSummary),
-			transitionToRunning: vi.fn(),
+			toReviewSummary: vi.fn(() => transitionedSummary),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary,
 			setDisplaySummary: vi.fn(),

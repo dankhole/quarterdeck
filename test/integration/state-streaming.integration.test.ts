@@ -7,19 +7,24 @@ import { describe, expect, it } from "vitest";
 import type {
 	RuntimeHookIngestResponse,
 	RuntimeProjectAddResponse,
+	RuntimeProjectBoardCommandExecutionResult,
 	RuntimeProjectStateResponse,
 	RuntimeProjectsResponse,
 	RuntimeShellSessionStartResponse,
 	RuntimeStateStreamErrorMessage,
 	RuntimeStateStreamProjectStateMessage,
+	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
-	RuntimeStateStreamTaskReadyForReviewMessage,
+	RuntimeStateStreamTaskNotificationMessage,
+	RuntimeTaskSessionInputResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "../../src/core";
+import { deriveTaskIndicatorState } from "../../src/core";
 import { loadProjectContext } from "../../src/state";
 import { createBoard, createReviewBoard } from "../utilities/board-factory";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
 import { getAvailablePort, startQuarterdeckServer } from "../utilities/integration-server";
+import { createBoardSeedCommandBatch } from "../utilities/project-board-command";
 import { connectRuntimeStream, type RuntimeStreamClient } from "../utilities/runtime-stream-client";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir } from "../utilities/temp-dir";
@@ -97,18 +102,15 @@ describe.sequential("state streaming integration", () => {
 				projectId: projectBId,
 			});
 			const previousRevision = currentProjectBState.payload.revision;
-			const saveProjectBResponse = await requestJson<RuntimeProjectStateResponse>({
+			const saveProjectBResponse = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "project.saveState",
+				procedure: "project.applyBoardCommands",
 				type: "mutation",
 				projectId: projectBId,
-				payload: {
-					board: createBoard("Realtime Task"),
-					expectedRevision: previousRevision,
-				},
+				payload: createBoardSeedCommandBatch(createBoard("Realtime Task"), previousRevision, "seed-realtime-task"),
 			});
 			expect(saveProjectBResponse.status).toBe(200);
-			expect(saveProjectBResponse.payload.revision).toBe(previousRevision + 1);
+			expect(saveProjectBResponse.payload.state.revision).toBe(previousRevision + 1);
 
 			const projectUpdateB = (await streamB.waitForMessage(
 				(message): message is RuntimeStateStreamProjectStateMessage =>
@@ -123,6 +125,23 @@ describe.sequential("state streaming integration", () => {
 					(message) => message.type === "project_state_updated" && message.projectId === projectBId,
 				),
 			).toBe(false);
+			const projectsUpdateForB = streamAMessages.find(
+				(message) =>
+					message.type === "projects_updated" &&
+					message.projects.some(
+						(project) => project.id === projectBId && project.boardRevision === previousRevision + 1,
+					),
+			);
+			expect(projectsUpdateForB).toMatchObject({
+				type: "projects_updated",
+				projects: expect.arrayContaining([
+					expect.objectContaining({
+						id: projectBId,
+						boardRevision: previousRevision + 1,
+						taskCounts: { backlog: 1, in_progress: 0, review: 0, trash: 0 },
+					}),
+				]),
+			});
 
 			const projectsAfterUpdate = await requestJson<RuntimeProjectsResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
@@ -133,6 +152,21 @@ describe.sequential("state streaming integration", () => {
 			expect(projectsAfterUpdate.status).toBe(200);
 			const projectB = projectsAfterUpdate.payload.projects.find((project) => project.id === projectBId) ?? null;
 			expect(projectB?.taskCounts.backlog).toBe(1);
+			// The accepted browser command is exactly +1 (asserted above), but the
+			// runtime may subsequently persist task Git/worktree metadata through the
+			// same board authority before this later list query.
+			expect(projectB?.boardRevision).toBeGreaterThanOrEqual(previousRevision + 1);
+
+			const projectsWhileBIsPreferred = await requestJson<RuntimeProjectsResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "projects.list",
+				type: "query",
+				projectId: projectBId,
+			});
+			const projectBAfterPreferenceChange =
+				projectsWhileBIsPreferred.payload.projects.find((project) => project.id === projectBId) ?? null;
+			expect(projectBAfterPreferenceChange?.taskCounts).toEqual(projectB?.taskCounts);
+			expect(projectBAfterPreferenceChange?.boardRevision).toBe(projectB?.boardRevision);
 		} finally {
 			if (streamA) {
 				await streamA.close();
@@ -198,15 +232,16 @@ describe.sequential("state streaming integration", () => {
 				projectId: projectBId,
 			});
 			expect(projectBState.status).toBe(200);
-			const seedProjectBBoard = await requestJson<RuntimeProjectStateResponse>({
+			const seedProjectBBoard = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "project.saveState",
+				procedure: "project.applyBoardCommands",
 				type: "mutation",
 				projectId: projectBId,
-				payload: {
-					board: createReviewBoard(startedTaskId, "Project B notification task"),
-					expectedRevision: projectBState.payload.revision,
-				},
+				payload: createBoardSeedCommandBatch(
+					createReviewBoard(startedTaskId, "Project B notification task"),
+					projectBState.payload.revision,
+					"seed-project-b-notification",
+				),
 			});
 			expect(seedProjectBBoard.status).toBe(200);
 
@@ -423,7 +458,7 @@ describe.sequential("state streaming integration", () => {
 		}
 	}, 30_000);
 
-	it("emits task_ready_for_review when hook review event is ingested", async () => {
+	it("keeps board counts and notification semantics aligned across review and response transitions", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-hook-stream-");
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-hook-stream-");
 
@@ -443,6 +478,7 @@ describe.sequential("state streaming integration", () => {
 			const runtimeUrl = new URL(server.runtimeUrl);
 			const projectId = decodeURIComponent(runtimeUrl.pathname.slice(1));
 			expect(projectId).not.toBe("");
+			const taskId = "hook-review-task";
 
 			stream = await connectRuntimeStream(
 				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectId)}`,
@@ -451,7 +487,25 @@ describe.sequential("state streaming integration", () => {
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			);
 
-			const taskId = "hook-review-task";
+			const initialState = await requestJson<RuntimeProjectStateResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "project.getState",
+				type: "query",
+				projectId,
+			});
+			const seedResponse = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "project.applyBoardCommands",
+				type: "mutation",
+				projectId,
+				payload: createBoardSeedCommandBatch(
+					createReviewBoard(taskId, "Review and response convergence"),
+					initialState.payload.revision,
+					"seed-review-response-convergence",
+				),
+			});
+			expect(seedResponse.status).toBe(200);
+
 			const startShellResponse = await requestJson<RuntimeShellSessionStartResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "runtime.startShellSession",
@@ -465,6 +519,28 @@ describe.sequential("state streaming integration", () => {
 			expect(startShellResponse.status).toBe(200);
 			expect(startShellResponse.payload.ok).toBe(true);
 
+			const initialRunningStateMessage = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamProjectStateMessage =>
+					message.type === "project_state_updated" &&
+					message.projectId === projectId &&
+					message.projectState.board.columns.some(
+						(column) => column.id === "in_progress" && column.cards.some((card) => card.id === taskId),
+					),
+				10_000,
+			)) as RuntimeStateStreamProjectStateMessage;
+			await stream.waitForMessage(
+				(message): message is RuntimeStateStreamProjectsMessage =>
+					message.type === "projects_updated" &&
+					message.projects.some(
+						(project) =>
+							project.id === projectId &&
+							project.boardRevision === initialRunningStateMessage.projectState.revision &&
+							project.taskCounts.in_progress === 1 &&
+							project.taskCounts.review === 0,
+					),
+				10_000,
+			);
+
 			const hookResponse = await requestJson<RuntimeHookIngestResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "hooks.ingest",
@@ -473,17 +549,120 @@ describe.sequential("state streaming integration", () => {
 					taskId,
 					projectId,
 					event: "to_review",
+					metadata: {
+						source: "claude",
+						hookEventName: "Notification",
+						notificationType: "agent_needs_input",
+						activityText: "Needs input",
+					},
 				},
 			});
 			expect(hookResponse.status).toBe(200);
 			expect(hookResponse.payload.ok).toBe(true);
 
-			const readyMessage = (await stream.waitForMessage(
-				(message): message is RuntimeStateStreamTaskReadyForReviewMessage =>
-					message.type === "task_ready_for_review" && message.projectId === projectId && message.taskId === taskId,
-			)) as RuntimeStateStreamTaskReadyForReviewMessage;
-			expect(readyMessage.type).toBe("task_ready_for_review");
-			expect(readyMessage.triggeredAt).toBeGreaterThan(0);
+			const needsInputNotification = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamTaskNotificationMessage =>
+					message.type === "task_notification" &&
+					message.projectId === projectId &&
+					message.summaries.some(
+						(summary) => summary.taskId === taskId && deriveTaskIndicatorState(summary).needsInput,
+					),
+				10_000,
+			)) as RuntimeStateStreamTaskNotificationMessage;
+			expect(needsInputNotification.summaries).toContainEqual(
+				expect.objectContaining({ taskId, state: "awaiting_review", reviewReason: "attention" }),
+			);
+
+			const reviewStateMessage = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamProjectStateMessage =>
+					message.type === "project_state_updated" &&
+					message.projectId === projectId &&
+					message.projectState.revision > initialRunningStateMessage.projectState.revision &&
+					message.projectState.board.columns.some(
+						(column) => column.id === "review" && column.cards.some((card) => card.id === taskId),
+					),
+				10_000,
+			)) as RuntimeStateStreamProjectStateMessage;
+			const reviewProjectMessage = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamProjectsMessage =>
+					message.type === "projects_updated" &&
+					message.projects.some(
+						(project) =>
+							project.id === projectId &&
+							project.boardRevision === reviewStateMessage.projectState.revision &&
+							project.taskCounts.in_progress === 0 &&
+							project.taskCounts.review === 1,
+					),
+				10_000,
+			)) as RuntimeStateStreamProjectsMessage;
+			const reviewProject = reviewProjectMessage.projects.find((project) => project.id === projectId);
+			expect(reviewProject?.boardRevision).toBe(reviewStateMessage.projectState.revision);
+
+			const inputResponse = await requestJson<RuntimeTaskSessionInputResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "runtime.sendTaskSessionInput",
+				type: "mutation",
+				projectId,
+				payload: {
+					taskId,
+					text: "true",
+					appendNewline: true,
+					intent: "submit",
+				},
+			});
+			expect(inputResponse.status).toBe(200);
+			expect(inputResponse.payload).toMatchObject({ ok: true, summary: { taskId, state: "running" } });
+
+			const runningNotification = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamTaskNotificationMessage =>
+					message.type === "task_notification" &&
+					message.projectId === projectId &&
+					message.notificationRevision > needsInputNotification.notificationRevision &&
+					message.summaries.some(
+						(summary) =>
+							summary.taskId === taskId &&
+							summary.state === "running" &&
+							!deriveTaskIndicatorState(summary).needsInput,
+					),
+				10_000,
+			)) as RuntimeStateStreamTaskNotificationMessage;
+			expect(runningNotification.notificationRevision).toBeGreaterThan(needsInputNotification.notificationRevision);
+
+			const runningStateMessage = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamProjectStateMessage =>
+					message.type === "project_state_updated" &&
+					message.projectId === projectId &&
+					message.projectState.revision > reviewStateMessage.projectState.revision &&
+					message.projectState.board.columns.some(
+						(column) => column.id === "in_progress" && column.cards.some((card) => card.id === taskId),
+					),
+				10_000,
+			)) as RuntimeStateStreamProjectStateMessage;
+			const runningProjectMessage = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamProjectsMessage =>
+					message.type === "projects_updated" &&
+					message.projects.some(
+						(project) =>
+							project.id === projectId &&
+							project.boardRevision === runningStateMessage.projectState.revision &&
+							project.taskCounts.in_progress === 1 &&
+							project.taskCounts.review === 0,
+					),
+				10_000,
+			)) as RuntimeStateStreamProjectsMessage;
+			const runningProject = runningProjectMessage.projects.find((project) => project.id === projectId);
+			expect(runningProject?.boardRevision).toBe(runningStateMessage.projectState.revision);
+
+			const finalState = await requestJson<RuntimeProjectStateResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "project.getState",
+				type: "query",
+				projectId,
+			});
+			expect(finalState.payload.board.columns.find((column) => column.id === "in_progress")?.cards).toContainEqual(
+				expect.objectContaining({ id: taskId }),
+			);
+			expect(finalState.payload.board.columns.find((column) => column.id === "review")?.cards).toHaveLength(0);
 
 			await requestJson({
 				baseUrl: `http://127.0.0.1:${port}`,
@@ -550,15 +729,12 @@ describe.sequential("state streaming integration", () => {
 			}
 			trashColumn.cards[0].baseRef = baseRef;
 
-			const saveResponse = await requestJson<RuntimeProjectStateResponse>({
+			const saveResponse = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "project.saveState",
+				procedure: "project.applyBoardCommands",
 				type: "mutation",
 				projectId,
-				payload: {
-					board,
-					expectedRevision: stateResponse.payload.revision,
-				},
+				payload: createBoardSeedCommandBatch(board, stateResponse.payload.revision, "seed-metadata-board"),
 			});
 			expect(saveResponse.status).toBe(200);
 

@@ -1,22 +1,8 @@
-import type { Dispatch, SetStateAction } from "react";
 import { useCallback } from "react";
 
-import { notifyError, showAppToast } from "@/components/app-toaster";
-import type { UseTaskSessionsResult } from "@/hooks/board/use-task-sessions";
-import type { RuntimeTaskRepositoryInfoResponse } from "@/runtime/types";
-import { setTaskWorktreeInfo } from "@/stores/project-metadata-store";
-import type { BoardCard, BoardColumnId, BoardData } from "@/types";
-import { createClientLogger } from "@/utils/client-logger";
-import {
-	applyDeferredMoveToInProgress,
-	buildWorktreeInfoFromEnsureResponse,
-	isNonIsolatedTask,
-	type RunTaskLifecycleOperation,
-	revertOptimisticMoveToInProgress,
-	revertOptimisticMoveToReview,
-} from "./task-lifecycle";
-
-const log = createClientLogger("untrash");
+import { showAppToast } from "@/components/app-toaster";
+import type { UseTaskLifecycleOperationsResult } from "@/hooks/board/use-task-lifecycle-operations";
+import type { BoardCard, BoardColumnId } from "@/types";
 
 export function showNonIsolatedResumeWarning(): void {
 	showAppToast({
@@ -36,13 +22,7 @@ export function shouldWarnForNonIsolatedResume(
 }
 
 interface UseTaskLifecycleInput {
-	setBoard: Dispatch<SetStateAction<BoardData>>;
-	selectedTaskId: string | null;
-	stopTaskSession: UseTaskSessionsResult["stopTaskSession"];
-	ensureTaskWorktree: UseTaskSessionsResult["ensureTaskWorktree"];
-	startTaskSession: UseTaskSessionsResult["startTaskSession"];
-	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskRepositoryInfoResponse | null>;
-	runTaskLifecycleOperation: RunTaskLifecycleOperation;
+	executeTaskLifecycle: UseTaskLifecycleOperationsResult["executeTaskLifecycle"];
 }
 
 export interface UseTaskLifecycleResult {
@@ -59,162 +39,46 @@ export interface UseTaskLifecycleResult {
 	) => Promise<void>;
 }
 
-export function useTaskLifecycle({
-	setBoard,
-	selectedTaskId,
-	stopTaskSession,
-	ensureTaskWorktree,
-	startTaskSession,
-	fetchTaskWorktreeInfo,
-	runTaskLifecycleOperation,
-}: UseTaskLifecycleInput): UseTaskLifecycleResult {
+/**
+ * Presentation adapter for board animations. Durable board movement, process
+ * control, worktree mutation, compensation, and replay all belong to the
+ * runtime lifecycle service.
+ */
+export function useTaskLifecycle({ executeTaskLifecycle }: UseTaskLifecycleInput): UseTaskLifecycleResult {
 	const kickoffTaskInProgress = useCallback(
-		async (
-			task: BoardCard,
-			taskId: string,
-			fromColumnId: BoardColumnId,
-			options?: { optimisticMove?: boolean },
-		): Promise<boolean> => {
-			return await runTaskLifecycleOperation(taskId, async () => {
-				const optimisticMove = options?.optimisticMove ?? true;
-
-				// Non-isolated tasks run in the home repo — no worktree to ensure.
-				if (!isNonIsolatedTask(task)) {
-					const ensured = await ensureTaskWorktree(task);
-					if (!ensured.ok) {
-						notifyError(ensured.message ?? "Could not set up task worktree.");
-						if (optimisticMove) {
-							setBoard((board) => revertOptimisticMoveToInProgress(board, taskId, fromColumnId) ?? board);
-						}
-						return false;
-					}
-					if (ensured.response?.warning) {
-						showAppToast({
-							intent: "warning",
-							icon: "warning-sign",
-							message: ensured.response.warning,
-							timeout: 7000,
-						});
-					}
-					if (selectedTaskId === taskId) {
-						if (ensured.response) {
-							setTaskWorktreeInfo(buildWorktreeInfoFromEnsureResponse(taskId, ensured.response));
-						}
-						const infoAfterEnsure = await fetchTaskWorktreeInfo(task);
-						if (infoAfterEnsure) {
-							setTaskWorktreeInfo(infoAfterEnsure);
-						}
-					}
-				}
-
-				const started = await startTaskSession(task);
-				if (!started.ok) {
-					notifyError(started.message ?? "Could not start task session.");
-					if (optimisticMove) {
-						setBoard((board) => revertOptimisticMoveToInProgress(board, taskId, fromColumnId) ?? board);
-					}
-					return false;
-				}
-				if (!optimisticMove) {
-					setBoard((board) => applyDeferredMoveToInProgress(board, taskId, fromColumnId) ?? board);
-				}
-				return true;
+		async (task: BoardCard, taskId: string, fromColumnId: BoardColumnId): Promise<boolean> => {
+			if (fromColumnId !== "backlog" || task.id !== taskId) {
+				return false;
+			}
+			const result = await executeTaskLifecycle({
+				kind: "start",
+				taskId,
+				taskCreatedAt: task.createdAt,
 			});
+			return result?.ok === true;
 		},
-		[
-			ensureTaskWorktree,
-			fetchTaskWorktreeInfo,
-			runTaskLifecycleOperation,
-			selectedTaskId,
-			setBoard,
-			startTaskSession,
-		],
+		[executeTaskLifecycle],
 	);
 
 	const resumeTaskFromTrash = useCallback(
-		async (task: BoardCard, taskId: string, options?: { optimisticMoveApplied?: boolean }): Promise<void> => {
-			await runTaskLifecycleOperation(taskId, async () => {
-				log.debug("resumeTaskFromTrash begin", {
-					taskId,
-					optimisticMoveApplied: options?.optimisticMoveApplied ?? false,
-					useWorktree: task.useWorktree,
-					isNonIsolated: isNonIsolatedTask(task),
-					workingDirectory: task.workingDirectory ?? null,
-					branch: task.branch ?? null,
-					baseRef: task.baseRef ?? null,
-				});
-				const revertToTrash = () => {
-					if (!options?.optimisticMoveApplied) {
-						return;
-					}
-					setBoard((board) => revertOptimisticMoveToReview(board, taskId) ?? board);
-				};
-
-				// Trashing waits for the old task session to exit, but restore can race if the
-				// user untrashes before that stop fully settles. Force the previous session to
-				// finish exiting before we ask the runtime to resume the conversation.
-				log.debug("awaiting stopTaskSession(waitForExit)", { taskId });
-				const stopped = await stopTaskSession(taskId, { waitForExit: true });
-				log.debug("stopTaskSession(waitForExit) resolved", {
-					taskId,
-					outcome: stopped.outcome,
-					didExit: stopped.didExit,
-				});
-				if (!stopped.ok) {
-					notifyError(stopped.error ?? "Could not stop the previous task session.");
-					revertToTrash();
-					return;
-				}
-
-				// Non-isolated tasks run in the home repo — no worktree to ensure.
-				if (!isNonIsolatedTask(task)) {
-					log.debug("ensuring task worktree", { taskId });
-					const ensured = await ensureTaskWorktree(task);
-					log.debug("ensureTaskWorktree resolved", {
-						taskId,
-						ok: ensured.ok,
-						hasWarning: Boolean(ensured.response?.warning),
-					});
-					if (!ensured.ok) {
-						notifyError(ensured.message ?? "Could not set up task worktree.");
-						revertToTrash();
-						return;
-					}
-					if (ensured.response?.warning) {
-						showAppToast({
-							intent: "warning",
-							icon: "warning-sign",
-							message: ensured.response.warning,
-							timeout: 7000,
-						});
-					}
-				}
-
-				log.debug("calling startTaskSession(resume)", { taskId });
-				const resumed = await startTaskSession(task, { resumeConversation: true, awaitReview: true });
-				log.debug("startTaskSession(resume) resolved", {
-					taskId,
-					ok: resumed.ok,
-					message: resumed.ok ? null : (resumed.message ?? null),
-					summaryState: resumed.ok ? (resumed.summary?.state ?? null) : null,
-					summaryAgentId: resumed.ok ? (resumed.summary?.agentId ?? null) : null,
-					summaryResumeSessionId: resumed.ok ? (resumed.summary?.resumeSessionId ?? null) : null,
-				});
-				if (resumed.ok) {
-					if (
-						isNonIsolatedTask(task) &&
-						shouldWarnForNonIsolatedResume(resumed.summary?.agentId, resumed.summary?.resumeSessionId)
-					) {
-						showNonIsolatedResumeWarning();
-					}
-					return;
-				}
-
-				notifyError(resumed.message ?? "Could not resume task session.");
-				revertToTrash();
+		async (task: BoardCard, taskId: string): Promise<void> => {
+			if (task.id !== taskId) {
+				return;
+			}
+			const result = await executeTaskLifecycle({
+				kind: "restore",
+				taskId,
+				taskCreatedAt: task.createdAt,
 			});
+			if (
+				result?.ok &&
+				task.useWorktree === false &&
+				shouldWarnForNonIsolatedResume(result.summary?.agentId, result.summary?.resumeSessionId)
+			) {
+				showNonIsolatedResumeWarning();
+			}
 		},
-		[ensureTaskWorktree, runTaskLifecycleOperation, setBoard, startTaskSession, stopTaskSession],
+		[executeTaskLifecycle],
 	);
 
 	return { kickoffTaskInProgress, resumeTaskFromTrash };

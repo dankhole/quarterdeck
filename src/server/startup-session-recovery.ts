@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createTaggedLogger, type RuntimeTaskSessionStartRequest } from "../core";
-import type { TerminalSessionManager } from "../terminal";
+import type { StartupRecoveryReviewState, TerminalSessionManager } from "../terminal";
 import type { TaskSessionLaunchReadinessOutcome } from "../terminal/session-launch-readiness";
 import type {
 	PreparedTaskSessionStart,
@@ -47,6 +47,11 @@ export interface StartupSessionRecoveryCandidate {
 	request: RuntimeTaskSessionStartRequest;
 	manager: TerminalSessionManager;
 	originalResumeSessionId: string | null;
+	reviewState: StartupRecoveryReviewState;
+	/** Semantic state to restore if chat recovery fails without invalidating completed work. */
+	fallbackReviewState: StartupRecoveryReviewState | null;
+	/** Present only when a legacy record no longer contains enough information to classify prior task meaning. */
+	semanticStateWarning?: string;
 }
 
 export type StartupSessionRecoveryResult =
@@ -70,7 +75,12 @@ export interface StartupSessionRecoveryCoordinatorOptions {
 	waitForPrerequisite?: () => Promise<void>;
 	prepare: (
 		candidate: StartupSessionRecoveryCandidate,
-		options: { startupRecoveryToken: string; resumeSessionIdOverride: string | null },
+		options: {
+			startupRecoveryToken: string;
+			resumeSessionIdOverride: string | null;
+			startupRecoveryReviewState: StartupRecoveryReviewState;
+			startupRecoveryWarningMessage?: string;
+		},
 	) => Promise<PreparedTaskSessionStart>;
 	launch: (prepared: PreparedTaskSessionStart) => Promise<TaskSessionStartServiceResult>;
 	firstReadinessTimeoutMs?: number;
@@ -270,6 +280,7 @@ export class StartupSessionRecoveryCoordinator {
 			processStillRunning,
 			clearResumeSessionId,
 			warningMessage,
+			fallbackReviewState: candidate.fallbackReviewState,
 		});
 	}
 
@@ -295,6 +306,8 @@ export class StartupSessionRecoveryCoordinator {
 				prepared = await this.prepare(candidate, {
 					startupRecoveryToken: token,
 					resumeSessionIdOverride: candidate.originalResumeSessionId,
+					startupRecoveryReviewState: candidate.reviewState,
+					startupRecoveryWarningMessage: candidate.semanticStateWarning,
 				});
 			} catch (error) {
 				if (this.closed || !candidate.manager.isStartupRecoveryCurrent(taskId, token)) {

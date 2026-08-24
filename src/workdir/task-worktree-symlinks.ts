@@ -17,7 +17,15 @@ const SYMLINK_PATH_SEGMENT_BLACKLIST = new Set([
 	".Spotlight-V100",
 	".Trashes",
 ]);
-const MUTABLE_WORKTREE_SEGMENT_BLACKLIST = new Set(["bin", "node_modules", "obj", "testresults"]);
+const MUTABLE_WORKTREE_SEGMENT_BLACKLIST = new Set([
+	".agent-lab-results",
+	"bin",
+	"node_modules",
+	"obj",
+	"playwright-report",
+	"test-results",
+	"testresults",
+]);
 
 type CreateSymlink = (target: string, path: string, type: "dir" | "file" | "junction") => Promise<void>;
 

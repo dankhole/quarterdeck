@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { resetProjectMetadataStore } from "@/stores/project-metadata-store";
+import { setProjectMetadataScope } from "@/stores/project-metadata-store";
 import { disposeAllDedicatedTerminalsForProject, releaseAll } from "@/terminal/terminal-pool";
 
 interface UseProjectSwitchCleanupInput {
@@ -42,13 +42,12 @@ export function useProjectSwitchCleanup({
 		}
 	}, [currentProjectId]);
 
-	// Reset project metadata store when switching projects.
-	useEffect(() => {
-		if (!isProjectSwitching) {
-			return;
-		}
-		resetProjectMetadataStore();
-	}, [isProjectSwitching]);
+	// Scope the shared Git/task metadata read model to the navigation target
+	// before paint. Late async results for the previous project are rejected by
+	// the store instead of being attached to same-shaped task UI in the target.
+	useLayoutEffect(() => {
+		setProjectMetadataScope(navigationCurrentProjectId);
+	}, [navigationCurrentProjectId]);
 
 	// Reset project sync state when switching projects — pass the target project
 	// so the board cache can restore its data immediately (stale-while-revalidate).

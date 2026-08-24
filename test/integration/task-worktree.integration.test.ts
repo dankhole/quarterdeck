@@ -3,7 +3,12 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { deleteTaskWorktree, ensureTaskWorktreeIfDoesntExist } from "../../src/workdir";
+import {
+	archiveTaskWorktreeForTrash,
+	deleteTaskWorktree,
+	ensureTaskWorktreeIfDoesntExist,
+	purgeTaskWorkspaceForDelete,
+} from "../../src/workdir";
 import { runGit } from "../utilities/git-env";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
@@ -107,7 +112,7 @@ describe.sequential("task-worktree integration", () => {
 		});
 	});
 
-	it("mirrors safe ignored paths without sharing root node_modules", async () => {
+	it("mirrors safe ignored paths without sharing mutable dependencies or Agent Lab evidence", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-root-ignore-");
 			try {
@@ -119,11 +124,19 @@ describe.sequential("task-worktree integration", () => {
 				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
 				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
-				writeFileSync(join(repoPath, ".gitignore"), "/.next/\n/node_modules/\n", "utf8");
+				writeFileSync(
+					join(repoPath, ".gitignore"),
+					"/.next/\n/node_modules/\n/test-results/\n/.agent-lab-results/\n",
+					"utf8",
+				);
 				mkdirSync(join(repoPath, ".next"), { recursive: true });
 				mkdirSync(join(repoPath, "node_modules"), { recursive: true });
+				mkdirSync(join(repoPath, "test-results", "agent-lab"), { recursive: true });
+				mkdirSync(join(repoPath, ".agent-lab-results"), { recursive: true });
 				writeFileSync(join(repoPath, ".next", "BUILD_ID"), "build\n", "utf8");
 				writeFileSync(join(repoPath, "node_modules", "package.json"), '{\n  "name": "fixture"\n}\n', "utf8");
+				writeFileSync(join(repoPath, "test-results", "agent-lab", "manifest.json"), "{}\n", "utf8");
+				writeFileSync(join(repoPath, ".agent-lab-results", "manifest.json"), "{}\n", "utf8");
 
 				runGit(repoPath, ["add", "README.md", ".gitignore"]);
 				runGit(repoPath, ["commit", "-m", "init"]);
@@ -142,6 +155,8 @@ describe.sequential("task-worktree integration", () => {
 				const nodeModulesPath = join(ensured.path, "node_modules");
 				expectMirroredPathBehavior(nextPath);
 				expect(existsSync(nodeModulesPath)).toBe(false);
+				expect(existsSync(join(ensured.path, "test-results"))).toBe(false);
+				expect(existsSync(join(ensured.path, ".agent-lab-results"))).toBe(false);
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".next"])).toBe("");
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", "node_modules"])).toBe("");
 				if (existsSync(nextPath)) {
@@ -400,6 +415,76 @@ describe.sequential("task-worktree integration", () => {
 				expect(runGit(restored.path, ["rev-parse", "HEAD"])).toBe(createdCommit);
 				expect(readFileSync(join(restored.path, "tracked.txt"), "utf8")).toBe("base\nlocal change\n");
 				expect(readFileSync(join(restored.path, "notes.txt"), "utf8")).toBe("untracked\n");
+				expect(existsSync(patchPath)).toBe(false);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("preserves an archived restore patch on replay and purges it idempotently on permanent delete", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-replay-");
+			try {
+				const repoPath = join(sandboxRoot, "repo");
+				mkdirSync(repoPath, { recursive: true });
+
+				runGit(repoPath, ["init"]);
+				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
+				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
+				writeFileSync(join(repoPath, "tracked.txt"), "base\n", "utf8");
+				runGit(repoPath, ["add", "tracked.txt"]);
+				runGit(repoPath, ["commit", "-m", "init"]);
+
+				const taskId = `task-archive-replay-${Date.now()}`;
+				const ensured = await ensureTaskWorktreeIfDoesntExist({
+					cwd: repoPath,
+					taskId,
+					baseRef: "HEAD",
+				});
+				expect(ensured.ok).toBe(true);
+				if (!ensured.ok || !ensured.path) {
+					throw new Error("Task worktree was not created");
+				}
+
+				const createdCommit = runGit(ensured.path, ["rev-parse", "HEAD"]);
+				writeFileSync(join(ensured.path, "tracked.txt"), "base\nrecover me\n", "utf8");
+				const patchPath = join(
+					process.env.HOME ?? sandboxRoot,
+					".quarterdeck",
+					"trashed-task-patches",
+					`${taskId}.${createdCommit}.patch`,
+				);
+
+				const archived = await archiveTaskWorktreeForTrash({
+					repoPath,
+					taskId,
+					operationId: "trash-operation",
+				});
+				expect(archived).toMatchObject({ ok: true, removed: true });
+				expect(existsSync(patchPath)).toBe(true);
+				const patchBeforeReplay = readFileSync(patchPath, "utf8");
+
+				const replayedArchive = await archiveTaskWorktreeForTrash({
+					repoPath,
+					taskId,
+					operationId: "trash-operation",
+				});
+				expect(replayedArchive).toMatchObject({ ok: true, removed: false });
+				expect(readFileSync(patchPath, "utf8")).toBe(patchBeforeReplay);
+
+				const purged = await purgeTaskWorkspaceForDelete({
+					repoPath,
+					taskId,
+					operationId: "delete-operation",
+				});
+				const replayedPurge = await purgeTaskWorkspaceForDelete({
+					repoPath,
+					taskId,
+					operationId: "delete-operation",
+				});
+				expect(purged).toMatchObject({ ok: true, removed: false });
+				expect(replayedPurge).toMatchObject({ ok: true, removed: false });
 				expect(existsSync(patchPath)).toBe(false);
 			} finally {
 				cleanup();

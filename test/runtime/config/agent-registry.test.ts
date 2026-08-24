@@ -426,6 +426,14 @@ describe("buildRuntimeConfigResponse", () => {
 		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState());
 		expect(response.debugModeEnabled).toBe(true);
 	});
+
+	it("publishes launch-scoped native UI availability", async () => {
+		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState(), {
+			nativeUiAvailable: false,
+			hostIntegrationMode: "unavailable",
+		});
+		expect(response.runtimeCapabilities.nativeUiAvailable).toBe(false);
+	});
 });
 
 describe("parseCodexFeaturesListOutput", () => {

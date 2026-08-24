@@ -14,6 +14,7 @@ const PROJECTS: RuntimeProjectSummary[] = [
 		id: "project-1",
 		name: "Quarterdeck",
 		path: "/tmp/quarterdeck",
+		boardRevision: 0,
 		taskCounts: {
 			backlog: 0,
 			in_progress: 0,

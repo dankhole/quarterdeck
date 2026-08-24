@@ -49,6 +49,20 @@ function setupMockPtySpawn() {
 	return spawnedSessions;
 }
 
+function createDeferred<T>(): {
+	promise: Promise<T>;
+	resolve: (value: T) => void;
+} {
+	let resolvePromise: ((value: T) => void) | undefined;
+	const promise = new Promise<T>((resolve) => {
+		resolvePromise = resolve;
+	});
+	if (!resolvePromise) {
+		throw new Error("Deferred promise resolver was not initialized.");
+	}
+	return { promise, resolve: resolvePromise };
+}
+
 describe("TerminalSessionManager ordering invariants", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
@@ -102,6 +116,96 @@ describe("TerminalSessionManager ordering invariants", () => {
 				},
 			}),
 		).toEqual({ accepted: false, reason: "stale_session" });
+	});
+
+	it("coalesces duplicate lifecycle launches and rejects a different launch for the same task", async () => {
+		const launchGate = createDeferred<void>();
+		prepareAgentLaunchMock.mockImplementation(async (input: { args: string[]; binary?: string }) => {
+			await launchGate.promise;
+			return {
+				binary: input.binary,
+				args: [...input.args],
+				env: {},
+			};
+		});
+		setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		const request = {
+			taskId: "task-lifecycle-launch",
+			launchOperationId: "launch-operation-a",
+			agentId: "codex" as const,
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-lifecycle-launch",
+			prompt: "Fix the bug",
+		};
+
+		const first = manager.startTaskSession(request);
+		const duplicate = manager.startTaskSession(request);
+		await expect(manager.startTaskSession({ ...request, launchOperationId: "launch-operation-b" })).rejects.toThrow(
+			"A different task session launch is already in progress.",
+		);
+		launchGate.resolve();
+		const [firstSummary, duplicateSummary] = await Promise.all([first, duplicate]);
+
+		expect(firstSummary).toEqual(duplicateSummary);
+		expect(firstSummary.launchOperationId).toBe("launch-operation-a");
+		expect(firstSummary.sessionInstanceId).toEqual(expect.any(String));
+		expect(prepareAgentLaunchMock).toHaveBeenCalledOnce();
+		expect(ptySessionSpawnMock).toHaveBeenCalledOnce();
+	});
+
+	it("rejects a stop for a replaced session instance without touching the active PTY", async () => {
+		const spawnedSessions = setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		const summary = await manager.startTaskSession({
+			taskId: "task-stale-stop",
+			launchOperationId: "launch-operation",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-stale-stop",
+			prompt: "Fix the bug",
+		});
+
+		const result = await manager.stopTaskSessionAndWaitForExit("task-stale-stop", 1_000, "replaced-session-instance");
+
+		expect(result).toMatchObject({
+			didExit: false,
+			outcome: "failed",
+			requestedSessionInstanceId: "replaced-session-instance",
+		});
+		expect(result.error).toContain("replaced");
+		expect(summary.sessionInstanceId).not.toBe("replaced-session-instance");
+		expect(spawnedSessions[0]?.stop).not.toHaveBeenCalled();
+		expect(manager.store.getSummary("task-stale-stop")?.pid).toBe(111);
+	});
+
+	it("reports a clean exit only after the exact stopped PTY exits", async () => {
+		const spawnedSessions = setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		const summary = await manager.startTaskSession({
+			taskId: "task-clean-stop",
+			launchOperationId: "launch-operation",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-clean-stop",
+			prompt: "Fix the bug",
+		});
+		if (!summary.sessionInstanceId) {
+			throw new Error("Expected a session instance id.");
+		}
+
+		const stopped = manager.stopTaskSessionAndWaitForExit("task-clean-stop", 1_000, summary.sessionInstanceId);
+		expect(spawnedSessions[0]?.stop).toHaveBeenCalledOnce();
+		spawnedSessions[0]?.triggerExit(0);
+
+		await expect(stopped).resolves.toMatchObject({
+			didExit: true,
+			outcome: "exited",
+			requestedSessionInstanceId: summary.sessionInstanceId,
+		});
 	});
 
 	it("confirms startup readiness only from the spawned conversation identity", async () => {
@@ -219,6 +323,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 			processStillRunning: false,
 			clearResumeSessionId: true,
 			warningMessage: "Recovery failed.",
+			fallbackReviewState: null,
 		});
 
 		expect(summary).toMatchObject({
@@ -401,7 +506,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 
 			// Native PostToolUse writes through the shared store rather than calling
 			// applyTransitionEvent. The transition observer must still reset the latch.
-			manager.store.transitionToRunning("task-approval");
+			manager.store.applySessionEvent("task-approval", { type: "hook.to_in_progress" });
 
 			expect(manager.store.getSummary("task-approval")?.state).toBe("running");
 			expect(resetDetection).toHaveBeenCalledTimes(1);
@@ -439,7 +544,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 			});
 
 			// Move to awaiting_review so agent.prompt-ready can transition back to running
-			manager.store.transitionToReview("task-1", "hook");
+			manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
 			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 
 			// Track the state observed inside the onOutput callback
@@ -485,7 +590,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 				prompt: "Fix the bug",
 			});
 
-			manager.store.transitionToReview("task-1", "hook");
+			manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
 
 			const statesSeenInOnOutput: Array<string | undefined> = [];
 			manager.attach("task-1", {
@@ -519,7 +624,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 				prompt: "Fix the bug",
 			});
 
-			manager.store.transitionToReview("task-1", "hook");
+			manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
 			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 
 			manager.writeInput("task-1", Buffer.from([0x0d]));
@@ -542,7 +647,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 				prompt: "Fix the bug",
 			});
 
-			manager.store.transitionToReview("task-1", "hook");
+			manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
 			manager.store.applyHookActivity("task-1", {
 				hookEventName: "PermissionRequest",
 				notificationType: "permission.asked",
@@ -565,6 +670,33 @@ describe("TerminalSessionManager ordering invariants", () => {
 			expect(spawnedSessions[0]?.write).toHaveBeenCalledTimes(3);
 		});
 
+		it("accepts explicit provider-neutral submit intent without relying on terminal bytes", async () => {
+			const spawnedSessions = setupMockPtySpawn();
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+
+			await manager.startTaskSession({
+				taskId: "task-1",
+				agentId: "codex",
+				binary: "codex",
+				args: [],
+				cwd: "/tmp/task-1",
+				prompt: "Fix the bug",
+			});
+			manager.store.applySessionEvent("task-1", { type: "interrupt.recovery" });
+			manager.store.applyHookActivity("task-1", {
+				hookEventName: "Notification",
+				notificationType: "agent_needs_input",
+				activityText: "Waiting for input",
+				source: "codex",
+			});
+
+			manager.writeInput("task-1", Buffer.from("continue\n"), { explicitUserSubmission: true });
+
+			expect(manager.store.getSummary("task-1")?.state).toBe("running");
+			expect(manager.store.getSummary("task-1")?.latestHookActivity).toBeNull();
+			expect(spawnedSessions[0]?.write).toHaveBeenCalledWith(Buffer.from("continue\n"));
+		});
+
 		it("preserves Enter resolution for non-Codex actionable waits", async () => {
 			setupMockPtySpawn();
 			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
@@ -577,7 +709,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 				cwd: "/tmp/task-claude-input",
 				prompt: "Fix the bug",
 			});
-			manager.store.transitionToReview("task-claude-input", "attention");
+			manager.store.applySessionEvent("task-claude-input", { type: "hook.to_review", reason: "attention" });
 
 			manager.writeInput("task-claude-input", Buffer.from([0x0d]));
 

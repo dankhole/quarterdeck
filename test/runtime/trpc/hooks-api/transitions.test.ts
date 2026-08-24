@@ -9,8 +9,6 @@ describe("createHooksApi — transitions", () => {
 	] as const)("ignores %s deliveries without touching task state", async (reason, commitObservation) => {
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running", agentId: "codex" })),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 		});
 		vi.mocked(manager.evaluateHookEventOrder).mockReturnValue({
@@ -37,8 +35,8 @@ describe("createHooksApi — transitions", () => {
 
 		expect(response).toEqual({ ok: true });
 		expect(manager.recordHookReceived).not.toHaveBeenCalled();
+		expect(manager.applyHookTransition).not.toHaveBeenCalled();
 		expect(manager.observeTaskSessionLaunchHook).not.toHaveBeenCalled();
-		expect(mockStore(manager).transitionToReview).not.toHaveBeenCalled();
 		expect(manager.commitHookEventOrder).toHaveBeenCalledWith("task-1", expect.any(Object), commitObservation);
 	});
 
@@ -83,8 +81,6 @@ describe("createHooksApi — transitions", () => {
 	it("treats ineligible hook transitions as successful no-ops", async () => {
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 		});
 
@@ -97,16 +93,38 @@ describe("createHooksApi — transitions", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(mockStore(manager).transitionToRunning).not.toHaveBeenCalled();
-		expect(mockStore(manager).transitionToReview).not.toHaveBeenCalled();
+		expect(manager.applyHookTransition).not.toHaveBeenCalled();
+		expect(manager.applyHookTransition).not.toHaveBeenCalled();
 		expect(manager.commitHookEventOrder).toHaveBeenCalledWith("task-1", expect.any(Object), true);
+	});
+
+	it("reports an eligible transition that the state machine rejects", async () => {
+		const summary = createSummary({ state: "running" });
+		const manager = createMockManager({
+			getSummary: vi.fn(() => summary),
+			applyHookActivity: vi.fn(),
+		});
+		vi.mocked(manager.applyHookTransition).mockReturnValue({
+			changed: false,
+			patch: {},
+			clearAttentionBuffer: false,
+			summary,
+		});
+		const api = createTestApi(manager);
+
+		const response = await api.ingest({
+			taskId: "task-1",
+			projectId: "project-1",
+			event: "to_review",
+		});
+
+		expect(response).toEqual({ ok: false, error: 'Task "task-1" transition failed' });
+		expect(manager.commitHookEventOrder).not.toHaveBeenCalled();
 	});
 
 	it("stores activity metadata without changing session state", async () => {
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(),
 			update: vi.fn(),
 			applyHookActivity: vi.fn(),
 			applyTurnCheckpoint: vi.fn(),
@@ -125,8 +143,8 @@ describe("createHooksApi — transitions", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(mockStore(manager).transitionToRunning).not.toHaveBeenCalled();
-		expect(mockStore(manager).transitionToReview).not.toHaveBeenCalled();
+		expect(manager.applyHookTransition).not.toHaveBeenCalled();
+		expect(manager.applyHookTransition).not.toHaveBeenCalled();
 		expect(mockStore(manager).applyHookActivity).toHaveBeenCalledWith(
 			"task-1",
 			expect.objectContaining({
@@ -141,8 +159,6 @@ describe("createHooksApi — transitions", () => {
 	it("persists a resumable session id without mutating hook activity", async () => {
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running", agentId: "codex", resumeSessionId: null })),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(),
 			applyHookMetadata: vi.fn(),
 			applyHookActivity: vi.fn(),
 		});
@@ -175,8 +191,7 @@ describe("createHooksApi — transitions", () => {
 	it("keeps Codex Stop without completion metadata as a review transition", async () => {
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running", agentId: "codex" })),
-			transitionToReview: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "hook" })),
-			transitionToRunning: vi.fn(),
+			toReviewSummary: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "hook" })),
 			applyHookMetadata: vi.fn(),
 			applyTurnCheckpoint: vi.fn(),
 			appendConversationSummary: vi.fn(),
@@ -205,18 +220,24 @@ describe("createHooksApi — transitions", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(mockStore(manager).transitionToReview).toHaveBeenCalledWith("task-1", "hook");
-		expect(mockStore(manager).applyHookMetadata).toHaveBeenCalledWith(
+		expect(manager.applyHookTransition).toHaveBeenCalledWith(
 			"task-1",
-			expect.objectContaining({ hookEventName: "Stop", source: "codex" }),
+			expect.objectContaining({ type: "hook.to_review", reason: "hook" }),
 		);
+		expect(manager.applyHookTransition).toHaveBeenCalledWith(
+			"task-1",
+			expect.objectContaining({
+				type: "hook.to_review",
+				metadata: expect.objectContaining({ hookEventName: "Stop", source: "codex" }),
+			}),
+		);
+		expect(mockStore(manager).applyHookMetadata).not.toHaveBeenCalled();
 	});
 
 	it("keeps Codex Stop with final metadata as a review transition", async () => {
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running", agentId: "codex" })),
-			transitionToReview: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "hook" })),
-			transitionToRunning: vi.fn(),
+			toReviewSummary: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "hook" })),
 			applyHookMetadata: vi.fn(),
 			applyTurnCheckpoint: vi.fn(),
 			appendConversationSummary: vi.fn(),
@@ -246,18 +267,24 @@ describe("createHooksApi — transitions", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(mockStore(manager).transitionToReview).toHaveBeenCalledWith("task-1", "hook");
-		expect(mockStore(manager).applyHookMetadata).toHaveBeenCalledWith(
+		expect(manager.applyHookTransition).toHaveBeenCalledWith(
 			"task-1",
-			expect.objectContaining({ hookEventName: "Stop", finalMessage: "Done", source: "codex" }),
+			expect.objectContaining({ type: "hook.to_review", reason: "hook" }),
 		);
+		expect(manager.applyHookTransition).toHaveBeenCalledWith(
+			"task-1",
+			expect.objectContaining({
+				type: "hook.to_review",
+				metadata: expect.objectContaining({ hookEventName: "Stop", finalMessage: "Done", source: "codex" }),
+			}),
+		);
+		expect(mockStore(manager).applyHookMetadata).not.toHaveBeenCalled();
 	});
 
 	it("emits the structured review follow-up broadcasts on to_review transitions", async () => {
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			transitionToReview: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "hook" })),
-			transitionToRunning: vi.fn(),
+			toReviewSummary: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "hook" })),
 			applyHookActivity: vi.fn(),
 			applyTurnCheckpoint: vi.fn(),
 			appendConversationSummary: vi.fn(),
@@ -285,8 +312,7 @@ describe("createHooksApi — transitions", () => {
 	it("maps Claude StopFailure hooks to error review without review-ready broadcast", async () => {
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running", agentId: "claude" })),
-			transitionToReview: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "error" })),
-			transitionToRunning: vi.fn(),
+			toReviewSummary: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "error" })),
 			applyHookActivity: vi.fn(),
 			applyTurnCheckpoint: vi.fn(),
 			appendConversationSummary: vi.fn(),
@@ -311,7 +337,10 @@ describe("createHooksApi — transitions", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(mockStore(manager).transitionToReview).toHaveBeenCalledWith("task-1", "error");
+		expect(manager.applyHookTransition).toHaveBeenCalledWith(
+			"task-1",
+			expect.objectContaining({ type: "hook.to_review", reason: "error" }),
+		);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(broadcaster.broadcastRuntimeProjectStateUpdated).toHaveBeenCalledWith("project-1", "/tmp/repo");
 		expect(broadcaster.broadcastTaskReadyForReview).not.toHaveBeenCalled();
@@ -320,8 +349,7 @@ describe("createHooksApi — transitions", () => {
 	it("maps Claude agent-needs-input notifications to attention review", async () => {
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running", agentId: "claude" })),
-			transitionToReview: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "attention" })),
-			transitionToRunning: vi.fn(),
+			toReviewSummary: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "attention" })),
 			applyHookActivity: vi.fn(),
 			applyTurnCheckpoint: vi.fn(),
 			appendConversationSummary: vi.fn(),
@@ -347,7 +375,10 @@ describe("createHooksApi — transitions", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(mockStore(manager).transitionToReview).toHaveBeenCalledWith("task-1", "attention");
+		expect(manager.applyHookTransition).toHaveBeenCalledWith(
+			"task-1",
+			expect.objectContaining({ type: "hook.to_review", reason: "attention" }),
+		);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(broadcaster.broadcastRuntimeProjectStateUpdated).toHaveBeenCalledWith("project-1", "/tmp/repo");
 		expect(broadcaster.broadcastTaskReadyForReview).not.toHaveBeenCalled();
@@ -364,8 +395,7 @@ describe("createHooksApi — transitions", () => {
 	] as const)("maps Claude %s waits to attention review", async (_label, metadata) => {
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running", agentId: "claude" })),
-			transitionToReview: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "attention" })),
-			transitionToRunning: vi.fn(),
+			toReviewSummary: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "attention" })),
 			applyHookActivity: vi.fn(),
 			applyTurnCheckpoint: vi.fn(),
 			appendConversationSummary: vi.fn(),
@@ -385,7 +415,10 @@ describe("createHooksApi — transitions", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(mockStore(manager).transitionToReview).toHaveBeenCalledWith("task-1", "attention");
+		expect(manager.applyHookTransition).toHaveBeenCalledWith(
+			"task-1",
+			expect.objectContaining({ type: "hook.to_review", reason: "attention" }),
+		);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(broadcaster.broadcastTaskReadyForReview).not.toHaveBeenCalled();
 	});
@@ -409,8 +442,7 @@ describe("createHooksApi — transitions", () => {
 					},
 				}),
 			),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(() => createSummary({ state: "running", agentId: "claude" })),
+			toRunningSummary: vi.fn(() => createSummary({ state: "running", agentId: "claude" })),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
@@ -425,7 +457,10 @@ describe("createHooksApi — transitions", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(mockStore(manager).transitionToRunning).toHaveBeenCalledWith("task-1");
+		expect(manager.applyHookTransition).toHaveBeenCalledWith(
+			"task-1",
+			expect.objectContaining({ type: "hook.to_in_progress" }),
+		);
 	});
 
 	it.each([
@@ -453,8 +488,7 @@ describe("createHooksApi — transitions", () => {
 						},
 					}),
 				),
-				transitionToReview: vi.fn(),
-				transitionToRunning: vi.fn(() => createSummary({ state: "running", agentId: "claude" })),
+				toRunningSummary: vi.fn(() => createSummary({ state: "running", agentId: "claude" })),
 				applyHookActivity: vi.fn(),
 				appendConversationSummary: vi.fn(),
 				setDisplaySummary: vi.fn(),
@@ -470,9 +504,12 @@ describe("createHooksApi — transitions", () => {
 
 			expect(response).toEqual({ ok: true });
 			if (shouldResolve) {
-				expect(mockStore(manager).transitionToRunning).toHaveBeenCalledWith("task-1");
+				expect(manager.applyHookTransition).toHaveBeenCalledWith(
+					"task-1",
+					expect.objectContaining({ type: "hook.to_in_progress" }),
+				);
 			} else {
-				expect(mockStore(manager).transitionToRunning).not.toHaveBeenCalled();
+				expect(manager.applyHookTransition).not.toHaveBeenCalled();
 			}
 		},
 	);
@@ -496,8 +533,7 @@ describe("createHooksApi — transitions", () => {
 					},
 				}),
 			),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(() => createSummary({ state: "running", agentId: "claude" })),
+			toRunningSummary: vi.fn(() => createSummary({ state: "running", agentId: "claude" })),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
@@ -511,7 +547,10 @@ describe("createHooksApi — transitions", () => {
 			metadata: { source: "claude", hookEventName: "UserPromptSubmit" },
 		});
 
-		expect(mockStore(manager).transitionToRunning).toHaveBeenCalledWith("task-1");
+		expect(manager.applyHookTransition).toHaveBeenCalledWith(
+			"task-1",
+			expect.objectContaining({ type: "hook.to_in_progress" }),
+		);
 	});
 
 	it("preserves an attention wait when a pending-background Stop arrives as activity", async () => {
@@ -533,8 +572,6 @@ describe("createHooksApi — transitions", () => {
 					},
 				}),
 			),
-			transitionToReview: vi.fn(),
-			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
@@ -553,8 +590,8 @@ describe("createHooksApi — transitions", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(mockStore(manager).transitionToReview).not.toHaveBeenCalled();
-		expect(mockStore(manager).transitionToRunning).not.toHaveBeenCalled();
+		expect(manager.applyHookTransition).not.toHaveBeenCalled();
+		expect(manager.applyHookTransition).not.toHaveBeenCalled();
 		expect(mockStore(manager).applyHookActivity).not.toHaveBeenCalled();
 	});
 });

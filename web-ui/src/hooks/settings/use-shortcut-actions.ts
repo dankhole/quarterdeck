@@ -28,7 +28,7 @@ interface UseShortcutActionsInput {
 	sendTaskSessionInput: (
 		taskId: string,
 		text: string,
-		options?: SendTerminalInputOptions,
+		options: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
 }
 
@@ -111,6 +111,7 @@ export function useShortcutActions({
 				);
 				if (prepared.hadExistingOpenTerminal) {
 					const interruptResult = await sendTaskSessionInput(prepared.targetTaskId, TERMINAL_INTERRUPT_SEQUENCE, {
+						intent: "write",
 						appendNewline: false,
 					});
 					if (!interruptResult.ok) {
@@ -119,6 +120,7 @@ export function useShortcutActions({
 				}
 				await waitForLikelyPrompt;
 				const runResult = await sendTaskSessionInput(prepared.targetTaskId, shortcut.command, {
+					intent: "submit",
 					appendNewline: true,
 				});
 				if (!runResult.ok) {

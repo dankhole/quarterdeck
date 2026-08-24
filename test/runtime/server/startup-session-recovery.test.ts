@@ -100,15 +100,19 @@ function createManagerHarness(
 				processStillRunning: boolean;
 				clearResumeSessionId: boolean;
 				warningMessage: string;
+				fallbackReviewState: StartupSessionRecoveryCandidate["fallbackReviewState"];
 			},
 		) => {
 			if (token !== expectedToken) {
 				return null;
 			}
 			return store.update(taskId, {
-				...(options.processStillRunning
-					? {}
-					: { state: "awaiting_review" as const, reviewReason: "interrupted" as const, pid: null }),
+				state: "awaiting_review",
+				reviewReason: options.fallbackReviewState?.reviewReason ?? "error",
+				...(options.processStillRunning ? {} : { pid: null }),
+				lastHookAt: options.fallbackReviewState?.lastHookAt ?? null,
+				latestHookActivity: options.fallbackReviewState?.latestHookActivity ?? null,
+				startupRecoveryRequired: false,
 				...(options.clearResumeSessionId ? { resumeSessionId: null } : {}),
 				warningMessage: options.warningMessage,
 			});
@@ -152,6 +156,12 @@ function createCandidate(harness: ManagerHarness, taskId = "task-1"): StartupSes
 		scope: { projectId: "project-1", projectPath: "/tmp/project-1" },
 		manager: harness.manager,
 		originalResumeSessionId: "resume-session-1",
+		reviewState: {
+			reviewReason: "attention",
+			lastHookAt: null,
+			latestHookActivity: null,
+		},
+		fallbackReviewState: null,
 		request: {
 			taskId,
 			prompt: "",
@@ -214,7 +224,11 @@ function createCoordinator(
 		waitForPrerequisite?: () => Promise<void>;
 		prepare?: (
 			candidate: StartupSessionRecoveryCandidate,
-			options: { startupRecoveryToken: string; resumeSessionIdOverride: string | null },
+			options: {
+				startupRecoveryToken: string;
+				resumeSessionIdOverride: string | null;
+				startupRecoveryReviewState: StartupSessionRecoveryCandidate["reviewState"];
+			},
 		) => Promise<PreparedTaskSessionStart>;
 	} = {},
 ): StartupSessionRecoveryCoordinator {
@@ -350,9 +364,18 @@ describe("StartupSessionRecoveryCoordinator", () => {
 		const prepare = vi.fn(
 			async (
 				candidate: StartupSessionRecoveryCandidate,
-				options: { startupRecoveryToken: string; resumeSessionIdOverride: string | null },
+				options: {
+					startupRecoveryToken: string;
+					resumeSessionIdOverride: string | null;
+					startupRecoveryReviewState: StartupSessionRecoveryCandidate["reviewState"];
+				},
 			) => {
 				expect(options.resumeSessionIdOverride).toBe("resume-session-1");
+				expect(options.startupRecoveryReviewState).toEqual({
+					reviewReason: "hook",
+					lastHookAt: 123,
+					latestHookActivity: null,
+				});
 				return createPrepared(candidate, options.startupRecoveryToken);
 			},
 		);
@@ -361,8 +384,10 @@ describe("StartupSessionRecoveryCoordinator", () => {
 			return createStartedResult(prepared, `launch-${launch}`);
 		});
 		const coordinator = createCoordinator(launchTask, { prepare });
+		const candidate = createCandidate(harness);
+		candidate.reviewState = { reviewReason: "hook", lastHookAt: 123, latestHookActivity: null };
 
-		await expect(coordinator.enqueue(createCandidate(harness))).resolves.toEqual({
+		await expect(coordinator.enqueue(candidate)).resolves.toEqual({
 			status: "unconfirmed",
 			attempts: 1,
 			taskId: "task-1",
@@ -488,7 +513,7 @@ describe("StartupSessionRecoveryCoordinator", () => {
 		});
 		expect(harness.store.getSummary("task-1")).toMatchObject({
 			state: "awaiting_review",
-			reviewReason: "interrupted",
+			reviewReason: "error",
 			pid: null,
 			resumeSessionId: null,
 			warningMessage: expect.stringContaining("best-effort resume path"),
@@ -548,7 +573,7 @@ describe("StartupSessionRecoveryCoordinator", () => {
 		expect(launchTask).toHaveBeenCalledTimes(2);
 		expect(harness.store.getSummary("task-1")).toMatchObject({
 			state: "awaiting_review",
-			reviewReason: "interrupted",
+			reviewReason: "error",
 			pid: null,
 			warningMessage: expect.stringContaining("Use Restart"),
 		});

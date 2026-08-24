@@ -7,7 +7,6 @@
  */
 
 import { createInitialBoardData } from "@/data/board-data";
-import { projectBoardWithSessionColumns } from "@/hooks/board/session-column-sync";
 import type { RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { normalizeBoardData } from "@/state/board-state";
 import type { BoardData } from "@/types";
@@ -37,11 +36,6 @@ export interface ProjectVersion {
 export interface CachedProjectBoardRestore {
 	projectId: string;
 	authoritativeRevision: number;
-}
-
-export interface AuthoritativeProjectBoardApplyResult {
-	board: BoardData;
-	shouldSkipPersistOnHydration: boolean;
 }
 
 /**
@@ -98,17 +92,6 @@ export function resolveAuthoritativeBoardAction(
 	return "hydrate";
 }
 
-export function applyAuthoritativeProjectBoard(
-	board: BoardData,
-	sessions: Record<string, RuntimeTaskSessionSummary>,
-): AuthoritativeProjectBoardApplyResult {
-	const projected = projectBoardWithSessionColumns(board, Object.values(sessions));
-	return {
-		board: projected.board,
-		shouldSkipPersistOnHydration: !projected.changed,
-	};
-}
-
 export interface ResolveAuthoritativeProjectStateApplyInput {
 	currentState: ProjectBoardSessionsState;
 	currentVersion: ProjectVersion;
@@ -120,8 +103,7 @@ export interface ResolveAuthoritativeProjectStateApplyInput {
 export interface AuthoritativeProjectStateApplyResult {
 	nextState: ProjectBoardSessionsState;
 	boardAction: "hydrate" | "confirm_cache" | "skip";
-	shouldBumpHydrationNonce: boolean;
-	shouldSkipPersistOnHydration: boolean;
+	authoritativeBoard: BoardData;
 	boardForCache: BoardData;
 }
 
@@ -133,14 +115,9 @@ export interface AuthoritativeProjectStateApplyResult {
  *
  * Invariants:
  * - Reconcile authoritative sessions against the latest local session state.
- * - Derive board projection from that reconciled session set, not from raw
- *   incoming snapshot sessions.
- * - Treat cached revision confirmation as subordinate to runtime session truth:
- *   same-revision authoritative refreshes may still need to re-project the
- *   displayed board.
- * - Drive hydration policy, cache updates, and revision re-entry from this same
- *   apply result so authoritative replacement does not drift back into
- *   incidental ordering.
+ * - Treat the runtime board as authoritative. Session-column and task metadata
+ *   projection is persisted by the runtime before it publishes a newer board.
+ * - Drive cache updates and revision re-entry from this same apply result.
  */
 export function applyAuthoritativeProjectState(
 	input: ResolveAuthoritativeProjectStateApplyInput,
@@ -157,24 +134,21 @@ export function applyAuthoritativeProjectState(
 		input.incomingProjectState.sessions ?? {},
 	);
 	const normalizedBoard = normalizeBoardData(input.incomingProjectState.board) ?? createInitialBoardData();
-	const authoritativeBoard = applyAuthoritativeProjectBoard(normalizedBoard, reconciledSessions);
-	const currentProjectedBoard = applyAuthoritativeProjectBoard(input.currentState.board, reconciledSessions);
 	const boardAction = resolveAuthoritativeBoardAction(
 		input.currentVersion,
 		input.currentProjectId,
 		input.incomingProjectState.revision,
 		input.cachedRestore,
 	);
-	const resolvedBoard = boardAction === "hydrate" ? authoritativeBoard : currentProjectedBoard;
+	const resolvedBoard = boardAction === "hydrate" ? normalizedBoard : input.currentState.board;
 
 	return {
 		nextState: {
-			board: resolvedBoard.board,
+			board: resolvedBoard,
 			sessions: reconciledSessions,
 		},
 		boardAction,
-		shouldBumpHydrationNonce: boardAction === "hydrate" || !currentProjectedBoard.shouldSkipPersistOnHydration,
-		shouldSkipPersistOnHydration: resolvedBoard.shouldSkipPersistOnHydration,
-		boardForCache: resolvedBoard.board,
+		authoritativeBoard: normalizedBoard,
+		boardForCache: resolvedBoard,
 	};
 }

@@ -102,8 +102,7 @@ const STORE_METHOD_NAMES = new Set([
 	"listSummaries",
 	"update",
 	"applyTurnCheckpoint",
-	"transitionToReview",
-	"transitionToRunning",
+	"applySessionEvent",
 	"applyHookActivity",
 	"appendConversationSummary",
 	"setDisplaySummary",
@@ -589,6 +588,11 @@ describe("createRuntimeApi startTaskSession", () => {
 			{
 				startupRecoveryToken: "recovery-token",
 				resumeSessionIdOverride: "original-session-id",
+				startupRecoveryReviewState: {
+					reviewReason: "hook",
+					lastHookAt: 123,
+					latestHookActivity: null,
+				},
 			},
 		);
 
@@ -598,6 +602,11 @@ describe("createRuntimeApi startTaskSession", () => {
 				resumeConversation: true,
 				resumeSessionId: "original-session-id",
 				startupRecoveryToken: "recovery-token",
+				startupRecoveryReviewState: {
+					reviewReason: "hook",
+					lastHookAt: 123,
+					latestHookActivity: null,
+				},
 			}),
 		);
 	});
@@ -934,7 +943,7 @@ describe("createRuntimeApi stopTaskSession", () => {
 
 		const response = await api.stopTaskSession(defaultScope, { taskId: "task-1", waitForExit: true });
 
-		expect(stopTaskSessionAndWaitForExit).toHaveBeenCalledWith("task-1");
+		expect(stopTaskSessionAndWaitForExit).toHaveBeenCalledWith("task-1", 3_000, undefined);
 		expect(response).toMatchObject({ ok: true, didExit: true, outcome: "exited" });
 	});
 
@@ -1008,6 +1017,23 @@ describe("createRuntimeApi startShellSession", () => {
 		expect(result.ok).toBe(true);
 		expect(taskWorktreeMocks.resolveTaskWorkingDirectory).not.toHaveBeenCalled();
 		expect(terminalManager.startShellSession).toHaveBeenCalledWith(expect.objectContaining({ cwd: "/tmp/repo" }));
+	});
+});
+
+describe("createRuntimeApi native UI operations", () => {
+	it("fails host file opening closed when native UI is unavailable", async () => {
+		const deps = createDeps();
+		deps.hostIntegrations.openPath.mockResolvedValue({
+			ok: false,
+			reason: "native_ui_unavailable",
+			error: "Native UI is unavailable.",
+		});
+		const api = createRuntimeApi(deps);
+
+		await expect(api.openFile(null, { filePath: "/tmp/config.json" })).resolves.toMatchObject({
+			ok: false,
+			reason: "native_ui_unavailable",
+		});
 	});
 });
 

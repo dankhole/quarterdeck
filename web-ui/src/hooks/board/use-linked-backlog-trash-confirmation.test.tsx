@@ -124,7 +124,6 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 	it("skips confirmation dialog when skipWorkingChangeWarning is true", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
-		const cleanupTaskWorktree = vi.fn(async () => ({ ok: true, removed: true }));
 		getTaskWorktreeSnapshotMock.mockReturnValue({
 			taskId: "task-2",
 			path: "/tmp/task-2",
@@ -138,7 +137,6 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 			ctx.root.render(
 				<HookHarness
 					onRequestTrashConfirmation={onRequestTrashConfirmation}
-					cleanupTaskWorktree={cleanupTaskWorktree}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -276,16 +274,10 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 		expect(nextSnapshot.board.columns.find((c) => c.id === "review")?.cards).toHaveLength(1);
 	});
 
-	it("updates selection when trashing a task that is already in trash from optimistic move", async () => {
+	it("updates selection and sends one lifecycle command for an already-optimistic trash move", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const setSelectedTaskId = vi.fn<Dispatch<SetStateAction<string | null>>>();
-		const stopTaskSession = vi.fn(async () => ({
-			ok: true,
-			summary: null,
-			didExit: true,
-			outcome: "exited" as const,
-		}));
-		const cleanupTaskWorktree = vi.fn(async () => ({ ok: true, removed: true }));
+		const executeTaskLifecycle = vi.fn(async () => null);
 
 		const boardFactory = (): BoardData => ({
 			columns: [
@@ -305,8 +297,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 			ctx.root.render(
 				<HookHarness
 					boardFactory={boardFactory}
-					stopTaskSession={stopTaskSession}
-					cleanupTaskWorktree={cleanupTaskWorktree}
+					executeTaskLifecycle={executeTaskLifecycle}
 					setSelectedTaskIdOverride={setSelectedTaskId}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -320,11 +311,15 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 		if (!trashTask) throw new Error("Expected a trash task.");
 
 		await act(async () => {
-			await initialSnapshot.confirmMoveTaskToTrash(trashTask, initialSnapshot.board);
+			await initialSnapshot.confirmMoveTaskToTrash(trashTask, initialSnapshot.board, "review");
 		});
 
 		expect(setSelectedTaskId).toHaveBeenCalled();
-		expect(stopTaskSession).toHaveBeenCalledTimes(2);
-		expect(cleanupTaskWorktree).toHaveBeenCalledWith("task-2");
+		expect(executeTaskLifecycle).toHaveBeenCalledWith({
+			kind: "trash",
+			taskId: "task-2",
+			taskCreatedAt: 2,
+			sourceColumnId: "review",
+		});
 	});
 });

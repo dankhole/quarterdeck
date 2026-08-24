@@ -1,6 +1,8 @@
 # Historical Task State System
 
 > Historical context only. This document is known to be stale in places; verify behavior against current code before using it as implementation guidance.
+>
+> Current ownership correction (2026-08-11): the runtime `ProjectBoardCommandService`, not the browser, is the sole production writer of `board.json`. The browser is an optimistic typed-command client, and runtime session/title/metadata projection persists under the same project lock. The ownership descriptions below document the retired pre-cutover design.
 
 How task state works in Quarterdeck, end to end — from state definitions through persistence, propagation, hooks, restart mechanics, and UI rendering.
 
@@ -14,7 +16,7 @@ A task has two orthogonal concepts that together define "where it is":
 
 2. **Session state** — the runtime lifecycle of the agent process: `idle`, `running`, `awaiting_review`, `failed`, or `interrupted`. This is the server-owned operational state.
 
-The **session state drives automatic column moves**. When the session transitions to `awaiting_review`, the frontend auto-moves the card from `in_progress` → `review`. When it transitions to `running`, it moves from `review` → `in_progress`. But the user can also manually drag cards around.
+The **session state drives automatic column moves**. When the session transitions to `awaiting_review`, the runtime projects the card from `in_progress` → `review`. When it transitions to `running`, it moves it from `review` → `in_progress`. The user can also manually drag cards around through typed board commands.
 
 ### Session sub-state: review reason
 
@@ -43,45 +45,44 @@ Three JSON files per project, in `.quarterdeck/projects/<id>/`:
 | `sessions.json` | Map of taskId → `RuntimeTaskSessionSummary` (state, reviewReason, pid, timestamps, etc.) |
 | `meta.json` | A `revision` counter + `lastUpdated` timestamp for optimistic concurrency |
 
-Writes are protected by a file-system lock and atomic file operations. The revision counter prevents concurrent writers from clobbering each other — the UI sends `expectedRevision` with every board save, and the server rejects if it doesn't match.
+Writes are protected by a file-system lock and atomic file operations. The revision counter prevents concurrent commands from clobbering each other — clients send `expectedRevision` with each command batch, and the runtime rejects if it does not match.
 
 ### Server-side in-memory (runtime)
 
-`InMemorySessionSummaryStore` (`src/terminal/session-summary-store.ts`) holds a `Map<taskId, RuntimeTaskSessionSummary>`. All state machine transitions happen here first, then get persisted. It has a listener system — anything that mutates a summary notifies all registered listeners, which triggers WebSocket broadcasts to connected clients. Public browser saves do not send sessions back; when the server persists project state on behalf of the browser, it snapshots sessions from this store.
+`InMemorySessionSummaryStore` (`src/terminal/session-summary-store.ts`) holds a `Map<taskId, RuntimeTaskSessionSummary>`. All state machine transitions happen here first, then get persisted. Its listener system triggers WebSocket delivery and schedules runtime-owned session/board reconciliation. Browser commands never send session truth back; the command authority snapshots sessions from this store.
 
 ### Frontend state
 
 Two separate stores:
 
-1. **Board state** — a custom Immer-based reducer in `web-ui/src/state/board-state.ts`. This holds the column structure and card positions. It's the "single writer" of board.json — the UI is the only thing that persists board changes (the server never writes board.json directly to avoid revision conflicts).
+1. **Board state** — browser reducers hold the optimistic displayed columns and card positions. `useProjectSync(...)` derives explicit command batches from those transitions; only the runtime command authority persists them.
 
 2. **Session summaries** — received via WebSocket and read in the browser. Live `task_sessions_updated` deltas merge incrementally, but authoritative project snapshots/refreshes replace the browser's session keyset by task ID (while still preferring a newer overlapping summary if a stale snapshot replays older data). The frontend never authors session truth.
 
 ### The ownership join point
 
-The main split-brain seam is where those two frontend stores meet:
+The ownership join now works as follows:
 
-- **Persisted board state remains browser-owned** as the durable layout that gets written back to `board.json`.
+- **Persisted board state is runtime-owned** and changes only through the locked command authority.
 - **Runtime session state remains server-owned** as the authoritative source for whether a live task is currently running or waiting for review.
-- The public/browser `project.saveState` contract is therefore **board-only** (`board` + `expectedRevision`). Session persistence comes from server-owned runtime state, not from browser payloads.
-- The browser intentionally **projects runtime truth onto the board only for the work-column boundary**:
+- The public/browser contract is `project.applyBoardCommands`; there is no public whole-board replacement procedure.
+- The runtime projects session truth onto the durable board for the work-column boundary:
   - `in_progress` → `review` when session state is `awaiting_review`
   - `review` → `in_progress` when session state is `running`
-- That projection happens both on live session deltas and when authoritative project state is hydrated after reconnect/project switch, so the UI does not depend on a later repair effect to land cards in the right work column.
+- That projection is persisted from terminal-store changes even when no browser is connected.
 - When authoritative project state is applied, the browser now computes **one atomic apply result** from:
   - the latest queued local board+sessions state
   - the incoming authoritative project snapshot/refresh
   - the current revision/cache-confirmation context
 - In code, that browser-side entry point lives at `web-ui/src/hooks/project/project-sync.ts` as `applyAuthoritativeProjectState(...)`.
-- That single apply result drives session reconciliation, board projection, hydration skip-persist policy, revision confirmation, and board-cache updates together. The browser should not reconcile sessions from one snapshot and then project/cache/revise from another.
-- If the projection changes the hydrated board, that projected board should still persist through the normal UI save path. Otherwise the browser would display the runtime-correct column while `board.json` stays behind.
-- Cached board/session restore is subordinate to authoritative project state. Once the server sends authoritative project state after reconnect/project switch/restart, the browser adopts that exact authoritative session keyset (dropping tasks the server no longer reports) and then reapplies the work-column projection.
+- That single apply result drives session reconciliation, hydration, optimistic command overlay, revision confirmation, and board-cache updates together.
+- Cached board/session restore and optimistic overlays are subordinate to authoritative runtime state.
 
 That means the answer to “what is authoritative for this task right now?” is:
 
 - **Session lifecycle / running-vs-review truth:** server
-- **Durable board layout:** browser
-- **Displayed column between `in_progress` and `review` for live tasks:** browser-owned projection of server-owned runtime truth
+- **Durable board layout:** runtime command authority
+- **Displayed column between `in_progress` and `review` for live tasks:** runtime-owned durable projection of server-owned session truth
 
 ---
 

@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### Feature: restart Agent Lab runtimes against the same state
+
+- Agent Lab can now gracefully replace only its runtime process while preserving the disposable state, projects, web process, ports, and browser session, with generation history and automatic before/after diagnostic checkpoints.
+- Graceful lab restarts exercise real shutdown persistence without scanning unrelated host agent processes; runtime-generation logs remain separate in canonical evidence.
+- Ambiguous legacy interrupted sessions now remain semantically neutral during chat restoration and surface an explicit warning instead of being guessed as Running, Review, or Needs Input.
+
+### Fix: align project pills with board and notification truth
+
+- Project navigation now shows the complete Review column count alongside the overlapping Needs Input signal, so three Review cards with one blocked task render as `R 3 · NI 1` instead of incorrectly partitioning the column into `R 2 · NI 1`.
+- Runtime integration and Agent Lab coverage now verify both halves of the state cycle: initial Review/Needs Input classification and convergence back to Running after the user responds, including authoritative board counts, project summaries, and versioned notification clearing.
+
+### Fix: preserve review state through cold-start recovery
+
+- Runtime hydration and shutdown now separate stale process ownership from user-visible task meaning: ordinary Review, genuine Needs Input, and Error tasks keep their semantic state while impossible previous-runtime PIDs are cleared.
+- Bounded startup recovery restores completed review chats without relabeling them as waiting for input, and a failed chat restoration leaves completed work in Review with an explicit warning instead of fabricating task failure.
+- Recovery eligibility is durable across repeated runtime restarts, shutdown persistence uses stable project identity, and cold-start coverage now includes the Running/Review/Needs Input/Error matrix plus project-pill and notification expectations.
+
+### Fix: generate titles for lifecycle-created tasks
+
+- Tasks created and started through the runtime-owned lifecycle now schedule automatic title generation after the durable lifecycle result, instead of depending on the browser board-command path they bypass.
+- Browser command scans and lifecycle creation share the same per-project/task single-flight coordinator and conditional generated-title write, while metadata-only diagnostics expose scheduled, completed, discarded, empty, and failed attempts without retaining task text.
+
 ### Chore: consolidate dependency upgrades
 
 - Runtime and web dependencies now move forward together, including Biome 2.5, TypeScript 7, Knip 6, Vite 8, plugin-react 6, Lucide 1, Diff 9, and the current minor/patch update groups; the Vite build keeps xterm isolated from minification while using the supported Oxc minifier for other chunks.
@@ -45,6 +67,7 @@
 ### Maintenance: streamline repository history and compatibility surfaces
 
 - Replaced stale CLI and test documentation, moved completed diagnostics and task-state plans into tracked history, repaired historical links, and rotated older forensic implementation entries out of the live log.
+- Restored the `docs/archive` ignore rule so locally retained historical documents do not appear as untracked repository changes.
 - Removed obsolete task-worktree response aliases, the hidden legacy `--agent` option, unused browser exports and barrel files, and a deprecated diff-view loading prop; the web app now declares its direct Zod dependency.
 - Added a repository-owned Knip dead-code check, and removed the known state/worktree/filesystem and Git-view import cycles.
 
@@ -90,13 +113,30 @@
 - A repo-scoped Playwright CLI wrapper provides semantic snapshots, pixel screenshots, console/network inspection, tracing, video, responsive resizing, and named isolated browser sessions; run artifacts include continuous runtime/web logs plus on-demand and final state/Git snapshots.
 - Linked worktrees now reuse the primary checkout's ignored Playwright browser cache, avoiding a separate Chromium download per task while keeping browser profiles, daemon state, and test artifacts isolated per worktree.
 - The normal Playwright E2E suite now consumes the same lifecycle boundary, retains trace/screenshot/video evidence on failure, blocks non-loopback browser requests, and verifies a real task can launch the fake agent through xterm and transition into Review.
+- Agent Lab runtimes now fail closed through one server host-integration service before any host browser, file, application, or directory-picker process can launch; discriminated response contracts prevent impossible success/failure combinations, and Add Project falls back to an app-owned manual-path dialog instead of escaping into native UI.
+
+### Fix: keep cross-project UI projections authoritative
+
+- Project-list pills now retain counts only when they came from an exact board-state revision, allowing unverified same-revision fallbacks to self-heal while preventing a project switch from replacing proven counts; needs-input badges can no longer invent tasks beyond the board-owned Review total.
+- Runtime stream events now retain project identity and connection generation through one state-store fence, while per-project notification revisions reject out-of-order snapshots and deltas without blocking cross-project alerts.
+- Project path, branch, and task-worktree metadata now share one project-scoped read-model boundary that clears before paint and rejects late results from the project being left; projection read failures now emit structured runtime warnings instead of failing silently.
 
 ### Fix: reconcile interactive Codex lifecycle
 
 - Submitting a response while a task is genuinely waiting for input now moves it back to running immediately, while ordinary review-card input and terminal redraws remain state-neutral; delayed Codex permission hooks from before that response are rejected by launch-scoped ordering.
+- Structured task input now requires explicit submit intent independently of terminal newline encoding, while classified hook transitions atomically commit state, `attention`/`error` reason, activity, and resumable session identity through the terminal-owned transition controller; browserless responses therefore update session state, board projection, project pills, and notifications without a contradictory intermediate fanout.
 - Manual Codex `/compact` now uses the native paired compact hooks to show running only for the duration of compaction, while automatic mid-turn compaction remains state-neutral.
 - Audible notifications now detect semantic upgrades on already-stopped tasks, so a review card that becomes approval-required alerts once without replaying retained or unchanged notification state.
 - Restarted task terminals now re-request the authoritative snapshot after their local reset, preventing a late React effect from erasing an already restored Codex chat and leaving a blank pane.
+
+### Fix: make task lifecycle operations durable
+
+- Start, create-and-start, Trash, restore, stop, restart, and permanent delete now run through one server-owned lifecycle coordinator with durable operation identity, typed outcomes, exact task/session preconditions, safe retry, startup recovery, and visible failure reporting.
+- Desktop lifecycle gestures remain optimistic but no longer compose board, process, and worktree mutations in React; managed lifecycle transitions are rejected at the generic board-command boundary, and ambiguous responses reconcile through operation status.
+- Trash archival now preserves recoverable patches independently from permanent workspace purge, stop timeouts block destructive cleanup, and stale compensation cannot overwrite a newer accepted task state.
+- Trash now journals the exact linked-backlog start plan before its parent move, so canonical dependency cleanup and runtime restart cannot lose newly unblocked child launches.
+- In-flight lifecycle indicators and task repository metadata cleanup are project-scoped, preventing same-ID tasks in another project from inheriting a stale pending action or losing their branch/worktree projection after navigation.
+- Project-list counts now carry the authoritative board revision behind them and merge monotonically, so merely activating a project cannot change its task pills.
 
 ### Fix: make native hook transitions replay-safe
 
@@ -111,6 +151,12 @@
 ### Fix: start shared-checkout tasks without a base branch
 
 - Shared-checkout tasks can now start or resume when their base ref is unresolved; isolated tasks still require a selected base branch before Quarterdeck creates their worktree.
+
+### Feature: make the runtime authoritative for board persistence
+
+- Desktop board edits now remain optimistic in the UI but persist as typed, revision-checked command batches through one runtime-owned board authority; the public whole-board save procedure and browser persistence debounce have been removed.
+- Durable command receipts make identical retries safe after a lost response or runtime restart, while authoritative conflict recovery removes rejected optimistic state instead of leaving unsaved board changes on screen.
+- Runtime session, generated-title, base-ref, branch, and worktree metadata projections now persist under the same project lock, and task session start/stop plus worktree lifecycle effects wait for pending board commands before acting.
 
 ### Fix: reduce runtime session fanout
 
@@ -145,7 +191,7 @@
 
 - LLM helpers now default to Claude Haiku 4.5 when `QUARTERDECK_LLM_MODEL` is unset, failure logs include a concrete replacement hint when the retired Claude 3.5 Haiku Bedrock model fails, and setup docs/UI now only require the helper base URL and API key.
 - Task-title generation now allows six seconds before falling back, and timeout logs report the configured deadline without a redundant `durationMs` value that merely mirrored the abort timer.
-- Automatic titles now coalesce overlapping board-save triggers per project/task, preventing repeated saves while a title is still pending from launching duplicate LLM requests; later saves can retry after the active request settles.
+- Automatic titles now coalesce overlapping command triggers per project/task, preventing repeated edits while a title is still pending from launching duplicate LLM requests; the lock-held generated-title update cannot overwrite a concurrent manual rename, and later commands can retry after the active request settles.
 
 ### Fix: port selected upstream hardening
 

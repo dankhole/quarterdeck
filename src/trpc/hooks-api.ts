@@ -8,14 +8,13 @@ import type {
 	RuntimeHookIngestResponse,
 	RuntimeHookMetadata,
 	RuntimeTaskHookActivity,
-	RuntimeTaskSessionReviewReason,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core";
 import { createTaggedLogger, normalizeDiagnosticErrorClass, parseHookIngestRequest } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import { loadProjectScopeById } from "../state";
-import type { SessionSummaryStore } from "../terminal";
+import type { HookSessionReviewReason, SessionSummaryStore } from "../terminal";
 import { canReturnToRunning, isPermissionActivity } from "../terminal";
 import { compactDisplaySummaryText } from "../title";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workdir";
@@ -233,7 +232,7 @@ function isAttentionGuardedActivityOverwrite(
 	return getClaudeAttentionWait(incomingActivity) === null;
 }
 
-function getReviewReasonForHookEvent(metadata: RuntimeHookMetadata | undefined): RuntimeTaskSessionReviewReason {
+function getReviewReasonForHookEvent(metadata: RuntimeHookMetadata | undefined): HookSessionReviewReason {
 	const hookEventName = metadata?.hookEventName?.toLowerCase() ?? "";
 	const notificationType = metadata?.notificationType?.toLowerCase() ?? "";
 	const toolName = metadata?.toolName?.toLowerCase() ?? "";
@@ -516,27 +515,27 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				};
 				log.info("Hook transitioning", { ...hookLogData, ...transitionData });
 
-				const reviewReason = event === "to_review" ? getReviewReasonForHookEvent(body.metadata) : null;
-				const transitionedSummary =
+				const hookTransition =
 					event === "to_review"
-						? store.transitionToReview(taskId, reviewReason)
-						: store.transitionToRunning(taskId);
-				if (!transitionedSummary) {
+						? ({
+								type: "hook.to_review",
+								reason: getReviewReasonForHookEvent(body.metadata),
+								...(body.metadata ? { metadata: body.metadata } : {}),
+							} as const)
+						: ({
+								type: "hook.to_in_progress",
+								...(body.metadata ? { metadata: body.metadata } : {}),
+							} as const);
+				const reviewReason = hookTransition.type === "hook.to_review" ? hookTransition.reason : null;
+				const transitionResult = manager.applyHookTransition(taskId, hookTransition);
+				if (!transitionResult?.changed) {
 					log.warn("Hook transition failed", { ...hookLogData, ...transitionData });
 					return {
 						ok: false,
 						error: `Task "${taskId}" transition failed`,
 					} satisfies RuntimeHookIngestResponse;
 				}
-
-				if (body.metadata && (incomingSessionId || activityMetadata)) {
-					store.applyHookMetadata(taskId, body.metadata);
-					log.debug("Hook metadata applied after transition", {
-						...hookLogData,
-						toState: transitionedSummary.state,
-						toReviewReason: transitionedSummary.reviewReason,
-					});
-				}
+				const transitionedSummary = transitionResult.summary;
 
 				applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 				queuePostMetadataSummaryPolish(`hook.${event}`, true);

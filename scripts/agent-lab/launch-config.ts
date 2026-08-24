@@ -34,6 +34,8 @@ export async function createAgentLabLaunchConfig(
 		artifactDir,
 		manifestPath: join(artifactDir, "manifest.json"),
 		stopRequestPath: join(artifactDir, "stop-request.json"),
+		runtimeRestartRequestPath: join(artifactDir, "runtime-restart-request.json"),
+		runtimeRestartResultPath: join(artifactDir, "runtime-restart-result.json"),
 		tempRoot,
 		keepTemp: options.keepTemp ?? false,
 		scenario: options.scenario ?? "idle",

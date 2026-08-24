@@ -77,6 +77,13 @@ export function DialogHeader({
 	);
 }
 
+export const DialogDescription = forwardRef<
+	ElementRef<typeof RadixDialog.Description>,
+	ComponentPropsWithoutRef<typeof RadixDialog.Description>
+>(function DialogDescription({ className, ...props }, ref) {
+	return <RadixDialog.Description ref={ref} className={className} {...props} />;
+});
+
 export function DialogBody({ children, className }: { children: ReactNode; className?: string }): React.ReactElement {
 	return <div className={cn("p-4 overflow-y-auto flex-1 min-h-0 bg-surface-1", className)}>{children}</div>;
 }

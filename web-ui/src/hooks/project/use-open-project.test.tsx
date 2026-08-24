@@ -26,15 +26,18 @@ function requireSnapshot(snapshot: HookSnapshot | null): HookSnapshot {
 
 function HookHarness({
 	runtimePlatform,
+	hostIntegrationMode = "native",
 	onSnapshot,
 }: {
 	runtimePlatform: Parameters<typeof useOpenProject>[0]["runtimePlatform"];
+	hostIntegrationMode?: Parameters<typeof useOpenProject>[0]["hostIntegrationMode"];
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
 	const snapshot = useOpenProject({
 		currentProjectId: "project-1",
 		projectPath: "/repo",
 		runtimePlatform,
+		hostIntegrationMode,
 	});
 
 	useEffect(() => {
@@ -109,5 +112,31 @@ describe("useOpenProject", () => {
 		expect(getRuntimeTrpcClientMock).toHaveBeenCalledWith("project-1");
 		expect(openProjectMutateMock).toHaveBeenCalledWith({ targetId: "vscode" });
 		expect(showAppToastMock).not.toHaveBeenCalled();
+	});
+
+	it("disables host project opening when host integrations are unavailable", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					runtimePlatform="linux"
+					hostIntegrationMode="unavailable"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		const snapshot = requireSnapshot(latestSnapshot);
+		expect(snapshot.canOpenProject).toBe(false);
+
+		await act(async () => {
+			snapshot.onOpenProject();
+			await Promise.resolve();
+		});
+
+		expect(openProjectMutateMock).not.toHaveBeenCalled();
 	});
 });

@@ -72,7 +72,18 @@ export {
 	reconciliationChecks,
 } from "./session-reconciliation";
 export {
+	appendLegacySemanticStateWarning,
+	deriveStartupRecoveryPolicy,
+	LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
+	removeLegacySemanticStateWarning,
+	type StartupRecoveryPolicy,
+	type StartupRecoveryReviewReason,
+	type StartupRecoveryReviewState,
+} from "./session-startup-recovery-policy";
+export {
 	canReturnToRunning,
+	type HookSessionReviewReason,
+	type HookSessionTransitionEvent,
 	reduceSessionTransition,
 	type SessionTransitionEvent,
 	type SessionTransitionResult,
@@ -90,7 +101,11 @@ export {
 	filterTerminalProtocolOutput,
 	type TerminalProtocolFilterState,
 } from "./terminal-protocol-filter";
-export type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service";
+export type {
+	TerminalSessionInputOptions,
+	TerminalSessionListener,
+	TerminalSessionService,
+} from "./terminal-session-service";
 export {
 	type TerminalRestoreSnapshot,
 	TerminalStateMirror,

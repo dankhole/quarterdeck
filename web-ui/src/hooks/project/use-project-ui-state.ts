@@ -1,14 +1,10 @@
 import type { ComponentProps } from "react";
 import { useMemo } from "react";
 import type { ProjectNavigationPanel } from "@/components/app";
-import type { BoardData } from "@/types";
-import { countTasksByColumn } from "@/utils/app-utils";
 
 type ProjectSummaries = ComponentProps<typeof ProjectNavigationPanel>["projects"];
 
 interface UseProjectUiStateInput {
-	board: BoardData;
-	boardProjectId: string | null;
 	projects: ProjectSummaries;
 	navigationCurrentProjectId: string | null;
 	selectedTaskId: string | null;
@@ -30,8 +26,6 @@ interface UseProjectUiStateResult {
 }
 
 export function useProjectUiState({
-	board,
-	boardProjectId,
 	projects,
 	navigationCurrentProjectId,
 	selectedTaskId,
@@ -43,20 +37,7 @@ export function useProjectUiState({
 	isServedFromBoardCache,
 	hasReceivedSnapshot,
 }: UseProjectUiStateInput): UseProjectUiStateResult {
-	const displayedProjects = useMemo(() => {
-		if (!boardProjectId) {
-			return projects;
-		}
-		const localCounts = countTasksByColumn(board);
-		return projects.map((project) =>
-			project.id === boardProjectId
-				? {
-						...project,
-						taskCounts: localCounts,
-					}
-				: project,
-		);
-	}, [board, boardProjectId, projects]);
+	const displayedProjects = projects;
 
 	const navigationProjectPath = useMemo(() => {
 		if (!navigationCurrentProjectId) {

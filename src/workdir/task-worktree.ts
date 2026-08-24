@@ -1,4 +1,10 @@
-export { deleteTaskWorktree, ensureTaskWorktreeIfDoesntExist, getTaskWorktreePath } from "./task-worktree-lifecycle";
+export {
+	archiveTaskWorktreeForTrash,
+	deleteTaskWorktree,
+	ensureTaskWorktreeIfDoesntExist,
+	getTaskWorktreePath,
+	purgeTaskWorkspaceForDelete,
+} from "./task-worktree-lifecycle";
 export { applyTaskPatch, captureTaskPatch, findTaskPatch } from "./task-worktree-patch";
 export {
 	getTaskRepositoryInfo,

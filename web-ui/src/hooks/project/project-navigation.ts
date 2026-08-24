@@ -1,19 +1,35 @@
 /**
- * Pure domain logic for project navigation.
+ * Pure domain logic for project navigation and error parsing.
  *
  * No React imports — functions here take explicit parameters and return
  * plain data. The companion hook (`use-project-navigation.ts`) handles
  * React state, effects, and tRPC mutations.
  */
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+import type { RuntimeProjectDirectoryPickerResponse } from "@runtime-contract";
 
 const REMOVED_PROJECT_ERROR_PREFIX = "Project no longer exists on disk and was removed:";
 
-export const MANUAL_PROJECT_PATH_PROMPT_MESSAGE =
-	"Quarterdeck could not open a directory picker on this runtime. Enter a project path to add:";
+export type ProjectDirectoryPickerDecision =
+	| { kind: "selected"; path: string }
+	| { kind: "cancelled" }
+	| { kind: "manual_path" }
+	| { kind: "failed"; message: string };
+
+export function resolveProjectDirectoryPickerDecision(
+	response: RuntimeProjectDirectoryPickerResponse,
+): ProjectDirectoryPickerDecision {
+	if (response.ok) {
+		return { kind: "selected", path: response.path };
+	}
+	if (response.reason === "cancelled") {
+		return { kind: "cancelled" };
+	}
+	if (response.reason === "native_ui_unavailable" || response.reason === "launcher_unavailable") {
+		return { kind: "manual_path" };
+	}
+	return { kind: "failed", message: response.error };
+}
 
 // ---------------------------------------------------------------------------
 // Error parsing
@@ -28,24 +44,4 @@ export function parseRemovedProjectPathFromStreamError(streamError: string | nul
 		return null;
 	}
 	return streamError.slice(REMOVED_PROJECT_ERROR_PREFIX.length).trim();
-}
-
-// ---------------------------------------------------------------------------
-// Manual path prompt (browser-dependent utility)
-// ---------------------------------------------------------------------------
-
-/**
- * Prompt the user for a manual project path via `window.prompt`.
- * Returns `null` when cancelled or empty.
- */
-export function promptForManualProjectPath(): string | null {
-	if (typeof window === "undefined") {
-		return null;
-	}
-	const rawValue = window.prompt(MANUAL_PROJECT_PATH_PROMPT_MESSAGE);
-	if (rawValue === null) {
-		return null;
-	}
-	const normalized = rawValue.trim();
-	return normalized || null;
 }

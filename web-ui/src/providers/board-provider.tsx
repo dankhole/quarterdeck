@@ -1,6 +1,6 @@
 import type { Dispatch, ReactNode, SetStateAction } from "react";
-import { createContext, useCallback, useContext, useMemo } from "react";
-import { useTaskSessions } from "@/hooks/board";
+import { createContext, useContext, useMemo } from "react";
+import { useTaskLifecycleOperations, useTaskSessions } from "@/hooks/board";
 import { useDetailTaskNavigation } from "@/hooks/project";
 import {
 	useProjectNavigationContext,
@@ -8,7 +8,6 @@ import {
 	useProjectSyncContext,
 } from "@/providers/project-provider";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { reconcileTaskWorkingDirectory } from "@/state/board-state";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardData, CardSelection } from "@/types";
 
@@ -33,16 +32,13 @@ export interface BoardContextValue {
 
 	// --- Task session actions ---
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
-	ensureTaskWorktree: ReturnType<typeof useTaskSessions>["ensureTaskWorktree"];
-	startTaskSession: ReturnType<typeof useTaskSessions>["startTaskSession"];
-	cleanupTaskWorktree: ReturnType<typeof useTaskSessions>["cleanupTaskWorktree"];
 	fetchTaskWorktreeInfo: ReturnType<typeof useTaskSessions>["fetchTaskWorktreeInfo"];
 	sendTaskSessionInput: (
 		taskId: string,
 		text: string,
-		options?: SendTerminalInputOptions,
+		options: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
-	stopTaskSession: ReturnType<typeof useTaskSessions>["stopTaskSession"];
+	taskLifecycle: ReturnType<typeof useTaskLifecycleOperations>;
 
 	// --- Derived loading flags ---
 	isInitialRuntimeLoad: boolean;
@@ -66,16 +62,16 @@ export function useBoardContext(): BoardContextValue {
 
 interface BoardProviderProps {
 	board: BoardData;
-	setBoard: Dispatch<SetStateAction<BoardData>>;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
 	children: ReactNode;
 }
 
-export function BoardProvider({ board, setBoard, sessions, setSessions, children }: BoardProviderProps): ReactNode {
+export function BoardProvider({ board, sessions, setSessions, children }: BoardProviderProps): ReactNode {
 	const { currentProjectId, projects } = useProjectNavigationContext();
 	const { streamedProjectState, hasReceivedSnapshot, streamError } = useProjectRuntimeStreamContext();
-	const { projectPath } = useProjectSyncContext();
+	const { setBoard, flushBoardCommands, getAuthoritativeRevision, applyLifecycleProjectState, refreshProjectState } =
+		useProjectSyncContext();
 
 	// --- useDetailTaskNavigation ---
 	const { selectedTaskId, selectedCard, setSelectedTaskId } = useDetailTaskNavigation({
@@ -90,28 +86,16 @@ export function BoardProvider({ board, setBoard, sessions, setSessions, children
 	const isAwaitingProjectSnapshot = currentProjectId !== null && streamedProjectState === null;
 
 	// --- useTaskSessions ---
-	const handleWorkingDirectoryResolved = useCallback(
-		(taskId: string, workingDirectory: string) => {
-			setBoard((current) => {
-				const result = reconcileTaskWorkingDirectory(current, taskId, workingDirectory, projectPath);
-				return result.updated ? result.board : current;
-			});
-		},
-		[setBoard, projectPath],
-	);
-
-	const {
-		upsertSession,
-		ensureTaskWorktree,
-		startTaskSession,
-		stopTaskSession,
-		sendTaskSessionInput,
-		cleanupTaskWorktree,
-		fetchTaskWorktreeInfo,
-	} = useTaskSessions({
+	const { upsertSession, sendTaskSessionInput, fetchTaskWorktreeInfo } = useTaskSessions({
 		currentProjectId,
 		setSessions,
-		onWorkingDirectoryResolved: handleWorkingDirectoryResolved,
+	});
+	const taskLifecycle = useTaskLifecycleOperations({
+		currentProjectId,
+		flushBoardCommands,
+		getAuthoritativeRevision,
+		applyLifecycleProjectState,
+		refreshProjectState,
 	});
 
 	// --- Context value ---
@@ -125,12 +109,9 @@ export function BoardProvider({ board, setBoard, sessions, setSessions, children
 			selectedCard,
 			setSelectedTaskId,
 			setSessions,
-			ensureTaskWorktree,
-			startTaskSession,
-			cleanupTaskWorktree,
 			fetchTaskWorktreeInfo,
 			sendTaskSessionInput,
-			stopTaskSession,
+			taskLifecycle,
 			isInitialRuntimeLoad,
 			isAwaitingProjectSnapshot,
 		}),
@@ -142,12 +123,9 @@ export function BoardProvider({ board, setBoard, sessions, setSessions, children
 			selectedCard,
 			setSelectedTaskId,
 			setSessions,
-			ensureTaskWorktree,
-			startTaskSession,
-			cleanupTaskWorktree,
 			fetchTaskWorktreeInfo,
 			sendTaskSessionInput,
-			stopTaskSession,
+			taskLifecycle,
 			isInitialRuntimeLoad,
 			isAwaitingProjectSnapshot,
 		],

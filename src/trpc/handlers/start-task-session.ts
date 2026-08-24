@@ -79,6 +79,7 @@ export async function handleStartTaskSession(
 			awaitReview: body.awaitReview ?? false,
 			useWorktree: body.useWorktree ?? true,
 			requestedAgentId: body.agentId ?? null,
+			launchOperationId: body.launchOperationId ?? null,
 			hasPrompt: Boolean(body.prompt.trim()),
 			imageCount: body.images?.length ?? 0,
 			baseRef: body.baseRef,

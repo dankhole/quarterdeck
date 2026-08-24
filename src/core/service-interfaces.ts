@@ -20,7 +20,6 @@ import type {
 	RuntimeProjectDirectoryPickerResponse,
 	RuntimeProjectStateResponse,
 	RuntimeProjectSummary,
-	RuntimeProjectTaskCounts,
 } from "./api-contract";
 import type { LogLevel } from "./runtime-logger";
 
@@ -87,11 +86,11 @@ export interface IRuntimeConfigProvider {
 	loadScopedRuntimeConfig: (scope: { projectId: string; projectPath: string }) => Promise<RuntimeConfigState>;
 }
 
-// ── Host Integrations ───────────────────────────────────────────────────────────────────
+// ── Runtime host integrations ───────────────────────────────────────────────
 
 /**
- * The policy-gated boundary for runtime actions that can launch host UI.
- * Native, unavailable, and simulated modes all use this same contract.
+ * The sole policy-gated boundary for server-side actions that can launch host
+ * UI. Native, unavailable, and simulated modes all use this same contract.
  */
 export interface IRuntimeHostIntegrations {
 	readonly capabilities: RuntimeCapabilities;
@@ -122,10 +121,5 @@ export interface IProjectDataProvider {
 		currentProjectId: string | null;
 		projects: RuntimeProjectSummary[];
 	}>;
-	summarizeProjectTaskCounts: (projectId: string, repoPath: string) => Promise<RuntimeProjectTaskCounts>;
-	createProjectSummary: (input: {
-		projectId: string;
-		repoPath: string;
-		taskCounts: RuntimeProjectTaskCounts;
-	}) => RuntimeProjectSummary;
+	buildProjectSummary: (projectId: string, repoPath: string) => Promise<RuntimeProjectSummary>;
 }

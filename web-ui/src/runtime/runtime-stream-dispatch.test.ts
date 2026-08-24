@@ -12,6 +12,7 @@ describe("resolveStreamMessage", () => {
 						id: "project-b",
 						path: "/tmp/project-b",
 						name: "Project B",
+						boardRevision: 0,
 						taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
 					},
 				],
@@ -32,6 +33,7 @@ describe("resolveStreamMessage", () => {
 							id: "project-b",
 							path: "/tmp/project-b",
 							name: "Project B",
+							boardRevision: 0,
 							taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
 						},
 					],
@@ -41,8 +43,8 @@ describe("resolveStreamMessage", () => {
 		]);
 	});
 
-	it("ignores project-scoped deltas for inactive projects while still accepting notifications", () => {
-		const ignoredProjectDelta = resolveStreamMessage(
+	it("retains project identity for the store fence and accepts cross-project notifications", () => {
+		const projectDelta = resolveStreamMessage(
 			{
 				type: "project_state_updated",
 				projectId: "project-b",
@@ -65,16 +67,35 @@ describe("resolveStreamMessage", () => {
 			{
 				type: "task_notification",
 				projectId: "project-b",
+				notificationRevision: 1,
 				summaries: [],
 			},
 			{ activeProjectId: "project-a" },
 		);
 
-		expect(ignoredProjectDelta.actions).toEqual([]);
+		expect(projectDelta.actions).toEqual([
+			{
+				type: "project_state_updated",
+				projectId: "project-b",
+				projectState: {
+					repoPath: "/tmp/project-b",
+					statePath: "/tmp/project-b/.quarterdeck",
+					git: {
+						currentBranch: "main",
+						defaultBranch: "main",
+						branches: ["main"],
+					},
+					board: { columns: [], dependencies: [] },
+					sessions: {},
+					revision: 1,
+				},
+			},
+		]);
 		expect(notification.actions).toEqual([
 			{
 				type: "task_notification",
 				projectId: "project-b",
+				notificationRevision: 1,
 				summaries: [],
 			},
 		]);
@@ -85,6 +106,7 @@ describe("resolveStreamMessage", () => {
 			{
 				type: "task_notification",
 				projectId: "project-b",
+				notificationRevision: 2,
 				summaries: [],
 				removedTaskIds: ["task-1"],
 			},
@@ -95,6 +117,7 @@ describe("resolveStreamMessage", () => {
 			{
 				type: "task_notification",
 				projectId: "project-b",
+				notificationRevision: 2,
 				summaries: [],
 				removedTaskIds: ["task-1"],
 			},
@@ -106,6 +129,7 @@ describe("resolveStreamMessage", () => {
 			{
 				type: "task_notification",
 				projectId: "project-b",
+				notificationRevision: 3,
 				summaries: [],
 				replace: true,
 			},
@@ -116,6 +140,7 @@ describe("resolveStreamMessage", () => {
 			{
 				type: "task_notification",
 				projectId: "project-b",
+				notificationRevision: 3,
 				summaries: [],
 				replace: true,
 			},

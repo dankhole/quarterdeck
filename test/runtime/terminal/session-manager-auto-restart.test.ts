@@ -17,7 +17,11 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 	},
 }));
 
-import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
+import {
+	InMemorySessionSummaryStore,
+	LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
+	TerminalSessionManager,
+} from "../../../src/terminal";
 
 interface MockSpawnRequest {
 	onData?: (chunk: Buffer) => void;
@@ -98,6 +102,49 @@ describe("TerminalSessionManager auto-restart", () => {
 			2,
 			expect.objectContaining({ claudeFullscreenEnabled: true }),
 		);
+	});
+
+	it("does not restore a cleared legacy uncertainty warning during a later automatic restart", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111 + spawnedSessions.length, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
+		const recoveryToken = "legacy-recovery-token";
+		manager.beginStartupRecovery("task-1", recoveryToken);
+		await manager.startTaskSessionWithReadiness({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			resumeConversation: true,
+			awaitReview: true,
+			startupRecoveryToken: recoveryToken,
+			startupRecoveryReviewState: {
+				reviewReason: "interrupted",
+				lastHookAt: null,
+				latestHookActivity: null,
+			},
+			startupRecoveryWarningMessage: LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
+		});
+		manager.completeStartupRecovery("task-1", recoveryToken);
+
+		manager.store.applySessionEvent("task-1", { type: "hook.to_in_progress" });
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "running",
+			startupRecoverySemanticStateUncertain: false,
+			warningMessage: null,
+		});
+
+		spawnedSessions[0]?.triggerExit(1);
+		await vi.waitFor(() => expect(spawnedSessions).toHaveLength(2));
+		expect(manager.store.getSummary("task-1")?.warningMessage).toBeNull();
 	});
 
 	it("does not restart when the agent already transitioned to review before exit", async () => {
@@ -426,6 +473,7 @@ describe("TerminalSessionManager auto-restart", () => {
 			processStillRunning: true,
 			clearResumeSessionId: false,
 			warningMessage: "Recovery remains unconfirmed.",
+			fallbackReviewState: null,
 		});
 		spawnedSessions[0]?.triggerExit(1);
 		await Promise.resolve();

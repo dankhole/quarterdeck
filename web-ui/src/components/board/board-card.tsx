@@ -346,7 +346,7 @@ export function BoardCard({
 								</div>
 							)}
 							<div
-								className="ml-auto flex w-max min-w-0 max-w-full shrink flex-wrap items-center justify-end gap-1 [&>button]:shrink-0"
+								className="ml-auto flex w-max min-w-0 max-w-full shrink flex-wrap items-center justify-end gap-0.5 [&>button]:h-[22px] [&>button]:shrink-0 [&>button]:px-0"
 								data-board-card-action-rail
 							>
 								{!isEditingTitle && isHovered && !isTrashCard ? (

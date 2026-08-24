@@ -2,15 +2,13 @@ import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useRef } from "react";
 
 import { toast } from "sonner";
-import { notifyError, showAppToast } from "@/components/app-toaster";
+import { showAppToast } from "@/components/app-toaster";
 import type { TaskTrashWarningViewModel } from "@/components/task";
 import { buildTrashWarningViewModel, getDependencyAddErrorMessage } from "@/hooks/board/linked-backlog-task-actions";
-import type { UseTaskSessionsResult } from "@/hooks/board/use-task-sessions";
-import { getDetailTerminalTaskId } from "@/hooks/terminal/use-terminal-panels";
+import type { UseTaskLifecycleOperationsResult } from "@/hooks/board/use-task-lifecycle-operations";
 import {
 	addTaskDependency,
 	findCardSelection,
-	moveTaskToColumn,
 	removeTaskDependency,
 	trashTaskAndGetReadyLinkedTaskIds,
 } from "@/state/board-state";
@@ -18,8 +16,6 @@ import { getTaskWorktreeInfo, getTaskWorktreeSnapshot } from "@/stores/project-m
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { createClientLogger } from "@/utils/client-logger";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
-
-import type { RunTaskLifecycleOperation } from "./task-lifecycle";
 
 const log = createClientLogger("linked-backlog-task-actions");
 
@@ -32,12 +28,7 @@ export function useLinkedBacklogTaskActions({
 	board,
 	setBoard,
 	setSelectedTaskId,
-	stopTaskSession,
-	cleanupTaskWorktree,
-	runTaskLifecycleOperation,
-	kickoffTaskInProgress,
-	startBacklogTaskWithAnimation,
-	waitForBacklogStartAnimationAvailability,
+	executeTaskLifecycle,
 	onRequestTrashConfirmation,
 	showTrashWorktreeNotice,
 	saveTrashWorktreeNoticeDismissed,
@@ -45,17 +36,7 @@ export function useLinkedBacklogTaskActions({
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
-	stopTaskSession: UseTaskSessionsResult["stopTaskSession"];
-	cleanupTaskWorktree: UseTaskSessionsResult["cleanupTaskWorktree"];
-	runTaskLifecycleOperation: RunTaskLifecycleOperation;
-	kickoffTaskInProgress: (
-		task: BoardCard,
-		taskId: string,
-		fromColumnId: BoardColumnId,
-		options?: { optimisticMove?: boolean },
-	) => Promise<boolean>;
-	startBacklogTaskWithAnimation?: (task: BoardCard) => Promise<boolean>;
-	waitForBacklogStartAnimationAvailability?: () => Promise<void>;
+	executeTaskLifecycle: UseTaskLifecycleOperationsResult["executeTaskLifecycle"];
 	onRequestTrashConfirmation?: (
 		viewModel: TaskTrashWarningViewModel,
 		card: BoardCard,
@@ -67,7 +48,11 @@ export function useLinkedBacklogTaskActions({
 }): {
 	handleCreateDependency: (fromTaskId: string, toTaskId: string) => void;
 	handleDeleteDependency: (dependencyId: string) => void;
-	confirmMoveTaskToTrash: (task: BoardCard, currentBoard?: BoardData) => Promise<void>;
+	confirmMoveTaskToTrash: (
+		task: BoardCard,
+		currentBoard?: BoardData,
+		sourceColumnId?: Exclude<BoardColumnId, "trash">,
+	) => Promise<void>;
 	requestMoveTaskToTrash: (
 		taskId: string,
 		fromColumnId: BoardColumnId,
@@ -112,95 +97,43 @@ export function useLinkedBacklogTaskActions({
 	);
 
 	const performMoveTaskToTrash = useCallback(
-		async (task: BoardCard, currentBoard?: BoardData): Promise<boolean> => {
-			return await runTaskLifecycleOperation(task.id, async () => {
-				const boardBeforeTrash = currentBoard ?? boardRef.current;
-				const trashed = trashTaskAndGetReadyLinkedTaskIds(boardBeforeTrash, task.id);
-				log.debug("performing task trash move", {
-					taskId: task.id,
-					moved: trashed.moved,
-					hadCurrentBoard: !!currentBoard,
-				});
-				if (trashed.moved) {
-					setBoard((currentBoardState) => {
-						const latestTrashResult = trashTaskAndGetReadyLinkedTaskIds(currentBoardState, task.id);
-						return latestTrashResult.moved ? latestTrashResult.board : currentBoardState;
-					});
-				} else {
-					log.debug("task already in trash; cleaning up backing resources", { taskId: task.id });
-				}
-				setSelectedTaskId((currentSelectedTaskId) =>
-					currentSelectedTaskId === task.id
-						? getNextDetailTaskIdAfterTrashMove(boardBeforeTrash, task.id)
-						: currentSelectedTaskId,
-				);
-
-				const readyTasks = trashed.moved
-					? trashed.readyTaskIds
-							.map((readyTaskId) => findCardSelection(trashed.board, readyTaskId)?.card ?? null)
-							.filter((readyTask): readyTask is BoardCard => readyTask !== null)
-					: [];
-
-				if (readyTasks.length > 0) {
-					if (startBacklogTaskWithAnimation) {
-						const startedTaskPromises: Promise<boolean>[] = [];
-						for (const [index, readyTask] of readyTasks.entries()) {
-							startedTaskPromises.push(startBacklogTaskWithAnimation(readyTask));
-							if (index < readyTasks.length - 1) {
-								await waitForBacklogStartAnimationAvailability?.();
-							}
-						}
-						await Promise.all(startedTaskPromises);
-					} else {
-						setBoard((currentBoardState) => {
-							let nextBoardState = currentBoardState;
-							for (const readyTask of readyTasks) {
-								const moved = moveTaskToColumn(nextBoardState, readyTask.id, "in_progress", {
-									insertAtTop: true,
-								});
-								if (moved.moved) {
-									nextBoardState = moved.board;
-								}
-							}
-							return nextBoardState;
-						});
-						for (const readyTask of readyTasks) {
-							await kickoffTaskInProgress(readyTask, readyTask.id, "backlog", {
-								optimisticMove: true,
-							});
-						}
-					}
-				}
-
-				const [stopped] = await Promise.all([
-					stopTaskSession(task.id, { waitForExit: true }),
-					stopTaskSession(getDetailTerminalTaskId(task.id)),
-				]);
-				if (!stopped.ok) {
-					notifyError(stopped.error ?? "Could not stop the task session; its worktree was left in place.");
-					return false;
-				}
-				if (task.useWorktree !== false) {
-					const cleaned = await cleanupTaskWorktree(task.id);
-					if (!cleaned) {
-						notifyError("Could not clean up the task worktree.");
-						return false;
-					}
-				}
-				log.debug("trash cleanup complete", { taskId: task.id });
-				return true;
+		async (
+			task: BoardCard,
+			currentBoard?: BoardData,
+			sourceColumnId?: Exclude<BoardColumnId, "trash">,
+		): Promise<boolean> => {
+			const boardBeforeTrash = currentBoard ?? boardRef.current;
+			const resolvedSourceColumnId = sourceColumnId ?? findCardSelection(boardBeforeTrash, task.id)?.column.id;
+			if (!resolvedSourceColumnId || resolvedSourceColumnId === "trash") {
+				log.warn("task trash move skipped because its source column was unavailable", { taskId: task.id });
+				return false;
+			}
+			const trashed = trashTaskAndGetReadyLinkedTaskIds(boardBeforeTrash, task.id);
+			log.debug("performing task trash move", {
+				taskId: task.id,
+				moved: trashed.moved,
+				hadCurrentBoard: !!currentBoard,
 			});
+			if (trashed.moved) {
+				setBoard((currentBoardState) => {
+					const latestTrashResult = trashTaskAndGetReadyLinkedTaskIds(currentBoardState, task.id);
+					return latestTrashResult.moved ? latestTrashResult.board : currentBoardState;
+				});
+			}
+			setSelectedTaskId((currentSelectedTaskId) =>
+				currentSelectedTaskId === task.id
+					? getNextDetailTaskIdAfterTrashMove(boardBeforeTrash, task.id)
+					: currentSelectedTaskId,
+			);
+			const result = await executeTaskLifecycle({
+				kind: "trash",
+				taskId: task.id,
+				taskCreatedAt: task.createdAt,
+				sourceColumnId: resolvedSourceColumnId,
+			});
+			return result?.ok === true;
 		},
-		[
-			cleanupTaskWorktree,
-			kickoffTaskInProgress,
-			runTaskLifecycleOperation,
-			setBoard,
-			setSelectedTaskId,
-			startBacklogTaskWithAnimation,
-			stopTaskSession,
-			waitForBacklogStartAnimationAvailability,
-		],
+		[executeTaskLifecycle, setBoard, setSelectedTaskId],
 	);
 
 	const requestMoveTaskToTrash = useCallback(
@@ -233,7 +166,9 @@ export function useLinkedBacklogTaskActions({
 
 			if (options?.skipWorkingChangeWarning) {
 				moveSelectionIfOptimisticMoveIsConfirmed();
-				await performMoveTaskToTrash(selection.card, boardSnapshot);
+				if (fromColumnId !== "trash") {
+					await performMoveTaskToTrash(selection.card, boardSnapshot, fromColumnId);
+				}
 				return;
 			}
 
@@ -247,12 +182,15 @@ export function useLinkedBacklogTaskActions({
 			}
 
 			moveSelectionIfOptimisticMoveIsConfirmed();
-			const cleaned = await performMoveTaskToTrash(selection.card, boardSnapshot);
+			if (fromColumnId === "trash") {
+				return;
+			}
+			const movedToTrash = await performMoveTaskToTrash(selection.card, boardSnapshot, fromColumnId);
 
 			// Show informational notice toast for manual trash from in_progress or review columns.
 			// Non-isolated tasks have no worktree to delete and no patch to capture — skip the toast.
 			if (
-				cleaned &&
+				movedToTrash &&
 				!isNonIsolated &&
 				showTrashWorktreeNotice &&
 				(fromColumnId === "in_progress" || fromColumnId === "review")
@@ -282,8 +220,12 @@ export function useLinkedBacklogTaskActions({
 	return {
 		handleCreateDependency,
 		handleDeleteDependency,
-		confirmMoveTaskToTrash: async (task: BoardCard, currentBoard?: BoardData) => {
-			await performMoveTaskToTrash(task, currentBoard);
+		confirmMoveTaskToTrash: async (
+			task: BoardCard,
+			currentBoard?: BoardData,
+			sourceColumnId?: Exclude<BoardColumnId, "trash">,
+		) => {
+			await performMoveTaskToTrash(task, currentBoard, sourceColumnId);
 		},
 		requestMoveTaskToTrash,
 	};

@@ -25,7 +25,7 @@ import type {
 import { normalizeDiagnosticErrorClass } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import { commitHookEventOrder, evaluateHookEventOrder, type HookEventOrderDecision } from "./hook-event-order";
-import { processSessionInput } from "./session-input-pipeline";
+import { isExplicitUserSubmission, processSessionInput } from "./session-input-pipeline";
 import {
 	markTaskSessionLaunchReady,
 	markTaskSessionLaunchUserEngaged,
@@ -44,9 +44,15 @@ import {
 } from "./session-manager-types";
 import { disableOutputOscIntercept, processTaskSessionOutput } from "./session-output-pipeline";
 import { createReconciliationTimer, type ReconciliationTimer } from "./session-reconciliation-sweep";
+import type { StartupRecoveryReviewState } from "./session-startup-recovery-policy";
+import type { HookSessionTransitionEvent, SessionTransitionResult } from "./session-state-machine";
 import type { SessionSummaryStore } from "./session-summary-store";
 import { SessionTransitionController } from "./session-transition-controller";
-import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service";
+import type {
+	TerminalSessionInputOptions,
+	TerminalSessionListener,
+	TerminalSessionService,
+} from "./terminal-session-service";
 
 export type { StartShellSessionRequest, StartTaskSessionRequest };
 
@@ -141,6 +147,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					previousState: correction.previousState,
 					previousReviewReason: correction.previousReviewReason,
 					hadPersistedPid: correction.hadPersistedPid,
+					requiresStartupRecovery: correction.requiresStartupRecovery,
 				},
 				correction.taskId,
 				{ level: "warn" },
@@ -202,6 +209,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 	}
 
 	async startTaskSessionWithReadiness(request: StartTaskSessionRequest): Promise<TaskSessionStartWithReadinessResult> {
+		if (!request.startupRecoveryToken) {
+			this.clearStartupRecoveryRequirement(request.taskId);
+		}
 		const operationId = randomUUID();
 		this.record(
 			"session.start_requested",
@@ -245,6 +255,17 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return this.lifecycle.recoverStaleSession(taskId);
 	}
 
+	applyHookTransition(
+		taskId: string,
+		transition: HookSessionTransitionEvent,
+	): (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null {
+		const entry = this.entries.get(taskId);
+		if (!entry || !this.store.getSummary(taskId)) {
+			return null;
+		}
+		return this.transitions.applyTransitionEvent(entry, transition);
+	}
+
 	/**
 	 * Returns true while deleting the task's launch directory could invalidate
 	 * an active or in-flight agent lifecycle operation.
@@ -256,25 +277,32 @@ export class TerminalSessionManager implements TerminalSessionService {
 		);
 	}
 
-	writeInput(taskId: string, data: Buffer): RuntimeTaskSessionSummary | null {
+	writeInput(taskId: string, data: Buffer, options?: TerminalSessionInputOptions): RuntimeTaskSessionSummary | null {
 		const entry = this.entries.get(taskId);
 		if (!entry) {
 			return null;
 		}
 		entry.pendingStartupRecoveryToken = null;
+		this.clearStartupRecoveryRequirement(taskId);
 		markTaskSessionLaunchUserEngaged(entry.launchMonitor);
 		if (!entry.active) {
 			return null;
 		}
-		if (data.includes(10) || data.includes(13)) {
+		if (options?.explicitUserSubmission === true || isExplicitUserSubmission(data)) {
 			this.record("session.input_submitted", {}, taskId);
 		}
-		return processSessionInput(entry, taskId, data, {
-			getSummary: (id) => this.store.getSummary(id),
-			updateStore: (id, patch) => this.store.update(id, patch),
-			getEntry: (id) => this.entries.get(id),
-			applyTransitionEvent: (e, ev) => this.transitions.applyTransitionEvent(e, ev),
-		});
+		return processSessionInput(
+			entry,
+			taskId,
+			data,
+			{
+				getSummary: (id) => this.store.getSummary(id),
+				updateStore: (id, patch) => this.store.update(id, patch),
+				getEntry: (id) => this.entries.get(id),
+				applyTransitionEvent: (e, ev) => this.transitions.applyTransitionEvent(e, ev),
+			},
+			options,
+		);
 	}
 
 	recordHookReceived(taskId: string): void {
@@ -312,6 +340,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			entry?.pendingStartupRecoveryToken === token &&
 			entry.launchMonitor?.sessionInstanceId === sessionInstanceId &&
 			entry.launchMonitor.pid !== null &&
+			entry.active?.sessionInstanceId === sessionInstanceId &&
 			entry.active?.session.pid === entry.launchMonitor.pid
 		);
 	}
@@ -320,6 +349,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const entry = this.entries.get(taskId);
 		if (entry?.pendingStartupRecoveryToken === token) {
 			entry.pendingStartupRecoveryToken = null;
+			this.clearStartupRecoveryRequirement(taskId);
 		}
 	}
 
@@ -330,6 +360,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			processStillRunning: boolean;
 			clearResumeSessionId: boolean;
 			warningMessage: string;
+			fallbackReviewState: StartupRecoveryReviewState | null;
 		},
 	): RuntimeTaskSessionSummary | null {
 		const entry = this.entries.get(taskId);
@@ -383,7 +414,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (entry.active.session.pid !== entry.launchMonitor.pid) {
 			return "superseded";
 		}
-		await this.lifecycle.stopTaskSessionAndWaitForExit(taskId, timeoutMs, {
+		await this.lifecycle.stopTaskSessionAndWaitForExit(taskId, timeoutMs, sessionInstanceId, {
 			preserveStartupRecovery: true,
 		});
 		return entry.active ? "timeout" : "stopped";
@@ -462,14 +493,22 @@ export class TerminalSessionManager implements TerminalSessionService {
 	}
 
 	stopTaskSession(taskId: string): RuntimeTaskSessionSummary | null {
+		this.clearStartupRecoveryRequirement(taskId);
 		this.record("session.stop_requested", { waitForExit: false }, taskId);
 		return this.lifecycle.stopTaskSession(taskId);
 	}
 
-	async stopTaskSessionAndWaitForExit(taskId: string, timeoutMs = 3_000): Promise<StopTaskSessionResult> {
+	async stopTaskSessionAndWaitForExit(
+		taskId: string,
+		timeoutMs = 3_000,
+		sessionInstanceId?: string,
+	): Promise<StopTaskSessionResult> {
+		this.clearStartupRecoveryRequirement(taskId);
 		const startedAt = Date.now();
-		this.record("session.stop_requested", { waitForExit: true, timeoutMs }, taskId);
-		const result = await this.lifecycle.stopTaskSessionAndWaitForExit(taskId, timeoutMs);
+		this.record("session.stop_requested", { waitForExit: true, timeoutMs }, taskId, {
+			sessionInstanceId,
+		});
+		const result = await this.lifecycle.stopTaskSessionAndWaitForExit(taskId, timeoutMs, sessionInstanceId);
 		const timedOut = result.outcome === "timed_out";
 		this.record(
 			timedOut ? "session.stop_wait_timed_out" : "session.stop_wait_completed",
@@ -478,13 +517,19 @@ export class TerminalSessionManager implements TerminalSessionService {
 				outcome: result.outcome,
 			},
 			taskId,
-			{ level: timedOut ? "warn" : "info" },
+			{ level: timedOut ? "warn" : "info", sessionInstanceId },
 		);
 		return result;
 	}
 
 	markInterruptedAndStopAll(): RuntimeTaskSessionSummary[] {
 		return this.lifecycle.markInterruptedAndStopAll();
+	}
+
+	private clearStartupRecoveryRequirement(taskId: string): void {
+		if (this.store.getSummary(taskId)?.startupRecoveryRequired === true) {
+			this.store.update(taskId, { startupRecoveryRequired: false });
+		}
 	}
 
 	startReconciliation(): void {

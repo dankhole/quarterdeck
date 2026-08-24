@@ -89,6 +89,7 @@ export {
 export { searchWorkdirText } from "./search-workdir-text";
 export {
 	applyTaskPatch,
+	archiveTaskWorktreeForTrash,
 	captureTaskPatch,
 	deleteTaskWorktree,
 	ensureTaskWorktreeIfDoesntExist,
@@ -100,6 +101,7 @@ export {
 	isMissingTaskWorktreeError,
 	mirrorIgnoredPath,
 	pathExists,
+	purgeTaskWorkspaceForDelete,
 	resolveTaskCwd,
 	resolveTaskWorkingDirectory,
 } from "./task-worktree";

@@ -45,7 +45,7 @@ interface UseGitActionsInput {
 	sendTaskSessionInput: (
 		taskId: string,
 		text: string,
-		options?: SendTerminalInputOptions,
+		options: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
 	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskRepositoryInfoResponse | null>;
 	isGitHistoryOpen: boolean;
@@ -179,6 +179,9 @@ export function useGitActions({
 
 	const runTaskGitAction = useCallback(
 		async (taskId: string, action: TaskGitAction, source: TaskGitActionSource) => {
+			if (!currentProjectId) {
+				return false;
+			}
 			const actionKey = action === "commit" ? "commitSource" : "prSource";
 			if (isTaskGitActionInFlight(taskGitActionLoadingByTaskId, taskId, actionKey)) {
 				return false;
@@ -219,7 +222,7 @@ export function useGitActions({
 					showGitErrorToast("Could not resolve task worktree details.", { timeout: 6000 });
 					return false;
 				}
-				setTaskWorktreeInfo(worktreeInfo);
+				setTaskWorktreeInfo(currentProjectId, worktreeInfo);
 
 				const prompt = buildTaskGitActionPrompt({
 					action,
@@ -233,7 +236,11 @@ export function useGitActions({
 							}
 						: null,
 				});
-				const typed = await sendTaskSessionInput(taskId, prompt, { appendNewline: false, mode: "paste" });
+				const typed = await sendTaskSessionInput(taskId, prompt, {
+					intent: "write",
+					appendNewline: false,
+					mode: "paste",
+				});
 				if (!typed.ok) {
 					showGitErrorToast(typed.message ?? "Could not send instructions to the task session.");
 					return false;
@@ -241,7 +248,10 @@ export function useGitActions({
 				await new Promise<void>((resolve) => {
 					window.setTimeout(resolve, 200);
 				});
-				const submitted = await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
+				const submitted = await sendTaskSessionInput(taskId, "\r", {
+					intent: "submit",
+					appendNewline: false,
+				});
 				if (!submitted.ok) {
 					showGitErrorToast(submitted.message ?? "Could not submit instructions to the task session.");
 					return false;
@@ -254,6 +264,7 @@ export function useGitActions({
 		},
 		[
 			board,
+			currentProjectId,
 			fetchTaskWorktreeInfo,
 			runtimeProjectConfig,
 			sendTaskSessionInput,
@@ -314,7 +325,7 @@ export function useGitActions({
 					const output = payload.output ?? "";
 					const fallbackSummary = payload.summary ?? null;
 					if (fallbackSummary && shouldUpdateHomeSummary) {
-						setHomeGitSummary(fallbackSummary);
+						setHomeGitSummary(currentProjectId, fallbackSummary);
 					}
 					setGitActionError({
 						action,
@@ -325,7 +336,7 @@ export function useGitActions({
 					return;
 				}
 				if (shouldUpdateHomeSummary) {
-					setHomeGitSummary(payload.summary);
+					setHomeGitSummary(currentProjectId, payload.summary);
 				}
 				refreshGitHistory();
 				showGitSuccessToast(getGitSyncSuccessLabel(action));
@@ -360,7 +371,7 @@ export function useGitActions({
 						const errorMessage = payload.error ?? "Switch branch failed.";
 						const fallbackSummary = payload.summary ?? null;
 						if (fallbackSummary) {
-							setHomeGitSummary(fallbackSummary);
+							setHomeGitSummary(currentProjectId, fallbackSummary);
 						}
 						if (payload.dirtyTree) {
 							showGitErrorToast(`Could not switch to ${normalizedBranch}. ${errorMessage}`, {
@@ -392,7 +403,7 @@ export function useGitActions({
 						}
 						return;
 					}
-					setHomeGitSummary(payload.summary);
+					setHomeGitSummary(currentProjectId, payload.summary);
 					refreshGitHistory();
 					await refreshProjectState();
 				} catch (error) {
@@ -417,12 +428,12 @@ export function useGitActions({
 				const payload = await trpcClient.project.discardGitChanges.mutate(null);
 				if (!payload.ok) {
 					if (payload.summary) {
-						setHomeGitSummary(payload.summary);
+						setHomeGitSummary(currentProjectId, payload.summary);
 					}
 					showGitErrorToast(payload.error ?? "Could not discard working copy changes.");
 					return;
 				}
-				setHomeGitSummary(payload.summary);
+				setHomeGitSummary(currentProjectId, payload.summary);
 				refreshGitHistory();
 				showGitSuccessToast("Discarded working copy changes.", 4000);
 			} catch (error) {
@@ -450,7 +461,7 @@ export function useGitActions({
 				if (!pullResult.ok || !pullResult.summary) {
 					const fallbackSummary = pullResult.summary ?? null;
 					if (fallbackSummary) {
-						setHomeGitSummary(fallbackSummary);
+						setHomeGitSummary(currentProjectId, fallbackSummary);
 					}
 					setGitActionError({
 						action: "pull",
@@ -464,7 +475,7 @@ export function useGitActions({
 					);
 					return;
 				}
-				setHomeGitSummary(pullResult.summary);
+				setHomeGitSummary(currentProjectId, pullResult.summary);
 
 				const popResult = await trpcClient.project.stashPop.mutate({
 					taskScope: null,

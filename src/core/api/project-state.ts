@@ -17,6 +17,7 @@ export const runtimeProjectSummarySchema = z.object({
 	id: z.string(),
 	path: z.string(),
 	name: z.string(),
+	boardRevision: z.number().int().nonnegative(),
 	taskCounts: runtimeProjectTaskCountsSchema,
 });
 export type RuntimeProjectSummary = z.infer<typeof runtimeProjectSummarySchema>;
@@ -66,25 +67,6 @@ export const runtimeProjectStateResponseSchema = z.object({
 });
 export type RuntimeProjectStateResponse = z.infer<typeof runtimeProjectStateResponseSchema>;
 
-// Browser-owned persistence only saves board truth. Runtime session truth is
-// server-owned and persisted from the terminal/session store.
-export const runtimeProjectStateSaveRequestSchema = z.object({
-	board: runtimeBoardDataSchema,
-	expectedRevision: z.number().int().nonnegative().optional(),
-});
-export type RuntimeProjectStateSaveRequest = z.infer<typeof runtimeProjectStateSaveRequestSchema>;
-
-export const runtimeProjectStateConflictResponseSchema = z.object({
-	error: z.string(),
-	currentRevision: z.number(),
-});
-export type RuntimeProjectStateConflictResponse = z.infer<typeof runtimeProjectStateConflictResponseSchema>;
-
-export const runtimeProjectStateNotifyResponseSchema = z.object({
-	ok: z.boolean(),
-});
-export type RuntimeProjectStateNotifyResponse = z.infer<typeof runtimeProjectStateNotifyResponseSchema>;
-
 export const runtimeProjectsResponseSchema = z.object({
 	currentProjectId: z.string().nullable(),
 	projects: z.array(runtimeProjectSummarySchema),
@@ -116,7 +98,7 @@ export type RuntimeProjectDirectoryPickerFailureReason = z.infer<
 export const runtimeProjectDirectoryPickerResponseSchema = z.discriminatedUnion("ok", [
 	z.object({
 		ok: z.literal(true),
-		path: z.string(),
+		path: z.string().min(1),
 		outcome: z.literal("native"),
 	}),
 	z.object({

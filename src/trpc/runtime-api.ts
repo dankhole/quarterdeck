@@ -9,6 +9,7 @@ import type {
 	IRuntimeHostIntegrations,
 	TaskResourceOperationRunner,
 } from "../core";
+import type { ProjectTaskLifecycleService } from "../server/project-task-lifecycle-service";
 import type { TerminalSessionManager } from "../terminal";
 import type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
 import { handleLoadConfig } from "./handlers/load-config";
@@ -29,6 +30,7 @@ export interface CreateRuntimeApiDependencies {
 	taskResourceOperations: TaskResourceOperationRunner;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	hostIntegrations: IRuntimeHostIntegrations;
+	taskLifecycle?: Pick<ProjectTaskLifecycleService, "execute" | "getOperation">;
 }
 
 type RuntimeApi = RuntimeTrpcContext["runtimeApi"];
@@ -40,14 +42,16 @@ class RuntimeApiImpl implements RuntimeApi {
 
 	async loadConfig(projectScope: RuntimeTrpcProjectScope | null) {
 		return handleLoadConfig(projectScope, {
-			...this.deps,
+			config: this.deps.config,
 			runtimeCapabilities: this.deps.hostIntegrations.capabilities,
 		});
 	}
 
 	async saveConfig(projectScope: RuntimeTrpcProjectScope | null, input: unknown) {
 		return handleSaveConfig(projectScope, input, {
-			...this.deps,
+			config: this.deps.config,
+			broadcaster: this.deps.broadcaster,
+			getActiveProjectId: this.deps.getActiveProjectId,
 			runtimeCapabilities: this.deps.hostIntegrations.capabilities,
 		});
 	}
@@ -62,6 +66,23 @@ class RuntimeApiImpl implements RuntimeApi {
 		return handleStopTaskSession(projectScope, input, this.deps);
 	}
 
+	async executeTaskLifecycle(
+		projectScope: RuntimeTrpcProjectScope,
+		input: Parameters<ProjectTaskLifecycleService["execute"]>[1],
+	) {
+		if (!this.deps.taskLifecycle) {
+			throw new Error("Task lifecycle service is not configured.");
+		}
+		return await this.deps.taskLifecycle.execute(projectScope, input);
+	}
+
+	async getTaskLifecycleOperation(projectScope: RuntimeTrpcProjectScope, operationId: string) {
+		if (!this.deps.taskLifecycle) {
+			throw new Error("Task lifecycle service is not configured.");
+		}
+		return await this.deps.taskLifecycle.getOperation(projectScope, operationId);
+	}
+
 	async sendTaskSessionInput(projectScope: RuntimeTrpcProjectScope, input: unknown) {
 		return handleSendTaskSessionInput(projectScope, input, this.deps);
 	}
@@ -73,7 +94,7 @@ class RuntimeApiImpl implements RuntimeApi {
 	}
 
 	async openProject(projectScope: RuntimeTrpcProjectScope, input: unknown) {
-		return handleOpenProject(projectScope, input, this.deps);
+		return handleOpenProject(projectScope, input, { hostIntegrations: this.deps.hostIntegrations });
 	}
 
 	// ── Debug / utility ───────────────────────────────────────────────────

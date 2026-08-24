@@ -15,7 +15,9 @@ export async function handleSendTaskSessionInput(
 		const body = parseTaskSessionInputRequest(input);
 		const payloadText = body.appendNewline ? `${body.text}\n` : body.text;
 		const terminalManager = await deps.getScopedTerminalManager(projectScope);
-		const summary = terminalManager.writeInput(body.taskId, Buffer.from(payloadText, "utf8"));
+		const summary = terminalManager.writeInput(body.taskId, Buffer.from(payloadText, "utf8"), {
+			explicitUserSubmission: body.intent === "submit",
+		});
 		if (!summary) {
 			return {
 				ok: false,

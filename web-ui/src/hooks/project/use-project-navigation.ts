@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { notifyError, showAppToast } from "@/components/app-toaster";
-import { promptForManualProjectPath } from "@/hooks/project/project-navigation";
+import { resolveProjectDirectoryPickerDecision } from "@/hooks/project/project-navigation";
 import { preloadProjectState } from "@/runtime/project-preload-cache";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
@@ -14,7 +14,7 @@ import type {
 import type { TaskBaseRefUpdate, TaskTitleUpdate } from "@/runtime/use-runtime-state-stream";
 import { useRuntimeStateStream } from "@/runtime/use-runtime-state-stream";
 import { buildProjectPathname, parseProjectIdFromPathname } from "@/utils/app-utils";
-import { useWindowEvent } from "@/utils/react-use";
+import { useLoadingGuard, useWindowEvent } from "@/utils/react-use";
 import { toErrorMessage } from "@/utils/to-error-message";
 
 export { parseRemovedProjectPathFromStreamError } from "@/hooks/project/project-navigation";
@@ -23,12 +23,16 @@ interface UseProjectNavigationInput {
 	onProjectSwitchStart: () => void;
 }
 
+type ManualProjectPathPhase = "closed" | "editing";
+
 export interface UseProjectNavigationResult {
 	requestedProjectId: string | null;
 	navigationCurrentProjectId: string | null;
 	removingProjectId: string | null;
 	pendingGitInitializationPath: string | null;
 	isInitializingGitProject: boolean;
+	isManualProjectPathDialogOpen: boolean;
+	isAddingManualProject: boolean;
 	currentProjectId: string | null;
 	projects: RuntimeProjectSummary[];
 	projectState: RuntimeProjectStateResponse | null;
@@ -45,6 +49,8 @@ export interface UseProjectNavigationResult {
 	handleSelectProject: (projectId: string) => void;
 	handlePreloadProject: (projectId: string) => void;
 	handleAddProject: () => Promise<void>;
+	handleConfirmManualProjectPath: (path: string) => Promise<void>;
+	handleCancelManualProjectPath: () => void;
 	handleConfirmInitializeGitProject: () => Promise<void>;
 	handleCancelInitializeGitProject: () => void;
 	handleRemoveProject: (projectId: string) => Promise<boolean>;
@@ -63,6 +69,9 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 	const [removingProjectId, setRemovingProjectId] = useState<string | null>(null);
 	const [pendingGitInitializationPath, setPendingGitInitializationPath] = useState<string | null>(null);
 	const [isInitializingGitProject, setIsInitializingGitProject] = useState(false);
+	const [manualProjectPathPhase, setManualProjectPathPhase] = useState<ManualProjectPathPhase>("closed");
+	const { isLoading: isAddingManualProject, run: runManualProjectAdd } = useLoadingGuard();
+	const isManualProjectPathDialogOpen = manualProjectPathPhase !== "closed";
 
 	const {
 		currentProjectId,
@@ -128,33 +137,25 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		try {
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
 			const picked = await trpcClient.projects.pickDirectory.mutate();
-
-			let projectPath: string | null = null;
-			if (picked.ok) {
-				projectPath = picked.path;
-			} else if (!picked.ok && picked.reason === "cancelled") {
+			const decision = resolveProjectDirectoryPickerDecision(picked);
+			if (decision.kind === "cancelled") {
 				return;
-			} else if (
-				!picked.ok &&
-				(picked.reason === "native_ui_unavailable" || picked.reason === "launcher_unavailable")
-			) {
+			}
+			if (decision.kind === "failed") {
+				throw new Error(decision.message);
+			}
+
+			if (decision.kind === "manual_path") {
 				showAppToast({
 					intent: "warning",
 					icon: "warning-sign",
 					message: "Directory picker unavailable on this runtime. Enter the project path manually.",
 					timeout: 5000,
 				});
-				projectPath = promptForManualProjectPath();
-				if (!projectPath) {
-					return;
-				}
-			} else {
-				throw new Error(picked.error);
-			}
-			if (!projectPath) {
+				setManualProjectPathPhase("editing");
 				return;
 			}
-			await addProjectByPath(projectPath);
+			await addProjectByPath(decision.path);
 		} catch (error) {
 			const message = toErrorMessage(error);
 			showAppToast({
@@ -165,6 +166,36 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 			});
 		}
 	}, [addProjectByPath, currentProjectId]);
+
+	const handleConfirmManualProjectPath = useCallback(
+		async (path: string) => {
+			const normalizedPath = path.trim();
+			if (!normalizedPath || manualProjectPathPhase !== "editing") {
+				return;
+			}
+			await runManualProjectAdd(async () => {
+				try {
+					await addProjectByPath(normalizedPath);
+					setManualProjectPathPhase("closed");
+				} catch (error) {
+					showAppToast({
+						intent: "danger",
+						icon: "warning-sign",
+						message: toErrorMessage(error),
+						timeout: 7000,
+					});
+				}
+			});
+		},
+		[addProjectByPath, manualProjectPathPhase, runManualProjectAdd],
+	);
+
+	const handleCancelManualProjectPath = useCallback(() => {
+		if (isAddingManualProject) {
+			return;
+		}
+		setManualProjectPathPhase("closed");
+	}, [isAddingManualProject]);
 
 	const handleConfirmInitializeGitProject = useCallback(async () => {
 		if (!pendingGitInitializationPath || isInitializingGitProject) {
@@ -304,6 +335,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		setRemovingProjectId(null);
 		setPendingGitInitializationPath(null);
 		setIsInitializingGitProject(false);
+		setManualProjectPathPhase("closed");
 	}, []);
 
 	return {
@@ -312,6 +344,8 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		removingProjectId,
 		pendingGitInitializationPath,
 		isInitializingGitProject,
+		isManualProjectPathDialogOpen,
+		isAddingManualProject,
 		currentProjectId,
 		projects,
 		projectState,
@@ -328,6 +362,8 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		handleSelectProject,
 		handlePreloadProject,
 		handleAddProject,
+		handleConfirmManualProjectPath,
+		handleCancelManualProjectPath,
 		handleConfirmInitializeGitProject,
 		handleCancelInitializeGitProject,
 		handleRemoveProject,

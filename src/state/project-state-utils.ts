@@ -17,6 +17,7 @@ export const BOARD_FILENAME = "board.json";
 export const SESSIONS_FILENAME = "sessions.json";
 export const META_FILENAME = "meta.json";
 export const PINNED_BRANCHES_FILENAME = "pinned-branches.json";
+export const LIFECYCLE_OPERATIONS_FILENAME = "lifecycle-operations.json";
 
 export function getRuntimeHomePath(): string {
 	const override = process.env.QUARTERDECK_STATE_HOME;
@@ -71,6 +72,10 @@ export function getProjectMetaPath(projectId: string): string {
 
 export function getProjectPinnedBranchesPath(projectId: string): string {
 	return join(getProjectDirectoryPath(projectId), PINNED_BRANCHES_FILENAME);
+}
+
+export function getProjectLifecycleOperationsPath(projectId: string): string {
+	return join(getProjectDirectoryPath(projectId), LIFECYCLE_OPERATIONS_FILENAME);
 }
 
 export function getProjectIndexLockRequest(): LockRequest {

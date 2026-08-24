@@ -23,8 +23,7 @@ describe("createHooksApi — turn checkpoints", () => {
 
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			transitionToReview: vi.fn(() => transitionedSummary),
-			transitionToRunning: vi.fn(),
+			toReviewSummary: vi.fn(() => transitionedSummary),
 			applyHookActivity: vi.fn(),
 			applyTurnCheckpoint: vi.fn(),
 		});
@@ -62,20 +61,31 @@ describe("createHooksApi — turn checkpoints", () => {
 		});
 	});
 
-	it("applies hook activity before checkpoint capture on to_review transition", async () => {
+	it("applies hook metadata atomically before checkpoint capture on to_review transition", async () => {
 		const callOrder: string[] = [];
 		const transitionedSummary = createSummary({ state: "awaiting_review", reviewReason: "hook" });
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			transitionToReview: vi.fn(() => transitionedSummary),
-			transitionToRunning: vi.fn(),
-			applyHookActivity: vi.fn(() => {
-				callOrder.push("applyHookActivity");
-				return transitionedSummary;
-			}),
+			toReviewSummary: vi.fn(() => transitionedSummary),
+			applyHookActivity: vi.fn(),
 			applyTurnCheckpoint: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
+		});
+		vi.mocked(manager.applyHookTransition).mockImplementation((_taskId, event) => {
+			callOrder.push("applyHookTransition");
+			expect(event).toEqual(
+				expect.objectContaining({
+					type: "hook.to_review",
+					metadata: expect.objectContaining({ activityText: "Done with work" }),
+				}),
+			);
+			return {
+				changed: true,
+				patch: { state: "awaiting_review", reviewReason: "hook" },
+				clearAttentionBuffer: true,
+				summary: transitionedSummary,
+			};
 		});
 
 		const captureTaskTurnCheckpoint = vi.fn(async () => {
@@ -100,6 +110,7 @@ describe("createHooksApi — turn checkpoints", () => {
 			metadata: { hookEventName: "Stop", activityText: "Done with work", source: "claude" },
 		});
 
-		expect(callOrder).toEqual(["applyHookActivity", "captureTaskTurnCheckpoint"]);
+		expect(callOrder).toEqual(["applyHookTransition", "captureTaskTurnCheckpoint"]);
+		expect(mockStore(manager).applyHookActivity).not.toHaveBeenCalled();
 	});
 });
