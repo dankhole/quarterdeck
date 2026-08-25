@@ -128,3 +128,18 @@ Rules for the barrel:
 - Only re-export hooks and their named result/input interfaces. Do not re-export internal domain-module helpers — consumers that need those should import directly from the domain module file.
 - Keep entries alphabetized and grouped as `export type { ... }` followed by `export { ... }` per hook.
 - Do not add a top-level `src/hooks/index.ts` that re-exports across domains — cross-domain imports must name their domain.
+
+## Dialog dropdowns and remembered selections
+
+Radix dropdowns inside the new-task dialog use a dialog-local portal container and non-modal dropdown behavior (`modal={false}`). The task harness selector is the reference implementation.
+
+Remembered harness selection must not create a second React render-state source while the dialog is open. Keep the visible value in draft state, persist the last selection directly to storage, retain only a non-rendering in-session fallback for storage failures, and resolve storage or fallback defaults only when opening or resetting the draft.
+
+## Shortcut terminology
+
+Quarterdeck has two unrelated shortcut systems:
+
+- **Project shortcuts** (`RuntimeProjectShortcut`, `useShortcutActions`) run terminal commands in the dev shell from the top bar. They are project-scoped and use `appendNewline: true`.
+- **Prompt shortcuts** (`PromptShortcut`, `usePromptShortcuts`) inject agent prompts from sidebar Review cards. They are global and use paste mode plus auto-submit.
+
+Keep their types, persistence, and execution paths distinct.

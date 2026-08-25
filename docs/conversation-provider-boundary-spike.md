@@ -1,6 +1,6 @@
 # Conversation Provider Boundary Spike
 
-Status: Decision A completed on 2026-08-24; P2B is unblocked. Decision B remains a separately authorized P3 experiment. No provider integration, task handoff, remote listener, authentication, or mobile UI is implemented by this document.
+Status: Decisions A and B completed on 2026-08-24. P2B is unblocked, and the separately authorized ownership experiment established the constraints for a future P3 implementation. No provider integration, task handoff, remote listener, authentication, or mobile UI is implemented on `main` by these decision records.
 
 This document is the self-contained handoff for deciding how Quarterdeck should read recent Claude Code and Codex conversations and, separately, whether a future mobile interaction service should take exclusive execution ownership from the native desktop TUI.
 
@@ -25,9 +25,9 @@ The interfaces are useful for structured execution, but the read experiments fou
 The spike records two separate outcomes:
 
 - **Decision A — P2 read source:** use bounded raw provider-history parsing for both Claude Code and Codex. The service owns exact-session resolution, canonical containment, resource limits, stable normalization, and typed degradation.
-- **Decision B — future P3 execution ownership:** not decided. The unauthenticated spike proved protocol and exact-session read properties, but a native-TUI -> authenticated structured turn -> native-TUI round trip requires real provider execution. That experiment needs separate authorization and credential isolation and does not block P2B.
+- **Decision B — future P3 execution ownership:** supported with documented constraints for both providers. Authenticated native-TUI -> structured owner -> native-TUI round trips preserved exact Claude and Codex session identity, durable lineage, and single-writer stop/wait ordering; production still requires a durable coordinator and compatibility gates.
 
-Decision A unblocks P2B. Until Decision B is proven, Quarterdeck preserves the native TUI as the only execution owner; P2B is strictly read-only.
+Decision A unblocks P2B. Decision B unblocks the separately scoped P3 ownership implementation, but does not add it; P2B remains strictly read-only and independent of execution ownership.
 
 Live structured events may later accelerate an already-active structured owner, but they are not the durable read source and must not become a second Quarterdeck-owned transcript.
 
@@ -634,7 +634,7 @@ Do not copy historical release notes or mark P2 complete merely because the old 
 - Quarterdeck provider minimums: Claude Code `2.1.198`, Codex `0.142.5`
 - Claude Code versions examined: minimum `2.1.198` package/native binary and installed `2.1.224`
 - Claude Agent SDK examined: `@anthropic-ai/claude-agent-sdk@0.3.241`, which reports bundled Claude Code `2.1.241`
-- Codex versions exercised: `0.142.5` and `0.149.0`
+- Codex versions exercised: `0.142.5`, `0.149.0`, and authenticated native/app-server `0.149.1`
 - Generated Codex app-server schemas: standard and `--experimental` schemas from `0.142.5` and `0.149.0`
 - Codex implementation source examined: official `rust-v0.142.5` and `rust-v0.149.0` tags
 
@@ -681,17 +681,15 @@ P2B should parse `session_meta` for exact identity and `response_item` message r
 
 ### Decision B — P3 execution ownership
 
-- Claude strategy: unresolved; preserve the native Claude TUI as execution owner until an authorized exact-session Agent SDK round trip is proven.
-- Codex strategy: unresolved; preserve the native Codex TUI as execution owner until an authorized exact-thread app-server round trip is proven.
-- Single-owner state model, if later selected: `native_tui -> handoff_to_structured_pending -> structured -> handoff_to_native_pending -> native_tui`, with one durable owner, exact process/session fencing, and confirmed stop-and-wait on both transitions.
-- Mid-turn handoff policy for the future experiment: reject by default; separately test a user-requested interrupt-and-wait path. Never attach a structured writer concurrently.
-- Handback policy for the future experiment: stop the exact structured runner, wait for confirmed exit, then target the same provider session ID under the frozen native launch configuration.
-- Restart/recovery policy: not selected; P3 must prove recovery reconstructs one owner without automatic best-effort/latest fallbacks.
+- Claude strategy: **supported with documented constraints** through exact-session Agent SDK ownership and exact native handback.
+- Codex strategy: **supported with documented constraints** through exact-thread stdio app-server ownership and exact native handback.
+- Single-owner state model: `native_tui -> handoff_to_structured_pending -> structured -> handoff_to_native_pending -> native_tui`, with one durable owner, exact process/session/profile fencing, idempotent operation IDs, and confirmed stop-and-wait on both transitions.
+- Mid-turn handoff policy: reject by default; an explicit interrupt-and-wait path must target the current provider turn, await terminal resolution, reread durable history, and only then replace the owner. Never attach a structured writer concurrently.
+- Handback policy: stop the exact structured runner, wait for confirmed exit, then target the same provider session ID under the frozen native launch configuration.
+- Restart/recovery policy: reconstruct one owner from durable identity and generation state. A crash after provider turn acceptance is `turn_outcome_unknown`; reread and handback are allowed, automatic prompt replay is not.
 - Unsupported/degraded provider behavior: refuse conversion provider-by-provider. Do not weaken exact-session or single-writer rules to claim parity.
 
-The no-credential Codex experiments proved protocol initialization, schema/version behavior, exact-thread paging, process restart reads, and persisted ID behavior. They did not produce an authenticated assistant turn or native-to-structured-to-native round trip. Claude's SDK source and types established the candidate APIs but likewise did not establish launch-option, hook, tool, MCP, permission, cwd, or handback parity.
-
-That remaining experiment necessarily sends purpose-created prompts through authenticated provider services. Repository instructions prohibit copying or silently reusing real credentials in disposable state. Decision B therefore remains intentionally auth-gated and does not block P2B. A follow-up must obtain explicit authorization, define credential isolation and artifact redaction first, use a disposable project/session, test both providers, and record provider cost/network effects. Until then, “convert to mobile task” is a viable product hypothesis, not an implementation commitment.
+The authenticated follow-up used isolated synthetic projects and provider histories, inherited Bedrock authentication for Claude, and an OS-Keychain Codex login scoped to one disposable `CODEX_HOME`; no credential value or file was copied. Both providers passed native-to-structured-to-native exact-session handoff, process reconstruction, interrupt, killed-runner handback, append-only identity stability, and live question identity. Codex also passed a declined command-approval request. Configuration parity, compaction, every approval subtype, and future provider-format changes remain explicit compatibility gates. Full evidence and reproduction templates are in [`remote-task-ownership-handoff-spike-results.md`](./remote-task-ownership-handoff-spike-results.md).
 
 ### Validation performed
 
@@ -703,11 +701,12 @@ That remaining experiment necessarily sends purpose-created prompts through auth
 - Confirmed all isolated app-server processes were stopped. Temporary evidence remained under `/private/tmp/quarterdeck-provider-spike.<suffix>/`; it contains no Quarterdeck/user runtime state or credentials and is not a committed artifact.
 - Agent Lab run ID: not used. The spike made no production code or desktop behavior change, and authenticated native-TUI handoff was outside the authorized experiment.
 - Known limitations: Claude `2.1.198` was inspected and version-checked but did not create an authenticated transcript; no authenticated assistant turn or native/structured/native round trip was run; compaction, malformed tails, containment, and limit enforcement remain production fixture/test obligations in P2B rather than claims established by the interface spike.
+- Separately authorized follow-up: authenticated Claude `2.1.224`/Agent SDK `0.3.241` and Codex `0.149.1` native/structured/native handoff evidence completed Decision B. The content-free safety and validation record is in the ownership-handoff results document.
 
 ### Gate result
 
 - Decision A ready for P2B: yes.
-- Decision B ready for P3 implementation: no; separately authorized authenticated handoff evidence is still required.
+- Decision B ready for P3 implementation: yes, provider-by-provider with the documented compatibility and single-writer constraints.
 - Recorded by: architecture spike, 2026-08-24.
 
 ## Handoff Checklist
@@ -725,4 +724,4 @@ A fresh agent implementing P2B should proceed in this order:
 9. Update release documentation only when the P2B exit gate is genuinely satisfied.
 10. Run the complete P2B validation, isolated Agent Lab regression, and final read-only branch review required above before committing the implementation.
 
-Decision A is complete because another engineer can reproduce the evidence, understand why bounded raw history was selected, and implement P2B without reopening its read-source question. Decision B remains a deliberately separate P3 gate because safe task conversion cannot be inferred from read behavior.
+Decision A is complete because another engineer can reproduce the evidence, understand why bounded raw history was selected, and implement P2B without reopening its read-source question. Decision B is also complete as an evidence gate, but production P3 remains separate because safe task conversion still requires the durable ownership coordinator, provider-specific compatibility gates, and single-writer recovery design.

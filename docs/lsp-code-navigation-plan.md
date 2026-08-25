@@ -1,5 +1,7 @@
 # Bring-Your-Own LSP Code Navigation Plan
 
+Status: planned; no LSP runtime or Files-view integration has been implemented.
+
 ## Goal
 
 Add source-level navigation to Quarterdeck's Files view without bundling language servers or turning Quarterdeck into a package manager. Users bring their own Language Server Protocol (LSP) executables, and Quarterdeck provides the generic client, lifecycle management, editor integration, and results UI.

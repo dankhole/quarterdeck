@@ -8,7 +8,7 @@ This follows the usual split a small engineering team would want:
 - `DEVELOPMENT.md` is the human-facing developer guide for local commands, workflow, and repo orientation.
 - `docs/` holds stable onboarding and architecture references for humans.
 - `AGENTS.md` is the canonical repo-owned shared agent-instructions file. `CLAUDE.md` is only a Claude Code compatibility shim that imports it.
-- Completed plans, handoffs, and deeper investigation context belong in tracked `docs/history/`, not in the active docs map.
+- Superseded implementation plans and investigation context belong in tracked `docs/history/`, not in the active docs map. Completed decision records that still constrain active, unimplemented work remain here until that downstream work lands.
 
 If you are new to the codebase, read these in order:
 
@@ -33,10 +33,14 @@ Use this map when you are planning or evaluating refactor work.
 - Start here for current refactor status: [`todo.md`](./todo.md).
 - [`todo.md`](./todo.md): active engineering backlog, including currently tracked refactor work.
 - [`remote-companion-plan.md`](./remote-companion-plan.md): behavior-preserving prerequisites and phased implementation plan for the text-only mobile remote companion.
-- [`conversation-provider-boundary-spike.md`](./conversation-provider-boundary-spike.md): completed P2 read-source evidence and limits, plus the still-auth-gated native/structured P3 execution-ownership question.
-- [`task-lifecycle-reliability-plan.md`](./task-lifecycle-reliability-plan.md): durable lifecycle-operation and revisioned project-summary design required before continuing remote-access prerequisites.
+- [`claude-terminal-rendering-plan.md`](./claude-terminal-rendering-plan.md): implemented default-off fullscreen experiment and its remaining interactive dogfood and rollout gates.
 - [`lsp-code-navigation-plan.md`](./lsp-code-navigation-plan.md): plan for bring-your-own language server code navigation in the Files editor.
-- [`conventions/architecture-guardrails.md`](./conventions/architecture-guardrails.md): reusable design rules for preventing optimization-shaped architecture.
+
+### Active decision records and rollout gates
+
+- [`conversation-provider-boundary-spike.md`](./conversation-provider-boundary-spike.md): completed P2 read-source decision and evidence that still constrain the unimplemented P3 execution-owner work.
+- [`remote-task-ownership-handoff-spike-results.md`](./remote-task-ownership-handoff-spike-results.md): authenticated native/structured/native handoff evidence, provider gates, and the required P3 single-writer design.
+- [`task-lifecycle-reliability-plan.md`](./task-lifecycle-reliability-plan.md): implemented lifecycle-operation and revisioned project-summary design; retained while its final live-runtime release-confidence dogfood remains.
 
 ### Live architecture and implementation guidance
 
@@ -47,6 +51,15 @@ Use this map when you are planning or evaluating refactor work.
 - [`conventions/frontend-hooks.md`](./conventions/frontend-hooks.md): domain-module extraction pattern for frontend hooks and services.
 - [`conventions/web-ui.md`](./conventions/web-ui.md): frontend conventions and hooks architecture guidance.
 - [`conventions/ui-layout.md`](./conventions/ui-layout.md): UI region names, shell layout ownership, and main-view/sidebar rules.
+- [`conventions/runtime-state.md`](./conventions/runtime-state.md): durable board ownership, command receipts, authoritative browser hydration, runtime projections, notifications, and task-indicator semantics.
+- [`conventions/session-lifecycle.md`](./conventions/session-lifecycle.md): task-session stop/resume/recovery, reconciliation, PTY and restore identity, provider hooks, input semantics, and launch boundaries.
+- [`conventions/architecture-guardrails.md`](./conventions/architecture-guardrails.md): reusable design rules for preventing optimization-shaped architecture.
+
+### Maintenance references
+
+- [`upstream-sync.md`](./upstream-sync.md): living review tracker for ideas and fixes evaluated from the diverged `cline/kanban` upstream.
+- [`../RELEASE_WORKFLOW.md`](../RELEASE_WORKFLOW.md): version, changelog, validation, tag, and publish process.
+- [`../SECURITY.md`](../SECURITY.md): vulnerability reporting and supported security boundary.
 
 ### Forensic history
 

@@ -11,8 +11,9 @@ For commands and operator workflow, see [Unified diagnostics](../DEVELOPMENT.md#
 - Deep recording is explicit, scoped, automatically expires within 15 minutes, and remains content-safe. Rich terminal, Git, screenshot, and trace evidence is limited to the synthetic Agent Lab profile.
 - Subsystems expose bounded, metadata-only snapshot providers beside their existing state owner. Diagnostics observes those owners; it does not become a second state store or repair path.
 - Explicit capture is the durable evidence boundary. A bundle flushes and merges the rotating journal with the memory tail, adds read-only doctor findings and provider snapshots, and records hashes in its manifest.
+- Journal write failure retains a bounded pending queue and schedules capped retry without waiting for another event. The smaller memory ring and record-only filtering are not substitutes for the scoped durable bundle.
 - Diagnostic reads must not connect as a board client, write project state, attach or resize a PTY, refresh Git, or repair runtime state.
-- Live browser delivery is a replaceable projection for the open Diagnostics panel, not the recorder. Backpressure drops diagnostic traffic before primary runtime-state traffic.
+- Live browser delivery is a replaceable projection for the open Diagnostics panel, not the recorder. Only the exact connection capability with the panel open subscribes; closing or revoking it unsubscribes, and browser refresh hydrates a bounded canonical tail explicitly rather than seeding every board WebSocket. Backpressure drops diagnostic traffic before primary runtime-state traffic.
 - Production compatibility logs remain content-free even at warning and error levels. Prefer structured, bounded metadata and validated error classes over arbitrary logger payloads or thrown messages.
 
 ## Operator entry points

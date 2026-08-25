@@ -4,8 +4,8 @@ Quarterdeck is a local Node runtime plus a React app for running many coding-age
 
 There are two big ideas to hold in your head:
 
-1. The browser is mostly a control surface. It renders state, sends commands, reacts to live updates, and owns durable board writes.
-2. The local runtime is the source of truth for project registration, worktrees, sessions, git operations, and streaming state.
+1. The browser is mostly a control surface. It renders state, submits typed commands, applies optimistic presentation, and reacts to live updates.
+2. The local runtime is the source of truth for durable board state, project registration, worktrees, sessions, git operations, and streaming state.
 
 All agents (Claude Code, Codex, etc.) run as PTY-backed CLI processes.
 
@@ -285,6 +285,11 @@ These are the architectural rules that are most important to preserve.
 - treat the browser as a client of streamed runtime state, not the source of truth for long-running sessions
 - treat the browser as an optimistic command client, never a durable board writer
 - when adding new agent behavior, prefer capability-oriented reasoning over agent-specific branching
+
+Detailed invariants for the highest-risk state paths live in:
+
+- [`conventions/runtime-state.md`](./conventions/runtime-state.md) for durable board ownership, command receipts, authoritative hydration, projections, notifications, indicators, and automatic titles; and
+- [`conventions/session-lifecycle.md`](./conventions/session-lifecycle.md) for stop/resume/recovery, reconciliation, PTY identity, terminal restore, native hooks, input semantics, and launch boundaries.
 
 ## Common Change Guide
 

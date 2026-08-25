@@ -9,7 +9,7 @@ Implementation progress as of 2026-08-24:
 - The lifecycle reliability gate is implemented. `ProjectTaskLifecycleService` now owns durable start/trash/restore/stop/restart/delete operations, replays them through a bounded journal, targets exact process instances, separates trash archive from permanent purge, and is the desktop task-lifecycle boundary. Project counts now carry and merge by authoritative board revision.
 - The local interaction seam now requires explicit submit intent independently of terminal bytes, hook transitions publish state plus metadata atomically, and all host-native UI crosses one launch-capability-gated service so browserless/test runtimes fail closed. These harden future adapters but are not the remote-safe `TaskInteractionService`: the existing input procedure remains a generic local PTY write and must never be mounted on the remote gateway.
 - Agent Lab now runs with native UI disabled and a separate simulated host-integration mode, records sanitized semantic host outcomes, and captures automatic unified diagnostic bundles. It is the isolated regression carrier for the existing desktop UI and future mobile-width presentation work. It complements, but does not replace, the P5 no-browser internal-service harness.
-- The P2A provider-boundary evidence spike is complete. Claude Agent SDK limits and Codex app-server legacy pagination do not bound source work, so P2B will use one server-owned bounded raw-history strategy for both providers. The separately proposed native/structured execution handoff remains an auth-gated P3 hypothesis and does not block read-only P2B.
+- The P2A provider-boundary evidence spike is complete. Claude Agent SDK limits and Codex app-server legacy pagination do not bound source work, so P2B will use one server-owned bounded raw-history strategy for both providers. The separately authorized native/structured experiment subsequently proved constrained exact-session handoff for both providers; it informs P3 and does not block or change read-only P2B.
 - No remote listener was added by this work. The next prerequisite is P2B: implement the bounded provider-neutral recent-conversation read service. Later prerequisites remain the idempotent structured task-interaction service, strict remote projections, and the browserless acceptance harness.
 
 ## Decision Summary
@@ -328,7 +328,7 @@ The original P2 assumed Quarterdeck would parse provider JSONL directly. The spi
 P2A records two separate outcomes:
 
 1. **P2 read source — decided:** bounded backward reads of the exact Claude transcript or Codex rollout, with a shared server-owned source/security/resource boundary.
-2. **Future P3 execution ownership — not decided:** preserve native TUI ownership until a separately authorized authenticated native-to-structured-to-native experiment proves exact-session, launch-parity, and single-writer safety for both providers.
+2. **Future P3 execution ownership — decided with provider constraints:** authenticated exact-session native-to-structured-to-native handoff succeeded for Claude Agent SDK and Codex stdio app-server. P3 must implement the documented durable single-writer coordinator, configuration manifest, compatibility gates, and crash-ambiguity policy before enabling conversion.
 
 Only the first decision blocks P2B. The ownership-handoff decision informs P3 and must not turn P2B into a lifecycle rewrite.
 
@@ -339,7 +339,7 @@ Structured live JSON is not sufficient durable history. It can accelerate update
 - The decision record contains reproducible isolated Claude/Codex evidence, exact versions, rejected alternatives, limits, source/identity rules, and known assumptions.
 - P2B uses bounded raw JSONL tail reads; it does not interpret an official API's result limit as a source-work limit.
 - Default/hard message counts are 10/24. Aggregate reads are limited to 4 MiB, 4,096 records, 10,000 source-lookup directory entries, a two-second deadline, 32 KiB per normalized message, 128 KiB per result, and 2 KiB of content-free diagnostics.
-- Native-to-structured-to-native handoff is explicitly recorded as unproven and auth-gated for P3. It is not hidden inside the P2 exit gate.
+- Native-to-structured-to-native handoff remains separate from P2, but its authenticated provider evidence is complete and permits the constrained P3 implementation described in [`remote-task-ownership-handoff-spike-results.md`](./remote-task-ownership-handoff-spike-results.md).
 - P2B is the next prerequisite.
 
 ## P2B. Land the Provider-Neutral Recent Conversation Read Boundary
@@ -465,7 +465,7 @@ This service should:
 
 ### Message delivery
 
-P2A's ownership-handoff evidence must be resolved before selecting the P3 delivery strategy. The service may ultimately deliver through a safely addressable native TUI, or it may first transfer exclusive execution ownership to a structured Claude Agent SDK/Codex app-server runner. Neither choice makes the mobile renderer a terminal.
+The completed ownership-handoff evidence establishes exclusive structured ownership as a supported provider-specific P3 delivery strategy. The service may deliver through a safely addressable native TUI where a typed operation exists, or transfer ownership to a structured Claude Agent SDK/Codex app-server runner. Neither choice makes the mobile renderer a terminal.
 
 Delivery belongs behind an agent/session interaction adapter so provider differences do not leak into clients. Depending on current session state, an adapter may:
 
@@ -822,7 +822,7 @@ Slack is not equivalent to the private mobile web client: message text would ent
 ## Rollout Rules
 
 - Keep remote access default-off until the security and browserless acceptance gates pass.
-- Complete and record the P2A provider-boundary spike before choosing production conversation adapters or P3 delivery ownership.
+- Preserve the completed P2A read-source and P3 ownership evidence records when choosing production conversation adapters or delivery ownership.
 - Land prerequisite phases separately from remote networking so regressions can be bisected.
 - Prefer service-first boundaries and fixture-based tests before adding remote UI state.
 - Do not run old and new persisted board writers simultaneously.
@@ -847,7 +847,7 @@ Slack is not equivalent to the private mobile web client: message text would ent
 | Mobile write/create UI | Medium | Idempotency, stale targets, high-impact commands |
 | E2E relay/push | Very large | Cryptographic lifecycle, metadata, compatibility |
 
-The board command authority was the biggest prerequisite ownership cutover. The immediate uncertainty is whether current official provider session APIs satisfy bounded recent reads and exact reversible handoff; resolve that through evidence before provider adapters become architecture. The renderer itself is comparatively straightforward once those boundaries are correct.
+The board command authority was the biggest prerequisite ownership cutover. The evidence now selects bounded provider-history reads for P2B and constrains exact reversible ownership handoff for P3; the remaining work is implementing those boundaries without weakening their resource, identity, and single-writer guarantees. The renderer itself is comparatively straightforward once those boundaries are correct.
 
 ## Open Product Decisions
 
@@ -855,7 +855,7 @@ These do not block P0 and P1, but must be resolved before their associated remot
 
 1. Confirm the practical content promise: original user/assistant text may contain repository-derived content.
 2. Decide whether branch names are on by default or a per-project/device option.
-3. After the P2A evidence spike, select the P3 execution-ownership model: safe interaction with a native owner, or explicit native/structured ownership handoff. Then decide whether v1 allows steering an already-running turn or returns “not ready.”
+3. Using the completed ownership evidence, select when P3 uses safe interaction with a native owner versus explicit native/structured ownership handoff. Then decide whether v1 permits the separately tested interrupt-and-wait path or initially returns “not ready” for an already-running turn.
 4. Define the mobile-approved agent/task presets and whether a paired device may choose among all locally enabled agents.
 5. Choose the first supported reachability model: private VPN/SSH only, or authenticated HTTPS behind an explicit reverse proxy.
 6. Decide whether answering a permission prompt requires recent reauthentication in addition to possession of a paired session.

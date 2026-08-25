@@ -66,6 +66,8 @@ The Chromium build lives under Git's common directory at `.git/quarterdeck/agent
 
 Each task worktree still needs its own root and web UI npm dependencies to invoke Agent Lab. Do not restore shared `node_modules` links to avoid that local bootstrap.
 
+Mutable installed-dependency directories must never be mirrored into task worktrees. If a legacy dependency symlink already exists, unlink only the symlink at the worktree path. Never follow it, mutate its target, or automatically delete a real task-owned dependency directory.
+
 ## Lifecycle commands
 
 Start a detached run and ask for machine-readable discovery data:
@@ -154,6 +156,26 @@ The interactive protocol includes `/needs-input`, `/working`, `/review`, `/write
 ## Automated regression suite
 
 `npm run web:e2e` uses the same supervisor and allocates dynamic loopback ports before Playwright loads its configuration. CI can still pin them with `QUARTERDECK_E2E_RUNTIME_PORT` and `QUARTERDECK_E2E_WEB_PORT` when its runner requires explicit ports. Playwright Test blocks non-loopback page requests, attaches browser console/network logs, and retains screenshots, video, and traces on failure. Functional smoke paths assert the startup host-URL simulation while ordinary links remain browser-contained, Open in IDE, config-file opening, notification audio, in-memory clipboard write/read through xterm, Add Project's manual fallback, the unified Diagnostics panel, and a task lifecycle through Review. Shutdown verifies the forbidden-launch log stays empty.
+
+## Lifecycle regression classes
+
+Browser reconnect and runtime cold restart are different tests. A reconnect does not exercise persisted-session hydration, stale-PID correction, startup recovery, or initial project-pill classification. For those changes, run the deterministic cold-start state-matrix and integration tests, including an unproven legacy `attention` record with a stale durable recovery flag, then use:
+
+```bash
+npm run --silent agent:lab -- restart-runtime <run-id> --mode graceful --json
+```
+
+This preserves disposable state, the web process, and the browser while replacing only the runtime. Leave the affected project inactive before restart, then verify its cards, notifications, and project pills before selecting it.
+
+State-projection dogfood has three phases:
+
+1. Assert static board columns, project pills, and notifications for ordinary Review and genuine Needs Input tasks. Review is the full column count and Needs Input overlaps it, so three Review cards with one blocked task display `R 3 · NI 1`.
+2. Submit a new turn or response, wait for the authoritative transition to Running, and assert all three projections after switching away and back.
+3. Send bare Escape or Ctrl-C to a synthetic Running task, wait past interrupt recovery, and require Review/Interrupted without any Needs Input card, pill, notification, or sound.
+
+A static startup screenshot does not cover transition convergence, notification clearing, or false-positive attention after interruption.
+
+Bulk lifecycle dogfood uses the multi-task dialog to create and start at least four synthetic tasks spanning idle/Running, ordinary Review, genuine Needs Input, and deterministic failure while automatic titles are enabled. Assert every requested identity persists, no lifecycle revision-conflict toast appears, and final cards, pills, notifications, and persisted evidence agree.
 
 ## Failure reports
 

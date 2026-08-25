@@ -298,29 +298,32 @@ Internal runtime session states are named `running` and `awaiting_review`, and h
 
 How it works end to end:
 
-1. `prepareAgentLaunch` wires each agent with hook commands or hook-aware wrappers.
+1. `prepareAgentLaunch` installs a launch-scoped hook configuration for the selected agent. Claude receives a Quarterdeck-owned settings file; Codex receives inline `-c hooks...` configuration, the native `hooks` feature flag, and matching launch-scoped trust entries. Quarterdeck does not modify repository or user-global Codex hook files.
 2. Hook handlers call `quarterdeck hooks ...` subcommands.
-3. `quarterdeck hooks ingest --event <to_review|to_in_progress>` reads hook context from env:
+3. `quarterdeck hooks ingest --event <to_review|to_in_progress|activity>` reads process identity from env:
    - `QUARTERDECK_HOOK_TASK_ID`
    - `QUARTERDECK_HOOK_PROJECT_ID`
-   - `QUARTERDECK_HOOK_PORT`
-4. The ingest command calls runtime TRPC `hooks.ingest`.
-5. The runtime applies guarded transitions and ignores duplicates or invalid transitions as no-ops.
+   - `QUARTERDECK_HOOK_SESSION_INSTANCE_ID`
+4. State transitions use the reliable `ingest` path with a bounded retry and durable replay outbox. High-frequency metadata-only activity can use the short, best-effort `notify` path.
+5. The runtime validates task, project, session-instance, and hook ordering identity, then applies state and hook metadata through the session transition owner. Duplicate, stale, or invalid transitions are ignored safely.
 
 Current agent mappings:
 
 - Claude
-  - `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure` emit `to_in_progress`
-  - `Stop`, `PermissionRequest`, and `Notification` with `permission_prompt` emit `to_review`
+  - prompt submission, tool completion/failure, and elicitation response emit `to_in_progress`
+  - permission/input waits, plan or user questions, elicitation, and root turn completion/failure emit `to_review`
+  - session identity, tool starts, subagent activity, compaction, and ordinary notifications emit metadata-only `activity`
 - Codex
-  - wrapper enables TUI session logging and maps:
-    - `task_started` and `exec_command_begin` to `to_in_progress`
-    - `*_approval_request` to `to_review`
-  - Codex `notify` completion path also emits `to_review`
+  - prompt submission, tool completion, and manual compaction start emit `to_in_progress`
+  - native permission requests, manual compaction completion, and root `Stop` emit `to_review`
+  - session identity and tool starts emit metadata-only `activity`; a narrow rendered-screen detector covers nested approval overlays that do not produce the native permission hook
 
 Important behavior details:
 
-- Hooks are best-effort and should not crash or block the underlying agent process.
-- Hook notify paths are asynchronous to keep agent UX responsive.
-- Runtime transition guards are authoritative and prevent state flapping from duplicate events.
+- Hook activity is best-effort, but state transitions are delivered reliably enough to avoid leaving cards stuck after a transient runtime request failure.
+- Session-start hooks capture resumable provider identity without changing task state.
+- Runtime transition guards remain authoritative and prevent stale hooks or redraws from flapping state.
+- Terminal output is not work-state truth. Fix missed state at the hook, identity, or ordering layer rather than adding output-volume or timestamp heuristics.
 - Hook transport is implemented in Node and invoked through `quarterdeck hooks ...`, so the behavior is consistent across Windows and non-Windows environments.
+
+See [`docs/conventions/session-lifecycle.md`](./docs/conventions/session-lifecycle.md) before changing hook mappings, transition ownership, resume identity, or approval fallbacks.

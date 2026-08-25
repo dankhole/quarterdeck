@@ -1,185 +1,115 @@
-This file captures tribal knowledge-the nuanced, non-obvious patterns that make the difference between a quick fix and hours of debugging.
-When to add to this file:
-- User had to intervene, correct, or hand-hold
-- Multiple back-and-forth attempts were needed to get something working
-- You discovered something that required reading many files to understand
-- A change touched files you wouldn't have guessed
-- Something worked differently than you expected
-- User explicitly asks to add something
-Proactively suggest additions when any of the above happen-don't wait to be asked.
-What NOT to add: Stuff you can figure out from reading a few files, obvious patterns, or standard practices. This file should be high-signal, not comprehensive.
+# Quarterdeck Agent Instructions
 
----
+`AGENTS.md` is the canonical repo-owned shared agent-instructions file. Keep `CLAUDE.md` as a tiny Claude Code compatibility shim that imports `@AGENTS.md`; do not duplicate shared rules or project documentation there. Human-facing setup, architecture, and developer guidance belongs in `README.md`, `DEVELOPMENT.md`, or `docs/`.
 
-Agent instruction files
-- `AGENTS.md` is the canonical repo-owned instructions file shared across agents.
-- Keep shared agent instructions only in `AGENTS.md`. Do not maintain parallel instruction copies in `CLAUDE.md` or other agent-specific files.
-- `CLAUDE.md` exists only as a minimal Claude Code compatibility shim: it should import `@AGENTS.md`, keep any Claude-only notes clearly marked, and stay intentionally tiny.
-- Human-facing project overview, setup, architecture, and developer-guide content belongs in `README.md`, `DEVELOPMENT.md`, or `docs/`, not in `CLAUDE.md`.
-- When updating the instruction-file bridge, run `npm run check:agent-instructions` (or `npm run check`) to catch shim drift.
+This file contains universal rules and routes specialized work to the smallest relevant reference. Read a routed document before changing that area; do not bulk-read unrelated convention or history documents.
 
-TypeScript principles
-- No any types unless absolutely necessary.
-- Check node_modules for external API type definitions instead of guessing.
-- Prefer SDK-provided types, schemas, helpers, and model metadata over local redefinitions.
-- NEVER use inline imports. No await import("./foo.js"), no import("pkg").Type in type positions, and no dynamic imports for types. Always use standard top-level imports.
-- NEVER remove or downgrade code to fix type errors from outdated dependencies. Upgrade the dependency instead.
+## Maintaining these instructions
 
-Code quality
-- Write production-quality code, not prototypes
-- Break components into small, single-responsibility files. 
-- Extract shared logic into hooks and utilities. 
-- Prioritize maintainability and clean architecture over speed. 
-- Follow DRY principles and maintain clean architecture with clear separation of concerns.
-- Before adding custom utility code, evaluate whether a well-maintained third-party package can reduce complexity and long-term maintenance cost.
+Add high-signal guidance when an issue required user correction, several failed attempts, a non-obvious cross-file investigation, or behavior that contradicted reasonable expectations. Record durable architecture and forensic detail in the relevant project document; keep only the universal rule or routing trigger here. Do not add routine facts discoverable from a few files.
 
-Architecture opinions
-- Avoid thin shell wrappers that only forward props or relocate JSX for a single call site.
-- Prefer extracting domain logic (state, effects, async orchestration) over presentation-only pass-through layers.
-- Do not optimize for line count alone. Optimize for codebase navigability and clarity.
+When changing the instruction bridge, run `npm run check:agent-instructions` or `npm run check`.
 
-Agent support status
-- Claude Code and Codex are Quarterdeck's supported forward-looking task-agent targets.
-- The existing Pi integration is legacy and experimental. Do not treat Pi as supported or include it in new features, architectural contracts, compatibility matrices, release promises, or routine dogfood gates unless the user explicitly requests Pi work.
-- Preserve existing Pi behavior when a shared change touches it incidentally and doing so is low-risk, but do not expand the integration or let Pi compatibility block work for Claude Code and Codex.
+## Core engineering rules
 
-Documentation lookup cheat sheet
-- Read the area-specific docs when you enter that area; do not bulk-read every convention doc by default.
-- `docs/conventions/web-ui.md`: read before frontend work in `web-ui` for stack, design tokens, UI primitives, Radix gotchas, dialog suppression, dark theme, and hook directory rules.
-- `docs/conventions/frontend-hooks.md`: read when extracting hook/domain logic, changing provider/context contracts, or applying the frontend domain-module pattern.
-- `docs/conventions/ui-layout.md`: read before adding or modifying main views, sidebar panels, toolbar tabs, task-detail layout routing, or surface-navigation behavior.
-- `docs/conventions/architecture-guardrails.md`: read when adding caching, batching, retry, preload, recovery, lifecycle policy, or any clever behavior that could start defining the architecture.
-- `docs/todo.md`: read when choosing, reprioritizing, or touching active architecture refactor backlog items.
-- `docs/history/task-state-system-stale.md`: historical task/session state context only; verify against current code before relying on it.
+### TypeScript
 
-Git guardrails
-- NEVER commit unless user asks.
+- Avoid `any` unless no sound alternative exists.
+- Inspect installed dependency types instead of guessing external APIs. Prefer SDK-provided types, schemas, helpers, and model metadata over local redefinitions.
+- Use standard top-level imports. Never use dynamic imports for types, `await import("./foo.js")`, or `import("pkg").Type` type positions.
+- Never remove or downgrade working code to accommodate stale dependency types; upgrade the dependency.
 
-GitHub issues
-When reading issues:
-- Always read all comments on the issue.
-- Use this command to get everything in one call:
-  gh issue view <number> --json title,body,comments,labels,state
+### Code quality and architecture
 
-When closing issues via commit:
-- Include fixes #<number> or closes #<number> in the commit message. This automatically closes the issue when the commit is merged.
+- Write production-quality code with small, single-responsibility modules and explicit ownership boundaries.
+- Extract shared domain logic into hooks, services, or pure utilities. Prefer maintainability and navigability over line-count reduction.
+- Avoid thin one-call-site wrappers that only forward props or relocate JSX. Extract state, effects, validation, or orchestration before presentation-only pass-through layers.
+- Before adding custom utility code, consider whether a well-maintained dependency meaningfully reduces complexity and maintenance cost.
+- Keep correctness separate from caching, batching, retry, preload, recovery, and other performance policy. Read `docs/conventions/architecture-guardrails.md` before adding such behavior.
 
-web-ui conventions
-- In `web-ui`, prefer `react-use` hooks (via `@/quarterdeck/utils/react-use`) whenever possible.
-- **When modifying or creating hooks** in `web-ui/src/hooks/`: if the hook has >50 lines of non-React logic (validation, data transforms, state machine guards), extract that logic into a companion domain module (`foo-bar.ts` alongside `use-foo-bar.ts`). Domain modules are pure TS with no React imports — testable with plain `describe`/`it`. See `docs/conventions/web-ui.md` § "Hooks architecture" for the full pattern, and `docs/conventions/frontend-hooks.md` for the deeper methodology.
+### Supported agents
 
-Board state single-writer rule
-- `ProjectBoardCommandService` is the only production authority that writes durable board state. Browser clients are optimistic views: `setBoard` derives typed command batches, sends them with `expectedRevision`, and reconciles the returned authoritative snapshot. Do not reintroduce a public whole-board save route or let a browser payload replace `board.json`.
-- Board-command receipt metadata is server-owned and bounded. Check a repeated command ID and payload fingerprint before expected-revision rejection so a retry after a lost response works across runtime restarts; reject the same ID with different content. A first-seen accepted command, including a semantic no-op, consumes one revision so its receipt and ordering are durable.
-- Board-command receipts retain whether the originally accepted command changed the board. Lifecycle orchestration must use that recorded result, source-column preconditions, and authoritative session state before running a post-commit process effect; `replayed` alone is not enough. Coalesce same-process duplicate create/start calls, never blindly relaunch after a persisted move, and recover an interrupted pre-launch move to backlog without deleting worktree or branch state.
-- A Trash transition that unblocks linked backlog tasks must journal the linked task plan and deterministic child operation IDs before moving the parent. The move must consume the exact revision from which that plan was derived; after the move, canonical dependency cleanup has intentionally removed the evidence needed to rediscover those children.
-- Runtime-owned session, generated-title, branch/base-ref, and worktree metadata projections must go through the same command service/internal mutation lock before the newer board is published. The runtime state hub schedules session persistence from terminal-store changes; do not move that projection back into browser effects.
-- Browser runtime-stream identity has three distinct fences: connection generation rejects events queued by a superseded WebSocket, project identity rejects active-project state/metadata events at one reducer boundary, and per-project notification revision orders cross-project notification snapshots/deltas. Preserve `projectId` through wire decoding instead of duplicating scope checks in message handlers. Counts from an exact project-state revision may outrank a same-revision project-list summary, but unproven list counts must remain replaceable so transient fallbacks can self-heal.
-- The browser Git/worktree metadata read model is project-scoped even though task metadata is indexed by task id. Change its scope before paint during navigation and pass the originating project id into async writes so late branch, path, or task-worktree results are rejected instead of attaching to the next project.
-- Board-changing lifecycle effects must wait for the optimistic command queue to flush before starting or stopping a task session, creating/restoring a worktree, or deleting a worktree. Otherwise the side effect can observe the old durable card or outlive a rejected optimistic move.
-- In `web-ui/src/hooks/project/project-sync.ts`, `applyAuthoritativeProjectState(...)` is the single browser-side entry point for authoritative project state. Do not re-split that pipeline in `use-project-sync.ts` or nearby code:
-  - authoritative session reconciliation must use the latest local session state
-  - the runtime board is authoritative; pending local command batches may be overlaid only as an optimistic presentation
-  - a command response or conflict refresh must be able to force exact authoritative hydration even at a revision the browser has already displayed
-  - hydration flags, cache updates, queue revision re-entry, and optimistic overlay must all come from that one apply path
-- Runtime session truth comes from the server-owned terminal/session store, never browser payloads or cached board restore data. Low-level `saveProjectState` remains only for migrations, isolated tests, and controlled maintenance paths; production board mutations must use `ProjectBoardCommandService`. Tests that seed state directly must point it at the actual isolated runtime state root (`QUARTERDECK_STATE_HOME`), not a browser API.
-- Task identity has multiple path concepts that are easy to blur:
-  - project root path (`projectPath` in project-level state/providers)
-  - assigned task identity path (`taskWorktreeInfo.path` / task metadata snapshot path)
-  - session launch path (`RuntimeTaskSessionSummary.sessionLaunchPath`)
-  `RuntimeTaskSessionSummary.sessionLaunchPath` is **not** a continuously updated live cwd stream. It is the path the current agent session was launched in. The public/shared session-summary schema only has `sessionLaunchPath`; persisted-state loading owns the one-time rewrite from legacy `projectPath` in old `sessions.json` files. New code should speak `sessionLaunchPath` and use it for divergence/restart hints, not as the authoritative source for task branch/folder/shared-vs-isolated display.
+Claude Code and Codex are the supported forward-looking task-agent targets. Pi is legacy and experimental: preserve incidental shared behavior when low-risk, but do not add Pi to new architecture, compatibility contracts, release promises, or routine dogfood unless the user explicitly requests Pi work.
 
-Completing a feature or fix (release hygiene)
-- When a user-visible feature/fix lands or an active todo item is completed, update the release-tracking files in the same commit or PR:
-  1. `docs/todo.md` — remove the completed active item, if one existed. Items are unnumbered; order is implicit.
-  2. `CHANGELOG.md` — add a bullet under the current version section matching the existing style (feature-area headings, em-dash descriptions). If no current version section exists, create one with the next patch bump.
-- Add `docs/implementation-log.md` entries only for high-signal forensic context, not for every changelog bullet. Use it when a change involves architecture or ownership boundaries, state persistence/migration/recovery, terminal/session lifecycle, concurrency/race behavior, production or dogfooding incidents, broad cross-cutting edits, or a non-obvious investigation that future agents would otherwise have to rediscover.
-- Skip the implementation log for routine UI polish, mechanical refactors, test-only changes, and small isolated fixes where the changelog plus git diff already explain the work.
-- When an implementation-log entry is warranted, add it at the top and keep it concise but useful: what changed, why, the key invariant or failure mode, notable files touched, validation, and the commit hash if known. Treat it as a forensic record, not a second changelog.
-- Release tracking is easy to forget after the code is working; update required docs before handing off rather than in a follow-up.
-- When bumping the version number, always keep a `## [Unreleased]` section at the top of `CHANGELOG.md` above the new version heading. This is where subsequent changes land before the next release.
+## Work-area routing
 
-Adding a new config field
-- The full checklist is in `src/config/global-config-fields.ts` (top-of-file comment). The key file for the settings dialog form is `web-ui/src/hooks/settings-form.ts` (domain module) — add to `SettingsFormValues` (type) and `resolveInitialValues` (mapping), then add the JSX control. The dirty check, reset-on-open, save payload, and web-ui save types are handled automatically (no manual wiring).
+Read the referenced document before editing the listed area:
 
-Test fixtures and merge conflicts
-- Avoid touching test fixture mocks in feature branches — the config mock pattern (adding fields to 10+ test files) is the #1 conflict magnet. If you can defer test fixture updates to a final pass, or extract a shared `createDefaultMockConfig()` helper that all tests import, adding a field becomes a 1-file change instead of 12.
+- Frontend work under `web-ui`: `docs/conventions/web-ui.md`.
+- Hook/domain extraction or provider/context contracts: `docs/conventions/frontend-hooks.md`.
+- Main views, sidebars, toolbar tabs, task-detail routing, or surface navigation: `docs/conventions/ui-layout.md`.
+- Durable board state, board commands/receipts, lifecycle board transitions, authoritative hydration, project-scoped projections, automatic titles, notifications, or task indicators: `docs/conventions/runtime-state.md`.
+- Task-agent start/stop/resume/restart, startup recovery, session reconciliation, PTY identity, terminal restore, agent adapters, native hooks, input state, or host process launches: `docs/conventions/session-lifecycle.md`.
+- Diagnostics recorder, journal, panel delivery, doctor, capture, or bundle format: `docs/diagnostics.md`.
+- Current architecture priorities or active refactors: `docs/todo.md` and the specific linked plan.
 
-Session reconciliation
-- Before adding dynamic UI state tied to session lifecycle (status indicators, transient panels, auto-triggered actions), check `src/terminal/session-reconciliation.ts` and ensure stale/orphaned instances of the new state have a cleanup path in the reconciliation sweep. The sweep runs every 10 seconds and currently handles dead processes, processless sessions, and stale hook metadata.
-- Managed task lifecycle gestures must enter the server-owned `ProjectTaskLifecycleService`; do not recreate a browser-side resource coordinator or compose stop/start/worktree effects in React. The runtime composition root's `TaskResourceOperationCoordinator` serializes the low-level task resource effects used by that service and other server handlers across clients and UI remounts. Keep the worktree deletion guard against active/in-flight task sessions as defense in depth, and have reconciliation stop and surface a live task whose `sessionLaunchPath` disappears so it cannot remain stuck in `running` after its agent rejects the invalid cwd.
-- `src/terminal/session-transition-controller.ts` is the terminal-layer owner for process-side consequences of session state-machine events and active-listener summary fanout. If input/output/restart/recovery/reconciliation code needs to apply `hook.to_review`, `hook.to_in_progress`, `process.exit`, `interrupt.recovery`, or `autorestart.denied`, route it through that controller instead of adding another private transition-side-effect path to `TerminalSessionManager`.
-- Restore-from-trash must wait for the previous task session to finish exiting before it asks the runtime to resume the conversation. The trash flow already calls `stopTaskSession(..., { waitForExit: true })`, but users can untrash before that stop settles; if restore calls `startTaskSession` too early, `TerminalSessionManager.startTaskSession()` can short-circuit on the still-active old entry and leave the restored card with no live process once the old session finally exits.
-- `waitForExit` is not just a courtesy delay: request normalization must preserve it, and the stop response must distinguish `exited` / `not_running` from `timed_out` / `failed`. Worktree cleanup, replacement start, and permanent card removal may proceed only after a successful stop outcome. If the old PTY is still exiting when a new start/resume arrives for the same task, treat that as an explicit failure and log it. Do **not** silently reuse the old `running`/`awaiting_review` summary while `suppressAutoRestartOnExit` is set, or untrash/restart can leave the UI on a loading spinner with no live agent or useful warning. Best-effort resume fallbacks that run without a stored `resumeSessionId` (`codex resume --last` or Claude `--continue`) are silent-failure prone because they target the most recent conversation for the checkout; adapters and the tRPC handler should warn when they have to take that path.
-- The resume-failure fallback in task session exit handling must not run after an explicit stop (`suppressAutoRestartOnExit` / auto-restart reason `suppressed`). If a user trashes a resumed task, the stopped resume process can otherwise schedule a fresh non-resume start, which clears the stored `resumeSessionId` before the real untrash resume arrives and forces a best-effort fallback. Keep the fresh-prompt fallback only for explicit resume flows that are not owned by automatic startup recovery. Automatic startup recovery has its own exact-target bounded retry and must never convert a failed targeted resume into a fresh prompt. Do **not** use the fallback for non-zero resume exits. Preserve the failed resume output in the terminal. Outside coordinator-owned recovery, a stored targeted resume (`codex resume <id>` or `claude --resume <id>`) that fails non-zero should clear that stored id and let the next explicit restart use the agent's best-effort resume path. Coordinator-owned recovery preserves the id through its one exact retry, then clears it only if the final targeted launch also fails non-zero so manual Restart cannot repeat a missing id forever.
-- Startup resume selector failures should not be debug-only. If `resumeInterruptedSessions(...)` cannot load state, resolve an agent, find interrupted work-column sessions, or launch a selected task, emit a `warn` with enough scan context to distinguish "no interrupted task was selected" from "selected task failed to start." Routine per-card breadcrumbs can stay `info`/`debug`, but a server-start resume miss should be visible at the default log level.
-- Automatic startup recovery is coordinated by `src/server/startup-session-recovery.ts`: wait for orphan-agent cleanup, prepare each task once through the shared task-start service, serialize and space only the actual launch operations globally, and let unrelated tasks wait for readiness concurrently so one hookless TUI cannot block the queue. Reuse the frozen agent/command/cwd/settings/resume target for a bounded retry after positive failures only. A launch-scoped native hook from the current `sessionInstanceId` (plus the expected stored session id when one exists) confirms identity, but a live process at the hook deadline is an unconfirmed launch—not evidence of failure—and must be left available for the user instead of stopped or replayed. Retry spawn failures, early exits, and identity mismatches; stop-and-wait for the exact failed PTY before replacement, never start a third copy, and do not retry deterministic preparation failures. Explicit start/stop/input cancels recovery ownership, exhausted failures route through the terminal session transition owner, and hook receipt accounting stays separate from launch-hook admission. Do not use terminal output or generic idle state as readiness evidence. Process recovery eligibility is separate from user-visible task meaning: hydration and shutdown may mark previously running work interrupted, but they must preserve valid Review, Needs Input, and Error semantics while clearing stale PID ownership. Restoring a completed `hook` review must not fabricate `attention`; only a real question or permission signal may create Needs Input.
-- Task PTY exit callbacks must be tied to the specific spawned `PtySession`, not just the task id. A delayed exit from an old Codex wrapper/PTY can arrive after a replacement resume session has already spawned for the same task; if the exit handler finalizes by task id alone, it can clear the new active entry and leave the restored task on an empty terminal/spinner.
-- Session-driven terminal refreshes can race the first control-socket restore. If the UI notices a new task session instance (`startedAt` / `pid`) before the initial restore finishes, do not drop the follow-up `request_restore`; queue it in `web-ui/src/terminal/slot-socket-manager.ts` and replay it from `markRestoreCompleted()`, or restored tasks can stay stuck on the empty pre-spawn snapshot with a spinner and no logs.
-- The React-side `sessionStartedAt` reset can race the control socket in the opposite order: the socket may restore the replacement PTY before `usePersistentTerminalSession` resets xterm. A pooled task reset must immediately request an authoritative restore; otherwise that late reset can leave a blank pane even though the server mirror has a populated chat.
-- A task terminal must not keep the loading overlay up forever just because the control-socket restore handshake stalls. Once the IO socket is open, the terminal is usable for input; `web-ui/src/terminal/terminal-session-handle.ts` has a readiness fallback that reveals the terminal and clears loading instead of leaving the user blocked behind a spinner. Make sure that fallback is armed for reused pooled slots and delayed IO-open events, not just brand-new task connections. Do not pair this fallback with a speculative `request_restore`: if live Codex output has already reached xterm, a stale or empty restore snapshot can reset the visible buffer back to blank. When a live task session instance changes (`startedAt` / non-null `pid`), drop and reopen the pooled terminal sockets instead of queueing `request_restore` on an existing control socket; dogfood showed reused ACTIVE slots can keep a control socket stuck in `restoreCompleted=false` forever. Do not reconnect on processless stop summaries (`pid: null`) or trash/untrash flashes an old terminal before the real replacement process starts. When guarding against empty restore snapshots in `TerminalViewport`, drain queued writes before reading the visible buffer; otherwise live output that is queued but not yet flushed can still be erased.
-- Terminal restore readiness is not the same as browser presentation readiness. Do not clear the loading overlay or call connection-ready subscribers until `TerminalViewport` has drained queued writes, resized, scrolled to bottom across layout frames, and revealed the host; the IO-open fallback should go through that same settled reveal path. Claude sessions are especially sensitive because redraw/status output around restore can otherwise leave the terminal visible before it reaches the bottom.
-- Claude resume now prefers the stored hook `session_id` with `claude --resume <id>`, matching Codex's targeted resume model. Server-start resume can still use the persisted `card.workingDirectory` from a still-existing worktree, but trash clears `workingDirectory` and deletes the worktree before untrash recreates it. If no stored Claude session id is available, untrash/restart falls back to cwd-scoped `--continue`; emit an explicit warning/log instead of treating that path like a targeted resume.
-- Claude fullscreen scrolling is app-owned rather than xterm scrollback. xterm forwards captured wheel input conservatively, so fullscreen launches should default `CLAUDE_CODE_SCROLL_SPEED` to Claude's documented `3` multiplier while preserving an explicit user override; do not apply that environment default to classic Claude, Codex, Pi, or shell terminals.
+Tracked historical context lives under `docs/history/`. Read it only when current docs and code do not answer the question or the user explicitly requests archival context.
 
-Isolated agent functional testing
-- For agent-driven browser, terminal, Git, Files, lifecycle, or visual regression testing, use the repo-owned `quarterdeck-functional-testing` skill and `npm run agent:lab`. The lab is the explicit exception to the normal rule against autonomously starting Quarterdeck: it binds dynamic loopback ports, creates disposable HOME/state/project/worktree directories, strips credentials from child environments, and shadows `codex` with a deterministic fake only inside that runtime.
-- Mutable installed dependency directories such as root or nested `node_modules` must never be mirrored into task worktrees. An existing legacy dependency symlink may be unlinked only at the worktree path; never follow it, mutate its target, or automatically delete a real task-owned dependency directory.
-- The agent-browser wrapper shares only Playwright's downloaded browser binaries under Git's common directory, outside `node_modules`. A complete symlink-free legacy cache may be copied atomically on first use without deleting the source. Keep browser profiles, daemon state, artifacts, and disposable lab data worktree-local; sharing those mutable paths would break run isolation.
-- Do not substitute `npm run dev`, `npm run dev:full`, `npm run dogfood`, `quarterdeck`, or the user's active app for the lab. Do not point the lab at a real project or enter real credentials/data; it provides data/process isolation, not a hardened security sandbox.
-- `IRuntimeHostIntegrations`, composed by `createRuntimeHostIntegrations`, is the sole production boundary for server-side file, application, URL, and folder-picker effects. Keep its launch-scoped `RuntimeCapabilities` policy check ahead of launcher discovery and return discriminated typed outcomes. Open Project sends only an allowlisted target id; the runtime derives the scoped project path and owns command construction. The arbitrary runtime command route and browser command builder are intentionally absent; do not reintroduce either or bypass the host-integration service from a handler.
-- Drive the lab through `npm run agent:browser`, pair semantic snapshots with pixel screenshots for visual debugging, and capture canonical diagnostic checkpoints when investigating lifecycle or persistence. Ready, failure, pre-shutdown, and final bundles happen automatically; manual checkpoints add replay boundaries. Always stop the run so its named browser session and child process trees close; retained evidence lives under `test-results/agent-lab/<run-id>/`.
-- Browser close/reopen and runtime cold restart are different regression classes. A reconnect test does not exercise persisted-session hydration, stale-PID correction, startup recovery, or initial project-pill classification. Changes in those areas require the deterministic cold-start state-matrix/integration tests plus `npm run agent:lab -- restart-runtime <run-id> --mode graceful`, which preserves the disposable state, web process, and browser while replacing only the runtime. Verify cards, notifications, and project pills before task selection; do not claim reconnect coverage proves cold-start behavior.
-- State-projection dogfood is a two-phase test. First assert the static board, project pills, and notification state for ordinary Review and genuine Needs Input tasks; then submit a new turn/response, wait for the authoritative transition back to Running, and assert all three projections again after switching away and back. Review is the full board-column count and Needs Input is an overlapping semantic count, so three Review cards with one blocked task must display `R 3 · NI 1`, not `R 2 · NI 1`. A static startup screenshot does not cover transition convergence or notification clearing.
-- Agent Lab must launch with `nativeUiAvailable: false`; binary discovery must never substitute for that capability. Host integrations have three launch-derived modes—native, unavailable, and simulated—and Agent Lab uses simulated mode without claiming native UI. Route folder/file pickers, host path/URL openers, Open in IDE, clipboard, notifications/audio, and future desktop integrations through the shared typed boundary. Simulated path events must be scoped and sanitized, browser events must contain semantic metadata rather than contents, and the lab-only ledger must never be mounted without explicit simulation configuration. A simulated success becomes observable only after its typed event is atomically persisted; canonical lab checkpoints validate and package the ledger under `lab/`. Open-in-IDE browser requests carry only a typed target ID; the runtime derives the scoped project path and resolves trusted executable/argument arrays, never a browser-supplied shell command. Browser-contained links, including xterm links, stay inside the isolated browser and its network policy rather than crossing the host boundary. The lab's forbidden-launcher log remains a separate assertion: any recorded invocation must fail the run.
+## Frontend rules
 
-Unified agent diagnostics
-- The lightweight runtime/browser flight recorder is automatic and independent of the Diagnostics panel or console log level. A newly started agent should begin live-instance investigation with `quarterdeck diagnostics list|status|doctor|capture|watch`, not ask the user to reproduce after enabling logging. Those commands use the private runtime descriptor and authenticated read-only endpoints; they must not connect as a board client, write project state, attach/resize a PTY, refresh Git, or repair anything.
-- One recorder, schema, journal, CLI family, panel, and bundle format own support diagnostics. Do not recreate the removed debug-log ring/WebSocket/panel, add a parallel subsystem buffer, or make capture panel-owned. Subsystems expose bounded metadata-only snapshot providers beside their existing state owner.
-- Production defaults exclude prompts/task text, terminal transcripts, file contents, diffs, environment values, full arguments, request bodies, DOM text, and secrets. Deep recording is explicit, scoped, capped at 15 minutes, and still content-safe. Synthetic agent-lab bundles may include terminal viewport text, Git diffs, fixture state, and Playwright evidence, but that exception never broadens production capture.
-- Production compatibility logs must remain content-free even at warn/error: keep tag, message length, value shape/counts, and validated error class, not arbitrary logger message/data or thrown messages. Rich generic log content is confined to the synthetic Agent Lab profile; structured metadata-only events are the production debugging path.
-- Explicit capture owns the durable evidence boundary: flush and merge the rotating journal with the memory tail, propagate project/task scope through subsystem snapshot providers and doctor findings, and label global findings as global. Do not treat the smaller memory ring or record-only filtering as a complete scoped bundle.
-- Live browser timeline delivery is a replaceable panel projection, not the recorder. Only the exact connection capability with Diagnostics open subscribes; closing/revoking unsubscribes, bounded batching remains best effort, and socket backpressure drops diagnostics before primary runtime-state traffic. Browser refresh/subscription hydrates a bounded canonical tail explicitly instead of seeding every board WebSocket.
-- Journal write failure retains a bounded pending queue and schedules capped retry without waiting for a new event. Agent Lab `pre-shutdown` is the last connected checkpoint; close the browser and child trees, finalize the lab manifest, then capture the offline `final` bundle before deleting disposable state.
-- Diagnostics can report layout bounds and terminal metrics, not reconstruct historical pixels. Use an explicit lab screenshot or Playwright trace for visual truth. Start any bundle investigation at `manifest.json`, then correlate `records.jsonl`, `doctor.json`, provider snapshots, and indexed evidence by runtime/task/session/operation ids.
+- In `web-ui`, prefer `react-use` hooks through `@/quarterdeck/utils/react-use` when applicable.
+- When a hook in `web-ui/src/hooks/` contains more than 50 lines of non-React validation, transformation, or state-machine logic, extract that logic into a colocated pure TypeScript domain module with no React imports. Test it with plain `describe` / `it`. Follow `docs/conventions/web-ui.md` and `docs/conventions/frontend-hooks.md`.
+- Keep runtime-aware orchestration in hooks or domain modules and components focused on rendering view models.
 
-Misc. tribal knowledge
-- Automatic task-title generation has two runtime-owned entry points: accepted browser command batches scan remaining untitled cards, and `ProjectTaskLifecycleService` schedules a newly created-and-started task after its durable lifecycle result. Keep both routed through `src/server/automatic-task-title-scheduler.ts` and the shared per-project/task coordinator; attaching the trigger only to the browser path silently leaves lifecycle-created cards untitled. Persist through `ProjectBoardCommandService.setGeneratedTaskTitle(...)` so the lock-held `expectedTitle: null` guard cannot overwrite a concurrent manual rename. An untitled lifecycle replay/recovery may retry, while the coordinator deduplicates overlapping requests and explicit manual regeneration stays independent because it may use richer session context.
-- Notification ownership is intentionally split:
-  - `web-ui/src/runtime/runtime-state-stream-store.ts` keeps cross-project notification state bucketed by project, not as one flat task map plus a separate task→project lookup.
-  - UI consumers should read the provider-owned projection (`needsInputByProject`, current-project/other-project needs-input flags) instead of re-deriving project ownership from raw notification buckets.
-  - `use-audible-notifications` is the main place that may flatten project buckets back into task entries, because sound transitions are inherently cross-project and event-oriented.
-  - Audible detection must follow semantic notification edges, not only active/stopped column changes. A stopped review card can become approval-required without crossing columns, and that higher-priority transition still needs one sound; retained initial state and unchanged metadata must remain silent.
-- Indicator semantics are intentionally centralized:
-  - Use `deriveTaskIndicatorState(summary)` and `isPermissionActivity(...)` from `src/core/api/task-indicators.ts` / `@runtime-contract` for approval, review-ready, needs-input, and failure meaning.
-  - Do not add new UI logic that re-interprets `reviewReason`, `latestHookActivity.notificationType`, `hookEventName`, or `"Waiting for approval"` text directly in components/hooks. Project badges, status badges, audible notifications, and approval-blocking behavior should all flow from the shared semantic layer.
-- Agent session-identity hooks are metadata-only signals:
-  - Persist `resumeSessionId` from Codex `session_meta` and Claude `SessionStart`, but do **not** let those events clobber `latestHookActivity` or bump summary state twice. If resume-id persistence and hook activity need to land together, use one store mutation (`applyHookMetadata(...)`) rather than separate `update(...)` + `applyHookActivity(...)` calls.
-  - Even if the incoming session id is already stored, a metadata-only identity event must remain a no-op for activity/broadcast purposes or it will wipe real activity and emit redundant websocket updates.
-- Claude `Stop` summaries come from native hook payload fields, not transcript parsing:
-  - Claude hook parity depends on Claude Code 2.1.198 or newer; Quarterdeck gates Claude availability at that version because `agent_needs_input` is a documented 2.1.198+ notification type.
-  - Use `last_assistant_message` from `Stop` as `finalMessage` / `conversationSummaryText`. Claude documents `transcript_path`, but that file can lag hook execution; the old JSONL transcript parser was removed.
-  - A main-agent `Stop` is not complete while either documented `background_tasks` or `session_crons` array is non-empty. Keep that event activity-only so it cannot clear a stronger input/permission wait, suppress its completion metadata, and wait for a later completed `Stop` before moving the task to review.
-  - Keep `SubagentStop` as activity-only even when it has `last_assistant_message`, otherwise subagent completions can move the whole task to review or overwrite the main-turn summary.
-  - Treat `AskUserQuestion`, `ExitPlanMode`, and MCP `Elicitation` as attention/needs-input waits. Only a matching `PostToolUse`, `ElicitationResult`, or real `UserPromptSubmit` should return them to running; unrelated parallel tool/background events must not clear or overwrite the active wait. `agent_needs_input` alone does not cover ordinary interactive questions.
-  - Bound native message/activity text before storing `latestHookActivity` or broadcasting summaries. `PostCompact.compact_summary` describes compaction state and must not populate `finalMessage` or completed-turn conversation summaries.
-- Keep **task agent terminals** and **shell terminals** mentally separate even when they share xterm/panel plumbing.
-  - Task agent terminals are task-scoped viewers for agent sessions and use the shared/pool path.
-  - Shell terminals (home shell and detail shell) are dedicated workspace-scoped manual shells with different lifecycle rules, restart behavior, and exit handling.
-  - If a refactor makes shell surfaces read like agent terminals again, split the abstraction instead of relying on comments or task-id prefixes alone.
-- Quarterdeck is launched from the user's shell and inherits its environment. For agent detection and task-agent startup, prefer direct PATH checks and direct process launches over spawning an interactive shell. Avoid `zsh -i`, shell fallback command discovery, or "launch shell then type command into it" on hot paths. On setups with heavy shell init like `conda` or `nvm`, doing that per task can freeze the runtime and even make new Terminal.app windows feel hung when several tasks start at once. It's fine to use an actual interactive shell for explicit shell terminals, not for normal agent session work.
-- Do not start Quarterdeck runtime/dev instances (`npm run dev`, `npm run dev:full`, `quarterdeck`, etc.) without asking when the user may already have Quarterdeck running. A dev runtime can overlap with the user's main runtime, and a dev web UI can proxy to the wrong instance. If the user wants to test in their active app, prefer dogfood/build validation and let them refresh their existing Quarterdeck instead of launching another runtime.
-- Native Codex hooks need to stay launch-scoped. Do not write Quarterdeck-managed hooks into repo-local `.codex/hooks.json` or user-global `~/.codex/hooks.json`, because Codex app/GUI sessions will load them too and start failing outside Quarterdeck. Pass Quarterdeck's Codex hook config inline on the `codex` command line (`-c hooks...` plus `--enable hooks`) so only Quarterdeck-launched Codex sessions get the task-state hooks. The matching `hooks.state` trust entries must be generated from the same inline hook config using Codex's `/<session-flags>/config.toml:<event_snake>:<groupIndex>:<handlerIndex>` source keys (`C:\<session-flags>\config.toml` on Windows); do not use `--dangerously-bypass-hook-trust`, which bypasses all hooks for that invocation. Codex renamed the feature flag from `codex_hooks` to `hooks` in the 0.14x line; Quarterdeck now uses the new name and gates on the current minimum Codex version. Preserve the invariant that only genuine "waiting for user input / approval" situations should surface as needs-input.
-- Codex native hook state has source-specific edges: Codex permission approval can resume through `PostToolUse` without a separate permission-resolved hook, so the permission transition guard must allow Codex `PostToolUse` back to running. A carriage-return submission while the shared indicator says `needsInput` is an authoritative user-response event; a carriage return from a live review-ready session is likewise the authoritative start of a new turn and must move it to running without waiting for its first hook. Route both through `SessionTransitionController`, clear stale wait/review activity atomically, and record Codex submission ordering so an older delayed `PermissionRequest` cannot restore a wait. Editing, cursor movement, protocol responses, and PTY output remain state-neutral. Codex 0.142.5+ dispatches root `Stop` and `SubagentStop` separately; Quarterdeck installs the review transition only for root `Stop`. Preserve that event boundary instead of inferring root/subagent identity from missing `finalMessage` or `conversationSummaryText`.
-- A visible canonical Codex approval overlay must never coexist with a Running task card. Native `PermissionRequest` hooks remain the primary state signal, but nested Code Mode tools can render an approval without emitting that hook. Preserve the Codex-only rendered-screen fallback that requires an official approval title, selected choice, and bottom-anchored confirm/cancel footer after the terminal mirror applies output; it must accept supported narrow/clipped layouts without scanning accumulated transcript text. Route the result through `SessionTransitionController`, latch against redraws, and reset on every authoritative transition back to running, including direct hook-store mutations. Both Enter confirmation and bare Escape cancellation resolve an actionable Codex approval wait immediately.
-- A classified hook transition and its hook metadata are one session-store mutation. Carry metadata on `hook.to_review` / `hook.to_in_progress` events and apply state, review reason, activity, resume session id, and timestamps through one `applySessionEvent(...)` emission. Do not restore separate review/running store methods or follow a transition with `applyHookMetadata(...)`; the split fanout lets project pills, notifications, and remote readers observe contradictory intermediate summaries.
-- Provider-neutral/high-level input cannot rely on a particular Enter byte encoding. Carry explicit submit intent into `TerminalSessionManager.writeInput(...)` and let the same input pipeline apply `user.responded` or `user.submitted`; do not create a browser-only state update or infer resumed work from subsequent PTY output. Generic task-session input remains a local PTY capability and must not be exposed through the future Remote Companion gateway.
-- New-task harness dropdowns have two separate invariants. First, Radix dropdowns inside the new task dialog need a dialog-local portal container and non-modal dropdown behavior (`modal={false}`), with the task harness selector as the reference pattern. Second, remembered harness selection must not introduce a second React state source while the create dialog is open. Keep the visible harness as draft state, persist the last selected value directly to storage, keep only a non-rendering in-session fallback for storage failures, and resolve storage/fallback defaults only when opening or resetting the draft.
-- Codex prompt positionals need an explicit `--` separator after all options/config overrides. This matters even on resume: terminal auto-restart clones the original start request, preserves the task prompt, and flips `resumeConversation=true`, so a bullet-leading prompt like `- investigate` can otherwise become `codex resume ... "- investigate"` and fail argument parsing before the TUI opens. Keep launch-scoped global Codex flags/config (`--enable hooks`, `-c hooks.*`, `-c developer_instructions=...`) before subcommands such as `resume` or `fork`; keep the prompt positional after the resume target and `--`.
-- Codex `SessionStart` must stay metadata-only in Quarterdeck. Codex can emit it for launch/resume and around session-maintenance flows; mapping it to `to_in_progress` makes review-ready cards jump to running with no matching finish. Manual `/compact` is handled by its dedicated `PreCompact`/`PostCompact` pair, both matched only on `manual`; automatic mid-turn compaction must not change task state. `/resume`, plugin reloads, and other TUI-local commands still lack stable paired boundaries, so do not infer state from typed command text, prompt redraws, or TUI output.
-- When Quarterdeck runs on a headless remote Linux instance (for example over SSH+tunnel), native folder picker commands may be unavailable (`zenity`/`kdialog`). Treat this as a normal remote-runtime limitation and use manual path entry fallback instead of requiring desktop packages.
-- **Terminal output ≠ agent working.** Agents (especially Claude Code) produce constant incidental terminal output — spinners, status bar updates, prompt redraws, ANSI cursor movements — even while idle or genuinely waiting for user input. Do not use `lastOutputAt` timestamps or output presence/volume as a heuristic for whether an agent has resumed working. Native hooks (`to_review` / `to_in_progress`), submitted responses to a known input wait, and carriage-return submissions that start a new turn from a live review-ready terminal are authoritative state signals. If a hook is missed, fix it at the hook/ordering layer.
-- Tracked historical context lives in `docs/history/`. Read it only when current docs or code do not answer the question, or when the user explicitly asks for archival context.
-- Two distinct shortcut systems exist — do not confuse them:
-  - **Project shortcuts** (`RuntimeProjectShortcut`, `useShortcutActions`): Terminal commands executed in the dev shell via the top bar. Per-project config. Uses `appendNewline: true`.
-  - **Prompt shortcuts** (`PromptShortcut`, `usePromptShortcuts`): Agent prompt injection via sidebar review cards. Global config. Uses paste mode + auto-submit.
+## Runtime ownership guardrails
+
+- `ProjectBoardCommandService` is the only production writer of durable board state. Browsers and future clients submit typed intent and may show optimistic presentation; they never replace `board.json` or coordinate managed lifecycle effects themselves.
+- Managed task lifecycle intent goes through `ProjectTaskLifecycleService`. Process-side transition consequences go through `SessionTransitionController`.
+- Runtime session truth comes from the server-owned terminal/session store. Terminal output is not proof that an agent is working; use native hook and explicit submit semantics.
+- `applyAuthoritativeProjectState(...)` is the single browser apply path for authoritative project state.
+- `IRuntimeHostIntegrations` is the sole production boundary for server-side file, application, URL, IDE, and folder-picker effects. Preserve its launch-derived capability checks and typed outcomes; never accept arbitrary browser-supplied commands.
+- Do not start Quarterdeck runtime or dev instances (`npm run dev`, `npm run dev:full`, `npm run dogfood`, `quarterdeck`) without asking when the user's app may already be running. Overlapping runtimes can proxy to the wrong instance. Use build/test validation or the isolated Agent Lab as appropriate.
+
+The summaries above are not substitutes for the routed runtime-state and session-lifecycle documents.
+
+## Structured execution ownership
+
+P3 structured ownership is designed but not implemented. Before changing execution ownership, read:
+
+- `docs/remote-task-ownership-handoff-spike-results.md`
+- `docs/conversation-provider-boundary-spike.md`
+- the P3 section of `docs/remote-companion-plan.md`
+
+Preserve these non-negotiable constraints: one writer per provider session; persist a pending handoff before stopping the old owner; confirm loss of old write authority before replacement; restart with exact provider session/profile identity; fence old callbacks by operation, owner generation, and session instance; reject mid-turn handoff by default; and report `turn_outcome_unknown` after ambiguous structured-runner crashes instead of replaying prompts. Codex identity includes the exact server-owned `CODEX_HOME` profile; Claude identity includes an explicitly pinned Agent SDK native executable and configuration manifest. Compatibility is version, schema, and history-mode gated. Keep provider-history reads independent and read-only. Do not add a Quarterdeck transcript store, remote raw PTY input, browser-supplied provider/process/filesystem identity, provider-global latest/continue fallback, or Pi compatibility to this contract.
+
+## Git and GitHub
+
+- Never commit unless the user asks.
+- When reading a GitHub issue, read every comment in one call:
+
+  `gh issue view <number> --json title,body,comments,labels,state`
+
+- When the user asks for a commit that closes an issue, include `fixes #<number>` or `closes #<number>` in the commit message.
+
+## Release hygiene
+
+When a user-visible feature or fix lands, or an active todo item is completed:
+
+1. Remove the completed active item from `docs/todo.md`, if present.
+2. Add a matching bullet under the current version in `CHANGELOG.md`. If no current version exists, create the next patch section.
+
+When bumping a version, retain `## [Unreleased]` above the new version heading.
+
+Add a concise top entry to `docs/implementation-log.md` only for high-signal forensic context: architecture or ownership boundaries, persistence/migration/recovery, terminal/session lifecycle, concurrency or race behavior, production/dogfood incidents, broad cross-cutting edits, or non-obvious investigation future agents would otherwise repeat. Include what changed, why, the key invariant or failure mode, notable files, validation, and the commit hash when known. Skip routine UI polish, mechanical refactors, test-only work, and small isolated fixes.
+
+## Configuration changes
+
+Before adding a global config field, follow the checklist at the top of `src/config/global-config-fields.ts`. For Settings UI, update `SettingsFormValues` and `resolveInitialValues` in `web-ui/src/hooks/settings/settings-form.ts`, then add the JSX control; dirty checking, reset-on-open, payload construction, and save types derive from that mapping.
+
+Avoid broad edits to copied config mocks during feature work. Prefer the shared runtime-config factory; if repeated fixtures remain, defer mechanical updates to a final pass or consolidate them behind `createDefaultMockConfig()` to reduce merge conflicts.
+
+## Isolated functional testing
+
+For agent-driven browser, terminal, Git, Files, lifecycle, persistence, or visual regression testing, use the repo-owned `quarterdeck-functional-testing` skill and `npm run agent:lab`. Read `.agents/skills/quarterdeck-functional-testing/SKILL.md` and `docs/agent-functional-testing.md` before starting.
+
+- Never attach automation to the user's active Quarterdeck instance or substitute `npm run dev`, `npm run dev:full`, `npm run dogfood`, or `quarterdeck` for the lab.
+- Use only synthetic data. The lab isolates data and processes but is not a hardened security sandbox.
+- Drive it through `npm run agent:browser`, combine semantic snapshots with pixel screenshots, capture canonical diagnostic checkpoints, and always stop the run so browser sessions and child process trees close.
+- Browser reconnect and runtime cold restart are distinct regression classes. Use `restart-runtime` and the documented state matrix for hydration or startup-recovery changes.
+- Mutable dependency directories such as `node_modules` are never shared into task worktrees. Never follow or mutate a legacy dependency symlink target.
+
+## Diagnostics
+
+Begin live-instance investigation with `quarterdeck diagnostics list|status|doctor|capture|watch`; do not ask the user to reproduce after enabling logging. Diagnostic access is authenticated and read-only: it does not connect as a board client, write project state, attach or resize a PTY, refresh Git, or repair anything.
+
+Quarterdeck has one bounded diagnostics recorder, schema, journal, CLI family, panel, and bundle contract. Production evidence stays content-safe. Synthetic Agent Lab evidence may add terminal viewport text, Git diffs, fixture state, screenshots, and traces without widening the production privacy boundary. Start bundle analysis at `manifest.json` and correlate `records.jsonl`, `doctor.json`, provider snapshots, and indexed evidence.

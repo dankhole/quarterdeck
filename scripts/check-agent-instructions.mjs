@@ -11,11 +11,19 @@ const claudePath = path.join(repoRoot, "CLAUDE.md");
 const agents = readFileSync(agentsPath, "utf8");
 const claude = readFileSync(claudePath, "utf8");
 const claudeLines = claude.trim().split(/\r?\n/);
+const agentsMaxBytes = 16 * 1024;
+const agentsBytes = Buffer.byteLength(agents, "utf8");
 
 const errors = [];
 
 if (!/AGENTS\.md.*canonical/i.test(agents)) {
 	errors.push("AGENTS.md must document that it is the canonical shared agent-instructions file.");
+}
+
+if (agentsBytes > agentsMaxBytes) {
+	errors.push(
+		`AGENTS.md should remain a compact routing contract; expected ${agentsMaxBytes} bytes or fewer, found ${agentsBytes}.`,
+	);
 }
 
 if (!claude.startsWith("# Claude Code Compatibility Shim")) {
