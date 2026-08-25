@@ -97,7 +97,7 @@ npm run --silent agent:lab -- list --json
 
 The supervisor automatically captures `ready`, `failure` when applicable, `pre-shutdown`, and `final`. The pre-shutdown checkpoint preserves the last connected browser snapshot. The supervisor then closes the browser, stops the web/runtime child trees, finalizes the lab manifest, and captures `final` from the stopped runtime's descriptor and crash-surviving journal while the disposable state still exists. Manual labels are normalized and de-duplicated so a checkpoint never overwrites an earlier one. A missing or timed-out provider produces a partial bundle with a warning instead of failing the run.
 
-Shutdown closes the named browser session, terminates both child process trees, finalizes and captures its offline evidence, and removes temporary files unless `--keep-temp` was selected. Evidence under `test-results/agent-lab/<run-id>/` is retained.
+Shutdown fences new browser commands, closes the named browser session, resolves and discovers every detached Playwright daemon owned by that exact lab session, and terminates surviving daemon/browser trees until consecutive process snapshots confirm quiescence. It then stops both managed child process trees, finalizes and captures its offline evidence, and removes temporary files unless `--keep-temp` was selected. Cleanup is scoped by both the worktree-local Playwright daemon entrypoint and the exact `qd-<run-id>` session name, so parallel lab sessions are not targeted. A residual browser process fails the run instead of being silently ignored. Evidence under `test-results/agent-lab/<run-id>/` is retained.
 
 ## Drive and visually inspect the UI
 

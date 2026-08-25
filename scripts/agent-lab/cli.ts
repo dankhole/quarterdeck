@@ -241,7 +241,12 @@ async function stopAgentLab(runId: string | undefined, options: OutputOptions): 
 			stoppedAt: new Date().toISOString(),
 			failure: manifest.failure ?? `Supervisor ${manifest.supervisorPid} exited without finalizing the run.`,
 		};
-		await closeAgentLabBrowserSession(manifest.repoRoot, manifest.browserSession).catch(() => {});
+		try {
+			await closeAgentLabBrowserSession(manifest.repoRoot, manifest.browserSession);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			manifest.failure = `${manifest.failure} Browser cleanup also failed: ${message}`;
+		}
 		await writeJsonAtomic(manifestPath, manifest);
 		if (options.json) {
 			printJson(manifest);

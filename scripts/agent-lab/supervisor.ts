@@ -500,7 +500,14 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 				});
 			},
 			closeBrowser: async () => {
-				if (manifest) await closeAgentLabBrowserSession(manifest.repoRoot, manifest.browserSession).catch(() => {});
+				if (!manifest) return;
+				try {
+					await closeAgentLabBrowserSession(manifest.repoRoot, manifest.browserSession);
+				} catch (error) {
+					const message = `Agent Lab browser cleanup failed: ${errorMessage(error)}`;
+					failure = failure ? `${failure}; ${message}` : message;
+					process.stderr.write(`[agent-lab supervisor] ${message}\n`);
+				}
 			},
 			stopChildren: async () => {
 				await Promise.all([

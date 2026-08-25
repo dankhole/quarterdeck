@@ -39,6 +39,13 @@ export interface AgentBrowserActionContext {
 	startedAtMs: number;
 }
 
+export class AgentBrowserActionBlockedError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "AgentBrowserActionBlockedError";
+	}
+}
+
 interface BrowserActionRecord {
 	version: 1;
 	actionId: string;
@@ -77,6 +84,17 @@ function readSession(args: readonly string[]): string | null {
 
 function findCategory(args: readonly string[]): string {
 	return args.find((argument) => BROWSER_COMMANDS.has(argument)) ?? "unknown";
+}
+
+function isAgentBrowserActionAllowed(manifest: Pick<ReadableAgentLabManifest, "status">, category: string): boolean {
+	return category === "close" || manifest.status === "ready" || manifest.status === "restarting";
+}
+
+function assertManifestAllowsBrowserAction(manifest: ReadableAgentLabManifest, category: string): void {
+	if (isAgentBrowserActionAllowed(manifest, category)) return;
+	throw new AgentBrowserActionBlockedError(
+		`Agent Lab browser command ${JSON.stringify(category)} is unavailable while run ${manifest.runId} is ${manifest.status}.`,
+	);
 }
 
 function isWithin(root: string, candidate: string): boolean {
@@ -187,11 +205,13 @@ function monotonicOffset(manifest: ReadableAgentLabManifest, timestampMs: number
 export async function beginAgentBrowserAction(args: readonly string[]): Promise<AgentBrowserActionContext | null> {
 	const manifest = await resolveManifest(args);
 	if (!manifest) return null;
+	const category = findCategory(args);
+	assertManifestAllowsBrowserAction(manifest, category);
 	const startedAtMs = Date.now();
 	const context: AgentBrowserActionContext = {
 		actionId: randomUUID(),
 		manifest,
-		category: findCategory(args),
+		category,
 		arguments: summarizeArguments(manifest, args),
 		artifacts: collectArtifactArguments(manifest, args),
 		startedAt: new Date(startedAtMs).toISOString(),
@@ -215,6 +235,12 @@ export async function beginAgentBrowserAction(args: readonly string[]): Promise<
 		errorClass: null,
 	});
 	return context;
+}
+
+export async function assertAgentBrowserActionCanLaunch(args: readonly string[]): Promise<void> {
+	const manifest = await resolveManifest(args);
+	if (!manifest) return;
+	assertManifestAllowsBrowserAction(manifest, findCategory(args));
 }
 
 export async function completeAgentBrowserAction(
@@ -246,6 +272,7 @@ export const _testing = {
 	aliasPath,
 	collectArtifactArguments,
 	findCategory,
+	isAgentBrowserActionAllowed,
 	readSession,
 	summarizeArguments,
 };

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: make Agent Lab browser shutdown exhaustive
+
+- Agent Lab shutdown now resolves the installed Playwright CLI's daemon entrypoint, discovers every detached daemon owned by the exact lab browser session, and terminates surviving daemon/browser process trees until two process snapshots confirm the session is quiescent without touching other sessions.
+- New browser commands are fenced once a run starts stopping, preventing a concurrent launch from escaping the final cleanup snapshot.
+- Browser cleanup failures now fail the disposable run instead of being silently ignored, while the supervisor still completes runtime/web shutdown and final evidence capture.
+
 ### Feature: restart Agent Lab runtimes against the same state
 
 - Agent Lab can now gracefully replace only its runtime process while preserving the disposable state, projects, web process, ports, and browser session, with generation history and automatic before/after diagnostic checkpoints.
