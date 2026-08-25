@@ -129,7 +129,7 @@ describe("RuntimeSettingsDialog", () => {
 		expect(findButtonByText(document.body, "Report issue")).toBeNull();
 	});
 
-	it("renders the show summary on cards checkbox", async () => {
+	it("offers hover, card, and hidden summary display modes", async () => {
 		await act(async () => {
 			root.render(
 				<RuntimeSettingsDialog
@@ -141,9 +141,23 @@ describe("RuntimeSettingsDialog", () => {
 			);
 		});
 
-		const checkbox = document.body.querySelector("#runtime-settings-show-summary-on-cards");
-		expect(checkbox).toBeInstanceOf(HTMLButtonElement);
-		expect(checkbox?.getAttribute("data-state")).toBe("unchecked");
+		const select = document.body.querySelector<HTMLSelectElement>("#runtime-settings-summary-display");
+		expect(select).toBeInstanceOf(HTMLSelectElement);
+		expect(select?.value).toBe("hover");
+		expect(Array.from(select?.options ?? []).map((option) => option.value)).toEqual(["hover", "card", "hidden"]);
+
+		await act(async () => {
+			if (select) {
+				select.value = "hidden";
+				select.dispatchEvent(new Event("change", { bubbles: true }));
+			}
+		});
+		await act(async () => {
+			findButtonByText(document.body, "Save")?.click();
+		});
+		expect(saveMock).toHaveBeenCalledWith(
+			expect.objectContaining({ showSummaryOnCards: false, showSummaryOnHover: false }),
+		);
 	});
 
 	it("renders the LLM summary polish checkbox and cost reminder", async () => {

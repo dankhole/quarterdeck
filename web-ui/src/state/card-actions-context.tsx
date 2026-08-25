@@ -38,6 +38,7 @@ export interface ReactiveCardState {
 	moveToTrashLoadingById: Record<string, boolean>;
 	isLlmGenerationDisabled: boolean;
 	showSummaryOnCards: boolean;
+	showSummaryOnHover: boolean;
 	uncommittedChangesOnCardsEnabled: boolean;
 }
 

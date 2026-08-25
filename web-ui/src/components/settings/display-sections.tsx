@@ -18,6 +18,8 @@ export function AiFeaturesSection({
 	disabled,
 	llmConfigured,
 }: SettingsSectionProps & { llmConfigured: boolean }): React.ReactElement {
+	const summaryDisplayMode = fields.showSummaryOnCards ? "card" : fields.showSummaryOnHover ? "hover" : "hidden";
+
 	return (
 		<>
 			<h6 className="font-semibold text-text-primary mt-4 mb-1 flex items-center gap-1.5">
@@ -37,20 +39,29 @@ export function AiFeaturesSection({
 				</p>
 			)}
 
-			<label
-				htmlFor="runtime-settings-show-summary-on-cards"
-				className="flex items-center gap-2 text-[13px] text-text-primary cursor-pointer"
-			>
-				<SettingsCheckbox
-					id="runtime-settings-show-summary-on-cards"
-					checked={fields.showSummaryOnCards}
-					onCheckedChange={(v) => setField("showSummaryOnCards", v)}
+			<div className="flex items-center justify-between gap-3">
+				<label htmlFor="runtime-settings-summary-display" className="text-text-primary text-[13px]">
+					Conversation summaries
+				</label>
+				<select
+					id="runtime-settings-summary-display"
+					name="summaryDisplayMode"
+					value={summaryDisplayMode}
+					onChange={(event) => {
+						const mode = event.currentTarget.value;
+						setField("showSummaryOnCards", mode === "card");
+						setField("showSummaryOnHover", mode === "hover");
+					}}
 					disabled={disabled}
-				/>
-				<span>Show conversation summary on cards</span>
-			</label>
-			<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
-				Display a truncated preview of the task's latest summary below the title.
+					className="h-7 min-w-36 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary outline-none hover:border-border-bright focus:border-border-focus disabled:opacity-40"
+				>
+					<option value="hover">On hover</option>
+					<option value="card">On card</option>
+					<option value="hidden">Hidden</option>
+				</select>
+			</div>
+			<p className="text-text-secondary text-[13px] mt-1 mb-0">
+				Choose whether the latest task summary appears on hover, directly on the card, or nowhere on task cards.
 			</p>
 
 			<label

@@ -131,6 +131,8 @@ export function useAppActionModels({
 			isLlmGenerationDisabled: projectRuntime.isLlmGenerationDisabled,
 			showSummaryOnCards:
 				projectRuntime.runtimeProjectConfig?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
+			showSummaryOnHover:
+				projectRuntime.runtimeProjectConfig?.showSummaryOnHover ?? CONFIG_DEFAULTS.showSummaryOnHover,
 			uncommittedChangesOnCardsEnabled:
 				projectRuntime.runtimeProjectConfig?.uncommittedChangesOnCardsEnabled ??
 				CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
@@ -139,6 +141,7 @@ export function useAppActionModels({
 			interactions.moveToTrashLoadingById,
 			projectRuntime.isLlmGenerationDisabled,
 			projectRuntime.runtimeProjectConfig?.showSummaryOnCards,
+			projectRuntime.runtimeProjectConfig?.showSummaryOnHover,
 			projectRuntime.runtimeProjectConfig?.uncommittedChangesOnCardsEnabled,
 		],
 	);

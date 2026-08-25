@@ -47,6 +47,7 @@ const noopReactiveState: ReactiveCardState = {
 	moveToTrashLoadingById: {},
 	isLlmGenerationDisabled: false,
 	showSummaryOnCards: false,
+	showSummaryOnHover: true,
 	uncommittedChangesOnCardsEnabled: false,
 };
 

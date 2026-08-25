@@ -28,6 +28,7 @@ export function BoardCard({
 	sessionSummary,
 	selected = false,
 	showSummaryOnCards = false,
+	showSummaryOnHover = true,
 	uncommittedChangesOnCardsEnabled = false,
 	onClick,
 	onDoubleClick,
@@ -55,6 +56,7 @@ export function BoardCard({
 	sessionSummary?: RuntimeTaskSessionSummary;
 	selected?: boolean;
 	showSummaryOnCards?: boolean;
+	showSummaryOnHover?: boolean;
 	uncommittedChangesOnCardsEnabled?: boolean;
 	onClick?: () => void;
 	onDoubleClick?: () => void;
@@ -110,6 +112,7 @@ export function BoardCard({
 		columnId,
 		sessionSummary,
 		showSummaryOnCards,
+		showSummaryOnHover,
 		uncommittedChangesOnCardsEnabled,
 		onRestartSession,
 	});

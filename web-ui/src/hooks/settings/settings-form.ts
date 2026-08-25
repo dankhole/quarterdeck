@@ -15,6 +15,7 @@ import type { RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/ty
 
 export interface SettingsFormValues {
 	showSummaryOnCards: boolean;
+	showSummaryOnHover: boolean;
 	llmSummaryPolishEnabled: boolean;
 	shellAutoRestartEnabled: boolean;
 	claudeFullscreenEnabled: boolean;
@@ -52,6 +53,7 @@ export interface SettingsFormValues {
 export function resolveInitialValues(config: RuntimeConfigResponse | null): SettingsFormValues {
 	return {
 		showSummaryOnCards: config?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
+		showSummaryOnHover: config?.showSummaryOnHover ?? CONFIG_DEFAULTS.showSummaryOnHover,
 		llmSummaryPolishEnabled: config?.llmSummaryPolishEnabled ?? CONFIG_DEFAULTS.llmSummaryPolishEnabled,
 		shellAutoRestartEnabled: config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
 		claudeFullscreenEnabled: config?.claudeFullscreenEnabled ?? CONFIG_DEFAULTS.claudeFullscreenEnabled,

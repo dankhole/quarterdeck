@@ -8,6 +8,10 @@
 - New browser commands are fenced once a run starts stopping, preventing a concurrent launch from escaping the final cleanup snapshot.
 - Browser cleanup failures now fail the disposable run instead of being silently ignored, while the supervisor still completes runtime/web shutdown and final evidence capture.
 
+### Feature: control task-card conversation summaries
+
+- Settings now offers On hover, On card, and Hidden conversation-summary modes, including an option that removes summaries from task cards completely while preserving existing display behavior by default.
+
 ### Feature: restart Agent Lab runtimes against the same state
 
 - Agent Lab can now gracefully replace only its runtime process while preserving the disposable state, projects, web process, ports, and browser session, with generation history and automatic before/after diagnostic checkpoints.

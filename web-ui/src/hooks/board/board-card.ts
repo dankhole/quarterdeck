@@ -24,6 +24,7 @@ export function resolveBoardCardViewModel({
 	reviewWorktreeSnapshot,
 	workspacePath,
 	showSummaryOnCards,
+	showSummaryOnHover,
 	uncommittedChangesOnCardsEnabled,
 	isRestartDelayElapsed,
 	hasRestartSessionHandler,
@@ -34,6 +35,7 @@ export function resolveBoardCardViewModel({
 	reviewWorktreeSnapshot: ReviewTaskWorktreeSnapshot | null | undefined;
 	workspacePath: string | null;
 	showSummaryOnCards: boolean;
+	showSummaryOnHover: boolean;
 	uncommittedChangesOnCardsEnabled: boolean;
 	isRestartDelayElapsed: boolean;
 	hasRestartSessionHandler: boolean;
@@ -58,7 +60,7 @@ export function resolveBoardCardViewModel({
 	const cardHoverTooltip = getCardHoverTooltip(sessionSummary);
 	const latestSummaryText = sessionSummary?.displaySummary ?? null;
 	const isSummaryVisibleOnCard = showSummaryOnCards && Boolean(latestSummaryText);
-	const effectiveTooltip = isSummaryVisibleOnCard ? null : cardHoverTooltip;
+	const effectiveTooltip = !isSummaryVisibleOnCard && showSummaryOnHover ? cardHoverTooltip : null;
 	const isSessionDead = isBoardCardSessionDead(sessionSummary);
 	const isSessionRestartable =
 		(columnId === "in_progress" || columnId === "review") &&

@@ -95,6 +95,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	readyForReviewNotificationsEnabled: boolField(true),
 	shellAutoRestartEnabled: boolField(true),
 	showSummaryOnCards: boolField(false),
+	showSummaryOnHover: boolField(true),
 	llmSummaryPolishEnabled: boolField(false),
 	showTrashWorktreeNotice: boolField(true),
 	uncommittedChangesOnCardsEnabled: boolField(true),

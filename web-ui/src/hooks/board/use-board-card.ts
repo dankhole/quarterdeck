@@ -9,6 +9,7 @@ interface UseBoardCardInput {
 	columnId: BoardColumnId;
 	sessionSummary?: RuntimeTaskSessionSummary;
 	showSummaryOnCards: boolean;
+	showSummaryOnHover: boolean;
 	uncommittedChangesOnCardsEnabled: boolean;
 	onRestartSession?: (taskId: string) => void;
 }
@@ -18,6 +19,7 @@ export function useBoardCard({
 	columnId,
 	sessionSummary,
 	showSummaryOnCards,
+	showSummaryOnHover,
 	uncommittedChangesOnCardsEnabled,
 	onRestartSession,
 }: UseBoardCardInput) {
@@ -37,6 +39,7 @@ export function useBoardCard({
 				reviewWorktreeSnapshot: reviewWorktreeSnapshot ?? undefined,
 				workspacePath,
 				showSummaryOnCards,
+				showSummaryOnHover,
 				uncommittedChangesOnCardsEnabled,
 				isRestartDelayElapsed,
 				hasRestartSessionHandler: Boolean(onRestartSession),
@@ -48,6 +51,7 @@ export function useBoardCard({
 			reviewWorktreeSnapshot,
 			workspacePath,
 			showSummaryOnCards,
+			showSummaryOnHover,
 			uncommittedChangesOnCardsEnabled,
 			isRestartDelayElapsed,
 			onRestartSession,

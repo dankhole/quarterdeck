@@ -10,6 +10,7 @@ describe("resolveInitialValues", () => {
 	it("returns an object with all expected keys", () => {
 		const values = resolveInitialValues(null);
 		expect(values).toHaveProperty("showSummaryOnCards");
+		expect(values).toHaveProperty("showSummaryOnHover");
 		expect(values).toHaveProperty("llmSummaryPolishEnabled");
 		expect(values).toHaveProperty("audibleNotificationEvents");
 		expect(values).toHaveProperty("shortcuts");
@@ -37,7 +38,7 @@ describe("areFormValuesEqual", () => {
 
 	it("detects primitive field changes", () => {
 		const a = makeValues();
-		const b = { ...makeValues(), showSummaryOnCards: !a.showSummaryOnCards };
+		const b = { ...makeValues(), showSummaryOnHover: !a.showSummaryOnHover };
 		expect(areFormValuesEqual(a, b)).toBe(false);
 	});
 
