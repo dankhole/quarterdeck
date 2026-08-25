@@ -59,6 +59,7 @@ Tracked historical context lives under `docs/history/`. Read it only when curren
 - `applyAuthoritativeProjectState(...)` is the single browser apply path for authoritative project state.
 - `IRuntimeHostIntegrations` is the sole production boundary for server-side file, application, URL, IDE, and folder-picker effects. Preserve its launch-derived capability checks and typed outcomes; never accept arbitrary browser-supplied commands.
 - Do not start Quarterdeck runtime or dev instances (`npm run dev`, `npm run dev:full`, `npm run dogfood`, `quarterdeck`) without asking when the user's app may already be running. Overlapping runtimes can proxy to the wrong instance. Use build/test validation or the isolated Agent Lab as appropriate.
+- Agent availability has separate display and launch policies. Settings/config display reads may use the 30-second stale-while-revalidate cache, but task launches must go through `resolveAgentCommandForLaunch(...)`: reuse only a fresh successful result, await expired or cached-failure refreshes, never cache probe timeouts/execution failures, and preserve the typed failure message. Startup recovery may retry one transient availability probe inside preparation; deterministic missing/version/feature failures remain non-retryable preparation errors. Keep probe diagnostics metadata-only (`agentId`, probe kind, duration, typed outcome), without command output or thrown messages.
 
 The summaries above are not substitutes for the routed runtime-state and session-lifecycle documents.
 

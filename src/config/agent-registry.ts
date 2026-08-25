@@ -26,7 +26,43 @@ interface AgentAvailability {
 	installed: boolean;
 	status: RuntimeAgentDefinition["status"];
 	statusMessage: string | null;
+	reason: AgentAvailabilityReason;
+	transient: boolean;
 }
+
+export type AgentAvailabilityReason =
+	| "installed"
+	| "missing"
+	| "unsupported_version"
+	| "feature_missing"
+	| "probe_timeout"
+	| "probe_failed";
+
+export type AgentAvailabilityProbeKind = "version" | "features";
+
+export type AgentAvailabilityDiagnosticEvent =
+	| {
+			name: "agent.availability_probe_completed";
+			payload: {
+				agentId: RuntimeAgentId;
+				probeKind: AgentAvailabilityProbeKind;
+				durationMs: number;
+				outcome: "succeeded" | "probe_timeout" | "probe_failed";
+			};
+			level: "info" | "warn";
+	  }
+	| {
+			name: "agent.availability_resolved";
+			payload: {
+				agentId: RuntimeAgentId;
+				reason: AgentAvailabilityReason;
+				installed: boolean;
+				transient: boolean;
+			};
+			level: "info" | "warn";
+	  };
+
+export type AgentAvailabilityDiagnosticSink = (event: AgentAvailabilityDiagnosticEvent) => void;
 
 const MINIMUM_CODEX_VERSION = "0.142.5";
 const MINIMUM_CLAUDE_VERSION = "2.1.198";
@@ -34,6 +70,19 @@ const MINIMUM_PI_VERSION = "0.70.2";
 const PROBE_OUTPUT_SNIPPET_MAX_LENGTH = 500;
 const CODEX_PROBE_TIMEOUT_MS = 3_000;
 const log = createTaggedLogger("agent-registry");
+let availabilityDiagnosticSink: AgentAvailabilityDiagnosticSink | null = null;
+
+export function setAgentAvailabilityDiagnosticSink(sink: AgentAvailabilityDiagnosticSink | null): void {
+	availabilityDiagnosticSink = sink;
+}
+
+function recordAvailabilityDiagnostic(event: AgentAvailabilityDiagnosticEvent): void {
+	try {
+		availabilityDiagnosticSink?.(event);
+	} catch {
+		// Diagnostics must never affect agent discovery or task launch.
+	}
+}
 
 /** Return the catalog-defined `baseArgs` that Quarterdeck always passes when launching an agent. */
 function getDefaultArgs(agentId: RuntimeAgentId): string[] {
@@ -128,12 +177,36 @@ function compareSemver(left: string, right: string): number {
 interface ProbeCommandResult {
 	stdout: string;
 	stderr: string;
-	exitStatus: number | null;
-	signal: NodeJS.Signals | null;
+	durationMs: number;
 }
 
-function runProbeCommand(binary: string, args: string[]): Promise<ProbeCommandResult> {
+type TransientProbeFailureReason = "probe_timeout" | "probe_failed";
+
+class AgentProbeExecutionError extends Error {
+	constructor(
+		readonly reason: TransientProbeFailureReason,
+		readonly durationMs: number,
+	) {
+		super(reason === "probe_timeout" ? "Agent availability probe timed out." : "Agent availability probe failed.");
+		this.name = "AgentProbeExecutionError";
+	}
+}
+
+function isProbeTimeout(error: ExecFileException): boolean {
+	// Node's execFile timeout terminates the process and reports `killed: true`
+	// (normally with SIGTERM). A process that exits from an unrelated signal is
+	// an execution failure, not evidence that the timeout elapsed.
+	return error.killed === true || error.code === "ETIMEDOUT";
+}
+
+function runProbeCommand(
+	agentId: RuntimeAgentId,
+	probeKind: AgentAvailabilityProbeKind,
+	binary: string,
+	args: string[],
+): Promise<ProbeCommandResult> {
 	return new Promise((resolve, reject) => {
+		const startedAt = Date.now();
 		const command = resolveWindowsCompatibleCommand(binary, args);
 		execFile(
 			command.binary,
@@ -143,42 +216,61 @@ function runProbeCommand(binary: string, args: string[]): Promise<ProbeCommandRe
 				timeout: CODEX_PROBE_TIMEOUT_MS,
 			},
 			(error: ExecFileException | null, stdout: string | Buffer, stderr: string | Buffer) => {
-				const exitStatus = error ? (typeof error.code === "number" ? error.code : null) : 0;
-				const signal = error?.signal ?? null;
-				if (error && typeof error.code === "string") {
-					reject(error);
+				const durationMs = Math.max(0, Date.now() - startedAt);
+				if (error) {
+					const reason = isProbeTimeout(error) ? "probe_timeout" : "probe_failed";
+					recordAvailabilityDiagnostic({
+						name: "agent.availability_probe_completed",
+						payload: { agentId, probeKind, durationMs, outcome: reason },
+						level: "warn",
+					});
+					reject(new AgentProbeExecutionError(reason, durationMs));
 					return;
 				}
+				recordAvailabilityDiagnostic({
+					name: "agent.availability_probe_completed",
+					payload: { agentId, probeKind, durationMs, outcome: "succeeded" },
+					level: "info",
+				});
 				resolve({
 					stdout: String(stdout ?? ""),
 					stderr: String(stderr ?? ""),
-					exitStatus,
-					signal,
+					durationMs,
 				});
 			},
 		);
 	});
 }
 
-async function detectAgentVersion(agentName: string, binary: string): Promise<string | null> {
+type VersionProbeResult =
+	| { ok: true; version: string }
+	| { ok: false; reason: TransientProbeFailureReason | "unsupported_version" };
+
+async function detectAgentVersion(
+	agentId: RuntimeAgentId,
+	agentName: string,
+	binary: string,
+): Promise<VersionProbeResult> {
 	try {
-		const result = await runProbeCommand(binary, ["--version"]);
+		const result = await runProbeCommand(agentId, "version", binary, ["--version"]);
 		const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
 		const version = extractVersion(output);
 		log.debug(`${agentName} version probe completed`, {
 			binary,
 			version,
-			exitStatus: result.exitStatus,
-			signal: result.signal,
+			durationMs: result.durationMs,
 			stderrSnippet: summarizeProbeOutput(result.stderr),
 		});
-		return version;
+		return version ? { ok: true, version } : { ok: false, reason: "unsupported_version" };
 	} catch (error) {
 		log.debug(`${agentName} version probe failed`, {
 			binary,
 			error: error instanceof Error ? error.message : String(error),
 		});
-		return null;
+		return {
+			ok: false,
+			reason: error instanceof AgentProbeExecutionError ? error.reason : "probe_failed",
+		};
 	}
 }
 
@@ -206,43 +298,67 @@ export function parseCodexFeaturesListOutput(output: string): boolean {
 	return enabledToken !== "false";
 }
 
-async function codexSupportsNativeHooks(binary: string): Promise<boolean> {
+type FeatureProbeResult = { ok: true; supported: boolean } | { ok: false; reason: TransientProbeFailureReason };
+
+async function codexSupportsNativeHooks(binary: string): Promise<FeatureProbeResult> {
 	try {
-		const result = await runProbeCommand(binary, ["features", "list"]);
+		const result = await runProbeCommand("codex", "features", binary, ["features", "list"]);
 		const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
 		const supported = parseCodexFeaturesListOutput(output);
 		log.debug("Codex native hook feature probe completed", {
 			binary,
 			supported,
-			exitStatus: result.exitStatus,
-			signal: result.signal,
+			durationMs: result.durationMs,
 			stdoutSnippet: summarizeProbeOutput(result.stdout),
 			stderrSnippet: summarizeProbeOutput(result.stderr),
 		});
-		return supported;
+		return { ok: true, supported };
 	} catch (error) {
 		log.debug("Codex native hook feature probe failed", {
 			binary,
 			error: error instanceof Error ? error.message : String(error),
 		});
-		return false;
+		return {
+			ok: false,
+			reason: error instanceof AgentProbeExecutionError ? error.reason : "probe_failed",
+		};
 	}
 }
 
 async function resolveMinimumVersionAvailability(
+	agentId: RuntimeAgentId,
 	agentName: string,
 	binary: string,
 	minimumVersion: string,
 ): Promise<AgentAvailability> {
-	const version = await detectAgentVersion(agentName, binary);
-	if (!version) {
-		log.debug(`${agentName} availability rejected: version unknown`, { binary, minimumVersion });
+	const versionResult = await detectAgentVersion(agentId, agentName, binary);
+	if (!versionResult.ok) {
+		log.debug(`${agentName} availability rejected: version probe failed`, {
+			binary,
+			minimumVersion,
+			reason: versionResult.reason,
+		});
+		if (versionResult.reason === "unsupported_version") {
+			return {
+				installed: false,
+				status: "upgrade_required",
+				statusMessage: `Detected on PATH, but Quarterdeck could not determine the ${agentName} version. Upgrade to ${minimumVersion} or newer.`,
+				reason: "unsupported_version",
+				transient: false,
+			};
+		}
 		return {
 			installed: false,
-			status: "upgrade_required",
-			statusMessage: `Detected on PATH, but Quarterdeck could not determine the ${agentName} version. Upgrade to ${minimumVersion} or newer.`,
+			status: "missing",
+			statusMessage:
+				versionResult.reason === "probe_timeout"
+					? `${agentName} availability check timed out. Retry the task.`
+					: `Quarterdeck could not run the ${agentName} version check. Retry the task or verify the CLI runs from this shell.`,
+			reason: versionResult.reason,
+			transient: true,
 		};
 	}
+	const { version } = versionResult;
 	if (compareSemver(version, minimumVersion) < 0) {
 		log.debug(`${agentName} availability rejected: version below minimum`, {
 			binary,
@@ -253,6 +369,8 @@ async function resolveMinimumVersionAvailability(
 			installed: false,
 			status: "upgrade_required",
 			statusMessage: `Detected ${agentName} ${version}, but Quarterdeck currently requires ${minimumVersion} or newer.`,
+			reason: "unsupported_version",
+			transient: false,
 		};
 	}
 	log.debug(`${agentName} availability confirmed`, {
@@ -264,15 +382,17 @@ async function resolveMinimumVersionAvailability(
 		installed: true,
 		status: "installed",
 		statusMessage: null,
+		reason: "installed",
+		transient: false,
 	};
 }
 
 async function resolveClaudeAvailability(binary: string): Promise<AgentAvailability> {
-	return resolveMinimumVersionAvailability("Claude Code", binary, MINIMUM_CLAUDE_VERSION);
+	return resolveMinimumVersionAvailability("claude", "Claude Code", binary, MINIMUM_CLAUDE_VERSION);
 }
 
 async function resolvePiAvailability(binary: string): Promise<AgentAvailability> {
-	return resolveMinimumVersionAvailability("Pi", binary, MINIMUM_PI_VERSION);
+	return resolveMinimumVersionAvailability("pi", "Pi", binary, MINIMUM_PI_VERSION);
 }
 
 const AGENT_AVAILABILITY_TTL_MS = 30_000;
@@ -284,6 +404,8 @@ interface AvailabilityCacheEntry {
 
 interface ResolveAgentAvailabilityOptions {
 	allowStale?: boolean;
+	forceRefresh?: boolean;
+	reuseCachedFailure?: boolean;
 }
 
 const agentAvailabilityCache = new Map<string, AvailabilityCacheEntry>();
@@ -304,71 +426,83 @@ async function computeAgentAvailability(agentId: RuntimeAgentId, binary: string)
 		if (agentId === "codex") {
 			log.debug("Codex availability rejected: binary not detected on PATH", { binary });
 		}
-		return {
+		const result: AgentAvailability = {
 			installed: false,
 			status: "missing",
-			statusMessage: null,
+			statusMessage: `${getRuntimeLaunchSupportedAgentCatalog().find((entry) => entry.id === agentId)?.label ?? agentId} was not found on Quarterdeck's PATH. Install the CLI or choose another agent.`,
+			reason: "missing",
+			transient: false,
 		};
+		recordAvailabilityDiagnostic({
+			name: "agent.availability_resolved",
+			payload: { agentId, reason: result.reason, installed: result.installed, transient: result.transient },
+			level: "warn",
+		});
+		return result;
 	}
+	let result: AgentAvailability;
 	if (agentId === "pi") {
-		return resolvePiAvailability(binary);
-	}
-	if (agentId === "claude") {
-		return resolveClaudeAvailability(binary);
-	}
-	if (agentId !== "codex") {
-		return {
+		result = await resolvePiAvailability(binary);
+	} else if (agentId === "claude") {
+		result = await resolveClaudeAvailability(binary);
+	} else if (agentId !== "codex") {
+		result = {
 			installed: true,
 			status: "installed",
 			statusMessage: null,
+			reason: "installed",
+			transient: false,
 		};
+	} else {
+		result = await resolveMinimumVersionAvailability("codex", "Codex", binary, MINIMUM_CODEX_VERSION);
+		if (result.installed) {
+			const featureResult = await codexSupportsNativeHooks(binary);
+			if (!featureResult.ok) {
+				result = {
+					installed: false,
+					status: "missing",
+					statusMessage:
+						featureResult.reason === "probe_timeout"
+							? "Codex native-hook availability check timed out. Retry the task."
+							: "Quarterdeck could not run the Codex native-hook check. Retry the task or verify Codex runs from this shell.",
+					reason: featureResult.reason,
+					transient: true,
+				};
+			} else if (!featureResult.supported) {
+				log.debug("Codex availability rejected: native hook feature unavailable", {
+					binary,
+					featureName: CODEX_HOOKS_FEATURE_NAME,
+				});
+				result = {
+					installed: false,
+					status: "upgrade_required",
+					statusMessage:
+						"Detected Codex, but native hook support is unavailable. Enable the hooks feature or upgrade Codex.",
+					reason: "feature_missing",
+					transient: false,
+				};
+			} else {
+				log.debug("Codex availability confirmed", {
+					binary,
+					minimumVersion: MINIMUM_CODEX_VERSION,
+					featureName: CODEX_HOOKS_FEATURE_NAME,
+				});
+				result = {
+					installed: true,
+					status: "installed",
+					statusMessage: null,
+					reason: "installed",
+					transient: false,
+				};
+			}
+		}
 	}
-
-	const version = await detectAgentVersion("Codex", binary);
-	if (!version) {
-		log.debug("Codex availability rejected: version unknown", { binary, minimumVersion: MINIMUM_CODEX_VERSION });
-		return {
-			installed: false,
-			status: "upgrade_required",
-			statusMessage: `Detected on PATH, but Quarterdeck could not determine the Codex version. Upgrade to ${MINIMUM_CODEX_VERSION} or newer.`,
-		};
-	}
-	if (compareSemver(version, MINIMUM_CODEX_VERSION) < 0) {
-		log.debug("Codex availability rejected: version below minimum", {
-			binary,
-			version,
-			minimumVersion: MINIMUM_CODEX_VERSION,
-		});
-		return {
-			installed: false,
-			status: "upgrade_required",
-			statusMessage: `Detected Codex ${version}, but Quarterdeck currently requires ${MINIMUM_CODEX_VERSION} or newer.`,
-		};
-	}
-	if (!(await codexSupportsNativeHooks(binary))) {
-		log.debug("Codex availability rejected: native hook feature unavailable", {
-			binary,
-			version,
-			featureName: CODEX_HOOKS_FEATURE_NAME,
-		});
-		return {
-			installed: false,
-			status: "upgrade_required",
-			statusMessage:
-				"Detected Codex, but Quarterdeck could not confirm native hook support. Upgrade Codex to a build with the hooks feature.",
-		};
-	}
-	log.debug("Codex availability confirmed", {
-		binary,
-		version,
-		minimumVersion: MINIMUM_CODEX_VERSION,
-		featureName: CODEX_HOOKS_FEATURE_NAME,
+	recordAvailabilityDiagnostic({
+		name: "agent.availability_resolved",
+		payload: { agentId, reason: result.reason, installed: result.installed, transient: result.transient },
+		level: result.installed ? "info" : "warn",
 	});
-	return {
-		installed: true,
-		status: "installed",
-		statusMessage: null,
-	};
+	return result;
 }
 
 function startAvailabilityProbe(
@@ -384,7 +518,10 @@ function startAvailabilityProbe(
 	const probe = computeAgentAvailability(agentId, binary)
 		.then((result) => {
 			const entry = { result, checkedAt: Date.now() };
-			if (generation === agentAvailabilityCacheGeneration) {
+			// A timeout or launcher failure says nothing durable about whether the
+			// agent is runnable. Keep an older display value if one exists, but never
+			// let a transient negative become launch-authoritative cache state.
+			if (generation === agentAvailabilityCacheGeneration && !result.transient) {
 				agentAvailabilityCache.set(cacheKey, entry);
 			}
 			return entry;
@@ -406,10 +543,15 @@ async function resolveAgentAvailability(
 	const cacheKey = `${agentId}::${binary}`;
 	const cached = agentAvailabilityCache.get(cacheKey);
 	const now = Date.now();
-	if (cached && now - cached.checkedAt < AGENT_AVAILABILITY_TTL_MS) {
+	if (
+		!options.forceRefresh &&
+		cached &&
+		now - cached.checkedAt < AGENT_AVAILABILITY_TTL_MS &&
+		(cached.result.installed || options.reuseCachedFailure !== false)
+	) {
 		return cached.result;
 	}
-	if (cached && options.allowStale !== false) {
+	if (!options.forceRefresh && cached && options.allowStale !== false) {
 		void startAvailabilityProbe(cacheKey, agentId, binary).catch((error) => {
 			log.debug("Agent availability stale refresh failed", {
 				agentId,
@@ -432,7 +574,9 @@ export async function getAgentAvailability(
 		return {
 			installed: false,
 			status: "missing",
-			statusMessage: null,
+			statusMessage: `Selected agent "${agentId}" is not supported by this Quarterdeck build.`,
+			reason: "missing",
+			transient: false,
 		};
 	}
 	return resolveAgentAvailability(entry.id, entry.binary, options);
@@ -489,6 +633,71 @@ export async function resolveAgentCommand(runtimeConfig: RuntimeConfigState): Pr
 		};
 	}
 	return null;
+}
+
+export class AgentCommandUnavailableError extends Error {
+	constructor(
+		readonly agentId: RuntimeAgentId,
+		readonly reason: AgentAvailabilityReason,
+		readonly transient: boolean,
+		message: string,
+	) {
+		super(message);
+		this.name = "AgentCommandUnavailableError";
+	}
+}
+
+export interface ResolveAgentCommandForLaunchOptions {
+	/** Startup recovery gets one bounded retry for a timeout or launcher failure. */
+	retryTransient?: boolean;
+}
+
+/**
+ * Resolve an agent for a process launch. Unlike display reads, this path never
+ * serves an expired cache entry. Successful fresh entries remain reusable, while
+ * transient negatives are never cached and may be retried once by recovery.
+ */
+export async function resolveAgentCommandForLaunch(
+	runtimeConfig: RuntimeConfigState,
+	options: ResolveAgentCommandForLaunchOptions = {},
+): Promise<ResolvedAgentCommand> {
+	const selected = getRuntimeLaunchSupportedAgentCatalog().find((entry) => entry.id === runtimeConfig.selectedAgentId);
+	if (!selected) {
+		throw new AgentCommandUnavailableError(
+			runtimeConfig.selectedAgentId,
+			"missing",
+			false,
+			`Selected agent "${runtimeConfig.selectedAgentId}" is not supported by this Quarterdeck build.`,
+		);
+	}
+
+	let availability = await resolveAgentAvailability(selected.id, selected.binary, {
+		allowStale: false,
+		reuseCachedFailure: false,
+	});
+	if (!availability.installed && availability.transient && options.retryTransient) {
+		availability = await resolveAgentAvailability(selected.id, selected.binary, {
+			allowStale: false,
+			forceRefresh: true,
+		});
+	}
+	if (!availability.installed) {
+		throw new AgentCommandUnavailableError(
+			selected.id,
+			availability.reason,
+			availability.transient,
+			availability.statusMessage ?? `${selected.label} is not runnable.`,
+		);
+	}
+
+	const args = getDefaultArgs(selected.id);
+	return {
+		agentId: selected.id,
+		label: selected.label,
+		command: joinCommand(selected.binary, args),
+		binary: selected.binary,
+		args,
+	};
 }
 
 function resolveRuntimeOpenTargetPlatform(platform: NodeJS.Platform): RuntimeConfigResponse["runtimePlatform"] {

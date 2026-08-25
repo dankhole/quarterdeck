@@ -1,4 +1,4 @@
-import { resolveAgentCommand } from "../config";
+import { resolveAgentCommandForLaunch } from "../config";
 import {
 	createTaggedLogger,
 	findCardInBoard,
@@ -256,12 +256,9 @@ export async function prepareTaskSessionStart(
 		effectiveAgentId !== scopedRuntimeConfig.selectedAgentId
 			? { ...scopedRuntimeConfig, selectedAgentId: effectiveAgentId }
 			: scopedRuntimeConfig;
-	const resolved = await resolveAgentCommand(resolvedConfig);
-	if (!resolved) {
-		throw new Error(
-			"No runnable agent command is configured. Install a supported CLI or choose another agent when creating the task.",
-		);
-	}
+	const resolved = options.startupRecoveryToken
+		? await resolveAgentCommandForLaunch(resolvedConfig, { retryTransient: true })
+		: await resolveAgentCommandForLaunch(resolvedConfig);
 
 	const resumeContextWarning = getResumeContextWarning({
 		resumeConversation: body.resumeConversation,

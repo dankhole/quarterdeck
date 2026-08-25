@@ -15,12 +15,15 @@ import {
 } from "../utilities/integration-server";
 import { createTempDir } from "../utilities/temp-dir";
 
-function installBrowserOpenStub(binDir: string, logPath: string): void {
+function installBrowserOpenStub(binDir: string, logPath: string, failurePath: string): void {
 	mkdirSync(binDir, { recursive: true });
 	const script = `#!/usr/bin/env sh
 printf '%s\n' "$*" >> ${JSON.stringify(logPath)}
+if [ -f ${JSON.stringify(failurePath)} ]; then
+  exit 1
+fi
 `;
-	const commandNames = process.platform === "darwin" ? ["open"] : ["xdg-open"];
+	const commandNames = ["xdg-open"];
 	for (const commandName of commandNames) {
 		const scriptPath = join(binDir, commandName);
 		writeFileSync(scriptPath, script, "utf8");
@@ -105,7 +108,10 @@ function initGitRepositoryWithMainBranch(path: string): void {
 
 describe("source CLI commands", () => {
 	it("opens only for launch invocations", { timeout: 60_000 }, async () => {
-		if (process.platform === "win32") {
+		// macOS deliberately uses the absolute /usr/bin/open launcher. Its exit
+		// behavior is covered by browser.test.ts; keep this PATH-stubbed source-CLI
+		// lifecycle test on Linux so it can never open a developer's real browser.
+		if (process.platform !== "linux") {
 			return;
 		}
 
@@ -120,7 +126,8 @@ describe("source CLI commands", () => {
 			const port = String(await getAvailablePort());
 			const browserStubBinDir = join(homeDir, "browser-bin");
 			const browserOpenLogPath = join(homeDir, "browser-open.log");
-			installBrowserOpenStub(browserStubBinDir, browserOpenLogPath);
+			const browserOpenFailurePath = join(homeDir, "browser-open.fail");
+			installBrowserOpenStub(browserStubBinDir, browserOpenLogPath, browserOpenFailurePath);
 			const env = createGitTestEnv({
 				HOME: homeDir,
 				USERPROFILE: homeDir,
@@ -136,7 +143,6 @@ describe("source CLI commands", () => {
 					"--import",
 					resolveTsxLoaderImportSpecifier(),
 					resolve(process.cwd(), "src/cli.ts"),
-					"--no-open",
 				],
 				{
 					cwd: projectPath,
@@ -147,11 +153,13 @@ describe("source CLI commands", () => {
 
 			try {
 				await waitForProcessStart(serverProcess);
+				await waitForBrowserOpenCount(browserOpenLogPath, 1);
 
 				for (const [args, expectedOpenCount] of [
-					[[], 1],
-					[["--help"], 1],
-					[["--port", port], 2],
+					[[], 2],
+					[["--no-open"], 2],
+					[["--help"], 2],
+					[["--port", port], 3],
 				] as const) {
 					const result = await runCliCommandAndCollectOutput({
 						args: [...args],
@@ -163,6 +171,17 @@ describe("source CLI commands", () => {
 					await waitForBrowserOpenCount(browserOpenLogPath, expectedOpenCount);
 					expect(readBrowserOpenLog(browserOpenLogPath)).toHaveLength(expectedOpenCount);
 				}
+
+				writeFileSync(browserOpenFailurePath, "fail\n", "utf8");
+				const failedOpen = await runCliCommandAndCollectOutput({
+					args: [],
+					cwd: projectPath,
+					env,
+				});
+				expect(failedOpen.didExit).toBe(true);
+				expect(failedOpen.exitCode).toBe(0);
+				expect(failedOpen.stderr).toContain("Could not open browser automatically");
+				await waitForBrowserOpenCount(browserOpenLogPath, 4);
 			} finally {
 				await requestGracefulShutdown(serverProcess);
 				const stopped = await waitForExit(serverProcess, 5_000);

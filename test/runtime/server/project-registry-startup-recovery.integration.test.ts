@@ -27,6 +27,7 @@ vi.mock("../../../src/state", () => ({
 vi.mock("../../../src/config", () => ({
 	DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE: "",
 	resolveAgentCommand: agentMocks.resolveAgentCommand,
+	resolveAgentCommandForLaunch: agentMocks.resolveAgentCommand,
 	toGlobalRuntimeConfigState: vi.fn((config) => config),
 }));
 

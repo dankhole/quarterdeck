@@ -7,7 +7,7 @@ import { registerBackupCommand } from "./commands/backup";
 import { registerDiagnosticsCommand } from "./commands/diagnostics";
 import { registerHooksCommand } from "./commands/hooks";
 import { registerStatuslineCommand } from "./commands/statusline";
-import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config";
+import { loadGlobalRuntimeConfig, loadRuntimeConfig, setAgentAvailabilityDiagnosticSink } from "./config";
 import type { IRuntimeHostIntegrations, RuntimeCapabilities } from "./core";
 import {
 	buildQuarterdeckRuntimeUrl,
@@ -286,6 +286,8 @@ async function tryOpenExistingServer(options: {
 		const result = await openExternalTarget(projectUrl, options.runtimeCapabilities);
 		if (!result.ok) {
 			console.warn(`Could not open browser automatically: ${result.error}`);
+		} else {
+			console.log("Browser launcher accepted the Quarterdeck URL.");
 		}
 	}
 	console.log(`Project URL: ${projectUrl}`);
@@ -295,6 +297,7 @@ async function tryOpenExistingServer(options: {
 interface RuntimeServerHandle {
 	url: string;
 	hostIntegrations: Pick<IRuntimeHostIntegrations, "openExternalUrl">;
+	diagnostics: Pick<RuntimeDiagnostics, "recordEvent">;
 	close: () => Promise<void>;
 	shutdown: (options?: { skipSessionCleanup?: boolean }) => Promise<void>;
 }
@@ -563,6 +566,7 @@ async function createRuntimeServerHandle(
 		try {
 			await runtimeServer.close();
 		} finally {
+			setAgentAvailabilityDiagnosticSink(null);
 			setRuntimeDiagnosticLogSink(null);
 		}
 	};
@@ -581,6 +585,7 @@ async function createRuntimeServerHandle(
 	return {
 		url: runtimeServer.url,
 		hostIntegrations,
+		diagnostics: bootstrap.diagnostics,
 		close,
 		shutdown,
 	};
@@ -596,6 +601,9 @@ async function startServer(hostLaunch: {
 		port: getQuarterdeckRuntimePort(),
 		quarterdeckVersion: QUARTERDECK_VERSION,
 		captureTier: process.env.QUARTERDECK_AGENT_LAB === "1" ? "agent-lab" : "flight",
+	});
+	setAgentAvailabilityDiagnosticSink((event) => {
+		diagnostics.recordEvent(event.name, event.payload, {}, { level: event.level, essential: true });
 	});
 	setRuntimeDiagnosticLogSink(diagnostics);
 	try {
@@ -629,6 +637,7 @@ async function startServer(hostLaunch: {
 		const bootstrap = await createRuntimeBootstrapState(modules, warn, startupAgentCleanup, diagnostics);
 		return await createRuntimeServerHandle(modules, bootstrap, hostLaunch);
 	} catch (error) {
+		setAgentAvailabilityDiagnosticSink(null);
 		setRuntimeDiagnosticLogSink(null);
 		await diagnostics.fail(error).catch(() => undefined);
 		throw error;
@@ -693,9 +702,29 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 	}
 	console.log(`Quarterdeck running at ${runtime.url}`);
 	if (!options.noOpen && shouldAutoOpenBrowser) {
+		runtime.diagnostics.recordEvent(
+			"browser.auto_open_requested",
+			{ platform: process.platform },
+			{},
+			{ essential: true },
+		);
 		const result = await runtime.hostIntegrations.openExternalUrl(runtime.url);
 		if (!result.ok) {
+			runtime.diagnostics.recordEvent(
+				"browser.launcher_failed",
+				{ platform: process.platform, reason: result.reason },
+				{},
+				{ level: "warn", essential: true },
+			);
 			console.warn(`Could not open browser automatically: ${result.error}`);
+		} else {
+			runtime.diagnostics.recordEvent(
+				"browser.launcher_accepted",
+				{ platform: process.platform, outcome: result.outcome },
+				{},
+				{ essential: true },
+			);
+			console.log("Browser launcher accepted the Quarterdeck URL.");
 		}
 	}
 	console.log("Press Ctrl+C to stop.");

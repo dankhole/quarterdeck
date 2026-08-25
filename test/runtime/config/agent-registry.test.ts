@@ -25,6 +25,8 @@ import {
 	parseCodexFeaturesListOutput,
 	resetAgentAvailabilityCache,
 	resolveAgentCommand,
+	resolveAgentCommandForLaunch,
+	setAgentAvailabilityDiagnosticSink,
 } from "../../../src/config";
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
 
@@ -71,6 +73,7 @@ function mockSuccessfulAgentProbe(): void {
 beforeEach(() => {
 	vi.useRealTimers();
 	resetAgentAvailabilityCache();
+	setAgentAvailabilityDiagnosticSink(null);
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReset();
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
 	childProcessMocks.execFile.mockReset();
@@ -232,6 +235,179 @@ describe("agent-registry", () => {
 		expect(stale.agents.find((agent) => agent.id === "codex")?.installed).toBe(true);
 		expect(versionCalls).toHaveLength(2);
 		expect(featuresCalls).toHaveLength(1);
+	});
+
+	it("does not cache a transient timeout as agent unavailability", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+		let versionAttempt = 0;
+		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+			const callback = readExecFileCallback(rest);
+			if (args[0] === "--version") {
+				versionAttempt += 1;
+				if (versionAttempt === 1) {
+					callback(
+						Object.assign(new Error("timed out"), {
+							code: null,
+							killed: true,
+							signal: "SIGTERM" as NodeJS.Signals,
+						}),
+						"",
+						"",
+					);
+					return {} as ChildProcess;
+				}
+				callback(null, "0.142.5\n", "");
+				return {} as ChildProcess;
+			}
+			callback(null, "hooks stable true\n", "");
+			return {} as ChildProcess;
+		});
+
+		await expect(resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "codex" }))).resolves.toBeNull();
+		await expect(
+			resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "codex" })),
+		).resolves.toMatchObject({
+			agentId: "codex",
+		});
+
+		expect(versionAttempt).toBe(2);
+	});
+
+	it("awaits an expired availability refresh for launches instead of serving stale data", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+
+		await expect(
+			resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "codex" })),
+		).resolves.toMatchObject({
+			agentId: "codex",
+		});
+		vi.setSystemTime(Date.now() + 31_000);
+
+		await expect(
+			resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" })),
+		).resolves.toMatchObject({ agentId: "codex" });
+		const versionCalls = childProcessMocks.execFile.mock.calls.filter((call) => call[1]?.[0] === "--version");
+		const featuresCalls = childProcessMocks.execFile.mock.calls.filter(
+			(call) => call[1]?.[0] === "features" && call[1]?.[1] === "list",
+		);
+		expect(versionCalls).toHaveLength(2);
+		expect(featuresCalls).toHaveLength(2);
+	});
+
+	it("refreshes a fresh cached failure before launching a newly installed agent", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
+		await expect(resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "codex" }))).resolves.toBeNull();
+
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+		await expect(
+			resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" })),
+		).resolves.toMatchObject({ agentId: "codex" });
+
+		expect(childProcessMocks.execFile).toHaveBeenCalledTimes(2);
+	});
+
+	it("retries one transient availability probe for startup launch resolution", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+		let versionAttempt = 0;
+		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+			const callback = readExecFileCallback(rest);
+			if (args[0] === "--version") {
+				versionAttempt += 1;
+				if (versionAttempt === 1) {
+					callback(
+						Object.assign(new Error("timed out"), {
+							code: null,
+							killed: true,
+							signal: "SIGTERM" as NodeJS.Signals,
+						}),
+						"",
+						"",
+					);
+					return {} as ChildProcess;
+				}
+				callback(null, "0.142.5\n", "");
+				return {} as ChildProcess;
+			}
+			callback(null, "hooks stable true\n", "");
+			return {} as ChildProcess;
+		});
+
+		await expect(
+			resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" }), {
+				retryTransient: true,
+			}),
+		).resolves.toMatchObject({ agentId: "codex" });
+		expect(versionAttempt).toBe(2);
+	});
+
+	it("preserves a precise transient launch error and records content-safe probe diagnostics", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+		const diagnostics = vi.fn();
+		setAgentAvailabilityDiagnosticSink(diagnostics);
+		childProcessMocks.execFile.mockImplementation((_binary: string, _args: string[], ...rest: unknown[]) => {
+			const callback = readExecFileCallback(rest);
+			callback(
+				Object.assign(new Error("sensitive raw launcher error"), {
+					code: null,
+					killed: true,
+					signal: "SIGTERM" as NodeJS.Signals,
+				}),
+				"",
+				"",
+			);
+			return {} as ChildProcess;
+		});
+
+		await expect(
+			resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" })),
+		).rejects.toMatchObject({
+			reason: "probe_timeout",
+			transient: true,
+			message: expect.stringContaining("timed out"),
+		});
+		expect(diagnostics).toHaveBeenCalledWith({
+			name: "agent.availability_probe_completed",
+			payload: expect.objectContaining({
+				agentId: "codex",
+				probeKind: "version",
+				outcome: "probe_timeout",
+			}),
+			level: "warn",
+		});
+		expect(JSON.stringify(diagnostics.mock.calls)).not.toContain("sensitive raw launcher error");
+	});
+
+	it("classifies an unrelated probe signal as a failure rather than a timeout", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+		const diagnostics = vi.fn();
+		setAgentAvailabilityDiagnosticSink(diagnostics);
+		childProcessMocks.execFile.mockImplementation((_binary: string, _args: string[], ...rest: unknown[]) => {
+			const callback = readExecFileCallback(rest);
+			callback(
+				Object.assign(new Error("process aborted"), {
+					code: null,
+					killed: false,
+					signal: "SIGABRT" as NodeJS.Signals,
+				}),
+				"",
+				"",
+			);
+			return {} as ChildProcess;
+		});
+
+		await expect(
+			resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" })),
+		).rejects.toMatchObject({
+			reason: "probe_failed",
+			transient: true,
+			message: expect.stringContaining("could not run"),
+		});
+		expect(diagnostics).toHaveBeenCalledWith({
+			name: "agent.availability_probe_completed",
+			payload: expect.objectContaining({ outcome: "probe_failed" }),
+			level: "warn",
+		});
 	});
 
 	it("disables Codex when native hook support cannot be confirmed", async () => {

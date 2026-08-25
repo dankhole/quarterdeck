@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: recover from transient agent probes and observe browser launch
+
+- Task launch no longer treats a timed-out agent version or feature probe as durable CLI unavailability: timeout and launcher failures are typed, excluded from the availability cache, retried once during startup recovery, and surfaced with their precise remediation instead of the generic install-an-agent error.
+- Launch resolution may reuse a fresh successful probe but awaits expired results, while Settings and other display reads retain stale-while-revalidate behavior. Metadata-only diagnostics now record probe kind, duration, typed outcome, and resolved availability without retaining command output.
+- macOS browser auto-open now awaits the short-lived `/usr/bin/open` launcher exit code without waiting for the browser application to close or relying on the inherited `PATH`. Runtime diagnostics distinguish request, launcher acceptance, and launcher failure, and CLI output describes only the acceptance Quarterdeck can verify.
+
 ### Fix: make Agent Lab browser shutdown exhaustive
 
 - Agent Lab shutdown now resolves the installed Playwright CLI's daemon entrypoint, discovers every detached daemon owned by the exact lab browser session, and terminates surviving daemon/browser process trees until two process snapshots confirm the session is quiescent without touching other sessions.

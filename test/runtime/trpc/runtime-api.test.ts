@@ -31,6 +31,7 @@ const taskBoardMutationMocks = vi.hoisted(() => ({
 
 vi.mock("../../../src/config/agent-registry.js", () => ({
 	resolveAgentCommand: agentRegistryMocks.resolveAgentCommand,
+	resolveAgentCommandForLaunch: agentRegistryMocks.resolveAgentCommand,
 	buildRuntimeConfigResponse: agentRegistryMocks.buildRuntimeConfigResponse,
 }));
 

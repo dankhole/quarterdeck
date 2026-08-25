@@ -1,11 +1,19 @@
 export {
+	type AgentAvailabilityDiagnosticEvent,
+	type AgentAvailabilityDiagnosticSink,
+	type AgentAvailabilityProbeKind,
+	type AgentAvailabilityReason,
+	AgentCommandUnavailableError,
 	buildRuntimeConfigResponse,
 	detectInstalledCommands,
 	detectRunnableAgentIds,
 	parseCodexFeaturesListOutput,
+	type ResolveAgentCommandForLaunchOptions,
 	type ResolvedAgentCommand,
 	resetAgentAvailabilityCache,
 	resolveAgentCommand,
+	resolveAgentCommandForLaunch,
+	setAgentAvailabilityDiagnosticSink,
 } from "./agent-registry";
 export {
 	type AudibleNotificationEvents,

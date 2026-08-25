@@ -58,7 +58,7 @@ async function pickBestInstalledAgentId() {
 }
 
 async function assertSelectedAgentRunnable(selectedAgentId: RuntimeAgentId): Promise<void> {
-	const availability = await getAgentAvailability(selectedAgentId, { allowStale: false });
+	const availability = await getAgentAvailability(selectedAgentId, { allowStale: false, forceRefresh: true });
 	if (!availability.installed) {
 		throw new Error(availability.statusMessage ?? `Selected agent "${selectedAgentId}" is not runnable.`);
 	}
