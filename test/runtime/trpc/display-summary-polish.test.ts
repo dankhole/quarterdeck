@@ -18,6 +18,14 @@ const originalEnv = {
 };
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
+	const {
+		outstandingInteraction = null,
+		nativeWorkEvidence = null,
+		lastProviderHookOccurredAt = null,
+		recentProviderHookDeliveryIds = [],
+		recentProviderHookOrderObservations = [],
+		...summaryOverrides
+	} = overrides;
 	return {
 		taskId: "task-1",
 		state: "running",
@@ -31,7 +39,12 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		reviewReason: null,
 		exitCode: null,
 		lastHookAt: null,
+		lastProviderHookOccurredAt,
+		recentProviderHookDeliveryIds,
+		recentProviderHookOrderObservations,
 		latestHookActivity: null,
+		outstandingInteraction,
+		nativeWorkEvidence,
 		stalledSince: null,
 		warningMessage: null,
 		latestTurnCheckpoint: null,
@@ -39,7 +52,7 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		conversationSummaries: [],
 		displaySummary: null,
 		displaySummaryGeneratedAt: null,
-		...overrides,
+		...summaryOverrides,
 	};
 }
 

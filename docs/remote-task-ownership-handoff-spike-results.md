@@ -2,7 +2,7 @@
 
 Date: 2026-08-24
 
-Main integration status: this evidence and its P3 design constraints are now tracked on `main`. The production execution-owner coordinator, structured provider runners, Remote Companion transport, and P2 recent-conversation reader are not implemented on `main` by this documentation change; branch-specific implementation notes below are retained as provenance.
+Integration status: the P2 recent-conversation reader is implemented and remains read-only. The Codex execution-owner coordinator and structured runner are implemented on `feature/remote-execution-ownership` and await reconciliation with the newer native interaction/ordering model; Claude structured ownership remains pending. Remote Companion transport, authentication, pairing, and mobile UI are not implemented.
 
 ## 1. Executive conclusion
 
@@ -19,7 +19,7 @@ The most important Codex finding is that the purpose-created native 0.149.1 thre
 
 The provider experiment itself was evidence-only. It added no production execution owner, structured provider runner, remote transport, authentication flow, mobile UI, or second transcript store.
 
-Integration status: the authenticated history findings are implemented and validated on `feature/remote-conversation-reads`, directly ahead of `feature/remote-access`. That dedicated P2 branch filters the Codex injected repository/environment record, gates supported Codex history modes and declared transcript versions, represents the exact Claude SDK interruption sentinel as a typed boundary, and carries redacted native/structured/native fixture families. Claude records do not embed a trustworthy CLI/SDK writer version, so P2 keeps the existing runtime minimum-version check and fixture-gates the accepted sentinel shape instead of inventing a per-transcript version test. This does not add execution ownership or change the Decision-B constraints below.
+Integration status: after the P2B implementation was merged into this branch, the authenticated history findings were applied to its existing read-only boundary. P2 now filters the Codex injected repository/environment record, gates supported Codex history modes and declared transcript versions, represents the exact Claude SDK interruption sentinel as a typed boundary, and carries redacted native/structured/native fixture families. Claude records do not embed a trustworthy CLI/SDK writer version, so P2 keeps the existing runtime minimum-version check and fixture-gates the accepted sentinel shape instead of inventing a per-transcript version test. This does not add execution ownership or change the Decision-B constraints below.
 
 ## 2. Branch, base, and environment
 
@@ -37,7 +37,6 @@ Integration status: the authenticated history findings are implemented and valid
 - Codex CLI: 0.149.1
 - Codex app-server schemas: standard and experimental JSON Schema plus experimental TypeScript generated from Codex CLI 0.149.1
 - Read-only P2B impact baseline: local `feature/remote-conversation-reads` commit `6510f0bf`
-- Final integration topology: all evidence and P3 planning documents live on `feature/remote-access`; the complete P2 implementation is restored on a rebuilt `feature/remote-conversation-reads` directly ahead of that base
 
 The authoritative behavioral references were the official [Claude Agent SDK session guide](https://code.claude.com/docs/en/agent-sdk/sessions), [Claude Code session guide](https://code.claude.com/docs/en/sessions), [Claude SDK approvals and user-input guide](https://code.claude.com/docs/en/agent-sdk/user-input), [Claude SDK streaming-input guide](https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode), [Codex app-server guide](https://developers.openai.com/codex/app-server/), and [Codex configuration reference](https://developers.openai.com/codex/config-reference/). Installed types and generated schemas controlled where documentation and the installed version differed.
 
@@ -481,7 +480,7 @@ The disposable roots are not committed artifacts. The Claude root was removed af
 
 ## 18. Recommended shared-document edits and integration status
 
-These were the required recommendations when the evidence spike completed. The explicitly requested integration follow-up applied the P2 parser and fixture work on the dedicated `feature/remote-conversation-reads` child and landed the shared evidence/planning documents on `feature/remote-access`. The P3 ownership items remain design requirements only; no production owner was implemented.
+These were the required recommendations when the evidence spike completed. After P2B merged into this branch, the explicitly requested integration follow-up applied the P2 parser, fixture, and shared-document portions here. The P3 ownership items remain design requirements only; no production owner was implemented.
 
 ### [docs/conversation-provider-boundary-spike.md](./conversation-provider-boundary-spike.md)
 
@@ -518,7 +517,7 @@ The evidence spike alone required no CHANGELOG entry. The later production P2 hi
 
 ## 19. Scope confirmation
 
-The original spike branch began as a documentation-only evidence investigation. Its evidence and P3 design now live on `feature/remote-access`; the later read-only P2 integration lives on `feature/remote-conversation-reads`. Neither branch adds or changes:
+This branch began as a documentation-only evidence spike. The later P2 integration follow-up adds only read-only provider-history parsing, contract, fixture, and planning changes. It does **not** add or change:
 
 - a production execution-owner state machine
 - a production Claude Agent SDK or Codex app-server execution integration
@@ -530,14 +529,14 @@ The original spike branch began as a documentation-only evidence investigation. 
 - mobile UI
 - Pi support
 
-The shared P2/P3 documents are intentionally present on the base branch. The child implementation remains confined to provider-history interpretation and does not add process ownership, provider writes, or a second transcript.
+The shared P2 documents and existing read-only implementation are now intentionally modified by the integration follow-up. The changes remain confined to provider-history interpretation and do not add process ownership, provider writes, or a second transcript.
 
 ### Validation record
 
 - All isolated provider/harness processes stopped; final process count was zero.
 - Provider history was confined to the disposable roots; the Codex root held exactly one rollout, and the synthetic repositories were clean.
 - No forbidden credential file was found beneath either disposable root; the retained Codex root contains no `auth.json` and used the OS Keychain only.
-- On `feature/remote-conversation-reads`, production source changes are limited to the read-only `src/conversation/` provider adapter/parser/contract boundary and its server-owned runtime composition; `feature/remote-access` retains the evidence/planning documents without that P2 implementation.
+- Production source changes are limited to the existing read-only `src/conversation/` provider adapter/parser/contract boundary; shared P2 planning documents were updated after the parallel P2 work was merged locally.
 - `npm run check:agent-instructions` passed.
 - All local Markdown links in the seven changed Markdown files resolved. A repository-wide scan also found one pre-existing stale link in archived `docs/history/implementation-log-through-0.11.0.md`; it was already stale at protected base `c602b294` and remains outside this spike.
 - The results-document sensitive-path/UUID/environment-name scan returned no matches.

@@ -318,8 +318,7 @@ export async function removeProjectStateFiles(projectId: string): Promise<void> 
 	);
 }
 
-export async function loadProjectState(cwd: string): Promise<RuntimeProjectStateResponse> {
-	const context = await loadProjectContext(cwd);
+async function loadProjectStateFromContext(context: RuntimeProjectContext): Promise<RuntimeProjectStateResponse> {
 	const [board, sessionsResult, meta] = await Promise.all([
 		readProjectBoard(context.projectId),
 		readProjectSessions(context.projectId),
@@ -335,6 +334,15 @@ export async function loadProjectState(cwd: string): Promise<RuntimeProjectState
 	const pendingWarning = pendingSessionsWarningByProjectId.get(context.projectId);
 	const warnings = pendingWarning ? [pendingWarning] : [];
 	return toProjectStateResponse(context, board, sessionsResult.sessions, meta.revision, warnings);
+}
+
+export async function loadProjectState(cwd: string): Promise<RuntimeProjectStateResponse> {
+	return await loadProjectStateFromContext(await loadProjectContext(cwd));
+}
+
+export async function loadProjectStateById(projectId: string): Promise<RuntimeProjectStateResponse | null> {
+	const context = await loadProjectContextById(projectId);
+	return context ? await loadProjectStateFromContext(context) : null;
 }
 
 /** Reads the count-bearing board and its revision under the same project lock. */

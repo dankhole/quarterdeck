@@ -1,16 +1,16 @@
 # Remote Companion: Prerequisites and Implementation Plan
 
-Status: active architecture plan. No remote listener, authentication flow, or mobile UI has been implemented on this branch.
+Status: active architecture plan. P2 durable provider-history reads are implemented and read-only. Codex P3 structured ownership exists on `feature/remote-execution-ownership` pending integration with the newer native interaction and ordering model; Claude structured ownership remains pending. No remote listener, authentication/pairing flow, or mobile UI has been implemented.
 
-Implementation progress as of 2026-08-24:
+Implementation progress as of 2026-08-25:
 
 - P0 baseline is green: root checks, web tests, web production build, and integration tests pass before the ownership cutover.
 - The P1 board-ownership foundation is implemented. `ProjectBoardCommandService` is the sole production board writer; the desktop applies edits optimistically but submits typed command batches through `project.applyBoardCommands`. Runtime session/title/base-ref/worktree projections use the same locked authority, command receipts make lost-response retries idempotent, and the public whole-board save procedure has been removed.
 - The lifecycle reliability gate is implemented. `ProjectTaskLifecycleService` now owns durable start/trash/restore/stop/restart/delete operations, replays them through a bounded journal, targets exact process instances, separates trash archive from permanent purge, and is the desktop task-lifecycle boundary. Project counts now carry and merge by authoritative board revision.
-- The local interaction seam now requires explicit submit intent independently of terminal bytes, hook transitions publish state plus metadata atomically, and all host-native UI crosses one launch-capability-gated service so browserless/test runtimes fail closed. These harden future adapters but are not the remote-safe `TaskInteractionService`: the existing input procedure remains a generic local PTY write and must never be mounted on the remote gateway.
+- The local interaction seam now carries explicit submit intent independently of terminal bytes without treating that intent as semantic Running proof; provider hook transitions publish state plus metadata atomically, and all host-native UI crosses one launch-capability-gated service so browserless/test runtimes fail closed. These harden future adapters but are not the remote-safe `TaskInteractionService`: the existing input procedure remains a generic local PTY write and must never be mounted on the remote gateway.
 - Agent Lab now runs with native UI disabled and a separate simulated host-integration mode, records sanitized semantic host outcomes, and captures automatic unified diagnostic bundles. It is the isolated regression carrier for the existing desktop UI and future mobile-width presentation work. It complements, but does not replace, the P5 no-browser internal-service harness.
-- The P2A provider-boundary evidence spike is complete. Claude Agent SDK limits and Codex app-server legacy pagination do not bound source work, so P2B will use one server-owned bounded raw-history strategy for both providers. The separately authorized native/structured experiment subsequently proved constrained exact-session handoff for both providers; it informs P3 and does not block or change read-only P2B.
-- No remote listener was added by this work. The next prerequisite is P2B: implement the bounded provider-neutral recent-conversation read service. Later prerequisites remain the idempotent structured task-interaction service, strict remote projections, and the browserless acceptance harness.
+- P2B is implemented and authenticated-history hardened. The runtime owns a provider-neutral, bounded recent-conversation reader for exact stored Claude Code and Codex sessions. It reads append-oriented provider JSONL backward, returns 10 meaningful messages by default and at most 24, marks older or incomplete context honestly, preserves stable entry IDs, filters provider-injected Codex context, and represents Claude SDK interruption without exposing its sentinel text.
+- No remote listener was added by this work. The next prerequisite is to reconcile and integrate the Codex `TaskInteractionService` and durable single-writer coordinator from `feature/remote-execution-ownership` with the current native task-state contracts. Claude ownership, strict remote projections, and the browserless acceptance harness remain later prerequisites.
 
 ## Decision Summary
 
@@ -43,7 +43,7 @@ Yes, but **not a new terminal renderer and not a replacement agent runner**.
 
 Quarterdeck currently launches Claude and Codex in their native interactive TUIs and renders their PTY output through xterm. That remains the local, full-fidelity interactive experience.
 
-The repository retains a legacy experimental Pi integration, but Pi is not a supported forward target for the Remote Companion or its compatibility gates.
+Pi is a supported desktop task agent. It remains outside the Remote Companion and its compatibility gates until the separately deferred mobile/history and structured-ownership work is explicitly implemented and validated.
 
 The phone eventually needs a separate, simple React conversation renderer. Mobile v1 is not a full transcript browser: it displays only a bounded recent context window and explicit history-gap/degradation state.
 
@@ -242,7 +242,7 @@ remote action ──┘
 Implemented result:
 
 - `project.applyBoardCommands` accepts bounded typed batches; the old public `project.saveState` procedure and browser persistence debounce are gone.
-- The desktop derives commands from each existing board transition, applies the intended board immediately, and overlays any still-pending batches on streamed authoritative state.
+- The desktop's `setBoard` compatibility seam derives and submits only ordinary commands. Lifecycle gestures use a separately named presentation-only update paired with `ProjectTaskLifecycleService.execute(...)`; `setBoard` rejects lifecycle commands so a forgotten lifecycle submission cannot leave invented optimistic state on screen.
 - A successful command response forces authoritative reconciliation. A real conflict removes the rejected optimistic overlay and refreshes state; an ambiguous lost response retries the identical command ID once so the durable receipt can replay it safely.
 - Session-state work-column changes, generated titles, base-ref changes, and worktree/branch metadata persist through runtime-owned internal mutations under the same project lock.
 - Task session start/stop, worktree ensure, and worktree deletion wait for pending commands to commit, preventing process/filesystem effects from overtaking their card transition.
@@ -278,7 +278,7 @@ The service owns:
 - Persisted or bounded durable command deduplication.
 - Runtime-owned session pruning before persistence.
 - Authoritative state/revision broadcast after every accepted command.
-- Post-commit effects such as title generation, worktree cleanup, or session start orchestration.
+- A single post-commit effect stream for durable command consequences. Automatic title generation consumes only `untitled_task_created`; transport and lifecycle entry points do not schedule it independently.
 
 ### Implemented migration strategy
 
@@ -339,12 +339,12 @@ Structured live JSON is not sufficient durable history. It can accelerate update
 - The decision record contains reproducible isolated Claude/Codex evidence, exact versions, rejected alternatives, limits, source/identity rules, and known assumptions.
 - P2B uses bounded raw JSONL tail reads; it does not interpret an official API's result limit as a source-work limit.
 - Default/hard message counts are 10/24. Aggregate reads are limited to 4 MiB, 4,096 records, 10,000 source-lookup directory entries, a two-second deadline, 32 KiB per normalized message, 128 KiB per result, and 2 KiB of content-free diagnostics.
-- Native-to-structured-to-native handoff remains separate from P2, but its authenticated provider evidence is complete and permits the constrained P3 implementation described in [`remote-task-ownership-handoff-spike-results.md`](./remote-task-ownership-handoff-spike-results.md).
-- P2B is the next prerequisite.
+- Native-to-structured-to-native handoff remains separate from P2, but its authenticated provider evidence is complete and permits the constrained P3 implementation.
+- P2B has implemented this decision. Codex P3 exists on `feature/remote-execution-ownership` and must be reconciled with the newer native interaction and ordering model before integration. The ownership constraints are recorded in [`remote-task-ownership-handoff-spike-results.md`](./remote-task-ownership-handoff-spike-results.md).
 
-## P2B. Land the Provider-Neutral Recent Conversation Read Boundary
+## P2B. Land the Provider-Neutral Recent Conversation Read Boundary — implemented
 
-Implement P2B using P2A's bounded raw-history decision. Do not reopen official reader integration unless a future supported provider version proves bounded source work, exact identity, stable IDs, and read-only failure isolation.
+P2B implements P2A's bounded raw-history decision. Do not reopen official reader integration unless a future supported provider version proves bounded source work, exact identity, stable IDs, and read-only failure isolation.
 
 Review commit `28c987584` file by file, but do not cherry-pick it. Reuse only concepts that fit current runtime ownership, Claude/Codex support, exact-session security, and the recent-message-only product decision.
 
@@ -354,7 +354,7 @@ The provider-neutral contract represents only:
 
 - User-authored text.
 - Assistant-authored text.
-- Started, resumed, restarted, compacted, and history-gap/truncation boundaries when useful.
+- Started, resumed, restarted, compacted, interrupted, and history-gap/truncation boundaries when useful.
 - Explicit availability, degradation, and older-history/incompleteness metadata.
 
 It must not expose tool calls, tool results, reasoning, thinking, plans, commands, system prompts, terminal output, raw errors, raw provider records, source paths, or provider metadata. Provider adapters may encounter such records internally to reconstruct user/assistant text, but they discard them before the service result.
@@ -405,12 +405,13 @@ Expected result classes include:
 
 Expected provider behavior:
 
-- **Claude:** perform a bounded backward read of the exact transcript. Treat hook `transcript_path` as an untrusted hint, never lifecycle truth. Resolve the configured provider history root server-side, match the exact stored Claude session ID in the filename and records, and require canonical containment before opening. Preserve native message UUIDs where available. Tolerate transcript lag and compaction without duplicating messages.
-- **Codex:** perform a bounded backward read of the exact rollout selected by the stored thread/resume ID. Search only approved Codex session roots within the source-lookup limit; never use `resume --last`, `thread/list`, or global latest lookup. Validate canonical containment and in-record session identity. Preserve native `response_item.payload.id` values. Treat compaction and maintenance as presentation boundaries only.
+- **Claude:** perform a bounded backward read of the exact transcript. Treat hook `transcript_path` as an untrusted hint, never lifecycle truth. Resolve the configured provider history root server-side, match the exact stored Claude session ID in the filename and records, and require canonical containment before opening. Preserve native message UUIDs where available. Tolerate transcript lag and compaction without duplicating messages, and normalize the fixture-proven Agent SDK interrupt sentinel to a typed `interrupted` boundary. Because Claude history does not carry a trustworthy writer version, retain the runtime minimum-version check and require fixture review when the supported Claude/SDK matrix changes rather than inferring a per-file version.
+- **Codex:** perform a bounded backward read of the exact rollout selected by the stored thread/resume ID. Search only approved Codex session roots within the source-lookup limit; never use `resume --last`, `thread/list`, or global latest lookup. Validate canonical containment and in-record session identity. Preserve native `response_item.payload.id` values. Admit only absent, `legacy`, or `paginated` history modes and declared versions from `0.142.5` through authenticated `0.149.1`; suppress the authenticated repository/environment context wrapper and fail closed on unknown duplicate user records for one provider turn or newer declared formats.
 
 ### P2B tests
 
 - Provider-specific fixtures for Claude and Codex normal recent conversations.
+- Authenticated redacted fixtures for Claude Agent SDK/native handoff and Codex paginated native/app-server/native handoff, including interrupt and crash-incomplete records.
 - More messages than the default and hard maximum.
 - Correct recent-tail selection and explicit older-history/gap indication.
 - Stable IDs after append, reread, service reconstruction, and runtime restart.
@@ -428,7 +429,7 @@ Expected provider behavior:
 - Pi absent or `unsupported`.
 - Isolated integration coverage with fake provider history/session services and no real user state.
 
-### P2B exit gate
+### P2B exit gate — implemented
 
 - Claude and Codex produce correct bounded recent windows or an explicit provider-scoped degraded/unsupported result.
 - Long histories are neither loaded nor returned in full.
@@ -439,7 +440,13 @@ Expected provider behavior:
 - The existing native terminal behavior is unchanged and remains fully usable.
 - No remote transport, pairing, authentication, mobile UI, or remotely reachable endpoint exists.
 
-## P3. Add an Agent-Agnostic Task Interaction Service
+The implementation lives under `src/conversation/` and is composed as the runtime's internal `conversationReads` service. Browser callers can provide only project ID, task ID, and an optional bounded message count; source roots, exact provider session identity, source discovery, and open file handles remain server-owned. Claude hook `transcript_path` values are kept only as bounded in-memory hints and receive the same filename, `realpath`, containment, regular-file, and in-record identity checks as discovered files. Codex rollouts must begin with a matching `session_meta` record. No tRPC procedure or remote route exposes this service.
+
+Provider-native Claude record UUIDs and Codex response-item IDs are hashed with provider and exact session identity. Records without a native immutable ID use provider, exact session identity, immutable byte offset, content index, and entry kind. Appending records, rereading, reconnecting, or reconstructing the service therefore does not renumber existing entries.
+
+Full-history browsing, load-older pagination, and rich tool rendering remain explicitly outside mobile v1. A later consumer may add an opaque older-window cursor only after real product need; P2B deliberately exposes only the recent tail and honest `hasOlder`, `incomplete`, and `history_gap` signals.
+
+## P3. Integrate the Provider-Neutral Task Interaction Service
 
 The current `sendTaskSessionInput` path is intentionally a generic PTY write. The Remote Companion must not receive that capability.
 
@@ -462,6 +469,7 @@ This service should:
 - Return typed `accepted`, `already_applied`, `not_ready`, `stale`, `unsupported`, or `failed` results.
 - Log actor/device, command kind, target IDs, and outcome without logging message or answer contents.
 - Keep generic PTY writes local-only and outside the remote capability model.
+- Submit ordinary board mutations directly to `ProjectBoardCommandService` and lifecycle operations directly to `ProjectTaskLifecycleService.execute(...)`. It must not accept a whole `BoardData` snapshot or reuse the desktop-only `setBoard` translator or `presentLifecycleBoard` adapter.
 
 ### Message delivery
 
@@ -477,28 +485,20 @@ Never run the native TUI and a structured writer against the same provider sessi
 
 The first correct policy should reject `send_message` when safe delivery or exclusive ownership cannot be established. A durable message queue can be added later as replaceable policy; it should not be required for correctness.
 
-### Structured attention identity
+### Native foreground and structured callback identity
 
-Remote answers and approvals cannot be inferred from terminal text. Extend the existing semantic hook layer with a provider-neutral outstanding attention request:
+Remote answers and approvals cannot be inferred from terminal or conversation text. The current native TUI lifecycle owns one foreground `outstandingInteraction` with `waiting`, `response_submitted`, and `resolution_unknown` states. It is singular by design: input delivery clears Needs Input into response-pending but cannot claim Running, and restart preserves whether provider resolution is still pending or unknowable.
 
-```ts
-interface RuntimeAttentionRequest {
-  id: string;
-  kind: "question" | "permission" | "elicitation";
-  sessionInstanceId: string;
-  createdAt: number;
-  promptText: string | null;
-  options: readonly string[];
-}
-```
+Structured Codex callbacks have a different shape. The P3 app-server client retains multiple pending requests in a keyed collection, and `TaskInteractionService` targets one exact interaction under operation-ID, owner-generation, provider-session, and session-instance fences. A structured owner establishes Running from its own exact protocol event, such as `turn/started`; it does not wait for a native PTY hook.
 
 Requirements:
 
-- Native provider/tool IDs are used when available.
-- An answer must match the current request and session instance.
-- Unrelated hook/tool activity cannot clear or replace a stronger outstanding wait.
-- Session exit, restart, and reconciliation have attention-state cleanup paths. Device revocation cancels in-flight remote commands without clearing the agent's outstanding request.
-- Providers without stable prompt identity report structured answering as unsupported rather than falling back to arbitrary keystrokes.
+- Do not make native `outstandingInteraction` pretend to contain every structured or background callback.
+- Project any structured wait from the exact current owner without discarding other keyed requests.
+- Reject stale or mismatched interaction IDs, owner generations, provider sessions, and session instances.
+- Unrelated hook/tool activity cannot clear or replace the foreground native wait.
+- Claude background-agent interaction remains non-actionable remotely until Claude exposes stable provider agent/turn/tool/elicitation identity and Quarterdeck owns a durable keyed collection.
+- Providers without stable interaction identity report structured answering as unsupported rather than falling back to arbitrary keystrokes.
 
 ### P3 exit gate
 
@@ -551,7 +551,7 @@ type RemoteConversationItem =
   | { type: "user"; id: string; text: string; createdAt: number | null }
   | { type: "assistant"; id: string; text: string; createdAt: number | null }
   | { type: "attention"; id: string; prompt: string | null; options: readonly string[] }
-  | { type: "boundary"; id: string; kind: "started" | "resumed" | "restarted" | "compacted" | "history_gap" };
+  | { type: "boundary"; id: string; kind: "started" | "resumed" | "restarted" | "compacted" | "interrupted" | "history_gap" };
 ```
 
 Projection rules:
@@ -600,7 +600,7 @@ The harness should:
 9. Create and start a new task while zero browser clients are connected.
 10. Retry every mutation with the same command ID and prove it runs once.
 11. Stop the runtime process completely, restart it against the same persisted state, and verify board, session identity, conversation continuity, and dedup behavior. Seed existing Running, ordinary Review, genuine Needs Input, and Error tasks; before any browser connects, assert that hydration/startup recovery preserves each semantic class and that project-pill counts agree with the board plus notification projection.
-12. Respond to the recovered Review and Needs Input tasks, then verify authoritative board columns, project summaries/pills, and notification projections converge back to Running. Review is the complete column total and Needs Input overlaps it; do not partition the two counts.
+12. Respond to the recovered Review and Needs Input tasks, then verify authoritative board columns, project summaries/pills, and notification projections converge back to Running. Needs Input remains physically in the Review column but overrides Review in navigation attention pills; partition the pill counts (`R 2 · NI 1` for three Review-column cards with one blocked task).
 13. Confirm no path/file/tool/terminal sentinel crosses the safe projection.
 
 The harness should exercise the same services the future remote gateway will call. It must not create a parallel mock-only orchestration path that production does not use.
@@ -777,6 +777,7 @@ Slack is not equivalent to the private mobile web client: message text would ent
 - Concurrent expected revisions and retry classification.
 - Stable command dedup across connection loss and runtime restart.
 - Create/start partial failure is recoverable.
+- Multi-task create-and-start tolerates bounded bursts of automatic-title and session-metadata revisions between sequential operations; every retry revalidates the stable identity and source column, while collisions, changed intent, and retry exhaustion fail closed.
 
 ### Interaction tests
 
@@ -790,7 +791,7 @@ Slack is not equivalent to the private mobile web client: message text would ent
 
 - A true runtime cold start, not a browser refresh or WebSocket reconnect, hydrates existing Running, ordinary Review, genuine Needs Input, and Error tasks.
 - Startup process recovery does not change ordinary Review into Needs Input, clear a genuine prompt classification, or erase Error meaning.
-- Restored session summaries, durable board columns, notification projections, and project pills agree before task selection and remain stable while switching projects. Review pills show the full Review column while Needs Input is an overlapping semantic count.
+- Restored session summaries, durable board columns, notification projections, and project pills agree before task selection and remain stable while switching projects. Cards that need input remain in the Review column, but navigation pills are exclusive: Needs Input overrides Review (`R 2 · NI 1` for three Review-column cards with one blocked task).
 - After responding to recovered ordinary Review and genuine Needs Input tasks, authoritative board columns, project summaries/pills, and notification projections converge back to Running and remain correct after another project switch.
 - The same-state restart path runs once with no browser connected, then again with the desktop browser attached, so neither UI presence nor navigation becomes an accidental recovery trigger.
 
@@ -822,7 +823,7 @@ Slack is not equivalent to the private mobile web client: message text would ent
 ## Rollout Rules
 
 - Keep remote access default-off until the security and browserless acceptance gates pass.
-- Preserve the completed P2A read-source and P3 ownership evidence records when choosing production conversation adapters or delivery ownership.
+- Preserve the completed P2A/P2B read-source and implementation records plus the P3 ownership evidence when choosing production conversation adapters or delivery ownership.
 - Land prerequisite phases separately from remote networking so regressions can be bisected.
 - Prefer service-first boundaries and fixture-based tests before adding remote UI state.
 - Do not run old and new persisted board writers simultaneously.
@@ -847,7 +848,7 @@ Slack is not equivalent to the private mobile web client: message text would ent
 | Mobile write/create UI | Medium | Idempotency, stale targets, high-impact commands |
 | E2E relay/push | Very large | Cryptographic lifecycle, metadata, compatibility |
 
-The board command authority was the biggest prerequisite ownership cutover. The evidence now selects bounded provider-history reads for P2B and constrains exact reversible ownership handoff for P3; the remaining work is implementing those boundaries without weakening their resource, identity, and single-writer guarantees. The renderer itself is comparatively straightforward once those boundaries are correct.
+The board command authority was the biggest prerequisite ownership cutover, and P2B has resolved bounded recent reads without adopting the official session readers. Codex P3 implements the idempotent non-PTY interaction and exact reversible handoff on its dedicated branch; the remaining work is reconciling that coordinator with the newer native interaction/ordering model, then completing Claude ownership and the authenticated gateway. The renderer itself is comparatively straightforward once those boundaries are integrated.
 
 ## Open Product Decisions
 

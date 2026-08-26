@@ -141,6 +141,7 @@ export async function startQuarterdeckServer(input: {
 	homeDir: string;
 	port: number;
 	extraArgs?: string[];
+	extraEnv?: NodeJS.ProcessEnv;
 }): Promise<{
 	runtimeUrl: string;
 	stop: () => Promise<void>;
@@ -162,6 +163,7 @@ export async function startQuarterdeckServer(input: {
 		{
 			cwd: input.cwd,
 			env: createGitTestEnv({
+				...input.extraEnv,
 				HOME: input.homeDir,
 				USERPROFILE: input.homeDir,
 				QUARTERDECK_RUNTIME_PORT: String(input.port),

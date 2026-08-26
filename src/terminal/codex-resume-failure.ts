@@ -8,12 +8,16 @@ export const STORED_CODEX_RESUME_FAILED_WARNING =
 export const STORED_CLAUDE_RESUME_FAILED_WARNING =
 	"Could not resume the stored Claude session. Quarterdeck will fall back to the most recent Claude session for this checkout on the next restart.";
 
+export const STORED_PI_RESUME_FAILED_WARNING =
+	"Could not resume the stored Pi session. Quarterdeck will fall back to the most recent Pi session for this checkout on the next explicit restart.";
+
 export function isResumeFailureWarning(message: string | null | undefined): boolean {
 	return (
 		typeof message === "string" &&
 		(message.includes(LEGACY_RESUME_FAILURE_WARNING) ||
 			message === STORED_CODEX_RESUME_FAILED_WARNING ||
-			message === STORED_CLAUDE_RESUME_FAILED_WARNING)
+			message === STORED_CLAUDE_RESUME_FAILED_WARNING ||
+			message === STORED_PI_RESUME_FAILED_WARNING)
 	);
 }
 

@@ -103,7 +103,10 @@ export interface HookCommandMetadataOptionValues {
 	sessionId?: string;
 	sessionInstanceId?: string;
 	turnId?: string;
+	promptId?: string;
 	toolUseId?: string;
+	elicitationId?: string;
+	providerAgentId?: string;
 	transcriptPath?: string;
 	metadataBase64?: string;
 }
@@ -120,7 +123,10 @@ export function parseMetadataFromOptions(options: HookCommandMetadataOptionValue
 	const sessionId = options.sessionId;
 	const sessionInstanceId = options.sessionInstanceId;
 	const turnId = options.turnId;
+	const promptId = options.promptId;
 	const toolUseId = options.toolUseId;
+	const elicitationId = options.elicitationId;
+	const providerAgentId = options.providerAgentId;
 	const transcriptPath = options.transcriptPath;
 
 	if (activityText) {
@@ -153,8 +159,17 @@ export function parseMetadataFromOptions(options: HookCommandMetadataOptionValue
 	if (turnId) {
 		metadata.turnId = normalizeWhitespace(turnId);
 	}
+	if (promptId) {
+		metadata.promptId = normalizeWhitespace(promptId);
+	}
 	if (toolUseId) {
 		metadata.toolUseId = normalizeWhitespace(toolUseId);
+	}
+	if (elicitationId) {
+		metadata.elicitationId = normalizeWhitespace(elicitationId);
+	}
+	if (providerAgentId) {
+		metadata.providerAgentId = normalizeWhitespace(providerAgentId);
 	}
 	if (transcriptPath) {
 		metadata.transcriptPath = transcriptPath.trim();
@@ -421,8 +436,17 @@ export function normalizeHookMetadata(
 	const turnId = payload
 		? (readTrimmedStringField(payload, "turn_id") ?? readTrimmedStringField(payload, "turnId"))
 		: null;
+	const promptId = payload
+		? (readTrimmedStringField(payload, "prompt_id") ?? readTrimmedStringField(payload, "promptId"))
+		: null;
 	const toolUseId = payload
 		? (readTrimmedStringField(payload, "tool_use_id") ?? readTrimmedStringField(payload, "toolUseId"))
+		: null;
+	const elicitationId = payload
+		? (readTrimmedStringField(payload, "elicitation_id") ?? readTrimmedStringField(payload, "elicitationId"))
+		: null;
+	const providerAgentId = payload
+		? (readTrimmedStringField(payload, "agent_id") ?? readTrimmedStringField(payload, "agentId"))
 		: null;
 
 	const toolInput = payload ? extractToolInput(payload) : null;
@@ -459,7 +483,10 @@ export function normalizeHookMetadata(
 		sessionId: flagMetadata.sessionId ?? null,
 		sessionInstanceId: flagMetadata.sessionInstanceId ?? null,
 		turnId: flagMetadata.turnId ?? turnId ?? null,
+		promptId: flagMetadata.promptId ?? promptId ?? null,
 		toolUseId: flagMetadata.toolUseId ?? toolUseId ?? null,
+		elicitationId: flagMetadata.elicitationId ?? elicitationId ?? null,
+		providerAgentId: flagMetadata.providerAgentId ?? providerAgentId ?? null,
 		transcriptPath: flagMetadata.transcriptPath ?? transcriptPath ?? null,
 		conversationSummaryText: waitingForBackgroundWork
 			? null
@@ -513,8 +540,17 @@ export function appendMetadataFlags(args: string[], metadata?: RuntimeHookMetada
 	if (metadata.turnId) {
 		args.push("--turn-id", metadata.turnId);
 	}
+	if (metadata.promptId) {
+		args.push("--prompt-id", metadata.promptId);
+	}
 	if (metadata.toolUseId) {
 		args.push("--tool-use-id", metadata.toolUseId);
+	}
+	if (metadata.elicitationId) {
+		args.push("--elicitation-id", metadata.elicitationId);
+	}
+	if (metadata.providerAgentId) {
+		args.push("--provider-agent-id", metadata.providerAgentId);
 	}
 	if (metadata.transcriptPath) {
 		args.push("--transcript-path", metadata.transcriptPath);

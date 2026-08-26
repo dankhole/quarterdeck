@@ -1,26 +1,27 @@
+import type { ConversationSourceHintRecorder } from "../conversation/index.js";
 import type {
 	IProjectResolver,
-	IRuntimeBroadcaster,
 	IRuntimeConfigProvider,
 	ITerminalManagerProvider,
 	RuntimeHookEvent,
 	RuntimeHookIngestRequest,
 	RuntimeHookIngestResponse,
 	RuntimeHookMetadata,
-	RuntimeTaskHookActivity,
-	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core";
-import { createTaggedLogger, normalizeDiagnosticErrorClass, parseHookIngestRequest } from "../core";
+import {
+	createTaggedLogger,
+	didEnterTaskReviewReady,
+	normalizeDiagnosticErrorClass,
+	parseHookIngestRequest,
+} from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import { loadProjectScopeById } from "../state";
-import type { HookSessionReviewReason, SessionSummaryStore } from "../terminal";
-import { canReturnToRunning, isPermissionActivity } from "../terminal";
+import { type SessionSummaryStore, shouldRetainHookEventOrderObservation } from "../terminal";
 import { compactDisplaySummaryText } from "../title";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workdir";
 import type { RuntimeTrpcContext } from "./app-router";
 import { queueTaskDisplaySummaryPolish } from "./display-summary-polish";
-import { applyRuntimeMutationEffects, createHookTransitionEffects } from "./runtime-mutation-effects";
 
 const log = createTaggedLogger("hooks");
 
@@ -41,10 +42,13 @@ function buildHookLogData(input: {
 		taskId: input.taskId,
 		event: input.event,
 		source: metadata?.source ?? null,
-		sessionId: metadata?.sessionId ?? null,
-		sessionInstanceId: metadata?.sessionInstanceId ?? null,
-		turnId: metadata?.turnId ?? null,
-		toolUseId: metadata?.toolUseId ?? null,
+		hasSessionId: Boolean(metadata?.sessionId),
+		hasSessionInstanceId: Boolean(metadata?.sessionInstanceId),
+		hasTurnId: Boolean(metadata?.turnId),
+		hasPromptId: Boolean(metadata?.promptId),
+		hasToolUseId: Boolean(metadata?.toolUseId),
+		hasElicitationId: Boolean(metadata?.elicitationId),
+		hasProviderAgentId: Boolean(metadata?.providerAgentId),
 		deliveryId: input.delivery?.id ?? null,
 		occurredAt: input.delivery?.occurredAt ?? null,
 		hookEventName: metadata?.hookEventName ?? null,
@@ -53,15 +57,11 @@ function buildHookLogData(input: {
 		hasActivityText: Boolean(metadata?.activityText),
 		hasToolInputSummary: Boolean(metadata?.toolInputSummary),
 		hasFinalMessage: Boolean(metadata?.finalMessage),
-		hasConversationSummaryText: !!metadata?.conversationSummaryText,
-		hasTranscriptPath: !!metadata?.transcriptPath,
+		hasConversationSummaryText: Boolean(metadata?.conversationSummaryText),
+		hasTranscriptPath: Boolean(metadata?.transcriptPath),
 	};
 }
 
-/**
- * Apply conversation summary or finalMessage from hook metadata to the session.
- * Shared between the early-return (can't transition) and normal transition paths.
- */
 function applyConversationSummaryFromMetadata(
 	store: SessionSummaryStore,
 	taskId: string,
@@ -72,107 +72,22 @@ function applyConversationSummaryFromMetadata(
 			text: metadata.conversationSummaryText,
 			capturedAt: Date.now(),
 		});
-	} else if (metadata?.finalMessage) {
+		return;
+	}
+	if (metadata?.finalMessage) {
 		const display = compactDisplaySummaryText(metadata.finalMessage);
-		if (display) {
-			store.setDisplaySummary(taskId, display, null);
-		}
+		if (display) store.setDisplaySummary(taskId, display, null);
 	}
 }
 
-function toHookActivityPatch(metadata: RuntimeHookMetadata | undefined): Partial<RuntimeTaskHookActivity> | undefined {
-	if (!metadata) {
-		return undefined;
-	}
-	const {
-		sessionId: _sessionId,
-		sessionInstanceId: _sessionInstanceId,
-		turnId: _turnId,
-		toolUseId: _toolUseId,
-		transcriptPath: _transcriptPath,
-		...activity
-	} = metadata;
-	return activity;
-}
-
-function isSessionIdentityOnlyMetadata(metadata: RuntimeHookMetadata | undefined): boolean {
-	const normalizedHookEvent = metadata?.hookEventName?.toLowerCase() ?? "";
-	if (!metadata?.sessionId || (normalizedHookEvent !== "session_meta" && normalizedHookEvent !== "sessionstart")) {
-		return false;
-	}
+function isForegroundCompletionMetadata(metadata: RuntimeHookMetadata | undefined): boolean {
+	const source = metadata?.source?.trim().toLowerCase();
 	return (
-		typeof metadata.activityText !== "string" &&
-		typeof metadata.toolName !== "string" &&
-		typeof metadata.toolInputSummary !== "string" &&
-		typeof metadata.finalMessage !== "string" &&
-		typeof metadata.notificationType !== "string" &&
-		typeof metadata.conversationSummaryText !== "string"
+		(source === "codex" || source === "claude" || source === "pi") &&
+		(metadata?.hookEventName?.trim().toLowerCase() === "stop" ||
+			metadata?.hookEventName?.trim().toLowerCase() === "agentsettled") &&
+		!metadata.providerAgentId?.trim()
 	);
-}
-
-function isCodexSource(source: string | null | undefined): boolean {
-	return source?.trim().toLowerCase() === "codex";
-}
-
-function isPermissionResolutionHook(
-	hookEventName: string | null | undefined,
-	source: string | null | undefined,
-): boolean {
-	const normalized = hookEventName?.toLowerCase() ?? "";
-	return (
-		normalized === "userpromptsubmit" ||
-		normalized === "permissionresolved" ||
-		normalized === "permissiondenied" ||
-		(isCodexSource(source) && normalized === "posttooluse")
-	);
-}
-
-type ClaudeAttentionWait =
-	| { type: "interactive_tool"; toolName: "askuserquestion" | "exitplanmode" }
-	| { type: "elicitation" }
-	| { type: "background_agent" };
-
-function getClaudeAttentionWait(activity: RuntimeTaskHookActivity | null | undefined): ClaudeAttentionWait | null {
-	if (activity?.source?.trim().toLowerCase() !== "claude") {
-		return null;
-	}
-	const hookEventName = activity.hookEventName?.toLowerCase() ?? "";
-	const toolName = activity.toolName?.toLowerCase() ?? "";
-	const notificationType = activity.notificationType?.toLowerCase() ?? "";
-	if (
-		(hookEventName === "pretooluse" || hookEventName === "permissionrequest") &&
-		(toolName === "askuserquestion" || toolName === "exitplanmode")
-	) {
-		return { type: "interactive_tool", toolName };
-	}
-	if (hookEventName === "elicitation" || notificationType === "elicitation_dialog") {
-		return { type: "elicitation" };
-	}
-	if (notificationType === "agent_needs_input") {
-		return { type: "background_agent" };
-	}
-	return null;
-}
-
-function isClaudeAttentionResolutionHook(
-	wait: ClaudeAttentionWait,
-	metadata: RuntimeHookMetadata | undefined,
-): boolean {
-	if (metadata?.source?.trim().toLowerCase() !== "claude") {
-		return false;
-	}
-	const hookEventName = metadata.hookEventName?.toLowerCase() ?? "";
-	if (hookEventName === "userpromptsubmit") {
-		return true;
-	}
-	if (wait.type === "interactive_tool") {
-		const toolName = metadata.toolName?.toLowerCase() ?? "";
-		return (hookEventName === "posttooluse" || hookEventName === "posttoolusefailure") && toolName === wait.toolName;
-	}
-	if (wait.type === "elicitation") {
-		return hookEventName === "elicitationresult";
-	}
-	return false;
 }
 
 type HookBackgroundTaskScheduler = (task: () => void) => void;
@@ -182,81 +97,10 @@ function scheduleHookBackgroundTask(task: () => void): void {
 	timeout.unref?.();
 }
 
-function isPermissionGuardedActivityOverwrite(
-	summary: RuntimeTaskSessionSummary,
-	activityMetadata: Partial<RuntimeTaskHookActivity> | undefined,
-): boolean {
-	if (!activityMetadata) {
-		return false;
-	}
-	const currentActivity = summary.latestHookActivity;
-	const shouldGuardPermission =
-		summary.state === "awaiting_review" && currentActivity != null && isPermissionActivity(currentActivity);
-	if (!shouldGuardPermission) {
-		return false;
-	}
-	const incomingActivity: RuntimeTaskHookActivity = {
-		hookEventName: activityMetadata.hookEventName ?? null,
-		notificationType: activityMetadata.notificationType ?? null,
-		activityText: activityMetadata.activityText ?? null,
-		toolName: activityMetadata.toolName ?? null,
-		toolInputSummary: activityMetadata.toolInputSummary ?? null,
-		finalMessage: activityMetadata.finalMessage ?? null,
-		source: activityMetadata.source ?? null,
-		conversationSummaryText: activityMetadata.conversationSummaryText ?? null,
-	};
-	return !isPermissionActivity(incomingActivity);
-}
-
-function isAttentionGuardedActivityOverwrite(
-	summary: RuntimeTaskSessionSummary,
-	activityMetadata: Partial<RuntimeTaskHookActivity> | undefined,
-): boolean {
-	if (summary.state !== "awaiting_review" || summary.reviewReason !== "attention" || !activityMetadata) {
-		return false;
-	}
-	const currentWait = getClaudeAttentionWait(summary.latestHookActivity);
-	if (!currentWait) {
-		return false;
-	}
-	const incomingActivity: RuntimeTaskHookActivity = {
-		hookEventName: activityMetadata.hookEventName ?? null,
-		notificationType: activityMetadata.notificationType ?? null,
-		activityText: activityMetadata.activityText ?? null,
-		toolName: activityMetadata.toolName ?? null,
-		toolInputSummary: activityMetadata.toolInputSummary ?? null,
-		finalMessage: activityMetadata.finalMessage ?? null,
-		source: activityMetadata.source ?? null,
-		conversationSummaryText: activityMetadata.conversationSummaryText ?? null,
-	};
-	return getClaudeAttentionWait(incomingActivity) === null;
-}
-
-function getReviewReasonForHookEvent(metadata: RuntimeHookMetadata | undefined): HookSessionReviewReason {
-	const hookEventName = metadata?.hookEventName?.toLowerCase() ?? "";
-	const notificationType = metadata?.notificationType?.toLowerCase() ?? "";
-	const toolName = metadata?.toolName?.toLowerCase() ?? "";
-	const isClaude = metadata?.source?.trim().toLowerCase() === "claude";
-	if (hookEventName === "stopfailure") {
-		return "error";
-	}
-	if (
-		isClaude &&
-		(hookEventName === "elicitation" ||
-			(hookEventName === "pretooluse" && (toolName === "askuserquestion" || toolName === "exitplanmode")) ||
-			(hookEventName === "notification" &&
-				(notificationType === "agent_needs_input" || notificationType === "elicitation_dialog")))
-	) {
-		return "attention";
-	}
-	return "hook";
-}
-
 export interface CreateHooksApiDependencies {
 	projects: Pick<IProjectResolver, "getProjectPathById">;
 	terminals: ITerminalManagerProvider;
 	config?: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
-	broadcaster: Pick<IRuntimeBroadcaster, "broadcastRuntimeProjectStateUpdated" | "broadcastTaskReadyForReview">;
 	captureTaskTurnCheckpoint?: (input: {
 		cwd: string;
 		taskId: string;
@@ -264,17 +108,10 @@ export interface CreateHooksApiDependencies {
 	}) => Promise<RuntimeTaskTurnCheckpoint>;
 	deleteTaskTurnCheckpointRef?: (input: { cwd: string; ref: string }) => Promise<void>;
 	scheduleHookBackgroundTask?: HookBackgroundTaskScheduler;
+	/** Resolves only after the latest session-store generation is durable. */
+	persistSessionState?: (projectId: string) => Promise<void>;
 	diagnostics?: RuntimeDiagnostics;
-}
-
-function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event: RuntimeHookEvent): boolean {
-	if (event === "activity") {
-		return false;
-	}
-	if (event === "to_review") {
-		return summary.state === "running";
-	}
-	return summary.state === "awaiting_review" && canReturnToRunning(summary.reviewReason);
+	conversationSourceHints?: ConversationSourceHintRecorder;
 }
 
 export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcContext["hooksApi"] {
@@ -292,9 +129,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 			} = {};
 			try {
 				const body = parseHookIngestRequest(input);
-				const taskId = body.taskId;
-				const projectId = body.projectId;
-				const event = body.event;
+				const { taskId, projectId, event } = body;
 				diagnosticContext = {
 					projectId,
 					taskId,
@@ -308,8 +143,9 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						source: body.metadata?.source ?? null,
 						hookEventName: body.metadata?.hookEventName ?? null,
 						notificationType: body.metadata?.notificationType ?? null,
-						turnId: body.metadata?.turnId ?? null,
-						toolUseId: body.metadata?.toolUseId ?? null,
+						hasTurnId: Boolean(body.metadata?.turnId),
+						hasPromptId: Boolean(body.metadata?.promptId),
+						hasToolUseId: Boolean(body.metadata?.toolUseId),
 						hasSessionId: Boolean(body.metadata?.sessionId),
 					},
 					diagnosticContext,
@@ -323,56 +159,88 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					delivery: body.delivery,
 				});
 				log.info("Hook ingest received", hookLogData);
+
 				const knownProjectPath = deps.projects.getProjectPathById(projectId);
 				const loadedProjectScope = knownProjectPath ? null : await loadProjectScopeById(projectId);
 				const projectPath = knownProjectPath ?? loadedProjectScope?.repoPath ?? null;
 				if (!projectPath) {
 					log.warn("Hook ingest rejected: project not found", hookLogData);
-					return {
-						ok: false,
-						error: `Project "${projectId}" not found`,
-					} satisfies RuntimeHookIngestResponse;
+					return { ok: false, error: `Project "${projectId}" not found` } satisfies RuntimeHookIngestResponse;
 				}
 
 				const manager = await deps.terminals.ensureTerminalManagerForProject(projectId, projectPath);
 				const { store } = manager;
-				const summary = store.getSummary(taskId);
-				if (!summary) {
-					log.warn("Hook ingest rejected: task not found", { ...hookLogData, projectPath });
+				const previousSummary = store.getSummary(taskId);
+				if (!previousSummary) {
+					log.warn("Hook ingest rejected: task not found", {
+						...hookLogData,
+						hasProjectPath: projectPath.length > 0,
+					});
 					return {
 						ok: false,
 						error: `Task "${taskId}" not found in project "${projectId}"`,
 					} satisfies RuntimeHookIngestResponse;
 				}
 
-				const completeHookIngest = (advanceTurn: boolean): RuntimeHookIngestResponse => {
-					manager.commitHookEventOrder(taskId, body, advanceTurn);
-					return { ok: true } satisfies RuntimeHookIngestResponse;
+				const completeHookIngest = async (advanceProviderOrder: boolean): Promise<RuntimeHookIngestResponse> => {
+					manager.commitHookEventOrder(taskId, body, advanceProviderOrder);
+					await deps.persistSessionState?.(projectId);
+					return { ok: true };
 				};
+				const expectedProvider =
+					previousSummary.agentId === "codex" ||
+					previousSummary.agentId === "claude" ||
+					previousSummary.agentId === "pi"
+						? previousSummary.agentId
+						: null;
+				const hookProvider = body.metadata?.source?.trim().toLowerCase() ?? null;
+				if (expectedProvider && hookProvider !== expectedProvider) {
+					log.warn("Hook ignored: provider does not own the active task session", {
+						...hookLogData,
+						expectedProvider,
+					});
+					return await completeHookIngest(false);
+				}
 				const orderDecision = manager.evaluateHookEventOrder(taskId, body);
 				if (!orderDecision.accepted) {
 					log.info("Hook ingest ignored by delivery ordering", {
 						...hookLogData,
 						reason: orderDecision.reason,
 					});
-					return completeHookIngest(orderDecision.reason === "unrelated_tool_completion");
+					return await completeHookIngest(shouldRetainHookEventOrderObservation(orderDecision));
 				}
 
-				const incomingSessionId = body.metadata?.sessionId?.trim() || null;
-				const activityMetadata = toHookActivityPatch(body.metadata);
-				const sessionIdentityOnlyMetadata = isSessionIdentityOnlyMetadata(body.metadata);
-				const runtimeProjectScope = { projectId, projectPath };
+				manager.recordHookReceived(taskId);
+				if (!manager.observeTaskSessionLaunchHook(taskId, body.metadata)) {
+					log.warn("Hook ignored: startup resume opened an unexpected conversation", hookLogData);
+					return await completeHookIngest(false);
+				}
+				deps.conversationSourceHints?.recordClaudeHookHint({
+					projectId,
+					taskId,
+					expectedProviderSessionId: body.metadata?.sessionId ?? previousSummary.resumeSessionId ?? null,
+					metadata: body.metadata,
+				});
+
+				const transitionResult = manager.applyProviderHook(taskId, body);
+				if (!transitionResult) {
+					log.warn("Hook ingest failed: task disappeared before transition", hookLogData);
+					return { ok: false, error: `Task "${taskId}" transition failed` };
+				}
+				const nextSummary = transitionResult.summary;
+				const hasForegroundCompletionMetadata = isForegroundCompletionMetadata(body.metadata);
+				if (hasForegroundCompletionMetadata) {
+					applyConversationSummaryFromMetadata(store, taskId, body.metadata);
+				}
 				const hasSummarySourceMetadata = Boolean(
-					body.metadata?.conversationSummaryText?.trim() || body.metadata?.finalMessage?.trim(),
+					hasForegroundCompletionMetadata &&
+						(body.metadata?.conversationSummaryText?.trim() || body.metadata?.finalMessage?.trim()),
 				);
-				const queueDisplaySummaryPolish = (reason: string) => {
-					if (!deps.config) {
-						return;
-					}
+				if (deps.config && (transitionResult.changed || hasSummarySourceMetadata)) {
 					queueTaskDisplaySummaryPolish({
-						projectScope: runtimeProjectScope,
+						projectScope: { projectId, projectPath },
 						taskId,
-						reason,
+						reason: transitionResult.changed ? `hook.${event}` : "hook.metadata",
 						deps: {
 							config: deps.config,
 							getScopedTerminalManager: async (scope) =>
@@ -380,248 +248,66 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 							scheduleBackgroundTask,
 						},
 					});
-				};
-				const queuePostMetadataSummaryPolish = (reason: string, transitioned: boolean) => {
-					if (transitioned || hasSummarySourceMetadata) {
-						queueDisplaySummaryPolish(reason);
-					}
-				};
-
-				if (incomingSessionId) {
-					log.debug("Hook ingest session_meta", {
-						taskId,
-						projectId,
-						incomingSessionId,
-						storedResumeSessionId: summary.resumeSessionId ?? null,
-						metadataOnly: sessionIdentityOnlyMetadata,
-						hookEventName: body.metadata?.hookEventName ?? null,
-						source: body.metadata?.source ?? null,
-					});
 				}
-
-				// Hook accounting is independent from launch admission: even a no-op or
-				// blocked hook proves the hook system is alive, while the launch observer
-				// can still reject metadata from an unexpected resumed conversation before
-				// it overwrites the stored target.
-				manager.recordHookReceived(taskId);
-				if (!manager.observeTaskSessionLaunchHook(taskId, body.metadata)) {
-					log.warn("Hook ignored: startup resume opened an unexpected conversation", hookLogData);
-					return completeHookIngest(false);
-				}
-				const canTransition = canTransitionTaskForHookEvent(summary, event);
-				if (!canTransition) {
-					log.debug("Hook blocked: cannot transition from current state", {
+				const enteredOrdinaryReview = didEnterTaskReviewReady(previousSummary, nextSummary);
+				// Ordering is committed after the canonical mutation so correlation for
+				// PermissionRequest observes the preceding PreToolUse, not itself. The
+				// reducer explicitly retains identity-bearing Claude observations that
+				// cannot change task meaning (for example, an unrelated completion),
+				// while mismatched Codex turns remain delivery-only.
+				const response = await completeHookIngest(
+					transitionResult.hookMetadataMode === "apply" || transitionResult.hookOrderingMode === "advance",
+				);
+				log.info(
+					transitionResult.changed ? "Hook transition applied" : "Hook accepted without semantic transition",
+					{
 						...hookLogData,
-						currentState: summary.state,
-						currentReviewReason: summary.reviewReason,
-					});
-					if (body.metadata && sessionIdentityOnlyMetadata) {
-						store.applyHookMetadata(taskId, body.metadata);
-						log.debug("Hook metadata-only session id applied", {
-							...hookLogData,
-							currentState: summary.state,
-						});
-						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
-						queuePostMetadataSummaryPolish("hook.metadata-only", false);
-						return completeHookIngest(true);
-					}
-					if (isPermissionGuardedActivityOverwrite(summary, activityMetadata)) {
-						log.debug("Hook blocked: permission guard prevented activity overwrite", {
-							...hookLogData,
-							incomingHookEvent: activityMetadata?.hookEventName,
-							currentPermissionActivity: summary.latestHookActivity?.hookEventName ?? null,
-						});
-						// Skip applyHookActivity — the incoming event is not permission-related
-						// and would clobber the existing permission metadata.
-						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
-						queuePostMetadataSummaryPolish("hook.permission-guarded", false);
-						return completeHookIngest(true);
-					}
-					if (isAttentionGuardedActivityOverwrite(summary, activityMetadata)) {
-						log.debug("Hook blocked: attention guard prevented activity overwrite", {
-							...hookLogData,
-							incomingHookEvent: activityMetadata?.hookEventName,
-							currentAttentionActivity: summary.latestHookActivity?.hookEventName ?? null,
-						});
-						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
-						queuePostMetadataSummaryPolish("hook.attention-guarded", false);
-						return completeHookIngest(true);
-					}
-					if (body.metadata && (incomingSessionId || activityMetadata)) {
-						store.applyHookMetadata(taskId, body.metadata);
-						log.debug("Hook metadata applied without state transition", {
-							...hookLogData,
-							currentState: summary.state,
-						});
-					}
-					applyConversationSummaryFromMetadata(store, taskId, body.metadata);
-					queuePostMetadataSummaryPolish("hook.metadata", false);
-					return completeHookIngest(true);
-				}
+						fromState: previousSummary.state,
+						fromReviewReason: previousSummary.reviewReason,
+						toState: nextSummary.state,
+						toReviewReason: nextSummary.reviewReason,
+						interactionStatus: nextSummary.outstandingInteraction?.status ?? null,
+					},
+				);
 
-				// Patch A: Input-wait-aware transition guards.
-				// Claude questions and MCP/background input waits only resolve through
-				// their matching native lifecycle event or a real user prompt.
-				// When to_in_progress arrives while the task is awaiting review with
-				// permission-related activity, block the transition — this is almost
-				// certainly a stale PostToolUse from a tool that completed before the
-				// permission prompt appeared. UserPromptSubmit is exempted because it
-				// means the user actively sent input (covers the edge case where
-				// writeInput's synchronous transition didn't fire). Codex PostToolUse is
-				// also exempt because native Codex permission approval can resume via
-				// the approved tool's completion rather than a separate resolution hook.
-				if (event === "to_in_progress") {
-					const currentActivity = summary.latestHookActivity;
-					const incomingHookEvent = body.metadata?.hookEventName ?? null;
-					const attentionWait =
-						summary.reviewReason === "attention" ? getClaudeAttentionWait(currentActivity) : null;
-					const isAttentionResolution = attentionWait
-						? isClaudeAttentionResolutionHook(attentionWait, body.metadata)
-						: false;
-					if (attentionWait && !isAttentionResolution) {
-						log.debug("Hook blocked: attention-aware transition guard prevented unrelated to_in_progress", {
-							...hookLogData,
-							incomingHookEvent,
-							attentionWaitType: attentionWait.type,
-							currentAttentionActivity: currentActivity?.hookEventName ?? null,
-						});
-						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
-						queuePostMetadataSummaryPolish("hook.attention-transition-guarded", false);
-						return completeHookIngest(true);
-					}
-					if (
-						currentActivity != null &&
-						isPermissionActivity(currentActivity) &&
-						!isPermissionResolutionHook(incomingHookEvent, body.metadata?.source) &&
-						!isAttentionResolution
-					) {
-						log.debug("Hook blocked: permission-aware transition guard prevented stale to_in_progress", {
-							...hookLogData,
-							incomingHookEvent,
-							currentPermissionActivity: currentActivity.hookEventName,
-						});
-						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
-						queuePostMetadataSummaryPolish("hook.permission-transition-guarded", false);
-						return completeHookIngest(true);
-					}
-				}
-
-				const transitionData = {
-					event,
-					fromState: summary.state,
-					fromReviewReason: summary.reviewReason,
-					toState: event === "to_review" ? "awaiting_review" : "running",
-					hookEventName: body.metadata?.hookEventName ?? null,
-				};
-				log.info("Hook transitioning", { ...hookLogData, ...transitionData });
-
-				const hookTransition =
-					event === "to_review"
-						? ({
-								type: "hook.to_review",
-								reason: getReviewReasonForHookEvent(body.metadata),
-								...(body.metadata ? { metadata: body.metadata } : {}),
-							} as const)
-						: ({
-								type: "hook.to_in_progress",
-								...(body.metadata ? { metadata: body.metadata } : {}),
-							} as const);
-				const reviewReason = hookTransition.type === "hook.to_review" ? hookTransition.reason : null;
-				const transitionResult = manager.applyHookTransition(taskId, hookTransition);
-				if (!transitionResult?.changed) {
-					log.warn("Hook transition failed", { ...hookLogData, ...transitionData });
-					return {
-						ok: false,
-						error: `Task "${taskId}" transition failed`,
-					} satisfies RuntimeHookIngestResponse;
-				}
-				const transitionedSummary = transitionResult.summary;
-
-				applyConversationSummaryFromMetadata(store, taskId, body.metadata);
-				queuePostMetadataSummaryPolish(`hook.${event}`, true);
-				log.info("Hook transition applied", {
-					...hookLogData,
-					toState: transitionedSummary.state,
-					toReviewReason: transitionedSummary.reviewReason,
-					resumeSessionId: transitionedSummary.resumeSessionId,
-				});
-
-				// Patch B: Broadcast and return BEFORE checkpoint capture.
-				// Checkpoint capture runs git operations (stash create) that routinely
-				// exceed a hook HTTP attempt's deadline. Returning early prevents timeout-
-				// triggered retries while the state transition has already succeeded.
-				// The checkpoint fires in the background and applies via store.update
-				// which triggers onChange listeners for downstream consumers.
-				const effects = createHookTransitionEffects({
-					projectId,
-					projectPath,
-					taskId,
-					event,
-					reviewReason,
-				});
-				void applyRuntimeMutationEffects(deps.broadcaster, effects).catch((error) => {
-					log.error("Failed to deliver hook transition effects", {
-						...hookLogData,
-						error: errorMessage(error),
-						effectTypes: effects.map((effect) => effect.type),
-					});
-				});
-				log.debug("Hook transition effects queued", {
-					...hookLogData,
-					effectTypes: effects.map((effect) => effect.type),
-				});
-				if (event === "to_review") {
-					const nextTurn = (transitionedSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
-					const checkpointCwd = transitionedSummary.sessionLaunchPath ?? projectPath;
-					const staleRef = transitionedSummary.previousTurnCheckpoint?.ref ?? null;
+				if (enteredOrdinaryReview) {
+					const nextTurn = (nextSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
+					const checkpointCwd = nextSummary.sessionLaunchPath ?? projectPath;
+					const staleRef = nextSummary.previousTurnCheckpoint?.ref ?? null;
 					const checkpointLogData = {
 						...hookLogData,
-						checkpointCwd,
+						hasCheckpointCwd: checkpointCwd.length > 0,
 						checkpointTurn: nextTurn,
-						staleCheckpointRef: staleRef,
+						hasStaleCheckpointRef: staleRef !== null,
 					};
-					log.debug("Hook turn checkpoint capture queued", checkpointLogData);
 					void (async () => {
 						try {
-							const checkpoint = await checkpointCapture({
-								cwd: checkpointCwd,
-								taskId,
-								turn: nextTurn,
-							});
+							const checkpoint = await checkpointCapture({ cwd: checkpointCwd, taskId, turn: nextTurn });
 							store.applyTurnCheckpoint(taskId, checkpoint);
-							log.info("Hook turn checkpoint captured", {
-								...checkpointLogData,
-								checkpointRef: checkpoint.ref,
-								checkpointCommit: checkpoint.commit,
-							});
 							if (staleRef) {
-								void checkpointRefDelete({
-									cwd: checkpointCwd,
-									ref: staleRef,
-								})
-									.then(() => {
-										log.debug("Stale hook turn checkpoint ref deleted", checkpointLogData);
-									})
-									.catch((error) => {
-										log.warn("Failed to delete stale hook turn checkpoint ref", {
-											...checkpointLogData,
-											error: errorMessage(error),
-										});
+								void checkpointRefDelete({ cwd: checkpointCwd, ref: staleRef }).catch((error) => {
+									log.warn("Failed to delete stale hook turn checkpoint ref", {
+										...checkpointLogData,
+										errorClass:
+											error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
 									});
+								});
 							}
 						} catch (error) {
 							log.warn("Hook turn checkpoint capture failed", {
 								...checkpointLogData,
-								error: errorMessage(error),
+								errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
 							});
 						}
 					})();
 				}
 
-				return completeHookIngest(true);
+				return response;
 			} catch (error) {
 				const message = errorMessage(error);
-				log.error("Hook ingest crashed", { error: message });
+				log.error("Hook ingest crashed", {
+					errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+				});
 				deps.diagnostics?.recordEvent(
 					"hook.ingest_failed",
 					{ errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError" },

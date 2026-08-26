@@ -11,8 +11,8 @@ Each `start` creates:
 - two dynamically selected loopback ports for the runtime and Vite UI;
 - a temporary HOME, `QUARTERDECK_STATE_HOME`, Git project, and task-worktree root;
 - a second synthetic Git project for Add Project and project-switching tests;
-- a minimal child environment that omits API keys, cloud credentials, SSH agent access, user Git config, and real agent configuration;
-- a fake `codex` executable injected at the front of that runtime's PATH only;
+- a minimal child environment that omits API keys, cloud credentials, SSH agent access, and user Git config;
+- either the default fake `codex` executable or an opt-in real-Codex launcher injected at the front of that runtime's PATH only;
 - native UI disabled by launch configuration, plus recording fakes for known picker, open, and IDE launchers that fail the run if invoked;
 - an atomic manifest and stop-request control channel;
 - continuously captured supervisor, runtime, and web logs;
@@ -21,9 +21,31 @@ Each `start` creates:
 - semantic page snapshots, screenshots, traces, videos, console/network records, and a marked browser-action transcript;
 - canonical diagnostic bundles at ready, failure, pre-shutdown, final, and explicitly requested checkpoints.
 
-The runtime and browser still use Quarterdeck's real project registry, tRPC/WebSocket transport, board persistence, worktree lifecycle, Codex adapter, PTY, native-hook ingest, session state machine, xterm renderer, Git APIs, and Files APIs. Only the external coding agent and host-facing side effects are replaced.
+The runtime and browser still use Quarterdeck's real project registry, tRPC/WebSocket transport, board persistence, worktree lifecycle, Codex adapter, PTY, native-hook ingest, session state machine, xterm renderer, Git APIs, and Files APIs. Quarterdeck-owned host-facing effects are always simulated. The external coding agent is fake by default and can be changed to real Codex only for an explicitly authorized provider-compatibility run; real mode also replaces profile-defined hooks and disables provider integrations that would bypass the simulated boundary.
 
 Agent Lab keeps `nativeUiAvailable: false` and selects the separate `simulated` host-integration mode. Open in IDE, scoped file/folder opening, CLI-owned external browser launch, clipboard reads/writes, and notification audio complete through the same typed production contracts while recording a simulated outcome instead of touching the desktop. The native directory picker intentionally remains unavailable: Add Project records that attempt, then completes through the existing browser-managed manual-path prompt. Ordinary browser links and terminal links remain browser-contained, observable by Playwright, and subject to the lab's loopback-only page-request policy.
+
+## Agent modes
+
+The default `fake` mode is deterministic, offline, CI-safe, and supports the seeded scenarios and terminal protocol documented below:
+
+```bash
+npm run --silent agent:lab -- start --name terminal-restore --json
+```
+
+Use `real-codex` only when the user has explicitly authorized their Codex account or plan to be used and the test depends on the provider's real TUI, hooks, identity, or event ordering:
+
+```bash
+npm run --silent agent:lab -- start --name codex-approval --agent real-codex --json
+```
+
+Real mode preflights `codex login status` and reuses only the cached credential from the profile already authenticated by the CLI. It does not require or forward `OPENAI_API_KEY`. `$CODEX_HOME` selects the source profile when present; otherwise the default is `~/.codex`. Pass `--codex-home <path>` to select another already-authenticated profile. Agent Lab links the file-backed credential into a private disposable Codex home on macOS/Linux, or makes a permission-restricted temporary copy on Windows; keyring-backed credentials remain in the OS store. The source profile path and credential are omitted from persistent artifacts, public manifests, and diagnostic bundles. Normal shutdown removes the staged credential even when `--keep-temp` retains the synthetic project.
+
+The surrounding Quarterdeck runtime retains its disposable HOME and receives neither `CODEX_HOME` nor API credentials. Its generated launcher gives only the Codex process the isolated credential-only `CODEX_HOME`, resolves only the Codex executable from the host `PATH`, restores Agent Lab's `PATH` before `exec`, immediately removes the wrapper variables, and excludes `CODEX_HOME` from model-generated subprocess environments. The Codex process and its shell tools therefore keep the disposable HOME and forbidden-host-launch sentinels instead of gaining the user's account HOME or bypassing the simulated host boundary. Missing or non-reusable CLI authentication fails startup before the runtime launches, and both preflight outputs are discarded.
+
+The real launcher defaults to `gpt-5.6-luna`, the current Codex CLI's affordable agentic model; low reasoning effort; the standard/default service tier; the built-in OpenAI provider; read-only sandboxing; user approval on request; disabled web search and history indexing; and local task-title generation so the lab does not make a second model request. The disposable Codex home contains no source profile config, so profile MCP servers, apps/connectors, plugins, hooks, skills, and preferences never enter the run. Launch policy additionally disables integrations, subagents, memories, automatic goals, background dependencies, notifications, external file opening, feedback, analytics/telemetry, update checks, Fast mode, and login-shell/profile loading; Quarterdeck then adds only its launch-scoped lifecycle hooks. Use `--model`, `--codex-sandbox`, or `--codex-approval-policy` only when the scenario requires a different contract. Real-only flags are rejected in fake mode, and fake scenarios are deliberately rejected in real mode.
+
+This mode is not hermetic: it makes OpenAI network calls and consumes the selected account's plan or API allowance. It reads the selected profile only to validate and stage its cached credential. Provider-owned session/resume records stay in the disposable Codex home rather than the user's normal profile and are removed on normal shutdown. Use only synthetic fixture content, keep effectful commands behind approval, never use the real lane in CI, capture its nondeterminism in the evidence report, and always stop the run. Browser navigation and Quarterdeck/provider host integrations remain isolated or disabled as described above.
 
 ## Host-integration modes and event ledger
 
@@ -50,7 +72,7 @@ Each canonical checkpoint flushes and validates the current ledger while the run
 | Ordinary browser links and xterm web links | Browser-contained by design and still governed by the lab's loopback network policy; they never produce a host event. |
 | Clipboard read/write, including xterm OSC 52 | Simulated by one in-memory browser clipboard; ledger events store character counts, never contents. |
 | Notification sound | Simulated semantically with event type, volume, and optional project/task identity; no audio context is created. Quarterdeck has no desktop Notification API workflow; its title update remains browser-contained. |
-| Credential/keychain access | No interactive host completion path exists. The lab child environment omits credentials, cloud variables, SSH agent access, and real agent configuration. |
+| Credential/keychain access | Fake mode omits credentials and real agent configuration. Real Codex mode grants only its generated `codex` wrapper access to the selected existing CLI profile; the runtime still receives no API keys, cloud variables, SSH agent access, or copied authentication material. |
 | Agent discovery, Git, PTY, and other runtime subprocesses | Not desktop integrations. They remain on the real runtime path inside the disposable environment; only the task agent and audited native launchers are shadowed. Binary presence never grants native-UI capability. |
 
 ## First-time setup
@@ -76,7 +98,7 @@ Start a detached run and ask for machine-readable discovery data:
 npm run --silent agent:lab -- start --name terminal-restore --json
 ```
 
-The manifest includes the run id, status, URLs, temporary paths, artifact paths, browser config/session/output paths, host-event ledger and forbidden-launch log paths, launch capabilities, PIDs, scenario, timestamps, and any startup failure. Ports default to `auto`; fixed `--runtime-port` and `--web-port` values exist for E2E and targeted debugging. `--keep-temp` retains the synthetic project/state after shutdown when filesystem inspection is necessary. Lifecycle commands accept both the current manifest and version 1, allowing an older active run to be listed, inspected, snapshotted, and stopped after the checkout is updated; legacy snapshots naturally omit the ledger that did not yet exist.
+The manifest includes the run id, status, URLs, temporary paths, artifact paths, browser config/session/output paths, host-event ledger and forbidden-launch log paths, launch capabilities, sanitized agent mode/configuration, PIDs, scenario, timestamps, and any startup failure. Ports default to `auto`; fixed `--runtime-port` and `--web-port` values exist for E2E and targeted debugging. `--keep-temp` retains the synthetic project/state after shutdown when filesystem inspection is necessary. Lifecycle commands can read manifest versions 1 through 4 so older active runs can still be listed, inspected, snapshotted, and stopped after an update; same-state runtime restart requires version 3 or newer, and manifests before version 4 are treated as fake-agent runs.
 
 Use an explicit run id when several agents are testing concurrently:
 
@@ -142,20 +164,22 @@ The same terminal provider exists in production, but visible terminal lines are 
 
 ## Deterministic fake agent
 
+The scenarios and commands in this section exist only in default `fake` mode. For real Codex, use ordinary synthetic prompts and interact with the provider's actual form, including its numeric or arrow-selection controls.
+
 Select a default with `start --scenario <name>` or override one task by including a prompt directive:
 
-- `idle` — interactive terminal;
+- `idle` — interactive terminal seeded as Review/Unconfirmed until `/working` emits provider evidence;
 - `needs-input` — Codex permission wait;
 - `review` — completed root turn;
 - `failure` — non-zero process exit;
 - `git-dirty` — synthetic file edit;
 - `terminal-stress` — bounded scrollback output.
 
-The interactive protocol includes `/needs-input`, `/working`, `/review`, `/write`, `/commit`, `/status`, `/clipboard-read`, `/spam`, `/alt-on`, `/alt-off`, `/delay-review`, `/fail`, and `/exit`. `/clipboard-read` exercises the browser clipboard through xterm's OSC 52 path and prints a bounded `AGENT LAB CLIPBOARD READ` marker. Run `/help` inside the fake terminal for exact syntax. File writes are restricted to the disposable checkout. All stable terminal markers begin with `AGENT LAB`; startup prints `AGENT LAB READY`.
+The interactive protocol includes `/needs-input`, `/needs-input-auto`, `/approval-overlay`, `/turn-interrupted`, `/new-turn`, `/redraw-interruption-history`, `/local-action`, `/working`, `/review`, `/write`, `/commit`, `/status`, `/clipboard-read`, `/spam`, `/alt-on`, `/alt-off`, `/delay-review`, `/fail`, and `/exit`. A bare `y` accepts either native `/needs-input` or hookless `/approval-overlay` immediately and emits the matching `PostToolUse` after a short deterministic delay, mirroring Codex's approval hotkey without requiring Enter while leaving time to assert response-pending state. `/needs-input-auto` proves the real identity-bearing Codex sequence can resolve without nonexistent local input. `/new-turn` followed by `/redraw-interruption-history` proves a historical rendered failure cannot override a newer authoritative hook; a later `/turn-interrupted` must still remove false Running. `/clipboard-read` exercises the browser clipboard through xterm's OSC 52 path and prints a bounded `AGENT LAB CLIPBOARD READ` marker. Run `/help` inside the fake terminal for exact syntax. File writes are restricted to the disposable checkout. All stable terminal markers begin with `AGENT LAB`; startup prints `AGENT LAB READY`.
 
 ## Automated regression suite
 
-`npm run web:e2e` uses the same supervisor and allocates dynamic loopback ports before Playwright loads its configuration. CI can still pin them with `QUARTERDECK_E2E_RUNTIME_PORT` and `QUARTERDECK_E2E_WEB_PORT` when its runner requires explicit ports. Playwright Test blocks non-loopback page requests, attaches browser console/network logs, and retains screenshots, video, and traces on failure. Functional smoke paths assert the startup host-URL simulation while ordinary links remain browser-contained, Open in IDE, config-file opening, notification audio, in-memory clipboard write/read through xterm, Add Project's manual fallback, the unified Diagnostics panel, and a task lifecycle through Review. Shutdown verifies the forbidden-launch log stays empty.
+`npm run web:e2e` uses the same supervisor and allocates dynamic loopback ports before Playwright loads its configuration. CI can still pin them with `QUARTERDECK_E2E_RUNTIME_PORT` and `QUARTERDECK_E2E_WEB_PORT` when its runner requires explicit ports. Playwright Test blocks non-loopback page requests, attaches browser console/network logs, and retains screenshots, video, and traces on failure. Functional smoke paths assert the startup host-URL simulation while ordinary links remain browser-contained, Open in IDE, config-file opening, notification audio, in-memory clipboard write/read through xterm, Add Project's manual fallback, the unified Diagnostics panel, and the proof-backed lifecycle: launch remains Review, `/working` establishes Running, Escape interrupts immediately, approval cancellation/acceptance clears Needs Input without input claiming Running, and the matching provider hook resumes work. Shutdown verifies the forbidden-launch log stays empty.
 
 ## Lifecycle regression classes
 
@@ -169,13 +193,19 @@ This preserves disposable state, the web process, and the browser while replacin
 
 State-projection dogfood has three phases:
 
-1. Assert static board columns, project pills, and notifications for ordinary Review and genuine Needs Input tasks. Review is the full column count and Needs Input overlaps it, so three Review cards with one blocked task display `R 3 · NI 1`.
+1. Assert static board columns, project pills, and notifications for ordinary Review and genuine Needs Input tasks. A blocked card remains in Review, but Needs Input overrides Review in navigation pills, so three Review cards with one blocked task display `R 2 · NI 1`.
 2. Submit a new turn or response, wait for the authoritative transition to Running, and assert all three projections after switching away and back.
-3. Send bare Escape or Ctrl-C to a synthetic Running task, wait past interrupt recovery, and require Review/Interrupted without any Needs Input card, pill, notification, or sound.
+3. Send bare Escape or Ctrl-C to a synthetic Running task, wait past interrupt recovery, and require Review/Interrupted without any Needs Input card, pill, notification, or sound. Cover both convergence paths: `/working` must return the exact live session to Running before `/review` completes it, and a separate interrupted task receiving `/review` directly must become ordinary Ready for review when the intermediate working hook is absent.
+
+Before phase 2, submit `/local-action model-changed` from a Review task. The terminal must print `AGENT LAB LOCAL ACTION`, while the card, project pills, and notifications remain in Review. Only a subsequent `/working` provider hook may move them to Running. This reproduces Codex commands such as `/model`, whose Enter key accepts local TUI state rather than starting agent work.
+
+For Codex rendered-failure changes, submit `/turn-interrupted` from Running and require immediate Review/Interrupted convergence across the card and project pill without Needs Input, notification, or sound. Submit `/new-turn`, require provider-confirmed Running, then submit `/redraw-interruption-history` and require Running to survive the historical redraw. A later real `/turn-interrupted` must still converge to Review/Interrupted. Restart the runtime against the same state and require the conservative classification to survive cold hydration.
+
+For authenticated Codex approval compatibility, cover three distinct real-provider paths: numeric approval must become response-pending before a current hook proves Running; Escape cancellation must clear the exact wait when Codex renders its complete interrupted result without a completion hook; and a runtime restart performed while the provider is waiting must clear stale Needs Input if the exactly resumed TUI renders that same terminal result and returns to its composer. Also launch one effectful synthetic command with Approve for me enabled and assert that the generated real-provider wrapper does not add conflicting `--ask-for-approval` or `--sandbox` arguments, no user-facing Needs Input appears, and current provider hooks still own Running and completion.
 
 A static startup screenshot does not cover transition convergence, notification clearing, or false-positive attention after interruption.
 
-Bulk lifecycle dogfood uses the multi-task dialog to create and start at least four synthetic tasks spanning idle/Running, ordinary Review, genuine Needs Input, and deterministic failure while automatic titles are enabled. Assert every requested identity persists, no lifecycle revision-conflict toast appears, and final cards, pills, notifications, and persisted evidence agree.
+Bulk lifecycle dogfood uses the multi-task dialog to create and start at least four synthetic tasks spanning unconfirmed idle/Review, provider-confirmed Running, ordinary Review, genuine Needs Input, and deterministic failure while automatic titles are enabled. Assert every requested identity persists, no lifecycle revision-conflict toast appears, and final cards, pills, notifications, and persisted evidence agree.
 
 ## Failure reports
 

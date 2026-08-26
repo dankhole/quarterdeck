@@ -2,6 +2,8 @@ import {
 	type DiagnosticCaptureScope,
 	type DiagnosticRecordEnvelope,
 	deriveTaskIndicatorState,
+	didEnterTaskReviewReady,
+	getRuntimeSessionWorkColumn,
 	type RuntimeTaskSessionSummary,
 } from "../core";
 import type { TerminalSessionManager } from "../terminal";
@@ -17,11 +19,13 @@ interface RuntimeTaskSessionEvent {
 	projectId: string;
 	summaries: RuntimeTaskSessionSummary[];
 	notificationSummaries: RuntimeTaskSessionSummary[];
+	reviewReadyTaskIds: string[];
 	refreshProjects: boolean;
 }
 
 interface RuntimeTaskSessionDeliveryClassification {
 	broadcastNotification: boolean;
+	notifyReadyForReview: boolean;
 	refreshProjects: boolean;
 }
 
@@ -39,6 +43,7 @@ function classifyTaskSessionUpdate(
 		// from an incomplete baseline.
 		return {
 			broadcastNotification: true,
+			notifyReadyForReview: false,
 			refreshProjects: true,
 		};
 	}
@@ -52,13 +57,16 @@ function classifyTaskSessionUpdate(
 		previousIndicator.approvalRequired !== nextIndicator.approvalRequired ||
 		previousIndicator.hookReview !== nextIndicator.hookReview;
 
-	// Project summaries currently project an in-progress board card into Review
-	// only while its live session is awaiting_review. Other summary fields do not
-	// affect project-list counts and should not rebuild every project's scoreboard.
-	const refreshProjects = (previous.state === "awaiting_review") !== (next.state === "awaiting_review");
+	// Project pills consume the exclusive public classifier, not only board
+	// columns. Review -> Needs Input stays in the Review column but must still
+	// refresh `R n · NI n`; Running -> Review must also converge immediately.
+	const refreshProjects =
+		getRuntimeSessionWorkColumn(previous) !== getRuntimeSessionWorkColumn(next) ||
+		previousIndicator.publicStatus !== nextIndicator.publicStatus;
 
 	return {
 		broadcastNotification,
+		notifyReadyForReview: didEnterTaskReviewReady(previous, next),
 		refreshProjects,
 	};
 }
@@ -66,6 +74,7 @@ function classifyTaskSessionUpdate(
 interface CreateRuntimeStateTaskSessionEventDeliveryDependencies {
 	onTaskSessionBatch: (projectId: string, summaries: RuntimeTaskSessionSummary[]) => void;
 	onTaskNotificationBatch: (projectId: string, summaries: RuntimeTaskSessionSummary[]) => void;
+	onTasksReadyForReview: (projectId: string, taskIds: readonly string[]) => void;
 	onProjectsRefreshRequested: (preferredCurrentProjectId: string | null) => void;
 }
 
@@ -79,6 +88,9 @@ class RuntimeStateTaskSessionEventDelivery {
 		this.deps.onTaskSessionBatch(event.projectId, event.summaries);
 		if (event.notificationSummaries.length > 0) {
 			this.deps.onTaskNotificationBatch(event.projectId, event.notificationSummaries);
+		}
+		if (event.reviewReadyTaskIds.length > 0) {
+			this.deps.onTasksReadyForReview(event.projectId, event.reviewReadyTaskIds);
 		}
 		if (event.refreshProjects) {
 			this.deps.onProjectsRefreshRequested(event.projectId);
@@ -110,6 +122,7 @@ class RuntimeTaskSessionBatchQueue {
 		pending.set(summary.taskId, {
 			summary,
 			broadcastNotification: classification.broadcastNotification || existing?.broadcastNotification === true,
+			notifyReadyForReview: classification.notifyReadyForReview || existing?.notifyReadyForReview === true,
 			refreshProjects: classification.refreshProjects || existing?.refreshProjects === true,
 		});
 		if (this.flushTimers.has(projectId)) {
@@ -172,6 +185,13 @@ class RuntimeTaskSessionBatchQueue {
 			notificationSummaries: updates
 				.filter((update) => update.broadcastNotification)
 				.map((update) => update.summary),
+			reviewReadyTaskIds: updates
+				// Coalescing can observe Review and then Running within one batch.
+				// Emit the edge only while the delivered summary still represents that
+				// result, or the later Running snapshot would be followed by a stale
+				// ready-for-review browser event.
+				.filter((update) => update.notifyReadyForReview && deriveTaskIndicatorState(update.summary).reviewReady)
+				.map((update) => update.summary.taskId),
 			refreshProjects: updates.some((update) => update.refreshProjects),
 		});
 	}

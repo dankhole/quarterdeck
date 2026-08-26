@@ -1,409 +1,632 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RuntimeTaskSessionSummary } from "../../../../src/core";
+const prepareAgentLaunchMock = vi.hoisted(() => vi.fn());
+const ptySessionSpawnMock = vi.hoisted(() => vi.fn());
 
-import { createMockManager, createSummary, createTestApi, mockStore, permissionActivity } from "./_helpers";
+vi.mock("../../../../src/terminal/agent-session-adapters.js", () => ({
+	prepareAgentLaunch: prepareAgentLaunchMock,
+}));
 
-describe("createHooksApi — permission metadata guard", () => {
-	it("permission metadata survives Stop hook on non-transition path", async () => {
-		const manager = createMockManager({
-			getSummary: vi.fn(() =>
-				createSummary({
-					state: "awaiting_review",
-					reviewReason: "hook",
-					latestHookActivity: permissionActivity(),
-				}),
-			),
-			applyHookActivity: vi.fn(),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary: vi.fn(),
-		});
+vi.mock("../../../../src/terminal/pty-session.js", () => ({
+	PtySession: { spawn: ptySessionSpawnMock },
+}));
 
-		const api = createTestApi(manager);
+import type { RuntimeHookEvent, RuntimeHookMetadata } from "../../../../src/core";
+import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../../src/terminal";
+import { createHooksApi } from "../../../../src/trpc";
 
-		const response = await api.ingest({
-			taskId: "task-1",
+interface MockSpawnRequest {
+	onExit?: (event: { exitCode: number | null }) => void;
+}
+
+function createMockPtySession(pid: number, request: MockSpawnRequest) {
+	return {
+		pid,
+		write: vi.fn(),
+		resize: vi.fn(),
+		pause: vi.fn(),
+		resume: vi.fn(),
+		stop: vi.fn(),
+		wasInterrupted: vi.fn(() => false),
+		triggerExit: (exitCode: number | null) => request.onExit?.({ exitCode }),
+	};
+}
+
+async function createHarness(
+	agentId: "codex" | "claude",
+	taskId: string,
+	options: { codexApprovalsReviewer?: "inherit" | "user" | "auto_review" } = {},
+) {
+	const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+	await manager.startTaskSession({
+		taskId,
+		agentId,
+		binary: agentId,
+		args: [],
+		cwd: `/tmp/${taskId}`,
+		prompt: "Test lifecycle",
+		codexApprovalsReviewer: options.codexApprovalsReviewer,
+	});
+	const sessionInstanceId = manager.store.getSummary(taskId)?.sessionInstanceId;
+	if (!sessionInstanceId) throw new Error("Missing test session identity.");
+	const api = createHooksApi({
+		projects: { getProjectPathById: () => "/tmp/project-1" },
+		terminals: {
+			getTerminalManagerForProject: () => manager,
+			ensureTerminalManagerForProject: async () => manager,
+		},
+		captureTaskTurnCheckpoint: vi.fn(async ({ taskId: checkpointTaskId, turn }) => ({
+			turn,
+			ref: `refs/quarterdeck/checkpoints/${checkpointTaskId}/turn/${turn}`,
+			commit: "abc123",
+			createdAt: turn * 100,
+		})),
+		deleteTaskTurnCheckpointRef: vi.fn(async () => undefined),
+		scheduleHookBackgroundTask: (task) => task(),
+	});
+	let deliveryIndex = 0;
+	let occurredAt = Date.now();
+	const ingest = async (
+		event: RuntimeHookEvent,
+		metadata: RuntimeHookMetadata,
+		options: { occurredAt?: number } = {},
+	) => {
+		deliveryIndex += 1;
+		occurredAt = Math.max(Date.now(), occurredAt + 1);
+		return await api.ingest({
+			taskId,
 			projectId: "project-1",
-			event: "to_review",
-			metadata: { hookEventName: "Stop", activityText: "Final: done", source: "claude" },
+			event,
+			metadata: { source: agentId, sessionInstanceId, ...metadata },
+			delivery: {
+				id: `00000000-0000-4000-8000-${String(deliveryIndex).padStart(12, "0")}`,
+				occurredAt: options.occurredAt ?? occurredAt,
+			},
 		});
+	};
+	return { manager, ingest };
+}
 
-		expect(response).toEqual({ ok: true });
-		expect(mockStore(manager).applyHookActivity).not.toHaveBeenCalled();
+describe("hook-ingest provider interaction lifecycle", () => {
+	beforeEach(() => {
+		prepareAgentLaunchMock.mockReset();
+		ptySessionSpawnMock.mockReset();
+		prepareAgentLaunchMock.mockImplementation(async (input: { binary?: string; args: string[] }) => ({
+			binary: input.binary,
+			args: [...input.args],
+			env: {},
+		}));
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => createMockPtySession(1234, request));
 	});
 
-	it("permission metadata survives generic activity hook", async () => {
-		const manager = createMockManager({
-			getSummary: vi.fn(() =>
-				createSummary({
-					state: "awaiting_review",
-					reviewReason: "hook",
-					latestHookActivity: permissionActivity(),
-				}),
-			),
-			applyHookActivity: vi.fn(),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary: vi.fn(),
-		});
-
-		const api = createTestApi(manager);
-
-		const response = await api.ingest({
-			taskId: "task-1",
-			projectId: "project-1",
-			event: "activity",
-			metadata: { hookEventName: "PreToolUse", toolName: "bash", source: "claude" },
-		});
-
-		expect(response).toEqual({ ok: true });
-		expect(mockStore(manager).applyHookActivity).not.toHaveBeenCalled();
+	afterEach(() => {
+		vi.restoreAllMocks();
 	});
 
-	it("non-permission metadata is still applied on non-transition path", async () => {
-		const manager = createMockManager({
-			getSummary: vi.fn(() =>
-				createSummary({
-					state: "awaiting_review",
-					reviewReason: "hook",
-					latestHookActivity: {
-						hookEventName: "Stop",
-						notificationType: null,
-						activityText: "Final: done",
-						toolName: null,
-						toolInputSummary: null,
-						finalMessage: "done",
-						source: "claude",
-						conversationSummaryText: null,
-					},
-				}),
-			),
-			applyHookActivity: vi.fn(),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary: vi.fn(),
+	it("correlates Claude automatic denial by tool identity and waits for new work evidence", async () => {
+		const { manager, ingest } = await createHarness("claude", "task-claude-deny");
+
+		await ingest("activity", {
+			hookEventName: "PreToolUse",
+			promptId: "prompt-1",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+		await ingest("to_review", {
+			hookEventName: "PermissionRequest",
+			promptId: "prompt-1",
+			toolName: "Bash",
+		});
+		expect(manager.store.getSummary("task-claude-deny")?.outstandingInteraction).toMatchObject({
+			status: "waiting",
+			toolUseId: "tool-1",
+			promptId: "prompt-1",
 		});
 
-		const api = createTestApi(manager);
-
-		await api.ingest({
-			taskId: "task-1",
-			projectId: "project-1",
-			event: "to_review",
-			metadata: { hookEventName: "Notification", source: "claude" },
+		await ingest("activity", {
+			hookEventName: "PermissionDenied",
+			promptId: "prompt-1",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+		expect(manager.store.getSummary("task-claude-deny")?.outstandingInteraction).toMatchObject({
+			status: "response_submitted",
+			responseKind: "provider_denied",
 		});
 
-		expect(mockStore(manager).applyHookActivity).toHaveBeenCalledWith("task-1", expect.any(Object));
+		await ingest("activity", {
+			hookEventName: "PreToolUse",
+			promptId: "prompt-1",
+			toolUseId: "tool-2",
+			toolName: "Read",
+		});
+		expect(manager.store.getSummary("task-claude-deny")).toMatchObject({
+			state: "running",
+			reviewReason: null,
+			outstandingInteraction: null,
+		});
 	});
 
-	it("new permission hook overwrites old permission metadata (permission-on-permission)", async () => {
-		const manager = createMockManager({
-			getSummary: vi.fn(() =>
-				createSummary({
-					state: "awaiting_review",
-					reviewReason: "hook",
-					latestHookActivity: permissionActivity(),
-				}),
-			),
-			applyHookActivity: vi.fn(),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary: vi.fn(),
+	it("keeps a manually denied Claude response pending until Stop confirms the turn ended", async () => {
+		const { manager, ingest } = await createHarness("claude", "task-claude-manual-deny");
+		await ingest("activity", {
+			hookEventName: "PreToolUse",
+			promptId: "prompt-1",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+		await ingest("to_review", {
+			hookEventName: "PermissionRequest",
+			promptId: "prompt-1",
+			toolName: "Bash",
 		});
 
-		const api = createTestApi(manager);
-
-		await api.ingest({
-			taskId: "task-1",
-			projectId: "project-1",
-			event: "to_review",
-			metadata: { notificationType: "permission_prompt", activityText: "Allow bash?", source: "claude" },
+		manager.writeInput("task-claude-manual-deny", Buffer.from("n\n"), {
+			explicitUserSubmission: true,
+		});
+		expect(manager.store.getSummary("task-claude-manual-deny")?.outstandingInteraction).toMatchObject({
+			status: "response_submitted",
+			responseKind: "submit",
 		});
 
-		expect(mockStore(manager).applyHookActivity).toHaveBeenCalledWith("task-1", expect.any(Object));
+		await ingest("to_review", { hookEventName: "Stop", promptId: "prompt-1" });
+		expect(manager.store.getSummary("task-claude-manual-deny")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "hook",
+			outstandingInteraction: null,
+		});
 	});
 
-	it("conversation summary from Stop is still applied even when activity is guarded", async () => {
-		const appendConversationSummary = vi.fn();
-		const manager = createMockManager({
-			getSummary: vi.fn(() =>
-				createSummary({
-					state: "awaiting_review",
-					reviewReason: "hook",
-					latestHookActivity: permissionActivity(),
-				}),
-			),
-			applyHookActivity: vi.fn(),
-			appendConversationSummary,
-			setDisplaySummary: vi.fn(),
+	it("keeps Claude approval response pending until the exact PostToolUse arrives", async () => {
+		const { manager, ingest } = await createHarness("claude", "task-claude-approve");
+		await ingest("activity", {
+			hookEventName: "PreToolUse",
+			promptId: "prompt-1",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+		await ingest("to_review", {
+			hookEventName: "PermissionRequest",
+			promptId: "prompt-1",
+			toolName: "Bash",
 		});
 
-		const api = createTestApi(manager);
+		manager.writeInput("task-claude-approve", Buffer.from("y\n"), { explicitUserSubmission: true });
+		expect(manager.store.getSummary("task-claude-approve")?.outstandingInteraction?.status).toBe(
+			"response_submitted",
+		);
 
-		await api.ingest({
-			taskId: "task-1",
-			projectId: "project-1",
-			event: "to_review",
-			metadata: {
-				hookEventName: "Stop",
-				conversationSummaryText: "I fixed the bug",
-				source: "claude",
+		await ingest("to_in_progress", {
+			hookEventName: "PostToolUse",
+			promptId: "prompt-1",
+			toolUseId: "tool-other",
+			toolName: "Read",
+		});
+		expect(manager.store.getSummary("task-claude-approve")?.state).toBe("awaiting_review");
+
+		await ingest("to_in_progress", {
+			hookEventName: "PostToolUse",
+			promptId: "prompt-1",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+		expect(manager.store.getSummary("task-claude-approve")).toMatchObject({
+			state: "running",
+			outstandingInteraction: null,
+		});
+	});
+
+	it("converges a Codex y approval through real hook ingest only after PostToolUse", async () => {
+		const { manager, ingest } = await createHarness("codex", "task-codex-approve-y");
+		await ingest("activity", {
+			hookEventName: "PreToolUse",
+			turnId: "turn-1",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+		await ingest("to_review", {
+			hookEventName: "PermissionRequest",
+			turnId: "turn-1",
+			toolName: "Bash",
+		});
+
+		manager.writeInput("task-codex-approve-y", Buffer.from("y"));
+		expect(manager.store.getSummary("task-codex-approve-y")).toMatchObject({
+			state: "awaiting_review",
+			outstandingInteraction: {
+				status: "response_submitted",
+				responseKind: "submit",
 			},
 		});
 
-		expect(mockStore(manager).applyHookActivity).not.toHaveBeenCalled();
-		expect(appendConversationSummary).toHaveBeenCalledWith("task-1", {
-			text: "I fixed the bug",
-			capturedAt: expect.any(Number),
+		await ingest("to_in_progress", {
+			hookEventName: "PostToolUse",
+			turnId: "turn-1",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+
+		expect(manager.store.getSummary("task-codex-approve-y")).toMatchObject({
+			state: "running",
+			reviewReason: null,
+			outstandingInteraction: null,
 		});
 	});
 
-	it("guard does not fire when task is not in awaiting_review", async () => {
-		const manager = createMockManager({
-			getSummary: vi.fn(() =>
-				createSummary({
-					state: "running",
-					latestHookActivity: permissionActivity(),
-				}),
-			),
-			applyHookActivity: vi.fn(),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary: vi.fn(),
+	it("does not advertise Codex auto-review requests as user-facing input", async () => {
+		const { manager, ingest } = await createHarness("codex", "task-codex-auto-review", {
+			codexApprovalsReviewer: "auto_review",
+		});
+		await ingest("activity", {
+			hookEventName: "PreToolUse",
+			turnId: "turn-1",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+		await ingest("to_review", {
+			hookEventName: "PermissionRequest",
+			turnId: "turn-1",
+			toolName: "Bash",
 		});
 
-		const api = createTestApi(manager);
-
-		await api.ingest({
-			taskId: "task-1",
-			projectId: "project-1",
-			event: "activity",
-			metadata: { hookEventName: "PreToolUse", toolName: "bash", source: "claude" },
+		expect(manager.store.getSummary("task-codex-auto-review")).toMatchObject({
+			state: "running",
+			reviewReason: null,
+			outstandingInteraction: null,
 		});
 
-		expect(mockStore(manager).applyHookActivity).toHaveBeenCalledWith("task-1", expect.any(Object));
+		await ingest("to_in_progress", {
+			hookEventName: "PostToolUse",
+			turnId: "turn-1",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+		expect(manager.store.getSummary("task-codex-auto-review")).toMatchObject({
+			state: "running",
+			reviewReason: null,
+			outstandingInteraction: null,
+		});
 	});
-});
 
-describe("createHooksApi — permission-aware transition guard", () => {
-	it("permission request followed by approval transitions card correctly (happy path)", async () => {
-		const transitionedSummary = createSummary({ state: "awaiting_review", reviewReason: "hook" });
-		const manager = createMockManager({
-			getSummary: vi
-				.fn<() => RuntimeTaskSessionSummary>()
-				.mockReturnValueOnce(createSummary({ state: "running" }))
-				.mockReturnValueOnce(
-					createSummary({
-						state: "running",
-						latestHookActivity: null,
-					}),
-				),
-			toReviewSummary: vi.fn(() => transitionedSummary),
-			applyHookActivity: vi.fn(),
-			applyTurnCheckpoint: vi.fn(),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary: vi.fn(),
+	it("converges a numbered Codex approval when later foreground work proves progress", async () => {
+		const { manager, ingest } = await createHarness("codex", "task-codex-approve-number");
+		await ingest("activity", {
+			hookEventName: "PreToolUse",
+			turnId: "turn-1",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+		await ingest("to_review", {
+			hookEventName: "PermissionRequest",
+			turnId: "turn-1",
+			toolName: "Bash",
 		});
 
-		const broadcastTaskReadyForReview = vi.fn();
-		const api = createTestApi(manager, {
-			broadcaster: { broadcastRuntimeProjectStateUpdated: vi.fn(), broadcastTaskReadyForReview },
-			captureTaskTurnCheckpoint: vi.fn(async () => ({
-				turn: 1,
-				ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
-				commit: "aaa",
-				createdAt: Date.now(),
-			})),
-			deleteTaskTurnCheckpointRef: vi.fn(async () => undefined),
+		manager.writeInput("task-codex-approve-number", Buffer.from("1"));
+		expect(manager.store.getSummary("task-codex-approve-number")).toMatchObject({
+			state: "awaiting_review",
+			outstandingInteraction: {
+				status: "response_submitted",
+				responseKind: "submit",
+			},
 		});
 
-		const r1 = await api.ingest({
-			taskId: "task-1",
-			projectId: "project-1",
-			event: "to_review",
-			metadata: { hookEventName: "PermissionRequest", source: "claude" },
+		// Codex does not provide a dedicated approval acknowledgement. A later
+		// foreground tool start is sufficient current provider evidence even when
+		// the matching PostToolUse never arrives.
+		await ingest("activity", {
+			hookEventName: "PreToolUse",
+			turnId: "turn-1",
+			toolUseId: "tool-2",
+			toolName: "Read",
 		});
-		expect(r1).toEqual({ ok: true });
-		expect(manager.applyHookTransition).toHaveBeenCalledWith(
-			"task-1",
-			expect.objectContaining({ type: "hook.to_review", reason: "hook" }),
+		expect(manager.store.getSummary("task-codex-approve-number")).toMatchObject({
+			state: "running",
+			reviewReason: null,
+			outstandingInteraction: null,
+		});
+	});
+
+	it("retires an obsolete Codex wait when hook ordering admits a newer foreground turn", async () => {
+		const { manager, ingest } = await createHarness("codex", "task-codex-new-turn");
+		await ingest("to_review", {
+			hookEventName: "PermissionRequest",
+			turnId: "turn-1",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+		expect(manager.store.getSummary("task-codex-new-turn")?.outstandingInteraction?.status).toBe("waiting");
+
+		await ingest("activity", {
+			hookEventName: "PreToolUse",
+			turnId: "turn-2",
+			toolUseId: "tool-2",
+			toolName: "Read",
+		});
+		expect(manager.store.getSummary("task-codex-new-turn")).toMatchObject({
+			state: "running",
+			reviewReason: null,
+			outstandingInteraction: null,
+		});
+	});
+
+	it("lets a current root Stop retire an identity-poor Codex wait", async () => {
+		const { manager, ingest } = await createHarness("codex", "task-codex-root-stop");
+		await ingest(
+			"to_review",
+			{
+				hookEventName: "PermissionRequest",
+				turnId: "turn-1",
+				toolName: "Bash",
+			},
+			{ occurredAt: 100 },
 		);
-		expect(broadcastTaskReadyForReview).toHaveBeenCalledWith("project-1", "task-1");
 
-		const r2 = await api.ingest({
-			taskId: "task-1",
-			projectId: "project-1",
-			event: "to_in_progress",
-			metadata: { hookEventName: "PostToolUse", source: "claude" },
-		});
-		expect(r2).toEqual({ ok: true });
-		expect(manager.applyHookTransition).toHaveBeenCalledTimes(1);
-	});
-
-	it("blocks stale PostToolUse from bouncing permission state back to running", async () => {
-		const manager = createMockManager({
-			getSummary: vi.fn(() =>
-				createSummary({
-					state: "awaiting_review",
-					reviewReason: "hook",
-					latestHookActivity: permissionActivity(),
-				}),
-			),
-			applyHookActivity: vi.fn(),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary: vi.fn(),
+		await ingest("to_review", { hookEventName: "Stop" }, { occurredAt: 200 });
+		expect(manager.store.getSummary("task-codex-root-stop")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "hook",
+			outstandingInteraction: null,
 		});
 
-		const api = createTestApi(manager);
-
-		const response = await api.ingest({
-			taskId: "task-1",
-			projectId: "project-1",
-			event: "to_in_progress",
-			metadata: { hookEventName: "PostToolUse", toolName: "Bash", source: "claude" },
-		});
-
-		expect(response).toEqual({ ok: true });
-		expect(manager.applyHookTransition).not.toHaveBeenCalled();
-	});
-
-	it("allows UserPromptSubmit through the permission guard", async () => {
-		const runningSummary = createSummary({ state: "running" });
-		const manager = createMockManager({
-			getSummary: vi.fn(() =>
-				createSummary({
-					state: "awaiting_review",
-					reviewReason: "hook",
-					latestHookActivity: permissionActivity(),
-				}),
-			),
-			toRunningSummary: vi.fn(() => runningSummary),
-			applyHookActivity: vi.fn(),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary: vi.fn(),
-		});
-
-		const broadcastRuntimeProjectStateUpdated = vi.fn();
-		const api = createTestApi(manager, {
-			broadcaster: { broadcastRuntimeProjectStateUpdated, broadcastTaskReadyForReview: vi.fn() },
-		});
-
-		const response = await api.ingest({
-			taskId: "task-1",
-			projectId: "project-1",
-			event: "to_in_progress",
-			metadata: { hookEventName: "UserPromptSubmit", source: "claude" },
-		});
-
-		expect(response).toEqual({ ok: true });
-		expect(manager.applyHookTransition).toHaveBeenCalledWith(
-			"task-1",
-			expect.objectContaining({ type: "hook.to_in_progress" }),
+		await ingest(
+			"activity",
+			{
+				hookEventName: "PreToolUse",
+				turnId: "turn-1",
+				toolUseId: "delayed-tool",
+				toolName: "Read",
+			},
+			{ occurredAt: 150 },
 		);
-		expect(broadcastRuntimeProjectStateUpdated).toHaveBeenCalled();
+		expect(manager.store.getSummary("task-codex-root-stop")?.state).toBe("awaiting_review");
+
+		await ingest(
+			"activity",
+			{
+				hookEventName: "PreToolUse",
+				turnId: "turn-2",
+				toolUseId: "new-tool",
+				toolName: "Read",
+			},
+			{ occurredAt: 300 },
+		);
+		expect(manager.store.getSummary("task-codex-root-stop")).toMatchObject({
+			state: "running",
+			reviewReason: null,
+		});
 	});
 
-	it("allows Pi permission resolution hooks through the permission guard", async () => {
-		const runningSummary = createSummary({ state: "running" });
-		const manager = createMockManager({
-			getSummary: vi.fn(() =>
-				createSummary({
-					state: "awaiting_review",
-					reviewReason: "hook",
-					latestHookActivity: permissionActivity({ source: "pi" }),
-				}),
-			),
-			toRunningSummary: vi.fn(() => runningSummary),
-			applyHookActivity: vi.fn(),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary: vi.fn(),
+	it("converges a provider-approved Codex permission without fabricating a local response", async () => {
+		const { manager, ingest } = await createHarness("codex", "task-codex-provider-approve");
+		await ingest("activity", {
+			hookEventName: "PreToolUse",
+			turnId: "turn-1",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+		await ingest("to_review", {
+			hookEventName: "PermissionRequest",
+			turnId: "turn-1",
+			toolName: "Bash",
 		});
 
-		const api = createTestApi(manager);
-
-		const response = await api.ingest({
-			taskId: "task-1",
-			projectId: "project-1",
-			event: "to_in_progress",
-			metadata: { hookEventName: "PermissionResolved", source: "pi" },
+		expect(manager.store.getSummary("task-codex-provider-approve")?.outstandingInteraction).toMatchObject({
+			status: "waiting",
+			toolUseId: "tool-1",
+			turnId: "turn-1",
 		});
 
-		expect(response).toEqual({ ok: true });
-		expect(manager.applyHookTransition).toHaveBeenCalledWith(
-			"task-1",
-			expect.objectContaining({ type: "hook.to_in_progress" }),
-		);
+		await ingest("to_in_progress", {
+			hookEventName: "PostToolUse",
+			turnId: "turn-1",
+			toolUseId: "tool-other",
+			toolName: "Bash",
+		});
+		expect(manager.store.getSummary("task-codex-provider-approve")?.outstandingInteraction).toMatchObject({
+			status: "waiting",
+			toolUseId: "tool-1",
+		});
+
+		await ingest("to_in_progress", {
+			hookEventName: "PostToolUse",
+			turnId: "turn-1",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+		expect(manager.store.getSummary("task-codex-provider-approve")).toMatchObject({
+			state: "running",
+			reviewReason: null,
+			outstandingInteraction: null,
+		});
 	});
 
-	it("allows Codex PostToolUse through the permission guard", async () => {
-		const runningSummary = createSummary({ state: "running" });
-		const manager = createMockManager({
-			getSummary: vi.fn(() =>
-				createSummary({
-					state: "awaiting_review",
-					reviewReason: "hook",
-					latestHookActivity: permissionActivity({
-						source: "codex",
-						notificationType: "permission.asked",
-					}),
-				}),
-			),
-			toRunningSummary: vi.fn(() => runningSummary),
-			applyHookActivity: vi.fn(),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary: vi.fn(),
+	it("correlates a second same-turn Codex permission after cancellation has no completion hook", async () => {
+		const { manager, ingest } = await createHarness("codex", "task-codex-cancel-next-permission");
+		await ingest("activity", {
+			hookEventName: "PreToolUse",
+			turnId: "turn-1",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+		await ingest("to_review", {
+			hookEventName: "PermissionRequest",
+			turnId: "turn-1",
+			toolName: "Bash",
 		});
 
-		const api = createTestApi(manager);
-
-		const response = await api.ingest({
-			taskId: "task-1",
-			projectId: "project-1",
-			event: "to_in_progress",
-			metadata: { hookEventName: "PostToolUse", toolName: "Bash", source: "codex" },
+		manager.writeInput("task-codex-cancel-next-permission", Buffer.from("\u001b"));
+		expect(manager.store.getSummary("task-codex-cancel-next-permission")?.outstandingInteraction).toMatchObject({
+			status: "response_submitted",
+			responseKind: "cancel",
+			toolUseId: "tool-1",
 		});
 
-		expect(response).toEqual({ ok: true });
-		expect(manager.applyHookTransition).toHaveBeenCalledWith(
-			"task-1",
-			expect.objectContaining({ type: "hook.to_in_progress" }),
-		);
+		await ingest("activity", {
+			hookEventName: "PreToolUse",
+			turnId: "turn-1",
+			toolUseId: "tool-2",
+			toolName: "Bash",
+		});
+		expect(manager.store.getSummary("task-codex-cancel-next-permission")).toMatchObject({
+			state: "running",
+			outstandingInteraction: null,
+		});
+
+		await ingest("to_review", {
+			hookEventName: "PermissionRequest",
+			turnId: "turn-1",
+			toolName: "Bash",
+		});
+		expect(manager.store.getSummary("task-codex-cancel-next-permission")?.outstandingInteraction).toMatchObject({
+			status: "waiting",
+			toolUseId: "tool-2",
+		});
+
+		await ingest("to_in_progress", {
+			hookEventName: "PostToolUse",
+			turnId: "turn-1",
+			toolUseId: "tool-2",
+			toolName: "Bash",
+		});
+		expect(manager.store.getSummary("task-codex-cancel-next-permission")).toMatchObject({
+			state: "running",
+			reviewReason: null,
+			outstandingInteraction: null,
+		});
 	});
 
-	it("allows to_in_progress through when activity is not permission-related", async () => {
-		const runningSummary = createSummary({ state: "running" });
-		const manager = createMockManager({
-			getSummary: vi.fn(() =>
-				createSummary({
-					state: "awaiting_review",
-					reviewReason: "hook",
-					latestHookActivity: {
-						hookEventName: "Stop",
-						notificationType: null,
-						activityText: "Final: done",
-						toolName: null,
-						toolInputSummary: null,
-						finalMessage: null,
-						source: "claude",
-						conversationSummaryText: null,
-					},
-				}),
-			),
-			toRunningSummary: vi.fn(() => runningSummary),
-			applyHookActivity: vi.fn(),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary: vi.fn(),
+	it("fails closed when parallel Codex tools make an identity-less permission ambiguous", async () => {
+		const { manager, ingest } = await createHarness("codex", "task-codex-ambiguous-permission");
+		await ingest("activity", {
+			hookEventName: "PreToolUse",
+			turnId: "turn-1",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+		await ingest("activity", {
+			hookEventName: "PreToolUse",
+			turnId: "turn-1",
+			toolUseId: "tool-2",
+			toolName: "Bash",
+		});
+		await ingest("to_review", {
+			hookEventName: "PermissionRequest",
+			turnId: "turn-1",
+			toolName: "Bash",
 		});
 
-		const api = createTestApi(manager);
-
-		const response = await api.ingest({
-			taskId: "task-1",
-			projectId: "project-1",
-			event: "to_in_progress",
-			metadata: { hookEventName: "PostToolUse", toolName: "Bash", source: "claude" },
+		expect(manager.store.getSummary("task-codex-ambiguous-permission")?.outstandingInteraction).toMatchObject({
+			status: "waiting",
+			toolUseId: null,
+			requestEventName: "PermissionRequest",
 		});
 
-		expect(response).toEqual({ ok: true });
-		expect(manager.applyHookTransition).toHaveBeenCalledWith(
-			"task-1",
-			expect.objectContaining({ type: "hook.to_in_progress" }),
+		manager.writeInput("task-codex-ambiguous-permission", Buffer.from("y"));
+		await ingest("to_in_progress", {
+			hookEventName: "PostToolUse",
+			turnId: "turn-1",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+		expect(manager.store.getSummary("task-codex-ambiguous-permission")?.outstandingInteraction).toMatchObject({
+			status: "response_submitted",
+			toolUseId: null,
+		});
+
+		await ingest("to_in_progress", {
+			hookEventName: "PostToolUse",
+			turnId: "turn-1",
+			toolUseId: "tool-2",
+			toolName: "Bash",
+		});
+		expect(manager.store.getSummary("task-codex-ambiguous-permission")?.outstandingInteraction).toMatchObject({
+			status: "response_submitted",
+			toolUseId: null,
+		});
+	});
+
+	it("records an unrelated Claude completion so its delayed permission cannot replace the active wait", async () => {
+		const { manager, ingest } = await createHarness("claude", "task-claude-delayed-permission");
+		await ingest(
+			"activity",
+			{
+				hookEventName: "PreToolUse",
+				promptId: "prompt-1",
+				toolUseId: "tool-1",
+				toolName: "Bash",
+			},
+			{ occurredAt: 100 },
 		);
+		await ingest(
+			"to_review",
+			{
+				hookEventName: "PermissionRequest",
+				promptId: "prompt-1",
+				toolName: "Bash",
+			},
+			{ occurredAt: 110 },
+		);
+
+		await ingest(
+			"to_in_progress",
+			{
+				hookEventName: "PostToolUse",
+				promptId: "prompt-1",
+				toolUseId: "tool-2",
+				toolName: "Read",
+			},
+			{ occurredAt: 200 },
+		);
+		expect(manager.store.getSummary("task-claude-delayed-permission")?.outstandingInteraction).toMatchObject({
+			status: "waiting",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+
+		await ingest(
+			"to_review",
+			{
+				hookEventName: "PermissionRequest",
+				promptId: "prompt-1",
+				toolName: "Read",
+			},
+			{ occurredAt: 150 },
+		);
+		expect(manager.store.getSummary("task-claude-delayed-permission")?.outstandingInteraction).toMatchObject({
+			status: "waiting",
+			toolUseId: "tool-1",
+			toolName: "Bash",
+		});
+	});
+
+	it("keeps Codex cancellation pending until a scoped Stop proves the turn ended", async () => {
+		const { manager, ingest } = await createHarness("codex", "task-codex-cancel");
+		await ingest(
+			"to_review",
+			{
+				hookEventName: "PermissionRequest",
+				turnId: "turn-1",
+				toolUseId: "tool-1",
+				toolName: "Bash",
+			},
+			{ occurredAt: 200 },
+		);
+
+		manager.writeInput("task-codex-cancel", Buffer.from([0x1b]));
+		expect(manager.store.getSummary("task-codex-cancel")?.outstandingInteraction).toMatchObject({
+			status: "response_submitted",
+			responseKind: "cancel",
+		});
+
+		await ingest("to_review", { hookEventName: "Stop", turnId: "turn-old" }, { occurredAt: 150 });
+		expect(manager.store.getSummary("task-codex-cancel")?.outstandingInteraction).not.toBeNull();
+
+		await ingest("to_review", { hookEventName: "Stop", turnId: "turn-1" });
+		expect(manager.store.getSummary("task-codex-cancel")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "hook",
+			outstandingInteraction: null,
+		});
 	});
 });

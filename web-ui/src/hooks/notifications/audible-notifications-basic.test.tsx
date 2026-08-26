@@ -1,6 +1,6 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import { createTestTaskOutstandingInteraction } from "@/test-utils/task-session-factory";
 import {
 	createMockSession,
 	defaultProps,
@@ -61,6 +61,11 @@ describe("useAudibleNotifications — basic sound events", () => {
 							taskId: "task-1",
 							state: "awaiting_review",
 							reviewReason: "hook",
+							outstandingInteraction: createTestTaskOutstandingInteraction({
+								provider: "codex",
+								kind: "permission",
+								requestEventName: "PermissionRequest",
+							}),
 							latestHookActivity: {
 								hookEventName: "PermissionRequest",
 								notificationType: "permission.asked",
@@ -282,8 +287,8 @@ describe("useAudibleNotifications — basic sound events", () => {
 					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
-							state: "failed",
-							reviewReason: null,
+							state: "awaiting_review",
+							reviewReason: "error",
 						}),
 					}}
 				/>,
@@ -294,7 +299,7 @@ describe("useAudibleNotifications — basic sound events", () => {
 		expect(playMock).toHaveBeenCalledWith("failure", 0.7);
 	});
 
-	it("plays review sound when review reason is attention", async () => {
+	it("plays review sound for a structured Claude attention wait", async () => {
 		const props = defaultProps();
 
 		await act(async () => {
@@ -317,6 +322,7 @@ describe("useAudibleNotifications — basic sound events", () => {
 							taskId: "task-1",
 							state: "awaiting_review",
 							reviewReason: "attention",
+							outstandingInteraction: createTestTaskOutstandingInteraction(),
 						}),
 					}}
 				/>,
@@ -442,5 +448,83 @@ describe("useAudibleNotifications — basic sound events", () => {
 		expect(playMock).toHaveBeenCalledTimes(2);
 		expect(playMock).toHaveBeenCalledWith("failure", 0.7);
 		expect(playMock).toHaveBeenCalledWith("review", 0.7);
+	});
+
+	it("tracks same-ID tasks in different projects independently", async () => {
+		const props = defaultProps({ currentProjectId: "project-a" });
+		const running = (projectPath: string) =>
+			createMockSession({ taskId: "shared", sessionLaunchPath: projectPath, state: "running" });
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationProjects={{
+						"project-a": { sessions: { shared: running("/project-a") } },
+						"project-b": { sessions: { shared: running("/project-b") } },
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationProjects={{
+						"project-a": {
+							sessions: {
+								shared: createMockSession({
+									taskId: "shared",
+									sessionLaunchPath: "/project-a",
+									state: "awaiting_review",
+									reviewReason: "error",
+								}),
+							},
+						},
+						"project-b": { sessions: { shared: running("/project-b") } },
+					}}
+				/>,
+			);
+		});
+
+		harness.flushSettleWindow();
+		expect(playContextMock).toHaveBeenCalledWith({ projectId: "project-a", taskId: "shared" });
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					suppressedTaskIds={new Set(["shared"])}
+					notificationProjects={{
+						"project-a": {
+							sessions: {
+								shared: createMockSession({
+									taskId: "shared",
+									sessionLaunchPath: "/project-a",
+									state: "awaiting_review",
+									reviewReason: "error",
+								}),
+							},
+						},
+						"project-b": {
+							sessions: {
+								shared: createMockSession({
+									taskId: "shared",
+									sessionLaunchPath: "/project-b",
+									state: "awaiting_review",
+									reviewReason: "exit",
+									exitCode: 0,
+								}),
+							},
+						},
+					}}
+				/>,
+			);
+		});
+
+		harness.flushSettleWindow();
+		expect(playContextMock).toHaveBeenCalledWith({ projectId: "project-b", taskId: "shared" });
+		expect(playMock).toHaveBeenCalledTimes(2);
 	});
 });

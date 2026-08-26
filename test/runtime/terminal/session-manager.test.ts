@@ -8,7 +8,11 @@ import {
 	resolveEffectiveTerminalRowMultiplier,
 	resolveEffectiveTerminalRows,
 } from "../../../src/terminal/session-manager-types";
-import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
+import {
+	createTestProviderHookEvent,
+	createTestTaskNativeWorkEvidence,
+	createTestTaskSessionSummary,
+} from "../../utilities/task-session-factory";
 
 function createTestManager(): TerminalSessionManager {
 	return new TerminalSessionManager(new InMemorySessionSummaryStore());
@@ -36,48 +40,14 @@ describe("TerminalSessionManager", () => {
 		vi.useRealTimers();
 	});
 
-	it("transitions to review via the store's applySessionEvent", () => {
+	it("transitions to review from a canonical provider event", () => {
 		const store = new InMemorySessionSummaryStore();
 		store.hydrateFromRecord({
 			"task-1": createSummary({ state: "running", reviewReason: null }),
 		});
-		const result = store.applySessionEvent("task-1", { type: "hook.to_review" });
+		const result = store.applySessionEvent("task-1", createTestProviderHookEvent("to_review"));
 		expect(result?.summary.state).toBe("awaiting_review");
 		expect(result?.clearAttentionBuffer).toBe(true);
-	});
-
-	it("applies classified hook transitions through the manager transition boundary", () => {
-		const manager = createTestManager();
-		manager.attach("task-1", {});
-		manager.store.hydrateFromRecord({
-			"task-1": createSummary({ state: "running", reviewReason: null }),
-		});
-
-		const waiting = manager.applyHookTransition("task-1", { type: "hook.to_review", reason: "attention" });
-		expect(waiting?.changed).toBe(true);
-		expect(waiting?.summary.state).toBe("awaiting_review");
-		expect(waiting?.summary.reviewReason).toBe("attention");
-
-		manager.store.applyHookActivity("task-1", {
-			source: "claude",
-			hookEventName: "PreToolUse",
-			toolName: "AskUserQuestion",
-		});
-		const running = manager.applyHookTransition("task-1", { type: "hook.to_in_progress" });
-		expect(running?.changed).toBe(true);
-		expect(running?.summary.state).toBe("running");
-		expect(running?.summary.reviewReason).toBeNull();
-		expect(running?.summary.latestHookActivity).toBeNull();
-	});
-
-	it("reports a rejected hook transition instead of presenting its current summary as success", () => {
-		const manager = createTestManager();
-		manager.attach("task-1", {});
-
-		const result = manager.applyHookTransition("task-1", { type: "hook.to_review", reason: "hook" });
-
-		expect(result?.changed).toBe(false);
-		expect(result?.summary.state).toBe("idle");
 	});
 
 	it("builds shell kickoff command lines with quoted arguments", () => {
@@ -93,11 +63,13 @@ describe("TerminalSessionManager", () => {
 			"task-1": createSummary({ state: "running" }),
 		});
 
-		const updated = manager.store.applyHookActivity("task-1", {
-			source: "claude",
-			activityText: "Using Read",
-			toolName: "Read",
-		});
+		const updated = manager.store.applySessionEvent(
+			"task-1",
+			createTestProviderHookEvent("activity", {
+				hookEventName: "PreToolUse",
+				metadata: { activityText: "Using Read", toolName: "Read" },
+			}),
+		)?.summary;
 
 		expect(updated?.latestHookActivity?.source).toBe("claude");
 		expect(updated?.latestHookActivity?.activityText).toBe("Using Read");
@@ -112,23 +84,33 @@ describe("TerminalSessionManager", () => {
 		});
 
 		// Simulate a permission prompt event
-		manager.store.applyHookActivity("task-1", {
-			source: "claude",
-			activityText: "Waiting for approval",
-			hookEventName: "PermissionRequest",
-			notificationType: "permission_prompt",
-			toolName: "Bash",
-		});
+		manager.store.applySessionEvent(
+			"task-1",
+			createTestProviderHookEvent("to_review", {
+				hookEventName: "PermissionRequest",
+				metadata: {
+					activityText: "Waiting for approval",
+					notificationType: "permission_prompt",
+					promptId: "prompt-1",
+					toolName: "Bash",
+				},
+			}),
+		);
 
-		// Simulate a subsequent to_review event that only carries hookEventName + activityText
-		const updated = manager.store.applyHookActivity("task-1", {
-			hookEventName: "agent_end",
-			activityText: "Task complete",
-			finalMessage: "Done with the work",
-		});
+		const updated = manager.store.applySessionEvent(
+			"task-1",
+			createTestProviderHookEvent("to_review", {
+				hookEventName: "Stop",
+				metadata: {
+					activityText: "Task complete",
+					finalMessage: "Done with the work",
+					promptId: "prompt-1",
+				},
+			}),
+		)?.summary;
 
 		// Event-identity fields should reflect the new event, not the stale permission values
-		expect(updated?.latestHookActivity?.hookEventName).toBe("agent_end");
+		expect(updated?.latestHookActivity?.hookEventName).toBe("Stop");
 		expect(updated?.latestHookActivity?.activityText).toBe("Task complete");
 		expect(updated?.latestHookActivity?.finalMessage).toBe("Done with the work");
 		expect(updated?.latestHookActivity?.notificationType).toBeNull();
@@ -144,19 +126,21 @@ describe("TerminalSessionManager", () => {
 		});
 
 		// Set initial state with event fields
-		manager.store.applyHookActivity("task-1", {
-			source: "claude",
-			hookEventName: "PostToolUse",
-			activityText: "Using Read",
-			toolName: "Read",
-			toolInputSummary: "src/index.ts",
-		});
+		manager.store.applySessionEvent(
+			"task-1",
+			createTestProviderHookEvent("activity", {
+				hookEventName: "PostToolUse",
+				metadata: { activityText: "Using Read", toolName: "Read", toolInputSummary: "src/index.ts" },
+			}),
+		);
 
 		// Activity update with only tool info (no hookEventName or notificationType)
-		const updated = manager.store.applyHookActivity("task-1", {
-			toolName: "Write",
-			toolInputSummary: "src/main.ts",
-		});
+		const updated = manager.store.applySessionEvent("task-1", {
+			type: "provider.hook",
+			event: "activity",
+			metadata: { source: "claude", toolName: "Write", toolInputSummary: "src/main.ts" },
+			sessionEvidence: "live",
+		})?.summary;
 
 		// Previous event-identity fields should carry forward since this is not a new event
 		expect(updated?.latestHookActivity?.hookEventName).toBe("PostToolUse");
@@ -184,11 +168,14 @@ describe("TerminalSessionManager", () => {
 			}),
 		});
 
-		const updated = manager.store.applyHookMetadata("task-1", {
-			source: "codex",
-			hookEventName: "session_meta",
-			sessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
-		});
+		const updated = manager.store.applySessionEvent(
+			"task-1",
+			createTestProviderHookEvent("activity", {
+				source: "codex",
+				hookEventName: "session_meta",
+				metadata: { sessionId: "019d6fa0-db65-7f83-9531-35df54674d76" },
+			}),
+		)?.summary;
 
 		expect(updated?.resumeSessionId).toBe("019d6fa0-db65-7f83-9531-35df54674d76");
 		expect(updated?.latestHookActivity?.activityText).toBe("Running command: npm test");
@@ -206,11 +193,14 @@ describe("TerminalSessionManager", () => {
 		});
 
 		const before = manager.store.getSummary("task-1");
-		const updated = manager.store.applyHookMetadata("task-1", {
-			source: "codex",
-			hookEventName: "session_meta",
-			sessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
-		});
+		const updated = manager.store.applySessionEvent(
+			"task-1",
+			createTestProviderHookEvent("activity", {
+				source: "codex",
+				hookEventName: "session_meta",
+				metadata: { sessionId: "019d6fa0-db65-7f83-9531-35df54674d76" },
+			}),
+		)?.summary;
 		const after = manager.store.getSummary("task-1");
 
 		expect(updated).toEqual(before);
@@ -236,12 +226,16 @@ describe("TerminalSessionManager", () => {
 			}),
 		});
 
-		const updated = manager.store.applyHookMetadata("task-1", {
-			source: "claude",
-			hookEventName: "SessionStart",
-			sessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
-			transcriptPath: "/Users/dev/.claude/projects/repo/019d6fa0-db65-7f83-9531-35df54674d76.jsonl",
-		});
+		const updated = manager.store.applySessionEvent(
+			"task-1",
+			createTestProviderHookEvent("activity", {
+				hookEventName: "SessionStart",
+				metadata: {
+					sessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
+					transcriptPath: "/Users/dev/.claude/projects/repo/019d6fa0-db65-7f83-9531-35df54674d76.jsonl",
+				},
+			}),
+		)?.summary;
 
 		expect(updated?.resumeSessionId).toBe("019d6fa0-db65-7f83-9531-35df54674d76");
 		expect(updated?.latestHookActivity?.activityText).toBe("Using Bash: npm test");
@@ -279,17 +273,16 @@ describe("TerminalSessionManager", () => {
 		const onChange = vi.fn();
 		manager.store.onChange(onChange);
 
-		const reviewed = manager.store.applySessionEvent("task-1", {
-			type: "hook.to_review",
-			reason: "hook",
-			metadata: {
-				source: "claude",
-				hookEventName: "Stop",
-				activityText: "Task complete",
-				finalMessage: "Done with the work",
-				sessionId: "claude-session-1",
-			},
-		})?.summary;
+		const reviewed = manager.store.applySessionEvent(
+			"task-1",
+			createTestProviderHookEvent("to_review", {
+				metadata: {
+					activityText: "Task complete",
+					finalMessage: "Done with the work",
+					sessionId: "claude-session-1",
+				},
+			}),
+		)?.summary;
 		expect(reviewed?.state).toBe("awaiting_review");
 		expect(reviewed?.reviewReason).toBe("hook");
 		expect(reviewed?.resumeSessionId).toBe("claude-session-1");
@@ -310,7 +303,7 @@ describe("TerminalSessionManager", () => {
 		// Hydration detects the stale running state and marks it as interrupted
 		// so the UI can show a restart button and auto-resume.
 		const summary = manager.store.getSummary("task-1");
-		expect(summary?.state).toBe("interrupted");
+		expect(summary?.state).toBe("awaiting_review");
 		expect(summary?.reviewReason).toBe("interrupted");
 		expect(summary?.pid).toBeNull();
 		expect(summary?.agentId).toBe("claude");
@@ -835,6 +828,16 @@ describe("TerminalSessionManager", () => {
 				state: "running",
 			}),
 		});
+		manager.store.update("task-timeout", {
+			state: "running",
+			reviewReason: null,
+			pid: 1234,
+			sessionInstanceId: "current-timeout-process",
+			nativeWorkEvidence: createTestTaskNativeWorkEvidence({
+				provider: "claude",
+				sessionInstanceId: "current-timeout-process",
+			}),
+		});
 
 		const waitPromise = manager.stopTaskSessionAndWaitForExit("task-timeout", 1_000);
 		await vi.advanceTimersByTimeAsync(1_000);
@@ -892,6 +895,16 @@ describe("TerminalSessionManager", () => {
 				taskId: "task-restart",
 				pid: 4321,
 				state: "running",
+			}),
+		});
+		manager.store.update("task-restart", {
+			state: "running",
+			reviewReason: null,
+			pid: 4321,
+			sessionInstanceId: "current-restart-process",
+			nativeWorkEvidence: createTestTaskNativeWorkEvidence({
+				provider: "claude",
+				sessionInstanceId: "current-restart-process",
 			}),
 		});
 

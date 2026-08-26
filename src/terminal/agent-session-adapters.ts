@@ -9,9 +9,14 @@ import { lockedFileSystem } from "../fs";
 import { getRuntimeHomePath } from "../state";
 import { createClaudeRendererEnvironment, resolveClaudeRendererPolicy } from "./claude-renderer-policy";
 import { createCodexApprovalPromptDetector } from "./codex-approval-prompt";
+import { createCodexTurnInterruptionDetector } from "./codex-turn-interruption";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
-import { buildPiLifecycleExtensionSource, QUARTERDECK_PI_HOOK_COMMAND_ENV } from "./pi-lifecycle-extension";
-import type { SessionTransitionEvent } from "./session-state-machine";
+import {
+	buildPiLifecycleExtensionSource,
+	QUARTERDECK_PI_HOOK_COMMAND_ENV,
+	QUARTERDECK_PI_TOOL_APPROVALS_ENV,
+} from "./pi-lifecycle-extension";
+import { canApplyCodexRenderedTurnInterruption, type SessionTransitionEvent } from "./session-state-machine";
 import { prepareTaskPromptWithImages } from "./task-image-prompt";
 import type { TerminalScreenSnapshot } from "./terminal-state-mirror";
 import { buildWorktreeContextPrompt } from "./worktree-context";
@@ -33,6 +38,7 @@ export interface AgentAdapterLaunchInput {
 	claudeFullscreenEnabled?: boolean;
 	statuslineEnabled?: boolean;
 	codexApprovalsReviewer?: CodexApprovalsReviewer;
+	piToolApprovalsEnabled?: boolean;
 	worktreeSystemPromptTemplate?: string;
 }
 
@@ -219,22 +225,17 @@ const claudeAdapter: AgentSessionAdapter = {
 				args.push("--resume", resumeTarget);
 				log.debug("claude resume using stored session id", {
 					taskId: input.taskId,
-					cwd: input.cwd,
-					resumeSessionId: resumeTarget,
+					hasStoredResumeSessionId: true,
 				});
 			} else {
 				args.push("--continue");
 				log.warn("claude resume falling back to --continue (no stored resumeSessionId)", {
 					taskId: input.taskId,
-					cwd: input.cwd,
-					projectPath: input.projectPath ?? null,
 				});
 			}
 		} else if (input.resumeConversation) {
 			log.debug("claude resume option already configured", {
 				taskId: input.taskId,
-				cwd: input.cwd,
-				projectPath: input.projectPath ?? null,
 				hasStoredResumeSessionId: Boolean(input.resumeSessionId?.trim()),
 			});
 		}
@@ -282,7 +283,7 @@ const claudeAdapter: AgentSessionAdapter = {
 			claudeRendererReason: rendererPolicy.reason,
 			argCount: withPromptLaunch.args.length,
 			promptLength: input.prompt.trim().length,
-			args: withPromptLaunch.args.map((a) => (a.length > 200 ? `${a.slice(0, 200)}…(${a.length})` : a)),
+			resumeConversation: input.resumeConversation ?? false,
 		});
 		return {
 			...withPromptLaunch,
@@ -300,8 +301,21 @@ const codexAdapter: AgentSessionAdapter = {
 		const env: Record<string, string | undefined> = {};
 		const binary = input.binary;
 		const approvalPromptDetector = createCodexApprovalPromptDetector();
+		const turnInterruptionDetector = createCodexTurnInterruptionDetector();
 
-		if (input.codexApprovalsReviewer === "auto_review") {
+		if (input.codexApprovalsReviewer === "dangerously_bypass") {
+			removeCliOption(codexArgs, "--approve-for-me");
+			removeCliOption(codexArgs, "--not-so-yolo");
+			removeCodexConfigOverrides(codexArgs, "approvals_reviewer");
+			if (
+				!hasCliOption(codexArgs, "--dangerously-bypass-approvals-and-sandbox") &&
+				!hasCliOption(codexArgs, "--yolo")
+			) {
+				insertCodexGlobalArgs(codexArgs, ["--dangerously-bypass-approvals-and-sandbox"]);
+			}
+		} else if (input.codexApprovalsReviewer === "auto_review") {
+			removeCliOption(codexArgs, "--dangerously-bypass-approvals-and-sandbox");
+			removeCliOption(codexArgs, "--yolo");
 			removeCodexConfigOverrides(codexArgs, "approvals_reviewer");
 			if (!hasCliOption(codexArgs, "--approve-for-me") && !hasCliOption(codexArgs, "--not-so-yolo")) {
 				insertCodexGlobalArgs(codexArgs, ["--approve-for-me"]);
@@ -309,6 +323,8 @@ const codexAdapter: AgentSessionAdapter = {
 		} else if (input.codexApprovalsReviewer === "user") {
 			removeCliOption(codexArgs, "--approve-for-me");
 			removeCliOption(codexArgs, "--not-so-yolo");
+			removeCliOption(codexArgs, "--dangerously-bypass-approvals-and-sandbox");
+			removeCliOption(codexArgs, "--yolo");
 			removeCodexConfigOverrides(codexArgs, "approvals_reviewer");
 			insertCodexGlobalArgs(codexArgs, ["-c", 'approvals_reviewer="user"']);
 		}
@@ -326,14 +342,12 @@ const codexAdapter: AgentSessionAdapter = {
 				if (resumeTarget) {
 					log.debug("codex resume using stored session id", {
 						taskId: input.taskId,
-						cwd: input.cwd,
-						resumeSessionId: resumeTarget,
+						hasStoredResumeSessionId: true,
 					});
 					codexArgs.push(resumeTarget);
 				} else {
 					log.warn("codex resume falling back to --last (no stored resumeSessionId)", {
 						taskId: input.taskId,
-						cwd: input.cwd,
 					});
 					codexArgs.push("--last");
 				}
@@ -401,20 +415,21 @@ const codexAdapter: AgentSessionAdapter = {
 
 		log.debug("codex adapter prepared launch", {
 			taskId: input.taskId,
-			binary: binary ?? null,
 			resumeConversation: input.resumeConversation ?? false,
-			resumeSessionId: input.resumeSessionId ?? null,
+			hasResumeSessionId: Boolean(input.resumeSessionId?.trim()),
 			hasResumeArg: codexArgs.includes("resume"),
 			hasLastFlag: hasCliOption(codexArgs, "--last"),
 			codexArgCount: codexArgs.length,
-			codexArgsPreview: codexArgs.map((arg) => (arg.length > 200 ? `${arg.slice(0, 200)}...(${arg.length})` : arg)),
 		});
 		return {
 			binary,
 			args: codexArgs,
 			env,
-			detectOutputTransition: approvalPromptDetector.detect,
-			shouldInspectOutputForTransition: (summary) => summary.state === "running",
+			detectOutputTransition: (screen, summary) =>
+				turnInterruptionDetector.detect(screen, summary) ?? approvalPromptDetector.detect(screen, summary),
+			shouldInspectOutputForTransition: (summary) =>
+				canApplyCodexRenderedTurnInterruption(summary) ||
+				(summary.state === "awaiting_review" && summary.reviewReason === "unconfirmed"),
 			resetOutputTransitionDetection: approvalPromptDetector.reset,
 		};
 	},
@@ -453,6 +468,7 @@ const piAdapter: AgentSessionAdapter = {
 				}),
 				{
 					[QUARTERDECK_PI_HOOK_COMMAND_ENV]: JSON.stringify(buildQuarterdeckCommandParts(["hooks", "notify"])),
+					[QUARTERDECK_PI_TOOL_APPROVALS_ENV]: input.piToolApprovalsEnabled === false ? "disabled" : "enabled",
 				},
 			);
 		}
@@ -485,12 +501,11 @@ export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promis
 	log.debug("prepareAgentLaunch called", {
 		taskId: input.taskId,
 		agentId: input.agentId,
-		cwd: input.cwd,
-		projectPath: input.projectPath ?? null,
+		hasProjectPath: Boolean(input.projectPath),
 		hasPrompt: input.prompt.trim().length > 0,
 		imageCount: input.images?.length ?? 0,
 		resumeConversation: input.resumeConversation ?? false,
-		resumeSessionId: input.resumeSessionId ?? null,
+		hasResumeSessionId: Boolean(input.resumeSessionId?.trim()),
 	});
 	const preparedPrompt = await prepareTaskPromptWithImages({
 		prompt: input.prompt,

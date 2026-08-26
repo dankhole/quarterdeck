@@ -407,7 +407,72 @@ describe.sequential("ProjectBoardCommandService integration", () => {
 		});
 	});
 
-	it("persists generated titles under the runtime lock without overwriting a manual title", async () => {
+	it("emits untitled-task effects only from accepted create commits and replays them for recovery", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-board-post-commit-");
+			try {
+				const projectPath = join(sandboxRoot, "project-a");
+				mkdirSync(projectPath, { recursive: true });
+				initGitRepository(projectPath);
+				const context = await loadProjectContext(projectPath);
+				const initial = await loadProjectState(projectPath);
+				const scope = { projectId: context.projectId, projectPath };
+				const service = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+				const listener = vi.fn();
+				service.subscribeToPostCommitEffects(listener);
+				const input = {
+					commandId: "create-title-candidates",
+					expectedRevision: initial.revision,
+					commands: [
+						{
+							kind: "create_task" as const,
+							columnId: "backlog" as const,
+							taskId: "untitled",
+							prompt: "Generate a title",
+							baseRef: "main",
+							createdAt: 100,
+						},
+						{
+							kind: "create_task" as const,
+							columnId: "backlog" as const,
+							taskId: "already-titled",
+							title: "Existing title",
+							prompt: "Keep this title",
+							baseRef: "main",
+							createdAt: 101,
+						},
+					],
+				};
+
+				const created = await service.executeBatch(scope, input);
+				expect(listener).toHaveBeenCalledWith({
+					scope,
+					commandId: input.commandId,
+					revision: created.state.revision,
+					replayed: false,
+					effects: [
+						{
+							type: "untitled_task_created",
+							task: { taskId: "untitled", prompt: "Generate a title", createdAt: 100 },
+						},
+					],
+				});
+
+				await service.executeBatch(scope, input);
+				expect(listener).toHaveBeenLastCalledWith(
+					expect.objectContaining({
+						replayed: true,
+						effects: [expect.objectContaining({ type: "untitled_task_created" })],
+					}),
+				);
+				expect(listener).toHaveBeenCalledTimes(2);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("persists generated titles under the runtime lock without overwriting a manual title or replacement task", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-runtime-title-");
 			try {
@@ -434,8 +499,17 @@ describe.sequential("ProjectBoardCommandService integration", () => {
 						createdAt: 100,
 					},
 				});
+				const replacementMismatch = await service.setGeneratedTaskTitle(
+					scope,
+					"task-a",
+					99,
+					"Wrong task title",
+					150,
+				);
+				expect(replacementMismatch.changed).toBe(false);
+				expect(replacementMismatch.state.revision).toBe(created.state.revision);
 
-				const generated = await service.setGeneratedTaskTitle(scope, "task-a", "Generated", 200);
+				const generated = await service.setGeneratedTaskTitle(scope, "task-a", 100, "Generated", 200);
 				expect(generated).toMatchObject({ changed: true, acceptedChange: true });
 				expect(
 					generated.state.board.columns.flatMap((column) => column.cards).find((card) => card.id === "task-a")
@@ -452,7 +526,7 @@ describe.sequential("ProjectBoardCommandService integration", () => {
 						updatedAt: 300,
 					},
 				});
-				const staleGenerator = await service.setGeneratedTaskTitle(scope, "task-a", "Late generated", 400);
+				const staleGenerator = await service.setGeneratedTaskTitle(scope, "task-a", 100, "Late generated", 400);
 
 				expect(staleGenerator.changed).toBe(false);
 				expect(staleGenerator.state.revision).toBe(manual.state.revision);

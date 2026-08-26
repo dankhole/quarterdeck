@@ -4,6 +4,7 @@ import type { RuntimeBoardData, RuntimeProjectStateResponse } from "../../../src
 import type { RuntimeDiagnostics } from "../../../src/diagnostics";
 import {
 	type AutomaticTaskTitleSchedulerDependencies,
+	createAutomaticTaskTitlePostCommitListener,
 	scheduleAutomaticTaskTitle,
 } from "../../../src/server/automatic-task-title-scheduler";
 import { AutomaticTitleGenerationCoordinator } from "../../../src/title";
@@ -72,17 +73,41 @@ function createHarness(generateTaskTitle: (prompt: string) => Promise<string | n
 }
 
 const scope = { projectId: "project-1", projectPath: "/project" };
-const card = { id: "task-1", prompt: "private task prompt" };
+const card = { id: "task-1", prompt: "private task prompt", createdAt: 1 };
 
 describe("automatic task title scheduler", () => {
-	it("persists and publishes a lifecycle-scheduled title with metadata-only diagnostics", async () => {
+	it("consumes the authoritative post-commit effect without rescanning board state", async () => {
+		const generateTaskTitle = vi.fn(async () => "Generated Title");
+		const harness = createHarness(generateTaskTitle);
+		const listener = createAutomaticTaskTitlePostCommitListener(harness.dependencies);
+
+		listener({
+			scope,
+			commandId: "create-task-1",
+			revision: 2,
+			replayed: false,
+			effects: [
+				{
+					type: "untitled_task_created",
+					task: { taskId: "task-1", prompt: card.prompt, createdAt: card.createdAt },
+				},
+			],
+		});
+
+		await vi.waitFor(() => {
+			expect(generateTaskTitle).toHaveBeenCalledWith(card.prompt);
+			expect(harness.setGeneratedTaskTitle).toHaveBeenCalledWith(scope, "task-1", 1, "Generated Title");
+		});
+	});
+
+	it("persists and publishes a post-commit-scheduled title with metadata-only diagnostics", async () => {
 		const harness = createHarness(vi.fn(async () => "Generated Title"));
 
 		const generation = scheduleAutomaticTaskTitle(harness.dependencies, scope, card);
 
 		expect(generation).not.toBeNull();
 		await generation;
-		expect(harness.setGeneratedTaskTitle).toHaveBeenCalledWith(scope, "task-1", "Generated Title");
+		expect(harness.setGeneratedTaskTitle).toHaveBeenCalledWith(scope, "task-1", 1, "Generated Title");
 		expect(harness.publishTitleUpdated).toHaveBeenCalledWith({
 			projectId: "project-1",
 			taskId: "task-1",
@@ -103,7 +128,7 @@ describe("automatic task title scheduler", () => {
 		expect(JSON.stringify(harness.recordEvent.mock.calls)).not.toContain(card.prompt);
 	});
 
-	it("deduplicates overlapping lifecycle and board-command requests", async () => {
+	it("deduplicates overlapping post-commit deliveries", async () => {
 		const deferred = createDeferred<string | null>();
 		const generateTaskTitle = vi.fn(() => deferred.promise);
 		const harness = createHarness(generateTaskTitle);

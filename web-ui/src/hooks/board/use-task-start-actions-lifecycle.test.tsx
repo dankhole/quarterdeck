@@ -30,7 +30,7 @@ function HookHarness({
 	const [board, setBoard] = useState(createInitialBoardData);
 	const actions = useTaskStartActions({
 		board,
-		setBoard,
+		presentLifecycleBoard: setBoard,
 		prepareCreateTaskForLifecycle,
 		prepareCreateTasksForLifecycle,
 		executeTaskLifecycle,
@@ -44,14 +44,14 @@ function HookHarness({
 	return null;
 }
 
-function createTask(id: string, createdAt: number): BoardCard {
+function createTask(id: string, createdAt: number, agentId: BoardCard["agentId"] = "codex"): BoardCard {
 	return {
 		id,
 		title: null,
 		prompt: `Prompt ${id}`,
 		images: [],
 		baseRef: "main",
-		agentId: "codex",
+		agentId,
 		useWorktree: true,
 		branch: `feature/${id}`,
 		createdAt,
@@ -142,6 +142,34 @@ describe("useTaskStartActions lifecycle creation", () => {
 				createdAt: 100,
 			},
 		});
+	});
+
+	it("preserves Pi ownership in create-and-start commands", async () => {
+		const task = createTask("task-pi", 101, "pi");
+		const executeTaskLifecycle = vi.fn(async () => null);
+		await act(async () => {
+			root.render(
+				<HookHarness
+					prepareCreateTaskForLifecycle={() => ({ task })}
+					prepareCreateTasksForLifecycle={() => []}
+					executeTaskLifecycle={executeTaskLifecycle}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).handleCreateAndStartTask();
+		});
+
+		expect(executeTaskLifecycle).toHaveBeenCalledWith(
+			expect.objectContaining({
+				kind: "create_and_start",
+				task: expect.objectContaining({ taskId: "task-pi", agentId: "pi" }),
+			}),
+		);
 	});
 
 	it("serializes multi-create lifecycle operations so revisions cannot race", async () => {

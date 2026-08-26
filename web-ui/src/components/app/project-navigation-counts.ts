@@ -10,19 +10,21 @@ export interface ProjectNavigationTaskCounts {
 /**
  * Combines independent board-column and notification projections.
  *
- * Review is the board-owned total for that column. Needs Input is an
- * overlapping semantic signal from the notification projection, not a
- * replacement column, so it must neither reduce Review nor be clamped to a
- * potentially older board snapshot.
+ * Cards that need input remain physically in the Review board column, but the
+ * navigation pills are mutually exclusive attention categories: Needs Input
+ * overrides Review. The notification projection can lead the board snapshot,
+ * so floor the derived Review count without hiding a newer Needs Input result
+ * behind an older board-column total.
  */
 export function resolveProjectNavigationTaskCounts(
 	taskCounts: RuntimeProjectTaskCounts,
 	requestedNeedsInputCount: number,
 ): ProjectNavigationTaskCounts {
+	const needsInput = Math.max(0, requestedNeedsInputCount);
 	return {
 		backlog: taskCounts.backlog,
 		inProgress: taskCounts.in_progress,
-		review: taskCounts.review,
-		needsInput: Math.max(0, requestedNeedsInputCount),
+		review: Math.max(0, taskCounts.review - needsInput),
+		needsInput,
 	};
 }

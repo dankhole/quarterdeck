@@ -41,7 +41,10 @@ function createBoard(inProgressTaskIds: string[]): RuntimeBoardData {
 	};
 }
 
-function createTerminalManagerStub(taskIds: string[]): TerminalSessionManager {
+function createTerminalManagerStub(
+	taskIds: string[],
+	waitForShutdownQuiescence: Promise<void> = Promise.resolve(),
+): TerminalSessionManager {
 	const summaries: RuntimeTaskSessionSummary[] = taskIds.map((taskId) =>
 		createTestTaskSessionSummary({
 			taskId,
@@ -57,6 +60,7 @@ function createTerminalManagerStub(taskIds: string[]): TerminalSessionManager {
 	return {
 		stopReconciliation: vi.fn(),
 		markInterruptedAndStopAll: vi.fn().mockReturnValue(summaries),
+		waitForShutdownQuiescence: vi.fn(() => waitForShutdownQuiescence),
 		store: {
 			listSummaries: vi.fn().mockReturnValue(summaries),
 			getSummary: vi.fn((taskId: string) => summaries.find((s) => s.taskId === taskId) ?? null),
@@ -150,6 +154,41 @@ describe("shutdown coordinator timeout", () => {
 
 		expect(closeRuntimeServer).toHaveBeenCalledTimes(1);
 		expect(warn).toHaveBeenCalledWith(expect.stringContaining("timed out"));
+	});
+
+	it("calls closeRuntimeServer when pending launch preparation does not quiesce", async () => {
+		vi.useFakeTimers();
+		const board = createBoard(["task-1"]);
+		vi.mocked(loadProjectState).mockResolvedValue({
+			repoPath: "/tmp/test-project",
+			statePath: "/tmp/test-project/.quarterdeck",
+			git: { currentBranch: "main", defaultBranch: "main", branches: ["main"] },
+			board,
+			sessions: {},
+			revision: 1,
+		});
+		const closeRuntimeServer = vi.fn().mockResolvedValue(undefined);
+		const warn = vi.fn();
+		const shutdownPromise = shutdownRuntimeServer({
+			projectRegistry: {
+				listManagedProjects: () => [
+					{
+						projectId: "test-project",
+						projectPath: "/tmp/test-project",
+						terminalManager: createTerminalManagerStub(["task-1"], new Promise(() => {})),
+					},
+				],
+			},
+			warn,
+			closeRuntimeServer,
+		});
+
+		await vi.advanceTimersByTimeAsync(8000);
+		await shutdownPromise;
+
+		expect(closeRuntimeServer).toHaveBeenCalledTimes(1);
+		expect(warn).toHaveBeenCalledWith(expect.stringContaining("timed out"));
+		expect(saveProjectSessions).not.toHaveBeenCalled();
 	});
 
 	it("completes normally when cleanup finishes within timeout", async () => {

@@ -14,8 +14,9 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 }));
 
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
+import type { RuntimeDiagnostics } from "../../../src/diagnostics";
 import { InMemorySessionSummaryStore, reduceSessionTransition, TerminalSessionManager } from "../../../src/terminal";
-import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
+import { createTestProviderHookRequest, createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 interface MockSpawnRequest {
 	onData?: (chunk: Buffer) => void;
@@ -63,6 +64,30 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 	});
 }
 
+function applyCurrentProviderHook(
+	manager: TerminalSessionManager,
+	event: "to_review" | "to_in_progress",
+	options: { occurredAt?: number } = {},
+) {
+	const summary = manager.store.getSummary("task-1");
+	if (!summary) throw new Error("Expected task session summary.");
+	return manager.applyProviderHook(
+		"task-1",
+		createTestProviderHookRequest(summary, event, { occurredAt: options.occurredAt }),
+	);
+}
+
+async function startConfirmedTaskSession(
+	manager: TerminalSessionManager,
+	request: Parameters<TerminalSessionManager["startTaskSession"]>[0],
+): Promise<void> {
+	await manager.startTaskSession(request);
+	const result = applyCurrentProviderHook(manager, "to_in_progress");
+	if (result?.summary.state !== "running") {
+		throw new Error("Expected the current provider hook to confirm Running.");
+	}
+}
+
 describe("TerminalSessionManager interrupt recovery", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
@@ -79,48 +104,51 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		vi.useRealTimers();
 	});
 
-	it("suppresses auto-restart when user sends Ctrl+C", async () => {
-		const spawnedSessions = setupMockPtySpawn();
+	it.each([0, 130])(
+		"preserves Ctrl-C as Interrupted when the process exits before recovery (code %i)",
+		async (exitCode) => {
+			const spawnedSessions = setupMockPtySpawn();
 
-		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
-		manager.attach("task-1", {
-			onState: vi.fn(),
-			onOutput: vi.fn(),
-			onExit: vi.fn(),
-		});
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+			manager.attach("task-1", {
+				onState: vi.fn(),
+				onOutput: vi.fn(),
+				onExit: vi.fn(),
+			});
 
-		await manager.startTaskSession({
-			taskId: "task-1",
-			agentId: "claude",
-			binary: "claude",
-			args: [],
-			cwd: "/tmp/task-1",
-			prompt: "Fix the bug",
-		});
+			await startConfirmedTaskSession(manager, {
+				taskId: "task-1",
+				agentId: "claude",
+				binary: "claude",
+				args: [],
+				cwd: "/tmp/task-1",
+				prompt: "Fix the bug",
+			});
 
-		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+			expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
 
-		// User sends Ctrl+C
-		manager.writeInput("task-1", Buffer.from([0x03]));
+			// User sends Ctrl+C
+			manager.writeInput("task-1", Buffer.from([0x03]));
 
-		// Agent exits after receiving SIGINT
-		spawnedSessions[0]?.triggerExit(130);
-		await vi.advanceTimersByTimeAsync(100);
+			// Agent exits after receiving SIGINT
+			spawnedSessions[0]?.triggerExit(exitCode);
+			await vi.advanceTimersByTimeAsync(100);
 
-		// Should NOT have auto-restarted
-		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
-		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("error");
-	});
+			// Should NOT have auto-restarted
+			expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+			expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
+		},
+	);
 
-	it("transitions to awaiting_review after Ctrl+C if agent stays running with no output", async () => {
+	it("transitions to interrupted Review after Ctrl+C if agent stays running with no output", async () => {
 		setupMockPtySpawn();
 
 		const onState = vi.fn();
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState, onOutput: vi.fn() });
 
-		await manager.startTaskSession({
+		await startConfirmedTaskSession(manager, {
 			taskId: "task-1",
 			agentId: "claude",
 			binary: "claude",
@@ -134,22 +162,19 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		// User sends Ctrl+C — agent doesn't exit
 		manager.writeInput("task-1", Buffer.from([0x03]));
 
-		// Wait for interrupt recovery timeout (5 seconds)
-		await vi.advanceTimersByTimeAsync(5_000);
-
 		const summary = manager.store.getSummary("task-1");
 		expect(summary?.state).toBe("awaiting_review");
-		expect(summary?.reviewReason).toBe("attention");
+		expect(summary?.reviewReason).toBe("interrupted");
 	});
 
-	it("transitions to awaiting_review after Escape if agent stays running with no output", async () => {
+	it("transitions to interrupted Review after Escape if agent stays running with no output", async () => {
 		setupMockPtySpawn();
 
 		const onState = vi.fn();
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState, onOutput: vi.fn() });
 
-		await manager.startTaskSession({
+		await startConfirmedTaskSession(manager, {
 			taskId: "task-1",
 			agentId: "claude",
 			binary: "claude",
@@ -163,12 +188,159 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		// User sends Escape — agent doesn't exit
 		manager.writeInput("task-1", Buffer.from([0x1b]));
 
-		// Wait for interrupt recovery timeout (5 seconds)
-		await vi.advanceTimersByTimeAsync(5_000);
-
 		const summary = manager.store.getSummary("task-1");
 		expect(summary?.state).toBe("awaiting_review");
-		expect(summary?.reviewReason).toBe("attention");
+		expect(summary?.reviewReason).toBe("interrupted");
+	});
+
+	it("returns a live interrupted review to running on the next confirmed provider hook", async () => {
+		const spawnedSessions = setupMockPtySpawn();
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await startConfirmedTaskSession(manager, {
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		});
+
+		manager.writeInput("task-1", Buffer.from([0x1b]));
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "interrupted",
+		});
+		expect(manager.getDiagnosticSnapshot().sessions[0]).toMatchObject({
+			exiting: false,
+			suppressAutoRestartOnExit: true,
+		});
+
+		manager.writeInput("task-1", Buffer.from("Continue working"));
+		manager.writeInput("task-1", Buffer.from([0x0d]));
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "interrupted",
+		});
+		applyCurrentProviderHook(manager, "to_in_progress", { occurredAt: Date.now() + 1 });
+
+		expect(manager.store.getSummary("task-1")).toMatchObject({ state: "running", reviewReason: null });
+		expect(manager.getDiagnosticSnapshot().sessions[0]?.suppressAutoRestartOnExit).toBe(false);
+		expect(spawnedSessions[0]?.write).toHaveBeenLastCalledWith(Buffer.from([0x0d]));
+	});
+
+	it("cancels pending interrupt recovery when a new turn is confirmed before the timeout", async () => {
+		setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await startConfirmedTaskSession(manager, {
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		});
+
+		manager.writeInput("task-1", Buffer.from([0x1b]));
+		await vi.advanceTimersByTimeAsync(1_000);
+		manager.writeInput("task-1", Buffer.from([0x0d]));
+		applyCurrentProviderHook(manager, "to_in_progress", { occurredAt: Date.now() + 1 });
+		await vi.advanceTimersByTimeAsync(5_000);
+
+		expect(manager.store.getSummary("task-1")).toMatchObject({ state: "running", reviewReason: null });
+		expect(manager.getDiagnosticSnapshot().sessions[0]).toMatchObject({
+			exiting: false,
+			suppressAutoRestartOnExit: false,
+		});
+	});
+
+	it("does not let a hook queued before the interrupt cancel recovery", async () => {
+		setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await startConfirmedTaskSession(manager, {
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		});
+		const sessionInstanceId = manager.store.getSummary("task-1")?.sessionInstanceId;
+		if (!sessionInstanceId) {
+			throw new Error("Expected an active session instance.");
+		}
+		const beforeInterrupt = Date.now() - 1;
+
+		manager.writeInput("task-1", Buffer.from([0x1b]));
+		const result = applyCurrentProviderHook(manager, "to_in_progress", { occurredAt: beforeInterrupt });
+		expect(result?.changed).toBe(false);
+		await vi.advanceTimersByTimeAsync(5_000);
+
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "interrupted",
+		});
+	});
+
+	it("rejects input after an explicit PTY stop has begun", async () => {
+		const spawnedSessions = setupMockPtySpawn();
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await startConfirmedTaskSession(manager, {
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		});
+		const session = spawnedSessions[0];
+		expect(session).toBeDefined();
+		if (!session) return;
+		session.wasInterrupted.mockReturnValue(true);
+
+		expect(manager.writeInput("task-1", Buffer.from([0x0d]))).toBeNull();
+		expect(session.write).not.toHaveBeenCalled();
+	});
+
+	it("records the interrupt source and resulting semantic state", async () => {
+		setupMockPtySpawn();
+		const recordEvent = vi.fn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore(), {
+			projectId: "project-1",
+			diagnostics: { recordEvent } as unknown as RuntimeDiagnostics,
+		});
+
+		await startConfirmedTaskSession(manager, {
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		});
+
+		manager.writeInput("task-1", Buffer.from([0x1b]));
+		expect(recordEvent).toHaveBeenCalledWith(
+			"session.interrupt_recovery_scheduled",
+			{ signal: "escape", delayMs: 5_000 },
+			expect.objectContaining({ projectId: "project-1", taskId: "task-1" }),
+			expect.objectContaining({ essential: true }),
+		);
+
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(recordEvent).toHaveBeenCalledWith(
+			"session.interrupt_recovery_applied",
+			{
+				signal: "escape",
+				changed: true,
+				nextState: "awaiting_review",
+				nextReviewReason: "interrupted",
+			},
+			expect.objectContaining({ projectId: "project-1", taskId: "task-1" }),
+			expect.objectContaining({ essential: true }),
+		);
 	});
 
 	it("does not trigger interrupt recovery for ANSI escape sequences", async () => {
@@ -177,7 +349,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn() });
 
-		await manager.startTaskSession({
+		await startConfirmedTaskSession(manager, {
 			taskId: "task-1",
 			agentId: "claude",
 			binary: "claude",
@@ -202,7 +374,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn() });
 
-		await manager.startTaskSession({
+		await startConfirmedTaskSession(manager, {
 			taskId: "task-1",
 			agentId: "claude",
 			binary: "claude",
@@ -225,7 +397,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		// If the agent is genuinely still working, its next hook will move it back.
 		const summary = manager.store.getSummary("task-1");
 		expect(summary?.state).toBe("awaiting_review");
-		expect(summary?.reviewReason).toBe("attention");
+		expect(summary?.reviewReason).toBe("interrupted");
 	});
 
 	it("does not trigger interrupt recovery for large pasted buffers containing 0x03", async () => {
@@ -234,7 +406,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn() });
 
-		await manager.startTaskSession({
+		await startConfirmedTaskSession(manager, {
 			taskId: "task-1",
 			agentId: "claude",
 			binary: "claude",
@@ -267,12 +439,12 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		// Hydration detects the stale running state and marks as interrupted.
 		// recoverStaleSession is a no-op since it's no longer in an active state.
 		const summary = manager.store.getSummary("task-1");
-		expect(summary?.state).toBe("interrupted");
+		expect(summary?.state).toBe("awaiting_review");
 		expect(summary?.reviewReason).toBe("interrupted");
 		expect(summary?.pid).toBeNull();
 
 		const recovered = manager.recoverStaleSession("task-1");
-		expect(recovered?.state).toBe("interrupted");
+		expect(recovered?.state).toBe("awaiting_review");
 	});
 
 	it("watchdog recovers a live session whose process died without an exit event", async () => {
@@ -285,7 +457,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState, onOutput: vi.fn(), onExit });
 
-		await manager.startTaskSession({
+		await startConfirmedTaskSession(manager, {
 			taskId: "task-1",
 			agentId: "claude",
 			binary: "claude",
@@ -312,13 +484,13 @@ describe("TerminalSessionManager interrupt recovery", () => {
 });
 
 describe("session-state-machine interrupt.recovery event", () => {
-	it("transitions from running to awaiting_review with attention reason", () => {
+	it("transitions from running to interrupted Review", () => {
 		const summary = createSummary({ state: "running", reviewReason: null });
 		const result = reduceSessionTransition(summary, { type: "interrupt.recovery" });
 
 		expect(result.changed).toBe(true);
 		expect(result.patch.state).toBe("awaiting_review");
-		expect(result.patch.reviewReason).toBe("attention");
+		expect(result.patch.reviewReason).toBe("interrupted");
 		expect(result.clearAttentionBuffer).toBe(true);
 	});
 
@@ -351,7 +523,7 @@ describe("recoverStaleSession with launched sessions", () => {
 
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		// No listeners attached — simulates user not viewing this task
-		await manager.startTaskSession({
+		await startConfirmedTaskSession(manager, {
 			taskId: "task-1",
 			agentId: "claude",
 			binary: "claude",
@@ -362,7 +534,7 @@ describe("recoverStaleSession with launched sessions", () => {
 
 		// Agent completes work and sends to_review hook, then process exits
 		// (code 1 is typical Claude Code shutdown noise — not a crash).
-		manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
+		applyCurrentProviderHook(manager, "to_review");
 		spawnedSessions[0]?.triggerExit(1);
 
 		// Review reason should be preserved as "hook", not overwritten to "error"
@@ -381,7 +553,7 @@ describe("recoverStaleSession with launched sessions", () => {
 		const spawnedSessions = setupMockPtySpawn();
 
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
-		await manager.startTaskSession({
+		await startConfirmedTaskSession(manager, {
 			taskId: "task-1",
 			agentId: "claude",
 			binary: "claude",
@@ -391,7 +563,7 @@ describe("recoverStaleSession with launched sessions", () => {
 		});
 
 		// Transition to review, then process exits cleanly
-		manager.store.applySessionEvent("task-1", { type: "hook.to_review", reason: "hook" });
+		applyCurrentProviderHook(manager, "to_review");
 		spawnedSessions[0]?.triggerExit(0);
 
 		// Reason stays "hook" — process dying after handoff doesn't change the reason
@@ -452,7 +624,7 @@ describe("recoverStaleSession with launched sessions", () => {
 		// Missing review reasons indicate the session was mid-restart.
 		// Mark as interrupted so resumeInterruptedSessions can restart them.
 		const summary = manager.store.getSummary("task-1");
-		expect(summary?.state).toBe("interrupted");
+		expect(summary?.state).toBe("awaiting_review");
 		expect(summary?.reviewReason).toBe("interrupted");
 	});
 

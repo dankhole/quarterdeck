@@ -10,10 +10,14 @@ import type {
 	RuntimeBoardData,
 	RuntimeProjectStateResponse,
 	RuntimeProjectSummary,
-	RuntimeProjectTaskCounts,
 	RuntimeTaskSessionSummary,
 } from "../core";
-import { createTaggedLogger, deriveProjectSummary, pruneOrphanSessionsForBroadcast } from "../core";
+import {
+	createTaggedLogger,
+	deriveProjectSummary,
+	normalizeDiagnosticErrorClass,
+	pruneOrphanSessionsForBroadcast,
+} from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import {
 	isUnderWorktreesHome,
@@ -21,6 +25,7 @@ import {
 	loadProjectBoardSnapshotById,
 	loadProjectContext,
 	loadProjectState,
+	loadProjectStateById,
 	type RuntimeProjectIndexEntry,
 	removeProjectIndexEntry,
 	removeProjectStateFiles,
@@ -43,7 +48,7 @@ export const PROJECT_STREAM_VALIDATION_CONCURRENCY = 4;
 // Startup resume selection is still small enough to live near the registry
 // entry point. If it gains more agent-specific rules or scan outcomes, extract
 // this block into a dedicated startup-resume policy module with focused tests.
-type StartupResumeSkipReason = "missing_summary" | "not_interrupted";
+type StartupResumeSkipReason = "missing_summary" | "not_interrupted" | "pending_provider_hook";
 
 interface StartupResumeSkipSample {
 	taskId: string;
@@ -61,6 +66,7 @@ interface StartupResumeScanStats {
 	resumableTaskCount: number;
 	skippedMissingSummaryCount: number;
 	skippedNotInterruptedCount: number;
+	skippedPendingProviderHookCount: number;
 	skippedSamples: StartupResumeSkipSample[];
 }
 
@@ -70,6 +76,7 @@ function createStartupResumeScanStats(): StartupResumeScanStats {
 		resumableTaskCount: 0,
 		skippedMissingSummaryCount: 0,
 		skippedNotInterruptedCount: 0,
+		skippedPendingProviderHookCount: 0,
 		skippedSamples: [],
 	};
 }
@@ -117,6 +124,13 @@ export interface RemovedProjectNotice {
 	message: string;
 }
 
+export interface StartupRecoveryBarrier {
+	/** Conservatively retain every interrupted session when the outbox cannot be inspected. */
+	blockAllRecovery: boolean;
+	/** Exact tasks whose persisted provider transitions remain deferred after startup replay. */
+	blockedTasks: ReadonlyArray<{ projectId: string; taskId: string }>;
+}
+
 export interface ProjectRegistry
 	extends IProjectResolver,
 		ITerminalManagerProvider,
@@ -132,10 +146,27 @@ export interface ProjectRegistry
 	resolveProjectForStream: (
 		requestedProjectId: string | null,
 		options?: {
-			onRemovedProject?: (notice: RemovedProjectNotice) => void;
+			onRemovedProject?: (notice: RemovedProjectNotice) => void | Promise<void>;
 		},
 	) => Promise<ResolvedProjectStreamTarget>;
-	resumeInterruptedSessions: (projectId: string, projectPath: string) => Promise<number>;
+	/**
+	 * Hydrate every valid indexed project before the runtime accepts clients,
+	 * then enqueue eligible session recovery without waiting for agent launches.
+	 */
+	initializeIndexedProjectsForStartup: (options?: {
+		/** Runs after every indexed manager is hydrated and before any replacement process is queued. */
+		beforeRecovery?: () => Promise<StartupRecoveryBarrier | void>;
+	}) => Promise<number>;
+	resumeInterruptedSessions: (
+		projectId: string,
+		projectPath: string,
+		options?: { recoveryBarrier?: StartupRecoveryBarrier | null },
+	) => Promise<number>;
+	/** Releases startup recoveries once their exact deferred hook deliveries have cleared. */
+	releaseDeferredStartupRecoveries: (
+		pendingTasks: ReadonlyArray<{ projectId: string; taskId: string }>,
+	) => Promise<number>;
+	resolveTaskSessionSummary: (projectId: string, taskId: string) => Promise<RuntimeTaskSessionSummary | null>;
 	stopMaintenance: () => void;
 	listManagedProjects: () => Array<{
 		projectId: string;
@@ -180,15 +211,6 @@ export async function validateIndexedProjectsForStream(
 	);
 }
 
-function createEmptyProjectTaskCounts(): RuntimeProjectTaskCounts {
-	return {
-		backlog: 0,
-		in_progress: 0,
-		review: 0,
-		trash: 0,
-	};
-}
-
 export function collectProjectWorktreeTaskIdsForRemoval(board: RuntimeBoardData): Set<string> {
 	const taskIds = new Set<string>();
 	for (const column of board.columns) {
@@ -201,24 +223,6 @@ export function collectProjectWorktreeTaskIdsForRemoval(board: RuntimeBoardData)
 		}
 	}
 	return taskIds;
-}
-
-function toProjectSummary(project: {
-	projectId: string;
-	repoPath: string;
-	boardRevision: number;
-	taskCounts: RuntimeProjectTaskCounts;
-}): RuntimeProjectSummary {
-	const normalized = project.repoPath.replaceAll("\\", "/").replace(/\/+$/g, "");
-	const segments = normalized.split("/").filter((segment) => segment.length > 0);
-	const name = segments[segments.length - 1] ?? normalized;
-	return {
-		id: project.projectId,
-		path: project.repoPath,
-		name,
-		boardRevision: project.boardRevision,
-		taskCounts: project.taskCounts,
-	};
 }
 
 export async function createProjectRegistry(deps: CreateProjectRegistryDependencies): Promise<ProjectRegistry> {
@@ -241,6 +245,8 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	const projectStateDiagnostics = new ProjectStateDiagnosticTracker();
 	const terminalManagersByProjectId = new Map<string, TerminalSessionManager>();
 	const terminalManagerLoadPromises = new Map<string, Promise<TerminalSessionManager>>();
+	const deferredStartupRecoveries = new Map<string, { projectId: string; projectPath: string; taskId: string }>();
+	const deferredStartupRecoveryProjects = new Map<string, string>();
 	const projectOrphanMaintenance: ProjectOrphanMaintenanceTimer = createProjectOrphanMaintenanceTimer({
 		getProjectRepoPaths: () => projectPathsById.values(),
 	});
@@ -288,17 +294,16 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		const loading = (async () => {
 			const store = new InMemorySessionSummaryStore();
 			const manager = new TerminalSessionManager(store, { projectId, diagnostics: deps.diagnostics });
-			let hydratedSessionCount = 0;
-			try {
-				const existingProject = await loadProjectState(repoPath);
-				manager.hydrateFromRecord(existingProject.sessions);
-				hydratedSessionCount = Object.keys(existingProject.sessions).length;
-			} catch {
-				// Project state will be created on demand.
-			}
+			const existingProject = await loadProjectState(repoPath);
+			manager.hydrateFromRecord(existingProject.sessions);
+			const hydratedSessionCount = Object.keys(existingProject.sessions).length;
 			manager.startReconciliation();
 			terminalManagersByProjectId.set(projectId, manager);
-			registryLog.warn("terminal manager created", { projectId, repoPath, hydratedSessionCount });
+			registryLog.warn("terminal manager created", {
+				projectId,
+				hasProjectPath: repoPath.length > 0,
+				hydratedSessionCount,
+			});
 			return manager;
 		})().finally(() => {
 			terminalManagerLoadPromises.delete(projectId);
@@ -307,6 +312,54 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		const loaded = await loading;
 		notifyTerminalManagerReady(projectId, loaded);
 		return loaded;
+	};
+
+	const prepareTerminalManagerForProject = async (
+		projectId: string,
+		repoPath: string,
+		phase: "selection" | "startup",
+	): Promise<boolean> => {
+		try {
+			await ensureTerminalManagerForProject(projectId, repoPath);
+			return true;
+		} catch (error) {
+			// Project selection and runtime startup must remain available so the
+			// browser can surface the durable-state error. The throwing ensure path
+			// remains the gate for every operation that actually needs session truth;
+			// never substitute an empty manager for unreadable persisted sessions.
+			registryLog.warn("terminal manager hydration unavailable", {
+				projectId,
+				hasProjectPath: repoPath.length > 0,
+				phase,
+				errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+			});
+			deps.diagnostics?.recordEvent(
+				"project.session_hydration_failed",
+				{
+					phase,
+					errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+				},
+				{ projectId },
+				{ level: "error", essential: true },
+			);
+			return false;
+		}
+	};
+
+	const resolveTaskSessionSummary = async (
+		projectId: string,
+		taskId: string,
+	): Promise<RuntimeTaskSessionSummary | null> => {
+		const manager = terminalManagersByProjectId.get(projectId);
+		if (manager) {
+			return manager.store.getSummary(taskId);
+		}
+		const pendingManager = terminalManagerLoadPromises.get(projectId);
+		if (pendingManager) {
+			return (await pendingManager).store.getSummary(taskId);
+		}
+		const state = await loadProjectStateById(projectId);
+		return state?.sessions[taskId] ?? null;
 	};
 
 	const loadScopedRuntimeConfig = async (scope: ProjectRegistryScope): Promise<RuntimeConfigState> => {
@@ -335,9 +388,9 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		activeProjectId = projectId;
 		activeProjectPath = repoPath;
 		rememberProject(projectId, repoPath);
-		await ensureTerminalManagerForProject(projectId, repoPath);
 		activeRuntimeConfig = await deps.loadRuntimeConfig(projectId);
 		globalRuntimeConfig = toGlobalRuntimeConfigState(activeRuntimeConfig);
+		await prepareTerminalManagerForProject(projectId, repoPath, "selection");
 	};
 
 	const clearActiveProject = (): void => {
@@ -361,6 +414,10 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		projectStateDiagnostics.remove(projectId);
 		const projectPath = projectPathsById.get(projectId) ?? null;
 		projectPathsById.delete(projectId);
+		for (const [key, deferred] of deferredStartupRecoveries) {
+			if (deferred.projectId === projectId) deferredStartupRecoveries.delete(key);
+		}
+		deferredStartupRecoveryProjects.delete(projectId);
 		deps.diagnostics?.recordEvent(
 			"project.removed",
 			{ stoppedSessions: options?.stopTerminalSessions !== false },
@@ -375,27 +432,13 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	};
 
 	const buildProjectSummary = async (projectId: string, repoPath: string): Promise<RuntimeProjectSummary> => {
-		try {
-			const snapshot = await loadProjectBoardSnapshotById(projectId);
-			return deriveProjectSummary({
-				projectId,
-				repoPath,
-				board: snapshot.board,
-				boardRevision: snapshot.revision,
-			});
-		} catch (error) {
-			registryLog.warn("project summary board snapshot failed", {
-				projectId,
-				repoPath,
-				error: error instanceof Error ? error.message : String(error),
-			});
-			return toProjectSummary({
-				projectId,
-				repoPath,
-				boardRevision: 0,
-				taskCounts: createEmptyProjectTaskCounts(),
-			});
-		}
+		const snapshot = await loadProjectBoardSnapshotById(projectId);
+		return deriveProjectSummary({
+			projectId,
+			repoPath,
+			board: snapshot.board,
+			boardRevision: snapshot.revision,
+		});
 	};
 
 	const buildProjectStateSnapshot = async (
@@ -430,16 +473,14 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		};
 	};
 
-	const resolveProjectForStream = async (
-		requestedProjectId: string | null,
-		options?: {
-			onRemovedProject?: (notice: RemovedProjectNotice) => void;
-		},
-	): Promise<ResolvedProjectStreamTarget> => {
+	const inspectIndexedProjects = async (): Promise<{
+		existingProjects: RuntimeProjectIndexEntry[];
+		unavailableProjects: RuntimeProjectIndexEntry[];
+	}> => {
 		const allProjects = await listProjectIndexEntries();
 		const validationResults = await validateIndexedProjectsForStream(allProjects, deps);
 		const existingProjects: RuntimeProjectIndexEntry[] = [];
-		const removedProjects: RuntimeProjectIndexEntry[] = [];
+		const unavailableProjects: RuntimeProjectIndexEntry[] = [];
 
 		for (const { project, removalMessage } of validationResults) {
 			if (!removalMessage) {
@@ -447,21 +488,12 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				continue;
 			}
 
-			removedProjects.push(project);
-			await removeProjectIndexEntry(project.projectId);
-			await removeProjectStateFiles(project.projectId);
-			disposeProject(project.projectId);
-			options?.onRemovedProject?.({
-				projectId: project.projectId,
-				repoPath: project.repoPath,
-				message: removalMessage,
-			});
+			unavailableProjects.push(project);
 		}
+		return { existingProjects, unavailableProjects };
+	};
 
-		const removedRequestedProjectPath = requestedProjectId
-			? (removedProjects.find((project) => project.projectId === requestedProjectId)?.repoPath ?? null)
-			: null;
-
+	const selectAvailableActiveProject = async (existingProjects: RuntimeProjectIndexEntry[]): Promise<void> => {
 		const activeProjectMissing = !existingProjects.some((project) => project.projectId === activeProjectId);
 		if (activeProjectMissing) {
 			if (existingProjects[0]) {
@@ -470,6 +502,59 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				clearActiveProject();
 			}
 		}
+	};
+
+	const reconcileIndexedProjects = async (options?: {
+		onRemovedProject?: (notice: RemovedProjectNotice) => void | Promise<void>;
+	}): Promise<{
+		existingProjects: RuntimeProjectIndexEntry[];
+		removedProjects: RuntimeProjectIndexEntry[];
+	}> => {
+		const { existingProjects, unavailableProjects } = await inspectIndexedProjects();
+		const removedProjects: RuntimeProjectIndexEntry[] = [];
+
+		for (const project of unavailableProjects) {
+			const removalMessage = await resolveIndexedProjectRemovalMessage(project, deps);
+			if (!removalMessage) {
+				// The path recovered between validation and mutation. Keep the index
+				// entry and let the next stream resolution include it normally.
+				existingProjects.push(project);
+				continue;
+			}
+			removedProjects.push(project);
+			const terminalManager = getTerminalManagerForProject(project.projectId);
+			if (terminalManager) {
+				terminalManager.markInterruptedAndStopAll();
+				await terminalManager.waitForShutdownQuiescence();
+			}
+			await removeProjectIndexEntry(project.projectId);
+			// Detach and drain external runtime projections before deleting state;
+			// an already-running persistence write must not recreate the project.
+			await options?.onRemovedProject?.({
+				projectId: project.projectId,
+				repoPath: project.repoPath,
+				message: removalMessage,
+			});
+			await removeProjectStateFiles(project.projectId);
+			disposeProject(project.projectId, { stopTerminalSessions: false });
+		}
+
+		await selectAvailableActiveProject(existingProjects);
+
+		return { existingProjects, removedProjects };
+	};
+
+	const resolveProjectForStream = async (
+		requestedProjectId: string | null,
+		options?: {
+			onRemovedProject?: (notice: RemovedProjectNotice) => void | Promise<void>;
+		},
+	): Promise<ResolvedProjectStreamTarget> => {
+		const { existingProjects, removedProjects } = await reconcileIndexedProjects(options);
+
+		const removedRequestedProjectPath = requestedProjectId
+			? (removedProjects.find((project) => project.projectId === requestedProjectId)?.repoPath ?? null)
+			: null;
 
 		if (requestedProjectId) {
 			const requestedProject = existingProjects.find((project) => project.projectId === requestedProjectId);
@@ -506,23 +591,29 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 
 	/**
 	 * Resume only persisted work-column sessions that were interrupted by the
-	 * previous runtime. Each selected task enters the global recovery
+	 * previous runtime. Each eligible task enters the global recovery
 	 * coordinator, which waits for orphan cleanup, serializes launches, confirms
 	 * a launch-scoped hook, and permits one exact-target retry.
 	 */
-	const resumeInterruptedSessions = async (projectId: string, projectPath: string): Promise<number> => {
+	const resumeInterruptedSessions = async (
+		projectId: string,
+		projectPath: string,
+		options: { recoveryBarrier?: StartupRecoveryBarrier | null } = {},
+	): Promise<number> => {
 		const manager = await ensureTerminalManagerForProject(projectId, projectPath);
 		let state: RuntimeProjectStateResponse;
 		try {
 			state = await loadProjectState(projectPath);
 		} catch (error) {
-			registryLog.warn("startup resume skipped: failed to load project state", {
+			deferredStartupRecoveryProjects.set(projectId, projectPath);
+			registryLog.warn("startup resume deferred: failed to load project state", {
 				projectId,
-				projectPath,
-				error: error instanceof Error ? error.message : String(error),
+				hasProjectPath: projectPath.length > 0,
+				errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
 			});
-			return 0;
+			throw error;
 		}
+		deferredStartupRecoveryProjects.delete(projectId);
 		const resumable: StartupSessionRecoveryCandidate[] = [];
 		// Startup resume runs before a user can inspect task terminals, so keep
 		// enough scan detail to tell whether we never selected a task or failed
@@ -545,7 +636,33 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 					});
 					continue;
 				}
-				if (!shouldResumeSessionOnStartup(summary)) {
+				const blockedByPendingProviderHook =
+					options.recoveryBarrier?.blockAllRecovery === true ||
+					options.recoveryBarrier?.blockedTasks.some(
+						(blocked) => blocked.projectId === projectId && blocked.taskId === card.id,
+					) === true;
+				if (blockedByPendingProviderHook) {
+					deferredStartupRecoveries.set(JSON.stringify([projectId, card.id]), {
+						projectId,
+						projectPath,
+						taskId: card.id,
+					});
+					scanStats.skippedPendingProviderHookCount += 1;
+					recordStartupResumeSkip(scanStats, {
+						taskId: card.id,
+						columnId: column.id,
+						reason: "pending_provider_hook",
+						state: summary.state,
+						reviewReason: summary.reviewReason,
+						pid: summary.pid,
+						hasWorkingDirectory: Boolean(card.workingDirectory),
+						hasResumeSessionId: Boolean(summary.resumeSessionId),
+					});
+					continue;
+				}
+				deferredStartupRecoveries.delete(JSON.stringify([projectId, card.id]));
+				const recoveryPolicy = deriveStartupRecoveryPolicy(summary);
+				if (!recoveryPolicy.required) {
 					scanStats.skippedNotInterruptedCount += 1;
 					recordStartupResumeSkip(scanStats, {
 						taskId: card.id,
@@ -559,12 +676,12 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 					});
 					continue;
 				}
-				const recoveryPolicy = deriveStartupRecoveryPolicy(summary);
 				resumable.push({
 					scope: { projectId, projectPath },
 					manager,
 					originalResumeSessionId: summary.resumeSessionId ?? null,
-					reviewState: recoveryPolicy.reviewState,
+					semanticState: recoveryPolicy.semanticState,
+					semanticStateUncertain: recoveryPolicy.semanticStateUncertain,
 					fallbackReviewState: recoveryPolicy.fallbackReviewState,
 					semanticStateWarning: recoveryPolicy.semanticStateUncertain
 						? LEGACY_STARTUP_SEMANTIC_STATE_WARNING
@@ -589,20 +706,21 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				resumableTaskCount: scanStats.resumableTaskCount,
 				skippedMissingSummaryCount: scanStats.skippedMissingSummaryCount,
 				skippedNotInterruptedCount: scanStats.skippedNotInterruptedCount,
+				skippedPendingProviderHookCount: scanStats.skippedPendingProviderHookCount,
 			},
 			{ projectId },
 			{ essential: true },
 		);
 		registryLog.info("startup resume scan complete", {
 			projectId,
-			projectPath,
+			hasProjectPath: projectPath.length > 0,
 			...scanStats,
 		});
 		if (resumable.length === 0) {
 			if (scanStats.consideredTaskCount > 0) {
 				registryLog.warn("startup resume found work-column sessions but no resumable interrupted tasks", {
 					projectId,
-					projectPath,
+					hasProjectPath: projectPath.length > 0,
 					...scanStats,
 				});
 			}
@@ -626,7 +744,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				projectId,
 				taskId: candidate.request.taskId,
 				cardAgentId: candidate.request.agentId ?? null,
-				resumeSessionId: candidate.originalResumeSessionId,
+				hasResumeSessionId: candidate.originalResumeSessionId !== null,
 				semanticStateUncertain: candidate.semanticStateWarning !== undefined,
 			});
 		}
@@ -654,8 +772,121 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		return resumable.length;
 	};
 
+	const releaseDeferredStartupRecoveries = async (
+		pendingTasks: ReadonlyArray<{ projectId: string; taskId: string }>,
+	): Promise<number> => {
+		const pendingKeys = new Set(pendingTasks.map((task) => JSON.stringify([task.projectId, task.taskId])));
+		const projectsToRetry = new Map(deferredStartupRecoveryProjects);
+		let releasedTaskCount = 0;
+		for (const [key, deferred] of deferredStartupRecoveries) {
+			if (pendingKeys.has(key)) continue;
+			deferredStartupRecoveries.delete(key);
+			projectsToRetry.set(deferred.projectId, deferred.projectPath);
+			releasedTaskCount += 1;
+		}
+		if (releasedTaskCount === 0 && projectsToRetry.size === 0) return 0;
+
+		const recoveryBarrier: StartupRecoveryBarrier = {
+			blockAllRecovery: false,
+			blockedTasks: pendingTasks,
+		};
+		await Promise.all(
+			Array.from(projectsToRetry, async ([projectId, projectPath]) => {
+				try {
+					await resumeInterruptedSessions(projectId, projectPath, { recoveryBarrier });
+				} catch (error) {
+					registryLog.warn("deferred startup recovery retry failed", {
+						projectId,
+						hasProjectPath: projectPath.length > 0,
+						errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+					});
+					deps.diagnostics?.recordEvent(
+						"session.startup_recovery_deferred_retry_failed",
+						{
+							errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+						},
+						{ projectId },
+						{ level: "warn", essential: true },
+					);
+				}
+			}),
+		);
+		deps.diagnostics?.recordEvent(
+			"session.startup_recovery_deferred_released",
+			{ releasedTaskCount, projectCount: projectsToRetry.size },
+			{},
+			{ essential: true },
+		);
+		return releasedTaskCount;
+	};
+
+	let indexedProjectInitialization: Promise<number> | null = null;
+	const initializeIndexedProjectsForStartup = (options?: {
+		beforeRecovery?: () => Promise<StartupRecoveryBarrier | void>;
+	}): Promise<number> => {
+		if (indexedProjectInitialization) {
+			return indexedProjectInitialization;
+		}
+
+		indexedProjectInitialization = (async () => {
+			const { existingProjects, unavailableProjects } = await inspectIndexedProjects();
+			for (const project of unavailableProjects) {
+				registryLog.warn("startup skipped unavailable indexed project without pruning saved state", {
+					projectId: project.projectId,
+					hasProjectPath: project.repoPath.length > 0,
+				});
+			}
+			await selectAvailableActiveProject(existingProjects);
+			const hydrateLimit = pLimit(PROJECT_STREAM_VALIDATION_CONCURRENCY);
+			const hydrationResults = await Promise.all(
+				existingProjects.map(async (project) => ({
+					project,
+					ready: await hydrateLimit(
+						async () => await prepareTerminalManagerForProject(project.projectId, project.repoPath, "startup"),
+					),
+				})),
+			);
+			const hydratedProjects = hydrationResults.filter((result) => result.ready).map((result) => result.project);
+			const recoveryBarrier = (await options?.beforeRecovery?.()) ?? null;
+
+			for (const project of hydratedProjects) {
+				void resumeInterruptedSessions(project.projectId, project.repoPath, { recoveryBarrier }).catch((error) => {
+					registryLog.warn("startup recovery failed for indexed project", {
+						projectId: project.projectId,
+						hasProjectPath: project.repoPath.length > 0,
+						errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+					});
+					deps.diagnostics?.recordEvent(
+						"session.startup_recovery_project_failed",
+						{
+							errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+						},
+						{ projectId: project.projectId },
+						{ level: "warn", essential: true },
+					);
+				});
+			}
+
+			deps.diagnostics?.recordEvent(
+				"session.startup_recovery_projects_initialized",
+				{
+					projectCount: hydratedProjects.length,
+					skippedProjectCount: unavailableProjects.length,
+					hydrationFailureCount: existingProjects.length - hydratedProjects.length,
+				},
+				{},
+				{ essential: true },
+			);
+			return hydratedProjects.length;
+		})().catch((error) => {
+			indexedProjectInitialization = null;
+			throw error;
+		});
+		return indexedProjectInitialization;
+	};
+
 	if (initialProject) {
-		await ensureTerminalManagerForProject(initialProject.projectId, initialProject.repoPath);
+		await prepareTerminalManagerForProject(initialProject.projectId, initialProject.repoPath, "startup");
 	}
 
 	const disposeDiagnosticProvider = deps.diagnostics?.registerSnapshotProvider({
@@ -705,7 +936,10 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		buildProjectStateSnapshot,
 		buildProjectsPayload,
 		resolveProjectForStream,
+		initializeIndexedProjectsForStartup,
 		resumeInterruptedSessions,
+		releaseDeferredStartupRecoveries,
+		resolveTaskSessionSummary,
 		stopMaintenance: () => {
 			disposeDiagnosticProvider?.();
 			disposeProjectStateDiagnosticProvider?.();

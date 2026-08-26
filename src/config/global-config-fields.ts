@@ -112,6 +112,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	claudeFullscreenEnabled: boolField(false),
 	statuslineEnabled: boolField(false),
 	codexApprovalsReviewer: enumField<CodexApprovalsReviewer>("inherit", CODEX_APPROVALS_REVIEWERS),
+	piToolApprovalsEnabled: boolField(true),
 	terminalFontWeight: numField(325),
 	logLevel: enumField<LogLevel>("warn", LOG_LEVELS),
 	fileEditorAutosaveMode: enumField<FileEditorAutosaveMode>("off", FILE_EDITOR_AUTOSAVE_MODES),

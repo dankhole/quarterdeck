@@ -58,7 +58,7 @@ function mockSuccessfulAgentProbe(): void {
 				callback(null, "2.1.198 (Claude Code)\n", "");
 				return {} as ChildProcess;
 			}
-			callback(null, binary === "pi" ? "0.70.2\n" : "0.147.0\n", "");
+			callback(null, binary === "pi" ? "0.84.3\n" : "0.147.0\n", "");
 			return {} as ChildProcess;
 		}
 		if (args[0] === "features" && args[1] === "list") {
@@ -494,12 +494,12 @@ describe("agent-registry", () => {
 		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledWith("pi");
 	});
 
-	it("disables Pi when the detected version is below the supported floor", async () => {
+	it("disables Pi when the detected version does not exactly match the supported release", async () => {
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "pi");
 		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
 			const callback = readExecFileCallback(rest);
 			if (args[0] === "--version") {
-				callback(null, "0.70.1\n", "");
+				callback(null, "0.84.2\n", "");
 				return {} as ChildProcess;
 			}
 			callback(null, "", "");
@@ -513,7 +513,30 @@ describe("agent-registry", () => {
 		expect(resolved).toBeNull();
 		expect(pi?.installed).toBe(false);
 		expect(pi?.status).toBe("upgrade_required");
-		expect(pi?.statusMessage).toContain("0.70.2");
+		expect(pi?.statusMessage).toContain("exactly 0.84.3");
+		expect(pi?.statusMessage).toContain("@earendil-works/pi-coding-agent@0.84.3");
+	});
+
+	it("rejects an untested newer Pi release", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "pi");
+		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+			const callback = readExecFileCallback(rest);
+			if (args[0] === "--version") {
+				callback(null, "0.85.0\n", "");
+				return {} as ChildProcess;
+			}
+			callback(null, "", "");
+			return {} as ChildProcess;
+		});
+
+		const resolved = await resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "pi" }));
+		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "pi" }));
+		const pi = response.agents.find((agent) => agent.id === "pi");
+
+		expect(resolved).toBeNull();
+		expect(pi?.status).toBe("upgrade_required");
+		expect(pi?.statusMessage).toContain("Detected Pi 0.85.0");
+		expect(pi?.statusMessage).toContain("exactly 0.84.3");
 	});
 
 	it("disables Pi when its version cannot be determined", async () => {
@@ -535,7 +558,7 @@ describe("agent-registry", () => {
 		expect(resolved).toBeNull();
 		expect(pi?.installed).toBe(false);
 		expect(pi?.status).toBe("upgrade_required");
-		expect(pi?.statusMessage).toContain("0.70.2");
+		expect(pi?.statusMessage).toContain("exactly 0.84.3");
 	});
 });
 

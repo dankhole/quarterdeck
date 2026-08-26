@@ -23,6 +23,13 @@ const AGENTS: TaskAgentDisplayOption[] = [
 		command: "codex",
 		installed: true,
 	},
+	{
+		id: "pi",
+		label: "Pi",
+		binary: "pi",
+		command: "pi",
+		installed: true,
+	},
 ];
 
 function dispatchPointerEvent(element: Element, type: "pointerdown" | "pointerup"): void {
@@ -212,6 +219,27 @@ describe("TaskAgentSelector", () => {
 		expect(onDialogOpenChange).not.toHaveBeenCalledWith(false);
 		expect(document.body.textContent).toContain("New task");
 		expect(trigger.textContent).toContain("OpenAI Codex");
+	});
+
+	it("presents Pi as a first-class harness without an experimental badge", async () => {
+		await act(async () => {
+			root.render(<TaskAgentSelector agents={AGENTS} value="pi" onValueChange={vi.fn()} />);
+		});
+		await waitForRadixEffects();
+
+		const trigger = requireElement(
+			document.body.querySelector('button[aria-label="Task harness"]'),
+			"the task harness trigger",
+		);
+		expect(trigger.textContent).toContain("Pi");
+		expect(trigger.textContent).not.toContain("Experimental");
+
+		await act(async () => {
+			dispatchPointerEvent(trigger, "pointerdown");
+		});
+		await waitForRadixEffects();
+
+		expect(findMenuItemByText("Pi").textContent).not.toContain("Experimental");
 	});
 
 	it("keeps the create dialog open when the base ref changes through a dialog-local portal", async () => {

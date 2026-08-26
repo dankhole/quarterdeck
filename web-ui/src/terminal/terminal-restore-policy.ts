@@ -1,7 +1,7 @@
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 
 export function shouldForceResizeBeforeRestore(agentId: RuntimeTaskSessionSummary["agentId"] | null): boolean {
-	return agentId === "claude" || agentId === "codex";
+	return agentId === "claude" || agentId === "codex" || agentId === "pi";
 }
 
 export function shouldSkipEmptyRestoreSnapshot(snapshot: string, currentLines: readonly string[]): boolean {

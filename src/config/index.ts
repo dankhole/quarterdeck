@@ -7,12 +7,14 @@ export {
 	buildRuntimeConfigResponse,
 	detectInstalledCommands,
 	detectRunnableAgentIds,
+	getAgentAvailability,
 	parseCodexFeaturesListOutput,
 	type ResolveAgentCommandForLaunchOptions,
 	type ResolvedAgentCommand,
 	resetAgentAvailabilityCache,
 	resolveAgentCommand,
 	resolveAgentCommandForLaunch,
+	SUPPORTED_PI_VERSION,
 	setAgentAvailabilityDiagnosticSink,
 } from "./agent-registry";
 export {

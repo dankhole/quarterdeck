@@ -22,6 +22,7 @@ import {
 	getLogLevel,
 	pruneOrphanSessionsForNotification,
 	pruneOrphanSessionsForNotificationDelta,
+	QUARTERDECK_BUILD_ID,
 	toDisposable,
 } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
@@ -53,6 +54,23 @@ import {
 
 const hubLog = createTaggedLogger("runtime-state-hub");
 const SLOW_REMOTE_FETCH_MS = 2_000;
+const SESSION_PERSISTENCE_RETRY_MAX_MS = 5_000;
+const SESSION_PERSISTENCE_FINAL_ATTEMPTS = 2;
+
+interface RuntimeSessionPersistenceState {
+	dirtyGeneration: number;
+	persistedGeneration: number;
+	retryAttempt: number;
+	lastError: Error | null;
+	timer: ReturnType<typeof setTimeout> | null;
+	inFlight: Promise<void> | null;
+	disposed: boolean;
+}
+
+interface RuntimeNotificationPublicationState {
+	tail: Promise<void>;
+	disposed: boolean;
+}
 
 export interface DisposeRuntimeStateProjectOptions {
 	disconnectClients?: boolean;
@@ -62,7 +80,6 @@ export interface DisposeRuntimeStateProjectOptions {
 export interface RuntimeStateHubDiagnosticSnapshot {
 	clients: ReturnType<RuntimeStateClientRegistry["getDiagnosticSnapshot"]>;
 	batcher: ReturnType<RuntimeStateMessageBatcher["getDiagnosticSnapshot"]>;
-	resumeAttemptedProjectIds: string[];
 }
 
 export interface CreateRuntimeStateHubDependencies {
@@ -71,7 +88,6 @@ export interface CreateRuntimeStateHubDependencies {
 		| "resolveProjectForStream"
 		| "buildProjectsPayload"
 		| "buildProjectStateSnapshot"
-		| "resumeInterruptedSessions"
 		| "getActiveRuntimeConfig"
 		| "listManagedProjects"
 		| "getProjectPathById"
@@ -96,20 +112,23 @@ export interface RuntimeStateHub extends IRuntimeBroadcaster {
 			isDocumentVisible: boolean;
 		},
 	) => void;
-	disposeProject: (projectId: string, options?: DisposeRuntimeStateProjectOptions) => void;
+	persistRuntimeSessions: (projectId: string) => Promise<void>;
+	disposeProject: (projectId: string, options?: DisposeRuntimeStateProjectOptions) => Promise<void>;
 	close: () => Promise<void>;
 	getDiagnosticSnapshot: (scope?: Readonly<DiagnosticCaptureScope>) => RuntimeStateHubDiagnosticSnapshot;
 }
 
 export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
-	private readonly resumeAttempted = new Set<string>();
 	private readonly wss: WebSocketServer;
 	private readonly clients: RuntimeStateClientRegistry;
 	private readonly batcher: RuntimeStateMessageBatcher;
 	private readonly metadataMonitor: ReturnType<typeof createProjectMetadataMonitor>;
 	private readonly sessionPersistenceUnsubscribes = new Map<string, () => void>();
-	private readonly sessionPersistenceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	private readonly sessionPersistenceStates = new Map<string, RuntimeSessionPersistenceState>();
+	private readonly sessionPersistenceBarriers = new Set<Promise<void>>();
+	private sessionPersistenceClosed = false;
 	private readonly notificationRevisionsByProject = new Map<string, number>();
+	private readonly notificationPublicationStates = new Map<string, RuntimeNotificationPublicationState>();
 	private readonly diagnosticClientBySocket = new WeakMap<
 		WebSocket,
 		{ clientId: string; capability: string; connectionId: string }
@@ -134,8 +153,12 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				this.clients.broadcastToProject(projectId, buildTaskSessionsUpdatedMessage(projectId, summaries));
 			},
 			onTaskNotificationBatch: (projectId, summaries) => {
-				const notificationRevision = this.nextNotificationRevision(projectId);
-				void this.broadcastTaskNotifications(projectId, notificationRevision, summaries);
+				void this.enqueueNotificationPublication(projectId, async (state, notificationRevision) => {
+					await this.broadcastTaskNotifications(projectId, state, notificationRevision, summaries);
+				});
+			},
+			onTasksReadyForReview: (projectId, taskIds) => {
+				for (const taskId of taskIds) this.broadcastTaskReadyForReview(projectId, taskId);
 			},
 			onProjectsRefreshRequested: (preferredCurrentProjectId) => {
 				void this.broadcastRuntimeProjectsUpdated(preferredCurrentProjectId);
@@ -282,10 +305,27 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		});
 	};
 
-	disposeProject = (projectId: string, options?: DisposeRuntimeStateProjectOptions): void => {
+	persistRuntimeSessions = (projectId: string): Promise<void> => {
+		if (this.sessionPersistenceClosed) {
+			return Promise.reject(new Error("Runtime session persistence is closed."));
+		}
+		const persistence = (async () => {
+			// Explicit persistence is also a write barrier. Mark a fresh generation so
+			// callers that run after the automatic store listener has been detached
+			// still capture the current session snapshot before they resolve.
+			this.scheduleRuntimeSessionPersistence(projectId, 0);
+			await this.flushRuntimeSessionPersistence(projectId);
+		})();
+		const tracked = persistence.finally(() => this.sessionPersistenceBarriers.delete(tracked));
+		this.sessionPersistenceBarriers.add(tracked);
+		return tracked;
+	};
+
+	disposeProject = async (projectId: string, options?: DisposeRuntimeStateProjectOptions): Promise<void> => {
 		this.batcher.disposeProject(projectId);
-		this.disposeRuntimeSessionPersistence(projectId);
-		this.resumeAttempted.delete(projectId);
+		const notificationDisposal = this.disposeNotificationPublications(projectId);
+		const persistenceDisposal = this.disposeRuntimeSessionPersistence(projectId);
+		await Promise.all([notificationDisposal, persistenceDisposal]);
 		this.notificationRevisionsByProject.delete(projectId);
 		this.metadataMonitor.disposeProject(projectId);
 
@@ -344,11 +384,13 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		if (!this.clients.hasClients) {
 			return;
 		}
-		const notificationRevision = this.nextNotificationRevision(projectId);
-		const summaries = await this.collectNotificationSummariesForProject(projectId);
-		this.clients.broadcastToAll(
-			buildTaskNotificationMessage(projectId, notificationRevision, summaries, { replace: true }),
-		);
+		await this.enqueueNotificationPublication(projectId, async (state, notificationRevision) => {
+			const summaries = await this.collectNotificationSummariesForProject(projectId);
+			if (!this.isCurrentNotificationPublication(projectId, state)) return;
+			this.clients.broadcastToAll(
+				buildTaskNotificationMessage(projectId, notificationRevision, summaries, { replace: true }),
+			);
+		});
 	};
 
 	broadcastRuntimeProjectsUpdated = async (preferredCurrentProjectId: string | null): Promise<void> => {
@@ -408,16 +450,32 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	getDiagnosticSnapshot = (scope: Readonly<DiagnosticCaptureScope> = {}): RuntimeStateHubDiagnosticSnapshot => ({
 		clients: this.clients.getDiagnosticSnapshot(scope),
 		batcher: this.batcher.getDiagnosticSnapshot(scope),
-		resumeAttemptedProjectIds:
-			scope.taskId && !scope.projectId
-				? []
-				: Array.from(this.resumeAttempted).filter((projectId) => !scope.projectId || projectId === scope.projectId),
 	});
 
 	close = async (): Promise<void> => {
-		for (const projectId of this.sessionPersistenceUnsubscribes.keys()) {
-			this.disposeRuntimeSessionPersistence(projectId);
+		const trackedProjectIds = Array.from(this.sessionPersistenceUnsubscribes.keys());
+		for (const projectId of trackedProjectIds) {
+			this.unsubscribeRuntimeSessionPersistence(projectId);
 		}
+		const persistenceResults = await Promise.allSettled(
+			trackedProjectIds.map(async (projectId) => await this.flushRuntimeSessionPersistence(projectId)),
+		);
+		const barrierResults: PromiseSettledResult<void>[] = [];
+		while (this.sessionPersistenceBarriers.size > 0) {
+			barrierResults.push(...(await Promise.allSettled(Array.from(this.sessionPersistenceBarriers))));
+		}
+		// No asynchronous gap exists between observing an empty barrier set and
+		// closing admission, so a later acknowledgement fails closed instead of
+		// reporting durability after its writer has been disposed.
+		this.sessionPersistenceClosed = true;
+		const persistenceProjectIds = Array.from(this.sessionPersistenceStates.keys());
+		await Promise.all(
+			persistenceProjectIds.map(async (projectId) => await this.disposeRuntimeSessionPersistence(projectId)),
+		);
+		const notificationPublications = Array.from(this.notificationPublicationStates.values());
+		for (const state of notificationPublications) state.disposed = true;
+		this.notificationPublicationStates.clear();
+		await Promise.allSettled(notificationPublications.map(async (state) => await state.tail));
 		// Dispose base class resources (metadata monitor and diagnostics subscriptions).
 		this.dispose();
 		this.batcher.close();
@@ -430,47 +488,146 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				resolveClose();
 			});
 		});
+
+		const persistenceFailures = [...persistenceResults, ...barrierResults].flatMap((result) =>
+			result.status === "rejected" ? [result.reason] : [],
+		);
+		if (persistenceFailures.length > 0) {
+			throw new AggregateError(persistenceFailures, "Runtime session persistence did not finish during shutdown.");
+		}
 	};
 
 	// ── Private helpers ───────────────────────────────────────────────────
 
 	private scheduleRuntimeSessionPersistence(projectId: string, delayMs = 100): void {
-		const currentTimer = this.sessionPersistenceTimers.get(projectId);
-		if (currentTimer) {
-			clearTimeout(currentTimer);
+		let state = this.sessionPersistenceStates.get(projectId);
+		if (!state) {
+			state = {
+				dirtyGeneration: 0,
+				persistedGeneration: 0,
+				retryAttempt: 0,
+				lastError: null,
+				timer: null,
+				inFlight: null,
+				disposed: false,
+			};
+			this.sessionPersistenceStates.set(projectId, state);
 		}
-		const timer = setTimeout(() => {
-			this.sessionPersistenceTimers.delete(projectId);
-			const projectPath = this.deps.projectRegistry.getProjectPathById(projectId);
-			if (!projectPath) {
-				return;
-			}
-			void this.deps.boardCommands.reconcileRuntimeSessions({ projectId, projectPath }).catch((error) => {
-				hubLog.warn("runtime session persistence failed", {
-					projectId,
-					error: error instanceof Error ? error.message : String(error),
-				});
-			});
-		}, delayMs);
-		timer.unref?.();
-		this.sessionPersistenceTimers.set(projectId, timer);
+		if (state.disposed) return;
+		state.dirtyGeneration += 1;
+		this.armRuntimeSessionPersistence(projectId, state, delayMs);
 	}
 
-	private disposeRuntimeSessionPersistence(projectId: string): void {
+	private armRuntimeSessionPersistence(
+		projectId: string,
+		state: RuntimeSessionPersistenceState,
+		delayMs: number,
+	): void {
+		if (state.disposed || state.inFlight) return;
+		if (state.timer) clearTimeout(state.timer);
+		state.timer = setTimeout(() => {
+			state.timer = null;
+			void this.runRuntimeSessionPersistence(projectId, state);
+		}, delayMs);
+		state.timer.unref?.();
+	}
+
+	private async runRuntimeSessionPersistence(
+		projectId: string,
+		state: RuntimeSessionPersistenceState,
+		options: { retry?: boolean } = {},
+	): Promise<void> {
+		if (state.disposed || state.persistedGeneration >= state.dirtyGeneration) return;
+		if (state.inFlight) {
+			await state.inFlight;
+			return;
+		}
+		const targetGeneration = state.dirtyGeneration;
+		let succeeded = false;
+		state.inFlight = (async () => {
+			const projectPath = this.deps.projectRegistry.getProjectPathById(projectId);
+			if (!projectPath) throw new Error("Project path is unavailable for runtime session persistence.");
+			await this.deps.boardCommands.reconcileRuntimeSessions({ projectId, projectPath });
+			succeeded = true;
+			state.persistedGeneration = Math.max(state.persistedGeneration, targetGeneration);
+			state.retryAttempt = 0;
+			state.lastError = null;
+		})()
+			.catch((error) => {
+				state.retryAttempt += 1;
+				state.lastError = error instanceof Error ? error : new Error(String(error));
+				hubLog.warn("runtime session persistence failed", {
+					projectId,
+					dirtyGeneration: state.dirtyGeneration,
+					persistedGeneration: state.persistedGeneration,
+					retryAttempt: state.retryAttempt,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			})
+			.finally(() => {
+				state.inFlight = null;
+			});
+		await state.inFlight;
+		if (state.disposed || this.sessionPersistenceStates.get(projectId) !== state) return;
+		if (state.persistedGeneration < state.dirtyGeneration && options.retry !== false) {
+			const retryDelay = succeeded
+				? 0
+				: Math.min(250 * 2 ** Math.max(0, state.retryAttempt - 1), SESSION_PERSISTENCE_RETRY_MAX_MS);
+			this.armRuntimeSessionPersistence(projectId, state, retryDelay);
+		}
+	}
+
+	private async flushRuntimeSessionPersistence(projectId: string): Promise<void> {
+		const state = this.sessionPersistenceStates.get(projectId);
+		if (!state || state.disposed) return;
+		// A caller needs the generation that was dirty when it requested the
+		// flush, not an unbounded stream of newer activity. Concurrent hook
+		// acknowledgements may advance dirtyGeneration while this caller waits.
+		const requiredGeneration = state.dirtyGeneration;
+		if (state.timer) {
+			clearTimeout(state.timer);
+			state.timer = null;
+		}
+		if (state.inFlight) await state.inFlight;
+		for (
+			let attempt = 0;
+			attempt < SESSION_PERSISTENCE_FINAL_ATTEMPTS && state.persistedGeneration < requiredGeneration;
+			attempt += 1
+		) {
+			await this.runRuntimeSessionPersistence(projectId, state, { retry: false });
+		}
+		if (state.persistedGeneration < requiredGeneration) {
+			throw (
+				state.lastError ??
+				new Error(`Runtime session persistence did not reach the required generation for project "${projectId}".`)
+			);
+		}
+	}
+
+	private unsubscribeRuntimeSessionPersistence(projectId: string): void {
 		const unsubscribe = this.sessionPersistenceUnsubscribes.get(projectId);
 		if (unsubscribe) {
 			try {
 				unsubscribe();
 			} catch {
-				// Ignore listener cleanup failures during project removal/shutdown.
+				// Listener cleanup must not prevent bounded shutdown persistence.
 			}
 		}
 		this.sessionPersistenceUnsubscribes.delete(projectId);
-		const timer = this.sessionPersistenceTimers.get(projectId);
-		if (timer) {
-			clearTimeout(timer);
+	}
+
+	private async disposeRuntimeSessionPersistence(projectId: string): Promise<void> {
+		this.unsubscribeRuntimeSessionPersistence(projectId);
+		const state = this.sessionPersistenceStates.get(projectId);
+		if (state) {
+			state.disposed = true;
+			if (state.timer) clearTimeout(state.timer);
+			state.timer = null;
+			// Remove the old generation before awaiting so a legitimate re-add can
+			// install a fresh writer without inheriting disposed state.
+			this.sessionPersistenceStates.delete(projectId);
+			if (state.inFlight) await state.inFlight;
 		}
-		this.sessionPersistenceTimers.delete(projectId);
 	}
 
 	private async handleConnection(client: WebSocket, context: unknown): Promise<void> {
@@ -507,7 +664,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			const isDocumentVisible = this.parseDocumentVisible(context);
 			const resolved = await this.deps.projectRegistry.resolveProjectForStream(requestedProjectId, {
 				onRemovedProject: ({ projectId, message }) => {
-					this.disposeProject(projectId, {
+					return this.disposeProject(projectId, {
 						disconnectClients: true,
 						closeClientErrorMessage: message,
 					});
@@ -518,7 +675,6 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				return;
 			}
 
-			this.clients.registerGlobalClient(client);
 			let monitorProjectId: string | null = null;
 			let didConnectProjectMonitor = false;
 
@@ -532,6 +688,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				this.sendMessage(
 					client,
 					buildSnapshotMessage(
+						QUARTERDECK_BUILD_ID,
 						snapshot.currentProjectId,
 						snapshot.projects,
 						snapshot.projectState,
@@ -539,14 +696,23 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 						snapshot.notificationRevisionsByProject,
 					),
 				);
+				monitorProjectId = snapshot.projectId;
+				// Do not expose a half-hydrated client to live publications. Register
+				// immediately after the snapshot send, then issue revision-fenced
+				// catch-ups for every durable projection. This closes the async load
+				// window without allowing an older snapshot to overwrite a live delta.
+				this.clients.registerGlobalClient(client);
+				if (monitorProjectId) {
+					this.clients.registerProjectClient(monitorProjectId, client, runtimeClientId);
+				}
+				this.enqueueConnectionCatchupForClient(client, {
+					projectId: snapshot.projectId,
+					projectPath: snapshot.projectPath,
+					projectIds: snapshot.projects.map((project) => project.id),
+				});
 				if (client.readyState !== WebSocket.OPEN) {
 					this.clients.removeClient(client);
 					return;
-				}
-
-				monitorProjectId = snapshot.projectId;
-				if (monitorProjectId) {
-					this.clients.registerProjectClient(monitorProjectId, client, runtimeClientId);
 				}
 
 				if (snapshot.projectStateError) {
@@ -591,15 +757,6 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				}
 				if (resolved.didPruneProjects) {
 					void this.broadcastRuntimeProjectsUpdated(resolved.projectId);
-				}
-				if (
-					snapshot.projectId &&
-					snapshot.projectPath &&
-					snapshot.projectState &&
-					!this.resumeAttempted.has(snapshot.projectId)
-				) {
-					this.resumeAttempted.add(snapshot.projectId);
-					void this.deps.projectRegistry.resumeInterruptedSessions(snapshot.projectId, snapshot.projectPath);
 				}
 			} catch (error) {
 				if (didConnectProjectMonitor && monitorProjectId) {
@@ -748,8 +905,113 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		return nextRevision;
 	}
 
+	private isCurrentNotificationPublication(projectId: string, state: RuntimeNotificationPublicationState): boolean {
+		return !state.disposed && this.notificationPublicationStates.get(projectId) === state;
+	}
+
+	private enqueueNotificationPublication(
+		projectId: string,
+		publish: (state: RuntimeNotificationPublicationState, notificationRevision: number) => Promise<void>,
+	): Promise<void> {
+		let state = this.notificationPublicationStates.get(projectId);
+		if (!state) {
+			state = { tail: Promise.resolve(), disposed: false };
+			this.notificationPublicationStates.set(projectId, state);
+		}
+		const publicationState = state;
+		const next = publicationState.tail
+			.then(async () => {
+				if (!this.isCurrentNotificationPublication(projectId, publicationState)) return;
+				const notificationRevision = this.nextNotificationRevision(projectId);
+				await publish(publicationState, notificationRevision);
+			})
+			.catch((error) => {
+				hubLog.warn("runtime notification publication failed", {
+					projectId,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			});
+		publicationState.tail = next;
+		return next;
+	}
+
+	private async disposeNotificationPublications(projectId: string): Promise<void> {
+		const state = this.notificationPublicationStates.get(projectId);
+		if (!state) return;
+		state.disposed = true;
+		this.notificationPublicationStates.delete(projectId);
+		await state.tail;
+	}
+
+	private enqueueNotificationCatchupForClient(client: WebSocket, projectIds: readonly string[]): void {
+		for (const projectId of projectIds) {
+			void this.enqueueNotificationPublication(projectId, async (state, notificationRevision) => {
+				const summaries = await this.collectNotificationSummariesForProject(projectId);
+				if (!this.isCurrentNotificationPublication(projectId, state)) return;
+				this.sendMessage(
+					client,
+					buildTaskNotificationMessage(projectId, notificationRevision, summaries, { replace: true }),
+				);
+			});
+		}
+	}
+
+	private enqueueConnectionCatchupForClient(
+		client: WebSocket,
+		input: { projectId: string | null; projectPath: string | null; projectIds: readonly string[] },
+	): void {
+		this.enqueueNotificationCatchupForClient(client, input.projectIds);
+		void this.sendDurableConnectionCatchup(client, input.projectId, input.projectPath);
+	}
+
+	private async sendDurableConnectionCatchup(
+		client: WebSocket,
+		projectId: string | null,
+		projectPath: string | null,
+	): Promise<void> {
+		const projectsPromise = this.deps.projectRegistry.buildProjectsPayload(projectId);
+		const projectStatePromise =
+			projectId && projectPath
+				? this.deps.projectRegistry.buildProjectStateSnapshot(projectId, projectPath)
+				: Promise.resolve<RuntimeProjectStateResponse | null>(null);
+		const [projectsResult, projectStateResult] = await Promise.allSettled([projectsPromise, projectStatePromise]);
+
+		if (client.readyState !== WebSocket.OPEN) return;
+
+		const projectState = projectStateResult.status === "fulfilled" ? projectStateResult.value : null;
+		if (projectState && projectId) {
+			this.sendMessage(client, buildProjectStateUpdatedMessage(projectId, projectState));
+		}
+		if (projectsResult.status === "fulfilled") {
+			const projects =
+				projectState && projectId
+					? this.mergeProjectSummaryForState(projectsResult.value.projects, projectId, projectState)
+					: projectsResult.value.projects;
+			this.sendMessage(client, buildProjectsUpdatedMessage(projectsResult.value.currentProjectId, projects));
+		}
+
+		if (projectsResult.status === "rejected" || projectStateResult.status === "rejected") {
+			hubLog.warn("runtime connection catch-up failed", {
+				projectId,
+				projectsError:
+					projectsResult.status === "rejected"
+						? projectsResult.reason instanceof Error
+							? projectsResult.reason.message
+							: String(projectsResult.reason)
+						: null,
+				projectStateError:
+					projectStateResult.status === "rejected"
+						? projectStateResult.reason instanceof Error
+							? projectStateResult.reason.message
+							: String(projectStateResult.reason)
+						: null,
+			});
+		}
+	}
+
 	private async broadcastTaskNotifications(
 		projectId: string,
+		state: RuntimeNotificationPublicationState,
 		notificationRevision: number,
 		summaries: RuntimeTaskSessionSummary[],
 	): Promise<void> {
@@ -765,6 +1027,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			if (prunedSummaries.length === 0 && removedTaskIds.length === 0) {
 				return;
 			}
+			if (!this.isCurrentNotificationPublication(projectId, state)) return;
 			this.clients.broadcastToAll(
 				buildTaskNotificationMessage(projectId, notificationRevision, prunedSummaries, { removedTaskIds }),
 			);
@@ -777,6 +1040,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				summaryCount: summaries.length,
 				error: error instanceof Error ? error.message : String(error),
 			});
+			if (!this.isCurrentNotificationPublication(projectId, state)) return;
 			this.clients.broadcastToAll(buildTaskNotificationMessage(projectId, notificationRevision, summaries));
 		}
 	}

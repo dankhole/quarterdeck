@@ -173,14 +173,14 @@ describe("buildCodexHookConfigOverrides", () => {
 		expect(PostToolUse[0]?.hooks[0]?.command).toContain("'--event' 'to_in_progress'");
 	});
 
-	it("brackets manual compaction without changing state for automatic compaction", () => {
+	it("reports manual compaction as activity without claiming a task transition", () => {
 		const { PreCompact, PostCompact } = buildCodexHooksConfig();
 
 		expect(PreCompact).toHaveLength(1);
 		expect(PreCompact[0]?.matcher).toBe("manual");
-		expect(PreCompact[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_in_progress'");
+		expect(PreCompact[0]?.hooks[0]?.command).toContain("'notify' '--event' 'activity'");
 		expect(PostCompact).toHaveLength(1);
 		expect(PostCompact[0]?.matcher).toBe("manual");
-		expect(PostCompact[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_review'");
+		expect(PostCompact[0]?.hooks[0]?.command).toContain("'notify' '--event' 'activity'");
 	});
 });

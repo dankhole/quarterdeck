@@ -58,12 +58,7 @@ function latestStartupRecoveryRecords(records: readonly DiagnosticRecordEnvelope
 
 function currentProjectSessions(snapshot: DiagnosticSnapshot): Map<string, Record<string, unknown>> | null {
 	const provider = snapshot.providers.find((candidate) => candidate.name === "projects");
-	if (
-		!provider ||
-		provider.status !== "completed" ||
-		!isRecord(provider.data) ||
-		!Array.isArray(provider.data.sessions)
-	) {
+	if (provider?.status !== "completed" || !isRecord(provider.data) || !Array.isArray(provider.data.sessions)) {
 		return null;
 	}
 	const sessions = new Map<string, Record<string, unknown>>();
@@ -76,6 +71,14 @@ function currentProjectSessions(snapshot: DiagnosticSnapshot): Map<string, Recor
 		if (taskKey) sessions.set(taskKey, rawSession);
 	}
 	return sessions;
+}
+
+function hasPiProjectSession(snapshot: DiagnosticSnapshot): boolean {
+	const provider = snapshot.providers.find((candidate) => candidate.name === "projects");
+	if (provider?.status !== "completed" || !isRecord(provider.data) || !Array.isArray(provider.data.sessions)) {
+		return false;
+	}
+	return provider.data.sessions.some((session) => isRecord(session) && stringValue(session.agentId) === "pi");
 }
 
 function isUnresolvedStartupRecoveryExhaustion(
@@ -137,6 +140,7 @@ export function evaluateDiagnosticSnapshot(
 	const findings: DiagnosticFinding[] = [];
 	const now = Date.now();
 	const projectSessions = currentProjectSessions(snapshot);
+	const piSupportRelevant = hasPiProjectSession(snapshot);
 	const terminalRuntimeEvidenceIds = evidenceIds(records, ["terminal.runtime_dependency_missing"]);
 	let terminalRuntimeFindingAdded = false;
 	if (terminalRuntimeEvidenceIds.length > 0) {
@@ -230,6 +234,46 @@ export function evaluateDiagnosticSnapshot(
 						"Recorder bounds protected the application, so the timeline contains a documented gap.",
 						{},
 						evidenceIds(records, ["diagnostics.records_dropped"]),
+					),
+				);
+			}
+		}
+		if (provider.name === "pi_support" && isRecord(provider.data) && piSupportRelevant) {
+			const supportedVersion = stringValue(provider.data.supportedVersion) ?? "the supported release";
+			const detectedVersion = stringValue(provider.data.detectedVersion);
+			const reason = stringValue(provider.data.reason);
+			if (booleanValue(provider.data.extensionAvailable) === false) {
+				findings.push(
+					createFinding(
+						"PI_LIFECYCLE_EXTENSION_MISSING",
+						"error",
+						"The managed Pi lifecycle extension is unavailable",
+						"Quarterdeck cannot safely author Pi task state or approval interactions without its launch-scoped extension asset. Reinstall or rebuild Quarterdeck before starting Pi tasks.",
+						{},
+						[],
+					),
+				);
+			}
+			if (booleanValue(provider.data.installed) === false && reason === "unsupported_version") {
+				findings.push(
+					createFinding(
+						"PI_VERSION_UNSUPPORTED",
+						"error",
+						`Pi ${detectedVersion ?? "with an unknown version"} is not supported`,
+						`Quarterdeck requires exactly Pi ${supportedVersion}. Install @earendil-works/pi-coding-agent@${supportedVersion} before starting or recovering Pi tasks.`,
+						{},
+						[],
+					),
+				);
+			} else if (booleanValue(provider.data.installed) === false && reason === "missing") {
+				findings.push(
+					createFinding(
+						"PI_BINARY_MISSING",
+						"warn",
+						"Pi is not available on Quarterdeck’s PATH",
+						`Install @earendil-works/pi-coding-agent@${supportedVersion} or choose another task harness.`,
+						{},
+						[],
 					),
 				);
 			}
@@ -350,6 +394,22 @@ export function evaluateDiagnosticSnapshot(
 							"Restart and worktree-divergence guidance may be incomplete for this session.",
 							context,
 							evidenceIds(records, ["session.process_spawned"]),
+						),
+					);
+				}
+				if (
+					stringValue(rawSession.agentId) === "pi" &&
+					booleanValue(rawSession.startupRecoveryRequired) === true &&
+					booleanValue(rawSession.hasResumeSessionId) === false
+				) {
+					findings.push(
+						createFinding(
+							"PI_RECOVERY_SESSION_ID_MISSING",
+							"error",
+							"An interrupted Pi task has no exact provider session ID",
+							"Automatic recovery is intentionally blocked because selecting Pi’s latest session could resume the wrong conversation. Use an explicit Restart and verify the selected conversation.",
+							context,
+							evidenceIds(records, ["session.startup_recovery_completed"]),
 						),
 					);
 				}

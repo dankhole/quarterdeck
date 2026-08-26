@@ -36,7 +36,7 @@ A Trash transition that unblocks linked Backlog tasks journals the linked-task p
 ## Runtime-owned projections
 
 - Runtime-owned session, generated-title, branch/base-ref, and worktree metadata projections go through the same command service and internal mutation lock before the newer board is published.
-- The runtime state hub schedules session persistence from terminal-store changes. Do not move that projection into browser effects.
+- The runtime state hub schedules session persistence from terminal-store changes, retains dirty generations across an in-flight write, retries failures with bounded backoff, and flushes the newest generation during orderly shutdown. Do not move that projection into browser effects or treat a logged persistence failure as success.
 - The browser Git/worktree metadata read model is project-scoped even though task metadata is indexed by task ID. Change its scope before paint during navigation, and pass the originating project ID into async writes so late results cannot attach to the next project.
 
 ### Authoritative browser hydration
@@ -75,12 +75,19 @@ Notification ownership is intentionally split:
 - UI consumers read the provider-owned projection (`needsInputByProject` and current/other-project Needs Input flags) rather than re-deriving ownership from raw buckets.
 - `use-audible-notifications` may flatten project buckets into task entries because sound transitions are cross-project and event-oriented.
 - Audible detection follows semantic notification edges, not only active/stopped column changes. A stopped Review card can become approval-required without crossing columns; that higher-priority transition emits one sound, while retained initial state and unchanged metadata remain silent.
+- Board columns and project navigation pills answer different questions. A blocked task remains physically in Review, but navigation attention categories are exclusive: Needs Input overrides Review. Three Review-column cards with one blocked task display `R 2 · NI 1`; one blocked Review card displays only `NI 1`.
 
 ## Task indicator semantics
 
-Use `deriveTaskIndicatorState(summary)` and `isPermissionActivity(...)` from `src/core/api/task-indicators.ts` / `@runtime-contract` for approval, review-ready, Needs Input, and failure meaning.
+Use `deriveTaskIndicatorState(summary)` from `src/core/api/task-indicators.ts` / `@runtime-contract` for every user-visible task classification. `isPermissionActivity(...)` exists only for bounded legacy metadata cleanup; activity text is not task-state authority.
 
 Do not reinterpret `reviewReason`, `latestHookActivity.notificationType`, `hookEventName`, or `"Waiting for approval"` directly in components or hooks. Project badges, status badges, audible notifications, and approval-blocking behavior flow from the shared semantic layer.
+
+The canonical persisted/runtime lifecycle has only three top-level values: `idle`, `running`, and `awaiting_review`. The shared classifier exposes the five public outcomes clients need: `none`, `running`, `review`, `needs_input`, and `error`. `failed` and `interrupted` remain input-only persistence migrations and normalize to Review with `error` or `interrupted` detail before entering the runtime domain. A component, transport, startup path, or notification hook must never add another state table.
+
+Native Codex/Claude/Pi Running requires a matching `nativeWorkEvidence` lease issued only by `SessionTransitionController` for the exact current launch. The lease is refreshed by authoritative working hooks and expires after five minutes without renewed provider evidence; expiry becomes quiet Review/Unconfirmed. A PTY PID, output, browser input, submit intent, process replacement, and persisted evidence from a previous runtime are never sufficient. Shell terminals are manual process surfaces and do not use this task-agent evidence contract.
+
+`RuntimeTaskSessionSummary.outstandingInteraction` is the durable provider-interaction authority. `waiting` means the provider currently requires action; `response_submitted` means input reached the exact local PTY but provider resumption is not yet proven; `resolution_unknown` means the process or recovery path ended before the outcome could be established. These statuses remain nested under Review rather than overloading Running or `reviewReason`. The runtime state hub derives notifications, project refreshes, and ready-for-review events from the shared semantic result; transports must not reclassify raw hook names. A coalesced ready event is emitted only if the delivered summary is still review-ready.
 
 ## Task path terminology
 

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	STORED_CLAUDE_RESUME_FAILED_WARNING,
 	STORED_CODEX_RESUME_FAILED_WARNING,
+	STORED_PI_RESUME_FAILED_WARNING,
 } from "../../../src/terminal/codex-resume-failure";
 
 const prepareAgentLaunchMock = vi.hoisted(() => vi.fn());
@@ -22,6 +23,7 @@ import {
 	LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
 	TerminalSessionManager,
 } from "../../../src/terminal";
+import { createTestProviderHookRequest } from "../../utilities/task-session-factory";
 
 interface MockSpawnRequest {
 	onData?: (chunk: Buffer) => void;
@@ -49,6 +51,22 @@ function createMockPtySession(pid: number, request: MockSpawnRequest) {
 			request.onExit?.({ exitCode });
 		},
 	};
+}
+
+function applyCurrentProviderHook(
+	manager: TerminalSessionManager,
+	event: "activity" | "to_review" | "to_in_progress",
+	options: { hookEventName?: string; metadata?: Record<string, string> } = {},
+): void {
+	const summary = manager.store.getSummary("task-1");
+	if (!summary) throw new Error("Expected task session summary.");
+	manager.applyProviderHook(
+		"task-1",
+		createTestProviderHookRequest(summary, event, {
+			hookEventName: options.hookEventName,
+			metadata: options.metadata,
+		}),
+	);
 }
 
 describe("TerminalSessionManager auto-restart", () => {
@@ -89,19 +107,90 @@ describe("TerminalSessionManager auto-restart", () => {
 		});
 
 		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+		applyCurrentProviderHook(manager, "activity", {
+			hookEventName: "SessionStart",
+			metadata: { sessionId: "claude-session-1" },
+		});
+		applyCurrentProviderHook(manager, "to_in_progress", {
+			hookEventName: "UserPromptSubmit",
+			metadata: { sessionId: "claude-session-1" },
+		});
 		spawnedSessions[0]?.triggerExit(130);
 
 		await vi.waitFor(() => {
 			expect(ptySessionSpawnMock).toHaveBeenCalledTimes(2);
 		});
-		// Auto-restart uses awaitReview=true — the agent is at its prompt, not
-		// actively working, so it lands in review for the user to re-engage.
-		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		// Process replacement is not resumed-work evidence. The provider must
+		// prove whether the interrupted turn continued or completed.
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "interrupted",
+		});
 		expect(manager.store.getSummary("task-1")?.pid).toBe(222);
 		expect(prepareAgentLaunchMock).toHaveBeenNthCalledWith(
 			2,
 			expect.objectContaining({ claudeFullscreenEnabled: true }),
 		);
+
+		applyCurrentProviderHook(manager, "to_review", { hookEventName: "Stop" });
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "hook",
+		});
+	});
+
+	it("rebinds a preserved interaction to the replacement process identity", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+
+		const summary = await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "claude-session-1",
+			awaitReview: true,
+			resumeSemanticState: {
+				state: "awaiting_review",
+				reviewReason: "attention",
+				lastHookAt: 100,
+				latestHookActivity: null,
+				outstandingInteraction: {
+					provider: "claude",
+					kind: "question",
+					status: "response_submitted",
+					requestEventName: "PreToolUse",
+					openedAt: 90,
+					updatedAt: 100,
+					responseSubmittedAt: 100,
+					responseKind: "submit",
+					sessionInstanceId: "old-process",
+					providerSessionId: "claude-session-1",
+					turnId: null,
+					promptId: "prompt-1",
+					toolUseId: "question-1",
+					elicitationId: null,
+					providerAgentId: null,
+					toolName: "AskUserQuestion",
+				},
+			},
+		});
+
+		expect(spawnedSessions).toHaveLength(1);
+		expect(summary.outstandingInteraction).toMatchObject({
+			status: "response_submitted",
+			sessionInstanceId: summary.sessionInstanceId,
+			providerSessionId: "claude-session-1",
+		});
+		expect(summary.outstandingInteraction?.sessionInstanceId).not.toBe("old-process");
 	});
 
 	it("does not restore a cleared legacy uncertainty warning during a later automatic restart", async () => {
@@ -124,18 +213,21 @@ describe("TerminalSessionManager auto-restart", () => {
 			cwd: "/tmp/task-1",
 			prompt: "",
 			resumeConversation: true,
+			resumeSessionId: "codex-session-1",
 			awaitReview: true,
 			startupRecoveryToken: recoveryToken,
-			startupRecoveryReviewState: {
+			resumeSemanticState: {
+				state: "awaiting_review",
 				reviewReason: "interrupted",
 				lastHookAt: null,
 				latestHookActivity: null,
 			},
+			startupRecoverySemanticStateUncertain: true,
 			startupRecoveryWarningMessage: LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
 		});
 		manager.completeStartupRecovery("task-1", recoveryToken);
 
-		manager.store.applySessionEvent("task-1", { type: "hook.to_in_progress" });
+		applyCurrentProviderHook(manager, "to_in_progress");
 		expect(manager.store.getSummary("task-1")).toMatchObject({
 			state: "running",
 			startupRecoverySemanticStateUncertain: false,
@@ -173,7 +265,7 @@ describe("TerminalSessionManager auto-restart", () => {
 
 		// Agent sends to_review hook — transitions to awaiting_review before exit.
 		// This is the normal lifecycle: agent finishes work, sends hook, then exits.
-		manager.store.applySessionEvent("task-1", { type: "hook.to_review" });
+		applyCurrentProviderHook(manager, "to_review");
 		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 
 		// Process exits (code 1 — typical Claude Code shutdown noise)
@@ -211,7 +303,7 @@ describe("TerminalSessionManager auto-restart", () => {
 		});
 
 		// Agent sends to_review hook, then exits cleanly
-		manager.store.applySessionEvent("task-1", { type: "hook.to_review" });
+		applyCurrentProviderHook(manager, "to_review");
 		spawnedSessions[0]?.triggerExit(0);
 		await Promise.resolve();
 		await Promise.resolve();
@@ -398,6 +490,68 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(outputText).toContain("Could not resume the stored Claude session");
 	});
 
+	it("does not relabel a confirmed resumed session as a startup failure when an input wait later crashes", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111 + spawnedSessions.length, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+
+		const started = await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "claude-session-1",
+			awaitReview: true,
+		});
+		const sessionInstanceId = started.sessionInstanceId as string;
+		manager.recordHookReceived("task-1");
+		expect(
+			manager.observeTaskSessionLaunchHook("task-1", {
+				source: "claude",
+				hookEventName: "SessionStart",
+				sessionInstanceId,
+				sessionId: "claude-session-1",
+			}),
+		).toBe(true);
+		manager.applyProviderHook("task-1", {
+			taskId: "task-1",
+			projectId: "project-1",
+			event: "activity",
+			metadata: {
+				source: "claude",
+				hookEventName: "PreToolUse",
+				toolName: "AskUserQuestion",
+				toolUseId: "question-1",
+				promptId: "prompt-1",
+				sessionInstanceId,
+				sessionId: "claude-session-1",
+			},
+			delivery: {
+				id: "00000000-0000-4000-8000-000000000701",
+				occurredAt: 100,
+			},
+		});
+
+		spawnedSessions[0]?.triggerExit(1);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "error",
+			resumeSessionId: "claude-session-1",
+			outstandingInteraction: { status: "resolution_unknown", toolUseId: "question-1" },
+		});
+		expect(manager.store.getSummary("task-1")?.warningMessage).toContain("input request was unresolved");
+	});
+
 	it("does not reconnect-auto-restart a failed Codex stored-id resume", async () => {
 		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
 		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
@@ -438,6 +592,100 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
 		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("error");
+	});
+
+	it("surfaces a Pi replacement that spawns and then fails its exact targeted resume", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111 + spawnedSessions.length, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", {
+			onState: vi.fn(),
+			onOutput: vi.fn(),
+			onExit: vi.fn(),
+		});
+
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "start",
+			resumeConversation: false,
+		});
+		manager.store.update("task-1", { resumeSessionId: "pi-session-1" });
+		applyCurrentProviderHook(manager, "to_in_progress", {
+			hookEventName: "AgentStart",
+			metadata: { sessionId: "pi-session-1", turnId: "run-1" },
+		});
+		expect(manager.store.getSummary("task-1")?.state).toBe("running");
+
+		spawnedSessions[0]?.triggerExit(1);
+		await vi.waitFor(() => expect(spawnedSessions).toHaveLength(2));
+		expect(prepareAgentLaunchMock).toHaveBeenNthCalledWith(
+			2,
+			expect.objectContaining({
+				prompt: "",
+				images: undefined,
+				resumeConversation: true,
+				resumeSessionId: "pi-session-1",
+			}),
+		);
+		spawnedSessions[1]?.triggerExit(78);
+
+		await vi.waitFor(() => {
+			expect(manager.store.getSummary("task-1")).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "error",
+				resumeSessionId: null,
+				warningMessage: STORED_PI_RESUME_FAILED_WARNING,
+			});
+		});
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(2);
+	});
+
+	it("stops a non-startup Pi resume that reports a different session identity", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const onOutput = vi.fn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", { onState: vi.fn(), onOutput, onExit: vi.fn() });
+		const summary = await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "expected-session",
+			awaitReview: true,
+		});
+
+		expect(
+			manager.observeTaskSessionLaunchHook("task-1", {
+				sessionInstanceId: summary.sessionInstanceId ?? undefined,
+				sessionId: "wrong-session",
+			}),
+		).toBe(false);
+		expect(spawnedSessions[0]?.stop).toHaveBeenCalledWith({ interrupted: true });
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "error",
+			resumeSessionId: null,
+			warningMessage: STORED_PI_RESUME_FAILED_WARNING,
+		});
+		expect(onOutput).toHaveBeenCalledWith(expect.any(Buffer));
 	});
 
 	it("does not reconnect-auto-restart after bounded startup recovery is exhausted", async () => {
@@ -544,7 +792,7 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(manager.isStartupRecoveryCurrent("task-1", recoveryToken)).toBe(true);
 	});
 
-	it("keeps the fresh prompt fallback for clean startup resume exits", async () => {
+	it("does not replay a prompt after a clean targeted resume exits before readiness", async () => {
 		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
 		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
 			const session = createMockPtySession(111 + spawnedSessions.length, request);
@@ -573,12 +821,12 @@ describe("TerminalSessionManager auto-restart", () => {
 
 		spawnedSessions[0]?.triggerExit(0);
 
-		await vi.waitFor(() => {
-			expect(ptySessionSpawnMock).toHaveBeenCalledTimes(2);
-		});
+		await vi.waitFor(() => expect(manager.store.getSummary("task-1")?.reviewReason).toBe("error"));
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
 		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.store.getSummary("task-1")?.pid).toBe(112);
-		expect(manager.store.getSummary("task-1")?.resumeSessionId).toBeNull();
+		expect(manager.store.getSummary("task-1")?.pid).toBeNull();
+		expect(manager.store.getSummary("task-1")?.resumeSessionId).toBe("codex-session-1");
+		expect(manager.store.getSummary("task-1")?.warningMessage).toContain("no replacement prompt was replayed");
 	});
 
 	it("lets bounded startup recovery own a clean resume exit without a fresh-prompt fallback", async () => {
@@ -703,6 +951,14 @@ describe("TerminalSessionManager auto-restart", () => {
 				cwd: "/tmp/task-1",
 				prompt: "Fix the bug",
 			});
+			applyCurrentProviderHook(manager, "activity", {
+				hookEventName: "SessionStart",
+				metadata: { sessionId: "claude-session-1" },
+			});
+			applyCurrentProviderHook(manager, "to_in_progress", {
+				hookEventName: "UserPromptSubmit",
+				metadata: { sessionId: "claude-session-1" },
+			});
 
 			// Exit triggers auto-restart, which will fail on prepareAgentLaunch
 			spawnedSessions[0]?.triggerExit(130);
@@ -755,6 +1011,14 @@ describe("TerminalSessionManager auto-restart", () => {
 				cwd: "/tmp/task-1",
 				prompt: "Fix the bug",
 			});
+			applyCurrentProviderHook(manager, "activity", {
+				hookEventName: "SessionStart",
+				metadata: { sessionId: "claude-session-1" },
+			});
+			applyCurrentProviderHook(manager, "to_in_progress", {
+				hookEventName: "UserPromptSubmit",
+				metadata: { sessionId: "claude-session-1" },
+			});
 
 			// Each restarted session starts in awaiting_review (awaitReview=true).
 			// Transition back to running via hook before each exit so auto-restart
@@ -764,17 +1028,17 @@ describe("TerminalSessionManager auto-restart", () => {
 			await vi.waitFor(() => expect(spawnedSessions).toHaveLength(2));
 
 			// 2nd exit -> auto-restart #2
-			manager.store.applySessionEvent("task-1", { type: "hook.to_in_progress" });
+			applyCurrentProviderHook(manager, "to_in_progress");
 			spawnedSessions[1]?.triggerExit(1);
 			await vi.waitFor(() => expect(spawnedSessions).toHaveLength(3));
 
 			// 3rd exit -> auto-restart #3
-			manager.store.applySessionEvent("task-1", { type: "hook.to_in_progress" });
+			applyCurrentProviderHook(manager, "to_in_progress");
 			spawnedSessions[2]?.triggerExit(1);
 			await vi.waitFor(() => expect(spawnedSessions).toHaveLength(4));
 
 			// 4th exit -> rate limited, no more restarts
-			manager.store.applySessionEvent("task-1", { type: "hook.to_in_progress" });
+			applyCurrentProviderHook(manager, "to_in_progress");
 			spawnedSessions[3]?.triggerExit(1);
 			await vi.advanceTimersByTimeAsync(100);
 			expect(spawnedSessions).toHaveLength(4); // No 5th spawn

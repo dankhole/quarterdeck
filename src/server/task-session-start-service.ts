@@ -12,9 +12,10 @@ import { loadProjectState } from "../state";
 import {
 	assertPtyRuntimeAvailable,
 	cloneStartTaskSessionRequest,
+	deriveSessionResumeSemanticState,
 	PtyRuntimeDependencyError,
+	type SessionResumeSemanticState,
 	type StartTaskSessionRequest,
-	type StartupRecoveryReviewState,
 	type TerminalSessionManager,
 } from "../terminal";
 import { hasFailedStoredCodexResume, STORED_CODEX_RESUME_FAILED_WARNING } from "../terminal/codex-resume-failure";
@@ -49,8 +50,10 @@ export interface TaskSessionStartServiceOptions {
 	 * target intentionally repeats the same best-effort resume strategy.
 	 */
 	resumeSessionIdOverride?: string | null;
-	/** Restore the process without changing the review meaning already shown to the user. */
-	startupRecoveryReviewState?: StartupRecoveryReviewState;
+	/** Restore the process without changing the task meaning already shown to the user. */
+	startupRecoverySemanticState?: SessionResumeSemanticState;
+	/** Distinguish an honest modern Interrupted recovery from semantically incomplete legacy persistence. */
+	startupRecoverySemanticStateUncertain?: boolean;
 	/** Explain why a legacy recovery remains semantically neutral until new agent evidence arrives. */
 	startupRecoveryWarningMessage?: string;
 }
@@ -114,6 +117,9 @@ function getResumeSessionWarning(options: {
 			return null;
 		}
 		return "Codex resume did not have a stored session id, so Quarterdeck fell back to the most recent Codex session for this checkout. If this opens the wrong conversation, start a fresh task.";
+	}
+	if (options.agentId === "pi" && !options.resumeSessionId) {
+		return "Pi resume did not have a stored session id, so Quarterdeck will use Pi's most recent session for this checkout. Verify the conversation before continuing.";
 	}
 	if (options.agentId === "claude" && !options.useWorktree && !options.resumeSessionId) {
 		return "Claude resume did not have a stored session id, so Quarterdeck fell back to the most recent Claude session for this checkout. If this opens the wrong conversation, start a fresh task.";
@@ -211,18 +217,26 @@ export async function prepareTaskSessionStart(
 		: failedStoredResumeSession
 			? null
 			: previousResumeSessionId;
+	if (
+		options.startupRecoveryToken &&
+		body.resumeConversation &&
+		(effectiveAgentId === "codex" || effectiveAgentId === "claude" || effectiveAgentId === "pi") &&
+		!resumeSessionIdForStart?.trim()
+	) {
+		throw new Error(`Automatic ${effectiveAgentId} recovery requires the exact stored provider session ID.`);
+	}
 
 	if (body.resumeConversation) {
 		log.debug("resume path: loaded previous session summary", {
 			taskId: body.taskId,
 			hasPreviousSummary: Boolean(previousSummary),
 			previousAgentId: previousTerminalAgentId,
-			previousResumeSessionId,
-			resumeSessionIdOverride: hasResumeOverride ? (options.resumeSessionIdOverride ?? null) : undefined,
+			hasPreviousResumeSessionId: Boolean(previousResumeSessionId),
+			hasResumeSessionIdOverride: hasResumeOverride && Boolean(options.resumeSessionIdOverride),
 			failedStoredResumeSession,
 			previousState: previousSummary?.state ?? null,
 			previousReviewReason: previousSummary?.reviewReason ?? null,
-			previousLaunchPath: previousSummary?.sessionLaunchPath ?? null,
+			hasPreviousLaunchPath: Boolean(previousSummary?.sessionLaunchPath),
 			previousPid: previousSummary?.pid ?? null,
 			previousStartedAt: previousSummary?.startedAt ?? null,
 			taskAgentId,
@@ -233,14 +247,14 @@ export async function prepareTaskSessionStart(
 		log.warn("stored Codex resumeSessionId disabled after previous resume failure", {
 			taskId: body.taskId,
 			agentId: effectiveAgentId,
-			previousResumeSessionId,
+			hasPreviousResumeSessionId: Boolean(previousResumeSessionId),
 			previousState: previousSummary?.state ?? null,
 			previousReviewReason: previousSummary?.reviewReason ?? null,
-			previousLaunchPath: previousSummary?.sessionLaunchPath ?? null,
+			hasPreviousLaunchPath: Boolean(previousSummary?.sessionLaunchPath),
 		});
 	} else if (
 		body.resumeConversation &&
-		(effectiveAgentId === "codex" || effectiveAgentId === "claude") &&
+		(effectiveAgentId === "codex" || effectiveAgentId === "claude" || effectiveAgentId === "pi") &&
 		!resumeSessionIdForStart
 	) {
 		log.warn("resume requested without stored resumeSessionId", {
@@ -248,7 +262,7 @@ export async function prepareTaskSessionStart(
 			agentId: effectiveAgentId,
 			previousState: previousSummary?.state ?? null,
 			previousReviewReason: previousSummary?.reviewReason ?? null,
-			previousLaunchPath: previousSummary?.sessionLaunchPath ?? null,
+			hasPreviousLaunchPath: Boolean(previousSummary?.sessionLaunchPath),
 		});
 	}
 
@@ -273,9 +287,8 @@ export async function prepareTaskSessionStart(
 		log.warn("resume requested after task worktree identity was lost", {
 			taskId: body.taskId,
 			agentId: resolved.agentId,
-			previousSessionLaunchPath: previousSummary?.sessionLaunchPath ?? null,
-			projectPath: projectScope.projectPath,
-			resolvedTaskCwd: taskCwd,
+			hadPreviousSessionLaunchPath: Boolean(previousSummary?.sessionLaunchPath),
+			resolvedToProjectRoot: taskCwd === projectScope.projectPath,
 		});
 	}
 	const resumeSessionWarning = getResumeSessionWarning({
@@ -289,10 +302,9 @@ export async function prepareTaskSessionStart(
 	log.debug("handing start-task-session request to terminal manager", {
 		taskId: body.taskId,
 		agentId: resolved.agentId,
-		binary: resolved.binary,
-		taskCwd,
+		hasResolvedBinary: Boolean(resolved.binary),
 		resumeConversation: body.resumeConversation ?? false,
-		resumeSessionIdPassed: resumeSessionIdForStart ?? null,
+		hasResumeSessionId: Boolean(resumeSessionIdForStart),
 		awaitReview: body.awaitReview ?? false,
 		startupRecovery: Boolean(options.startupRecoveryToken),
 	});
@@ -316,10 +328,16 @@ export async function prepareTaskSessionStart(
 		claudeFullscreenEnabled: scopedRuntimeConfig.claudeFullscreenEnabled,
 		statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
 		codexApprovalsReviewer: scopedRuntimeConfig.codexApprovalsReviewer,
+		piToolApprovalsEnabled: scopedRuntimeConfig.piToolApprovalsEnabled,
 		worktreeSystemPromptTemplate: scopedRuntimeConfig.worktreeSystemPromptTemplate,
 		env: body.baseRef ? { QUARTERDECK_BASE_REF: body.baseRef } : undefined,
 		startupRecoveryToken: options.startupRecoveryToken,
-		startupRecoveryReviewState: options.startupRecoveryReviewState,
+		resumeSemanticState:
+			options.startupRecoverySemanticState ??
+			(body.resumeConversation && body.awaitReview && previousSummary
+				? deriveSessionResumeSemanticState(previousSummary)
+				: undefined),
+		startupRecoverySemanticStateUncertain: options.startupRecoverySemanticStateUncertain,
 		startupRecoveryWarningMessage: options.startupRecoveryWarningMessage,
 	};
 

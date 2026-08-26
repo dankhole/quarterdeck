@@ -68,7 +68,7 @@ export const runtimeTaskLifecycleCommandSchema = z.discriminatedUnion("kind", [
 			prompt: z.string(),
 			images: z.array(runtimeTaskImageSchema).optional(),
 			baseRef: z.string(),
-			agentId: runtimeAgentIdSchema.exclude(["pi"]).optional(),
+			agentId: runtimeAgentIdSchema.optional(),
 			useWorktree: z.boolean().optional(),
 			branch: z.string().optional(),
 			pinned: z.boolean().optional(),

@@ -45,6 +45,27 @@ async function openTaskFromBoard(page: Page, title: string) {
 	await card.click();
 }
 
+async function readTaskIds(page: Page): Promise<string[]> {
+	return await page.locator("[data-task-id]").evaluateAll((cards) =>
+		cards.flatMap((card) => {
+			const taskId = card.getAttribute("data-task-id");
+			return taskId ? [taskId] : [];
+		}),
+	);
+}
+
+async function waitForCreatedTaskId(page: Page, existingTaskIds: ReadonlySet<string>): Promise<string> {
+	let createdTaskId: string | null = null;
+	await expect
+		.poll(async () => {
+			createdTaskId = (await readTaskIds(page)).find((taskId) => !existingTaskIds.has(taskId)) ?? null;
+			return createdTaskId !== null;
+		})
+		.toBe(true);
+	if (!createdTaskId) throw new Error("Expected one new stable task identity.");
+	return createdTaskId;
+}
+
 test("renders quarterdeck top bar and columns", async ({ page }) => {
 	await openBoard(page);
 	await expect(page).toHaveTitle("project");
@@ -168,13 +189,13 @@ test("uses the in-memory lab clipboard for Files copy and terminal OSC 52 read",
 	await backlogColumn.getByRole("button", { name: "Create task" }).click();
 	const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "New task" }) });
 	await dialog.getByPlaceholder("Describe the task").fill(taskPrompt);
+	const existingTaskIds = new Set(await readTaskIds(page));
 	await dialog.getByRole("button", { name: "Start task" }).click();
-	const inProgressColumn = page.locator('section[data-column-id="in_progress"]').first();
-	const runningCard = inProgressColumn.locator("[data-task-id]").filter({ hasText: taskPrompt }).first();
-	await expect(runningCard).toBeVisible({ timeout: 20_000 });
-	const taskId = await runningCard.getAttribute("data-task-id");
-	expect(taskId).not.toBeNull();
-	await runningCard.click();
+	const taskId = await waitForCreatedTaskId(page, existingTaskIds);
+	const taskCard = page.locator(`[data-task-id="${taskId}"]`).first();
+	await expect(taskCard).toBeVisible({ timeout: 20_000 });
+	await expect(taskCard).toContainText("Review");
+	await taskCard.click();
 	await expect(page.getByRole("textbox", { name: "Terminal input" })).toBeVisible();
 	await page.getByRole("textbox", { name: "Terminal input" }).focus();
 	await page.keyboard.type("/clipboard-read");
@@ -358,15 +379,15 @@ test("drives the deterministic agent terminal through review", async ({ page }, 
 	await backlogColumn.getByRole("button", { name: "Create task" }).click();
 	const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "New task" }) });
 	await dialog.getByPlaceholder("Describe the task").fill(taskPrompt);
+	const existingTaskIds = new Set(await readTaskIds(page));
 	await dialog.getByRole("button", { name: "Start task" }).click();
 	await expect(dialog).toBeHidden();
 
-	const inProgressColumn = page.locator('section[data-column-id="in_progress"]').first();
-	const runningCard = inProgressColumn.locator("[data-task-id]").filter({ hasText: taskPrompt }).first();
-	await expect(runningCard).toBeVisible({ timeout: 20_000 });
-	const taskId = await runningCard.getAttribute("data-task-id");
-	expect(taskId).not.toBeNull();
-	await runningCard.click();
+	const taskId = await waitForCreatedTaskId(page, existingTaskIds);
+	const taskCard = page.locator(`[data-task-id="${taskId}"]`).first();
+	await expect(taskCard).toBeVisible({ timeout: 20_000 });
+	await expect(taskCard).toContainText("Review");
+	await taskCard.click();
 	await expect(page.getByRole("textbox", { name: "Terminal input" })).toBeVisible();
 
 	await expect
@@ -401,4 +422,182 @@ test("drives the deterministic agent terminal through review", async ({ page }, 
 	await expect(reviewCard).toBeVisible({ timeout: 20_000 });
 	await expect(reviewCard).toContainText("Ready for review");
 	await page.screenshot({ path: testInfo.outputPath("fake-agent-review.png"), fullPage: true });
+});
+
+test("converges provider-approved permissions and fences historical interruption redraws", async ({ page }) => {
+	test.setTimeout(60_000);
+	await page.addInitScript(() => {
+		window.localStorage.setItem("quarterdeck.task-create-last-agent-id", "codex");
+	});
+	await openBoard(page);
+	await page.getByTestId("open-settings-button").click();
+	const settingsDialog = page.getByRole("dialog", { name: "Settings" });
+	const hiddenOnlySound = settingsDialog.getByRole("checkbox", { name: /Only when tab is hidden/ });
+	await expect(hiddenOnlySound).toBeChecked();
+	await hiddenOnlySound.click();
+	await settingsDialog.getByRole("button", { name: "Save" }).click();
+	await expect(settingsDialog).toBeHidden();
+	const taskPrompt = `[agent-lab:idle] lifecycle-fences-${Date.now()}`;
+	const backlogColumn = page.locator(BACKLOG_COLUMN).first();
+	await backlogColumn.getByRole("button", { name: "Create task" }).click();
+	const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "New task" }) });
+	await dialog.getByPlaceholder("Describe the task").fill(taskPrompt);
+	await expect(dialog.getByRole("button", { name: "Task harness" })).toContainText("Codex");
+	const existingTaskIds = new Set(await readTaskIds(page));
+	await dialog.getByRole("button", { name: "Start task" }).click();
+	await expect(dialog).toBeHidden();
+
+	const taskId = await waitForCreatedTaskId(page, existingTaskIds);
+	const inProgressColumn = page.locator('section[data-column-id="in_progress"]').first();
+	const initialCard = page.locator(`[data-task-id="${taskId}"]`).first();
+	await expect(initialCard).toBeVisible({ timeout: 20_000 });
+	await expect(initialCard).toContainText("Review");
+	await expect(inProgressColumn.locator(`[data-task-id="${taskId}"]`)).toHaveCount(0);
+	const projectRow = page.locator(".kb-project-row-selected:visible").first();
+	const card = page.locator(`[data-task-id="${taskId}"]`).first();
+	const readProjectIndicatorCount = async (title: "Review" | "Needs Input"): Promise<number> => {
+		const indicator = projectRow.locator(`[title="${title}"]`).first();
+		if ((await indicator.count()) === 0 || !(await indicator.isVisible())) return 0;
+		const match = (await indicator.textContent())?.match(/\d+/);
+		if (!match) throw new Error(`Expected ${title} project indicator to contain a count.`);
+		return Number(match[0]);
+	};
+	const submitTerminalCommand = async (command: string): Promise<void> => {
+		await card.click();
+		const terminalInput = page.getByRole("textbox", { name: "Terminal input" });
+		await expect(terminalInput).toBeVisible();
+		await terminalInput.focus();
+		await page.keyboard.type(command);
+		await page.keyboard.press("Enter");
+	};
+	const showBoard = async (): Promise<void> => {
+		await page.getByRole("button", { name: "Home" }).click();
+		await expect(projectRow).toBeVisible();
+	};
+	const beforeEvents = await listHostEvents(page);
+	const lastEventSequence = beforeEvents.events.at(-1)?.sequence ?? 0;
+	const initialReviewCount = await readProjectIndicatorCount("Review");
+	const initialNeedsInputCount = await readProjectIndicatorCount("Needs Input");
+	const needsInputMarkers = projectRow.locator('span[title$="needs input"]:visible');
+	const initialNeedsInputMarkerCount = await needsInputMarkers.count();
+
+	await submitTerminalCommand("/working provider-confirmed initial turn");
+	await expect(card).toContainText("Running", { timeout: 20_000 });
+	await showBoard();
+	await expect(inProgressColumn.locator(`[data-task-id="${taskId}"]`)).toBeVisible();
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount - 1);
+	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
+
+	await card.click();
+	await expect(page.getByRole("textbox", { name: "Terminal input" })).toBeVisible();
+	await page.getByRole("textbox", { name: "Terminal input" }).focus();
+	await page.keyboard.press("Escape");
+	await expect(card).toContainText("Interrupted", { timeout: 20_000 });
+	await showBoard();
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
+	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
+
+	await submitTerminalCommand("/working provider-confirmed after interrupt");
+	await expect(card).toContainText("Running", { timeout: 20_000 });
+	await showBoard();
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount - 1);
+
+	await submitTerminalCommand("/needs-input cancel before provider completion");
+	await expect(card).toContainText("Waiting for approval", { timeout: 20_000 });
+	await showBoard();
+	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount + 1);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount - 1);
+	const cancelledPermissionSound = await waitForHostEvent(page, "notification_audio", lastEventSequence);
+	expect(cancelledPermissionSound).toMatchObject({
+		kind: "notification_audio",
+		eventType: "permission",
+		projectId: expect.any(String),
+		taskId,
+		outcome: "simulated",
+	});
+	await card.click();
+	const terminalInput = page.getByRole("textbox", { name: "Terminal input" });
+	await expect(terminalInput).toBeVisible();
+	await terminalInput.focus();
+	await page.keyboard.press("Escape");
+	await expect(card).toContainText("Response sent", { timeout: 20_000 });
+	await showBoard();
+	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
+	await expect(needsInputMarkers).toHaveCount(initialNeedsInputMarkerCount);
+
+	await submitTerminalCommand("/needs-input-auto provider policy approved");
+	await expect(card).toContainText("Waiting for approval", { timeout: 20_000 });
+	await showBoard();
+	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount + 1);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount - 1);
+	await expect(needsInputMarkers).toHaveCount(initialNeedsInputMarkerCount + 1);
+	const permissionSound = await waitForHostEvent(page, "notification_audio", cancelledPermissionSound.sequence);
+	expect(permissionSound).toMatchObject({
+		kind: "notification_audio",
+		eventType: "permission",
+		projectId: expect.any(String),
+		taskId,
+		outcome: "simulated",
+	});
+
+	await expect(card).toContainText("Running", { timeout: 20_000 });
+	await expect(inProgressColumn.locator(`[data-task-id="${taskId}"]`)).toBeVisible();
+	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount - 1);
+	await expect(needsInputMarkers).toHaveCount(initialNeedsInputMarkerCount);
+
+	await submitTerminalCommand("/approval-overlay");
+	await expect(card).toContainText("Waiting for approval", { timeout: 20_000 });
+	await showBoard();
+	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount + 1);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount - 1);
+	const overlayPermissionSound = await waitForHostEvent(page, "notification_audio", permissionSound.sequence);
+	expect(overlayPermissionSound).toMatchObject({
+		kind: "notification_audio",
+		eventType: "permission",
+		projectId: expect.any(String),
+		taskId,
+		outcome: "simulated",
+	});
+	await card.click();
+	await expect(terminalInput).toBeVisible();
+	await terminalInput.focus();
+	await page.keyboard.type("y");
+	await expect(card).toContainText("Response sent", { timeout: 20_000 });
+	await showBoard();
+	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
+	await expect(card).toContainText("Running", { timeout: 20_000 });
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount - 1);
+
+	await submitTerminalCommand("/turn-interrupted");
+	await expect(card).toContainText("Interrupted", { timeout: 20_000 });
+	await showBoard();
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
+	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
+	await expect(needsInputMarkers).toHaveCount(initialNeedsInputMarkerCount);
+
+	await submitTerminalCommand("/new-turn follow-up started");
+	await expect(card).toContainText("Running", { timeout: 20_000 });
+	await showBoard();
+
+	await submitTerminalCommand("/redraw-interruption-history");
+	await expect.poll(async () => await card.textContent(), { timeout: 3_000 }).toContain("Running");
+	await showBoard();
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount - 1);
+	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
+
+	await submitTerminalCommand("/turn-interrupted");
+	await expect(card).toContainText("Interrupted", { timeout: 20_000 });
+	await showBoard();
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
+	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
+
+	const afterEvents = await listHostEvents(page);
+	expect(
+		afterEvents.events.filter(
+			(event) => event.kind === "notification_audio" && event.sequence > overlayPermissionSound.sequence,
+		),
+	).toEqual([]);
 });

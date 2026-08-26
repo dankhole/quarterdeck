@@ -1,13 +1,13 @@
-import type { RuntimeBoardCard, RuntimeProjectStateResponse } from "../core";
+import type { RuntimeBoardCard } from "../core";
 import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
-import type { ProjectBoardCommandScope, ProjectBoardCommandService } from "../state";
+import type { ProjectBoardCommandScope, ProjectBoardCommandService, ProjectBoardPostCommitListener } from "../state";
 import { type AutomaticTitleGenerationRunner, generateTaskTitle as generateTaskTitleWithProvider } from "../title";
 
 const log = createTaggedLogger("automatic-title");
 const MAX_CONCURRENT_TITLE_REQUESTS = 3;
 
-type AutomaticTitleCard = Pick<RuntimeBoardCard, "id" | "prompt">;
+type AutomaticTitleCard = Pick<RuntimeBoardCard, "id" | "prompt" | "createdAt">;
 
 export interface AutomaticTaskTitleSchedulerDependencies {
 	automaticTitleGeneration: AutomaticTitleGenerationRunner;
@@ -19,8 +19,8 @@ export interface AutomaticTaskTitleSchedulerDependencies {
 
 /**
  * Schedules one runtime-owned automatic title attempt without making the
- * caller await helper latency. The shared coordinator keeps browser command
- * flushes and lifecycle creation on the same per-project/task single flight.
+ * post-commit listener await helper latency. The shared coordinator keeps
+ * repeated delivery on the same per-project/task single flight.
  */
 export function scheduleAutomaticTaskTitle(
 	dependencies: AutomaticTaskTitleSchedulerDependencies,
@@ -39,7 +39,12 @@ export function scheduleAutomaticTaskTitle(
 			return;
 		}
 
-		const result = await dependencies.boardCommands.setGeneratedTaskTitle(projectScope, card.id, title);
+		const result = await dependencies.boardCommands.setGeneratedTaskTitle(
+			projectScope,
+			card.id,
+			card.createdAt,
+			title,
+		);
 		if (!result.acceptedChange) {
 			dependencies.diagnostics?.recordEvent(
 				"task.title_generation_discarded",
@@ -88,21 +93,21 @@ export function scheduleAutomaticTaskTitle(
 	});
 }
 
-/** Preserve the existing bounded scan used after browser board commands. */
-export function scheduleAutomaticTaskTitles(
+/** Consumes the board writer's one authoritative post-commit effect stream. */
+export function createAutomaticTaskTitlePostCommitListener(
 	dependencies: AutomaticTaskTitleSchedulerDependencies,
-	projectScope: ProjectBoardCommandScope,
-	state: Pick<RuntimeProjectStateResponse, "board">,
-): void {
-	const untitledCards = state.board.columns.flatMap((column) => column.cards.filter((card) => card.title === null));
-	if (untitledCards.length === 0) {
-		return;
-	}
-
-	void (async () => {
-		for (let index = 0; index < untitledCards.length; index += MAX_CONCURRENT_TITLE_REQUESTS) {
-			const batch = untitledCards.slice(index, index + MAX_CONCURRENT_TITLE_REQUESTS);
-			await Promise.allSettled(batch.map((card) => scheduleAutomaticTaskTitle(dependencies, projectScope, card)));
-		}
-	})();
+): ProjectBoardPostCommitListener {
+	return (event) => {
+		const untitledTasks = event.effects.map(({ task }) => ({
+			id: task.taskId,
+			prompt: task.prompt,
+			createdAt: task.createdAt,
+		}));
+		void (async () => {
+			for (let index = 0; index < untitledTasks.length; index += MAX_CONCURRENT_TITLE_REQUESTS) {
+				const batch = untitledTasks.slice(index, index + MAX_CONCURRENT_TITLE_REQUESTS);
+				await Promise.allSettled(batch.map((task) => scheduleAutomaticTaskTitle(dependencies, event.scope, task)));
+			}
+		})();
+	};
 }

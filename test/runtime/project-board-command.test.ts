@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { RuntimeBoardData, RuntimeProjectBoardCommand } from "../../src/core";
-import { applyProjectBoardCommand, runtimeProjectBoardCommandSchema } from "../../src/core";
+import {
+	applyProjectBoardCommand,
+	runtimeProjectBoardCommandSchema,
+	runtimeTaskLifecycleCommandSchema,
+} from "../../src/core";
 
 function createBoard(): RuntimeBoardData {
 	return {
@@ -222,13 +226,33 @@ describe("applyProjectBoardCommand", () => {
 });
 
 describe("runtimeProjectBoardCommandSchema", () => {
-	it("accepts supported agents and excludes legacy experimental Pi from new commands", () => {
+	it("accepts every maintained agent for new commands", () => {
 		expect(runtimeProjectBoardCommandSchema.safeParse(createTaskCommand("task-a", "Task A", 100)).success).toBe(true);
 		expect(
 			runtimeProjectBoardCommandSchema.safeParse({
 				...createTaskCommand("task-a", "Task A", 100),
 				agentId: "pi",
 			}).success,
-		).toBe(false);
+		).toBe(true);
+	});
+});
+
+describe("runtimeTaskLifecycleCommandSchema", () => {
+	it("accepts Pi for create-and-start", () => {
+		expect(
+			runtimeTaskLifecycleCommandSchema.safeParse({
+				kind: "create_and_start",
+				operationId: "create-and-start-pi",
+				expectedRevision: 0,
+				startedAt: 100,
+				task: {
+					taskId: "task-pi",
+					prompt: "Use Pi",
+					baseRef: "main",
+					agentId: "pi",
+					createdAt: 100,
+				},
+			}).success,
+		).toBe(true);
 	});
 });

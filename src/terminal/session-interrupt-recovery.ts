@@ -12,12 +12,15 @@ export const SIGINT_BYTE = 0x03;
 export const ESC_BYTE = 0x1b;
 // Real Ctrl+C arrives as a 1–3 byte sequence; larger buffers are likely pasted text.
 export const MAX_SIGINT_DETECT_BUFFER_SIZE = 4;
+export type InterruptSignal = "ctrl_c" | "escape";
 
 export function clearInterruptRecoveryTimer(active: ActiveProcessState): void {
 	if (active.interruptRecoveryTimer) {
 		clearTimeout(active.interruptRecoveryTimer);
 		active.interruptRecoveryTimer = null;
 	}
+	active.interruptRecoveryStartedAt = null;
+	active.interruptRecoverySignal = null;
 }
 
 /** Detect whether the input buffer contains an interrupt signal (Ctrl+C or bare Escape). */
@@ -35,31 +38,41 @@ export interface InterruptRecoveryContext {
 		entry: ProcessEntry,
 		event: SessionTransitionEvent,
 	) => (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null;
+	onRecoveryScheduled?: (signal: InterruptSignal) => void;
+	onRecoveryApplied?: (
+		signal: InterruptSignal,
+		result: (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null,
+	) => void;
 }
 
 /**
- * Schedule interrupt recovery: sets a timer that will transition the session
- * to awaiting_review/attention if the agent doesn't resume within the delay.
+ * Remove the public Running claim immediately when the user asks the TUI to
+ * interrupt, then retain a short launch-scoped fence while provider evidence
+ * or process exit settles the outcome. The timer only retires that transient
+ * fence; it is never the ordinary author of user-visible task meaning.
  */
-export function scheduleInterruptRecovery(entry: ProcessEntry, ctx: InterruptRecoveryContext): void {
+export function scheduleInterruptRecovery(
+	entry: ProcessEntry,
+	signal: InterruptSignal,
+	ctx: InterruptRecoveryContext,
+): void {
 	if (!entry.active) {
 		return;
 	}
 	clearInterruptRecoveryTimer(entry.active);
+	ctx.onRecoveryScheduled?.(signal);
 	const taskId = entry.taskId;
+	entry.active.interruptRecoveryStartedAt = Date.now();
+	entry.active.interruptRecoverySignal = signal;
+	const result = ctx.applyTransitionEvent(entry, { type: "interrupt.recovery" });
+	ctx.onRecoveryApplied?.(signal, result);
 	entry.active.interruptRecoveryTimer = setTimeout(() => {
 		const current = ctx.getEntry(taskId);
 		if (!current?.active) {
 			return;
 		}
 		current.active.interruptRecoveryTimer = null;
-		const summary = ctx.getSummary(taskId);
-		if (summary?.state !== "running") {
-			return;
-		}
-		// Always transition — even if the agent produced output after the interrupt
-		// (e.g. Claude redraws its prompt after Escape). If the agent is genuinely
-		// still working, its next hook will move the card back to running.
-		ctx.applyTransitionEvent(current, { type: "interrupt.recovery" });
+		current.active.interruptRecoveryStartedAt = null;
+		current.active.interruptRecoverySignal = null;
 	}, INTERRUPT_RECOVERY_DELAY_MS);
 }

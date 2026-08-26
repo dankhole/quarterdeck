@@ -13,6 +13,7 @@ import { buildAgentLabEnvironment } from "./environment";
 import { prepareAgentLabFixture } from "./fixture";
 import { resolveLoopbackPort } from "./loopback-port";
 import { writeJsonAtomic } from "./paths";
+import { toPublicAgentConfig } from "./real-codex";
 import { captureAgentLabSnapshot } from "./snapshot";
 import {
 	type AgentLabLaunchConfig,
@@ -300,6 +301,7 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 			runtimePort,
 			webPort,
 			scenario: config.scenario,
+			agent: config.agent,
 		});
 		const webLogPath = join(config.artifactDir, "web.log");
 		manifest = {
@@ -327,6 +329,7 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 			browserOutputPath: join(config.artifactDir, "browser"),
 			browserSession: `qd-${config.runId}`,
 			scenario: config.scenario,
+			agent: toPublicAgentConfig(config.agent),
 			keepTemp: config.keepTemp,
 			supervisorPid: process.pid,
 			processes: { runtime: null, web: null },
@@ -533,6 +536,9 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 				);
 			},
 			removeTemporaryFixture: async () => {
+				if (config.agent.mode === "real-codex") {
+					await rm(config.agent.codexHomePath, { recursive: true, force: true });
+				}
 				if (!config.keepTemp) await rm(config.tempRoot, { recursive: true, force: true });
 			},
 		});

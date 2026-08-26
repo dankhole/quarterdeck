@@ -139,7 +139,7 @@ describe("TerminalSessionManager shell sessions", () => {
 		spawnedSessions[0]?.triggerExit(null);
 
 		const summary = manager.store.getSummary("shell-1");
-		expect(summary?.state).toBe("interrupted");
+		expect(summary?.state).toBe("awaiting_review");
 		expect(summary?.reviewReason).toBe("interrupted");
 	});
 
@@ -179,7 +179,7 @@ describe("TerminalSessionManager shell sessions", () => {
 		).rejects.toThrow("Failed to launch");
 
 		const summary = manager.store.getSummary("shell-1");
-		expect(summary?.state).toBe("failed");
+		expect(summary?.state).toBe("awaiting_review");
 		expect(summary?.reviewReason).toBe("error");
 		expect(summary?.agentId).toBeNull();
 	});

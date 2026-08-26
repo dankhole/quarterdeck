@@ -1,5 +1,6 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestTaskOutstandingInteraction } from "@/test-utils/task-session-factory";
 
 import {
 	createMockSession,
@@ -83,6 +84,11 @@ describe("useAudibleNotifications — settle window & timing", () => {
 							taskId: "task-1",
 							state: "awaiting_review",
 							reviewReason: "hook",
+							outstandingInteraction: createTestTaskOutstandingInteraction({
+								provider: "codex",
+								kind: "permission",
+								requestEventName: "PermissionRequest",
+							}),
 							latestHookActivity: {
 								hookEventName: "PermissionRequest",
 								notificationType: "permission.asked",
@@ -128,6 +134,11 @@ describe("useAudibleNotifications — settle window & timing", () => {
 
 		const permissionSummary = createMockSession({
 			...reviewSummary,
+			outstandingInteraction: createTestTaskOutstandingInteraction({
+				provider: "codex",
+				kind: "permission",
+				requestEventName: "PermissionRequest",
+			}),
 			latestHookActivity: {
 				hookEventName: "PermissionRequest",
 				notificationType: "permission.asked",
@@ -182,6 +193,11 @@ describe("useAudibleNotifications — settle window & timing", () => {
 							taskId: "task-1",
 							state: "awaiting_review",
 							reviewReason: "hook",
+							outstandingInteraction: createTestTaskOutstandingInteraction({
+								provider: "codex",
+								kind: "permission",
+								requestEventName: "PermissionRequest",
+							}),
 							latestHookActivity: {
 								hookEventName: "PermissionRequest",
 								notificationType: "permission.asked",
@@ -207,6 +223,11 @@ describe("useAudibleNotifications — settle window & timing", () => {
 							taskId: "task-1",
 							state: "awaiting_review",
 							reviewReason: "hook",
+							outstandingInteraction: createTestTaskOutstandingInteraction({
+								provider: "codex",
+								kind: "permission",
+								requestEventName: "PermissionRequest",
+							}),
 							latestHookActivity: {
 								hookEventName: "SomeHook",
 								notificationType: null,
@@ -300,6 +321,11 @@ describe("useAudibleNotifications — settle window & timing", () => {
 							taskId: "task-1",
 							state: "awaiting_review",
 							reviewReason: "hook",
+							outstandingInteraction: createTestTaskOutstandingInteraction({
+								provider: "codex",
+								kind: "permission",
+								requestEventName: "PermissionRequest",
+							}),
 							latestHookActivity: {
 								hookEventName: "SomeHook",
 								notificationType: null,
@@ -322,6 +348,67 @@ describe("useAudibleNotifications — settle window & timing", () => {
 					{...props}
 					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
+					}}
+				/>,
+			);
+		});
+
+		harness.flushSettleWindow();
+		expect(playMock).not.toHaveBeenCalled();
+	});
+
+	it("cancels a queued permission sound when the response is submitted", async () => {
+		const props = defaultProps();
+		const waitingInteraction = createTestTaskOutstandingInteraction({
+			provider: "codex",
+			kind: "permission",
+			requestEventName: "PermissionRequest",
+		});
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({
+							taskId: "task-1",
+							state: "awaiting_review",
+							reviewReason: "hook",
+							outstandingInteraction: waitingInteraction,
+						}),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({
+							taskId: "task-1",
+							state: "awaiting_review",
+							reviewReason: "hook",
+							outstandingInteraction: {
+								...waitingInteraction,
+								status: "response_submitted",
+								updatedAt: 2,
+								responseSubmittedAt: 2,
+								responseKind: "submit",
+							},
+						}),
 					}}
 				/>,
 			);
@@ -354,6 +441,11 @@ describe("useAudibleNotifications — settle window & timing", () => {
 							taskId: "task-1",
 							state: "awaiting_review",
 							reviewReason: "hook",
+							outstandingInteraction: createTestTaskOutstandingInteraction({
+								provider: "codex",
+								kind: "permission",
+								requestEventName: "PermissionRequest",
+							}),
 							latestHookActivity: {
 								hookEventName: "PermissionRequest",
 								notificationType: "permission.asked",

@@ -1,7 +1,6 @@
 export {
 	type AutomaticTaskTitleSchedulerDependencies,
-	scheduleAutomaticTaskTitle,
-	scheduleAutomaticTaskTitles,
+	createAutomaticTaskTitlePostCommitListener,
 } from "./automatic-task-title-scheduler";
 export { pickDirectoryPathFromSystemDialog } from "./directory-picker";
 export {
@@ -20,11 +19,6 @@ export {
 	type ResolvedProjectStreamTarget,
 } from "./project-registry";
 export {
-	type ProjectTaskCreateAndStartFailureCode,
-	type ProjectTaskCreateAndStartInput,
-	type ProjectTaskCreateAndStartResult,
-	type ProjectTaskCreateSpec,
-	ProjectTaskLifecycleIdentityConflictError,
 	ProjectTaskLifecycleService,
 	type ProjectTaskLifecycleServiceDependencies,
 } from "./project-task-lifecycle-service";
@@ -43,6 +37,7 @@ export {
 export { observeRuntimeApiRequest } from "./runtime-request-diagnostics";
 export {
 	type CreateRuntimeServerDependencies,
+	createRuntimeConversationTaskSessionResolver,
 	createRuntimeServer,
 	type RuntimeServer,
 } from "./runtime-server";

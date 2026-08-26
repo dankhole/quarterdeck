@@ -12,10 +12,11 @@ const CODEX_APPROVALS_REVIEWER_LABELS: Record<CodexApprovalsReviewer, string> = 
 	inherit: "Inherit Codex config",
 	user: "Ask me",
 	auto_review: "Approve for me",
+	dangerously_bypass: "Dangerously bypass approvals and sandbox",
 };
 
 function normalizeCodexApprovalsReviewer(value: string): CodexApprovalsReviewer {
-	if (value === "user" || value === "auto_review") {
+	if (value === "user" || value === "auto_review" || value === "dangerously_bypass") {
 		return value;
 	}
 	return "inherit";
@@ -31,6 +32,7 @@ export function HarnessSection({
 }): React.ReactElement {
 	const [claudeSettingsExpanded, setClaudeSettingsExpanded] = useState(false);
 	const [codexSettingsExpanded, setCodexSettingsExpanded] = useState(false);
+	const [piSettingsExpanded, setPiSettingsExpanded] = useState(false);
 	const [systemPromptExpanded, setSystemPromptExpanded] = useState(false);
 
 	const defaultTemplate = config?.worktreeSystemPromptTemplateDefault ?? "";
@@ -42,9 +44,12 @@ export function HarnessSection({
 
 	const ClaudeChevron = claudeSettingsExpanded ? ChevronDown : ChevronRight;
 	const CodexChevron = codexSettingsExpanded ? ChevronDown : ChevronRight;
+	const PiChevron = piSettingsExpanded ? ChevronDown : ChevronRight;
 	const PromptChevron = systemPromptExpanded ? ChevronDown : ChevronRight;
 	const claudeSettingsSummary = `New/restarted sessions only · ${fields.claudeFullscreenEnabled ? "Fullscreen on" : "Fullscreen off"} · ${fields.statuslineEnabled ? "Status line on" : "Status line off"}`;
 	const codexSettingsSummary = `New/restarted sessions only · ${CODEX_APPROVALS_REVIEWER_LABELS[fields.codexApprovalsReviewer]}`;
+	const piSupportedVersion = config?.agents.find((agent) => agent.id === "pi")?.requiredVersion ?? "0.84.3";
+	const piSettingsSummary = `Exactly ${piSupportedVersion} · ${fields.piToolApprovalsEnabled ? "Tool approvals on" : "Tool approvals off"}`;
 
 	return (
 		<>
@@ -112,7 +117,7 @@ export function HarnessSection({
 								htmlFor="runtime-settings-codex-approvals-reviewer"
 								className="text-text-primary text-[13px]"
 							>
-								Approval reviewer
+								Launch permissions
 							</label>
 							<select
 								id="runtime-settings-codex-approvals-reviewer"
@@ -130,6 +135,7 @@ export function HarnessSection({
 								<option value="inherit">Inherit Codex config</option>
 								<option value="user">Ask me</option>
 								<option value="auto_review">Approve for me</option>
+								<option value="dangerously_bypass">Dangerously bypass approvals and sandbox</option>
 							</select>
 						</div>
 						<p className="text-text-secondary text-[13px] mt-1 mb-0">
@@ -137,7 +143,43 @@ export function HarnessSection({
 								? "Uses the reviewer selected by Codex configuration without a Quarterdeck override."
 								: fields.codexApprovalsReviewer === "user"
 									? "Forces eligible approval requests to pause for you in new or restarted Codex sessions."
-									: "Launches new or restarted Codex sessions with --approve-for-me, routing eligible requests through automatic review while keeping the workspace-write sandbox."}
+									: fields.codexApprovalsReviewer === "auto_review"
+										? "Launches new or restarted Codex sessions with --approve-for-me, routing eligible requests through automatic review while keeping the workspace-write sandbox."
+										: "Launches new or restarted Codex sessions with --dangerously-bypass-approvals-and-sandbox. Commands run without confirmation prompts or Codex sandboxing; use only in an externally sandboxed environment."}
+						</p>
+					</div>
+				</RadixCollapsible.Content>
+			</RadixCollapsible.Root>
+
+			<RadixCollapsible.Root open={piSettingsExpanded} onOpenChange={setPiSettingsExpanded} className="mt-2">
+				<RadixCollapsible.Trigger asChild>
+					<button
+						type="button"
+						className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-2 text-left text-[13px] text-text-primary hover:border-border-bright hover:bg-surface-3 data-[state=open]:rounded-b-none"
+					>
+						<span className="min-w-0">
+							<span className="block font-medium">Pi</span>
+							<span className="block truncate text-[12px] text-text-secondary">{piSettingsSummary}</span>
+						</span>
+						<PiChevron size={16} className="shrink-0 text-text-secondary" />
+					</button>
+				</RadixCollapsible.Trigger>
+				<RadixCollapsible.Content className="overflow-hidden rounded-b-md border-x border-b border-border bg-surface-1">
+					<div className="space-y-3 px-3 py-3 text-[13px] text-text-secondary">
+						<p className="m-0">
+							Quarterdeck supports exactly Pi {piSupportedVersion}. Newer Pi releases remain unavailable until
+							the lifecycle and resume contract is validated and Quarterdeck moves this version deliberately.
+						</p>
+						<SettingsSwitch
+							checked={fields.piToolApprovalsEnabled}
+							onCheckedChange={(value) => setField("piToolApprovalsEnabled", value)}
+							disabled={disabled}
+							label="Require tool approvals"
+							description="When on, shell, PowerShell, write/edit, and unknown custom tools pause for approval. Pi has no Quarterdeck sandbox; turning this off allows those tools without confirmation in new or restarted sessions."
+						/>
+						<p className="m-0">
+							Project trust is still confirmed once per launch because project resources and extensions may
+							execute code before ordinary tool calls begin.
 						</p>
 					</div>
 				</RadixCollapsible.Content>

@@ -20,6 +20,7 @@ export interface BoardContextValue {
 	// --- Board data ---
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
+	presentLifecycleBoard: Dispatch<SetStateAction<BoardData>>;
 
 	// --- Task sessions ---
 	sessions: Record<string, RuntimeTaskSessionSummary>;
@@ -70,8 +71,14 @@ interface BoardProviderProps {
 export function BoardProvider({ board, sessions, setSessions, children }: BoardProviderProps): ReactNode {
 	const { currentProjectId, projects } = useProjectNavigationContext();
 	const { streamedProjectState, hasReceivedSnapshot, streamError } = useProjectRuntimeStreamContext();
-	const { setBoard, flushBoardCommands, getAuthoritativeRevision, applyLifecycleProjectState, refreshProjectState } =
-		useProjectSyncContext();
+	const {
+		setBoard,
+		presentLifecycleBoard,
+		flushBoardCommands,
+		getAuthoritativeRevision,
+		applyLifecycleProjectState,
+		refreshProjectState,
+	} = useProjectSyncContext();
 
 	// --- useDetailTaskNavigation ---
 	const { selectedTaskId, selectedCard, setSelectedTaskId } = useDetailTaskNavigation({
@@ -103,6 +110,7 @@ export function BoardProvider({ board, sessions, setSessions, children }: BoardP
 		() => ({
 			board,
 			setBoard,
+			presentLifecycleBoard,
 			sessions,
 			upsertSession,
 			selectedTaskId,
@@ -117,6 +125,8 @@ export function BoardProvider({ board, sessions, setSessions, children }: BoardP
 		}),
 		[
 			board,
+			setBoard,
+			presentLifecycleBoard,
 			sessions,
 			upsertSession,
 			selectedTaskId,

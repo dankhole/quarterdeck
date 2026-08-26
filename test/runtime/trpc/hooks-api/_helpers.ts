@@ -18,52 +18,50 @@ type MockStoreMethods = Partial<SessionSummaryStore> & HookTransitionSummaryFact
 
 export function createMockManager(storeMethods: MockStoreMethods): TerminalSessionManager {
 	const { toReviewSummary, toRunningSummary, ...sessionStoreMethods } = storeMethods;
-	const store = {
-		...sessionStoreMethods,
-		applyHookMetadata:
-			sessionStoreMethods.applyHookMetadata ??
-			vi.fn((taskId: string, metadata: Parameters<SessionSummaryStore["applyHookMetadata"]>[1]) => {
-				const {
-					sessionId: _sessionId,
-					sessionInstanceId: _sessionInstanceId,
-					turnId: _turnId,
-					toolUseId: _toolUseId,
-					transcriptPath: _transcriptPath,
-					...activity
-				} = metadata;
-				return sessionStoreMethods.applyHookActivity?.(taskId, activity);
-			}),
-	};
-	return {
+	const store = sessionStoreMethods;
+	const manager = {
 		store,
-		applyHookTransition: vi.fn((taskId, transition) => {
-			const configuredSummary =
-				transition.type === "hook.to_review"
-					? toReviewSummary?.(taskId, transition.reason ?? "hook")
-					: toRunningSummary?.(taskId);
-			if (configuredSummary) {
-				return {
-					changed: true,
-					patch: {},
-					clearAttentionBuffer: true,
-					summary: configuredSummary,
-				};
-			}
-			const summary = store.getSummary?.(taskId) ?? null;
-			if (!summary) {
-				return null;
-			}
-			const result = reduceSessionTransition(summary, transition);
-			return {
-				...result,
-				summary: result.changed ? { ...summary, ...result.patch } : summary,
-			};
-		}),
 		recordHookReceived: vi.fn(),
 		observeTaskSessionLaunchHook: vi.fn(() => true),
 		evaluateHookEventOrder: vi.fn(() => ({ accepted: true })),
 		commitHookEventOrder: vi.fn(),
 	} as unknown as TerminalSessionManager;
+	manager.applyProviderHook = vi.fn((taskId, input) => {
+		const summary = store.getSummary?.(taskId) ?? null;
+		if (!summary) return null;
+		const providerEvent: Parameters<typeof reduceSessionTransition>[1] = {
+			type: "provider.hook" as const,
+			event: input.event,
+			metadata: input.metadata,
+			occurredAt: input.delivery?.occurredAt,
+			correlatedToolUseId: input.metadata?.toolUseId ?? null,
+			sessionEvidence: "live",
+		};
+		const providerResult = reduceSessionTransition(summary, providerEvent);
+		if (providerResult.changed) {
+			const reviewReason = providerResult.patch.reviewReason;
+			const configuredSummary =
+				providerResult.patch.state === "awaiting_review"
+					? toReviewSummary?.(
+							taskId,
+							reviewReason === "attention" || reviewReason === "error" ? reviewReason : "hook",
+						)
+					: providerResult.patch.state === "running"
+						? toRunningSummary?.(taskId)
+						: null;
+			if (configuredSummary) {
+				return {
+					...providerResult,
+					summary: configuredSummary,
+				};
+			}
+		}
+		return {
+			...providerResult,
+			summary: providerResult.changed ? { ...summary, ...providerResult.patch } : summary,
+		};
+	});
+	return manager;
 }
 
 export function mockStore(manager: TerminalSessionManager): Record<string, ReturnType<typeof vi.fn>> {
@@ -71,6 +69,13 @@ export function mockStore(manager: TerminalSessionManager): Record<string, Retur
 }
 
 export function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
+	const {
+		lastProviderHookOccurredAt = null,
+		nativeWorkEvidence = null,
+		recentProviderHookDeliveryIds = [],
+		recentProviderHookOrderObservations = [],
+		...summaryOverrides
+	} = overrides;
 	return {
 		taskId: "task-1",
 		state: "running",
@@ -84,7 +89,12 @@ export function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}
 		reviewReason: null,
 		exitCode: null,
 		lastHookAt: null,
+		lastProviderHookOccurredAt,
+		recentProviderHookDeliveryIds,
+		recentProviderHookOrderObservations,
 		latestHookActivity: null,
+		outstandingInteraction: null,
+		nativeWorkEvidence,
 		stalledSince: null,
 		conversationSummaries: [],
 		displaySummary: null,
@@ -92,7 +102,7 @@ export function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}
 		warningMessage: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
-		...overrides,
+		...summaryOverrides,
 	};
 }
 
@@ -130,7 +140,6 @@ export function createTestApi(manager: TerminalSessionManager, overrides: Partia
 			getTerminalManagerForProject: vi.fn(() => null),
 			ensureTerminalManagerForProject: vi.fn(async () => manager),
 		},
-		broadcaster: { broadcastRuntimeProjectStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		...overrides,
 	});
 }

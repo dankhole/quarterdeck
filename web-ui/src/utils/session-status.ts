@@ -15,8 +15,14 @@ export function describeSessionState(summary: RuntimeTaskSessionSummary | null):
 	switch (deriveTaskIndicatorState(summary).kind) {
 		case "running":
 			return "Running";
+		case "unconfirmed":
+			return "Review";
 		case "approval_required":
 			return "Waiting for approval";
+		case "response_pending":
+			return "Response sent — awaiting agent confirmation";
+		case "interaction_unknown":
+			return "Response outcome unknown";
 		case "review_ready":
 			return "Ready for review";
 		case "needs_input":
@@ -25,8 +31,6 @@ export function describeSessionState(summary: RuntimeTaskSessionSummary | null):
 			return "Completed";
 		case "error":
 			return "Error";
-		case "failed":
-			return "Failed";
 		case "stalled":
 			return "Stalled";
 		case "interrupted":
@@ -40,6 +44,15 @@ export function getSessionStatusTooltip(summary: RuntimeTaskSessionSummary | nul
 	if (!summary) return null;
 	if (deriveTaskIndicatorState(summary).kind === "stalled") {
 		return "No activity for several minutes \u2014 the agent may be stalled or could still be thinking";
+	}
+	if (deriveTaskIndicatorState(summary).kind === "response_pending") {
+		return "Quarterdeck delivered the response, but the provider has not yet confirmed resumed work";
+	}
+	if (deriveTaskIndicatorState(summary).kind === "interaction_unknown") {
+		return "The provider process ended before Quarterdeck could confirm whether the response was applied";
+	}
+	if (deriveTaskIndicatorState(summary).kind === "unconfirmed") {
+		return "No current launch-scoped provider event confirms that agent work is running";
 	}
 	return null;
 }

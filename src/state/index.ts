@@ -5,6 +5,9 @@ export {
 	ProjectBoardCommandService,
 	type ProjectBoardCommandServiceDependencies,
 	ProjectBoardLifecycleCommandRequiredError,
+	type ProjectBoardPostCommitEvent,
+	type ProjectBoardPostCommitListener,
+	type ProjectBoardUntitledTaskCreatedEffect,
 } from "./project-board-command-service";
 export {
 	type ApplyProjectBoardMutationInput,
@@ -18,6 +21,7 @@ export {
 	loadProjectContextById,
 	loadProjectScopeById,
 	loadProjectState,
+	loadProjectStateById,
 	ProjectBoardCommandIdentityConflictError,
 	type ProjectSessionsPruneResult,
 	ProjectStateConflictError,

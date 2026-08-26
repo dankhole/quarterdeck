@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef } from "react";
-import { handleBrowserDiagnosticsStreamMessage } from "@/diagnostics";
+import { handleBrowserDiagnosticsStreamMessage, recordBrowserEvent } from "@/diagnostics";
 import { consumeProjectPreload } from "@/runtime/project-preload-cache";
+import { resolveRuntimeBuildCompatibility } from "@/runtime/runtime-build-compatibility";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import {
 	createInitialRuntimeStateStreamStore,
@@ -72,6 +73,53 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 				});
 			},
 			onMessage: (payload) => {
+				if (payload.type === "snapshot") {
+					const compatibility = resolveRuntimeBuildCompatibility(
+						payload.runtimeBuildId,
+						__QUARTERDECK_BUILD_ID__,
+						sessionStorage,
+					);
+					if (compatibility === "reload") {
+						recordBrowserEvent(
+							"browser.runtime_build_mismatch",
+							{
+								action: "reload",
+								browserBuildId: __QUARTERDECK_BUILD_ID__,
+								runtimeBuildId: payload.runtimeBuildId ?? null,
+							},
+							{},
+							{ level: "warn", essential: true },
+						);
+						transport?.dispose();
+						dispatchStreamAction({
+							type: "stream_disconnected",
+							message:
+								"Quarterdeck was rebuilt. Reload this page to use the browser code that matches the running server.",
+						});
+						window.location.reload();
+						return;
+					}
+					if (compatibility === "blocked") {
+						recordBrowserEvent(
+							"browser.runtime_build_mismatch",
+							{
+								action: "blocked",
+								browserBuildId: __QUARTERDECK_BUILD_ID__,
+								runtimeBuildId: payload.runtimeBuildId ?? null,
+							},
+							{},
+							{ level: "error", essential: true },
+						);
+						transport?.dispose();
+						dispatchStreamAction({
+							type: "stream_disconnected",
+							message:
+								"Quarterdeck's browser and runtime builds do not match after reloading. Restart Quarterdeck and refresh this page.",
+						});
+						return;
+					}
+					transport?.acceptCurrentConnection();
+				}
 				if (handleBrowserDiagnosticsStreamMessage(payload)) {
 					return;
 				}

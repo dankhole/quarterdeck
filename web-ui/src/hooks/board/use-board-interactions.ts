@@ -31,6 +31,7 @@ interface SelectedBoardCard {
 interface UseBoardInteractionsInput {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
+	presentLifecycleBoard: Dispatch<SetStateAction<BoardData>>;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
 	selectedCard: SelectedBoardCard | null;
 	selectedTaskId: string | null;
@@ -76,6 +77,7 @@ export interface UseBoardInteractionsResult {
 export function useBoardInteractions({
 	board,
 	setBoard,
+	presentLifecycleBoard,
 	sessions,
 	selectedCard,
 	selectedTaskId,
@@ -105,7 +107,7 @@ export function useBoardInteractions({
 	const { handleStartTask, handleStartAllBacklogTasks, resolvePendingProgrammaticStartMove, resetPendingStartMoves } =
 		useTaskStart({
 			board,
-			setBoard,
+			presentLifecycleBoard,
 			selectedCard,
 			kickoffTaskInProgress,
 			tryProgrammaticCardMove,
@@ -117,6 +119,7 @@ export function useBoardInteractions({
 		useLinkedBacklogTaskActions({
 			board,
 			setBoard,
+			presentLifecycleBoard,
 			setSelectedTaskId,
 			executeTaskLifecycle,
 			onRequestTrashConfirmation: (
@@ -161,7 +164,7 @@ export function useBoardInteractions({
 		resetTrashWorkflowState,
 	} = useTrashWorkflow({
 		board,
-		setBoard,
+		presentLifecycleBoard,
 		selectedCard,
 		selectedTaskId,
 		setSelectedTaskId,
@@ -178,6 +181,7 @@ export function useBoardInteractions({
 	const { handleDragEnd } = useBoardDragHandler({
 		board,
 		setBoard,
+		presentLifecycleBoard,
 		setSelectedTaskId,
 		kickoffTaskInProgress,
 		resumeTaskFromTrash,

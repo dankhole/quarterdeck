@@ -73,11 +73,6 @@ export function TaskAgentSelector({
 						<span className="flex min-w-0 items-center gap-2">
 							<Bot size={14} className={selectedUnavailable ? "text-status-orange" : "text-text-secondary"} />
 							<span className="truncate">{selectedAgent.label}</span>
-							{selectedAgent.id === "pi" ? (
-								<span className="rounded bg-status-orange/10 px-1.5 py-0.5 text-[10px] font-medium text-status-orange">
-									Experimental
-								</span>
-							) : null}
 						</span>
 						<ChevronDown size={14} className="shrink-0 text-text-secondary" />
 					</button>
@@ -115,11 +110,6 @@ export function TaskAgentSelector({
 										<span className="min-w-0">
 											<span className="flex flex-wrap items-center gap-1.5">
 												<span className="font-medium">{agent.label}</span>
-												{agent.id === "pi" ? (
-													<span className="rounded bg-status-orange/10 px-1.5 py-0.5 text-[10px] font-medium text-status-orange">
-														Experimental
-													</span>
-												) : null}
 											</span>
 											{statusText ? (
 												<span

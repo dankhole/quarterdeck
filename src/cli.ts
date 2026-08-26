@@ -331,6 +331,8 @@ async function loadRuntimeStartupModules() {
 		{ setLogLevel },
 		{ createBackup, listBackups, startPeriodicBackups, stopPeriodicBackups },
 		{ migrateLegacyProjectConfig },
+		{ createHookTransitionOutboxReplayer, loadPendingHookTransitions },
+		{ createHooksApi },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
 		import("./server/index.js"),
@@ -343,6 +345,8 @@ async function loadRuntimeStartupModules() {
 		import("./core/runtime-logger.js"),
 		import("./state/state-backup.js"),
 		import("./config/index.js"),
+		import("./hook-transition-outbox.js"),
+		import("./trpc/hooks-api.js"),
 	]);
 
 	return {
@@ -366,6 +370,9 @@ async function loadRuntimeStartupModules() {
 		listBackups,
 		startPeriodicBackups,
 		stopPeriodicBackups,
+		createHookTransitionOutboxReplayer,
+		loadPendingHookTransitions,
+		createHooksApi,
 	};
 }
 
@@ -506,17 +513,62 @@ async function createRuntimeBootstrapState(
 	for (const { projectId, terminalManager } of projectRegistry.listManagedProjects()) {
 		runtimeHub.trackTerminalManager(projectId, terminalManager);
 	}
+	await projectRegistry.initializeIndexedProjectsForStartup({
+		beforeRecovery: async () => {
+			// Stop the prior runtime's orphaned processes before taking the final
+			// outbox snapshot. No old launch can then enqueue a lifecycle event in
+			// the gap between replay and replacement-session recovery.
+			await startupAgentCleanup;
+			const startupHooksApi = modules.createHooksApi({
+				projects: projectRegistry,
+				terminals: projectRegistry,
+				config: projectRegistry,
+				persistSessionState: runtimeHub.persistRuntimeSessions,
+				diagnostics,
+			});
+			const startupOutboxReplayer = modules.createHookTransitionOutboxReplayer({
+				ingest: startupHooksApi.ingest,
+			});
+			try {
+				await startupOutboxReplayer.replayOnce();
+				const pending = await modules.loadPendingHookTransitions();
+				const blockedTasks = Array.from(
+					new Map(
+						pending.map(({ request }) => [
+							JSON.stringify([request.projectId, request.taskId]),
+							{ projectId: request.projectId, taskId: request.taskId },
+						]),
+					).values(),
+				);
+				if (blockedTasks.length > 0) {
+					warn(
+						`Held automatic recovery for ${blockedTasks.length} task(s) with deferred provider hooks; their persisted Interrupted state is being retained.`,
+					);
+				}
+				return { blockAllRecovery: false, blockedTasks };
+			} catch (error) {
+				warn(
+					`Could not inspect persisted provider hooks before session recovery; automatic recovery is being held: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				);
+				return { blockAllRecovery: true, blockedTasks: [] };
+			} finally {
+				await startupOutboxReplayer.close();
+			}
+		},
+	});
 
-	const disposeTrackedProject = (
+	const disposeTrackedProject = async (
 		projectId: string,
 		options?: {
 			stopTerminalSessions?: boolean;
 		},
-	): { terminalManager: TerminalSessionManager | null; projectPath: string | null } => {
+	): Promise<{ terminalManager: TerminalSessionManager | null; projectPath: string | null }> => {
 		const disposed = projectRegistry.disposeProject(projectId, {
 			stopTerminalSessions: options?.stopTerminalSessions,
 		});
-		runtimeHub.disposeProject(projectId);
+		await runtimeHub.disposeProject(projectId);
 		return disposed;
 	};
 

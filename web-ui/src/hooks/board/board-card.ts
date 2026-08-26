@@ -1,3 +1,4 @@
+import { deriveTaskIndicatorState } from "@runtime-contract";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardCard, BoardColumnId, ReviewTaskWorktreeSnapshot } from "@/types";
 import { getCardHoverTooltip, shortenBranchName } from "@/utils/board-card-display";
@@ -8,13 +9,10 @@ import { resolveTaskIdentity } from "@/utils/task-identity";
 import { truncateTaskPromptLabel } from "@/utils/task-prompt";
 
 export function isBoardCardSessionDead(sessionSummary?: RuntimeTaskSessionSummary): boolean {
-	return (
-		!sessionSummary ||
-		sessionSummary.state === "idle" ||
-		sessionSummary.state === "failed" ||
-		sessionSummary.state === "interrupted" ||
-		(sessionSummary.state === "awaiting_review" && sessionSummary.reviewReason === "error")
-	);
+	if (!sessionSummary) return true;
+	if (sessionSummary.pid !== null) return false;
+	const indicator = deriveTaskIndicatorState(sessionSummary);
+	return indicator.publicStatus === "none" || indicator.publicStatus === "error" || indicator.kind === "interrupted";
 }
 
 export function resolveBoardCardViewModel({

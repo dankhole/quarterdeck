@@ -151,32 +151,35 @@ describe("TerminalAttachmentController", () => {
 		nextSessionAgentId = null;
 	});
 
-	it.each(["claude", "codex"] as const)("forces a redraw before requesting restore for %s sessions", (agentId) => {
-		nextSessionAgentId = agentId;
-		const callOrder: string[] = [];
-		const controller = new TerminalAttachmentController(
-			1,
-			{ cursorColor: "cursor", terminalBackgroundColor: "background" },
-			{ isDisposed: () => false },
-		);
-		const viewport = getLatestViewport();
-		const session = getLatestSession();
-		viewport.forceResize.mockImplementation(() => {
-			callOrder.push("forceResize");
-		});
-		session.requestRestore.mockImplementation(() => {
-			callOrder.push("requestRestore");
-		});
+	it.each(["claude", "codex", "pi"] as const)(
+		"forces a redraw before requesting restore for %s sessions",
+		(agentId) => {
+			nextSessionAgentId = agentId;
+			const callOrder: string[] = [];
+			const controller = new TerminalAttachmentController(
+				1,
+				{ cursorColor: "cursor", terminalBackgroundColor: "background" },
+				{ isDisposed: () => false },
+			);
+			const viewport = getLatestViewport();
+			const session = getLatestSession();
+			viewport.forceResize.mockImplementation(() => {
+				callOrder.push("forceResize");
+			});
+			session.requestRestore.mockImplementation(() => {
+				callOrder.push("requestRestore");
+			});
 
-		controller.requestRestore();
+			controller.requestRestore();
 
-		expect(viewport.forceResize).toHaveBeenCalledOnce();
-		expect(session.requestRestore).toHaveBeenCalledOnce();
-		expect(callOrder).toEqual(["forceResize", "requestRestore"]);
-	});
+			expect(viewport.forceResize).toHaveBeenCalledOnce();
+			expect(session.requestRestore).toHaveBeenCalledOnce();
+			expect(callOrder).toEqual(["forceResize", "requestRestore"]);
+		},
+	);
 
 	it("keeps restore-only behavior for other sessions", () => {
-		nextSessionAgentId = "pi";
+		nextSessionAgentId = null;
 		const controller = new TerminalAttachmentController(
 			1,
 			{ cursorColor: "cursor", terminalBackgroundColor: "background" },

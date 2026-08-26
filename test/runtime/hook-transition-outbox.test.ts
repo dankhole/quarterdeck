@@ -67,30 +67,96 @@ describe("hook transition outbox", () => {
 			sessionId: "resume-session",
 			sessionInstanceId: "process-1",
 			turnId: "turn-1",
+			promptId: null,
 			toolUseId: null,
+			elicitationId: null,
+			providerAgentId: null,
 			hookEventName: "PermissionRequest",
 			toolName: "Bash",
 			notificationType: null,
 		});
 	});
 
-	it("does not queue best-effort activity events", () => {
+	it("does not queue best-effort Codex activity events", () => {
 		expect(createPersistedHookTransition({ ...request(1), event: "activity" })).toBeNull();
 	});
 
-	it("does not introduce replay semantics for sources without Codex turn identity", () => {
+	it("persists reliable Codex SessionStart identity without requiring a turn id", () => {
 		expect(
 			createPersistedHookTransition({
 				...request(1),
-				metadata: { ...request(1).metadata, source: "claude" },
+				event: "activity",
+				metadata: {
+					...request(1).metadata,
+					hookEventName: "SessionStart",
+					turnId: null,
+				},
 			}),
-		).toBeNull();
+		).not.toBeNull();
+	});
+
+	it("persists Claude lifecycle events with launch fencing without requiring Codex turn identity", () => {
+		expect(
+			createPersistedHookTransition({
+				...request(1),
+				event: "activity",
+				metadata: { ...request(1).metadata, source: "claude", turnId: null, promptId: "prompt-1" },
+			}),
+		).not.toBeNull();
+
+		// Non-SessionStart Codex lifecycle transitions still require native turn identity.
 		expect(
 			createPersistedHookTransition({
 				...request(1),
 				metadata: { ...request(1).metadata, turnId: null },
 			}),
 		).toBeNull();
+	});
+
+	it("persists Pi lifecycle events with launch fencing and provider-native correlation", () => {
+		const sessionStart = createPersistedHookTransition({
+			...request(1),
+			event: "activity",
+			metadata: {
+				...request(1).metadata,
+				source: "pi",
+				hookEventName: "session_meta",
+				turnId: null,
+				toolUseId: null,
+			},
+		});
+		const permission = createPersistedHookTransition({
+			...request(1),
+			metadata: {
+				...request(1).metadata,
+				source: "pi",
+				turnId: null,
+				toolUseId: "pi-tool-1",
+			},
+		});
+		const settled = createPersistedHookTransition({
+			...request(1),
+			metadata: {
+				...request(1).metadata,
+				source: "pi",
+				hookEventName: "AgentSettled",
+				turnId: "pi-run-1",
+				toolUseId: null,
+			},
+		});
+		const withoutLaunchFence = createPersistedHookTransition({
+			...request(1),
+			metadata: {
+				...request(1).metadata,
+				source: "pi",
+				sessionInstanceId: null,
+			},
+		});
+
+		expect(sessionStart).not.toBeNull();
+		expect(permission?.request.metadata?.toolUseId).toBe("pi-tool-1");
+		expect(settled?.request.metadata?.turnId).toBe("pi-run-1");
+		expect(withoutLaunchFence).toBeNull();
 	});
 
 	it("loads pending transitions in occurrence order", async () => {
@@ -126,6 +192,36 @@ describe("hook transition outbox", () => {
 		await replayer.replayOnce();
 
 		expect(await loadPendingHookTransitions()).toHaveLength(1);
+		await replayer.close();
+	});
+
+	it("reports the exact tasks still pending after each successful replay pass", async () => {
+		await enqueueHookTransition(request(1));
+		await enqueueHookTransition({
+			...request(2),
+			projectId: "project-2",
+			taskId: "task-2",
+			metadata: { ...request(2).metadata, sessionInstanceId: "process-2" },
+		});
+		let acceptProjectTwo = false;
+		const onReplayPassCompleted = vi.fn();
+		const replayer = createHookTransitionOutboxReplayer({
+			ingest: vi.fn(async (input) =>
+				input.projectId === "project-1" || acceptProjectTwo
+					? { ok: true as const }
+					: { ok: false as const, error: "not ready" },
+			),
+			onReplayPassCompleted,
+		});
+
+		await replayer.replayOnce();
+		expect(onReplayPassCompleted).toHaveBeenLastCalledWith({
+			pendingTasks: [{ projectId: "project-2", taskId: "task-2" }],
+		});
+
+		acceptProjectTwo = true;
+		await replayer.replayOnce();
+		expect(onReplayPassCompleted).toHaveBeenLastCalledWith({ pendingTasks: [] });
 		await replayer.close();
 	});
 

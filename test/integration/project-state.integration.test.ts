@@ -123,7 +123,7 @@ describe.sequential("project-state integration", () => {
 				await saveProjectSessions(projectPath, {
 					"task-1": createTestTaskSessionSummary({
 						taskId: "task-1",
-						state: "interrupted",
+						state: "awaiting_review",
 						reviewReason: "interrupted",
 						pid: null,
 						updatedAt: Date.now(),
@@ -133,7 +133,7 @@ describe.sequential("project-state integration", () => {
 				const loaded = await loadProjectState(projectPath);
 				expect(loaded.revision).toBe(saved.revision);
 				expect(loaded.board).toEqual(saved.board);
-				expect(loaded.sessions["task-1"]?.state).toBe("interrupted");
+				expect(loaded.sessions["task-1"]?.state).toBe("awaiting_review");
 				expect(loaded.sessions["task-1"]?.reviewReason).toBe("interrupted");
 			} finally {
 				cleanup();

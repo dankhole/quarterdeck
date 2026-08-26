@@ -38,7 +38,7 @@ export interface CreateProjectsApiDependencies {
 	disposeProject: (
 		projectId: string,
 		options?: DisposeProjectOptions,
-	) => { terminalManager: TerminalSessionManager | null; projectPath: string | null };
+	) => Promise<{ terminalManager: TerminalSessionManager | null; projectPath: string | null }>;
 	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeBoardData) => Set<string>;
 	warn: (message: string) => void;
 	hostIntegrations: Pick<IRuntimeHostIntegrations, "pickDirectory">;
@@ -145,6 +145,13 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 				const removedTerminalManager = deps.terminals.getTerminalManagerForProject(body.projectId);
 				if (removedTerminalManager) {
 					removedTerminalManager.markInterruptedAndStopAll();
+					// Detach runtime session projection before awaiting shutdown. The
+					// interrupted summaries schedule a persistence timer; allowing that
+					// timer to survive state deletion can recreate the removed project.
+					await deps.disposeProject(body.projectId, {
+						stopTerminalSessions: false,
+					});
+					await removedTerminalManager.waitForShutdownQuiescence();
 				}
 
 				const removed = await removeProjectIndexEntry(body.projectId);
@@ -152,9 +159,11 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					throw new Error(`Could not remove project index entry for "${body.projectId}".`);
 				}
 				await removeProjectStateFiles(body.projectId);
-				deps.disposeProject(body.projectId, {
-					stopTerminalSessions: false,
-				});
+				if (!removedTerminalManager) {
+					await deps.disposeProject(body.projectId, {
+						stopTerminalSessions: false,
+					});
+				}
 
 				if (deps.projects.getActiveProjectId() === body.projectId) {
 					const remaining = await listProjectIndexEntries();

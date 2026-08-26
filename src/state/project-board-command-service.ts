@@ -10,6 +10,7 @@ import type {
 import {
 	applyProjectBoardCommands,
 	createTaggedLogger,
+	findCardInBoard,
 	isLifecycleManagedBoardCommand,
 	projectRuntimeSessionsOntoBoard,
 	projectRuntimeTaskBaseRefOntoBoard,
@@ -29,6 +30,23 @@ export interface ProjectBoardCommandScope {
 	projectId: string;
 	projectPath: string;
 }
+
+type RuntimeCreateTaskCommand = Extract<RuntimeProjectBoardCommand, { kind: "create_task" }>;
+
+export interface ProjectBoardUntitledTaskCreatedEffect {
+	type: "untitled_task_created";
+	task: Pick<RuntimeCreateTaskCommand, "taskId" | "prompt" | "createdAt">;
+}
+
+export interface ProjectBoardPostCommitEvent {
+	scope: ProjectBoardCommandScope;
+	commandId: string;
+	revision: number;
+	replayed: boolean;
+	effects: readonly ProjectBoardUntitledTaskCreatedEffect[];
+}
+
+export type ProjectBoardPostCommitListener = (event: ProjectBoardPostCommitEvent) => Promise<void> | void;
 
 export type ExecuteProjectBoardCommandInput = RuntimeProjectBoardCommandEnvelope;
 export type ExecuteProjectBoardCommandBatchInput = RuntimeProjectBoardCommandBatchEnvelope;
@@ -58,7 +76,16 @@ export class ProjectBoardLifecycleCommandRequiredError extends Error {
  * singleton, while durable receipts make ambiguous transport retries safe.
  */
 export class ProjectBoardCommandService {
+	private readonly postCommitListeners = new Set<ProjectBoardPostCommitListener>();
+
 	constructor(private readonly dependencies: ProjectBoardCommandServiceDependencies) {}
+
+	subscribeToPostCommitEffects(listener: ProjectBoardPostCommitListener): () => void {
+		this.postCommitListeners.add(listener);
+		return () => {
+			this.postCommitListeners.delete(listener);
+		};
+	}
 
 	async execute(
 		scope: ProjectBoardCommandScope,
@@ -99,6 +126,7 @@ export class ProjectBoardCommandService {
 				error: toErrorMessage(error),
 			});
 		}
+		this.publishPostCommitEffects(scope, envelope.commandId, envelope.commands, result);
 		return result;
 	}
 
@@ -112,13 +140,6 @@ export class ProjectBoardCommandService {
 			throw new ProjectBoardLifecycleCommandRequiredError(managed.kind);
 		}
 		return await this.executeBatch(scope, envelope);
-	}
-
-	async executeLifecycle(
-		scope: ProjectBoardCommandScope,
-		input: ExecuteProjectBoardCommandInput,
-	): Promise<ApplyProjectBoardMutationResult> {
-		return await this.execute(scope, input);
 	}
 
 	async reconcileRuntimeSessions(scope: ProjectBoardCommandScope): Promise<ApplyProjectBoardMutationResult> {
@@ -152,12 +173,16 @@ export class ProjectBoardCommandService {
 	async setGeneratedTaskTitle(
 		scope: ProjectBoardCommandScope,
 		taskId: string,
+		taskCreatedAt: number,
 		title: string,
 		updatedAt: number = Date.now(),
 	): Promise<ApplyProjectBoardMutationResult> {
 		const sessions = await this.dependencies.getAuthoritativeSessions(scope);
-		return await this.executeInternalMutation(scope, sessions, (board) =>
-			applyProjectBoardCommands(board, [
+		return await this.executeInternalMutation(scope, sessions, (board) => {
+			if (findCardInBoard(board, taskId)?.createdAt !== taskCreatedAt) {
+				return { board, changed: false };
+			}
+			return applyProjectBoardCommands(board, [
 				{
 					kind: "patch_task",
 					taskId,
@@ -165,8 +190,62 @@ export class ProjectBoardCommandService {
 					title,
 					updatedAt,
 				},
-			]),
-		);
+			]);
+		});
+	}
+
+	private publishPostCommitEffects(
+		scope: ProjectBoardCommandScope,
+		commandId: string,
+		commands: readonly RuntimeProjectBoardCommand[],
+		result: ApplyProjectBoardMutationResult,
+	): void {
+		if (!result.acceptedChange || this.postCommitListeners.size === 0) {
+			return;
+		}
+		const seenTaskIds = new Set<string>();
+		const effects: ProjectBoardUntitledTaskCreatedEffect[] = [];
+		for (const command of commands) {
+			if (command.kind !== "create_task" || seenTaskIds.has(command.taskId)) {
+				continue;
+			}
+			seenTaskIds.add(command.taskId);
+			const card = findCardInBoard(result.state.board, command.taskId);
+			if (card?.createdAt !== command.createdAt || card.title !== null) {
+				continue;
+			}
+			effects.push({
+				type: "untitled_task_created",
+				task: { taskId: card.id, prompt: card.prompt, createdAt: card.createdAt },
+			});
+		}
+		if (effects.length === 0) {
+			return;
+		}
+		const event: ProjectBoardPostCommitEvent = {
+			scope,
+			commandId,
+			revision: result.state.revision,
+			replayed: result.replayed,
+			effects,
+		};
+		for (const listener of this.postCommitListeners) {
+			try {
+				void Promise.resolve(listener(event)).catch((error) => {
+					log.warn("board post-commit listener failed", {
+						projectId: scope.projectId,
+						commandId,
+						error: toErrorMessage(error),
+					});
+				});
+			} catch (error) {
+				log.warn("board post-commit listener failed", {
+					projectId: scope.projectId,
+					commandId,
+					error: toErrorMessage(error),
+				});
+			}
+		}
 	}
 
 	private async executeInternalMutation(

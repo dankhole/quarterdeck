@@ -55,7 +55,10 @@ function minimalReplayMetadata(metadata: RuntimeHookMetadata | undefined): Runti
 		sessionId: metadata.sessionId ?? null,
 		sessionInstanceId: metadata.sessionInstanceId ?? null,
 		turnId: metadata.turnId ?? null,
+		promptId: metadata.promptId ?? null,
 		toolUseId: metadata.toolUseId ?? null,
+		elicitationId: metadata.elicitationId ?? null,
+		providerAgentId: metadata.providerAgentId ?? null,
 		hookEventName: metadata.hookEventName ?? null,
 		toolName: metadata.toolName ?? null,
 		notificationType: metadata.notificationType ?? null,
@@ -66,14 +69,23 @@ export function createPersistedHookTransition(
 	request: RuntimeHookIngestRequest,
 	now: number = Date.now(),
 ): PersistedHookTransition | null {
-	// Replay only when the runtime can prove both process and turn ownership.
-	// Other hook sources retain bounded direct retry without unsafe replay.
+	// Reliable hook commands call this before delivery. Codex requires both
+	// process and turn identity; Claude and Pi use prompt/tool/run identities
+	// instead of requiring a Codex-style turn id on every event, so launch
+	// identity is the mandatory replay fence and the provider-specific order
+	// tracker handles the remaining correlation.
+	const source = request.metadata?.source?.trim().toLowerCase();
+	const hookEventName = request.metadata?.hookEventName?.trim().toLowerCase();
+	const isCodexSessionStart = source === "codex" && request.event === "activity" && hookEventName === "sessionstart";
+	const hasCodexReplayIdentity =
+		source === "codex" &&
+		((request.event !== "activity" && Boolean(request.metadata?.turnId)) || isCodexSessionStart);
+	const hasClaudeReplayIdentity = source === "claude";
+	const hasPiReplayIdentity = source === "pi";
 	if (
-		request.event === "activity" ||
-		request.metadata?.source?.trim().toLowerCase() !== "codex" ||
 		!request.delivery ||
-		!request.metadata.sessionInstanceId ||
-		!request.metadata.turnId
+		!request.metadata?.sessionInstanceId ||
+		(!hasCodexReplayIdentity && !hasClaudeReplayIdentity && !hasPiReplayIdentity)
 	) {
 		return null;
 	}
@@ -189,6 +201,10 @@ export interface HookTransitionOutboxReplayer {
 	getDiagnosticSnapshot: (scope?: Readonly<DiagnosticCaptureScope>) => HookTransitionOutboxDiagnosticSnapshot;
 }
 
+export interface HookTransitionReplayPassResult {
+	pendingTasks: ReadonlyArray<{ projectId: string; taskId: string }>;
+}
+
 export interface HookTransitionOutboxDiagnosticSnapshot {
 	running: boolean;
 	replayInFlight: boolean;
@@ -240,6 +256,8 @@ function matchesDiagnosticScope(
 export function createHookTransitionOutboxReplayer(deps: {
 	ingest: (request: RuntimeHookIngestRequest) => Promise<RuntimeHookIngestResponse>;
 	intervalMs?: number;
+	/** Called after every successful scan, including an empty one. */
+	onReplayPassCompleted?: (result: HookTransitionReplayPassResult) => void;
 }): HookTransitionOutboxReplayer {
 	let timer: NodeJS.Timeout | null = null;
 	let activeReplay: Promise<void> | null = null;
@@ -291,6 +309,15 @@ export function createHookTransitionOutboxReplayer(deps: {
 						});
 					}
 				}
+				const pendingTasks = Array.from(
+					new Map(
+						(lastPendingRecords ?? []).map((record) => [
+							JSON.stringify([record.projectId, record.taskId]),
+							{ projectId: record.projectId, taskId: record.taskId },
+						]),
+					).values(),
+				);
+				deps.onReplayPassCompleted?.({ pendingTasks });
 			} catch (error) {
 				lastScanErrorClass = error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError";
 				throw error;

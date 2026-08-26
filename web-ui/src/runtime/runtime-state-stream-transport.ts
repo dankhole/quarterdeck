@@ -19,6 +19,7 @@ function getRuntimeStreamUrl(projectId: string | null): string {
 	}
 	url.searchParams.set("clientId", getRuntimeBrowserClientId());
 	url.searchParams.set("documentVisible", String(readCurrentDocumentVisible()));
+	url.searchParams.set("browserBuildId", __QUARTERDECK_BUILD_ID__);
 	return url.toString();
 }
 
@@ -36,6 +37,7 @@ export interface RuntimeStateStreamTransportCallbacks {
 }
 
 export interface RuntimeStateStreamTransport {
+	acceptCurrentConnection: () => void;
 	switchProject: (projectId: string | null) => void;
 	dispose: () => void;
 }
@@ -50,6 +52,8 @@ export function startRuntimeStateStreamTransport(
 	let reconnectAttempt = 0;
 	let connectionProjectId = requestedProjectId;
 	let disconnectReportedForSocket = false;
+	let socketOpen = false;
+	let connectionAccepted = false;
 
 	const cleanupSocket = () => {
 		if (!socket) {
@@ -61,6 +65,8 @@ export function startRuntimeStateStreamTransport(
 		socket.onclose = null;
 		socket.close();
 		socket = null;
+		socketOpen = false;
+		connectionAccepted = false;
 	};
 
 	const scheduleReconnect = () => {
@@ -90,16 +96,15 @@ export function startRuntimeStateStreamTransport(
 			const connectedSocket = new WebSocket(getRuntimeStreamUrl(connectionProjectId));
 			socket = connectedSocket;
 			disconnectReportedForSocket = false;
+			socketOpen = false;
+			connectionAccepted = false;
 			const isCurrentConnection = (): boolean => !cancelled && socket === connectedSocket;
 
 			connectedSocket.onopen = () => {
 				if (!isCurrentConnection()) {
 					return;
 				}
-				reconnectAttempt = 0;
-				setRuntimeDisconnected(false);
-				setBrowserDiagnosticsConnected(true);
-				callbacks.onConnected();
+				socketOpen = true;
 			};
 
 			connectedSocket.onmessage = (event) => {
@@ -107,7 +112,11 @@ export function startRuntimeStateStreamTransport(
 					return;
 				}
 				try {
-					callbacks.onMessage(JSON.parse(String(event.data)) as RuntimeStateStreamMessage);
+					const payload = JSON.parse(String(event.data)) as RuntimeStateStreamMessage;
+					if (!connectionAccepted && payload.type !== "snapshot") {
+						return;
+					}
+					callbacks.onMessage(payload);
 				} catch (error) {
 					log.warn("Malformed stream message", error);
 					recordBrowserEvent(
@@ -158,6 +167,16 @@ export function startRuntimeStateStreamTransport(
 	connect();
 
 	return {
+		acceptCurrentConnection() {
+			if (cancelled || !socket || !socketOpen || connectionAccepted) {
+				return;
+			}
+			connectionAccepted = true;
+			reconnectAttempt = 0;
+			setRuntimeDisconnected(false);
+			setBrowserDiagnosticsConnected(true);
+			callbacks.onConnected();
+		},
 		switchProject(projectId) {
 			connectionProjectId = projectId;
 			reconnectAttempt = 0;

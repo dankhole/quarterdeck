@@ -3,12 +3,14 @@ import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "./task-
 export type RuntimeTaskIndicatorKind =
 	| "idle"
 	| "running"
+	| "unconfirmed"
 	| "approval_required"
+	| "response_pending"
+	| "interaction_unknown"
 	| "review_ready"
 	| "needs_input"
 	| "completed"
 	| "error"
-	| "failed"
 	| "stalled"
 	| "interrupted";
 
@@ -18,8 +20,11 @@ export type RuntimeTaskIndicatorColumn = "active" | "stopped" | "silent";
 
 export type RuntimeTaskIndicatorNotification = "permission" | "review" | "failure";
 
+export type RuntimeTaskPublicStatus = "none" | "running" | "review" | "needs_input" | "error";
+
 export interface RuntimeTaskIndicatorState {
 	kind: RuntimeTaskIndicatorKind;
+	publicStatus: RuntimeTaskPublicStatus;
 	tone: RuntimeTaskIndicatorTone;
 	column: RuntimeTaskIndicatorColumn;
 	notification: RuntimeTaskIndicatorNotification | null;
@@ -37,11 +42,10 @@ export type RuntimeSessionWorkColumn = "in_progress" | "review";
  * session state. Keeping this mapping in the shared semantic layer prevents
  * hydration, live projection, and diagnostics from inventing separate rules.
  */
-export function getRuntimeSessionWorkColumn(
-	state: RuntimeTaskSessionSummary["state"],
-): RuntimeSessionWorkColumn | null {
-	if (state === "running") return "in_progress";
-	if (state === "awaiting_review") return "review";
+export function getRuntimeSessionWorkColumn(summary: RuntimeTaskSessionSummary): RuntimeSessionWorkColumn | null {
+	const publicStatus = deriveTaskIndicatorState(summary).publicStatus;
+	if (publicStatus === "running") return "in_progress";
+	if (publicStatus !== "none") return "review";
 	return null;
 }
 
@@ -67,8 +71,19 @@ function createIndicatorState(
 		hookReview?: boolean;
 	},
 ): RuntimeTaskIndicatorState {
+	const publicStatus: RuntimeTaskPublicStatus =
+		kind === "idle"
+			? "none"
+			: kind === "running"
+				? "running"
+				: needsInput
+					? "needs_input"
+					: failure
+						? "error"
+						: "review";
 	return {
 		kind,
+		publicStatus,
 		tone,
 		column,
 		notification,
@@ -85,6 +100,11 @@ export function isPermissionActivity(activity: RuntimeTaskHookActivity | null | 
 		return false;
 	}
 	const hook = activity.hookEventName?.toLowerCase() ?? "";
+	const source = activity.source?.toLowerCase() ?? "";
+	// Claude Notification hooks are presentation signals with human-readable
+	// text, not an exact actionable interaction identity. Persisted legacy
+	// notification activity must not be promoted back into task authority.
+	if (source === "claude" && hook === "notification") return false;
 	const notif = activity.notificationType?.toLowerCase() ?? "";
 	const text = activity.activityText?.toLowerCase() ?? "";
 	return (
@@ -96,33 +116,23 @@ export function isPermissionActivity(activity: RuntimeTaskHookActivity | null | 
 }
 
 export function deriveTaskIndicatorState(summary: RuntimeTaskSessionSummary): RuntimeTaskIndicatorState {
-	if (summary.state === "running") {
-		return createIndicatorState("running", {
-			tone: "running",
-			column: "active",
+	const interaction = summary.outstandingInteraction ?? null;
+	if (interaction?.status === "response_submitted") {
+		return createIndicatorState("response_pending", {
+			tone: "review",
+			column: "stopped",
 		});
 	}
-
-	if (summary.state === "failed") {
-		return createIndicatorState("failed", {
+	if (interaction?.status === "resolution_unknown") {
+		return createIndicatorState("interaction_unknown", {
 			tone: "error",
 			column: "stopped",
 			notification: "failure",
 			failure: true,
 		});
 	}
-
-	if (summary.state === "interrupted") {
-		return createIndicatorState("interrupted", {
-			tone: "error",
-			column: "silent",
-		});
-	}
-
-	if (summary.state === "awaiting_review") {
-		const hookReview = summary.reviewReason === "hook";
-		const approvalRequired = hookReview && isPermissionActivity(summary.latestHookActivity);
-		if (approvalRequired) {
+	if (interaction?.status === "waiting") {
+		if (interaction.kind === "permission") {
 			return createIndicatorState("approval_required", {
 				tone: "needs_input",
 				column: "stopped",
@@ -132,7 +142,35 @@ export function deriveTaskIndicatorState(summary: RuntimeTaskSessionSummary): Ru
 				hookReview: true,
 			});
 		}
+		return createIndicatorState("needs_input", {
+			tone: "review",
+			column: "stopped",
+			notification: "review",
+			needsInput: true,
+		});
+	}
 
+	if (summary.state === "running") {
+		const evidence = summary.nativeWorkEvidence;
+		if (
+			(summary.agentId === "codex" || summary.agentId === "claude" || summary.agentId === "pi") &&
+			(!evidence ||
+				evidence.provider !== summary.agentId ||
+				evidence.sessionInstanceId !== summary.sessionInstanceId ||
+				summary.pid === null)
+		) {
+			return createIndicatorState("unconfirmed", {
+				tone: "review",
+				column: "stopped",
+			});
+		}
+		return createIndicatorState("running", {
+			tone: "running",
+			column: "active",
+		});
+	}
+
+	if (summary.state === "awaiting_review") {
 		switch (summary.reviewReason) {
 			case "hook":
 				return createIndicatorState("review_ready", {
@@ -143,13 +181,9 @@ export function deriveTaskIndicatorState(summary: RuntimeTaskSessionSummary): Ru
 					hookReview: true,
 				});
 			case "attention":
-				return createIndicatorState("needs_input", {
-					// Preserve the existing badge tone for attention-style review while
-					// still exposing the stronger semantic meaning to downstream consumers.
-					tone: "review",
-					column: "stopped",
-					notification: "review",
-					needsInput: true,
+				return createIndicatorState("interrupted", {
+					tone: "neutral",
+					column: "silent",
 				});
 			case "exit":
 				return createIndicatorState("completed", {
@@ -176,6 +210,11 @@ export function deriveTaskIndicatorState(summary: RuntimeTaskSessionSummary): Ru
 					column: "stopped",
 					reviewReady: true,
 				});
+			case "unconfirmed":
+				return createIndicatorState("unconfirmed", {
+					tone: "review",
+					column: "stopped",
+				});
 			default:
 				return createIndicatorState("review_ready", {
 					tone: "review",
@@ -189,4 +228,20 @@ export function deriveTaskIndicatorState(summary: RuntimeTaskSessionSummary): Ru
 		tone: "neutral",
 		column: "stopped",
 	});
+}
+
+/**
+ * Returns whether one authoritative mutation newly entered an ordinary
+ * review-ready result. Notifications and turn checkpoints must use this same
+ * semantic edge instead of reclassifying raw provider events.
+ */
+export function didEnterTaskReviewReady(previous: RuntimeTaskSessionSummary, next: RuntimeTaskSessionSummary): boolean {
+	const previousIndicator = deriveTaskIndicatorState(previous);
+	const nextIndicator = deriveTaskIndicatorState(next);
+	return (
+		next.state === "awaiting_review" &&
+		nextIndicator.reviewReady &&
+		nextIndicator.notification === "review" &&
+		!(previousIndicator.reviewReady && previousIndicator.notification === "review")
+	);
 }

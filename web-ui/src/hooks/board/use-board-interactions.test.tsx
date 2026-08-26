@@ -92,6 +92,7 @@ function HookHarness({
 	const actions = useBoardInteractions({
 		board,
 		setBoard,
+		presentLifecycleBoard: setBoard,
 		sessions,
 		selectedCard,
 		selectedTaskId: null,

@@ -73,6 +73,53 @@ describe("startRuntimeStateStreamTransport", () => {
 		transport.dispose();
 	});
 
+	it("does not report a connection ready until its initial snapshot is admitted", () => {
+		const onConnected = vi.fn();
+		const transport = startRuntimeStateStreamTransport("project-a", {
+			onConnected,
+			onDisconnected: vi.fn(),
+			onMessage: vi.fn(),
+		});
+		const socket = FakeWebSocket.instances[0];
+		if (!socket) {
+			throw new Error("Expected an initial websocket.");
+		}
+
+		socket.emitOpen();
+		expect(onConnected).not.toHaveBeenCalled();
+
+		transport.acceptCurrentConnection();
+		transport.acceptCurrentConnection();
+
+		expect(onConnected).toHaveBeenCalledTimes(1);
+		transport.dispose();
+	});
+
+	it("drops fanout messages that race ahead of the compatible initial snapshot", () => {
+		const onMessage = vi.fn();
+		const transport = startRuntimeStateStreamTransport("project-a", {
+			onConnected: vi.fn(),
+			onDisconnected: vi.fn(),
+			onMessage,
+		});
+		const socket = FakeWebSocket.instances[0];
+		if (!socket) {
+			throw new Error("Expected an initial websocket.");
+		}
+
+		socket.emitOpen();
+		socket.emitMessage({ type: "projects_updated", projects: [] });
+		expect(onMessage).not.toHaveBeenCalled();
+
+		socket.emitMessage({ type: "snapshot" });
+		expect(onMessage).toHaveBeenCalledTimes(1);
+		transport.acceptCurrentConnection();
+
+		socket.emitMessage({ type: "projects_updated", projects: [] });
+		expect(onMessage).toHaveBeenCalledTimes(2);
+		transport.dispose();
+	});
+
 	it("rejects a queued message from a socket superseded by a project switch", () => {
 		const onMessage = vi.fn();
 		const transport = startRuntimeStateStreamTransport("project-a", {
@@ -104,6 +151,7 @@ describe("startRuntimeStateStreamTransport", () => {
 
 		expect(FakeWebSocket.instances).toHaveLength(1);
 		expect(new URL(FakeWebSocket.instances[0]?.url ?? "").searchParams.get("documentVisible")).toBe("false");
+		expect(new URL(FakeWebSocket.instances[0]?.url ?? "").searchParams.get("browserBuildId")).toBe("test");
 
 		transport.dispose();
 	});

@@ -56,13 +56,16 @@ describe("hook metadata", () => {
 		);
 	});
 
-	it("preserves native turn and tool-use identities", () => {
+	it("preserves provider prompt, tool, elicitation, and background-agent identities", () => {
 		const metadata = normalizeHookMetadata(
 			"to_in_progress",
 			{
 				hook_event_name: "PostToolUse",
 				turn_id: "turn-123",
+				prompt_id: "prompt-234",
 				tool_use_id: "tool-456",
+				elicitation_id: "elicitation-567",
+				agent_id: "agent-678",
 			},
 			{ source: "codex", sessionInstanceId: "process-789" },
 		);
@@ -71,7 +74,10 @@ describe("hook metadata", () => {
 			expect.objectContaining({
 				sessionInstanceId: "process-789",
 				turnId: "turn-123",
+				promptId: "prompt-234",
 				toolUseId: "tool-456",
+				elicitationId: "elicitation-567",
+				providerAgentId: "agent-678",
 			}),
 		);
 		expect(appendMetadataFlags(["hooks", "ingest"], metadata)).toEqual(
@@ -82,6 +88,12 @@ describe("hook metadata", () => {
 				"turn-123",
 				"--tool-use-id",
 				"tool-456",
+				"--prompt-id",
+				"prompt-234",
+				"--elicitation-id",
+				"elicitation-567",
+				"--provider-agent-id",
+				"agent-678",
 			]),
 		);
 	});

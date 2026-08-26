@@ -59,12 +59,8 @@ export function buildClaudeHooksSettings(options: { statusLineCommand?: string |
 			],
 			PreToolUse: [
 				{
-					matcher: "AskUserQuestion|ExitPlanMode",
-					hooks: [{ type: "command", command: buildClaudeHookCommand("to_review") }],
-				},
-				{
 					matcher: "*",
-					hooks: [{ type: "command", command: buildClaudeHookCommand("activity") }],
+					hooks: [{ type: "command", command: buildClaudeHookCommand("to_in_progress") }],
 				},
 			],
 			PermissionRequest: [
@@ -76,7 +72,7 @@ export function buildClaudeHooksSettings(options: { statusLineCommand?: string |
 			PermissionDenied: [
 				{
 					matcher: "*",
-					hooks: [{ type: "command", command: buildClaudeHookCommand("activity") }],
+					hooks: [{ type: "command", command: buildClaudeHookCommand("activity", { reliable: true }) }],
 				},
 			],
 			PostToolUse: [
@@ -92,10 +88,6 @@ export function buildClaudeHooksSettings(options: { statusLineCommand?: string |
 				},
 			],
 			Notification: [
-				{
-					matcher: "permission_prompt|elicitation_dialog|agent_needs_input",
-					hooks: [{ type: "command", command: buildClaudeHookCommand("to_review") }],
-				},
 				{
 					matcher: "*",
 					hooks: [{ type: "command", command: buildClaudeHookCommand("activity") }],

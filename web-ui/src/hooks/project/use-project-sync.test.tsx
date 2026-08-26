@@ -195,6 +195,7 @@ interface HookSnapshot {
 	refreshProjectState: () => Promise<void>;
 	resetProjectSyncState: (targetProjectId?: string | null) => void;
 	setBoard: ReturnType<typeof useProjectSync>["setBoard"];
+	presentLifecycleBoard: ReturnType<typeof useProjectSync>["presentLifecycleBoard"];
 	flushBoardCommands: ReturnType<typeof useProjectSync>["flushBoardCommands"];
 	getAuthoritativeRevision: ReturnType<typeof useProjectSync>["getAuthoritativeRevision"];
 	applyLifecycleProjectState: ReturnType<typeof useProjectSync>["applyLifecycleProjectState"];
@@ -240,6 +241,7 @@ function HookHarness({
 		resetProjectSyncState,
 		isServedFromBoardCache,
 		setBoard,
+		presentLifecycleBoard,
 		flushBoardCommands,
 		getAuthoritativeRevision,
 		applyLifecycleProjectState,
@@ -262,6 +264,7 @@ function HookHarness({
 			refreshProjectState,
 			resetProjectSyncState,
 			setBoard,
+			presentLifecycleBoard,
 			flushBoardCommands,
 			getAuthoritativeRevision,
 			applyLifecycleProjectState,
@@ -275,6 +278,7 @@ function HookHarness({
 		refreshProjectState,
 		resetProjectSyncState,
 		setBoard,
+		presentLifecycleBoard,
 		flushBoardCommands,
 		getAuthoritativeRevision,
 		sessions,
@@ -1064,7 +1068,7 @@ describe("useProjectSync", () => {
 		expect(applyProjectBoardCommandsMock.mock.calls[1]).toEqual(applyProjectBoardCommandsMock.mock.calls[0]);
 	});
 
-	it("keeps lifecycle-managed moves out of the generic queue and accepts exact authoritative rollback", async () => {
+	it("rejects the whole setBoard batch when it contains a lifecycle move and accepts presentation-only rollback", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
@@ -1080,8 +1084,26 @@ describe("useProjectSync", () => {
 
 		assertSnapshot(latestSnapshot, "Expected an initial hook snapshot.");
 		const initialSnapshot: HookSnapshot = latestSnapshot;
+		const mixedLifecycleBoard = createBoardInColumn("in_progress", "persisted-task");
+		const movedCard = mixedLifecycleBoard.columns.find((column) => column.id === "in_progress")?.cards[0];
+		if (!movedCard) {
+			throw new Error("Expected the lifecycle test task in progress.");
+		}
+		movedCard.prompt = "A generic edit that must not be partially persisted";
+		movedCard.updatedAt += 1;
 		await act(async () => {
-			initialSnapshot.setBoard(createBoardInColumn("in_progress", "persisted-task"));
+			initialSnapshot.setBoard(mixedLifecycleBoard);
+		});
+
+		const rejectedSnapshot = latestSnapshot as HookSnapshot | null;
+		assertSnapshot(rejectedSnapshot, "Expected a snapshot after the rejected generic lifecycle move.");
+		expect(rejectedSnapshot.board.columns[0]?.cards[0]?.id).toBe("persisted-task");
+		expect(rejectedSnapshot.board.columns[0]?.cards[0]?.prompt).toBe("Prompt persisted-task");
+		expect(rejectedSnapshot.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
+		expect(applyProjectBoardCommandsMock).not.toHaveBeenCalled();
+
+		await act(async () => {
+			rejectedSnapshot.presentLifecycleBoard(createBoardInColumn("in_progress", "persisted-task"));
 		});
 
 		const optimisticSnapshot = latestSnapshot as HookSnapshot | null;

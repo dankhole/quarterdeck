@@ -84,8 +84,16 @@ export interface InteractionsProviderProps {
 }
 
 export function InteractionsProvider({ children }: InteractionsProviderProps): ReactNode {
-	const { board, setBoard, sessions, selectedCard, selectedTaskId, setSelectedTaskId, taskLifecycle } =
-		useBoardContext();
+	const {
+		board,
+		setBoard,
+		presentLifecycleBoard,
+		sessions,
+		selectedCard,
+		selectedTaskId,
+		setSelectedTaskId,
+		taskLifecycle,
+	} = useBoardContext();
 	const { taskEditor, pendingTaskStartAfterEditId, clearPendingTaskStartAfterEditId } = useTaskEditorContext();
 	const { prepareCreateTaskForLifecycle, prepareCreateTasksForLifecycle } = taskEditor;
 
@@ -120,6 +128,7 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 	} = useBoardInteractions({
 		board,
 		setBoard,
+		presentLifecycleBoard,
 		sessions,
 		selectedCard,
 		selectedTaskId,
@@ -140,7 +149,7 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 		handleStartAllBacklogTasksFromBoard,
 	} = useTaskStartActions({
 		board,
-		setBoard,
+		presentLifecycleBoard,
 		prepareCreateTaskForLifecycle,
 		prepareCreateTasksForLifecycle,
 		executeTaskLifecycle: taskLifecycle.executeTaskLifecycle,

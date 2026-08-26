@@ -1,6 +1,6 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -17,18 +17,45 @@ import type {
 	RuntimeStateStreamSnapshotMessage,
 	RuntimeStateStreamTaskNotificationMessage,
 	RuntimeTaskSessionInputResponse,
+	RuntimeTaskSessionStartResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "../../src/core";
-import { deriveTaskIndicatorState } from "../../src/core";
+import { deriveTaskIndicatorState, QUARTERDECK_BUILD_ID } from "../../src/core";
 import { loadProjectContext } from "../../src/state";
 import { createBoard, createReviewBoard } from "../utilities/board-factory";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
-import { getAvailablePort, startQuarterdeckServer } from "../utilities/integration-server";
+import {
+	getAvailablePort,
+	resolveTsxLoaderImportSpecifier,
+	startQuarterdeckServer,
+} from "../utilities/integration-server";
 import { createBoardSeedCommandBatch } from "../utilities/project-board-command";
 import { connectRuntimeStream, type RuntimeStreamClient } from "../utilities/runtime-stream-client";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir } from "../utilities/temp-dir";
 import { requestJson } from "../utilities/trpc-request";
+
+function installDeterministicFakeCodex(binDir: string): void {
+	mkdirSync(binDir, { recursive: true });
+	const nodePath = process.execPath;
+	const tsxLoader = resolveTsxLoaderImportSpecifier();
+	const fakeCodexPath = resolve(process.cwd(), "scripts/agent-lab/fake-codex.ts");
+	if (process.platform === "win32") {
+		writeFileSync(
+			join(binDir, "codex.cmd"),
+			`@echo off\r\n"${nodePath}" --import "${tsxLoader}" "${fakeCodexPath}" %*\r\n`,
+			"utf8",
+		);
+		return;
+	}
+	const launcherPath = join(binDir, "codex");
+	writeFileSync(
+		launcherPath,
+		`#!/bin/sh\nexec ${JSON.stringify(nodePath)} --import ${JSON.stringify(tsxLoader)} ${JSON.stringify(fakeCodexPath)} "$@"\n`,
+		"utf8",
+	);
+	chmodSync(launcherPath, 0o755);
+}
 
 describe.sequential("state streaming integration", () => {
 	it("streams per-project snapshots and isolates project updates", async () => {
@@ -82,6 +109,7 @@ describe.sequential("state streaming integration", () => {
 			const snapshotA = (await streamA.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
+			expect(snapshotA.runtimeBuildId).toBe(QUARTERDECK_BUILD_ID);
 			expect(snapshotA.currentProjectId).toBe(projectAId);
 			expect(snapshotA.projectState?.repoPath).toBe(expectedProjectAPath);
 			expect(snapshotA.projects.map((project) => project.id).sort()).toEqual([projectAId, projectBId].sort());
@@ -114,7 +142,9 @@ describe.sequential("state streaming integration", () => {
 
 			const projectUpdateB = (await streamB.waitForMessage(
 				(message): message is RuntimeStateStreamProjectStateMessage =>
-					message.type === "project_state_updated" && message.projectId === projectBId,
+					message.type === "project_state_updated" &&
+					message.projectId === projectBId &&
+					message.projectState.revision === previousRevision + 1,
 			)) as RuntimeStateStreamProjectStateMessage;
 			expect(projectUpdateB.projectState.revision).toBe(previousRevision + 1);
 			expect(projectUpdateB.projectState.board.columns[0]?.cards[0]?.prompt).toBe("Realtime Task");
@@ -458,18 +488,24 @@ describe.sequential("state streaming integration", () => {
 		}
 	}, 30_000);
 
-	it("keeps board counts and notification semantics aligned across review and response transitions", async () => {
+	it("keeps board counts and notification semantics aligned across review, response, and interrupt transitions", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-hook-stream-");
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-hook-stream-");
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
+		const fakeBinPath = join(tempHome, "bin");
+		installDeterministicFakeCodex(fakeBinPath);
 
 		const port = await getAvailablePort();
 		const server = await startQuarterdeckServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port,
+			extraEnv: {
+				PATH: [fakeBinPath, process.env.PATH].filter(Boolean).join(delimiter),
+				QUARTERDECK_AGENT_LAB_SCENARIO: "idle",
+			},
 		});
 
 		let stream: RuntimeStreamClient | null = null;
@@ -506,25 +542,31 @@ describe.sequential("state streaming integration", () => {
 			});
 			expect(seedResponse.status).toBe(200);
 
-			const startShellResponse = await requestJson<RuntimeShellSessionStartResponse>({
+			const startTaskResponse = await requestJson<RuntimeTaskSessionStartResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "runtime.startShellSession",
+				procedure: "runtime.startTaskSession",
 				type: "mutation",
 				projectId,
 				payload: {
 					taskId,
+					prompt: "Exercise canonical state-stream transitions [agent-lab:idle]",
+					agentId: "codex",
 					baseRef: "HEAD",
+					useWorktree: false,
 				},
 			});
-			expect(startShellResponse.status).toBe(200);
-			expect(startShellResponse.payload.ok).toBe(true);
+			expect(startTaskResponse.status).toBe(200);
+			expect(startTaskResponse.payload.ok).toBe(true);
+			const sessionInstanceId = startTaskResponse.payload.summary?.sessionInstanceId;
+			expect(sessionInstanceId).toBeTruthy();
+			if (!sessionInstanceId) throw new Error("Missing live Codex session identity.");
 
-			const initialRunningStateMessage = (await stream.waitForMessage(
+			const initialUnconfirmedStateMessage = (await stream.waitForMessage(
 				(message): message is RuntimeStateStreamProjectStateMessage =>
 					message.type === "project_state_updated" &&
 					message.projectId === projectId &&
 					message.projectState.board.columns.some(
-						(column) => column.id === "in_progress" && column.cards.some((card) => card.id === taskId),
+						(column) => column.id === "review" && column.cards.some((card) => card.id === taskId),
 					),
 				10_000,
 			)) as RuntimeStateStreamProjectStateMessage;
@@ -534,12 +576,70 @@ describe.sequential("state streaming integration", () => {
 					message.projects.some(
 						(project) =>
 							project.id === projectId &&
-							project.boardRevision === initialRunningStateMessage.projectState.revision &&
-							project.taskCounts.in_progress === 1 &&
-							project.taskCounts.review === 0,
+							project.boardRevision >= initialUnconfirmedStateMessage.projectState.revision &&
+							project.taskCounts.in_progress === 0 &&
+							project.taskCounts.review === 1,
 					),
 				10_000,
 			);
+
+			const startWorkResponse = await requestJson<RuntimeHookIngestResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "hooks.ingest",
+				type: "mutation",
+				payload: {
+					taskId,
+					projectId,
+					event: "to_in_progress",
+					metadata: {
+						source: "codex",
+						hookEventName: "UserPromptSubmit",
+						sessionInstanceId,
+						turnId: "turn-1",
+					},
+					delivery: {
+						id: "00000000-0000-4000-8000-000000000099",
+						occurredAt: Date.now(),
+					},
+				},
+			});
+			expect(startWorkResponse.status).toBe(200);
+			expect(startWorkResponse.payload.ok).toBe(true);
+			const confirmedRunningStateMessage = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamProjectStateMessage =>
+					message.type === "project_state_updated" &&
+					message.projectId === projectId &&
+					message.projectState.board.columns.some(
+						(column) => column.id === "in_progress" && column.cards.some((card) => card.id === taskId),
+					),
+				10_000,
+			)) as RuntimeStateStreamProjectStateMessage;
+
+			const permissionOccurredAt = Date.now();
+			const preToolUseResponse = await requestJson<RuntimeHookIngestResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "hooks.ingest",
+				type: "mutation",
+				payload: {
+					taskId,
+					projectId,
+					event: "activity",
+					metadata: {
+						source: "codex",
+						hookEventName: "PreToolUse",
+						sessionInstanceId,
+						turnId: "turn-1",
+						toolUseId: "tool-1",
+						toolName: "Bash",
+					},
+					delivery: {
+						id: "00000000-0000-4000-8000-000000000000",
+						occurredAt: permissionOccurredAt - 1,
+					},
+				},
+			});
+			expect(preToolUseResponse.status).toBe(200);
+			expect(preToolUseResponse.payload.ok).toBe(true);
 
 			const hookResponse = await requestJson<RuntimeHookIngestResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
@@ -550,15 +650,33 @@ describe.sequential("state streaming integration", () => {
 					projectId,
 					event: "to_review",
 					metadata: {
-						source: "claude",
-						hookEventName: "Notification",
-						notificationType: "agent_needs_input",
-						activityText: "Needs input",
+						source: "codex",
+						hookEventName: "PermissionRequest",
+						sessionInstanceId,
+						turnId: "turn-1",
+						toolName: "Bash",
+						notificationType: "permission_prompt",
+						activityText: "Waiting for approval",
+					},
+					delivery: {
+						id: "00000000-0000-4000-8000-000000000001",
+						occurredAt: permissionOccurredAt,
 					},
 				},
 			});
 			expect(hookResponse.status).toBe(200);
 			expect(hookResponse.payload.ok).toBe(true);
+			const permissionState = await requestJson<RuntimeProjectStateResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "project.getState",
+				type: "query",
+				projectId,
+			});
+			expect(permissionState.payload.sessions[taskId]?.outstandingInteraction).toMatchObject({
+				status: "waiting",
+				turnId: "turn-1",
+				toolUseId: "tool-1",
+			});
 
 			const needsInputNotification = (await stream.waitForMessage(
 				(message): message is RuntimeStateStreamTaskNotificationMessage =>
@@ -570,14 +688,14 @@ describe.sequential("state streaming integration", () => {
 				10_000,
 			)) as RuntimeStateStreamTaskNotificationMessage;
 			expect(needsInputNotification.summaries).toContainEqual(
-				expect.objectContaining({ taskId, state: "awaiting_review", reviewReason: "attention" }),
+				expect.objectContaining({ taskId, state: "awaiting_review", reviewReason: "hook" }),
 			);
 
 			const reviewStateMessage = (await stream.waitForMessage(
 				(message): message is RuntimeStateStreamProjectStateMessage =>
 					message.type === "project_state_updated" &&
 					message.projectId === projectId &&
-					message.projectState.revision > initialRunningStateMessage.projectState.revision &&
+					message.projectState.revision > confirmedRunningStateMessage.projectState.revision &&
 					message.projectState.board.columns.some(
 						(column) => column.id === "review" && column.cards.some((card) => card.id === taskId),
 					),
@@ -589,14 +707,17 @@ describe.sequential("state streaming integration", () => {
 					message.projects.some(
 						(project) =>
 							project.id === projectId &&
-							project.boardRevision === reviewStateMessage.projectState.revision &&
+							project.boardRevision >= reviewStateMessage.projectState.revision &&
 							project.taskCounts.in_progress === 0 &&
 							project.taskCounts.review === 1,
 					),
 				10_000,
 			)) as RuntimeStateStreamProjectsMessage;
 			const reviewProject = reviewProjectMessage.projects.find((project) => project.id === projectId);
-			expect(reviewProject?.boardRevision).toBe(reviewStateMessage.projectState.revision);
+			// Automatic title or runtime metadata persistence may legitimately advance
+			// the durable board between the project-state and project-list frames. The
+			// list must never lag the observed state and its semantic counts must agree.
+			expect(reviewProject?.boardRevision).toBeGreaterThanOrEqual(reviewStateMessage.projectState.revision);
 
 			const inputResponse = await requestJson<RuntimeTaskSessionInputResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
@@ -605,14 +726,51 @@ describe.sequential("state streaming integration", () => {
 				projectId,
 				payload: {
 					taskId,
-					text: "true",
+					text: "y",
 					appendNewline: true,
 					intent: "submit",
 				},
 			});
 			expect(inputResponse.status).toBe(200);
-			expect(inputResponse.payload).toMatchObject({ ok: true, summary: { taskId, state: "running" } });
-
+			expect(inputResponse.payload).toMatchObject({
+				ok: true,
+				summary: { taskId, state: "awaiting_review", reviewReason: "hook" },
+			});
+			const resumeHookResponse = await requestJson<RuntimeHookIngestResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "hooks.ingest",
+				type: "mutation",
+				payload: {
+					taskId,
+					projectId,
+					event: "activity",
+					metadata: {
+						source: "codex",
+						hookEventName: "PreToolUse",
+						sessionInstanceId,
+						turnId: "turn-1",
+						toolUseId: "tool-2",
+						toolName: "Read",
+					},
+					delivery: {
+						id: "00000000-0000-4000-8000-000000000002",
+						occurredAt: Date.now() + 1,
+					},
+				},
+			});
+			expect(resumeHookResponse.status).toBe(200);
+			expect(resumeHookResponse.payload.ok).toBe(true);
+			const resumedState = await requestJson<RuntimeProjectStateResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "project.getState",
+				type: "query",
+				projectId,
+			});
+			expect(resumedState.payload.sessions[taskId]).toMatchObject({
+				state: "running",
+				reviewReason: null,
+				outstandingInteraction: null,
+			});
 			const runningNotification = (await stream.waitForMessage(
 				(message): message is RuntimeStateStreamTaskNotificationMessage =>
 					message.type === "task_notification" &&
@@ -644,14 +802,68 @@ describe.sequential("state streaming integration", () => {
 					message.projects.some(
 						(project) =>
 							project.id === projectId &&
-							project.boardRevision === runningStateMessage.projectState.revision &&
+							project.boardRevision >= runningStateMessage.projectState.revision &&
 							project.taskCounts.in_progress === 1 &&
 							project.taskCounts.review === 0,
 					),
 				10_000,
 			)) as RuntimeStateStreamProjectsMessage;
 			const runningProject = runningProjectMessage.projects.find((project) => project.id === projectId);
-			expect(runningProject?.boardRevision).toBe(runningStateMessage.projectState.revision);
+			expect(runningProject?.boardRevision).toBeGreaterThanOrEqual(runningStateMessage.projectState.revision);
+
+			const interruptResponse = await requestJson<RuntimeTaskSessionInputResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "runtime.sendTaskSessionInput",
+				type: "mutation",
+				projectId,
+				payload: {
+					taskId,
+					text: "\u001b",
+					appendNewline: false,
+					intent: "write",
+				},
+			});
+			expect(interruptResponse.status).toBe(200);
+			expect(interruptResponse.payload.ok).toBe(true);
+
+			const interruptedNotification = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamTaskNotificationMessage =>
+					message.type === "task_notification" &&
+					message.projectId === projectId &&
+					message.notificationRevision > runningNotification.notificationRevision &&
+					message.summaries.some(
+						(summary) =>
+							summary.taskId === taskId &&
+							summary.state === "awaiting_review" &&
+							summary.reviewReason === "interrupted" &&
+							!deriveTaskIndicatorState(summary).needsInput,
+					),
+				10_000,
+			)) as RuntimeStateStreamTaskNotificationMessage;
+			expect(interruptedNotification.notificationRevision).toBeGreaterThan(runningNotification.notificationRevision);
+
+			const interruptedStateMessage = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamProjectStateMessage =>
+					message.type === "project_state_updated" &&
+					message.projectId === projectId &&
+					message.projectState.revision > runningStateMessage.projectState.revision &&
+					message.projectState.board.columns.some(
+						(column) => column.id === "review" && column.cards.some((card) => card.id === taskId),
+					),
+				10_000,
+			)) as RuntimeStateStreamProjectStateMessage;
+			await stream.waitForMessage(
+				(message): message is RuntimeStateStreamProjectsMessage =>
+					message.type === "projects_updated" &&
+					message.projects.some(
+						(project) =>
+							project.id === projectId &&
+							project.boardRevision >= interruptedStateMessage.projectState.revision &&
+							project.taskCounts.in_progress === 0 &&
+							project.taskCounts.review === 1,
+					),
+				10_000,
+			);
 
 			const finalState = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
@@ -659,10 +871,10 @@ describe.sequential("state streaming integration", () => {
 				type: "query",
 				projectId,
 			});
-			expect(finalState.payload.board.columns.find((column) => column.id === "in_progress")?.cards).toContainEqual(
+			expect(finalState.payload.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
+			expect(finalState.payload.board.columns.find((column) => column.id === "review")?.cards).toContainEqual(
 				expect.objectContaining({ id: taskId }),
 			);
-			expect(finalState.payload.board.columns.find((column) => column.id === "review")?.cards).toHaveLength(0);
 
 			await requestJson({
 				baseUrl: `http://127.0.0.1:${port}`,

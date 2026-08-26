@@ -7,7 +7,6 @@ describe("createHooksApi — conversation summaries", () => {
 		const appendConversationSummary = vi.fn();
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			applyHookActivity: vi.fn(),
 			appendConversationSummary,
 			setDisplaySummary: vi.fn(),
 		});
@@ -17,8 +16,10 @@ describe("createHooksApi — conversation summaries", () => {
 		await api.ingest({
 			taskId: "task-1",
 			projectId: "project-1",
-			event: "to_in_progress",
+			event: "to_review",
 			metadata: {
+				source: "claude",
+				hookEventName: "Stop",
 				conversationSummaryText: "Completed the auth refactor with tests",
 			},
 		});
@@ -33,7 +34,6 @@ describe("createHooksApi — conversation summaries", () => {
 		const setDisplaySummary = vi.fn();
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary,
 		});
@@ -43,8 +43,10 @@ describe("createHooksApi — conversation summaries", () => {
 		await api.ingest({
 			taskId: "task-1",
 			projectId: "project-1",
-			event: "to_in_progress",
+			event: "to_review",
 			metadata: {
+				source: "claude",
+				hookEventName: "Stop",
 				finalMessage: "Done with the work",
 			},
 		});
@@ -56,7 +58,6 @@ describe("createHooksApi — conversation summaries", () => {
 		const setDisplaySummary = vi.fn();
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary,
 		});
@@ -67,8 +68,10 @@ describe("createHooksApi — conversation summaries", () => {
 		await api.ingest({
 			taskId: "task-1",
 			projectId: "project-1",
-			event: "to_in_progress",
+			event: "to_review",
 			metadata: {
+				source: "claude",
+				hookEventName: "Stop",
 				finalMessage: longMessage,
 			},
 		});
@@ -84,7 +87,6 @@ describe("createHooksApi — conversation summaries", () => {
 		const setDisplaySummary = vi.fn();
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			applyHookActivity: vi.fn(),
 			appendConversationSummary,
 			setDisplaySummary,
 		});
@@ -111,7 +113,6 @@ describe("createHooksApi — conversation summaries", () => {
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
 			toReviewSummary: vi.fn(() => transitionedSummary),
-			applyHookActivity: vi.fn(),
 			appendConversationSummary,
 			setDisplaySummary: vi.fn(),
 		});
@@ -123,6 +124,8 @@ describe("createHooksApi — conversation summaries", () => {
 			projectId: "project-1",
 			event: "to_review",
 			metadata: {
+				source: "claude",
+				hookEventName: "Stop",
 				conversationSummaryText: "Finished implementing feature",
 			},
 		});
@@ -131,5 +134,32 @@ describe("createHooksApi — conversation summaries", () => {
 			text: "Finished implementing feature",
 			capturedAt: expect.any(Number),
 		});
+	});
+
+	it("does not let a Claude subagent completion replace the foreground task summary", async () => {
+		const appendConversationSummary = vi.fn();
+		const setDisplaySummary = vi.fn();
+		const manager = createMockManager({
+			getSummary: vi.fn(() => createSummary({ state: "running" })),
+			appendConversationSummary,
+			setDisplaySummary,
+		});
+		const api = createTestApi(manager);
+
+		await api.ingest({
+			taskId: "task-1",
+			projectId: "project-1",
+			event: "activity",
+			metadata: {
+				source: "claude",
+				hookEventName: "SubagentStop",
+				providerAgentId: "subagent-1",
+				finalMessage: "Subagent-only result",
+				conversationSummaryText: "Subagent-only summary",
+			},
+		});
+
+		expect(appendConversationSummary).not.toHaveBeenCalled();
+		expect(setDisplaySummary).not.toHaveBeenCalled();
 	});
 });

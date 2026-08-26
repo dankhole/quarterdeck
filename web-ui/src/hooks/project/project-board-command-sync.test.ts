@@ -44,6 +44,21 @@ describe("project board command sync", () => {
 		expect(result.board).toEqual(second.board);
 	});
 
+	it("preserves Pi ownership when creating a durable backlog task", () => {
+		const before = createInitialBoardData();
+		const created = addTaskToColumnWithResult(before, "backlog", {
+			prompt: "Use Pi",
+			baseRef: "main",
+			agentId: "pi",
+			useWorktree: true,
+		});
+
+		const result = applyDerived(before, created.board);
+
+		expect(result.commands).toContainEqual(expect.objectContaining({ kind: "create_task", agentId: "pi" }));
+		expect(result.board).toEqual(created.board);
+	});
+
 	it("reproduces editable and runtime metadata patches", () => {
 		const created = addTaskToColumnWithResult(createInitialBoardData(), "backlog", {
 			prompt: "Original",

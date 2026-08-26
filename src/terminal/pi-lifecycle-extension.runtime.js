@@ -1,11 +1,15 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 
 const HOOK_COMMAND_ENV = "__QUARTERDECK_PI_HOOK_COMMAND_ENV__";
+const TOOL_APPROVALS_ENV = "__QUARTERDECK_PI_TOOL_APPROVALS_ENV__";
 const MAX_TEXT_LENGTH = 600;
 const DURABLE_HOOK_TIMEOUT_MS = 8_000;
-const PERMISSION_TOOL_NAMES = new Set(["bash"]);
+const READ_ONLY_TOOL_NAMES = new Set(["read", "grep", "find", "ls"]);
 const toolInputsById = new Map();
 let durableHookQueue = Promise.resolve();
+let activeRunId = null;
+let lastAssistantSummary = null;
 
 function normalizeText(value) {
 	if (typeof value !== "string") {
@@ -119,15 +123,29 @@ function emitQuarterdeckHook(event, metadata, ctx, options = {}) {
 	appendFlag(args, "--final-message", metadata.finalMessage);
 	appendFlag(args, "--hook-event-name", metadata.hookEventName);
 	appendFlag(args, "--notification-type", metadata.notificationType);
-	appendFlag(args, "--session-id", metadata.sessionId ?? getSessionId(ctx));
+	const turnId = Object.prototype.hasOwnProperty.call(metadata, "turnId") ? metadata.turnId : activeRunId;
+	const sessionId = Object.prototype.hasOwnProperty.call(metadata, "sessionId")
+		? metadata.sessionId
+		: getSessionId(ctx);
+	appendFlag(args, "--turn-id", turnId);
+	appendFlag(args, "--tool-use-id", metadata.toolUseId);
+	appendFlag(args, "--session-id", sessionId);
 
 	return spawnHookCommand(binary, args, options.waitForExit === true);
 }
 
 function enqueueDurableHook(event, metadata, ctx) {
+	// Durable emissions may wait behind an earlier hook while Pi has already
+	// started another queued run. Freeze launch/run identity at enqueue time so
+	// an older event can never inherit the next run's activeRunId.
+	const queuedMetadata = {
+		...metadata,
+		turnId: metadata.turnId ?? activeRunId,
+		sessionId: metadata.sessionId ?? getSessionId(ctx),
+	};
 	durableHookQueue = durableHookQueue.then(
-		() => emitQuarterdeckHook(event, metadata, ctx, { waitForExit: true }),
-		() => emitQuarterdeckHook(event, metadata, ctx, { waitForExit: true }),
+		() => emitQuarterdeckHook(event, queuedMetadata, ctx, { waitForExit: true }),
+		() => emitQuarterdeckHook(event, queuedMetadata, ctx, { waitForExit: true }),
 	);
 	return durableHookQueue;
 }
@@ -249,8 +267,55 @@ async function confirmPermission(ctx, question) {
 	}
 }
 
+function isVerifiedBuiltInReadOnlyTool(pi, toolName) {
+	if (!READ_ONLY_TOOL_NAMES.has(toolName)) {
+		return false;
+	}
+	try {
+		return pi.getAllTools().some((tool) => tool.name === toolName && tool.sourceInfo?.source === "builtin");
+	} catch {
+		return false;
+	}
+}
+
+function areToolApprovalsEnabled() {
+	return process.env[TOOL_APPROVALS_ENV] !== "disabled";
+}
+
 export default function quarterdeckLifecycle(pi) {
+	pi.on("project_trust", async (event, ctx) => {
+		const interactionId = randomUUID();
+		await enqueueDurableHook(
+			"to_review",
+			{
+				hookEventName: "ProjectTrustRequest",
+				notificationType: "permission_prompt",
+				activityText: "Waiting for project trust",
+				toolName: "project_trust",
+				toolUseId: interactionId,
+			},
+			ctx,
+		);
+		const confirmed = await confirmPermission(
+			ctx,
+			"Trust this project for this Pi session? Project resources and extensions may execute code.\n\n" + event.cwd,
+		);
+		await enqueueDurableHook(
+			confirmed ? "activity" : "to_review",
+			{
+				hookEventName: confirmed ? "ProjectTrustResolved" : "ProjectTrustDenied",
+				activityText: confirmed ? "Project trusted for this session" : "Project trust denied",
+				toolName: "project_trust",
+				toolUseId: interactionId,
+			},
+			ctx,
+		);
+		return { trusted: confirmed ? "yes" : "no", remember: false };
+	});
+
 	pi.on("session_start", (_event, ctx) => {
+		activeRunId = null;
+		lastAssistantSummary = null;
 		void enqueueDurableHook(
 			"activity",
 			{
@@ -273,6 +338,8 @@ export default function quarterdeckLifecycle(pi) {
 	});
 
 	pi.on("agent_start", (_event, ctx) => {
+		activeRunId = randomUUID();
+		lastAssistantSummary = null;
 		void enqueueDurableHook(
 			"to_in_progress",
 			{
@@ -284,16 +351,45 @@ export default function quarterdeckLifecycle(pi) {
 	});
 
 	pi.on("agent_end", (event, ctx) => {
-		const finalMessage = lastAssistantText(event.messages);
+		lastAssistantSummary = lastAssistantText(event.messages) ?? lastAssistantSummary;
 		void enqueueDurableHook(
-			"to_review",
+			"activity",
 			{
 				hookEventName: "AgentEnd",
-				activityText: finalMessage ? "Final: " + finalMessage : "Waiting for review",
-				finalMessage,
+				activityText: "Pi agent loop ended; waiting for settlement",
 			},
 			ctx,
 		);
+	});
+
+	pi.on("agent_settled", (_event, ctx) => {
+		const settledRunId = activeRunId;
+		const finalMessage = lastAssistantSummary;
+		void enqueueDurableHook(
+			"to_review",
+			{
+				hookEventName: "AgentSettled",
+				activityText: finalMessage ? "Final: " + finalMessage : "Waiting for review",
+				finalMessage,
+				turnId: settledRunId,
+			},
+			ctx,
+		).finally(() => {
+			if (activeRunId === settledRunId) {
+				activeRunId = null;
+				lastAssistantSummary = null;
+			}
+		});
+	});
+
+	pi.on("session_before_switch", (_event, ctx) => {
+		ctx.ui.notify("Quarterdeck-managed Pi sessions cannot switch provider session identity. Restart the task instead.", "warning");
+		return { cancel: true };
+	});
+
+	pi.on("session_before_fork", (_event, ctx) => {
+		ctx.ui.notify("Quarterdeck-managed Pi sessions cannot fork provider session identity.", "warning");
+		return { cancel: true };
 	});
 
 	pi.on("tool_execution_start", (event, ctx) => {
@@ -306,6 +402,7 @@ export default function quarterdeckLifecycle(pi) {
 				activityText: formatToolActivity("Using", event.toolName, toolInput),
 				toolName: event.toolName,
 				toolInputSummary,
+				toolUseId: getToolCallId(event),
 			},
 			ctx,
 		);
@@ -325,6 +422,7 @@ export default function quarterdeckLifecycle(pi) {
 				activityText: formatToolActivity(event.isError ? "Failed" : "Completed", event.toolName, toolInput),
 				toolName: event.toolName,
 				toolInputSummary,
+				toolUseId: getToolCallId(event),
 			},
 			ctx,
 		);
@@ -332,11 +430,12 @@ export default function quarterdeckLifecycle(pi) {
 	});
 
 	pi.on("tool_call", async (event, ctx) => {
-		if (!PERMISSION_TOOL_NAMES.has(event.toolName)) {
+		if (!areToolApprovalsEnabled() || isVerifiedBuiltInReadOnlyTool(pi, event.toolName)) {
 			return;
 		}
 
 		const toolInputSummary = summarizeToolInput(event.toolName, event.input);
+		const toolUseId = getToolCallId(event);
 		await enqueueDurableHook(
 			"to_review",
 			{
@@ -345,20 +444,24 @@ export default function quarterdeckLifecycle(pi) {
 				activityText: "Waiting for approval",
 				toolName: event.toolName,
 				toolInputSummary,
+				toolUseId,
 			},
 			ctx,
 		);
 
-		const question = toolInputSummary ? "Allow bash command?\n\n" + toolInputSummary : "Allow bash command?";
+		const question = toolInputSummary
+			? "Allow " + event.toolName + "?\n\n" + toolInputSummary
+			: "Allow " + event.toolName + "?";
 		const confirmed = await confirmPermission(ctx, question);
 		if (!confirmed) {
 			await enqueueDurableHook(
 				"to_in_progress",
 				{
 					hookEventName: "PermissionDenied",
-					activityText: "Denied bash command",
+					activityText: "Denied " + event.toolName,
 					toolName: event.toolName,
 					toolInputSummary,
+					toolUseId,
 				},
 				ctx,
 			);
@@ -369,9 +472,10 @@ export default function quarterdeckLifecycle(pi) {
 			"to_in_progress",
 			{
 				hookEventName: "PermissionResolved",
-				activityText: "Approved bash command",
+				activityText: "Approved " + event.toolName,
 				toolName: event.toolName,
 				toolInputSummary,
+				toolUseId,
 			},
 			ctx,
 		);

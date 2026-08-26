@@ -21,7 +21,7 @@ export function createBoardSeedCommandBatch(
 				prompt: card.prompt,
 				images: card.images,
 				baseRef: card.baseRef,
-				agentId: card.agentId === "claude" || card.agentId === "codex" ? card.agentId : undefined,
+				agentId: card.agentId,
 				useWorktree: card.useWorktree,
 				branch: card.branch ?? undefined,
 				pinned: card.pinned,

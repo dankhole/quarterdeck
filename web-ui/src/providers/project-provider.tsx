@@ -69,6 +69,7 @@ export interface ProjectSyncContextValue {
 	isDocumentVisible: boolean;
 	isServedFromBoardCache: boolean;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
+	presentLifecycleBoard: Dispatch<SetStateAction<BoardData>>;
 	flushBoardCommands: () => Promise<{ ok: boolean; message?: string }>;
 	getAuthoritativeRevision: () => number | null;
 	applyLifecycleProjectState: (state: RuntimeProjectStateResponse) => void;
@@ -193,6 +194,7 @@ export function ProjectProvider({
 		refreshProjectState,
 		resetProjectSyncState,
 		setBoard,
+		presentLifecycleBoard,
 		flushBoardCommands,
 		getAuthoritativeRevision,
 		applyLifecycleProjectState,
@@ -305,6 +307,7 @@ export function ProjectProvider({
 			isDocumentVisible,
 			isServedFromBoardCache,
 			setBoard,
+			presentLifecycleBoard,
 			flushBoardCommands,
 			getAuthoritativeRevision,
 			applyLifecycleProjectState,
@@ -319,6 +322,7 @@ export function ProjectProvider({
 			isDocumentVisible,
 			isServedFromBoardCache,
 			setBoard,
+			presentLifecycleBoard,
 			flushBoardCommands,
 			getAuthoritativeRevision,
 			applyLifecycleProjectState,

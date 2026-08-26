@@ -34,10 +34,7 @@ export function reconcileSessionStates(ctx: ReconciliationSweepContext): void {
 	for (const entry of ctx.entries.values()) {
 		try {
 			const summary = ctx.store.getSummary(entry.taskId);
-			if (
-				!summary ||
-				(summary.state !== "running" && summary.state !== "awaiting_review" && summary.state !== "interrupted")
-			) {
+			if (!summary || (summary.state !== "running" && summary.state !== "awaiting_review")) {
 				continue;
 			}
 
@@ -110,10 +107,6 @@ export function applyReconciliationAction(
 		}
 		case "clear_hook_activity": {
 			ctx.store.update(entry.taskId, { latestHookActivity: null });
-			break;
-		}
-		case "move_interrupted_to_review": {
-			ctx.applyTransitionEvent(entry, { type: "autorestart.denied" });
 			break;
 		}
 	}

@@ -30,7 +30,7 @@ interface SelectedBoardCard {
 
 interface UseTrashWorkflowInput {
 	board: BoardData;
-	setBoard: Dispatch<SetStateAction<BoardData>>;
+	presentLifecycleBoard: Dispatch<SetStateAction<BoardData>>;
 	selectedCard: SelectedBoardCard | null;
 	selectedTaskId: string | null;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
@@ -82,7 +82,7 @@ export interface UseTrashWorkflowResult {
 
 export function useTrashWorkflow({
 	board,
-	setBoard,
+	presentLifecycleBoard,
 	selectedCard,
 	selectedTaskId,
 	setSelectedTaskId,
@@ -176,14 +176,14 @@ export function useTrashWorkflow({
 			if (!moved.moved) {
 				return;
 			}
-			setBoard(moved.board);
+			presentLifecycleBoard(moved.board);
 			const movedSelection = findCardSelection(moved.board, taskId);
 			if (!movedSelection) {
 				return;
 			}
 			void resumeTaskFromTrash(movedSelection.card, taskId, { optimisticMoveApplied: true });
 		},
-		[board, resumeTaskFromTrash, setBoard, tryProgrammaticCardMove],
+		[board, presentLifecycleBoard, resumeTaskFromTrash, tryProgrammaticCardMove],
 	);
 
 	const executeHardDelete = useCallback(
@@ -292,13 +292,13 @@ export function useTrashWorkflow({
 		});
 		if (trashWarningState.open && card && fromColumnId && optimisticMoveApplied) {
 			log.debug("trash warning reverting optimistic move", { cardId: card.id, fromColumnId });
-			setBoard((currentBoard) => {
+			presentLifecycleBoard((currentBoard) => {
 				const reverted = moveTaskToColumn(currentBoard, card.id, fromColumnId);
 				return reverted.moved ? reverted.board : currentBoard;
 			});
 		}
 		setTrashWarningState(INITIAL_TRASH_WARNING_STATE);
-	}, [setBoard, trashWarningState]);
+	}, [presentLifecycleBoard, trashWarningState]);
 
 	const handleConfirmTrashWarning = useCallback(() => {
 		if (!trashWarningState.open || !trashWarningState.card) {

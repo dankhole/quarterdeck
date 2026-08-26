@@ -1,6 +1,6 @@
 # Conversation Provider Boundary Spike
 
-Status: Decisions A and B completed on 2026-08-24. P2B is unblocked, and the separately authorized ownership experiment established the constraints for a future P3 implementation. No provider integration, task handoff, remote listener, authentication, or mobile UI is implemented on `main` by these decision records.
+Status: Decision A and P2B are implemented and authenticated-history hardened. Decision B is complete; the Codex coordinator is implemented on `feature/remote-execution-ownership` and awaits reconciliation with the newer native interaction and ordering model. Claude structured ownership remains pending. No remote listener, authentication, pairing flow, or mobile UI is implemented.
 
 This document is the self-contained handoff for deciding how Quarterdeck should read recent Claude Code and Codex conversations and, separately, whether a future mobile interaction service should take exclusive execution ownership from the native desktop TUI.
 
@@ -8,7 +8,7 @@ The parent plan is [`remote-companion-plan.md`](./remote-companion-plan.md). Cur
 
 ## Executive Summary
 
-The P2 read-source spike is complete. Production P2B conversation adapters may now be implemented against the decision and limits below.
+The P2 read-source spike is complete, and production P2B conversation adapters now implement the decision and limits below.
 
 Two discoveries changed the original P2 assumptions:
 
@@ -25,9 +25,21 @@ The interfaces are useful for structured execution, but the read experiments fou
 The spike records two separate outcomes:
 
 - **Decision A — P2 read source:** use bounded raw provider-history parsing for both Claude Code and Codex. The service owns exact-session resolution, canonical containment, resource limits, stable normalization, and typed degradation.
-- **Decision B — future P3 execution ownership:** supported with documented constraints for both providers. Authenticated native-TUI -> structured owner -> native-TUI round trips preserved exact Claude and Codex session identity, durable lineage, and single-writer stop/wait ordering; production still requires a durable coordinator and compatibility gates.
+- **Decision B — P3 execution ownership:** supported with documented constraints for both providers. Authenticated native-TUI -> structured owner -> native-TUI round trips preserved exact Claude and Codex session identity, durable lineage, and single-writer stop/wait ordering. The Codex coordinator now exists on its dedicated P3 branch behind the required compatibility gates; integrating it with the current native task-state model and implementing Claude remain separate work.
 
-Decision A unblocks P2B. Decision B unblocks the separately scoped P3 ownership implementation, but does not add it; P2B remains strictly read-only and independent of execution ownership.
+Decision A produced P2B, which remains strictly read-only regardless of execution owner. Decision B constrains the separate P3 implementation; P2 itself does not add or enable structured production ownership.
+
+## P2B Implementation Result
+
+The implementation is separated under `src/conversation/` into provider-neutral contracts, limits and normalization, bounded JSONL head/tail scanners, secure source location, Claude/Codex record parsers, provider adapters, stable identity, an in-memory Claude hook-hint store, and the runtime-owned read service. `createRuntimeServer(...)` composes the internal `conversationReads` interface from the already owned task-session summary; no browser or remote route accepts a provider session ID, source path, history root, or file handle.
+
+Claude reads accept native and Agent SDK `user` and `assistant` records with matching `sessionId`, message `uuid`, text content blocks, and known session/compaction/interruption boundary records. Codex reads accept absent, legacy, or paginated history-mode rollout JSONL whose first record is a matching `session_meta`, followed by `response_item` message records with user `input_text` or assistant `output_text`; recognized compaction records become presentation boundaries. The Codex parser suppresses an authenticated provider-injected repository/environment record only when its exact wrapper shape is the older same-turn partner of the real prompt. This includes the Codex `0.149.1` post-compaction single-block environment wrapper, but only when the newest-first scan has already observed the real newer prompt with the same turn ID. Unpaired wrappers and arbitrary same-turn duplicates degrade without returning their content. Both adapters discard tool, tool-result, reasoning/thinking, command, system/developer, provider-maintenance, raw-error, and unknown content before the provider-neutral result.
+
+The tail reader works backward in 64 KiB chunks until a compaction or opaque-record barrier, or until a source/resource limit is reached. It then reconstructs provider-native logical history before projection: Claude follows the active `parentUuid` chain, while Codex applies persisted rollback markers. Only after reconstruction does it select the requested recent messages and use older meaningful entries to set `hasOlder`. The hard aggregate limits are 4 MiB of source bytes, 4,096 records, 1 MiB per raw record, 32 KiB per normalized message, 128 KiB per serialized result, 2 KiB of diagnostics, 10,000 lookup entries, four presentation boundaries, 28 total entries, and two seconds for lookup plus read. A normal 10- or requested-at-most-24-message tail remains `available` with `hasOlder`; malformed or bounded-away context returns an honest gap and becomes `degraded` only when recent-window fidelity is affected.
+
+Stable IDs hash provider plus exact stored session identity and the provider-native immutable UUID/item ID. When the native ID is absent, they hash provider, session, immutable source byte offset, content-block index, and entry kind. The result is stable across reread, append, browser reconnect, and service/runtime reconstruction without exposing provider identity. Source lookup canonicalizes roots and candidates with `realpath`, requires containment and a regular file, opens read-only with no-follow semantics, compares the opened inode to the validated file, verifies the exact in-record session, and never selects a provider-global latest session.
+
+Fixtures and isolated tests cover both providers, authenticated native/structured/native record families, legacy and paginated Codex modes, Claude interruption, injected-context exclusion, long tails, limits, gaps, stable native and fallback IDs, append/reconstruction, compaction, duplicates, partial/malformed/unknown records, empty/missing history, Unicode/control normalization, source/session mismatch, strict caller input, traversal, symlink escape, content-free diagnostics, equivalent provider-neutral shapes, Pi exclusion, and proof that reads do not mutate provider or runtime-owner state. The final validation and Agent Lab run are recorded in `docs/implementation-log.md`.
 
 Live structured events may later accelerate an already-active structured owner, but they are not the durable read source and must not become a second Quarterdeck-owned transcript.
 
@@ -74,14 +86,14 @@ Multiple read consumers are safe in principle. Multiple execution owners are not
 
 ## Current Quarterdeck Baseline
 
-Current work context when this handoff was written:
+Current integration context:
 
-- Working branch: `feature/remote-conversation-reads`.
-- Local base: `feature/remote-access` at `5cf2c00b` (`docs: record remote readiness validation`).
-- The base satisfies the original requirement that local `feature/remote-access` contain `5cf2c00b` or newer.
-- No P2 production implementation or provider dependency has been added. The branch contains only the documentation that reframes P2 around this evidence gate.
+- P2B is integrated with the native task/session hardening from `feature/remote-access`.
+- Codex P3 is implemented separately at `f61445e2` on `feature/remote-execution-ownership`; do not import its execution code as P2 work.
+- The reproducible P2A evidence below was collected from `5cf2c00b`; that evidence base is historical and distinct from the newer implementation base.
+- P2B is implemented without adding an SDK/app-server dependency or changing native provider execution ownership.
 - The repository currently has no `@anthropic-ai/claude-agent-sdk` dependency and no Codex app-server client. Verify this again before starting because the branch may advance.
-- Do not merge another branch merely to begin the spike. Preserve unrelated work and any existing untracked `docs/archive` item.
+- Reconcile P3 as separately authorized work from the selected current base. Preserve unrelated work and provider-specific boundaries.
 
 The fresh investigator must verify these statements against current code before relying on them:
 
@@ -570,7 +582,7 @@ Update `AGENTS.md` only if the investigation discovers genuinely non-obvious tri
 
 ### Commit and final handoff
 
-The original implementation authorization requires the completed P2B implementation and documentation to be committed on `feature/remote-conversation-reads` after validation and final review pass. Do not commit an incomplete spike as though P2 shipped, and never push unless the user separately requests it.
+P2B was originally developed and validated on `feature/remote-conversation-reads`; integration changes still require complete validation and a final review pass. Do not commit incomplete work as though P2 shipped, and never push unless the user separately requests it.
 
 The final P2B handoff must report:
 
@@ -653,16 +665,20 @@ Do not copy historical release notes or mark P2 complete merely because the old 
 - Maximum diagnostic metadata: 2 KiB, content-free.
 - Timeout/process-output limits: two seconds for source lookup plus read; the raw reader starts no child process and therefore has no provider stdout/stderr surface.
 - Source lookup limit: 10,000 directory entries aggregate beneath approved provider history roots, within the same two-second deadline. Exceeding it returns a typed unavailable/degraded result rather than selecting a global latest session.
-- Older-history/incomplete semantics: read newest to oldest until the requested messages plus the minimum evidence needed to prove older context are found. Return messages chronologically. Set `hasOlder` and prepend a deterministic `history_gap` boundary when older meaningful history is known or when earlier bytes, compaction, malformed/oversized records, or a scan limit prevent proving completeness. A normal size-limited window may remain `available`; use `degraded` only when the requested recent window itself cannot be reconstructed faithfully.
+- Older-history/incomplete semantics: read newest to oldest until reconstruction proves the requested number of unique safe messages plus one older meaningful message. Duplicate provider-native message IDs do not count as distinct evidence. Return messages chronologically. Set `hasOlder` and prepend a deterministic `history_gap` boundary when older meaningful history is known or when earlier bytes, compaction, malformed/oversized records, or a scan limit prevent proving completeness. A normal size-limited window may remain `available`; use `degraded` only when the requested recent window itself cannot be reconstructed faithfully.
 - Compatibility gates: only `claude` and `codex` register adapters. A missing exact stored session ID is `unavailable`; a stored ID with no matching source is `source_missing`; an unknown record envelope or provider version that cannot be interpreted safely is `unsupported` or `degraded`. Pi is absent or `unsupported` and never participates in source lookup.
 
 #### Claude evidence
 
 The official SDK types describe `getSessionMessages(sessionId, { dir, limit, offset })`, but the installed implementation locates and parses the transcript, reconstructs the parent-UUID conversation chain, and only then applies `slice(offset, offset + limit)`. A synthetic `SessionStore` returned six records to the SDK when the caller requested two; the result contained the first two records, not the recent two. The implementation also reads an entire transcript below its internal 5 MiB threshold. Its limit therefore bounds returned entries, not Quarterdeck's bytes, records, or memory, and it has the wrong direction for this product.
 
-P2B should parse only native Claude `user` and `assistant` records and known compact/resume boundaries. Preserve the native record `uuid`; when a consumer-visible boundary lacks a native ID, derive a SHA-256 ID from provider, exact stored session ID, immutable source byte offset, boundary kind, and content-block index. The hook-provided `transcript_path` is only a locator hint. The adapter must resolve the configured Claude history root server-side, canonicalize both root and candidate with `realpath`, require a regular file contained beneath the root, require the filename/in-record session identity to match Quarterdeck's exact stored Claude session ID, and never use `--continue` or global recency for reads.
+P2B parses only native Claude `user` and `assistant` records and known compact/resume boundaries. It preserves the native record `uuid`; when a consumer-visible entry lacks a native ID, it derives a SHA-256 ID from provider, exact stored session ID, immutable source byte offset, entry kind, and content-block index. The hook-provided `transcript_path` is only a locator hint. The adapter resolves the configured Claude history root server-side, canonicalizes both root and candidate with `realpath`, requires a regular file contained beneath the root, requires the filename/in-record session identity to match Quarterdeck's exact stored Claude session ID, and never uses `--continue` or global recency for reads.
 
-The minimum Claude `2.1.198` native package was installed only under the disposable root, reported the expected version, and contained the same `user`/`assistant`, `sessionId`, `parentUuid`, `compact_boundary`, and `isCompactSummary` record markers. It was not used for an authenticated turn or taken as proof that every detailed record variant is identical. P2B must retain fixtures for the native envelope shapes accepted at Quarterdeck's minimum and current versions and degrade an unknown shape; it must not silently broaden parsing based on the current SDK.
+During a bounded backward scan, an unresolved older `parentUuid` may be the safe frontier once the requested unique active-lineage suffix plus one older message is already proven. That frontier reports `hasOlder` without turning a recent-tail request into a full-file scan. A cycle is not equivalent evidence: cyclic or otherwise invalid lineage remains incomplete and degraded.
+
+The minimum Claude `2.1.198` native package was installed only under the disposable root, reported the expected version, and contained the same `user`/`assistant`, `sessionId`, `parentUuid`, `compact_boundary`, and `isCompactSummary` record markers. It was not used for an authenticated turn or taken as proof that every detailed record variant is identical. P2B retains fixtures for the native envelope shapes accepted at Quarterdeck's minimum and current versions and ignores or degrades unknown shapes rather than silently broadening parsing based on the current SDK.
+
+The later authenticated ownership experiment resumed one exact Claude Code `2.1.224` session through Agent SDK `0.3.241` and returned it to the native TUI. SDK turns stayed in the same append-only JSONL lineage while adding queue, attachment, tool, and interrupt records. The provider-generated single-text-block `[Request interrupted by user]` record is not user conversation; P2B now emits a stable typed `interrupted` boundary only for that exact installed SDK sentinel and fixture-gates the preceding SDK prompt plus native handback lineage. Claude JSONL does not embed a trustworthy writer version, so the reader cannot honestly apply Codex's per-file version range; Quarterdeck's existing runtime minimum-version check and fixture review on supported-version changes are the compatibility gate.
 
 #### Codex evidence
 
@@ -670,7 +686,11 @@ App-server `0.149.0` exposes newest-first `thread/turns/list` and `thread/items/
 
 An isolated no-credential app-server session confirmed newest-first turn paging and exact-thread rereads, including after restarting app-server. It also exposed an identity problem: the same persisted user item was synthesized as `item-1` by `0.149.0` and `item-2` by `0.142.5`. The rollout's native `response_item.payload.id` remained stable. An 8 KiB backward read of a 38,489-byte synthetic rollout recovered the two newest meaningful messages after examining eight records and left older source bytes unread, demonstrating that the native append-oriented format supports the required bounded-tail strategy.
 
-P2B should parse `session_meta` for exact identity and `response_item` message records whose roles are `user` or `assistant`, accepting only documented input/output text content. It should discard tool calls/results, reasoning, commands, system/developer prompts, provider events, and maintenance records except recognized presentation boundaries. Preserve `response_item.payload.id`; if absent, use the same deterministic session/byte-offset/content-index SHA-256 fallback. Resolve the configured `CODEX_HOME` server-side and search only its approved `sessions` and supported archived-session roots for the exact ID suffix, within the lookup limits. Then canonicalize, contain, require a regular file, and verify the in-record session ID. Never call `resume --last`, `thread/list`, or another global latest lookup.
+P2B parses `session_meta` for exact identity and `response_item` message records whose roles are `user` or `assistant`, accepting only input/output text content. It discards tool calls/results, reasoning, commands, system/developer prompts, provider events, and maintenance records except recognized presentation boundaries. It preserves `response_item.payload.id`; if absent, it uses the deterministic session/byte-offset/content-index SHA-256 fallback. The adapter resolves configured `CODEX_HOME` roots server-side and searches only approved `sessions` and `archived_sessions` roots for the exact ID suffix within lookup limits, then canonicalizes, contains, requires a regular file, and verifies the leading in-record session ID. It never calls `resume --last`, `thread/list`, or another global latest lookup.
+
+Codex reconstruction applies rollback records before counting the safe suffix. A rollback that underflows the scanned logical turns is never accepted as an older-history frontier; scanning continues within the hard limits and the result remains incomplete and degraded if the underflow cannot be resolved.
+
+The authenticated `0.149.1` native/app-server/native round trip began with `history_mode: "paginated"`; structured ownership did not convert it or change the rollout root, filename, envelope families, stable message IDs, or earlier byte prefix. The first native turn contained one older provider-injected user-role record with repository-instruction and environment-context wrappers sharing the actual prompt's provider turn ID. A separate authenticated `/compact` sequence contained a top-level compaction barrier followed by a single-block environment wrapper and the real prompt with the same turn ID. P2B admits only absent, `legacy`, or `paginated` history modes and declared transcript versions from the supported `0.142.5` minimum through the authenticated `0.149.1` maximum. It returns only the safe suffix after compaction with `history_gap`, `compacted`, and `history_compacted`, suppresses only a paired exact wrapper, and degrades without exposing unpaired wrappers or arbitrary duplicate user records. A newer or malformed declared version is unsupported until its fixtures pass. Redacted authenticated fixtures cover normal handoff, compaction, interrupt, crash-incomplete maintenance records, native recovery, stable IDs, and service reconstruction.
 
 #### Rejected alternatives
 
@@ -700,28 +720,25 @@ The authenticated follow-up used isolated synthetic projects and provider histor
 - Ran a content-free bounded-tail proof that read only the final 8 KiB of a 38,489-byte synthetic Codex rollout, examined eight records, found the two recent meaningful messages, and did not read the older source bytes.
 - Confirmed all isolated app-server processes were stopped. Temporary evidence remained under `/private/tmp/quarterdeck-provider-spike.<suffix>/`; it contains no Quarterdeck/user runtime state or credentials and is not a committed artifact.
 - Agent Lab run ID: not used. The spike made no production code or desktop behavior change, and authenticated native-TUI handoff was outside the authorized experiment.
-- Known limitations: Claude `2.1.198` was inspected and version-checked but did not create an authenticated transcript; no authenticated assistant turn or native/structured/native round trip was run; compaction, malformed tails, containment, and limit enforcement remain production fixture/test obligations in P2B rather than claims established by the interface spike.
-- Separately authorized follow-up: authenticated Claude `2.1.224`/Agent SDK `0.3.241` and Codex `0.149.1` native/structured/native handoff evidence completed Decision B. The content-free safety and validation record is in the ownership-handoff results document.
+- Initial Decision-A limitations: Claude `2.1.198` was inspected and version-checked but did not create an authenticated transcript, and that first phase ran no authenticated assistant turn or native/structured/native round trip. The separately authorized follow-up below closed that ownership/history gap at the installed versions; provider format drift still requires fixture review when supported minimums change.
+- Follow-up integration: authenticated Claude `2.1.224`/Agent SDK `0.3.241` and Codex `0.149.1` handoff evidence was redacted into P2 fixtures. Focused parser tests prove provider-injected Codex context and Claude interrupt sentinel text never reach provider-neutral messages, both Codex history modes are gated, and IDs remain stable across reconstruction.
 
 ### Gate result
 
-- Decision A ready for P2B: yes.
-- Decision B ready for P3 implementation: yes, provider-by-provider with the documented compatibility and single-writer constraints.
+- Decision A implemented by P2B: yes.
+- Decision B implementation status: Codex implemented on `feature/remote-execution-ownership` pending integration; Claude pending.
 - Recorded by: architecture spike, 2026-08-24.
 
-## Handoff Checklist
+## P3 Implementation Handoff Checklist
 
-A fresh agent implementing P2B should proceed in this order:
+A fresh agent investigating Decision B should proceed in this order:
 
-1. Read `AGENTS.md` completely.
-2. Read this document, `docs/remote-companion-plan.md`, `docs/todo.md`, and `docs/conventions/architecture-guardrails.md`.
-3. Confirm the branch base and current worktree state; preserve unrelated changes and do not touch `docs/archive` if it exists untracked elsewhere.
-4. Verify current minimum provider versions and installed authoritative types; treat version drift as a compatibility review, not a reason to reopen the product scope.
-5. Review commit `28c987584` file by file without cherry-picking it.
-6. Implement the provider-neutral contracts, bounded source locator, backward JSONL reader, Claude adapter, Codex adapter, and runtime-owned service as separate responsibilities under `src/conversation/`.
-7. Encode every limit and source/session invariant from Decision A in focused fixtures and isolated integration tests before runtime composition.
-8. Keep P3 ownership handoff out of the P2B branch; do not start an SDK/app-server runner or add a second transcript.
-9. Update release documentation only when the P2B exit gate is genuinely satisfied.
-10. Run the complete P2B validation, isolated Agent Lab regression, and final read-only branch review required above before committing the implementation.
+1. Read `AGENTS.md` completely, then this document, `docs/remote-companion-plan.md`, `docs/todo.md`, and `docs/conventions/architecture-guardrails.md`.
+2. Treat `src/conversation/` as the completed durable read boundary; do not make the ownership experiment rewrite it, start a second transcript, or weaken exact-session source validation.
+3. Use the completed authenticated evidence and provider compatibility matrix in `remote-task-ownership-handoff-spike-results.md`; any new billable/provider experiment still requires its own credential-isolation gate and confirmation.
+4. Implement the provider-specific adapters behind exact stored session/profile identity, frozen launch parity, stop-and-wait fencing, and fail-closed version/schema/history compatibility checks.
+5. Select one execution owner at a time. Never run the native TUI and structured SDK/app-server writer concurrently against the same session.
+6. Keep generic PTY input local-only. P3 must expose only an idempotent typed interaction service with bounded text and stale-session/prompt rejection.
+7. Re-run the existing P2B fixtures and security/read-only gates after any session-identity or runtime-composition change.
 
-Decision A is complete because another engineer can reproduce the evidence, understand why bounded raw history was selected, and implement P2B without reopening its read-source question. Decision B is also complete as an evidence gate, but production P3 remains separate because safe task conversion still requires the durable ownership coordinator, provider-specific compatibility gates, and single-writer recovery design.
+Decision A and its authenticated history hardening are complete. The Codex P3 coordinator is implemented on `feature/remote-execution-ownership` and awaits reconciliation with the current native foreground interaction and ordering model. Claude structured ownership and concurrent background-agent interaction control remain pending. Remote write capability remains disabled until that integration and an authenticated remote gateway are complete.

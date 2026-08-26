@@ -4,7 +4,6 @@ import {
 	type AudibleTaskNotificationState,
 	areSoundsSuppressed,
 	deriveAudibleTaskNotificationState,
-	deriveColumn,
 	EVENT_PRIORITY,
 	getSettleWindowMs,
 	isEventSuppressedForProject,
@@ -32,6 +31,18 @@ interface UseAudibleNotificationsOptions {
 interface PendingSound {
 	eventType: AudibleNotificationEventType;
 	timer: ReturnType<typeof setTimeout>;
+}
+
+function isTaskLocallySuppressed(
+	task: { projectId: string; taskId: string } | undefined,
+	currentProjectId: string | null,
+	suppressedTaskIds: ReadonlySet<string> | undefined,
+): boolean {
+	return (
+		task !== undefined &&
+		suppressedTaskIds?.has(task.taskId) === true &&
+		(currentProjectId === null || task.projectId === currentProjectId)
+	);
 }
 
 export function useAudibleNotifications({
@@ -64,21 +75,30 @@ export function useAudibleNotifications({
 	latestProjectIdRef.current = currentProjectId;
 	latestSuppressedTaskIdsRef.current = suppressedTaskIds;
 
-	const cancelPendingSound = (taskId: string) => {
-		const existing = pendingSoundsRef.current.get(taskId);
+	const cancelPendingSound = (notificationKey: string) => {
+		const existing = pendingSoundsRef.current.get(notificationKey);
 		if (!existing) {
 			return;
 		}
 		clearTimeout(existing.timer);
-		pendingSoundsRef.current.delete(taskId);
+		pendingSoundsRef.current.delete(notificationKey);
 	};
 
-	const fireSound = (taskId: string) => {
-		const pending = pendingSoundsRef.current.get(taskId);
+	const fireSound = (notificationKey: string) => {
+		const pending = pendingSoundsRef.current.get(notificationKey);
 		if (!pending) return;
-		pendingSoundsRef.current.delete(taskId);
-		const task = latestNotificationTasksRef.current[taskId];
-		if (!task || latestSuppressedTaskIdsRef.current?.has(taskId) || deriveColumn(task.summary) !== "stopped") {
+		pendingSoundsRef.current.delete(notificationKey);
+		const task = latestNotificationTasksRef.current[notificationKey];
+		const locallySuppressed = isTaskLocallySuppressed(
+			task,
+			latestProjectIdRef.current,
+			latestSuppressedTaskIdsRef.current,
+		);
+		if (!task || locallySuppressed) {
+			return;
+		}
+		const currentState = deriveAudibleTaskNotificationState(task.summary);
+		if (currentState.column !== "stopped" || currentState.eventType === null) {
 			return;
 		}
 		const eventType = pending.eventType;
@@ -92,7 +112,7 @@ export function useAudibleNotifications({
 		void notificationAudioPlayer
 			.play(eventType, latestVolumeRef.current, {
 				projectId: task.projectId,
-				taskId,
+				taskId: task.taskId,
 			})
 			.catch((error: unknown) => {
 				console.warn(
@@ -108,18 +128,18 @@ export function useAudibleNotifications({
 		// On initial load, populate state without playing sounds.
 		if (isInitialLoadRef.current) {
 			isInitialLoadRef.current = false;
-			for (const [taskId, task] of Object.entries(notificationTasks)) {
-				previousStates.set(taskId, deriveAudibleTaskNotificationState(task.summary));
+			for (const [notificationKey, task] of Object.entries(notificationTasks)) {
+				previousStates.set(notificationKey, deriveAudibleTaskNotificationState(task.summary));
 			}
 			return;
 		}
 
 		const soundsSuppressed = areSoundsSuppressed(audibleNotificationsEnabled, audibleNotificationsOnlyWhenHidden);
 
-		for (const [taskId, task] of Object.entries(notificationTasks)) {
+		for (const [notificationKey, task] of Object.entries(notificationTasks)) {
 			const currentState = deriveAudibleTaskNotificationState(task.summary);
-			const previousState = previousStates.get(taskId);
-			previousStates.set(taskId, currentState);
+			const previousState = previousStates.get(notificationKey);
+			previousStates.set(notificationKey, currentState);
 
 			// Newly discovered tasks are seeded silently, matching initial-load
 			// behavior and avoiding alerts for retained historical state.
@@ -127,21 +147,22 @@ export function useAudibleNotifications({
 				continue;
 			}
 
-			if (soundsSuppressed || suppressedTaskIds?.has(taskId)) {
-				cancelPendingSound(taskId);
+			const locallySuppressed = isTaskLocallySuppressed(task, currentProjectId, suppressedTaskIds);
+			if (soundsSuppressed || locallySuppressed) {
+				cancelPendingSound(notificationKey);
 				continue;
 			}
 
-			if (currentState.column !== "stopped") {
-				cancelPendingSound(taskId);
+			if (currentState.column !== "stopped" || currentState.eventType === null) {
+				cancelPendingSound(notificationKey);
 				continue;
 			}
 
 			// A task is still stopped and we have a pending sound —
 			// session data is refining (e.g. hook activity arrived). Upgrade
 			// the pending sound if the new event is higher priority.
-			if (pendingSoundsRef.current.has(taskId)) {
-				const pending = pendingSoundsRef.current.get(taskId)!;
+			if (pendingSoundsRef.current.has(notificationKey)) {
+				const pending = pendingSoundsRef.current.get(notificationKey)!;
 				const eventType = currentState.eventType;
 				if (eventType && EVENT_PRIORITY[eventType] > EVENT_PRIORITY[pending.eventType]) {
 					pending.eventType = eventType;
@@ -150,17 +171,17 @@ export function useAudibleNotifications({
 			}
 
 			if (isNewAudibleNotification(previousState, currentState) && currentState.eventType) {
-				const timer = setTimeout(() => fireSound(taskId), getSettleWindowMs(task.summary));
-				pendingSoundsRef.current.set(taskId, { eventType: currentState.eventType, timer });
+				const timer = setTimeout(() => fireSound(notificationKey), getSettleWindowMs(task.summary));
+				pendingSoundsRef.current.set(notificationKey, { eventType: currentState.eventType, timer });
 			}
 		}
 
 		// Clean up removed tasks. In practice notification state grows monotonically,
 		// so this loop is defensive — retained for correctness if pruning is added later.
-		for (const taskId of previousStates.keys()) {
-			if (!(taskId in notificationTasks)) {
-				previousStates.delete(taskId);
-				cancelPendingSound(taskId);
+		for (const notificationKey of previousStates.keys()) {
+			if (!(notificationKey in notificationTasks)) {
+				previousStates.delete(notificationKey);
+				cancelPendingSound(notificationKey);
 			}
 		}
 	}, [audibleNotificationsEnabled, audibleNotificationsOnlyWhenHidden, notificationTasks, suppressedTaskIds]);

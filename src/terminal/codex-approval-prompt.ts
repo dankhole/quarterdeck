@@ -95,7 +95,16 @@ export function createCodexApprovalPromptDetector(): CodexApprovalPromptDetector
 
 	return {
 		detect(screen) {
-			if (detected || !isCodexApprovalScreen(screen)) {
+			const approvalVisible = isCodexApprovalScreen(screen);
+			if (!approvalVisible) {
+				// A submitted response can leave the task response-pending while
+				// Codex clears the old overlay and later opens another one. Re-arm
+				// only on that visible falling edge so redraws of one prompt cannot
+				// manufacture duplicate interactions.
+				detected = false;
+				return null;
+			}
+			if (detected) {
 				return null;
 			}
 			detected = true;

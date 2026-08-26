@@ -23,8 +23,7 @@ export type ReconciliationAction =
 	| { type: "clear_hook_activity" }
 	| { type: "recover_dead_process" }
 	| { type: "recover_missing_launch_path" }
-	| { type: "mark_processless_error" }
-	| { type: "move_interrupted_to_review" };
+	| { type: "mark_processless_error" };
 
 /** Minimal shape of a session entry needed by the check functions. */
 export interface ReconciliationEntry {
@@ -137,52 +136,23 @@ export function checkProcesslessActiveSession(entry: ReconciliationEntry, _nowMs
 	if (entry.pendingAutoRestart || entry.pendingSessionStart || entry.pendingStartupRecoveryToken) {
 		return null;
 	}
-	// A processless awaiting_review session is expected — the agent finished
-	// its work or was stopped, then the backing process exited as normal
-	// cleanup. The review reason was already set correctly by the onExit
-	// handler or hook. Only flag "running" sessions as processless errors,
-	// since those genuinely lost their process mid-work.
+	// Ordinary completed Review is legitimately processless. An unresolved
+	// provider interaction is not: without the process, neither a response nor
+	// resumed work can be confirmed, so reconciliation must converge it to the
+	// reducer's explicit resolution_unknown error rather than leaving Needs
+	// Input or response-pending stuck forever.
 	if (summary.state === "awaiting_review") {
-		return null;
+		return summary.outstandingInteraction && summary.outstandingInteraction.status !== "resolution_unknown"
+			? { type: "mark_processless_error" }
+			: null;
 	}
 	return { type: "mark_processless_error" };
 }
 
-/**
- * Safety net for interrupted sessions where auto-restart was attempted but
- * failed (pendingAutoRestart cleared in finally block), or where the onExit
- * autorestart.denied transition was missed for any reason. Moves the session
- * to awaiting_review so the card lands in review for the user to decide.
- *
- * Only applies to sessions started this server lifetime (restartRequest is set).
- * Hydrated-from-disk sessions have restartRequest=null and are waiting for
- * resumeInterruptedSessions on first UI connection — the sweep must not
- * prematurely move them to awaiting_review or the resume filter won't match.
- */
-export function checkInterruptedNoRestart(entry: ReconciliationEntry, _nowMs: number): ReconciliationAction | null {
-	const { summary } = entry;
-	if (summary.state !== "interrupted") {
-		return null;
-	}
-	if (entry.pendingAutoRestart) {
-		return null;
-	}
-	if (entry.pendingStartupRecoveryToken) {
-		return null;
-	}
-	// Sessions hydrated from disk after a server restart don't have a
-	// restartRequest. Leave them in "interrupted" for resumeInterruptedSessions.
-	if (!entry.restartRequest) {
-		return null;
-	}
-	return { type: "move_interrupted_to_review" };
-}
-
-/** Ordered by priority: dead process > missing cwd > processless recovery > interrupted cleanup > clear activity. */
+/** Ordered by priority: dead process > missing cwd > processless recovery > clear activity. */
 export const reconciliationChecks: ReconciliationCheck[] = [
 	checkDeadProcess,
 	checkMissingSessionLaunchPath,
 	checkProcesslessActiveSession,
-	checkInterruptedNoRestart,
 	checkStaleHookActivity,
 ];

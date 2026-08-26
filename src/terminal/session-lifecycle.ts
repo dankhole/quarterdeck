@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { RuntimeTaskSessionReviewReason, RuntimeTaskSessionSummary } from "../core";
-import { createTaggedLogger } from "../core";
+import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
 import { cleanStaleIndexLockForWorktree } from "../fs";
 import type { PreparedAgentLaunch } from "./agent-session-adapters";
 import { prepareAgentLaunch } from "./agent-session-adapters";
@@ -15,12 +15,13 @@ import {
 	isCodexResumeFailureSummary,
 	STORED_CLAUDE_RESUME_FAILED_WARNING,
 	STORED_CODEX_RESUME_FAILED_WARNING,
+	STORED_PI_RESUME_FAILED_WARNING,
 } from "./codex-resume-failure";
 import { shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust";
 import { createHookEventOrderState } from "./hook-event-order";
-import { PtySession, type PtySession as PtySessionInstance } from "./pty-session";
+import { type PtyExitEvent, PtySession, type PtySession as PtySessionInstance } from "./pty-session";
 import { scheduleAutoRestart, shouldAutoRestart } from "./session-auto-restart";
-import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
+import { clearInterruptRecoveryTimer, type InterruptSignal } from "./session-interrupt-recovery";
 import {
 	createTaskSessionLaunchMonitor,
 	markTaskSessionLaunchCancelled,
@@ -38,6 +39,7 @@ import {
 	resolveEffectiveTerminalRowMultiplier,
 	type StartShellSessionRequest,
 	type StartTaskSessionRequest,
+	TaskSessionStartCancelledError,
 } from "./session-manager-types";
 import { processShellSessionOutput } from "./session-output-pipeline";
 import { appendLegacySemanticStateWarning, deriveStartupRecoveryPolicy } from "./session-startup-recovery-policy";
@@ -86,6 +88,7 @@ export interface SpawnTaskSessionDeps {
 	ensureEntry: (taskId: string) => RuntimeTaskSessionSummary;
 	onOutput: (entry: ProcessEntry, taskId: string, chunk: Buffer) => void;
 	onExit: (request: StartTaskSessionRequest, event: { exitCode: number | null }, session: PtySessionInstance) => void;
+	isLaunchAllowed: () => boolean;
 }
 
 export interface SpawnTaskSessionResult {
@@ -102,10 +105,10 @@ export async function spawnTaskSession(
 	entry.pendingSessionStartSince = Date.now();
 	const hookSessionInstanceId = randomUUID();
 	markTaskSessionLaunchSuperseded(entry.launchMonitor);
+	entry.providerHookReplayBoundary = null;
 	entry.launchMonitor = createTaskSessionLaunchMonitor({
 		sessionInstanceId: hookSessionInstanceId,
-		expectedSessionId:
-			request.startupRecoveryToken && request.resumeConversation ? request.resumeSessionId : undefined,
+		expectedSessionId: request.resumeConversation ? request.resumeSessionId : undefined,
 	});
 	entry.hookEventOrder = createHookEventOrderState(hookSessionInstanceId);
 
@@ -133,13 +136,14 @@ export async function spawnTaskSession(
 	const rows = baseRows * effectiveRowMultiplier;
 	let terminalStateMirror: TerminalStateMirror;
 	let launch: PreparedAgentLaunch;
+	let sessionForCallbacks: PtySession | null = null;
 	try {
 		terminalStateMirror = new TerminalStateMirror(cols, rows, {
 			onInputResponse: (data) => {
-				if (!entry.active || hasLiveOutputListener(entry)) {
+				if (!sessionForCallbacks || entry.active?.session !== sessionForCallbacks || hasLiveOutputListener(entry)) {
 					return;
 				}
-				entry.active.session.write(data);
+				sessionForCallbacks.write(data);
 			},
 		});
 
@@ -160,6 +164,7 @@ export async function spawnTaskSession(
 			claudeFullscreenEnabled,
 			statuslineEnabled: request.statuslineEnabled,
 			codexApprovalsReviewer: request.codexApprovalsReviewer,
+			piToolApprovalsEnabled: request.piToolApprovalsEnabled,
 			worktreeSystemPromptTemplate: request.worktreeSystemPromptTemplate,
 		});
 	} catch (error) {
@@ -168,6 +173,18 @@ export async function spawnTaskSession(
 		entry.hookEventOrder = null;
 		markTaskSessionLaunchCancelled(entry.launchMonitor);
 		throw error;
+	}
+
+	if (!deps.isLaunchAllowed()) {
+		entry.pendingSessionStart = false;
+		entry.pendingSessionStartSince = null;
+		entry.hookEventOrder = null;
+		markTaskSessionLaunchCancelled(entry.launchMonitor);
+		if (launch.cleanup) {
+			await launch.cleanup().catch(() => undefined);
+		}
+		terminalStateMirror.dispose();
+		throw new TaskSessionStartCancelledError();
 	}
 
 	const env = buildTerminalEnvironment(request.env, launch.env);
@@ -180,9 +197,9 @@ export async function spawnTaskSession(
 	const spawnData = {
 		agentId: request.agentId,
 		claudeFullscreenEnabled,
-		binary: commandBinary,
-		cwd: request.cwd,
-		projectPath: request.projectPath ?? null,
+		hasBinary: commandBinary.length > 0,
+		hasLaunchPath: request.cwd.length > 0,
+		hasProjectPath: Boolean(request.projectPath),
 		argCount: commandArgs.length,
 		willAutoTrust,
 	};
@@ -190,12 +207,13 @@ export async function spawnTaskSession(
 		taskId: request.taskId,
 		...spawnData,
 		resumeConversation: request.resumeConversation ?? false,
-		resumeSessionId: request.resumeSessionId ?? null,
-		preparedArgsPreview: commandArgs.map((a) => (a.length > 200 ? `${a.slice(0, 200)}…(${a.length})` : a)),
+		hasResumeSessionId: Boolean(request.resumeSessionId?.trim()),
 	});
 
 	let session: PtySession;
-	let sessionForExit: PtySession | null = null;
+	let callbacksReady = false;
+	const preHandoffOutput: Buffer[] = [];
+	let preHandoffExit: PtyExitEvent | null = null;
 	try {
 		session = PtySession.spawn({
 			binary: commandBinary,
@@ -204,26 +222,36 @@ export async function spawnTaskSession(
 			env,
 			cols,
 			rows,
-			onData: (chunk) => deps.onOutput(entry, request.taskId, chunk),
+			onData: (chunk) => {
+				if (!callbacksReady) {
+					preHandoffOutput.push(Buffer.from(chunk));
+					return;
+				}
+				if (entry.active?.session !== sessionForCallbacks) {
+					return;
+				}
+				deps.onOutput(entry, request.taskId, chunk);
+			},
 			onExit: (event) => {
-				if (!sessionForExit) {
+				if (!callbacksReady) {
+					preHandoffExit = event;
 					sessionLog.warn("task session exited before spawn handoff completed", {
 						taskId: request.taskId,
 						exitCode: event.exitCode,
 					});
 					return;
 				}
-				deps.onExit(request, event, sessionForExit);
+				if (!sessionForCallbacks) return;
+				deps.onExit(request, event, sessionForCallbacks);
 			},
 		});
-		sessionForExit = session;
+		sessionForCallbacks = session;
 	} catch (error) {
-		const errorMessage = error instanceof Error ? error.message : String(error);
 		sessionLog.error("failed to spawn task session", {
 			taskId: request.taskId,
 			agentId: request.agentId,
-			binary: commandBinary,
-			error: errorMessage,
+			hasBinary: commandBinary.length > 0,
+			errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
 		});
 		entry.pendingSessionStart = false;
 		entry.pendingSessionStartSince = null;
@@ -236,7 +264,7 @@ export async function spawnTaskSession(
 		deps.updateStore(request.taskId, {
 			sessionInstanceId: hookSessionInstanceId,
 			launchOperationId: request.launchOperationId ?? null,
-			state: "failed",
+			state: "awaiting_review",
 			agentId: request.agentId,
 			sessionLaunchPath: request.cwd,
 			resumeSessionId: request.resumeConversation ? (request.resumeSessionId ?? null) : null,
@@ -246,7 +274,12 @@ export async function spawnTaskSession(
 			reviewReason: "error",
 			exitCode: null,
 			lastHookAt: null,
+			lastProviderHookOccurredAt: null,
+			recentProviderHookDeliveryIds: [],
+			recentProviderHookOrderObservations: [],
 			latestHookActivity: null,
+			outstandingInteraction: null,
+			nativeWorkEvidence: null,
 			stalledSince: null,
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
@@ -283,31 +316,48 @@ export async function spawnTaskSession(
 	}
 
 	const postSpawnResumeSessionId = request.resumeConversation ? (request.resumeSessionId ?? null) : null;
-	const restoredSemanticStateIsUncertain = request.startupRecoveryReviewState?.reviewReason === "interrupted";
+	const resumeSemanticState = request.resumeSemanticState;
+	const restoredSemanticStateIsUncertain = request.startupRecoverySemanticStateUncertain === true;
+	// Spawning a PTY proves only that the interaction surface exists. A fresh or
+	// replacement native agent remains conservative Review until a current
+	// launch-scoped provider hook supplies positive Running evidence.
+	const restoredState: RuntimeTaskSessionSummary["state"] = "awaiting_review";
+	const restoredReviewReason =
+		resumeSemanticState?.reviewReason ?? (request.awaitReview ? "interrupted" : "unconfirmed");
 	sessionLog.debug("seeding summary for spawned task session", {
 		taskId: request.taskId,
-		state: restoredSemanticStateIsUncertain ? "interrupted" : request.awaitReview ? "awaiting_review" : "running",
+		state: restoredState,
 		resumeConversation: request.resumeConversation ?? false,
-		resumeSessionId: postSpawnResumeSessionId,
-		sessionLaunchPath: request.cwd,
+		hasResumeSessionId: Boolean(postSpawnResumeSessionId),
+		hasSessionLaunchPath: request.cwd.length > 0,
 		pid: session.pid,
 	});
 	const summary = deps.updateStore(request.taskId, {
 		sessionInstanceId: hookSessionInstanceId,
 		launchOperationId: request.launchOperationId ?? null,
-		state: restoredSemanticStateIsUncertain ? "interrupted" : request.awaitReview ? "awaiting_review" : "running",
+		state: restoredState,
 		agentId: request.agentId,
 		sessionLaunchPath: request.cwd,
 		resumeSessionId: postSpawnResumeSessionId,
 		pid: session.pid,
 		startedAt: Date.now(),
 		lastOutputAt: null,
-		reviewReason: request.awaitReview ? (request.startupRecoveryReviewState?.reviewReason ?? "attention") : null,
+		reviewReason: restoredReviewReason,
 		exitCode: null,
-		lastHookAt: request.startupRecoveryReviewState?.lastHookAt ?? null,
-		latestHookActivity: request.startupRecoveryReviewState?.latestHookActivity
-			? { ...request.startupRecoveryReviewState.latestHookActivity }
+		lastHookAt: resumeSemanticState?.lastHookAt ?? null,
+		lastProviderHookOccurredAt: null,
+		recentProviderHookDeliveryIds: [],
+		recentProviderHookOrderObservations: [],
+		latestHookActivity: resumeSemanticState?.latestHookActivity
+			? { ...resumeSemanticState.latestHookActivity }
 			: null,
+		outstandingInteraction: resumeSemanticState?.outstandingInteraction
+			? {
+					...resumeSemanticState.outstandingInteraction,
+					sessionInstanceId: hookSessionInstanceId,
+				}
+			: null,
+		nativeWorkEvidence: null,
 		stalledSince: null,
 		startupRecoveryRequired: false,
 		startupRecoverySemanticStateUncertain: restoredSemanticStateIsUncertain,
@@ -315,6 +365,15 @@ export async function spawnTaskSession(
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 	});
+	callbacksReady = true;
+	if (entry.active?.session === sessionForCallbacks) {
+		for (const chunk of preHandoffOutput) {
+			deps.onOutput(entry, request.taskId, chunk);
+		}
+		if (preHandoffExit) {
+			deps.onExit(request, preHandoffExit, sessionForCallbacks);
+		}
+	}
 
 	return {
 		summary: summary ?? deps.ensureEntry(request.taskId),
@@ -333,6 +392,12 @@ export interface TaskSessionExitDeps {
 		entry: ProcessEntry,
 		event: SessionTransitionEvent,
 	) => (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null;
+	onInterruptRecoveryApplied?: (
+		taskId: string,
+		signal: InterruptSignal,
+		result: (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null,
+		sessionInstanceId: string,
+	) => void;
 }
 
 export function handleTaskSessionExit(
@@ -365,11 +430,14 @@ export function handleTaskSessionExit(
 		return;
 	}
 	markTaskSessionLaunchExited(currentEntry.launchMonitor, event.exitCode);
+	const active = currentEntry.active;
+	const pendingInterruptSignal = active.interruptRecoverySignal;
+	const wasInterrupted = exitingSession.wasInterrupted() || pendingInterruptSignal !== null;
 
 	const exitEventData = {
 		exitCode: event.exitCode,
-		wasInterrupted: exitingSession.wasInterrupted(),
-		trustConfirmCount: currentEntry.active.workspaceTrustConfirmCount,
+		wasInterrupted,
+		trustConfirmCount: active.workspaceTrustConfirmCount,
 		timeInState: currentSummaryAtExit?.updatedAt ? Date.now() - currentSummaryAtExit.updatedAt : null,
 		timeSinceLastHook: currentSummaryAtExit?.lastHookAt ? Date.now() - currentSummaryAtExit.lastHookAt : null,
 	};
@@ -380,14 +448,17 @@ export function handleTaskSessionExit(
 		trustConfirmCount: exitEventData.trustConfirmCount,
 	});
 
-	stopWorkspaceTrustTimers(currentEntry.active);
-	clearInterruptRecoveryTimer(currentEntry.active);
+	stopWorkspaceTrustTimers(active);
+	clearInterruptRecoveryTimer(active);
 
 	const result = deps.applyTransitionEvent(currentEntry, {
 		type: "process.exit",
 		exitCode: event.exitCode,
-		interrupted: currentEntry.active.session.wasInterrupted(),
+		interrupted: wasInterrupted,
 	});
+	if (pendingInterruptSignal) {
+		deps.onInterruptRecoveryApplied?.(request.taskId, pendingInterruptSignal, result, active.sessionInstanceId);
+	}
 
 	const preExitState = currentSummaryAtExit?.state ?? "idle";
 	if (request.startupRecoveryToken && currentEntry.pendingStartupRecoveryToken === request.startupRecoveryToken) {
@@ -418,70 +489,77 @@ export function handleTaskSessionExit(
 	const exitSummary = result?.summary ?? deps.getSummary(request.taskId);
 	const cleanupFn = finalizeProcessExit(currentEntry, exitSummary, event.exitCode);
 	// Trash/stop flows intentionally suppress auto-restart while the old PTY exits.
-	// Do not let the resume-failure fallback below convert that explicit stop
-	// into a fresh non-resume start; that is what cleared resumeSessionId before
-	// the real untrash resume could use it.
+	// Do not let the resume-failure handling below rewrite that explicit stop or
+	// clear the exact resume identity needed by a later restore.
 	const wasExplicitStop = !autoRestartDecision.restart && autoRestartDecision.reason === "suppressed";
-
-	if (autoRestartDecision.restart) {
-		scheduleAutoRestart(currentEntry, {
-			startTaskSession: (r) => deps.startTaskSession(r),
-			updateStore: (id, patch) => deps.updateStore(id, patch),
-			applyDenied: () => deps.applyTransitionEvent(currentEntry, { type: "autorestart.denied" }),
-		});
-	} else if (!wasExplicitStop && exitSummary?.state === "interrupted") {
-		deps.applyTransitionEvent(currentEntry, { type: "autorestart.denied" });
-	} else if (
+	const resumeExitedBeforeInteractiveSession =
 		!wasExplicitStop &&
+		!request.startupRecoveryToken &&
 		request.resumeConversation &&
 		preExitState === "awaiting_review" &&
-		currentSummaryAtExit?.reviewReason === "attention" &&
+		(currentSummaryAtExit?.reviewReason === "attention" || currentSummaryAtExit?.reviewReason === "interrupted") &&
 		event.exitCode != null &&
-		currentEntry.restartRequest?.kind === "task"
-	) {
+		currentEntry.launchMonitor?.outcome?.status === "exited" &&
+		currentEntry.restartRequest?.kind === "task";
+
+	if (autoRestartDecision.restart) {
+		scheduleAutoRestart(
+			currentEntry,
+			{
+				startTaskSession: (r) => deps.startTaskSession(r),
+				updateStore: (id, patch) => deps.updateStore(id, patch),
+				applyDenied: () => deps.applyTransitionEvent(currentEntry, { type: "autorestart.denied" }),
+			},
+			{ resumeSessionId: currentSummaryAtExit?.resumeSessionId },
+		);
+	} else if (resumeExitedBeforeInteractiveSession) {
 		const resumeExitData = {
 			taskId: request.taskId,
 			agentId: request.agentId,
 			exitCode: event.exitCode,
 			preExitState,
 			preExitReviewReason: currentSummaryAtExit.reviewReason,
-			resumeSessionId: request.resumeSessionId ?? null,
+			hasResumeSessionId: Boolean(request.resumeSessionId?.trim()),
 		};
 		if (event.exitCode === 0 && !request.startupRecoveryToken) {
-			// Keep the legacy fallback for explicit resume flows: a clean targeted
-			// resume or continuation process can exit without leaving an interactive
-			// session. Startup recovery owns its own exact-target bounded retry and
-			// must never convert that failure into a fresh non-resume prompt.
-			sessionLog.warn("resume exited before interactive session; scheduling fallback start", resumeExitData);
-			scheduleAutoRestart(
-				currentEntry,
-				{
-					startTaskSession: (r) => deps.startTaskSession(r),
-					updateStore: (id, patch) => deps.updateStore(id, patch),
-					applyDenied: () => deps.applyTransitionEvent(currentEntry, { type: "autorestart.denied" }),
-				},
-				{ skipContinueAttempt: true },
-			);
+			const message = "Resume exited before opening an interactive session; no replacement prompt was replayed.";
+			sessionLog.warn("resume exited before interactive session; preserving failed resume", resumeExitData);
+			const failedSummary =
+				deps.applyTransitionEvent(currentEntry, {
+					type: "resume.failed",
+					clearResumeSessionId: false,
+					warningMessage: message,
+				})?.summary ?? deps.getSummary(request.taskId);
+			writeSystemOutput(currentEntry, message, failedSummary);
 		} else if (event.exitCode !== 0) {
 			const failedStoredTargetedResume =
-				(request.agentId === "codex" || request.agentId === "claude") && Boolean(request.resumeSessionId?.trim());
+				(request.agentId === "codex" || request.agentId === "claude" || request.agentId === "pi") &&
+				Boolean(request.resumeSessionId?.trim());
 			const message = failedStoredTargetedResume
 				? request.agentId === "claude"
 					? STORED_CLAUDE_RESUME_FAILED_WARNING
-					: STORED_CODEX_RESUME_FAILED_WARNING
+					: request.agentId === "pi"
+						? STORED_PI_RESUME_FAILED_WARNING
+						: STORED_CODEX_RESUME_FAILED_WARNING
 				: `Resume failed before opening an interactive session (exit code ${event.exitCode}).`;
 			sessionLog.warn("resume exited before interactive session; preserving failed resume", {
 				...resumeExitData,
 				clearedResumeSessionId: failedStoredTargetedResume,
 			});
-			const failedSummary = deps.updateStore(request.taskId, {
-				state: "awaiting_review",
-				reviewReason: "error",
-				...(failedStoredTargetedResume ? { resumeSessionId: null } : {}),
-				warningMessage: message,
-			});
+			const failedSummary =
+				deps.applyTransitionEvent(currentEntry, {
+					type: "resume.failed",
+					clearResumeSessionId: failedStoredTargetedResume,
+					warningMessage: message,
+				})?.summary ?? deps.getSummary(request.taskId);
 			writeSystemOutput(currentEntry, message, failedSummary);
 		}
+	} else if (
+		!wasExplicitStop &&
+		exitSummary?.state === "awaiting_review" &&
+		exitSummary.reviewReason === "interrupted"
+	) {
+		deps.applyTransitionEvent(currentEntry, { type: "autorestart.denied" });
 	}
 	if (cleanupFn) {
 		cleanupFn().catch(() => {});
@@ -503,18 +581,40 @@ export async function spawnShellSession(
 ): Promise<RuntimeTaskSessionSummary> {
 	const cols = normalizeDimension(request.cols, 120);
 	const rows = normalizeDimension(request.rows, 40);
+	let sessionForCallbacks: PtySession | null = null;
 	const terminalStateMirror = new TerminalStateMirror(cols, rows, {
 		onInputResponse: (data) => {
-			if (!entry.active || hasLiveOutputListener(entry)) {
+			if (!sessionForCallbacks || entry.active?.session !== sessionForCallbacks || hasLiveOutputListener(entry)) {
 				return;
 			}
-			entry.active.session.write(data);
+			sessionForCallbacks.write(data);
 		},
 	});
 	const env = buildTerminalEnvironment(request.env);
 
 	let session: PtySession;
+	let callbacksReady = false;
+	const preHandoffOutput: Buffer[] = [];
+	let preHandoffExit: PtyExitEvent | null = null;
 	const sessionInstanceId = randomUUID();
+	const handleShellExit = (event: PtyExitEvent): void => {
+		if (!sessionForCallbacks || entry.active?.session !== sessionForCallbacks) return;
+		stopWorkspaceTrustTimers(entry.active);
+		clearInterruptRecoveryTimer(entry.active);
+		sessionLog.info("shell session process exited", {
+			taskId: request.taskId,
+			exitCode: event.exitCode,
+		});
+
+		const summary = deps.updateStore(request.taskId, {
+			state: entry.active.session.wasInterrupted() ? "awaiting_review" : "idle",
+			reviewReason: entry.active.session.wasInterrupted() ? "interrupted" : null,
+			exitCode: event.exitCode,
+			pid: null,
+		});
+		const cleanupFn = finalizeProcessExit(entry, summary, event.exitCode);
+		if (cleanupFn) void cleanupFn().catch(() => {});
+	};
 	try {
 		sessionLog.info("spawning shell session", {
 			taskId: request.taskId,
@@ -530,39 +630,29 @@ export async function spawnShellSession(
 			env,
 			cols,
 			rows,
-			onData: (chunk) => processShellSessionOutput(entry, request.taskId, chunk),
-			onExit: (event) => {
-				if (!entry.active) {
+			onData: (chunk) => {
+				if (!callbacksReady) {
+					preHandoffOutput.push(Buffer.from(chunk));
 					return;
 				}
-				stopWorkspaceTrustTimers(entry.active);
-				clearInterruptRecoveryTimer(entry.active);
-				sessionLog.info("shell session process exited", {
-					taskId: request.taskId,
-					exitCode: event.exitCode,
-				});
-
-				const summary = deps.updateStore(request.taskId, {
-					state: entry.active.session.wasInterrupted() ? "interrupted" : "idle",
-					reviewReason: entry.active.session.wasInterrupted() ? "interrupted" : null,
-					exitCode: event.exitCode,
-					pid: null,
-				});
-				// Shell stops use waitForExit too. The shared finalizer resolves
-				// pending stopTaskSessionAndWaitForExit callers in addition to
-				// notifying listeners and clearing the active process entry.
-				const cleanupFn = finalizeProcessExit(entry, summary, event.exitCode);
-				if (cleanupFn) {
-					cleanupFn().catch(() => {});
+				if (entry.active?.session !== sessionForCallbacks) return;
+				processShellSessionOutput(entry, request.taskId, chunk);
+			},
+			onExit: (event) => {
+				if (!callbacksReady) {
+					preHandoffExit = event;
+					return;
 				}
+				handleShellExit(event);
 			},
 		});
+		sessionForCallbacks = session;
 	} catch (error) {
 		terminalStateMirror.dispose();
 		deps.updateStore(request.taskId, {
 			sessionInstanceId,
 			launchOperationId: null,
-			state: "failed",
+			state: "awaiting_review",
 			agentId: null,
 			sessionLaunchPath: request.cwd,
 			pid: null,
@@ -571,7 +661,11 @@ export async function spawnShellSession(
 			reviewReason: "error",
 			exitCode: null,
 			lastHookAt: null,
+			lastProviderHookOccurredAt: null,
+			recentProviderHookDeliveryIds: [],
+			recentProviderHookOrderObservations: [],
 			latestHookActivity: null,
+			outstandingInteraction: null,
 			stalledSince: null,
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
@@ -611,14 +705,25 @@ export async function spawnShellSession(
 		reviewReason: null,
 		exitCode: null,
 		lastHookAt: null,
+		lastProviderHookOccurredAt: null,
+		recentProviderHookDeliveryIds: [],
+		recentProviderHookOrderObservations: [],
 		latestHookActivity: null,
+		outstandingInteraction: null,
 		stalledSince: null,
 		warningMessage: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 	});
+	callbacksReady = true;
+	if (entry.active?.session === sessionForCallbacks) {
+		for (const chunk of preHandoffOutput) {
+			processShellSessionOutput(entry, request.taskId, chunk);
+		}
+		if (preHandoffExit) handleShellExit(preHandoffExit);
+	}
 
-	return summary ?? deps.ensureEntry(request.taskId);
+	return preHandoffExit ? deps.ensureEntry(request.taskId) : (summary ?? deps.ensureEntry(request.taskId));
 }
 
 // ── Stale session recovery ──────────────────────────────────────────────────
@@ -656,11 +761,15 @@ export function recoverStaleSession(taskId: string, deps: RecoverStaleSessionDep
 			summary.reviewReason === "error" &&
 			!isCodexResumeFailureSummary(summary)
 		) {
-			scheduleAutoRestart(entry, {
-				startTaskSession: (r) => deps.startTaskSession(r),
-				updateStore: (id, patch) => deps.updateStore(id, patch),
-				applyDenied: () => deps.applyTransitionEvent(entry, { type: "autorestart.denied" }),
-			});
+			scheduleAutoRestart(
+				entry,
+				{
+					startTaskSession: (r) => deps.startTaskSession(r),
+					updateStore: (id, patch) => deps.updateStore(id, patch),
+					applyDenied: () => deps.applyTransitionEvent(entry, { type: "autorestart.denied" }),
+				},
+				{ resumeSessionId: summary.resumeSessionId },
+			);
 		}
 		return summary;
 	}
@@ -684,7 +793,11 @@ export interface HydrationDeps {
 
 export interface SessionHydrationCorrection {
 	taskId: string;
-	action: "marked_interrupted" | "stale_pid_cleared" | "legacy_semantic_state_uncertain";
+	action:
+		| "marked_interrupted"
+		| "stale_pid_cleared"
+		| "stale_recovery_requirement_cleared"
+		| "legacy_semantic_state_uncertain";
 	previousState: RuntimeTaskSessionSummary["state"];
 	previousReviewReason: RuntimeTaskSessionReviewReason;
 	hadPersistedPid: boolean;
@@ -721,11 +834,12 @@ export function hydrateSessionEntries(
 				summary.reviewReason !== "exit");
 		if (shouldInterrupt) {
 			deps.updateStore(taskId, {
-				state: "interrupted",
+				state: "awaiting_review",
 				reviewReason: "interrupted",
 				pid: null,
 				stalledSince: null,
 				latestHookActivity: null,
+				outstandingInteraction: null,
 				startupRecoveryRequired: true,
 				startupRecoverySemanticStateUncertain: recoveryPolicy.semanticStateUncertain,
 				warningMessage: uncertaintyWarning,
@@ -754,6 +868,23 @@ export function hydrateSessionEntries(
 				previousReviewReason: summary.reviewReason,
 				hadPersistedPid: true,
 				requiresStartupRecovery,
+			});
+		} else if (summary.startupRecoveryRequired === true && !requiresStartupRecovery) {
+			// A prior runtime could persist a false attention classification with a
+			// durable recovery handoff. Clear that obsolete process decision once
+			// the shared semantic policy proves the task is not recoverable.
+			deps.updateStore(taskId, {
+				startupRecoveryRequired: false,
+				startupRecoverySemanticStateUncertain: recoveryPolicy.semanticStateUncertain,
+				warningMessage: uncertaintyWarning,
+			});
+			corrections.push({
+				taskId,
+				action: "stale_recovery_requirement_cleared",
+				previousState: summary.state,
+				previousReviewReason: summary.reviewReason,
+				hadPersistedPid: false,
+				requiresStartupRecovery: false,
 			});
 		} else if (recoveryPolicy.semanticStateUncertain) {
 			deps.updateStore(taskId, {

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { RuntimeTaskLifecycleCommand, RuntimeTaskSessionSummary } from "../../src/core";
 import { findCardInBoard, getTaskColumnId } from "../../src/core";
-import { ProjectTaskLifecycleIdentityConflictError, ProjectTaskLifecycleService } from "../../src/server";
+import { ProjectTaskLifecycleService } from "../../src/server";
 import {
 	fingerprintTaskLifecycleCommand,
 	loadProjectContext,
@@ -27,6 +27,22 @@ const TASK_SPEC = {
 	branch: "feature/task-a",
 	createdAt: 100,
 };
+
+type CreateAndStartCommand = Extract<RuntimeTaskLifecycleCommand, { kind: "create_and_start" }>;
+type CreateAndStartInput = Omit<CreateAndStartCommand, "kind" | "operationId"> & { commandId: string };
+
+async function executeCreateAndStart(
+	lifecycle: ProjectTaskLifecycleService,
+	scope: { projectId: string; projectPath: string },
+	input: CreateAndStartInput,
+) {
+	const { commandId, ...command } = input;
+	return await lifecycle.execute(scope, {
+		kind: "create_and_start",
+		operationId: commandId,
+		...command,
+	});
+}
 
 function createDeferred(): { promise: Promise<void>; resolve: () => void } {
 	let resolvePromise: (() => void) | undefined;
@@ -71,15 +87,15 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 					sessions[TASK_SPEC.taskId] = summary;
 					return { ok: true, summary };
 				});
-				const scheduleAutomaticTaskTitle = vi.fn();
+				const postCommitEffect = vi.fn();
+				boardCommands.subscribeToPostCommitEffects(postCommitEffect);
 				const lifecycle = new ProjectTaskLifecycleService({
 					boardCommands,
 					startTaskSession,
-					scheduleAutomaticTaskTitle,
 				});
 				const scope = { projectId: context.projectId, projectPath };
 
-				const result = await lifecycle.createAndStartTask(scope, {
+				const result = await executeCreateAndStart(lifecycle, scope, {
 					commandId: "create-and-start-task-a",
 					expectedRevision: initial.revision,
 					task: TASK_SPEC,
@@ -89,7 +105,7 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 				});
 
 				expect(result.ok).toBe(true);
-				expect(result.replayed).toBe(false);
+				expect(result.operation.outcomeCode).toBe("completed");
 				expect(result.state.revision).toBe(2);
 				expect(getTaskColumnId(result.state.board, TASK_SPEC.taskId)).toBe("in_progress");
 				expect(result.state.sessions[TASK_SPEC.taskId]).toEqual(sessions[TASK_SPEC.taskId]);
@@ -105,35 +121,51 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 						rows: 36,
 					}),
 				);
-				expect(scheduleAutomaticTaskTitle).toHaveBeenCalledOnce();
-				expect(scheduleAutomaticTaskTitle).toHaveBeenCalledWith(scope, {
-					id: TASK_SPEC.taskId,
-					prompt: TASK_SPEC.prompt,
-				});
+				expect(postCommitEffect).toHaveBeenCalledOnce();
+				expect(postCommitEffect).toHaveBeenCalledWith(
+					expect.objectContaining({
+						scope,
+						effects: [
+							{
+								type: "untitled_task_created",
+								task: {
+									taskId: TASK_SPEC.taskId,
+									prompt: TASK_SPEC.prompt,
+									createdAt: TASK_SPEC.createdAt,
+								},
+							},
+						],
+					}),
+				);
 				expect(publishAuthoritativeState).toHaveBeenCalledTimes(2);
 
-				const replayed = await new ProjectTaskLifecycleService({
-					boardCommands: new ProjectBoardCommandService({
-						getAuthoritativeSessions: () => sessions,
-						publishAuthoritativeState,
-					}),
-					startTaskSession,
-					scheduleAutomaticTaskTitle,
-				}).createAndStartTask(scope, {
-					commandId: "create-and-start-task-a",
-					expectedRevision: initial.revision,
-					task: TASK_SPEC,
-					startedAt: 150,
-					cols: 120,
-					rows: 36,
+				const replayBoardCommands = new ProjectBoardCommandService({
+					getAuthoritativeSessions: () => sessions,
+					publishAuthoritativeState,
 				});
+				replayBoardCommands.subscribeToPostCommitEffects(postCommitEffect);
+				const replayed = await executeCreateAndStart(
+					new ProjectTaskLifecycleService({
+						boardCommands: replayBoardCommands,
+						startTaskSession,
+					}),
+					scope,
+					{
+						commandId: "create-and-start-task-a",
+						expectedRevision: initial.revision,
+						task: TASK_SPEC,
+						startedAt: 150,
+						cols: 120,
+						rows: 36,
+					},
+				);
 
 				expect(replayed.ok).toBe(true);
-				expect(replayed.replayed).toBe(true);
+				expect(replayed.operation.outcomeCode).toBe("completed");
 				expect(replayed.state.revision).toBe(2);
 				expect(startTaskSession).toHaveBeenCalledOnce();
-				expect(scheduleAutomaticTaskTitle).toHaveBeenCalledTimes(2);
-				expect(publishAuthoritativeState).toHaveBeenCalledTimes(4);
+				expect(postCommitEffect).toHaveBeenCalledOnce();
+				expect(publishAuthoritativeState).toHaveBeenCalledTimes(2);
 			} finally {
 				cleanup();
 			}
@@ -151,7 +183,7 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 				const initial = await loadProjectState(projectPath);
 				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
 				const scope = { projectId: context.projectId, projectPath };
-				const existing = await boardCommands.execute(scope, {
+				await boardCommands.execute(scope, {
 					commandId: "create-existing-task",
 					expectedRevision: initial.revision,
 					command: {
@@ -163,28 +195,25 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 						createdAt: TASK_SPEC.createdAt - 1,
 					},
 				});
-				const scheduleAutomaticTaskTitle = vi.fn();
 				const startTaskSession = vi.fn();
 				const lifecycle = new ProjectTaskLifecycleService({
 					boardCommands,
 					startTaskSession,
-					scheduleAutomaticTaskTitle,
 				});
 
 				const result = await lifecycle.execute(scope, {
 					kind: "create_and_start",
 					operationId: "reject-duplicate-task",
-					expectedRevision: existing.state.revision,
+					expectedRevision: initial.revision,
 					startedAt: 150,
 					task: TASK_SPEC,
 				});
 
 				expect(result).toMatchObject({
 					ok: false,
-					operation: { outcomeCode: "internal_error" },
+					operation: { outcomeCode: "revision_conflict" },
 				});
 				expect(startTaskSession).not.toHaveBeenCalled();
-				expect(scheduleAutomaticTaskTitle).not.toHaveBeenCalled();
 			} finally {
 				cleanup();
 			}
@@ -216,13 +245,12 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 					startedAt: 150,
 				};
 
-				const result = await lifecycle.createAndStartTask(scope, input);
+				const result = await executeCreateAndStart(lifecycle, scope, input);
 
 				expect(result).toMatchObject({
 					ok: false,
-					code: "session_start_failed",
+					operation: { outcomeCode: "session_start_failed" },
 					error: "Agent process did not start.",
-					replayed: false,
 					state: { revision: 3 },
 				});
 				expect(getTaskColumnId(result.state.board, TASK_SPEC.taskId)).toBe("backlog");
@@ -232,14 +260,17 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 					useWorktree: true,
 				});
 
-				const replayed = await new ProjectTaskLifecycleService({
-					boardCommands: new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) }),
-					startTaskSession,
-				}).createAndStartTask(scope, input);
+				const replayed = await executeCreateAndStart(
+					new ProjectTaskLifecycleService({
+						boardCommands: new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) }),
+						startTaskSession,
+					}),
+					scope,
+					input,
+				);
 				expect(replayed).toMatchObject({
 					ok: false,
-					code: "session_start_interrupted",
-					replayed: true,
+					operation: { outcomeCode: "session_start_failed" },
 					state: { revision: 3 },
 				});
 				expect(getTaskColumnId(replayed.state.board, TASK_SPEC.taskId)).toBe("backlog");
@@ -250,7 +281,215 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 		});
 	});
 
-	it("returns a typed revision conflict without creating or launching from stale state", async () => {
+	it("rebases create-and-start across an unrelated runtime-owned title revision", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-lifecycle-title-rebase-");
+			try {
+				const projectPath = join(sandboxRoot, "project-a");
+				mkdirSync(projectPath, { recursive: true });
+				initGitRepository(projectPath);
+				const context = await loadProjectContext(projectPath);
+				const initial = await loadProjectState(projectPath);
+				const scope = { projectId: context.projectId, projectPath };
+				const sessions: Record<string, RuntimeTaskSessionSummary> = {};
+				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => sessions });
+				const seeded = await boardCommands.execute(scope, {
+					commandId: "seed-untitled-task",
+					expectedRevision: initial.revision,
+					command: {
+						kind: "create_task",
+						columnId: "backlog",
+						taskId: "existing-task",
+						prompt: "Existing task",
+						baseRef: "main",
+						createdAt: 99,
+					},
+				});
+				const generatedTitle = await boardCommands.setGeneratedTaskTitle(
+					scope,
+					"existing-task",
+					99,
+					"Generated title",
+					125,
+				);
+				const startTaskSession = vi.fn(async (_scope, request) => {
+					const summary = createTestTaskSessionSummary({
+						taskId: request.taskId,
+						launchOperationId: request.launchOperationId,
+						state: "running",
+						agentId: "codex",
+						pid: 456,
+						startedAt: 200,
+						updatedAt: 200,
+					});
+					sessions[request.taskId] = summary;
+					return { ok: true as const, summary };
+				});
+				const lifecycle = new ProjectTaskLifecycleService({ boardCommands, startTaskSession });
+
+				const result = await lifecycle.execute(scope, {
+					kind: "create_and_start",
+					operationId: "create-after-generated-title",
+					expectedRevision: seeded.state.revision,
+					startedAt: 150,
+					task: TASK_SPEC,
+				});
+
+				expect(result).toMatchObject({
+					ok: true,
+					operation: { status: "completed", outcomeCode: "completed" },
+					state: { revision: generatedTitle.state.revision + 2 },
+				});
+				expect(findCardInBoard(result.state.board, "existing-task")?.title).toBe("Generated title");
+				expect(getTaskColumnId(result.state.board, TASK_SPEC.taskId)).toBe("in_progress");
+				expect(startTaskSession).toHaveBeenCalledOnce();
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("rebases the create-and-start move across consecutive runtime-owned projections", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-lifecycle-mid-create-rebase-");
+			try {
+				const projectPath = join(sandboxRoot, "project-a");
+				mkdirSync(projectPath, { recursive: true });
+				initGitRepository(projectPath);
+				const context = await loadProjectContext(projectPath);
+				const initial = await loadProjectState(projectPath);
+				const scope = { projectId: context.projectId, projectPath };
+				const sessions: Record<string, RuntimeTaskSessionSummary> = {};
+				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => sessions });
+				let moveAttemptCount = 0;
+				const executeBoardCommand = vi.fn(async (...args: Parameters<ProjectBoardCommandService["execute"]>) => {
+					const [commandScope, input] = args;
+					if (input.command.kind === "move_task" && input.command.taskId === TASK_SPEC.taskId) {
+						moveAttemptCount += 1;
+						if (moveAttemptCount === 2) {
+							await boardCommands.reconcileRuntimeTaskBaseRef(commandScope, TASK_SPEC.taskId, "projected-base");
+						}
+					}
+					const result = await boardCommands.execute(commandScope, input);
+					if (input.command.kind === "create_task" && input.command.taskId === TASK_SPEC.taskId) {
+						await boardCommands.setGeneratedTaskTitle(
+							commandScope,
+							TASK_SPEC.taskId,
+							TASK_SPEC.createdAt,
+							"Generated during start",
+							125,
+						);
+					}
+					return result;
+				});
+				const startTaskSession = vi.fn(async (_scope, request) => {
+					const summary = createTestTaskSessionSummary({
+						taskId: request.taskId,
+						launchOperationId: request.launchOperationId,
+						state: "running",
+						agentId: "codex",
+						pid: 456,
+						startedAt: 200,
+						updatedAt: 200,
+					});
+					sessions[request.taskId] = summary;
+					return { ok: true as const, summary };
+				});
+				const lifecycle = new ProjectTaskLifecycleService({
+					boardCommands: {
+						execute: executeBoardCommand,
+					},
+					startTaskSession,
+				});
+
+				const result = await lifecycle.execute(scope, {
+					kind: "create_and_start",
+					operationId: "create-with-mid-operation-title",
+					expectedRevision: initial.revision,
+					startedAt: 150,
+					task: TASK_SPEC,
+				});
+
+				expect(result).toMatchObject({
+					ok: true,
+					operation: { status: "completed", outcomeCode: "completed" },
+					state: { revision: 4 },
+				});
+				expect(findCardInBoard(result.state.board, TASK_SPEC.taskId)?.title).toBe("Generated during start");
+				expect(findCardInBoard(result.state.board, TASK_SPEC.taskId)?.baseRef).toBe("projected-base");
+				expect(getTaskColumnId(result.state.board, TASK_SPEC.taskId)).toBe("in_progress");
+				expect(executeBoardCommand).toHaveBeenCalledTimes(4);
+				expect(startTaskSession).toHaveBeenCalledOnce();
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("fails closed after exhausting bounded semantic rebase retries", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-lifecycle-rebase-exhausted-");
+			try {
+				const projectPath = join(sandboxRoot, "project-a");
+				mkdirSync(projectPath, { recursive: true });
+				initGitRepository(projectPath);
+				const context = await loadProjectContext(projectPath);
+				const initial = await loadProjectState(projectPath);
+				const scope = { projectId: context.projectId, projectPath };
+				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+				let competingTaskIndex = 0;
+				const executeBoardCommand = vi.fn(async (...args: Parameters<ProjectBoardCommandService["execute"]>) => {
+					const [commandScope, input] = args;
+					if (input.command.kind === "create_task" && input.command.taskId === TASK_SPEC.taskId) {
+						const current = await loadProjectState(projectPath);
+						const index = competingTaskIndex;
+						competingTaskIndex += 1;
+						await boardCommands.execute(commandScope, {
+							commandId: `competing-create-${index}`,
+							expectedRevision: current.revision,
+							command: {
+								kind: "create_task",
+								columnId: "backlog",
+								taskId: `competing-task-${index}`,
+								prompt: "Concurrent edit",
+								baseRef: "main",
+								createdAt: 200 + index,
+							},
+						});
+					}
+					return await boardCommands.execute(commandScope, input);
+				});
+				const startTaskSession = vi.fn();
+				const lifecycle = new ProjectTaskLifecycleService({
+					boardCommands: {
+						execute: executeBoardCommand,
+					},
+					startTaskSession,
+				});
+
+				const result = await lifecycle.execute(scope, {
+					kind: "create_and_start",
+					operationId: "exhaust-create-rebase",
+					expectedRevision: initial.revision,
+					startedAt: 150,
+					task: TASK_SPEC,
+				});
+
+				expect(result).toMatchObject({
+					ok: false,
+					operation: { status: "failed", outcomeCode: "revision_conflict" },
+					state: { revision: 5 },
+				});
+				expect(executeBoardCommand).toHaveBeenCalledTimes(5);
+				expect(findCardInBoard(result.state.board, TASK_SPEC.taskId)).toBeNull();
+				expect(startTaskSession).not.toHaveBeenCalled();
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("rebases create-and-start across a distinct concurrent task creation", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-lifecycle-conflict-");
 			try {
@@ -260,7 +499,8 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 				const context = await loadProjectContext(projectPath);
 				const initial = await loadProjectState(projectPath);
 				const scope = { projectId: context.projectId, projectPath };
-				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+				const sessions: Record<string, RuntimeTaskSessionSummary> = {};
+				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => sessions });
 				const current = await boardCommands.execute(scope, {
 					commandId: "competing-create",
 					expectedRevision: initial.revision,
@@ -273,7 +513,19 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 						createdAt: 99,
 					},
 				});
-				const startTaskSession = vi.fn();
+				const startTaskSession = vi.fn(async (_scope, request) => {
+					const summary = createTestTaskSessionSummary({
+						taskId: request.taskId,
+						launchOperationId: request.launchOperationId,
+						state: "running",
+						agentId: "codex",
+						pid: 456,
+						startedAt: 200,
+						updatedAt: 200,
+					});
+					sessions[request.taskId] = summary;
+					return { ok: true as const, summary };
+				});
 				const lifecycle = new ProjectTaskLifecycleService({ boardCommands, startTaskSession });
 
 				const result = await lifecycle.execute(scope, {
@@ -285,12 +537,13 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 				});
 
 				expect(result).toMatchObject({
-					ok: false,
-					operation: { status: "failed", outcomeCode: "revision_conflict", phase: "finished" },
-					state: { revision: current.state.revision },
+					ok: true,
+					operation: { status: "completed", outcomeCode: "completed", phase: "finished" },
+					state: { revision: current.state.revision + 2 },
 				});
-				expect(findCardInBoard(result.state.board, TASK_SPEC.taskId)).toBeNull();
-				expect(startTaskSession).not.toHaveBeenCalled();
+				expect(findCardInBoard(result.state.board, "competing-task")).not.toBeNull();
+				expect(getTaskColumnId(result.state.board, TASK_SPEC.taskId)).toBe("in_progress");
+				expect(startTaskSession).toHaveBeenCalledOnce();
 			} finally {
 				cleanup();
 			}
@@ -334,15 +587,17 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 					startedAt: 150,
 				};
 
-				const first = lifecycle.createAndStartTask(scope, input);
+				const first = executeCreateAndStart(lifecycle, scope, input);
 				await startEntered.promise;
-				const duplicate = lifecycle.createAndStartTask(scope, input);
-				await expect(
-					lifecycle.createAndStartTask(scope, {
-						...input,
-						task: { ...TASK_SPEC, prompt: "Different content" },
-					}),
-				).rejects.toBeInstanceOf(ProjectTaskLifecycleIdentityConflictError);
+				const duplicate = executeCreateAndStart(lifecycle, scope, input);
+				const collision = await executeCreateAndStart(lifecycle, scope, {
+					...input,
+					task: { ...TASK_SPEC, prompt: "Different content" },
+				});
+				expect(collision).toMatchObject({
+					ok: false,
+					operation: { outcomeCode: "identity_conflict" },
+				});
 				startGate.resolve();
 
 				const [firstResult, duplicateResult] = await Promise.all([first, duplicate]);
@@ -468,7 +723,7 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 				const startTaskSession = vi.fn();
 				const lifecycle = new ProjectTaskLifecycleService({ boardCommands, startTaskSession });
 
-				const result = await lifecycle.createAndStartTask(scope, {
+				const result = await executeCreateAndStart(lifecycle, scope, {
 					commandId: "interrupted-create-and-start",
 					expectedRevision: initial.revision,
 					task: TASK_SPEC,
@@ -477,8 +732,7 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 
 				expect(result).toMatchObject({
 					ok: false,
-					code: "session_start_interrupted",
-					replayed: true,
+					operation: { outcomeCode: "superseded" },
 					state: { revision: 3 },
 				});
 				expect(getTaskColumnId(result.state.board, TASK_SPEC.taskId)).toBe("backlog");
@@ -521,13 +775,16 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 				});
 				const lifecycle = new ProjectTaskLifecycleService({ boardCommands, startTaskSession });
 
-				const collision = await lifecycle.createAndStartTask(scope, {
+				const collision = await executeCreateAndStart(lifecycle, scope, {
 					commandId: "colliding-create-and-start",
 					expectedRevision: initial.revision + 1,
 					task: TASK_SPEC,
 					startedAt: 200,
 				});
-				expect(collision).toMatchObject({ ok: false, code: "task_already_exists" });
+				expect(collision).toMatchObject({
+					ok: false,
+					operation: { outcomeCode: "invalid_transition" },
+				});
 				expect(startTaskSession).not.toHaveBeenCalled();
 
 				const nonIsolatedTask = {
@@ -537,7 +794,7 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 					useWorktree: false,
 					createdAt: 400,
 				};
-				const nonIsolated = await lifecycle.createAndStartTask(scope, {
+				const nonIsolated = await executeCreateAndStart(lifecycle, scope, {
 					commandId: "create-and-start-shared",
 					expectedRevision: collision.state.revision,
 					task: nonIsolatedTask,
@@ -584,7 +841,7 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 					...operation,
 					phase: "board_transition",
 				}));
-				await boardCommands.executeLifecycle(scope, {
+				await boardCommands.execute(scope, {
 					commandId: `${command.operationId}:move`,
 					expectedRevision: command.expectedRevision,
 					command: {
@@ -649,7 +906,7 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 					...operation,
 					phase: "board_transition",
 				}));
-				await boardCommands.executeLifecycle(scope, {
+				await boardCommands.execute(scope, {
 					commandId: `${command.operationId}:move`,
 					expectedRevision: command.expectedRevision,
 					command: {
@@ -823,7 +1080,7 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 					...operation,
 					phase: "board_transition",
 				}));
-				await boardCommands.executeLifecycle(scope, {
+				await boardCommands.execute(scope, {
 					commandId: `${command.operationId}:move`,
 					expectedRevision: command.expectedRevision,
 					command: {
@@ -908,7 +1165,7 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 					boardCommands,
 					startTaskSession: async () => {
 						const state = await loadProjectState(projectPath);
-						await boardCommands.executeLifecycle(scope, {
+						await boardCommands.execute(scope, {
 							commandId: "newer-running-projection",
 							expectedRevision: state.revision,
 							command: {
@@ -943,6 +1200,72 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 		});
 	});
 
+	it("restarts In Progress work without claiming Running before provider confirmation", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-restart-confirmation-");
+			try {
+				const projectPath = join(sandboxRoot, "project-a");
+				mkdirSync(projectPath, { recursive: true });
+				initGitRepository(projectPath);
+				const context = await loadProjectContext(projectPath);
+				const initial = await loadProjectState(projectPath);
+				const scope = { projectId: context.projectId, projectPath };
+				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+				const created = await boardCommands.execute(scope, {
+					commandId: "seed-restart-confirmation",
+					expectedRevision: initial.revision,
+					command: { ...TASK_SPEC, kind: "create_task", columnId: "in_progress", useWorktree: false },
+				});
+				const stopTaskSession = vi.fn(async () => ({
+					summary: createTestTaskSessionSummary({
+						taskId: TASK_SPEC.taskId,
+						state: "awaiting_review",
+						reviewReason: "interrupted",
+						pid: null,
+					}),
+					requestedSessionInstanceId: "old-session",
+					didExit: true,
+					outcome: "exited" as const,
+				}));
+				const restartedSummary = createTestTaskSessionSummary({
+					taskId: TASK_SPEC.taskId,
+					state: "awaiting_review",
+					reviewReason: "attention",
+					pid: 456,
+					sessionInstanceId: "new-session",
+				});
+				const startTaskSession = vi.fn(async () => ({ ok: true, summary: restartedSummary }));
+				const lifecycle = new ProjectTaskLifecycleService({
+					boardCommands,
+					startTaskSession,
+					stopTaskSession,
+				});
+
+				const result = await lifecycle.execute(scope, {
+					kind: "restart",
+					operationId: "restart-without-false-running",
+					taskId: TASK_SPEC.taskId,
+					taskCreatedAt: TASK_SPEC.createdAt,
+					expectedRevision: created.state.revision,
+					sessionInstanceId: "old-session",
+				});
+
+				expect(result.ok).toBe(true);
+				expect(result.summary).toEqual(restartedSummary);
+				expect(startTaskSession).toHaveBeenCalledWith(
+					scope,
+					expect.objectContaining({
+						taskId: TASK_SPEC.taskId,
+						resumeConversation: true,
+						awaitReview: true,
+					}),
+				);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("blocks trash cleanup and permanent deletion when the process stop times out", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-stop-timeout-");
@@ -967,7 +1290,11 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 					command: { ...trashTask, kind: "create_task", columnId: "trash" },
 				});
 				const stopTaskSession = vi.fn(async () => ({
-					summary: createTestTaskSessionSummary({ state: "interrupted", pid: 456 }),
+					summary: createTestTaskSessionSummary({
+						state: "awaiting_review",
+						reviewReason: "interrupted",
+						pid: 456,
+					}),
 					requestedSessionInstanceId: "live-session",
 					didExit: false,
 					outcome: "timed_out" as const,
@@ -1042,7 +1369,7 @@ describe.sequential("ProjectTaskLifecycleService integration", () => {
 					...operation,
 					phase: "deleting_card",
 				}));
-				await boardCommands.executeLifecycle(scope, {
+				await boardCommands.execute(scope, {
 					commandId: `${command.operationId}:delete`,
 					expectedRevision: command.expectedRevision,
 					command: { kind: "delete_tasks", taskIds: [TASK_SPEC.taskId] },

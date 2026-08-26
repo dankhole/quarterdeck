@@ -19,7 +19,7 @@ interface PendingProgrammaticStartMoveCompletion {
 
 interface UseTaskStartInput {
 	board: BoardData;
-	setBoard: Dispatch<SetStateAction<BoardData>>;
+	presentLifecycleBoard: Dispatch<SetStateAction<BoardData>>;
 	selectedCard: SelectedBoardCard | null;
 	kickoffTaskInProgress: UseTaskLifecycleResult["kickoffTaskInProgress"];
 	tryProgrammaticCardMove: (
@@ -41,7 +41,7 @@ export interface UseTaskStartResult {
 
 export function useTaskStart({
 	board,
-	setBoard,
+	presentLifecycleBoard,
 	selectedCard,
 	kickoffTaskInProgress,
 	tryProgrammaticCardMove,
@@ -117,7 +117,7 @@ export function useTaskStart({
 				return false;
 			}
 
-			setBoard((currentBoard) => {
+			presentLifecycleBoard((currentBoard) => {
 				const currentSelection = findCardSelection(currentBoard, task.id);
 				if (!currentSelection || currentSelection.column.id !== "backlog") {
 					return currentBoard;
@@ -130,7 +130,7 @@ export function useTaskStart({
 				optimisticMove: true,
 			});
 		},
-		[board, kickoffTaskInProgress, setBoard],
+		[board, kickoffTaskInProgress, presentLifecycleBoard],
 	);
 
 	const startBacklogTaskWithAnimation = useCallback(
@@ -227,12 +227,12 @@ export function useTaskStart({
 				return;
 			}
 
-			setBoard(nextBoard);
+			presentLifecycleBoard(nextBoard);
 			for (const task of pendingStarts) {
 				void kickoffTaskInProgress(task, task.id, "backlog");
 			}
 		},
-		[board, kickoffTaskInProgress, setBoard],
+		[board, kickoffTaskInProgress, presentLifecycleBoard],
 	);
 
 	const resetPendingStartMoves = useCallback(() => {

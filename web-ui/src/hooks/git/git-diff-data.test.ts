@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 
 import {
 	createCompareDiffViewKey,
@@ -18,26 +19,19 @@ describe("git diff data policy", () => {
 
 	it("keys last-turn views by lifecycle and checkpoint commits", () => {
 		expect(
-			createLastTurnDiffViewKey(true, {
-				taskId: "task-1",
-				agentId: "claude",
-				state: "awaiting_review",
-				sessionLaunchPath: "/tmp/task",
-				pid: null,
-				startedAt: 1,
-				updatedAt: 2,
-				lastOutputAt: null,
-				reviewReason: null,
-				exitCode: null,
-				lastHookAt: null,
-				latestHookActivity: null,
-				stalledSince: null,
-				latestTurnCheckpoint: { turn: 2, ref: "refs/two", commit: "222", createdAt: 2 },
-				previousTurnCheckpoint: { turn: 1, ref: "refs/one", commit: "111", createdAt: 1 },
-				conversationSummaries: [],
-				displaySummary: null,
-				displaySummaryGeneratedAt: null,
-			}),
+			createLastTurnDiffViewKey(
+				true,
+				createTestTaskSessionSummary({
+					taskId: "task-1",
+					agentId: "claude",
+					state: "awaiting_review",
+					sessionLaunchPath: "/tmp/task",
+					startedAt: 1,
+					updatedAt: 2,
+					latestTurnCheckpoint: { turn: 2, ref: "refs/two", commit: "222", createdAt: 2 },
+					previousTurnCheckpoint: { turn: 1, ref: "refs/one", commit: "111", createdAt: 1 },
+				}),
+			),
 		).toBe("awaiting_review:222:111");
 		expect(createLastTurnDiffViewKey(false, null)).toBeNull();
 	});

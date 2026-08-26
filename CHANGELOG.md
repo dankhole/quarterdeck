@@ -2,12 +2,109 @@
 
 ## [Unreleased]
 
+### Feature: add Codex dangerously bypass approvals and sandbox mode
+
+- Codex launch permissions now include an explicit “Dangerously bypass approvals and sandbox” mode for new and restarted sessions. It uses `--dangerously-bypass-approvals-and-sandbox`, removes conflicting Ask/Auto Review overrides, and warns in Settings that commands run without confirmation prompts or Codex sandboxing.
+
+### Feature: run Agent Lab against real Codex
+
+- Agent Lab now has an explicit `--agent real-codex` lane for testing real provider TUI, hook, identity, and event-order behavior while retaining disposable Quarterdeck state, synthetic projects, loopback-only browser automation, and simulated host integrations.
+- Real mode reuses an existing Codex CLI credential without forwarding API-key environment variables or loading the source profile's configuration. It stages authentication in a private disposable Codex home; records only sanitized source metadata; keeps profile MCPs, plugins, hooks, skills, preferences, and resume records out of the run; pins the OpenAI provider, low reasoning, and standard service tier; disables integrations, analytics/telemetry, web search, and history indexing; uses read-only/on-request policy by default; and defaults to the low-cost `gpt-5.6-luna` model.
+- The deterministic fake remains the default and the only CI/scenario-protocol mode; authenticated runs are explicitly nondeterministic, account-consuming, synthetic-data-only checks.
+
+### Fix: harden native lifecycle privacy and rollback durability
+
+- Native task launch, resume, startup-recovery, and hook-ingest logs now retain useful state/count/presence metadata without recording prompts, prepared CLI arguments, filesystem paths, provider session/turn/tool identities, binaries, or raw thrown messages.
+- State snapshots now back up and restore the durable task-lifecycle operation journal. Restoring an older snapshot that predates that journal removes any newer journal instead of retaining future command receipts beside rolled-back board and session state.
+- Atomic writes that request a restrictive POSIX mode now apply it when the temporary file is created, closing the pre-rename and pre-`chmod` permission window for private hook-delivery and state files.
+- These are native/P2 foundation fixes only; no structured execution owner, remote transport, authentication flow, or mobile capability was added.
+
+### Feature: make Pi tool approvals configurable
+
+- Settings now includes a Pi-only “Require tool approvals” switch. It defaults on, preserving approval prompts for shell, write/edit, PowerShell, overridden, and unknown tools.
+- Turning it off allows tool calls without per-action confirmation in new or restarted Pi sessions while retaining the launch-scoped lifecycle extension, exact-session recovery, and once-per-launch project-trust confirmation.
+
+### Feature: promote Pi to first-class desktop support
+
+- Pi is now a maintained desktop task agent across durable create/start selection, task cards, lifecycle transitions, exact-session restart and cold recovery, terminal restoration, settings, onboarding, and diagnostics; the Experimental presentation is removed.
+- Compatibility is pinned to exactly Pi 0.84.3. Older or newer releases fail with typed detected/required version details and an actionable install command until the complete compatibility suite is advanced deliberately.
+- The Pi lifecycle extension treats `agent_settled` as the only completion boundary, fences stale runs and tool identities, blocks managed-session identity replacement, always routes project trust through a launch-scoped fail-closed interaction, and requires approval for effectful or unknown tools by default.
+- Automatic recovery requires the exact stored Pi session ID and never replays an ambiguous prompt. Process replacement remains conservatively in Review until current Pi evidence proves work resumed.
+- A targeted Pi replacement that launches and then exits before producing interactive-session evidence now reports the typed stored-session recovery error instead of being flattened into a generic Interrupted result. Agent Lab covers queued follow-up input, stale completed runs, one-shot resume failure, explicit fallback restart, approval denial, and the full trash/restore/delete lifecycle.
+- Pi's launch-fenced lifecycle transitions now use the durable replay outbox during runtime outages, and read-only approval bypasses require Pi to identify the active tool as the genuine built-in rather than an extension override with the same name.
+- Queued Pi hooks freeze their run/session identity before durable delivery; crash replacement strips the prior prompt and images; every exact targeted resume rejects and stops a mismatched provider session; accepted project trust remains quiet until work starts; and Doctor reports Pi installation failures only when a Pi task makes them relevant.
+- Pi remains desktop-only. Provider-history reads, mobile/Remote Companion surfaces, and structured remote Pi execution are explicitly deferred.
+
+### Fix: make every native Running claim proof-backed and bounded
+
+- Fresh and replacement Codex/Claude/Pi PTYs now begin in conservative Review instead of claiming Running from process creation; only a current launch-scoped provider hook can establish native work.
+- Native work evidence is durable, session-fenced, and expires after five minutes without another authoritative working hook. Expiry converges to quiet unconfirmed Review, while cold-runtime hydration invalidates old-process evidence and preserves restart eligibility.
+- The canonical session state type is now only Idle, Running, or Review. Legacy top-level Failed and Interrupted records are accepted only at the persistence boundary and migrate to Review/Error or Review/Interrupted; Needs Input and Error remain exclusive shared projections of durable interaction/review detail.
+- Escape and Ctrl-C remove Running immediately. They no longer leave a five-second false-Running window while interrupt recovery waits to learn whether the PTY exits.
+- Cards, board moves, project pills, notifications, sounds, and runtime refreshes consume the same public-status classifier. A Review-to-Needs-Input edge refreshes project counts even though the card remains physically in Review.
+- Automated reducer, hook-ingest, persistence, cold-hydration, runtime-hub, web-notification, and isolated browser lifecycle coverage now locks the contract: input is not work proof, approval response clears Needs Input before Running, and interruption is silent Review.
+
 ### Feature: opt Codex sessions into automatic approval review
 
 - Settings now offers a Codex-only approval reviewer selector: inherit the user's Codex configuration, force prompts to the user, or launch new and restarted sessions with `--approve-for-me` while preserving Codex's workspace-write sandbox.
-- Quarterdeck keeps the native `PermissionRequest` hook in every reviewer mode, so per-app overrides and approval classes that still require a person remain visible even when automatic review is selected.
+- Quarterdeck keeps the native `PermissionRequest` hook installed in every reviewer mode. In an exact Approve for me launch it is ordering/correlation evidence rather than proof of user input because Codex fires it before routing auto-review; an exceptional approval that actually reaches the user remains covered by the narrow rendered-overlay detector.
 - The minimum supported Codex CLI version is now 0.147.0, the first release that includes automatic approval review.
 
+### Fix: preserve late hook acknowledgements during shutdown
+
+- Explicit session persistence now opens a fresh durability generation and runtime shutdown drains every admitted barrier, including hook acknowledgements that arrive after automatic session-store listeners detach.
+- Acknowledgements admitted before shutdown cannot resolve while their session mutation is still losable, and persistence requests after admission closes fail explicitly instead of reporting false durability.
+
+### Fix: never claim work resumed from terminal input
+
+- Enter-confirmed Codex UI actions such as `/model`, compaction, and approval choices no longer move Review or Needs Input tasks to Running before the provider confirms that agent work resumed.
+- Direct desktop and provider-neutral submit intent remains ordered and delivered to the active session. A real wait becomes “Response sent — awaiting agent confirmation,” clears Needs Input without claiming Running, and survives persistence/restart until current provider evidence resolves it.
+- Permission sounds queued during the notification settle window are cancelled when the response is submitted, so resolved Needs Input cannot announce itself after the card and project pill have already converged.
+- Manual Codex `/compact` hooks are activity-only, so context maintenance cannot manufacture either Running or a completed Review transition.
+- The obsolete output-derived prompt-ready transition is removed, and Agent Lab now has a hookless TUI-local action that permanently covers this false-Running regression.
+- A genuinely interrupted live session now accepts a later current-session provider working hook, or a completion hook directly, from its canonical Review-with-`interrupted`-reason state, so a missed intermediate hook cannot leave completed work stuck as Interrupted.
+- If Ctrl-C or Escape causes the PTY to exit before the recovery timer fires, the pending user-interrupt signal now wins over exit code 0 and preserves Interrupted without auto-restarting or mislabeling the task Completed.
+- Concurrent hook acknowledgements now wait for the exact required session-persistence generation instead of racing another in-flight writer and falsely reporting that persistence remained dirty during shutdown.
+- Codex's hookless rendered “Conversation interrupted” result now conservatively moves a still-live task from Running to Review/Interrupted. The bounded detector requires the complete provider failure as the immediate result above the current input prompt, cannot assert Running, ignores historical failures above newer turn content, and persists correctly through runtime restart without producing Needs Input or notification sound.
+- The same current-launch rendered interruption now retires a foreground Codex permission that is still waiting or response-pending, including a stale wait restored before an exact-session resume. Escape cancellation can no longer leave “Waiting for approval” or “Response sent” stuck after Codex has visibly ended the turn; ordinary Review, other providers, background interactions, and historical redraws remain untouched.
+- Real-Codex Agent Lab launchers now honor explicit `--approve-for-me`, `--not-so-yolo`, `--dangerously-bypass-approvals-and-sandbox`, `--yolo`, and `--ask-for-approval` modes on POSIX and Windows instead of injecting mutually exclusive approval-policy or sandbox defaults, restoring authenticated approval-mode acceptance coverage.
+- Codex's single-key `y` approval now records the current permission response as submitted before the matching `PostToolUse` confirms Running. Native and hookless approvals no longer remain falsely stuck at “Waiting for approval,” while arbitrary input and other providers stay semantically neutral.
+- Identity-poor Codex `PermissionRequest` hooks now bind to exactly one preceding open `PreToolUse` in the same turn. The matching `PostToolUse` resolves both user-approved and provider-approved waits; an answered or cancelled tool is retired even when no completion hook arrives, while parallel or ambiguous tool activity still fails closed instead of clearing the wrong request.
+- Codex numbered approval choices now record the same response-submitted boundary as its `y` shortcut without claiming Running. If an exact approval completion is absent, a strictly later current-launch foreground turn or post-response tool start can confirm work; a current root `Stop` retires an obsolete wait into Review even without exact interaction identity. Stale sessions, same-turn parallel work, delayed completions, generic activity, and background-agent hooks remain fenced.
+- Foreground `PreToolUse` now counts as direct current-launch work evidence when no interaction owns the TUI, so a missed `UserPromptSubmit` cannot leave real work in Review. Root completion also establishes a durable provider-order barrier before clearing an identity-poor wait, preventing delayed pre-completion hooks from resurrecting Running.
+- Codex `PermissionRequest` no longer creates false Needs Input for an exact Approve for me launch: the hook fires before Codex's auto-review decision and is retained as ordering evidence, while only a rendered exceptional approval becomes actionable. Ask me and inherited launches remain conservative because current Codex hooks do not expose the effective reviewer.
+
+### Fix: keep browser and runtime builds aligned
+
+- Packaged runtime snapshots now identify the exact production build that produced them, and the browser compares that identity before applying any project, card, pill, or notification state.
+- A tab that survives a Quarterdeck rebuild/restart reloads once into the runtime's matching no-store assets instead of continuing with stale status and lifecycle semantics; a persistent mismatch fails closed with a visible reconnect error rather than looping or rendering mixed-version state.
+- The production runtime rejects pre-fence browser streams that omit build identity, so the first upgrade fails closed until the legacy tab is refreshed instead of admitting mixed-version state.
+- Runtime fanout that races ahead of an initial snapshot is ignored until that snapshot's build identity is accepted, preventing early project or notification state from crossing the compatibility fence.
+- Production builds stamp the runtime and web bundles from one build owner, while source-mode Vite development retains its normal hot-reload workflow.
+
+### Fix: prevent user interrupts from fabricating Needs Input
+
+- Delayed Escape/Ctrl-C recovery now settles live tasks as Interrupted in Review instead of writing the same `attention` reason reserved for structured agent questions.
+- Only an accepted working hook from that exact live PTY returns the task to Running and clears the interrupt recovery/no-restart fence; submitted bytes, process replacement, processless sessions, and PTYs already undergoing an explicit stop cannot claim Running.
+- Needs Input cards, project pills, notifications, and sounds now require current Claude question/elicitation metadata or Codex/Claude permission metadata; unproven legacy `attention` records degrade to Interrupted without deleting local task or conversation state.
+- Cold-start hydration rejects and clears stale durable recovery flags on those unproven legacy records, preventing a restart from relaunching an agent and recreating the false state.
+- Metadata-only diagnostics now identify interrupt scheduling and its resulting semantic state, and runtime/UI coverage exercises genuine waits, response convergence, and false-positive interrupt recovery as separate cases.
+
+### Fix: initialize all project session state at runtime startup
+
+- Runtime startup now hydrates every valid indexed project's session store before accepting clients and schedules eligible agent recovery independently of WebSocket connections or project selection, so inactive project pills and Needs Input notifications are correct immediately after restart.
+- Recovery now carries the complete durable semantic state: previously Running work remains Interrupted after process replacement until a current native hook proves progress, Review and genuine Needs Input stay distinct, Error remains untouched, and ambiguous legacy records remain explicitly uncertain.
+
+### Fix: preserve targeted resumes across runtime shutdown
+
+- Runtime shutdown now marks task sessions interrupted and suppresses automatic crash recovery before signalling their PTYs, preventing fast exit callbacks from launching replacement agents while shutdown persistence is still running.
+- Shutdown also fences asynchronous launch preparation and waits for pending starts and automatic restarts before persisting sessions, so an agent that crashed immediately before shutdown cannot spawn a late replacement.
+- Hook-captured Codex and Claude session IDs survive shutdown unchanged, so the next runtime can use an exact targeted resume instead of falling back to an ambiguous working-directory-based continuation.
+
+### Fix: keep bulk task starts durable across runtime projections
+
+- Multi-task create-and-start now semantically rebases each fresh stable task identity across bounded bursts of unrelated runtime-owned board revisions, preventing overlapping automatic titles or session metadata from making a sequential bulk start partially disappear.
+- Every retry revalidates identity and source-column ownership; concurrent identity reuse, changed task intent, and retry exhaustion still fail closed, while integration and Agent Lab coverage exercise bulk Running, Review, Needs Input, and Error creation with automatic title generation active.
 ### Fix: recover from transient agent probes and observe browser launch
 
 - Task launch no longer treats a timed-out agent version or feature probe as durable CLI unavailability: timeout and launcher failures are typed, excluded from the availability cache, retried once during startup recovery, and surfaced with their precise remediation instead of the generic install-an-agent error.
@@ -30,9 +127,21 @@
 - Graceful lab restarts exercise real shutdown persistence without scanning unrelated host agent processes; runtime-generation logs remain separate in canonical evidence.
 - Ambiguous legacy interrupted sessions now remain semantically neutral during chat restoration and surface an explicit warning instead of being guessed as Running, Review, or Needs Input.
 
+### Feature: add bounded recent-conversation reads
+
+- The runtime now owns one provider-neutral, read-only recent-conversation boundary for exact stored Claude Code and Codex sessions, returning 10 meaningful user/assistant messages by default and at most 24 with explicit older-history, compaction, truncation, and degradation signals.
+- Provider history discovery is server-owned and bounded: canonical sources must remain beneath configured Claude/Codex history roots, exact session identity is verified, symlink and traversal escapes are rejected, and malformed, missing, pruned, oversized, or drifting history cannot affect board, lifecycle, hook, terminal, worktree, or provider state.
+- Native message IDs are preserved through opaque deterministic hashes, with provider/session/source-coordinate fallbacks when native IDs are absent, so rereads, appends, reconnects, and service reconstruction do not renumber existing entries.
+- Provider history is reconstructed logically before projection: Claude reads follow the active `parentUuid` chain, Codex reads apply persisted rollback markers, and unreadable or oversized records form explicit history barriers instead of allowing pre-compaction text to leak into the recent suffix.
+- Tail reconstruction stops after proving the requested number of unique safe messages plus one genuinely older message, so ordinary long histories do not scan to the beginning merely to set `hasOlder`; duplicate native IDs do not satisfy the bound, while Claude lineage cycles and Codex rollback underflow remain fail-closed.
+- Indexed projects can resolve persisted provider session identity without browser selection or terminal-manager hydration, keeping the internal read boundary usable for cold and inactive projects.
+- Tool calls/results, reasoning, system/developer content, commands, terminal data, paths, provider records, and Pi are excluded. This adds no remote listener, authentication, pairing flow, mobile renderer, or desktop behavior change.
+- Authenticated ownership-handoff fixtures now cover Claude Agent SDK and paginated Codex histories: Claude interruption becomes a typed boundary, Codex repository/environment context is excluded, unknown duplicate same-turn records fail closed, and unsupported history modes or declared versions return no conversation content.
+- The Codex `0.149.1` post-compaction variant is fixture-covered: a top-level compaction remains a hard history barrier, the paired single-block environment wrapper is excluded, only the safe newer suffix is returned, and unpaired wrappers still fail closed.
+
 ### Fix: align project pills with board and notification truth
 
-- Project navigation now shows the complete Review column count alongside the overlapping Needs Input signal, so three Review cards with one blocked task render as `R 3 · NI 1` instead of incorrectly partitioning the column into `R 2 · NI 1`.
+- Project navigation treats Review and Needs Input as exclusive attention categories while leaving blocked cards physically in the Review column, so three Review cards with one blocked task render as `R 2 · NI 1` and a single blocked card renders only `NI 1`.
 - Runtime integration and Agent Lab coverage now verify both halves of the state cycle: initial Review/Needs Input classification and convergence back to Running after the user responds, including authoritative board counts, project summaries, and versioned notification clearing.
 
 ### Fix: preserve review state through cold-start recovery
@@ -41,10 +150,12 @@
 - Bounded startup recovery restores completed review chats without relabeling them as waiting for input, and a failed chat restoration leaves completed work in Review with an explicit warning instead of fabricating task failure.
 - Recovery eligibility is durable across repeated runtime restarts, shutdown persistence uses stable project identity, and cold-start coverage now includes the Running/Review/Needs Input/Error matrix plus project-pill and notification expectations.
 
-### Fix: generate titles for lifecycle-created tasks
+### Fix: harden remote-preparation command ownership
 
-- Tasks created and started through the runtime-owned lifecycle now schedule automatic title generation after the durable lifecycle result, instead of depending on the browser board-command path they bypass.
-- Browser command scans and lifecycle creation share the same per-project/task single-flight coordinator and conditional generated-title write, while metadata-only diagnostics expose scheduled, completed, discarded, empty, and failed attempts without retaining task text.
+- Automatic title generation now consumes one board-writer post-commit effect regardless of whether a task came from the browser or lifecycle service, eliminating entry-point-specific triggers; delayed title writes also match the task's creation identity before changing it.
+- Removed the lifecycle service's obsolete compatibility execution path and its separate replay/error behavior, leaving the typed `execute(...)` contract as the only production lifecycle entry point.
+- Desktop lifecycle gestures now use an explicitly presentation-only update paired with the runtime lifecycle service, while ordinary `setBoard` changes reject lifecycle commands instead of silently displaying a transition they will not persist. Future remote clients are documented to submit typed server commands directly.
+- Audible notification state now keys tasks by project and task identity, so equal board-local task IDs in different projects cannot suppress or overwrite each other's transitions.
 
 ### Chore: consolidate dependency upgrades
 
@@ -75,8 +186,8 @@
 ### Fix: never hide visible Codex approval waits
 
 - Canonical Codex approval overlays now provide a narrow compatibility signal when nested Code Mode tools render an approval without emitting the native `PermissionRequest` hook, so the card immediately moves to Review with “Waiting for approval” instead of remaining deceptively Running. Detection inspects only the rendered, bottom-anchored xterm approval layout—including clipped 40-column footers—so ordinary transcript or source output cannot create a false wait.
-- Enter and Escape decisions clear the compatibility wait immediately, native hooks remain authoritative when present, redraws cannot duplicate the transition, and every authoritative return to Running resets detection so later approvals in the same session remain visible.
-- Submitting a new prompt from a live review-ready terminal now moves the task to Running immediately instead of leaving it in Review until the agent emits its first hook.
+- Enter and Escape decisions are delivered and ordered, then move the compatibility wait to response-pending: Needs Input clears without claiming Running. Native hooks authoritatively resolve it, redraws cannot duplicate the transition, and every provider-confirmed return to Running resets detection so later approvals in the same session remain visible.
+- Submitting from a live review-ready terminal now remains conservatively in Review until the agent emits a current-session working hook, avoiding false Running state for TUI-local commands.
 - Agent Lab can render a hookless approval overlay for deterministic browser and terminal lifecycle regression coverage.
 
 ### Feature: complete Agent Lab headless host workflows
@@ -139,15 +250,15 @@
 
 ### Fix: keep cross-project UI projections authoritative
 
-- Project-list pills now retain counts only when they came from an exact board-state revision, allowing unverified same-revision fallbacks to self-heal while preventing a project switch from replacing proven counts; needs-input badges can no longer invent tasks beyond the board-owned Review total.
+- Project-list pills now retain counts only when they came from an exact board-state revision, allowing unverified same-revision fallbacks to self-heal while preventing a project switch from replacing proven counts; a newer notification projection may lead an older board snapshot temporarily without producing a negative Review count.
 - Runtime stream events now retain project identity and connection generation through one state-store fence, while per-project notification revisions reject out-of-order snapshots and deltas without blocking cross-project alerts.
 - Project path, branch, and task-worktree metadata now share one project-scoped read-model boundary that clears before paint and rejects late results from the project being left; projection read failures now emit structured runtime warnings instead of failing silently.
 
 ### Fix: reconcile interactive Codex lifecycle
 
-- Submitting a response while a task is genuinely waiting for input now moves it back to running immediately, while ordinary review-card input and terminal redraws remain state-neutral; delayed Codex permission hooks from before that response are rejected by launch-scoped ordering.
-- Structured task input now requires explicit submit intent independently of terminal newline encoding, while classified hook transitions atomically commit state, `attention`/`error` reason, activity, and resumable session identity through the terminal-owned transition controller; browserless responses therefore update session state, board projection, project pills, and notifications without a contradictory intermediate fanout.
-- Manual Codex `/compact` now uses the native paired compact hooks to show running only for the duration of compaction, while automatic mid-turn compaction remains state-neutral.
+- Submitting a response while a task is genuinely waiting for input establishes a launch-scoped ordering boundary that rejects older delayed Codex permission hooks; the task returns to Running only after a current provider hook confirms resumed work.
+- Structured task input requires explicit submit intent independently of terminal newline encoding, while classified hook transitions atomically commit state, `attention`/`error` reason, activity, and resumable session identity through the terminal-owned transition controller; browserless responses therefore converge board projection, project pills, and notifications without an input-authored false Running state.
+- Manual Codex `/compact` now uses its native paired hooks as activity-only observations; neither manual nor automatic compaction changes task lifecycle state.
 - Audible notifications now detect semantic upgrades on already-stopped tasks, so a review card that becomes approval-required alerts once without replaying retained or unchanged notification state.
 - Restarted task terminals now re-request the authoritative snapshot after their local reset, preventing a late React effect from erasing an already restored Codex chat and leaving a blank pane.
 

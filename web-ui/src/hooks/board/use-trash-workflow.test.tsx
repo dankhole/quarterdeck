@@ -64,7 +64,7 @@ function HookHarness({
 
 	const actions = useTrashWorkflow({
 		board,
-		setBoard,
+		presentLifecycleBoard: setBoard,
 		selectedCard: { card: task, column: { id: "review" } },
 		selectedTaskId,
 		setSelectedTaskId,

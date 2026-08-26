@@ -3,6 +3,13 @@ import { dirname, join } from "node:path";
 
 import * as esbuild from "esbuild";
 
+const buildId = process.env.QUARTERDECK_BUILD_ID?.trim();
+if (!buildId) {
+	throw new Error(
+		"QUARTERDECK_BUILD_ID is required. Run `npm run build` instead of invoking scripts/build.mjs directly.",
+	);
+}
+
 /** Modules that must stay external (native addons, large runtime deps). */
 const external = [
 	"node-pty",
@@ -18,6 +25,7 @@ const external = [
 
 const define = {
 	"process.env.NODE_ENV": '"production"',
+	"process.env.QUARTERDECK_BUILD_ID": JSON.stringify(buildId),
 };
 
 /**

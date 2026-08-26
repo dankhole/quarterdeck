@@ -13,38 +13,45 @@ import {
 	SETTLE_WINDOW_IMMEDIATE_MS,
 } from "@/hooks/notifications/audible-notifications";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import {
+	createTestTaskNativeWorkEvidence,
+	createTestTaskOutstandingInteraction,
+	createTestTaskSessionSummary,
+} from "@/test-utils/task-session-factory";
 
 function mockSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
-	return {
-		taskId: "task-1",
-		state: "idle",
+	return createTestTaskSessionSummary({
 		agentId: "claude",
 		sessionLaunchPath: "/tmp/repo",
-		pid: null,
-		startedAt: null,
 		updatedAt: Date.now(),
-		lastOutputAt: null,
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
 		...overrides,
-	};
+	});
+}
+
+function mockClaudeAttentionSummary(): RuntimeTaskSessionSummary {
+	return mockSummary({
+		state: "awaiting_review",
+		reviewReason: "attention",
+		outstandingInteraction: createTestTaskOutstandingInteraction(),
+	});
 }
 
 describe("deriveColumn", () => {
-	it("returns 'active' for running state", () => {
-		expect(deriveColumn(mockSummary({ state: "running" }))).toBe("active");
+	it("returns 'active' only for running state with current provider evidence", () => {
+		expect(
+			deriveColumn(
+				mockSummary({
+					state: "running",
+					pid: 42,
+					sessionInstanceId: "process-1",
+					nativeWorkEvidence: createTestTaskNativeWorkEvidence({ provider: "claude" }),
+				}),
+			),
+		).toBe("active");
 	});
 
-	it("returns 'silent' for interrupted state", () => {
-		expect(deriveColumn(mockSummary({ state: "interrupted" }))).toBe("silent");
+	it("returns 'stopped' for an unconfirmed native running claim", () => {
+		expect(deriveColumn(mockSummary({ state: "running", pid: 42, sessionInstanceId: "process-1" }))).toBe("stopped");
 	});
 
 	it("returns 'silent' for awaiting_review with interrupted reason", () => {
@@ -63,17 +70,42 @@ describe("deriveColumn", () => {
 		expect(deriveColumn(mockSummary({ state: "awaiting_review", reviewReason: "exit" }))).toBe("stopped");
 	});
 
-	it("returns 'stopped' for awaiting_review with attention reason", () => {
-		expect(deriveColumn(mockSummary({ state: "awaiting_review", reviewReason: "attention" }))).toBe("stopped");
+	it("returns 'stopped' for a structured Claude attention wait", () => {
+		expect(deriveColumn(mockClaudeAttentionSummary())).toBe("stopped");
 	});
 
-	it("returns 'stopped' for failed state", () => {
-		expect(deriveColumn(mockSummary({ state: "failed" }))).toBe("stopped");
+	it("returns 'silent' for an unproven legacy attention reason", () => {
+		expect(deriveColumn(mockSummary({ state: "awaiting_review", reviewReason: "attention" }))).toBe("silent");
+	});
+
+	it("returns 'stopped' for error Review", () => {
+		expect(deriveColumn(mockSummary({ state: "awaiting_review", reviewReason: "error" }))).toBe("stopped");
 	});
 });
 
 describe("resolveSessionSoundEvent", () => {
-	it("returns 'permission' for hook with approval activity", () => {
+	it("returns 'permission' for an exact durable approval interaction", () => {
+		const result = resolveSessionSoundEvent(
+			mockSummary({
+				state: "awaiting_review",
+				reviewReason: "hook",
+				outstandingInteraction: createTestTaskOutstandingInteraction({ kind: "permission" }),
+				latestHookActivity: {
+					hookEventName: "PermissionRequest",
+					notificationType: "permission.asked",
+					activityText: null,
+					toolName: null,
+					toolInputSummary: null,
+					finalMessage: null,
+					source: null,
+					conversationSummaryText: null,
+				},
+			}),
+		);
+		expect(result).toBe("permission");
+	});
+
+	it("does not sound an approval from presentation activity alone", () => {
 		const result = resolveSessionSoundEvent(
 			mockSummary({
 				state: "awaiting_review",
@@ -90,7 +122,7 @@ describe("resolveSessionSoundEvent", () => {
 				},
 			}),
 		);
-		expect(result).toBe("permission");
+		expect(result).toBe("review");
 	});
 
 	it("returns 'review' for hook without approval activity", () => {
@@ -113,10 +145,12 @@ describe("resolveSessionSoundEvent", () => {
 		expect(result).toBe("review");
 	});
 
-	it("returns 'review' for attention reason", () => {
-		expect(resolveSessionSoundEvent(mockSummary({ state: "awaiting_review", reviewReason: "attention" }))).toBe(
-			"review",
-		);
+	it("returns 'review' for a structured Claude attention wait", () => {
+		expect(resolveSessionSoundEvent(mockClaudeAttentionSummary())).toBe("review");
+	});
+
+	it("returns null for an unproven legacy attention reason", () => {
+		expect(resolveSessionSoundEvent(mockSummary({ state: "awaiting_review", reviewReason: "attention" }))).toBeNull();
 	});
 
 	it("returns 'review' for exit with code 0", () => {
@@ -149,8 +183,10 @@ describe("resolveSessionSoundEvent", () => {
 		).toBeNull();
 	});
 
-	it("returns 'failure' for failed state", () => {
-		expect(resolveSessionSoundEvent(mockSummary({ state: "failed" }))).toBe("failure");
+	it("returns 'failure' for error Review", () => {
+		expect(resolveSessionSoundEvent(mockSummary({ state: "awaiting_review", reviewReason: "error" }))).toBe(
+			"failure",
+		);
 	});
 
 	it("returns null for running state", () => {

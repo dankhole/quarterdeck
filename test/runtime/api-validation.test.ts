@@ -36,6 +36,71 @@ describe("runtimeTaskSessionSummarySchema", () => {
 		expect(parsed.sessionLaunchPath).toBeNull();
 		expect("projectPath" in parsed).toBe(false);
 	});
+
+	it.each([
+		["failed", "error"],
+		["interrupted", "interrupted"],
+	] as const)("normalizes legacy %s state into canonical Review detail", (state, reviewReason) => {
+		const parsed = runtimeTaskSessionSummarySchema.parse({
+			...baseSessionSummaryPayload,
+			state,
+		});
+
+		expect(parsed.state).toBe("awaiting_review");
+		expect(parsed.reviewReason).toBe(reviewReason);
+		expect(parsed.nativeWorkEvidence).toBeNull();
+	});
+
+	it.each(["codex", "pi"] as const)("normalizes unsupported %s Running claims into unconfirmed Review", (agentId) => {
+		const parsed = runtimeTaskSessionSummarySchema.parse({
+			...baseSessionSummaryPayload,
+			agentId,
+			sessionInstanceId: "process-1",
+		});
+
+		expect(parsed.state).toBe("awaiting_review");
+		expect(parsed.reviewReason).toBe("unconfirmed");
+	});
+
+	it("lets a durable waiting interaction override otherwise valid Running evidence", () => {
+		const parsed = runtimeTaskSessionSummarySchema.parse({
+			...baseSessionSummaryPayload,
+			agentId: "codex",
+			sessionInstanceId: "process-1",
+			nativeWorkEvidence: {
+				provider: "codex",
+				sessionInstanceId: "process-1",
+				providerSessionId: "session-1",
+				turnId: "turn-1",
+				hookEventName: "UserPromptSubmit",
+				confirmedAt: 1_500,
+				expiresAt: 301_500,
+			},
+			outstandingInteraction: {
+				provider: "codex",
+				kind: "permission",
+				status: "waiting",
+				requestEventName: "PermissionRequest",
+				openedAt: 1_600,
+				updatedAt: 1_600,
+				responseSubmittedAt: null,
+				responseKind: null,
+				sessionInstanceId: "process-1",
+				providerSessionId: "session-1",
+				turnId: "turn-1",
+				promptId: "prompt-1",
+				toolUseId: null,
+				elicitationId: null,
+				providerAgentId: null,
+				toolName: null,
+			},
+		});
+
+		expect(parsed.state).toBe("awaiting_review");
+		expect(parsed.reviewReason).toBe("hook");
+		expect(parsed.nativeWorkEvidence).toBeNull();
+		expect(parsed.outstandingInteraction?.status).toBe("waiting");
+	});
 });
 
 describe("parseHookIngestRequest", () => {
@@ -65,7 +130,10 @@ describe("parseHookIngestRequest", () => {
 				sessionId: "session-789",
 				sessionInstanceId: null,
 				turnId: null,
+				promptId: null,
 				toolUseId: null,
+				elicitationId: null,
+				providerAgentId: null,
 				transcriptPath: null,
 				conversationSummaryText: null,
 			},

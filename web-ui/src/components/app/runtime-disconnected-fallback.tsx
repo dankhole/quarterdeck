@@ -3,7 +3,11 @@ import type { ReactElement } from "react";
 
 import { Button } from "@/components/ui/button";
 
-export function RuntimeDisconnectedFallback(): ReactElement {
+export function RuntimeDisconnectedFallback({
+	message = "The server is no longer running. Start it again in your terminal, then reload.",
+}: {
+	message?: string;
+}): ReactElement {
 	return (
 		<div className="min-h-screen bg-surface-0 text-text-primary flex items-center justify-center p-6">
 			<div className="w-full max-w-md rounded-xl border border-border bg-surface-1 p-6 shadow-2xl">
@@ -13,9 +17,7 @@ export function RuntimeDisconnectedFallback(): ReactElement {
 					</div>
 					<div>
 						<h1 className="text-lg font-semibold">Disconnected from Quarterdeck</h1>
-						<p className="mt-1 text-sm text-text-secondary">
-							The server is no longer running. Start it again in your terminal, then reload.
-						</p>
+						<p className="mt-1 text-sm text-text-secondary">{message}</p>
 					</div>
 				</div>
 				<div className="mt-5">

@@ -7,11 +7,19 @@ export function getRuntimeDetailTerminalTaskId(taskId: string): string {
 	return `${RUNTIME_DETAIL_TERMINAL_TASK_PREFIX}${taskId}`;
 }
 
-export const runtimeTaskSessionStateSchema = z.enum(["idle", "running", "awaiting_review", "failed", "interrupted"]);
+export const runtimeTaskSessionStateSchema = z.enum(["idle", "running", "awaiting_review"]);
 export type RuntimeTaskSessionState = z.infer<typeof runtimeTaskSessionStateSchema>;
 
+// Input-only compatibility for session records written before failures and
+// interruptions became Review detail. Canonical runtime output cannot author
+// either value.
+const persistedRuntimeTaskSessionStateSchema = z.union([
+	runtimeTaskSessionStateSchema,
+	z.enum(["failed", "interrupted"]),
+]);
+
 export const runtimeTaskSessionReviewReasonSchema = z
-	.enum(["attention", "exit", "error", "interrupted", "hook", "stalled"])
+	.enum(["attention", "exit", "error", "interrupted", "hook", "stalled", "unconfirmed"])
 	.nullable();
 export type RuntimeTaskSessionReviewReason = z.infer<typeof runtimeTaskSessionReviewReasonSchema>;
 
@@ -27,12 +35,71 @@ export const runtimeTaskHookActivitySchema = z.object({
 });
 export type RuntimeTaskHookActivity = z.infer<typeof runtimeTaskHookActivitySchema>;
 
+export const runtimeTaskInteractionProviderSchema = z.enum(["codex", "claude", "pi"]);
+export type RuntimeTaskInteractionProvider = z.infer<typeof runtimeTaskInteractionProviderSchema>;
+
+export const runtimeTaskInteractionKindSchema = z.enum(["permission", "question", "plan_approval", "elicitation"]);
+export type RuntimeTaskInteractionKind = z.infer<typeof runtimeTaskInteractionKindSchema>;
+
+export const runtimeTaskInteractionStatusSchema = z.enum(["waiting", "response_submitted", "resolution_unknown"]);
+export type RuntimeTaskInteractionStatus = z.infer<typeof runtimeTaskInteractionStatusSchema>;
+
+export const runtimeTaskInteractionResponseKindSchema = z.enum(["submit", "cancel", "provider_denied"]);
+export type RuntimeTaskInteractionResponseKind = z.infer<typeof runtimeTaskInteractionResponseKindSchema>;
+
+/**
+ * Positive launch-scoped evidence for the public Running claim made by a
+ * native Codex, Claude, or Pi task session. A live PTY, terminal bytes, and browser
+ * input are deliberately absent: only the current provider hook path can
+ * author this record.
+ */
+export const runtimeTaskNativeWorkEvidenceSchema = z.object({
+	provider: runtimeTaskInteractionProviderSchema,
+	sessionInstanceId: z.string().min(1),
+	providerSessionId: z.string().nullable(),
+	turnId: z.string().nullable(),
+	hookEventName: z.string().min(1),
+	confirmedAt: z.number().int().nonnegative(),
+	expiresAt: z.number().int().nonnegative(),
+});
+export type RuntimeTaskNativeWorkEvidence = z.infer<typeof runtimeTaskNativeWorkEvidenceSchema>;
+
+/**
+ * Durable identity and lifecycle for the one provider interaction currently
+ * blocking (or recently blocking) a task. The top-level session state remains
+ * the execution/review lifecycle; this nested record distinguishes an active
+ * wait from a response whose delivery succeeded but whose provider-side
+ * resumption has not yet been confirmed.
+ */
+export const runtimeTaskOutstandingInteractionSchema = z.object({
+	provider: runtimeTaskInteractionProviderSchema,
+	kind: runtimeTaskInteractionKindSchema,
+	status: runtimeTaskInteractionStatusSchema,
+	requestEventName: z.string(),
+	openedAt: z.number().int().nonnegative(),
+	updatedAt: z.number().int().nonnegative(),
+	responseSubmittedAt: z.number().int().nonnegative().nullable(),
+	responseKind: runtimeTaskInteractionResponseKindSchema.nullable(),
+	sessionInstanceId: z.string().nullable(),
+	providerSessionId: z.string().nullable(),
+	turnId: z.string().nullable(),
+	promptId: z.string().nullable(),
+	toolUseId: z.string().nullable(),
+	elicitationId: z.string().nullable(),
+	providerAgentId: z.string().nullable(),
+	toolName: z.string().nullable(),
+});
+export type RuntimeTaskOutstandingInteraction = z.infer<typeof runtimeTaskOutstandingInteractionSchema>;
+
 export const runtimeHookMetadataSchema = runtimeTaskHookActivitySchema
 	.extend({
 		sessionId: z.string().nullable().default(null),
 		sessionInstanceId: z.string().nullable().default(null),
 		turnId: z.string().nullable().default(null),
+		promptId: z.string().nullable().default(null),
 		toolUseId: z.string().nullable().default(null),
+		elicitationId: z.string().nullable().default(null),
+		providerAgentId: z.string().nullable().default(null),
 		transcriptPath: z.string().nullable().default(null),
 	})
 	.partial();
@@ -43,6 +110,30 @@ export const runtimeHookDeliverySchema = z.object({
 	occurredAt: z.number().int().nonnegative(),
 });
 export type RuntimeHookDelivery = z.infer<typeof runtimeHookDeliverySchema>;
+
+export const runtimeHookEventSchema = z.enum(["to_review", "to_in_progress", "activity"]);
+export type RuntimeHookEvent = z.infer<typeof runtimeHookEventSchema>;
+
+/**
+ * Content-free provider identity retained only to rebuild the native-hook
+ * ordering guard after a runtime restart. This is not task meaning and must
+ * never be interpreted by cards, notifications, or remote clients.
+ */
+export const runtimeTaskProviderHookOrderObservationSchema = z.object({
+	event: runtimeHookEventSchema,
+	deliveryId: z.string().uuid(),
+	occurredAt: z.number().int().nonnegative(),
+	source: z.enum(["codex", "claude", "pi"]),
+	sessionInstanceId: z.string().min(1),
+	hookEventName: z.string().nullable(),
+	notificationType: z.string().nullable(),
+	turnId: z.string().nullable(),
+	promptId: z.string().nullable(),
+	toolUseId: z.string().nullable(),
+	elicitationId: z.string().nullable(),
+	toolName: z.string().nullable(),
+});
+export type RuntimeTaskProviderHookOrderObservation = z.infer<typeof runtimeTaskProviderHookOrderObservationSchema>;
 
 export const conversationSummaryEntrySchema = z.object({
 	/** The extracted assistant message text, capped at 500 chars. */
@@ -62,13 +153,13 @@ export const runtimeTaskTurnCheckpointSchema = z.object({
 });
 export type RuntimeTaskTurnCheckpoint = z.infer<typeof runtimeTaskTurnCheckpointSchema>;
 
-export const runtimeTaskSessionSummarySchema = z.object({
+const runtimeTaskSessionSummaryBaseSchema = z.object({
 	taskId: z.string(),
 	/** Stable identity for the exact PTY process represented by this summary. */
 	sessionInstanceId: z.string().nullable().optional(),
 	/** Stable lifecycle operation that launched this session, when applicable. */
 	launchOperationId: z.string().nullable().optional(),
-	state: runtimeTaskSessionStateSchema,
+	state: persistedRuntimeTaskSessionStateSchema,
 	agentId: runtimeAgentIdSchema.nullable(),
 	sessionLaunchPath: z.string().nullable().default(null),
 	resumeSessionId: z.string().nullable().optional(),
@@ -79,7 +170,17 @@ export const runtimeTaskSessionSummarySchema = z.object({
 	reviewReason: runtimeTaskSessionReviewReasonSchema,
 	exitCode: z.number().nullable(),
 	lastHookAt: z.number().nullable().default(null),
+	/** Provider-recorded occurrence time of the newest accepted launch-scoped hook. */
+	lastProviderHookOccurredAt: z.number().int().nonnegative().nullable().default(null),
+	/** Bounded durable deduplication window for reliable hook delivery retries. */
+	recentProviderHookDeliveryIds: z.array(z.string().uuid()).max(128).default([]),
+	/** Bounded content-free history used only to rebuild provider-specific ordering after restart. */
+	recentProviderHookOrderObservations: z.array(runtimeTaskProviderHookOrderObservationSchema).max(512).default([]),
 	latestHookActivity: runtimeTaskHookActivitySchema.nullable().default(null),
+	/** Current provider interaction, if user input was requested or its resolution remains unconfirmed. */
+	outstandingInteraction: runtimeTaskOutstandingInteractionSchema.nullable().default(null),
+	/** Current bounded proof behind a native Codex/Claude/Pi Running projection. */
+	nativeWorkEvidence: runtimeTaskNativeWorkEvidenceSchema.nullable().default(null),
 	stalledSince: z.number().nullable().default(null),
 	/** Durable handoff indicating that the next runtime must restore the task's interactive agent session. */
 	startupRecoveryRequired: z.boolean().optional(),
@@ -92,6 +193,101 @@ export const runtimeTaskSessionSummarySchema = z.object({
 	displaySummary: z.string().nullable().default(null),
 	displaySummaryGeneratedAt: z.number().nullable().default(null),
 });
+
+type ParsedRuntimeTaskSessionSummary = z.infer<typeof runtimeTaskSessionSummaryBaseSchema>;
+type NormalizedRuntimeTaskSessionSummary = Omit<ParsedRuntimeTaskSessionSummary, "state"> & {
+	state: RuntimeTaskSessionState;
+};
+
+export interface NormalizeRuntimeTaskSessionSummaryOptions {
+	/** Hydrated native evidence belongs to a process owned by the previous runtime. */
+	invalidateNativeWorkEvidence?: boolean;
+	/** Store-owned clock used to expire an admitted Running lease. */
+	now?: number;
+}
+
+/**
+ * Normalize legacy and contradictory records into the conservative canonical
+ * session contract. Compatibility input may still contain old top-level
+ * `failed`/`interrupted` values, but normal runtime output represents both as
+ * Review plus a reason. An interaction always outranks Running.
+ */
+export function normalizeRuntimeTaskSessionSummary(
+	summary: ParsedRuntimeTaskSessionSummary,
+	options: NormalizeRuntimeTaskSessionSummaryOptions = {},
+): NormalizedRuntimeTaskSessionSummary {
+	const migratedLegacyInterrupted =
+		summary.state === "interrupted" && typeof summary.startupRecoveryRequired !== "boolean";
+	let next: NormalizedRuntimeTaskSessionSummary = {
+		...summary,
+		state: summary.state === "failed" || summary.state === "interrupted" ? "awaiting_review" : summary.state,
+		reviewReason:
+			summary.state === "failed" ? "error" : summary.state === "interrupted" ? "interrupted" : summary.reviewReason,
+		nativeWorkEvidence:
+			summary.state === "failed" || summary.state === "interrupted" ? null : summary.nativeWorkEvidence,
+		...(migratedLegacyInterrupted
+			? { startupRecoveryRequired: true, startupRecoverySemanticStateUncertain: true }
+			: {}),
+	};
+
+	const interaction = next.outstandingInteraction;
+	if (interaction) {
+		const reviewReason =
+			interaction.status === "resolution_unknown"
+				? "error"
+				: interaction.kind === "permission"
+					? "hook"
+					: "attention";
+		next = {
+			...next,
+			state: "awaiting_review",
+			reviewReason,
+			nativeWorkEvidence: null,
+		};
+	}
+
+	const isSupportedNativeAgent = next.agentId === "codex" || next.agentId === "claude" || next.agentId === "pi";
+	if (next.state === "running" && isSupportedNativeAgent) {
+		const evidence = next.nativeWorkEvidence;
+		const invalidEvidence =
+			options.invalidateNativeWorkEvidence === true ||
+			!evidence ||
+			evidence.provider !== next.agentId ||
+			!next.sessionInstanceId ||
+			evidence.sessionInstanceId !== next.sessionInstanceId ||
+			next.pid === null ||
+			evidence.expiresAt < evidence.confirmedAt ||
+			(options.now !== undefined && evidence.expiresAt <= options.now);
+		if (invalidEvidence) {
+			next = {
+				...next,
+				state: "awaiting_review",
+				reviewReason: options.invalidateNativeWorkEvidence ? "interrupted" : "unconfirmed",
+				nativeWorkEvidence: null,
+				...(options.invalidateNativeWorkEvidence ? { pid: null, startupRecoveryRequired: true } : {}),
+			};
+		} else if (next.reviewReason !== null) {
+			next = { ...next, reviewReason: null };
+		}
+	}
+
+	if (next.state !== "running" && next.nativeWorkEvidence) {
+		next = { ...next, nativeWorkEvidence: null };
+	}
+	if (next.state === "idle") {
+		next = {
+			...next,
+			reviewReason: null,
+			outstandingInteraction: null,
+			nativeWorkEvidence: null,
+		};
+	}
+	return next;
+}
+
+export const runtimeTaskSessionSummarySchema = runtimeTaskSessionSummaryBaseSchema.transform((summary) =>
+	normalizeRuntimeTaskSessionSummary(summary),
+);
 export type RuntimeTaskSessionSummary = z.infer<typeof runtimeTaskSessionSummarySchema>;
 
 export const runtimeTaskSessionStartRequestSchema = z.object({
@@ -172,9 +368,6 @@ export const runtimeShellSessionStartResponseSchema = z.object({
 	error: z.string().optional(),
 });
 export type RuntimeShellSessionStartResponse = z.infer<typeof runtimeShellSessionStartResponseSchema>;
-
-export const runtimeHookEventSchema = z.enum(["to_review", "to_in_progress", "activity"]);
-export type RuntimeHookEvent = z.infer<typeof runtimeHookEventSchema>;
 
 export const runtimeHookIngestRequestSchema = z.object({
 	taskId: z.string(),

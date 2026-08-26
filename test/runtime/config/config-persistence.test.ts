@@ -57,29 +57,53 @@ describe.sequential("runtime-config persistence", () => {
 				expect(state.claudeFullscreenEnabled).toBe(false);
 				expect(state.statuslineEnabled).toBe(false);
 				expect(state.codexApprovalsReviewer).toBe("inherit");
+				expect(state.piToolApprovalsEnabled).toBe(true);
 			});
 		} finally {
 			cleanupHome();
 		}
 	});
 
-	it("persists the Codex approval reviewer globally", async () => {
+	it("persists the Pi tool approval policy globally", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-pi-tool-approvals-");
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const updated = await updateRuntimeConfig(null, {
+					piToolApprovalsEnabled: false,
+				});
+				expect(updated.piToolApprovalsEnabled).toBe(false);
+
+				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
+					piToolApprovalsEnabled?: boolean;
+				};
+				expect(globalPayload.piToolApprovalsEnabled).toBe(false);
+
+				const reloaded = await loadGlobalRuntimeConfig();
+				expect(reloaded.piToolApprovalsEnabled).toBe(false);
+			});
+		} finally {
+			cleanupHome();
+		}
+	});
+
+	it("persists the Codex launch permission mode globally", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-codex-auto-review-");
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
 				const updated = await updateRuntimeConfig(null, {
-					codexApprovalsReviewer: "auto_review",
+					codexApprovalsReviewer: "dangerously_bypass",
 				});
-				expect(updated.codexApprovalsReviewer).toBe("auto_review");
+				expect(updated.codexApprovalsReviewer).toBe("dangerously_bypass");
 
 				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
 					codexApprovalsReviewer?: string;
 				};
-				expect(globalPayload.codexApprovalsReviewer).toBe("auto_review");
+				expect(globalPayload.codexApprovalsReviewer).toBe("dangerously_bypass");
 
 				const reloaded = await loadGlobalRuntimeConfig();
-				expect(reloaded.codexApprovalsReviewer).toBe("auto_review");
+				expect(reloaded.codexApprovalsReviewer).toBe("dangerously_bypass");
 			});
 		} finally {
 			cleanupHome();

@@ -219,7 +219,10 @@ export function parseHookIngestRequest(value: unknown): RuntimeHookIngestRequest
 				sessionId: parsed.metadata.sessionId?.trim() || null,
 				sessionInstanceId: parsed.metadata.sessionInstanceId?.trim() || null,
 				turnId: parsed.metadata.turnId?.trim() || null,
+				promptId: parsed.metadata.promptId?.trim() || null,
 				toolUseId: parsed.metadata.toolUseId?.trim() || null,
+				elicitationId: parsed.metadata.elicitationId?.trim() || null,
+				providerAgentId: parsed.metadata.providerAgentId?.trim() || null,
 				transcriptPath: parsed.metadata.transcriptPath?.trim() || null,
 				conversationSummaryText: parsed.metadata.conversationSummaryText?.trim() || null,
 			}

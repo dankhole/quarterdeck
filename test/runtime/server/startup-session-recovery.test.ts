@@ -71,7 +71,7 @@ function createManagerHarness(
 	store.hydrateFromRecord({
 		"task-1": createTestTaskSessionSummary({
 			taskId: "task-1",
-			state: "interrupted",
+			state: "awaiting_review",
 			reviewReason: "interrupted",
 			agentId: "codex",
 			resumeSessionId: "resume-session-1",
@@ -156,11 +156,13 @@ function createCandidate(harness: ManagerHarness, taskId = "task-1"): StartupSes
 		scope: { projectId: "project-1", projectPath: "/tmp/project-1" },
 		manager: harness.manager,
 		originalResumeSessionId: "resume-session-1",
-		reviewState: {
+		semanticState: {
+			state: "awaiting_review",
 			reviewReason: "attention",
 			lastHookAt: null,
 			latestHookActivity: null,
 		},
+		semanticStateUncertain: false,
 		fallbackReviewState: null,
 		request: {
 			taskId,
@@ -227,7 +229,8 @@ function createCoordinator(
 			options: {
 				startupRecoveryToken: string;
 				resumeSessionIdOverride: string | null;
-				startupRecoveryReviewState: StartupSessionRecoveryCandidate["reviewState"];
+				startupRecoverySemanticState: StartupSessionRecoveryCandidate["semanticState"];
+				startupRecoverySemanticStateUncertain: boolean;
 			},
 		) => Promise<PreparedTaskSessionStart>;
 	} = {},
@@ -267,7 +270,7 @@ describe("StartupSessionRecoveryCoordinator", () => {
 		second.store.hydrateFromRecord({
 			"task-2": createTestTaskSessionSummary({
 				taskId: "task-2",
-				state: "interrupted",
+				state: "awaiting_review",
 				reviewReason: "interrupted",
 			}),
 		});
@@ -367,11 +370,13 @@ describe("StartupSessionRecoveryCoordinator", () => {
 				options: {
 					startupRecoveryToken: string;
 					resumeSessionIdOverride: string | null;
-					startupRecoveryReviewState: StartupSessionRecoveryCandidate["reviewState"];
+					startupRecoverySemanticState: StartupSessionRecoveryCandidate["semanticState"];
+					startupRecoverySemanticStateUncertain: boolean;
 				},
 			) => {
 				expect(options.resumeSessionIdOverride).toBe("resume-session-1");
-				expect(options.startupRecoveryReviewState).toEqual({
+				expect(options.startupRecoverySemanticState).toEqual({
+					state: "awaiting_review",
 					reviewReason: "hook",
 					lastHookAt: 123,
 					latestHookActivity: null,
@@ -385,7 +390,12 @@ describe("StartupSessionRecoveryCoordinator", () => {
 		});
 		const coordinator = createCoordinator(launchTask, { prepare });
 		const candidate = createCandidate(harness);
-		candidate.reviewState = { reviewReason: "hook", lastHookAt: 123, latestHookActivity: null };
+		candidate.semanticState = {
+			state: "awaiting_review",
+			reviewReason: "hook",
+			lastHookAt: 123,
+			latestHookActivity: null,
+		};
 
 		await expect(coordinator.enqueue(candidate)).resolves.toEqual({
 			status: "unconfirmed",
@@ -397,7 +407,11 @@ describe("StartupSessionRecoveryCoordinator", () => {
 		expect(prepare).toHaveBeenCalledTimes(1);
 		expect(launchTask).toHaveBeenCalledTimes(1);
 		expect(harness.stopTaskSessionForStartupRecovery).not.toHaveBeenCalled();
-		expect(harness.store.getSummary("task-1")).toMatchObject({ state: "running", pid: 1 });
+		expect(harness.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "unconfirmed",
+			pid: 1,
+		});
 	});
 
 	it("prepares once and does not retry deterministic setup failures", async () => {
@@ -492,7 +506,8 @@ describe("StartupSessionRecoveryCoordinator", () => {
 		});
 		expect(harness.stopTaskSessionForStartupRecovery).toHaveBeenCalledTimes(1);
 		const summary = harness.store.getSummary("task-1");
-		expect(summary?.state).toBe("running");
+		expect(summary?.state).toBe("awaiting_review");
+		expect(summary?.reviewReason).toBe("unconfirmed");
 		expect(summary?.pid).toBe(2);
 		expect(summary?.warningMessage).toBeNull();
 	});

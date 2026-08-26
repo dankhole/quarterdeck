@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 
 import type {
 	RuntimeBoardCard,
-	RuntimeProjectBoardCommand,
 	RuntimeProjectStateResponse,
 	RuntimeTaskLifecycleCommand,
 	RuntimeTaskLifecycleOperation,
@@ -37,50 +36,10 @@ import {
 import type { StopTaskSessionResult } from "../terminal/session-manager-types";
 import { archiveTaskWorktreeForTrash, ensureTaskWorktreeIfDoesntExist, purgeTaskWorkspaceForDelete } from "../workdir";
 
-type RuntimeCreateTaskCommand = Extract<RuntimeProjectBoardCommand, { kind: "create_task" }>;
-type BoardCommandService = Pick<ProjectBoardCommandService, "execute"> &
-	Partial<Pick<ProjectBoardCommandService, "executeLifecycle">>;
-
-export type ProjectTaskCreateSpec = Omit<RuntimeCreateTaskCommand, "kind" | "columnId">;
-
-export interface ProjectTaskCreateAndStartInput {
-	commandId: string;
-	expectedRevision: number;
-	task: ProjectTaskCreateSpec;
-	startedAt: number;
-	cols?: number;
-	rows?: number;
-}
-
-export type ProjectTaskCreateAndStartFailureCode =
-	| "task_already_exists"
-	| "task_identity_changed"
-	| "task_not_startable"
-	| "session_start_failed"
-	| "session_start_interrupted";
-
-export type ProjectTaskCreateAndStartResult =
-	| {
-			ok: true;
-			state: RuntimeProjectStateResponse;
-			summary: RuntimeTaskSessionSummary;
-			replayed: boolean;
-	  }
-	| {
-			ok: false;
-			state: RuntimeProjectStateResponse;
-			summary: RuntimeTaskSessionSummary | null;
-			replayed: boolean;
-			code: ProjectTaskCreateAndStartFailureCode;
-			error: string;
-	  };
+type BoardCommandService = Pick<ProjectBoardCommandService, "execute">;
 
 export interface ProjectTaskLifecycleServiceDependencies {
 	boardCommands: BoardCommandService;
-	scheduleAutomaticTaskTitle?: (
-		scope: ProjectBoardCommandScope,
-		task: Pick<RuntimeBoardCard, "id" | "prompt">,
-	) => void;
 	startTaskSession: (
 		scope: ProjectBoardCommandScope,
 		input: RuntimeTaskSessionStartRequest,
@@ -119,14 +78,8 @@ interface InFlightOperation {
 	promise: Promise<RuntimeTaskLifecycleResult>;
 }
 
-interface InFlightCreateAndStartCompatibilityOperation {
-	fingerprint: string;
-	promise: Promise<ProjectTaskCreateAndStartResult>;
-}
-
 const log = createTaggedLogger("task-lifecycle");
-
-export { ProjectTaskLifecycleIdentityConflictError } from "../state";
+const MAX_SEMANTIC_REBASE_RETRIES = 4;
 
 function toErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -169,12 +122,7 @@ function isSuccessfulLaunch(
 	summary: RuntimeTaskSessionSummary | null | undefined,
 	operationId: string,
 ): summary is RuntimeTaskSessionSummary {
-	return (
-		summary?.launchOperationId === operationId &&
-		summary.startedAt != null &&
-		summary.state !== "failed" &&
-		summary.state !== "interrupted"
-	);
+	return summary?.launchOperationId === operationId && summary.startedAt != null;
 }
 
 function toPublicOperation(operation: PersistedTaskLifecycleOperation): RuntimeTaskLifecycleOperation {
@@ -225,7 +173,6 @@ function createSyntheticOperation(
 export class ProjectTaskLifecycleService {
 	private readonly operationStore: ProjectTaskLifecycleOperationStore;
 	private readonly inFlightByKey = new Map<string, InFlightOperation>();
-	private readonly inFlightCreateAndStartByKey = new Map<string, InFlightCreateAndStartCompatibilityOperation>();
 
 	constructor(private readonly dependencies: ProjectTaskLifecycleServiceDependencies) {
 		this.operationStore = dependencies.operationStore ?? new ProjectTaskLifecycleOperationStore();
@@ -249,20 +196,7 @@ export class ProjectTaskLifecycleService {
 		const promise = this.executeOnce(scope, command);
 		this.inFlightByKey.set(key, { fingerprint, promise });
 		try {
-			const result = await promise;
-			if (command.kind === "create_and_start") {
-				const createdTask = findCardInBoard(result.state.board, command.task.taskId);
-				if (
-					createdTask?.title === null &&
-					isTaskIdentityCurrent(createdTask, command.task.taskId, command.task.createdAt)
-				) {
-					this.dependencies.scheduleAutomaticTaskTitle?.(scope, {
-						id: createdTask.id,
-						prompt: createdTask.prompt,
-					});
-				}
-			}
-			return result;
+			return await promise;
 		} finally {
 			if (this.inFlightByKey.get(key)?.promise === promise) {
 				this.inFlightByKey.delete(key);
@@ -308,99 +242,6 @@ export class ProjectTaskLifecycleService {
 				});
 			}
 		}
-	}
-
-	async createAndStartTask(
-		scope: ProjectBoardCommandScope,
-		input: ProjectTaskCreateAndStartInput,
-	): Promise<ProjectTaskCreateAndStartResult> {
-		const command = runtimeTaskLifecycleCommandSchema.parse({
-			kind: "create_and_start",
-			operationId: input.commandId,
-			expectedRevision: input.expectedRevision,
-			startedAt: input.startedAt,
-			task: input.task,
-			cols: input.cols,
-			rows: input.rows,
-		});
-		if (command.kind !== "create_and_start") {
-			throw new Error("Invalid create-and-start lifecycle command.");
-		}
-		const key = JSON.stringify([scope.projectId, scope.projectPath, command.operationId]);
-		const fingerprint = fingerprintTaskLifecycleCommand(command);
-		const inFlight = this.inFlightCreateAndStartByKey.get(key);
-		if (inFlight) {
-			if (inFlight.fingerprint !== fingerprint) {
-				throw new ProjectTaskLifecycleIdentityConflictError(command.operationId);
-			}
-			return await inFlight.promise;
-		}
-		const promise = this.executeCreateAndStartCompatibility(scope, command);
-		this.inFlightCreateAndStartByKey.set(key, { fingerprint, promise });
-		try {
-			return await promise;
-		} finally {
-			if (this.inFlightCreateAndStartByKey.get(key)?.promise === promise) {
-				this.inFlightCreateAndStartByKey.delete(key);
-			}
-		}
-	}
-
-	private async executeCreateAndStartCompatibility(
-		scope: ProjectBoardCommandScope,
-		command: Extract<RuntimeTaskLifecycleCommand, { kind: "create_and_start" }>,
-	): Promise<ProjectTaskCreateAndStartResult> {
-		const existing = await this.operationStore.get(scope, command.operationId);
-		const result = await this.execute(scope, command);
-		const replayed =
-			existing !== null ||
-			(result.operation.outcomeCode === "superseded" &&
-				result.error?.includes("interrupted before launch") === true);
-		let state = result.state;
-		let summary = result.summary;
-		if (replayed) {
-			const createReplay = await this.executeBoard(scope, {
-				commandId: getStepCommandId(command.operationId, "create"),
-				expectedRevision: command.expectedRevision,
-				command: { ...command.task, kind: "create_task", columnId: "backlog" },
-			});
-			const moveReplay = await this.executeBoard(scope, {
-				commandId: getStepCommandId(command.operationId, "move"),
-				expectedRevision: createReplay.state.revision,
-				command: {
-					kind: "move_task",
-					taskId: command.task.taskId,
-					sourceColumnId: "backlog",
-					targetColumnId: "in_progress",
-					targetIndex: 0,
-					updatedAt: command.startedAt,
-				},
-			});
-			state = moveReplay.state;
-			summary = state.sessions[command.task.taskId] ?? summary;
-		}
-		if (result.ok && summary) {
-			return { ok: true, state, summary, replayed };
-		}
-		const code: ProjectTaskCreateAndStartFailureCode = replayed
-			? "session_start_interrupted"
-			: result.error?.includes("already exists")
-				? "task_already_exists"
-				: result.operation.outcomeCode === "stale_task"
-					? "task_identity_changed"
-					: result.operation.outcomeCode === "invalid_transition"
-						? "task_not_startable"
-						: result.operation.outcomeCode === "superseded"
-							? "session_start_interrupted"
-							: "session_start_failed";
-		return {
-			ok: false,
-			state,
-			summary,
-			replayed,
-			code,
-			error: result.error ?? "Task session start failed.",
-		};
 	}
 
 	private async executeOnce(
@@ -497,10 +338,11 @@ export class ProjectTaskLifecycleService {
 		operation: PersistedTaskLifecycleOperation,
 	): Promise<RuntimeTaskLifecycleResult> {
 		operation = await this.setPhase(scope, operation, "board_transition");
-		const createResult = await this.executeBoard(scope, {
+		const createResult = await this.executeBoardWithSemanticRebase(scope, {
 			commandId: getStepCommandId(command.operationId, "create"),
 			expectedRevision: command.expectedRevision,
 			command: { ...command.task, kind: "create_task", columnId: "backlog" },
+			taskCreatedAt: command.task.createdAt,
 		});
 		if (!createResult.acceptedChange) {
 			return await this.finish(scope, operation, {
@@ -510,7 +352,7 @@ export class ProjectTaskLifecycleService {
 				state: createResult.state,
 			});
 		}
-		const moveResult = await this.executeBoard(scope, {
+		const moveResult = await this.executeBoardWithSemanticRebase(scope, {
 			commandId: getStepCommandId(command.operationId, "move"),
 			expectedRevision: createResult.state.revision,
 			command: {
@@ -521,6 +363,7 @@ export class ProjectTaskLifecycleService {
 				targetIndex: 0,
 				updatedAt: command.startedAt,
 			},
+			taskCreatedAt: command.task.createdAt,
 		});
 		if (!moveResult.acceptedChange) {
 			return await this.finish(scope, operation, {
@@ -900,7 +743,6 @@ export class ProjectTaskLifecycleService {
 		if (!precondition.ok) {
 			return await this.finish(scope, operation, precondition.failure);
 		}
-		const columnId = getTaskColumnId(precondition.state.board, command.taskId);
 		operation = await this.setPhase(scope, operation, "stopping_session");
 		const stopped = await this.stopOne(scope, command.taskId, command.sessionInstanceId ?? undefined);
 		if (!this.didStop(stopped)) {
@@ -912,7 +754,10 @@ export class ProjectTaskLifecycleService {
 		}
 		return await this.launchOrCompensate(scope, operation, precondition.card, precondition.state, {
 			resumeConversation: true,
-			awaitReview: columnId === "review",
+			// Replacing a process is not proof that provider work resumed. Keep the
+			// restarted task in neutral Review until a current native hook confirms
+			// either work or completion.
+			awaitReview: true,
 			cols: command.cols,
 			rows: command.rows,
 			compensateTo: null,
@@ -1263,34 +1108,52 @@ export class ProjectTaskLifecycleService {
 		scope: ProjectBoardCommandScope,
 		input: Parameters<ProjectBoardCommandService["execute"]>[1] & { taskCreatedAt: number },
 	) {
-		try {
-			return await this.executeBoard(scope, input);
-		} catch (error) {
-			if (!(error instanceof ProjectStateConflictError)) {
-				throw error;
+		let candidate = input;
+		let retryCount = 0;
+		while (true) {
+			try {
+				return await this.executeBoard(scope, candidate);
+			} catch (error) {
+				if (!(error instanceof ProjectStateConflictError) || retryCount >= MAX_SEMANTIC_REBASE_RETRIES) {
+					throw error;
+				}
+				const state = await this.loadState(scope);
+				const command = candidate.command;
+				const taskId =
+					command.kind === "delete_tasks" ? command.taskIds[0] : "taskId" in command ? command.taskId : null;
+				const card = taskId ? findCardInBoard(state.board, taskId) : null;
+				if (!taskId) {
+					throw error;
+				}
+				if (command.kind === "create_task") {
+					// Creating a fresh stable identity commutes with unrelated board
+					// mutations such as automatic titles and session projections. The
+					// original revision still protects identity: never rebase if that ID
+					// appeared while this operation was waiting.
+					if (card) {
+						throw error;
+					}
+				} else if (!isTaskIdentityCurrent(card, taskId, input.taskCreatedAt)) {
+					throw error;
+				}
+				if (command.kind === "move_task" && getTaskColumnId(state.board, taskId) !== command.sourceColumnId) {
+					throw error;
+				}
+				if (command.kind === "delete_tasks" && getTaskColumnId(state.board, taskId) !== "trash") {
+					throw error;
+				}
+				retryCount += 1;
+				log.debug("task lifecycle board step semantically rebased", {
+					projectId: scope.projectId,
+					taskId,
+					boardCommandId: input.commandId,
+					expectedRevision: candidate.expectedRevision,
+					observedRevision: state.revision,
+					retryCount,
+					maxRetries: MAX_SEMANTIC_REBASE_RETRIES,
+				});
+				candidate = { ...candidate, expectedRevision: state.revision };
 			}
-			const state = await this.loadState(scope);
-			const command = input.command;
-			const taskId =
-				command.kind === "delete_tasks" ? command.taskIds[0] : "taskId" in command ? command.taskId : null;
-			const card = taskId ? findCardInBoard(state.board, taskId) : null;
-			if (!taskId || !isTaskIdentityCurrent(card, taskId, input.taskCreatedAt)) {
-				throw error;
-			}
-			if (command.kind === "move_task" && getTaskColumnId(state.board, taskId) !== command.sourceColumnId) {
-				throw error;
-			}
-			if (command.kind === "delete_tasks" && getTaskColumnId(state.board, taskId) !== "trash") {
-				throw error;
-			}
-			log.debug("task lifecycle board step semantically rebased", {
-				projectId: scope.projectId,
-				taskId,
-				boardCommandId: input.commandId,
-				expectedRevision: input.expectedRevision,
-				observedRevision: state.revision,
-			});
-			return await this.executeBoard(scope, { ...input, expectedRevision: state.revision });
 		}
 	}
 
@@ -1298,8 +1161,7 @@ export class ProjectTaskLifecycleService {
 		scope: ProjectBoardCommandScope,
 		input: Parameters<ProjectBoardCommandService["execute"]>[1],
 	) {
-		const execute = this.dependencies.boardCommands.executeLifecycle ?? this.dependencies.boardCommands.execute;
-		return await execute.call(this.dependencies.boardCommands, scope, input);
+		return await this.dependencies.boardCommands.execute(scope, input);
 	}
 
 	private async stopOne(

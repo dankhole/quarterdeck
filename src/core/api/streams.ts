@@ -9,6 +9,9 @@ import { runtimeTaskSessionSummarySchema } from "./task-session.js";
 
 export const runtimeStateStreamSnapshotMessageSchema = z.object({
 	type: z.literal("snapshot"),
+	// Exact packaged artifact identity. Optional only for rolling compatibility
+	// with runtimes built before browser/runtime build fencing existed.
+	runtimeBuildId: z.string().min(1).optional(),
 	currentProjectId: z.string().nullable(),
 	projects: z.array(runtimeProjectSummarySchema),
 	projectState: runtimeProjectStateResponseSchema.nullable(),

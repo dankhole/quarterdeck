@@ -21,6 +21,7 @@ export interface SettingsFormValues {
 	claudeFullscreenEnabled: boolean;
 	statuslineEnabled: boolean;
 	codexApprovalsReviewer: RuntimeConfigResponse["codexApprovalsReviewer"];
+	piToolApprovalsEnabled: boolean;
 	terminalFontWeight: number;
 	fileEditorAutosaveMode: RuntimeConfigResponse["fileEditorAutosaveMode"];
 	showTrashWorktreeNotice: boolean;
@@ -60,6 +61,7 @@ export function resolveInitialValues(config: RuntimeConfigResponse | null): Sett
 		claudeFullscreenEnabled: config?.claudeFullscreenEnabled ?? CONFIG_DEFAULTS.claudeFullscreenEnabled,
 		statuslineEnabled: config?.statuslineEnabled ?? CONFIG_DEFAULTS.statuslineEnabled,
 		codexApprovalsReviewer: config?.codexApprovalsReviewer ?? CONFIG_DEFAULTS.codexApprovalsReviewer,
+		piToolApprovalsEnabled: config?.piToolApprovalsEnabled ?? CONFIG_DEFAULTS.piToolApprovalsEnabled,
 		terminalFontWeight: config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight,
 		fileEditorAutosaveMode: config?.fileEditorAutosaveMode ?? CONFIG_DEFAULTS.fileEditorAutosaveMode,
 		showTrashWorktreeNotice: config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice,

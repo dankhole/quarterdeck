@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
 
 import {
@@ -14,19 +14,53 @@ import {
 import { AgentLabScenarioSchema } from "./types";
 
 const args = process.argv.slice(2);
+const provider = process.env.QUARTERDECK_AGENT_LAB_PROVIDER === "pi" ? "pi" : "codex";
+const APPROVAL_COMPLETION_DELAY_MS = 5_000;
 const taskId = process.env.QUARTERDECK_HOOK_TASK_ID ?? "unknown-task";
-const sessionId = `agent-lab-${taskId}`;
+const requestedSessionIndex = args.indexOf("--session");
+const requestedSessionId = requestedSessionIndex >= 0 ? args[requestedSessionIndex + 1]?.trim() : null;
+const sessionId = requestedSessionId || `agent-lab-${taskId}`;
 let turn = 0;
+let currentTurnId: string | null = null;
+let lastSettledTurnId: string | null = null;
+let toolUseSequence = 0;
+let pendingToolUseId: string | null = null;
 let closing = false;
 let approvalOverlayActive = false;
+let nativePermissionActive = false;
+let pendingApprovalCompletion: NodeJS.Timeout | null = null;
+let preserveRenderedPromptOnce = false;
+
+function clearPendingApprovalCompletion(): void {
+	if (!pendingApprovalCompletion) return;
+	clearTimeout(pendingApprovalCompletion);
+	pendingApprovalCompletion = null;
+}
+
+function scheduleApprovedToolCompletion(message: string): void {
+	clearPendingApprovalCompletion();
+	pendingApprovalCompletion = setTimeout(() => {
+		pendingApprovalCompletion = null;
+		void executeCommand({ kind: "working", message });
+	}, APPROVAL_COMPLETION_DELAY_MS);
+	pendingApprovalCompletion.unref();
+}
 
 function writeLine(message = ""): void {
 	process.stdout.write(`${message}\r\n`);
 }
 
-function nextTurnId(): string {
-	turn += 1;
-	return `agent-lab-turn-${turn}`;
+function ensureTurnId(): string {
+	if (!currentTurnId) {
+		turn += 1;
+		currentTurnId = `agent-lab-turn-${turn}`;
+	}
+	return currentTurnId;
+}
+
+function nextToolUseId(): string {
+	toolUseSequence += 1;
+	return `agent-lab-tool-${toolUseSequence}`;
 }
 
 async function emitHook(
@@ -37,6 +71,9 @@ async function emitHook(
 		finalMessage?: string;
 		notificationType?: string;
 		toolName?: string;
+		toolUseId?: string;
+		includeTurnId?: boolean;
+		turnId?: string;
 	} = { hookEventName: "AgentLab" },
 ): Promise<void> {
 	const tsxCliPath = process.env.QUARTERDECK_AGENT_LAB_TSX_CLI;
@@ -53,14 +90,15 @@ async function emitHook(
 		"--event",
 		event,
 		"--source",
-		"codex",
+		provider,
 		"--hook-event-name",
 		options.hookEventName,
 		"--session-id",
 		sessionId,
-		"--turn-id",
-		nextTurnId(),
 	];
+	if (options.includeTurnId !== false) {
+		hookArgs.push("--turn-id", options.turnId ?? ensureTurnId());
+	}
 	if (options.activityText) {
 		hookArgs.push("--activity-text", options.activityText);
 	}
@@ -72,6 +110,9 @@ async function emitHook(
 	}
 	if (options.toolName) {
 		hookArgs.push("--tool-name", options.toolName);
+	}
+	if (options.toolUseId) {
+		hookArgs.push("--tool-use-id", options.toolUseId);
 	}
 
 	await new Promise<void>((resolveHook) => {
@@ -130,8 +171,17 @@ async function runGit(args: string[]): Promise<{ output: string; code: number }>
 
 function printHelp(): void {
 	writeLine("Agent-lab commands:");
-	writeLine("  /needs-input [message]       request approval/input");
-	writeLine("  /approval-overlay            render approval without a native hook");
+	writeLine("  /needs-input [message]       request approval; y accepts, esc dismisses");
+	writeLine("  /needs-input-auto [message]  request then provider-approve without local input");
+	writeLine("  /approval-overlay            render hookless approval; y accepts, esc dismisses");
+	writeLine("  /turn-interrupted            render Codex turn interruption without a native hook");
+	writeLine("  /new-turn [message]          emit a new-turn UserPromptSubmit hook");
+	writeLine("  /redraw-interruption-history redraw old interruption above current work");
+	writeLine("  /local-action [message]      accept a TUI-local action without a hook");
+	writeLine("  /compact                     run activity-only manual compaction hooks");
+	writeLine("  /queued-follow-up [message]  emit agent_end followed by a queued agent_start");
+	writeLine("  /stale-run                   replay the last completed Pi run identity");
+	writeLine("  /fail-next-resume            crash now and fail the next targeted Pi resume");
 	writeLine("  /working [message]           transition back to running");
 	writeLine("  /review [message]            finish the turn for review");
 	writeLine("  /write <path> <contents>     write inside the disposable checkout");
@@ -151,15 +201,50 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			printHelp();
 			return;
 		case "needs-input":
+			clearPendingApprovalCompletion();
+			approvalOverlayActive = false;
+			nativePermissionActive = true;
+			pendingToolUseId = nextToolUseId();
 			writeLine(`AGENT LAB NEEDS INPUT: ${command.message}`);
+			await emitHook("activity", {
+				hookEventName: "PreToolUse",
+				activityText: command.message,
+				toolName: "AgentLab",
+				toolUseId: pendingToolUseId,
+			});
 			await emitHook("to_review", {
 				hookEventName: "PermissionRequest",
 				activityText: "Waiting for approval",
 				notificationType: "permission_prompt",
+				toolName: "AgentLab",
+				toolUseId: pendingToolUseId,
 			});
 			return;
+		case "needs-input-auto":
+			clearPendingApprovalCompletion();
+			approvalOverlayActive = false;
+			nativePermissionActive = false;
+			pendingToolUseId = nextToolUseId();
+			writeLine(`AGENT LAB AUTO APPROVAL REQUEST: ${command.message}`);
+			await emitHook("activity", {
+				hookEventName: "PreToolUse",
+				activityText: command.message,
+				toolName: "AgentLab",
+				toolUseId: pendingToolUseId,
+			});
+			await emitHook("to_review", {
+				hookEventName: "PermissionRequest",
+				activityText: "Waiting for provider approval",
+				notificationType: "permission_prompt",
+				toolName: "AgentLab",
+			});
+			scheduleApprovedToolCompletion("Provider-approved tool completed");
+			return;
 		case "approval-overlay":
+			clearPendingApprovalCompletion();
+			nativePermissionActive = false;
 			approvalOverlayActive = true;
+			pendingToolUseId = nextToolUseId();
 			{
 				const rows = Math.max(10, process.stdout.rows ?? 40);
 				const startRow = rows - 8;
@@ -171,21 +256,117 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 				process.stdout.write(`\u001b[${rows};1H  Press enter to confirm or esc to cancel`);
 			}
 			return;
-		case "review":
-			writeLine(`AGENT LAB REVIEW READY: ${command.message}`);
-			await emitHook("to_review", {
-				hookEventName: "Stop",
+		case "turn-interrupted":
+			preserveRenderedPromptOnce = true;
+			process.stdout.write(
+				"\u001b[2J\u001b[H\u001b[31m■ Conversation interrupted - tell the model what to do differently. " +
+					"Something went wrong? Hit `/feedback` to report the issue.\u001b[0m\r\n\r\n› Ask Codex to do anything",
+			);
+			return;
+		case "new-turn":
+			currentTurnId = null;
+			writeLine(`AGENT LAB NEW TURN: ${command.message}`);
+			await emitHook("to_in_progress", {
+				hookEventName: "UserPromptSubmit",
 				activityText: command.message,
-				finalMessage: command.message,
 			});
 			return;
+		case "redraw-interruption-history":
+			preserveRenderedPromptOnce = true;
+			process.stdout.write(
+				"\u001b[2J\u001b[H\u001b[31m■ Conversation interrupted - tell the model what to do differently. " +
+					"Something went wrong? Hit `/feedback` to report the issue.\u001b[0m\r\n\r\n" +
+					"› Ask Codex to do anything\r\n\r\nAGENT LAB CURRENT TURN WORKING\r\n\r\n› Ask Codex to do anything",
+			);
+			return;
+		case "local-action":
+			writeLine(`AGENT LAB LOCAL ACTION: ${command.message}`);
+			return;
+		case "compact":
+			writeLine("AGENT LAB COMPACTION STARTED");
+			await emitHook("activity", {
+				hookEventName: "PreCompact",
+				activityText: "Compacting local conversation context",
+			});
+			await emitHook("activity", {
+				hookEventName: "PostCompact",
+				activityText: "Local conversation context compacted",
+			});
+			writeLine("AGENT LAB COMPACTION COMPLETE");
+			return;
+		case "queued-follow-up": {
+			const endedTurnId = ensureTurnId();
+			writeLine("AGENT LAB PI QUEUED FOLLOW-UP: agent_end emitted");
+			await emitHook("activity", {
+				hookEventName: "AgentEnd",
+				activityText: "Pi agent loop ended with queued input pending",
+				turnId: endedTurnId,
+			});
+			currentTurnId = null;
+			writeLine(`AGENT LAB PI QUEUED FOLLOW-UP STARTED: ${command.message}`);
+			await emitHook("to_in_progress", {
+				hookEventName: "AgentStart",
+				activityText: command.message,
+			});
+			return;
+		}
+		case "stale-run":
+			if (!lastSettledTurnId) {
+				writeLine("AGENT LAB PI STALE RUN SKIPPED: no settled run");
+				return;
+			}
+			writeLine(`AGENT LAB PI STALE RUN REPLAYED: ${lastSettledTurnId}`);
+			await emitHook("to_in_progress", {
+				hookEventName: "AgentStart",
+				activityText: "Stale completed Pi run replay",
+				turnId: lastSettledTurnId,
+			});
+			return;
+		case "fail-next-resume":
+			await writeResumeFailureMarker();
+			writeLine("AGENT LAB PI NEXT TARGETED RESUME WILL FAIL");
+			closing = true;
+			setTimeout(() => process.exit(1), 20).unref();
+			return;
+		case "review":
+			clearPendingApprovalCompletion();
+			nativePermissionActive = false;
+			writeLine(`AGENT LAB REVIEW READY: ${command.message}`);
+			if (provider === "pi") {
+				const settledTurnId = ensureTurnId();
+				await emitHook("activity", {
+					hookEventName: "AgentEnd",
+					activityText: "Pi agent loop ended; waiting for settlement",
+					turnId: settledTurnId,
+				});
+				await emitHook("to_review", {
+					hookEventName: "AgentSettled",
+					activityText: command.message,
+					finalMessage: command.message,
+					turnId: settledTurnId,
+				});
+				lastSettledTurnId = settledTurnId;
+			} else {
+				await emitHook("to_review", {
+					hookEventName: "Stop",
+					activityText: command.message,
+					finalMessage: command.message,
+				});
+			}
+			currentTurnId = null;
+			pendingToolUseId = null;
+			return;
 		case "working":
+			clearPendingApprovalCompletion();
+			nativePermissionActive = false;
 			writeLine(`AGENT LAB WORKING: ${command.message}`);
 			await emitHook("to_in_progress", {
-				hookEventName: "PostToolUse",
+				hookEventName: provider === "pi" ? (pendingToolUseId ? "PermissionResolved" : "AgentStart") : "PostToolUse",
 				activityText: command.message,
 				toolName: "AgentLab",
+				toolUseId: pendingToolUseId ?? nextToolUseId(),
 			});
+			pendingToolUseId = null;
 			return;
 		case "write": {
 			const destination = resolveFixturePath(command.relativePath);
@@ -193,6 +374,7 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 				hookEventName: "PostToolUse",
 				activityText: `Writing ${command.relativePath}`,
 				toolName: "Write",
+				toolUseId: nextToolUseId(),
 			});
 			await mkdir(dirname(destination), { recursive: true });
 			await writeFile(destination, `${command.contents}\n`, "utf8");
@@ -204,6 +386,7 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 				hookEventName: "PostToolUse",
 				activityText: "Committing fixture changes",
 				toolName: "Bash",
+				toolUseId: nextToolUseId(),
 			});
 			const add = await runGit(["add", "--all"]);
 			if (add.code !== 0) {
@@ -285,7 +468,7 @@ async function runScenario(scenario: ReturnType<typeof AgentLabScenarioSchema.pa
 
 function handleProbe(): boolean {
 	if (args.includes("--version") || args[0] === "version") {
-		process.stdout.write("codex-cli 0.147.0\n");
+		process.stdout.write(provider === "pi" ? "0.84.3\n" : "codex-cli 0.147.0\n");
 		return true;
 	}
 	if (args[0] === "features" && args[1] === "list") {
@@ -295,27 +478,115 @@ function handleProbe(): boolean {
 	return false;
 }
 
+function extractPiPromptArgument(inputArgs: readonly string[]): string {
+	for (let index = inputArgs.length - 1; index >= 0; index -= 1) {
+		const arg = inputArgs[index];
+		if (
+			arg &&
+			!arg.startsWith("-") &&
+			inputArgs[index - 1] !== "--extension" &&
+			inputArgs[index - 1] !== "--session"
+		) {
+			return arg;
+		}
+	}
+	return "";
+}
+
+function getResumeFailureMarkerPath(): string {
+	const stateHome = process.env.QUARTERDECK_STATE_HOME;
+	if (!stateHome) {
+		throw new Error("QUARTERDECK_STATE_HOME is required for deterministic Pi resume failure.");
+	}
+	return join(stateHome, "agent-lab", "pi-resume-failures", taskId);
+}
+
+async function writeResumeFailureMarker(): Promise<void> {
+	const markerPath = getResumeFailureMarkerPath();
+	await mkdir(dirname(markerPath), { recursive: true });
+	await writeFile(markerPath, "fail-once\n", "utf8");
+}
+
+async function consumeResumeFailureMarker(): Promise<boolean> {
+	if (provider !== "pi" || !requestedSessionId) {
+		return false;
+	}
+	try {
+		await unlink(getResumeFailureMarkerPath());
+		return true;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+			return false;
+		}
+		throw error;
+	}
+}
+
 async function main(): Promise<void> {
 	if (handleProbe()) {
 		return;
 	}
-	const prompt = extractPromptArgument(args);
+	if (await consumeResumeFailureMarker()) {
+		writeLine(`AGENT LAB PI TARGETED RESUME FAILED: ${requestedSessionId}`);
+		process.exitCode = 78;
+		return;
+	}
+	const prompt = provider === "pi" ? extractPiPromptArgument(args) : extractPromptArgument(args);
 	const fallbackScenario = AgentLabScenarioSchema.parse(process.env.QUARTERDECK_AGENT_LAB_SCENARIO ?? "idle");
 	const scenario = resolveFakeAgentScenario(prompt, fallbackScenario);
-	writeLine("Quarterdeck Agent Lab — deterministic fake Codex");
+	writeLine(`Quarterdeck Agent Lab — deterministic fake ${provider === "pi" ? "Pi" : "Codex"}`);
 	writeLine(`AGENT LAB READY task=${taskId} scenario=${scenario}`);
 	writeLine("Type /help for deterministic test commands.");
-	void emitHook("activity", { hookEventName: "SessionStart", activityText: "Agent-lab session started" });
+	void emitHook("activity", {
+		hookEventName: provider === "pi" ? "session_meta" : "SessionStart",
+		activityText: "Agent-lab session started",
+		includeTurnId: provider !== "pi",
+	});
 
-	const terminal = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+	const terminal = createInterface({
+		input: process.stdin,
+		output: process.stdout,
+		terminal: true,
+		// The fake consumes bare Escape as an immediate approval cancellation.
+		// Keep Readline from retaining it as a long-lived ANSI prefix that can
+		// swallow the leading slash of the next deterministic command.
+		escapeCodeTimeout: 25,
+	});
 	let clipboardResponseBuffer = "";
 	process.stdin.on("data", (chunk: Buffer | string) => {
 		const input = String(chunk);
-		if (approvalOverlayActive && input === "\u001b") {
+		if (nativePermissionActive && input.toLowerCase() === "y") {
+			nativePermissionActive = false;
+			// The real Codex approval pane consumes this hotkey immediately rather
+			// than buffering it as prompt text. Mirror that behavior deterministically.
+			terminal.write(null, { ctrl: true, name: "u" });
+			writeLine("AGENT LAB NATIVE APPROVAL RESPONSE SUBMITTED");
+			scheduleApprovedToolCompletion("Approved native tool completed");
+		} else if (nativePermissionActive && input === "\u001b") {
+			nativePermissionActive = false;
+			const deniedToolUseId = pendingToolUseId;
+			pendingToolUseId = null;
+			writeLine("AGENT LAB NATIVE APPROVAL DISMISSED");
+			if (provider === "pi" && deniedToolUseId) {
+				void emitHook("to_in_progress", {
+					hookEventName: "PermissionDenied",
+					activityText: "Pi tool approval denied",
+					toolName: "AgentLab",
+					toolUseId: deniedToolUseId,
+				});
+			}
+			terminal.prompt();
+		} else if (approvalOverlayActive && input === "\u001b") {
 			approvalOverlayActive = false;
 			process.stdout.write("\u001b[2J\u001b[H");
 			writeLine("AGENT LAB APPROVAL DISMISSED");
 			terminal.prompt();
+		} else if (approvalOverlayActive && (input.includes("\r") || input.toLowerCase() === "y")) {
+			approvalOverlayActive = false;
+			terminal.write(null, { ctrl: true, name: "u" });
+			process.stdout.write("\u001b[2J\u001b[H");
+			writeLine("AGENT LAB APPROVAL RESPONSE SUBMITTED");
+			scheduleApprovedToolCompletion("Approved tool completed");
 		}
 		clipboardResponseBuffer = `${clipboardResponseBuffer}${input}`.slice(-4096);
 		const responsePrefix = "\u001b]52;c;";
@@ -344,7 +615,9 @@ async function main(): Promise<void> {
 				writeLine(`AGENT LAB ERROR: ${error instanceof Error ? error.message : String(error)}`),
 			)
 			.finally(() => {
-				if (!closing && !approvalOverlayActive) {
+				if (preserveRenderedPromptOnce) {
+					preserveRenderedPromptOnce = false;
+				} else if (!closing && !approvalOverlayActive) {
 					terminal.prompt();
 				}
 			});

@@ -6,7 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoardCard, getCardHoverTooltip } from "@/components/board/board-card";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { createTestTaskHookActivity, createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
+import {
+	createTestTaskHookActivity,
+	createTestTaskOutstandingInteraction,
+	createTestTaskSessionSummary,
+} from "@/test-utils/task-session-factory";
 import type { ReviewTaskWorktreeSnapshot } from "@/types";
 
 let mockWorktreeSnapshot: ReviewTaskWorktreeSnapshot | undefined;
@@ -290,6 +294,11 @@ describe("BoardCard", () => {
 							agentId: "codex",
 							reviewReason: "hook",
 							latestHookActivity: createTestTaskHookActivity({ hookEventName: "permissionRequest" }),
+							outstandingInteraction: createTestTaskOutstandingInteraction({
+								provider: "codex",
+								kind: "permission",
+								requestEventName: "permissionRequest",
+							}),
 						})}
 					/>
 				</Providers>,

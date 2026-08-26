@@ -161,6 +161,7 @@ const noopReactiveState: ReactiveCardState = {
 const noopBoardContext: BoardContextValue = {
 	board: { columns: [], dependencies: [] },
 	setBoard: () => {},
+	presentLifecycleBoard: () => {},
 	sessions: {},
 	upsertSession: () => {},
 	selectedTaskId: null,

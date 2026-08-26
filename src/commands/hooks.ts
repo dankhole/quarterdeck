@@ -52,6 +52,7 @@ function formatHookDiagnosticFields(
 		session: metadata?.sessionId ?? null,
 		instance: metadata?.sessionInstanceId ?? null,
 		turn: metadata?.turnId ?? null,
+		prompt: metadata?.promptId ?? null,
 		delivery: args.delivery?.id ?? null,
 		hookEvent: metadata?.hookEventName ?? null,
 		tool: metadata?.toolName ?? null,
@@ -328,7 +329,10 @@ export function registerHooksCommand(program: Command): void {
 		.option("--session-id <id>", "Resumable agent session id.")
 		.option("--session-instance-id <id>", "Quarterdeck task-process instance id.")
 		.option("--turn-id <id>", "Agent turn id.")
+		.option("--prompt-id <id>", "Provider prompt id.")
 		.option("--tool-use-id <id>", "Agent tool-use id.")
+		.option("--elicitation-id <id>", "Provider elicitation id.")
+		.option("--provider-agent-id <id>", "Provider background-agent id.")
 		.option("--transcript-path <path>", "Agent transcript JSONL path.")
 		.option("--metadata-base64 <base64>", "Base64-encoded JSON metadata payload.")
 		.action(
@@ -354,7 +358,10 @@ export function registerHooksCommand(program: Command): void {
 		.option("--session-id <id>", "Resumable agent session id.")
 		.option("--session-instance-id <id>", "Quarterdeck task-process instance id.")
 		.option("--turn-id <id>", "Agent turn id.")
+		.option("--prompt-id <id>", "Provider prompt id.")
 		.option("--tool-use-id <id>", "Agent tool-use id.")
+		.option("--elicitation-id <id>", "Provider elicitation id.")
+		.option("--provider-agent-id <id>", "Provider background-agent id.")
 		.option("--transcript-path <path>", "Agent transcript JSONL path.")
 		.option("--metadata-base64 <base64>", "Base64-encoded JSON metadata payload.")
 		.action(

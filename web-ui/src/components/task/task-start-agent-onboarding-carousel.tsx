@@ -286,7 +286,7 @@ function resolveInstallInstructions(agentId: RuntimeAgentId): string {
 		return "OpenAI's coding agent CLI with access to the latest GPT models.";
 	}
 	if (agentId === "pi") {
-		return "Pi's coding agent CLI running in Quarterdeck's task terminal.";
+		return "Pi 0.84.3 with launch-scoped project trust and configurable approval prompts for effectful or unknown tools.";
 	}
 	return "Install from the official docs.";
 }

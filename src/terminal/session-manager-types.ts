@@ -12,7 +12,7 @@ import type { HookEventOrderState } from "./hook-event-order";
 import { PtyLaunchError, PtySpawnError } from "./pty-runtime-health";
 import type { PtySession } from "./pty-session";
 import { markTaskSessionLaunchSuperseded, type TaskSessionLaunchMonitor } from "./session-launch-readiness";
-import type { StartupRecoveryReviewState } from "./session-startup-recovery-policy";
+import type { SessionResumeSemanticState } from "./session-startup-recovery-policy";
 import type { TerminalProtocolFilterState } from "./terminal-protocol-filter";
 import type { TerminalSessionListener } from "./terminal-session-service";
 import type { TerminalStateMirror } from "./terminal-state-mirror";
@@ -38,6 +38,8 @@ export interface ActiveProcessState {
 	workspaceTrustConfirmCount: number;
 	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
 	interruptRecoveryTimer: NodeJS.Timeout | null;
+	interruptRecoveryStartedAt: number | null;
+	interruptRecoverySignal: "ctrl_c" | "escape" | null;
 }
 
 export interface ProcessEntry {
@@ -56,8 +58,21 @@ export interface ProcessEntry {
 	pendingExitResolvers: Array<() => void>;
 	hookCount: number;
 	hookEventOrder: HookEventOrderState | null;
+	/** Frozen launch boundary retained only for exact durable hook replay after process ownership is lost. */
+	providerHookReplayBoundary: ProviderHookReplayBoundary | null;
 	launchMonitor: TaskSessionLaunchMonitor | null;
 	pendingStartupRecoveryToken: string | null;
+}
+
+export interface ProviderHookReplayBoundary {
+	context: "startup" | "exited";
+	sessionInstanceId: string;
+	/** Legacy-only floor used when no provider-specific ordering history exists. */
+	legacyOccurredAtFloor: number | null;
+	/** Delivery ids already included in the durable summary. */
+	recentDeliveryIds: ReadonlySet<string>;
+	/** Natural-exit fence; startup crash recovery cannot know the prior process's exact close time. */
+	closedAt: number | null;
 }
 
 export interface StartTaskSessionRequest {
@@ -80,10 +95,13 @@ export interface StartTaskSessionRequest {
 	claudeFullscreenEnabled?: boolean;
 	statuslineEnabled?: boolean;
 	codexApprovalsReviewer?: AgentAdapterLaunchInput["codexApprovalsReviewer"];
+	piToolApprovalsEnabled?: boolean;
 	worktreeSystemPromptTemplate?: string;
 	startupRecoveryToken?: string;
-	/** Preserve user-visible review meaning while startup recovery restores only the agent process. */
-	startupRecoveryReviewState?: StartupRecoveryReviewState;
+	/** Server-derived task meaning to preserve while replacing only the provider process. */
+	resumeSemanticState?: SessionResumeSemanticState;
+	/** True only when legacy persistence could not preserve the task's prior semantic state. */
+	startupRecoverySemanticStateUncertain?: boolean;
 	/** Retained when legacy persistence no longer contains enough information to classify the restored task. */
 	startupRecoveryWarningMessage?: string;
 }
@@ -110,21 +128,43 @@ export interface StopTaskSessionResult {
 	error?: string;
 }
 
+export class TaskSessionStartCancelledError extends Error {
+	readonly reason = "shutdown" as const;
+
+	constructor() {
+		super("Task session launch was cancelled because the terminal manager is shutting down.");
+		this.name = "TaskSessionStartCancelledError";
+	}
+}
+
+export function isTaskSessionStartCancelledError(error: unknown): error is TaskSessionStartCancelledError {
+	return error instanceof TaskSessionStartCancelledError;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 export function cloneStartTaskSessionRequest(request: StartTaskSessionRequest): StartTaskSessionRequest {
+	const resumeSemanticState = request.resumeSemanticState;
 	return {
 		...request,
 		args: [...request.args],
 		images: request.images ? request.images.map((image) => ({ ...image })) : undefined,
 		env: request.env ? { ...request.env } : undefined,
-		startupRecoveryReviewState: request.startupRecoveryReviewState
-			? {
-					...request.startupRecoveryReviewState,
-					latestHookActivity: request.startupRecoveryReviewState.latestHookActivity
-						? { ...request.startupRecoveryReviewState.latestHookActivity }
-						: null,
-				}
+		resumeSemanticState: resumeSemanticState
+			? resumeSemanticState.state === "awaiting_review"
+				? {
+						...resumeSemanticState,
+						latestHookActivity: resumeSemanticState.latestHookActivity
+							? { ...resumeSemanticState.latestHookActivity }
+							: null,
+						outstandingInteraction: resumeSemanticState.outstandingInteraction
+							? { ...resumeSemanticState.outstandingInteraction }
+							: null,
+					}
+				: {
+						...resumeSemanticState,
+						latestHookActivity: null,
+					}
 			: undefined,
 	};
 }
@@ -177,6 +217,7 @@ export function createProcessEntry(taskId: string): ProcessEntry {
 		pendingExitResolvers: [],
 		hookCount: 0,
 		hookEventOrder: null,
+		providerHookReplayBoundary: null,
 		launchMonitor: null,
 		pendingStartupRecoveryToken: null,
 	};
@@ -262,6 +303,8 @@ export function createActiveProcessState(opts: CreateActiveProcessStateOptions):
 		workspaceTrustConfirmCount: 0,
 		workspaceTrustConfirmTimer: null,
 		interruptRecoveryTimer: null,
+		interruptRecoveryStartedAt: null,
+		interruptRecoverySignal: null,
 	};
 }
 
@@ -283,6 +326,7 @@ export function teardownActiveSession(entry: ProcessEntry): void {
 	entry.terminalStateMirror?.dispose();
 	entry.terminalStateMirror = null;
 	entry.hookEventOrder = null;
+	entry.providerHookReplayBoundary = null;
 }
 
 /**
@@ -307,7 +351,9 @@ export function finalizeProcessExit(
 		entry.active.onSessionCleanup = null;
 	}
 	entry.active = null;
-	entry.hookEventOrder = null;
+	// Natural exits retain one exact launch-scoped ordering window for the
+	// durable hook outbox. Explicit teardown paths clear the boundary first.
+	if (!entry.providerHookReplayBoundary) entry.hookEventOrder = null;
 
 	for (const resolve of entry.pendingExitResolvers) {
 		resolve();

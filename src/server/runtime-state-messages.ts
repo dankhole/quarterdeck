@@ -31,6 +31,7 @@ import type {
 } from "../core";
 
 export function buildSnapshotMessage(
+	runtimeBuildId: string,
 	currentProjectId: string | null,
 	projects: RuntimeProjectSummary[],
 	projectState: RuntimeProjectStateResponse | null,
@@ -39,6 +40,7 @@ export function buildSnapshotMessage(
 ): RuntimeStateStreamSnapshotMessage {
 	return {
 		type: "snapshot",
+		runtimeBuildId,
 		currentProjectId,
 		projects,
 		projectState,

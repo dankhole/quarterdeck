@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../../../src/core";
 import {
 	checkDeadProcess,
-	checkInterruptedNoRestart,
 	checkMissingSessionLaunchPath,
 	checkProcesslessActiveSession,
 	checkStaleHookActivity,
@@ -12,7 +11,11 @@ import {
 	reconciliationChecks,
 	reduceSessionTransition,
 } from "../../../src/terminal";
-import { createTestTaskHookActivity, createTestTaskSessionSummary } from "../../utilities/task-session-factory";
+import {
+	createTestProviderHookEvent,
+	createTestTaskHookActivity,
+	createTestTaskSessionSummary,
+} from "../../utilities/task-session-factory";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return createTestTaskSessionSummary({
@@ -156,8 +159,13 @@ describe("checkDeadProcess", () => {
 		expect(checkDeadProcess(entry, Date.now())).toBeNull();
 	});
 
-	it("returns null for failed state (6a)", () => {
-		const entry = createEntry({ state: "failed", pid: null, latestHookActivity: null });
+	it("returns null for canonical error Review (6a)", () => {
+		const entry = createEntry({
+			state: "awaiting_review",
+			reviewReason: "error",
+			pid: null,
+			latestHookActivity: null,
+		});
 		expect(checkDeadProcess(entry, Date.now())).toBeNull();
 	});
 });
@@ -307,6 +315,66 @@ describe("checkProcesslessActiveSession", () => {
 		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
 	});
 
+	it("marks an unresolved interaction as unknown when its process disappears", () => {
+		const entry = createEntry(
+			{
+				state: "awaiting_review",
+				reviewReason: "hook",
+				outstandingInteraction: {
+					provider: "claude",
+					kind: "permission",
+					status: "response_submitted",
+					requestEventName: "PermissionRequest",
+					openedAt: 100,
+					updatedAt: 110,
+					responseSubmittedAt: 110,
+					responseKind: "submit",
+					sessionInstanceId: "instance-1",
+					providerSessionId: "session-1",
+					turnId: null,
+					promptId: "prompt-1",
+					toolUseId: "tool-1",
+					elicitationId: null,
+					providerAgentId: null,
+					toolName: "Bash",
+				},
+			},
+			{ active: null, restartRequest: { kind: "task" } },
+		);
+
+		expect(checkProcesslessActiveSession(entry, Date.now())).toEqual({ type: "mark_processless_error" });
+	});
+
+	it("does not repeatedly reconcile an interaction already marked resolution unknown", () => {
+		const entry = createEntry(
+			{
+				state: "awaiting_review",
+				reviewReason: "error",
+				outstandingInteraction: {
+					provider: "codex",
+					kind: "permission",
+					status: "resolution_unknown",
+					requestEventName: "permission_prompt",
+					openedAt: 100,
+					updatedAt: 120,
+					responseSubmittedAt: 110,
+					responseKind: "cancel",
+					sessionInstanceId: "instance-1",
+					providerSessionId: "session-1",
+					turnId: "turn-1",
+					promptId: null,
+					toolUseId: "tool-1",
+					elicitationId: null,
+					providerAgentId: null,
+					toolName: "Bash",
+				},
+			},
+			{ active: null, restartRequest: { kind: "task" } },
+		);
+
+		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
+	});
+
 	it("returns null when already in error state", () => {
 		const entry = createEntry(
 			{ state: "awaiting_review", reviewReason: "error" },
@@ -393,82 +461,42 @@ describe("checkProcesslessActiveSession", () => {
 
 // ── checkInterruptedNoRestart ────────────────────────────────────────────
 
-describe("checkInterruptedNoRestart", () => {
-	it("returns move_interrupted_to_review for interrupted session started this lifetime", () => {
-		const entry = createEntry({ state: "interrupted", reviewReason: "interrupted" }, { restartRequest: {} });
-		entry.pendingAutoRestart = null;
-		expect(checkInterruptedNoRestart(entry, Date.now())).toEqual({ type: "move_interrupted_to_review" });
-	});
-
-	it("returns null when session is not interrupted", () => {
-		const entry = createEntry({ state: "running" });
-		expect(checkInterruptedNoRestart(entry, Date.now())).toBeNull();
-	});
-
-	it("returns null when session is awaiting_review", () => {
-		const entry = createEntry({ state: "awaiting_review", reviewReason: "exit" });
-		expect(checkInterruptedNoRestart(entry, Date.now())).toBeNull();
-	});
-
-	it("returns null when pendingAutoRestart is set", () => {
-		const entry = createEntry({ state: "interrupted", reviewReason: "interrupted" }, { restartRequest: {} });
-		entry.pendingAutoRestart = Promise.resolve();
-		expect(checkInterruptedNoRestart(entry, Date.now())).toBeNull();
-	});
-
-	it("keeps an interrupted session eligible while startup recovery is queued", () => {
-		const entry = createEntry(
-			{ state: "interrupted", reviewReason: "interrupted" },
-			{ restartRequest: {}, pendingStartupRecoveryToken: "recovery-token" },
-		);
-		expect(checkInterruptedNoRestart(entry, Date.now())).toBeNull();
-	});
-
-	it("returns null for hydrated-from-disk sessions with no restartRequest (awaiting first UI resume)", () => {
-		const entry = createEntry({ state: "interrupted", reviewReason: "interrupted" });
-		// restartRequest defaults to null — simulates a session hydrated from disk after server restart
-		expect(checkInterruptedNoRestart(entry, Date.now())).toBeNull();
-	});
-});
-
 // ── reconciliationChecks ordering ─────────────────────────────────────────
 
 describe("reconciliationChecks", () => {
-	it("are ordered by priority: dead process > missing cwd > processless recovery > interrupted cleanup > clear activity (24)", () => {
+	it("are ordered by priority: dead process > missing cwd > processless recovery > clear activity (24)", () => {
 		expect(reconciliationChecks[0]).toBe(checkDeadProcess);
 		expect(reconciliationChecks[1]).toBe(checkMissingSessionLaunchPath);
 		expect(reconciliationChecks[2]).toBe(checkProcesslessActiveSession);
-		expect(reconciliationChecks[3]).toBe(checkInterruptedNoRestart);
-		expect(reconciliationChecks[4]).toBe(checkStaleHookActivity);
-		expect(reconciliationChecks).toHaveLength(5);
+		expect(reconciliationChecks[3]).toBe(checkStaleHookActivity);
+		expect(reconciliationChecks).toHaveLength(4);
 	});
 });
 
 // ── State machine regression tests ────────────────────────────────────────
 
 describe("session-state-machine regression for reconciliation", () => {
-	it("hook.to_in_progress from awaiting_review with hook reason transitions to running (25)", () => {
+	it("a provider working hook from awaiting_review with hook reason transitions to running (25)", () => {
 		const summary = createSummary({ state: "awaiting_review", reviewReason: "hook" });
-		const result = reduceSessionTransition(summary, { type: "hook.to_in_progress" });
+		const result = reduceSessionTransition(summary, createTestProviderHookEvent("to_in_progress"));
 		expect(result.changed).toBe(true);
 		expect(result.patch.state).toBe("running");
 		expect(result.patch.reviewReason).toBeNull();
 	});
 
-	it("hook.to_in_progress from awaiting_review with exit reason transitions to running (26)", () => {
+	it("a provider working hook from awaiting_review with exit reason transitions to running (26)", () => {
 		const summary = createSummary({ state: "awaiting_review", reviewReason: "exit" });
-		const result = reduceSessionTransition(summary, { type: "hook.to_in_progress" });
+		const result = reduceSessionTransition(summary, createTestProviderHookEvent("to_in_progress"));
 		expect(result.changed).toBe(true);
 		expect(result.patch.state).toBe("running");
 		expect(result.patch.reviewReason).toBeNull();
 	});
 
-	it("autorestart.denied transitions interrupted to awaiting_review", () => {
-		const summary = createSummary({ state: "interrupted", reviewReason: "interrupted" });
+	it("autorestart.denied leaves canonical interrupted Review unchanged", () => {
+		const summary = createSummary({ state: "awaiting_review", reviewReason: "interrupted" });
 		const result = reduceSessionTransition(summary, { type: "autorestart.denied" });
-		expect(result.changed).toBe(true);
-		expect(result.patch.state).toBe("awaiting_review");
-		expect(result.patch.reviewReason).toBe("interrupted");
+		expect(result.changed).toBe(false);
+		expect(result.patch).toEqual({});
 	});
 
 	it("autorestart.denied is a no-op for non-interrupted states", () => {

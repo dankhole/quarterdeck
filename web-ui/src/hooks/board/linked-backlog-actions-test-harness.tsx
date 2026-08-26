@@ -128,6 +128,7 @@ export function HookHarness({
 	const actions = useLinkedBacklogTaskActions({
 		board,
 		setBoard,
+		presentLifecycleBoard: setBoard,
 		setSelectedTaskId: setSelectedTaskIdOverride ?? setSelectedTaskId,
 		executeTaskLifecycle: executeTaskLifecycle ?? (async (draft) => createSuccessfulLifecycleResult(draft, board)),
 		onRequestTrashConfirmation,

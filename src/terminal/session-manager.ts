@@ -24,8 +24,27 @@ import type {
 } from "../core";
 import { normalizeDiagnosticErrorClass } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
-import { commitHookEventOrder, evaluateHookEventOrder, type HookEventOrderDecision } from "./hook-event-order";
-import { isExplicitUserSubmission, processSessionInput } from "./session-input-pipeline";
+import {
+	STORED_CLAUDE_RESUME_FAILED_WARNING,
+	STORED_CODEX_RESUME_FAILED_WARNING,
+	STORED_PI_RESUME_FAILED_WARNING,
+} from "./codex-resume-failure";
+import {
+	commitHookEventOrder,
+	correlateClaudePermissionToolUseId,
+	correlateCodexPermissionToolUseId,
+	createHookEventOrderState,
+	createProviderHookOrderObservation,
+	evaluateHookEventOrder,
+	type HookEventOrderDecision,
+	restoreHookEventOrderState,
+} from "./hook-event-order";
+import {
+	isExplicitUserSubmission,
+	isImmediateInteractionSubmission,
+	processSessionInput,
+} from "./session-input-pipeline";
+import { INTERRUPT_RECOVERY_DELAY_MS, type InterruptSignal } from "./session-interrupt-recovery";
 import {
 	markTaskSessionLaunchReady,
 	markTaskSessionLaunchUserEngaged,
@@ -45,7 +64,7 @@ import {
 import { disableOutputOscIntercept, processTaskSessionOutput } from "./session-output-pipeline";
 import { createReconciliationTimer, type ReconciliationTimer } from "./session-reconciliation-sweep";
 import type { StartupRecoveryReviewState } from "./session-startup-recovery-policy";
-import type { HookSessionTransitionEvent, SessionTransitionResult } from "./session-state-machine";
+import type { SessionTransitionResult } from "./session-state-machine";
 import type { SessionSummaryStore } from "./session-summary-store";
 import { SessionTransitionController } from "./session-transition-controller";
 import type {
@@ -83,6 +102,8 @@ export interface TerminalSessionManagerDiagnosticSnapshot {
 		listenerCount: number;
 		hookCount: number;
 		hookOrderingActive: boolean;
+		hasResumeSessionId: boolean;
+		startupRecoveryRequired: boolean;
 		hasLaunchPath: boolean;
 		mirror: ReturnType<NonNullable<ProcessEntry["terminalStateMirror"]>["getDiagnosticSnapshot"]> | null;
 	}>;
@@ -127,6 +148,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 			transitions: this.transitions,
 			ensureProcessEntry: (taskId) => this.ensureProcessEntry(taskId),
 			onTaskOutput: (entry, taskId, chunk) => this.handleTaskSessionOutput(entry, taskId, chunk),
+			onInterruptRecoveryApplied: (taskId, signal, result, sessionInstanceId) =>
+				this.recordInterruptRecoveryApplied(taskId, signal, result, sessionInstanceId),
 		});
 		this.reconciliation = createReconciliationTimer({
 			entries: this.entries,
@@ -138,6 +161,25 @@ export class TerminalSessionManager implements TerminalSessionService {
 	}
 
 	hydrateFromRecord(record: Record<string, RuntimeTaskSessionSummary>): void {
+		for (const [taskId, summary] of Object.entries(record)) {
+			if (summary.sessionInstanceId) {
+				const entry = this.ensureProcessEntry(taskId);
+				entry.hookEventOrder = restoreHookEventOrderState({
+					sessionInstanceId: summary.sessionInstanceId,
+					observations: summary.recentProviderHookOrderObservations,
+					recentDeliveryIds: summary.recentProviderHookDeliveryIds,
+					outstandingInteraction: summary.outstandingInteraction,
+				});
+				entry.providerHookReplayBoundary = {
+					context: "startup",
+					sessionInstanceId: summary.sessionInstanceId,
+					legacyOccurredAtFloor:
+						summary.recentProviderHookOrderObservations.length === 0 ? summary.lastProviderHookOccurredAt : null,
+					recentDeliveryIds: new Set(summary.recentProviderHookDeliveryIds),
+					closedAt: null,
+				};
+			}
+		}
 		const corrections = this.lifecycle.hydrateFromRecord(record);
 		for (const correction of corrections) {
 			this.record(
@@ -255,15 +297,28 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return this.lifecycle.recoverStaleSession(taskId);
 	}
 
-	applyHookTransition(
+	/** Applies one native provider event through the canonical session reducer. */
+	applyProviderHook(
 		taskId: string,
-		transition: HookSessionTransitionEvent,
+		input: RuntimeHookIngestRequest,
 	): (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null {
 		const entry = this.entries.get(taskId);
 		if (!entry || !this.store.getSummary(taskId)) {
 			return null;
 		}
-		return this.transitions.applyTransitionEvent(entry, transition);
+		return this.transitions.applyTransitionEvent(entry, {
+			type: "provider.hook",
+			event: input.event,
+			...(input.metadata ? { metadata: input.metadata } : {}),
+			...(input.delivery ? { occurredAt: input.delivery.occurredAt, deliveryId: input.delivery.id } : {}),
+			correlatedToolUseId:
+				correlateClaudePermissionToolUseId(entry.hookEventOrder, input) ??
+				correlateCodexPermissionToolUseId(entry.hookEventOrder, input),
+			codexAutoReviewPermissionRequest:
+				entry.restartRequest?.kind === "task" &&
+				entry.restartRequest.request.agentId === "codex" &&
+				entry.restartRequest.request.codexApprovalsReviewer === "auto_review",
+		});
 	}
 
 	/**
@@ -279,30 +334,46 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 	writeInput(taskId: string, data: Buffer, options?: TerminalSessionInputOptions): RuntimeTaskSessionSummary | null {
 		const entry = this.entries.get(taskId);
-		if (!entry) {
+		if (!entry?.active || entry.active.session.wasInterrupted()) {
 			return null;
 		}
-		entry.pendingStartupRecoveryToken = null;
-		this.clearStartupRecoveryRequirement(taskId);
-		markTaskSessionLaunchUserEngaged(entry.launchMonitor);
-		if (!entry.active) {
-			return null;
-		}
-		if (options?.explicitUserSubmission === true || isExplicitUserSubmission(data)) {
-			this.record("session.input_submitted", {}, taskId);
-		}
-		return processSessionInput(
+		const summaryBeforeInput = this.store.getSummary(taskId);
+		const summary = processSessionInput(
 			entry,
 			taskId,
 			data,
 			{
 				getSummary: (id) => this.store.getSummary(id),
-				updateStore: (id, patch) => this.store.update(id, patch),
 				getEntry: (id) => this.entries.get(id),
 				applyTransitionEvent: (e, ev) => this.transitions.applyTransitionEvent(e, ev),
+				onInterruptRecoveryScheduled: (signal) => {
+					this.record(
+						"session.interrupt_recovery_scheduled",
+						{ signal, delayMs: INTERRUPT_RECOVERY_DELAY_MS },
+						taskId,
+						{ sessionInstanceId: entry.active?.sessionInstanceId },
+					);
+				},
+				onInterruptRecoveryApplied: (signal, result) => {
+					this.recordInterruptRecoveryApplied(taskId, signal, result, entry.active?.sessionInstanceId);
+				},
 			},
 			options,
 		);
+		// Recovery ownership changes only after the live PTY accepted the write.
+		// A stale browser or future remote client cannot cancel recovery merely by
+		// addressing a processless or explicitly stopping task.
+		entry.pendingStartupRecoveryToken = null;
+		this.clearStartupRecoveryRequirement(taskId);
+		markTaskSessionLaunchUserEngaged(entry.launchMonitor);
+		if (
+			options?.explicitUserSubmission === true ||
+			isExplicitUserSubmission(data) ||
+			isImmediateInteractionSubmission(summaryBeforeInput, data)
+		) {
+			this.record("session.input_submitted", {}, taskId);
+		}
+		return summary;
 	}
 
 	recordHookReceived(taskId: string): void {
@@ -317,8 +388,44 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (!entry) {
 			return true;
 		}
+		const previousOutcome = entry.launchMonitor?.outcome?.status ?? null;
 		markTaskSessionLaunchReady(entry.launchMonitor, metadata);
-		return entry.launchMonitor?.outcome?.status !== "identity_mismatch";
+		const mismatch = entry.launchMonitor?.outcome;
+		if (
+			mismatch?.status === "identity_mismatch" &&
+			previousOutcome !== "identity_mismatch" &&
+			!entry.pendingStartupRecoveryToken
+		) {
+			const summary = this.store.getSummary(taskId);
+			const warningMessage =
+				summary?.agentId === "claude"
+					? STORED_CLAUDE_RESUME_FAILED_WARNING
+					: summary?.agentId === "pi"
+						? STORED_PI_RESUME_FAILED_WARNING
+						: STORED_CODEX_RESUME_FAILED_WARNING;
+			const failedSummary = this.lifecycle.failTargetedResumeIdentity(
+				taskId,
+				mismatch.sessionInstanceId,
+				warningMessage,
+			);
+			const output = Buffer.from(`\r\n[quarterdeck] ${warningMessage}\r\n`, "utf8");
+			entry.terminalStateMirror?.applyOutput(output);
+			for (const listener of entry.listeners.values()) {
+				listener.onOutput?.(output);
+			}
+			this.record(
+				"session.resume_identity_mismatch",
+				{
+					agentId: summary?.agentId ?? null,
+					hasExpectedSessionId: Boolean(mismatch.expectedSessionId),
+					hasObservedSessionId: Boolean(mismatch.observedSessionId),
+					state: failedSummary?.state ?? null,
+				},
+				taskId,
+				{ level: "warn", sessionInstanceId: mismatch.sessionInstanceId },
+			);
+		}
+		return mismatch?.status !== "identity_mismatch";
 	}
 
 	beginStartupRecovery(taskId: string, token: string): boolean {
@@ -421,7 +528,21 @@ export class TerminalSessionManager implements TerminalSessionService {
 	}
 
 	evaluateHookEventOrder(taskId: string, input: RuntimeHookIngestRequest): HookEventOrderDecision {
-		const decision = evaluateHookEventOrder(this.entries.get(taskId)?.hookEventOrder ?? null, input);
+		const entry = this.entries.get(taskId);
+		if (
+			entry &&
+			this.transitions.canApplyReplayedProviderHook(entry, {
+				type: "provider.hook",
+				event: input.event,
+				...(input.metadata ? { metadata: input.metadata } : {}),
+				...(input.delivery ? { occurredAt: input.delivery.occurredAt, deliveryId: input.delivery.id } : {}),
+			}) &&
+			!entry.hookEventOrder
+		) {
+			const sessionInstanceId = input.metadata?.sessionInstanceId?.trim();
+			if (sessionInstanceId) entry.hookEventOrder = createHookEventOrderState(sessionInstanceId);
+		}
+		const decision = evaluateHookEventOrder(entry?.hookEventOrder ?? null, input);
 		this.record(
 			decision.accepted ? "hook.order_accepted" : "hook.order_rejected",
 			{
@@ -442,6 +563,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 	commitHookEventOrder(taskId: string, input: RuntimeHookIngestRequest, advanceTurn: boolean): void {
 		commitHookEventOrder(this.entries.get(taskId)?.hookEventOrder ?? null, input, { advanceTurn });
+		if (advanceTurn) {
+			this.store.recordProviderHookReceipt(taskId, createProviderHookOrderObservation(input));
+		}
 	}
 
 	resize(
@@ -526,6 +650,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return this.lifecycle.markInterruptedAndStopAll();
 	}
 
+	async waitForShutdownQuiescence(): Promise<void> {
+		await this.lifecycle.waitForShutdownQuiescence();
+	}
+
 	private clearStartupRecoveryRequirement(taskId: string): void {
 		if (this.store.getSummary(taskId)?.startupRecoveryRequired === true) {
 			this.store.update(taskId, { startupRecoveryRequired: false });
@@ -568,12 +696,14 @@ export class TerminalSessionManager implements TerminalSessionService {
 							pidAlive: pid === null ? null : isProcessAliveForDiagnostics(pid),
 							pendingSessionStart: entry?.pendingSessionStart ?? false,
 							pendingSince: entry?.pendingSessionStartSince ?? null,
-							exiting: Boolean(entry?.active && entry.suppressAutoRestartOnExit),
+							exiting: Boolean(entry?.active?.session.wasInterrupted()),
 							suppressAutoRestartOnExit: entry?.suppressAutoRestartOnExit ?? false,
 							autoRestartCount: entry?.autoRestartTimestamps.length ?? 0,
 							listenerCount: entry?.listeners.size ?? 0,
 							hookCount: entry?.hookCount ?? 0,
 							hookOrderingActive: entry?.hookEventOrder !== null && entry?.hookEventOrder !== undefined,
+							hasResumeSessionId: Boolean(summary?.resumeSessionId?.trim()),
+							startupRecoveryRequired: summary?.startupRecoveryRequired === true,
 							hasLaunchPath: Boolean(summary?.sessionLaunchPath),
 							mirror: entry?.terminalStateMirror?.getDiagnosticSnapshot() ?? null,
 						},
@@ -590,6 +720,25 @@ export class TerminalSessionManager implements TerminalSessionService {
 			updateStore: (id, patch) => this.store.update(id, patch),
 			applyTransitionEvent: (e, ev) => this.transitions.applyTransitionEvent(e, ev),
 		});
+	}
+
+	private recordInterruptRecoveryApplied(
+		taskId: string,
+		signal: InterruptSignal,
+		result: (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null,
+		sessionInstanceId: string | undefined,
+	): void {
+		this.record(
+			"session.interrupt_recovery_applied",
+			{
+				signal,
+				changed: result?.changed === true,
+				nextState: result?.summary.state ?? null,
+				nextReviewReason: result?.summary.reviewReason ?? null,
+			},
+			taskId,
+			{ sessionInstanceId },
+		);
 	}
 
 	private observeSummaryChange(summary: RuntimeTaskSessionSummary): void {

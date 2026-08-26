@@ -27,6 +27,7 @@ interface RequestMoveTaskToTrashOptions {
 export function useLinkedBacklogTaskActions({
 	board,
 	setBoard,
+	presentLifecycleBoard,
 	setSelectedTaskId,
 	executeTaskLifecycle,
 	onRequestTrashConfirmation,
@@ -35,6 +36,7 @@ export function useLinkedBacklogTaskActions({
 }: {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
+	presentLifecycleBoard: Dispatch<SetStateAction<BoardData>>;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 	executeTaskLifecycle: UseTaskLifecycleOperationsResult["executeTaskLifecycle"];
 	onRequestTrashConfirmation?: (
@@ -115,7 +117,7 @@ export function useLinkedBacklogTaskActions({
 				hadCurrentBoard: !!currentBoard,
 			});
 			if (trashed.moved) {
-				setBoard((currentBoardState) => {
+				presentLifecycleBoard((currentBoardState) => {
 					const latestTrashResult = trashTaskAndGetReadyLinkedTaskIds(currentBoardState, task.id);
 					return latestTrashResult.moved ? latestTrashResult.board : currentBoardState;
 				});
@@ -133,7 +135,7 @@ export function useLinkedBacklogTaskActions({
 			});
 			return result?.ok === true;
 		},
-		[executeTaskLifecycle, setBoard, setSelectedTaskId],
+		[executeTaskLifecycle, presentLifecycleBoard, setSelectedTaskId],
 	);
 
 	const requestMoveTaskToTrash = useCallback(

@@ -1,6 +1,7 @@
 import {
 	deriveTaskIndicatorState,
 	type RuntimeTaskHookActivity,
+	type RuntimeTaskOutstandingInteraction,
 	type RuntimeTaskSessionReviewReason,
 	type RuntimeTaskSessionSummary,
 } from "../core";
@@ -28,12 +29,113 @@ export interface StartupRecoveryReviewState {
 	latestHookActivity: RuntimeTaskHookActivity | null;
 }
 
-export interface StartupRecoveryPolicy {
-	required: boolean;
-	reviewState: StartupRecoveryReviewState;
-	fallbackReviewState: StartupRecoveryReviewState | null;
-	/** Legacy persistence erased the prior semantic state, so recovery must remain neutral until new evidence arrives. */
-	semanticStateUncertain: boolean;
+/**
+ * User-visible task meaning to preserve while a previous runtime's process is
+ * replaced. Process ownership and semantic state are independent: work that
+ * lost its process remains Interrupted until a replacement emits native work
+ * evidence, while completed/blocked Review meaning survives unchanged.
+ */
+export type SessionResumeSemanticState = {
+	state: "awaiting_review";
+	reviewReason: Exclude<RuntimeTaskSessionReviewReason, null>;
+	lastHookAt: number | null;
+	latestHookActivity: RuntimeTaskHookActivity | null;
+	outstandingInteraction?: RuntimeTaskOutstandingInteraction | null;
+};
+
+export type StartupRecoveryPolicy =
+	| {
+			required: true;
+			semanticState: SessionResumeSemanticState;
+			fallbackReviewState: StartupRecoveryReviewState | null;
+			/** Legacy persistence erased the prior semantic state, so recovery must remain neutral until new evidence arrives. */
+			semanticStateUncertain: boolean;
+	  }
+	| {
+			required: false;
+			/** Ineligible tasks have no process-recovery state to apply. */
+			semanticState: null;
+			fallbackReviewState: StartupRecoveryReviewState | null;
+			semanticStateUncertain: boolean;
+	  };
+
+function cloneHookActivity(activity: RuntimeTaskHookActivity | null): RuntimeTaskHookActivity | null {
+	return activity ? { ...activity } : null;
+}
+
+function deriveRecoverySemanticState(
+	summary: RuntimeTaskSessionSummary,
+	semanticStateUncertain: boolean,
+): SessionResumeSemanticState {
+	if (semanticStateUncertain) {
+		return {
+			state: "awaiting_review",
+			reviewReason: "interrupted",
+			lastHookAt: null,
+			latestHookActivity: null,
+			outstandingInteraction: null,
+		};
+	}
+
+	if (
+		summary.state === "awaiting_review" &&
+		(summary.reviewReason === "hook" || summary.reviewReason === "attention")
+	) {
+		return {
+			state: "awaiting_review",
+			reviewReason: summary.reviewReason,
+			lastHookAt: summary.lastHookAt,
+			latestHookActivity: cloneHookActivity(summary.latestHookActivity),
+			outstandingInteraction: summary.outstandingInteraction ? { ...summary.outstandingInteraction } : null,
+		};
+	}
+
+	// Every other eligible recovery lost a process while work was active. A
+	// replacement TUI and SessionStart identity do not prove the model resumed;
+	// keep the task Interrupted until a current work/completion hook resolves it.
+	return {
+		state: "awaiting_review",
+		reviewReason: "interrupted",
+		lastHookAt: null,
+		latestHookActivity: null,
+		outstandingInteraction: null,
+	};
+}
+
+/**
+ * Captures the user-visible meaning that a server-owned resume/restart must
+ * preserve while it replaces only the provider process. Unproven legacy
+ * attention and formerly Running/processless work fail closed as Interrupted;
+ * completed Review, explicit Error, and structured interactions retain their
+ * meaning until current provider evidence changes it.
+ */
+export function deriveSessionResumeSemanticState(summary: RuntimeTaskSessionSummary): SessionResumeSemanticState {
+	const indicator = deriveTaskIndicatorState(summary);
+	if (summary.state === "awaiting_review" && summary.reviewReason && summary.reviewReason !== "interrupted") {
+		if (summary.reviewReason === "attention" && !summary.outstandingInteraction && !indicator.needsInput) {
+			return {
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				lastHookAt: null,
+				latestHookActivity: null,
+				outstandingInteraction: null,
+			};
+		}
+		return {
+			state: "awaiting_review",
+			reviewReason: summary.reviewReason,
+			lastHookAt: summary.lastHookAt,
+			latestHookActivity: cloneHookActivity(summary.latestHookActivity),
+			outstandingInteraction: summary.outstandingInteraction ? { ...summary.outstandingInteraction } : null,
+		};
+	}
+	return {
+		state: "awaiting_review",
+		reviewReason: "interrupted",
+		lastHookAt: null,
+		latestHookActivity: null,
+		outstandingInteraction: null,
+	};
 }
 
 /**
@@ -43,39 +145,46 @@ export interface StartupRecoveryPolicy {
  */
 export function deriveStartupRecoveryPolicy(summary: RuntimeTaskSessionSummary): StartupRecoveryPolicy {
 	const indicator = deriveTaskIndicatorState(summary);
-	const hasDurableRecoveryDecision = typeof summary.startupRecoveryRequired === "boolean";
-	const semanticStateUncertain =
-		summary.startupRecoverySemanticStateUncertain === true ||
-		(!hasDurableRecoveryDecision && summary.state === "interrupted" && summary.reviewReason === "interrupted");
+	const semanticStateUncertain = summary.startupRecoverySemanticStateUncertain === true;
+	// Older runtimes also persisted Escape/Ctrl-C recovery as `attention` and
+	// could mark that process for startup recovery. The durable process flag
+	// must not outweigh the newer structured proof required for Needs Input.
+	const hasRecoverableInteraction =
+		summary.outstandingInteraction?.status === "waiting" ||
+		summary.outstandingInteraction?.status === "response_submitted";
+	const hasUnprovenAttention =
+		summary.state === "awaiting_review" &&
+		summary.reviewReason === "attention" &&
+		!indicator.needsInput &&
+		!hasRecoverableInteraction;
 	const required =
-		summary.startupRecoveryRequired === true ||
-		summary.state === "running" ||
-		(summary.state === "interrupted" &&
-			summary.reviewReason === "interrupted" &&
-			summary.startupRecoveryRequired !== false) ||
-		(summary.state === "awaiting_review" &&
-			(summary.reviewReason === "attention" ||
-				(summary.reviewReason === "hook" && (summary.pid !== null || indicator.needsInput))));
-	const reviewState: StartupRecoveryReviewState = {
-		reviewReason: semanticStateUncertain
-			? "interrupted"
-			: summary.state === "awaiting_review" && summary.reviewReason === "hook"
-				? "hook"
-				: "attention",
-		lastHookAt: summary.state === "awaiting_review" ? summary.lastHookAt : null,
-		latestHookActivity:
-			summary.state === "awaiting_review" && summary.latestHookActivity ? { ...summary.latestHookActivity } : null,
-	};
+		!hasUnprovenAttention &&
+		(summary.startupRecoveryRequired === true ||
+			summary.state === "running" ||
+			(summary.state === "awaiting_review" &&
+				((summary.reviewReason === "attention" && (indicator.needsInput || hasRecoverableInteraction)) ||
+					(summary.reviewReason === "hook" &&
+						(summary.pid !== null || indicator.needsInput || hasRecoverableInteraction)))));
+	const fallbackReviewState: StartupRecoveryReviewState | null =
+		summary.state === "awaiting_review" && indicator.reviewReady
+			? {
+					reviewReason: summary.reviewReason === "hook" ? "hook" : "attention",
+					lastHookAt: summary.lastHookAt,
+					latestHookActivity: cloneHookActivity(summary.latestHookActivity),
+				}
+			: null;
+	if (!required) {
+		return {
+			required: false,
+			semanticState: null,
+			fallbackReviewState,
+			semanticStateUncertain,
+		};
+	}
 	return {
-		required,
-		reviewState,
-		fallbackReviewState:
-			summary.state === "awaiting_review" && indicator.reviewReady
-				? {
-						...reviewState,
-						latestHookActivity: reviewState.latestHookActivity ? { ...reviewState.latestHookActivity } : null,
-					}
-				: null,
+		required: true,
+		semanticState: deriveRecoverySemanticState(summary, semanticStateUncertain),
+		fallbackReviewState,
 		semanticStateUncertain,
 	};
 }

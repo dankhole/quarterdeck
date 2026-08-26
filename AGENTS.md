@@ -29,7 +29,7 @@ When changing the instruction bridge, run `npm run check:agent-instructions` or 
 
 ### Supported agents
 
-Claude Code and Codex are the supported forward-looking task-agent targets. Pi is legacy and experimental: preserve incidental shared behavior when low-risk, but do not add Pi to new architecture, compatibility contracts, release promises, or routine dogfood unless the user explicitly requests Pi work.
+Claude Code, Codex, and Pi are supported desktop task-agent targets. Pi support is pinned to the exact validated release declared in `src/config/agent-registry.ts`; do not accept newer Pi releases until their lifecycle, trust, interaction, and exact-resume contracts pass the compatibility suite. Pi mobile conversation history and structured remote execution remain out of scope unless the user explicitly requests that later phase.
 
 ## Work-area routing
 
@@ -55,7 +55,7 @@ Tracked historical context lives under `docs/history/`. Read it only when curren
 
 - `ProjectBoardCommandService` is the only production writer of durable board state. Browsers and future clients submit typed intent and may show optimistic presentation; they never replace `board.json` or coordinate managed lifecycle effects themselves.
 - Managed task lifecycle intent goes through `ProjectTaskLifecycleService`. Process-side transition consequences go through `SessionTransitionController`.
-- Runtime session truth comes from the server-owned terminal/session store. Terminal output is not proof that an agent is working; use native hook and explicit submit semantics.
+- Runtime session truth comes from the server-owned terminal/session store. Terminal output and input/submit intent are not proof that an agent is working; only a current launch-scoped native provider hook may assert resumed work.
 - `applyAuthoritativeProjectState(...)` is the single browser apply path for authoritative project state.
 - `IRuntimeHostIntegrations` is the sole production boundary for server-side file, application, URL, IDE, and folder-picker effects. Preserve its launch-derived capability checks and typed outcomes; never accept arbitrary browser-supplied commands.
 - Do not start Quarterdeck runtime or dev instances (`npm run dev`, `npm run dev:full`, `npm run dogfood`, `quarterdeck`) without asking when the user's app may already be running. Overlapping runtimes can proxy to the wrong instance. Use build/test validation or the isolated Agent Lab as appropriate.
@@ -65,13 +65,13 @@ The summaries above are not substitutes for the routed runtime-state and session
 
 ## Structured execution ownership
 
-P3 structured ownership is designed but not implemented. Before changing execution ownership, read:
+Codex P3 structured ownership is implemented on `feature/remote-execution-ownership` but is not integrated into this branch; Claude structured ownership remains pending. Before changing or integrating execution ownership, read:
 
 - `docs/remote-task-ownership-handoff-spike-results.md`
 - `docs/conversation-provider-boundary-spike.md`
 - the P3 section of `docs/remote-companion-plan.md`
 
-Preserve these non-negotiable constraints: one writer per provider session; persist a pending handoff before stopping the old owner; confirm loss of old write authority before replacement; restart with exact provider session/profile identity; fence old callbacks by operation, owner generation, and session instance; reject mid-turn handoff by default; and report `turn_outcome_unknown` after ambiguous structured-runner crashes instead of replaying prompts. Codex identity includes the exact server-owned `CODEX_HOME` profile; Claude identity includes an explicitly pinned Agent SDK native executable and configuration manifest. Compatibility is version, schema, and history-mode gated. Keep provider-history reads independent and read-only. Do not add a Quarterdeck transcript store, remote raw PTY input, browser-supplied provider/process/filesystem identity, provider-global latest/continue fallback, or Pi compatibility to this contract.
+Preserve these non-negotiable constraints: one writer per provider session; persist a pending handoff before stopping the old owner; confirm loss of old write authority before replacement; restart with exact provider session/profile identity; fence old callbacks by operation, owner generation, and session instance; reject mid-turn handoff by default; and report `turn_outcome_unknown` after ambiguous structured-runner crashes instead of replaying prompts. Codex identity includes the exact server-owned `CODEX_HOME` profile; Claude identity includes an explicitly pinned Agent SDK native executable and configuration manifest. Compatibility is version, schema, and history-mode gated. The native foreground `outstandingInteraction` lifecycle is singular by design; structured Codex callbacks use exact keyed interaction identity, and concurrent Claude/background-agent remote interaction remains unsupported until it has a durable keyed model. Keep provider-history reads independent and read-only. Do not add a Quarterdeck transcript store, remote raw PTY input, browser-supplied provider/process/filesystem identity, provider-global latest/continue fallback, or Pi compatibility to this contract.
 
 ## Git and GitHub
 

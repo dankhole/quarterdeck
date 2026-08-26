@@ -383,7 +383,7 @@ Failure policy:
 
 ### Create and start
 
-Promote the existing tested `ProjectTaskLifecycleService.createAndStartTask` model into the production path and journal it.
+Use the typed `ProjectTaskLifecycleService.execute(...)` contract with a `create_and_start` command and journal it.
 
 ```text
 requested

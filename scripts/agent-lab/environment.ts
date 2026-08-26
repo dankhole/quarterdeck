@@ -1,5 +1,7 @@
 import { delimiter, join } from "node:path";
 
+import type { AgentLabLaunchAgentConfig } from "./types";
+
 interface AgentLabEnvironmentPaths {
 	tempRoot: string;
 	homePath: string;
@@ -15,9 +17,20 @@ interface AgentLabEnvironmentPaths {
 	runtimePort: number;
 	webPort: number;
 	scenario: string;
+	agent: AgentLabLaunchAgentConfig;
 }
 
-const FORWARDED_ENVIRONMENT_KEYS = ["LANG", "LC_ALL", "LC_CTYPE", "SHELL", "SystemRoot", "ComSpec", "PATHEXT"] as const;
+const FORWARDED_ENVIRONMENT_KEYS = [
+	"LANG",
+	"LC_ALL",
+	"LC_CTYPE",
+	"SHELL",
+	"SystemRoot",
+	"ComSpec",
+	"PATHEXT",
+	"CODEX_CA_CERTIFICATE",
+	"SSL_CERT_FILE",
+] as const;
 
 export function buildAgentLabEnvironment(
 	source: NodeJS.ProcessEnv,
@@ -34,6 +47,17 @@ export function buildAgentLabEnvironment(
 	const sourcePath = source.PATH ?? source.Path ?? "";
 	const pathValue = [paths.fakeBinPath, sourcePath].filter(Boolean).join(delimiter);
 	const emptyGitConfigPath = join(paths.tempRoot, "empty-gitconfig");
+	const realCodexEnvironment: NodeJS.ProcessEnv =
+		paths.agent.mode === "real-codex"
+			? {
+					QUARTERDECK_AGENT_LAB_REAL_CODEX_HOST_PATH: sourcePath,
+					QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME: paths.agent.codexHomePath,
+					QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL: paths.agent.model,
+					QUARTERDECK_AGENT_LAB_REAL_CODEX_SANDBOX: paths.agent.sandbox,
+					QUARTERDECK_AGENT_LAB_REAL_CODEX_APPROVAL_POLICY: paths.agent.approvalPolicy,
+					QUARTERDECK_TITLE_PROVIDER: "local",
+				}
+			: {};
 
 	return {
 		...environment,
@@ -70,6 +94,7 @@ export function buildAgentLabEnvironment(
 		QUARTERDECK_AGENT_LAB_FAKE_CODEX: paths.fakeCodexPath,
 		QUARTERDECK_AGENT_LAB_CLI_ENTRYPOINT: paths.cliEntrypointPath,
 		QUARTERDECK_AGENT_LAB_SCENARIO: paths.scenario,
+		...realCodexEnvironment,
 	};
 }
 

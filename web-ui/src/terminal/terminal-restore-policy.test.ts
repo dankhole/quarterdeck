@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import { shouldForceResizeBeforeRestore, shouldSkipEmptyRestoreSnapshot } from "@/terminal/terminal-restore-policy";
 
 describe("shouldForceResizeBeforeRestore", () => {
-	it("forces current geometry for Claude and Codex restores", () => {
+	it("forces current geometry for maintained task-agent restores", () => {
 		expect(shouldForceResizeBeforeRestore("claude")).toBe(true);
 		expect(shouldForceResizeBeforeRestore("codex")).toBe(true);
+		expect(shouldForceResizeBeforeRestore("pi")).toBe(true);
 	});
 
-	it("leaves other and unknown terminal types on normal restore behavior", () => {
-		expect(shouldForceResizeBeforeRestore("pi")).toBe(false);
+	it("leaves unknown terminal types on normal restore behavior", () => {
 		expect(shouldForceResizeBeforeRestore(null)).toBe(false);
 	});
 });

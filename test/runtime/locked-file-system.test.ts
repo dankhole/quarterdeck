@@ -9,6 +9,18 @@ const lockfileMocks = vi.hoisted(() => ({
 	lock: vi.fn(),
 	release: vi.fn(async () => {}),
 }));
+const fileSystemMocks = vi.hoisted(() => ({
+	writeFile: vi.fn(),
+}));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs/promises")>();
+	fileSystemMocks.writeFile.mockImplementation(actual.writeFile);
+	return {
+		...actual,
+		writeFile: fileSystemMocks.writeFile,
+	};
+});
 
 vi.mock("proper-lockfile", () => ({
 	lock: lockfileMocks.lock,
@@ -22,6 +34,7 @@ describe("LockedFileSystem", () => {
 		lockfileMocks.release.mockResolvedValue(undefined);
 		lockfileMocks.lock.mockReset();
 		lockfileMocks.lock.mockResolvedValue(lockfileMocks.release);
+		fileSystemMocks.writeFile.mockClear();
 	});
 
 	it("omits onCompromised when no handler is provided", async () => {
@@ -56,6 +69,26 @@ describe("LockedFileSystem", () => {
 			tempDir.cleanup();
 		}
 	});
+
+	it.skipIf(process.platform === "win32")(
+		"applies the requested mode when creating the atomic temporary file",
+		async () => {
+			const tempDir = createTempDir("quarterdeck-locked-fs-mode-");
+			try {
+				const filePath = join(tempDir.path, "private-state.json");
+				const lockedFileSystem = new LockedFileSystem();
+
+				await lockedFileSystem.writeTextFileAtomic(filePath, "private", { mode: 0o600 });
+
+				const tempWrite = fileSystemMocks.writeFile.mock.calls.find(
+					([path]) => typeof path === "string" && path.startsWith(`${filePath}.tmp.`),
+				);
+				expect(tempWrite?.[2]).toEqual({ encoding: "utf8", mode: 0o600 });
+			} finally {
+				tempDir.cleanup();
+			}
+		},
+	);
 });
 
 describe("cleanupStaleLockAndTempFiles", () => {

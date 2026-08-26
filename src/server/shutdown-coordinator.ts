@@ -54,7 +54,7 @@ async function persistInterruptedSessions(
 		if (summary && shouldInterruptSessionOnShutdown(summary)) {
 			nextSessions[taskId] = {
 				...summary,
-				state: "interrupted",
+				state: "awaiting_review",
 				reviewReason: "interrupted",
 				pid: null,
 				latestHookActivity: null,
@@ -78,11 +78,11 @@ const TERMINAL_REVIEW_REASONS = new Set<RuntimeTaskSessionReviewReason>([
 ]);
 
 function shouldInterruptSessionOnShutdown(summary: RuntimeTaskSessionSummary): boolean {
-	if (summary.state === "interrupted") {
+	if (summary.reviewReason === "interrupted") {
 		// markInterruptedAndStopAll() mutates active in-memory summaries before
 		// shutdown persistence runs. Those already-interrupted summaries are the
 		// exact records startup resume needs on disk.
-		return summary.reviewReason === "interrupted";
+		return true;
 	}
 	if (summary.state === "running") {
 		return true;
@@ -137,10 +137,12 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 		resolveSummary?: (taskId: string) => RuntimeTaskSessionSummary | null;
 	}> = [];
 	const managedProjectIds = new Set<string>();
+	const shutdownQuiescence: Promise<void>[] = [];
 
 	for (const { projectId, projectPath, terminalManager } of deps.projectRegistry.listManagedProjects()) {
 		terminalManager.stopReconciliation();
 		const interrupted = terminalManager.markInterruptedAndStopAll();
+		shutdownQuiescence.push(terminalManager.waitForShutdownQuiescence());
 		const interruptedTaskIds = new Set(collectShutdownInterruptedTaskIds(interrupted, terminalManager));
 		if (!projectPath) {
 			continue;
@@ -162,7 +164,6 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 			deps.warn(`Could not load project state for ${projectPath} during shutdown cleanup. ${message}`);
 		}
 	}
-
 	const indexedProjects = await listProjectIndexEntries();
 	for (const indexed of indexedProjects) {
 		if (managedProjectIds.has(indexed.projectId)) {
@@ -192,14 +193,17 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 	// until the hard 10s process-level timeout kills us mid-I/O, skipping server
 	// close entirely.
 	const CLEANUP_TIMEOUT_MS = 7000;
-	const cleanupPromise = Promise.all(
-		interruptedByProject.map(async (entry) => {
-			await persistInterruptedSessions(entry.projectPath, entry.interruptedTaskIds, {
-				projectState: entry.projectState,
-				resolveSummary: entry.resolveSummary,
-			});
-		}),
-	);
+	const cleanupPromise = (async () => {
+		await Promise.all(shutdownQuiescence);
+		await Promise.all(
+			interruptedByProject.map(async (entry) => {
+				await persistInterruptedSessions(entry.projectPath, entry.interruptedTaskIds, {
+					projectState: entry.projectState,
+					resolveSummary: entry.resolveSummary,
+				});
+			}),
+		);
+	})();
 	const timeoutPromise = new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), CLEANUP_TIMEOUT_MS));
 	const result = await Promise.race([cleanupPromise.then(() => "done" as const), timeoutPromise]);
 	if (result === "timeout") {

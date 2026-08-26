@@ -44,25 +44,26 @@ function createBoard(taskIds: { inProgress?: string[]; review?: string[] }): Run
 
 function createSession(
 	taskId: string,
-	state: "running" | "awaiting_review" | "idle" | "interrupted",
+	state: "running" | "awaiting_review" | "idle",
+	reviewReason: RuntimeTaskSessionSummary["reviewReason"] = state === "awaiting_review" ? "hook" : null,
 ): RuntimeTaskSessionSummary {
 	return createTestTaskSessionSummary({
 		taskId,
 		state,
 		agentId: "codex",
 		sessionLaunchPath: `/tmp/${taskId}`,
-		pid: state === "idle" || state === "interrupted" ? null : 1234,
+		pid: state === "idle" ? null : 1234,
 		startedAt: state === "idle" ? null : Date.now() - 1_000,
 		updatedAt: Date.now(),
 		lastOutputAt: state === "idle" ? null : Date.now(),
-		reviewReason: state === "awaiting_review" ? "hook" : state === "interrupted" ? "interrupted" : null,
+		reviewReason,
 	});
 }
 
 function createInterruptedShellSession(taskId: string): RuntimeTaskSessionSummary {
 	return createTestTaskSessionSummary({
 		taskId,
-		state: "interrupted",
+		state: "awaiting_review",
 		agentId: null,
 		sessionLaunchPath: `/tmp/${taskId}`,
 		pid: null,
@@ -127,7 +128,7 @@ describe.sequential("shutdown coordinator integration", () => {
 				});
 
 				let didCloseRuntimeServer = false;
-				const interruptedManagedRunning = createSession("managed-running", "interrupted");
+				const interruptedManagedRunning = createSession("managed-running", "awaiting_review", "interrupted");
 				interruptedManagedRunning.startupRecoveryRequired = true;
 				const recoverableManagedReview = createSession("managed-active-review", "awaiting_review");
 				recoverableManagedReview.pid = null;
@@ -164,6 +165,7 @@ describe.sequential("shutdown coordinator integration", () => {
 						interruptedHomeShell,
 						interruptedDetailShell,
 					],
+					waitForShutdownQuiescence: async () => {},
 					store: {
 						listSummaries: () => [
 							interruptedManagedRunning,
@@ -211,7 +213,8 @@ describe.sequential("shutdown coordinator integration", () => {
 				expect(managedTrash).toEqual([]);
 
 				// Running sessions are marked interrupted on shutdown.
-				expect(managedAfter.sessions["managed-running"]?.state).toBe("interrupted");
+				expect(managedAfter.sessions["managed-running"]?.state).toBe("awaiting_review");
+				expect(managedAfter.sessions["managed-running"]?.reviewReason).toBe("interrupted");
 				expect(managedAfter.sessions["managed-running"]?.startupRecoveryRequired).toBe(true);
 				// Idle sessions are not actively working — left as-is.
 				expect(managedAfter.sessions["managed-idle"]?.state).toBe("idle");

@@ -33,12 +33,13 @@ Use this map when you are planning or evaluating refactor work.
 - Start here for current refactor status: [`todo.md`](./todo.md).
 - [`todo.md`](./todo.md): active engineering backlog, including currently tracked refactor work.
 - [`remote-companion-plan.md`](./remote-companion-plan.md): behavior-preserving prerequisites and phased implementation plan for the text-only mobile remote companion.
+- [`pi-first-class-support-plan.md`](./pi-first-class-support-plan.md): implemented desktop-first Pi compatibility contract and release gates; mobile and remote Pi execution remain deferred.
 - [`claude-terminal-rendering-plan.md`](./claude-terminal-rendering-plan.md): implemented default-off fullscreen experiment and its remaining interactive dogfood and rollout gates.
 - [`lsp-code-navigation-plan.md`](./lsp-code-navigation-plan.md): plan for bring-your-own language server code navigation in the Files editor.
 
 ### Active decision records and rollout gates
 
-- [`conversation-provider-boundary-spike.md`](./conversation-provider-boundary-spike.md): completed P2 read-source decision and evidence that still constrain the unimplemented P3 execution-owner work.
+- [`conversation-provider-boundary-spike.md`](./conversation-provider-boundary-spike.md): completed P2 read-source decision and evidence that constrain integration of the Codex P3 execution-owner work and future Claude ownership.
 - [`remote-task-ownership-handoff-spike-results.md`](./remote-task-ownership-handoff-spike-results.md): authenticated native/structured/native handoff evidence, provider gates, and the required P3 single-writer design.
 - [`task-lifecycle-reliability-plan.md`](./task-lifecycle-reliability-plan.md): implemented lifecycle-operation and revisioned project-summary design; retained while its final live-runtime release-confidence dogfood remains.
 

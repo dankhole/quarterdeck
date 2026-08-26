@@ -90,12 +90,21 @@ describe("createCodexApprovalPromptDetector", () => {
 		expect(isCodexApprovalScreen(approvalScreen("Choose a model"))).toBe(false);
 	});
 
-	it("latches until an authoritative return to running resets it", () => {
+	it("latches across redraws and re-arms only after the overlay disappears", () => {
 		const detector = createCodexApprovalPromptDetector();
 		const prompt = approvalScreen("Would you like to run the following command?");
 
 		expect(detector.detect(prompt, runningCodexSummary)).toEqual({ type: "agent.permission-prompt" });
 		expect(detector.detect(prompt, runningCodexSummary)).toBeNull();
+		expect(detector.detect(screen(["Working…"]), runningCodexSummary)).toBeNull();
+		expect(detector.detect(prompt, runningCodexSummary)).toEqual({ type: "agent.permission-prompt" });
+	});
+
+	it("can still be explicitly reset after provider-confirmed work", () => {
+		const detector = createCodexApprovalPromptDetector();
+		const prompt = approvalScreen("Would you like to run the following command?");
+
+		expect(detector.detect(prompt, runningCodexSummary)).toEqual({ type: "agent.permission-prompt" });
 		detector.reset();
 		expect(detector.detect(prompt, runningCodexSummary)).toEqual({ type: "agent.permission-prompt" });
 	});

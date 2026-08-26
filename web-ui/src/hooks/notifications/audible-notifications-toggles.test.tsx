@@ -1,5 +1,6 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestTaskOutstandingInteraction } from "@/test-utils/task-session-factory";
 
 import {
 	createMockSession,
@@ -98,6 +99,11 @@ describe("useAudibleNotifications — toggles & visibility", () => {
 							taskId: "task-1",
 							state: "awaiting_review",
 							reviewReason: "hook",
+							outstandingInteraction: createTestTaskOutstandingInteraction({
+								provider: "codex",
+								kind: "permission",
+								requestEventName: "PermissionRequest",
+							}),
 							latestHookActivity: {
 								hookEventName: "PermissionRequest",
 								notificationType: "permission.asked",
@@ -334,8 +340,8 @@ describe("useAudibleNotifications — toggles & visibility", () => {
 					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
-							state: "interrupted",
-							reviewReason: null,
+							state: "awaiting_review",
+							reviewReason: "interrupted",
 						}),
 					}}
 				/>,

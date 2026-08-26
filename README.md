@@ -8,8 +8,7 @@ Quarterdeck currently supports:
 
 - Claude Code
 - OpenAI Codex
-
-A legacy Pi integration remains available experimentally, but Pi is not a supported forward-looking target and is not included in new feature or compatibility commitments.
+- Pi
 
 Quarterdeck detects installed agent CLIs from your `PATH`, starts a local runtime server, and opens the browser UI for the git repository you launch it from.
 
@@ -39,9 +38,13 @@ Windows support is experimental and currently untested on native Windows. macOS 
 
 Codex users need Codex 0.147.0 or newer with native hook and auto-review support.
 
+Pi users need exactly Pi 0.84.3. Quarterdeck deliberately rejects older and newer Pi versions until the lifecycle extension, approval policy, and exact-session recovery suite is validated against a new release. Pi support is currently desktop-only and validated on macOS; mobile and Remote Companion support are deferred.
+
+Pi tool approvals default on. Under Settings → Harnesses → Pi, you can disable per-tool confirmations for new or restarted sessions; the once-per-launch project-trust confirmation remains required.
+
 ## Environment Variables
 
-Quarterdeck does not require a `.env` file for core usage. It inherits the environment from the shell that launches `quarterdeck`, so make sure your supported agent CLI (`claude` or `codex`) is available on that shell's `PATH` and already authenticated according to that agent's own setup flow.
+Quarterdeck does not require a `.env` file for core usage. It inherits the environment from the shell that launches `quarterdeck`, so make sure your supported agent CLI (`claude`, `codex`, or `pi`) is available on that shell's `PATH` and already authenticated according to that agent's own setup flow.
 
 Optional variables:
 

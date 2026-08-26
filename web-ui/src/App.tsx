@@ -84,11 +84,11 @@ interface AppContentProps {
 // ---------------------------------------------------------------------------
 
 function AppEarlyBailout({ children }: { children: ReactNode }): ReactNode {
-	const { isRuntimeDisconnected } = useProjectRuntimeStreamContext();
+	const { isRuntimeDisconnected, streamError } = useProjectRuntimeStreamContext();
 	const { isQuarterdeckAccessBlocked } = useProjectRuntimeContext();
 
 	if (isRuntimeDisconnected) {
-		return <RuntimeDisconnectedFallback />;
+		return <RuntimeDisconnectedFallback message={streamError ?? undefined} />;
 	}
 	if (isQuarterdeckAccessBlocked) {
 		return <QuarterdeckAccessBlockedFallback />;

@@ -1,7 +1,7 @@
 import { createTaggedLogger, type RuntimeTaskSessionSummary } from "../core";
 import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
 import type { PtySession } from "./pty-session";
-import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
+import { clearInterruptRecoveryTimer, type InterruptSignal } from "./session-interrupt-recovery";
 import { markTaskSessionLaunchCancelled } from "./session-launch-readiness";
 import {
 	handleTaskSessionExit,
@@ -18,9 +18,10 @@ import {
 	type StartShellSessionRequest,
 	type StartTaskSessionRequest,
 	type StopTaskSessionResult,
+	TaskSessionStartCancelledError,
 	teardownActiveSession,
 } from "./session-manager-types";
-import type { SessionSummaryStore } from "./session-summary-store";
+import type { SessionSummaryStore, SessionTransitionResult } from "./session-summary-store";
 import type { SessionTransitionController } from "./session-transition-controller";
 
 const sessionLog = createTaggedLogger("session-lifecycle");
@@ -31,6 +32,12 @@ export interface SessionLifecycleControllerOptions {
 	transitions: SessionTransitionController;
 	ensureProcessEntry: (taskId: string) => ProcessEntry;
 	onTaskOutput: (entry: ProcessEntry, taskId: string, chunk: Buffer) => void;
+	onInterruptRecoveryApplied: (
+		taskId: string,
+		signal: InterruptSignal,
+		result: (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null,
+		sessionInstanceId: string,
+	) => void;
 }
 
 export interface TaskSessionStartWithReadinessResult {
@@ -51,10 +58,13 @@ export class SessionLifecycleController {
 	private readonly transitions: SessionTransitionController;
 	private readonly ensureProcessEntry: (taskId: string) => ProcessEntry;
 	private readonly onTaskOutput: (entry: ProcessEntry, taskId: string, chunk: Buffer) => void;
+	private readonly onInterruptRecoveryApplied: SessionLifecycleControllerOptions["onInterruptRecoveryApplied"];
 	private readonly inFlightTaskStarts = new Map<
 		string,
 		{ launchOperationId: string | null; promise: Promise<TaskSessionStartWithReadinessResult> }
 	>();
+	private shuttingDown = false;
+	private lifecycleGeneration = 0;
 
 	constructor(options: SessionLifecycleControllerOptions) {
 		this.store = options.store;
@@ -62,6 +72,7 @@ export class SessionLifecycleController {
 		this.transitions = options.transitions;
 		this.ensureProcessEntry = options.ensureProcessEntry;
 		this.onTaskOutput = options.onTaskOutput;
+		this.onInterruptRecoveryApplied = options.onInterruptRecoveryApplied;
 	}
 
 	hydrateFromRecord(record: Record<string, RuntimeTaskSessionSummary>): SessionHydrationCorrection[] {
@@ -77,6 +88,9 @@ export class SessionLifecycleController {
 	}
 
 	async startTaskSessionWithReadiness(request: StartTaskSessionRequest): Promise<TaskSessionStartWithReadinessResult> {
+		if (this.shuttingDown) {
+			throw new TaskSessionStartCancelledError();
+		}
 		const launchOperationId = request.launchOperationId?.trim() || null;
 		const inFlight = this.inFlightTaskStarts.get(request.taskId);
 		if (inFlight) {
@@ -101,6 +115,7 @@ export class SessionLifecycleController {
 	}
 
 	private async startTaskSessionOnce(request: StartTaskSessionRequest): Promise<TaskSessionStartWithReadinessResult> {
+		const lifecycleGeneration = this.lifecycleGeneration;
 		const entry = this.ensureProcessEntry(request.taskId);
 		const startupRecoveryToken = request.startupRecoveryToken?.trim() || null;
 		if (startupRecoveryToken && entry.pendingStartupRecoveryToken !== startupRecoveryToken) {
@@ -112,7 +127,8 @@ export class SessionLifecycleController {
 		}
 		const restartRequest = cloneStartTaskSessionRequest(request);
 		restartRequest.startupRecoveryToken = undefined;
-		restartRequest.startupRecoveryReviewState = undefined;
+		restartRequest.resumeSemanticState = undefined;
+		restartRequest.startupRecoverySemanticStateUncertain = undefined;
 		restartRequest.startupRecoveryWarningMessage = undefined;
 		entry.restartRequest = {
 			kind: "task",
@@ -122,9 +138,9 @@ export class SessionLifecycleController {
 		sessionLog.debug("startTaskSession called", {
 			taskId: request.taskId,
 			agentId: request.agentId,
-			cwd: request.cwd,
+			hasLaunchPath: Boolean(request.cwd),
 			resumeConversation: request.resumeConversation ?? false,
-			resumeSessionId: request.resumeSessionId ?? null,
+			hasResumeSessionId: Boolean(request.resumeSessionId),
 			awaitReview: request.awaitReview ?? false,
 			entryActive: Boolean(entry.active),
 			entrySuppressAutoRestart: Boolean(entry.suppressAutoRestartOnExit),
@@ -133,7 +149,7 @@ export class SessionLifecycleController {
 			currentState: currentSummary?.state ?? null,
 			currentReviewReason: currentSummary?.reviewReason ?? null,
 			currentPid: currentSummary?.pid ?? null,
-			currentResumeSessionId: currentSummary?.resumeSessionId ?? null,
+			currentHasResumeSessionId: Boolean(currentSummary?.resumeSessionId),
 			launchOperationId: request.launchOperationId ?? null,
 			currentLaunchOperationId: currentSummary?.launchOperationId ?? null,
 		});
@@ -177,15 +193,19 @@ export class SessionLifecycleController {
 			ensureEntry: (id) => this.store.ensureEntry(id),
 			onOutput: (e, taskId, chunk) => this.onTaskOutput(e, taskId, chunk),
 			onExit: (req, event, session) => this.handleTaskSessionExit(req, event, session),
+			isLaunchAllowed: () => !this.shuttingDown && this.lifecycleGeneration === lifecycleGeneration,
 		});
 		return {
-			summary: spawned.summary,
+			summary: this.store.getSummary(request.taskId) ?? spawned.summary,
 			sessionInstanceId: spawned.sessionInstanceId,
 			startedNewSession: true,
 		};
 	}
 
 	async startShellSession(request: StartShellSessionRequest): Promise<RuntimeTaskSessionSummary> {
+		if (this.shuttingDown) {
+			throw new TaskSessionStartCancelledError();
+		}
 		const entry = this.ensureProcessEntry(request.taskId);
 		entry.restartRequest = {
 			kind: "shell",
@@ -213,6 +233,38 @@ export class SessionLifecycleController {
 			updateStore: (id, patch) => this.store.update(id, patch),
 			applyTransitionEvent: (entry, event) => this.transitions.applyTransitionEvent(entry, event),
 		});
+	}
+
+	failTargetedResumeIdentity(
+		taskId: string,
+		sessionInstanceId: string,
+		warningMessage: string,
+	): RuntimeTaskSessionSummary | null {
+		const entry = this.entries.get(taskId);
+		if (!entry?.active || entry.active.sessionInstanceId !== sessionInstanceId) {
+			return this.store.getSummary(taskId);
+		}
+
+		// A replacement process that opened another provider conversation cannot
+		// remain writable. Preserve the typed recovery error, discard automatic
+		// restart ownership, and stop only the exact launch that reported the
+		// mismatched identity.
+		entry.restartRequest = null;
+		entry.suppressAutoRestartOnExit = true;
+		const result = this.transitions.applyTransitionEvent(entry, {
+			type: "resume.failed",
+			clearResumeSessionId: true,
+			warningMessage,
+		});
+		const cleanupFn = entry.active.onSessionCleanup;
+		entry.active.onSessionCleanup = null;
+		stopWorkspaceTrustTimers(entry.active);
+		clearInterruptRecoveryTimer(entry.active);
+		entry.active.session.stop({ interrupted: true });
+		if (cleanupFn) {
+			cleanupFn().catch(() => {});
+		}
+		return result?.summary ?? this.store.getSummary(taskId);
 	}
 
 	stopTaskSession(taskId: string, options?: { preserveStartupRecovery?: boolean }): RuntimeTaskSessionSummary | null {
@@ -328,22 +380,62 @@ export class SessionLifecycleController {
 	}
 
 	markInterruptedAndStopAll(): RuntimeTaskSessionSummary[] {
+		this.shuttingDown = true;
+		this.lifecycleGeneration += 1;
 		// The store preserves durable review semantics while clearing process
 		// ownership; the historical method name remains for compatibility with
 		// the shutdown coordinator boundary.
 		const activeTaskIds: string[] = [];
+		const forceInterruptedTaskIds = new Set<string>();
+		const activeEntries: Array<{
+			entry: ProcessEntry;
+			active: NonNullable<ProcessEntry["active"]>;
+		}> = [];
 		for (const entry of this.entries.values()) {
 			entry.pendingStartupRecoveryToken = null;
 			markTaskSessionLaunchCancelled(entry.launchMonitor);
 			if (!entry.active) {
+				if (entry.pendingSessionStart || entry.pendingAutoRestart || this.inFlightTaskStarts.has(entry.taskId)) {
+					activeTaskIds.push(entry.taskId);
+					if (entry.pendingAutoRestart) {
+						forceInterruptedTaskIds.add(entry.taskId);
+					}
+				}
 				continue;
 			}
 			activeTaskIds.push(entry.taskId);
-			stopWorkspaceTrustTimers(entry.active);
-			clearInterruptRecoveryTimer(entry.active);
-			entry.active.session.stop({ interrupted: true });
+			// Shutdown is a terminal lifecycle boundary. Establish it before
+			// signalling the PTY because node-pty may report exit immediately;
+			// otherwise the exit path can classify a running task as a crash and
+			// launch a replacement process while shutdown persistence is running.
+			entry.suppressAutoRestartOnExit = true;
+			activeEntries.push({ entry, active: entry.active });
 		}
-		return this.store.markAllInterrupted(activeTaskIds);
+
+		const interrupted = this.store.markAllInterrupted(activeTaskIds, { forceInterruptedTaskIds });
+		for (const { entry, active } of activeEntries) {
+			// A coincident natural exit may already have finalized this exact PTY.
+			if (entry.active !== active) {
+				continue;
+			}
+			stopWorkspaceTrustTimers(active);
+			clearInterruptRecoveryTimer(active);
+			active.session.stop({ interrupted: true });
+		}
+		return interrupted;
+	}
+
+	async waitForShutdownQuiescence(): Promise<void> {
+		const pending = new Set<Promise<unknown>>();
+		for (const start of this.inFlightTaskStarts.values()) {
+			pending.add(start.promise);
+		}
+		for (const entry of this.entries.values()) {
+			if (entry.pendingAutoRestart) {
+				pending.add(entry.pendingAutoRestart);
+			}
+		}
+		await Promise.allSettled(pending);
 	}
 
 	private handleTaskSessionExit(
@@ -357,6 +449,7 @@ export class SessionLifecycleController {
 			updateStore: (id, patch) => this.store.update(id, patch),
 			startTaskSession: (nextRequest) => this.startTaskSession(nextRequest),
 			applyTransitionEvent: (entry, nextEvent) => this.transitions.applyTransitionEvent(entry, nextEvent),
+			onInterruptRecoveryApplied: this.onInterruptRecoveryApplied,
 		});
 	}
 }

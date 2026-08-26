@@ -1,6 +1,72 @@
 import { z } from "zod";
 
-export const AGENT_LAB_SCHEMA_VERSION = 3;
+export const AGENT_LAB_SCHEMA_VERSION = 4;
+
+export const AgentLabAgentModeSchema = z.enum(["fake", "real-codex"]);
+
+export type AgentLabAgentMode = z.infer<typeof AgentLabAgentModeSchema>;
+
+export const AgentLabCodexSandboxSchema = z.enum(["read-only", "workspace-write"]);
+
+export type AgentLabCodexSandbox = z.infer<typeof AgentLabCodexSandboxSchema>;
+
+export const AgentLabCodexApprovalPolicySchema = z.enum(["on-request", "never"]);
+
+export type AgentLabCodexApprovalPolicy = z.infer<typeof AgentLabCodexApprovalPolicySchema>;
+
+const AgentLabModelSchema = z
+	.string()
+	.min(1)
+	.max(200)
+	.regex(
+		/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/,
+		"Model IDs may contain only letters, numbers, '.', '_', ':', '/', and '-'.",
+	);
+
+const AgentLabPublicAgentConfigSchema = z.discriminatedUnion("mode", [
+	z.object({ mode: z.literal("fake") }),
+	z.object({
+		mode: z.literal("real-codex"),
+		model: AgentLabModelSchema,
+		modelProvider: z.literal("openai"),
+		reasoningEffort: z.literal("low"),
+		authentication: z.literal("existing-cli"),
+		profileSource: z.enum(["explicit", "environment", "default"]),
+		sandbox: AgentLabCodexSandboxSchema,
+		approvalPolicy: AgentLabCodexApprovalPolicySchema,
+		serviceTier: z.literal("default"),
+		historyPersistence: z.literal("none"),
+		webSearch: z.literal("disabled"),
+		externalIntegrations: z.literal("disabled"),
+		profileHooks: z.enum(["replaced", "isolated"]),
+		telemetry: z.literal("disabled"),
+	}),
+]);
+
+export type AgentLabPublicAgentConfig = z.infer<typeof AgentLabPublicAgentConfigSchema>;
+
+export const AgentLabLaunchAgentConfigSchema = z.discriminatedUnion("mode", [
+	z.object({ mode: z.literal("fake") }),
+	z.object({
+		mode: z.literal("real-codex"),
+		model: AgentLabModelSchema,
+		modelProvider: z.literal("openai"),
+		reasoningEffort: z.literal("low"),
+		authentication: z.literal("existing-cli"),
+		profileSource: z.enum(["explicit", "environment", "default"]),
+		sandbox: AgentLabCodexSandboxSchema,
+		approvalPolicy: AgentLabCodexApprovalPolicySchema,
+		serviceTier: z.literal("default"),
+		historyPersistence: z.literal("none"),
+		webSearch: z.literal("disabled"),
+		externalIntegrations: z.literal("disabled"),
+		profileHooks: z.literal("isolated"),
+		telemetry: z.literal("disabled"),
+		codexHomePath: z.string().min(1),
+	}),
+]);
+
+export type AgentLabLaunchAgentConfig = z.infer<typeof AgentLabLaunchAgentConfigSchema>;
 
 export const AgentLabScenarioSchema = z.enum([
 	"idle",
@@ -98,12 +164,18 @@ export const AgentLabManifestV2Schema = AgentLabManifestBaseSchema.extend({
 });
 export type AgentLabManifestV2 = z.infer<typeof AgentLabManifestV2Schema>;
 
-export const AgentLabManifestSchema = AgentLabManifestV2Schema.omit({ schemaVersion: true }).extend({
-	schemaVersion: z.literal(AGENT_LAB_SCHEMA_VERSION),
+export const AgentLabManifestV3Schema = AgentLabManifestV2Schema.omit({ schemaVersion: true }).extend({
+	schemaVersion: z.literal(3),
 	runtimeRestartRequestPath: z.string().min(1),
 	runtimeRestartResultPath: z.string().min(1),
 	runtimeGeneration: z.number().int().positive(),
 	runtimeRestarts: z.array(AgentLabRuntimeRestartRecordSchema),
+});
+export type AgentLabManifestV3 = z.infer<typeof AgentLabManifestV3Schema>;
+
+export const AgentLabManifestSchema = AgentLabManifestV3Schema.omit({ schemaVersion: true }).extend({
+	schemaVersion: z.literal(AGENT_LAB_SCHEMA_VERSION),
+	agent: AgentLabPublicAgentConfigSchema,
 });
 
 export type AgentLabManifest = z.infer<typeof AgentLabManifestSchema>;
@@ -111,6 +183,7 @@ export type AgentLabManifest = z.infer<typeof AgentLabManifestSchema>;
 export const ReadableAgentLabManifestSchema = z.discriminatedUnion("schemaVersion", [
 	AgentLabManifestV1Schema,
 	AgentLabManifestV2Schema,
+	AgentLabManifestV3Schema,
 	AgentLabManifestSchema,
 ]);
 export type ReadableAgentLabManifest = z.infer<typeof ReadableAgentLabManifestSchema>;
@@ -127,6 +200,7 @@ export const AgentLabLaunchConfigSchema = z.object({
 	tempRoot: z.string().min(1),
 	keepTemp: z.boolean(),
 	scenario: AgentLabScenarioSchema,
+	agent: AgentLabLaunchAgentConfigSchema,
 	runtimePort: z.number().int().min(0).max(65_535).nullable(),
 	webPort: z.number().int().min(0).max(65_535).nullable(),
 	forwardLogs: z.boolean(),

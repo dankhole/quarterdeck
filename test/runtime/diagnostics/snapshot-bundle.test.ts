@@ -121,6 +121,81 @@ describe("diagnostic snapshots, doctor, and bundles", () => {
 		]);
 	});
 
+	it("reports unsupported Pi compatibility, missing extension assets, and unsafe recovery identity", () => {
+		const snapshot: DiagnosticSnapshot = {
+			version: 1,
+			runtimeInstanceId: "runtime-test",
+			capturedAt: 2_000,
+			providers: [
+				{
+					name: "pi_support",
+					status: "completed",
+					durationMs: 1,
+					data: {
+						supportedVersion: "0.84.3",
+						detectedVersion: "0.85.0",
+						installed: false,
+						reason: "unsupported_version",
+						extensionAvailable: false,
+					},
+				},
+				{
+					name: "projects",
+					status: "completed",
+					durationMs: 1,
+					data: {
+						sessions: [
+							{
+								projectId: "p1",
+								taskId: "pi-task",
+								agentId: "pi",
+								startupRecoveryRequired: true,
+								hasResumeSessionId: false,
+							},
+						],
+					},
+				},
+			],
+		};
+
+		expect(new Set(evaluateDiagnosticSnapshot(snapshot, []).map((finding) => finding.code))).toEqual(
+			new Set(["PI_LIFECYCLE_EXTENSION_MISSING", "PI_VERSION_UNSUPPORTED", "PI_RECOVERY_SESSION_ID_MISSING"]),
+		);
+	});
+
+	it("does not report optional Pi support failures when no Pi task exists", () => {
+		const snapshot: DiagnosticSnapshot = {
+			version: 1,
+			runtimeInstanceId: "runtime-test",
+			capturedAt: 2_000,
+			providers: [
+				{
+					name: "pi_support",
+					status: "completed",
+					durationMs: 1,
+					data: {
+						supportedVersion: "0.84.3",
+						installed: false,
+						reason: "missing",
+						extensionAvailable: false,
+					},
+				},
+				{
+					name: "projects",
+					status: "completed",
+					durationMs: 1,
+					data: {
+						sessions: [{ projectId: "p1", taskId: "codex-task", agentId: "codex" }],
+					},
+				},
+			],
+		};
+
+		expect(evaluateDiagnosticSnapshot(snapshot, []).map((finding) => finding.code)).not.toEqual(
+			expect.arrayContaining(["PI_LIFECYCLE_EXTENSION_MISSING", "PI_VERSION_UNSUPPORTED", "PI_BINARY_MISSING"]),
+		);
+	});
+
 	it("removes findings explicitly attributed outside the requested scope", () => {
 		const finding = (projectId: string, taskId: string) => ({
 			code: `TEST_${projectId}_${taskId}`,

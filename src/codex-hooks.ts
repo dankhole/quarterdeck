@@ -101,16 +101,16 @@ export function buildCodexHooksConfig(): CodexHooksConfig {
 		],
 		PreCompact: [
 			{
-				// Manual `/compact` starts from the interactive prompt. Automatic
-				// compaction can happen mid-turn and must not change task state.
+				// Compaction is TUI-local maintenance, not evidence that a task turn
+				// resumed. Automatic compaction is intentionally not matched either.
 				matcher: "manual",
-				hooks: [buildCodexCommandHook("to_in_progress", { source: "codex" })],
+				hooks: [buildCodexCommandHook("activity", { source: "codex" })],
 			},
 		],
 		PostCompact: [
 			{
 				matcher: "manual",
-				hooks: [buildCodexCommandHook("to_review", { source: "codex" })],
+				hooks: [buildCodexCommandHook("activity", { source: "codex" })],
 			},
 		],
 		Stop: [

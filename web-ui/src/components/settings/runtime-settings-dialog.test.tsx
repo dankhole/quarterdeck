@@ -275,6 +275,32 @@ describe("RuntimeSettingsDialog", () => {
 		expect(approvalsReviewerSelect?.value).toBe("auto_review");
 		expect(document.body.textContent).toContain("--approve-for-me");
 		expect(document.body.textContent).toContain("workspace-write sandbox");
+		await act(async () => {
+			if (approvalsReviewerSelect) {
+				approvalsReviewerSelect.value = "dangerously_bypass";
+				approvalsReviewerSelect.dispatchEvent(new Event("change", { bubbles: true }));
+			}
+		});
+		expect(approvalsReviewerSelect?.value).toBe("dangerously_bypass");
+		expect(document.body.textContent).toContain("--dangerously-bypass-approvals-and-sandbox");
+		expect(document.body.textContent).toContain("without confirmation prompts or Codex sandboxing");
+
+		const piSectionButton = Array.from(document.body.querySelectorAll("button")).find((button) =>
+			button.textContent?.includes("Tool approvals on"),
+		);
+		expect(piSectionButton).toBeInstanceOf(HTMLButtonElement);
+		await act(async () => {
+			piSectionButton?.click();
+		});
+		const piToolApprovalsSwitch = findSwitchByLabel(document.body, "Require tool approvals");
+		expect(piToolApprovalsSwitch).toBeInstanceOf(HTMLButtonElement);
+		expect(piToolApprovalsSwitch?.getAttribute("data-state")).toBe("checked");
+		expect(document.body.textContent).toContain("Project trust is still confirmed once per launch");
+		await act(async () => {
+			piToolApprovalsSwitch?.click();
+		});
+		expect(piToolApprovalsSwitch?.getAttribute("data-state")).toBe("unchecked");
+		expect(document.body.textContent).toContain("Tool approvals off");
 
 		const saveButton = findButtonByText(document.body, "Save");
 		await act(async () => {
@@ -284,7 +310,8 @@ describe("RuntimeSettingsDialog", () => {
 			expect.objectContaining({
 				claudeFullscreenEnabled: true,
 				statuslineEnabled: true,
-				codexApprovalsReviewer: "auto_review",
+				codexApprovalsReviewer: "dangerously_bypass",
+				piToolApprovalsEnabled: false,
 			}),
 		);
 	});

@@ -72,7 +72,36 @@ export async function connectRuntimeStream(url: string): Promise<RuntimeStreamCl
 				}
 				settled = true;
 				emitter.removeListener("message", tryResolve);
-				rejectMessage(new Error("Timed out waiting for expected websocket message."));
+				const queuedMessages = queue.slice(-20).map((message) => {
+					if (message.type === "project_state_updated") {
+						const counts = Object.fromEntries(
+							message.projectState.board.columns.map((column) => [column.id, column.cards.length]),
+						);
+						return `${message.type}(revision=${message.projectState.revision},counts=${JSON.stringify(counts)})`;
+					}
+					if (message.type === "projects_updated") {
+						return `${message.type}(${message.projects
+							.map(
+								(project) =>
+									`${project.id}:revision=${project.boardRevision},counts=${JSON.stringify(project.taskCounts)}`,
+							)
+							.join(";")})`;
+					}
+					if (message.type === "task_notification" || message.type === "task_sessions_updated") {
+						return `${message.type}(${message.summaries
+							.map(
+								(summary) =>
+									`${summary.taskId}:${summary.state}/${summary.reviewReason ?? "none"}/${summary.outstandingInteraction?.status ?? "none"}`,
+							)
+							.join(";")})`;
+					}
+					return message.type;
+				});
+				rejectMessage(
+					new Error(
+						`Timed out waiting for expected websocket message. Queued messages: ${queuedMessages.join(", ") || "none"}.`,
+					),
+				);
 			}, timeoutMs);
 			emitter.on("message", tryResolve);
 			tryResolve();

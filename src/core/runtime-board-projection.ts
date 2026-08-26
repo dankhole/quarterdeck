@@ -1,3 +1,4 @@
+import { getRuntimeSessionWorkColumn } from "./api/task-indicators.js";
 import type { RuntimeBoardData, RuntimeTaskSessionSummary, RuntimeTaskWorktreeMetadata } from "./api-contract";
 import { findCardInBoard, getTaskColumnId, moveTaskToColumn, patchTask } from "./task-board-mutations";
 
@@ -21,18 +22,14 @@ export function projectRuntimeSessionsOntoBoard(
 
 	for (const summary of summaries) {
 		let columnId = getTaskColumnId(nextBoard, summary.taskId);
-		if (summary.state === "awaiting_review" && columnId === "in_progress") {
-			const moved = moveTaskToColumn(nextBoard, summary.taskId, "review", summary.updatedAt, { targetIndex: 0 });
-			nextBoard = moved.board;
-			changed ||= moved.moved;
-			columnId = moved.moved ? "review" : columnId;
-		} else if (summary.state === "running" && columnId === "review") {
-			const moved = moveTaskToColumn(nextBoard, summary.taskId, "in_progress", summary.updatedAt, {
+		const targetWorkColumn = getRuntimeSessionWorkColumn(summary);
+		if (targetWorkColumn && columnId !== targetWorkColumn && (columnId === "in_progress" || columnId === "review")) {
+			const moved = moveTaskToColumn(nextBoard, summary.taskId, targetWorkColumn, summary.updatedAt, {
 				targetIndex: 0,
 			});
 			nextBoard = moved.board;
 			changed ||= moved.moved;
-			columnId = moved.moved ? "in_progress" : columnId;
+			columnId = moved.moved ? targetWorkColumn : columnId;
 		}
 
 		const launchPath = summary.sessionLaunchPath?.trim() ?? "";

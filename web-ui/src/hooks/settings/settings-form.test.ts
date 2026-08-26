@@ -19,6 +19,7 @@ describe("resolveInitialValues", () => {
 		expect(values.claudeFullscreenEnabled).toBe(false);
 		expect(values.statuslineEnabled).toBe(false);
 		expect(values.codexApprovalsReviewer).toBe("inherit");
+		expect(values.piToolApprovalsEnabled).toBe(true);
 	});
 });
 

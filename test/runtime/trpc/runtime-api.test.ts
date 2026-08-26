@@ -104,7 +104,6 @@ const STORE_METHOD_NAMES = new Set([
 	"update",
 	"applyTurnCheckpoint",
 	"applySessionEvent",
-	"applyHookActivity",
 	"appendConversationSummary",
 	"setDisplaySummary",
 ]);
@@ -273,7 +272,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 	});
 
-	it("passes the Codex approve-for-me setting into the task session launch", async () => {
+	it("passes the Codex launch permission mode into the task session launch", async () => {
 		const card = createCard({ agentId: "codex", workingDirectory: "/tmp/codex-worktree" });
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
 		taskWorktreeMocks.pathExists.mockResolvedValue(true);
@@ -284,7 +283,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		};
 		const deps = createDeps(terminalManager);
 		deps.config.loadScopedRuntimeConfig.mockResolvedValue(
-			createTestRuntimeConfigState({ selectedAgentId: "codex", codexApprovalsReviewer: "auto_review" }),
+			createTestRuntimeConfigState({ selectedAgentId: "codex", codexApprovalsReviewer: "dangerously_bypass" }),
 		);
 		const api = createRuntimeApi(deps);
 
@@ -297,7 +296,36 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(response.ok).toBe(true);
 		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
 			expect.objectContaining({
-				codexApprovalsReviewer: "auto_review",
+				codexApprovalsReviewer: "dangerously_bypass",
+			}),
+		);
+	});
+
+	it("passes the Pi tool approval setting into the task session launch", async () => {
+		const card = createCard({ agentId: "pi", workingDirectory: "/tmp/pi-worktree" });
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
+		taskWorktreeMocks.pathExists.mockResolvedValue(true);
+
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => createSummary()),
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const deps = createDeps(terminalManager);
+		deps.config.loadScopedRuntimeConfig.mockResolvedValue(
+			createTestRuntimeConfigState({ selectedAgentId: "pi", piToolApprovalsEnabled: false }),
+		);
+		const api = createRuntimeApi(deps);
+
+		const response = await api.startTaskSession(defaultScope, {
+			taskId: "task-1",
+			baseRef: "main",
+			prompt: "Do something",
+		});
+
+		expect(response.ok).toBe(true);
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				piToolApprovalsEnabled: false,
 			}),
 		);
 	});
@@ -407,6 +435,8 @@ describe("createRuntimeApi startTaskSession", () => {
 				createSummary({
 					taskId: "task-1",
 					agentId: "claude",
+					state: "awaiting_review",
+					reviewReason: "hook",
 					sessionLaunchPath: "/tmp/old-worktree",
 					resumeSessionId: "claude-session-1",
 				}),
@@ -431,6 +461,10 @@ describe("createRuntimeApi startTaskSession", () => {
 				agentId: "claude",
 				resumeConversation: true,
 				resumeSessionId: "claude-session-1",
+				resumeSemanticState: expect.objectContaining({
+					state: "awaiting_review",
+					reviewReason: "hook",
+				}),
 			}),
 		);
 		expect(update).not.toHaveBeenCalled();
@@ -618,7 +652,8 @@ describe("createRuntimeApi startTaskSession", () => {
 			{
 				startupRecoveryToken: "recovery-token",
 				resumeSessionIdOverride: "original-session-id",
-				startupRecoveryReviewState: {
+				startupRecoverySemanticState: {
+					state: "awaiting_review",
 					reviewReason: "hook",
 					lastHookAt: 123,
 					latestHookActivity: null,
@@ -632,11 +667,12 @@ describe("createRuntimeApi startTaskSession", () => {
 				resumeConversation: true,
 				resumeSessionId: "original-session-id",
 				startupRecoveryToken: "recovery-token",
-				startupRecoveryReviewState: {
+				resumeSemanticState: expect.objectContaining({
+					state: "awaiting_review",
 					reviewReason: "hook",
 					lastHookAt: 123,
 					latestHookActivity: null,
-				},
+				}),
 			}),
 		);
 	});

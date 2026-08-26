@@ -61,6 +61,7 @@ export default defineConfig({
 	envPrefix: ["VITE_"],
 	define: {
 		__APP_VERSION__: JSON.stringify(rootPkg.version),
+		__QUARTERDECK_BUILD_ID__: JSON.stringify(process.env.QUARTERDECK_BUILD_ID?.trim() || "development"),
 	},
 	build: {
 		// esbuild minification corrupts xterm's DECRQM requestMode helper in the

@@ -28,7 +28,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		label: "Pi",
 		binary: "pi",
 		baseArgs: [],
-		installUrl: "",
+		installUrl: "https://www.npmjs.com/package/@earendil-works/pi-coding-agent",
 	},
 ];
 

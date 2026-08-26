@@ -176,7 +176,10 @@ export class LockedFileSystem {
 			}
 			await mkdir(dirname(path), { recursive: true });
 			const tempPath = `${path}.tmp.${process.pid}.${Date.now()}.${randomUUID()}`;
-			await writeFile(tempPath, content, "utf8");
+			await writeFile(tempPath, content, {
+				encoding: "utf8",
+				...(options.mode !== undefined && process.platform !== "win32" ? { mode: options.mode } : {}),
+			});
 			await rename(tempPath, path);
 			if (options.executable && process.platform !== "win32") {
 				await chmod(path, 0o755);

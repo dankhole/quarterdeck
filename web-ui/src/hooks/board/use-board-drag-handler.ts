@@ -16,6 +16,7 @@ interface ProgrammaticCardMoveBehavior {
 interface UseBoardDragHandlerInput {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
+	presentLifecycleBoard: Dispatch<SetStateAction<BoardData>>;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 	kickoffTaskInProgress: UseTaskLifecycleResult["kickoffTaskInProgress"];
 	resumeTaskFromTrash: UseTaskLifecycleResult["resumeTaskFromTrash"];
@@ -39,6 +40,7 @@ export interface UseBoardDragHandlerResult {
 export function useBoardDragHandler({
 	board,
 	setBoard,
+	presentLifecycleBoard,
 	setSelectedTaskId,
 	kickoffTaskInProgress,
 	resumeTaskFromTrash,
@@ -66,7 +68,7 @@ export function useBoardDragHandler({
 			}
 
 			if (moveEvent.toColumnId === "trash") {
-				setBoard(applied.board);
+				presentLifecycleBoard(applied.board);
 				if (programmaticMoveBehavior?.skipTrashWorkflow) {
 					resolvePendingProgrammaticTrashMove(moveEvent.taskId);
 					return;
@@ -82,7 +84,7 @@ export function useBoardDragHandler({
 			}
 
 			if (moveEvent.fromColumnId === "trash" && moveEvent.toColumnId === "review") {
-				setBoard(applied.board);
+				presentLifecycleBoard(applied.board);
 				const movedSelection = findCardSelection(applied.board, moveEvent.taskId);
 				if (!movedSelection) {
 					return;
@@ -91,13 +93,12 @@ export function useBoardDragHandler({
 				return;
 			}
 
-			setBoard(applied.board);
-
-			if (
-				moveEvent.toColumnId === "in_progress" &&
-				moveEvent.fromColumnId === "backlog" &&
-				!programmaticMoveBehavior?.skipKickoff
-			) {
+			if (moveEvent.toColumnId === "in_progress" && moveEvent.fromColumnId === "backlog") {
+				presentLifecycleBoard(applied.board);
+				if (programmaticMoveBehavior?.skipKickoff) {
+					resolvePendingProgrammaticStartMove(moveEvent.taskId, false);
+					return;
+				}
 				const movedSelection = findCardSelection(applied.board, moveEvent.taskId);
 				if (movedSelection) {
 					void kickoffTaskInProgress(movedSelection.card, moveEvent.taskId, moveEvent.fromColumnId)
@@ -112,6 +113,8 @@ export function useBoardDragHandler({
 				resolvePendingProgrammaticStartMove(moveEvent.taskId, false);
 				return;
 			}
+
+			setBoard(applied.board);
 			resolvePendingProgrammaticStartMove(moveEvent.taskId, false);
 		},
 		[
@@ -120,6 +123,7 @@ export function useBoardDragHandler({
 			kickoffTaskInProgress,
 			requestMoveTaskToTrash,
 			resumeTaskFromTrash,
+			presentLifecycleBoard,
 			resolvePendingProgrammaticStartMove,
 			resolvePendingProgrammaticTrashMove,
 			setBoard,

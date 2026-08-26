@@ -1,0 +1,8 @@
+{"type":"system","subtype":"session_start","uuid":"claude-start","sessionId":"claude-session-fixture","timestamp":"2026-08-24T12:00:00.000Z"}
+{"type":"user","uuid":"claude-user-1","sessionId":"claude-session-fixture","timestamp":"2026-08-24T12:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"Inspect the failing test."}]}}
+{"type":"assistant","uuid":"claude-assistant-tool","sessionId":"claude-session-fixture","timestamp":"2026-08-24T12:00:02.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"private reasoning"},{"type":"tool_use","id":"tool-1","name":"Read","input":{"file_path":"/secret/path"}}]}}
+{"type":"user","uuid":"claude-tool-result","sessionId":"claude-session-fixture","timestamp":"2026-08-24T12:00:03.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-1","content":"secret tool output"}]}}
+{"type":"assistant","uuid":"claude-assistant-1","sessionId":"claude-session-fixture","timestamp":"2026-08-24T12:00:04.000Z","message":{"role":"assistant","content":[{"type":"text","text":"The assertion uses the wrong expected value."}]}}
+{"type":"unknown_future_record","sessionId":"claude-session-fixture","payload":{"secret":"must not leak"}}
+{"type":"user","uuid":"claude-user-2","sessionId":"claude-session-fixture","timestamp":"2026-08-24T12:00:05.000Z","message":{"role":"user","content":"Please correct it."}}
+{"type":"assistant","uuid":"claude-assistant-2","sessionId":"claude-session-fixture","timestamp":"2026-08-24T12:00:06.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Fixed and the focused test now passes."},{"type":"tool_use","id":"tool-2","name":"Bash","input":{"command":"npm test"}}]}}

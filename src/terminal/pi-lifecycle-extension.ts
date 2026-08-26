@@ -1,11 +1,14 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const QUARTERDECK_PI_HOOK_COMMAND_ENV = "QUARTERDECK_PI_HOOK_COMMAND_JSON";
+export const QUARTERDECK_PI_TOOL_APPROVALS_ENV = "QUARTERDECK_PI_TOOL_APPROVALS";
 
 const PI_LIFECYCLE_EXTENSION_ASSET_FILENAME = "pi-lifecycle-extension.runtime.js";
 const PI_LIFECYCLE_EXTENSION_HOOK_COMMAND_ENV_PLACEHOLDER = "__QUARTERDECK_PI_HOOK_COMMAND_ENV__";
+const PI_LIFECYCLE_EXTENSION_TOOL_APPROVALS_ENV_PLACEHOLDER = "__QUARTERDECK_PI_TOOL_APPROVALS_ENV__";
 
 let cachedPiLifecycleExtensionSource: string | null = null;
 
@@ -15,18 +18,27 @@ export function buildPiLifecycleExtensionSource(): string {
 	}
 
 	const source = readPiLifecycleExtensionAsset();
-	const placeholderCount = source.split(PI_LIFECYCLE_EXTENSION_HOOK_COMMAND_ENV_PLACEHOLDER).length - 1;
-	if (placeholderCount !== 1) {
+	const hookCommandPlaceholderCount = source.split(PI_LIFECYCLE_EXTENSION_HOOK_COMMAND_ENV_PLACEHOLDER).length - 1;
+	if (hookCommandPlaceholderCount !== 1) {
 		throw new Error(
 			`Pi lifecycle extension asset must contain exactly one ${PI_LIFECYCLE_EXTENSION_HOOK_COMMAND_ENV_PLACEHOLDER} placeholder.`,
 		);
 	}
+	const toolApprovalsPlaceholderCount = source.split(PI_LIFECYCLE_EXTENSION_TOOL_APPROVALS_ENV_PLACEHOLDER).length - 1;
+	if (toolApprovalsPlaceholderCount !== 1) {
+		throw new Error(
+			`Pi lifecycle extension asset must contain exactly one ${PI_LIFECYCLE_EXTENSION_TOOL_APPROVALS_ENV_PLACEHOLDER} placeholder.`,
+		);
+	}
 
-	cachedPiLifecycleExtensionSource = source.replace(
-		PI_LIFECYCLE_EXTENSION_HOOK_COMMAND_ENV_PLACEHOLDER,
-		QUARTERDECK_PI_HOOK_COMMAND_ENV,
-	);
+	cachedPiLifecycleExtensionSource = source
+		.replace(PI_LIFECYCLE_EXTENSION_HOOK_COMMAND_ENV_PLACEHOLDER, QUARTERDECK_PI_HOOK_COMMAND_ENV)
+		.replace(PI_LIFECYCLE_EXTENSION_TOOL_APPROVALS_ENV_PLACEHOLDER, QUARTERDECK_PI_TOOL_APPROVALS_ENV);
 	return cachedPiLifecycleExtensionSource;
+}
+
+export function getPiLifecycleExtensionFingerprint(): string {
+	return createHash("sha256").update(buildPiLifecycleExtensionSource(), "utf8").digest("hex");
 }
 
 function readPiLifecycleExtensionAsset(): string {

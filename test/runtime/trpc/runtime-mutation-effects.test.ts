@@ -4,7 +4,6 @@ import {
 	applyRuntimeMutationEffects,
 	createBoardCommandCommittedEffects,
 	createGitMetadataRefreshEffects,
-	createHookTransitionEffects,
 	createLogLevelBroadcastEffects,
 	createTaskBaseRefUpdatedEffects,
 } from "../../../src/trpc/runtime-mutation-effects";
@@ -55,64 +54,6 @@ describe("runtime mutation effects", () => {
 
 		expect(broadcaster.requestTaskRefresh).toHaveBeenCalledWith("project-1", "task-1");
 		expect(broadcaster.requestHomeRefresh).toHaveBeenCalledWith("project-1");
-	});
-
-	it("maps review hook transitions to project-state and ready-for-review effects", async () => {
-		expect(
-			createHookTransitionEffects({
-				projectId: "project-1",
-				projectPath: "/tmp/repo",
-				taskId: "task-1",
-				event: "to_review",
-			}),
-		).toEqual([
-			{
-				type: "project_state_updated",
-				projectId: "project-1",
-				projectPath: "/tmp/repo",
-			},
-			{
-				type: "task_ready_for_review",
-				projectId: "project-1",
-				taskId: "task-1",
-			},
-		]);
-	});
-
-	it("does not emit ready-for-review effects for hook error reviews", async () => {
-		expect(
-			createHookTransitionEffects({
-				projectId: "project-1",
-				projectPath: "/tmp/repo",
-				taskId: "task-1",
-				event: "to_review",
-				reviewReason: "error",
-			}),
-		).toEqual([
-			{
-				type: "project_state_updated",
-				projectId: "project-1",
-				projectPath: "/tmp/repo",
-			},
-		]);
-	});
-
-	it("does not emit ready-for-review effects for attention reviews", async () => {
-		expect(
-			createHookTransitionEffects({
-				projectId: "project-1",
-				projectPath: "/tmp/repo",
-				taskId: "task-1",
-				event: "to_review",
-				reviewReason: "attention",
-			}),
-		).toEqual([
-			{
-				type: "project_state_updated",
-				projectId: "project-1",
-				projectPath: "/tmp/repo",
-			},
-		]);
 	});
 
 	it("delivers lightweight task base-ref sync effects", async () => {

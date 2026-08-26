@@ -4,6 +4,7 @@ import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 
 export interface FlattenedProjectNotificationTask {
 	projectId: string;
+	taskId: string;
 	summary: RuntimeTaskSessionSummary;
 }
 
@@ -13,6 +14,11 @@ export interface ProjectNotificationProjection {
 	otherProjectsHaveNeedsInput: boolean;
 }
 
+/** Collision-safe identity for state that spans more than one project. */
+export function createProjectTaskNotificationKey(projectId: string, taskId: string): string {
+	return JSON.stringify([projectId, taskId]);
+}
+
 export function flattenProjectNotificationTasks(
 	notificationProjects: RuntimeProjectNotificationStateMap,
 ): Record<string, FlattenedProjectNotificationTask> {
@@ -20,9 +26,9 @@ export function flattenProjectNotificationTasks(
 
 	for (const [projectId, projectState] of Object.entries(notificationProjects)) {
 		for (const [taskId, summary] of Object.entries(projectState.sessions)) {
-			// Task IDs are treated as globally unique across projects in runtime state.
-			flattened[taskId] = {
+			flattened[createProjectTaskNotificationKey(projectId, taskId)] = {
 				projectId,
+				taskId,
 				summary,
 			};
 		}

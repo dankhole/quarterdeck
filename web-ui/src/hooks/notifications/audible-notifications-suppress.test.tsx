@@ -1,5 +1,6 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestTaskOutstandingInteraction } from "@/test-utils/task-session-factory";
 
 import {
 	createMockSession,
@@ -158,6 +159,11 @@ describe("useAudibleNotifications — suppress current project", () => {
 							taskId: "task-1",
 							state: "awaiting_review",
 							reviewReason: "hook",
+							outstandingInteraction: createTestTaskOutstandingInteraction({
+								provider: "codex",
+								kind: "permission",
+								requestEventName: "PermissionRequest",
+							}),
 							latestHookActivity: {
 								hookEventName: "PermissionRequest",
 								notificationType: null,

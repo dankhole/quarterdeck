@@ -55,7 +55,7 @@
     "clean": "node scripts/clean.mjs",
     "bootstrap": "node scripts/dependency-workflow.mjs bootstrap",
     "install:all": "node scripts/dependency-workflow.mjs bootstrap",
-    "build": "npm run clean && npm run web:build && node scripts/build.mjs",
+    "build": "node scripts/build-all.mjs",
     "dogfood": "node scripts/dogfood.mjs",
     "link": "node scripts/dependency-workflow.mjs link",
     "unlink": "npm unlink -g quarterdeck",

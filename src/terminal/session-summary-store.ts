@@ -5,23 +5,28 @@
 //
 // Designed as a synchronous, process-agnostic store so it maps 1:1 to a Go interface.
 
-import type {
-	ConversationSummaryEntry,
-	RuntimeHookMetadata,
-	RuntimeTaskHookActivity,
-	RuntimeTaskSessionSummary,
-	RuntimeTaskTurnCheckpoint,
+import {
+	type ConversationSummaryEntry,
+	createTaggedLogger,
+	normalizeRuntimeTaskSessionSummary,
+	type RuntimeHookMetadata,
+	type RuntimeTaskHookActivity,
+	type RuntimeTaskProviderHookOrderObservation,
+	type RuntimeTaskSessionSummary,
+	type RuntimeTaskTurnCheckpoint,
 } from "../core";
-import { createTaggedLogger } from "../core";
 import { compactDisplaySummaryText } from "../title";
 import { deriveStartupRecoveryPolicy } from "./session-startup-recovery-policy";
 import {
+	inferLegacyOutstandingInteraction,
 	reduceSessionTransition,
 	type SessionTransitionEvent,
 	type SessionTransitionResult,
 } from "./session-state-machine";
 
 const storeLog = createTaggedLogger("session-store");
+const MAX_RECENT_PROVIDER_HOOK_DELIVERY_IDS = 128;
+const MAX_RECENT_PROVIDER_HOOK_ORDER_OBSERVATIONS = 512;
 
 export type { SessionTransitionEvent, SessionTransitionResult };
 
@@ -42,10 +47,12 @@ export interface SessionSummaryStore {
 		taskId: string,
 		event: SessionTransitionEvent,
 	): (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null;
+	recordProviderHookReceipt(
+		taskId: string,
+		observation: RuntimeTaskProviderHookOrderObservation | null,
+	): RuntimeTaskSessionSummary | null;
 
 	// Domain mutations
-	applyHookActivity(taskId: string, activity: Partial<RuntimeTaskHookActivity>): RuntimeTaskSessionSummary | null;
-	applyHookMetadata(taskId: string, metadata: RuntimeHookMetadata): RuntimeTaskSessionSummary | null;
 	appendConversationSummary(
 		taskId: string,
 		entry: { text: string; capturedAt: number },
@@ -54,7 +61,10 @@ export interface SessionSummaryStore {
 	applyTurnCheckpoint(taskId: string, checkpoint: RuntimeTaskTurnCheckpoint): RuntimeTaskSessionSummary | null;
 
 	// Bulk operations
-	markAllInterrupted(activeTaskIds: string[]): RuntimeTaskSessionSummary[];
+	markAllInterrupted(
+		activeTaskIds: string[],
+		options?: { forceInterruptedTaskIds?: ReadonlySet<string> },
+	): RuntimeTaskSessionSummary[];
 
 	// Recovery
 	recoverStaleSession(taskId: string): RuntimeTaskSessionSummary | null;
@@ -85,7 +95,12 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		reviewReason: null,
 		exitCode: null,
 		lastHookAt: null,
+		lastProviderHookOccurredAt: null,
+		recentProviderHookDeliveryIds: [],
+		recentProviderHookOrderObservations: [],
 		latestHookActivity: null,
+		outstandingInteraction: null,
+		nativeWorkEvidence: null,
 		stalledSince: null,
 		warningMessage: null,
 		latestTurnCheckpoint: null,
@@ -97,7 +112,17 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 }
 
 export function cloneSummary(summary: RuntimeTaskSessionSummary): RuntimeTaskSessionSummary {
-	return { ...summary };
+	return {
+		...summary,
+		recentProviderHookDeliveryIds: [...summary.recentProviderHookDeliveryIds],
+		recentProviderHookOrderObservations: summary.recentProviderHookOrderObservations.map((entry) => ({ ...entry })),
+		latestHookActivity: summary.latestHookActivity ? { ...summary.latestHookActivity } : null,
+		outstandingInteraction: summary.outstandingInteraction ? { ...summary.outstandingInteraction } : null,
+		nativeWorkEvidence: summary.nativeWorkEvidence ? { ...summary.nativeWorkEvidence } : null,
+		latestTurnCheckpoint: summary.latestTurnCheckpoint ? { ...summary.latestTurnCheckpoint } : null,
+		previousTurnCheckpoint: summary.previousTurnCheckpoint ? { ...summary.previousTurnCheckpoint } : null,
+		conversationSummaries: summary.conversationSummaries.map((entry) => ({ ...entry })),
+	};
 }
 
 function isActiveState(state: RuntimeTaskSessionSummary["state"]): boolean {
@@ -250,7 +275,12 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 
 	hydrateFromRecord(record: Record<string, RuntimeTaskSessionSummary>): void {
 		for (const [taskId, summary] of Object.entries(record)) {
-			this.entries.set(taskId, cloneSummary(summary));
+			const migrated = normalizeRuntimeTaskSessionSummary(cloneSummary(summary), {
+				invalidateNativeWorkEvidence: true,
+			});
+			migrated.outstandingInteraction =
+				migrated.outstandingInteraction ?? inferLegacyOutstandingInteraction(migrated);
+			this.entries.set(taskId, migrated);
 		}
 	}
 
@@ -271,11 +301,14 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		if (!entry) {
 			return null;
 		}
-		const updated: RuntimeTaskSessionSummary = {
-			...entry,
-			...patch,
-			updatedAt: now(),
-		};
+		const updated = normalizeRuntimeTaskSessionSummary(
+			{
+				...entry,
+				...patch,
+				updatedAt: now(),
+			},
+			{ now: now() },
+		);
 		this.entries.set(taskId, updated);
 		this.emit(updated);
 		return cloneSummary(updated);
@@ -292,69 +325,78 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 			return null;
 		}
 		const transition = reduceSessionTransition(entry, event);
-		if (!transition.changed) {
-			return { ...transition, summary: cloneSummary(entry) };
-		}
 		const timestamp = now();
-		const updated: RuntimeTaskSessionSummary = {
+		const semanticSummary: RuntimeTaskSessionSummary = {
 			...entry,
 			...transition.patch,
-			updatedAt: timestamp,
 		};
+		const hookMetadata = event.type === "provider.hook" ? event.metadata : undefined;
+		const metadataMode = transition.hookMetadataMode ?? (hookMetadata ? "apply" : "preserve");
+		const metadataForPatch =
+			metadataMode === "apply"
+				? hookMetadata
+				: metadataMode === "identity_only" && hookMetadata?.sessionId
+					? ({ sessionId: hookMetadata.sessionId } satisfies RuntimeHookMetadata)
+					: undefined;
+		const metadataPatch = metadataForPatch
+			? buildHookMetadataPatch(taskId, semanticSummary, metadataForPatch, timestamp)
+			: null;
+		if (!transition.changed && !metadataPatch) {
+			return { ...transition, summary: cloneSummary(entry) };
+		}
+		const updated = normalizeRuntimeTaskSessionSummary(
+			{
+				...semanticSummary,
+				...(metadataPatch ?? {}),
+				updatedAt: timestamp,
+			},
+			{ now: timestamp },
+		);
 		// Reset hook activity timing when a reviewed task returns to running so
 		// diagnostics reflect the current active turn, not the prior review stop.
-		if (transition.patch.state === "running") {
+		if (transition.changed && transition.patch.state === "running" && !metadataPatch?.lastHookAt) {
 			updated.lastHookAt = timestamp;
-		}
-		if ((event.type === "hook.to_review" || event.type === "hook.to_in_progress") && event.metadata) {
-			const metadataPatch = buildHookMetadataPatch(taskId, updated, event.metadata, timestamp);
-			if (metadataPatch) {
-				Object.assign(updated, metadataPatch);
-			}
 		}
 		this.entries.set(taskId, updated);
 		this.emit(updated);
 		return { ...transition, summary: cloneSummary(updated) };
 	}
 
+	recordProviderHookReceipt(
+		taskId: string,
+		observation: RuntimeTaskProviderHookOrderObservation | null,
+	): RuntimeTaskSessionSummary | null {
+		const entry = this.entries.get(taskId);
+		if (!entry || !observation || observation.sessionInstanceId !== entry.sessionInstanceId) {
+			return entry ? cloneSummary(entry) : null;
+		}
+		const hasDelivery = entry.recentProviderHookDeliveryIds.includes(observation.deliveryId);
+		const hasObservation = entry.recentProviderHookOrderObservations.some(
+			(candidate) => candidate.deliveryId === observation.deliveryId,
+		);
+		if (hasDelivery && hasObservation) return cloneSummary(entry);
+
+		const updated: RuntimeTaskSessionSummary = {
+			...entry,
+			lastProviderHookOccurredAt: Math.max(entry.lastProviderHookOccurredAt ?? 0, observation.occurredAt),
+			recentProviderHookDeliveryIds: hasDelivery
+				? entry.recentProviderHookDeliveryIds
+				: [...entry.recentProviderHookDeliveryIds, observation.deliveryId].slice(
+						-MAX_RECENT_PROVIDER_HOOK_DELIVERY_IDS,
+					),
+			recentProviderHookOrderObservations: hasObservation
+				? entry.recentProviderHookOrderObservations
+				: [...entry.recentProviderHookOrderObservations, observation].slice(
+						-MAX_RECENT_PROVIDER_HOOK_ORDER_OBSERVATIONS,
+					),
+			updatedAt: now(),
+		};
+		this.entries.set(taskId, updated);
+		this.emit(updated);
+		return cloneSummary(updated);
+	}
+
 	// ── Domain mutations ──────────────────────────────────────────────────
-
-	applyHookActivity(taskId: string, activity: Partial<RuntimeTaskHookActivity>): RuntimeTaskSessionSummary | null {
-		const entry = this.entries.get(taskId);
-		if (!entry) {
-			return null;
-		}
-		const previous = entry.latestHookActivity;
-		const next = buildNextHookActivity(previous, activity);
-		if (!didHookActivityChange(previous, next)) {
-			return cloneSummary(entry);
-		}
-
-		return this.update(taskId, {
-			lastHookAt: now(),
-			latestHookActivity: next,
-			stalledSince: null,
-		});
-	}
-
-	applyHookMetadata(taskId: string, metadata: RuntimeHookMetadata): RuntimeTaskSessionSummary | null {
-		const entry = this.entries.get(taskId);
-		if (!entry) {
-			storeLog.debug("applyHookMetadata dropped — no entry", {
-				taskId,
-				incomingSessionId: metadata.sessionId ?? null,
-			});
-			return null;
-		}
-
-		const timestamp = now();
-		const patch = buildHookMetadataPatch(taskId, entry, metadata, timestamp);
-		if (!patch) {
-			return cloneSummary(entry);
-		}
-
-		return this.update(taskId, patch);
-	}
 
 	appendConversationSummary(
 		taskId: string,
@@ -433,7 +475,10 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 
 	// ── Bulk operations ───────────────────────────────────────────────────
 
-	markAllInterrupted(activeTaskIds: string[]): RuntimeTaskSessionSummary[] {
+	markAllInterrupted(
+		activeTaskIds: string[],
+		options?: { forceInterruptedTaskIds?: ReadonlySet<string> },
+	): RuntimeTaskSessionSummary[] {
 		const results: RuntimeTaskSessionSummary[] = [];
 		for (const taskId of activeTaskIds) {
 			const entry = this.entries.get(taskId);
@@ -445,7 +490,11 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 			// meaning and persist whether a replacement runtime should restore the
 			// interactive chat. Only work that was actually running becomes
 			// interrupted.
-			const preserveReviewState = entry.state === "awaiting_review";
+			const preserveReviewState =
+				entry.state === "awaiting_review" &&
+				entry.reviewReason !== null &&
+				entry.reviewReason !== "unconfirmed" &&
+				!options?.forceInterruptedTaskIds?.has(taskId);
 			const startupRecoveryRequired = deriveStartupRecoveryPolicy(entry).required;
 			const updated = this.update(
 				taskId,
@@ -455,10 +504,12 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 							startupRecoveryRequired,
 						}
 					: {
-							state: "interrupted",
+							state: "awaiting_review",
 							reviewReason: "interrupted",
 							pid: null,
 							latestHookActivity: null,
+							outstandingInteraction: null,
+							nativeWorkEvidence: null,
 							stalledSince: null,
 							startupRecoveryRequired: true,
 						},
@@ -492,7 +543,12 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 			reviewReason: null,
 			exitCode: null,
 			lastHookAt: null,
+			lastProviderHookOccurredAt: null,
+			recentProviderHookDeliveryIds: [],
+			recentProviderHookOrderObservations: [],
 			latestHookActivity: null,
+			outstandingInteraction: null,
+			nativeWorkEvidence: null,
 			stalledSince: null,
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,

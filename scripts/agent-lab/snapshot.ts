@@ -204,7 +204,7 @@ function evidenceSources(manifest: ReadableAgentLabManifest, labPath: string): D
 	if (manifest.processes.runtime?.logPath) {
 		runtimeLogPaths.add(manifest.processes.runtime.logPath);
 	}
-	if (manifest.schemaVersion === 3) {
+	if (manifest.schemaVersion === 3 || manifest.schemaVersion === 4) {
 		for (const restart of manifest.runtimeRestarts) {
 			runtimeLogPaths.add(restart.previousProcess.logPath);
 			if (restart.replacementProcess) runtimeLogPaths.add(restart.replacementProcess.logPath);
@@ -237,6 +237,7 @@ export async function captureAgentLabSnapshot(
 	const labPath = join(stagingRoot, "lab");
 	const stateDestination = join(labPath, "state");
 	const gitPath = join(labPath, "git");
+	const agent = manifest.schemaVersion === 4 ? manifest.agent : ({ mode: "fake" } as const);
 	try {
 		await Promise.all([
 			mkdir(stateDestination, { recursive: true }),
@@ -275,7 +276,8 @@ export async function captureAgentLabSnapshot(
 					label,
 					createdAt,
 					scenario: manifest.scenario,
-					fakeAgentProtocol: "quarterdeck-agent-lab-v1",
+					agent,
+					...(agent.mode === "fake" ? { fakeAgentProtocol: "quarterdeck-agent-lab-v1" } : {}),
 				},
 				null,
 				2,

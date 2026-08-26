@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createTaggedLogger, type RuntimeTaskSessionStartRequest } from "../core";
-import type { StartupRecoveryReviewState, TerminalSessionManager } from "../terminal";
+import type { SessionResumeSemanticState, StartupRecoveryReviewState, TerminalSessionManager } from "../terminal";
 import type { TaskSessionLaunchReadinessOutcome } from "../terminal/session-launch-readiness";
 import type {
 	PreparedTaskSessionStart,
@@ -47,7 +47,9 @@ export interface StartupSessionRecoveryCandidate {
 	request: RuntimeTaskSessionStartRequest;
 	manager: TerminalSessionManager;
 	originalResumeSessionId: string | null;
-	reviewState: StartupRecoveryReviewState;
+	semanticState: SessionResumeSemanticState;
+	/** Whether the semantic state is neutral because it came from incomplete legacy persistence. */
+	semanticStateUncertain: boolean;
 	/** Semantic state to restore if chat recovery fails without invalidating completed work. */
 	fallbackReviewState: StartupRecoveryReviewState | null;
 	/** Present only when a legacy record no longer contains enough information to classify prior task meaning. */
@@ -78,7 +80,8 @@ export interface StartupSessionRecoveryCoordinatorOptions {
 		options: {
 			startupRecoveryToken: string;
 			resumeSessionIdOverride: string | null;
-			startupRecoveryReviewState: StartupRecoveryReviewState;
+			startupRecoverySemanticState: SessionResumeSemanticState;
+			startupRecoverySemanticStateUncertain: boolean;
 			startupRecoveryWarningMessage?: string;
 		},
 	) => Promise<PreparedTaskSessionStart>;
@@ -142,7 +145,7 @@ function shouldClearFailedResumeSessionId(
 		return false;
 	}
 	const agentId = candidate.manager.store.getSummary(candidate.request.taskId)?.agentId;
-	return agentId === "codex" || agentId === "claude";
+	return agentId === "codex" || agentId === "claude" || agentId === "pi";
 }
 
 /**
@@ -306,7 +309,8 @@ export class StartupSessionRecoveryCoordinator {
 				prepared = await this.prepare(candidate, {
 					startupRecoveryToken: token,
 					resumeSessionIdOverride: candidate.originalResumeSessionId,
-					startupRecoveryReviewState: candidate.reviewState,
+					startupRecoverySemanticState: candidate.semanticState,
+					startupRecoverySemanticStateUncertain: candidate.semanticStateUncertain,
 					startupRecoveryWarningMessage: candidate.semanticStateWarning,
 				});
 			} catch (error) {

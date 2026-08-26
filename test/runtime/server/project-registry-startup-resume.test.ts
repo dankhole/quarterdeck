@@ -11,9 +11,10 @@ import { createTestTaskSessionSummary } from "../../utilities/task-session-facto
 describe("shouldResumeSessionOnStartup", () => {
 	it("resumes interrupted sessions", () => {
 		const summary = createTestTaskSessionSummary({
-			state: "interrupted",
+			state: "awaiting_review",
 			reviewReason: "interrupted",
 			pid: null,
+			startupRecoveryRequired: true,
 		});
 
 		expect(shouldResumeSessionOnStartup(summary)).toBe(true);
@@ -36,6 +37,24 @@ describe("shouldResumeSessionOnStartup", () => {
 			reviewReason: "attention",
 			pid: 12345,
 			resumeSessionId: "session-id",
+			outstandingInteraction: {
+				provider: "claude",
+				kind: "question",
+				status: "waiting",
+				requestEventName: "PreToolUse",
+				openedAt: 1,
+				updatedAt: 1,
+				responseSubmittedAt: null,
+				responseKind: null,
+				sessionInstanceId: "process-1",
+				providerSessionId: "session-id",
+				turnId: null,
+				promptId: null,
+				toolUseId: "tool-1",
+				elicitationId: null,
+				providerAgentId: null,
+				toolName: "AskUserQuestion",
+			},
 		});
 
 		expect(shouldResumeSessionOnStartup(summary)).toBe(true);
@@ -58,9 +77,39 @@ describe("shouldResumeSessionOnStartup", () => {
 			reviewReason: "attention",
 			pid: null,
 			resumeSessionId: "session-id",
+			outstandingInteraction: {
+				provider: "claude",
+				kind: "question",
+				status: "waiting",
+				requestEventName: "PreToolUse",
+				openedAt: 1,
+				updatedAt: 1,
+				responseSubmittedAt: null,
+				responseKind: null,
+				sessionInstanceId: "process-1",
+				providerSessionId: "session-id",
+				turnId: null,
+				promptId: null,
+				toolUseId: "tool-1",
+				elicitationId: null,
+				providerAgentId: null,
+				toolName: "AskUserQuestion",
+			},
 		});
 
 		expect(shouldResumeSessionOnStartup(summary)).toBe(true);
+	});
+
+	it("does not resume an unproven legacy attention reason", () => {
+		const summary = createTestTaskSessionSummary({
+			state: "awaiting_review",
+			reviewReason: "attention",
+			pid: null,
+			resumeSessionId: "session-id",
+			startupRecoveryRequired: true,
+		});
+
+		expect(shouldResumeSessionOnStartup(summary)).toBe(false);
 	});
 
 	it("preserves processless completed awaiting-review hook sessions", () => {

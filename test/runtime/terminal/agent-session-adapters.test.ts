@@ -6,11 +6,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildClaudeHooksSettings } from "../../../src/claude-hooks";
 import { buildCodexHooksConfig } from "../../../src/codex-hooks";
+import { _resetLoggerForTests, type RuntimeDiagnosticLogSink, setRuntimeDiagnosticLogSink } from "../../../src/core";
 import { prepareAgentLaunch } from "../../../src/terminal";
 import {
 	buildPiLifecycleExtensionSource,
 	QUARTERDECK_PI_HOOK_COMMAND_ENV,
+	QUARTERDECK_PI_TOOL_APPROVALS_ENV,
 } from "../../../src/terminal/pi-lifecycle-extension";
+import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 const buildWorktreeContextPromptMock = vi.hoisted(() => vi.fn().mockResolvedValue(""));
 vi.mock("../../../src/terminal/worktree-context.js", () => ({
@@ -32,6 +35,7 @@ const originalAwsBearerTokenBedrock = process.env.AWS_BEARER_TOKEN_BEDROCK;
 const originalAwsRegion = process.env.AWS_REGION;
 const codexSessionFlagsConfigSource =
 	process.platform === "win32" ? "C:\\<session-flags>\\config.toml" : "/<session-flags>/config.toml";
+type LogCandidate = Parameters<RuntimeDiagnosticLogSink["recordLog"]>[0];
 
 function setupTempHome(): string {
 	tempHome = mkdtempSync(join(tmpdir(), "quarterdeck-agent-adapters-"));
@@ -64,6 +68,7 @@ function getCodexConfigOverrideValues(args: string[], key: string): string[] {
 }
 
 afterEach(() => {
+	_resetLoggerForTests();
 	if (originalHome === undefined) {
 		delete process.env.HOME;
 	} else {
@@ -122,6 +127,46 @@ afterEach(() => {
 });
 
 describe("prepareAgentLaunch hook strategies", () => {
+	it("keeps launch diagnostics free of prompts, paths, arguments, binaries, and provider session ids", async () => {
+		const home = setupTempHome();
+		const cwd = join(home, "sentinel-private-worktree");
+		mkdirSync(cwd, { recursive: true });
+		const candidates: LogCandidate[] = [];
+		setRuntimeDiagnosticLogSink({ recordLog: (candidate) => candidates.push(candidate) });
+
+		for (const agentId of ["claude", "codex"] as const) {
+			await prepareAgentLaunch({
+				taskId: `task-${agentId}`,
+				agentId,
+				binary: "sentinel-private-binary",
+				args: ["--sentinel-private-argument"],
+				cwd,
+				projectPath: join(home, "sentinel-private-project"),
+				prompt: "sentinel-private-prompt",
+				resumeConversation: true,
+				resumeSessionId: "sentinel-private-provider-session",
+				projectId: "project-1",
+				hookSessionInstanceId: "process-1",
+			});
+		}
+
+		expect(JSON.stringify(candidates)).not.toContain("sentinel-private");
+		expect(candidates).toContainEqual(
+			expect.objectContaining({
+				tag: "agent-launch",
+				message: "codex adapter prepared launch",
+				data: expect.objectContaining({ hasResumeSessionId: true, codexArgCount: expect.any(Number) }),
+			}),
+		);
+		expect(candidates).toContainEqual(
+			expect.objectContaining({
+				tag: "agent-launch",
+				message: "claude adapter prepared launch",
+				data: expect.objectContaining({ resumeConversation: true, argCount: expect.any(Number) }),
+			}),
+		);
+	});
+
 	it("launches codex directly without implicitly writing hook files", async () => {
 		const home = setupTempHome();
 		const repoPath = join(home, "repo");
@@ -144,6 +189,68 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.detectOutputTransition).toEqual(expect.any(Function));
 		expect(launch.shouldInspectOutputForTransition).toEqual(expect.any(Function));
 		expect(launch.resetOutputTransitionDetection).toEqual(expect.any(Function));
+		expect(
+			launch.shouldInspectOutputForTransition?.(
+				createTestTaskSessionSummary({ state: "running", agentId: "codex" }),
+			),
+		).toBe(true);
+		expect(
+			launch.shouldInspectOutputForTransition?.(
+				createTestTaskSessionSummary({
+					state: "awaiting_review",
+					agentId: "codex",
+					outstandingInteraction: {
+						provider: "codex",
+						kind: "permission",
+						status: "waiting",
+						requestEventName: "PermissionRequest",
+						openedAt: 100,
+						updatedAt: 100,
+						responseSubmittedAt: null,
+						responseKind: null,
+						sessionInstanceId: "process-1",
+						providerSessionId: "session-1",
+						turnId: "turn-1",
+						promptId: null,
+						toolUseId: "tool-1",
+						elicitationId: null,
+						providerAgentId: null,
+						toolName: "shell",
+					},
+				}),
+			),
+		).toBe(true);
+		expect(
+			launch.shouldInspectOutputForTransition?.(
+				createTestTaskSessionSummary({
+					state: "awaiting_review",
+					agentId: "codex",
+					outstandingInteraction: {
+						provider: "codex",
+						kind: "permission",
+						status: "response_submitted",
+						requestEventName: "RenderedApprovalOverlay",
+						openedAt: 100,
+						updatedAt: 110,
+						responseSubmittedAt: 110,
+						responseKind: "cancel",
+						sessionInstanceId: "process-1",
+						providerSessionId: null,
+						turnId: null,
+						promptId: null,
+						toolUseId: null,
+						elicitationId: null,
+						providerAgentId: null,
+						toolName: null,
+					},
+				}),
+			),
+		).toBe(true);
+		expect(
+			launch.shouldInspectOutputForTransition?.(
+				createTestTaskSessionSummary({ state: "awaiting_review", agentId: "codex" }),
+			),
+		).toBe(false);
 		expect(launch.args.slice(0, 2)).toEqual(["--enable", "hooks"]);
 		const hookOverrideArgs = launch.args.slice(2);
 		expect(hookOverrideArgs.length).toBe(Object.keys(buildCodexHooksConfig()).length * 2 + 4);
@@ -190,7 +297,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			taskId: "task-codex-auto-review",
 			agentId: "codex",
 			binary: "codex",
-			args: ["-c", 'approvals_reviewer="user"', "resume", "session-123"],
+			args: ["--yolo", "-c", 'approvals_reviewer="user"', "resume", "session-123"],
 			cwd: "/tmp",
 			prompt: "",
 			projectId: "project-1",
@@ -199,6 +306,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 
 		expect(launch.args.filter((arg) => arg === "--approve-for-me")).toHaveLength(1);
 		expect(launch.args.indexOf("--approve-for-me")).toBeLessThan(launch.args.indexOf("resume"));
+		expect(launch.args).not.toContain("--yolo");
 		expect(getCodexConfigOverrideValues(launch.args, "approvals_reviewer")).toEqual([]);
 		expect(getCodexConfigOverrideValues(launch.args, "hooks.PermissionRequest")[0]).toContain("to_review");
 		expect(launch.args.join("\n")).toContain(
@@ -237,13 +345,72 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.args).not.toContain("--approve-for-me");
 	});
 
+	it("dangerously bypasses Codex approvals and sandboxing before resume and removes reviewer overrides", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-dangerously-bypass",
+			agentId: "codex",
+			binary: "codex",
+			args: ["--approve-for-me", "--not-so-yolo", "-c", 'approvals_reviewer="user"', "resume", "session-123"],
+			cwd: "/tmp",
+			prompt: "",
+			codexApprovalsReviewer: "dangerously_bypass",
+		});
+
+		expect(launch.args.filter((arg) => arg === "--dangerously-bypass-approvals-and-sandbox")).toHaveLength(1);
+		expect(launch.args.indexOf("--dangerously-bypass-approvals-and-sandbox")).toBeLessThan(
+			launch.args.indexOf("resume"),
+		);
+		expect(launch.args).not.toContain("--approve-for-me");
+		expect(launch.args).not.toContain("--not-so-yolo");
+		expect(getCodexConfigOverrideValues(launch.args, "approvals_reviewer")).toEqual([]);
+	});
+
+	it("does not duplicate the explicit Codex dangerous bypass option", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-dangerously-bypass-explicit",
+			agentId: "codex",
+			binary: "codex",
+			args: ["--dangerously-bypass-approvals-and-sandbox"],
+			cwd: "/tmp",
+			prompt: "",
+			codexApprovalsReviewer: "dangerously_bypass",
+		});
+
+		expect(launch.args.filter((arg) => arg === "--dangerously-bypass-approvals-and-sandbox")).toHaveLength(1);
+	});
+
+	it("recognizes the explicit Codex --yolo compatibility alias", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-dangerously-bypass-alias",
+			agentId: "codex",
+			binary: "codex",
+			args: ["--yolo"],
+			cwd: "/tmp",
+			prompt: "",
+			codexApprovalsReviewer: "dangerously_bypass",
+		});
+
+		expect(launch.args).toContain("--yolo");
+		expect(launch.args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
+	});
+
 	it("forces human review when Ask me is selected", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
 			taskId: "task-codex-user-review",
 			agentId: "codex",
 			binary: "codex",
-			args: ["--approve-for-me", "--not-so-yolo", "-c", 'approvals_reviewer="auto_review"'],
+			args: [
+				"--approve-for-me",
+				"--not-so-yolo",
+				"--dangerously-bypass-approvals-and-sandbox",
+				"--yolo",
+				"-c",
+				'approvals_reviewer="auto_review"',
+			],
 			cwd: "/tmp",
 			prompt: "",
 			codexApprovalsReviewer: "user",
@@ -251,6 +418,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 
 		expect(launch.args).not.toContain("--approve-for-me");
 		expect(launch.args).not.toContain("--not-so-yolo");
+		expect(launch.args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
+		expect(launch.args).not.toContain("--yolo");
 		expect(getCodexConfigOverrideValues(launch.args, "approvals_reviewer")).toEqual(['"user"']);
 	});
 
@@ -465,10 +634,11 @@ describe("prepareAgentLaunch hook strategies", () => {
 
 	it("registers reliable Claude input-wait and resolution hooks", () => {
 		const settings = buildClaudeHooksSettings();
-		expect(settings.hooks.PreToolUse[0]?.matcher).toBe("AskUserQuestion|ExitPlanMode");
-		expect(settings.hooks.PreToolUse[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_review'");
-		expect(settings.hooks.Notification[0]?.matcher).toBe("permission_prompt|elicitation_dialog|agent_needs_input");
-		expect(settings.hooks.Notification[1]?.matcher).toBe("*");
+		expect(settings.hooks.PreToolUse[0]?.matcher).toBe("*");
+		expect(settings.hooks.PreToolUse[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_in_progress'");
+		expect(settings.hooks.Notification).toHaveLength(1);
+		expect(settings.hooks.Notification[0]?.matcher).toBe("*");
+		expect(settings.hooks.Notification[0]?.hooks[0]?.command).toContain("'notify' '--event' 'activity'");
 		expect(settings.hooks.Elicitation[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_review'");
 		expect(settings.hooks.ElicitationResult[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_in_progress'");
 		expect(settings.hooks.Stop[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_review'");
@@ -710,9 +880,11 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.env.QUARTERDECK_HOOK_PROJECT_ID).toBe("project-1");
 		const hookCommand = JSON.parse(launch.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] ?? "[]") as string[];
 		expect(hookCommand).toEqual(expect.arrayContaining(["hooks", "notify"]));
+		expect(launch.env[QUARTERDECK_PI_TOOL_APPROVALS_ENV]).toBe("enabled");
 		const extensionSource = readFileSync(extensionPath, "utf8");
 		expect(extensionSource).toBe(buildPiLifecycleExtensionSource());
 		expect(extensionSource).toContain('pi.on("agent_end"');
+		expect(extensionSource).toContain('pi.on("agent_settled"');
 		expect(extensionSource).toContain('pi.on("input"');
 		expect(extensionSource).toContain('pi.on("tool_call"');
 		expect(extensionSource).toContain("PermissionRequest");
@@ -720,6 +892,22 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(extensionSource).toContain("detached: !waitForExit");
 		expect(extensionSource).toContain(QUARTERDECK_PI_HOOK_COMMAND_ENV);
 		expect(extensionSource).not.toContain("\\${");
+	});
+
+	it("disables Pi tool approvals through the launch environment", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-unrestricted-tools",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "Run the checks",
+			projectId: "project-1",
+			piToolApprovalsEnabled: false,
+		});
+
+		expect(launch.env[QUARTERDECK_PI_TOOL_APPROVALS_ENV]).toBe("disabled");
 	});
 
 	it("uses a stored Pi session id for resume when available", async () => {

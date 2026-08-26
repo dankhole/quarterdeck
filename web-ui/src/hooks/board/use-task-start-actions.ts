@@ -8,7 +8,7 @@ import type { BoardCard, BoardData } from "@/types";
 
 interface UseTaskStartActionsInput {
 	board: BoardData;
-	setBoard: Dispatch<SetStateAction<BoardData>>;
+	presentLifecycleBoard: Dispatch<SetStateAction<BoardData>>;
 	prepareCreateTaskForLifecycle: (options?: { keepDialogOpen?: boolean }) => PreparedTaskCreation | null;
 	prepareCreateTasksForLifecycle: (
 		prompts: string[],
@@ -78,7 +78,7 @@ function createAndStartDraft(task: BoardCard): Extract<TaskLifecycleCommandDraft
 			prompt: task.prompt,
 			images: task.images,
 			baseRef: task.baseRef,
-			agentId: task.agentId === "claude" || task.agentId === "codex" ? task.agentId : undefined,
+			agentId: task.agentId,
 			useWorktree: task.useWorktree,
 			branch: task.branch ?? undefined,
 			pinned: task.pinned,
@@ -89,7 +89,7 @@ function createAndStartDraft(task: BoardCard): Extract<TaskLifecycleCommandDraft
 
 export function useTaskStartActions({
 	board,
-	setBoard,
+	presentLifecycleBoard,
 	prepareCreateTaskForLifecycle,
 	prepareCreateTasksForLifecycle,
 	executeTaskLifecycle,
@@ -148,11 +148,11 @@ export function useTaskStartActions({
 			if (!prepared) {
 				return null;
 			}
-			setBoard((current) => presentCreatedTaskInProgress(current, prepared.task));
+			presentLifecycleBoard((current) => presentCreatedTaskInProgress(current, prepared.task));
 			void executeTaskLifecycle(createAndStartDraft(prepared.task));
 			return prepared.task.id;
 		},
-		[executeTaskLifecycle, prepareCreateTaskForLifecycle, setBoard],
+		[executeTaskLifecycle, prepareCreateTaskForLifecycle, presentLifecycleBoard],
 	);
 
 	const handleCreateAndStartTasks = useCallback(
@@ -166,13 +166,13 @@ export function useTaskStartActions({
 				// batch in order so every operation begins from the state returned by
 				// the previous one instead of racing on a shared expected revision.
 				for (const { task } of prepared) {
-					setBoard((current) => presentCreatedTaskInProgress(current, task));
+					presentLifecycleBoard((current) => presentCreatedTaskInProgress(current, task));
 					await executeTaskLifecycle(createAndStartDraft(task));
 				}
 			})();
 			return prepared.map(({ task }) => task.id);
 		},
-		[executeTaskLifecycle, prepareCreateTasksForLifecycle, setBoard],
+		[executeTaskLifecycle, prepareCreateTasksForLifecycle, presentLifecycleBoard],
 	);
 
 	const handleCreateStartAndOpenTask = useCallback(
@@ -181,14 +181,14 @@ export function useTaskStartActions({
 			if (!prepared) {
 				return null;
 			}
-			setBoard((current) => presentCreatedTaskInProgress(current, prepared.task));
+			presentLifecycleBoard((current) => presentCreatedTaskInProgress(current, prepared.task));
 			void executeTaskLifecycle(createAndStartDraft(prepared.task));
 			if (!options?.keepDialogOpen) {
 				setSelectedTaskId(prepared.task.id);
 			}
 			return prepared.task.id;
 		},
-		[executeTaskLifecycle, prepareCreateTaskForLifecycle, setBoard, setSelectedTaskId],
+		[executeTaskLifecycle, prepareCreateTaskForLifecycle, presentLifecycleBoard, setSelectedTaskId],
 	);
 
 	return {

@@ -3,7 +3,16 @@ import { type AgentLabScenario, AgentLabScenarioSchema } from "./types";
 export type FakeAgentCommand =
 	| { kind: "help" }
 	| { kind: "needs-input"; message: string }
+	| { kind: "needs-input-auto"; message: string }
 	| { kind: "approval-overlay" }
+	| { kind: "turn-interrupted" }
+	| { kind: "new-turn"; message: string }
+	| { kind: "redraw-interruption-history" }
+	| { kind: "local-action"; message: string }
+	| { kind: "compact" }
+	| { kind: "queued-follow-up"; message: string }
+	| { kind: "stale-run" }
+	| { kind: "fail-next-resume" }
 	| { kind: "review"; message: string }
 	| { kind: "working"; message: string }
 	| { kind: "write"; relativePath: string; contents: string }
@@ -51,11 +60,38 @@ export function parseFakeAgentCommand(rawInput: string): FakeAgentCommand {
 	if (input === "/alt-off") {
 		return { kind: "alternate-screen", enabled: false };
 	}
+	if (input.startsWith("/needs-input-auto")) {
+		return { kind: "needs-input-auto", message: restAfterCommand(input) || "Provider-approved tool" };
+	}
 	if (input.startsWith("/needs-input")) {
 		return { kind: "needs-input", message: restAfterCommand(input) || "Waiting for approval" };
 	}
 	if (input === "/approval-overlay") {
 		return { kind: "approval-overlay" };
+	}
+	if (input === "/turn-interrupted") {
+		return { kind: "turn-interrupted" };
+	}
+	if (input.startsWith("/new-turn")) {
+		return { kind: "new-turn", message: restAfterCommand(input) || "Follow-up work started" };
+	}
+	if (input === "/redraw-interruption-history") {
+		return { kind: "redraw-interruption-history" };
+	}
+	if (input.startsWith("/local-action")) {
+		return { kind: "local-action", message: restAfterCommand(input) || "TUI setting changed" };
+	}
+	if (input === "/compact") {
+		return { kind: "compact" };
+	}
+	if (input.startsWith("/queued-follow-up")) {
+		return { kind: "queued-follow-up", message: restAfterCommand(input) || "Queued follow-up started" };
+	}
+	if (input === "/stale-run") {
+		return { kind: "stale-run" };
+	}
+	if (input === "/fail-next-resume") {
+		return { kind: "fail-next-resume" };
 	}
 	if (input.startsWith("/review")) {
 		return { kind: "review", message: restAfterCommand(input) || "Agent-lab task is ready for review" };

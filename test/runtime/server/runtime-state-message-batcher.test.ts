@@ -3,15 +3,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DiagnosticRecordEnvelope, RuntimeTaskSessionSummary } from "../../../src/core";
 import { RuntimeStateMessageBatcher } from "../../../src/server/runtime-state-message-batcher";
 import type { TerminalSessionManager } from "../../../src/terminal";
-import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
+import {
+	createTestTaskNativeWorkEvidence,
+	createTestTaskOutstandingInteraction,
+	createTestTaskSessionSummary,
+} from "../../utilities/task-session-factory";
 
 function createSummary(taskId: string, updatedAt: number): RuntimeTaskSessionSummary {
 	return createTestTaskSessionSummary({
 		taskId,
 		state: "running",
 		agentId: "codex",
+		sessionInstanceId: "process-1",
 		sessionLaunchPath: "/tmp/worktree",
 		pid: 1234,
+		nativeWorkEvidence: createTestTaskNativeWorkEvidence(),
 		startedAt: 1,
 		updatedAt,
 		lastOutputAt: updatedAt,
@@ -79,6 +85,7 @@ describe("RuntimeStateMessageBatcher", () => {
 			hasDiagnosticSubscribers: () => true,
 			onTaskSessionBatch,
 			onTaskNotificationBatch,
+			onTasksReadyForReview: vi.fn(),
 			onProjectsRefreshRequested,
 			onDiagnosticRecordBatch: vi.fn(),
 		});
@@ -86,21 +93,18 @@ describe("RuntimeStateMessageBatcher", () => {
 		const terminal = createTerminalManagerStub();
 		batcher.trackTerminalManager("project-1", terminal.manager);
 
-		terminal.emitSummary(createSummary("task-1", 1));
-		terminal.emitSummary(createSummary("task-1", 2));
-		terminal.emitSummary(createSummary("task-2", 3));
+		const firstTask = createSummary("task-1", 1);
+		const latestTask = createSummary("task-1", 2);
+		const secondTask = createSummary("task-2", 3);
+		terminal.emitSummary(firstTask);
+		terminal.emitSummary(latestTask);
+		terminal.emitSummary(secondTask);
 
 		await vi.advanceTimersByTimeAsync(150);
 
 		expect(onTaskSessionBatch).toHaveBeenCalledOnce();
-		expect(onTaskSessionBatch).toHaveBeenCalledWith("project-1", [
-			createSummary("task-1", 2),
-			createSummary("task-2", 3),
-		]);
-		expect(onTaskNotificationBatch).toHaveBeenCalledWith("project-1", [
-			createSummary("task-1", 2),
-			createSummary("task-2", 3),
-		]);
+		expect(onTaskSessionBatch).toHaveBeenCalledWith("project-1", [latestTask, secondTask]);
+		expect(onTaskNotificationBatch).toHaveBeenCalledWith("project-1", [latestTask, secondTask]);
 		expect(onProjectsRefreshRequested).toHaveBeenCalledWith("project-1");
 	});
 
@@ -113,6 +117,7 @@ describe("RuntimeStateMessageBatcher", () => {
 			hasDiagnosticSubscribers: () => true,
 			onTaskSessionBatch,
 			onTaskNotificationBatch,
+			onTasksReadyForReview: vi.fn(),
 			onProjectsRefreshRequested,
 			onDiagnosticRecordBatch: vi.fn(),
 		});
@@ -138,7 +143,7 @@ describe("RuntimeStateMessageBatcher", () => {
 		expect(onProjectsRefreshRequested).not.toHaveBeenCalled();
 	});
 
-	it("updates notification memory when hook activity changes the semantic indicator", async () => {
+	it("updates notifications and pills when a durable interaction changes the semantic indicator", async () => {
 		const initial = createTestTaskSessionSummary({
 			...createSummary("task-1", 1),
 			state: "awaiting_review",
@@ -149,11 +154,13 @@ describe("RuntimeStateMessageBatcher", () => {
 			},
 		});
 		const onTaskNotificationBatch = vi.fn();
+		const onTasksReadyForReview = vi.fn();
 		const onProjectsRefreshRequested = vi.fn();
 		const batcher = new RuntimeStateMessageBatcher({
 			hasDiagnosticSubscribers: () => true,
 			onTaskSessionBatch: vi.fn(),
 			onTaskNotificationBatch,
+			onTasksReadyForReview,
 			onProjectsRefreshRequested,
 			onDiagnosticRecordBatch: vi.fn(),
 		});
@@ -163,6 +170,11 @@ describe("RuntimeStateMessageBatcher", () => {
 		const permissionUpdate = createTestTaskSessionSummary({
 			...initial,
 			updatedAt: 2,
+			outstandingInteraction: createTestTaskOutstandingInteraction({
+				provider: "codex",
+				kind: "permission",
+				requestEventName: "PermissionRequest",
+			}),
 			latestHookActivity: {
 				activityText: "Waiting for approval",
 				hookEventName: "PermissionRequest",
@@ -173,17 +185,20 @@ describe("RuntimeStateMessageBatcher", () => {
 		await vi.advanceTimersByTimeAsync(150);
 
 		expect(onTaskNotificationBatch).toHaveBeenCalledWith("project-1", [permissionUpdate]);
-		expect(onProjectsRefreshRequested).not.toHaveBeenCalled();
+		expect(onTasksReadyForReview).not.toHaveBeenCalled();
+		expect(onProjectsRefreshRequested).toHaveBeenCalledWith("project-1");
 	});
 
 	it("refreshes project counts when a session crosses the awaiting-review boundary", async () => {
 		const initial = createSummary("task-1", 1);
 		const onTaskNotificationBatch = vi.fn();
+		const onTasksReadyForReview = vi.fn();
 		const onProjectsRefreshRequested = vi.fn();
 		const batcher = new RuntimeStateMessageBatcher({
 			hasDiagnosticSubscribers: () => true,
 			onTaskSessionBatch: vi.fn(),
 			onTaskNotificationBatch,
+			onTasksReadyForReview,
 			onProjectsRefreshRequested,
 			onDiagnosticRecordBatch: vi.fn(),
 		});
@@ -201,8 +216,75 @@ describe("RuntimeStateMessageBatcher", () => {
 		await vi.advanceTimersByTimeAsync(150);
 
 		expect(onTaskNotificationBatch).toHaveBeenCalledWith("project-1", [reviewUpdate]);
+		expect(onTasksReadyForReview).toHaveBeenCalledWith("project-1", ["task-1"]);
 		expect(onProjectsRefreshRequested).toHaveBeenCalledWith("project-1");
 	});
+
+	it("does not emit a stale review-ready event when the task resumes within the same batch", async () => {
+		const initial = createSummary("task-1", 1);
+		const onTaskSessionBatch = vi.fn();
+		const onTasksReadyForReview = vi.fn();
+		const batcher = new RuntimeStateMessageBatcher({
+			hasDiagnosticSubscribers: () => true,
+			onTaskSessionBatch,
+			onTaskNotificationBatch: vi.fn(),
+			onTasksReadyForReview,
+			onProjectsRefreshRequested: vi.fn(),
+			onDiagnosticRecordBatch: vi.fn(),
+		});
+		const terminal = createTerminalManagerStub([initial]);
+		batcher.trackTerminalManager("project-1", terminal.manager);
+
+		terminal.emitSummary(
+			createTestTaskSessionSummary({
+				...initial,
+				state: "awaiting_review",
+				reviewReason: "hook",
+				updatedAt: 2,
+			}),
+		);
+		const resumed = createTestTaskSessionSummary({
+			...initial,
+			updatedAt: 3,
+		});
+		terminal.emitSummary(resumed);
+
+		await vi.advanceTimersByTimeAsync(150);
+
+		expect(onTaskSessionBatch).toHaveBeenCalledWith("project-1", [resumed]);
+		expect(onTasksReadyForReview).not.toHaveBeenCalled();
+	});
+
+	it.each(["error", "interrupted"] as const)(
+		"refreshes project counts when a running session becomes Review/%s",
+		async (reviewReason) => {
+			const initial = createSummary("task-1", 1);
+			const onProjectsRefreshRequested = vi.fn();
+			const batcher = new RuntimeStateMessageBatcher({
+				hasDiagnosticSubscribers: () => true,
+				onTaskSessionBatch: vi.fn(),
+				onTaskNotificationBatch: vi.fn(),
+				onTasksReadyForReview: vi.fn(),
+				onProjectsRefreshRequested,
+				onDiagnosticRecordBatch: vi.fn(),
+			});
+			const terminal = createTerminalManagerStub([initial]);
+			batcher.trackTerminalManager("project-1", terminal.manager);
+
+			terminal.emitSummary(
+				createTestTaskSessionSummary({
+					...initial,
+					state: "awaiting_review",
+					reviewReason,
+					nativeWorkEvidence: null,
+					updatedAt: 2,
+				}),
+			);
+			await vi.advanceTimersByTimeAsync(150);
+
+			expect(onProjectsRefreshRequested).toHaveBeenCalledWith("project-1");
+		},
+	);
 
 	it("batches canonical diagnostic records only while clients are connected", async () => {
 		let hasClients = false;
@@ -211,6 +293,7 @@ describe("RuntimeStateMessageBatcher", () => {
 			hasDiagnosticSubscribers: () => hasClients,
 			onTaskSessionBatch: vi.fn(),
 			onTaskNotificationBatch: vi.fn(),
+			onTasksReadyForReview: vi.fn(),
 			onProjectsRefreshRequested: vi.fn(),
 			onDiagnosticRecordBatch,
 		});
@@ -234,6 +317,7 @@ describe("RuntimeStateMessageBatcher", () => {
 			hasDiagnosticSubscribers: () => true,
 			onTaskSessionBatch: vi.fn(),
 			onTaskNotificationBatch: vi.fn(),
+			onTasksReadyForReview: vi.fn(),
 			onProjectsRefreshRequested: vi.fn(),
 			onDiagnosticRecordBatch,
 		});
@@ -263,6 +347,7 @@ describe("RuntimeStateMessageBatcher", () => {
 			hasDiagnosticSubscribers: () => true,
 			onTaskSessionBatch,
 			onTaskNotificationBatch,
+			onTasksReadyForReview: vi.fn(),
 			onProjectsRefreshRequested,
 			onDiagnosticRecordBatch: vi.fn(),
 		});

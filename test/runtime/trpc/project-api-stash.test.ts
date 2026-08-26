@@ -140,7 +140,6 @@ vi.mock("../../../src/workdir/read-workdir-file.js", () => ({
 }));
 
 import { TaskResourceOperationCoordinator } from "../../../src/core";
-import { AutomaticTitleGenerationCoordinator } from "../../../src/title";
 import { createProjectApi } from "../../../src/trpc";
 
 function createProjectDeps(overrides: Record<string, unknown> = {}) {
@@ -163,7 +162,6 @@ function createProjectDeps(overrides: Record<string, unknown> = {}) {
 			buildProjectStateSnapshot: vi.fn(),
 		},
 		taskResourceOperations: new TaskResourceOperationCoordinator(),
-		automaticTitleGeneration: new AutomaticTitleGenerationCoordinator(),
 		...overrides,
 	};
 }

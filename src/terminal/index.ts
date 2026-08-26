@@ -15,6 +15,7 @@ export {
 	hasCodexWorkspaceTrustPrompt,
 	shouldAutoConfirmCodexWorkspaceTrust,
 } from "./codex-workspace-trust";
+export { shouldRetainHookEventOrderObservation } from "./hook-event-order";
 export {
 	createHookRuntimeEnv,
 	type HookRuntimeContext,
@@ -25,6 +26,7 @@ export {
 } from "./hook-runtime-context";
 export { killOrphanedAgentProcesses } from "./orphan-cleanup";
 export { stripAnsi } from "./output-utils";
+export { getPiLifecycleExtensionFingerprint } from "./pi-lifecycle-extension";
 export {
 	assertPtyRuntimeAvailable,
 	classifyPtySpawnFailure,
@@ -60,7 +62,6 @@ export {
 } from "./session-manager-types";
 export {
 	checkDeadProcess,
-	checkInterruptedNoRestart,
 	checkMissingSessionLaunchPath,
 	checkProcesslessActiveSession,
 	checkStaleHookActivity,
@@ -73,17 +74,17 @@ export {
 } from "./session-reconciliation";
 export {
 	appendLegacySemanticStateWarning,
+	deriveSessionResumeSemanticState,
 	deriveStartupRecoveryPolicy,
 	LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
 	removeLegacySemanticStateWarning,
+	type SessionResumeSemanticState,
 	type StartupRecoveryPolicy,
 	type StartupRecoveryReviewReason,
 	type StartupRecoveryReviewState,
 } from "./session-startup-recovery-policy";
 export {
-	canReturnToRunning,
 	type HookSessionReviewReason,
-	type HookSessionTransitionEvent,
 	reduceSessionTransition,
 	type SessionTransitionEvent,
 	type SessionTransitionResult,

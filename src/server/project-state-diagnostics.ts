@@ -39,7 +39,7 @@ export class ProjectStateDiagnosticTracker {
 		);
 		const sessionColumnDivergences: ProjectStateSessionColumnDivergence[] = [];
 		for (const summary of Object.values(state.sessions)) {
-			const expectedColumnId = getRuntimeSessionWorkColumn(summary.state);
+			const expectedColumnId = getRuntimeSessionWorkColumn(summary);
 			const actualColumnId = columnByTaskId.get(summary.taskId);
 			if (
 				expectedColumnId &&

@@ -4,6 +4,7 @@ coverage
 .DS_Store
 test-results
 .agent-lab-results
+.playwright-cli
 playwright-report
 .worktrees
 .sentry-artifacts

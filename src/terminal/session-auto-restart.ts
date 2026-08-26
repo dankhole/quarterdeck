@@ -14,7 +14,7 @@
 
 import type { RuntimeTaskSessionState, RuntimeTaskSessionSummary } from "../core";
 import type { ProcessEntry, StartTaskSessionRequest } from "./session-manager-types";
-import { cloneStartTaskSessionRequest } from "./session-manager-types";
+import { cloneStartTaskSessionRequest, isTaskSessionStartCancelledError } from "./session-manager-types";
 import { cloneSummary } from "./session-summary-store";
 
 export const AUTO_RESTART_WINDOW_MS = 5_000;
@@ -70,7 +70,8 @@ export interface AutoRestartCallbacks {
 }
 
 export interface ScheduleAutoRestartOptions {
-	skipContinueAttempt?: boolean;
+	/** Exact provider session observed by the process that just exited. */
+	resumeSessionId?: string | null;
 }
 
 /**
@@ -78,10 +79,9 @@ export interface ScheduleAutoRestartOptions {
  * restarts via `entry.pendingAutoRestart`. On failure, surfaces the error as
  * a warning message and terminal output to listeners.
  *
- * When `skipContinueAttempt` is true, the restart goes straight to a fresh
- * session without asking the agent to resume. Used when resume already failed
- * at the process level (e.g. server-restart resume where the conversation no
- * longer exists).
+ * Supported providers recover only against an exact stored identity. A failed
+ * targeted resume remains an explicit error; this path never replays the
+ * original prompt in a fresh conversation.
  */
 export function scheduleAutoRestart(
 	entry: ProcessEntry,
@@ -95,27 +95,38 @@ export function scheduleAutoRestart(
 	if (!restartRequest || restartRequest.kind !== "task") {
 		return;
 	}
-	let pendingAutoRestart: Promise<void> | null = null;
-	pendingAutoRestart = (async () => {
+	const runAutoRestart = async (): Promise<void> => {
 		try {
 			const request = cloneStartTaskSessionRequest(restartRequest.request);
-			// Resume conversation so the agent has context. awaitReview=true
-			// because resume opens the prompt — it doesn't resume active work. If
-			// resume fails before the process stays interactive, fall back to a
-			// fresh start (still in review).
-			request.resumeConversation = !options?.skipContinueAttempt;
-			request.awaitReview = true;
-			if (options?.skipContinueAttempt) {
-				await callbacks.startTaskSession(request);
-			} else {
-				try {
-					await callbacks.startTaskSession(request);
-				} catch {
-					request.resumeConversation = false;
-					await callbacks.startTaskSession(request);
-				}
+			const exactResumeSessionId = options?.resumeSessionId?.trim() || request.resumeSessionId?.trim() || null;
+			if (
+				(request.agentId === "codex" || request.agentId === "claude" || request.agentId === "pi") &&
+				!exactResumeSessionId
+			) {
+				throw new Error("Automatic recovery requires the exact provider session ID; no replacement was started.");
 			}
+			// Resume opens the provider's interaction surface but does not prove work
+			// resumed, so the replacement remains in Review until a native hook.
+			request.resumeConversation = true;
+			request.resumeSessionId = exactResumeSessionId ?? undefined;
+			// The original launch request is retained only as process configuration.
+			// A crash leaves the prior turn outcome ambiguous, so never submit its
+			// prompt or images again while replacing the provider process.
+			request.prompt = "";
+			request.images = undefined;
+			request.awaitReview = true;
+			request.resumeSemanticState = {
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				lastHookAt: null,
+				latestHookActivity: null,
+				outstandingInteraction: null,
+			};
+			await callbacks.startTaskSession(request);
 		} catch (error) {
+			if (isTaskSessionStartCancelledError(error)) {
+				return;
+			}
 			const message = error instanceof Error ? error.message : String(error);
 			// Transition to review immediately instead of waiting for the
 			// reconciliation sweep to catch the orphaned interrupted state.
@@ -130,11 +141,19 @@ export function scheduleAutoRestart(
 					listener.onState?.(cloneSummary(summary));
 				}
 			}
-		} finally {
+		}
+	};
+	// Defer execution by one microtask so entry.pendingAutoRestart owns the
+	// operation before any synchronous validation failure can reach cleanup.
+	// An async IIFE that throws before its first await runs its finally block
+	// before the caller assigns the returned promise, leaving a rejected promise
+	// permanently recorded as pending.
+	const pendingAutoRestart = Promise.resolve()
+		.then(runAutoRestart)
+		.finally(() => {
 			if (entry.pendingAutoRestart === pendingAutoRestart) {
 				entry.pendingAutoRestart = null;
 			}
-		}
-	})();
+		});
 	entry.pendingAutoRestart = pendingAutoRestart;
 }

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 
 import type { RuntimeHostSimulationConfig } from "../../src/server/runtime-host-simulation";
+import { AGENT_LAB_REAL_CODEX_CONFIG_OVERRIDES } from "./real-codex";
 import type { AgentLabLaunchConfig } from "./types";
 
 const execFileAsync = promisify(execFile);
@@ -49,18 +50,158 @@ async function runGit(projectPath: string, args: string[]): Promise<void> {
 	});
 }
 
-async function writeFakeCodexLaunchers(fakeBinPath: string): Promise<void> {
-	const shellLauncherPath = join(fakeBinPath, "codex");
-	const windowsLauncherPath = join(fakeBinPath, "codex.cmd");
+async function writeFakeAgentLaunchers(fakeBinPath: string, provider: "codex" | "pi"): Promise<void> {
+	const shellLauncherPath = join(fakeBinPath, provider);
+	const windowsLauncherPath = join(fakeBinPath, `${provider}.cmd`);
 	await writeFile(
 		shellLauncherPath,
-		'#!/bin/sh\nexec "$QUARTERDECK_AGENT_LAB_NODE" "$QUARTERDECK_AGENT_LAB_TSX_CLI" "$QUARTERDECK_AGENT_LAB_FAKE_CODEX" "$@"\n',
+		`#!/bin/sh\nQUARTERDECK_AGENT_LAB_PROVIDER=${provider} exec "$QUARTERDECK_AGENT_LAB_NODE" "$QUARTERDECK_AGENT_LAB_TSX_CLI" "$QUARTERDECK_AGENT_LAB_FAKE_CODEX" "$@"\n`,
 		"utf8",
 	);
 	await chmod(shellLauncherPath, 0o755);
 	await writeFile(
 		windowsLauncherPath,
-		'@echo off\r\n"%QUARTERDECK_AGENT_LAB_NODE%" "%QUARTERDECK_AGENT_LAB_TSX_CLI%" "%QUARTERDECK_AGENT_LAB_FAKE_CODEX%" %*\r\n',
+		`@echo off\r\nset "QUARTERDECK_AGENT_LAB_PROVIDER=${provider}"\r\n"%QUARTERDECK_AGENT_LAB_NODE%" "%QUARTERDECK_AGENT_LAB_TSX_CLI%" "%QUARTERDECK_AGENT_LAB_FAKE_CODEX%" %*\r\n`,
+		"utf8",
+	);
+}
+
+export async function writeRealCodexLauncher(fakeBinPath: string): Promise<void> {
+	const shellLauncherPath = join(fakeBinPath, "codex");
+	const windowsLauncherPath = join(fakeBinPath, "codex.cmd");
+	const policyArguments = AGENT_LAB_REAL_CODEX_CONFIG_OVERRIDES.flatMap((value) => ["-c", value]);
+	const shellPolicyArguments = policyArguments.map((value) => `'${value.replaceAll("'", `'"'"'`)}'`).join(" ");
+	const windowsPolicyArguments = policyArguments.join(" ");
+	await writeFile(
+		shellLauncherPath,
+		[
+			"#!/bin/sh",
+			"set -eu",
+			'real_codex_runtime_path="$PATH"',
+			'real_codex_host_path="$QUARTERDECK_AGENT_LAB_REAL_CODEX_HOST_PATH"',
+			'real_codex_home="$QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME"',
+			'real_codex_model="$QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL"',
+			'real_codex_sandbox="$QUARTERDECK_AGENT_LAB_REAL_CODEX_SANDBOX"',
+			'real_codex_approval_policy="$QUARTERDECK_AGENT_LAB_REAL_CODEX_APPROVAL_POLICY"',
+			'real_codex_binary=$(PATH="$real_codex_host_path" command -v codex 2>/dev/null || true)',
+			'if [ -z "$real_codex_binary" ]; then echo "Agent Lab could not resolve the host Codex binary." >&2; exit 127; fi',
+			'export PATH="$real_codex_runtime_path"',
+			'export CODEX_HOME="$real_codex_home"',
+			"unset QUARTERDECK_AGENT_LAB_REAL_CODEX_HOST_PATH",
+			"unset QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME",
+			"unset QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL",
+			"unset QUARTERDECK_AGENT_LAB_REAL_CODEX_SANDBOX",
+			"unset QUARTERDECK_AGENT_LAB_REAL_CODEX_APPROVAL_POLICY",
+			`case "\${1-}" in`,
+			"  --version|-V|features)",
+			'    exec "$real_codex_binary" "$@"',
+			"    ;;",
+			"esac",
+			"has_model=0",
+			"has_sandbox=0",
+			"has_approval_policy=0",
+			'for argument in "$@"; do',
+			'  if [ "$argument" = "--" ]; then break; fi',
+			'  case "$argument" in',
+			"    -m|--model|--model=*) has_model=1 ;;",
+			"    -s|--sandbox|--sandbox=*) has_sandbox=1 ;;",
+			"    -a|--ask-for-approval|--ask-for-approval=*) has_approval_policy=1 ;;",
+			"    --approve-for-me|--not-so-yolo|--dangerously-bypass-approvals-and-sandbox|--yolo) has_sandbox=1; has_approval_policy=1 ;;",
+			"  esac",
+			"done",
+			'if [ "$has_model" -eq 0 ]; then set -- --model "$real_codex_model" "$@"; fi',
+			'if [ "$has_sandbox" -eq 0 ]; then set -- --sandbox "$real_codex_sandbox" "$@"; fi',
+			'if [ "$has_approval_policy" -eq 0 ]; then set -- --ask-for-approval "$real_codex_approval_policy" "$@"; fi',
+			`set -- ${shellPolicyArguments} "$@"`,
+			'exec "$real_codex_binary" "$@"',
+			"",
+		].join("\n"),
+		"utf8",
+	);
+	await chmod(shellLauncherPath, 0o755);
+	await writeFile(
+		windowsLauncherPath,
+		[
+			"@echo off",
+			"setlocal",
+			'set "QUARTERDECK_AGENT_LAB_REAL_CODEX_RUNTIME_PATH=%PATH%"',
+			'set "PATH=%QUARTERDECK_AGENT_LAB_REAL_CODEX_HOST_PATH%"',
+			'set "QUARTERDECK_AGENT_LAB_REAL_CODEX_BINARY="',
+			'for /f "delims=" %%I in (\'where codex 2^>nul\') do if not defined QUARTERDECK_AGENT_LAB_REAL_CODEX_BINARY set "QUARTERDECK_AGENT_LAB_REAL_CODEX_BINARY=%%I"',
+			"if not defined QUARTERDECK_AGENT_LAB_REAL_CODEX_BINARY (",
+			"  echo Agent Lab could not resolve the host Codex binary. 1>&2",
+			"  exit /b 127",
+			")",
+			'set "PATH=%QUARTERDECK_AGENT_LAB_REAL_CODEX_RUNTIME_PATH%"',
+			'set "CODEX_HOME=%QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME%"',
+			'if "%~1"=="--version" goto passthrough',
+			'if "%~1"=="-V" goto passthrough',
+			'if "%~1"=="features" goto passthrough',
+			'set "_QD_HAS_MODEL=0"',
+			'set "_QD_HAS_SANDBOX=0"',
+			'set "_QD_HAS_APPROVAL_POLICY=0"',
+			"call :inspect_arguments %*",
+			'set "_QD_MODEL_ARGUMENT=--model %QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL%"',
+			'if "%_QD_HAS_MODEL%"=="1" set "_QD_MODEL_ARGUMENT="',
+			'set "_QD_SANDBOX_ARGUMENT=--sandbox %QUARTERDECK_AGENT_LAB_REAL_CODEX_SANDBOX%"',
+			'if "%_QD_HAS_SANDBOX%"=="1" set "_QD_SANDBOX_ARGUMENT="',
+			'set "_QD_APPROVAL_ARGUMENT=--ask-for-approval %QUARTERDECK_AGENT_LAB_REAL_CODEX_APPROVAL_POLICY%"',
+			'if "%_QD_HAS_APPROVAL_POLICY%"=="1" set "_QD_APPROVAL_ARGUMENT="',
+			"(",
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CODEX_RUNTIME_PATH="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CODEX_HOST_PATH="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CODEX_SANDBOX="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CODEX_APPROVAL_POLICY="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CODEX_BINARY="',
+			'  set "_QD_HAS_MODEL="',
+			'  set "_QD_HAS_SANDBOX="',
+			'  set "_QD_HAS_APPROVAL_POLICY="',
+			'  set "_QD_ARGUMENT="',
+			'  set "_QD_MODEL_ARGUMENT="',
+			'  set "_QD_SANDBOX_ARGUMENT="',
+			'  set "_QD_APPROVAL_ARGUMENT="',
+			`  call "%QUARTERDECK_AGENT_LAB_REAL_CODEX_BINARY%" ${windowsPolicyArguments} %_QD_MODEL_ARGUMENT% %_QD_SANDBOX_ARGUMENT% %_QD_APPROVAL_ARGUMENT% %*`,
+			")",
+			"exit /b %errorlevel%",
+			":passthrough",
+			"(",
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CODEX_RUNTIME_PATH="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CODEX_HOST_PATH="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CODEX_SANDBOX="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CODEX_APPROVAL_POLICY="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CODEX_BINARY="',
+			'  call "%QUARTERDECK_AGENT_LAB_REAL_CODEX_BINARY%" %*',
+			")",
+			"exit /b %errorlevel%",
+			":inspect_arguments",
+			'if "%~1"=="" exit /b 0',
+			'if "%~1"=="--" exit /b 0',
+			'set "_QD_ARGUMENT=%~1"',
+			'if /I "%~1"=="-m" set "_QD_HAS_MODEL=1"',
+			'if /I "%~1"=="--model" set "_QD_HAS_MODEL=1"',
+			'if /I "%_QD_ARGUMENT:~0,8%"=="--model=" set "_QD_HAS_MODEL=1"',
+			'if /I "%~1"=="-s" set "_QD_HAS_SANDBOX=1"',
+			'if /I "%~1"=="--sandbox" set "_QD_HAS_SANDBOX=1"',
+			'if /I "%_QD_ARGUMENT:~0,10%"=="--sandbox=" set "_QD_HAS_SANDBOX=1"',
+			'if /I "%~1"=="-a" set "_QD_HAS_APPROVAL_POLICY=1"',
+			'if /I "%~1"=="--ask-for-approval" set "_QD_HAS_APPROVAL_POLICY=1"',
+			'if /I "%_QD_ARGUMENT:~0,19%"=="--ask-for-approval=" set "_QD_HAS_APPROVAL_POLICY=1"',
+			'if /I "%~1"=="--approve-for-me" set "_QD_HAS_SANDBOX=1"',
+			'if /I "%~1"=="--approve-for-me" set "_QD_HAS_APPROVAL_POLICY=1"',
+			'if /I "%~1"=="--not-so-yolo" set "_QD_HAS_SANDBOX=1"',
+			'if /I "%~1"=="--not-so-yolo" set "_QD_HAS_APPROVAL_POLICY=1"',
+			'if /I "%~1"=="--dangerously-bypass-approvals-and-sandbox" set "_QD_HAS_SANDBOX=1"',
+			'if /I "%~1"=="--dangerously-bypass-approvals-and-sandbox" set "_QD_HAS_APPROVAL_POLICY=1"',
+			'if /I "%~1"=="--yolo" set "_QD_HAS_SANDBOX=1"',
+			'if /I "%~1"=="--yolo" set "_QD_HAS_APPROVAL_POLICY=1"',
+			"shift",
+			"goto inspect_arguments",
+			"",
+		].join("\r\n"),
 		"utf8",
 	);
 }
@@ -153,7 +294,15 @@ export async function prepareAgentLabFixture(
 	await Promise.all([
 		writeFile(
 			join(statePath, "config.json"),
-			`${JSON.stringify({ selectedAgentId: "codex", logLevel: "debug" }, null, 2)}\n`,
+			`${JSON.stringify(
+				{
+					selectedAgentId: "codex",
+					logLevel: "debug",
+					...(config.agent.mode === "real-codex" ? { codexApprovalsReviewer: "user" } : {}),
+				},
+				null,
+				2,
+			)}\n`,
 			"utf8",
 		),
 		writeFile(
@@ -195,7 +344,13 @@ export async function prepareAgentLabFixture(
 			"utf8",
 		),
 	]);
-	await Promise.all([writeFakeCodexLaunchers(fakeBinPath), writeForbiddenHostLaunchers(fakeBinPath)]);
+	await Promise.all([
+		config.agent.mode === "real-codex"
+			? writeRealCodexLauncher(fakeBinPath)
+			: writeFakeAgentLaunchers(fakeBinPath, "codex"),
+		writeFakeAgentLaunchers(fakeBinPath, "pi"),
+		writeForbiddenHostLaunchers(fakeBinPath),
+	]);
 	await Promise.all([
 		seedGitRepository(projectPath, "Quarterdeck agent lab fixture"),
 		seedGitRepository(additionalProjectPath, "Quarterdeck agent lab secondary fixture"),

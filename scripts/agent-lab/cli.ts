@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync } from "node:fs";
-import { access, readdir, readFile } from "node:fs/promises";
+import { access, readdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,9 +18,20 @@ import {
 	resolveRunArtifactDir,
 	writeJsonAtomic,
 } from "./paths";
+import {
+	assertReusableRealCodexAuthentication,
+	prepareIsolatedRealCodexAgent,
+	resolveRealCodexAgent,
+} from "./real-codex";
 import { captureAgentLabSnapshot } from "./snapshot";
 import {
 	AGENT_LAB_SCHEMA_VERSION,
+	type AgentLabAgentMode,
+	AgentLabAgentModeSchema,
+	type AgentLabCodexApprovalPolicy,
+	AgentLabCodexApprovalPolicySchema,
+	type AgentLabCodexSandbox,
+	AgentLabCodexSandboxSchema,
 	type AgentLabManifest,
 	type AgentLabRuntimeRestartResult,
 	AgentLabRuntimeRestartResultSchema,
@@ -39,6 +50,11 @@ interface OutputOptions {
 interface StartOptions extends OutputOptions {
 	name: string;
 	scenario: AgentLabScenario;
+	agent: AgentLabAgentMode;
+	model?: string;
+	codexHome?: string;
+	codexSandbox?: AgentLabCodexSandbox;
+	codexApprovalPolicy?: AgentLabCodexApprovalPolicy;
 	keepTemp?: boolean;
 	runtimePort: number | null;
 	webPort: number | null;
@@ -74,6 +90,13 @@ function browserCommand(manifest: ReadableAgentLabManifest): string {
 
 function printManifestSummary(manifest: ReadableAgentLabManifest): void {
 	process.stdout.write(`Agent lab ${manifest.runId}: ${manifest.status}\n`);
+	if (manifest.schemaVersion === 4) {
+		process.stdout.write(
+			manifest.agent.mode === "real-codex"
+				? `Agent: real Codex (${manifest.agent.model}, existing CLI auth)\n`
+				: "Agent: deterministic fake\n",
+		);
+	}
 	process.stdout.write(`UI: ${manifest.projectUrl}\n`);
 	process.stdout.write(`Manifest: ${manifest.manifestPath}\n`);
 	process.stdout.write(`Artifacts: ${manifest.artifactDir}\n`);
@@ -146,14 +169,52 @@ async function resolveManifestPath(runId?: string): Promise<string> {
 }
 
 async function startAgentLab(options: StartOptions): Promise<void> {
-	const config = await createAgentLabLaunchConfig({
+	if (
+		options.agent === "fake" &&
+		(options.model || options.codexHome || options.codexSandbox || options.codexApprovalPolicy)
+	) {
+		throw new Error(
+			"--model, --codex-home, --codex-sandbox, and --codex-approval-policy require --agent real-codex.",
+		);
+	}
+	if (options.agent === "real-codex" && options.scenario !== "idle") {
+		throw new Error("--scenario controls only the deterministic fake agent and cannot be used with real Codex.");
+	}
+	const agent =
+		options.agent === "real-codex"
+			? resolveRealCodexAgent({
+					model: options.model,
+					codexHomePath: options.codexHome,
+					sandbox: options.codexSandbox,
+					approvalPolicy: options.codexApprovalPolicy,
+				})
+			: ({ mode: "fake" } as const);
+	if (agent.mode === "real-codex") {
+		await assertReusableRealCodexAuthentication(agent);
+	}
+	let config = await createAgentLabLaunchConfig({
 		name: options.name,
 		repoRoot: AGENT_LAB_REPO_ROOT,
 		scenario: options.scenario,
+		agent,
 		keepTemp: options.keepTemp,
 		runtimePort: options.runtimePort,
 		webPort: options.webPort,
 	});
+	if (config.agent.mode === "real-codex") {
+		try {
+			config = {
+				...config,
+				agent: await prepareIsolatedRealCodexAgent(config.agent, config.tempRoot),
+			};
+		} catch (error) {
+			await Promise.all([
+				rm(config.tempRoot, { recursive: true, force: true }),
+				rm(config.artifactDir, { recursive: true, force: true }),
+			]);
+			throw error;
+		}
+	}
 	const configPath = await persistAgentLabLaunchConfig(config);
 	const supervisorPath = join(AGENT_LAB_REPO_ROOT, "scripts", "agent-lab", "supervisor.ts");
 	const tsxCliPath = fileURLToPath(import.meta.resolve("tsx/cli"));
@@ -301,7 +362,7 @@ async function waitForRuntimeRestart(
 async function restartAgentLabRuntime(runId: string | undefined, options: RestartRuntimeOptions): Promise<void> {
 	const manifestPath = await resolveManifestPath(runId);
 	const manifest = await readAgentLabManifest(manifestPath);
-	if (manifest.schemaVersion !== AGENT_LAB_SCHEMA_VERSION) {
+	if (manifest.schemaVersion === 1 || manifest.schemaVersion === 2) {
 		throw new Error("This Agent Lab run predates same-state runtime restart support; start a new run.");
 	}
 	if (manifest.status !== "ready") {
@@ -388,6 +449,7 @@ async function listAgentLabs(options: OutputOptions): Promise<void> {
 		projectUrl: manifest.projectUrl,
 		supervisorAlive: isProcessAlive(manifest.supervisorPid),
 		artifactDir: manifest.artifactDir,
+		agent: manifest.schemaVersion === 4 ? manifest.agent : { mode: "fake" as const },
 	}));
 	if (options.json) {
 		printJson(summaries);
@@ -409,12 +471,30 @@ export async function runAgentLabCli(argv = process.argv): Promise<void> {
 	program.name("agent-lab").description("Run a disposable Quarterdeck instance for agent-driven UI testing.");
 	program
 		.command("start")
-		.description("Start an isolated runtime, web UI, git fixture, and fake Codex agent.")
+		.description("Start an isolated runtime, web UI, Git fixture, and selected test agent.")
 		.option("--name <name>", "Human-readable run-name prefix.", "run")
+		.addOption(
+			new Option("--agent <mode>", "Agent implementation. Real Codex uses the existing CLI login.")
+				.choices(AgentLabAgentModeSchema.options)
+				.default("fake"),
+		)
 		.addOption(
 			new Option("--scenario <scenario>", "Default fake-agent scenario.")
 				.choices(AgentLabScenarioSchema.options)
 				.default("idle"),
+		)
+		.option("--model <model>", "Real Codex model (defaults to gpt-5.6-luna).")
+		.option("--codex-home <path>", "Existing authenticated Codex profile; defaults to CODEX_HOME or ~/.codex.")
+		.addOption(
+			new Option("--codex-sandbox <mode>", "Sandbox for real Codex task sessions (default: read-only).").choices(
+				AgentLabCodexSandboxSchema.options,
+			),
+		)
+		.addOption(
+			new Option(
+				"--codex-approval-policy <policy>",
+				"Approval policy for real Codex task sessions (default: on-request).",
+			).choices(AgentLabCodexApprovalPolicySchema.options),
 		)
 		.option("--runtime-port <port>", 'Runtime port or "auto".', parsePort, null)
 		.option("--web-port <port>", 'Web port or "auto".', parsePort, null)

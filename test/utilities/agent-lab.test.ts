@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
+import { promisify } from "node:util";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -12,6 +14,8 @@ import {
 	parseFakeAgentCommand,
 	resolveFakeAgentScenario,
 } from "../../scripts/agent-lab/fake-agent-protocol";
+import { writeRealCodexLauncher } from "../../scripts/agent-lab/fixture";
+import { createAgentLabLaunchConfig, persistAgentLabLaunchConfig } from "../../scripts/agent-lab/launch-config";
 import { resolveLoopbackPort } from "../../scripts/agent-lab/loopback-port";
 import {
 	AGENT_LAB_BROWSER_INSTALL_COMMAND,
@@ -24,6 +28,15 @@ import {
 	prepareAgentLabBrowserCache,
 	readAgentLabManifest,
 } from "../../scripts/agent-lab/paths";
+import {
+	AGENT_LAB_REAL_CODEX_CONFIG_OVERRIDES,
+	buildRealCodexPreflightEnvironment,
+	prepareIsolatedRealCodexAgent,
+	resolveRealCodexAgent,
+	toPublicAgentConfig,
+} from "../../scripts/agent-lab/real-codex";
+
+const execFileAsync = promisify(execFile);
 
 describe("agent-lab browser cache", () => {
 	it("shares browser binaries through the primary checkout", () => {
@@ -204,6 +217,7 @@ describe("agent-lab environment", () => {
 				runtimePort: 35_001,
 				webPort: 41_731,
 				scenario: "idle",
+				agent: { mode: "fake" },
 			},
 		);
 
@@ -214,6 +228,291 @@ describe("agent-lab environment", () => {
 		expect(environment.QUARTERDECK_RUNTIME_PORT).toBe("35001");
 		expect(environment.QUARTERDECK_AGENT_LAB_ADDITIONAL_PROJECT).toBe("/tmp/lab/project-secondary");
 		expect(environment.PATH).toBe(["/tmp/lab/bin", "/host/bin"].join(delimiter));
+	});
+
+	it("exposes real profile paths only through wrapper-specific variables", () => {
+		const agent = resolveRealCodexAgent(
+			{
+				model: "gpt-5.6-luna",
+				codexHomePath: "/account/home/.codex",
+			},
+			{ PATH: "/host/bin", OPENAI_API_KEY: "must-not-leak" },
+		);
+		const environment = buildAgentLabEnvironment(
+			{ PATH: "/host/bin", OPENAI_API_KEY: "must-not-leak" },
+			{
+				tempRoot: "/tmp/lab",
+				homePath: "/tmp/lab/home",
+				statePath: "/tmp/lab/state",
+				projectPath: "/tmp/lab/project",
+				additionalProjectPath: "/tmp/lab/project-secondary",
+				fakeBinPath: "/tmp/lab/bin",
+				forbiddenHostLaunchLogPath: "/tmp/lab/forbidden-host-launches.log",
+				repoRoot: "/repo",
+				tsxCliPath: "/repo/node_modules/tsx/cli.mjs",
+				fakeCodexPath: "/repo/scripts/fake-codex.ts",
+				cliEntrypointPath: "/repo/src/cli.ts",
+				runtimePort: 35_001,
+				webPort: 41_731,
+				scenario: "idle",
+				agent,
+			},
+		);
+
+		expect(environment.HOME).toBe("/tmp/lab/home");
+		expect(environment.CODEX_HOME).toBeUndefined();
+		expect(environment.OPENAI_API_KEY).toBeUndefined();
+		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME).toBe("/account/home/.codex");
+		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CODEX_ACCOUNT_HOME).toBeUndefined();
+		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL).toBe("gpt-5.6-luna");
+		expect(environment.QUARTERDECK_TITLE_PROVIDER).toBe("local");
+	});
+});
+
+describe("agent-lab real Codex", () => {
+	it("stages only the existing credential into an isolated disposable profile", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-private-config-"));
+		const sourceProfilePath = join(root, "source-profile");
+		const artifactRoot = join(root, "artifacts");
+		await mkdir(sourceProfilePath, { recursive: true });
+		await writeFile(join(sourceProfilePath, "auth.json"), "synthetic credential\n", { mode: 0o600 });
+		const sourceAgent = resolveRealCodexAgent({ codexHomePath: sourceProfilePath }, {});
+		let config = await createAgentLabLaunchConfig({ artifactRoot, agent: sourceAgent });
+		const validateAuthentication = vi.fn(async () => {});
+		try {
+			const isolatedAgent = await prepareIsolatedRealCodexAgent(
+				sourceAgent,
+				config.tempRoot,
+				{},
+				{
+					platform: "win32",
+					validateAuthentication,
+				},
+			);
+			config = { ...config, agent: isolatedAgent };
+			const configPath = await persistAgentLabLaunchConfig(config);
+			expect(configPath).toBe(join(config.tempRoot, "supervisor-config.json"));
+			expect(configPath.startsWith(config.artifactDir)).toBe(false);
+			expect(isolatedAgent.codexHomePath).toBe(join(config.tempRoot, "codex-home"));
+			expect(await readFile(join(isolatedAgent.codexHomePath, "auth.json"), "utf8")).toBe("synthetic credential\n");
+			expect(await readFile(configPath, "utf8")).not.toContain(sourceProfilePath);
+			expect(validateAuthentication).toHaveBeenCalledWith(isolatedAgent, {});
+		} finally {
+			await rm(config.tempRoot, { recursive: true, force: true });
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("resolves the existing profile without copying credentials into the public manifest", () => {
+		const agent = resolveRealCodexAgent({}, { CODEX_HOME: "/profiles/codex", PATH: "/host/bin" });
+		expect(agent).toMatchObject({
+			mode: "real-codex",
+			model: "gpt-5.6-luna",
+			modelProvider: "openai",
+			reasoningEffort: "low",
+			profileSource: "environment",
+			codexHomePath: "/profiles/codex",
+			sandbox: "read-only",
+			approvalPolicy: "on-request",
+		});
+		expect(toPublicAgentConfig(agent)).toEqual({
+			mode: "real-codex",
+			model: "gpt-5.6-luna",
+			modelProvider: "openai",
+			reasoningEffort: "low",
+			authentication: "existing-cli",
+			profileSource: "environment",
+			sandbox: "read-only",
+			approvalPolicy: "on-request",
+			serviceTier: "default",
+			historyPersistence: "none",
+			webSearch: "disabled",
+			externalIntegrations: "disabled",
+			profileHooks: "isolated",
+			telemetry: "disabled",
+		});
+	});
+
+	it("preflights cached CLI authentication without forwarding API keys", () => {
+		const agent = resolveRealCodexAgent({ codexHomePath: "/profiles/codex" }, {});
+		const environment = buildRealCodexPreflightEnvironment(
+			{
+				PATH: "/host/bin",
+				HOME: "/account/home",
+				USERPROFILE: "/account/home",
+				LANG: "en_US.UTF-8",
+				OPENAI_API_KEY: "must-not-leak",
+			},
+			agent,
+		);
+		expect(environment).toMatchObject({
+			PATH: "/host/bin",
+			LANG: "en_US.UTF-8",
+			HOME: "/account/home",
+			USERPROFILE: "/account/home",
+			CODEX_HOME: "/profiles/codex",
+		});
+		expect(environment.OPENAI_API_KEY).toBeUndefined();
+	});
+
+	it("writes a Windows launcher with the same profile and provider policy", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-real-codex-windows-"));
+		try {
+			await writeRealCodexLauncher(root);
+			const launcher = await readFile(join(root, "codex.cmd"), "utf8");
+			expect(launcher).not.toContain("REAL_CODEX_ACCOUNT_HOME");
+			expect(launcher).toContain('set "QUARTERDECK_AGENT_LAB_REAL_CODEX_RUNTIME_PATH=%PATH%"');
+			expect(launcher).toContain('set "PATH=%QUARTERDECK_AGENT_LAB_REAL_CODEX_HOST_PATH%"');
+			expect(launcher).toContain('set "PATH=%QUARTERDECK_AGENT_LAB_REAL_CODEX_RUNTIME_PATH%"');
+			expect(launcher).toContain('call "%QUARTERDECK_AGENT_LAB_REAL_CODEX_BINARY%"');
+			expect(launcher).toContain('set "CODEX_HOME=%QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME%"');
+			expect(launcher).toContain('set "QUARTERDECK_AGENT_LAB_REAL_CODEX_RUNTIME_PATH="');
+			expect(launcher).toContain('set "QUARTERDECK_AGENT_LAB_REAL_CODEX_BINARY="');
+			expect(launcher).toContain('set "QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL="');
+			expect(launcher).toContain('set "QUARTERDECK_AGENT_LAB_REAL_CODEX_SANDBOX="');
+			expect(launcher).toContain('set "QUARTERDECK_AGENT_LAB_REAL_CODEX_APPROVAL_POLICY="');
+			expect(launcher).toContain("-c service_tier='default'");
+			expect(launcher).toContain("-c model_provider='openai'");
+			expect(launcher).toContain("-c features.apps=false");
+			expect(launcher).toContain("-c features.multi_agent=false");
+			expect(launcher).not.toContain("-c mcp_servers={}");
+			expect(launcher).not.toContain("-c hooks={}");
+			expect(launcher).toContain("-c otel.exporter='none'");
+			expect(launcher).toContain('set "_QD_MODEL_ARGUMENT=--model %QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL%"');
+			expect(launcher).toContain('set "_QD_SANDBOX_ARGUMENT=--sandbox %QUARTERDECK_AGENT_LAB_REAL_CODEX_SANDBOX%"');
+			expect(launcher).toContain(
+				'set "_QD_APPROVAL_ARGUMENT=--ask-for-approval %QUARTERDECK_AGENT_LAB_REAL_CODEX_APPROVAL_POLICY%"',
+			);
+			expect(launcher).toContain('if /I "%~1"=="--approve-for-me" set "_QD_HAS_APPROVAL_POLICY=1"');
+			expect(launcher).toContain('if /I "%~1"=="--not-so-yolo" set "_QD_HAS_APPROVAL_POLICY=1"');
+			expect(launcher).toContain('if /I "%~1"=="--approve-for-me" set "_QD_HAS_SANDBOX=1"');
+			expect(launcher).toContain('if /I "%~1"=="--not-so-yolo" set "_QD_HAS_SANDBOX=1"');
+			expect(launcher).toContain(
+				'if /I "%~1"=="--dangerously-bypass-approvals-and-sandbox" set "_QD_HAS_APPROVAL_POLICY=1"',
+			);
+			expect(launcher).toContain('if /I "%~1"=="--yolo" set "_QD_HAS_SANDBOX=1"');
+			expect(launcher).toContain("%_QD_APPROVAL_ARGUMENT% %*");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it.runIf(process.platform !== "win32")(
+		"executes the host Codex with bounded real-provider policy and exact profile identity",
+		async () => {
+			const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-real-codex-"));
+			const fakeBinPath = join(root, "fake-bin");
+			const hostBinPath = join(root, "host-bin");
+			const capturePath = join(root, "capture.json");
+			try {
+				await Promise.all([mkdir(fakeBinPath, { recursive: true }), mkdir(hostBinPath, { recursive: true })]);
+				await writeFile(
+					join(hostBinPath, "codex"),
+					`#!/bin/sh\nprintf "%s\\n" "$HOME" "$CODEX_HOME" "\${QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME-unset}" "\${QUARTERDECK_AGENT_LAB_REAL_CODEX_HOST_PATH-unset}" "$PATH" "$@" > "$CAPTURE_PATH"\n`,
+					{ encoding: "utf8", mode: 0o755 },
+				);
+				await writeRealCodexLauncher(fakeBinPath);
+				const runtimePath = [fakeBinPath, hostBinPath].join(delimiter);
+				await execFileAsync(join(fakeBinPath, "codex"), ["-c", "hooks.state={}", "--", "--model=prompt-text"], {
+					env: {
+						HOME: "/tmp/lab/home",
+						PATH: runtimePath,
+						QUARTERDECK_AGENT_LAB_REAL_CODEX_HOST_PATH: hostBinPath,
+						QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME: "/profiles/codex",
+						QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL: "gpt-5.6-luna",
+						QUARTERDECK_AGENT_LAB_REAL_CODEX_SANDBOX: "read-only",
+						QUARTERDECK_AGENT_LAB_REAL_CODEX_APPROVAL_POLICY: "on-request",
+						CAPTURE_PATH: capturePath,
+					},
+				});
+				const [
+					capturedHome,
+					capturedCodexHome,
+					capturedProfileVariable,
+					capturedHostPathVariable,
+					capturedPath,
+					...capturedArgs
+				] = (await readFile(capturePath, "utf8")).trimEnd().split("\n");
+				expect(capturedHome).toBe("/tmp/lab/home");
+				expect(capturedCodexHome).toBe("/profiles/codex");
+				expect(capturedProfileVariable).toBe("unset");
+				expect(capturedHostPathVariable).toBe("unset");
+				expect(capturedPath).toBe(runtimePath);
+				expect(capturedArgs).toEqual([
+					...AGENT_LAB_REAL_CODEX_CONFIG_OVERRIDES.flatMap((value) => ["-c", value]),
+					"--ask-for-approval",
+					"on-request",
+					"--sandbox",
+					"read-only",
+					"--model",
+					"gpt-5.6-luna",
+					"-c",
+					"hooks.state={}",
+					"--",
+					"--model=prompt-text",
+				]);
+			} finally {
+				await rm(root, { recursive: true, force: true });
+			}
+		},
+	);
+
+	it.runIf(process.platform !== "win32").each([
+		{ explicitArgs: ["--approve-for-me"], expectedApprovalFlagCount: 0 },
+		{ explicitArgs: ["--not-so-yolo"], expectedApprovalFlagCount: 0 },
+		{ explicitArgs: ["--dangerously-bypass-approvals-and-sandbox"], expectedApprovalFlagCount: 0 },
+		{ explicitArgs: ["--yolo"], expectedApprovalFlagCount: 0 },
+		{ explicitArgs: ["--ask-for-approval", "never"], expectedApprovalFlagCount: 1 },
+	])("does not combine the real Codex launcher with explicit approval mode $explicitArgs", async (testCase) => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-real-codex-approval-"));
+		const fakeBinPath = join(root, "fake-bin");
+		const hostBinPath = join(root, "host-bin");
+		const capturePath = join(root, "capture.txt");
+		try {
+			await Promise.all([mkdir(fakeBinPath, { recursive: true }), mkdir(hostBinPath, { recursive: true })]);
+			await writeFile(join(hostBinPath, "codex"), '#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURE_PATH"\n', {
+				encoding: "utf8",
+				mode: 0o755,
+			});
+			await writeRealCodexLauncher(fakeBinPath);
+			await execFileAsync(join(fakeBinPath, "codex"), testCase.explicitArgs, {
+				env: {
+					HOME: "/tmp/lab/home",
+					PATH: [fakeBinPath, hostBinPath].join(delimiter),
+					QUARTERDECK_AGENT_LAB_REAL_CODEX_HOST_PATH: hostBinPath,
+					QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME: "/profiles/codex",
+					QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL: "gpt-5.6-luna",
+					QUARTERDECK_AGENT_LAB_REAL_CODEX_SANDBOX: "read-only",
+					QUARTERDECK_AGENT_LAB_REAL_CODEX_APPROVAL_POLICY: "on-request",
+					CAPTURE_PATH: capturePath,
+				},
+			});
+			const capturedArgs = (await readFile(capturePath, "utf8")).trimEnd().split("\n");
+			expect(capturedArgs.filter((argument) => argument === "--ask-for-approval")).toHaveLength(
+				testCase.expectedApprovalFlagCount,
+			);
+			for (const explicitArg of testCase.explicitArgs) {
+				expect(capturedArgs).toContain(explicitArg);
+			}
+			if (testCase.expectedApprovalFlagCount === 0) {
+				expect(capturedArgs).not.toContain("--sandbox");
+			} else {
+				expect(capturedArgs).toContain("--sandbox");
+			}
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it.each([
+		["--model", "gpt-5.6-luna"],
+		["--codex-home", "/profiles/codex"],
+		["--codex-sandbox", "workspace-write"],
+		["--codex-approval-policy", "never"],
+	])("rejects real-only option %s in fake mode", async (flag, value) => {
+		await expect(runAgentLabCli(["node", "agent-lab", "start", flag, value])).rejects.toThrow(
+			"require --agent real-codex",
+		);
 	});
 });
 
@@ -231,7 +530,27 @@ describe("agent-lab fake agent protocol", () => {
 	});
 
 	it("parses bounded deterministic commands", () => {
+		expect(parseFakeAgentCommand("/needs-input-auto provider approved")).toEqual({
+			kind: "needs-input-auto",
+			message: "provider approved",
+		});
 		expect(parseFakeAgentCommand("/approval-overlay")).toEqual({ kind: "approval-overlay" });
+		expect(parseFakeAgentCommand("/turn-interrupted")).toEqual({ kind: "turn-interrupted" });
+		expect(parseFakeAgentCommand("/new-turn continue")).toEqual({ kind: "new-turn", message: "continue" });
+		expect(parseFakeAgentCommand("/redraw-interruption-history")).toEqual({
+			kind: "redraw-interruption-history",
+		});
+		expect(parseFakeAgentCommand("/local-action model changed")).toEqual({
+			kind: "local-action",
+			message: "model changed",
+		});
+		expect(parseFakeAgentCommand("/compact")).toEqual({ kind: "compact" });
+		expect(parseFakeAgentCommand("/queued-follow-up continue now")).toEqual({
+			kind: "queued-follow-up",
+			message: "continue now",
+		});
+		expect(parseFakeAgentCommand("/stale-run")).toEqual({ kind: "stale-run" });
+		expect(parseFakeAgentCommand("/fail-next-resume")).toEqual({ kind: "fail-next-resume" });
 		expect(parseFakeAgentCommand("/write nested/result.txt hello world")).toEqual({
 			kind: "write",
 			relativePath: "nested/result.txt",
@@ -338,6 +657,24 @@ describe("agent-lab manifest compatibility", () => {
 			await expect(runAgentLabCli(["node", "agent-lab", "restart-runtime", "legacy-run", "--json"])).rejects.toThrow(
 				"predates same-state runtime restart support",
 			);
+
+			const versionTwoManifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
+			await writeFile(
+				manifestPath,
+				`${JSON.stringify({
+					...versionTwoManifest,
+					schemaVersion: 3,
+					runtimeRestartRequestPath: join(root, "runtime-restart-request.json"),
+					runtimeRestartResultPath: join(root, "runtime-restart-result.json"),
+					runtimeGeneration: 1,
+					runtimeRestarts: [],
+				})}\n`,
+				"utf8",
+			);
+			await expect(readAgentLabManifest(manifestPath)).resolves.toMatchObject({
+				schemaVersion: 3,
+				runtimeGeneration: 1,
+			});
 		} finally {
 			stdout.mockRestore();
 			if (previousArtifactRoot === undefined) {

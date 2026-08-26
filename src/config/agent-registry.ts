@@ -28,6 +28,8 @@ interface AgentAvailability {
 	statusMessage: string | null;
 	reason: AgentAvailabilityReason;
 	transient: boolean;
+	detectedVersion?: string | null;
+	requiredVersion?: string | null;
 }
 
 export type AgentAvailabilityReason =
@@ -58,6 +60,8 @@ export type AgentAvailabilityDiagnosticEvent =
 				reason: AgentAvailabilityReason;
 				installed: boolean;
 				transient: boolean;
+				detectedVersion?: string | null;
+				requiredVersion?: string | null;
 			};
 			level: "info" | "warn";
 	  };
@@ -66,7 +70,7 @@ export type AgentAvailabilityDiagnosticSink = (event: AgentAvailabilityDiagnosti
 
 const MINIMUM_CODEX_VERSION = "0.147.0";
 const MINIMUM_CLAUDE_VERSION = "2.1.198";
-const MINIMUM_PI_VERSION = "0.70.2";
+export const SUPPORTED_PI_VERSION = "0.84.3";
 const PROBE_OUTPUT_SNIPPET_MAX_LENGTH = 500;
 const CODEX_PROBE_TIMEOUT_MS = 3_000;
 const log = createTaggedLogger("agent-registry");
@@ -392,7 +396,50 @@ async function resolveClaudeAvailability(binary: string): Promise<AgentAvailabil
 }
 
 async function resolvePiAvailability(binary: string): Promise<AgentAvailability> {
-	return resolveMinimumVersionAvailability("pi", "Pi", binary, MINIMUM_PI_VERSION);
+	const versionResult = await detectAgentVersion("pi", "Pi", binary);
+	if (!versionResult.ok) {
+		if (versionResult.reason === "unsupported_version") {
+			return {
+				installed: false,
+				status: "upgrade_required",
+				statusMessage: `Detected Pi on PATH, but Quarterdeck could not determine its version. Install exactly ${SUPPORTED_PI_VERSION} with @earendil-works/pi-coding-agent.`,
+				reason: "unsupported_version",
+				transient: false,
+				detectedVersion: null,
+				requiredVersion: SUPPORTED_PI_VERSION,
+			};
+		}
+		return {
+			installed: false,
+			status: "missing",
+			statusMessage:
+				versionResult.reason === "probe_timeout"
+					? "Pi availability check timed out. Retry the task."
+					: "Quarterdeck could not run the Pi version check. Retry the task or verify Pi runs from this shell.",
+			reason: versionResult.reason,
+			transient: true,
+		};
+	}
+	if (versionResult.version !== SUPPORTED_PI_VERSION) {
+		return {
+			installed: false,
+			status: "upgrade_required",
+			statusMessage: `Detected Pi ${versionResult.version}, but Quarterdeck supports exactly ${SUPPORTED_PI_VERSION}. Install @earendil-works/pi-coding-agent@${SUPPORTED_PI_VERSION}.`,
+			reason: "unsupported_version",
+			transient: false,
+			detectedVersion: versionResult.version,
+			requiredVersion: SUPPORTED_PI_VERSION,
+		};
+	}
+	return {
+		installed: true,
+		status: "installed",
+		statusMessage: null,
+		reason: "installed",
+		transient: false,
+		detectedVersion: versionResult.version,
+		requiredVersion: SUPPORTED_PI_VERSION,
+	};
 }
 
 const AGENT_AVAILABILITY_TTL_MS = 30_000;
@@ -499,7 +546,14 @@ async function computeAgentAvailability(agentId: RuntimeAgentId, binary: string)
 	}
 	recordAvailabilityDiagnostic({
 		name: "agent.availability_resolved",
-		payload: { agentId, reason: result.reason, installed: result.installed, transient: result.transient },
+		payload: {
+			agentId,
+			reason: result.reason,
+			installed: result.installed,
+			transient: result.transient,
+			...(result.detectedVersion !== undefined ? { detectedVersion: result.detectedVersion } : {}),
+			...(result.requiredVersion !== undefined ? { requiredVersion: result.requiredVersion } : {}),
+		},
 		level: result.installed ? "info" : "warn",
 	});
 	return result;
@@ -607,6 +661,8 @@ async function getCuratedDefinitions(runtimeConfig: RuntimeConfigState): Promise
 				defaultArgs,
 				status: availability.status,
 				statusMessage: availability.statusMessage,
+				detectedVersion: availability.detectedVersion ?? null,
+				requiredVersion: availability.requiredVersion ?? null,
 				installed: availability.installed,
 				configured: runtimeConfig.selectedAgentId === entry.id,
 			};

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { createTestTaskHookActivity, createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
+import { createTestTaskOutstandingInteraction, createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 import {
 	describeSessionState,
 	getSessionStatusBadgeStyle,
@@ -12,6 +12,31 @@ function makeSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runtim
 	return createTestTaskSessionSummary({
 		updatedAt: Date.now(),
 		...overrides,
+	});
+}
+
+function withInteractionStatus(status: "response_submitted" | "resolution_unknown"): RuntimeTaskSessionSummary {
+	return makeSummary({
+		state: "awaiting_review",
+		reviewReason: status === "resolution_unknown" ? "error" : "hook",
+		outstandingInteraction: {
+			provider: "codex",
+			kind: "permission",
+			status,
+			requestEventName: "PermissionRequest",
+			openedAt: 1,
+			updatedAt: 2,
+			responseSubmittedAt: 2,
+			responseKind: "submit",
+			sessionInstanceId: "process-1",
+			providerSessionId: "session-1",
+			turnId: "turn-1",
+			promptId: null,
+			toolUseId: "tool-1",
+			elicitationId: null,
+			providerAgentId: null,
+			toolName: "Bash",
+		},
 	});
 }
 
@@ -44,17 +69,41 @@ describe("describeSessionState", () => {
 				makeSummary({
 					state: "awaiting_review",
 					reviewReason: "hook",
-					latestHookActivity: createTestTaskHookActivity({
-						hookEventName: "permissionRequest",
+					outstandingInteraction: createTestTaskOutstandingInteraction({
+						provider: "codex",
+						kind: "permission",
+						requestEventName: "PermissionRequest",
 					}),
 				}),
 			),
 		).toBe("Waiting for approval");
 	});
 
-	it("returns 'Waiting for input' for attention reason", () => {
+	it("returns 'Waiting for input' for a structured Claude attention wait", () => {
+		expect(
+			describeSessionState(
+				makeSummary({
+					state: "awaiting_review",
+					reviewReason: "attention",
+					outstandingInteraction: createTestTaskOutstandingInteraction(),
+				}),
+			),
+		).toBe("Waiting for input");
+	});
+
+	it("distinguishes a submitted response from confirmed running work", () => {
+		expect(describeSessionState(withInteractionStatus("response_submitted"))).toBe(
+			"Response sent — awaiting agent confirmation",
+		);
+	});
+
+	it("surfaces an unknown response outcome after provider process loss", () => {
+		expect(describeSessionState(withInteractionStatus("resolution_unknown"))).toBe("Response outcome unknown");
+	});
+
+	it("returns 'Interrupted' for an unproven legacy attention reason", () => {
 		expect(describeSessionState(makeSummary({ state: "awaiting_review", reviewReason: "attention" }))).toBe(
-			"Waiting for input",
+			"Interrupted",
 		);
 	});
 
@@ -66,14 +115,6 @@ describe("describeSessionState", () => {
 		expect(describeSessionState(makeSummary({ state: "awaiting_review", reviewReason: "interrupted" }))).toBe(
 			"Interrupted",
 		);
-	});
-
-	it("returns 'Interrupted' for interrupted state", () => {
-		expect(describeSessionState(makeSummary({ state: "interrupted" }))).toBe("Interrupted");
-	});
-
-	it("returns 'Failed' for failed state", () => {
-		expect(describeSessionState(makeSummary({ state: "failed" }))).toBe("Failed");
 	});
 
 	it("returns 'Idle' for idle state", () => {
@@ -120,14 +161,16 @@ describe("getSessionStatusBadgeStyle", () => {
 		);
 	});
 
-	it("returns needs_input for permission request hook", () => {
+	it("returns needs_input for a durable permission interaction", () => {
 		expect(
 			getSessionStatusBadgeStyle(
 				makeSummary({
 					state: "awaiting_review",
 					reviewReason: "hook",
-					latestHookActivity: createTestTaskHookActivity({
-						hookEventName: "permissionRequest",
+					outstandingInteraction: createTestTaskOutstandingInteraction({
+						provider: "codex",
+						kind: "permission",
+						requestEventName: "PermissionRequest",
 					}),
 				}),
 			),
@@ -138,14 +181,6 @@ describe("getSessionStatusBadgeStyle", () => {
 		expect(getSessionStatusBadgeStyle(makeSummary({ state: "awaiting_review", reviewReason: "hook" }))).toBe(
 			"review",
 		);
-	});
-
-	it("returns error for interrupted state", () => {
-		expect(getSessionStatusBadgeStyle(makeSummary({ state: "interrupted" }))).toBe("error");
-	});
-
-	it("returns error for failed state", () => {
-		expect(getSessionStatusBadgeStyle(makeSummary({ state: "failed" }))).toBe("error");
 	});
 
 	it("returns neutral for idle state", () => {
@@ -190,7 +225,22 @@ describe("isApprovalState", () => {
 		expect(isApprovalState(makeSummary({ state: "awaiting_review", reviewReason: "hook" }))).toBe(false);
 	});
 
-	it("returns true for hook + permissionRequest hookEventName", () => {
+	it("returns true for an exact durable permission interaction", () => {
+		expect(
+			isApprovalState(
+				makeSummary({
+					state: "awaiting_review",
+					reviewReason: "hook",
+					outstandingInteraction: createTestTaskOutstandingInteraction({
+						kind: "permission",
+						requestEventName: "PermissionRequest",
+					}),
+				}),
+			),
+		).toBe(true);
+	});
+
+	it("does not promote permissionRequest display activity into approval authority", () => {
 		expect(
 			isApprovalState(
 				makeSummary({
@@ -208,10 +258,10 @@ describe("isApprovalState", () => {
 					},
 				}),
 			),
-		).toBe(true);
+		).toBe(false);
 	});
 
-	it("returns true for hook + permission_prompt notificationType", () => {
+	it("does not promote permission_prompt notification text into approval authority", () => {
 		expect(
 			isApprovalState(
 				makeSummary({
@@ -229,10 +279,10 @@ describe("isApprovalState", () => {
 					},
 				}),
 			),
-		).toBe(true);
+		).toBe(false);
 	});
 
-	it("returns true for hook + permission.asked notificationType", () => {
+	it("does not promote permission.asked notification text into approval authority", () => {
 		expect(
 			isApprovalState(
 				makeSummary({
@@ -250,10 +300,10 @@ describe("isApprovalState", () => {
 					},
 				}),
 			),
-		).toBe(true);
+		).toBe(false);
 	});
 
-	it("returns true for hook + 'waiting for approval' activityText", () => {
+	it("does not promote rendered approval text into approval authority", () => {
 		expect(
 			isApprovalState(
 				makeSummary({
@@ -271,6 +321,6 @@ describe("isApprovalState", () => {
 					},
 				}),
 			),
-		).toBe(true);
+		).toBe(false);
 	});
 });

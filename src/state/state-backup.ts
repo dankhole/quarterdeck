@@ -11,7 +11,8 @@
 //       projects/
 //         index.json
 //         {projectId}/
-//           board.json, sessions.json, meta.json, pinned-branches.json
+//           board.json, sessions.json, meta.json, pinned-branches.json,
+//           lifecycle-operations.json
 
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -22,11 +23,13 @@ import {
 	BOARD_FILENAME,
 	getProjectBoardPath,
 	getProjectDirectoryPath,
+	getProjectLifecycleOperationsPath,
 	getProjectMetaPath,
 	getProjectPinnedBranchesPath,
 	getProjectSessionsPath,
 	getProjectsRootPath,
 	getRuntimeHomePath,
+	LIFECYCLE_OPERATIONS_FILENAME,
 	META_FILENAME,
 	PINNED_BRANCHES_FILENAME,
 	SESSIONS_FILENAME,
@@ -34,7 +37,13 @@ import {
 
 const DEFAULT_BACKUP_HOME = join(homedir(), ".quarterdeck-backups");
 const DEFAULT_MAX_BACKUPS = 10;
-const PROJECT_STATE_FILENAMES = [BOARD_FILENAME, SESSIONS_FILENAME, META_FILENAME, PINNED_BRANCHES_FILENAME];
+const PROJECT_STATE_FILENAMES = [
+	BOARD_FILENAME,
+	SESSIONS_FILENAME,
+	META_FILENAME,
+	PINNED_BRANCHES_FILENAME,
+	LIFECYCLE_OPERATIONS_FILENAME,
+];
 const backupLog = createTaggedLogger("state-backup");
 
 export interface BackupManifest {
@@ -83,6 +92,16 @@ async function copyFileIfExists(src: string, dest: string): Promise<void> {
 			throw error;
 		}
 	}
+}
+
+async function restoreCoordinationJournal(src: string, dest: string): Promise<void> {
+	if (await fileExists(src)) {
+		await cp(src, dest);
+		return;
+	}
+	// Restoring a snapshot without a coordination journal must not retain
+	// operations created after that snapshot.
+	await rm(dest, { force: true });
 }
 
 async function readJsonFileSafe(path: string): Promise<unknown | null> {
@@ -164,6 +183,10 @@ export async function createBackup(options: CreateBackupOptions = {}): Promise<s
 			await copyFileIfExists(getProjectSessionsPath(projectId), join(wsBackupDir, SESSIONS_FILENAME));
 			await copyFileIfExists(getProjectMetaPath(projectId), join(wsBackupDir, META_FILENAME));
 			await copyFileIfExists(getProjectPinnedBranchesPath(projectId), join(wsBackupDir, PINNED_BRANCHES_FILENAME));
+			await copyFileIfExists(
+				getProjectLifecycleOperationsPath(projectId),
+				join(wsBackupDir, LIFECYCLE_OPERATIONS_FILENAME),
+			);
 		}
 
 		// Manifest written last — acts as the commit signal.
@@ -242,7 +265,11 @@ export async function restoreBackup(backupPathOrName: string): Promise<BackupMan
 		const wsDir = getProjectDirectoryPath(projectId);
 		await mkdir(wsDir, { recursive: true });
 		for (const filename of PROJECT_STATE_FILENAMES) {
-			await copyFileIfExists(join(wsBackupDir, filename), join(wsDir, filename));
+			if (filename === LIFECYCLE_OPERATIONS_FILENAME) {
+				await restoreCoordinationJournal(join(wsBackupDir, filename), join(wsDir, filename));
+			} else {
+				await copyFileIfExists(join(wsBackupDir, filename), join(wsDir, filename));
+			}
 		}
 	}
 
@@ -290,7 +317,12 @@ async function computeStateFingerprint(): Promise<string> {
 	}
 
 	for (const projectId of await discoverProjectIds(indexPath)) {
-		for (const getter of [getProjectBoardPath, getProjectSessionsPath, getProjectMetaPath]) {
+		for (const getter of [
+			getProjectBoardPath,
+			getProjectSessionsPath,
+			getProjectMetaPath,
+			getProjectLifecycleOperationsPath,
+		]) {
 			const path = getter(projectId);
 			try {
 				const info = await stat(path);

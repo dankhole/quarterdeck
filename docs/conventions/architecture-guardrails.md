@@ -118,6 +118,12 @@ The danger moment is when:
 
 That is the time to extract a new boundary.
 
+### 9. Recovery may detect drift, not define ordinary truth
+
+Retries, startup hydration, and reconciliation may preserve or fail closed around canonical state. They must not become the normal producer of lifecycle transitions that provider ingest, process exit, or typed user intent should have authored directly. If a sweep routinely repairs one sequence, fix that sequence and retain the sweep only as a bounded safety net.
+
+For task state, preserve one compact explanation: lifecycle storage is Idle, Running, or Review; the shared classifier projects None, Running, Review, Needs Input, or Error. Native Running is a bounded claim backed by current launch-scoped provider evidence. Interactions and failures are typed Review detail, not extra transition tables. Any implementation that needs output bytes, input delivery, browser-local classification, or a later reconciliation sweep to make that explanation true is in the wrong ownership layer.
+
 ## Smell Tests
 
 Use these in PR review or refactor planning:

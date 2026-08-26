@@ -102,6 +102,7 @@ interface UseProjectSyncResult {
 	refreshProjectState: () => Promise<void>;
 	resetProjectSyncState: (targetProjectId?: string | null) => void;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
+	presentLifecycleBoard: Dispatch<SetStateAction<BoardData>>;
 	flushBoardCommands: () => Promise<FlushProjectBoardCommandsResult>;
 	getAuthoritativeRevision: () => number | null;
 	applyLifecycleProjectState: (state: RuntimeProjectStateResponse) => void;
@@ -404,23 +405,56 @@ export function useProjectSync({
 				return;
 			}
 			const ordinaryCommands = commands.filter((command) => !isLifecycleManagedBoardCommand(command));
-			setProjectBoardSessions({ ...currentState, board: nextBoard });
-			if (ordinaryCommands.length > 0) {
-				let queue = commandQueuesRef.current.get(projectId);
-				if (!queue) {
-					queue = {
-						revision: version.revision,
-						pending: [],
-						running: false,
-						waiters: [],
-					};
-					commandQueuesRef.current.set(projectId, queue);
-				}
-				queue.pending.push({ commandId: createBrowserCommandId(), commands: ordinaryCommands });
-				pumpProjectBoardCommandQueue(projectId);
+			const lifecycleCommandCount = commands.length - ordinaryCommands.length;
+			if (lifecycleCommandCount > 0) {
+				recordBrowserEvent(
+					"browser.lifecycle_board_command_rejected",
+					{ commandCount: lifecycleCommandCount },
+					{ projectId },
+					{ level: "warn", essential: true },
+				);
+				showAppToast({
+					intent: "danger",
+					message: "Task state changes must use an explicit task action.",
+				});
+				return;
 			}
+			setProjectBoardSessions({ ...currentState, board: nextBoard });
+			let queue = commandQueuesRef.current.get(projectId);
+			if (!queue) {
+				queue = {
+					revision: version.revision,
+					pending: [],
+					running: false,
+					waiters: [],
+				};
+				commandQueuesRef.current.set(projectId, queue);
+			}
+			queue.pending.push({ commandId: createBrowserCommandId(), commands: ordinaryCommands });
+			pumpProjectBoardCommandQueue(projectId);
 		},
 		[currentProjectId, projectBoardSessionsRef, pumpProjectBoardCommandQueue, setProjectBoardSessions],
+	);
+
+	const presentLifecycleBoard = useCallback<Dispatch<SetStateAction<BoardData>>>(
+		(nextBoardAction) => {
+			const projectId = currentProjectId;
+			const version = authoritativeProjectVersionRef.current;
+			if (!projectId || version.projectId !== projectId || version.revision === null) {
+				return;
+			}
+			const currentState = projectBoardSessionsRef.current;
+			const nextBoard =
+				typeof nextBoardAction === "function" ? nextBoardAction(currentState.board) : nextBoardAction;
+			if (nextBoard === currentState.board) {
+				return;
+			}
+			// Lifecycle persistence belongs exclusively to ProjectTaskLifecycleService.
+			// This update is only an optimistic browser presentation and is always
+			// replaced by the authoritative lifecycle response or runtime stream.
+			setProjectBoardSessions({ ...currentState, board: nextBoard });
+		},
+		[currentProjectId, projectBoardSessionsRef, setProjectBoardSessions],
 	);
 
 	const flushBoardCommands = useCallback(async (): Promise<FlushProjectBoardCommandsResult> => {
@@ -555,6 +589,7 @@ export function useProjectSync({
 		refreshProjectState,
 		resetProjectSyncState,
 		setBoard,
+		presentLifecycleBoard,
 		flushBoardCommands,
 		getAuthoritativeRevision,
 		applyLifecycleProjectState,
