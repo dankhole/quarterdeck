@@ -285,7 +285,7 @@ async function runScenario(scenario: ReturnType<typeof AgentLabScenarioSchema.pa
 
 function handleProbe(): boolean {
 	if (args.includes("--version") || args[0] === "version") {
-		process.stdout.write("codex-cli 0.142.5\n");
+		process.stdout.write("codex-cli 0.147.0\n");
 		return true;
 	}
 	if (args[0] === "features" && args[1] === "list") {

@@ -184,6 +184,92 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.args.join("\n")).not.toContain("hooks.SessionStart=");
 	});
 
+	it("routes approvals through Codex auto-review before resume while preserving human approval hooks", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-auto-review",
+			agentId: "codex",
+			binary: "codex",
+			args: ["-c", 'approvals_reviewer="user"', "resume", "session-123"],
+			cwd: "/tmp",
+			prompt: "",
+			projectId: "project-1",
+			codexApprovalsReviewer: "auto_review",
+		});
+
+		expect(launch.args.filter((arg) => arg === "--approve-for-me")).toHaveLength(1);
+		expect(launch.args.indexOf("--approve-for-me")).toBeLessThan(launch.args.indexOf("resume"));
+		expect(getCodexConfigOverrideValues(launch.args, "approvals_reviewer")).toEqual([]);
+		expect(getCodexConfigOverrideValues(launch.args, "hooks.PermissionRequest")[0]).toContain("to_review");
+		expect(launch.args.join("\n")).toContain(
+			JSON.stringify(`${codexSessionFlagsConfigSource}:permission_request:0:0`),
+		);
+	});
+
+	it("does not duplicate an explicit Codex approve-for-me option", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-auto-review-explicit",
+			agentId: "codex",
+			binary: "codex",
+			args: ["--approve-for-me"],
+			cwd: "/tmp",
+			prompt: "",
+			codexApprovalsReviewer: "auto_review",
+		});
+
+		expect(launch.args.filter((arg) => arg === "--approve-for-me")).toHaveLength(1);
+	});
+
+	it("recognizes the Codex not-so-yolo alias as an explicit auto-review option", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-auto-review-alias",
+			agentId: "codex",
+			binary: "codex",
+			args: ["--not-so-yolo"],
+			cwd: "/tmp",
+			prompt: "",
+			codexApprovalsReviewer: "auto_review",
+		});
+
+		expect(launch.args).toContain("--not-so-yolo");
+		expect(launch.args).not.toContain("--approve-for-me");
+	});
+
+	it("forces human review when Ask me is selected", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-user-review",
+			agentId: "codex",
+			binary: "codex",
+			args: ["--approve-for-me", "--not-so-yolo", "-c", 'approvals_reviewer="auto_review"'],
+			cwd: "/tmp",
+			prompt: "",
+			codexApprovalsReviewer: "user",
+		});
+
+		expect(launch.args).not.toContain("--approve-for-me");
+		expect(launch.args).not.toContain("--not-so-yolo");
+		expect(getCodexConfigOverrideValues(launch.args, "approvals_reviewer")).toEqual(['"user"']);
+	});
+
+	it("leaves the reviewer unset when Codex configuration is inherited", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-inherit-reviewer",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			codexApprovalsReviewer: "inherit",
+		});
+
+		expect(launch.args).not.toContain("--approve-for-me");
+		expect(getCodexConfigOverrideValues(launch.args, "approvals_reviewer")).toEqual([]);
+	});
+
 	it("disables Codex startup update checks for Quarterdeck-launched sessions", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({

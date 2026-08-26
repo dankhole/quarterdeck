@@ -18,6 +18,7 @@ describe("resolveInitialValues", () => {
 		expect(values).toHaveProperty("fileEditorAutosaveMode");
 		expect(values.claudeFullscreenEnabled).toBe(false);
 		expect(values.statuslineEnabled).toBe(false);
+		expect(values.codexApprovalsReviewer).toBe("inherit");
 	});
 });
 

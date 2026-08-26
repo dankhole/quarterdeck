@@ -110,6 +110,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	llmSummaryPolishEnabled: CONFIG_DEFAULTS.llmSummaryPolishEnabled,
 	claudeFullscreenEnabled: CONFIG_DEFAULTS.claudeFullscreenEnabled,
 	statuslineEnabled: CONFIG_DEFAULTS.statuslineEnabled,
+	codexApprovalsReviewer: CONFIG_DEFAULTS.codexApprovalsReviewer,
 	terminalFontWeight: CONFIG_DEFAULTS.terminalFontWeight,
 	logLevel: CONFIG_DEFAULTS.logLevel,
 	fileEditorAutosaveMode: CONFIG_DEFAULTS.fileEditorAutosaveMode,

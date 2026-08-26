@@ -252,12 +252,40 @@ describe("RuntimeSettingsDialog", () => {
 		expect(fullscreenSwitch?.getAttribute("data-state")).toBe("checked");
 		expect(statuslineSwitch?.getAttribute("data-state")).toBe("checked");
 
+		const codexSectionButton = Array.from(document.body.querySelectorAll("button")).find((button) =>
+			button.textContent?.includes("Codex"),
+		);
+		expect(codexSectionButton).toBeInstanceOf(HTMLButtonElement);
+		expect(document.body.textContent).toContain("New/restarted sessions only · Inherit Codex config");
+		await act(async () => {
+			codexSectionButton?.click();
+		});
+		const approvalsReviewerSelect = document.body.querySelector<HTMLSelectElement>(
+			"#runtime-settings-codex-approvals-reviewer",
+		);
+		expect(approvalsReviewerSelect).toBeInstanceOf(HTMLSelectElement);
+		expect(approvalsReviewerSelect?.value).toBe("inherit");
+		expect(document.body.textContent).toContain("without a Quarterdeck override");
+		await act(async () => {
+			if (approvalsReviewerSelect) {
+				approvalsReviewerSelect.value = "auto_review";
+				approvalsReviewerSelect.dispatchEvent(new Event("change", { bubbles: true }));
+			}
+		});
+		expect(approvalsReviewerSelect?.value).toBe("auto_review");
+		expect(document.body.textContent).toContain("--approve-for-me");
+		expect(document.body.textContent).toContain("workspace-write sandbox");
+
 		const saveButton = findButtonByText(document.body, "Save");
 		await act(async () => {
 			saveButton?.click();
 		});
 		expect(saveMock).toHaveBeenCalledWith(
-			expect.objectContaining({ claudeFullscreenEnabled: true, statuslineEnabled: true }),
+			expect.objectContaining({
+				claudeFullscreenEnabled: true,
+				statuslineEnabled: true,
+				codexApprovalsReviewer: "auto_review",
+			}),
 		);
 	});
 

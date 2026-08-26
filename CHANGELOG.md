@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Feature: opt Codex sessions into automatic approval review
+
+- Settings now offers a Codex-only approval reviewer selector: inherit the user's Codex configuration, force prompts to the user, or launch new and restarted sessions with `--approve-for-me` while preserving Codex's workspace-write sandbox.
+- Quarterdeck keeps the native `PermissionRequest` hook in every reviewer mode, so per-app overrides and approval classes that still require a person remain visible even when automatic review is selected.
+- The minimum supported Codex CLI version is now 0.147.0, the first release that includes automatic approval review.
+
 ### Fix: recover from transient agent probes and observe browser launch
 
 - Task launch no longer treats a timed-out agent version or feature probe as durable CLI unavailability: timeout and launcher failures are typed, excluded from the availability cache, retried once during startup recovery, and surfaced with their precise remediation instead of the generic install-an-agent error.

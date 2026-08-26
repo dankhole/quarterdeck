@@ -6,6 +6,21 @@ import { SettingsSwitch } from "@/components/ui/settings-controls";
 import type { RuntimeConfigResponse } from "@/runtime/types";
 import type { SettingsSectionProps } from "./settings-section-props";
 
+type CodexApprovalsReviewer = RuntimeConfigResponse["codexApprovalsReviewer"];
+
+const CODEX_APPROVALS_REVIEWER_LABELS: Record<CodexApprovalsReviewer, string> = {
+	inherit: "Inherit Codex config",
+	user: "Ask me",
+	auto_review: "Approve for me",
+};
+
+function normalizeCodexApprovalsReviewer(value: string): CodexApprovalsReviewer {
+	if (value === "user" || value === "auto_review") {
+		return value;
+	}
+	return "inherit";
+}
+
 export function HarnessSection({
 	fields,
 	setField,
@@ -15,6 +30,7 @@ export function HarnessSection({
 	config: RuntimeConfigResponse | null;
 }): React.ReactElement {
 	const [claudeSettingsExpanded, setClaudeSettingsExpanded] = useState(false);
+	const [codexSettingsExpanded, setCodexSettingsExpanded] = useState(false);
 	const [systemPromptExpanded, setSystemPromptExpanded] = useState(false);
 
 	const defaultTemplate = config?.worktreeSystemPromptTemplateDefault ?? "";
@@ -25,8 +41,10 @@ export function HarnessSection({
 	}, [setField, defaultTemplate]);
 
 	const ClaudeChevron = claudeSettingsExpanded ? ChevronDown : ChevronRight;
+	const CodexChevron = codexSettingsExpanded ? ChevronDown : ChevronRight;
 	const PromptChevron = systemPromptExpanded ? ChevronDown : ChevronRight;
 	const claudeSettingsSummary = `New/restarted sessions only · ${fields.claudeFullscreenEnabled ? "Fullscreen on" : "Fullscreen off"} · ${fields.statuslineEnabled ? "Status line on" : "Status line off"}`;
+	const codexSettingsSummary = `New/restarted sessions only · ${CODEX_APPROVALS_REVIEWER_LABELS[fields.codexApprovalsReviewer]}`;
 
 	return (
 		<>
@@ -70,6 +88,57 @@ export function HarnessSection({
 								description="Adds repository, model, context, cost, token, and change metrics to new or restarted Claude sessions."
 							/>
 						</div>
+					</div>
+				</RadixCollapsible.Content>
+			</RadixCollapsible.Root>
+
+			<RadixCollapsible.Root open={codexSettingsExpanded} onOpenChange={setCodexSettingsExpanded} className="mt-2">
+				<RadixCollapsible.Trigger asChild>
+					<button
+						type="button"
+						className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-2 text-left text-[13px] text-text-primary hover:border-border-bright hover:bg-surface-3 data-[state=open]:rounded-b-none"
+					>
+						<span className="min-w-0">
+							<span className="block font-medium">Codex</span>
+							<span className="block truncate text-[12px] text-text-secondary">{codexSettingsSummary}</span>
+						</span>
+						<CodexChevron size={16} className="shrink-0 text-text-secondary" />
+					</button>
+				</RadixCollapsible.Trigger>
+				<RadixCollapsible.Content className="overflow-hidden rounded-b-md border-x border-b border-border bg-surface-1">
+					<div className="px-3 py-3">
+						<div className="flex items-center justify-between gap-3">
+							<label
+								htmlFor="runtime-settings-codex-approvals-reviewer"
+								className="text-text-primary text-[13px]"
+							>
+								Approval reviewer
+							</label>
+							<select
+								id="runtime-settings-codex-approvals-reviewer"
+								name="codexApprovalsReviewer"
+								value={fields.codexApprovalsReviewer}
+								onChange={(event) =>
+									setField(
+										"codexApprovalsReviewer",
+										normalizeCodexApprovalsReviewer(event.currentTarget.value),
+									)
+								}
+								disabled={disabled}
+								className="h-7 min-w-40 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary outline-none hover:border-border-bright focus:border-border-focus disabled:opacity-40"
+							>
+								<option value="inherit">Inherit Codex config</option>
+								<option value="user">Ask me</option>
+								<option value="auto_review">Approve for me</option>
+							</select>
+						</div>
+						<p className="text-text-secondary text-[13px] mt-1 mb-0">
+							{fields.codexApprovalsReviewer === "inherit"
+								? "Uses the reviewer selected by Codex configuration without a Quarterdeck override."
+								: fields.codexApprovalsReviewer === "user"
+									? "Forces eligible approval requests to pause for you in new or restarted Codex sessions."
+									: "Launches new or restarted Codex sessions with --approve-for-me, routing eligible requests through automatic review while keeping the workspace-write sandbox."}
+						</p>
 					</div>
 				</RadixCollapsible.Content>
 			</RadixCollapsible.Root>

@@ -159,6 +159,7 @@ export async function spawnTaskSession(
 			hookSessionInstanceId,
 			claudeFullscreenEnabled,
 			statuslineEnabled: request.statuslineEnabled,
+			codexApprovalsReviewer: request.codexApprovalsReviewer,
 			worktreeSystemPromptTemplate: request.worktreeSystemPromptTemplate,
 		});
 	} catch (error) {

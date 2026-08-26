@@ -17,6 +17,8 @@
 // import RuntimeConfigSaveRequest from the Zod schema — no manual sync needed.
 // The dirty check, reset, and save payload are handled by useSettingsForm.
 
+import { CODEX_APPROVALS_REVIEWERS, type CodexApprovalsReviewer } from "../core/api/codex-approvals";
+
 export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
@@ -109,6 +111,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	audibleNotificationsOnlyWhenHidden: boolField(true),
 	claudeFullscreenEnabled: boolField(false),
 	statuslineEnabled: boolField(false),
+	codexApprovalsReviewer: enumField<CodexApprovalsReviewer>("inherit", CODEX_APPROVALS_REVIEWERS),
 	terminalFontWeight: numField(325),
 	logLevel: enumField<LogLevel>("warn", LOG_LEVELS),
 	fileEditorAutosaveMode: enumField<FileEditorAutosaveMode>("off", FILE_EDITOR_AUTOSAVE_MODES),

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { buildClaudeHooksSettings } from "../claude-hooks";
 import { buildCodexHookConfigOverrides, CODEX_HOOKS_FEATURE_NAME, serializeCodexTomlValue } from "../codex-hooks";
 import { buildStatuslineCommand } from "../commands/statusline";
-import type { RuntimeAgentId, RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core";
+import type { CodexApprovalsReviewer, RuntimeAgentId, RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core";
 import { buildQuarterdeckCommandParts, createTaggedLogger } from "../core";
 import { lockedFileSystem } from "../fs";
 import { getRuntimeHomePath } from "../state";
@@ -32,6 +32,7 @@ export interface AgentAdapterLaunchInput {
 	hookSessionInstanceId?: string;
 	claudeFullscreenEnabled?: boolean;
 	statuslineEnabled?: boolean;
+	codexApprovalsReviewer?: CodexApprovalsReviewer;
 	worktreeSystemPromptTemplate?: string;
 }
 
@@ -102,6 +103,32 @@ function hasCodexConfigOverride(args: string[], configKey: string): boolean {
 		}
 	}
 	return false;
+}
+
+function removeCliOption(args: string[], optionName: string): void {
+	for (let index = args.length - 1; index >= 0; index -= 1) {
+		const arg = args[index];
+		if (arg === optionName || arg?.startsWith(`${optionName}=`)) {
+			args.splice(index, 1);
+		}
+	}
+}
+
+function removeCodexConfigOverrides(args: string[], configKey: string): void {
+	const prefix = `${configKey}=`;
+	for (let index = args.length - 1; index >= 0; index -= 1) {
+		const arg = args[index];
+		if ((arg === "-c" || arg === "--config") && args[index + 1]?.startsWith(prefix)) {
+			args.splice(index, 2);
+			continue;
+		}
+		if (
+			(arg?.startsWith("-c=") && arg.slice("-c=".length).startsWith(prefix)) ||
+			(arg?.startsWith("--config=") && arg.slice("--config=".length).startsWith(prefix))
+		) {
+			args.splice(index, 1);
+		}
+	}
 }
 
 function getHookAgentDirectory(agentId: RuntimeAgentId): string {
@@ -273,6 +300,18 @@ const codexAdapter: AgentSessionAdapter = {
 		const env: Record<string, string | undefined> = {};
 		const binary = input.binary;
 		const approvalPromptDetector = createCodexApprovalPromptDetector();
+
+		if (input.codexApprovalsReviewer === "auto_review") {
+			removeCodexConfigOverrides(codexArgs, "approvals_reviewer");
+			if (!hasCliOption(codexArgs, "--approve-for-me") && !hasCliOption(codexArgs, "--not-so-yolo")) {
+				insertCodexGlobalArgs(codexArgs, ["--approve-for-me"]);
+			}
+		} else if (input.codexApprovalsReviewer === "user") {
+			removeCliOption(codexArgs, "--approve-for-me");
+			removeCliOption(codexArgs, "--not-so-yolo");
+			removeCodexConfigOverrides(codexArgs, "approvals_reviewer");
+			insertCodexGlobalArgs(codexArgs, ["-c", 'approvals_reviewer="user"']);
+		}
 
 		if (input.resumeConversation) {
 			if (!codexArgs.includes("resume")) {

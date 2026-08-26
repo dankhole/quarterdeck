@@ -37,7 +37,7 @@ Windows support is experimental and currently untested on native Windows. macOS 
 - At least one supported agent CLI installed and available on `PATH`
 - Optional but recommended: a Nerd Font such as [JetBrainsMono Nerd Font](https://www.nerdfonts.com/) for cleaner terminal glyphs
 
-Codex users need Codex 0.142.5 or newer with native hook support.
+Codex users need Codex 0.147.0 or newer with native hook and auto-review support.
 
 ## Environment Variables
 
@@ -161,7 +161,7 @@ For the full development workflow, see [DEVELOPMENT.md](./DEVELOPMENT.md).
 
 If `quarterdeck` is not found, run `npm run link` from the Quarterdeck checkout and make sure your npm global bin directory is on `PATH`.
 
-If no agent is available, install Claude Code or OpenAI Codex and confirm the matching binary (`claude` or `codex`) is available on `PATH`. Quarterdeck currently requires Claude Code 2.1.198+ or Codex 0.142.5+ for supported task-agent launches.
+If no agent is available, install Claude Code or OpenAI Codex and confirm the matching binary (`claude` or `codex`) is available on `PATH`. Quarterdeck currently requires Claude Code 2.1.198+ or Codex 0.147.0+ for supported task-agent launches.
 
 If terminal symbols look wrong, install a Nerd Font and select it in your browser or system terminal font settings.
 

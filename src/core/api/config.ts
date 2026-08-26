@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CODEX_APPROVALS_REVIEWERS } from "./codex-approvals.js";
 import { runtimeCapabilitiesSchema, runtimeOpenTargetPlatformSchema } from "./host-integrations.js";
 import { promptShortcutSchema, runtimeAgentIdSchema, runtimeProjectShortcutSchema } from "./shared.js";
 
@@ -16,6 +17,8 @@ export const runtimeAgentDefinitionSchema = z.object({
 	configured: z.boolean(),
 });
 export type RuntimeAgentDefinition = z.infer<typeof runtimeAgentDefinitionSchema>;
+
+export const codexApprovalsReviewerSchema = z.enum(CODEX_APPROVALS_REVIEWERS);
 
 export const runtimeConfigResponseSchema = z.object({
 	selectedAgentId: runtimeAgentIdSchema,
@@ -65,6 +68,7 @@ export const runtimeConfigResponseSchema = z.object({
 	llmSummaryPolishEnabled: z.boolean(),
 	claudeFullscreenEnabled: z.boolean(),
 	statuslineEnabled: z.boolean(),
+	codexApprovalsReviewer: codexApprovalsReviewerSchema,
 	terminalFontWeight: z.number(),
 	logLevel: z.enum(["debug", "info", "warn", "error"]),
 	fileEditorAutosaveMode: z.enum(["off", "delay", "focus"]),
@@ -115,6 +119,7 @@ export const runtimeConfigSaveRequestSchema = z.object({
 		.optional(),
 	claudeFullscreenEnabled: z.boolean().optional(),
 	statuslineEnabled: z.boolean().optional(),
+	codexApprovalsReviewer: codexApprovalsReviewerSchema.optional(),
 	terminalFontWeight: z.number().min(100).max(900).optional(),
 	logLevel: z.enum(["debug", "info", "warn", "error"]).optional(),
 	fileEditorAutosaveMode: z.enum(["off", "delay", "focus"]).optional(),

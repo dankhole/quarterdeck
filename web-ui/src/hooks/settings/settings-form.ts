@@ -20,6 +20,7 @@ export interface SettingsFormValues {
 	shellAutoRestartEnabled: boolean;
 	claudeFullscreenEnabled: boolean;
 	statuslineEnabled: boolean;
+	codexApprovalsReviewer: RuntimeConfigResponse["codexApprovalsReviewer"];
 	terminalFontWeight: number;
 	fileEditorAutosaveMode: RuntimeConfigResponse["fileEditorAutosaveMode"];
 	showTrashWorktreeNotice: boolean;
@@ -58,6 +59,7 @@ export function resolveInitialValues(config: RuntimeConfigResponse | null): Sett
 		shellAutoRestartEnabled: config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
 		claudeFullscreenEnabled: config?.claudeFullscreenEnabled ?? CONFIG_DEFAULTS.claudeFullscreenEnabled,
 		statuslineEnabled: config?.statuslineEnabled ?? CONFIG_DEFAULTS.statuslineEnabled,
+		codexApprovalsReviewer: config?.codexApprovalsReviewer ?? CONFIG_DEFAULTS.codexApprovalsReviewer,
 		terminalFontWeight: config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight,
 		fileEditorAutosaveMode: config?.fileEditorAutosaveMode ?? CONFIG_DEFAULTS.fileEditorAutosaveMode,
 		showTrashWorktreeNotice: config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice,

@@ -79,6 +79,7 @@ export interface StartTaskSessionRequest {
 	projectPath?: string;
 	claudeFullscreenEnabled?: boolean;
 	statuslineEnabled?: boolean;
+	codexApprovalsReviewer?: AgentAdapterLaunchInput["codexApprovalsReviewer"];
 	worktreeSystemPromptTemplate?: string;
 	startupRecoveryToken?: string;
 	/** Preserve user-visible review meaning while startup recovery restores only the agent process. */

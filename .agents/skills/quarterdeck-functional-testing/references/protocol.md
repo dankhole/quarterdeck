@@ -1,6 +1,6 @@
 # Deterministic Fake Codex Protocol
 
-The lab shadows only the child runtime's `codex` executable. `codex --version` and `codex features list` report a hook-capable version so Quarterdeck exercises its normal Codex launch adapter and hook ingestion path. The user's real agent binaries and configuration are never read by the task process.
+The lab shadows only the child runtime's `codex` executable. `codex --version` and `codex features list` report a hook- and auto-review-capable version so Quarterdeck exercises its normal Codex launch adapter and hook ingestion path. The user's real agent binaries and configuration are never read by the task process.
 
 Prompt directives override the run's default scenario for one task:
 

@@ -56,6 +56,30 @@ describe.sequential("runtime-config persistence", () => {
 				expect(state.shortcuts).toEqual([]);
 				expect(state.claudeFullscreenEnabled).toBe(false);
 				expect(state.statuslineEnabled).toBe(false);
+				expect(state.codexApprovalsReviewer).toBe("inherit");
+			});
+		} finally {
+			cleanupHome();
+		}
+	});
+
+	it("persists the Codex approval reviewer globally", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-codex-auto-review-");
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const updated = await updateRuntimeConfig(null, {
+					codexApprovalsReviewer: "auto_review",
+				});
+				expect(updated.codexApprovalsReviewer).toBe("auto_review");
+
+				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
+					codexApprovalsReviewer?: string;
+				};
+				expect(globalPayload.codexApprovalsReviewer).toBe("auto_review");
+
+				const reloaded = await loadGlobalRuntimeConfig();
+				expect(reloaded.codexApprovalsReviewer).toBe("auto_review");
 			});
 		} finally {
 			cleanupHome();

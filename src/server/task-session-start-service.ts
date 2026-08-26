@@ -315,6 +315,7 @@ export async function prepareTaskSessionStart(
 		projectPath: projectScope.projectPath,
 		claudeFullscreenEnabled: scopedRuntimeConfig.claudeFullscreenEnabled,
 		statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
+		codexApprovalsReviewer: scopedRuntimeConfig.codexApprovalsReviewer,
 		worktreeSystemPromptTemplate: scopedRuntimeConfig.worktreeSystemPromptTemplate,
 		env: body.baseRef ? { QUARTERDECK_BASE_REF: body.baseRef } : undefined,
 		startupRecoveryToken: options.startupRecoveryToken,
