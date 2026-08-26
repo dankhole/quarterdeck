@@ -48,8 +48,5 @@ jobs:
       - name: Check (agent instructions, lint, typecheck, root tests)
         run: npm run check
 
-      - name: Web UI typecheck
-        run: npm run web:typecheck
-
       - name: Web UI tests
         run: npm run web:test

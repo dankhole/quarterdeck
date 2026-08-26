@@ -2,7 +2,7 @@
 
 Quarterdeck forked from [cline/kanban](https://github.com/cline/kanban) at commit `255e940d` on 2026-04-04. The two projects have diverged significantly — Quarterdeck removed the entire `cline-sdk/` layer, added multi-agent support, and has 200+ commits of its own. Cherry-picking from upstream rarely works cleanly; the practical approach is to monitor upstream for feature ideas and reimplement against our architecture.
 
-This is a living document. Each upstream review updates the sections below rather than creating a new file. See todo.md for the recurring review cadence.
+This is a living document. Each upstream review updates the sections below rather than creating a new file. See [`maintenance.md`](./maintenance.md) for the review workflow.
 
 **Last checked:** 2026-08-06 — upstream commit `87cfd6420` (20 commits reviewed since `e8976aeef`; 88 since `2c68b039`)
 

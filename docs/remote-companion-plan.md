@@ -207,15 +207,7 @@ Add or confirm coverage for:
 - Terminal input, paste, permission-state clearing, and interrupt semantics.
 - Runtime restart with persisted boards and interrupted sessions.
 
-Baseline commands:
-
-```bash
-npm run check
-npm run web:test
-npm run web:build
-npm run test:integration
-npm run web:e2e
-```
+Follow [`testing.md`](./testing.md). During implementation, run focused service, ownership, provider, and recovery tests for the boundary being changed. On the final reconciled tree, run one appropriate broad gate; add web tests/build or `web:e2e` only when shared browser contracts or desktop flows changed. Do not run the umbrella root check and its integration-test constituent separately on the same unchanged tree.
 
 Do not start a second Quarterdeck runtime for validation without confirming that it will not overlap the user's active instance. Headless integration tests should use isolated temporary state roots and fake agent executables.
 
@@ -625,7 +617,7 @@ Prerequisite work is complete only when all of the following are true:
 - The runtime is the single persisted board command authority.
 - Project/task/conversation remote projections are strict, text-only, and leak-tested.
 - The complete list/read/respond/create/start flow passes with no browser connected.
-- `npm run check`, `npm run web:test`, `npm run web:build`, and `npm run test:integration` pass.
+- The validation selected through [`testing.md`](./testing.md) passes on the final reconciled tree, with browserless service acceptance always required and web/desktop gates included only for surfaces changed by the integration.
 - Manual dogfood covers browser open/closed, project switching, long sessions, restart/resume, trash/restore, Claude, and Codex. Browser reconnect and full runtime restart are separate cases: the restart case must reuse persisted tasks, verify card state plus project pills before opening a task, then respond to recovered Review/Needs Input tasks and verify board, pills, and notifications converge back to Running.
 
 ---

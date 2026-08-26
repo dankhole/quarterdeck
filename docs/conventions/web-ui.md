@@ -143,3 +143,7 @@ Quarterdeck has two unrelated shortcut systems:
 - **Prompt shortcuts** (`PromptShortcut`, `usePromptShortcuts`) inject agent prompts from sidebar Review cards. They are global and use paste mode plus auto-submit.
 
 Keep their types, persistence, and execution paths distinct.
+
+## Validation
+
+Follow [`../testing.md`](../testing.md). Start with colocated tests for the changed domain module, hook, component, or runtime helper. Use the complete web suite for broad shared-state or application-shell changes, Playwright for a stable cross-browser smoke path, and Agent Lab only when the claim crosses the live runtime, PTY, persistence, host-integration, or visual boundary. Screenshots are evidence for rendering claims, not a default requirement for semantic UI changes.

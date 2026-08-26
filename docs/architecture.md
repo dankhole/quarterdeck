@@ -291,6 +291,8 @@ Detailed invariants for the highest-risk state paths live in:
 - [`conventions/runtime-state.md`](./conventions/runtime-state.md) for durable board ownership, command receipts, authoritative hydration, projections, notifications, indicators, and automatic titles; and
 - [`conventions/session-lifecycle.md`](./conventions/session-lifecycle.md) for stop/resume/recovery, reconciliation, PTY identity, terminal restore, native hooks, input semantics, and launch boundaries.
 
+Choose validation through [`testing.md`](./testing.md); the architecture map identifies the owner, and the testing strategy identifies the smallest layer that proves its invariant.
+
 ## Common Change Guide
 
 When you are making a change, this table is often more useful than a file list.

@@ -143,7 +143,12 @@ On headless remote Linux, native pickers such as `zenity` or `kdialog` may be un
 
 ## Related documents
 
+- [Testing strategy](../testing.md)
 - [Runtime state and board ownership](./runtime-state.md)
 - [Task lifecycle reliability plan](../task-lifecycle-reliability-plan.md)
 - [Agent functional testing](../agent-functional-testing.md)
 - [Unified diagnostics contract](../diagnostics.md)
+
+## Validation
+
+Start with focused state-machine, transition-controller, manager, adapter, or hook-ingest tests. Add a process/filesystem integration test for startup, shutdown, exact resume, or recovery behavior. Use deterministic Agent Lab only for browser/PTY convergence or cold runtime hydration; use an explicitly authorized real provider only when its actual TUI, native hook sequence, version compatibility, or launcher interpretation is the unresolved risk. Follow [the testing strategy](../testing.md) and do not substitute terminal output or screenshots for authoritative lifecycle assertions.

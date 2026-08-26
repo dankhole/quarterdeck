@@ -235,3 +235,7 @@ The current shell came from a few incremental reworks:
 3. Files became a scope-aware main view with its own tree/content layout.
 4. Git became a main view with internal Uncommitted, Last Turn, and Compare tabs.
 5. Projects and Commit became side panels, with Commit valid in both home and task contexts.
+
+## Validation
+
+Follow [`../testing.md`](../testing.md). Start with the affected layout hook and component tests. Use Playwright or deterministic Agent Lab when navigation, persisted selection, cross-surface coupling, responsive layout, or a real runtime projection is part of the claim. Capture pixel evidence only for spacing, clipping, stacking, paint, or responsive behavior.

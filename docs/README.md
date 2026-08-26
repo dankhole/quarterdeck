@@ -14,10 +14,11 @@ If you are new to the codebase, read these in order:
 
 1. [`../README.md`](../README.md) for the product overview and local setup.
 2. [`architecture.md`](./architecture.md) for the system map, runtime model, and key file guide.
-3. [`todo.md`](./todo.md) for the active engineering backlog and current refactor queue.
-4. [`conventions/architecture-guardrails.md`](./conventions/architecture-guardrails.md) for reusable rules on adding clever features without letting optimization define the architecture.
+3. [`testing.md`](./testing.md) for proportionate validation and testing-layer selection.
+4. [`todo.md`](./todo.md) for the active engineering backlog and current refactor queue.
+5. [`conventions/architecture-guardrails.md`](./conventions/architecture-guardrails.md) for reusable rules on adding clever features without letting optimization define the architecture.
 
-For live-instance diagnostics, use [`../DEVELOPMENT.md#unified-diagnostics`](../DEVELOPMENT.md#unified-diagnostics). The stable architecture and privacy boundary is in [`diagnostics.md`](./diagnostics.md). For isolated browser, terminal, Git, Files, lifecycle, and visual regression testing, use [`agent-functional-testing.md`](./agent-functional-testing.md).
+For test selection, start with [`testing.md`](./testing.md). For live-instance diagnostics, use [`../DEVELOPMENT.md#unified-diagnostics`](../DEVELOPMENT.md#unified-diagnostics). The stable architecture and privacy boundary is in [`diagnostics.md`](./diagnostics.md). When the testing strategy calls for isolated browser, terminal, Git, Files, lifecycle, or visual validation, use [`agent-functional-testing.md`](./agent-functional-testing.md).
 
 If you only need the current refactor state, start with:
 
@@ -47,6 +48,7 @@ Use this map when you are planning or evaluating refactor work.
 
 - [`architecture.md`](./architecture.md): system-wide architecture overview.
 - [`diagnostics.md`](./diagnostics.md): stable unified diagnostics contract, privacy boundary, ownership, and validation entry points.
+- [`testing.md`](./testing.md): canonical validation-selection policy, command scopes, and heavy-lane criteria.
 - [`agent-functional-testing.md`](./agent-functional-testing.md): disposable Quarterdeck lab, deterministic fake agent, browser UI driving, visual artifacts, and failure evidence.
 - [`windows-support-audit.md`](./windows-support-audit.md): current Windows support boundary, verified compatibility work, and remaining follow-ups.
 - [`conventions/frontend-hooks.md`](./conventions/frontend-hooks.md): domain-module extraction pattern for frontend hooks and services.
@@ -54,10 +56,13 @@ Use this map when you are planning or evaluating refactor work.
 - [`conventions/ui-layout.md`](./conventions/ui-layout.md): UI region names, shell layout ownership, and main-view/sidebar rules.
 - [`conventions/runtime-state.md`](./conventions/runtime-state.md): durable board ownership, command receipts, authoritative browser hydration, runtime projections, notifications, and task-indicator semantics.
 - [`conventions/session-lifecycle.md`](./conventions/session-lifecycle.md): task-session stop/resume/recovery, reconciliation, PTY and restore identity, provider hooks, input semantics, and launch boundaries.
+- [`conventions/structured-execution.md`](./conventions/structured-execution.md): stable single-writer and exact-provider-identity rules for structured/non-PTY execution and handoff.
 - [`conventions/architecture-guardrails.md`](./conventions/architecture-guardrails.md): reusable design rules for preventing optimization-shaped architecture.
 
 ### Maintenance references
 
+- [`maintenance.md`](./maintenance.md): recurring upstream-review, documentation-lifecycle, and provider-compatibility routines.
+- [`compatibility-watchlist.md`](./compatibility-watchlist.md): upstream provider capabilities that are not yet actionable local backlog work.
 - [`upstream-sync.md`](./upstream-sync.md): living review tracker for ideas and fixes evaluated from the diverged `cline/kanban` upstream.
 - [`../RELEASE_WORKFLOW.md`](../RELEASE_WORKFLOW.md): version, changelog, validation, tag, and publish process.
 - [`../SECURITY.md`](../SECURITY.md): vulnerability reporting and supported security boundary.
@@ -68,6 +73,8 @@ Use this map when you are planning or evaluating refactor work.
 - [`history/`](./history): frozen historical records — version-scoped implementation logs and changelogs from earlier milestones.
 - [`history/agent-diagnostics-plan.md`](./history/agent-diagnostics-plan.md): exhaustive completed diagnostics implementation plan and migration decisions.
 - [`history/task-state-system-stale.md`](./history/task-state-system-stale.md): superseded task/session state explanation, retained only for forensic context.
+
+`docs/archive/` contains imported legacy planning and research material that predates the current documentation map. Treat it as frozen forensic context and do not route normal work there. New superseded records belong in `docs/history/`; migrate legacy archive material only when a focused cleanup can preserve its links and provenance.
 
 This `docs/` folder should stand on its own for normal onboarding. A new engineer should not need archived handoffs or historical plans to understand the current architecture.
 

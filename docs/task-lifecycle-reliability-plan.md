@@ -823,14 +823,7 @@ Each test must prove the operation settles without duplicate launch, patch loss,
 
 ### Existing regression suite
 
-Run at each meaningful cutover and before handoff:
-
-```bash
-npm run check
-npm run web:test
-npm run web:build
-npm run test:integration
-```
+Follow [`testing.md`](./testing.md). Run focused command, lifecycle, recovery, and projection tests at each cutover. Run the broad root/web/build gates once on the final reconciled tree before handoff; do not repeat the umbrella root check and integration constituent on the same unchanged tree.
 
 Do not launch a second Quarterdeck runtime while the user is dogfooding an existing instance.
 

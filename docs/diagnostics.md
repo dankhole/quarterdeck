@@ -54,4 +54,4 @@ When changing the system, preserve these ownership boundaries:
 
 ## Validation
 
-Validate schema and recorder changes with the focused diagnostics tests plus the normal repository check. For browser delivery, terminal metrics, lifecycle races, or visual evidence, use the isolated Agent Lab rather than the user's active Quarterdeck instance.
+Follow [`testing.md`](./testing.md). Validate schema and recorder changes with the focused diagnostics tests, adding the relevant HTTP, bundle, or browser-delivery boundary when it changed. Use isolated Agent Lab for synthetic browser delivery, terminal metrics, lifecycle races, or visual evidence only when those surfaces are part of the claim; never use the user's active Quarterdeck instance. A normal repository check is a final broad gate, not a required companion to every diagnostics test run.

@@ -155,7 +155,7 @@ npm run unlink
 | `npm run dev:full` | Run the runtime and web UI together for local development. |
 | `npm run web:dev` | Run the Vite web UI dev server on port 4173. |
 | `npm run build` | Build the packaged runtime and web UI into `dist`. |
-| `npm run check` | Run agent-instruction checks, Biome, typecheck, and tests. |
+| `npm run check` | Run agent-instruction checks, Biome, runtime typecheck, and root tests. |
 | `quarterdeck diagnostics --help` | Discover and inspect private local runtime diagnostics. |
 
 For the full development workflow, see [DEVELOPMENT.md](./DEVELOPMENT.md).
@@ -173,6 +173,7 @@ If an incident is difficult to explain, run `quarterdeck diagnostics doctor --re
 ## Documentation
 
 - [DEVELOPMENT.md](./DEVELOPMENT.md): local development workflow, scripts, debugging, and repo orientation
+- [docs/testing.md](./docs/testing.md): proportionate validation strategy and testing-layer selection
 - [docs/README.md](./docs/README.md): architecture docs, conventions, roadmap, and implementation history
 - [AGENTS.md](./AGENTS.md): shared repo-owned instructions for coding agents
 

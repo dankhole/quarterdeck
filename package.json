@@ -64,7 +64,7 @@
     "web:dev": "npm --prefix web-ui run dev",
     "web:build": "npm --prefix web-ui run build",
     "web:typecheck": "npm --prefix web-ui run typecheck",
-    "web:test": "npm --prefix web-ui run test",
+    "web:test": "npm --prefix web-ui run test --",
     "web:e2e": "npm --prefix web-ui run e2e --",
     "agent:lab": "node --import tsx scripts/agent-lab.ts",
     "agent:browser": "node --import tsx scripts/agent-browser.ts",

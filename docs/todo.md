@@ -12,22 +12,20 @@ Tracking note:
 
 These are broader architecture refactor targets confirmed against implementation files and worth keeping visible.
 
-- Continue the behavior-preserving foundations for the text-only Remote Companion after the completed board-ownership, lifecycle-reliability, provider-neutral bounded recent-conversation read, authenticated provider-history hardening, and native/structured handoff evidence gates.
-  - P3 remote code must call `ProjectBoardCommandService` and `ProjectTaskLifecycleService` directly, never browser `setBoard`, lifecycle presentation adapters, generic PTY input, or browser-supplied provider/process/filesystem identity. P2 is integrated, read-only, and independent of execution ownership.
-  - Reconcile the Codex single-writer execution-owner coordinator and idempotent non-PTY `TaskInteractionService` implemented on `feature/remote-execution-ownership` with the newer native foreground interaction lifecycle and provider-order fencing before merging it. Claude structured ownership remains pending; keep provider-specific launch, configuration, protocol, and history behavior behind each adapter.
-  - Model background-agent interactions as explicitly keyed, concurrent provider-owned records before making them remotely actionable. Current Claude hooks carrying `agent_id` and global Agent View notifications are deliberately fenced from the single foreground `outstandingInteraction`; remote code must not route those notifications through a foreground task or raw PTY response.
-  - Before exposing a remote listener, run the browserless and Agent Lab acceptance gates across Running, ordinary Review, genuine Needs Input, response-pending, Interrupted, Error, stale/delayed hooks, rejection/cancellation, project switching, and same-state cold runtime restart. Assert cards, notifications, sounds, persistence, and exclusive project pills together: three Review-column cards with one blocked task display `R 2 · NI 1`, and a response clears NI without claiming Running.
-  - Live structured JSON may accelerate updates but is not durable history. Do not add a Quarterdeck transcript store or weaken the recorded version/configuration/history, stop-and-wait, exact-profile, and no-replay compatibility gates. Plans: [completed provider-boundary and ownership evidence](./conversation-provider-boundary-spike.md), [ownership handoff results](./remote-task-ownership-handoff-spike-results.md), and [Remote Companion](./remote-companion-plan.md).
+- Integrate structured execution ownership for the text-only Remote Companion.
+  - Reconcile the Codex single-writer coordinator and idempotent non-PTY `TaskInteractionService` on `feature/remote-execution-ownership` with the newer native foreground interaction lifecycle and provider-order fencing, then integrate it.
+  - Implement the corresponding Claude structured owner after the Codex contract is reconciled. Keep background-agent remote interaction out of scope until it has a durable keyed model.
+  - Before exposing a remote listener, complete the browserless service acceptance gates and only the relevant deterministic or real-provider Agent Lab scenarios selected by [`testing.md`](./testing.md). Stable constraints live in [`conventions/structured-execution.md`](./conventions/structured-execution.md); detailed evidence remains in the [provider-boundary spike](./conversation-provider-boundary-spike.md), [handoff results](./remote-task-ownership-handoff-spike-results.md), and [Remote Companion plan](./remote-companion-plan.md).
 - Dogfood the new opt-in Claude fullscreen renderer across long conversations, startup/trash resume, automatic restart, pooled attach/detach, alternate-screen restore, mouse scrolling, selection/copy, and links. Keep it default-off until those interactions are stable, then decide whether to make fullscreen the default while retaining the classic-renderer escape hatch. Plan: [docs/claude-terminal-rendering-plan.md](./claude-terminal-rendering-plan.md).
 - Replace broad ignored-path worktree symlinking with an explicit allowlist plus project-level opt-ins. The current denylist protects mutable dependency trees (`node_modules`) and known build outputs such as `.NET` `bin/`, `obj/`, and `TestResults/`; the safer long-term contract is to mirror only high-confidence immutable setup paths and let projects opt into additional ignored paths intentionally. Installed dependency directories must remain task-owned and are never eligible for sharing.
-- Revisit shell terminal minimization after the dedicated terminal lifecycle is more observable and reliable: home/task shell panes currently stop and dispose when closed or when their owning context is left; keeping them live while minimized should preserve that context boundary without resurrecting hidden terminals into blank/loading panes. Consider IDE-style shell terminal tabs, similar to Rider/JetBrains terminals, so persistent shells are explicit, switchable, and easier to manage.
+- Decide whether home/task shell terminals should survive panel minimization and context switching. If persistence is desirable, design explicit IDE-style shell tabs with visible ownership and lifecycle instead of resurrecting hidden terminals into blank/loading panes; otherwise document close/dispose as the intended behavior.
 
 ## Codex native hooks parity follow-ups
 
-- Track upstream support for an effective reviewer or post-decision identity on native `PermissionRequest`. Current Codex hooks fire before auto-review routing and do not expose whether the request reached a person, so Quarterdeck can suppress false Needs Input only for its exact launch-scoped Approve for me mode; inherited user configuration remains conservatively actionable until the provider supplies stronger evidence.
 - Revisit and remove the temporary rendered-screen approval shim in `src/terminal/codex-approval-prompt.ts`. Track upstream Codex releases until nested Code Mode approvals reliably emit the structured `PermissionRequest` hook, then verify command, edit, network, permission, and nested-tool approvals before raising Quarterdeck's minimum version and deleting the detector/reset path. While the shim remains, profile attached high-output Codex sessions for CPU, allocation, and output-latency impact from per-write viewport inspection; optimize if material without broadening the fallback into transcript-based lifecycle inference.
 - Revisit remaining Codex slash-command lifecycle parity before declaring full Claude Code parity. Manual `/compact` now uses its dedicated paired hooks as activity-only observations while automatic compaction stays state-neutral, but `/resume`, plugin reloads, and other TUI-local commands still lack stable start/finish boundaries. Keep those unpaired maintenance signals activity-only; they must not move review-ready cards to running.
-- Revisit Codex turn-failure granularity if the native hook API adds explicit abort/failure events. The current surface covers tool, prompt, compaction, subagent, and stop lifecycle, but the deleted wrapper/parser path could also infer `task_started`, `turn_aborted`, and `task_complete` from event logs. Native hooks remain cleaner and launch-scoped while providing less detail for non-tool failure attribution.
+
+Externally blocked native-hook capabilities live in [`compatibility-watchlist.md`](./compatibility-watchlist.md), not the active backlog.
 
 ## Files view and Git diff performance
 
@@ -48,31 +46,20 @@ The first editable Files-view milestone has landed with CodeMirror tabs, dirty/s
 - Add bring-your-own LSP code navigation to the Files editor for go-to-definition, find-references, and hover without bundling language servers. Plan: [docs/lsp-code-navigation-plan.md](./lsp-code-navigation-plan.md).
 - Add selected-range, file-level, and diff-hunk context actions that can send focused prompts to the active task agent.
 - Own the dirty editor-tab cache lifecycle for deleted project/task/worktree scopes so hidden unsaved tabs are surfaced before destructive actions or pruned safely when clean.
-- Profile whether the 5 MB soft edit cap needs tuning for generated, minified, or unusually long-line files while preserving the 10 MB display safety cap.
-- Keep tuning the CodeMirror dark theme against dogfood feedback and common IDE dark palettes if token families or selections remain too low-contrast.
 - Move compare, merge/conflict resolution, commit diff, and other file-viewing surfaces onto the Files/editor foundation where it reduces duplication without losing review-specific workflows.
 
 ## Publish to npm
 
-Register the `quarterdeck` package on npm, configure OIDC trusted publishing for the GitHub repo, and do the first publish via the existing `publish.yml` workflow. Once published, update the README install instructions to use `npx quarterdeck` / `npm i -g quarterdeck` instead of the current clone-and-build steps.
+The `quarterdeck` npm name is already held by the maintainer's `0.0.1` placeholder. Configure and confirm npm-side OIDC trusted publishing for the GitHub repository, publish the first real release matching `package.json` through the existing `publish.yml` workflow, then update the README install instructions to use `npx quarterdeck` / `npm i -g quarterdeck` instead of clone-and-build steps.
 
 ## Branch management in git view
 
-Core git-view branch operations have landed. Remaining power-user operations:
-
-- **Interactive rebase** (reorder/squash commits) — Hard to do well in UI, questionable ROI.
-- **Tag management** — Less relevant for the agent-worktree workflow.
-- **Force push** — Dangerous, but sometimes needed after rebase. Requires confirmation dialog.
-- **Revert commit** — Undo a specific commit without rewriting history.
+Core git-view branch operations have landed. Add **Revert commit** so a user can undo a specific commit without rewriting history.
 
 **UI surface areas:**
 - Branch context menu in `BranchSelectorPopover`
 - Branch context menu in `GitRefsPanel`
 - Git view tab bar or toolbar when the operation needs persistent conflict/progress state
-
-## Talk to the agent while browsing files
-
-Add a way to send comments or prompts to the active task agent while browsing files and diffs, without leaving the repository/file inspection surface. Consider a workflow similar to compare-tab comments: attach a prompt to the currently viewed file, selection, or diff hunk, then submit it to the task agent with enough context to make the request actionable.
 
 ## Windows support follow-ups
 
@@ -88,14 +75,3 @@ The broad audit is complete; current findings live in [docs/windows-support-audi
 ## Search modals: live preview pane
 
 Add a VS Code-style peek preview to the search modals — when a result is highlighted (keyboard or hover), show a read-only preview of the file content alongside the result list, centered on the matched line. Avoids full navigation for scanning multiple matches. Could be a side panel within the overlay or an expandable inline preview.
-
-## Upstream sync: periodic review of cline/kanban (recurring)
-
-Periodically review the upstream [cline/kanban](https://github.com/cline/kanban) project for recent bug fixes and improvements worth reimplementing. The codebase has diverged significantly (200+ commits, `cline-sdk/` removed entirely) so most changes need reimplementation rather than direct cherry-picks. Roughly half of upstream output is Cline SDK/account work that will never apply; the other half is shared UI/UX where ideas are portable even if code isn't.
-
-**Cadence:** Check weekly-ish. Run `git fetch upstream && git log upstream/main --oneline --since="<last check date>"` and evaluate new commits.
-**Tracker:** [docs/upstream-sync.md](upstream-sync.md) — living doc with Adopted / Backlog / Decided against sections. Update it after each review.
-
-## Archive stale docs (recurring)
-
-Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,6 +7,8 @@ const repoRoot = path.resolve(scriptDir, "..");
 
 const agentsPath = path.join(repoRoot, "AGENTS.md");
 const claudePath = path.join(repoRoot, "CLAUDE.md");
+const testingPath = path.join(repoRoot, "docs", "testing.md");
+const structuredExecutionPath = path.join(repoRoot, "docs", "conventions", "structured-execution.md");
 
 const agents = readFileSync(agentsPath, "utf8");
 const claude = readFileSync(claudePath, "utf8");
@@ -24,6 +26,18 @@ if (agentsBytes > agentsMaxBytes) {
 	errors.push(
 		`AGENTS.md should remain a compact routing contract; expected ${agentsMaxBytes} bytes or fewer, found ${agentsBytes}.`,
 	);
+}
+
+if (!agents.includes("docs/testing.md")) {
+	errors.push("AGENTS.md must route validation selection to docs/testing.md.");
+}
+
+if (!existsSync(testingPath)) {
+	errors.push("docs/testing.md must exist as the canonical validation-selection guide.");
+}
+
+if (!agents.includes("docs/conventions/structured-execution.md") || !existsSync(structuredExecutionPath)) {
+	errors.push("AGENTS.md must route structured execution to its stable convention document.");
 }
 
 if (!claude.startsWith("# Claude Code Compatibility Shim")) {

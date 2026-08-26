@@ -527,32 +527,13 @@ After Decision A passes, the production P2B implementation is not complete merel
 - No Pi conversation feature or compatibility gate is added.
 - No listener, remote authentication, pairing flow, mobile renderer, networking, or remotely reachable endpoint is added.
 
-### Focused and complete validation
+### Proportionate validation
 
-Run focused provider/domain/service tests throughout development. When the implementation is ready, run the complete required gates using the repository's pinned Node/npm baseline:
-
-```bash
-npm run check
-npm run web:test
-npm run web:build
-npm run test:integration
-npm run check:dead-code
-git diff --check
-```
-
-Do not omit web gates merely because P2 is server-owned; they protect shared contract and composition boundaries. If a command fails, record and resolve the root cause rather than narrowing the gate without explanation.
+Follow [`testing.md`](./testing.md). Run focused provider/domain/service tests throughout development, including the shared contract/composition consumers actually affected. On the final reconciled tree, run one appropriate broad gate. Add web tests/build when the shared browser contract changed; add dead-code checking only when exports or dependency reachability changed. Do not repeat umbrella commands and their constituents on the same unchanged tree.
 
 ### Isolated desktop regression
 
-Because P2B has zero intended desktop behavior change, run a proportionate isolated Agent Lab regression using the repo-owned `quarterdeck-functional-testing` skill. Do not use `npm run dev`, `npm run dogfood`, or the user's active Quarterdeck instance.
-
-At minimum verify that a normal fake-agent task:
-
-- Launches successfully.
-- Displays its native fake-agent terminal.
-- Transitions through needs-input and review.
-- Accepts local terminal input.
-- Survives browser reconnect with the terminal restored and usable.
+P2B has zero intended desktop behavior change. Use isolated Agent Lab only if the implementation changes desktop composition or a shared runtime path whose browser/PTY behavior is uncertain; otherwise focused service and contract coverage is the relevant evidence. If selected, use the repo-owned `quarterdeck-functional-testing` skill and never use `npm run dev`, `npm run dogfood`, or the user's active Quarterdeck instance.
 
 Stop the lab run cleanly and retain/report its run ID and canonical evidence location.
 

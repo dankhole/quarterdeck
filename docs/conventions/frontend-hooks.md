@@ -122,7 +122,7 @@ const trashTask = useCallback((taskId: string) => {
 3. Write plain TS unit tests for the domain module — these should be fast, no React, no mocking.
 4. Update the hook to import from the domain module and call the extracted functions.
 5. Verify the existing hook tests still pass (if any). They become integration tests.
-6. Run `npm run web:typecheck && npm run web:test && npm run build`.
+6. Follow [`../testing.md`](../testing.md): run the focused domain and affected hook tests, then add web typecheck, the broader web suite, or a production build only when the changed boundary warrants them.
 
 #### Step 5: Know when to stop
 

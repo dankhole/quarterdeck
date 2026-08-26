@@ -8,7 +8,7 @@ This file contains universal rules and routes specialized work to the smallest r
 
 Add high-signal guidance when an issue required user correction, several failed attempts, a non-obvious cross-file investigation, or behavior that contradicted reasonable expectations. Record durable architecture and forensic detail in the relevant project document; keep only the universal rule or routing trigger here. Do not add routine facts discoverable from a few files.
 
-When changing the instruction bridge, run `npm run check:agent-instructions` or `npm run check`.
+When changing the instruction bridge, run `npm run check:agent-instructions`. Do not run the full runtime test suite solely for an instruction-only edit.
 
 ## Core engineering rules
 
@@ -41,6 +41,8 @@ Read the referenced document before editing the listed area:
 - Durable board state, board commands/receipts, lifecycle board transitions, authoritative hydration, project-scoped projections, automatic titles, notifications, or task indicators: `docs/conventions/runtime-state.md`.
 - Task-agent start/stop/resume/restart, startup recovery, session reconciliation, PTY identity, terminal restore, agent adapters, native hooks, input state, or host process launches: `docs/conventions/session-lifecycle.md`.
 - Diagnostics recorder, journal, panel delivery, doctor, capture, or bundle format: `docs/diagnostics.md`.
+- Test selection, validation scope, or deciding whether a heavier testing lane is justified: `docs/testing.md`.
+- Structured/non-PTY execution, provider-session handoff, or remote interaction ownership: `docs/conventions/structured-execution.md`.
 - Current architecture priorities or active refactors: `docs/todo.md` and the specific linked plan.
 
 Tracked historical context lives under `docs/history/`. Read it only when current docs and code do not answer the question or the user explicitly requests archival context.
@@ -62,16 +64,6 @@ Tracked historical context lives under `docs/history/`. Read it only when curren
 - Agent availability has separate display and launch policies. Settings/config display reads may use the 30-second stale-while-revalidate cache, but task launches must go through `resolveAgentCommandForLaunch(...)`: reuse only a fresh successful result, await expired or cached-failure refreshes, never cache probe timeouts/execution failures, and preserve the typed failure message. Startup recovery may retry one transient availability probe inside preparation; deterministic missing/version/feature failures remain non-retryable preparation errors. Keep probe diagnostics metadata-only (`agentId`, probe kind, duration, typed outcome), without command output or thrown messages.
 
 The summaries above are not substitutes for the routed runtime-state and session-lifecycle documents.
-
-## Structured execution ownership
-
-Codex P3 structured ownership is implemented on `feature/remote-execution-ownership` but is not integrated into this branch; Claude structured ownership remains pending. Before changing or integrating execution ownership, read:
-
-- `docs/remote-task-ownership-handoff-spike-results.md`
-- `docs/conversation-provider-boundary-spike.md`
-- the P3 section of `docs/remote-companion-plan.md`
-
-Preserve these non-negotiable constraints: one writer per provider session; persist a pending handoff before stopping the old owner; confirm loss of old write authority before replacement; restart with exact provider session/profile identity; fence old callbacks by operation, owner generation, and session instance; reject mid-turn handoff by default; and report `turn_outcome_unknown` after ambiguous structured-runner crashes instead of replaying prompts. Codex identity includes the exact server-owned `CODEX_HOME` profile; Claude identity includes an explicitly pinned Agent SDK native executable and configuration manifest. Compatibility is version, schema, and history-mode gated. The native foreground `outstandingInteraction` lifecycle is singular by design; structured Codex callbacks use exact keyed interaction identity, and concurrent Claude/background-agent remote interaction remains unsupported until it has a durable keyed model. Keep provider-history reads independent and read-only. Do not add a Quarterdeck transcript store, remote raw PTY input, browser-supplied provider/process/filesystem identity, provider-global latest/continue fallback, or Pi compatibility to this contract.
 
 ## Git and GitHub
 
@@ -99,14 +91,15 @@ Before adding a global config field, follow the checklist at the top of `src/con
 
 Avoid broad edits to copied config mocks during feature work. Prefer the shared runtime-config factory; if repeated fixtures remain, defer mechanical updates to a final pass or consolidate them behind `createDefaultMockConfig()` to reduce merge conflicts.
 
-## Isolated functional testing
+## Validation
 
-For agent-driven browser, terminal, Git, Files, lifecycle, persistence, or visual regression testing, use the repo-owned `quarterdeck-functional-testing` skill and `npm run agent:lab`. Read `.agents/skills/quarterdeck-functional-testing/SKILL.md` and `docs/agent-functional-testing.md` before starting.
-
-- Never attach automation to the user's active Quarterdeck instance or substitute `npm run dev`, `npm run dev:full`, `npm run dogfood`, or `quarterdeck` for the lab.
-- Use only synthetic data. The lab isolates data and processes but is not a hardened security sandbox.
-- Drive it through `npm run agent:browser`, combine semantic snapshots with pixel screenshots, capture canonical diagnostic checkpoints, and always stop the run so browser sessions and child process trees close.
-- Browser reconnect and runtime cold restart are distinct regression classes. Use `restart-runtime` and the documented state matrix for hydration or startup-recovery changes.
+- Follow `docs/testing.md` and run the smallest validation set that proves the changed invariant.
+- Do not run an umbrella command and its constituent commands on the same unchanged tree. Reconcile the final base before any broad final gate, and re-run only validation affected by later changes.
+- Documentation-only work does not require runtime or browser tests. Validate the instruction bridge only when it changed and check only links added or modified.
+- Use the deterministic Agent Lab only when browser/runtime/PTY, persistence, Git/Files, host-integration, or visual behavior is part of the claim. Use screenshots only for visual claims and `restart-runtime` only for cold-start or recovery claims.
+- Use a real provider only with explicit authorization and only when provider TUI, hooks, event ordering, version compatibility, or launcher behavior is the unresolved risk.
+- When Agent Lab is selected, use the repo-owned `quarterdeck-functional-testing` skill. Never attach automation to the user's active Quarterdeck instance or substitute `npm run dev`, `npm run dev:full`, `npm run dogfood`, or `quarterdeck` for the lab.
+- Use only synthetic lab data and always stop the run. The lab isolates data and processes but is not a hardened security sandbox.
 - Mutable dependency directories such as `node_modules` are never shared into task worktrees. Never follow or mutate a legacy dependency symlink target.
 
 ## Diagnostics

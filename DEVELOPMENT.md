@@ -24,13 +24,13 @@ npm run bootstrap        # Locked install of root + web-ui deps
 npm run dev              # Runtime server (watch mode, port 3500)
 npm run dev:full         # Runtime + web UI together
 npm run web:dev          # Web UI dev server (Vite HMR, port 4173)
-npm run build            # Full production build
-npm run check            # Agent-doc check + lint + typecheck + tests
-npm run test             # All runtime tests
+npm run build            # Web typecheck/build + runtime package build
+npm run check            # Agent docs + Biome + runtime typecheck/tests
+npm run test             # All root runtime + integration tests
 npm run test:fast        # Runtime + utility tests only
 npm run test:integration # Integration tests only
 npm run web:test         # Web UI unit tests
-npm run web:e2e          # Web UI Playwright smoke tests with isolated runtime state
+npm run web:e2e          # Playwright smoke tests with isolated runtime state
 npm run agent:lab -- --help       # Disposable Quarterdeck runtime/UI/fake-agent lab
 npm run agent:browser -- --help   # Isolated Playwright CLI for semantic + visual UI driving
 quarterdeck diagnostics --help    # Discover and inspect local runtime diagnostics
@@ -67,7 +67,7 @@ Major directories:
 - `docs/`: human-facing architecture, conventions, plans, and implementation history
 - `scripts/`: build/dev utility scripts
 
-For agent-driven functional and visual debugging, see [`docs/agent-functional-testing.md`](./docs/agent-functional-testing.md). That workflow is isolated from the normal dev/dogfood runtime and the user's Quarterdeck state.
+Choose validation with [`docs/testing.md`](./docs/testing.md). When that strategy calls for agent-driven functional or visual debugging, use [`docs/agent-functional-testing.md`](./docs/agent-functional-testing.md); the workflow is isolated from the normal dev/dogfood runtime and the user's Quarterdeck state.
 
 ## Hot reload workflow
 
@@ -254,34 +254,24 @@ Remove the global link:
 npm run unlink
 ```
 
-## Scripts
+## Validation and test layout
 
-- `npm run build`: build runtime and bundled web UI into `dist`
-- `npm run check:agent-instructions`: verify `AGENTS.md`/`CLAUDE.md` stay in the canonical+shim shape
-- `npm run dogfood -- [--project <path>] [--port <number|auto>] [--no-open] [--skip-build]`: build and launch this checkout, optionally targeting a specific project path
-- `npm run dev`: run CLI in watch mode
-- `npm run web:dev`: run web UI dev server
-- `npm run web:e2e`: run Playwright smoke tests against a disposable runtime and git fixture
-- `npm run agent:lab -- <start|status|snapshot|stop|list>`: manage a disposable functional-testing lab with dynamic loopback ports and a deterministic fake Codex
-- `npm run agent:browser -- <command>`: drive the lab's isolated Chromium session; run `install-browser chromium` once per checkout before first use
-- `quarterdeck diagnostics <list|status|doctor|capture|watch|record|mark>`: inspect or temporarily enrich the private local diagnostic recorder
-- `npm run web:build`: build web UI
-- `npm run typecheck`: typecheck runtime
-- `npm run web:typecheck`: typecheck web UI
-- `npm run test`: run runtime tests
-- `npm run web:test`: run web UI tests
-- `npm run check`: lint, typecheck, and test runtime package
+[`docs/testing.md`](./docs/testing.md) is the canonical guide for choosing a proportionate validation set. It includes the change-to-test matrix, command scopes, overlap rules, and the criteria for Playwright, deterministic Agent Lab, real-provider runs, cold restarts, and screenshots.
 
-## Tests
+Important command boundaries:
 
-- `test/integration`: integration tests for runtime behavior and startup flows
-- `test/runtime`: runtime unit tests
-- `test/utilities`: shared test helpers
+- `npm run check` covers the instruction bridge, repository Biome check, runtime typecheck, and all root Vitest tests. It does not cover web typechecking/tests, Playwright, or Agent Lab.
+- `npm run build` already performs the web typecheck as part of the production web build before packaging the runtime.
+- The pre-commit hook already runs staged Biome, the runtime typecheck, and `test:fast`.
+- `npm run web:e2e` is the automated disposable-browser smoke suite.
+- `npm run agent:lab` plus `npm run agent:browser` is the interactive isolated functional lane.
+
+See [`test/README.md`](./test/README.md) for root-test placement and naming. Web unit tests are colocated under `web-ui/src`; Playwright smoke tests live under `web-ui/tests`.
 
 ## CI/CD
 
 - `ci.yml`: runs on pushes to `main` and PRs targeting `main`, delegating to reusable test workflow(s)
-- `test.yml`: Ubuntu and macOS matrix covering build, lint, typecheck, runtime tests, and web-ui tests
+- `test.yml`: Ubuntu and macOS matrix covering the build (including web typecheck), lint, runtime typecheck/tests, and web-ui tests without repeating the standalone web typecheck
 - `publish.yml`: manual release workflow that verifies the tag, runs tests, publishes to npm via OIDC, and creates the GitHub Release
 
 ## Agent tracking and runtime hooks

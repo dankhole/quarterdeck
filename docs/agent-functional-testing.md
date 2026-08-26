@@ -4,6 +4,8 @@ Quarterdeck's agent lab is a disposable copy of the runtime and browser UI that 
 
 The lab provides isolation from the user's data and processes; it is not a hardened container or a security boundary. Use synthetic fixtures only.
 
+Use [`testing.md`](./testing.md) to decide whether Agent Lab is warranted and which single regression class to exercise. This document is the human-facing architecture and command reference; coding agents use the repo-owned `quarterdeck-functional-testing` skill for the operational workflow.
+
 ## What one run owns
 
 Each `start` creates:
@@ -164,18 +166,9 @@ The same terminal provider exists in production, but visible terminal lines are 
 
 ## Deterministic fake agent
 
-The scenarios and commands in this section exist only in default `fake` mode. For real Codex, use ordinary synthetic prompts and interact with the provider's actual form, including its numeric or arrow-selection controls.
+Fake mode provides seeded `idle`, `needs-input`, `review`, `failure`, `git-dirty`, and `terminal-stress` scenarios plus an interactive protocol for authoritative work, review, approval, interruption, Git, clipboard, and terminal behavior. The canonical command list and semantics live in [the skill protocol reference](../.agents/skills/quarterdeck-functional-testing/references/protocol.md); run `/help` inside the fake terminal for the exact syntax available in that checkout.
 
-Select a default with `start --scenario <name>` or override one task by including a prompt directive:
-
-- `idle` — interactive terminal seeded as Review/Unconfirmed until `/working` emits provider evidence;
-- `needs-input` — Codex permission wait;
-- `review` — completed root turn;
-- `failure` — non-zero process exit;
-- `git-dirty` — synthetic file edit;
-- `terminal-stress` — bounded scrollback output.
-
-The interactive protocol includes `/needs-input`, `/needs-input-auto`, `/approval-overlay`, `/turn-interrupted`, `/new-turn`, `/redraw-interruption-history`, `/local-action`, `/working`, `/review`, `/write`, `/commit`, `/status`, `/clipboard-read`, `/spam`, `/alt-on`, `/alt-off`, `/delay-review`, `/fail`, and `/exit`. A bare `y` accepts either native `/needs-input` or hookless `/approval-overlay` immediately and emits the matching `PostToolUse` after a short deterministic delay, mirroring Codex's approval hotkey without requiring Enter while leaving time to assert response-pending state. `/needs-input-auto` proves the real identity-bearing Codex sequence can resolve without nonexistent local input. `/new-turn` followed by `/redraw-interruption-history` proves a historical rendered failure cannot override a newer authoritative hook; a later `/turn-interrupted` must still remove false Running. `/clipboard-read` exercises the browser clipboard through xterm's OSC 52 path and prints a bounded `AGENT LAB CLIPBOARD READ` marker. Run `/help` inside the fake terminal for exact syntax. File writes are restricted to the disposable checkout. All stable terminal markers begin with `AGENT LAB`; startup prints `AGENT LAB READY`.
+These commands exist only in fake mode. Real Codex uses ordinary synthetic prompts and its actual rendered controls. Run only the scenario needed for the changed invariant rather than treating the protocol as a checklist.
 
 ## Automated regression suite
 
@@ -183,29 +176,26 @@ The interactive protocol includes `/needs-input`, `/needs-input-auto`, `/approva
 
 ## Lifecycle regression classes
 
-Browser reconnect and runtime cold restart are different tests. A reconnect does not exercise persisted-session hydration, stale-PID correction, startup recovery, or initial project-pill classification. For those changes, run the deterministic cold-start state-matrix and integration tests, including an unproven legacy `attention` record with a stale durable recovery flag, then use:
+Choose the regression class before starting the run:
+
+| Claim | Required Lab evidence |
+| --- | --- |
+| Browser reconnection or remount | Reconnect or refresh the isolated browser; do not claim cold-start coverage. |
+| Persisted hydration, stale-process correction, startup recovery, or exact-session restore | Use the same-state runtime restart below. |
+| Card, project-pill, notification, or sound convergence | Drive only the changed transition and assert the affected projections together. |
+| Approval, cancellation, or rendered-failure behavior | Use the matching fake protocol path; require a current provider hook before claiming Running. |
+| Real Codex compatibility | Use one explicitly authorized real-provider scenario focused on the unresolved TUI, hook, version, ordering, or launcher behavior. |
+| Visual layout or terminal paint | Capture the affected viewport; semantic lifecycle evidence alone cannot prove pixels. |
+
+For cold-start claims, use:
 
 ```bash
 npm run --silent agent:lab -- restart-runtime <run-id> --mode graceful --json
 ```
 
-This preserves disposable state, the web process, and the browser while replacing only the runtime. Leave the affected project inactive before restart, then verify its cards, notifications, and project pills before selecting it.
+This preserves disposable state, the web process, and the browser while replacing only the runtime. For a project-scoped startup regression, leave the affected project inactive, verify its projections before selecting it, then confirm selection does not change them.
 
-State-projection dogfood has three phases:
-
-1. Assert static board columns, project pills, and notifications for ordinary Review and genuine Needs Input tasks. A blocked card remains in Review, but Needs Input overrides Review in navigation pills, so three Review cards with one blocked task display `R 2 · NI 1`.
-2. Submit a new turn or response, wait for the authoritative transition to Running, and assert all three projections after switching away and back.
-3. Send bare Escape or Ctrl-C to a synthetic Running task, wait past interrupt recovery, and require Review/Interrupted without any Needs Input card, pill, notification, or sound. Cover both convergence paths: `/working` must return the exact live session to Running before `/review` completes it, and a separate interrupted task receiving `/review` directly must become ordinary Ready for review when the intermediate working hook is absent.
-
-Before phase 2, submit `/local-action model-changed` from a Review task. The terminal must print `AGENT LAB LOCAL ACTION`, while the card, project pills, and notifications remain in Review. Only a subsequent `/working` provider hook may move them to Running. This reproduces Codex commands such as `/model`, whose Enter key accepts local TUI state rather than starting agent work.
-
-For Codex rendered-failure changes, submit `/turn-interrupted` from Running and require immediate Review/Interrupted convergence across the card and project pill without Needs Input, notification, or sound. Submit `/new-turn`, require provider-confirmed Running, then submit `/redraw-interruption-history` and require Running to survive the historical redraw. A later real `/turn-interrupted` must still converge to Review/Interrupted. Restart the runtime against the same state and require the conservative classification to survive cold hydration.
-
-For authenticated Codex approval compatibility, cover three distinct real-provider paths: numeric approval must become response-pending before a current hook proves Running; Escape cancellation must clear the exact wait when Codex renders its complete interrupted result without a completion hook; and a runtime restart performed while the provider is waiting must clear stale Needs Input if the exactly resumed TUI renders that same terminal result and returns to its composer. Also launch one effectful synthetic command with Approve for me enabled and assert that the generated real-provider wrapper does not add conflicting `--ask-for-approval` or `--sandbox` arguments, no user-facing Needs Input appears, and current provider hooks still own Running and completion.
-
-A static startup screenshot does not cover transition convergence, notification clearing, or false-positive attention after interruption.
-
-Bulk lifecycle dogfood uses the multi-task dialog to create and start at least four synthetic tasks spanning unconfirmed idle/Review, provider-confirmed Running, ordinary Review, genuine Needs Input, and deterministic failure while automatic titles are enabled. Assert every requested identity persists, no lifecycle revision-conflict toast appears, and final cards, pills, notifications, and persisted evidence agree.
+Static startup state does not prove transition convergence, and a screenshot does not prove lifecycle authority. Conversely, a semantic snapshot does not prove spacing, clipping, stacking, contrast, or terminal paint. Collect the evidence that matches the claim.
 
 ## Failure reports
 
@@ -213,8 +203,8 @@ Include:
 
 1. run id and exact command/action sequence;
 2. expected and observed state;
-3. last-good and failed screenshot paths;
-4. trace, console, and request evidence;
+3. relevant semantic state and, only for visual failures, last-good and failed screenshot paths;
+4. trace, console, and request evidence when needed to explain the failure;
 5. runtime/web log excerpts;
 6. canonical checkpoint path and any doctor findings;
 7. relevant host-event sequence(s) and `lab/host-events.json` path;

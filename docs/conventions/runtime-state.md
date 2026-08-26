@@ -101,7 +101,12 @@ Task identity has three distinct path concepts:
 
 ## Related documents
 
+- [Testing strategy](../testing.md)
 - [Architecture overview](../architecture.md)
 - [Task lifecycle reliability plan](../task-lifecycle-reliability-plan.md)
 - [Session and terminal lifecycle](./session-lifecycle.md)
 - [Architecture guardrails](./architecture-guardrails.md)
+
+## Validation
+
+Start with focused command, reducer, classifier, stream, or projection tests for the owner being changed. Add the relevant integration boundary for persistence, revision receipts, startup, or shutdown. Use deterministic Agent Lab only when browser-visible convergence across cards, project pills, notifications, sounds, or a cold runtime restart is part of the invariant. Follow [the testing strategy](../testing.md) instead of running every projection and lifecycle scenario by default.
