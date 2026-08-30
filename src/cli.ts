@@ -625,6 +625,7 @@ async function createRuntimeServerHandle(
 
 	const shutdown = async (options?: { skipSessionCleanup?: boolean }) => {
 		bootstrap.stopPeriodicBackups();
+		await runtimeServer.prepareForShutdown({ skipSessionCleanup: options?.skipSessionCleanup ?? false });
 		await modules.shutdownRuntimeServer({
 			projectRegistry: bootstrap.projectRegistry,
 			warn: bootstrap.warn,

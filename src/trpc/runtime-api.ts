@@ -10,6 +10,7 @@ import type {
 	TaskResourceOperationRunner,
 } from "../core";
 import type { ProjectTaskLifecycleService } from "../server/project-task-lifecycle-service";
+import type { TaskSessionStartServiceResult } from "../server/task-session-start-service";
 import type { TerminalSessionManager } from "../terminal";
 import type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
 import { handleLoadConfig } from "./handlers/load-config";
@@ -31,6 +32,21 @@ export interface CreateRuntimeApiDependencies {
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	hostIntegrations: IRuntimeHostIntegrations;
 	taskLifecycle?: Pick<ProjectTaskLifecycleService, "execute" | "getOperation">;
+	assertNativeStartAllowed?: (scope: RuntimeTrpcProjectScope, taskId: string) => Promise<void>;
+	onTaskSessionStarted?: (scope: RuntimeTrpcProjectScope, result: TaskSessionStartServiceResult) => Promise<void>;
+	assertNativeInputAllowed?: (scope: RuntimeTrpcProjectScope, taskId: string) => Promise<void>;
+	stopTaskSession?: (
+		scope: RuntimeTrpcProjectScope,
+		taskId: string,
+		sessionInstanceId?: string,
+		waitForExit?: boolean,
+	) => Promise<{
+		summary: Awaited<ReturnType<TerminalSessionManager["stopTaskSessionAndWaitForExit"]>>["summary"];
+		requestedSessionInstanceId: string | null;
+		didExit: boolean;
+		outcome: "not_running" | "exited" | "timed_out" | "failed";
+		error?: string;
+	}>;
 }
 
 type RuntimeApi = RuntimeTrpcContext["runtimeApi"];

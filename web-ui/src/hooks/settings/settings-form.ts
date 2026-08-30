@@ -19,6 +19,7 @@ export interface SettingsFormValues {
 	llmSummaryPolishEnabled: boolean;
 	shellAutoRestartEnabled: boolean;
 	claudeFullscreenEnabled: boolean;
+	claudeLaunchPermissionMode: RuntimeConfigResponse["claudeLaunchPermissionMode"];
 	statuslineEnabled: boolean;
 	codexApprovalsReviewer: RuntimeConfigResponse["codexApprovalsReviewer"];
 	piToolApprovalsEnabled: boolean;
@@ -59,6 +60,7 @@ export function resolveInitialValues(config: RuntimeConfigResponse | null): Sett
 		llmSummaryPolishEnabled: config?.llmSummaryPolishEnabled ?? CONFIG_DEFAULTS.llmSummaryPolishEnabled,
 		shellAutoRestartEnabled: config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
 		claudeFullscreenEnabled: config?.claudeFullscreenEnabled ?? CONFIG_DEFAULTS.claudeFullscreenEnabled,
+		claudeLaunchPermissionMode: config?.claudeLaunchPermissionMode ?? CONFIG_DEFAULTS.claudeLaunchPermissionMode,
 		statuslineEnabled: config?.statuslineEnabled ?? CONFIG_DEFAULTS.statuslineEnabled,
 		codexApprovalsReviewer: config?.codexApprovalsReviewer ?? CONFIG_DEFAULTS.codexApprovalsReviewer,
 		piToolApprovalsEnabled: config?.piToolApprovalsEnabled ?? CONFIG_DEFAULTS.piToolApprovalsEnabled,

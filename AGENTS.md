@@ -42,6 +42,7 @@ Read the referenced document before editing the listed area:
 - Task-agent start/stop/resume/restart, startup recovery, session reconciliation, PTY identity, terminal restore, agent adapters, native hooks, input state, or host process launches: `docs/conventions/session-lifecycle.md`.
 - Diagnostics recorder, journal, panel delivery, doctor, capture, or bundle format: `docs/diagnostics.md`.
 - Test selection, validation scope, or deciding whether a heavier testing lane is justified: `docs/testing.md`.
+- Structured/non-PTY execution or provider-session handoff: `docs/conventions/structured-execution.md`.
 - Current architecture priorities or active refactors: `docs/todo.md` and the specific linked plan.
 
 Tracked historical context lives under `docs/history/`. Read it only when current docs and code do not answer the question or the user explicitly requests archival context.

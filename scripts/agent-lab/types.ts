@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const AGENT_LAB_SCHEMA_VERSION = 4;
 
-export const AgentLabAgentModeSchema = z.enum(["fake", "real-codex"]);
+export const AgentLabAgentModeSchema = z.enum(["fake", "fake-claude", "real-codex", "real-claude"]);
 
 export type AgentLabAgentMode = z.infer<typeof AgentLabAgentModeSchema>;
 
@@ -25,6 +25,23 @@ const AgentLabModelSchema = z
 
 const AgentLabPublicAgentConfigSchema = z.discriminatedUnion("mode", [
 	z.object({ mode: z.literal("fake") }),
+	z.object({ mode: z.literal("fake-claude") }),
+	z.object({
+		mode: z.literal("real-claude"),
+		model: AgentLabModelSchema,
+		modelProvider: z.literal("anthropic"),
+		authentication: z.enum(["existing-cli", "environment"]),
+		profileSource: z.enum(["explicit", "environment", "default"]),
+		credentialBoundary: z.enum(["host-store-reused", "provider-environment-forwarded"]),
+		permissionMode: z.literal("manual"),
+		settingsSources: z.literal("none"),
+		managedSettings: z.literal("inherited"),
+		historyPersistence: z.literal("disposable"),
+		externalIntegrations: z.literal("unmanaged-disabled"),
+		profileHooks: z.literal("isolated"),
+		telemetry: z.literal("disabled"),
+		budgetLimit: z.literal("model-and-prompt-only"),
+	}),
 	z.object({
 		mode: z.literal("real-codex"),
 		model: AgentLabModelSchema,
@@ -47,6 +64,25 @@ export type AgentLabPublicAgentConfig = z.infer<typeof AgentLabPublicAgentConfig
 
 export const AgentLabLaunchAgentConfigSchema = z.discriminatedUnion("mode", [
 	z.object({ mode: z.literal("fake") }),
+	z.object({ mode: z.literal("fake-claude") }),
+	z.object({
+		mode: z.literal("real-claude"),
+		model: AgentLabModelSchema,
+		modelProvider: z.literal("anthropic"),
+		authentication: z.enum(["existing-cli", "environment"]),
+		profileSource: z.enum(["explicit", "environment", "default"]),
+		credentialBoundary: z.enum(["host-store-reused", "provider-environment-forwarded"]),
+		permissionMode: z.literal("manual"),
+		settingsSources: z.literal("none"),
+		managedSettings: z.literal("inherited"),
+		historyPersistence: z.literal("disposable"),
+		externalIntegrations: z.literal("unmanaged-disabled"),
+		profileHooks: z.literal("isolated"),
+		telemetry: z.literal("disabled"),
+		budgetLimit: z.literal("model-and-prompt-only"),
+		claudeConfigDirPath: z.string().min(1),
+		mcpConfigPath: z.string().min(1).nullable(),
+	}),
 	z.object({
 		mode: z.literal("real-codex"),
 		model: AgentLabModelSchema,
@@ -75,6 +111,8 @@ export const AgentLabScenarioSchema = z.enum([
 	"failure",
 	"git-dirty",
 	"terminal-stress",
+	"claude-lifecycle",
+	"claude-failure",
 ]);
 
 export type AgentLabScenario = z.infer<typeof AgentLabScenarioSchema>;

@@ -69,12 +69,15 @@ Within Agent Lab:
 
 - default to the deterministic fake provider;
 - exercise only the scenario needed for the changed behavior;
+- drive the isolated UI through the repo-owned `npm run agent:browser` Playwright wrapper even when an in-app Browser connector is unavailable; connector availability and Computer Use do not determine whether Agent Lab can be automated;
 - use `restart-runtime` only for cold hydration, persistence, startup recovery, or exact-session restore claims;
 - collect screenshots only for visual claims;
 - capture extra traces, console, network, or checkpoints when needed to explain a failure, not as ceremony for every passing run; and
 - always stop the run.
 
-Use `real-codex` only with explicit user authorization and only when the uncertainty is Codex's real TUI, hooks, event ordering, version compatibility, or launcher interpretation. A real-provider run is nondeterministic and consumes the user's provider plan; it is not a stronger default version of the fake lane.
+Do not report that Agent Lab browser automation is unavailable until the repo-owned wrapper itself has been invoked against the run's `browserConfigPath`, `browserSession`, and `projectUrl` and its failure inspected. If the wrapper reports that managed Chromium is missing, ask before installing it with `npm run agent:browser -- install-browser chromium`. Do not substitute direct `playwright-cli`, ad hoc Playwright scripts, an unrelated browser profile, or the user's active Quarterdeck instance.
+
+Use `real-codex` or `real-claude` only with explicit user authorization and only when the uncertainty is that provider's real TUI, hooks, event ordering, version compatibility, or launcher interpretation. A real-provider run is nondeterministic and consumes the user's provider plan; it is not a stronger default version of a fake lane. Interactive Claude has no hard budget cap, so its low-cost `haiku` default and a tiny prompt reduce cost without enforcing a ceiling.
 
 Never attach browser automation to the user's active Quarterdeck instance. Agent-driven functional work uses the isolated lab and synthetic data.
 

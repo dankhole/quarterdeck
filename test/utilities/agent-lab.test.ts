@@ -7,14 +7,22 @@ import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 
 import { _testing as browserActionTesting } from "../../scripts/agent-lab/browser-actions";
-import { runAgentLabCli } from "../../scripts/agent-lab/cli";
-import { buildAgentLabEnvironment } from "../../scripts/agent-lab/environment";
+import { describeAgentLabAgent, parseAgentLabPort, runAgentLabCli } from "../../scripts/agent-lab/cli";
+import { buildAgentLabEnvironment, buildSupervisorEnvironment } from "../../scripts/agent-lab/environment";
 import {
+	buildClaudeHookPayload,
 	extractPromptArgument,
+	getFakeAgentVersionOutput,
 	parseFakeAgentCommand,
+	resolveFakeAgentInvocation,
 	resolveFakeAgentScenario,
+	shouldFakeClaudeUseFullscreen,
 } from "../../scripts/agent-lab/fake-agent-protocol";
-import { writeRealCodexLauncher } from "../../scripts/agent-lab/fixture";
+import {
+	writeAgentProviderLaunchers,
+	writeRealClaudeLauncher,
+	writeRealCodexLauncher,
+} from "../../scripts/agent-lab/fixture";
 import { createAgentLabLaunchConfig, persistAgentLabLaunchConfig } from "../../scripts/agent-lab/launch-config";
 import { resolveLoopbackPort } from "../../scripts/agent-lab/loopback-port";
 import {
@@ -28,13 +36,25 @@ import {
 	prepareAgentLabBrowserCache,
 	readAgentLabManifest,
 } from "../../scripts/agent-lab/paths";
+import { toPublicAgentConfig } from "../../scripts/agent-lab/public-agent-config";
+import {
+	AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_POLICY,
+	buildRealClaudePreflightEnvironment,
+	prepareIsolatedRealClaudeAgent,
+	resolveRealClaudeAgent,
+} from "../../scripts/agent-lab/real-claude";
 import {
 	AGENT_LAB_REAL_CODEX_CONFIG_OVERRIDES,
 	buildRealCodexPreflightEnvironment,
 	prepareIsolatedRealCodexAgent,
 	resolveRealCodexAgent,
-	toPublicAgentConfig,
 } from "../../scripts/agent-lab/real-codex";
+import {
+	detectInstalledCommands,
+	getAgentAvailability,
+	resetAgentAvailabilityCache,
+} from "../../src/config/agent-registry";
+import { isBinaryAvailableOnPath } from "../../src/core";
 
 const execFileAsync = promisify(execFile);
 
@@ -212,7 +232,7 @@ describe("agent-lab environment", () => {
 				forbiddenHostLaunchLogPath: "/tmp/lab/forbidden-host-launches.log",
 				repoRoot: "/repo",
 				tsxCliPath: "/repo/node_modules/tsx/cli.mjs",
-				fakeCodexPath: "/repo/scripts/fake-codex.ts",
+				fakeAgentPath: "/repo/scripts/fake-codex.ts",
 				cliEntrypointPath: "/repo/src/cli.ts",
 				runtimePort: 35_001,
 				webPort: 41_731,
@@ -227,6 +247,7 @@ describe("agent-lab environment", () => {
 		expect(environment.QUARTERDECK_STATE_HOME).toBe("/tmp/lab/state");
 		expect(environment.QUARTERDECK_RUNTIME_PORT).toBe("35001");
 		expect(environment.QUARTERDECK_AGENT_LAB_ADDITIONAL_PROJECT).toBe("/tmp/lab/project-secondary");
+		expect(environment.QUARTERDECK_AGENT_LAB_ALLOWED_AGENT_IDS).toBe("codex,pi");
 		expect(environment.PATH).toBe(["/tmp/lab/bin", "/host/bin"].join(delimiter));
 	});
 
@@ -250,7 +271,7 @@ describe("agent-lab environment", () => {
 				forbiddenHostLaunchLogPath: "/tmp/lab/forbidden-host-launches.log",
 				repoRoot: "/repo",
 				tsxCliPath: "/repo/node_modules/tsx/cli.mjs",
-				fakeCodexPath: "/repo/scripts/fake-codex.ts",
+				fakeAgentPath: "/repo/scripts/fake-codex.ts",
 				cliEntrypointPath: "/repo/src/cli.ts",
 				runtimePort: 35_001,
 				webPort: 41_731,
@@ -266,6 +287,543 @@ describe("agent-lab environment", () => {
 		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CODEX_ACCOUNT_HOME).toBeUndefined();
 		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL).toBe("gpt-5.6-luna");
 		expect(environment.QUARTERDECK_TITLE_PROVIDER).toBe("local");
+		expect(environment.QUARTERDECK_AGENT_LAB_ALLOWED_AGENT_IDS).toBe("codex");
+	});
+
+	it("selects only Claude in the deterministic fake-Claude lane", () => {
+		const environment = buildAgentLabEnvironment(
+			{ PATH: "/host/bin" },
+			{
+				tempRoot: "/tmp/lab",
+				homePath: "/tmp/lab/home",
+				statePath: "/tmp/lab/state",
+				projectPath: "/tmp/lab/project",
+				additionalProjectPath: "/tmp/lab/project-secondary",
+				fakeBinPath: "/tmp/lab/bin",
+				forbiddenHostLaunchLogPath: "/tmp/lab/forbidden-host-launches.log",
+				repoRoot: "/repo",
+				tsxCliPath: "/repo/node_modules/tsx/cli.mjs",
+				fakeAgentPath: "/repo/scripts/fake-codex.ts",
+				cliEntrypointPath: "/repo/src/cli.ts",
+				runtimePort: 35_001,
+				webPort: 41_731,
+				scenario: "claude-lifecycle",
+				agent: { mode: "fake-claude" },
+			},
+		);
+
+		expect(environment.QUARTERDECK_AGENT_LAB_ALLOWED_AGENT_IDS).toBe("claude");
+		expect(environment.QUARTERDECK_AGENT_LAB_FAKE_AGENT).toBe("/repo/scripts/fake-codex.ts");
+	});
+
+	it("exposes only isolated wrapper inputs in real-Claude mode", () => {
+		const agent = {
+			...resolveRealClaudeAgent({ claudeConfigDirPath: "/tmp/lab/claude-config" }, {}),
+			mcpConfigPath: "/tmp/lab/claude-config/agent-lab-empty-mcp.json",
+		} as const;
+		const environment = buildAgentLabEnvironment(
+			{
+				PATH: "/host/bin",
+				ANTHROPIC_API_KEY: "must-not-leak",
+				CLAUDE_CODE_OAUTH_TOKEN: "must-not-leak",
+			},
+			{
+				tempRoot: "/tmp/lab",
+				homePath: "/tmp/lab/home",
+				statePath: "/tmp/lab/state",
+				projectPath: "/tmp/lab/project",
+				additionalProjectPath: "/tmp/lab/project-secondary",
+				fakeBinPath: "/tmp/lab/bin",
+				forbiddenHostLaunchLogPath: "/tmp/lab/forbidden-host-launches.log",
+				repoRoot: "/repo",
+				tsxCliPath: "/repo/node_modules/tsx/cli.mjs",
+				fakeAgentPath: "/repo/scripts/fake-codex.ts",
+				cliEntrypointPath: "/repo/src/cli.ts",
+				runtimePort: 35_001,
+				webPort: 41_731,
+				scenario: "idle",
+				agent,
+			},
+		);
+
+		expect(environment.HOME).toBe("/tmp/lab/home");
+		expect(environment.CLAUDE_CONFIG_DIR).toBeUndefined();
+		expect(environment.ANTHROPIC_API_KEY).toBeUndefined();
+		expect(environment.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CLAUDE_CONFIG_DIR).toBe("/tmp/lab/claude-config");
+		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MCP_CONFIG).toBe(
+			"/tmp/lab/claude-config/agent-lab-empty-mcp.json",
+		);
+		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MODEL).toBe("haiku");
+		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CLAUDE_PERMISSION_MODE).toBe("manual");
+		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_AUTH).toBe("0");
+		expect(environment.QUARTERDECK_AGENT_LAB_ALLOWED_AGENT_IDS).toBe("claude");
+	});
+
+	it("forwards only documented Claude gateway variables when explicitly selected", () => {
+		const agent = {
+			...resolveRealClaudeAgent(
+				{ claudeConfigDirPath: "/tmp/lab/claude-config", environmentAuthentication: true },
+				{},
+			),
+			mcpConfigPath: "/tmp/lab/claude-config/agent-lab-empty-mcp.json",
+		} as const;
+		const environment = buildAgentLabEnvironment(
+			{
+				PATH: "/host/bin",
+				ANTHROPIC_AUTH_TOKEN: "synthetic-token",
+				ANTHROPIC_BEDROCK_BASE_URL: "https://gateway.example.invalid",
+				CLAUDE_CODE_USE_BEDROCK: "1",
+				CLAUDE_CODE_SKIP_BEDROCK_AUTH: "1",
+				QUARTERDECK_LLM_API_KEY: "must-not-leak",
+			},
+			{
+				tempRoot: "/tmp/lab",
+				homePath: "/tmp/lab/home",
+				statePath: "/tmp/lab/state",
+				projectPath: "/tmp/lab/project",
+				additionalProjectPath: "/tmp/lab/project-secondary",
+				fakeBinPath: "/tmp/lab/bin",
+				forbiddenHostLaunchLogPath: "/tmp/lab/forbidden-host-launches.log",
+				repoRoot: "/repo",
+				tsxCliPath: "/repo/node_modules/tsx/cli.mjs",
+				fakeAgentPath: "/repo/scripts/fake-codex.ts",
+				cliEntrypointPath: "/repo/src/cli.ts",
+				runtimePort: 35_001,
+				webPort: 41_731,
+				scenario: "idle",
+				agent,
+			},
+		);
+
+		expect(environment.ANTHROPIC_AUTH_TOKEN).toBe("synthetic-token");
+		expect(environment.ANTHROPIC_BEDROCK_BASE_URL).toBe("https://gateway.example.invalid");
+		expect(environment.CLAUDE_CODE_USE_BEDROCK).toBe("1");
+		expect(environment.CLAUDE_CODE_SKIP_BEDROCK_AUTH).toBe("1");
+		expect(environment.QUARTERDECK_LLM_API_KEY).toBeUndefined();
+		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_AUTH).toBe("1");
+	});
+
+	it("carries explicit Claude gateway authentication through the isolated supervisor", () => {
+		const environmentAgent = resolveRealClaudeAgent({ environmentAuthentication: true }, {});
+		const environment = buildSupervisorEnvironment(
+			{
+				PATH: "/host/bin",
+				ANTHROPIC_AUTH_TOKEN: "synthetic-token",
+				ANTHROPIC_BEDROCK_BASE_URL: "https://gateway.example.invalid",
+				CLAUDE_CODE_USE_BEDROCK: "1",
+				AWS_ACCESS_KEY_ID: "synthetic-access-key",
+				AWS_SECRET_ACCESS_KEY: "synthetic-secret-key",
+				AWS_SESSION_TOKEN: "synthetic-session-token",
+				AWS_BEARER_TOKEN_BEDROCK: "synthetic-bedrock-token",
+				NODE_EXTRA_CA_CERTS: "/synthetic/custom-ca.pem",
+				QUARTERDECK_LLM_API_KEY: "must-not-leak",
+			},
+			"/tmp/lab",
+			environmentAgent,
+		);
+		expect(environment.ANTHROPIC_AUTH_TOKEN).toBe("synthetic-token");
+		expect(environment.ANTHROPIC_BEDROCK_BASE_URL).toBe("https://gateway.example.invalid");
+		expect(environment.CLAUDE_CODE_USE_BEDROCK).toBe("1");
+		expect(environment.AWS_ACCESS_KEY_ID).toBe("synthetic-access-key");
+		expect(environment.AWS_SECRET_ACCESS_KEY).toBe("synthetic-secret-key");
+		expect(environment.AWS_SESSION_TOKEN).toBe("synthetic-session-token");
+		expect(environment.AWS_BEARER_TOKEN_BEDROCK).toBe("synthetic-bedrock-token");
+		expect(environment.NODE_EXTRA_CA_CERTS).toBe("/synthetic/custom-ca.pem");
+		expect(environment.QUARTERDECK_LLM_API_KEY).toBeUndefined();
+
+		const defaultEnvironment = buildSupervisorEnvironment(
+			{ PATH: "/host/bin", ANTHROPIC_AUTH_TOKEN: "must-not-leak" },
+			"/tmp/lab",
+			resolveRealClaudeAgent({}, {}),
+		);
+		expect(defaultEnvironment.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+	});
+});
+
+describe("agent-lab provider isolation", () => {
+	it.runIf(process.platform !== "win32")(
+		"shadows a host Claude installation in fake mode before discovery can launch it",
+		async () => {
+			const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-provider-isolation-"));
+			const fakeBinPath = join(root, "lab-bin");
+			const hostBinPath = join(root, "host-bin");
+			const hostLaunchSentinelPath = join(root, "host-claude-launched");
+			const previousPath = process.env.PATH;
+			const previousSentinelPath = process.env.HOST_PROVIDER_SENTINEL;
+			const previousAgentLab = process.env.QUARTERDECK_AGENT_LAB;
+			const previousAllowedAgentIds = process.env.QUARTERDECK_AGENT_LAB_ALLOWED_AGENT_IDS;
+			try {
+				await Promise.all([mkdir(fakeBinPath, { recursive: true }), mkdir(hostBinPath, { recursive: true })]);
+				await writeFile(
+					join(hostBinPath, "claude"),
+					'#!/bin/sh\nprintf "launched\\n" >> "$HOST_PROVIDER_SENTINEL"\nprintf "2.1.999\\n"\n',
+					{ encoding: "utf8", mode: 0o755 },
+				);
+				expect(isBinaryAvailableOnPath("claude", { env: { PATH: hostBinPath } })).toBe(true);
+				await writeAgentProviderLaunchers(fakeBinPath, { mode: "fake" });
+
+				process.env.PATH = [fakeBinPath, hostBinPath].join(delimiter);
+				process.env.HOST_PROVIDER_SENTINEL = hostLaunchSentinelPath;
+				process.env.QUARTERDECK_AGENT_LAB = "1";
+				process.env.QUARTERDECK_AGENT_LAB_ALLOWED_AGENT_IDS = "codex,pi";
+				resetAgentAvailabilityCache();
+
+				expect(isBinaryAvailableOnPath("claude")).toBe(true);
+				expect(detectInstalledCommands()).not.toContain("claude");
+				await expect(getAgentAvailability("claude", { forceRefresh: true })).resolves.toMatchObject({
+					installed: false,
+					reason: "missing",
+				});
+				await expect(execFileAsync("claude", ["--version"], { env: process.env })).rejects.toMatchObject({
+					code: 127,
+				});
+				await expect(readFile(hostLaunchSentinelPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+			} finally {
+				resetAgentAvailabilityCache();
+				if (previousPath === undefined) {
+					delete process.env.PATH;
+				} else {
+					process.env.PATH = previousPath;
+				}
+				if (previousSentinelPath === undefined) {
+					delete process.env.HOST_PROVIDER_SENTINEL;
+				} else {
+					process.env.HOST_PROVIDER_SENTINEL = previousSentinelPath;
+				}
+				if (previousAgentLab === undefined) {
+					delete process.env.QUARTERDECK_AGENT_LAB;
+				} else {
+					process.env.QUARTERDECK_AGENT_LAB = previousAgentLab;
+				}
+				if (previousAllowedAgentIds === undefined) {
+					delete process.env.QUARTERDECK_AGENT_LAB_ALLOWED_AGENT_IDS;
+				} else {
+					process.env.QUARTERDECK_AGENT_LAB_ALLOWED_AGENT_IDS = previousAllowedAgentIds;
+				}
+				await rm(root, { recursive: true, force: true });
+			}
+		},
+	);
+
+	it("exposes only Codex in real-Codex mode", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-real-provider-policy-"));
+		try {
+			const agent = resolveRealCodexAgent({ codexHomePath: "/profiles/codex" }, {});
+			await writeAgentProviderLaunchers(root, agent);
+
+			expect(await readFile(join(root, "codex"), "utf8")).toContain("REAL_CODEX_HOST_PATH");
+			expect(await readFile(join(root, "claude"), "utf8")).toContain("does not enable claude in this provider mode");
+			expect(await readFile(join(root, "pi"), "utf8")).toContain("does not enable pi in this provider mode");
+			expect(await readFile(join(root, "claude.cmd"), "utf8")).toContain("exit /b 127");
+			expect(await readFile(join(root, "pi.cmd"), "utf8")).toContain("exit /b 127");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("exposes only the fake Claude launcher in fake-Claude mode", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-fake-claude-policy-"));
+		try {
+			await writeAgentProviderLaunchers(root, { mode: "fake-claude" });
+
+			expect(await readFile(join(root, "claude"), "utf8")).toContain("QUARTERDECK_AGENT_LAB_PROVIDER=claude");
+			expect(await readFile(join(root, "claude"), "utf8")).toContain("QUARTERDECK_AGENT_LAB_FAKE_AGENT");
+			expect(await readFile(join(root, "codex"), "utf8")).toContain("does not enable codex in this provider mode");
+			expect(await readFile(join(root, "pi"), "utf8")).toContain("does not enable pi in this provider mode");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("exposes only Claude in real-Claude mode", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-real-claude-policy-"));
+		try {
+			const agent = resolveRealClaudeAgent({ claudeConfigDirPath: "/profiles/claude" }, {});
+			await writeAgentProviderLaunchers(root, agent);
+
+			expect(await readFile(join(root, "claude"), "utf8")).toContain("REAL_CLAUDE_HOST_PATH");
+			expect(await readFile(join(root, "codex"), "utf8")).toContain("does not enable codex in this provider mode");
+			expect(await readFile(join(root, "pi"), "utf8")).toContain("does not enable pi in this provider mode");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("agent-lab real Claude", () => {
+	it("describes the selected authentication boundary in human-readable summaries", () => {
+		expect(describeAgentLabAgent(resolveRealClaudeAgent({}, {}))).toBe("real Claude (haiku, existing CLI auth)");
+		expect(describeAgentLabAgent(resolveRealClaudeAgent({ environmentAuthentication: true }, {}))).toBe(
+			"real Claude (haiku, environment auth)",
+		);
+	});
+
+	it("resolves cheap defaults without exposing the selected config path", () => {
+		const agent = resolveRealClaudeAgent({}, { CLAUDE_CONFIG_DIR: "/profiles/claude", PATH: "/host/bin" });
+		expect(agent).toMatchObject({
+			mode: "real-claude",
+			model: "haiku",
+			modelProvider: "anthropic",
+			profileSource: "environment",
+			claudeConfigDirPath: "/profiles/claude",
+			permissionMode: "manual",
+			mcpConfigPath: null,
+		});
+		expect(toPublicAgentConfig(agent)).toEqual({
+			mode: "real-claude",
+			model: "haiku",
+			modelProvider: "anthropic",
+			authentication: "existing-cli",
+			profileSource: "environment",
+			credentialBoundary: "host-store-reused",
+			permissionMode: "manual",
+			settingsSources: "none",
+			managedSettings: "inherited",
+			historyPersistence: "disposable",
+			externalIntegrations: "unmanaged-disabled",
+			profileHooks: "isolated",
+			telemetry: "disabled",
+			budgetLimit: "model-and-prompt-only",
+		});
+	});
+
+	it("preflights CLI authentication without forwarding API credentials", () => {
+		const agent = resolveRealClaudeAgent({ claudeConfigDirPath: "/profiles/claude" }, {});
+		const environment = buildRealClaudePreflightEnvironment(
+			{
+				PATH: "/host/bin",
+				HOME: "/account/home",
+				USERPROFILE: "/account/home",
+				LANG: "en_US.UTF-8",
+				ANTHROPIC_API_KEY: "must-not-leak",
+				ANTHROPIC_AUTH_TOKEN: "must-not-leak",
+				CLAUDE_CODE_OAUTH_TOKEN: "must-not-leak",
+			},
+			agent,
+		);
+		expect(environment).toMatchObject({
+			PATH: "/host/bin",
+			HOME: "/account/home",
+			USERPROFILE: "/account/home",
+			LANG: "en_US.UTF-8",
+			CLAUDE_CONFIG_DIR: "/profiles/claude",
+			...AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_POLICY,
+		});
+		expect(environment.ANTHROPIC_API_KEY).toBeUndefined();
+		expect(environment.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+		expect(environment.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+	});
+
+	it("records and preflights explicitly selected gateway authentication without exposing values publicly", () => {
+		const agent = resolveRealClaudeAgent(
+			{ claudeConfigDirPath: "/profiles/claude", environmentAuthentication: true },
+			{},
+		);
+		expect(toPublicAgentConfig(agent)).toMatchObject({
+			authentication: "environment",
+			credentialBoundary: "provider-environment-forwarded",
+		});
+		const environment = buildRealClaudePreflightEnvironment(
+			{
+				PATH: "/host/bin",
+				ANTHROPIC_AUTH_TOKEN: "synthetic-token",
+				ANTHROPIC_BEDROCK_BASE_URL: "https://gateway.example.invalid",
+				CLAUDE_CODE_USE_BEDROCK: "1",
+				AWS_ACCESS_KEY_ID: "synthetic-access-key",
+				AWS_SECRET_ACCESS_KEY: "synthetic-secret-key",
+				AWS_SESSION_TOKEN: "synthetic-session-token",
+				AWS_BEARER_TOKEN_BEDROCK: "synthetic-bedrock-token",
+				QUARTERDECK_LLM_API_KEY: "must-not-leak",
+			},
+			agent,
+		);
+		expect(environment.ANTHROPIC_AUTH_TOKEN).toBe("synthetic-token");
+		expect(environment.ANTHROPIC_BEDROCK_BASE_URL).toBe("https://gateway.example.invalid");
+		expect(environment.CLAUDE_CODE_USE_BEDROCK).toBe("1");
+		expect(environment.AWS_ACCESS_KEY_ID).toBe("synthetic-access-key");
+		expect(environment.AWS_SECRET_ACCESS_KEY).toBe("synthetic-secret-key");
+		expect(environment.AWS_SESSION_TOKEN).toBe("synthetic-session-token");
+		expect(environment.AWS_BEARER_TOKEN_BEDROCK).toBe("synthetic-bedrock-token");
+		expect(environment.QUARTERDECK_LLM_API_KEY).toBeUndefined();
+	});
+
+	it("stages only a file credential and empty MCP config into the disposable profile", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-real-claude-config-"));
+		const sourceConfigPath = join(root, "source-config");
+		await mkdir(sourceConfigPath, { recursive: true });
+		await writeFile(join(sourceConfigPath, ".credentials.json"), "synthetic credential\n", { mode: 0o600 });
+		const sourceAgent = resolveRealClaudeAgent({ claudeConfigDirPath: sourceConfigPath }, {});
+		const validateAuthentication = vi.fn(async () => {});
+		try {
+			const isolatedAgent = await prepareIsolatedRealClaudeAgent(
+				sourceAgent,
+				join(root, "temp"),
+				{},
+				{
+					platform: "win32",
+					validateAuthentication,
+				},
+			);
+			expect(isolatedAgent.claudeConfigDirPath).toBe(join(root, "temp", "claude-config"));
+			expect(await readFile(join(isolatedAgent.claudeConfigDirPath, ".credentials.json"), "utf8")).toBe(
+				"synthetic credential\n",
+			);
+			expect(await readFile(isolatedAgent.mcpConfigPath ?? "", "utf8")).toBe('{"mcpServers":{}}\n');
+			expect(await readFile(join(isolatedAgent.claudeConfigDirPath, ".claude.json"), "utf8")).toBe(
+				'{"hasCompletedOnboarding":true}\n',
+			);
+			expect(validateAuthentication).toHaveBeenCalledWith(isolatedAgent, {});
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("writes a Windows launcher that clears wrapper paths before Claude starts", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-real-claude-windows-"));
+		try {
+			await writeRealClaudeLauncher(root);
+			const launcher = await readFile(join(root, "claude.cmd"), "utf8");
+			expect(launcher).toContain('set "CLAUDE_CONFIG_DIR=%QUARTERDECK_AGENT_LAB_REAL_CLAUDE_CONFIG_DIR%"');
+			expect(launcher).toContain('set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_HOST_PATH="');
+			expect(launcher).toContain('set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_CONFIG_DIR="');
+			expect(launcher).toContain('set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MCP_CONFIG="');
+			expect(launcher).toContain('set "ANTHROPIC_API_KEY="');
+			expect(launcher).toContain('--model "%QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MODEL%"');
+			expect(launcher).toContain('--permission-mode "%QUARTERDECK_AGENT_LAB_REAL_CLAUDE_PERMISSION_MODE%"');
+			expect(launcher).toContain('--setting-sources "" --strict-mcp-config');
+			expect(launcher).toContain("--no-chrome --disable-slash-commands");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it.runIf(process.platform !== "win32")(
+		"executes the host Claude with the isolated config and bounded launch policy",
+		async () => {
+			const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-real-claude-launcher-"));
+			const fakeBinPath = join(root, "fake-bin");
+			const hostBinPath = join(root, "host-bin");
+			const capturePath = join(root, "capture.txt");
+			try {
+				await Promise.all([mkdir(fakeBinPath, { recursive: true }), mkdir(hostBinPath, { recursive: true })]);
+				await writeFile(
+					join(hostBinPath, "claude"),
+					`#!/bin/sh\nprintf "%s\\n" "$HOME" "$CLAUDE_CONFIG_DIR" "\${ANTHROPIC_API_KEY-unset}" "$DISABLE_TELEMETRY" "$@" > "$CAPTURE_PATH"\n`,
+					{ encoding: "utf8", mode: 0o755 },
+				);
+				await writeRealClaudeLauncher(fakeBinPath);
+				await execFileAsync(
+					join(fakeBinPath, "claude"),
+					["--resume", "session-123", "--settings", "/tmp/hooks.json", "--", "synthetic prompt"],
+					{
+						env: {
+							HOME: "/tmp/lab/home",
+							PATH: [fakeBinPath, hostBinPath].join(delimiter),
+							QUARTERDECK_AGENT_LAB_REAL_CLAUDE_HOST_PATH: hostBinPath,
+							QUARTERDECK_AGENT_LAB_REAL_CLAUDE_CONFIG_DIR: "/tmp/lab/claude-config",
+							QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MCP_CONFIG: "/tmp/lab/claude-config/empty-mcp.json",
+							QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MODEL: "haiku",
+							QUARTERDECK_AGENT_LAB_REAL_CLAUDE_PERMISSION_MODE: "manual",
+							ANTHROPIC_API_KEY: "must-not-leak",
+							CAPTURE_PATH: capturePath,
+						},
+					},
+				);
+				const [home, configDir, apiKey, telemetry, ...capturedArgs] = (await readFile(capturePath, "utf8"))
+					.trimEnd()
+					.split("\n");
+				expect(home).toBe("/tmp/lab/home");
+				expect(configDir).toBe("/tmp/lab/claude-config");
+				expect(apiKey).toBe("unset");
+				expect(telemetry).toBe("1");
+				expect(capturedArgs).toEqual([
+					"--model",
+					"haiku",
+					"--permission-mode",
+					"manual",
+					"--setting-sources",
+					"",
+					"--strict-mcp-config",
+					"--mcp-config",
+					"/tmp/lab/claude-config/empty-mcp.json",
+					"--no-chrome",
+					"--disable-slash-commands",
+					"--resume",
+					"session-123",
+					"--settings",
+					"/tmp/hooks.json",
+					"--",
+					"synthetic prompt",
+				]);
+			} finally {
+				await rm(root, { recursive: true, force: true });
+			}
+		},
+	);
+
+	it.runIf(process.platform !== "win32")(
+		"retains gateway authentication only for the explicitly selected provider launch",
+		async () => {
+			const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-real-claude-gateway-"));
+			const fakeBinPath = join(root, "fake-bin");
+			const hostBinPath = join(root, "host-bin");
+			const capturePath = join(root, "capture.txt");
+			try {
+				await Promise.all([mkdir(fakeBinPath, { recursive: true }), mkdir(hostBinPath, { recursive: true })]);
+				await writeFile(
+					join(hostBinPath, "claude"),
+					`#!/bin/sh\nprintf "%s\\n" "\${ANTHROPIC_AUTH_TOKEN-unset}" "\${QUARTERDECK_AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_AUTH-unset}" > "$CAPTURE_PATH"\n`,
+					{ encoding: "utf8", mode: 0o755 },
+				);
+				await writeRealClaudeLauncher(fakeBinPath);
+				await execFileAsync(join(fakeBinPath, "claude"), ["--settings", "/tmp/hooks.json"], {
+					env: {
+						PATH: [fakeBinPath, hostBinPath].join(delimiter),
+						QUARTERDECK_AGENT_LAB_REAL_CLAUDE_HOST_PATH: hostBinPath,
+						QUARTERDECK_AGENT_LAB_REAL_CLAUDE_CONFIG_DIR: "/tmp/lab/claude-config",
+						QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MCP_CONFIG: "/tmp/lab/claude-config/empty-mcp.json",
+						QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MODEL: "haiku",
+						QUARTERDECK_AGENT_LAB_REAL_CLAUDE_PERMISSION_MODE: "manual",
+						QUARTERDECK_AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_AUTH: "1",
+						ANTHROPIC_AUTH_TOKEN: "synthetic-token",
+						CAPTURE_PATH: capturePath,
+					},
+				});
+				expect((await readFile(capturePath, "utf8")).trimEnd().split("\n")).toEqual(["synthetic-token", "unset"]);
+			} finally {
+				await rm(root, { recursive: true, force: true });
+			}
+		},
+	);
+
+	it.runIf(process.platform !== "win32")("fails closed on a second settings source", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-real-claude-conflict-"));
+		const fakeBinPath = join(root, "fake-bin");
+		const hostBinPath = join(root, "host-bin");
+		try {
+			await Promise.all([mkdir(fakeBinPath, { recursive: true }), mkdir(hostBinPath, { recursive: true })]);
+			await writeFile(join(hostBinPath, "claude"), "#!/bin/sh\nexit 0\n", { encoding: "utf8", mode: 0o755 });
+			await writeRealClaudeLauncher(fakeBinPath);
+			await expect(
+				execFileAsync(
+					join(fakeBinPath, "claude"),
+					["--settings", "/tmp/user.json", "--settings", "/tmp/hooks.json"],
+					{
+						env: {
+							PATH: [fakeBinPath, hostBinPath].join(delimiter),
+							QUARTERDECK_AGENT_LAB_REAL_CLAUDE_HOST_PATH: hostBinPath,
+							QUARTERDECK_AGENT_LAB_REAL_CLAUDE_CONFIG_DIR: "/tmp/lab/claude-config",
+							QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MCP_CONFIG: "/tmp/lab/claude-config/empty-mcp.json",
+							QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MODEL: "haiku",
+							QUARTERDECK_AGENT_LAB_REAL_CLAUDE_PERMISSION_MODE: "manual",
+						},
+					},
+				),
+			).rejects.toMatchObject({ code: 64 });
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 });
 
@@ -507,11 +1065,18 @@ describe("agent-lab real Codex", () => {
 	it.each([
 		["--model", "gpt-5.6-luna"],
 		["--codex-home", "/profiles/codex"],
+		["--claude-config-dir", "/profiles/claude"],
 		["--codex-sandbox", "workspace-write"],
 		["--codex-approval-policy", "never"],
 	])("rejects real-only option %s in fake mode", async (flag, value) => {
 		await expect(runAgentLabCli(["node", "agent-lab", "start", flag, value])).rejects.toThrow(
-			"require --agent real-codex",
+			"require --agent real-codex or --agent real-claude",
+		);
+	});
+
+	it("rejects Claude environment authentication in fake mode", async () => {
+		await expect(runAgentLabCli(["node", "agent-lab", "start", "--claude-environment-auth"])).rejects.toThrow(
+			"require --agent real-codex or --agent real-claude",
 		);
 	});
 });
@@ -520,6 +1085,7 @@ describe("agent-lab fake agent protocol", () => {
 	it("prefers a prompt scenario directive over the run default", () => {
 		expect(resolveFakeAgentScenario("Please test [agent-lab:needs-input] now", "idle")).toBe("needs-input");
 		expect(resolveFakeAgentScenario("No directive", "terminal-stress")).toBe("terminal-stress");
+		expect(resolveFakeAgentScenario("No directive", "claude-failure")).toBe("claude-failure");
 	});
 
 	it("extracts only the prompt after Codex's explicit option separator", () => {
@@ -527,6 +1093,73 @@ describe("agent-lab fake agent protocol", () => {
 			"- investigate the UI",
 		);
 		expect(extractPromptArgument(["resume", "session-id"])).toBe("");
+	});
+
+	it("models Claude's minimum version, launch settings, prompt, and exact resume arguments", () => {
+		expect(getFakeAgentVersionOutput("claude")).toBe("2.1.198 (Claude Code)");
+		expect(
+			resolveFakeAgentInvocation("claude", [
+				"--resume",
+				"claude-session-123",
+				"--settings",
+				"/tmp/hooks.json",
+				"--",
+				"- continue safely",
+			]),
+		).toEqual({
+			prompt: "- continue safely",
+			resumeKind: "targeted",
+			requestedSessionId: "claude-session-123",
+			settingsPath: "/tmp/hooks.json",
+		});
+		expect(resolveFakeAgentInvocation("claude", ["--continue", "--settings=/tmp/hooks.json"])).toEqual({
+			prompt: "",
+			resumeKind: "continue",
+			requestedSessionId: null,
+			settingsPath: "/tmp/hooks.json",
+		});
+	});
+
+	it("mirrors Claude's fullscreen renderer environment across deterministic launches", () => {
+		expect(shouldFakeClaudeUseFullscreen("claude", { CLAUDE_CODE_NO_FLICKER: "1" })).toBe(true);
+		expect(
+			shouldFakeClaudeUseFullscreen("claude", {
+				CLAUDE_CODE_NO_FLICKER: "1",
+				CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "1",
+			}),
+		).toBe(false);
+		expect(shouldFakeClaudeUseFullscreen("claude", { CLAUDE_CODE_NO_FLICKER: "0" })).toBe(false);
+		expect(shouldFakeClaudeUseFullscreen("codex", { CLAUDE_CODE_NO_FLICKER: "1" })).toBe(false);
+	});
+
+	it("builds Claude-shaped native hook payloads with provider identities", () => {
+		expect(
+			buildClaudeHookPayload("Stop", {
+				sessionId: "claude-session-123",
+				cwd: "/tmp/project",
+				promptId: "prompt-1",
+				toolName: "Bash",
+				toolUseId: "tool-1",
+				elicitationId: "elicitation-1",
+				providerAgentId: "background-agent-1",
+				notificationType: "agent_needs_input",
+				finalMessage: "Waiting for background work",
+				backgroundWork: true,
+			}),
+		).toEqual(
+			expect.objectContaining({
+				session_id: "claude-session-123",
+				hook_event_name: "Stop",
+				prompt_id: "prompt-1",
+				tool_name: "Bash",
+				tool_use_id: "tool-1",
+				elicitation_id: "elicitation-1",
+				agent_id: "background-agent-1",
+				notification_type: "agent_needs_input",
+				last_assistant_message: "Waiting for background work",
+				background_tasks: [{ id: "agent-lab-background-1" }],
+			}),
+		);
 	});
 
 	it("parses bounded deterministic commands", () => {
@@ -545,6 +1178,26 @@ describe("agent-lab fake agent protocol", () => {
 			message: "model changed",
 		});
 		expect(parseFakeAgentCommand("/compact")).toEqual({ kind: "compact" });
+		expect(parseFakeAgentCommand("/notification check input")).toEqual({
+			kind: "notification",
+			message: "check input",
+		});
+		expect(parseFakeAgentCommand("/elicitation choose one")).toEqual({
+			kind: "elicitation",
+			message: "choose one",
+		});
+		expect(parseFakeAgentCommand("/elicitation-result selected one")).toEqual({
+			kind: "elicitation-result",
+			message: "selected one",
+		});
+		expect(parseFakeAgentCommand("/background-stop still working")).toEqual({
+			kind: "background-stop",
+			message: "still working",
+		});
+		expect(parseFakeAgentCommand("/stop-failure rate limited")).toEqual({
+			kind: "stop-failure",
+			message: "rate limited",
+		});
 		expect(parseFakeAgentCommand("/queued-follow-up continue now")).toEqual({
 			kind: "queued-follow-up",
 			message: "continue now",
@@ -562,6 +1215,12 @@ describe("agent-lab fake agent protocol", () => {
 			message: "done",
 		});
 		expect(parseFakeAgentCommand("/spam nope")).toEqual({ kind: "spam", count: 100 });
+	});
+
+	it("keeps Claude-only scenarios out of the default fake lane", async () => {
+		await expect(
+			runAgentLabCli(["node", "agent-lab", "start", "--agent", "fake", "--scenario", "claude-lifecycle"]),
+		).rejects.toThrow("require --agent fake-claude");
 	});
 });
 
@@ -688,6 +1347,12 @@ describe("agent-lab manifest compatibility", () => {
 });
 
 describe("agent-lab loopback ports", () => {
+	it("maps the documented auto CLI value to an ephemeral numeric port", () => {
+		expect(parseAgentLabPort("auto")).toBe(0);
+		expect(parseAgentLabPort("41731")).toBe(41_731);
+		expect(() => parseAgentLabPort("invalid")).toThrow('use 1-65535 or "auto"');
+	});
+
 	it("allocates an ephemeral port through the shared supervisor boundary", async () => {
 		const port = await resolveLoopbackPort(null, "test");
 		expect(port).toBeGreaterThan(0);

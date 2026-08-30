@@ -7,7 +7,7 @@ There are two big ideas to hold in your head:
 1. The browser is mostly a control surface. It renders state, submits typed commands, applies optimistic presentation, and reacts to live updates.
 2. The local runtime is the source of truth for durable board state, project registration, worktrees, sessions, git operations, and streaming state.
 
-All agents (Claude Code, Codex, etc.) run as PTY-backed CLI processes.
+Desktop task sessions run as PTY-backed CLI processes. The runtime can temporarily transfer an exact Codex or Claude session to an internal provider-native structured owner; no remote transport exposes that boundary yet.
 
 If you remember nothing else, remember this:
 
@@ -103,7 +103,7 @@ The browser layer is the presentation and interaction layer. It renders the boar
 
 The runtime layer is the control and persistence layer. It serializes board commands, owns durable board/session truth, decides what session to start, where it should run, what worktree or project it belongs to, what command should be used, what git metadata should be refreshed, and what state should be streamed back to clients.
 
-The execution layer is the actual agent implementation: a CLI process attached to a PTY for every task agent or shell session.
+The execution layer is the actual agent implementation: normally a CLI process attached to a PTY, or an exclusive provider-native structured process while a task has explicitly transferred ownership. Shell sessions always remain PTY-backed.
 
 That split explains a lot of the architecture:
 
@@ -113,11 +113,12 @@ That split explains a lot of the architecture:
 
 ## Runtime Modes
 
-Quarterdeck currently supports two runtime modes.
+Quarterdeck currently supports three execution modes.
 
 | Runtime mode | Used for | Scope | Backing implementation | Why it exists |
 | --- | --- | --- | --- | --- |
 | CLI-backed task terminal | Claude Code, Codex, and similar agents | task-scoped | PTY-backed process runtime | these agents are command-driven CLIs and fit the terminal model well |
+| Structured task owner | exact Claude Code or Codex sessions | task-scoped, internal only | Claude Agent SDK or Codex app-server over stdio | enables typed, idempotent interaction without exposing raw terminal input while preserving one writer |
 | Project shell terminal | the home/detail shell panels | project-scoped | PTY-backed shell process | this is for manual commands in the repo, not task execution |
 
 ## Core Concepts
@@ -129,7 +130,7 @@ These terms come up everywhere in the codebase.
 | Project | an indexed git repository that Quarterdeck has opened | most browser and runtime state is scoped to a project id |
 | Task card | a board item with a prompt, base ref, and review settings | a task is the unit of work the board cares about |
 | Worktree | a per-task git worktree | most task agents run inside one |
-| Task session | the live runtime attached to a task card | this is a PTY process |
+| Task session | the live runtime attached to a task card | normally a PTY process; an exact Codex/Claude session may have one exclusive structured owner |
 | Shell session | a project-scoped manual terminal | shell sessions reuse terminal plumbing but have different lifecycle rules from task agents |
 | Runtime summary | the small state object the board uses to know whether a session is idle, running, awaiting review, interrupted, or failed | this is the bridge between long-running agent work and the UI |
 
@@ -226,7 +227,7 @@ Components in `web-ui/src/components/` are mostly rendering and composition. Goo
 
 ### Starting a task session
 
-When the user starts a task, the browser first flushes the command that created or moved the card, then asks the runtime to start a task session. The runtime resolves the task cwd from durable task state, chooses the right command, and starts a PTY-backed process inside the task worktree. As the process runs, the terminal runtime emits summary updates. The runtime state hub persists the server-owned session/work-column projection and streams summaries and authoritative board updates back to the browser.
+When the user starts a task, the browser first flushes the command that created or moved the card, then asks the runtime to start a task session. The runtime resolves the task cwd from durable task state, chooses the right command, and starts a PTY-backed process inside the task worktree. An internal structured handoff may later stop that exact native writer and resume the same provider session through Codex app-server or Claude Agent SDK; ownership generation and process identity prevent overlap. As the owner runs, the terminal/session state projection emits summary updates. The runtime state hub persists the server-owned session/work-column projection and streams summaries and authoritative board updates back to the browser.
 
 Raw PTY output does not travel through the runtime state hub. It streams through the terminal WebSocket path and browser terminal slot/restore layer, while the runtime state hub carries the product-shaped summaries and metadata that the rest of the UI needs.
 
@@ -299,7 +300,7 @@ When you are making a change, this table is often more useful than a file list.
 
 | If you are changing... | Think about this first | Common mistake to avoid |
 | --- | --- | --- |
-| task startup for any agent | the PTY runtime and agent launch path | accidentally adding agent-specific special cases |
+| task startup or owner handoff | the PTY runtime, execution-ownership coordinator, and exact launch path | starting a replacement before the prior writer's exit is confirmed |
 | live board updates | the runtime state hub and browser stream consumers | falling back to polling or duplicating summary logic |
 | board persistence | typed commands, `ProjectBoardCommandService`, receipt replay, and authoritative hydration | adding a whole-board writer or bypassing the locked command authority |
 | session lifecycle or transient session UI | terminal manager, transition controller, and reconciliation sweep | using terminal output timestamps as work-state truth |
@@ -312,7 +313,7 @@ A new engineer opening this repo will probably notice a few things quickly:
 - the backend is long-lived and stateful, not a thin stateless API server
 - the browser is closer to a local control client than a traditional web app
 - the task system, review system, and runtime system are tightly connected
-- all agents use the same PTY-backed execution path
+- desktop agents share one PTY launch path; Codex and Claude can transfer to one fenced structured owner
 - project state and worktrees live outside the target repository by default
 - the architecture favors clean ownership over compatibility glue
 

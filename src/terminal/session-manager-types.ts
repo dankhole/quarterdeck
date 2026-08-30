@@ -19,11 +19,19 @@ import type { TerminalStateMirror } from "./terminal-state-mirror";
 
 // ── Session types ────────────────────────────────────────────────────────────
 
+export interface NativeTaskSessionProfileEnvironment {
+	CODEX_HOME?: string;
+	CLAUDE_CONFIG_DIR?: string;
+	HOME?: string;
+}
+
 export interface ActiveProcessState {
 	session: PtySession;
 	sessionInstanceId: string;
 	launchOperationId: string | null;
 	agentId: StartTaskSessionRequest["agentId"] | null;
+	launchBinary: string | null;
+	launchProfileEnvironment: NativeTaskSessionProfileEnvironment;
 	claudeFullscreenEnabled: boolean;
 	workspaceTrustBuffer: string | null;
 	cols: number;
@@ -93,6 +101,7 @@ export interface StartTaskSessionRequest {
 	projectId?: string;
 	projectPath?: string;
 	claudeFullscreenEnabled?: boolean;
+	claudeLaunchPermissionMode?: AgentAdapterLaunchInput["claudeLaunchPermissionMode"];
 	statuslineEnabled?: boolean;
 	codexApprovalsReviewer?: AgentAdapterLaunchInput["codexApprovalsReviewer"];
 	piToolApprovalsEnabled?: boolean;
@@ -126,6 +135,16 @@ export interface StopTaskSessionResult {
 	didExit: boolean;
 	outcome: Exclude<RuntimeTaskSessionStopOutcome, "requested">;
 	error?: string;
+}
+
+/** Server-only identity used to fence native/structured ownership handoffs. */
+export interface NativeTaskSessionProcessIdentity {
+	pid: number;
+	sessionInstanceId: string;
+	launchOperationId: string | null;
+	agentId: StartTaskSessionRequest["agentId"] | null;
+	binary: string | null;
+	profileEnvironment: NativeTaskSessionProfileEnvironment;
 }
 
 export class TaskSessionStartCancelledError extends Error {
@@ -272,6 +291,8 @@ export interface CreateActiveProcessStateOptions {
 	sessionInstanceId: string;
 	launchOperationId?: string | null;
 	agentId: StartTaskSessionRequest["agentId"] | null;
+	launchBinary?: string | null;
+	launchProfileEnvironment?: NativeTaskSessionProfileEnvironment;
 	claudeFullscreenEnabled?: boolean;
 	cols: number;
 	baseRows: number;
@@ -286,6 +307,8 @@ export function createActiveProcessState(opts: CreateActiveProcessStateOptions):
 		sessionInstanceId: opts.sessionInstanceId,
 		launchOperationId: opts.launchOperationId ?? null,
 		agentId: opts.agentId,
+		launchBinary: opts.launchBinary ?? null,
+		launchProfileEnvironment: { ...opts.launchProfileEnvironment },
 		claudeFullscreenEnabled: opts.agentId === "claude" && opts.claudeFullscreenEnabled === true,
 		workspaceTrustBuffer: opts.willAutoTrust ? "" : null,
 		cols: opts.cols,

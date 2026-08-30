@@ -17,6 +17,7 @@
 // import RuntimeConfigSaveRequest from the Zod schema — no manual sync needed.
 // The dirty check, reset, and save payload are handled by useSettingsForm.
 
+import { CLAUDE_LAUNCH_PERMISSION_MODES, type ClaudeLaunchPermissionMode } from "../core/api/claude-permissions";
 import { CODEX_APPROVALS_REVIEWERS, type CodexApprovalsReviewer } from "../core/api/codex-approvals";
 
 export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
@@ -109,7 +110,8 @@ export const GLOBAL_CONFIG_FIELDS = {
 	audibleNotificationsEnabled: boolField(true),
 	audibleNotificationVolume: volumeField(0.7),
 	audibleNotificationsOnlyWhenHidden: boolField(true),
-	claudeFullscreenEnabled: boolField(false),
+	claudeFullscreenEnabled: boolField(true),
+	claudeLaunchPermissionMode: enumField<ClaudeLaunchPermissionMode>("inherit", CLAUDE_LAUNCH_PERMISSION_MODES),
 	statuslineEnabled: boolField(false),
 	codexApprovalsReviewer: enumField<CodexApprovalsReviewer>("inherit", CODEX_APPROVALS_REVIEWERS),
 	piToolApprovalsEnabled: boolField(true),

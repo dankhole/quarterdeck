@@ -13,7 +13,7 @@ import { buildAgentLabEnvironment } from "./environment";
 import { prepareAgentLabFixture } from "./fixture";
 import { resolveLoopbackPort } from "./loopback-port";
 import { writeJsonAtomic } from "./paths";
-import { toPublicAgentConfig } from "./real-codex";
+import { toPublicAgentConfig } from "./public-agent-config";
 import { captureAgentLabSnapshot } from "./snapshot";
 import {
 	type AgentLabLaunchConfig,
@@ -290,13 +290,13 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 		const fixture = await prepareAgentLabFixture(config, webUrl);
 		const tsxCliPath = fileURLToPath(import.meta.resolve("tsx/cli"));
 		const cliEntrypointPath = join(config.repoRoot, "src", "cli.ts");
-		const fakeCodexPath = join(config.repoRoot, "scripts", "agent-lab", "fake-codex.ts");
+		const fakeAgentPath = join(config.repoRoot, "scripts", "agent-lab", "fake-codex.ts");
 		const environment = buildAgentLabEnvironment(process.env, {
 			...fixture,
 			tempRoot: config.tempRoot,
 			repoRoot: config.repoRoot,
 			tsxCliPath,
-			fakeCodexPath,
+			fakeAgentPath,
 			cliEntrypointPath,
 			runtimePort,
 			webPort,
@@ -538,6 +538,8 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 			removeTemporaryFixture: async () => {
 				if (config.agent.mode === "real-codex") {
 					await rm(config.agent.codexHomePath, { recursive: true, force: true });
+				} else if (config.agent.mode === "real-claude") {
+					await rm(config.agent.claudeConfigDirPath, { recursive: true, force: true });
 				}
 				if (!config.keepTemp) await rm(config.tempRoot, { recursive: true, force: true });
 			},

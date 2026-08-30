@@ -54,10 +54,34 @@ describe.sequential("runtime-config persistence", () => {
 				expect(state.globalConfigPath).toBe(join(tempHome, ".quarterdeck", "config.json"));
 				expect(state.projectConfigPath).toBeNull();
 				expect(state.shortcuts).toEqual([]);
-				expect(state.claudeFullscreenEnabled).toBe(false);
+				expect(state.claudeFullscreenEnabled).toBe(true);
+				expect(state.claudeLaunchPermissionMode).toBe("inherit");
 				expect(state.statuslineEnabled).toBe(false);
 				expect(state.codexApprovalsReviewer).toBe("inherit");
 				expect(state.piToolApprovalsEnabled).toBe(true);
+			});
+		} finally {
+			cleanupHome();
+		}
+	});
+
+	it("persists the Claude launch permission mode globally", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-claude-permissions-");
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const updated = await updateRuntimeConfig(null, {
+					claudeLaunchPermissionMode: "acceptEdits",
+				});
+				expect(updated.claudeLaunchPermissionMode).toBe("acceptEdits");
+
+				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
+					claudeLaunchPermissionMode?: string;
+				};
+				expect(globalPayload.claudeLaunchPermissionMode).toBe("acceptEdits");
+
+				const reloaded = await loadGlobalRuntimeConfig();
+				expect(reloaded.claudeLaunchPermissionMode).toBe("acceptEdits");
 			});
 		} finally {
 			cleanupHome();
@@ -110,23 +134,23 @@ describe.sequential("runtime-config persistence", () => {
 		}
 	});
 
-	it("persists the Claude fullscreen renderer opt-in globally", async () => {
+	it("persists the Claude classic-renderer opt-out globally", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-claude-fullscreen-");
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
 				const updated = await updateRuntimeConfig(null, {
-					claudeFullscreenEnabled: true,
+					claudeFullscreenEnabled: false,
 				});
-				expect(updated.claudeFullscreenEnabled).toBe(true);
+				expect(updated.claudeFullscreenEnabled).toBe(false);
 
 				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
 					claudeFullscreenEnabled?: boolean;
 				};
-				expect(globalPayload.claudeFullscreenEnabled).toBe(true);
+				expect(globalPayload.claudeFullscreenEnabled).toBe(false);
 
 				const reloaded = await loadGlobalRuntimeConfig();
-				expect(reloaded.claudeFullscreenEnabled).toBe(true);
+				expect(reloaded.claudeFullscreenEnabled).toBe(false);
 			});
 		} finally {
 			cleanupHome();

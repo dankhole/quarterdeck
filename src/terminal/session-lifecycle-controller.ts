@@ -14,6 +14,7 @@ import {
 import {
 	cloneStartShellSessionRequest,
 	cloneStartTaskSessionRequest,
+	type NativeTaskSessionProcessIdentity,
 	type ProcessEntry,
 	type StartShellSessionRequest,
 	type StartTaskSessionRequest,
@@ -85,6 +86,19 @@ export class SessionLifecycleController {
 
 	async startTaskSession(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
 		return (await this.startTaskSessionWithReadiness(request)).summary;
+	}
+
+	getTaskSessionProcessIdentity(taskId: string): NativeTaskSessionProcessIdentity | null {
+		const active = this.entries.get(taskId)?.active;
+		if (!active) return null;
+		return {
+			pid: active.session.pid,
+			sessionInstanceId: active.sessionInstanceId,
+			launchOperationId: active.launchOperationId,
+			agentId: active.agentId,
+			binary: active.launchBinary,
+			profileEnvironment: { ...active.launchProfileEnvironment },
+		};
 	}
 
 	async startTaskSessionWithReadiness(request: StartTaskSessionRequest): Promise<TaskSessionStartWithReadinessResult> {

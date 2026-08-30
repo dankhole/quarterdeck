@@ -225,12 +225,14 @@ describe("createTerminalWebSocketBridge", () => {
 	let server: Server;
 	let bridge: TerminalWebSocketBridge;
 	let terminalManager: FakeTerminalManager;
+	let shouldRecoverStaleSession: ((projectId: string, taskId: string) => boolean | Promise<boolean>) | undefined;
 	let runtimeUrl: string;
 	let originalRuntimePort: number;
 
 	beforeEach(async () => {
 		originalRuntimePort = getQuarterdeckRuntimePort();
 		terminalManager = new FakeTerminalManager();
+		shouldRecoverStaleSession = undefined;
 		server = createServer((_request, response) => {
 			response.writeHead(404);
 			response.end();
@@ -238,6 +240,7 @@ describe("createTerminalWebSocketBridge", () => {
 		bridge = createTerminalWebSocketBridge({
 			server,
 			resolveTerminalManager: (projectId) => (projectId === PROJECT_ID ? terminalManager : null),
+			shouldRecoverStaleSession: (projectId, taskId) => shouldRecoverStaleSession?.(projectId, taskId) ?? true,
 			isTerminalIoWebSocketPath: (pathname) => pathname === "/api/terminal/io",
 			isTerminalControlWebSocketPath: (pathname) => pathname === "/api/terminal/control",
 		});
@@ -295,6 +298,23 @@ describe("createTerminalWebSocketBridge", () => {
 
 		await closeSocket(ioSocketB.socket);
 		await closeSocket(controlSocketB.socket);
+	});
+
+	it("fails closed when durable execution ownership blocks stale PTY recovery", async () => {
+		shouldRecoverStaleSession = vi.fn(async () => false);
+		const ioSocket = await openQueuedWebSocket(
+			`${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-blocked`,
+		);
+		const controlSocket = await openQueuedWebSocket(
+			`${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-blocked`,
+		);
+		await waitForControlMessage(controlSocket, (message) => message.type === "restore");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(shouldRecoverStaleSession).toHaveBeenCalled();
+		expect(terminalManager.recoverStaleSession).not.toHaveBeenCalled();
+		await closeSocket(ioSocket.socket);
+		await closeSocket(controlSocket.socket);
 	});
 
 	it("requests the initial restore snapshot after the first resize when one arrives promptly", async () => {

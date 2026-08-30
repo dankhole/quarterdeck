@@ -10,7 +10,6 @@ import {
 	type AgentLabCodexSandbox,
 	type AgentLabLaunchAgentConfig,
 	AgentLabLaunchAgentConfigSchema,
-	type AgentLabPublicAgentConfig,
 } from "./types";
 
 export const DEFAULT_AGENT_LAB_REAL_CODEX_MODEL = "gpt-5.6-luna";
@@ -240,24 +239,4 @@ export async function prepareIsolatedRealCodexAgent(
 		);
 	}
 	return isolatedAgent;
-}
-
-export function toPublicAgentConfig(agent: AgentLabLaunchAgentConfig): AgentLabPublicAgentConfig {
-	if (agent.mode === "fake") return agent;
-	return {
-		mode: agent.mode,
-		model: agent.model,
-		modelProvider: agent.modelProvider,
-		reasoningEffort: agent.reasoningEffort,
-		authentication: agent.authentication,
-		profileSource: agent.profileSource,
-		sandbox: agent.sandbox,
-		approvalPolicy: agent.approvalPolicy,
-		serviceTier: agent.serviceTier,
-		historyPersistence: agent.historyPersistence,
-		webSearch: agent.webSearch,
-		externalIntegrations: agent.externalIntegrations,
-		profileHooks: agent.profileHooks,
-		telemetry: agent.telemetry,
-	} as const;
 }

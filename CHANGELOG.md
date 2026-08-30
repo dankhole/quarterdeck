@@ -2,10 +2,53 @@
 
 ## [Unreleased]
 
+### Fix: harden Claude GUI restore dogfood
+
+- Task-detail deep links now survive initial project selection and authoritative board hydration, including hard reloads while a Claude terminal is selected. A global runtime snapshot is no longer mistaken for proof that the selected project's board has arrived.
+- Agent Lab's documented `--runtime-port auto --web-port auto` form now selects ephemeral loopback ports instead of failing launch validation after Commander normalizes a parser `null` to an empty string.
+
+### Fix: preserve structured-owner recovery identity
+
+- Structured-owner cold recovery now reuses one durable launch operation identity for preparation and replacement, including the identity of the process that died. Replaying a lifecycle restart that already created the recovered owner returns the current session instead of stopping and launching it a second time.
+- Periodic state-backup change detection now includes `execution-ownership.json`, so owner, handoff, or interaction journal changes can trigger a backup even when the board and session files are otherwise unchanged.
+
+### Feature: add provider-neutral structured execution ownership
+
+- The runtime now owns durable, single-writer native-to-structured-to-native handoff for exact Codex and Claude sessions. Codex uses its pinned app-server protocol and preserves the frozen reviewer policy; Claude uses `@anthropic-ai/claude-agent-sdk` 0.3.241 with the exact installed Claude Code 2.1.224 executable and validates session, cwd, permission, model, tools, MCP, skills, plugins, and process identity before accepting authority.
+- One provider-neutral, idempotent `TaskInteractionService` sends messages, answers keyed questions/approvals/elicitation, interrupts turns, and stops owners without accepting provider, process, profile, executable, or filesystem identity from a client. Mid-turn handoff and background-agent callbacks fail closed, and ambiguous crashes persist `turn_outcome_unknown` without prompt replay.
+- Ownership state, handoff receipts, interaction receipts, owner generation, process kind, launch path, recovery, shutdown, project removal, and task deletion are durable and fenced. Crash-simulation shutdown preserves provider processes, normal shutdown confirms their exit, and native startup recovery never races a structured owner.
+- This is an internal browserless service boundary only. No remote listener, pairing/authentication surface, mobile UI, or raw terminal transport is exposed by this feature.
+
+### Feature: control Claude launch permissions
+
+- Settings now offers Claude-native launch modes for new and restarted sessions: inherit configured behavior, default prompts, accept edits, plan only, automatic review preview, deny unapproved tools, or bypass permissions.
+- Explicit choices replace conflicting permission-mode and dangerous-skip CLI arguments with one launch-scoped `--permission-mode`, survive automatic replacement and startup recovery, and remain subject to Claude's account eligibility and managed policy. Quarterdeck maps the product/API `default` name to Claude 2.1.224's native TUI spelling, `manual`, and back to the Agent SDK's `default` spelling during structured handoff.
+
+### Feature: make Claude fullscreen rendering the default
+
+- New and restarted Claude sessions now use Claude Code's alternate-screen virtualized transcript by default after deterministic and authorized real-Haiku dogfood covered resize, scrolling, selection/copy, links, pooled detach/reattach, runtime restart, automatic restart, and Trash/restore.
+- Settings retains a visible “Fullscreen rendering” switch. Turning it off forces Claude's classic renderer, and Claude's documented screen-reader or alternate-screen override still wins when required.
+
+### Feature: dogfood Claude cheaply in Agent Lab
+
+- Agent Lab now offers an explicitly authorized `--agent real-claude` lane that preflights `claude auth status --json`, selects only the host Claude executable, and defaults interactive synthetic runs to the current low-cost `haiku` alias with manual permissions.
+- Real-Claude settings, hooks, session history, MCP configuration, and unmanaged Chrome, plugin, and slash-command integrations are isolated or disabled; organization-managed settings remain inherited. By default no API-key environment variables are forwarded. An explicit `--claude-environment-auth` lane forwards only documented Claude gateway variables through the disposable supervisor/runtime to Claude and its descendants. Telemetry, feedback, and updates are suppressed, public manifests record only sanitized policy metadata, and disposable config is removed on shutdown.
+- Platform authentication is reused deliberately: file-backed Linux/Windows credentials are staged alone, while macOS continues to use Keychain. Environment auth seeds only a non-secret completed-onboarding marker and fails closed unless selected explicitly. Interactive Claude has no hard budget ceiling, so the lane relies on the Haiku default and tiny prompts and remains opt-in, nondeterministic, account-consuming, synthetic-data-only, and forbidden in CI.
+
+### Feature: add deterministic fake-Claude Agent Lab coverage
+
+- Agent Lab now offers an offline `--agent fake-claude` lane that selects only a lab-owned Claude executable, reports the supported 2.1.198 compatibility floor, validates Quarterdeck's launch-scoped settings, and models fresh, `--continue`, and exact `--resume` launches.
+- The fake emits Claude-shaped native JSON for session start, prompt, tool, permission, notification, elicitation/result, successful and failed stop, and background-agent stop behavior. Focused `claude-lifecycle` and `claude-failure` scenarios cover Claude-specific ordering without multiplying the default Codex/Pi browser matrix.
+- Claude Stops normalized as activity because background work remains no longer retire the active prompt in the provider-order fence; the later SubagentStop and completed root Stop can now be accepted and converge the task to Review.
+
+### Fix: make Agent Lab provider selection fail closed
+
+- Agent Lab now restricts discovery to an explicit per-mode provider allowlist and shadows every supported provider command before the retained host `PATH` is searched. Fake mode exposes only deterministic Codex and Pi; real-Codex mode exposes only its isolated Codex launcher. Host-installed Claude or Pi commands can no longer become selectable or launchable merely because they are installed on the machine.
+
 ### Chore: remove canceled Remote Companion work
 
-- Removed the unused bounded provider-history reader, its hook hint capture, fixtures, and tests from the runtime.
-- Removed the canceled product's active plans, backlog entry, instruction routing, and forward-looking mobile/structured-execution documentation. The deleted design and evidence documents were preserved in the maintainer's ignored `docs/archive` tree; feature branches were left intact.
+- Removed the canceled product's active plans, backlog entry, instruction routing, forward-looking mobile surface, and unused remote-facing history exposure.
+- The bounded provider-history reader remains an internal structured-handoff safety dependency: it proves the exact provider session is durable before Quarterdeck stops the native PTY. No remote listener, pairing/authentication surface, or mobile UI is included.
 
 ### Feature: add Codex dangerously bypass approvals and sandbox mode
 
@@ -22,6 +65,7 @@
 - Native task launch, resume, startup-recovery, and hook-ingest logs now retain useful state/count/presence metadata without recording prompts, prepared CLI arguments, filesystem paths, provider session/turn/tool identities, binaries, or raw thrown messages.
 - State snapshots now back up and restore the durable task-lifecycle operation journal. Restoring an older snapshot that predates that journal removes any newer journal instead of retaining future command receipts beside rolled-back board and session state.
 - Atomic writes that request a restrictive POSIX mode now apply it when the temporary file is created, closing the pre-rename and pre-`chmod` permission window for private hook-delivery and state files.
+- These are native/P2 foundation fixes only; no structured execution owner, remote transport, authentication flow, or mobile capability was added.
 
 ### Feature: make Pi tool approvals configurable
 
@@ -129,6 +173,18 @@
 - Agent Lab can now gracefully replace only its runtime process while preserving the disposable state, projects, web process, ports, and browser session, with generation history and automatic before/after diagnostic checkpoints.
 - Graceful lab restarts exercise real shutdown persistence without scanning unrelated host agent processes; runtime-generation logs remain separate in canonical evidence.
 - Ambiguous legacy interrupted sessions now remain semantically neutral during chat restoration and surface an explicit warning instead of being guessed as Running, Review, or Needs Input.
+
+### Feature: add bounded recent-conversation reads
+
+- The runtime now owns one provider-neutral, read-only recent-conversation boundary for exact stored Claude Code and Codex sessions, returning 10 meaningful user/assistant messages by default and at most 24 with explicit older-history, compaction, truncation, and degradation signals.
+- Provider history discovery is server-owned and bounded: canonical sources must remain beneath configured Claude/Codex history roots, exact session identity is verified, symlink and traversal escapes are rejected, and malformed, missing, pruned, oversized, or drifting history cannot affect board, lifecycle, hook, terminal, worktree, or provider state.
+- Native message IDs are preserved through opaque deterministic hashes, with provider/session/source-coordinate fallbacks when native IDs are absent, so rereads, appends, reconnects, and service reconstruction do not renumber existing entries.
+- Provider history is reconstructed logically before projection: Claude reads follow the active `parentUuid` chain, Codex reads apply persisted rollback markers, and unreadable or oversized records form explicit history barriers instead of allowing pre-compaction text to leak into the recent suffix.
+- Tail reconstruction stops after proving the requested number of unique safe messages plus one genuinely older message, so ordinary long histories do not scan to the beginning merely to set `hasOlder`; duplicate native IDs do not satisfy the bound, while Claude lineage cycles and Codex rollback underflow remain fail-closed.
+- Indexed projects can resolve persisted provider session identity without browser selection or terminal-manager hydration, keeping the internal read boundary usable for cold and inactive projects.
+- Tool calls/results, reasoning, system/developer content, commands, terminal data, paths, provider records, and Pi are excluded. This adds no remote listener, authentication, pairing flow, mobile renderer, or desktop behavior change.
+- Authenticated ownership-handoff fixtures now cover Claude Agent SDK and paginated Codex histories: Claude interruption becomes a typed boundary, Codex repository/environment context is excluded, unknown duplicate same-turn records fail closed, and unsupported history modes or declared versions return no conversation content.
+- The Codex `0.149.1` post-compaction variant is fixture-covered: a top-level compaction remains a hard history barrier, the paired single-block environment wrapper is excluded, only the safe newer suffix is returned, and unpaired wrappers still fail closed.
 
 ### Fix: align project pills with board and notification truth
 
@@ -295,9 +351,9 @@
 
 - Project sidebar task-count pills now follow the board that is actually displayed, including cached boards shown immediately during project switches, instead of waiting for the authoritative project snapshot to finish loading.
 
-### Feature: add experimental Claude fullscreen rendering
+### Feature: add Claude fullscreen rendering
 
-- Settings now exposes a default-off Claude fullscreen renderer toggle that authoritatively selects Claude Code's alternate-screen or classic renderer for new and restarted sessions, keeping renderer choice aligned with Quarterdeck's terminal row policy.
+- Settings exposes a Claude fullscreen renderer toggle that authoritatively selects Claude Code's alternate-screen or classic renderer for new and restarted sessions, keeping renderer choice aligned with Quarterdeck's terminal row policy. The initial default-off rollout is superseded by the default-on dogfood decision above.
 - Fullscreen Claude sessions keep the real terminal row count while detached and preserve the launch mode through startup resume and automatic restart; classic Claude sessions retain the existing detached history multiplier.
 - The renderer choice is launch-deterministic across the supported preview versions: disabling the experiment forces Claude's classic renderer, while the documented `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` escape hatch overrides fullscreen and keeps the matching classic row policy.
 

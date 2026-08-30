@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 
 import type { RuntimeHostSimulationConfig } from "../../src/server/runtime-host-simulation";
+import { resolveAgentLabProviderPolicy } from "./provider-policy";
+import { AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_POLICY } from "./real-claude";
 import { AGENT_LAB_REAL_CODEX_CONFIG_OVERRIDES } from "./real-codex";
 import type { AgentLabLaunchConfig } from "./types";
 
@@ -50,20 +52,29 @@ async function runGit(projectPath: string, args: string[]): Promise<void> {
 	});
 }
 
-async function writeFakeAgentLaunchers(fakeBinPath: string, provider: "codex" | "pi"): Promise<void> {
+async function writeFakeAgentLaunchers(fakeBinPath: string, provider: "claude" | "codex" | "pi"): Promise<void> {
 	const shellLauncherPath = join(fakeBinPath, provider);
 	const windowsLauncherPath = join(fakeBinPath, `${provider}.cmd`);
 	await writeFile(
 		shellLauncherPath,
-		`#!/bin/sh\nQUARTERDECK_AGENT_LAB_PROVIDER=${provider} exec "$QUARTERDECK_AGENT_LAB_NODE" "$QUARTERDECK_AGENT_LAB_TSX_CLI" "$QUARTERDECK_AGENT_LAB_FAKE_CODEX" "$@"\n`,
+		`#!/bin/sh\nQUARTERDECK_AGENT_LAB_PROVIDER=${provider} exec "$QUARTERDECK_AGENT_LAB_NODE" "$QUARTERDECK_AGENT_LAB_TSX_CLI" "$QUARTERDECK_AGENT_LAB_FAKE_AGENT" "$@"\n`,
 		"utf8",
 	);
 	await chmod(shellLauncherPath, 0o755);
 	await writeFile(
 		windowsLauncherPath,
-		`@echo off\r\nset "QUARTERDECK_AGENT_LAB_PROVIDER=${provider}"\r\n"%QUARTERDECK_AGENT_LAB_NODE%" "%QUARTERDECK_AGENT_LAB_TSX_CLI%" "%QUARTERDECK_AGENT_LAB_FAKE_CODEX%" %*\r\n`,
+		`@echo off\r\nset "QUARTERDECK_AGENT_LAB_PROVIDER=${provider}"\r\n"%QUARTERDECK_AGENT_LAB_NODE%" "%QUARTERDECK_AGENT_LAB_TSX_CLI%" "%QUARTERDECK_AGENT_LAB_FAKE_AGENT%" %*\r\n`,
 		"utf8",
 	);
+}
+
+async function writeBlockedAgentLaunchers(fakeBinPath: string, provider: "claude" | "codex" | "pi"): Promise<void> {
+	const message = `Agent Lab does not enable ${provider} in this provider mode.`;
+	const shellLauncherPath = join(fakeBinPath, provider);
+	const windowsLauncherPath = join(fakeBinPath, `${provider}.cmd`);
+	await writeFile(shellLauncherPath, `#!/bin/sh\nprintf "%s\\n" "${message}" >&2\nexit 127\n`, "utf8");
+	await chmod(shellLauncherPath, 0o755);
+	await writeFile(windowsLauncherPath, `@echo off\r\necho ${message} 1>&2\r\nexit /b 127\r\n`, "utf8");
 }
 
 export async function writeRealCodexLauncher(fakeBinPath: string): Promise<void> {
@@ -206,6 +217,197 @@ export async function writeRealCodexLauncher(fakeBinPath: string): Promise<void>
 	);
 }
 
+const REAL_CLAUDE_FORBIDDEN_ARGUMENTS = [
+	"--add-dir",
+	"--agent",
+	"--agents",
+	"--allow-dangerously-skip-permissions",
+	"--allowedTools",
+	"--allowed-tools",
+	"--bg",
+	"--background",
+	"--chrome",
+	"--cloud",
+	"--dangerously-skip-permissions",
+	"--ide",
+	"--mcp-config",
+	"--model",
+	"-m",
+	"--permission-mode",
+	"--plugin-dir",
+	"--plugin-url",
+	"--remote-control",
+	"--setting-sources",
+	"--tmux",
+	"--worktree",
+	"-w",
+] as const;
+
+export async function writeRealClaudeLauncher(fakeBinPath: string): Promise<void> {
+	const shellLauncherPath = join(fakeBinPath, "claude");
+	const windowsLauncherPath = join(fakeBinPath, "claude.cmd");
+	const shellForbiddenCases = REAL_CLAUDE_FORBIDDEN_ARGUMENTS.map((value) => `${value}|${value}=*`).join("|");
+	const windowsForbiddenChecks = REAL_CLAUDE_FORBIDDEN_ARGUMENTS.flatMap((value) => [
+		`if /I "%~1"=="${value}" set "_QD_CONFLICT=%~1"`,
+		`if /I "%_QD_ARGUMENT:~0,${value.length + 1}%"=="${value}=" set "_QD_CONFLICT=%~1"`,
+	]);
+	const shellEnvironmentPolicy = Object.entries(AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_POLICY).map(
+		([key, value]) => `export ${key}='${value}'`,
+	);
+	const windowsEnvironmentPolicy = Object.entries(AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_POLICY).map(
+		([key, value]) => `set "${key}=${value}"`,
+	);
+	await writeFile(
+		shellLauncherPath,
+		[
+			"#!/bin/sh",
+			"set -eu",
+			'real_claude_runtime_path="$PATH"',
+			'real_claude_host_path="$QUARTERDECK_AGENT_LAB_REAL_CLAUDE_HOST_PATH"',
+			'real_claude_config_dir="$QUARTERDECK_AGENT_LAB_REAL_CLAUDE_CONFIG_DIR"',
+			'real_claude_mcp_config="$QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MCP_CONFIG"',
+			'real_claude_model="$QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MODEL"',
+			'real_claude_permission_mode="$QUARTERDECK_AGENT_LAB_REAL_CLAUDE_PERMISSION_MODE"',
+			`real_claude_environment_auth="\${QUARTERDECK_AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_AUTH:-0}"`,
+			'real_claude_binary=$(PATH="$real_claude_host_path" command -v claude 2>/dev/null || true)',
+			'if [ -z "$real_claude_binary" ]; then echo "Agent Lab could not resolve the host Claude binary." >&2; exit 127; fi',
+			'export PATH="$real_claude_runtime_path"',
+			'export CLAUDE_CONFIG_DIR="$real_claude_config_dir"',
+			...shellEnvironmentPolicy,
+			'if [ "$real_claude_environment_auth" != "1" ]; then unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN; fi',
+			"unset QUARTERDECK_AGENT_LAB_REAL_CLAUDE_HOST_PATH",
+			"unset QUARTERDECK_AGENT_LAB_REAL_CLAUDE_CONFIG_DIR",
+			"unset QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MCP_CONFIG",
+			"unset QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MODEL",
+			"unset QUARTERDECK_AGENT_LAB_REAL_CLAUDE_PERMISSION_MODE",
+			"unset QUARTERDECK_AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_AUTH",
+			`case "\${1-}" in`,
+			"  --version|-v)",
+			'    exec "$real_claude_binary" "$@"',
+			"    ;;",
+			"esac",
+			"settings_count=0",
+			'for argument in "$@"; do',
+			'  if [ "$argument" = "--" ]; then break; fi',
+			'  case "$argument" in',
+			"    --settings|--settings=*) settings_count=$((settings_count + 1)) ;;",
+			`    ${shellForbiddenCases}) echo "Agent Lab real Claude rejects conflicting launch argument: $argument" >&2; exit 64 ;;`,
+			"  esac",
+			"done",
+			'if [ "$settings_count" -ne 1 ]; then echo "Agent Lab real Claude requires exactly one Quarterdeck launch-scoped --settings file." >&2; exit 64; fi',
+			'exec "$real_claude_binary" --model "$real_claude_model" --permission-mode "$real_claude_permission_mode" --setting-sources "" --strict-mcp-config --mcp-config "$real_claude_mcp_config" --no-chrome --disable-slash-commands "$@"',
+			"",
+		].join("\n"),
+		"utf8",
+	);
+	await chmod(shellLauncherPath, 0o755);
+	await writeFile(
+		windowsLauncherPath,
+		[
+			"@echo off",
+			"setlocal",
+			'set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_RUNTIME_PATH=%PATH%"',
+			'set "PATH=%QUARTERDECK_AGENT_LAB_REAL_CLAUDE_HOST_PATH%"',
+			'set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_BINARY="',
+			'for /f "delims=" %%I in (\'where claude 2^>nul\') do if not defined QUARTERDECK_AGENT_LAB_REAL_CLAUDE_BINARY set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_BINARY=%%I"',
+			"if not defined QUARTERDECK_AGENT_LAB_REAL_CLAUDE_BINARY (",
+			"  echo Agent Lab could not resolve the host Claude binary. 1>&2",
+			"  exit /b 127",
+			")",
+			'set "PATH=%QUARTERDECK_AGENT_LAB_REAL_CLAUDE_RUNTIME_PATH%"',
+			'set "CLAUDE_CONFIG_DIR=%QUARTERDECK_AGENT_LAB_REAL_CLAUDE_CONFIG_DIR%"',
+			...windowsEnvironmentPolicy,
+			'if not "%QUARTERDECK_AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_AUTH%"=="1" set "ANTHROPIC_API_KEY="',
+			'if not "%QUARTERDECK_AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_AUTH%"=="1" set "ANTHROPIC_AUTH_TOKEN="',
+			'if not "%QUARTERDECK_AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_AUTH%"=="1" set "CLAUDE_CODE_OAUTH_TOKEN="',
+			'if "%~1"=="--version" goto passthrough',
+			'if "%~1"=="-v" goto passthrough',
+			'set "_QD_SETTINGS_COUNT=0"',
+			'set "_QD_CONFLICT="',
+			"call :inspect_arguments %*",
+			"if defined _QD_CONFLICT (",
+			"  echo Agent Lab real Claude rejects conflicting launch argument: %_QD_CONFLICT% 1>&2",
+			"  exit /b 64",
+			")",
+			'if not "%_QD_SETTINGS_COUNT%"=="1" (',
+			"  echo Agent Lab real Claude requires exactly one Quarterdeck launch-scoped --settings file. 1>&2",
+			"  exit /b 64",
+			")",
+			"(",
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_RUNTIME_PATH="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_HOST_PATH="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_CONFIG_DIR="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MCP_CONFIG="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MODEL="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_PERMISSION_MODE="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_AUTH="',
+			'  set "_QD_SETTINGS_COUNT="',
+			'  set "_QD_CONFLICT="',
+			'  set "_QD_ARGUMENT="',
+			'  call "%QUARTERDECK_AGENT_LAB_REAL_CLAUDE_BINARY%" --model "%QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MODEL%" --permission-mode "%QUARTERDECK_AGENT_LAB_REAL_CLAUDE_PERMISSION_MODE%" --setting-sources "" --strict-mcp-config --mcp-config "%QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MCP_CONFIG%" --no-chrome --disable-slash-commands %*',
+			")",
+			"exit /b %errorlevel%",
+			":passthrough",
+			"(",
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_RUNTIME_PATH="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_HOST_PATH="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_CONFIG_DIR="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MCP_CONFIG="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MODEL="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_PERMISSION_MODE="',
+			'  set "QUARTERDECK_AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_AUTH="',
+			'  call "%QUARTERDECK_AGENT_LAB_REAL_CLAUDE_BINARY%" %*',
+			")",
+			"exit /b %errorlevel%",
+			":inspect_arguments",
+			'if "%~1"=="" exit /b 0',
+			'if "%~1"=="--" exit /b 0',
+			'set "_QD_ARGUMENT=%~1"',
+			'if /I "%~1"=="--settings" set /a _QD_SETTINGS_COUNT+=1',
+			'if /I "%_QD_ARGUMENT:~0,11%"=="--settings=" set /a _QD_SETTINGS_COUNT+=1',
+			...windowsForbiddenChecks,
+			"shift",
+			"goto inspect_arguments",
+			"",
+		].join("\r\n"),
+		"utf8",
+	);
+}
+
+export async function writeAgentProviderLaunchers(
+	fakeBinPath: string,
+	agent: AgentLabLaunchConfig["agent"],
+): Promise<void> {
+	const providerPolicy = resolveAgentLabProviderPolicy(agent);
+	const blockedLauncherWrites = providerPolicy.blockedAgentIds.map((provider) =>
+		writeBlockedAgentLaunchers(fakeBinPath, provider),
+	);
+	let enabledLauncherWrites: Promise<void>[];
+	switch (agent.mode) {
+		case "fake":
+			enabledLauncherWrites = [
+				writeFakeAgentLaunchers(fakeBinPath, "codex"),
+				writeFakeAgentLaunchers(fakeBinPath, "pi"),
+			];
+			break;
+		case "fake-claude":
+			enabledLauncherWrites = [writeFakeAgentLaunchers(fakeBinPath, "claude")];
+			break;
+		case "real-codex":
+			enabledLauncherWrites = [writeRealCodexLauncher(fakeBinPath)];
+			break;
+		case "real-claude":
+			enabledLauncherWrites = [writeRealClaudeLauncher(fakeBinPath)];
+			break;
+		default: {
+			const unsupportedAgent: never = agent;
+			throw new Error(`Unsupported Agent Lab provider mode: ${String(unsupportedAgent)}`);
+		}
+	}
+
+	await Promise.all([...enabledLauncherWrites, ...blockedLauncherWrites]);
+}
+
 async function writeForbiddenHostLaunchers(fakeBinPath: string): Promise<void> {
 	await Promise.all(
 		FORBIDDEN_HOST_LAUNCHERS.flatMap((launcher) => {
@@ -296,7 +498,8 @@ export async function prepareAgentLabFixture(
 			join(statePath, "config.json"),
 			`${JSON.stringify(
 				{
-					selectedAgentId: "codex",
+					selectedAgentId:
+						config.agent.mode === "fake-claude" || config.agent.mode === "real-claude" ? "claude" : "codex",
 					logLevel: "debug",
 					...(config.agent.mode === "real-codex" ? { codexApprovalsReviewer: "user" } : {}),
 				},
@@ -345,10 +548,7 @@ export async function prepareAgentLabFixture(
 		),
 	]);
 	await Promise.all([
-		config.agent.mode === "real-codex"
-			? writeRealCodexLauncher(fakeBinPath)
-			: writeFakeAgentLaunchers(fakeBinPath, "codex"),
-		writeFakeAgentLaunchers(fakeBinPath, "pi"),
+		writeAgentProviderLaunchers(fakeBinPath, config.agent),
 		writeForbiddenHostLaunchers(fakeBinPath),
 	]);
 	await Promise.all([

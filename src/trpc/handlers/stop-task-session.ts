@@ -14,6 +14,12 @@ type StopOperationResult = Omit<RuntimeTaskSessionStopResponse, "ok">;
 export interface StopTaskSessionDeps {
 	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
 	taskResourceOperations: TaskResourceOperationRunner;
+	stopTaskSession?: (
+		scope: RuntimeTrpcProjectScope,
+		taskId: string,
+		sessionInstanceId?: string,
+		waitForExit?: boolean,
+	) => Promise<StopOperationResult>;
 }
 
 export async function handleStopTaskSession(
@@ -32,6 +38,9 @@ export async function handleStopTaskSession(
 			projectScope.projectId,
 			body.taskId,
 			async () => {
+				if (deps.stopTaskSession) {
+					return await deps.stopTaskSession(projectScope, body.taskId, body.sessionInstanceId, body.waitForExit);
+				}
 				const terminalManager = await deps.getScopedTerminalManager(projectScope);
 				if (body.waitForExit) {
 					return await terminalManager.stopTaskSessionAndWaitForExit(body.taskId, 3_000, body.sessionInstanceId);

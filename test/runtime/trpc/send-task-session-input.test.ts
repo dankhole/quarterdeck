@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { TaskResourceOperationCoordinator } from "../../../src/core";
 import type { TerminalSessionManager } from "../../../src/terminal";
 import { handleSendTaskSessionInput } from "../../../src/trpc/handlers/send-task-session-input";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 const scope = { projectId: "project-1", projectPath: "/repo" };
+const taskResourceOperations = new TaskResourceOperationCoordinator();
 
 describe("handleSendTaskSessionInput", () => {
 	it("preserves transport bytes while forwarding explicit submit intent", async () => {
@@ -15,7 +17,7 @@ describe("handleSendTaskSessionInput", () => {
 		const response = await handleSendTaskSessionInput(
 			scope,
 			{ taskId: "task-1", text: "continue", appendNewline: false, intent: "submit" },
-			{ getScopedTerminalManager: vi.fn(async () => terminalManager) },
+			{ getScopedTerminalManager: vi.fn(async () => terminalManager), taskResourceOperations },
 		);
 
 		expect(response).toEqual({ ok: true, summary });
@@ -31,7 +33,7 @@ describe("handleSendTaskSessionInput", () => {
 		await handleSendTaskSessionInput(
 			scope,
 			{ taskId: "task-1", text: "continue", appendNewline: true, intent: "submit" },
-			{ getScopedTerminalManager: vi.fn(async () => terminalManager) },
+			{ getScopedTerminalManager: vi.fn(async () => terminalManager), taskResourceOperations },
 		);
 
 		expect(writeInput).toHaveBeenCalledWith("task-1", Buffer.from("continue\n"), {
@@ -46,7 +48,7 @@ describe("handleSendTaskSessionInput", () => {
 		await handleSendTaskSessionInput(
 			scope,
 			{ taskId: "task-1", text: "continue", appendNewline: true, intent: "write" },
-			{ getScopedTerminalManager: vi.fn(async () => terminalManager) },
+			{ getScopedTerminalManager: vi.fn(async () => terminalManager), taskResourceOperations },
 		);
 
 		expect(writeInput).toHaveBeenCalledWith("task-1", Buffer.from("continue\n"), {

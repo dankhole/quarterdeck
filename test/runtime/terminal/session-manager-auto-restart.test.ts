@@ -103,6 +103,7 @@ describe("TerminalSessionManager auto-restart", () => {
 			cwd: "/tmp/task-1",
 			prompt: "Fix the bug",
 			claudeFullscreenEnabled: true,
+			claudeLaunchPermissionMode: "acceptEdits",
 			env: { CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "0" },
 		});
 
@@ -129,7 +130,10 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(manager.store.getSummary("task-1")?.pid).toBe(222);
 		expect(prepareAgentLaunchMock).toHaveBeenNthCalledWith(
 			2,
-			expect.objectContaining({ claudeFullscreenEnabled: true }),
+			expect.objectContaining({
+				claudeFullscreenEnabled: true,
+				claudeLaunchPermissionMode: "acceptEdits",
+			}),
 		);
 
 		applyCurrentProviderHook(manager, "to_review", { hookEventName: "Stop" });

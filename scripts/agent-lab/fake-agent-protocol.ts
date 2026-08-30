@@ -1,5 +1,131 @@
 import { type AgentLabScenario, AgentLabScenarioSchema } from "./types";
 
+export type FakeAgentProvider = "claude" | "codex" | "pi";
+
+export interface FakeAgentInvocation {
+	prompt: string;
+	resumeKind: "continue" | "fresh" | "targeted";
+	requestedSessionId: string | null;
+	settingsPath: string | null;
+}
+
+const FAKE_AGENT_VERSION_OUTPUT: Record<FakeAgentProvider, string> = {
+	claude: "2.1.198 (Claude Code)",
+	codex: "codex-cli 0.147.0",
+	pi: "0.84.3",
+};
+
+export function parseFakeAgentProvider(value: string | undefined): FakeAgentProvider {
+	switch (value) {
+		case "claude":
+		case "codex":
+		case "pi":
+			return value;
+		default:
+			return "codex";
+	}
+}
+
+export function getFakeAgentVersionOutput(provider: FakeAgentProvider): string {
+	return FAKE_AGENT_VERSION_OUTPUT[provider];
+}
+
+export function shouldFakeClaudeUseFullscreen(provider: FakeAgentProvider, environment: NodeJS.ProcessEnv): boolean {
+	return (
+		provider === "claude" &&
+		environment.CLAUDE_CODE_NO_FLICKER === "1" &&
+		environment.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN !== "1"
+	);
+}
+
+function findOptionValue(args: readonly string[], optionName: string): string | null {
+	const separator = args.indexOf("--");
+	const optionArgs = separator === -1 ? args : args.slice(0, separator);
+	for (let index = 0; index < optionArgs.length; index += 1) {
+		const argument = optionArgs[index];
+		if (argument === optionName) {
+			return optionArgs[index + 1]?.trim() || null;
+		}
+		if (argument?.startsWith(`${optionName}=`)) {
+			return argument.slice(optionName.length + 1).trim() || null;
+		}
+	}
+	return null;
+}
+
+function extractPiPromptArgument(args: readonly string[]): string {
+	for (let index = args.length - 1; index >= 0; index -= 1) {
+		const argument = args[index];
+		if (
+			argument &&
+			!argument.startsWith("-") &&
+			args[index - 1] !== "--extension" &&
+			args[index - 1] !== "--session"
+		) {
+			return argument;
+		}
+	}
+	return "";
+}
+
+export function resolveFakeAgentInvocation(provider: FakeAgentProvider, args: readonly string[]): FakeAgentInvocation {
+	if (provider === "pi") {
+		const requestedSessionId = findOptionValue(args, "--session");
+		return {
+			prompt: extractPiPromptArgument(args),
+			resumeKind: requestedSessionId ? "targeted" : args.includes("--continue") ? "continue" : "fresh",
+			requestedSessionId,
+			settingsPath: null,
+		};
+	}
+
+	const requestedSessionId = provider === "claude" ? findOptionValue(args, "--resume") : null;
+	return {
+		prompt: extractPromptArgument(args),
+		resumeKind: requestedSessionId ? "targeted" : args.includes("--continue") ? "continue" : "fresh",
+		requestedSessionId,
+		settingsPath: provider === "claude" ? findOptionValue(args, "--settings") : null,
+	};
+}
+
+export function buildClaudeHookPayload(
+	hookEventName: string,
+	options: {
+		sessionId: string;
+		cwd: string;
+		promptId?: string | null;
+		toolName?: string;
+		toolUseId?: string;
+		elicitationId?: string;
+		providerAgentId?: string;
+		notificationType?: string;
+		message?: string;
+		finalMessage?: string;
+		error?: string;
+		backgroundWork?: boolean;
+		sessionSource?: "startup" | "resume";
+	},
+): Record<string, unknown> {
+	return {
+		session_id: options.sessionId,
+		transcript_path: `${options.cwd}/.agent-lab/claude/${options.sessionId}.jsonl`,
+		cwd: options.cwd,
+		permission_mode: "default",
+		hook_event_name: hookEventName,
+		...(options.promptId ? { prompt_id: options.promptId } : {}),
+		...(options.toolName ? { tool_name: options.toolName } : {}),
+		...(options.toolUseId ? { tool_use_id: options.toolUseId } : {}),
+		...(options.elicitationId ? { elicitation_id: options.elicitationId } : {}),
+		...(options.providerAgentId ? { agent_id: options.providerAgentId } : {}),
+		...(options.notificationType ? { notification_type: options.notificationType } : {}),
+		...(options.message ? { message: options.message } : {}),
+		...(options.finalMessage ? { last_assistant_message: options.finalMessage } : {}),
+		...(options.error ? { error: options.error } : {}),
+		...(options.backgroundWork ? { background_tasks: [{ id: "agent-lab-background-1" }] } : {}),
+		...(options.sessionSource ? { source: options.sessionSource } : {}),
+	};
+}
+
 export type FakeAgentCommand =
 	| { kind: "help" }
 	| { kind: "needs-input"; message: string }
@@ -10,6 +136,11 @@ export type FakeAgentCommand =
 	| { kind: "redraw-interruption-history" }
 	| { kind: "local-action"; message: string }
 	| { kind: "compact" }
+	| { kind: "notification"; message: string }
+	| { kind: "elicitation"; message: string }
+	| { kind: "elicitation-result"; message: string }
+	| { kind: "background-stop"; message: string }
+	| { kind: "stop-failure"; message: string }
 	| { kind: "queued-follow-up"; message: string }
 	| { kind: "stale-run" }
 	| { kind: "fail-next-resume" }
@@ -83,6 +214,21 @@ export function parseFakeAgentCommand(rawInput: string): FakeAgentCommand {
 	}
 	if (input === "/compact") {
 		return { kind: "compact" };
+	}
+	if (input.startsWith("/notification")) {
+		return { kind: "notification", message: restAfterCommand(input) || "Claude needs attention" };
+	}
+	if (input.startsWith("/elicitation-result")) {
+		return { kind: "elicitation-result", message: restAfterCommand(input) || "Synthetic response submitted" };
+	}
+	if (input.startsWith("/elicitation")) {
+		return { kind: "elicitation", message: restAfterCommand(input) || "Choose a synthetic option" };
+	}
+	if (input.startsWith("/background-stop")) {
+		return { kind: "background-stop", message: restAfterCommand(input) || "Background work is still running" };
+	}
+	if (input.startsWith("/stop-failure")) {
+		return { kind: "stop-failure", message: restAfterCommand(input) || "Synthetic Claude turn failed" };
 	}
 	if (input.startsWith("/queued-follow-up")) {
 		return { kind: "queued-follow-up", message: restAfterCommand(input) || "Queued follow-up started" };

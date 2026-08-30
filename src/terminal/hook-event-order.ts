@@ -680,7 +680,7 @@ export function commitHookEventOrder(
 				toolName: pending?.toolName ?? normalizedToolName(input),
 				occurredAt,
 			});
-		} else if (hookEventName === "stop" || hookEventName === "stopfailure") {
+		} else if ((hookEventName === "stop" || hookEventName === "stopfailure") && input.event === "to_review") {
 			state.latestClaudeRootCompletionOccurredAt = Math.max(
 				state.latestClaudeRootCompletionOccurredAt ?? occurredAt,
 				occurredAt,

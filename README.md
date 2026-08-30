@@ -38,6 +38,8 @@ Windows support is experimental and currently untested on native Windows. macOS 
 
 Codex users need Codex 0.147.0 or newer with native hook and auto-review support.
 
+Claude launch permissions are configurable under Settings → Harnesses → Claude Code for new or restarted sessions. Quarterdeck can inherit Claude's configured default or explicitly start in Claude's native default, accept-edits, plan, auto-preview, don't-ask, or bypass mode; provider-managed policy remains authoritative.
+
 Pi users need exactly Pi 0.84.3. Quarterdeck deliberately rejects older and newer Pi versions until the lifecycle extension, approval policy, and exact-session recovery suite is validated against a new release. Pi support is currently validated on macOS.
 
 Pi tool approvals default on. Under Settings → Harnesses → Pi, you can disable per-tool confirmations for new or restarted sessions; the once-per-launch project-trust confirmation remains required.

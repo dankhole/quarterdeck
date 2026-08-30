@@ -54,6 +54,8 @@ export {
 	cloneStartShellSessionRequest,
 	cloneStartTaskSessionRequest,
 	formatSpawnFailure,
+	type NativeTaskSessionProcessIdentity,
+	type NativeTaskSessionProfileEnvironment,
 	normalizeDimension,
 	type ProcessEntry,
 	type RestartableSessionRequest,
@@ -72,6 +74,7 @@ export {
 	type ReconciliationEntry,
 	reconciliationChecks,
 } from "./session-reconciliation";
+export { MISSING_SESSION_LAUNCH_PATH_WARNING } from "./session-reconciliation-sweep";
 export {
 	appendLegacySemanticStateWarning,
 	deriveSessionResumeSemanticState,

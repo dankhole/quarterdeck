@@ -7,6 +7,7 @@ import {
 import {
 	type SerializedTaskSessionStartServiceDependencies,
 	startTaskSessionThroughService,
+	type TaskSessionStartServiceResult,
 } from "../../server/task-session-start-service";
 import type { TerminalSessionManager } from "../../terminal";
 import { captureTaskTurnCheckpoint } from "../../workdir";
@@ -18,6 +19,8 @@ const log = createTaggedLogger("task-session-start");
 export interface StartTaskSessionDeps extends SerializedTaskSessionStartServiceDependencies {
 	config: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
 	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
+	assertNativeStartAllowed?: (scope: RuntimeTrpcProjectScope, taskId: string) => Promise<void>;
+	onTaskSessionStarted?: (scope: RuntimeTrpcProjectScope, result: TaskSessionStartServiceResult) => Promise<void>;
 }
 
 function errorMessage(error: unknown): string {
@@ -85,7 +88,12 @@ export async function handleStartTaskSession(
 			baseRef: body.baseRef,
 		});
 
-		const result = await startTaskSessionThroughService(projectScope, body, deps);
+		const result = await startTaskSessionThroughService(projectScope, body, deps, {
+			assertStartAllowed: deps.assertNativeStartAllowed
+				? async () => await deps.assertNativeStartAllowed?.(projectScope, body.taskId)
+				: undefined,
+		});
+		await deps.onTaskSessionStarted?.(projectScope, result);
 		if (result.llmSummaryPolishEnabled) {
 			queueTaskDisplaySummaryPolish({
 				projectScope,

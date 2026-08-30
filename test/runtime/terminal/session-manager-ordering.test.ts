@@ -122,6 +122,34 @@ describe("TerminalSessionManager ordering invariants", () => {
 		).toEqual({ accepted: false, reason: "stale_session" });
 	});
 
+	it("retains the exact launched binary and profile for ownership handoff", async () => {
+		setupMockPtySpawn();
+		prepareAgentLaunchMock.mockResolvedValueOnce({
+			binary: "/synthetic/bin/codex",
+			args: ["resume", "session-1"],
+			env: { CODEX_HOME: "/synthetic/codex-home" },
+		});
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+
+		await manager.startTaskSession({
+			taskId: "task-owned",
+			launchOperationId: "launch-owned",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-owned",
+			prompt: "",
+		});
+
+		expect(manager.getTaskSessionProcessIdentity("task-owned")).toMatchObject({
+			pid: 111,
+			launchOperationId: "launch-owned",
+			agentId: "codex",
+			binary: "/synthetic/bin/codex",
+			profileEnvironment: { CODEX_HOME: "/synthetic/codex-home" },
+		});
+	});
+
 	it("does not publish Running when a task PTY exits during spawn handoff", async () => {
 		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
 			const session = createMockPtySession(111, request);

@@ -8,8 +8,9 @@ import { useWindowEvent } from "@/utils/react-use";
 interface UseDetailTaskNavigationInput {
 	board: BoardData;
 	currentProjectId: string | null;
-	/** True once the board has received its initial state from the server. */
-	isBoardHydrated: boolean;
+	boardProjectId: string | null;
+	hasReceivedSnapshot: boolean;
+	isProjectMetadataPending: boolean;
 }
 
 export interface UseDetailTaskNavigationResult {
@@ -31,7 +32,9 @@ export interface UseDetailTaskNavigationResult {
 export function useDetailTaskNavigation({
 	board,
 	currentProjectId,
-	isBoardHydrated,
+	boardProjectId,
+	hasReceivedSnapshot,
+	isProjectMetadataPending,
 }: UseDetailTaskNavigationInput): UseDetailTaskNavigationResult {
 	const [selectedTaskId, setSelectedTaskIdRaw] = useState<string | null>(() => {
 		if (typeof window === "undefined") return null;
@@ -43,6 +46,10 @@ export function useDetailTaskNavigation({
 		if (!selectedTaskId) return null;
 		return findCardSelection(board, selectedTaskId);
 	}, [board, selectedTaskId]);
+	const isBoardHydrated =
+		currentProjectId === null
+			? hasReceivedSnapshot
+			: boardProjectId === currentProjectId && !isProjectMetadataPending;
 
 	// Clear selection when the card no longer exists in the board.
 	// Guard: skip until the board has been hydrated from the server, otherwise
@@ -60,6 +67,11 @@ export function useDetailTaskNavigation({
 		previousProjectIdRef.current = currentProjectId;
 		if (previousProjectId === undefined) return;
 		if (previousProjectId === currentProjectId) return;
+		// The selected project resolves asynchronously during initial hydration.
+		// Preserve a task deep link while that first null -> project transition
+		// completes; a real project switch either changes one project ID directly
+		// to another or first clears an already resolved project.
+		if (previousProjectId === null && currentProjectId !== null) return;
 		setSelectedTaskIdRaw(null);
 	}, [currentProjectId]);
 

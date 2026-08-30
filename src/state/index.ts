@@ -10,6 +10,16 @@ export {
 	type ProjectBoardUntitledTaskCreatedEffect,
 } from "./project-board-command-service";
 export {
+	ExecutionOperationIdentityConflictError,
+	ExecutionOwnershipBusyError,
+	ExecutionOwnershipGenerationConflictError,
+	ExecutionOwnershipJournalCorruptionError,
+	fingerprintExecutionOperation,
+	type PersistedExecutionHandoffOperation,
+	type PersistedTaskInteractionOperation,
+	ProjectExecutionOwnershipStore,
+} from "./project-execution-ownership-store";
+export {
 	type ApplyProjectBoardMutationInput,
 	type ApplyProjectBoardMutationResult,
 	applyProjectBoardMutation,
@@ -38,6 +48,7 @@ export {
 } from "./project-state";
 export {
 	getProjectDirectoryPath,
+	getProjectExecutionOwnershipPath,
 	getProjectPinnedBranchesPath,
 	getProjectsRootPath,
 	getRuntimeHomePath,

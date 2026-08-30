@@ -55,6 +55,7 @@ import { SessionLifecycleController, type TaskSessionStartWithReadinessResult } 
 import {
 	createProcessEntry,
 	hasLiveOutputListener,
+	type NativeTaskSessionProcessIdentity,
 	type ProcessEntry,
 	resolveEffectiveTerminalRows,
 	type StartShellSessionRequest,
@@ -64,7 +65,7 @@ import {
 import { disableOutputOscIntercept, processTaskSessionOutput } from "./session-output-pipeline";
 import { createReconciliationTimer, type ReconciliationTimer } from "./session-reconciliation-sweep";
 import type { StartupRecoveryReviewState } from "./session-startup-recovery-policy";
-import type { SessionTransitionResult } from "./session-state-machine";
+import type { SessionTransitionEvent, SessionTransitionResult } from "./session-state-machine";
 import type { SessionSummaryStore } from "./session-summary-store";
 import { SessionTransitionController } from "./session-transition-controller";
 import type {
@@ -321,6 +322,26 @@ export class TerminalSessionManager implements TerminalSessionService {
 		});
 	}
 
+	/** Provider-structured lifecycle events enter through the same canonical reducer as native hooks. */
+	applyStructuredTransition(
+		taskId: string,
+		transition: Extract<SessionTransitionEvent, { type: `structured.${string}` }>,
+	): (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null {
+		this.store.ensureEntry(taskId);
+		return this.transitions.applyTransitionEvent(this.ensureProcessEntry(taskId), transition);
+	}
+
+	applyStructuredLaunchPathMissing(
+		taskId: string,
+		warningMessage: string,
+	): (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null {
+		this.store.ensureEntry(taskId);
+		return this.transitions.applyTransitionEvent(this.ensureProcessEntry(taskId), {
+			type: "reconciliation.launch_path_missing",
+			warningMessage,
+		});
+	}
+
 	/**
 	 * Returns true while deleting the task's launch directory could invalidate
 	 * an active or in-flight agent lifecycle operation.
@@ -330,6 +351,11 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return Boolean(
 			entry?.active || entry?.pendingSessionStart || entry?.pendingAutoRestart || entry?.pendingStartupRecoveryToken,
 		);
+	}
+
+	/** Exact live PTY identity for server-owned execution-owner fencing. */
+	getTaskSessionProcessIdentity(taskId: string): NativeTaskSessionProcessIdentity | null {
+		return this.lifecycle.getTaskSessionProcessIdentity(taskId);
 	}
 
 	writeInput(taskId: string, data: Buffer, options?: TerminalSessionInputOptions): RuntimeTaskSessionSummary | null {

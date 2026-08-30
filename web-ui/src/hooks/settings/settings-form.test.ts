@@ -16,7 +16,8 @@ describe("resolveInitialValues", () => {
 		expect(values).toHaveProperty("shortcuts");
 		expect(values).toHaveProperty("worktreeSystemPromptTemplate");
 		expect(values).toHaveProperty("fileEditorAutosaveMode");
-		expect(values.claudeFullscreenEnabled).toBe(false);
+		expect(values.claudeFullscreenEnabled).toBe(true);
+		expect(values.claudeLaunchPermissionMode).toBe("inherit");
 		expect(values.statuslineEnabled).toBe(false);
 		expect(values.codexApprovalsReviewer).toBe("inherit");
 		expect(values.piToolApprovalsEnabled).toBe(true);

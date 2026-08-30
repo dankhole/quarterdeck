@@ -162,6 +162,7 @@ export async function spawnTaskSession(
 			projectPath: request.projectPath,
 			hookSessionInstanceId,
 			claudeFullscreenEnabled,
+			claudeLaunchPermissionMode: request.claudeLaunchPermissionMode,
 			statuslineEnabled: request.statuslineEnabled,
 			codexApprovalsReviewer: request.codexApprovalsReviewer,
 			piToolApprovalsEnabled: request.piToolApprovalsEnabled,
@@ -190,6 +191,11 @@ export async function spawnTaskSession(
 	const env = buildTerminalEnvironment(request.env, launch.env);
 	const commandBinary = launch.binary ?? request.binary;
 	const commandArgs = [...launch.args];
+	const launchProfileEnvironment = {
+		...(env.CODEX_HOME !== undefined ? { CODEX_HOME: env.CODEX_HOME } : {}),
+		...(env.CLAUDE_CONFIG_DIR !== undefined ? { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR } : {}),
+		...(env.HOME !== undefined ? { HOME: env.HOME } : {}),
+	};
 
 	const willAutoTrust =
 		shouldAutoConfirmClaudeWorkspaceTrust(request.agentId, request.cwd, request.projectPath) ||
@@ -200,6 +206,9 @@ export async function spawnTaskSession(
 		hasBinary: commandBinary.length > 0,
 		hasLaunchPath: request.cwd.length > 0,
 		hasProjectPath: Boolean(request.projectPath),
+		hasCodexProfile: launchProfileEnvironment.CODEX_HOME !== undefined,
+		hasClaudeProfile: launchProfileEnvironment.CLAUDE_CONFIG_DIR !== undefined,
+		hasHomeProfile: launchProfileEnvironment.HOME !== undefined,
 		argCount: commandArgs.length,
 		willAutoTrust,
 	};
@@ -298,6 +307,8 @@ export async function spawnTaskSession(
 		sessionInstanceId: hookSessionInstanceId,
 		launchOperationId: request.launchOperationId,
 		agentId: request.agentId,
+		launchBinary: commandBinary,
+		launchProfileEnvironment,
 		claudeFullscreenEnabled,
 		cols,
 		baseRows,

@@ -49,6 +49,12 @@ export interface ProjectTaskLifecycleServiceDependencies {
 		taskId: string,
 		sessionInstanceId?: string,
 	) => Promise<StopTaskSessionResult>;
+	restartStructuredTaskSession?: (
+		scope: ProjectBoardCommandScope,
+		taskId: string,
+		operationId: string,
+	) => Promise<RuntimeTaskSessionStartResponse | null>;
+	onTaskDeleted?: (scope: ProjectBoardCommandScope, taskId: string) => Promise<void>;
 	getTaskSessionSummary?: (
 		scope: ProjectBoardCommandScope,
 		taskId: string,
@@ -743,6 +749,27 @@ export class ProjectTaskLifecycleService {
 		if (!precondition.ok) {
 			return await this.finish(scope, operation, precondition.failure);
 		}
+		const structuredRestart = await this.dependencies.restartStructuredTaskSession?.(
+			scope,
+			command.taskId,
+			command.operationId,
+		);
+		if (structuredRestart !== null && structuredRestart !== undefined) {
+			if (!structuredRestart.ok || !structuredRestart.summary) {
+				return await this.finish(scope, operation, {
+					status: "failed",
+					outcomeCode: "session_start_failed",
+					error: structuredRestart.error ?? "Structured owner restart failed.",
+				});
+			}
+			return await this.completeWithSummary(
+				scope,
+				operation,
+				precondition.state,
+				structuredRestart.summary,
+				"completed",
+			);
+		}
 		operation = await this.setPhase(scope, operation, "stopping_session");
 		const stopped = await this.stopOne(scope, command.taskId, command.sessionInstanceId ?? undefined);
 		if (!this.didStop(stopped)) {
@@ -784,6 +811,7 @@ export class ProjectTaskLifecycleService {
 				});
 				if (replayedDelete.replayed && !findCardInBoard(replayedDelete.state.board, command.taskId)) {
 					operation = await this.recordBoardAccepted(scope, operation, replayedDelete.state.revision);
+					await this.dependencies.onTaskDeleted?.(scope, command.taskId);
 					return await this.finish(scope, operation, {
 						status: "completed",
 						outcomeCode: "already_applied",
@@ -847,6 +875,7 @@ export class ProjectTaskLifecycleService {
 			});
 		}
 		operation = await this.recordBoardAccepted(scope, operation, deleted.state.revision);
+		await this.dependencies.onTaskDeleted?.(scope, command.taskId);
 		return await this.finish(scope, operation, {
 			status: "completed",
 			outcomeCode: deleted.replayed ? "already_applied" : "completed",

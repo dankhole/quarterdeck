@@ -26,6 +26,18 @@ import { TerminalWsRestoreCoordinator } from "./terminal-ws-restore-coordinator"
 export interface CreateTerminalWebSocketBridgeRequest {
 	server: Server;
 	resolveTerminalManager: (projectId: string) => TerminalSessionService | null;
+	writeTaskInput?: (input: {
+		projectId: string;
+		taskId: string;
+		terminalManager: TerminalSessionService;
+		data: Buffer;
+	}) => Promise<ReturnType<TerminalSessionService["writeInput"]>>;
+	stopTaskSession?: (input: {
+		projectId: string;
+		taskId: string;
+		terminalManager: TerminalSessionService;
+	}) => Promise<void>;
+	shouldRecoverStaleSession?: (projectId: string, taskId: string) => boolean | Promise<boolean>;
 	isTerminalIoWebSocketPath: (pathname: string) => boolean;
 	isTerminalControlWebSocketPath: (pathname: string) => boolean;
 	diagnostics?: RuntimeDiagnostics;
@@ -39,11 +51,27 @@ export interface TerminalWebSocketBridge {
 export function createTerminalWebSocketBridge({
 	server,
 	resolveTerminalManager,
+	writeTaskInput,
+	stopTaskSession,
+	shouldRecoverStaleSession,
 	isTerminalIoWebSocketPath,
 	isTerminalControlWebSocketPath,
 	diagnostics,
 }: CreateTerminalWebSocketBridgeRequest): TerminalWebSocketBridge {
 	const activeSockets = new Set<Socket>();
+	const recoverStaleSessionIfAllowed = (
+		projectId: string,
+		taskId: string,
+		terminalManager: TerminalSessionService,
+	): void => {
+		void Promise.resolve(shouldRecoverStaleSession?.(projectId, taskId) ?? true)
+			.then((allowed) => {
+				if (allowed) terminalManager.recoverStaleSession(taskId);
+			})
+			.catch(() => {
+				// Ownership lookup failures must not fall back to a second writer.
+			});
+	};
 	const registry = new TerminalWsConnectionRegistry();
 	const restoreCoordinator = new TerminalWsRestoreCoordinator({
 		onSnapshotSent: ({ taskId, clientId, connectionId, durationMs, snapshotBytes }) => {
@@ -127,7 +155,7 @@ export function createTerminalWebSocketBridge({
 		const terminalManager = (context as TerminalWebSocketConnectionContext).terminalManager;
 		const connectionKey = buildConnectionKey(projectId, taskId);
 		const connectionId = randomUUID();
-		terminalManager.recoverStaleSession(taskId);
+		recoverStaleSessionIfAllowed(projectId, taskId, terminalManager);
 		const { streamState, viewerState } = registry.getOrCreateViewer(connectionKey, clientId);
 		const ioState = createTerminalWsIoOutputState({
 			ws,
@@ -161,15 +189,18 @@ export function createTerminalWebSocketBridge({
 
 		ws.on("message", (rawMessage: RawData) => {
 			viewerState.lastProtocolActivityAt = Date.now();
-			try {
-				const summary = terminalManager.writeInput(taskId, rawDataToBuffer(rawMessage));
-				if (!summary) {
-					ws.close(1011, "Task session is not running.");
+			void (async () => {
+				try {
+					const data = rawDataToBuffer(rawMessage);
+					const summary = writeTaskInput
+						? await writeTaskInput({ projectId, taskId, terminalManager, data })
+						: terminalManager.writeInput(taskId, data);
+					if (!summary) ws.close(1011, "Task session is not running.");
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					ws.close(1011, message);
 				}
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				ws.close(1011, message);
-			}
+			})();
 		});
 
 		ws.on("close", () => {
@@ -192,7 +223,7 @@ export function createTerminalWebSocketBridge({
 		const terminalManager = (context as TerminalWebSocketConnectionContext).terminalManager;
 		const connectionKey = buildConnectionKey(projectId, taskId);
 		const connectionId = randomUUID();
-		terminalManager.recoverStaleSession(taskId);
+		recoverStaleSessionIfAllowed(projectId, taskId, terminalManager);
 		const { streamState, viewerState } = registry.getOrCreateViewer(connectionKey, clientId);
 		// If this client is replacing an in-flight control socket, drop the old
 		// socket's deferred restore timer before we transfer connection ownership.
@@ -281,7 +312,13 @@ export function createTerminalWebSocketBridge({
 			}
 
 			if (message.type === "stop") {
-				terminalManager.stopTaskSession(taskId);
+				if (stopTaskSession) {
+					void stopTaskSession({ projectId, taskId, terminalManager }).catch((error) => {
+						ws.close(1011, error instanceof Error ? error.message : String(error));
+					});
+				} else {
+					terminalManager.stopTaskSession(taskId);
+				}
 				return;
 			}
 

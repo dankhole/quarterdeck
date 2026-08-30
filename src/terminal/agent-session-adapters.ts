@@ -3,7 +3,14 @@ import { join } from "node:path";
 import { buildClaudeHooksSettings } from "../claude-hooks";
 import { buildCodexHookConfigOverrides, CODEX_HOOKS_FEATURE_NAME, serializeCodexTomlValue } from "../codex-hooks";
 import { buildStatuslineCommand } from "../commands/statusline";
-import type { CodexApprovalsReviewer, RuntimeAgentId, RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core";
+import type {
+	ClaudeLaunchPermissionMode,
+	CodexApprovalsReviewer,
+	ManagedClaudePermissionMode,
+	RuntimeAgentId,
+	RuntimeTaskImage,
+	RuntimeTaskSessionSummary,
+} from "../core";
 import { buildQuarterdeckCommandParts, createTaggedLogger } from "../core";
 import { lockedFileSystem } from "../fs";
 import { getRuntimeHomePath } from "../state";
@@ -36,6 +43,7 @@ export interface AgentAdapterLaunchInput {
 	projectPath?: string;
 	hookSessionInstanceId?: string;
 	claudeFullscreenEnabled?: boolean;
+	claudeLaunchPermissionMode?: ClaudeLaunchPermissionMode;
 	statuslineEnabled?: boolean;
 	codexApprovalsReviewer?: CodexApprovalsReviewer;
 	piToolApprovalsEnabled?: boolean;
@@ -118,6 +126,34 @@ function removeCliOption(args: string[], optionName: string): void {
 			args.splice(index, 1);
 		}
 	}
+}
+
+function removeCliOptionWithValue(args: string[], optionName: string): void {
+	for (let index = args.length - 1; index >= 0; index -= 1) {
+		const arg = args[index];
+		if (arg?.startsWith(`${optionName}=`)) {
+			args.splice(index, 1);
+			continue;
+		}
+		if (arg === optionName) {
+			const nextArg = args[index + 1];
+			const valueCount = nextArg && nextArg !== "--" && !nextArg.startsWith("-") ? 1 : 0;
+			args.splice(index, 1 + valueCount);
+		}
+	}
+}
+
+function applyManagedClaudePermissionMode(args: string[], mode: ManagedClaudePermissionMode): void {
+	const originalOptionTerminatorIndex = args.indexOf("--");
+	const optionArgCount = originalOptionTerminatorIndex === -1 ? args.length : originalOptionTerminatorIndex;
+	const optionArgs = args.slice(0, optionArgCount);
+	removeCliOptionWithValue(optionArgs, "--permission-mode");
+	removeCliOption(optionArgs, "--dangerously-skip-permissions");
+	removeCliOption(optionArgs, "--allow-dangerously-skip-permissions");
+	args.splice(0, optionArgCount, ...optionArgs);
+	const optionTerminatorIndex = args.indexOf("--");
+	const cliMode = mode === "default" ? "manual" : mode;
+	args.splice(optionTerminatorIndex === -1 ? args.length : optionTerminatorIndex, 0, "--permission-mode", cliMode);
 }
 
 function removeCodexConfigOverrides(args: string[], configKey: string): void {
@@ -210,6 +246,9 @@ const log = createTaggedLogger("agent-launch");
 const claudeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
+		if (input.claudeLaunchPermissionMode && input.claudeLaunchPermissionMode !== "inherit") {
+			applyManagedClaudePermissionMode(args, input.claudeLaunchPermissionMode);
+		}
 		const rendererPolicy = resolveClaudeRendererPolicy({
 			fullscreenEnabled: input.claudeFullscreenEnabled,
 			args,
@@ -281,6 +320,7 @@ const claudeAdapter: AgentSessionAdapter = {
 			taskId: input.taskId,
 			claudeRendererMode: rendererPolicy.mode,
 			claudeRendererReason: rendererPolicy.reason,
+			claudeLaunchPermissionMode: input.claudeLaunchPermissionMode ?? "inherit",
 			argCount: withPromptLaunch.args.length,
 			promptLength: input.prompt.trim().length,
 			resumeConversation: input.resumeConversation ?? false,
@@ -295,116 +335,107 @@ const claudeAdapter: AgentSessionAdapter = {
 	},
 };
 
+export async function prepareCodexLaunchConfiguration(
+	input: AgentAdapterLaunchInput,
+): Promise<{ args: string[]; env: Record<string, string | undefined> }> {
+	const codexArgs = [...input.args];
+	const env: Record<string, string | undefined> = {};
+
+	if (input.codexApprovalsReviewer === "dangerously_bypass") {
+		removeCliOption(codexArgs, "--approve-for-me");
+		removeCliOption(codexArgs, "--not-so-yolo");
+		removeCodexConfigOverrides(codexArgs, "approvals_reviewer");
+		if (
+			!hasCliOption(codexArgs, "--dangerously-bypass-approvals-and-sandbox") &&
+			!hasCliOption(codexArgs, "--yolo")
+		) {
+			insertCodexGlobalArgs(codexArgs, ["--dangerously-bypass-approvals-and-sandbox"]);
+		}
+	} else if (input.codexApprovalsReviewer === "auto_review") {
+		removeCliOption(codexArgs, "--dangerously-bypass-approvals-and-sandbox");
+		removeCliOption(codexArgs, "--yolo");
+		removeCodexConfigOverrides(codexArgs, "approvals_reviewer");
+		if (!hasCliOption(codexArgs, "--approve-for-me") && !hasCliOption(codexArgs, "--not-so-yolo")) {
+			insertCodexGlobalArgs(codexArgs, ["--approve-for-me"]);
+		}
+	} else if (input.codexApprovalsReviewer === "user") {
+		removeCliOption(codexArgs, "--approve-for-me");
+		removeCliOption(codexArgs, "--not-so-yolo");
+		removeCliOption(codexArgs, "--dangerously-bypass-approvals-and-sandbox");
+		removeCliOption(codexArgs, "--yolo");
+		removeCodexConfigOverrides(codexArgs, "approvals_reviewer");
+		insertCodexGlobalArgs(codexArgs, ["-c", 'approvals_reviewer="user"']);
+	}
+
+	if (input.resumeConversation) {
+		if (!codexArgs.includes("resume")) codexArgs.push("resume");
+		const resumeIndex = codexArgs.indexOf("resume");
+		const hasResumeTarget = codexArgs.slice(resumeIndex + 1).some((arg) => arg !== "--last" && !arg.startsWith("-"));
+		if (!hasResumeTarget && !hasCliOption(codexArgs, "--last")) {
+			const resumeTarget = input.resumeSessionId?.trim();
+			if (resumeTarget) {
+				log.debug("codex resume using stored session id", { taskId: input.taskId, hasStoredResumeSessionId: true });
+				codexArgs.push(resumeTarget);
+			} else {
+				log.warn("codex resume falling back to --last (no stored resumeSessionId)", { taskId: input.taskId });
+				codexArgs.push("--last");
+			}
+		}
+	}
+
+	const hooks = resolveHookContext(input);
+	if (hooks) {
+		Object.assign(
+			env,
+			createHookRuntimeEnv({
+				taskId: hooks.taskId,
+				projectId: hooks.projectId,
+				sessionInstanceId: hooks.sessionInstanceId,
+			}),
+		);
+	}
+	if (!hasCodexFeatureEnabled(codexArgs, CODEX_HOOKS_FEATURE_NAME)) {
+		insertCodexGlobalArgs(codexArgs, ["--enable", CODEX_HOOKS_FEATURE_NAME]);
+	}
+	if (hooks) {
+		const hookOverrides = buildCodexHookConfigOverrides();
+		insertCodexGlobalArgs(codexArgs, hookOverrides);
+		log.debug("Codex hook launch config prepared", {
+			taskId: hooks.taskId,
+			projectId: hooks.projectId,
+			featureName: CODEX_HOOKS_FEATURE_NAME,
+			hookOverrideCount: hookOverrides.length / 2,
+			resumeConversation: input.resumeConversation ?? false,
+			hasResumeSessionId: !!input.resumeSessionId?.trim(),
+		});
+	} else {
+		log.debug("Codex launch has no Quarterdeck hook context", {
+			taskId: input.taskId,
+			featureName: CODEX_HOOKS_FEATURE_NAME,
+		});
+	}
+	if (!hasCodexConfigOverride(codexArgs, "check_for_update_on_startup")) {
+		insertCodexGlobalArgs(codexArgs, ["-c", "check_for_update_on_startup=false"]);
+	}
+	if (!hasCodexConfigOverride(codexArgs, "developer_instructions")) {
+		const worktreeContext = await buildWorktreeContextPrompt({
+			cwd: input.cwd,
+			projectPath: input.projectPath,
+			template: input.worktreeSystemPromptTemplate,
+		});
+		if (worktreeContext) {
+			insertCodexGlobalArgs(codexArgs, ["-c", `developer_instructions=${serializeCodexTomlValue(worktreeContext)}`]);
+		}
+	}
+	return { args: codexArgs, env };
+}
+
 const codexAdapter: AgentSessionAdapter = {
 	async prepare(input) {
-		const codexArgs = [...input.args];
-		const env: Record<string, string | undefined> = {};
+		const { args: codexArgs, env } = await prepareCodexLaunchConfiguration(input);
 		const binary = input.binary;
 		const approvalPromptDetector = createCodexApprovalPromptDetector();
 		const turnInterruptionDetector = createCodexTurnInterruptionDetector();
-
-		if (input.codexApprovalsReviewer === "dangerously_bypass") {
-			removeCliOption(codexArgs, "--approve-for-me");
-			removeCliOption(codexArgs, "--not-so-yolo");
-			removeCodexConfigOverrides(codexArgs, "approvals_reviewer");
-			if (
-				!hasCliOption(codexArgs, "--dangerously-bypass-approvals-and-sandbox") &&
-				!hasCliOption(codexArgs, "--yolo")
-			) {
-				insertCodexGlobalArgs(codexArgs, ["--dangerously-bypass-approvals-and-sandbox"]);
-			}
-		} else if (input.codexApprovalsReviewer === "auto_review") {
-			removeCliOption(codexArgs, "--dangerously-bypass-approvals-and-sandbox");
-			removeCliOption(codexArgs, "--yolo");
-			removeCodexConfigOverrides(codexArgs, "approvals_reviewer");
-			if (!hasCliOption(codexArgs, "--approve-for-me") && !hasCliOption(codexArgs, "--not-so-yolo")) {
-				insertCodexGlobalArgs(codexArgs, ["--approve-for-me"]);
-			}
-		} else if (input.codexApprovalsReviewer === "user") {
-			removeCliOption(codexArgs, "--approve-for-me");
-			removeCliOption(codexArgs, "--not-so-yolo");
-			removeCliOption(codexArgs, "--dangerously-bypass-approvals-and-sandbox");
-			removeCliOption(codexArgs, "--yolo");
-			removeCodexConfigOverrides(codexArgs, "approvals_reviewer");
-			insertCodexGlobalArgs(codexArgs, ["-c", 'approvals_reviewer="user"']);
-		}
-
-		if (input.resumeConversation) {
-			if (!codexArgs.includes("resume")) {
-				codexArgs.push("resume");
-			}
-			const resumeIndex = codexArgs.indexOf("resume");
-			const hasResumeTarget = codexArgs
-				.slice(resumeIndex + 1)
-				.some((arg) => arg !== "--last" && !arg.startsWith("-"));
-			if (!hasResumeTarget && !hasCliOption(codexArgs, "--last")) {
-				const resumeTarget = input.resumeSessionId?.trim();
-				if (resumeTarget) {
-					log.debug("codex resume using stored session id", {
-						taskId: input.taskId,
-						hasStoredResumeSessionId: true,
-					});
-					codexArgs.push(resumeTarget);
-				} else {
-					log.warn("codex resume falling back to --last (no stored resumeSessionId)", {
-						taskId: input.taskId,
-					});
-					codexArgs.push("--last");
-				}
-			}
-		}
-
-		const hooks = resolveHookContext(input);
-		if (hooks) {
-			Object.assign(
-				env,
-				createHookRuntimeEnv({
-					taskId: hooks.taskId,
-					projectId: hooks.projectId,
-					sessionInstanceId: hooks.sessionInstanceId,
-				}),
-			);
-		}
-		if (!hasCodexFeatureEnabled(codexArgs, CODEX_HOOKS_FEATURE_NAME)) {
-			insertCodexGlobalArgs(codexArgs, ["--enable", CODEX_HOOKS_FEATURE_NAME]);
-		}
-		if (hooks) {
-			// Keep Quarterdeck's Codex hooks launch-scoped so standalone Codex app/GUI
-			// sessions are unaffected. Codex supports inline [hooks] config via -c.
-			const hookOverrides = buildCodexHookConfigOverrides();
-			insertCodexGlobalArgs(codexArgs, hookOverrides);
-			log.debug("Codex hook launch config prepared", {
-				taskId: hooks.taskId,
-				projectId: hooks.projectId,
-				featureName: CODEX_HOOKS_FEATURE_NAME,
-				hookOverrideCount: hookOverrides.length / 2,
-				resumeConversation: input.resumeConversation ?? false,
-				hasResumeSessionId: !!input.resumeSessionId?.trim(),
-			});
-		} else {
-			log.debug("Codex launch has no Quarterdeck hook context", {
-				taskId: input.taskId,
-				featureName: CODEX_HOOKS_FEATURE_NAME,
-			});
-		}
-
-		if (!hasCodexConfigOverride(codexArgs, "check_for_update_on_startup")) {
-			insertCodexGlobalArgs(codexArgs, ["-c", "check_for_update_on_startup=false"]);
-		}
-
-		if (!hasCodexConfigOverride(codexArgs, "developer_instructions")) {
-			const worktreeContext = await buildWorktreeContextPrompt({
-				cwd: input.cwd,
-				projectPath: input.projectPath,
-				template: input.worktreeSystemPromptTemplate,
-			});
-			if (worktreeContext) {
-				insertCodexGlobalArgs(codexArgs, [
-					"-c",
-					`developer_instructions=${serializeCodexTomlValue(worktreeContext)}`,
-				]);
-			}
-		}
 
 		const trimmed = input.prompt.trim();
 		if (trimmed) {

@@ -277,7 +277,9 @@ export async function captureAgentLabSnapshot(
 					createdAt,
 					scenario: manifest.scenario,
 					agent,
-					...(agent.mode === "fake" ? { fakeAgentProtocol: "quarterdeck-agent-lab-v1" } : {}),
+					...(agent.mode === "fake" || agent.mode === "fake-claude"
+						? { fakeAgentProtocol: "quarterdeck-agent-lab-v1" }
+						: {}),
 				},
 				null,
 				2,

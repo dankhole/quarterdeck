@@ -133,12 +133,25 @@ function isRuntimeDebugModeEnabled(): boolean {
 	return parseBooleanEnvValue(debugModeValue);
 }
 
+function isAgentAllowedByAgentLabPolicy(agentId: RuntimeAgentId): boolean {
+	if (process.env.QUARTERDECK_AGENT_LAB !== "1") {
+		return true;
+	}
+	const allowedAgentIds = new Set(
+		(process.env.QUARTERDECK_AGENT_LAB_ALLOWED_AGENT_IDS ?? "")
+			.split(",")
+			.map((candidate) => candidate.trim())
+			.filter(Boolean),
+	);
+	return allowedAgentIds.has(agentId);
+}
+
 /** Check PATH for each known agent binary (plus npx) and return which are available. */
 export function detectInstalledCommands(): string[] {
 	const detected: string[] = [];
 
 	for (const entry of RUNTIME_AGENT_CATALOG) {
-		if (isBinaryAvailableOnPath(entry.binary)) {
+		if (isAgentAllowedByAgentLabPolicy(entry.id) && isBinaryAvailableOnPath(entry.binary)) {
 			detected.push(entry.binary);
 		}
 	}
@@ -468,6 +481,23 @@ export function resetAgentAvailabilityCache(): void {
 }
 
 async function computeAgentAvailability(agentId: RuntimeAgentId, binary: string): Promise<AgentAvailability> {
+	if (!isAgentAllowedByAgentLabPolicy(agentId)) {
+		const agentLabel =
+			getRuntimeLaunchSupportedAgentCatalog().find((entry) => entry.id === agentId)?.label ?? agentId;
+		const result: AgentAvailability = {
+			installed: false,
+			status: "missing",
+			statusMessage: `${agentLabel} is not enabled in this Agent Lab provider mode.`,
+			reason: "missing",
+			transient: false,
+		};
+		recordAvailabilityDiagnostic({
+			name: "agent.availability_resolved",
+			payload: { agentId, reason: result.reason, installed: result.installed, transient: result.transient },
+			level: "warn",
+		});
+		return result;
+	}
 	const detected = isBinaryAvailableOnPath(binary);
 	if (!detected) {
 		if (agentId === "codex") {

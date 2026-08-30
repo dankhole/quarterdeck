@@ -12,7 +12,6 @@ Tracking note:
 
 These are broader architecture refactor targets confirmed against implementation files and worth keeping visible.
 
-- Dogfood the new opt-in Claude fullscreen renderer across long conversations, startup/trash resume, automatic restart, pooled attach/detach, alternate-screen restore, mouse scrolling, selection/copy, and links. Keep it default-off until those interactions are stable, then decide whether to make fullscreen the default while retaining the classic-renderer escape hatch. Plan: [docs/claude-terminal-rendering-plan.md](./claude-terminal-rendering-plan.md).
 - Replace broad ignored-path worktree symlinking with an explicit allowlist plus project-level opt-ins. The current denylist protects mutable dependency trees (`node_modules`) and known build outputs such as `.NET` `bin/`, `obj/`, and `TestResults/`; the safer long-term contract is to mirror only high-confidence immutable setup paths and let projects opt into additional ignored paths intentionally. Installed dependency directories must remain task-owned and are never eligible for sharing.
 - Decide whether home/task shell terminals should survive panel minimization and context switching. If persistence is desirable, design explicit IDE-style shell tabs with visible ownership and lifecycle instead of resurrecting hidden terminals into blank/loading panes; otherwise document close/dispose as the intended behavior.
 

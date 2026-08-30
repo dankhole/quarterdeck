@@ -242,7 +242,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 	});
 
-	it("passes the Claude fullscreen setting into the task session launch", async () => {
+	it("passes the Claude renderer and launch permission settings into the task session launch", async () => {
 		const card = createCard({ agentId: "claude", workingDirectory: "/tmp/claude-worktree" });
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
 		taskWorktreeMocks.pathExists.mockResolvedValue(true);
@@ -253,7 +253,10 @@ describe("createRuntimeApi startTaskSession", () => {
 		};
 		const deps = createDeps(terminalManager);
 		deps.config.loadScopedRuntimeConfig.mockResolvedValue(
-			createTestRuntimeConfigState({ claudeFullscreenEnabled: true }),
+			createTestRuntimeConfigState({
+				claudeFullscreenEnabled: true,
+				claudeLaunchPermissionMode: "acceptEdits",
+			}),
 		);
 		const api = createRuntimeApi(deps);
 
@@ -268,6 +271,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			expect.objectContaining({
 				agentId: "claude",
 				claudeFullscreenEnabled: true,
+				claudeLaunchPermissionMode: "acceptEdits",
 			}),
 		);
 	});

@@ -227,29 +227,46 @@ describe("RuntimeSettingsDialog", () => {
 		);
 		expect(claudeSectionButton).toBeInstanceOf(HTMLButtonElement);
 		expect(claudeSectionButton?.getAttribute("aria-expanded")).toBe("false");
-		expect(document.body.textContent).toContain("New/restarted sessions only · Fullscreen off · Status line off");
-		expect(findSwitchByLabel(document.body, "Fullscreen rendering (experimental)")).toBeNull();
+		expect(document.body.textContent).toContain(
+			"New/restarted sessions only · Inherit Claude config · Fullscreen on · Status line off",
+		);
+		expect(findSwitchByLabel(document.body, "Fullscreen rendering")).toBeNull();
 
 		await act(async () => {
 			claudeSectionButton?.click();
 		});
 
-		const fullscreenSwitch = findSwitchByLabel(document.body, "Fullscreen rendering (experimental)");
+		const fullscreenSwitch = findSwitchByLabel(document.body, "Fullscreen rendering");
 		const statuslineSwitch = findSwitchByLabel(document.body, "Show Quarterdeck status line");
+		const claudePermissionModeSelect = document.body.querySelector<HTMLSelectElement>(
+			"#runtime-settings-claude-permission-mode",
+		);
 		expect(fullscreenSwitch).toBeInstanceOf(HTMLButtonElement);
 		expect(statuslineSwitch).toBeInstanceOf(HTMLButtonElement);
+		expect(claudePermissionModeSelect).toBeInstanceOf(HTMLSelectElement);
+		expect(claudePermissionModeSelect?.value).toBe("inherit");
 		expect(claudeSectionButton?.getAttribute("aria-expanded")).toBe("true");
-		expect(fullscreenSwitch?.getAttribute("data-state")).toBe("unchecked");
+		expect(fullscreenSwitch?.getAttribute("data-state")).toBe("checked");
 		expect(statuslineSwitch?.getAttribute("data-state")).toBe("unchecked");
 		expect(document.body.textContent).toContain("virtualized transcript");
 		expect(document.body.textContent).toContain("classic renderer");
 		expect(document.body.textContent).toContain("new or restarted Claude sessions");
+		expect(document.body.textContent).toContain("without a Quarterdeck override");
+
+		await act(async () => {
+			if (claudePermissionModeSelect) {
+				claudePermissionModeSelect.value = "bypassPermissions";
+				claudePermissionModeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+			}
+		});
+		expect(claudePermissionModeSelect?.value).toBe("bypassPermissions");
+		expect(document.body.textContent).toContain("externally isolated environment");
 
 		await act(async () => {
 			fullscreenSwitch?.click();
 			statuslineSwitch?.click();
 		});
-		expect(fullscreenSwitch?.getAttribute("data-state")).toBe("checked");
+		expect(fullscreenSwitch?.getAttribute("data-state")).toBe("unchecked");
 		expect(statuslineSwitch?.getAttribute("data-state")).toBe("checked");
 
 		const codexSectionButton = Array.from(document.body.querySelectorAll("button")).find((button) =>
@@ -308,7 +325,8 @@ describe("RuntimeSettingsDialog", () => {
 		});
 		expect(saveMock).toHaveBeenCalledWith(
 			expect.objectContaining({
-				claudeFullscreenEnabled: true,
+				claudeFullscreenEnabled: false,
+				claudeLaunchPermissionMode: "bypassPermissions",
 				statuslineEnabled: true,
 				codexApprovalsReviewer: "dangerously_bypass",
 				piToolApprovalsEnabled: false,

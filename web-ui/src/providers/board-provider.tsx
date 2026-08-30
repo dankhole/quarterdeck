@@ -72,19 +72,23 @@ export function BoardProvider({ board, sessions, setSessions, children }: BoardP
 	const { currentProjectId, projects } = useProjectNavigationContext();
 	const { streamedProjectState, hasReceivedSnapshot, streamError } = useProjectRuntimeStreamContext();
 	const {
+		boardProjectId,
 		setBoard,
 		presentLifecycleBoard,
 		flushBoardCommands,
 		getAuthoritativeRevision,
 		applyLifecycleProjectState,
 		refreshProjectState,
+		isProjectMetadataPending,
 	} = useProjectSyncContext();
 
 	// --- useDetailTaskNavigation ---
 	const { selectedTaskId, selectedCard, setSelectedTaskId } = useDetailTaskNavigation({
 		board,
 		currentProjectId,
-		isBoardHydrated: hasReceivedSnapshot,
+		boardProjectId,
+		hasReceivedSnapshot,
+		isProjectMetadataPending,
 	});
 
 	// --- Derived loading flags ---

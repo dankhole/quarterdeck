@@ -541,6 +541,66 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.env.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN).toBe("1");
 	});
 
+	it("normalizes conflicting Claude permission arguments to the managed launch mode", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-claude-permissions-managed",
+			agentId: "claude",
+			binary: "claude",
+			args: [
+				"--permission-mode",
+				"plan",
+				"--permission-mode=auto",
+				"--dangerously-skip-permissions",
+				"--allow-dangerously-skip-permissions",
+				"--",
+				"--permission-mode",
+				"prompt text that must remain",
+			],
+			cwd: "/tmp",
+			prompt: "",
+			claudeLaunchPermissionMode: "acceptEdits",
+		});
+
+		expect(launch.args).toEqual([
+			"--permission-mode",
+			"acceptEdits",
+			"--",
+			"--permission-mode",
+			"prompt text that must remain",
+		]);
+	});
+
+	it("translates the configured default permission mode to Claude's current manual CLI spelling", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-claude-permissions-default",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			claudeLaunchPermissionMode: "default",
+		});
+
+		expect(launch.args).toEqual(["--permission-mode", "manual"]);
+	});
+
+	it("preserves Claude's configured permission arguments when inheritance is selected", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-claude-permissions-inherit",
+			agentId: "claude",
+			binary: "claude",
+			args: ["--permission-mode", "plan", "--allow-dangerously-skip-permissions"],
+			cwd: "/tmp",
+			prompt: "",
+			claudeLaunchPermissionMode: "inherit",
+		});
+
+		expect(launch.args).toEqual(["--permission-mode", "plan", "--allow-dangerously-skip-permissions"]);
+	});
+
 	it("enables Claude fullscreen rendering through the launch environment", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({

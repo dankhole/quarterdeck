@@ -1,3 +1,4 @@
+import type { ConversationSourceHintRecorder } from "../conversation/index.js";
 import type {
 	IProjectResolver,
 	IRuntimeConfigProvider,
@@ -16,7 +17,11 @@ import {
 } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import { loadProjectScopeById } from "../state";
-import { type SessionSummaryStore, shouldRetainHookEventOrderObservation } from "../terminal";
+import {
+	type SessionSummaryStore,
+	shouldRetainHookEventOrderObservation,
+	type TerminalSessionManager,
+} from "../terminal";
 import { compactDisplaySummaryText } from "../title";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workdir";
 import type { RuntimeTrpcContext } from "./app-router";
@@ -110,6 +115,12 @@ export interface CreateHooksApiDependencies {
 	/** Resolves only after the latest session-store generation is durable. */
 	persistSessionState?: (projectId: string) => Promise<void>;
 	diagnostics?: RuntimeDiagnostics;
+	conversationSourceHints?: ConversationSourceHintRecorder;
+	onNativeProviderSessionObserved?: (input: {
+		scope: { projectId: string; projectPath: string };
+		taskId: string;
+		manager: TerminalSessionManager;
+	}) => Promise<void>;
 }
 
 export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcContext["hooksApi"] {
@@ -180,9 +191,28 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					} satisfies RuntimeHookIngestResponse;
 				}
 
+				let providerSessionIdentityAccepted = false;
 				const completeHookIngest = async (advanceProviderOrder: boolean): Promise<RuntimeHookIngestResponse> => {
 					manager.commitHookEventOrder(taskId, body, advanceProviderOrder);
 					await deps.persistSessionState?.(projectId);
+					if (providerSessionIdentityAccepted && body.metadata?.sessionId?.trim()) {
+						scheduleBackgroundTask(() => {
+							void deps
+								.onNativeProviderSessionObserved?.({
+									scope: { projectId, projectPath },
+									taskId,
+									manager,
+								})
+								.catch((error) => {
+									log.warn("Native provider session ownership observation failed", {
+										projectId,
+										taskId,
+										errorClass:
+											error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+									});
+								});
+						});
+					}
 					return { ok: true };
 				};
 				const expectedProvider =
@@ -213,6 +243,14 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					log.warn("Hook ignored: startup resume opened an unexpected conversation", hookLogData);
 					return await completeHookIngest(false);
 				}
+				providerSessionIdentityAccepted = true;
+				deps.conversationSourceHints?.recordClaudeHookHint({
+					projectId,
+					taskId,
+					expectedProviderSessionId: body.metadata?.sessionId ?? previousSummary.resumeSessionId ?? null,
+					metadata: body.metadata,
+				});
+
 				const transitionResult = manager.applyProviderHook(taskId, body);
 				if (!transitionResult) {
 					log.warn("Hook ingest failed: task disappeared before transition", hookLogData);

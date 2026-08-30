@@ -4,21 +4,41 @@ import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { getAgentAvailability, SUPPORTED_PI_VERSION } from "../config";
+import {
+	ConversationSourceHintStore,
+	type ConversationTaskSessionResolver,
+	createConversationReadService,
+} from "../conversation/index.js";
 import type { IRuntimeHostIntegrations, RuntimeProjectStateResponse } from "../core";
 import {
 	buildQuarterdeckRuntimeUrl,
 	createTaggedLogger,
+	findCardInBoard,
 	getQuarterdeckRuntimeHost,
 	getQuarterdeckRuntimeOrigin,
 	getQuarterdeckRuntimePort,
+	normalizeDiagnosticErrorClass,
 	QUARTERDECK_BUILD_ID,
 	shouldRejectLegacyRuntimeStreamClient,
 	TaskResourceOperationCoordinator,
 } from "../core";
 import { handleDiagnosticsHttpRequest, type RuntimeDiagnostics } from "../diagnostics";
+import {
+	ClaudeStructuredOwnerRegistry,
+	CodexStructuredOwnerRegistry,
+	createStructuredShutdownPreparation,
+	StructuredOwnerRegistry,
+	TaskExecutionOwnershipService,
+	TaskInteractionService,
+} from "../execution";
 import { createHookTransitionOutboxReplayer } from "../hook-transition-outbox";
 import type { ProjectBoardCommandService } from "../state";
-import { listProjectIndexEntries, loadProjectScopeById } from "../state";
+import {
+	listProjectIndexEntries,
+	loadProjectScopeById,
+	loadProjectState,
+	ProjectExecutionOwnershipStore,
+} from "../state";
 import type { TerminalSessionManager } from "../terminal";
 import { createTerminalWebSocketBridge, getPiLifecycleExtensionFingerprint } from "../terminal";
 import { AutomaticTitleGenerationCoordinator } from "../title";
@@ -43,8 +63,10 @@ import { handleRuntimeHostEventRequest } from "./runtime-host-event-endpoint";
 import type { RuntimeHostEventLedger } from "./runtime-host-event-ledger";
 import { observeRuntimeApiRequest } from "./runtime-request-diagnostics";
 import type { RuntimeStateHub } from "./runtime-state-hub";
+import { prepareTaskSessionStart, type TaskSessionStartServiceResult } from "./task-session-start-service";
 
 const serverLog = createTaggedLogger("runtime-server");
+const EXECUTION_OWNERSHIP_RECONCILIATION_INTERVAL_MS = 10_000;
 
 interface DisposeTrackedProjectResult {
 	terminalManager: TerminalSessionManager | null;
@@ -74,7 +96,30 @@ export interface CreateRuntimeServerDependencies {
 
 export interface RuntimeServer {
 	url: string;
+	/** Internal execution-owner boundary; intentionally not exposed through HTTP or tRPC. */
+	executionOwnership: TaskExecutionOwnershipService;
+	/** Internal structured interaction boundary; intentionally not exposed through HTTP or tRPC. */
+	taskInteractions: TaskInteractionService;
+	prepareForShutdown: (options?: { skipSessionCleanup?: boolean }) => Promise<void>;
 	close: () => Promise<void>;
+}
+
+export function createRuntimeConversationTaskSessionResolver(
+	projectRegistry: Pick<ProjectRegistry, "resolveTaskSessionSummary">,
+): ConversationTaskSessionResolver {
+	return {
+		resolveTaskSession: async (projectId, taskId) => {
+			const summary = await projectRegistry.resolveTaskSessionSummary(projectId, taskId);
+			return summary
+				? {
+						projectId,
+						taskId,
+						agentId: summary.agentId,
+						providerSessionId: summary.resumeSessionId ?? null,
+					}
+				: null;
+		},
+	};
 }
 
 function readProjectIdFromRequest(request: IncomingMessage, requestUrl: URL): string | null {
@@ -103,6 +148,17 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	const webUiDir = getWebUiDir();
 	const taskResourceOperations = new TaskResourceOperationCoordinator();
 	const automaticTitleGeneration = new AutomaticTitleGenerationCoordinator();
+	const conversationSourceHints = new ConversationSourceHintStore();
+	const conversationReads = createConversationReadService({
+		sessions: createRuntimeConversationTaskSessionResolver(deps.projectRegistry),
+		hints: conversationSourceHints,
+	});
+	const executionOwnershipStore = new ProjectExecutionOwnershipStore();
+	const codexStructuredOwners = new CodexStructuredOwnerRegistry({
+		clientVersion: deps.diagnostics.quarterdeckVersion,
+	});
+	const claudeStructuredOwners = new ClaudeStructuredOwnerRegistry();
+	const structuredOwners = new StructuredOwnerRegistry(codexStructuredOwners, claudeStructuredOwners);
 
 	try {
 		await readFile(join(webUiDir, "index.html"));
@@ -153,6 +209,112 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	const getScopedTerminalManager = async (scope: RuntimeTrpcProjectScope): Promise<TerminalSessionManager> =>
 		await deps.projectRegistry.ensureTerminalManagerForProject(scope.projectId, scope.projectPath);
+	const prepareNativeResume = async (input: {
+		scope: RuntimeTrpcProjectScope;
+		taskId: string;
+		operationId: string;
+		providerSessionId: string;
+		provider: "codex" | "claude";
+		requiredExistingLaunchPath: string;
+	}) => {
+		const state = await loadProjectState(input.scope.projectPath);
+		const card = findCardInBoard(state.board, input.taskId);
+		if (!card) throw new Error("Task no longer exists.");
+		return await prepareTaskSessionStart(
+			input.scope,
+			{
+				taskId: card.id,
+				launchOperationId: input.operationId,
+				prompt: "",
+				agentId: input.provider,
+				resumeConversation: true,
+				awaitReview: true,
+				baseRef: card.baseRef,
+				useWorktree: card.useWorktree,
+			},
+			{ config: deps.projectRegistry, getScopedTerminalManager },
+			{
+				resumeSessionIdOverride: input.providerSessionId,
+				requiredExistingLaunchPath: input.requiredExistingLaunchPath,
+			},
+		);
+	};
+	const executionOwnership = new TaskExecutionOwnershipService({
+		store: executionOwnershipStore,
+		structuredOwners,
+		getTerminalManager: getScopedTerminalManager,
+		prepareNativeResume,
+		taskResourceOperations,
+		diagnostics: deps.diagnostics,
+		assertDurableHistoryAvailable: async (scope, taskId) => {
+			const result = await conversationReads.readRecent({ projectId: scope.projectId, taskId, maxMessages: 1 });
+			return result.status === "available" || result.status === "degraded";
+		},
+	});
+	const taskInteractions = new TaskInteractionService({
+		store: executionOwnershipStore,
+		structuredOwners,
+		ownership: executionOwnership,
+		taskResourceOperations,
+	});
+	deps.projectRegistry.setProjectRemovalPreparationHandler(
+		async (projectId, projectPath) => await executionOwnership.prepareProjectRemoval({ projectId, projectPath }),
+	);
+	const nativeOwnershipHooks = {
+		assertNativeStartAllowed: async (scope: RuntimeTrpcProjectScope, taskId: string) =>
+			await executionOwnership.assertNativeStartAllowed(scope, taskId),
+		onTaskSessionStarted: async (scope: RuntimeTrpcProjectScope, result: TaskSessionStartServiceResult) => {
+			if (!result.summary.resumeSessionId) return;
+			await executionOwnership
+				.observeNativeOwner(scope, result.summary.taskId, result.terminalManager)
+				.catch((error) => {
+					serverLog.warn("native execution ownership observation failed", {
+						projectId: scope.projectId,
+						taskId: result.summary.taskId,
+						errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+					});
+				});
+		},
+	};
+	const ownershipRecoveryEntries = await listProjectIndexEntries();
+	for (const entry of ownershipRecoveryEntries) {
+		await executionOwnership
+			.recoverProject({ projectId: entry.projectId, projectPath: entry.repoPath })
+			.catch((error) => {
+				serverLog.warn("structured ownership startup recovery failed", {
+					projectId: entry.projectId,
+					errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+				});
+			});
+	}
+	let executionOwnershipReconciliation: Promise<void> | null = null;
+	const scheduleExecutionOwnershipReconciliation = (): void => {
+		if (executionOwnershipReconciliation) return;
+		executionOwnershipReconciliation = (async () => {
+			let entries: Awaited<ReturnType<typeof listProjectIndexEntries>>;
+			try {
+				entries = await listProjectIndexEntries();
+			} catch (error) {
+				serverLog.warn("structured ownership reconciliation index read failed", {
+					errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+				});
+				return;
+			}
+			for (const entry of entries) {
+				await executionOwnership
+					.reconcileProjectLaunchPaths({ projectId: entry.projectId, projectPath: entry.repoPath })
+					.catch((error) => {
+						serverLog.warn("structured ownership reconciliation failed", {
+							projectId: entry.projectId,
+							errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+						});
+					});
+			}
+		})().finally(() => {
+			executionOwnershipReconciliation = null;
+		});
+	};
+	let executionOwnershipReconciliationTimer: NodeJS.Timeout | null = null;
 	const disposeAutomaticTitleListener = deps.boardCommands.subscribeToPostCommitEffects(
 		createAutomaticTaskTitlePostCommitListener({
 			automaticTitleGeneration,
@@ -172,13 +334,20 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				config: deps.projectRegistry,
 				getScopedTerminalManager,
 				taskResourceOperations,
+				...nativeOwnershipHooks,
 			}),
 		stopTaskSession: async (scope, taskId, sessionInstanceId) => {
 			return await taskResourceOperations.run(scope.projectId, taskId, async () => {
-				const manager = await getScopedTerminalManager(scope);
-				return await manager.stopTaskSessionAndWaitForExit(taskId, 3_000, sessionInstanceId);
+				return await executionOwnership.stopCurrentOwner(scope, taskId, sessionInstanceId);
 			});
 		},
+		restartStructuredTaskSession: async (scope, taskId, operationId) =>
+			await taskResourceOperations.run(
+				scope.projectId,
+				taskId,
+				async () => await executionOwnership.restartStructuredOwner(scope, taskId, operationId),
+			),
+		onTaskDeleted: async (scope, taskId) => await executionOwnership.removeTask(scope, taskId),
 		getTaskSessionSummary: async (scope, taskId) => {
 			const manager = await getScopedTerminalManager(scope);
 			return manager.store.getSummary(taskId);
@@ -207,6 +376,10 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		config: deps.projectRegistry,
 		persistSessionState: deps.runtimeStateHub.persistRuntimeSessions,
 		diagnostics: deps.diagnostics,
+		conversationSourceHints,
+		onNativeProviderSessionObserved: async ({ scope, taskId, manager }) => {
+			await executionOwnership.observeNativeOwner(scope, taskId, manager);
+		},
 	});
 	const hookTransitionOutboxReplayer = createHookTransitionOutboxReplayer({
 		ingest: hooksApi.ingest,
@@ -267,6 +440,11 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
 				hostIntegrations: deps.hostIntegrations,
 				taskLifecycle,
+				...nativeOwnershipHooks,
+				assertNativeInputAllowed: async (scope, taskId) =>
+					await executionOwnership.assertNativeStartAllowed(scope, taskId),
+				stopTaskSession: async (scope, taskId, sessionInstanceId) =>
+					await executionOwnership.stopCurrentOwner(scope, taskId, sessionInstanceId),
 			}),
 			projectApi: createProjectApi({
 				terminals: deps.projectRegistry,
@@ -285,6 +463,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				assertPathIsDirectory: deps.assertPathIsDirectory,
 				hasGitRepository: deps.hasGitRepository,
 				disposeProject: deps.disposeProject,
+				prepareProjectRemoval: deps.projectRegistry.prepareProjectRemoval,
 				collectProjectWorktreeTaskIdsForRemoval: deps.collectProjectWorktreeTaskIdsForRemoval,
 				warn: deps.warn,
 				hostIntegrations: deps.hostIntegrations,
@@ -391,6 +570,30 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		server,
 		diagnostics: deps.diagnostics,
 		resolveTerminalManager: (projectId) => deps.projectRegistry.getTerminalManagerForProject(projectId),
+		shouldRecoverStaleSession: async (projectId, taskId) => {
+			if (structuredOwners.get(projectId, taskId)) return false;
+			const projectPath = deps.projectRegistry.getProjectPathById(projectId);
+			if (!projectPath) return false;
+			const ownership = await executionOwnership.getOwnership({ projectId, projectPath }, taskId);
+			return ownership === null || ownership.state === "native_tui";
+		},
+		writeTaskInput: async ({ projectId, taskId, terminalManager, data }) =>
+			await taskResourceOperations.run(projectId, taskId, async () => {
+				const projectPath = deps.projectRegistry.getProjectPathById(projectId);
+				if (!projectPath) throw new Error("Project is not available.");
+				await executionOwnership.assertNativeStartAllowed({ projectId, projectPath }, taskId);
+				return terminalManager.writeInput(taskId, data);
+			}),
+		stopTaskSession: async ({ projectId, taskId }) => {
+			await taskResourceOperations.run(projectId, taskId, async () => {
+				const projectPath = deps.projectRegistry.getProjectPathById(projectId);
+				if (!projectPath) throw new Error("Project is not available.");
+				const stopped = await executionOwnership.stopCurrentOwner({ projectId, projectPath }, taskId);
+				if (!stopped.didExit && stopped.outcome !== "not_running") {
+					throw new Error(stopped.error ?? "Task execution owner did not stop.");
+				}
+			});
+		},
 		isTerminalIoWebSocketPath: (pathname) => normalizeRequestPath(pathname) === "/api/terminal/io",
 		isTerminalControlWebSocketPath: (pathname) => normalizeRequestPath(pathname) === "/api/terminal/control",
 	});
@@ -418,6 +621,11 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	const serverPort = typeof address === "object" ? address.port : null;
 	if (serverPort === null) throw new Error("Failed to resolve local server port.");
 	await deps.diagnostics.markReady(getQuarterdeckRuntimeHost(), serverPort);
+	executionOwnershipReconciliationTimer = setInterval(
+		scheduleExecutionOwnershipReconciliation,
+		EXECUTION_OWNERSHIP_RECONCILIATION_INTERVAL_MS,
+	);
+	executionOwnershipReconciliationTimer.unref();
 	serverLog.warn("server started", { port: serverPort, pid: process.pid });
 	hookTransitionOutboxReplayer.start();
 	const activeProjectId = deps.projectRegistry.getActiveProjectId();
@@ -425,8 +633,47 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		? buildQuarterdeckRuntimeUrl(`/${encodeURIComponent(activeProjectId)}`)
 		: getQuarterdeckRuntimeOrigin();
 
+	const prepareForShutdown = createStructuredShutdownPreparation({
+		stopReconciliation: () => {
+			if (executionOwnershipReconciliationTimer) {
+				clearInterval(executionOwnershipReconciliationTimer);
+				executionOwnershipReconciliationTimer = null;
+			}
+		},
+		waitForReconciliation: async () => {
+			await executionOwnershipReconciliation;
+		},
+		stopOwners: async () => {
+			let entries: Awaited<ReturnType<typeof listProjectIndexEntries>> = [];
+			try {
+				entries = await listProjectIndexEntries();
+			} catch (error) {
+				serverLog.warn("execution ownership shutdown index read failed", {
+					errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+				});
+			}
+			for (const entry of entries) {
+				await executionOwnership
+					.shutdownProject({ projectId: entry.projectId, projectPath: entry.repoPath })
+					.catch((error) => {
+						serverLog.warn("execution ownership project shutdown failed", {
+							projectId: entry.projectId,
+							errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+						});
+					});
+			}
+			const unconfirmedOwnerCount = await structuredOwners.stopAll();
+			if (unconfirmedOwnerCount > 0) {
+				serverLog.warn("structured execution owner shutdown remained unconfirmed", { unconfirmedOwnerCount });
+			}
+		},
+	});
+
 	return {
 		url,
+		executionOwnership,
+		taskInteractions,
+		prepareForShutdown,
 		close: async () => {
 			const closeErrors: unknown[] = [];
 			const runCloseStep = async (step: () => void | Promise<void>): Promise<void> => {
@@ -438,6 +685,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			};
 
 			await runCloseStep(() => disposeAutomaticTitleListener());
+			await runCloseStep(async () => await prepareForShutdown());
 			await runCloseStep(async () => await hookTransitionOutboxReplayer.close());
 			await runCloseStep(() => disposeHookOutboxDiagnosticProvider());
 			await runCloseStep(() => disposePiSupportDiagnosticProvider());
@@ -455,6 +703,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 						});
 					}),
 			);
+			await runCloseStep(() => deps.projectRegistry.setProjectRemovalPreparationHandler(null));
 
 			if (closeErrors.length > 0) {
 				await deps.diagnostics

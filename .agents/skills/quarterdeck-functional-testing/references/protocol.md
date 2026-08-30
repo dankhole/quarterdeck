@@ -1,6 +1,8 @@
-# Deterministic Fake Codex Protocol
+# Deterministic Fake Agent Protocol
 
-The lab shadows only the child runtime's `codex` executable. `codex --version` and `codex features list` report a hook- and auto-review-capable version so Quarterdeck exercises its normal Codex launch adapter and hook ingestion path. The user's real agent binaries and configuration are never read by the task process.
+The default lane shadows the child runtime's Codex and Pi executables. `--agent fake-claude` instead exposes only a fake Claude executable and blocks Codex/Pi. Each fake reports the validated version needed by normal discovery, and every task runs through Quarterdeck's production provider adapter and hook-ingest path. The user's real agent binaries and configuration are never read by the task process.
+
+This protocol does not apply to `real-codex` or `real-claude`; authenticated lanes use ordinary tiny synthetic prompts and the provider's actual interactive controls.
 
 Prompt directives override the run's default scenario for one task:
 
@@ -10,6 +12,11 @@ Prompt directives override the run's default scenario for one task:
 - `[agent-lab:failure]` — exit non-zero to exercise failure/restart behavior.
 - `[agent-lab:git-dirty]` — write `agent-lab-output.txt` in the task checkout.
 - `[agent-lab:terminal-stress]` — emit 400 numbered lines for scrollback/restore testing.
+
+Additional fake-Claude run scenarios selected with `--scenario`:
+
+- `claude-lifecycle` — seeded sequence covering prompt, tool/permission, notification, elicitation/result, pending background work, SubagentStop, and successful Stop.
+- `claude-failure` — prompt followed by StopFailure.
 
 Interactive terminal commands:
 
@@ -21,6 +28,11 @@ Interactive terminal commands:
 - `/new-turn [message]` — emit Codex `UserPromptSubmit` under a new turn identity; use it to prove a current follow-up returns Interrupted or Review to Running.
 - `/redraw-interruption-history` — redraw an old interruption above newer working content and the current input prompt; use it to prove historical terminal text cannot override the newer turn hook.
 - `/local-action [message]` — accept an Enter-confirmed TUI-local action without sending a native hook; use it to prove terminal input cannot fabricate Running.
+- `/notification [message]` — for Claude, emit an `agent_needs_input` Notification without creating an actionable wait.
+- `/elicitation [message]` — for Claude, emit a keyed MCP `Elicitation` wait.
+- `/elicitation-result [message]` — for Claude, emit the matching keyed `ElicitationResult` and resume work.
+- `/background-stop [message]` — for Claude, emit a root Stop with pending background work followed by `SubagentStop`; use `/review` for the later completed root Stop.
+- `/stop-failure [message]` — for Claude, emit `StopFailure` with bounded failure metadata.
 - `/queued-follow-up [message]` — for Pi, emit `agent_end` for the current run followed by `agent_start` for queued input without an intervening `agent_settled`; use it to prove the task never enters Review between runs.
 - `/stale-run` — for Pi, replay the last settled run identity through `agent_start`; the provider-order fence must reject it without changing Review state.
 - `/fail-next-resume` — for Pi, persist a disposable one-shot marker, crash the current process, and make the exact automatic targeted replacement fail; use it to verify typed recovery failure without prompt replay.

@@ -16,6 +16,11 @@ const workdirMocks = vi.hoisted(() => ({
 }));
 const prepareAgentLaunchMock = vi.hoisted(() => vi.fn());
 const ptySessionSpawnMock = vi.hoisted(() => vi.fn());
+const ownershipMocks = vi.hoisted(() => ({
+	listOwnership: vi.fn(
+		async (): Promise<Array<{ taskId: string; state: string; ownerProcess: { processKind: string } | null }>> => [],
+	),
+}));
 
 vi.mock("../../../src/state", () => ({
 	isUnderWorktreesHome: vi.fn(() => false),
@@ -51,6 +56,12 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 	},
 }));
 
+vi.mock("../../../src/state/project-execution-ownership-store", () => ({
+	ProjectExecutionOwnershipStore: class {
+		listOwnership = ownershipMocks.listOwnership;
+	},
+}));
+
 import type { RuntimeConfigState } from "../../../src/config";
 import {
 	deriveTaskIndicatorState,
@@ -79,6 +90,7 @@ function createRuntimeConfig(): RuntimeConfigState {
 	return {
 		selectedAgentId: "codex",
 		claudeFullscreenEnabled: false,
+		claudeLaunchPermissionMode: "plan",
 		statuslineEnabled: false,
 		worktreeSystemPromptTemplate: "",
 		llmSummaryPolishEnabled: false,
@@ -169,6 +181,8 @@ describe("project registry startup recovery integration", () => {
 			stop: vi.fn(),
 			wasInterrupted: vi.fn(() => false),
 		}));
+		ownershipMocks.listOwnership.mockReset();
+		ownershipMocks.listOwnership.mockResolvedValue([]);
 		registry = null;
 		manager = null;
 	});
@@ -297,6 +311,31 @@ describe("project registry startup recovery integration", () => {
 			startupRecoverySemanticStateUncertain: true,
 			warningMessage: LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
 		});
+	});
+
+	it("never routes a persisted Claude SDK owner through native PTY startup recovery", async () => {
+		ownershipMocks.listOwnership.mockResolvedValue([
+			{
+				taskId: "task-1",
+				state: "native_tui",
+				ownerProcess: { processKind: "stdio_agent_sdk" },
+			},
+		]);
+		const config = createRuntimeConfig();
+		registry = await createProjectRegistry({
+			cwd: "/tmp/runtime",
+			loadGlobalRuntimeConfig: async () => config,
+			loadRuntimeConfig: async () => config,
+			hasGitRepository: async () => false,
+			pathIsDirectory: async () => true,
+			onTerminalManagerReady: (_projectId, readyManager) => {
+				manager = readyManager;
+			},
+		});
+
+		await expect(registry.resumeInterruptedSessions("project-1", "/tmp/project")).resolves.toBe(0);
+		expect(prepareAgentLaunchMock).not.toHaveBeenCalled();
+		expect(ptySessionSpawnMock).not.toHaveBeenCalled();
 	});
 
 	it("keeps previously Running work Interrupted until replacement work is confirmed", async () => {

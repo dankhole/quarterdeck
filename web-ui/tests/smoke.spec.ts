@@ -456,9 +456,9 @@ test("converges provider-approved permissions and fences historical interruption
 	const projectRow = page.locator(".kb-project-row-selected:visible").first();
 	const card = page.locator(`[data-task-id="${taskId}"]`).first();
 	const readProjectIndicatorCount = async (title: "Review" | "Needs Input"): Promise<number> => {
-		const indicator = projectRow.locator(`[title="${title}"]`).first();
-		if ((await indicator.count()) === 0 || !(await indicator.isVisible())) return 0;
-		const match = (await indicator.textContent())?.match(/\d+/);
+		const [text] = await projectRow.locator(`[title="${title}"]:visible`).allTextContents();
+		if (text === undefined) return 0;
+		const match = text.match(/\d+/);
 		if (!match) throw new Error(`Expected ${title} project indicator to contain a count.`);
 		return Number(match[0]);
 	};

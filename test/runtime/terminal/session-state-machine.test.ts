@@ -729,4 +729,97 @@ describe("reduceSessionTransition", () => {
 			expect(result.clearAttentionBuffer).toBe(true);
 		});
 	});
+
+	describe("structured interactions", () => {
+		it("returns the same structured turn to Running after its blocking answer is submitted", () => {
+			const summary = createSummary({
+				agentId: "claude",
+				state: "awaiting_review",
+				reviewReason: "attention",
+				outstandingInteraction: {
+					provider: "claude",
+					kind: "question",
+					status: "waiting",
+					requestEventName: "StructuredQuestion",
+					openedAt: 100,
+					updatedAt: 100,
+					responseSubmittedAt: null,
+					responseKind: null,
+					sessionInstanceId: "structured-owner-1",
+					providerSessionId: "claude-session-1",
+					turnId: null,
+					promptId: "request-1",
+					toolUseId: "tool-1",
+					elicitationId: null,
+					providerAgentId: null,
+					toolName: null,
+				},
+				nativeWorkEvidence: null,
+			});
+
+			const result = reduceSessionTransition(summary, {
+				type: "structured.interaction_resolved",
+				interactionId: "request-1",
+				resolvedAt: 200,
+			});
+
+			expect(result.patch).toMatchObject({
+				state: "running",
+				reviewReason: null,
+				outstandingInteraction: {
+					status: "response_submitted",
+					responseSubmittedAt: 200,
+				},
+				nativeWorkEvidence: {
+					provider: "claude",
+					sessionInstanceId: "structured-owner-1",
+					providerSessionId: "claude-session-1",
+					turnId: null,
+					hookEventName: "StructuredInteractionResolved",
+					confirmedAt: 200,
+				},
+			});
+		});
+
+		it("clears a provider-cancelled structured wait without asserting Running", () => {
+			const summary = createSummary({
+				agentId: "claude",
+				state: "awaiting_review",
+				reviewReason: "attention",
+				outstandingInteraction: {
+					provider: "claude",
+					kind: "question",
+					status: "waiting",
+					requestEventName: "StructuredQuestion",
+					openedAt: 100,
+					updatedAt: 100,
+					responseSubmittedAt: null,
+					responseKind: null,
+					sessionInstanceId: "structured-owner-1",
+					providerSessionId: "claude-session-1",
+					turnId: null,
+					promptId: "request-1",
+					toolUseId: "tool-1",
+					elicitationId: null,
+					providerAgentId: null,
+					toolName: null,
+				},
+			});
+
+			const result = reduceSessionTransition(summary, {
+				type: "structured.interaction_cancelled",
+				interactionId: "request-1",
+			});
+
+			expect(result.patch).toEqual({
+				state: "awaiting_review",
+				reviewReason: "unconfirmed",
+				latestHookActivity: null,
+				outstandingInteraction: null,
+				nativeWorkEvidence: null,
+				stalledSince: null,
+				warningMessage: null,
+			});
+		});
+	});
 });

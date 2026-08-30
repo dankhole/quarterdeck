@@ -1,0 +1,9 @@
+{"timestamp":"2026-08-24T12:00:00.000Z","type":"session_meta","payload":{"id":"codex-session-fixture","cwd":"/isolated/project","cli_version":"0.149.0","history_mode":"legacy"}}
+{"timestamp":"2026-08-24T12:00:01.000Z","type":"response_item","payload":{"type":"message","id":"codex-user-1","role":"user","content":[{"type":"input_text","text":"Inspect the failing test."}]}}
+{"timestamp":"2026-08-24T12:00:02.000Z","type":"response_item","payload":{"type":"reasoning","id":"codex-reasoning","summary":[{"type":"summary_text","text":"private reasoning"}]}}
+{"timestamp":"2026-08-24T12:00:03.000Z","type":"response_item","payload":{"type":"function_call","id":"codex-tool","name":"exec_command","arguments":"{\"cmd\":\"cat /secret/path\"}"}}
+{"timestamp":"2026-08-24T12:00:04.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"codex-tool","output":"secret tool output"}}
+{"timestamp":"2026-08-24T12:00:05.000Z","type":"response_item","payload":{"type":"message","id":"codex-assistant-1","role":"assistant","content":[{"type":"output_text","text":"The assertion uses the wrong expected value."}]}}
+{"timestamp":"2026-08-24T12:00:05.500Z","type":"unknown_future_item","payload":{"secret":"must not leak"}}
+{"timestamp":"2026-08-24T12:00:06.000Z","type":"response_item","payload":{"type":"message","id":"codex-user-2","role":"user","content":[{"type":"input_text","text":"Please correct it."}]}}
+{"timestamp":"2026-08-24T12:00:07.000Z","type":"response_item","payload":{"type":"message","id":"codex-assistant-2","role":"assistant","content":[{"type":"output_text","text":"Fixed and the focused test now passes."}]}}

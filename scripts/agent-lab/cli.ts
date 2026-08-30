@@ -19,6 +19,11 @@ import {
 	writeJsonAtomic,
 } from "./paths";
 import {
+	assertReusableRealClaudeAuthentication,
+	prepareIsolatedRealClaudeAgent,
+	resolveRealClaudeAgent,
+} from "./real-claude";
+import {
 	assertReusableRealCodexAuthentication,
 	prepareIsolatedRealCodexAgent,
 	resolveRealCodexAgent,
@@ -33,6 +38,7 @@ import {
 	type AgentLabCodexSandbox,
 	AgentLabCodexSandboxSchema,
 	type AgentLabManifest,
+	type AgentLabPublicAgentConfig,
 	type AgentLabRuntimeRestartResult,
 	AgentLabRuntimeRestartResultSchema,
 	type AgentLabScenario,
@@ -53,6 +59,8 @@ interface StartOptions extends OutputOptions {
 	agent: AgentLabAgentMode;
 	model?: string;
 	codexHome?: string;
+	claudeConfigDir?: string;
+	claudeEnvironmentAuth?: boolean;
 	codexSandbox?: AgentLabCodexSandbox;
 	codexApprovalPolicy?: AgentLabCodexApprovalPolicy;
 	keepTemp?: boolean;
@@ -69,9 +77,12 @@ interface LatestRunPointer {
 	manifestPath: string;
 }
 
-function parsePort(value: string): number | null {
+export function parseAgentLabPort(value: string): number {
 	if (value === "auto") {
-		return null;
+		// Commander converts a custom parser's null result into an empty string.
+		// Port zero is the socket API's explicit ephemeral-port sentinel and keeps
+		// the parsed option inside the launch-config numeric schema.
+		return 0;
 	}
 	const port = Number.parseInt(value, 10);
 	if (!Number.isInteger(port) || port < 1 || port > 65_535) {
@@ -88,14 +99,27 @@ function browserCommand(manifest: ReadableAgentLabManifest): string {
 	return `npm run agent:browser -- --config ${JSON.stringify(manifest.browserConfigPath)} -s=${JSON.stringify(manifest.browserSession)} open ${JSON.stringify(manifest.projectUrl)}`;
 }
 
+export function describeAgentLabAgent(agent: AgentLabPublicAgentConfig): string {
+	switch (agent.mode) {
+		case "real-codex":
+			return `real Codex (${agent.model}, existing CLI auth)`;
+		case "real-claude":
+			return `real Claude (${agent.model}, ${agent.authentication === "environment" ? "environment auth" : "existing CLI auth"})`;
+		case "fake-claude":
+			return "deterministic fake Claude";
+		case "fake":
+			return "deterministic fake Codex/Pi";
+		default: {
+			const unsupportedAgent: never = agent;
+			throw new Error(`Unsupported Agent Lab provider mode: ${String(unsupportedAgent)}`);
+		}
+	}
+}
+
 function printManifestSummary(manifest: ReadableAgentLabManifest): void {
 	process.stdout.write(`Agent lab ${manifest.runId}: ${manifest.status}\n`);
 	if (manifest.schemaVersion === 4) {
-		process.stdout.write(
-			manifest.agent.mode === "real-codex"
-				? `Agent: real Codex (${manifest.agent.model}, existing CLI auth)\n`
-				: "Agent: deterministic fake\n",
-		);
+		process.stdout.write(`Agent: ${describeAgentLabAgent(manifest.agent)}\n`);
 	}
 	process.stdout.write(`UI: ${manifest.projectUrl}\n`);
 	process.stdout.write(`Manifest: ${manifest.manifestPath}\n`);
@@ -169,28 +193,59 @@ async function resolveManifestPath(runId?: string): Promise<string> {
 }
 
 async function startAgentLab(options: StartOptions): Promise<void> {
+	const isRealProvider = options.agent === "real-codex" || options.agent === "real-claude";
 	if (
-		options.agent === "fake" &&
-		(options.model || options.codexHome || options.codexSandbox || options.codexApprovalPolicy)
+		!isRealProvider &&
+		(options.model ||
+			options.codexHome ||
+			options.claudeConfigDir ||
+			options.claudeEnvironmentAuth ||
+			options.codexSandbox ||
+			options.codexApprovalPolicy)
 	) {
-		throw new Error(
-			"--model, --codex-home, --codex-sandbox, and --codex-approval-policy require --agent real-codex.",
-		);
+		throw new Error("Real-provider options require --agent real-codex or --agent real-claude.");
 	}
-	if (options.agent === "real-codex" && options.scenario !== "idle") {
-		throw new Error("--scenario controls only the deterministic fake agent and cannot be used with real Codex.");
+	if (options.agent !== "real-codex" && (options.codexHome || options.codexSandbox || options.codexApprovalPolicy)) {
+		throw new Error("--codex-home, --codex-sandbox, and --codex-approval-policy require --agent real-codex.");
 	}
-	const agent =
-		options.agent === "real-codex"
-			? resolveRealCodexAgent({
+	if (options.agent !== "real-claude" && (options.claudeConfigDir || options.claudeEnvironmentAuth)) {
+		throw new Error("--claude-config-dir and --claude-environment-auth require --agent real-claude.");
+	}
+	if (isRealProvider && options.scenario !== "idle") {
+		throw new Error("--scenario controls only deterministic fake agents and cannot be used with a real provider.");
+	}
+	const claudeOnlyScenarios = new Set<AgentLabScenario>(["claude-lifecycle", "claude-failure"]);
+	if (claudeOnlyScenarios.has(options.scenario) && options.agent !== "fake-claude") {
+		throw new Error("Claude lifecycle scenarios require --agent fake-claude.");
+	}
+	const agent = (() => {
+		switch (options.agent) {
+			case "real-codex":
+				return resolveRealCodexAgent({
 					model: options.model,
 					codexHomePath: options.codexHome,
 					sandbox: options.codexSandbox,
 					approvalPolicy: options.codexApprovalPolicy,
-				})
-			: ({ mode: "fake" } as const);
+				});
+			case "real-claude":
+				return resolveRealClaudeAgent({
+					model: options.model,
+					claudeConfigDirPath: options.claudeConfigDir,
+					environmentAuthentication: options.claudeEnvironmentAuth,
+				});
+			case "fake":
+			case "fake-claude":
+				return { mode: options.agent } as const;
+			default: {
+				const unsupportedAgent: never = options.agent;
+				throw new Error(`Unsupported Agent Lab provider mode: ${String(unsupportedAgent)}`);
+			}
+		}
+	})();
 	if (agent.mode === "real-codex") {
 		await assertReusableRealCodexAuthentication(agent);
+	} else if (agent.mode === "real-claude") {
+		await assertReusableRealClaudeAuthentication(agent);
 	}
 	let config = await createAgentLabLaunchConfig({
 		name: options.name,
@@ -214,6 +269,19 @@ async function startAgentLab(options: StartOptions): Promise<void> {
 			]);
 			throw error;
 		}
+	} else if (config.agent.mode === "real-claude") {
+		try {
+			config = {
+				...config,
+				agent: await prepareIsolatedRealClaudeAgent(config.agent, config.tempRoot),
+			};
+		} catch (error) {
+			await Promise.all([
+				rm(config.tempRoot, { recursive: true, force: true }),
+				rm(config.artifactDir, { recursive: true, force: true }),
+			]);
+			throw error;
+		}
 	}
 	const configPath = await persistAgentLabLaunchConfig(config);
 	const supervisorPath = join(AGENT_LAB_REPO_ROOT, "scripts", "agent-lab", "supervisor.ts");
@@ -222,7 +290,7 @@ async function startAgentLab(options: StartOptions): Promise<void> {
 	const supervisorLogDescriptor = openSync(supervisorLogPath, "a");
 	const supervisor = spawn(process.execPath, [tsxCliPath, supervisorPath, configPath], {
 		cwd: AGENT_LAB_REPO_ROOT,
-		env: buildSupervisorEnvironment(process.env, config.tempRoot),
+		env: buildSupervisorEnvironment(process.env, config.tempRoot, config.agent),
 		stdio: ["ignore", supervisorLogDescriptor, supervisorLogDescriptor],
 		detached: true,
 	});
@@ -474,7 +542,7 @@ export async function runAgentLabCli(argv = process.argv): Promise<void> {
 		.description("Start an isolated runtime, web UI, Git fixture, and selected test agent.")
 		.option("--name <name>", "Human-readable run-name prefix.", "run")
 		.addOption(
-			new Option("--agent <mode>", "Agent implementation. Real Codex uses the existing CLI login.")
+			new Option("--agent <mode>", "Agent implementation. Real providers use explicit existing authentication.")
 				.choices(AgentLabAgentModeSchema.options)
 				.default("fake"),
 		)
@@ -483,8 +551,16 @@ export async function runAgentLabCli(argv = process.argv): Promise<void> {
 				.choices(AgentLabScenarioSchema.options)
 				.default("idle"),
 		)
-		.option("--model <model>", "Real Codex model (defaults to gpt-5.6-luna).")
+		.option("--model <model>", "Real-provider model (defaults: Codex gpt-5.6-luna, Claude haiku).")
 		.option("--codex-home <path>", "Existing authenticated Codex profile; defaults to CODEX_HOME or ~/.codex.")
+		.option(
+			"--claude-config-dir <path>",
+			"Existing authenticated Claude config; defaults to CLAUDE_CONFIG_DIR or ~/.claude.",
+		)
+		.option(
+			"--claude-environment-auth",
+			"Explicitly forward supported Claude gateway/Bedrock environment variables through the lab to Claude and its descendants.",
+		)
 		.addOption(
 			new Option("--codex-sandbox <mode>", "Sandbox for real Codex task sessions (default: read-only).").choices(
 				AgentLabCodexSandboxSchema.options,
@@ -496,8 +572,8 @@ export async function runAgentLabCli(argv = process.argv): Promise<void> {
 				"Approval policy for real Codex task sessions (default: on-request).",
 			).choices(AgentLabCodexApprovalPolicySchema.options),
 		)
-		.option("--runtime-port <port>", 'Runtime port or "auto".', parsePort, null)
-		.option("--web-port <port>", 'Web port or "auto".', parsePort, null)
+		.option("--runtime-port <port>", 'Runtime port or "auto".', parseAgentLabPort, null)
+		.option("--web-port <port>", 'Web port or "auto".', parseAgentLabPort, null)
 		.option("--keep-temp", "Keep the disposable home/state/project directories after shutdown.")
 		.option("--json", "Print the ready manifest as JSON.")
 		.action(async (options: StartOptions) => startAgentLab(options));

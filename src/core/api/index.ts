@@ -1,5 +1,6 @@
 export * from "./board.js";
 export * from "./branch-base-ref.js";
+export * from "./claude-permissions.js";
 export * from "./codex-approvals.js";
 export * from "./config.js";
 export * from "./diagnostics.js";

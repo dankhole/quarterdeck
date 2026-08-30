@@ -39,6 +39,7 @@ export interface CreateProjectsApiDependencies {
 		projectId: string,
 		options?: DisposeProjectOptions,
 	) => Promise<{ terminalManager: TerminalSessionManager | null; projectPath: string | null }>;
+	prepareProjectRemoval: (projectId: string, projectPath: string) => Promise<{ ok: boolean; error?: string }>;
 	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeBoardData) => Set<string>;
 	warn: (message: string) => void;
 	hostIntegrations: Pick<IRuntimeHostIntegrations, "pickDirectory">;
@@ -140,6 +141,13 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					}
 				} catch {
 					// Best effort: if board state cannot be read, skip worktree cleanup IDs.
+				}
+				const preparation = await deps.prepareProjectRemoval(body.projectId, projectToRemove.repoPath);
+				if (!preparation.ok) {
+					return {
+						ok: false,
+						error: preparation.error ?? "A task execution owner could not be stopped safely.",
+					};
 				}
 
 				const removedTerminalManager = deps.terminals.getTerminalManagerForProject(body.projectId);

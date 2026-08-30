@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CLAUDE_LAUNCH_PERMISSION_MODES } from "./claude-permissions.js";
 import { CODEX_APPROVALS_REVIEWERS } from "./codex-approvals.js";
 import { runtimeCapabilitiesSchema, runtimeOpenTargetPlatformSchema } from "./host-integrations.js";
 import { promptShortcutSchema, runtimeAgentIdSchema, runtimeProjectShortcutSchema } from "./shared.js";
@@ -21,6 +22,7 @@ export const runtimeAgentDefinitionSchema = z.object({
 export type RuntimeAgentDefinition = z.infer<typeof runtimeAgentDefinitionSchema>;
 
 export const codexApprovalsReviewerSchema = z.enum(CODEX_APPROVALS_REVIEWERS);
+export const claudeLaunchPermissionModeSchema = z.enum(CLAUDE_LAUNCH_PERMISSION_MODES);
 
 export const runtimeConfigResponseSchema = z.object({
 	selectedAgentId: runtimeAgentIdSchema,
@@ -69,6 +71,7 @@ export const runtimeConfigResponseSchema = z.object({
 	showSummaryOnHover: z.boolean(),
 	llmSummaryPolishEnabled: z.boolean(),
 	claudeFullscreenEnabled: z.boolean(),
+	claudeLaunchPermissionMode: claudeLaunchPermissionModeSchema,
 	statuslineEnabled: z.boolean(),
 	codexApprovalsReviewer: codexApprovalsReviewerSchema,
 	piToolApprovalsEnabled: z.boolean(),
@@ -121,6 +124,7 @@ export const runtimeConfigSaveRequestSchema = z.object({
 		})
 		.optional(),
 	claudeFullscreenEnabled: z.boolean().optional(),
+	claudeLaunchPermissionMode: claudeLaunchPermissionModeSchema.optional(),
 	statuslineEnabled: z.boolean().optional(),
 	codexApprovalsReviewer: codexApprovalsReviewerSchema.optional(),
 	piToolApprovalsEnabled: z.boolean().optional(),

@@ -109,6 +109,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	showSummaryOnHover: CONFIG_DEFAULTS.showSummaryOnHover,
 	llmSummaryPolishEnabled: CONFIG_DEFAULTS.llmSummaryPolishEnabled,
 	claudeFullscreenEnabled: CONFIG_DEFAULTS.claudeFullscreenEnabled,
+	claudeLaunchPermissionMode: CONFIG_DEFAULTS.claudeLaunchPermissionMode,
 	statuslineEnabled: CONFIG_DEFAULTS.statuslineEnabled,
 	codexApprovalsReviewer: CONFIG_DEFAULTS.codexApprovalsReviewer,
 	piToolApprovalsEnabled: CONFIG_DEFAULTS.piToolApprovalsEnabled,

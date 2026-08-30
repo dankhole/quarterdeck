@@ -37,6 +37,7 @@ export {
 export { observeRuntimeApiRequest } from "./runtime-request-diagnostics";
 export {
 	type CreateRuntimeServerDependencies,
+	createRuntimeConversationTaskSessionResolver,
 	createRuntimeServer,
 	type RuntimeServer,
 } from "./runtime-server";

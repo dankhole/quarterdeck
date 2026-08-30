@@ -34,7 +34,7 @@ Use this map when you are planning or evaluating refactor work.
 - Start here for current refactor status: [`todo.md`](./todo.md).
 - [`todo.md`](./todo.md): active engineering backlog, including currently tracked refactor work.
 - [`pi-first-class-support-plan.md`](./pi-first-class-support-plan.md): implemented Pi compatibility contract and release gates.
-- [`claude-terminal-rendering-plan.md`](./claude-terminal-rendering-plan.md): implemented default-off fullscreen experiment and its remaining interactive dogfood and rollout gates.
+- [`claude-terminal-rendering-plan.md`](./claude-terminal-rendering-plan.md): completed Claude fullscreen design, dogfood evidence, and default-on rollout decision with a classic-renderer escape hatch.
 - [`lsp-code-navigation-plan.md`](./lsp-code-navigation-plan.md): plan for bring-your-own language server code navigation in the Files editor.
 
 ### Live architecture and implementation guidance
@@ -49,6 +49,7 @@ Use this map when you are planning or evaluating refactor work.
 - [`conventions/ui-layout.md`](./conventions/ui-layout.md): UI region names, shell layout ownership, and main-view/sidebar rules.
 - [`conventions/runtime-state.md`](./conventions/runtime-state.md): durable board ownership, command receipts, authoritative browser hydration, runtime projections, notifications, and task-indicator semantics.
 - [`conventions/session-lifecycle.md`](./conventions/session-lifecycle.md): task-session stop/resume/recovery, reconciliation, PTY and restore identity, provider hooks, input semantics, and launch boundaries.
+- [`conventions/structured-execution.md`](./conventions/structured-execution.md): stable single-writer and exact-provider-identity rules for structured/non-PTY execution and handoff.
 - [`conventions/architecture-guardrails.md`](./conventions/architecture-guardrails.md): reusable design rules for preventing optimization-shaped architecture.
 
 ### Maintenance references

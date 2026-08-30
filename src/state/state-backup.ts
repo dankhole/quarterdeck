@@ -12,7 +12,7 @@
 //         index.json
 //         {projectId}/
 //           board.json, sessions.json, meta.json, pinned-branches.json,
-//           lifecycle-operations.json
+//           lifecycle-operations.json, execution-ownership.json
 
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -21,8 +21,10 @@ import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
 import { isNodeError } from "../fs";
 import {
 	BOARD_FILENAME,
+	EXECUTION_OWNERSHIP_FILENAME,
 	getProjectBoardPath,
 	getProjectDirectoryPath,
+	getProjectExecutionOwnershipPath,
 	getProjectLifecycleOperationsPath,
 	getProjectMetaPath,
 	getProjectPinnedBranchesPath,
@@ -43,7 +45,9 @@ const PROJECT_STATE_FILENAMES = [
 	META_FILENAME,
 	PINNED_BRANCHES_FILENAME,
 	LIFECYCLE_OPERATIONS_FILENAME,
+	EXECUTION_OWNERSHIP_FILENAME,
 ];
+const COORDINATION_JOURNAL_FILENAMES = [LIFECYCLE_OPERATIONS_FILENAME, EXECUTION_OWNERSHIP_FILENAME];
 const backupLog = createTaggedLogger("state-backup");
 
 export interface BackupManifest {
@@ -100,7 +104,7 @@ async function restoreCoordinationJournal(src: string, dest: string): Promise<vo
 		return;
 	}
 	// Restoring a snapshot without a coordination journal must not retain
-	// operations created after that snapshot.
+	// operations or process ownership created after that snapshot.
 	await rm(dest, { force: true });
 }
 
@@ -187,6 +191,10 @@ export async function createBackup(options: CreateBackupOptions = {}): Promise<s
 				getProjectLifecycleOperationsPath(projectId),
 				join(wsBackupDir, LIFECYCLE_OPERATIONS_FILENAME),
 			);
+			await copyFileIfExists(
+				getProjectExecutionOwnershipPath(projectId),
+				join(wsBackupDir, EXECUTION_OWNERSHIP_FILENAME),
+			);
 		}
 
 		// Manifest written last — acts as the commit signal.
@@ -265,7 +273,7 @@ export async function restoreBackup(backupPathOrName: string): Promise<BackupMan
 		const wsDir = getProjectDirectoryPath(projectId);
 		await mkdir(wsDir, { recursive: true });
 		for (const filename of PROJECT_STATE_FILENAMES) {
-			if (filename === LIFECYCLE_OPERATIONS_FILENAME) {
+			if (COORDINATION_JOURNAL_FILENAMES.includes(filename)) {
 				await restoreCoordinationJournal(join(wsBackupDir, filename), join(wsDir, filename));
 			} else {
 				await copyFileIfExists(join(wsBackupDir, filename), join(wsDir, filename));
@@ -322,6 +330,7 @@ async function computeStateFingerprint(): Promise<string> {
 			getProjectSessionsPath,
 			getProjectMetaPath,
 			getProjectLifecycleOperationsPath,
+			getProjectExecutionOwnershipPath,
 		]) {
 			const path = getter(projectId);
 			try {
@@ -391,3 +400,7 @@ async function runPeriodicBackupTick(): Promise<void> {
 		});
 	}
 }
+
+export const _testing = {
+	computeStateFingerprint,
+};

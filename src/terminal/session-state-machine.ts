@@ -53,6 +53,25 @@ export type SessionTransitionEvent =
 	| { type: "native_work.evidence_expired"; confirmedAt: number; occurredAt?: number }
 	| { type: "autorestart.denied" }
 	| { type: "resume.failed"; clearResumeSessionId: boolean; warningMessage: string }
+	| { type: "structured.owner_activated"; pid: number; sessionInstanceId: string }
+	| { type: "structured.turn_started"; pid: number; sessionInstanceId: string }
+	| { type: "structured.turn_completed" }
+	| { type: "structured.turn_failed"; warningMessage: string }
+	| {
+			type: "structured.interaction_requested";
+			provider: Extract<RuntimeTaskInteractionProvider, "codex" | "claude">;
+			interactionKind: "question" | "approval" | "elicitation";
+			interactionId: string;
+			providerSessionId: string;
+			turnId: string | null;
+			itemId: string | null;
+			openedAt: number;
+			sessionInstanceId: string;
+	  }
+	| { type: "structured.interaction_resolved"; interactionId: string; resolvedAt: number }
+	| { type: "structured.interaction_cancelled"; interactionId: string }
+	| { type: "structured.owner_stopped" }
+	| { type: "structured.owner_crashed"; warningMessage: string; turnOutcomeUnknown: boolean }
 	| { type: "reconciliation.launch_path_missing"; warningMessage: string }
 	| {
 			type: "startup_recovery.exhausted";
@@ -1142,6 +1161,229 @@ export function reduceSessionTransition(
 					outstandingInteraction: unresolvedInteraction,
 					nativeWorkEvidence: null,
 					...(event.clearResumeSessionId ? { resumeSessionId: null } : {}),
+					warningMessage: event.warningMessage,
+				},
+				clearAttentionBuffer: true,
+			};
+		}
+		case "structured.owner_activated": {
+			return {
+				changed: true,
+				patch: {
+					pid: event.pid,
+					sessionInstanceId: event.sessionInstanceId,
+					exitCode: null,
+					startupRecoveryRequired: false,
+				},
+				clearAttentionBuffer: false,
+			};
+		}
+		case "structured.turn_started": {
+			const confirmedAt = Date.now();
+			return {
+				changed: true,
+				patch: {
+					...clearSemanticUncertainty(summary),
+					state: "running",
+					reviewReason: null,
+					pid: event.pid,
+					sessionInstanceId: event.sessionInstanceId,
+					latestHookActivity: null,
+					outstandingInteraction: null,
+					nativeWorkEvidence: {
+						provider: summary.agentId === "claude" ? "claude" : "codex",
+						sessionInstanceId: event.sessionInstanceId,
+						providerSessionId: summary.resumeSessionId ?? null,
+						turnId: null,
+						hookEventName: "StructuredTurnStarted",
+						confirmedAt,
+						expiresAt: Number.MAX_SAFE_INTEGER,
+					},
+					stalledSince: null,
+					warningMessage: null,
+				},
+				clearAttentionBuffer: true,
+			};
+		}
+		case "structured.turn_completed": {
+			return {
+				changed: true,
+				patch: {
+					state: "awaiting_review",
+					reviewReason: "hook",
+					latestHookActivity: null,
+					outstandingInteraction: null,
+					nativeWorkEvidence: null,
+					stalledSince: null,
+					warningMessage: null,
+				},
+				clearAttentionBuffer: true,
+			};
+		}
+		case "structured.turn_failed": {
+			return {
+				changed: true,
+				patch: {
+					state: "awaiting_review",
+					reviewReason: "error",
+					latestHookActivity: null,
+					outstandingInteraction: summary.outstandingInteraction
+						? { ...summary.outstandingInteraction, status: "resolution_unknown", updatedAt: Date.now() }
+						: null,
+					nativeWorkEvidence: null,
+					stalledSince: null,
+					warningMessage: event.warningMessage,
+				},
+				clearAttentionBuffer: true,
+			};
+		}
+		case "structured.interaction_requested": {
+			const isApproval = event.interactionKind === "approval";
+			const isElicitation = event.interactionKind === "elicitation";
+			return {
+				changed: true,
+				patch: {
+					state: "awaiting_review",
+					reviewReason: isApproval ? "hook" : "attention",
+					outstandingInteraction: {
+						provider: event.provider,
+						kind: event.interactionKind === "approval" ? "permission" : event.interactionKind,
+						status: "waiting",
+						requestEventName: isApproval
+							? "StructuredApproval"
+							: isElicitation
+								? "StructuredElicitation"
+								: "StructuredQuestion",
+						openedAt: event.openedAt,
+						updatedAt: event.openedAt,
+						responseSubmittedAt: null,
+						responseKind: null,
+						sessionInstanceId: event.sessionInstanceId,
+						providerSessionId: event.providerSessionId,
+						turnId: event.turnId,
+						promptId: event.interactionId,
+						toolUseId: event.itemId,
+						elicitationId: isElicitation ? event.itemId : null,
+						providerAgentId: null,
+						toolName: null,
+					},
+					latestHookActivity: {
+						activityText: isApproval ? "Waiting for approval" : "Waiting for input",
+						toolName: null,
+						toolInputSummary: null,
+						finalMessage: null,
+						hookEventName: isApproval ? "PermissionRequest" : isElicitation ? "Elicitation" : "Question",
+						notificationType: isApproval
+							? "permission.asked"
+							: isElicitation
+								? "elicitation_dialog"
+								: "question.asked",
+						source: event.provider,
+						conversationSummaryText: null,
+					},
+					nativeWorkEvidence: null,
+					stalledSince: null,
+				},
+				clearAttentionBuffer: true,
+			};
+		}
+		case "structured.interaction_resolved": {
+			const interaction = summary.outstandingInteraction;
+			if (
+				summary.state !== "awaiting_review" ||
+				!interaction ||
+				interaction.promptId !== event.interactionId ||
+				!interaction.sessionInstanceId ||
+				(interaction.provider !== "codex" && interaction.provider !== "claude")
+			) {
+				return unchanged();
+			}
+			return {
+				changed: true,
+				patch: {
+					state: "running",
+					reviewReason: null,
+					latestHookActivity: null,
+					outstandingInteraction: {
+						...interaction,
+						status: "response_submitted",
+						updatedAt: event.resolvedAt,
+						responseSubmittedAt: event.resolvedAt,
+						responseKind: "submit",
+					},
+					nativeWorkEvidence: {
+						provider: interaction.provider,
+						sessionInstanceId: interaction.sessionInstanceId,
+						providerSessionId: interaction.providerSessionId,
+						turnId: interaction.turnId,
+						hookEventName: "StructuredInteractionResolved",
+						confirmedAt: event.resolvedAt,
+						expiresAt: Number.MAX_SAFE_INTEGER,
+					},
+					stalledSince: null,
+					warningMessage: null,
+				},
+				clearAttentionBuffer: true,
+			};
+		}
+		case "structured.interaction_cancelled": {
+			const interaction = summary.outstandingInteraction;
+			if (
+				summary.state !== "awaiting_review" ||
+				!interaction ||
+				interaction.promptId !== event.interactionId ||
+				(interaction.provider !== "codex" && interaction.provider !== "claude")
+			) {
+				return unchanged();
+			}
+			return {
+				changed: true,
+				patch: {
+					state: "awaiting_review",
+					reviewReason: "unconfirmed",
+					latestHookActivity: null,
+					outstandingInteraction: null,
+					nativeWorkEvidence: null,
+					stalledSince: null,
+					warningMessage: null,
+				},
+				clearAttentionBuffer: true,
+			};
+		}
+		case "structured.owner_stopped": {
+			if (!summary.outstandingInteraction) {
+				return { changed: summary.pid !== null, patch: { pid: null }, clearAttentionBuffer: false };
+			}
+			return {
+				changed: true,
+				patch: {
+					state: "awaiting_review",
+					reviewReason: "error",
+					pid: null,
+					outstandingInteraction: {
+						...summary.outstandingInteraction,
+						status: "resolution_unknown",
+						updatedAt: Date.now(),
+					},
+					nativeWorkEvidence: null,
+				},
+				clearAttentionBuffer: true,
+			};
+		}
+		case "structured.owner_crashed": {
+			return {
+				changed: true,
+				patch: {
+					state: "awaiting_review",
+					reviewReason: "error",
+					pid: null,
+					latestHookActivity: null,
+					outstandingInteraction: summary.outstandingInteraction
+						? { ...summary.outstandingInteraction, status: "resolution_unknown", updatedAt: Date.now() }
+						: null,
+					nativeWorkEvidence: null,
+					stalledSince: null,
+					startupRecoveryRequired: true,
 					warningMessage: event.warningMessage,
 				},
 				clearAttentionBuffer: true,

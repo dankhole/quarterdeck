@@ -1,27 +1,33 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
 
 import {
-	extractPromptArgument,
+	buildClaudeHookPayload,
 	type FakeAgentCommand,
+	getFakeAgentVersionOutput,
 	parseFakeAgentCommand,
+	parseFakeAgentProvider,
+	resolveFakeAgentInvocation,
 	resolveFakeAgentScenario,
+	shouldFakeClaudeUseFullscreen,
 } from "./fake-agent-protocol";
 import { AgentLabScenarioSchema } from "./types";
 
 const args = process.argv.slice(2);
-const provider = process.env.QUARTERDECK_AGENT_LAB_PROVIDER === "pi" ? "pi" : "codex";
+const provider = parseFakeAgentProvider(process.env.QUARTERDECK_AGENT_LAB_PROVIDER);
+const invocation = resolveFakeAgentInvocation(provider, args);
 const APPROVAL_COMPLETION_DELAY_MS = 5_000;
 const taskId = process.env.QUARTERDECK_HOOK_TASK_ID ?? "unknown-task";
-const requestedSessionIndex = args.indexOf("--session");
-const requestedSessionId = requestedSessionIndex >= 0 ? args[requestedSessionIndex + 1]?.trim() : null;
+const requestedSessionId = invocation.requestedSessionId;
 const sessionId = requestedSessionId || `agent-lab-${taskId}`;
 let turn = 0;
 let currentTurnId: string | null = null;
+let promptSequence = 0;
+let currentPromptId: string | null = null;
 let lastSettledTurnId: string | null = null;
 let toolUseSequence = 0;
 let pendingToolUseId: string | null = null;
@@ -58,6 +64,14 @@ function ensureTurnId(): string {
 	return currentTurnId;
 }
 
+function ensurePromptId(): string {
+	if (!currentPromptId) {
+		promptSequence += 1;
+		currentPromptId = `agent-lab-prompt-${promptSequence}`;
+	}
+	return currentPromptId;
+}
+
 function nextToolUseId(): string {
 	toolUseSequence += 1;
 	return `agent-lab-tool-${toolUseSequence}`;
@@ -74,6 +88,13 @@ async function emitHook(
 		toolUseId?: string;
 		includeTurnId?: boolean;
 		turnId?: string;
+		promptId?: string;
+		providerAgentId?: string;
+		elicitationId?: string;
+		message?: string;
+		error?: string;
+		backgroundWork?: boolean;
+		sessionSource?: "startup" | "resume";
 	} = { hookEventName: "AgentLab" },
 ): Promise<void> {
 	const tsxCliPath = process.env.QUARTERDECK_AGENT_LAB_TSX_CLI;
@@ -82,45 +103,59 @@ async function emitHook(
 		writeLine("[agent-lab] Hook environment is incomplete.");
 		return;
 	}
+	const reliableActivity = options.hookEventName === "SessionStart" || options.hookEventName === "PermissionDenied";
 	const hookArgs = [
 		tsxCliPath,
 		cliEntrypointPath,
 		"hooks",
-		"ingest",
+		event === "activity" && !reliableActivity ? "notify" : "ingest",
 		"--event",
 		event,
 		"--source",
 		provider,
-		"--hook-event-name",
-		options.hookEventName,
-		"--session-id",
-		sessionId,
 	];
-	if (options.includeTurnId !== false) {
-		hookArgs.push("--turn-id", options.turnId ?? ensureTurnId());
-	}
-	if (options.activityText) {
-		hookArgs.push("--activity-text", options.activityText);
-	}
-	if (options.finalMessage) {
-		hookArgs.push("--final-message", options.finalMessage);
-	}
-	if (options.notificationType) {
-		hookArgs.push("--notification-type", options.notificationType);
-	}
-	if (options.toolName) {
-		hookArgs.push("--tool-name", options.toolName);
-	}
-	if (options.toolUseId) {
-		hookArgs.push("--tool-use-id", options.toolUseId);
+	const claudePayload =
+		provider === "claude"
+			? buildClaudeHookPayload(options.hookEventName, {
+					sessionId,
+					cwd: process.cwd(),
+					promptId:
+						options.includeTurnId === false || options.hookEventName === "SessionStart"
+							? null
+							: (options.promptId ?? ensurePromptId()),
+					toolName: options.toolName,
+					toolUseId: options.hookEventName === "PermissionRequest" ? undefined : options.toolUseId,
+					elicitationId: options.elicitationId,
+					providerAgentId: options.providerAgentId,
+					notificationType: options.hookEventName === "PermissionRequest" ? undefined : options.notificationType,
+					message: options.message ?? options.activityText,
+					finalMessage: options.finalMessage,
+					error: options.error,
+					backgroundWork: options.backgroundWork,
+					sessionSource: options.sessionSource,
+				})
+			: null;
+	if (!claudePayload) {
+		hookArgs.push("--hook-event-name", options.hookEventName, "--session-id", sessionId);
+		if (options.includeTurnId !== false) {
+			hookArgs.push("--turn-id", options.turnId ?? ensureTurnId());
+		}
+		if (options.activityText) hookArgs.push("--activity-text", options.activityText);
+		if (options.finalMessage) hookArgs.push("--final-message", options.finalMessage);
+		if (options.notificationType) hookArgs.push("--notification-type", options.notificationType);
+		if (options.toolName) hookArgs.push("--tool-name", options.toolName);
+		if (options.toolUseId) hookArgs.push("--tool-use-id", options.toolUseId);
 	}
 
 	await new Promise<void>((resolveHook) => {
 		const hook = spawn(process.execPath, hookArgs, {
 			cwd: process.cwd(),
 			env: process.env,
-			stdio: ["ignore", "ignore", "pipe"],
+			stdio: [claudePayload ? "pipe" : "ignore", "ignore", "pipe"],
 		});
+		if (claudePayload) {
+			hook.stdin?.end(`${JSON.stringify(claudePayload)}\n`);
+		}
 		let stderr = "";
 		hook.stderr?.setEncoding("utf8");
 		hook.stderr?.on("data", (chunk: string) => {
@@ -179,6 +214,11 @@ function printHelp(): void {
 	writeLine("  /redraw-interruption-history redraw old interruption above current work");
 	writeLine("  /local-action [message]      accept a TUI-local action without a hook");
 	writeLine("  /compact                     run activity-only manual compaction hooks");
+	writeLine("  /notification [message]      emit a Claude attention notification");
+	writeLine("  /elicitation [message]       emit a Claude MCP elicitation wait");
+	writeLine("  /elicitation-result [message] resolve the current Claude elicitation");
+	writeLine("  /background-stop [message]   emit a pending root Stop and SubagentStop");
+	writeLine("  /stop-failure [message]      emit a Claude StopFailure review");
 	writeLine("  /queued-follow-up [message]  emit agent_end followed by a queued agent_start");
 	writeLine("  /stale-run                   replay the last completed Pi run identity");
 	writeLine("  /fail-next-resume            crash now and fail the next targeted Pi resume");
@@ -206,7 +246,7 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			nativePermissionActive = true;
 			pendingToolUseId = nextToolUseId();
 			writeLine(`AGENT LAB NEEDS INPUT: ${command.message}`);
-			await emitHook("activity", {
+			await emitHook(provider === "claude" ? "to_in_progress" : "activity", {
 				hookEventName: "PreToolUse",
 				activityText: command.message,
 				toolName: "AgentLab",
@@ -226,7 +266,7 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			nativePermissionActive = false;
 			pendingToolUseId = nextToolUseId();
 			writeLine(`AGENT LAB AUTO APPROVAL REQUEST: ${command.message}`);
-			await emitHook("activity", {
+			await emitHook(provider === "claude" ? "to_in_progress" : "activity", {
 				hookEventName: "PreToolUse",
 				activityText: command.message,
 				toolName: "AgentLab",
@@ -265,6 +305,7 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			return;
 		case "new-turn":
 			currentTurnId = null;
+			currentPromptId = null;
 			writeLine(`AGENT LAB NEW TURN: ${command.message}`);
 			await emitHook("to_in_progress", {
 				hookEventName: "UserPromptSubmit",
@@ -293,6 +334,74 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 				activityText: "Local conversation context compacted",
 			});
 			writeLine("AGENT LAB COMPACTION COMPLETE");
+			return;
+		case "notification":
+			if (provider !== "claude") {
+				writeLine("AGENT LAB UNSUPPORTED: /notification requires fake Claude");
+				return;
+			}
+			writeLine(`AGENT LAB CLAUDE NOTIFICATION: ${command.message}`);
+			await emitHook("activity", {
+				hookEventName: "Notification",
+				notificationType: "agent_needs_input",
+				message: command.message,
+			});
+			return;
+		case "elicitation":
+			if (provider !== "claude") {
+				writeLine("AGENT LAB UNSUPPORTED: /elicitation requires fake Claude");
+				return;
+			}
+			writeLine(`AGENT LAB CLAUDE ELICITATION: ${command.message}`);
+			await emitHook("to_review", {
+				hookEventName: "Elicitation",
+				activityText: command.message,
+				elicitationId: "agent-lab-elicitation-1",
+			});
+			return;
+		case "elicitation-result":
+			if (provider !== "claude") {
+				writeLine("AGENT LAB UNSUPPORTED: /elicitation-result requires fake Claude");
+				return;
+			}
+			writeLine(`AGENT LAB CLAUDE ELICITATION RESULT: ${command.message}`);
+			await emitHook("to_in_progress", {
+				hookEventName: "ElicitationResult",
+				activityText: command.message,
+				elicitationId: "agent-lab-elicitation-1",
+			});
+			return;
+		case "background-stop":
+			if (provider !== "claude") {
+				writeLine("AGENT LAB UNSUPPORTED: /background-stop requires fake Claude");
+				return;
+			}
+			writeLine(`AGENT LAB CLAUDE BACKGROUND STOP: ${command.message}`);
+			await emitHook("to_review", {
+				hookEventName: "Stop",
+				activityText: command.message,
+				finalMessage: command.message,
+				backgroundWork: true,
+			});
+			await emitHook("activity", {
+				hookEventName: "SubagentStop",
+				activityText: "Synthetic background agent completed",
+				finalMessage: "Synthetic background agent completed",
+				providerAgentId: "agent-lab-background-1",
+			});
+			return;
+		case "stop-failure":
+			if (provider !== "claude") {
+				writeLine("AGENT LAB UNSUPPORTED: /stop-failure requires fake Claude");
+				return;
+			}
+			writeLine(`AGENT LAB CLAUDE STOP FAILURE: ${command.message}`);
+			await emitHook("to_review", {
+				hookEventName: "StopFailure",
+				finalMessage: command.message,
+				error: "agent_lab_simulated_failure",
+			});
+			currentPromptId = null;
 			return;
 		case "queued-follow-up": {
 			const endedTurnId = ensureTurnId();
@@ -354,6 +463,7 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 				});
 			}
 			currentTurnId = null;
+			currentPromptId = null;
 			pendingToolUseId = null;
 			return;
 		case "working":
@@ -463,12 +573,26 @@ async function runScenario(scenario: ReturnType<typeof AgentLabScenarioSchema.pa
 			return;
 		case "terminal-stress":
 			await executeCommand({ kind: "spam", count: 400 });
+			return;
+		case "claude-lifecycle":
+			await executeCommand({ kind: "new-turn", message: "Synthetic Claude prompt submitted" });
+			await executeCommand({ kind: "needs-input", message: "Synthetic Claude permission request" });
+			await executeCommand({ kind: "notification", message: "Synthetic Claude notification" });
+			await executeCommand({ kind: "working", message: "Synthetic Claude tool completed" });
+			await executeCommand({ kind: "elicitation", message: "Choose a synthetic option" });
+			await executeCommand({ kind: "elicitation-result", message: "Synthetic option selected" });
+			await executeCommand({ kind: "background-stop", message: "Waiting for synthetic background work" });
+			await executeCommand({ kind: "review", message: "Synthetic Claude lifecycle completed" });
+			return;
+		case "claude-failure":
+			await executeCommand({ kind: "new-turn", message: "Synthetic Claude failing prompt submitted" });
+			await executeCommand({ kind: "stop-failure", message: "Synthetic Claude turn failed" });
 	}
 }
 
 function handleProbe(): boolean {
 	if (args.includes("--version") || args[0] === "version") {
-		process.stdout.write(provider === "pi" ? "0.84.3\n" : "codex-cli 0.147.0\n");
+		process.stdout.write(`${getFakeAgentVersionOutput(provider)}\n`);
 		return true;
 	}
 	if (args[0] === "features" && args[1] === "list") {
@@ -476,21 +600,6 @@ function handleProbe(): boolean {
 		return true;
 	}
 	return false;
-}
-
-function extractPiPromptArgument(inputArgs: readonly string[]): string {
-	for (let index = inputArgs.length - 1; index >= 0; index -= 1) {
-		const arg = inputArgs[index];
-		if (
-			arg &&
-			!arg.startsWith("-") &&
-			inputArgs[index - 1] !== "--extension" &&
-			inputArgs[index - 1] !== "--session"
-		) {
-			return arg;
-		}
-	}
-	return "";
 }
 
 function getResumeFailureMarkerPath(): string {
@@ -522,25 +631,64 @@ async function consumeResumeFailureMarker(): Promise<boolean> {
 	}
 }
 
+async function assertClaudeLaunchContract(): Promise<void> {
+	if (provider !== "claude") return;
+	if (args.includes("--continue") && requestedSessionId) {
+		throw new Error("Fake Claude received conflicting --continue and --resume options.");
+	}
+	if (!invocation.settingsPath) {
+		throw new Error("Fake Claude requires Quarterdeck's launch-scoped --settings file.");
+	}
+	const parsed = JSON.parse(await readFile(invocation.settingsPath, "utf8")) as {
+		hooks?: Record<string, unknown>;
+	};
+	const expectedHookCommands = {
+		SessionStart: ["ingest", "activity"],
+		UserPromptSubmit: ["ingest", "to_in_progress"],
+		PreToolUse: ["ingest", "to_in_progress"],
+		PermissionRequest: ["ingest", "to_review"],
+		Notification: ["notify", "activity"],
+		PostToolUse: ["ingest", "to_in_progress"],
+		SubagentStop: ["notify", "activity"],
+		Elicitation: ["ingest", "to_review"],
+		ElicitationResult: ["ingest", "to_in_progress"],
+		Stop: ["ingest", "to_review"],
+		StopFailure: ["ingest", "to_review"],
+	} as const;
+	for (const [hookName, [delivery, event]] of Object.entries(expectedHookCommands)) {
+		const serializedHook = JSON.stringify(parsed.hooks?.[hookName]);
+		const expectedCommand = `'hooks' '${delivery}' '--event' '${event}' '--source' 'claude'`;
+		if (!serializedHook.includes(expectedCommand)) {
+			throw new Error(`Fake Claude settings do not map ${hookName} to ${delivery}:${event}.`);
+		}
+	}
+}
+
 async function main(): Promise<void> {
 	if (handleProbe()) {
 		return;
 	}
+	await assertClaudeLaunchContract();
 	if (await consumeResumeFailureMarker()) {
 		writeLine(`AGENT LAB PI TARGETED RESUME FAILED: ${requestedSessionId}`);
 		process.exitCode = 78;
 		return;
 	}
-	const prompt = provider === "pi" ? extractPiPromptArgument(args) : extractPromptArgument(args);
+	const prompt = invocation.prompt;
 	const fallbackScenario = AgentLabScenarioSchema.parse(process.env.QUARTERDECK_AGENT_LAB_SCENARIO ?? "idle");
 	const scenario = resolveFakeAgentScenario(prompt, fallbackScenario);
-	writeLine(`Quarterdeck Agent Lab — deterministic fake ${provider === "pi" ? "Pi" : "Codex"}`);
+	const providerLabel = provider === "pi" ? "Pi" : provider === "claude" ? "Claude" : "Codex";
+	if (shouldFakeClaudeUseFullscreen(provider, process.env)) {
+		process.stdout.write("\u001b[?1049h\u001b[2J\u001b[H");
+	}
+	writeLine(`Quarterdeck Agent Lab — deterministic fake ${providerLabel}`);
 	writeLine(`AGENT LAB READY task=${taskId} scenario=${scenario}`);
 	writeLine("Type /help for deterministic test commands.");
 	void emitHook("activity", {
 		hookEventName: provider === "pi" ? "session_meta" : "SessionStart",
 		activityText: "Agent-lab session started",
 		includeTurnId: provider !== "pi",
+		sessionSource: invocation.resumeKind === "fresh" ? "startup" : "resume",
 	});
 
 	const terminal = createInterface({
@@ -642,6 +790,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-	process.stderr.write(`[agent-lab fake codex] ${error instanceof Error ? error.message : String(error)}\n`);
+	process.stderr.write(`[agent-lab fake agent] ${error instanceof Error ? error.message : String(error)}\n`);
 	process.exitCode = 1;
 });

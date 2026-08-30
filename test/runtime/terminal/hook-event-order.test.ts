@@ -1115,6 +1115,49 @@ describe("Claude hook event ordering", () => {
 		).toEqual({ accepted: false, reason: "stale_observation" });
 	});
 
+	it("does not retire a Claude prompt for a root Stop still waiting on background work", () => {
+		const state = createHookEventOrderState(SESSION_INSTANCE_ID);
+		const promptStart = hook({
+			source: "claude",
+			event: "to_in_progress",
+			hookEventName: "UserPromptSubmit",
+			promptId: "prompt-1",
+			deliveryIndex: 60,
+			occurredAt: 100,
+		});
+		const pendingBackgroundStop = hook({
+			source: "claude",
+			event: "activity",
+			hookEventName: "Stop",
+			promptId: "prompt-1",
+			deliveryIndex: 61,
+			occurredAt: 200,
+		});
+		const subagentStop = hook({
+			source: "claude",
+			event: "activity",
+			hookEventName: "SubagentStop",
+			promptId: "prompt-1",
+			providerAgentId: "background-1",
+			deliveryIndex: 62,
+			occurredAt: 300,
+		});
+		const completedStop = hook({
+			source: "claude",
+			event: "to_review",
+			hookEventName: "Stop",
+			promptId: "prompt-1",
+			deliveryIndex: 63,
+			occurredAt: 400,
+		});
+
+		for (const input of [promptStart, pendingBackgroundStop, subagentStop, completedStop]) {
+			acceptAndCommit(state, input);
+		}
+		expect(state.retiredClaudePromptIds.has("prompt-1")).toBe(true);
+		expect(state.latestClaudeRootCompletionOccurredAt).toBe(400);
+	});
+
 	it("rejects delayed elicitation requests after their native result", () => {
 		const state = createHookEventOrderState(SESSION_INSTANCE_ID);
 		acceptAndCommit(

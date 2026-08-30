@@ -1,6 +1,6 @@
 ---
 name: quarterdeck-functional-testing
-description: Boot, inspect, and drive Quarterdeck through an isolated browser UI with either its deterministic fake coding agent or an explicitly authorized real Codex provider. Use for Quarterdeck functional testing, visual debugging, browser/terminal lifecycle regressions, Git or Files workflow checks, real-provider compatibility checks, and reproducible UI failure reports. Do not use for ordinary unit tests or against the user's active Quarterdeck instance.
+description: Boot, inspect, and drive Quarterdeck through an isolated browser UI with a deterministic fake coding agent or an explicitly authorized real Codex or Claude provider. Use for Quarterdeck functional testing, visual debugging, browser/terminal lifecycle regressions, Git or Files workflow checks, real-provider compatibility checks, and reproducible UI failure reports. Do not use for ordinary unit tests or against the user's active Quarterdeck instance.
 ---
 
 # Quarterdeck Functional Testing
@@ -17,15 +17,21 @@ Run `npm run --silent agent:lab -- start --name <short-name> --json`. Parse the 
 
 Omit `--agent` for the deterministic fake lane. Use it for routine regression work, seeded scenarios, CI, and replayable state assertions.
 
-Use the authenticated lane only when the user has authorized real provider/account use and the question depends on Codex's actual TUI, hooks, model behavior, or event ordering:
+Use `--agent fake-claude` only for a Claude-specific deterministic lifecycle invariant. Prefer the focused `claude-lifecycle` or `claude-failure` scenario instead of rerunning the default browser matrix.
+
+Use an authenticated lane only when the user has authorized real provider/account use and the question depends on that provider's actual TUI, hooks, model behavior, launcher, or event ordering:
 
 ```text
 npm run --silent agent:lab -- start --name <short-name> --agent real-codex --json
+npm run --silent agent:lab -- start --name <short-name> --agent real-claude --json
+npm run --silent agent:lab -- start --name <short-name> --agent real-claude --claude-environment-auth --json
 ```
 
-Real mode preflights the selected authenticated CLI profile, stages only its cached credential into a disposable Codex home, and does not forward API keys or profile integrations. It is nondeterministic and consumes the user's provider plan. Use only synthetic prompts, keep effectful commands behind approval, never run it in CI, and always stop it. See [`docs/agent-functional-testing.md`](../../../docs/agent-functional-testing.md#agent-modes) for the isolation contract and supported overrides.
+Real modes preflight the selected authentication and do not load profile integrations. Real Claude defaults to the current `haiku` alias and manual permissions, isolates settings/session/MCP state under a disposable `CLAUDE_CONFIG_DIR`, disables unmanaged Chrome and slash-command integrations, and normally reuses the platform credential store; on macOS that means Keychain remains a host boundary. Use `--claude-environment-auth` only with explicit authorization for the configured gateway or Bedrock environment: it forwards the documented Claude provider allowlist, including direct Bedrock environment credentials and custom CA configuration, through the disposable supervisor/runtime and into Claude descendants, never Quarterdeck's generic LLM key. It does not import AWS profiles or shared credential files. Organization-managed Claude settings still apply. Interactive Claude has no hard budget cap, so model and prompt selection only keep the run inexpensive. Real runs are nondeterministic and consume the user's provider plan. Use only tiny synthetic prompts, keep effectful commands behind approval, never run them in CI, and always stop them. See [`docs/agent-functional-testing.md`](../../../docs/agent-functional-testing.md#agent-modes) for the isolation contracts and supported overrides.
 
 If Chromium has not been installed for this clone, ask before downloading it, then run `npm run agent:browser -- install-browser chromium`. Use the wrapper, not `playwright-cli`; the wrapper keeps shared browser binaries and run-specific profiles/artifacts in their documented isolated locations.
+
+The repo-owned `npm run agent:browser` wrapper is the authoritative browser capability for Agent Lab. Do not infer that browser automation is unavailable from a missing in-app Browser connector, disabled Computer Use, or the absence of another browser MCP. Before reporting a browser blocker, invoke the wrapper against the run's `browserConfigPath`, `browserSession`, and `projectUrl` and inspect its actual failure. Never bypass it with direct `playwright-cli`, an ad hoc Playwright script, an unrelated browser profile, or the user's active Quarterdeck instance.
 
 Open the run once with configuration:
 
@@ -57,7 +63,7 @@ For host-integration work, assert the typed simulated-host event ledger's saniti
 
 Use a prompt directive such as `[agent-lab:idle] investigate terminal restore` when creating the task. Then type deterministic commands into the task's `Terminal input` textbox. See [references/protocol.md](references/protocol.md) for scenarios and commands, including `/turn-interrupted` for Codex's hookless rendered turn-failure path.
 
-This protocol is available only in the default fake lane. In real mode, use an ordinary synthetic prompt and interact with the provider's actual forms exactly as rendered, including numeric choices and arrow selection plus Enter when relevant.
+This protocol is available in the deterministic fake lanes. Claude-only lifecycle scenarios and commands require `--agent fake-claude`; Codex rendered-screen commands and Pi run-settlement commands remain provider-specific. In real mode, use an ordinary tiny synthetic prompt and interact with the provider's actual forms exactly as rendered, including numeric choices and arrow selection plus Enter when relevant.
 
 A newly spawned `[agent-lab:idle]` native session must appear as Review/Unconfirmed, not Running. Use `/working` whenever a scenario needs authoritative Running before testing interruption, permission, or completion convergence.
 

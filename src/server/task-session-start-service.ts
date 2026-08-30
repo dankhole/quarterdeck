@@ -39,6 +39,8 @@ export interface SerializedTaskSessionStartServiceDependencies extends TaskSessi
 }
 
 export interface TaskSessionStartServiceOptions {
+	/** Server-owned execution fencing checked while holding the task resource lock. */
+	assertStartAllowed?: () => Promise<void>;
 	/**
 	 * Ties an automatic startup recovery launch to the coordinator that owns it.
 	 * Explicit user starts omit this token and cancel any queued recovery.
@@ -56,6 +58,8 @@ export interface TaskSessionStartServiceOptions {
 	startupRecoverySemanticStateUncertain?: boolean;
 	/** Explain why a legacy recovery remains semantically neutral until new agent evidence arrives. */
 	startupRecoveryWarningMessage?: string;
+	/** Reuse the exact launch path during an execution-owner handoff; never recreate it. */
+	requiredExistingLaunchPath?: string;
 }
 
 export interface TaskSessionStartServiceResult {
@@ -188,7 +192,19 @@ export async function prepareTaskSessionStart(
 	// go through the same branch-aware worktree recreation used by manual
 	// Restart; shared-checkout tasks fall back to the project root.
 	let taskCwd: string;
-	if (persistedExists) {
+	if (options.requiredExistingLaunchPath) {
+		const requiredPath = options.requiredExistingLaunchPath;
+		if (!(await pathExists(requiredPath))) {
+			throw new Error("The existing task launch path is unavailable.");
+		}
+		if (persisted !== null && persisted !== requiredPath) {
+			throw new Error("The durable task worktree no longer matches the session launch path.");
+		}
+		if (persisted === null && requiredPath !== projectScope.projectPath) {
+			throw new Error("The task worktree identity is no longer durable.");
+		}
+		taskCwd = requiredPath;
+	} else if (persistedExists) {
 		taskCwd = persisted;
 	} else if (useWorktree) {
 		taskCwd = await resolveTaskCwd({
@@ -326,6 +342,7 @@ export async function prepareTaskSessionStart(
 		projectId: projectScope.projectId,
 		projectPath: projectScope.projectPath,
 		claudeFullscreenEnabled: scopedRuntimeConfig.claudeFullscreenEnabled,
+		claudeLaunchPermissionMode: scopedRuntimeConfig.claudeLaunchPermissionMode,
 		statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
 		codexApprovalsReviewer: scopedRuntimeConfig.codexApprovalsReviewer,
 		piToolApprovalsEnabled: scopedRuntimeConfig.piToolApprovalsEnabled,
@@ -403,6 +420,7 @@ export async function startTaskSessionThroughService(
 	options: TaskSessionStartServiceOptions = {},
 ): Promise<TaskSessionStartServiceResult> {
 	return await deps.taskResourceOperations.run(projectScope.projectId, body.taskId, async () => {
+		await options.assertStartAllowed?.();
 		const prepared = await prepareTaskSessionStart(projectScope, body, deps, options);
 		return await launchPreparedTaskSession(prepared);
 	});

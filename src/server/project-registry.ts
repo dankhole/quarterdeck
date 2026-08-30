@@ -25,10 +25,12 @@ import {
 	loadProjectBoardSnapshotById,
 	loadProjectContext,
 	loadProjectState,
+	loadProjectStateById,
 	type RuntimeProjectIndexEntry,
 	removeProjectIndexEntry,
 	removeProjectStateFiles,
 } from "../state";
+import { ProjectExecutionOwnershipStore } from "../state/project-execution-ownership-store";
 import {
 	deriveStartupRecoveryPolicy,
 	InMemorySessionSummaryStore,
@@ -47,7 +49,7 @@ export const PROJECT_STREAM_VALIDATION_CONCURRENCY = 4;
 // Startup resume selection is still small enough to live near the registry
 // entry point. If it gains more agent-specific rules or scan outcomes, extract
 // this block into a dedicated startup-resume policy module with focused tests.
-type StartupResumeSkipReason = "missing_summary" | "not_interrupted" | "pending_provider_hook";
+type StartupResumeSkipReason = "missing_summary" | "not_interrupted" | "structured_owner" | "pending_provider_hook";
 
 interface StartupResumeSkipSample {
 	taskId: string;
@@ -65,6 +67,7 @@ interface StartupResumeScanStats {
 	resumableTaskCount: number;
 	skippedMissingSummaryCount: number;
 	skippedNotInterruptedCount: number;
+	skippedStructuredOwnerCount: number;
 	skippedPendingProviderHookCount: number;
 	skippedSamples: StartupResumeSkipSample[];
 }
@@ -75,6 +78,7 @@ function createStartupResumeScanStats(): StartupResumeScanStats {
 		resumableTaskCount: 0,
 		skippedMissingSummaryCount: 0,
 		skippedNotInterruptedCount: 0,
+		skippedStructuredOwnerCount: 0,
 		skippedPendingProviderHookCount: 0,
 		skippedSamples: [],
 	};
@@ -123,6 +127,11 @@ export interface RemovedProjectNotice {
 	message: string;
 }
 
+export type ProjectRemovalPreparationHandler = (
+	projectId: string,
+	projectPath: string,
+) => Promise<{ ok: boolean; error?: string }>;
+
 export interface StartupRecoveryBarrier {
 	/** Conservatively retain every interrupted session when the outbox cannot be inspected. */
 	blockAllRecovery: boolean;
@@ -165,6 +174,9 @@ export interface ProjectRegistry
 	releaseDeferredStartupRecoveries: (
 		pendingTasks: ReadonlyArray<{ projectId: string; taskId: string }>,
 	) => Promise<number>;
+	resolveTaskSessionSummary: (projectId: string, taskId: string) => Promise<RuntimeTaskSessionSummary | null>;
+	setProjectRemovalPreparationHandler: (handler: ProjectRemovalPreparationHandler | null) => void;
+	prepareProjectRemoval: (projectId: string, projectPath: string) => Promise<{ ok: boolean; error?: string }>;
 	stopMaintenance: () => void;
 	listManagedProjects: () => Array<{
 		projectId: string;
@@ -241,6 +253,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		activeProjectId && activeProjectPath ? [[activeProjectId, activeProjectPath]] : [],
 	);
 	const projectStateDiagnostics = new ProjectStateDiagnosticTracker();
+	const executionOwnershipStore = new ProjectExecutionOwnershipStore();
 	const terminalManagersByProjectId = new Map<string, TerminalSessionManager>();
 	const terminalManagerLoadPromises = new Map<string, Promise<TerminalSessionManager>>();
 	const deferredStartupRecoveries = new Map<string, { projectId: string; projectPath: string; taskId: string }>();
@@ -248,6 +261,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	const projectOrphanMaintenance: ProjectOrphanMaintenanceTimer = createProjectOrphanMaintenanceTimer({
 		getProjectRepoPaths: () => projectPathsById.values(),
 	});
+	let projectRemovalPreparationHandler: ProjectRemovalPreparationHandler | null = null;
 	if (projectPathsById.size > 0) {
 		projectOrphanMaintenance.start();
 	}
@@ -264,6 +278,12 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			projectOrphanMaintenance.stop();
 		}
 	};
+
+	const prepareProjectRemoval = async (
+		projectId: string,
+		projectPath: string,
+	): Promise<{ ok: boolean; error?: string }> =>
+		projectRemovalPreparationHandler ? await projectRemovalPreparationHandler(projectId, projectPath) : { ok: true };
 
 	const notifyTerminalManagerReady = (projectId: string, manager: TerminalSessionManager): void => {
 		deps.onTerminalManagerReady?.(projectId, manager);
@@ -342,6 +362,22 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			);
 			return false;
 		}
+	};
+
+	const resolveTaskSessionSummary = async (
+		projectId: string,
+		taskId: string,
+	): Promise<RuntimeTaskSessionSummary | null> => {
+		const manager = terminalManagersByProjectId.get(projectId);
+		if (manager) {
+			return manager.store.getSummary(taskId);
+		}
+		const pendingManager = terminalManagerLoadPromises.get(projectId);
+		if (pendingManager) {
+			return (await pendingManager).store.getSummary(taskId);
+		}
+		const state = await loadProjectStateById(projectId);
+		return state?.sessions[taskId] ?? null;
 	};
 
 	const loadScopedRuntimeConfig = async (scope: ProjectRegistryScope): Promise<RuntimeConfigState> => {
@@ -503,6 +539,14 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				existingProjects.push(project);
 				continue;
 			}
+			const preparation = await prepareProjectRemoval(project.projectId, project.repoPath);
+			if (!preparation.ok) {
+				registryLog.warn("project removal deferred because execution ownership could not be stopped", {
+					projectId: project.projectId,
+					errorClass: "ExecutionOwnerStopUnconfirmed",
+				});
+				continue;
+			}
 			removedProjects.push(project);
 			const terminalManager = getTerminalManagerForProject(project.projectId);
 			if (terminalManager) {
@@ -597,6 +641,21 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		}
 		deferredStartupRecoveryProjects.delete(projectId);
 		const resumable: StartupSessionRecoveryCandidate[] = [];
+		let ownershipByTask: Map<string, Awaited<ReturnType<ProjectExecutionOwnershipStore["listOwnership"]>>[number]>;
+		try {
+			ownershipByTask = new Map(
+				(await executionOwnershipStore.listOwnership({ projectId, projectPath })).map((ownership) => [
+					ownership.taskId,
+					ownership,
+				]),
+			);
+		} catch (error) {
+			registryLog.warn("startup native recovery failed closed on execution ownership state", {
+				projectId,
+				errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+			});
+			return 0;
+		}
 		// Startup resume runs before a user can inspect task terminals, so keep
 		// enough scan detail to tell whether we never selected a task or failed
 		// after selection.
@@ -607,6 +666,19 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			}
 			for (const card of column.cards) {
 				scanStats.consideredTaskCount += 1;
+				const executionOwnership = ownershipByTask.get(card.id);
+				if (
+					executionOwnership &&
+					(executionOwnership.state !== "native_tui" || executionOwnership.ownerProcess?.processKind !== "pty")
+				) {
+					scanStats.skippedStructuredOwnerCount += 1;
+					recordStartupResumeSkip(scanStats, {
+						taskId: card.id,
+						columnId: column.id,
+						reason: "structured_owner",
+					});
+					continue;
+				}
 				const summary = manager.store.getSummary(card.id);
 				if (!summary) {
 					scanStats.skippedMissingSummaryCount += 1;
@@ -688,6 +760,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				resumableTaskCount: scanStats.resumableTaskCount,
 				skippedMissingSummaryCount: scanStats.skippedMissingSummaryCount,
 				skippedNotInterruptedCount: scanStats.skippedNotInterruptedCount,
+				skippedStructuredOwnerCount: scanStats.skippedStructuredOwnerCount,
 				skippedPendingProviderHookCount: scanStats.skippedPendingProviderHookCount,
 			},
 			{ projectId },
@@ -921,6 +994,11 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		initializeIndexedProjectsForStartup,
 		resumeInterruptedSessions,
 		releaseDeferredStartupRecoveries,
+		resolveTaskSessionSummary,
+		setProjectRemovalPreparationHandler: (handler) => {
+			projectRemovalPreparationHandler = handler;
+		},
+		prepareProjectRemoval,
 		stopMaintenance: () => {
 			disposeDiagnosticProvider?.();
 			disposeProjectStateDiagnosticProvider?.();
