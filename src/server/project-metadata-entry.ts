@@ -4,6 +4,7 @@ import type {
 	RuntimeProjectMetadata,
 	RuntimeTaskWorktreeMetadata,
 } from "../core";
+import { areFileSystemPathsEqual } from "../core/path-comparison.js";
 import type { CachedHomeGitMetadata } from "./project-metadata-home";
 import type { TrackedTaskWorktree } from "./project-metadata-paths";
 import type { CachedTaskWorktreeMetadata } from "./project-metadata-task-cache";
@@ -65,7 +66,7 @@ function areConflictStatesEqual(a: RuntimeConflictState | null, b: RuntimeConfli
 function areTaskMetadataEqual(a: RuntimeTaskWorktreeMetadata, b: RuntimeTaskWorktreeMetadata): boolean {
 	return (
 		a.taskId === b.taskId &&
-		a.path === b.path &&
+		areFileSystemPathsEqual(a.path, b.path) &&
 		a.exists === b.exists &&
 		a.baseRef === b.baseRef &&
 		a.branch === b.branch &&

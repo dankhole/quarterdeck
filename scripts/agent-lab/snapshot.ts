@@ -5,8 +5,11 @@ import { basename, dirname, join, relative, sep } from "node:path";
 import { promisify } from "node:util";
 
 import {
+	buildGitCommandArgs,
+	createGitProcessEnv,
 	type DiagnosticSnapshot,
 	type PublicRuntimeDiagnosticDescriptor,
+	resolveWindowsCompatibleCommand,
 	runtimeHostIntegrationEventLedgerFileSchema,
 } from "../../src/core";
 import {
@@ -66,15 +69,17 @@ async function copyJsonState(sourceRoot: string, destinationRoot: string, curren
 
 async function captureGitCommand(projectPath: string, destinationPath: string, args: string[]): Promise<void> {
 	try {
-		const result = await execFileAsync("git", args, {
+		const env = createGitProcessEnv({
+			GIT_CONFIG_NOSYSTEM: "1",
+			GIT_TERMINAL_PROMPT: "0",
+		});
+		const command = resolveWindowsCompatibleCommand("git", buildGitCommandArgs(args), process.platform, env);
+		const result = await execFileAsync(command.binary, command.args, {
 			cwd: projectPath,
 			encoding: "utf8",
-			env: {
-				PATH: process.env.PATH,
-				GIT_CONFIG_NOSYSTEM: "1",
-				GIT_TERMINAL_PROMPT: "0",
-			},
+			env,
 			maxBuffer: 5 * 1024 * 1024,
+			windowsHide: true,
 		});
 		await writeFile(destinationPath, `${result.stdout}${result.stderr}`, "utf8");
 	} catch (error) {
@@ -315,6 +320,6 @@ export async function captureAgentLabSnapshot(
 			warnings: result.manifest.warnings,
 		};
 	} finally {
-		await rm(stagingRoot, { recursive: true, force: true });
+		await rm(stagingRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 	}
 }

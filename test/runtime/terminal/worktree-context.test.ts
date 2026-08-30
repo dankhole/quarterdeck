@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const readGitHeadInfoMock = vi.hoisted(() =>
 	vi.fn().mockResolvedValue({ branch: "feature-branch", headCommit: "abc123", isDetached: false }),
 );
-vi.mock("../../../src/workdir/git-utils.js", () => ({
+vi.mock("../../../src/workdir/git-utils.js", async (importOriginal) => ({
+	...(await importOriginal()),
 	readGitHeadInfo: readGitHeadInfoMock,
 }));
 

@@ -71,6 +71,19 @@ describe("Agent Lab browser process ownership", () => {
 		).toBe(false);
 	});
 
+	it("matches Windows daemon paths case-insensitively", () => {
+		const daemonPath = "C:\\Quarterdeck\\web-ui\\node_modules\\playwright-core\\lib\\entry\\cliDaemon.js";
+
+		expect(
+			_testing.isDaemonCommand(
+				`"C:\\Program Files\\nodejs\\node.exe" "c:\\quarterdeck\\WEB-UI\\node_modules\\playwright-core\\lib\\entry\\CLIDAEMON.JS" qd-windows-run`,
+				daemonPath,
+				"qd-windows-run",
+				"win32",
+			),
+		).toBe(true);
+	});
+
 	it("parses the Windows process snapshot used for scoped tree discovery", () => {
 		expect(
 			_testing.parseWindowsProcessList(

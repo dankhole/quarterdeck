@@ -1,11 +1,9 @@
 import type { RuntimeHookEvent } from "./core";
-import { buildQuarterdeckCommandParts, quoteShellArg } from "./core";
+import { buildQuarterdeckCommandLine } from "./core";
 
 function buildClaudeHookCommand(event: RuntimeHookEvent, options: { reliable?: boolean } = {}): string {
 	const subcommand = options.reliable || event !== "activity" ? "ingest" : "notify";
-	return buildQuarterdeckCommandParts(["hooks", subcommand, "--event", event, "--source", "claude"])
-		.map(quoteShellArg)
-		.join(" ");
+	return buildQuarterdeckCommandLine(["hooks", subcommand, "--event", event, "--source", "claude"]);
 }
 
 type ClaudeHookCommand = {

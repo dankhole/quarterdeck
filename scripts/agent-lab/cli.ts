@@ -264,8 +264,8 @@ async function startAgentLab(options: StartOptions): Promise<void> {
 			};
 		} catch (error) {
 			await Promise.all([
-				rm(config.tempRoot, { recursive: true, force: true }),
-				rm(config.artifactDir, { recursive: true, force: true }),
+				rm(config.tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }),
+				rm(config.artifactDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }),
 			]);
 			throw error;
 		}
@@ -293,6 +293,7 @@ async function startAgentLab(options: StartOptions): Promise<void> {
 		env: buildSupervisorEnvironment(process.env, config.tempRoot, config.agent),
 		stdio: ["ignore", supervisorLogDescriptor, supervisorLogDescriptor],
 		detached: true,
+		windowsHide: true,
 	});
 	closeSync(supervisorLogDescriptor);
 	if (supervisor.pid === undefined) {

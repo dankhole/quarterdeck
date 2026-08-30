@@ -8,7 +8,6 @@ import { commitAll, createGitTestEnv, initGitRepository, runGit } from "../utili
 import {
 	getAvailablePort,
 	requestGracefulShutdown,
-	resolveShutdownIpcHookPath,
 	resolveTsxLoaderImportSpecifier,
 	waitForExit,
 	waitForProcessStart,
@@ -137,17 +136,11 @@ describe("source CLI commands", () => {
 
 			const serverProcess = spawn(
 				process.execPath,
-				[
-					"--require",
-					resolveShutdownIpcHookPath(),
-					"--import",
-					resolveTsxLoaderImportSpecifier(),
-					resolve(process.cwd(), "src/cli.ts"),
-				],
+				["--import", resolveTsxLoaderImportSpecifier(), resolve(process.cwd(), "src/cli.ts")],
 				{
 					cwd: projectPath,
 					env,
-					stdio: ["ignore", "pipe", "pipe", "ipc"],
+					stdio: ["pipe", "pipe", "pipe"],
 				},
 			);
 

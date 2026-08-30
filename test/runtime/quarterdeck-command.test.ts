@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { buildQuarterdeckCommandParts, resolveQuarterdeckCommandParts } from "../../src/core";
+import {
+	buildQuarterdeckCommandLine,
+	buildQuarterdeckCommandParts,
+	buildShellCommandLine,
+	resolveQuarterdeckCommandParts,
+} from "../../src/core";
 
 describe("resolveQuarterdeckCommandParts", () => {
 	it("resolves node plus script entrypoint", () => {
@@ -45,5 +50,18 @@ describe("buildQuarterdeckCommandParts", () => {
 				argv: ["/usr/local/bin/node", "/tmp/.npx/321/node_modules/quarterdeck/dist/cli.js"],
 			}),
 		).toEqual(["/usr/local/bin/node", "/tmp/.npx/321/node_modules/quarterdeck/dist/cli.js", "hooks", "ingest"]);
+	});
+
+	it("serializes the resolved invocation through the platform command-line owner", () => {
+		const context = {
+			execPath: "C:\\Quarterdeck %NAME% ! ^ & (runtime)\\node.exe",
+			argv: ["C:\\Quarterdeck %NAME% ! ^ & (runtime)\\node.exe", "C:\\Quarterdeck source\\cli.js"],
+		};
+		const parts = buildQuarterdeckCommandParts(["hooks", "ingest", "--event", "activity"], context);
+		const env = { SystemRoot: "C:\\Windows" };
+
+		expect(buildQuarterdeckCommandLine(["hooks", "ingest", "--event", "activity"], context, "win32", env)).toBe(
+			buildShellCommandLine(parts[0] ?? "", parts.slice(1), "win32", env),
+		);
 	});
 });

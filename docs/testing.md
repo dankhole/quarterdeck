@@ -38,6 +38,7 @@ This document owns test selection. [`DEVELOPMENT.md`](../DEVELOPMENT.md) lists d
 | `npm run test -- <paths...>` | Root Vitest tests, optionally focused by path | Web UI tests |
 | `npm run test:fast` | `test/runtime` and `test/utilities` | `test/integration`, web UI tests |
 | `npm run test:integration` | `test/integration` | Runtime unit tests, web UI tests |
+| `npm run test:windows-smoke` | Packaged CLI plus focused native Windows integration checks; fails off Windows and requires a prior build | Full root/web suites and the remaining native acceptance gate |
 | `npm run web:test -- <paths...>` | Web UI Vitest tests, optionally focused by path | Root tests, Playwright |
 | `npm run typecheck` | Runtime TypeScript | Web UI TypeScript |
 | `npm run web:typecheck` | Web UI TypeScript | Runtime TypeScript |
@@ -48,7 +49,7 @@ This document owns test selection. [`DEVELOPMENT.md`](../DEVELOPMENT.md) lists d
 
 The pre-commit hook already runs staged Biome, the runtime typecheck, and `test:fast`. Account for that when choosing manual pre-commit validation instead of repeating it on an unchanged tree.
 
-CI currently runs the production build (which includes the web typecheck), `npm run check`, and web unit tests on Ubuntu and macOS. It does not repeat the web typecheck as a separate step, and it does not run `web:e2e`, Agent Lab, or a Windows lane. Local validation should prove the change; it does not need to impersonate CI unless release or PR-readiness work explicitly calls for that gate.
+CI runs the production build (which includes the web typecheck), `npm run check`, and web unit tests on Ubuntu, macOS, and Windows. The non-optional Windows job also fetches and gracefully stops the packaged CLI before the root gate, whose integration suite covers native ConPTY resize/reconnect/restore, long/case-sensitive Git paths, junction/copy worktrees, exact process ownership, DACLs, hook/status-line transport, host launch, and parent-disconnect shutdown. CI does not repeat the web typecheck as a separate step and does not run `web:e2e` or Agent Lab. Local validation should prove the change; it does not need to impersonate CI unless release or PR-readiness work explicitly calls for that gate. See the [native Windows guide](./windows-native-smoke.md) for the exact clean, focused, and manual commands.
 
 ## Focused test selection
 

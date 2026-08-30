@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
-import { lstat, open, readFile, realpath, stat } from "node:fs/promises";
-import { isAbsolute, normalize, relative, resolve } from "node:path";
+import type { Stats } from "node:fs";
+import { type FileHandle, lstat, realpath } from "node:fs/promises";
+import { normalize, resolve } from "node:path";
 
-import type { RuntimeFileContentResponse } from "../core";
+import { areFileSystemPathsEqual, isFileSystemPathWithin, type RuntimeFileContentResponse } from "../core";
+import { openValidatedContainedRegularFile } from "../fs";
 import {
 	hasSkippedWorkdirPathComponent,
 	MUTABLE_WORKDIR_PATH_BLOCKED_MESSAGE,
@@ -109,23 +111,59 @@ export function createWorkdirFileContentHash(buffer: Buffer): string {
 
 function resolveContainedPath(worktreePath: string, relativePath: string): string {
 	const absolutePath = resolve(worktreePath, normalize(relativePath));
-	const rel = relative(worktreePath, absolutePath);
-	if (!rel || rel.startsWith("..") || isAbsolute(rel)) {
+	if (areFileSystemPathsEqual(worktreePath, absolutePath) || !isFileSystemPathWithin(worktreePath, absolutePath)) {
 		throw new Error("Path resolves outside the worktree.");
 	}
 	return absolutePath;
 }
 
-export async function resolveWorkdirFilePath(worktreePath: string, relativePath: string): Promise<string> {
+async function resolveCanonicalWorkdirFilePath(
+	worktreePath: string,
+	relativePath: string,
+): Promise<{ canonicalRoot: string; canonicalPath: string }> {
 	const absolutePath = resolveContainedPath(worktreePath, relativePath);
 	// Resolve symlinks so a link inside the worktree cannot escape to an arbitrary target
-	const realWorktree = await realpath(worktreePath);
-	const realAbsolute = await realpath(absolutePath);
-	const realRel = relative(realWorktree, realAbsolute);
-	if (!realRel || realRel.startsWith("..") || isAbsolute(realRel)) {
+	const canonicalRoot = await realpath(worktreePath);
+	const canonicalPath = await realpath(absolutePath);
+	if (areFileSystemPathsEqual(canonicalRoot, canonicalPath) || !isFileSystemPathWithin(canonicalRoot, canonicalPath)) {
 		throw new Error("Path resolves outside the worktree.");
 	}
-	return realAbsolute;
+	return { canonicalRoot, canonicalPath };
+}
+
+export async function resolveWorkdirFilePath(worktreePath: string, relativePath: string): Promise<string> {
+	return (await resolveCanonicalWorkdirFilePath(worktreePath, relativePath)).canonicalPath;
+}
+
+export interface OpenedWorkdirFile {
+	absolutePath: string;
+	fileHandle: FileHandle;
+	fileStat: Stats;
+}
+
+export async function openWorkdirFile(worktreePath: string, relativePath: string): Promise<OpenedWorkdirFile> {
+	const { canonicalRoot, canonicalPath } = await resolveCanonicalWorkdirFilePath(worktreePath, relativePath);
+	const result = await openValidatedContainedRegularFile({ canonicalRoot, canonicalPath });
+	if (result.status === "invalid") {
+		throw new Error(
+			result.reason === "not_regular_file" ? "Path is not a regular file." : "File path changed while opening.",
+		);
+	}
+	return { absolutePath: canonicalPath, fileHandle: result.fileHandle, fileStat: result.fileStat };
+}
+
+export async function readWorkdirFileHandle(fileHandle: FileHandle, maxBytes: number): Promise<Buffer> {
+	const buffer = Buffer.allocUnsafe(maxBytes + 1);
+	let offset = 0;
+	while (offset < buffer.length) {
+		const { bytesRead } = await fileHandle.read(buffer, offset, buffer.length - offset, offset);
+		if (bytesRead === 0) break;
+		offset += bytesRead;
+	}
+	if (offset > maxBytes) {
+		throw new Error(`File exceeds the ${maxBytes} byte read limit.`);
+	}
+	return buffer.subarray(0, offset);
 }
 
 export async function readWorkdirFileExcerpt(
@@ -145,24 +183,19 @@ export async function readWorkdirFileExcerpt(
 		};
 	}
 
-	const realAbsolute = await resolveWorkdirFilePath(worktreePath, relativePath);
-	const fileStat = await stat(realAbsolute);
-	if (!fileStat.isFile()) {
-		throw new Error("Path is not a regular file.");
-	}
+	const openedFile = await openWorkdirFile(worktreePath, relativePath);
 
-	const maxBytes = Math.max(1, Math.floor(maxContentBytes));
-	const readLength = Math.min(fileStat.size, Math.max(maxBytes + 4, BINARY_CHECK_BYTES));
-	const buffer = Buffer.alloc(readLength);
-	const file = await open(realAbsolute, "r");
 	try {
-		const { bytesRead } = await file.read(buffer, 0, readLength, 0);
+		const maxBytes = Math.max(1, Math.floor(maxContentBytes));
+		const readLength = Math.min(openedFile.fileStat.size, Math.max(maxBytes + 4, BINARY_CHECK_BYTES));
+		const buffer = Buffer.alloc(readLength);
+		const { bytesRead } = await openedFile.fileHandle.read(buffer, 0, readLength, 0);
 		const contentBuffer = buffer.subarray(0, bytesRead);
 		if (isBinaryWorkdirFileBuffer(contentBuffer)) {
 			return {
 				content: "",
 				binary: true,
-				size: fileStat.size,
+				size: openedFile.fileStat.size,
 				truncated: false,
 				omittedReason: "binary",
 			};
@@ -173,26 +206,26 @@ export async function readWorkdirFileExcerpt(
 		return {
 			content: contentBuffer.subarray(0, boundary).toString("utf-8"),
 			binary: false,
-			size: fileStat.size,
-			truncated: fileStat.size > boundary,
+			size: openedFile.fileStat.size,
+			truncated: openedFile.fileStat.size > boundary,
 		};
 	} finally {
-		await file.close();
+		await openedFile.fileHandle.close();
 	}
 }
 
-// TODO: add unit tests for traversal and symlink-escape path validation.
 export async function readWorkdirFile(worktreePath: string, relativePath: string): Promise<RuntimeFileContentResponse> {
 	const normalizedPath = normalizeWorkdirRelativePath(relativePath);
-	const absolutePath = await resolveWorkdirFilePath(worktreePath, normalizedPath);
-	const fileStat = await stat(absolutePath);
-	if (!fileStat.isFile()) {
-		throw new Error("Path is not a regular file.");
+	const openedFile = await openWorkdirFile(worktreePath, normalizedPath);
+	let buffer: Buffer;
+	try {
+		if (openedFile.fileStat.size > MAX_WORKDIR_FILE_READ_SIZE) {
+			throw new Error(`File exceeds the ${MAX_WORKDIR_FILE_READ_SIZE} byte read limit.`);
+		}
+		buffer = await readWorkdirFileHandle(openedFile.fileHandle, MAX_WORKDIR_FILE_READ_SIZE);
+	} finally {
+		await openedFile.fileHandle.close();
 	}
-	if (fileStat.size > MAX_WORKDIR_FILE_READ_SIZE) {
-		throw new Error(`File exceeds the ${MAX_WORKDIR_FILE_READ_SIZE} byte read limit.`);
-	}
-	const buffer = await readFile(absolutePath);
 	const size = buffer.length;
 	const binary = isBinaryWorkdirFileBuffer(buffer);
 	const contentHash = createWorkdirFileContentHash(buffer);

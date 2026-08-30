@@ -1,8 +1,8 @@
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, posix, resolve, win32 } from "node:path";
 
-import type { RuntimeGitRepositoryInfo } from "../core";
+import { isFileSystemPathWithin, normalizeFileSystemPathForComparison, type RuntimeGitRepositoryInfo } from "../core";
 import type { LockRequest } from "../fs/locked-file-system";
 import { runGit } from "../workdir/git-utils";
 
@@ -20,31 +20,30 @@ export const PINNED_BRANCHES_FILENAME = "pinned-branches.json";
 export const LIFECYCLE_OPERATIONS_FILENAME = "lifecycle-operations.json";
 export const EXECUTION_OWNERSHIP_FILENAME = "execution-ownership.json";
 
-export function getRuntimeHomePath(): string {
+function getRuntimeHomePathForPlatform(platform: NodeJS.Platform): string {
+	const pathApi = platform === "win32" ? win32 : posix;
 	const override = process.env.QUARTERDECK_STATE_HOME;
 	if (override) {
-		return resolve(override);
+		return pathApi.resolve(override);
 	}
-	return join(homedir(), RUNTIME_HOME_DIR);
+	return pathApi.join(homedir(), RUNTIME_HOME_DIR);
+}
+
+function getTaskWorktreesHomePathForPlatform(platform: NodeJS.Platform): string {
+	const pathApi = platform === "win32" ? win32 : posix;
+	return pathApi.join(getRuntimeHomePathForPlatform(platform), RUNTIME_WORKTREES_DIR);
+}
+
+export function getRuntimeHomePath(): string {
+	return getRuntimeHomePathForPlatform(process.platform);
 }
 
 export function getTaskWorktreesHomePath(): string {
-	const override = process.env.QUARTERDECK_STATE_HOME;
-	if (override) {
-		return join(resolve(override), RUNTIME_WORKTREES_DIR);
-	}
-	return join(homedir(), RUNTIME_HOME_DIR, RUNTIME_WORKTREES_DIR);
+	return getTaskWorktreesHomePathForPlatform(process.platform);
 }
 
-function normalizePathForContainment(path: string): string {
-	const normalized = resolve(path).replace(/\\/gu, "/").replace(/\/+$/u, "") || "/";
-	return process.platform === "win32" ? normalized.toLowerCase() : normalized;
-}
-
-export function isUnderWorktreesHome(repoPath: string): boolean {
-	const worktreesHome = normalizePathForContainment(getTaskWorktreesHomePath());
-	const normalized = normalizePathForContainment(repoPath);
-	return normalized === worktreesHome || normalized.startsWith(`${worktreesHome}/`);
+export function isUnderWorktreesHome(repoPath: string, platform: NodeJS.Platform = process.platform): boolean {
+	return isFileSystemPathWithin(getTaskWorktreesHomePathForPlatform(platform), repoPath, platform);
 }
 
 export function getProjectsRootPath(): string {
@@ -125,7 +124,7 @@ const gitRepositoryInfoLoadPromises = new Map<string, Promise<RuntimeGitReposito
 let gitRepositoryInfoCacheGeneration = 0;
 
 function normalizeGitRepositoryCacheKey(repoPath: string): string {
-	return resolve(repoPath);
+	return normalizeFileSystemPathForComparison(repoPath);
 }
 
 export function invalidateGitRepositoryInfoCache(repoPath?: string): void {

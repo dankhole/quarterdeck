@@ -1,5 +1,6 @@
 import { delimiter, join } from "node:path";
 
+import { getWindowsEnvironmentValue } from "../../src/core/windows-system-paths.js";
 import { resolveAgentLabProviderPolicy } from "./provider-policy";
 import { AGENT_LAB_REAL_CLAUDE_GATEWAY_ENVIRONMENT_KEYS } from "./real-claude";
 import type { AgentLabLaunchAgentConfig } from "./types";
@@ -28,6 +29,7 @@ const FORWARDED_ENVIRONMENT_KEYS = [
 	"LC_CTYPE",
 	"SHELL",
 	"SystemRoot",
+	"WINDIR",
 	"ComSpec",
 	"PATHEXT",
 	"CODEX_CA_CERTIFICATE",
@@ -35,19 +37,23 @@ const FORWARDED_ENVIRONMENT_KEYS = [
 	"SSL_CERT_FILE",
 ] as const;
 
+function getSourceEnvironmentValue(source: NodeJS.ProcessEnv, key: string): string | undefined {
+	return process.platform === "win32" ? getWindowsEnvironmentValue(source, key) : source[key];
+}
+
 export function buildAgentLabEnvironment(
 	source: NodeJS.ProcessEnv,
 	paths: AgentLabEnvironmentPaths,
 ): NodeJS.ProcessEnv {
 	const environment: NodeJS.ProcessEnv = {};
 	for (const key of FORWARDED_ENVIRONMENT_KEYS) {
-		const value = source[key];
+		const value = getSourceEnvironmentValue(source, key);
 		if (value) {
 			environment[key] = value;
 		}
 	}
 
-	const sourcePath = source.PATH ?? source.Path ?? "";
+	const sourcePath = getSourceEnvironmentValue(source, "PATH") ?? "";
 	const pathValue = [paths.fakeBinPath, sourcePath].filter(Boolean).join(delimiter);
 	const emptyGitConfigPath = join(paths.tempRoot, "empty-gitconfig");
 	const providerPolicy = resolveAgentLabProviderPolicy(paths.agent);
@@ -96,9 +102,10 @@ export function buildAgentLabEnvironment(
 	return {
 		...environment,
 		PATH: pathValue,
-		Path: process.platform === "win32" ? pathValue : undefined,
 		HOME: paths.homePath,
 		USERPROFILE: paths.homePath,
+		APPDATA: join(paths.homePath, "AppData", "Roaming"),
+		LOCALAPPDATA: join(paths.homePath, "AppData", "Local"),
 		XDG_CACHE_HOME: join(paths.homePath, ".cache"),
 		XDG_CONFIG_HOME: join(paths.homePath, ".config"),
 		XDG_DATA_HOME: join(paths.homePath, ".local", "share"),
@@ -140,7 +147,7 @@ export function buildSupervisorEnvironment(
 ): NodeJS.ProcessEnv {
 	const environment: NodeJS.ProcessEnv = {};
 	for (const key of [...FORWARDED_ENVIRONMENT_KEYS, "PATH"] as const) {
-		const value = source[key];
+		const value = getSourceEnvironmentValue(source, key);
 		if (value) {
 			environment[key] = value;
 		}

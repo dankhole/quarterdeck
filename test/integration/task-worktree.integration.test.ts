@@ -12,16 +12,20 @@ import {
 import { runGit } from "../utilities/git-env";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
-function expectMirroredPathBehavior(path: string): void {
-	const exists = existsSync(path);
-	if (process.platform === "win32") {
-		if (exists) {
-			expect(lstatSync(path).isSymbolicLink()).toBe(true);
-		}
-		return;
-	}
-	expect(exists).toBe(true);
+function expectMirroredDirectoryPath(path: string): void {
+	expect(existsSync(path)).toBe(true);
 	expect(lstatSync(path).isSymbolicLink()).toBe(true);
+}
+
+function expectMirroredFilePath(path: string, expectedContent: string): void {
+	expect(existsSync(path)).toBe(true);
+	const stat = lstatSync(path);
+	if (process.platform === "win32") {
+		expect(stat.isSymbolicLink() || stat.isFile()).toBe(true);
+	} else {
+		expect(stat.isSymbolicLink()).toBe(true);
+	}
+	expect(readFileSync(path, "utf8")).toBe(expectedContent);
 }
 
 describe.sequential("task-worktree integration", () => {
@@ -52,7 +56,7 @@ describe.sequential("task-worktree integration", () => {
 		});
 	});
 
-	it("keeps symlinked ignored paths ignored in task worktrees", async () => {
+	it("keeps mirrored ignored files and directories ignored in task worktrees", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-");
 			try {
@@ -64,12 +68,14 @@ describe.sequential("task-worktree integration", () => {
 				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
 				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
+				writeFileSync(join(repoPath, ".gitignore"), "/.task-setup.env\n", "utf8");
+				writeFileSync(join(repoPath, ".task-setup.env"), "TASK_SETUP=ready\n", "utf8");
 				mkdirSync(join(repoPath, ".husky", "_"), { recursive: true });
 				writeFileSync(join(repoPath, ".husky", "pre-commit"), "#!/bin/sh\nexit 0\n", "utf8");
 				writeFileSync(join(repoPath, ".husky", "_", ".gitignore"), "*\n", "utf8");
 				writeFileSync(join(repoPath, ".husky", "_", "pre-commit"), "#!/bin/sh\nexit 0\n", "utf8");
 
-				runGit(repoPath, ["add", "README.md", ".husky/pre-commit"]);
+				runGit(repoPath, ["add", "README.md", ".gitignore", ".husky/pre-commit"]);
 				runGit(repoPath, ["commit", "-m", "init"]);
 
 				const ignoredPaths = runGit(repoPath, [
@@ -92,11 +98,15 @@ describe.sequential("task-worktree integration", () => {
 				}
 
 				const huskyIgnoredPath = join(ensured.path, ".husky", "_");
-				expectMirroredPathBehavior(huskyIgnoredPath);
+				const setupFilePath = join(ensured.path, ".task-setup.env");
+				expectMirroredDirectoryPath(huskyIgnoredPath);
+				expectMirroredFilePath(setupFilePath, "TASK_SETUP=ready\n");
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".husky/_"])).toBe("");
+				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".task-setup.env"])).toBe("");
 				if (existsSync(huskyIgnoredPath)) {
 					expect(runGit(ensured.path, ["check-ignore", "-v", ".husky/_"])).toContain("info/exclude");
 				}
+				expect(runGit(ensured.path, ["check-ignore", "-v", ".task-setup.env"])).toContain(".task-setup.env");
 
 				const ensuredAgain = await ensureTaskWorktreeIfDoesntExist({
 					cwd: repoPath,
@@ -105,7 +115,8 @@ describe.sequential("task-worktree integration", () => {
 				});
 				expect(ensuredAgain.ok).toBe(true);
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".husky/_"])).toBe("");
-				expectMirroredPathBehavior(huskyIgnoredPath);
+				expectMirroredDirectoryPath(huskyIgnoredPath);
+				expectMirroredFilePath(setupFilePath, "TASK_SETUP=ready\n");
 			} finally {
 				cleanup();
 			}
@@ -153,7 +164,7 @@ describe.sequential("task-worktree integration", () => {
 
 				const nextPath = join(ensured.path, ".next");
 				const nodeModulesPath = join(ensured.path, "node_modules");
-				expectMirroredPathBehavior(nextPath);
+				expectMirroredDirectoryPath(nextPath);
 				expect(existsSync(nodeModulesPath)).toBe(false);
 				expect(existsSync(join(ensured.path, "test-results"))).toBe(false);
 				expect(existsSync(join(ensured.path, ".agent-lab-results"))).toBe(false);

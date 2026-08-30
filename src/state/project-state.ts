@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { copyFile, realpath, rm } from "node:fs/promises";
+import { copyFile, realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 
@@ -17,6 +17,7 @@ import {
 	runtimeTaskSessionSummarySchema,
 } from "../core";
 import { lockedFileSystem } from "../fs/locked-file-system";
+import { removeDirectoryWithRetries } from "../fs/remove-path";
 import {
 	ensureProjectEntry,
 	findProjectEntry,
@@ -310,10 +311,7 @@ export async function removeProjectStateFiles(projectId: string): Promise<void> 
 	await lockedFileSystem.withLocks(
 		[getProjectsRootLockRequest(), getProjectDirectoryLockRequest(projectId)],
 		async () => {
-			await rm(getProjectDirectoryPath(projectId), {
-				recursive: true,
-				force: true,
-			});
+			await removeDirectoryWithRetries(getProjectDirectoryPath(projectId));
 		},
 	);
 }

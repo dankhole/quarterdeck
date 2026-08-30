@@ -12,9 +12,9 @@ import {
 	launchManagedProcess,
 	resolveExitCode,
 } from "./dev-process.mjs";
+import { resolveNpmCommand } from "./npm-command.mjs";
 
 const children = [];
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 let isShuttingDown = false;
 let shutdownExitCode = 0;
 let shutdownPromise = null;
@@ -37,9 +37,10 @@ function prefix(label, stream, dest) {
 	});
 }
 
-function launch(label, command, args) {
+function launch(label, command, args, options = {}) {
 	const managed = launchManagedProcess(command, args, {
 		stdio: ["ignore", "pipe", "pipe"],
+		...options,
 		cwd: process.cwd(),
 		onForceKill: () => {
 			console.error(`[${label}] did not exit before timeout. Force killing...`);
@@ -77,7 +78,10 @@ const uninstallSignalHandlers = installForwardedShutdownHandlers((signal) => {
 	void requestShutdown(signal);
 });
 
-launch("runtime", process.execPath, ["scripts/dev-runtime.mjs", ...process.argv.slice(2)]);
-launch("web-ui", npmCommand, ["--prefix", "web-ui", "run", "dev"]);
+launch("runtime", process.execPath, ["scripts/dev-runtime.mjs", ...process.argv.slice(2)], {
+	gracefulShutdownViaStdin: true,
+});
+const webUiCommand = resolveNpmCommand(["--prefix", "web-ui", "run", "dev"]);
+launch("web-ui", webUiCommand.command, webUiCommand.args);
 
 console.log("[dev-full] Starting runtime + web-ui dev servers...");

@@ -1,12 +1,12 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import { describe, expect, it, vi } from "vitest";
-
 import { _testing as browserActionTesting } from "../../scripts/agent-lab/browser-actions";
+import { resolveGitCommonDirectory } from "../../scripts/agent-lab/browser-cache.mjs";
 import { describeAgentLabAgent, parseAgentLabPort, runAgentLabCli } from "../../scripts/agent-lab/cli";
 import { buildAgentLabEnvironment, buildSupervisorEnvironment } from "../../scripts/agent-lab/environment";
 import {
@@ -54,20 +54,39 @@ import {
 	getAgentAvailability,
 	resetAgentAvailabilityCache,
 } from "../../src/config/agent-registry";
-import { isBinaryAvailableOnPath } from "../../src/core";
+import { isBinaryAvailableOnPath, mergeProcessEnvironment, resolveWindowsPowerShellPath } from "../../src/core";
 
 const execFileAsync = promisify(execFile);
 
 describe("agent-lab browser cache", () => {
+	it("derives a linked worktree common directory without launching Git from the checkout", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-browser-gitdir-"));
+		try {
+			const repoRoot = join(root, "task-worktree");
+			const commonDirectory = join(root, "primary", ".git");
+			const worktreeGitDirectory = join(commonDirectory, "worktrees", "task");
+			await mkdir(repoRoot, { recursive: true });
+			await mkdir(worktreeGitDirectory, { recursive: true });
+			await writeFile(join(repoRoot, ".git"), `gitdir: ${worktreeGitDirectory}\n`, "utf8");
+			await writeFile(join(worktreeGitDirectory, "commondir"), "../..\n", "utf8");
+
+			expect(resolveGitCommonDirectory(repoRoot)).toBe(resolve(commonDirectory));
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
 	it("shares browser binaries through the primary checkout", () => {
-		expect(
-			getAgentLabBrowserCachePath("/repo/.quarterdeck/worktrees/task/quarterdeck", "/repo/quarterdeck/.git"),
-		).toBe("/repo/quarterdeck/.git/quarterdeck/agent-lab/playwright-browsers");
+		const commonDirectory = "/repo/quarterdeck/.git";
+		expect(getAgentLabBrowserCachePath("/repo/.quarterdeck/worktrees/task/quarterdeck", commonDirectory)).toBe(
+			join(resolve(commonDirectory), "quarterdeck", "agent-lab", "playwright-browsers"),
+		);
 	});
 
 	it("falls back to the active checkout for nonstandard Git layouts", () => {
-		expect(getAgentLabBrowserCachePath("/repo/quarterdeck", "/repo/quarterdeck.git")).toBe(
-			"/repo/quarterdeck.git/quarterdeck/agent-lab/playwright-browsers",
+		const commonDirectory = "/repo/quarterdeck.git";
+		expect(getAgentLabBrowserCachePath("/repo/quarterdeck", commonDirectory)).toBe(
+			join(resolve(commonDirectory), "quarterdeck", "agent-lab", "playwright-browsers"),
 		);
 	});
 
@@ -76,8 +95,10 @@ describe("agent-lab browser cache", () => {
 			"/repo/.quarterdeck/worktrees/task/quarterdeck",
 			"/repo/quarterdeck/.git",
 		);
-		expect(paths.stablePath.split("/")).not.toContain("node_modules");
-		expect(paths.legacyPath).toBe("/repo/quarterdeck/web-ui/node_modules/.cache/agent-lab-playwright");
+		expect(paths.stablePath.split(/[\\/]/u)).not.toContain("node_modules");
+		expect(paths.legacyPath).toBe(
+			join(dirname(resolve("/repo/quarterdeck/.git")), "web-ui", "node_modules", ".cache", "agent-lab-playwright"),
+		);
 	});
 
 	it("resolves the same cache for two worktrees sharing a Git common directory", () => {
@@ -88,12 +109,14 @@ describe("agent-lab browser cache", () => {
 	});
 
 	it("keeps browser profiles, daemon state, and artifacts worktree-local", () => {
-		const first = getAgentBrowserLocalPaths("/worktrees/one/quarterdeck");
-		const second = getAgentBrowserLocalPaths("/worktrees/two/quarterdeck");
+		const firstRepoRoot = "/worktrees/one/quarterdeck";
+		const secondRepoRoot = "/worktrees/two/quarterdeck";
+		const first = getAgentBrowserLocalPaths(firstRepoRoot);
+		const second = getAgentBrowserLocalPaths(secondRepoRoot);
 		expect(first).toEqual({
-			artifactRoot: "/worktrees/one/quarterdeck/test-results/agent-lab",
-			browserHomePath: "/worktrees/one/quarterdeck/test-results/agent-lab/browser-home",
-			daemonSessionPath: "/worktrees/one/quarterdeck/test-results/agent-lab/browser-daemon",
+			artifactRoot: join(firstRepoRoot, "test-results", "agent-lab"),
+			browserHomePath: join(firstRepoRoot, "test-results", "agent-lab", "browser-home"),
+			daemonSessionPath: join(firstRepoRoot, "test-results", "agent-lab", "browser-daemon"),
 		});
 		expect(second.artifactRoot).not.toBe(first.artifactRoot);
 	});
@@ -244,18 +267,22 @@ describe("agent-lab environment", () => {
 		expect(environment.OPENAI_API_KEY).toBeUndefined();
 		expect(environment.AWS_SECRET_ACCESS_KEY).toBeUndefined();
 		expect(environment.HOME).toBe("/tmp/lab/home");
+		expect(environment.APPDATA).toBe(join("/tmp/lab/home", "AppData", "Roaming"));
+		expect(environment.LOCALAPPDATA).toBe(join("/tmp/lab/home", "AppData", "Local"));
 		expect(environment.QUARTERDECK_STATE_HOME).toBe("/tmp/lab/state");
 		expect(environment.QUARTERDECK_RUNTIME_PORT).toBe("35001");
 		expect(environment.QUARTERDECK_AGENT_LAB_ADDITIONAL_PROJECT).toBe("/tmp/lab/project-secondary");
 		expect(environment.QUARTERDECK_AGENT_LAB_ALLOWED_AGENT_IDS).toBe("codex,pi");
 		expect(environment.PATH).toBe(["/tmp/lab/bin", "/host/bin"].join(delimiter));
+		expect(Object.keys(environment).filter((key) => key.toLowerCase() === "path")).toEqual(["PATH"]);
 	});
 
 	it("exposes real profile paths only through wrapper-specific variables", () => {
+		const codexHomePath = resolve("/account/home/.codex");
 		const agent = resolveRealCodexAgent(
 			{
 				model: "gpt-5.6-luna",
-				codexHomePath: "/account/home/.codex",
+				codexHomePath,
 			},
 			{ PATH: "/host/bin", OPENAI_API_KEY: "must-not-leak" },
 		);
@@ -283,7 +310,7 @@ describe("agent-lab environment", () => {
 		expect(environment.HOME).toBe("/tmp/lab/home");
 		expect(environment.CODEX_HOME).toBeUndefined();
 		expect(environment.OPENAI_API_KEY).toBeUndefined();
-		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME).toBe("/account/home/.codex");
+		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME).toBe(codexHomePath);
 		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CODEX_ACCOUNT_HOME).toBeUndefined();
 		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL).toBe("gpt-5.6-luna");
 		expect(environment.QUARTERDECK_TITLE_PROVIDER).toBe("local");
@@ -862,14 +889,15 @@ describe("agent-lab real Codex", () => {
 	});
 
 	it("resolves the existing profile without copying credentials into the public manifest", () => {
-		const agent = resolveRealCodexAgent({}, { CODEX_HOME: "/profiles/codex", PATH: "/host/bin" });
+		const codexHomePath = resolve("/profiles/codex");
+		const agent = resolveRealCodexAgent({}, { CODEX_HOME: codexHomePath, PATH: "/host/bin" });
 		expect(agent).toMatchObject({
 			mode: "real-codex",
 			model: "gpt-5.6-luna",
 			modelProvider: "openai",
 			reasoningEffort: "low",
 			profileSource: "environment",
-			codexHomePath: "/profiles/codex",
+			codexHomePath,
 			sandbox: "read-only",
 			approvalPolicy: "on-request",
 		});
@@ -891,8 +919,21 @@ describe("agent-lab real Codex", () => {
 		});
 	});
 
+	it("resolves copied Windows Codex environment keys case-insensitively", () => {
+		const agent = resolveRealCodexAgent(
+			{ platform: "win32" },
+			{ Codex_Home: "C:\\Profiles\\codex", Path: "C:\\Tools" },
+		);
+
+		expect(agent).toMatchObject({
+			profileSource: "environment",
+			codexHomePath: "C:\\Profiles\\codex",
+		});
+	});
+
 	it("preflights cached CLI authentication without forwarding API keys", () => {
-		const agent = resolveRealCodexAgent({ codexHomePath: "/profiles/codex" }, {});
+		const codexHomePath = resolve("/profiles/codex");
+		const agent = resolveRealCodexAgent({ codexHomePath }, {});
 		const environment = buildRealCodexPreflightEnvironment(
 			{
 				PATH: "/host/bin",
@@ -908,9 +949,34 @@ describe("agent-lab real Codex", () => {
 			LANG: "en_US.UTF-8",
 			HOME: "/account/home",
 			USERPROFILE: "/account/home",
-			CODEX_HOME: "/profiles/codex",
+			CODEX_HOME: codexHomePath,
 		});
 		expect(environment.OPENAI_API_KEY).toBeUndefined();
+	});
+
+	it("copies Windows preflight environment keys case-insensitively", () => {
+		const agent = resolveRealCodexAgent({ codexHomePath: "C:\\Profiles\\codex", platform: "win32" }, {});
+		const environment = buildRealCodexPreflightEnvironment(
+			{
+				Path: "C:\\Host\\bin",
+				systemroot: "C:\\Windows",
+				pathext: ".EXE;.CMD",
+				appdata: "C:\\Users\\tester\\AppData\\Roaming",
+				localappdata: "C:\\Users\\tester\\AppData\\Local",
+			},
+			agent,
+			"win32",
+		);
+
+		expect(environment).toMatchObject({
+			PATH: "C:\\Host\\bin",
+			SystemRoot: "C:\\Windows",
+			PATHEXT: ".EXE;.CMD",
+			APPDATA: "C:\\Users\\tester\\AppData\\Roaming",
+			LOCALAPPDATA: "C:\\Users\\tester\\AppData\\Local",
+			CODEX_HOME: "C:\\Profiles\\codex",
+		});
+		expect(Object.keys(environment).filter((key) => key.toLowerCase() === "path")).toEqual(["PATH"]);
 	});
 
 	it("writes a Windows launcher with the same profile and provider policy", async () => {
@@ -918,6 +984,7 @@ describe("agent-lab real Codex", () => {
 		try {
 			await writeRealCodexLauncher(root);
 			const launcher = await readFile(join(root, "codex.cmd"), "utf8");
+			const powerShellLauncher = await readFile(join(root, "codex.ps1"), "utf8");
 			expect(launcher).not.toContain("REAL_CODEX_ACCOUNT_HOME");
 			expect(launcher).toContain('set "QUARTERDECK_AGENT_LAB_REAL_CODEX_RUNTIME_PATH=%PATH%"');
 			expect(launcher).toContain('set "PATH=%QUARTERDECK_AGENT_LAB_REAL_CODEX_HOST_PATH%"');
@@ -945,6 +1012,9 @@ describe("agent-lab real Codex", () => {
 			expect(launcher).toContain('if /I "%~1"=="--not-so-yolo" set "_QD_HAS_APPROVAL_POLICY=1"');
 			expect(launcher).toContain('if /I "%~1"=="--approve-for-me" set "_QD_HAS_SANDBOX=1"');
 			expect(launcher).toContain('if /I "%~1"=="--not-so-yolo" set "_QD_HAS_SANDBOX=1"');
+			expect(powerShellLauncher).toContain("Get-Command codex -CommandType Application,ExternalScript");
+			expect(powerShellLauncher).toContain("& $realCodexBinary @launchArguments");
+			expect(powerShellLauncher).toContain("features.multi_agent=false");
 			expect(launcher).toContain(
 				'if /I "%~1"=="--dangerously-bypass-approvals-and-sandbox" set "_QD_HAS_APPROVAL_POLICY=1"',
 			);
@@ -1015,6 +1085,101 @@ describe("agent-lab real Codex", () => {
 		},
 	);
 
+	it.runIf(process.platform === "win32")(
+		"executes the host Codex through the PowerShell launcher with bounded policy and exact profile identity",
+		async () => {
+			const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-real-codex-windows-exec-"));
+			const fakeBinPath = join(root, "fake-bin");
+			const hostBinPath = join(root, "host-bin");
+			const capturePath = join(root, "capture.json");
+			const labHome = join(root, "lab-home");
+			try {
+				await Promise.all([mkdir(fakeBinPath, { recursive: true }), mkdir(hostBinPath, { recursive: true })]);
+				await writeFile(
+					join(hostBinPath, "codex.ps1"),
+					[
+						"$payload = [pscustomobject]@{",
+						"  home = $env:HOME",
+						"  codexHome = $env:CODEX_HOME",
+						"  profileVariable = $env:QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME",
+						"  hostPathVariable = $env:QUARTERDECK_AGENT_LAB_REAL_CODEX_HOST_PATH",
+						"  runtimePath = $env:PATH",
+						"  arguments = @($args)",
+						"}",
+						"[System.IO.File]::WriteAllText($env:CAPTURE_PATH, (ConvertTo-Json -InputObject $payload -Depth 4 -Compress))",
+						"",
+					].join("\r\n"),
+					"utf8",
+				);
+				await writeRealCodexLauncher(fakeBinPath);
+				const runtimePath = [fakeBinPath, hostBinPath].join(delimiter);
+				await execFileAsync(
+					resolveWindowsPowerShellPath(),
+					[
+						"-NoProfile",
+						"-NonInteractive",
+						"-ExecutionPolicy",
+						"Bypass",
+						"-File",
+						join(fakeBinPath, "codex.ps1"),
+						"-c",
+						"hooks.state={}",
+						"--",
+						"--model=prompt-text",
+					],
+					{
+						env: mergeProcessEnvironment(
+							process.env,
+							{
+								...process.env,
+								HOME: labHome,
+								PATH: runtimePath,
+								QUARTERDECK_AGENT_LAB_REAL_CODEX_HOST_PATH: hostBinPath,
+								QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME: join(root, "profiles", "codex"),
+								QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL: "gpt-5.6-luna",
+								QUARTERDECK_AGENT_LAB_REAL_CODEX_SANDBOX: "read-only",
+								QUARTERDECK_AGENT_LAB_REAL_CODEX_APPROVAL_POLICY: "on-request",
+								CAPTURE_PATH: capturePath,
+							},
+							"win32",
+						),
+						windowsHide: true,
+					},
+				);
+				const captured = JSON.parse(await readFile(capturePath, "utf8")) as {
+					home: string;
+					codexHome: string;
+					profileVariable: string | null;
+					hostPathVariable: string | null;
+					runtimePath: string;
+					arguments: string[];
+				};
+				expect(captured).toMatchObject({
+					home: labHome,
+					codexHome: join(root, "profiles", "codex"),
+					profileVariable: null,
+					hostPathVariable: null,
+					runtimePath,
+				});
+				expect(captured.arguments).toEqual([
+					...AGENT_LAB_REAL_CODEX_CONFIG_OVERRIDES.flatMap((value) => ["-c", value]),
+					"--model",
+					"gpt-5.6-luna",
+					"--sandbox",
+					"read-only",
+					"--ask-for-approval",
+					"on-request",
+					"-c",
+					"hooks.state={}",
+					"--",
+					"--model=prompt-text",
+				]);
+			} finally {
+				await rm(root, { recursive: true, force: true });
+			}
+		},
+	);
+
 	it.runIf(process.platform !== "win32").each([
 		{ explicitArgs: ["--approve-for-me"], expectedApprovalFlagCount: 0 },
 		{ explicitArgs: ["--not-so-yolo"], expectedApprovalFlagCount: 0 },
@@ -1061,6 +1226,73 @@ describe("agent-lab real Codex", () => {
 			await rm(root, { recursive: true, force: true });
 		}
 	});
+
+	it.runIf(process.platform === "win32").each([
+		{ explicitArgs: ["--approve-for-me"], expectedApprovalFlagCount: 0 },
+		{ explicitArgs: ["--not-so-yolo"], expectedApprovalFlagCount: 0 },
+		{ explicitArgs: ["--dangerously-bypass-approvals-and-sandbox"], expectedApprovalFlagCount: 0 },
+		{ explicitArgs: ["--yolo"], expectedApprovalFlagCount: 0 },
+		{ explicitArgs: ["--ask-for-approval", "never"], expectedApprovalFlagCount: 1 },
+	])(
+		"does not combine the Windows real Codex launcher with explicit approval mode $explicitArgs",
+		async (testCase) => {
+			const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-real-codex-windows-approval-"));
+			const fakeBinPath = join(root, "fake-bin");
+			const hostBinPath = join(root, "host-bin");
+			const capturePath = join(root, "capture.json");
+			try {
+				await Promise.all([mkdir(fakeBinPath, { recursive: true }), mkdir(hostBinPath, { recursive: true })]);
+				await writeFile(
+					join(hostBinPath, "codex.ps1"),
+					"[System.IO.File]::WriteAllText($env:CAPTURE_PATH, (ConvertTo-Json -InputObject @($args) -Compress))\r\n",
+					"utf8",
+				);
+				await writeRealCodexLauncher(fakeBinPath);
+				await execFileAsync(
+					resolveWindowsPowerShellPath(),
+					[
+						"-NoProfile",
+						"-NonInteractive",
+						"-ExecutionPolicy",
+						"Bypass",
+						"-File",
+						join(fakeBinPath, "codex.ps1"),
+						...testCase.explicitArgs,
+					],
+					{
+						env: mergeProcessEnvironment(
+							process.env,
+							{
+								...process.env,
+								PATH: [fakeBinPath, hostBinPath].join(delimiter),
+								QUARTERDECK_AGENT_LAB_REAL_CODEX_HOST_PATH: hostBinPath,
+								QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME: join(root, "profiles", "codex"),
+								QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL: "gpt-5.6-luna",
+								QUARTERDECK_AGENT_LAB_REAL_CODEX_SANDBOX: "read-only",
+								QUARTERDECK_AGENT_LAB_REAL_CODEX_APPROVAL_POLICY: "on-request",
+								CAPTURE_PATH: capturePath,
+							},
+							"win32",
+						),
+						windowsHide: true,
+					},
+				);
+				const parsed = JSON.parse(await readFile(capturePath, "utf8")) as string | string[];
+				const capturedArgs = Array.isArray(parsed) ? parsed : [parsed];
+				expect(capturedArgs.filter((argument) => argument === "--ask-for-approval")).toHaveLength(
+					testCase.expectedApprovalFlagCount,
+				);
+				for (const explicitArg of testCase.explicitArgs) expect(capturedArgs).toContain(explicitArg);
+				if (testCase.expectedApprovalFlagCount === 0) {
+					expect(capturedArgs).not.toContain("--sandbox");
+				} else {
+					expect(capturedArgs).toContain("--sandbox");
+				}
+			} finally {
+				await rm(root, { recursive: true, force: true });
+			}
+		},
+	);
 
 	it.each([
 		["--model", "gpt-5.6-luna"],
@@ -1230,6 +1462,8 @@ describe("agent-lab run ids", () => {
 		expect(runId).toMatch(/^visual-debug-20260823T123456Z-[a-f0-9]{6}$/);
 		expect(assertSafeRunId(runId)).toBe(runId);
 		expect(() => assertSafeRunId("../escape")).toThrow("Invalid agent-lab run id");
+		expect(() => assertSafeRunId("con", "win32")).toThrow("Invalid agent-lab run id");
+		expect(assertSafeRunId("con", "linux")).toBe("con");
 	});
 });
 

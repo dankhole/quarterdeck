@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -18,6 +18,59 @@ function requireContentHash(contentHash: string | undefined): string {
 }
 
 describe("workdir file editing", () => {
+	it("reads valid file names with leading spaces", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-read-leading-space-");
+		try {
+			writeFileSync(join(repoPath, " leading.txt"), "content\n", "utf8");
+
+			const loaded = await readWorkdirFile(repoPath, " leading.txt");
+
+			expect(loaded.content).toBe("content\n");
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("reads valid file names that begin with two dots", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-read-dot-prefix-");
+		try {
+			writeFileSync(join(repoPath, "..notes"), "content\n", "utf8");
+
+			const loaded = await readWorkdirFile(repoPath, "..notes");
+
+			expect(loaded.content).toBe("content\n");
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("rejects reads that traverse outside the worktree", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-read-workdir-traversal-");
+		try {
+			await expect(readWorkdirFile(repoPath, "../outside.txt")).rejects.toThrow(
+				"Path resolves outside the worktree.",
+			);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("rejects reads through a directory link that escapes the worktree", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-read-workdir-link-");
+		const { path: outsidePath, cleanup: cleanupOutside } = createTempDir("quarterdeck-read-workdir-outside-");
+		try {
+			writeFileSync(join(outsidePath, "secret.txt"), "secret\n", "utf8");
+			symlinkSync(outsidePath, join(repoPath, "linked"), process.platform === "win32" ? "junction" : "dir");
+
+			await expect(readWorkdirFile(repoPath, "linked/secret.txt")).rejects.toThrow(
+				"Path resolves outside the worktree.",
+			);
+		} finally {
+			cleanup();
+			cleanupOutside();
+		}
+	});
+
 	it("saves text files when the loaded content hash still matches", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-save-workdir-file-");
 		try {

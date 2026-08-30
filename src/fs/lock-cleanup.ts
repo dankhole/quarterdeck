@@ -26,6 +26,7 @@ import { getProjectsRootPath, getRuntimeHomePath } from "../state/project-state.
 import { getGitCommonDir, getGitDir } from "../workdir/git-utils.js";
 import { cleanupStaleLockAndTempFiles, DEFAULT_LOCK_STALE_MS } from "./locked-file-system.js";
 import { isNodeError } from "./node-error.js";
+import { removeDirectoryWithRetries } from "./remove-path.js";
 
 /** Staleness threshold for git index.lock files (seconds). */
 const GIT_INDEX_LOCK_STALE_MS = 10_000;
@@ -118,7 +119,7 @@ async function cleanupNamedStaleLockArtifacts(
 			try {
 				const info = await stat(entryPath);
 				if (now - info.mtimeMs < staleMs) continue;
-				await rm(entryPath, { recursive: true, force: true });
+				await removeDirectoryWithRetries(entryPath);
 				warn?.(`Removed stale artifact: ${entryPath}`);
 			} catch {
 				// Best-effort cleanup — ignore individual failures.

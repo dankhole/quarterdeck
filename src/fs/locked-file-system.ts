@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import type { LockOptions } from "proper-lockfile";
 import * as lockfile from "proper-lockfile";
 import { isNodeError } from "./node-error";
+import { removeDirectoryWithRetries } from "./remove-path";
 
 export const DEFAULT_LOCK_STALE_MS = 10_000;
 const DEFAULT_LOCK_RETRIES: NonNullable<LockOptions["retries"]> = {
@@ -98,7 +99,7 @@ export async function cleanupStaleLockAndTempFiles(
 					if (now - info.mtimeMs < staleMs) {
 						continue;
 					}
-					await rm(entryPath, { recursive: true, force: true });
+					await removeDirectoryWithRetries(entryPath);
 					warn?.(`Removed stale artifact: ${entryPath}`);
 				} catch {
 					// Best-effort cleanup — ignore individual failures.
@@ -109,6 +110,8 @@ export async function cleanupStaleLockAndTempFiles(
 }
 
 export class LockedFileSystem {
+	constructor(private readonly platform: NodeJS.Platform = process.platform) {}
+
 	private async normalizeLockRequest(request: LockRequest): Promise<NormalizedLockRequest> {
 		if (request.type === "directory") {
 			await mkdir(request.path, { recursive: true });
@@ -137,15 +140,23 @@ export class LockedFileSystem {
 		const normalizedRequests = await Promise.all(
 			requests.map(async (request) => await this.normalizeLockRequest(request)),
 		);
-		const caseInsensitive = process.platform === "win32";
+		const caseInsensitive = this.platform === "win32";
 		const orderedRequests = normalizedRequests.slice().sort((left, right) => {
 			const l = caseInsensitive ? left.sortKey.toLowerCase() : left.sortKey;
 			const r = caseInsensitive ? right.sortKey.toLowerCase() : right.sortKey;
 			return l.localeCompare(r);
 		});
+		const uniqueRequests: NormalizedLockRequest[] = [];
+		const seenSortKeys = new Set<string>();
+		for (const request of orderedRequests) {
+			const identity = caseInsensitive ? request.sortKey.toLowerCase() : request.sortKey;
+			if (seenSortKeys.has(identity)) continue;
+			seenSortKeys.add(identity);
+			uniqueRequests.push(request);
+		}
 		const releases: Array<() => Promise<void>> = [];
 		try {
-			for (const request of orderedRequests) {
+			for (const request of uniqueRequests) {
 				releases.push(await lockfile.lock(request.path, request.options));
 			}
 			return await operation();
@@ -167,9 +178,9 @@ export class LockedFileSystem {
 		const writeOperation = async () => {
 			const existingContent = await readFileIfExists(path);
 			if (existingContent === content) {
-				if (options.executable && process.platform !== "win32") {
+				if (options.executable && this.platform !== "win32") {
 					await chmod(path, 0o755);
-				} else if (options.mode !== undefined && process.platform !== "win32") {
+				} else if (options.mode !== undefined && this.platform !== "win32") {
 					await chmod(path, options.mode);
 				}
 				return;
@@ -178,12 +189,12 @@ export class LockedFileSystem {
 			const tempPath = `${path}.tmp.${process.pid}.${Date.now()}.${randomUUID()}`;
 			await writeFile(tempPath, content, {
 				encoding: "utf8",
-				...(options.mode !== undefined && process.platform !== "win32" ? { mode: options.mode } : {}),
+				...(options.mode !== undefined && this.platform !== "win32" ? { mode: options.mode } : {}),
 			});
 			await rename(tempPath, path);
-			if (options.executable && process.platform !== "win32") {
+			if (options.executable && this.platform !== "win32") {
 				await chmod(path, 0o755);
-			} else if (options.mode !== undefined && process.platform !== "win32") {
+			} else if (options.mode !== undefined && this.platform !== "win32") {
 				await chmod(path, options.mode);
 			}
 		};
@@ -207,6 +218,7 @@ export class LockedFileSystem {
 			await rm(path, {
 				recursive: options.recursive,
 				force: options.force,
+				...(options.recursive ? { maxRetries: 10, retryDelay: 100 } : {}),
 			});
 		});
 	}

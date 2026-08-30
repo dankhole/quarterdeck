@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -69,6 +69,22 @@ describe("workdir entry mutations", () => {
 		}
 	});
 
+	it("allows case-only renames on case-insensitive Windows filesystems", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-workdir-entry-case-only-");
+		try {
+			writeFileSync(join(repoPath, "README.md"), "content\n", "utf8");
+
+			const result = await renameWorkdirEntry(repoPath, "README.md", "readme.md", "file", { platform: "win32" });
+
+			expect(result.path).toBe("readme.md");
+			expect(readdirSync(repoPath)).toContain("readme.md");
+			expect(readdirSync(repoPath)).not.toContain("README.md");
+			expect(readFileSync(join(repoPath, "readme.md"), "utf8")).toBe("content\n");
+		} finally {
+			cleanup();
+		}
+	});
+
 	it("deletes files and folders with the requested kind", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-workdir-entry-delete-");
 		try {
@@ -92,6 +108,28 @@ describe("workdir entry mutations", () => {
 			await expect(createWorkdirEntry(repoPath, "../outside.txt", "file")).rejects.toThrow(
 				"Path resolves outside the worktree.",
 			);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("allows valid entry names that begin with two dots", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-workdir-entry-dot-prefix-");
+		try {
+			await createWorkdirEntry(repoPath, "..notes", "file");
+			expect(readFileSync(join(repoPath, "..notes"), "utf8")).toBe("");
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("preserves valid leading spaces in entry names", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-workdir-entry-leading-space-");
+		try {
+			const result = await createWorkdirEntry(repoPath, " leading.txt", "file");
+
+			expect(result.path).toBe(" leading.txt");
+			expect(readFileSync(join(repoPath, " leading.txt"), "utf8")).toBe("");
 		} finally {
 			cleanup();
 		}

@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
-import treeKill from "tree-kill";
+import { type KillProcessTree, resolveWindowsPowerShellPath, terminateProcessTree } from "../../src/core";
 
 import { isProcessAlive } from "./paths";
 
@@ -26,8 +26,6 @@ export interface AgentLabBrowserProcessTree {
 	rootPids: number[];
 	processPids: number[];
 }
-
-type KillProcessTree = (pid: number, signal?: string | number, callback?: (error?: Error) => void) => void;
 
 interface FindAgentLabBrowserProcessTreeOptions {
 	platform?: NodeJS.Platform;
@@ -52,7 +50,7 @@ function runExecFile(command: string, args: string[]): Promise<ProcessListResult
 		execFile(
 			command,
 			args,
-			{ encoding: "utf8", timeout: PROCESS_LIST_TIMEOUT_MS },
+			{ encoding: "utf8", timeout: PROCESS_LIST_TIMEOUT_MS, windowsHide: true },
 			(error: ExecFileException | null, stdout: string | Buffer) => {
 				resolve({ ok: !error, stdout: String(stdout ?? "") });
 			},
@@ -78,8 +76,7 @@ async function defaultRunProcessList(platform: NodeJS.Platform): Promise<Process
 			"-Command",
 			buildWindowsProcessListScript(),
 		];
-		const windowsPowerShell = await runExecFile("powershell.exe", args);
-		return windowsPowerShell.ok ? windowsPowerShell : await runExecFile("pwsh.exe", args);
+		return await runExecFile(resolveWindowsPowerShellPath(), args);
 	}
 	return await runExecFile("ps", ["-ax", "-o", "pid=,ppid=,command="]);
 }
@@ -143,8 +140,15 @@ function resolvePlaywrightDaemonEntrypoint(
 	return join(dirname(corePackagePath), "lib", "entry", "cliDaemon.js");
 }
 
-function isDaemonCommand(commandLine: string, daemonEntrypoint: string, sessionName: string): boolean {
-	const daemonIndex = commandLine.indexOf(daemonEntrypoint);
+function isDaemonCommand(
+	commandLine: string,
+	daemonEntrypoint: string,
+	sessionName: string,
+	platform: NodeJS.Platform = process.platform,
+): boolean {
+	const comparisonCommandLine = platform === "win32" ? commandLine.toLowerCase() : commandLine;
+	const comparisonEntrypoint = platform === "win32" ? daemonEntrypoint.toLowerCase() : daemonEntrypoint;
+	const daemonIndex = comparisonCommandLine.indexOf(comparisonEntrypoint);
 	if (daemonIndex <= 0) return false;
 	const executable = commandLine.slice(0, daemonIndex).replaceAll('"', "").trim();
 	const executableName = executable.split(/[\\/]/u).pop()?.toLowerCase();
@@ -160,9 +164,10 @@ function collectAgentLabBrowserProcessTree(
 	processes: readonly ProcessRecord[],
 	daemonEntrypoint: string,
 	sessionName: string,
+	platform: NodeJS.Platform,
 ): AgentLabBrowserProcessTree {
 	const rootPids = processes
-		.filter(({ commandLine }) => isDaemonCommand(commandLine, daemonEntrypoint, sessionName))
+		.filter(({ commandLine }) => isDaemonCommand(commandLine, daemonEntrypoint, sessionName, platform))
 		.map(({ pid }) => pid);
 	const processPids = new Set(rootPids);
 	let added = true;
@@ -203,7 +208,7 @@ export async function findAgentLabBrowserProcessTree(
 	const processes =
 		platform === "win32" ? parseWindowsProcessList(result.stdout) : parseUnixProcessList(result.stdout);
 	const daemonEntrypoint = (options.resolveDaemonEntrypoint ?? resolvePlaywrightDaemonEntrypoint)(repoRoot);
-	return collectAgentLabBrowserProcessTree(processes, daemonEntrypoint, sessionName);
+	return collectAgentLabBrowserProcessTree(processes, daemonEntrypoint, sessionName, platform);
 }
 
 function killTree(pid: number, signal: NodeJS.Signals, killProcessTree: KillProcessTree): Promise<void> {
@@ -222,7 +227,7 @@ export async function terminateAgentLabBrowserProcessTree(
 ): Promise<number[]> {
 	if (tree.processPids.length === 0) return [];
 	const platform = options.platform ?? process.platform;
-	const killProcessTree = options.killProcessTree ?? treeKill;
+	const killProcessTree = options.killProcessTree ?? terminateProcessTree;
 	const isAlive = options.isAlive ?? isProcessAlive;
 	const signalProcess = options.signalProcess ?? ((pid, signal) => process.kill(pid, signal));
 	const waitFor = options.wait ?? wait;

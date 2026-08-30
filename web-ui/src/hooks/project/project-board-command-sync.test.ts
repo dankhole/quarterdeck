@@ -91,6 +91,33 @@ describe("project board command sync", () => {
 		expect(result.board).toEqual(edited.board);
 	});
 
+	it("does not persist a patch for Windows path casing alone", () => {
+		const created = addTaskToColumnWithResult(createInitialBoardData(), "backlog", {
+			prompt: "Task",
+			baseRef: "main",
+		});
+		const withPath = {
+			...created.board,
+			columns: created.board.columns.map((column) => ({
+				...column,
+				cards: column.cards.map((card) =>
+					card.id === created.task.id ? { ...card, workingDirectory: "C:\\Repo\\Task" } : card,
+				),
+			})),
+		};
+		const caseAlias = {
+			...withPath,
+			columns: withPath.columns.map((column) => ({
+				...column,
+				cards: column.cards.map((card) =>
+					card.id === created.task.id ? { ...card, workingDirectory: "c:/repo/task/" } : card,
+				),
+			})),
+		};
+
+		expect(deriveProjectBoardCommands(withPath, caseAlias)).toEqual([]);
+	});
+
 	it("reproduces moves, dependency cleanup, and deletion", () => {
 		const first = addTaskToColumnWithResult(createInitialBoardData(), "backlog", {
 			prompt: "First",

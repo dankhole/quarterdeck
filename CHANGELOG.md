@@ -2,6 +2,42 @@
 
 ## [Unreleased]
 
+### Fix: complete the Windows compatibility remediation audit
+
+- Windows path identity, environment lookup, command discovery, and generated filenames now follow Windows semantics end to end: separator/case aliases reconcile across runtime and browser state without trimming valid POSIX path whitespace, drive-root repositories receive a safe worktree label, environment overrides are case-insensitive, explicit command shims are supported, and reserved devices, alternate data streams, invalid trailing characters, and post-truncation names fail safely.
+- ConPTY now waits for its real process identity before managed launch handoff and performs forced same-size redraws with a bounded row nudge. Required native coverage exercises task/shell input, disconnect/reconnect/restore, long tracked paths, leading-space names, case-only rename, exact multiline arguments, and clean ownership retirement.
+- Git path protocols use NUL delimiters where filenames are present, Windows Git enables long paths, and all agent, host-launch, Git, statusline, and Agent Lab subprocess owners retain the exact inherited-`PATH` executable before entering a project cwd. Native smoke uses invalid project-local executable decoys to enforce that boundary. Recursive removal retries transient sharing violations, and test repositories disable host line-ending conversion. Provider-history and workdir reads now stay on one bounded validated file handle and reject canonical-parent or file-identity replacement after open, including on Windows where `O_NOFOLLOW` is unavailable.
+- Build/dev/test tooling now uses npm's absolute JavaScript entrypoint through the absolute Node executable, platform-native fake-command launchers, absolute trusted Windows system tools, case-aware child environments, portable path expectations, junction fixtures instead of privileged file symlinks, and platform-gated POSIX permission assertions. Agent Lab resolves Git's common metadata directory without launching a bare executable from the checkout. The completed remediation ledger and remaining required-CI/real-provider acceptance gates are documented separately.
+
+### Fix: scope Windows orphan cleanup to exact Quarterdeck launches
+
+- Windows task PTYs now persist a protected launch record containing exact runtime/root PID creation identities before launch handoff, after proving the root is still a direct child of that runtime. Startup and shutdown clean only verified abandoned Quarterdeck trees; live owners, malformed records, missing roots, unrelated/reused roots, and PID reuse cannot authorize a signal, and registration failure stops the untracked launch.
+- Process discovery no longer matches Claude, Codex, Pi, `node`, `cmd`, or PowerShell names/command lines. Tree termination uses absolute System32 `taskkill.exe` without a shell or `PATH` lookup, and native smoke verifies cleanup leaves an unregistered agent-looking process alive.
+
+### Fix: preserve Windows hook and status-line arguments
+
+- Claude hooks, Codex hooks, and Claude's optional status line now share one platform command serializer. Windows uses an absolute system PowerShell path and keeps executable and argument data outside `cmd.exe` parsing with an encoded bootstrap that directly starts the resolved Quarterdeck executable with inherited stdio.
+- Native smoke places a `powershell.exe` decoy in both the working directory and `PATH`, copies `node.exe` beneath a metacharacter-heavy path, and verifies that spaces, `%NAME%`, `!`, `^`, `&`, `|`, parentheses, status-line-style stdin, and stdout round-trip without launcher interception, expansion, or command splitting.
+
+### Fix: make Windows ignored-file mirroring deterministic
+
+- Ignored setup files no longer disappear from Windows task worktrees when file symlink creation is unavailable. Quarterdeck falls back to an exclusive task-local copy, avoiding both elevated symlink requirements and hard-link write-through to the source checkout.
+- Ignored-file copy and directory-junction failures now stop worktree preparation with an actionable typed error instead of being silently skipped. Native coverage requires a readable ignored file alongside a real ignored-directory junction.
+
+### Fix: enforce private Windows diagnostic storage
+
+- Runtime descriptors and tokens, journal data, bundle manifests/records, Agent Lab evidence and disposable state, isolated lab credentials, and the lab browser profile now live beneath directories with a protected Windows DACL granting access only to the current user and LocalSystem. This applies to configured state/artifact homes and custom bundle exports; ACL failure cannot fall through to broadly inherited persistence.
+- The required native smoke captures diagnostics from a custom state home into a custom output directory and verifies the effective ACL on representative directories and files excludes every other account SID.
+
+### Feature: require native Windows validation
+
+- CI and release validation now include a non-optional `windows-latest` job that performs clean root/web installs, a production build, the full runtime and web test gates, and a packaged CLI launch/shutdown smoke.
+- A reproducible native smoke exercises Windows `.cmd` agent detection, a real ConPTY-backed Codex task and interactive shell, project shortcut input, task-worktree directory junction creation/deletion, safe host-launch stubbing, and parent-disconnect cleanup. Submitted terminal commands now use Windows' carriage-return Enter sequence; platform-sensitive hook assertions and previously skipped agent-selection probes run natively on Windows.
+
+### Fix: make managed runtime shutdown portable on Windows
+
+- Parent-process disconnects now invoke Quarterdeck's graceful shutdown controller directly instead of sending the runtime an emulated Windows `SIGTERM`, so session, server, and diagnostic cleanup can finish before exit.
+- Development, dogfood, integration, and Agent Lab runtime supervisors request the same cleanup by closing a dedicated stdin pipe. Programmatic requests are idempotent, an immediately racing terminal signal is suppressed, and a later deliberate second interrupt still forces exit.
 ### Fix: harden Claude GUI restore dogfood
 
 - Task-detail deep links now survive initial project selection and authoritative board hydration, including hard reloads while a Claude terminal is selected. A global runtime snapshot is no longer mistaken for proof that the selected project's board has arrived.

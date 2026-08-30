@@ -8,9 +8,15 @@ import {
 	type CodexHooksConfig,
 	serializeCodexTomlValue,
 } from "../../src/codex-hooks";
+import { buildQuarterdeckCommandLine } from "../../src/core";
 
 const SESSION_FLAGS_CONFIG_SOURCE =
 	process.platform === "win32" ? "C:\\<session-flags>\\config.toml" : "/<session-flags>/config.toml";
+
+function hookCommand(event: string, options: { reliable?: boolean } = {}): string {
+	const subcommand = options.reliable || event !== "activity" ? "ingest" : "notify";
+	return buildQuarterdeckCommandLine(["hooks", subcommand, "--event", event, "--source", "codex"]);
+}
 
 describe("serializeCodexTomlValue", () => {
 	it("JSON-quotes plain strings", () => {
@@ -152,25 +158,23 @@ describe("buildCodexHookConfigOverrides", () => {
 	it("maps SessionStart to activity rather than running", () => {
 		const { SessionStart } = buildCodexHooksConfig();
 		expect(SessionStart).toHaveLength(1);
-		expect(SessionStart[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'activity'");
-		expect(SessionStart[0]?.hooks[0]?.command).toContain("'--event' 'activity'");
-		expect(SessionStart[0]?.hooks[0]?.command).not.toContain("'notify' '--event' 'activity'");
-		expect(SessionStart[0]?.hooks[0]?.command).not.toContain("'--event' 'to_in_progress'");
+		expect(SessionStart[0]?.hooks[0]?.command).toBe(hookCommand("activity", { reliable: true }));
+		expect(SessionStart[0]?.hooks[0]?.command).not.toBe(hookCommand("activity"));
+		expect(SessionStart[0]?.hooks[0]?.command).not.toBe(hookCommand("to_in_progress"));
 	});
 
 	it("keeps SessionStart on reliable ingest so session_meta resume ids are not best-effort", () => {
 		const { SessionStart, PreToolUse } = buildCodexHooksConfig();
 
-		expect(SessionStart[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'activity'");
-		expect(PreToolUse[0]?.hooks[0]?.command).toContain("'notify' '--event' 'activity'");
+		expect(SessionStart[0]?.hooks[0]?.command).toBe(hookCommand("activity", { reliable: true }));
+		expect(PreToolUse[0]?.hooks[0]?.command).toBe(hookCommand("activity"));
 	});
 
 	it("uses one PostToolUse command because transition ingest also stores metadata", () => {
 		const { PostToolUse } = buildCodexHooksConfig();
 		expect(PostToolUse).toHaveLength(1);
 		expect(PostToolUse[0]?.hooks).toHaveLength(1);
-		expect(PostToolUse[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_in_progress'");
-		expect(PostToolUse[0]?.hooks[0]?.command).toContain("'--event' 'to_in_progress'");
+		expect(PostToolUse[0]?.hooks[0]?.command).toBe(hookCommand("to_in_progress"));
 	});
 
 	it("reports manual compaction as activity without claiming a task transition", () => {
@@ -178,9 +182,9 @@ describe("buildCodexHookConfigOverrides", () => {
 
 		expect(PreCompact).toHaveLength(1);
 		expect(PreCompact[0]?.matcher).toBe("manual");
-		expect(PreCompact[0]?.hooks[0]?.command).toContain("'notify' '--event' 'activity'");
+		expect(PreCompact[0]?.hooks[0]?.command).toBe(hookCommand("activity"));
 		expect(PostCompact).toHaveLength(1);
 		expect(PostCompact[0]?.matcher).toBe("manual");
-		expect(PostCompact[0]?.hooks[0]?.command).toContain("'notify' '--event' 'activity'");
+		expect(PostCompact[0]?.hooks[0]?.command).toBe(hookCommand("activity"));
 	});
 });

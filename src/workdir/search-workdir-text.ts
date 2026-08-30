@@ -52,7 +52,7 @@ export async function searchWorkdirText(
 		return { query, files: [], totalMatches: 0, truncated: false };
 	}
 
-	const lines = result.stdout.split("\n");
+	const lines = result.stdout.split(/\r?\n/u);
 	const fileMap = new Map<string, RuntimeWorkdirTextSearchFile>();
 	let totalMatches = 0;
 	let truncated = false;

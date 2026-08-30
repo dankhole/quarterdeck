@@ -1,5 +1,6 @@
 import type { RuntimeTaskRepositoryInfoResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardCard, ReviewTaskWorktreeSnapshot } from "@/types";
+import { arePathIdentitiesEqual, normalizePathIdentity } from "@/utils/path-identity";
 
 /**
  * Normalizes Quarterdeck's task identity vocabulary for UI consumers.
@@ -33,26 +34,16 @@ interface ResolveTaskIdentityInput {
 	sessionSummary?: Pick<RuntimeTaskSessionSummary, "sessionLaunchPath"> | null;
 }
 
-function normalizeIdentityPath(path: string | null | undefined): string | null {
-	const trimmed = path?.trim();
-	if (!trimmed) {
-		return null;
-	}
-	const normalized =
-		/^[A-Za-z]:\\/u.test(trimmed) || trimmed.startsWith("\\\\") ? trimmed.replaceAll("\\", "/") : trimmed;
-	return normalized.replace(/\/+$/u, "") || "/";
-}
-
 function areIdentityPathsEqual(left: string | null, right: string | null): boolean {
-	return left !== null && right !== null && left === right;
+	return arePathIdentitiesEqual(left, right);
 }
 
 export function resolveTaskIdentity(input: ResolveTaskIdentityInput): TaskIdentity {
-	const projectRootPath = normalizeIdentityPath(input.projectRootPath ?? null);
-	const cardWorkingDirectory = normalizeIdentityPath(input.card?.workingDirectory);
+	const projectRootPath = normalizePathIdentity(input.projectRootPath ?? null);
+	const cardWorkingDirectory = normalizePathIdentity(input.card?.workingDirectory);
 	const isExplicitlyShared = input.card?.useWorktree === false;
-	const repositoryInfoPath = normalizeIdentityPath(input.repositoryInfo?.path);
-	const worktreeSnapshotPath = normalizeIdentityPath(input.worktreeSnapshot?.path);
+	const repositoryInfoPath = normalizePathIdentity(input.repositoryInfo?.path);
+	const worktreeSnapshotPath = normalizePathIdentity(input.worktreeSnapshot?.path);
 	const sharedMetadataPath = isExplicitlyShared
 		? ([repositoryInfoPath, worktreeSnapshotPath].find(
 				(path) => areIdentityPathsEqual(path, projectRootPath) || areIdentityPathsEqual(path, cardWorkingDirectory),
@@ -93,7 +84,7 @@ export function resolveTaskIdentity(input: ResolveTaskIdentityInput): TaskIdenti
 				(assignedIsDetached ? shortHeadCommit : (assignedBranch ?? persistedBranch ?? shortHeadCommit)));
 	// `sessionSummary.sessionLaunchPath` is the path the agent session was launched in.
 	// Quarterdeck does not currently stream a continuously updated live cwd.
-	const sessionLaunchPath = normalizeIdentityPath(input.sessionSummary?.sessionLaunchPath ?? null);
+	const sessionLaunchPath = normalizePathIdentity(input.sessionSummary?.sessionLaunchPath ?? null);
 	const isAssignedShared =
 		areIdentityPathsEqual(assignedPath, projectRootPath) ||
 		(assignedPath === null && input.card?.useWorktree === false);

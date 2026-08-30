@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 
+import { resolveWindowsPowerShellPath } from "../core";
+
 interface DirectoryPickerCommandCandidate {
 	command: string;
 	args: string[];
@@ -28,6 +30,7 @@ type RunCommand = (command: string, args: string[]) => Promise<DirectoryPickerCo
 interface PickDirectoryPathFromSystemDialogOptions {
 	platform?: NodeJS.Platform;
 	cwd?: string;
+	env?: NodeJS.ProcessEnv;
 	runCommand?: RunCommand;
 }
 
@@ -52,6 +55,7 @@ function defaultRunCommand(command: string, args: string[]): Promise<DirectoryPi
 	return new Promise((resolve) => {
 		const child = spawn(command, args, {
 			stdio: ["ignore", "pipe", "pipe"],
+			windowsHide: true,
 		});
 		let stdout = "";
 		let stderr = "";
@@ -137,6 +141,7 @@ export async function pickDirectoryPathFromSystemDialog(
 ): Promise<SystemDirectoryPickerResult> {
 	const platform = options.platform ?? process.platform;
 	const cwd = options.cwd ?? process.cwd();
+	const env = options.env ?? process.env;
 	const runCommand = options.runCommand ?? defaultRunCommand;
 
 	if (platform === "darwin") {
@@ -191,11 +196,7 @@ export async function pickDirectoryPathFromSystemDialog(
 	if (platform === "win32") {
 		const candidates: DirectoryPickerCommandCandidate[] = [
 			{
-				command: "powershell",
-				args: ["-NoProfile", "-STA", "-Command", WINDOWS_DIRECTORY_PICKER_SCRIPT],
-			},
-			{
-				command: "pwsh",
+				command: resolveWindowsPowerShellPath(env),
 				args: ["-NoProfile", "-STA", "-Command", WINDOWS_DIRECTORY_PICKER_SCRIPT],
 			},
 		];
@@ -213,7 +214,7 @@ export async function pickDirectoryPathFromSystemDialog(
 
 		return {
 			kind: "unavailable",
-			error: 'Could not open directory picker. Install PowerShell ("powershell" or "pwsh") and try again.',
+			error: "Could not open directory picker. Windows PowerShell is unavailable.",
 		};
 	}
 

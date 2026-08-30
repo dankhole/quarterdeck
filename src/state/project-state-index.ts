@@ -1,12 +1,14 @@
 import { randomBytes } from "node:crypto";
 import { copyFile, readFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, win32 } from "node:path";
 import { z } from "zod";
 
 import type { RuntimeBoardColumnId, RuntimeBoardData, RuntimeTaskSessionSummary } from "../core";
 import {
+	areFileSystemPathsEqual,
 	canonicalizeTaskBoard,
 	createTaggedLogger,
+	isWindowsSafePathComponent,
 	runtimeBoardDataSchema,
 	runtimeTaskSessionSummarySchema,
 } from "../core";
@@ -23,6 +25,7 @@ import {
 
 const INDEX_VERSION = 1;
 const PROJECT_ID_COLLISION_SUFFIX_LENGTH = 4;
+const PROJECT_ID_BASE_MAX_LENGTH = 80;
 
 const BOARD_COLUMNS: Array<{ id: RuntimeBoardColumnId; title: string }> = [
 	{ id: "backlog", title: "Backlog" },
@@ -444,15 +447,18 @@ async function writeProjectIndex(index: ProjectIndexFile): Promise<void> {
 	});
 }
 
-function toProjectIdBase(repoPath: string): string {
+function toProjectIdBase(repoPath: string, platform: NodeJS.Platform): string {
 	const trimmed = repoPath.trim().replace(/[\\/]+$/g, "");
-	const folderName = basename(trimmed) || "project";
+	const folderName = (platform === "win32" ? win32.basename(trimmed) : basename(trimmed)) || "project";
 	const normalized = folderName
 		.normalize("NFKD")
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "");
-	return normalized || "project";
+		.replace(/^-+|-+$/g, "")
+		.slice(0, PROJECT_ID_BASE_MAX_LENGTH)
+		.replace(/-+$/g, "");
+	const base = normalized || "project";
+	return platform === "win32" && !isWindowsSafePathComponent(base) ? `project-${base}` : base;
 }
 
 function createProjectIdCollisionSuffix(length: number): string {
@@ -470,15 +476,18 @@ function createProjectIdCollisionSuffix(length: number): string {
 	return suffix;
 }
 
-function createProjectId(index: ProjectIndexFile, repoPath: string): string {
-	const baseId = toProjectIdBase(repoPath);
-	if (!index.entries[baseId] || index.entries[baseId]?.repoPath === repoPath) {
+function createProjectId(index: ProjectIndexFile, repoPath: string, platform: NodeJS.Platform): string {
+	const baseId = toProjectIdBase(repoPath, platform);
+	if (!index.entries[baseId] || areFileSystemPathsEqual(index.entries[baseId]?.repoPath ?? "", repoPath, platform)) {
 		return baseId;
 	}
 
 	for (let attempt = 0; attempt < 256; attempt += 1) {
 		const candidate = `${baseId}-${createProjectIdCollisionSuffix(PROJECT_ID_COLLISION_SUFFIX_LENGTH)}`;
-		if (!index.entries[candidate] || index.entries[candidate]?.repoPath === repoPath) {
+		if (
+			!index.entries[candidate] ||
+			areFileSystemPathsEqual(index.entries[candidate]?.repoPath ?? "", repoPath, platform)
+		) {
 			return candidate;
 		}
 	}
@@ -489,15 +498,19 @@ function createProjectId(index: ProjectIndexFile, repoPath: string): string {
 export function ensureProjectEntry(
 	index: ProjectIndexFile,
 	repoPath: string,
+	platform: NodeJS.Platform = process.platform,
 ): { index: ProjectIndexFile; entry: ProjectIndexEntry; changed: boolean } {
-	if (isUnderWorktreesHome(repoPath)) {
+	if (isUnderWorktreesHome(repoPath, platform)) {
 		throw new Error(`Cannot add a Quarterdeck worktree as a project: ${repoPath}`);
 	}
 
-	const existingProjectId = index.repoPathToId[repoPath];
+	const existingProjectId =
+		index.repoPathToId[repoPath] ??
+		Object.values(index.entries).find((entry) => areFileSystemPathsEqual(entry.repoPath, repoPath, platform))
+			?.projectId;
 	if (existingProjectId) {
 		const existingEntry = index.entries[existingProjectId];
-		if (existingEntry && existingEntry.repoPath === repoPath) {
+		if (existingEntry && areFileSystemPathsEqual(existingEntry.repoPath, repoPath, platform)) {
 			return {
 				index,
 				entry: existingEntry,
@@ -506,7 +519,7 @@ export function ensureProjectEntry(
 		}
 	}
 
-	const projectId = createProjectId(index, repoPath);
+	const projectId = createProjectId(index, repoPath, platform);
 
 	const entry: ProjectIndexEntry = {
 		projectId,
@@ -531,13 +544,20 @@ export function ensureProjectEntry(
 	};
 }
 
-export function findProjectEntry(index: ProjectIndexFile, repoPath: string): ProjectIndexEntry | null {
-	const projectId = index.repoPathToId[repoPath];
+export function findProjectEntry(
+	index: ProjectIndexFile,
+	repoPath: string,
+	platform: NodeJS.Platform = process.platform,
+): ProjectIndexEntry | null {
+	const projectId =
+		index.repoPathToId[repoPath] ??
+		Object.values(index.entries).find((entry) => areFileSystemPathsEqual(entry.repoPath, repoPath, platform))
+			?.projectId;
 	if (!projectId) {
 		return null;
 	}
 	const entry = index.entries[projectId];
-	if (!entry || entry.repoPath !== repoPath) {
+	if (!entry || !areFileSystemPathsEqual(entry.repoPath, repoPath, platform)) {
 		return null;
 	}
 	return entry;

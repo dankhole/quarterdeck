@@ -25,11 +25,11 @@ describe("PTY launch preflight", () => {
 		root = await mkdtemp(join(tmpdir(), "quarterdeck-pty-preflight-"));
 		cwd = join(root, "worktree");
 		binDirectory = join(root, "bin");
-		binaryPath = join(binDirectory, "codex");
+		binaryPath = join(binDirectory, process.platform === "win32" ? "codex.cmd" : "codex");
 		await mkdir(cwd, { recursive: true });
 		await mkdir(binDirectory, { recursive: true });
-		await writeFile(binaryPath, "#!/bin/sh\n", "utf8");
-		await chmod(binaryPath, 0o755);
+		await writeFile(binaryPath, process.platform === "win32" ? "@echo off\r\nexit /b 0\r\n" : "#!/bin/sh\n", "utf8");
+		if (process.platform !== "win32") await chmod(binaryPath, 0o755);
 	});
 
 	afterEach(async () => {

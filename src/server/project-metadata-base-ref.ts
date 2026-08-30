@@ -1,3 +1,4 @@
+import { areFileSystemPathsEqual } from "../core/path-comparison.js";
 import { getCommitsBehindBase, runGit } from "../workdir";
 import type { CachedPathWorktreeMetadata } from "./project-metadata-path-loader";
 import type { ResolvedTaskWorktreePath } from "./project-metadata-paths";
@@ -40,7 +41,7 @@ export async function loadBaseRefWorktreeMetadata(
 		current.stateToken === pathMetadata.stateToken &&
 		current.baseRefCommit === baseRefCommit &&
 		current.originBaseRefCommit === originBaseRefCommit &&
-		current.data.path === pathInfo.path &&
+		areFileSystemPathsEqual(current.data.path, pathInfo.path) &&
 		current.data.baseRef === pathInfo.baseRef
 	) {
 		return {

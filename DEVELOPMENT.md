@@ -29,6 +29,7 @@ npm run check            # Agent docs + Biome + runtime typecheck/tests
 npm run test             # All root runtime + integration tests
 npm run test:fast        # Runtime + utility tests only
 npm run test:integration # Integration tests only
+npm run test:windows-smoke # Built CLI + focused native checks (Windows only)
 npm run web:test         # Web UI unit tests
 npm run web:e2e          # Playwright smoke tests with isolated runtime state
 npm run agent:lab -- --help       # Disposable Quarterdeck runtime/UI/fake-agent lab
@@ -159,6 +160,8 @@ Quarterdeck has one local diagnostic system shared by normal runtimes and the is
 
 Every normal runtime creates a private descriptor and starts a lightweight flight recorder before startup cleanup. No setting, panel, or reproduction step is required. A fresh coding agent can therefore investigate an event that happened earlier in the current run, or read the bounded journal from a recently finalized run.
 
+Diagnostic directories are secured before their first content write. On Windows, Quarterdeck replaces inherited permissions with a protected DACL that grants full control only to the current user and LocalSystem; this also applies to custom `QUARTERDECK_STATE_HOME` locations, exported bundle roots, Agent Lab artifacts/disposable state, and the lab browser profile that stores its reconnect tail. If that ACL cannot be installed, runtime persistence degrades to the bounded in-memory recorder and explicit bundle or lab creation fails instead of writing into a broadly readable directory.
+
 The default recorder keeps metadata rather than content:
 
 - essential runtime, project-save, task/session, hook-delivery, terminal-transport, browser-connectivity, Git-operation, backup, and recorder-health events;
@@ -271,7 +274,7 @@ See [`test/README.md`](./test/README.md) for root-test placement and naming. Web
 ## CI/CD
 
 - `ci.yml`: runs on pushes to `main` and PRs targeting `main`, delegating to reusable test workflow(s)
-- `test.yml`: Ubuntu and macOS matrix covering the build (including web typecheck), lint, runtime typecheck/tests, and web-ui tests without repeating the standalone web typecheck
+- `test.yml`: Ubuntu/macOS matrix plus a non-optional native Windows job covering clean installs, the build (including web typecheck), packaged CLI fetch/shutdown, native ConPTY resize/reconnect/restore, Git/worktree/path fidelity, exact process ownership and DACLs, hook/status-line transport, lint, runtime typecheck/tests, and web-ui tests without repeating the standalone web typecheck
 - `publish.yml`: manual release workflow that verifies the tag, runs tests, publishes to npm via OIDC, and creates the GitHub Release
 
 ## Agent tracking and runtime hooks
@@ -314,6 +317,6 @@ Important behavior details:
 - Session-start hooks capture resumable provider identity without changing task state.
 - Runtime transition guards remain authoritative and prevent stale hooks or redraws from flapping state.
 - Terminal output is not work-state truth. Fix missed state at the hook, identity, or ordering layer rather than adding output-volume or timestamp heuristics.
-- Hook transport is implemented in Node and invoked through `quarterdeck hooks ...`, so the behavior is consistent across Windows and non-Windows environments.
+- Hook transport is implemented in Node and invoked through `quarterdeck hooks ...`. Windows hook and status-line strings invoke the absolute PowerShell executable beneath the system root and use an encoded launcher that starts the resolved Quarterdeck executable through a direct argv contract, preventing working-directory/`PATH` interception, `cmd.exe` variable expansion, or metacharacter splitting while preserving stdin/stdout.
 
 See [`docs/conventions/session-lifecycle.md`](./docs/conventions/session-lifecycle.md) before changing hook mappings, transition ownership, resume identity, or approval fallbacks.

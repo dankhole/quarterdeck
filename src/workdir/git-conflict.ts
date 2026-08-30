@@ -11,7 +11,14 @@ import type {
 	RuntimeGitRebaseResponse,
 } from "../core";
 import { getGitSyncSummary } from "./git-probe";
-import { GIT_INSPECTION_OPTIONS, resolveRepoRoot, runGit, validateGitPath, validateGitRef } from "./git-utils";
+import {
+	GIT_INSPECTION_OPTIONS,
+	resolveRepoRoot,
+	runGit,
+	splitNullSeparatedGitOutput,
+	validateGitPath,
+	validateGitRef,
+} from "./git-utils";
 
 const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 
@@ -109,23 +116,19 @@ export async function detectActiveConflict(cwd: string): Promise<DetectedConflic
  * Uses `git ls-files -u` and deduplicates across stage entries.
  */
 export async function getConflictedFiles(cwd: string): Promise<string[]> {
-	const result = await runGit(cwd, ["ls-files", "-u"]);
+	const result = await runGit(cwd, ["ls-files", "-u", "-z"], { trimStdout: false });
 	if (!result.ok || !result.stdout) {
 		return [];
 	}
 
 	const paths = new Set<string>();
-	for (const rawLine of result.stdout.split("\n")) {
-		const line = rawLine.trim();
-		if (!line) {
-			continue;
-		}
+	for (const record of splitNullSeparatedGitOutput(result.stdout)) {
 		// Format: <mode> <object> <stage>\t<path>
-		const tabIndex = line.indexOf("\t");
+		const tabIndex = record.indexOf("\t");
 		if (tabIndex === -1) {
 			continue;
 		}
-		const filePath = line.slice(tabIndex + 1);
+		const filePath = record.slice(tabIndex + 1);
 		if (filePath) {
 			paths.add(filePath);
 		}
@@ -159,14 +162,15 @@ export async function getConflictFileContent(cwd: string, path: string): Promise
  * These are files where git successfully merged changes from both sides.
  */
 export async function computeAutoMergedFiles(cwd: string, conflictedFiles: string[]): Promise<string[]> {
-	const cachedResult = await runGit(cwd, ["diff", "--cached", "--name-only"], GIT_INSPECTION_OPTIONS);
+	const cachedResult = await runGit(cwd, ["diff", "--cached", "--name-only", "-z"], {
+		trimStdout: false,
+		...GIT_INSPECTION_OPTIONS,
+	});
 	if (!cachedResult.ok || !cachedResult.stdout.trim()) {
 		return [];
 	}
 	const conflictedSet = new Set(conflictedFiles);
-	return cachedResult.stdout
-		.split("\n")
-		.map((line) => line.trim())
+	return splitNullSeparatedGitOutput(cachedResult.stdout)
 		.filter((line) => line.length > 0 && !conflictedSet.has(line))
 		.sort();
 }

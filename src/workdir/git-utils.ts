@@ -1,9 +1,13 @@
-import { execFile } from "node:child_process";
+import { type ExecFileException, execFile } from "node:child_process";
 import { isAbsolute, join } from "node:path";
-import { promisify } from "node:util";
-import { createGitProcessEnv, INTEGRATION_BASE_REF_CANDIDATES } from "../core";
+import {
+	buildGitCommandArgs,
+	createGitProcessEnv,
+	INTEGRATION_BASE_REF_CANDIDATES,
+	resolveWindowsCompatibleCommand,
+	terminateProcessForTimeout,
+} from "../core";
 
-const execFileAsync = promisify(execFile);
 const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 export const GIT_COMMAND_TIMEOUTS_MS = {
 	default: 5_000,
@@ -73,16 +77,75 @@ function isTimeoutError(error: {
 	return message.includes("timed out") || message.includes("timeout");
 }
 
+interface GitCommandOutput {
+	stdout: string;
+	stderr: string;
+}
+
+function executeGitCommand(
+	cwd: string,
+	args: string[],
+	env: NodeJS.ProcessEnv,
+	timeoutMs: number,
+): Promise<GitCommandOutput> {
+	return new Promise((resolveCommand, rejectCommand) => {
+		let timedOut = false;
+		let timeout: NodeJS.Timeout | null = null;
+		const command = resolveWindowsCompatibleCommand("git", args, process.platform, env);
+		const child = execFile(
+			command.binary,
+			command.args,
+			{
+				cwd,
+				encoding: "utf8",
+				maxBuffer: GIT_MAX_BUFFER_BYTES,
+				env,
+				windowsHide: true,
+			},
+			(error: ExecFileException | null, stdout, stderr) => {
+				if (timeout) clearTimeout(timeout);
+				const normalizedStdout = String(stdout ?? "");
+				const normalizedStderr = String(stderr ?? "");
+				if (timedOut) {
+					const timeoutError = Object.assign(new Error(`Git command timed out after ${timeoutMs}ms`), {
+						code: "ETIMEDOUT",
+						killed: true,
+						signal: "SIGTERM",
+						stdout: normalizedStdout,
+						stderr: normalizedStderr,
+					});
+					rejectCommand(timeoutError);
+					return;
+				}
+				if (error) {
+					Object.assign(error, {
+						stdout: "stdout" in error ? error.stdout : normalizedStdout,
+						stderr: "stderr" in error ? error.stderr : normalizedStderr,
+					});
+					rejectCommand(error);
+					return;
+				}
+				resolveCommand({ stdout: normalizedStdout, stderr: normalizedStderr });
+			},
+		);
+
+		timeout = setTimeout(() => {
+			timedOut = true;
+			terminateProcessForTimeout(child);
+		}, timeoutMs);
+		timeout.unref();
+	});
+}
+
 export async function runGit(cwd: string, args: string[], options: RunGitOptions = {}): Promise<GitCommandResult> {
 	try {
-		const fullArgs = ["-c", "core.quotepath=false", ...args];
-		const { stdout, stderr } = await execFileAsync("git", fullArgs, {
+		const fullArgs = buildGitCommandArgs(args);
+		const { stdout, stderr } = await executeGitCommand(
 			cwd,
-			encoding: "utf8",
-			maxBuffer: GIT_MAX_BUFFER_BYTES,
-			timeout: resolveGitTimeoutMs(options),
-			env: options.env || createGitProcessEnv(),
-		});
+			fullArgs,
+			options.env || createGitProcessEnv(),
+			resolveGitTimeoutMs(options),
+		);
 		const normalizedStdout = String(stdout ?? "").trim();
 		const normalizedStderr = String(stderr ?? "").trim();
 		return {
@@ -131,6 +194,11 @@ export async function getGitStdout(args: string[], cwd: string, options: RunGitO
 	}
 
 	return result.stdout;
+}
+
+/** Parse Git's `-z` filename output without trimming valid filename whitespace. */
+export function splitNullSeparatedGitOutput(output: string): string[] {
+	return output.split("\0").filter((value) => value.length > 0);
 }
 
 export interface GitHeadInfo {
@@ -220,10 +288,17 @@ export function assertValidGitRef(ref: string, label: string): void {
 
 /**
  * Validate a file path for safe use in git show commands.
- * Rejects paths containing `..` traversal.
+ * Rejects absolute paths and traversal components while allowing ordinary file
+ * names that merely contain two consecutive dots (for example, `..notes`).
  */
-export function validateGitPath(path: string): boolean {
-	return path.length > 0 && !path.includes("..");
+export function validateGitPath(path: string, platform: NodeJS.Platform = process.platform): boolean {
+	if (!path || path.includes("\0")) return false;
+	const normalizedSeparators = platform === "win32" ? path.replaceAll("\\", "/") : path;
+	if (normalizedSeparators.startsWith("/") || (platform === "win32" && /^[A-Za-z]:\//u.test(normalizedSeparators))) {
+		return false;
+	}
+	const components = normalizedSeparators.split("/");
+	return components.every((component) => component.length > 0 && component !== "." && component !== "..");
 }
 
 /**
@@ -234,11 +309,14 @@ export async function listFilesAtRef(cwd: string, ref: string): Promise<string[]
 	if (!validateGitRef(ref)) {
 		return [];
 	}
-	const result = await runGit(cwd, ["ls-tree", "-r", "--name-only", ref, "--"], GIT_INSPECTION_OPTIONS);
+	const result = await runGit(cwd, ["ls-tree", "-r", "--name-only", "-z", ref, "--"], {
+		trimStdout: false,
+		...GIT_INSPECTION_OPTIONS,
+	});
 	if (!result.ok) {
 		return [];
 	}
-	return result.stdout.split("\n").filter(Boolean);
+	return splitNullSeparatedGitOutput(result.stdout);
 }
 
 /**
@@ -389,26 +467,50 @@ function extractNumstatDestPath(raw: string): string {
  */
 export function parseNumstatPerFile(output: string): Map<string, { additions: number; deletions: number }> {
 	const result = new Map<string, { additions: number; deletions: number }>();
-	for (const rawLine of output.split("\n")) {
-		const line = rawLine.trim();
-		if (!line) {
-			continue;
-		}
-		const firstTab = line.indexOf("\t");
-		const secondTab = line.indexOf("\t", firstTab + 1);
-		if (firstTab === -1 || secondTab === -1) {
-			continue;
-		}
-		const addedRaw = line.slice(0, firstTab);
-		const deletedRaw = line.slice(firstTab + 1, secondTab);
-		const pathRaw = line.slice(secondTab + 1);
-		const path = extractNumstatDestPath(pathRaw);
+	const addEntry = (header: string, path: string): void => {
+		const firstTab = header.indexOf("\t");
+		const secondTab = header.indexOf("\t", firstTab + 1);
+		if (firstTab === -1 || secondTab === -1 || !path) return;
+		const addedRaw = header.slice(0, firstTab);
+		const deletedRaw = header.slice(firstTab + 1, secondTab);
 		const additions = Number.parseInt(addedRaw, 10);
 		const deletions = Number.parseInt(deletedRaw, 10);
 		result.set(path, {
 			additions: Number.isFinite(additions) ? additions : 0,
 			deletions: Number.isFinite(deletions) ? deletions : 0,
 		});
+	};
+
+	if (output.includes("\0")) {
+		const tokens = output.split("\0");
+		for (let index = 0; index < tokens.length; index += 1) {
+			const header = tokens[index];
+			if (!header) continue;
+			const secondTab = header.indexOf("\t", header.indexOf("\t") + 1);
+			if (secondTab === -1) continue;
+			const inlinePath = header.slice(secondTab + 1);
+			if (inlinePath) {
+				addEntry(header, inlinePath);
+				continue;
+			}
+			// `--numstat -z` emits renames as a counts-only header followed by
+			// the exact source and destination paths in separate NUL fields.
+			const destinationPath = tokens[index + 2];
+			if (destinationPath) addEntry(header, destinationPath);
+			index += 2;
+		}
+		return result;
+	}
+
+	// Retain support for callers with legacy line-delimited numstat output.
+	// Strip only CRLF framing; trimming the whole line corrupts valid leading
+	// and trailing whitespace in repository paths.
+	for (const rawLine of output.split("\n")) {
+		const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+		const firstTab = line.indexOf("\t");
+		const secondTab = line.indexOf("\t", firstTab + 1);
+		if (firstTab === -1 || secondTab === -1) continue;
+		addEntry(line, extractNumstatDestPath(line.slice(secondTab + 1)));
 	}
 	return result;
 }

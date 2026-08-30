@@ -69,7 +69,7 @@ function setupExecFileMock(statusOutput?: string): void {
 						"# branch.head main",
 						"# branch.upstream origin/main",
 						"# branch.ab +0 -0",
-					].join("\n"),
+					].join("\0"),
 				stderr: "",
 			});
 		}
@@ -87,6 +87,17 @@ describe("git-sync --no-optional-locks", () => {
 	beforeEach(() => {
 		childProcessMocks.execFile.mockReset();
 		childProcessMocks.execFilePromise.mockReset();
+		childProcessMocks.execFile.mockImplementation(
+			(command: string, args: string[], options: unknown, callback: (...values: unknown[]) => void) => {
+				void childProcessMocks.execFilePromise(command, args, options).then(
+					(result: { stdout?: unknown; stderr?: unknown }) =>
+						callback(null, result.stdout ?? "", result.stderr ?? ""),
+					(error: { stdout?: unknown; stderr?: unknown }) =>
+						callback(error, error.stdout ?? "", error.stderr ?? ""),
+				);
+				return { pid: 12_345, kill: vi.fn(() => true) };
+			},
+		);
 	});
 
 	it("probeGitWorkdirState passes --no-optional-locks to git status", async () => {
@@ -95,6 +106,7 @@ describe("git-sync --no-optional-locks", () => {
 
 		const statusCall = findCallContaining("status");
 		assertFlagBeforeSubcommand(statusCall, "status");
+		expect(statusCall.args).toContain("-z");
 	});
 
 	it("probeGitWorkdirState passes --no-optional-locks to git rev-parse HEAD", async () => {
@@ -177,7 +189,7 @@ describe("git-sync --no-optional-locks", () => {
 			"# branch.ab +2 -1",
 			"1 .M N... 100644 100644 100644 abc123 def456 src/file.ts",
 			"? untracked.txt",
-		].join("\n");
+		].join("\0");
 
 		setupExecFileMock(statusOutput);
 		const result = await probeGitWorkdirState(FAKE_REPO);
@@ -188,5 +200,28 @@ describe("git-sync --no-optional-locks", () => {
 		expect(result.behindCount).toBe(1);
 		expect(result.changedFiles).toBe(2);
 		expect(result.untrackedPaths).toContain("untracked.txt");
+	});
+
+	it("preserves leading filename whitespace and rename source paths in status records", async () => {
+		const statusOutput = [
+			`# branch.oid ${FAKE_COMMIT}`,
+			"# branch.head main",
+			"1 .M N... 100644 100644 100644 abc123 def456  tracked.txt",
+			"2 R. N... 100644 100644 100644 abc123 def456 R100  renamed.txt",
+			" original.txt",
+			"?  untracked.txt",
+		].join("\0");
+
+		setupExecFileMock(statusOutput);
+		const result = await probeGitWorkdirState(FAKE_REPO);
+
+		expect(result.changedFiles).toBe(3);
+		expect(result.untrackedPaths).toEqual([" untracked.txt"]);
+		expect(result.pathFingerprints.map((entry) => entry.path)).toEqual([
+			" original.txt",
+			" renamed.txt",
+			" tracked.txt",
+			" untracked.txt",
+		]);
 	});
 });

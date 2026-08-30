@@ -43,7 +43,9 @@ Use this map when you are planning or evaluating refactor work.
 - [`diagnostics.md`](./diagnostics.md): stable unified diagnostics contract, privacy boundary, ownership, and validation entry points.
 - [`testing.md`](./testing.md): canonical validation-selection policy, command scopes, and heavy-lane criteria.
 - [`agent-functional-testing.md`](./agent-functional-testing.md): disposable Quarterdeck lab, deterministic fake agent, browser UI driving, visual artifacts, and failure evidence.
-- [`windows-support-audit.md`](./windows-support-audit.md): current Windows support boundary, verified compatibility work, and remaining follow-ups.
+- [`windows-support-audit.md`](./windows-support-audit.md): completed Windows remediation audit, verified compatibility boundaries, and remaining native acceptance evidence.
+- [`windows-compatibility-todo.md`](./windows-compatibility-todo.md): completed remediation ledger and the two remaining release-acceptance gates.
+- [`windows-native-smoke.md`](./windows-native-smoke.md): required CI coverage, reproducible native commands, and real-provider acceptance matrix.
 - [`conventions/frontend-hooks.md`](./conventions/frontend-hooks.md): domain-module extraction pattern for frontend hooks and services.
 - [`conventions/web-ui.md`](./conventions/web-ui.md): frontend conventions and hooks architecture guidance.
 - [`conventions/ui-layout.md`](./conventions/ui-layout.md): UI region names, shell layout ownership, and main-view/sidebar rules.

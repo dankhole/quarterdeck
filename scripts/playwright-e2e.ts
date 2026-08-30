@@ -4,6 +4,8 @@ import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { mergeProcessEnvironment, terminateProcessTree } from "../src/core";
+
 import { resolveLoopbackPort } from "./agent-lab/loopback-port";
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -25,18 +27,26 @@ while (webPort === runtimePort) webPort = await resolveLoopbackPort(null, "Playw
 
 const child = spawn(process.execPath, [playwrightCli, "test", ...process.argv.slice(2)], {
 	cwd: webUiRoot,
-	env: {
-		...process.env,
+	env: mergeProcessEnvironment(process.env, {
 		QUARTERDECK_E2E_RUNTIME_PORT: String(runtimePort),
 		QUARTERDECK_E2E_WEB_PORT: String(webPort),
-	},
+	}),
 	stdio: "inherit",
+	detached: process.platform !== "win32",
+	windowsHide: true,
 });
 
-const forwardedSignals = ["SIGINT", "SIGTERM"] as const;
+const forwardedSignals = [
+	"SIGINT",
+	"SIGTERM",
+	"SIGHUP",
+	...(process.platform === "win32" ? (["SIGBREAK"] as const) : []),
+] as const;
 const signalHandlers = forwardedSignals.map((signal) => {
 	const handler = (): void => {
-		child.kill(signal);
+		if (child.pid !== undefined) {
+			terminateProcessTree(child.pid, signal);
+		}
 	};
 	process.once(signal, handler);
 	return { signal, handler };

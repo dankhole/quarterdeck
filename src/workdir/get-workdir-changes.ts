@@ -1,12 +1,25 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { RuntimeWorkdirChangesResponse, RuntimeWorkdirFileChange, RuntimeWorkdirFileStatus } from "../core";
+import {
+	normalizeFileSystemPathForComparison,
+	type RuntimeWorkdirChangesResponse,
+	type RuntimeWorkdirFileChange,
+	type RuntimeWorkdirFileStatus,
+} from "../core";
 import type { FileFingerprint } from "./file-fingerprint";
 import { buildFileFingerprints } from "./file-fingerprint";
-import { countLines, GIT_INSPECTION_OPTIONS, getGitStdout, parseNumstatPerFile, resolveRepoRoot } from "./git-utils";
+import {
+	countLines,
+	GIT_INSPECTION_OPTIONS,
+	getGitStdout,
+	parseNumstatPerFile,
+	resolveRepoRoot,
+	splitNullSeparatedGitOutput,
+} from "./git-utils";
 
 const WORKDIR_CHANGES_CACHE_MAX_ENTRIES = 128;
+const GIT_PATH_OUTPUT_OPTIONS = { trimStdout: false, ...GIT_INSPECTION_OPTIONS } as const;
 
 interface WorkdirChangesCacheEntry {
 	stateKey: string;
@@ -79,19 +92,16 @@ function mapNameStatus(code: string): RuntimeWorkdirFileStatus {
 
 function parseTrackedChanges(output: string): NameStatusEntry[] {
 	const entries: NameStatusEntry[] = [];
-	const lines = output
-		.split("\n")
-		.map((line) => line.trim())
-		.filter(Boolean);
+	const fields = splitNullSeparatedGitOutput(output);
 
-	for (const line of lines) {
-		const parts = line.split("\t");
-		const statusCode = parts[0] as string;
+	for (let index = 0; index < fields.length; index += 1) {
+		const statusCode = fields[index];
+		if (!statusCode) continue;
 		const status = mapNameStatus(statusCode);
 
-		if ((status === "renamed" || status === "copied") && parts.length >= 3) {
-			const previousPath = parts[1];
-			const path = parts[2];
+		if (status === "renamed" || status === "copied") {
+			const previousPath = fields[index + 1];
+			const path = fields[index + 2];
 			if (path) {
 				entries.push({
 					path,
@@ -99,16 +109,18 @@ function parseTrackedChanges(output: string): NameStatusEntry[] {
 					status,
 				});
 			}
+			index += 2;
 			continue;
 		}
 
-		const path = parts[1];
+		const path = fields[index + 1];
 		if (path) {
 			entries.push({
 				path,
 				status,
 			});
 		}
+		index += 1;
 	}
 
 	return entries;
@@ -177,7 +189,7 @@ async function readWorkingTreeFile(repoRoot: string, path: string): Promise<stri
 /** Run `git diff --numstat <args>` in batch and return per-file stats. */
 async function batchReadNumstat(repoRoot: string, args: string[]): Promise<Map<string, DiffStat>> {
 	try {
-		const output = await getGitStdout(["diff", "--numstat", ...args], repoRoot, GIT_INSPECTION_OPTIONS);
+		const output = await getGitStdout(["diff", "--numstat", "-z", ...args], repoRoot, GIT_PATH_OUTPUT_OPTIONS);
 		return parseNumstatPerFile(output);
 	} catch {
 		return new Map();
@@ -237,17 +249,15 @@ export async function createEmptyWorkdirChangesResponse(cwd: string): Promise<Ru
 
 export async function getWorkdirChanges(cwd: string): Promise<RuntimeWorkdirChangesResponse> {
 	const repoRoot = await resolveRepoRoot(cwd);
+	const repoCacheKey = normalizeFileSystemPathForComparison(repoRoot);
 
 	const [trackedChangesOutput, untrackedOutput, headCommitOutput] = await Promise.all([
-		getGitStdout(["diff", "--name-status", "HEAD", "--"], repoRoot, GIT_INSPECTION_OPTIONS),
-		getGitStdout(["ls-files", "--others", "--exclude-standard"], repoRoot, GIT_INSPECTION_OPTIONS),
+		getGitStdout(["diff", "--name-status", "-z", "HEAD", "--"], repoRoot, GIT_PATH_OUTPUT_OPTIONS),
+		getGitStdout(["ls-files", "--others", "--exclude-standard", "-z"], repoRoot, GIT_PATH_OUTPUT_OPTIONS),
 		getGitStdout(["rev-parse", "--verify", "HEAD"], repoRoot, GIT_INSPECTION_OPTIONS).catch(() => ""),
 	]);
 	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
-	const untrackedPaths = untrackedOutput
-		.split("\n")
-		.map((line) => line.trim())
-		.filter(Boolean);
+	const untrackedPaths = splitNullSeparatedGitOutput(untrackedOutput);
 
 	const trackedPaths = new Set(trackedChanges.map((entry) => entry.path));
 	const allChanges: NameStatusEntry[] = [
@@ -262,13 +272,13 @@ export async function getWorkdirChanges(cwd: string): Promise<RuntimeWorkdirChan
 	const fingerprintPaths = allChanges.flatMap((entry) => [entry.path, entry.previousPath].filter(Boolean) as string[]);
 	const fingerprints = await buildFileFingerprints(repoRoot, fingerprintPaths);
 	const stateKey = buildWorkdirChangesStateKey({
-		repoRoot,
+		repoRoot: repoCacheKey,
 		headCommit: headCommitOutput.trim() || null,
 		trackedChangesOutput,
 		untrackedOutput,
 		fingerprints,
 	});
-	const existing = workdirChangesCacheByRepoRoot.get(repoRoot);
+	const existing = workdirChangesCacheByRepoRoot.get(repoCacheKey);
 	if (existing && existing.stateKey === stateKey) {
 		existing.lastAccessedAt = Date.now();
 		return existing.response;
@@ -296,7 +306,7 @@ export async function getWorkdirChanges(cwd: string): Promise<RuntimeWorkdirChan
 		generatedAt: Date.now(),
 		files,
 	};
-	workdirChangesCacheByRepoRoot.set(repoRoot, {
+	workdirChangesCacheByRepoRoot.set(repoCacheKey, {
 		stateKey,
 		response,
 		lastAccessedAt: Date.now(),
@@ -321,19 +331,16 @@ export async function getWorkdirChangesForPaths(
 	}
 
 	const [trackedChangesOutput, untrackedOutput, headCommitOutput] = await Promise.all([
-		getGitStdout(["diff", "--name-status", "HEAD", "--", ...selectedPaths], repoRoot, GIT_INSPECTION_OPTIONS),
+		getGitStdout(["diff", "--name-status", "-z", "HEAD", "--", ...selectedPaths], repoRoot, GIT_PATH_OUTPUT_OPTIONS),
 		getGitStdout(
-			["ls-files", "--others", "--exclude-standard", "--", ...selectedPaths],
+			["ls-files", "--others", "--exclude-standard", "-z", "--", ...selectedPaths],
 			repoRoot,
-			GIT_INSPECTION_OPTIONS,
+			GIT_PATH_OUTPUT_OPTIONS,
 		),
 		getGitStdout(["rev-parse", "--verify", "HEAD"], repoRoot, GIT_INSPECTION_OPTIONS).catch(() => ""),
 	]);
 	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
-	const untrackedPaths = untrackedOutput
-		.split("\n")
-		.map((line) => line.trim())
-		.filter(Boolean);
+	const untrackedPaths = splitNullSeparatedGitOutput(untrackedOutput);
 
 	const trackedPaths = new Set(trackedChanges.map((entry) => entry.path));
 	const allChanges: NameStatusEntry[] = [
@@ -390,6 +397,7 @@ export async function getWorkdirChangesBetweenRefs(
 	input: ChangesBetweenRefsInput,
 ): Promise<RuntimeWorkdirChangesResponse> {
 	const repoRoot = await resolveRepoRoot(input.cwd);
+	const repoCacheKey = normalizeFileSystemPathForComparison(repoRoot);
 	const threeDot = input.threeDot ?? false;
 
 	// Resolve refs to commit hashes so branch names that advance don't serve stale cache.
@@ -397,7 +405,7 @@ export async function getWorkdirChangesBetweenRefs(
 		getGitStdout(["rev-parse", input.fromRef], repoRoot, GIT_INSPECTION_OPTIONS).catch(() => input.fromRef),
 		getGitStdout(["rev-parse", input.toRef], repoRoot, GIT_INSPECTION_OPTIONS).catch(() => input.toRef),
 	]);
-	const cacheKey = `${repoRoot}::${fromHash}::${toHash}::${threeDot ? "3dot" : "2dot"}`;
+	const cacheKey = `${repoCacheKey}::${fromHash}::${toHash}::${threeDot ? "3dot" : "2dot"}`;
 	const cached = refChangesCacheByKey.get(cacheKey);
 	if (cached) {
 		cached.lastAccessedAt = Date.now();
@@ -408,9 +416,9 @@ export async function getWorkdirChangesBetweenRefs(
 	const diffSpec = threeDot ? [`${input.fromRef}...${input.toRef}`] : [input.fromRef, input.toRef];
 
 	const trackedChangesOutput = await getGitStdout(
-		["diff", "--name-status", "--find-renames", ...diffSpec, "--"],
+		["diff", "--name-status", "-z", "--find-renames", ...diffSpec, "--"],
 		repoRoot,
-		GIT_INSPECTION_OPTIONS,
+		GIT_PATH_OUTPUT_OPTIONS,
 	);
 	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
 	if (trackedChanges.length === 0) {
@@ -465,6 +473,7 @@ function pruneFromRefChangesCache(): void {
 
 export async function getWorkdirChangesFromRef(input: ChangesFromRefInput): Promise<RuntimeWorkdirChangesResponse> {
 	const repoRoot = await resolveRepoRoot(input.cwd);
+	const repoCacheKey = normalizeFileSystemPathForComparison(repoRoot);
 	const threeDot = input.threeDot ?? false;
 
 	// For three-dot mode, compute merge-base(fromRef, HEAD) and use it as the effective fromRef.
@@ -481,18 +490,15 @@ export async function getWorkdirChangesFromRef(input: ChangesFromRefInput): Prom
 
 	const [trackedChangesOutput, untrackedOutput, fromHash] = await Promise.all([
 		getGitStdout(
-			["diff", "--name-status", "--find-renames", effectiveFromRef, "--"],
+			["diff", "--name-status", "-z", "--find-renames", effectiveFromRef, "--"],
 			repoRoot,
-			GIT_INSPECTION_OPTIONS,
+			GIT_PATH_OUTPUT_OPTIONS,
 		),
-		getGitStdout(["ls-files", "--others", "--exclude-standard"], repoRoot, GIT_INSPECTION_OPTIONS),
+		getGitStdout(["ls-files", "--others", "--exclude-standard", "-z"], repoRoot, GIT_PATH_OUTPUT_OPTIONS),
 		getGitStdout(["rev-parse", effectiveFromRef], repoRoot, GIT_INSPECTION_OPTIONS).catch(() => effectiveFromRef),
 	]);
 	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
-	const untrackedPaths = untrackedOutput
-		.split("\n")
-		.map((line) => line.trim())
-		.filter(Boolean);
+	const untrackedPaths = splitNullSeparatedGitOutput(untrackedOutput);
 	const trackedPaths = new Set(trackedChanges.map((entry) => entry.path));
 	const allChanges: NameStatusEntry[] = [
 		...trackedChanges,
@@ -516,9 +522,9 @@ export async function getWorkdirChangesFromRef(input: ChangesFromRefInput): Prom
 	const fingerprintPaths = allChanges.flatMap((entry) => [entry.path, entry.previousPath].filter(Boolean) as string[]);
 	const fingerprints = await buildFileFingerprints(repoRoot, fingerprintPaths);
 	const resolvedFromHash = fromHash.trim();
-	const cacheMapKey = `${repoRoot}::${resolvedFromHash}::${threeDot ? "3dot" : "2dot"}`;
+	const cacheMapKey = `${repoCacheKey}::${resolvedFromHash}::${threeDot ? "3dot" : "2dot"}`;
 	const stateKey = buildWorkdirChangesStateKey({
-		repoRoot,
+		repoRoot: repoCacheKey,
 		headCommit: resolvedFromHash,
 		trackedChangesOutput,
 		untrackedOutput,

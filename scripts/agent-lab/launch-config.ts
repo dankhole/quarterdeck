@@ -1,7 +1,8 @@
-import { mkdir, mkdtemp } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { ensurePrivateDiagnosticDirectories } from "../../src/diagnostics";
 import { createAgentLabRunId, getAgentLabArtifactRoot, resolveRunArtifactDir, writeJsonAtomic } from "./paths";
 import {
 	AGENT_LAB_SCHEMA_VERSION,
@@ -31,7 +32,7 @@ export async function createAgentLabLaunchConfig(
 	const artifactRoot = resolve(options.artifactRoot ?? getAgentLabArtifactRoot(repoRoot));
 	const artifactDir = resolveRunArtifactDir(runId, artifactRoot);
 	const tempRoot = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-"));
-	await mkdir(artifactDir, { recursive: true });
+	await ensurePrivateDiagnosticDirectories([artifactRoot, artifactDir, tempRoot]);
 
 	return {
 		schemaVersion: AGENT_LAB_SCHEMA_VERSION,

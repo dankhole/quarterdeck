@@ -14,6 +14,7 @@ import {
 	setHomeGitSummary,
 	setProjectMetadataScope,
 	setProjectPath,
+	setTaskWorktreeInfo,
 } from "@/stores/project-metadata-store";
 
 function createMetadata(branch: string, path: string, stateVersion: number): RuntimeProjectMetadata {
@@ -110,5 +111,21 @@ describe("project metadata store scoping", () => {
 		expect(clearTaskWorktreeSnapshot("project-b", "shared-task-id")).toBe(true);
 		expect(getTaskWorktreeInfo("shared-task-id")).toBeNull();
 		expect(getTaskWorktreeSnapshot("shared-task-id")).toBeNull();
+	});
+
+	it("does not emit a metadata change for a Windows path casing alias", () => {
+		setProjectMetadataScope("project-a");
+		const info = {
+			taskId: "task-a",
+			path: "C:\\Repo\\Task",
+			exists: true,
+			baseRef: "main",
+			branch: "feature/task",
+			isDetached: false,
+			headCommit: "abc123",
+		};
+
+		expect(setTaskWorktreeInfo("project-a", info)).toBe(true);
+		expect(setTaskWorktreeInfo("project-a", { ...info, path: "c:/repo/task/" })).toBe(false);
 	});
 });

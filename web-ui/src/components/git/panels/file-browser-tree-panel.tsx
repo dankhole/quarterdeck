@@ -311,8 +311,8 @@ export function FileBrowserTreePanel({
 		async (event: React.FormEvent<HTMLFormElement>) => {
 			event.preventDefault();
 			if (!entryFormDialog) return;
-			const nextPath = entryFormDialog.value.trim();
-			if (!nextPath) {
+			const nextPath = entryFormDialog.value;
+			if (!nextPath.trim()) {
 				showAppToast({ intent: "danger", message: "Path is required." });
 				return;
 			}

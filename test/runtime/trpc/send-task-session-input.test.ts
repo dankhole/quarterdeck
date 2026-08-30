@@ -6,6 +6,7 @@ import { handleSendTaskSessionInput } from "../../../src/trpc/handlers/send-task
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 const scope = { projectId: "project-1", projectPath: "/repo" };
+const terminalSubmitTerminator = process.platform === "win32" ? "\r" : "\n";
 const taskResourceOperations = new TaskResourceOperationCoordinator();
 
 describe("handleSendTaskSessionInput", () => {
@@ -26,7 +27,7 @@ describe("handleSendTaskSessionInput", () => {
 		});
 	});
 
-	it("keeps newline transport independent while submitting", async () => {
+	it("uses the platform terminal Enter sequence while submitting", async () => {
 		const writeInput = vi.fn(() => createTestTaskSessionSummary({ taskId: "task-1" }));
 		const terminalManager = { writeInput } as unknown as TerminalSessionManager;
 
@@ -36,7 +37,7 @@ describe("handleSendTaskSessionInput", () => {
 			{ getScopedTerminalManager: vi.fn(async () => terminalManager), taskResourceOperations },
 		);
 
-		expect(writeInput).toHaveBeenCalledWith("task-1", Buffer.from("continue\n"), {
+		expect(writeInput).toHaveBeenCalledWith("task-1", Buffer.from(`continue${terminalSubmitTerminator}`), {
 			explicitUserSubmission: true,
 		});
 	});
@@ -51,7 +52,7 @@ describe("handleSendTaskSessionInput", () => {
 			{ getScopedTerminalManager: vi.fn(async () => terminalManager), taskResourceOperations },
 		);
 
-		expect(writeInput).toHaveBeenCalledWith("task-1", Buffer.from("continue\n"), {
+		expect(writeInput).toHaveBeenCalledWith("task-1", Buffer.from(`continue${terminalSubmitTerminator}`), {
 			explicitUserSubmission: false,
 		});
 	});

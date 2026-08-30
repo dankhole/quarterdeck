@@ -25,9 +25,11 @@ function createMockPtySession(pid: number, request: MockSpawnRequest) {
 		pid,
 		write: vi.fn(),
 		resize: vi.fn(),
+		forceRedraw: vi.fn(),
 		pause: vi.fn(),
 		resume: vi.fn(),
 		stop: vi.fn(),
+		registerManagedProcessOwnership: vi.fn(async () => undefined),
 		wasInterrupted: vi.fn(() => false),
 		triggerData: (chunk: string | Buffer) => {
 			request.onData?.(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8"));
@@ -70,6 +72,7 @@ describe("TerminalSessionManager shell sessions", () => {
 		expect(result.agentId).toBeNull();
 		expect(result.pid).toBe(111);
 		expect(result.sessionLaunchPath).toBe("/tmp/project");
+		expect(spawnedSessions[0]?.registerManagedProcessOwnership).toHaveBeenCalledWith(expect.any(String));
 	});
 
 	it("delivers output data to attached listeners", async () => {
@@ -182,6 +185,31 @@ describe("TerminalSessionManager shell sessions", () => {
 		expect(summary?.state).toBe("awaiting_review");
 		expect(summary?.reviewReason).toBe("error");
 		expect(summary?.agentId).toBeNull();
+	});
+
+	it("stops and fails closed when managed shell ownership cannot be registered", async () => {
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111, request);
+			session.registerManagedProcessOwnership.mockRejectedValue(new Error("ownership unavailable"));
+			spawnedSessions.push(session);
+			return session;
+		});
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+
+		await expect(
+			manager.startShellSession({
+				taskId: "shell-ownership-failure",
+				cwd: "/tmp/project",
+				binary: "/bin/zsh",
+			}),
+		).rejects.toThrow("Failed to launch");
+
+		expect(spawnedSessions[0]?.stop).toHaveBeenCalledWith({ interrupted: true });
+		expect(manager.store.getSummary("shell-ownership-failure")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "error",
+			pid: null,
+		});
 	});
 
 	it("is idempotent when session is already running", async () => {

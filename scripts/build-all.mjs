@@ -6,19 +6,21 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { resolveNpmCommand } from "./npm-command.mjs";
+import { mergeProcessEnvironment } from "./process-environment.mjs";
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const npmBinary = process.platform === "win32" ? "npm.cmd" : "npm";
 const buildId = randomUUID();
-const buildEnv = {
-	...process.env,
+const buildEnv = mergeProcessEnvironment(process.env, {
 	QUARTERDECK_BUILD_ID: buildId,
-};
+});
 
 function run(command, args) {
 	const result = spawnSync(command, args, {
 		cwd: repoRoot,
 		env: buildEnv,
 		stdio: "inherit",
+		windowsHide: true,
 	});
 	if (result.error) {
 		throw result.error;
@@ -41,8 +43,10 @@ function assertBuildIdentity() {
 	}
 }
 
-run(npmBinary, ["run", "clean"]);
-run(npmBinary, ["run", "web:build"]);
+const cleanCommand = resolveNpmCommand(["run", "clean"]);
+run(cleanCommand.command, cleanCommand.args);
+const webBuildCommand = resolveNpmCommand(["run", "web:build"]);
+run(webBuildCommand.command, webBuildCommand.args);
 run(process.execPath, ["scripts/build.mjs"]);
 assertBuildIdentity();
 

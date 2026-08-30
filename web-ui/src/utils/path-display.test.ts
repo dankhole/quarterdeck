@@ -26,6 +26,11 @@ describe("formatPathForDisplay", () => {
 		expect(formatPathForDisplay("C:/Users/alice/projects")).toBe("~/projects");
 	});
 
+	it("handles case and namespace variants of Windows home paths", () => {
+		expect(formatPathForDisplay("c:\\users\\ALICE\\code")).toBe("~/code");
+		expect(formatPathForDisplay("\\\\?\\C:\\Users\\alice\\code")).toBe("~/code");
+	});
+
 	it("returns path unchanged when no home prefix detected", () => {
 		expect(formatPathForDisplay("/var/log/app.log")).toBe("/var/log/app.log");
 	});

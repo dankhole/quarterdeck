@@ -1,4 +1,5 @@
 import type { RuntimeProjectMetadata } from "../core";
+import { areFileSystemPathsEqual } from "../core/path-comparison.js";
 import { resolveBaseRefForBranch } from "../workdir";
 import {
 	areProjectMetadataEqual,
@@ -359,7 +360,8 @@ export class ProjectMetadataRefresher {
 		const current = this.deps.getTaskMetadata(taskId);
 		return (
 			this.deps.getTaskFreshness(taskId) === expectedFreshness &&
-			current?.data.path === expected.data.path &&
+			current !== null &&
+			areFileSystemPathsEqual(current.data.path, expected.data.path) &&
 			current.lastKnownBranch === expected.lastKnownBranch
 		);
 	}

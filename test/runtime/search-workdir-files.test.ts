@@ -179,4 +179,19 @@ describe.sequential("search workdir files runtime", () => {
 			cleanup();
 		}
 	});
+
+	it("preserves valid leading spaces in Windows-compatible file names", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-search-files-leading-space-");
+		try {
+			initRepository(repoPath);
+			const relativePath = " leading-note.txt";
+			writeFileSync(join(repoPath, relativePath), "draft\n", "utf8");
+
+			const results = await searchWorkdirFiles(repoPath, "leading", 20);
+
+			expect(results).toEqual([{ path: relativePath, name: relativePath, changed: true }]);
+		} finally {
+			cleanup();
+		}
+	});
 });

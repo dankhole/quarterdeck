@@ -51,6 +51,50 @@ describe("diagnostic value sanitization", () => {
 		expect(result.value).not.toContain("/private/lab");
 	});
 
+	it("redacts unknown Windows drive, UNC, and namespace paths after separator normalization", () => {
+		const result = sanitizeDiagnosticText(
+			"root=C:\\secret.txt drive=C:\\Users\\Alice\\Secret\\file.txt unc=\\\\server\\share\\private\\file.txt namespace=\\\\?\\C:\\Users\\Alice\\Hidden\\file.txt",
+		);
+
+		expect(result.value).toBe("root=$PATH drive=$PATH unc=$PATH namespace=$PATH");
+		expect(result.truncation?.redacted).toBe(2);
+	});
+
+	it("redacts complete unquoted Windows paths containing spaces", () => {
+		const result = sanitizeDiagnosticText(
+			"drive=C:\\Users\\Alice Smith\\Secret File.txt unc=\\\\server\\private share\\Secret File.txt next=ok",
+		);
+
+		expect(result.value).toBe("drive=$PATH unc=$PATH next=ok");
+		expect(result.value).not.toContain("Alice Smith");
+		expect(result.value).not.toContain("private share");
+	});
+
+	it("matches Windows aliases case-insensitively across namespace forms", () => {
+		const result = sanitizeDiagnosticText("source=\\\\?\\c:\\USERS\\ALICE\\repo\\src\\file.ts", {
+			pathAliases: {
+				projects: new Map([["p1", "C:\\Users\\Alice\\Repo"]]),
+			},
+		});
+
+		expect(result.value).toBe("source=$PROJECT:p1/src/file.ts");
+		expect(result.value).not.toContain("ALICE");
+	});
+
+	it("does not apply a Windows alias to a sibling path prefix", () => {
+		const result = sanitizeDiagnosticText(
+			"sibling=C:\\Users\\Alice\\Repository\\file.txt device=\\\\.\\C:\\private.txt:stream",
+			{
+				pathAliases: {
+					projects: new Map([["p1", "C:\\Users\\Alice\\Repo"]]),
+				},
+			},
+		);
+
+		expect(result.value).toBe("sibling=$PATH device=$PATH");
+		expect(result.value).not.toContain("$PROJECT:p1sitory");
+	});
+
 	it("bounds strings, arrays, objects, depth, getters, and circular values", () => {
 		const circular: Record<string, unknown> = {};
 		circular.self = circular;

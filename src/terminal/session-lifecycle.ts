@@ -255,6 +255,7 @@ export async function spawnTaskSession(
 			},
 		});
 		sessionForCallbacks = session;
+		await session.registerManagedProcessOwnership?.(hookSessionInstanceId);
 	} catch (error) {
 		sessionLog.error("failed to spawn task session", {
 			taskId: request.taskId,
@@ -266,6 +267,7 @@ export async function spawnTaskSession(
 		entry.pendingSessionStartSince = null;
 		entry.hookEventOrder = null;
 		markTaskSessionLaunchCancelled(entry.launchMonitor);
+		sessionForCallbacks?.stop({ interrupted: true });
 		if (launch.cleanup) {
 			void launch.cleanup().catch(() => {});
 		}
@@ -658,7 +660,9 @@ export async function spawnShellSession(
 			},
 		});
 		sessionForCallbacks = session;
+		await session.registerManagedProcessOwnership?.(sessionInstanceId);
 	} catch (error) {
+		sessionForCallbacks?.stop({ interrupted: true });
 		terminalStateMirror.dispose();
 		deps.updateStore(request.taskId, {
 			sessionInstanceId,

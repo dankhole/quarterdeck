@@ -8,6 +8,10 @@ export interface SendTaskSessionInputDeps {
 	assertNativeInputAllowed?: (scope: RuntimeTrpcProjectScope, taskId: string) => Promise<void>;
 }
 
+function getTerminalSubmitTerminator(): "\r" | "\n" {
+	return process.platform === "win32" ? "\r" : "\n";
+}
+
 export async function handleSendTaskSessionInput(
 	projectScope: RuntimeTrpcProjectScope,
 	input: unknown,
@@ -17,7 +21,7 @@ export async function handleSendTaskSessionInput(
 		const body = parseTaskSessionInputRequest(input);
 		const summary = await deps.taskResourceOperations.run(projectScope.projectId, body.taskId, async () => {
 			await deps.assertNativeInputAllowed?.(projectScope, body.taskId);
-			const payloadText = body.appendNewline ? `${body.text}\n` : body.text;
+			const payloadText = body.appendNewline ? `${body.text}${getTerminalSubmitTerminator()}` : body.text;
 			const terminalManager = await deps.getScopedTerminalManager(projectScope);
 			return terminalManager.writeInput(body.taskId, Buffer.from(payloadText, "utf8"), {
 				explicitUserSubmission: body.intent === "submit",

@@ -399,6 +399,34 @@ describe("task session spawn failure", () => {
 		expect(summary?.pid).toBeNull();
 	});
 
+	it("stops the Windows PTY and fails the launch when ownership registration fails", async () => {
+		const spawned = createMockPtySession(111, {});
+		const registerManagedProcessOwnership = vi.fn(async () => {
+			throw new Error("Could not query Windows process creation identities.");
+		});
+		ptySessionSpawnMock.mockReturnValue({ ...spawned, registerManagedProcessOwnership });
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+
+		await expect(
+			manager.startTaskSession({
+				taskId: "task-1",
+				agentId: "claude",
+				binary: "claude",
+				args: [],
+				cwd: "/tmp/task-1",
+				prompt: "Fix the bug",
+			}),
+		).rejects.toThrow("Could not query Windows process creation identities");
+
+		expect(registerManagedProcessOwnership).toHaveBeenCalledOnce();
+		expect(spawned.stop).toHaveBeenCalledWith({ interrupted: true });
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "error",
+			pid: null,
+		});
+	});
+
 	it("does not mislabel an unclassified ENOENT as a missing agent command", async () => {
 		ptySessionSpawnMock.mockImplementation(() => {
 			throw new Error("spawn ENOENT");

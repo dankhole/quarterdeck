@@ -6,7 +6,7 @@ import { access, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import treeKill from "tree-kill";
+import { terminateProcessTree } from "../../src/core";
 
 import { closeAgentLabBrowserSession } from "./browser-session";
 import { buildAgentLabEnvironment } from "./environment";
@@ -32,6 +32,7 @@ interface ManagedChild {
 	logStream: WriteStream;
 	exit: Promise<ManagedChildExit>;
 	getExitResult: () => ManagedChildExit | null;
+	gracefulShutdownViaStdin: boolean;
 }
 
 interface ManagedChildExit {
@@ -59,7 +60,10 @@ interface AgentLabShutdownSequence {
 }
 
 const STARTUP_TIMEOUT_MS = 60_000;
-const STOP_TIMEOUT_MS = 10_000;
+// The runtime owns an eight-second Windows graceful-shutdown budget. Keep the
+// supervisor's tree-kill fallback outside that budget while still finishing
+// before Windows' console-close deadline.
+const STOP_TIMEOUT_MS = process.platform === "win32" ? 9_000 : 11_000;
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -69,14 +73,21 @@ function createManagedChild(
 	label: string,
 	command: string,
 	args: string[],
-	options: { cwd: string; env: NodeJS.ProcessEnv; logPath: string; forwardLogs: boolean },
+	options: {
+		cwd: string;
+		env: NodeJS.ProcessEnv;
+		logPath: string;
+		forwardLogs: boolean;
+		gracefulShutdownViaStdin?: boolean;
+	},
 ): ManagedChild {
 	const logStream = createWriteStream(options.logPath, { flags: "a" });
 	const child = spawn(command, args, {
 		cwd: options.cwd,
 		env: options.env,
-		stdio: ["ignore", "pipe", "pipe"],
+		stdio: [options.gracefulShutdownViaStdin === true ? "pipe" : "ignore", "pipe", "pipe"],
 		detached: process.platform !== "win32",
+		windowsHide: true,
 	});
 	child.stdout?.pipe(logStream, { end: false });
 	child.stderr?.pipe(logStream, { end: false });
@@ -96,7 +107,15 @@ function createManagedChild(
 		child.once("error", (error) => settle({ code: null, signal: null, error }));
 		child.once("exit", (code, signal) => settle({ code, signal, error: null }));
 	});
-	return { label, process: child, logPath: options.logPath, logStream, exit, getExitResult: () => exitResult };
+	return {
+		label,
+		process: child,
+		logPath: options.logPath,
+		logStream,
+		exit,
+		getExitResult: () => exitResult,
+		gracefulShutdownViaStdin: options.gracefulShutdownViaStdin === true,
+	};
 }
 
 async function stopManagedChild(child: ManagedChild): Promise<void> {
@@ -115,10 +134,10 @@ async function stopManagedChild(child: ManagedChild): Promise<void> {
 			resolveStop();
 		};
 		const timeout = setTimeout(() => {
-			treeKill(pid, "SIGKILL", finish);
+			terminateProcessTree(pid, "SIGKILL", finish);
 		}, STOP_TIMEOUT_MS);
 		timeout.unref();
-		treeKill(pid, "SIGTERM", () => {
+		terminateProcessTree(pid, "SIGTERM", () => {
 			void child.exit.finally(() => {
 				clearTimeout(timeout);
 				finish();
@@ -134,10 +153,17 @@ async function stopManagedChildGracefully(child: ManagedChild): Promise<void> {
 		return;
 	}
 	const pid = child.process.pid;
-	try {
-		child.process.kill("SIGTERM");
-	} catch {
-		// The process may have exited between the liveness check and signal.
+	if (
+		child.gracefulShutdownViaStdin &&
+		child.process.stdin &&
+		!child.process.stdin.destroyed &&
+		!child.process.stdin.writableEnded
+	) {
+		child.process.stdin.end();
+	} else {
+		await new Promise<void>((resolveSignal) => {
+			terminateProcessTree(pid, "SIGTERM", () => resolveSignal());
+		});
 	}
 	const exited = await Promise.race([
 		child.exit.then(() => true),
@@ -148,7 +174,7 @@ async function stopManagedChildGracefully(child: ManagedChild): Promise<void> {
 	]);
 	if (!exited) {
 		await new Promise<void>((resolveKill) => {
-			treeKill(pid, "SIGKILL", () => resolveKill());
+			terminateProcessTree(pid, "SIGKILL", () => resolveKill());
 		});
 	}
 	child.logStream.end();
@@ -218,7 +244,8 @@ function createSupervisorControl(stopRequestPath: string, runtimeRestartRequestP
 		for (const signal of [
 			"SIGINT",
 			"SIGTERM",
-			...(process.platform === "win32" ? [] : ["SIGHUP"]),
+			"SIGHUP",
+			...(process.platform === "win32" ? ["SIGBREAK"] : []),
 		] as NodeJS.Signals[]) {
 			const handler = () => resolveControlPromise({ kind: "stop", reason: signal });
 			signalHandlers.set(signal, handler);
@@ -362,6 +389,7 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 					env: environment,
 					logPath: runtimeLogPath,
 					forwardLogs: config.forwardLogs,
+					gracefulShutdownViaStdin: true,
 				},
 			);
 			if (child.process.pid === undefined) {
@@ -537,11 +565,23 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 			},
 			removeTemporaryFixture: async () => {
 				if (config.agent.mode === "real-codex") {
-					await rm(config.agent.codexHomePath, { recursive: true, force: true });
+					await rm(config.agent.codexHomePath, {
+						recursive: true,
+						force: true,
+						maxRetries: 10,
+						retryDelay: 100,
+					});
 				} else if (config.agent.mode === "real-claude") {
-					await rm(config.agent.claudeConfigDirPath, { recursive: true, force: true });
+					await rm(config.agent.claudeConfigDirPath, {
+						recursive: true,
+						force: true,
+						maxRetries: 10,
+						retryDelay: 100,
+					});
 				}
-				if (!config.keepTemp) await rm(config.tempRoot, { recursive: true, force: true });
+				if (!config.keepTemp) {
+					await rm(config.tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+				}
 			},
 		});
 	}

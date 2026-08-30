@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { terminateProcessTree } from "../../src/core/process-termination.js";
 import { createGitTestEnv } from "./git-env";
 
 const requireFromHere = createRequire(import.meta.url);
@@ -31,12 +32,12 @@ export async function getAvailablePort(): Promise<number> {
 	return port;
 }
 
-export function resolveShutdownIpcHookPath(): string {
-	return resolve(process.cwd(), "test/integration/shutdown-ipc-hook.cjs");
-}
-
 export function resolveTsxLoaderImportSpecifier(): string {
 	return pathToFileURL(requireFromHere.resolve("tsx")).href;
+}
+
+export function resolveTsxCliPath(): string {
+	return requireFromHere.resolve("tsx/cli");
 }
 
 export async function waitForProcessStart(
@@ -99,7 +100,7 @@ export async function waitForProcessStart(
 }
 
 export async function waitForExit(childProcess: ChildProcess, timeoutMs: number): Promise<boolean> {
-	if (childProcess.exitCode !== null) {
+	if (childProcess.exitCode !== null || childProcess.signalCode !== null) {
 		return true;
 	}
 
@@ -121,19 +122,11 @@ function getShutdownSignal(): NodeJS.Signals {
 }
 
 export async function requestGracefulShutdown(childProcess: ChildProcess): Promise<void> {
-	if (typeof childProcess.send !== "function" || !childProcess.connected) {
-		childProcess.kill(getShutdownSignal());
+	if (childProcess.stdin && !childProcess.stdin.destroyed && !childProcess.stdin.writableEnded) {
+		childProcess.stdin.end();
 		return;
 	}
-
-	await new Promise<void>((resolveSend) => {
-		childProcess.send({ type: "quarterdeck.shutdown" }, (error) => {
-			if (error) {
-				childProcess.kill(getShutdownSignal());
-			}
-			resolveSend();
-		});
-	});
+	childProcess.kill(getShutdownSignal());
 }
 
 export async function startQuarterdeckServer(input: {
@@ -144,22 +137,14 @@ export async function startQuarterdeckServer(input: {
 	extraEnv?: NodeJS.ProcessEnv;
 }): Promise<{
 	runtimeUrl: string;
+	crash: () => Promise<void>;
 	stop: () => Promise<void>;
 }> {
 	const cliEntrypoint = resolve(process.cwd(), "src/cli.ts");
-	const shutdownIpcHookPath = resolveShutdownIpcHookPath();
 	const tsxLoaderImportSpecifier = resolveTsxLoaderImportSpecifier();
 	const child = spawn(
 		process.execPath,
-		[
-			"--require",
-			shutdownIpcHookPath,
-			"--import",
-			tsxLoaderImportSpecifier,
-			cliEntrypoint,
-			"--no-open",
-			...(input.extraArgs ?? []),
-		],
+		["--import", tsxLoaderImportSpecifier, cliEntrypoint, "--no-open", ...(input.extraArgs ?? [])],
 		{
 			cwd: input.cwd,
 			env: createGitTestEnv({
@@ -168,12 +153,22 @@ export async function startQuarterdeckServer(input: {
 				USERPROFILE: input.homeDir,
 				QUARTERDECK_RUNTIME_PORT: String(input.port),
 			}),
-			stdio: ["ignore", "pipe", "pipe", "ipc"],
+			stdio: ["pipe", "pipe", "pipe"],
+			windowsHide: true,
 		},
 	);
 	const { runtimeUrl } = await waitForProcessStart(child);
 	return {
 		runtimeUrl,
+		crash: async () => {
+			if (child.exitCode !== null) {
+				return;
+			}
+			child.kill("SIGKILL");
+			if (!(await waitForExit(child, 5_000))) {
+				throw new Error("Timed out crashing quarterdeck test server process.");
+			}
+		},
 		stop: async () => {
 			if (child.exitCode !== null) {
 				return;
@@ -184,7 +179,7 @@ export async function startQuarterdeckServer(input: {
 				return;
 			}
 
-			child.kill("SIGKILL");
+			if (child.pid !== undefined) terminateProcessTree(child.pid, "SIGKILL");
 			const didExitAfterForce = await waitForExit(child, 5_000);
 			if (!didExitAfterForce) {
 				throw new Error("Timed out stopping quarterdeck test server process.");

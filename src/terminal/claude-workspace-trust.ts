@@ -1,5 +1,4 @@
-import { resolve } from "node:path";
-import type { RuntimeAgentId } from "../core";
+import { areFileSystemPathsEqual, isFileSystemPathWithin, type RuntimeAgentId } from "../core";
 import { getTaskWorktreesHomePath } from "../state/project-state";
 
 export const WORKSPACE_TRUST_CONFIRM_DELAY_MS = 100;
@@ -63,12 +62,7 @@ export function hasClaudeWorkspaceTrustPrompt(text: string): boolean {
 }
 
 function isTaskWorktreePath(path: string): boolean {
-	const worktreesRoot = `${getTaskWorktreesHomePath().replace(/\\/gu, "/").replace(/\/+$/u, "")}/`;
-	const normalizedPath = `${path.replace(/\\/gu, "/").replace(/\/+$/u, "")}/`;
-	if (process.platform === "win32") {
-		return normalizedPath.toLowerCase().startsWith(worktreesRoot.toLowerCase());
-	}
-	return normalizedPath.startsWith(worktreesRoot);
+	return isFileSystemPathWithin(getTaskWorktreesHomePath(), path);
 }
 
 export function shouldAutoConfirmClaudeWorkspaceTrust(
@@ -84,7 +78,7 @@ export function shouldAutoConfirmClaudeWorkspaceTrust(
 		return true;
 	}
 	// Trust the main checkout when the runtime explicitly assigned it as the task's CWD.
-	if (workspacePath && resolve(cwd) === resolve(workspacePath)) {
+	if (workspacePath && areFileSystemPathsEqual(cwd, workspacePath)) {
 		return true;
 	}
 	return false;

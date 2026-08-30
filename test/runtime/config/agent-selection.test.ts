@@ -31,9 +31,6 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("auto-selects and persists when unset", async () => {
-		if (process.platform === "win32") {
-			return;
-		}
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-");
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-");
 
@@ -43,7 +40,8 @@ describe.sequential("runtime-config auto agent selection", () => {
 			const previousShell = process.env.SHELL;
 			try {
 				process.env.SHELL = "/definitely-not-a-shell";
-				const isolatedPath = `${tempBin}${delimiter}/usr/bin${delimiter}/bin`;
+				const isolatedPath =
+					process.platform === "win32" ? tempBin : `${tempBin}${delimiter}/usr/bin${delimiter}/bin`;
 				await withTemporaryEnv({ home: tempHome, pathPrefix: isolatedPath, replacePath: true }, async () => {
 					const state = await loadRuntimeConfig(null);
 					expect(state.selectedAgentId).toBe("codex");
@@ -63,9 +61,6 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("auto-selects Codex when the detected build supports native hooks", async () => {
-		if (process.platform === "win32") {
-			return;
-		}
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-");
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-");
 
@@ -75,7 +70,8 @@ describe.sequential("runtime-config auto agent selection", () => {
 			const previousShell = process.env.SHELL;
 			try {
 				process.env.SHELL = "/definitely-not-a-shell";
-				const isolatedPath = `${tempBin}${delimiter}/usr/bin${delimiter}/bin`;
+				const isolatedPath =
+					process.platform === "win32" ? tempBin : `${tempBin}${delimiter}/usr/bin${delimiter}/bin`;
 				await withTemporaryEnv({ home: tempHome, pathPrefix: isolatedPath, replacePath: true }, async () => {
 					const state = await loadRuntimeConfig(null);
 					expect(state.selectedAgentId).toBe("codex");
@@ -103,9 +99,6 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("does not write config when no supported CLI is detected", async () => {
-		if (process.platform === "win32") {
-			return;
-		}
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-default-");
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-default-");
 
@@ -158,9 +151,6 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("does not auto-select Codex when the detected version is below the supported floor", async () => {
-		if (process.platform === "win32") {
-			return;
-		}
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-old-codex-");
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-old-codex-");
 
@@ -179,9 +169,6 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("forces a fresh availability probe when saving a newly installed selected agent", async () => {
-		if (process.platform === "win32") {
-			return;
-		}
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-stale-");
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-stale-");
 

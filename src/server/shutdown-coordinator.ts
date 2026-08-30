@@ -188,6 +188,17 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 		}
 	}
 
+	// Start exact-owned orphan cleanup as soon as active PTYs have received their
+	// stop request. Windows console-close gives the runtime only a short fixed
+	// lifetime, so waiting until persistence and server close have completed can
+	// leave no time for the CIM identity recheck and taskkill. The promise remains
+	// awaited after server close, preserving the external shutdown contract.
+	const orphanCleanupPromise = deps.skipOrphanProcessCleanup
+		? Promise.resolve()
+		: killOrphanedAgentProcesses({ includeCurrentRuntime: true })
+				.then(() => undefined)
+				.catch(() => undefined);
+
 	// Wrap cleanup I/O in a timeout so closeRuntimeServer() always gets called
 	// orderly. Without this, a hung git operation or stale filesystem write blocks
 	// until the hard 10s process-level timeout kills us mid-I/O, skipping server
@@ -212,14 +223,7 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 
 	await deps.closeRuntimeServer();
 
-	// Best-effort orphan cleanup for agents left by a previously crashed instance.
-	// Await it so async process discovery has a chance to signal orphans before
-	// the graceful-shutdown handler exits the process.
-	if (!deps.skipOrphanProcessCleanup) {
-		try {
-			await killOrphanedAgentProcesses();
-		} catch {
-			// Startup catches any stragglers.
-		}
-	}
+	// Await best-effort cleanup so discovery has a chance to signal exact owned
+	// stragglers before the graceful-shutdown handler exits the process.
+	await orphanCleanupPromise;
 }

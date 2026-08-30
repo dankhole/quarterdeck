@@ -106,6 +106,17 @@ describe.sequential("task-worktree serialization", () => {
 	beforeEach(() => {
 		childProcessMocks.execFile.mockReset();
 		childProcessMocks.execFilePromise.mockReset();
+		childProcessMocks.execFile.mockImplementation(
+			(command: string, args: string[], options: unknown, callback: (...values: unknown[]) => void) => {
+				void childProcessMocks.execFilePromise(command, args, options).then(
+					(result: { stdout?: unknown; stderr?: unknown }) =>
+						callback(null, result.stdout ?? "", result.stderr ?? ""),
+					(error: { stdout?: unknown; stderr?: unknown }) =>
+						callback(error, error.stdout ?? "", error.stderr ?? ""),
+				);
+				return { pid: 12_345, kill: vi.fn(() => true) };
+			},
+		);
 		lockedFileSystemMocks.withLock.mockReset();
 		lockedFileSystemMocks.writeTextFileAtomic.mockReset();
 		projectStateMocks.getRuntimeHomePath.mockReset();
@@ -283,6 +294,17 @@ describe.sequential("branch-aware worktree creation", () => {
 	beforeEach(() => {
 		childProcessMocks.execFile.mockReset();
 		childProcessMocks.execFilePromise.mockReset();
+		childProcessMocks.execFile.mockImplementation(
+			(command: string, args: string[], options: unknown, callback: (...values: unknown[]) => void) => {
+				void childProcessMocks.execFilePromise(command, args, options).then(
+					(result: { stdout?: unknown; stderr?: unknown }) =>
+						callback(null, result.stdout ?? "", result.stderr ?? ""),
+					(error: { stdout?: unknown; stderr?: unknown }) =>
+						callback(error, error.stdout ?? "", error.stderr ?? ""),
+				);
+				return { pid: 12_345, kill: vi.fn(() => true) };
+			},
+		);
 		lockedFileSystemMocks.withLock.mockReset();
 		lockedFileSystemMocks.writeTextFileAtomic.mockReset();
 		projectStateMocks.getRuntimeHomePath.mockReset();
@@ -517,6 +539,7 @@ describe.sequential("branch-aware worktree creation", () => {
 
 	it("uses the user-action timeout for worktree creation", async () => {
 		const { repoPath, cleanup } = setupSandbox();
+		const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
 		try {
 			const worktreeHeads = new Map<string, string>();
 			const existingBranches = new Set<string>();
@@ -532,13 +555,9 @@ describe.sequential("branch-aware worktree creation", () => {
 			});
 
 			expect(result).toMatchObject({ ok: true });
-			const worktreeAddCall = childProcessMocks.execFilePromise.mock.calls.find((_call: unknown[]) => {
-				const args = stripConfigFlags(_call[1] as string[]);
-				const { command } = getCommandArgs(args, _call[2] as ExecFileOptions | undefined);
-				return command[0] === "worktree" && command[1] === "add";
-			});
-			expect(worktreeAddCall?.[2]).toEqual(expect.objectContaining({ timeout: GIT_COMMAND_TIMEOUTS_MS.userAction }));
+			expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), GIT_COMMAND_TIMEOUTS_MS.userAction);
 		} finally {
+			timeoutSpy.mockRestore();
 			cleanup();
 		}
 	});

@@ -551,6 +551,28 @@ describe("diagnostic snapshots, doctor, and bundles", () => {
 		expect(siblings.some((name) => name.endsWith(".tmp"))).toBe(false);
 	});
 
+	it("uses portable filenames for provider names reserved by Windows", async () => {
+		const output = join(directory, "portable-provider-capture");
+		const snapshot: DiagnosticSnapshot = {
+			version: 1,
+			runtimeInstanceId: "runtime-test",
+			capturedAt: 2_000,
+			providers: [{ name: "con", status: "completed", durationMs: 1, data: { ok: true } }],
+		};
+
+		await writeDiagnosticBundle({
+			quarterdeckVersion: "1.2.3",
+			descriptor: descriptor(),
+			records: [],
+			snapshot,
+			findings: [],
+			health: null,
+			outputDirectory: output,
+		});
+
+		expect(await readFile(join(output, "runtime", "providers", "provider-con.json"), "utf8")).toContain('"ok": true');
+	});
+
 	it("keeps privacy sentinels out of a default canonical bundle", async () => {
 		const output = join(directory, "privacy-capture");
 		const journal = new DiagnosticJournal(join(directory, "privacy-journal"), {

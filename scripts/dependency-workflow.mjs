@@ -3,14 +3,28 @@
 import { spawnSync } from "node:child_process";
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, posix, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { prepareAgentLabBrowserCache } from "./agent-lab/browser-cache.mjs";
+import { resolveNpmCommand } from "./npm-command.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(scriptPath), "..");
-const npmBinary = process.platform === "win32" ? "npm.cmd" : "npm";
+
+function removeWindowsNamespacePrefix(path) {
+	const normalizedSeparators = path.replaceAll("/", "\\");
+	if (/^\\\\\?\\unc\\/iu.test(normalizedSeparators)) return `\\\\${normalizedSeparators.slice(8)}`;
+	if (/^\\\\\?\\[A-Za-z]:\\/u.test(normalizedSeparators)) return normalizedSeparators.slice(4);
+	return path;
+}
+
+export function normalizeCheckoutPathForComparison(path, platform = process.platform) {
+	if (platform === "win32") {
+		return win32.resolve(removeWindowsNamespacePrefix(path)).toLowerCase();
+	}
+	return posix.resolve(path);
+}
 
 const DEPENDENCY_MARKERS = {
 	root: ["node_modules/node-pty/package.json", "node_modules/zod/package.json"],
@@ -67,8 +81,15 @@ export async function findActiveRuntimePids(stateHome) {
 	return [...new Set(pids)].sort((left, right) => left - right);
 }
 
-export async function resolveGlobalLinkedCheckout(command = npmBinary) {
-	const result = spawnSync(command, ["root", "-g"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+export async function resolveGlobalLinkedCheckout(command) {
+	const invocation = command
+		? { command, args: ["root", "-g"] }
+		: resolveNpmCommand(["root", "-g"]);
+	const result = spawnSync(invocation.command, invocation.args, {
+		encoding: "utf8",
+		stdio: ["ignore", "pipe", "ignore"],
+		windowsHide: true,
+	});
 	if (result.status !== 0) return null;
 	const packagePath = join(String(result.stdout).trim(), "quarterdeck");
 	try {
@@ -90,7 +111,9 @@ export async function assertLinkedRuntimeIsStopped(
 	]);
 	if (activeRuntimePids.length === 0 || !linkedCheckout) return;
 	const resolvedLinkedCheckout = await realpath(linkedCheckout).catch(() => resolve(linkedCheckout));
-	if (resolvedLinkedCheckout !== resolvedCheckout) return;
+	if (normalizeCheckoutPathForComparison(resolvedLinkedCheckout) !== normalizeCheckoutPathForComparison(resolvedCheckout)) {
+		return;
+	}
 	throw new Error(
 		`Quarterdeck is running from this linked checkout (PID${activeRuntimePids.length === 1 ? "" : "s"} ${activeRuntimePids.join(", ")}). Stop Quarterdeck before reinstalling dependencies, rebuilding, or relinking this checkout, then retry.`,
 	);
@@ -110,7 +133,12 @@ export function getMissingDependencyMessage(health) {
 }
 
 function runNpm(args, checkoutRoot = repoRoot) {
-	const result = spawnSync(npmBinary, args, { cwd: checkoutRoot, stdio: "inherit" });
+	const invocation = resolveNpmCommand(args);
+	const result = spawnSync(invocation.command, invocation.args, {
+		cwd: checkoutRoot,
+		stdio: "inherit",
+		windowsHide: true,
+	});
 	if (result.error) throw result.error;
 	if (result.status !== 0) {
 		throw new Error(`npm ${args.join(" ")} failed with exit code ${result.status ?? "unknown"}.`);

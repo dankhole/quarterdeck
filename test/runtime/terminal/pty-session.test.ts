@@ -15,6 +15,10 @@ const ptyMocks = vi.hoisted(() => ({
 }));
 const fsWriteMock = vi.hoisted(() => vi.fn<MockFsWrite>());
 const preflightPtyLaunchMock = vi.hoisted(() => vi.fn());
+const managedProcessOwnershipMocks = vi.hoisted(() => ({
+	register: vi.fn(),
+	retire: vi.fn(),
+}));
 
 vi.mock("node:fs", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:fs")>();
@@ -32,6 +36,15 @@ vi.mock("../../../src/terminal/pty-runtime-health", async (importOriginal) => {
 	};
 });
 
+vi.mock("../../../src/terminal/managed-process-ownership", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../../src/terminal/managed-process-ownership")>();
+	return {
+		...actual,
+		registerManagedProcessOwnership: managedProcessOwnershipMocks.register,
+		retireManagedProcessOwnership: managedProcessOwnershipMocks.retire,
+	};
+});
+
 import { PtySession } from "../../../src/terminal";
 import { _testing as ptySessionTesting } from "../../../src/terminal/pty-session";
 
@@ -40,6 +53,7 @@ const originalComSpec = process.env.ComSpec;
 const originalCOMSPEC = process.env.COMSPEC;
 const originalPath = process.env.PATH;
 const originalPathExt = process.env.PATHEXT;
+let windowsCommandDirectory: string;
 
 interface MockNodePtyWriteStream {
 	_fd: number;
@@ -98,6 +112,9 @@ describe("PtySession", () => {
 		ptySessionTesting.setNodePtySpawnOverride(ptyMocks.spawn);
 		fsWriteMock.mockReset();
 		preflightPtyLaunchMock.mockReset();
+		managedProcessOwnershipMocks.register.mockReset();
+		managedProcessOwnershipMocks.retire.mockReset();
+		managedProcessOwnershipMocks.retire.mockResolvedValue(undefined);
 		setPlatform(originalPlatform);
 		if (originalComSpec === undefined) {
 			delete process.env.ComSpec;
@@ -119,11 +136,21 @@ describe("PtySession", () => {
 		} else {
 			process.env.PATHEXT = originalPathExt;
 		}
+		windowsCommandDirectory = mkdtempSync(join(tmpdir(), "quarterdeck-win-pty-default-"));
+		writeFileSync(join(windowsCommandDirectory, "codex.cmd"), "@echo off\r\n");
+		writeFileSync(join(windowsCommandDirectory, "claude.cmd"), "@echo off\r\n");
+		process.env.PATH = windowsCommandDirectory;
+		process.env.PATHEXT = ".cmd";
 	});
 
 	afterEach(() => {
 		ptySessionTesting.setNodePtySpawnOverride(null);
 		setPlatform(originalPlatform);
+		rmSync(windowsCommandDirectory, { recursive: true, force: true });
+		if (originalPath === undefined) delete process.env.PATH;
+		else process.env.PATH = originalPath;
+		if (originalPathExt === undefined) delete process.env.PATHEXT;
+		else process.env.PATHEXT = originalPathExt;
 	});
 
 	it("launches through cmd shell on Windows", () => {
@@ -143,11 +170,61 @@ describe("PtySession", () => {
 
 		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
 		expect(ptyMocks.spawn.mock.calls[0]?.[0]).toBe("C:\\Windows\\System32\\cmd.exe");
-		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toContain("/d /s /c");
-		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toContain("codex");
+		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toContain("/d /v:off /s /c");
+		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toContain(join(windowsCommandDirectory, "codex.cmd"));
 		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toContain("hello^");
 		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toContain("world");
 		expect(session.pid).toBe(4242);
+	});
+
+	it("registers and retires exact managed ownership around a Windows PTY lifetime", async () => {
+		setPlatform("win32");
+		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
+		const ptyProcess = createMockPtyProcess();
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+		const handle = {
+			recordId: "12345678-1234-1234-1234-123456789abc",
+			path: "C:\\state\\managed-processes\\12345678-1234-1234-1234-123456789abc.json",
+		};
+		managedProcessOwnershipMocks.register.mockResolvedValue(handle);
+
+		const session = PtySession.spawn({
+			binary: "codex",
+			args: [],
+			cwd: "C:/repo",
+			cols: 120,
+			rows: 40,
+		});
+		await session.registerManagedProcessOwnership(handle.recordId);
+
+		expect(managedProcessOwnershipMocks.register).toHaveBeenCalledWith(4242, handle.recordId);
+		ptyProcess.emitExit({ exitCode: 0 });
+		await vi.waitFor(() => expect(managedProcessOwnershipMocks.retire).toHaveBeenCalledWith(handle));
+	});
+
+	it("waits for the deferred ConPTY PID before registering managed ownership", async () => {
+		setPlatform("win32");
+		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
+		let pid = 0;
+		const ptyProcess = createMockPtyProcess();
+		Object.defineProperty(ptyProcess, "pid", { get: () => pid });
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+		managedProcessOwnershipMocks.register.mockResolvedValue(null);
+
+		const session = PtySession.spawn({
+			binary: "codex",
+			args: [],
+			cwd: "C:/repo",
+			cols: 120,
+			rows: 40,
+		});
+		setTimeout(() => {
+			pid = 5151;
+		}, 0);
+
+		await session.registerManagedProcessOwnership("12345678-1234-1234-1234-123456789abc");
+
+		expect(managedProcessOwnershipMocks.register).toHaveBeenCalledWith(5151, "12345678-1234-1234-1234-123456789abc");
 	});
 
 	it("does not over-quote bare executables on Windows", () => {
@@ -165,7 +242,7 @@ describe("PtySession", () => {
 		});
 
 		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
-		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toBe('/d /s /c "claude"');
+		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toContain(join(windowsCommandDirectory, "claude.cmd"));
 	});
 
 	it("launches bare executables directly on Windows when PATH resolves to .exe", () => {
@@ -197,7 +274,7 @@ describe("PtySession", () => {
 		}
 
 		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
-		expect(ptyMocks.spawn.mock.calls[0]?.[0]).toBe("codex");
+		expect(ptyMocks.spawn.mock.calls[0]?.[0]).toBe(join(windowsBinDir, "codex.exe"));
 		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toEqual(["--foo", "bar"]);
 	});
 
@@ -224,6 +301,50 @@ describe("PtySession", () => {
 		expect(cmdArgs).toContain("file\\nwith^");
 		expect(cmdArgs).toContain("more^");
 		expect(cmdArgs).toContain("context");
+	});
+
+	it("prefers a sibling PowerShell shim so Windows PTYs preserve multiline prompts", () => {
+		setPlatform("win32");
+		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
+		process.env.PATHEXT = ".COM;.EXE;.BAT;.CMD";
+		const windowsBinDir = mkdtempSync(join(tmpdir(), "quarterdeck-win-pty-shim-"));
+		writeFileSync(join(windowsBinDir, "codex.cmd"), "@echo off\r\n");
+		writeFileSync(join(windowsBinDir, "codex.ps1"), "exit 0\r\n");
+		const ptyProcess = createMockPtyProcess();
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+
+		try {
+			PtySession.spawn({
+				binary: "codex",
+				args: ["--", "first line\r\nsecond line"],
+				cwd: "C:/repo",
+				env: {
+					PATH: windowsBinDir,
+					PATHEXT: ".COM;.EXE;.BAT;.CMD",
+					SystemRoot: "C:\\Windows",
+				},
+				cols: 120,
+				rows: 40,
+			});
+		} finally {
+			rmSync(windowsBinDir, { recursive: true, force: true });
+		}
+
+		expect(ptyMocks.spawn).toHaveBeenCalledWith(
+			"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+			[
+				"-NoLogo",
+				"-NoProfile",
+				"-NonInteractive",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				join(windowsBinDir, "codex.ps1"),
+				"--",
+				"first line\r\nsecond line",
+			],
+			expect.objectContaining({ cwd: "C:/repo" }),
+		);
 	});
 
 	it("does not use cmd shell outside Windows", () => {
@@ -258,7 +379,7 @@ describe("PtySession", () => {
 		});
 
 		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
-		expect(ptyMocks.spawn.mock.calls[0]?.[0]).toBe("cmd.exe");
+		expect(ptyMocks.spawn.mock.calls[0]?.[0]).toBe("C:\\Windows\\System32\\cmd.exe");
 	});
 
 	it("ignores resize calls after the pty has exited", () => {
@@ -278,6 +399,44 @@ describe("PtySession", () => {
 
 		expect(() => session.resize(100, 30, 1200, 720)).not.toThrow();
 		expect(ptyProcess.resize).not.toHaveBeenCalled();
+	});
+
+	it("forces a same-size Windows redraw through a bounded ConPTY row nudge", () => {
+		setPlatform("win32");
+		const ptyProcess = createMockPtyProcess();
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+
+		const session = PtySession.spawn({
+			binary: "claude",
+			args: [],
+			cwd: "C:/repo",
+			cols: 120,
+			rows: 40,
+		});
+
+		session.forceRedraw(120, 40, 1200, 800);
+
+		expect(ptyProcess.resize).toHaveBeenNthCalledWith(1, 120, 39, { width: 1200, height: 800 });
+		expect(ptyProcess.resize).toHaveBeenNthCalledWith(2, 120, 40, { width: 1200, height: 800 });
+	});
+
+	it("uses SIGWINCH for a same-size redraw outside Windows", () => {
+		setPlatform("linux");
+		const ptyProcess = createMockPtyProcess();
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+		const killSpy = vi.spyOn(process, "kill").mockReturnValue(true);
+
+		const session = PtySession.spawn({
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			cols: 120,
+			rows: 40,
+		});
+		session.forceRedraw(120, 40);
+
+		expect(killSpy).toHaveBeenCalledWith(4242, "SIGWINCH");
+		killSpy.mockRestore();
 	});
 
 	it("ignores node-pty resize races after process exit", () => {

@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { posix, win32 } from "node:path";
 
 import { type DiagnosticTruncationSummary, normalizeDiagnosticErrorClass } from "../core";
 
@@ -56,7 +56,15 @@ const SECRET_VALUE_PATTERNS = [
 ];
 const URL_PATTERN = /\b(?:https?|wss?):\/\/[^\s"'<>]+/giu;
 const POSIX_PATH_PATTERN = /(^|[\s("'=])\/(?:[^\s/"'<>:]+\/)+[^\s"'<>:]*/gu;
-const WINDOWS_PATH_PATTERN = /\b[A-Za-z]:\\(?:[^\s\\"'<>:]+\\)+[^\s"'<>:]*/gu;
+const WINDOWS_DRIVE_PATH_PATTERN = /\b[A-Za-z]:\/[^"'<>\r\n]*?(?=\s+[A-Za-z_][A-Za-z0-9_.-]*=|$|["'<>\r\n])/gu;
+const WINDOWS_UNC_PATH_PATTERN =
+	/(^|[\s("'=])\/\/[^/"'<>:\r\n]+\/[^"'<>\r\n]*?(?=\s+[A-Za-z_][A-Za-z0-9_.-]*=|$|["'<>\r\n])/gu;
+
+interface DiagnosticPathReplacement {
+	path: string;
+	alias: string;
+	caseInsensitive: boolean;
+}
 
 function createTruncationSummary(): MutableTruncationSummary {
 	return { strings: 0, arrays: 0, objects: 0, depth: 0, redacted: 0 };
@@ -70,16 +78,34 @@ function toPublicTruncation(summary: MutableTruncationSummary): DiagnosticTrunca
 	return hasTruncation(summary) ? { ...summary } : undefined;
 }
 
-function normalizeForComparison(path: string): string {
-	const normalized = resolve(path).replaceAll("\\", "/").replace(/\/+$/u, "");
-	return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+function normalizeWindowsNamespacePaths(value: string): string {
+	return value
+		.replaceAll("\\", "/")
+		.replace(/\/\/\?\/unc\//giu, "//")
+		.replace(/\/\/[?.]\/(?=[A-Za-z]:\/)/gu, "");
 }
 
-function buildPathReplacements(aliases: DiagnosticPathAliases | undefined): Array<{ path: string; alias: string }> {
-	const replacements: Array<{ path: string; alias: string }> = [];
+function isWindowsAbsolutePath(path: string): boolean {
+	return /^[A-Za-z]:\//u.test(path) || /^\/\/[^/]+\/[^/]+/u.test(path);
+}
+
+function normalizeForComparison(path: string): { path: string; caseInsensitive: boolean } {
+	const withoutNamespace = normalizeWindowsNamespacePaths(path);
+	const windowsPath = isWindowsAbsolutePath(withoutNamespace);
+	const normalized = (windowsPath ? win32.resolve(withoutNamespace) : posix.resolve(withoutNamespace))
+		.replaceAll("\\", "/")
+		.replace(/\/+$/u, "");
+	return {
+		path: normalized,
+		caseInsensitive: windowsPath,
+	};
+}
+
+function buildPathReplacements(aliases: DiagnosticPathAliases | undefined): DiagnosticPathReplacement[] {
+	const replacements: DiagnosticPathReplacement[] = [];
 	const add = (path: string | undefined, alias: string): void => {
 		if (!path) return;
-		replacements.push({ path: normalizeForComparison(path), alias });
+		replacements.push({ ...normalizeForComparison(path), alias });
 	};
 	add(homedir(), "$HOME");
 	add(aliases?.stateHome, "$STATE");
@@ -93,15 +119,33 @@ function buildPathReplacements(aliases: DiagnosticPathAliases | undefined): Arra
 	return replacements.sort((left, right) => right.path.length - left.path.length);
 }
 
-function replaceKnownPaths(value: string, replacements: ReadonlyArray<{ path: string; alias: string }>): string {
-	let next = value.replaceAll("\\", "/");
+function replaceKnownPaths(value: string, replacements: ReadonlyArray<DiagnosticPathReplacement>): string {
+	let next = normalizeWindowsNamespacePaths(value);
 	for (const replacement of replacements) {
 		let searchFrom = 0;
 		while (true) {
-			const comparisonValue = process.platform === "win32" ? next.toLowerCase() : next;
-			const index = comparisonValue.indexOf(replacement.path, searchFrom);
+			let index = -1;
+			let matchedLength = replacement.path.length;
+			if (replacement.caseInsensitive) {
+				const escapedPath = replacement.path.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+				const match = new RegExp(escapedPath, "iu").exec(next.slice(searchFrom));
+				if (match) {
+					index = searchFrom + match.index;
+					matchedLength = match[0].length;
+				}
+			} else {
+				index = next.indexOf(replacement.path, searchFrom);
+			}
 			if (index < 0) break;
-			next = `${next.slice(0, index)}${replacement.alias}${next.slice(index + replacement.path.length)}`;
+			const preceding = next[index - 1];
+			const following = next[index + matchedLength];
+			const startsAtPathBoundary = preceding === undefined || /[\s("'=:[,{]/u.test(preceding);
+			const endsAtPathBoundary = following === undefined || /[/\s)"',:;\]}]/u.test(following);
+			if (!startsAtPathBoundary || !endsAtPathBoundary) {
+				searchFrom = index + 1;
+				continue;
+			}
+			next = `${next.slice(0, index)}${replacement.alias}${next.slice(index + matchedLength)}`;
 			searchFrom = index + replacement.alias.length;
 		}
 	}
@@ -121,7 +165,7 @@ function redactUrl(rawUrl: string): string {
 function redactString(
 	value: string,
 	key: string | null,
-	replacements: ReadonlyArray<{ path: string; alias: string }>,
+	replacements: ReadonlyArray<DiagnosticPathReplacement>,
 	summary: MutableTruncationSummary,
 ): string {
 	if (key && (SENSITIVE_KEY_PATTERN.test(key) || CONTENT_KEY_PATTERN.test(key))) {
@@ -155,17 +199,23 @@ function redactString(
 			next = "$PATH";
 		}
 	}
+	WINDOWS_DRIVE_PATH_PATTERN.lastIndex = 0;
+	if (WINDOWS_DRIVE_PATH_PATTERN.test(next)) {
+		summary.redacted += 1;
+		WINDOWS_DRIVE_PATH_PATTERN.lastIndex = 0;
+		next = next.replace(WINDOWS_DRIVE_PATH_PATTERN, "$PATH");
+	}
+	WINDOWS_UNC_PATH_PATTERN.lastIndex = 0;
+	if (WINDOWS_UNC_PATH_PATTERN.test(next)) {
+		summary.redacted += 1;
+		WINDOWS_UNC_PATH_PATTERN.lastIndex = 0;
+		next = next.replace(WINDOWS_UNC_PATH_PATTERN, "$1$PATH");
+	}
 	POSIX_PATH_PATTERN.lastIndex = 0;
 	if (POSIX_PATH_PATTERN.test(next)) {
 		summary.redacted += 1;
 		POSIX_PATH_PATTERN.lastIndex = 0;
 		next = next.replace(POSIX_PATH_PATTERN, "$1$PATH");
-	}
-	WINDOWS_PATH_PATTERN.lastIndex = 0;
-	if (WINDOWS_PATH_PATTERN.test(next)) {
-		summary.redacted += 1;
-		WINDOWS_PATH_PATTERN.lastIndex = 0;
-		next = next.replace(WINDOWS_PATH_PATTERN, "$PATH");
 	}
 	return next;
 }
@@ -179,7 +229,7 @@ function sanitizeValue(
 	depth: number,
 	seen: WeakSet<object>,
 	limits: DiagnosticValueLimits,
-	replacements: ReadonlyArray<{ path: string; alias: string }>,
+	replacements: ReadonlyArray<DiagnosticPathReplacement>,
 	summary: MutableTruncationSummary,
 	key: string | null,
 ): unknown {

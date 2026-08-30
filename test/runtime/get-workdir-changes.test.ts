@@ -94,6 +94,32 @@ describe("get workdir changes runtime", () => {
 		}
 	});
 
+	it("preserves valid leading spaces in tracked and untracked file names", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-path-whitespace-");
+		try {
+			initGitRepository(repoPath);
+			const trackedPath = " tracked.txt";
+			const untrackedPath = " untracked.txt";
+			writeFileSync(join(repoPath, trackedPath), "before\n", "utf8");
+			commitAll(repoPath, "add leading-space file");
+			writeFileSync(join(repoPath, trackedPath), "after\n", "utf8");
+			writeFileSync(join(repoPath, untrackedPath), "draft\n", "utf8");
+
+			const changes = await getWorkdirChanges(repoPath);
+
+			expect(changes.files.map((file) => [file.path, file.status])).toEqual([
+				[trackedPath, "modified"],
+				[untrackedPath, "untracked"],
+			]);
+			expect(changes.files.find((file) => file.path === trackedPath)).toMatchObject({
+				additions: 1,
+				deletions: 1,
+			});
+		} finally {
+			cleanup();
+		}
+	});
+
 	it("reads bounded untracked excerpts without following symlinks or including binary content", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-file-excerpt-");
 		const { path: outsidePath, cleanup: cleanupOutside } = createTempDir("quarterdeck-file-excerpt-outside-");
@@ -101,7 +127,11 @@ describe("get workdir changes runtime", () => {
 			writeFileSync(join(repoPath, "large.txt"), `${"a".repeat(100)}\n${"b".repeat(100)}`, "utf8");
 			writeFileSync(join(repoPath, "asset.bin"), Buffer.from([0, 1, 2, 3]));
 			writeFileSync(join(outsidePath, "secret.txt"), "outside secret", "utf8");
-			symlinkSync(join(outsidePath, "secret.txt"), join(repoPath, "linked-secret.txt"));
+			symlinkSync(
+				process.platform === "win32" ? outsidePath : join(outsidePath, "secret.txt"),
+				join(repoPath, "linked-secret.txt"),
+				process.platform === "win32" ? "junction" : "file",
+			);
 
 			const text = await readWorkdirFileExcerpt(repoPath, "large.txt", 32);
 			expect(text.content.length).toBeLessThanOrEqual(32);

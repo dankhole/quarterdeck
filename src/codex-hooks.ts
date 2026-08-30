@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { RuntimeHookEvent } from "./core";
-import { buildQuarterdeckCommandParts, quoteShellArg } from "./core";
+import { buildQuarterdeckCommandLine } from "./core";
 
 export const CODEX_HOOKS_FEATURE_NAME = "hooks";
 export const CODEX_HOOK_TIMEOUT_SECONDS = 5;
@@ -29,11 +29,11 @@ const CODEX_HOOK_EVENT_LABELS = {
 
 function buildHookCommand(event: RuntimeHookEvent, metadata?: { source?: string; reliable?: boolean }): string {
 	const subcommand = metadata?.reliable || event !== "activity" ? "ingest" : "notify";
-	const parts = buildQuarterdeckCommandParts(["hooks", subcommand, "--event", event]);
+	const parts = ["hooks", subcommand, "--event", event];
 	if (metadata?.source) {
 		parts.push("--source", metadata.source);
 	}
-	return parts.map(quoteShellArg).join(" ");
+	return buildQuarterdeckCommandLine(parts);
 }
 
 type CodexHookCommand = {

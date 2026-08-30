@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildWindowsCmdArgsArray } from "../../src/core";
 import {
@@ -19,6 +22,13 @@ function processResult(overrides: Partial<OpenProjectCommandProcessResult> = {})
 }
 
 describe("Open Project host launcher", () => {
+	const tempDirectories: string[] = [];
+
+	afterEach(() => {
+		for (const directory of tempDirectories) rmSync(directory, { recursive: true, force: true });
+		tempDirectories.length = 0;
+	});
+
 	it("resolves macOS app targets to direct argv without a shell", () => {
 		expect(resolveOpenProjectCommandCandidates("vscode", "/tmp/my repo", "darwin")).toEqual([
 			{ executable: "open", args: ["-a", "Visual Studio Code", "/tmp/my repo"] },
@@ -36,26 +46,63 @@ describe("Open Project host launcher", () => {
 		expect(resolveOpenProjectCommandCandidates("finder", "/tmp/repo", "linux")).toEqual([
 			{ executable: "xdg-open", args: ["/tmp/repo"] },
 		]);
-		expect(resolveOpenProjectCommandCandidates("finder", "C:\\my repo", "win32")).toEqual([
-			{ executable: "explorer.exe", args: ["C:\\my repo"] },
-		]);
+		expect(
+			resolveOpenProjectCommandCandidates("finder", "C:\\my repo", "win32", {
+				SystemRoot: "D:\\Windows",
+				PATH: "C:\\untrusted-repository",
+			}),
+		).toEqual([{ executable: "D:\\Windows\\explorer.exe", args: ["C:\\my repo"] }]);
 		expect(resolveOpenProjectCommandCandidates("vscode-insiders", "C:\\my repo", "win32")).toEqual([
 			{ executable: "code-insiders", args: ["C:\\my repo"] },
 		]);
 	});
 
+	it("opens Explorer through its absolute system path", async () => {
+		const runCommand = vi.fn(async () => processResult());
+		const projectPath = "C:\\my repo";
+
+		await openProjectOnHost("finder", projectPath, {
+			platform: "win32",
+			env: { SystemRoot: "D:\\Windows", PATH: "C:\\untrusted-repository" },
+			runCommand,
+		});
+
+		expect(runCommand).toHaveBeenCalledWith("D:\\Windows\\explorer.exe", [projectPath], projectPath);
+	});
+
 	it("uses the shared Windows command-shim adapter without accepting shell text from the browser", async () => {
 		const runCommand = vi.fn(async () => processResult());
-		const projectPath = "C:\\my repo & still one argument";
-		const env = { ComSpec: "C:\\Windows\\System32\\cmd.exe", PATH: "", PATHEXT: ".CMD" };
+		const projectPath = mkdtempSync(join(tmpdir(), "quarterdeck win project & "));
+		const binPath = mkdtempSync(join(tmpdir(), "quarterdeck win launcher "));
+		tempDirectories.push(projectPath, binPath);
+		const shimPath = join(binPath, "code.cmd");
+		writeFileSync(shimPath, "@echo off\r\n");
+		writeFileSync(join(projectPath, "code.exe"), "project-local decoy");
+		const env = { ComSpec: "C:\\Windows\\System32\\cmd.exe", PATH: binPath, PATHEXT: ".cmd" };
 
 		await openProjectOnHost("vscode", projectPath, { platform: "win32", env, runCommand });
 
 		expect(runCommand).toHaveBeenCalledWith(
 			"C:\\Windows\\System32\\cmd.exe",
-			buildWindowsCmdArgsArray("code", [projectPath]),
+			buildWindowsCmdArgsArray(shimPath, [projectPath]),
 			projectPath,
 		);
+	});
+
+	it("reports an unresolved bare Windows launcher without consulting project cwd", async () => {
+		const runCommand = vi.fn(async () => processResult());
+		const projectPath = mkdtempSync(join(tmpdir(), "quarterdeck win project "));
+		tempDirectories.push(projectPath);
+		writeFileSync(join(projectPath, "code.exe"), "project-local decoy");
+
+		await expect(
+			openProjectOnHost("vscode", projectPath, {
+				platform: "win32",
+				env: { PATH: "", PATHEXT: ".EXE;.CMD" },
+				runCommand,
+			}),
+		).resolves.toEqual({ kind: "unavailable", error: 'Host launcher "code" is unavailable.' });
+		expect(runCommand).not.toHaveBeenCalled();
 	});
 
 	it("passes shell metacharacters as one inert path argument", () => {

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, type Dirent } from "node:fs";
-import { access, chmod, copyFile, lstat, mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { access, lstat, mkdir, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 
 import {
@@ -11,9 +11,13 @@ import {
 	type DiagnosticRecordEnvelope,
 	type DiagnosticRecorderHealth,
 	type DiagnosticSnapshot,
+	isWindowsSafePathComponent,
 	normalizeDiagnosticErrorClass,
 	type PublicRuntimeDiagnosticDescriptor,
 } from "../core";
+import { isFileSystemPathWithin } from "../core/path-comparison.js";
+import { removeDirectoryWithRetries } from "../fs/remove-path.js";
+import { copyPrivateDiagnosticFile, ensurePrivateDiagnosticDirectories } from "./private-path";
 import { getDiagnosticBundlesRootPath } from "./runtime-instance";
 
 export interface WriteDiagnosticBundleOptions {
@@ -93,7 +97,9 @@ function providerFile(provider: DiagnosticProviderResult): string {
 	if (provider.name === "runtime") return "runtime/snapshot.json";
 	if (provider.name === "browser") return "browser/clients.json";
 	if (provider.name === "projects") return "projects/snapshot.json";
-	return `runtime/providers/${safeName(provider.name)}.json`;
+	const sanitizedName = safeName(provider.name);
+	const fileName = `${sanitizedName}.json`;
+	return `runtime/providers/${isWindowsSafePathComponent(fileName) ? fileName : `provider-${fileName}`}`;
 }
 
 function countBy<T>(values: readonly T[], key: (value: T) => string): Record<string, number> {
@@ -138,7 +144,7 @@ function resolveEvidenceDestination(root: string, requestedPath: string): string
 		throw new Error(`Diagnostic evidence must be stored under lab/: ${requestedPath}`);
 	}
 	const destination = resolve(root, ...segments);
-	if (!destination.startsWith(`${resolve(root)}/`) && !destination.startsWith(`${resolve(root)}\\`)) {
+	if (!isFileSystemPathWithin(root, destination)) {
 		throw new Error(`Diagnostic evidence destination escaped bundle root: ${requestedPath}`);
 	}
 	return destination;
@@ -155,8 +161,7 @@ async function copyEvidencePath(source: string, destination: string): Promise<vo
 	if (info.isSymbolicLink()) throw new Error("Symbolic links are not supported in diagnostic evidence.");
 	if (info.isFile()) {
 		await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
-		await copyFile(source, destination);
-		await chmod(destination, 0o600).catch(() => undefined);
+		await copyPrivateDiagnosticFile(source, destination);
 		return;
 	}
 	if (!info.isDirectory()) throw new Error("Only regular files and directories are supported as diagnostic evidence.");
@@ -211,7 +216,9 @@ export async function writeDiagnosticBundle(
 	if (await pathExists(destination)) throw new Error(`Diagnostic bundle output already exists: ${destination}`);
 	await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
 	const temporary = join(dirname(destination), `.${basename(destination)}.${process.pid}.${randomUUID()}.tmp`);
-	await mkdir(temporary, { recursive: true, mode: 0o700 });
+	await ensurePrivateDiagnosticDirectories(
+		options.outputDirectory === undefined ? [dirname(destination), temporary] : [temporary],
+	);
 
 	const warnings = Array.from(
 		new Set([
@@ -293,7 +300,7 @@ export async function writeDiagnosticBundle(
 			return { path: temporary, manifest: partialManifest };
 		}
 	} catch (error) {
-		await rm(temporary, { recursive: true, force: true }).catch(() => undefined);
+		await removeDirectoryWithRetries(temporary).catch(() => undefined);
 		throw error;
 	}
 }

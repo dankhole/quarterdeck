@@ -2,6 +2,7 @@ import { applyProjectBoardCommands } from "@runtime-board-commands";
 import type { RuntimeProjectBoardCommand } from "@runtime-contract";
 
 import type { BoardCard, BoardColumnId, BoardData, BoardDependency, TaskImage } from "@/types";
+import { areOptionalPathIdentitiesEqual } from "@/utils/path-identity";
 
 interface CardLocation {
 	card: BoardCard;
@@ -55,7 +56,7 @@ function hasTaskPatchChange(before: BoardCard, after: BoardCard): boolean {
 	return (
 		before.agentId !== after.agentId ||
 		Boolean(before.baseRefPinned) !== Boolean(after.baseRefPinned) ||
-		(before.workingDirectory ?? null) !== (after.workingDirectory ?? null) ||
+		!areOptionalPathIdentitiesEqual(before.workingDirectory, after.workingDirectory) ||
 		(before.branch ?? null) !== (after.branch ?? null)
 	);
 }

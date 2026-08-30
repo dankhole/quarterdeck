@@ -52,6 +52,7 @@ Claude resume prefers the stored hook `session_id` through `claude --resume <id>
 - Startup discovery is read-only. Skip a temporarily unavailable path without deleting its index entry or saved board/session state; destructive pruning stays at the explicit project-stream reconciliation boundary.
 - WebSocket connection, active-project selection, and GUI mount never trigger or gate recovery. Inactive project pills and notification snapshots need the same hydrated truth as the selected project.
 - Wait for orphan-agent cleanup and prepare each task once through the shared task-start service.
+- On Windows, a task PTY is not handed to the runtime until ConPTY exposes a valid root PID and its protected launch record durably captures the exact runtime/root PID and CIM creation identities after proving the root remains the runtime's direct child. Registration failure, parent mismatch, or bounded PID-readiness failure stops the PTY and fails the launch. Natural exit retires the record; startup skips records owned by an exact live runtime, prunes missing or PID-reused roots, and rechecks an abandoned root's creation identity immediately before tree termination. Shutdown may verify and reclaim the current runtime's registered roots concurrently, but never reintroduce executable-name or command-line cleanup heuristics.
 - Serialize and space only actual launch operations globally. Let unrelated tasks wait for readiness concurrently so one hookless TUI cannot block the queue.
 
 ### Retry and identity
@@ -86,6 +87,7 @@ Terminal restore has several distinct races:
 - Do not pair that fallback with speculative restore. A stale or empty snapshot can erase live output already written to xterm.
 - When a live session instance changes (`startedAt` with non-null `pid`), drop and reopen pooled terminal sockets rather than queueing restore on an existing control socket; reused active slots can otherwise remain stuck at `restoreCompleted=false`. Do not reconnect for processless stop summaries (`pid: null`).
 - Before treating a restore snapshot as empty, `TerminalViewport` drains queued writes; live output can be queued but not yet visible.
+- A forced same-size redraw is platform-owned. POSIX may send `SIGWINCH`; Windows must issue one bounded adjacent-row ConPTY resize and immediately restore the requested geometry. Do not signal ConPTY with Unix redraw semantics or leave the nudged size authoritative.
 
 Terminal restore readiness is not browser presentation readiness. Do not clear loading or notify connection-ready subscribers until `TerminalViewport` drains queued writes, resizes, scrolls to bottom across layout frames, and reveals the host. The IO-open fallback uses the same settled reveal path. Claude sessions are especially sensitive to redraw and status output around restore.
 

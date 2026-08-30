@@ -5,6 +5,8 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
 
+import { buildGitCommandArgs, resolveWindowsCompatibleCommand } from "../../src/core";
+
 import {
 	buildClaudeHookPayload,
 	type FakeAgentCommand,
@@ -152,6 +154,7 @@ async function emitHook(
 			cwd: process.cwd(),
 			env: process.env,
 			stdio: [claudePayload ? "pipe" : "ignore", "ignore", "pipe"],
+			windowsHide: true,
 		});
 		if (claudePayload) {
 			hook.stdin?.end(`${JSON.stringify(claudePayload)}\n`);
@@ -189,7 +192,13 @@ function resolveFixturePath(relativePath: string): string {
 
 async function runGit(args: string[]): Promise<{ output: string; code: number }> {
 	return new Promise((resolveGit) => {
-		const child = spawn("git", args, { cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+		const command = resolveWindowsCompatibleCommand("git", buildGitCommandArgs(args));
+		const child = spawn(command.binary, command.args, {
+			cwd: process.cwd(),
+			env: process.env,
+			stdio: ["ignore", "pipe", "pipe"],
+			windowsHide: true,
+		});
 		let output = "";
 		child.stdout?.setEncoding("utf8");
 		child.stderr?.setEncoding("utf8");
@@ -780,11 +789,26 @@ async function main(): Promise<void> {
 	setTimeout(() => {
 		commandQueue = commandQueue.then(() => runScenario(scenario));
 	}, 250).unref();
-	for (const signal of ["SIGINT", "SIGTERM"] as NodeJS.Signals[]) {
+	for (const signal of [
+		"SIGINT",
+		"SIGTERM",
+		"SIGHUP",
+		...(process.platform === "win32" ? ["SIGBREAK"] : []),
+	] as NodeJS.Signals[]) {
 		process.once(signal, () => {
 			closing = true;
 			terminal.close();
-			process.exit(signal === "SIGINT" ? 130 : 0);
+			process.exit(
+				signal === "SIGINT"
+					? 130
+					: signal === "SIGHUP"
+						? 129
+						: signal === "SIGTERM"
+							? 143
+							: signal === "SIGBREAK"
+								? 149
+								: 1,
+			);
 		});
 	}
 }

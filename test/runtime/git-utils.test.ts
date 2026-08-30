@@ -37,6 +37,18 @@ describe("runGit", () => {
 	beforeEach(() => {
 		childProcessMocks.execFile.mockReset();
 		childProcessMocks.execFilePromise.mockReset();
+		childProcessMocks.execFile.mockImplementation(
+			(command: string, args: string[], options: unknown, callback: (...values: unknown[]) => void) => {
+				const child = { pid: 12_345, kill: vi.fn(() => true) };
+				void childProcessMocks.execFilePromise(command, args, options).then(
+					(result: { stdout?: unknown; stderr?: unknown }) =>
+						callback(null, result.stdout ?? "", result.stderr ?? ""),
+					(error: { stdout?: unknown; stderr?: unknown }) =>
+						callback(error, error.stdout ?? "", error.stderr ?? ""),
+				);
+				return child;
+			},
+		);
 	});
 
 	it("preserves raw stdout on exit code 1 when trimStdout is false", async () => {
@@ -73,59 +85,88 @@ describe("runGit", () => {
 		expect(result.stdout).toBe("partial-output");
 	});
 
-	it("passes the default timeout to child_process execFile", async () => {
+	it("launches git without a shell and hides its Windows console", async () => {
 		childProcessMocks.execFilePromise.mockResolvedValueOnce({ stdout: "ok\n", stderr: "" });
 
 		await runGit("/repo", ["status"]);
 
-		expect(childProcessMocks.execFilePromise).toHaveBeenCalledWith(
+		expect(childProcessMocks.execFile).toHaveBeenCalledWith(
 			"git",
 			["-c", "core.quotepath=false", "status"],
-			expect.objectContaining({ timeout: GIT_COMMAND_TIMEOUTS_MS.default }),
+			expect.objectContaining({ windowsHide: true }),
+			expect.any(Function),
 		);
 	});
 
-	it("passes explicit inspection and checkpoint timeout classes to child_process execFile", async () => {
-		childProcessMocks.execFilePromise
-			.mockResolvedValueOnce({ stdout: "ok\n", stderr: "" })
-			.mockResolvedValueOnce({ stdout: "ok\n", stderr: "" });
-
-		await runGit("/repo", ["show", "HEAD:file.txt"], { timeoutClass: "inspection" });
-		await runGit("/repo", ["write-tree"], { timeoutClass: "checkpoint" });
-
-		expect(childProcessMocks.execFilePromise).toHaveBeenNthCalledWith(
-			1,
-			"git",
-			["-c", "core.quotepath=false", "show", "HEAD:file.txt"],
-			expect.objectContaining({ timeout: GIT_COMMAND_TIMEOUTS_MS.inspection }),
-		);
-		expect(childProcessMocks.execFilePromise).toHaveBeenNthCalledWith(
-			2,
-			"git",
-			["-c", "core.quotepath=false", "write-tree"],
-			expect.objectContaining({ timeout: GIT_COMMAND_TIMEOUTS_MS.checkpoint }),
-		);
-	});
-
-	it("classifies timed-out git commands distinctly", async () => {
-		const error = createExecError({
-			code: "ETIMEDOUT",
-			stdout: "",
+	it("preserves valid filename whitespace in NUL-delimited ref listings", async () => {
+		childProcessMocks.execFilePromise.mockResolvedValueOnce({
+			stdout: " leading.txt\0nested/file.ts\0",
 			stderr: "",
-			message: "Command failed: git status",
 		});
-		childProcessMocks.execFilePromise.mockRejectedValueOnce(error);
 
-		const result = await runGit("/repo", ["status"], { timeoutClass: "metadata" });
+		await expect(workdirExports.listFilesAtRef("/repo", "HEAD")).resolves.toEqual([" leading.txt", "nested/file.ts"]);
+		expect(childProcessMocks.execFile).toHaveBeenCalledWith(
+			"git",
+			["-c", "core.quotepath=false", "ls-tree", "-r", "--name-only", "-z", "HEAD", "--"],
+			expect.objectContaining({ windowsHide: true }),
+			expect.any(Function),
+		);
+	});
 
-		expect(result.ok).toBe(false);
-		expect(result.timedOut).toBe(true);
-		expect(result.error).toBe(`Git command timed out after ${GIT_COMMAND_TIMEOUTS_MS.metadata}ms`);
+	it("tree-terminates and distinctly classifies a manually timed-out git command", async () => {
+		vi.useFakeTimers();
+		try {
+			let callback: ((error: Error, stdout: string, stderr: string) => void) | null = null;
+			const kill = vi.fn(() => {
+				callback?.(new Error("terminated"), "partial", "");
+				return true;
+			});
+			childProcessMocks.execFile.mockImplementation(
+				(_command: string, _args: string[], _options: unknown, execCallback: typeof callback) => {
+					callback = execCallback;
+					return { pid: 12_345, kill };
+				},
+			);
+
+			const resultPromise = runGit("/repo", ["status"], { timeoutClass: "metadata" });
+			await vi.advanceTimersByTimeAsync(GIT_COMMAND_TIMEOUTS_MS.metadata);
+			const result = await resultPromise;
+
+			expect(kill).toHaveBeenCalledWith("SIGTERM");
+			expect(result).toMatchObject({
+				ok: false,
+				timedOut: true,
+				error: `Git command timed out after ${GIT_COMMAND_TIMEOUTS_MS.metadata}ms`,
+				stdout: "partial",
+			});
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 
 describe("workdir git exports", () => {
 	it("does not expose a synchronous git helper from the workdir barrel", () => {
 		expect(workdirExports).not.toHaveProperty("runGitSync");
+	});
+
+	it("allows double-dot file names while rejecting traversal and absolute paths", () => {
+		expect(workdirExports.validateGitPath("..notes")).toBe(true);
+		expect(workdirExports.validateGitPath("notes..txt")).toBe(true);
+		for (const path of ["../outside.txt", "nested/../outside.txt", "/absolute.txt"]) {
+			expect(workdirExports.validateGitPath(path), path).toBe(false);
+		}
+		expect(workdirExports.validateGitPath("C:\\absolute.txt", "win32")).toBe(false);
+		expect(workdirExports.validateGitPath("nested\\..\\outside.txt", "win32")).toBe(false);
+		expect(workdirExports.validateGitPath("literal\\name.txt", "linux")).toBe(true);
+	});
+
+	it("preserves whitespace in NUL-delimited numstat paths and rename destinations", () => {
+		const stats = workdirExports.parseNumstatPerFile("1\t2\t leading.txt\0" + "3\t4\t\0 old.txt\0 new.txt\0");
+
+		expect([...stats.entries()]).toEqual([
+			[" leading.txt", { additions: 1, deletions: 2 }],
+			[" new.txt", { additions: 3, deletions: 4 }],
+		]);
 	});
 });

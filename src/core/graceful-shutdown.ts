@@ -45,7 +45,7 @@ it lands inside the duplicate window. In practice that is much less harmful than
 the old behavior, where a single Ctrl+C under `npx` could be misread as a double
 interrupt and force exit immediately.
 */
-const DEFAULT_HANDLED_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"] as const;
+const DEFAULT_HANDLED_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT", "SIGBREAK"] as const;
 const DEFAULT_DUPLICATE_SIGNAL_WINDOW_MS = 750;
 const TRANSIENT_CLI_CACHE_PATH_MARKERS = [
 	"/.npm/_npx/",
@@ -64,6 +64,11 @@ export interface GracefulShutdownProcess {
 	off(signal: HandledShutdownSignal, listener: () => void): unknown;
 }
 
+export interface GracefulShutdownController {
+	uninstall: () => void;
+	requestShutdown: (signal: HandledShutdownSignal) => void;
+}
+
 interface GracefulShutdownOptions {
 	delayMs: number;
 	onShutdown: (signal: HandledShutdownSignal) => Promise<void>;
@@ -75,6 +80,7 @@ interface GracefulShutdownOptions {
 	suppressImmediateDuplicateSignals?: boolean;
 	duplicateSignalWindowMs?: number;
 	now?: () => number;
+	platform?: NodeJS.Platform;
 }
 
 export function getExitCodeForSignal(signal: HandledShutdownSignal | null): number {
@@ -87,6 +93,8 @@ export function getExitCodeForSignal(signal: HandledShutdownSignal | null): numb
 			return 131;
 		case "SIGTERM":
 			return 143;
+		case "SIGBREAK":
+			return 149;
 		default:
 			return 0;
 	}
@@ -115,9 +123,7 @@ export function shouldSuppressImmediateDuplicateShutdownSignals(options?: {
 	return TRANSIENT_CLI_CACHE_PATH_MARKERS.some((marker) => normalizedPath.includes(marker));
 }
 
-export function installGracefulShutdownHandlers(options: GracefulShutdownOptions): {
-	uninstall: () => void;
-} {
+export function installGracefulShutdownHandlers(options: GracefulShutdownOptions): GracefulShutdownController {
 	const processRef = options.process;
 	const now = options.now ?? (() => Date.now());
 	const duplicateSignalWindowMs = options.duplicateSignalWindowMs ?? DEFAULT_DUPLICATE_SIGNAL_WINDOW_MS;
@@ -126,6 +132,7 @@ export function installGracefulShutdownHandlers(options: GracefulShutdownOptions
 	let shutdownPromise: Promise<void> | null = null;
 	let shutdownSignal: HandledShutdownSignal | null = null;
 	let shutdownStartedAt = 0;
+	let shutdownStartedProgrammatically = false;
 	let finalized = false;
 	let installed = true;
 
@@ -153,13 +160,14 @@ export function installGracefulShutdownHandlers(options: GracefulShutdownOptions
 		options.exit(code);
 	};
 
-	const startShutdown = (signal: HandledShutdownSignal) => {
+	const startShutdown = (signal: HandledShutdownSignal, requestedProgrammatically = false) => {
 		if (shutdownPromise !== null) {
 			return;
 		}
 
 		shutdownSignal = signal;
 		shutdownStartedAt = now();
+		shutdownStartedProgrammatically = requestedProgrammatically;
 		timeoutId = setTimeout(() => {
 			options.onTimeout?.(options.delayMs);
 			finalizeExit(1);
@@ -182,11 +190,10 @@ export function installGracefulShutdownHandlers(options: GracefulShutdownOptions
 			return;
 		}
 
-		if (
-			options.suppressImmediateDuplicateSignals === true &&
-			signal === shutdownSignal &&
-			now() - shutdownStartedAt <= duplicateSignalWindowMs
-		) {
+		const shouldSuppressRacingSignal =
+			(options.suppressImmediateDuplicateSignals === true && signal === shutdownSignal) ||
+			shutdownStartedProgrammatically;
+		if (shouldSuppressRacingSignal && now() - shutdownStartedAt <= duplicateSignalWindowMs) {
 			return;
 		}
 
@@ -194,11 +201,20 @@ export function installGracefulShutdownHandlers(options: GracefulShutdownOptions
 		finalizeExit(getExitCodeForSignal(signal));
 	};
 
-	// SIGHUP and SIGQUIT are not supported on Windows — skip them to avoid errors.
+	// Programmatic shutdown requests are control-plane intent, not a simulated
+	// operating-system signal. Keep them idempotent so a parent disconnect that
+	// races a real Ctrl+C cannot be mistaken for a second force-exit request.
+	const requestShutdown = (signal: HandledShutdownSignal) => {
+		startShutdown(signal, true);
+	};
+
+	// Windows emits SIGHUP when its console closes and SIGBREAK for Ctrl+Break.
+	// SIGQUIT is the only member of this policy that Windows cannot deliver.
+	const platform = options.platform ?? process.platform;
 	const signals =
-		process.platform === "win32"
-			? DEFAULT_HANDLED_SIGNALS.filter((s) => s !== "SIGHUP" && s !== "SIGQUIT")
-			: DEFAULT_HANDLED_SIGNALS;
+		platform === "win32"
+			? DEFAULT_HANDLED_SIGNALS.filter((signal) => signal !== "SIGQUIT")
+			: DEFAULT_HANDLED_SIGNALS.filter((signal) => signal !== "SIGBREAK");
 
 	for (const signal of signals) {
 		const listener = () => {
@@ -208,5 +224,5 @@ export function installGracefulShutdownHandlers(options: GracefulShutdownOptions
 		processRef.on(signal, listener);
 	}
 
-	return { uninstall };
+	return { uninstall, requestShutdown };
 }

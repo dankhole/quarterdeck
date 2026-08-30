@@ -7,6 +7,7 @@ import {
 	clearColumnTasks,
 	moveTaskToColumn,
 	reconcileTaskBranch,
+	reconcileTaskWorkingDirectory,
 	removeTask,
 	toggleTaskPinned,
 	trashTaskAndGetReadyLinkedTaskIds,
@@ -141,6 +142,23 @@ describe("reconcileTaskBranch", () => {
 		expect(result.updated).toBe(false);
 		const card = result.board.columns.find((c) => c.id === "backlog")!.cards.find((c) => c.id === taskId);
 		expect(card?.branch).toBe("feat/foo");
+	});
+});
+
+describe("reconcileTaskWorkingDirectory", () => {
+	it("does not flip shared-checkout state for Windows path casing changes", () => {
+		const created = addTaskToColumn(createInitialBoardData(), "backlog", {
+			prompt: "Task A",
+			baseRef: "main",
+			useWorktree: false,
+		});
+		const taskId = created.columns[0]?.cards[0]?.id;
+		if (!taskId) throw new Error("Expected created task.");
+		const first = reconcileTaskWorkingDirectory(created, taskId, "C:\\Repo", "C:\\Repo");
+
+		const result = reconcileTaskWorkingDirectory(first.board, taskId, "c:/repo/", "C:\\REPO");
+
+		expect(result.updated).toBe(false);
 	});
 });
 

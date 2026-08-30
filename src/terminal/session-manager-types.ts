@@ -2,7 +2,12 @@
 // These are internal to the terminal layer — external consumers should only
 // import TerminalSessionManager from session-manager.ts.
 
-import type { RuntimeTaskImage, RuntimeTaskSessionStopOutcome, RuntimeTaskSessionSummary } from "../core";
+import {
+	mergeProcessEnvironment,
+	type RuntimeTaskImage,
+	type RuntimeTaskSessionStopOutcome,
+	type RuntimeTaskSessionSummary,
+} from "../core";
 import type {
 	AgentAdapterLaunchInput,
 	AgentOutputTransitionDetector,
@@ -211,13 +216,15 @@ export function formatSpawnFailure(binary: string, error: unknown, context: "tas
 export function buildTerminalEnvironment(
 	...sources: Array<Record<string, string | undefined> | undefined>
 ): Record<string, string | undefined> {
-	return {
-		...process.env,
-		...Object.assign({}, ...sources),
+	let environment = { ...process.env };
+	for (const source of sources) {
+		if (source) environment = mergeProcessEnvironment(environment, source);
+	}
+	return mergeProcessEnvironment(environment, {
 		COLORTERM: "truecolor",
 		TERM: "xterm-256color",
 		TERM_PROGRAM: "quarterdeck",
-	};
+	});
 }
 
 export function createProcessEntry(taskId: string): ProcessEntry {

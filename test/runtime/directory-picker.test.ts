@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { pickDirectoryPathFromSystemDialog } from "../../src/server/directory-picker";
 
+const WINDOWS_POWERSHELL_PATH = "D:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+
 interface RecordedCommand {
 	command: string;
 	args: string[];
@@ -145,13 +147,14 @@ describe("pickDirectoryPathFromSystemDialog", () => {
 	});
 });
 
-it("uses powershell on windows when available", async () => {
+it("uses absolute system PowerShell on windows without consulting cwd or PATH", async () => {
 	const commands: RecordedCommand[] = [];
 	const selectedPath = await pickDirectoryPathFromSystemDialog({
 		platform: "win32",
+		env: { SystemRoot: "D:\\Windows", PATH: "C:\\untrusted-repository" },
 		runCommand: createRunCommand(
 			{
-				powershell: createSpawnResult({
+				[WINDOWS_POWERSHELL_PATH]: createSpawnResult({
 					stdout: "C:\\Users\\dev\\repo\n",
 				}),
 			},
@@ -161,40 +164,42 @@ it("uses powershell on windows when available", async () => {
 
 	expect(selectedPath).toEqual({ kind: "selected", path: "C:\\Users\\dev\\repo" });
 	expect(commands).toHaveLength(1);
-	expect(commands[0]?.command).toBe("powershell");
+	expect(commands[0]?.command).toBe(WINDOWS_POWERSHELL_PATH);
 	expect(commands[0]?.args.slice(0, 3)).toEqual(["-NoProfile", "-STA", "-Command"]);
 });
 
-it("falls back to pwsh when powershell is unavailable on windows", async () => {
+it("does not fall back to a PATH-resolved PowerShell executable on windows", async () => {
 	const commands: RecordedCommand[] = [];
 	const selectedPath = await pickDirectoryPathFromSystemDialog({
 		platform: "win32",
+		env: { SystemRoot: "D:\\Windows", PATH: "C:\\untrusted-repository" },
 		runCommand: createRunCommand(
 			{
-				powershell: createSpawnResult({
+				[WINDOWS_POWERSHELL_PATH]: createSpawnResult({
 					error: {
 						code: "ENOENT",
 						message: "command not found",
 					} as NodeJS.ErrnoException,
-				}),
-				pwsh: createSpawnResult({
-					stdout: "C:\\Users\\dev\\repo\n",
 				}),
 			},
 			commands,
 		),
 	});
 
-	expect(selectedPath).toEqual({ kind: "selected", path: "C:\\Users\\dev\\repo" });
-	expect(commands.map((entry) => entry.command)).toEqual(["powershell", "pwsh"]);
+	expect(selectedPath).toEqual({
+		kind: "unavailable",
+		error: "Could not open directory picker. Windows PowerShell is unavailable.",
+	});
+	expect(commands.map((entry) => entry.command)).toEqual([WINDOWS_POWERSHELL_PATH]);
 });
 
 it("returns null when windows picker is cancelled", async () => {
 	const selectedPath = await pickDirectoryPathFromSystemDialog({
 		platform: "win32",
+		env: { SystemRoot: "D:\\Windows" },
 		runCommand: createRunCommand(
 			{
-				powershell: createSpawnResult({
+				[WINDOWS_POWERSHELL_PATH]: createSpawnResult({
 					status: 1,
 				}),
 			},
@@ -209,15 +214,10 @@ it("returns a typed unavailable result when no windows picker commands are insta
 	expect(
 		await pickDirectoryPathFromSystemDialog({
 			platform: "win32",
+			env: { SystemRoot: "D:\\Windows" },
 			runCommand: createRunCommand(
 				{
-					powershell: createSpawnResult({
-						error: {
-							code: "ENOENT",
-							message: "command not found",
-						} as NodeJS.ErrnoException,
-					}),
-					pwsh: createSpawnResult({
+					[WINDOWS_POWERSHELL_PATH]: createSpawnResult({
 						error: {
 							code: "ENOENT",
 							message: "command not found",
@@ -229,7 +229,7 @@ it("returns a typed unavailable result when no windows picker commands are insta
 		}),
 	).toEqual({
 		kind: "unavailable",
-		error: 'Could not open directory picker. Install PowerShell ("powershell" or "pwsh") and try again.',
+		error: "Could not open directory picker. Windows PowerShell is unavailable.",
 	});
 });
 

@@ -1,6 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
-
-import type { RuntimeFileSaveResponse } from "../core";
+import { areFileSystemPathsEqual, type RuntimeFileSaveResponse } from "../core";
 import { lockedFileSystem } from "../fs";
 import {
 	createWorkdirFileContentHash,
@@ -8,6 +6,8 @@ import {
 	isBinaryWorkdirFileBuffer,
 	MAX_WORKDIR_FILE_EDIT_SIZE,
 	MAX_WORKDIR_FILE_READ_SIZE,
+	openWorkdirFile,
+	readWorkdirFileHandle,
 	resolveWorkdirFilePath,
 	WORKDIR_FILE_TOO_LARGE_TO_EDIT_MESSAGE,
 } from "./read-workdir-file";
@@ -30,18 +30,23 @@ export async function saveWorkdirFile(
 	assertMutableWorkdirPath(normalizedPath);
 	const absolutePath = await resolveWorkdirFilePath(worktreePath, normalizedPath);
 	return await lockedFileSystem.withLock({ path: absolutePath, type: "file" }, async () => {
-		const fileStat = await stat(absolutePath);
-		if (!fileStat.isFile()) {
-			throw new Error("Path is not a regular file.");
+		const openedFile = await openWorkdirFile(worktreePath, normalizedPath);
+		if (!areFileSystemPathsEqual(openedFile.absolutePath, absolutePath)) {
+			await openedFile.fileHandle.close();
+			throw new Error("File path changed while opening.");
 		}
-		if (fileStat.size > MAX_WORKDIR_FILE_READ_SIZE) {
-			throw new Error(`File exceeds the ${MAX_WORKDIR_FILE_READ_SIZE} byte read limit.`);
+		let currentBuffer: Buffer;
+		try {
+			if (openedFile.fileStat.size > MAX_WORKDIR_FILE_READ_SIZE) {
+				throw new Error(`File exceeds the ${MAX_WORKDIR_FILE_READ_SIZE} byte read limit.`);
+			}
+			if (openedFile.fileStat.size > MAX_WORKDIR_FILE_EDIT_SIZE) {
+				throw new Error(WORKDIR_FILE_TOO_LARGE_TO_EDIT_MESSAGE);
+			}
+			currentBuffer = await readWorkdirFileHandle(openedFile.fileHandle, MAX_WORKDIR_FILE_EDIT_SIZE);
+		} finally {
+			await openedFile.fileHandle.close();
 		}
-		if (fileStat.size > MAX_WORKDIR_FILE_EDIT_SIZE) {
-			throw new Error(WORKDIR_FILE_TOO_LARGE_TO_EDIT_MESSAGE);
-		}
-
-		const currentBuffer = await readFile(absolutePath);
 		if (isBinaryWorkdirFileBuffer(currentBuffer)) {
 			throw new Error("Cannot edit binary files.");
 		}
@@ -54,7 +59,10 @@ export async function saveWorkdirFile(
 			throw new Error(WORKDIR_FILE_TOO_LARGE_TO_EDIT_MESSAGE);
 		}
 
-		await lockedFileSystem.writeTextFileAtomic(absolutePath, content, { lock: null, mode: fileStat.mode & 0o7777 });
+		await lockedFileSystem.writeTextFileAtomic(absolutePath, content, {
+			lock: null,
+			mode: openedFile.fileStat.mode & 0o7777,
+		});
 		return {
 			content,
 			language: detectWorkdirFileLanguage(normalizedPath),

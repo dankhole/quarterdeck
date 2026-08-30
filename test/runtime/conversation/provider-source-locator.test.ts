@@ -1,9 +1,13 @@
 import { mkdir, realpath, symlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_CONVERSATION_READ_LIMITS } from "../../../src/conversation/index.js";
-import { ProviderConversationSourceLocator } from "../../../src/conversation/provider-source-locator.js";
+import {
+	ProviderConversationSourceLocator,
+	resolveConversationSourceOpenFlags,
+	resolveDefaultConversationHistoryRoots,
+} from "../../../src/conversation/provider-source-locator.js";
 import { createTempDir } from "../../utilities/temp-dir.js";
 
 const SESSION_ID = "session-123";
@@ -23,6 +27,37 @@ describe("ProviderConversationSourceLocator", () => {
 		await Promise.all([mkdir(allowedRoot), mkdir(outsideRoot)]);
 		return { allowedRoot, outsideRoot };
 	}
+
+	it("resolves copied Windows environment keys case-insensitively", () => {
+		expect(
+			resolveDefaultConversationHistoryRoots({
+				homeDirectory: "C:\\Users\\tester",
+				environment: {
+					claude_config_dir: "C:\\Profiles\\claude",
+					Codex_Home: "C:\\Profiles\\codex",
+				},
+				platform: "win32",
+			}),
+		).toEqual({
+			claude: [win32.join("C:\\Profiles\\claude", "projects")],
+			codex: [win32.join("C:\\Profiles\\codex", "sessions"), win32.join("C:\\Profiles\\codex", "archived_sessions")],
+		});
+	});
+
+	it("omits the unsupported no-follow open flag on Windows", () => {
+		expect(
+			resolveConversationSourceOpenFlags("win32", {
+				O_RDONLY: 4,
+				O_NOFOLLOW: 256,
+			}),
+		).toBe(4);
+		expect(
+			resolveConversationSourceOpenFlags("linux", {
+				O_RDONLY: 4,
+				O_NOFOLLOW: 256,
+			}),
+		).toBe(260);
+	});
 
 	function locate(
 		locator: ProviderConversationSourceLocator,
@@ -86,11 +121,16 @@ describe("ProviderConversationSourceLocator", () => {
 	it("rejects a symlink whose canonical target escapes the approved root", async () => {
 		const { allowedRoot, outsideRoot } = await createRoots();
 		const outsidePath = join(outsideRoot, `${SESSION_ID}.jsonl`);
-		const linkedPath = join(allowedRoot, `${SESSION_ID}.jsonl`);
+		const linkedDirectory = join(allowedRoot, "linked");
+		const linkedPath = join(linkedDirectory, `${SESSION_ID}.jsonl`);
 		await writeFile(outsidePath, "{}\n", "utf8");
-		await symlink(outsidePath, linkedPath);
+		await symlink(outsideRoot, linkedDirectory, process.platform === "win32" ? "junction" : "dir");
 		const locator = new ProviderConversationSourceLocator("claude", [allowedRoot], DEFAULT_CONVERSATION_READ_LIMITS);
-		const result = await locate(locator);
+		const result = await locate(locator, {
+			providerId: "claude",
+			providerSessionId: SESSION_ID,
+			sourcePath: linkedPath,
+		});
 		expect(result).toMatchObject({ status: "invalid_source", reason: "source_outside_allowed_roots" });
 		expect(JSON.stringify(result)).not.toContain(outsidePath);
 	});

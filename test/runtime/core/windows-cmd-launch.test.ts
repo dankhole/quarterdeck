@@ -3,7 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { resolveWindowsCompatibleCommand, shouldUseWindowsCmdLaunch } from "../../../src/core";
+import {
+	buildWindowsCmdArgsArray,
+	buildWindowsCmdArgsCommandLine,
+	resolveWindowsCompatibleCommand,
+	resolveWindowsComSpec,
+	shouldUseWindowsCmdLaunch,
+	WindowsCommandResolutionError,
+} from "../../../src/core";
 
 function createWindowsBinary(directory: string, fileName: string): string {
 	const filePath = join(directory, fileName);
@@ -108,16 +115,117 @@ describe("shouldUseWindowsCmdLaunch", () => {
 	});
 
 	it("wraps a Windows command shim with ComSpec", () => {
+		const tempDirectory = mkdtempSync(join(tmpdir(), "quarterdeck-win-launch-"));
+		tempDirectories.push(tempDirectory);
+		const shimPath = createWindowsBinary(tempDirectory, "codex.cmd");
 		const env = {
-			PATH: "",
+			PATH: tempDirectory,
 			PATHEXT: ".com;.exe;.bat;.cmd",
 			ComSpec: "C:\\Windows\\System32\\cmd.exe",
 		};
 		const resolved = resolveWindowsCompatibleCommand("codex", ["--version"], "win32", env);
 
 		expect(resolved.binary).toBe(env.ComSpec);
-		expect(resolved.args.slice(0, 3)).toEqual(["/d", "/s", "/c"]);
-		expect(resolved.args.at(-1)).toContain("codex");
+		expect(resolved.args.slice(0, 4)).toEqual(["/d", "/v:off", "/s", "/c"]);
+		expect(resolved.args.at(-1)).toContain(shimPath);
 		expect(resolved.args.at(-1)).toContain("--version");
+		expect(resolved.commandLine).toBe(buildWindowsCmdArgsCommandLine(shimPath, ["--version"]));
+	});
+
+	it("launches a bare Windows executable through its exact inherited-PATH target", () => {
+		const tempDirectory = mkdtempSync(join(tmpdir(), "quarterdeck-win-launch-"));
+		tempDirectories.push(tempDirectory);
+		const executablePath = createWindowsBinary(tempDirectory, "codex.exe");
+
+		expect(
+			resolveWindowsCompatibleCommand("codex", ["--version"], "win32", {
+				PATH: tempDirectory,
+				PATHEXT: ".exe;.cmd",
+			}),
+		).toEqual({ binary: executablePath, args: ["--version"] });
+	});
+
+	it("fails closed when a bare Windows command cannot be resolved", () => {
+		expect(() =>
+			resolveWindowsCompatibleCommand("codex", ["--version"], "win32", {
+				PATH: "",
+				PATHEXT: ".EXE;.CMD",
+			}),
+		).toThrow(WindowsCommandResolutionError);
+	});
+
+	it("double-escapes metacharacters for the batch shim's second parse", () => {
+		const args = ["space value", "%NAME%", "!DELAYED!", "^", "&", "|", "(value)"];
+		const commandLine = buildWindowsCmdArgsCommandLine("codex.cmd", args);
+		const commandArgs = buildWindowsCmdArgsArray("codex.cmd", args);
+
+		expect(commandLine).toBe(
+			'/d /v:off /s /c "codex.cmd ^^^"space^^^ value^^^" ^^^"^^^%NAME^^^%^^^" ^^^"^^^!DELAYED^^^!^^^" ^^^"^^^^^^^" ^^^"^^^&^^^" ^^^"^^^|^^^" ^^^"^^^(value^^^)^^^""',
+		);
+		expect(commandArgs).toEqual(["/d", "/v:off", "/s", "/c", commandLine.slice("/d /v:off /s /c ".length)]);
+	});
+
+	it("prefers a sibling PowerShell shim so multiline arguments bypass cmd parsing", () => {
+		const tempDirectory = mkdtempSync(join(tmpdir(), "quarterdeck-win-launch-"));
+		tempDirectories.push(tempDirectory);
+		const cmdPath = createWindowsBinary(tempDirectory, "codex.cmd");
+		const powerShellPath = createWindowsBinary(tempDirectory, "codex.ps1");
+		const args = ["line one\nline two", "%NAME%", "!value!", 'quoted "value"'];
+
+		expect(resolveWindowsCompatibleCommand(cmdPath, args, "win32", { SystemRoot: "C:\\Windows" })).toEqual({
+			binary: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+			args: [
+				"-NoLogo",
+				"-NoProfile",
+				"-NonInteractive",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				powerShellPath,
+				...args,
+			],
+		});
+	});
+
+	it("resolves a sibling PowerShell shim through quoted PATH and normalized PATHEXT entries", () => {
+		const tempDirectory = mkdtempSync(join(tmpdir(), "quarterdeck win launch "));
+		tempDirectories.push(tempDirectory);
+		createWindowsBinary(tempDirectory, "codex.cmd");
+		const powerShellPath = createWindowsBinary(tempDirectory, "codex.ps1");
+
+		const resolved = resolveWindowsCompatibleCommand("codex", ["line one\nline two"], "win32", {
+			Path: `"${tempDirectory}"`,
+			Pathext: " EXE ; CMD ",
+			SystemRoot: "C:\\Windows",
+		});
+
+		expect(resolved.binary).toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+		expect(resolved.args).toEqual([
+			"-NoLogo",
+			"-NoProfile",
+			"-NonInteractive",
+			"-ExecutionPolicy",
+			"Bypass",
+			"-File",
+			powerShellPath,
+			"line one\nline two",
+		]);
+	});
+
+	it("uses an absolute System32 cmd fallback without consulting cwd or PATH", () => {
+		expect(
+			resolveWindowsComSpec({
+				SystemRoot: "D:\\Windows Root",
+				PATH: "C:\\untrusted-repository",
+			}),
+		).toBe("D:\\Windows Root\\System32\\cmd.exe");
+	});
+
+	it("rejects relative or shell-shaped ComSpec values", () => {
+		for (const comSpec of ["cmd.exe", ".\\cmd.exe", 'C:\\Windows\\System32\\cmd.exe" & decoy']) {
+			expect(resolveWindowsComSpec({ SystemRoot: "C:\\Windows", ComSpec: comSpec })).toBe(
+				"C:\\Windows\\System32\\cmd.exe",
+			);
+		}
 	});
 });

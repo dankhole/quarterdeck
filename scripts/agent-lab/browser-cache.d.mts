@@ -5,6 +5,8 @@ export interface AgentLabBrowserCachePaths {
 
 export type AgentLabBrowserCachePreparation = "ready" | "migrated" | "empty";
 
+export function resolveGitCommonDirectory(repoRoot: string): string | null;
+
 export function getAgentLabBrowserCachePaths(
 	repoRoot: string,
 	gitCommonDirectory?: string | null,

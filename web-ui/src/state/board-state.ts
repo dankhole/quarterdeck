@@ -19,6 +19,7 @@ import type {
 	CardSelection,
 	TaskImage,
 } from "@/types";
+import { arePathIdentitiesEqual } from "@/utils/path-identity";
 
 export interface TaskDraft {
 	prompt: string;
@@ -376,9 +377,12 @@ export function reconcileTaskWorkingDirectory(
 	metadataPath: string,
 	projectPath: string | null,
 ): { board: BoardData; updated: boolean } {
-	const isWorktree = projectPath ? metadataPath !== projectPath : undefined;
+	const isWorktree = projectPath ? !arePathIdentitiesEqual(metadataPath, projectPath) : undefined;
 	const { columns, updated } = updateCardInBoard(board, taskId, (card) => {
-		if (card.workingDirectory === metadataPath && (isWorktree === undefined || card.useWorktree === isWorktree)) {
+		if (
+			arePathIdentitiesEqual(card.workingDirectory, metadataPath) &&
+			(isWorktree === undefined || card.useWorktree === isWorktree)
+		) {
 			return null;
 		}
 		return {

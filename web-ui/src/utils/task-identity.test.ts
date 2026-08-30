@@ -187,4 +187,20 @@ describe("resolveTaskIdentity", () => {
 		expect(identity.sessionLaunchPath).toBe("C:/repo/.quarterdeck/worktrees/task-1");
 		expect(identity.isSessionLaunchDiverged).toBe(false);
 	});
+
+	it("treats Windows path casing as the same task and project identity", () => {
+		const identity = resolveTaskIdentity({
+			projectRootPath: "C:\\Repo",
+			card: {
+				branch: "main",
+				useWorktree: false,
+				workingDirectory: "c:/repo",
+			},
+			sessionSummary: { sessionLaunchPath: "C:/REPO/" },
+		});
+
+		expect(identity.isAssignedShared).toBe(true);
+		expect(identity.isSessionLaunchShared).toBe(true);
+		expect(identity.isSessionLaunchDiverged).toBe(false);
+	});
 });

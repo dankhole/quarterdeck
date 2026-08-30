@@ -6,7 +6,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildClaudeHooksSettings } from "../../../src/claude-hooks";
 import { buildCodexHooksConfig } from "../../../src/codex-hooks";
-import { _resetLoggerForTests, type RuntimeDiagnosticLogSink, setRuntimeDiagnosticLogSink } from "../../../src/core";
+import { buildStatuslineCommand } from "../../../src/commands/statusline";
+import {
+	_resetLoggerForTests,
+	buildQuarterdeckCommandLine,
+	type RuntimeDiagnosticLogSink,
+	setRuntimeDiagnosticLogSink,
+} from "../../../src/core";
 import { prepareAgentLaunch } from "../../../src/terminal";
 import {
 	buildPiLifecycleExtensionSource,
@@ -21,6 +27,7 @@ vi.mock("../../../src/terminal/worktree-context.js", () => ({
 }));
 
 const originalHome = process.env.HOME;
+const originalUserProfile = process.env.USERPROFILE;
 const originalAppData = process.env.APPDATA;
 const originalLocalAppData = process.env.LOCALAPPDATA;
 let tempHome: string | null = null;
@@ -40,8 +47,14 @@ type LogCandidate = Parameters<RuntimeDiagnosticLogSink["recordLog"]>[0];
 function setupTempHome(): string {
 	tempHome = mkdtempSync(join(tmpdir(), "quarterdeck-agent-adapters-"));
 	process.env.HOME = tempHome;
+	process.env.USERPROFILE = tempHome;
 	delete process.env.QUARTERDECK_STATE_HOME;
 	return tempHome;
+}
+
+function claudeHookCommand(event: string, options: { reliable?: boolean } = {}): string {
+	const subcommand = options.reliable || event !== "activity" ? "ingest" : "notify";
+	return buildQuarterdeckCommandLine(["hooks", subcommand, "--event", event, "--source", "claude"]);
 }
 
 function getCodexConfigOverrideValues(args: string[], key: string): string[] {
@@ -73,6 +86,11 @@ afterEach(() => {
 		delete process.env.HOME;
 	} else {
 		process.env.HOME = originalHome;
+	}
+	if (originalUserProfile === undefined) {
+		delete process.env.USERPROFILE;
+	} else {
+		process.env.USERPROFILE = originalUserProfile;
 	}
 	if (tempHome) {
 		rmSync(tempHome, { recursive: true, force: true });
@@ -480,9 +498,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 
 		const settingsPath = join(homedir(), ".quarterdeck", "hooks", "claude", "settings.json");
-		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
-			hooks?: Record<string, unknown>;
-		};
+		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as ReturnType<typeof buildClaudeHooksSettings>;
 		expect(settings.hooks?.PermissionRequest).toBeDefined();
 		expect(settings.hooks?.SessionStart).toBeDefined();
 		expect(settings.hooks?.Stop).toBeDefined();
@@ -493,18 +509,20 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(settings.hooks?.PostToolUseFailure).toBeDefined();
 		expect(settings.hooks?.PreCompact).toBeDefined();
 		expect(settings.hooks?.PostCompact).toBeDefined();
-		const serializedSettings = JSON.stringify(settings);
-		expect(serializedSettings).toContain("'notify' '--event' 'activity'");
-		expect(serializedSettings).toContain("'ingest' '--event' 'to_review'");
-		expect(serializedSettings).toContain("'ingest' '--event' 'to_in_progress'");
-		expect(JSON.stringify(settings.hooks?.SessionStart)).toContain("'ingest' '--event' 'activity'");
+		const commands = Object.values(settings.hooks).flatMap((groups) =>
+			groups.flatMap((group) => group.hooks.map((hook) => hook.command)),
+		);
+		expect(commands).toContain(claudeHookCommand("activity"));
+		expect(commands).toContain(claudeHookCommand("to_review"));
+		expect(commands).toContain(claudeHookCommand("to_in_progress"));
+		expect(settings.hooks.SessionStart[0]?.hooks[0]?.command).toBe(claudeHookCommand("activity", { reliable: true }));
 	});
 
 	it("keeps Claude SessionStart reliable so session ids are not best-effort", () => {
 		const settings = buildClaudeHooksSettings();
 		expect(settings.hooks.SessionStart[0]?.matcher).toBe("startup|resume|clear|compact|fork");
-		expect(settings.hooks.SessionStart[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'activity'");
-		expect(settings.hooks.SessionStart[0]?.hooks[0]?.command).not.toContain("'notify' '--event' 'activity'");
+		expect(settings.hooks.SessionStart[0]?.hooks[0]?.command).toBe(claudeHookCommand("activity", { reliable: true }));
+		expect(settings.hooks.SessionStart[0]?.hooks[0]?.command).not.toBe(claudeHookCommand("activity"));
 	});
 
 	it("leaves the Quarterdeck Claude status line disabled unless explicitly enabled", async () => {
@@ -689,19 +707,19 @@ describe("prepareAgentLaunch hook strategies", () => {
 			statusLine?: { type?: string; command?: string };
 		};
 		expect(settings.statusLine?.type).toBe("command");
-		expect(settings.statusLine?.command).toContain("statusline");
+		expect(settings.statusLine?.command).toBe(buildStatuslineCommand());
 	});
 
 	it("registers reliable Claude input-wait and resolution hooks", () => {
 		const settings = buildClaudeHooksSettings();
 		expect(settings.hooks.PreToolUse[0]?.matcher).toBe("*");
-		expect(settings.hooks.PreToolUse[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_in_progress'");
+		expect(settings.hooks.PreToolUse[0]?.hooks[0]?.command).toBe(claudeHookCommand("to_in_progress"));
 		expect(settings.hooks.Notification).toHaveLength(1);
 		expect(settings.hooks.Notification[0]?.matcher).toBe("*");
-		expect(settings.hooks.Notification[0]?.hooks[0]?.command).toContain("'notify' '--event' 'activity'");
-		expect(settings.hooks.Elicitation[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_review'");
-		expect(settings.hooks.ElicitationResult[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_in_progress'");
-		expect(settings.hooks.Stop[0]?.hooks[0]?.command).toContain("'ingest' '--event' 'to_review'");
+		expect(settings.hooks.Notification[0]?.hooks[0]?.command).toBe(claudeHookCommand("activity"));
+		expect(settings.hooks.Elicitation[0]?.hooks[0]?.command).toBe(claudeHookCommand("to_review"));
+		expect(settings.hooks.ElicitationResult[0]?.hooks[0]?.command).toBe(claudeHookCommand("to_in_progress"));
+		expect(settings.hooks.Stop[0]?.hooks[0]?.command).toBe(claudeHookCommand("to_review"));
 	});
 
 	it("materializes task images for CLI prompts", async () => {
@@ -732,6 +750,50 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const imagePath = imagePathMatch?.[1] ?? "";
 		expect(existsSync(imagePath)).toBe(true);
 		expect(readFileSync(imagePath).toString("utf8")).toBe("hello");
+	});
+
+	it("materializes Windows-unsafe image names through a bounded safe filename", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-images-unsafe-name",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "Inspect it",
+			images: [
+				{
+					id: "img-unsafe",
+					data: Buffer.from("hello").toString("base64"),
+					mimeType: "image/png",
+					name: `${"x".repeat(300)}.bad?`,
+				},
+				{
+					id: "img-trailing-dot",
+					data: Buffer.from("second").toString("base64"),
+					mimeType: "image/png",
+					name: "..",
+				},
+				{
+					id: "img-truncated-dot",
+					data: Buffer.from("third").toString("base64"),
+					mimeType: "application/octet-stream",
+					name: `${"x".repeat(79)}.${"y".repeat(20)}.extension-too-long`,
+				},
+			],
+		});
+
+		const initialPrompt = launch.args.at(-1) ?? "";
+		const imagePath = initialPrompt.match(/1\. (.+?) \(/)?.[1] ?? "";
+		expect(imagePath).not.toContain("?");
+		expect(imagePath.split(/[\\/]/u).at(-1)?.length).toBeLessThanOrEqual(255);
+		expect(readFileSync(imagePath).toString("utf8")).toBe("hello");
+		const trailingDotImagePath = initialPrompt.match(/2\. (.+?) \(\.\.\)/)?.[1] ?? "";
+		expect(trailingDotImagePath.split(/[\\/]/u).at(-1)).toBe("02-image.png");
+		expect(readFileSync(trailingDotImagePath).toString("utf8")).toBe("second");
+		const truncatedDotImagePath = initialPrompt.match(/3\. (.+?) \(/)?.[1] ?? "";
+		expect(truncatedDotImagePath.split(/[\\/]/u).at(-1)).toBe(`03-${"x".repeat(79)}`);
+		expect(readFileSync(truncatedDotImagePath).toString("utf8")).toBe("third");
 	});
 
 	it("uses a stored Codex session id for resume when available", async () => {

@@ -1,7 +1,11 @@
-import { constants, type Dir, type Dirent } from "node:fs";
-import { open, opendir, realpath, stat } from "node:fs/promises";
+import type { Dir, Dirent } from "node:fs";
+import { opendir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join, relative, sep } from "node:path";
+import { basename, isAbsolute, join, win32 } from "node:path";
+
+import { areFileSystemPathsEqual, isFileSystemPathWithin } from "../core/path-comparison.js";
+import { getWindowsEnvironmentValue } from "../core/windows-system-paths.js";
+import { openValidatedContainedRegularFile, resolveReadOnlyFileOpenFlags } from "../fs/validated-file-open.js";
 
 import type { ConversationReadLimits } from "./limits.js";
 import type {
@@ -14,6 +18,22 @@ import type {
 
 const MAX_SOURCE_LOOKUP_DEPTH = 12;
 
+interface ConversationSourceOpenConstants {
+	O_RDONLY: number;
+	O_NOFOLLOW?: number;
+}
+
+/**
+ * Windows does not expose `O_NOFOLLOW`; the shared canonical-path and
+ * post-open identity validator provides the cross-platform replacement there.
+ */
+export function resolveConversationSourceOpenFlags(
+	platform: NodeJS.Platform = process.platform,
+	openConstants?: ConversationSourceOpenConstants,
+): number {
+	return resolveReadOnlyFileOpenFlags(platform, openConstants);
+}
+
 export interface ConversationHistoryRoots {
 	claude: readonly string[];
 	codex: readonly string[];
@@ -22,14 +42,19 @@ export interface ConversationHistoryRoots {
 export function resolveDefaultConversationHistoryRoots(input?: {
 	homeDirectory?: string;
 	environment?: Readonly<NodeJS.ProcessEnv>;
+	platform?: NodeJS.Platform;
 }): ConversationHistoryRoots {
 	const environment = input?.environment ?? process.env;
 	const homeDirectory = input?.homeDirectory ?? homedir();
-	const claudeConfigDirectory = environment.CLAUDE_CONFIG_DIR?.trim() || join(homeDirectory, ".claude");
-	const codexHome = environment.CODEX_HOME?.trim() || join(homeDirectory, ".codex");
+	const platform = input?.platform ?? process.platform;
+	const joinPath = platform === "win32" ? win32.join : join;
+	const readEnvironment = (key: string): string | undefined =>
+		platform === "win32" ? getWindowsEnvironmentValue(environment, key) : environment[key];
+	const claudeConfigDirectory = readEnvironment("CLAUDE_CONFIG_DIR")?.trim() || joinPath(homeDirectory, ".claude");
+	const codexHome = readEnvironment("CODEX_HOME")?.trim() || joinPath(homeDirectory, ".codex");
 	return {
-		claude: [join(claudeConfigDirectory, "projects")],
-		codex: [join(codexHome, "sessions"), join(codexHome, "archived_sessions")],
+		claude: [joinPath(claudeConfigDirectory, "projects")],
+		codex: [joinPath(codexHome, "sessions"), joinPath(codexHome, "archived_sessions")],
 	};
 }
 
@@ -42,16 +67,6 @@ function isMissingPathError(error: unknown): boolean {
 		return false;
 	}
 	return (error as NodeJS.ErrnoException).code === "ENOENT" || (error as NodeJS.ErrnoException).code === "ENOTDIR";
-}
-
-function isPathWithinRoot(path: string, root: string): boolean {
-	const relativePath = relative(root, path);
-	return (
-		relativePath.length > 0 &&
-		relativePath !== ".." &&
-		!relativePath.startsWith(`..${sep}`) &&
-		!isAbsolute(relativePath)
-	);
 }
 
 function isSafeSessionId(sessionId: string): boolean {
@@ -122,41 +137,33 @@ async function validateAndOpenCandidate(input: {
 			? { status: "missing" }
 			: { status: "invalid_source", reason: "source_path_invalid" };
 	}
-	const canonicalRoot = input.canonicalRoots.find((root) => isPathWithinRoot(canonicalPath, root));
+	const canonicalRoot = input.canonicalRoots.find(
+		(root) => !areFileSystemPathsEqual(root, canonicalPath) && isFileSystemPathWithin(root, canonicalPath),
+	);
 	if (!canonicalRoot) {
 		return { status: "invalid_source", reason: "source_outside_allowed_roots" };
 	}
 
-	let pathStat: Awaited<ReturnType<typeof stat>>;
+	let openedFile: Awaited<ReturnType<typeof openValidatedContainedRegularFile>>;
 	try {
-		pathStat = await stat(canonicalPath);
+		openedFile = await openValidatedContainedRegularFile({
+			canonicalRoot,
+			canonicalPath,
+			openFlags: resolveConversationSourceOpenFlags(),
+		});
 	} catch (error) {
 		return isMissingPathError(error)
 			? { status: "missing" }
 			: { status: "invalid_source", reason: "source_path_invalid" };
 	}
-	if (!pathStat.isFile()) {
-		return { status: "invalid_source", reason: "source_not_regular_file" };
+	if (openedFile.status === "invalid") {
+		return {
+			status: "invalid_source",
+			reason: openedFile.reason === "not_regular_file" ? "source_not_regular_file" : "source_path_invalid",
+		};
 	}
-
-	let fileHandle: Awaited<ReturnType<typeof open>>;
+	const { fileHandle, fileStat } = openedFile;
 	try {
-		fileHandle = await open(canonicalPath, constants.O_RDONLY | constants.O_NOFOLLOW);
-	} catch (error) {
-		return isMissingPathError(error)
-			? { status: "missing" }
-			: { status: "invalid_source", reason: "source_path_invalid" };
-	}
-	try {
-		const fileStat = await fileHandle.stat();
-		if (!fileStat.isFile()) {
-			await fileHandle.close();
-			return { status: "invalid_source", reason: "source_not_regular_file" };
-		}
-		if (fileStat.dev !== pathStat.dev || fileStat.ino !== pathStat.ino) {
-			await fileHandle.close();
-			return { status: "invalid_source", reason: "source_path_invalid" };
-		}
 		if (!Number.isSafeInteger(fileStat.size) || fileStat.size < 0) {
 			await fileHandle.close();
 			return { status: "invalid_source", reason: "source_path_invalid" };

@@ -23,6 +23,7 @@ const workdirChangesMocks = vi.hoisted(() => ({
 const fileMutationMocks = vi.hoisted(() => ({
 	createWorkdirEntry: vi.fn(),
 	deleteWorkdirEntry: vi.fn(),
+	readWorkdirFile: vi.fn(),
 	renameWorkdirEntry: vi.fn(),
 	saveWorkdirFile: vi.fn(),
 	WorkdirFileConflictError: class extends Error {},
@@ -126,7 +127,7 @@ vi.mock("../../../src/workdir/git-utils.js", () => ({
 }));
 
 vi.mock("../../../src/workdir/read-workdir-file.js", () => ({
-	readWorkdirFile: vi.fn(),
+	readWorkdirFile: fileMutationMocks.readWorkdirFile,
 	readWorkdirFileExcerpt: vi.fn(),
 }));
 
@@ -191,6 +192,7 @@ describe("createProjectApi file content mutations", () => {
 		worktreeMocks.resolveTaskWorkingDirectory.mockReset();
 		fileMutationMocks.saveWorkdirFile.mockReset();
 		fileMutationMocks.createWorkdirEntry.mockReset();
+		fileMutationMocks.readWorkdirFile.mockReset();
 
 		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/repo");
 		fileMutationMocks.saveWorkdirFile.mockResolvedValue({
@@ -203,6 +205,13 @@ describe("createProjectApi file content mutations", () => {
 			editable: true,
 		});
 		fileMutationMocks.createWorkdirEntry.mockResolvedValue({ ok: true, path: "src/new.ts", kind: "file" });
+		fileMutationMocks.readWorkdirFile.mockResolvedValue({
+			content: "content\n",
+			language: "text",
+			binary: false,
+			size: 8,
+			truncated: false,
+		});
 	});
 
 	it("refreshes task and home git metadata after saving a shared-checkout task file", async () => {
@@ -242,6 +251,33 @@ describe("createProjectApi file content mutations", () => {
 		expect(fileMutationMocks.createWorkdirEntry).toHaveBeenCalledWith("/tmp/repo", "src/new.ts", "file");
 		expect(deps.broadcaster.requestTaskRefresh).not.toHaveBeenCalled();
 		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("project-1");
+	});
+
+	it("preserves leading spaces in existing file paths", async () => {
+		const deps = createProjectDeps();
+		const api = createProjectApi(deps);
+
+		await api.getFileContent(
+			{ projectId: "project-1", projectPath: "/tmp/repo" },
+			{ taskId: null, path: " leading.txt" },
+		);
+		await api.saveFileContent(
+			{ projectId: "project-1", projectPath: "/tmp/repo" },
+			{
+				taskId: null,
+				path: " leading.txt",
+				content: "updated\n",
+				expectedContentHash: "hash-before",
+			},
+		);
+
+		expect(fileMutationMocks.readWorkdirFile).toHaveBeenCalledWith("/tmp/repo", " leading.txt");
+		expect(fileMutationMocks.saveWorkdirFile).toHaveBeenCalledWith(
+			"/tmp/repo",
+			" leading.txt",
+			"updated\n",
+			"hash-before",
+		);
 	});
 });
 

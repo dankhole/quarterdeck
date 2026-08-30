@@ -6,10 +6,12 @@ import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { resolveNpmCommand } from "./npm-command.mjs";
+import { terminateProcessTree } from "./process-tree.mjs";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
 const nodeBinary = process.execPath;
-const npmBinary = process.platform === "win32" ? "npm.cmd" : "npm";
 // Dogfood can run multiple wrapper processes at once. Exactly one wrapper should
 // own shutdown cleanup, while all others launch Quarterdeck with
 // --skip-shutdown-cleanup. We elect that owner with an exclusive lock file in
@@ -213,6 +215,7 @@ function runCommand(command, args, spawnOptions = {}) {
 	return new Promise((resolveExit, reject) => {
 		const child = spawn(command, args, {
 			stdio: "inherit",
+			windowsHide: true,
 			...spawnOptions,
 		});
 
@@ -230,6 +233,7 @@ function runRuntimeCommand(command, args, spawnOptions = {}) {
 		const child = spawn(command, args, {
 			stdio: "inherit",
 			detached: process.platform !== "win32",
+			windowsHide: true,
 			...spawnOptions,
 		});
 
@@ -265,10 +269,20 @@ function runRuntimeCommand(command, args, spawnOptions = {}) {
 				return;
 			}
 			shutdownStarted = true;
-			sendSignalToChild(signal);
+			if (!child.stdin || child.stdin.destroyed || child.stdin.writableEnded) {
+				sendSignalToChild(signal);
+			} else {
+				child.stdin.end();
+			}
 			forceKillTimer = setTimeout(() => {
-				sendSignalToChild("SIGKILL");
-			}, 10_000);
+				if (child.pid != null) {
+					terminateProcessTree(child.pid, "SIGKILL", (error) => {
+						if (error) sendSignalToChild("SIGKILL");
+					});
+				}
+			// The child runtime uses an eight-second Windows cleanup budget. Give it
+			// one second to finish its own timeout path before the wrapper kills the tree.
+			}, process.platform === "win32" ? 9_000 : 11_000);
 		};
 
 		const onSigint = () => {
@@ -280,12 +294,14 @@ function runRuntimeCommand(command, args, spawnOptions = {}) {
 		const onSighup = () => {
 			requestShutdown("SIGTERM");
 		};
+		const onSigbreak = () => {
+			requestShutdown("SIGTERM");
+		};
 
 		process.on("SIGINT", onSigint);
 		process.on("SIGTERM", onSigterm);
-		if (process.platform !== "win32") {
-			process.on("SIGHUP", onSighup);
-		}
+		process.on("SIGHUP", onSighup);
+		if (process.platform === "win32") process.on("SIGBREAK", onSigbreak);
 
 		const cleanup = () => {
 			if (forceKillTimer !== null) {
@@ -294,9 +310,8 @@ function runRuntimeCommand(command, args, spawnOptions = {}) {
 			}
 			process.off("SIGINT", onSigint);
 			process.off("SIGTERM", onSigterm);
-			if (process.platform !== "win32") {
-				process.off("SIGHUP", onSighup);
-			}
+			process.off("SIGHUP", onSighup);
+			if (process.platform === "win32") process.off("SIGBREAK", onSigbreak);
 		};
 
 		child.on("error", (err) => {
@@ -333,16 +348,21 @@ function stripNodeModulesBinFromPath(pathValue) {
 
 function buildDogfoodRuntimeEnv(baseEnv) {
 	const runtimeEnv = { ...baseEnv };
+	let hasStateHome = false;
 	for (const key of Object.keys(runtimeEnv)) {
-		if (key.toUpperCase() !== "PATH") {
-			continue;
+		const normalizedKey = key.toUpperCase();
+		if (normalizedKey === "PATH") {
+			runtimeEnv[key] = stripNodeModulesBinFromPath(runtimeEnv[key]);
 		}
-		runtimeEnv[key] = stripNodeModulesBinFromPath(runtimeEnv[key]);
-		break;
+		if (normalizedKey === "QUARTERDECK_STATE_HOME" && runtimeEnv[key]) {
+			hasStateHome = true;
+		}
 	}
 	// Isolate dogfood state from the user's real quarterdeck session so that
 	// testing feature branches doesn't clobber in-flight board state.
-	if (!runtimeEnv.QUARTERDECK_STATE_HOME) {
+	// Spreading `process.env` creates an ordinary case-sensitive object, so look
+	// up the existing key using Windows' case-insensitive environment semantics.
+	if (!hasStateHome) {
 		runtimeEnv.QUARTERDECK_STATE_HOME = resolve(homedir(), ".quarterdeck-dogfood");
 	}
 	return runtimeEnv;
@@ -368,7 +388,11 @@ async function main() {
 	try {
 		if (!args.skipBuild) {
 			console.log(`[dogfood] Building checkout at ${repoRoot}`);
-			const buildCode = await runCommand(npmBinary, ["run", "build"], { cwd: repoRoot, env: process.env });
+			const npmBuild = resolveNpmCommand(["run", "build"]);
+			const buildCode = await runCommand(npmBuild.command, npmBuild.args, {
+				cwd: repoRoot,
+				env: process.env,
+			});
 			if (buildCode !== 0) {
 				return buildCode;
 			}
@@ -396,6 +420,7 @@ async function main() {
 		return await runRuntimeCommand(nodeBinary, [cliEntrypoint, ...launchArgs], {
 			cwd: launchCwd,
 			env: buildDogfoodRuntimeEnv(process.env),
+			stdio: ["pipe", "inherit", "inherit"],
 		});
 	} finally {
 		await releaseCleanupOwnership(cleanupOwnership.ownerToken);

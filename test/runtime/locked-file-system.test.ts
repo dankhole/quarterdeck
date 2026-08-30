@@ -70,6 +70,26 @@ describe("LockedFileSystem", () => {
 		}
 	});
 
+	it("deduplicates case aliases before acquiring Windows locks", async () => {
+		const tempDir = createTempDir("quarterdeck-locked-fs-windows-alias-");
+		try {
+			const lockedFileSystem = new LockedFileSystem("win32");
+
+			await lockedFileSystem.withLocks(
+				[
+					{ path: join(tempDir.path, "README.md"), type: "file" },
+					{ path: join(tempDir.path, "readme.md"), type: "file" },
+				],
+				async () => {},
+			);
+
+			expect(lockfileMocks.lock).toHaveBeenCalledTimes(1);
+			expect(lockfileMocks.release).toHaveBeenCalledTimes(1);
+		} finally {
+			tempDir.cleanup();
+		}
+	});
+
 	it.skipIf(process.platform === "win32")(
 		"applies the requested mode when creating the atomic temporary file",
 		async () => {
@@ -89,6 +109,23 @@ describe("LockedFileSystem", () => {
 			}
 		},
 	);
+
+	it("omits unsupported POSIX modes when creating the atomic temporary file on Windows", async () => {
+		const tempDir = createTempDir("quarterdeck-locked-fs-windows-mode-");
+		try {
+			const filePath = join(tempDir.path, "private-state.json");
+			const lockedFileSystem = new LockedFileSystem("win32");
+
+			await lockedFileSystem.writeTextFileAtomic(filePath, "private", { mode: 0o600 });
+
+			const tempWrite = fileSystemMocks.writeFile.mock.calls.find(
+				([path]) => typeof path === "string" && path.startsWith(`${filePath}.tmp.`),
+			);
+			expect(tempWrite?.[2]).toEqual({ encoding: "utf8" });
+		} finally {
+			tempDir.cleanup();
+		}
+	});
 });
 
 describe("cleanupStaleLockAndTempFiles", () => {

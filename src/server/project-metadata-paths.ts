@@ -1,7 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 
-import type { RuntimeBoardData } from "../core";
+import { normalizeFileSystemPathForComparison, type RuntimeBoardData } from "../core";
 import { getTaskWorktreePath, getTaskWorktreePathInfo, pathExists } from "../workdir";
 import type { CachedTaskWorktreeMetadata } from "./project-metadata-task-cache";
 
@@ -50,12 +50,12 @@ export function collectTrackedTasks(board: RuntimeBoardData): TrackedTaskWorktre
 async function normalizePhysicalPath(path: string, exists: boolean): Promise<string> {
 	const absolutePath = resolvePath(path);
 	if (!exists) {
-		return absolutePath;
+		return normalizeFileSystemPathForComparison(absolutePath);
 	}
 	try {
-		return await realpath(absolutePath);
+		return normalizeFileSystemPathForComparison(await realpath(absolutePath));
 	} catch {
-		return absolutePath;
+		return normalizeFileSystemPathForComparison(absolutePath);
 	}
 }
 

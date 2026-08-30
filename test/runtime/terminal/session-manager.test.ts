@@ -611,6 +611,43 @@ describe("TerminalSessionManager", () => {
 		expect(resizeMirrorSpy).toHaveBeenCalledWith(100, 30);
 	});
 
+	it("uses the platform redraw owner for a forced same-size resize", () => {
+		const manager = createTestManager();
+		const resizeSpy = vi.fn();
+		const forceRedrawSpy = vi.fn();
+		const resizeMirrorSpy = vi.fn();
+		const entry = {
+			taskId: "task-force-redraw",
+			active: {
+				session: {
+					resize: resizeSpy,
+					forceRedraw: forceRedrawSpy,
+				},
+				agentId: "codex",
+				cols: 100,
+				baseRows: 30,
+				rows: 30,
+			},
+			terminalStateMirror: {
+				resize: resizeMirrorSpy,
+			},
+			listenerIdCounter: 1,
+			listeners: new Map(),
+		};
+		(
+			manager as unknown as {
+				entries: Map<string, typeof entry>;
+			}
+		).entries.set("task-force-redraw", entry);
+
+		const resized = manager.resize("task-force-redraw", 100, 30, 1200, 720, true);
+
+		expect(resized).toBe(true);
+		expect(resizeSpy).not.toHaveBeenCalled();
+		expect(forceRedrawSpy).toHaveBeenCalledWith(100, 30, 1200, 720);
+		expect(resizeMirrorSpy).toHaveBeenCalledWith(100, 30);
+	});
+
 	it("applies the detached Claude row multiplier to resize rows", () => {
 		const manager = createTestManager();
 		const resizeSpy = vi.fn();

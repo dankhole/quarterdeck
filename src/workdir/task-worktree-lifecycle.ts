@@ -1,8 +1,14 @@
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import type { RuntimeWorktreeDeleteResponse, RuntimeWorktreeEnsureResponse } from "../core";
+import {
+	areFileSystemPathsEqual,
+	isFileSystemPathWithin,
+	type RuntimeWorktreeDeleteResponse,
+	type RuntimeWorktreeEnsureResponse,
+} from "../core";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
+import { removeDirectoryWithRetries } from "../fs/remove-path";
 import { getTaskWorktreesHomePath, loadProjectContext } from "../state/project-state";
 import { getGitCommandErrorMessage, getGitCommonDir, getGitStdout, readGitHeadInfo, runGit } from "./git-utils";
 import { applyTaskPatch, captureTaskPatch, deleteTaskPatchFiles, findTaskPatch } from "./task-worktree-patch";
@@ -77,19 +83,19 @@ async function removeTaskWorktreeInternal(repoPath: string, worktreePath: string
 		// so git doesn't think the path is still registered after we rm it.
 		await runGit(repoPath, ["worktree", "prune"], USER_GIT_ACTION_OPTIONS);
 	}
-	await rm(worktreePath, { recursive: true, force: true });
+	await removeDirectoryWithRetries(worktreePath);
 	return existed;
 }
 
 async function pruneEmptyParents(rootPath: string, fromPath: string): Promise<void> {
 	let current = fromPath;
-	while (current.startsWith(rootPath) && current !== rootPath) {
+	while (isFileSystemPathWithin(rootPath, current) && !areFileSystemPathsEqual(rootPath, current)) {
 		try {
 			const entries = await readdir(current);
 			if (entries.length > 0) {
 				return;
 			}
-			await rm(current, { recursive: true, force: true });
+			await removeDirectoryWithRetries(current);
 			current = dirname(current);
 		} catch {
 			return;

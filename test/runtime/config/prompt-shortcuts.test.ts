@@ -30,6 +30,31 @@ describe.sequential("prompt shortcuts config persistence", () => {
 		}
 	});
 
+	it("keeps the default landing workflow portable across supported shells", () => {
+		const squashMergePrompt = DEFAULT_PROMPT_SHORTCUTS.find((shortcut) => shortcut.label === "Squash Merge")?.prompt;
+
+		expect(squashMergePrompt).toContain("git worktree list --porcelain");
+		expect(squashMergePrompt).toContain("Inspect the output block by block");
+		expect(squashMergePrompt).not.toContain("| awk");
+	});
+
+	it("migrates the persisted legacy Unix-only landing workflow", () => {
+		const legacySection = [
+			"Parse correctly by extracting the worktree path from the block that contains the matching branch:",
+			"",
+			"```bash",
+			'git worktree list --porcelain | awk -v target="branch refs/heads/<target>" \'/^worktree /{wt=$0; sub(/^worktree /,"",wt)} $0==target{print wt}\'',
+			"```",
+			"",
+			"If this prints a path (and it's not the current worktree), check for uncommitted work **now** — before `update-ref` changes anything:",
+		].join("\n");
+
+		const [migrated] = normalizePromptShortcuts([{ label: "Squash Merge", prompt: legacySection }]);
+		expect(migrated?.prompt).toContain("git worktree list --porcelain");
+		expect(migrated?.prompt).toContain("Inspect the output block by block");
+		expect(migrated?.prompt).not.toContain("| awk");
+	});
+
 	it("persists and loads prompt shortcuts", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-prompt-shortcuts-persist-");
 

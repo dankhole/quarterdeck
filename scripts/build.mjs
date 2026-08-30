@@ -14,7 +14,6 @@ if (!buildId) {
 const external = [
 	"node-pty",
 	"proper-lockfile",
-	"tree-kill",
 	"ws",
 	"open",
 	"@trpc/client",
@@ -93,8 +92,8 @@ for (const asset of runtimeAssets) {
 	await copyFile(asset.source, asset.output);
 }
 
-await rm(webUiDistOutput, { recursive: true, force: true });
+await rm(webUiDistOutput, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 await copyDirectoryContents(webUiDistSource, webUiDistOutput);
-await chmod("dist/cli.js", 0o755);
+if (process.platform !== "win32") await chmod("dist/cli.js", 0o755);
 
 console.log("esbuild: bundled dist/cli.js and dist/index.js and copied runtime assets");

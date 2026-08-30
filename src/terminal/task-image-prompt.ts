@@ -14,14 +14,15 @@ const IMAGE_EXTENSION_BY_MIME_TYPE: Record<string, string> = {
 
 function sanitizeFileNameSegment(value: string): string {
 	const normalized = value.normalize("NFKD").replaceAll(/[^A-Za-z0-9._-]+/g, "-");
-	const trimmed = normalized.replaceAll(/^-+|-+$/g, "");
-	return trimmed.length > 0 ? trimmed : "image";
+	const trimmed = normalized.replaceAll(/^[.-]+|[.-]+$/g, "");
+	const bounded = trimmed.slice(0, 80).replaceAll(/^[.-]+|[.-]+$/g, "");
+	return bounded.length > 0 ? bounded : "image";
 }
 
 function resolveTaskImageExtension(image: RuntimeTaskImage): string {
 	const name = image.name?.trim();
 	const nameExtension = name ? extname(name).toLowerCase() : "";
-	if (nameExtension) {
+	if (/^\.[a-z0-9]{1,10}$/u.test(nameExtension)) {
 		return nameExtension;
 	}
 	return IMAGE_EXTENSION_BY_MIME_TYPE[image.mimeType.toLowerCase()] ?? "";

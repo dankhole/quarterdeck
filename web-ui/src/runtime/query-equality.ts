@@ -1,4 +1,5 @@
 import type { RuntimeGitRefsResponse, RuntimeListFilesResponse, RuntimeWorkdirChangesResponse } from "@/runtime/types";
+import { arePathIdentitiesEqual } from "@/utils/path-identity";
 
 function haveWorkdirContentRevisions(data: RuntimeWorkdirChangesResponse): boolean {
 	return data.files.every((file) => typeof file.contentRevision === "string" && file.contentRevision.length > 0);
@@ -8,7 +9,7 @@ export function areWorkdirChangesRevisionsEqual(
 	previousData: RuntimeWorkdirChangesResponse,
 	nextData: RuntimeWorkdirChangesResponse,
 ): boolean {
-	if (previousData.repoRoot !== nextData.repoRoot) {
+	if (!arePathIdentitiesEqual(previousData.repoRoot, nextData.repoRoot)) {
 		return false;
 	}
 	if (

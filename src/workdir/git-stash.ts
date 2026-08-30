@@ -67,7 +67,8 @@ export async function stashList(cwd: string): Promise<RuntimeStashListResponse> 
 	}
 
 	const entries: RuntimeStashEntry[] = [];
-	for (const line of result.stdout.split("\n")) {
+	for (const rawLine of result.stdout.split("\n")) {
+		const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
 		if (!line) continue;
 
 		const parts = line.split("\x1f");

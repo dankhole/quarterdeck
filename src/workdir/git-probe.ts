@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { RuntimeGitSyncSummary } from "../core";
-import { resolveRepoRoot, runGit } from "./git-utils";
+import { resolveRepoRoot, runGit, splitNullSeparatedGitOutput } from "./git-utils";
 
 interface GitPathFingerprint {
 	path: string;
@@ -94,21 +94,29 @@ async function buildPathFingerprints(repoRoot: string, paths: string[]): Promise
 	);
 }
 
-function parseStatusPath(line: string): string | null {
-	const trimmed = line.trim();
-	if (!trimmed) {
-		return null;
+function pathAfterSpaceDelimitedFields(record: string, fieldCount: number): string | null {
+	let delimiterIndex = -1;
+	for (let index = 0; index < fieldCount; index += 1) {
+		delimiterIndex = record.indexOf(" ", delimiterIndex + 1);
+		if (delimiterIndex === -1) return null;
 	}
-	const parts = trimmed.split("\t");
-	const metadata = parts[0]?.trim() ?? "";
-	const tokens = metadata.split(/\s+/);
-	return tokens[tokens.length - 1] ?? null;
+	const path = record.slice(delimiterIndex + 1);
+	return path.length > 0 ? path : null;
+}
+
+function parseStatusPath(record: string): string | null {
+	if (record.startsWith("1 ")) return pathAfterSpaceDelimitedFields(record, 8);
+	if (record.startsWith("2 ")) return pathAfterSpaceDelimitedFields(record, 9);
+	if (record.startsWith("u ")) return pathAfterSpaceDelimitedFields(record, 10);
+	return null;
 }
 
 export async function probeGitWorkdirState(cwd: string): Promise<GitWorkdirProbe> {
 	const repoRoot = await resolveRepoRoot(cwd);
 	const [statusResult, headCommitResult] = await Promise.all([
-		runGit(repoRoot, ["--no-optional-locks", "status", "--porcelain=v2", "--branch", "--untracked-files=all"]),
+		runGit(repoRoot, ["--no-optional-locks", "status", "--porcelain=v2", "--branch", "--untracked-files=all", "-z"], {
+			trimStdout: false,
+		}),
 		runGit(repoRoot, ["--no-optional-locks", "rev-parse", "--verify", "HEAD"]),
 	]);
 
@@ -124,28 +132,27 @@ export async function probeGitWorkdirState(cwd: string): Promise<GitWorkdirProbe
 	const untrackedPaths: string[] = [];
 	let changedFiles = 0;
 
-	for (const rawLine of statusResult.stdout.split("\n")) {
-		const line = rawLine.trim();
-		if (!line) {
-			continue;
-		}
-		if (line.startsWith("# branch.head ")) {
-			const branchName = line.slice("# branch.head ".length).trim();
+	const statusRecords = splitNullSeparatedGitOutput(statusResult.stdout);
+	for (let index = 0; index < statusRecords.length; index += 1) {
+		const record = statusRecords[index];
+		if (!record) continue;
+		if (record.startsWith("# branch.head ")) {
+			const branchName = record.slice("# branch.head ".length).trim();
 			currentBranch = branchName && branchName !== "(detached)" ? branchName : null;
 			continue;
 		}
-		if (line.startsWith("# branch.upstream ")) {
-			upstreamBranch = line.slice("# branch.upstream ".length).trim() || null;
+		if (record.startsWith("# branch.upstream ")) {
+			upstreamBranch = record.slice("# branch.upstream ".length).trim() || null;
 			continue;
 		}
-		if (line.startsWith("# branch.ab ")) {
-			const counts = parseAheadBehindCounts(line.slice("# branch.ab ".length));
+		if (record.startsWith("# branch.ab ")) {
+			const counts = parseAheadBehindCounts(record.slice("# branch.ab ".length));
 			aheadCount = counts.aheadCount;
 			behindCount = counts.behindCount;
 			continue;
 		}
-		if (line.startsWith("? ")) {
-			const path = line.slice(2).trim();
+		if (record.startsWith("? ")) {
+			const path = record.slice(2);
 			if (!path) {
 				continue;
 			}
@@ -154,17 +161,17 @@ export async function probeGitWorkdirState(cwd: string): Promise<GitWorkdirProbe
 			fingerprintPaths.push(path);
 			continue;
 		}
-		if (line.startsWith("1 ") || line.startsWith("2 ") || line.startsWith("u ")) {
-			const path = parseStatusPath(line);
+		if (record.startsWith("1 ") || record.startsWith("2 ") || record.startsWith("u ")) {
+			const path = parseStatusPath(record);
 			if (!path) {
 				continue;
 			}
 			changedFiles += 1;
 			fingerprintPaths.push(path);
-			const renameParts = line.split("\t");
-			const previousPath = renameParts[1]?.trim();
-			if (previousPath) {
-				fingerprintPaths.push(previousPath);
+			if (record.startsWith("2 ")) {
+				const previousPath = statusRecords[index + 1];
+				if (previousPath) fingerprintPaths.push(previousPath);
+				index += 1;
 			}
 		}
 	}

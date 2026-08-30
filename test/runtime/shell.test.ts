@@ -1,5 +1,29 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { buildShellCommandLine, quoteShellArg, resolveInteractiveShellCommand } from "../../src/core";
+import {
+	buildShellCommandLine,
+	buildWindowsProcessArgsCommandLine,
+	resolveInteractiveShellCommand,
+	resolveWindowsPowerShellPath,
+	resolveWindowsSystem32ExecutablePath,
+} from "../../src/core";
+
+const WINDOWS_TEST_ENV = { SystemRoot: "C:\\Windows" };
+const WINDOWS_SHELL_COMMAND_PREFIX =
+	'""C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoLogo -NoProfile -NonInteractive -EncodedCommand ';
+
+function decodeWindowsLaunch(command: string): { fileName: string; arguments: string } {
+	expect(command.startsWith(WINDOWS_SHELL_COMMAND_PREFIX)).toBe(true);
+	expect(command.endsWith('"')).toBe(true);
+	const encodedScript = command.slice(WINDOWS_SHELL_COMMAND_PREFIX.length, -1);
+	const script = Buffer.from(encodedScript, "base64").toString("utf16le");
+	const prefix = "$launch = ConvertFrom-Json -InputObject '";
+	const suffix = "'; $startInfo = New-Object System.Diagnostics.ProcessStartInfo";
+	expect(script.startsWith(prefix)).toBe(true);
+	const suffixIndex = script.indexOf(suffix, prefix.length);
+	expect(suffixIndex).toBeGreaterThan(prefix.length);
+	const payload = script.slice(prefix.length, suffixIndex).replaceAll("''", "'");
+	return JSON.parse(payload) as { fileName: string; arguments: string };
+}
 
 describe("resolveInteractiveShellCommand", () => {
 	const originalPlatform = process.platform;
@@ -38,63 +62,76 @@ describe("resolveInteractiveShellCommand", () => {
 		expect(result).toEqual({ binary: "bash", args: ["-i"] });
 	});
 
-	it("returns COMSPEC on win32 when set", () => {
-		Object.defineProperty(process, "platform", { value: "win32" });
-		process.env.COMSPEC = "C:\\Windows\\System32\\cmd.exe";
-		const result = resolveInteractiveShellCommand();
-		expect(result).toEqual({ binary: "C:\\Windows\\System32\\cmd.exe", args: [] });
+	it("returns an absolute case-insensitive ComSpec on win32", () => {
+		const result = resolveInteractiveShellCommand("win32", {
+			comspec: "D:\\Windows\\System32\\cmd.exe",
+		});
+		expect(result).toEqual({ binary: "D:\\Windows\\System32\\cmd.exe", args: [] });
 	});
 
-	it("falls back to powershell on win32 when COMSPEC is unset", () => {
-		Object.defineProperty(process, "platform", { value: "win32" });
-		delete process.env.COMSPEC;
-		const result = resolveInteractiveShellCommand();
-		expect(result).toEqual({ binary: "powershell.exe", args: ["-NoLogo"] });
-	});
-});
-
-describe("quoteShellArg", () => {
-	const originalPlatform = process.platform;
-
-	afterEach(() => {
-		Object.defineProperty(process, "platform", { value: originalPlatform });
-	});
-
-	it("single-quotes on unix", () => {
-		Object.defineProperty(process, "platform", { value: "darwin" });
-		expect(quoteShellArg("hello world")).toBe("'hello world'");
-	});
-
-	it("escapes embedded single quotes on unix", () => {
-		Object.defineProperty(process, "platform", { value: "linux" });
-		expect(quoteShellArg("it's")).toBe("'it'\\''s'");
-	});
-
-	it("double-quotes on win32", () => {
-		Object.defineProperty(process, "platform", { value: "win32" });
-		expect(quoteShellArg("hello world")).toBe('"hello world"');
-	});
-
-	it("escapes embedded double quotes on win32", () => {
-		Object.defineProperty(process, "platform", { value: "win32" });
-		expect(quoteShellArg('say "hi"')).toBe('"say ""hi"""');
+	it("falls back to absolute System32 cmd on win32 when ComSpec is unset", () => {
+		const result = resolveInteractiveShellCommand("win32", { WINDIR: "D:\\Windows Root" });
+		expect(result).toEqual({ binary: "D:\\Windows Root\\System32\\cmd.exe", args: [] });
 	});
 });
 
 describe("buildShellCommandLine", () => {
-	const originalPlatform = process.platform;
-
-	afterEach(() => {
-		Object.defineProperty(process, "platform", { value: originalPlatform });
-	});
-
 	it("joins binary and args with quoting", () => {
-		Object.defineProperty(process, "platform", { value: "darwin" });
-		expect(buildShellCommandLine("/bin/zsh", ["-i"])).toBe("'/bin/zsh' '-i'");
+		expect(buildShellCommandLine("/bin/zsh", ["-i"], "darwin")).toBe("'/bin/zsh' '-i'");
 	});
 
-	it("handles empty args", () => {
-		Object.defineProperty(process, "platform", { value: "darwin" });
-		expect(buildShellCommandLine("bash", [])).toBe("'bash'");
+	it("escapes embedded single quotes on Unix", () => {
+		expect(buildShellCommandLine("/bin/tool", ["it's"], "linux")).toBe("'/bin/tool' 'it'\\''s'");
+	});
+
+	it("encodes a direct Windows process launch without exposing cmd metacharacters", () => {
+		const binary = "C:\\Quarterdeck %NAME% ! ^ & (runtime)\\node.exe";
+		const args = ["space value", "%NAME%", "!", "^", "&", "|", "(round trip)"];
+		const command = buildShellCommandLine(binary, args, "win32", WINDOWS_TEST_ENV);
+
+		expect(command).toMatch(
+			/^""C:\\Windows\\System32\\WindowsPowerShell\\v1\.0\\powershell\.exe" -NoLogo -NoProfile -NonInteractive -EncodedCommand [A-Za-z0-9+/=]+"$/u,
+		);
+		expect(command).not.toContain(binary);
+		for (const argument of args) {
+			expect(command).not.toContain(argument);
+		}
+		expect(decodeWindowsLaunch(command)).toEqual({
+			fileName: binary,
+			arguments: '"space value" "%NAME%" "!" "^" "&" "|" "(round trip)"',
+		});
+	});
+
+	it("resolves PowerShell from the absolute system root without consulting cwd or PATH", () => {
+		expect(
+			resolveWindowsPowerShellPath({
+				systemroot: "D:\\Windows Root",
+				PATH: "C:\\untrusted-repository;C:\\also-untrusted",
+			}),
+		).toBe("D:\\Windows Root\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+	});
+
+	it("resolves trusted System32 executables without consulting cwd or PATH", () => {
+		expect(
+			resolveWindowsSystem32ExecutablePath("taskkill.exe", {
+				windir: "D:\\Windows Root",
+				PATH: "C:\\untrusted-repository;C:\\also-untrusted",
+			}),
+		).toBe("D:\\Windows Root\\System32\\taskkill.exe");
+		expect(() => resolveWindowsSystem32ExecutablePath("..\\taskkill.exe", WINDOWS_TEST_ENV)).toThrow(
+			"must not contain a path or shell syntax",
+		);
+	});
+
+	it("rejects malformed system-root environment values", () => {
+		expect(resolveWindowsPowerShellPath({ SystemRoot: 'C:\\Windows" & decoy' })).toBe(
+			"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+		);
+	});
+
+	it("serializes quotes, trailing backslashes, and empty Windows argv entries", () => {
+		expect(buildWindowsProcessArgsCommandLine(['say "hi"', "C:\\tail\\", ""])).toBe(
+			'"say \\"hi\\"" "C:\\tail\\\\" ""',
+		);
 	});
 });

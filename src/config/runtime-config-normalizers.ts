@@ -230,6 +230,33 @@ export function normalizeHiddenDefaultPromptShortcuts(raw: unknown): string[] {
 	return result;
 }
 
+const LEGACY_SQUASH_MERGE_WORKTREE_SECTION = [
+	"Parse correctly by extracting the worktree path from the block that contains the matching branch:",
+	"",
+	"```bash",
+	'git worktree list --porcelain | awk -v target="branch refs/heads/<target>" \'/^worktree /{wt=$0; sub(/^worktree /,"",wt)} $0==target{print wt}\'',
+	"```",
+	"",
+	"If this prints a path (and it's not the current worktree), check for uncommitted work **now** — before `update-ref` changes anything:",
+].join("\n");
+
+const PORTABLE_SQUASH_MERGE_WORKTREE_SECTION = [
+	"Parse correctly by extracting the worktree path from the block that contains the matching branch:",
+	"",
+	"```bash",
+	"git worktree list --porcelain",
+	"```",
+	"",
+	"Inspect the output block by block without relying on Unix-only shell tools. Find the block whose `branch` line is exactly `branch refs/heads/<target>`, then use that same block's `worktree` line as the target worktree path. If no block matches, the target branch is not checked out in another worktree.",
+	"",
+	"If a matching block provides a path (and it's not the current worktree), check for uncommitted work **now** — before `update-ref` changes anything:",
+].join("\n");
+
+function migrateLegacyPromptShortcut(label: string, prompt: string): string {
+	if (label.toLowerCase() !== "squash merge") return prompt;
+	return prompt.replace(LEGACY_SQUASH_MERGE_WORKTREE_SECTION, PORTABLE_SQUASH_MERGE_WORKTREE_SECTION);
+}
+
 export function normalizePromptShortcuts(
 	shortcuts: Array<{ label: string; prompt: string }> | null | undefined,
 	hiddenDefaults?: string[] | null,
@@ -248,7 +275,7 @@ export function normalizePromptShortcuts(
 		const label = typeof shortcut.label === "string" ? shortcut.label.trim() : "";
 		const prompt = typeof shortcut.prompt === "string" ? shortcut.prompt.trim() : "";
 		if (label && prompt) {
-			userShortcuts.push({ label, prompt });
+			userShortcuts.push({ label, prompt: migrateLegacyPromptShortcut(label, prompt) });
 		}
 	}
 

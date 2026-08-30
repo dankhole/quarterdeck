@@ -1,10 +1,12 @@
 import { spawn } from "node:child_process";
 import { constants } from "node:fs";
-import { access, chmod, copyFile, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { access, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, win32 } from "node:path";
 
 import { resolveWindowsCompatibleCommand, terminateProcessForTimeout } from "../../src/core";
+import { getWindowsEnvironmentValue } from "../../src/core/windows-system-paths.js";
+import { copyPrivateDiagnosticFile, ensurePrivateDiagnosticDirectory } from "../../src/diagnostics";
 import {
 	type AgentLabCodexApprovalPolicy,
 	type AgentLabCodexSandbox,
@@ -61,12 +63,14 @@ export const AGENT_LAB_REAL_CODEX_CONFIG_OVERRIDES = [
 const LOGIN_STATUS_TIMEOUT_MS = 10_000;
 const PREFLIGHT_ENVIRONMENT_KEYS = [
 	"PATH",
-	"Path",
 	"PATHEXT",
 	"SystemRoot",
+	"WINDIR",
 	"ComSpec",
 	"HOME",
 	"USERPROFILE",
+	"APPDATA",
+	"LOCALAPPDATA",
 	"LANG",
 	"LC_ALL",
 	"LC_CTYPE",
@@ -82,6 +86,7 @@ export interface ResolveRealCodexAgentOptions {
 	codexHomePath?: string;
 	sandbox?: AgentLabCodexSandbox;
 	approvalPolicy?: AgentLabCodexApprovalPolicy;
+	platform?: NodeJS.Platform;
 }
 
 export function resolveRealCodexAgent(
@@ -89,9 +94,13 @@ export function resolveRealCodexAgent(
 	source: NodeJS.ProcessEnv = process.env,
 ): Extract<AgentLabLaunchAgentConfig, { mode: "real-codex" }> {
 	const explicitCodexHome = options.codexHomePath?.trim();
-	const environmentCodexHome = source.CODEX_HOME?.trim();
+	const platform = options.platform ?? process.platform;
+	const environmentCodexHome = (
+		platform === "win32" ? getWindowsEnvironmentValue(source, "CODEX_HOME") : source.CODEX_HOME
+	)?.trim();
 	const profileSource = explicitCodexHome ? "explicit" : environmentCodexHome ? "environment" : "default";
-	const codexHomePath = resolve(explicitCodexHome || environmentCodexHome || join(homedir(), ".codex"));
+	const profilePath = explicitCodexHome || environmentCodexHome || join(homedir(), ".codex");
+	const codexHomePath = platform === "win32" ? win32.resolve(profilePath) : resolve(profilePath);
 
 	const parsed = AgentLabLaunchAgentConfigSchema.parse({
 		mode: "real-codex",
@@ -119,10 +128,11 @@ export function resolveRealCodexAgent(
 export function buildRealCodexPreflightEnvironment(
 	source: NodeJS.ProcessEnv,
 	agent: Extract<AgentLabLaunchAgentConfig, { mode: "real-codex" }>,
+	platform: NodeJS.Platform = process.platform,
 ): NodeJS.ProcessEnv {
 	const environment: NodeJS.ProcessEnv = {};
 	for (const key of PREFLIGHT_ENVIRONMENT_KEYS) {
-		const value = source[key];
+		const value = platform === "win32" ? getWindowsEnvironmentValue(source, key) : source[key];
 		if (value) environment[key] = value;
 	}
 	return {
@@ -141,6 +151,7 @@ export async function assertReusableRealCodexAuthentication(
 		const child = spawn(command.binary, command.args, {
 			env: environment,
 			stdio: "ignore",
+			windowsHide: true,
 		});
 		let settled = false;
 		const finish = (action: () => void): void => {
@@ -205,12 +216,11 @@ export async function prepareIsolatedRealCodexAgent(
 	const platform = options.platform ?? process.platform;
 	const validateAuthentication = options.validateAuthentication ?? assertReusableRealCodexAuthentication;
 
-	await mkdir(isolatedCodexHomePath, { recursive: true, mode: 0o700 });
+	await ensurePrivateDiagnosticDirectory(isolatedCodexHomePath);
 	const hasFileCredential = await pathIsReadable(sourceAuthPath);
 	if (hasFileCredential) {
 		if (platform === "win32") {
-			await copyFile(sourceAuthPath, isolatedAuthPath);
-			await chmod(isolatedAuthPath, 0o600);
+			await copyPrivateDiagnosticFile(sourceAuthPath, isolatedAuthPath);
 		} else {
 			await symlink(sourceAuthPath, isolatedAuthPath);
 		}

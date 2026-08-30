@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
 import type {
 	IProjectDataProvider,
 	IRuntimeBroadcaster,
@@ -11,7 +10,7 @@ import type {
 	RuntimeWorkdirChangesMode,
 	TaskResourceOperationRunner,
 } from "../core";
-import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
+import { areFileSystemPathsEqual, createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import type { ProjectBoardCommandService } from "../state";
 import { loadProjectState } from "../state";
@@ -136,7 +135,7 @@ export function errorMessage(error: unknown): string {
 }
 
 export function isProjectCheckoutCwd(projectPath: string, cwd: string): boolean {
-	return resolve(cwd) === resolve(projectPath);
+	return areFileSystemPathsEqual(cwd, projectPath);
 }
 
 export async function resolveWorkingDir(

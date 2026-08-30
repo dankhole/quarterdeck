@@ -388,8 +388,8 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 		},
 
 		getFileContent: async (projectScope, input) => {
-			const filePath = input.path.trim();
-			if (!filePath) throw new Error("Missing path parameter.");
+			if (!input.path.trim()) throw new Error("Missing path parameter.");
+			const filePath = input.path;
 
 			const scope = await resolveProjectFileScope(projectScope.projectPath, input);
 			if (!scope.cwd) return EMPTY_FILE_CONTENT_RESPONSE;
@@ -410,8 +410,8 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 		},
 
 		saveFileContent: async (projectScope, input) => {
-			const filePath = input.path.trim();
-			if (!filePath) throw new Error("Missing path parameter.");
+			if (!input.path.trim()) throw new Error("Missing path parameter.");
+			const filePath = input.path;
 
 			let cwd: string | null;
 			if (!input.taskId) {

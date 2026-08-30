@@ -1,14 +1,15 @@
-import { access, lstat, mkdir, readFile, symlink, unlink } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, copyFile, lstat, mkdir, readFile, symlink, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
 import { lockedFileSystem } from "../fs";
-import { getGitStdout, runGit } from "./git-utils";
+import { getGitStdout, runGit, splitNullSeparatedGitOutput } from "./git-utils";
 
 const QUARTERDECK_MANAGED_EXCLUDE_BLOCK_START = "# quarterdeck-managed-symlinked-ignored-paths:start";
 const QUARTERDECK_MANAGED_EXCLUDE_BLOCK_END = "# quarterdeck-managed-symlinked-ignored-paths:end";
 const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 
-const SYMLINK_PATH_SEGMENT_BLACKLIST = new Set([
+const SYMLINK_PATH_SEGMENT_BLACKLIST_VALUES = [
 	".git",
 	".DS_Store",
 	"Thumbs.db",
@@ -16,7 +17,11 @@ const SYMLINK_PATH_SEGMENT_BLACKLIST = new Set([
 	"Icon\r",
 	".Spotlight-V100",
 	".Trashes",
-]);
+] as const;
+const SYMLINK_PATH_SEGMENT_BLACKLIST = new Set<string>(SYMLINK_PATH_SEGMENT_BLACKLIST_VALUES);
+const WINDOWS_SYMLINK_PATH_SEGMENT_BLACKLIST = new Set<string>(
+	SYMLINK_PATH_SEGMENT_BLACKLIST_VALUES.map((segment) => segment.toLowerCase()),
+);
 const MUTABLE_WORKTREE_SEGMENT_BLACKLIST = new Set([
 	".agent-lab-results",
 	"bin",
@@ -28,6 +33,22 @@ const MUTABLE_WORKTREE_SEGMENT_BLACKLIST = new Set([
 ]);
 
 type CreateSymlink = (target: string, path: string, type: "dir" | "file" | "junction") => Promise<void>;
+type CopyFile = (source: string, destination: string, mode?: number) => Promise<void>;
+
+export class IgnoredPathMirrorError extends Error {
+	readonly code = "IGNORED_PATH_MIRROR_FAILED";
+
+	constructor(
+		readonly sourcePath: string,
+		readonly targetPath: string,
+		readonly pathKind: "directory" | "file",
+	) {
+		super(
+			`Quarterdeck could not mirror ignored ${pathKind} "${sourcePath}" into the task worktree at "${targetPath}". Check that the source is readable and the task worktree is writable, then retry.`,
+		);
+		this.name = "IgnoredPathMirrorError";
+	}
+}
 
 export async function pathExists(path: string): Promise<boolean> {
 	try {
@@ -43,21 +64,41 @@ export async function mirrorIgnoredPath(options: {
 	targetPath: string;
 	isDirectory: boolean;
 	createSymlink?: CreateSymlink;
-}): Promise<"mirrored" | "skipped"> {
+	copyFile?: CopyFile;
+	platform?: NodeJS.Platform;
+}): Promise<"copied" | "mirrored"> {
 	const createSymlink = options.createSymlink ?? symlink;
+	const copyIgnoredFile = options.copyFile ?? copyFile;
+	const platform = options.platform ?? process.platform;
 	try {
 		// On Windows, use junctions for directories — they don't require admin/Developer Mode.
-		const symlinkType = options.isDirectory ? (process.platform === "win32" ? "junction" : "dir") : "file";
+		const symlinkType = options.isDirectory ? (platform === "win32" ? "junction" : "dir") : "file";
 		await createSymlink(options.sourcePath, options.targetPath, symlinkType);
 		return "mirrored";
 	} catch {
-		return "skipped";
+		// Windows commonly denies file symlinks unless Developer Mode or the
+		// symlink privilege is enabled. An exclusive task-local copy is a safer
+		// fallback than a hard link because task writes cannot mutate the source.
+		if (platform === "win32" && !options.isDirectory) {
+			try {
+				await copyIgnoredFile(options.sourcePath, options.targetPath, constants.COPYFILE_EXCL);
+				return "copied";
+			} catch {
+				throw new IgnoredPathMirrorError(options.sourcePath, options.targetPath, "file");
+			}
+		}
+
+		throw new IgnoredPathMirrorError(
+			options.sourcePath,
+			options.targetPath,
+			options.isDirectory ? "directory" : "file",
+		);
 	}
 }
 
 function toPlatformRelativePath(path: string): string {
 	return path
-		.trim()
+		.replace(/\r$/u, "")
 		.replaceAll("\\", "/")
 		.replace(/\/+$/g, "")
 		.split("/")
@@ -65,14 +106,17 @@ function toPlatformRelativePath(path: string): string {
 		.join("/");
 }
 
-function shouldSkipSymlink(relativePath: string): boolean {
+export function shouldSkipSymlink(relativePath: string, platform: NodeJS.Platform = process.platform): boolean {
 	const segments = relativePath.split("/").filter((segment) => segment.length > 0);
 	if (segments.length === 0) {
 		return true;
 	}
 	return segments.some(
 		(segment) =>
-			SYMLINK_PATH_SEGMENT_BLACKLIST.has(segment) || MUTABLE_WORKTREE_SEGMENT_BLACKLIST.has(segment.toLowerCase()),
+			(platform === "win32"
+				? WINDOWS_SYMLINK_PATH_SEGMENT_BLACKLIST.has(segment.toLowerCase())
+				: SYMLINK_PATH_SEGMENT_BLACKLIST.has(segment)) ||
+			MUTABLE_WORKTREE_SEGMENT_BLACKLIST.has(segment.toLowerCase()),
 	);
 }
 
@@ -83,12 +127,21 @@ function isInstalledDependencyPath(relativePath: string): boolean {
 		.some((segment) => segment.toLowerCase() === "node_modules");
 }
 
-function isPathWithinRoot(path: string, root: string): boolean {
+function isPathWithinRoot(path: string, root: string, platform: NodeJS.Platform): boolean {
+	if (platform === "win32") {
+		path = path.toLowerCase();
+		root = root.toLowerCase();
+	}
 	return path === root || path.startsWith(`${root}/`);
 }
 
-function getUniquePaths(relativePaths: string[]): string[] {
-	const uniquePaths = Array.from(new Set(relativePaths.map((path) => toPlatformRelativePath(path)).filter(Boolean)));
+export function getUniquePaths(relativePaths: string[], platform: NodeJS.Platform = process.platform): string[] {
+	const uniqueByIdentity = new Map<string, string>();
+	for (const path of relativePaths.map((entry) => toPlatformRelativePath(entry)).filter(Boolean)) {
+		const identity = platform === "win32" ? path.toLowerCase() : path;
+		if (!uniqueByIdentity.has(identity)) uniqueByIdentity.set(identity, path);
+	}
+	const uniquePaths = Array.from(uniqueByIdentity.values());
 	uniquePaths.sort((left, right) => {
 		const leftDepth = left.split("/").length;
 		const rightDepth = right.split("/").length;
@@ -100,7 +153,7 @@ function getUniquePaths(relativePaths: string[]): string[] {
 
 	const roots: string[] = [];
 	for (const path of uniquePaths) {
-		if (roots.some((root) => isPathWithinRoot(path, root))) {
+		if (roots.some((root) => isPathWithinRoot(path, root, platform))) {
 			continue;
 		}
 		roots.push(path);
@@ -111,20 +164,21 @@ function getUniquePaths(relativePaths: string[]): string[] {
 
 async function listIgnoredPaths(repoPath: string): Promise<string[]> {
 	const output = await getGitStdout(
-		["ls-files", "--others", "--ignored", "--exclude-per-directory=.gitignore", "--directory"],
+		["ls-files", "--others", "--ignored", "--exclude-per-directory=.gitignore", "--directory", "-z"],
 		repoPath,
-		USER_GIT_ACTION_OPTIONS,
+		{ trimStdout: false, ...USER_GIT_ACTION_OPTIONS },
 	);
-	return output
-		.split("\n")
+	return splitNullSeparatedGitOutput(output)
 		.map((line) => toPlatformRelativePath(line))
 		.filter((line) => line.length > 0);
 }
 
 async function listUntrackedPaths(repoPath: string): Promise<string[]> {
-	const output = await getGitStdout(["ls-files", "--others", "--directory"], repoPath, USER_GIT_ACTION_OPTIONS);
-	return output
-		.split("\n")
+	const output = await getGitStdout(["ls-files", "--others", "--directory", "-z"], repoPath, {
+		trimStdout: false,
+		...USER_GIT_ACTION_OPTIONS,
+	});
+	return splitNullSeparatedGitOutput(output)
 		.map((line) => toPlatformRelativePath(line))
 		.filter((line) => line.length > 0);
 }
@@ -138,7 +192,7 @@ function escapeGitIgnoreLiteral(path: string): string {
 }
 
 function stripManagedExcludeBlock(content: string): string {
-	const lines = content.split("\n");
+	const lines = content.split(/\r?\n/u);
 	const nextLines: string[] = [];
 	let insideManagedBlock = false;
 	for (const line of lines) {

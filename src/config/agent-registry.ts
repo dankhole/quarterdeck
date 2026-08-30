@@ -1,4 +1,4 @@
-import type { ExecFileException } from "node:child_process";
+import type { ChildProcess, ExecFileException } from "node:child_process";
 import { execFile } from "node:child_process";
 
 import { CODEX_HOOKS_FEATURE_NAME } from "../codex-hooks";
@@ -9,6 +9,7 @@ import {
 	isBinaryAvailableOnPath,
 	RUNTIME_AGENT_CATALOG,
 	resolveWindowsCompatibleCommand,
+	terminateProcessForTimeout,
 } from "../core";
 import { isLlmConfigured } from "../title";
 import { extractGlobalConfigFields } from "./global-config-fields";
@@ -225,17 +226,24 @@ function runProbeCommand(
 	return new Promise((resolve, reject) => {
 		const startedAt = Date.now();
 		const command = resolveWindowsCompatibleCommand(binary, args);
-		execFile(
+		let child: ChildProcess | null = null;
+		let timeout: NodeJS.Timeout | null = null;
+		let settled = false;
+		let timedOut = false;
+		child = execFile(
 			command.binary,
 			command.args,
 			{
 				encoding: "utf8",
-				timeout: CODEX_PROBE_TIMEOUT_MS,
+				windowsHide: true,
 			},
 			(error: ExecFileException | null, stdout: string | Buffer, stderr: string | Buffer) => {
+				if (settled) return;
+				settled = true;
+				if (timeout) clearTimeout(timeout);
 				const durationMs = Math.max(0, Date.now() - startedAt);
 				if (error) {
-					const reason = isProbeTimeout(error) ? "probe_timeout" : "probe_failed";
+					const reason = timedOut || isProbeTimeout(error) ? "probe_timeout" : "probe_failed";
 					recordAvailabilityDiagnostic({
 						name: "agent.availability_probe_completed",
 						payload: { agentId, probeKind, durationMs, outcome: reason },
@@ -256,6 +264,13 @@ function runProbeCommand(
 				});
 			},
 		);
+		if (!settled) {
+			timeout = setTimeout(() => {
+				timedOut = true;
+				if (child) terminateProcessForTimeout(child);
+			}, CODEX_PROBE_TIMEOUT_MS);
+			timeout.unref();
+		}
 	});
 }
 

@@ -13,6 +13,7 @@ import type {
 	RuntimeTaskSessionSummary,
 } from "../core";
 import {
+	areFileSystemPathsEqual,
 	createTaggedLogger,
 	deriveProjectSummary,
 	normalizeDiagnosticErrorClass,
@@ -585,7 +586,11 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		if (requestedProjectId) {
 			const requestedProject = existingProjects.find((project) => project.projectId === requestedProjectId);
 			if (requestedProject) {
-				if (activeProjectId !== requestedProject.projectId || activeProjectPath !== requestedProject.repoPath) {
+				if (
+					activeProjectId !== requestedProject.projectId ||
+					activeProjectPath === null ||
+					!areFileSystemPathsEqual(activeProjectPath, requestedProject.repoPath)
+				) {
 					await setActiveProject(requestedProject.projectId, requestedProject.repoPath);
 				}
 				return {

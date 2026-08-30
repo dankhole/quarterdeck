@@ -1,8 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { lstatSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { isFileSystemPathWithin } from "../../src/core/path-comparison.js";
+import { isWindowsSafePathComponent } from "../../src/core/windows-path-component.js";
 
 import type { AgentLabBrowserCachePaths, AgentLabBrowserCachePreparation } from "./browser-cache.mjs";
 import {
@@ -90,8 +93,8 @@ export function createAgentLabRunId(name = "run", now = new Date()): string {
 	return `${sanitizeRunName(name)}-${timestamp}-${randomBytes(3).toString("hex")}`;
 }
 
-export function assertSafeRunId(runId: string): string {
-	if (!/^[a-z0-9][a-z0-9-]{0,100}$/i.test(runId)) {
+export function assertSafeRunId(runId: string, platform: NodeJS.Platform = process.platform): string {
+	if (!/^[a-z0-9][a-z0-9-]{0,100}$/i.test(runId) || (platform === "win32" && !isWindowsSafePathComponent(runId))) {
 		throw new Error(`Invalid agent-lab run id: ${JSON.stringify(runId)}`);
 	}
 	return runId;
@@ -101,16 +104,16 @@ export function resolveRunArtifactDir(runId: string, artifactRoot = getAgentLabA
 	const safeRunId = assertSafeRunId(runId);
 	const resolvedRoot = resolve(artifactRoot);
 	const artifactDir = resolve(resolvedRoot, safeRunId);
-	if (artifactDir !== resolvedRoot && !artifactDir.startsWith(`${resolvedRoot}${sep}`)) {
+	if (!isFileSystemPathWithin(resolvedRoot, artifactDir)) {
 		throw new Error(`Agent-lab artifact path escaped its root: ${artifactDir}`);
 	}
 	return artifactDir;
 }
 
 export async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
-	await mkdir(dirname(path), { recursive: true });
+	await mkdir(dirname(path), { recursive: true, mode: 0o700 });
 	const temporaryPath = `${path}.tmp-${process.pid}-${randomBytes(3).toString("hex")}`;
-	await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+	await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
 	await rename(temporaryPath, path);
 }
 

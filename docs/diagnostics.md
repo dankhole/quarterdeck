@@ -15,6 +15,7 @@ For commands and operator workflow, see [Unified diagnostics](../DEVELOPMENT.md#
 - Diagnostic reads must not connect as a board client, write project state, attach or resize a PTY, refresh Git, or repair runtime state.
 - Live browser delivery is a replaceable projection for the open Diagnostics panel, not the recorder. Only the exact connection capability with the panel open subscribes; closing or revoking it unsubscribes, and browser refresh hydrates a bounded canonical tail explicitly rather than seeding every board WebSocket. Backpressure drops diagnostic traffic before primary runtime-state traffic.
 - Production compatibility logs remain content-free even at warning and error levels. Prefer structured, bounded metadata and validated error classes over arbitrary logger payloads or thrown messages.
+- Diagnostic filesystem privacy is enforced before content is written. POSIX directories/files remain owner-only; Windows directories receive a protected inheritable DACL granting full control only to the current user and LocalSystem. ACL failure must not write a descriptor, journal, bundle, Agent Lab manifest/evidence, or browser-profile tail into a broadly inherited directory. Generated evidence names must also remain Windows-safe after truncation (including device-name, alternate-data-stream, control-character, and trailing-dot/space checks), and path redaction must recognize drive/UNC paths containing spaces.
 
 ## Operator entry points
 

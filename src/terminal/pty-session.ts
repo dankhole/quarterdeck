@@ -2,10 +2,17 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import type * as NodePty from "node-pty";
 
-import { buildWindowsCmdArgsCommandLine, resolveWindowsComSpec, shouldUseWindowsCmdLaunch } from "../core";
+import { mergeProcessEnvironment, resolveWindowsCompatibleCommand } from "../core";
+import {
+	type ManagedProcessOwnershipHandle,
+	registerManagedProcessOwnership,
+	retireManagedProcessOwnership,
+} from "./managed-process-ownership";
 import { classifyPtySpawnFailure, preflightPtyLaunch } from "./pty-runtime-health";
 
 const require = createRequire(import.meta.url);
+const MANAGED_PROCESS_PID_READY_TIMEOUT_MS = 10_000;
+const MANAGED_PROCESS_PID_POLL_MS = 10;
 let nodePtyModule: typeof NodePty | null = null;
 let nodePtySpawnOverride: typeof NodePty.spawn | null = null;
 
@@ -165,6 +172,8 @@ export class PtySession {
 	private readonly ptyProcess: NodePty.IPty;
 	private interrupted = false;
 	private exited = false;
+	private managedProcessOwnership: ManagedProcessOwnershipHandle | null = null;
+	private managedProcessOwnershipRegistrationStarted = false;
 
 	private constructor(
 		ptyProcess: NodePty.IPty,
@@ -178,6 +187,11 @@ export class PtySession {
 		});
 		this.ptyProcess.onExit((event) => {
 			this.exited = true;
+			const ownership = this.managedProcessOwnership;
+			this.managedProcessOwnership = null;
+			if (ownership) {
+				void retireManagedProcessOwnership(ownership).catch(() => undefined);
+			}
 			this.onExitCallback?.(event);
 		});
 	}
@@ -185,15 +199,18 @@ export class PtySession {
 	static spawn({ binary, args = [], cwd, env, cols, rows, onData, onExit }: SpawnPtySessionRequest): PtySession {
 		const normalizedArgs = typeof args === "string" ? [args] : args;
 		const terminalName = env?.TERM?.trim() || process.env.TERM?.trim() || "xterm-256color";
-		const launchEnv: NodeJS.ProcessEnv = env ? { ...process.env, ...env } : process.env;
-		const useWindowsShellLaunch = shouldUseWindowsCmdLaunch(binary, process.platform, launchEnv);
-		const spawnBinary = useWindowsShellLaunch ? resolveWindowsComSpec(launchEnv) : binary;
-		const spawnArgs = useWindowsShellLaunch ? buildWindowsCmdArgsCommandLine(binary, normalizedArgs) : normalizedArgs;
+		const launchEnv: NodeJS.ProcessEnv = env ? mergeProcessEnvironment(process.env, env) : process.env;
 		preflightPtyLaunch({ binary, cwd, env: launchEnv, platform: process.platform });
+		const resolvedLaunch = resolveWindowsCompatibleCommand(binary, normalizedArgs, process.platform, launchEnv);
+		const spawnBinary = resolvedLaunch.binary;
+		// node-pty's Windows cmd path needs one verbatim command-line string. A
+		// sibling PowerShell shim is a direct executable launch and therefore keeps
+		// its argv array, including embedded CR/LF prompt content, byte-for-byte.
+		const spawnArgs = resolvedLaunch.commandLine ?? resolvedLaunch.args;
 		const ptyOptions: NodePty.IPtyForkOptions = {
 			name: terminalName,
 			cwd,
-			env,
+			env: launchEnv,
 			cols,
 			rows,
 			encoding: null,
@@ -211,6 +228,39 @@ export class PtySession {
 
 	get pid(): number {
 		return this.ptyProcess.pid;
+	}
+
+	private async waitForManagedProcessPid(): Promise<number | null> {
+		const deadline = Date.now() + MANAGED_PROCESS_PID_READY_TIMEOUT_MS;
+		while (!this.exited) {
+			const pid = this.ptyProcess.pid;
+			if (Number.isSafeInteger(pid) && pid > 0) return pid;
+			if (Date.now() >= deadline) {
+				throw new Error("Timed out waiting for the Windows ConPTY process identity.");
+			}
+			await new Promise<void>((resolveReady) => {
+				const timeout = setTimeout(resolveReady, MANAGED_PROCESS_PID_POLL_MS);
+				timeout.unref();
+			});
+		}
+		return null;
+	}
+
+	/** Persist exact Windows PID identity before exposing a managed task launch. */
+	async registerManagedProcessOwnership(recordId: string): Promise<void> {
+		if (process.platform !== "win32" || this.exited) return;
+		if (this.managedProcessOwnershipRegistrationStarted) {
+			throw new Error("Managed process ownership was already registered for this PTY.");
+		}
+		this.managedProcessOwnershipRegistrationStarted = true;
+		const pid = await this.waitForManagedProcessPid();
+		if (pid === null) return;
+		const ownership = await registerManagedProcessOwnership(pid, recordId);
+		this.managedProcessOwnership = ownership;
+		if (this.exited && ownership) {
+			this.managedProcessOwnership = null;
+			await retireManagedProcessOwnership(ownership);
+		}
 	}
 
 	write(data: string | Buffer): void {
@@ -244,6 +294,24 @@ export class PtySession {
 			}
 			throw error;
 		}
+	}
+
+	/** Force a TUI redraw when the requested geometry has not changed. */
+	forceRedraw(cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): void {
+		if (this.exited) {
+			return;
+		}
+		if (process.platform === "win32") {
+			// Windows cannot deliver SIGWINCH to a ConPTY child. Resize to one
+			// adjacent row and immediately restore the requested geometry so the
+			// pseudoconsole emits a real resize notification without changing the
+			// final terminal width (and therefore without reflowing long lines).
+			const nudgedRows = rows === 1 ? 2 : rows - 1;
+			this.resize(cols, nudgedRows, pixelWidth, pixelHeight);
+			this.resize(cols, rows, pixelWidth, pixelHeight);
+			return;
+		}
+		this.sendSignal("SIGWINCH");
 	}
 
 	sendSignal(signal: string): void {

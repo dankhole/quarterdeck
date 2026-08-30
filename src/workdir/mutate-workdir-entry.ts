@@ -1,8 +1,13 @@
 import { lstat, mkdir, realpath, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
-import type { RuntimeWorkdirEntryKind, RuntimeWorkdirEntryMutationResponse } from "../core";
-import { lockedFileSystem } from "../fs";
+import {
+	areFileSystemPathsEqual,
+	isFileSystemPathWithin,
+	type RuntimeWorkdirEntryKind,
+	type RuntimeWorkdirEntryMutationResponse,
+} from "../core";
+import { lockedFileSystem, removeDirectoryWithRetries } from "../fs";
 import { isNodeError } from "../fs/node-error";
 import { invalidateWorkdirFileListCache } from "./search-workdir-files";
 import { assertMutableWorkdirPath, normalizeWorkdirRelativePath } from "./workdir-path-policy";
@@ -23,8 +28,7 @@ async function resolveWorkdirPathForMutation(worktreePath: string, relativePath:
 	const normalized = normalizeWorkdirRelativePath(relativePath);
 	assertMutableWorkdirPath(normalized);
 	const absolutePath = resolve(worktreePath, normalized);
-	const rel = relative(worktreePath, absolutePath);
-	if (!rel || rel.startsWith("..") || isAbsolute(rel)) {
+	if (areFileSystemPathsEqual(worktreePath, absolutePath) || !isFileSystemPathWithin(worktreePath, absolutePath)) {
 		throw new Error("Path resolves outside the worktree.");
 	}
 
@@ -38,8 +42,7 @@ async function resolveWorkdirPathForMutation(worktreePath: string, relativePath:
 		}
 		throw error;
 	}
-	const realParentRel = relative(realWorktree, realParent);
-	if (realParentRel.startsWith("..") || isAbsolute(realParentRel)) {
+	if (!isFileSystemPathWithin(realWorktree, realParent)) {
 		throw new Error("Path resolves outside the worktree.");
 	}
 	return absolutePath;
@@ -88,6 +91,7 @@ export async function renameWorkdirEntry(
 	relativePath: string,
 	nextRelativePath: string,
 	kind: RuntimeWorkdirEntryKind,
+	options: { platform?: NodeJS.Platform } = {},
 ): Promise<RuntimeWorkdirEntryMutationResponse> {
 	const normalizedPath = normalizeWorkdirRelativePath(relativePath);
 	const normalizedNextPath = normalizeWorkdirRelativePath(nextRelativePath);
@@ -96,19 +100,25 @@ export async function renameWorkdirEntry(
 	}
 	const absolutePath = await resolveWorkdirPathForMutation(worktreePath, normalizedPath);
 	const nextAbsolutePath = await resolveWorkdirPathForMutation(worktreePath, normalizedNextPath);
+	const sameFileSystemPath = areFileSystemPathsEqual(
+		absolutePath,
+		nextAbsolutePath,
+		options.platform ?? process.platform,
+	);
 	await lockedFileSystem.withLocks(
-		[
-			{ path: absolutePath, type: "file" },
-			{ path: nextAbsolutePath, type: "file" },
-		],
+		sameFileSystemPath
+			? [{ path: absolutePath, type: "file" }]
+			: [
+					{ path: absolutePath, type: "file" },
+					{ path: nextAbsolutePath, type: "file" },
+				],
 		async () => {
 			await assertEntryKind(absolutePath, kind);
-			if (await pathExists(nextAbsolutePath)) {
+			if (!sameFileSystemPath && (await pathExists(nextAbsolutePath))) {
 				throw new Error("Destination path already exists.");
 			}
-			if (kind === "directory") {
-				const nestedRel = relative(absolutePath, nextAbsolutePath);
-				if (!nestedRel || (!nestedRel.startsWith("..") && !isAbsolute(nestedRel))) {
+			if (kind === "directory" && !sameFileSystemPath) {
+				if (isFileSystemPathWithin(absolutePath, nextAbsolutePath)) {
 					throw new Error("Cannot move a directory inside itself.");
 				}
 			}
@@ -128,7 +138,11 @@ export async function deleteWorkdirEntry(
 	const absolutePath = await resolveWorkdirPathForMutation(worktreePath, normalizedPath);
 	await lockedFileSystem.withLock({ path: absolutePath, type: "file" }, async () => {
 		await assertEntryKind(absolutePath, kind);
-		await rm(absolutePath, { recursive: kind === "directory", force: false });
+		if (kind === "directory") {
+			await removeDirectoryWithRetries(absolutePath, { force: false });
+		} else {
+			await rm(absolutePath, { force: false });
+		}
 	});
 	invalidateWorkdirFileListCache(worktreePath);
 	return mutationResponse(normalizedPath, kind);

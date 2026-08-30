@@ -66,6 +66,7 @@ export {
 	resolveBaseRefForBranch,
 	resolveRepoRoot,
 	runGit,
+	splitNullSeparatedGitOutput,
 	validateGitPath,
 	validateGitRef,
 } from "./git-utils";
@@ -98,6 +99,7 @@ export {
 	getTaskWorkingDirectory,
 	getTaskWorktreePath,
 	getTaskWorktreePathInfo,
+	IgnoredPathMirrorError,
 	isMissingTaskWorktreeError,
 	mirrorIgnoredPath,
 	pathExists,

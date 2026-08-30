@@ -1,9 +1,10 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { RuntimeTaskTurnCheckpoint } from "../core";
 import { createGitProcessEnv } from "../core";
+import { removeDirectoryWithRetries } from "../fs/remove-path";
 import { GIT_CHECKPOINT_OPTIONS, getGitStdout, type RunGitOptions } from "./git-utils";
 
 const CHECKPOINT_AUTHOR_NAME = "quarterdeck-checkpoint";
@@ -65,7 +66,7 @@ async function createWorkingTreeCheckpointCommit(repoRoot: string, turn: number,
 			env: gitEnv,
 		});
 	} finally {
-		await rm(tempDir, { recursive: true, force: true });
+		await removeDirectoryWithRetries(tempDir);
 	}
 }
 

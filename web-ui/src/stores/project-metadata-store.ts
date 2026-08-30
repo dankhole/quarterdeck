@@ -8,6 +8,7 @@ import type {
 	RuntimeTaskWorktreeMetadata,
 } from "@/runtime/types";
 import type { ReviewTaskWorktreeSnapshot } from "@/types";
+import { arePathIdentitiesEqual } from "@/utils/path-identity";
 
 type StoreListener = () => void;
 type TaskMetadataListener = (taskId: string) => void;
@@ -146,7 +147,7 @@ function areTaskWorktreeInfosEqual(
 	}
 	return (
 		a.taskId === b.taskId &&
-		a.path === b.path &&
+		arePathIdentitiesEqual(a.path, b.path) &&
 		a.exists === b.exists &&
 		a.baseRef === b.baseRef &&
 		a.branch === b.branch &&
@@ -186,7 +187,7 @@ function areTaskWorktreeSnapshotsEqual(
 	}
 	return (
 		a.taskId === b.taskId &&
-		a.path === b.path &&
+		arePathIdentitiesEqual(a.path, b.path) &&
 		a.baseRef === b.baseRef &&
 		a.branch === b.branch &&
 		a.isDetached === b.isDetached &&

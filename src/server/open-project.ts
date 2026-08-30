@@ -1,12 +1,11 @@
 import { spawn } from "node:child_process";
 
 import {
-	buildWindowsCmdArgsArray,
 	RUNTIME_OPEN_TARGET_IDS_BY_PLATFORM,
 	type RuntimeOpenTargetId,
 	type RuntimeOpenTargetPlatform,
-	resolveWindowsComSpec,
-	shouldUseWindowsCmdLaunch,
+	resolveWindowsCompatibleCommand,
+	resolveWindowsRootExecutablePath,
 	terminateProcessForTimeout,
 } from "../core";
 
@@ -91,6 +90,7 @@ export function resolveOpenProjectCommandCandidates(
 	targetId: RuntimeOpenTargetId,
 	projectPath: string,
 	platform: NodeJS.Platform,
+	env: NodeJS.ProcessEnv = process.env,
 ): OpenProjectCommandCandidate[] {
 	const resolvedPlatform = resolvePlatform(platform);
 	const resolvedTargetId = normalizeTargetId(targetId, resolvedPlatform);
@@ -107,7 +107,8 @@ export function resolveOpenProjectCommandCandidates(
 	if (resolvedTargetId === "finder") {
 		return [
 			{
-				executable: resolvedPlatform === "windows" ? "explorer.exe" : "xdg-open",
+				executable:
+					resolvedPlatform === "windows" ? resolveWindowsRootExecutablePath("explorer.exe", env) : "xdg-open",
 				args: [projectPath],
 			},
 		];
@@ -140,6 +141,7 @@ function runOpenProjectCommand(
 			cwd,
 			env,
 			stdio: ["ignore", "pipe", "pipe"],
+			windowsHide: true,
 		});
 		let stdout = "";
 		let stderr = "";
@@ -184,13 +186,8 @@ function resolveExecutableLaunch(
 	platform: NodeJS.Platform,
 	env: NodeJS.ProcessEnv,
 ): OpenProjectCommandCandidate {
-	if (!shouldUseWindowsCmdLaunch(candidate.executable, platform, env)) {
-		return candidate;
-	}
-	return {
-		executable: resolveWindowsComSpec(env),
-		args: buildWindowsCmdArgsArray(candidate.executable, candidate.args),
-	};
+	const command = resolveWindowsCompatibleCommand(candidate.executable, candidate.args, platform, env);
+	return { executable: command.binary, args: command.args };
 }
 
 function describeNonzeroLaunch(executable: string, result: OpenProjectCommandProcessResult): string {
@@ -209,14 +206,23 @@ export async function openProjectOnHost(
 ): Promise<SystemOpenProjectResult> {
 	const platform = options.platform ?? process.platform;
 	const env = options.env ?? process.env;
-	const candidates = resolveOpenProjectCommandCandidates(targetId, projectPath, platform);
+	const candidates = resolveOpenProjectCommandCandidates(targetId, projectPath, platform, env);
 	const runCommand =
 		options.runCommand ?? ((executable, args, cwd) => runOpenProjectCommand(executable, args, cwd, env));
 	let lastUnavailable: string | null = null;
 	let lastFailure: string | null = null;
 
 	for (const candidate of candidates) {
-		const launch = resolveExecutableLaunch(candidate, platform, env);
+		let launch: OpenProjectCommandCandidate;
+		try {
+			launch = resolveExecutableLaunch(candidate, platform, env);
+		} catch (error) {
+			if (errorCode(error) === "ENOENT") {
+				lastUnavailable = `Host launcher "${candidate.executable}" is unavailable.`;
+				continue;
+			}
+			return { kind: "failed", error: error instanceof Error ? error.message : String(error) };
+		}
 		const result = await runCommand(launch.executable, launch.args, projectPath);
 		if (errorCode(result.error) === "ENOENT") {
 			lastUnavailable = `Host launcher "${candidate.executable}" is unavailable.`;

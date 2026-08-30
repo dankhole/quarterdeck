@@ -1,8 +1,9 @@
-import { appendFile, mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { appendFile, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 import { type DiagnosticRecordEnvelope, diagnosticRecordEnvelopeSchema } from "../core";
 import { getDiagnosticErrorClass } from "./bounded-value";
+import { ensurePrivateDiagnosticDirectory } from "./private-path";
 
 const DEFAULT_SEGMENT_MAX_BYTES = 2 * 1024 * 1024;
 const DEFAULT_SEGMENT_COUNT = 4;
@@ -151,7 +152,7 @@ export class DiagnosticJournal {
 	async initialize(): Promise<void> {
 		if (this.initialized) return;
 		try {
-			await mkdir(this.directory, { recursive: true, mode: 0o700 });
+			await ensurePrivateDiagnosticDirectory(this.directory);
 			this.initialized = true;
 		} catch (error) {
 			this.reportFailure(error);

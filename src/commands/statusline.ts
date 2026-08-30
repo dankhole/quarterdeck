@@ -4,7 +4,13 @@ import { homedir, platform } from "node:os";
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { z } from "zod";
-import { buildQuarterdeckCommandParts, createGitProcessEnv, quoteShellArg } from "../core";
+import {
+	areFileSystemPathsEqual,
+	buildGitCommandArgs,
+	buildQuarterdeckCommandLine,
+	createGitProcessEnv,
+	resolveWindowsCompatibleCommand,
+} from "../core";
 
 // ---------------------------------------------------------------------------
 // Input types — matches Claude Code's statusline JSON contract
@@ -112,7 +118,7 @@ function formatDuration(ms: number): string {
 }
 
 function shortenPath(cwd: string): string {
-	if (cwd === homedir()) {
+	if (areFileSystemPathsEqual(cwd, homedir())) {
 		return "~";
 	}
 	return basename(cwd);
@@ -138,27 +144,40 @@ interface GitHeadInfo {
 	label: string;
 }
 
+function executeGitStatuslineCommand(cwd: string, args: string[]): string {
+	const env = createGitProcessEnv();
+	const command = resolveWindowsCompatibleCommand("git", buildGitCommandArgs(args), process.platform, env);
+	return execFileSync(command.binary, command.args, {
+		cwd,
+		encoding: "utf8",
+		stdio: ["ignore", "pipe", "ignore"],
+		timeout: 2_000,
+		env,
+		windowsHide: true,
+	});
+}
+
 function getGitHead(cwd: string): GitHeadInfo | null {
 	try {
-		const result = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-			cwd,
-			encoding: "utf8",
-			stdio: ["ignore", "pipe", "ignore"],
-			timeout: 2_000,
-			env: createGitProcessEnv(),
-		});
+		const result = executeGitStatuslineCommand(cwd, [
+			"-c",
+			"core.fsmonitor=false",
+			"rev-parse",
+			"--abbrev-ref",
+			"HEAD",
+		]);
 		const branch = result.trim();
 		if (branch && branch !== "HEAD") {
 			return { type: "branch", label: branch };
 		}
 		// Detached HEAD — resolve the short hash
-		const hash = execFileSync("git", ["rev-parse", "--short", "HEAD"], {
-			cwd,
-			encoding: "utf8",
-			stdio: ["ignore", "pipe", "ignore"],
-			timeout: 2_000,
-			env: createGitProcessEnv(),
-		}).trim();
+		const hash = executeGitStatuslineCommand(cwd, [
+			"-c",
+			"core.fsmonitor=false",
+			"rev-parse",
+			"--short",
+			"HEAD",
+		]).trim();
 		return hash ? { type: "detached", label: hash } : null;
 	} catch {
 		return null;
@@ -167,13 +186,13 @@ function getGitHead(cwd: string): GitHeadInfo | null {
 
 function getGitStatus(cwd: string): string | null {
 	try {
-		const result = execFileSync("git", ["status", "--porcelain", "--untracked-files=normal"], {
-			cwd,
-			encoding: "utf8",
-			stdio: ["ignore", "pipe", "ignore"],
-			timeout: 2_000,
-			env: createGitProcessEnv(),
-		});
+		const result = executeGitStatuslineCommand(cwd, [
+			"-c",
+			"core.fsmonitor=false",
+			"status",
+			"--porcelain",
+			"--untracked-files=normal",
+		]);
 		if (!result.trim()) {
 			return null;
 		}
@@ -433,7 +452,7 @@ async function runStatusline(): Promise<void> {
 }
 
 export function buildStatuslineCommand(): string {
-	return buildQuarterdeckCommandParts(["statusline"]).map(quoteShellArg).join(" ");
+	return buildQuarterdeckCommandLine(["statusline"]);
 }
 
 export function registerStatuslineCommand(program: Command): void {

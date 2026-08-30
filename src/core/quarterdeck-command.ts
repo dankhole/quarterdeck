@@ -1,3 +1,5 @@
+import { buildShellCommandLine } from "./shell.js";
+
 export interface RuntimeInvocationContext {
 	execPath: string;
 	argv: string[];
@@ -63,4 +65,21 @@ export function buildQuarterdeckCommandParts(
 	},
 ): string[] {
 	return [...resolveQuarterdeckCommandParts(context), ...args];
+}
+
+export function buildQuarterdeckCommandLine(
+	args: string[],
+	context: RuntimeInvocationContext = {
+		execPath: process.execPath,
+		argv: process.argv,
+		execArgv: process.execArgv,
+	},
+	platform: NodeJS.Platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+): string {
+	const [binary, ...commandArgs] = buildQuarterdeckCommandParts(args, context);
+	if (!binary) {
+		throw new Error("Quarterdeck command resolution produced no executable.");
+	}
+	return buildShellCommandLine(binary, commandArgs, platform, env);
 }

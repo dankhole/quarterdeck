@@ -15,7 +15,7 @@ const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 function findWorktreeForBranch(porcelainOutput: string, branchName: string): string | null {
 	const branchRef = `branch refs/heads/${branchName}`;
 	let currentWorktree: string | null = null;
-	for (const line of porcelainOutput.split("\n")) {
+	for (const line of porcelainOutput.split(/\r?\n/u)) {
 		if (line.startsWith("worktree ")) {
 			currentWorktree = line.slice("worktree ".length);
 		} else if (line === branchRef && currentWorktree) {

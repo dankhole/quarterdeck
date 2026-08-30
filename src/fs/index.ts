@@ -11,3 +11,10 @@ export {
 	lockedFileSystem,
 } from "./locked-file-system";
 export { isNodeError } from "./node-error";
+export { removeDirectoryWithRetries } from "./remove-path";
+export {
+	openValidatedContainedRegularFile,
+	resolveReadOnlyFileOpenFlags,
+	type ValidatedFileOpenFailureReason,
+	type ValidatedFileOpenResult,
+} from "./validated-file-open";

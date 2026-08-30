@@ -33,4 +33,11 @@ describe("areWorkdirChangesRevisionsEqual", () => {
 	it("detects per-file content revision changes", () => {
 		expect(areWorkdirChangesRevisionsEqual(createChanges("rev-1", 1), createChanges("rev-2", 2))).toBe(false);
 	});
+
+	it("treats Windows repo-root aliases as the same identity", () => {
+		const previous = { ...createChanges("rev-1", 1), repoRoot: "C:\\Repo\\Task" };
+		const next = { ...createChanges("rev-1", 2), repoRoot: "c:/repo/task/" };
+
+		expect(areWorkdirChangesRevisionsEqual(previous, next)).toBe(true);
+	});
 });

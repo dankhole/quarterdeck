@@ -3,6 +3,7 @@ import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
+import { buildGitCommandArgs, createGitProcessEnv, resolveWindowsCompatibleCommand } from "../../src/core";
 import type { RuntimeHostSimulationConfig } from "../../src/server/runtime-host-simulation";
 import { resolveAgentLabProviderPolicy } from "./provider-policy";
 import { AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_POLICY } from "./real-claude";
@@ -41,20 +42,23 @@ const FORBIDDEN_HOST_LAUNCHERS = [
 ] as const;
 
 async function runGit(projectPath: string, args: string[]): Promise<void> {
-	await execFileAsync("git", args, {
+	const env = createGitProcessEnv({
+		GIT_CONFIG_NOSYSTEM: "1",
+		GIT_TERMINAL_PROMPT: "0",
+	});
+	const command = resolveWindowsCompatibleCommand("git", buildGitCommandArgs(args), process.platform, env);
+	await execFileAsync(command.binary, command.args, {
 		cwd: projectPath,
 		encoding: "utf8",
-		env: {
-			PATH: process.env.PATH,
-			GIT_CONFIG_NOSYSTEM: "1",
-			GIT_TERMINAL_PROMPT: "0",
-		},
+		env,
+		windowsHide: true,
 	});
 }
 
 async function writeFakeAgentLaunchers(fakeBinPath: string, provider: "claude" | "codex" | "pi"): Promise<void> {
 	const shellLauncherPath = join(fakeBinPath, provider);
 	const windowsLauncherPath = join(fakeBinPath, `${provider}.cmd`);
+	const windowsPowerShellLauncherPath = join(fakeBinPath, `${provider}.ps1`);
 	await writeFile(
 		shellLauncherPath,
 		`#!/bin/sh\nQUARTERDECK_AGENT_LAB_PROVIDER=${provider} exec "$QUARTERDECK_AGENT_LAB_NODE" "$QUARTERDECK_AGENT_LAB_TSX_CLI" "$QUARTERDECK_AGENT_LAB_FAKE_AGENT" "$@"\n`,
@@ -64,6 +68,16 @@ async function writeFakeAgentLaunchers(fakeBinPath: string, provider: "claude" |
 	await writeFile(
 		windowsLauncherPath,
 		`@echo off\r\nset "QUARTERDECK_AGENT_LAB_PROVIDER=${provider}"\r\n"%QUARTERDECK_AGENT_LAB_NODE%" "%QUARTERDECK_AGENT_LAB_TSX_CLI%" "%QUARTERDECK_AGENT_LAB_FAKE_AGENT%" %*\r\n`,
+		"utf8",
+	);
+	await writeFile(
+		windowsPowerShellLauncherPath,
+		[
+			`$env:QUARTERDECK_AGENT_LAB_PROVIDER = '${provider}'`,
+			"& $env:QUARTERDECK_AGENT_LAB_NODE $env:QUARTERDECK_AGENT_LAB_TSX_CLI $env:QUARTERDECK_AGENT_LAB_FAKE_CODEX @args",
+			"exit $LASTEXITCODE",
+			"",
+		].join("\r\n"),
 		"utf8",
 	);
 }
@@ -80,9 +94,11 @@ async function writeBlockedAgentLaunchers(fakeBinPath: string, provider: "claude
 export async function writeRealCodexLauncher(fakeBinPath: string): Promise<void> {
 	const shellLauncherPath = join(fakeBinPath, "codex");
 	const windowsLauncherPath = join(fakeBinPath, "codex.cmd");
+	const windowsPowerShellLauncherPath = join(fakeBinPath, "codex.ps1");
 	const policyArguments = AGENT_LAB_REAL_CODEX_CONFIG_OVERRIDES.flatMap((value) => ["-c", value]);
 	const shellPolicyArguments = policyArguments.map((value) => `'${value.replaceAll("'", `'"'"'`)}'`).join(" ");
 	const windowsPolicyArguments = policyArguments.join(" ");
+	const powerShellPolicyArguments = policyArguments.map((value) => `'${value.replaceAll("'", "''")}'`).join(", ");
 	await writeFile(
 		shellLauncherPath,
 		[
@@ -211,6 +227,42 @@ export async function writeRealCodexLauncher(fakeBinPath: string): Promise<void>
 			'if /I "%~1"=="--yolo" set "_QD_HAS_APPROVAL_POLICY=1"',
 			"shift",
 			"goto inspect_arguments",
+			"",
+		].join("\r\n"),
+		"utf8",
+	);
+	await writeFile(
+		windowsPowerShellLauncherPath,
+		[
+			"$ErrorActionPreference = 'Stop'",
+			"$runtimePath = $env:PATH",
+			"$env:PATH = $env:QUARTERDECK_AGENT_LAB_REAL_CODEX_HOST_PATH",
+			"$realCodexCommand = Get-Command codex -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1",
+			"if (-not $realCodexCommand) { [Console]::Error.WriteLine('Agent Lab could not resolve the host Codex binary.'); exit 127 }",
+			"$realCodexBinary = $realCodexCommand.Source",
+			"$env:PATH = $runtimePath",
+			"$env:CODEX_HOME = $env:QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME",
+			"$launchArguments = @($args)",
+			"$passthrough = $launchArguments.Count -gt 0 -and @('--version', '-V', 'features') -contains $launchArguments[0]",
+			"if (-not $passthrough) {",
+			"  $separatorIndex = [Array]::IndexOf($launchArguments, '--')",
+			"  if ($separatorIndex -lt 0) { $separatorIndex = $launchArguments.Count }",
+			"  $beforeSeparator = @($launchArguments | Select-Object -First $separatorIndex)",
+			"  $hasModel = @($beforeSeparator | Where-Object { $_ -eq '-m' -or $_ -eq '--model' -or $_ -like '--model=*' }).Count -gt 0",
+			"  $hasSandbox = @($beforeSeparator | Where-Object { $_ -eq '-s' -or $_ -eq '--sandbox' -or $_ -like '--sandbox=*' -or $_ -in @('--approve-for-me', '--not-so-yolo', '--dangerously-bypass-approvals-and-sandbox', '--yolo') }).Count -gt 0",
+			"  $hasApproval = @($beforeSeparator | Where-Object { $_ -eq '-a' -or $_ -eq '--ask-for-approval' -or $_ -like '--ask-for-approval=*' -or $_ -in @('--approve-for-me', '--not-so-yolo', '--dangerously-bypass-approvals-and-sandbox', '--yolo') }).Count -gt 0",
+			"  if (-not $hasApproval) { $launchArguments = @('--ask-for-approval', $env:QUARTERDECK_AGENT_LAB_REAL_CODEX_APPROVAL_POLICY) + $launchArguments }",
+			"  if (-not $hasSandbox) { $launchArguments = @('--sandbox', $env:QUARTERDECK_AGENT_LAB_REAL_CODEX_SANDBOX) + $launchArguments }",
+			"  if (-not $hasModel) { $launchArguments = @('--model', $env:QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL) + $launchArguments }",
+			`  $launchArguments = @(${powerShellPolicyArguments}) + $launchArguments`,
+			"}",
+			"Remove-Item Env:QUARTERDECK_AGENT_LAB_REAL_CODEX_HOST_PATH -ErrorAction SilentlyContinue",
+			"Remove-Item Env:QUARTERDECK_AGENT_LAB_REAL_CODEX_HOME -ErrorAction SilentlyContinue",
+			"Remove-Item Env:QUARTERDECK_AGENT_LAB_REAL_CODEX_MODEL -ErrorAction SilentlyContinue",
+			"Remove-Item Env:QUARTERDECK_AGENT_LAB_REAL_CODEX_SANDBOX -ErrorAction SilentlyContinue",
+			"Remove-Item Env:QUARTERDECK_AGENT_LAB_REAL_CODEX_APPROVAL_POLICY -ErrorAction SilentlyContinue",
+			"& $realCodexBinary @launchArguments",
+			"exit $LASTEXITCODE",
 			"",
 		].join("\r\n"),
 		"utf8",

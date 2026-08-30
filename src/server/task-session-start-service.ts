@@ -1,5 +1,6 @@
 import { resolveAgentCommandForLaunch } from "../config";
 import {
+	areFileSystemPathsEqual,
 	createTaggedLogger,
 	findCardInBoard,
 	type IRuntimeConfigProvider,
@@ -97,7 +98,7 @@ function getResumeContextWarning(options: {
 		return null;
 	}
 	const previousSessionLaunchPath = options.previousSessionLaunchPath?.trim() ?? "";
-	if (!previousSessionLaunchPath || previousSessionLaunchPath === options.projectPath) {
+	if (!previousSessionLaunchPath || areFileSystemPathsEqual(previousSessionLaunchPath, options.projectPath)) {
 		return null;
 	}
 	return "Claude resume after trash restore is best-effort only: no stored session id is available and the original task worktree was deleted, so --continue may not reopen the previous chat.";
@@ -304,7 +305,7 @@ export async function prepareTaskSessionStart(
 			taskId: body.taskId,
 			agentId: resolved.agentId,
 			hadPreviousSessionLaunchPath: Boolean(previousSummary?.sessionLaunchPath),
-			resolvedToProjectRoot: taskCwd === projectScope.projectPath,
+			resolvedToProjectRoot: areFileSystemPathsEqual(taskCwd, projectScope.projectPath),
 		});
 	}
 	const resumeSessionWarning = getResumeSessionWarning({

@@ -19,6 +19,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
 import { isNodeError } from "../fs";
+import { removeDirectoryWithRetries } from "../fs/remove-path";
 import {
 	BOARD_FILENAME,
 	EXECUTION_OWNERSHIP_FILENAME,
@@ -207,7 +208,7 @@ export async function createBackup(options: CreateBackupOptions = {}): Promise<s
 		await writeFile(join(backupDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
 	} catch (error) {
 		// Clean up incomplete backup directory so it doesn't accumulate as junk.
-		await rm(backupDir, { recursive: true, force: true }).catch(() => {});
+		await removeDirectoryWithRetries(backupDir).catch(() => {});
 		throw error;
 	}
 
@@ -295,7 +296,7 @@ export async function pruneBackups(keep: number = DEFAULT_MAX_BACKUPS): Promise<
 	let removed = 0;
 	for (const backup of toRemove) {
 		try {
-			await rm(backup.path, { recursive: true, force: true });
+			await removeDirectoryWithRetries(backup.path);
 			removed += 1;
 		} catch {
 			// Best-effort pruning.

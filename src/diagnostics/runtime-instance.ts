@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Dirent } from "node:fs";
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -11,8 +11,10 @@ import {
 	type RuntimeDiagnosticDescriptorStatus,
 	runtimeDiagnosticDescriptorSchema,
 } from "../core";
+import { removeDirectoryWithRetries } from "../fs/remove-path.js";
 import { getRuntimeHomePath } from "../state";
 import { getDiagnosticErrorClass } from "./bounded-value";
+import { ensurePrivateDiagnosticDirectories } from "./private-path";
 
 const COMPLETED_INSTANCE_RETENTION = 3;
 
@@ -62,9 +64,11 @@ export class RuntimeDiagnosticInstance {
 	private persistent = true;
 	private persistenceFailureClass: string | null = null;
 	private didReportPersistenceFailure = false;
+	private directoryPrepared = false;
 
 	private constructor(
 		directory: string,
+		private readonly diagnosticsRoot: string,
 		descriptor: RuntimeDiagnosticDescriptor,
 		private readonly onPersistenceFailure: (error: Error) => void,
 	) {
@@ -76,6 +80,7 @@ export class RuntimeDiagnosticInstance {
 
 	static async create(options: CreateRuntimeDiagnosticInstanceOptions): Promise<RuntimeDiagnosticInstance> {
 		const runtimeInstanceId = randomUUID();
+		const diagnosticsRoot = getDiagnosticsRootPath(options.stateHome);
 		const instancesRoot = getDiagnosticInstancesRootPath(options.stateHome);
 		const directory = join(instancesRoot, runtimeInstanceId);
 		const journalDirectory = join(directory, "journal");
@@ -98,10 +103,12 @@ export class RuntimeDiagnosticInstance {
 		});
 		const instance = new RuntimeDiagnosticInstance(
 			directory,
+			diagnosticsRoot,
 			descriptor,
 			options.onPersistenceFailure ?? (() => undefined),
 		);
 		try {
+			await instance.prepareDirectory();
 			await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
 		} catch (error) {
 			instance.notePersistenceFailure(error);
@@ -174,12 +181,18 @@ export class RuntimeDiagnosticInstance {
 
 	private async persist(): Promise<void> {
 		try {
-			await mkdir(this.directory, { recursive: true, mode: 0o700 });
+			await this.prepareDirectory();
 			await writeJsonAtomic(this.descriptorPath, this.descriptor);
 			this.notePersistenceSuccess();
 		} catch (error) {
 			this.notePersistenceFailure(error);
 		}
+	}
+
+	private async prepareDirectory(): Promise<void> {
+		if (this.directoryPrepared) return;
+		await ensurePrivateDiagnosticDirectories([this.diagnosticsRoot, this.directory]);
+		this.directoryPrepared = true;
 	}
 
 	private notePersistenceSuccess(): void {
@@ -257,6 +270,6 @@ async function pruneFinalizedDiagnosticInstances(
 	);
 	for (const instance of finalized.slice(COMPLETED_INSTANCE_RETENTION)) {
 		const directory = join(instancesRoot, instance.descriptor.runtimeInstanceId);
-		await rm(directory, { recursive: true, force: true });
+		await removeDirectoryWithRetries(directory);
 	}
 }

@@ -865,9 +865,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 			claudeFullscreenEnabled: entry.active.claudeFullscreenEnabled,
 		});
 		const dimensionsUnchanged = cols === entry.active.cols && rows === entry.active.rows;
-		entry.active.session.resize(cols, rows, options.pixelWidth, options.pixelHeight);
 		if (options.force && dimensionsUnchanged) {
-			entry.active.session.sendSignal("SIGWINCH");
+			entry.active.session.forceRedraw(cols, rows, options.pixelWidth, options.pixelHeight);
+		} else {
+			entry.active.session.resize(cols, rows, options.pixelWidth, options.pixelHeight);
 		}
 		entry.terminalStateMirror?.resize(cols, rows);
 		entry.active.cols = cols;

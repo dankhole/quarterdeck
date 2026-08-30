@@ -4,9 +4,9 @@ import { join, relative, sep } from "node:path";
 
 import pLimit from "p-limit";
 
-import type { RuntimeWorkdirFileSearchMatch } from "../core";
-import { runGit } from "./git-utils";
-import { SKIPPED_WORKDIR_DIRECTORIES } from "./workdir-path-policy";
+import { normalizeFileSystemPathForComparison, type RuntimeWorkdirFileSearchMatch } from "../core";
+import { runGit, splitNullSeparatedGitOutput } from "./git-utils";
+import { hasSkippedWorkdirPathComponent } from "./workdir-path-policy";
 
 const CACHE_TTL_MS = 5_000;
 const DEFAULT_LIMIT = 20;
@@ -48,7 +48,7 @@ async function readDirectory(rootDir: string, dirPath: string): Promise<Director
 		const fullPath = join(dirPath, entry.name);
 
 		if (entry.isDirectory()) {
-			if (!SKIPPED_WORKDIR_DIRECTORIES.has(entry.name)) {
+			if (!hasSkippedWorkdirPathComponent(entry.name)) {
 				directories.push(fullPath);
 			}
 		} else {
@@ -92,16 +92,15 @@ interface CachedFileIndex {
 
 const fileIndexCache = new Map<string, CachedFileIndex>();
 
-function normalizeLines(stdout: string): string[] {
+function normalizeNullSeparatedPaths(stdout: string): string[] {
 	const seen = new Set<string>();
 	const files: string[] = [];
-	for (const rawLine of stdout.split(/\r?\n/g)) {
-		const line = rawLine.trim();
-		if (!line || seen.has(line)) {
+	for (const path of splitNullSeparatedGitOutput(stdout)) {
+		if (seen.has(path)) {
 			continue;
 		}
-		seen.add(line);
-		files.push(line);
+		seen.add(path);
+		files.push(path);
 	}
 	return files;
 }
@@ -114,21 +113,22 @@ interface PorcelainParseResult {
 function parsePorcelainStatus(stdout: string): PorcelainParseResult {
 	const changed = new Set<string>();
 	const deleted = new Set<string>();
-	for (const rawLine of stdout.split(/\r?\n/g)) {
-		const line = rawLine.trimEnd();
-		if (!line || line.length < 4) {
+	const fields = stdout.split("\0");
+	for (let index = 0; index < fields.length; index += 1) {
+		const field = fields[index];
+		if (!field || field.length < 4) {
 			continue;
 		}
-		const indexStatus = line.charAt(0);
-		const workTreeStatus = line.charAt(1);
-		const payload = line.slice(3).trim();
-		if (!payload) {
-			continue;
-		}
-		const renamedParts = payload.split(" -> ");
-		const path = renamedParts[renamedParts.length - 1]?.trim();
+		const indexStatus = field.charAt(0);
+		const workTreeStatus = field.charAt(1);
+		const path = field.slice(3);
 		if (!path) {
 			continue;
+		}
+		if (indexStatus === "R" || indexStatus === "C" || workTreeStatus === "R" || workTreeStatus === "C") {
+			// Porcelain v1 `-z` emits the destination first and the source as the
+			// following NUL-delimited field. The destination is the searchable path.
+			index += 1;
 		}
 		// D in either column means the file is gone from the working tree or staged for deletion
 		if (indexStatus === "D" || workTreeStatus === "D") {
@@ -141,26 +141,27 @@ function parsePorcelainStatus(stdout: string): PorcelainParseResult {
 }
 
 async function loadFileIndex(cwd: string): Promise<{ files: readonly string[]; changedPaths: ReadonlySet<string> }> {
-	const cached = fileIndexCache.get(cwd);
+	const cacheKey = normalizeFileSystemPathForComparison(cwd);
+	const cached = fileIndexCache.get(cacheKey);
 	if (cached && cached.expiresAt > Date.now()) {
 		return {
 			files: cached.files,
 			changedPaths: cached.changedPaths,
 		};
 	}
-	fileIndexCache.delete(cwd);
+	fileIndexCache.delete(cacheKey);
 
 	try {
 		const [filesResult, statusResult, deletedResult] = await Promise.all([
-			runGit(cwd, ["ls-files", "--cached", "--others", "--exclude-standard"], {
+			runGit(cwd, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
 				trimStdout: false,
 				timeoutClass: "metadata",
 			}),
-			runGit(cwd, ["status", "--porcelain=v1", "--untracked-files=all"], {
+			runGit(cwd, ["status", "--porcelain=v1", "-z", "--untracked-files=all"], {
 				trimStdout: false,
 				timeoutClass: "metadata",
 			}),
-			runGit(cwd, ["ls-files", "--deleted"], {
+			runGit(cwd, ["ls-files", "--deleted", "-z"], {
 				trimStdout: false,
 				timeoutClass: "metadata",
 			}),
@@ -171,19 +172,19 @@ async function loadFileIndex(cwd: string): Promise<{ files: readonly string[]; c
 				changedPaths: new Set<string>(),
 			};
 		}
-		const allFiles = normalizeLines(filesResult.stdout);
+		const allFiles = normalizeNullSeparatedPaths(filesResult.stdout);
 		const { changed: changedPaths, deleted: statusDeletedPaths } = statusResult.ok
 			? parsePorcelainStatus(statusResult.stdout)
 			: { changed: new Set<string>(), deleted: new Set<string>() };
 		const deletedPaths = new Set(statusDeletedPaths);
 		if (deletedResult.ok) {
-			for (const path of normalizeLines(deletedResult.stdout)) {
+			for (const path of normalizeNullSeparatedPaths(deletedResult.stdout)) {
 				deletedPaths.add(path);
 			}
 		}
 		// Filter out deleted files — git ls-files --cached still lists them
 		const files = deletedPaths.size > 0 ? allFiles.filter((path) => !deletedPaths.has(path)) : allFiles;
-		fileIndexCache.set(cwd, {
+		fileIndexCache.set(cacheKey, {
 			expiresAt: Date.now() + CACHE_TTL_MS,
 			files,
 			changedPaths,
@@ -227,38 +228,41 @@ function normalizeLimit(limit: number | undefined): number {
 }
 
 export async function listAllWorkdirFiles(cwd: string): Promise<string[]> {
-	const cached = fsFileListCache.get(cwd);
+	const cacheKey = normalizeFileSystemPathForComparison(cwd);
+	const cached = fsFileListCache.get(cacheKey);
 	if (cached && cached.expiresAt > Date.now()) {
 		return [...cached.files];
 	}
-	fsFileListCache.delete(cwd);
+	fsFileListCache.delete(cacheKey);
 
 	const { files, directories } = await walkDirectory(cwd);
 	files.sort();
 	directories.sort();
 
-	fsFileListCache.set(cwd, { expiresAt: Date.now() + CACHE_TTL_MS, files, directories });
+	fsFileListCache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, files, directories });
 	return [...files];
 }
 
 export async function listAllWorkdirFileEntries(cwd: string): Promise<{ files: string[]; directories: string[] }> {
-	const cached = fsFileListCache.get(cwd);
+	const cacheKey = normalizeFileSystemPathForComparison(cwd);
+	const cached = fsFileListCache.get(cacheKey);
 	if (cached && cached.expiresAt > Date.now()) {
 		return { files: [...cached.files], directories: [...cached.directories] };
 	}
-	fsFileListCache.delete(cwd);
+	fsFileListCache.delete(cacheKey);
 
 	const entries = await walkDirectory(cwd);
 	entries.files.sort();
 	entries.directories.sort();
 
-	fsFileListCache.set(cwd, { expiresAt: Date.now() + CACHE_TTL_MS, ...entries });
+	fsFileListCache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, ...entries });
 	return { files: [...entries.files], directories: [...entries.directories] };
 }
 
 export function invalidateWorkdirFileListCache(cwd: string): void {
-	fsFileListCache.delete(cwd);
-	fileIndexCache.delete(cwd);
+	const cacheKey = normalizeFileSystemPathForComparison(cwd);
+	fsFileListCache.delete(cacheKey);
+	fileIndexCache.delete(cacheKey);
 }
 
 export function searchFilePaths(

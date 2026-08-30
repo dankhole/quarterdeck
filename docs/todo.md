@@ -56,16 +56,9 @@ Core git-view branch operations have landed. Add **Revert commit** so a user can
 - Branch context menu in `GitRefsPanel`
 - Git view tab bar or toolbar when the operation needs persistent conflict/progress state
 
-## Windows support follow-ups
+## Windows native release acceptance
 
-The broad audit is complete; current findings live in [docs/windows-support-audit.md](./windows-support-audit.md). Remaining fixable work:
-
-- Add a `windows-latest` CI lane and stabilize the currently skipped Windows test scenarios, especially fake agent command/version probes and launch/open integration smoke coverage.
-- Validate and enforce private ACL semantics for diagnostic runtime descriptors, journal segments/manifests, browser-tail equivalents, and exported bundles on Windows; POSIX `0o600`/`0o700` modes alone are not evidence that another local account cannot read them.
-- Run a native Windows smoke pass covering install/build, `quarterdeck` launch, Codex/Claude detection, task PTY start/stop, shell terminals, task worktree create/delete, ignored-path junction mirroring, Open in IDE, project shortcuts, and shutdown cleanup.
-- Harden Windows shell-string generation for hook and statusline commands so `cmd.exe` metacharacters in paths and arguments are escaped through one shared helper instead of ad hoc double quoting. Open in IDE no longer browser-generates shell text; its typed runtime launcher uses the shared command-shim adapter when Windows requires one.
-- Validate ConPTY resize/reconnect/task-restore behavior and decide whether Windows needs a resize-nudge fallback where Unix uses `SIGWINCH`.
-- Replace best-effort orphan cleanup with a scoped managed PID registry if native smoke testing shows Windows agent wrappers leave descendants that cannot be identified safely from known executable names or hosted command lines.
+The code-remediation ledger is complete. Before removing the experimental label, confirm the required Windows CI job on the exact committed revision and complete the authenticated real-provider/manual privacy matrix tracked in [Windows Compatibility Todo](./windows-compatibility-todo.md).
 
 ## Search modals: live preview pane
 

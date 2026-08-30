@@ -1,15 +1,24 @@
 import { spawn } from "node:child_process";
+import { Socket as NetSocket } from "node:net";
 import { constants as osConstants } from "node:os";
 
-export const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+import { terminateProcessTree } from "./process-tree.mjs";
+
+// The runtime owns an eight-second Windows shutdown budget so it can exit before
+// Windows' roughly ten-second console-close deadline. Parent wrappers need one
+// extra second so their force-kill fallback cannot race the runtime's own timer.
+export const DEFAULT_SHUTDOWN_TIMEOUT_MS = process.platform === "win32" ? 9_000 : 11_000;
 
 const HANDLED_SIGNALS =
-	process.platform === "win32" ? ["SIGINT", "SIGTERM"] : ["SIGINT", "SIGTERM", "SIGHUP"];
+	process.platform === "win32"
+		? ["SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"]
+		: ["SIGINT", "SIGTERM", "SIGHUP"];
 
 export function getExitCodeForSignal(signal) {
 	if (!signal) {
 		return 0;
 	}
+	if (signal === "SIGBREAK") return 149;
 	return 128 + (osConstants.signals[signal] ?? 0);
 }
 
@@ -30,30 +39,37 @@ function signalProcess(child, signal) {
 	}
 }
 
-function signalProcessGroup(child, signal) {
+function endChildStdin(child) {
+	if (!child.stdin || child.stdin.destroyed || child.stdin.writableEnded) {
+		return false;
+	}
+	child.stdin.end();
+	return true;
+}
+
+function signalProcessGroup(child, signal, terminateTree = terminateProcessTree) {
 	if (child.exitCode !== null || child.pid == null) {
 		return;
 	}
-	if (process.platform === "win32") {
-		signalProcess(child, signal);
-		return;
-	}
-	try {
-		process.kill(-child.pid, signal);
-	} catch (error) {
-		if (isNoSuchProcessError(error)) {
-			return;
+	terminateTree(child.pid, signal, (error) => {
+		if (error && !isNoSuchProcessError(error)) {
+			signalProcess(child, signal);
 		}
-		signalProcess(child, signal);
-	}
+	});
 }
 
 export function launchManagedProcess(command, args, options = {}) {
+	const configuredStdio = options.stdio ?? ["ignore", "inherit", "inherit"];
+	const stdio =
+		options.gracefulShutdownViaStdin === true && Array.isArray(configuredStdio)
+			? ["pipe", ...configuredStdio.slice(1)]
+			: configuredStdio;
 	const child = spawn(command, args, {
 		cwd: options.cwd ?? process.cwd(),
 		env: options.env ?? process.env,
-		stdio: options.stdio ?? ["ignore", "inherit", "inherit"],
+		stdio,
 		detached: process.platform !== "win32",
+		windowsHide: true,
 	});
 	const shutdownTimeoutMs = options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
 	let shutdownSignal = null;
@@ -85,13 +101,15 @@ export function launchManagedProcess(command, args, options = {}) {
 			return false;
 		}
 		shutdownSignal = signal;
-		signalProcess(child, signal);
+		if (options.gracefulShutdownViaStdin !== true || !endChildStdin(child)) {
+			signalProcessGroup(child, signal, options.terminateProcessTree);
+		}
 		forceKillTimer = setTimeout(() => {
 			if (exitInfo !== null) {
 				return;
 			}
 			options.onForceKill?.(signal);
-			signalProcessGroup(child, "SIGKILL");
+			signalProcessGroup(child, "SIGKILL", options.terminateProcessTree);
 		}, shutdownTimeoutMs);
 		return true;
 	};
@@ -118,11 +136,22 @@ export function installForwardedShutdownHandlers(requestShutdown) {
 		handlers.set(signal, handler);
 		process.on(signal, handler);
 	}
+	const handleParentDisconnect = () => {
+		requestShutdown("SIGTERM");
+	};
+	const observesParentDisconnect = process.stdin instanceof NetSocket && !process.stdin.isTTY;
+	if (observesParentDisconnect) {
+		process.stdin.resume();
+		process.stdin.on("end", handleParentDisconnect);
+	}
 	return () => {
 		for (const [signal, handler] of handlers) {
 			process.off(signal, handler);
 		}
 		handlers.clear();
+		if (observesParentDisconnect) {
+			process.stdin.off("end", handleParentDisconnect);
+		}
 	};
 }
 

@@ -418,7 +418,7 @@ async function runRuntimeStartupCleanup(
 	}
 }
 
-function startOrphanedAgentCleanup(warn: (message: string) => void): Promise<void> {
+function startOrphanedAgentCleanup(warn: (message: string) => void): Promise<Error | null> {
 	// Phase 3: Kill orphaned agent processes left by a previously crashed instance.
 	// Server boot remains non-blocking, but startup task recovery awaits this
 	// promise so it cannot race an orphan sweep and launch into a checkout that
@@ -430,18 +430,27 @@ function startOrphanedAgentCleanup(warn: (message: string) => void): Promise<voi
 					if (killed > 0) {
 						warn(`Cleaned up ${killed} orphaned agent process(es) from a previous session.`);
 					}
+					resolve(null);
 				})
-				.catch(() => {})
-				.finally(resolve);
+				.catch((error: unknown) => {
+					const message = error instanceof Error ? error.message : String(error);
+					warn(`Could not verify or clean abandoned agent processes: ${message}`);
+					resolve(error instanceof Error ? error : new Error(message));
+				});
 		}, 0);
 		cleanupTimer.unref?.();
 	});
 }
 
+async function awaitStartupAgentCleanup(startupAgentCleanup: Promise<Error | null>): Promise<void> {
+	const error = await startupAgentCleanup;
+	if (error) throw error;
+}
+
 async function createRuntimeBootstrapState(
 	modules: Awaited<ReturnType<typeof loadRuntimeStartupModules>>,
 	warn: (message: string) => void,
-	startupAgentCleanup: Promise<void>,
+	startupAgentCleanup: Promise<Error | null>,
 	diagnostics: RuntimeDiagnostics,
 ) {
 	let runtimeStateHub: RuntimeStateHub | undefined;
@@ -452,7 +461,7 @@ async function createRuntimeBootstrapState(
 		hasGitRepository,
 		pathIsDirectory,
 		diagnostics,
-		waitForStartupAgentCleanup: async () => await startupAgentCleanup,
+		waitForStartupAgentCleanup: async () => await awaitStartupAgentCleanup(startupAgentCleanup),
 		onTerminalManagerReady: (projectId, manager) => {
 			runtimeStateHub?.trackTerminalManager(projectId, manager);
 		},
@@ -518,7 +527,7 @@ async function createRuntimeBootstrapState(
 			// Stop the prior runtime's orphaned processes before taking the final
 			// outbox snapshot. No old launch can then enqueue a lifecycle event in
 			// the gap between replay and replacement-session recovery.
-			await startupAgentCleanup;
+			await awaitStartupAgentCleanup(startupAgentCleanup);
 			const startupHooksApi = modules.createHooksApi({
 				projects: projectRegistry,
 				terminals: projectRegistry,
@@ -686,7 +695,7 @@ async function startServer(hostLaunch: {
 		const modules = await loadRuntimeStartupModules();
 		await runRuntimeStartupCleanup(modules, warn);
 		const startupAgentCleanup =
-			process.env.QUARTERDECK_AGENT_LAB === "1" ? Promise.resolve() : startOrphanedAgentCleanup(warn);
+			process.env.QUARTERDECK_AGENT_LAB === "1" ? Promise.resolve(null) : startOrphanedAgentCleanup(warn);
 		const bootstrap = await createRuntimeBootstrapState(modules, warn, startupAgentCleanup, diagnostics);
 		return await createRuntimeServerHandle(modules, bootstrap, hostLaunch);
 	} catch (error) {
@@ -797,9 +806,11 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		});
 	};
 
-	installGracefulShutdownHandlers({
+	const shutdownController = installGracefulShutdownHandlers({
 		process,
-		delayMs: 10000,
+		// Windows unconditionally terminates a console process roughly ten seconds
+		// after console-close SIGHUP, so leave headroom for our own final exit.
+		delayMs: process.platform === "win32" ? 8_000 : 10_000,
 		exit: (code) => {
 			process.exit(code);
 		},
@@ -840,7 +851,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		process.stdin.on("end", () => {
 			if (!isShuttingDown) {
 				console.warn("Parent process disconnected (stdin closed). Shutting down.");
-				process.kill(process.pid, process.platform === "win32" ? "SIGTERM" : "SIGHUP");
+				shutdownController.requestShutdown(process.platform === "win32" ? "SIGTERM" : "SIGHUP");
 			}
 		});
 	}

@@ -1,4 +1,5 @@
 import type { RuntimeBoardData, RuntimeProjectMetadata } from "../core";
+import { areFileSystemPathsEqual } from "../core/path-comparison.js";
 import {
 	buildProjectMetadataSnapshot,
 	type CachedTaskWorktreeMetadata,
@@ -274,7 +275,10 @@ export class ProjectMetadataController {
 			}
 			if (
 				previous.baseRef !== task.baseRef ||
-				previous.workingDirectory !== task.workingDirectory ||
+				(previous.workingDirectory === null) !== (task.workingDirectory === null) ||
+				(previous.workingDirectory !== null &&
+					task.workingDirectory !== null &&
+					!areFileSystemPathsEqual(previous.workingDirectory, task.workingDirectory)) ||
 				previous.useWorktree !== task.useWorktree
 			) {
 				this.bumpTaskMetadataFreshness(task.taskId);

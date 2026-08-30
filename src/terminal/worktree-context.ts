@@ -1,6 +1,5 @@
-import { resolve } from "node:path";
 import { DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE } from "../config";
-import { createTaggedLogger } from "../core";
+import { areFileSystemPathsEqual, createTaggedLogger } from "../core";
 import { readGitHeadInfo } from "../workdir";
 
 const log = createTaggedLogger("worktree-context");
@@ -25,7 +24,7 @@ export interface WorktreeContextInput {
  */
 export async function buildWorktreeContextPrompt(input: WorktreeContextInput): Promise<string> {
 	const { cwd, projectPath } = input;
-	if (!projectPath || resolve(cwd) === resolve(projectPath)) {
+	if (!projectPath || areFileSystemPathsEqual(cwd, projectPath)) {
 		return "";
 	}
 

@@ -1,5 +1,7 @@
 import { accessSync, constants } from "node:fs";
-import { delimiter, join } from "node:path";
+import { delimiter, extname, isAbsolute, join, resolve, win32 } from "node:path";
+
+import { getWindowsEnvironmentValue, getWindowsPathEntries, getWindowsPathExtensions } from "./windows-system-paths.js";
 
 function canAccessPath(path: string, platform: NodeJS.Platform = process.platform): boolean {
 	try {
@@ -14,22 +16,86 @@ function getEnvironmentValue(env: NodeJS.ProcessEnv, key: string, platform: Node
 	if (platform !== "win32") {
 		return env[key];
 	}
-	const normalizedKey = key.toLowerCase();
-	return Object.entries(env).find(([entryKey]) => entryKey.toLowerCase() === normalizedKey)?.[1];
+	return getWindowsEnvironmentValue(env, key);
 }
 
 function getWindowsExecutableCandidates(binary: string, env: NodeJS.ProcessEnv): string[] {
-	const pathext = getEnvironmentValue(env, "PATHEXT", "win32")?.split(";").filter(Boolean) ?? [
-		".COM",
-		".EXE",
-		".BAT",
-		".CMD",
-	];
+	const pathext = getWindowsPathExtensions(env);
 	const lowerBinary = binary.toLowerCase();
-	if (pathext.some((extension) => lowerBinary.endsWith(extension.toLowerCase()))) {
+	const explicitExtension = extname(lowerBinary);
+	if (
+		[".bat", ".cmd", ".com", ".exe", ".ps1"].includes(explicitExtension) ||
+		pathext.some((extension) => explicitExtension === extension.toLowerCase())
+	) {
 		return [binary];
 	}
-	return [binary, ...pathext.map((extension) => `${binary}${extension}`)];
+	// Bare Windows commands resolve through PATHEXT (or CreateProcess' implicit
+	// .exe behavior). Treating an extensionless file as launchable makes the
+	// availability probe disagree with the command resolver and can report an
+	// agent as installed even though the subsequent launch cannot execute it.
+	return pathext.map((extension) => `${binary}${extension}`);
+}
+
+export interface ResolvedWindowsBinaryPath {
+	extension: string;
+	path: string;
+}
+
+function resolveAbsoluteCommandPath(path: string): string {
+	return isAbsolute(path) || win32.isAbsolute(path) ? path : resolve(path);
+}
+
+/**
+ * Resolve a Windows command to the exact file selected by the inherited PATH.
+ *
+ * Windows searches the child process' current directory before PATH for bare
+ * executable names. Quarterdeck launches children with project directories as
+ * cwd, so retaining a bare name after discovery would allow a project-local
+ * executable to replace the command that the runtime already validated.
+ */
+export function resolveWindowsBinaryPath(
+	binary: string,
+	env: NodeJS.ProcessEnv = process.env,
+): ResolvedWindowsBinaryPath | null {
+	const trimmed = binary.trim();
+	if (!trimmed) return null;
+
+	const explicitExtension = extname(trimmed).toLowerCase();
+	const hasDirectorySeparators = trimmed.includes("/") || trimmed.includes("\\");
+	if (explicitExtension && hasDirectorySeparators) {
+		return { extension: explicitExtension, path: resolveAbsoluteCommandPath(trimmed) };
+	}
+
+	if (explicitExtension) {
+		for (const pathEntry of getWindowsPathEntries(env)) {
+			const candidate = resolveAbsoluteCommandPath(join(pathEntry, trimmed));
+			if (canAccessPath(candidate, "win32")) {
+				return { extension: explicitExtension, path: candidate };
+			}
+		}
+		return null;
+	}
+
+	const commandCandidates = getWindowsExecutableCandidates(trimmed, env);
+	if (hasDirectorySeparators) {
+		for (const candidate of commandCandidates) {
+			const resolvedCandidate = resolveAbsoluteCommandPath(candidate);
+			if (canAccessPath(resolvedCandidate, "win32")) {
+				return { extension: extname(resolvedCandidate).toLowerCase(), path: resolvedCandidate };
+			}
+		}
+		return null;
+	}
+
+	for (const pathEntry of getWindowsPathEntries(env)) {
+		for (const candidateName of commandCandidates) {
+			const candidate = resolveAbsoluteCommandPath(join(pathEntry, candidateName));
+			if (canAccessPath(candidate, "win32")) {
+				return { extension: extname(candidate).toLowerCase(), path: candidate };
+			}
+		}
+	}
+	return null;
 }
 
 // Intentionally perform PATH inspection in-process instead of spawning `which`, `where`,
@@ -66,26 +132,16 @@ export function isBinaryAvailableOnPath(
 	if (!trimmed) {
 		return false;
 	}
+	if (platform === "win32") {
+		const resolved = resolveWindowsBinaryPath(trimmed, env);
+		return resolved !== null && canAccessPath(resolved.path, platform);
+	}
 	if (trimmed.includes("/") || trimmed.includes("\\")) {
 		return canAccessPath(trimmed, platform);
 	}
 
-	const pathEntries = (getEnvironmentValue(env, "PATH", platform) ?? "")
-		.split(platform === "win32" ? ";" : delimiter)
-		.filter(Boolean);
+	const pathEntries = (getEnvironmentValue(env, "PATH", platform) ?? "").split(delimiter).filter(Boolean);
 	if (pathEntries.length === 0) {
-		return false;
-	}
-
-	if (platform === "win32") {
-		const candidates = getWindowsExecutableCandidates(trimmed, env);
-		for (const entry of pathEntries) {
-			for (const candidate of candidates) {
-				if (canAccessPath(join(entry, candidate), platform)) {
-					return true;
-				}
-			}
-		}
 		return false;
 	}
 

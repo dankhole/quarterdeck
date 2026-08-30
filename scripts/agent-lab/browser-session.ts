@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 
-import treeKill from "tree-kill";
+import { terminateProcessTree } from "../../src/core";
 
 import {
 	type AgentLabBrowserProcessTree,
@@ -69,6 +69,7 @@ export async function closeAgentLabBrowserSession(repoRoot: string, sessionName:
 			cwd: repoRoot,
 			env: process.env,
 			stdio: "ignore",
+			windowsHide: true,
 		});
 		let settled = false;
 		const finish = (result: { exitCode: number | null; signal: NodeJS.Signals | null; error: Error | null }) => {
@@ -78,7 +79,7 @@ export async function closeAgentLabBrowserSession(repoRoot: string, sessionName:
 			resolveClose(result);
 		};
 		const timeout = setTimeout(() => {
-			if (child.pid !== undefined) treeKill(child.pid, "SIGTERM", () => {});
+			if (child.pid !== undefined) terminateProcessTree(child.pid, "SIGTERM", () => {});
 			finish({ exitCode: null, signal: "SIGTERM", error: new Error("Browser close command timed out.") });
 		}, BROWSER_CLOSE_TIMEOUT_MS);
 		timeout.unref();

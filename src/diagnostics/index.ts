@@ -29,6 +29,15 @@ export {
 export { evaluateDiagnosticSnapshot, filterDiagnosticFindingsByScope } from "./doctor";
 export { handleDiagnosticsHttpRequest } from "./http";
 export { DiagnosticJournal, readDiagnosticJournal } from "./journal";
+export {
+	copyPrivateDiagnosticFile,
+	DiagnosticAclError,
+	type EnsurePrivateDiagnosticDirectoryOptions,
+	ensurePrivateDiagnosticDirectories,
+	ensurePrivateDiagnosticDirectory,
+	type WindowsPrivateAclCommandResult,
+	type WindowsPrivateAclCommandRunner,
+} from "./private-path";
 export { type DiagnosticRecordCollectionResult, DiagnosticRecorder } from "./recorder";
 export {
 	type BrowserLiveSubscriptionState,

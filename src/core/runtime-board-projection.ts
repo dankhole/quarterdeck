@@ -1,5 +1,6 @@
 import { getRuntimeSessionWorkColumn } from "./api/task-indicators.js";
 import type { RuntimeBoardData, RuntimeTaskSessionSummary, RuntimeTaskWorktreeMetadata } from "./api-contract";
+import { areFileSystemPathsEqual } from "./path-comparison.js";
 import { findCardInBoard, getTaskColumnId, moveTaskToColumn, patchTask } from "./task-board-mutations";
 
 export interface RuntimeBoardProjectionResult {
@@ -16,6 +17,7 @@ export function projectRuntimeSessionsOntoBoard(
 	board: RuntimeBoardData,
 	summaries: Iterable<RuntimeTaskSessionSummary>,
 	projectPath: string,
+	platform: NodeJS.Platform = process.platform,
 ): RuntimeBoardProjectionResult {
 	let nextBoard = board;
 	let changed = false;
@@ -37,7 +39,13 @@ export function projectRuntimeSessionsOntoBoard(
 			continue;
 		}
 		const card = findCardInBoard(nextBoard, summary.taskId);
-		if (!card || (card.workingDirectory === launchPath && card.useWorktree === (launchPath !== projectPath))) {
+		const usesWorktree = !areFileSystemPathsEqual(launchPath, projectPath, platform);
+		if (
+			!card ||
+			(typeof card.workingDirectory === "string" &&
+				areFileSystemPathsEqual(card.workingDirectory, launchPath, platform) &&
+				card.useWorktree === usesWorktree)
+		) {
 			continue;
 		}
 		const patched = patchTask(
@@ -45,7 +53,7 @@ export function projectRuntimeSessionsOntoBoard(
 			summary.taskId,
 			{
 				workingDirectory: launchPath,
-				useWorktree: launchPath !== projectPath,
+				useWorktree: usesWorktree,
 			},
 			summary.updatedAt,
 		);
@@ -61,6 +69,7 @@ export function projectRuntimeTaskMetadataOntoBoard(
 	board: RuntimeBoardData,
 	metadata: Iterable<RuntimeTaskWorktreeMetadata>,
 	projectPath: string,
+	platform: NodeJS.Platform = process.platform,
 ): RuntimeBoardProjectionResult {
 	let nextBoard = board;
 	let changed = false;
@@ -75,8 +84,11 @@ export function projectRuntimeTaskMetadataOntoBoard(
 		}
 		const branch = taskMetadata.branch || undefined;
 		const shouldUpdateBranch = branch !== undefined && branch !== card.branch;
+		const usesWorktree = !areFileSystemPathsEqual(taskMetadata.path, projectPath, platform);
 		const shouldUpdatePath =
-			taskMetadata.path !== card.workingDirectory || card.useWorktree !== (taskMetadata.path !== projectPath);
+			typeof card.workingDirectory !== "string" ||
+			!areFileSystemPathsEqual(taskMetadata.path, card.workingDirectory ?? "", platform) ||
+			card.useWorktree !== usesWorktree;
 		if (!shouldUpdateBranch && !shouldUpdatePath) {
 			continue;
 		}
@@ -87,7 +99,7 @@ export function projectRuntimeTaskMetadataOntoBoard(
 				...(shouldUpdatePath
 					? {
 							workingDirectory: taskMetadata.path,
-							useWorktree: taskMetadata.path !== projectPath,
+							useWorktree: usesWorktree,
 						}
 					: {}),
 				...(shouldUpdateBranch ? { branch } : {}),

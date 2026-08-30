@@ -24,15 +24,20 @@ export {
 	parseWorktreeEnsureRequest,
 } from "./api-validation";
 export { QUARTERDECK_BUILD_ID, shouldRejectLegacyRuntimeStreamClient } from "./build-identity";
-export { isBinaryAvailableOnPath } from "./command-discovery";
+export {
+	isBinaryAvailableOnPath,
+	type ResolvedWindowsBinaryPath,
+	resolveWindowsBinaryPath,
+} from "./command-discovery";
 export {
 	Disposable,
 	DisposableStore,
 	type IDisposable,
 	toDisposable,
 } from "./disposable";
-export { createGitProcessEnv } from "./git-process-env";
+export { buildGitCommandArgs, createGitProcessEnv } from "./git-process-env";
 export {
+	type GracefulShutdownController,
 	type GracefulShutdownProcess,
 	getExitCodeForSignal,
 	type HandledShutdownSignal,
@@ -40,7 +45,18 @@ export {
 	shouldSuppressImmediateDuplicateShutdownSignals,
 } from "./graceful-shutdown";
 export { KeyedOperationCoordinator } from "./keyed-operation-coordinator";
-export { terminateProcessForTimeout } from "./process-termination";
+export {
+	areFileSystemPathsEqual,
+	isFileSystemPathWithin,
+	normalizeFileSystemPathForComparison,
+} from "./path-comparison";
+export { mergeProcessEnvironment } from "./process-environment";
+export {
+	type KillProcessTree,
+	terminateProcessForTimeout,
+	terminateProcessTree,
+	terminateWindowsProcessTree,
+} from "./process-termination";
 export {
 	applyProjectBoardCommand,
 	applyProjectBoardCommands,
@@ -48,6 +64,7 @@ export {
 } from "./project-board-command";
 export { countProjectTasksByColumn, deriveProjectSummary } from "./project-summary";
 export {
+	buildQuarterdeckCommandLine,
 	buildQuarterdeckCommandParts,
 	type RuntimeInvocationContext,
 	resolveQuarterdeckCommandParts,
@@ -90,7 +107,13 @@ export type {
 	ITerminalManagerProvider,
 	RuntimeHostActionContext,
 } from "./service-interfaces";
-export { buildShellCommandLine, quoteShellArg, resolveInteractiveShellCommand } from "./shell";
+export {
+	buildShellCommandLine,
+	resolveInteractiveShellCommand,
+	resolveWindowsPowerShellPath,
+	resolveWindowsRootExecutablePath,
+	resolveWindowsSystem32ExecutablePath,
+} from "./shell";
 export {
 	addTaskDependency,
 	addTaskToColumn,
@@ -121,7 +144,11 @@ export {
 export {
 	buildWindowsCmdArgsArray,
 	buildWindowsCmdArgsCommandLine,
+	buildWindowsProcessArgsCommandLine,
+	type ResolvedWindowsCompatibleCommand,
 	resolveWindowsCompatibleCommand,
 	resolveWindowsComSpec,
 	shouldUseWindowsCmdLaunch,
+	WindowsCommandResolutionError,
 } from "./windows-cmd-launch";
+export { isWindowsSafePathComponent } from "./windows-path-component";

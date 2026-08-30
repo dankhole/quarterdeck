@@ -186,10 +186,12 @@ Check if the target branch is checked out in another worktree **before** landing
 Parse correctly by extracting the worktree path from the block that contains the matching branch:
 
 \`\`\`bash
-git worktree list --porcelain | awk -v target="branch refs/heads/<target>" '/^worktree /{wt=$0; sub(/^worktree /,"",wt)} $0==target{print wt}'
+git worktree list --porcelain
 \`\`\`
 
-If this prints a path (and it's not the current worktree), check for uncommitted work **now** — before \`update-ref\` changes anything:
+Inspect the output block by block without relying on Unix-only shell tools. Find the block whose \`branch\` line is exactly \`branch refs/heads/<target>\`, then use that same block's \`worktree\` line as the target worktree path. If no block matches, the target branch is not checked out in another worktree.
+
+If a matching block provides a path (and it's not the current worktree), check for uncommitted work **now** — before \`update-ref\` changes anything:
 
 \`\`\`bash
 git -C <target-worktree-path> status --porcelain

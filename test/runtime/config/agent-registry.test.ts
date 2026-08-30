@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const commandDiscoveryMocks = vi.hoisted(() => ({
 	isBinaryAvailableOnPath: vi.fn(),
+	resolveWindowsBinaryPath: vi.fn(),
 }));
 const childProcessMocks = vi.hoisted(() => ({
 	execFile: vi.fn(),
@@ -10,6 +11,7 @@ const childProcessMocks = vi.hoisted(() => ({
 
 vi.mock("../../../src/core/command-discovery.js", () => ({
 	isBinaryAvailableOnPath: commandDiscoveryMocks.isBinaryAvailableOnPath,
+	resolveWindowsBinaryPath: commandDiscoveryMocks.resolveWindowsBinaryPath,
 }));
 vi.mock("node:child_process", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:child_process")>();
@@ -76,6 +78,8 @@ beforeEach(() => {
 	setAgentAvailabilityDiagnosticSink(null);
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReset();
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
+	commandDiscoveryMocks.resolveWindowsBinaryPath.mockReset();
+	commandDiscoveryMocks.resolveWindowsBinaryPath.mockReturnValue(null);
 	childProcessMocks.execFile.mockReset();
 	mockSuccessfulAgentProbe();
 	delete process.env.QUARTERDECK_DEBUG_MODE;
@@ -378,6 +382,43 @@ describe("agent-registry", () => {
 		expect(JSON.stringify(diagnostics.mock.calls)).not.toContain("sensitive raw launcher error");
 	});
 
+	it("uses the tree-aware timeout owner instead of execFile's root-only timeout", async () => {
+		vi.useFakeTimers();
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+		const kill = vi.fn(() => true);
+		let capturedProbeCallback = false;
+		let probeCallback: ExecFileCallback = () => {
+			throw new Error("Expected the version probe callback.");
+		};
+		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+			if (args.includes("/pid")) return {} as ChildProcess;
+			const options = rest[0] as Record<string, unknown>;
+			expect(options).not.toHaveProperty("timeout");
+			probeCallback = readExecFileCallback(rest);
+			capturedProbeCallback = true;
+			return { pid: 4321, kill } as unknown as ChildProcess;
+		});
+
+		const resolution = resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+		await vi.advanceTimersByTimeAsync(3_000);
+		if (process.platform === "win32") {
+			expect(childProcessMocks.execFile.mock.calls.some((call) => call[1]?.includes("/pid"))).toBe(true);
+		} else {
+			expect(kill).toHaveBeenCalledWith("SIGTERM");
+		}
+		expect(capturedProbeCallback).toBe(true);
+		probeCallback(
+			Object.assign(new Error("terminated after timeout"), {
+				killed: true,
+				signal: "SIGTERM" as NodeJS.Signals,
+			}),
+			"",
+			"",
+		);
+
+		await expect(resolution).rejects.toMatchObject({ reason: "probe_timeout", transient: true });
+	});
+
 	it("classifies an unrelated probe signal as a failure rather than a timeout", async () => {
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
 		const diagnostics = vi.fn();
@@ -448,6 +489,10 @@ describe("agent-registry", () => {
 				PATHEXT: ".COM;.EXE;.BAT;.CMD",
 			};
 			commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+			commandDiscoveryMocks.resolveWindowsBinaryPath.mockReturnValue({
+				extension: ".cmd",
+				path: "C:\\tools\\codex.cmd",
+			});
 			childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
 				const callback = readExecFileCallback(rest);
 				const commandLine = args.join(" ");
@@ -468,7 +513,9 @@ describe("agent-registry", () => {
 			expect(resolved?.agentId).toBe("codex");
 			expect(childProcessMocks.execFile).toHaveBeenCalledTimes(2);
 			expect(childProcessMocks.execFile.mock.calls.every((call) => call[0] === comSpec)).toBe(true);
-			expect(childProcessMocks.execFile.mock.calls[0]?.[1]).toEqual(expect.arrayContaining(["/d", "/s", "/c"]));
+			expect(childProcessMocks.execFile.mock.calls[0]?.[1]).toEqual(
+				expect.arrayContaining(["/d", "/v:off", "/s", "/c"]),
+			);
 		} finally {
 			Object.defineProperty(process, "platform", { value: originalPlatform });
 			process.env = originalEnv;

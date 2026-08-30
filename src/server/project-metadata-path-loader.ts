@@ -1,4 +1,5 @@
 import type { RuntimeConflictState } from "../core";
+import { areFileSystemPathsEqual } from "../core/path-comparison.js";
 import {
 	computeAutoMergedFiles,
 	detectActiveConflict,
@@ -46,7 +47,7 @@ function createMissingPathMetadata(
 	pathInfo: ResolvedTaskWorktreePath,
 	currentPathMetadata: CachedPathWorktreeMetadata | null,
 ): CachedPathWorktreeMetadata {
-	if (currentPathMetadata?.exists === false) {
+	if (currentPathMetadata?.exists === false && areFileSystemPathsEqual(currentPathMetadata.path, pathInfo.path)) {
 		return currentPathMetadata;
 	}
 	return {
@@ -79,7 +80,7 @@ export async function loadPathWorktreeMetadata(
 		const probe = await probeGitWorkdirState(pathInfo.path);
 		if (
 			currentPathMetadata?.exists &&
-			currentPathMetadata.path === pathInfo.path &&
+			areFileSystemPathsEqual(currentPathMetadata.path, pathInfo.path) &&
 			currentPathMetadata.stateToken === probe.stateToken
 		) {
 			return currentPathMetadata;
@@ -105,7 +106,7 @@ export async function loadPathWorktreeMetadata(
 			lastKnownBranch: probe.currentBranch,
 		};
 	} catch {
-		if (currentPathMetadata && currentPathMetadata.path === pathInfo.path) {
+		if (currentPathMetadata && areFileSystemPathsEqual(currentPathMetadata.path, pathInfo.path)) {
 			return { ...currentPathMetadata, probeFailed: true };
 		}
 		return {

@@ -9,6 +9,7 @@ import {
 	bootstrapDependencies,
 	getMissingDependencyMessage,
 	inspectDependencyTrees,
+	normalizeCheckoutPathForComparison,
 } from "../../scripts/dependency-workflow.mjs";
 
 describe("dependency workflow preflight", () => {
@@ -68,6 +69,15 @@ describe("dependency workflow preflight", () => {
 		} finally {
 			await rm(otherCheckout, { recursive: true, force: true });
 		}
+	});
+
+	it("treats Windows case and extended-length namespace aliases as one checkout", () => {
+		expect(normalizeCheckoutPathForComparison("\\\\?\\C:\\Work\\Quarterdeck", "win32")).toBe(
+			normalizeCheckoutPathForComparison("c:\\work\\quarterdeck", "win32"),
+		);
+		expect(normalizeCheckoutPathForComparison("\\\\?\\UNC\\Server\\Share\\Repo", "win32")).toBe(
+			normalizeCheckoutPathForComparison("\\\\server\\share\\repo", "win32"),
+		);
 	});
 
 	it("migrates the legacy browser cache before replacing either dependency tree", async () => {

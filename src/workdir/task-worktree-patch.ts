@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { getRuntimeHomePath } from "../state/project-state";
-import { getGitStdout, runGit } from "./git-utils";
+import { getGitStdout, runGit, splitNullSeparatedGitOutput } from "./git-utils";
 import { normalizeTaskIdForWorktreePath } from "./task-worktree-path";
 
 const QUARTERDECK_TRASHED_TASK_PATCHES_DIR_NAME = "trashed-task-patches";
@@ -70,10 +70,7 @@ async function listUntrackedPaths(worktreePath: string): Promise<string[]> {
 		trimStdout: false,
 		...USER_GIT_ACTION_OPTIONS,
 	});
-	return output
-		.split("\0")
-		.map((path) => path.trim())
-		.filter((path) => path.length > 0);
+	return splitNullSeparatedGitOutput(output);
 }
 
 export async function captureTaskPatch(options: {

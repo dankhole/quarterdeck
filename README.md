@@ -26,7 +26,7 @@ Quarterdeck detects installed agent CLIs from your `PATH`, starts a local runtim
 
 Quarterdeck is under active development. The main install path is currently from source with `npm run link`; the npm package is not the recommended path yet. Found a bug or have an idea? Open a [GitHub Issue](https://github.com/dankhole/quarterdeck/issues).
 
-Windows support is experimental and currently untested on native Windows. macOS and Linux receive the day-to-day testing. See the [Windows support audit](docs/windows-support-audit.md) for current limitations and tracked follow-ups.
+Windows support remains experimental, although the code-remediation audit is complete and native install, build, packaged/source CLI, ConPTY resize/reconnect/restore, Git/worktree fidelity, hook/status-line transport, exact process ownership, host launch, graceful shutdown, and diagnostic DACL coverage are now part of the required CI workflow. Promotion awaits that job on the committed revision plus the manual real-provider matrix; see the [Windows support audit](docs/windows-support-audit.md), [acceptance ledger](docs/windows-compatibility-todo.md), and [native validation guide](docs/windows-native-smoke.md).
 
 ## Requirements
 
@@ -170,7 +170,7 @@ If no agent is available, install Claude Code or OpenAI Codex and confirm the ma
 
 If terminal symbols look wrong, install a Nerd Font and select it in your browser or system terminal font settings.
 
-If an incident is difficult to explain, run `quarterdeck diagnostics doctor --request-browser` or `quarterdeck diagnostics capture --request-browser`. Quarterdeck automatically retains a small recent metadata-only history; you do not need to enable logging before the incident. Diagnostic bundles stay local under the Quarterdeck state directory and exclude prompts, terminal transcripts, files, diffs, environment values, and secrets by default. See [DEVELOPMENT.md](./DEVELOPMENT.md#unified-diagnostics) for filters, temporary deep recording, privacy limits, and isolated visual testing.
+If an incident is difficult to explain, run `quarterdeck diagnostics doctor --request-browser` or `quarterdeck diagnostics capture --request-browser`. Quarterdeck automatically retains a small recent metadata-only history; you do not need to enable logging before the incident. Diagnostic bundles stay local under the Quarterdeck state directory, use owner-only filesystem access including protected Windows ACLs, and exclude prompts, terminal transcripts, files, diffs, environment values, and secrets by default. See [DEVELOPMENT.md](./DEVELOPMENT.md#unified-diagnostics) for filters, temporary deep recording, privacy limits, and isolated visual testing.
 
 ## Documentation
 

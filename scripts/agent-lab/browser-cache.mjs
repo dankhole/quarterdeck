@@ -1,19 +1,36 @@
-import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
 import { cp, lstat, mkdir, readdir, rename, rm } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 
-function resolveGitCommonDirectory(repoRoot) {
+const MAX_GIT_POINTER_BYTES = 4 * 1024;
+
+function readBoundedGitPointer(path) {
 	try {
-		const output = execFileSync("git", ["rev-parse", "--git-common-dir"], {
-			cwd: repoRoot,
-			encoding: "utf8",
-			stdio: ["ignore", "pipe", "ignore"],
-		}).trim();
-		return output ? resolve(repoRoot, output) : null;
+		const fileStat = statSync(path);
+		if (!fileStat.isFile() || fileStat.size > MAX_GIT_POINTER_BYTES) return null;
+		return readFileSync(path, "utf8").split(/\r?\n/u, 1)[0] ?? null;
 	} catch {
 		return null;
 	}
+}
+
+/** Resolve Git's shared metadata root without launching an executable from the checkout cwd. */
+export function resolveGitCommonDirectory(repoRoot) {
+	const dotGitPath = join(repoRoot, ".git");
+	try {
+		if (statSync(dotGitPath).isDirectory()) return resolve(dotGitPath);
+	} catch {
+		return null;
+	}
+
+	const gitDirectoryPointer = readBoundedGitPointer(dotGitPath);
+	if (!gitDirectoryPointer?.startsWith("gitdir: ")) return null;
+	const gitDirectoryValue = gitDirectoryPointer.slice("gitdir: ".length);
+	if (!gitDirectoryValue) return null;
+	const gitDirectory = resolve(repoRoot, gitDirectoryValue);
+	const commonDirectoryValue = readBoundedGitPointer(join(gitDirectory, "commondir"));
+	return commonDirectoryValue ? resolve(gitDirectory, commonDirectoryValue) : gitDirectory;
 }
 
 /** Keep only Playwright's downloaded browser binaries in Git's shared common
@@ -24,8 +41,10 @@ export function getAgentLabBrowserCachePaths(
 	gitCommonDirectory = resolveGitCommonDirectory(repoRoot),
 ) {
 	const normalizedCommonDirectory = gitCommonDirectory ? resolve(repoRoot, gitCommonDirectory) : null;
+	const commonDirectoryName = normalizedCommonDirectory ? basename(normalizedCommonDirectory) : null;
 	const sharedRepoRoot =
-		normalizedCommonDirectory && basename(normalizedCommonDirectory) === ".git"
+		normalizedCommonDirectory &&
+		(process.platform === "win32" ? commonDirectoryName?.toLowerCase() === ".git" : commonDirectoryName === ".git")
 			? dirname(normalizedCommonDirectory)
 			: repoRoot;
 	const stableRoot = normalizedCommonDirectory ?? join(repoRoot, ".quarterdeck-cache");
@@ -108,6 +127,6 @@ export async function prepareAgentLabBrowserCache(
 			return { path: paths.stablePath, status: "ready" };
 		}
 	} finally {
-		await rm(stagingPath, { recursive: true, force: true });
+		await rm(stagingPath, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 	}
 }

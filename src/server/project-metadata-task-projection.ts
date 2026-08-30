@@ -1,3 +1,4 @@
+import { areFileSystemPathsEqual } from "../core/path-comparison.js";
 import { type BaseRefWorktreeMetadata, loadBaseRefWorktreeMetadata } from "./project-metadata-base-ref";
 import { type CachedPathWorktreeMetadata, loadPathWorktreeMetadata } from "./project-metadata-path-loader";
 import {
@@ -19,7 +20,11 @@ function derivePathMetadataFromTask(
 	pathInfo: ResolvedTaskWorktreePath,
 	current: CachedTaskWorktreeMetadata | null,
 ): CachedPathWorktreeMetadata | null {
-	if (!current || current.data.path !== pathInfo.path || current.data.exists !== pathInfo.exists) {
+	if (
+		!current ||
+		!areFileSystemPathsEqual(current.data.path, pathInfo.path) ||
+		current.data.exists !== pathInfo.exists
+	) {
 		return null;
 	}
 	return {
@@ -50,7 +55,7 @@ function canReuseTaskMetadata(
 	return (
 		current !== null &&
 		current.data.taskId === task.taskId &&
-		current.data.path === pathInfo.path &&
+		areFileSystemPathsEqual(current.data.path, pathInfo.path) &&
 		current.data.exists === pathMetadata.exists &&
 		current.data.baseRef === pathInfo.baseRef &&
 		current.stateToken === pathMetadata.stateToken &&
@@ -113,7 +118,7 @@ function selectCurrentBaseRefMetadataInput(
 		if (
 			input.pathInfo.baseRef === baseRef &&
 			input.current &&
-			input.current.data.path === input.pathInfo.path &&
+			areFileSystemPathsEqual(input.current.data.path, input.pathInfo.path) &&
 			input.current.data.baseRef === baseRef &&
 			input.current.stateToken === pathMetadata.stateToken
 		) {
@@ -135,36 +140,42 @@ async function loadTaskWorktreeMetadataForResolvedPath(
 	}
 	const pathMetadata = await loadPathWorktreeMetadata(pathInfo, selectCurrentPathMetadata(inputs));
 	if (pathMetadata.probeFailed) {
-		return inputs.map((input) => ({
-			taskId: input.task.taskId,
-			metadata:
-				input.current ??
-				projectTaskWorktreeMetadata({
-					task: input.task,
-					pathInfo: input.pathInfo,
-					pathMetadata: {
-						...pathMetadata,
-						path: input.pathInfo.path,
-						normalizedPath: input.pathInfo.normalizedPath,
-						branch: null,
-						isDetached: false,
-						headCommit: null,
-						changedFiles: null,
-						additions: null,
-						deletions: null,
-						conflictState: null,
-						stateToken: null,
-						lastKnownBranch: null,
-					},
-					baseRefMetadata: {
-						baseRefCommit: null,
-						originBaseRefCommit: null,
-						hasUnmergedChanges: null,
-						behindBaseCount: null,
-					},
-					current: input.current,
-				}),
-		}));
+		return inputs.map((input) => {
+			const reusableCurrent =
+				input.current && areFileSystemPathsEqual(input.current.data.path, input.pathInfo.path)
+					? input.current
+					: null;
+			return {
+				taskId: input.task.taskId,
+				metadata:
+					reusableCurrent ??
+					projectTaskWorktreeMetadata({
+						task: input.task,
+						pathInfo: input.pathInfo,
+						pathMetadata: {
+							...pathMetadata,
+							path: input.pathInfo.path,
+							normalizedPath: input.pathInfo.normalizedPath,
+							branch: null,
+							isDetached: false,
+							headCommit: null,
+							changedFiles: null,
+							additions: null,
+							deletions: null,
+							conflictState: null,
+							stateToken: null,
+							lastKnownBranch: null,
+						},
+						baseRefMetadata: {
+							baseRefCommit: null,
+							originBaseRefCommit: null,
+							hasUnmergedChanges: null,
+							behindBaseCount: null,
+						},
+						current: reusableCurrent,
+					}),
+			};
+		});
 	}
 	const baseRefMetadataByRef = new Map<string, BaseRefWorktreeMetadata>();
 	const results: LoadedTaskWorktreeMetadata[] = [];
