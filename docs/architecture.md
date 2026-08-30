@@ -132,7 +132,7 @@ These terms come up everywhere in the codebase.
 | Worktree | a per-task git worktree | most task agents run inside one |
 | Task session | the live runtime attached to a task card | normally a PTY process; an exact Codex/Claude session may have one exclusive structured owner |
 | Shell session | a project-scoped manual terminal | shell sessions reuse terminal plumbing but have different lifecycle rules from task agents |
-| Runtime summary | the small state object the board uses to know whether a session is idle, running, awaiting review, interrupted, or failed | this is the bridge between long-running agent work and the UI |
+| Runtime summary | the small state object whose canonical state is idle, running, or awaiting review, with review reason and interaction detail distinguishing completion, interruption, error, and input waits | this is the bridge between long-running agent work and the UI |
 
 ## Who Owns What
 
@@ -175,7 +175,7 @@ The `src/terminal/` area owns everything process-oriented:
 - handling project shell terminals
 - reconciling stale/dead/processless sessions
 
-This is the supported path for Claude Code and Codex. The repository still loads a legacy experimental Pi integration, but new architecture and compatibility work does not target it.
+This is the supported path for Claude Code, Codex, and the exact validated Pi release. All three use the same maintained task-agent ownership boundaries, while their adapters and provider-specific lifecycle evidence remain separate. Only exact Claude Code and Codex sessions currently support transfer from the native PTY to an internal structured owner; Pi remains native-TUI-owned.
 
 `session-manager.ts` is the public terminal-service facade, but much of the behavior is split into focused modules:
 
@@ -251,7 +251,10 @@ Different state lives in different places on purpose.
 | project shortcuts, default base ref, pinned branches | project config under the project state directory | these are project-scoped preferences |
 | board columns and cards | project `board.json`, written by the runtime command authority | the board is durable product state shared by all runtime callers |
 | task runtime summaries | terminal runtime memory plus project `sessions.json` | runtime session truth is server-owned |
+| lifecycle command receipts | project `lifecycle-operations.json` | retries and recovery must not duplicate managed task effects |
+| structured execution ownership | project `execution-ownership.json` | exact Claude/Codex owner generation, handoff, and interaction receipts survive restart |
 | git metadata | streamed project metadata | it is refreshed by runtime policy instead of browser polling |
+| runtime diagnostics | state-home `diagnostics/` instances and bundles | recorder journals and captures remain private and separate from product state |
 
 ### State directory layout
 
@@ -263,6 +266,8 @@ Persistent runtime state lives under `~/.quarterdeck/` in the user's home direct
 ├── worktrees/                           # task worktree checkouts
 │   └── <task-id>/
 │       └── <repo-name>/                 # isolated git worktree for the task
+├── diagnostics/                         # private runtime journals, descriptors, and bundles
+├── managed-processes/                   # protected exact process-ownership records
 ├── trashed-task-patches/                # saved patches from deleted tasks
 └── projects/                            # per-project persistent state
     ├── index.json                       # maps project ids to repo paths
@@ -271,6 +276,8 @@ Persistent runtime state lives under `~/.quarterdeck/` in the user's home direct
         ├── config.json                  # project shortcuts and defaults
         ├── pinned-branches.json         # optional pinned branch order
         ├── sessions.json                # session summaries (PIDs, state, timestamps)
+        ├── lifecycle-operations.json    # managed lifecycle operation receipts
+        ├── execution-ownership.json     # structured-owner handoff and interaction state
         └── meta.json                    # revision counter and last-updated timestamp
 ```
 

@@ -64,10 +64,10 @@ Given the input tag, the workflow:
 5. Verifies `tag == v${package.json version}`.
 6. Runs `npm run prepublishOnly`.
    - This runs build + checks before publish.
-7. Publishes with:
+7. Publishes with the command below. Provenance remains enabled by `publishConfig.provenance` in `package.json`.
 
 ```bash
-npm publish --provenance --access public
+npm publish --access public
 ```
 
 8. Extracts the matching version section from `CHANGELOG.md`.

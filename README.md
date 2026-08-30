@@ -166,7 +166,7 @@ For the full development workflow, see [DEVELOPMENT.md](./DEVELOPMENT.md).
 
 If `quarterdeck` is not found, run `npm run link` from the Quarterdeck checkout and make sure your npm global bin directory is on `PATH`.
 
-If no agent is available, install Claude Code or OpenAI Codex and confirm the matching binary (`claude` or `codex`) is available on `PATH`. Quarterdeck currently requires Claude Code 2.1.198+ or Codex 0.147.0+ for supported task-agent launches.
+If no agent is available, install Claude Code, OpenAI Codex, or Pi and confirm the matching binary (`claude`, `codex`, or `pi`) is available on `PATH`. Quarterdeck requires Claude Code 2.1.198+, Codex 0.147.0+, or exactly Pi 0.84.3 for supported task-agent launches.
 
 If terminal symbols look wrong, install a Nerd Font and select it in your browser or system terminal font settings.
 

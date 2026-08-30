@@ -4,13 +4,15 @@ Quarterdeck forked from [cline/kanban](https://github.com/cline/kanban) at commi
 
 This is a living document. Each upstream review updates the sections below rather than creating a new file. See [`maintenance.md`](./maintenance.md) for the review workflow.
 
-**Last checked:** 2026-08-06 — upstream commit `87cfd6420` (20 commits reviewed since `e8976aeef`; 88 since `2c68b039`)
+**Last checked:** 2026-08-30 — upstream commit `14e371ffc` (one commit reviewed since `87cfd6420`; 89 since `2c68b039`)
 
 ---
 
 ## Latest Review Summary
 
-The 2026-08-06 review covered upstream `ba2308d67` through `87cfd6420`. Most new commits were release notes, Cline SDK/model work, desktop packaging, or product-direction changes. Reimplemented from that review:
+The 2026-08-30 review covered upstream `14e371ffc`, a dependency-only security remediation for `undici`, `ws`, and related lockfile updates. Quarterdeck manages those dependencies and security updates independently, so there was no portable product or architecture change to adopt.
+
+The previous 2026-08-06 review covered upstream `ba2308d67` through `87cfd6420`. Most new commits were release notes, Cline SDK/model work, desktop packaging, or product-direction changes. Reimplemented from that review:
 
 - Codex global flag/config ordering before `resume`/`fork`, adapted from the `00598a369` hook-config placement fix.
 - Codex hook trust pre-seeding, adapted from `7cb95e1ae` after validating the current `hooks.state` key/hash schema against Codex CLI `0.146.1`.

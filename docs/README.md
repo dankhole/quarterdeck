@@ -33,7 +33,7 @@ Use this map when you are planning or evaluating refactor work.
 
 - Start here for current refactor status: [`todo.md`](./todo.md).
 - [`todo.md`](./todo.md): active engineering backlog, including currently tracked refactor work.
-- [`pi-first-class-support-plan.md`](./pi-first-class-support-plan.md): implemented Pi compatibility contract and release gates.
+- [`pi-first-class-support-plan.md`](./pi-first-class-support-plan.md): current Pi compatibility, lifecycle, recovery, platform, and version-advance contract.
 - [`claude-terminal-rendering-plan.md`](./claude-terminal-rendering-plan.md): completed Claude fullscreen design, dogfood evidence, and default-on rollout decision with a classic-renderer escape hatch.
 - [`lsp-code-navigation-plan.md`](./lsp-code-navigation-plan.md): plan for bring-your-own language server code navigation in the Files editor.
 
@@ -67,6 +67,7 @@ Use this map when you are planning or evaluating refactor work.
 - [`implementation-log.md`](./implementation-log.md): current detailed implementation history.
 - [`history/`](./history): frozen historical records — version-scoped implementation logs and changelogs from earlier milestones.
 - [`history/agent-diagnostics-plan.md`](./history/agent-diagnostics-plan.md): exhaustive completed diagnostics implementation plan and migration decisions.
+- [`history/pi-first-class-support-plan.md`](./history/pi-first-class-support-plan.md): completed Pi first-class support implementation plan and acceptance design.
 - [`history/task-state-system-stale.md`](./history/task-state-system-stale.md): superseded task/session state explanation, retained only for forensic context.
 
 `docs/archive/` contains imported legacy planning and research material that predates the current documentation map. Treat it as frozen forensic context and do not route normal work there. New superseded records belong in `docs/history/`; migrate legacy archive material only when a focused cleanup can preserve its links and provenance.

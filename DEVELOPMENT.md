@@ -54,7 +54,7 @@ Browser UI (React + Vite, port 4173)
 Runtime server (Node.js, port 3500)
   | spawns PTY sessions
   v
-Agent processes (Claude, Codex, shell)
+Agent processes (Claude, Codex, Pi, shell)
   | emit hook events / terminal output
   v
 Quarterdeck task and review state
@@ -310,6 +310,10 @@ Current agent mappings:
   - prompt submission, tool completion, and manual compaction start emit `to_in_progress`
   - native permission requests, manual compaction completion, and root `Stop` emit `to_review`
   - session identity and tool starts emit metadata-only `activity`; a narrow rendered-screen detector covers nested approval overlays that do not produce the native permission hook
+- Pi
+  - input receipt, agent start, and approval resolution emit `to_in_progress`
+  - project-trust requests, tool-approval requests, denied trust, and `agent_settled` emit `to_review`
+  - session identity, `agent_end`, and tool execution emit metadata-only `activity`; only `agent_settled` is a completion boundary
 
 Important behavior details:
 

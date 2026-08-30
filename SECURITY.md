@@ -17,7 +17,7 @@ You should expect an initial response within a few business days. Coordinated di
 
 ## Supported versions
 
-Quarterdeck is pre-1.0 and under active development. Only the latest published release on npm receives security fixes. Older versions will not be patched; upgrade to the latest release instead.
+Quarterdeck is pre-1.0 and under active development. Before the first real npm release, no npm version should be treated as supported; use the latest source revision from this repository. After npm publishing begins, only the latest published release will receive security fixes, and older versions will not be patched.
 
 ## Scope
 
@@ -29,5 +29,5 @@ In scope:
 
 Out of scope:
 
-- Vulnerabilities in third-party agent CLIs (`claude`, `codex`, or the legacy experimental `pi` integration). Report those to the respective upstream projects.
+- Vulnerabilities in third-party agent CLIs (`claude`, `codex`, or `pi`). Report those to the respective upstream projects.
 - Issues that require already having local code execution on the machine running Quarterdeck, since the runtime is intended to be run locally by the user who owns the repository.

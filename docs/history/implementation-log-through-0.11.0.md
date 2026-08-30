@@ -141,7 +141,7 @@ Extended the earlier config-fixture cleanup into the broader task/session test f
   - [`web-ui/src/hooks/project/project-sync.test.ts`](../../web-ui/src/hooks/project/project-sync.test.ts)
   - [`web-ui/src/hooks/project/use-project-sync.test.tsx`](../../web-ui/src/hooks/project/use-project-sync.test.tsx)
   - [`web-ui/src/hooks/notifications/project-notifications.test.ts`](../../web-ui/src/hooks/notifications/project-notifications.test.ts)
-  - [`web-ui/src/hooks/board/session-column-sync.test.ts`](../../web-ui/src/hooks/board/session-column-sync.test.ts)
+  - `web-ui/src/hooks/board/session-column-sync.test.ts` (later removed with the obsolete session-column synchronizer)
   - [`web-ui/src/hooks/terminal/use-terminal-panels.test.tsx`](../../web-ui/src/hooks/terminal/use-terminal-panels.test.tsx)
   - [`web-ui/src/components/board/board-card.test.tsx`](../../web-ui/src/components/board/board-card.test.tsx)
 - Removed the active `docs/todo.md` task-maintenance item because the shared helper layer this backlog item called for now exists in both environments. Some tests still keep small local wrapper helpers, but those wrappers now sit on top of the shared factories instead of re-declaring the full session shape.
