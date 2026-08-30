@@ -1,7 +1,7 @@
 import { win32 } from "node:path";
 
 const WINDOWS_POWERSHELL_RELATIVE_PATH = ["System32", "WindowsPowerShell", "v1.0", "powershell.exe"];
-const DEFAULT_WINDOWS_PATH_EXTENSIONS = [".COM", ".EXE", ".BAT", ".CMD"];
+const DEFAULT_WINDOWS_PATH_EXTENSIONS = [".com", ".exe", ".bat", ".cmd"];
 
 // `process.env` is case-insensitive on Windows, but copied environment objects
 // are ordinary JavaScript records and need that behavior reproduced explicitly.
@@ -36,7 +36,7 @@ export function getWindowsPathExtensions(env: NodeJS.ProcessEnv): string[] {
 		?.split(";")
 		.map((extension) => extension.trim())
 		.filter(Boolean)
-		.map((extension) => (extension.startsWith(".") ? extension : `.${extension}`));
+		.map((extension) => (extension.startsWith(".") ? extension : `.${extension}`).toLowerCase());
 	return configured && configured.length > 0 ? configured : DEFAULT_WINDOWS_PATH_EXTENSIONS;
 }
 
