@@ -86,11 +86,15 @@ async function runCliCommandAndCollectOutput(options: {
 	childProcess.stderr?.on("data", (chunk: Buffer) => {
 		stderr += chunk.toString();
 	});
+	const closed = new Promise<void>((resolveClose) => {
+		childProcess.once("close", () => resolveClose());
+	});
 
 	const didExit = await waitForExit(childProcess, options.timeoutMs ?? 8_000);
 	if (!didExit) {
 		childProcess.kill("SIGKILL");
 	}
+	await closed;
 
 	return {
 		stdout,
