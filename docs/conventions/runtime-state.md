@@ -7,7 +7,7 @@ The browser is an optimistic client. The runtime owns durable board state, sessi
 ## Durable board authority
 
 - `ProjectBoardCommandService` is the only production authority that writes durable board state. Browser clients are optimistic views: `setBoard` derives and submits ordinary typed command batches, while lifecycle gestures use the explicitly presentation-only `presentLifecycleBoard` plus `ProjectTaskLifecycleService.execute(...)`.
-- `setBoard` must reject lifecycle-managed commands instead of displaying an optimistic transition it will not submit. Future remote or mobile services call the command or lifecycle service with typed intent; they never accept `BoardData`, reuse `setBoard`, reuse the presentation adapter, expose a whole-board save route, or let a browser payload replace `board.json`.
+- `setBoard` must reject lifecycle-managed commands instead of displaying an optimistic transition it will not submit. Non-browser callers use the command or lifecycle service with typed intent; they never accept `BoardData`, reuse `setBoard`, reuse the presentation adapter, expose a whole-board save route, or let a client payload replace `board.json`.
 - Runtime session truth comes from the server-owned terminal/session store, never browser payloads or cached board restore data. Low-level `saveProjectState` remains for migrations, isolated tests, and controlled maintenance only. Tests that seed state directly must target the isolated runtime state root through `QUARTERDECK_STATE_HOME`, not a browser API.
 
 ## Command receipts and lifecycle effects
@@ -103,7 +103,6 @@ Task identity has three distinct path concepts:
 
 - [Testing strategy](../testing.md)
 - [Architecture overview](../architecture.md)
-- [Task lifecycle reliability plan](../task-lifecycle-reliability-plan.md)
 - [Session and terminal lifecycle](./session-lifecycle.md)
 - [Architecture guardrails](./architecture-guardrails.md)
 

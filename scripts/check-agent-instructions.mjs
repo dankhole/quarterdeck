@@ -8,7 +8,6 @@ const repoRoot = path.resolve(scriptDir, "..");
 const agentsPath = path.join(repoRoot, "AGENTS.md");
 const claudePath = path.join(repoRoot, "CLAUDE.md");
 const testingPath = path.join(repoRoot, "docs", "testing.md");
-const structuredExecutionPath = path.join(repoRoot, "docs", "conventions", "structured-execution.md");
 
 const agents = readFileSync(agentsPath, "utf8");
 const claude = readFileSync(claudePath, "utf8");
@@ -34,10 +33,6 @@ if (!agents.includes("docs/testing.md")) {
 
 if (!existsSync(testingPath)) {
 	errors.push("docs/testing.md must exist as the canonical validation-selection guide.");
-}
-
-if (!agents.includes("docs/conventions/structured-execution.md") || !existsSync(structuredExecutionPath)) {
-	errors.push("AGENTS.md must route structured execution to its stable convention document.");
 }
 
 if (!claude.startsWith("# Claude Code Compatibility Shim")) {

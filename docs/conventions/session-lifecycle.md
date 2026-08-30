@@ -95,7 +95,6 @@ Terminal restore readiness is not browser presentation readiness. Do not clear l
 - Agent session-identity hooks are metadata-only. Persist `resumeSessionId` from Codex `session_meta` and Claude `SessionStart` without clobbering `latestHookActivity` or changing state twice.
 - Raw native hooks enter through `hooks.ingest`, provider-specific delivery ordering, `TerminalSessionManager.applyProviderHook(...)`, the transition controller, and the pure reducer. Deduplicate delivery IDs; fence session instances; retain Codex turn/tool ordering and Claude prompt/tool ordering separately; and fail closed on missing or ambiguous correlation. Reliable ingest acknowledges only after the semantic mutation plus its bounded content-free ordering receipt are durable. Hydration rebuilds the provider-specific ordering guard from those receipts before replaying the outbox; it must not replace an unreadable session store with empty state.
 - Provider-neutral high-level input carries explicit submit intent into `TerminalSessionManager.writeInput(...)` for byte handling and ordering. When a durable interaction is genuinely `waiting`, a successfully written submit, Ctrl-C, or bare Escape changes only the nested status to `response_submitted`; the top-level task remains Review and stops advertising Needs Input. `UserPromptSubmit`, an exactly matched `PostToolUse`/`PostToolUseFailure`/`ElicitationResult`, or a later identity-bearing `PreToolUse` establishes resumed work. A current root `Stop` establishes Review even when the retired wait lacks exact interaction identity. A demonstrably newer foreground turn/prompt may supersede an obsolete wait, but same-turn parallel activity, a different tool's delayed completion, generic activity, notifications, and background-agent hooks are not proof of resumed work.
-- Generic task-session input is a local PTY capability and is not part of the future Remote Companion gateway contract.
 - Interrupt recovery and an explicit PTY stop can both surface as `awaiting_review/interrupted`, but they are not the same process state. A pending bare Ctrl-C/Escape recovery signal owns an immediate PTY exit even when the process reports code 0; persist Interrupted and suppress auto-restart instead of inferring completion from the exit code. Only an accepted current provider hook carrying that exact PTY's `sessionInstanceId` and a delivery time after the latest interrupt, while `PtySession.wasInterrupted()` is false, may advance or complete the review. Either proof cancels the interrupt timer and clears its one-shot auto-restart suppression. Once an explicit stop marks the PTY interrupted, reject further input and provider evidence until a replacement session starts.
 
 ### Claude hooks
@@ -145,7 +144,6 @@ On headless remote Linux, native pickers such as `zenity` or `kdialog` may be un
 
 - [Testing strategy](../testing.md)
 - [Runtime state and board ownership](./runtime-state.md)
-- [Task lifecycle reliability plan](../task-lifecycle-reliability-plan.md)
 - [Agent functional testing](../agent-functional-testing.md)
 - [Unified diagnostics contract](../diagnostics.md)
 

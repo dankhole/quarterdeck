@@ -25,7 +25,6 @@ import {
 	loadProjectBoardSnapshotById,
 	loadProjectContext,
 	loadProjectState,
-	loadProjectStateById,
 	type RuntimeProjectIndexEntry,
 	removeProjectIndexEntry,
 	removeProjectStateFiles,
@@ -166,7 +165,6 @@ export interface ProjectRegistry
 	releaseDeferredStartupRecoveries: (
 		pendingTasks: ReadonlyArray<{ projectId: string; taskId: string }>,
 	) => Promise<number>;
-	resolveTaskSessionSummary: (projectId: string, taskId: string) => Promise<RuntimeTaskSessionSummary | null>;
 	stopMaintenance: () => void;
 	listManagedProjects: () => Array<{
 		projectId: string;
@@ -344,22 +342,6 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			);
 			return false;
 		}
-	};
-
-	const resolveTaskSessionSummary = async (
-		projectId: string,
-		taskId: string,
-	): Promise<RuntimeTaskSessionSummary | null> => {
-		const manager = terminalManagersByProjectId.get(projectId);
-		if (manager) {
-			return manager.store.getSummary(taskId);
-		}
-		const pendingManager = terminalManagerLoadPromises.get(projectId);
-		if (pendingManager) {
-			return (await pendingManager).store.getSummary(taskId);
-		}
-		const state = await loadProjectStateById(projectId);
-		return state?.sessions[taskId] ?? null;
 	};
 
 	const loadScopedRuntimeConfig = async (scope: ProjectRegistryScope): Promise<RuntimeConfigState> => {
@@ -939,7 +921,6 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		initializeIndexedProjectsForStartup,
 		resumeInterruptedSessions,
 		releaseDeferredStartupRecoveries,
-		resolveTaskSessionSummary,
 		stopMaintenance: () => {
 			disposeDiagnosticProvider?.();
 			disposeProjectStateDiagnosticProvider?.();

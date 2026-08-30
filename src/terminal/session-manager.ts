@@ -361,7 +361,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			options,
 		);
 		// Recovery ownership changes only after the live PTY accepted the write.
-		// A stale browser or future remote client cannot cancel recovery merely by
+		// A stale or non-browser client cannot cancel recovery merely by
 		// addressing a processless or explicitly stopping task.
 		entry.pendingStartupRecoveryToken = null;
 		this.clearStartupRecoveryRequirement(taskId);

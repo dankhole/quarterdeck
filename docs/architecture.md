@@ -248,7 +248,7 @@ Different state lives in different places on purpose.
 | --- | --- | --- |
 | selected agent, global prompt shortcuts, Quarterdeck prompt templates | global runtime config | these are cross-project Quarterdeck preferences |
 | project shortcuts, default base ref, pinned branches | project config under the project state directory | these are project-scoped preferences |
-| board columns and cards | project `board.json`, written by the runtime command authority | the board is durable product state shared by local and future remote clients |
+| board columns and cards | project `board.json`, written by the runtime command authority | the board is durable product state shared by all runtime callers |
 | task runtime summaries | terminal runtime memory plus project `sessions.json` | runtime session truth is server-owned |
 | git metadata | streamed project metadata | it is refreshed by runtime policy instead of browser polling |
 

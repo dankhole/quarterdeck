@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Chore: remove canceled Remote Companion work
+
+- Removed the unused bounded provider-history reader, its hook hint capture, fixtures, and tests from the runtime.
+- Removed the canceled product's active plans, backlog entry, instruction routing, and forward-looking mobile/structured-execution documentation. The deleted design and evidence documents were preserved in the maintainer's ignored `docs/archive` tree; feature branches were left intact.
+
 ### Feature: add Codex dangerously bypass approvals and sandbox mode
 
 - Codex launch permissions now include an explicit “Dangerously bypass approvals and sandbox” mode for new and restarted sessions. It uses `--dangerously-bypass-approvals-and-sandbox`, removes conflicting Ask/Auto Review overrides, and warns in Settings that commands run without confirmation prompts or Codex sandboxing.
@@ -17,7 +22,6 @@
 - Native task launch, resume, startup-recovery, and hook-ingest logs now retain useful state/count/presence metadata without recording prompts, prepared CLI arguments, filesystem paths, provider session/turn/tool identities, binaries, or raw thrown messages.
 - State snapshots now back up and restore the durable task-lifecycle operation journal. Restoring an older snapshot that predates that journal removes any newer journal instead of retaining future command receipts beside rolled-back board and session state.
 - Atomic writes that request a restrictive POSIX mode now apply it when the temporary file is created, closing the pre-rename and pre-`chmod` permission window for private hook-delivery and state files.
-- These are native/P2 foundation fixes only; no structured execution owner, remote transport, authentication flow, or mobile capability was added.
 
 ### Feature: make Pi tool approvals configurable
 
@@ -33,7 +37,6 @@
 - A targeted Pi replacement that launches and then exits before producing interactive-session evidence now reports the typed stored-session recovery error instead of being flattened into a generic Interrupted result. Agent Lab covers queued follow-up input, stale completed runs, one-shot resume failure, explicit fallback restart, approval denial, and the full trash/restore/delete lifecycle.
 - Pi's launch-fenced lifecycle transitions now use the durable replay outbox during runtime outages, and read-only approval bypasses require Pi to identify the active tool as the genuine built-in rather than an extension override with the same name.
 - Queued Pi hooks freeze their run/session identity before durable delivery; crash replacement strips the prior prompt and images; every exact targeted resume rejects and stops a mismatched provider session; accepted project trust remains quiet until work starts; and Doctor reports Pi installation failures only when a Pi task makes them relevant.
-- Pi remains desktop-only. Provider-history reads, mobile/Remote Companion surfaces, and structured remote Pi execution are explicitly deferred.
 
 ### Fix: make every native Running claim proof-backed and bounded
 
@@ -127,18 +130,6 @@
 - Graceful lab restarts exercise real shutdown persistence without scanning unrelated host agent processes; runtime-generation logs remain separate in canonical evidence.
 - Ambiguous legacy interrupted sessions now remain semantically neutral during chat restoration and surface an explicit warning instead of being guessed as Running, Review, or Needs Input.
 
-### Feature: add bounded recent-conversation reads
-
-- The runtime now owns one provider-neutral, read-only recent-conversation boundary for exact stored Claude Code and Codex sessions, returning 10 meaningful user/assistant messages by default and at most 24 with explicit older-history, compaction, truncation, and degradation signals.
-- Provider history discovery is server-owned and bounded: canonical sources must remain beneath configured Claude/Codex history roots, exact session identity is verified, symlink and traversal escapes are rejected, and malformed, missing, pruned, oversized, or drifting history cannot affect board, lifecycle, hook, terminal, worktree, or provider state.
-- Native message IDs are preserved through opaque deterministic hashes, with provider/session/source-coordinate fallbacks when native IDs are absent, so rereads, appends, reconnects, and service reconstruction do not renumber existing entries.
-- Provider history is reconstructed logically before projection: Claude reads follow the active `parentUuid` chain, Codex reads apply persisted rollback markers, and unreadable or oversized records form explicit history barriers instead of allowing pre-compaction text to leak into the recent suffix.
-- Tail reconstruction stops after proving the requested number of unique safe messages plus one genuinely older message, so ordinary long histories do not scan to the beginning merely to set `hasOlder`; duplicate native IDs do not satisfy the bound, while Claude lineage cycles and Codex rollback underflow remain fail-closed.
-- Indexed projects can resolve persisted provider session identity without browser selection or terminal-manager hydration, keeping the internal read boundary usable for cold and inactive projects.
-- Tool calls/results, reasoning, system/developer content, commands, terminal data, paths, provider records, and Pi are excluded. This adds no remote listener, authentication, pairing flow, mobile renderer, or desktop behavior change.
-- Authenticated ownership-handoff fixtures now cover Claude Agent SDK and paginated Codex histories: Claude interruption becomes a typed boundary, Codex repository/environment context is excluded, unknown duplicate same-turn records fail closed, and unsupported history modes or declared versions return no conversation content.
-- The Codex `0.149.1` post-compaction variant is fixture-covered: a top-level compaction remains a hard history barrier, the paired single-block environment wrapper is excluded, only the safe newer suffix is returned, and unpaired wrappers still fail closed.
-
 ### Fix: align project pills with board and notification truth
 
 - Project navigation treats Review and Needs Input as exclusive attention categories while leaving blocked cards physically in the Review column, so three Review cards with one blocked task render as `R 2 · NI 1` and a single blocked card renders only `NI 1`.
@@ -150,11 +141,11 @@
 - Bounded startup recovery restores completed review chats without relabeling them as waiting for input, and a failed chat restoration leaves completed work in Review with an explicit warning instead of fabricating task failure.
 - Recovery eligibility is durable across repeated runtime restarts, shutdown persistence uses stable project identity, and cold-start coverage now includes the Running/Review/Needs Input/Error matrix plus project-pill and notification expectations.
 
-### Fix: harden remote-preparation command ownership
+### Fix: harden board-command ownership
 
 - Automatic title generation now consumes one board-writer post-commit effect regardless of whether a task came from the browser or lifecycle service, eliminating entry-point-specific triggers; delayed title writes also match the task's creation identity before changing it.
 - Removed the lifecycle service's obsolete compatibility execution path and its separate replay/error behavior, leaving the typed `execute(...)` contract as the only production lifecycle entry point.
-- Desktop lifecycle gestures now use an explicitly presentation-only update paired with the runtime lifecycle service, while ordinary `setBoard` changes reject lifecycle commands instead of silently displaying a transition they will not persist. Future remote clients are documented to submit typed server commands directly.
+- Desktop lifecycle gestures now use an explicitly presentation-only update paired with the runtime lifecycle service, while ordinary `setBoard` changes reject lifecycle commands instead of silently displaying a transition they will not persist. Non-browser callers submit typed server commands directly.
 - Audible notification state now keys tasks by project and task identity, so equal board-local task IDs in different projects cannot suppress or overwrite each other's transitions.
 
 ### Chore: consolidate dependency upgrades

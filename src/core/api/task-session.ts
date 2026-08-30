@@ -117,7 +117,7 @@ export type RuntimeHookEvent = z.infer<typeof runtimeHookEventSchema>;
 /**
  * Content-free provider identity retained only to rebuild the native-hook
  * ordering guard after a runtime restart. This is not task meaning and must
- * never be interpreted by cards, notifications, or remote clients.
+ * never be interpreted by cards, notifications, or other consumers.
  */
 export const runtimeTaskProviderHookOrderObservationSchema = z.object({
 	event: runtimeHookEventSchema,

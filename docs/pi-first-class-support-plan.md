@@ -1,6 +1,6 @@
 # Pi First-Class Desktop Support Plan
 
-Status: implemented on 2026-08-26 for the macOS desktop target. Remote Companion, mobile UI, provider-history reads, and remote Pi execution remain explicitly deferred.
+Status: implemented on 2026-08-26 for the macOS desktop target.
 
 ## Implementation Outcome
 
@@ -10,11 +10,11 @@ The isolated acceptance runs created and persisted Pi tasks, exercised approval 
 
 The installed macOS Pi `0.84.3` CLI then loaded the production extension against a deterministic loopback model. Native runs verified project trust, tool approval and denial, stable run/tool/session identities, `agent_end` followed by `agent_settled`, exact `--session` recovery, and the expected effect or non-effect on a disposable file. A final user-authorized, no-tools authenticated provider smoke returned the exact expected token and settled through the same production extension. Credentials were neither copied nor inspected, sessions were isolated under a temporary directory, and no active Quarterdeck instance was used.
 
-Authenticated real-model dogfood remains a normal release-confidence activity, not permission to weaken the exact-version, project-trust, default approval, or no-replay boundaries. The explicit global tool-approval opt-out affects only new or restarted Pi tool calls; it does not bypass project trust or lifecycle ownership. Mobile and structured remote ownership remain a separate future decision.
+Authenticated real-model dogfood remains a normal release-confidence activity, not permission to weaken the exact-version, project-trust, default approval, or no-replay boundaries. The explicit global tool-approval opt-out affects only new or restarted Pi tool calls; it does not bypass project trust or lifecycle ownership.
 
 ## Decision Summary
 
-Quarterdeck will promote Pi from a legacy experimental integration to a supported desktop task agent before considering mobile support.
+Quarterdeck will promote Pi from a legacy experimental integration to a supported desktop task agent.
 
 The first supported version will be exactly Pi `0.84.3`, the latest release validated when this plan was written. Quarterdeck will not automatically accept whatever npm currently labels `latest`. A newly released Pi version remains unsupported until its lifecycle extension, session behavior, and smoke suite pass; the exact required version can then move deliberately.
 
@@ -27,8 +27,6 @@ Desktop first-class support means:
 - Pi project trust always fails closed. Effectful tool approvals default to a fail-closed Quarterdeck-owned policy and may be disabled only through the explicit global Settings control for new or restarted sessions.
 - Availability, lifecycle, recovery, interaction, diagnostics, and Agent Lab coverage meet the same release standard as the maintained agents.
 
-First-class desktop support does **not** require a mobile conversation renderer or a structured remote Pi owner. Those are a later phase and must not delay or reshape the native desktop integration.
-
 ## Why the Existing Integration Is Not First Class
 
 Pi remains in the broad runtime agent ID and has a native launch adapter, PATH/version detection, lifecycle-extension injection, exact `--session` resume support, a `--continue` fallback, orphan cleanup, and desktop display metadata.
@@ -40,9 +38,7 @@ The maintained product contracts deliberately exclude it:
 - The transition controller, provider ordering, reliable hook delivery, interaction pipeline, automatic restart, startup recovery, and terminal restore policies contain Claude/Codex-only gates.
 - The current Pi extension treats `agent_end` as completion even though modern Pi may retry, compact, or process queued input before `agent_settled`.
 - Pi has no Quarterdeck-supported project-trust and approval policy equivalent to the Codex integration.
-- Pi is excluded from provider-history and remote execution-ownership contracts.
-
-The first four gaps are desktop blockers. Provider-history and remote execution ownership are not desktop promotion blockers unless a desktop feature begins consuming those boundaries.
+These gaps are desktop blockers.
 
 ## Supported-Version Contract
 
@@ -218,53 +214,6 @@ Pi may be promoted to first-class desktop support only when:
 7. Unit, integration, Agent Lab, and native Pi `0.84.3` smoke suites pass.
 8. The Experimental label, legacy documentation, changelog, and compatibility statement are updated together.
 
-## Deferred Phase M: Mobile and Remote Companion
-
-Do not begin this phase until the desktop acceptance gate passes and Pi has been dogfooded as a supported native agent.
-
-### Bounded conversation history
-
-Add a read-only Pi provider adapter for the Remote Companion's existing bounded recent-conversation service:
-
-- Resolve the source by exact session-header ID and expected cwd beneath server-owned Pi history roots.
-- Reconstruct the active v3 JSONL branch and honor compaction/branch summaries.
-- Return bounded user/assistant text only; exclude thinking, tool inputs/results, hidden custom entries, and untrusted paths.
-- Fail closed on session mismatch, unsupported format, symlink escape, malformed data, partial tails, and version drift.
-
-Reference: [Pi session format](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/session-format.md).
-
-### Structured remote ownership
-
-After the Codex structured-owner work is integrated and reconciled, implement a provider-specific Pi RPC owner using the installed binary:
-
-```text
-native Pi TUI
-    -> durable pending handoff
-    -> stop and confirm loss of native write authority
-    -> pi --mode rpc --session <exact-id>
-    -> verify identity before accepting input
-    -> structured Pi owner
-    -> stop and hand back to the exact native session
-```
-
-The Pi owner must preserve the same single-writer, exact-session, generation-fencing, and no-prompt-replay invariants as Codex. A crash after input is accepted but before a settled outcome reports `turn_outcome_unknown`.
-
-Use the installed CLI's JSONL stdio RPC boundary initially. Do not depend on Pi's experimental network client/protocol until it has an explicit compatibility contract or Quarterdeck pins and fixture-gates the complete protocol tuple.
-
-Reference: [Pi RPC documentation](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/rpc.md).
-
-### Mobile remains out of desktop scope
-
-The following are not Pi desktop promotion requirements:
-
-- Mobile conversation UI or rendering.
-- Pairing, device authentication, relay, or remote listener changes.
-- Remote prompts, approvals, aborts, or task creation.
-- Pi conversation-history exposure through a browser or remote route.
-- Native/structured/native execution handoff.
-
-Desktop work may prepare provider-neutral seams, but it must not introduce remote exposure or make the native desktop lifecycle depend on future mobile infrastructure.
-
 ## Recommended Change Sequence
 
 Keep the work reviewable and avoid mixing security policy with presentation changes:
@@ -275,6 +224,4 @@ Keep the work reviewable and avoid mixing security policy with presentation chan
 4. Project trust and effectful-tool approval policy.
 5. Desktop UI, settings, diagnostics, Agent Lab, and native smoke coverage.
 6. Desktop promotion documentation and release changes.
-7. Only after desktop stability: Pi conversation history and structured RPC ownership for Remote Companion/mobile.
-
 Each phase must preserve the runtime-state and session-lifecycle ownership rules. Do not temporarily bypass managed lifecycle services, accept browser-supplied provider identity, infer work from PTY output, or add prompt replay as a recovery shortcut.

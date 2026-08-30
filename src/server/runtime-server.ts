@@ -4,12 +4,6 @@ import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { getAgentAvailability, SUPPORTED_PI_VERSION } from "../config";
-import {
-	type ConversationReadService,
-	ConversationSourceHintStore,
-	type ConversationTaskSessionResolver,
-	createConversationReadService,
-} from "../conversation/index.js";
 import type { IRuntimeHostIntegrations, RuntimeProjectStateResponse } from "../core";
 import {
 	buildQuarterdeckRuntimeUrl,
@@ -80,27 +74,7 @@ export interface CreateRuntimeServerDependencies {
 
 export interface RuntimeServer {
 	url: string;
-	/** Internal read-only boundary for later remote projection and task interaction composition. */
-	conversationReads: ConversationReadService;
 	close: () => Promise<void>;
-}
-
-export function createRuntimeConversationTaskSessionResolver(
-	projectRegistry: Pick<ProjectRegistry, "resolveTaskSessionSummary">,
-): ConversationTaskSessionResolver {
-	return {
-		resolveTaskSession: async (projectId, taskId) => {
-			const summary = await projectRegistry.resolveTaskSessionSummary(projectId, taskId);
-			return summary
-				? {
-						projectId,
-						taskId,
-						agentId: summary.agentId,
-						providerSessionId: summary.resumeSessionId ?? null,
-					}
-				: null;
-		},
-	};
 }
 
 function readProjectIdFromRequest(request: IncomingMessage, requestUrl: URL): string | null {
@@ -129,11 +103,6 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	const webUiDir = getWebUiDir();
 	const taskResourceOperations = new TaskResourceOperationCoordinator();
 	const automaticTitleGeneration = new AutomaticTitleGenerationCoordinator();
-	const conversationSourceHints = new ConversationSourceHintStore();
-	const conversationReads = createConversationReadService({
-		sessions: createRuntimeConversationTaskSessionResolver(deps.projectRegistry),
-		hints: conversationSourceHints,
-	});
 
 	try {
 		await readFile(join(webUiDir, "index.html"));
@@ -238,7 +207,6 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		config: deps.projectRegistry,
 		persistSessionState: deps.runtimeStateHub.persistRuntimeSessions,
 		diagnostics: deps.diagnostics,
-		conversationSourceHints,
 	});
 	const hookTransitionOutboxReplayer = createHookTransitionOutboxReplayer({
 		ingest: hooksApi.ingest,
@@ -459,7 +427,6 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	return {
 		url,
-		conversationReads,
 		close: async () => {
 			const closeErrors: unknown[] = [];
 			const runCloseStep = async (step: () => void | Promise<void>): Promise<void> => {

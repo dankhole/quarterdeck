@@ -1,4 +1,3 @@
-import type { ConversationSourceHintRecorder } from "../conversation/index.js";
 import type {
 	IProjectResolver,
 	IRuntimeConfigProvider,
@@ -111,7 +110,6 @@ export interface CreateHooksApiDependencies {
 	/** Resolves only after the latest session-store generation is durable. */
 	persistSessionState?: (projectId: string) => Promise<void>;
 	diagnostics?: RuntimeDiagnostics;
-	conversationSourceHints?: ConversationSourceHintRecorder;
 }
 
 export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcContext["hooksApi"] {
@@ -215,13 +213,6 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					log.warn("Hook ignored: startup resume opened an unexpected conversation", hookLogData);
 					return await completeHookIngest(false);
 				}
-				deps.conversationSourceHints?.recordClaudeHookHint({
-					projectId,
-					taskId,
-					expectedProviderSessionId: body.metadata?.sessionId ?? previousSummary.resumeSessionId ?? null,
-					metadata: body.metadata,
-				});
-
 				const transitionResult = manager.applyProviderHook(taskId, body);
 				if (!transitionResult) {
 					log.warn("Hook ingest failed: task disappeared before transition", hookLogData);

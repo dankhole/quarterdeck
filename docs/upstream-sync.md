@@ -75,7 +75,7 @@ Worth doing eventually. Ordered roughly by value.
 
 ### Kiro CLI agent support (`52d9d6cfd`)
 **Upstream:** Adds `kiro-cli chat` as a task agent with a Kiro-specific hook adapter and metadata normalizer.
-**Our current state:** Quarterdeck's supported desktop agents are Claude Code, Codex, and the exact validated Pi release. Pi remains excluded from mobile conversation history and structured remote execution ownership. Adding another supported task agent touches `runtimeAgentIdSchema`, the catalog, availability probing, launch adapters, hook metadata, settings/onboarding UI, diagnostics, and tests.
+**Our current state:** Quarterdeck's supported agents are Claude Code, Codex, and the exact validated Pi release. Adding another supported task agent touches `runtimeAgentIdSchema`, the catalog, availability probing, launch adapters, hook metadata, settings/onboarding UI, diagnostics, and tests.
 **Why it matters:** Kiro is a plausible additional agent in the same multi-agent architecture, but only if its hook/resume behavior is reliable enough for Quarterdeck's session-state invariants.
 **Action:** Reassess when there is actual Kiro user demand. Treat upstream as a reference for hook payload shape, not as portable code.
 
@@ -102,23 +102,6 @@ Worth doing eventually. Ordered roughly by value.
 **Our current state:** Quarterdeck has custom duplicate-signal suppression for `npx`/wrapper launches, stdin-parent-disconnect shutdown, and Windows signal filtering.
 **Why it matters:** More faithful signal semantics are useful for scripts and supervisors, but they overlap with Quarterdeck-specific shutdown behavior.
 **Action:** Revisit with focused tests for direct launch, `npx`/npm wrapper launch, parent-stdin close, and Windows before porting.
-
-### Mobile / responsive foundations (`ff0ff810`)
-**Upstream:** Comprehensive mobile view (+1155/-550 lines, 22 files) — hamburger menu, tab bar, slide-up sheets, scroll-snap columns. New `useIsMobile()` hook (768px breakpoint via `useMedia`).
-**What's portable:** The full layout is too entangled with Cline components, but several pieces are independently useful:
-- `useMedia` wrapper for `react-use.ts` barrel (4 lines)
-- `useIsMobile` hook (768px breakpoint, 7 lines)
-- Dialog touch-safety: `touch-none` on overlays, `overscroll-contain` on bodies
-- CSS responsive guards: `@media (hover: hover)` for hover states, Safari auto-zoom prevention (`font-size: 16px !important` on inputs), `scroll-snap-type: x mandatory` for board columns
-- Extracted `kb-dialog-content` CSS animation class (moves dialog animation from inline style to stylesheet)
-
-**Action:** Adopt the small utilities and CSS patterns first. Full mobile layout is a separate initiative.
-
-### HTTPS + passcode auth (`7d57f04c`)
-**Upstream:** `--https` and `--passcode` CLI flags for secure remote access (~1560 lines, 15 files). Generates self-signed TLS certs via new `passcode-manager.ts`, adds passcode auth gate in UI (`passcode-gate.tsx`), updates service worker for HTTPS.
-**Our current state:** Quarterdeck runs over SSH tunnels on headless instances. No native HTTPS or auth.
-**Why it matters:** Cleaner alternative to SSH tunnels for remote access. Important for eventual public release.
-**Action:** Evaluate when doing a security/remote-access milestone. Would need full reimplementation — `cli.ts`, `runtime-server.ts`, and `runtime-endpoint.ts` have all diverged heavily.
 
 ---
 

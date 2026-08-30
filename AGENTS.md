@@ -29,7 +29,7 @@ When changing the instruction bridge, run `npm run check:agent-instructions`. Do
 
 ### Supported agents
 
-Claude Code, Codex, and Pi are supported desktop task-agent targets. Pi support is pinned to the exact validated release declared in `src/config/agent-registry.ts`; do not accept newer Pi releases until their lifecycle, trust, interaction, and exact-resume contracts pass the compatibility suite. Pi mobile conversation history and structured remote execution remain out of scope unless the user explicitly requests that later phase.
+Claude Code, Codex, and Pi are supported desktop task-agent targets. Pi support is pinned to the exact validated release declared in `src/config/agent-registry.ts`; do not accept newer Pi releases until their lifecycle, trust, interaction, and exact-resume contracts pass the compatibility suite.
 
 ## Work-area routing
 
@@ -42,7 +42,6 @@ Read the referenced document before editing the listed area:
 - Task-agent start/stop/resume/restart, startup recovery, session reconciliation, PTY identity, terminal restore, agent adapters, native hooks, input state, or host process launches: `docs/conventions/session-lifecycle.md`.
 - Diagnostics recorder, journal, panel delivery, doctor, capture, or bundle format: `docs/diagnostics.md`.
 - Test selection, validation scope, or deciding whether a heavier testing lane is justified: `docs/testing.md`.
-- Structured/non-PTY execution, provider-session handoff, or remote interaction ownership: `docs/conventions/structured-execution.md`.
 - Current architecture priorities or active refactors: `docs/todo.md` and the specific linked plan.
 
 Tracked historical context lives under `docs/history/`. Read it only when current docs and code do not answer the question or the user explicitly requests archival context.
