@@ -4,7 +4,7 @@
 
 ### Fix: complete native Windows CI enforcement
 
-- Private diagnostic, Agent Lab, and managed-process directories now install their protected current-user-and-LocalSystem DACL from a fresh access-only descriptor in an encoded Windows PowerShell command, leaving directory ownership untouched while replacing inherited and explicit access rules.
+- Private diagnostic, Agent Lab, and managed-process directories now replace only the Access section of the existing descriptor with a protected current-user-and-LocalSystem DACL, preserving owner and group metadata without enumerating inherited identities. Failures expose only a bounded exception-type/error-ID classifier, never PowerShell output or affected paths.
 - Windows workdir validation now rejects traversal before applying filename rules. Native test fixtures use platform launchers, exact resolved executables, deterministic line endings, and platform-owned path forms without weakening production assertions.
 
 ### Fix: report launcher failures and confirm exact native-session exit

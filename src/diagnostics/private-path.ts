@@ -16,10 +16,16 @@ export interface EnsurePrivateDiagnosticDirectoryOptions extends EnsurePrivateDi
 
 export class DiagnosticAclError extends Error {
 	readonly code = "DiagnosticAclError";
+	readonly failureCode?: string;
 
-	constructor() {
-		super("Could not apply a private Windows ACL to diagnostic storage.");
+	constructor(failureCode?: string) {
+		super(
+			failureCode
+				? `Could not apply a private Windows ACL to diagnostic storage (${failureCode}).`
+				: "Could not apply a private Windows ACL to diagnostic storage.",
+		);
 		this.name = "DiagnosticAclError";
+		this.failureCode = failureCode;
 	}
 }
 
@@ -44,7 +50,7 @@ export async function ensurePrivateDiagnosticDirectories(
 	try {
 		await ensurePrivateDirectories(paths, options);
 	} catch (error) {
-		if (error instanceof PrivateDirectoryAclError) throw new DiagnosticAclError();
+		if (error instanceof PrivateDirectoryAclError) throw new DiagnosticAclError(error.failureCode);
 		throw error;
 	}
 }

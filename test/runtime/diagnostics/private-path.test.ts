@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
 	copyPrivateDiagnosticFile,
-	DiagnosticAclError,
 	ensurePrivateDiagnosticDirectories,
 	ensurePrivateDiagnosticDirectory,
 } from "../../../src/diagnostics";
@@ -57,9 +56,33 @@ describe("private diagnostic directories", () => {
 		await expect(
 			ensurePrivateDiagnosticDirectory(join(root, "diagnostics"), {
 				platform: "win32",
-				runWindowsAclCommand: async () => ({ ok: false }),
+				runWindowsAclCommand: async () => ({
+					ok: false,
+					failureCode:
+						"System.UnauthorizedAccessException|PermissionDenied,Microsoft.PowerShell.Commands.SetAclCommand",
+				}),
 			}),
-		).rejects.toBeInstanceOf(DiagnosticAclError);
+		).rejects.toMatchObject({
+			name: "DiagnosticAclError",
+			failureCode: "System.UnauthorizedAccessException|PermissionDenied,Microsoft.PowerShell.Commands.SetAclCommand",
+		});
+	});
+
+	it("does not expose unstructured Windows ACL command output", async () => {
+		const root = await createTemporaryRoot();
+
+		await expect(
+			ensurePrivateDiagnosticDirectory(join(root, "diagnostics"), {
+				platform: "win32",
+				runWindowsAclCommand: async () => ({ ok: false, failureCode: "failure at C:\\sensitive\\path" }),
+			}),
+		).rejects.toEqual(
+			expect.objectContaining({
+				name: "DiagnosticAclError",
+				failureCode: undefined,
+				message: "Could not apply a private Windows ACL to diagnostic storage.",
+			}),
+		);
 	});
 
 	it.skipIf(process.platform === "win32")(
