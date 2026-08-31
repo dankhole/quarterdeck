@@ -198,9 +198,34 @@ describe("shouldUseWindowsCmdLaunch", () => {
 		tempDirectories.push(tempDirectory);
 		const cmdPath = createWindowsBinary(tempDirectory, "codex.cmd");
 		const powerShellPath = createWindowsBinary(tempDirectory, "codex.ps1");
-		const args = ["line one\nline two", "%NAME%", "!value!", 'quoted "value"'];
+		const args = ["line one\nline two", "%NAME%", "!value!", 'quoted "value"', 'slash\\"quote'];
 
 		expect(resolveWindowsCompatibleCommand(cmdPath, args, "win32", { SystemRoot: "C:\\Windows" })).toEqual({
+			binary: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+			args: [
+				"-NoLogo",
+				"-NoProfile",
+				"-NonInteractive",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				powerShellPath,
+				"line one\nline two",
+				"%NAME%",
+				"!value!",
+				'quoted \\"value\\"',
+				'slash\\\\\\"quote',
+			],
+		});
+	});
+
+	it("preserves PowerShell argument semantics for an explicitly requested script", () => {
+		const tempDirectory = mkdtempSync(join(tmpdir(), "quarterdeck-win-launch-"));
+		tempDirectories.push(tempDirectory);
+		const powerShellPath = createWindowsBinary(tempDirectory, "custom.ps1");
+		const args = ['quoted "value"', "line one\nline two", "trailing-backslash\\"];
+
+		expect(resolveWindowsCompatibleCommand(powerShellPath, args, "win32", { SystemRoot: "C:\\Windows" })).toEqual({
 			binary: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
 			args: [
 				"-NoLogo",

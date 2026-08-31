@@ -57,6 +57,13 @@ function resolveWindowsPowerShellShim(resolved: ResolvedWindowsBinaryPath): stri
 	return canAccessPath(powerShellPath) ? powerShellPath : null;
 }
 
+function escapeWindowsPowerShellNativeForwardedArgument(value: string): string {
+	// Windows PowerShell 5 removes unescaped quotes when a .ps1 shim forwards
+	// @args to a native executable. Preserve each quote through that second
+	// command-line parse while retaining any preceding literal backslashes.
+	return value.replace(/(\\*)"/gu, (_match, backslashes: string) => `${backslashes}${backslashes}\\"`);
+}
+
 function normalizeWindowsCmdArgument(value: string): string {
 	return value.replaceAll("\r\n", "\n").replaceAll("\r", "\n").replaceAll("\n", "\\n");
 }
@@ -160,6 +167,8 @@ export function resolveWindowsCompatibleCommand(
 
 	const powerShellShim = resolveWindowsPowerShellShim(resolved);
 	if (powerShellShim) {
+		const powerShellArgs =
+			resolved.extension === ".ps1" ? args : args.map(escapeWindowsPowerShellNativeForwardedArgument);
 		return {
 			binary: resolveWindowsPowerShellPath(env),
 			args: [
@@ -170,7 +179,7 @@ export function resolveWindowsCompatibleCommand(
 				"Bypass",
 				"-File",
 				powerShellShim,
-				...args,
+				...powerShellArgs,
 			],
 		};
 	}

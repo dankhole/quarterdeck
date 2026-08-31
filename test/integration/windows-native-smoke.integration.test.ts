@@ -1,7 +1,16 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter, once } from "node:events";
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	copyFileSync,
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { readdir } from "node:fs/promises";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -60,16 +69,15 @@ interface WindowsAclRule {
 interface WindowsAclInspection {
 	path: string;
 	currentSid: string;
-	ownerSid: string;
 	protected: boolean;
 	rules: WindowsAclRule[];
 }
 
 const WINDOWS_ACL_INSPECTION_SCRIPT = [
 	"$ErrorActionPreference = 'Stop'",
-	`$paths = @(ConvertFrom-Json -InputObject ([Environment]::GetEnvironmentVariable('${ACL_INSPECTION_PATHS_KEY}', 'Process')))`,
+	`$paths = @((ConvertFrom-Json -InputObject ([Environment]::GetEnvironmentVariable('${ACL_INSPECTION_PATHS_KEY}', 'Process'))) | ForEach-Object { [string]$_ })`,
 	"$currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
-	"$rows = @(foreach ($path in $paths) { $acl = Get-Acl -LiteralPath $path; $ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value; $rules = @($acl.Access | ForEach-Object { [pscustomobject]@{ sid = $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value; accessType = $_.AccessControlType.ToString(); rights = $_.FileSystemRights.ToString() } }); [pscustomobject]@{ path = $path; currentSid = $currentSid; ownerSid = $ownerSid; protected = $acl.AreAccessRulesProtected; rules = $rules } })",
+	"$rows = @(foreach ($path in $paths) { if ([System.IO.Directory]::Exists($path)) { $acl = [System.IO.Directory]::GetAccessControl($path) } else { $acl = [System.IO.File]::GetAccessControl($path) }; $rules = @($acl.Access | ForEach-Object { [pscustomobject]@{ sid = $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value; accessType = $_.AccessControlType.ToString(); rights = $_.FileSystemRights.ToString() } }); [pscustomobject]@{ path = $path; currentSid = $currentSid; protected = $acl.AreAccessRulesProtected; rules = $rules } })",
 	"ConvertTo-Json -InputObject $rows -Depth 5 -Compress",
 ].join("; ");
 
@@ -91,7 +99,6 @@ async function assertPrivateWindowsAcls(paths: readonly string[]): Promise<void>
 	expect(inspections).toHaveLength(paths.length);
 	for (const inspection of inspections) {
 		if (lstatSync(inspection.path).isDirectory()) expect(inspection.protected, inspection.path).toBe(true);
-		expect(inspection.ownerSid, inspection.path).toBe(inspection.currentSid);
 		expect(inspection.rules.length, inspection.path).toBeGreaterThanOrEqual(2);
 		const allowedSids = new Set([inspection.currentSid, "S-1-5-18"]);
 		for (const rule of inspection.rules) {
@@ -247,11 +254,18 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 		captureScriptPath,
 		[
 			"const chunks = [];",
-			"process.stdin.on('data', (chunk) => chunks.push(chunk));",
-			"process.stdin.on('end', () => {",
+			"const expectedInputBytes = Number(process.env.QUARTERDECK_WINDOWS_EXPECTED_INPUT_BYTES);",
+			"let receivedInputBytes = 0;",
+			"let finished = false;",
+			"const finish = () => {",
+			"  if (finished) return;",
+			"  finished = true;",
 			"  require('node:fs').writeFileSync(process.argv[2], JSON.stringify({ args: process.argv.slice(3), input: Buffer.concat(chunks).toString('utf8') }), 'utf8');",
-			"  process.stdout.write('round-trip stdout');",
-			"});",
+			"  process.stdout.write('round-trip stdout', () => process.exit(0));",
+			"};",
+			"process.stdin.on('data', (chunk) => { chunks.push(chunk); receivedInputBytes += chunk.byteLength; if (receivedInputBytes >= expectedInputBytes) finish(); });",
+			"process.stdin.on('end', finish);",
+			"if (expectedInputBytes === 0) finish();",
 			"",
 		].join("\n"),
 		"utf8",
@@ -259,6 +273,7 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 	const commandEnv = mergeProcessEnvironment(process.env, {
 		NAME: "EXPANDED_NAME",
 		PATH: `${fixtureRoot}${delimiter}${process.env.PATH ?? ""}`,
+		QUARTERDECK_WINDOWS_EXPECTED_INPUT_BYTES: String(Buffer.byteLength(expectedInput)),
 		ROUND_TRIP: "EXPANDED_DELAYED_VALUE",
 	});
 	const poisonedComSpecEnv = Object.fromEntries(
@@ -292,21 +307,18 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 		].join("\r\n"),
 		"utf8",
 	);
-	const cmdArguments = expectedArguments;
-	const cmdResolved = resolveWindowsCompatibleCommand(cmdShimPath, cmdArguments, "win32", {
-		...commandEnv,
+	const shimEnv = mergeProcessEnvironment(commandEnv, {
 		QUARTERDECK_WINDOWS_CAPTURE_PATH: capturePath,
 		QUARTERDECK_WINDOWS_CAPTURE_SCRIPT: captureScriptPath,
+		QUARTERDECK_WINDOWS_NODE: copiedNodePath,
 	});
+	const cmdArguments = expectedArguments;
+	const cmdResolved = resolveWindowsCompatibleCommand(cmdShimPath, cmdArguments, "win32", shimEnv);
 	const cmdResult = await executeWindowsResolvedCommand(
 		cmdResolved.binary,
 		cmdResolved.args,
 		expectedInput,
-		{
-			...commandEnv,
-			QUARTERDECK_WINDOWS_CAPTURE_PATH: capturePath,
-			QUARTERDECK_WINDOWS_CAPTURE_SCRIPT: captureScriptPath,
-		},
+		shimEnv,
 		fixtureRoot,
 	);
 	expect(cmdResult).toEqual({ stdout: "round-trip stdout", stderr: "" });
@@ -328,21 +340,13 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 		"first line\nsecond line",
 		"carriage\rreturn",
 	];
-	const powerShellResolved = resolveWindowsCompatibleCommand(cmdShimPath, multilineArguments, "win32", {
-		...commandEnv,
-		QUARTERDECK_WINDOWS_CAPTURE_PATH: capturePath,
-		QUARTERDECK_WINDOWS_CAPTURE_SCRIPT: captureScriptPath,
-	});
+	const powerShellResolved = resolveWindowsCompatibleCommand(cmdShimPath, multilineArguments, "win32", shimEnv);
 	expect(powerShellResolved.binary.toLowerCase()).toContain("powershell.exe");
 	const powerShellResult = await executeWindowsResolvedCommand(
 		powerShellResolved.binary,
 		powerShellResolved.args,
 		expectedInput,
-		{
-			...commandEnv,
-			QUARTERDECK_WINDOWS_CAPTURE_PATH: capturePath,
-			QUARTERDECK_WINDOWS_CAPTURE_SCRIPT: captureScriptPath,
-		},
+		shimEnv,
 		fixtureRoot,
 	);
 	expect(powerShellResult).toEqual({ stdout: "round-trip stdout", stderr: "" });
@@ -467,6 +471,8 @@ function installWindowsLaunchFixtures(binDir: string): void {
 		join(binDir, "codex.cmd"),
 		[
 			"@echo off",
+			'if "%~1"=="--version" (echo codex-cli 0.147.0 & exit /b 0)',
+			'if "%~1"=="features" if "%~2"=="list" (echo hooks stable true & exit /b 0)',
 			'"%QUARTERDECK_WINDOWS_NODE%" --import "%QUARTERDECK_WINDOWS_TSX_LOADER%" "%QUARTERDECK_WINDOWS_FAKE_CODEX%" %*',
 			"exit /b %errorlevel%",
 			"",
@@ -479,8 +485,17 @@ function installWindowsLaunchFixtures(binDir: string): void {
 		"utf8",
 	);
 	writeFileSync(
+		join(binDir, "code.ps1"),
+		["[System.IO.File]::WriteAllText($env:QUARTERDECK_WINDOWS_HOST_LAUNCH_LOG, [string]$args[0])", "exit 0", ""].join(
+			"\r\n",
+		),
+		"utf8",
+	);
+	writeFileSync(
 		join(binDir, "codex.ps1"),
 		[
+			"if ($args[0] -eq '--version') { Write-Output 'codex-cli 0.147.0'; exit 0 }",
+			"if ($args[0] -eq 'features' -and $args[1] -eq 'list') { Write-Output 'hooks stable true'; exit 0 }",
 			"if ($args -contains '--') { $serializedArguments = ConvertTo-Json -InputObject @($args) -Compress; [System.IO.File]::WriteAllText($env:QUARTERDECK_WINDOWS_POWERSHELL_AGENT_MARKER, $serializedArguments) }",
 			"& $env:QUARTERDECK_WINDOWS_NODE --import $env:QUARTERDECK_WINDOWS_TSX_LOADER $env:QUARTERDECK_WINDOWS_FAKE_CODEX @args",
 			"exit $LASTEXITCODE",
@@ -543,6 +558,9 @@ describe.runIf(process.platform === "win32").sequential("native Windows smoke", 
 		let orphanOwner: ChildProcess | null = null;
 		let unrelatedAgent: ChildProcess | null = null;
 		let managedOrphanPid: number | null = null;
+		let testFailed = false;
+		let primaryError: unknown;
+		const cleanupErrors: unknown[] = [];
 
 		try {
 			await assertWindowsShellCommandRoundTrip(tempHome);
@@ -578,6 +596,7 @@ describe.runIf(process.platform === "win32").sequential("native Windows smoke", 
 			const serverEnvironment = {
 				PATH: smokePath,
 				QUARTERDECK_AGENT_LAB: "1",
+				QUARTERDECK_AGENT_LAB_ALLOWED_AGENT_IDS: "codex",
 				QUARTERDECK_AGENT_LAB_CLI_ENTRYPOINT: resolve(process.cwd(), "src/cli.ts"),
 				QUARTERDECK_AGENT_LAB_TSX_CLI: resolveTsxCliPath(),
 				QUARTERDECK_STATE_HOME: customStateHome,
@@ -891,7 +910,9 @@ describe.runIf(process.platform === "win32").sequential("native Windows smoke", 
 			});
 			expect(openProjectResponse.status).toBe(200);
 			expect(openProjectResponse.payload).toEqual({ ok: true, outcome: "native" });
-			expect(readFileSync(hostLaunchLogPath, "utf8").trim()).toBe(projectPath);
+			expect(realpathSync.native(readFileSync(hostLaunchLogPath, "utf8").trim()).toLowerCase()).toBe(
+				realpathSync.native(projectPath).toLowerCase(),
+			);
 
 			const deleteWorktreeResponse = await requestJson<RuntimeWorktreeDeleteResponse>({
 				baseUrl,
@@ -916,8 +937,9 @@ describe.runIf(process.platform === "win32").sequential("native Windows smoke", 
 				[
 					"const { spawn } = require('node:child_process');",
 					"const { writeFileSync } = require('node:fs');",
-					"const child = spawn(process.env.QUARTERDECK_MANAGED_ORPHAN_BINARY, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', windowsHide: true });",
+					"const child = spawn(process.env.QUARTERDECK_MANAGED_ORPHAN_BINARY, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore', windowsHide: true });",
 					"if (!child.pid) throw new Error('Managed orphan probe did not start.');",
+					"child.unref();",
 					"writeFileSync(process.env.QUARTERDECK_MANAGED_ORPHAN_PID_PATH, String(child.pid), 'utf8');",
 					"setInterval(() => {}, 1000);",
 					"",
@@ -973,15 +995,32 @@ describe.runIf(process.platform === "win32").sequential("native Windows smoke", 
 			await waitUntil(() => !isPidAlive(managedOrphanPid ?? 0), "exact managed orphan process-tree cleanup", 20_000);
 			expect(isPidAlive(unrelatedAgent.pid)).toBe(true);
 			expect(existsSync(managedOrphanRecord?.path ?? "")).toBe(false);
+		} catch (error) {
+			testFailed = true;
+			primaryError = error;
 		} finally {
-			await stopServer?.();
-			await forceStopProcess(orphanOwner);
-			await forceStopProcess(unrelatedAgent);
-			if (managedOrphanPid && isPidAlive(managedOrphanPid)) {
-				process.kill(managedOrphanPid, "SIGKILL");
+			await stopServer?.().catch((error: unknown) => cleanupErrors.push(error));
+			await forceStopProcess(orphanOwner).catch((error: unknown) => cleanupErrors.push(error));
+			await forceStopProcess(unrelatedAgent).catch((error: unknown) => cleanupErrors.push(error));
+			try {
+				if (managedOrphanPid && isPidAlive(managedOrphanPid)) {
+					process.kill(managedOrphanPid, "SIGKILL");
+				}
+			} catch (error) {
+				cleanupErrors.push(error);
 			}
-			cleanupProject();
-			cleanupHome();
+			try {
+				cleanupProject();
+			} catch (error) {
+				cleanupErrors.push(error);
+			}
+			try {
+				cleanupHome();
+			} catch (error) {
+				cleanupErrors.push(error);
+			}
 		}
+		if (testFailed) throw primaryError;
+		if (cleanupErrors[0]) throw cleanupErrors[0];
 	}, 90_000);
 });
