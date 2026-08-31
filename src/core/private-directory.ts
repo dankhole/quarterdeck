@@ -8,6 +8,8 @@ import { resolveWindowsPowerShellPath } from "./windows-system-paths.js";
 const PRIVATE_PATHS_ENVIRONMENT_KEY = "QUARTERDECK_PRIVATE_PATHS";
 const WINDOWS_ACL_TIMEOUT_MS = 10_000;
 
+// A fresh DirectorySecurity marks only its access section as modified, so applying it replaces the
+// DACL without rewriting the existing owner or relying on account translation for inherited rules.
 const WINDOWS_PRIVATE_DIRECTORY_ACL_SCRIPT = [
 	"$ErrorActionPreference = 'Stop'",
 	`$serializedPaths = [Environment]::GetEnvironmentVariable('${PRIVATE_PATHS_ENVIRONMENT_KEY}', 'Process')`,
@@ -19,7 +21,7 @@ const WINDOWS_PRIVATE_DIRECTORY_ACL_SCRIPT = [
 	"$inheritance = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit",
 	"$propagation = [System.Security.AccessControl.PropagationFlags]::None",
 	"$allow = [System.Security.AccessControl.AccessControlType]::Allow",
-	"foreach ($path in $paths) { $acl = Get-Acl -LiteralPath $path; $acl.SetAccessRuleProtection($true, $false); foreach ($existingRule in @($acl.Access)) { $acl.RemoveAccessRuleAll($existingRule) }; $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($owner, $rights, $inheritance, $propagation, $allow)); $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($system, $rights, $inheritance, $propagation, $allow)); Set-Acl -LiteralPath $path -AclObject $acl }",
+	"foreach ($path in $paths) { $acl = [System.Security.AccessControl.DirectorySecurity]::new(); $acl.SetAccessRuleProtection($true, $false); $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($owner, $rights, $inheritance, $propagation, $allow)); $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($system, $rights, $inheritance, $propagation, $allow)); $directory = [System.IO.DirectoryInfo]::new($path); [System.IO.FileSystemAclExtensions]::SetAccessControl($directory, $acl) }",
 ].join("; ");
 const WINDOWS_PRIVATE_DIRECTORY_ACL_ENCODED_SCRIPT = Buffer.from(
 	WINDOWS_PRIVATE_DIRECTORY_ACL_SCRIPT,
