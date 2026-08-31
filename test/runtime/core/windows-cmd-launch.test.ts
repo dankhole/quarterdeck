@@ -154,15 +154,21 @@ describe("shouldUseWindowsCmdLaunch", () => {
 		).toThrow(WindowsCommandResolutionError);
 	});
 
-	it("double-escapes metacharacters for the batch shim's second parse", () => {
+	it("single-escapes metacharacters for ordinary batch commands", () => {
 		const args = ["space value", "%NAME%", "!DELAYED!", "^", "&", "|", "(value)"];
 		const commandLine = buildWindowsCmdArgsCommandLine("codex.cmd", args);
 		const commandArgs = buildWindowsCmdArgsArray("codex.cmd", args);
 
 		expect(commandLine).toBe(
-			'/d /v:off /s /c "codex.cmd ^^^"space^^^ value^^^" ^^^"^^^%NAME^^^%^^^" ^^^"^^^!DELAYED^^^!^^^" ^^^"^^^^^^^" ^^^"^^^&^^^" ^^^"^^^|^^^" ^^^"^^^(value^^^)^^^""',
+			'/d /v:off /s /c "codex.cmd ^"space^ value^" ^"^%NAME^%^" ^"^!DELAYED^!^" ^"^^^" ^"^&^" ^"^|^" ^"^(value^)^""',
 		);
 		expect(commandArgs).toEqual(["/d", "/v:off", "/s", "/c", commandLine.slice("/d /v:off /s /c ".length)]);
+	});
+
+	it("double-escapes metacharacters for node_modules command shims", () => {
+		const commandLine = buildWindowsCmdArgsCommandLine("C:\\repo\\node_modules\\.bin\\codex.cmd", ["%NAME%"]);
+
+		expect(commandLine).toBe('/d /v:off /s /c "C:\\repo\\node_modules\\.bin\\codex.cmd ^^^"^^^%NAME^^^%^^^""');
 	});
 
 	it("prefers a sibling PowerShell shim so multiline arguments bypass cmd parsing", () => {
