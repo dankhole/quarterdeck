@@ -183,7 +183,14 @@ async function executeWindowsResolvedCommand(
 		const child = execFile(
 			binary,
 			args,
-			{ cwd, encoding: "utf8", env, timeout: 10_000, windowsHide: true },
+			{
+				cwd,
+				encoding: "utf8",
+				env,
+				timeout: 10_000,
+				windowsHide: true,
+				windowsVerbatimArguments: binary.toLowerCase() === resolveWindowsComSpec(env).toLowerCase(),
+			},
 			(error, stdout, stderr) => {
 				if (error) {
 					rejectCommand(error);

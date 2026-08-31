@@ -9,18 +9,22 @@ const PRIVATE_PATHS_ENVIRONMENT_KEY = "QUARTERDECK_PRIVATE_PATHS";
 const WINDOWS_ACL_TIMEOUT_MS = 10_000;
 const WINDOWS_ACL_FAILURE_PREFIX = "QUARTERDECK_ACL_FAILURE|";
 
-// A fresh DirectorySecurity marks only Access as modified, so .NET Framework replaces the DACL
-// without rewriting owner/group metadata or depending on PowerShell module autoloading.
+// Mutate access rules through SID-based APIs so .NET Framework retains owner/group metadata without
+// translating inherited identities or depending on PowerShell module autoloading.
 const WINDOWS_PRIVATE_DIRECTORY_ACL_SCRIPT = [
 	"$ErrorActionPreference = 'Stop'",
-	`trap { $failure = $_.Exception; while ($failure.InnerException) { $failure = $failure.InnerException }; [Console]::Error.WriteLine('${WINDOWS_ACL_FAILURE_PREFIX}' + $failure.GetType().FullName + '|' + $_.FullyQualifiedErrorId); exit 1 }`,
+	"$stage = 'setup'",
+	`trap { $failure = $_.Exception; while ($failure.InnerException) { $failure = $failure.InnerException }; [Console]::Error.WriteLine('${WINDOWS_ACL_FAILURE_PREFIX}' + $stage + '|' + $failure.GetType().FullName + '|' + $_.FullyQualifiedErrorId); exit 1 }`,
 	`$serializedPaths = [Environment]::GetEnvironmentVariable('${PRIVATE_PATHS_ENVIRONMENT_KEY}', 'Process')`,
 	"if ([string]::IsNullOrWhiteSpace($serializedPaths)) { throw 'Missing private paths.' }",
 	"$paths = @(ConvertFrom-Json -InputObject $serializedPaths)",
 	"$owner = [System.Security.Principal.WindowsIdentity]::GetCurrent().User",
-	"$accessSection = [System.Security.AccessControl.AccessControlSections]::Access",
-	"$privateDacl = 'D:P(A;OICI;FA;;;' + $owner.Value + ')(A;OICI;FA;;;SY)'",
-	"foreach ($path in $paths) { $acl = [System.Security.AccessControl.DirectorySecurity]::new(); $acl.SetSecurityDescriptorSddlForm($privateDacl, $accessSection); [System.IO.Directory]::SetAccessControl($path, $acl) }",
+	"$system = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18')",
+	"$rights = [System.Security.AccessControl.FileSystemRights]::FullControl",
+	"$inheritance = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit",
+	"$propagation = [System.Security.AccessControl.PropagationFlags]::None",
+	"$allow = [System.Security.AccessControl.AccessControlType]::Allow",
+	"foreach ($path in $paths) { $stage = 'read'; $acl = [System.IO.Directory]::GetAccessControl($path); $stage = 'protect'; $acl.SetAccessRuleProtection($true, $false); $stage = 'enumerate'; $rules = @($acl.GetAccessRules($true, $false, [System.Security.Principal.SecurityIdentifier])); $stage = 'remove'; foreach ($rule in $rules) { $acl.RemoveAccessRuleSpecific($rule) }; $stage = 'add'; $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($owner, $rights, $inheritance, $propagation, $allow)); $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($system, $rights, $inheritance, $propagation, $allow)); $stage = 'apply'; [System.IO.Directory]::SetAccessControl($path, $acl) }",
 ].join("; ");
 const WINDOWS_PRIVATE_DIRECTORY_ACL_ENCODED_SCRIPT = Buffer.from(
 	WINDOWS_PRIVATE_DIRECTORY_ACL_SCRIPT,
@@ -59,7 +63,10 @@ function formatPrivateDirectoryAclErrorMessage(failureCode: string | undefined):
 
 function normalizeWindowsAclFailureCode(candidate: string | undefined): string | undefined {
 	const normalized = candidate?.trim();
-	return normalized && /^[a-z0-9_.+`-]+\|[a-z0-9_.+,`-]+$/iu.test(normalized) ? normalized.slice(0, 240) : undefined;
+	return normalized &&
+		/^(?:setup|read|protect|enumerate|remove|add|apply)\|[a-z0-9_.+`-]+\|[a-z0-9_.+,`-]+$/iu.test(normalized)
+		? normalized.slice(0, 240)
+		: undefined;
 }
 
 function parseWindowsAclFailureCode(stderr: string): string | undefined {
