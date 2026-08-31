@@ -580,6 +580,7 @@ describe.runIf(process.platform === "win32").sequential("native Windows smoke", 
 			const serverEnvironment = {
 				PATH: smokePath,
 				QUARTERDECK_AGENT_LAB: "1",
+				QUARTERDECK_AGENT_LAB_ALLOWED_AGENT_IDS: "codex",
 				QUARTERDECK_AGENT_LAB_CLI_ENTRYPOINT: resolve(process.cwd(), "src/cli.ts"),
 				QUARTERDECK_AGENT_LAB_TSX_CLI: resolveTsxCliPath(),
 				QUARTERDECK_STATE_HOME: customStateHome,
