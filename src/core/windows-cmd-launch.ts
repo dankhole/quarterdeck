@@ -39,14 +39,14 @@ export class WindowsCommandResolutionError extends Error {
 	}
 }
 
-export class WindowsCommandArgumentError extends Error {
+export class WindowsCommandSerializationError extends Error {
 	readonly code = "EINVAL";
 
 	constructor(binary: string) {
 		super(
-			`Windows batch command "${binary}" requires a sibling PowerShell shim for quoted, multiline, or trailing-backslash arguments.`,
+			`Windows batch command "${binary}" requires a sibling PowerShell shim for an ambiguous command path or argument.`,
 		);
-		this.name = "WindowsCommandArgumentError";
+		this.name = "WindowsCommandSerializationError";
 	}
 }
 
@@ -104,7 +104,9 @@ function shouldDoubleEscapeWindowsCmdShim(binary: string): boolean {
 }
 
 function assertWindowsCmdArgumentsSafe(binary: string, args: readonly string[]): void {
-	if (args.some((argument) => /["\r\n]|\\$/u.test(argument))) throw new WindowsCommandArgumentError(binary);
+	if (/[%!^&()]/u.test(binary) || args.some((argument) => /["\r\n]|\\$/u.test(argument))) {
+		throw new WindowsCommandSerializationError(binary);
+	}
 }
 
 export function resolveWindowsComSpec(env: NodeJS.ProcessEnv = process.env): string {

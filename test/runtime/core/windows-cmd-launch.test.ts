@@ -9,8 +9,8 @@ import {
 	resolveWindowsCompatibleCommand,
 	resolveWindowsComSpec,
 	shouldUseWindowsCmdLaunch,
-	WindowsCommandArgumentError,
 	WindowsCommandResolutionError,
+	WindowsCommandSerializationError,
 } from "../../../src/core";
 
 function createWindowsBinary(directory: string, fileName: string): string {
@@ -162,12 +162,18 @@ describe("shouldUseWindowsCmdLaunch", () => {
 		const env = { PATH: tempDirectory, PATHEXT: ".cmd", SystemRoot: "C:\\Windows" };
 
 		for (const argument of ['quoted "value"', "line one\nline two", "carriage\rreturn", "trailing-backslash\\"]) {
-			expect(() => buildWindowsCmdArgsCommandLine(shimPath, [argument])).toThrow(WindowsCommandArgumentError);
-			expect(() => buildWindowsCmdArgsArray(shimPath, [argument])).toThrow(WindowsCommandArgumentError);
+			expect(() => buildWindowsCmdArgsCommandLine(shimPath, [argument])).toThrow(WindowsCommandSerializationError);
+			expect(() => buildWindowsCmdArgsArray(shimPath, [argument])).toThrow(WindowsCommandSerializationError);
 			expect(() => resolveWindowsCompatibleCommand(shimPath, [argument], "win32", env)).toThrow(
-				WindowsCommandArgumentError,
+				WindowsCommandSerializationError,
 			);
 		}
+	});
+
+	it("requires a sibling PowerShell shim when a batch-command path contains parser metacharacters", () => {
+		expect(() => buildWindowsCmdArgsCommandLine("C:\\unsafe %NAME%\\codex.cmd", ["--version"])).toThrow(
+			WindowsCommandSerializationError,
+		);
 	});
 
 	it("single-escapes metacharacters for ordinary batch commands", () => {

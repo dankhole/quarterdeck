@@ -149,7 +149,7 @@ export {
 	resolveWindowsCompatibleCommand,
 	resolveWindowsComSpec,
 	shouldUseWindowsCmdLaunch,
-	WindowsCommandArgumentError,
 	WindowsCommandResolutionError,
+	WindowsCommandSerializationError,
 } from "./windows-cmd-launch";
 export { isWindowsSafePathComponent } from "./windows-path-component";
