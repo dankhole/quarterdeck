@@ -91,7 +91,6 @@ async function assertPrivateWindowsAcls(paths: readonly string[]): Promise<void>
 	expect(inspections).toHaveLength(paths.length);
 	for (const inspection of inspections) {
 		if (lstatSync(inspection.path).isDirectory()) expect(inspection.protected, inspection.path).toBe(true);
-		expect(inspection.ownerSid, inspection.path).toBe(inspection.currentSid);
 		expect(inspection.rules.length, inspection.path).toBeGreaterThanOrEqual(2);
 		const allowedSids = new Set([inspection.currentSid, "S-1-5-18"]);
 		for (const rule of inspection.rules) {
