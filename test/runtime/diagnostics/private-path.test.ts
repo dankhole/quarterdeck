@@ -59,12 +59,13 @@ describe("private diagnostic directories", () => {
 				runWindowsAclCommand: async () => ({
 					ok: false,
 					failureCode:
-						"System.UnauthorizedAccessException|PermissionDenied,Microsoft.PowerShell.Commands.SetAclCommand",
+						"apply|System.UnauthorizedAccessException|PermissionDenied,Microsoft.PowerShell.Commands.SetAclCommand",
 				}),
 			}),
 		).rejects.toMatchObject({
 			name: "DiagnosticAclError",
-			failureCode: "System.UnauthorizedAccessException|PermissionDenied,Microsoft.PowerShell.Commands.SetAclCommand",
+			failureCode:
+				"apply|System.UnauthorizedAccessException|PermissionDenied,Microsoft.PowerShell.Commands.SetAclCommand",
 		});
 	});
 

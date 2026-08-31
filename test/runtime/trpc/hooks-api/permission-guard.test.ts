@@ -303,7 +303,8 @@ describe("hook-ingest provider interaction lifecycle", () => {
 		});
 
 		manager.writeInput("task-codex-approve-number", Buffer.from("1"));
-		expect(manager.store.getSummary("task-codex-approve-number")).toMatchObject({
+		const submittedSummary = manager.store.getSummary("task-codex-approve-number");
+		expect(submittedSummary).toMatchObject({
 			state: "awaiting_review",
 			outstandingInteraction: {
 				status: "response_submitted",
@@ -314,12 +315,22 @@ describe("hook-ingest provider interaction lifecycle", () => {
 		// Codex does not provide a dedicated approval acknowledgement. A later
 		// foreground tool start is sufficient current provider evidence even when
 		// the matching PostToolUse never arrives.
-		await ingest("activity", {
-			hookEventName: "PreToolUse",
-			turnId: "turn-1",
-			toolUseId: "tool-2",
-			toolName: "Read",
-		});
+		await ingest(
+			"activity",
+			{
+				hookEventName: "PreToolUse",
+				turnId: "turn-1",
+				toolUseId: "tool-2",
+				toolName: "Read",
+			},
+			{
+				occurredAt:
+					Math.max(
+						submittedSummary?.outstandingInteraction?.openedAt ?? 0,
+						submittedSummary?.outstandingInteraction?.updatedAt ?? 0,
+					) + 1,
+			},
+		);
 		expect(manager.store.getSummary("task-codex-approve-number")).toMatchObject({
 			state: "running",
 			reviewReason: null,
