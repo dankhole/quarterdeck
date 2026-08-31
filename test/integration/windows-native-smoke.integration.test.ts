@@ -223,7 +223,7 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 	const cmdDecoyPath = join(fixtureRoot, "cmd.exe");
 	const captureScriptPath = join(fixtureRoot, "capture arguments.cjs");
 	const capturePath = join(fixtureRoot, "captured arguments.json");
-	const shimDirectory = join(fixtureRoot, "node_modules", ".bin");
+	const shimDirectory = join(tempHome, "node_modules", ".bin");
 	const cmdShimPath = join(shimDirectory, "capture arguments.cmd");
 	const powerShellShimPath = join(shimDirectory, "capture arguments.ps1");
 	const expectedArguments = [

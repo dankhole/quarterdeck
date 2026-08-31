@@ -45,7 +45,7 @@ vi.mock("../../../src/terminal/managed-process-ownership", async (importOriginal
 	};
 });
 
-import { WindowsCommandArgumentError } from "../../../src/core";
+import { WindowsCommandSerializationError } from "../../../src/core";
 import { PtySession } from "../../../src/terminal";
 import { _testing as ptySessionTesting } from "../../../src/terminal/pty-session";
 
@@ -293,7 +293,7 @@ describe("PtySession", () => {
 				cols: 120,
 				rows: 40,
 			}),
-		).toThrow(WindowsCommandArgumentError);
+		).toThrow(WindowsCommandSerializationError);
 		expect(ptyMocks.spawn).not.toHaveBeenCalled();
 	});
 
