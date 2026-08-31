@@ -9,8 +9,8 @@ const PRIVATE_PATHS_ENVIRONMENT_KEY = "QUARTERDECK_PRIVATE_PATHS";
 const WINDOWS_ACL_TIMEOUT_MS = 10_000;
 const WINDOWS_ACL_FAILURE_PREFIX = "QUARTERDECK_ACL_FAILURE|";
 
-// Replace the existing descriptor's Access section from SDDL so Set-Acl retains its owner and group
-// without enumerating inherited rules or translating their identities.
+// Replace the existing descriptor's Access section through .NET Framework so the encoded script
+// retains owner/group metadata and does not depend on PowerShell module autoloading.
 const WINDOWS_PRIVATE_DIRECTORY_ACL_SCRIPT = [
 	"$ErrorActionPreference = 'Stop'",
 	`trap { $failure = $_.Exception; while ($failure.InnerException) { $failure = $failure.InnerException }; [Console]::Error.WriteLine('${WINDOWS_ACL_FAILURE_PREFIX}' + $failure.GetType().FullName + '|' + $_.FullyQualifiedErrorId); exit 1 }`,
@@ -20,7 +20,7 @@ const WINDOWS_PRIVATE_DIRECTORY_ACL_SCRIPT = [
 	"$owner = [System.Security.Principal.WindowsIdentity]::GetCurrent().User",
 	"$accessSection = [System.Security.AccessControl.AccessControlSections]::Access",
 	"$privateDacl = 'D:P(A;OICI;FA;;;' + $owner.Value + ')(A;OICI;FA;;;SY)'",
-	"foreach ($path in $paths) { $acl = Get-Acl -LiteralPath $path; $acl.SetSecurityDescriptorSddlForm($privateDacl, $accessSection); Set-Acl -LiteralPath $path -AclObject $acl }",
+	"foreach ($path in $paths) { $acl = [System.IO.Directory]::GetAccessControl($path); $acl.SetSecurityDescriptorSddlForm($privateDacl, $accessSection); [System.IO.Directory]::SetAccessControl($path, $acl) }",
 ].join("; ");
 const WINDOWS_PRIVATE_DIRECTORY_ACL_ENCODED_SCRIPT = Buffer.from(
 	WINDOWS_PRIVATE_DIRECTORY_ACL_SCRIPT,
