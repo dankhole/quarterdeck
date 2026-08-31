@@ -200,6 +200,15 @@ async function executeWindowsResolvedCommand(
 	});
 }
 
+function assertNoWindowsCommandError(stderr: string): void {
+	const normalized = stderr.trim();
+	if (!normalized) return;
+	expect(normalized).toMatch(/^#< CLIXML\r?\n<Objs\b/u);
+	expect(normalized).toContain('<Obj S="progress"');
+	expect(normalized).toContain("<AV>Preparing modules for first use.</AV>");
+	expect(normalized).toMatch(/<T>Completed<\/T>.*<\/Objs>$/su);
+}
+
 async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<void> {
 	const fixtureRoot = join(tempHome, "command %NAME% !ROUND_TRIP! ^ & (runtime)");
 	const copiedNodePath = join(fixtureRoot, "node %NAME% !ROUND_TRIP! ^ & (copy).exe");
@@ -257,7 +266,8 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 	);
 	const result = await executeWindowsShellCommand(command, expectedInput, commandEnv, fixtureRoot);
 
-	expect(result).toEqual({ stdout: "round-trip stdout", stderr: "" });
+	expect(result.stdout).toBe("round-trip stdout");
+	assertNoWindowsCommandError(result.stderr);
 	expect(JSON.parse(readFileSync(capturePath, "utf8"))).toEqual({
 		args: expectedArguments,
 		input: expectedInput,
