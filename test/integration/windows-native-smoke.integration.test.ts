@@ -292,21 +292,18 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 		].join("\r\n"),
 		"utf8",
 	);
-	const cmdArguments = expectedArguments;
-	const cmdResolved = resolveWindowsCompatibleCommand(cmdShimPath, cmdArguments, "win32", {
-		...commandEnv,
+	const shimEnv = mergeProcessEnvironment(commandEnv, {
 		QUARTERDECK_WINDOWS_CAPTURE_PATH: capturePath,
 		QUARTERDECK_WINDOWS_CAPTURE_SCRIPT: captureScriptPath,
+		QUARTERDECK_WINDOWS_NODE: copiedNodePath,
 	});
+	const cmdArguments = expectedArguments;
+	const cmdResolved = resolveWindowsCompatibleCommand(cmdShimPath, cmdArguments, "win32", shimEnv);
 	const cmdResult = await executeWindowsResolvedCommand(
 		cmdResolved.binary,
 		cmdResolved.args,
 		expectedInput,
-		{
-			...commandEnv,
-			QUARTERDECK_WINDOWS_CAPTURE_PATH: capturePath,
-			QUARTERDECK_WINDOWS_CAPTURE_SCRIPT: captureScriptPath,
-		},
+		shimEnv,
 		fixtureRoot,
 	);
 	expect(cmdResult).toEqual({ stdout: "round-trip stdout", stderr: "" });
@@ -328,21 +325,13 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 		"first line\nsecond line",
 		"carriage\rreturn",
 	];
-	const powerShellResolved = resolveWindowsCompatibleCommand(cmdShimPath, multilineArguments, "win32", {
-		...commandEnv,
-		QUARTERDECK_WINDOWS_CAPTURE_PATH: capturePath,
-		QUARTERDECK_WINDOWS_CAPTURE_SCRIPT: captureScriptPath,
-	});
+	const powerShellResolved = resolveWindowsCompatibleCommand(cmdShimPath, multilineArguments, "win32", shimEnv);
 	expect(powerShellResolved.binary.toLowerCase()).toContain("powershell.exe");
 	const powerShellResult = await executeWindowsResolvedCommand(
 		powerShellResolved.binary,
 		powerShellResolved.args,
 		expectedInput,
-		{
-			...commandEnv,
-			QUARTERDECK_WINDOWS_CAPTURE_PATH: capturePath,
-			QUARTERDECK_WINDOWS_CAPTURE_SCRIPT: captureScriptPath,
-		},
+		shimEnv,
 		fixtureRoot,
 	);
 	expect(powerShellResult).toEqual({ stdout: "round-trip stdout", stderr: "" });
