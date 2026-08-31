@@ -247,11 +247,17 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 		captureScriptPath,
 		[
 			"const chunks = [];",
-			"process.stdin.on('data', (chunk) => chunks.push(chunk));",
-			"process.stdin.on('end', () => {",
+			"const expectedInputBytes = Number(process.env.QUARTERDECK_WINDOWS_EXPECTED_INPUT_BYTES);",
+			"let finished = false;",
+			"const finish = () => {",
+			"  if (finished) return;",
+			"  finished = true;",
 			"  require('node:fs').writeFileSync(process.argv[2], JSON.stringify({ args: process.argv.slice(3), input: Buffer.concat(chunks).toString('utf8') }), 'utf8');",
-			"  process.stdout.write('round-trip stdout');",
-			"});",
+			"  process.stdout.write('round-trip stdout', () => process.exit(0));",
+			"};",
+			"process.stdin.on('data', (chunk) => { chunks.push(chunk); if (Buffer.concat(chunks).byteLength >= expectedInputBytes) finish(); });",
+			"process.stdin.on('end', finish);",
+			"if (expectedInputBytes === 0) finish();",
 			"",
 		].join("\n"),
 		"utf8",
@@ -259,6 +265,7 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 	const commandEnv = mergeProcessEnvironment(process.env, {
 		NAME: "EXPANDED_NAME",
 		PATH: `${fixtureRoot}${delimiter}${process.env.PATH ?? ""}`,
+		QUARTERDECK_WINDOWS_EXPECTED_INPUT_BYTES: String(Buffer.byteLength(expectedInput)),
 		ROUND_TRIP: "EXPANDED_DELAYED_VALUE",
 	});
 	const poisonedComSpecEnv = Object.fromEntries(
