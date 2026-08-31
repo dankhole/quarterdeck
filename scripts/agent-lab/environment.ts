@@ -1,4 +1,4 @@
-import { delimiter, join } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 
 import { getWindowsEnvironmentValue } from "../../src/core/windows-system-paths.js";
 import { resolveAgentLabProviderPolicy } from "./provider-policy";
@@ -82,7 +82,7 @@ export function buildAgentLabEnvironment(
 						: {}),
 					QUARTERDECK_AGENT_LAB_REAL_CLAUDE_HOST_PATH: sourcePath,
 					QUARTERDECK_AGENT_LAB_REAL_CLAUDE_CONFIG_DIR: paths.agent.claudeConfigDirPath,
-					QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MCP_CONFIG: paths.agent.mcpConfigPath,
+					QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MCP_CONFIG: resolve(paths.agent.mcpConfigPath),
 					QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MODEL: paths.agent.model,
 					QUARTERDECK_AGENT_LAB_REAL_CLAUDE_PERMISSION_MODE: paths.agent.permissionMode,
 					QUARTERDECK_AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_AUTH:
