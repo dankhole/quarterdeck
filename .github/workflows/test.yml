@@ -2,13 +2,23 @@ name: Test
 
 on:
   workflow_call:
+    inputs:
+      focused_windows:
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      focused_windows:
+        description: Run only the native Windows smoke for fast iteration
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   build-check-test:
+    if: ${{ !inputs.focused_windows }}
     timeout-minutes: 10
     runs-on: ${{ matrix.os }}
     strategy:
@@ -70,16 +80,25 @@ jobs:
         run: npm ci
 
       - name: Install web-ui dependencies
+        if: ${{ !inputs.focused_windows }}
         run: npm ci --prefix web-ui
 
       - name: Build
+        if: ${{ !inputs.focused_windows }}
         run: npm run build
 
       - name: Packaged CLI launch smoke
+        if: ${{ !inputs.focused_windows }}
         run: node scripts/windows-packaged-cli-smoke.mjs
 
+      - name: Focused native Windows smoke
+        if: ${{ inputs.focused_windows }}
+        run: npx vitest run test/integration/windows-native-smoke.integration.test.ts
+
       - name: Check (includes native Windows smoke)
+        if: ${{ !inputs.focused_windows }}
         run: npm run check
 
       - name: Web UI tests
+        if: ${{ !inputs.focused_windows }}
         run: npm run web:test

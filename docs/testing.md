@@ -51,6 +51,8 @@ The pre-commit hook already runs staged Biome, the runtime typecheck, and `test:
 
 CI runs the production build (which includes the web typecheck), `npm run check`, and web unit tests on Ubuntu, macOS, and Windows. The non-optional Windows job also fetches and gracefully stops the packaged CLI before the root gate, whose integration suite covers native ConPTY resize/reconnect/restore, long/case-sensitive Git paths, junction/copy worktrees, exact process ownership, DACLs, hook/status-line transport, host launch, and parent-disconnect shutdown. CI does not repeat the web typecheck as a separate step and does not run `web:e2e` or Agent Lab. Local validation should prove the change; it does not need to impersonate CI unless release or PR-readiness work explicitly calls for that gate. See the [native Windows guide](./windows-native-smoke.md) for the exact clean, focused, and manual commands.
 
+For Windows-only iteration from a non-Windows host, dispatch the reusable `Test` workflow with `focused_windows=true` against the working branch. That lane installs only root dependencies and runs `test/integration/windows-native-smoke.integration.test.ts`; it is an inner-loop diagnostic and does not replace the final required CI matrix.
+
 ## Focused test selection
 
 Choose test files by the owner changed, not by the size of the diff. Examples:
