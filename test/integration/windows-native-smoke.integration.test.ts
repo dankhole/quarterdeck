@@ -476,6 +476,13 @@ function installWindowsLaunchFixtures(binDir: string): void {
 		"utf8",
 	);
 	writeFileSync(
+		join(binDir, "code.ps1"),
+		["[System.IO.File]::WriteAllText($env:QUARTERDECK_WINDOWS_HOST_LAUNCH_LOG, [string]$args[0])", "exit 0", ""].join(
+			"\r\n",
+		),
+		"utf8",
+	);
+	writeFileSync(
 		join(binDir, "codex.ps1"),
 		[
 			"if ($args[0] -eq '--version') { Write-Output 'codex-cli 0.147.0'; exit 0 }",
