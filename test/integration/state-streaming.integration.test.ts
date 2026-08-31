@@ -46,6 +46,12 @@ function installDeterministicFakeCodex(binDir: string): void {
 			`@echo off\r\n"${nodePath}" --import "${tsxLoader}" "${fakeCodexPath}" %*\r\n`,
 			"utf8",
 		);
+		const quotePowerShellLiteral = (value: string): string => `'${value.replaceAll("'", "''")}'`;
+		writeFileSync(
+			join(binDir, "codex.ps1"),
+			`& ${quotePowerShellLiteral(nodePath)} --import ${quotePowerShellLiteral(tsxLoader)} ${quotePowerShellLiteral(fakeCodexPath)} @args\r\nexit $LASTEXITCODE\r\n`,
+			"utf8",
+		);
 		return;
 	}
 	const launcherPath = join(binDir, "codex");

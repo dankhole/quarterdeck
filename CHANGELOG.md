@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: report launcher failures and confirm exact native-session exit
+
+- Linux browser launches now wait for the short-lived `xdg-open` process, so unavailable desktop handlers are reported instead of being accepted after spawn.
+- Native task stops now treat the terminal manager's launch-scoped session identity as authoritative after stopping that exact session. A reused PID no longer produces a false stop failure, while a live PID belonging to a different persisted session still fails closed.
+
 ### Fix: complete the Windows compatibility remediation audit
 
 - Windows path identity, environment lookup, command discovery, and generated filenames now follow Windows semantics end to end: separator/case aliases reconcile across runtime and browser state without trimming valid POSIX path whitespace, drive-root repositories receive a safe worktree label, environment overrides are case-insensitive, explicit command shims are supported, and reserved devices, alternate data streams, invalid trailing characters, and post-truncation names fail safely.

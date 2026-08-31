@@ -262,6 +262,7 @@ function createManager(
 	initialState: "running" | "awaiting_review",
 	initialProcessActive = true,
 	provider: "codex" | "claude" = "codex",
+	replacementPid = 222,
 ) {
 	const store = new InMemorySessionSummaryStore();
 	const confirmedAt = Date.now();
@@ -330,7 +331,7 @@ function createManager(
 	});
 	const start = vi.fn(async (request: StartTaskSessionRequest) => {
 		processIdentity = {
-			pid: 222,
+			pid: replacementPid,
 			sessionInstanceId: "native-2",
 			launchOperationId: request.launchOperationId ?? null,
 			agentId: "codex",
@@ -344,7 +345,7 @@ function createManager(
 			store.update("task-1", {
 				state: "awaiting_review",
 				reviewReason: "hook",
-				pid: 222,
+				pid: replacementPid,
 				sessionInstanceId: "native-2",
 				launchOperationId: request.launchOperationId ?? null,
 				resumeSessionId: request.resumeSessionId ?? null,
@@ -974,7 +975,9 @@ describe.sequential("TaskExecutionOwnershipService", () => {
 	});
 
 	it("round-trips the exact session with stop/wait ordering and generation fencing", async () => {
-		const harness = createManager("awaiting_review");
+		// A persisted PID may be reused by an unrelated live process. Exact terminal
+		// manager identity, not PID liveness alone, confirms the native owner exited.
+		const harness = createManager("awaiting_review", true, "codex", process.pid);
 		const transports: ProtocolTransport[] = [];
 		const structuredLaunches: Array<{ args: string[]; env: NodeJS.ProcessEnv }> = [];
 		const registry = new CodexStructuredOwnerRegistry({

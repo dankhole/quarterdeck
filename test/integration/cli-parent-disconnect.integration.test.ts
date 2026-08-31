@@ -1,12 +1,12 @@
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { describe, expect, it } from "vitest";
 
 import { terminateWindowsProcessTree } from "../../src/core";
-import { readRuntimeDiagnosticDescriptor } from "../../src/diagnostics";
+import { discoverRuntimeDiagnosticInstances } from "../../src/diagnostics";
 import { createGitTestEnv, initGitRepository } from "../utilities/git-env";
 import {
 	getAvailablePort,
@@ -18,14 +18,15 @@ import {
 import { createTempDir } from "../utilities/temp-dir";
 
 async function expectStoppedRuntimeDescriptor(stateHome: string): Promise<void> {
-	const instancesRoot = join(stateHome, "diagnostics", "instances");
-	const instanceDirectories = await readdir(instancesRoot);
-	expect(instanceDirectories).toHaveLength(1);
-	const instanceDirectory = instanceDirectories[0];
-	if (!instanceDirectory) throw new Error("Expected one diagnostic runtime instance.");
-	const descriptor = await readRuntimeDiagnosticDescriptor(join(instancesRoot, instanceDirectory, "runtime.json"));
-	expect(descriptor.status).toBe("stopped");
-	expect(descriptor.stoppedAt).not.toBeNull();
+	const deadline = Date.now() + 2_000;
+	let instances = await discoverRuntimeDiagnosticInstances(stateHome);
+	while (Date.now() < deadline && (instances.length !== 1 || instances[0]?.descriptor.status !== "stopped")) {
+		await delay(25);
+		instances = await discoverRuntimeDiagnosticInstances(stateHome);
+	}
+	expect(instances).toHaveLength(1);
+	expect(instances[0]?.descriptor.status).toBe("stopped");
+	expect(instances[0]?.descriptor.stoppedAt).not.toBeNull();
 }
 
 async function forceStopProcessTree(pid: number | undefined): Promise<void> {

@@ -1,8 +1,11 @@
 import type { ChildProcess, ExecFileException } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { delimiter, join } from "node:path";
 import { PassThrough } from "node:stream";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetLoggerForTests, type RuntimeDiagnosticLogSink, setRuntimeDiagnosticLogSink } from "../../../src/core";
+import { createTempDir } from "../../utilities/temp-dir";
 
 const childProcessMocks = vi.hoisted(() => ({
 	execFile: vi.fn(),
@@ -24,6 +27,19 @@ const OPTIONS = {
 	timeoutMs: 20_000,
 	model: "gpt-5.6-luna",
 };
+
+const originalPath = process.env.PATH;
+const originalPathExt = process.env.PATHEXT;
+let cleanupWindowsCodex = (): void => undefined;
+
+beforeEach(() => {
+	if (process.platform !== "win32") return;
+	const temp = createTempDir("quarterdeck-title-codex-");
+	writeFileSync(join(temp.path, "codex.exe"), "", "utf8");
+	process.env.PATH = [temp.path, originalPath].filter(Boolean).join(delimiter);
+	process.env.PATHEXT = ".COM;.EXE;.BAT;.CMD;.PS1";
+	cleanupWindowsCodex = temp.cleanup;
+});
 
 type ExecCallback = (error: ExecFileException | null, stdout: string, stderr: string) => void;
 
@@ -78,6 +94,12 @@ afterEach(() => {
 	vi.useRealTimers();
 	childProcessMocks.execFile.mockReset();
 	_resetLoggerForTests();
+	cleanupWindowsCodex();
+	cleanupWindowsCodex = (): void => undefined;
+	if (originalPath === undefined) delete process.env.PATH;
+	else process.env.PATH = originalPath;
+	if (originalPathExt === undefined) delete process.env.PATHEXT;
+	else process.env.PATHEXT = originalPathExt;
 });
 
 describe("callCodex", () => {
