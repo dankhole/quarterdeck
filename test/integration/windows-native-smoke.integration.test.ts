@@ -542,6 +542,9 @@ describe.runIf(process.platform === "win32").sequential("native Windows smoke", 
 		let orphanOwner: ChildProcess | null = null;
 		let unrelatedAgent: ChildProcess | null = null;
 		let managedOrphanPid: number | null = null;
+		let testFailed = false;
+		let primaryError: unknown;
+		const cleanupErrors: unknown[] = [];
 
 		try {
 			await assertWindowsShellCommandRoundTrip(tempHome);
@@ -972,15 +975,32 @@ describe.runIf(process.platform === "win32").sequential("native Windows smoke", 
 			await waitUntil(() => !isPidAlive(managedOrphanPid ?? 0), "exact managed orphan process-tree cleanup", 20_000);
 			expect(isPidAlive(unrelatedAgent.pid)).toBe(true);
 			expect(existsSync(managedOrphanRecord?.path ?? "")).toBe(false);
+		} catch (error) {
+			testFailed = true;
+			primaryError = error;
 		} finally {
-			await stopServer?.();
-			await forceStopProcess(orphanOwner);
-			await forceStopProcess(unrelatedAgent);
-			if (managedOrphanPid && isPidAlive(managedOrphanPid)) {
-				process.kill(managedOrphanPid, "SIGKILL");
+			await stopServer?.().catch((error: unknown) => cleanupErrors.push(error));
+			await forceStopProcess(orphanOwner).catch((error: unknown) => cleanupErrors.push(error));
+			await forceStopProcess(unrelatedAgent).catch((error: unknown) => cleanupErrors.push(error));
+			try {
+				if (managedOrphanPid && isPidAlive(managedOrphanPid)) {
+					process.kill(managedOrphanPid, "SIGKILL");
+				}
+			} catch (error) {
+				cleanupErrors.push(error);
 			}
-			cleanupProject();
-			cleanupHome();
+			try {
+				cleanupProject();
+			} catch (error) {
+				cleanupErrors.push(error);
+			}
+			try {
+				cleanupHome();
+			} catch (error) {
+				cleanupErrors.push(error);
+			}
 		}
+		if (testFailed) throw primaryError;
+		if (cleanupErrors[0]) throw cleanupErrors[0];
 	}, 90_000);
 });
