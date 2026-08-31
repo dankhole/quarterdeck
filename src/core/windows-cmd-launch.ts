@@ -39,6 +39,15 @@ export class WindowsCommandResolutionError extends Error {
 	}
 }
 
+export class WindowsCommandArgumentError extends Error {
+	readonly code = "EINVAL";
+
+	constructor(binary: string) {
+		super(`Windows batch command "${binary}" requires a sibling PowerShell shim for quoted or multiline arguments.`);
+		this.name = "WindowsCommandArgumentError";
+	}
+}
+
 function resolveWindowsPowerShellShim(resolved: ResolvedWindowsBinaryPath): string | null {
 	if (resolved.extension === ".ps1") return canAccessPath(resolved.path) ? resolved.path : null;
 	if (!WINDOWS_CMD_EXTENSIONS.has(resolved.extension)) return null;
@@ -92,6 +101,10 @@ function shouldDoubleEscapeWindowsCmdShim(binary: string): boolean {
 	return WINDOWS_NODE_MODULES_CMD_SHIM_REGEXP.test(binary);
 }
 
+function assertWindowsCmdArgumentsSafe(binary: string, args: readonly string[]): void {
+	if (args.some((argument) => /["\r\n]/u.test(argument))) throw new WindowsCommandArgumentError(binary);
+}
+
 export function resolveWindowsComSpec(env: NodeJS.ProcessEnv = process.env): string {
 	const comSpec = getWindowsEnvironmentValue(env, "ComSpec")?.trim();
 	if (comSpec && win32.isAbsolute(comSpec) && !/["\r\n]/u.test(comSpec)) {
@@ -101,6 +114,7 @@ export function resolveWindowsComSpec(env: NodeJS.ProcessEnv = process.env): str
 }
 
 export function buildWindowsCmdArgsCommandLine(binary: string, args: string[]): string {
+	assertWindowsCmdArgumentsSafe(binary, args);
 	const escapedCommand = escapeWindowsCommand(binary);
 	const doubleEscapeMetaCharacters = shouldDoubleEscapeWindowsCmdShim(binary);
 	const escapedArgs = args.map((part) => escapeWindowsArgument(part, doubleEscapeMetaCharacters));
@@ -109,6 +123,7 @@ export function buildWindowsCmdArgsCommandLine(binary: string, args: string[]): 
 }
 
 export function buildWindowsCmdArgsArray(binary: string, args: string[]): string[] {
+	assertWindowsCmdArgumentsSafe(binary, args);
 	const escapedCommand = escapeWindowsCommand(binary);
 	const doubleEscapeMetaCharacters = shouldDoubleEscapeWindowsCmdShim(binary);
 	const escapedArgs = args.map((part) => escapeWindowsArgument(part, doubleEscapeMetaCharacters));

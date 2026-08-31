@@ -9,6 +9,7 @@ import {
 	resolveWindowsCompatibleCommand,
 	resolveWindowsComSpec,
 	shouldUseWindowsCmdLaunch,
+	WindowsCommandArgumentError,
 	WindowsCommandResolutionError,
 } from "../../../src/core";
 
@@ -152,6 +153,21 @@ describe("shouldUseWindowsCmdLaunch", () => {
 				PATHEXT: ".EXE;.CMD",
 			}),
 		).toThrow(WindowsCommandResolutionError);
+	});
+
+	it("requires a sibling PowerShell shim for quoted or multiline arguments", () => {
+		const tempDirectory = mkdtempSync(join(tmpdir(), "quarterdeck-win-launch-"));
+		tempDirectories.push(tempDirectory);
+		const shimPath = createWindowsBinary(tempDirectory, "codex.cmd");
+		const env = { PATH: tempDirectory, PATHEXT: ".cmd", SystemRoot: "C:\\Windows" };
+
+		for (const argument of ['quoted "value"', "line one\nline two", "carriage\rreturn"]) {
+			expect(() => buildWindowsCmdArgsCommandLine(shimPath, [argument])).toThrow(WindowsCommandArgumentError);
+			expect(() => buildWindowsCmdArgsArray(shimPath, [argument])).toThrow(WindowsCommandArgumentError);
+			expect(() => resolveWindowsCompatibleCommand(shimPath, [argument], "win32", env)).toThrow(
+				WindowsCommandArgumentError,
+			);
+		}
 	});
 
 	it("single-escapes metacharacters for ordinary batch commands", () => {

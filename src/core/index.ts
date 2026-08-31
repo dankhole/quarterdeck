@@ -149,6 +149,7 @@ export {
 	resolveWindowsCompatibleCommand,
 	resolveWindowsComSpec,
 	shouldUseWindowsCmdLaunch,
+	WindowsCommandArgumentError,
 	WindowsCommandResolutionError,
 } from "./windows-cmd-launch";
 export { isWindowsSafePathComponent } from "./windows-path-component";

@@ -887,7 +887,7 @@ describe.sequential("state streaming integration", () => {
 				procedure: "runtime.stopTaskSession",
 				type: "mutation",
 				projectId,
-				payload: { taskId },
+				payload: { taskId, waitForExit: true },
 			});
 		} finally {
 			if (stream) {

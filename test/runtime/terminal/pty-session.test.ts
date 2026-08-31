@@ -45,6 +45,7 @@ vi.mock("../../../src/terminal/managed-process-ownership", async (importOriginal
 	};
 });
 
+import { WindowsCommandArgumentError } from "../../../src/core";
 import { PtySession } from "../../../src/terminal";
 import { _testing as ptySessionTesting } from "../../../src/terminal/pty-session";
 
@@ -278,29 +279,22 @@ describe("PtySession", () => {
 		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toEqual(["--foo", "bar"]);
 	});
 
-	it("preserves full prompt text on Windows", () => {
+	it("fails closed when a Windows batch command cannot preserve a multiline prompt", () => {
 		setPlatform("win32");
 		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
 		const ptyProcess = createMockPtyProcess();
 		ptyMocks.spawn.mockReturnValue(ptyProcess);
 
-		PtySession.spawn({
-			binary: "claude",
-			args: ["add comment to random file\nwith more context"],
-			cwd: "C:/repo",
-			cols: 120,
-			rows: 40,
-		});
-
-		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
-		const cmdArgs = ptyMocks.spawn.mock.calls[0]?.[1] as string;
-		expect(cmdArgs).toContain("claude");
-		expect(cmdArgs).toContain("add^");
-		expect(cmdArgs).toContain("comment^");
-		expect(cmdArgs).toContain("random^");
-		expect(cmdArgs).toContain("file\\nwith^");
-		expect(cmdArgs).toContain("more^");
-		expect(cmdArgs).toContain("context");
+		expect(() =>
+			PtySession.spawn({
+				binary: "claude",
+				args: ["add comment to random file\nwith more context"],
+				cwd: "C:/repo",
+				cols: 120,
+				rows: 40,
+			}),
+		).toThrow(WindowsCommandArgumentError);
+		expect(ptyMocks.spawn).not.toHaveBeenCalled();
 	});
 
 	it("prefers a sibling PowerShell shim so Windows PTYs preserve multiline prompts", () => {

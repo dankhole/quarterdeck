@@ -290,7 +290,7 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 		].join("\r\n"),
 		"utf8",
 	);
-	const cmdArguments = [...expectedArguments, 'quoted "value"', "trailing-backslash\\"];
+	const cmdArguments = [...expectedArguments, "trailing-backslash\\"];
 	const cmdResolved = resolveWindowsCompatibleCommand(cmdShimPath, cmdArguments, "win32", {
 		...commandEnv,
 		QUARTERDECK_WINDOWS_CAPTURE_PATH: capturePath,
@@ -319,7 +319,7 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 		].join("\r\n"),
 		"utf8",
 	);
-	const multilineArguments = [...cmdArguments, "first line\nsecond line", "carriage\rreturn"];
+	const multilineArguments = [...cmdArguments, 'quoted "value"', "first line\nsecond line", "carriage\rreturn"];
 	const powerShellResolved = resolveWindowsCompatibleCommand(cmdShimPath, multilineArguments, "win32", {
 		...commandEnv,
 		QUARTERDECK_WINDOWS_CAPTURE_PATH: capturePath,
