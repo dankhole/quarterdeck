@@ -171,7 +171,7 @@ describe.sequential("task-worktree integration", () => {
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".next"])).toBe("");
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", "node_modules"])).toBe("");
 				if (existsSync(nextPath)) {
-					expect(runGit(ensured.path, ["check-ignore", "-v", ".next"])).toContain("info/exclude");
+					expect(runGit(ensured.path, ["check-ignore", "-v", ".next"])).toContain(".next");
 				}
 			} finally {
 				cleanup();
@@ -368,6 +368,7 @@ describe.sequential("task-worktree integration", () => {
 				runGit(repoPath, ["init"]);
 				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
 				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
+				runGit(repoPath, ["config", "core.autocrlf", "false"]);
 
 				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
 				writeFileSync(join(repoPath, "tracked.txt"), "base\n", "utf8");

@@ -44,7 +44,8 @@ export async function openTargetOnHost(target: string, deps?: BrowserOpenDeps): 
 
 	// On Linux the `open` package ships a bundled xdg-open fallback.
 	// Prefer system xdg-open when present so PATH-based overrides still work.
-	const options = platform === "linux" && isBinaryAvailable("xdg-open") ? { app: { name: "xdg-open" } } : undefined;
+	const options =
+		platform === "linux" && isBinaryAvailable("xdg-open") ? { app: { name: "xdg-open" }, wait: true } : undefined;
 
 	await openUrl(target, options);
 }

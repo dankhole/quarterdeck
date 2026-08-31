@@ -51,4 +51,20 @@ describe("host browser launcher", () => {
 		).resolves.toBeUndefined();
 		expect(openUrl).toHaveBeenCalledWith("https://example.com", undefined);
 	});
+
+	it("waits for the Linux xdg-open launcher so failures are observable", async () => {
+		const openUrl = vi.fn(async () => ({}) as ChildProcess);
+
+		await expect(
+			openTargetOnHost("https://example.com", {
+				platform: "linux",
+				isBinaryAvailable: () => true,
+				openUrl,
+			}),
+		).resolves.toBeUndefined();
+		expect(openUrl).toHaveBeenCalledWith("https://example.com", {
+			app: { name: "xdg-open" },
+			wait: true,
+		});
+	});
 });

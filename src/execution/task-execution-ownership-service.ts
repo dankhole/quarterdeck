@@ -304,9 +304,11 @@ export class TaskExecutionOwnershipService {
 				requestedSessionInstanceId,
 			);
 			const remainingNativeIdentity = manager.getTaskSessionProcessIdentity(taskId);
-			const persistedNativePidStillAlive =
-				ownership.ownerProcess?.processKind === "pty" && isProcessAlive(ownership.ownerProcess.pid);
-			if (stopped.didExit && (remainingNativeIdentity || persistedNativePidStillAlive)) {
+			const differentPersistedNativePidStillAlive =
+				ownership.ownerProcess?.processKind === "pty" &&
+				ownership.ownerProcess.sessionInstanceId !== requestedSessionInstanceId &&
+				isProcessAlive(ownership.ownerProcess.pid);
+			if (stopped.didExit && (remainingNativeIdentity || differentPersistedNativePidStillAlive)) {
 				return {
 					summary: manager.store.getSummary(taskId),
 					requestedSessionInstanceId: requestedSessionInstanceId ?? null,

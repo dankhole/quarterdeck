@@ -79,7 +79,10 @@ beforeEach(() => {
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReset();
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
 	commandDiscoveryMocks.resolveWindowsBinaryPath.mockReset();
-	commandDiscoveryMocks.resolveWindowsBinaryPath.mockReturnValue(null);
+	commandDiscoveryMocks.resolveWindowsBinaryPath.mockImplementation((binary: string) => ({
+		extension: ".exe",
+		path: `C:\\tools\\${binary}.exe`,
+	}));
 	childProcessMocks.execFile.mockReset();
 	mockSuccessfulAgentProbe();
 	delete process.env.QUARTERDECK_DEBUG_MODE;
