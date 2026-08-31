@@ -155,13 +155,13 @@ describe("shouldUseWindowsCmdLaunch", () => {
 		).toThrow(WindowsCommandResolutionError);
 	});
 
-	it("requires a sibling PowerShell shim for quoted or multiline arguments", () => {
+	it("requires a sibling PowerShell shim for arguments cmd cannot transport unambiguously", () => {
 		const tempDirectory = mkdtempSync(join(tmpdir(), "quarterdeck-win-launch-"));
 		tempDirectories.push(tempDirectory);
 		const shimPath = createWindowsBinary(tempDirectory, "codex.cmd");
 		const env = { PATH: tempDirectory, PATHEXT: ".cmd", SystemRoot: "C:\\Windows" };
 
-		for (const argument of ['quoted "value"', "line one\nline two", "carriage\rreturn"]) {
+		for (const argument of ['quoted "value"', "line one\nline two", "carriage\rreturn", "trailing-backslash\\"]) {
 			expect(() => buildWindowsCmdArgsCommandLine(shimPath, [argument])).toThrow(WindowsCommandArgumentError);
 			expect(() => buildWindowsCmdArgsArray(shimPath, [argument])).toThrow(WindowsCommandArgumentError);
 			expect(() => resolveWindowsCompatibleCommand(shimPath, [argument], "win32", env)).toThrow(
