@@ -67,7 +67,7 @@ interface WindowsAclInspection {
 
 const WINDOWS_ACL_INSPECTION_SCRIPT = [
 	"$ErrorActionPreference = 'Stop'",
-	`$paths = @(ConvertFrom-Json -InputObject ([Environment]::GetEnvironmentVariable('${ACL_INSPECTION_PATHS_KEY}', 'Process')))`,
+	`$paths = @((ConvertFrom-Json -InputObject ([Environment]::GetEnvironmentVariable('${ACL_INSPECTION_PATHS_KEY}', 'Process'))) | ForEach-Object { [string]$_ })`,
 	"$currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
 	"$rows = @(foreach ($path in $paths) { if ([System.IO.Directory]::Exists($path)) { $acl = [System.IO.Directory]::GetAccessControl($path) } else { $acl = [System.IO.File]::GetAccessControl($path) }; $ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value; $rules = @($acl.Access | ForEach-Object { [pscustomobject]@{ sid = $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value; accessType = $_.AccessControlType.ToString(); rights = $_.FileSystemRights.ToString() } }); [pscustomobject]@{ path = $path; currentSid = $currentSid; ownerSid = $ownerSid; protected = $acl.AreAccessRulesProtected; rules = $rules } })",
 	"ConvertTo-Json -InputObject $rows -Depth 5 -Compress",
