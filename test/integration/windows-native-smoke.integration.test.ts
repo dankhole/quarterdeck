@@ -223,8 +223,9 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 	const cmdDecoyPath = join(fixtureRoot, "cmd.exe");
 	const captureScriptPath = join(fixtureRoot, "capture arguments.cjs");
 	const capturePath = join(fixtureRoot, "captured arguments.json");
-	const cmdShimPath = join(fixtureRoot, "capture arguments.cmd");
-	const powerShellShimPath = join(fixtureRoot, "capture arguments.ps1");
+	const shimDirectory = join(fixtureRoot, "node_modules", ".bin");
+	const cmdShimPath = join(shimDirectory, "capture arguments.cmd");
+	const powerShellShimPath = join(shimDirectory, "capture arguments.ps1");
 	const expectedArguments = [
 		"space value",
 		"%NAME%",
@@ -238,6 +239,7 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 	const expectedInput = "status-line stdin %NAME% !ROUND_TRIP! ^ & | (value)";
 
 	mkdirSync(fixtureRoot, { recursive: true });
+	mkdirSync(shimDirectory, { recursive: true });
 	copyFileSync(process.execPath, copiedNodePath);
 	copyFileSync(process.execPath, powerShellDecoyPath);
 	copyFileSync(process.execPath, cmdDecoyPath);
