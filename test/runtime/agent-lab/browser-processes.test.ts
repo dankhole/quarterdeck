@@ -37,20 +37,22 @@ describe("Agent Lab browser process ownership", () => {
 	});
 
 	it("resolves playwright-core from the installed CLI instead of assuming a nested dependency", () => {
+		const cliPackagePath = join("/repo", "web-ui", "node_modules", "@playwright", "cli", "package.json");
+		const corePackagePath = join("/repo", "web-ui", "node_modules", "playwright-core", "package.json");
 		const resolveModule = vi
 			.fn<(specifier: string, parentPath: string) => string>()
-			.mockReturnValueOnce("/repo/web-ui/node_modules/@playwright/cli/package.json")
-			.mockReturnValueOnce("/repo/web-ui/node_modules/playwright-core/package.json");
+			.mockReturnValueOnce(cliPackagePath)
+			.mockReturnValueOnce(corePackagePath);
 
 		expect(_testing.resolvePlaywrightDaemonEntrypoint("/repo", resolveModule)).toBe(
-			"/repo/web-ui/node_modules/playwright-core/lib/entry/cliDaemon.js",
+			join("/repo", "web-ui", "node_modules", "playwright-core", "lib", "entry", "cliDaemon.js"),
 		);
-		expect(resolveModule).toHaveBeenNthCalledWith(1, "@playwright/cli/package.json", "/repo/web-ui/package.json");
 		expect(resolveModule).toHaveBeenNthCalledWith(
-			2,
-			"playwright-core/package.json",
-			"/repo/web-ui/node_modules/@playwright/cli/package.json",
+			1,
+			"@playwright/cli/package.json",
+			join("/repo", "web-ui", "package.json"),
 		);
+		expect(resolveModule).toHaveBeenNthCalledWith(2, "playwright-core/package.json", cliPackagePath);
 	});
 
 	it("recognizes quoted Windows node and daemon paths", () => {

@@ -34,6 +34,12 @@ describe("Windows workdir path policy", () => {
 		}
 	});
 
+	it("classifies Windows traversal before applying filename rules", () => {
+		expect(() => normalizeWorkdirRelativePath("../outside.txt", "win32")).toThrow(
+			"Path resolves outside the worktree.",
+		);
+	});
+
 	it("rejects Windows-unsafe explicit task ids", () => {
 		for (const taskId of ["CON", "lpt1.txt", "task:name", "task.", "task "]) {
 			expect(() => normalizeTaskIdForWorktreePath(taskId, "win32"), taskId).toThrow(

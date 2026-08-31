@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: complete native Windows CI enforcement
+
+- Private diagnostic, Agent Lab, and managed-process directories now install their protected current-user-and-LocalSystem DACL through an encoded Windows PowerShell command, preserving the existing owner while replacing inherited and explicit access rules.
+- Windows workdir validation now rejects traversal before applying filename rules. Native test fixtures use platform launchers, exact resolved executables, deterministic line endings, and platform-owned path forms without weakening production assertions.
+
 ### Fix: report launcher failures and confirm exact native-session exit
 
 - Linux browser launches now wait for the short-lived `xdg-open` process, so unavailable desktop handlers are reported instead of being accepted after spawn.

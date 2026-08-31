@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildClaudeHooksSettings } from "../../../src/claude-hooks";
-import { buildCodexHooksConfig } from "../../../src/codex-hooks";
+import { buildCodexHookConfigOverrides, buildCodexHooksConfig } from "../../../src/codex-hooks";
 import { buildStatuslineCommand } from "../../../src/commands/statusline";
 import {
 	_resetLoggerForTests,
@@ -326,7 +326,12 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.args.indexOf("--approve-for-me")).toBeLessThan(launch.args.indexOf("resume"));
 		expect(launch.args).not.toContain("--yolo");
 		expect(getCodexConfigOverrideValues(launch.args, "approvals_reviewer")).toEqual([]);
-		expect(getCodexConfigOverrideValues(launch.args, "hooks.PermissionRequest")[0]).toContain("to_review");
+		const expectedPermissionRequestOverride = buildCodexHookConfigOverrides()
+			.filter((_, index) => index % 2 === 1)
+			.find((value) => value.startsWith("hooks.PermissionRequest="));
+		expect(getCodexConfigOverrideValues(launch.args, "hooks.PermissionRequest")[0]).toBe(
+			expectedPermissionRequestOverride?.slice("hooks.PermissionRequest=".length),
+		);
 		expect(launch.args.join("\n")).toContain(
 			JSON.stringify(`${codexSessionFlagsConfigSource}:permission_request:0:0`),
 		);
