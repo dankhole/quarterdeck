@@ -198,7 +198,7 @@ describe("shouldUseWindowsCmdLaunch", () => {
 		tempDirectories.push(tempDirectory);
 		const cmdPath = createWindowsBinary(tempDirectory, "codex.cmd");
 		const powerShellPath = createWindowsBinary(tempDirectory, "codex.ps1");
-		const args = ["line one\nline two", "%NAME%", "!value!", 'quoted "value"'];
+		const args = ["line one\nline two", "%NAME%", "!value!", 'quoted "value"', 'slash\\"quote'];
 
 		expect(resolveWindowsCompatibleCommand(cmdPath, args, "win32", { SystemRoot: "C:\\Windows" })).toEqual({
 			binary: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
@@ -210,7 +210,11 @@ describe("shouldUseWindowsCmdLaunch", () => {
 				"Bypass",
 				"-File",
 				powerShellPath,
-				...args,
+				"line one\nline two",
+				"%NAME%",
+				"!value!",
+				'quoted \\"value\\"',
+				'slash\\\\\\"quote',
 			],
 		});
 	});
