@@ -1,7 +1,16 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter, once } from "node:events";
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	copyFileSync,
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { readdir } from "node:fs/promises";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -901,7 +910,9 @@ describe.runIf(process.platform === "win32").sequential("native Windows smoke", 
 			});
 			expect(openProjectResponse.status).toBe(200);
 			expect(openProjectResponse.payload).toEqual({ ok: true, outcome: "native" });
-			expect(readFileSync(hostLaunchLogPath, "utf8").trim()).toBe(projectPath);
+			expect(realpathSync.native(readFileSync(hostLaunchLogPath, "utf8").trim()).toLowerCase()).toBe(
+				realpathSync.native(projectPath).toLowerCase(),
+			);
 
 			const deleteWorktreeResponse = await requestJson<RuntimeWorktreeDeleteResponse>({
 				baseUrl,
