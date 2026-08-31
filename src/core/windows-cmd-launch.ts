@@ -11,6 +11,7 @@ import {
 const WINDOWS_CMD_META_CHARS_REGEXP = /([()\][%!^"`<>&|;, *?])/g;
 const WINDOWS_CMD_EXTENSIONS = new Set([".cmd", ".bat"]);
 const WINDOWS_DIRECT_EXTENSIONS = new Set([".exe", ".com"]);
+const WINDOWS_NODE_MODULES_CMD_SHIM_REGEXP = /(?:^|[\\/])node_modules[\\/]\.bin[\\/][^\\/]+\.(?:cmd|bat)$/iu;
 
 // `process.env` behaves case-insensitively on Windows, but once we copy env into a
 // plain object for child-process merging we need to preserve that behavior ourselves.
@@ -79,15 +80,16 @@ function escapeWindowsCommand(value: string): string {
 	return value.replace(WINDOWS_CMD_META_CHARS_REGEXP, "^$1");
 }
 
-function escapeWindowsArgument(value: string): string {
+function escapeWindowsArgument(value: string, doubleEscapeMetaCharacters: boolean): string {
 	let escaped = quoteWindowsProcessArgument(normalizeWindowsCmdArgument(`${value}`));
 	escaped = escaped.replace(WINDOWS_CMD_META_CHARS_REGEXP, "^$1");
-	// A command shim is parsed once by the outer `cmd.exe /c` command and a
-	// second time by the target `.cmd`/`.bat` file. Escape metacharacters for
-	// both passes so prompts and paths cannot be expanded or reinterpreted by
-	// the batch shim on the second parse.
-	escaped = escaped.replace(WINDOWS_CMD_META_CHARS_REGEXP, "^$1");
+	if (doubleEscapeMetaCharacters) escaped = escaped.replace(WINDOWS_CMD_META_CHARS_REGEXP, "^$1");
 	return escaped;
+}
+
+function shouldDoubleEscapeWindowsCmdShim(binary: string): boolean {
+	// npm-style .bin proxies parse `%*` once more; ordinary batch commands do not.
+	return WINDOWS_NODE_MODULES_CMD_SHIM_REGEXP.test(binary);
 }
 
 export function resolveWindowsComSpec(env: NodeJS.ProcessEnv = process.env): string {
@@ -100,14 +102,16 @@ export function resolveWindowsComSpec(env: NodeJS.ProcessEnv = process.env): str
 
 export function buildWindowsCmdArgsCommandLine(binary: string, args: string[]): string {
 	const escapedCommand = escapeWindowsCommand(binary);
-	const escapedArgs = args.map((part) => escapeWindowsArgument(part));
+	const doubleEscapeMetaCharacters = shouldDoubleEscapeWindowsCmdShim(binary);
+	const escapedArgs = args.map((part) => escapeWindowsArgument(part, doubleEscapeMetaCharacters));
 	const shellCommand = [escapedCommand, ...escapedArgs].join(" ");
 	return `/d /v:off /s /c "${shellCommand}"`;
 }
 
 export function buildWindowsCmdArgsArray(binary: string, args: string[]): string[] {
 	const escapedCommand = escapeWindowsCommand(binary);
-	const escapedArgs = args.map((part) => escapeWindowsArgument(part));
+	const doubleEscapeMetaCharacters = shouldDoubleEscapeWindowsCmdShim(binary);
+	const escapedArgs = args.map((part) => escapeWindowsArgument(part, doubleEscapeMetaCharacters));
 	const shellCommand = [escapedCommand, ...escapedArgs].join(" ");
 	return ["/d", "/v:off", "/s", "/c", `"${shellCommand}"`];
 }

@@ -4,8 +4,8 @@
 
 ### Fix: complete native Windows CI enforcement
 
-- Private diagnostic, Agent Lab, and managed-process directories now remove inherited and explicit rules through SID-based .NET Framework APIs before adding the current-user-and-LocalSystem DACL, preserving owner/group metadata without PowerShell module-autoload dependencies. Failures expose only a bounded operation-stage/exception-type/error-ID classifier, never PowerShell output or affected paths.
-- Windows workdir validation now rejects traversal before applying filename rules. Native test fixtures use platform launchers, exact resolved executables, deterministic line endings, and platform-owned path forms without weakening production assertions.
+- Private diagnostic, Agent Lab, and managed-process directories now remove inherited and explicit rules through SID-based .NET Framework APIs before adding the current-user-and-LocalSystem DACL, preserving owner/group metadata without PowerShell module-autoload dependencies. Windows PowerShell JSON results are normalized to scalar paths before ACL reads. Failures expose only a bounded operation-stage/exception-type/error-ID classifier, never PowerShell output or affected paths.
+- Windows workdir validation now rejects traversal before applying filename rules. Native test fixtures use platform launchers, exact resolved executables, deterministic line endings, and platform-owned path forms without weakening production assertions. Ordinary batch commands retain the standard single cmd-escaping pass, while only known `node_modules/.bin` proxy shims receive the second pass.
 
 ### Fix: report launcher failures and confirm exact native-session exit
 

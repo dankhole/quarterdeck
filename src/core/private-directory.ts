@@ -17,14 +17,16 @@ const WINDOWS_PRIVATE_DIRECTORY_ACL_SCRIPT = [
 	`trap { $failure = $_.Exception; while ($failure.InnerException) { $failure = $failure.InnerException }; [Console]::Error.WriteLine('${WINDOWS_ACL_FAILURE_PREFIX}' + $stage + '|' + $failure.GetType().FullName + '|' + $_.FullyQualifiedErrorId); exit 1 }`,
 	`$serializedPaths = [Environment]::GetEnvironmentVariable('${PRIVATE_PATHS_ENVIRONMENT_KEY}', 'Process')`,
 	"if ([string]::IsNullOrWhiteSpace($serializedPaths)) { throw 'Missing private paths.' }",
-	"$paths = @(ConvertFrom-Json -InputObject $serializedPaths)",
+	// Windows PowerShell 5.1 can retain a JSON array as one pipeline value. Let
+	// foreach enumerate it and cast each member before overload resolution.
+	"$paths = ConvertFrom-Json -InputObject $serializedPaths",
 	"$owner = [System.Security.Principal.WindowsIdentity]::GetCurrent().User",
 	"$system = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18')",
 	"$rights = [System.Security.AccessControl.FileSystemRights]::FullControl",
 	"$inheritance = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit",
 	"$propagation = [System.Security.AccessControl.PropagationFlags]::None",
 	"$allow = [System.Security.AccessControl.AccessControlType]::Allow",
-	"foreach ($path in $paths) { $stage = 'read'; $acl = [System.IO.Directory]::GetAccessControl($path); $stage = 'protect'; $acl.SetAccessRuleProtection($true, $false); $stage = 'enumerate'; $rules = @($acl.GetAccessRules($true, $false, [System.Security.Principal.SecurityIdentifier])); $stage = 'remove'; foreach ($rule in $rules) { $acl.RemoveAccessRuleSpecific($rule) }; $stage = 'add'; $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($owner, $rights, $inheritance, $propagation, $allow)); $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($system, $rights, $inheritance, $propagation, $allow)); $stage = 'apply'; [System.IO.Directory]::SetAccessControl($path, $acl) }",
+	"foreach ($serializedPath in $paths) { [string]$path = $serializedPath; $stage = 'read'; $acl = [System.IO.Directory]::GetAccessControl($path); $stage = 'protect'; $acl.SetAccessRuleProtection($true, $false); $stage = 'enumerate'; $rules = @($acl.GetAccessRules($true, $false, [System.Security.Principal.SecurityIdentifier])); $stage = 'remove'; foreach ($rule in $rules) { $acl.RemoveAccessRuleSpecific($rule) }; $stage = 'add'; $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($owner, $rights, $inheritance, $propagation, $allow)); $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($system, $rights, $inheritance, $propagation, $allow)); $stage = 'apply'; [System.IO.Directory]::SetAccessControl($path, $acl) }",
 ].join("; ");
 const WINDOWS_PRIVATE_DIRECTORY_ACL_ENCODED_SCRIPT = Buffer.from(
 	WINDOWS_PRIVATE_DIRECTORY_ACL_SCRIPT,
