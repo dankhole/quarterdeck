@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import type {
 	RuntimeProjectAddResponse,
 	RuntimeProjectsResponse,
+	RuntimeStateStreamProjectMetadataMessage,
 	RuntimeStateStreamSnapshotMessage,
 } from "../../src/core";
 import { initGitRepository } from "../utilities/git-env";
@@ -167,12 +168,17 @@ describe.sequential("project discovery integration", () => {
 			expect(projectsResponse.status).toBe(200);
 			expect(projectsResponse.payload.currentProjectId).toBe(projectAId);
 
-			secondStream = await connectRuntimeStream(`ws://127.0.0.1:${secondPort}/api/runtime/ws`);
+			secondStream = await connectRuntimeStream(`ws://127.0.0.1:${secondPort}/api/runtime/ws?documentVisible=false`);
 			const snapshot = (await secondStream.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
 			expect(snapshot.currentProjectId).toBe(projectAId);
 			expect(snapshot.projectState?.repoPath).toBe(expectedProjectAPath);
+			await secondStream.waitForMessage(
+				(message): message is RuntimeStateStreamProjectMetadataMessage =>
+					message.type === "project_metadata_updated" && message.projectId === projectAId,
+				10_000,
+			);
 		} finally {
 			if (secondStream) {
 				await secondStream.close();

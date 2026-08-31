@@ -72,7 +72,7 @@ async function createHarness(
 		options: { occurredAt?: number } = {},
 	) => {
 		deliveryIndex += 1;
-		occurredAt = Math.max(Date.now(), occurredAt + 1);
+		occurredAt = Math.max(Date.now() + 1, occurredAt + 1);
 		return await api.ingest({
 			taskId,
 			projectId: "project-1",
