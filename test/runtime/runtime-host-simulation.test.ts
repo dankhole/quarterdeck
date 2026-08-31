@@ -52,7 +52,7 @@ describe("runtime host simulation", () => {
 			{
 				kind: "open_path",
 				outcome: "simulated",
-				target: { scope: "primary_project", relativePath: "src/index.ts" },
+				target: { scope: "primary_project", relativePath: join("src", "index.ts") },
 				projectId: "project-1",
 				taskId: "task-1",
 				sequence: 2,

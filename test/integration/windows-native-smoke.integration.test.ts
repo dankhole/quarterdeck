@@ -148,7 +148,14 @@ async function executeWindowsShellCommand(
 		const child = execFile(
 			resolveWindowsComSpec(env),
 			["/d", "/s", "/c", command],
-			{ cwd, encoding: "utf8", env, timeout: 10_000, windowsHide: true },
+			{
+				cwd,
+				encoding: "utf8",
+				env,
+				timeout: 10_000,
+				windowsHide: true,
+				windowsVerbatimArguments: true,
+			},
 			(error, stdout, stderr) => {
 				if (error) {
 					rejectCommand(error);

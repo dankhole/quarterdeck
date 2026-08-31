@@ -19,8 +19,12 @@ const WINDOWS_PRIVATE_DIRECTORY_ACL_SCRIPT = [
 	"$inheritance = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit",
 	"$propagation = [System.Security.AccessControl.PropagationFlags]::None",
 	"$allow = [System.Security.AccessControl.AccessControlType]::Allow",
-	"foreach ($path in $paths) { $acl = [System.Security.AccessControl.DirectorySecurity]::new(); $acl.SetAccessRuleProtection($true, $false); $acl.SetOwner($owner); $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($owner, $rights, $inheritance, $propagation, $allow)); $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($system, $rights, $inheritance, $propagation, $allow)); [System.IO.Directory]::SetAccessControl($path, $acl) }",
+	"foreach ($path in $paths) { $acl = Get-Acl -LiteralPath $path; $acl.SetAccessRuleProtection($true, $false); foreach ($existingRule in @($acl.Access)) { $acl.RemoveAccessRuleAll($existingRule) }; $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($owner, $rights, $inheritance, $propagation, $allow)); $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($system, $rights, $inheritance, $propagation, $allow)); Set-Acl -LiteralPath $path -AclObject $acl }",
 ].join("; ");
+const WINDOWS_PRIVATE_DIRECTORY_ACL_ENCODED_SCRIPT = Buffer.from(
+	WINDOWS_PRIVATE_DIRECTORY_ACL_SCRIPT,
+	"utf16le",
+).toString("base64");
 
 export interface WindowsPrivateAclCommandResult {
 	ok: boolean;
@@ -48,12 +52,13 @@ function runPowerShellAclCommand(command: string, paths: readonly string[]): Pro
 		const child = execFile(
 			command,
 			[
+				"-NoLogo",
 				"-NoProfile",
 				"-NonInteractive",
 				"-ExecutionPolicy",
 				"Bypass",
-				"-Command",
-				WINDOWS_PRIVATE_DIRECTORY_ACL_SCRIPT,
+				"-EncodedCommand",
+				WINDOWS_PRIVATE_DIRECTORY_ACL_ENCODED_SCRIPT,
 			],
 			{
 				encoding: "utf8",

@@ -17,7 +17,6 @@ function assertPlatformPathComponents(input: string, platform: NodeJS.Platform):
 }
 
 export function normalizeWorkdirRelativePath(input: string, platform: NodeJS.Platform = process.platform): string {
-	assertPlatformPathComponents(input, platform);
 	const raw = input.replaceAll("\\", "/");
 	if (!raw || raw.trim().length === 0) {
 		throw new Error("Missing path parameter.");
@@ -35,6 +34,7 @@ export function normalizeWorkdirRelativePath(input: string, platform: NodeJS.Pla
 	) {
 		throw new Error("Path resolves outside the worktree.");
 	}
+	assertPlatformPathComponents(normalized, platform);
 	return normalized;
 }
 

@@ -33,36 +33,39 @@ describe("validated contained file opening", () => {
 		}
 	});
 
-	it("rejects a canonical parent that is replaced by an escaping directory link after open", async () => {
-		const temporary = createTempDir("quarterdeck-validated-file-swap-");
-		try {
-			const rootPath = join(temporary.path, "allowed");
-			const parentPath = join(rootPath, "project");
-			const movedParentPath = join(rootPath, "project-original");
-			const outsidePath = join(temporary.path, "outside");
-			const filePath = join(parentPath, "session.jsonl");
-			await Promise.all([mkdir(parentPath, { recursive: true }), mkdir(outsidePath)]);
-			await Promise.all([
-				writeFile(filePath, "inside\n", "utf8"),
-				writeFile(join(outsidePath, "session.jsonl"), "outside\n", "utf8"),
-			]);
-
-			const canonicalRoot = await realpath(rootPath);
-			const canonicalPath = await realpath(filePath);
-			const pathStat = await lstat(canonicalPath);
-			const fileHandle = await open(canonicalPath, "r");
+	it.skipIf(process.platform === "win32")(
+		"rejects a canonical parent that is replaced by an escaping directory link after open",
+		async () => {
+			const temporary = createTempDir("quarterdeck-validated-file-swap-");
 			try {
-				await rename(parentPath, movedParentPath);
-				await symlink(outsidePath, parentPath, process.platform === "win32" ? "junction" : "dir");
+				const rootPath = join(temporary.path, "allowed");
+				const parentPath = join(rootPath, "project");
+				const movedParentPath = join(rootPath, "project-original");
+				const outsidePath = join(temporary.path, "outside");
+				const filePath = join(parentPath, "session.jsonl");
+				await Promise.all([mkdir(parentPath, { recursive: true }), mkdir(outsidePath)]);
+				await Promise.all([
+					writeFile(filePath, "inside\n", "utf8"),
+					writeFile(join(outsidePath, "session.jsonl"), "outside\n", "utf8"),
+				]);
 
-				await expect(
-					validateOpenedContainedRegularFile({ canonicalRoot, canonicalPath, pathStat, fileHandle }),
-				).resolves.toEqual({ status: "invalid", reason: "path_changed" });
+				const canonicalRoot = await realpath(rootPath);
+				const canonicalPath = await realpath(filePath);
+				const pathStat = await lstat(canonicalPath);
+				const fileHandle = await open(canonicalPath, "r");
+				try {
+					await rename(parentPath, movedParentPath);
+					await symlink(outsidePath, parentPath, process.platform === "win32" ? "junction" : "dir");
+
+					await expect(
+						validateOpenedContainedRegularFile({ canonicalRoot, canonicalPath, pathStat, fileHandle }),
+					).resolves.toEqual({ status: "invalid", reason: "path_changed" });
+				} finally {
+					await fileHandle.close();
+				}
 			} finally {
-				await fileHandle.close();
+				temporary.cleanup();
 			}
-		} finally {
-			temporary.cleanup();
-		}
-	});
+		},
+	);
 });

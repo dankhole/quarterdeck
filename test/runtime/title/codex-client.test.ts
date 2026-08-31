@@ -189,6 +189,10 @@ describe("callCodex", () => {
 			if (typeof candidate !== "function") {
 				throw new Error("Expected execFile callback");
 			}
+			if ((args[1] as string[] | undefined)?.includes("/pid")) {
+				(candidate as ExecCallback)(null, "", "");
+				return {} as ChildProcess;
+			}
 			callback = candidate as typeof callback;
 			return { pid: 123, kill, unref, stdout, stderr } as unknown as ChildProcess;
 		});
@@ -200,7 +204,12 @@ describe("callCodex", () => {
 		stderr.write(partialStderr);
 		await vi.advanceTimersByTimeAsync(20_000);
 
-		expect(kill).toHaveBeenCalledWith("SIGTERM");
+		if (process.platform === "win32") {
+			expect(childProcessMocks.execFile.mock.calls.some((call) => call[1]?.includes("/pid"))).toBe(true);
+			expect(kill).not.toHaveBeenCalled();
+		} else {
+			expect(kill).toHaveBeenCalledWith("SIGTERM");
+		}
 		expect(unref).toHaveBeenCalledOnce();
 		await expect(resultPromise).resolves.toMatchObject({
 			timedOut: true,

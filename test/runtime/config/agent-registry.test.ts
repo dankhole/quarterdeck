@@ -55,12 +55,17 @@ function readExecFileCallback(args: unknown[]): ExecFileCallback {
 function mockSuccessfulAgentProbe(): void {
 	childProcessMocks.execFile.mockImplementation((binary: string, args: string[], ...rest: unknown[]) => {
 		const callback = readExecFileCallback(rest);
+		const normalizedBinary = binary.replaceAll("\\", "/").toLowerCase();
 		if (args[0] === "--version") {
-			if (binary === "claude") {
+			if (normalizedBinary === "claude" || normalizedBinary.endsWith("/claude.exe")) {
 				callback(null, "2.1.198 (Claude Code)\n", "");
 				return {} as ChildProcess;
 			}
-			callback(null, binary === "pi" ? "0.84.3\n" : "0.147.0\n", "");
+			callback(
+				null,
+				normalizedBinary === "pi" || normalizedBinary.endsWith("/pi.exe") ? "0.84.3\n" : "0.147.0\n",
+				"",
+			);
 			return {} as ChildProcess;
 		}
 		if (args[0] === "features" && args[1] === "list") {

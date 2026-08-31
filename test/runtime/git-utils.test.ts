@@ -1,6 +1,7 @@
 import { promisify } from "node:util";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildGitCommandArgs } from "../../src/core";
 
 const childProcessMocks = vi.hoisted(() => ({
 	execFile: vi.fn(),
@@ -91,8 +92,8 @@ describe("runGit", () => {
 		await runGit("/repo", ["status"]);
 
 		expect(childProcessMocks.execFile).toHaveBeenCalledWith(
-			"git",
-			["-c", "core.quotepath=false", "status"],
+			process.platform === "win32" ? expect.stringMatching(/git\.exe$/iu) : "git",
+			buildGitCommandArgs(["status"]),
 			expect.objectContaining({ windowsHide: true }),
 			expect.any(Function),
 		);
@@ -106,8 +107,8 @@ describe("runGit", () => {
 
 		await expect(workdirExports.listFilesAtRef("/repo", "HEAD")).resolves.toEqual([" leading.txt", "nested/file.ts"]);
 		expect(childProcessMocks.execFile).toHaveBeenCalledWith(
-			"git",
-			["-c", "core.quotepath=false", "ls-tree", "-r", "--name-only", "-z", "HEAD", "--"],
+			process.platform === "win32" ? expect.stringMatching(/git\.exe$/iu) : "git",
+			buildGitCommandArgs(["ls-tree", "-r", "--name-only", "-z", "HEAD", "--"]),
 			expect.objectContaining({ windowsHide: true }),
 			expect.any(Function),
 		);
@@ -116,14 +117,19 @@ describe("runGit", () => {
 	it("tree-terminates and distinctly classifies a manually timed-out git command", async () => {
 		vi.useFakeTimers();
 		try {
-			let callback: ((error: Error, stdout: string, stderr: string) => void) | null = null;
+			let gitCallback: ((error: Error | null, stdout: string, stderr: string) => void) | null = null;
 			const kill = vi.fn(() => {
-				callback?.(new Error("terminated"), "partial", "");
+				gitCallback?.(new Error("terminated"), "partial", "");
 				return true;
 			});
 			childProcessMocks.execFile.mockImplementation(
-				(_command: string, _args: string[], _options: unknown, execCallback: typeof callback) => {
-					callback = execCallback;
+				(_command: string, args: string[], _options: unknown, execCallback: typeof gitCallback) => {
+					if (args.includes("/pid")) {
+						execCallback?.(null, "", "");
+						gitCallback?.(new Error("terminated"), "partial", "");
+						return { pid: 54_321, kill: vi.fn(() => true) };
+					}
+					gitCallback = execCallback;
 					return { pid: 12_345, kill };
 				},
 			);
@@ -132,7 +138,12 @@ describe("runGit", () => {
 			await vi.advanceTimersByTimeAsync(GIT_COMMAND_TIMEOUTS_MS.metadata);
 			const result = await resultPromise;
 
-			expect(kill).toHaveBeenCalledWith("SIGTERM");
+			if (process.platform === "win32") {
+				expect(childProcessMocks.execFile.mock.calls.some((call) => call[1]?.includes("/pid"))).toBe(true);
+				expect(kill).not.toHaveBeenCalled();
+			} else {
+				expect(kill).toHaveBeenCalledWith("SIGTERM");
+			}
 			expect(result).toMatchObject({
 				ok: false,
 				timedOut: true,

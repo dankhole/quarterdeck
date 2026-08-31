@@ -377,9 +377,9 @@ describe("agent-lab environment", () => {
 		expect(environment.CLAUDE_CONFIG_DIR).toBeUndefined();
 		expect(environment.ANTHROPIC_API_KEY).toBeUndefined();
 		expect(environment.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
-		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CLAUDE_CONFIG_DIR).toBe("/tmp/lab/claude-config");
+		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CLAUDE_CONFIG_DIR).toBe(resolve("/tmp/lab/claude-config"));
 		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MCP_CONFIG).toBe(
-			"/tmp/lab/claude-config/agent-lab-empty-mcp.json",
+			resolve("/tmp/lab/claude-config/agent-lab-empty-mcp.json"),
 		);
 		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MODEL).toBe("haiku");
 		expect(environment.QUARTERDECK_AGENT_LAB_REAL_CLAUDE_PERMISSION_MODE).toBe("manual");
@@ -593,7 +593,7 @@ describe("agent-lab real Claude", () => {
 			model: "haiku",
 			modelProvider: "anthropic",
 			profileSource: "environment",
-			claudeConfigDirPath: "/profiles/claude",
+			claudeConfigDirPath: resolve("/profiles/claude"),
 			permissionMode: "manual",
 			mcpConfigPath: null,
 		});
@@ -634,7 +634,7 @@ describe("agent-lab real Claude", () => {
 			HOME: "/account/home",
 			USERPROFILE: "/account/home",
 			LANG: "en_US.UTF-8",
-			CLAUDE_CONFIG_DIR: "/profiles/claude",
+			CLAUDE_CONFIG_DIR: resolve("/profiles/claude"),
 			...AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_POLICY,
 		});
 		expect(environment.ANTHROPIC_API_KEY).toBeUndefined();

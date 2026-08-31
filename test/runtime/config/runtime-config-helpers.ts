@@ -51,6 +51,7 @@ export function writeFakeCommand(binDir: string, command: string): void {
 	if (process.platform === "win32") {
 		const scriptPath = join(binDir, `${command}.cmd`);
 		writeFileSync(scriptPath, "@echo off\r\nexit /b 0\r\n", "utf8");
+		writeFileSync(join(binDir, `${command}.ps1`), "exit 0\r\n", "utf8");
 		return;
 	}
 	const scriptPath = join(binDir, command);
@@ -75,6 +76,17 @@ if "%1"=="--version" echo ${version}
 if "%1"=="features" if "%2"=="list" echo hooks  stable  ${codexHooksSupported ? "true" : "false"}
 exit /b 0
 `,
+			"utf8",
+		);
+		const powerShellVersion = version.replaceAll("'", "''");
+		writeFileSync(
+			join(binDir, `${command}.ps1`),
+			[
+				`if ($args[0] -eq '--version') { Write-Output '${powerShellVersion}' }`,
+				`if ($args[0] -eq 'features' -and $args[1] -eq 'list') { Write-Output 'hooks  stable  ${codexHooksSupported ? "true" : "false"}' }`,
+				"exit 0",
+				"",
+			].join("\r\n"),
 			"utf8",
 		);
 		return;

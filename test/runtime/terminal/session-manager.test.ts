@@ -51,7 +51,7 @@ describe("TerminalSessionManager", () => {
 	});
 
 	it("builds shell kickoff command lines with quoted arguments", () => {
-		const commandLine = buildShellCommandLine("claude", ["--auto", "high", "hello world"]);
+		const commandLine = buildShellCommandLine("claude", ["--auto", "high", "hello world"], "linux");
 		expect(commandLine).toContain("claude");
 		expect(commandLine).toContain("--auto");
 		expect(commandLine).toContain("hello world");
