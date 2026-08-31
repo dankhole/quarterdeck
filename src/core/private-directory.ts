@@ -7,21 +7,20 @@ import { resolveWindowsPowerShellPath } from "./windows-system-paths.js";
 
 const PRIVATE_PATHS_ENVIRONMENT_KEY = "QUARTERDECK_PRIVATE_PATHS";
 const WINDOWS_ACL_TIMEOUT_MS = 10_000;
+const WINDOWS_ACL_FAILURE_PREFIX = "QUARTERDECK_ACL_FAILURE|";
 
-// A fresh DirectorySecurity marks only its access section as modified, so Set-Acl replaces the DACL
-// without rewriting the existing owner or relying on account translation for inherited rules.
+// Replace the existing descriptor's Access section from SDDL so Set-Acl retains its owner and group
+// without enumerating inherited rules or translating their identities.
 const WINDOWS_PRIVATE_DIRECTORY_ACL_SCRIPT = [
 	"$ErrorActionPreference = 'Stop'",
+	`trap { $failure = $_.Exception; while ($failure.InnerException) { $failure = $failure.InnerException }; [Console]::Error.WriteLine('${WINDOWS_ACL_FAILURE_PREFIX}' + $failure.GetType().FullName + '|' + $_.FullyQualifiedErrorId); exit 1 }`,
 	`$serializedPaths = [Environment]::GetEnvironmentVariable('${PRIVATE_PATHS_ENVIRONMENT_KEY}', 'Process')`,
 	"if ([string]::IsNullOrWhiteSpace($serializedPaths)) { throw 'Missing private paths.' }",
 	"$paths = @(ConvertFrom-Json -InputObject $serializedPaths)",
 	"$owner = [System.Security.Principal.WindowsIdentity]::GetCurrent().User",
-	"$system = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18')",
-	"$rights = [System.Security.AccessControl.FileSystemRights]::FullControl",
-	"$inheritance = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit",
-	"$propagation = [System.Security.AccessControl.PropagationFlags]::None",
-	"$allow = [System.Security.AccessControl.AccessControlType]::Allow",
-	"foreach ($path in $paths) { $acl = [System.Security.AccessControl.DirectorySecurity]::new(); $acl.SetAccessRuleProtection($true, $false); $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($owner, $rights, $inheritance, $propagation, $allow)); $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($system, $rights, $inheritance, $propagation, $allow)); Set-Acl -LiteralPath $path -AclObject $acl }",
+	"$accessSection = [System.Security.AccessControl.AccessControlSections]::Access",
+	"$privateDacl = 'D:P(A;OICI;FA;;;' + $owner.Value + ')(A;OICI;FA;;;SY)'",
+	"foreach ($path in $paths) { $acl = Get-Acl -LiteralPath $path; $acl.SetSecurityDescriptorSddlForm($privateDacl, $accessSection); Set-Acl -LiteralPath $path -AclObject $acl }",
 ].join("; ");
 const WINDOWS_PRIVATE_DIRECTORY_ACL_ENCODED_SCRIPT = Buffer.from(
 	WINDOWS_PRIVATE_DIRECTORY_ACL_SCRIPT,
@@ -30,6 +29,7 @@ const WINDOWS_PRIVATE_DIRECTORY_ACL_ENCODED_SCRIPT = Buffer.from(
 
 export interface WindowsPrivateAclCommandResult {
 	ok: boolean;
+	failureCode?: string;
 }
 
 export type WindowsPrivateAclCommandRunner = (paths: readonly string[]) => Promise<WindowsPrivateAclCommandResult>;
@@ -41,11 +41,35 @@ export interface EnsurePrivateDirectoryOptions {
 
 export class PrivateDirectoryAclError extends Error {
 	readonly code = "PrivateDirectoryAclError";
+	readonly failureCode?: string;
 
-	constructor() {
-		super("Could not apply a private Windows ACL to protected storage.");
+	constructor(failureCode?: string) {
+		super(formatPrivateDirectoryAclErrorMessage(failureCode));
 		this.name = "PrivateDirectoryAclError";
+		this.failureCode = normalizeWindowsAclFailureCode(failureCode);
 	}
+}
+
+function formatPrivateDirectoryAclErrorMessage(failureCode: string | undefined): string {
+	const normalizedFailureCode = normalizeWindowsAclFailureCode(failureCode);
+	return normalizedFailureCode
+		? `Could not apply a private Windows ACL to protected storage (${normalizedFailureCode}).`
+		: "Could not apply a private Windows ACL to protected storage.";
+}
+
+function normalizeWindowsAclFailureCode(candidate: string | undefined): string | undefined {
+	const normalized = candidate?.trim();
+	return normalized && /^[a-z0-9_.+`-]+\|[a-z0-9_.+,`-]+$/iu.test(normalized) ? normalized.slice(0, 240) : undefined;
+}
+
+function parseWindowsAclFailureCode(stderr: string): string | undefined {
+	const markerIndex = stderr.indexOf(WINDOWS_ACL_FAILURE_PREFIX);
+	if (markerIndex < 0) return undefined;
+	const candidate = stderr
+		.slice(markerIndex + WINDOWS_ACL_FAILURE_PREFIX.length)
+		.split(/\r?\n/u, 1)[0]
+		?.trim();
+	return normalizeWindowsAclFailureCode(candidate);
 }
 
 function runPowerShellAclCommand(command: string, paths: readonly string[]): Promise<WindowsPrivateAclCommandResult> {
@@ -69,9 +93,9 @@ function runPowerShellAclCommand(command: string, paths: readonly string[]): Pro
 				}),
 				windowsHide: true,
 			},
-			(error: ExecFileException | null) => {
+			(error: ExecFileException | null, _stdout: string, stderr: string) => {
 				if (timeout) clearTimeout(timeout);
-				resolve({ ok: error === null });
+				resolve({ ok: error === null, failureCode: error ? parseWindowsAclFailureCode(stderr) : undefined });
 			},
 		);
 		timeout = setTimeout(() => terminateProcessForTimeout(child), WINDOWS_ACL_TIMEOUT_MS);
@@ -105,5 +129,5 @@ export async function ensurePrivateDirectories(
 	}
 
 	const result = await (options.runWindowsAclCommand ?? defaultRunWindowsAclCommand)(uniquePaths);
-	if (!result.ok) throw new PrivateDirectoryAclError();
+	if (!result.ok) throw new PrivateDirectoryAclError(result.failureCode);
 }
