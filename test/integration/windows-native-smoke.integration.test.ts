@@ -462,6 +462,8 @@ function installWindowsLaunchFixtures(binDir: string): void {
 		join(binDir, "codex.cmd"),
 		[
 			"@echo off",
+			'if "%~1"=="--version" (echo codex-cli 0.147.0 & exit /b 0)',
+			'if "%~1"=="features" if "%~2"=="list" (echo hooks stable true & exit /b 0)',
 			'"%QUARTERDECK_WINDOWS_NODE%" --import "%QUARTERDECK_WINDOWS_TSX_LOADER%" "%QUARTERDECK_WINDOWS_FAKE_CODEX%" %*',
 			"exit /b %errorlevel%",
 			"",
@@ -476,6 +478,8 @@ function installWindowsLaunchFixtures(binDir: string): void {
 	writeFileSync(
 		join(binDir, "codex.ps1"),
 		[
+			"if ($args[0] -eq '--version') { Write-Output 'codex-cli 0.147.0'; exit 0 }",
+			"if ($args[0] -eq 'features' -and $args[1] -eq 'list') { Write-Output 'hooks stable true'; exit 0 }",
 			"if ($args -contains '--') { $serializedArguments = ConvertTo-Json -InputObject @($args) -Compress; [System.IO.File]::WriteAllText($env:QUARTERDECK_WINDOWS_POWERSHELL_AGENT_MARKER, $serializedArguments) }",
 			"& $env:QUARTERDECK_WINDOWS_NODE --import $env:QUARTERDECK_WINDOWS_TSX_LOADER $env:QUARTERDECK_WINDOWS_FAKE_CODEX @args",
 			"exit $LASTEXITCODE",
