@@ -167,6 +167,8 @@ export function resolveWindowsCompatibleCommand(
 
 	const powerShellShim = resolveWindowsPowerShellShim(resolved);
 	if (powerShellShim) {
+		const powerShellArgs =
+			resolved.extension === ".ps1" ? args : args.map(escapeWindowsPowerShellNativeForwardedArgument);
 		return {
 			binary: resolveWindowsPowerShellPath(env),
 			args: [
@@ -177,7 +179,7 @@ export function resolveWindowsCompatibleCommand(
 				"Bypass",
 				"-File",
 				powerShellShim,
-				...args.map(escapeWindowsPowerShellNativeForwardedArgument),
+				...powerShellArgs,
 			],
 		};
 	}

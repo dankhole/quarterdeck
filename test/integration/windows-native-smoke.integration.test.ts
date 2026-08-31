@@ -69,7 +69,6 @@ interface WindowsAclRule {
 interface WindowsAclInspection {
 	path: string;
 	currentSid: string;
-	ownerSid: string;
 	protected: boolean;
 	rules: WindowsAclRule[];
 }
@@ -78,7 +77,7 @@ const WINDOWS_ACL_INSPECTION_SCRIPT = [
 	"$ErrorActionPreference = 'Stop'",
 	`$paths = @((ConvertFrom-Json -InputObject ([Environment]::GetEnvironmentVariable('${ACL_INSPECTION_PATHS_KEY}', 'Process'))) | ForEach-Object { [string]$_ })`,
 	"$currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
-	"$rows = @(foreach ($path in $paths) { if ([System.IO.Directory]::Exists($path)) { $acl = [System.IO.Directory]::GetAccessControl($path) } else { $acl = [System.IO.File]::GetAccessControl($path) }; $ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value; $rules = @($acl.Access | ForEach-Object { [pscustomobject]@{ sid = $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value; accessType = $_.AccessControlType.ToString(); rights = $_.FileSystemRights.ToString() } }); [pscustomobject]@{ path = $path; currentSid = $currentSid; ownerSid = $ownerSid; protected = $acl.AreAccessRulesProtected; rules = $rules } })",
+	"$rows = @(foreach ($path in $paths) { if ([System.IO.Directory]::Exists($path)) { $acl = [System.IO.Directory]::GetAccessControl($path) } else { $acl = [System.IO.File]::GetAccessControl($path) }; $rules = @($acl.Access | ForEach-Object { [pscustomobject]@{ sid = $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value; accessType = $_.AccessControlType.ToString(); rights = $_.FileSystemRights.ToString() } }); [pscustomobject]@{ path = $path; currentSid = $currentSid; protected = $acl.AreAccessRulesProtected; rules = $rules } })",
 	"ConvertTo-Json -InputObject $rows -Depth 5 -Compress",
 ].join("; ");
 
@@ -256,6 +255,7 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 		[
 			"const chunks = [];",
 			"const expectedInputBytes = Number(process.env.QUARTERDECK_WINDOWS_EXPECTED_INPUT_BYTES);",
+			"let receivedInputBytes = 0;",
 			"let finished = false;",
 			"const finish = () => {",
 			"  if (finished) return;",
@@ -263,7 +263,7 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 			"  require('node:fs').writeFileSync(process.argv[2], JSON.stringify({ args: process.argv.slice(3), input: Buffer.concat(chunks).toString('utf8') }), 'utf8');",
 			"  process.stdout.write('round-trip stdout', () => process.exit(0));",
 			"};",
-			"process.stdin.on('data', (chunk) => { chunks.push(chunk); if (Buffer.concat(chunks).byteLength >= expectedInputBytes) finish(); });",
+			"process.stdin.on('data', (chunk) => { chunks.push(chunk); receivedInputBytes += chunk.byteLength; if (receivedInputBytes >= expectedInputBytes) finish(); });",
 			"process.stdin.on('end', finish);",
 			"if (expectedInputBytes === 0) finish();",
 			"",
