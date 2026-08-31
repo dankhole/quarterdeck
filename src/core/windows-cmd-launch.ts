@@ -121,7 +121,7 @@ export function buildWindowsCmdArgsCommandLine(binary: string, args: string[]): 
 	const doubleEscapeMetaCharacters = shouldDoubleEscapeWindowsCmdShim(binary);
 	const escapedArgs = args.map((part) => escapeWindowsArgument(part, doubleEscapeMetaCharacters));
 	const shellCommand = [escapedCommand, ...escapedArgs].join(" ");
-	return `/d /v:off /s /c "${shellCommand}"`;
+	return `/d /s /c "${shellCommand}"`;
 }
 
 export function buildWindowsCmdArgsArray(binary: string, args: string[]): string[] {
@@ -130,7 +130,7 @@ export function buildWindowsCmdArgsArray(binary: string, args: string[]): string
 	const doubleEscapeMetaCharacters = shouldDoubleEscapeWindowsCmdShim(binary);
 	const escapedArgs = args.map((part) => escapeWindowsArgument(part, doubleEscapeMetaCharacters));
 	const shellCommand = [escapedCommand, ...escapedArgs].join(" ");
-	return ["/d", "/v:off", "/s", "/c", `"${shellCommand}"`];
+	return ["/d", "/s", "/c", `"${shellCommand}"`];
 }
 
 export function resolveWindowsCompatibleCommand(

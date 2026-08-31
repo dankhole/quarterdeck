@@ -171,7 +171,7 @@ describe("PtySession", () => {
 
 		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
 		expect(ptyMocks.spawn.mock.calls[0]?.[0]).toBe("C:\\Windows\\System32\\cmd.exe");
-		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toContain("/d /v:off /s /c");
+		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toContain("/d /s /c");
 		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toContain(join(windowsCommandDirectory, "codex.cmd"));
 		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toContain("hello^");
 		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toContain("world");

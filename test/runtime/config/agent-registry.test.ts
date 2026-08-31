@@ -521,9 +521,7 @@ describe("agent-registry", () => {
 			expect(resolved?.agentId).toBe("codex");
 			expect(childProcessMocks.execFile).toHaveBeenCalledTimes(2);
 			expect(childProcessMocks.execFile.mock.calls.every((call) => call[0] === comSpec)).toBe(true);
-			expect(childProcessMocks.execFile.mock.calls[0]?.[1]).toEqual(
-				expect.arrayContaining(["/d", "/v:off", "/s", "/c"]),
-			);
+			expect(childProcessMocks.execFile.mock.calls[0]?.[1]).toEqual(expect.arrayContaining(["/d", "/s", "/c"]));
 		} finally {
 			Object.defineProperty(process, "platform", { value: originalPlatform });
 			process.env = originalEnv;

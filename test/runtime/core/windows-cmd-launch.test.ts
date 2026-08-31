@@ -127,7 +127,7 @@ describe("shouldUseWindowsCmdLaunch", () => {
 		const resolved = resolveWindowsCompatibleCommand("codex", ["--version"], "win32", env);
 
 		expect(resolved.binary).toBe(env.ComSpec);
-		expect(resolved.args.slice(0, 4)).toEqual(["/d", "/v:off", "/s", "/c"]);
+		expect(resolved.args.slice(0, 3)).toEqual(["/d", "/s", "/c"]);
 		expect(resolved.args.at(-1)).toContain(shimPath);
 		expect(resolved.args.at(-1)).toContain("--version");
 		expect(resolved.commandLine).toBe(buildWindowsCmdArgsCommandLine(shimPath, ["--version"]));
@@ -176,15 +176,15 @@ describe("shouldUseWindowsCmdLaunch", () => {
 		const commandArgs = buildWindowsCmdArgsArray("codex.cmd", args);
 
 		expect(commandLine).toBe(
-			'/d /v:off /s /c "codex.cmd ^"space^ value^" ^"^%NAME^%^" ^"^!DELAYED^!^" ^"^^^" ^"^&^" ^"^|^" ^"^(value^)^""',
+			'/d /s /c "codex.cmd ^"space^ value^" ^"^%NAME^%^" ^"^!DELAYED^!^" ^"^^^" ^"^&^" ^"^|^" ^"^(value^)^""',
 		);
-		expect(commandArgs).toEqual(["/d", "/v:off", "/s", "/c", commandLine.slice("/d /v:off /s /c ".length)]);
+		expect(commandArgs).toEqual(["/d", "/s", "/c", commandLine.slice("/d /s /c ".length)]);
 	});
 
 	it("double-escapes metacharacters for node_modules command shims", () => {
 		const commandLine = buildWindowsCmdArgsCommandLine("C:\\repo\\node_modules\\.bin\\codex.cmd", ["%NAME%"]);
 
-		expect(commandLine).toBe('/d /v:off /s /c "C:\\repo\\node_modules\\.bin\\codex.cmd ^^^"^^^%NAME^^^%^^^""');
+		expect(commandLine).toBe('/d /s /c "C:\\repo\\node_modules\\.bin\\codex.cmd ^^^"^^^%NAME^^^%^^^""');
 	});
 
 	it("prefers a sibling PowerShell shim so multiline arguments bypass cmd parsing", () => {
