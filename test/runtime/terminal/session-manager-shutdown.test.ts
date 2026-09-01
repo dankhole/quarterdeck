@@ -427,6 +427,61 @@ describe("task session spawn failure", () => {
 		});
 	});
 
+	it("defers the initial state hook until process ownership handoff completes", async () => {
+		const ownership = createDeferred<void>();
+		const spawned = createMockPtySession(111, {});
+		const registerManagedProcessOwnership = vi.fn(async () => await ownership.promise);
+		ptySessionSpawnMock.mockReturnValue({ ...spawned, registerManagedProcessOwnership });
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.store.ensureEntry("task-1");
+		manager.store.update("task-1", { state: "idle", agentId: "claude" });
+		const start = manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		});
+
+		await vi.waitFor(() => expect(registerManagedProcessOwnership).toHaveBeenCalledOnce());
+		const launchInput = prepareAgentLaunchMock.mock.calls[0]?.[0] as { hookSessionInstanceId?: string } | undefined;
+		const sessionInstanceId = launchInput?.hookSessionInstanceId;
+		expect(sessionInstanceId).toEqual(expect.any(String));
+		if (!sessionInstanceId) throw new Error("Expected a launch-scoped hook session identity.");
+		const hook = {
+			taskId: "task-1",
+			projectId: "project-1",
+			event: "to_in_progress" as const,
+			metadata: {
+				source: "codex",
+				hookEventName: "UserPromptSubmit",
+				sessionInstanceId,
+				turnId: "turn-1",
+			},
+		};
+
+		expect(manager.shouldDeferProviderHookUntilLaunchHandoff("task-1", hook)).toBe(true);
+		expect(
+			manager.shouldDeferProviderHookUntilLaunchHandoff("task-1", {
+				...hook,
+				metadata: { ...hook.metadata, sessionInstanceId: "stale-process" },
+			}),
+		).toBe(false);
+
+		ownership.resolve(undefined);
+		await expect(start).resolves.toMatchObject({ state: "awaiting_review", reviewReason: "unconfirmed" });
+		expect(manager.shouldDeferProviderHookUntilLaunchHandoff("task-1", hook)).toBe(false);
+		expect(manager.applyProviderHook("task-1", hook)?.summary).toMatchObject({
+			state: "running",
+			reviewReason: null,
+			nativeWorkEvidence: {
+				sessionInstanceId,
+				hookEventName: "UserPromptSubmit",
+			},
+		});
+	});
+
 	it("does not mislabel an unclassified ENOENT as a missing agent command", async () => {
 		ptySessionSpawnMock.mockImplementation(() => {
 			throw new Error("spawn ENOENT");

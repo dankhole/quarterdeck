@@ -62,7 +62,7 @@ describe("runtimeTaskSessionSummarySchema", () => {
 		expect(parsed.reviewReason).toBe("unconfirmed");
 	});
 
-	it("lets a durable waiting interaction override otherwise valid Running evidence", () => {
+	it("migrates persisted foreground evidence without treating its former expiry as a lifecycle event", () => {
 		const parsed = runtimeTaskSessionSummarySchema.parse({
 			...baseSessionSummaryPayload,
 			agentId: "codex",
@@ -74,7 +74,28 @@ describe("runtimeTaskSessionSummarySchema", () => {
 				turnId: "turn-1",
 				hookEventName: "UserPromptSubmit",
 				confirmedAt: 1_500,
-				expiresAt: 301_500,
+				expiresAt: 1_501,
+			},
+		});
+
+		expect(parsed.state).toBe("running");
+		expect(parsed.nativeWorkEvidence).toMatchObject({ promptId: null, confirmedAt: 1_500 });
+		expect(parsed.nativeWorkEvidence).not.toHaveProperty("expiresAt");
+	});
+
+	it("lets a durable waiting interaction override otherwise valid Running evidence", () => {
+		const parsed = runtimeTaskSessionSummarySchema.parse({
+			...baseSessionSummaryPayload,
+			agentId: "codex",
+			sessionInstanceId: "process-1",
+			nativeWorkEvidence: {
+				provider: "codex",
+				sessionInstanceId: "process-1",
+				providerSessionId: "session-1",
+				turnId: "turn-1",
+				promptId: null,
+				hookEventName: "UserPromptSubmit",
+				confirmedAt: 1_500,
 			},
 			outstandingInteraction: {
 				provider: "codex",

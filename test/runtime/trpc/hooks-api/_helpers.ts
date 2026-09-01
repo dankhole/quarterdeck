@@ -23,6 +23,7 @@ export function createMockManager(storeMethods: MockStoreMethods): TerminalSessi
 		store,
 		recordHookReceived: vi.fn(),
 		observeTaskSessionLaunchHook: vi.fn(() => true),
+		shouldDeferProviderHookUntilLaunchHandoff: vi.fn(() => false),
 		evaluateHookEventOrder: vi.fn(() => ({ accepted: true })),
 		commitHookEventOrder: vi.fn(),
 	} as unknown as TerminalSessionManager;

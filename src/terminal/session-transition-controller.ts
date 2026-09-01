@@ -17,8 +17,6 @@ const transitionLog = createTaggedLogger("session-transition");
  * summary fanout that active listeners observe.
  */
 export class SessionTransitionController {
-	private readonly nativeWorkEvidenceTimers = new Map<string, NodeJS.Timeout>();
-
 	constructor(
 		private readonly store: SessionSummaryStore,
 		private readonly entries: Map<string, ProcessEntry>,
@@ -39,7 +37,6 @@ export class SessionTransitionController {
 	 * including hook API writes that do not originate in this controller.
 	 */
 	observeSummaryChange(previous: RuntimeTaskSessionSummary | null, summary: RuntimeTaskSessionSummary): void {
-		this.scheduleNativeWorkEvidenceExpiry(summary);
 		if (previous?.state === summary.state || summary.state !== "running") {
 			return;
 		}
@@ -49,30 +46,6 @@ export class SessionTransitionController {
 		}
 		clearInterruptRecoveryTimer(active);
 		active.resetOutputTransitionDetection?.();
-	}
-
-	private scheduleNativeWorkEvidenceExpiry(summary: RuntimeTaskSessionSummary): void {
-		const existing = this.nativeWorkEvidenceTimers.get(summary.taskId);
-		if (existing) {
-			clearTimeout(existing);
-			this.nativeWorkEvidenceTimers.delete(summary.taskId);
-		}
-		const evidence = summary.nativeWorkEvidence;
-		if (summary.state !== "running" || !evidence) return;
-		const delayMs = Math.max(0, evidence.expiresAt - Date.now());
-		const timer = setTimeout(() => {
-			if (this.nativeWorkEvidenceTimers.get(summary.taskId) !== timer) return;
-			this.nativeWorkEvidenceTimers.delete(summary.taskId);
-			const entry = this.entries.get(summary.taskId);
-			if (!entry) return;
-			this.applyTransitionEvent(entry, {
-				type: "native_work.evidence_expired",
-				confirmedAt: evidence.confirmedAt,
-				occurredAt: Date.now(),
-			});
-		}, delayMs);
-		timer.unref();
-		this.nativeWorkEvidenceTimers.set(summary.taskId, timer);
 	}
 
 	private hasCurrentSessionHookEvidence(entry: ProcessEntry, event: SessionTransitionEvent): boolean {

@@ -240,6 +240,41 @@ describe("reduceSessionTransition", () => {
 	});
 
 	describe("provider.hook to_in_progress", () => {
+		it.each([
+			["codex", "UserPromptSubmit", { turnId: "turn-1" }],
+			["claude", "UserPromptSubmit", { promptId: "prompt-1" }],
+			["pi", "Input", {}],
+			["pi", "AgentStart", { turnId: "run-1" }],
+		] as const)("uses the initial %s %s hook to enter Running", (source, hookEventName, metadata) => {
+			const summary = createSummary({
+				agentId: source,
+				state: "awaiting_review",
+				reviewReason: "unconfirmed",
+			});
+			const result = reduceSessionTransition(
+				summary,
+				createTestProviderHookEvent("to_in_progress", {
+					source,
+					hookEventName,
+					metadata,
+				}),
+			);
+
+			expect(result).toMatchObject({
+				changed: true,
+				patch: {
+					state: "running",
+					reviewReason: null,
+					nativeWorkEvidence: {
+						provider: source,
+						sessionInstanceId: "process-1",
+						hookEventName,
+					},
+				},
+			});
+			expect(result.patch.nativeWorkEvidence).toMatchObject(metadata);
+		});
+
 		it("lets new running evidence classify a semantically uncertain legacy recovery", () => {
 			const summary = createSummary({
 				state: "awaiting_review",
@@ -313,7 +348,7 @@ describe("reduceSessionTransition", () => {
 			expect(result.clearAttentionBuffer).toBe(true);
 		});
 
-		it("refreshes bounded provider evidence while already running", () => {
+		it("refreshes current foreground execution evidence while already running", () => {
 			const summary = createSummary({ state: "running" });
 			const result = reduceSessionTransition(summary, createTestProviderHookEvent("to_in_progress"));
 

@@ -79,9 +79,9 @@ export function createTestTaskNativeWorkEvidence(
 		sessionInstanceId: "process-1",
 		providerSessionId: "session-1",
 		turnId: "turn-1",
+		promptId: null,
 		hookEventName: "UserPromptSubmit",
 		confirmedAt,
-		expiresAt: confirmedAt + 300_000,
 		...overrides,
 	};
 }

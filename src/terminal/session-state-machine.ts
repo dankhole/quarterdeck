@@ -36,8 +36,6 @@ export type ProviderHookSessionTransitionEvent = {
 	codexAutoReviewPermissionRequest?: boolean;
 };
 
-export const NATIVE_WORK_EVIDENCE_LEASE_MS = 5 * 60_000;
-
 export type SessionTransitionEvent =
 	| ProviderHookSessionTransitionEvent
 	| { type: "agent.permission-prompt"; occurredAt?: number }
@@ -50,7 +48,6 @@ export type SessionTransitionEvent =
 	| { type: "user.stop" }
 	| { type: "process.exit"; exitCode: number | null; interrupted: boolean }
 	| { type: "interrupt.recovery" }
-	| { type: "native_work.evidence_expired"; confirmedAt: number; occurredAt?: number }
 	| { type: "autorestart.denied" }
 	| { type: "resume.failed"; clearResumeSessionId: boolean; warningMessage: string }
 	| { type: "structured.owner_activated"; pid: number; sessionInstanceId: string }
@@ -138,9 +135,9 @@ function buildNativeWorkEvidence(event: ProviderHookSessionTransitionEvent): Run
 		sessionInstanceId,
 		providerSessionId: event.metadata?.sessionId?.trim() || null,
 		turnId: event.metadata?.turnId?.trim() || null,
+		promptId: event.metadata?.promptId?.trim() || null,
 		hookEventName,
 		confirmedAt,
-		expiresAt: confirmedAt + NATIVE_WORK_EVIDENCE_LEASE_MS,
 	};
 }
 
@@ -1195,9 +1192,9 @@ export function reduceSessionTransition(
 						sessionInstanceId: event.sessionInstanceId,
 						providerSessionId: summary.resumeSessionId ?? null,
 						turnId: null,
+						promptId: null,
 						hookEventName: "StructuredTurnStarted",
 						confirmedAt,
-						expiresAt: Number.MAX_SAFE_INTEGER,
 					},
 					stalledSince: null,
 					warningMessage: null,
@@ -1316,9 +1313,9 @@ export function reduceSessionTransition(
 						sessionInstanceId: interaction.sessionInstanceId,
 						providerSessionId: interaction.providerSessionId,
 						turnId: interaction.turnId,
+						promptId: interaction.promptId,
 						hookEventName: "StructuredInteractionResolved",
 						confirmedAt: event.resolvedAt,
-						expiresAt: Number.MAX_SAFE_INTEGER,
 					},
 					stalledSince: null,
 					warningMessage: null,
@@ -1455,29 +1452,6 @@ export function reduceSessionTransition(
 					warningMessage: event.warningMessage,
 				},
 				clearAttentionBuffer: true,
-			};
-		}
-		case "native_work.evidence_expired": {
-			const evidence = summary.nativeWorkEvidence;
-			const occurredAt = event.occurredAt ?? Date.now();
-			if (
-				summary.state !== "running" ||
-				!evidence ||
-				evidence.confirmedAt !== event.confirmedAt ||
-				evidence.expiresAt > occurredAt
-			) {
-				return unchanged();
-			}
-			return {
-				changed: true,
-				patch: {
-					state: "awaiting_review",
-					reviewReason: "unconfirmed",
-					nativeWorkEvidence: null,
-					outstandingInteraction: null,
-					stalledSince: null,
-				},
-				clearAttentionBuffer: false,
 			};
 		}
 	}

@@ -283,9 +283,9 @@ function createManager(
 							sessionInstanceId: "native-1",
 							providerSessionId: "session-1",
 							turnId: "native-turn-1",
+							promptId: null,
 							hookEventName: "UserPromptSubmit",
 							confirmedAt,
-							expiresAt: confirmedAt + 300_000,
 						}
 					: null,
 		}),
@@ -300,9 +300,9 @@ function createManager(
 				sessionInstanceId: "native-1",
 				providerSessionId: "session-1",
 				turnId: "native-turn-1",
+				promptId: null,
 				hookEventName: "UserPromptSubmit",
 				confirmedAt,
-				expiresAt: confirmedAt + 300_000,
 			},
 		});
 	}

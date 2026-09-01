@@ -298,6 +298,27 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return this.lifecycle.recoverStaleSession(taskId);
 	}
 
+	/**
+	 * A state-changing hook can beat the PTY's process-ownership handoff. Keep
+	 * reliable delivery pending until the exact launch is active instead of
+	 * acknowledging an unconfirmed no-op that the hook outbox would then erase.
+	 */
+	shouldDeferProviderHookUntilLaunchHandoff(taskId: string, input: RuntimeHookIngestRequest): boolean {
+		if (input.event === "activity") return false;
+		const entry = this.entries.get(taskId);
+		const restartRequest = entry?.restartRequest;
+		const sessionInstanceId = input.metadata?.sessionInstanceId?.trim() || null;
+		const source = input.metadata?.source?.trim().toLowerCase() || null;
+		return Boolean(
+			entry?.pendingSessionStart &&
+				!entry.active &&
+				sessionInstanceId &&
+				entry.launchMonitor?.sessionInstanceId === sessionInstanceId &&
+				restartRequest?.kind === "task" &&
+				restartRequest.request.agentId === source,
+		);
+	}
+
 	/** Applies one native provider event through the canonical session reducer. */
 	applyProviderHook(
 		taskId: string,

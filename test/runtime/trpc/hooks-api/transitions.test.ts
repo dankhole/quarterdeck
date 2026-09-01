@@ -66,6 +66,52 @@ describe("createHooksApi — canonical provider routing", () => {
 		).resolves.toEqual({ ok: false, error: "session persistence failed" });
 	});
 
+	it("defers a state hook until the exact task session launch finishes handoff", async () => {
+		let activeAgentId: "claude" | "codex" = "claude";
+		const manager = createMockManager({
+			getSummary: vi.fn(() =>
+				createSummary({ state: "awaiting_review", reviewReason: "unconfirmed", agentId: activeAgentId }),
+			),
+		});
+		vi.mocked(manager.shouldDeferProviderHookUntilLaunchHandoff).mockReturnValue(true);
+		const persistSessionState = vi.fn(async () => undefined);
+		const api = createTestApi(manager, { persistSessionState });
+		const input = {
+			taskId: "task-1",
+			projectId: "project-1",
+			event: "to_in_progress" as const,
+			metadata: {
+				source: "codex",
+				hookEventName: "UserPromptSubmit",
+				sessionInstanceId: "process-1",
+				turnId: "turn-1",
+			},
+			delivery: {
+				id: "00000000-0000-4000-8000-000000000100",
+				occurredAt: 100,
+			},
+		};
+
+		await expect(api.ingest(input)).resolves.toEqual({
+			ok: false,
+			error: "Task session launch handoff is still in progress; retry this hook.",
+		});
+		expect(manager.observeTaskSessionLaunchHook).toHaveBeenCalledWith(
+			"task-1",
+			expect.objectContaining(input.metadata),
+		);
+		expect(manager.applyProviderHook).not.toHaveBeenCalled();
+		expect(manager.commitHookEventOrder).not.toHaveBeenCalled();
+		expect(persistSessionState).not.toHaveBeenCalled();
+
+		vi.mocked(manager.shouldDeferProviderHookUntilLaunchHandoff).mockReturnValue(false);
+		activeAgentId = "codex";
+		await expect(api.ingest(input)).resolves.toEqual({ ok: true });
+		expect(manager.applyProviderHook).toHaveBeenCalledOnce();
+		expect(manager.commitHookEventOrder).toHaveBeenCalledOnce();
+		expect(persistSessionState).toHaveBeenCalledWith("project-1");
+	});
+
 	it.each([
 		["stale_observation", false],
 		["unrelated_tool_completion", true],

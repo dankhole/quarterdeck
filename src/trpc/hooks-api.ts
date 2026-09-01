@@ -222,7 +222,8 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						? previousSummary.agentId
 						: null;
 				const hookProvider = body.metadata?.source?.trim().toLowerCase() ?? null;
-				if (expectedProvider && hookProvider !== expectedProvider) {
+				const launchHandoffPending = manager.shouldDeferProviderHookUntilLaunchHandoff(taskId, body);
+				if (expectedProvider && hookProvider !== expectedProvider && !launchHandoffPending) {
 					log.warn("Hook ignored: provider does not own the active task session", {
 						...hookLogData,
 						expectedProvider,
@@ -242,6 +243,13 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				if (!manager.observeTaskSessionLaunchHook(taskId, body.metadata)) {
 					log.warn("Hook ignored: startup resume opened an unexpected conversation", hookLogData);
 					return await completeHookIngest(false);
+				}
+				if (launchHandoffPending) {
+					log.info("Hook ingest deferred until task session launch handoff", hookLogData);
+					return {
+						ok: false,
+						error: "Task session launch handoff is still in progress; retry this hook.",
+					} satisfies RuntimeHookIngestResponse;
 				}
 				providerSessionIdentityAccepted = true;
 				deps.conversationSourceHints?.recordClaudeHookHint({

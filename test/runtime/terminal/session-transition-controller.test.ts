@@ -238,6 +238,35 @@ describe("SessionTransitionController", () => {
 		expect(entry.suppressAutoRestartOnExit).toBe(false);
 	});
 
+	it("uses the first current foreground-start hook to enter Running", () => {
+		const store = new InMemorySessionSummaryStore();
+		store.hydrateFromRecord({
+			"task-1": createSummary({ state: "awaiting_review", reviewReason: "unconfirmed" }),
+		});
+		const entry = createEntry("task-1");
+		const controller = new SessionTransitionController(store, new Map([["task-1", entry]]));
+
+		const result = controller.applyTransitionEvent(
+			entry,
+			createTestProviderHookEvent("to_in_progress", {
+				source: "codex",
+				hookEventName: "UserPromptSubmit",
+				metadata: { sessionInstanceId: "session-test", turnId: "turn-1" },
+			}),
+		);
+
+		expect(result?.summary).toMatchObject({
+			state: "running",
+			reviewReason: null,
+			nativeWorkEvidence: {
+				provider: "codex",
+				sessionInstanceId: "session-test",
+				turnId: "turn-1",
+				hookEventName: "UserPromptSubmit",
+			},
+		});
+	});
+
 	it("uses a current completion hook to converge an interrupted review", () => {
 		const store = new InMemorySessionSummaryStore();
 		store.hydrateFromRecord({
@@ -258,7 +287,7 @@ describe("SessionTransitionController", () => {
 		expect(entry.suppressAutoRestartOnExit).toBe(false);
 	});
 
-	it("refreshes the Running lease and clears interrupt policy on current live evidence", () => {
+	it("refreshes current foreground execution evidence and clears interrupt policy", () => {
 		const store = new InMemorySessionSummaryStore();
 		store.hydrateFromRecord({
 			"task-1": createSummary({ state: "awaiting_review", reviewReason: "unconfirmed" }),
@@ -281,7 +310,7 @@ describe("SessionTransitionController", () => {
 		expect(entry.suppressAutoRestartOnExit).toBe(false);
 	});
 
-	it("expires a native Running claim to conservative Review without using terminal output", async () => {
+	it("keeps an admitted foreground execution Running until an authoritative lifecycle event ends it", async () => {
 		vi.setSystemTime(1_000);
 		const store = new InMemorySessionSummaryStore();
 		store.hydrateFromRecord({
@@ -298,12 +327,19 @@ describe("SessionTransitionController", () => {
 		controller.observeSummaryChange(previous, confirmed);
 
 		expect(confirmed.state).toBe("running");
-		expect(confirmed.nativeWorkEvidence).toMatchObject({ confirmedAt: 1_000, expiresAt: 301_000 });
-		await vi.advanceTimersByTimeAsync(300_000);
+		expect(confirmed.nativeWorkEvidence).toMatchObject({ confirmedAt: 1_000 });
+		await vi.advanceTimersByTimeAsync(30 * 60_000);
 
 		expect(store.getSummary("task-1")).toMatchObject({
+			state: "running",
+			reviewReason: null,
+			nativeWorkEvidence: { confirmedAt: 1_000 },
+		});
+
+		const completed = controller.applyTransitionEvent(entry, currentProviderHook("to_review"));
+		expect(completed?.summary).toMatchObject({
 			state: "awaiting_review",
-			reviewReason: "unconfirmed",
+			reviewReason: "hook",
 			nativeWorkEvidence: null,
 		});
 	});

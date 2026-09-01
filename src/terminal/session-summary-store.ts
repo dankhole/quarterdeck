@@ -301,14 +301,11 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		if (!entry) {
 			return null;
 		}
-		const updated = normalizeRuntimeTaskSessionSummary(
-			{
-				...entry,
-				...patch,
-				updatedAt: now(),
-			},
-			{ now: now() },
-		);
+		const updated = normalizeRuntimeTaskSessionSummary({
+			...entry,
+			...patch,
+			updatedAt: now(),
+		});
 		this.entries.set(taskId, updated);
 		this.emit(updated);
 		return cloneSummary(updated);
@@ -344,14 +341,11 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		if (!transition.changed && !metadataPatch) {
 			return { ...transition, summary: cloneSummary(entry) };
 		}
-		const updated = normalizeRuntimeTaskSessionSummary(
-			{
-				...semanticSummary,
-				...(metadataPatch ?? {}),
-				updatedAt: timestamp,
-			},
-			{ now: timestamp },
-		);
+		const updated = normalizeRuntimeTaskSessionSummary({
+			...semanticSummary,
+			...(metadataPatch ?? {}),
+			updatedAt: timestamp,
+		});
 		// Reset hook activity timing when a reviewed task returns to running so
 		// diagnostics reflect the current active turn, not the prior review stop.
 		if (transition.changed && transition.patch.state === "running" && !metadataPatch?.lastHookAt) {

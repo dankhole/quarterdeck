@@ -38,27 +38,30 @@ describe("InMemorySessionSummaryStore interaction persistence", () => {
 		});
 	});
 
-	it.each(["codex", "pi"] as const)("invalidates a persisted %s Running lease during cold hydration", (agentId) => {
-		const store = new InMemorySessionSummaryStore();
-		store.hydrateFromRecord({
-			"task-1": createTestTaskSessionSummary({
-				taskId: "task-1",
-				state: "running",
-				agentId,
-				sessionInstanceId: "process-1",
-				pid: 123,
-				nativeWorkEvidence: createTestTaskNativeWorkEvidence({ provider: agentId }),
-			}),
-		});
+	it.each(["codex", "pi"] as const)(
+		"invalidates persisted %s foreground execution evidence during cold hydration",
+		(agentId) => {
+			const store = new InMemorySessionSummaryStore();
+			store.hydrateFromRecord({
+				"task-1": createTestTaskSessionSummary({
+					taskId: "task-1",
+					state: "running",
+					agentId,
+					sessionInstanceId: "process-1",
+					pid: 123,
+					nativeWorkEvidence: createTestTaskNativeWorkEvidence({ provider: agentId }),
+				}),
+			});
 
-		expect(store.getSummary("task-1")).toMatchObject({
-			state: "awaiting_review",
-			reviewReason: "interrupted",
-			pid: null,
-			nativeWorkEvidence: null,
-			startupRecoveryRequired: true,
-		});
-	});
+			expect(store.getSummary("task-1")).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				pid: null,
+				nativeWorkEvidence: null,
+				startupRecoveryRequired: true,
+			});
+		},
+	);
 
 	it("migrates a legacy persisted permission wait into durable interaction state", () => {
 		const store = new InMemorySessionSummaryStore();

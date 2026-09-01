@@ -48,19 +48,21 @@ export const runtimeTaskInteractionResponseKindSchema = z.enum(["submit", "cance
 export type RuntimeTaskInteractionResponseKind = z.infer<typeof runtimeTaskInteractionResponseKindSchema>;
 
 /**
- * Positive launch-scoped evidence for the public Running claim made by a
- * native Codex, Claude, or Pi task session. A live PTY, terminal bytes, and browser
- * input are deliberately absent: only the current provider hook path can
- * author this record.
+ * Positive launch-scoped evidence that admitted the current foreground
+ * execution. Running remains authoritative until a typed provider or process
+ * lifecycle event ends or suspends that execution; elapsed wall-clock time is
+ * health information, not a completion signal. A live PTY, terminal bytes, and
+ * browser input are deliberately absent: only the current provider hook path
+ * can author this record.
  */
 export const runtimeTaskNativeWorkEvidenceSchema = z.object({
 	provider: runtimeTaskInteractionProviderSchema,
 	sessionInstanceId: z.string().min(1),
 	providerSessionId: z.string().nullable(),
 	turnId: z.string().nullable(),
+	promptId: z.string().nullable().default(null),
 	hookEventName: z.string().min(1),
 	confirmedAt: z.number().int().nonnegative(),
-	expiresAt: z.number().int().nonnegative(),
 });
 export type RuntimeTaskNativeWorkEvidence = z.infer<typeof runtimeTaskNativeWorkEvidenceSchema>;
 
@@ -179,7 +181,7 @@ const runtimeTaskSessionSummaryBaseSchema = z.object({
 	latestHookActivity: runtimeTaskHookActivitySchema.nullable().default(null),
 	/** Current provider interaction, if user input was requested or its resolution remains unconfirmed. */
 	outstandingInteraction: runtimeTaskOutstandingInteractionSchema.nullable().default(null),
-	/** Current bounded proof behind a native Codex/Claude/Pi Running projection. */
+	/** Current launch-scoped proof that admitted a native Codex/Claude/Pi foreground execution. */
 	nativeWorkEvidence: runtimeTaskNativeWorkEvidenceSchema.nullable().default(null),
 	stalledSince: z.number().nullable().default(null),
 	/** Durable handoff indicating that the next runtime must restore the task's interactive agent session. */
@@ -200,10 +202,8 @@ type NormalizedRuntimeTaskSessionSummary = Omit<ParsedRuntimeTaskSessionSummary,
 };
 
 export interface NormalizeRuntimeTaskSessionSummaryOptions {
-	/** Hydrated native evidence belongs to a process owned by the previous runtime. */
+	/** Hydrated native execution evidence belongs to a process owned by the previous runtime. */
 	invalidateNativeWorkEvidence?: boolean;
-	/** Store-owned clock used to expire an admitted Running lease. */
-	now?: number;
 }
 
 /**
@@ -255,9 +255,7 @@ export function normalizeRuntimeTaskSessionSummary(
 			evidence.provider !== next.agentId ||
 			!next.sessionInstanceId ||
 			evidence.sessionInstanceId !== next.sessionInstanceId ||
-			next.pid === null ||
-			evidence.expiresAt < evidence.confirmedAt ||
-			(options.now !== undefined && evidence.expiresAt <= options.now);
+			next.pid === null;
 		if (invalidEvidence) {
 			next = {
 				...next,
