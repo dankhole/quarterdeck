@@ -4,6 +4,10 @@
 
 ## [0.12.5] — 2026-09-01
 
+### Release: install Quarterdeck directly from npm
+
+- Quarterdeck's first supported public npm release installs the complete CLI with `npm install --global quarterdeck` or runs on demand with `npx --yes quarterdeck@latest`. Source linking remains available for contributors, but is no longer required for regular users.
+
 ### Feature: notify users about available npm updates
 
 - Interactive Quarterdeck startup now performs a cached daily npm update check in an unref'd background process and shows the explicit global update command when a newer stable release is available. Checks stay out of CI and non-interactive launches, can be disabled with `NO_UPDATE_NOTIFIER` or `--no-update-notifier`, and never delay startup or install an update automatically.
