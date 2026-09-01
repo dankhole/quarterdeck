@@ -43,10 +43,6 @@ The first editable Files-view milestone has landed with CodeMirror tabs, dirty/s
 - Own the dirty editor-tab cache lifecycle for deleted project/task/worktree scopes so hidden unsaved tabs are surfaced before destructive actions or pruned safely when clean.
 - Move compare, merge/conflict resolution, commit diff, and other file-viewing surfaces onto the Files/editor foundation where it reduces duplication without losing review-specific workflows.
 
-## Publish to npm
-
-The npm-side OIDC relationship now trusts `dankhole/quarterdeck`'s `publish.yml` workflow in the `npm-publish` environment, and the release-prep changes update the package artifact gate, version, changelog, and README install instructions. The earlier immutable `v0.12.4` tag predates the startup update notification and was not published, so release the complete latest `main` as `v0.12.5`. Remove this item after npm and the GitHub Release both show `0.12.5` successfully.
-
 ## Branch management in git view
 
 Core git-view branch operations have landed. Add **Revert commit** so a user can undo a specific commit without rewriting history.
