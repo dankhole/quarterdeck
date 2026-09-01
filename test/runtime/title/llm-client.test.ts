@@ -116,8 +116,16 @@ describe("llm-client provider config", () => {
 		expect(isLlmConfigured()).toBe(true);
 	});
 
-	it("uses the default model when no model override is set", () => {
+	it("requires an explicit model for a generic gateway", () => {
 		process.env.QUARTERDECK_LLM_BASE_URL = "https://llm.example.com/v1";
+		process.env.QUARTERDECK_LLM_API_KEY = "token";
+		delete process.env.QUARTERDECK_LLM_MODEL;
+		expect(isLlmConfigured()).toBe(false);
+		expect(resolveLlmConfig()).toBeNull();
+	});
+
+	it("retains the default model for the legacy Bedrock gateway route", () => {
+		process.env.QUARTERDECK_LLM_BASE_URL = "https://llm.example.com/bedrock";
 		process.env.QUARTERDECK_LLM_API_KEY = "token";
 		delete process.env.QUARTERDECK_LLM_MODEL;
 		expect(isLlmConfigured()).toBe(true);

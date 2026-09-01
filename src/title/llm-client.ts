@@ -5,7 +5,7 @@
  * Preferred environment variables:
  *   QUARTERDECK_LLM_BASE_URL — OpenAI-compatible API base URL
  *   QUARTERDECK_LLM_API_KEY  — bearer token for the endpoint
- *   QUARTERDECK_LLM_MODEL    — optional model override
+ *   QUARTERDECK_LLM_MODEL    — model name or gateway alias (required except for the legacy `/bedrock` route)
  */
 
 import { createTaggedLogger } from "../core";
@@ -87,11 +87,14 @@ function readEnv(name: string): string | null {
 function resolveLlmConfig(): LightweightLlmConfig | null {
 	const baseUrl = readEnv("QUARTERDECK_LLM_BASE_URL");
 	const apiKey = readEnv("QUARTERDECK_LLM_API_KEY");
-	if (baseUrl && apiKey) {
+	const explicitModel = readEnv("QUARTERDECK_LLM_MODEL");
+	const usesLegacyBedrockRoute = baseUrl?.replace(/\/+$/, "").endsWith("/bedrock") ?? false;
+	const model = explicitModel ?? (usesLegacyBedrockRoute ? DEFAULT_LLM_MODEL : null);
+	if (baseUrl && apiKey && model) {
 		return {
 			baseUrl,
 			apiKey,
-			model: readEnv("QUARTERDECK_LLM_MODEL") ?? DEFAULT_LLM_MODEL,
+			model,
 		};
 	}
 
@@ -238,7 +241,8 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 }
 
 /**
- * Returns true if the LLM client has the required endpoint and auth env vars configured.
+ * Returns true if the LLM client has the required endpoint, auth, and model configured.
+ * The legacy `/bedrock` route retains its historical default model.
  * Useful for UI hints about whether LLM features are available.
  */
 export function isLlmConfigured(): boolean {

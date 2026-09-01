@@ -28,8 +28,10 @@ import {
 	resetAgentAvailabilityCache,
 	resolveAgentCommand,
 	resolveAgentCommandForLaunch,
+	SUPPORTED_PI_VERSION,
 	setAgentAvailabilityDiagnosticSink,
 } from "../../../src/config";
+import { getRuntimeAgentCatalogEntry } from "../../../src/core";
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
 
 function buildRuntimeConfigResponse(
@@ -96,6 +98,13 @@ beforeEach(() => {
 });
 
 describe("agent-registry", () => {
+	it("keeps Pi setup instructions pinned to the validated runtime version", () => {
+		const piCatalogEntry = getRuntimeAgentCatalogEntry("pi");
+
+		expect(piCatalogEntry?.installCommand).toContain(`@earendil-works/pi-coding-agent@${SUPPORTED_PI_VERSION}`);
+		expect(piCatalogEntry?.installUrl).toContain(`/v/${SUPPORTED_PI_VERSION}`);
+	});
+
 	it("detects installed commands from the inherited PATH", () => {
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "claude");
 
