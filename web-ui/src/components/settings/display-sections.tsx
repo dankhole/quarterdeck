@@ -27,15 +27,27 @@ export function AiFeaturesSection({
 				AI Features
 			</h6>
 			{!llmConfigured ? (
-				<div className="rounded-md border border-status-orange/30 bg-status-orange/5 px-3 py-2 text-[13px] text-status-orange mb-2">
-					By default, task titles use Codex with a local fallback. Other LLM helpers are unavailable. Set{" "}
+				<div className="mb-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-[13px] text-text-secondary">
+					Optional AI helpers are not configured; the core workflow and local task titles work normally. To enable
+					generated branch names, commit messages, or summary polish, set{" "}
 					<code className="text-[12px]">QUARTERDECK_LLM_BASE_URL</code> and{" "}
-					<code className="text-[12px]">QUARTERDECK_LLM_API_KEY</code> to enable them.
+					<code className="text-[12px]">QUARTERDECK_LLM_API_KEY</code>, and explicitly choose{" "}
+					<code className="text-[12px]">QUARTERDECK_LLM_MODEL</code>. An existing team gateway, local{" "}
+					<a
+						href="https://docs.litellm.ai/"
+						target="_blank"
+						rel="noreferrer"
+						className="text-accent hover:underline"
+					>
+						LiteLLM proxy
+					</a>
+					, or another OpenAI-compatible endpoint works. Restart Quarterdeck after changing its environment.
 				</div>
 			) : (
 				<p className="text-text-secondary text-[13px] mt-0 mb-2">
-					Task titles use Codex by default or the configured helper when selected; either has a local fallback.
-					Branch names, commit messages, and optional summary polish use the configured helper directly.
+					The optional AI helper is configured. Task titles remain local unless{" "}
+					<code className="text-[12px]">QUARTERDECK_TITLE_PROVIDER=llm</code> is selected; branch names, commit
+					messages, and optional summary polish use the configured helper directly.
 				</p>
 			)}
 
@@ -72,13 +84,14 @@ export function AiFeaturesSection({
 					id="runtime-settings-llm-summary-polish"
 					checked={fields.llmSummaryPolishEnabled}
 					onCheckedChange={(v) => setField("llmSummaryPolishEnabled", v)}
-					disabled={disabled}
+					disabled={disabled || (!llmConfigured && !fields.llmSummaryPolishEnabled)}
 				/>
 				<span>Polish summaries with LLM</span>
 			</label>
 			<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
-				When enabled, task state changes can trigger background summary polish. Use a cheap, fast configured model
-				such as Haiku because tasks can bounce between in-progress and review.
+				{llmConfigured
+					? "When enabled, task state changes can trigger background summary polish. Use a cheap, fast configured model such as Haiku because tasks can bounce between in-progress and review."
+					: "Configure the optional AI helper and restart Quarterdeck before enabling summary polish."}
 			</p>
 		</>
 	);

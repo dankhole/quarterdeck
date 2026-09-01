@@ -40,18 +40,18 @@ type TitleProvider = "codex" | "llm" | "local";
 
 function resolveTitleProvider(): TitleProvider {
 	const configured = process.env.QUARTERDECK_TITLE_PROVIDER?.trim().toLowerCase();
-	if (!configured || configured === "codex") {
-		return "codex";
+	if (!configured || configured === "local") {
+		return "local";
 	}
-	if (configured === "llm" || configured === "local") {
+	if (configured === "codex" || configured === "llm") {
 		return configured;
 	}
 	log.warn("Ignoring unsupported QUARTERDECK_TITLE_PROVIDER value", {
 		configured,
-		fallbackProvider: "codex",
+		fallbackProvider: "local",
 		supportedProviders: ["codex", "llm", "local"],
 	});
-	return "codex";
+	return "local";
 }
 
 function resolveCodexTitleModel(): string {
@@ -106,6 +106,10 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 	}
 
 	const fallbackTitle = createFallbackTaskTitle(prompt);
+	if (titleProvider === "local") {
+		log.debug("Title generated", { title: fallbackTitle, provider: "local" });
+		return fallbackTitle;
+	}
 	log.warn("Remote title generation unavailable — using prompt-derived fallback", {
 		promptLength: prompt.length,
 		promptSnippet: prompt.slice(0, 100),

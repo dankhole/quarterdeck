@@ -35,6 +35,28 @@ Windows support remains experimental, although the code-remediation audit is com
 - At least one supported agent CLI installed and available on `PATH`
 - Optional but recommended: a Nerd Font such as [JetBrainsMono Nerd Font](https://www.nerdfonts.com/) for cleaner terminal glyphs
 
+You only need one task agent. Quarterdeck checks whether its CLI is on the inherited `PATH` and whether the installed version is supported; provider authentication stays in the provider CLI and is not inspected by Quarterdeck.
+
+## Set Up an Agent
+
+The commands below are the shortest macOS/Linux setup path. Follow the linked official guide for platform-specific alternatives, then restart Quarterdeck after installing a CLI so the runtime inherits the updated `PATH`.
+
+| Agent | Install | Sign in | Verify | Version required by Quarterdeck |
+| --- | --- | --- | --- | --- |
+| [Claude Code](https://code.claude.com/docs/en/getting-started) | `curl -fsSL https://claude.ai/install.sh \| bash` | Run `claude` and follow the browser prompt | `claude auth status` | 2.1.198+ |
+| [OpenAI Codex](https://developers.openai.com/codex/cli) | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` | `codex login` | `codex login status` | 0.147.0+ with native hooks |
+| [Pi 0.84.3](https://www.npmjs.com/package/@earendil-works/pi-coding-agent/v/0.84.3) | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.84.3` | Run `pi`, then enter `/login` | Start `pi` successfully | Exactly 0.84.3 |
+
+On native Windows, run the installer from PowerShell:
+
+| Agent | PowerShell install |
+| --- | --- |
+| Claude Code | `irm https://claude.ai/install.ps1 \| iex` |
+| OpenAI Codex | `powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 \| iex"` |
+| Pi 0.84.3 | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.84.3` |
+
+Codex supports ChatGPT sign-in with `codex login`. For API-key authentication, set `OPENAI_API_KEY`, then run `printenv OPENAI_API_KEY | codex login --with-api-key` on macOS/Linux or `$env:OPENAI_API_KEY | codex login --with-api-key` in PowerShell. Claude Code requires an account or provider-backed authentication supported by Claude Code. Pi lets you choose a provider during `/login`.
+
 Codex users need Codex 0.147.0 or newer with native hook and auto-review support.
 
 Claude launch permissions are configurable under Settings → Harnesses → Claude Code for new or restarted sessions. Quarterdeck can inherit Claude's configured default or explicitly start in Claude's native default, accept-edits, plan, auto-preview, don't-ask, or bypass mode; provider-managed policy remains authoritative.
@@ -56,28 +78,53 @@ Optional variables:
 | `QUARTERDECK_RUNTIME_HOST` | Override the runtime host. Defaults to `127.0.0.1`; the `--host` flag is usually clearer. |
 | `QUARTERDECK_RUNTIME_PORT` | Override the runtime port. Defaults to `3500`; the `--port` flag is usually clearer. |
 | `QUARTERDECK_DEBUG_MODE` | Enable extra debug behavior for agent availability checks. `DEBUG_MODE` and `debug_mode` are also recognized. |
-| `QUARTERDECK_TITLE_PROVIDER` | Select task-title generation: `codex` (default), `llm`, or `local`. Either remote provider falls back directly to deterministic local generation. |
+| `QUARTERDECK_TITLE_PROVIDER` | Select task-title generation: `local` (default), `codex`, or `llm`. Either remote provider falls back directly to deterministic local generation. |
 | `QUARTERDECK_CODEX_TITLE_MODEL` | Override the Codex model used for task titles. Defaults to `gpt-5.6-luna`. |
-| `QUARTERDECK_LLM_BASE_URL` | OpenAI-compatible helper API base URL for generated branch names, commit messages, optional summary polish, and fallback title generation. May be a LiteLLM, Bedrock, OpenRouter, or similar gateway. |
-| `QUARTERDECK_LLM_API_KEY` | Bearer token for the optional helper API. |
-| `QUARTERDECK_LLM_MODEL` | Optional model override. Defaults to `bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0`, which is a cheap/fast Bedrock-backed Anthropic default through LiteLLM. |
+| `QUARTERDECK_LLM_BASE_URL` | Base URL for an optional LiteLLM or other OpenAI-compatible helper gateway. |
+| `QUARTERDECK_LLM_API_KEY` | Bearer token for the optional helper gateway. Prefer a scoped LiteLLM virtual key over a shared master key. |
+| `QUARTERDECK_LLM_MODEL` | Model name or gateway alias. Required for generic gateways; legacy base URLs ending in `/bedrock` retain the `bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0` fallback. |
 
-Task titles use `gpt-5.6-luna` through `codex exec --ephemeral` by default, reusing the installed Codex CLI's saved authentication without calling the configured helper endpoint. Set `QUARTERDECK_CODEX_TITLE_MODEL` to select another Codex model. A failed or unavailable Codex invocation falls back directly to a deterministic local title, keeping the Codex and LiteLLM failure domains separate. Set `QUARTERDECK_TITLE_PROVIDER=llm` to use the OpenAI-compatible helper instead, or `QUARTERDECK_TITLE_PROVIDER=local` to avoid remote title generation entirely.
+Task titles use deterministic local generation by default. Set `QUARTERDECK_TITLE_PROVIDER=codex` to opt in to `codex exec --ephemeral`, which reuses the installed Codex CLI's saved authentication and defaults to `gpt-5.6-luna`; `QUARTERDECK_CODEX_TITLE_MODEL` selects another Codex model. Set `QUARTERDECK_TITLE_PROVIDER=llm` to use the OpenAI-compatible helper instead. A failed remote invocation falls back directly to the local title, keeping the Codex and LiteLLM failure domains separate.
 
-The LLM variables are needed for generated branch names, commit messages, optional polished card summaries, and task titles when `QUARTERDECK_TITLE_PROVIDER=llm`. Agent sessions themselves use your installed agent CLI and do not require these variables. The helper endpoint must support OpenAI-style `/v1/chat/completions`; Anthropic models work when your gateway exposes them through that API shape. Set `QUARTERDECK_LLM_BASE_URL` and `QUARTERDECK_LLM_API_KEY` to enable these helpers; leave `QUARTERDECK_LLM_MODEL` unset to use the default Haiku 4.5 model.
+### Optional LiteLLM or OpenAI-Compatible Helper
 
-Gateway base URLs that end in `/bedrock` are normalized to the gateway root before Quarterdeck appends `/v1/chat/completions`, matching common Bedrock/LiteLLM proxy layouts.
+This helper is not needed to run agents. It enables generated branch names, generated commit messages, optional polished card summaries, and task titles only when `QUARTERDECK_TITLE_PROVIDER=llm` is selected.
 
-To keep helper LLM configuration across shell sessions, add exports to your shell startup file. For the default macOS zsh setup, `~/.zshrc` is usually the right file when launching Quarterdeck from Terminal:
+Choose one of these setups:
+
+- **No helper (default):** no variables or additional service. Task titles stay local, and helper-backed actions remain unavailable.
+- **Existing team gateway:** point Quarterdeck at a LiteLLM proxy or another OpenAI-compatible endpoint and use the gateway's scoped key and configured model alias.
+- **Self-hosted LiteLLM:** run the LiteLLM proxy separately, then point Quarterdeck at its loopback or network URL. Quarterdeck does not install, start, update, or store configuration for the proxy. See the [official LiteLLM proxy quick start](https://docs.litellm.ai/).
+
+For an existing gateway:
 
 ```bash
 export QUARTERDECK_LLM_BASE_URL=https://your-llm-gateway.example.com
-export QUARTERDECK_LLM_API_KEY=your-token
-# Optional. Omit this line to use the built-in Haiku 4.5 default.
-export QUARTERDECK_LLM_MODEL=bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
+export QUARTERDECK_LLM_API_KEY=your-virtual-key
+export QUARTERDECK_LLM_MODEL=your-model-alias
 ```
 
-Open a new shell, or run `source ~/.zshrc`, before launching `quarterdeck` so the exported values are present in the Quarterdeck runtime process.
+For a local proxy using LiteLLM's default port:
+
+```bash
+export QUARTERDECK_LLM_BASE_URL=http://127.0.0.1:4000
+export QUARTERDECK_LLM_API_KEY=your-litellm-key
+export QUARTERDECK_LLM_MODEL=your-model-alias
+```
+
+In Windows PowerShell, set the same values for the process that launches Quarterdeck:
+
+```powershell
+$env:QUARTERDECK_LLM_BASE_URL = "http://127.0.0.1:4000"
+$env:QUARTERDECK_LLM_API_KEY = "your-litellm-key"
+$env:QUARTERDECK_LLM_MODEL = "your-model-alias"
+```
+
+The model must match a model name or alias exposed by the gateway. Quarterdeck requires a non-empty API-key value; an unauthenticated loopback-only development proxy can use a placeholder, but shared or network-accessible proxies should use authentication—preferably a scoped LiteLLM virtual key with an appropriate budget. Keep the key out of tracked files and supply it through the shell environment or your secret manager.
+
+The endpoint must accept OpenAI-style `/v1/chat/completions`. Base URLs ending in `/v1` or `/v1/chat/completions` are accepted directly. Gateway base URLs ending in `/bedrock` are normalized to the gateway root before Quarterdeck appends `/v1/chat/completions`.
+
+To keep the configuration across shell sessions, add the exports to the shell startup file or launcher environment that starts Quarterdeck. Open a new shell—or reload that environment—then restart Quarterdeck so the runtime receives the new values.
 
 ## Install
 
