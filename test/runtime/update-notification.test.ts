@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import packageJson from "../../package.json" with { type: "json" };
 import { notifyAboutAvailableUpdate } from "../../src/update-notification";
 
 describe("notifyAboutAvailableUpdate", () => {
@@ -17,7 +18,7 @@ describe("notifyAboutAvailableUpdate", () => {
 		notifyAboutAvailableUpdate({ isInteractive: true, createNotifier });
 
 		expect(createNotifier).toHaveBeenCalledWith({
-			pkg: { name: "quarterdeck", version: "0.12.4" },
+			pkg: { name: packageJson.name, version: packageJson.version },
 			distTag: "latest",
 			updateCheckInterval: 86_400_000,
 		});

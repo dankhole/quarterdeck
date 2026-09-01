@@ -1,6 +1,6 @@
 {
   "name": "quarterdeck",
-  "version": "0.12.4",
+  "version": "0.12.5",
   "packageManager": "npm@11.19.0",
   "description": "A quarterdeck foundation for coding agents",
   "publishConfig": {

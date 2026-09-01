@@ -45,7 +45,7 @@ The first editable Files-view milestone has landed with CodeMirror tabs, dirty/s
 
 ## Publish to npm
 
-The npm-side OIDC relationship now trusts `dankhole/quarterdeck`'s `publish.yml` workflow in the `npm-publish` environment, and the release-prep changes update the package artifact gate, version, changelog, and README install instructions. After those changes are merged and the required CI matrix passes, push the matching `v0.12.4` tag and dispatch `publish.yml` with that existing tag. Remove this item after npm and the GitHub Release both show `0.12.4` successfully.
+The npm-side OIDC relationship now trusts `dankhole/quarterdeck`'s `publish.yml` workflow in the `npm-publish` environment, and the release-prep changes update the package artifact gate, version, changelog, and README install instructions. The earlier immutable `v0.12.4` tag predates the startup update notification and was not published, so release the complete latest `main` as `v0.12.5`. Remove this item after npm and the GitHub Release both show `0.12.5` successfully.
 
 ## Branch management in git view
 
