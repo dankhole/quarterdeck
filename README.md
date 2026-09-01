@@ -93,6 +93,14 @@ Or try it without keeping a global installation:
 npx --yes quarterdeck@latest
 ```
 
+npm does not automatically update global installations. Upgrade an installed copy explicitly when a new release is available:
+
+```bash
+npm install --global quarterdeck@latest
+```
+
+The `npx` form resolves `@latest` for you and may reuse npm's download cache.
+
 Verify and run the installed command from any git repository:
 
 ```bash

@@ -76,6 +76,8 @@ The summaries above are not substitutes for the routed runtime-state and session
 
 ## Release hygiene
 
+Before preparing, tagging, publishing, retrying, or verifying an npm release, read `RELEASE_WORKFLOW.md` and follow its squash-merge, immutable-tag, OIDC publishing, and post-publish verification sequence.
+
 When a user-visible feature or fix lands, or an active todo item is completed:
 
 1. Remove the completed active item from `docs/todo.md`, if present.
