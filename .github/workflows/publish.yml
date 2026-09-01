@@ -60,7 +60,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: "22.22.2"
+          # Match the required release-test lane. Node 22.22.2's bundled npm can
+          # corrupt its own module tree while upgrading to the pinned npm.
+          node-version: "22.22.3"
           registry-url: "https://registry.npmjs.org"
 
       - name: Install pinned npm with trusted publishing support

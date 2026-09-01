@@ -101,6 +101,8 @@ npm install --global quarterdeck@latest
 
 The `npx` form resolves `@latest` for you and may reuse npm's download cache.
 
+On interactive startup, Quarterdeck checks npm at most once per day in the background and prints the explicit global update command when a newer stable release is available. It never installs an update automatically. Set `NO_UPDATE_NOTIFIER=1` or pass `--no-update-notifier` to disable the check.
+
 Verify and run the installed command from any git repository:
 
 ```bash
