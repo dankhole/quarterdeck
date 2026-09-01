@@ -79,12 +79,6 @@ await Promise.all([
 		outfile: "dist/cli.js",
 		banner: { js: `#!/usr/bin/env node\n${cjsShimBanner}` },
 	}),
-	// Library export
-	esbuild.build({
-		...shared,
-		entryPoints: ["src/index.ts"],
-		outfile: "dist/index.js",
-	}),
 ]);
 
 for (const asset of runtimeAssets) {
@@ -96,4 +90,4 @@ await rm(webUiDistOutput, { recursive: true, force: true, maxRetries: 10, retryD
 await copyDirectoryContents(webUiDistSource, webUiDistOutput);
 if (process.platform !== "win32") await chmod("dist/cli.js", 0o755);
 
-console.log("esbuild: bundled dist/cli.js and dist/index.js and copied runtime assets");
+console.log("esbuild: bundled dist/cli.js and copied runtime assets");

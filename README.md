@@ -24,7 +24,7 @@ Quarterdeck detects installed agent CLIs from your `PATH`, starts a local runtim
 
 ## Status
 
-Quarterdeck is under active development. The main install path is currently from source with `npm run link`; the npm package is not the recommended path yet. Found a bug or have an idea? Open a [GitHub Issue](https://github.com/dankhole/quarterdeck/issues).
+Quarterdeck is under active development and is distributed as a public npm CLI package. Found a bug or have an idea? Open a [GitHub Issue](https://github.com/dankhole/quarterdeck/issues).
 
 Windows support remains experimental, although the code-remediation audit is complete and native install, build, packaged/source CLI, ConPTY resize/reconnect/restore, Git/worktree fidelity, hook/status-line transport, exact process ownership, host launch, graceful shutdown, and diagnostic DACL coverage are now part of the required CI workflow. Promotion awaits that job on the committed revision plus the manual real-provider matrix; see the [Windows support audit](docs/windows-support-audit.md), [acceptance ledger](docs/windows-compatibility-todo.md), and [native validation guide](docs/windows-native-smoke.md).
 
@@ -32,7 +32,6 @@ Windows support remains experimental, although the code-remediation audit is com
 
 - Git
 - Node.js 22.22.2 or newer (pinned by `.nvmrc` for local development)
-- npm 11.19.0 (pinned by `packageManager`)
 - At least one supported agent CLI installed and available on `PATH`
 - Optional but recommended: a Nerd Font such as [JetBrainsMono Nerd Font](https://www.nerdfonts.com/) for cleaner terminal glyphs
 
@@ -80,9 +79,33 @@ export QUARTERDECK_LLM_MODEL=bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
 
 Open a new shell, or run `source ~/.zshrc`, before launching `quarterdeck` so the exported values are present in the Quarterdeck runtime process.
 
-## Install From Source
+## Install
 
-Clone the repository, install dependencies for the runtime and web UI, then link the local build as the global `quarterdeck` command:
+Install Quarterdeck globally for regular use:
+
+```bash
+npm install --global quarterdeck
+```
+
+Or try it without keeping a global installation:
+
+```bash
+npx --yes quarterdeck@latest
+```
+
+Verify and run the installed command from any git repository:
+
+```bash
+quarterdeck --version
+cd /path/to/your/project
+quarterdeck
+```
+
+Quarterdeck launches a local server, opens the browser UI, and stores runtime state under `~/.quarterdeck` by default. Set `QUARTERDECK_STATE_HOME` to use a different state directory. Quarterdeck itself does not require a separate account; agent access comes from the agent CLIs you have installed and authenticated.
+
+### Install From Source
+
+For development, clone the repository, install the runtime and web UI dependencies, then link the local build as the global `quarterdeck` command:
 
 ```bash
 git clone https://github.com/dankhole/quarterdeck.git
@@ -92,22 +115,6 @@ npm run link
 ```
 
 `npm run bootstrap` preserves or migrates the clone-wide Agent Lab browser cache, then performs locked installs for both the runtime and the separate web UI dependency tree. `npm run link` verifies those prerequisites, runs a production build, and then creates the development symlink used by the global `quarterdeck` command. Stop a Quarterdeck runtime launched from this linked checkout before bootstrapping or relinking; the scripts refuse to replace files underneath that live process.
-
-Verify the linked command:
-
-```bash
-which quarterdeck
-quarterdeck --version
-```
-
-Run Quarterdeck from any git repository:
-
-```bash
-cd /path/to/your/project
-quarterdeck
-```
-
-Quarterdeck launches a local server, opens the browser UI, and stores runtime state under `~/.quarterdeck` by default. Set `QUARTERDECK_STATE_HOME` to use a different state directory. Quarterdeck itself does not require a separate account; agent access comes from the agent CLIs you have installed and authenticated.
 
 When you pull new Quarterdeck changes, switch worktrees, or want the global command to point at a different checkout, run `npm run link` again from that checkout. To remove the global link:
 

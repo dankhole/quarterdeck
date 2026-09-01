@@ -5,7 +5,6 @@
 		".": {
 			"entry": [
 				"src/cli.ts",
-				"src/index.ts",
 				"scripts/*.{ts,mjs}",
 				"scripts/agent-lab/**/*.{ts,cjs}",
 				"test/**/*.test.ts",

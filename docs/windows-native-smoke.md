@@ -10,7 +10,7 @@ Run these commands from a fresh Windows checkout with Git, Node.js 22.22.2, and 
 npm ci
 npm ci --prefix web-ui
 npm run build
-node scripts/windows-packaged-cli-smoke.mjs
+npm run test:package
 npm run check
 npm run web:test
 ```

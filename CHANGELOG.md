@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.12.4] — 2026-09-01
+
+### Release: distribute Quarterdeck through npm
+
+- The public package now exposes only the supported `quarterdeck` CLI instead of advertising a library declaration file the build did not produce, and consumers need only the tested Node baseline rather than Quarterdeck's exact development npm version.
+- CI now packs the exact publishable tarball, installs it into an isolated global prefix, verifies the installed command and version, launches it, fetches the bundled browser application, and confirms graceful shutdown on Linux, macOS, and Windows.
+- Release metadata is validated before the irreversible npm publish step, npm publishing performs its build/check lifecycle once, and the README now recommends `npm install --global quarterdeck` or `npx --yes quarterdeck@latest` while retaining source linking for development.
+
 ### Fix: complete native Windows CI enforcement
 
 - Private diagnostic, Agent Lab, and managed-process directories now remove inherited and explicit rules through SID-based .NET Framework APIs before adding the current-user-and-LocalSystem DACL, preserving owner/group metadata without PowerShell module-autoload dependencies. Windows PowerShell JSON results are normalized to scalar paths before ACL reads. Failures expose only a bounded operation-stage/exception-type/error-ID classifier, never PowerShell output or affected paths.
