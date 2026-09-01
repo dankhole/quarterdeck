@@ -38,6 +38,7 @@ This document owns test selection. [`DEVELOPMENT.md`](../DEVELOPMENT.md) lists d
 | `npm run test -- <paths...>` | Root Vitest tests, optionally focused by path | Web UI tests |
 | `npm run test:fast` | `test/runtime` and `test/utilities` | `test/integration`, web UI tests |
 | `npm run test:integration` | `test/integration` | Runtime unit tests, web UI tests |
+| `npm run test:package` | Publishable tarball creation, isolated global install, command/version verification, bundled UI fetch, and graceful shutdown | Source-tree tests, browser interaction, or real providers |
 | `npm run test:windows-smoke` | Packaged CLI plus focused native Windows integration checks; fails off Windows and requires a prior build | Full root/web suites and the remaining native acceptance gate |
 | `npm run web:test -- <paths...>` | Web UI Vitest tests, optionally focused by path | Root tests, Playwright |
 | `npm run typecheck` | Runtime TypeScript | Web UI TypeScript |

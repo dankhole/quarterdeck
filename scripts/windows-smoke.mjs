@@ -8,7 +8,7 @@ if (process.platform !== "win32") {
 	const repoRoot = resolve(import.meta.dirname, "..");
 	const vitestEntrypoint = resolve(repoRoot, "node_modules", "vitest", "vitest.mjs");
 	const commands = [
-		[process.execPath, [resolve(import.meta.dirname, "windows-packaged-cli-smoke.mjs")]],
+		[process.execPath, [resolve(import.meta.dirname, "package-artifact-smoke.mjs")]],
 		[
 			process.execPath,
 			[

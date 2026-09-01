@@ -7,7 +7,7 @@
 ## Requirements
 
 - Node.js 22.22.2+ (`nvm use` reads the repository `.nvmrc`)
-- npm 11.19.0 (pinned by `packageManager`)
+- npm 11.19.0 (`packageManager` pins the repository toolchain; package consumers do not need this exact npm release)
 
 ## Install
 
@@ -29,6 +29,7 @@ npm run check            # Agent docs + Biome + runtime typecheck/tests
 npm run test             # All root runtime + integration tests
 npm run test:fast        # Runtime + utility tests only
 npm run test:integration # Integration tests only
+npm run test:package     # Pack, clean-install, launch, fetch, and stop the publishable tarball
 npm run test:windows-smoke # Built CLI + focused native checks (Windows only)
 npm run web:test         # Web UI unit tests
 npm run web:e2e          # Playwright smoke tests with isolated runtime state

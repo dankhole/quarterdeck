@@ -53,6 +53,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Published package artifact smoke
+        run: npm run test:package
+
       - name: Check (agent instructions, lint, typecheck, root tests)
         run: npm run check
 
@@ -87,9 +90,9 @@ jobs:
         if: ${{ !inputs.focused_windows }}
         run: npm run build
 
-      - name: Packaged CLI launch smoke
+      - name: Published package artifact smoke
         if: ${{ !inputs.focused_windows }}
-        run: node scripts/windows-packaged-cli-smoke.mjs
+        run: npm run test:package
 
       - name: Focused native Windows smoke
         if: ${{ inputs.focused_windows }}

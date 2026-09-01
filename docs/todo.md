@@ -45,7 +45,7 @@ The first editable Files-view milestone has landed with CodeMirror tabs, dirty/s
 
 ## Publish to npm
 
-The `quarterdeck` npm name is already held by the maintainer's `0.0.1` placeholder. Configure and confirm npm-side OIDC trusted publishing for the GitHub repository, publish the first real release matching `package.json` through the existing `publish.yml` workflow, then update the README install instructions to use `npx quarterdeck` / `npm i -g quarterdeck` instead of clone-and-build steps.
+The npm-side OIDC relationship now trusts `dankhole/quarterdeck`'s `publish.yml` workflow in the `npm-publish` environment, and the release-prep changes update the package artifact gate, version, changelog, and README install instructions. After those changes are merged and the required CI matrix passes, push the matching `v0.12.4` tag and dispatch `publish.yml` with that existing tag. Remove this item after npm and the GitHub Release both show `0.12.4` successfully.
 
 ## Branch management in git view
 

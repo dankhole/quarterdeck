@@ -62,7 +62,6 @@ jobs:
         with:
           node-version: "22.22.2"
           registry-url: "https://registry.npmjs.org"
-          cache: npm
 
       - name: Install pinned npm with trusted publishing support
         run: npm install --global npm@11.19.0
@@ -92,12 +91,6 @@ jobs:
 
           echo "package_version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Build and validate package
-        run: npm run prepublishOnly
-
-      - name: Publish to npm (OIDC trusted publishing)
-        run: npm publish --access public
-
       - name: Extract changelog entry for release
         id: changelog
         run: |
@@ -105,6 +98,9 @@ jobs:
             --version "${{ steps.version.outputs.package_version }}" \
             --changelog CHANGELOG.md \
             --output-key body
+
+      - name: Build, validate, and publish to npm (OIDC trusted publishing)
+        run: npm publish --access public
 
       - name: Compute compare link
         id: compare

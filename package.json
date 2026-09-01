@@ -1,6 +1,6 @@
 {
   "name": "quarterdeck",
-  "version": "0.12.3",
+  "version": "0.12.4",
   "packageManager": "npm@11.19.0",
   "description": "A quarterdeck foundation for coding agents",
   "publishConfig": {
@@ -28,14 +28,6 @@
     "quarterdeck": "dist/cli.js"
   },
   "man": "./man/quarterdeck.1",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
   "files": [
     "dist",
     "man",
@@ -43,8 +35,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=22.22.2",
-    "npm": ">=11.19.0 <12"
+    "node": ">=22.22.2"
   },
   "allowScripts": {
     "esbuild": true,
@@ -77,6 +68,7 @@
     "test": "vitest run",
     "test:fast": "vitest run test/runtime test/utilities",
     "test:integration": "vitest run test/integration",
+    "test:package": "node scripts/package-artifact-smoke.mjs",
     "test:windows-smoke": "node scripts/windows-smoke.mjs",
     "test:precommit": "npm run test:fast",
     "test:watch": "vitest",
