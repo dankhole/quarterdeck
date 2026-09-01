@@ -14,17 +14,17 @@ export function StartupOnboardingDialog({
 	onClose,
 	selectedAgentId,
 	agents,
+	llmConfigured,
+	runtimePlatform,
 	onSelectAgent,
-	projectId,
-	runtimeConfig,
 }: {
 	open: boolean;
 	onClose: () => void;
 	selectedAgentId?: RuntimeAgentId | null;
 	agents?: RuntimeAgentDefinition[];
+	llmConfigured?: boolean;
+	runtimePlatform?: RuntimeConfigResponse["runtimePlatform"];
 	onSelectAgent?: (agentId: RuntimeAgentId) => Promise<{ ok: boolean; message?: string }>;
-	projectId?: string | null;
-	runtimeConfig?: RuntimeConfigResponse | null;
 }): ReactElement {
 	const [onboardingSlideIndex, setOnboardingSlideIndex] = useState(0);
 	const [isCompletingOnboarding, setIsCompletingOnboarding] = useState(false);
@@ -72,6 +72,7 @@ export function StartupOnboardingDialog({
 	return (
 		<Dialog
 			open={open}
+			contentStyle={{ maxWidth: "40rem" }}
 			onOpenChange={(isOpen) => {
 				if (!isOpen) onClose();
 			}}
@@ -79,11 +80,10 @@ export function StartupOnboardingDialog({
 			<DialogHeader title="Get started" />
 			<DialogBody className="px-4 pt-2 pb-4">
 				<TaskStartAgentOnboardingCarousel
-					open={open}
-					projectId={projectId ?? null}
-					runtimeConfig={runtimeConfig ?? null}
 					selectedAgentId={selectedAgentId ?? null}
 					agents={agents ?? []}
+					llmConfigured={llmConfigured ?? false}
+					runtimePlatform={runtimePlatform ?? "other"}
 					activeSlideIndex={onboardingSlideIndex}
 					onSelectAgent={onSelectAgent}
 					onDoneActionChange={handleOnboardingDoneActionChange}

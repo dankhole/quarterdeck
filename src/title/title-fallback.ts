@@ -1,6 +1,17 @@
 import { trimGeneratedTranscriptEcho } from "./transcript-echo";
 
 const MAX_TITLE_LENGTH = 80;
+const TASK_CONTEXT_LABELS = [
+	"Original prompt",
+	"First agent summary",
+	"Most recent agent summary",
+	"Previous agent summary",
+] as const;
+type TaskContextLabel = (typeof TASK_CONTEXT_LABELS)[number];
+const TASK_CONTEXT_SECTION_PATTERN = new RegExp(
+	`(?:^|\\n\\n)(${TASK_CONTEXT_LABELS.join("|")}):\\n([\\s\\S]*?)(?=\\n\\n(?:${TASK_CONTEXT_LABELS.join("|")}):\\n|$)`,
+	"g",
+);
 
 const TITLE_STOP_WORDS = new Set([
 	"a",
@@ -121,8 +132,26 @@ function titleCaseWord(word: string): string {
 	return `${lower.slice(0, 1).toUpperCase()}${lower.slice(1)}`;
 }
 
+function resolveFallbackTitleSource(context: string): string {
+	const sections = new Map<TaskContextLabel, string>();
+	for (const match of context.matchAll(TASK_CONTEXT_SECTION_PATTERN)) {
+		const label = match[1] as TaskContextLabel | undefined;
+		const value = match[2]?.trim();
+		if (label && value) {
+			sections.set(label, value);
+		}
+	}
+	return (
+		sections.get("Most recent agent summary") ??
+		sections.get("Previous agent summary") ??
+		sections.get("First agent summary") ??
+		sections.get("Original prompt") ??
+		context
+	);
+}
+
 export function createFallbackTaskTitle(prompt: string): string | null {
-	const normalized = prompt
+	const normalized = resolveFallbackTitleSource(prompt)
 		.replace(/```[\s\S]*?```/g, " ")
 		.replace(/`([^`]+)`/g, "$1")
 		.replace(/https?:\/\/\S+/g, " ")

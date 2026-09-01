@@ -80,6 +80,7 @@
     "@biomejs/biome": "^2.5.9",
     "@types/node": "^22.20.1",
     "@types/proper-lockfile": "^4.1.4",
+    "@types/update-notifier": "^6.0.8",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.1.11",
     "esbuild": "^0.28.2",
@@ -102,6 +103,7 @@
     "p-limit": "^7.3.1",
     "proper-lockfile": "^4.1.2",
     "tree-kill": "^1.2.2",
+    "update-notifier": "^7.3.1",
     "ws": "^8.21.3",
     "zod": "^4.4.3"
   }

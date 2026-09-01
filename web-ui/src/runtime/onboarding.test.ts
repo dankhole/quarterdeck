@@ -1,20 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { isSelectedAgentAuthenticated, shouldShowStartupOnboardingDialog } from "@/runtime/onboarding";
+import { shouldShowStartupOnboardingDialog } from "@/runtime/onboarding";
 
 describe("runtime onboarding helpers", () => {
-	it("treats all agent selections as authenticated", () => {
-		expect(isSelectedAgentAuthenticated("claude")).toBe(true);
-		expect(isSelectedAgentAuthenticated("codex")).toBe(true);
-		expect(isSelectedAgentAuthenticated("pi")).toBe(true);
-	});
-
 	it("shows startup onboarding at least once for configured users", () => {
 		expect(
 			shouldShowStartupOnboardingDialog({
 				hasShownOnboardingDialog: false,
 				isTaskAgentReady: true,
-				isSelectedAgentAuthenticated: true,
 			}),
 		).toBe(true);
 	});
@@ -24,17 +17,15 @@ describe("runtime onboarding helpers", () => {
 			shouldShowStartupOnboardingDialog({
 				hasShownOnboardingDialog: true,
 				isTaskAgentReady: null,
-				isSelectedAgentAuthenticated: true,
 			}),
 		).toBe(false);
 	});
 
-	it("shows startup onboarding when selected agent is not authenticated", () => {
+	it("shows startup onboarding when no supported agent CLI is ready", () => {
 		expect(
 			shouldShowStartupOnboardingDialog({
 				hasShownOnboardingDialog: true,
-				isTaskAgentReady: true,
-				isSelectedAgentAuthenticated: false,
+				isTaskAgentReady: false,
 			}),
 		).toBe(true);
 	});
@@ -44,7 +35,6 @@ describe("runtime onboarding helpers", () => {
 			shouldShowStartupOnboardingDialog({
 				hasShownOnboardingDialog: true,
 				isTaskAgentReady: true,
-				isSelectedAgentAuthenticated: true,
 			}),
 		).toBe(false);
 	});

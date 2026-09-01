@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Feature: notify users about available npm updates
+
+- Interactive Quarterdeck startup now performs a cached daily npm update check in an unref'd background process and shows the explicit global update command when a newer stable release is available. Checks stay out of CI and non-interactive launches, can be disabled with `NO_UPDATE_NOTIFIER` or `--no-update-notifier`, and never delay startup or install an update automatically.
+
+### Fix: make initial agent setup actionable and local
+
+- First-run onboarding now starts with the actual prerequisite: install, authenticate, and select one supported Claude Code, Codex, or Pi CLI. It shows platform-correct macOS/Linux or Windows install and environment commands, current provider sign-in and verification commands, distinguishes CLI/version readiness from unverified provider credentials, links current official setup documentation, and pins Pi's install command to Quarterdeck's exact supported version instead of the incompatible latest release. Codex's API-key login path is explicit, and Claude authentication verification follows the current CLI contract.
+- The empty onboarding media placeholders are replaced by a concise explanation of Quarterdeck's safe defaults. The obsolete helper that claimed every selected agent was authenticated has been removed rather than presenting a status Quarterdeck does not inspect.
+- Agent-selection save failures remain visible on every onboarding slide and continue blocking completion after the asynchronous save settles.
+- Onboarding and Settings now present LiteLLM and other OpenAI-compatible helpers as genuinely optional, with separate no-helper, existing-gateway, and self-hosted-gateway setup paths; all three environment variables, restart behavior, key handling, model aliases, affected features, and the explicit task-title opt-in are documented without treating an intentionally local setup as a warning. Generic gateways require an explicit model alias instead of silently receiving a Bedrock-specific default; the historical default remains only for legacy `/bedrock` gateway URLs.
+- Automatic task titles now stay local by default, so choosing Claude or Pi does not silently require or invoke Codex. Codex and OpenAI-compatible helper generation remain explicit `QUARTERDECK_TITLE_PROVIDER` opt-ins with local fallback. Deterministic regeneration prefers the most recent labeled agent activity instead of reusing the original prompt.
+
 ## [0.12.4] — 2026-09-01
 
 ### Release: distribute Quarterdeck through npm

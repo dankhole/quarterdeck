@@ -334,7 +334,7 @@ describe("RuntimeSettingsDialog", () => {
 		);
 	});
 
-	it("shows orange warning when LLM is not configured", async () => {
+	it("shows optional helper setup guidance when LLM is not configured", async () => {
 		await act(async () => {
 			root.render(
 				<RuntimeSettingsDialog
@@ -349,7 +349,12 @@ describe("RuntimeSettingsDialog", () => {
 		const warningText = document.body.textContent;
 		expect(warningText).toContain("QUARTERDECK_LLM_BASE_URL");
 		expect(warningText).toContain("QUARTERDECK_LLM_API_KEY");
-		expect(warningText).not.toContain("QUARTERDECK_LLM_MODEL");
+		expect(warningText).toContain("QUARTERDECK_LLM_MODEL");
+		expect(warningText).toContain("local task titles work normally");
+		const summaryPolishCheckbox = document.body.querySelector(
+			"#runtime-settings-llm-summary-polish",
+		) as HTMLButtonElement | null;
+		expect(summaryPolishCheckbox?.disabled).toBe(true);
 	});
 
 	it("does not show LLM warning when configured", async () => {

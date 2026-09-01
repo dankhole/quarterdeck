@@ -33,6 +33,7 @@ import {
 	PTY_RUNTIME_REMEDIATION,
 	PtyRuntimeDependencyError,
 } from "./terminal/pty-runtime-health";
+import { notifyAboutAvailableUpdate } from "./update-notification";
 import { runGit } from "./workdir/git-utils";
 
 interface CliOptions {
@@ -868,6 +869,7 @@ function createProgram(invocationArgs: string[]): Command {
 		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
 		.option("--no-open", "Do not open browser automatically.")
 		.option("--no-native-ui", "Disable integrations that launch or interact with host-native UI.")
+		.option("--no-update-notifier", "Disable the periodic npm update notification.")
 		.option("--skip-shutdown-cleanup", "Skip graceful shutdown cleanup (session marking, orphan process cleanup).")
 		.showHelpAfterError()
 		.addHelpText("after", `\nRuntime URL: ${getQuarterdeckRuntimeOrigin()}`);
@@ -888,6 +890,7 @@ function createProgram(invocationArgs: string[]): Command {
 		if (options.simulateHostIntegrations && options.nativeUi !== false) {
 			throw new Error("--simulate-host-integrations requires --no-native-ui.");
 		}
+		notifyAboutAvailableUpdate();
 		await runMainCommand(
 			{
 				host: options.host ?? null,

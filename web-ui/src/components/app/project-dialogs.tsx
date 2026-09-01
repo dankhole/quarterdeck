@@ -17,7 +17,6 @@ export function ProjectDialogs(): ReactElement {
 		handleSelectOnboardingAgent,
 	} = useProjectRuntimeContext();
 	const {
-		currentProjectId,
 		pendingGitInitializationPath,
 		isInitializingGitProject,
 		handleCancelInitializeGitProject,
@@ -35,8 +34,8 @@ export function ProjectDialogs(): ReactElement {
 				onClose={handleCloseStartupOnboardingDialog}
 				selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
 				agents={runtimeProjectConfig?.agents ?? []}
-				projectId={currentProjectId}
-				runtimeConfig={runtimeProjectConfig ?? null}
+				llmConfigured={runtimeProjectConfig?.llmConfigured ?? false}
+				runtimePlatform={runtimeProjectConfig?.runtimePlatform ?? "other"}
 				onSelectAgent={handleSelectOnboardingAgent}
 			/>
 
