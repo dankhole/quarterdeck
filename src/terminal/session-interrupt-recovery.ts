@@ -1,7 +1,7 @@
 // Interrupt signal detection and recovery scheduling.
 // Extracted from session-manager.ts — detects Ctrl+C/Escape in user input
-// and schedules a timer to transition the session back to review if the
-// agent doesn't resume working within the recovery window.
+// and retains bounded process-exit recovery bookkeeping after the immediate
+// Review transition. The launch-scoped causal fence survives timer cleanup.
 
 import type { RuntimeTaskSessionSummary } from "../core";
 import type { ActiveProcessState, ProcessEntry } from "./session-manager-types";
@@ -47,9 +47,9 @@ export interface InterruptRecoveryContext {
 
 /**
  * Remove the public Running claim immediately when the user asks the TUI to
- * interrupt, then retain a short launch-scoped fence while provider evidence
- * or process exit settles the outcome. The timer only retires that transient
- * fence; it is never the ordinary author of user-visible task meaning.
+ * interrupt, then retain short process-exit bookkeeping while provider evidence
+ * or process exit settles the outcome. The timer only retires that bookkeeping;
+ * the latest-interrupt timestamp remains launch-scoped. It it is never the ordinary author of user-visible task meaning.
  */
 export function scheduleInterruptRecovery(
 	entry: ProcessEntry,
@@ -63,6 +63,7 @@ export function scheduleInterruptRecovery(
 	ctx.onRecoveryScheduled?.(signal);
 	const taskId = entry.taskId;
 	entry.active.interruptRecoveryStartedAt = Date.now();
+	entry.active.lastInterruptAt = entry.active.interruptRecoveryStartedAt;
 	entry.active.interruptRecoverySignal = signal;
 	const result = ctx.applyTransitionEvent(entry, { type: "interrupt.recovery" });
 	ctx.onRecoveryApplied?.(signal, result);

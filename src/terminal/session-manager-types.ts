@@ -52,6 +52,8 @@ export interface ActiveProcessState {
 	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
 	interruptRecoveryTimer: NodeJS.Timeout | null;
 	interruptRecoveryStartedAt: number | null;
+	/** Launch-scoped causal fence; recovery timer cleanup must not erase it. */
+	lastInterruptAt: number | null;
 	interruptRecoverySignal: "ctrl_c" | "escape" | null;
 }
 
@@ -334,6 +336,7 @@ export function createActiveProcessState(opts: CreateActiveProcessStateOptions):
 		workspaceTrustConfirmTimer: null,
 		interruptRecoveryTimer: null,
 		interruptRecoveryStartedAt: null,
+		lastInterruptAt: null,
 		interruptRecoverySignal: null,
 	};
 }

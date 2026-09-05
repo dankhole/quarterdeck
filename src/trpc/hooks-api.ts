@@ -265,7 +265,8 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					return { ok: false, error: `Task "${taskId}" transition failed` };
 				}
 				const nextSummary = transitionResult.summary;
-				const hasForegroundCompletionMetadata = isForegroundCompletionMetadata(body.metadata);
+				const hasForegroundCompletionMetadata =
+					transitionResult.hookMetadataMode === "apply" && isForegroundCompletionMetadata(body.metadata);
 				if (hasForegroundCompletionMetadata) {
 					applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 				}

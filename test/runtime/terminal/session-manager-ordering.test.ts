@@ -13,6 +13,7 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 	},
 }));
 
+import { runtimeTaskSessionSummarySchema } from "../../../src/core";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
 import { createCodexTurnInterruptionDetector } from "../../../src/terminal/codex-turn-interruption";
 import { DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER } from "../../../src/terminal/session-manager-types";
@@ -304,6 +305,227 @@ describe("TerminalSessionManager ordering invariants", () => {
 			state: "awaiting_review",
 			reviewReason: "exit",
 			pid: null,
+		});
+	});
+
+	it("preserves main Codex state and resume identity throughout a side conversation", async () => {
+		setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession({
+			taskId: "task-btw",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-btw",
+			prompt: "Synthetic task",
+		});
+		const sessionInstanceId = manager.store.getSummary("task-btw")?.sessionInstanceId;
+		const api = createHooksApi({
+			projects: { getProjectPathById: () => "/tmp/repo" },
+			terminals: {
+				getTerminalManagerForProject: () => manager,
+				ensureTerminalManagerForProject: async () => manager,
+			},
+		});
+		const sequence = [
+			{ event: "to_in_progress", hookEventName: "UserPromptSubmit", turnId: "main", state: "running" },
+			{ event: "to_in_progress", hookEventName: "UserPromptSubmit", turnId: "side", state: "running" },
+			{ event: "activity", hookEventName: "SessionStart", turnId: "side", state: "running" },
+			{ event: "to_review", hookEventName: "PermissionRequest", turnId: "side", state: "running" },
+			{ event: "to_review", hookEventName: "Stop", turnId: "side", state: "running" },
+			{ event: "activity", hookEventName: "PreToolUse", turnId: "main", state: "running" },
+			{ event: "to_review", hookEventName: "Stop", turnId: "main", state: "awaiting_review" },
+		] as const;
+		for (const [index, step] of sequence.entries()) {
+			expect(
+				await api.ingest({
+					taskId: "task-btw",
+					projectId: "project-1",
+					event: step.event,
+					metadata: {
+						source: "codex",
+						sessionInstanceId,
+						hookEventName: step.hookEventName,
+						turnId: step.turnId,
+						sessionId: `${step.turnId}-session`,
+						...(step.turnId === "side" ? { finalMessage: "SIDE ONLY" } : {}),
+						...(step.hookEventName === "PreToolUse" ? { toolUseId: "fresh-tool" } : {}),
+					},
+					delivery: {
+						id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+						occurredAt: Date.now() + index + 1,
+					},
+				}),
+			).toEqual({ ok: true });
+			expect(manager.store.getSummary("task-btw")).toMatchObject({
+				state: step.state,
+				resumeSessionId: "main-session",
+				outstandingInteraction: null,
+			});
+			expect(manager.store.getSummary("task-btw")?.conversationSummaries).toEqual([]);
+		}
+		const persisted = runtimeTaskSessionSummarySchema.parse(
+			JSON.parse(JSON.stringify(manager.store.getSummary("task-btw"))),
+		);
+		const restored = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		restored.hydrateFromRecord({ "task-btw": persisted });
+		expect(
+			restored.evaluateHookEventOrder("task-btw", {
+				taskId: "task-btw",
+				projectId: "project-1",
+				event: "to_review",
+				metadata: {
+					source: "codex",
+					sessionInstanceId,
+					sessionId: "side-session",
+					turnId: "side",
+					hookEventName: "Stop",
+				},
+				delivery: { id: "00000000-0000-4000-8000-000000000099", occurredAt: Date.now() + 100 },
+			}),
+		).toEqual({ accepted: false, reason: "non_foreground_session" });
+	});
+
+	it("keeps main-thread permission identity when side-thread work and completion interleave", async () => {
+		setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession({
+			taskId: "task-main-wait",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-main-wait",
+			prompt: "Synthetic task",
+		});
+		const sessionInstanceId = manager.store.getSummary("task-main-wait")?.sessionInstanceId;
+		const api = createHooksApi({
+			projects: { getProjectPathById: () => "/tmp/repo" },
+			terminals: {
+				getTerminalManagerForProject: () => manager,
+				ensureTerminalManagerForProject: async () => manager,
+			},
+		});
+		let sequence = 0;
+		const ingest = (
+			sessionId: string,
+			event: "activity" | "to_in_progress" | "to_review",
+			hookEventName: string,
+			toolUseId?: string,
+		) => {
+			sequence += 1;
+			return api.ingest({
+				taskId: "task-main-wait",
+				projectId: "project-1",
+				event,
+				metadata: {
+					source: "codex",
+					sessionInstanceId,
+					sessionId,
+					hookEventName,
+					turnId: `${sessionId}-turn`,
+					toolName: "Bash",
+					toolUseId,
+				},
+				delivery: {
+					id: `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
+					occurredAt: Date.now() + sequence,
+				},
+			});
+		};
+		await ingest("main", "activity", "PreToolUse", "main-tool");
+		await ingest("main", "to_review", "PermissionRequest");
+		const wait = manager.store.getSummary("task-main-wait")?.outstandingInteraction;
+		expect(wait).toMatchObject({ status: "waiting", providerSessionId: "main", toolUseId: "main-tool" });
+		for (const hookEventName of ["SessionStart", "UserPromptSubmit", "PermissionRequest", "PostToolUse", "Stop"]) {
+			await ingest("side", "to_review", hookEventName, "main-tool");
+			expect(manager.store.getSummary("task-main-wait")).toMatchObject({
+				state: "awaiting_review",
+				resumeSessionId: "main",
+				outstandingInteraction: wait,
+			});
+		}
+		await ingest("main", "to_in_progress", "PostToolUse", "main-tool");
+		expect(manager.store.getSummary("task-main-wait")).toMatchObject({
+			state: "running",
+			outstandingInteraction: null,
+		});
+	});
+
+	it("switches persistent Codex sessions while a previous session is waiting", async () => {
+		setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession({
+			taskId: "task-main-wait",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-main-wait",
+			prompt: "Synthetic task",
+		});
+		const sessionInstanceId = manager.store.getSummary("task-main-wait")?.sessionInstanceId;
+		const api = createHooksApi({
+			projects: { getProjectPathById: () => "/tmp/repo" },
+			terminals: {
+				getTerminalManagerForProject: () => manager,
+				ensureTerminalManagerForProject: async () => manager,
+			},
+		});
+		let sequence = 0;
+		const ingest = (
+			sessionId: string,
+			event: "activity" | "to_in_progress" | "to_review",
+			hookEventName: string,
+			toolUseId?: string,
+			transcriptPath?: string,
+		) => {
+			sequence += 1;
+			return api.ingest({
+				taskId: "task-main-wait",
+				projectId: "project-1",
+				event,
+				metadata: {
+					source: "codex",
+					sessionInstanceId,
+					sessionId,
+					hookEventName,
+					turnId: `${sessionId}-turn`,
+					toolName: "Bash",
+					toolUseId,
+					transcriptPath,
+				},
+				delivery: {
+					id: `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
+					occurredAt: Date.now() + sequence,
+				},
+			});
+		};
+		await ingest("main", "activity", "PreToolUse", "main-tool");
+		await ingest("main", "to_review", "PermissionRequest");
+		const wait = manager.store.getSummary("task-main-wait")?.outstandingInteraction;
+		expect(wait).toMatchObject({ status: "waiting", providerSessionId: "main", toolUseId: "main-tool" });
+		await ingest("replacement", "activity", "SessionStart", undefined, "/tmp/replacement.jsonl");
+		expect(manager.store.getSummary("task-main-wait")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "unconfirmed",
+			resumeSessionId: "replacement",
+			outstandingInteraction: null,
+		});
+		await ingest("main", "to_review", "PermissionRequest", "main-tool");
+		expect(manager.store.getSummary("task-main-wait")?.outstandingInteraction).toBeNull();
+		await ingest("replacement", "to_in_progress", "UserPromptSubmit");
+		expect(manager.store.getSummary("task-main-wait")?.state).toBe("running");
+		await ingest("replacement", "activity", "PreToolUse", "new-tool");
+		await ingest("replacement", "to_review", "PermissionRequest");
+		expect(manager.store.getSummary("task-main-wait")?.outstandingInteraction).toMatchObject({
+			providerSessionId: "replacement",
+			toolUseId: "new-tool",
+		});
+		await ingest("replacement", "to_in_progress", "PostToolUse", "new-tool");
+		await ingest("replacement", "to_review", "Stop");
+		expect(manager.store.getSummary("task-main-wait")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "hook",
+			outstandingInteraction: null,
 		});
 	});
 

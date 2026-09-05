@@ -35,6 +35,8 @@ function hook(input: {
 	deliveryIndex?: number;
 	occurredAt?: number;
 	sessionInstanceId?: string;
+	sessionId?: string;
+	transcriptPath?: string;
 }): RuntimeHookIngestRequest {
 	return {
 		taskId: "task-1",
@@ -44,6 +46,8 @@ function hook(input: {
 			source: input.source ?? "codex",
 			hookEventName: input.hookEventName,
 			sessionInstanceId: input.sessionInstanceId ?? SESSION_INSTANCE_ID,
+			sessionId: input.sessionId,
+			transcriptPath: input.transcriptPath,
 			turnId: input.turnId,
 			toolName: input.toolName,
 			toolUseId: input.toolUseId,
@@ -65,6 +69,148 @@ function acceptAndCommit(state: ReturnType<typeof createHookEventOrderState>, in
 }
 
 describe("Codex hook event ordering", () => {
+	it("keeps ephemeral side-thread hooks out of main ordering, including receipt restoration", () => {
+		const observations = [
+			hook({
+				event: "activity",
+				hookEventName: "SessionStart",
+				sessionId: "main-session",
+				transcriptPath: "/synthetic/main.jsonl",
+				deliveryIndex: 1,
+			}),
+			hook({
+				event: "to_in_progress",
+				hookEventName: "UserPromptSubmit",
+				sessionId: "main-session",
+				turnId: "main",
+				deliveryIndex: 2,
+			}),
+		];
+		const live = createHookEventOrderState(SESSION_INSTANCE_ID);
+		for (const input of observations) acceptAndCommit(live, input);
+		const restored = restoreHookEventOrderState({
+			sessionInstanceId: SESSION_INSTANCE_ID,
+			observations: observations.flatMap((input) => {
+				const observation = createProviderHookOrderObservation(input);
+				return observation ? [observation] : [];
+			}),
+			recentDeliveryIds: [],
+			outstandingInteraction: null,
+		});
+		for (const state of [live, restored]) {
+			for (const [index, hookEventName] of [
+				"SessionStart",
+				"UserPromptSubmit",
+				"PreToolUse",
+				"PermissionRequest",
+				"PostToolUse",
+				"Stop",
+			].entries()) {
+				expect(
+					evaluateHookEventOrder(
+						state,
+						hook({
+							event: "activity",
+							hookEventName,
+							sessionId: "side-session",
+							turnId: "side",
+							toolUseId: "side-tool",
+							deliveryIndex: 3 + index,
+						}),
+					),
+				).toEqual({ accepted: false, reason: "non_foreground_session" });
+			}
+			expect(state.activeTurnId).toBe("main");
+			acceptAndCommit(
+				state,
+				hook({
+					event: "activity",
+					hookEventName: "PreToolUse",
+					sessionId: "main-session",
+					turnId: "main",
+					toolUseId: "main-tool",
+					deliveryIndex: 10,
+				}),
+			);
+			acceptAndCommit(
+				state,
+				hook({
+					event: "to_review",
+					hookEventName: "Stop",
+					sessionId: "main-session",
+					turnId: "main",
+					deliveryIndex: 11,
+				}),
+			);
+			expect(state.activeTurnCompleted).toBe(true);
+		}
+	});
+
+	it("admits native persistent thread navigation and rejects a delayed prior SessionStart", () => {
+		const state = createHookEventOrderState(SESSION_INSTANCE_ID);
+		acceptAndCommit(
+			state,
+			hook({
+				event: "activity",
+				hookEventName: "SessionStart",
+				sessionId: "first",
+				transcriptPath: "/first.jsonl",
+				deliveryIndex: 1,
+			}),
+		);
+		acceptAndCommit(
+			state,
+			hook({
+				event: "to_review",
+				hookEventName: "Stop",
+				sessionId: "first",
+				turnId: "first-turn",
+				deliveryIndex: 2,
+			}),
+		);
+		acceptAndCommit(
+			state,
+			hook({
+				event: "activity",
+				hookEventName: "SessionStart",
+				sessionId: "resumed",
+				transcriptPath: "/resumed.jsonl",
+				deliveryIndex: 3,
+			}),
+		);
+		expect(state.codexSessionId).toBe("resumed");
+		expect(state.activeTurnId).toBeNull();
+		expect(
+			evaluateHookEventOrder(
+				state,
+				hook({
+					event: "activity",
+					hookEventName: "SessionStart",
+					sessionId: "first",
+					transcriptPath: "/first.jsonl",
+					deliveryIndex: 4,
+					occurredAt: 100,
+				}),
+			),
+		).toEqual({ accepted: false, reason: "stale_observation" });
+	});
+
+	it("rejects explicit Codex subagent work even before main identity is known", () => {
+		const state = createHookEventOrderState(SESSION_INSTANCE_ID);
+		expect(
+			evaluateHookEventOrder(
+				state,
+				hook({
+					event: "activity",
+					hookEventName: "PreToolUse",
+					providerAgentId: "child",
+					sessionId: "child",
+					deliveryIndex: 1,
+				}),
+			),
+		).toEqual({ accepted: false, reason: "non_foreground_session" });
+	});
+
 	it("correlates one open PreToolUse to Codex PermissionRequest and fences a parallel completion", () => {
 		const state = createHookEventOrderState(SESSION_INSTANCE_ID);
 		acceptAndCommit(

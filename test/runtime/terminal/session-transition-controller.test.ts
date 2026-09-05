@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
 import type { PtySession } from "../../../src/terminal/pty-session";
+import { scheduleInterruptRecovery } from "../../../src/terminal/session-interrupt-recovery";
 import {
 	createActiveProcessState,
 	createProcessEntry,
@@ -236,6 +237,55 @@ describe("SessionTransitionController", () => {
 		expect(result?.summary).toMatchObject({ state: "running", reviewReason: null });
 		expect(active.interruptRecoveryTimer).toBeNull();
 		expect(entry.suppressAutoRestartOnExit).toBe(false);
+	});
+
+	it("clears restart suppression when activity-style PreToolUse proves work", () => {
+		const store = new InMemorySessionSummaryStore();
+		store.hydrateFromRecord({ "task-1": createSummary({ state: "awaiting_review", reviewReason: "interrupted" }) });
+		const entry = createEntry();
+		if (!entry.active) throw new Error("missing fixture process");
+		entry.active.lastInterruptAt = 100;
+		entry.suppressAutoRestartOnExit = true;
+		const controller = new SessionTransitionController(store, new Map([["task-1", entry]]));
+		const result = controller.applyTransitionEvent(
+			entry,
+			createTestProviderHookEvent("activity", {
+				source: "codex",
+				hookEventName: "PreToolUse",
+				occurredAt: 101,
+				metadata: { sessionInstanceId: "session-test", turnId: "main", toolUseId: "fresh" },
+			}),
+		);
+		expect(result?.summary.state).toBe("running");
+		expect(entry.suppressAutoRestartOnExit).toBe(false);
+		expect(entry.active.lastInterruptAt).toBe(100);
+	});
+
+	it("rejects pre-interrupt work after timer expiry and after newer work resumes", () => {
+		vi.setSystemTime(10000);
+		const store = new InMemorySessionSummaryStore();
+		store.hydrateFromRecord({ "task-1": createSummary({ state: "awaiting_review", reviewReason: "unconfirmed" }) });
+		const entry = createEntry();
+		const controller = new SessionTransitionController(store, new Map([["task-1", entry]]));
+		controller.applyTransitionEvent(entry, currentProviderHook("to_in_progress", { occurredAt: 10000 }));
+		vi.setSystemTime(10100);
+		scheduleInterruptRecovery(entry, "escape", {
+			getEntry: () => entry,
+			getSummary: () => store.getSummary("task-1"),
+			applyTransitionEvent: (target, event) => controller.applyTransitionEvent(target, event),
+		});
+		vi.advanceTimersByTime(5001);
+		const delayed = createTestProviderHookEvent("activity", {
+			source: "codex",
+			hookEventName: "PreToolUse",
+			occurredAt: 10050,
+			metadata: { sessionInstanceId: "session-test", turnId: "main", toolUseId: "delayed" },
+		});
+		expect(controller.applyTransitionEvent(entry, delayed)?.summary.state).toBe("awaiting_review");
+		controller.applyTransitionEvent(entry, currentProviderHook("to_in_progress", { occurredAt: 15102 }));
+		const staleStop = currentProviderHook("to_review", { occurredAt: 10060 });
+		expect(controller.applyTransitionEvent(entry, staleStop)?.summary.state).toBe("running");
+		expect(entry.active?.lastInterruptAt).toBe(10100);
 	});
 
 	it("uses the first current foreground-start hook to enter Running", () => {

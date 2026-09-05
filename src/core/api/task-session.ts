@@ -127,6 +127,8 @@ export const runtimeTaskProviderHookOrderObservationSchema = z.object({
 	occurredAt: z.number().int().nonnegative(),
 	source: z.enum(["codex", "claude", "pi"]),
 	sessionInstanceId: z.string().min(1),
+	providerSessionId: z.string().min(1).nullish(),
+	sessionStartHasTranscript: z.boolean().optional(),
 	hookEventName: z.string().nullable(),
 	notificationType: z.string().nullable(),
 	turnId: z.string().nullable(),

@@ -16,6 +16,7 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
 import type { RuntimeDiagnostics } from "../../../src/diagnostics";
 import { InMemorySessionSummaryStore, reduceSessionTransition, TerminalSessionManager } from "../../../src/terminal";
+import { createHooksApi } from "../../../src/trpc";
 import { createTestProviderHookRequest, createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 interface MockSpawnRequest {
@@ -102,6 +103,66 @@ describe("TerminalSessionManager interrupt recovery", () => {
 
 	afterEach(() => {
 		vi.useRealTimers();
+	});
+
+	it("retains the interrupt fence through API ingest after timer expiry and restarts after fresh PreToolUse", async () => {
+		const processes = setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn() });
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Synthetic task",
+		});
+		const sessionInstanceId = manager.store.getSummary("task-1")?.sessionInstanceId;
+		const api = createHooksApi({
+			projects: { getProjectPathById: () => "/tmp/repo" },
+			terminals: {
+				getTerminalManagerForProject: () => manager,
+				ensureTerminalManagerForProject: async () => manager,
+			},
+		});
+		const startedAt = Date.now();
+		const ingest = async (
+			index: number,
+			event: "activity" | "to_review" | "to_in_progress",
+			hookEventName: string,
+			occurredAt: number,
+		) =>
+			api.ingest({
+				taskId: "task-1",
+				projectId: "project-1",
+				event,
+				metadata: {
+					source: "codex",
+					sessionInstanceId,
+					sessionId: "main-session",
+					turnId: "main-turn",
+					hookEventName,
+					...(hookEventName === "Stop" ? { finalMessage: "STALE RESULT" } : { toolUseId: "tool-1" }),
+				},
+				delivery: { id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, occurredAt },
+			});
+		await ingest(1, "to_in_progress", "UserPromptSubmit", startedAt);
+		vi.advanceTimersByTime(100);
+		manager.writeInput("task-1", Buffer.from([0x1b]));
+		vi.advanceTimersByTime(5001);
+		await ingest(2, "activity", "PreToolUse", startedAt + 50);
+		await ingest(3, "to_review", "Stop", startedAt + 60);
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "interrupted",
+			conversationSummaries: [],
+		});
+		await ingest(4, "activity", "PreToolUse", Date.now());
+		expect(manager.store.getSummary("task-1")?.state).toBe("running");
+		processes[0]?.triggerExit(1);
+		await vi.advanceTimersByTimeAsync(100);
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(2);
+		expect(prepareAgentLaunchMock.mock.calls[1]?.[0]).toMatchObject({ resumeSessionId: "main-session" });
 	});
 
 	it.each([0, 130])(

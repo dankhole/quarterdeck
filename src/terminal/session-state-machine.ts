@@ -607,6 +607,31 @@ function reduceProviderHook(
 		};
 	}
 
+	// An admitted persistent Codex SessionStart changes the foreground owner.
+	// Retire the old owner's wait without claiming the new session is working.
+	if (
+		live &&
+		providerFromMetadata(metadata) === "codex" &&
+		hookEventName === "sessionstart" &&
+		metadata?.transcriptPath?.trim() &&
+		metadata.sessionId?.trim() &&
+		summary.resumeSessionId &&
+		metadata.sessionId !== summary.resumeSessionId
+	) {
+		return {
+			changed: true,
+			patch: {
+				...clearSemanticUncertainty(summary),
+				state: "awaiting_review",
+				reviewReason: "unconfirmed",
+				outstandingInteraction: null,
+				nativeWorkEvidence: null,
+			},
+			clearAttentionBuffer: true,
+			hookMetadataMode: "apply",
+		};
+	}
+
 	if (interactionKind) {
 		const incomingInteraction = buildOutstandingInteraction(event, interactionKind);
 		if (!incomingInteraction) return unchanged("identity_only");

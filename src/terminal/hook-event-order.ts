@@ -30,6 +30,9 @@ interface ClaudeToolUseObservation {
 
 export interface HookEventOrderState {
 	sessionInstanceId: string;
+	/** Main Codex thread for this launch; /btw forks must not enter its ordering domain. */
+	codexSessionId: string | null;
+	codexSessionLatestOccurredAt: number | null;
 	activePiRunId: string | null;
 	activePiRunLatestOccurredAt: number | null;
 	activePiRunCompleted: boolean;
@@ -63,6 +66,7 @@ export interface HookEventOrderState {
 export type HookEventOrderRejectionReason =
 	| "duplicate_delivery"
 	| "stale_session"
+	| "non_foreground_session"
 	| "stale_turn"
 	| "stale_prompt"
 	| "stale_observation"
@@ -87,6 +91,8 @@ export function shouldRetainHookEventOrderObservation(decision: HookEventOrderDe
 export function createHookEventOrderState(sessionInstanceId: string): HookEventOrderState {
 	return {
 		sessionInstanceId,
+		codexSessionId: null,
+		codexSessionLatestOccurredAt: null,
 		activePiRunId: null,
 		activePiRunLatestOccurredAt: null,
 		activePiRunCompleted: false,
@@ -138,6 +144,8 @@ export function createProviderHookOrderObservation(
 		occurredAt: input.delivery.occurredAt,
 		source,
 		sessionInstanceId,
+		providerSessionId: optionalIdentity(input.metadata?.sessionId),
+		sessionStartHasTranscript: Boolean(input.metadata?.transcriptPath?.trim()),
 		hookEventName: optionalIdentity(input.metadata?.hookEventName),
 		notificationType: optionalIdentity(input.metadata?.notificationType),
 		turnId: optionalIdentity(input.metadata?.turnId),
@@ -156,6 +164,9 @@ function observationAsHookInput(observation: RuntimeTaskProviderHookOrderObserva
 		metadata: {
 			source: observation.source,
 			sessionInstanceId: observation.sessionInstanceId,
+			sessionId: observation.providerSessionId,
+			// Ordering needs only presence, never a persisted filesystem path.
+			transcriptPath: observation.sessionStartHasTranscript ? "__ordering_restore__" : null,
 			hookEventName: observation.hookEventName,
 			notificationType: observation.notificationType,
 			turnId: observation.turnId,
@@ -177,6 +188,7 @@ export function restoreHookEventOrderState(input: {
 	observations: readonly RuntimeTaskProviderHookOrderObservation[];
 	recentDeliveryIds: readonly string[];
 	outstandingInteraction: RuntimeTaskOutstandingInteraction | null;
+	providerSessionId?: string | null;
 }): HookEventOrderState {
 	const state = createHookEventOrderState(input.sessionInstanceId);
 	for (const observation of input.observations) {
@@ -185,6 +197,7 @@ export function restoreHookEventOrderState(input: {
 		if (!shouldRetainHookEventOrderObservation(evaluateHookEventOrder(state, hookInput))) continue;
 		commitHookEventOrder(state, hookInput, { advanceTurn: true });
 	}
+	state.codexSessionId ??= input.providerSessionId ?? null;
 	const restoredAt = Date.now();
 	for (const deliveryId of input.recentDeliveryIds) {
 		state.processedDeliveryIds.set(deliveryId, restoredAt);
@@ -511,6 +524,18 @@ export function evaluateHookEventOrder(
 	}
 	const hookEventName = normalizedHookEventName(input);
 	const occurredAt = input.delivery?.occurredAt ?? Date.now();
+	const providerSessionId = optionalIdentity(input.metadata?.sessionId);
+	if (input.metadata?.providerAgentId?.trim()) return { accepted: false, reason: "non_foreground_session" };
+	if (providerSessionId && state.codexSessionId && providerSessionId !== state.codexSessionId) {
+		// A native persistent SessionStart supports explicit /resume navigation.
+		// /btw forks are ephemeral (no transcript), so cannot take ownership.
+		if (hookEventName !== "sessionstart" || !input.metadata?.transcriptPath?.trim()) {
+			return { accepted: false, reason: "non_foreground_session" };
+		}
+		return state.codexSessionLatestOccurredAt !== null && occurredAt <= state.codexSessionLatestOccurredAt
+			? { accepted: false, reason: "stale_observation" }
+			: { accepted: true };
+	}
 	if (state.latestCodexRootCompletionOccurredAt !== null && occurredAt <= state.latestCodexRootCompletionOccurredAt) {
 		return { accepted: false, reason: "stale_observation" };
 	}
@@ -717,6 +742,15 @@ export function commitHookEventOrder(
 		return;
 	}
 	const occurredAt = input.delivery?.occurredAt ?? now;
+	const providerSessionId = optionalIdentity(input.metadata?.sessionId);
+	if (providerSessionId && state.codexSessionId && providerSessionId !== state.codexSessionId) {
+		// Accepted native navigation begins a new thread's turn/tool domain.
+		Object.assign(state, createHookEventOrderState(state.sessionInstanceId), {
+			processedDeliveryIds: state.processedDeliveryIds,
+		});
+	}
+	state.codexSessionId ??= providerSessionId;
+	state.codexSessionLatestOccurredAt = Math.max(state.codexSessionLatestOccurredAt ?? occurredAt, occurredAt);
 	const hookEventName = normalizedHookEventName(input);
 	const turnId = input.metadata?.turnId?.trim() || null;
 	if (!turnId) {

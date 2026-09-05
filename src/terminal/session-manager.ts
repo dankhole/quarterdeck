@@ -168,6 +168,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				entry.hookEventOrder = restoreHookEventOrderState({
 					sessionInstanceId: summary.sessionInstanceId,
 					observations: summary.recentProviderHookOrderObservations,
+					providerSessionId: summary.agentId === "codex" ? summary.resumeSessionId : null,
 					recentDeliveryIds: summary.recentProviderHookDeliveryIds,
 					outstandingInteraction: summary.outstandingInteraction,
 				});

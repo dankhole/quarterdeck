@@ -68,7 +68,7 @@ export class SessionTransitionController {
 		if (source === "claude" && event.metadata?.providerAgentId?.trim()) {
 			return false;
 		}
-		const interruptStartedAt = active.interruptRecoveryStartedAt;
+		const interruptStartedAt = active.lastInterruptAt ?? active.interruptRecoveryStartedAt;
 		return interruptStartedAt === null || (event.occurredAt !== undefined && event.occurredAt > interruptStartedAt);
 	}
 
@@ -116,20 +116,28 @@ export class SessionTransitionController {
 	): (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null {
 		this.captureProcessExitReplayBoundary(entry, event);
 		const confirmedEvent = this.withSessionEvidence(entry, event);
+		const result = this.store.applySessionEvent(entry.taskId, confirmedEvent);
 		if (
 			confirmedEvent.type === "provider.hook" &&
-			confirmedEvent.event !== "activity" &&
 			confirmedEvent.sessionEvidence === "live" &&
-			entry.active
+			entry.active &&
+			result
 		) {
-			// A current native working or completion hook from the current PTY proves
-			// that a keyboard interrupt did not terminate the session. Cancel the
-			// pending recovery/no-restart policy even when the semantic transition is
-			// a no-op because the summary was already Running.
-			clearInterruptRecoveryTimer(entry.active);
-			entry.suppressAutoRestartOnExit = false;
+			const hookEventName = confirmedEvent.metadata?.hookEventName?.trim().toLowerCase();
+			const confirmsWork = Boolean(result.patch?.nativeWorkEvidence);
+			const confirmsCompletion =
+				confirmedEvent.event === "to_review" &&
+				(hookEventName === "stop" || hookEventName === "stopfailure" || hookEventName === "agentsettled") &&
+				result.hookMetadataMode === "apply" &&
+				!result.summary.outstandingInteraction;
+			// Semantic evidence owns recovery cleanup. PreToolUse is activity on
+			// the wire but can prove work; permission/notification no-ops cannot.
+			if (confirmsWork || confirmsCompletion) {
+				clearInterruptRecoveryTimer(entry.active);
+				entry.suppressAutoRestartOnExit = false;
+			}
 		}
-		const result = this.store.applySessionEvent(entry.taskId, confirmedEvent);
+
 		if (!result?.changed) {
 			transitionLog.debug("session transition no-op", {
 				taskId: entry.taskId,
