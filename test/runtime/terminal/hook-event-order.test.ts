@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { RuntimeHookEvent, RuntimeHookIngestRequest } from "../../../src/core";
+import { runtimeTaskProviderHookOrderObservationSchema } from "../../../src/core";
 import {
 	commitHookEventOrder,
 	correlateClaudePermissionToolUseId,
@@ -68,7 +69,196 @@ function acceptAndCommit(state: ReturnType<typeof createHookEventOrderState>, in
 	commitHookEventOrder(state, input, { advanceTurn: true });
 }
 
+function restoreCommittedOrder(
+	inputs: readonly RuntimeHookIngestRequest[],
+): ReturnType<typeof createHookEventOrderState> {
+	const observations = inputs.flatMap((input) => {
+		const observation = createProviderHookOrderObservation(input);
+		return observation
+			? [runtimeTaskProviderHookOrderObservationSchema.parse(JSON.parse(JSON.stringify(observation)))]
+			: [];
+	});
+	return restoreHookEventOrderState({
+		sessionInstanceId: SESSION_INSTANCE_ID,
+		observations,
+		recentDeliveryIds: observations.map((observation) => observation.deliveryId),
+		outstandingInteraction: null,
+	});
+}
+
 describe("Codex hook event ordering", () => {
+	it.each(["Stop", "StopFailure"])(
+		"accepts current %s after reordered parallel tools and keeps completion durable",
+		(hookEventName) => {
+			const toolInputs = [
+				hook({
+					event: "activity",
+					hookEventName: "PreToolUse",
+					turnId: "current",
+					toolUseId: "a",
+					toolName: "Read",
+					sessionId: "main",
+					deliveryIndex: 1,
+				}),
+				hook({
+					event: "activity",
+					hookEventName: "PreToolUse",
+					turnId: "current",
+					toolUseId: "b",
+					toolName: "Bash",
+					sessionId: "main",
+					deliveryIndex: 2,
+				}),
+				hook({
+					event: "to_in_progress",
+					hookEventName: "PostToolUse",
+					turnId: "current",
+					toolUseId: "b",
+					toolName: "Bash",
+					sessionId: "main",
+					deliveryIndex: 4,
+				}),
+				hook({
+					event: "to_in_progress",
+					hookEventName: "PostToolUse",
+					turnId: "current",
+					toolUseId: "a",
+					toolName: "Read",
+					sessionId: "main",
+					deliveryIndex: 3,
+				}),
+			] as const;
+			const live = createHookEventOrderState(SESSION_INSTANCE_ID);
+			for (const input of toolInputs) acceptAndCommit(live, input);
+			const completed = hook({
+				event: "to_review",
+				hookEventName,
+				turnId: "current",
+				sessionId: "main",
+				deliveryIndex: 5,
+			});
+			for (const state of [live, restoreCommittedOrder(toolInputs)]) {
+				expect(evaluateHookEventOrder(state, toolInputs[3])).toEqual({
+					accepted: false,
+					reason: "duplicate_delivery",
+				});
+				acceptAndCommit(state, completed);
+				expect(state.activeTurnCompleted).toBe(true);
+			}
+			for (const state of [live, restoreCommittedOrder([...toolInputs, completed])]) {
+				expect(evaluateHookEventOrder(state, completed)).toEqual({ accepted: false, reason: "duplicate_delivery" });
+				expect(
+					evaluateHookEventOrder(
+						state,
+						hook({
+							event: "to_in_progress",
+							hookEventName: "PostToolUse",
+							turnId: "current",
+							toolUseId: "late",
+							sessionId: "main",
+							deliveryIndex: 6,
+						}),
+					),
+				).toEqual({ accepted: false, reason: "completed_turn" });
+				expect(state.activeTurnCompleted).toBe(true);
+			}
+		},
+	);
+
+	it.each(["Stop", "StopFailure"])(
+		"rejects an older %s retry without preventing the newer foreground turn from completing",
+		(hookEventName) => {
+			const starts = [
+				hook({
+					event: "to_in_progress",
+					hookEventName: "UserPromptSubmit",
+					sessionId: "main",
+					turnId: "old",
+					deliveryIndex: 1,
+				}),
+				hook({
+					event: "to_in_progress",
+					hookEventName: "UserPromptSubmit",
+					sessionId: "main",
+					turnId: "current",
+					deliveryIndex: 3,
+				}),
+			];
+			const live = createHookEventOrderState(SESSION_INSTANCE_ID);
+			for (const input of starts) acceptAndCommit(live, input);
+			for (const state of [live, restoreCommittedOrder(starts)]) {
+				const delayed = hook({
+					event: "to_review",
+					hookEventName,
+					sessionId: "main",
+					turnId: "old",
+					deliveryIndex: 2,
+				});
+				expect(evaluateHookEventOrder(state, delayed)).toEqual({ accepted: false, reason: "stale_turn" });
+				commitHookEventOrder(state, delayed, { advanceTurn: false });
+				expect(state.activeTurnCompleted).toBe(false);
+				const completed = hook({
+					event: "to_review",
+					hookEventName,
+					sessionId: "main",
+					turnId: "current",
+					deliveryIndex: 4,
+				});
+				acceptAndCommit(state, completed);
+				expect(state.activeTurnCompleted).toBe(true);
+				expect(state.activeTurnId).toBe("current");
+			}
+		},
+	);
+
+	it.each(["Stop", "StopFailure"])(
+		"preserves main %s regardless of which provider thread completes first",
+		(hookEventName) => {
+			for (const sideFirst of [true, false]) {
+				const start = hook({
+					event: "to_in_progress",
+					hookEventName: "UserPromptSubmit",
+					sessionId: "main",
+					turnId: "turn",
+					deliveryIndex: 1,
+				});
+				const live = createHookEventOrderState(SESSION_INSTANCE_ID);
+				acceptAndCommit(live, start);
+				for (let state of [live, restoreCommittedOrder([start])]) {
+					const mainStop = hook({
+						event: "to_review",
+						hookEventName,
+						sessionId: "main",
+						turnId: "turn",
+						deliveryIndex: sideFirst ? 3 : 2,
+					});
+					const sideStop = hook({
+						event: "to_review",
+						hookEventName: "Stop",
+						sessionId: "side",
+						turnId: "turn",
+						deliveryIndex: sideFirst ? 2 : 3,
+					});
+					for (const input of sideFirst ? [sideStop, mainStop] : [mainStop, sideStop]) {
+						if (input === sideStop) {
+							expect(evaluateHookEventOrder(state, input)).toEqual({
+								accepted: false,
+								reason: "non_foreground_session",
+							});
+							commitHookEventOrder(state, input, { advanceTurn: false });
+							expect(state.activeTurnCompleted).toBe(!sideFirst);
+						} else {
+							acceptAndCommit(state, input);
+							state = restoreCommittedOrder([start, mainStop]);
+						}
+					}
+					expect(state.codexSessionId).toBe("main");
+					expect(state.activeTurnCompleted).toBe(true);
+				}
+			}
+		},
+	);
+
 	it("keeps ephemeral side-thread hooks out of main ordering, including receipt restoration", () => {
 		const observations = [
 			hook({

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Agent Lab can opt into one native Codex subagent with `--codex-multi-agent` to verify parent completion and hook ownership; default runs continue to disable subagents.
+
 ### Fix: isolate Codex side conversations and preserve interrupt ordering
 
 - Codex `/btw` side-thread hooks no longer move the main task to Review, retire its active turn, overwrite its resume identity, or replace its permissions and completion summary. Main-thread ordering survives durable receipt restoration, and native persistent-session navigation still establishes a new thread scope.

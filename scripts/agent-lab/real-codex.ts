@@ -81,7 +81,22 @@ const PREFLIGHT_ENVIRONMENT_KEYS = [
 	"SSL_CERT_FILE",
 ] as const;
 
+export function getAgentLabRealCodexConfigOverrides(multiAgent = false): readonly string[] {
+	if (!multiAgent) return AGENT_LAB_REAL_CODEX_CONFIG_OVERRIDES;
+	return [
+		...AGENT_LAB_REAL_CODEX_CONFIG_OVERRIDES.filter(
+			(value) => value !== "agents.enabled=false" && value !== "features.multi_agent=false",
+		),
+		"agents.enabled=true",
+		"features.multi_agent=true",
+		"features.multi_agent_v2=false",
+		"agents.max_concurrent_threads_per_session=1",
+		"agents.max_depth=1",
+	];
+}
+
 export interface ResolveRealCodexAgentOptions {
+	multiAgent?: boolean;
 	model?: string;
 	codexHomePath?: string;
 	sandbox?: AgentLabCodexSandbox;
@@ -104,6 +119,7 @@ export function resolveRealCodexAgent(
 
 	const parsed = AgentLabLaunchAgentConfigSchema.parse({
 		mode: "real-codex",
+		multiAgent: options.multiAgent ?? false,
 		model: options.model?.trim() || DEFAULT_AGENT_LAB_REAL_CODEX_MODEL,
 		modelProvider: "openai",
 		reasoningEffort: "low",

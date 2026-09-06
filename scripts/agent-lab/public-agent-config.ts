@@ -28,6 +28,7 @@ export function toPublicAgentConfig(agent: AgentLabLaunchAgentConfig): AgentLabP
 				model: agent.model,
 				modelProvider: agent.modelProvider,
 				reasoningEffort: agent.reasoningEffort,
+				multiAgent: agent.multiAgent,
 				authentication: agent.authentication,
 				profileSource: agent.profileSource,
 				sandbox: agent.sandbox,

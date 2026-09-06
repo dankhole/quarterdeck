@@ -59,6 +59,7 @@ interface StartOptions extends OutputOptions {
 	agent: AgentLabAgentMode;
 	model?: string;
 	codexHome?: string;
+	codexMultiAgent?: boolean;
 	claudeConfigDir?: string;
 	claudeEnvironmentAuth?: boolean;
 	codexSandbox?: AgentLabCodexSandbox;
@@ -201,12 +202,18 @@ async function startAgentLab(options: StartOptions): Promise<void> {
 			options.claudeConfigDir ||
 			options.claudeEnvironmentAuth ||
 			options.codexSandbox ||
-			options.codexApprovalPolicy)
+			options.codexApprovalPolicy ||
+			options.codexMultiAgent)
 	) {
 		throw new Error("Real-provider options require --agent real-codex or --agent real-claude.");
 	}
-	if (options.agent !== "real-codex" && (options.codexHome || options.codexSandbox || options.codexApprovalPolicy)) {
-		throw new Error("--codex-home, --codex-sandbox, and --codex-approval-policy require --agent real-codex.");
+	if (
+		options.agent !== "real-codex" &&
+		(options.codexHome || options.codexSandbox || options.codexApprovalPolicy || options.codexMultiAgent)
+	) {
+		throw new Error(
+			"--codex-home, --codex-sandbox, --codex-approval-policy, and --codex-multi-agent require --agent real-codex.",
+		);
 	}
 	if (options.agent !== "real-claude" && (options.claudeConfigDir || options.claudeEnvironmentAuth)) {
 		throw new Error("--claude-config-dir and --claude-environment-auth require --agent real-claude.");
@@ -224,6 +231,7 @@ async function startAgentLab(options: StartOptions): Promise<void> {
 				return resolveRealCodexAgent({
 					model: options.model,
 					codexHomePath: options.codexHome,
+					multiAgent: options.codexMultiAgent,
 					sandbox: options.codexSandbox,
 					approvalPolicy: options.codexApprovalPolicy,
 				});
@@ -553,6 +561,7 @@ export async function runAgentLabCli(argv = process.argv): Promise<void> {
 				.default("idle"),
 		)
 		.option("--model <model>", "Real-provider model (defaults: Codex gpt-5.6-luna, Claude haiku).")
+		.option("--codex-multi-agent", "Enable bounded native subagents for a real Codex lifecycle test.")
 		.option("--codex-home <path>", "Existing authenticated Codex profile; defaults to CODEX_HOME or ~/.codex.")
 		.option(
 			"--claude-config-dir <path>",

@@ -13,6 +13,7 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 	},
 }));
 
+import { normalizeHookMetadata } from "../../../src/commands/hook-metadata";
 import { runtimeTaskSessionSummarySchema } from "../../../src/core";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
 import { createCodexTurnInterruptionDetector } from "../../../src/terminal/codex-turn-interruption";
@@ -305,6 +306,174 @@ describe("TerminalSessionManager ordering invariants", () => {
 			state: "awaiting_review",
 			reviewReason: "exit",
 			pid: null,
+		});
+	});
+
+	it.each(
+		[
+			{ completion: "Stop", includeTurnId: true },
+			{ completion: "Stop", includeTurnId: false },
+			{ completion: "StopFailure", includeTurnId: true },
+			{ completion: "StopFailure", includeTurnId: false },
+		].flatMap((entry) => [false, true].map((permissionPending) => ({ ...entry, permissionPending }))),
+	)(
+		"converges current $completion (turn identity: $includeTurnId, permission pending: $permissionPending) after stale completion and parallel deliveries",
+		async ({ completion, includeTurnId, permissionPending }) => {
+			setupMockPtySpawn();
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+			await manager.startTaskSession({
+				taskId: "completion-matrix",
+				agentId: "codex",
+				binary: "codex",
+				args: [],
+				cwd: "/tmp/completion-matrix",
+				prompt: "Synthetic completion test",
+			});
+			const sessionInstanceId = manager.store.getSummary("completion-matrix")?.sessionInstanceId;
+			const api = createHooksApi({
+				projects: { getProjectPathById: () => "/tmp/repo" },
+				terminals: {
+					getTerminalManagerForProject: () => manager,
+					ensureTerminalManagerForProject: async () => manager,
+				},
+			});
+			const startedAt = Date.now();
+			let delivery = 0;
+			const ingest = (
+				hookEventName: string,
+				turnId: string | undefined,
+				offset: number,
+				sessionId = "main",
+				toolUseId?: string,
+			) =>
+				api.ingest({
+					taskId: "completion-matrix",
+					projectId: "project-1",
+					event:
+						hookEventName === "PreToolUse"
+							? "activity"
+							: hookEventName === "UserPromptSubmit" || hookEventName === "PostToolUse"
+								? "to_in_progress"
+								: "to_review",
+					metadata: {
+						source: "codex",
+						sessionInstanceId,
+						sessionId,
+						hookEventName,
+						turnId,
+						toolUseId,
+						toolName: "Bash",
+						...(hookEventName.startsWith("Stop")
+							? { finalMessage: `${sessionId}-${turnId ?? "root"}-finished` }
+							: {}),
+					},
+					delivery: {
+						id: `00000000-0000-4000-8000-${String(++delivery).padStart(12, "0")}`,
+						occurredAt: startedAt + offset,
+					},
+				});
+			await ingest("UserPromptSubmit", "old", 1);
+			await ingest("UserPromptSubmit", "current", 10);
+			await ingest("PreToolUse", "current", 20, "main", "first");
+			await ingest("PreToolUse", "current", 21, "main", "second");
+			// An old turn's completion is delivered after newer work; its original
+			// occurrence time and owner keep it from completing the newer turn.
+			await ingest("Stop", "old", 5);
+			await ingest("Stop", "side", 25, "side");
+			expect(manager.store.getSummary("completion-matrix")).toMatchObject({
+				state: "running",
+				resumeSessionId: "main",
+				conversationSummaries: [],
+			});
+			await ingest("PostToolUse", "current", 30, "main", "second");
+			if (permissionPending) {
+				await ingest("PermissionRequest", "current", 32);
+				expect(manager.store.getSummary("completion-matrix")?.outstandingInteraction?.status).toBe("waiting");
+			}
+			await ingest(completion, includeTurnId ? "current" : undefined, 40);
+			expect(manager.store.getSummary("completion-matrix")).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: completion === "StopFailure" ? "error" : "hook",
+				outstandingInteraction: null,
+				nativeWorkEvidence: null,
+			});
+			const completed = manager.store.getSummary("completion-matrix");
+			// The other parallel tool and an ephemeral thread finish after the root
+			// delivery. Neither may reopen work or overwrite its completion summary.
+			await ingest("PostToolUse", "current", 35, "main", "first");
+			await ingest("Stop", "side", 50, "side");
+			expect(manager.store.getSummary("completion-matrix")?.state).toBe("awaiting_review");
+			expect(manager.store.getSummary("completion-matrix")?.conversationSummaries).toEqual(
+				completed?.conversationSummaries,
+			);
+		},
+	);
+
+	it("accepts parent completion after native subagent payloads pass through normalization and ingest", async () => {
+		setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession({
+			taskId: "native-child",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/native-child",
+			prompt: "Synthetic parent",
+		});
+		const sessionInstanceId = manager.store.getSummary("native-child")?.sessionInstanceId;
+		const api = createHooksApi({
+			projects: { getProjectPathById: () => "/tmp/repo" },
+			terminals: {
+				getTerminalManagerForProject: () => manager,
+				ensureTerminalManagerForProject: async () => manager,
+			},
+		});
+		let delivery = 0;
+		const ingest = (event: "activity" | "to_in_progress" | "to_review", hook_event_name: string, child = false) =>
+			api.ingest({
+				taskId: "native-child",
+				projectId: "project-1",
+				event,
+				metadata: normalizeHookMetadata(
+					event,
+					{
+						hook_event_name,
+						session_id: child ? "child-session" : "parent-session",
+						turn_id: child ? "child-turn" : "parent-turn",
+						tool_use_id: "synthetic-tool",
+						tool_name: "Bash",
+						...(child ? { agent_id: "child-agent", agent_type: "default" } : {}),
+					},
+					// The CLI resolves session identity before metadata normalization.
+					{ source: "codex", sessionInstanceId, sessionId: child ? "child-session" : "parent-session" },
+				),
+				delivery: {
+					id: `00000000-0000-4000-8000-${String(++delivery).padStart(12, "0")}`,
+					occurredAt: Date.now() + delivery,
+				},
+			});
+		await ingest("to_in_progress", "UserPromptSubmit");
+		await ingest("activity", "PreToolUse");
+		for (const [event, name] of [
+			["to_in_progress", "UserPromptSubmit"],
+			["activity", "PreToolUse"],
+			["to_review", "PermissionRequest"],
+			["to_in_progress", "PostToolUse"],
+		] as const) {
+			await ingest(event, name, true);
+			expect(manager.store.getSummary("native-child")).toMatchObject({
+				state: "running",
+				resumeSessionId: "parent-session",
+				outstandingInteraction: null,
+			});
+		}
+		await ingest("to_in_progress", "PostToolUse");
+		await ingest("to_review", "Stop");
+		expect(manager.store.getSummary("native-child")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "hook",
+			resumeSessionId: "parent-session",
+			nativeWorkEvidence: null,
 		});
 	});
 

@@ -46,9 +46,11 @@ import {
 import {
 	AGENT_LAB_REAL_CODEX_CONFIG_OVERRIDES,
 	buildRealCodexPreflightEnvironment,
+	getAgentLabRealCodexConfigOverrides,
 	prepareIsolatedRealCodexAgent,
 	resolveRealCodexAgent,
 } from "../../scripts/agent-lab/real-codex";
+import { AgentLabManifestSchema } from "../../scripts/agent-lab/types";
 import {
 	detectInstalledCommands,
 	getAgentAvailability,
@@ -903,6 +905,7 @@ describe("agent-lab real Codex", () => {
 		});
 		expect(toPublicAgentConfig(agent)).toEqual({
 			mode: "real-codex",
+			multiAgent: false,
 			model: "gpt-5.6-luna",
 			modelProvider: "openai",
 			reasoningEffort: "low",
@@ -917,6 +920,56 @@ describe("agent-lab real Codex", () => {
 			profileHooks: "isolated",
 			telemetry: "disabled",
 		});
+	});
+
+	it("opts into one native subagent while preserving the isolated provider policy", async () => {
+		const agent = resolveRealCodexAgent({ multiAgent: true }, {});
+		expect(toPublicAgentConfig(agent)).toMatchObject({
+			multiAgent: true,
+			sandbox: "read-only",
+			externalIntegrations: "disabled",
+			profileHooks: "isolated",
+		});
+		const overrides = getAgentLabRealCodexConfigOverrides(agent.multiAgent);
+		expect(overrides).toEqual([
+			...AGENT_LAB_REAL_CODEX_CONFIG_OVERRIDES.filter(
+				(value) => value !== "agents.enabled=false" && value !== "features.multi_agent=false",
+			),
+			"agents.enabled=true",
+			"features.multi_agent=true",
+			"features.multi_agent_v2=false",
+			"agents.max_concurrent_threads_per_session=1",
+			"agents.max_depth=1",
+		]);
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-subagent-"));
+		try {
+			await writeAgentProviderLaunchers(root, agent);
+			for (const name of ["codex", "codex.cmd", "codex.ps1"]) {
+				const launcher = await readFile(join(root, name), "utf8");
+				for (const value of [
+					"agents.enabled=true",
+					"features.multi_agent=true",
+					"features.multi_agent_v2=false",
+					"agents.max_concurrent_threads_per_session=1",
+					"agents.max_depth=1",
+					"features.apps=false",
+					"allow_login_shell=false",
+				])
+					expect(launcher).toContain(value);
+				expect(launcher).not.toContain("agents.enabled=false");
+				expect(launcher).not.toContain("features.multi_agent=false");
+			}
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("defaults older real-Codex public manifests to disabled subagents", () => {
+		const { multiAgent: _omitted, ...legacy } = toPublicAgentConfig(resolveRealCodexAgent({}, {})) as Extract<
+			ReturnType<typeof toPublicAgentConfig>,
+			{ mode: "real-codex" }
+		>;
+		expect(AgentLabManifestSchema.shape.agent.parse(legacy)).toMatchObject({ multiAgent: false });
 	});
 
 	it("resolves copied Windows Codex environment keys case-insensitively", () => {
@@ -1304,6 +1357,12 @@ describe("agent-lab real Codex", () => {
 		await expect(runAgentLabCli(["node", "agent-lab", "start", flag, value])).rejects.toThrow(
 			"require --agent real-codex or --agent real-claude",
 		);
+	});
+
+	it.each(["fake", "fake-claude", "real-claude"])("rejects Codex subagents in %s mode", async (agent) => {
+		await expect(
+			runAgentLabCli(["node", "agent-lab", "start", "--agent", agent, "--codex-multi-agent"]),
+		).rejects.toThrow(/require --agent/);
 	});
 
 	it("rejects Claude environment authentication in fake mode", async () => {

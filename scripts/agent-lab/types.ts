@@ -44,6 +44,7 @@ const AgentLabPublicAgentConfigSchema = z.discriminatedUnion("mode", [
 	}),
 	z.object({
 		mode: z.literal("real-codex"),
+		multiAgent: z.boolean().default(false),
 		model: AgentLabModelSchema,
 		modelProvider: z.literal("openai"),
 		reasoningEffort: z.literal("low"),
@@ -85,6 +86,7 @@ export const AgentLabLaunchAgentConfigSchema = z.discriminatedUnion("mode", [
 	}),
 	z.object({
 		mode: z.literal("real-codex"),
+		multiAgent: z.boolean().default(false),
 		model: AgentLabModelSchema,
 		modelProvider: z.literal("openai"),
 		reasoningEffort: z.literal("low"),

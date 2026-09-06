@@ -7,7 +7,7 @@ import { buildGitCommandArgs, createGitProcessEnv, resolveWindowsCompatibleComma
 import type { RuntimeHostSimulationConfig } from "../../src/server/runtime-host-simulation";
 import { resolveAgentLabProviderPolicy } from "./provider-policy";
 import { AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_POLICY } from "./real-claude";
-import { AGENT_LAB_REAL_CODEX_CONFIG_OVERRIDES } from "./real-codex";
+import { getAgentLabRealCodexConfigOverrides } from "./real-codex";
 import type { AgentLabLaunchConfig } from "./types";
 
 const execFileAsync = promisify(execFile);
@@ -91,11 +91,11 @@ async function writeBlockedAgentLaunchers(fakeBinPath: string, provider: "claude
 	await writeFile(windowsLauncherPath, `@echo off\r\necho ${message} 1>&2\r\nexit /b 127\r\n`, "utf8");
 }
 
-export async function writeRealCodexLauncher(fakeBinPath: string): Promise<void> {
+export async function writeRealCodexLauncher(fakeBinPath: string, multiAgent = false): Promise<void> {
 	const shellLauncherPath = join(fakeBinPath, "codex");
 	const windowsLauncherPath = join(fakeBinPath, "codex.cmd");
 	const windowsPowerShellLauncherPath = join(fakeBinPath, "codex.ps1");
-	const policyArguments = AGENT_LAB_REAL_CODEX_CONFIG_OVERRIDES.flatMap((value) => ["-c", value]);
+	const policyArguments = getAgentLabRealCodexConfigOverrides(multiAgent).flatMap((value) => ["-c", value]);
 	const shellPolicyArguments = policyArguments.map((value) => `'${value.replaceAll("'", `'"'"'`)}'`).join(" ");
 	const windowsPolicyArguments = policyArguments.join(" ");
 	const powerShellPolicyArguments = policyArguments.map((value) => `'${value.replaceAll("'", "''")}'`).join(", ");
@@ -446,7 +446,7 @@ export async function writeAgentProviderLaunchers(
 			enabledLauncherWrites = [writeFakeAgentLaunchers(fakeBinPath, "claude")];
 			break;
 		case "real-codex":
-			enabledLauncherWrites = [writeRealCodexLauncher(fakeBinPath)];
+			enabledLauncherWrites = [writeRealCodexLauncher(fakeBinPath, agent.multiAgent)];
 			break;
 		case "real-claude":
 			enabledLauncherWrites = [writeRealClaudeLauncher(fakeBinPath)];
