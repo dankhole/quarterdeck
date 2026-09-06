@@ -69,10 +69,10 @@ export function buildCodexHooksConfig(): CodexHooksConfig {
 	return {
 		SessionStart: [
 			{
-				// Capture launch/resume metadata without moving review-ready cards
-				// back to running. Codex can emit SessionStart around session
-				// maintenance flows such as compaction, where no agent turn starts.
-				matcher: "startup|resume",
+				// New-conversation navigation emits clear: capture its identity before
+				// the foreground-session fence evaluates work from the new thread.
+				// SessionStart remains metadata-only and never proves resumed work.
+				matcher: "startup|resume|clear",
 				hooks: [buildCodexCommandHook("activity", { source: "codex", reliable: true })],
 			},
 		],

@@ -117,6 +117,8 @@ Claude fullscreen scrolling is application-owned rather than xterm scrollback. F
 
 - Codex `/btw` runs in a distinct ephemeral provider thread. Keep native `session_id` scope separate from turn ordering: hooks from that side thread cannot author the main task's state, interaction, completion summary, or `resumeSessionId`. Explicit Codex subagent hooks are also non-foreground. A newer native `SessionStart` with a transcript path permits persistent-session navigation; an ephemeral side-thread start cannot replace the main identity. Durable receipts retain provider session identity and transcript-presence metadata (never the path) to reconstruct the same scope. Do not revive retired main turns merely because a different provider thread emitted a hook.
 
+- Subscribe to Codex `SessionStart` sources `startup|resume|clear`. New-conversation navigation emits `clear`; omitting it leaves the old foreground session ID authoritative and rejects every later working hook. SessionStart only transfers persistent-session identity into Review/Unconfirmed; subsequent native work establishes Running. Keep ephemeral side-thread and explicit subagent fences intact.
+
 - Quarterdeck-managed Codex hooks stay launch-scoped. Never write them to repo-local or user-global hook files.
 - Pass hook config inline on the `codex` command line (`-c hooks...` plus `--enable hooks`). Generate matching `hooks.state` trust entries from the same config using `/<session-flags>/config.toml:<event_snake>:<groupIndex>:<handlerIndex>` source keys (`C:\<session-flags>\config.toml` on Windows). Never use `--dangerously-bypass-hook-trust`.
 - Preserve the current minimum-version and feature gate. Only genuine user-input or approval waits surface as Needs Input.

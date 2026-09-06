@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Codex tasks now track new-conversation session handoffs instead of remaining Ready for review while the new conversation works. The launch-scoped `SessionStart` hook includes `clear`, preserving foreground identity and exact resume tracking.
+
 - Fresh tasks launched with Start show Running immediately after launch. If no native work or terminal-state hook confirms the launch within 45 seconds, they move to Review/Unconfirmed; early launch exits become Error without automatic restart. Restores retain their conservative state.
 
 - Agent Lab can opt into one native Codex subagent with `--codex-multi-agent` to verify parent completion and hook ownership; default runs continue to disable subagents.

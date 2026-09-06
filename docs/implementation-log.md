@@ -2,6 +2,14 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-2026-05-01.md`, `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-09-06 — Preserve Codex identity across new-conversation navigation
+
+Dogfood task `depop-finder/a0c75` completed its original foreground turn at 16:54:33 EDT, then started a new native CLI conversation at 16:54:51. Quarterdeck retained the old resume identity; the captured diagnostics contained 263 `non_foreground_session` rejections, including prompt submissions and tool work. The launch configuration matched only `startup|resume`, explicitly excluding Codex's `clear` SessionStart source. The newer foreground session fence exposed that missing handoff by correctly rejecting all work whose provider session differed from the retained owner.
+
+`src/codex-hooks.ts` now subscribes to `clear` through the existing reliable, launch-scoped metadata hook. The existing ordering/controller/reducer pipeline transfers persistent identity, retires old work and interactions into Review/Unconfirmed, and admits Running only on subsequent native work. No terminal-output heuristic or weakened side-thread/subagent fence is needed. Hook trust hashes continue to derive from the same configuration. Already-running Codex processes retain their original launch arguments; the fix applies to newly launched processes, and an affected task's stale stored resume ID must not be mistaken for its newer conversation.
+
+Validation: the new caller-path regression failed on the original matcher and passed after the subscription fix. All 109 focused configuration, hook-ordering, and session-manager tests passed, including durable receipt restoration and foreign-session isolation; runtime TypeScript, targeted Biome, and `git diff --check` passed. Native source values were checked against [OpenAI’s hook documentation](https://learn.chatgpt.com/docs/hooks#sessionstart). No browser or real-provider run was needed for this subscription change, and no live task was restarted or state rewritten.
+
 ## 2026-09-06 — Give explicit Start a bounded initial Running phase
 
 Fresh explicit task launches now seed Running after PTY ownership handoff. A separate launch-scoped `initialWorkConfirmation` marker preserves that state through summary normalization and shared board/project indicators without manufacturing native work evidence. Resumes and replacements remain conservative. The controller owns a 45-second deadline: metadata-only SessionStart leaves it pending, accepted work or a terminal transition retires it, and an unconfirmed live process becomes Review/Unconfirmed without being killed. Cold hydration invalidates the marker, and teardown fences old timers by exact launch identity.

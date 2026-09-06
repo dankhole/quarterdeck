@@ -147,12 +147,9 @@ describe("buildCodexHookConfigOverrides", () => {
 		]);
 	});
 
-	it("SessionStart matcher excludes Codex's `clear` event", () => {
+	it.each(["startup", "resume", "clear"])("captures SessionStart identity for %s", (source) => {
 		const { SessionStart } = buildCodexHooksConfig();
-		for (const group of SessionStart) {
-			expect(group.matcher).toBe("startup|resume");
-			expect(group.matcher).not.toContain("clear");
-		}
+		expect(SessionStart.some((group) => new RegExp(group.matcher ?? ".*").test(source))).toBe(true);
 	});
 
 	it("maps SessionStart to activity rather than running", () => {

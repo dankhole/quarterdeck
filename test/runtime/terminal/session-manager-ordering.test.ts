@@ -13,8 +13,9 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 	},
 }));
 
+import { buildCodexHooksConfig } from "../../../src/codex-hooks";
 import { normalizeHookMetadata } from "../../../src/commands/hook-metadata";
-import { runtimeTaskSessionSummarySchema } from "../../../src/core";
+import { buildQuarterdeckCommandLine, runtimeTaskSessionSummarySchema } from "../../../src/core";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
 import { createCodexTurnInterruptionDetector } from "../../../src/terminal/codex-turn-interruption";
 import { DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER } from "../../../src/terminal/session-manager-types";
@@ -617,6 +618,104 @@ describe("TerminalSessionManager ordering invariants", () => {
 		expect(manager.store.getSummary("task-main-wait")).toMatchObject({
 			state: "running",
 			outstandingInteraction: null,
+		});
+	});
+
+	it("admits configured Codex clear navigation after completion before accepting new foreground work", async () => {
+		setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession({
+			taskId: "task-clear",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-clear",
+			prompt: "Synthetic task",
+		});
+		const sessionInstanceId = manager.store.getSummary("task-clear")?.sessionInstanceId;
+		const api = createHooksApi({
+			captureTaskTurnCheckpoint: async ({ turn }) => ({
+				turn,
+				ref: `refs/quarterdeck/checkpoints/task-clear/${turn}`,
+				commit: "synthetic-commit",
+				createdAt: Date.now(),
+			}),
+			projects: { getProjectPathById: () => "/tmp/repo" },
+			terminals: {
+				getTerminalManagerForProject: () => manager,
+				ensureTerminalManagerForProject: async () => manager,
+			},
+		});
+		let sequence = 0;
+		const ingest = (
+			sessionId: string,
+			event: "activity" | "to_in_progress" | "to_review",
+			hookEventName: string,
+			transcriptPath?: string,
+		) =>
+			api.ingest({
+				taskId: "task-clear",
+				projectId: "project-1",
+				event,
+				metadata: {
+					source: "codex",
+					sessionInstanceId,
+					sessionId,
+					hookEventName,
+					turnId: hookEventName === "SessionStart" ? undefined : `${sessionId}-turn`,
+					transcriptPath,
+				},
+				delivery: {
+					id: `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`,
+					occurredAt: Date.now() + sequence,
+				},
+			});
+		await ingest("original", "to_in_progress", "UserPromptSubmit");
+		await ingest("original", "to_review", "Stop");
+		expect(manager.store.getSummary("task-clear")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "hook",
+			resumeSessionId: "original",
+		});
+
+		// Model the provider's dispatch using the actual launch configuration:
+		// /new emits SessionStart with source=clear, which must reach ingest.
+		for (const group of buildCodexHooksConfig().SessionStart) {
+			if (group.matcher && group.matcher !== "*" && !new RegExp(group.matcher).test("clear")) continue;
+			for (const command of group.hooks) {
+				expect(command.command).toBe(
+					buildQuarterdeckCommandLine(["hooks", "ingest", "--event", "activity", "--source", "codex"]),
+				);
+				await ingest("replacement", "activity", "SessionStart", "/tmp/replacement.jsonl");
+			}
+		}
+		expect(manager.store.getSummary("task-clear")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "unconfirmed",
+			resumeSessionId: "replacement",
+			nativeWorkEvidence: null,
+			outstandingInteraction: null,
+		});
+		await ingest("replacement", "to_in_progress", "UserPromptSubmit");
+		expect(manager.store.getSummary("task-clear")).toMatchObject({
+			state: "running",
+			resumeSessionId: "replacement",
+		});
+		for (const sessionId of ["original", "side"]) {
+			if (sessionId === "side") await ingest(sessionId, "activity", "SessionStart");
+			await ingest(sessionId, "to_in_progress", "UserPromptSubmit");
+			await ingest(sessionId, "to_review", "Stop");
+			expect(manager.store.getSummary("task-clear")).toMatchObject({
+				state: "running",
+				resumeSessionId: "replacement",
+				outstandingInteraction: null,
+			});
+		}
+		await ingest("replacement", "to_review", "Stop");
+		expect(manager.store.getSummary("task-clear")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "hook",
+			resumeSessionId: "replacement",
 		});
 	});
 
