@@ -470,7 +470,7 @@ describe("task session spawn failure", () => {
 		).toBe(false);
 
 		ownership.resolve(undefined);
-		await expect(start).resolves.toMatchObject({ state: "awaiting_review", reviewReason: "unconfirmed" });
+		await expect(start).resolves.toMatchObject({ state: "running", reviewReason: null, nativeWorkEvidence: null });
 		expect(manager.shouldDeferProviderHookUntilLaunchHandoff("task-1", hook)).toBe(false);
 		expect(manager.applyProviderHook("task-1", hook)?.summary).toMatchObject({
 			state: "running",

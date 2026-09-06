@@ -6,7 +6,7 @@ This protocol does not apply to `real-codex` or `real-claude`; authenticated lan
 
 Prompt directives override the run's default scenario for one task:
 
-- `[agent-lab:idle]` — remain interactive after printing the ready marker; the fresh PTY stays Review/Unconfirmed until `/working` supplies provider evidence.
+- `[agent-lab:idle]` — remain interactive after printing the ready marker; a fresh explicit Start appears Running for up to 45 seconds, then Review/Unconfirmed unless `/working` supplies provider evidence.
 - `[agent-lab:needs-input]` — emit a Codex permission wait and move the task to Review with approval-required semantics.
 - `[agent-lab:review]` — emit a root `Stop` and move the task to Review.
 - `[agent-lab:failure]` — exit non-zero to exercise failure/restart behavior.

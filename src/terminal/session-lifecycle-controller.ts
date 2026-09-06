@@ -209,6 +209,7 @@ export class SessionLifecycleController {
 			onExit: (req, event, session) => this.handleTaskSessionExit(req, event, session),
 			isLaunchAllowed: () => !this.shuttingDown && this.lifecycleGeneration === lifecycleGeneration,
 		});
+		this.transitions.trackInitialWorkConfirmation(entry, spawned.sessionInstanceId);
 		return {
 			summary: this.store.getSummary(request.taskId) ?? spawned.summary,
 			sessionInstanceId: spawned.sessionInstanceId,

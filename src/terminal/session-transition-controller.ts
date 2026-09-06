@@ -1,7 +1,11 @@
 import { createTaggedLogger, type RuntimeTaskSessionSummary } from "../core";
 import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
-import type { ProcessEntry, ProviderHookReplayBoundary } from "./session-manager-types";
+import {
+	clearInitialWorkConfirmation,
+	type ProcessEntry,
+	type ProviderHookReplayBoundary,
+} from "./session-manager-types";
 import type { ProviderHookSessionEvidence } from "./session-state-machine";
 import {
 	cloneSummary,
@@ -9,6 +13,8 @@ import {
 	type SessionTransitionEvent,
 	type SessionTransitionResult,
 } from "./session-summary-store";
+
+export { INITIAL_WORK_CONFIRMATION_TIMEOUT_MS } from "./session-manager-types";
 
 const transitionLog = createTaggedLogger("session-transition");
 
@@ -37,6 +43,14 @@ export class SessionTransitionController {
 	 * including hook API writes that do not originate in this controller.
 	 */
 	observeSummaryChange(previous: RuntimeTaskSessionSummary | null, summary: RuntimeTaskSessionSummary): void {
+		const currentActive = this.entries.get(summary.taskId)?.active;
+		if (
+			currentActive &&
+			currentActive.sessionInstanceId === summary.sessionInstanceId &&
+			(summary.state !== "running" || summary.nativeWorkEvidence)
+		) {
+			clearInitialWorkConfirmation(currentActive);
+		}
 		if (previous?.state === summary.state || summary.state !== "running") {
 			return;
 		}
@@ -46,6 +60,28 @@ export class SessionTransitionController {
 		}
 		clearInterruptRecoveryTimer(active);
 		active.resetOutputTransitionDetection?.();
+	}
+
+	trackInitialWorkConfirmation(entry: ProcessEntry, sessionInstanceId: string): void {
+		const active = entry.active;
+		if (
+			!active ||
+			active.sessionInstanceId !== sessionInstanceId ||
+			!active.initialWorkConfirmationPending ||
+			active.initialWorkConfirmationTimer
+		)
+			return;
+		const pending = this.store.getSummary(entry.taskId)?.initialWorkConfirmation;
+		if (pending?.sessionInstanceId !== sessionInstanceId) return;
+		active.initialWorkConfirmationTimer = setTimeout(
+			() => {
+				active.initialWorkConfirmationTimer = null;
+				if (entry.active !== active || !active.initialWorkConfirmationPending) return;
+				this.applyTransitionEvent(entry, { type: "launch.confirmation_timeout", sessionInstanceId });
+			},
+			Math.max(0, pending.deadlineAt - Date.now()),
+		);
+		active.initialWorkConfirmationTimer.unref();
 	}
 
 	private hasCurrentSessionHookEvidence(entry: ProcessEntry, event: SessionTransitionEvent): boolean {

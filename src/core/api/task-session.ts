@@ -185,6 +185,14 @@ const runtimeTaskSessionSummaryBaseSchema = z.object({
 	outstandingInteraction: runtimeTaskOutstandingInteractionSchema.nullable().default(null),
 	/** Current launch-scoped proof that admitted a native Codex/Claude/Pi foreground execution. */
 	nativeWorkEvidence: runtimeTaskNativeWorkEvidenceSchema.nullable().default(null),
+	/** Optimistic explicit Start; never provider work evidence and invalidated on cold hydration. */
+	initialWorkConfirmation: z
+		.object({
+			sessionInstanceId: z.string().min(1),
+			deadlineAt: z.number().int().nonnegative(),
+		})
+		.nullable()
+		.optional(),
 	stalledSince: z.number().nullable().default(null),
 	/** Durable handoff indicating that the next runtime must restore the task's interactive agent session. */
 	startupRecoveryRequired: z.boolean().optional(),
@@ -202,6 +210,17 @@ type ParsedRuntimeTaskSessionSummary = z.infer<typeof runtimeTaskSessionSummaryB
 type NormalizedRuntimeTaskSessionSummary = Omit<ParsedRuntimeTaskSessionSummary, "state"> & {
 	state: RuntimeTaskSessionState;
 };
+
+/** Exact live launch eligibility for optimistic initial Running, shared by normalization and projections. */
+export function hasPendingInitialWorkConfirmation(summary: ParsedRuntimeTaskSessionSummary): boolean {
+	return (
+		summary.state === "running" &&
+		!summary.nativeWorkEvidence &&
+		Boolean(summary.sessionInstanceId) &&
+		summary.initialWorkConfirmation?.sessionInstanceId === summary.sessionInstanceId &&
+		summary.pid !== null
+	);
+}
 
 export interface NormalizeRuntimeTaskSessionSummaryOptions {
 	/** Hydrated native execution evidence belongs to a process owned by the previous runtime. */
@@ -251,6 +270,7 @@ export function normalizeRuntimeTaskSessionSummary(
 	const isSupportedNativeAgent = next.agentId === "codex" || next.agentId === "claude" || next.agentId === "pi";
 	if (next.state === "running" && isSupportedNativeAgent) {
 		const evidence = next.nativeWorkEvidence;
+		const validInitialStart = !options.invalidateNativeWorkEvidence && hasPendingInitialWorkConfirmation(next);
 		const invalidEvidence =
 			options.invalidateNativeWorkEvidence === true ||
 			!evidence ||
@@ -258,7 +278,7 @@ export function normalizeRuntimeTaskSessionSummary(
 			!next.sessionInstanceId ||
 			evidence.sessionInstanceId !== next.sessionInstanceId ||
 			next.pid === null;
-		if (invalidEvidence) {
+		if (invalidEvidence && !validInitialStart) {
 			next = {
 				...next,
 				state: "awaiting_review",
@@ -271,6 +291,15 @@ export function normalizeRuntimeTaskSessionSummary(
 		}
 	}
 
+	if (
+		next.initialWorkConfirmation &&
+		(next.state !== "running" ||
+			next.nativeWorkEvidence ||
+			next.initialWorkConfirmation.sessionInstanceId !== next.sessionInstanceId ||
+			options.invalidateNativeWorkEvidence)
+	) {
+		next = { ...next, initialWorkConfirmation: null };
+	}
 	if (next.state !== "running" && next.nativeWorkEvidence) {
 		next = { ...next, nativeWorkEvidence: null };
 	}

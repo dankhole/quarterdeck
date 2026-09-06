@@ -22,7 +22,7 @@ export const MAX_AUTO_RESTARTS_PER_WINDOW = 3;
 
 export type AutoRestartDecision =
 	| { restart: true }
-	| { restart: false; reason: "suppressed" | "no_listeners" | "rate_limited" | "not_running" };
+	| { restart: false; reason: "suppressed" | "no_listeners" | "rate_limited" | "not_running" | "unconfirmed_start" };
 
 /**
  * Determines if auto-restart should proceed after process exit.
@@ -36,12 +36,17 @@ export type AutoRestartDecision =
  * Mutates `entry.suppressAutoRestartOnExit` and `entry.autoRestartTimestamps`
  * as side effects (matching original behavior).
  */
-export function shouldAutoRestart(entry: ProcessEntry, preExitState: RuntimeTaskSessionState): AutoRestartDecision {
+export function shouldAutoRestart(
+	entry: ProcessEntry,
+	preExitState: RuntimeTaskSessionState,
+	unconfirmedStart = false,
+): AutoRestartDecision {
 	const wasSuppressed = entry.suppressAutoRestartOnExit;
 	entry.suppressAutoRestartOnExit = false;
 	if (wasSuppressed) {
 		return { restart: false, reason: "suppressed" };
 	}
+	if (unconfirmedStart) return { restart: false, reason: "unconfirmed_start" };
 	// Only restart when the agent was actively working. Any other pre-exit
 	// state means the agent already handed off (hook/exit/error, plus legacy
 	// stalled summaries) or was stopped by the user (interrupted). The process

@@ -20,6 +20,8 @@ The browser is an optimistic client. The runtime owns durable board state, sessi
 
 ### Create and start
 
+Fresh explicit Start has a bounded initial Running phase after process ownership handoff. Shared indicators recognize the exact launch-scoped `initialWorkConfirmation` marker; it is separate from native work evidence and invalidated on cold hydration. The session transition controller owns confirmation and expiry (see the [session lifecycle rules](session-lifecycle.md#reconciliation)).
+
 Lifecycle `create_and_start` tolerates bounded bursts of unrelated revision advances from runtime-owned title, session, branch, or worktree projections:
 
 1. Rebase the additive `create_task` step only after proving the stable task ID is still absent.

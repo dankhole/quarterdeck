@@ -2,6 +2,14 @@
 
 > Prior entries in `docs/history/`: `implementation-log-through-2026-05-01.md`, `implementation-log-through-0.12.0.md`, `implementation-log-through-0.11.0.md`, `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## 2026-09-06 — Give explicit Start a bounded initial Running phase
+
+Fresh explicit task launches now seed Running after PTY ownership handoff. A separate launch-scoped `initialWorkConfirmation` marker preserves that state through summary normalization and shared board/project indicators without manufacturing native work evidence. Resumes and replacements remain conservative. The controller owns a 45-second deadline: metadata-only SessionStart leaves it pending, accepted work or a terminal transition retires it, and an unconfirmed live process becomes Review/Unconfirmed without being killed. Cold hydration invalidates the marker, and teardown fences old timers by exact launch identity.
+
+An unconfirmed process exit becomes Error and retires cached automatic restart intent; otherwise websocket reconnect could restart a launch that immediate crash recovery had correctly declined. Explicit Start/Restart remains available, and work confirmed after the deadline retains normal crash-recovery eligibility.
+
+Notable files: `src/core/api/task-session.ts`, `task-indicators.ts`, `src/terminal/session-lifecycle.ts`, `session-transition-controller.ts`, and `session-manager-initial-start.test.ts`. The runtime fast suite passed 1,782 tests with six skips (socket-restricted files passed on a targeted rerun with local socket access); subsequent projection and recovery corrections passed 142 focused contract/recovery tests, 278 lifecycle tests, and runtime/web typechecks. Targeted Biome passed with its existing optional-chain warning. Final fake-agent lab `initial-start-verified-20260906T194645Z-cf04bd` verified board Running and runtime pending evidence, then Review/Unconfirmed at its recorded deadline (within 2 ms), retaining the same PID. The lab was stopped; no live app was restarted.
+
 ## 2026-09-06 — Verify native-subagent completion beyond the isolated lab defaults
 
 Further dogfood screenshots included this investigation's own parent chat remaining Running after its final answer. Live diagnostics showed its first `stale_turn` rejections during delegated work and its final Stop rejected; this was still the runtime started before main fix `89a2f4f9`. The initial real-provider regression had disabled subagents, so it did not exercise this path. Replaying parent work, child tool hooks, parent work, and parent Stop against pre-fix ordering reproduced the rejection; main ordering preserves parent ownership and accepts completion. This establishes the failure mechanism, while production's content-safe records do not independently prove every affected task's child identity.

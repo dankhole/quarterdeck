@@ -1110,8 +1110,8 @@ describe("TerminalSessionManager ordering invariants", () => {
 
 		expect(manager.store.getSummary("task-1")?.pid).toBe(222);
 		expect(manager.store.getSummary("task-1")).toMatchObject({
-			state: "awaiting_review",
-			reviewReason: "unconfirmed",
+			state: "running",
+			reviewReason: null,
 		});
 		expect(onExit).not.toHaveBeenCalled();
 		expect(consoleWarn).toHaveBeenCalledWith(

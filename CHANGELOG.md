@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Fresh tasks launched with Start show Running immediately after launch. If no native work or terminal-state hook confirms the launch within 45 seconds, they move to Review/Unconfirmed; early launch exits become Error without automatic restart. Restores retain their conservative state.
+
 - Agent Lab can opt into one native Codex subagent with `--codex-multi-agent` to verify parent completion and hook ownership; default runs continue to disable subagents.
 
 ### Fix: isolate Codex side conversations and preserve interrupt ordering
@@ -11,7 +13,7 @@
 
 ### Fix: keep active foreground turns Running through hook silence
 
-- Codex, Claude, and Pi tasks now enter Running immediately on their first current launch-scoped foreground-start hook and remain there until a typed completion, interaction, interruption, process exit, replacement, or recovery event ends or suspends the execution. Long reasoning, foreground commands, and nested work no longer fall into Review merely because no provider hook arrived for five minutes; PTY creation and `SessionStart` metadata still cannot claim Running, and cold-runtime hydration still invalidates prior-process evidence. If the initial state hook races process-ownership handoff, Quarterdeck now leaves its reliable outbox delivery pending and applies it after handoff instead of acknowledging and losing an unconfirmed no-op.
+- Codex, Claude, and Pi tasks now enter Running immediately on their first current launch-scoped foreground-start hook and remain there until a typed completion, interaction, interruption, process exit, replacement, or recovery event ends or suspends the execution. Long reasoning, foreground commands, and nested work no longer fall into Review merely because no provider hook arrived for five minutes; resumed PTY creation and `SessionStart` metadata still cannot claim Running, and cold-runtime hydration still invalidates prior-process evidence. If the initial state hook races process-ownership handoff, Quarterdeck now leaves its reliable outbox delivery pending and applies it after handoff instead of acknowledging and losing an unconfirmed no-op.
 
 ## [0.12.5] — 2026-09-01
 

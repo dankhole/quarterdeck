@@ -34,6 +34,7 @@ import {
 	finalizeProcessExit,
 	formatSpawnFailure,
 	hasLiveOutputListener,
+	INITIAL_WORK_CONFIRMATION_TIMEOUT_MS,
 	normalizeDimension,
 	type ProcessEntry,
 	resolveEffectiveTerminalRowMultiplier,
@@ -331,12 +332,15 @@ export async function spawnTaskSession(
 	const postSpawnResumeSessionId = request.resumeConversation ? (request.resumeSessionId ?? null) : null;
 	const resumeSemanticState = request.resumeSemanticState;
 	const restoredSemanticStateIsUncertain = request.startupRecoverySemanticStateUncertain === true;
-	// Spawning a PTY proves only that the interaction surface exists. A fresh or
-	// replacement native agent remains conservative Review until a current
-	// launch-scoped provider hook supplies positive Running evidence.
-	const restoredState: RuntimeTaskSessionSummary["state"] = "awaiting_review";
-	const restoredReviewReason =
-		resumeSemanticState?.reviewReason ?? (request.awaitReview ? "interrupted" : "unconfirmed");
+	// Explicit fresh Start is optimistic until native work confirms it. Restores
+	// and replacements still require current-launch evidence to resume Running.
+	const initialStart =
+		!request.resumeConversation && !request.awaitReview && !request.startupRecoveryToken && !resumeSemanticState;
+	entry.active.initialWorkConfirmationPending = initialStart;
+	const restoredState: RuntimeTaskSessionSummary["state"] = initialStart ? "running" : "awaiting_review";
+	const restoredReviewReason = initialStart
+		? null
+		: (resumeSemanticState?.reviewReason ?? (request.awaitReview ? "interrupted" : "unconfirmed"));
 	sessionLog.debug("seeding summary for spawned task session", {
 		taskId: request.taskId,
 		state: restoredState,
@@ -349,6 +353,12 @@ export async function spawnTaskSession(
 		sessionInstanceId: hookSessionInstanceId,
 		launchOperationId: request.launchOperationId ?? null,
 		state: restoredState,
+		initialWorkConfirmation: initialStart
+			? {
+					sessionInstanceId: hookSessionInstanceId,
+					deadlineAt: Date.now() + INITIAL_WORK_CONFIRMATION_TIMEOUT_MS,
+				}
+			: null,
 		agentId: request.agentId,
 		sessionLaunchPath: request.cwd,
 		resumeSessionId: postSpawnResumeSessionId,
@@ -444,6 +454,12 @@ export function handleTaskSessionExit(
 	}
 	markTaskSessionLaunchExited(currentEntry.launchMonitor, event.exitCode);
 	const active = currentEntry.active;
+	const unconfirmedStart =
+		active.initialWorkConfirmationPending || currentSummaryAtExit?.reviewReason === "unconfirmed";
+	// An unconfirmed launch is a launch failure, not recoverable foreground work.
+	// Retire cached replacement intent before socket recovery can reuse it; an
+	// explicit Start/Restart supplies a new request through the lifecycle owner.
+	if (unconfirmedStart) currentEntry.restartRequest = null;
 	const pendingInterruptSignal = active.interruptRecoverySignal;
 	const wasInterrupted = exitingSession.wasInterrupted() || pendingInterruptSignal !== null;
 
@@ -468,6 +484,7 @@ export function handleTaskSessionExit(
 		type: "process.exit",
 		exitCode: event.exitCode,
 		interrupted: wasInterrupted,
+		unconfirmedStart,
 	});
 	if (pendingInterruptSignal) {
 		deps.onInterruptRecoveryApplied?.(request.taskId, pendingInterruptSignal, result, active.sessionInstanceId);
@@ -480,7 +497,7 @@ export function handleTaskSessionExit(
 		// coordinator's exact-target retry.
 		currentEntry.suppressAutoRestartOnExit = true;
 	}
-	const autoRestartDecision = shouldAutoRestart(currentEntry, preExitState);
+	const autoRestartDecision = shouldAutoRestart(currentEntry, preExitState, unconfirmedStart);
 	if (!autoRestartDecision.restart) {
 		const skipData = {
 			taskId: request.taskId,

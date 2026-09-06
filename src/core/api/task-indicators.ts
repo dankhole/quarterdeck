@@ -1,4 +1,8 @@
-import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "./task-session.js";
+import {
+	hasPendingInitialWorkConfirmation,
+	type RuntimeTaskHookActivity,
+	type RuntimeTaskSessionSummary,
+} from "./task-session.js";
 
 export type RuntimeTaskIndicatorKind =
 	| "idle"
@@ -154,6 +158,7 @@ export function deriveTaskIndicatorState(summary: RuntimeTaskSessionSummary): Ru
 		const evidence = summary.nativeWorkEvidence;
 		if (
 			(summary.agentId === "codex" || summary.agentId === "claude" || summary.agentId === "pi") &&
+			!hasPendingInitialWorkConfirmation(summary) &&
 			(!evidence ||
 				evidence.provider !== summary.agentId ||
 				evidence.sessionInstanceId !== summary.sessionInstanceId ||

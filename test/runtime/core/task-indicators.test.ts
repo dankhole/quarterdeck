@@ -187,6 +187,26 @@ describe("deriveTaskIndicatorState", () => {
 		},
 	);
 
+	it.each(["codex", "claude", "pi"] as const)(
+		"projects an initial %s Start as Running in every consumer",
+		(agentId) => {
+			const summary = makeSummary({
+				state: "running",
+				agentId,
+				sessionInstanceId: "process-1",
+				pid: 123,
+				initialWorkConfirmation: { sessionInstanceId: "process-1", deadlineAt: Date.now() + 45_000 },
+			});
+			expect(deriveTaskIndicatorState(summary)).toMatchObject({
+				kind: "running",
+				publicStatus: "running",
+				column: "active",
+			});
+			expect(getRuntimeSessionWorkColumn(summary)).toBe("in_progress");
+			expect(deriveTaskIndicatorState({ ...summary, sessionInstanceId: "other" }).kind).toBe("unconfirmed");
+		},
+	);
+
 	it("distinguishes review_ready from approval_required", () => {
 		const indicator = deriveTaskIndicatorState(
 			makeSummary({

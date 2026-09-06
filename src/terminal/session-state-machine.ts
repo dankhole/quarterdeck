@@ -46,7 +46,8 @@ export type SessionTransitionEvent =
 			occurredAt?: number;
 	  }
 	| { type: "user.stop" }
-	| { type: "process.exit"; exitCode: number | null; interrupted: boolean }
+	| { type: "process.exit"; exitCode: number | null; interrupted: boolean; unconfirmedStart?: boolean }
+	| { type: "launch.confirmation_timeout"; sessionInstanceId: string }
 	| { type: "interrupt.recovery" }
 	| { type: "autorestart.denied" }
 	| { type: "resume.failed"; clearResumeSessionId: boolean; warningMessage: string }
@@ -1087,6 +1088,23 @@ export function reduceSessionTransition(
 				clearAttentionBuffer: true,
 			};
 		}
+		case "launch.confirmation_timeout": {
+			if (
+				summary.sessionInstanceId !== event.sessionInstanceId ||
+				summary.initialWorkConfirmation?.sessionInstanceId !== event.sessionInstanceId ||
+				summary.state !== "running" ||
+				summary.nativeWorkEvidence ||
+				summary.outstandingInteraction ||
+				summary.pid === null
+			) {
+				return { changed: false, patch: {}, clearAttentionBuffer: false };
+			}
+			return {
+				changed: true,
+				patch: { state: "awaiting_review", reviewReason: "unconfirmed", stalledSince: null },
+				clearAttentionBuffer: false,
+			};
+		}
 		case "process.exit": {
 			if (summary.state === "awaiting_review" && summary.outstandingInteraction) {
 				if (event.interrupted && summary.startupRecoveryRequired === true) {
@@ -1149,7 +1167,8 @@ export function reduceSessionTransition(
 					clearAttentionBuffer: false,
 				};
 			}
-			let reason: RuntimeTaskSessionReviewReason = event.exitCode === 0 ? "exit" : "error";
+			let reason: RuntimeTaskSessionReviewReason =
+				event.exitCode === 0 && !event.unconfirmedStart ? "exit" : "error";
 			if (event.interrupted) reason = "interrupted";
 			return {
 				changed: true,

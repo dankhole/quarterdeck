@@ -50,6 +50,8 @@ export interface ActiveProcessState {
 	autoConfirmedWorkspaceTrust: boolean;
 	workspaceTrustConfirmCount: number;
 	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
+	initialWorkConfirmationPending: boolean;
+	initialWorkConfirmationTimer: NodeJS.Timeout | null;
 	interruptRecoveryTimer: NodeJS.Timeout | null;
 	interruptRecoveryStartedAt: number | null;
 	/** Launch-scoped causal fence; recovery timer cleanup must not erase it. */
@@ -334,11 +336,21 @@ export function createActiveProcessState(opts: CreateActiveProcessStateOptions):
 		autoConfirmedWorkspaceTrust: false,
 		workspaceTrustConfirmCount: 0,
 		workspaceTrustConfirmTimer: null,
+		initialWorkConfirmationPending: false,
+		initialWorkConfirmationTimer: null,
 		interruptRecoveryTimer: null,
 		interruptRecoveryStartedAt: null,
 		lastInterruptAt: null,
 		interruptRecoverySignal: null,
 	};
+}
+
+export const INITIAL_WORK_CONFIRMATION_TIMEOUT_MS = 45_000;
+
+export function clearInitialWorkConfirmation(active: ActiveProcessState): void {
+	if (active.initialWorkConfirmationTimer) clearTimeout(active.initialWorkConfirmationTimer);
+	active.initialWorkConfirmationTimer = null;
+	active.initialWorkConfirmationPending = false;
 }
 
 // ── Teardown helpers ─────────────────────────────────────────────────────────
@@ -351,6 +363,7 @@ import { cloneSummary } from "./session-summary-store";
 export function teardownActiveSession(entry: ProcessEntry): void {
 	markTaskSessionLaunchSuperseded(entry.launchMonitor);
 	if (entry.active) {
+		clearInitialWorkConfirmation(entry.active);
 		stopWorkspaceTrustTimers(entry.active);
 		clearInterruptRecoveryTimer(entry.active);
 		entry.active.session.stop();
@@ -381,6 +394,7 @@ export function finalizeProcessExit(
 
 	const cleanupFn = entry.active?.onSessionCleanup ?? null;
 	if (entry.active) {
+		clearInitialWorkConfirmation(entry.active);
 		entry.active.onSessionCleanup = null;
 	}
 	entry.active = null;

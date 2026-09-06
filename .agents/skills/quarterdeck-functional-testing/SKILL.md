@@ -65,7 +65,7 @@ Use a prompt directive such as `[agent-lab:idle] investigate terminal restore` w
 
 This protocol is available in the deterministic fake lanes. Claude-only lifecycle scenarios and commands require `--agent fake-claude`; Codex rendered-screen commands and Pi run-settlement commands remain provider-specific. In real mode, use an ordinary tiny synthetic prompt and interact with the provider's actual forms exactly as rendered, including numeric choices and arrow selection plus Enter when relevant.
 
-A newly spawned `[agent-lab:idle]` native session must appear as Review/Unconfirmed, not Running. Use `/working` whenever a scenario needs authoritative Running before testing interruption, permission, or completion convergence.
+A fresh explicit Start with `[agent-lab:idle]` initially appears Running, then becomes Review/Unconfirmed after the 45-second work-confirmation deadline. Restores remain conservative. Use `/working` whenever a scenario needs authoritative Running before testing interruption, permission, or completion convergence.
 
 ### Select only the relevant regression class
 
