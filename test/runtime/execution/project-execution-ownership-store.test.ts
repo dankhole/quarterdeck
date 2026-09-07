@@ -1,9 +1,9 @@
 import { access, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskExecutionOwnership } from "../../../src/execution";
+import { lockedFileSystem } from "../../../src/fs";
 import {
 	ExecutionOperationIdentityConflictError,
 	ExecutionOwnershipJournalCorruptionError,
@@ -56,6 +56,59 @@ afterEach(() => {
 });
 
 describe.sequential("ProjectExecutionOwnershipStore", () => {
+	it("invalidates before a failed commit and requires a new durable verification", async () => {
+		const store = new ProjectExecutionOwnershipStore();
+		const scope = { projectId: "project-1", projectPath: "/synthetic/project" };
+		await store.putOwnership(scope, { ...ownership(), state: "native_tui", ownerProcess: null });
+		const reader = store.createNativeInputAuthorization(scope, "task-1");
+		const observed = await reader.read();
+		const write = vi.spyOn(lockedFileSystem, "writeJsonFileAtomic").mockImplementationOnce(async () => {
+			expect(reader.isCurrent(observed)).toBe(false);
+			throw new Error("synthetic disk failure");
+		});
+		try {
+			await expect(
+				store.beginHandoff(scope, {
+					operationId: "failed-input-handoff",
+					taskId: "task-1",
+					targetOwner: "structured",
+					expectedOwnerGeneration: 2,
+				}),
+			).rejects.toThrow("synthetic disk failure");
+			expect(reader.isCurrent(observed)).toBe(false);
+			expect((await reader.read())?.state).toBe("native_tui");
+			expect(reader.isCurrent(observed)).toBe(true);
+		} finally {
+			write.mockRestore();
+			reader.dispose();
+		}
+	});
+
+	it("keeps scoped input observations current through native changes, handoff and deletion", async () => {
+		const store = new ProjectExecutionOwnershipStore();
+		const scope = { projectId: "project-1", projectPath: "/synthetic/project" };
+		const native = { ...ownership(), state: "native_tui" as const, ownerProcess: null };
+		await store.putOwnership(scope, native);
+		const reader = store.createNativeInputAuthorization(scope, native.taskId);
+		const reads = vi.spyOn(store, "getOwnership");
+		const first = await reader.read();
+		await reader.read();
+		expect(reads).toHaveBeenCalledTimes(1);
+		await store.beginHandoff(scope, {
+			operationId: "input-handoff",
+			taskId: native.taskId,
+			targetOwner: "structured",
+			expectedOwnerGeneration: native.ownerGeneration,
+		});
+		expect(reader.isCurrent(first)).toBe(false);
+		expect((await reader.read())?.state).toBe("handoff_to_structured_pending");
+		expect(reads).toHaveBeenCalledTimes(1);
+		await store.removeOwnership(scope, native.taskId);
+		expect(await reader.read()).toBeNull();
+		reader.dispose();
+		reads.mockRestore();
+	});
+
 	it("persists exact ownership identity and rejects operation-id content changes", async () => {
 		const store = new ProjectExecutionOwnershipStore();
 		const scope = { projectId: "project-1", projectPath: "/synthetic/project" };

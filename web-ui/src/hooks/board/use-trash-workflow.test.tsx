@@ -63,6 +63,7 @@ function HookHarness({
 	const [, setIsClearTrashDialogOpen] = useState(false);
 
 	const actions = useTrashWorkflow({
+		clearTrash: async () => null,
 		board,
 		presentLifecycleBoard: setBoard,
 		selectedCard: { card: task, column: { id: "review" } },

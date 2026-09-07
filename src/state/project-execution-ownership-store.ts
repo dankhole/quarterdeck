@@ -1,6 +1,6 @@
 import { COPYFILE_EXCL } from "node:constants";
 import { createHash } from "node:crypto";
-import { copyFile, readFile } from "node:fs/promises";
+import { copyFile, readFile, stat } from "node:fs/promises";
 import { z } from "zod";
 import { createTaggedLogger } from "../core";
 import {
@@ -14,6 +14,7 @@ import {
 	taskInteractionOutcomeSchema,
 } from "../execution/execution-ownership-contracts";
 import { isNodeError, lockedFileSystem } from "../fs";
+import { type NativeInputAuthorization, NativeInputAuthorizationSubscriptions } from "./native-input-authorization";
 import type { ProjectBoardCommandScope } from "./project-board-command-service";
 import { getProjectDirectoryLockRequest, getProjectExecutionOwnershipPath } from "./project-state-utils";
 
@@ -210,15 +211,61 @@ export interface BeginInteractionInput {
 }
 
 export class ProjectExecutionOwnershipStore {
+	private readonly nativeInputAuthorizations = new NativeInputAuthorizationSubscriptions();
+
+	createNativeInputAuthorization(scope: ProjectBoardCommandScope, taskId: string): NativeInputAuthorization {
+		return this.nativeInputAuthorizations.create(
+			scope.projectId,
+			taskId,
+			async () => await this.getOwnership(scope, taskId),
+			async () => await this.readJournalToken(scope),
+		);
+	}
+
+	private async readJournalToken(scope: ProjectBoardCommandScope): Promise<string> {
+		try {
+			// Atomic journal commits replace the file on every supported platform.
+			// Include inode and nanosecond timestamps to detect same-size replacements.
+			const info = await stat(getProjectExecutionOwnershipPath(scope.projectId), { bigint: true });
+			return [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].join(":");
+		} catch (error) {
+			if (isNodeError(error, "ENOENT")) return "absent";
+			throw error;
+		}
+	}
+
+	private async readJournal(scope: ProjectBoardCommandScope): Promise<ExecutionOwnershipJournal> {
+		try {
+			// Callers hold the project lock through both content read and token capture.
+			const journal = await readJournal(scope);
+			this.nativeInputAuthorizations.publish(scope.projectId, journal.owners, await this.readJournalToken(scope));
+			return journal;
+		} catch (error) {
+			this.nativeInputAuthorizations.invalidate(scope.projectId);
+			throw error;
+		}
+	}
+
+	private async writeJournal(scope: ProjectBoardCommandScope, journal: ExecutionOwnershipJournal): Promise<void> {
+		this.nativeInputAuthorizations.invalidateChanged(scope.projectId, journal.owners);
+		try {
+			await writeJournal(scope, journal);
+			this.nativeInputAuthorizations.publish(scope.projectId, journal.owners, await this.readJournalToken(scope));
+		} catch (error) {
+			this.nativeInputAuthorizations.invalidate(scope.projectId);
+			throw error;
+		}
+	}
+
 	async getOwnership(scope: ProjectBoardCommandScope, taskId: string): Promise<TaskExecutionOwnership | null> {
 		return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(scope.projectId), async () => {
-			return (await readJournal(scope)).owners[taskId] ?? null;
+			return (await this.readJournal(scope)).owners[taskId] ?? null;
 		});
 	}
 
 	async listOwnership(scope: ProjectBoardCommandScope): Promise<TaskExecutionOwnership[]> {
 		return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(scope.projectId), async () => {
-			return Object.values((await readJournal(scope)).owners);
+			return Object.values((await this.readJournal(scope)).owners);
 		});
 	}
 
@@ -229,8 +276,8 @@ export class ProjectExecutionOwnershipStore {
 		const ownership = taskExecutionOwnershipSchema.parse(ownershipInput);
 		if (ownership.projectId !== scope.projectId) throw new Error("Execution ownership project scope mismatch.");
 		return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(scope.projectId), async () => {
-			const journal = await readJournal(scope);
-			await writeJournal(scope, { ...journal, owners: { ...journal.owners, [ownership.taskId]: ownership } });
+			const journal = await this.readJournal(scope);
+			await this.writeJournal(scope, { ...journal, owners: { ...journal.owners, [ownership.taskId]: ownership } });
 			return ownership;
 		});
 	}
@@ -244,13 +291,13 @@ export class ProjectExecutionOwnershipStore {
 		if (ownership.projectId !== scope.projectId) throw new Error("Execution ownership project scope mismatch.");
 		const expectedFingerprint = expectedCurrent ? fingerprintExecutionOperation(expectedCurrent) : null;
 		return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(scope.projectId), async () => {
-			const journal = await readJournal(scope);
+			const journal = await this.readJournal(scope);
 			const current = journal.owners[ownership.taskId] ?? null;
 			const currentFingerprint = current ? fingerprintExecutionOperation(current) : null;
 			if (currentFingerprint !== expectedFingerprint) {
 				return { ownership: current, applied: false };
 			}
-			await writeJournal(scope, { ...journal, owners: { ...journal.owners, [ownership.taskId]: ownership } });
+			await this.writeJournal(scope, { ...journal, owners: { ...journal.owners, [ownership.taskId]: ownership } });
 			return { ownership, applied: true };
 		});
 	}
@@ -261,7 +308,7 @@ export class ProjectExecutionOwnershipStore {
 		updater: (current: TaskExecutionOwnership) => TaskExecutionOwnership,
 	): Promise<TaskExecutionOwnership> {
 		return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(scope.projectId), async () => {
-			const journal = await readJournal(scope);
+			const journal = await this.readJournal(scope);
 			const current = journal.owners[taskId];
 			if (!current) throw new Error(`Execution ownership for task "${taskId}" was not found.`);
 			const next = taskExecutionOwnershipSchema.parse({
@@ -270,17 +317,17 @@ export class ProjectExecutionOwnershipStore {
 				taskId: current.taskId,
 				updatedAt: Date.now(),
 			});
-			await writeJournal(scope, { ...journal, owners: { ...journal.owners, [taskId]: next } });
+			await this.writeJournal(scope, { ...journal, owners: { ...journal.owners, [taskId]: next } });
 			return next;
 		});
 	}
 
 	async removeOwnership(scope: ProjectBoardCommandScope, taskId: string): Promise<void> {
 		await lockedFileSystem.withLock(getProjectDirectoryLockRequest(scope.projectId), async () => {
-			const journal = await readJournal(scope);
+			const journal = await this.readJournal(scope);
 			const owners = { ...journal.owners };
 			delete owners[taskId];
-			await writeJournal(scope, {
+			await this.writeJournal(scope, {
 				...journal,
 				owners,
 				handoffs: journal.handoffs.filter((operation) => operation.taskId !== taskId),
@@ -295,7 +342,7 @@ export class ProjectExecutionOwnershipStore {
 	): Promise<{ operation: PersistedExecutionHandoffOperation; replayed: boolean }> {
 		const fingerprint = fingerprintExecutionOperation(input);
 		return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(scope.projectId), async () => {
-			const journal = await readJournal(scope);
+			const journal = await this.readJournal(scope);
 			const existing = journal.handoffs.find((candidate) => candidate.operationId === input.operationId);
 			if (existing) {
 				if (existing.fingerprint !== fingerprint)
@@ -332,7 +379,7 @@ export class ProjectExecutionOwnershipStore {
 				},
 				updatedAt: now,
 			});
-			await writeJournal(scope, {
+			await this.writeJournal(scope, {
 				...journal,
 				owners: { ...journal.owners, [input.taskId]: ownership },
 				handoffs: [...journal.handoffs, operation],
@@ -346,7 +393,9 @@ export class ProjectExecutionOwnershipStore {
 		operationId: string,
 	): Promise<PersistedExecutionHandoffOperation | null> {
 		return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(scope.projectId), async () => {
-			return (await readJournal(scope)).handoffs.find((candidate) => candidate.operationId === operationId) ?? null;
+			return (
+				(await this.readJournal(scope)).handoffs.find((candidate) => candidate.operationId === operationId) ?? null
+			);
 		});
 	}
 
@@ -356,7 +405,7 @@ export class ProjectExecutionOwnershipStore {
 	): Promise<{ operation: PersistedExecutionHandoffOperation; replayed: boolean }> {
 		const fingerprint = fingerprintExecutionOperation(input);
 		return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(scope.projectId), async () => {
-			const journal = await readJournal(scope);
+			const journal = await this.readJournal(scope);
 			const existing = journal.handoffs.find((candidate) => candidate.operationId === input.operationId);
 			if (existing) {
 				if (existing.fingerprint !== fingerprint)
@@ -377,7 +426,7 @@ export class ProjectExecutionOwnershipStore {
 				requestedAt: now,
 				updatedAt: now,
 			});
-			await writeJournal(scope, { ...journal, handoffs: [...journal.handoffs, operation] });
+			await this.writeJournal(scope, { ...journal, handoffs: [...journal.handoffs, operation] });
 			return { operation, replayed: false };
 		});
 	}
@@ -388,7 +437,7 @@ export class ProjectExecutionOwnershipStore {
 		outcome: ExecutionHandoffOutcome,
 	): Promise<PersistedExecutionHandoffOperation> {
 		return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(scope.projectId), async () => {
-			const journal = await readJournal(scope);
+			const journal = await this.readJournal(scope);
 			const index = journal.handoffs.findIndex((candidate) => candidate.operationId === operationId);
 			const current = journal.handoffs[index];
 			if (!current) throw new Error(`Execution handoff "${operationId}" was not found.`);
@@ -400,7 +449,7 @@ export class ProjectExecutionOwnershipStore {
 			});
 			const handoffs = journal.handoffs.slice();
 			handoffs[index] = next;
-			await writeJournal(scope, { ...journal, handoffs });
+			await this.writeJournal(scope, { ...journal, handoffs });
 			return next;
 		});
 	}
@@ -416,7 +465,7 @@ export class ProjectExecutionOwnershipStore {
 		operation: PersistedExecutionHandoffOperation;
 	}> {
 		return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(scope.projectId), async () => {
-			const journal = await readJournal(scope);
+			const journal = await this.readJournal(scope);
 			const currentOwnership = journal.owners[taskId];
 			if (!currentOwnership) throw new Error(`Execution ownership for task "${taskId}" was not found.`);
 			const operationIndex = journal.handoffs.findIndex((candidate) => candidate.operationId === operationId);
@@ -440,7 +489,7 @@ export class ProjectExecutionOwnershipStore {
 			});
 			const handoffs = journal.handoffs.slice();
 			handoffs[operationIndex] = operation;
-			await writeJournal(scope, {
+			await this.writeJournal(scope, {
 				...journal,
 				owners: { ...journal.owners, [taskId]: ownership },
 				handoffs,
@@ -460,7 +509,7 @@ export class ProjectExecutionOwnershipStore {
 		operation: PersistedExecutionHandoffOperation | null;
 	}> {
 		return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(scope.projectId), async () => {
-			const journal = await readJournal(scope);
+			const journal = await this.readJournal(scope);
 			const currentOwnership = journal.owners[taskId];
 			if (!currentOwnership) throw new Error(`Execution ownership for task "${taskId}" was not found.`);
 			const operationIndex = operationId
@@ -487,7 +536,7 @@ export class ProjectExecutionOwnershipStore {
 				: null;
 			const handoffs = journal.handoffs.slice();
 			if (operation) handoffs[operationIndex] = operation;
-			await writeJournal(scope, {
+			await this.writeJournal(scope, {
 				...journal,
 				owners: { ...journal.owners, [taskId]: ownership },
 				handoffs,
@@ -502,7 +551,7 @@ export class ProjectExecutionOwnershipStore {
 	): Promise<{ operation: PersistedTaskInteractionOperation; replayed: boolean }> {
 		const fingerprint = fingerprintExecutionOperation(input);
 		return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(scope.projectId), async () => {
-			const journal = await readJournal(scope);
+			const journal = await this.readJournal(scope);
 			const existing = journal.interactions.find((candidate) => candidate.operationId === input.operationId);
 			if (existing) {
 				if (existing.fingerprint !== fingerprint)
@@ -528,7 +577,7 @@ export class ProjectExecutionOwnershipStore {
 				requestedAt: now,
 				updatedAt: now,
 			};
-			await writeJournal(scope, { ...journal, interactions: [...journal.interactions, operation] });
+			await this.writeJournal(scope, { ...journal, interactions: [...journal.interactions, operation] });
 			return { operation, replayed: false };
 		});
 	}
@@ -539,7 +588,7 @@ export class ProjectExecutionOwnershipStore {
 		input: { outcome: TaskInteractionOutcome; providerTurnId?: string | null; outcomeUnknown?: boolean },
 	): Promise<PersistedTaskInteractionOperation> {
 		return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(scope.projectId), async () => {
-			const journal = await readJournal(scope);
+			const journal = await this.readJournal(scope);
 			const index = journal.interactions.findIndex((candidate) => candidate.operationId === operationId);
 			const current = journal.interactions[index];
 			if (!current) throw new Error(`Task interaction "${operationId}" was not found.`);
@@ -552,7 +601,7 @@ export class ProjectExecutionOwnershipStore {
 			});
 			const interactions = journal.interactions.slice();
 			interactions[index] = next;
-			await writeJournal(scope, { ...journal, interactions });
+			await this.writeJournal(scope, { ...journal, interactions });
 			return next;
 		});
 	}
@@ -563,7 +612,8 @@ export class ProjectExecutionOwnershipStore {
 	): Promise<PersistedTaskInteractionOperation | null> {
 		return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(scope.projectId), async () => {
 			return (
-				(await readJournal(scope)).interactions.find((candidate) => candidate.operationId === operationId) ?? null
+				(await this.readJournal(scope)).interactions.find((candidate) => candidate.operationId === operationId) ??
+				null
 			);
 		});
 	}

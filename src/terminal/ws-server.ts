@@ -8,7 +8,7 @@ import { WebSocketServer } from "ws";
 import { getQuarterdeckRuntimeOrigin } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import { handleSocketUpgrade } from "../server/middleware";
-import type { TerminalSessionService } from "./terminal-session-service";
+import type { TerminalInputWriter, TerminalSessionService } from "./terminal-session-service";
 import { createTerminalWsIoOutputState } from "./terminal-ws-backpressure-policy";
 import { TerminalWsConnectionRegistry, type TerminalWsDiagnosticSnapshot } from "./terminal-ws-connection-registry";
 import { ensureTerminalWsOutputListener } from "./terminal-ws-output-fanout";
@@ -26,12 +26,11 @@ import { TerminalWsRestoreCoordinator } from "./terminal-ws-restore-coordinator"
 export interface CreateTerminalWebSocketBridgeRequest {
 	server: Server;
 	resolveTerminalManager: (projectId: string) => TerminalSessionService | null;
-	writeTaskInput?: (input: {
+	createTaskInputWriter?: (input: {
 		projectId: string;
 		taskId: string;
 		terminalManager: TerminalSessionService;
-		data: Buffer;
-	}) => Promise<ReturnType<TerminalSessionService["writeInput"]>>;
+	}) => TerminalInputWriter;
 	stopTaskSession?: (input: {
 		projectId: string;
 		taskId: string;
@@ -51,7 +50,7 @@ export interface TerminalWebSocketBridge {
 export function createTerminalWebSocketBridge({
 	server,
 	resolveTerminalManager,
-	writeTaskInput,
+	createTaskInputWriter,
 	stopTaskSession,
 	shouldRecoverStaleSession,
 	isTerminalIoWebSocketPath,
@@ -187,14 +186,13 @@ export function createTerminalWebSocketBridge({
 			previousIoSocket.close(1000, "Replaced by newer terminal stream.");
 		}
 
+		const inputWriter = createTaskInputWriter?.({ projectId, taskId, terminalManager });
 		ws.on("message", (rawMessage: RawData) => {
 			viewerState.lastProtocolActivityAt = Date.now();
 			void (async () => {
 				try {
 					const data = rawDataToBuffer(rawMessage);
-					const summary = writeTaskInput
-						? await writeTaskInput({ projectId, taskId, terminalManager, data })
-						: terminalManager.writeInput(taskId, data);
+					const summary = inputWriter ? await inputWriter.write(data) : terminalManager.writeInput(taskId, data);
 					if (!summary) ws.close(1011, "Task session is not running.");
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
@@ -204,6 +202,7 @@ export function createTerminalWebSocketBridge({
 		});
 
 		ws.on("close", () => {
+			inputWriter?.dispose();
 			registry.detachIoSocket(connectionKey, viewerState, ws);
 			diagnostics?.recordEvent(
 				"terminal.io_disconnected",

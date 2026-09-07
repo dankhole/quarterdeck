@@ -1,12 +1,10 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useMemo, useRef, useState } from "react";
-
 import {
 	findTrashTaskIds,
 	type HardDeleteDialogState,
 	INITIAL_HARD_DELETE_DIALOG_STATE,
 	INITIAL_TRASH_WARNING_STATE,
-	runClearTrashCleanup,
 	type TrashWarningState,
 } from "@/hooks/board/trash-workflow";
 import type { UseTaskLifecycleResult } from "@/hooks/board/use-task-lifecycle";
@@ -15,6 +13,7 @@ import { findCardSelection, moveTaskToColumn } from "@/state/board-state";
 import { clearTaskWorktreeInfo } from "@/stores/project-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { createClientLogger } from "@/utils/client-logger";
+import type { ClearTrash } from "./use-clear-trash-operation";
 
 export type { HardDeleteDialogState, TrashWarningState } from "@/hooks/board/trash-workflow";
 export { INITIAL_HARD_DELETE_DIALOG_STATE, INITIAL_TRASH_WARNING_STATE } from "@/hooks/board/trash-workflow";
@@ -35,6 +34,7 @@ interface UseTrashWorkflowInput {
 	selectedTaskId: string | null;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 	setIsClearTrashDialogOpen: Dispatch<SetStateAction<boolean>>;
+	clearTrash: ClearTrash;
 	executeTaskLifecycle: UseTaskLifecycleOperationsResult["executeTaskLifecycle"];
 	resumeTaskFromTrash: UseTaskLifecycleResult["resumeTaskFromTrash"];
 	tryProgrammaticCardMove: (
@@ -84,9 +84,9 @@ export function useTrashWorkflow({
 	board,
 	presentLifecycleBoard,
 	selectedCard,
-	selectedTaskId,
 	setSelectedTaskId,
 	setIsClearTrashDialogOpen,
+	clearTrash,
 	executeTaskLifecycle,
 	resumeTaskFromTrash,
 	tryProgrammaticCardMove,
@@ -254,25 +254,17 @@ export function useTrashWorkflow({
 			return;
 		}
 
-		void runClearTrashCleanup(taskIds, async (taskId) => {
+		const tasks = taskIds.flatMap((taskId) => {
 			const selection = findCardSelection(board, taskId);
-			if (!selection || selection.column.id !== "trash") {
-				return;
-			}
-			const result = await executeTaskLifecycle({
-				kind: "delete",
-				taskId,
-				taskCreatedAt: selection.card.createdAt,
-			});
-			if (!result?.ok) {
-				return;
-			}
-			if (selectedTaskId === taskId) {
-				setSelectedTaskId(null);
-			}
-			clearTaskWorktreeInfo(result.operation.projectId, taskId);
+			return selection?.column.id === "trash" ? [{ taskId, taskCreatedAt: selection.card.createdAt }] : [];
 		});
-	}, [board, executeTaskLifecycle, selectedTaskId, setIsClearTrashDialogOpen, setSelectedTaskId, trashTaskIds]);
+		void clearTrash(tasks).then((result) => {
+			if (!result) return;
+			for (const task of result.results) {
+				if (task.ok) clearTaskWorktreeInfo(result.projectId, task.taskId);
+			}
+		});
+	}, [board, clearTrash, setIsClearTrashDialogOpen, trashTaskIds]);
 
 	const handleCancelTrashWarning = useCallback(() => {
 		// When the user clicks confirm, Radix AlertDialog fires onOpenChange(false) which triggers

@@ -165,3 +165,29 @@ export type RuntimeTaskLifecycleResult = z.infer<typeof runtimeTaskLifecycleResu
 export const runtimeTaskLifecycleGetRequestSchema = z.object({
 	operationId: operationIdSchema,
 });
+
+export const runtimeClearTrashRequestSchema = z
+	.object({
+		operationId: operationIdSchema,
+		expectedRevision: expectedRevisionSchema,
+		tasks: z.array(z.object({ taskId: taskIdSchema, taskCreatedAt: taskCreatedAtSchema })).min(1),
+	})
+	.refine((request) => new Set(request.tasks.map((task) => task.taskId)).size === request.tasks.length, {
+		message: "Clear Trash task identities must be unique.",
+	});
+export type RuntimeClearTrashRequest = z.infer<typeof runtimeClearTrashRequestSchema>;
+
+export const runtimeClearTrashResultSchema = z.object({
+	projectId: z.string(),
+	results: z.array(
+		z.object({
+			taskId: taskIdSchema,
+			taskCreatedAt: taskCreatedAtSchema,
+			ok: z.boolean(),
+			outcomeCode: z.union([runtimeTaskLifecycleOutcomeCodeSchema, z.literal("unconfirmed")]),
+			error: z.string().optional(),
+		}),
+	),
+	state: runtimeProjectStateResponseSchema,
+});
+export type RuntimeClearTrashResult = z.infer<typeof runtimeClearTrashResultSchema>;

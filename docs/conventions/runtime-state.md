@@ -35,6 +35,8 @@ This makes sequential bulk starts resilient without weakening identity protectio
 
 A Trash transition that unblocks linked Backlog tasks journals the linked-task plan and deterministic child operation IDs before moving the parent. The move consumes the exact revision from which the plan was derived; canonical dependency cleanup after the move intentionally removes the evidence needed to rediscover those children.
 
+Clear Trash captures the originating project, initial revision, and exact task IDs/creation times before awaiting the board-command flush. It sends one typed request to `ProjectTaskLifecycleService.clearTrash`, which runs four bounded workers through the existing per-task lifecycle service and returns compact outcomes plus one final authoritative state. Each child has a deterministic operation ID; a lost response can retry the same request once. Navigation must not retarget the revision, stop the remaining work, or apply the response to another project. Progress and completion use one aggregate toast. Failed identities remain protected by normal Trash/source-column guards; if a deleted task's old receipt has already been pruned, report deletion as unconfirmed rather than repeating destructive effects or claiming confirmed success.
+
 ## Runtime-owned projections
 
 - Runtime-owned session, generated-title, branch/base-ref, and worktree metadata projections go through the same command service and internal mutation lock before the newer board is published.

@@ -11,6 +11,11 @@ export interface TerminalSessionInputOptions {
 	explicitUserSubmission?: boolean;
 }
 
+export interface TerminalInputWriter {
+	write(data: Buffer): Promise<RuntimeTaskSessionSummary | null>;
+	dispose(): void;
+}
+
 export interface TerminalSessionService {
 	attach(taskId: string, listener: TerminalSessionListener): (() => void) | null;
 	getRestoreSnapshot(taskId: string): Promise<TerminalRestoreSnapshot | null>;

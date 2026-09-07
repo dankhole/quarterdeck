@@ -1,6 +1,8 @@
 import type {
 	RuntimeAutoMergedFilesRequest,
 	RuntimeAutoMergedFilesResponse,
+	RuntimeClearTrashRequest,
+	RuntimeClearTrashResult,
 	RuntimeConfigResponse,
 	RuntimeConfigSaveRequest,
 	RuntimeConflictAbortRequest,
@@ -119,6 +121,7 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcProjectScope,
 			input: RuntimeTaskSessionStopRequest,
 		) => Promise<RuntimeTaskSessionStopResponse>;
+		clearTrash: (scope: RuntimeTrpcProjectScope, input: RuntimeClearTrashRequest) => Promise<RuntimeClearTrashResult>;
 		executeTaskLifecycle: (
 			scope: RuntimeTrpcProjectScope,
 			input: RuntimeTaskLifecycleCommand,

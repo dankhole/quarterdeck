@@ -90,6 +90,7 @@ function HookHarness({
 	const [, setSelectedTaskId] = useState<string | null>(null);
 	const [, setIsClearTrashDialogOpen] = useState(false);
 	const actions = useBoardInteractions({
+		clearTrash: async () => null,
 		board,
 		setBoard,
 		presentLifecycleBoard: setBoard,

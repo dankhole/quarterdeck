@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import { resolveTaskStartGeometry } from "@/hooks/board/task-session-geometry";
 import type { FlushProjectBoardCommandsResult } from "@/hooks/project/use-project-sync";
@@ -18,6 +17,7 @@ import {
 	getTaskLifecyclePendingLabel,
 	type TaskLifecycleCommandDraft,
 } from "./task-lifecycle-operations";
+import { type ClearTrash, useClearTrashOperation } from "./use-clear-trash-operation";
 
 const log = createClientLogger("task-lifecycle");
 
@@ -41,6 +41,7 @@ interface UseTaskLifecycleOperationsInput {
 }
 
 export interface UseTaskLifecycleOperationsResult {
+	clearTrash: ClearTrash;
 	executeTaskLifecycle: (draft: TaskLifecycleCommandDraft) => Promise<RuntimeTaskLifecycleResult | null>;
 	pendingTaskLifecycleById: Record<string, PendingTaskLifecycleOperation>;
 }
@@ -81,6 +82,12 @@ export function useTaskLifecycleOperations({
 	applyLifecycleProjectState,
 	refreshProjectState,
 }: UseTaskLifecycleOperationsInput): UseTaskLifecycleOperationsResult {
+	const clearTrash = useClearTrashOperation({
+		currentProjectId,
+		flushBoardCommands,
+		getAuthoritativeRevision,
+		applyLifecycleProjectState,
+	});
 	const [pendingTaskLifecycleByScope, setPendingTaskLifecycleByScope] = useState<
 		Record<string, ScopedPendingTaskLifecycleOperation>
 	>({});
@@ -208,5 +215,5 @@ export function useTaskLifecycleOperations({
 		[applyLifecycleProjectState, currentProjectId, flushBoardCommands, getAuthoritativeRevision, refreshProjectState],
 	);
 
-	return { executeTaskLifecycle, pendingTaskLifecycleById };
+	return { clearTrash, executeTaskLifecycle, pendingTaskLifecycleById };
 }

@@ -31,7 +31,7 @@ export interface CreateRuntimeApiDependencies {
 	taskResourceOperations: TaskResourceOperationRunner;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	hostIntegrations: IRuntimeHostIntegrations;
-	taskLifecycle?: Pick<ProjectTaskLifecycleService, "execute" | "getOperation">;
+	taskLifecycle?: Pick<ProjectTaskLifecycleService, "execute" | "getOperation" | "clearTrash">;
 	assertNativeStartAllowed?: (scope: RuntimeTrpcProjectScope, taskId: string) => Promise<void>;
 	onTaskSessionStarted?: (scope: RuntimeTrpcProjectScope, result: TaskSessionStartServiceResult) => Promise<void>;
 	assertNativeInputAllowed?: (scope: RuntimeTrpcProjectScope, taskId: string) => Promise<void>;
@@ -90,6 +90,14 @@ class RuntimeApiImpl implements RuntimeApi {
 			throw new Error("Task lifecycle service is not configured.");
 		}
 		return await this.deps.taskLifecycle.execute(projectScope, input);
+	}
+
+	async clearTrash(
+		projectScope: RuntimeTrpcProjectScope,
+		input: Parameters<ProjectTaskLifecycleService["clearTrash"]>[1],
+	) {
+		if (!this.deps.taskLifecycle) throw new Error("Task lifecycle service is not configured.");
+		return await this.deps.taskLifecycle.clearTrash(projectScope, input);
 	}
 
 	async getTaskLifecycleOperation(projectScope: RuntimeTrpcProjectScope, operationId: string) {

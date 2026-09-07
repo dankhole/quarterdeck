@@ -171,6 +171,7 @@ const noopBoardContext: BoardContextValue = {
 	fetchTaskWorktreeInfo: async () => null,
 	sendTaskSessionInput: async () => ({ ok: true }),
 	taskLifecycle: {
+		clearTrash: async () => null,
 		executeTaskLifecycle: async () => null,
 		pendingTaskLifecycleById: {},
 	},

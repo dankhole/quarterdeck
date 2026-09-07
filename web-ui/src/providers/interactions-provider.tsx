@@ -136,6 +136,7 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 		setSelectedTaskId,
 		setIsClearTrashDialogOpen,
 		closeGitHistory,
+		clearTrash: taskLifecycle.clearTrash,
 		executeTaskLifecycle: taskLifecycle.executeTaskLifecycle,
 		showTrashWorktreeNotice,
 		saveTrashWorktreeNoticeDismissed,

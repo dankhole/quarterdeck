@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 
 import type {
 	RuntimeBoardCard,
+	RuntimeClearTrashRequest,
+	RuntimeClearTrashResult,
 	RuntimeProjectStateResponse,
 	RuntimeTaskLifecycleCommand,
 	RuntimeTaskLifecycleOperation,
@@ -19,6 +21,7 @@ import {
 	getReadyLinkedTaskIdsForTrashTransition,
 	getRuntimeDetailTerminalTaskId,
 	getTaskColumnId,
+	runtimeClearTrashRequestSchema,
 	runtimeTaskLifecycleCommandSchema,
 } from "../core";
 import {
@@ -35,6 +38,8 @@ import {
 } from "../state";
 import type { StopTaskSessionResult } from "../terminal/session-manager-types";
 import { archiveTaskWorktreeForTrash, ensureTaskWorktreeIfDoesntExist, purgeTaskWorkspaceForDelete } from "../workdir";
+
+import { clearTrashTasks } from "./clear-trash";
 
 type BoardCommandService = Pick<ProjectBoardCommandService, "execute">;
 
@@ -208,6 +213,17 @@ export class ProjectTaskLifecycleService {
 				this.inFlightByKey.delete(key);
 			}
 		}
+	}
+
+	async clearTrash(
+		scope: ProjectBoardCommandScope,
+		input: RuntimeClearTrashRequest,
+	): Promise<RuntimeClearTrashResult> {
+		const request = runtimeClearTrashRequestSchema.parse(input);
+		const results = await clearTrashTasks(scope, request, (projectScope, command) =>
+			this.execute(projectScope, command),
+		);
+		return { projectId: scope.projectId, results, state: await this.loadState(scope) };
 	}
 
 	async getOperation(

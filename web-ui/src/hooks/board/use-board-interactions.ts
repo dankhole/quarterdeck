@@ -39,6 +39,7 @@ interface UseBoardInteractionsInput {
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 	setIsClearTrashDialogOpen: Dispatch<SetStateAction<boolean>>;
 	closeGitHistory: () => void;
+	clearTrash: UseTaskLifecycleOperationsResult["clearTrash"];
 	executeTaskLifecycle: UseTaskLifecycleOperationsResult["executeTaskLifecycle"];
 	showTrashWorktreeNotice: boolean;
 	saveTrashWorktreeNoticeDismissed: () => void;
@@ -85,6 +86,7 @@ export function useBoardInteractions({
 	setSelectedTaskId,
 	setIsClearTrashDialogOpen,
 	closeGitHistory,
+	clearTrash,
 	executeTaskLifecycle,
 	showTrashWorktreeNotice,
 	saveTrashWorktreeNoticeDismissed,
@@ -169,6 +171,7 @@ export function useBoardInteractions({
 		selectedTaskId,
 		setSelectedTaskId,
 		setIsClearTrashDialogOpen,
+		clearTrash,
 		executeTaskLifecycle,
 		resumeTaskFromTrash,
 		tryProgrammaticCardMove,

@@ -4,6 +4,8 @@
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { z } from "zod";
 import {
+	runtimeClearTrashRequestSchema,
+	runtimeClearTrashResultSchema,
 	runtimeConfigResponseSchema,
 	runtimeConfigSaveRequestSchema,
 	runtimeHookIngestRequestSchema,
@@ -60,6 +62,10 @@ const runtimeRouter = t.router({
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.runtimeApi.stopTaskSession(ctx.projectScope, input);
 		}),
+	clearTrash: projectProcedure
+		.input(runtimeClearTrashRequestSchema)
+		.output(runtimeClearTrashResultSchema)
+		.mutation(({ ctx, input }) => ctx.runtimeApi.clearTrash(ctx.projectScope, input)),
 	executeTaskLifecycle: projectProcedure
 		.input(runtimeTaskLifecycleCommandSchema)
 		.output(runtimeTaskLifecycleResultSchema)

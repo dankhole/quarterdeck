@@ -225,6 +225,7 @@ describe("createTerminalWebSocketBridge", () => {
 	let server: Server;
 	let bridge: TerminalWebSocketBridge;
 	let terminalManager: FakeTerminalManager;
+	let inputWriters: { write: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }[];
 	let shouldRecoverStaleSession: ((projectId: string, taskId: string) => boolean | Promise<boolean>) | undefined;
 	let runtimeUrl: string;
 	let originalRuntimePort: number;
@@ -232,6 +233,7 @@ describe("createTerminalWebSocketBridge", () => {
 	beforeEach(async () => {
 		originalRuntimePort = getQuarterdeckRuntimePort();
 		terminalManager = new FakeTerminalManager();
+		inputWriters = [];
 		shouldRecoverStaleSession = undefined;
 		server = createServer((_request, response) => {
 			response.writeHead(404);
@@ -240,6 +242,11 @@ describe("createTerminalWebSocketBridge", () => {
 		bridge = createTerminalWebSocketBridge({
 			server,
 			resolveTerminalManager: (projectId) => (projectId === PROJECT_ID ? terminalManager : null),
+			createTaskInputWriter: () => {
+				const writer = { write: vi.fn(async () => createSummary()), dispose: vi.fn() };
+				inputWriters.push(writer);
+				return writer;
+			},
 			shouldRecoverStaleSession: (projectId, taskId) => shouldRecoverStaleSession?.(projectId, taskId) ?? true,
 			isTerminalIoWebSocketPath: (pathname) => pathname === "/api/terminal/io",
 			isTerminalControlWebSocketPath: (pathname) => pathname === "/api/terminal/control",
@@ -266,6 +273,24 @@ describe("createTerminalWebSocketBridge", () => {
 				resolve();
 			});
 		});
+	});
+
+	it("uses one writer per IO connection and disposes it on replacement and disconnect", async () => {
+		const url = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=input-viewer`;
+		const first = await openQueuedWebSocket(url);
+		first.socket.send("a");
+		first.socket.send("b");
+		await waitForAssertion(() => expect(inputWriters[0]?.write).toHaveBeenCalledTimes(2));
+		expect(inputWriters).toHaveLength(1);
+		expect(inputWriters[0]?.write).toHaveBeenNthCalledWith(1, Buffer.from("a"));
+		expect(terminalManager.writeInput).not.toHaveBeenCalled();
+		const second = await openQueuedWebSocket(url);
+		await waitForAssertion(() => expect(inputWriters[0]?.dispose).toHaveBeenCalledTimes(1));
+		expect(inputWriters).toHaveLength(2);
+		second.socket.send("c");
+		await waitForAssertion(() => expect(inputWriters[1]?.write).toHaveBeenCalledWith(Buffer.from("c")));
+		await closeSocket(second.socket);
+		await waitForAssertion(() => expect(inputWriters[1]?.dispose).toHaveBeenCalledTimes(1));
 	});
 
 	it("broadcasts one PTY session to multiple viewers", async () => {

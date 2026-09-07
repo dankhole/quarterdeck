@@ -19,6 +19,9 @@
 
 ## [0.12.5] — 2026-09-01
 
+- Terminal typing no longer reads and locks the project ownership journal for every input message. Connections retain verified ownership with immediate local invalidation, checks for other runtimes' ownership changes, and exact PTY checks, preventing an unchanged journal from waiting behind unrelated project writes.
+- Clear Trash continues across project navigation, uses one server request, and shows aggregate progress and completion instead of per-task loading errors.
+
 ### Release: install Quarterdeck directly from npm
 
 - Quarterdeck's first supported public npm release installs the complete CLI with `npm install --global quarterdeck` or runs on demand with `npx --yes quarterdeck@latest`. Source linking remains available for contributors, but is no longer required for regular users.

@@ -31,6 +31,7 @@ import {
 	TaskExecutionOwnershipService,
 	TaskInteractionService,
 } from "../execution";
+import { createNativeTerminalInputWriter } from "../execution/native-terminal-input";
 import { createHookTransitionOutboxReplayer } from "../hook-transition-outbox";
 import type { ProjectBoardCommandService } from "../state";
 import {
@@ -577,13 +578,22 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			const ownership = await executionOwnership.getOwnership({ projectId, projectPath }, taskId);
 			return ownership === null || ownership.state === "native_tui";
 		},
-		writeTaskInput: async ({ projectId, taskId, terminalManager, data }) =>
-			await taskResourceOperations.run(projectId, taskId, async () => {
-				const projectPath = deps.projectRegistry.getProjectPathById(projectId);
-				if (!projectPath) throw new Error("Project is not available.");
-				await executionOwnership.assertNativeStartAllowed({ projectId, projectPath }, taskId);
-				return terminalManager.writeInput(taskId, data);
-			}),
+		createTaskInputWriter: ({ projectId, taskId, terminalManager }) => {
+			const projectPath = deps.projectRegistry.getProjectPathById(projectId);
+			const manager = deps.projectRegistry.getTerminalManagerForProject(projectId);
+			if (!projectPath || !manager || manager !== terminalManager) {
+				return { write: async () => null, dispose: () => {} };
+			}
+			const scope = { projectId, projectPath };
+			return createNativeTerminalInputWriter({
+				scope,
+				taskId,
+				manager,
+				authorization: executionOwnershipStore.createNativeInputAuthorization(scope, taskId),
+				taskResourceOperations,
+				hasStructuredOwner: () => Boolean(structuredOwners.get(projectId, taskId)),
+			});
+		},
 		stopTaskSession: async ({ projectId, taskId }) => {
 			await taskResourceOperations.run(projectId, taskId, async () => {
 				const projectPath = deps.projectRegistry.getProjectPathById(projectId);
