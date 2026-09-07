@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../../../src/title/codex-client", () => ({
+	callCodex: vi.fn(),
+}));
+
 vi.mock("../../../src/title/llm-client", () => ({
 	callLlm: vi.fn(),
 }));
@@ -11,6 +15,9 @@ import {
 	type RuntimeCommitMessageGenerationContext,
 } from "../../../src/title";
 
+import { callCodex } from "../../../src/title/codex-client";
+
+const callCodexMock = vi.mocked(callCodex);
 const callLlmMock = vi.mocked(callLlm);
 
 const SINGLE_FILE_DIFF = `diff --git a/src/auth.ts b/src/auth.ts
@@ -47,18 +54,53 @@ function createContext(
 describe("generateCommitMessage", () => {
 	beforeEach(() => {
 		callLlmMock.mockReset();
+		callCodexMock.mockReset().mockResolvedValue(null);
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	it("returns the LLM response when generation succeeds", async () => {
+	it("prefers saved Codex authentication without calling the gateway", async () => {
+		const message = "Fix auth mode\n\n- Enable strict authentication";
+		callCodexMock.mockResolvedValue(message);
+		await expect(generateCommitMessage(createContext())).resolves.toBe(message);
+		expect(callCodexMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				userPrompt: expect.stringContaining(SINGLE_FILE_DIFF.trim()),
+				model: "gpt-5.6-luna",
+				timeoutMs: 20_000,
+			}),
+		);
+		expect(callLlmMock).not.toHaveBeenCalled();
+	});
+
+	it("waits for Codex failure before using the gateway with identical context", async () => {
+		let finishCodex: (value: null) => void = () => undefined;
+		callCodexMock.mockReturnValue(
+			new Promise((resolve) => {
+				finishCodex = resolve;
+			}),
+		);
+		callLlmMock.mockResolvedValue("fix auth mode");
+		const result = generateCommitMessage(createContext());
+		expect(callLlmMock).not.toHaveBeenCalled();
+		finishCodex(null);
+		await expect(result).resolves.toBe("fix auth mode");
+		expect(callLlmMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				systemPrompt: callCodexMock.mock.calls[0][0].systemPrompt,
+				userPrompt: callCodexMock.mock.calls[0][0].userPrompt,
+			}),
+		);
+	});
+
+	it("returns the LLM response when Codex is unavailable", async () => {
 		callLlmMock.mockResolvedValue("fix auth mode");
 		await expect(generateCommitMessage(createContext())).resolves.toBe("fix auth mode");
 	});
 
-	it("returns null when LLM generation fails", async () => {
+	it("returns null when both providers fail", async () => {
 		callLlmMock.mockResolvedValue(null);
 		await expect(generateCommitMessage(createContext())).resolves.toBeNull();
 	});
@@ -73,6 +115,7 @@ describe("generateCommitMessage", () => {
 			),
 		).resolves.toBeNull();
 		expect(callLlmMock).not.toHaveBeenCalled();
+		expect(callCodexMock).not.toHaveBeenCalled();
 	});
 
 	it("sends selected files and a larger bounded change context to the LLM", async () => {

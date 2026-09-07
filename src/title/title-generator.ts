@@ -1,10 +1,6 @@
-// Lightweight generation for titles and branch names. Title generation uses
-// one selected remote provider plus a deterministic local fallback. Branch
-// names remain LLM-only because a bad branch name is more costly than a bad
-// card label.
 import { createTaggedLogger } from "../core";
-import { callCodex } from "./codex-client";
-import { callLlm, isLlmConfigured } from "./llm-client";
+import { callGenerationHelper } from "./generation-helper";
+import { isLlmConfigured } from "./llm-client";
 import { createFallbackTaskTitle, normalizeGeneratedTitle } from "./title-fallback";
 
 const log = createTaggedLogger("title-gen");
@@ -32,7 +28,6 @@ CRITICAL RULES:
 
 const MAX_TITLE_CONTEXT_LENGTH = 1200;
 const MAX_BRANCH_PROMPT_LENGTH = 1200;
-const CODEX_TITLE_GENERATION_TIMEOUT_MS = 20_000;
 const TITLE_GENERATION_TIMEOUT_MS = 6_000;
 const DEFAULT_CODEX_TITLE_MODEL = "gpt-5.6-luna";
 
@@ -40,18 +35,19 @@ type TitleProvider = "codex" | "llm" | "local";
 
 function resolveTitleProvider(): TitleProvider {
 	const configured = process.env.QUARTERDECK_TITLE_PROVIDER?.trim().toLowerCase();
-	if (!configured || configured === "local") {
+	if (configured === "local") {
 		return "local";
 	}
+	if (!configured) return "codex";
 	if (configured === "codex" || configured === "llm") {
 		return configured;
 	}
 	log.warn("Ignoring unsupported QUARTERDECK_TITLE_PROVIDER value", {
 		configured,
-		fallbackProvider: "local",
+		fallbackProvider: "codex",
 		supportedProviders: ["codex", "llm", "local"],
 	});
-	return "local";
+	return "codex";
 }
 
 function resolveCodexTitleModel(): string {
@@ -77,32 +73,17 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 	}
 
 	const titleContext = prompt.slice(0, MAX_TITLE_CONTEXT_LENGTH);
-	if (titleProvider === "codex") {
-		const codexTitle = normalizeTitle(
-			await callCodex({
-				systemPrompt: TITLE_SYSTEM_PROMPT,
-				userPrompt: titleContext,
-				timeoutMs: CODEX_TITLE_GENERATION_TIMEOUT_MS,
-				model: resolveCodexTitleModel(),
-			}),
-		);
-		if (codexTitle) {
-			log.info("Title generated", { title: codexTitle, provider: "codex" });
-			return codexTitle;
-		}
-	} else if (titleProvider === "llm" && llmConfigured) {
-		const llmTitle = normalizeTitle(
-			await callLlm({
-				systemPrompt: TITLE_SYSTEM_PROMPT,
-				userPrompt: titleContext,
-				maxTokens: 20,
-				timeoutMs: TITLE_GENERATION_TIMEOUT_MS,
-			}),
-		);
-		if (llmTitle) {
-			log.info("Title generated", { title: llmTitle, provider: "llm" });
-			return llmTitle;
-		}
+	if (titleProvider !== "local") {
+		const title = await callGenerationHelper({
+			provider: titleProvider,
+			systemPrompt: TITLE_SYSTEM_PROMPT,
+			userPrompt: titleContext,
+			maxTokens: 20,
+			timeoutMs: TITLE_GENERATION_TIMEOUT_MS,
+			codexModel: resolveCodexTitleModel(),
+			normalize: normalizeTitle,
+		});
+		if (title) return title;
 	}
 
 	const fallbackTitle = createFallbackTaskTitle(prompt);
@@ -121,7 +102,8 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 }
 
 export async function generateBranchName(prompt: string): Promise<string | null> {
-	return callLlm({
+	if (!prompt.trim()) return null;
+	return callGenerationHelper({
 		systemPrompt: BRANCH_NAME_SYSTEM_PROMPT,
 		userPrompt: prompt.slice(0, MAX_BRANCH_PROMPT_LENGTH),
 		maxTokens: 20,

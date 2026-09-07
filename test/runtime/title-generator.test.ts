@@ -12,6 +12,7 @@ import { generateBranchName, generateTaskTitle, _testing as llmTesting } from ".
 
 beforeEach(() => {
 	llmTesting.resetRateLimiter();
+	codexMocks.callCodex.mockReset().mockResolvedValue(null);
 });
 
 afterEach(() => {
@@ -49,7 +50,7 @@ describe("generateTaskTitle", () => {
 		expect(title).toBe("Fix Auth Bug");
 	});
 
-	it("uses deterministic local title generation by default", async () => {
+	it("uses saved Codex login by default", async () => {
 		delete process.env.QUARTERDECK_TITLE_PROVIDER;
 		delete process.env.QUARTERDECK_CODEX_TITLE_MODEL;
 		codexMocks.callCodex.mockResolvedValue("Improve Title Reliability");
@@ -57,8 +58,8 @@ describe("generateTaskTitle", () => {
 
 		const title = await generateTaskTitle("make automatic title generation more reliable");
 
-		expect(title).toBe("Make Automatic Title Generation");
-		expect(codexMocks.callCodex).not.toHaveBeenCalled();
+		expect(title).toBe("Improve Title Reliability");
+		expect(codexMocks.callCodex).toHaveBeenCalledOnce();
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
@@ -90,16 +91,26 @@ describe("generateTaskTitle", () => {
 		expect(codexMocks.callCodex).toHaveBeenCalledWith(expect.objectContaining({ model: "custom-title-model" }));
 	});
 
-	it("falls back from Codex directly to the deterministic local title", async () => {
-		process.env.QUARTERDECK_TITLE_PROVIDER = "codex";
+	it("falls back from the default Codex provider to the gateway", async () => {
+		delete process.env.QUARTERDECK_TITLE_PROVIDER;
 		codexMocks.callCodex.mockResolvedValue(null);
-		const fetchSpy = vi.spyOn(globalThis, "fetch");
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValue(
+				new Response(JSON.stringify({ choices: [{ message: { content: "Gateway Title" } }] }), { status: 200 }),
+			);
+		expect(await generateTaskTitle("make titles reliable")).toBe("Gateway Title");
+		expect(codexMocks.callCodex).toHaveBeenCalledOnce();
+		expect(fetchSpy).toHaveBeenCalledOnce();
+	});
 
+	it("uses a deterministic title if both default providers fail", async () => {
+		delete process.env.QUARTERDECK_TITLE_PROVIDER;
+		vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
 		expect(await generateTaskTitle("make automatic title generation more reliable")).toBe(
 			"Make Automatic Title Generation",
 		);
 		expect(codexMocks.callCodex).toHaveBeenCalledOnce();
-		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
 	it("supports a local-only title provider", async () => {
@@ -126,14 +137,13 @@ describe("generateTaskTitle", () => {
 		expect(codexMocks.callCodex).not.toHaveBeenCalled();
 	});
 
-	it("falls back to local generation for an unsupported provider setting", async () => {
+	it("uses the Codex default for an unsupported provider setting", async () => {
 		process.env.QUARTERDECK_TITLE_PROVIDER = "unknown";
+		codexMocks.callCodex.mockResolvedValue("Codex Title");
 		const fetchSpy = vi.spyOn(globalThis, "fetch");
 
-		expect(await generateTaskTitle("make automatic title generation more reliable")).toBe(
-			"Make Automatic Title Generation",
-		);
-		expect(codexMocks.callCodex).not.toHaveBeenCalled();
+		expect(await generateTaskTitle("make automatic title generation more reliable")).toBe("Codex Title");
+		expect(codexMocks.callCodex).toHaveBeenCalledOnce();
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
@@ -322,6 +332,15 @@ describe("generateBranchName", () => {
 	afterEach(() => {
 		process.env = { ...originalEnv };
 		vi.restoreAllMocks();
+	});
+
+	it("uses saved Codex login without requiring a gateway", async () => {
+		delete process.env.QUARTERDECK_LLM_BASE_URL;
+		codexMocks.callCodex.mockResolvedValue("fix-auth-bug");
+		const fetchSpy = vi.spyOn(globalThis, "fetch");
+		expect(await generateBranchName("fix auth")).toBe("fix-auth-bug");
+		expect(codexMocks.callCodex).toHaveBeenCalledOnce();
+		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
 	it("returns a branch name from a successful LLM response", async () => {

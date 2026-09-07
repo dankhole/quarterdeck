@@ -9,7 +9,6 @@ import type { TerminalSessionManager } from "../terminal";
 import {
 	buildTaskGenerationContext,
 	generateDisplaySummary,
-	isLlmConfigured,
 	SUMMARY_FIRST_ACTIVITY_LIMIT,
 	SUMMARY_LATEST_ACTIVITY_LIMIT,
 	SUMMARY_ORIGINAL_PROMPT_LIMIT,
@@ -107,7 +106,7 @@ function queuePendingPolishIfNeeded(inFlightKey: string): void {
 
 export async function polishTaskDisplaySummary(input: DisplaySummaryPolishRequest): Promise<string | null> {
 	const runtimeConfig = await input.deps.config.loadScopedRuntimeConfig(input.projectScope);
-	if (!runtimeConfig.llmSummaryPolishEnabled || !isLlmConfigured()) {
+	if (!runtimeConfig.llmSummaryPolishEnabled) {
 		return null;
 	}
 

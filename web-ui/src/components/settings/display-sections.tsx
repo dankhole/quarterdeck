@@ -28,9 +28,8 @@ export function AiFeaturesSection({
 			</h6>
 			{!llmConfigured ? (
 				<div className="mb-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-[13px] text-text-secondary">
-					Optional AI helpers are not configured; the core workflow and local task titles work normally. To enable
-					generated branch names, commit messages, or summary polish, set{" "}
-					<code className="text-[12px]">QUARTERDECK_LLM_BASE_URL</code> and{" "}
+					AI text generation tries your saved Codex/ChatGPT login first. To configure an optional fallback gateway,
+					set <code className="text-[12px]">QUARTERDECK_LLM_BASE_URL</code> and{" "}
 					<code className="text-[12px]">QUARTERDECK_LLM_API_KEY</code>, and explicitly choose{" "}
 					<code className="text-[12px]">QUARTERDECK_LLM_MODEL</code>. An existing team gateway, local{" "}
 					<a
@@ -45,9 +44,8 @@ export function AiFeaturesSection({
 				</div>
 			) : (
 				<p className="text-text-secondary text-[13px] mt-0 mb-2">
-					The optional AI helper is configured. Task titles remain local unless{" "}
-					<code className="text-[12px]">QUARTERDECK_TITLE_PROVIDER=llm</code> is selected; branch names, commit
-					messages, and optional summary polish use the configured helper directly.
+					Titles, branch names, commit messages, and enabled summary polish try your saved Codex/ChatGPT login
+					first, then the configured gateway. Explicit task-title provider overrides still apply.
 				</p>
 			)}
 
@@ -84,14 +82,13 @@ export function AiFeaturesSection({
 					id="runtime-settings-llm-summary-polish"
 					checked={fields.llmSummaryPolishEnabled}
 					onCheckedChange={(v) => setField("llmSummaryPolishEnabled", v)}
-					disabled={disabled || (!llmConfigured && !fields.llmSummaryPolishEnabled)}
+					disabled={disabled}
 				/>
-				<span>Polish summaries with LLM</span>
+				<span>Polish summaries with AI</span>
 			</label>
 			<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
-				{llmConfigured
-					? "When enabled, task state changes can trigger background summary polish. Use a cheap, fast configured model such as Haiku because tasks can bounce between in-progress and review."
-					: "Configure the optional AI helper and restart Quarterdeck before enabling summary polish."}
+				When enabled, task state changes can trigger background summary polish using your saved Codex/ChatGPT login,
+				with the configured gateway as fallback. Without a usable provider, existing summaries are retained.
 			</p>
 		</>
 	);

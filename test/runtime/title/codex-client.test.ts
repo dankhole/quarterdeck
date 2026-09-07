@@ -64,7 +64,7 @@ function createExecutor(
 ) {
 	return {
 		isAvailable: vi.fn(() => true),
-		run: vi.fn(async (_args: string[], _timeoutMs: number) => ({
+		run: vi.fn(async (_args: string[], _timeoutMs: number, _input: string) => ({
 			stdout: "Reliable Task Titles\n",
 			stderr: "",
 			stdoutBytes: 21,
@@ -107,7 +107,7 @@ describe("callCodex", () => {
 		const executor = createExecutor({ stdout: "Title: Reliable Task Titles\n" });
 
 		expect(await callCodex(OPTIONS, executor)).toBe("Reliable Task Titles");
-		expect(executor.run).toHaveBeenCalledWith(expect.any(Array), 20_000);
+		expect(executor.run).toHaveBeenCalledWith(expect.any(Array), 20_000, expect.any(String));
 	});
 
 	it("uses an isolated ephemeral read-only invocation", async () => {
@@ -128,7 +128,10 @@ describe("callCodex", () => {
 			]),
 		);
 		expect(args.at(-2)).toBe("--");
-		expect(args.at(-1)).toContain("<input-context>\nmake title generation reliable\n</input-context>");
+		expect(args.at(-1)).toBe("-");
+		expect(executor.run.mock.calls[0]?.[2]).toContain(
+			"<input-context>\nmake title generation reliable\n</input-context>",
+		);
 		const modelIndex = args.indexOf("--model");
 		expect(args[modelIndex + 1]).toBe("gpt-5.6-luna");
 		const reasoningConfig = args.find((arg) => arg.startsWith("model_reasoning_effort="));
@@ -170,11 +173,16 @@ describe("callCodex", () => {
 		expect(JSON.stringify(failure?.data)).not.toContain("private");
 	});
 
-	it("keeps the prompt after an explicit option separator", () => {
-		const args = _testing.buildCodexExecArgs({ ...OPTIONS, userPrompt: "- investigate title failures" });
+	it("sends large and option-like contexts through stdin instead of argv", async () => {
+		const executor = createExecutor();
+		const userPrompt = `- investigate failures\n${"diff content".repeat(4000)}`;
+		await callCodex({ ...OPTIONS, userPrompt }, executor);
+		const args = executor.run.mock.calls[0][0];
 
 		expect(args.at(-2)).toBe("--");
-		expect(args.at(-1)).toContain("- investigate title failures");
+		expect(args.at(-1)).toBe("-");
+		expect(args.join(" ")).not.toContain(userPrompt);
+		expect(executor.run.mock.calls[0][2]).toContain(userPrompt);
 	});
 
 	it("owns timeout termination instead of relying on execFile wrapper cleanup", async () => {
@@ -197,7 +205,7 @@ describe("callCodex", () => {
 			return { pid: 123, kill, unref, stdout, stderr } as unknown as ChildProcess;
 		});
 
-		const resultPromise = _testing.runCodexCommand(["exec", "--", "title"], 20_000);
+		const resultPromise = _testing.runCodexCommand(["exec", "--", "-"], 20_000, "title context");
 		const partialStdout = "private stdout ".repeat(60);
 		const partialStderr = "private stderr ".repeat(60);
 		stdout.write(partialStdout);
@@ -244,9 +252,10 @@ describe("callCodex", () => {
 			return { stdin, stdout, stderr } as unknown as ChildProcess;
 		});
 
-		const resultPromise = _testing.runCodexCommand(["exec", "--", "title"], 20_000);
+		const resultPromise = _testing.runCodexCommand(["exec", "--", "-"], 20_000, "title context");
 
 		expect(stdin.writableEnded).toBe(true);
+		expect(stdin.read()?.toString()).toBe("title context");
 		requireExecCallback(callback)(null, "Reliable Task Titles\n", "");
 		await expect(resultPromise).resolves.toMatchObject({
 			exitStatus: 0,

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Titles, branch names, commit messages, and enabled summary polishing now try the local Codex CLI’s saved login before falling back to the configured LLM gateway. Explicit title-provider overrides remain available, titles retain a final local-text fallback, and summary polishing no longer requires a gateway to be enabled. Helper context travels through stdin so large diffs do not exceed command-line limits.
+
 - Codex tasks now track new-conversation session handoffs instead of remaining Ready for review while the new conversation works. The launch-scoped `SessionStart` hook includes `clear`, preserving foreground identity and exact resume tracking.
 
 - Fresh tasks launched with Start show Running immediately after launch. If no native work or terminal-state hook confirms the launch within 45 seconds, they move to Review/Unconfirmed; early launch exits become Error without automatic restart. Restores retain their conservative state.

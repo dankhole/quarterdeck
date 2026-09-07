@@ -78,7 +78,7 @@ describe("TaskStartAgentOnboardingCarousel", () => {
 			await Promise.resolve();
 		});
 
-		expect(container.textContent).toContain("Start with safe, local defaults");
+		expect(container.textContent).toContain("Start with safe defaults");
 		expect(container.textContent).toContain("Isolated worktrees");
 		expect(container.textContent).toContain("Provider-native permissions");
 		expect(container.textContent).toContain("No surprise model call");
@@ -99,7 +99,7 @@ describe("TaskStartAgentOnboardingCarousel", () => {
 		});
 
 		expect(container.textContent).toContain("Optional: configure AI helpers");
-		expect(container.textContent).toContain("Keep local defaults");
+		expect(container.textContent).toContain("Use saved Codex login");
 		expect(container.textContent).toContain("Use an existing or self-hosted gateway");
 		expect(container.textContent).toContain("QUARTERDECK_LLM_BASE_URL");
 		expect(container.textContent).toContain("QUARTERDECK_LLM_API_KEY");

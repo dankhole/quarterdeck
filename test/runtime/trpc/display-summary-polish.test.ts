@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../../../src/title/codex-client", () => ({ callCodex: vi.fn() }));
+
+import { callCodex } from "../../../src/title/codex-client";
+
+const callCodexMock = vi.mocked(callCodex);
+
 import type { RuntimeBoardData, RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "../../../src/core";
 import type { TerminalSessionManager } from "../../../src/terminal";
 import { polishTaskDisplaySummary } from "../../../src/trpc";
@@ -140,6 +146,7 @@ function createLlmResponse(text: string): Response {
 
 describe("polishTaskDisplaySummary", () => {
 	beforeEach(() => {
+		callCodexMock.mockReset().mockResolvedValue(null);
 		process.env.QUARTERDECK_LLM_BASE_URL = LLM_ENV.QUARTERDECK_LLM_BASE_URL;
 		process.env.QUARTERDECK_LLM_API_KEY = LLM_ENV.QUARTERDECK_LLM_API_KEY;
 		process.env.QUARTERDECK_LLM_MODEL = LLM_ENV.QUARTERDECK_LLM_MODEL;
@@ -196,6 +203,33 @@ describe("polishTaskDisplaySummary", () => {
 		});
 
 		expect(result).toBe("Polished auth timeout");
+		expect(setDisplaySummary).toHaveBeenCalledWith("task-1", "Polished auth timeout", 1234);
+	});
+
+	it("polishes through saved Codex login without gateway configuration", async () => {
+		delete process.env.QUARTERDECK_LLM_BASE_URL;
+		const fetchMock = stubLlmResponse("Unused gateway response");
+		callCodexMock.mockResolvedValue("Polished auth timeout");
+		const { manager, setDisplaySummary } = createManager(createSummary());
+
+		const result = await polishTaskDisplaySummary({
+			projectScope: { projectId: "project-1", projectPath: "/tmp/repo" },
+			taskId: "task-1",
+			reason: "task-started",
+			promptOverride: "Fix auth timeout bug",
+			deps: {
+				config: {
+					loadScopedRuntimeConfig: vi.fn(async () => createDefaultMockConfig({ llmSummaryPolishEnabled: true })),
+				},
+				getScopedTerminalManager: vi.fn(async () => manager),
+				loadProjectState: vi.fn(async () => createProjectState()),
+				now: () => 1234,
+			},
+		});
+
+		expect(result).toBe("Polished auth timeout");
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(callCodexMock).toHaveBeenCalledOnce();
 		expect(setDisplaySummary).toHaveBeenCalledWith("task-1", "Polished auth timeout", 1234);
 	});
 

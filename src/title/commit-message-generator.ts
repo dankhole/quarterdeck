@@ -1,10 +1,10 @@
-// Commit message generation from git diffs. Uses the same LLM client as
-// title and optional summary generation — see llm-client.ts for setup requirements.
+// Commit message generation from git diffs. Prefer the local Codex login,
+// then fall back to the optional OpenAI-compatible gateway.
 // This is a user-triggered path, so it sends a richer context than automatic
 // title/summary helpers. LLM failures return null so the UI can surface them.
 import { createTaggedLogger } from "../core";
 import type { RuntimeCommitMessageFileContext, RuntimeCommitMessageGenerationContext } from "./commit-message-context";
-import { callLlm } from "./llm-client";
+import { callGenerationHelper } from "./generation-helper";
 
 const log = createTaggedLogger("commit-msg-gen");
 
@@ -126,7 +126,7 @@ export async function generateCommitMessage(context: RuntimeCommitMessageGenerat
 		promptLength: promptContext.length,
 		promptSnippet: promptContext.slice(0, 120),
 	});
-	const result = await callLlm({
+	const result = await callGenerationHelper({
 		systemPrompt: COMMIT_MESSAGE_SYSTEM_PROMPT,
 		userPrompt: promptContext,
 		maxTokens: 400,

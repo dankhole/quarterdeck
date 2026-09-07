@@ -2,7 +2,7 @@
 // hover; normal card summaries use compact agent-provided conversation text.
 import { createTaggedLogger } from "../core";
 import { compactDisplaySummaryText, DISPLAY_SUMMARY_LLM_BUDGET, DISPLAY_SUMMARY_MAX_LENGTH } from "./display-summary";
-import { callLlm } from "./llm-client";
+import { callGenerationHelper } from "./generation-helper";
 
 const log = createTaggedLogger("summary-gen");
 
@@ -34,21 +34,18 @@ export async function generateDisplaySummary(conversationText: string): Promise<
 		textLength: conversationText.length,
 		textSnippet: conversationText.slice(0, 120),
 	});
-	const result = await callLlm({
+	const result = await callGenerationHelper({
 		systemPrompt: SUMMARY_SYSTEM_PROMPT,
 		userPrompt: conversationText.slice(0, MAX_CONTEXT_LENGTH),
 		maxTokens: 60,
 		timeoutMs: 5_000,
+		normalize: (text) =>
+			text ? compactDisplaySummaryText(text, DISPLAY_SUMMARY_MAX_LENGTH, { trimTranscriptEcho: true }) : null,
 	});
 	if (!result) {
 		log.warn("Summary generation returned null");
 		return null;
 	}
-	const summary = compactDisplaySummaryText(result, DISPLAY_SUMMARY_MAX_LENGTH, { trimTranscriptEcho: true });
-	if (!summary) {
-		log.warn("Summary generation produced empty compact summary");
-		return null;
-	}
-	log.info("Summary generated", { summary });
-	return summary;
+	log.info("Summary generated", { summary: result });
+	return result;
 }

@@ -78,21 +78,23 @@ Optional variables:
 | `QUARTERDECK_RUNTIME_HOST` | Override the runtime host. Defaults to `127.0.0.1`; the `--host` flag is usually clearer. |
 | `QUARTERDECK_RUNTIME_PORT` | Override the runtime port. Defaults to `3500`; the `--port` flag is usually clearer. |
 | `QUARTERDECK_DEBUG_MODE` | Enable extra debug behavior for agent availability checks. `DEBUG_MODE` and `debug_mode` are also recognized. |
-| `QUARTERDECK_TITLE_PROVIDER` | Select task-title generation: `local` (default), `codex`, or `llm`. Either remote provider falls back directly to deterministic local generation. |
+| `QUARTERDECK_TITLE_PROVIDER` | Select task-title generation: `codex` (default, then gateway fallback), `llm` (gateway only), or `local` (no model call). Failed generation falls back to deterministic local text. |
 | `QUARTERDECK_CODEX_TITLE_MODEL` | Override the Codex model used for task titles. Defaults to `gpt-5.6-luna`. |
 | `QUARTERDECK_LLM_BASE_URL` | Base URL for an optional LiteLLM or other OpenAI-compatible helper gateway. |
 | `QUARTERDECK_LLM_API_KEY` | Bearer token for the optional helper gateway. Prefer a scoped LiteLLM virtual key over a shared master key. |
 | `QUARTERDECK_LLM_MODEL` | Model name or gateway alias. Required for generic gateways; legacy base URLs ending in `/bedrock` retain the `bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0` fallback. |
 
-Task titles use deterministic local generation by default. Set `QUARTERDECK_TITLE_PROVIDER=codex` to opt in to `codex exec --ephemeral`, which reuses the installed Codex CLI's saved authentication and defaults to `gpt-5.6-luna`; `QUARTERDECK_CODEX_TITLE_MODEL` selects another Codex model. Set `QUARTERDECK_TITLE_PROVIDER=llm` to use the OpenAI-compatible helper instead. A failed remote invocation falls back directly to the local title, keeping the Codex and LiteLLM failure domains separate.
+Titles, branch names, commit messages, and enabled summary polishing first use the installed Codex CLI’s saved login (including ChatGPT sign-in), with `gpt-5.6-luna` in an ephemeral, read-only invocation. If Codex is missing, signed out, times out, or returns no usable text, generation falls back to the configured OpenAI-compatible gateway. No gateway is needed when Codex succeeds. Codex owns the saved credentials; Quarterdeck does not read or copy them. A saved ChatGPT login still uses OpenAI’s hosted models, not an offline model.
+
+Task titles fall back to deterministic local text if both providers fail. `QUARTERDECK_TITLE_PROVIDER=local` skips model calls for titles; `QUARTERDECK_TITLE_PROVIDER=llm` skips Codex for titles. `QUARTERDECK_CODEX_TITLE_MODEL` overrides the Codex title model. Summary polishing remains opt-in in Settings and keeps existing summaries if generation fails. Branch-name and commit-message generation report failure if neither provider succeeds; generating a message does not commit files.
 
 ### Optional LiteLLM or OpenAI-Compatible Helper
 
-This helper is not needed to run agents. It enables generated branch names, generated commit messages, optional polished card summaries, and task titles only when `QUARTERDECK_TITLE_PROVIDER=llm` is selected.
+This gateway is optional. It provides fallback generation for titles, branch names, commit messages, and enabled summary polishing when the saved Codex login cannot produce a result. An explicit `QUARTERDECK_TITLE_PROVIDER=llm` override uses it directly for titles.
 
 Choose one of these setups:
 
-- **No helper (default):** no variables or additional service. Task titles stay local, and helper-backed actions remain unavailable.
+- **Saved Codex login (default):** sign in with ChatGPT through Codex. No gateway variables or additional service are required for AI text generation.
 - **Existing team gateway:** point Quarterdeck at a LiteLLM proxy or another OpenAI-compatible endpoint and use the gateway's scoped key and configured model alias.
 - **Self-hosted LiteLLM:** run the LiteLLM proxy separately, then point Quarterdeck at its loopback or network URL. Quarterdeck does not install, start, update, or store configuration for the proxy. See the [official LiteLLM proxy quick start](https://docs.litellm.ai/).
 

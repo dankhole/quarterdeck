@@ -30,14 +30,14 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 	},
 	{
 		kind: "safe-defaults",
-		title: "Start with safe, local defaults",
-		description: "Quarterdeck is ready without another account, API key, or .env file.",
+		title: "Start with safe defaults",
+		description: "AI text generation uses your saved Codex/ChatGPT login first; a separate gateway is optional.",
 	},
 	{
 		kind: "llm-helper",
 		title: "Optional: configure AI helpers",
 		description:
-			"Connect LiteLLM or another OpenAI-compatible gateway for generated branch names, commit messages, and summary polish.",
+			"Titles, branch names, commit messages, and enabled summary polish use your saved Codex/ChatGPT login first. Optionally configure a fallback gateway.",
 	},
 ];
 
@@ -103,7 +103,7 @@ const SAFE_DEFAULTS = [
 		icon: Sparkles,
 		title: "No surprise model call",
 		description:
-			"Task titles are generated locally unless you explicitly opt in to Codex or an OpenAI-compatible helper.",
+			"Task titles try your saved Codex/ChatGPT login, then the optional gateway, then local text generation.",
 	},
 ] as const;
 
@@ -118,14 +118,14 @@ function OptionalLlmHelperSetup({
 		<div className="space-y-2">
 			<div className="rounded-md border border-border bg-surface-1 p-3">
 				<div className="flex items-center justify-between gap-3">
-					<p className="m-0 text-[13px] font-medium text-text-primary">Keep local defaults</p>
+					<p className="m-0 text-[13px] font-medium text-text-primary">Use saved Codex login</p>
 					{!llmConfigured ? (
 						<AgentStatusBadge label="Current" statusClassName="bg-status-green/10 text-status-green" />
 					) : null}
 				</div>
 				<p className="mt-1 mb-0 text-[12px] text-text-secondary">
-					No setup is required. Task titles stay local, summary polish stays off, and the optional branch-name and
-					commit-message generators remain unavailable.
+					No gateway setup is required. Sign in with ChatGPT through Codex to generate titles, branch names, commit
+					messages, and enabled summary polish. If generation fails, task titles fall back to local text.
 				</p>
 			</div>
 
@@ -176,8 +176,9 @@ function OptionalLlmHelperSetup({
 			</div>
 
 			<p className="m-0 rounded-md border border-border bg-surface-2 p-2 text-[11px] text-text-secondary">
-				Keep gateway keys out of tracked files. Restart Quarterdeck after changing these variables. Task titles use
-				the helper only when <code>QUARTERDECK_TITLE_PROVIDER=llm</code> is also set.
+				Keep gateway keys out of tracked files. Restart Quarterdeck after changing these variables. Set{" "}
+				<code>QUARTERDECK_TITLE_PROVIDER=llm</code> to use the gateway directly for titles, or{" "}
+				<code>QUARTERDECK_TITLE_PROVIDER=local</code> for local text only.
 			</p>
 		</div>
 	);

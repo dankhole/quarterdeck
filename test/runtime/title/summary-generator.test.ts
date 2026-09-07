@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../../../src/title/codex-client", () => ({ callCodex: vi.fn() }));
+
+import { callCodex } from "../../../src/title/codex-client";
+
+const callCodexMock = vi.mocked(callCodex);
+
 vi.mock("../../../src/title/llm-client", () => ({
 	callLlm: vi.fn(),
 }));
@@ -10,11 +16,25 @@ const callLlmMock = vi.mocked(callLlm);
 
 describe("generateDisplaySummary", () => {
 	beforeEach(() => {
+		callCodexMock.mockReset().mockResolvedValue(null);
 		callLlmMock.mockReset();
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
+	});
+
+	it("uses saved Codex login first and preserves summary normalization", async () => {
+		callCodexMock.mockResolvedValue("Fixed auth Human generated Human: echo");
+		expect(await generateDisplaySummary("Auth changes")).toBe("Fixed auth");
+		expect(callLlmMock).not.toHaveBeenCalled();
+	});
+
+	it("falls back to the gateway when Codex returns an unusable summary", async () => {
+		callCodexMock.mockResolvedValue("Human generated Human: echo");
+		callLlmMock.mockResolvedValue("Fixed auth");
+		expect(await generateDisplaySummary("Auth changes")).toBe("Fixed auth");
+		expect(callLlmMock).toHaveBeenCalledOnce();
 	});
 
 	it("returns the LLM response when within the display limit", async () => {
@@ -66,6 +86,7 @@ describe("generateDisplaySummary", () => {
 		const result = await generateDisplaySummary("   ");
 		expect(result).toBeNull();
 		expect(callLlmMock).not.toHaveBeenCalled();
+		expect(callCodexMock).not.toHaveBeenCalled();
 	});
 
 	it("truncates input to 1800 chars before sending to LLM", async () => {

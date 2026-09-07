@@ -160,7 +160,7 @@ describe("RuntimeSettingsDialog", () => {
 		);
 	});
 
-	it("renders the LLM summary polish checkbox and cost reminder", async () => {
+	it("renders the summary polish checkbox and saved-login guidance", async () => {
 		await act(async () => {
 			root.render(
 				<RuntimeSettingsDialog
@@ -175,7 +175,7 @@ describe("RuntimeSettingsDialog", () => {
 		const checkbox = document.body.querySelector("#runtime-settings-llm-summary-polish");
 		expect(checkbox).toBeInstanceOf(HTMLButtonElement);
 		expect(checkbox?.getAttribute("data-state")).toBe("unchecked");
-		expect(document.body.textContent).toContain("cheap, fast configured model");
+		expect(document.body.textContent).toContain("saved Codex/ChatGPT login first");
 	});
 
 	it("keeps harness selection out of settings and keeps worktree context tuning", async () => {
@@ -350,11 +350,11 @@ describe("RuntimeSettingsDialog", () => {
 		expect(warningText).toContain("QUARTERDECK_LLM_BASE_URL");
 		expect(warningText).toContain("QUARTERDECK_LLM_API_KEY");
 		expect(warningText).toContain("QUARTERDECK_LLM_MODEL");
-		expect(warningText).toContain("local task titles work normally");
+		expect(warningText).toContain("saved Codex/ChatGPT login first");
 		const summaryPolishCheckbox = document.body.querySelector(
 			"#runtime-settings-llm-summary-polish",
 		) as HTMLButtonElement | null;
-		expect(summaryPolishCheckbox?.disabled).toBe(true);
+		expect(summaryPolishCheckbox?.disabled).toBe(false);
 	});
 
 	it("does not show LLM warning when configured", async () => {
