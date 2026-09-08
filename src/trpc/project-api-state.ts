@@ -29,6 +29,7 @@ type StateOps = Pick<
 	| "loadState"
 	| "applyBoardCommands"
 	| "updateTaskTitle"
+	| "regenerateTaskTitle"
 	| "setTaskDisplaySummary"
 	| "setFocusedTask"
 	| "setDocumentVisible"
@@ -92,6 +93,10 @@ async function persistTaskTitle(
 
 export function createStateOps(ctx: ProjectApiContext): StateOps {
 	return {
+		regenerateTaskTitle: async (scope, taskId) => {
+			if (!ctx.deps.taskTitles) throw new Error("Task title generation is not configured.");
+			return await ctx.deps.taskTitles.regenerate(scope, taskId);
+		},
 		// Low-level compatibility surface for controlled maintenance callers. Browser
 		// task lifecycle actions use ProjectTaskLifecycleService instead.
 		ensureWorktree: async (projectScope, input) => {

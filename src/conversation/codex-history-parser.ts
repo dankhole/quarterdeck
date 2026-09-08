@@ -16,6 +16,9 @@ type SemverTuple = readonly [major: number, minor: number, patch: number];
 
 const MINIMUM_CODEX_HISTORY_VERSION: SemverTuple = [0, 142, 5];
 const MAXIMUM_CODEX_HISTORY_VERSION: SemverTuple = [0, 149, 1];
+// Read-only rollout compatibility verified against a native paginated history.
+// This does not extend the independent structured execution compatibility gate.
+const ADDITIONAL_CODEX_HISTORY_VERSIONS = new Set(["0.153.4"]);
 
 function ignored(recognized: boolean, providerSessionId: string | null = null): ParsedProviderRecord {
 	return { recognized, providerSessionId, item: { kind: "ignore" } };
@@ -44,6 +47,7 @@ function compareSemverTuple(left: SemverTuple, right: SemverTuple): number {
 }
 
 function isSupportedCodexCliVersion(value: string): boolean {
+	if (ADDITIONAL_CODEX_HISTORY_VERSIONS.has(value.trim())) return true;
 	const version = parseSemverTuple(value);
 	return Boolean(
 		version &&

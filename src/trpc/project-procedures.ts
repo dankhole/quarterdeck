@@ -1,4 +1,3 @@
-import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
 	createTaggedLogger,
@@ -79,15 +78,10 @@ import {
 	generateBranchName,
 	generateCommitMessage,
 	generateDisplaySummary,
-	generateTaskTitle,
 	SUMMARY_FIRST_ACTIVITY_LIMIT,
 	SUMMARY_LATEST_ACTIVITY_LIMIT,
 	SUMMARY_ORIGINAL_PROMPT_LIMIT,
 	SUMMARY_PREVIOUS_ACTIVITY_LIMIT,
-	TITLE_FIRST_ACTIVITY_LIMIT,
-	TITLE_LATEST_ACTIVITY_LIMIT,
-	TITLE_ORIGINAL_PROMPT_LIMIT,
-	TITLE_PREVIOUS_ACTIVITY_LIMIT,
 } from "../title";
 import { projectProcedure, t } from "./app-router-init";
 
@@ -326,41 +320,7 @@ export const projectRouter = t.router({
 	regenerateTaskTitle: projectProcedure
 		.input(z.object({ taskId: z.string() }))
 		.output(z.object({ ok: z.boolean(), title: z.string().nullable() }))
-		.mutation(async ({ ctx, input }) => {
-			const state = await ctx.projectApi.loadState(ctx.projectScope);
-			const card = findCardInBoard(state.board, input.taskId);
-			if (!card) {
-				throw new TRPCError({ code: "NOT_FOUND", message: `Task "${input.taskId}" not found.` });
-			}
-			const prompt = card.prompt;
-			const session = state.sessions[card.id];
-			const summaries = session?.conversationSummaries ?? [];
-			log.debug("regenerateTaskTitle", {
-				taskId: input.taskId,
-				promptSnippet: prompt.slice(0, 80),
-				summaryCount: summaries.length,
-				latestSummary: summaries.at(-1)?.text?.slice(0, 100),
-			});
-
-			const context =
-				buildTaskGenerationContext({
-					prompt,
-					summaries,
-					finalMessage: session?.latestHookActivity?.finalMessage,
-					limits: {
-						originalPrompt: TITLE_ORIGINAL_PROMPT_LIMIT,
-						firstActivity: TITLE_FIRST_ACTIVITY_LIMIT,
-						latestActivity: TITLE_LATEST_ACTIVITY_LIMIT,
-						previousActivity: TITLE_PREVIOUS_ACTIVITY_LIMIT,
-					},
-				}) ?? prompt;
-			const title = await generateTaskTitle(context);
-			if (!title) {
-				return { ok: false, title: null };
-			}
-			const updated = await ctx.projectApi.updateTaskTitle(ctx.projectScope, input.taskId, title);
-			return { ok: updated, title: updated ? title : null };
-		}),
+		.mutation(async ({ ctx, input }) => await ctx.projectApi.regenerateTaskTitle(ctx.projectScope, input.taskId)),
 	updateTaskTitle: projectProcedure
 		.input(z.object({ taskId: z.string(), title: z.string().min(1).max(200) }))
 		.output(z.object({ ok: z.boolean() }))

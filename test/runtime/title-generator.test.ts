@@ -305,18 +305,69 @@ describe("generateTaskTitle", () => {
 		expect(await generateTaskTitle("fix the authentication bug in login.ts")).toBe("Fix Authentication Bug Login");
 	});
 
-	it("truncates title prompts longer than 1200 characters", async () => {
+	it("bounds title prompts while retaining closing requests", async () => {
 		const fetchSpy = vi
 			.spyOn(globalThis, "fetch")
 			.mockResolvedValue(
 				new Response(JSON.stringify({ choices: [{ message: { content: "Title" } }] }), { status: 200 }),
 			);
 
-		const longPrompt = "x".repeat(2000);
+		const longPrompt = `Initial subject ${"x".repeat(8000)} Closing request`;
 		await generateTaskTitle(longPrompt);
 
 		const body = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string);
-		expect(body.messages[1].content).toHaveLength(1200);
+		expect(body.messages[1].content).toHaveLength(6000);
+		expect(body.messages[1].content).toMatch(/^Initial subject/);
+		expect(body.messages[1].content).toMatch(/Closing request$/);
+	});
+
+	it("uses separate initial and followup instructions with the current title", async () => {
+		process.env.QUARTERDECK_TITLE_PROVIDER = "codex";
+		codexMocks.callCodex.mockResolvedValue("Search and Recommendation Experience");
+		await generateTaskTitle("Review sorting options");
+		await generateTaskTitle("Recent conversation:\nImprove search and recommendations", {
+			mode: "followup",
+			currentTitle: "Review Sorting Options",
+		});
+		const initial = codexMocks.callCodex.mock.calls[0]?.[0];
+		const followup = codexMocks.callCodex.mock.calls[1]?.[0];
+		expect(initial.systemPrompt).toContain("overall task or question");
+		expect(initial.systemPrompt).toContain("Do not imply the requested work has already been completed");
+		expect(followup.systemPrompt).toContain("evolving overall purpose");
+		expect(followup.systemPrompt).toContain("Keep the current title exactly");
+		expect(followup.userPrompt).toContain("Current title:\nReview Sorting Options");
+		expect(followup.userPrompt).toContain("Improve search and recommendations");
+	});
+
+	it("retains the current title when a followup provider call fails or returns invalid output", async () => {
+		const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
+		expect(
+			await generateTaskTitle("User:\nRun tests and commit", {
+				mode: "followup",
+				currentTitle: "Search and Recommendation Experience",
+			}),
+		).toBe("Search and Recommendation Experience");
+		fetchSpy.mockResolvedValue(
+			new Response(JSON.stringify({ choices: [{ message: { content: "Human generated\nHuman: test echo" } }] }), {
+				status: 200,
+			}),
+		);
+		expect(await generateTaskTitle("Run tests", { mode: "followup", currentTitle: "Existing Title" })).toBe(
+			"Existing Title",
+		);
+		expect(await generateTaskTitle(" ", { mode: "followup", currentTitle: "Existing Title" })).toBe("Existing Title");
+		expect(await generateTaskTitle("Run tests", { mode: "followup" })).toBeNull();
+	});
+
+	it("does not overwrite a followup title with local transcript keyword extraction", async () => {
+		process.env.QUARTERDECK_TITLE_PROVIDER = "local";
+		expect(
+			await generateTaskTitle("User:\nCommit the final changes", {
+				mode: "followup",
+				currentTitle: "Search Experience",
+			}),
+		).toBe("Search Experience");
+		expect(codexMocks.callCodex).not.toHaveBeenCalled();
 	});
 });
 

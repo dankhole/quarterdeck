@@ -27,4 +27,5 @@ export {
 	TITLE_ORIGINAL_PROMPT_LIMIT,
 	TITLE_PREVIOUS_ACTIVITY_LIMIT,
 } from "./task-generation-context";
-export { generateBranchName, generateTaskTitle } from "./title-generator";
+export { generateBranchName, generateTaskTitle, type TaskTitleGenerationOptions } from "./title-generator";
+export { buildTitleThreadContext } from "./title-thread-context";

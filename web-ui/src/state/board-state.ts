@@ -106,7 +106,7 @@ function createRuntimeTaskUpdateInput(
 	overrides: Partial<runtimeTaskState.RuntimeUpdateTaskInput>,
 ): runtimeTaskState.RuntimeUpdateTaskInput {
 	return {
-		title: overrides.title === undefined ? card.title : overrides.title,
+		title: overrides.title,
 		prompt: overrides.prompt === undefined ? card.prompt : overrides.prompt,
 		images: overrides.images === undefined ? card.images : overrides.images,
 		baseRef: overrides.baseRef === undefined ? card.baseRef : overrides.baseRef,

@@ -15,6 +15,7 @@ import type { RuntimeDiagnostics } from "../diagnostics";
 import type { ProjectBoardCommandService } from "../state";
 import { loadProjectState } from "../state";
 import { isMissingTaskWorktreeError, resolveTaskWorkingDirectory } from "../workdir";
+import type { RuntimeTrpcContext } from "./app-router-context";
 import { applyRuntimeMutationEffects } from "./runtime-mutation-effects";
 
 const log = createTaggedLogger("project-api-effects");
@@ -37,6 +38,7 @@ export interface CreateProjectApiDependencies {
 	>;
 	data: Pick<IProjectDataProvider, "buildProjectStateSnapshot">;
 	boardCommands?: ProjectBoardCommandService;
+	taskTitles?: { regenerate: RuntimeTrpcContext["projectApi"]["regenerateTaskTitle"] };
 	diagnostics?: RuntimeDiagnostics;
 	taskResourceOperations: TaskResourceOperationRunner;
 }

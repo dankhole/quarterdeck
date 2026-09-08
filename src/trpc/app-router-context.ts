@@ -288,6 +288,10 @@ export interface RuntimeTrpcContext {
 			paths?: string[],
 		) => Promise<RuntimeCommitMessageGenerationContext>;
 		updateTaskTitle: (scope: RuntimeTrpcProjectScope, taskId: string, title: string) => Promise<boolean>;
+		regenerateTaskTitle: (
+			scope: RuntimeTrpcProjectScope,
+			taskId: string,
+		) => Promise<{ ok: boolean; title: string | null }>;
 		setTaskDisplaySummary: (
 			scope: RuntimeTrpcProjectScope,
 			taskId: string,

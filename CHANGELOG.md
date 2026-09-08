@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Generated task titles now follow the conversation’s evolving purpose using bounded recent history. They refresh after completed turns with rate and concurrency limits, preserve manual names, and retain existing titles on generation failure. Explicit regeneration enables automatic updates for older titles.
+
 - Permanently deleting a task now immediately shows a persistent progress notification, then updates it with the confirmed result or an error.
 
 - Titles, branch names, commit messages, and enabled summary polishing now try the local Codex CLI’s saved login before falling back to the configured LLM gateway. Explicit title-provider overrides remain available, titles retain a final local-text fallback, and summary polishing no longer requires a gateway to be enabled. Helper context travels through stdin so large diffs do not exceed command-line limits.

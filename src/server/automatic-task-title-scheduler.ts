@@ -111,3 +111,60 @@ export function createAutomaticTaskTitlePostCommitListener(
 		})();
 	};
 }
+
+const TITLE_REFRESH_INTERVAL_MS = 60_000;
+const MAX_RECENT_TITLE_REFRESHES = 256;
+
+/** Completion-driven policy: no polling, retries, or queued work after shutdown. */
+export function createAutomaticTaskTitleRefreshListener(dependencies: {
+	automaticTitleGeneration: AutomaticTitleGenerationRunner;
+	resolveProjectScope: (projectId: string) => ProjectBoardCommandScope | null;
+	regenerateTaskTitle: (
+		scope: ProjectBoardCommandScope,
+		taskId: string,
+		options: { automatic: true; isCurrent: () => boolean },
+	) => Promise<unknown>;
+	now?: () => number;
+}) {
+	const lastAttempts = new Map<string, number>();
+	let active = 0;
+	let disposed = false;
+	return {
+		onTaskReadyForReview(projectId: string, taskId: string): void {
+			if (disposed || active >= MAX_CONCURRENT_TITLE_REQUESTS) return;
+			const scope = dependencies.resolveProjectScope(projectId);
+			if (!scope) return;
+			const key = JSON.stringify([projectId, taskId]);
+			const now = (dependencies.now ?? Date.now)();
+			const previousAttempt = lastAttempts.get(key);
+			if (previousAttempt !== undefined && now - previousAttempt < TITLE_REFRESH_INTERVAL_MS) return;
+			const generation = dependencies.automaticTitleGeneration.runIfIdle(projectId, taskId, async () => {
+				if (disposed) return;
+				await dependencies.regenerateTaskTitle(scope, taskId, { automatic: true, isCurrent: () => !disposed });
+			});
+			if (!generation) return;
+			active += 1;
+			lastAttempts.delete(key);
+			lastAttempts.set(key, now);
+			if (lastAttempts.size > MAX_RECENT_TITLE_REFRESHES) {
+				const oldest = lastAttempts.keys().next().value;
+				if (oldest !== undefined) lastAttempts.delete(oldest);
+			}
+			void generation
+				.catch((error: unknown) => {
+					log.warn("Automatic title refresh failed", {
+						projectId,
+						taskId,
+						errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+					});
+				})
+				.finally(() => {
+					active -= 1;
+				});
+		},
+		dispose(): void {
+			disposed = true;
+			lastAttempts.clear();
+		},
+	};
+}

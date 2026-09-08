@@ -78,7 +78,7 @@ Optional variables:
 | `QUARTERDECK_RUNTIME_HOST` | Override the runtime host. Defaults to `127.0.0.1`; the `--host` flag is usually clearer. |
 | `QUARTERDECK_RUNTIME_PORT` | Override the runtime port. Defaults to `3500`; the `--port` flag is usually clearer. |
 | `QUARTERDECK_DEBUG_MODE` | Enable extra debug behavior for agent availability checks. `DEBUG_MODE` and `debug_mode` are also recognized. |
-| `QUARTERDECK_TITLE_PROVIDER` | Select task-title generation: `codex` (default, then gateway fallback), `llm` (gateway only), or `local` (no model call). Failed generation falls back to deterministic local text. |
+| `QUARTERDECK_TITLE_PROVIDER` | Select task-title generation: `codex` (default, then gateway fallback), `llm` (gateway only), or `local` (no model call). Initial generation falls back to deterministic local text; failed follow-up generation keeps the current title. |
 | `QUARTERDECK_CODEX_TITLE_MODEL` | Override the Codex model used for task titles. Defaults to `gpt-5.6-luna`. |
 | `QUARTERDECK_LLM_BASE_URL` | Base URL for an optional LiteLLM or other OpenAI-compatible helper gateway. |
 | `QUARTERDECK_LLM_API_KEY` | Bearer token for the optional helper gateway. Prefer a scoped LiteLLM virtual key over a shared master key. |
@@ -86,7 +86,7 @@ Optional variables:
 
 Titles, branch names, commit messages, and enabled summary polishing first use the installed Codex CLI’s saved login (including ChatGPT sign-in), with `gpt-5.6-luna` in an ephemeral, read-only invocation. If Codex is missing, signed out, times out, or returns no usable text, generation falls back to the configured OpenAI-compatible gateway. No gateway is needed when Codex succeeds. Codex owns the saved credentials; Quarterdeck does not read or copy them. A saved ChatGPT login still uses OpenAI’s hosted models, not an offline model.
 
-Task titles fall back to deterministic local text if both providers fail. `QUARTERDECK_TITLE_PROVIDER=local` skips model calls for titles; `QUARTERDECK_TITLE_PROVIDER=llm` skips Codex for titles. `QUARTERDECK_CODEX_TITLE_MODEL` overrides the Codex title model. Summary polishing remains opt-in in Settings and keeps existing summaries if generation fails. Branch-name and commit-message generation report failure if neither provider succeeds; generating a message does not commit files.
+New task titles fall back to deterministic local text if both providers fail. Generated titles can evolve after completed turns using bounded recent conversation history, at most once per minute per task; failed refreshes keep the current name. Manual renames disable automatic updates. Existing titles are preserved until you explicitly regenerate them, which enables future automatic updates. `QUARTERDECK_TITLE_PROVIDER=local` skips model calls for titles; `QUARTERDECK_TITLE_PROVIDER=llm` skips Codex for titles. `QUARTERDECK_CODEX_TITLE_MODEL` overrides the Codex title model. Summary polishing remains opt-in in Settings and keeps existing summaries if generation fails. Branch-name and commit-message generation report failure if neither provider succeeds; generating a message does not commit files.
 
 ### Optional LiteLLM or OpenAI-Compatible Helper
 
