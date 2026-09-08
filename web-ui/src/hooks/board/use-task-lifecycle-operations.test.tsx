@@ -217,7 +217,7 @@ describe("useTaskLifecycleOperations", () => {
 		});
 
 		expect(executeTaskLifecycleMutateMock).not.toHaveBeenCalled();
-		expect(notifyErrorMock).toHaveBeenCalledWith("revision conflict");
+		expect(notifyErrorMock).toHaveBeenCalledWith("revision conflict", undefined);
 	});
 
 	it("retries an ambiguous response with the same operation ID then recovers by status", async () => {
@@ -269,7 +269,9 @@ describe("useTaskLifecycleOperations", () => {
 		expect(notifyErrorMock).toHaveBeenCalledOnce();
 		expect(notifyErrorMock).toHaveBeenCalledWith(
 			"The agent did not stop in time. No workspace cleanup was performed.",
+			{ key: showAppToastMock.mock.calls[0]?.[1] },
 		);
+		expect(showAppToastMock).toHaveBeenCalledOnce();
 	});
 
 	it("refreshes authoritative state when neither the response nor operation status can be recovered", async () => {
@@ -286,7 +288,90 @@ describe("useTaskLifecycleOperations", () => {
 
 		expect(refreshProjectState).toHaveBeenCalledOnce();
 		expect(applyLifecycleProjectState).not.toHaveBeenCalled();
-		expect(notifyErrorMock).toHaveBeenCalledWith("Could not confirm the task action: connection closed");
+		expect(notifyErrorMock).toHaveBeenCalledWith("Could not confirm the task action: connection closed", undefined);
+	});
+
+	it("acknowledges deletion before flushing and replaces its progress toast only after authoritative completion", async () => {
+		const flush = createDeferred<{ ok: boolean }>();
+		const response = createDeferred<RuntimeTaskLifecycleResult>();
+		flushBoardCommands.mockReturnValue(flush.promise);
+		executeTaskLifecycleMutateMock.mockReturnValue(response.promise);
+		const draft = { kind: "delete" as const, taskId: "task-1", taskCreatedAt: 1 };
+		let pending: Promise<RuntimeTaskLifecycleResult | null> | null = null;
+		let duplicate: Promise<RuntimeTaskLifecycleResult | null> | null = null;
+
+		await act(async () => {
+			pending = requireSnapshot(latestSnapshot).executeTaskLifecycle(draft);
+			duplicate = requireSnapshot(latestSnapshot).executeTaskLifecycle(draft);
+		});
+		const toastKey = showAppToastMock.mock.calls[0]?.[1];
+		expect(toastKey).toMatch(/^lifecycle:delete:/);
+		expect(showAppToastMock).toHaveBeenCalledExactlyOnceWith(
+			{ message: "Deleting task permanently…", timeout: Infinity },
+			toastKey,
+		);
+		expect(executeTaskLifecycleMutateMock).not.toHaveBeenCalled();
+
+		await act(async () => flush.resolve({ ok: true }));
+		expect(executeTaskLifecycleMutateMock).toHaveBeenCalledOnce();
+		expect(showAppToastMock).toHaveBeenCalledOnce();
+		expect(applyLifecycleProjectState).not.toHaveBeenCalled();
+
+		const result = createResult({ operation: { ...createResult().operation, kind: "delete" } });
+		applyLifecycleProjectState.mockImplementation(() => {
+			expect(showAppToastMock).toHaveBeenCalledOnce();
+		});
+		await act(async () => {
+			response.resolve(result);
+			await Promise.all([pending, duplicate]);
+		});
+		expect(applyLifecycleProjectState).toHaveBeenCalledWith(result.state);
+		expect(showAppToastMock).toHaveBeenCalledTimes(2);
+		expect(showAppToastMock).toHaveBeenLastCalledWith(
+			{ intent: "success", message: "Task permanently deleted." },
+			toastKey,
+		);
+		expect(requireSnapshot(latestSnapshot).pendingTaskLifecycleById).toEqual({});
+	});
+
+	it.each(["flush", "loading", "connection"] as const)(
+		"replaces delete progress with an error on %s failure",
+		async (failure) => {
+			if (failure === "flush") flushBoardCommands.mockResolvedValue({ ok: false, message: "revision conflict" });
+			if (failure === "loading") getAuthoritativeRevision.mockReturnValue(null);
+			if (failure === "connection") {
+				executeTaskLifecycleMutateMock.mockRejectedValue(new Error("connection closed"));
+				getTaskLifecycleOperationQueryMock.mockResolvedValue(null);
+			}
+			await act(async () => {
+				await requireSnapshot(latestSnapshot).executeTaskLifecycle({
+					kind: "delete",
+					taskId: "task-1",
+					taskCreatedAt: 1,
+				});
+			});
+			expect(showAppToastMock).toHaveBeenCalledOnce();
+			expect(notifyErrorMock).toHaveBeenCalledExactlyOnceWith(expect.any(String), {
+				key: showAppToastMock.mock.calls[0]?.[1],
+			});
+			expect(requireSnapshot(latestSnapshot).pendingTaskLifecycleById).toEqual({});
+		},
+	);
+
+	it("replaces delete progress with cleanup warnings instead of hiding them behind a success toast", async () => {
+		executeTaskLifecycleMutateMock.mockResolvedValue(createResult({ warning: "Branch cleanup needs attention." }));
+		await act(async () => {
+			await requireSnapshot(latestSnapshot).executeTaskLifecycle({
+				kind: "delete",
+				taskId: "task-1",
+				taskCreatedAt: 1,
+			});
+		});
+		expect(showAppToastMock).toHaveBeenCalledTimes(2);
+		expect(showAppToastMock).toHaveBeenLastCalledWith(
+			expect.objectContaining({ intent: "warning", message: "Branch cleanup needs attention.", timeout: 7000 }),
+			showAppToastMock.mock.calls[0]?.[1],
+		);
 	});
 
 	it("coalesces duplicate gestures for one task while the first operation is pending", async () => {

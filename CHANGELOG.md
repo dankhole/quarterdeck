@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Permanently deleting a task now immediately shows a persistent progress notification, then updates it with the confirmed result or an error.
+
 - Titles, branch names, commit messages, and enabled summary polishing now try the local Codex CLI’s saved login before falling back to the configured LLM gateway. Explicit title-provider overrides remain available, titles retain a final local-text fallback, and summary polishing no longer requires a gateway to be enabled. Helper context travels through stdin so large diffs do not exceed command-line limits.
 
 - Codex tasks now track new-conversation session handoffs instead of remaining Ready for review while the new conversation works. The launch-scoped `SessionStart` hook includes `clear`, preserving foreground identity and exact resume tracking.

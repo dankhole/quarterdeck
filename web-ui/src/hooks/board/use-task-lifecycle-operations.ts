@@ -124,7 +124,12 @@ export function useTaskLifecycleOperations({
 			}
 
 			const operationId = createTaskLifecycleOperationId(draft.kind);
+			const deleteToastKey = draft.kind === "delete" ? operationId : undefined;
+			const errorToastOptions = deleteToastKey ? { key: deleteToastKey } : undefined;
 			const promise = (async (): Promise<RuntimeTaskLifecycleResult | null> => {
+				if (deleteToastKey) {
+					showAppToast({ message: "Deleting task permanently…", timeout: Infinity }, deleteToastKey);
+				}
 				setPendingTaskLifecycleByScope((current) => ({
 					...current,
 					[scopeKey]: {
@@ -138,12 +143,12 @@ export function useTaskLifecycleOperations({
 				try {
 					const flushed = await flushBoardCommands();
 					if (!flushed.ok) {
-						notifyError(flushed.message ?? "Could not save pending board changes.");
+						notifyError(flushed.message ?? "Could not save pending board changes.", errorToastOptions);
 						return null;
 					}
 					const expectedRevision = getAuthoritativeRevision();
 					if (expectedRevision === null) {
-						notifyError("The project is still loading. Try the action again.");
+						notifyError("The project is still loading. Try the action again.", errorToastOptions);
 						return null;
 					}
 					const geometry =
@@ -166,14 +171,22 @@ export function useTaskLifecycleOperations({
 					const result = await sendLifecycleCommand(projectId, command);
 					applyLifecycleProjectState(result.state);
 					if (!result.ok) {
-						notifyError(getTaskLifecycleFailureMessage(result.operation.outcomeCode, result.error));
+						notifyError(
+							getTaskLifecycleFailureMessage(result.operation.outcomeCode, result.error),
+							errorToastOptions,
+						);
 					} else if (result.warning) {
-						showAppToast({
-							intent: "warning",
-							icon: "warning-sign",
-							message: result.warning,
-							timeout: 7000,
-						});
+						showAppToast(
+							{
+								intent: "warning",
+								icon: "warning-sign",
+								message: result.warning,
+								timeout: 7000,
+							},
+							deleteToastKey,
+						);
+					} else if (deleteToastKey) {
+						showAppToast({ intent: "success", message: "Task permanently deleted." }, deleteToastKey);
 					}
 					return result;
 				} catch (error) {
@@ -185,7 +198,7 @@ export function useTaskLifecycleOperations({
 						operationKind: draft.kind,
 						error: message,
 					});
-					notifyError(`Could not confirm the task action: ${message}`);
+					notifyError(`Could not confirm the task action: ${message}`, errorToastOptions);
 					// The server may have accepted the operation even though both the
 					// response and status lookup were lost. Replace the optimistic board
 					// with a fresh authoritative snapshot instead of leaving a card in a
