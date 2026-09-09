@@ -1,62 +1,13 @@
 /*
-Quarterdeck has to shut down cleanly across several launch shapes:
-
-- `quarterdeck`
-- `npx quarterdeck`
-
-Those are not equivalent from a signal-delivery perspective.
-
-When the user presses Ctrl+C, the terminal sends SIGINT to the foreground process
-group, not just to "the real app". In wrapper-based launches, Quarterdeck can receive:
-
-1. the original SIGINT directly from the terminal process group
-2. an immediate second SIGINT replayed by a wrapper such as `npx` or `npm exec`
-
-That means one physical Ctrl+C can look like two SIGINTs by the time it reaches
-Quarterdeck. A generic graceful-shutdown helper cannot tell whether the second signal
-was:
-
-- a true second Ctrl+C from the user
-- a duplicate forwarded by a parent wrapper during its own shutdown
-
-We used to rely on a generic helper with the common policy "first signal starts
-graceful shutdown, second signal force exits". That works for direct launches,
-but it breaks under wrapper launches because the replayed SIGINT gets mistaken
-for an intentional force-quit request. The result is that Quarterdeck can bail out
-mid-cleanup even though the user only pressed Ctrl+C once.
-
-This module keeps the shutdown logic local so we can encode the one piece of
-context a generic library does not have: some launch environments are known to
-replay signals. We detect those environments conservatively, then suppress only
-an immediate duplicate copy of the same signal while shutdown is already in
-progress.
-
-Important design constraints:
-
-- We only suppress duplicates for wrapper-style launches, not normal direct runs.
-- We only suppress the same signal as the one that started shutdown.
-- We only suppress duplicates for a short window.
-- A later second Ctrl+C still force exits.
-- Timeout behavior is preserved so a stuck shutdown cannot hang forever.
-
-The small tradeoff is intentional: in wrapper launches, a human pressing Ctrl+C
-twice extremely quickly may have the second press treated as a wrapper replay if
-it lands inside the duplicate window. In practice that is much less harmful than
-the old behavior, where a single Ctrl+C under `npx` could be misread as a double
-interrupt and force exit immediately.
+A single Ctrl+C can deliver multiple SIGINTs. Launch-path and npm-environment
+heuristics cannot prove that a direct invocation receives only one signal, so
+all launches suppress copies of the initial signal for a short, fixed window.
+A later interrupt or a different signal still forces exit. Programmatic shutdown
+also tolerates any signal racing its initial request. The shutdown deadline is
+independent of duplicate delivery and never extends when another signal arrives.
 */
 const DEFAULT_HANDLED_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT", "SIGBREAK"] as const;
 const DEFAULT_DUPLICATE_SIGNAL_WINDOW_MS = 750;
-const TRANSIENT_CLI_CACHE_PATH_MARKERS = [
-	"/.npm/_npx/",
-	"/npm/_npx/",
-	"/npm-cache/_npx/",
-	"/.npx/",
-	"/pnpm/dlx/",
-	"/.yarn/cache/",
-	"/bunx-",
-] as const;
-
 export type HandledShutdownSignal = (typeof DEFAULT_HANDLED_SIGNALS)[number];
 
 export interface GracefulShutdownProcess {
@@ -77,7 +28,6 @@ interface GracefulShutdownOptions {
 	onTimeout?: (delayMs: number) => void;
 	process: GracefulShutdownProcess;
 	exit: (code: number) => void;
-	suppressImmediateDuplicateSignals?: boolean;
 	duplicateSignalWindowMs?: number;
 	now?: () => number;
 	platform?: NodeJS.Platform;
@@ -98,29 +48,6 @@ export function getExitCodeForSignal(signal: HandledShutdownSignal | null): numb
 		default:
 			return 0;
 	}
-}
-
-function normalizePath(path: string): string {
-	return path.replaceAll("\\", "/").toLowerCase();
-}
-
-export function shouldSuppressImmediateDuplicateShutdownSignals(options?: {
-	argv?: string[];
-	env?: NodeJS.ProcessEnv;
-}): boolean {
-	const env = options?.env ?? process.env;
-	if (typeof env.npm_execpath === "string" && env.npm_execpath.length > 0) {
-		return true;
-	}
-
-	const argv = options?.argv ?? process.argv;
-	const entrypointPath = argv[1];
-	if (typeof entrypointPath !== "string" || entrypointPath.length === 0) {
-		return false;
-	}
-
-	const normalizedPath = normalizePath(entrypointPath);
-	return TRANSIENT_CLI_CACHE_PATH_MARKERS.some((marker) => normalizedPath.includes(marker));
 }
 
 export function installGracefulShutdownHandlers(options: GracefulShutdownOptions): GracefulShutdownController {
@@ -190,9 +117,7 @@ export function installGracefulShutdownHandlers(options: GracefulShutdownOptions
 			return;
 		}
 
-		const shouldSuppressRacingSignal =
-			(options.suppressImmediateDuplicateSignals === true && signal === shutdownSignal) ||
-			shutdownStartedProgrammatically;
+		const shouldSuppressRacingSignal = signal === shutdownSignal || shutdownStartedProgrammatically;
 		if (shouldSuppressRacingSignal && now() - shutdownStartedAt <= duplicateSignalWindowMs) {
 			return;
 		}

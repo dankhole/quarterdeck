@@ -42,7 +42,6 @@ export {
 	getExitCodeForSignal,
 	type HandledShutdownSignal,
 	installGracefulShutdownHandlers,
-	shouldSuppressImmediateDuplicateShutdownSignals,
 } from "./graceful-shutdown";
 export { KeyedOperationCoordinator } from "./keyed-operation-coordinator";
 export {

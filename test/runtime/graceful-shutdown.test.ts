@@ -7,7 +7,6 @@ import {
 	getExitCodeForSignal,
 	type HandledShutdownSignal,
 	installGracefulShutdownHandlers,
-	shouldSuppressImmediateDuplicateShutdownSignals,
 } from "../../src/core";
 
 function createDeferredPromise() {
@@ -53,7 +52,7 @@ describe("installGracefulShutdownHandlers", () => {
 		vi.useRealTimers();
 	});
 
-	it("suppresses an immediate duplicate SIGINT while shutdown is already in progress", async () => {
+	it("suppresses an immediate duplicate SIGINT by default, including direct launches", async () => {
 		vi.useFakeTimers();
 
 		const processDouble = createProcessDouble();
@@ -69,7 +68,6 @@ describe("installGracefulShutdownHandlers", () => {
 			onShutdown: async () => {
 				await deferred.promise;
 			},
-			suppressImmediateDuplicateSignals: true,
 		});
 
 		processDouble.emitSignal("SIGINT");
@@ -85,6 +83,63 @@ describe("installGracefulShutdownHandlers", () => {
 
 		expect(exit).toHaveBeenCalledTimes(1);
 		expect(exit).toHaveBeenCalledWith(130);
+	});
+
+	it("keeps the duplicate window anchored to the first signal", () => {
+		vi.useFakeTimers();
+		const processDouble = createProcessDouble();
+		const exit = vi.fn();
+		installGracefulShutdownHandlers({
+			process: processDouble,
+			delayMs: 10_000,
+			exit,
+			onShutdown: () => new Promise(() => {}),
+		});
+
+		processDouble.emitSignal("SIGINT");
+		vi.advanceTimersByTime(750);
+		processDouble.emitSignal("SIGINT");
+		expect(exit).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(1);
+		processDouble.emitSignal("SIGINT");
+		expect(exit).toHaveBeenCalledExactlyOnceWith(130);
+	});
+
+	it("force-exits immediately on a different signal", () => {
+		vi.useFakeTimers();
+		const processDouble = createProcessDouble();
+		const exit = vi.fn();
+		installGracefulShutdownHandlers({
+			process: processDouble,
+			delayMs: 10_000,
+			exit,
+			onShutdown: () => new Promise(() => {}),
+		});
+
+		processDouble.emitSignal("SIGINT");
+		processDouble.emitSignal("SIGTERM");
+		expect(exit).toHaveBeenCalledExactlyOnceWith(143);
+	});
+
+	it("preserves the shutdown deadline when duplicates arrive", () => {
+		vi.useFakeTimers();
+		const processDouble = createProcessDouble();
+		const exit = vi.fn();
+		const onTimeout = vi.fn();
+		installGracefulShutdownHandlers({
+			process: processDouble,
+			delayMs: 10_000,
+			exit,
+			onTimeout,
+			onShutdown: () => new Promise(() => {}),
+		});
+
+		processDouble.emitSignal("SIGINT");
+		vi.advanceTimersByTime(750);
+		processDouble.emitSignal("SIGINT");
+		vi.advanceTimersByTime(9_250);
+		expect(onTimeout).toHaveBeenCalledExactlyOnceWith(10_000);
+		expect(exit).toHaveBeenCalledExactlyOnceWith(1);
 	});
 
 	it("still force-exits on a later second Ctrl+C", () => {
@@ -103,7 +158,6 @@ describe("installGracefulShutdownHandlers", () => {
 			onShutdown: async () => {
 				await deferred.promise;
 			},
-			suppressImmediateDuplicateSignals: true,
 		});
 
 		processDouble.emitSignal("SIGINT");
@@ -216,40 +270,6 @@ describe("installGracefulShutdownHandlers", () => {
 		expect(exit).toHaveBeenCalledWith(130);
 
 		deferred.resolve();
-	});
-});
-
-describe("shouldSuppressImmediateDuplicateShutdownSignals", () => {
-	it("enables duplicate suppression for npm-style wrapper launches", () => {
-		expect(
-			shouldSuppressImmediateDuplicateShutdownSignals({
-				argv: ["/usr/local/bin/node", "/repo/node_modules/quarterdeck/dist/cli.js"],
-				env: {
-					npm_execpath: "/usr/local/lib/node_modules/npm/bin/npm-cli.js",
-				},
-			}),
-		).toBe(true);
-	});
-
-	it("enables duplicate suppression for transient npx cache entrypoints", () => {
-		expect(
-			shouldSuppressImmediateDuplicateShutdownSignals({
-				argv: [
-					"/usr/local/bin/node",
-					"/Users/example/.npm/_npx/593b71878a7c70f2/node_modules/quarterdeck/dist/cli.js",
-				],
-				env: {},
-			}),
-		).toBe(true);
-	});
-
-	it("leaves normal direct launches unchanged", () => {
-		expect(
-			shouldSuppressImmediateDuplicateShutdownSignals({
-				argv: ["/usr/local/bin/node", "/repo/dist/cli.js"],
-				env: {},
-			}),
-		).toBe(false);
 	});
 });
 

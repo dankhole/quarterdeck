@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-09 — Protect direct CLI shutdown from immediate duplicate signals
+
+A user reported `Forced exit on second signal: SIGINT` after one Ctrl+C. Read-only diagnostics and the live process ancestry established a direct `quarterdeck` launch under zsh; the sender and timing of the extra signal remain unconfirmed. `src/core/graceful-shutdown.ts` previously enabled its 750 ms duplicate window only for inferred npm/transient-cache launches. Removed that heuristic and CLI opt-in so the same bounded protection applies to direct launches. The window stays anchored to the first request, later interrupts and different signals still force exit, and the shutdown deadline remains independent.
+
+Validation: 10 focused controller tests and a POSIX process/filesystem regression passed. The latter delivers actual duplicate SIGINTs without npm metadata and verifies a delayed cleanup write finishes before exit. Runtime typecheck and targeted Biome passed. No active runtime restart or provider run was needed; this verifies immediate-duplicate protection, not attribution of the reported signal source.
+
 ## 2026-09-09 — Keep follow-up title generation explicit
 
 The previous change incorrectly treated better follow-up generation as authorization to rename threads automatically. Removed the completion listener, cooldown/concurrency bookkeeping, runtime-hub subscription, and automatic-only service guards. Initial creation remains the sole automatic trigger; explicit regeneration retains bounded recent conversation context and lock-held title/provenance/session protection. Prompts now favor broad, recognizable subject/purpose labels such as “UI Work” and “Kafka Investigation.” Provenance remains a write-race guard, not an opt-in to future refreshes. Notable files: `src/server/{automatic-task-title-scheduler,task-title-service,runtime-server,runtime-state-hub}.ts` and `src/title/title-generator.ts`.

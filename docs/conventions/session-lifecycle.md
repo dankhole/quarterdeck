@@ -32,6 +32,8 @@ A provider-specific rendered failure may conservatively remove Running only when
 
 ## Stop, restore, and targeted resume
 
+CLI shutdown suppresses copies of its initial signal for a fixed 750 ms in every launch environment. Executable paths and npm metadata cannot prove that a direct launch receives only one signal. Duplicates never extend this window or the cleanup deadline; a later interrupt or a different signal forces exit. Programmatic shutdown remains idempotent and tolerates any signal racing its initial request.
+
 - Restore from Trash waits for the previous task session to finish exiting through `stopTaskSession(..., { waitForExit: true })` before resuming. A rapid untrash can otherwise call `TerminalSessionManager.startTaskSession()` while the old entry is active, short-circuit on it, and then lose the session when that old process exits.
 - Request normalization preserves `waitForExit`. Stop results distinguish `exited` and `not_running` from `timed_out` and `failed`.
 - Worktree cleanup, replacement start, and permanent card removal proceed only after a successful stop outcome.

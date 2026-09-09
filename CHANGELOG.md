@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Direct CLI launches now share the 750 ms duplicate shutdown-signal protection previously limited to detected npm wrappers, so an immediate repeated SIGINT can no longer interrupt cleanup. A later Ctrl+C still forces exit.
+
 - Initial task titles now describe the broad subject or purpose instead of the first literal step. Follow-up titles regenerate only on request, using bounded recent conversation history to capture the thread’s current direction; failed follow-up generation retains the existing title.
 
 - Permanently deleting a task now immediately shows a persistent progress notification, then updates it with the confirmed result or an error.

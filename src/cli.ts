@@ -22,7 +22,6 @@ import {
 	setQuarterdeckRuntimeHost,
 	setQuarterdeckRuntimePort,
 	setRuntimeDiagnosticLogSink,
-	shouldSuppressImmediateDuplicateShutdownSignals,
 } from "./core";
 import { createRuntimeDiagnostics, type RuntimeDiagnostics } from "./diagnostics";
 import type { RuntimeStateHub } from "./server";
@@ -838,7 +837,6 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 			shutdownIndicator.stop("interrupted");
 			console.error(`Forced exit on second signal: ${signal}`);
 		},
-		suppressImmediateDuplicateSignals: shouldSuppressImmediateDuplicateShutdownSignals(),
 	});
 
 	// When quarterdeck is launched as a child process (by Cline, an agent, etc.),
