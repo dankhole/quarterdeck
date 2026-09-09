@@ -129,10 +129,10 @@ export function deriveProjectBoardCommands(before: BoardData, after: BoardData):
 					? { title: nextLocation.card.title }
 					: {}),
 				prompt: nextLocation.card.prompt,
-				images: nextLocation.card.images,
+				images: nextLocation.card.images ?? [],
 				baseRef: nextLocation.card.baseRef,
 				useWorktree: nextLocation.card.useWorktree,
-				pinned: nextLocation.card.pinned,
+				pinned: nextLocation.card.pinned ?? false,
 				updatedAt: nextLocation.card.updatedAt,
 			});
 		}

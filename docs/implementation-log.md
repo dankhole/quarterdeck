@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-09 — Preserve cleared task fields and saved prompt templates
+
+Board command derivation forwarded normalized `undefined` values for unpinned tasks and empty image attachments. Runtime updates interpret omitted fields as unchanged, so both actions reverted when commands were applied. The browser now sends explicit `false` and `[]` values; runtime ownership and persisted normalization remain unchanged. Regression coverage crosses the task editor, command serialization, runtime reducer, and pending-command overlay.
+
+Config save responses and global projections also reconstructed custom prompt templates as defaults, even after writing the custom values to disk. Config reconstruction now carries the resolved templates through the same normalization used on load. Focused config tests cover save results, reloads, unrelated updates, and global projection. Notable files: `project-board-command-sync.ts`, `runtime-config.ts`, and `runtime-config-normalizers.ts`.
+
 ## 2026-09-09 — Protect direct CLI shutdown from immediate duplicate signals
 
 A user reported `Forced exit on second signal: SIGINT` after one Ctrl+C. Read-only diagnostics and the live process ancestry established a direct `quarterdeck` launch under zsh; the sender and timing of the extra signal remain unconfirmed. `src/core/graceful-shutdown.ts` previously enabled its 750 ms duplicate window only for inferred npm/transient-cache launches. Removed that heuristic and CLI opt-in so the same bounded protection applies to direct launches. The window stays anchored to the first request, later interrupts and different signals still force exit, and the shutdown deadline remains independent.

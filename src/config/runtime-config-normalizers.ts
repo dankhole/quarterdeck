@@ -357,6 +357,9 @@ export function createRuntimeConfigStateFromValues(
 		projectConfigPath: string | null;
 		selectedAgentId: RuntimeAgentId;
 		selectedShortcutLabel: string | null;
+		commitPromptTemplate?: string;
+		openPrPromptTemplate?: string;
+		worktreeSystemPromptTemplate?: string;
 		audibleNotificationEvents: AudibleNotificationEvents;
 		audibleNotificationSuppressCurrentProject: AudibleNotificationSuppressCurrentProject;
 		shortcuts: RuntimeProjectShortcut[];
@@ -382,9 +385,12 @@ export function createRuntimeConfigStateFromValues(
 		defaultBaseRef: typeof input.defaultBaseRef === "string" ? input.defaultBaseRef.trim() : "",
 		hiddenDefaultPromptShortcuts: normalizeHiddenDefaultPromptShortcuts(input.hiddenDefaultPromptShortcuts),
 		promptShortcuts: normalizePromptShortcuts(input.promptShortcuts, input.hiddenDefaultPromptShortcuts),
-		commitPromptTemplate: DEFAULT_COMMIT_PROMPT_TEMPLATE,
-		openPrPromptTemplate: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
-		worktreeSystemPromptTemplate: DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE,
+		commitPromptTemplate: normalizePromptTemplate(input.commitPromptTemplate, DEFAULT_COMMIT_PROMPT_TEMPLATE),
+		openPrPromptTemplate: normalizePromptTemplate(input.openPrPromptTemplate, DEFAULT_OPEN_PR_PROMPT_TEMPLATE),
+		worktreeSystemPromptTemplate: normalizePromptTemplate(
+			input.worktreeSystemPromptTemplate,
+			DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE,
+		),
 		commitPromptTemplateDefault: DEFAULT_COMMIT_PROMPT_TEMPLATE,
 		openPrPromptTemplateDefault: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 		worktreeSystemPromptTemplateDefault: DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE,
@@ -398,6 +404,9 @@ export function toGlobalRuntimeConfigState(current: RuntimeConfigState): Runtime
 		projectConfigPath: null,
 		selectedAgentId: current.selectedAgentId,
 		selectedShortcutLabel: current.selectedShortcutLabel,
+		commitPromptTemplate: current.commitPromptTemplate,
+		openPrPromptTemplate: current.openPrPromptTemplate,
+		worktreeSystemPromptTemplate: current.worktreeSystemPromptTemplate,
 		audibleNotificationEvents: current.audibleNotificationEvents,
 		audibleNotificationSuppressCurrentProject: current.audibleNotificationSuppressCurrentProject,
 		shortcuts: [],

@@ -182,6 +182,9 @@ async function applyConfigUpdates({
 		projectConfigPath,
 		selectedAgentId: nextSelectedAgentId,
 		selectedShortcutLabel: nextSelectedShortcutLabel,
+		commitPromptTemplate: nextCommitPromptTemplate,
+		openPrPromptTemplate: nextOpenPrPromptTemplate,
+		worktreeSystemPromptTemplate: nextWorktreeSystemPromptTemplate,
 		audibleNotificationEvents: nextAudibleNotificationEvents,
 		audibleNotificationSuppressCurrentProject: nextAudibleNotificationSuppressCurrentProject,
 		shortcuts: nextShortcuts,
@@ -222,6 +225,9 @@ export async function saveRuntimeConfig(
 	config: GlobalConfigFieldValues & {
 		selectedAgentId: RuntimeAgentId;
 		selectedShortcutLabel: string | null;
+		commitPromptTemplate?: string;
+		openPrPromptTemplate?: string;
+		worktreeSystemPromptTemplate?: string;
 		audibleNotificationEvents: AudibleNotificationEvents;
 		audibleNotificationSuppressCurrentProject: AudibleNotificationSuppressCurrentProject;
 		shortcuts: RuntimeProjectShortcut[];

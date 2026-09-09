@@ -3,6 +3,7 @@ import { runtimeProjectBoardCommandBatchEnvelopeSchema } from "@runtime-contract
 import { describe, expect, it } from "vitest";
 
 import { createInitialBoardData } from "@/data/board-data";
+import { saveEditedTaskToBoard } from "@/hooks/board/task-editor-drafts";
 import {
 	addTaskDependency,
 	addTaskToColumnWithResult,
@@ -121,6 +122,57 @@ describe("project board command sync", () => {
 			pinned: true,
 		});
 		expect(result.board).toEqual(pinned.board);
+	});
+
+	it("preserves unpinning through serialized commands and pending overlays", () => {
+		const created = addTaskToColumnWithResult(createInitialBoardData(), "backlog", {
+			prompt: "Pinned task",
+			baseRef: "main",
+		});
+		const pinned = toggleTaskPinned(created.board, created.task.id);
+		const unpinned = toggleTaskPinned(pinned.board, created.task.id);
+		const commands = deriveProjectBoardCommands(pinned.board, unpinned.board);
+		const envelope = runtimeProjectBoardCommandBatchEnvelopeSchema.parse(
+			JSON.parse(JSON.stringify({ commandId: "browser:unpin", expectedRevision: 1, commands })),
+		);
+
+		expect(envelope.commands).toEqual([
+			expect.objectContaining({ kind: "update_task", taskId: created.task.id, pinned: false }),
+		]);
+		expect(applyProjectBoardCommands(pinned.board, envelope.commands).board).toEqual(unpinned.board);
+		expect(applyPendingProjectBoardCommands(pinned.board, [commands])).toEqual(unpinned.board);
+		expect(
+			applyPendingProjectBoardCommands(created.board, [
+				deriveProjectBoardCommands(created.board, pinned.board),
+				commands,
+			]),
+		).toEqual(unpinned.board);
+	});
+
+	it("preserves removal of the last image through serialized commands and pending overlays", () => {
+		const created = addTaskToColumnWithResult(createInitialBoardData(), "backlog", {
+			prompt: "Task with an attachment",
+			baseRef: "main",
+			images: [{ id: "image-1", data: "YQ==", mimeType: "image/png" }],
+		});
+		const edited = saveEditedTaskToBoard({
+			board: created.board,
+			editingTaskId: created.task.id,
+			prompt: created.task.prompt,
+			images: [],
+			branchRef: "main",
+			defaultBranchRef: "main",
+		});
+		const commands = deriveProjectBoardCommands(created.board, edited.board);
+		const envelope = runtimeProjectBoardCommandBatchEnvelopeSchema.parse(
+			JSON.parse(JSON.stringify({ commandId: "browser:remove-image", expectedRevision: 1, commands })),
+		);
+
+		expect(envelope.commands).toEqual([
+			expect.objectContaining({ kind: "update_task", taskId: created.task.id, images: [] }),
+		]);
+		expect(applyProjectBoardCommands(created.board, envelope.commands).board).toEqual(edited.board);
+		expect(applyPendingProjectBoardCommands(created.board, [commands])).toEqual(edited.board);
 	});
 
 	it("preserves an explicit manual rename even when the title words stay the same", () => {
