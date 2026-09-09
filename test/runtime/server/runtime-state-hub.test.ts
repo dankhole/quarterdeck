@@ -634,8 +634,6 @@ describe("RuntimeStateHub", () => {
 				listManagedProjects: vi.fn(() => []),
 			}),
 		);
-		const onTaskReady = vi.fn();
-		const unsubscribeTaskReady = hub.subscribeToTaskReviewReady(onTaskReady);
 		const project1Client = createRuntimeClient();
 		const project2Client = createRuntimeClient();
 		const clients = (hub as unknown as RuntimeStateHubInternals).clients;
@@ -674,7 +672,6 @@ describe("RuntimeStateHub", () => {
 			expect(project2Client.messages).toEqual([]);
 			expect(loadProjectBoard).not.toHaveBeenCalled();
 			expect(buildProjectsPayload).not.toHaveBeenCalled();
-			expect(onTaskReady).not.toHaveBeenCalled();
 
 			project1Client.messages.length = 0;
 			project2Client.messages.length = 0;
@@ -732,7 +729,6 @@ describe("RuntimeStateHub", () => {
 					],
 				});
 			}
-			expect(onTaskReady).not.toHaveBeenCalled();
 			expect(loadProjectBoard).toHaveBeenCalledWith("project-1");
 			expect(buildProjectsPayload).toHaveBeenCalledOnce();
 			expect(buildProjectsPayload).toHaveBeenCalledWith("project-1");
@@ -804,19 +800,16 @@ describe("RuntimeStateHub", () => {
 				}),
 			);
 			expect(project2Client.messages.some((message) => message.type === "task_ready_for_review")).toBe(false);
-			expect(onTaskReady).toHaveBeenCalledExactlyOnceWith("project-1", "task-1");
 
 			// Further activity in the same completed turn is not another completion edge.
 			store.update("task-1", { lastHookAt: 5 });
 			await vi.advanceTimersByTimeAsync(150);
-			expect(onTaskReady).toHaveBeenCalledOnce();
-			unsubscribeTaskReady();
+			expect(project1Client.messages.filter((message) => message.type === "task_ready_for_review")).toHaveLength(1);
 			store.update("task-1", { state: "running", reviewReason: null });
 			await vi.advanceTimersByTimeAsync(150);
 			store.update("task-1", { state: "awaiting_review", reviewReason: "hook", lastHookAt: 6 });
 			await vi.advanceTimersByTimeAsync(150);
 			expect(project1Client.messages.filter((message) => message.type === "task_ready_for_review")).toHaveLength(2);
-			expect(onTaskReady).toHaveBeenCalledOnce();
 		} finally {
 			loadProjectBoard.mockRestore();
 			await hub.close();

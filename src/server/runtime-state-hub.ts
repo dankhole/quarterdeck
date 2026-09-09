@@ -100,7 +100,6 @@ export interface CreateRuntimeStateHubDependencies {
 }
 
 export interface RuntimeStateHub extends IRuntimeBroadcaster {
-	subscribeToTaskReviewReady: (listener: (projectId: string, taskId: string) => void) => () => void;
 	trackTerminalManager: (projectId: string, manager: TerminalSessionManager) => void;
 	broadcastRuntimeProjectStateSnapshot: (projectId: string, state: RuntimeProjectStateResponse) => void;
 	handleUpgrade: (
@@ -120,7 +119,6 @@ export interface RuntimeStateHub extends IRuntimeBroadcaster {
 }
 
 export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
-	private readonly taskReviewReadyListeners = new Set<(projectId: string, taskId: string) => void>();
 	private readonly wss: WebSocketServer;
 	private readonly clients: RuntimeStateClientRegistry;
 	private readonly batcher: RuntimeStateMessageBatcher;
@@ -283,13 +281,6 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	}
 
 	// ── Public API (arrow fields for stable `this` when passed as refs) ──
-	subscribeToTaskReviewReady = (listener: (projectId: string, taskId: string) => void): (() => void) => {
-		this.taskReviewReadyListeners.add(listener);
-		return () => {
-			this.taskReviewReadyListeners.delete(listener);
-		};
-	};
-
 	trackTerminalManager = (projectId: string, manager: TerminalSessionManager): void => {
 		this.batcher.trackTerminalManager(projectId, manager);
 		if (this.sessionPersistenceUnsubscribes.has(projectId)) {
@@ -418,7 +409,6 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 	broadcastTaskReadyForReview = (projectId: string, taskId: string): void => {
 		this.clients.broadcastToProject(projectId, buildTaskReadyForReviewMessage(projectId, taskId));
-		for (const listener of this.taskReviewReadyListeners) listener(projectId, taskId);
 	};
 
 	broadcastTaskTitleUpdated = (
@@ -488,7 +478,6 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		// Dispose base class resources (metadata monitor and diagnostics subscriptions).
 		this.dispose();
 		this.batcher.close();
-		this.taskReviewReadyListeners.clear();
 		this.clients.terminateAllClients();
 
 		// Wait for the WebSocketServer to finish closing (must be last —

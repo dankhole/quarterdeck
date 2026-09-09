@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-09 — Keep follow-up title generation explicit
+
+The previous change incorrectly treated better follow-up generation as authorization to rename threads automatically. Removed the completion listener, cooldown/concurrency bookkeeping, runtime-hub subscription, and automatic-only service guards. Initial creation remains the sole automatic trigger; explicit regeneration retains bounded recent conversation context and lock-held title/provenance/session protection. Prompts now favor broad, recognizable subject/purpose labels such as “UI Work” and “Kafka Investigation.” Provenance remains a write-race guard, not an opt-in to future refreshes. Notable files: `src/server/{automatic-task-title-scheduler,task-title-service,runtime-server,runtime-state-hub}.ts` and `src/title/title-generator.ts`.
+
+Validation: 86 tests passed across title generation/context, explicit regeneration, initial scheduling, runtime-hub completion notifications, the regeneration API, and board-command persistence. Runtime typecheck, targeted Biome, and diff whitespace checks passed. The completion-to-title wiring was removed entirely; no browser, PTY, or provider transport behavior changed, so no Agent Lab or real-provider run was needed.
+
 ## 2026-09-08 — Name the evolving thread and retain title ownership
 
 Current chats kept their opening-step titles because automatic generation only ran at creation, and explicit regeneration used often-empty hook summaries rather than native conversation history. Initial and follow-up prompts now distinguish requested work from the thread’s evolving purpose. `task-title-service.ts` uses the existing bounded conversation reader (up to 24 messages) and a 6,000-character context with separate user/assistant budgets; no transcript persistence or second summarizer was added. Exact Codex 0.153.4 read-only history compatibility is validated independently of structured execution’s version gate.

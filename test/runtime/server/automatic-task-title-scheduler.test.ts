@@ -5,7 +5,6 @@ import type { RuntimeDiagnostics } from "../../../src/diagnostics";
 import {
 	type AutomaticTaskTitleSchedulerDependencies,
 	createAutomaticTaskTitlePostCommitListener,
-	createAutomaticTaskTitleRefreshListener,
 	scheduleAutomaticTaskTitle,
 } from "../../../src/server/automatic-task-title-scheduler";
 import { AutomaticTitleGenerationCoordinator } from "../../../src/title";
@@ -157,102 +156,5 @@ describe("automatic task title scheduler", () => {
 			{ level: "warn", essential: true },
 		);
 		expect(JSON.stringify(harness.recordEvent.mock.calls)).not.toContain("private persistence details");
-	});
-});
-
-describe("automatic task title refresh listener", () => {
-	it("shares initial generation single-flight and scopes its minute cooldown by project and task", async () => {
-		const initialTitle = createDeferred<string | null>();
-		const harness = createHarness(() => initialTitle.promise);
-		const initial = scheduleAutomaticTaskTitle(harness.dependencies, scope, card);
-		const regenerateTaskTitle = vi.fn(async () => undefined);
-		let now = 0;
-		const listener = createAutomaticTaskTitleRefreshListener({
-			automaticTitleGeneration: harness.dependencies.automaticTitleGeneration,
-			resolveProjectScope: (projectId) =>
-				projectId === "missing" ? null : { projectId, projectPath: `/${projectId}` },
-			regenerateTaskTitle,
-			now: () => now,
-		});
-
-		listener.onTaskReadyForReview("project-1", card.id);
-		listener.onTaskReadyForReview("project-2", card.id);
-		listener.onTaskReadyForReview("missing", card.id);
-		await new Promise<void>((resolve) => setImmediate(resolve));
-		expect(regenerateTaskTitle).toHaveBeenCalledExactlyOnceWith(
-			{ projectId: "project-2", projectPath: "/project-2" },
-			card.id,
-			{ automatic: true, isCurrent: expect.any(Function) },
-		);
-
-		initialTitle.resolve("Initial title");
-		await initial;
-		listener.onTaskReadyForReview("project-1", card.id);
-		await new Promise<void>((resolve) => setImmediate(resolve));
-		expect(regenerateTaskTitle).toHaveBeenCalledTimes(2);
-		now = 59_999;
-		listener.onTaskReadyForReview("project-1", card.id);
-		listener.onTaskReadyForReview("project-2", card.id);
-		await new Promise<void>((resolve) => setImmediate(resolve));
-		expect(regenerateTaskTitle).toHaveBeenCalledTimes(2);
-		now = 60_000;
-		listener.onTaskReadyForReview("project-1", card.id);
-		await new Promise<void>((resolve) => setImmediate(resolve));
-		expect(regenerateTaskTitle).toHaveBeenLastCalledWith(
-			{ projectId: "project-1", projectPath: "/project-1" },
-			card.id,
-			{ automatic: true, isCurrent: expect.any(Function) },
-		);
-		expect(regenerateTaskTitle).toHaveBeenCalledTimes(3);
-		listener.dispose();
-	});
-
-	it("limits refreshes to three active helpers without queueing skipped completions", async () => {
-		const pending = createDeferred<void>();
-		const regenerateTaskTitle = vi.fn<
-			Parameters<typeof createAutomaticTaskTitleRefreshListener>[0]["regenerateTaskTitle"]
-		>(() => pending.promise);
-		const listener = createAutomaticTaskTitleRefreshListener({
-			automaticTitleGeneration: new AutomaticTitleGenerationCoordinator(),
-			resolveProjectScope: () => scope,
-			regenerateTaskTitle,
-		});
-		for (const taskId of ["task-1", "task-2", "task-3", "task-4"]) {
-			listener.onTaskReadyForReview(scope.projectId, taskId);
-		}
-		await new Promise<void>((resolve) => setImmediate(resolve));
-		expect(regenerateTaskTitle.mock.calls.map((call) => call[1])).toEqual(["task-1", "task-2", "task-3"]);
-		pending.resolve();
-		await new Promise<void>((resolve) => setImmediate(resolve));
-		expect(regenerateTaskTitle).toHaveBeenCalledTimes(3);
-		listener.onTaskReadyForReview(scope.projectId, "task-4");
-		await new Promise<void>((resolve) => setImmediate(resolve));
-		expect(regenerateTaskTitle).toHaveBeenCalledTimes(4);
-		listener.dispose();
-	});
-
-	it("invalidates in-flight result publication and rejects new work after disposal", async () => {
-		const pending = createDeferred<void>();
-		const publish = vi.fn();
-		const regenerateTaskTitle = vi.fn<
-			Parameters<typeof createAutomaticTaskTitleRefreshListener>[0]["regenerateTaskTitle"]
-		>(async (_scope, _taskId, options) => {
-			expect(options.isCurrent()).toBe(true);
-			await pending.promise;
-			if (options.isCurrent()) publish();
-		});
-		const listener = createAutomaticTaskTitleRefreshListener({
-			automaticTitleGeneration: new AutomaticTitleGenerationCoordinator(),
-			resolveProjectScope: () => scope,
-			regenerateTaskTitle,
-		});
-		listener.onTaskReadyForReview(scope.projectId, card.id);
-		await new Promise<void>((resolve) => setImmediate(resolve));
-		listener.dispose();
-		pending.resolve();
-		listener.onTaskReadyForReview(scope.projectId, "another-task");
-		await new Promise<void>((resolve) => setImmediate(resolve));
-		expect(regenerateTaskTitle).toHaveBeenCalledOnce();
-		expect(publish).not.toHaveBeenCalled();
 	});
 });

@@ -331,10 +331,16 @@ describe("generateTaskTitle", () => {
 		});
 		const initial = codexMocks.callCodex.mock.calls[0]?.[0];
 		const followup = codexMocks.callCodex.mock.calls[1]?.[0];
-		expect(initial.systemPrompt).toContain("overall task or question");
+		expect(initial.systemPrompt).toContain("overall area or purpose");
+		expect(initial.systemPrompt).toContain("without inventing a future direction");
 		expect(initial.systemPrompt).toContain("Do not imply the requested work has already been completed");
+		expect(initial.systemPrompt).toContain('"UI Work" or "Kafka Investigation"');
+		expect(initial.systemPrompt).toContain("no minimum word count or required action verb");
+		expect(initial.systemPrompt).not.toContain("3-8 words");
+		expect(followup.systemPrompt).toContain("explicitly requested a new title");
 		expect(followup.systemPrompt).toContain("evolving overall purpose");
 		expect(followup.systemPrompt).toContain("Keep the current title exactly");
+		expect(followup.systemPrompt).toContain("Replace an overly literal or detailed title");
 		expect(followup.userPrompt).toContain("Current title:\nReview Sorting Options");
 		expect(followup.userPrompt).toContain("Improve search and recommendations");
 	});

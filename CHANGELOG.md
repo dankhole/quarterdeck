@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-- Generated task titles now follow the conversation’s evolving purpose using bounded recent history. They refresh after completed turns with rate and concurrency limits, preserve manual names, and retain existing titles on generation failure. Explicit regeneration enables automatic updates for older titles.
+- Initial task titles now describe the broad subject or purpose instead of the first literal step. Follow-up titles regenerate only on request, using bounded recent conversation history to capture the thread’s current direction; failed follow-up generation retains the existing title.
 
 - Permanently deleting a task now immediately shows a persistent progress notification, then updates it with the confirmed result or an error.
 
