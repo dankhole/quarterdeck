@@ -84,7 +84,7 @@ function questionInteraction(): CodexPendingInteraction {
 	};
 }
 
-describe.sequential("TaskInteractionService", () => {
+describe("TaskInteractionService", { concurrent: false }, () => {
 	it("projects only pending attention owned by the exact live structured session", async () => {
 		const getOwnership = vi.fn(async () => ownership());
 		const getOwner = vi.fn(() => ({

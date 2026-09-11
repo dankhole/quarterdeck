@@ -61,7 +61,7 @@ function createIsolatedTaskBoard(baseRef: string): RuntimeBoardData {
 	};
 }
 
-describe.sequential("task repository info", () => {
+describe("task repository info", { concurrent: false }, () => {
 	it("resolves an existing task worktree when the card base ref is unresolved", async () => {
 		await withTemporaryHome(async () => {
 			const { path: projectPath, cleanup } = createTempDir("quarterdeck-unresolved-task-info-");

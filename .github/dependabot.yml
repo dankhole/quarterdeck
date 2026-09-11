@@ -1,7 +1,10 @@
 version: 2
 updates:
   - package-ecosystem: npm
-    directory: "/"
+    # Shared runtime schemas are imported by web-ui; update both lockfiles in one PR.
+    directories:
+      - "/"
+      - "/web-ui"
     schedule:
       interval: weekly
       day: monday
@@ -9,7 +12,17 @@ updates:
     labels:
       - dependencies
     groups:
-      runtime-minor-patch:
+      shared-contracts:
+        patterns:
+          - "zod"
+          - "@trpc/*"
+        update-types:
+          - minor
+          - patch
+      claude-agent-sdk:
+        patterns:
+          - "@anthropic-ai/claude-agent-sdk"
+      minor-patch:
         update-types:
           - minor
           - patch
@@ -19,20 +32,6 @@ updates:
         update-types:
           - "version-update:semver-major"
 
-  - package-ecosystem: npm
-    directory: "/web-ui"
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    labels:
-      - dependencies
-      - web-ui
-    groups:
-      web-ui-minor-patch:
-        update-types:
-          - minor
-          - patch
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

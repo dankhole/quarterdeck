@@ -429,7 +429,7 @@ function persistedStructuredOwnership(overrides: Partial<TaskExecutionOwnership>
 	};
 }
 
-describe.sequential("TaskExecutionOwnershipService", () => {
+describe("TaskExecutionOwnershipService", { concurrent: false }, () => {
 	it("hands a native Claude session to the Agent SDK owner with the exact profile and process kind", async () => {
 		const harness = createManager("awaiting_review", true, "claude");
 		const store = new ProjectExecutionOwnershipStore();

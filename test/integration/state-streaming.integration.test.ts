@@ -63,10 +63,10 @@ function installDeterministicFakeCodex(binDir: string): void {
 	chmodSync(launcherPath, 0o755);
 }
 
-describe.sequential("state streaming integration", () => {
+describe("state streaming integration", { concurrent: false }, () => {
 	it("streams per-project snapshots and isolates project updates", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-stream-");
-		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("quarterdeck-projects-stream-");
+		const { path: tempHome, cleanupAsync: cleanupHome } = createTempDir("quarterdeck-home-stream-");
+		const { path: tempRoot, cleanupAsync: cleanupRoot } = createTempDir("quarterdeck-projects-stream-");
 
 		const projectAPath = join(tempRoot, "project-a");
 		const projectBPath = join(tempRoot, "project-b");
@@ -211,14 +211,14 @@ describe.sequential("state streaming integration", () => {
 				await streamB.close();
 			}
 			await server.stop();
-			cleanupRoot();
-			cleanupHome();
+			await cleanupRoot();
+			await cleanupHome();
 		}
 	}, 30_000);
 
 	it("seeds cross-project notification state when a browser stream connects", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-notification-seed-");
-		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("quarterdeck-projects-notification-seed-");
+		const { path: tempHome, cleanupAsync: cleanupHome } = createTempDir("quarterdeck-home-notification-seed-");
+		const { path: tempRoot, cleanupAsync: cleanupRoot } = createTempDir("quarterdeck-projects-notification-seed-");
 
 		const projectAPath = join(tempRoot, "project-a");
 		const projectBPath = join(tempRoot, "project-b");
@@ -320,14 +320,14 @@ describe.sequential("state streaming integration", () => {
 				});
 			}
 			await server.stop();
-			cleanupRoot();
-			cleanupHome();
+			await cleanupRoot();
+			await cleanupHome();
 		}
 	}, 30_000);
 
 	it("streams the project list when the selected project's state cannot load", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-stream-corrupt-");
-		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("quarterdeck-projects-stream-corrupt-");
+		const { path: tempHome, cleanupAsync: cleanupHome } = createTempDir("quarterdeck-home-stream-corrupt-");
+		const { path: tempRoot, cleanupAsync: cleanupRoot } = createTempDir("quarterdeck-projects-stream-corrupt-");
 
 		const projectAPath = join(tempRoot, "project-a");
 		const projectBPath = join(tempRoot, "project-b");
@@ -395,14 +395,14 @@ describe.sequential("state streaming integration", () => {
 				await stream.close();
 			}
 			await server.stop();
-			cleanupRoot();
-			cleanupHome();
+			await cleanupRoot();
+			await cleanupHome();
 		}
 	}, 30_000);
 
 	it("keeps session repair warnings visible when startup hydration repairs the file first", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-startup-repair-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-startup-repair-");
+		const { path: tempHome, cleanupAsync: cleanupHome } = createTempDir("quarterdeck-home-startup-repair-");
+		const { path: projectPath, cleanupAsync: cleanupProject } = createTempDir("quarterdeck-project-startup-repair-");
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
@@ -489,14 +489,14 @@ describe.sequential("state streaming integration", () => {
 				await stream.close();
 			}
 			await server.stop();
-			cleanupProject();
-			cleanupHome();
+			await cleanupProject();
+			await cleanupHome();
 		}
 	}, 30_000);
 
 	it("keeps board counts and notification semantics aligned across review, response, and interrupt transitions", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-hook-stream-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-hook-stream-");
+		const { path: tempHome, cleanupAsync: cleanupHome } = createTempDir("quarterdeck-home-hook-stream-");
+		const { path: projectPath, cleanupAsync: cleanupProject } = createTempDir("quarterdeck-project-hook-stream-");
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
@@ -894,14 +894,14 @@ describe.sequential("state streaming integration", () => {
 				await stream.close();
 			}
 			await server.stop();
-			cleanupProject();
-			cleanupHome();
+			await cleanupProject();
+			await cleanupHome();
 		}
 	}, 30_000);
 
 	it("streams centralized project metadata updates for task worktrees", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-metadata-stream-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-metadata-stream-");
+		const { path: tempHome, cleanupAsync: cleanupHome } = createTempDir("quarterdeck-home-metadata-stream-");
+		const { path: projectPath, cleanupAsync: cleanupProject } = createTempDir("quarterdeck-project-metadata-stream-");
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
@@ -1033,8 +1033,8 @@ describe.sequential("state streaming integration", () => {
 				await stream.close();
 			}
 			await server.stop();
-			cleanupProject();
-			cleanupHome();
+			await cleanupProject();
+			await cleanupHome();
 		}
 	}, 45_000);
 });

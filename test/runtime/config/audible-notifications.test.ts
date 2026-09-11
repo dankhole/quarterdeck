@@ -7,7 +7,7 @@ import { loadRuntimeConfig, updateRuntimeConfig } from "../../../src/config";
 import { createTempDir } from "../../utilities/temp-dir";
 import { withTemporaryEnv, writeFakeVersionedCommand } from "./runtime-config-helpers";
 
-describe.sequential("audible notification config", () => {
+describe("audible notification config", { concurrent: false }, () => {
 	it("loads default audible notification settings when config is empty", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir(
 			"quarterdeck-home-runtime-config-audible-defaults-",

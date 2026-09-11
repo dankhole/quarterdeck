@@ -18,7 +18,7 @@ const customTemplates = {
 	worktreeSystemPromptTemplate: "Custom worktree instructions",
 };
 
-describe.sequential("runtime prompt templates", () => {
+describe("runtime prompt templates", { concurrent: false }, () => {
 	it("preserves custom templates in saves, global projections, and subsequent unrelated updates", async () => {
 		const { path: home, cleanup } = createTempDir("quarterdeck-prompt-templates-");
 		try {
