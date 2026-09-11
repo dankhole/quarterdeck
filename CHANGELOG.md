@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- The bottom-left tips, keyboard shortcuts, and beta notice can now be collapsed together, with the choice remembered in the browser.
+
 - New Codex tasks can opt into starting model and reasoning overrides, with available choices supplied by Codex and saved for tasks started later. Overrides are off by default, preserving the configured Codex settings.
 
 - Task-title generation now requests compact 2–4 word labels, preferably 2–3, for both new tasks and explicit regeneration.

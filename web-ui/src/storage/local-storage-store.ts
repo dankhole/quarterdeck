@@ -17,6 +17,7 @@ export enum LocalStorageKey {
 	CommitPanelControlsHeight = "quarterdeck.commit-panel-controls-height",
 	OnboardingDialogShown = "quarterdeck.onboarding.dialog.shown",
 	OnboardingTipsDismissed = "quarterdeck.onboarding.tips.dismissed",
+	SidebarHelpExpanded = "quarterdeck.sidebar-help-expanded",
 	PreferredOpenTarget = "quarterdeck.preferred-open-target",
 	PromptShortcutLastLabel = "quarterdeck.prompt-shortcut-last-label",
 	GitViewFileTreeRatio = "quarterdeck.git-view-file-tree-ratio",

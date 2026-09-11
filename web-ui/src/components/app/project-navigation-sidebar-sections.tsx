@@ -1,4 +1,5 @@
-import { ExternalLink, Lightbulb, X } from "lucide-react";
+import * as Collapsible from "@radix-ui/react-collapsible";
+import { ChevronRight, ExternalLink, Lightbulb, X } from "lucide-react";
 import { Kbd } from "@/components/ui/kbd";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
@@ -121,11 +122,19 @@ function BetaNotice(): React.ReactElement {
 }
 
 export function ProjectNavigationSidebarSections(): React.ReactElement {
+	const [isExpanded, setIsExpanded] = useBooleanLocalStorageValue(LocalStorageKey.SidebarHelpExpanded, true);
+
 	return (
-		<>
-			<OnboardingTips />
-			<ShortcutsCard />
-			<BetaNotice />
-		</>
+		<Collapsible.Root open={isExpanded} onOpenChange={setIsExpanded} className="shrink-0">
+			<Collapsible.Trigger className="group flex w-full cursor-pointer items-center gap-1.5 border-none bg-transparent px-5 py-2 text-xs text-text-tertiary hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-border-focus">
+				<ChevronRight size={12} aria-hidden="true" className="group-data-[state=open]:rotate-90" />
+				Tips &amp; shortcuts
+			</Collapsible.Trigger>
+			<Collapsible.Content>
+				<OnboardingTips />
+				<ShortcutsCard />
+				<BetaNotice />
+			</Collapsible.Content>
+		</Collapsible.Root>
 	);
 }
