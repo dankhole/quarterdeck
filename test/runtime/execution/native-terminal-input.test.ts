@@ -72,7 +72,7 @@ function fixture() {
 	};
 }
 
-describe.sequential("native terminal input", () => {
+describe("native terminal input", { concurrent: false }, () => {
 	it("writes an ordered burst while another task holds the project disk lock", async () => {
 		const f = fixture();
 		const reads = vi.spyOn(f.store, "getOwnership");

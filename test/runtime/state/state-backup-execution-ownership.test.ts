@@ -31,7 +31,7 @@ afterEach(() => {
 	else process.env.QUARTERDECK_BACKUP_HOME = originalBackupHome;
 });
 
-describe.sequential("state backup execution ownership", () => {
+describe("state backup execution ownership", { concurrent: false }, () => {
 	it("backs up and restores lifecycle and execution-owner journals together", async () => {
 		const projectId = "project-1";
 		await mkdir(getProjectsRootPath(), { recursive: true });

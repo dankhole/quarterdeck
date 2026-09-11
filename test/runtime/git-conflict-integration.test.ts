@@ -130,7 +130,7 @@ function createRebaseConflictRepo(prefix = "quarterdeck-git-rebase-int-"): Confl
 // Integration tests
 // ---------------------------------------------------------------------------
 
-describe.sequential("git conflict integration", () => {
+describe("git conflict integration", { concurrent: false }, () => {
 	it("full merge conflict resolution flow", async () => {
 		const { repoPath, cleanup } = createConflictRepo();
 		try {

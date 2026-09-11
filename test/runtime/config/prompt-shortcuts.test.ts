@@ -12,7 +12,7 @@ import {
 import { createTempDir } from "../../utilities/temp-dir";
 import { withTemporaryEnv } from "./runtime-config-helpers";
 
-describe.sequential("prompt shortcuts config persistence", () => {
+describe("prompt shortcuts config persistence", { concurrent: false }, () => {
 	it("returns default prompt shortcuts when none configured", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-prompt-shortcuts-default-");
 

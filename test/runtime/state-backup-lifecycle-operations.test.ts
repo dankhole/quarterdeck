@@ -41,7 +41,7 @@ async function writeProjectIndex(projectId: string): Promise<void> {
 	);
 }
 
-describe.sequential("state backup lifecycle operation journal", () => {
+describe("state backup lifecycle operation journal", { concurrent: false }, () => {
 	it("backs up and restores the durable lifecycle operation journal", async () => {
 		const projectId = "project-1";
 		await writeProjectIndex(projectId);

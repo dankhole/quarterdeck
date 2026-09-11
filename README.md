@@ -31,7 +31,7 @@ Windows support remains experimental, although the code-remediation audit is com
 ## Requirements
 
 - Git
-- Node.js 22.22.2 or newer (pinned by `.nvmrc` for local development)
+- Node.js 22.22.2 or newer (`.nvmrc` selects Node 22.23.2 for local development)
 - At least one supported agent CLI installed and available on `PATH`
 - Optional but recommended: a Nerd Font such as [JetBrainsMono Nerd Font](https://www.nerdfonts.com/) for cleaner terminal glyphs
 

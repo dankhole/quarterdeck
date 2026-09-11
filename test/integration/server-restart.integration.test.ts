@@ -67,7 +67,7 @@ function createPersistedReviewSession(
 	};
 }
 
-describe.sequential("server restart integration", () => {
+describe("server restart integration", { concurrent: false }, () => {
 	it("preserves existing task worktree when base ref advances", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-preserve-worktree-");
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-preserve-worktree-");

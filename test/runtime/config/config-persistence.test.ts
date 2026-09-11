@@ -13,7 +13,7 @@ import { createDefaultRuntimeConfigSaveRequest } from "../../utilities/runtime-c
 import { createTempDir } from "../../utilities/temp-dir";
 import { withTemporaryEnv, writeFakeVersionedCommand } from "./runtime-config-helpers";
 
-describe.sequential("runtime-config persistence", () => {
+describe("runtime-config persistence", { concurrent: false }, () => {
 	it("treats null projectId as global-only config scope", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-home-scope-");
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-home-scope-");

@@ -55,7 +55,7 @@ function createDeferred(): { promise: Promise<void>; resolve: () => void } {
 	return { promise, resolve: resolvePromise };
 }
 
-describe.sequential("ProjectTaskLifecycleService integration", () => {
+describe("ProjectTaskLifecycleService integration", { concurrent: false }, () => {
 	it("persists, starts, publishes, and safely replays create-and-start without a browser", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-lifecycle-");

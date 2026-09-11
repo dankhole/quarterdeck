@@ -157,6 +157,17 @@ export async function startQuarterdeckServer(input: {
 			windowsHide: true,
 		},
 	);
+	// Observe close from launch: exit alone can precede stdio/descendant cleanup,
+	// and the process may already have closed by the time teardown starts.
+	const closed = new Promise<void>((resolveClose) => child.once("close", () => resolveClose()));
+	const waitForClose = async (timeoutMs: number): Promise<boolean> =>
+		await new Promise<boolean>((resolveClose) => {
+			const timeoutId = setTimeout(() => resolveClose(false), timeoutMs);
+			void closed.then(() => {
+				clearTimeout(timeoutId);
+				resolveClose(true);
+			});
+		});
 	const { runtimeUrl } = await waitForProcessStart(child);
 	return {
 		runtimeUrl,
@@ -170,19 +181,34 @@ export async function startQuarterdeckServer(input: {
 			}
 		},
 		stop: async () => {
-			if (child.exitCode !== null) {
-				return;
+			if (child.exitCode === null && child.signalCode === null) {
+				await requestGracefulShutdown(child);
 			}
-			await requestGracefulShutdown(child);
-			const didExitGracefully = await waitForExit(child, 5_000);
-			if (didExitGracefully) {
+			// Exceed the CLI's 8s Windows / 10s POSIX shutdown deadlines.
+			if (await waitForClose(12_000)) {
 				return;
 			}
 
-			if (child.pid !== undefined) terminateProcessTree(child.pid, "SIGKILL");
-			const didExitAfterForce = await waitForExit(child, 5_000);
-			if (!didExitAfterForce) {
-				throw new Error("Timed out stopping quarterdeck test server process.");
+			if (child.exitCode !== null || child.signalCode !== null) {
+				throw new Error("Quarterdeck test server exited but its stdio did not close.");
+			}
+			const pid = child.pid;
+			if (pid === undefined) {
+				throw new Error("Cannot stop quarterdeck test server without a process PID.");
+			}
+			await new Promise<void>((resolveTermination, rejectTermination) => {
+				terminateProcessTree(pid, "SIGKILL", (error) => {
+					if (error) {
+						rejectTermination(
+							new Error("Failed to terminate quarterdeck test server process tree.", { cause: error }),
+						);
+						return;
+					}
+					resolveTermination();
+				});
+			});
+			if (!(await waitForClose(5_000))) {
+				throw new Error("Timed out waiting for quarterdeck test server process to close.");
 			}
 		},
 	};

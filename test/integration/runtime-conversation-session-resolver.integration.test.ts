@@ -10,7 +10,7 @@ import { createTestRuntimeConfigState } from "../utilities/runtime-config-factor
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory.js";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir.js";
 
-describe.sequential("runtime conversation session resolver integration", () => {
+describe("runtime conversation session resolver integration", { concurrent: false }, () => {
 	it("reads persisted session identity for an indexed project without creating its terminal manager", async () => {
 		await withTemporaryHome(async () => {
 			const temporary = createTempDir("runtime-conversation-session-");

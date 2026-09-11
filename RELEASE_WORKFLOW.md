@@ -17,7 +17,7 @@ The GitHub repository must contain an `npm-publish` environment. `.github/workfl
 After changing the npm-side relationship, verify it with the pinned repository npm version:
 
 ```bash
-npx --yes npm@11.19.0 trust list quarterdeck
+npx --yes npm@11.19.1 trust list quarterdeck
 ```
 
 Account security changes are completed on npmjs.com. On macOS, open the relevant page in Firefox explicitly when needed:

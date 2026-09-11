@@ -31,7 +31,7 @@ function commitAll(cwd: string, message: string): string {
 	return runGit(cwd, ["rev-parse", "HEAD"]);
 }
 
-describe.sequential("git history runtime", () => {
+describe("git history runtime", { concurrent: false }, () => {
 	it("returns correct metadata for root commit diffs", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-history-root-");
 		try {

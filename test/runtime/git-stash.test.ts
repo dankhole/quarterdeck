@@ -56,7 +56,7 @@ function gitStashListRaw(cwd: string): string {
 
 // ─── stashPush ──────────────────────────────────────────────────────────────
 
-describe.sequential("stashPush", () => {
+describe("stashPush", { concurrent: false }, () => {
 	it("stashes all changes including untracked", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-stash-push-all-");
 		try {
@@ -173,7 +173,7 @@ describe.sequential("stashPush", () => {
 
 // ─── stashList ──────────────────────────────────────────────────────────────
 
-describe.sequential("stashList", () => {
+describe("stashList", { concurrent: false }, () => {
 	it("returns empty array for no stashes", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-stash-list-empty-");
 		try {
@@ -245,7 +245,7 @@ describe.sequential("stashList", () => {
 
 // ─── stashPop ───────────────────────────────────────────────────────────────
 
-describe.sequential("stashPop", () => {
+describe("stashPop", { concurrent: false }, () => {
 	it("restores changes and removes entry", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-stash-pop-");
 		try {
@@ -312,7 +312,7 @@ describe.sequential("stashPop", () => {
 
 // ─── stashApply ─────────────────────────────────────────────────────────────
 
-describe.sequential("stashApply", () => {
+describe("stashApply", { concurrent: false }, () => {
 	it("restores changes and retains entry", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-stash-apply-");
 		try {
@@ -367,7 +367,7 @@ describe.sequential("stashApply", () => {
 
 // ─── stashDrop ──────────────────────────────────────────────────────────────
 
-describe.sequential("stashDrop", () => {
+describe("stashDrop", { concurrent: false }, () => {
 	it("removes entry without applying", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-stash-drop-");
 		try {
@@ -411,7 +411,7 @@ describe.sequential("stashDrop", () => {
 
 // ─── stashShow ──────────────────────────────────────────────────────────────
 
-describe.sequential("stashShow", () => {
+describe("stashShow", { concurrent: false }, () => {
 	it("returns diff for stash entry", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-stash-show-");
 		try {
@@ -452,7 +452,7 @@ describe.sequential("stashShow", () => {
 
 // ─── stashCount ─────────────────────────────────────────────────────────────
 
-describe.sequential("stashCount", () => {
+describe("stashCount", { concurrent: false }, () => {
 	it("returns 0 for no stashes", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-stash-count-zero-");
 		try {
@@ -491,7 +491,7 @@ describe.sequential("stashCount", () => {
 
 // ─── edge cases ───────────────────────────────────────────────────────────────
 
-describe.sequential("edge cases", () => {
+describe("edge cases", { concurrent: false }, () => {
 	it("stashPop on empty stack returns error", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-stash-pop-empty-");
 		try {
@@ -554,7 +554,7 @@ describe.sequential("edge cases", () => {
 
 // ─── dirtyTree detection ────────────────────────────────────────────────────
 
-describe.sequential("dirtyTree detection", () => {
+describe("dirtyTree detection", { concurrent: false }, () => {
 	it("runGitCheckoutAction returns dirtyTree: true on dirty working tree", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-stash-checkout-dirty-");
 		try {
