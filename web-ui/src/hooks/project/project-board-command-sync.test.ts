@@ -31,6 +31,7 @@ describe("project board command sync", () => {
 			prompt: "First",
 			baseRef: "main",
 			agentId: "codex",
+			codexOptions: { model: "test-model", reasoningEffort: "high" },
 			useWorktree: true,
 		});
 		const second = addTaskToColumnWithResult(first.board, "backlog", {

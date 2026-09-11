@@ -102,7 +102,7 @@ describe("useTaskStartActions lifecycle creation", () => {
 	});
 
 	it("presents one optimistic card and sends one create-and-start command", async () => {
-		const task = createTask("task-1", 100);
+		const task = { ...createTask("task-1", 100), codexOptions: { model: "test-model", reasoningEffort: "high" } };
 		const executeTaskLifecycle = vi.fn(async () => null);
 		await act(async () => {
 			root.render(
@@ -136,6 +136,7 @@ describe("useTaskStartActions lifecycle creation", () => {
 				images: [],
 				baseRef: "main",
 				agentId: "codex",
+				codexOptions: task.codexOptions,
 				useWorktree: true,
 				branch: "feature/task-1",
 				pinned: undefined,

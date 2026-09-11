@@ -113,6 +113,7 @@ export interface StartTaskSessionRequest {
 	claudeLaunchPermissionMode?: AgentAdapterLaunchInput["claudeLaunchPermissionMode"];
 	statuslineEnabled?: boolean;
 	codexApprovalsReviewer?: AgentAdapterLaunchInput["codexApprovalsReviewer"];
+	codexOptions?: AgentAdapterLaunchInput["codexOptions"];
 	piToolApprovalsEnabled?: boolean;
 	worktreeSystemPromptTemplate?: string;
 	startupRecoveryToken?: string;

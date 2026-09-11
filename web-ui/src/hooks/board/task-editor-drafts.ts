@@ -93,6 +93,7 @@ export function createTaskOnBoard({
 	branchName,
 	createFeatureBranch,
 	agentId,
+	codexOptions,
 }: {
 	board: BoardData;
 	prompt: string;
@@ -103,6 +104,7 @@ export function createTaskOnBoard({
 	branchName: string;
 	createFeatureBranch: boolean;
 	agentId: RuntimeAgentId;
+	codexOptions?: BoardCard["codexOptions"];
 }): { board: BoardData; createdTaskId: string | null; createdTask: BoardCard | null; baseRef: string } {
 	if (!isTaskSaveValid(prompt, branchRef, defaultBranchRef)) {
 		return {
@@ -120,6 +122,7 @@ export function createTaskOnBoard({
 		images,
 		baseRef,
 		agentId,
+		...(agentId === "codex" && codexOptions ? { codexOptions } : {}),
 		useWorktree,
 		branchName: createFeatureBranch && branchName ? branchName : undefined,
 	});
@@ -140,6 +143,7 @@ export function createTasksOnBoard({
 	defaultBranchRef,
 	useWorktree,
 	agentId,
+	codexOptions,
 }: {
 	board: BoardData;
 	prompts: string[];
@@ -148,6 +152,7 @@ export function createTasksOnBoard({
 	defaultBranchRef: string;
 	useWorktree: boolean;
 	agentId: RuntimeAgentId;
+	codexOptions?: BoardCard["codexOptions"];
 }): { board: BoardData; createdTaskIds: string[]; createdTasks: BoardCard[]; baseRef: string } {
 	const validPrompts = prompts.map((prompt) => prompt.trim()).filter(Boolean);
 	const baseRef = resolveEffectiveBaseRef(branchRef, defaultBranchRef);
@@ -164,6 +169,7 @@ export function createTasksOnBoard({
 			images,
 			baseRef,
 			agentId,
+			...(agentId === "codex" && codexOptions ? { codexOptions } : {}),
 			useWorktree,
 		});
 		updatedBoard = created.board;

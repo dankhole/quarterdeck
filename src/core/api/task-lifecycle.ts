@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { runtimeCodexOptionsSchema } from "./board.js";
 
 import { runtimeProjectStateResponseSchema } from "./project-state.js";
 import { runtimeAgentIdSchema, runtimeBoardColumnIdSchema, runtimeTaskImageSchema } from "./shared.js";
@@ -69,6 +70,7 @@ export const runtimeTaskLifecycleCommandSchema = z.discriminatedUnion("kind", [
 			images: z.array(runtimeTaskImageSchema).optional(),
 			baseRef: z.string(),
 			agentId: runtimeAgentIdSchema.optional(),
+			codexOptions: runtimeCodexOptionsSchema.optional(),
 			useWorktree: z.boolean().optional(),
 			branch: z.string().optional(),
 			pinned: z.boolean().optional(),

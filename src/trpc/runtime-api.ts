@@ -3,6 +3,7 @@
 // is a thin dispatcher that delegates to them, providing the shared
 // dependency bag each handler needs.
 
+import { loadCodexModelCatalog } from "../config/codex-model-catalog";
 import type {
 	IRuntimeBroadcaster,
 	IRuntimeConfigProvider,
@@ -55,6 +56,14 @@ class RuntimeApiImpl implements RuntimeApi {
 	constructor(private readonly deps: CreateRuntimeApiDependencies) {}
 
 	// ── Config ────────────────────────────────────────────────────────────
+
+	async codexModels(projectScope: RuntimeTrpcProjectScope | null) {
+		const config = projectScope
+			? await this.deps.config.loadScopedRuntimeConfig(projectScope)
+			: this.deps.config.getActiveRuntimeConfig();
+		if (!config) throw new Error("No active runtime config provider is available.");
+		return loadCodexModelCatalog(config, projectScope?.projectPath ?? process.cwd());
+	}
 
 	async loadConfig(projectScope: RuntimeTrpcProjectScope | null) {
 		return handleLoadConfig(projectScope, {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { runtimeCodexOptionsSchema } from "./board.js";
 import { runtimeProjectStateResponseSchema } from "./project-state.js";
 import {
 	runtimeAgentIdSchema,
@@ -20,6 +21,7 @@ export const runtimeProjectBoardCommandSchema = z.discriminatedUnion("kind", [
 		images: z.array(runtimeTaskImageSchema).optional(),
 		baseRef: z.string(),
 		agentId: runtimeMaintainedAgentIdSchema.optional(),
+		codexOptions: runtimeCodexOptionsSchema.optional(),
 		useWorktree: z.boolean().optional(),
 		branch: z.string().optional(),
 		pinned: z.boolean().optional(),

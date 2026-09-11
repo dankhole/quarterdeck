@@ -12,7 +12,7 @@ import {
 	saveEditedTaskToBoard,
 } from "@/hooks/board/task-editor-drafts";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeAgentId } from "@/runtime/types";
+import type { RuntimeAgentId, RuntimeCodexOptions } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 import type { BoardCard, BoardData, TaskImage } from "@/types";
@@ -80,6 +80,8 @@ export interface UseTaskEditorResult {
 	setNewTaskPrompt: Dispatch<SetStateAction<string>>;
 	newTaskImages: TaskImage[];
 	setNewTaskImages: Dispatch<SetStateAction<TaskImage[]>>;
+	newTaskCodexOptions: RuntimeCodexOptions | undefined;
+	setNewTaskCodexOptions: Dispatch<SetStateAction<RuntimeCodexOptions | undefined>>;
 	newTaskAgentId: RuntimeAgentId;
 	setNewTaskAgentId: Dispatch<SetStateAction<RuntimeAgentId>>;
 	newTaskUseWorktree: boolean;
@@ -142,6 +144,7 @@ export function useTaskEditor({
 			availableAgentIds: availableTaskAgentIds,
 		}),
 	);
+	const [newTaskCodexOptions, setNewTaskCodexOptions] = useState<RuntimeCodexOptions>();
 	const [newTaskUseWorktree, setNewTaskUseWorktree] = useState(true);
 	const [createFeatureBranch, setCreateFeatureBranch] = useState(false);
 	const [branchName, setBranchName] = useState("");
@@ -262,11 +265,13 @@ export function useTaskEditor({
 		setBranchName(resetCreateDraft.branchName);
 		setNewTaskBranchRef(resetCreateDraft.branchRef);
 		resetNewTaskAgentId(resetCreateDraft.agentId);
+		setNewTaskCodexOptions(undefined);
 		setIsInlineTaskCreateOpen(true);
 	}, [getDefaultTaskAgentId, resetNewTaskAgentId, resolvedDefaultTaskBranchRef]);
 
 	const handleCancelCreateTask = useCallback(() => {
 		const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, getDefaultTaskAgentId());
+		setNewTaskCodexOptions(undefined);
 		setIsInlineTaskCreateOpen(false);
 		setNewTaskPrompt(resetCreateDraft.prompt);
 		setNewTaskImages(resetCreateDraft.images);
@@ -282,6 +287,7 @@ export function useTaskEditor({
 			if (!options?.preserveDetailSelection) {
 				setSelectedTaskId(null);
 			}
+			setNewTaskCodexOptions(undefined);
 			setIsInlineTaskCreateOpen(false);
 			setNewTaskPrompt("");
 			setNewTaskImages([]);
@@ -350,6 +356,7 @@ export function useTaskEditor({
 			setBranchName(resetCreateDraft.branchName);
 			setNewTaskBranchRef(resetCreateDraft.branchRef);
 			if (!options?.keepDialogOpen) {
+				setNewTaskCodexOptions(undefined);
 				setIsInlineTaskCreateOpen(false);
 			}
 		},
@@ -363,6 +370,7 @@ export function useTaskEditor({
 				prompt: newTaskPrompt,
 				images: newTaskImages,
 				agentId: newTaskAgentId,
+				codexOptions: newTaskCodexOptions,
 				branchRef: newTaskBranchRef,
 				defaultBranchRef: resolvedDefaultTaskBranchRef,
 				useWorktree: newTaskUseWorktree,
@@ -382,6 +390,7 @@ export function useTaskEditor({
 			createFeatureBranch,
 			newTaskBranchRef,
 			newTaskAgentId,
+			newTaskCodexOptions,
 			newTaskImages,
 			newTaskPrompt,
 			newTaskUseWorktree,
@@ -398,6 +407,7 @@ export function useTaskEditor({
 				prompts,
 				images: newTaskImages,
 				agentId: newTaskAgentId,
+				codexOptions: newTaskCodexOptions,
 				branchRef: newTaskBranchRef,
 				defaultBranchRef: resolvedDefaultTaskBranchRef,
 				useWorktree: newTaskUseWorktree,
@@ -412,6 +422,7 @@ export function useTaskEditor({
 		[
 			board,
 			newTaskAgentId,
+			newTaskCodexOptions,
 			newTaskBranchRef,
 			newTaskImages,
 			newTaskUseWorktree,
@@ -428,6 +439,7 @@ export function useTaskEditor({
 				prompt: newTaskPrompt,
 				images: newTaskImages,
 				agentId: newTaskAgentId,
+				codexOptions: newTaskCodexOptions,
 				branchRef: newTaskBranchRef,
 				defaultBranchRef: resolvedDefaultTaskBranchRef,
 				useWorktree: newTaskUseWorktree,
@@ -445,6 +457,7 @@ export function useTaskEditor({
 			branchName,
 			createFeatureBranch,
 			newTaskAgentId,
+			newTaskCodexOptions,
 			newTaskBranchRef,
 			newTaskImages,
 			newTaskPrompt,
@@ -461,6 +474,7 @@ export function useTaskEditor({
 				prompts,
 				images: newTaskImages,
 				agentId: newTaskAgentId,
+				codexOptions: newTaskCodexOptions,
 				branchRef: newTaskBranchRef,
 				defaultBranchRef: resolvedDefaultTaskBranchRef,
 				useWorktree: newTaskUseWorktree,
@@ -474,6 +488,7 @@ export function useTaskEditor({
 		[
 			board,
 			newTaskAgentId,
+			newTaskCodexOptions,
 			newTaskBranchRef,
 			newTaskImages,
 			newTaskUseWorktree,
@@ -483,6 +498,7 @@ export function useTaskEditor({
 	);
 
 	const resetTaskEditorState = useCallback(() => {
+		setNewTaskCodexOptions(undefined);
 		setIsInlineTaskCreateOpen(false);
 		const emptyEditDraft = createEmptyTaskEditDraft();
 		const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, getDefaultTaskAgentId());
@@ -504,6 +520,8 @@ export function useTaskEditor({
 		setNewTaskImages,
 		newTaskAgentId,
 		setNewTaskAgentId,
+		newTaskCodexOptions,
+		setNewTaskCodexOptions,
 		newTaskUseWorktree,
 		setNewTaskUseWorktree,
 		createFeatureBranch,

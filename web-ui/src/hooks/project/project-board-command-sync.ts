@@ -99,6 +99,7 @@ export function deriveProjectBoardCommands(before: BoardData, after: BoardData):
 				images: card.images,
 				baseRef: card.baseRef,
 				agentId: card.agentId,
+				codexOptions: card.codexOptions,
 				useWorktree: card.useWorktree,
 				branch: card.branch ?? undefined,
 				pinned: card.pinned,

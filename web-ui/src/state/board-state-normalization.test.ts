@@ -15,6 +15,19 @@ afterEach(() => {
 });
 
 describe("normalizeBoardData", () => {
+	it("retains Codex starting options through authoritative hydration", () => {
+		const codexOptions = { model: "test-model", reasoningEffort: "high" };
+		const card = parsePersistedBoardCard(
+			{ id: "task-1", prompt: "Task", baseRef: "main", agentId: "codex", codexOptions },
+			{ createTaskId: () => "unused" },
+		);
+		expect(card?.codexOptions).toEqual(codexOptions);
+		expect(
+			parsePersistedBoardCard({ ...card, codexOptions: { model: 42 } }, { createTaskId: () => "unused" })
+				?.codexOptions,
+		).toBeUndefined();
+	});
+
 	it("retains title ownership during authoritative board hydration without inventing legacy ownership", () => {
 		const board = normalizeBoardData({
 			columns: [

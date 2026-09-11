@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useTaskEditor } from "@/hooks/board/use-task-editor";
+import type { RuntimeCodexOptions } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { BoardCard, BoardData, TaskImage } from "@/types";
 
@@ -36,6 +37,8 @@ interface HookSnapshot {
 	newTaskPrompt: string;
 	newTaskImages: TaskImage[];
 	newTaskAgentId: "claude" | "codex" | "pi";
+	newTaskCodexOptions: RuntimeCodexOptions | undefined;
+	setNewTaskCodexOptions: (value: RuntimeCodexOptions | undefined) => void;
 	newTaskBranchRef: string;
 	editingTaskId: string | null;
 	editTaskPrompt: string;
@@ -97,6 +100,8 @@ function HookHarness({
 			newTaskPrompt: editor.newTaskPrompt,
 			newTaskImages: editor.newTaskImages,
 			newTaskAgentId: editor.newTaskAgentId,
+			newTaskCodexOptions: editor.newTaskCodexOptions,
+			setNewTaskCodexOptions: editor.setNewTaskCodexOptions,
 			newTaskBranchRef: editor.newTaskBranchRef,
 			editingTaskId: editor.editingTaskId,
 			editTaskPrompt: editor.editTaskPrompt,
@@ -126,6 +131,8 @@ function HookHarness({
 		editor.newTaskPrompt,
 		editor.newTaskImages,
 		editor.newTaskAgentId,
+		editor.newTaskCodexOptions,
+		editor.setNewTaskCodexOptions,
 		editor.newTaskBranchRef,
 		editor.setEditTaskPrompt,
 		editor.setNewTaskAgentId,
@@ -165,6 +172,43 @@ describe("useTaskEditor", () => {
 				previousActEnvironment;
 		}
 		window.localStorage.clear();
+	});
+
+	it("inherits Codex settings by default and after overrides are disabled or the dialog is reopened", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		await act(async () =>
+			root.render(
+				<HookHarness
+					initialBoard={createBoard()}
+					fallbackTaskAgentId="codex"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			),
+		);
+		await act(async () => requireSnapshot(latestSnapshot).handleOpenCreateTask());
+		expect(requireSnapshot(latestSnapshot).newTaskCodexOptions).toBeUndefined();
+		await act(async () => requireSnapshot(latestSnapshot).setNewTaskPrompt("Use configured settings"));
+		await act(async () => requireSnapshot(latestSnapshot).handleCreateTask({ keepDialogOpen: true }));
+		expect(requireSnapshot(latestSnapshot).board.columns[0]?.cards[0]?.codexOptions).toBeUndefined();
+		await act(async () =>
+			requireSnapshot(latestSnapshot).setNewTaskCodexOptions({ model: "test-model", reasoningEffort: "high" }),
+		);
+		await act(async () => {
+			requireSnapshot(latestSnapshot).setNewTaskCodexOptions(undefined);
+			requireSnapshot(latestSnapshot).setNewTaskPrompt("Overrides disabled");
+		});
+		await act(async () => requireSnapshot(latestSnapshot).handleCreateTask({ keepDialogOpen: true }));
+		expect(requireSnapshot(latestSnapshot).board.columns[0]?.cards[0]?.codexOptions).toBeUndefined();
+		await act(async () => {
+			requireSnapshot(latestSnapshot).setNewTaskCodexOptions({ model: "test-model" });
+			requireSnapshot(latestSnapshot).setNewTaskPrompt("Use explicit override");
+		});
+		await act(async () => requireSnapshot(latestSnapshot).handleCreateTask());
+		expect(requireSnapshot(latestSnapshot).board.columns[0]?.cards[0]?.codexOptions).toEqual({ model: "test-model" });
+		await act(async () => requireSnapshot(latestSnapshot).handleOpenCreateTask());
+		expect(requireSnapshot(latestSnapshot).newTaskCodexOptions).toBeUndefined();
 	});
 
 	it("returns the edited task id when saving a task", async () => {
@@ -346,6 +390,7 @@ describe("useTaskEditor", () => {
 
 		await act(async () => {
 			requireSnapshot(latestSnapshot).setNewTaskPrompt("Use Codex for this");
+			requireSnapshot(latestSnapshot).setNewTaskCodexOptions({ model: "test-model", reasoningEffort: "high" });
 			requireSnapshot(latestSnapshot).setNewTaskAgentId("codex");
 		});
 
@@ -356,6 +401,11 @@ describe("useTaskEditor", () => {
 		const snapshot = requireSnapshot(latestSnapshot);
 		expect(snapshot.board.columns[0]?.cards[0]?.agentId).toBe("codex");
 		expect(snapshot.newTaskAgentId).toBe("codex");
+		expect(snapshot.board.columns[0]?.cards[0]?.codexOptions).toEqual({
+			model: "test-model",
+			reasoningEffort: "high",
+		});
+		expect(snapshot.newTaskCodexOptions).toEqual({ model: "test-model", reasoningEffort: "high" });
 		expect(window.localStorage.getItem(LocalStorageKey.TaskCreateLastAgentId)).toBe("codex");
 	});
 

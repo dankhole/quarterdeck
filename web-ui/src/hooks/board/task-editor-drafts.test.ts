@@ -34,6 +34,31 @@ function createBoard(tasks: BoardCard[] = []): BoardData {
 }
 
 describe("task-editor-drafts", () => {
+	it("keeps Codex starting options on single and bulk tasks and drops them for other harnesses", () => {
+		const options = {
+			board: createBoard(),
+			prompt: "Single task",
+			prompts: ["First", "Second"],
+			images: [],
+			branchRef: "main",
+			defaultBranchRef: "main",
+			useWorktree: true,
+			branchName: "",
+			createFeatureBranch: false,
+			codexOptions: { model: "test-model", reasoningEffort: "high" },
+		};
+		expect(createTaskOnBoard({ ...options, agentId: "codex" }).createdTask?.codexOptions).toEqual(
+			options.codexOptions,
+		);
+		for (const task of createTasksOnBoard({ ...options, agentId: "codex" }).createdTasks) {
+			expect(task.codexOptions).toEqual(options.codexOptions);
+		}
+		expect(createTaskOnBoard({ ...options, agentId: "claude" }).createdTask?.codexOptions).toBeUndefined();
+		for (const task of createTasksOnBoard({ ...options, agentId: "pi" }).createdTasks) {
+			expect(task.codexOptions).toBeUndefined();
+		}
+	});
+
 	it("returns stable reset drafts for create and edit flows", () => {
 		expect(createResetTaskCreateDraft("main", "claude")).toMatchObject({
 			prompt: "",

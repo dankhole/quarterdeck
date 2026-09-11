@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- New Codex tasks can opt into starting model and reasoning overrides, with available choices supplied by Codex and saved for tasks started later. Overrides are off by default, preserving the configured Codex settings.
+
 - Task-title generation now requests compact 2–4 word labels, preferably 2–3, for both new tasks and explicit regeneration.
 
 - Refresh runtime, browser, and development dependencies, including the patched `qs` parser, coordinated Zod schemas, React 19.3, and Vitest 5. Dependabot now groups shared runtime/browser contracts across both lockfiles. CI and local development select current Node 22/24 and npm 11 patch releases.

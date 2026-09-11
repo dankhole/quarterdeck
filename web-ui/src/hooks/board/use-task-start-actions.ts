@@ -79,6 +79,7 @@ function createAndStartDraft(task: BoardCard): Extract<TaskLifecycleCommandDraft
 			images: task.images,
 			baseRef: task.baseRef,
 			agentId: task.agentId,
+			codexOptions: task.codexOptions,
 			useWorktree: task.useWorktree,
 			branch: task.branch ?? undefined,
 			pinned: task.pinned,

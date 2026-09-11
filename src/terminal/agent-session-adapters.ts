@@ -8,6 +8,7 @@ import type {
 	CodexApprovalsReviewer,
 	ManagedClaudePermissionMode,
 	RuntimeAgentId,
+	RuntimeCodexOptions,
 	RuntimeTaskImage,
 	RuntimeTaskSessionSummary,
 } from "../core";
@@ -46,6 +47,7 @@ export interface AgentAdapterLaunchInput {
 	claudeLaunchPermissionMode?: ClaudeLaunchPermissionMode;
 	statuslineEnabled?: boolean;
 	codexApprovalsReviewer?: CodexApprovalsReviewer;
+	codexOptions?: RuntimeCodexOptions;
 	piToolApprovalsEnabled?: boolean;
 	worktreeSystemPromptTemplate?: string;
 }
@@ -340,6 +342,23 @@ export async function prepareCodexLaunchConfiguration(
 ): Promise<{ args: string[]; env: Record<string, string | undefined> }> {
 	const codexArgs = [...input.args];
 	const env: Record<string, string | undefined> = {};
+
+	// Starting choices must not overwrite model changes made inside an existing session.
+	if (!input.resumeConversation && !codexArgs.includes("resume") && !codexArgs.includes("fork")) {
+		if (input.codexOptions?.model) {
+			removeCliOptionWithValue(codexArgs, "--model");
+			removeCliOptionWithValue(codexArgs, "-m");
+			removeCodexConfigOverrides(codexArgs, "model");
+			insertCodexGlobalArgs(codexArgs, ["--model", input.codexOptions.model]);
+		}
+		if (input.codexOptions?.reasoningEffort) {
+			removeCodexConfigOverrides(codexArgs, "model_reasoning_effort");
+			insertCodexGlobalArgs(codexArgs, [
+				"-c",
+				`model_reasoning_effort=${serializeCodexTomlValue(input.codexOptions.reasoningEffort)}`,
+			]);
+		}
+	}
 
 	if (input.codexApprovalsReviewer === "dangerously_bypass") {
 		removeCliOption(codexArgs, "--approve-for-me");

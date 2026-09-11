@@ -16,6 +16,7 @@ export interface RuntimeCreateTaskInput {
 	images?: RuntimeTaskImage[];
 	baseRef: string;
 	agentId?: RuntimeAgentId;
+	codexOptions?: RuntimeBoardCard["codexOptions"];
 	useWorktree?: boolean;
 	branch?: string;
 	pinned?: boolean;
@@ -310,6 +311,7 @@ export function addTaskToColumn(
 		images: cloneTaskImages(input.images),
 		baseRef,
 		...(input.agentId ? { agentId: input.agentId } : {}),
+		...(input.codexOptions ? { codexOptions: { ...input.codexOptions } } : {}),
 		useWorktree: input.useWorktree,
 		branch: input.branch?.trim() || undefined,
 		pinned: input.pinned || undefined,

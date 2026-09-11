@@ -18,6 +18,7 @@ import { useId, useState } from "react";
 import type { BranchSelectOption } from "@/components/git/branch-select-dropdown";
 import { BranchSelectDropdown } from "@/components/git/branch-select-dropdown";
 import { TaskAgentSelector } from "@/components/task/task-agent-selector";
+import { TaskCodexOptions } from "@/components/task/task-codex-options";
 import { ButtonShortcut, DIALOG_STYLE } from "@/components/task/task-create-dialog-utils";
 import { TaskCreateMultiList } from "@/components/task/task-create-multi-list";
 import { TaskPromptComposer } from "@/components/task/task-prompt-composer";
@@ -26,7 +27,7 @@ import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { useTaskCreateDialog } from "@/hooks/board/use-task-create-dialog";
-import type { RuntimeAgentDefinition, RuntimeAgentId } from "@/runtime/types";
+import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeCodexOptions } from "@/runtime/types";
 import type { TaskImage } from "@/types";
 import { pasteShortcutLabel } from "@/utils/platform";
 
@@ -40,6 +41,8 @@ export function TaskCreateDialog({
 	agentOptions,
 	agentId,
 	onAgentIdChange,
+	codexOptions,
+	onCodexOptionsChange,
 	onCreate,
 	onCreateAndStart,
 	onCreateMultiple,
@@ -71,6 +74,8 @@ export function TaskCreateDialog({
 	agentOptions: RuntimeAgentDefinition[];
 	agentId: RuntimeAgentId;
 	onAgentIdChange: (value: RuntimeAgentId) => void;
+	codexOptions?: RuntimeCodexOptions;
+	onCodexOptionsChange?: (value: RuntimeCodexOptions | undefined) => void;
 	onCreate: (options?: { keepDialogOpen?: boolean }) => string | null;
 	onCreateAndStart?: (options?: { keepDialogOpen?: boolean }) => string | null;
 	onCreateMultiple: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
@@ -137,7 +142,9 @@ export function TaskCreateDialog({
 			open={open}
 			onOpenChange={onOpenChange}
 			contentClassName="resize overflow-auto"
-			contentStyle={DIALOG_STYLE}
+			contentStyle={
+				agentId === "codex" && codexOptions !== undefined ? { ...DIALOG_STYLE, height: "600px" } : DIALOG_STYLE
+			}
 		>
 			<DialogHeader title={dialogTitle} icon={<PencilLine size={16} />} />
 			<DialogBody>
@@ -200,6 +207,14 @@ export function TaskCreateDialog({
 							portalContainer={dropdownPortalContainer}
 						/>
 					</div>
+					{open && agentId === "codex" && onCodexOptionsChange ? (
+						<TaskCodexOptions
+							projectId={projectId}
+							value={codexOptions}
+							onValueChange={onCodexOptionsChange}
+							portalContainer={dropdownPortalContainer}
+						/>
+					) : null}
 					<div className={useWorktree ? "mt-3" : "mt-3 opacity-40"}>
 						<span className="text-[11px] text-text-secondary block mb-1">Base ref</span>
 						<BranchSelectDropdown

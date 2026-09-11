@@ -34,6 +34,7 @@ import {
 	runtimeTaskSessionStopRequestSchema,
 	runtimeTaskSessionStopResponseSchema,
 } from "../core";
+import { runtimeCodexModelsResponseSchema } from "../core/codex-model-contracts";
 import { projectProcedure, t } from "./app-router-init";
 import { projectRouter } from "./project-procedures";
 
@@ -41,6 +42,9 @@ import { projectRouter } from "./project-procedures";
 export type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
 
 const runtimeRouter = t.router({
+	codexModels: t.procedure
+		.output(runtimeCodexModelsResponseSchema)
+		.query(({ ctx }) => ctx.runtimeApi.codexModels(ctx.projectScope)),
 	getConfig: t.procedure.output(runtimeConfigResponseSchema).query(async ({ ctx }) => {
 		return await ctx.runtimeApi.loadConfig(ctx.projectScope);
 	}),

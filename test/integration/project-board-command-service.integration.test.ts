@@ -42,6 +42,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 						command: {
 							createdAt: 100,
 							agentId: "codex",
+							codexOptions: { model: "test-model", reasoningEffort: "high" },
 							baseRef: "main",
 							prompt: "Create without a browser",
 							taskId: "task-a",
@@ -58,6 +59,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 				expect(result.state.board.columns[0]?.cards[0]).toMatchObject({
 					id: "task-a",
 					prompt: "Create without a browser",
+					codexOptions: { model: "test-model", reasoningEffort: "high" },
 					createdAt: 100,
 					updatedAt: 100,
 				});
@@ -85,6 +87,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 							prompt: "Create without a browser",
 							baseRef: "main",
 							agentId: "codex",
+							codexOptions: { model: "test-model", reasoningEffort: "high" },
 							createdAt: 100,
 						},
 					},
@@ -115,6 +118,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 							prompt: "Create without a browser",
 							baseRef: "main",
 							agentId: "codex",
+							codexOptions: { model: "test-model", reasoningEffort: "high" },
 							createdAt: 100,
 						},
 					},

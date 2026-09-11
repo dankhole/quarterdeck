@@ -1,4 +1,10 @@
-import type { RuntimeAgentId, RuntimeBoardColumnId, RuntimeConflictState, RuntimeTaskImage } from "@/runtime/types";
+import type {
+	RuntimeAgentId,
+	RuntimeBoardColumnId,
+	RuntimeCodexOptions,
+	RuntimeConflictState,
+	RuntimeTaskImage,
+} from "@/runtime/types";
 
 export type BoardColumnId = RuntimeBoardColumnId;
 
@@ -13,6 +19,7 @@ export interface BoardCard {
 	baseRef: string;
 	baseRefPinned?: boolean;
 	agentId?: RuntimeAgentId;
+	codexOptions?: RuntimeCodexOptions;
 	useWorktree?: boolean;
 	workingDirectory?: string | null;
 	branch?: string | null;

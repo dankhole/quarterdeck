@@ -1,6 +1,24 @@
 import { z } from "zod";
 import { runtimeAgentIdSchema, runtimeBoardColumnIdSchema, runtimeTaskImageSchema } from "./shared.js";
 
+export const runtimeCodexOptionsSchema = z.object({
+	model: z
+		.string()
+		.trim()
+		.min(1)
+		.max(128)
+		.regex(/^[a-zA-Z0-9][a-zA-Z0-9._:/-]*$/)
+		.optional(),
+	reasoningEffort: z
+		.string()
+		.trim()
+		.min(1)
+		.max(32)
+		.regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/)
+		.optional(),
+});
+export type RuntimeCodexOptions = z.infer<typeof runtimeCodexOptionsSchema>;
+
 export const runtimeBoardCardSchema = z.object({
 	id: z.string(),
 	title: z.string().nullable().default(null),
@@ -11,6 +29,7 @@ export const runtimeBoardCardSchema = z.object({
 	baseRef: z.string(),
 	baseRefPinned: z.boolean().optional(),
 	agentId: runtimeAgentIdSchema.optional(),
+	codexOptions: runtimeCodexOptionsSchema.optional(),
 	useWorktree: z.boolean().optional(),
 	workingDirectory: z.string().min(1).nullable().optional(),
 	branch: z.string().min(1).nullable().optional(),

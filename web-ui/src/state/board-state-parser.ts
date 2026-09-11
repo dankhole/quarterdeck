@@ -1,4 +1,9 @@
-import { runtimeAgentIdSchema, runtimeBoardColumnIdSchema, runtimeTaskImageSchema } from "@runtime-contract";
+import {
+	runtimeAgentIdSchema,
+	runtimeBoardColumnIdSchema,
+	runtimeCodexOptionsSchema,
+	runtimeTaskImageSchema,
+} from "@runtime-contract";
 import { z } from "zod";
 import type { BoardCard, BoardColumnId, BoardDependency, TaskImage } from "@/types";
 
@@ -21,6 +26,7 @@ const rawPersistedBoardCardSchema = z.object({
 	baseRef: z.unknown().optional(),
 	baseRefPinned: z.unknown().optional(),
 	agentId: z.unknown().optional(),
+	codexOptions: z.unknown().optional(),
 	useWorktree: z.unknown().optional(),
 	workingDirectory: z.unknown().optional(),
 	branch: z.unknown().optional(),
@@ -87,6 +93,7 @@ export function parsePersistedBoardCard(
 
 	const now = options.now ?? Date.now();
 	const agentId = parsePersistedAgentId(result.data.agentId);
+	const codexOptions = runtimeCodexOptionsSchema.safeParse(result.data.codexOptions);
 
 	return {
 		id: parseNonEmptyString(result.data.id) ?? options.createTaskId(),
@@ -99,6 +106,7 @@ export function parsePersistedBoardCard(
 		baseRef,
 		...(typeof result.data.baseRefPinned === "boolean" ? { baseRefPinned: result.data.baseRefPinned } : {}),
 		...(agentId ? { agentId } : {}),
+		...(agentId === "codex" && codexOptions.success ? { codexOptions: codexOptions.data } : {}),
 		useWorktree: typeof result.data.useWorktree === "boolean" ? result.data.useWorktree : undefined,
 		workingDirectory: parseOptionalNullableString(result.data.workingDirectory),
 		branch: parseOptionalNullableString(result.data.branch),

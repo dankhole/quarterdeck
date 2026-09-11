@@ -13,6 +13,7 @@ import {
 	type CodexTurn,
 	configReadResponseSchema,
 	initializeResponseSchema,
+	modelListResponseSchema,
 	parseAddressableServerRequestIdentity,
 	parseCodexJsonRpcMessage,
 	serverRequestResolvedNotificationSchema,
@@ -79,6 +80,11 @@ export interface CodexAppServerTransport {
 	waitForExit(timeoutMs: number): Promise<boolean>;
 }
 
+export interface OwnedCodexAppServerTransport extends CodexAppServerTransport {
+	/** Reap this owned process and inherited stdio, escalating after the grace period. */
+	stopAndReap(gracePeriodMs: number): Promise<void>;
+}
+
 export interface SpawnCodexAppServerTransportOptions {
 	binary: string;
 	args: string[];
@@ -100,7 +106,9 @@ export class CodexAppServerExitedError extends Error {
 	}
 }
 
-export function spawnCodexAppServerTransport(options: SpawnCodexAppServerTransportOptions): CodexAppServerTransport {
+export function spawnCodexAppServerTransport(
+	options: SpawnCodexAppServerTransportOptions,
+): OwnedCodexAppServerTransport {
 	const child: ChildProcessWithoutNullStreams = spawn(options.binary, options.args, {
 		cwd: options.cwd,
 		env: options.env,
@@ -110,6 +118,13 @@ export function spawnCodexAppServerTransport(options: SpawnCodexAppServerTranspo
 	const messageListeners = new Set<(message: unknown) => void>();
 	const exitListeners = new Set<(event: { exitCode: number | null; signal: NodeJS.Signals | null }) => void>();
 	const childPid = child.pid;
+	let closed = false;
+	const closePromise = new Promise<void>((resolve) => {
+		child.once("close", () => {
+			closed = true;
+			resolve();
+		});
+	});
 	let exitEvent: { exitCode: number | null; signal: NodeJS.Signals | null } | null = null;
 	const framer = new CodexAppServerJsonlFramer();
 	const requestStop = (): void => {
@@ -173,6 +188,37 @@ export function spawnCodexAppServerTransport(options: SpawnCodexAppServerTranspo
 
 	return {
 		pid: childPid,
+		stopAndReap: async (gracePeriodMs) => {
+			if (closed) return;
+			requestStop();
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			try {
+				await Promise.race([
+					closePromise,
+					new Promise<void>((resolve) => {
+						timer = setTimeout(resolve, gracePeriodMs);
+					}),
+				]);
+			} finally {
+				clearTimeout(timer);
+			}
+			if (!closed) {
+				if (process.platform === "win32") {
+					treeKill(childPid, "SIGKILL", () => {
+						// The owned child's close event confirms termination, not the command callback.
+					});
+				} else {
+					try {
+						// Signal the owned group before the leader so inherited stdio cannot keep discovery alive.
+						process.kill(-childPid, "SIGKILL");
+					} catch {
+						// The group may have exited between the grace deadline and this signal.
+					}
+					if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+				}
+			}
+			await closePromise;
+		},
 		write: (message) => {
 			if (!child.stdin.writable) throw new CodexAppServerExitedError();
 			const serialized = JSON.stringify(message);
@@ -286,6 +332,12 @@ export class CodexAppServerClient {
 		const initialized = initializeResponseSchema.parse(result);
 		this.transport.write({ method: "initialized" });
 		return { codexHome: initialized.codexHome, userAgent: initialized.userAgent };
+	}
+
+	async listModels(cursor: string | null = null): Promise<ReturnType<typeof modelListResponseSchema.parse>> {
+		return modelListResponseSchema.parse(
+			await this.request("model/list", { cursor, limit: 100, includeHidden: false }),
+		);
 	}
 
 	async readConfig(cwd: string): Promise<CodexConfigReadResponse> {

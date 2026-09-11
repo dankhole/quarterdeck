@@ -26,6 +26,7 @@ export interface TaskDraft {
 	images?: TaskImage[];
 	baseRef: string;
 	agentId?: RuntimeAgentId;
+	codexOptions?: BoardCard["codexOptions"];
 	useWorktree?: boolean;
 	branchName?: string;
 }
@@ -182,6 +183,7 @@ export function addTaskToColumnWithResult(
 			images: draft.images,
 			baseRef: draft.baseRef,
 			agentId: draft.agentId,
+			codexOptions: draft.codexOptions,
 			useWorktree: draft.useWorktree,
 			branch: draft.branchName,
 		},

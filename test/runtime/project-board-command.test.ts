@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { RuntimeBoardData, RuntimeProjectBoardCommand } from "../../src/core";
 import {
 	applyProjectBoardCommand,
+	runtimeCodexOptionsSchema,
 	runtimeProjectBoardCommandSchema,
 	runtimeTaskLifecycleCommandSchema,
 } from "../../src/core";
@@ -308,5 +309,25 @@ describe("runtimeTaskLifecycleCommandSchema", () => {
 				},
 			}).success,
 		).toBe(true);
+	});
+});
+
+describe("starting Codex option validation", () => {
+	it("accepts provider model and effort identifiers without a hardcoded catalog", () => {
+		expect(runtimeCodexOptionsSchema.parse({ model: " provider/model-1 ", reasoningEffort: "future_level" })).toEqual(
+			{
+				model: "provider/model-1",
+				reasoningEffort: "future_level",
+			},
+		);
+	});
+	it.each([
+		{ model: "" },
+		{ model: "-invalid" },
+		{ model: "x".repeat(129) },
+		{ reasoningEffort: "" },
+		{ reasoningEffort: "high\nother" },
+	])("rejects malformed options %j", (options) => {
+		expect(runtimeCodexOptionsSchema.safeParse(options).success).toBe(false);
 	});
 });

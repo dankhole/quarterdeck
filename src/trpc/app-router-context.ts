@@ -96,6 +96,7 @@ import type {
 	RuntimeWorktreeEnsureRequest,
 	RuntimeWorktreeEnsureResponse,
 } from "../core";
+import type { RuntimeCodexModelsResponse } from "../core/codex-model-contracts";
 import type { RuntimeCommitMessageGenerationContext } from "../title";
 
 export interface RuntimeTrpcProjectScope {
@@ -108,6 +109,7 @@ export interface RuntimeTrpcContext {
 	projectScope: RuntimeTrpcProjectScope | null;
 	runtimeClientId: string;
 	runtimeApi: {
+		codexModels: (scope: RuntimeTrpcProjectScope | null) => Promise<RuntimeCodexModelsResponse>;
 		loadConfig: (scope: RuntimeTrpcProjectScope | null) => Promise<RuntimeConfigResponse>;
 		saveConfig: (
 			scope: RuntimeTrpcProjectScope | null,

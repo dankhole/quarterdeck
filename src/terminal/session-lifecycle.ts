@@ -166,6 +166,7 @@ export async function spawnTaskSession(
 			claudeLaunchPermissionMode: request.claudeLaunchPermissionMode,
 			statuslineEnabled: request.statuslineEnabled,
 			codexApprovalsReviewer: request.codexApprovalsReviewer,
+			codexOptions: request.codexOptions,
 			piToolApprovalsEnabled: request.piToolApprovalsEnabled,
 			worktreeSystemPromptTemplate: request.worktreeSystemPromptTemplate,
 		});

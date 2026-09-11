@@ -209,8 +209,12 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 	});
 
-	it("uses the task card agent for fresh starts", async () => {
-		const card = createCard({ agentId: "codex", workingDirectory: "/tmp/codex-worktree" });
+	it("uses the task card agent and starting Codex options for fresh starts", async () => {
+		const card = createCard({
+			agentId: "codex",
+			workingDirectory: "/tmp/codex-worktree",
+			codexOptions: { model: "test-model", reasoningEffort: "high" },
+		});
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
 		taskWorktreeMocks.pathExists.mockResolvedValue(true);
 		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
@@ -238,7 +242,11 @@ describe("createRuntimeApi startTaskSession", () => {
 			expect.objectContaining({ selectedAgentId: "codex" }),
 		);
 		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
-			expect.objectContaining({ agentId: "codex", binary: "codex" }),
+			expect.objectContaining({
+				agentId: "codex",
+				binary: "codex",
+				codexOptions: { model: "test-model", reasoningEffort: "high" },
+			}),
 		);
 	});
 

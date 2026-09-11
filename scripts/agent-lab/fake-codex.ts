@@ -673,7 +673,65 @@ async function assertClaudeLaunchContract(): Promise<void> {
 	}
 }
 
+function serveModelCatalog(): void {
+	const input = createInterface({ input: process.stdin, terminal: false });
+	input.on("line", (line) => {
+		const request = JSON.parse(line) as { id?: string | number; method: string };
+		if (request.id === undefined) return;
+		if (request.method === "initialize") {
+			process.stdout.write(
+				`${JSON.stringify({
+					id: request.id,
+					result: {
+						userAgent: "agent-lab",
+						codexHome: process.env.CODEX_HOME || process.cwd(),
+						platformFamily: "unix",
+						platformOs: process.platform,
+					},
+				})}\n`,
+			);
+			return;
+		}
+		if (request.method === "model/list") {
+			const data = [
+				{
+					id: "lab-codex",
+					model: "lab-codex",
+					displayName: "Lab Codex",
+					defaultReasoningEffort: "medium",
+					isDefault: true,
+					levels: ["low", "medium", "high"],
+				},
+				{
+					id: "lab-fast",
+					model: "lab-fast",
+					displayName: "Lab Fast",
+					defaultReasoningEffort: "low",
+					isDefault: false,
+					levels: ["low", "high"],
+				},
+			].map(({ levels, ...model }) => ({
+				...model,
+				hidden: false,
+				supportedReasoningEfforts: levels.map((reasoningEffort) => ({
+					reasoningEffort,
+					description: `Synthetic ${reasoningEffort} effort`,
+				})),
+			}));
+			process.stdout.write(`${JSON.stringify({ id: request.id, result: { data, nextCursor: null } })}\n`);
+			return;
+		}
+		process.stdout.write(
+			`${JSON.stringify({ id: request.id, error: { code: -32601, message: "Unsupported synthetic metadata method" } })}\n`,
+		);
+	});
+}
+
 async function main(): Promise<void> {
+	if (provider === "codex" && args[0] === "app-server") {
+		serveModelCatalog();
+		return;
+	}
 	if (handleProbe()) {
 		return;
 	}

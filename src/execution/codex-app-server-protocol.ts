@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { runtimeCodexModelSchema } from "../core/codex-model-contracts";
+
 /**
  * Compatibility tuple generated from `codex app-server generate-json-schema
  * --experimental` for the installed Codex 0.149.1 CLI. Upgrade only after the
@@ -360,3 +362,9 @@ export function parseAddressableServerRequestIdentity(
 		optionLabels: [],
 	};
 }
+
+// Shape verified against the installed CLI's v2/ModelListResponse.json schema.
+export const modelListResponseSchema = z.object({
+	data: z.array(runtimeCodexModelSchema.extend({ hidden: z.boolean() })),
+	nextCursor: z.string().nullable().optional(),
+});

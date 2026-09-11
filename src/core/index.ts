@@ -24,6 +24,7 @@ export {
 	parseWorktreeEnsureRequest,
 } from "./api-validation";
 export { QUARTERDECK_BUILD_ID, shouldRejectLegacyRuntimeStreamClient } from "./build-identity";
+export * from "./codex-model-contracts";
 export {
 	isBinaryAvailableOnPath,
 	type ResolvedWindowsBinaryPath,

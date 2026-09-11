@@ -185,6 +185,54 @@ describe("prepareAgentLaunch hook strategies", () => {
 		);
 	});
 
+	it("applies starting Codex choices over configured defaults before the prompt", async () => {
+		const launch = await prepareAgentLaunch({
+			taskId: "starting-options",
+			agentId: "codex",
+			binary: "codex",
+			cwd: "/tmp",
+			prompt: "--test prompt",
+			args: ["-m", "old", "--model=older", "-c", 'model="configured"', "--config=model_reasoning_effort=low"],
+			codexOptions: { model: "test-model", reasoningEffort: "high" },
+		});
+		expect(launch.args).toContain("--model");
+		expect(launch.args[launch.args.indexOf("--model") + 1]).toBe("test-model");
+		expect(launch.args).not.toContain("old");
+		expect(launch.args).not.toContain("--model=older");
+		expect(getCodexConfigOverrideValues(launch.args, "model")).toEqual([]);
+		expect(getCodexConfigOverrideValues(launch.args, "model_reasoning_effort")).toEqual(['"high"']);
+		expect(launch.args.slice(-2)).toEqual(["--", "--test prompt"]);
+	});
+
+	it.each(["resume", "fork", "managed resume"])("does not reapply starting choices to %s", async (mode) => {
+		const launch = await prepareAgentLaunch({
+			taskId: "resume-options",
+			agentId: "codex",
+			binary: "codex",
+			cwd: "/tmp",
+			prompt: "",
+			args: mode === "managed resume" ? [] : [mode, "session-id"],
+			resumeConversation: mode === "managed resume",
+			resumeSessionId: "session-id",
+			codexOptions: { model: "test-model", reasoningEffort: "high" },
+		});
+		expect(launch.args).not.toContain("test-model");
+		expect(getCodexConfigOverrideValues(launch.args, "model_reasoning_effort")).toEqual([]);
+	});
+
+	it("inherits configured Codex model and effort when starting choices are unset", async () => {
+		const launch = await prepareAgentLaunch({
+			taskId: "inherit-options",
+			agentId: "codex",
+			binary: "codex",
+			cwd: "/tmp",
+			prompt: "",
+			args: ["--model", "configured", "-c", 'model_reasoning_effort="medium"'],
+		});
+		expect(launch.args[launch.args.indexOf("--model") + 1]).toBe("configured");
+		expect(getCodexConfigOverrideValues(launch.args, "model_reasoning_effort")).toEqual(['"medium"']);
+	});
+
 	it("launches codex directly without implicitly writing hook files", async () => {
 		const home = setupTempHome();
 		const repoPath = join(home, "repo");
