@@ -5,6 +5,9 @@ import { STORED_CODEX_RESUME_FAILED_WARNING } from "../../../src/terminal/codex-
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
+const modelCatalogMocks = vi.hoisted(() => ({ load: vi.fn() }));
+vi.mock("../../../src/config/codex-model-catalog", () => ({ loadCodexModelCatalog: modelCatalogMocks.load }));
+
 const agentRegistryMocks = vi.hoisted(() => ({
 	resolveAgentCommand: vi.fn(),
 	buildRuntimeConfigResponse: vi.fn(),
@@ -1150,5 +1153,23 @@ describe("createRuntimeApi openProject", () => {
 			"Invalid option",
 		);
 		expect(deps.hostIntegrations.openProject).not.toHaveBeenCalled();
+	});
+});
+
+describe("createRuntimeApi Codex model catalog", () => {
+	it("reuses catalogs across picker calls within one runtime while isolating projects and runtimes", async () => {
+		modelCatalogMocks.load.mockReset().mockResolvedValue({ models: [] });
+		const deps = createDeps();
+		const api = createRuntimeApi(deps);
+		await Promise.all([api.codexModels(defaultScope), api.codexModels(defaultScope)]);
+		await api.codexModels(defaultScope);
+		expect(modelCatalogMocks.load).toHaveBeenCalledOnce();
+		expect(modelCatalogMocks.load).toHaveBeenCalledWith(
+			deps.config.getActiveRuntimeConfig(),
+			expect.stringMatching(/repo$/),
+		);
+		await api.codexModels({ projectId: "other", projectPath: "/tmp/other" });
+		await createRuntimeApi(deps).codexModels(defaultScope);
+		expect(modelCatalogMocks.load).toHaveBeenCalledTimes(3);
 	});
 });

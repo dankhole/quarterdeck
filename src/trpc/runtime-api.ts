@@ -3,7 +3,7 @@
 // is a thin dispatcher that delegates to them, providing the shared
 // dependency bag each handler needs.
 
-import { loadCodexModelCatalog } from "../config/codex-model-catalog";
+import { CodexModelCatalogCache } from "../config/codex-model-catalog-cache";
 import type {
 	IRuntimeBroadcaster,
 	IRuntimeConfigProvider,
@@ -53,6 +53,8 @@ export interface CreateRuntimeApiDependencies {
 type RuntimeApi = RuntimeTrpcContext["runtimeApi"];
 
 class RuntimeApiImpl implements RuntimeApi {
+	private readonly codexModelCatalog = new CodexModelCatalogCache();
+
 	constructor(private readonly deps: CreateRuntimeApiDependencies) {}
 
 	// ── Config ────────────────────────────────────────────────────────────
@@ -62,7 +64,7 @@ class RuntimeApiImpl implements RuntimeApi {
 			? await this.deps.config.loadScopedRuntimeConfig(projectScope)
 			: this.deps.config.getActiveRuntimeConfig();
 		if (!config) throw new Error("No active runtime config provider is available.");
-		return loadCodexModelCatalog(config, projectScope?.projectPath ?? process.cwd());
+		return this.codexModelCatalog.get(config, projectScope?.projectPath ?? process.cwd());
 	}
 
 	async loadConfig(projectScope: RuntimeTrpcProjectScope | null) {

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Codex model and reasoning choices now reuse a per-project backend cache, refreshing stale metadata in the background and retaining the last successful list when discovery temporarily fails.
+
 - The bottom-left tips, keyboard shortcuts, and beta notice can now be collapsed together, with the choice remembered in the browser.
 
 - New Codex tasks can opt into starting model and reasoning overrides, with available choices supplied by Codex and saved for tasks started later. Overrides are off by default, preserving the configured Codex settings.

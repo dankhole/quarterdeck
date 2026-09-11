@@ -437,6 +437,21 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			};
 		},
 	});
+	const runtimeApi = createRuntimeApi({
+		config: deps.projectRegistry,
+		broadcaster: deps.runtimeStateHub,
+		getActiveProjectId: deps.projectRegistry.getActiveProjectId,
+		getScopedTerminalManager,
+		taskResourceOperations,
+		resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
+		hostIntegrations: deps.hostIntegrations,
+		taskLifecycle,
+		...nativeOwnershipHooks,
+		assertNativeInputAllowed: async (scope, taskId) =>
+			await executionOwnership.assertNativeStartAllowed(scope, taskId),
+		stopTaskSession: async (scope, taskId, sessionInstanceId) =>
+			await executionOwnership.stopCurrentOwner(scope, taskId, sessionInstanceId),
+	});
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
 		const requestUrl = new URL(req.url ?? "/", "http://localhost");
 		const scope = await resolveProjectScopeFromRequest(req, requestUrl);
@@ -448,21 +463,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			requestedProjectId: scope.requestedProjectId,
 			projectScope: scope.projectScope,
 			runtimeClientId,
-			runtimeApi: createRuntimeApi({
-				config: deps.projectRegistry,
-				broadcaster: deps.runtimeStateHub,
-				getActiveProjectId: deps.projectRegistry.getActiveProjectId,
-				getScopedTerminalManager,
-				taskResourceOperations,
-				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
-				hostIntegrations: deps.hostIntegrations,
-				taskLifecycle,
-				...nativeOwnershipHooks,
-				assertNativeInputAllowed: async (scope, taskId) =>
-					await executionOwnership.assertNativeStartAllowed(scope, taskId),
-				stopTaskSession: async (scope, taskId, sessionInstanceId) =>
-					await executionOwnership.stopCurrentOwner(scope, taskId, sessionInstanceId),
-			}),
+			runtimeApi,
 			projectApi: createProjectApi({
 				taskTitles,
 				terminals: deps.projectRegistry,
