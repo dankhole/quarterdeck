@@ -55,7 +55,7 @@ function createSessionSummary(taskId: string): RuntimeTaskSessionSummary {
 	});
 }
 
-describe.sequential("project-state integration", () => {
+describe("project-state integration", { concurrent: false }, () => {
 	it("persists revision numbers and rejects stale writes", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-project-");

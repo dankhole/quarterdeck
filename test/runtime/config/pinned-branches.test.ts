@@ -8,7 +8,7 @@ import { getProjectPinnedBranchesPath } from "../../../src/state";
 import { createTempDir } from "../../utilities/temp-dir";
 import { withTemporaryEnv } from "./runtime-config-helpers";
 
-describe.sequential("pinned branches project storage", () => {
+describe("pinned branches project storage", { concurrent: false }, () => {
 	it("reads pinned branches from project directory when projectId is provided", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-pinned-read-");
 		const projectId = "test-project";

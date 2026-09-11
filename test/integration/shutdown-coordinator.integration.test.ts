@@ -88,7 +88,7 @@ function createExplicitlyStoppedSession(taskId: string): RuntimeTaskSessionSumma
 	});
 }
 
-describe.sequential("shutdown coordinator integration", () => {
+describe("shutdown coordinator integration", { concurrent: false }, () => {
 	it("preserves cards in their columns and marks sessions interrupted on shutdown", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-shutdown-scope-");

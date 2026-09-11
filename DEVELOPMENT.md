@@ -6,8 +6,8 @@
 
 ## Requirements
 
-- Node.js 22.22.2+ (`nvm use` reads the repository `.nvmrc`)
-- npm 11.19.0 (`packageManager` pins the repository toolchain; package consumers do not need this exact npm release)
+- Node.js 22.22.2+ (`nvm use` selects Node 22.23.2 from the repository `.nvmrc`)
+- npm 11.19.1 (`packageManager` pins the repository toolchain; package consumers do not need this exact npm release)
 
 ## Install
 
@@ -16,6 +16,8 @@ npm run bootstrap
 ```
 
 Quarterdeck has two independent dependency trees: the repository root and `web-ui/`. Bootstrap preserves or migrates the clone-wide Agent Lab browser cache before running `npm ci` for both trees. Task worktrees start without shared `node_modules`; run bootstrap (or the individual `npm ci` commands) inside a worktree before building or testing there. Stop a globally linked Quarterdeck runtime before reinstalling or relinking its checkout.
+
+Update shared Zod and tRPC dependencies in both trees together. The browser imports runtime schemas and router types directly, so independently resolved versions can break the web build even when both ranges permit the upgrade. Dependabot groups these updates across both directories; the root dependency-contract test checks the committed lockfiles. Keep the Claude Agent SDK update separate because its version is paired with an exact native executable in `src/execution/claude-structured-owner.ts`.
 
 ## Quick reference
 

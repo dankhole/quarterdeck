@@ -4,7 +4,7 @@ Quarterdeck's reusable test workflow contains a non-optional `Windows native` jo
 
 ## Clean validation
 
-Run these commands from a fresh Windows checkout with Git, Node.js 22.22.2, and npm 11.19.0. Do not run the focused smoke as well as this full sequence on the same unchanged tree; `npm run check` already includes its integration specs.
+Run these commands from a fresh Windows checkout with Git, Node.js 22.23.2, and npm 11.19.1. Do not run the focused smoke as well as this full sequence on the same unchanged tree; `npm run check` already includes its integration specs.
 
 ```powershell
 npm ci

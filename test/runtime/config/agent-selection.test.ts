@@ -12,7 +12,7 @@ import {
 import { createTempDir } from "../../utilities/temp-dir";
 import { withTemporaryEnv, writeFakeCommand, writeFakeVersionedCommand } from "./runtime-config-helpers";
 
-describe.sequential("runtime-config auto agent selection", () => {
+describe("runtime-config auto agent selection", { concurrent: false }, () => {
 	beforeEach(() => {
 		// Each test simulates a distinct PATH/HOME environment; clear the availability
 		// cache so probes are re-run against the freshly staged fake binaries.

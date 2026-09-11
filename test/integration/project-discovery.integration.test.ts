@@ -16,7 +16,7 @@ import { connectRuntimeStream, type RuntimeStreamClient } from "../utilities/run
 import { createTempDir } from "../utilities/temp-dir";
 import { requestJson } from "../utilities/trpc-request";
 
-describe.sequential("project discovery integration", () => {
+describe("project discovery integration", { concurrent: false }, () => {
 	it("starts outside a git repository with no active project", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-no-git-");
 		const { path: nonGitPath, cleanup: cleanupNonGitPath } = createTempDir("quarterdeck-no-git-");

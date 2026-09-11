@@ -49,7 +49,7 @@ function upstreamBranch(cwd: string, branch: string): string {
 	return runGit(cwd, ["rev-parse", "--abbrev-ref", `${branch}@{upstream}`]);
 }
 
-describe.sequential("runGitCheckoutAction", () => {
+describe("runGitCheckoutAction", { concurrent: false }, () => {
 	it("tracks an explicit origin remote ref from the branch selector", async () => {
 		const branchName = "feature/remote-only";
 		const { localPath, cleanup } = setupRemoteClone("quarterdeck-git-checkout-remote-", branchName);

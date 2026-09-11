@@ -35,7 +35,7 @@ function createBoard(): RuntimeBoardData {
 	};
 }
 
-describe.sequential("startup session pruning", () => {
+describe("startup session pruning", { concurrent: false }, () => {
 	it("rewrites sessions.json before terminal-manager hydration", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-startup-prune-");
 		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("quarterdeck-project-startup-prune-");

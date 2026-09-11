@@ -38,7 +38,7 @@ function commitAll(cwd: string, message: string): string {
 	return runGit(cwd, ["rev-parse", "HEAD"]);
 }
 
-describe.sequential("search workdir files runtime", () => {
+describe("search workdir files runtime", { concurrent: false }, () => {
 	it("searches precomputed ref file paths without working-tree change metadata", () => {
 		const results = searchFilePaths(["src/app.ts", "docs/app-notes.md", "README.md"], "app", 20);
 

@@ -63,7 +63,7 @@ function installDeterministicFakeCodex(binDir: string): void {
 	chmodSync(launcherPath, 0o755);
 }
 
-describe.sequential("state streaming integration", () => {
+describe("state streaming integration", { concurrent: false }, () => {
 	it("streams per-project snapshots and isolates project updates", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-stream-");
 		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("quarterdeck-projects-stream-");

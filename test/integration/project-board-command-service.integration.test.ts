@@ -17,7 +17,7 @@ import { initGitRepository } from "../utilities/git-env";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
-describe.sequential("ProjectBoardCommandService integration", () => {
+describe("ProjectBoardCommandService integration", { concurrent: false }, () => {
 	it("persists a prepared command with no browser client or UI writer", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-board-command-");

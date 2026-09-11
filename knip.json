@@ -1,5 +1,5 @@
 {
-	"$schema": "https://unpkg.com/knip@5/schema.json",
+	"$schema": "https://unpkg.com/knip@6/schema.json",
 	"include": ["files", "dependencies", "unlisted", "unresolved"],
 	"workspaces": {
 		".": {
@@ -8,8 +8,7 @@
 				"scripts/*.{ts,mjs}",
 				"scripts/agent-lab/**/*.{ts,cjs}",
 				"test/**/*.test.ts",
-				"test/**/*.integration.test.ts",
-				"test/**/*.cjs"
+				"test/**/*.integration.test.ts"
 			],
 			"project": ["src/**/*.ts", "scripts/**/*.{ts,mjs,cjs}", "test/**/*.{ts,cjs}"]
 		},

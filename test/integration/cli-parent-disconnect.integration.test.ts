@@ -44,7 +44,7 @@ async function forceStopProcessTree(pid: number | undefined): Promise<void> {
 	});
 }
 
-describe.sequential("CLI parent disconnect integration", () => {
+describe("CLI parent disconnect integration", { concurrent: false }, () => {
 	it("finishes runtime cleanup before exiting after stdin closes", async () => {
 		const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-parent-disconnect-");
 		const projectPath = join(sandboxRoot, "project");

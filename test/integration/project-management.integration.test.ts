@@ -17,7 +17,7 @@ import { connectRuntimeStream, type RuntimeStreamClient } from "../utilities/run
 import { createTempDir } from "../utilities/temp-dir";
 import { requestJson } from "../utilities/trpc-request";
 
-describe.sequential("project management integration", () => {
+describe("project management integration", { concurrent: false }, () => {
 	it("requires explicit confirmation before initializing git for a non-git added project", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-project-add-git-confirm-");
 		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("quarterdeck-project-add-git-confirm-");

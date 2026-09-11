@@ -37,7 +37,7 @@ function gitStatus(cwd: string): string {
 	return runGit(cwd, ["status", "--porcelain"]);
 }
 
-describe.sequential("commitSelectedFiles", () => {
+describe("commitSelectedFiles", { concurrent: false }, () => {
 	it("commits only specified paths", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-selective-");
 		try {
@@ -228,7 +228,7 @@ describe.sequential("commitSelectedFiles", () => {
 	});
 });
 
-describe.sequential("discardSingleFile", () => {
+describe("discardSingleFile", { concurrent: false }, () => {
 	it("restores tracked modified file", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-discard-modified-");
 		try {

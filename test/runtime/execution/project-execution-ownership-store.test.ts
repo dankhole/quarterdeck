@@ -55,7 +55,7 @@ afterEach(() => {
 	else process.env.QUARTERDECK_STATE_HOME = originalStateHome;
 });
 
-describe.sequential("ProjectExecutionOwnershipStore", () => {
+describe("ProjectExecutionOwnershipStore", { concurrent: false }, () => {
 	it("invalidates before a failed commit and requires a new durable verification", async () => {
 		const store = new ProjectExecutionOwnershipStore();
 		const scope = { projectId: "project-1", projectPath: "/synthetic/project" };

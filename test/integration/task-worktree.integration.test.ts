@@ -28,7 +28,7 @@ function expectMirroredFilePath(path: string, expectedContent: string): void {
 	expect(readFileSync(path, "utf8")).toBe(expectedContent);
 }
 
-describe.sequential("task-worktree integration", () => {
+describe("task-worktree integration", { concurrent: false }, () => {
 	it("returns a friendly error when the repository has no initial commit", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-unborn-");

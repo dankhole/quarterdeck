@@ -535,7 +535,7 @@ async function forceStopProcess(child: ChildProcess | null): Promise<void> {
 	await waitForExit(child, 5_000);
 }
 
-describe.runIf(process.platform === "win32").sequential("native Windows smoke", () => {
+describe.runIf(process.platform === "win32")("native Windows smoke", { concurrent: false }, () => {
 	it("covers source CLI, agent probing, ConPTY task/shell sessions, worktrees, shortcuts, and host launch", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-windows-smoke-home-");
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck windows %NAME% ! ^ & (smoke)-");

@@ -32,7 +32,7 @@ function commitAll(cwd: string, message: string): string {
 	return runGit(cwd, ["rev-parse", "HEAD"]);
 }
 
-describe.sequential("search workdir text runtime", () => {
+describe("search workdir text runtime", { concurrent: false }, () => {
 	it("searches text at a read-only git ref", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-search-text-ref-");
 		try {

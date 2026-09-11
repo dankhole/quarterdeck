@@ -96,7 +96,7 @@ function createMergeConflictRepo(prefix = "quarterdeck-git-conflict-"): Conflict
 // detectActiveConflict
 // ---------------------------------------------------------------------------
 
-describe.sequential("detectActiveConflict", () => {
+describe("detectActiveConflict", { concurrent: false }, () => {
 	it("returns null for clean repo", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-conflict-clean-");
 		try {
@@ -152,7 +152,7 @@ describe.sequential("detectActiveConflict", () => {
 // getConflictedFiles
 // ---------------------------------------------------------------------------
 
-describe.sequential("getConflictedFiles", () => {
+describe("getConflictedFiles", { concurrent: false }, () => {
 	it("lists all conflicted paths", async () => {
 		const { repoPath, cleanup, conflictBranch } = createMergeConflictRepo();
 		try {
@@ -186,7 +186,7 @@ describe.sequential("getConflictedFiles", () => {
 // getConflictFileContent
 // ---------------------------------------------------------------------------
 
-describe.sequential("getConflictFileContent", () => {
+describe("getConflictFileContent", { concurrent: false }, () => {
 	it("returns ours and theirs content", async () => {
 		const { repoPath, cleanup, conflictBranch } = createMergeConflictRepo();
 		try {
@@ -239,7 +239,7 @@ describe.sequential("getConflictFileContent", () => {
 // resolveConflictFile
 // ---------------------------------------------------------------------------
 
-describe.sequential("resolveConflictFile", () => {
+describe("resolveConflictFile", { concurrent: false }, () => {
 	it("resolves with ours correctly", async () => {
 		const { repoPath, cleanup, conflictBranch } = createMergeConflictRepo();
 		try {
@@ -285,7 +285,7 @@ describe.sequential("resolveConflictFile", () => {
 // continueMergeOrRebase
 // ---------------------------------------------------------------------------
 
-describe.sequential("continueMergeOrRebase", () => {
+describe("continueMergeOrRebase", { concurrent: false }, () => {
 	it("completes merge after all conflicts resolved", async () => {
 		const { repoPath, cleanup, conflictBranch } = createMergeConflictRepo();
 		try {
@@ -364,7 +364,7 @@ describe.sequential("continueMergeOrRebase", () => {
 // abortMergeOrRebase
 // ---------------------------------------------------------------------------
 
-describe.sequential("abortMergeOrRebase", () => {
+describe("abortMergeOrRebase", { concurrent: false }, () => {
 	it("aborts merge", async () => {
 		const { repoPath, cleanup, conflictBranch } = createMergeConflictRepo();
 		try {
@@ -411,7 +411,7 @@ describe.sequential("abortMergeOrRebase", () => {
 // runGitMergeAction
 // ---------------------------------------------------------------------------
 
-describe.sequential("runGitMergeAction", () => {
+describe("runGitMergeAction", { concurrent: false }, () => {
 	it("pauses on conflict instead of aborting", async () => {
 		const { repoPath, cleanup, conflictBranch } = createMergeConflictRepo();
 		try {
