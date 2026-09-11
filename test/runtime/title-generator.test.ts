@@ -335,11 +335,15 @@ describe("generateTaskTitle", () => {
 		expect(initial.systemPrompt).toContain("without inventing a future direction");
 		expect(initial.systemPrompt).toContain("Do not imply the requested work has already been completed");
 		expect(initial.systemPrompt).toContain('"UI Work" or "Kafka Investigation"');
-		expect(initial.systemPrompt).toContain("no minimum word count or required action verb");
-		expect(initial.systemPrompt).not.toContain("3-8 words");
+		expect(initial.systemPrompt).toContain("2-4 words, preferably 2-3");
+		expect(initial.systemPrompt).toContain("Never exceed 4 words");
+		expect(initial.systemPrompt).toContain("no required action verb");
 		expect(followup.systemPrompt).toContain("explicitly requested a new title");
 		expect(followup.systemPrompt).toContain("evolving overall purpose");
 		expect(followup.systemPrompt).toContain("Keep the current title exactly");
+		expect(followup.systemPrompt).toContain("already meets the length rules below");
+		expect(followup.systemPrompt).toContain("2-4 words, preferably 2-3");
+		expect(followup.systemPrompt).toContain("Never exceed 4 words");
 		expect(followup.systemPrompt).toContain("Replace an overly literal or detailed title");
 		expect(followup.userPrompt).toContain("Current title:\nReview Sorting Options");
 		expect(followup.userPrompt).toContain("Improve search and recommendations");

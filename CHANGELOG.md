@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Task-title generation now requests compact 2–4 word labels, preferably 2–3, for both new tasks and explicit regeneration.
+
 - Refresh runtime, browser, and development dependencies, including the patched `qs` parser, coordinated Zod schemas, React 19.3, and Vitest 5. Dependabot now groups shared runtime/browser contracts across both lockfiles. CI and local development select current Node 22/24 and npm 11 patch releases.
 - Integration-test teardown now allows the runtime shutdown deadline to finish and waits for process-tree termination and stdio closure before deleting fixtures, addressing races behind intermittent Windows cleanup failures.
 
