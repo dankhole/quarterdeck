@@ -137,13 +137,25 @@ export function TaskCreateDialog({
 		onCreateStartAndOpen,
 	});
 
+	const harnessSelector = (
+		<div className={agentId === "codex" ? "w-48 max-w-full shrink-0" : undefined}>
+			<span className="text-[11px] text-text-secondary block mb-1">Harness</span>
+			<TaskAgentSelector
+				agents={agentOptions}
+				value={agentId}
+				onValueChange={onAgentIdChange}
+				portalContainer={dropdownPortalContainer}
+			/>
+		</div>
+	);
+
 	return (
 		<Dialog
 			open={open}
 			onOpenChange={onOpenChange}
 			contentClassName="resize overflow-auto"
 			contentStyle={
-				agentId === "codex" && codexOptions !== undefined ? { ...DIALOG_STYLE, height: "600px" } : DIALOG_STYLE
+				agentId === "codex" && codexOptions !== undefined ? { ...DIALOG_STYLE, height: "560px" } : DIALOG_STYLE
 			}
 		>
 			<DialogHeader title={dialogTitle} icon={<PencilLine size={16} />} />
@@ -198,23 +210,17 @@ export function TaskCreateDialog({
 				)}
 
 				<div ref={setDropdownPortalContainer} className="mt-4 border-t border-border pt-4">
-					<div>
-						<span className="text-[11px] text-text-secondary block mb-1">Harness</span>
-						<TaskAgentSelector
-							agents={agentOptions}
-							value={agentId}
-							onValueChange={onAgentIdChange}
-							portalContainer={dropdownPortalContainer}
-						/>
-					</div>
 					{open && agentId === "codex" && onCodexOptionsChange ? (
 						<TaskCodexOptions
 							projectId={projectId}
 							value={codexOptions}
 							onValueChange={onCodexOptionsChange}
 							portalContainer={dropdownPortalContainer}
+							harnessSelector={harnessSelector}
 						/>
-					) : null}
+					) : (
+						harnessSelector
+					)}
 					<div className={useWorktree ? "mt-3" : "mt-3 opacity-40"}>
 						<span className="text-[11px] text-text-secondary block mb-1">Base ref</span>
 						<BranchSelectDropdown

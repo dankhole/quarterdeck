@@ -12,6 +12,7 @@ interface TaskCodexOptionsProps {
 	value: RuntimeCodexOptions | undefined;
 	onValueChange: (value: RuntimeCodexOptions | undefined) => void;
 	portalContainer?: HTMLElement | null;
+	harnessSelector?: ReactElement;
 }
 
 interface Option {
@@ -85,6 +86,7 @@ export function TaskCodexOptions({
 	value,
 	onValueChange,
 	portalContainer,
+	harnessSelector,
 }: TaskCodexOptionsProps): ReactElement {
 	const [localPortalContainer, setLocalPortalContainer] = useState<HTMLDivElement | null>(null);
 	const queryFn = useCallback(() => getRuntimeTrpcClient(projectId).runtime.codexModels.query(), [projectId]);
@@ -97,21 +99,30 @@ export function TaskCodexOptions({
 	const resolvedPortalContainer = portalContainer ?? localPortalContainer;
 
 	return (
-		<div ref={setLocalPortalContainer} className="mt-3 space-y-1.5">
-			<label htmlFor={overrideId} className="flex cursor-pointer items-center gap-2 text-[12px] text-text-primary">
-				<RadixSwitch.Root
-					id={overrideId}
-					checked={overrideEnabled}
-					onCheckedChange={(checked) => onValueChange(checked ? {} : undefined)}
-					className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full bg-surface-4 data-[state=checked]:bg-accent"
-				>
-					<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-				</RadixSwitch.Root>
-				Override Codex settings
-			</label>
-			{!overrideEnabled ? (
-				<p className="text-[11px] text-text-secondary">Uses your configured model and reasoning level.</p>
-			) : (
+		<div ref={setLocalPortalContainer} className="space-y-2">
+			<div className="flex flex-wrap items-center justify-between gap-3">
+				<div className="min-w-0 space-y-1">
+					<label
+						htmlFor={overrideId}
+						className="flex cursor-pointer items-center gap-2 text-[12px] text-text-primary"
+					>
+						<RadixSwitch.Root
+							id={overrideId}
+							checked={overrideEnabled}
+							onCheckedChange={(checked) => onValueChange(checked ? {} : undefined)}
+							className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full bg-surface-4 data-[state=checked]:bg-accent"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						Override Codex settings
+					</label>
+					{!overrideEnabled ? (
+						<p className="text-[11px] text-text-secondary">Uses your configured model and reasoning level.</p>
+					) : null}
+				</div>
+				{harnessSelector}
+			</div>
+			{overrideEnabled ? (
 				<>
 					<div className="grid grid-cols-2 gap-2">
 						<OptionSelector
@@ -157,7 +168,7 @@ export function TaskCodexOptions({
 						<p className="text-[11px] text-text-secondary">Choose a model to select its reasoning level.</p>
 					) : null}
 				</>
-			)}
+			) : null}
 		</div>
 	);
 }
