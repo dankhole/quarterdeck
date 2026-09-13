@@ -100,27 +100,22 @@ export function TaskCodexOptions({
 
 	return (
 		<div ref={setLocalPortalContainer} className="space-y-2">
-			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div className="min-w-0 space-y-1">
-					<label
-						htmlFor={overrideId}
-						className="flex cursor-pointer items-center gap-2 text-[12px] text-text-primary"
-					>
-						<RadixSwitch.Root
-							id={overrideId}
-							checked={overrideEnabled}
-							onCheckedChange={(checked) => onValueChange(checked ? {} : undefined)}
-							className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full bg-surface-4 data-[state=checked]:bg-accent"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						Override Codex settings
-					</label>
-					{!overrideEnabled ? (
-						<p className="text-[11px] text-text-secondary">Uses your configured model and reasoning level.</p>
-					) : null}
-				</div>
+			<div className="flex flex-wrap items-end justify-between gap-3">
 				{harnessSelector}
+				<label
+					htmlFor={overrideId}
+					className="flex h-8 cursor-pointer items-center gap-2 text-[12px] text-text-primary"
+				>
+					<RadixSwitch.Root
+						id={overrideId}
+						checked={overrideEnabled}
+						onCheckedChange={(checked) => onValueChange(checked ? {} : undefined)}
+						className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full bg-surface-4 data-[state=checked]:bg-accent"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					Override Codex settings
+				</label>
 			</div>
 			{overrideEnabled ? (
 				<>

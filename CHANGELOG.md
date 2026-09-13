@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Place the new-task harness selector on the left and vertically align the Codex override toggle with its dropdown, removing the extra helper text.
+
 - Codex model and reasoning choices now reuse a per-project backend cache, refreshing stale metadata in the background and retaining the last successful list when discovery temporarily fails.
 
 - The bottom-left tips, keyboard shortcuts, and beta notice can now be collapsed together, with the choice remembered in the browser.
