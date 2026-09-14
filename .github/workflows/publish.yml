@@ -1,6 +1,8 @@
 name: Publish
 
 on:
+  push:
+    tags: ["v*.*.*"]
   workflow_dispatch:
     inputs:
       tag:
@@ -9,24 +11,19 @@ on:
         type: string
 
 concurrency:
-  group: publish-${{ github.workflow }}-${{ inputs.tag }}
+  group: publish-${{ github.workflow }}-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
-  test:
-    uses: ./.github/workflows/test.yml
-
-  publish:
-    name: Publish npm package and create GitHub release
-    needs: test
+  resolve:
+    name: Resolve release commit
     runs-on: ubuntu-latest
-    environment:
-      name: npm-publish
-      url: https://www.npmjs.com/package/quarterdeck
+    outputs:
+      tag: ${{ steps.resolve_tag.outputs.tag }}
+      sha: ${{ steps.resolve_tag.outputs.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -37,25 +34,43 @@ jobs:
       - name: Resolve tag
         id: resolve_tag
         env:
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          if [ -z "$TAG" ]; then
-            echo "Error: tag input is required"
-            exit 1
-          fi
-          git fetch origin --tags
-          if ! git show-ref --verify --quiet "refs/tags/$TAG"; then
-            echo "Error: tag '$TAG' does not exist"
-            exit 1
-          fi
-          git checkout --detach "refs/tags/$TAG^{commit}"
-
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
             echo "Error: tag must match vX.Y.Z (with optional prerelease suffix)"
             exit 1
           fi
-
+          if ! git show-ref --verify --quiet "refs/tags/$TAG"; then
+            echo "Error: tag '$TAG' does not exist"
+            exit 1
+          fi
+          SHA=$(git rev-parse --verify "refs/tags/$TAG^{commit}")
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: resolve
+    uses: ./.github/workflows/test.yml
+    with:
+      ref: ${{ needs.resolve.outputs.sha }}
+
+  publish:
+    name: Publish npm package and create GitHub release
+    needs: [resolve, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    environment:
+      name: npm-publish
+      url: https://www.npmjs.com/package/quarterdeck
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -81,8 +96,9 @@ jobs:
 
       - name: Verify tag matches package version
         id: version
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
         run: |
-          TAG="${{ steps.resolve_tag.outputs.tag }}"
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           EXPECTED_TAG="v${PACKAGE_VERSION}"
 
@@ -106,9 +122,10 @@ jobs:
 
       - name: Compute compare link
         id: compare
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
         run: |
-          TAG="${{ steps.resolve_tag.outputs.tag }}"
-          PREV_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
 
           if [ -n "$PREV_TAG" ]; then
             echo "link=Full Changelog: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${TAG}" >> "$GITHUB_OUTPUT"
@@ -119,10 +136,10 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.resolve_tag.outputs.tag }}
-          name: ${{ steps.resolve_tag.outputs.tag }}
+          tag_name: ${{ needs.resolve.outputs.tag }}
+          name: ${{ needs.resolve.outputs.tag }}
           body: |
             ${{ steps.changelog.outputs.body }}
 
             ${{ steps.compare.outputs.link }}
-          prerelease: ${{ contains(steps.resolve_tag.outputs.tag, '-') }}
+          prerelease: ${{ contains(needs.resolve.outputs.tag, '-') }}

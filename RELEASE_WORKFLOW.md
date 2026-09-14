@@ -70,7 +70,9 @@ Tags are immutable release inputs. Never move or force-push a release tag. If th
 
 ## Publish from GitHub Actions
 
-Pushing a tag does not publish automatically. Dispatch the manual workflow using the existing tag:
+Pushing a version tag matching `v*.*.*` automatically starts the publishing workflow. The tagged commit must include the automatic trigger in `.github/workflows/publish.yml`; merge this configuration before tagging a new release. Ordinary branch pushes do not publish.
+
+Manual dispatch remains available for retries or an existing tag that predates the automatic trigger:
 
 ```bash
 gh workflow run publish.yml \
@@ -85,10 +87,10 @@ Open the workflow in Firefox if desired:
 open -a Firefox "https://github.com/dankhole/quarterdeck/actions/workflows/publish.yml"
 ```
 
-The workflow first runs the reusable release test matrix. Its publish job then:
+Both triggers share a per-tag concurrency group. The workflow validates the tag format, resolves the tag to a commit SHA, and runs the reusable release test matrix against that exact SHA on Linux, macOS, and Windows. Its publish job then:
 
-1. Checks out the exact tagged commit.
-2. Validates the tag format and its match with `package.json`.
+1. Checks out the same resolved commit that passed the test matrix.
+2. Validates the tag's match with `package.json`.
 3. Requires a non-empty matching changelog section.
 4. Runs `npm publish --access public`; npm's `prepublishOnly` lifecycle builds and checks the package before upload.
 5. Publishes with npm provenance through the configured OIDC trusted publisher.

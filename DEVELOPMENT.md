@@ -278,7 +278,7 @@ See [`test/README.md`](./test/README.md) for root-test placement and naming. Web
 
 - `ci.yml`: runs on pushes to `main` and PRs targeting `main`, delegating to reusable test workflow(s)
 - `test.yml`: Ubuntu/macOS matrix plus a non-optional native Windows job covering clean installs, the build (including web typecheck), packaged CLI fetch/shutdown, native ConPTY resize/reconnect/restore, Git/worktree/path fidelity, exact process ownership and DACLs, hook/status-line transport, lint, runtime typecheck/tests, and web-ui tests without repeating the standalone web typecheck
-- `publish.yml`: manual release workflow that verifies the tag, runs tests, publishes to npm via OIDC, and creates the GitHub Release
+- `publish.yml`: runs on version-tag pushes (`v*.*.*`), tests the exact release commit, publishes to npm via OIDC, and creates the GitHub Release; manual dispatch remains available for retries
 
 ## Agent tracking and runtime hooks
 
