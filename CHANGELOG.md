@@ -4,6 +4,8 @@
 
 ## [0.12.6] - 2026-09-13
 
+- Move routine terminal-manager creation messages to debug logging so normal startup stays quiet.
+
 - Replace duplicate startup warnings for live, unconfirmed restored chats with an informational per-project summary, retaining per-task diagnostics and warnings for actual failures.
 
 - Publish npm releases automatically when a version tag is pushed, with the release test matrix and publishing pinned to the same commit. Keep manual dispatch available for retries.

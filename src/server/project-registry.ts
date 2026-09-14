@@ -318,7 +318,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			const hydratedSessionCount = Object.keys(existingProject.sessions).length;
 			manager.startReconciliation();
 			terminalManagersByProjectId.set(projectId, manager);
-			registryLog.warn("terminal manager created", {
+			registryLog.debug("terminal manager created", {
 				projectId,
 				hasProjectPath: repoPath.length > 0,
 				hydratedSessionCount,
