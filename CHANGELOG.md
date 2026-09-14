@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Publish npm releases automatically when a version tag is pushed, with the release test matrix and publishing pinned to the same commit. Keep manual dispatch available for retries.
+
 - Place the new-task harness selector on the left and vertically align the Codex override toggle with its dropdown, removing the extra helper text.
 
 - Codex model and reasoning choices now reuse a per-project backend cache, refreshing stale metadata in the background and retaining the last successful list when discovery temporarily fails.
