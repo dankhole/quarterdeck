@@ -4,6 +4,8 @@
 
 ## [0.12.6] - 2026-09-13
 
+- Let Markdown file previews use the full pane width while retaining padding around the content.
+
 - Move routine terminal-manager creation messages to debug logging so normal startup stays quiet.
 
 - Replace duplicate startup warnings for live, unconfirmed restored chats with an informational per-project summary, retaining per-task diagnostics and warnings for actual failures.
