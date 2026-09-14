@@ -425,15 +425,7 @@ export class StartupSessionRecoveryCoordinator {
 				if (outcome.status === "exited") {
 					lastExitCode = outcome.exitCode;
 				}
-				log.warn("startup recovery did not confirm task chat readiness", {
-					projectId: candidate.scope.projectId,
-					taskId,
-					attempt,
-					outcome: outcome.status,
-					sessionInstanceId: started.sessionInstanceId,
-					readinessElapsedMs,
-					readinessTimeoutMs,
-				});
+
 				if (
 					outcome.status === "timeout" &&
 					candidate.manager.isTaskSessionLaunchActive(taskId, started.sessionInstanceId, token)
@@ -443,7 +435,7 @@ export class StartupSessionRecoveryCoordinator {
 					// positive evidence that the live PTY failed. Keep the process that the
 					// user can inspect instead of destroying it and replaying the same launch.
 					candidate.manager.completeStartupRecovery(taskId, token);
-					log.warn("startup recovery left live task chat running without hook confirmation", {
+					log.debug("startup recovery left live task chat running without hook confirmation", {
 						projectId: candidate.scope.projectId,
 						taskId,
 						attempt,
@@ -459,6 +451,15 @@ export class StartupSessionRecoveryCoordinator {
 						sessionInstanceId: started.sessionInstanceId,
 					};
 				}
+				log.warn("startup recovery did not confirm task chat readiness", {
+					projectId: candidate.scope.projectId,
+					taskId,
+					attempt,
+					outcome: outcome.status,
+					sessionInstanceId: started.sessionInstanceId,
+					readinessElapsedMs,
+					readinessTimeoutMs,
+				});
 				if (outcome.status === "timeout") {
 					// The process disappeared without settling the launch monitor. Treat
 					// that race as an exit so timeout warnings never claim a process was

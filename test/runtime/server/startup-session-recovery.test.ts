@@ -251,6 +251,7 @@ function createCoordinator(
 }
 
 afterEach(() => {
+	vi.restoreAllMocks();
 	vi.useRealTimers();
 });
 
@@ -362,6 +363,7 @@ describe("StartupSessionRecoveryCoordinator", () => {
 	});
 
 	it("keeps a live hookless resume instead of destroying and replaying it", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const harness = createManagerHarness(["timeout"]);
 		let launch = 0;
 		const prepare = vi.fn(
@@ -404,6 +406,7 @@ describe("StartupSessionRecoveryCoordinator", () => {
 			reason: "timeout",
 			sessionInstanceId: "launch-1",
 		});
+		expect(warn).not.toHaveBeenCalled();
 		expect(prepare).toHaveBeenCalledTimes(1);
 		expect(launchTask).toHaveBeenCalledTimes(1);
 		expect(harness.stopTaskSessionForStartupRecovery).not.toHaveBeenCalled();

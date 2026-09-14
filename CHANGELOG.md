@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.12.6] - 2026-09-13
+
+- Replace duplicate startup warnings for live, unconfirmed restored chats with an informational per-project summary, retaining per-task diagnostics and warnings for actual failures.
+
 - Publish npm releases automatically when a version tag is pushed, with the release test matrix and publishing pinned to the same commit. Keep manual dispatch available for retries.
 
 - Place the new-task harness selector on the left and vertically align the Codex override toggle with its dropdown, removing the extra helper text.

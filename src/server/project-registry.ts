@@ -808,7 +808,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				semanticStateUncertain: candidate.semanticStateWarning !== undefined,
 			});
 		}
-		await Promise.all(
+		const results = await Promise.all(
 			resumable.map(async (candidate) => {
 				const result = await startupRecoveryCoordinator.enqueue(candidate);
 				const failed = result.status === "exhausted";
@@ -825,10 +825,20 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 						taskId: candidate.request.taskId,
 						...(unconfirmed ? { sessionInstanceId: result.sessionInstanceId } : {}),
 					},
-					{ level: failed ? "error" : unconfirmed ? "warn" : "info", essential: true },
+					{ level: failed ? "error" : "info", essential: true },
 				);
+				return result;
 			}),
 		);
+		registryLog.info("startup recovery complete; unconfirmed chats remain available without hook confirmation", {
+			projectId,
+			taskCount: results.length,
+			readyCount: results.filter((result) => result.status === "ready").length,
+			unconfirmedCount: results.filter((result) => result.status === "unconfirmed").length,
+			failedCount: results.filter((result) => result.status === "exhausted").length,
+			userEngagedCount: results.filter((result) => result.status === "user_engaged").length,
+			skippedCount: results.filter((result) => ["cancelled", "duplicate", "closed"].includes(result.status)).length,
+		});
 		return resumable.length;
 	};
 
