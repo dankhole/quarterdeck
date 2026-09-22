@@ -43,6 +43,8 @@ Clear Trash captures the originating project, initial revision, and exact task I
 - The runtime state hub schedules session persistence from terminal-store changes, retains dirty generations across an in-flight write, retries failures with bounded backoff, and flushes the newest generation during orderly shutdown. Do not move that projection into browser effects or treat a logged persistence failure as success.
 - The browser Git/worktree metadata read model is project-scoped even though task metadata is indexed by task ID. Change its scope before paint during navigation, and pass the originating project ID into async writes so late results cannot attach to the next project.
 
+The behind-base indicator counts commits reachable from the selected comparison ref but absent from task `HEAD` (`HEAD..ref`). For a branch name, prefer `refs/remotes/origin/<base>` when present and use the local base only when that tracking ref is absent; explicit `refs/...` and `origin/...` selections retain their exact meaning. Do not take the larger local/remote count or count from a single merge base: divergent refs and multiple merge bases can report commits the task already contains. Ref-resolution or comparison failures remain unknown. The metadata cache observes both local and origin tips so tracking-ref creation and advances invalidate the count without requiring HEAD to move.
+
 ### Authoritative browser hydration
 
 `applyAuthoritativeProjectState(...)` in `web-ui/src/hooks/project/project-sync.ts` is the single browser-side entry point for authoritative project state. Do not split this pipeline across `use-project-sync.ts` or nearby code:

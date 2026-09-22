@@ -224,49 +224,45 @@ export async function readGitHeadInfo(cwd: string): Promise<GitHeadInfo> {
 }
 
 /**
- * Checks how many commits the base ref has advanced since the worktree branched from it.
- * Checks both `origin/{baseRef}` and local `{baseRef}` in parallel and returns whichever
- * shows more commits ahead, since either ref may be stale depending on fetch/pull timing.
- * Returns null if neither ref can be resolved (e.g. ref doesn't exist).
+ * Count commits reachable from the base but absent from HEAD, including merged history.
+ * Prefer the origin tracking ref for branch names; use the local ref only when that
+ * tracking ref is absent. Explicit refs are compared exactly as supplied.
+ * Return null when the comparison cannot be established, never a fabricated zero.
  */
 export async function getCommitsBehindBase(
 	cwd: string,
 	baseRef: string,
 ): Promise<{ behindCount: number; mergeBase: string } | null> {
 	if (!validateGitRef(baseRef)) return null;
-	const originRef = `origin/${baseRef}`;
-
-	// Check both origin and local refs, return whichever is further ahead.
-	// Origin may be stale (no fetch), local may be stale (no pull) — take the max.
-	const [originMergeBase, localMergeBase] = await Promise.all([
-		runGit(cwd, ["--no-optional-locks", "merge-base", "HEAD", originRef], { timeoutClass: "metadata" }),
-		runGit(cwd, ["--no-optional-locks", "merge-base", "HEAD", baseRef], { timeoutClass: "metadata" }),
-	]);
-
-	const [originCount, localCount] = await Promise.all([
-		originMergeBase.ok
-			? runGit(cwd, ["--no-optional-locks", "rev-list", "--count", `${originMergeBase.stdout}..${originRef}`], {
-					timeoutClass: "metadata",
-				})
-			: null,
-		localMergeBase.ok
-			? runGit(cwd, ["--no-optional-locks", "rev-list", "--count", `${localMergeBase.stdout}..${baseRef}`], {
-					timeoutClass: "metadata",
-				})
-			: null,
-	]);
-	const originBehind = originCount?.ok ? parseInt(originCount.stdout, 10) || 0 : 0;
-	const originMB = originMergeBase.ok ? originMergeBase.stdout : null;
-	const localBehind = localCount?.ok ? parseInt(localCount.stdout, 10) || 0 : 0;
-	const localMB = localMergeBase.ok ? localMergeBase.stdout : null;
-
-	if (originBehind >= localBehind && originMB) {
-		return { behindCount: originBehind, mergeBase: originMB };
+	const options = { timeoutClass: "metadata" } as const;
+	const explicitRef = baseRef.startsWith("refs/") || baseRef.startsWith("origin/");
+	let resolved = await runGit(
+		cwd,
+		[
+			"--no-optional-locks",
+			"rev-parse",
+			"--verify",
+			"--quiet",
+			`${explicitRef ? baseRef : `refs/remotes/origin/${baseRef}`}^{commit}`,
+		],
+		options,
+	);
+	if (!explicitRef && !resolved.ok && resolved.exitCode === 1) {
+		resolved = await runGit(
+			cwd,
+			["--no-optional-locks", "rev-parse", "--verify", "--quiet", `${baseRef}^{commit}`],
+			options,
+		);
 	}
-	if (localMB) {
-		return { behindCount: localBehind, mergeBase: localMB };
-	}
-	return null;
+	if (!resolved.ok) return null;
+
+	const [mergeBase, count] = await Promise.all([
+		runGit(cwd, ["--no-optional-locks", "merge-base", "HEAD", resolved.stdout], options),
+		runGit(cwd, ["--no-optional-locks", "rev-list", "--count", `HEAD..${resolved.stdout}`], options),
+	]);
+	if (!mergeBase.ok || !count.ok || !/^\d+$/u.test(count.stdout)) return null;
+	const behindCount = Number(count.stdout);
+	return Number.isSafeInteger(behindCount) ? { behindCount, mergeBase: mergeBase.stdout } : null;
 }
 
 /**

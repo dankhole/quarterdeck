@@ -147,8 +147,11 @@ describe("git-sync --no-optional-locks", () => {
 		assertFlagBeforeSubcommand(repoRootCall, "rev-parse");
 	});
 
-	it("getCommitsBehindBase passes --no-optional-locks to merge-base and rev-list", async () => {
+	it("getCommitsBehindBase passes --no-optional-locks to ref resolution and comparison", async () => {
 		childProcessMocks.execFilePromise.mockImplementation((_cmd: string, args: string[]) => {
+			if (args.includes("rev-parse")) {
+				return Promise.resolve({ stdout: `${FAKE_COMMIT}\n`, stderr: "" });
+			}
 			if (args.includes("merge-base")) {
 				return Promise.resolve({ stdout: `${FAKE_MERGE_BASE}\n`, stderr: "" });
 			}
@@ -160,14 +163,16 @@ describe("git-sync --no-optional-locks", () => {
 
 		await getCommitsBehindBase(FAKE_REPO, "main");
 
+		assertFlagBeforeSubcommand(findCallContaining("rev-parse"), "rev-parse");
+
 		const mergeBaseCalls = capturedCalls().filter((c) => c.args.includes("merge-base"));
-		expect(mergeBaseCalls.length).toBe(2);
+		expect(mergeBaseCalls.length).toBe(1);
 		for (const call of mergeBaseCalls) {
 			assertFlagBeforeSubcommand(call, "merge-base");
 		}
 
 		const revListCalls = capturedCalls().filter((c) => c.args.includes("rev-list"));
-		expect(revListCalls.length).toBe(2);
+		expect(revListCalls.length).toBe(1);
 		for (const call of revListCalls) {
 			assertFlagBeforeSubcommand(call, "rev-list");
 		}

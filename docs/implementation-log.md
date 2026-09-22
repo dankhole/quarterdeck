@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-22 — Count only missing commits against a deterministic base ref
+
+A task showed `16 behind` after merging its remote base. Read-only Git inspection confirmed zero missing remote commits and two missing local commits; counting from one merge base inflated the local result to 16 by including shared merged history. `getCommitsBehindBase` in `src/workdir/git-utils.ts` now counts `HEAD..resolvedBase`, prefers the origin tracking ref when present, and falls back to the local base only when that tracking ref is absent. Explicit refs retain their meaning; Git failures remain unknown. The existing metadata cache already observes both ref tips.
+
+Validation: 35 focused Git and metadata tests passed, including a synthetic criss-cross merge graph, divergent local/remote refs, remote-ref cache invalidation, and failure handling. Runtime typecheck and targeted Biome passed. No browser lane was needed for this Git calculation change, and the active runtime and task repositories were not modified.
+
 ## 2026-09-22 — Preserve staged deletions in selected-file commits
 
 A repository cleanup exposed two assumptions in `commitSelectedFiles`: blindly adding every selected path fails for already-staged deletions, and a path-limited `git commit` reads worktree content, potentially re-adding retained files after `git rm --cached`. `src/workdir/git-selected-commit.ts` now builds the selection in a temporary index seeded from HEAD, preserves selected staged removals, and commits that index without path arguments. Git's index lock protects preparation and publication: after success, only selected entries in the saved real index are synchronized and published atomically; commit failure leaves the original index intact. Partial commits remain rejected during merge/cherry-pick/revert operations. The existing API and UI call path is unchanged.

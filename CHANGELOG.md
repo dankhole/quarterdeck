@@ -4,6 +4,8 @@
 
 ## [0.12.6] - 2026-09-13
 
+- Fix inflated behind-base counts after merges. Compare commits missing from the task against the origin tracking branch when available, falling back to the local base for unpublished branches.
+
 - Fix selected-file commits failing on staged deletions or re-adding files intentionally untracked and retained locally. Preserve unrelated staged changes and leave the index untouched when a commit fails.
 
 - Let Markdown file previews use the full pane width while retaining padding around the content.

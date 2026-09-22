@@ -69,6 +69,26 @@ describe("runGit", () => {
 		expect(result.stdout).toBe(diffOutput);
 	});
 
+	it("does not fall back to a local base after a ref-resolution execution failure", async () => {
+		childProcessMocks.execFilePromise.mockRejectedValueOnce(createExecError({ code: "ETIMEDOUT" }));
+		await expect(workdirExports.getCommitsBehindBase("/repo", "main")).resolves.toBeNull();
+		expect(childProcessMocks.execFilePromise).toHaveBeenCalledTimes(1);
+	});
+
+	it.each([null, "", "invalid", "3 partial", "9007199254740992"])(
+		"returns unknown rather than zero for failed or malformed behind counts: %s",
+		async (count) => {
+			childProcessMocks.execFilePromise.mockImplementation((_command: string, args: string[]) => {
+				if (args.includes("rev-list")) {
+					if (count === null) return Promise.reject(createExecError({ code: 128 }));
+					return Promise.resolve({ stdout: count, stderr: "" });
+				}
+				return Promise.resolve({ stdout: "abc123\n", stderr: "" });
+			});
+			await expect(workdirExports.getCommitsBehindBase("/repo", "main")).resolves.toBeNull();
+		},
+	);
+
 	it("does not classify non-process failures as git exit code 1", async () => {
 		childProcessMocks.execFilePromise.mockRejectedValueOnce(
 			createExecError({
