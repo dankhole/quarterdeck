@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -38,6 +38,167 @@ function gitStatus(cwd: string): string {
 }
 
 describe("commitSelectedFiles", { concurrent: false }, () => {
+	it("keeps same-size unselected edits visible when index stat data is racily clean", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-racy-index-");
+		try {
+			initRepository(repoPath);
+			runGit(repoPath, ["config", "core.checkStat", "minimal"]);
+			runGit(repoPath, ["config", "core.trustctime", "false"]);
+			const timestamp = Math.floor(Date.now() / 1000) - 10;
+			writeFileSync(join(repoPath, "selected.txt"), "original\n");
+			writeFileSync(join(repoPath, "unselected.txt"), "original\n");
+			utimesSync(join(repoPath, "unselected.txt"), timestamp, timestamp);
+			commitAll(repoPath, "initial");
+			utimesSync(join(repoPath, ".git", "index"), timestamp, timestamp);
+			writeFileSync(join(repoPath, "selected.txt"), "selected change\n");
+			writeFileSync(join(repoPath, "unselected.txt"), "modified\n");
+			utimesSync(join(repoPath, "unselected.txt"), timestamp, timestamp);
+			const result = await commitSelectedFiles({ cwd: repoPath, paths: ["selected.txt"], message: "selected" });
+			expect(result.ok, result.error).toBe(true);
+			expect(runGit(repoPath, ["show", "HEAD:unselected.txt"])).toBe("original");
+			expect(gitStatus(repoPath)).toBe("M unselected.txt");
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("respects an existing Git index lock", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-locked-");
+		try {
+			initRepository(repoPath);
+			writeFileSync(join(repoPath, "file.txt"), "original\n");
+			const head = commitAll(repoPath, "initial");
+			writeFileSync(join(repoPath, "file.txt"), "modified\n");
+			writeFileSync(join(repoPath, ".git", "index.lock"), "another operation");
+			const result = await commitSelectedFiles({ cwd: repoPath, paths: ["file.txt"], message: "blocked" });
+			expect(result.ok).toBe(false);
+			expect(runGit(repoPath, ["rev-parse", "HEAD"])).toBe(head);
+			expect(readFileSync(join(repoPath, ".git", "index.lock"), "utf8")).toBe("another operation");
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("commits a staged deletion alone without re-adding its retained copy", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-deletion-only-");
+		try {
+			initRepository(repoPath);
+			writeFileSync(join(repoPath, "generated.txt"), "retained\n");
+			commitAll(repoPath, "initial");
+			runGit(repoPath, ["rm", "--cached", "generated.txt"]);
+			const result = await commitSelectedFiles({ cwd: repoPath, paths: ["generated.txt"], message: "untrack" });
+			expect(result.ok, result.error).toBe(true);
+			expect(runGit(repoPath, ["ls-tree", "--name-only", "HEAD"])).toBe("");
+			expect(readFileSync(join(repoPath, "generated.txt"), "utf8")).toBe("retained\n");
+			expect(gitStatus(repoPath)).toBe("?? generated.txt");
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("supports an initial commit and treats selected filenames literally", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-initial-");
+		try {
+			initRepository(repoPath);
+			writeFileSync(join(repoPath, "[draft].txt"), "selected\n");
+			writeFileSync(join(repoPath, "d.txt"), "unselected\n");
+			runGit(repoPath, ["add", "d.txt"]);
+			const result = await commitSelectedFiles({ cwd: repoPath, paths: ["[draft].txt"], message: "initial" });
+			expect(result.ok, result.error).toBe(true);
+			expect(runGit(repoPath, ["ls-tree", "--name-only", "HEAD"])).toBe("[draft].txt");
+			expect(gitStatus(repoPath)).toBe("A  d.txt");
+		} finally {
+			cleanup();
+		}
+	});
+
+	it.each(["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD"])(
+		"rejects partial commits during %s",
+		async (stateFile) => {
+			const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-in-progress-");
+			try {
+				initRepository(repoPath);
+				writeFileSync(join(repoPath, "file.txt"), "original\n");
+				const head = commitAll(repoPath, "initial");
+				writeFileSync(join(repoPath, ".git", stateFile), `${head}\n`);
+				writeFileSync(join(repoPath, "file.txt"), "modified\n");
+				const before = runGit(repoPath, ["write-tree"]);
+				const result = await commitSelectedFiles({ cwd: repoPath, paths: ["file.txt"], message: "partial" });
+				expect(result.ok).toBe(false);
+				expect(result.error).toContain("Cannot commit selected files during");
+				expect(runGit(repoPath, ["rev-parse", "HEAD"])).toBe(head);
+				expect(runGit(repoPath, ["write-tree"])).toBe(before);
+			} finally {
+				cleanup();
+			}
+		},
+	);
+
+	it.each([false, true])("preserves staged deletions (retained and ignored: %s)", async (retainLocally) => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-deletion-");
+		try {
+			initRepository(repoPath);
+			const deletedPath = "~$Belgium Study Options - Dark Mode.xlsx";
+			writeFileSync(join(repoPath, deletedPath), "generated file\n");
+			writeFileSync(join(repoPath, "selected.txt"), "original\n");
+			writeFileSync(join(repoPath, "unselected.txt"), "original\n");
+			commitAll(repoPath, "initial");
+			runGit(repoPath, ["rm", "--cached", "--", deletedPath]);
+			if (!retainLocally) unlinkSync(join(repoPath, deletedPath));
+			writeFileSync(join(repoPath, ".gitignore"), "~$*\n");
+			writeFileSync(join(repoPath, "selected.txt"), "selected change\n");
+			writeFileSync(join(repoPath, "unselected.txt"), "staged change\n");
+			runGit(repoPath, ["add", "unselected.txt"]);
+			writeFileSync(join(repoPath, "unselected.txt"), "unstaged change\n");
+			const indexBefore = runGit(repoPath, ["show", ":unselected.txt"]);
+
+			const result = await commitSelectedFiles({
+				cwd: repoPath,
+				paths: [deletedPath, ".gitignore", "selected.txt"],
+				message: "remove generated file",
+			});
+
+			expect(result.ok, result.error).toBe(true);
+			expect(runGit(repoPath, ["ls-tree", "--name-only", "HEAD"])).not.toContain(deletedPath);
+			expect(runGit(repoPath, ["show", "HEAD:selected.txt"])).toBe("selected change");
+			expect(runGit(repoPath, ["show", "HEAD:unselected.txt"])).toBe("original");
+			expect(runGit(repoPath, ["show", ":unselected.txt"])).toBe(indexBefore);
+			expect(readFileSync(join(repoPath, "unselected.txt"), "utf8")).toBe("unstaged change\n");
+			expect(existsSync(join(repoPath, deletedPath))).toBe(retainLocally);
+			if (retainLocally) expect(readFileSync(join(repoPath, deletedPath), "utf8")).toBe("generated file\n");
+			expect(gitStatus(repoPath)).toBe("MM unselected.txt");
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("preserves the existing index when a commit fails", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-preserve-index-");
+		try {
+			initRepository(repoPath);
+			writeFileSync(join(repoPath, "deleted.txt"), "original\n");
+			writeFileSync(join(repoPath, "modified.txt"), "original\n");
+			commitAll(repoPath, "initial");
+			runGit(repoPath, ["rm", "deleted.txt"]);
+			writeFileSync(join(repoPath, "modified.txt"), "staged\n");
+			runGit(repoPath, ["add", "modified.txt"]);
+			writeFileSync(join(repoPath, "modified.txt"), "unstaged\n");
+			const before = runGit(repoPath, ["write-tree"]);
+			const headBefore = runGit(repoPath, ["rev-parse", "HEAD"]);
+			const result = await commitSelectedFiles({
+				cwd: repoPath,
+				paths: ["deleted.txt", "modified.txt"],
+				message: "",
+			});
+			expect(result.ok).toBe(false);
+			expect(runGit(repoPath, ["write-tree"])).toBe(before);
+			expect(runGit(repoPath, ["rev-parse", "HEAD"])).toBe(headBefore);
+			expect(readFileSync(join(repoPath, "modified.txt"), "utf8")).toBe("unstaged\n");
+		} finally {
+			cleanup();
+		}
+	});
+
 	it("commits only specified paths", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-selective-");
 		try {
@@ -134,15 +295,18 @@ describe("commitSelectedFiles", { concurrent: false }, () => {
 			writeFileSync(join(repoPath, "file.txt"), "hello\n", "utf8");
 			commitAll(repoPath, "initial");
 
-			// git add with no paths after -- is a no-op, then commit should fail with nothing staged.
+			writeFileSync(join(repoPath, "file.txt"), "staged change\n");
+			runGit(repoPath, ["add", "file.txt"]);
+			const head = runGit(repoPath, ["rev-parse", "HEAD"]);
 			const result = await commitSelectedFiles({
 				cwd: repoPath,
 				paths: [],
 				message: "should fail",
 			});
 
-			// git add -- (with no paths) succeeds but stages nothing, then git commit fails.
 			expect(result.ok).toBe(false);
+			expect(runGit(repoPath, ["rev-parse", "HEAD"])).toBe(head);
+			expect(gitStatus(repoPath)).toBe("M  file.txt");
 		} finally {
 			cleanup();
 		}

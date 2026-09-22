@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-22 — Preserve staged deletions in selected-file commits
+
+A repository cleanup exposed two assumptions in `commitSelectedFiles`: blindly adding every selected path fails for already-staged deletions, and a path-limited `git commit` reads worktree content, potentially re-adding retained files after `git rm --cached`. `src/workdir/git-selected-commit.ts` now builds the selection in a temporary index seeded from HEAD, preserves selected staged removals, and commits that index without path arguments. Git's index lock protects preparation and publication: after success, only selected entries in the saved real index are synchronized and published atomically; commit failure leaves the original index intact. Partial commits remain rejected during merge/cherry-pick/revert operations. The existing API and UI call path is unchanged.
+
+Index copies retain a conservatively rounded-down modification time: assigning a fresh timestamp can bypass Git's racy-clean detection and hide same-size edits made in the original index's timestamp window. The broad pre-commit suite exposed this while the focused run passed. Validation covers real Git repositories with missing and retained/ignored deleted paths, deletion-only and mixed selections, unrelated staged and unstaged content, literal filenames, initial commits, failure preservation, and in-progress operation rejection in `test/runtime/git-commit.test.ts`.
+
 ## 2026-09-11 — Retain Codex picker metadata across transient discovery failures
 
 A model-picker outage coincided with a Codex availability probe timeout; the next probe succeeded and a read-only request to the same project model endpoint returned all five models and their reasoning metadata. The picker makes one request when enabled, so it can remain in its generic error state after discovery recovers. `CodexModelCatalogCache`, owned by the runtime API instance, now wraps the unchanged metadata loader: successful catalogs stay fresh for five minutes, stale reads return immediately while one shared lookup refreshes them, and failed refreshes retain the last success with a 30-second cooldown. Cold failures still propagate and are not cached. Catalogs are isolated by resolved project directory, bounded to 100 recently used entries, and reset with the runtime; they never replace task-launch availability checks.

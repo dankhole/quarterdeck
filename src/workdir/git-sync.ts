@@ -11,6 +11,7 @@ import type {
 	RuntimeGitSyncSummary,
 } from "../core";
 import { getGitSyncSummary } from "./git-probe";
+import { commitSelectedPaths } from "./git-selected-commit";
 import { hasGitRef, resolveRepoRoot, runGit, validateGitPath, validateGitRef } from "./git-utils";
 
 const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
@@ -461,45 +462,10 @@ export async function commitSelectedFiles(options: {
 		}
 	}
 
-	// Stage the specified files.
-	const addResult = await runGit(repoRoot, ["add", "--", ...options.paths], USER_GIT_ACTION_OPTIONS);
-	if (!addResult.ok) {
-		return {
-			ok: false,
-			summary: await getGitSyncSummary(repoRoot),
-			output: addResult.output,
-			error: addResult.error ?? "Failed to stage files.",
-		};
-	}
-
-	// Commit only the staged paths (avoids committing pre-staged files the user didn't select).
-	const commitResult = await runGit(
-		repoRoot,
-		["commit", "-m", options.message, "--", ...options.paths],
-		USER_GIT_ACTION_OPTIONS,
-	);
-	if (!commitResult.ok) {
-		// Rollback staging if commit failed.
-		await runGit(repoRoot, ["reset", "HEAD", "--", ...options.paths], USER_GIT_ACTION_OPTIONS);
-		return {
-			ok: false,
-			summary: await getGitSyncSummary(repoRoot),
-			output: commitResult.output,
-			error: commitResult.error ?? "Commit failed.",
-		};
-	}
-
-	// Extract commit hash from output (format: "[branch hash] message").
-	const hashMatch = commitResult.stdout.match(/\[[\w/.-]+ ([0-9a-f]+)\]/);
-	const commitHash = hashMatch?.[1];
-
-	const nextSummary = await getGitSyncSummary(repoRoot);
-
+	const result = await commitSelectedPaths(repoRoot, options.paths, options.message);
 	return {
-		ok: true,
-		commitHash,
-		summary: nextSummary,
-		output: commitResult.output,
+		...result,
+		summary: await getGitSyncSummary(repoRoot),
 	};
 }
 

@@ -4,6 +4,8 @@
 
 ## [0.12.6] - 2026-09-13
 
+- Fix selected-file commits failing on staged deletions or re-adding files intentionally untracked and retained locally. Preserve unrelated staged changes and leave the index untouched when a commit fails.
+
 - Let Markdown file previews use the full pane width while retaining padding around the content.
 
 - Move routine terminal-manager creation messages to debug logging so normal startup stays quiet.
