@@ -138,7 +138,7 @@ export function TaskCreateDialog({
 	});
 
 	const harnessSelector = (
-		<div className={agentId === "codex" ? "w-48 max-w-full shrink-0" : undefined}>
+		<div className={agentId === "codex" ? "min-w-0 flex-[1_1_12rem]" : undefined}>
 			<span className="text-[11px] text-text-secondary block mb-1">Harness</span>
 			<TaskAgentSelector
 				agents={agentOptions}

@@ -104,7 +104,7 @@ export function TaskCodexOptions({
 				{harnessSelector}
 				<label
 					htmlFor={overrideId}
-					className="flex h-8 cursor-pointer items-center gap-2 text-[12px] text-text-primary"
+					className="flex h-8 shrink-0 cursor-pointer items-center gap-2 text-[12px] text-text-primary"
 				>
 					<RadixSwitch.Root
 						id={overrideId}
