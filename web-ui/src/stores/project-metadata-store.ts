@@ -97,6 +97,7 @@ function toTaskWorktreeSnapshot(metadata: RuntimeTaskWorktreeMetadata): ReviewTa
 		deletions: metadata.deletions,
 		hasUnmergedChanges: metadata.hasUnmergedChanges,
 		behindBaseCount: metadata.behindBaseCount,
+		behindRemoteBaseCount: metadata.behindRemoteBaseCount,
 		conflictState: metadata.conflictState ?? null,
 	};
 }
@@ -197,6 +198,7 @@ function areTaskWorktreeSnapshotsEqual(
 		a.deletions === b.deletions &&
 		a.hasUnmergedChanges === b.hasUnmergedChanges &&
 		a.behindBaseCount === b.behindBaseCount &&
+		a.behindRemoteBaseCount === b.behindRemoteBaseCount &&
 		areConflictStatesEqual(a.conflictState, b.conflictState)
 	);
 }

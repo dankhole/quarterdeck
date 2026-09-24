@@ -225,8 +225,7 @@ export async function readGitHeadInfo(cwd: string): Promise<GitHeadInfo> {
 
 /**
  * Count commits reachable from the base but absent from HEAD, including merged history.
- * Prefer the origin tracking ref for branch names; use the local ref only when that
- * tracking ref is absent. Explicit refs are compared exactly as supplied.
+ * Compare the supplied ref exactly; callers choose local and remote refs separately.
  * Return null when the comparison cannot be established, never a fabricated zero.
  */
 export async function getCommitsBehindBase(
@@ -235,25 +234,12 @@ export async function getCommitsBehindBase(
 ): Promise<{ behindCount: number; mergeBase: string } | null> {
 	if (!validateGitRef(baseRef)) return null;
 	const options = { timeoutClass: "metadata" } as const;
-	const explicitRef = baseRef.startsWith("refs/") || baseRef.startsWith("origin/");
-	let resolved = await runGit(
+	const comparisonRef = baseRef.startsWith("origin/") ? `refs/remotes/${baseRef}` : baseRef;
+	const resolved = await runGit(
 		cwd,
-		[
-			"--no-optional-locks",
-			"rev-parse",
-			"--verify",
-			"--quiet",
-			`${explicitRef ? baseRef : `refs/remotes/origin/${baseRef}`}^{commit}`,
-		],
+		["--no-optional-locks", "rev-parse", "--verify", "--quiet", `${comparisonRef}^{commit}`],
 		options,
 	);
-	if (!explicitRef && !resolved.ok && resolved.exitCode === 1) {
-		resolved = await runGit(
-			cwd,
-			["--no-optional-locks", "rev-parse", "--verify", "--quiet", `${baseRef}^{commit}`],
-			options,
-		);
-	}
 	if (!resolved.ok) return null;
 
 	const [mergeBase, count] = await Promise.all([

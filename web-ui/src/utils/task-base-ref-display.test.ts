@@ -17,13 +17,30 @@ describe("task base-ref display state", () => {
 	});
 
 	it("renders inferred refs with branch-tracking copy", () => {
-		const state = resolveTaskBaseRefDisplayState({ baseRef: " main ", behindBaseCount: 2 });
+		const state = resolveTaskBaseRefDisplayState({ baseRef: " main ", behindBaseCount: 2, behindRemoteBaseCount: 0 });
 
 		expect(state.baseRefState.kind).toBe("inferred");
 		expect(state.baseRefState.baseRef).toBe("main");
 		expect(state.triggerLabel).toBe("from main");
-		expect(state.behindLabel).toBe("2 behind");
+		expect(state.behindLabel).toBe("2 behind local · 0 behind remote");
 		expect(state.pinToggleLabel).toBe("Unpinned - auto-updates on branch change");
+	});
+
+	it.each([
+		[0, 0, "0 behind local · 0 behind remote", false],
+		[1, 3, "1 behind local · 3 behind remote", true],
+		[0, 2, "0 behind local · 2 behind remote", true],
+		[null, 0, "local unavailable · 0 behind remote", false],
+		[0, null, "0 behind local · remote unavailable", false],
+		[undefined, undefined, "local unavailable · remote unavailable", false],
+	] as const)("keeps local %s and remote %s comparisons distinct", (local, remote, label, isBehind) => {
+		const state = resolveTaskBaseRefDisplayState({
+			baseRef: "main",
+			behindBaseCount: local,
+			behindRemoteBaseCount: remote,
+		});
+		expect(state.behindLabel).toBe(label);
+		expect(state.isBehind).toBe(isBehind);
 	});
 
 	it("renders pinned refs as locked user choices", () => {

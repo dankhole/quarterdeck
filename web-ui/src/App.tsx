@@ -431,7 +431,8 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 							}
 							isBehindBase={
 								projectRuntime.behindBaseIndicatorEnabled && selectedCard
-									? (selectedTaskWorktreeSnapshot?.behindBaseCount ?? 0) > 0
+									? (selectedTaskWorktreeSnapshot?.behindBaseCount ?? 0) > 0 ||
+										(selectedTaskWorktreeSnapshot?.behindRemoteBaseCount ?? 0) > 0
 									: false
 							}
 							projectsBadgeColor={projectsBadgeColor}

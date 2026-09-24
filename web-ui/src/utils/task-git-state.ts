@@ -14,6 +14,7 @@ export interface TaskGitState {
 	additions: number;
 	deletions: number;
 	behindBaseCount: number | null;
+	behindRemoteBaseCount: number | null;
 	isDetached: boolean;
 	hasRepositoryMetadata: boolean;
 }
@@ -48,6 +49,7 @@ export function resolveTaskGitState(input: {
 			additions: sharedSnapshot?.additions ?? input.homeGitSummary?.additions ?? 0,
 			deletions: sharedSnapshot?.deletions ?? input.homeGitSummary?.deletions ?? 0,
 			behindBaseCount: sharedSnapshot?.behindBaseCount ?? null,
+			behindRemoteBaseCount: sharedSnapshot?.behindRemoteBaseCount ?? null,
 			isDetached: hasFreshAssignedMetadata
 				? identity.assignedIsDetached
 				: input.homeGitSummary
@@ -65,6 +67,7 @@ export function resolveTaskGitState(input: {
 		additions: input.worktreeSnapshot?.additions ?? 0,
 		deletions: input.worktreeSnapshot?.deletions ?? 0,
 		behindBaseCount: input.worktreeSnapshot?.behindBaseCount ?? null,
+		behindRemoteBaseCount: input.worktreeSnapshot?.behindRemoteBaseCount ?? null,
 		isDetached: identity.assignedIsDetached,
 		hasRepositoryMetadata: Boolean(input.repositoryInfo || input.worktreeSnapshot),
 	};

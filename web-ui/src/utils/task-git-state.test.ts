@@ -66,6 +66,7 @@ describe("resolveTaskGitState", () => {
 				deletions: 2,
 				hasUnmergedChanges: false,
 				behindBaseCount: 4,
+				behindRemoteBaseCount: 5,
 				conflictState: null,
 			},
 			homeGitSummary: {
@@ -86,6 +87,7 @@ describe("resolveTaskGitState", () => {
 		expect(state.additions).toBe(3);
 		expect(state.deletions).toBe(2);
 		expect(state.behindBaseCount).toBe(4);
+		expect(state.behindRemoteBaseCount).toBe(5);
 	});
 
 	it("uses task worktree metadata for isolated tasks", () => {
@@ -116,6 +118,7 @@ describe("resolveTaskGitState", () => {
 				deletions: 2,
 				hasUnmergedChanges: false,
 				behindBaseCount: 1,
+				behindRemoteBaseCount: 2,
 				conflictState: null,
 			},
 			homeGitSummary: {
@@ -134,6 +137,7 @@ describe("resolveTaskGitState", () => {
 		expect(state.branchLabel).toBe("feature/current");
 		expect(state.changedFiles).toBe(3);
 		expect(state.behindBaseCount).toBe(1);
+		expect(state.behindRemoteBaseCount).toBe(2);
 	});
 
 	it("keeps task git state pinned to assigned metadata when session launch path differs", () => {
@@ -164,6 +168,7 @@ describe("resolveTaskGitState", () => {
 				deletions: 2,
 				hasUnmergedChanges: false,
 				behindBaseCount: 2,
+				behindRemoteBaseCount: 3,
 				conflictState: null,
 			},
 			homeGitSummary: {
@@ -187,5 +192,6 @@ describe("resolveTaskGitState", () => {
 		expect(state.branchLabel).toBe("feature/assigned");
 		expect(state.changedFiles).toBe(4);
 		expect(state.behindBaseCount).toBe(2);
+		expect(state.behindRemoteBaseCount).toBe(3);
 	});
 });

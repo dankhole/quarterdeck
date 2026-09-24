@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-24 — Show local and remote base comparisons independently
+
+A local squash commit was present on `main` but absent from the task header because the behind-base counter preferred `origin/main`. Task metadata now carries the local count in `behindBaseCount` and a separate nullable `behindRemoteBaseCount`; both use `HEAD..ref`, preserving merged-history correctness without combining divergent histories. Runtime projection and browser equality checks carry both counts. The Top Bar and task repository scope label always identify both comparisons, including zero and unavailable refs. Missing or failed comparisons never become zero.
+
+Notable files: `src/server/project-metadata-base-ref.ts`, `src/workdir/git-utils.ts`, the project metadata contract/store, and `web-ui/src/utils/task-base-ref-display.ts`. Validation: 59 focused runtime tests, 65 focused web tests, runtime/web typechecks, and targeted formatting checks passed. Isolated fake-provider lab `local-remote-behind-20260924T154413Z-821a51` verified local-only commits, independent remote ref advances, and remote-ref removal in the toolbar; screenshot evidence confirmed both counts remain visible. No real provider was used.
+
 ## 2026-09-22 — Count only missing commits against a deterministic base ref
 
 A task showed `16 behind` after merging its remote base. Read-only Git inspection confirmed zero missing remote commits and two missing local commits; counting from one merge base inflated the local result to 16 by including shared merged history. `getCommitsBehindBase` in `src/workdir/git-utils.ts` now counts `HEAD..resolvedBase`, prefers the origin tracking ref when present, and falls back to the local base only when that tracking ref is absent. Explicit refs retain their meaning; Git failures remain unknown. The existing metadata cache already observes both ref tips.

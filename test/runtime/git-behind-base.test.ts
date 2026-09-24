@@ -39,21 +39,21 @@ describe("behind-base commit counts", () => {
 
 		const mergeBase = runGit(repo.path, ["merge-base", "HEAD", base]);
 		expect(Number(runGit(repo.path, ["rev-list", "--count", `${mergeBase}..${base}`]))).toBeGreaterThan(1);
-		expect(await getCommitsBehindBase(repo.path, "main")).toMatchObject({ behindCount: 1 });
+		expect(await getCommitsBehindBase(repo.path, "origin/main")).toMatchObject({ behindCount: 1 });
 	});
 
-	it("prefers the remote base even when a divergent local base has missing commits", async () => {
+	it("compares the local base independently of a divergent remote", async () => {
 		setRef("refs/heads/base", commit("local only", seed));
 		setRef("refs/remotes/origin/base", seed);
-		expect(await getCommitsBehindBase(repo.path, "base")).toMatchObject({ behindCount: 0 });
+		expect(await getCommitsBehindBase(repo.path, "base")).toMatchObject({ behindCount: 1 });
 	});
 
 	it("compares against a remote-only base", async () => {
 		setRef("refs/remotes/origin/base", commit("remote advance", seed));
-		expect(await getCommitsBehindBase(repo.path, "base")).toMatchObject({ behindCount: 1 });
+		expect(await getCommitsBehindBase(repo.path, "origin/base")).toMatchObject({ behindCount: 1 });
 	});
 
-	it("falls back to a local base when no origin tracking ref exists", async () => {
+	it("compares to a local base when no origin tracking ref exists", async () => {
 		setRef("refs/heads/base", commit("local advance", seed));
 		expect(await getCommitsBehindBase(repo.path, "base")).toMatchObject({ behindCount: 1 });
 	});
@@ -78,12 +78,45 @@ describe("behind-base commit counts", () => {
 		setRef("refs/heads/base", commit("local advance", seed));
 		const task = { taskId: "task-1", baseRef: "base", workingDirectory: null, useWorktree: false };
 		const local = await loadTaskWorktreeMetadata(repo.path, task, null);
-		expect(local?.data.behindBaseCount).toBe(1);
+		expect(local?.data).toMatchObject({ behindBaseCount: 1, behindRemoteBaseCount: null });
 		setRef("refs/remotes/origin/base", seed);
 		const remote = await loadTaskWorktreeMetadata(repo.path, task, local);
-		expect(remote?.data.behindBaseCount).toBe(0);
+		expect(remote?.data).toMatchObject({ behindBaseCount: 1, behindRemoteBaseCount: 0 });
 		setRef("refs/remotes/origin/base", commit("remote advance", seed));
 		const advanced = await loadTaskWorktreeMetadata(repo.path, task, remote);
-		expect(advanced?.data.behindBaseCount).toBe(1);
+		expect(advanced?.data).toMatchObject({ behindBaseCount: 1, behindRemoteBaseCount: 1 });
+	});
+
+	it("refreshes local-only commits independently and preserves divergent remote counts", async () => {
+		setRef("refs/heads/base", seed);
+		setRef("refs/remotes/origin/base", commit("remote second", commit("remote first", seed)));
+		const task = { taskId: "task-1", baseRef: "base", workingDirectory: null, useWorktree: false };
+		const initial = await loadTaskWorktreeMetadata(repo.path, task, null);
+		expect(initial?.data).toMatchObject({ behindBaseCount: 0, behindRemoteBaseCount: 2 });
+		setRef("refs/heads/base", commit("local only", seed));
+		const advanced = await loadTaskWorktreeMetadata(repo.path, task, initial);
+		expect(advanced?.data).toMatchObject({ behindBaseCount: 1, behindRemoteBaseCount: 2 });
+		runGit(repo.path, ["update-ref", "-d", "refs/remotes/origin/base"]);
+		const removed = await loadTaskWorktreeMetadata(repo.path, task, advanced);
+		expect(removed?.data).toMatchObject({ behindBaseCount: 1, behindRemoteBaseCount: null });
+	});
+
+	it.each(["base", "refs/heads/base", "origin/base", "refs/remotes/origin/base"])(
+		"projects matching local and remote comparisons for %s",
+		async (baseRef) => {
+			setRef("refs/heads/base", commit("local only", seed));
+			setRef("refs/remotes/origin/base", seed);
+			setRef("refs/remotes/origin/origin/base", commit("not this branch", seed));
+			const task = { taskId: "task-1", baseRef, workingDirectory: null, useWorktree: false };
+			const metadata = await loadTaskWorktreeMetadata(repo.path, task, null);
+			expect(metadata?.data).toMatchObject({ behindBaseCount: 1, behindRemoteBaseCount: 0 });
+		},
+	);
+
+	it("keeps a missing local comparison unavailable when the remote is known", async () => {
+		setRef("refs/remotes/origin/base", seed);
+		const task = { taskId: "task-1", baseRef: "base", workingDirectory: null, useWorktree: false };
+		const metadata = await loadTaskWorktreeMetadata(repo.path, task, null);
+		expect(metadata?.data).toMatchObject({ behindBaseCount: null, behindRemoteBaseCount: 0 });
 	});
 });

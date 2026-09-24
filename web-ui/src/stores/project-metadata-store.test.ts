@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeProjectMetadata } from "@/runtime/types";
 import {
 	clearTaskRepositoryInfo,
@@ -15,6 +15,7 @@ import {
 	setProjectMetadataScope,
 	setProjectPath,
 	setTaskWorktreeInfo,
+	subscribeToAnyTaskMetadata,
 } from "@/stores/project-metadata-store";
 
 function createMetadata(branch: string, path: string, stateVersion: number): RuntimeProjectMetadata {
@@ -45,6 +46,7 @@ function createMetadata(branch: string, path: string, stateVersion: number): Run
 				deletions: 0,
 				hasUnmergedChanges: false,
 				behindBaseCount: 0,
+				behindRemoteBaseCount: 0,
 				conflictState: null,
 				stateVersion,
 			},
@@ -55,6 +57,36 @@ function createMetadata(branch: string, path: string, stateVersion: number): Run
 describe("project metadata store scoping", () => {
 	afterEach(() => {
 		resetProjectMetadataStore();
+	});
+
+	it("publishes remote-only comparison changes without losing known zero counts", () => {
+		setProjectMetadataScope("project-a");
+		const metadata = createMetadata("feature/a", "/repo/a/task", 1);
+		replaceProjectMetadata("project-a", metadata);
+		const listener = vi.fn();
+		const unsubscribe = subscribeToAnyTaskMetadata(listener);
+		try {
+			const nextMetadata = {
+				...metadata,
+				taskWorktrees: metadata.taskWorktrees.map((task) => ({ ...task, behindRemoteBaseCount: 2 })),
+			};
+			replaceProjectMetadata("project-a", nextMetadata);
+			expect(listener).toHaveBeenCalledTimes(1);
+			expect(getTaskWorktreeSnapshot("shared-task-id")).toMatchObject({
+				behindBaseCount: 0,
+				behindRemoteBaseCount: 2,
+			});
+			replaceProjectMetadata("project-a", nextMetadata);
+			expect(listener).toHaveBeenCalledTimes(1);
+			replaceProjectMetadata("project-a", {
+				...metadata,
+				taskWorktrees: metadata.taskWorktrees.map((task) => ({ ...task, behindRemoteBaseCount: null })),
+			});
+			expect(listener).toHaveBeenCalledTimes(2);
+			expect(getTaskWorktreeSnapshot("shared-task-id")?.behindRemoteBaseCount).toBeNull();
+		} finally {
+			unsubscribe();
+		}
 	});
 
 	it("clears task Git identity atomically when the project scope changes", () => {

@@ -58,6 +58,7 @@ export interface ReviewTaskWorktreeSnapshot {
 	deletions: number | null;
 	hasUnmergedChanges: boolean | null;
 	behindBaseCount: number | null;
+	behindRemoteBaseCount: number | null;
 	conflictState: RuntimeConflictState | null;
 }
 

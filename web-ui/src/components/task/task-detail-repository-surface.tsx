@@ -149,6 +149,7 @@ export function TaskDetailRepositorySurface({
 							taskBranch={taskGitState.branch}
 							taskBaseRef={selection.card.baseRef}
 							behindBaseCount={taskGitState.behindBaseCount}
+							behindRemoteBaseCount={taskGitState.behindRemoteBaseCount}
 							isDetachedHead={
 								repositoryState.homeGitSummary !== null && repositoryState.homeGitSummary.currentBranch === null
 							}

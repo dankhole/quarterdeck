@@ -143,6 +143,7 @@ export function HomeView({
 											taskBranch={null}
 											taskBaseRef={null}
 											behindBaseCount={null}
+											behindRemoteBaseCount={null}
 											isDetachedHead={homeGitSummary?.currentBranch === null && homeGitSummary !== null}
 											onSwitchToHome={git.fileBrowserSwitchToHome}
 											onReturnToContextual={git.fileBrowserReturnToContextual}

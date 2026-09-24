@@ -53,6 +53,7 @@ describe("runtime board projection path identity", () => {
 					deletions: null,
 					hasUnmergedChanges: null,
 					behindBaseCount: null,
+					behindRemoteBaseCount: null,
 					conflictState: null,
 					stateVersion: 1,
 				},

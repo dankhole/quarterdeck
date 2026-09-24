@@ -65,12 +65,37 @@ describe("BaseRefLabel", () => {
 		}
 	});
 
+	it.each([
+		[1, 0, "1 behind local · 0 behind remote", true],
+		[0, 2, "0 behind local · 2 behind remote", true],
+		[0, 0, "0 behind local · 0 behind remote", false],
+		[null, null, "local unavailable · remote unavailable", false],
+	] as const)("shows local %s and remote %s without hovering", async (local, remote, label, highlighted) => {
+		await act(async () => {
+			root.render(
+				<BaseRefLabel
+					card={createCard()}
+					behindBaseCount={local}
+					behindRemoteBaseCount={remote}
+					branches={[]}
+					isLoadingBranches={false}
+					requestBranches={() => {}}
+					onUpdateBaseRef={() => {}}
+					pinnedBranches={[]}
+				/>,
+			);
+		});
+		expect(container.textContent).toContain(label);
+		expect(container.querySelector(".text-status-blue") !== null).toBe(highlighted);
+	});
+
 	it("groups pinned local, local, and remote refs", async () => {
 		await act(async () => {
 			root.render(
 				<BaseRefLabel
 					card={createCard({ baseRef: "origin/main" })}
 					behindBaseCount={null}
+					behindRemoteBaseCount={null}
 					branches={[
 						createRef("main", "branch"),
 						createRef("develop", "branch"),
@@ -85,7 +110,7 @@ describe("BaseRefLabel", () => {
 			);
 		});
 
-		const trigger = findButtonByText(container, "from origin/main");
+		const trigger = findButtonByText(container, "from origin/main(local unavailable · remote unavailable)");
 		expect(trigger).toBeInstanceOf(HTMLButtonElement);
 
 		await act(async () => {
@@ -112,6 +137,7 @@ describe("BaseRefLabel", () => {
 				<BaseRefLabel
 					card={createCard({ baseRef: "main" })}
 					behindBaseCount={null}
+					behindRemoteBaseCount={null}
 					branches={[createRef("main", "branch"), createRef("origin/main", "remote")]}
 					isLoadingBranches={false}
 					requestBranches={() => {}}
@@ -121,7 +147,7 @@ describe("BaseRefLabel", () => {
 			);
 		});
 
-		const trigger = findButtonByText(container, "from main");
+		const trigger = findButtonByText(container, "from main(local unavailable · remote unavailable)");
 		await act(async () => {
 			trigger?.click();
 		});
@@ -144,6 +170,7 @@ describe("BaseRefLabel", () => {
 				<BaseRefLabel
 					card={createCard({ baseRef: "" })}
 					behindBaseCount={3}
+					behindRemoteBaseCount={3}
 					branches={[createRef("main", "branch")]}
 					isLoadingBranches={false}
 					requestBranches={() => {}}
@@ -175,6 +202,7 @@ describe("BaseRefLabel", () => {
 				<BaseRefLabel
 					card={createCard({ baseRef: "main" })}
 					behindBaseCount={null}
+					behindRemoteBaseCount={null}
 					branches={[createRef("main", "branch"), createRef("origin/release", "remote")]}
 					isLoadingBranches={false}
 					requestBranches={() => {}}
@@ -184,7 +212,7 @@ describe("BaseRefLabel", () => {
 			);
 		});
 
-		const trigger = findButtonByText(container, "from main");
+		const trigger = findButtonByText(container, "from main(local unavailable · remote unavailable)");
 		await act(async () => {
 			trigger?.click();
 		});

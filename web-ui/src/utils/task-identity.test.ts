@@ -51,6 +51,7 @@ describe("resolveTaskIdentity", () => {
 				deletions: 0,
 				hasUnmergedChanges: false,
 				behindBaseCount: null,
+				behindRemoteBaseCount: null,
 				conflictState: null,
 			},
 		});
@@ -143,6 +144,7 @@ describe("resolveTaskIdentity", () => {
 				deletions: 2,
 				hasUnmergedChanges: false,
 				behindBaseCount: null,
+				behindRemoteBaseCount: null,
 				conflictState: null,
 			},
 			sessionSummary: {

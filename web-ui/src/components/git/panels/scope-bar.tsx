@@ -5,6 +5,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import type { ResolvedScope, ScopeMode } from "@/hooks/git/use-scope-context";
 import type { RuntimeGitSyncSummary } from "@/runtime/types";
 import { formatDetachedWorktreeLabel, getDetachedWorktreeTooltip } from "@/utils/detached-worktree-copy";
+import { resolveTaskBaseRefDisplayState } from "@/utils/task-base-ref-display";
 
 /**
  * Breadcrumb bar at the top of the **Files tab** (both home and task detail views).
@@ -19,6 +20,7 @@ interface ScopeBarProps {
 	taskBranch: string | null;
 	taskBaseRef: string | null;
 	behindBaseCount: number | null;
+	behindRemoteBaseCount: number | null;
 	isDetachedHead: boolean;
 	/** Whether the task worktree is on a detached HEAD (headless). */
 	taskIsDetached?: boolean;
@@ -100,6 +102,7 @@ function TaskContent({
 	taskBranch,
 	taskBaseRef,
 	behindBaseCount,
+	behindRemoteBaseCount,
 	taskIsDetached,
 	branchPillSlot,
 }: {
@@ -107,6 +110,7 @@ function TaskContent({
 	taskBranch: string | null;
 	taskBaseRef: string | null;
 	behindBaseCount: number | null;
+	behindRemoteBaseCount: number | null;
 	taskIsDetached?: boolean;
 	branchPillSlot?: ReactNode;
 }): React.ReactElement {
@@ -128,7 +132,11 @@ function TaskContent({
 
 	// Detached worktrees need base context because several tasks may share one HEAD hash.
 	const detachedLabel = taskIsDetached ? formatDetachedWorktreeLabel(taskBaseRef) : null;
-	const behindText = behindBaseCount !== null && behindBaseCount > 0 ? ` (${behindBaseCount} behind)` : "";
+	const baseRefDisplay = resolveTaskBaseRefDisplayState({
+		baseRef: taskBaseRef,
+		behindBaseCount,
+		behindRemoteBaseCount,
+	});
 
 	return (
 		<>
@@ -141,20 +149,24 @@ function TaskContent({
 				<>
 					<span className="text-text-tertiary">&middot;</span>
 					<Tooltip content={getDetachedWorktreeTooltip({ baseRef: taskBaseRef })}>
-						<span
-							className={cn(
-								"inline-flex min-w-0 items-center gap-1 truncate",
-								behindBaseCount && behindBaseCount > 0 ? "text-status-blue" : "text-text-tertiary",
-							)}
-						>
+						<span className="inline-flex min-w-0 items-center gap-1 truncate text-text-tertiary">
 							<Info size={11} className="shrink-0" />
-							<span className="truncate">
-								{detachedLabel}
-								{behindText}
-							</span>
+							<span className="truncate">{detachedLabel}</span>
 						</span>
 					</Tooltip>
 				</>
+			) : baseRefDisplay.baseRefState.isResolved ? (
+				<span className="text-text-tertiary whitespace-nowrap">{baseRefDisplay.triggerLabel}</span>
+			) : null}
+			{baseRefDisplay.behindLabel ? (
+				<span
+					className={cn(
+						"shrink-0 whitespace-nowrap",
+						baseRefDisplay.isBehind ? "text-status-blue" : "text-text-tertiary",
+					)}
+				>
+					({baseRefDisplay.behindLabel})
+				</span>
 			) : null}
 		</>
 	);
@@ -188,6 +200,7 @@ export function ScopeBar({
 	taskBranch,
 	taskBaseRef,
 	behindBaseCount,
+	behindRemoteBaseCount,
 	isDetachedHead,
 	taskIsDetached,
 	onSwitchToHome,
@@ -224,6 +237,7 @@ export function ScopeBar({
 						taskBranch={taskBranch}
 						taskBaseRef={taskBaseRef}
 						behindBaseCount={behindBaseCount}
+						behindRemoteBaseCount={behindRemoteBaseCount}
 						taskIsDetached={taskIsDetached}
 						branchPillSlot={branchPillSlot}
 					/>

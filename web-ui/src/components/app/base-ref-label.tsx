@@ -11,6 +11,7 @@ import { resolveTaskBaseRefDisplayState } from "@/utils/task-base-ref-display";
 interface BaseRefLabelProps {
 	card: BoardCard;
 	behindBaseCount: number | null | undefined;
+	behindRemoteBaseCount: number | null | undefined;
 	branches: RuntimeGitRef[] | null;
 	isLoadingBranches: boolean;
 	requestBranches: () => void;
@@ -53,6 +54,7 @@ function BaseRefSection({ title, refs, currentBaseRef, onSelectRef }: BaseRefSec
 export function BaseRefLabel({
 	card,
 	behindBaseCount,
+	behindRemoteBaseCount,
 	branches,
 	isLoadingBranches,
 	requestBranches,
@@ -65,6 +67,7 @@ export function BaseRefLabel({
 		baseRef: card.baseRef,
 		baseRefPinned: card.baseRefPinned,
 		behindBaseCount,
+		behindRemoteBaseCount,
 	});
 	const baseRefState = baseRefDisplay.baseRefState;
 	const [isBaseRefPinned, setIsBaseRefPinned] = useState(baseRefState.isPinned);
@@ -115,7 +118,9 @@ export function BaseRefLabel({
 							{baseRefState.isPinned ? <Lock size={10} className="text-text-quaternary" /> : null}
 							from <span className="font-mono">{baseRefState.baseRef}</span>
 							{baseRefDisplay.behindLabel ? (
-								<span className="text-status-blue">({baseRefDisplay.behindLabel})</span>
+								<span className={baseRefDisplay.isBehind ? "text-status-blue" : undefined}>
+									({baseRefDisplay.behindLabel})
+								</span>
 							) : null}
 						</>
 					) : (

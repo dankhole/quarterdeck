@@ -8,6 +8,7 @@ export interface TaskBaseRefDisplayState {
 	baseRefState: RuntimeTaskBaseRefState;
 	triggerLabel: string;
 	behindLabel: string | null;
+	isBehind: boolean;
 	pinToggleLabel: string | null;
 }
 
@@ -33,8 +34,15 @@ function formatShortCommit(headCommit: string | null | undefined): string | null
 	return trimmed && /^[0-9a-f]{7,40}$/iu.test(trimmed) ? trimmed.slice(0, 8) : null;
 }
 
+function formatBehindCount(count: number | null | undefined, source: "local" | "remote"): string {
+	return count == null ? `${source} unavailable` : `${count} behind ${source}`;
+}
+
 export function resolveTaskBaseRefDisplayState(
-	input: RuntimeTaskBaseRefInput & { behindBaseCount?: number | null | undefined },
+	input: RuntimeTaskBaseRefInput & {
+		behindBaseCount?: number | null | undefined;
+		behindRemoteBaseCount?: number | null | undefined;
+	},
 ): TaskBaseRefDisplayState {
 	const baseRefState = resolveRuntimeTaskBaseRefState(input);
 	if (!baseRefState.isResolved) {
@@ -42,6 +50,7 @@ export function resolveTaskBaseRefDisplayState(
 			baseRefState,
 			triggerLabel: "select base branch",
 			behindLabel: null,
+			isBehind: false,
 			pinToggleLabel: null,
 		};
 	}
@@ -49,10 +58,8 @@ export function resolveTaskBaseRefDisplayState(
 	return {
 		baseRefState,
 		triggerLabel: `from ${baseRefState.baseRef}`,
-		behindLabel:
-			input.behindBaseCount !== null && input.behindBaseCount !== undefined && input.behindBaseCount > 0
-				? `${input.behindBaseCount} behind`
-				: null,
+		behindLabel: `${formatBehindCount(input.behindBaseCount, "local")} · ${formatBehindCount(input.behindRemoteBaseCount, "remote")}`,
+		isBehind: (input.behindBaseCount ?? 0) > 0 || (input.behindRemoteBaseCount ?? 0) > 0,
 		pinToggleLabel: baseRefState.isPinned ? "Pinned - won't auto-update" : "Unpinned - auto-updates on branch change",
 	};
 }

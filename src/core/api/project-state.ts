@@ -35,6 +35,7 @@ export const runtimeTaskWorktreeMetadataSchema = z.object({
 	deletions: z.number().nullable(),
 	hasUnmergedChanges: z.boolean().nullable(),
 	behindBaseCount: z.number().nullable(),
+	behindRemoteBaseCount: z.number().nullable(),
 	conflictState: runtimeConflictStateSchema.nullable().optional(),
 	stateVersion: z.number().int().nonnegative(),
 });

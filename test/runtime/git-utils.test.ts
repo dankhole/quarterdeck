@@ -69,7 +69,7 @@ describe("runGit", () => {
 		expect(result.stdout).toBe(diffOutput);
 	});
 
-	it("does not fall back to a local base after a ref-resolution execution failure", async () => {
+	it("returns unknown after a ref-resolution execution failure", async () => {
 		childProcessMocks.execFilePromise.mockRejectedValueOnce(createExecError({ code: "ETIMEDOUT" }));
 		await expect(workdirExports.getCommitsBehindBase("/repo", "main")).resolves.toBeNull();
 		expect(childProcessMocks.execFilePromise).toHaveBeenCalledTimes(1);

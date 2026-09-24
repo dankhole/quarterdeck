@@ -232,6 +232,7 @@ export function ConnectedTopBar({
 							<BaseRefLabel
 								card={selectedCard.card}
 								behindBaseCount={selectedTaskWorktreeSnapshot?.behindBaseCount}
+								behindRemoteBaseCount={selectedTaskWorktreeSnapshot?.behindRemoteBaseCount}
 								branches={git.topbarBranchActions.branches}
 								isLoadingBranches={git.topbarBranchActions.isLoadingBranches}
 								requestBranches={git.topbarBranchActions.requestBranches}

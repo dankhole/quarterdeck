@@ -110,6 +110,7 @@ describe("project metadata loaders", () => {
 				changedFiles: 1,
 				hasUnmergedChanges: null,
 				behindBaseCount: null,
+				behindRemoteBaseCount: null,
 			});
 			expect(metadata?.baseRefCommit).toBeNull();
 			expect(metadata?.originBaseRefCommit).toBeNull();
@@ -158,6 +159,7 @@ describe("project metadata loaders", () => {
 				exists: true,
 				baseRef: "main",
 				behindBaseCount: 0,
+				behindRemoteBaseCount: null,
 			});
 			expect(byTaskId.get("task-develop")).toMatchObject({
 				taskId: "task-develop",
@@ -165,6 +167,7 @@ describe("project metadata loaders", () => {
 				exists: true,
 				baseRef: "develop",
 				behindBaseCount: 1,
+				behindRemoteBaseCount: null,
 			});
 		} finally {
 			cleanup();
@@ -199,6 +202,7 @@ describe("project metadata loaders", () => {
 				deletions: null,
 				hasUnmergedChanges: null,
 				behindBaseCount: null,
+				behindRemoteBaseCount: null,
 				conflictState: null,
 			});
 			expect(metadata?.stateToken).toBeNull();
@@ -228,6 +232,7 @@ describe("project metadata loaders", () => {
 					deletions: 1,
 					hasUnmergedChanges: true,
 					behindBaseCount: 4,
+					behindRemoteBaseCount: null,
 					conflictState: null,
 					stateVersion: 123,
 				},

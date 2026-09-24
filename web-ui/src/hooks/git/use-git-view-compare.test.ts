@@ -85,6 +85,7 @@ describe("resolveDefaultCompareSourceRef", () => {
 			deletions: 1,
 			hasUnmergedChanges: false,
 			behindBaseCount: 0,
+			behindRemoteBaseCount: 0,
 			conflictState: null,
 		};
 

@@ -4,6 +4,8 @@
 
 ## [0.12.6] - 2026-09-13
 
+- Always show separate local and remote behind-base counts in task headers, including zero and unavailable comparisons, so unpushed local base commits remain visible.
+
 - Default background Codex calls for titles, branch names, commit messages, and summary polishing to GPT-6 Luna.
 
 - Let the new-task harness dropdown fill the available space beside the Codex override toggle.

@@ -77,6 +77,7 @@ function areTaskMetadataEqual(a: RuntimeTaskWorktreeMetadata, b: RuntimeTaskWork
 		a.deletions === b.deletions &&
 		a.hasUnmergedChanges === b.hasUnmergedChanges &&
 		a.behindBaseCount === b.behindBaseCount &&
+		a.behindRemoteBaseCount === b.behindRemoteBaseCount &&
 		areConflictStatesEqual(a.conflictState ?? null, b.conflictState ?? null) &&
 		a.stateVersion === b.stateVersion
 	);

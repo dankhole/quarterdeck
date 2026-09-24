@@ -148,6 +148,7 @@ function createTaskMetadata(
 			deletions: 0,
 			hasUnmergedChanges: false,
 			behindBaseCount: 0,
+			behindRemoteBaseCount: null,
 			conflictState: null,
 			stateVersion: versionCounter++,
 		},
