@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [0.12.6] - 2026-09-13
+## [0.12.7] - 2026-09-24
 
 - Always show separate local and remote behind-base counts in task headers, including zero and unavailable comparisons, so unpushed local base commits remain visible.
 
@@ -17,6 +17,8 @@
 - Let Markdown file previews use the full pane width while retaining padding around the content.
 
 - Move routine terminal-manager creation messages to debug logging so normal startup stays quiet.
+
+## [0.12.6] - 2026-09-13
 
 - Replace duplicate startup warnings for live, unconfirmed restored chats with an informational per-project summary, retaining per-task diagnostics and warnings for actual failures.
 
