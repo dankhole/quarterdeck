@@ -25,7 +25,7 @@ const OPTIONS = {
 	systemPrompt: "Return only a concise title.",
 	userPrompt: "make title generation reliable",
 	timeoutMs: 20_000,
-	model: "gpt-5.6-luna",
+	model: "gpt-6-luna",
 };
 
 const originalPath = process.env.PATH;
@@ -133,7 +133,7 @@ describe("callCodex", () => {
 			"<input-context>\nmake title generation reliable\n</input-context>",
 		);
 		const modelIndex = args.indexOf("--model");
-		expect(args[modelIndex + 1]).toBe("gpt-5.6-luna");
+		expect(args[modelIndex + 1]).toBe("gpt-6-luna");
 		const reasoningConfig = args.find((arg) => arg.startsWith("model_reasoning_effort="));
 		expect(reasoningConfig).toBe('model_reasoning_effort="none"');
 		const developerConfig = args.find((arg) => arg.startsWith("developer_instructions="));

@@ -15,7 +15,7 @@ export async function callGenerationHelper(options: GenerationHelperOptions): Pr
 			await callCodex({
 				systemPrompt: options.systemPrompt,
 				userPrompt: options.userPrompt,
-				model: options.codexModel ?? "gpt-5.6-luna",
+				model: options.codexModel ?? "gpt-6-luna",
 				timeoutMs: 20_000,
 			}),
 		);

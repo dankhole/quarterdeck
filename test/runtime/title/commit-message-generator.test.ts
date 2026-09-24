@@ -68,7 +68,7 @@ describe("generateCommitMessage", () => {
 		expect(callCodexMock).toHaveBeenCalledWith(
 			expect.objectContaining({
 				userPrompt: expect.stringContaining(SINGLE_FILE_DIFF.trim()),
-				model: "gpt-5.6-luna",
+				model: "gpt-6-luna",
 				timeoutMs: 20_000,
 			}),
 		);

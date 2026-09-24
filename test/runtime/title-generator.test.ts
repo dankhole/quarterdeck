@@ -76,7 +76,7 @@ describe("generateTaskTitle", () => {
 			expect.objectContaining({
 				userPrompt: "make automatic title generation more reliable",
 				timeoutMs: 20_000,
-				model: "gpt-5.6-luna",
+				model: "gpt-6-luna",
 			}),
 		);
 		expect(fetchSpy).not.toHaveBeenCalled();

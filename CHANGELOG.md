@@ -4,6 +4,8 @@
 
 ## [0.12.6] - 2026-09-13
 
+- Default background Codex calls for titles, branch names, commit messages, and summary polishing to GPT-6 Luna.
+
 - Let the new-task harness dropdown fill the available space beside the Codex override toggle.
 
 - Fix inflated behind-base counts after merges. Compare commits missing from the task against the origin tracking branch when available, falling back to the local base for unpublished branches.

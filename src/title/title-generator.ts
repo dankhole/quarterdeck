@@ -38,7 +38,7 @@ CRITICAL RULES:
 
 const MAX_BRANCH_PROMPT_LENGTH = 1200;
 const TITLE_GENERATION_TIMEOUT_MS = 6_000;
-const DEFAULT_CODEX_TITLE_MODEL = "gpt-5.6-luna";
+const DEFAULT_CODEX_TITLE_MODEL = "gpt-6-luna";
 
 type TitleProvider = "codex" | "llm" | "local";
 
