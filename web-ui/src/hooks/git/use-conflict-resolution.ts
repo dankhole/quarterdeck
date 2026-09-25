@@ -32,6 +32,8 @@ export interface UseConflictResolutionResult {
 	continueResolution: () => Promise<RuntimeConflictContinueResponse>;
 	abortResolution: () => Promise<RuntimeConflictAbortResponse>;
 	isLoading: boolean;
+	isMutating: boolean;
+	actionError: string | null;
 }
 
 export function useConflictResolution(options: {
@@ -55,7 +57,13 @@ export function useConflictResolution(options: {
 	const [reviewedAutoMergedFiles, setReviewedAutoMergedFiles] = useState<Set<string>>(new Set());
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
+	const [isMutating, setIsMutating] = useState(false);
+	const [actionError, setActionError] = useState<string | null>(null);
 	const previousStepRef = useRef<number | null>(null);
+
+	useEffect(() => {
+		setActionError(null);
+	}, [options.projectId, options.taskId, isActive, conflictState?.currentStep]);
 
 	// 4. Reset resolvedFiles and reviewedAutoMergedFiles when currentStep changes (rebase advancing to next commit).
 	useEffect(() => {
@@ -152,11 +160,8 @@ export function useConflictResolution(options: {
 				}
 			})
 			.catch(() => {
-				// If we can't fetch content, treat all auto-merged files as implicitly accepted
-				// rather than deadlocking the "Complete Merge" button.
-				if (!cancelled) {
-					setReviewedAutoMergedFiles(new Set(paths));
-				}
+				// Reviewing auto-merged content is optional; a failed fetch must not
+				// mark unseen files as reviewed or prevent completing the operation.
 			});
 
 		return () => {
@@ -190,23 +195,48 @@ export function useConflictResolution(options: {
 	);
 
 	const continueResolution = useCallback(async (): Promise<RuntimeConflictContinueResponse> => {
-		if (!options.projectId) {
-			return buildNoWorktreeContinueResponse();
+		setActionError(null);
+		setIsMutating(true);
+		try {
+			if (!options.projectId) throw new Error("No project available");
+			const response = await getRuntimeTrpcClient(options.projectId).project.continueConflictResolution.mutate({
+				taskId: options.taskId ?? undefined,
+			});
+			if (!response.ok) {
+				setActionError(
+					response.error ??
+						(response.conflictState?.conflictedFiles.length
+							? null
+							: response.output || "Could not complete the operation."),
+				);
+			}
+			return response;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Could not complete the operation.";
+			setActionError(message);
+			return { ...buildNoWorktreeContinueResponse(), error: message };
+		} finally {
+			setIsMutating(false);
 		}
-		const trpcClient = getRuntimeTrpcClient(options.projectId);
-		return await trpcClient.project.continueConflictResolution.mutate({
-			taskId: options.taskId ?? undefined,
-		});
 	}, [options.taskId, options.projectId]);
 
 	const abortResolution = useCallback(async (): Promise<RuntimeConflictAbortResponse> => {
-		if (!options.projectId) {
-			return buildNoWorktreeAbortResponse();
+		setActionError(null);
+		setIsMutating(true);
+		try {
+			if (!options.projectId) throw new Error("No project available");
+			const response = await getRuntimeTrpcClient(options.projectId).project.abortConflictResolution.mutate({
+				taskId: options.taskId ?? undefined,
+			});
+			if (!response.ok) setActionError(response.error ?? "Could not abort the operation.");
+			return response;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Could not abort the operation.";
+			setActionError(message);
+			return { ...buildNoWorktreeAbortResponse(), error: message };
+		} finally {
+			setIsMutating(false);
 		}
-		const trpcClient = getRuntimeTrpcClient(options.projectId);
-		return await trpcClient.project.abortConflictResolution.mutate({
-			taskId: options.taskId ?? undefined,
-		});
 	}, [options.taskId, options.projectId]);
 
 	return {
@@ -223,5 +253,7 @@ export function useConflictResolution(options: {
 		continueResolution,
 		abortResolution,
 		isLoading,
+		isMutating,
+		actionError,
 	};
 }

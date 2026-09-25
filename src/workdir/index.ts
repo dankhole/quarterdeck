@@ -107,4 +107,5 @@ export {
 	resolveTaskCwd,
 	resolveTaskWorkingDirectory,
 } from "./task-worktree";
+export { assertTaskWorktreeRegistration } from "./task-worktree-identity";
 export { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "./turn-checkpoints";

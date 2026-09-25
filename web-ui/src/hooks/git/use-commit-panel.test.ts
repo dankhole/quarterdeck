@@ -1,8 +1,8 @@
 import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import type { UseCommitPanelResult } from "@/hooks/git/use-commit-panel";
+import type { RuntimeConflictState } from "@/runtime/types";
 
 // ---------------------------------------------------------------------------
 // Mocks — hoisted so they are available before any imports run.
@@ -36,7 +36,12 @@ const useTaskWorktreeSnapshotValueMock = vi.hoisted(() =>
 	vi.fn(() => null as { branch: string | null; isDetached: boolean } | null),
 );
 
+const useConflictStateMock = vi.hoisted(() => vi.fn(() => null as RuntimeConflictState | null));
+const useHomeConflictStateMock = vi.hoisted(() => vi.fn(() => null as RuntimeConflictState | null));
+
 vi.mock("@/stores/project-metadata-store", () => ({
+	useConflictState: useConflictStateMock,
+	useHomeConflictState: useHomeConflictStateMock,
 	useTaskWorktreeStateVersionValue: () => 0,
 	useHomeGitStateVersionValue: () => 0,
 	useHomeGitSummaryValue: useHomeGitSummaryValueMock,
@@ -142,6 +147,8 @@ describe("useCommitPanel", () => {
 			isLoading: false,
 		});
 
+		useConflictStateMock.mockReturnValue(null);
+		useHomeConflictStateMock.mockReturnValue(null);
 		// Default: on a named branch.
 		useHomeGitSummaryValueMock.mockReturnValue({ currentBranch: "main" });
 		useTaskWorktreeSnapshotValueMock.mockReturnValue(null);
@@ -164,7 +171,7 @@ describe("useCommitPanel", () => {
 		act(() => {
 			root.render(
 				createElement(HookHarness, {
-					taskId: props.taskId ?? "task-1",
+					taskId: props.taskId === undefined ? "task-1" : props.taskId,
 					projectId: props.projectId ?? "ws-1",
 					baseRef: props.baseRef ?? "main",
 					onSnapshot: (snapshot: UseCommitPanelResult) => {
@@ -387,5 +394,33 @@ describe("useCommitPanel", () => {
 			message: "Could not generate commit message.",
 			timeout: 5000,
 		});
+	});
+	it.each([
+		{ taskId: "task-1", operation: "merge" as const },
+		{ taskId: null, operation: "rebase" as const },
+	])("blocks selected-file commits during $operation in the correct scope", async ({ taskId, operation }) => {
+		const state: RuntimeConflictState = {
+			operation,
+			sourceBranch: "main",
+			currentStep: null,
+			totalSteps: null,
+			conflictedFiles: [],
+			autoMergedFiles: [],
+		};
+		(taskId ? useConflictStateMock : useHomeConflictStateMock).mockReturnValue(state);
+		render({ taskId });
+		act(() => latest.setMessage("Finish changes"));
+		expect(latest.canCommit).toBe(false);
+		expect(latest.canPush).toBe(false);
+		expect(latest.commitBlockedReason).toContain(operation === "merge" ? "Complete Merge" : "Complete Rebase");
+		await act(async () => {
+			await latest.commitFiles();
+			await latest.commitAndPush();
+		});
+		expect(commitMutateMock).not.toHaveBeenCalled();
+		useConflictStateMock.mockReturnValue(null);
+		useHomeConflictStateMock.mockReturnValue(null);
+		render({ taskId });
+		expect(latest.canCommit).toBe(true);
 	});
 });

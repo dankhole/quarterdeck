@@ -114,6 +114,8 @@ export function GitView({
 				continueResolution={conflictResolution.continueResolution}
 				abortResolution={conflictResolution.abortResolution}
 				isLoading={conflictResolution.isLoading}
+				isMutating={conflictResolution.isMutating}
+				actionError={conflictResolution.actionError}
 			/>
 		);
 	}

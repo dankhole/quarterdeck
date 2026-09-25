@@ -1,9 +1,10 @@
 import { resolve } from "node:path";
 
 import type { RuntimeBoardData, RuntimeTaskRepositoryInfoResponse } from "../core";
-import { findCardInBoard } from "../core";
+import { areFileSystemPathsEqual, findCardInBoard } from "../core";
 import { loadProjectContext, loadProjectState } from "../state/project-state";
 import { readGitHeadInfo } from "./git-utils";
+import { assertTaskWorktreeRegistration, TaskWorktreeRegistrationError } from "./task-worktree-identity";
 import { ensureTaskWorktreeIfDoesntExist, getTaskWorktreePath } from "./task-worktree-lifecycle";
 import { normalizeTaskIdForWorktreePath } from "./task-worktree-path";
 import { pathExists } from "./task-worktree-symlinks";
@@ -33,6 +34,7 @@ export async function resolveTaskCwd(options: {
 
 	const worktreePath = getTaskWorktreePath(context.repoPath, options.taskId);
 	if (await pathExists(worktreePath)) {
+		await assertTaskWorktreeRegistration(worktreePath);
 		return worktreePath;
 	}
 	throw new Error(`Task worktree not found for task "${options.taskId}".`);
@@ -57,7 +59,12 @@ export async function resolveTaskWorkingDirectory(options: {
 	if (card?.useWorktree === false) return resolve(options.projectPath);
 
 	const persisted = card?.workingDirectory ?? null;
-	if (persisted && (await pathExists(persisted))) return resolve(persisted);
+	if (persisted && (await pathExists(persisted))) {
+		if (!areFileSystemPathsEqual(persisted, options.projectPath)) {
+			await assertTaskWorktreeRegistration(persisted);
+		}
+		return resolve(persisted);
+	}
 
 	// Fallback for tasks started before workingDirectory was persisted.
 	return resolve(
@@ -126,7 +133,8 @@ export async function getTaskRepositoryInfo(options: {
 				headCommit: headInfo.headCommit,
 			};
 		}
-	} catch {
+	} catch (error) {
+		if (error instanceof TaskWorktreeRegistrationError) throw error;
 		// Missing isolated task worktrees still use the explicit not-created shape below.
 	}
 

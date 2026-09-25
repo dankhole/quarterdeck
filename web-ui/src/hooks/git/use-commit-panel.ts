@@ -12,6 +12,8 @@ import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeWorkdirFileChange } from "@/runtime/types";
 import { useRuntimeProjectChanges } from "@/runtime/use-runtime-project-changes";
 import {
+	useConflictState,
+	useHomeConflictState,
 	useHomeGitStateVersionValue,
 	useHomeGitSummaryValue,
 	useTaskWorktreeSnapshotValue,
@@ -28,6 +30,7 @@ export interface UseCommitPanelResult {
 	message: string;
 	setMessage: (msg: string) => void;
 	canCommit: boolean;
+	commitBlockedReason: string | null;
 	canPush: boolean;
 	isLoading: boolean;
 	isCommitting: boolean;
@@ -150,8 +153,16 @@ export function useCommitPanel(
 	// Task scope helper — memoized to avoid recreating callbacks that depend on it.
 	const taskScope = useMemo(() => (taskId ? { taskId, baseRef: baseRef ?? "" } : null), [taskId, baseRef]);
 
-	// Validation.
-	const canCommit = hasResolvedTaskBaseRef && canPerformCommit(selectedPaths.length, message, isCommitting);
+	const taskConflictState = useConflictState(taskId);
+	const homeConflictState = useHomeConflictState();
+	const conflictState = taskId ? taskConflictState : homeConflictState;
+	const commitBlockedReason = conflictState
+		? `A ${conflictState.operation} is in progress. Use Complete ${conflictState.operation === "merge" ? "Merge" : "Rebase"} in the Git view to finish it.`
+		: null;
+
+	// Selected-file commits cannot conclude a merge or advance a rebase.
+	const canCommit =
+		!conflictState && hasResolvedTaskBaseRef && canPerformCommit(selectedPaths.length, message, isCommitting);
 	const canPush = canCommit && isOnNamedBranch;
 
 	// Shared commit implementation — handles both commit-only and commit-and-push flows.
@@ -349,6 +360,7 @@ export function useCommitPanel(
 		message,
 		setMessage,
 		canCommit,
+		commitBlockedReason,
 		canPush,
 		isLoading,
 		isCommitting,

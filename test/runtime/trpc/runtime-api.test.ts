@@ -14,6 +14,7 @@ const agentRegistryMocks = vi.hoisted(() => ({
 }));
 
 const taskWorktreeMocks = vi.hoisted(() => ({
+	assertTaskWorktreeRegistration: vi.fn(async () => {}),
 	resolveTaskCwd: vi.fn(),
 	resolveTaskWorkingDirectory: vi.fn((): Promise<string> => Promise.resolve("/tmp/worktree")),
 	getTaskWorkingDirectory: vi.fn(),
@@ -43,6 +44,10 @@ vi.mock("../../../src/workdir/task-worktree.js", () => ({
 	resolveTaskWorkingDirectory: taskWorktreeMocks.resolveTaskWorkingDirectory,
 	getTaskWorkingDirectory: taskWorktreeMocks.getTaskWorkingDirectory,
 	pathExists: taskWorktreeMocks.pathExists,
+}));
+
+vi.mock("../../../src/workdir/task-worktree-identity.js", () => ({
+	assertTaskWorktreeRegistration: taskWorktreeMocks.assertTaskWorktreeRegistration,
 }));
 
 vi.mock("../../../src/workdir/turn-checkpoints.js", () => ({
@@ -167,6 +172,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		projectStateMocks.loadProjectState.mockReset();
 		taskBoardMutationMocks.findCardInBoard.mockReset();
 		taskWorktreeMocks.pathExists.mockReset();
+		taskWorktreeMocks.assertTaskWorktreeRegistration.mockReset().mockResolvedValue(undefined);
 
 		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
 			agentId: "claude",
@@ -205,12 +211,56 @@ describe("createRuntimeApi startTaskSession", () => {
 		});
 
 		expect(response.ok).toBe(true);
+		expect(taskWorktreeMocks.assertTaskWorktreeRegistration).toHaveBeenCalledWith("/tmp/my-worktree");
 		// Should NOT have called resolveTaskCwd — used persisted path directly.
 		expect(taskWorktreeMocks.resolveTaskCwd).not.toHaveBeenCalled();
 		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
 			expect.objectContaining({ cwd: "/tmp/my-worktree" }),
 		);
 	});
+
+	it.each([false, true])("rejects a stale worktree registration before launching (handoff: %s)", async (handoff) => {
+		const card = createCard({ workingDirectory: "/tmp/stale-worktree" });
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
+		const registrationError = new Error("Git worktree registration belongs to another workspace.");
+		taskWorktreeMocks.assertTaskWorktreeRegistration.mockRejectedValue(registrationError);
+		const startTaskSession = vi.fn(async () => createSummary());
+		const deps = createDeps({ startTaskSession });
+
+		await expect(
+			startTaskSessionThroughService(
+				defaultScope,
+				{ taskId: "task-1", baseRef: "main", prompt: "Resume", useWorktree: true },
+				deps,
+				handoff ? { requiredExistingLaunchPath: "/tmp/stale-worktree" } : {},
+			),
+		).rejects.toBe(registrationError);
+		expect(taskWorktreeMocks.assertTaskWorktreeRegistration).toHaveBeenCalledWith("/tmp/stale-worktree");
+		expect(taskWorktreeMocks.resolveTaskCwd).not.toHaveBeenCalled();
+		expect(deps.getScopedTerminalManager).not.toHaveBeenCalled();
+		expect(startTaskSession).not.toHaveBeenCalled();
+	});
+
+	it.each([false, true])(
+		"keeps shared-checkout launches independent of worktree registration (handoff: %s)",
+		async (handoff) => {
+			taskBoardMutationMocks.findCardInBoard.mockReturnValue(
+				createCard({ workingDirectory: defaultScope.projectPath, useWorktree: false }),
+			);
+			const startTaskSession = vi.fn(async () => createSummary());
+
+			await expect(
+				startTaskSessionThroughService(
+					defaultScope,
+					{ taskId: "task-1", baseRef: "", prompt: "Resume", useWorktree: false },
+					createDeps({ startTaskSession }),
+					handoff ? { requiredExistingLaunchPath: defaultScope.projectPath } : {},
+				),
+			).resolves.toMatchObject({ taskCwd: defaultScope.projectPath });
+			expect(taskWorktreeMocks.assertTaskWorktreeRegistration).not.toHaveBeenCalled();
+			expect(startTaskSession).toHaveBeenCalledWith(expect.objectContaining({ cwd: defaultScope.projectPath }));
+		},
+	);
 
 	it("uses the task card agent and starting Codex options for fresh starts", async () => {
 		const card = createCard({

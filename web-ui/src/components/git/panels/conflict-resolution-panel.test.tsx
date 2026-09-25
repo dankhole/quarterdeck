@@ -54,6 +54,8 @@ function createDefaultProps(overrides: Partial<ConflictResolutionPanelProps> = {
 		continueResolution: vi.fn(async () => ({})),
 		abortResolution: vi.fn(async () => ({})),
 		isLoading: false,
+		isMutating: false,
+		actionError: null,
 		...overrides,
 	};
 }
@@ -304,5 +306,37 @@ describe("ConflictResolutionPanel", () => {
 		abortButton = buttons.find((btn) => btn.textContent?.includes("Abort"));
 		expect(abortButton).toBeDefined();
 		expect(abortButton!.textContent).toContain("Abort Rebase");
+	});
+	it.each(["merge", "rebase"] as const)(
+		"allows completing %s with unreviewed auto-merged files",
+		async (operation) => {
+			const props = createDefaultProps({
+				conflictState: createConflictState({ operation, conflictedFiles: [], autoMergedFiles: ["src/auto.ts"] }),
+			});
+			renderPanel(props);
+			const completeButton = Array.from(container.querySelectorAll("button")).find((button) =>
+				button.textContent?.includes("Complete"),
+			)!;
+			expect(completeButton.disabled).toBe(false);
+			expect(container.textContent).toContain("Reviewing auto-merged files is optional.");
+			await act(async () => completeButton.click());
+			expect(props.continueResolution).toHaveBeenCalledOnce();
+		},
+	);
+
+	it("shows completion errors and prevents competing actions while a mutation is pending", () => {
+		renderPanel(
+			createDefaultProps({
+				conflictState: createConflictState({ conflictedFiles: [] }),
+				isMutating: true,
+				actionError: "pre-commit check failed",
+			}),
+		);
+		expect(container.querySelector('[role="alert"]')?.textContent).toContain("pre-commit check failed");
+		const actions = Array.from(container.querySelectorAll("button")).filter((button) =>
+			/Complete|Abort/.test(button.textContent ?? ""),
+		);
+		expect(actions).toHaveLength(2);
+		expect(actions.every((button) => button.disabled)).toBe(true);
 	});
 });

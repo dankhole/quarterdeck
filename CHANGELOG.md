@@ -4,6 +4,10 @@
 
 ## [0.12.7] - 2026-09-24
 
+- Let merges and rebases complete once conflicts are resolved without requiring per-file review of automatic merges. Show completion failures and direct selected-file commits to the active operation.
+
+- Reject missing or mismatched task worktree registrations before reuse, Git actions, startup, or cleanup; preserve task files and serialize worktree creation with cleanup.
+
 - Always show separate local and remote behind-base counts in task headers, including zero and unavailable comparisons, so unpushed local base commits remain visible.
 
 - Default background Codex calls for titles, branch names, commit messages, and summary polishing to GPT-6 Luna.

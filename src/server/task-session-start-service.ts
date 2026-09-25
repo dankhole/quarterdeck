@@ -20,7 +20,7 @@ import {
 	type TerminalSessionManager,
 } from "../terminal";
 import { hasFailedStoredCodexResume, STORED_CODEX_RESUME_FAILED_WARNING } from "../terminal/codex-resume-failure";
-import { pathExists, resolveTaskCwd } from "../workdir";
+import { assertTaskWorktreeRegistration, pathExists, resolveTaskCwd } from "../workdir";
 
 const log = createTaggedLogger("task-session-start");
 
@@ -189,7 +189,7 @@ export async function prepareTaskSessionStart(
 	const savedBranch = existingCard?.branch ?? null;
 	const persistedExists = persisted !== null && (await pathExists(persisted));
 
-	// A still-existing persisted path is authoritative. Missing isolated paths
+	// An existing persisted path must still own its Git registration. Missing isolated paths
 	// go through the same branch-aware worktree recreation used by manual
 	// Restart; shared-checkout tasks fall back to the project root.
 	let taskCwd: string;
@@ -217,6 +217,12 @@ export async function prepareTaskSessionStart(
 		});
 	} else {
 		taskCwd = projectScope.projectPath;
+	}
+	if (
+		(options.requiredExistingLaunchPath || persistedExists) &&
+		!areFileSystemPathsEqual(taskCwd, projectScope.projectPath)
+	) {
+		await assertTaskWorktreeRegistration(taskCwd);
 	}
 	// Do not write the recreated working directory directly here. RuntimeStateHub
 	// projects launch metadata through ProjectBoardCommandService, which remains

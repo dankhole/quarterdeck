@@ -11,6 +11,7 @@ const agentMocks = vi.hoisted(() => ({
 	resolveAgentCommand: vi.fn(),
 }));
 const workdirMocks = vi.hoisted(() => ({
+	assertTaskWorktreeRegistration: vi.fn(async () => {}),
 	pathExists: vi.fn(async () => true),
 	resolveTaskCwd: vi.fn(async () => "/tmp/project-worktree"),
 }));
@@ -41,6 +42,7 @@ vi.mock("../../../src/config", () => ({
 }));
 
 vi.mock("../../../src/workdir", () => ({
+	assertTaskWorktreeRegistration: workdirMocks.assertTaskWorktreeRegistration,
 	cleanStaleIndexLockForWorktree: vi.fn(async () => undefined),
 	pathExists: workdirMocks.pathExists,
 	resolveTaskCwd: workdirMocks.resolveTaskCwd,
@@ -163,6 +165,7 @@ describe("project registry startup recovery integration", () => {
 			binary: "codex",
 			args: ["--model", "test"],
 		});
+		workdirMocks.assertTaskWorktreeRegistration.mockClear();
 		workdirMocks.pathExists.mockClear();
 		workdirMocks.resolveTaskCwd.mockClear();
 		prepareAgentLaunchMock.mockReset();
@@ -301,6 +304,7 @@ describe("project registry startup recovery integration", () => {
 		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
 		expect(agentMocks.resolveAgentCommand).toHaveBeenCalledTimes(1);
 		expect(workdirMocks.pathExists).toHaveBeenCalledTimes(1);
+		expect(workdirMocks.assertTaskWorktreeRegistration).toHaveBeenCalledWith("/tmp/project-worktree");
 		expect(workdirMocks.resolveTaskCwd).not.toHaveBeenCalled();
 		expect(stateMocks.loadProjectState).toHaveBeenCalledTimes(3);
 		expect(manager?.store.getSummary("task-1")).toMatchObject({

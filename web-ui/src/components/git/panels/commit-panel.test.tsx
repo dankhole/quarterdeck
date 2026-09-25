@@ -41,6 +41,7 @@ function createCommitPanelResult(overrides: Partial<UseCommitPanelResult> = {}):
 		message: "",
 		setMessage: vi.fn(),
 		canCommit: false,
+		commitBlockedReason: null,
 		canPush: false,
 		isLoading: false,
 		isCommitting: false,
@@ -170,5 +171,19 @@ describe("CommitPanel", () => {
 		act(() => {
 			window.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientY: 120 }));
 		});
+	});
+	it("explains how to finish an active merge instead of offering a selected-file commit", () => {
+		useCommitPanelMock.mockReturnValue(
+			createCommitPanelResult({
+				commitBlockedReason: "A merge is in progress. Use Complete Merge in the Git view to finish it.",
+			}),
+		);
+		render();
+		expect(container.querySelector('[role="status"]')?.textContent).toContain("Use Complete Merge");
+		const commitButtons = Array.from(container.querySelectorAll("button")).filter((button) =>
+			/^(Commit|Commit & Push)$/.test(button.textContent ?? ""),
+		);
+		expect(commitButtons).toHaveLength(2);
+		expect(commitButtons.every((button) => button.disabled)).toBe(true);
 	});
 });

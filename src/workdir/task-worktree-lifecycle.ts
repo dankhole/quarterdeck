@@ -11,6 +11,7 @@ import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
 import { removeDirectoryWithRetries } from "../fs/remove-path";
 import { getTaskWorktreesHomePath, loadProjectContext } from "../state/project-state";
 import { getGitCommandErrorMessage, getGitCommonDir, getGitStdout, readGitHeadInfo, runGit } from "./git-utils";
+import { assertTaskWorktreeRegistration } from "./task-worktree-identity";
 import { applyTaskPatch, captureTaskPatch, deleteTaskPatchFiles, findTaskPatch } from "./task-worktree-patch";
 import { getWorkdirFolderLabelForWorktreePath, normalizeTaskIdForWorktreePath } from "./task-worktree-path";
 import { initializeSubmodulesIfNeeded, pathExists, syncIgnoredPathsIntoWorktree } from "./task-worktree-symlinks";
@@ -73,6 +74,9 @@ export function getTaskWorktreePath(repoPath: string, taskId: string): string {
 
 async function removeTaskWorktreeInternal(repoPath: string, worktreePath: string): Promise<boolean> {
 	const existed = await pathExists(worktreePath);
+	if (await pathExists(join(worktreePath, ".git"))) {
+		await assertTaskWorktreeRegistration(worktreePath);
+	}
 	const removeResult = await runGit(
 		repoPath,
 		["worktree", "remove", "--force", worktreePath],
@@ -130,20 +134,10 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 		// compared the worktree HEAD to the latest baseRef commit and recreated the worktree
 		// when the base branch advanced, which could destroy valid task progress. Existing
 		// worktrees are now treated as authoritative and only missing worktrees are created.
-		const existingResult = await runGit(worktreePath, ["rev-parse", "HEAD"], USER_GIT_ACTION_OPTIONS);
-		if (existingResult.ok && existingResult.stdout) {
-			await syncIgnoredPathsIntoWorktree(context.repoPath, worktreePath);
-			const headInfo = await readGitHeadInfo(worktreePath);
-			return {
-				ok: true,
-				path: worktreePath,
-				baseRef: options.baseRef.trim(),
-				baseCommit: existingResult.stdout,
-				branch: headInfo.branch,
-			};
-		}
-
 		return await withTaskWorktreeSetupLock(context.repoPath, async () => {
+			if (await pathExists(worktreePath)) {
+				await assertTaskWorktreeRegistration(worktreePath);
+			}
 			const lockedExistingCommit = await tryRunGit(worktreePath, ["rev-parse", "HEAD"]);
 			if (lockedExistingCommit) {
 				await syncIgnoredPathsIntoWorktree(context.repoPath, worktreePath);
@@ -192,7 +186,9 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 			let warning: string | undefined;
 
 			if (await pathExists(worktreePath)) {
-				await removeTaskWorktreeInternal(context.repoPath, worktreePath);
+				throw new Error(
+					`Cannot read the existing task worktree HEAD at "${worktreePath}". Task files were preserved.`,
+				);
 			}
 
 			// Clean up stale worktree registrations that can linger when git
@@ -341,31 +337,36 @@ export async function archiveTaskWorktreeForTrash(options: {
 		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 		const rootPath = getWorktreesBaseRootPath();
 		const worktreePath = getTaskWorktreePath(options.repoPath, taskId);
-		if (!(await pathExists(worktreePath))) {
+		return await withTaskWorktreeSetupLock(options.repoPath, async () => {
+			if (!(await pathExists(worktreePath))) {
+				await pruneEmptyParents(rootPath, dirname(worktreePath));
+				return {
+					ok: true,
+					removed: false,
+				};
+			}
+
+			if (await pathExists(join(worktreePath, ".git"))) {
+				await assertTaskWorktreeRegistration(worktreePath);
+			}
+			try {
+				await captureTaskPatch({
+					repoPath: options.repoPath,
+					taskId,
+					worktreePath,
+				});
+			} catch {
+				// Patch capture is best-effort. A corrupted or partially-created
+				// worktree (e.g. plain directory, no git init) should still be removed.
+			}
+			const removed = await removeTaskWorktreeInternal(options.repoPath, worktreePath);
 			await pruneEmptyParents(rootPath, dirname(worktreePath));
+
 			return {
 				ok: true,
-				removed: false,
+				removed,
 			};
-		}
-
-		try {
-			await captureTaskPatch({
-				repoPath: options.repoPath,
-				taskId,
-				worktreePath,
-			});
-		} catch {
-			// Patch capture is best-effort. A corrupted or partially-created
-			// worktree (e.g. plain directory, no git init) should still be removed.
-		}
-		const removed = await removeTaskWorktreeInternal(options.repoPath, worktreePath);
-		await pruneEmptyParents(rootPath, dirname(worktreePath));
-
-		return {
-			ok: true,
-			removed,
-		};
+		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		return {
@@ -386,12 +387,14 @@ export async function purgeTaskWorkspaceForDelete(options: {
 		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 		const rootPath = getWorktreesBaseRootPath();
 		const worktreePath = getTaskWorktreePath(options.repoPath, taskId);
-		const removed = (await pathExists(worktreePath))
-			? await removeTaskWorktreeInternal(options.repoPath, worktreePath)
-			: false;
-		await deleteTaskPatchFiles(taskId);
-		await pruneEmptyParents(rootPath, dirname(worktreePath));
-		return { ok: true, removed };
+		return await withTaskWorktreeSetupLock(options.repoPath, async () => {
+			const removed = (await pathExists(worktreePath))
+				? await removeTaskWorktreeInternal(options.repoPath, worktreePath)
+				: false;
+			await deleteTaskPatchFiles(taskId);
+			await pruneEmptyParents(rootPath, dirname(worktreePath));
+			return { ok: true, removed };
+		});
 	} catch (error) {
 		return {
 			ok: false,

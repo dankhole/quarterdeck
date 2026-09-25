@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -131,6 +131,53 @@ function createRebaseConflictRepo(prefix = "quarterdeck-git-rebase-int-"): Confl
 // ---------------------------------------------------------------------------
 
 describe("git conflict integration", { concurrent: false }, () => {
+	it("retains a clean merge and its error when a commit hook rejects completion, then allows retry", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-merge-commit-failure-");
+		try {
+			initRepository(repoPath);
+			writeFileSync(join(repoPath, "file.txt"), "base\n", "utf8");
+			commitAll(repoPath, "initial");
+			runGit(repoPath, ["checkout", "-b", "feature"]);
+			writeFileSync(join(repoPath, "feature.txt"), "feature\n", "utf8");
+			const featureHead = commitAll(repoPath, "feature");
+			runGit(repoPath, ["checkout", "main"]);
+			writeFileSync(join(repoPath, "file.txt"), "main\n", "utf8");
+			const mainHead = commitAll(repoPath, "main");
+
+			const hookPath = join(repoPath, ".git", "hooks", "pre-commit");
+			runGit(repoPath, ["config", "core.hooksPath", join(repoPath, ".git", "hooks")]);
+			writeFileSync(hookPath, '#!/bin/sh\necho "Synthetic commit check failed" >&2\nexit 1\n', { mode: 0o755 });
+
+			const mergeResult = await runGitMergeAction({ cwd: repoPath, branch: "feature" });
+			expect(mergeResult.ok).toBe(false);
+			expect(mergeResult.error).toContain("Synthetic commit check failed");
+			expect(mergeResult.conflictState).toMatchObject({
+				operation: "merge",
+				sourceBranch: "feature",
+				conflictedFiles: [],
+				autoMergedFiles: ["feature.txt"],
+			});
+			expect(runGit(repoPath, ["rev-parse", "HEAD"])).toBe(mainHead);
+			expect(existsSync(join(repoPath, ".git", "MERGE_HEAD"))).toBe(true);
+
+			const failedContinue = await continueMergeOrRebase(repoPath);
+			expect(failedContinue.ok).toBe(false);
+			expect(failedContinue.completed).toBe(false);
+			expect(failedContinue.error).toContain("Synthetic commit check failed");
+			expect(failedContinue.conflictState).toEqual(mergeResult.conflictState);
+
+			unlinkSync(hookPath);
+			const retryResult = await continueMergeOrRebase(repoPath);
+			expect(retryResult.ok).toBe(true);
+			expect(retryResult.completed).toBe(true);
+			expect(await detectActiveConflict(repoPath)).toBeNull();
+			expect(runGit(repoPath, ["show", "-s", "--format=%P", "HEAD"])).toBe(`${mainHead} ${featureHead}`);
+			expect(runGit(repoPath, ["status", "--porcelain"])).toBe("");
+		} finally {
+			cleanup();
+		}
+	});
+
 	it("full merge conflict resolution flow", async () => {
 		const { repoPath, cleanup } = createConflictRepo();
 		try {

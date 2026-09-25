@@ -3,7 +3,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UseConflictResolutionResult } from "@/hooks/git/use-conflict-resolution";
-import type { RuntimeConflictState } from "@/runtime/types";
+import type {
+	RuntimeConflictAbortResponse,
+	RuntimeConflictContinueResponse,
+	RuntimeConflictState,
+} from "@/runtime/types";
 
 // ---------------------------------------------------------------------------
 // Mocks — hoisted so they are available before any imports run.
@@ -19,34 +23,38 @@ vi.mock("@/stores/project-metadata-store", () => ({
 
 const resolveConflictFileMutateMock = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
 const continueConflictResolutionMutateMock = vi.hoisted(() =>
-	vi.fn(async () => ({
-		ok: true,
-		completed: true,
-		summary: {
-			currentBranch: null,
-			upstreamBranch: null,
-			changedFiles: 0,
-			additions: 0,
-			deletions: 0,
-			aheadCount: 0,
-			behindCount: 0,
-		},
-		output: "",
-	})),
+	vi.fn(
+		async (): Promise<RuntimeConflictContinueResponse> => ({
+			ok: true,
+			completed: true,
+			summary: {
+				currentBranch: null,
+				upstreamBranch: null,
+				changedFiles: 0,
+				additions: 0,
+				deletions: 0,
+				aheadCount: 0,
+				behindCount: 0,
+			},
+			output: "",
+		}),
+	),
 );
 const abortConflictResolutionMutateMock = vi.hoisted(() =>
-	vi.fn(async () => ({
-		ok: true,
-		summary: {
-			currentBranch: null,
-			upstreamBranch: null,
-			changedFiles: 0,
-			additions: 0,
-			deletions: 0,
-			aheadCount: 0,
-			behindCount: 0,
-		},
-	})),
+	vi.fn(
+		async (): Promise<RuntimeConflictAbortResponse> => ({
+			ok: true,
+			summary: {
+				currentBranch: null,
+				upstreamBranch: null,
+				changedFiles: 0,
+				additions: 0,
+				deletions: 0,
+				aheadCount: 0,
+				behindCount: 0,
+			},
+		}),
+	),
 );
 const getConflictFilesMutateMock = vi.hoisted(() => vi.fn(async () => ({ ok: true, files: [] })));
 
@@ -65,6 +73,7 @@ vi.mock("@/runtime/trpc-client", () => ({
 // Import the hook under test (after mocks are installed).
 // ---------------------------------------------------------------------------
 
+import { EMPTY_GIT_SYNC_SUMMARY } from "@/hooks/git/conflict-resolution";
 import { useConflictResolution } from "@/hooks/git/use-conflict-resolution";
 
 // ---------------------------------------------------------------------------
@@ -275,5 +284,66 @@ describe("useConflictResolution", () => {
 		});
 
 		expect(latest.resolvedFiles.size).toBe(0);
+	});
+	it("exposes commit failures and clears the error on a successful retry", async () => {
+		useConflictStateMock.mockReturnValue(createConflictState({ conflictedFiles: [] }));
+		continueConflictResolutionMutateMock.mockResolvedValueOnce({
+			ok: false,
+			completed: false,
+			summary: EMPTY_GIT_SYNC_SUMMARY,
+			output: "hook output",
+			error: "pre-commit check failed",
+			conflictState: createConflictState({ conflictedFiles: [] }),
+		});
+		render();
+		await act(async () => {
+			await latest.continueResolution();
+		});
+		expect(latest.actionError).toBe("pre-commit check failed");
+		expect(latest.isMutating).toBe(false);
+		await act(async () => {
+			await latest.continueResolution();
+		});
+		expect(latest.actionError).toBeNull();
+	});
+
+	it("handles transport failures without an unhandled rejection", async () => {
+		continueConflictResolutionMutateMock.mockRejectedValueOnce(new Error("Runtime disconnected"));
+		render();
+		await act(async () => {
+			expect((await latest.continueResolution()).ok).toBe(false);
+		});
+		expect(latest.actionError).toBe("Runtime disconnected");
+		expect(latest.isMutating).toBe(false);
+	});
+
+	it("keeps completion pending until Git returns and shows abort failures", async () => {
+		let finish!: (response: RuntimeConflictContinueResponse) => void;
+		continueConflictResolutionMutateMock.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		);
+		render();
+		let pending!: Promise<RuntimeConflictContinueResponse>;
+		act(() => {
+			pending = latest.continueResolution();
+		});
+		expect(latest.isMutating).toBe(true);
+		await act(async () => {
+			finish({ ok: true, completed: true, summary: EMPTY_GIT_SYNC_SUMMARY, output: "" });
+			await pending;
+		});
+		expect(latest.isMutating).toBe(false);
+		abortConflictResolutionMutateMock.mockResolvedValueOnce({
+			ok: false,
+			summary: EMPTY_GIT_SYNC_SUMMARY,
+			error: "Unable to abort",
+		});
+		await act(async () => {
+			await latest.abortResolution();
+		});
+		expect(latest.actionError).toBe("Unable to abort");
 	});
 });

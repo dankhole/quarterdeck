@@ -1,5 +1,13 @@
 # Implementation Log
 
+## 2026-09-25 — Guard task worktree identity and unblock merge completion
+
+A live investigation found task `31db9` pointing through a stale `.git` file to an administrative directory reused by task `4e2b5`. Git accepted the pointer and read the newer task's HEAD/index even though the administrative backlink identified the newer folder. The original metadata deletion could not be attributed from the retained diagnostics; recorder gaps prevent treating a cleanup race as proven. No live task repositories were repaired. Registration validation now checks the backlink before isolated worktree reuse, Git-path resolution, persisted-path startup, archive, and purge. Broken existing folders are preserved, and cleanup shares the setup lock.
+
+The separate merge report showed zero conflicts with completion blocked on per-file auto-merge review, while selected-file commits correctly rejected the active merge. Review is now optional, the sidebar directs users to the active operation, and completion/abort failures remain visible for retry. Failed automatic merge commits retain their active merge state in API responses.
+
+Notable files: `src/workdir/task-worktree-identity.ts`, `task-worktree-lifecycle.ts`, `task-worktree-resolve.ts`, `src/server/task-session-start-service.ts`, `src/workdir/git-conflict.ts`, and the browser conflict/commit hooks and panels. Validation includes real-Git missing/reused-registration preservation regressions, launch rejection/shared-checkout tests, commit-hook failure/retry coverage, focused web tests, and runtime/web typechecks. Isolated fake-provider lab `merge-completion-20260925T184637Z-b6e395` verified optional review, visible hook failure, sidebar guidance, and successful retry producing a clean two-parent merge; the run was stopped with no forbidden host launches. No real provider was used.
+
 ## 2026-09-24 — Show local and remote base comparisons independently
 
 A local squash commit was present on `main` but absent from the task header because the behind-base counter preferred `origin/main`. Task metadata now carries the local count in `behindBaseCount` and a separate nullable `behindRemoteBaseCount`; both use `HEAD..ref`, preserving merged-history correctness without combining divergent histories. Runtime projection and browser equality checks carry both counts. The Top Bar and task repository scope label always identify both comparisons, including zero and unavailable refs. Missing or failed comparisons never become zero.

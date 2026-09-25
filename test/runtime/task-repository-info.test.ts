@@ -109,57 +109,67 @@ describe("task repository info", { concurrent: false }, () => {
 		});
 	});
 
-	it("uses the project checkout for shared tasks even when an old task worktree still exists", async () => {
-		await withTemporaryHome(async () => {
-			const { path: projectPath, cleanup } = createTempDir("quarterdeck-shared-task-info-");
-			try {
-				mkdirSync(projectPath, { recursive: true });
-				initGitRepository(projectPath);
-				writeFileSync(join(projectPath, "README.md"), "seed\n", "utf8");
-				commitAll(projectPath, "seed");
+	it.each([false, true])(
+		"uses the project checkout for shared tasks with persisted checkout: %s",
+		async (persistedCheckout) => {
+			await withTemporaryHome(async () => {
+				const { path: projectPath, cleanup } = createTempDir("quarterdeck-shared-task-info-");
+				try {
+					mkdirSync(projectPath, { recursive: true });
+					initGitRepository(projectPath);
+					writeFileSync(join(projectPath, "README.md"), "seed\n", "utf8");
+					commitAll(projectPath, "seed");
 
-				const ensured = await ensureTaskWorktreeIfDoesntExist({
-					cwd: projectPath,
-					taskId: "task-1",
-					baseRef: "main",
-				});
-				expect(ensured.ok).toBe(true);
-				if (!ensured.ok) {
-					throw new Error(ensured.error ?? "Expected stale task worktree to be created.");
-				}
-				expect(ensured.path).not.toBe(resolve(projectPath));
-
-				const initial = await loadProjectState(projectPath);
-				await saveProjectState(projectPath, {
-					board: createSharedCheckoutBoard(),
-					sessions: {},
-					expectedRevision: initial.revision,
-				});
-
-				await expect(
-					resolveTaskWorkingDirectory({
-						projectPath,
+					const ensured = await ensureTaskWorktreeIfDoesntExist({
+						cwd: projectPath,
 						taskId: "task-1",
 						baseRef: "main",
-					}),
-				).resolves.toBe(resolve(projectPath));
+					});
+					expect(ensured.ok).toBe(true);
+					if (!ensured.ok) {
+						throw new Error(ensured.error ?? "Expected stale task worktree to be created.");
+					}
+					expect(ensured.path).not.toBe(resolve(projectPath));
 
-				const info = await getTaskRepositoryInfo({
-					cwd: projectPath,
-					taskId: "task-1",
-					baseRef: "main",
-				});
+					const initial = await loadProjectState(projectPath);
+					const board = createSharedCheckoutBoard();
+					if (persistedCheckout) {
+						const card = board.columns[1]?.cards[0];
+						if (!card) throw new Error("Expected shared checkout card");
+						card.useWorktree = true;
+						card.workingDirectory = projectPath;
+					}
+					await saveProjectState(projectPath, {
+						board,
+						sessions: {},
+						expectedRevision: initial.revision,
+					});
 
-				expect(info).toMatchObject({
-					taskId: "task-1",
-					path: resolve(projectPath),
-					exists: true,
-					baseRef: "main",
-					branch: "main",
-				});
-			} finally {
-				cleanup();
-			}
-		});
-	});
+					await expect(
+						resolveTaskWorkingDirectory({
+							projectPath,
+							taskId: "task-1",
+							baseRef: "main",
+						}),
+					).resolves.toBe(resolve(projectPath));
+
+					const info = await getTaskRepositoryInfo({
+						cwd: projectPath,
+						taskId: "task-1",
+						baseRef: "main",
+					});
+
+					expect(info).toMatchObject({
+						taskId: "task-1",
+						path: resolve(projectPath),
+						exists: true,
+						baseRef: "main",
+						branch: "main",
+					});
+				} finally {
+					cleanup();
+				}
+			});
+		},
+	);
 });

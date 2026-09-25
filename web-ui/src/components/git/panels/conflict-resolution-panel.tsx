@@ -33,6 +33,8 @@ export interface ConflictResolutionPanelProps {
 	continueResolution: () => Promise<unknown>;
 	abortResolution: () => Promise<unknown>;
 	isLoading: boolean;
+	isMutating: boolean;
+	actionError: string | null;
 }
 
 function getBasename(filePath: string): string {
@@ -227,6 +229,8 @@ export function ConflictResolutionPanel({
 	continueResolution,
 	abortResolution,
 	isLoading,
+	isMutating,
+	actionError,
 }: ConflictResolutionPanelProps): React.ReactElement {
 	const isMerge = conflictState.operation === "merge";
 	const operationLabel = isMerge ? "Merge" : "Rebase";
@@ -245,9 +249,6 @@ export function ConflictResolutionPanel({
 		[conflictState.autoMergedFiles, resolvedFiles],
 	);
 	const autoMergedCount = effectiveAutoMergedPaths.length;
-	const allAutoMergedReviewed =
-		autoMergedCount === 0 || effectiveAutoMergedPaths.every((f) => reviewedAutoMergedFiles.has(f));
-	const allReviewed = allConflictsResolved && allAutoMergedReviewed;
 
 	// Build combined file list: unresolved conflicts first, resolved conflicts, then auto-merged.
 	const allFiles = useMemo(() => {
@@ -361,19 +362,36 @@ export function ConflictResolutionPanel({
 				/>
 			</div>
 
+			{actionError && (
+				<div
+					role="alert"
+					className="px-3 py-2 border-t border-status-red/40 bg-status-red/10 text-[12px] text-status-red whitespace-pre-wrap break-words max-h-40 overflow-y-auto shrink-0"
+				>
+					{actionError}
+				</div>
+			)}
 			{/* Action bar */}
 			<div className="flex items-center justify-between px-3 py-2 border-t border-border bg-surface-1 shrink-0">
-				<span className="text-[12px] text-text-secondary">{progressText}</span>
+				<div className="text-[12px] text-text-secondary">
+					<div>{progressText}</div>
+					{autoMergedCount > 0 && <div>Reviewing auto-merged files is optional.</div>}
+				</div>
 				<div className="flex items-center gap-2">
-					<Button variant="danger" size="sm" icon={<XCircle size={14} />} onClick={() => abortResolution()}>
+					<Button
+						variant="danger"
+						size="sm"
+						icon={<XCircle size={14} />}
+						disabled={isMutating}
+						onClick={() => void abortResolution()}
+					>
 						Abort {operationLabel}
 					</Button>
 					<Button
 						variant="primary"
 						size="sm"
 						icon={<CheckCircle size={14} />}
-						disabled={!allReviewed}
-						onClick={() => continueResolution()}
+						disabled={!allConflictsResolved || isMutating}
+						onClick={() => void continueResolution()}
 					>
 						Complete {operationLabel}
 					</Button>

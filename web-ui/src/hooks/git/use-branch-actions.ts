@@ -223,7 +223,11 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 			if (result.ok) {
 				showGitSuccessToast(`Merged ${branchName} into ${currentBranch ?? "current branch"}`);
 			} else if (result.conflictState) {
-				showGitWarningToast("Merge has conflicts \u2014 opening resolver");
+				if (result.error) {
+					showGitErrorToast(result.error);
+				} else {
+					showGitWarningToast("Merge has conflicts \u2014 opening resolver");
+				}
 				onConflictDetected?.();
 			} else {
 				showGitErrorToast(result.error ?? `Failed to merge ${branchName}`);

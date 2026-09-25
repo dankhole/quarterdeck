@@ -298,9 +298,11 @@ export async function continueMergeOrRebase(cwd: string): Promise<RuntimeConflic
 	}
 
 	// Command failed without new conflicts — some other error
+	const conflictState = await getConflictState(cwd);
 	return {
 		ok: false,
 		completed: false,
+		conflictState: conflictState ?? undefined,
 		summary,
 		output: continueResult.output,
 		error: continueResult.error ?? "Continue operation failed.",
@@ -483,10 +485,12 @@ export async function runGitMergeAction(options: { cwd: string; branch: string }
 	if (detected) {
 		const commitResult = await runGit(repoRoot, ["commit", "--no-edit"], USER_GIT_ACTION_OPTIONS);
 		if (!commitResult.ok) {
+			const conflictState = await getConflictState(repoRoot);
 			const nextSummary = await getGitSyncSummary(repoRoot);
 			return {
 				ok: false,
 				branch: branchToMerge,
+				conflictState: conflictState ?? undefined,
 				summary: nextSummary,
 				output: [mergeResult.output, commitResult.output].filter(Boolean).join("\n"),
 				error: commitResult.error ?? "Merge succeeded but commit failed.",

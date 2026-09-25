@@ -161,6 +161,7 @@ export function CommitPanel({ projectId, taskId, baseRef, navigateToFile }: Comm
 		message,
 		setMessage,
 		canCommit,
+		commitBlockedReason,
 		canPush,
 		isLoading,
 		isCommitting,
@@ -351,6 +352,11 @@ export function CommitPanel({ projectId, taskId, baseRef, navigateToFile }: Comm
 						) : null}
 					</>
 				) : null}
+				{commitBlockedReason && (
+					<p role="status" className="text-[12px] text-status-orange">
+						{commitBlockedReason}
+					</p>
+				)}
 				{/* Commit message + generate button */}
 				<div className="relative min-h-[4.5rem] flex-1">
 					<textarea

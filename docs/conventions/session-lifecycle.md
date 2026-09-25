@@ -44,6 +44,12 @@ Automatic crash and startup recovery require the exact stored provider session I
 
 Claude resume prefers the stored hook `session_id` through `claude --resume <id>`, matching Codex's targeted model. Server-start resume may use `card.workingDirectory` while that worktree still exists. Trash clears that field and deletes the worktree before restore recreates it; without a stored Claude ID, untrash/restart falls back to cwd-scoped `--continue` and must warn.
 
+## Task worktree registration
+
+A task folder's existence and a successful `git rev-parse HEAD` do not establish worktree ownership. If Git removes and later reuses an administrative directory, a stale `.git` pointer can silently read another task's HEAD and index. `assertTaskWorktreeRegistration(...)` checks that the administrative `gitdir` backlink resolves to the requesting folder's `.git` file before isolated workspace reuse, Git-path resolution, persisted-path launch, patch capture, or removal. Shared project checkouts are exempt from the linked-worktree check.
+
+Worktree setup, reuse, archive, and purge share the repository setup lock. Missing or mismatched registration fails explicitly and preserves existing task files; never delete and recreate a broken existing folder as automatic recovery. Repair requires independent evidence of the correct registration and preserved task work.
+
 ## Startup recovery
 
 `src/server/startup-session-recovery.ts` coordinates automatic startup recovery.
