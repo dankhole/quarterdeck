@@ -99,6 +99,8 @@ Terminal restore has several distinct races:
 
 Terminal restore readiness is not browser presentation readiness. Do not clear loading or notify connection-ready subscribers until `TerminalViewport` drains queued writes, resizes, scrolls to bottom across layout frames, and reveals the host. The IO-open fallback uses the same settled reveal path. Claude sessions are especially sensitive to redraw and status output around restore.
 
+Terminal snapshots must preserve mouse encoding together with mouse tracking. xterm's serialize addon restores tracking but omits SGR/SGR-pixel encoding; `TerminalStateMirror` observes DECSET/DECRST and full reset through public parser handlers and appends the encoding to snapshots. Otherwise a restored browser emits legacy mouse bytes that a provider can interpret as composer text. Keep these observers non-consuming so xterm still applies each sequence.
+
 ## Hook and input semantics
 
 ### Shared rules

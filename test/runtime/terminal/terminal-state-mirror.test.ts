@@ -96,4 +96,40 @@ describe("TerminalStateMirror", () => {
 
 		expect(onInputResponse).toHaveBeenCalledWith("\u001b[1;1R");
 	});
+
+	it.each([1006, 1016])("preserves mouse encoding %i with tracking across restore", async (mode) => {
+		const mirror = createMirror();
+		// Exercise parser state across chunks and the detached batching path.
+		mirror.setBatching(true);
+		mirror.applyOutput(Buffer.from("\u001b[?1003;"));
+		mirror.applyOutput(Buffer.from(`${mode}h`));
+		const snapshot = await mirror.getSnapshot();
+		expect(snapshot?.snapshot).toContain("\u001b[?1003h");
+		expect(snapshot?.snapshot).toContain(`\u001b[?${mode}h`);
+		if (!snapshot) throw new Error("Expected a live mirror snapshot");
+
+		const restored = createMirror();
+		restored.applyOutput(Buffer.from(snapshot.snapshot));
+		expect((await restored.getSnapshot())?.snapshot).toBe(snapshot?.snapshot);
+	});
+
+	it.each([
+		["\u001b[?1006h\u001b[?1006l", 0],
+		["\u001b[?1016h\u001b[?1006l", 0],
+		["\u001b[?1006h\u001b[?1016l", 0],
+		["\u001b[?1006;1016h", 1016],
+		["\u001b[?1016;1006h", 1006],
+		["\u001b[?1006h\u001bc", 0],
+		["\u001b[?1006h\u001bc\u001b[?1016h", 1016],
+		["\u001b[?1006h\u001b[!p", 1006],
+		["\u001b[?1006h\u001b[?1003l", 1006],
+	])("tracks encoding changes and resets in %j", async (output, mode) => {
+		const mirror = createMirror();
+		mirror.applyOutput(Buffer.from(output));
+		const result = await mirror.getSnapshot();
+		if (!result) throw new Error("Expected a live mirror snapshot");
+		const snapshot = result.snapshot;
+		expect(snapshot.includes("\u001b[?1006h")).toBe(mode === 1006);
+		expect(snapshot.includes("\u001b[?1016h")).toBe(mode === 1016);
+	});
 });

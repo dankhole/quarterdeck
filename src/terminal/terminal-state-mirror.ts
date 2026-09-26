@@ -66,6 +66,7 @@ export class TerminalStateMirror {
 	private readonly serializeAddon = new SerializeAddon();
 	private operationQueue: Promise<void> = Promise.resolve();
 	private disposed = false;
+	private mouseEncodingMode: 0 | 1006 | 1016 = 0;
 
 	private readonly snapshotScrollback: number;
 
@@ -85,6 +86,24 @@ export class TerminalStateMirror {
 			scrollOnEraseInDisplay: true,
 		});
 		this.terminal.loadAddon(this.serializeAddon);
+		// SerializeAddon preserves mouse tracking, but omits its encoding. A
+		// restored viewer would otherwise send legacy mouse bytes to a provider
+		// expecting SGR, which can turn mouse movement into composer text.
+		for (const final of ["h", "l"]) {
+			this.terminal.parser.registerCsiHandler({ prefix: "?", final }, (params) => {
+				for (const param of params) {
+					const mode = Array.isArray(param) ? param[0] : param;
+					if (mode === 1006 || mode === 1016) {
+						this.mouseEncodingMode = final === "h" ? mode : 0;
+					}
+				}
+				return false;
+			});
+		}
+		this.terminal.parser.registerEscHandler({ final: "c" }, () => {
+			this.mouseEncodingMode = 0;
+			return false;
+		});
 		this.terminal.onData((data) => {
 			options.onInputResponse?.(data);
 		});
@@ -148,7 +167,8 @@ export class TerminalStateMirror {
 		if (this.disposed) {
 			return null;
 		}
-		const snapshot = this.serializeAddon.serialize({ scrollback: this.snapshotScrollback });
+		const mouseEncoding = this.mouseEncodingMode === 0 ? "" : `\u001b[?${this.mouseEncodingMode}h`;
+		const snapshot = this.serializeAddon.serialize({ scrollback: this.snapshotScrollback }) + mouseEncoding;
 		const t2 = performance.now();
 		const cols = this.terminal.cols;
 		const rows = this.terminal.rows;

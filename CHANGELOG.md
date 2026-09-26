@@ -4,6 +4,8 @@
 
 ## [0.12.7] - 2026-09-24
 
+- Preserve mouse encoding when restoring agent terminals so moving or scrolling the mouse does not inject stray characters into chats.
+
 - Let merges and rebases complete once conflicts are resolved without requiring per-file review of automatic merges. Show completion failures and direct selected-file commits to the active operation.
 
 - Reject missing or mismatched task worktree registrations before reuse, Git actions, startup, or cleanup; preserve task files and serialize worktree creation with cleanup.

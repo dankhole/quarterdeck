@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-25 — Preserve mouse encoding during terminal restore
+
+Mouse movement inserted stray characters into a live Codex composer. A synthetic reproduction showed that xterm's serialize addon retained DEC mouse tracking while omitting SGR encoding, so a restored viewer reverted to legacy mouse reports. `src/terminal/terminal-state-mirror.ts` now observes encoding changes and full reset through non-consuming public parser handlers, then appends the current encoding to the snapshot. Tracking and encoding must survive restoration together; filtering apparent garbage from user input would hide the protocol mismatch and could discard real input.
+
+Validation: 17 focused mirror tests cover split/batched sequences, round-trip restoration, both SGR encodings, mode ordering, disable sequences, and soft/full resets. Runtime typecheck and targeted Biome passed. Isolated fake Agent Lab run `mouse-restore-20260926T000046Z-755a44` used a synthetic raw-input shell probe: after “Re-sync terminal content,” mouse motion arrived as SGR `CSI <35;…M` and wheel input as `CSI <65;…M`. No real provider was launched or active user session modified. The separate report of changed Codex appearance was not reproduced by this protocol test.
+
 ## 2026-09-25 — Guard task worktree identity and unblock merge completion
 
 A live investigation found task `31db9` pointing through a stale `.git` file to an administrative directory reused by task `4e2b5`. Git accepted the pointer and read the newer task's HEAD/index even though the administrative backlink identified the newer folder. The original metadata deletion could not be attributed from the retained diagnostics; recorder gaps prevent treating a cleanup race as proven. No live task repositories were repaired. Registration validation now checks the backlink before isolated worktree reuse, Git-path resolution, persisted-path startup, archive, and purge. Broken existing folders are preserved, and cleanup shares the setup lock.
