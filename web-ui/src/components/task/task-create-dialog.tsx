@@ -153,15 +153,13 @@ export function TaskCreateDialog({
 		<Dialog
 			open={open}
 			onOpenChange={onOpenChange}
-			contentClassName="resize overflow-auto"
-			contentStyle={
-				agentId === "codex" && codexOptions !== undefined ? { ...DIALOG_STYLE, height: "560px" } : DIALOG_STYLE
-			}
+			contentClassName="resize overflow-hidden"
+			contentStyle={DIALOG_STYLE}
 		>
 			<DialogHeader title={dialogTitle} icon={<PencilLine size={16} />} />
-			<DialogBody>
+			<DialogBody className="flex flex-col gap-5 p-5">
 				{mode === "single" ? (
-					<div>
+					<div className="flex flex-1 flex-col">
 						<TaskPromptComposer
 							key={composerResetKey}
 							value={prompt}
@@ -172,10 +170,11 @@ export function TaskCreateDialog({
 							onSubmitAndStart={() => handleRunSingleStartAction("start")}
 							placeholder="Describe the task..."
 							autoFocus
+							fillHeight
 							projectId={projectId}
 							showAttachImageButton={false}
 						/>
-						<div className="flex items-center justify-between mt-1.5">
+						<div className="mt-2 flex shrink-0 flex-wrap items-center justify-between gap-2">
 							<div className="text-[11px] text-text-tertiary space-y-0.5">
 								<p>
 									Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to
@@ -209,7 +208,7 @@ export function TaskCreateDialog({
 					/>
 				)}
 
-				<div ref={setDropdownPortalContainer} className="mt-4 border-t border-border pt-4">
+				<div ref={setDropdownPortalContainer} className="shrink-0 border-t border-border pt-4">
 					{open && agentId === "codex" && onCodexOptionsChange ? (
 						<TaskCodexOptions
 							projectId={projectId}

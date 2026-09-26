@@ -3,12 +3,12 @@ import type { CSSProperties, ReactElement } from "react";
 import { isMacPlatform } from "@/utils/platform";
 
 export const DIALOG_STYLE: CSSProperties = {
-	width: "580px",
-	height: "520px",
-	minWidth: "400px",
-	minHeight: "300px",
-	maxWidth: "90vw",
-	maxHeight: "85vh",
+	width: "960px",
+	height: "800px",
+	minWidth: "min(400px, calc(100vw - 32px))",
+	minHeight: "min(480px, 90dvh)",
+	maxWidth: "calc(100vw - 32px)",
+	maxHeight: "90dvh",
 };
 
 export type TaskCreateStartAction = "start" | "start_and_open";

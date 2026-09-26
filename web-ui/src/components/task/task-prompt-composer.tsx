@@ -39,6 +39,7 @@ interface TaskPromptComposerProps {
 	autoFocus?: boolean;
 	projectId?: string | null;
 	showAttachImageButton?: boolean;
+	fillHeight?: boolean;
 }
 
 export function TaskPromptComposer({
@@ -56,6 +57,7 @@ export function TaskPromptComposer({
 	autoFocus = false,
 	projectId = null,
 	showAttachImageButton = true,
+	fillHeight = false,
 }: TaskPromptComposerProps): ReactElement {
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -71,12 +73,12 @@ export function TaskPromptComposer({
 
 	const autoResizeTextarea = useCallback(() => {
 		const textarea = textareaRef.current;
-		if (!textarea) {
+		if (!textarea || fillHeight) {
 			return;
 		}
 		textarea.style.height = "auto";
 		textarea.style.height = `${Math.min(textarea.scrollHeight, TEXTAREA_MAX_HEIGHT)}px`;
-	}, []);
+	}, [fillHeight]);
 
 	useEffect(() => {
 		autoResizeTextarea();
@@ -360,8 +362,13 @@ export function TaskPromptComposer({
 	const showSuggestions = Boolean(enabled && isSuggestionPickerOpen && activeToken);
 
 	return (
-		<div>
-			<div className="relative" onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
+		<div className={fillHeight ? "flex flex-1 flex-col" : undefined}>
+			<div
+				className={cn("relative", fillHeight && "flex min-h-48 flex-1 flex-col")}
+				onDrop={handleDrop}
+				onDragOver={handleDragOver}
+				onDragLeave={handleDragLeave}
+			>
 				<InlineCompletionPicker
 					open={showSuggestions}
 					items={suggestions}
@@ -392,15 +399,10 @@ export function TaskPromptComposer({
 						placeholder={placeholder ?? "Describe the task"}
 						disabled={disabled}
 						className={cn(
-							"w-full rounded-md border bg-surface-3 p-3 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none",
+							"w-full resize-none overflow-y-auto rounded-md border bg-surface-3 p-3 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none",
+							fillHeight ? "min-h-0 flex-1" : "min-h-[125px] max-h-[200px]",
 							isDragOver ? "border-accent border-dashed" : "border-border-bright",
 						)}
-						style={{
-							minHeight: 125,
-							maxHeight: TEXTAREA_MAX_HEIGHT,
-							resize: "none",
-							overflowY: "auto",
-						}}
 					/>
 				</InlineCompletionPicker>
 				{isDragOver ? (

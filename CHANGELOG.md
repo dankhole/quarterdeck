@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Open the new-task dialog larger by default, with a taller prompt editor that fills the available space and balanced spacing around task options.
+
 - Fold Backlog into Review as Unstarted tasks, with a grouped layout, Start and edit actions, and automatic migration of existing tasks. Preserve bulk start, dependencies, and interrupted-start recovery.
 
 - Commit board state, sessions, revisions, and replay receipts through a recoverable transaction so interrupted writes cannot strand task starts or expose mixed state to readers and backups.
