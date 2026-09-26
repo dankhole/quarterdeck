@@ -4,7 +4,7 @@
 
 `useTaskSessions.upsertSession` now requires the originating project ID and rejects mismatches both before scheduling and inside the session updater. A layout-effect ref fences callbacks retained across navigation and unmount. Shell start/stop and input responses carry their request project; persistent terminal subscriptions forward their captured project through the latest callback. This prevents a late old-project shell stop from overwriting a new project’s identically keyed home terminal, regardless of summary timestamps, and suppresses stale warning toasts. Same-project monotonic merging remains unchanged.
 
-Notable files: `web-ui/src/hooks/board/use-task-sessions.ts`, `web-ui/src/hooks/terminal/use-terminal-panels.ts`, and `web-ui/src/terminal/use-persistent-terminal-session.ts`. Validation: 36 tests across five focused hook/component files, web typecheck, and changed-file Biome. Hook integration tests control deferred responses directly; no live runtime or PTY behavior changed, so Agent Lab was not needed.
+Notable files: `web-ui/src/hooks/board/use-task-sessions.ts`, `web-ui/src/hooks/terminal/use-terminal-panels.ts`, and `web-ui/src/terminal/use-persistent-terminal-session.ts`. Validation: 37 tests across five focused hook/component files, web typecheck, and changed-file Biome. Hook integration tests control deferred responses directly; no live runtime or PTY behavior changed, so Agent Lab was not needed.
 
 ## 2026-09-25 — Exclusive browser tab ownership
 

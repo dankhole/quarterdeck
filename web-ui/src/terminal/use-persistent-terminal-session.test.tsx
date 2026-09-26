@@ -149,6 +149,8 @@ describe("usePersistentTerminalSession", () => {
 			});
 			expect(currentCallback).toHaveBeenCalledWith("project-1", summary);
 			expect(oldCallback).not.toHaveBeenCalled();
+			terminal.subscribe.mock.calls[1]?.[0].onSummary?.(summary);
+			expect(currentCallback).toHaveBeenLastCalledWith("project-2", summary);
 		},
 	);
 

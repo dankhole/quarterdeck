@@ -147,10 +147,11 @@ describe("useTaskSessions", () => {
 				/>,
 			);
 		});
+		const before = requireSnapshot(latestSnapshot).sessions;
 		await act(async () => {
 			oldUpsert("project-1", createSummary(50, "Stale warning"));
 		});
-		expect(requireSnapshot(latestSnapshot).sessions).toEqual({});
+		expect(requireSnapshot(latestSnapshot).sessions).toBe(before);
 		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
 

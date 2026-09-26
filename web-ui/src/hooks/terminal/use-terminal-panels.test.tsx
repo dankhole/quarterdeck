@@ -199,57 +199,69 @@ describe("useTerminalPanels", () => {
 		}
 	});
 
-	it("keeps the new project's home shell when the old project's stop finishes late", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-		const onSnapshot = (snapshot: HookSnapshot) => {
-			latestSnapshot = snapshot;
-		};
-		let resolveResponse!: (value: { ok: boolean; summary: RuntimeTaskSessionSummary }) => void;
-		const stop = new Promise<{ ok: boolean; summary: RuntimeTaskSessionSummary }>((resolve) => {
-			resolveResponse = resolve;
-		});
-		stopTaskSessionMutateMock.mockReturnValueOnce(stop);
-		await act(async () => {
-			root.render(<HookHarness selectedCard={null} onSnapshot={onSnapshot} />);
-		});
-		await act(async () => {
-			requireSnapshot(latestSnapshot).handleToggleHomeTerminal();
-		});
-		await act(async () => {
-			requireSnapshot(latestSnapshot).closeHomeTerminal();
-		});
-		expect(stopTaskSessionMutateMock).toHaveBeenCalledWith({ taskId: "__home_terminal__", waitForExit: true });
-		await act(async () => {
-			root.render(<HookHarness currentProjectId="project-2" selectedCard={null} onSnapshot={onSnapshot} />);
-		});
-		const currentSummary = createTestTaskSessionSummary({
-			taskId: "__home_terminal__",
-			agentId: null,
-			state: "running",
-			pid: 200,
-			startedAt: 20,
-			updatedAt: 20,
-		});
-		startShellSessionMutateMock.mockResolvedValueOnce({ ok: true, summary: currentSummary });
-		await act(async () => {
-			requireSnapshot(latestSnapshot).handleToggleHomeTerminal();
-		});
-		expect(requireSnapshot(latestSnapshot).sessions.__home_terminal__).toBe(currentSummary);
-		await act(async () => {
-			resolveResponse({
-				ok: true,
-				summary: createTestTaskSessionSummary({
-					taskId: "__home_terminal__",
-					agentId: null,
-					state: "idle",
-					pid: null,
-					updatedAt: 50,
-				}),
+	it.each([false, true])(
+		"keeps the new project's home shell when the old project's stop finishes late (switch before close: %s)",
+		async (switchBeforeClose) => {
+			let latestSnapshot: HookSnapshot | null = null;
+			const onSnapshot = (snapshot: HookSnapshot) => {
+				latestSnapshot = snapshot;
+			};
+			let resolveResponse!: (value: { ok: boolean; summary: RuntimeTaskSessionSummary }) => void;
+			const stop = new Promise<{ ok: boolean; summary: RuntimeTaskSessionSummary }>((resolve) => {
+				resolveResponse = resolve;
 			});
-			await flushPromises();
-		});
-		expect(requireSnapshot(latestSnapshot).sessions.__home_terminal__).toBe(currentSummary);
-	});
+			stopTaskSessionMutateMock.mockReturnValueOnce(stop);
+			await act(async () => {
+				root.render(<HookHarness selectedCard={null} onSnapshot={onSnapshot} />);
+			});
+			await act(async () => {
+				requireSnapshot(latestSnapshot).handleToggleHomeTerminal();
+			});
+			const switchProject = async () => {
+				await act(async () => {
+					root.render(<HookHarness currentProjectId="project-2" selectedCard={null} onSnapshot={onSnapshot} />);
+				});
+			};
+			if (switchBeforeClose) await switchProject();
+			await act(async () => {
+				if (switchBeforeClose) {
+					// Navigation cleanup must stop the shell using its recorded owning project.
+					requireSnapshot(latestSnapshot).resetTerminalPanelsState();
+				} else {
+					requireSnapshot(latestSnapshot).closeHomeTerminal();
+				}
+			});
+			expect(stopTaskSessionMutateMock).toHaveBeenCalledWith({ taskId: "__home_terminal__", waitForExit: true });
+			if (!switchBeforeClose) await switchProject();
+			const currentSummary = createTestTaskSessionSummary({
+				taskId: "__home_terminal__",
+				agentId: null,
+				state: "running",
+				pid: 200,
+				startedAt: 20,
+				updatedAt: 20,
+			});
+			startShellSessionMutateMock.mockResolvedValueOnce({ ok: true, summary: currentSummary });
+			await act(async () => {
+				requireSnapshot(latestSnapshot).handleToggleHomeTerminal();
+			});
+			expect(requireSnapshot(latestSnapshot).sessions.__home_terminal__).toBe(currentSummary);
+			await act(async () => {
+				resolveResponse({
+					ok: true,
+					summary: createTestTaskSessionSummary({
+						taskId: "__home_terminal__",
+						agentId: null,
+						state: "idle",
+						pid: null,
+						updatedAt: 50,
+					}),
+				});
+				await flushPromises();
+			});
+			expect(requireSnapshot(latestSnapshot).sessions.__home_terminal__).toBe(currentSummary);
+		},
+	);
 
 	it("tracks detail terminal visibility per task selection", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
