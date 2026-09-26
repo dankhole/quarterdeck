@@ -32,17 +32,17 @@ function createTask(taskId: string, prompt: string, createdAt: number): BoardCar
 		title: null,
 		prompt,
 		baseRef: "main",
+		unstarted: true,
 		createdAt,
 		updatedAt: createdAt,
 	};
 }
 
-function createBoard(task: BoardCard = createTask("task-1", "Backlog task", 1), columnId = "backlog"): BoardData {
+function createBoard(task: BoardCard = createTask("task-1", "Backlog task", 1), columnId = "review"): BoardData {
 	return {
 		columns: [
-			{ id: "backlog", title: "Backlog", cards: columnId === "backlog" ? [task] : [] },
-			{ id: "in_progress", title: "In Progress", cards: columnId === "in_progress" ? [task] : [] },
 			{ id: "review", title: "Review", cards: columnId === "review" ? [task] : [] },
+			{ id: "in_progress", title: "In Progress", cards: columnId === "in_progress" ? [task] : [] },
 			{ id: "trash", title: "Trash", cards: columnId === "trash" ? [task] : [] },
 		],
 		dependencies: [],
@@ -83,7 +83,7 @@ function HookHarness({
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	executeTaskLifecycle: UseTaskLifecycleOperationsResult["executeTaskLifecycle"];
 	sessions?: Record<string, RuntimeTaskSessionSummary>;
-	selectedCard?: { card: BoardCard; column: { id: "backlog" | "in_progress" | "review" | "trash" } } | null;
+	selectedCard?: { card: BoardCard; column: { id: "review" | "in_progress" | "review" | "trash" } } | null;
 	setSelectedTaskIdOverride?: Dispatch<SetStateAction<string | null>>;
 	onSnapshot?: (snapshot: HookSnapshot) => void;
 }): null {
@@ -227,7 +227,7 @@ describe("useBoardInteractions", () => {
 			await Promise.resolve();
 		});
 
-		expect(tryProgrammaticCardMove).toHaveBeenCalledWith("task-1", "backlog", "in_progress");
+		expect(tryProgrammaticCardMove).toHaveBeenCalledWith("task-1", "review", "in_progress");
 		expect(executeTaskLifecycle).toHaveBeenCalledWith({ kind: "start", taskId: "task-1", taskCreatedAt: 1 });
 		boardElement.remove();
 	});
@@ -244,7 +244,7 @@ describe("useBoardInteractions", () => {
 					board={board}
 					setBoard={setBoard}
 					executeTaskLifecycle={executeTaskLifecycle}
-					selectedCard={{ card: board.columns[0]!.cards[0]!, column: { id: "backlog" } }}
+					selectedCard={{ card: board.columns[0]!.cards[0]!, column: { id: "review" } }}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -297,7 +297,7 @@ describe("useBoardInteractions", () => {
 		"restarts a %s task through one command tied to the current session instance",
 		async (columnId) => {
 			let latestSnapshot: HookSnapshot | null = null;
-			const task = createTask("task-restart", "Restart task", 3);
+			const task = { ...createTask("task-restart", "Restart task", 3), unstarted: undefined };
 			const board = createBoard(task, columnId);
 			const sessions = {
 				"task-restart": createTestTaskSessionSummary({

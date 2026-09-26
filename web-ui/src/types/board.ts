@@ -24,6 +24,7 @@ export interface BoardCard {
 	workingDirectory?: string | null;
 	branch?: string | null;
 	pinned?: boolean;
+	unstarted?: boolean;
 	createdAt: number;
 	updatedAt: number;
 }

@@ -80,7 +80,7 @@ function createResult(overrides: Partial<RuntimeTaskLifecycleResult> = {}): Runt
 			kind: "start",
 			status: "completed",
 			phase: "finished",
-			sourceColumnId: "backlog",
+			sourceColumnId: "review",
 			targetColumnId: "in_progress",
 			acceptedBoardRevision: 8,
 			launchOperationId: "server-operation",

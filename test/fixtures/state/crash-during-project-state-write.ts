@@ -27,7 +27,7 @@ await service.execute(
 		command: {
 			kind: "move_task",
 			taskId: "task-a",
-			sourceColumnId: "backlog",
+			sourceColumnId: "review",
 			targetColumnId: "in_progress",
 			targetIndex: 0,
 			updatedAt: 200,

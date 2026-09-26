@@ -23,6 +23,7 @@ export function BoardColumn({
 	onCardClick,
 	activeDragTaskId,
 	activeDragSourceColumnId,
+	activeDragTaskUnstarted,
 	programmaticCardMoveInFlight,
 	onDependencyPointerDown,
 	onDependencyPointerEnter,
@@ -41,6 +42,7 @@ export function BoardColumn({
 	onCardClick?: (card: BoardCardModel) => void;
 	activeDragTaskId?: string | null;
 	activeDragSourceColumnId?: BoardColumnId | null;
+	activeDragTaskUnstarted?: boolean;
 	programmaticCardMoveInFlight?: ProgrammaticCardMoveInFlight | null;
 	onDependencyPointerDown?: (taskId: string, event: ReactMouseEvent<HTMLElement>) => void;
 	onDependencyPointerEnter?: (taskId: string) => void;
@@ -62,12 +64,14 @@ export function BoardColumn({
 	} = useStableCardActions();
 	const { moveToTrashLoadingById, showSummaryOnCards, showSummaryOnHover, uncommittedChangesOnCardsEnabled } =
 		useReactiveCardState();
-	const canCreate = column.id === "backlog" && onCreateTask;
-	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
+	const canCreate = column.id === "review" && onCreateTask;
+	const unstartedCount = column.cards.filter((card) => card.unstarted).length;
+	const canStartAllTasks = column.id === "review" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
 	const cardDropType = "CARD";
 	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null, {
 		activeDragTaskId,
+		activeDragTaskUnstarted,
 		programmaticCardMoveInFlight,
 	});
 	const createTaskButtonText = (
@@ -106,9 +110,9 @@ export function BoardColumn({
 							variant="ghost"
 							size="sm"
 							onClick={onStartAllTasks}
-							disabled={column.cards.length === 0}
-							aria-label="Start all backlog tasks"
-							title={column.cards.length > 0 ? "Start all backlog tasks" : "Backlog is empty"}
+							disabled={unstartedCount === 0}
+							aria-label="Start all unstarted tasks"
+							title={unstartedCount > 0 ? "Start all unstarted tasks" : "No unstarted tasks"}
 						/>
 					) : null}
 					{canClearTrash ? (
@@ -144,8 +148,23 @@ export function BoardColumn({
 								const items: ReactNode[] = [];
 								let draggableIndex = 0;
 								const cards = sortColumnCards(column.cards, column.id);
+								let unstartedSectionShown = false;
 								for (const card of cards) {
-									if (column.id === "backlog" && editingTaskId === card.id) {
+									if (column.id === "review" && card.unstarted && !unstartedSectionShown) {
+										unstartedSectionShown = true;
+										items.push(
+											<div
+												key="unstarted-heading"
+												className="flex items-center gap-2 px-1 pb-2 pt-3 text-xs text-text-secondary"
+												data-unstarted-heading
+											>
+												<span>Unstarted</span>
+												<span className="text-text-tertiary">{unstartedCount}</span>
+												<span className="h-px flex-1 bg-border" />
+											</div>,
+										);
+									}
+									if (column.id === "review" && card.unstarted && editingTaskId === card.id) {
 										items.push(
 											<div
 												key={card.id}
@@ -185,7 +204,7 @@ export function BoardColumn({
 											onTerminalWarmup={onTerminalWarmup}
 											onTerminalCancelWarmup={onTerminalCancelWarmup}
 											onClick={() => {
-												if (column.id === "backlog") {
+												if (column.id === "review" && card.unstarted) {
 													onEditTask?.(card);
 													return;
 												}

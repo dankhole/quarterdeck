@@ -13,6 +13,7 @@ function stopEvent(event: MouseEvent<HTMLElement>) {
 export function BoardCardActions({
 	cardId,
 	columnId,
+	isUnstarted,
 	isHovered,
 	isSessionDead,
 	isSessionRestartable,
@@ -25,6 +26,7 @@ export function BoardCardActions({
 }: {
 	cardId: string;
 	columnId: BoardColumnId;
+	isUnstarted: boolean;
 	isHovered: boolean;
 	isSessionDead: boolean;
 	isSessionRestartable: boolean;
@@ -77,7 +79,7 @@ export function BoardCardActions({
 		);
 	}
 
-	if (columnId === "backlog") {
+	if (columnId === "review" && isUnstarted) {
 		return (
 			<>
 				<Button
@@ -150,11 +152,15 @@ export function BoardCardActions({
 				<Tooltip
 					side="bottom"
 					content={
-						<>
-							Restore session
-							<br />
-							in new worktree
-						</>
+						isUnstarted ? (
+							"Restore unstarted task"
+						) : (
+							<>
+								Restore session
+								<br />
+								in new worktree
+							</>
+						)
 					}
 				>
 					<Button

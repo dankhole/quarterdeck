@@ -99,6 +99,7 @@ export interface ApplyProjectBoardMutationInput {
 	commandIdentity?: {
 		commandId: string;
 		fingerprint: string;
+		legacyFingerprints?: readonly string[];
 	};
 }
 
@@ -403,7 +404,10 @@ export async function applyProjectBoardMutation(
 				(candidate) => candidate.commandId === commandIdentity.commandId,
 			);
 			if (receipt) {
-				if (receipt.fingerprint !== commandIdentity.fingerprint) {
+				if (
+					receipt.fingerprint !== commandIdentity.fingerprint &&
+					!commandIdentity.legacyFingerprints?.includes(receipt.fingerprint)
+				) {
 					throw new ProjectBoardCommandIdentityConflictError(commandIdentity.commandId);
 				}
 				const currentBoard = await readProjectBoardUnderLock(context.projectId);

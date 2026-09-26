@@ -7,11 +7,11 @@ import {
 	normalizeBoardData,
 	trashTaskAndGetReadyLinkedTaskIds,
 } from "@/state/board-state";
-import { createBacklogBoard, requireTaskId } from "@/state/board-state-test-helpers";
+import { createUnstartedBoard, requireTaskId } from "@/state/board-state-test-helpers";
 
 describe("board dependency state", () => {
 	it("prevents duplicate links in either direction", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B", "Task C"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B", "Task C"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 		const taskC = requireTaskId(fixture.taskIdByPrompt["Task C"], "Task C");
@@ -35,18 +35,18 @@ describe("board dependency state", () => {
 	});
 
 	it("preserves backlog-to-backlog link order and reorients it when one task starts", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 
-		const bothBacklog = addTaskDependency(fixture.board, taskA, taskB);
-		expect(bothBacklog.added).toBe(true);
-		expect(bothBacklog.dependency).toMatchObject({
+		const bothUnstarted = addTaskDependency(fixture.board, taskA, taskB);
+		expect(bothUnstarted.added).toBe(true);
+		expect(bothUnstarted.dependency).toMatchObject({
 			fromTaskId: taskA,
 			toTaskId: taskB,
 		});
 
-		const movedA = moveTaskToColumn(bothBacklog.board, taskA, "in_progress");
+		const movedA = moveTaskToColumn(bothUnstarted.board, taskA, "in_progress");
 		expect(movedA.moved).toBe(true);
 		expect(movedA.board.dependencies).toEqual([
 			expect.objectContaining({
@@ -57,7 +57,7 @@ describe("board dependency state", () => {
 	});
 
 	it("allows backlog-to-backlog links in either direction", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 
@@ -72,13 +72,13 @@ describe("board dependency state", () => {
 	});
 
 	it("only unlocks backlog cards when a review card is trashed", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B", "Task C"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B", "Task C"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 		const taskC = requireTaskId(fixture.taskIdByPrompt["Task C"], "Task C");
-		const movedA = moveTaskToColumn(fixture.board, taskA, "review");
+		const movedA = moveTaskToColumn(moveTaskToColumn(fixture.board, taskA, "in_progress").board, taskA, "review");
 		expect(movedA.moved).toBe(true);
-		const movedB = moveTaskToColumn(movedA.board, taskB, "review");
+		const movedB = moveTaskToColumn(moveTaskToColumn(movedA.board, taskB, "in_progress").board, taskB, "review");
 		expect(movedB.moved).toBe(true);
 
 		const dependencyA = addTaskDependency(movedB.board, taskC, taskA);
@@ -97,7 +97,7 @@ describe("board dependency state", () => {
 	});
 
 	it("does not unlock backlog cards when an in-progress card is trashed", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 		const movedA = moveTaskToColumn(fixture.board, taskA, "in_progress");
@@ -112,7 +112,7 @@ describe("board dependency state", () => {
 	});
 
 	it("removes dependency links once both linked cards are in trash", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 		const movedA = moveTaskToColumn(fixture.board, taskA, "in_progress");
@@ -130,7 +130,7 @@ describe("board dependency state", () => {
 	});
 
 	it("removes links once neither endpoint remains in backlog", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 		const movedA = moveTaskToColumn(fixture.board, taskA, "in_progress");
@@ -145,12 +145,12 @@ describe("board dependency state", () => {
 	});
 
 	it("drops links automatically when an unlocked backlog card starts", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B", "Task C"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B", "Task C"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 		const taskC = requireTaskId(fixture.taskIdByPrompt["Task C"], "Task C");
 		const movedA = moveTaskToColumn(fixture.board, taskA, "in_progress");
-		const movedB = moveTaskToColumn(movedA.board, taskB, "review");
+		const movedB = moveTaskToColumn(moveTaskToColumn(movedA.board, taskB, "in_progress").board, taskB, "review");
 		const firstLink = addTaskDependency(movedB.board, taskC, taskA);
 		const secondLink = addTaskDependency(firstLink.board, taskC, taskB);
 
@@ -166,10 +166,10 @@ describe("board dependency state", () => {
 	});
 
 	it("removes dependencies when trash is cleared", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
-		const movedA = moveTaskToColumn(fixture.board, taskA, "review");
+		const movedA = moveTaskToColumn(moveTaskToColumn(fixture.board, taskA, "in_progress").board, taskA, "review");
 		expect(movedA.moved).toBe(true);
 
 		const linked = addTaskDependency(movedA.board, taskA, taskB);
@@ -187,17 +187,16 @@ describe("board dependency state", () => {
 		const rawBoard = {
 			columns: [
 				{
-					id: "backlog",
+					id: "review",
 					cards: [
-						{ id: "b", title: null, prompt: "Task B", baseRef: "main" },
-						{ id: "c", title: null, prompt: "Task C", baseRef: "main" },
+						{ id: "b", unstarted: true, title: null, prompt: "Task B", baseRef: "main" },
+						{ id: "c", unstarted: true, title: null, prompt: "Task C", baseRef: "main" },
 					],
 				},
 				{
 					id: "in_progress",
 					cards: [{ id: "a", title: null, prompt: "Task A", baseRef: "main" }],
 				},
-				{ id: "review", cards: [] },
 				{ id: "trash", cards: [] },
 			],
 			dependencies: [

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { applyDragResult, getTaskColumnId, moveTaskToColumn } from "@/state/board-state";
-import { createBacklogBoard, requireTaskId } from "@/state/board-state-test-helpers";
+import { createUnstartedBoard, requireTaskId } from "@/state/board-state-test-helpers";
 import type { ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
 
 describe("applyDragResult", () => {
 	it("keeps manual in-progress to review drags disabled", () => {
-		const fixture = createBacklogBoard(["Task A"]);
+		const fixture = createUnstartedBoard(["Task A"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const movedToInProgress = moveTaskToColumn(fixture.board, taskA, "in_progress");
 		expect(movedToInProgress.moved).toBe(true);
@@ -25,7 +25,7 @@ describe("applyDragResult", () => {
 	});
 
 	it("preserves manual backlog to in-progress drop positions", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B", "Task C"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B", "Task C"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 		const taskC = requireTaskId(fixture.taskIdByPrompt["Task C"], "Task C");
@@ -38,7 +38,7 @@ describe("applyDragResult", () => {
 		const movedA = applyDragResult(movedC.board, {
 			draggableId: taskA,
 			type: "CARD",
-			source: { droppableId: "backlog", index: 0 },
+			source: { droppableId: "review", index: 0 },
 			destination: { droppableId: "in_progress", index: 2 },
 			mode: "SNAP",
 			reason: "DROP",
@@ -46,7 +46,7 @@ describe("applyDragResult", () => {
 		});
 		expect(movedA.moveEvent).toMatchObject({
 			taskId: taskA,
-			fromColumnId: "backlog",
+			fromColumnId: "review",
 			toColumnId: "in_progress",
 		});
 		const inProgressColumn = movedA.board.columns.find((column) => column.id === "in_progress");
@@ -54,7 +54,7 @@ describe("applyDragResult", () => {
 	});
 
 	it("inserts programmatic backlog to in-progress moves at the top", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B", "Task C"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B", "Task C"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 		const taskC = requireTaskId(fixture.taskIdByPrompt["Task C"], "Task C");
@@ -69,7 +69,7 @@ describe("applyDragResult", () => {
 			{
 				draggableId: taskA,
 				type: "CARD",
-				source: { droppableId: "backlog", index: 0 },
+				source: { droppableId: "review", index: 0 },
 				destination: { droppableId: "in_progress", index: 2 },
 				mode: "SNAP",
 				reason: "DROP",
@@ -78,7 +78,7 @@ describe("applyDragResult", () => {
 			{
 				programmaticCardMoveInFlight: {
 					taskId: taskA,
-					fromColumnId: "backlog",
+					fromColumnId: "review",
 					toColumnId: "in_progress",
 					insertAtTop: true,
 				},
@@ -86,7 +86,7 @@ describe("applyDragResult", () => {
 		);
 		expect(movedA.moveEvent).toMatchObject({
 			taskId: taskA,
-			fromColumnId: "backlog",
+			fromColumnId: "review",
 			toColumnId: "in_progress",
 		});
 		const inProgressColumn = movedA.board.columns.find((column) => column.id === "in_progress");
@@ -94,13 +94,17 @@ describe("applyDragResult", () => {
 	});
 
 	it("supports programmatic drag transitions between in-progress and review", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B", "Task C"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B", "Task C"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 		const taskC = requireTaskId(fixture.taskIdByPrompt["Task C"], "Task C");
 		const movedToInProgress = moveTaskToColumn(fixture.board, taskA, "in_progress");
 		expect(movedToInProgress.moved).toBe(true);
-		const movedBToReview = moveTaskToColumn(movedToInProgress.board, taskB, "review");
+		const movedBToReview = moveTaskToColumn(
+			moveTaskToColumn(movedToInProgress.board, taskB, "in_progress").board,
+			taskB,
+			"review",
+		);
 		expect(movedBToReview.moved).toBe(true);
 		const movedCToInProgress = moveTaskToColumn(movedBToReview.board, taskC, "in_progress");
 		expect(movedCToInProgress.moved).toBe(true);
@@ -167,7 +171,7 @@ describe("applyDragResult", () => {
 	});
 
 	it("preserves manual cross-column trash drop positions", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B", "Task C"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B", "Task C"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 		const taskC = requireTaskId(fixture.taskIdByPrompt["Task C"], "Task C");
@@ -176,7 +180,11 @@ describe("applyDragResult", () => {
 		expect(movedAToTrash.moved).toBe(true);
 		const movedBToTrash = moveTaskToColumn(movedAToTrash.board, taskB, "trash");
 		expect(movedBToTrash.moved).toBe(true);
-		const movedCToReview = moveTaskToColumn(movedBToTrash.board, taskC, "review");
+		const movedCToReview = moveTaskToColumn(
+			moveTaskToColumn(movedBToTrash.board, taskC, "in_progress").board,
+			taskC,
+			"review",
+		);
 		expect(movedCToReview.moved).toBe(true);
 
 		const movedToTrash = applyDragResult(movedCToReview.board, {
@@ -198,13 +206,17 @@ describe("applyDragResult", () => {
 	});
 
 	it("allows manual trash to review drags", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 
 		const movedAToTrash = moveTaskToColumn(fixture.board, taskA, "trash");
 		expect(movedAToTrash.moved).toBe(true);
-		const movedBToReview = moveTaskToColumn(movedAToTrash.board, taskB, "review");
+		const movedBToReview = moveTaskToColumn(
+			moveTaskToColumn(movedAToTrash.board, taskB, "in_progress").board,
+			taskB,
+			"review",
+		);
 		expect(movedBToReview.moved).toBe(true);
 
 		const movedToReview = applyDragResult(movedBToReview.board, {
@@ -227,7 +239,7 @@ describe("applyDragResult", () => {
 	});
 
 	it("restores the correct card when source index diverges from state order", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B", "Task C"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B", "Task C"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 		const taskC = requireTaskId(fixture.taskIdByPrompt["Task C"], "Task C");
@@ -259,7 +271,7 @@ describe("applyDragResult", () => {
 	});
 
 	it("inserts programmatic trash drags at the top of trash", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B", "Task C"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B", "Task C"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 		const taskC = requireTaskId(fixture.taskIdByPrompt["Task C"], "Task C");
@@ -268,7 +280,11 @@ describe("applyDragResult", () => {
 		expect(movedAToTrash.moved).toBe(true);
 		const movedBToTrash = moveTaskToColumn(movedAToTrash.board, taskB, "trash");
 		expect(movedBToTrash.moved).toBe(true);
-		const movedCToReview = moveTaskToColumn(movedBToTrash.board, taskC, "review");
+		const movedCToReview = moveTaskToColumn(
+			moveTaskToColumn(movedBToTrash.board, taskC, "in_progress").board,
+			taskC,
+			"review",
+		);
 		expect(movedCToReview.moved).toBe(true);
 
 		const movedToTrash = applyDragResult(

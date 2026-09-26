@@ -35,7 +35,7 @@ function HookHarness({
 		prepareCreateTasksForLifecycle,
 		executeTaskLifecycle,
 		handleStartTask: () => {},
-		handleStartAllBacklogTasks: () => {},
+		handleStartAllUnstartedTasks: () => {},
 		setSelectedTaskId: () => {},
 	});
 	useEffect(() => {

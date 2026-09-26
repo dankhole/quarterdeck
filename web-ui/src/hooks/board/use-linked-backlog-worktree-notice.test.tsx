@@ -44,13 +44,12 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 
 		const boardFactory = (): BoardData => ({
 			columns: [
-				{ id: "backlog", title: "Backlog", cards: [] },
 				{
 					id: "in_progress",
 					title: "In Progress",
 					cards: [createTask("task-ip", "In progress task", 1)],
 				},
-				{ id: "review", title: "Review", cards: [] },
+
 				{ id: "trash", title: "Trash", cards: [] },
 			],
 			dependencies: [],
@@ -144,7 +143,7 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 		const initialSnapshot = requireSnapshot(latestSnapshot);
 
 		await act(async () => {
-			await initialSnapshot.requestMoveTaskToTrash("task-1", "backlog");
+			await initialSnapshot.requestMoveTaskToTrash("task-1", "review");
 		});
 
 		expect(toastMock).not.toHaveBeenCalled();
@@ -233,7 +232,6 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 
 		const boardFactory = (): BoardData => ({
 			columns: [
-				{ id: "backlog", title: "Backlog", cards: [] },
 				{
 					id: "in_progress",
 					title: "In Progress",
@@ -295,7 +293,6 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 
 		const boardFactory = (): BoardData => ({
 			columns: [
-				{ id: "backlog", title: "Backlog", cards: [] },
 				{
 					id: "in_progress",
 					title: "In Progress",

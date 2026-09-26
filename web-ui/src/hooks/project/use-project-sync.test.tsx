@@ -31,19 +31,19 @@ vi.mock("@/runtime/project-state-query", () => ({
 }));
 
 function createBoard(taskId: string): BoardData {
-	return createBoardInColumn("backlog", taskId);
+	return createBoardInColumn("review", taskId);
 }
 
 function createBoardWithPrompt(taskId: string, prompt: string): BoardData {
 	const board = createBoard(taskId);
-	const card = board.columns[0]?.cards[0];
+	const card = board.columns.find((column) => column.id === "review")?.cards[0];
 	if (!card) {
 		throw new Error(`Expected task ${taskId} in the backlog.`);
 	}
 	return {
 		...board,
 		columns: board.columns.map((column) =>
-			column.id === "backlog"
+			column.id === "review"
 				? {
 						...column,
 						cards: column.cards.map((candidate) =>
@@ -55,14 +55,14 @@ function createBoardWithPrompt(taskId: string, prompt: string): BoardData {
 	};
 }
 
-function createBoardInColumn(columnId: "backlog" | "in_progress" | "review" | "trash", taskId: string): BoardData {
+function createBoardInColumn(columnId: "review" | "in_progress" | "trash", taskId: string): BoardData {
 	return {
 		columns: [
 			{
-				id: "backlog",
-				title: "Backlog",
+				id: "review",
+				title: "Review",
 				cards:
-					columnId === "backlog"
+					columnId === "review"
 						? [
 								{
 									id: taskId,
@@ -80,23 +80,6 @@ function createBoardInColumn(columnId: "backlog" | "in_progress" | "review" | "t
 				title: "In Progress",
 				cards:
 					columnId === "in_progress"
-						? [
-								{
-									id: taskId,
-									title: null,
-									prompt: `Prompt ${taskId}`,
-									baseRef: "main",
-									createdAt: 1,
-									updatedAt: 1,
-								},
-							]
-						: [],
-			},
-			{
-				id: "review",
-				title: "Review",
-				cards:
-					columnId === "review"
 						? [
 								{
 									id: taskId,
@@ -337,7 +320,9 @@ describe("useProjectSync", () => {
 
 		assertSnapshot(latestSnapshot, "Expected an initial hook snapshot.");
 		const initialSnapshot: HookSnapshot = latestSnapshot;
-		expect(initialSnapshot.board.columns[0]?.cards[0]?.id).toBe("persisted-task");
+		expect(initialSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe(
+			"persisted-task",
+		);
 		expect(initialSnapshot.boardProjectId).toBe("project-a");
 
 		await act(async () => {
@@ -355,8 +340,8 @@ describe("useProjectSync", () => {
 
 		assertSnapshot(latestSnapshot, "Expected a hook snapshot.");
 		const snapshot: HookSnapshot = latestSnapshot;
-		expect(snapshot.board.columns[0]?.cards[0]?.id).toBe("persisted-task");
-		expect(snapshot.board.columns[0]?.cards[0]?.id).not.toBe("stale-task");
+		expect(snapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("persisted-task");
+		expect(snapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).not.toBe("stale-task");
 	});
 
 	it("clears board ownership while an uncached switch target loads", async () => {
@@ -429,7 +414,9 @@ describe("useProjectSync", () => {
 
 		assertSnapshot(latestSnapshot, "Expected the first cached target snapshot.");
 		const firstTargetSnapshot: HookSnapshot = latestSnapshot;
-		expect(firstTargetSnapshot.board.columns[0]?.cards[0]?.id).toBe("cached-b-task");
+		expect(firstTargetSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe(
+			"cached-b-task",
+		);
 		expect(firstTargetSnapshot.boardProjectId).toBe("project-b");
 
 		await act(async () => {
@@ -438,7 +425,9 @@ describe("useProjectSync", () => {
 
 		assertSnapshot(latestSnapshot, "Expected the latest cached target snapshot.");
 		const latestTargetSnapshot: HookSnapshot = latestSnapshot;
-		expect(latestTargetSnapshot.board.columns[0]?.cards[0]?.id).toBe("cached-c-task");
+		expect(latestTargetSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe(
+			"cached-c-task",
+		);
 		expect(latestTargetSnapshot.boardProjectId).toBe("project-c");
 
 		await act(async () => {
@@ -453,7 +442,7 @@ describe("useProjectSync", () => {
 
 		assertSnapshot(latestSnapshot, "Expected stale project B state to be ignored.");
 		const staleSnapshot: HookSnapshot = latestSnapshot;
-		expect(staleSnapshot.board.columns[0]?.cards[0]?.id).toBe("cached-c-task");
+		expect(staleSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("cached-c-task");
 		expect(staleSnapshot.boardProjectId).toBe("project-c");
 
 		await act(async () => {
@@ -472,7 +461,9 @@ describe("useProjectSync", () => {
 
 		assertSnapshot(latestSnapshot, "Expected the project C authoritative handoff.");
 		const authoritativeSnapshot: HookSnapshot = latestSnapshot;
-		expect(authoritativeSnapshot.board.columns[0]?.cards[0]?.id).toBe("cached-c-task");
+		expect(authoritativeSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe(
+			"cached-c-task",
+		);
 		expect(authoritativeSnapshot.boardProjectId).toBe("project-c");
 		expect(authoritativeSnapshot.isServedFromBoardCache).toBe(false);
 	});
@@ -513,7 +504,7 @@ describe("useProjectSync", () => {
 
 		assertSnapshot(latestSnapshot, "Expected a cached hook snapshot.");
 		const cachedSnapshot: HookSnapshot = latestSnapshot;
-		expect(cachedSnapshot.board.columns[0]?.cards[0]?.id).toBe("cached-task");
+		expect(cachedSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("cached-task");
 		expect(cachedSnapshot.boardProjectId).toBe("project-b");
 		expect(cachedSnapshot.isServedFromBoardCache).toBe(true);
 
@@ -535,7 +526,9 @@ describe("useProjectSync", () => {
 
 		assertSnapshot(latestSnapshot, "Expected an authoritative hook snapshot.");
 		const authoritativeSnapshot: HookSnapshot = latestSnapshot;
-		expect(authoritativeSnapshot.board.columns[0]?.cards[0]?.id).toBe("cached-task");
+		expect(authoritativeSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe(
+			"cached-task",
+		);
 		expect(authoritativeSnapshot.boardProjectId).toBe("project-b");
 		expect(authoritativeSnapshot.isServedFromBoardCache).toBe(false);
 	});
@@ -656,8 +649,10 @@ describe("useProjectSync", () => {
 
 		assertSnapshot(latestSnapshot, "Expected a cached hook snapshot after stale rerender.");
 		const snapshot: HookSnapshot = latestSnapshot;
-		expect(snapshot.board.columns[0]?.cards[0]?.id).toBe("cached-task");
-		expect(snapshot.board.columns[0]?.cards[0]?.id).not.toBe("stale-project-a-task");
+		expect(snapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("cached-task");
+		expect(snapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).not.toBe(
+			"stale-project-a-task",
+		);
 	});
 
 	it("clears task sessions missing from refreshed authoritative project state", async () => {
@@ -906,7 +901,9 @@ describe("useProjectSync", () => {
 
 		const optimisticSnapshot = latestSnapshot as HookSnapshot | null;
 		assertSnapshot(optimisticSnapshot, "Expected an optimistic hook snapshot.");
-		expect(optimisticSnapshot.board.columns[0]?.cards[0]?.prompt).toBe("Edited prompt");
+		expect(optimisticSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.prompt).toBe(
+			"Edited prompt",
+		);
 		expect(applyProjectBoardCommandsMock).toHaveBeenCalledWith(
 			"project-a",
 			expect.objectContaining({
@@ -967,16 +964,20 @@ describe("useProjectSync", () => {
 
 		const cachedBeforeCommit = restoreProjectBoard("project-a");
 		expect(cachedBeforeCommit?.authoritativeRevision).toBe(1);
-		expect(cachedBeforeCommit?.board.columns.find((column) => column.id === "backlog")?.cards[0]?.id).toBe(
+		expect(cachedBeforeCommit?.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe(
 			"persisted-task",
 		);
-		expect(cachedBeforeCommit?.board.columns[0]?.cards[0]?.prompt).toBe("Prompt persisted-task");
+		expect(cachedBeforeCommit?.board.columns.find((column) => column.id === "review")?.cards[0]?.prompt).toBe(
+			"Prompt persisted-task",
+		);
 
 		commandResult.resolve({ state: committed, changed: true, acceptedChange: true, replayed: false });
 		await vi.waitFor(() => {
 			const cachedAfterCommit = restoreProjectBoard("project-a");
 			expect(cachedAfterCommit?.authoritativeRevision).toBe(2);
-			expect(cachedAfterCommit?.board.columns[0]?.cards[0]?.prompt).toBe("Edited prompt");
+			expect(cachedAfterCommit?.board.columns.find((column) => column.id === "review")?.cards[0]?.prompt).toBe(
+				"Edited prompt",
+			);
 		});
 	});
 
@@ -1008,7 +1009,9 @@ describe("useProjectSync", () => {
 
 		await vi.waitFor(() => {
 			assertSnapshot(latestSnapshot, "Expected a restored hook snapshot.");
-			expect(latestSnapshot.board.columns[0]?.cards[0]?.id).toBe("persisted-task");
+			expect(latestSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe(
+				"persisted-task",
+			);
 		});
 
 		refresh.resolve(createProjectState("remote-task", 2));
@@ -1020,7 +1023,9 @@ describe("useProjectSync", () => {
 		expect(await pendingFlush).toMatchObject({ ok: false });
 		const refreshedSnapshot = latestSnapshot as HookSnapshot | null;
 		assertSnapshot(refreshedSnapshot, "Expected a refreshed hook snapshot.");
-		expect(refreshedSnapshot.board.columns[0]?.cards[0]?.id).toBe("remote-task");
+		expect(refreshedSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe(
+			"remote-task",
+		);
 
 		applyProjectBoardCommandsMock.mockResolvedValue({
 			state: createProjectState("remote-task", 3),
@@ -1097,8 +1102,12 @@ describe("useProjectSync", () => {
 
 		const rejectedSnapshot = latestSnapshot as HookSnapshot | null;
 		assertSnapshot(rejectedSnapshot, "Expected a snapshot after the rejected generic lifecycle move.");
-		expect(rejectedSnapshot.board.columns[0]?.cards[0]?.id).toBe("persisted-task");
-		expect(rejectedSnapshot.board.columns[0]?.cards[0]?.prompt).toBe("Prompt persisted-task");
+		expect(rejectedSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe(
+			"persisted-task",
+		);
+		expect(rejectedSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.prompt).toBe(
+			"Prompt persisted-task",
+		);
 		expect(rejectedSnapshot.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
 		expect(applyProjectBoardCommandsMock).not.toHaveBeenCalled();
 
@@ -1121,7 +1130,9 @@ describe("useProjectSync", () => {
 
 		const rolledBackSnapshot = latestSnapshot as HookSnapshot | null;
 		assertSnapshot(rolledBackSnapshot, "Expected an authoritative lifecycle rollback.");
-		expect(rolledBackSnapshot.board.columns[0]?.cards[0]?.id).toBe("persisted-task");
+		expect(rolledBackSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe(
+			"persisted-task",
+		);
 		expect(rolledBackSnapshot.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
 		expect(rolledBackSnapshot.getAuthoritativeRevision()).toBe(2);
 	});

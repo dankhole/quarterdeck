@@ -102,7 +102,7 @@ describe("QuarterdeckBoard", () => {
 			}
 			if (this.classList.contains("kb-column-cards")) {
 				const columnId = this.closest<HTMLElement>("[data-column-id]")?.dataset.columnId;
-				if (columnId === "backlog") {
+				if (columnId === "review") {
 					return createRect(12, 12, 176, 420);
 				}
 				if (columnId === "in_progress") {
@@ -154,13 +154,14 @@ describe("QuarterdeckBoard", () => {
 		const board: BoardData = {
 			columns: [
 				{
-					id: "backlog",
-					title: "Backlog",
+					id: "review",
+					title: "Review",
 					cards: [
 						{
 							id: "source-task",
 							title: null,
 							prompt: "Source task",
+							unstarted: true,
 							baseRef: "main",
 							createdAt: 1,
 							updatedAt: 1,
@@ -181,7 +182,6 @@ describe("QuarterdeckBoard", () => {
 						},
 					],
 				},
-				{ id: "review", title: "Review", cards: [] },
 				{ id: "trash", title: "Trash", cards: [] },
 			],
 			dependencies: [],
@@ -211,7 +211,7 @@ describe("QuarterdeckBoard", () => {
 		await act(async () => {
 			requestMove?.({
 				taskId: "source-task",
-				fromColumnId: "backlog",
+				fromColumnId: "review",
 				toColumnId: "in_progress",
 				insertAtTop: true,
 			});

@@ -36,7 +36,6 @@ const task: BoardCard = {
 function createBoard(taskColumnId: "review" | "trash" = "review"): BoardData {
 	return {
 		columns: [
-			{ id: "backlog", title: "Backlog", cards: [] },
 			{ id: "in_progress", title: "In Progress", cards: [] },
 			{ id: "review", title: "Review", cards: taskColumnId === "review" ? [task] : [] },
 			{ id: "trash", title: "Trash", cards: taskColumnId === "trash" ? [task] : [] },

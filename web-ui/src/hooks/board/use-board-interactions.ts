@@ -56,7 +56,7 @@ export interface UseBoardInteractionsResult {
 	handleDeleteDependency: (dependencyId: string) => void;
 	handleDragEnd: (result: DropResult, options?: { selectDroppedTask?: boolean }) => void;
 	handleStartTask: (taskId: string) => void;
-	handleStartAllBacklogTasks: (taskIds?: string[]) => void;
+	handleStartAllUnstartedTasks: (taskIds?: string[]) => void;
 	handleCardSelect: (taskId: string) => void;
 	handleMoveToTrash: () => void;
 	handleMoveReviewCardToTrash: (taskId: string) => void;
@@ -105,18 +105,22 @@ export function useBoardInteractions({
 	// ── Core lifecycle operations ────────────────────────────────────────
 	const { kickoffTaskInProgress, resumeTaskFromTrash } = useTaskLifecycle({ executeTaskLifecycle });
 
-	// ── Backlog task start + animation ───────────────────────────────────
-	const { handleStartTask, handleStartAllBacklogTasks, resolvePendingProgrammaticStartMove, resetPendingStartMoves } =
-		useTaskStart({
-			board,
-			presentLifecycleBoard,
-			selectedCard,
-			kickoffTaskInProgress,
-			tryProgrammaticCardMove,
-			waitForProgrammaticCardMoveAvailability,
-		});
+	// ── Unstarted task start + animation ───────────────────────────────────
+	const {
+		handleStartTask,
+		handleStartAllUnstartedTasks,
+		resolvePendingProgrammaticStartMove,
+		resetPendingStartMoves,
+	} = useTaskStart({
+		board,
+		presentLifecycleBoard,
+		selectedCard,
+		kickoffTaskInProgress,
+		tryProgrammaticCardMove,
+		waitForProgrammaticCardMoveAvailability,
+	});
 
-	// ── Linked backlog task actions (dependency graph, trash workflow) ───
+	// ── Linked task actions (dependency graph, trash workflow) ───
 	const { confirmMoveTaskToTrash, handleCreateDependency, handleDeleteDependency, requestMoveTaskToTrash } =
 		useLinkedBacklogTaskActions({
 			board,
@@ -211,7 +215,11 @@ export function useBoardInteractions({
 	const handleRestartTaskSession = useCallback(
 		(taskId: string) => {
 			const selection = findCardSelection(board, taskId);
-			if (!selection || (selection.column.id !== "in_progress" && selection.column.id !== "review")) {
+			if (
+				!selection ||
+				selection.card.unstarted ||
+				(selection.column.id !== "in_progress" && selection.column.id !== "review")
+			) {
 				return;
 			}
 			void (async () => {
@@ -247,7 +255,7 @@ export function useBoardInteractions({
 		handleDeleteDependency,
 		handleDragEnd,
 		handleStartTask,
-		handleStartAllBacklogTasks,
+		handleStartAllUnstartedTasks,
 		handleCardSelect,
 		handleMoveToTrash,
 		handleMoveReviewCardToTrash,

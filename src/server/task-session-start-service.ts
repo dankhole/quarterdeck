@@ -171,7 +171,7 @@ export async function prepareTaskSessionStart(
 	// Lifecycle-owned launches carry an operation id. Re-check the durable board
 	// after acquiring the task resource lock so a rejected or superseded board
 	// transition can never leak into a process launch.
-	if (body.launchOperationId && (!existingCard || taskColumnId === "backlog" || taskColumnId === "trash")) {
+	if (body.launchOperationId && (!existingCard || existingCard.unstarted === true || taskColumnId === "trash")) {
 		const error = !existingCard
 			? "Task no longer exists."
 			: taskColumnId === "trash"

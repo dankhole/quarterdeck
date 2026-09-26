@@ -499,7 +499,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 								onCardDoubleClick: handleCardDoubleClick,
 								onTaskDragEnd: interactions.handleDragEnd,
 								onCreateTask: handleOpenCreateTask,
-								onStartAllTasks: interactions.handleStartAllBacklogTasksFromBoard,
+								onStartAllTasks: interactions.handleStartAllUnstartedTasksFromBoard,
 								onClearTrash: interactions.handleOpenClearTrash,
 								editingTaskId,
 								inlineTaskEditor,

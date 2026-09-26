@@ -88,7 +88,6 @@ function createSelection(): CardSelection {
 	const columns: BoardColumn[] = [
 		{ id: "in_progress", title: "In Progress", cards: [card] },
 		{ id: "review", title: "Review", cards: [] },
-		{ id: "backlog", title: "Backlog", cards: [] },
 		{ id: "trash", title: "Trash", cards: [] },
 	];
 	return {

@@ -108,14 +108,15 @@ function collectShutdownInterruptedTaskIds(
 	return Array.from(taskIds);
 }
 
-/** Collect task IDs from all work columns (everything except backlog and trash). */
+/** Collect task IDs from all work columns (started cards outside Trash). */
 function collectWorkColumnTaskIds(projectState: RuntimeProjectStateResponse): string[] {
 	const taskIds: string[] = [];
 	for (const column of projectState.board.columns) {
-		if (column.id === "backlog" || column.id === "trash") {
+		if (column.id === "trash") {
 			continue;
 		}
 		for (const card of column.cards) {
+			if (card.unstarted) continue;
 			taskIds.push(card.id);
 		}
 	}

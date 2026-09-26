@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getTaskColumnId, type RuntimeProjectBoardCommandEnvelope } from "../../src/core";
+import { findCardInBoard, getTaskColumnId, type RuntimeProjectBoardCommandEnvelope } from "../../src/core";
 import { lockedFileSystem } from "../../src/fs/locked-file-system";
 import { ProjectBoardCommandService } from "../../src/state/project-board-command-service";
 import {
@@ -26,7 +26,7 @@ const move: RuntimeProjectBoardCommandEnvelope = {
 	command: {
 		kind: "move_task",
 		taskId: "task-a",
-		sourceColumnId: "backlog",
+		sourceColumnId: "review",
 		targetColumnId: "in_progress",
 		targetIndex: 0,
 		updatedAt: 200,
@@ -57,7 +57,7 @@ async function withProject(
 				command: {
 					kind: "create_task",
 					taskId: "task-a",
-					columnId: "backlog",
+					columnId: "review",
 					prompt: "Atomic start",
 					baseRef: "main",
 					createdAt: 100,
@@ -126,6 +126,36 @@ describe("project state transactions", () => {
 			await expect(fixture.service.execute(fixture, move)).rejects.toThrow("disk full");
 			expect(await loadProjectState(fixture.projectPath)).toEqual(before);
 			expect(existsSync(getProjectStateTransactionPath(fixture.projectId))).toBe(false);
+		}));
+
+	it("migrates Backlog inside a pending legacy transaction before recovering its files", async () =>
+		await withProject(async (fixture) => {
+			const before = await loadProjectState(fixture.projectPath);
+			const meta = JSON.parse(readFileSync(join(fixture.statePath, "meta.json"), "utf8"));
+			const legacyBoard = {
+				...before.board,
+				columns: before.board.columns.map((column) =>
+					column.id === "review"
+						? {
+								...column,
+								id: "backlog",
+								title: "Backlog",
+								cards: column.cards.map(({ unstarted: _unstarted, ...card }) => card),
+							}
+						: column,
+				),
+			};
+			writeFileSync(
+				getProjectStateTransactionPath(fixture.projectId),
+				JSON.stringify({ version: 1, board: legacyBoard, sessions: before.sessions, meta }),
+			);
+			const recovered = await loadProjectState(fixture.projectPath);
+			expect(recovered.revision).toBe(before.revision);
+			expect(getTaskColumnId(recovered.board, "task-a")).toBe("review");
+			expect(findCardInBoard(recovered.board, "task-a")?.unstarted).toBe(true);
+			expect(JSON.parse(readFileSync(join(fixture.statePath, "meta.json"), "utf8"))).toEqual(meta);
+			expect(existsSync(getProjectStateTransactionPath(fixture.projectId))).toBe(false);
+			expect(await loadProjectBoardById(fixture.projectId)).toEqual(recovered.board);
 		}));
 
 	it("finishes an interrupted transaction before a sessions-only save", async () =>

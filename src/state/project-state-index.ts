@@ -14,6 +14,7 @@ import {
 } from "../core";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { isNodeError } from "../fs/node-error";
+import { migrateLegacyBacklog } from "./legacy-backlog-migration";
 import { type ProjectStateMeta, projectStateMetaSchema, withProjectStateLock } from "./project-state-transaction";
 
 import {
@@ -37,7 +38,6 @@ const PROJECT_ID_COLLISION_SUFFIX_LENGTH = 4;
 const PROJECT_ID_BASE_MAX_LENGTH = 80;
 
 const BOARD_COLUMNS: Array<{ id: RuntimeBoardColumnId; title: string }> = [
-	{ id: "backlog", title: "Backlog" },
 	{ id: "in_progress", title: "In Progress" },
 	{ id: "review", title: "Review" },
 	{ id: "trash", title: "Trash" },
@@ -347,7 +347,13 @@ export async function readProjectBoardUnderLock(projectId: string): Promise<Runt
 	const boardPath = getProjectBoardPath(projectId);
 	const rawBoard = await readJsonFile(boardPath);
 	return canonicalizeTaskBoard(
-		parsePersistedStateFile(boardPath, "board.json", rawBoard, runtimeBoardDataSchema, createEmptyBoard()),
+		parsePersistedStateFile(
+			boardPath,
+			"board.json",
+			migrateLegacyBacklog(rawBoard),
+			runtimeBoardDataSchema,
+			createEmptyBoard(),
+		),
 	);
 }
 

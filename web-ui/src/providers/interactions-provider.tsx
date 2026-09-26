@@ -31,7 +31,7 @@ export interface InteractionsContextValue {
 	handleDeleteDependency: UseBoardInteractionsResult["handleDeleteDependency"];
 	handleDragEnd: UseBoardInteractionsResult["handleDragEnd"];
 	handleStartTask: UseBoardInteractionsResult["handleStartTask"];
-	handleStartAllBacklogTasks: UseBoardInteractionsResult["handleStartAllBacklogTasks"];
+	handleStartAllUnstartedTasks: UseBoardInteractionsResult["handleStartAllUnstartedTasks"];
 	handleCardSelect: UseBoardInteractionsResult["handleCardSelect"];
 	handleMoveReviewCardToTrash: UseBoardInteractionsResult["handleMoveReviewCardToTrash"];
 	handleRestoreTaskFromTrash: UseBoardInteractionsResult["handleRestoreTaskFromTrash"];
@@ -53,7 +53,7 @@ export interface InteractionsContextValue {
 	handleCreateAndStartTasks: UseTaskStartActionsResult["handleCreateAndStartTasks"];
 	handleCreateStartAndOpenTask: UseTaskStartActionsResult["handleCreateStartAndOpenTask"];
 	handleStartTaskFromBoard: UseTaskStartActionsResult["handleStartTaskFromBoard"];
-	handleStartAllBacklogTasksFromBoard: UseTaskStartActionsResult["handleStartAllBacklogTasksFromBoard"];
+	handleStartAllUnstartedTasksFromBoard: UseTaskStartActionsResult["handleStartAllUnstartedTasksFromBoard"];
 
 	// --- Clear-trash dialog state (consumed by DialogProvider) ---
 	isClearTrashDialogOpen: boolean;
@@ -109,7 +109,7 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 		handleDeleteDependency,
 		handleDragEnd,
 		handleStartTask,
-		handleStartAllBacklogTasks,
+		handleStartAllUnstartedTasks,
 		handleCardSelect,
 		handleMoveReviewCardToTrash,
 		handleRestoreTaskFromTrash,
@@ -147,7 +147,7 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 		handleCreateAndStartTasks,
 		handleCreateStartAndOpenTask,
 		handleStartTaskFromBoard,
-		handleStartAllBacklogTasksFromBoard,
+		handleStartAllUnstartedTasksFromBoard,
 	} = useTaskStartActions({
 		board,
 		presentLifecycleBoard,
@@ -155,24 +155,25 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 		prepareCreateTasksForLifecycle,
 		executeTaskLifecycle: taskLifecycle.executeTaskLifecycle,
 		handleStartTask,
-		handleStartAllBacklogTasks,
+		handleStartAllUnstartedTasks,
 		setSelectedTaskId,
 	});
 
-	const pendingEditedTaskColumnId = useMemo(() => {
+	const pendingEditedTaskIsUnstarted = useMemo(() => {
 		if (!pendingTaskStartAfterEditId) {
 			return null;
 		}
-		return findCardSelection(board, pendingTaskStartAfterEditId)?.column.id ?? null;
+		const selection = findCardSelection(board, pendingTaskStartAfterEditId);
+		return selection?.column.id === "review" && selection.card.unstarted === true;
 	}, [board, pendingTaskStartAfterEditId]);
 
 	useEffect(() => {
-		if (!pendingTaskStartAfterEditId || pendingEditedTaskColumnId !== "backlog") {
+		if (!pendingTaskStartAfterEditId || !pendingEditedTaskIsUnstarted) {
 			return;
 		}
 		handleStartTask(pendingTaskStartAfterEditId);
 		clearPendingTaskStartAfterEditId();
-	}, [clearPendingTaskStartAfterEditId, handleStartTask, pendingEditedTaskColumnId, pendingTaskStartAfterEditId]);
+	}, [clearPendingTaskStartAfterEditId, handleStartTask, pendingEditedTaskIsUnstarted, pendingTaskStartAfterEditId]);
 
 	const value = useMemo<InteractionsContextValue>(
 		() => ({
@@ -181,7 +182,7 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 			handleDeleteDependency,
 			handleDragEnd,
 			handleStartTask,
-			handleStartAllBacklogTasks,
+			handleStartAllUnstartedTasks,
 			handleCardSelect,
 			handleMoveReviewCardToTrash,
 			handleRestoreTaskFromTrash,
@@ -201,7 +202,7 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 			handleCreateAndStartTasks,
 			handleCreateStartAndOpenTask,
 			handleStartTaskFromBoard,
-			handleStartAllBacklogTasksFromBoard,
+			handleStartAllUnstartedTasksFromBoard,
 			isClearTrashDialogOpen,
 			setIsClearTrashDialogOpen,
 		}),
@@ -211,7 +212,7 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 			handleDeleteDependency,
 			handleDragEnd,
 			handleStartTask,
-			handleStartAllBacklogTasks,
+			handleStartAllUnstartedTasks,
 			handleCardSelect,
 			handleMoveReviewCardToTrash,
 			handleRestoreTaskFromTrash,
@@ -231,7 +232,7 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 			handleCreateAndStartTasks,
 			handleCreateStartAndOpenTask,
 			handleStartTaskFromBoard,
-			handleStartAllBacklogTasksFromBoard,
+			handleStartAllUnstartedTasksFromBoard,
 			isClearTrashDialogOpen,
 		],
 	);

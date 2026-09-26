@@ -117,7 +117,7 @@ export function createTaskOnBoard({
 
 	const trimmedPrompt = prompt.trim();
 	const baseRef = resolveEffectiveBaseRef(branchRef, defaultBranchRef);
-	const created = addTaskToColumnWithResult(board, "backlog", {
+	const created = addTaskToColumnWithResult(board, "review", {
 		prompt: trimmedPrompt,
 		images,
 		baseRef,
@@ -164,7 +164,7 @@ export function createTasksOnBoard({
 	const createdTaskIds: string[] = [];
 	const createdTasks: BoardCard[] = [];
 	for (const prompt of validPrompts) {
-		const created = addTaskToColumnWithResult(updatedBoard, "backlog", {
+		const created = addTaskToColumnWithResult(updatedBoard, "review", {
 			prompt,
 			images,
 			baseRef,

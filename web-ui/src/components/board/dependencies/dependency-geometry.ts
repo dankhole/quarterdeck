@@ -52,7 +52,7 @@ interface AnchorPoint {
 
 const SOURCE_CONNECTOR_PADDING = 2;
 const TARGET_CONNECTOR_PADDING = 8;
-const COLUMN_ORDER: BoardColumnId[] = ["backlog", "in_progress", "review", "trash"];
+const COLUMN_ORDER: BoardColumnId[] = ["in_progress", "review", "trash"];
 const SIDE_NORMALS: Record<AnchorSide, { x: number; y: number }> = {
 	left: { x: -1, y: 0 },
 	right: { x: 1, y: 0 },
@@ -140,7 +140,7 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export function normalizeColumnId(value: string | undefined): BoardColumnId | null {
-	if (value === "backlog" || value === "in_progress" || value === "review" || value === "trash") {
+	if (value === "in_progress" || value === "review" || value === "trash") {
 		return value;
 	}
 	return null;
@@ -187,25 +187,15 @@ function chooseConnection(
 	firstPadding: number,
 	secondPadding: number,
 ): { start: AnchorPoint; end: AnchorPoint } {
-	// Rendered links currently only survive when at least one endpoint is in backlog.
-	// Draft links may still target free pointer space while the user is dragging.
-	// Routing rules:
-	// 1) If both cards are in backlog, connect right -> right.
-	// 2) If cards are in different columns, preserve first -> second direction while preferring
-	//    right -> left for forward links and left -> right for backward links.
-	// 3) Otherwise fall back to the cheapest side-pairing based on geometry.
+	// Same-column links curve around the cards; cross-column links follow column order.
+	// Draft links face the pointer so they remain natural on either side of Review.
 	const firstColumnId = firstAnchor.columnId;
 	const secondColumnId = secondAnchor.columnId;
 	const firstColumnOrder = getColumnOrder(firstColumnId);
 	const secondColumnOrder = getColumnOrder(secondColumnId);
 
 	if (secondColumnId === null) {
-		const sourceSide: AnchorSide =
-			firstColumnId === "backlog"
-				? "right"
-				: firstColumnId === "in_progress" || firstColumnId === "review"
-					? "left"
-					: "left";
+		const sourceSide: AnchorSide = secondAnchor.centerX >= firstAnchor.centerX ? "right" : "left";
 		const targetSide: AnchorSide = sourceSide === "right" ? "left" : "right";
 		return {
 			start: getAnchorPoint(firstAnchor, sourceSide, firstLaneOffset, firstPadding),
@@ -214,10 +204,7 @@ function chooseConnection(
 	}
 
 	if (firstColumnId === null) {
-		const targetSide: AnchorSide =
-			secondColumnId === "backlog" || secondColumnId === "in_progress" || secondColumnId === "review"
-				? "right"
-				: "left";
+		const targetSide: AnchorSide = firstAnchor.centerX >= secondAnchor.centerX ? "right" : "left";
 		const sourceSide: AnchorSide = targetSide === "right" ? "left" : "right";
 		return {
 			start: getAnchorPoint(firstAnchor, sourceSide, firstLaneOffset, firstPadding),
@@ -229,7 +216,7 @@ function chooseConnection(
 		firstColumnId &&
 		secondColumnId &&
 		firstColumnId === secondColumnId &&
-		(firstColumnId === "backlog" || firstColumnId === "in_progress" || firstColumnId === "review")
+		(firstColumnId === "in_progress" || firstColumnId === "review")
 	) {
 		return {
 			start: getAnchorPoint(firstAnchor, "right", firstLaneOffset, firstPadding),

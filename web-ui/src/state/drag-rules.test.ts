@@ -10,11 +10,11 @@ import type { BoardCard, BoardColumn } from "@/types";
 
 describe("isAllowedCrossColumnCardMove", () => {
 	it("allows backlog -> in_progress", () => {
-		expect(isAllowedCrossColumnCardMove("backlog", "in_progress")).toBe(true);
+		expect(isAllowedCrossColumnCardMove("review", "in_progress", { unstarted: true })).toBe(true);
 	});
 
 	it("allows any column -> trash (except trash itself)", () => {
-		expect(isAllowedCrossColumnCardMove("backlog", "trash")).toBe(true);
+		expect(isAllowedCrossColumnCardMove("review", "trash")).toBe(true);
 		expect(isAllowedCrossColumnCardMove("in_progress", "trash")).toBe(true);
 		expect(isAllowedCrossColumnCardMove("review", "trash")).toBe(true);
 	});
@@ -95,24 +95,8 @@ describe("isAllowedCrossColumnCardMove", () => {
 		).toBe(false);
 	});
 
-	it("disallows backlog -> review", () => {
-		expect(isAllowedCrossColumnCardMove("backlog", "review")).toBe(false);
-	});
-
-	it("disallows review -> backlog", () => {
-		expect(isAllowedCrossColumnCardMove("review", "backlog")).toBe(false);
-	});
-
-	it("disallows in_progress -> backlog", () => {
-		expect(isAllowedCrossColumnCardMove("in_progress", "backlog")).toBe(false);
-	});
-
 	it("disallows trash -> in_progress", () => {
 		expect(isAllowedCrossColumnCardMove("trash", "in_progress")).toBe(false);
-	});
-
-	it("disallows trash -> backlog", () => {
-		expect(isAllowedCrossColumnCardMove("trash", "backlog")).toBe(false);
 	});
 });
 
@@ -127,14 +111,14 @@ describe("findCardColumnId", () => {
 	});
 
 	const columns: BoardColumn[] = [
-		{ id: "backlog", title: "Backlog", cards: [card("task-1", "A")] },
+		{ id: "review", title: "Review", cards: [card("task-1", "A")] },
 		{ id: "in_progress", title: "In Progress", cards: [card("task-2", "B")] },
-		{ id: "review", title: "Review", cards: [] },
+
 		{ id: "trash", title: "Trash", cards: [card("task-3", "C")] },
 	];
 
 	it("finds task in backlog", () => {
-		expect(findCardColumnId(columns, "task-1")).toBe("backlog");
+		expect(findCardColumnId(columns, "task-1")).toBe("review");
 	});
 
 	it("finds task in in_progress", () => {
@@ -156,7 +140,7 @@ describe("findCardColumnId", () => {
 
 describe("isCardDropDisabled", () => {
 	it("allows drop when no active drag source", () => {
-		expect(isCardDropDisabled("backlog", null)).toBe(false);
+		expect(isCardDropDisabled("review", null)).toBe(false);
 	});
 
 	it("keeps manual in-progress to review drops disabled", () => {
@@ -214,18 +198,12 @@ describe("isCardDropDisabled", () => {
 		expect(isCardDropDisabled("review", "trash")).toBe(false);
 	});
 
-	it("disables drop on backlog from non-backlog source", () => {
-		expect(isCardDropDisabled("backlog", "in_progress")).toBe(true);
-		expect(isCardDropDisabled("backlog", "review")).toBe(true);
-		expect(isCardDropDisabled("backlog", "trash")).toBe(true);
-	});
-
 	it("allows reordering within backlog", () => {
-		expect(isCardDropDisabled("backlog", "backlog")).toBe(false);
+		expect(isCardDropDisabled("review", "review")).toBe(false);
 	});
 
 	it("allows backlog -> in_progress", () => {
-		expect(isCardDropDisabled("in_progress", "backlog")).toBe(false);
+		expect(isCardDropDisabled("in_progress", "review", { activeDragTaskUnstarted: true })).toBe(false);
 	});
 
 	it("allows reordering within in_progress", () => {
@@ -237,7 +215,7 @@ describe("isCardDropDisabled", () => {
 	});
 
 	it("allows any column -> trash except trash itself", () => {
-		expect(isCardDropDisabled("trash", "backlog")).toBe(false);
+		expect(isCardDropDisabled("trash", "review")).toBe(false);
 		expect(isCardDropDisabled("trash", "in_progress")).toBe(false);
 		expect(isCardDropDisabled("trash", "review")).toBe(false);
 	});

@@ -10,7 +10,7 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeWorktreeEnsureResponse,
 } from "../../src/core";
-import { saveProjectSessions } from "../../src/state";
+import { saveProjectSessions, saveProjectState } from "../../src/state";
 import { createBoard, createReviewBoard } from "../utilities/board-factory";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
 import { getAvailablePort, startQuarterdeckServer } from "../utilities/integration-server";
@@ -102,12 +102,12 @@ describe("server restart integration", { concurrent: false }, () => {
 
 			const taskId = "preserve-worktree-task";
 			const board = createBoard("Preserve existing worktree");
-			const backlogColumn = board.columns.find((column) => column.id === "backlog");
-			if (!backlogColumn?.cards[0]) {
-				throw new Error("Expected a backlog card for seed board.");
+			const unstartedColumn = board.columns.find((column) => column.id === "review");
+			if (!unstartedColumn?.cards[0]) {
+				throw new Error("Expected an unstarted card for seed board.");
 			}
-			backlogColumn.cards[0].id = taskId;
-			backlogColumn.cards[0].baseRef = baseRef;
+			unstartedColumn.cards[0].id = taskId;
+			unstartedColumn.cards[0].baseRef = baseRef;
 
 			const saveResponse = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
 				baseUrl: `http://127.0.0.1:${port}`,
@@ -187,6 +187,8 @@ describe("server restart integration", { concurrent: false }, () => {
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
+		writeFileSync(join(projectPath, "initial.txt"), "fixture\n", "utf8");
+		commitAll(projectPath, "initial commit");
 
 		const taskId = "stale-exit-review-task";
 		const taskTitle = "Stale Exit Review Task";
@@ -212,39 +214,32 @@ describe("server restart integration", { concurrent: false }, () => {
 			});
 			expect(currentState.status).toBe(200);
 
-			const boardSeedResponse = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
+			await withStateHomeOverride(tempHome, async () => {
+				await saveProjectState(projectPath, {
+					board: createReviewBoard(taskId, taskTitle),
+					sessions: {},
+					expectedRevision: currentState.payload.revision,
+				});
+			});
+
+			const taskWorktreeInfo = await requestJson<RuntimeWorktreeEnsureResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
-				procedure: "project.applyBoardCommands",
+				procedure: "project.ensureWorktree",
 				type: "mutation",
 				projectId,
-				payload: createBoardSeedCommandBatch(
-					createReviewBoard(taskId, taskTitle),
-					currentState.payload.revision,
-					"seed-exit-review",
-				),
+				payload: { taskId, baseRef: "HEAD" },
 			});
-			expect(boardSeedResponse.status).toBe(200);
-
+			expect(taskWorktreeInfo.status).toBe(200);
+			if (!taskWorktreeInfo.payload.ok) throw new Error(taskWorktreeInfo.payload.error ?? "Fixture worktree failed");
+			const taskWorktreePath = taskWorktreeInfo.payload.path;
 			const persistedSessions = await withStateHomeOverride(
 				tempHome,
 				async () =>
 					await saveProjectSessions(projectPath, {
-						[taskId]: createPersistedReviewSession(taskId, projectPath, now, "exit"),
+						[taskId]: createPersistedReviewSession(taskId, taskWorktreePath, now, "exit"),
 					}),
 			);
 			expect(persistedSessions[taskId]?.reviewReason).toBe("exit");
-			const taskWorktreeInfo = await requestJson<RuntimeTaskRepositoryInfoResponse>({
-				baseUrl: `http://127.0.0.1:${firstPort}`,
-				procedure: "project.getTaskContext",
-				type: "query",
-				projectId,
-				payload: {
-					taskId,
-					baseRef: "HEAD",
-				},
-			});
-			expect(taskWorktreeInfo.status).toBe(200);
-			mkdirSync(taskWorktreeInfo.payload.path, { recursive: true });
 		} finally {
 			await firstServer.stop();
 		}
@@ -285,7 +280,7 @@ describe("server restart integration", { concurrent: false }, () => {
 					baseRef: "HEAD",
 				},
 			});
-			expect(worktreeInfo.status).toBe(200);
+			expect(worktreeInfo.status, JSON.stringify(worktreeInfo.payload)).toBe(200);
 			expect(worktreeInfo.payload.exists).toBe(true);
 		} finally {
 			await secondServer.stop();
@@ -300,6 +295,8 @@ describe("server restart integration", { concurrent: false }, () => {
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
+		writeFileSync(join(projectPath, "initial.txt"), "fixture\n", "utf8");
+		commitAll(projectPath, "initial commit");
 
 		const taskId = "skip-cleanup-flag-review-task";
 		const taskTitle = "Keep review task when cleanup flag is enabled";
@@ -326,40 +323,32 @@ describe("server restart integration", { concurrent: false }, () => {
 			});
 			expect(currentState.status).toBe(200);
 
-			const boardSeedResponse = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
+			await withStateHomeOverride(tempHome, async () => {
+				await saveProjectState(projectPath, {
+					board: createReviewBoard(taskId, taskTitle),
+					sessions: {},
+					expectedRevision: currentState.payload.revision,
+				});
+			});
+
+			const taskWorktreeInfo = await requestJson<RuntimeWorktreeEnsureResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
-				procedure: "project.applyBoardCommands",
+				procedure: "project.ensureWorktree",
 				type: "mutation",
 				projectId,
-				payload: createBoardSeedCommandBatch(
-					createReviewBoard(taskId, taskTitle),
-					currentState.payload.revision,
-					"seed-skip-cleanup-review",
-				),
+				payload: { taskId, baseRef: "HEAD" },
 			});
-			expect(boardSeedResponse.status).toBe(200);
-
+			expect(taskWorktreeInfo.status).toBe(200);
+			if (!taskWorktreeInfo.payload.ok) throw new Error(taskWorktreeInfo.payload.error ?? "Fixture worktree failed");
+			const taskWorktreePath = taskWorktreeInfo.payload.path;
 			const persistedSessions = await withStateHomeOverride(
 				tempHome,
 				async () =>
 					await saveProjectSessions(projectPath, {
-						[taskId]: createPersistedReviewSession(taskId, projectPath, now, "hook"),
+						[taskId]: createPersistedReviewSession(taskId, taskWorktreePath, now, "hook"),
 					}),
 			);
 			expect(persistedSessions[taskId]?.reviewReason).toBe("hook");
-
-			const taskWorktreeInfo = await requestJson<RuntimeTaskRepositoryInfoResponse>({
-				baseUrl: `http://127.0.0.1:${firstPort}`,
-				procedure: "project.getTaskContext",
-				type: "query",
-				projectId,
-				payload: {
-					taskId,
-					baseRef: "HEAD",
-				},
-			});
-			expect(taskWorktreeInfo.status).toBe(200);
-			mkdirSync(taskWorktreeInfo.payload.path, { recursive: true });
 		} finally {
 			await firstServer.stop();
 		}
@@ -401,7 +390,7 @@ describe("server restart integration", { concurrent: false }, () => {
 					baseRef: "HEAD",
 				},
 			});
-			expect(worktreeInfo.status).toBe(200);
+			expect(worktreeInfo.status, JSON.stringify(worktreeInfo.payload)).toBe(200);
 			expect(worktreeInfo.payload.exists).toBe(true);
 		} finally {
 			await secondServer.stop();

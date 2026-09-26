@@ -39,6 +39,7 @@ export function resolveBoardCardViewModel({
 	hasRestartSessionHandler: boolean;
 }) {
 	const isTrashCard = columnId === "trash";
+	const isUnstarted = card.unstarted === true;
 	const isCardInteractive = !isTrashCard;
 	const taskIdentity = resolveTaskIdentity({
 		projectRootPath: workspacePath,
@@ -51,22 +52,26 @@ export function resolveBoardCardViewModel({
 		(sessionSummary?.state === "running" || sessionSummary?.state === "awaiting_review") &&
 		taskIdentity.isSessionLaunchDiverged;
 	const displayTitle = card.title || truncateTaskPromptLabel(card.prompt);
-	const statusLabel = sessionSummary ? describeSessionState(sessionSummary) : null;
-	const statusTagStyle = sessionSummary ? getSessionStatusBadgeStyle(sessionSummary) : null;
-	const statusTooltip = sessionSummary ? getSessionStatusTooltip(sessionSummary) : null;
-	const showStatusBadge = Boolean(statusLabel && statusTagStyle && columnId !== "backlog" && !isTrashCard);
+	const statusLabel = isUnstarted ? "Unstarted" : sessionSummary ? describeSessionState(sessionSummary) : null;
+	const statusTagStyle = isUnstarted ? "neutral" : sessionSummary ? getSessionStatusBadgeStyle(sessionSummary) : null;
+	const statusTooltip = isUnstarted
+		? "This task has not been started"
+		: sessionSummary
+			? getSessionStatusTooltip(sessionSummary)
+			: null;
+	const showStatusBadge = Boolean(statusLabel && statusTagStyle && !isTrashCard);
 	const cardHoverTooltip = getCardHoverTooltip(sessionSummary);
-	const latestSummaryText = sessionSummary?.displaySummary ?? null;
+	const latestSummaryText = isUnstarted ? null : (sessionSummary?.displaySummary ?? null);
 	const isSummaryVisibleOnCard = showSummaryOnCards && Boolean(latestSummaryText);
-	const effectiveTooltip = !isSummaryVisibleOnCard && showSummaryOnHover ? cardHoverTooltip : null;
-	const isSessionDead = isBoardCardSessionDead(sessionSummary);
+	const effectiveTooltip = !isUnstarted && !isSummaryVisibleOnCard && showSummaryOnHover ? cardHoverTooltip : null;
+	const isSessionDead = !isUnstarted && isBoardCardSessionDead(sessionSummary);
 	const isSessionRestartable =
 		(columnId === "in_progress" || columnId === "review") &&
 		isSessionDead &&
 		isRestartDelayElapsed &&
 		hasRestartSessionHandler;
 	const statusMarker = columnId === "in_progress" ? (isSessionRestartable ? "restart" : "spinner") : null;
-	const showProjectStatus = columnId === "in_progress" || columnId === "review" || isTrashCard;
+	const showProjectStatus = !isUnstarted && (columnId === "in_progress" || columnId === "review" || isTrashCard);
 	const detachedWorktreeDisplay = resolveDetachedTaskWorktreeDisplay({
 		isDetached: taskIdentity.assignedIsDetached,
 		isAssignedShared: isSharedCheckout,
@@ -102,6 +107,7 @@ export function resolveBoardCardViewModel({
 
 	return {
 		isTrashCard,
+		isUnstarted,
 		isCardInteractive,
 		isSharedCheckout,
 		isSessionPathDiverged,

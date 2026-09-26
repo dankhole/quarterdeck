@@ -27,6 +27,7 @@ function ColumnSection({
 	onEditTask,
 	activeDragTaskId,
 	activeDragSourceColumnId,
+	activeDragTaskUnstarted,
 }: {
 	column: BoardColumn;
 	selectedCardId: string;
@@ -42,6 +43,7 @@ function ColumnSection({
 	onEditTask?: (card: BoardCardModel) => void;
 	activeDragTaskId?: string | null;
 	activeDragSourceColumnId?: BoardColumnId | null;
+	activeDragTaskUnstarted?: boolean;
 }): React.ReactElement {
 	const {
 		onStartTask,
@@ -58,11 +60,13 @@ function ColumnSection({
 	const { moveToTrashLoadingById, showSummaryOnCards, showSummaryOnHover, uncommittedChangesOnCardsEnabled } =
 		useReactiveCardState();
 	const [open, setOpen] = useState(defaultOpen);
-	const canCreate = column.id === "backlog" && onCreateTask;
-	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
+	const canCreate = column.id === "review" && onCreateTask;
+	const unstartedCount = column.cards.filter((card) => card.unstarted).length;
+	const canStartAllTasks = column.id === "review" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
 	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null, {
 		activeDragTaskId,
+		activeDragTaskUnstarted,
 	});
 
 	useEffect(() => {
@@ -120,9 +124,9 @@ function ColumnSection({
 						variant="ghost"
 						size="sm"
 						onClick={onStartAllTasks}
-						disabled={column.cards.length === 0}
-						aria-label="Start all backlog tasks"
-						title={column.cards.length > 0 ? "Start all backlog tasks" : "Backlog is empty"}
+						disabled={unstartedCount === 0}
+						aria-label="Start all unstarted tasks"
+						title={unstartedCount > 0 ? "Start all unstarted tasks" : "No unstarted tasks"}
 						style={{ marginRight: 4 }}
 					/>
 				) : null}
@@ -164,8 +168,23 @@ function ColumnSection({
 								const items: ReactNode[] = [];
 								let cardIndex = 0;
 								const cards = sortColumnCards(column.cards, column.id);
+								let unstartedSectionShown = false;
 								for (const card of cards) {
-									if (column.id === "backlog" && editingTaskId === card.id) {
+									if (column.id === "review" && card.unstarted && !unstartedSectionShown) {
+										unstartedSectionShown = true;
+										items.push(
+											<div
+												key="unstarted-heading"
+												className="flex items-center gap-2 px-1 pb-2 pt-3 text-xs text-text-secondary"
+												data-unstarted-heading
+											>
+												<span>Unstarted</span>
+												<span className="text-text-tertiary">{unstartedCount}</span>
+												<span className="h-px flex-1 bg-border" />
+											</div>,
+										);
+									}
+									if (column.id === "review" && card.unstarted && editingTaskId === card.id) {
 										items.push(
 											<div key={card.id} style={{ marginBottom: 8 }}>
 												{inlineTaskEditor}
@@ -196,14 +215,14 @@ function ColumnSection({
 											onTerminalWarmup={onTerminalWarmup}
 											onTerminalCancelWarmup={onTerminalCancelWarmup}
 											onClick={() => {
-												if (column.id === "backlog") {
+												if (column.id === "review" && card.unstarted) {
 													onEditTask?.(card);
 													return;
 												}
 												onCardClick(card);
 											}}
 											onDoubleClick={() => {
-												if (column.id === "backlog") {
+												if (column.id === "review" && card.unstarted) {
 													return;
 												}
 												onCardDoubleClick?.(card);
@@ -329,14 +348,17 @@ export function ColumnContextPanel({
 							onCardClick={(card) => onCardSelect(card.id)}
 							onCardDoubleClick={onCardDoubleClick ? (card) => onCardDoubleClick(card.id) : undefined}
 							taskSessions={taskSessions}
-							onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
-							onStartAllTasks={column.id === "backlog" ? onStartAllTasks : undefined}
+							onCreateTask={column.id === "review" ? onCreateTask : undefined}
+							onStartAllTasks={column.id === "review" ? onStartAllTasks : undefined}
 							onClearTrash={column.id === "trash" ? onClearTrash : undefined}
-							editingTaskId={column.id === "backlog" ? editingTaskId : null}
-							inlineTaskEditor={column.id === "backlog" ? inlineTaskEditor : undefined}
-							onEditTask={column.id === "backlog" ? onEditTask : undefined}
+							editingTaskId={column.id === "review" ? editingTaskId : null}
+							inlineTaskEditor={column.id === "review" ? inlineTaskEditor : undefined}
+							onEditTask={column.id === "review" ? onEditTask : undefined}
 							activeDragTaskId={activeDragTaskId}
 							activeDragSourceColumnId={activeDragSourceColumnId}
+							activeDragTaskUnstarted={selection.allColumns.some((item) =>
+								item.cards.some((card) => card.id === activeDragTaskId && card.unstarted),
+							)}
 						/>
 					))}
 				</div>

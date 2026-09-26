@@ -15,8 +15,8 @@ describe("getDependencyAddErrorMessage", () => {
 		expect(getDependencyAddErrorMessage("trash_task")).toBe("Links cannot include trashed tasks.");
 	});
 
-	it("returns message for non_backlog", () => {
-		expect(getDependencyAddErrorMessage("non_backlog")).toBe("Links must include at least one Backlog task.");
+	it("returns message for non_unstarted", () => {
+		expect(getDependencyAddErrorMessage("non_unstarted")).toBe("Links must include at least one unstarted task.");
 	});
 
 	it("returns fallback for unknown reason", () => {

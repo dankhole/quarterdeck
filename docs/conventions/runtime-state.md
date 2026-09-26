@@ -18,12 +18,16 @@ Every state read, mutation, session-only save, session repair/prune, and backup 
 
 The journal is the commit record: an installation failure can return an error after the command was accepted. Preserve it for the next reader/writer, replay idempotently, and use the persisted command receipt when retrying intent. Invalid journals fail closed rather than exposing a partially installed state. Existing projects without a journal retain their file format and need no migration. Backup snapshots recover and copy under the same lock; maintenance restore consumes any pending transaction before replacing state and still requires stopped runtimes.
 
+## Unstarted tasks
+
+The canonical board columns are In Progress, Review, and Trash. Unstarted tasks live in Review with an explicit `unstarted: true` card property; absence of a session never establishes this status. Persisted legacy Backlog cards migrate into Review with that property, including boards inside pending state-transaction journals before recovery validates and installs them. Starting consumes the unstarted precondition and clears it atomically with the move to In Progress; interrupted pre-launch recovery restores Review/Unstarted without discarding workspace identity. Trashing preserves the property, and restoring an unstarted task returns it to Review without launching an agent. Dependency eligibility, editing, and bulk start use the explicit property.
+
 ## Command receipts and lifecycle effects
 
 - Board-command receipt metadata is server-owned and bounded. Check a repeated command ID and payload fingerprint before expected-revision rejection so a retry after a lost response works across runtime restarts. Reject reuse of the same ID with different content.
 - A first-seen accepted command, including a semantic no-op, consumes one revision so its receipt and ordering are durable.
 - Receipts retain whether the originally accepted command changed the board. Lifecycle orchestration must use that recorded result, source-column preconditions, and authoritative session state before running a post-commit process effect; `replayed` alone is insufficient.
-- Coalesce same-process duplicate create/start calls, never blindly relaunch after a persisted move, and recover an interrupted pre-launch move to Backlog without deleting worktree or branch state.
+- Coalesce same-process duplicate create/start calls, never blindly relaunch after a persisted move, and recover an interrupted pre-launch move to Review/Unstarted without deleting worktree or branch state.
 - Board-changing lifecycle effects wait for the optimistic command queue to flush before starting or stopping a task session, creating or restoring a worktree, or deleting a worktree. Otherwise the effect can observe the old durable card or outlive a rejected optimistic move.
 
 ### Create and start
@@ -33,7 +37,7 @@ Fresh explicit Start has a bounded initial Running phase after process ownership
 Lifecycle `create_and_start` tolerates bounded bursts of unrelated revision advances from runtime-owned title, session, branch, or worktree projections:
 
 1. Rebase the additive `create_task` step only after proving the stable task ID is still absent.
-2. Rebase the following move only while that exact task identity remains in Backlog.
+2. Rebase the following move only while that exact task identity remains unstarted in Review.
 3. Re-evaluate both guards before every bounded retry.
 4. If the identity appeared concurrently, its source-column precondition changed, or the retry budget was exhausted, retain the latest revision conflict and run no process or worktree effect.
 
@@ -41,7 +45,7 @@ This makes sequential bulk starts resilient without weakening identity protectio
 
 ### Trash and linked tasks
 
-A Trash transition that unblocks linked Backlog tasks journals the linked-task plan and deterministic child operation IDs before moving the parent. The move consumes the exact revision from which the plan was derived; canonical dependency cleanup after the move intentionally removes the evidence needed to rediscover those children.
+A Trash transition that unblocks linked unstarted tasks journals the linked-task plan and deterministic child operation IDs before moving the parent. The move consumes the exact revision from which the plan was derived; canonical dependency cleanup after the move intentionally removes the evidence needed to rediscover those children.
 
 Clear Trash captures the originating project, initial revision, and exact task IDs/creation times before awaiting the board-command flush. It sends one typed request to `ProjectTaskLifecycleService.clearTrash`, which runs four bounded workers through the existing per-task lifecycle service and returns compact outcomes plus one final authoritative state. Each child has a deterministic operation ID; a lost response can retry the same request once. Navigation must not retarget the revision, stop the remaining work, or apply the response to another project. Progress and completion use one aggregate toast. Failed identities remain protected by normal Trash/source-column guards; if a deleted task's old receipt has already been pruned, report deletion as unconfirmed rather than repeating destructive effects or claiming confirmed success.
 

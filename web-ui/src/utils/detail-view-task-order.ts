@@ -11,7 +11,9 @@ export function getNextDetailTaskIdAfterTrashMove(board: BoardData, taskId: stri
 			continue;
 		}
 		for (const card of column.cards) {
-			detailTaskIds.push(card.id);
+			if (!card.unstarted) {
+				detailTaskIds.push(card.id);
+			}
 		}
 	}
 

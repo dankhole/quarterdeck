@@ -22,7 +22,6 @@ function stateWithTask(
 		git: { currentBranch: "main", defaultBranch: "main", branches: ["main"] },
 		board: {
 			columns: [
-				{ id: "backlog", title: "Backlog", cards: [] },
 				{ id: "in_progress", title: "In Progress", cards: columnId === "in_progress" ? [card] : [] },
 				{ id: "review", title: "Review", cards: columnId === "review" ? [card] : [] },
 				{ id: "trash", title: "Trash", cards: [] },
@@ -46,7 +45,7 @@ describe("ProjectStateDiagnosticTracker", () => {
 				{
 					projectId: "project-1",
 					revision: 3,
-					cardCounts: { backlog: 0, in_progress: 0, review: 1, trash: 0 },
+					cardCounts: { in_progress: 0, review: 1, trash: 0 },
 					sessionCount: 1,
 					sessionColumnDivergences: [
 						{

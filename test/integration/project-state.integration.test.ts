@@ -25,11 +25,13 @@ import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 function createBoard(title: string): RuntimeBoardData {
 	return {
 		columns: [
+			{ id: "in_progress", title: "In Progress", cards: [] },
 			{
-				id: "backlog",
-				title: "Backlog",
+				id: "review",
+				title: "Review",
 				cards: [
 					{
+						unstarted: true,
 						id: "task-1",
 						title: null,
 						prompt: title,
@@ -39,8 +41,6 @@ function createBoard(title: string): RuntimeBoardData {
 					},
 				],
 			},
-			{ id: "in_progress", title: "In Progress", cards: [] },
-			{ id: "review", title: "Review", cards: [] },
 			{ id: "trash", title: "Trash", cards: [] },
 		],
 		dependencies: [],
@@ -56,6 +56,53 @@ function createSessionSummary(taskId: string): RuntimeTaskSessionSummary {
 }
 
 describe("project-state integration", { concurrent: false }, () => {
+	it("migrates legacy Backlog cards into Review without relabeling already started cards", async () => {
+		await withTemporaryHome(async () => {
+			const { path: projectPath, cleanup } = createTempDir("quarterdeck-backlog-migration-");
+			try {
+				initGitRepository(projectPath);
+				const context = await loadProjectContext(projectPath);
+				const card = {
+					id: "queued",
+					title: "Queued",
+					prompt: "Later",
+					baseRef: "main",
+					createdAt: 1,
+					updatedAt: 1,
+				};
+				mkdirSync(context.statePath, { recursive: true });
+				writeFileSync(
+					join(context.statePath, "board.json"),
+					JSON.stringify({
+						columns: [
+							{ id: "backlog", title: "Backlog", cards: [card] },
+							{ id: "in_progress", title: "In Progress", cards: [] },
+							{ id: "review", title: "Review", cards: [{ ...card, id: "finished" }] },
+							{ id: "trash", title: "Trash", cards: [] },
+						],
+						dependencies: [{ id: "dependency", fromTaskId: "queued", toTaskId: "finished", createdAt: 1 }],
+					}),
+				);
+				const loaded = await loadProjectState(projectPath);
+				expect(loaded.board.columns.map((column) => column.id)).toEqual(["in_progress", "review", "trash"]);
+				const cards = loaded.board.columns.find((column) => column.id === "review")?.cards;
+				expect(cards?.map((card) => [card.id, card.unstarted])).toEqual([
+					["finished", undefined],
+					["queued", true],
+				]);
+				expect(loaded.board.dependencies).toHaveLength(1);
+				await saveProjectState(projectPath, {
+					board: loaded.board,
+					sessions: loaded.sessions,
+					expectedRevision: loaded.revision,
+				});
+				expect(readFileSync(join(context.statePath, "board.json"), "utf8")).not.toContain('"backlog"');
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("persists revision numbers and rejects stale writes", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-project-");
@@ -73,7 +120,7 @@ describe("project-state integration", { concurrent: false }, () => {
 					expectedRevision: initial.revision,
 				});
 				expect(firstSave.revision).toBe(1);
-				expect(firstSave.board.columns[0]?.cards[0]?.prompt).toBe("Task One");
+				expect(firstSave.board.columns.find((column) => column.id === "review")?.cards[0]?.prompt).toBe("Task One");
 
 				const secondSave = await saveProjectState(projectPath, {
 					board: createBoard("Task Two"),
@@ -81,7 +128,9 @@ describe("project-state integration", { concurrent: false }, () => {
 					expectedRevision: firstSave.revision,
 				});
 				expect(secondSave.revision).toBe(2);
-				expect(secondSave.board.columns[0]?.cards[0]?.prompt).toBe("Task Two");
+				expect(secondSave.board.columns.find((column) => column.id === "review")?.cards[0]?.prompt).toBe(
+					"Task Two",
+				);
 
 				await expect(
 					saveProjectState(projectPath, {
@@ -96,7 +145,9 @@ describe("project-state integration", { concurrent: false }, () => {
 
 				const loadedAfterConflict = await loadProjectState(projectPath);
 				expect(loadedAfterConflict.revision).toBe(2);
-				expect(loadedAfterConflict.board.columns[0]?.cards[0]?.prompt).toBe("Task Two");
+				expect(loadedAfterConflict.board.columns.find((column) => column.id === "review")?.cards[0]?.prompt).toBe(
+					"Task Two",
+				);
 			} finally {
 				cleanup();
 			}
@@ -363,19 +414,19 @@ describe("project-state integration", { concurrent: false }, () => {
 					JSON.stringify(
 						{
 							columns: [
+								{ id: "in_progress", title: "In Progress", cards: [] },
 								{
-									id: "backlog",
-									title: "Backlog",
+									id: "review",
+									title: "Review",
 									cards: [
 										{
+											unstarted: true,
 											prompt: "Missing ID and baseRef",
 											createdAt: Date.now(),
 											updatedAt: Date.now(),
 										},
 									],
 								},
-								{ id: "in_progress", title: "In Progress", cards: [] },
-								{ id: "review", title: "Review", cards: [] },
 								{ id: "trash", title: "Trash", cards: [] },
 							],
 						},
@@ -412,7 +463,7 @@ describe("project-state integration", { concurrent: false }, () => {
 						{
 							...legacyBoard,
 							columns: legacyBoard.columns.map((column) =>
-								column.id === "backlog"
+								column.id === "review"
 									? {
 											...column,
 											cards: column.cards.map((card) => ({
@@ -444,7 +495,7 @@ describe("project-state integration", { concurrent: false }, () => {
 				);
 
 				const state = await loadProjectState(projectPath);
-				const card = state.board.columns[0]?.cards[0];
+				const card = state.board.columns.find((column) => column.id === "review")?.cards[0];
 				expect(card?.prompt).toBe("Legacy task");
 				expect(legacyCardField in (card as Record<string, unknown>)).toBe(false);
 				const session = state.sessions["task-1"];

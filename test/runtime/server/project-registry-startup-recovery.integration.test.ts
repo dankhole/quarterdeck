@@ -124,7 +124,6 @@ function createProjectState(): RuntimeProjectStateResponse {
 		},
 		board: {
 			columns: [
-				{ id: "backlog", title: "Backlog", cards: [] },
 				{ id: "in_progress", title: "In Progress", cards: [card] },
 				{ id: "review", title: "Review", cards: [] },
 				{ id: "trash", title: "Trash", cards: [] },

@@ -13,11 +13,11 @@ import {
 	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
 } from "@/state/board-state";
-import { createBacklogBoard, requireTaskId } from "@/state/board-state-test-helpers";
+import { createUnstartedBoard, requireTaskId } from "@/state/board-state-test-helpers";
 
 describe("moveTaskToColumn", () => {
 	it("can insert moved cards at the top when requested", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B", "Task C"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B", "Task C"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 		const taskC = requireTaskId(fixture.taskIdByPrompt["Task C"], "Task C");
@@ -37,12 +37,12 @@ describe("moveTaskToColumn", () => {
 
 describe("reconcileTaskBranch", () => {
 	it("updates card when branch differs", () => {
-		let board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
-		const taskId = board.columns.find((c) => c.id === "backlog")!.cards[0]!.id;
+		let board = addTaskToColumn(createInitialBoardData(), "review", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "review")!.cards[0]!.id;
 		board = {
 			...board,
 			columns: board.columns.map((c) =>
-				c.id === "backlog"
+				c.id === "review"
 					? { ...c, cards: c.cards.map((card) => (card.id === taskId ? { ...card, branch: null } : card)) }
 					: c,
 			),
@@ -50,17 +50,17 @@ describe("reconcileTaskBranch", () => {
 
 		const result = reconcileTaskBranch(board, taskId, "feat/foo");
 		expect(result.updated).toBe(true);
-		const card = result.board.columns.find((c) => c.id === "backlog")!.cards.find((c) => c.id === taskId);
+		const card = result.board.columns.find((c) => c.id === "review")!.cards.find((c) => c.id === taskId);
 		expect(card?.branch).toBe("feat/foo");
 	});
 
 	it("no-ops when branch matches", () => {
-		let board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
-		const taskId = board.columns.find((c) => c.id === "backlog")!.cards[0]!.id;
+		let board = addTaskToColumn(createInitialBoardData(), "review", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "review")!.cards[0]!.id;
 		board = {
 			...board,
 			columns: board.columns.map((c) =>
-				c.id === "backlog"
+				c.id === "review"
 					? { ...c, cards: c.cards.map((card) => (card.id === taskId ? { ...card, branch: "feat/foo" } : card)) }
 					: c,
 			),
@@ -71,12 +71,12 @@ describe("reconcileTaskBranch", () => {
 	});
 
 	it("does NOT overwrite non-null with null (agent may be temporarily detached)", () => {
-		let board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
-		const taskId = board.columns.find((c) => c.id === "backlog")!.cards[0]!.id;
+		let board = addTaskToColumn(createInitialBoardData(), "review", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "review")!.cards[0]!.id;
 		board = {
 			...board,
 			columns: board.columns.map((c) =>
-				c.id === "backlog"
+				c.id === "review"
 					? { ...c, cards: c.cards.map((card) => (card.id === taskId ? { ...card, branch: "feat/foo" } : card)) }
 					: c,
 			),
@@ -84,17 +84,17 @@ describe("reconcileTaskBranch", () => {
 
 		const result = reconcileTaskBranch(board, taskId, null);
 		expect(result.updated).toBe(false);
-		const card = result.board.columns.find((c) => c.id === "backlog")!.cards.find((c) => c.id === taskId);
+		const card = result.board.columns.find((c) => c.id === "review")!.cards.find((c) => c.id === taskId);
 		expect(card?.branch).toBe("feat/foo");
 	});
 
 	it("updates card when branch changes", () => {
-		let board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
-		const taskId = board.columns.find((c) => c.id === "backlog")!.cards[0]!.id;
+		let board = addTaskToColumn(createInitialBoardData(), "review", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "review")!.cards[0]!.id;
 		board = {
 			...board,
 			columns: board.columns.map((c) =>
-				c.id === "backlog"
+				c.id === "review"
 					? { ...c, cards: c.cards.map((card) => (card.id === taskId ? { ...card, branch: "feat/old" } : card)) }
 					: c,
 			),
@@ -102,37 +102,37 @@ describe("reconcileTaskBranch", () => {
 
 		const result = reconcileTaskBranch(board, taskId, "feat/new");
 		expect(result.updated).toBe(true);
-		const card = result.board.columns.find((c) => c.id === "backlog")!.cards.find((c) => c.id === taskId);
+		const card = result.board.columns.find((c) => c.id === "review")!.cards.find((c) => c.id === taskId);
 		expect(card?.branch).toBe("feat/new");
 	});
 
 	it("updates card from undefined to string", () => {
-		const board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
-		const taskId = board.columns.find((c) => c.id === "backlog")!.cards[0]!.id;
+		const board = addTaskToColumn(createInitialBoardData(), "review", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "review")!.cards[0]!.id;
 
 		const result = reconcileTaskBranch(board, taskId, "feat/foo");
 		expect(result.updated).toBe(true);
-		const card = result.board.columns.find((c) => c.id === "backlog")!.cards.find((c) => c.id === taskId);
+		const card = result.board.columns.find((c) => c.id === "review")!.cards.find((c) => c.id === taskId);
 		expect(card?.branch).toBe("feat/foo");
 	});
 
 	it("no-ops when card has no existing branch and incoming is null (semantically equivalent)", () => {
-		const board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
-		const taskId = board.columns.find((c) => c.id === "backlog")!.cards[0]!.id;
+		const board = addTaskToColumn(createInitialBoardData(), "review", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "review")!.cards[0]!.id;
 
 		const result = reconcileTaskBranch(board, taskId, null);
 		expect(result.updated).toBe(false);
-		const card = result.board.columns.find((c) => c.id === "backlog")!.cards.find((c) => c.id === taskId);
+		const card = result.board.columns.find((c) => c.id === "review")!.cards.find((c) => c.id === taskId);
 		expect(card?.branch).toBeUndefined();
 	});
 
 	it("no-ops when incoming is undefined", () => {
-		let board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
-		const taskId = board.columns.find((c) => c.id === "backlog")!.cards[0]!.id;
+		let board = addTaskToColumn(createInitialBoardData(), "review", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "review")!.cards[0]!.id;
 		board = {
 			...board,
 			columns: board.columns.map((c) =>
-				c.id === "backlog"
+				c.id === "review"
 					? { ...c, cards: c.cards.map((card) => (card.id === taskId ? { ...card, branch: "feat/foo" } : card)) }
 					: c,
 			),
@@ -140,19 +140,19 @@ describe("reconcileTaskBranch", () => {
 
 		const result = reconcileTaskBranch(board, taskId, undefined);
 		expect(result.updated).toBe(false);
-		const card = result.board.columns.find((c) => c.id === "backlog")!.cards.find((c) => c.id === taskId);
+		const card = result.board.columns.find((c) => c.id === "review")!.cards.find((c) => c.id === taskId);
 		expect(card?.branch).toBe("feat/foo");
 	});
 });
 
 describe("reconcileTaskWorkingDirectory", () => {
 	it("does not flip shared-checkout state for Windows path casing changes", () => {
-		const created = addTaskToColumn(createInitialBoardData(), "backlog", {
+		const created = addTaskToColumn(createInitialBoardData(), "review", {
 			prompt: "Task A",
 			baseRef: "main",
 			useWorktree: false,
 		});
-		const taskId = created.columns[0]?.cards[0]?.id;
+		const taskId = created.columns.find((column) => column.id === "review")?.cards[0]?.id;
 		if (!taskId) throw new Error("Expected created task.");
 		const first = reconcileTaskWorkingDirectory(created, taskId, "C:\\Repo", "C:\\Repo");
 
@@ -164,12 +164,12 @@ describe("reconcileTaskWorkingDirectory", () => {
 
 describe("updateTask", () => {
 	it("preserves branch field", () => {
-		let board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
-		const taskId = board.columns.find((c) => c.id === "backlog")!.cards[0]!.id;
+		let board = addTaskToColumn(createInitialBoardData(), "review", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "review")!.cards[0]!.id;
 		board = {
 			...board,
 			columns: board.columns.map((c) =>
-				c.id === "backlog"
+				c.id === "review"
 					? { ...c, cards: c.cards.map((card) => (card.id === taskId ? { ...card, branch: "feat/foo" } : card)) }
 					: c,
 			),
@@ -177,7 +177,7 @@ describe("updateTask", () => {
 
 		const result = updateTask(board, taskId, { prompt: "Updated prompt", baseRef: "develop" });
 		expect(result.updated).toBe(true);
-		const card = result.board.columns.find((c) => c.id === "backlog")!.cards.find((c) => c.id === taskId);
+		const card = result.board.columns.find((c) => c.id === "review")!.cards.find((c) => c.id === taskId);
 		expect(card?.branch).toBe("feat/foo");
 		expect(card?.prompt).toBe("Updated prompt");
 		expect(card?.baseRef).toBe("develop");
@@ -186,10 +186,10 @@ describe("updateTask", () => {
 
 describe("removeTask", () => {
 	it("uses the runtime board deletion rules to remove linked dependencies", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
-		const linked = moveTaskToColumn(fixture.board, taskA, "review");
+		const linked = moveTaskToColumn(moveTaskToColumn(fixture.board, taskA, "in_progress").board, taskA, "review");
 		expect(linked.moved).toBe(true);
 
 		const withDependency = requireDependencyBoard(linked.board, taskA, taskB);
@@ -203,7 +203,7 @@ describe("removeTask", () => {
 
 describe("clearColumnTasks", () => {
 	it("deletes all tasks in the target column via the runtime mutation rules", () => {
-		const fixture = createBacklogBoard(["Task A", "Task B"]);
+		const fixture = createUnstartedBoard(["Task A", "Task B"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 		const moved = moveTaskToColumn(fixture.board, taskA, "trash");
@@ -212,7 +212,7 @@ describe("clearColumnTasks", () => {
 
 		expect(cleared.clearedTaskIds).toEqual([taskA]);
 		expect(cleared.board.columns.find((column) => column.id === "trash")?.cards).toEqual([]);
-		expect(cleared.board.columns.find((column) => column.id === "backlog")?.cards.map((card) => card.id)).toContain(
+		expect(cleared.board.columns.find((column) => column.id === "review")?.cards.map((card) => card.id)).toContain(
 			taskB,
 		);
 	});
@@ -220,15 +220,15 @@ describe("clearColumnTasks", () => {
 
 describe("toggleTaskPinned", () => {
 	it("toggles pinned state through the runtime task updater without changing other card fields", () => {
-		let board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
-		const taskId = board.columns.find((column) => column.id === "backlog")?.cards[0]?.id;
+		let board = addTaskToColumn(createInitialBoardData(), "review", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((column) => column.id === "review")?.cards[0]?.id;
 		if (!taskId) {
 			throw new Error("Expected created task");
 		}
 		board = {
 			...board,
 			columns: board.columns.map((column) =>
-				column.id === "backlog"
+				column.id === "review"
 					? {
 							...column,
 							cards: column.cards.map((card) =>
@@ -243,14 +243,14 @@ describe("toggleTaskPinned", () => {
 
 		const pinned = toggleTaskPinned(board, taskId);
 		expect(pinned.toggled).toBe(true);
-		const pinnedCard = pinned.board.columns.find((column) => column.id === "backlog")?.cards[0];
+		const pinnedCard = pinned.board.columns.find((column) => column.id === "review")?.cards[0];
 		expect(pinnedCard?.pinned).toBe(true);
 		expect(pinnedCard?.branch).toBe("feat/pinned");
 		expect(pinnedCard?.workingDirectory).toBe("/tmp/worktree");
 
 		const unpinned = toggleTaskPinned(pinned.board, taskId);
 		expect(unpinned.toggled).toBe(true);
-		const unpinnedCard = unpinned.board.columns.find((column) => column.id === "backlog")?.cards[0];
+		const unpinnedCard = unpinned.board.columns.find((column) => column.id === "review")?.cards[0];
 		expect(unpinnedCard?.pinned).toBeUndefined();
 		expect(unpinnedCard?.branch).toBe("feat/pinned");
 		expect(unpinnedCard?.workingDirectory).toBe("/tmp/worktree");

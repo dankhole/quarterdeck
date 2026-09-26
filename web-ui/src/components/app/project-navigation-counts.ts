@@ -1,7 +1,6 @@
 import type { RuntimeProjectTaskCounts } from "@/runtime/types";
 
 export interface ProjectNavigationTaskCounts {
-	backlog: number;
 	inProgress: number;
 	review: number;
 	needsInput: number;
@@ -22,7 +21,6 @@ export function resolveProjectNavigationTaskCounts(
 ): ProjectNavigationTaskCounts {
 	const needsInput = Math.max(0, requestedNeedsInputCount);
 	return {
-		backlog: taskCounts.backlog,
 		inProgress: taskCounts.in_progress,
 		review: Math.max(0, taskCounts.review - needsInput),
 		needsInput,

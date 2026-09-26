@@ -29,13 +29,14 @@ export interface ResolvedTaskWorktreeMetadataInput {
 export function collectTrackedTasks(board: RuntimeBoardData): TrackedTaskWorktree[] {
 	const tracked: TrackedTaskWorktree[] = [];
 	for (const column of board.columns) {
-		// Backlog and trash cards do not need git metadata polling. Tracking only
+		// Unstarted and trash cards do not need git metadata polling. Tracking only
 		// active columns avoids unnecessary work, and trash paths are reconstructed
 		// from task id on the web-ui side.
-		if (column.id === "backlog" || column.id === "trash") {
+		if (column.id === "trash") {
 			continue;
 		}
 		for (const card of column.cards) {
+			if (card.unstarted) continue;
 			tracked.push({
 				taskId: card.id,
 				baseRef: card.baseRef,

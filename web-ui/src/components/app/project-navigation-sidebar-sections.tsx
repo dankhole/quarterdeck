@@ -6,7 +6,7 @@ import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
 import { useBooleanLocalStorageValue } from "@/utils/react-use";
 
 const ONBOARDING_TIPS = [
-	{ label: "Create tasks", hint: "Add prompts to the backlog, then start them to spawn isolated agents" },
+	{ label: "Create tasks", hint: "Save prompts in Review, then start them to spawn isolated agents" },
 	{ label: "Run in parallel", hint: "Each task gets its own git worktree — agents work simultaneously" },
 	{ label: "Review changes", hint: "When an agent finishes, review its diff and commit or iterate" },
 ] as const;
@@ -15,7 +15,7 @@ const MOD = isMacPlatform ? "⌘" : modifierKeyLabel;
 
 const SIDEBAR_SHORTCUTS = [
 	{ keys: ["C"], label: "New task" },
-	{ keys: [MOD, "B"], label: "Start backlog tasks" },
+	{ keys: [MOD, "B"], label: "Start unstarted tasks" },
 	{ keys: [MOD, "Shift", "S"], label: "Settings" },
 	{ keys: ["Click", MOD], label: "Hold to link tasks" },
 	{ keys: [MOD, "J"], label: "Toggle terminal" },

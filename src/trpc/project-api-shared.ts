@@ -167,7 +167,7 @@ export async function hasActiveSharedCheckoutTask(projectPath: string): Promise<
 				const isSharedCheckout = card.workingDirectory
 					? isProjectCheckoutCwd(projectPath, card.workingDirectory)
 					: card.useWorktree === false;
-				return isSharedCheckout;
+				return !card.unstarted && isSharedCheckout;
 			}),
 		);
 }

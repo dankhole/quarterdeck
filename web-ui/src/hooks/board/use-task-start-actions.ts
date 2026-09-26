@@ -16,7 +16,7 @@ interface UseTaskStartActionsInput {
 	) => PreparedTaskCreation[];
 	executeTaskLifecycle: UseTaskLifecycleOperationsResult["executeTaskLifecycle"];
 	handleStartTask: (taskId: string) => void;
-	handleStartAllBacklogTasks: (taskIds?: string[]) => void;
+	handleStartAllUnstartedTasks: (taskIds?: string[]) => void;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 }
 
@@ -25,30 +25,32 @@ export interface UseTaskStartActionsResult {
 	handleCreateAndStartTasks: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
 	handleCreateStartAndOpenTask: (options?: { keepDialogOpen?: boolean }) => string | null;
 	handleStartTaskFromBoard: (taskId: string) => void;
-	handleStartAllBacklogTasksFromBoard: () => void;
+	handleStartAllUnstartedTasksFromBoard: () => void;
 }
 
-export function getStartableBacklogTaskIds(board: BoardData): string[] {
-	const allBacklogTasks = new Set<string>();
+export function getStartableUnstartedTaskIds(board: BoardData): string[] {
+	const allUnstartedTasks = new Set<string>();
 	const allInProgressTasks = new Set<string>();
 	const startableTaskIds: string[] = [];
 
-	const backlogCards = board.columns.find((column) => column.id === "backlog")?.cards;
+	const unstartedCards = board.columns
+		.find((column) => column.id === "review")
+		?.cards.filter((card) => card.unstarted);
 	const inProgressTasks = board.columns.find((column) => column.id === "in_progress")?.cards;
 
-	backlogCards?.forEach((card) => {
-		allBacklogTasks.add(card.id);
+	unstartedCards?.forEach((card) => {
+		allUnstartedTasks.add(card.id);
 	});
 	inProgressTasks?.forEach((card) => {
 		allInProgressTasks.add(card.id);
 	});
 
-	backlogCards?.forEach((card) => {
+	unstartedCards?.forEach((card) => {
 		const dependency = board.dependencies.find((d) => d.fromTaskId === card.id);
-		const isChildTaskInBacklog = dependency && allBacklogTasks.has(dependency.toTaskId);
+		const isChildTaskUnstarted = dependency && allUnstartedTasks.has(dependency.toTaskId);
 		const isChildTaskInProgress = dependency && allInProgressTasks.has(dependency.toTaskId);
 
-		if (!isChildTaskInBacklog && !isChildTaskInProgress) {
+		if (!isChildTaskUnstarted && !isChildTaskInProgress) {
 			startableTaskIds.push(card.id);
 		}
 	});
@@ -63,7 +65,9 @@ function presentCreatedTaskInProgress(board: BoardData, task: BoardCard): BoardD
 	return {
 		...board,
 		columns: board.columns.map((column) =>
-			column.id === "in_progress" ? { ...column, cards: [task, ...column.cards] } : column,
+			column.id === "in_progress"
+				? { ...column, cards: [{ ...task, unstarted: undefined }, ...column.cards] }
+				: column,
 		),
 	};
 }
@@ -95,53 +99,55 @@ export function useTaskStartActions({
 	prepareCreateTasksForLifecycle,
 	executeTaskLifecycle,
 	handleStartTask,
-	handleStartAllBacklogTasks,
+	handleStartAllUnstartedTasks,
 	setSelectedTaskId,
 }: UseTaskStartActionsInput): UseTaskStartActionsResult {
-	const startBacklogTasks = useCallback(
+	const startUnstartedTasks = useCallback(
 		(taskIds: string[]) => {
-			const backlogTaskIds = [...new Set(taskIds.filter((taskId) => taskId.trim().length > 0))].filter((taskId) => {
-				const selection = findCardSelection(board, taskId);
-				return selection?.column.id === "backlog";
-			});
+			const unstartedTaskIds = [...new Set(taskIds.filter((taskId) => taskId.trim().length > 0))].filter(
+				(taskId) => {
+					const selection = findCardSelection(board, taskId);
+					return selection?.column.id === "review" && selection.card.unstarted === true;
+				},
+			);
 
-			if (backlogTaskIds.length === 0) {
+			if (unstartedTaskIds.length === 0) {
 				return;
 			}
 
-			if (backlogTaskIds.length === 1) {
-				const firstTaskId = backlogTaskIds[0];
+			if (unstartedTaskIds.length === 1) {
+				const firstTaskId = unstartedTaskIds[0];
 				if (!firstTaskId) {
 					return;
 				}
 				handleStartTask(firstTaskId);
 				return;
 			}
-			handleStartAllBacklogTasks(backlogTaskIds);
+			handleStartAllUnstartedTasks(unstartedTaskIds);
 		},
-		[board, handleStartAllBacklogTasks, handleStartTask],
+		[board, handleStartAllUnstartedTasks, handleStartTask],
 	);
 
 	const handleStartTaskFromBoard = useCallback(
 		(taskId: string) => {
 			const selection = findCardSelection(board, taskId);
-			if (!selection || selection.column.id !== "backlog") {
+			if (!selection || selection.column.id !== "review" || !selection.card.unstarted) {
 				handleStartTask(taskId);
 				return;
 			}
-			startBacklogTasks([taskId]);
+			startUnstartedTasks([taskId]);
 		},
-		[board, handleStartTask, startBacklogTasks],
+		[board, handleStartTask, startUnstartedTasks],
 	);
 
-	const handleStartAllBacklogTasksFromBoard = useCallback(() => {
-		const backlogTaskIds = getStartableBacklogTaskIds(board);
+	const handleStartAllUnstartedTasksFromBoard = useCallback(() => {
+		const unstartedTaskIds = getStartableUnstartedTaskIds(board);
 
-		if (backlogTaskIds.length === 0) {
+		if (unstartedTaskIds.length === 0) {
 			return;
 		}
-		startBacklogTasks(backlogTaskIds);
-	}, [board, startBacklogTasks]);
+		startUnstartedTasks(unstartedTaskIds);
+	}, [board, startUnstartedTasks]);
 
 	const handleCreateAndStartTask = useCallback(
 		(options?: { keepDialogOpen?: boolean }): string | null => {
@@ -197,6 +203,6 @@ export function useTaskStartActions({
 		handleCreateAndStartTasks,
 		handleCreateStartAndOpenTask,
 		handleStartTaskFromBoard,
-		handleStartAllBacklogTasksFromBoard,
+		handleStartAllUnstartedTasksFromBoard,
 	};
 }

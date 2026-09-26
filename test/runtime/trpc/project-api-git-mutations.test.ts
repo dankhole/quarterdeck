@@ -337,15 +337,16 @@ describe("createProjectApi checkoutGitBranch", () => {
 		expect(gitSyncMocks.runGitCheckoutAction).toHaveBeenCalled();
 	});
 
-	it("allows branch switch when shared-checkout task is in backlog or trash", async () => {
+	it("allows branch switch when shared-checkout task is in unstarted or trash", async () => {
 		projectStateMocks.loadProjectState.mockResolvedValue({
 			board: {
 				columns: [
 					{
-						id: "backlog",
-						title: "Backlog",
+						id: "review",
+						title: "Review",
 						cards: [
 							{
+								unstarted: true,
 								id: "task-1",
 								title: "Test",
 								prompt: "x",

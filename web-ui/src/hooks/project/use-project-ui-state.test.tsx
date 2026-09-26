@@ -13,14 +13,14 @@ const PROJECTS: ProjectUiStateInput["projects"] = [
 		name: "project-a",
 		path: "/tmp/project-a",
 		boardRevision: 0,
-		taskCounts: { backlog: 1, in_progress: 0, review: 1, trash: 0 },
+		taskCounts: { in_progress: 0, review: 1, trash: 0 },
 	},
 	{
 		id: "project-b",
 		name: "project-b",
 		path: "/tmp/project-b",
 		boardRevision: 0,
-		taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
+		taskCounts: { in_progress: 0, review: 0, trash: 0 },
 	},
 ];
 
@@ -124,13 +124,11 @@ describe("useProjectUiState", () => {
 		}
 		const result: ProjectUiStateResult = latestResult;
 		expect(result.displayedProjects.find((project) => project.id === "project-a")?.taskCounts).toEqual({
-			backlog: 1,
 			in_progress: 0,
 			review: 1,
 			trash: 0,
 		});
 		expect(result.displayedProjects.find((project) => project.id === "project-b")?.taskCounts).toEqual({
-			backlog: 0,
 			in_progress: 0,
 			review: 0,
 			trash: 0,

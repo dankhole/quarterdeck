@@ -9,7 +9,7 @@ import { findTrashTaskIds, INITIAL_HARD_DELETE_DIALOG_STATE, INITIAL_TRASH_WARNI
 function makeBoard(trashCardIds: string[]): BoardData {
 	return {
 		columns: [
-			{ id: "backlog", title: "backlog", cards: [] },
+			{ id: "review", title: "review", cards: [] },
 			{ id: "in_progress", title: "in_progress", cards: [] },
 			{ id: "review", title: "review", cards: [] },
 			{

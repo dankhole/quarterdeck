@@ -23,11 +23,13 @@ vi.mock("../../../src/workdir/task-worktree.js", () => ({
 function createBoard(title: string | null = "Task One"): RuntimeBoardData {
 	return {
 		columns: [
+			{ id: "in_progress", title: "In Progress", cards: [] },
 			{
-				id: "backlog",
-				title: "Backlog",
+				id: "review",
+				title: "Review",
 				cards: [
 					{
+						unstarted: true,
 						id: "task-1",
 						title,
 						prompt: "Do the thing",
@@ -37,8 +39,6 @@ function createBoard(title: string | null = "Task One"): RuntimeBoardData {
 					},
 				],
 			},
-			{ id: "in_progress", title: "In Progress", cards: [] },
-			{ id: "review", title: "Review", cards: [] },
 			{ id: "trash", title: "Trash", cards: [] },
 		],
 		dependencies: [],

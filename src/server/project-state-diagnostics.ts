@@ -1,4 +1,9 @@
-import { type DiagnosticCaptureScope, getRuntimeSessionWorkColumn, type RuntimeProjectStateResponse } from "../core";
+import {
+	type DiagnosticCaptureScope,
+	findCardInBoard,
+	getRuntimeSessionWorkColumn,
+	type RuntimeProjectStateResponse,
+} from "../core";
 
 export interface ProjectStateSessionColumnDivergence {
 	taskId: string;
@@ -43,6 +48,7 @@ export class ProjectStateDiagnosticTracker {
 			const actualColumnId = columnByTaskId.get(summary.taskId);
 			if (
 				expectedColumnId &&
+				!findCardInBoard(state.board, summary.taskId)?.unstarted &&
 				(actualColumnId === "in_progress" || actualColumnId === "review") &&
 				actualColumnId !== expectedColumnId
 			) {

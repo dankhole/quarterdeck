@@ -10,7 +10,7 @@ export interface RuntimeBoardProjectionResult {
 
 /**
  * Projects server-owned session truth onto durable work-column placement and
- * launch-path metadata. Backlog and trash remain user-controlled lifecycle
+ * launch-path metadata. Unstarted and trash remain user-controlled lifecycle
  * states and are never pulled into a work column by a late session update.
  */
 export function projectRuntimeSessionsOntoBoard(
@@ -23,6 +23,7 @@ export function projectRuntimeSessionsOntoBoard(
 	let changed = false;
 
 	for (const summary of summaries) {
+		if (findCardInBoard(nextBoard, summary.taskId)?.unstarted) continue;
 		let columnId = getTaskColumnId(nextBoard, summary.taskId);
 		const targetWorkColumn = getRuntimeSessionWorkColumn(summary);
 		if (targetWorkColumn && columnId !== targetWorkColumn && (columnId === "in_progress" || columnId === "review")) {
@@ -79,7 +80,7 @@ export function projectRuntimeTaskMetadataOntoBoard(
 			continue;
 		}
 		const card = findCardInBoard(nextBoard, taskMetadata.taskId);
-		if (!card) {
+		if (!card || card.unstarted) {
 			continue;
 		}
 		const branch = taskMetadata.branch || undefined;

@@ -13,11 +13,13 @@ import { createTempDir } from "../utilities/temp-dir";
 function createBoard(): RuntimeBoardData {
 	return {
 		columns: [
+			{ id: "in_progress", title: "In Progress", cards: [] },
 			{
-				id: "backlog",
-				title: "Backlog",
+				id: "review",
+				title: "Review",
 				cards: [
 					{
+						unstarted: true,
 						id: "task-1",
 						title: null,
 						prompt: "Durable task",
@@ -27,8 +29,6 @@ function createBoard(): RuntimeBoardData {
 					},
 				],
 			},
-			{ id: "in_progress", title: "In Progress", cards: [] },
-			{ id: "review", title: "Review", cards: [] },
 			{ id: "trash", title: "Trash", cards: [] },
 		],
 		dependencies: [],

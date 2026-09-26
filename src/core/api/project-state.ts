@@ -6,7 +6,6 @@ import { runtimeHostIntegrationFailureReasonSchema } from "./host-integrations.j
 import { runtimeTaskSessionSummarySchema } from "./task-session.js";
 
 export const runtimeProjectTaskCountsSchema = z.object({
-	backlog: z.number(),
 	in_progress: z.number(),
 	review: z.number(),
 	trash: z.number(),

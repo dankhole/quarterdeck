@@ -15,9 +15,8 @@ function makeProject(id: string, name = id): RuntimeProjectSummary {
 		path: `/tmp/${id}`,
 		boardRevision: 0,
 		taskCounts: {
-			backlog: 1,
 			in_progress: 2,
-			review: 3,
+			review: 4,
 			trash: 4,
 		},
 	};

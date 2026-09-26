@@ -46,16 +46,15 @@ export function createBoard(dependencies: BoardDependency[] = []): BoardData {
 	return {
 		columns: [
 			{
-				id: "backlog",
-				title: "Backlog",
-				cards: [createTask("task-1", "Backlog task", 1), createTask("task-3", "Second backlog task", 3)],
-			},
-			{ id: "in_progress", title: "In Progress", cards: [] },
-			{
 				id: "review",
 				title: "Review",
-				cards: [createTask("task-2", "Review task", 2)],
+				cards: [
+					{ ...createTask("task-1", "Unstarted task", 1), unstarted: true },
+					{ ...createTask("task-3", "Second unstarted task", 3), unstarted: true },
+					createTask("task-2", "Review task", 2),
+				],
 			},
+			{ id: "in_progress", title: "In Progress", cards: [] },
 			{ id: "trash", title: "Trash", cards: [] },
 		],
 		dependencies,

@@ -15,7 +15,6 @@ import { createTempDir } from "../../utilities/temp-dir";
 function createBoard(useWorktree: boolean): RuntimeBoardData {
 	return {
 		columns: [
-			{ id: "backlog", title: "Backlog", cards: [] },
 			{
 				id: "in_progress",
 				title: "In Progress",

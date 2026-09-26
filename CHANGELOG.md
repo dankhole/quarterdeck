@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Fold Backlog into Review as Unstarted tasks, with a grouped layout, Start and edit actions, and automatic migration of existing tasks. Preserve bulk start, dependencies, and interrupted-start recovery.
+
 - Commit board state, sessions, revisions, and replay receipts through a recoverable transaction so interrupted writes cannot strand task starts or expose mixed state to readers and backups.
 
 - Preserve unsaved task prompts and images during runtime disconnects, blocking actions with an overlay until the connection returns.

@@ -106,8 +106,7 @@ export function useProjectNavigationPanel({
 	}, [onRemoveProject, pendingProjectRemoval]);
 
 	const pendingProjectTaskCount = pendingProjectRemoval
-		? pendingProjectRemoval.taskCounts.backlog +
-			pendingProjectRemoval.taskCounts.in_progress +
+		? pendingProjectRemoval.taskCounts.in_progress +
 			pendingProjectRemoval.taskCounts.review +
 			pendingProjectRemoval.taskCounts.trash
 		: 0;

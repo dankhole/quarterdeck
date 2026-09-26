@@ -19,7 +19,6 @@ import { createTestTaskSessionSummary } from "../utilities/task-session-factory"
 function createBoard(): RuntimeBoardData {
 	return {
 		columns: [
-			{ id: "backlog", title: "Backlog", cards: [] },
 			{ id: "in_progress", title: "In Progress", cards: [] },
 			{ id: "review", title: "Review", cards: [] },
 			{ id: "trash", title: "Trash", cards: [] },
@@ -30,12 +29,7 @@ function createBoard(): RuntimeBoardData {
 
 describe("deleteTasksFromBoard", () => {
 	it("removes a trashed task and any dependencies that reference it", () => {
-		const createA = addTaskToColumn(
-			createBoard(),
-			"backlog",
-			{ prompt: "Task A", baseRef: "main" },
-			() => "aaaaa111",
-		);
+		const createA = addTaskToColumn(createBoard(), "review", { prompt: "Task A", baseRef: "main" }, () => "aaaaa111");
 		const createB = addTaskToColumn(createA.board, "review", { prompt: "Task B", baseRef: "main" }, () => "bbbbb111");
 		const linked = addTaskDependency(createB.board, "aaaaa", "bbbbb");
 		if (!linked.added) {
@@ -63,23 +57,9 @@ describe("deleteTasksFromBoard", () => {
 });
 
 describe("canonicalizeTaskBoard", () => {
-	it("drops invalid dependencies and reorients surviving links to the backlog endpoint", () => {
+	it("drops invalid dependencies and reorients surviving links to the unstarted endpoint", () => {
 		const board = canonicalizeTaskBoard({
 			columns: [
-				{
-					id: "backlog",
-					title: "Backlog",
-					cards: [
-						{
-							id: "b",
-							title: null,
-							prompt: "Task B",
-							baseRef: "main",
-							createdAt: 1,
-							updatedAt: 1,
-						},
-					],
-				},
 				{
 					id: "in_progress",
 					title: "In Progress",
@@ -94,7 +74,21 @@ describe("canonicalizeTaskBoard", () => {
 						},
 					],
 				},
-				{ id: "review", title: "Review", cards: [] },
+				{
+					id: "review",
+					title: "Review",
+					cards: [
+						{
+							unstarted: true,
+							id: "b",
+							title: null,
+							prompt: "Task B",
+							baseRef: "main",
+							createdAt: 1,
+							updatedAt: 1,
+						},
+					],
+				},
 				{ id: "trash", title: "Trash", cards: [] },
 			],
 			dependencies: [
@@ -113,7 +107,7 @@ describe("task images", () => {
 	it("preserves images when creating and updating tasks", () => {
 		const created = addTaskToColumn(
 			createBoard(),
-			"backlog",
+			"review",
 			{
 				prompt: "Task with image",
 				baseRef: "main",
@@ -242,7 +236,7 @@ describe("branch persistence on cards", () => {
 	it("addTaskToColumn sets branch from input", () => {
 		const created = addTaskToColumn(
 			createBoard(),
-			"backlog",
+			"review",
 			{ prompt: "Task A", baseRef: "main", branch: "feat/new" },
 			() => "aaaaa111",
 		);
@@ -250,22 +244,12 @@ describe("branch persistence on cards", () => {
 	});
 
 	it("addTaskToColumn omits branch when not provided", () => {
-		const created = addTaskToColumn(
-			createBoard(),
-			"backlog",
-			{ prompt: "Task A", baseRef: "main" },
-			() => "aaaaa111",
-		);
+		const created = addTaskToColumn(createBoard(), "review", { prompt: "Task A", baseRef: "main" }, () => "aaaaa111");
 		expect(created.task.branch).toBeUndefined();
 	});
 
 	it("existing worktree creation without branch works unchanged (regression test 29)", () => {
-		const created = addTaskToColumn(
-			createBoard(),
-			"backlog",
-			{ prompt: "Task A", baseRef: "main" },
-			() => "aaaaa111",
-		);
+		const created = addTaskToColumn(createBoard(), "review", { prompt: "Task A", baseRef: "main" }, () => "aaaaa111");
 		// When no branch is provided, the task should have no branch field
 		expect(created.task.branch).toBeUndefined();
 		expect(created.task.prompt).toBe("Task A");
@@ -337,7 +321,7 @@ describe("pruneOrphanSessionsForPersist", () => {
 	function boardWithCards(cardIds: string[]): RuntimeBoardData {
 		let board = createBoard();
 		for (const id of cardIds) {
-			const created = addTaskToColumn(board, "backlog", { prompt: id, baseRef: "main" }, () => `${id}1234`);
+			const created = addTaskToColumn(board, "review", { prompt: id, baseRef: "main" }, () => `${id}1234`);
 			board = created.board;
 		}
 		return board;
@@ -345,7 +329,7 @@ describe("pruneOrphanSessionsForPersist", () => {
 
 	it("keeps summaries for cards currently on the board", () => {
 		const board = boardWithCards(["aaaaa"]);
-		const boardCardId = board.columns.find((c) => c.id === "backlog")?.cards[0]?.id ?? "";
+		const boardCardId = board.columns.find((c) => c.id === "review")?.cards[0]?.id ?? "";
 		const sessions = {
 			[boardCardId]: createTestTaskSessionSummary({ taskId: boardCardId }),
 		};
@@ -390,7 +374,7 @@ describe("pruneOrphanSessionsForBroadcast", () => {
 	function boardWithCards(cardIds: string[]): RuntimeBoardData {
 		let board = createBoard();
 		for (const id of cardIds) {
-			const created = addTaskToColumn(board, "backlog", { prompt: id, baseRef: "main" }, () => `${id}1234`);
+			const created = addTaskToColumn(board, "review", { prompt: id, baseRef: "main" }, () => `${id}1234`);
 			board = created.board;
 		}
 		return board;
@@ -398,7 +382,7 @@ describe("pruneOrphanSessionsForBroadcast", () => {
 
 	it("keeps summaries for cards currently on the board", () => {
 		const board = boardWithCards(["aaaaa"]);
-		const boardCardId = board.columns.find((c) => c.id === "backlog")?.cards[0]?.id ?? "";
+		const boardCardId = board.columns.find((c) => c.id === "review")?.cards[0]?.id ?? "";
 		const sessions = {
 			[boardCardId]: createTestTaskSessionSummary({ taskId: boardCardId }),
 		};
@@ -461,18 +445,18 @@ describe("pruneOrphanSessionsForNotification", () => {
 		expect(Object.keys(pruned)).toEqual([taskId]);
 	});
 
-	it("drops summaries for backlog and trash cards", () => {
-		const backlogBoard = boardWithCard("backlog", "aaaaa");
-		const backlogTaskId = backlogBoard.columns.find((column) => column.id === "backlog")?.cards[0]?.id ?? "";
+	it("drops summaries for unstarted and trash cards", () => {
+		const unstartedBoard = boardWithCard("review", "aaaaa");
+		const unstartedTaskId = unstartedBoard.columns.find((column) => column.id === "review")?.cards[0]?.id ?? "";
 		const trashBoard = boardWithCard("trash", "bbbbb");
 		const trashTaskId = trashBoard.columns.find((column) => column.id === "trash")?.cards[0]?.id ?? "";
 
 		expect(
 			pruneOrphanSessionsForNotification(
 				{
-					[backlogTaskId]: createTestTaskSessionSummary({ taskId: backlogTaskId }),
+					[unstartedTaskId]: createTestTaskSessionSummary({ taskId: unstartedTaskId }),
 				},
-				backlogBoard,
+				unstartedBoard,
 			),
 		).toEqual({});
 		expect(
@@ -491,9 +475,9 @@ describe("pruneOrphanSessionsForNotificationDelta", () => {
 		return addTaskToColumn(createBoard(), columnId, { prompt: cardId, baseRef: "main" }, () => `${cardId}1234`).board;
 	}
 
-	it("keeps live backlog-linked deltas while board save catches up", () => {
-		const board = boardWithCard("backlog", "aaaaa");
-		const taskId = board.columns.find((column) => column.id === "backlog")?.cards[0]?.id ?? "";
+	it("keeps live unstarted-linked deltas while board save catches up", () => {
+		const board = boardWithCard("review", "aaaaa");
+		const taskId = board.columns.find((column) => column.id === "review")?.cards[0]?.id ?? "";
 		const sessions = {
 			[taskId]: createTestTaskSessionSummary({
 				taskId,
@@ -508,8 +492,8 @@ describe("pruneOrphanSessionsForNotificationDelta", () => {
 	});
 
 	it("keeps processless board-linked review deltas until authoritative replacement", () => {
-		const board = boardWithCard("backlog", "aaaaa");
-		const taskId = board.columns.find((column) => column.id === "backlog")?.cards[0]?.id ?? "";
+		const board = boardWithCard("review", "aaaaa");
+		const taskId = board.columns.find((column) => column.id === "review")?.cards[0]?.id ?? "";
 		const sessions = {
 			[taskId]: createTestTaskSessionSummary({
 				taskId,

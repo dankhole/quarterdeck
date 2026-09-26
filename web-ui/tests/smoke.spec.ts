@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { listHostEvents, waitForHostEvent } from "./host-events";
 
-const BACKLOG_COLUMN = 'section[data-column-id="backlog"]';
+const REVIEW_COLUMN = 'section[data-column-id="review"]';
 const E2E_PROJECT_PATH = "/project";
 
 async function openBoard(page: Page) {
@@ -27,20 +27,20 @@ async function dismissStartupOnboarding(page: Page) {
 	await expect(onboardingDialog).toBeHidden();
 }
 
-async function createTaskFromBacklog(page: Page, title: string) {
-	const backlogColumn = page.locator(BACKLOG_COLUMN).first();
-	await backlogColumn.getByRole("button", { name: "Create task" }).click();
+async function createUnstartedTask(page: Page, title: string) {
+	const reviewColumn = page.locator(REVIEW_COLUMN).first();
+	await reviewColumn.getByRole("button", { name: "Create task" }).click();
 	const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "New task" }) });
 	await expect(dialog).toBeVisible();
 	const prompt = dialog.getByPlaceholder("Describe the task");
 	await prompt.fill(title);
 	await dialog.getByRole("button", { name: /^Create\b/ }).click();
 	await expect(dialog).toBeHidden();
-	await expect(backlogColumn.locator("[data-task-id]").filter({ hasText: title }).first()).toBeVisible();
+	await expect(reviewColumn.locator("[data-task-id]").filter({ hasText: title }).first()).toBeVisible();
 }
 
 async function openTaskFromBoard(page: Page, title: string) {
-	const card = page.locator(BACKLOG_COLUMN).locator("[data-task-id]").filter({ hasText: title }).first();
+	const card = page.locator(REVIEW_COLUMN).locator("[data-task-id]").filter({ hasText: title }).first();
 	await expect(card).toBeVisible();
 	await card.click();
 }
@@ -71,11 +71,11 @@ test("renders quarterdeck top bar and columns", async ({ page }) => {
 	await expect(page).toHaveTitle("project");
 	await expect(page.getByTestId("open-settings-button")).toBeVisible();
 	await expect(page.getByRole("button", { name: "Switch branch" })).toBeVisible();
-	await expect(page.getByText("Backlog", { exact: true })).toBeVisible();
+	await expect(page.getByText("Review", { exact: true })).toBeVisible();
 	await expect(page.getByText("In Progress", { exact: true })).toBeVisible();
 	await expect(page.getByText("Review", { exact: true })).toBeVisible();
 	await expect(page.getByText("Trash", { exact: true })).toBeVisible();
-	await expect(page.locator(BACKLOG_COLUMN).getByRole("button", { name: "Create task" })).toBeVisible();
+	await expect(page.locator(REVIEW_COLUMN).getByRole("button", { name: "Create task" })).toBeVisible();
 });
 
 test("simulates the CLI host-browser launch while ordinary docs links stay browser-contained", async ({ page }) => {
@@ -185,8 +185,8 @@ test("uses the in-memory lab clipboard for Files copy and terminal OSC 52 read",
 
 	await page.getByRole("button", { name: "Home" }).click();
 	const taskPrompt = `[agent-lab:idle] clipboard-${Date.now()}`;
-	const backlogColumn = page.locator(BACKLOG_COLUMN).first();
-	await backlogColumn.getByRole("button", { name: "Create task" }).click();
+	const reviewColumn = page.locator(REVIEW_COLUMN).first();
+	await reviewColumn.getByRole("button", { name: "Create task" }).click();
 	const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "New task" }) });
 	await dialog.getByPlaceholder("Describe the task").fill(taskPrompt);
 	const existingTaskIds = new Set(await readTaskIds(page));
@@ -220,10 +220,10 @@ test("uses the in-memory lab clipboard for Files copy and terminal OSC 52 read",
 		.toContain("AGENT LAB CLIPBOARD READ: # Quarterdeck agent lab fixture");
 });
 
-test("creating and opening a backlog task shows the inline editor", async ({ page }) => {
+test("creating and opening an unstarted task shows the inline editor", async ({ page }) => {
 	await openBoard(page);
 	const taskTitle = `smoke-${Date.now()}`;
-	await createTaskFromBacklog(page, taskTitle);
+	await createUnstartedTask(page, taskTitle);
 	await openTaskFromBoard(page, taskTitle);
 	await expect(page.getByPlaceholder("Describe the task")).toHaveValue(taskTitle);
 	await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
@@ -233,9 +233,9 @@ test("creating and opening a backlog task shows the inline editor", async ({ pag
 test("side-panel card actions only wrap when the controls cannot fit", async ({ page }) => {
 	await openBoard(page);
 	const taskTitle = `card-layout-${Date.now()}`;
-	await createTaskFromBacklog(page, taskTitle);
+	await createUnstartedTask(page, taskTitle);
 
-	const boardCard = page.locator(BACKLOG_COLUMN).locator("[data-task-id]").filter({ hasText: taskTitle }).first();
+	const boardCard = page.locator(REVIEW_COLUMN).locator("[data-task-id]").filter({ hasText: taskTitle }).first();
 	const taskId = await boardCard.getAttribute("data-task-id");
 	expect(taskId).not.toBeNull();
 	await page.evaluate((selectedTaskId) => {
@@ -298,18 +298,18 @@ test("side-panel card actions only wrap when the controls cannot fit", async ({ 
 	}
 });
 
-test("escape key closes the backlog inline editor", async ({ page }) => {
+test("escape key closes the unstarted task editor", async ({ page }) => {
 	await openBoard(page);
 	const taskTitle = `escape-${Date.now()}`;
-	await createTaskFromBacklog(page, taskTitle);
+	await createUnstartedTask(page, taskTitle);
 	await openTaskFromBoard(page, taskTitle);
 	const prompt = page.getByPlaceholder("Describe the task");
 	await expect(prompt).toHaveValue(taskTitle);
 	await prompt.press("Escape");
 	await expect(page.getByPlaceholder("Describe the task")).toHaveCount(0);
-	await expect(page.getByText("Backlog", { exact: true })).toBeVisible();
+	await expect(page.getByText("Review", { exact: true })).toBeVisible();
 	await expect(
-		page.locator(BACKLOG_COLUMN).locator("[data-task-id]").filter({ hasText: taskTitle }).first(),
+		page.locator(REVIEW_COLUMN).locator("[data-task-id]").filter({ hasText: taskTitle }).first(),
 	).toBeVisible();
 });
 
@@ -375,8 +375,8 @@ test("agent lab adds a synthetic project through the browser manual-path fallbac
 test("drives the deterministic agent terminal through review", async ({ page }, testInfo) => {
 	await openBoard(page);
 	const taskPrompt = `[agent-lab:idle] functional-${Date.now()}`;
-	const backlogColumn = page.locator(BACKLOG_COLUMN).first();
-	await backlogColumn.getByRole("button", { name: "Create task" }).click();
+	const reviewColumn = page.locator(REVIEW_COLUMN).first();
+	await reviewColumn.getByRole("button", { name: "Create task" }).click();
 	const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "New task" }) });
 	await dialog.getByPlaceholder("Describe the task").fill(taskPrompt);
 	const existingTaskIds = new Set(await readTaskIds(page));
@@ -438,8 +438,8 @@ test("converges provider-approved permissions and fences historical interruption
 	await settingsDialog.getByRole("button", { name: "Save" }).click();
 	await expect(settingsDialog).toBeHidden();
 	const taskPrompt = `[agent-lab:idle] lifecycle-fences-${Date.now()}`;
-	const backlogColumn = page.locator(BACKLOG_COLUMN).first();
-	await backlogColumn.getByRole("button", { name: "Create task" }).click();
+	const reviewColumn = page.locator(REVIEW_COLUMN).first();
+	await reviewColumn.getByRole("button", { name: "Create task" }).click();
 	const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "New task" }) });
 	await dialog.getByPlaceholder("Describe the task").fill(taskPrompt);
 	await expect(dialog.getByRole("button", { name: "Task harness" })).toContainText("Codex");

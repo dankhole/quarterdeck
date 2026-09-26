@@ -42,6 +42,8 @@ export const runtimeProjectBoardCommandSchema = z.discriminatedUnion("kind", [
 		kind: z.literal("move_task"),
 		taskId: commandTaskIdSchema,
 		sourceColumnId: runtimeBoardColumnIdSchema.optional(),
+		expectedUnstarted: z.boolean().optional(),
+		unstarted: z.boolean().optional(),
 		targetColumnId: runtimeBoardColumnIdSchema,
 		targetIndex: z.number().int().nonnegative().optional(),
 		updatedAt: commandTimestampSchema,
@@ -106,8 +108,9 @@ export function isLifecycleManagedBoardCommand(command: RuntimeProjectBoardComma
 		return false;
 	}
 	return (
+		command.unstarted !== undefined ||
 		command.targetColumnId === "trash" ||
-		(command.sourceColumnId === "backlog" && command.targetColumnId === "in_progress") ||
+		command.targetColumnId === "in_progress" ||
 		(command.sourceColumnId === "trash" && command.targetColumnId === "review")
 	);
 }

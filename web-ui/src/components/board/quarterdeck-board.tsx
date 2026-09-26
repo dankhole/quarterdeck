@@ -19,7 +19,7 @@ import { canCreateTaskDependency } from "@/state/board-state";
 import { findCardColumnId, type ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
 import type { BoardCard, BoardColumnId, BoardData, BoardDependency } from "@/types";
 
-const BOARD_COLUMN_ORDER: BoardColumnId[] = ["backlog", "in_progress", "review", "trash"];
+const BOARD_COLUMN_ORDER: BoardColumnId[] = ["in_progress", "review", "trash"];
 
 export type RequestProgrammaticCardMove = (move: ProgrammaticCardMoveInFlight) => boolean;
 
@@ -339,9 +339,12 @@ export function QuarterdeckBoard({
 	// Dependency links should reroute as soon as motion starts, not only after drop.
 	// Treat the active card as already belonging to its destination/effective column
 	// so the edge transition can animate alongside the move.
+	const activeDragTaskUnstarted = data.columns.some((column) =>
+		column.cards.some((card) => card.id === activeDragTaskId && card.unstarted),
+	);
 	const activeTaskEffectiveColumnId =
 		programmaticCardMoveInFlight?.toColumnId ??
-		(activeDragTaskId !== null && activeDragSourceColumnId === "backlog" ? "in_progress" : null);
+		(activeDragTaskId !== null && activeDragTaskUnstarted ? "in_progress" : null);
 
 	return (
 		<DragDropContext
@@ -360,14 +363,15 @@ export function QuarterdeckBoard({
 						key={column.id}
 						column={column}
 						taskSessions={taskSessions}
-						onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
-						onStartAllTasks={column.id === "backlog" ? onStartAllTasks : undefined}
+						onCreateTask={column.id === "review" ? onCreateTask : undefined}
+						onStartAllTasks={column.id === "review" ? onStartAllTasks : undefined}
 						onClearTrash={column.id === "trash" ? onClearTrash : undefined}
-						editingTaskId={column.id === "backlog" ? editingTaskId : null}
-						inlineTaskEditor={column.id === "backlog" ? inlineTaskEditor : undefined}
-						onEditTask={column.id === "backlog" ? onEditTask : undefined}
+						editingTaskId={column.id === "review" ? editingTaskId : null}
+						inlineTaskEditor={column.id === "review" ? inlineTaskEditor : undefined}
+						onEditTask={column.id === "review" ? onEditTask : undefined}
 						activeDragTaskId={activeDragTaskId}
 						activeDragSourceColumnId={activeDragSourceColumnId}
+						activeDragTaskUnstarted={activeDragTaskUnstarted}
 						programmaticCardMoveInFlight={programmaticCardMoveInFlight}
 						onDependencyPointerDown={dependencyLinking.onDependencyPointerDown}
 						onDependencyPointerEnter={dependencyLinking.onDependencyPointerEnter}

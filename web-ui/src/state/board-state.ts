@@ -127,7 +127,7 @@ export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 	const columnById = new Map(normalizedColumns.map((column) => [column.id, column]));
 
 	for (const parsedColumn of parsedBoard.columns) {
-		const normalizedColumn = columnById.get(parsedColumn.id);
+		const normalizedColumn = columnById.get(parsedColumn.id === "backlog" ? "review" : parsedColumn.id);
 		if (!normalizedColumn) {
 			continue;
 		}
@@ -136,7 +136,7 @@ export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 				createTaskId: () => createShortTaskId(createBrowserUuid),
 			});
 			if (card) {
-				normalizedColumn.cards.push(card);
+				normalizedColumn.cards.push(parsedColumn.id === "backlog" ? { ...card, unstarted: true } : card);
 			}
 		}
 	}
@@ -261,6 +261,7 @@ export function applyDragResult(
 
 	const isAllowedCrossColumnMove = isAllowedCrossColumnCardMove(sourceColumn.id, destinationColumn.id, {
 		taskId: result.draggableId,
+		unstarted: sourceColumn.cards.find((card) => card.id === result.draggableId)?.unstarted,
 		programmaticCardMoveInFlight: options?.programmaticCardMoveInFlight,
 	});
 	if (!isAllowedCrossColumnMove) {
@@ -279,7 +280,11 @@ export function applyDragResult(
 
 	const destinationCards = Array.from(destinationColumn.cards);
 	const destinationInsertIndex = options?.programmaticCardMoveInFlight?.insertAtTop ? 0 : destination.index;
-	destinationCards.splice(destinationInsertIndex, 0, updateTaskTimestamp(movedCard));
+	destinationCards.splice(
+		destinationInsertIndex,
+		0,
+		updateTaskTimestamp(destinationColumn.id === "in_progress" ? { ...movedCard, unstarted: undefined } : movedCard),
+	);
 
 	const columns = Array.from(board.columns);
 	columns[sourceColumnIndex] = {

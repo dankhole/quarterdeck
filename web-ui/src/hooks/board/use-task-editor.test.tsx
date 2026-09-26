@@ -13,6 +13,7 @@ function createTask(taskId: string, prompt: string, createdAt: number, overrides
 		title: null,
 		prompt,
 		baseRef: "main",
+		unstarted: true,
 		createdAt,
 		updatedAt: createdAt,
 		...overrides,
@@ -22,9 +23,9 @@ function createTask(taskId: string, prompt: string, createdAt: number, overrides
 function createBoard(tasks: BoardCard[] = []): BoardData {
 	return {
 		columns: [
-			{ id: "backlog", title: "Backlog", cards: tasks },
+			{ id: "review", title: "Review", cards: tasks },
 			{ id: "in_progress", title: "In Progress", cards: [] },
-			{ id: "review", title: "Review", cards: [] },
+
 			{ id: "trash", title: "Trash", cards: [] },
 		],
 		dependencies: [],
@@ -209,6 +210,23 @@ describe("useTaskEditor", () => {
 		expect(requireSnapshot(latestSnapshot).board.columns[0]?.cards[0]?.codexOptions).toEqual({ model: "test-model" });
 		await act(async () => requireSnapshot(latestSnapshot).handleOpenCreateTask());
 		expect(requireSnapshot(latestSnapshot).newTaskCodexOptions).toBeUndefined();
+	});
+
+	it("does not open the draft editor for started Review tasks", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const task = { ...createTask("started", "Already executed", 1), unstarted: undefined };
+		await act(async () =>
+			root.render(
+				<HookHarness
+					initialBoard={createBoard([task])}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			),
+		);
+		await act(async () => requireSnapshot(latestSnapshot).handleOpenEditTask(task));
+		expect(requireSnapshot(latestSnapshot).editingTaskId).toBeNull();
 	});
 
 	it("returns the edited task id when saving a task", async () => {
@@ -587,9 +605,9 @@ describe("useTaskEditor", () => {
 		});
 
 		expect(createdTaskIds).toHaveLength(2);
-		const backlogCards = requireSnapshot(latestSnapshot).board.columns[0]?.cards ?? [];
-		expect(backlogCards).toHaveLength(2);
-		expect(backlogCards.map((card) => card.images)).toEqual([
+		const unstartedCards = requireSnapshot(latestSnapshot).board.columns[0]?.cards ?? [];
+		expect(unstartedCards).toHaveLength(2);
+		expect(unstartedCards.map((card) => card.images)).toEqual([
 			[
 				{
 					id: "img-1",

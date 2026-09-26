@@ -78,7 +78,7 @@ function getColumns(command: RuntimeTaskLifecycleCommand): {
 	switch (command.kind) {
 		case "create_and_start":
 		case "start":
-			return { sourceColumnId: "backlog", targetColumnId: "in_progress" };
+			return { sourceColumnId: "review", targetColumnId: "in_progress" };
 		case "trash":
 			return { sourceColumnId: command.sourceColumnId, targetColumnId: "trash" };
 		case "restore":
@@ -105,7 +105,33 @@ async function readJournal(scope: ProjectBoardCommandScope): Promise<OperationJo
 		throw error;
 	}
 	try {
-		return operationJournalSchema.parse(JSON.parse(raw));
+		const migratedCommandIds = new Set<string>();
+		// Revive each operation after its command so only affected legacy fingerprints change.
+		const migrated: unknown = JSON.parse(raw, (_key, value: unknown) => {
+			if (typeof value !== "object" || value === null || !("operationId" in value) || !("command" in value))
+				return value;
+			const operation = value as Record<string, unknown>;
+			const command = operation.command;
+			if (
+				typeof command === "object" &&
+				command !== null &&
+				"sourceColumnId" in command &&
+				command.sourceColumnId === "backlog"
+			) {
+				operation.command = { ...command, sourceColumnId: "review" };
+				if (typeof operation.operationId === "string") migratedCommandIds.add(operation.operationId);
+			}
+			if (operation.sourceColumnId === "backlog") operation.sourceColumnId = "review";
+			if (operation.targetColumnId === "backlog") operation.targetColumnId = "review";
+			return operation;
+		});
+		const journal = operationJournalSchema.parse(migrated);
+		for (const operation of journal.operations) {
+			if (migratedCommandIds.has(operation.operationId)) {
+				operation.fingerprint = fingerprintTaskLifecycleCommand(operation.command);
+			}
+		}
+		return journal;
 	} catch (error) {
 		const backupPath = `${path}.corrupt-${Date.now()}`;
 		let persistedBackupPath: string | null = null;

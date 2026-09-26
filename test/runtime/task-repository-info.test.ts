@@ -12,7 +12,6 @@ import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 function createSharedCheckoutBoard(): RuntimeBoardData {
 	return {
 		columns: [
-			{ id: "backlog", title: "Backlog", cards: [] },
 			{
 				id: "in_progress",
 				title: "In Progress",
@@ -38,7 +37,6 @@ function createSharedCheckoutBoard(): RuntimeBoardData {
 function createIsolatedTaskBoard(baseRef: string): RuntimeBoardData {
 	return {
 		columns: [
-			{ id: "backlog", title: "Backlog", cards: [] },
 			{
 				id: "in_progress",
 				title: "In Progress",
@@ -134,7 +132,7 @@ describe("task repository info", { concurrent: false }, () => {
 					const initial = await loadProjectState(projectPath);
 					const board = createSharedCheckoutBoard();
 					if (persistedCheckout) {
-						const card = board.columns[1]?.cards[0];
+						const card = board.columns.find((column) => column.id === "in_progress")?.cards[0];
 						if (!card) throw new Error("Expected shared checkout card");
 						card.useWorktree = true;
 						card.workingDirectory = projectPath;

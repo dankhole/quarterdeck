@@ -134,12 +134,38 @@ describe("BoardCard", () => {
 		expect(trashButton?.querySelector("svg.animate-spin")).toBeTruthy();
 	});
 
+	it("shows Unstarted with Start instead of session restart in Review", async () => {
+		const onStart = vi.fn();
+		await act(async () => {
+			root.render(
+				<Providers>
+					<BoardCard
+						card={createCard({ unstarted: true })}
+						index={0}
+						columnId="review"
+						onStart={onStart}
+						onRestartSession={() => {}}
+					/>
+				</Providers>,
+			);
+		});
+		expect(container.querySelector("[data-board-card-status-badge]")?.textContent).toBe("Unstarted");
+		expect(container.querySelector('[aria-label="Restart agent session"]')).toBeNull();
+		await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Start task"]')?.click());
+		expect(onStart).toHaveBeenCalledWith("task-1");
+	});
+
 	it("lets an unstarted task move directly to trash", async () => {
 		const onMoveToTrash = vi.fn();
 		await act(async () => {
 			root.render(
 				<Providers>
-					<BoardCard card={createCard()} index={0} columnId="backlog" onMoveToTrash={onMoveToTrash} />
+					<BoardCard
+						card={createCard({ unstarted: true })}
+						index={0}
+						columnId="review"
+						onMoveToTrash={onMoveToTrash}
+					/>
 				</Providers>,
 			);
 		});
@@ -239,11 +265,11 @@ describe("BoardCard", () => {
 		}
 	});
 
-	it("shows the task harness badge on backlog cards", async () => {
+	it("shows the task harness badge on unstarted review cards", async () => {
 		await act(async () => {
 			root.render(
 				<Providers>
-					<BoardCard card={createCard({ agentId: "claude" })} index={0} columnId="backlog" />
+					<BoardCard card={createCard({ agentId: "claude", unstarted: true })} index={0} columnId="review" />
 				</Providers>,
 			);
 		});

@@ -18,6 +18,27 @@ function createWindowsSharedBoard() {
 }
 
 describe("runtime board projection path identity", () => {
+	it("does not project a late session onto an unstarted task in Review", () => {
+		const board = createWindowsSharedBoard();
+		const card = board.columns.find((column) => column.id === "review")?.cards[0];
+		if (!card) throw new Error("Expected review card");
+		card.unstarted = true;
+		const result = projectRuntimeSessionsOntoBoard(
+			board,
+			[
+				createTestTaskSessionSummary({
+					taskId: card.id,
+					state: "running",
+					sessionLaunchPath: "C:\\Other",
+				}),
+			],
+			"C:\\Repo",
+			"win32",
+		);
+		expect(result.changed).toBe(false);
+		expect(result.board).toBe(board);
+	});
+
 	it("does not convert a Windows shared checkout casing alias into a worktree", () => {
 		const result = projectRuntimeSessionsOntoBoard(
 			createWindowsSharedBoard(),

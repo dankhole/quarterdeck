@@ -94,7 +94,7 @@ describe("runtimeStateStreamReducer", () => {
 						path: "/tmp/project-a",
 						name: "Project A",
 						boardRevision: 0,
-						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+						taskCounts: { in_progress: 1, review: 0, trash: 0 },
 					},
 				],
 				projectState: createProjectState(3, {
@@ -181,7 +181,7 @@ describe("runtimeStateStreamReducer", () => {
 						path: "/tmp/project-a",
 						name: "Project A",
 						boardRevision: 0,
-						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+						taskCounts: { in_progress: 1, review: 0, trash: 0 },
 					},
 				],
 				projectState: createProjectState(4, {
@@ -207,7 +207,7 @@ describe("runtimeStateStreamReducer", () => {
 						path: "/tmp/project-a",
 						name: "Project A",
 						boardRevision: 0,
-						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+						taskCounts: { in_progress: 1, review: 0, trash: 0 },
 					},
 				],
 				projectState: createProjectState(1, {
@@ -261,14 +261,14 @@ describe("runtimeStateStreamReducer", () => {
 						path: "/tmp/project-a",
 						name: "Project A",
 						boardRevision: 0,
-						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+						taskCounts: { in_progress: 1, review: 0, trash: 0 },
 					},
 					{
 						id: "project-b",
 						path: "/tmp/project-b",
 						name: "Project B",
 						boardRevision: 0,
-						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+						taskCounts: { in_progress: 1, review: 0, trash: 0 },
 					},
 				],
 				projectState: createProjectState(1, {
@@ -297,14 +297,14 @@ describe("runtimeStateStreamReducer", () => {
 						path: "/tmp/project-a",
 						name: "Project A",
 						boardRevision: 0,
-						taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
+						taskCounts: { in_progress: 0, review: 0, trash: 0 },
 					},
 					{
 						id: "project-b",
 						path: "/tmp/project-b",
 						name: "Project B",
 						boardRevision: 0,
-						taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
+						taskCounts: { in_progress: 0, review: 0, trash: 0 },
 					},
 				],
 				projectState: createProjectState(1, {}),
@@ -329,14 +329,14 @@ describe("runtimeStateStreamReducer", () => {
 						path: "/tmp/project-a",
 						name: "Project A",
 						boardRevision: 0,
-						taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
+						taskCounts: { in_progress: 0, review: 0, trash: 0 },
 					},
 					{
 						id: "project-b",
 						path: "/tmp/project-b",
 						name: "Project B",
 						boardRevision: 0,
-						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+						taskCounts: { in_progress: 1, review: 0, trash: 0 },
 					},
 				],
 				projectState: createProjectState(2, {}),
@@ -434,14 +434,14 @@ describe("runtimeStateStreamReducer", () => {
 						path: "/tmp/project-a",
 						name: "Project A",
 						boardRevision: 0,
-						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+						taskCounts: { in_progress: 1, review: 0, trash: 0 },
 					},
 					{
 						id: "project-b",
 						path: "/tmp/project-b",
 						name: "Project B",
 						boardRevision: 0,
-						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+						taskCounts: { in_progress: 1, review: 0, trash: 0 },
 					},
 				],
 				projectState: createProjectState(1, {
@@ -469,7 +469,7 @@ describe("runtimeStateStreamReducer", () => {
 						path: "/tmp/project-a",
 						name: "Project A",
 						boardRevision: 0,
-						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+						taskCounts: { in_progress: 1, review: 0, trash: 0 },
 					},
 				],
 			},
@@ -492,7 +492,7 @@ describe("runtimeStateStreamReducer", () => {
 						path: "/tmp/project-a",
 						name: "Project A",
 						boardRevision: 1,
-						taskCounts: { backlog: 0, in_progress: 0, review: 1, trash: 0 },
+						taskCounts: { in_progress: 0, review: 1, trash: 0 },
 					},
 				],
 				projectState: createProjectState(3, {
@@ -504,7 +504,7 @@ describe("runtimeStateStreamReducer", () => {
 
 		expect(nextState.projects[0]).toMatchObject({
 			boardRevision: 3,
-			taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+			taskCounts: { in_progress: 1, review: 0, trash: 0 },
 		});
 	});
 
@@ -520,7 +520,7 @@ describe("runtimeStateStreamReducer", () => {
 						path: "/tmp/project-a",
 						name: "Project A",
 						boardRevision: 5,
-						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+						taskCounts: { in_progress: 1, review: 0, trash: 0 },
 					},
 				],
 				projectState: createProjectState(5, {
@@ -541,7 +541,7 @@ describe("runtimeStateStreamReducer", () => {
 						path: "/tmp/project-a",
 						name: "Project A",
 						boardRevision: 4,
-						taskCounts: { backlog: 0, in_progress: 0, review: 1, trash: 0 },
+						taskCounts: { in_progress: 0, review: 1, trash: 0 },
 					},
 				],
 			},
@@ -569,7 +569,7 @@ describe("runtimeStateStreamReducer", () => {
 						path: "/tmp/project-a",
 						name: "Project A",
 						boardRevision: 5,
-						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+						taskCounts: { in_progress: 1, review: 0, trash: 0 },
 					},
 				],
 				projectState: createProjectState(5, {
@@ -596,14 +596,14 @@ describe("runtimeStateStreamReducer", () => {
 						path: "/tmp/project-a-renamed",
 						name: "Project A Renamed",
 						boardRevision: 5,
-						taskCounts: { backlog: 0, in_progress: 0, review: 1, trash: 0 },
+						taskCounts: { in_progress: 0, review: 1, trash: 0 },
 					},
 					{
 						id: "project-b",
 						path: "/tmp/project-b",
 						name: "Project B",
 						boardRevision: 2,
-						taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
+						taskCounts: { in_progress: 0, review: 0, trash: 0 },
 					},
 				],
 				projectState: createProjectState(2, {}),
@@ -615,7 +615,7 @@ describe("runtimeStateStreamReducer", () => {
 			path: "/tmp/project-a-renamed",
 			name: "Project A Renamed",
 			boardRevision: 5,
-			taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+			taskCounts: { in_progress: 1, review: 0, trash: 0 },
 		});
 	});
 
@@ -631,7 +631,7 @@ describe("runtimeStateStreamReducer", () => {
 						path: "/tmp/project-a",
 						name: "Project A",
 						boardRevision: 0,
-						taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
+						taskCounts: { in_progress: 0, review: 0, trash: 0 },
 					},
 				],
 			},
@@ -648,14 +648,14 @@ describe("runtimeStateStreamReducer", () => {
 						path: "/tmp/project-a",
 						name: "Project A",
 						boardRevision: 0,
-						taskCounts: { backlog: 2, in_progress: 0, review: 0, trash: 0 },
+						taskCounts: { in_progress: 0, review: 2, trash: 0 },
 					},
 				],
 			},
 			nextProjectId: "project-a",
 		});
 
-		expect(recovered.projects[0]?.taskCounts.backlog).toBe(2);
+		expect(recovered.projects[0]?.taskCounts.review).toBe(2);
 	});
 
 	it("rejects every action delivered by an obsolete stream generation", () => {

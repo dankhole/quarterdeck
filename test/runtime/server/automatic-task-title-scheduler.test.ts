@@ -12,11 +12,13 @@ import { AutomaticTitleGenerationCoordinator } from "../../../src/title";
 function createState(): RuntimeProjectStateResponse {
 	const board: RuntimeBoardData = {
 		columns: [
+			{ id: "in_progress", title: "In Progress", cards: [] },
 			{
-				id: "backlog",
-				title: "Backlog",
+				id: "review",
+				title: "Review",
 				cards: [
 					{
+						unstarted: true,
 						id: "task-1",
 						title: null,
 						prompt: "private task prompt",
@@ -26,8 +28,6 @@ function createState(): RuntimeProjectStateResponse {
 					},
 				],
 			},
-			{ id: "in_progress", title: "In Progress", cards: [] },
-			{ id: "review", title: "Review", cards: [] },
 			{ id: "trash", title: "Trash", cards: [] },
 		],
 		dependencies: [],

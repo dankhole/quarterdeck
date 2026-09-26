@@ -51,7 +51,9 @@ describe("useLinkedBacklogTaskActions", () => {
 			);
 		});
 		const initial = requireSnapshot(latestSnapshot);
-		const reviewTask = initial.board.columns.find((column) => column.id === "review")?.cards[0];
+		const reviewTask = initial.board.columns
+			.find((column) => column.id === "review")
+			?.cards.find((card) => !card.unstarted);
 		if (!reviewTask) {
 			throw new Error("Expected a review task.");
 		}
@@ -68,7 +70,9 @@ describe("useLinkedBacklogTaskActions", () => {
 			sourceColumnId: "review",
 		});
 		const next = requireSnapshot(latestSnapshot).board;
-		expect(next.columns.find((column) => column.id === "review")?.cards).toEqual([]);
+		expect(next.columns.find((column) => column.id === "review")?.cards.filter((card) => !card.unstarted)).toEqual(
+			[],
+		);
 		expect(next.columns.find((column) => column.id === "trash")?.cards[0]?.id).toBe(reviewTask.id);
 	});
 
@@ -92,7 +96,9 @@ describe("useLinkedBacklogTaskActions", () => {
 			);
 		});
 		const initial = requireSnapshot(latestSnapshot);
-		const reviewTask = initial.board.columns.find((column) => column.id === "review")?.cards[0];
+		const reviewTask = initial.board.columns
+			.find((column) => column.id === "review")
+			?.cards.find((card) => !card.unstarted);
 		if (!reviewTask) {
 			throw new Error("Expected a review task.");
 		}

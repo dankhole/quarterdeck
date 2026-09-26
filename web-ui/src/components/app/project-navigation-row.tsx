@@ -60,13 +60,6 @@ export function ProjectRow({
 
 	const taskCountBadges: TaskCountBadge[] = [
 		{
-			id: "backlog",
-			title: "Backlog",
-			shortLabel: "B",
-			toneClassName: statusPillColors.backlog,
-			count: displayCounts.backlog,
-		},
-		{
 			id: "in_progress",
 			title: "In Progress",
 			shortLabel: "IP",

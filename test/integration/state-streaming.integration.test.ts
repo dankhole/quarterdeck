@@ -5,6 +5,7 @@ import { delimiter, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type {
+	RuntimeBoardData,
 	RuntimeHookIngestResponse,
 	RuntimeProjectAddResponse,
 	RuntimeProjectBoardCommandExecutionResult,
@@ -21,7 +22,7 @@ import type {
 	RuntimeWorktreeEnsureResponse,
 } from "../../src/core";
 import { deriveTaskIndicatorState, QUARTERDECK_BUILD_ID } from "../../src/core";
-import { loadProjectContext } from "../../src/state";
+import { loadProjectContext, saveProjectState } from "../../src/state";
 import { createBoard, createReviewBoard } from "../utilities/board-factory";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
 import {
@@ -34,6 +35,24 @@ import { connectRuntimeStream, type RuntimeStreamClient } from "../utilities/run
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir } from "../utilities/temp-dir";
 import { requestJson } from "../utilities/trpc-request";
+
+async function seedStartedBoard(
+	stateHome: string,
+	projectPath: string,
+	board: RuntimeBoardData,
+	expectedRevision: number,
+): Promise<number> {
+	// A new Review task is unstarted. These fixtures represent existing completed
+	// sessions, so seed the isolated persisted board through its low-level writer.
+	const previousStateHome = process.env.QUARTERDECK_STATE_HOME;
+	process.env.QUARTERDECK_STATE_HOME = join(stateHome, ".quarterdeck");
+	try {
+		return (await saveProjectState(projectPath, { board, sessions: {}, expectedRevision })).revision;
+	} finally {
+		if (previousStateHome === undefined) delete process.env.QUARTERDECK_STATE_HOME;
+		else process.env.QUARTERDECK_STATE_HOME = previousStateHome;
+	}
+}
 
 function installDeterministicFakeCodex(binDir: string): void {
 	mkdirSync(binDir, { recursive: true });
@@ -153,7 +172,9 @@ describe("state streaming integration", { concurrent: false }, () => {
 					message.projectState.revision === previousRevision + 1,
 			)) as RuntimeStateStreamProjectStateMessage;
 			expect(projectUpdateB.projectState.revision).toBe(previousRevision + 1);
-			expect(projectUpdateB.projectState.board.columns[0]?.cards[0]?.prompt).toBe("Realtime Task");
+			expect(
+				projectUpdateB.projectState.board.columns.find((column) => column.id === "review")?.cards[0]?.prompt,
+			).toBe("Realtime Task");
 
 			const streamAMessages = await streamA.collectFor(500);
 			expect(
@@ -174,7 +195,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 					expect.objectContaining({
 						id: projectBId,
 						boardRevision: previousRevision + 1,
-						taskCounts: { backlog: 1, in_progress: 0, review: 0, trash: 0 },
+						taskCounts: { in_progress: 0, review: 1, trash: 0 },
 					}),
 				]),
 			});
@@ -187,7 +208,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 			});
 			expect(projectsAfterUpdate.status).toBe(200);
 			const projectB = projectsAfterUpdate.payload.projects.find((project) => project.id === projectBId) ?? null;
-			expect(projectB?.taskCounts.backlog).toBe(1);
+			expect(projectB?.taskCounts.review).toBe(1);
 			// The accepted browser command is exactly +1 (asserted above), but the
 			// runtime may subsequently persist task Git/worktree metadata through the
 			// same board authority before this later list query.
@@ -268,18 +289,12 @@ describe("state streaming integration", { concurrent: false }, () => {
 				projectId: projectBId,
 			});
 			expect(projectBState.status).toBe(200);
-			const seedProjectBBoard = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
-				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "project.applyBoardCommands",
-				type: "mutation",
-				projectId: projectBId,
-				payload: createBoardSeedCommandBatch(
-					createReviewBoard(startedTaskId, "Project B notification task"),
-					projectBState.payload.revision,
-					"seed-project-b-notification",
-				),
-			});
-			expect(seedProjectBBoard.status).toBe(200);
+			await seedStartedBoard(
+				tempHome,
+				projectBPath,
+				createReviewBoard(startedTaskId, "Project B notification task"),
+				projectBState.payload.revision,
+			);
 
 			const startShellResponse = await requestJson<RuntimeShellSessionStartResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
@@ -535,18 +550,23 @@ describe("state streaming integration", { concurrent: false }, () => {
 				type: "query",
 				projectId,
 			});
-			const seedResponse = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
+			const seededRevision = await seedStartedBoard(
+				tempHome,
+				projectPath,
+				createReviewBoard(taskId, "Review and response convergence"),
+				initialState.payload.revision,
+			);
+			await requestJson<RuntimeProjectBoardCommandExecutionResult>({
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "project.applyBoardCommands",
 				type: "mutation",
 				projectId,
-				payload: createBoardSeedCommandBatch(
-					createReviewBoard(taskId, "Review and response convergence"),
-					initialState.payload.revision,
-					"seed-review-response-convergence",
-				),
+				payload: {
+					commandId: "publish-started-review-fixture",
+					expectedRevision: seededRevision,
+					commands: [{ kind: "reorder_task", taskId, columnId: "review", targetIndex: 0 }],
+				},
 			});
-			expect(seedResponse.status).toBe(200);
 
 			const startTaskResponse = await requestJson<RuntimeTaskSessionStartResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
@@ -947,14 +967,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 			}
 			trashColumn.cards[0].baseRef = baseRef;
 
-			const saveResponse = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
-				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "project.applyBoardCommands",
-				type: "mutation",
-				projectId,
-				payload: createBoardSeedCommandBatch(board, stateResponse.payload.revision, "seed-metadata-board"),
-			});
-			expect(saveResponse.status).toBe(200);
+			await seedStartedBoard(tempHome, projectPath, board, stateResponse.payload.revision);
 
 			const ensureResponse = await requestJson<RuntimeWorktreeEnsureResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,

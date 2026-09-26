@@ -145,9 +145,8 @@ describe("ColumnContextPanel", () => {
 
 	it("keeps sidebar cards draggable and forwards allowed board moves", async () => {
 		const columns: BoardColumn[] = [
-			{ id: "backlog", title: "Backlog", cards: [createCard("task-1", "Backlog task")] },
 			{ id: "in_progress", title: "In Progress", cards: [] },
-			{ id: "review", title: "Review", cards: [] },
+			{ id: "review", title: "Review", cards: [{ ...createCard("task-1", "Unstarted task"), unstarted: true }] },
 			{ id: "trash", title: "Trash", cards: [] },
 		];
 		const onTaskDragEnd = vi.fn();
@@ -174,13 +173,13 @@ describe("ColumnContextPanel", () => {
 		expect(container.querySelector('[data-droppable-id="in_progress"]')?.getAttribute("data-drop-disabled")).toBe(
 			"false",
 		);
-		expect(container.querySelector('[data-droppable-id="review"]')?.getAttribute("data-drop-disabled")).toBe("true");
+		expect(container.querySelector('[data-droppable-id="review"]')?.getAttribute("data-drop-disabled")).toBe("false");
 		expect(container.querySelector('[data-droppable-id="trash"]')?.getAttribute("data-drop-disabled")).toBe("false");
 
 		const result = {
 			draggableId: "task-1",
 			type: "CARD",
-			source: { droppableId: "backlog", index: 0 },
+			source: { droppableId: "review", index: 0 },
 			destination: { droppableId: "in_progress", index: 0 },
 			reason: "DROP",
 			mode: "FLUID",
@@ -193,11 +192,57 @@ describe("ColumnContextPanel", () => {
 		expect(onTaskDragEnd).toHaveBeenCalledWith(result);
 	});
 
+	it("keeps Review creation available and disables bulk start when only started tasks remain", async () => {
+		const onCreateTask = vi.fn();
+		const onStartAllTasks = vi.fn();
+		const columns: BoardColumn[] = [
+			{ id: "in_progress", title: "In Progress", cards: [] },
+			{ id: "review", title: "Review", cards: [createCard("task-1", "Completed work")] },
+			{ id: "trash", title: "Trash", cards: [] },
+		];
+		const renderPanel = () =>
+			root.render(
+				<CardActionsProvider stable={noopStableActions} reactive={noopReactiveState}>
+					<ColumnContextPanel
+						selection={createSelection(columns, "task-1")}
+						onCardSelect={() => {}}
+						onTaskDragEnd={() => {}}
+						taskSessions={{}}
+						onCreateTask={onCreateTask}
+						onStartAllTasks={onStartAllTasks}
+					/>
+				</CardActionsProvider>,
+			);
+		await act(async () => renderPanel());
+		expect(container.textContent).not.toContain("Backlog");
+		expect(container.querySelector<HTMLButtonElement>('[aria-label="Start all unstarted tasks"]')?.disabled).toBe(
+			true,
+		);
+		await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Create task"]')?.click());
+		expect(onCreateTask).toHaveBeenCalledOnce();
+		columns[1]!.cards.push({ ...createCard("task-2", "Future work"), unstarted: true });
+		await act(async () => renderPanel());
+		expect(container.querySelector<HTMLButtonElement>('[aria-label="Start all unstarted tasks"]')?.disabled).toBe(
+			false,
+		);
+		expect(container.querySelector("[data-unstarted-heading]")?.textContent).toBe("Unstarted1");
+		await act(async () =>
+			container.querySelector<HTMLButtonElement>('[aria-label="Start all unstarted tasks"]')?.click(),
+		);
+		expect(onStartAllTasks).toHaveBeenCalledOnce();
+	});
+
 	it("centers the selected detail card when the selection changes", async () => {
 		const columns: BoardColumn[] = [
-			{ id: "backlog", title: "Backlog", cards: [createCard("task-1", "Backlog task")] },
 			{ id: "in_progress", title: "In Progress", cards: [createCard("task-2", "In progress task")] },
-			{ id: "review", title: "Review", cards: [createCard("task-3", "Review task")] },
+			{
+				id: "review",
+				title: "Review",
+				cards: [
+					createCard("task-3", "Review task"),
+					{ ...createCard("task-1", "Unstarted task"), unstarted: true },
+				],
+			},
 			{ id: "trash", title: "Trash", cards: [] },
 		];
 

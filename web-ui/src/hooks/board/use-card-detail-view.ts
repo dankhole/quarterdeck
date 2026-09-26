@@ -275,7 +275,8 @@ export function useCardDetailView({
 		},
 		terminal: {
 			onSessionSummary,
-			isTaskTerminalEnabled: selection.column.id === "in_progress" || selection.column.id === "review",
+			isTaskTerminalEnabled:
+				!selection.card.unstarted && (selection.column.id === "in_progress" || selection.column.id === "review"),
 		},
 	};
 }

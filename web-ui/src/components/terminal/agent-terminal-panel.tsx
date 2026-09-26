@@ -34,7 +34,7 @@ export interface AgentTerminalPanelProps {
 
 export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement {
 	// enabled gates whether this panel should keep a live persistent terminal connection.
-	// We disable it for non-active task contexts so backlog and trash views do not keep extra websocket sockets open.
+	// We disable it for non-active task contexts so unstarted and trash views do not keep extra websocket sockets open.
 	const sessionControls: PersistentTerminalSessionControls = usePersistentTerminalSession({
 		taskId: props.taskId,
 		projectId: props.projectId,

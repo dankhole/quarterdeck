@@ -104,7 +104,6 @@ function createProjectsResponse(): RuntimeProjectsResponse {
 				name: "repo",
 				boardRevision: 0,
 				taskCounts: {
-					backlog: 0,
 					in_progress: 0,
 					review: 0,
 					trash: 0,
@@ -284,7 +283,7 @@ describe("RuntimeStateHub", () => {
 							expect.objectContaining({
 								id: "project-1",
 								boardRevision: 7,
-								taskCounts: { backlog: 1, in_progress: 0, review: 0, trash: 0 },
+								taskCounts: { in_progress: 0, review: 1, trash: 0 },
 							}),
 						],
 					}),
@@ -364,7 +363,6 @@ describe("RuntimeStateHub", () => {
 					name: "repo-1",
 					boardRevision: 1,
 					taskCounts: {
-						backlog: 0,
 						in_progress: isProjectedReview ? 0 : 1,
 						review: isProjectedReview ? 1 : 0,
 						trash: 0,
@@ -375,7 +373,7 @@ describe("RuntimeStateHub", () => {
 					path: "/repo-2",
 					name: "repo-2",
 					boardRevision: 0,
-					taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
+					taskCounts: { in_progress: 0, review: 0, trash: 0 },
 				},
 			],
 		}));
@@ -472,11 +470,11 @@ describe("RuntimeStateHub", () => {
 					projects: [
 						{
 							id: "project-1",
-							taskCounts: { backlog: 0, in_progress: 0, review: 1, trash: 0 },
+							taskCounts: { in_progress: 0, review: 1, trash: 0 },
 						},
 						{
 							id: "project-2",
-							taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
+							taskCounts: { in_progress: 0, review: 0, trash: 0 },
 						},
 					],
 				});
@@ -521,7 +519,7 @@ describe("RuntimeStateHub", () => {
 						projects: [
 							expect.objectContaining({
 								id: "project-1",
-								taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+								taskCounts: { in_progress: 1, review: 0, trash: 0 },
 							}),
 							expect.anything(),
 						],
@@ -730,7 +728,7 @@ describe("RuntimeStateHub", () => {
 							path: "/repo",
 							name: "repo",
 							boardRevision: 8,
-							taskCounts: { backlog: 0, in_progress: 0, review: 1, trash: 0 },
+							taskCounts: { in_progress: 0, review: 1, trash: 0 },
 						},
 					],
 				})),
@@ -750,7 +748,7 @@ describe("RuntimeStateHub", () => {
 				expect.objectContaining({
 					id: "project-1",
 					boardRevision: 7,
-					taskCounts: { backlog: 1, in_progress: 0, review: 0, trash: 0 },
+					taskCounts: { in_progress: 0, review: 1, trash: 0 },
 				}),
 			]);
 		} finally {

@@ -27,10 +27,11 @@ export function isAllowedCrossColumnCardMove(
 	toColumnId: BoardColumnId,
 	options?: {
 		taskId?: string | null;
+		unstarted?: boolean;
 		programmaticCardMoveInFlight?: ProgrammaticCardMoveInFlight | null;
 	},
 ): boolean {
-	if (fromColumnId === "backlog" && toColumnId === "in_progress") {
+	if (fromColumnId === "review" && toColumnId === "in_progress" && options?.unstarted) {
 		return true;
 	}
 	if (toColumnId === "trash" && fromColumnId !== "trash") {
@@ -67,27 +68,28 @@ export function isCardDropDisabled(
 	activeDragSourceColumnId: BoardColumnId | null,
 	options?: {
 		activeDragTaskId?: string | null;
+		activeDragTaskUnstarted?: boolean;
 		programmaticCardMoveInFlight?: ProgrammaticCardMoveInFlight | null;
 	},
 ): boolean {
 	if (!activeDragSourceColumnId) {
 		return false;
 	}
+	if (columnId === "review" && activeDragSourceColumnId === "review") return false;
 	if (columnId === "review") {
 		return !isAllowedCrossColumnCardMove(activeDragSourceColumnId, columnId, {
 			taskId: options?.activeDragTaskId,
+			unstarted: options?.activeDragTaskUnstarted,
 			programmaticCardMoveInFlight: options?.programmaticCardMoveInFlight,
 		});
 	}
-	if (columnId === "backlog") {
-		return activeDragSourceColumnId !== "backlog";
-	}
 	if (columnId === "in_progress") {
-		if (activeDragSourceColumnId === "backlog" || activeDragSourceColumnId === "in_progress") {
+		if (activeDragSourceColumnId === "in_progress") {
 			return false;
 		}
 		return !isAllowedCrossColumnCardMove(activeDragSourceColumnId, columnId, {
 			taskId: options?.activeDragTaskId,
+			unstarted: options?.activeDragTaskUnstarted,
 			programmaticCardMoveInFlight: options?.programmaticCardMoveInFlight,
 		});
 	}

@@ -244,7 +244,7 @@ export function BoardCard({
 				onMouseEnter={() => {
 					hoverTimerRef.current = setTimeout(() => setIsHovered(true), 200);
 					onDependencyPointerEnter?.(card.id);
-					onTerminalWarmup?.(card.id);
+					if (!card.unstarted) onTerminalWarmup?.(card.id);
 				}}
 				onMouseMove={() => {
 					if (!isDependencyLinking) {
@@ -258,7 +258,7 @@ export function BoardCard({
 						hoverTimerRef.current = null;
 					}
 					setIsHovered(false);
-					onTerminalCancelWarmup?.(card.id);
+					if (!card.unstarted) onTerminalCancelWarmup?.(card.id);
 				}}
 			>
 				<Tooltip content={effectiveTooltip ?? undefined} side="top">
@@ -387,6 +387,7 @@ export function BoardCard({
 								<BoardCardActions
 									cardId={card.id}
 									columnId={columnId}
+									isUnstarted={card.unstarted === true}
 									isHovered={isHovered}
 									isSessionDead={isSessionDead}
 									isSessionRestartable={isSessionRestartable}

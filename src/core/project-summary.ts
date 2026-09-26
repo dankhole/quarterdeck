@@ -2,7 +2,6 @@ import type { RuntimeBoardData, RuntimeProjectSummary, RuntimeProjectTaskCounts 
 
 export function countProjectTasksByColumn(board: RuntimeBoardData): RuntimeProjectTaskCounts {
 	const counts: RuntimeProjectTaskCounts = {
-		backlog: 0,
 		in_progress: 0,
 		review: 0,
 		trash: 0,

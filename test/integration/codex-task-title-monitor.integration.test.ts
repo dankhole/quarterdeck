@@ -37,7 +37,7 @@ describe("native Codex title synchronization", { concurrent: false }, () => {
 					expectedRevision: initial.revision,
 					command: {
 						kind: "create_task",
-						columnId: "backlog",
+						columnId: "review",
 						taskId: "task-a",
 						prompt: "Follow native thread names",
 						baseRef: "main",

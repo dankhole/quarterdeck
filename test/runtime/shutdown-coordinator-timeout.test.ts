@@ -21,7 +21,6 @@ import { killOrphanedAgentProcesses } from "../../src/terminal/orphan-cleanup.js
 function createBoard(inProgressTaskIds: string[]): RuntimeBoardData {
 	return {
 		columns: [
-			{ id: "backlog", title: "Backlog", cards: [] },
 			{
 				id: "in_progress",
 				title: "In Progress",

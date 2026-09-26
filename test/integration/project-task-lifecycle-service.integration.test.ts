@@ -80,6 +80,73 @@ function createDeferred(): { promise: Promise<void>; resolve: () => void } {
 }
 
 describe("ProjectTaskLifecycleService integration", { concurrent: false }, () => {
+	it("keeps unstarted Review tasks distinct through stop, restart, Trash, restore, and Start", async () => {
+		await withTemporaryHome(async () => {
+			const { path: projectPath, cleanup } = createTempDir("quarterdeck-unstarted-");
+			try {
+				initGitRepository(projectPath);
+				const context = await loadProjectContext(projectPath);
+				const scope = { projectId: context.projectId, projectPath };
+				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+				const created = await boardCommands.execute(scope, {
+					commandId: "create-unstarted",
+					expectedRevision: 0,
+					command: { ...TASK_SPEC, useWorktree: false, kind: "create_task", columnId: "review" },
+				});
+				const startTaskSession = vi.fn(async () => ({
+					ok: true,
+					summary: createTestTaskSessionSummary({ taskId: TASK_SPEC.taskId, state: "running" }),
+				}));
+				const restartStructuredTaskSession = vi.fn();
+				const lifecycle = new ProjectTaskLifecycleService({
+					boardCommands,
+					startTaskSession,
+					restartStructuredTaskSession,
+				});
+				const identity = { taskId: TASK_SPEC.taskId, taskCreatedAt: TASK_SPEC.createdAt };
+				for (const kind of ["stop", "restart"] as const) {
+					const result = await lifecycle.execute(scope, {
+						...identity,
+						kind,
+						operationId: kind,
+						expectedRevision: created.state.revision,
+					});
+					expect(result.operation.outcomeCode).toBe("invalid_transition");
+				}
+				expect(restartStructuredTaskSession).not.toHaveBeenCalled();
+				const trashed = await lifecycle.execute(scope, {
+					...identity,
+					kind: "trash",
+					operationId: "trash-unstarted",
+					sourceColumnId: "review",
+					expectedRevision: created.state.revision,
+				});
+				expect(trashed.ok).toBe(true);
+				const restored = await lifecycle.execute(scope, {
+					...identity,
+					kind: "restore",
+					operationId: "restore-unstarted",
+					expectedRevision: trashed.state.revision,
+				});
+				expect(restored.ok).toBe(true);
+				expect(findCardInBoard(restored.state.board, TASK_SPEC.taskId)?.unstarted).toBe(true);
+				expect(getTaskColumnId(restored.state.board, TASK_SPEC.taskId)).toBe("review");
+				expect(startTaskSession).not.toHaveBeenCalled();
+				const started = await lifecycle.execute(scope, {
+					...identity,
+					kind: "start",
+					operationId: "start-unstarted",
+					expectedRevision: restored.state.revision,
+				});
+				expect(started.ok).toBe(true);
+				expect(findCardInBoard(started.state.board, TASK_SPEC.taskId)?.unstarted).not.toBe(true);
+				expect(startTaskSession).toHaveBeenCalledOnce();
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("publishes setup progress, prevents launch on failure, and permits a new explicit Start to retry", async () => {
 		await withTemporaryHome(async () => {
 			const { path: projectPath, cleanup } = createTempDir("quarterdeck-setup-lifecycle-");
@@ -126,7 +193,8 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 				expect(first.ok).toBe(false);
 				expect(first.error).toContain("Worktree setup failed");
 				expect(startTaskSession).not.toHaveBeenCalled();
-				expect(getTaskColumnId(first.state.board, TASK_SPEC.taskId)).toBe("backlog");
+				expect(getTaskColumnId(first.state.board, TASK_SPEC.taskId)).toBe("review");
+				expect(findCardInBoard(first.state.board, TASK_SPEC.taskId)?.unstarted).toBe(true);
 				setupFails = false;
 				const retried = await lifecycle.execute(scope, {
 					kind: "start",
@@ -261,8 +329,8 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 								task: {
 									taskId: TASK_SPEC.taskId,
 									prompt: TASK_SPEC.prompt,
-									createdAt: TASK_SPEC.createdAt,
 									agentId: "codex",
+									createdAt: TASK_SPEC.createdAt,
 								},
 							},
 						],
@@ -319,7 +387,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					expectedRevision: initial.revision,
 					command: {
 						kind: "create_task",
-						columnId: "backlog",
+						columnId: "review",
 						taskId: TASK_SPEC.taskId,
 						prompt: "Existing private prompt",
 						baseRef: "main",
@@ -351,7 +419,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 		});
 	});
 
-	it("returns a failed start to backlog without deleting recoverable worktree or branch state", async () => {
+	it("returns a failed start to unstarted without deleting recoverable worktree or branch state", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-lifecycle-failure-");
 			try {
@@ -384,8 +452,8 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					error: "Agent process did not start.",
 					state: { revision: 3 },
 				});
-				expect(getTaskColumnId(result.state.board, TASK_SPEC.taskId)).toBe("backlog");
-				expect(result.state.board.columns[0]?.cards[0]).toMatchObject({
+				expect(getTaskColumnId(result.state.board, TASK_SPEC.taskId)).toBe("review");
+				expect(result.state.board.columns.find((column) => column.id === "review")?.cards[0]).toMatchObject({
 					id: TASK_SPEC.taskId,
 					branch: TASK_SPEC.branch,
 					useWorktree: true,
@@ -404,7 +472,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					operation: { outcomeCode: "session_start_failed" },
 					state: { revision: 3 },
 				});
-				expect(getTaskColumnId(replayed.state.board, TASK_SPEC.taskId)).toBe("backlog");
+				expect(getTaskColumnId(replayed.state.board, TASK_SPEC.taskId)).toBe("review");
 				expect(startTaskSession).toHaveBeenCalledOnce();
 			} finally {
 				cleanup();
@@ -429,7 +497,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					expectedRevision: initial.revision,
 					command: {
 						kind: "create_task",
-						columnId: "backlog",
+						columnId: "review",
 						taskId: "existing-task",
 						prompt: "Existing task",
 						baseRef: "main",
@@ -580,7 +648,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 							expectedRevision: current.revision,
 							command: {
 								kind: "create_task",
-								columnId: "backlog",
+								columnId: "review",
 								taskId: `competing-task-${index}`,
 								prompt: "Concurrent edit",
 								baseRef: "main",
@@ -637,7 +705,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					expectedRevision: initial.revision,
 					command: {
 						kind: "create_task",
-						columnId: "backlog",
+						columnId: "review",
 						taskId: "competing-task",
 						prompt: "Concurrent edit",
 						baseRef: "main",
@@ -837,7 +905,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 				await boardCommands.execute(scope, {
 					commandId: "interrupted-create-and-start:create",
 					expectedRevision: initial.revision,
-					command: { ...TASK_SPEC, kind: "create_task", columnId: "backlog" },
+					command: { ...TASK_SPEC, kind: "create_task", columnId: "review" },
 				});
 				await boardCommands.execute(scope, {
 					commandId: "interrupted-create-and-start:move",
@@ -845,7 +913,8 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					command: {
 						kind: "move_task",
 						taskId: TASK_SPEC.taskId,
-						sourceColumnId: "backlog",
+						sourceColumnId: "review",
+						expectedUnstarted: true,
 						targetColumnId: "in_progress",
 						targetIndex: 0,
 						updatedAt: 150,
@@ -866,7 +935,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					operation: { outcomeCode: "superseded" },
 					state: { revision: 3 },
 				});
-				expect(getTaskColumnId(result.state.board, TASK_SPEC.taskId)).toBe("backlog");
+				expect(getTaskColumnId(result.state.board, TASK_SPEC.taskId)).toBe("review");
 				expect(startTaskSession).not.toHaveBeenCalled();
 			} finally {
 				cleanup();
@@ -890,7 +959,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 				await boardCommands.execute(scope, {
 					commandId: "seed-task-a",
 					expectedRevision: initial.revision,
-					command: { ...TASK_SPEC, kind: "create_task", columnId: "backlog" },
+					command: { ...TASK_SPEC, kind: "create_task", columnId: "review" },
 				});
 				const startTaskSession = vi.fn(async (_scope, request) => {
 					const summary = createTestTaskSessionSummary({
@@ -959,7 +1028,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					const created = await boardCommands.execute(scope, {
 						commandId: "seed-start-recovery",
 						expectedRevision: initial.revision,
-						command: { ...TASK_SPEC, kind: "create_task", columnId: "backlog" },
+						command: { ...TASK_SPEC, kind: "create_task", columnId: "review" },
 					});
 					const operationStore = new ProjectTaskLifecycleOperationStore();
 					const command: RuntimeTaskLifecycleCommand = {
@@ -988,7 +1057,8 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 						command: {
 							kind: "move_task",
 							taskId: TASK_SPEC.taskId,
-							sourceColumnId: "backlog",
+							sourceColumnId: "review",
+							expectedUnstarted: true,
 							targetColumnId: "in_progress",
 							targetIndex: 0,
 							updatedAt: begun.operation.requestedAt,
@@ -1015,7 +1085,8 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 						ok: false,
 						operation: { status: "failed", outcomeCode: "superseded", phase: "finished" },
 					});
-					expect(getTaskColumnId(recovered?.state.board ?? initial.board, TASK_SPEC.taskId)).toBe("backlog");
+					expect(getTaskColumnId(recovered?.state.board ?? initial.board, TASK_SPEC.taskId)).toBe("review");
+					expect(findCardInBoard(recovered?.state.board ?? initial.board, TASK_SPEC.taskId)?.unstarted).toBe(true);
 					expect(startTaskSession).not.toHaveBeenCalled();
 					expect(await operationStore.listActive(scope)).toEqual([]);
 				} finally {
@@ -1100,7 +1171,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 		});
 	});
 
-	it("starts linked backlog tasks from the durable pre-trash transition plan", async () => {
+	it("starts linked unstarted tasks from the durable pre-trash transition plan", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-trash-linked-");
 			try {
@@ -1121,20 +1192,25 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 				};
 				const childTask = {
 					...TASK_SPEC,
-					taskId: "backlog-child",
+					taskId: "unstarted-child",
 					createdAt: 202,
 					useWorktree: false,
 					branch: undefined,
 				};
-				const parentCreated = await boardCommands.execute(scope, {
+				let parentCreated = await boardCommands.execute(scope, {
 					commandId: "seed-linked-parent",
 					expectedRevision: initial.revision,
-					command: { ...parentTask, kind: "create_task", columnId: "review" },
+					command: { ...parentTask, kind: "create_task", columnId: "in_progress" },
+				});
+				parentCreated = await boardCommands.execute(scope, {
+					commandId: "parent-completed",
+					expectedRevision: parentCreated.state.revision,
+					command: { kind: "move_task", taskId: parentTask.taskId, targetColumnId: "review", updatedAt: 201 },
 				});
 				const childCreated = await boardCommands.execute(scope, {
 					commandId: "seed-linked-child",
 					expectedRevision: parentCreated.state.revision,
-					command: { ...childTask, kind: "create_task", columnId: "backlog" },
+					command: { ...childTask, kind: "create_task", columnId: "review" },
 				});
 				const linked = await boardCommands.execute(scope, {
 					commandId: "seed-linked-dependency",

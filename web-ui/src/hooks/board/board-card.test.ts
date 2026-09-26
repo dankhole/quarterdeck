@@ -32,6 +32,35 @@ function resolveSummaryDisplay(showSummaryOnCards: boolean, showSummaryOnHover: 
 }
 
 describe("resolveBoardCardViewModel summary display", () => {
+	it("shows unstarted status without stale session or restart affordances", () => {
+		const result = resolveBoardCardViewModel({
+			card: { ...card, unstarted: true },
+			columnId: "review",
+			sessionSummary: createTestTaskSessionSummary({
+				taskId: card.id,
+				state: "awaiting_review",
+				pid: null,
+				displaySummary: "Stale summary",
+			}),
+			reviewWorktreeSnapshot: null,
+			workspacePath: "/tmp/project",
+			showSummaryOnCards: true,
+			showSummaryOnHover: true,
+			uncommittedChangesOnCardsEnabled: true,
+			isRestartDelayElapsed: true,
+			hasRestartSessionHandler: true,
+		});
+		expect(result).toMatchObject({
+			statusLabel: "Unstarted",
+			showStatusBadge: true,
+			isSessionDead: false,
+			isSessionRestartable: false,
+			showProjectStatus: false,
+			latestSummaryText: null,
+			effectiveTooltip: null,
+		});
+	});
+
 	it("shows the summary only in the hover tooltip in hover mode", () => {
 		const result = resolveSummaryDisplay(false, true);
 

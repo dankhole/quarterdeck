@@ -16,7 +16,6 @@ const PROJECTS: RuntimeProjectSummary[] = [
 		path: "/tmp/quarterdeck",
 		boardRevision: 0,
 		taskCounts: {
-			backlog: 0,
 			in_progress: 0,
 			review: 0,
 			trash: 0,
@@ -83,6 +82,20 @@ describe("ProjectNavigationPanel", () => {
 		const projectRow = container.querySelector(".kb-project-row");
 		expect(projectRow).toBeInstanceOf(HTMLElement);
 		expect(projectRow?.textContent).toContain("Quarterdeck");
+	});
+
+	it("shows unstarted tasks in the Review count without a Backlog category", () => {
+		renderPanel({
+			projects: PROJECTS.map((project) => ({
+				...project,
+				taskCounts: { in_progress: 1, review: 3, trash: 0 },
+			})),
+			needsInputByProject: { "project-1": 1 },
+		});
+		expect(container.querySelector('[title="Review"]')?.textContent).toBe("R|2");
+		expect(container.querySelector('[title="Needs Input"]')?.textContent).toBe("NI|1");
+		expect(container.querySelector('[title="Backlog"]')).toBeNull();
+		expect(container.textContent).not.toMatch(/backlog/i);
 	});
 
 	it("fills its parent container without fixed width", () => {

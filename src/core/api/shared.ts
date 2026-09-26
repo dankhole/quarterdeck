@@ -19,7 +19,7 @@ export type RuntimeAgentId = z.infer<typeof runtimeAgentIdSchema>;
 export const runtimeMaintainedAgentIdSchema = z.enum(["claude", "codex", "pi"]);
 export type RuntimeMaintainedAgentId = z.infer<typeof runtimeMaintainedAgentIdSchema>;
 
-export const runtimeBoardColumnIdSchema = z.enum(["backlog", "in_progress", "review", "trash"]);
+export const runtimeBoardColumnIdSchema = z.enum(["in_progress", "review", "trash"]);
 export type RuntimeBoardColumnId = z.infer<typeof runtimeBoardColumnIdSchema>;
 
 export const runtimeTaskImageSchema = z.object({

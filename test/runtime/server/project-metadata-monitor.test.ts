@@ -44,7 +44,7 @@ vi.mock("../../../src/workdir", async (importOriginal) => {
 
 type TestTaskInput = {
 	taskId: string;
-	columnId: "backlog" | "in_progress" | "review" | "trash";
+	columnId: "review" | "in_progress" | "review" | "trash";
 	baseRef?: string;
 	workingDirectory?: string | null;
 	useWorktree?: boolean;
@@ -55,11 +55,6 @@ function createBoard(tasks: TestTaskInput[]): RuntimeBoardData {
 	return {
 		columns: [
 			{
-				id: "backlog",
-				title: "Backlog",
-				cards: tasks.filter((task) => task.columnId === "backlog").map((task) => createCard(task, now)),
-			},
-			{
 				id: "in_progress",
 				title: "In Progress",
 				cards: tasks.filter((task) => task.columnId === "in_progress").map((task) => createCard(task, now)),
@@ -67,7 +62,13 @@ function createBoard(tasks: TestTaskInput[]): RuntimeBoardData {
 			{
 				id: "review",
 				title: "Review",
-				cards: tasks.filter((task) => task.columnId === "review").map((task) => createCard(task, now)),
+				cards: [
+					...tasks.filter((task) => task.columnId === "review").map((task) => createCard(task, now)),
+					...tasks
+						.filter((task) => task.columnId === "review")
+						.map((task) => createCard(task, now))
+						.map((card) => ({ ...card, unstarted: true })),
+				],
 			},
 			{
 				id: "trash",

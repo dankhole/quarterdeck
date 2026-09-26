@@ -46,7 +46,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 							baseRef: "main",
 							prompt: "Create without a browser",
 							taskId: "task-a",
-							columnId: "backlog",
+							columnId: "review",
 							kind: "create_task",
 						},
 					},
@@ -56,7 +56,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 				expect(result.acceptedChange).toBe(true);
 				expect(result.replayed).toBe(false);
 				expect(result.state.revision).toBe(1);
-				expect(result.state.board.columns[0]?.cards[0]).toMatchObject({
+				expect(result.state.board.columns.find((column) => column.id === "review")?.cards[0]).toMatchObject({
 					id: "task-a",
 					prompt: "Create without a browser",
 					codexOptions: { model: "test-model", reasoningEffort: "high" },
@@ -82,7 +82,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 						expectedRevision: initial.revision,
 						command: {
 							kind: "create_task",
-							columnId: "backlog",
+							columnId: "review",
 							taskId: "task-a",
 							prompt: "Create without a browser",
 							baseRef: "main",
@@ -113,7 +113,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 						expectedRevision: initial.revision,
 						command: {
 							kind: "create_task",
-							columnId: "backlog",
+							columnId: "review",
 							taskId: "task-a",
 							prompt: "Create without a browser",
 							baseRef: "main",
@@ -151,7 +151,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 						expectedRevision: initial.revision,
 						command: {
 							kind: "create_task",
-							columnId: "backlog",
+							columnId: "review",
 							taskId: "task-a",
 							prompt: "Task A",
 							baseRef: "main",
@@ -163,7 +163,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 						expectedRevision: initial.revision,
 						command: {
 							kind: "create_task",
-							columnId: "backlog",
+							columnId: "review",
 							taskId: "task-b",
 							prompt: "Task B",
 							baseRef: "main",
@@ -180,7 +180,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 
 				const loaded = await loadProjectState(projectPath);
 				expect(loaded.revision).toBe(1);
-				expect(loaded.board.columns[0]?.cards).toHaveLength(1);
+				expect(loaded.board.columns.find((column) => column.id === "review")?.cards).toHaveLength(1);
 			} finally {
 				cleanup();
 			}
@@ -256,7 +256,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 					expectedRevision: initial.revision,
 					command: {
 						kind: "create_task" as const,
-						columnId: "backlog" as const,
+						columnId: "review" as const,
 						taskId: "task-a",
 						prompt: "Persist before publish",
 						baseRef: "main",
@@ -318,7 +318,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 					expectedRevision: initial.revision,
 					command: {
 						kind: "create_task",
-						columnId: "backlog",
+						columnId: "review",
 						taskId: "task-a",
 						prompt: "Task A",
 						baseRef: "main",
@@ -332,7 +332,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 						expectedRevision: initial.revision,
 						command: {
 							kind: "create_task",
-							columnId: "backlog",
+							columnId: "review",
 							taskId: "task-b",
 							prompt: "Different task",
 							baseRef: "main",
@@ -373,7 +373,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 					commands: [
 						{
 							kind: "create_task",
-							columnId: "backlog",
+							columnId: "review",
 							taskId: "task-a",
 							prompt: "Run without a browser",
 							baseRef: "main",
@@ -382,7 +382,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 						{
 							kind: "move_task",
 							taskId: "task-a",
-							sourceColumnId: "backlog",
+							sourceColumnId: "review",
 							targetColumnId: "in_progress",
 							updatedAt: 200,
 						},
@@ -431,7 +431,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 					commands: [
 						{
 							kind: "create_task" as const,
-							columnId: "backlog" as const,
+							columnId: "review" as const,
 							taskId: "untitled",
 							agentId: "codex" as const,
 							prompt: "Generate a title",
@@ -440,7 +440,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 						},
 						{
 							kind: "create_task" as const,
-							columnId: "backlog" as const,
+							columnId: "review" as const,
 							taskId: "already-titled",
 							title: "Existing title",
 							prompt: "Keep this title",
@@ -498,7 +498,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 					expectedRevision: initial.revision,
 					command: {
 						kind: "create_task",
-						columnId: "backlog",
+						columnId: "review",
 						taskId: "task-a",
 						prompt: "Title me",
 						baseRef: "main",
@@ -564,7 +564,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 					expectedRevision: initial.revision,
 					command: {
 						kind: "create_task",
-						columnId: "backlog",
+						columnId: "review",
 						taskId: "task-a",
 						title: "Opening request",
 						prompt: "Thread evolves",
@@ -703,7 +703,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 					commands: [
 						{
 							kind: "create_task",
-							columnId: "backlog",
+							columnId: "review",
 							taskId: "task-a",
 							prompt: "Safe generic edit",
 							baseRef: "main",
@@ -736,11 +736,18 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 							{
 								kind: "move_task",
 								taskId: "task-a",
-								sourceColumnId: "backlog",
+								sourceColumnId: "review",
 								targetColumnId: "in_progress",
 								updatedAt: 200,
 							},
 						],
+					}),
+				).rejects.toBeInstanceOf(ProjectBoardLifecycleCommandRequiredError);
+				await expect(
+					service.executeClientBatch(scope, {
+						commandId: "client-start-without-source",
+						expectedRevision: created.state.revision,
+						commands: [{ kind: "move_task", taskId: "task-a", targetColumnId: "in_progress", updatedAt: 200 }],
 					}),
 				).rejects.toBeInstanceOf(ProjectBoardLifecycleCommandRequiredError);
 				await expect(
@@ -753,7 +760,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 
 				const loaded = await loadProjectState(projectPath);
 				expect(loaded.revision).toBe(created.state.revision);
-				expect(loaded.board.columns[0]?.cards[0]?.id).toBe("task-a");
+				expect(loaded.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("task-a");
 			} finally {
 				cleanup();
 			}

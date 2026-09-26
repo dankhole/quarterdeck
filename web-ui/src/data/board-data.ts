@@ -1,7 +1,6 @@
 import type { BoardColumn, BoardColumnId, BoardData } from "@/types";
 
 const columnOrder: Array<{ id: BoardColumnId; title: string }> = [
-	{ id: "backlog", title: "Backlog" },
 	{ id: "in_progress", title: "In Progress" },
 	{ id: "review", title: "Review" },
 	{ id: "trash", title: "Trash" },

@@ -4,11 +4,13 @@ export function createBoard(title: string): RuntimeBoardData {
 	const now = Date.now();
 	return {
 		columns: [
+			{ id: "in_progress", title: "In Progress", cards: [] },
 			{
-				id: "backlog",
-				title: "Backlog",
+				id: "review",
+				title: "Review",
 				cards: [
 					{
+						unstarted: true,
 						id: "task-1",
 						title: null,
 						prompt: title,
@@ -18,8 +20,6 @@ export function createBoard(title: string): RuntimeBoardData {
 					},
 				],
 			},
-			{ id: "in_progress", title: "In Progress", cards: [] },
-			{ id: "review", title: "Review", cards: [] },
 			{ id: "trash", title: "Trash", cards: [] },
 		],
 		dependencies: [],
@@ -42,7 +42,6 @@ export function createReviewBoard(taskId: string, title: string, existingTrashTa
 		: [];
 	return {
 		columns: [
-			{ id: "backlog", title: "Backlog", cards: [] },
 			{ id: "in_progress", title: "In Progress", cards: [] },
 			{
 				id: "review",

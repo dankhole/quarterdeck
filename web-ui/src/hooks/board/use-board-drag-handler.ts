@@ -93,13 +93,17 @@ export function useBoardDragHandler({
 				return;
 			}
 
-			if (moveEvent.toColumnId === "in_progress" && moveEvent.fromColumnId === "backlog") {
+			if (
+				moveEvent.toColumnId === "in_progress" &&
+				moveEvent.fromColumnId === "review" &&
+				findCardSelection(board, moveEvent.taskId)?.card.unstarted
+			) {
 				presentLifecycleBoard(applied.board);
 				if (programmaticMoveBehavior?.skipKickoff) {
 					resolvePendingProgrammaticStartMove(moveEvent.taskId, false);
 					return;
 				}
-				const movedSelection = findCardSelection(applied.board, moveEvent.taskId);
+				const movedSelection = findCardSelection(board, moveEvent.taskId);
 				if (movedSelection) {
 					void kickoffTaskInProgress(movedSelection.card, moveEvent.taskId, moveEvent.fromColumnId)
 						.then((started) => {

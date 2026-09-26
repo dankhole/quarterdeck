@@ -1,20 +1,20 @@
 import { createInitialBoardData } from "@/data/board-data";
 import { addTaskToColumn } from "@/state/board-state";
 
-export function createBacklogBoard(taskPrompts: string[]): {
+export function createUnstartedBoard(taskPrompts: string[]): {
 	board: ReturnType<typeof createInitialBoardData>;
 	taskIdByPrompt: Record<string, string>;
 } {
 	let board = createInitialBoardData();
 	for (const taskPrompt of taskPrompts) {
-		board = addTaskToColumn(board, "backlog", {
+		board = addTaskToColumn(board, "review", {
 			prompt: taskPrompt,
 			baseRef: "main",
 		});
 	}
-	const backlogCards = board.columns.find((column) => column.id === "backlog")?.cards ?? [];
+	const unstartedCards = board.columns.find((column) => column.id === "review")?.cards ?? [];
 	const taskIdByPrompt: Record<string, string> = {};
-	for (const card of backlogCards) {
+	for (const card of unstartedCards) {
 		taskIdByPrompt[card.prompt] = card.id;
 	}
 	return {

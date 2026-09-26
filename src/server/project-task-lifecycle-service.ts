@@ -371,7 +371,7 @@ export class ProjectTaskLifecycleService {
 		const createResult = await this.executeBoardWithSemanticRebase(scope, {
 			commandId: getStepCommandId(command.operationId, "create"),
 			expectedRevision: command.expectedRevision,
-			command: { ...command.task, kind: "create_task", columnId: "backlog" },
+			command: { ...command.task, kind: "create_task", columnId: "review" },
 			taskCreatedAt: command.task.createdAt,
 		});
 		if (!createResult.acceptedChange) {
@@ -388,7 +388,8 @@ export class ProjectTaskLifecycleService {
 			command: {
 				kind: "move_task",
 				taskId: command.task.taskId,
-				sourceColumnId: "backlog",
+				sourceColumnId: "review",
+				expectedUnstarted: true,
 				targetColumnId: "in_progress",
 				targetIndex: 0,
 				updatedAt: command.startedAt,
@@ -399,7 +400,7 @@ export class ProjectTaskLifecycleService {
 			return await this.finish(scope, operation, {
 				status: "failed",
 				outcomeCode: "invalid_transition",
-				error: "Task is no longer startable from backlog.",
+				error: "Task is no longer unstarted.",
 				state: moveResult.state,
 			});
 		}
@@ -416,14 +417,14 @@ export class ProjectTaskLifecycleService {
 				command.task.taskId,
 				command.task.createdAt,
 				"in_progress",
-				"backlog",
+				"review",
 				command.startedAt,
 			);
 			return await this.finish(scope, operation, {
 				status: "failed",
 				outcomeCode: compensated.ok ? "superseded" : "compensation_failed",
 				error: compensated.ok
-					? "Task startup was interrupted before launch; the task was returned to backlog."
+					? "Task startup was interrupted before launch; the task was returned to Review as unstarted."
 					: "Task startup was interrupted and could not be safely compensated.",
 				state: compensated.state,
 			});
@@ -443,7 +444,7 @@ export class ProjectTaskLifecycleService {
 			awaitReview: false,
 			cols: command.cols,
 			rows: command.rows,
-			compensateTo: "backlog",
+			compensateTo: "review",
 		});
 	}
 
@@ -463,7 +464,8 @@ export class ProjectTaskLifecycleService {
 			command: {
 				kind: "move_task",
 				taskId: command.taskId,
-				sourceColumnId: "backlog",
+				sourceColumnId: "review",
+				expectedUnstarted: true,
 				targetColumnId: "in_progress",
 				targetIndex: 0,
 				updatedAt: operation.requestedAt,
@@ -474,7 +476,7 @@ export class ProjectTaskLifecycleService {
 			return await this.finish(scope, operation, {
 				status: "failed",
 				outcomeCode: "invalid_transition",
-				error: "Task is no longer in backlog.",
+				error: "Task is no longer unstarted.",
 				state: moveResult.state,
 			});
 		}
@@ -490,14 +492,14 @@ export class ProjectTaskLifecycleService {
 				command.taskId,
 				command.taskCreatedAt,
 				"in_progress",
-				"backlog",
+				"review",
 				operation.requestedAt,
 			);
 			return await this.finish(scope, operation, {
 				status: "failed",
 				outcomeCode: compensated.ok ? "superseded" : "compensation_failed",
 				error: compensated.ok
-					? "Task startup was interrupted before launch; the task was returned to backlog."
+					? "Task startup was interrupted before launch; the task was returned to Review as unstarted."
 					: "Task startup was interrupted and could not be safely compensated.",
 				state: compensated.state,
 			});
@@ -516,7 +518,7 @@ export class ProjectTaskLifecycleService {
 			awaitReview: false,
 			cols: command.cols,
 			rows: command.rows,
-			compensateTo: "backlog",
+			compensateTo: "review",
 		});
 	}
 
@@ -607,7 +609,7 @@ export class ProjectTaskLifecycleService {
 		for (const [index, readyTaskId] of readyLinkedTaskIds.entries()) {
 			const state = await this.loadState(scope);
 			const readyCard = findCardInBoard(state.board, readyTaskId);
-			if (!readyCard || getTaskColumnId(state.board, readyTaskId) !== "backlog") {
+			if (!readyCard?.unstarted || getTaskColumnId(state.board, readyTaskId) !== "review") {
 				continue;
 			}
 			const childOperationId = childOperationIds[index];
@@ -664,6 +666,13 @@ export class ProjectTaskLifecycleService {
 			});
 		}
 		operation = await this.recordBoardAccepted(scope, operation, moveResult.state.revision);
+		if (findCardInBoard(moveResult.state.board, command.taskId)?.unstarted) {
+			return await this.finish(scope, operation, {
+				status: "completed",
+				outcomeCode: "completed",
+				state: moveResult.state,
+			});
+		}
 		const existing = await this.getMatchingLaunchSummary(scope, command.taskId, command.operationId);
 		if (isSuccessfulLaunch(existing, command.operationId)) {
 			return await this.completeWithSummary(scope, operation, moveResult.state, existing, "already_applied");
@@ -924,7 +933,7 @@ export class ProjectTaskLifecycleService {
 			awaitReview: boolean;
 			cols?: number;
 			rows?: number;
-			compensateTo: "backlog" | "trash" | null;
+			compensateTo: "review" | "trash" | null;
 			warning?: string;
 			worktreePrepared?: boolean;
 		},
@@ -1021,7 +1030,7 @@ export class ProjectTaskLifecycleService {
 		operation: PersistedTaskLifecycleOperation,
 		card: RuntimeBoardCard,
 		state: RuntimeProjectStateResponse,
-		compensateTo: "backlog" | "trash" | null,
+		compensateTo: "review" | "trash" | null,
 		error: string,
 	): Promise<RuntimeTaskLifecycleResult> {
 		if (!compensateTo) {
@@ -1032,7 +1041,7 @@ export class ProjectTaskLifecycleService {
 				state,
 			});
 		}
-		const sourceColumn = compensateTo === "backlog" ? "in_progress" : "review";
+		const sourceColumn = compensateTo === "review" ? "in_progress" : "review";
 		const compensated = await this.compensateMove(
 			scope,
 			operation,
@@ -1056,7 +1065,7 @@ export class ProjectTaskLifecycleService {
 		taskId: string,
 		taskCreatedAt: number,
 		sourceColumnId: "in_progress" | "review" | "trash",
-		targetColumnId: "backlog" | "in_progress" | "review" | "trash",
+		targetColumnId: "in_progress" | "review" | "trash",
 		updatedAt: number,
 	): Promise<{ ok: boolean; state: RuntimeProjectStateResponse }> {
 		operation = await this.setPhase(scope, operation, "compensating");
@@ -1083,6 +1092,9 @@ export class ProjectTaskLifecycleService {
 					taskId,
 					sourceColumnId,
 					targetColumnId,
+					...(targetColumnId === "review" && (operation.kind === "start" || operation.kind === "create_and_start")
+						? { unstarted: true }
+						: {}),
 					targetIndex: 0,
 					updatedAt,
 				},
@@ -1138,7 +1150,7 @@ export class ProjectTaskLifecycleService {
 		const accepted = Array.isArray(expectedColumn)
 			? expectedColumn.includes(columnId ?? "")
 			: columnId === expectedColumn;
-		if (!accepted) {
+		if (!accepted || (Array.isArray(expectedColumn) && card?.unstarted)) {
 			return {
 				ok: false,
 				failure: {
@@ -1216,7 +1228,11 @@ export class ProjectTaskLifecycleService {
 				} else if (!isTaskIdentityCurrent(card, taskId, input.taskCreatedAt)) {
 					throw error;
 				}
-				if (command.kind === "move_task" && getTaskColumnId(state.board, taskId) !== command.sourceColumnId) {
+				if (
+					command.kind === "move_task" &&
+					(getTaskColumnId(state.board, taskId) !== command.sourceColumnId ||
+						(command.expectedUnstarted !== undefined && (card?.unstarted === true) !== command.expectedUnstarted))
+				) {
 					throw error;
 				}
 				if (command.kind === "delete_tasks" && getTaskColumnId(state.board, taskId) !== "trash") {

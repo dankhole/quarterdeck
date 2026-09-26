@@ -25,7 +25,6 @@ function createCard(taskId: string) {
 function createBoard(taskIds: { inProgress?: string[]; review?: string[] }): RuntimeBoardData {
 	return {
 		columns: [
-			{ id: "backlog", title: "Backlog", cards: [] },
 			{
 				id: "in_progress",
 				title: "In Progress",

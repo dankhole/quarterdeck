@@ -137,9 +137,6 @@ export function DependencyOverlay({
 					activeTaskId !== null && activeTaskId !== undefined
 						? dependency.fromTaskId === activeTaskId || dependency.toTaskId === activeTaskId
 						: false;
-				if (!isTransient && sourceAnchor.columnId !== "backlog" && targetAnchor.columnId !== "backlog") {
-					return null;
-				}
 				if (isTransient && !touchesActiveTask) {
 					return null;
 				}

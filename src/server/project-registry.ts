@@ -227,10 +227,11 @@ export async function validateIndexedProjectsForStream(
 export function collectProjectWorktreeTaskIdsForRemoval(board: RuntimeBoardData): Set<string> {
 	const taskIds = new Set<string>();
 	for (const column of board.columns) {
-		if (column.id === "backlog" || column.id === "trash") {
+		if (column.id === "trash") {
 			continue;
 		}
 		for (const card of column.cards) {
+			if (card.unstarted) continue;
 			// De-isolated tasks may still have an orphaned worktree on disk.
 			taskIds.add(card.id);
 		}
@@ -673,6 +674,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				continue;
 			}
 			for (const card of column.cards) {
+				if (card.unstarted) continue;
 				scanStats.consideredTaskCount += 1;
 				const executionOwnership = ownershipByTask.get(card.id);
 				if (

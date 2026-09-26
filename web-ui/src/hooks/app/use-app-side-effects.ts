@@ -95,7 +95,7 @@ export function useAppSideEffects({
 		handleToggleHomeTerminal: terminal.handleToggleHomeTerminal,
 		handleOpenCreateTask: taskEditor.taskEditor.handleOpenCreateTask,
 		handleOpenSettings: dialog.handleOpenSettings,
-		onStartAllTasks: interactions.handleStartAllBacklogTasksFromBoard,
+		onStartAllTasks: interactions.handleStartAllUnstartedTasksFromBoard,
 		handleToggleDiagnosticsPanel: dialog.diagnostics.togglePanel,
 		handleToggleFileFinder,
 		handleToggleTextSearch,

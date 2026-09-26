@@ -221,7 +221,7 @@ export function useTaskEditor({
 			return;
 		}
 		const selection = findCardSelection(board, editingTaskId);
-		if (!selection || selection.column.id !== "backlog") {
+		if (!selection || selection.column.id !== "review" || !selection.card.unstarted) {
 			setEditingTaskId(null);
 			setEditTaskPrompt("");
 			setEditTaskImages([]);
@@ -284,6 +284,8 @@ export function useTaskEditor({
 
 	const handleOpenEditTask = useCallback(
 		(task: BoardCard, options?: OpenEditTaskOptions) => {
+			const selection = findCardSelection(board, task.id);
+			if (selection?.column.id !== "review" || !selection.card.unstarted) return;
 			if (!options?.preserveDetailSelection) {
 				setSelectedTaskId(null);
 			}
@@ -297,7 +299,7 @@ export function useTaskEditor({
 			setEditTaskImages(editDraft.images);
 			setEditTaskBranchRef(editDraft.branchRef);
 		},
-		[resolvedDefaultTaskBranchRef, setSelectedTaskId],
+		[board, resolvedDefaultTaskBranchRef, setSelectedTaskId],
 	);
 
 	const handleCancelEditTask = useCallback(() => {

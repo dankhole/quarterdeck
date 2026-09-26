@@ -15,6 +15,7 @@ function createTask(id: string, prompt: string, overrides: Partial<BoardCard> = 
 		title: null,
 		prompt,
 		baseRef: "main",
+		unstarted: true,
 		createdAt: 1,
 		updatedAt: 1,
 		...overrides,
@@ -24,9 +25,9 @@ function createTask(id: string, prompt: string, overrides: Partial<BoardCard> = 
 function createBoard(tasks: BoardCard[] = []): BoardData {
 	return {
 		columns: [
-			{ id: "backlog", title: "Backlog", cards: tasks },
+			{ id: "review", title: "Review", cards: tasks },
 			{ id: "in_progress", title: "In Progress", cards: [] },
-			{ id: "review", title: "Review", cards: [] },
+
 			{ id: "trash", title: "Trash", cards: [] },
 		],
 		dependencies: [],

@@ -78,7 +78,7 @@ export interface RuntimeReorderColumnResult {
 export interface RuntimeAddTaskDependencyResult {
 	board: RuntimeBoardData;
 	added: boolean;
-	reason?: "missing_task" | "same_task" | "duplicate" | "trash_task" | "non_backlog";
+	reason?: "missing_task" | "same_task" | "duplicate" | "trash_task" | "non_unstarted";
 	dependency?: RuntimeBoardDependency;
 }
 
@@ -125,18 +125,18 @@ function createDependencyId(): string {
 	return crypto.randomUUID().replaceAll("-", "").slice(0, 8);
 }
 
-function createDependencyPairKey(backlogTaskId: string, linkedTaskId: string): string {
-	return `${backlogTaskId}::${linkedTaskId}`;
+function createDependencyPairKey(unstartedTaskId: string, linkedTaskId: string): string {
+	return `${unstartedTaskId}::${linkedTaskId}`;
 }
 
-function hasDependencyPair(board: RuntimeBoardData, backlogTaskId: string, linkedTaskId: string): boolean {
-	const pairKey = createDependencyPairKey(backlogTaskId, linkedTaskId);
+function hasDependencyPair(board: RuntimeBoardData, unstartedTaskId: string, linkedTaskId: string): boolean {
+	const pairKey = createDependencyPairKey(unstartedTaskId, linkedTaskId);
 	for (const dependency of board.dependencies) {
 		const existing = resolveDependencyEndpoints(board, dependency.fromTaskId, dependency.toTaskId);
 		if ("reason" in existing) {
 			continue;
 		}
-		if (createDependencyPairKey(existing.backlogTaskId, existing.linkedTaskId) === pairKey) {
+		if (createDependencyPairKey(existing.unstartedTaskId, existing.linkedTaskId) === pairKey) {
 			return true;
 		}
 	}
@@ -182,7 +182,7 @@ function resolveDependencyEndpoints(
 	secondTaskId: string,
 ):
 	| {
-			backlogTaskId: string;
+			unstartedTaskId: string;
 			linkedTaskId: string;
 	  }
 	| { reason: RuntimeAddTaskDependencyResult["reason"] } {
@@ -194,28 +194,33 @@ function resolveDependencyEndpoints(
 	if (firstColumnId === "trash" || secondColumnId === "trash") {
 		return { reason: "trash_task" };
 	}
-	const firstIsBacklog = firstColumnId === "backlog";
-	const secondIsBacklog = secondColumnId === "backlog";
-	if (firstIsBacklog && secondIsBacklog) {
+	const firstIsUnstarted = findCardInBoard(board, firstTaskId)?.unstarted === true;
+	const secondIsUnstarted = findCardInBoard(board, secondTaskId)?.unstarted === true;
+	if (firstIsUnstarted && secondIsUnstarted) {
 		return {
-			backlogTaskId: firstTaskId,
+			unstartedTaskId: firstTaskId,
 			linkedTaskId: secondTaskId,
 		};
 	}
-	if (!firstIsBacklog && !secondIsBacklog) {
-		return { reason: "non_backlog" };
+	if (!firstIsUnstarted && !secondIsUnstarted) {
+		return { reason: "non_unstarted" };
 	}
-	return firstIsBacklog
-		? { backlogTaskId: firstTaskId, linkedTaskId: secondTaskId }
-		: { backlogTaskId: secondTaskId, linkedTaskId: firstTaskId };
+	return firstIsUnstarted
+		? { unstartedTaskId: firstTaskId, linkedTaskId: secondTaskId }
+		: { unstartedTaskId: secondTaskId, linkedTaskId: firstTaskId };
 }
 
-function getLinkedBacklogTaskIdsReadyAfterTaskTrashed(
+function getLinkedUnstartedTaskIdsReadyAfterTaskTrashed(
 	board: RuntimeBoardData,
 	taskId: string,
 	fromColumnId: RuntimeBoardColumnId | null,
 ): string[] {
-	if (!taskId || board.dependencies.length === 0 || fromColumnId !== "review") {
+	if (
+		!taskId ||
+		board.dependencies.length === 0 ||
+		fromColumnId !== "review" ||
+		findCardInBoard(board, taskId)?.unstarted === true
+	) {
 		return [];
 	}
 	const readyTaskIds = new Set<string>();
@@ -223,7 +228,10 @@ function getLinkedBacklogTaskIdsReadyAfterTaskTrashed(
 		if (dependency.toTaskId !== taskId) {
 			continue;
 		}
-		if (getTaskColumnId(board, dependency.fromTaskId) !== "backlog") {
+		if (
+			getTaskColumnId(board, dependency.fromTaskId) !== "review" ||
+			findCardInBoard(board, dependency.fromTaskId)?.unstarted !== true
+		) {
 			continue;
 		}
 		readyTaskIds.add(dependency.fromTaskId);
@@ -251,14 +259,14 @@ export function updateTaskDependencies(board: RuntimeBoardData): RuntimeBoardDat
 		if ("reason" in resolved) {
 			continue;
 		}
-		const pairKey = createDependencyPairKey(resolved.backlogTaskId, resolved.linkedTaskId);
+		const pairKey = createDependencyPairKey(resolved.unstartedTaskId, resolved.linkedTaskId);
 		if (existingPairs.has(pairKey)) {
 			continue;
 		}
 		existingPairs.add(pairKey);
 		dependencies.push({
 			id: dependency.id,
-			fromTaskId: resolved.backlogTaskId,
+			fromTaskId: resolved.unstartedTaskId,
 			toTaskId: resolved.linkedTaskId,
 			createdAt: dependency.createdAt,
 		});
@@ -306,6 +314,7 @@ export function addTaskToColumn(
 	}
 	const task: RuntimeBoardCard = {
 		id: explicitTaskId || createUniqueTaskId(existingIds, randomUuid),
+		...(columnId === "review" ? { unstarted: true } : {}),
 		title: input.title?.trim() || null,
 		prompt,
 		images: cloneTaskImages(input.images),
@@ -370,12 +379,12 @@ export function addTaskDependency(
 	if ("reason" in resolved) {
 		return { board, added: false, reason: resolved.reason };
 	}
-	if (hasDependencyPair(board, resolved.backlogTaskId, resolved.linkedTaskId)) {
+	if (hasDependencyPair(board, resolved.unstartedTaskId, resolved.linkedTaskId)) {
 		return { board, added: false, reason: "duplicate" };
 	}
 	const dependency: RuntimeBoardDependency = {
 		id: options.dependencyId?.trim() || createDependencyId(),
-		fromTaskId: resolved.backlogTaskId,
+		fromTaskId: resolved.unstartedTaskId,
 		toTaskId: resolved.linkedTaskId,
 		createdAt: options.createdAt ?? Date.now(),
 	};
@@ -399,7 +408,7 @@ export function canAddTaskDependency(board: RuntimeBoardData, firstTaskId: strin
 	if ("reason" in resolved) {
 		return false;
 	}
-	return !hasDependencyPair(board, resolved.backlogTaskId, resolved.linkedTaskId);
+	return !hasDependencyPair(board, resolved.unstartedTaskId, resolved.linkedTaskId);
 }
 
 export function removeTaskDependency(board: RuntimeBoardData, dependencyId: string): RuntimeRemoveTaskDependencyResult {
@@ -424,7 +433,7 @@ export function getReadyLinkedTaskIdsForTrashTransition(
 	if (getTaskColumnId(board, taskId) !== sourceColumnId) {
 		return [];
 	}
-	return getLinkedBacklogTaskIdsReadyAfterTaskTrashed(board, taskId, sourceColumnId);
+	return getLinkedUnstartedTaskIdsReadyAfterTaskTrashed(board, taskId, sourceColumnId);
 }
 
 export function trashTaskAndGetReadyLinkedTaskIds(
@@ -494,7 +503,7 @@ export function moveTaskToColumn(
 	taskId: string,
 	targetColumnId: RuntimeBoardColumnId,
 	now: number = Date.now(),
-	options: { targetIndex?: number } = {},
+	options: { targetIndex?: number; unstarted?: boolean } = {},
 ): RuntimeMoveTaskResult {
 	const normalizedTaskId = taskId.trim();
 	if (!normalizedTaskId) {
@@ -556,6 +565,11 @@ export function moveTaskToColumn(
 	}
 	const movedTask: RuntimeBoardCard = {
 		...task,
+		...(targetColumnId === "in_progress"
+			? { unstarted: undefined }
+			: options.unstarted !== undefined
+				? { unstarted: options.unstarted || undefined }
+				: {}),
 		updatedAt: now,
 		// Clear workingDirectory as part of the same runtime-owned board command
 		// that moves the card. Worktree cleanup runs only after that command flushes.
@@ -807,6 +821,7 @@ function collectActionableNotificationTaskIds(board: RuntimeBoardData): Set<stri
 			continue;
 		}
 		for (const card of column.cards) {
+			if (card.unstarted) continue;
 			taskIds.add(card.id);
 		}
 	}
@@ -841,7 +856,7 @@ export function pruneOrphanSessionsForBroadcast(
 /**
  * Actionable board filter for notification projections. Cross-project badges
  * and sounds must only represent tasks the user can act on from active work
- * columns; live orphan process summaries and trashed/backlog cards remain
+ * columns; live orphan process summaries and trashed/unstarted cards remain
  * useful elsewhere, but they should not keep project-level NI/R/F badges alive.
  */
 export function pruneOrphanSessionsForNotification(

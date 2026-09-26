@@ -194,6 +194,7 @@ export function useLinkedBacklogTaskActions({
 			if (
 				movedToTrash &&
 				!isNonIsolated &&
+				!selection.card.unstarted &&
 				showTrashWorktreeNotice &&
 				(fromColumnId === "in_progress" || fromColumnId === "review")
 			) {

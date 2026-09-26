@@ -19,6 +19,7 @@ import {
 	runtimeProjectBoardCommandBatchEnvelopeSchema,
 	runtimeProjectBoardCommandEnvelopeSchema,
 } from "../core";
+import { getLegacyBacklogCommandFingerprints } from "./legacy-backlog-command-receipts";
 import { type ApplyProjectBoardMutationResult, applyProjectBoardMutation } from "./project-state";
 
 const log = createTaggedLogger("project-board-command");
@@ -113,6 +114,7 @@ export class ProjectBoardCommandService {
 			commandIdentity: {
 				commandId: envelope.commandId,
 				fingerprint,
+				legacyFingerprints: getLegacyBacklogCommandFingerprints(envelope.commands),
 			},
 			mutate: (board) => applyProjectBoardCommands(board, envelope.commands),
 		});

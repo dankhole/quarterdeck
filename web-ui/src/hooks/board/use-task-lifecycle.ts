@@ -47,7 +47,7 @@ export interface UseTaskLifecycleResult {
 export function useTaskLifecycle({ executeTaskLifecycle }: UseTaskLifecycleInput): UseTaskLifecycleResult {
 	const kickoffTaskInProgress = useCallback(
 		async (task: BoardCard, taskId: string, fromColumnId: BoardColumnId): Promise<boolean> => {
-			if (fromColumnId !== "backlog" || task.id !== taskId) {
+			if (fromColumnId !== "review" || !task.unstarted || task.id !== taskId) {
 				return false;
 			}
 			const result = await executeTaskLifecycle({
@@ -72,6 +72,7 @@ export function useTaskLifecycle({ executeTaskLifecycle }: UseTaskLifecycleInput
 			});
 			if (
 				result?.ok &&
+				!task.unstarted &&
 				task.useWorktree === false &&
 				shouldWarnForNonIsolatedResume(result.summary?.agentId, result.summary?.resumeSessionId)
 			) {

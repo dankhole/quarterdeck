@@ -31,6 +31,7 @@ const rawPersistedBoardCardSchema = z.object({
 	workingDirectory: z.unknown().optional(),
 	branch: z.unknown().optional(),
 	pinned: z.unknown().optional(),
+	unstarted: z.unknown().optional(),
 	createdAt: z.unknown().optional(),
 	updatedAt: z.unknown().optional(),
 });
@@ -43,7 +44,7 @@ const rawPersistedBoardDependencySchema = z.object({
 });
 
 export interface ParsedPersistedBoardColumn {
-	id: BoardColumnId;
+	id: BoardColumnId | "backlog";
 	cards: unknown[];
 }
 
@@ -111,6 +112,7 @@ export function parsePersistedBoardCard(
 		workingDirectory: parseOptionalNullableString(result.data.workingDirectory),
 		branch: parseOptionalNullableString(result.data.branch),
 		pinned: typeof result.data.pinned === "boolean" ? result.data.pinned : undefined,
+		...(result.data.unstarted === true ? { unstarted: true } : {}),
 		createdAt: typeof result.data.createdAt === "number" ? result.data.createdAt : now,
 		updatedAt: typeof result.data.updatedAt === "number" ? result.data.updatedAt : now,
 	};
@@ -175,7 +177,8 @@ function parsePersistedBoardColumn(rawColumn: unknown): ParsedPersistedBoardColu
 	};
 }
 
-function parseBoardColumnId(value: unknown): BoardColumnId | null {
+function parseBoardColumnId(value: unknown): BoardColumnId | "backlog" | null {
+	if (value === "backlog") return "backlog";
 	const result = runtimeBoardColumnIdSchema.safeParse(value);
 	return result.success ? result.data : null;
 }

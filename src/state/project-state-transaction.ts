@@ -5,6 +5,7 @@ import { z } from "zod";
 import { runtimeBoardDataSchema, runtimeTaskSessionSummarySchema } from "../core";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { isNodeError } from "../fs/node-error";
+import { migrateLegacyBacklog } from "./legacy-backlog-migration";
 import {
 	getProjectBoardPath,
 	getProjectDirectoryLockRequest,
@@ -52,6 +53,10 @@ const projectStateTransactionSchema = z.object({
 	board: runtimeBoardDataSchema,
 	sessions: z.record(z.string(), runtimeTaskSessionSummarySchema),
 	meta: projectStateMetaSchema,
+});
+
+const recoveredProjectStateTransactionSchema = projectStateTransactionSchema.extend({
+	board: z.preprocess(migrateLegacyBacklog, runtimeBoardDataSchema),
 });
 
 type ProjectStateTransaction = z.infer<typeof projectStateTransactionSchema>;
@@ -126,7 +131,7 @@ export async function recoverProjectStateTransaction(projectId: string): Promise
 		if (isNodeError(error, "ENOENT")) return;
 		throw error;
 	}
-	const transaction = projectStateTransactionSchema.parse(JSON.parse(raw));
+	const transaction = recoveredProjectStateTransactionSchema.parse(JSON.parse(raw));
 	await installProjectStateTransaction(projectId, transaction);
 }
 

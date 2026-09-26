@@ -86,7 +86,9 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 		);
 
 		const nextSnapshot = requireSnapshot(latestSnapshot);
-		expect(nextSnapshot.board.columns.find((c) => c.id === "review")?.cards).toHaveLength(1);
+		expect(
+			nextSnapshot.board.columns.find((c) => c.id === "review")?.cards.filter((card) => !card.unstarted),
+		).toHaveLength(1);
 	});
 
 	it("passes optimisticMoveApplied through to the confirmation callback", async () => {
@@ -154,7 +156,9 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 
 		expect(onRequestTrashConfirmation).not.toHaveBeenCalled();
 		const nextSnapshot = requireSnapshot(latestSnapshot);
-		expect(nextSnapshot.board.columns.find((c) => c.id === "review")?.cards).toHaveLength(0);
+		expect(
+			nextSnapshot.board.columns.find((c) => c.id === "review")?.cards.filter((card) => !card.unstarted),
+		).toHaveLength(0);
 		expect(nextSnapshot.board.columns.find((c) => c.id === "trash")?.cards[0]?.id).toBe("task-2");
 	});
 
@@ -196,7 +200,9 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 		);
 
 		const nextSnapshot = requireSnapshot(latestSnapshot);
-		expect(nextSnapshot.board.columns.find((c) => c.id === "review")?.cards).toHaveLength(1);
+		expect(
+			nextSnapshot.board.columns.find((c) => c.id === "review")?.cards.filter((card) => !card.unstarted),
+		).toHaveLength(1);
 	});
 
 	it("shows confirmation when snapshot is null", async () => {
@@ -230,7 +236,9 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 		);
 
 		const nextSnapshot = requireSnapshot(latestSnapshot);
-		expect(nextSnapshot.board.columns.find((c) => c.id === "review")?.cards).toHaveLength(1);
+		expect(
+			nextSnapshot.board.columns.find((c) => c.id === "review")?.cards.filter((card) => !card.unstarted),
+		).toHaveLength(1);
 	});
 
 	it("shows confirmation when changedFiles is null", async () => {
@@ -271,7 +279,9 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 		);
 
 		const nextSnapshot = requireSnapshot(latestSnapshot);
-		expect(nextSnapshot.board.columns.find((c) => c.id === "review")?.cards).toHaveLength(1);
+		expect(
+			nextSnapshot.board.columns.find((c) => c.id === "review")?.cards.filter((card) => !card.unstarted),
+		).toHaveLength(1);
 	});
 
 	it("updates selection and sends one lifecycle command for an already-optimistic trash move", async () => {
@@ -281,13 +291,12 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 
 		const boardFactory = (): BoardData => ({
 			columns: [
-				{ id: "backlog", title: "Backlog", cards: [] },
 				{
 					id: "in_progress",
 					title: "In Progress",
 					cards: [createTask("task-ip", "In progress task", 4)],
 				},
-				{ id: "review", title: "Review", cards: [] },
+
 				{ id: "trash", title: "Trash", cards: [createTask("task-2", "Review task", 2)] },
 			],
 			dependencies: [],

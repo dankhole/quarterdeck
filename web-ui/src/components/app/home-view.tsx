@@ -231,7 +231,7 @@ export function HomeView({
 									taskSessions={sessions}
 									onCardSelect={interactions.handleCardSelect}
 									onCreateTask={handleOpenCreateTask}
-									onStartAllTasks={interactions.handleStartAllBacklogTasksFromBoard}
+									onStartAllTasks={interactions.handleStartAllUnstartedTasksFromBoard}
 									onClearTrash={interactions.handleOpenClearTrash}
 									editingTaskId={editingTaskId}
 									inlineTaskEditor={inlineTaskEditor}

@@ -6,7 +6,7 @@ import type { BoardCard } from "@/types";
  * Map a dependency-add failure reason to a user-facing message.
  */
 export function getDependencyAddErrorMessage(
-	reason: "same_task" | "duplicate" | "trash_task" | "non_backlog" | string | undefined,
+	reason: "same_task" | "duplicate" | "trash_task" | "non_unstarted" | string | undefined,
 ): string {
 	switch (reason) {
 		case "same_task":
@@ -15,8 +15,8 @@ export function getDependencyAddErrorMessage(
 			return "Link already exists.";
 		case "trash_task":
 			return "Links cannot include trashed tasks.";
-		case "non_backlog":
-			return "Links must include at least one Backlog task.";
+		case "non_unstarted":
+			return "Links must include at least one unstarted task.";
 		default:
 			return "Could not create link.";
 	}

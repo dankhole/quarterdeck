@@ -26,7 +26,6 @@ export type StatusBadgeStyle = keyof typeof statusBadgeColors;
 // ---------------------------------------------------------------------------
 
 export const statusPillColors = {
-	backlog: "bg-text-primary/15 text-text-primary",
 	in_progress: "bg-accent/20 text-accent",
 	review: "bg-status-green/20 text-status-green",
 	needs_input: "bg-status-orange/20 text-status-orange",
@@ -37,7 +36,6 @@ export const statusPillColors = {
 // ---------------------------------------------------------------------------
 
 export const columnIndicatorColors: Record<string, string> = {
-	backlog: "var(--color-text-primary)",
 	in_progress: "var(--color-accent)",
 	review: "var(--color-status-green)",
 	trash: "var(--color-status-red)",
