@@ -2,7 +2,15 @@
 
 ## [Unreleased]
 
-## [0.12.7] - 2026-09-24
+- Fix Claude Code 2.1.283 exiting on first launch in an untrusted folder. Quarterdeck now reads the rendered trust dialog, waits out Claude's input guard, moves to "Yes, I trust this folder" when "No" is focused, and presses Enter only when "Yes" is selected. If the dialog does not respond as expected, it stops and asks you to confirm in the terminal.
+
+- Show a clean exit as Exit instead of Error when a task that already did work returns to Unconfirmed, for example after Codex switches conversations. Exits from launches that never confirmed work still show as Error.
+
+- Enable branch-name generation when Codex is installed, even without an LLM gateway.
+
+- Allow Claude structured handoff with auto-updated Claude Code 2.1 releases from 2.1.224 onward, instead of requiring exactly 2.1.224. The native terminal and structured owner must still run the same version.
+
+- Keep the Claude status line visible before the first response and after `/clear`, when Claude reports context usage as null.
 
 - Require fullscreen rendering for Claude sessions. Remove the classic-renderer switch and detached terminal row multiplier; reject screen-reader mode, which requires classic rendering. Existing sessions adopt fullscreen on restart.
 
@@ -19,6 +27,8 @@
 - Let merges and rebases complete once conflicts are resolved without requiring per-file review of automatic merges. Show completion failures and direct selected-file commits to the active operation.
 
 - Reject missing or mismatched task worktree registrations before reuse, Git actions, startup, or cleanup; preserve task files and serialize worktree creation with cleanup.
+
+## [0.12.7] - 2026-09-24
 
 - Always show separate local and remote behind-base counts in task headers, including zero and unavailable comparisons, so unpushed local base commits remain visible.
 

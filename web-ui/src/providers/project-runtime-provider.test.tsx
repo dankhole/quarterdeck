@@ -121,7 +121,8 @@ describe("ProjectRuntimeProvider", () => {
 			}
 			return {
 				config: {
-					llmConfigured: true,
+					llmConfigured: false,
+					textGenerationAvailable: true,
 					shortcuts: [
 						{ label: "First", command: "echo first" },
 						{ label: "Second", command: "echo second" },

@@ -11,7 +11,7 @@ import {
 	resolveWindowsCompatibleCommand,
 	terminateProcessForTimeout,
 } from "../core";
-import { isLlmConfigured } from "../title";
+import { isGenerationHelperAvailable, isLlmConfigured } from "../title";
 import { extractGlobalConfigFields } from "./global-config-fields";
 import type { RuntimeConfigState } from "./runtime-config";
 
@@ -839,6 +839,7 @@ export async function buildRuntimeConfigResponse(
 		globalConfigPath: runtimeConfig.globalConfigPath,
 		projectConfigPath: runtimeConfig.projectConfigPath,
 		llmConfigured: isLlmConfigured(),
+		textGenerationAvailable: isGenerationHelperAvailable(),
 		audibleNotificationEvents: runtimeConfig.audibleNotificationEvents,
 		audibleNotificationSuppressCurrentProject: runtimeConfig.audibleNotificationSuppressCurrentProject,
 		commitPromptTemplate: runtimeConfig.commitPromptTemplate,

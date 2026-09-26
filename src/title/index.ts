@@ -9,6 +9,7 @@ export type {
 } from "./commit-message-context";
 export { buildCommitMessagePromptContext, generateCommitMessage } from "./commit-message-generator";
 export { compactDisplaySummaryText, DISPLAY_SUMMARY_LLM_BUDGET, DISPLAY_SUMMARY_MAX_LENGTH } from "./display-summary";
+export { isGenerationHelperAvailable } from "./generation-helper";
 export { sanitizeGenerationResponse } from "./generation-response";
 export {
 	_testing,

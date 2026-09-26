@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TaskResourceOperationCoordinator } from "../../../src/core";
 import {
 	CLAUDE_AGENT_SDK_SCHEMA_FINGERPRINT,
-	CLAUDE_STRUCTURED_CLI_VERSION,
+	CLAUDE_STRUCTURED_MIN_CLI_VERSION,
 	CODEX_APP_SERVER_SCHEMA_FINGERPRINT,
 	type CodexAppServerTransport,
 	CodexStructuredOwnerRegistry,
@@ -450,7 +450,7 @@ describe("TaskExecutionOwnershipService", { concurrent: false }, () => {
 					providerSessionTreeId: null,
 					providerProfileFingerprint: fingerprintClaudeProfileRoot(process.env.CLAUDE_CONFIG_DIR as string),
 					configurationFingerprint: "c".repeat(64),
-					providerVersion: CLAUDE_STRUCTURED_CLI_VERSION,
+					providerVersion: CLAUDE_STRUCTURED_MIN_CLI_VERSION,
 					protocolSchemaFingerprint: CLAUDE_AGENT_SDK_SCHEMA_FINGERPRINT,
 					historyMode: null,
 					ownerSessionInstanceId: input.ownerSessionInstanceId,
@@ -490,7 +490,7 @@ describe("TaskExecutionOwnershipService", { concurrent: false }, () => {
 			getTerminalManager: async () => harness.manager,
 			prepareNativeResume: async ({ operationId, provider }) => prepared(harness.manager, operationId, provider),
 			assertDurableHistoryAvailable: async () => true,
-			resolveProviderVersion: async () => CLAUDE_STRUCTURED_CLI_VERSION,
+			resolveProviderVersion: async () => CLAUDE_STRUCTURED_MIN_CLI_VERSION,
 			isLaunchPathAvailable: async () => true,
 			taskResourceOperations: new TaskResourceOperationCoordinator(),
 		});

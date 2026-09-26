@@ -1,5 +1,40 @@
 # Implementation Log
 
+## 2026-09-25 — Claude Code 2.1.283 compatibility sweep
+
+Claude Code 2.1.283 reordered its workspace trust dialog. It now lists "No, exit" first and focuses it, and refuses input for 150 ms after mount. A refused key remounts the dialog with focus reset. Quarterdeck's previous auto-confirm sent Enter 100 ms after spotting the trust text and retried up to five times, so a retry could choose "No, exit" and Claude exited with code 1.
+
+Claude trust confirmation is now driven by the rendered `TerminalStateMirror` screen instead of raw output text:
+- It requires both option labels to be visible and adjacent.
+- It waits 400 ms after the dialog appears, then sends Down only while the cancel option is selected.
+- It sends Enter only after a newly rendered frame shows "Yes, I trust this folder" selected.
+- It never sends Escape, because Escape declines trust.
+- It stops with a manual-confirm warning if Claude does not re-render after a key or if "Yes" cannot be reached within two moves.
+
+Codex keeps its raw-text detector. I rejected pre-seeding `~/.claude.json` `hasTrustDialogAccepted`, because it is a user-global write that races live Claude instances. I also rejected `CLAUDE_CODE_SANDBOXED`, which is undocumented and has broader effects.
+
+Exit classification now records whether a launch produced native work evidence. `ActiveProcessState.nativeWorkConfirmed` is set by `SessionTransitionController.observeSummaryChange` and passed on `process.exit` as `launchWorkConfirmed`. An `awaiting_review/unconfirmed` exit with code 0 now maps to `exit` only when that launch already did confirmed work, for example after a Codex conversation switch or a cancelled structured interaction. Launch and resume failures keep their Error meaning. Reconciliation-sweep exits omit the flag and remain conservative.
+
+The Claude structured owner compared the installed CLI against an exact 2.1.224 pin. Claude Code auto-updates, so handoff was always refused. It now accepts 2.1.224 up to, but not including, 2.2.0. Exact equality between the native launch version and the structured owner version is preserved. The schema fingerprint input is unchanged. The owner still runs the installed CLI rather than the SDK's bundled 2.1.241 binary.
+
+Runtime config now exposes `textGenerationAvailable`, which is true when Codex is on PATH or the gateway is configured. The branch-name button is gated on it instead of on `llmConfigured`. The status-line input schema now accepts `null` usage fields.
+
+Notable files:
+- `src/terminal/{claude-workspace-trust,session-workspace-trust,session-output-pipeline,session-lifecycle,session-state-machine,session-transition-controller,session-manager-types}.ts`
+- `src/execution/{claude-structured-owner,task-execution-ownership-service}.ts`
+- `src/title/{codex-client,generation-helper}.ts`
+- `src/commands/statusline.ts`
+- `web-ui/src/providers/project-runtime-provider.tsx`
+
+Validation:
+- Runtime typecheck and web typecheck.
+- Changed-file Biome.
+- 73 root test files covering terminal, execution, commands, title, config, and core (980 tests).
+- Server and tRPC root tests (260 tests).
+- Focused web provider, settings, and task tests (51 tests).
+
+No real Claude run was performed. Trust-dialog behavior is based on the 2.1.283 bundle and on synthetic rendered-screen tests.
+
 ## 2026-09-25 — Make Claude rendering fullscreen-only
 
 Claude launches now force `CLAUDE_CODE_NO_FLICKER=1` and `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=0`; screen-reader launches fail before PTY creation because they require classic rendering. Explicit scroll-speed preferences remain honored. Removed the fullscreen config/UI switch, renderer-mode resolution and process state, detached 3x row multiplier, duplicate base/effective row counts, and attach/detach-triggered resizing. The invariant is one actual viewport size for every terminal; explicit resize, pre-restore forced redraw, mirror snapshots, and alternate-buffer restore remain. Retired config values are ignored and disappear on the next save; existing sessions adopt the new launch contract on restart.

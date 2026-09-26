@@ -46,7 +46,14 @@ export type SessionTransitionEvent =
 			occurredAt?: number;
 	  }
 	| { type: "user.stop" }
-	| { type: "process.exit"; exitCode: number | null; interrupted: boolean; unconfirmedStart?: boolean }
+	| {
+			type: "process.exit";
+			exitCode: number | null;
+			interrupted: boolean;
+			unconfirmedStart?: boolean;
+			/** The exiting launch produced native work evidence before it exited. */
+			launchWorkConfirmed?: boolean;
+	  }
 	| { type: "launch.confirmation_timeout"; sessionInstanceId: string }
 	| { type: "interrupt.recovery" }
 	| { type: "autorestart.denied" }
@@ -1194,10 +1201,13 @@ export function reduceSessionTransition(
 				};
 			}
 			if (summary.state === "awaiting_review" && summary.reviewReason === "unconfirmed") {
+				// Unconfirmed launches that exit are failures. A launch that already
+				// worked and was then reset to Unconfirmed exits cleanly on code 0.
+				const cleanExit = event.launchWorkConfirmed === true && event.exitCode === 0;
 				return {
 					changed: true,
 					patch: {
-						reviewReason: event.interrupted ? "interrupted" : "error",
+						reviewReason: event.interrupted ? "interrupted" : cleanExit ? "exit" : "error",
 						exitCode: event.exitCode,
 						pid: null,
 						nativeWorkEvidence: null,

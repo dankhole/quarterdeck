@@ -170,6 +170,28 @@ describe("initial task work confirmation", () => {
 		expect(summary(manager)).toMatchObject({ state: "awaiting_review", reviewReason: "error", pid: null });
 	});
 
+	it("treats a clean exit after a conversation switch as an exit once the launch has worked", async () => {
+		const { manager, sessions } = setup();
+		await manager.startTaskSession(request);
+		hook(manager, "to_in_progress", "UserPromptSubmit");
+		hook(manager, "to_review", "Stop");
+		manager.applyProviderHook(request.taskId, {
+			taskId: request.taskId,
+			projectId: "project",
+			event: "activity",
+			metadata: {
+				source: "codex",
+				hookEventName: "SessionStart",
+				sessionInstanceId: summary(manager)?.sessionInstanceId,
+				sessionId: "next-session",
+				transcriptPath: "/tmp/initial-start/next-session.jsonl",
+			},
+		});
+		expect(summary(manager)).toMatchObject({ state: "awaiting_review", reviewReason: "unconfirmed" });
+		sessions[0]?.triggerExit(0);
+		expect(summary(manager)).toMatchObject({ state: "awaiting_review", reviewReason: "exit", pid: null });
+	});
+
 	it("keeps a launch that exits after its confirmation deadline failed until an explicit start", async () => {
 		const { manager, sessions } = setup();
 		await manager.startTaskSession(request);

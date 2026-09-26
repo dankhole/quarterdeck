@@ -18,8 +18,8 @@ import type { NativeTaskSessionProfileEnvironment, StopTaskSessionResult } from 
 import { pathExists } from "../workdir";
 import {
 	CLAUDE_AGENT_SDK_SCHEMA_FINGERPRINT,
-	CLAUDE_STRUCTURED_CLI_VERSION,
 	fingerprintClaudeProfileRoot,
+	isSupportedClaudeStructuredCliVersion,
 	resolveClaudeCliVersion,
 	resolveClaudeProfileRoot,
 } from "./claude-structured-owner";
@@ -1035,8 +1035,9 @@ export class TaskExecutionOwnershipService {
 			return this.failure("stale_owner_generation", ownership);
 		}
 		if (
-			ownership.providerVersion !==
-			(ownership.provider === "codex" ? CODEX_APP_SERVER_VERSION : CLAUDE_STRUCTURED_CLI_VERSION)
+			ownership.provider === "codex"
+				? ownership.providerVersion !== CODEX_APP_SERVER_VERSION
+				: !isSupportedClaudeStructuredCliVersion(ownership.providerVersion)
 		) {
 			return this.failure("unsupported_provider_version", ownership);
 		}

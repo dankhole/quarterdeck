@@ -13,6 +13,7 @@ import type {
 	AgentOutputTransitionDetector,
 	AgentOutputTransitionInspectionPredicate,
 } from "./agent-session-adapters";
+import type { ClaudeWorkspaceTrustDriverState } from "./claude-workspace-trust";
 import type { HookEventOrderState } from "./hook-event-order";
 import { PtyLaunchError, PtySpawnError } from "./pty-runtime-health";
 import type { PtySession } from "./pty-session";
@@ -37,7 +38,10 @@ export interface ActiveProcessState {
 	agentId: StartTaskSessionRequest["agentId"] | null;
 	launchBinary: string | null;
 	launchProfileEnvironment: NativeTaskSessionProfileEnvironment;
+	/** Raw-output trust detection (Codex). */
 	workspaceTrustBuffer: string | null;
+	/** Rendered-screen trust confirmation (Claude). */
+	claudeWorkspaceTrust: ClaudeWorkspaceTrustDriverState | null;
 	cols: number;
 	rows: number;
 	terminalProtocolFilter: TerminalProtocolFilterState;
@@ -50,6 +54,8 @@ export interface ActiveProcessState {
 	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
 	initialWorkConfirmationPending: boolean;
 	initialWorkConfirmationTimer: NodeJS.Timeout | null;
+	/** Set once this launch produced native work evidence; later Review/Unconfirmed is not a launch failure. */
+	nativeWorkConfirmed: boolean;
 	interruptRecoveryTimer: NodeJS.Timeout | null;
 	interruptRecoveryStartedAt: number | null;
 	/** Launch-scoped causal fence; recovery timer cleanup must not erase it. */
@@ -264,6 +270,7 @@ export function hasLiveOutputListener(entry: ProcessEntry): boolean {
 // ── ActiveProcessState factory ───────────────────────────────────────────────
 
 import type { PreparedAgentLaunch } from "./agent-session-adapters";
+import { createClaudeWorkspaceTrustDriverState } from "./claude-workspace-trust";
 import { createTerminalProtocolFilterState } from "./terminal-protocol-filter";
 
 export interface CreateActiveProcessStateOptions {
@@ -287,7 +294,9 @@ export function createActiveProcessState(opts: CreateActiveProcessStateOptions):
 		agentId: opts.agentId,
 		launchBinary: opts.launchBinary ?? null,
 		launchProfileEnvironment: { ...opts.launchProfileEnvironment },
-		workspaceTrustBuffer: opts.willAutoTrust ? "" : null,
+		workspaceTrustBuffer: opts.willAutoTrust && opts.agentId !== "claude" ? "" : null,
+		claudeWorkspaceTrust:
+			opts.willAutoTrust && opts.agentId === "claude" ? createClaudeWorkspaceTrustDriverState() : null,
 		cols: opts.cols,
 		rows: opts.rows,
 		terminalProtocolFilter: createTerminalProtocolFilterState({
@@ -303,6 +312,7 @@ export function createActiveProcessState(opts: CreateActiveProcessStateOptions):
 		workspaceTrustConfirmTimer: null,
 		initialWorkConfirmationPending: false,
 		initialWorkConfirmationTimer: null,
+		nativeWorkConfirmed: false,
 		interruptRecoveryTimer: null,
 		interruptRecoveryStartedAt: null,
 		lastInterruptAt: null,

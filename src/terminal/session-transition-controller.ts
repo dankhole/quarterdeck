@@ -44,12 +44,13 @@ export class SessionTransitionController {
 	 */
 	observeSummaryChange(previous: RuntimeTaskSessionSummary | null, summary: RuntimeTaskSessionSummary): void {
 		const currentActive = this.entries.get(summary.taskId)?.active;
-		if (
-			currentActive &&
-			currentActive.sessionInstanceId === summary.sessionInstanceId &&
-			(summary.state !== "running" || summary.nativeWorkEvidence)
-		) {
-			clearInitialWorkConfirmation(currentActive);
+		if (currentActive && currentActive.sessionInstanceId === summary.sessionInstanceId) {
+			if (summary.state !== "running" || summary.nativeWorkEvidence) {
+				clearInitialWorkConfirmation(currentActive);
+			}
+			if (summary.nativeWorkEvidence) {
+				currentActive.nativeWorkConfirmed = true;
+			}
 		}
 		if (previous?.state === summary.state || summary.state !== "running") {
 			return;

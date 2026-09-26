@@ -119,6 +119,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	worktreeSetupScript: CONFIG_DEFAULTS.worktreeSetupScript,
 	backupIntervalMinutes: CONFIG_DEFAULTS.backupIntervalMinutes,
 	llmConfigured: false,
+	textGenerationAvailable: false,
 };
 
 function cloneAgentDefs(agents: RuntimeConfigResponse["agents"]): RuntimeConfigResponse["agents"] {

@@ -35,12 +35,18 @@ const execFileAsync = promisify(execFile);
 const log = createTaggedLogger("claude-structured-owner");
 
 export const CLAUDE_AGENT_SDK_VERSION = "0.3.241";
-export const CLAUDE_STRUCTURED_CLI_VERSION = "2.1.224";
+/**
+ * Oldest installed Claude Code release validated with this SDK. Claude Code
+ * auto-updates, so the owner accepts later releases in the same minor line;
+ * the native launch and structured owner must still report the same version.
+ */
+export const CLAUDE_STRUCTURED_MIN_CLI_VERSION = "2.1.224";
+const CLAUDE_STRUCTURED_CLI_EXCLUSIVE_MAX_VERSION = "2.2.0";
 export const CLAUDE_AGENT_SDK_SCHEMA_FINGERPRINT = createHash("sha256")
 	.update(
 		JSON.stringify({
 			sdk: CLAUDE_AGENT_SDK_VERSION,
-			cli: CLAUDE_STRUCTURED_CLI_VERSION,
+			cli: CLAUDE_STRUCTURED_MIN_CLI_VERSION,
 			callbacks: ["canUseTool.requestId", "canUseTool.toolUseID", "onElicitation.requestId"],
 			messages: ["system.init", "result"],
 		}),
@@ -133,6 +139,26 @@ async function readClaudeStreamInitialization(
 
 function parseVersion(value: string): string | null {
 	return value.match(/\b\d+\.\d+\.\d+\b/)?.[0] ?? null;
+}
+
+function compareVersions(left: readonly number[], right: readonly number[]): number {
+	for (let index = 0; index < 3; index += 1) {
+		const difference = (left[index] ?? 0) - (right[index] ?? 0);
+		if (difference !== 0) return difference;
+	}
+	return 0;
+}
+
+function toVersionParts(version: string): number[] | null {
+	return /^(\d+)\.(\d+)\.(\d+)$/u.exec(version)?.slice(1).map(Number) ?? null;
+}
+
+export function isSupportedClaudeStructuredCliVersion(version: string): boolean {
+	const parts = toVersionParts(version);
+	const minimum = toVersionParts(CLAUDE_STRUCTURED_MIN_CLI_VERSION);
+	const exclusiveMaximum = toVersionParts(CLAUDE_STRUCTURED_CLI_EXCLUSIVE_MAX_VERSION);
+	if (!parts || !minimum || !exclusiveMaximum) return false;
+	return compareVersions(parts, minimum) >= 0 && compareVersions(parts, exclusiveMaximum) < 0;
 }
 
 export async function resolveClaudeCliVersion(binary: string): Promise<string> {
@@ -560,7 +586,7 @@ export class ClaudeStructuredOwnerRegistry {
 		const env: NodeJS.ProcessEnv = { ...process.env, ...input.env };
 		const version = await (this.dependencies.resolveProviderVersion ?? resolveClaudeCliVersion)(input.binary);
 		if (
-			version !== CLAUDE_STRUCTURED_CLI_VERSION ||
+			!isSupportedClaudeStructuredCliVersion(version) ||
 			(input.expectedProviderVersion && input.expectedProviderVersion !== version)
 		) {
 			throw new StructuredOwnerCompatibilityError("unsupported_version");

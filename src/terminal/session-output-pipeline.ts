@@ -6,7 +6,11 @@
 import type { RuntimeTaskSessionSummary } from "../core";
 import type { ProcessEntry } from "./session-manager-types";
 import type { SessionTransitionEvent, SessionTransitionResult } from "./session-summary-store";
-import { MAX_WORKSPACE_TRUST_BUFFER_CHARS, processWorkspaceTrustOutput } from "./session-workspace-trust";
+import {
+	MAX_WORKSPACE_TRUST_BUFFER_CHARS,
+	processClaudeWorkspaceTrustScreen,
+	processWorkspaceTrustOutput,
+} from "./session-workspace-trust";
 import { disableOscColorQueryIntercept, filterTerminalProtocolOutput } from "./terminal-protocol-filter";
 
 const OSC_FOREGROUND_QUERY_REPLY = "\u001b]10;rgb:e6e6/eded/f3f3\u001b\\";
@@ -62,12 +66,23 @@ export function processTaskSessionOutput(
 	// 3. Terminal state mirror — feed filtered output to the headless xterm.
 	//    When inspection is required, transition before the same chunk becomes
 	//    visible to listeners so the card cannot briefly claim it is Running.
+	//    Claude workspace trust is also driven from the rendered screen.
+	const inspectClaudeTrust = activeAtWrite.claudeWorkspaceTrust !== null;
 	if (entry.terminalStateMirror) {
 		entry.terminalStateMirror.applyOutput(
 			filteredChunk,
-			inspectRenderedScreen
+			inspectRenderedScreen || inspectClaudeTrust
 				? (screen) => {
 						if (entry.active !== activeAtWrite) {
+							return;
+						}
+						if (inspectClaudeTrust) {
+							processClaudeWorkspaceTrustScreen(activeAtWrite, taskId, screen, {
+								updateStore: (id, patch) => deps.updateStore(id, patch),
+								getActive: (id) => (id === taskId ? entry.active : null),
+							});
+						}
+						if (!inspectRenderedScreen) {
 							return;
 						}
 						const summary = deps.getSummary(taskId);
@@ -87,11 +102,11 @@ export function processTaskSessionOutput(
 		);
 	}
 
-	// 4. Decode only for workspace trust, which still consumes raw output.
+	// 4. Decode only for Codex workspace trust, which still consumes raw output.
 	const needsDecodedOutput = entry.active.workspaceTrustBuffer !== null;
 	const data = needsDecodedOutput ? filteredChunk.toString("utf8") : "";
 
-	// 5. Workspace trust auto-confirm
+	// 5. Codex workspace trust auto-confirm
 	processWorkspaceTrustOutput(entry.active, taskId, data, {
 		updateStore: (id, patch) => deps.updateStore(id, patch),
 		getActive: (id) => {

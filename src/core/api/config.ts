@@ -80,7 +80,10 @@ export const runtimeConfigResponseSchema = z.object({
 	defaultBaseRef: z.string(),
 	worktreeSetupScript: z.string(),
 	backupIntervalMinutes: z.number(),
+	/** The optional OpenAI-compatible gateway is configured. */
 	llmConfigured: z.boolean(),
+	/** Codex or the gateway can be attempted for branch names and other helper text. */
+	textGenerationAvailable: z.boolean(),
 });
 export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
 

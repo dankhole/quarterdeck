@@ -12,8 +12,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { StartStructuredOwnerInput } from "../../../src/execution";
 import {
 	CLAUDE_AGENT_SDK_SCHEMA_FINGERPRINT,
-	CLAUDE_STRUCTURED_CLI_VERSION,
+	CLAUDE_STRUCTURED_MIN_CLI_VERSION,
 	ClaudeStructuredOwnerRegistry,
+	isSupportedClaudeStructuredCliVersion,
 	StructuredOwnerCompatibilityError,
 } from "../../../src/execution";
 
@@ -51,6 +52,7 @@ function createHarness(
 		closeEmitsExit?: boolean;
 		processPid?: number;
 		initOverrides?: Record<string, unknown>;
+		providerVersion?: string;
 	} = {},
 ) {
 	const messages = new MessageStream();
@@ -100,7 +102,7 @@ function createHarness(
 	);
 	const registry = new ClaudeStructuredOwnerRegistry({
 		createQuery: createQuery as never,
-		resolveProviderVersion: async () => CLAUDE_STRUCTURED_CLI_VERSION,
+		resolveProviderVersion: async () => options.providerVersion ?? CLAUDE_STRUCTURED_MIN_CLI_VERSION,
 		resolveExecutablePath: async () => "/usr/local/bin/claude",
 		spawnProcess: () => process,
 	});
@@ -129,7 +131,7 @@ function startInput(overrides: Partial<StartStructuredOwnerInput> = {}): StartSt
 		nativeArgs: ["--resume", "session-1", "--permission-mode", "dontAsk"],
 		cwd: "/synthetic/worktree",
 		providerSessionId: "session-1",
-		expectedProviderVersion: CLAUDE_STRUCTURED_CLI_VERSION,
+		expectedProviderVersion: CLAUDE_STRUCTURED_MIN_CLI_VERSION,
 		expectedProtocolSchemaFingerprint: CLAUDE_AGENT_SDK_SCHEMA_FINGERPRINT,
 		ownerGeneration: 2,
 		ownerSessionInstanceId: "owner-1",
@@ -145,7 +147,7 @@ function initMessage(overrides: Record<string, unknown> = {}): SDKMessage {
 		subtype: "init",
 		session_id: "session-1",
 		cwd: "/synthetic/worktree",
-		claude_code_version: CLAUDE_STRUCTURED_CLI_VERSION,
+		claude_code_version: CLAUDE_STRUCTURED_MIN_CLI_VERSION,
 		permissionMode: "dontAsk",
 		apiKeySource: "none",
 		tools: ["Read", "Bash"],
@@ -170,7 +172,41 @@ function resultMessage(overrides: Record<string, unknown> = {}): SDKMessage {
 	} as SDKMessage;
 }
 
+describe("isSupportedClaudeStructuredCliVersion", () => {
+	it.each([
+		["2.1.223", false],
+		[CLAUDE_STRUCTURED_MIN_CLI_VERSION, true],
+		["2.1.283", true],
+		["2.2.0", false],
+		["3.0.0", false],
+		["2.1", false],
+	])("treats %s as supported=%s", (version, supported) => {
+		expect(isSupportedClaudeStructuredCliVersion(version)).toBe(supported);
+	});
+});
+
 describe("ClaudeStructuredOwnerRegistry", () => {
+	it("accepts an auto-updated CLI in the validated minor line when it matches the native launch", async () => {
+		const harness = createHarness({
+			providerVersion: "2.1.283",
+			initOverrides: { claude_code_version: "2.1.283" },
+		});
+		await harness.registry.start(startInput({ expectedProviderVersion: "2.1.283" }));
+
+		expect(harness.options?.pathToClaudeCodeExecutable).toBe("/usr/local/bin/claude");
+		await expect(harness.registry.stopAll()).resolves.toBe(0);
+	});
+
+	it.each([
+		{ installed: "2.2.0", native: "2.2.0" },
+		{ installed: "2.1.284", native: "2.1.283" },
+	])("rejects installed $installed for a native $native launch", async ({ installed, native }) => {
+		const harness = createHarness({ providerVersion: installed });
+		await expect(harness.registry.start(startInput({ expectedProviderVersion: native }))).rejects.toMatchObject({
+			code: "unsupported_version",
+		});
+	});
+
 	it("pins the external CLI, resumes the exact session, and completes only on the SDK result signal", async () => {
 		const harness = createHarness();
 		const processStarted = vi.fn(async () => undefined);

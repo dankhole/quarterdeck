@@ -102,7 +102,7 @@ export function ProjectRuntimeProvider({
 	});
 
 	const llmConfigured = runtimeProjectConfig?.llmConfigured ?? false;
-	const isLlmGenerationDisabled = !llmConfigured;
+	const isLlmGenerationDisabled = !(runtimeProjectConfig?.textGenerationAvailable ?? false);
 	const showTrashWorktreeNotice =
 		runtimeProjectConfig?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice;
 	const unmergedChangesIndicatorEnabled =

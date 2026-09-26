@@ -6,7 +6,7 @@ export {
 	prepareAgentLaunch,
 } from "./agent-session-adapters";
 export {
-	hasClaudeWorkspaceTrustPrompt,
+	readClaudeWorkspaceTrustScreen,
 	shouldAutoConfirmClaudeWorkspaceTrust,
 	stopWorkspaceTrustTimers,
 	WORKSPACE_TRUST_CONFIRM_DELAY_MS,

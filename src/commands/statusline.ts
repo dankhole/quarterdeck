@@ -16,7 +16,8 @@ import {
 // Input types — matches Claude Code's statusline JSON contract
 // ---------------------------------------------------------------------------
 
-const statuslineInputSchema = z.object({
+// Claude sends `null` for usage fields before the first response and after /clear.
+export const statuslineInputSchema = z.object({
 	model: z.object({ display_name: z.string() }),
 	session_id: z.string(),
 	cwd: z.string(),
@@ -28,16 +29,16 @@ const statuslineInputSchema = z.object({
 	}),
 	context_window: z.object({
 		context_window_size: z.number(),
-		used_percentage: z.number().optional(),
-		total_input_tokens: z.number().optional(),
-		total_output_tokens: z.number().optional(),
+		used_percentage: z.number().nullish(),
+		total_input_tokens: z.number().nullish(),
+		total_output_tokens: z.number().nullish(),
 		current_usage: z
 			.object({
 				input_tokens: z.number(),
-				cache_creation_input_tokens: z.number().optional(),
-				cache_read_input_tokens: z.number().optional(),
+				cache_creation_input_tokens: z.number().nullish(),
+				cache_read_input_tokens: z.number().nullish(),
 			})
-			.optional(),
+			.nullish(),
 	}),
 });
 

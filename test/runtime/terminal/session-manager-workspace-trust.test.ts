@@ -38,6 +38,23 @@ function createMockPtySession(pid: number, request: MockSpawnRequest) {
 	};
 }
 
+const DOWN = "\u001b[B";
+
+function renderClaudeTrustDialog(focus: "confirm" | "cancel"): string {
+	const pointer = (option: "confirm" | "cancel") => (focus === option ? "\u276f" : " ");
+	return [
+		"\u001b[2J\u001b[H Accessing workspace:",
+		" /tmp/workspace",
+		"",
+		` ${pointer("cancel")} No, exit`,
+		` ${pointer("confirm")} Yes, I trust this folder`,
+		"",
+		" Enter to confirm \u00b7 Esc to cancel",
+	].join("\r\n");
+}
+
+const CLEARED_SCREEN = "\u001b[2J\u001b[H\u276f ";
+
 describe("TerminalSessionManager workspace trust auto-confirm", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
@@ -54,10 +71,15 @@ describe("TerminalSessionManager workspace trust auto-confirm", () => {
 		vi.useRealTimers();
 	});
 
-	it("auto-confirms Claude workspace trust prompt after delay", async () => {
+	it("waits out Claude's input guard, selects confirm, and confirms only once it is rendered selected", async () => {
 		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
 		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
 			const session = createMockPtySession(111, request);
+			// Claude re-renders the select after navigation and closes it on Enter.
+			session.write.mockImplementation((data: string) => {
+				if (data === DOWN) session.triggerData(renderClaudeTrustDialog("confirm"));
+				if (data === "\r") session.triggerData(CLEARED_SCREEN);
+			});
 			spawnedSessions.push(session);
 			return session;
 		});
@@ -76,16 +98,76 @@ describe("TerminalSessionManager workspace trust auto-confirm", () => {
 		const session = spawnedSessions[0];
 		expect(session).toBeDefined();
 
-		// Simulate Claude trust prompt output
-		session?.triggerData("Do you want to trust this folder? Yes, I trust this folder");
+		// Claude >= 2.1.283 lists and focuses "No, exit" first.
+		session?.triggerData(renderClaudeTrustDialog("cancel"));
 
-		// Confirm has not been sent yet (delayed by 100ms)
+		// Claude refuses input shortly after the dialog opens; nothing is sent yet.
+		await vi.advanceTimersByTimeAsync(200);
 		expect(session?.write).not.toHaveBeenCalled();
 
-		// Advance past the trust confirm delay
-		await vi.advanceTimersByTimeAsync(100);
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(session?.write.mock.calls).toEqual([[DOWN], ["\r"]]);
+		expect(manager.store.getSummary("task-1")?.warningMessage ?? null).toBeNull();
 
-		expect(session?.write).toHaveBeenCalledWith("\r");
+		// A cleared dialog stays confirmed.
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(session?.write).toHaveBeenCalledTimes(2);
+	});
+
+	it("confirms the legacy Claude trust dialog that focuses confirm first", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(112, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp/workspace",
+			projectPath: "/tmp/workspace",
+			prompt: "Fix the bug",
+		});
+
+		const session = spawnedSessions[0];
+		session?.triggerData("\u001b[2J\u001b[H \u276f 1. Yes, I trust this folder\r\n   2. No, exit");
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(session?.write.mock.calls).toEqual([["\r"]]);
+	});
+
+	it("never confirms Claude trust while decline stays selected", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(113, request);
+			// Navigation keys are swallowed; the dialog keeps focusing decline.
+			session.write.mockImplementation((data: string) => {
+				if (data === DOWN) session.triggerData(renderClaudeTrustDialog("cancel"));
+			});
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp/workspace",
+			projectPath: "/tmp/workspace",
+			prompt: "Fix the bug",
+		});
+
+		const session = spawnedSessions[0];
+		session?.triggerData(renderClaudeTrustDialog("cancel"));
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		expect(session?.write.mock.calls).toEqual([[DOWN], [DOWN]]);
+		expect(manager.store.getSummary("task-1")?.warningMessage).toContain("Yes, I trust this folder");
 	});
 
 	it("auto-confirms Codex workspace trust prompt after delay", async () => {
@@ -142,11 +224,11 @@ describe("TerminalSessionManager workspace trust auto-confirm", () => {
 		const session = spawnedSessions[0];
 		expect(session).toBeDefined();
 
-		session?.triggerData("Do you want to trust this folder? Yes, I trust this folder");
+		session?.triggerData(renderClaudeTrustDialog("confirm"));
 
-		await vi.advanceTimersByTimeAsync(100);
+		await vi.advanceTimersByTimeAsync(1_000);
 
-		// Trust buffer was null (disabled), so no auto-confirm should happen
+		// Trust auto-confirm is disabled, so no key should be sent
 		expect(session?.write).not.toHaveBeenCalled();
 	});
 
@@ -154,6 +236,9 @@ describe("TerminalSessionManager workspace trust auto-confirm", () => {
 		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
 		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
 			const session = createMockPtySession(444, request);
+			session.write.mockImplementation((data: string) => {
+				if (data === "\r") session.triggerData(CLEARED_SCREEN);
+			});
 			spawnedSessions.push(session);
 			return session;
 		});
@@ -173,22 +258,23 @@ describe("TerminalSessionManager workspace trust auto-confirm", () => {
 		expect(session).toBeDefined();
 
 		// First trust prompt
-		session?.triggerData("Do you want to trust this folder? Yes, I trust this folder");
-		await vi.advanceTimersByTimeAsync(100);
-		expect(session?.write).toHaveBeenCalledWith("\r");
-		expect(session?.write).toHaveBeenCalledTimes(1);
+		session?.triggerData(renderClaudeTrustDialog("confirm"));
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(session?.write.mock.calls).toEqual([["\r"]]);
 
 		// Second trust prompt from the same launch
-		session?.triggerData("Do you want to trust this folder? Yes, I trust this folder");
-		await vi.advanceTimersByTimeAsync(100);
-		expect(session?.write).toHaveBeenCalledTimes(2);
-		expect(session?.write).toHaveBeenNthCalledWith(2, "\r");
+		session?.triggerData(renderClaudeTrustDialog("confirm"));
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(session?.write.mock.calls).toEqual([["\r"], ["\r"]]);
 	});
 
 	it("stops auto-confirming after MAX_AUTO_TRUST_CONFIRMS (5)", async () => {
 		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
 		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
 			const session = createMockPtySession(555, request);
+			session.write.mockImplementation((data: string) => {
+				if (data === "\r") session.triggerData(CLEARED_SCREEN);
+			});
 			spawnedSessions.push(session);
 			return session;
 		});
@@ -209,14 +295,14 @@ describe("TerminalSessionManager workspace trust auto-confirm", () => {
 
 		// Trigger 5 trust prompts — all should be auto-confirmed
 		for (let i = 0; i < 5; i++) {
-			session?.triggerData("Do you want to trust this folder? Yes, I trust this folder");
-			await vi.advanceTimersByTimeAsync(100);
+			session?.triggerData(renderClaudeTrustDialog("confirm"));
+			await vi.advanceTimersByTimeAsync(1_000);
 		}
 		expect(session?.write).toHaveBeenCalledTimes(5);
 
 		// 6th trust prompt — should NOT be auto-confirmed (cap reached)
-		session?.triggerData("Do you want to trust this folder? Yes, I trust this folder");
-		await vi.advanceTimersByTimeAsync(100);
+		session?.triggerData(renderClaudeTrustDialog("confirm"));
+		await vi.advanceTimersByTimeAsync(1_000);
 		expect(session?.write).toHaveBeenCalledTimes(5);
 
 		// Verify warning message was set on the store
@@ -236,11 +322,10 @@ describe("TerminalSessionManager workspace trust auto-confirm", () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		await manager.startTaskSession({
 			taskId: "task-1",
-			agentId: "claude",
-			binary: "claude",
+			agentId: "codex",
+			binary: "codex",
 			args: [],
 			cwd: "/tmp/workspace",
-			projectPath: "/tmp/workspace",
 			prompt: "Fix the bug",
 		});
 
@@ -253,7 +338,7 @@ describe("TerminalSessionManager workspace trust auto-confirm", () => {
 
 		// Now send a trust prompt — it should still be detected because the
 		// buffer was truncated (keeping the tail) and the trust prompt is new data
-		session?.triggerData("Do you want to trust this folder? Yes, I trust this folder");
+		session?.triggerData("Do you trust the contents of this directory?");
 
 		await vi.advanceTimersByTimeAsync(100);
 

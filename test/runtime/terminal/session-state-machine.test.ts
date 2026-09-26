@@ -658,6 +658,24 @@ describe("reduceSessionTransition", () => {
 	});
 
 	describe("process.exit", () => {
+		it.each([
+			{ launchWorkConfirmed: undefined, exitCode: 0, reason: "error" },
+			{ launchWorkConfirmed: false, exitCode: 0, reason: "error" },
+			{ launchWorkConfirmed: true, exitCode: 1, reason: "error" },
+			{ launchWorkConfirmed: true, exitCode: 0, reason: "exit" },
+		])("maps an unconfirmed Review exit with %j", ({ launchWorkConfirmed, exitCode, reason }) => {
+			const summary = createSummary({ state: "awaiting_review", reviewReason: "unconfirmed", pid: 1234 });
+			const result = reduceSessionTransition(summary, {
+				type: "process.exit",
+				exitCode,
+				interrupted: false,
+				launchWorkConfirmed,
+			});
+
+			expect(result.patch.reviewReason).toBe(reason);
+			expect(result.patch.pid).toBeNull();
+		});
+
 		it("exit code 0 produces state awaiting_review with reason 'exit'", () => {
 			const summary = createSummary({ state: "running" });
 			const result = reduceSessionTransition(summary, { type: "process.exit", exitCode: 0, interrupted: false });

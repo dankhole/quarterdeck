@@ -430,8 +430,12 @@ export function handleTaskSessionExit(
 	}
 	markTaskSessionLaunchExited(currentEntry.launchMonitor, event.exitCode);
 	const active = currentEntry.active;
+	// A launch that already produced native work can return to Review/Unconfirmed
+	// (for example after a provider conversation switch); its exit is not a
+	// launch failure.
 	const unconfirmedStart =
-		active.initialWorkConfirmationPending || currentSummaryAtExit?.reviewReason === "unconfirmed";
+		!active.nativeWorkConfirmed &&
+		(active.initialWorkConfirmationPending || currentSummaryAtExit?.reviewReason === "unconfirmed");
 	// An unconfirmed launch is a launch failure, not recoverable foreground work.
 	// Retire cached replacement intent before socket recovery can reuse it; an
 	// explicit Start/Restart supplies a new request through the lifecycle owner.
@@ -461,6 +465,7 @@ export function handleTaskSessionExit(
 		exitCode: event.exitCode,
 		interrupted: wasInterrupted,
 		unconfirmedStart,
+		launchWorkConfirmed: active.nativeWorkConfirmed,
 	});
 	if (pendingInterruptSignal) {
 		deps.onInterruptRecoveryApplied?.(request.taskId, pendingInterruptSignal, result, active.sessionInstanceId);
