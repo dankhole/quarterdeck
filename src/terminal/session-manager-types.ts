@@ -60,7 +60,7 @@ export interface ActiveProcessState {
 	interruptRecoveryStartedAt: number | null;
 	/** Launch-scoped causal fence; recovery timer cleanup must not erase it. */
 	lastInterruptAt: number | null;
-	interruptRecoverySignal: "ctrl_c" | "escape" | null;
+	interruptRecoverySignal: "ctrl_c" | null;
 }
 
 export interface ProcessEntry {

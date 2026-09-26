@@ -123,12 +123,12 @@ export function processSessionInput(
 	const recordsProviderSubmission =
 		(summary?.agentId === "codex" || summary?.agentId === "claude" || summary?.agentId === "pi") && resolvesInputWait;
 	const responseOccurredAt = resolvesInputWait ? Date.now() : null;
-	// 1. Interrupt detection — Ctrl+C or bare Escape while running suppresses
-	//    auto-restart and schedules a recovery timer.
-	if (summary?.state === "running" && (isCtrlC || isBareEscape)) {
-		const interruptSignal: InterruptSignal = isCtrlC ? "ctrl_c" : "escape";
+	// 1. Ctrl+C while running suppresses auto-restart and schedules recovery.
+	//    Escape can dismiss provider UI; only provider evidence may establish
+	//    that it interrupted a turn.
+	if (summary?.state === "running" && isCtrlC) {
 		entry.suppressAutoRestartOnExit = true;
-		scheduleInterruptRecovery(entry, interruptSignal, {
+		scheduleInterruptRecovery(entry, "ctrl_c", {
 			getEntry: (id) => deps.getEntry(id),
 			getSummary: (id) => deps.getSummary(id),
 			applyTransitionEvent: (e, ev) => deps.applyTransitionEvent(e, ev),

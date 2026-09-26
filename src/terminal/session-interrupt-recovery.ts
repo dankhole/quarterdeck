@@ -1,5 +1,5 @@
 // Interrupt signal detection and recovery scheduling.
-// Extracted from session-manager.ts — detects Ctrl+C/Escape in user input
+// Extracted from session-manager.ts — detects control keys in user input
 // and retains bounded process-exit recovery bookkeeping after the immediate
 // Review transition. The launch-scoped causal fence survives timer cleanup.
 
@@ -12,7 +12,7 @@ export const SIGINT_BYTE = 0x03;
 export const ESC_BYTE = 0x1b;
 // Real Ctrl+C arrives as a 1–3 byte sequence; larger buffers are likely pasted text.
 export const MAX_SIGINT_DETECT_BUFFER_SIZE = 4;
-export type InterruptSignal = "ctrl_c" | "escape";
+export type InterruptSignal = "ctrl_c";
 
 export function clearInterruptRecoveryTimer(active: ActiveProcessState): void {
 	if (active.interruptRecoveryTimer) {
@@ -23,7 +23,7 @@ export function clearInterruptRecoveryTimer(active: ActiveProcessState): void {
 	active.interruptRecoverySignal = null;
 }
 
-/** Detect whether the input buffer contains an interrupt signal (Ctrl+C or bare Escape). */
+/** Detect Ctrl+C interruption or bare Escape for actionable-wait cancellation. */
 export function detectInterruptSignal(data: Buffer): { isCtrlC: boolean; isBareEscape: boolean } {
 	return {
 		isCtrlC: data.length <= MAX_SIGINT_DETECT_BUFFER_SIZE && data.includes(SIGINT_BYTE),

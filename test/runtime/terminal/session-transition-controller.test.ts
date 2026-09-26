@@ -89,7 +89,7 @@ function currentProviderHook(
 }
 
 describe("SessionTransitionController", () => {
-	it("settles native interruption after local Escape and keeps its causal fence until newer work", () => {
+	it("settles native interruption after local Ctrl+C and keeps its causal fence until newer work", () => {
 		const store = new InMemorySessionSummaryStore();
 		store.hydrateFromRecord({ "task-1": createSummary({ state: "awaiting_review", reviewReason: "interrupted" }) });
 		const entry = createEntry();
@@ -97,7 +97,7 @@ describe("SessionTransitionController", () => {
 		if (!active) throw new Error("Missing active test process");
 		active.lastInterruptAt = 100;
 		active.interruptRecoveryStartedAt = 100;
-		active.interruptRecoverySignal = "escape";
+		active.interruptRecoverySignal = "ctrl_c";
 		active.interruptRecoveryTimer = setTimeout(() => {}, 5_000);
 		const controller = new SessionTransitionController(store, new Map([["task-1", entry]]));
 		const interrupt = createTestProviderHookEvent("to_review", {
@@ -302,7 +302,7 @@ describe("SessionTransitionController", () => {
 		const controller = new SessionTransitionController(store, new Map([["task-1", entry]]));
 		controller.applyTransitionEvent(entry, currentProviderHook("to_in_progress", { occurredAt: 10000 }));
 		vi.setSystemTime(10100);
-		scheduleInterruptRecovery(entry, "escape", {
+		scheduleInterruptRecovery(entry, "ctrl_c", {
 			getEntry: () => entry,
 			getSummary: () => store.getSummary("task-1"),
 			applyTransitionEvent: (target, event) => controller.applyTransitionEvent(target, event),

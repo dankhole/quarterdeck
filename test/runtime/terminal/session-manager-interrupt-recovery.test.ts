@@ -148,7 +148,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 			});
 		await ingest(1, "to_in_progress", "UserPromptSubmit", startedAt);
 		vi.advanceTimersByTime(100);
-		manager.writeInput("task-1", Buffer.from([0x1b]));
+		manager.writeInput("task-1", Buffer.from([0x03]));
 		vi.advanceTimersByTime(5001);
 		await ingest(2, "activity", "PreToolUse", startedAt + 50);
 		await ingest(3, "to_review", "Stop", startedAt + 60);
@@ -228,31 +228,39 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		expect(summary?.reviewReason).toBe("interrupted");
 	});
 
-	it("transitions to interrupted Review after Escape if agent stays running with no output", async () => {
-		setupMockPtySpawn();
+	it.each(["claude", "codex", "pi"] as const)(
+		"forwards Escape without interrupting a running %s task or fencing its completion",
+		async (agentId) => {
+			const spawnedSessions = setupMockPtySpawn();
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+			await startConfirmedTaskSession(manager, {
+				taskId: "task-1",
+				agentId,
+				binary: agentId,
+				args: [],
+				cwd: "/tmp/task-1",
+				prompt: "Fix the bug",
+			});
+			const beforeEscape = manager.store.getSummary("task-1");
+			const completionOccurredAt = Date.now();
+			await vi.advanceTimersByTimeAsync(100);
 
-		const onState = vi.fn();
-		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
-		manager.attach("task-1", { onState, onOutput: vi.fn() });
+			manager.writeInput("task-1", Buffer.from([0x1b]));
 
-		await startConfirmedTaskSession(manager, {
-			taskId: "task-1",
-			agentId: "claude",
-			binary: "claude",
-			args: [],
-			cwd: "/tmp/task-1",
-			prompt: "Fix the bug",
-		});
+			expect(spawnedSessions[0]?.write).toHaveBeenLastCalledWith(Buffer.from([0x1b]));
+			expect(manager.store.getSummary("task-1")).toEqual(beforeEscape);
+			expect(manager.getDiagnosticSnapshot().sessions[0]?.suppressAutoRestartOnExit).toBe(false);
+			await vi.advanceTimersByTimeAsync(6_000);
+			expect(manager.store.getSummary("task-1")).toEqual(beforeEscape);
 
-		expect(manager.store.getSummary("task-1")?.state).toBe("running");
-
-		// User sends Escape — agent doesn't exit
-		manager.writeInput("task-1", Buffer.from([0x1b]));
-
-		const summary = manager.store.getSummary("task-1");
-		expect(summary?.state).toBe("awaiting_review");
-		expect(summary?.reviewReason).toBe("interrupted");
-	});
+			// Escape must not reject a completion already in flight.
+			applyCurrentProviderHook(manager, "to_review", { occurredAt: completionOccurredAt });
+			expect(manager.store.getSummary("task-1")).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "hook",
+			});
+		},
+	);
 
 	it("returns a live interrupted review to running on the next confirmed provider hook", async () => {
 		const spawnedSessions = setupMockPtySpawn();
@@ -267,7 +275,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 			prompt: "Fix the bug",
 		});
 
-		manager.writeInput("task-1", Buffer.from([0x1b]));
+		manager.writeInput("task-1", Buffer.from([0x03]));
 		await vi.advanceTimersByTimeAsync(5_000);
 		expect(manager.store.getSummary("task-1")).toMatchObject({
 			state: "awaiting_review",
@@ -303,7 +311,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 			prompt: "Fix the bug",
 		});
 
-		manager.writeInput("task-1", Buffer.from([0x1b]));
+		manager.writeInput("task-1", Buffer.from([0x03]));
 		await vi.advanceTimersByTimeAsync(1_000);
 		manager.writeInput("task-1", Buffer.from([0x0d]));
 		applyCurrentProviderHook(manager, "to_in_progress", { occurredAt: Date.now() + 1 });
@@ -333,7 +341,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		}
 		const beforeInterrupt = Date.now() - 1;
 
-		manager.writeInput("task-1", Buffer.from([0x1b]));
+		manager.writeInput("task-1", Buffer.from([0x03]));
 		const result = applyCurrentProviderHook(manager, "to_in_progress", { occurredAt: beforeInterrupt });
 		expect(result?.changed).toBe(false);
 		await vi.advanceTimersByTimeAsync(5_000);
@@ -382,10 +390,10 @@ describe("TerminalSessionManager interrupt recovery", () => {
 			prompt: "Fix the bug",
 		});
 
-		manager.writeInput("task-1", Buffer.from([0x1b]));
+		manager.writeInput("task-1", Buffer.from([0x03]));
 		expect(recordEvent).toHaveBeenCalledWith(
 			"session.interrupt_recovery_scheduled",
-			{ signal: "escape", delayMs: 5_000 },
+			{ signal: "ctrl_c", delayMs: 5_000 },
 			expect.objectContaining({ projectId: "project-1", taskId: "task-1" }),
 			expect.objectContaining({ essential: true }),
 		);
@@ -394,7 +402,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		expect(recordEvent).toHaveBeenCalledWith(
 			"session.interrupt_recovery_applied",
 			{
-				signal: "escape",
+				signal: "ctrl_c",
 				changed: true,
 				nextState: "awaiting_review",
 				nextReviewReason: "interrupted",
@@ -425,7 +433,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		// Wait past the recovery timeout
 		await vi.advanceTimersByTimeAsync(6_000);
 
-		// Should still be running — multi-byte escape sequence is not a bare Escape
+		// Cursor movement must preserve Running.
 		expect(manager.store.getSummary("task-1")?.state).toBe("running");
 	});
 

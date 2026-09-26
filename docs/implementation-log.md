@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-26 — Escape preserves running task state
+
+`session-input-pipeline.ts` no longer treats bare Escape as a local interrupt. Escape can dismiss provider UI without ending work, so it must not clear work evidence, suppress crash recovery, or establish the timestamp fence that rejects queued hooks. Ctrl+C retains immediate interruption; Escape still records a cancellation response for an existing actionable wait, and provider interruption evidence remains authoritative. The recovery signal types and tests now enforce that distinction.
+
+Validation: 63 focused manager, transition-controller, permission-ingest, and rendered-interruption tests passed, including Escape forwarding and delayed completion for Claude, Codex, and Pi; runtime typecheck and changed-file Biome passed. No Agent Lab or real provider was needed for this input-routing invariant.
+
 ## 2026-09-25 — Project-scoped incremental session updates
 
 `useTaskSessions.upsertSession` now requires the originating project ID and rejects mismatches both before scheduling and inside the session updater. A layout-effect ref fences callbacks retained across navigation and unmount. Shell start/stop and input responses carry their request project; persistent terminal subscriptions forward their captured project through the latest callback. This prevents a late old-project shell stop from overwriting a new project’s identically keyed home terminal, regardless of summary timestamps, and suppresses stale warning toasts. Same-project monotonic merging remains unchanged.
