@@ -3,17 +3,10 @@
 // push runtime-specific orchestration down into hooks and service modules.
 
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
-import type { ReactElement, ReactNode, SetStateAction } from "react";
+import type { ReactElement, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-	AlreadyOpenFallback,
-	AppDialogs,
-	ConnectedTopBar,
-	HomeView,
-	ProjectNavigationPanel,
-	QuarterdeckAccessBlockedFallback,
-	RuntimeDisconnectedFallback,
-} from "@/components/app";
+import { AlreadyOpenFallback, AppDialogs, ConnectedTopBar, HomeView, ProjectNavigationPanel } from "@/components/app";
+import { AppRuntimeBoundary } from "@/components/app/app-runtime-boundary";
 import { GitHistoryView } from "@/components/git";
 import { CommitPanel } from "@/components/git/panels";
 import { FileFinderOverlay } from "@/components/search/file-finder-overlay";
@@ -79,24 +72,6 @@ interface AppContentProps {
 }
 
 // ---------------------------------------------------------------------------
-// AppEarlyBailout — renders fallback UIs for disconnected/blocked states.
-// Must be inside ProjectProvider so it can read project runtime status.
-// ---------------------------------------------------------------------------
-
-function AppEarlyBailout({ children }: { children: ReactNode }): ReactNode {
-	const { isRuntimeDisconnected, streamError } = useProjectRuntimeStreamContext();
-	const { isQuarterdeckAccessBlocked } = useProjectRuntimeContext();
-
-	if (isRuntimeDisconnected) {
-		return <RuntimeDisconnectedFallback message={streamError ?? undefined} />;
-	}
-	if (isQuarterdeckAccessBlocked) {
-		return <QuarterdeckAccessBlockedFallback />;
-	}
-	return children;
-}
-
-// ---------------------------------------------------------------------------
 // App — top-level shell: owns state atoms, renders the provider tree.
 // ---------------------------------------------------------------------------
 
@@ -147,7 +122,7 @@ function AppInner(): ReactElement {
 			projectBoardSessionsRef={projectBoardSessionsRef}
 			setProjectBoardSessions={setProjectBoardSessions}
 		>
-			<AppEarlyBailout>
+			<AppRuntimeBoundary>
 				<BoardProvider board={board} sessions={sessions} setSessions={setSessions}>
 					<TaskEditorProvider>
 						<SurfaceNavigationProvider>
@@ -163,7 +138,7 @@ function AppInner(): ReactElement {
 						</SurfaceNavigationProvider>
 					</TaskEditorProvider>
 				</BoardProvider>
-			</AppEarlyBailout>
+			</AppRuntimeBoundary>
 		</ProjectProvider>
 	);
 }

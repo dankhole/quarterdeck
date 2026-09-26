@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Preserve unsaved task prompts and images during runtime disconnects, blocking actions with an overlay until the connection returns.
+
 - Separate session persistence and durable hook acknowledgements from WebSocket streaming, preserving retries and shutdown flushing under an independent runtime service.
 
 - Stop marking running tasks Interrupted merely because Escape was pressed. Preserve provider-reported interruptions, Ctrl+C, and approval cancellation.

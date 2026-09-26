@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { Button } from "@/components/ui/button";
 
 export function RuntimeDisconnectedFallback({
-	message = "The server is no longer running. Start it again in your terminal, then reload.",
+	message = "Waiting for the server to reconnect. If it stopped, start it again in your terminal.",
 }: {
 	message?: string;
 }): ReactElement {
@@ -21,6 +21,9 @@ export function RuntimeDisconnectedFallback({
 					</div>
 				</div>
 				<div className="mt-5">
+					<p className="mb-3 text-sm text-text-secondary">
+						Reloading the page discards unsaved changes. You can wait here to reconnect automatically.
+					</p>
 					<Button
 						size="md"
 						variant="primary"
