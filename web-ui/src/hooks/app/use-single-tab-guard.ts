@@ -1,127 +1,108 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 
-const LOCK_KEY = "quarterdeck-active-tab";
+const LOCK_NAME = "quarterdeck-active-tab";
 const CHANNEL_NAME = "quarterdeck-single-tab";
-const HEARTBEAT_MS = 2_000;
-const STALE_MS = 5_000;
-
-interface LockEntry {
-	id: string;
-	ts: number;
-}
-
-function getOrCreateTabId(): string {
-	const existing = sessionStorage.getItem("quarterdeck-tab-id");
-	if (existing) return existing;
-	const id = crypto.randomUUID();
-	sessionStorage.setItem("quarterdeck-tab-id", id);
-	return id;
-}
-
-function readLock(): LockEntry | null {
-	try {
-		const raw = localStorage.getItem(LOCK_KEY);
-		return raw ? (JSON.parse(raw) as LockEntry) : null;
-	} catch {
-		return null;
-	}
-}
-
-function writeLock(id: string): void {
-	localStorage.setItem(LOCK_KEY, JSON.stringify({ id, ts: Date.now() }));
-}
-
-function clearLockIfOwned(id: string): void {
-	const lock = readLock();
-	if (lock?.id === id) localStorage.removeItem(LOCK_KEY);
-}
-
-function isLockHeldByOther(id: string): boolean {
-	const lock = readLock();
-	return lock !== null && lock.id !== id && Date.now() - lock.ts < STALE_MS;
-}
 
 export function useSingleTabGuard(): { isBlocked: boolean; forceOpen: () => void } {
-	const [isBlocked, setIsBlocked] = useState(false);
-	const tabIdRef = useRef(getOrCreateTabId());
+	// Never mount the runtime/terminal tree before the browser grants ownership.
+	const [isBlocked, setIsBlocked] = useState(true);
+	const [error, setError] = useState<Error | null>(null);
 	const channelRef = useRef<BroadcastChannel | null>(null);
-	const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-	const stopHeartbeat = useCallback(() => {
-		if (heartbeatRef.current) {
-			clearInterval(heartbeatRef.current);
-			heartbeatRef.current = null;
-		}
-	}, []);
-
-	const startHeartbeat = useCallback(() => {
-		stopHeartbeat();
-		const id = tabIdRef.current;
-		writeLock(id);
-		heartbeatRef.current = setInterval(() => writeLock(id), HEARTBEAT_MS);
-	}, [stopHeartbeat]);
 
 	const forceOpen = useCallback(() => {
+		// Our request is already queued. Other tabs move behind it, releasing
+		// ownership only after their app tree has unmounted. Never steal a lock.
 		channelRef.current?.postMessage({ type: "yield" });
-		startHeartbeat();
-		setIsBlocked(false);
-	}, [startHeartbeat]);
+	}, []);
 
 	useEffect(() => {
-		const id = tabIdRef.current;
-		const channel = new BroadcastChannel(CHANNEL_NAME);
-		channelRef.current = channel;
-
-		if (isLockHeldByOther(id)) {
-			setIsBlocked(true);
-		} else {
-			startHeartbeat();
+		if (!navigator.locks || typeof BroadcastChannel === "undefined") {
+			setError(
+				new Error(
+					"This browser cannot coordinate Quarterdeck tabs. Use an up-to-date browser on localhost or HTTPS.",
+				),
+			);
+			return;
 		}
 
-		channel.onmessage = (event: MessageEvent) => {
-			if (event.data?.type === "yield") {
-				stopHeartbeat();
-				clearLockIfOwned(id);
-				setIsBlocked(true);
-			}
+		let disposed = false;
+		let request: AbortController | null = null;
+		let release: (() => void) | null = null;
+		let channel: BroadcastChannel | null = null;
+
+		const cancelRequest = () => {
+			request?.abort();
+			request = null;
+			release?.();
+			release = null;
 		};
 
-		const onUnload = () => clearLockIfOwned(id);
-		window.addEventListener("beforeunload", onUnload);
+		const queueRequest = () => {
+			const controller = new AbortController();
+			request = controller;
+			void navigator.locks
+				.request(LOCK_NAME, { signal: controller.signal }, async () => {
+					if (disposed || controller.signal.aborted) return;
+					await new Promise<void>((resolve) => {
+						release = resolve;
+						setIsBlocked(false);
+					});
+				})
+				.catch(() => {
+					if (!disposed && !controller.signal.aborted) {
+						setError(
+							new Error("Quarterdeck could not acquire exclusive tab access. Reload the page to try again."),
+						);
+					}
+				});
+		};
 
-		return () => {
-			stopHeartbeat();
-			clearLockIfOwned(id);
-			channel.close();
+		const start = () => {
+			channel = new BroadcastChannel(CHANNEL_NAME);
+			channelRef.current = channel;
+			channel.onmessage = (event: MessageEvent<unknown>) => {
+				if (
+					typeof event.data !== "object" ||
+					event.data === null ||
+					!("type" in event.data) ||
+					event.data.type !== "yield"
+				)
+					return;
+				// Commit teardown before releasing the lock to the next tab.
+				flushSync(() => setIsBlocked(true));
+				cancelRequest();
+				queueRequest();
+			};
+			queueRequest();
+		};
+
+		const stop = () => {
+			channel?.close();
+			channel = null;
 			channelRef.current = null;
-			window.removeEventListener("beforeunload", onUnload);
-		};
-	}, [startHeartbeat, stopHeartbeat]);
-
-	// When blocked, watch for the other tab to close or crash
-	useEffect(() => {
-		if (!isBlocked) return;
-
-		const id = tabIdRef.current;
-
-		const tryUnblock = () => {
-			if (!isLockHeldByOther(id)) {
-				startHeartbeat();
-				setIsBlocked(false);
-			}
+			cancelRequest();
 		};
 
-		const onStorage = (e: StorageEvent) => {
-			if (e.key === LOCK_KEY || e.key === null) tryUnblock();
+		const onPageHide = () => {
+			flushSync(() => setIsBlocked(true));
+			stop();
 		};
-		window.addEventListener("storage", onStorage);
-		const poll = setInterval(tryUnblock, HEARTBEAT_MS);
+		const onPageShow = () => {
+			if (!channel) start();
+		};
 
+		start();
+		window.addEventListener("pagehide", onPageHide);
+		window.addEventListener("pageshow", onPageShow);
 		return () => {
-			window.removeEventListener("storage", onStorage);
-			clearInterval(poll);
+			disposed = true;
+			stop();
+			window.removeEventListener("pagehide", onPageHide);
+			window.removeEventListener("pageshow", onPageShow);
 		};
-	}, [isBlocked, startHeartbeat]);
+	}, []);
 
+	if (error) throw error;
 	return { isBlocked, forceOpen };
 }

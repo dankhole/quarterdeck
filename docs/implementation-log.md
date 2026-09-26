@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-25 — Exclusive browser tab ownership
+
+The single-tab guard reused a sessionStorage identity that duplicated tabs can inherit, allowed its localStorage lease to expire after five seconds of paused timers, and initially mounted the app before checking ownership. The guard now queues an exclusive Web Lock before mounting the app. A takeover asks other tabs to cancel and requeue; the current owner synchronously unmounts its app tree before releasing the lock. Closing the owner grants the next queued request. Pagehide releases ownership after teardown, and pageshow requests it again rather than reviving an active tree without ownership. Missing coordination APIs and failed lock requests fail closed.
+
+The invariant is one mounted app tree per browser profile and origin, independent of timer progress or copied session storage. This remains a browser boundary, not a server-wide restriction across profiles, browsers, devices, or alternate origins. Previously loaded versions must be reloaded to adopt the new protocol. Notable files: `web-ui/src/hooks/app/use-single-tab-guard.ts` and its colocated hook tests. Validation: eight focused regressions, the full web suite (161 files, 1,117 tests), web typecheck, targeted Biome, and diff checks. Fake Agent Lab `single-tab-guard-20260926T011558Z-d33ca4` verified copied-session popup exclusion, takeover with three tabs, owner-close handoff, and a frozen owner beyond the former lease timeout without admitting another tab.
+
 ## 2026-09-25 — Claude Code 2.1.283 compatibility sweep
 
 Claude Code 2.1.283 reordered its workspace trust dialog. It now lists "No, exit" first and focuses it, and refuses input for 150 ms after mount. A refused key remounts the dialog with focus reset. Quarterdeck's previous auto-confirm sent Enter 100 ms after spotting the trust text and retried up to five times, so a retry could choose "No, exit" and Claude exited with code 1.
