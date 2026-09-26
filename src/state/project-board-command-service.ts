@@ -36,7 +36,7 @@ type RuntimeCreateTaskCommand = Extract<RuntimeProjectBoardCommand, { kind: "cre
 
 export interface ProjectBoardUntitledTaskCreatedEffect {
 	type: "untitled_task_created";
-	task: Pick<RuntimeCreateTaskCommand, "taskId" | "prompt" | "createdAt">;
+	task: Pick<RuntimeCreateTaskCommand, "taskId" | "prompt" | "createdAt" | "agentId">;
 }
 
 export interface ProjectBoardPostCommitEvent {
@@ -241,7 +241,12 @@ export class ProjectBoardCommandService {
 			}
 			effects.push({
 				type: "untitled_task_created",
-				task: { taskId: card.id, prompt: card.prompt, createdAt: card.createdAt },
+				task: {
+					taskId: card.id,
+					prompt: card.prompt,
+					createdAt: card.createdAt,
+					...(card.agentId ? { agentId: card.agentId } : {}),
+				},
 			});
 		}
 		if (effects.length === 0) {

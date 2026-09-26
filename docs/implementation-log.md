@@ -1,5 +1,13 @@
 # Implementation Log
 
+## 2026-09-25 — Follow native Codex thread titles
+
+Native Codex tasks now receive a local placeholder instead of a separate title-model call, then follow the CLI’s saved thread names. Native TUIs own their app-server connections, so the runtime polls the exact launch profile’s `session_index.jsonl` every two seconds through a bounded, read-only metadata reader. No additional provider process, model request, or transcript store is involved. Other agents and explicit title regeneration retain their existing generators.
+
+`src/server/codex-task-title-monitor.ts` persists through `ProjectBoardCommandService`, retaining task creation, current process/session, expected title, and provenance guards. Manual Quarterdeck renames—including same-wording edits—and named legacy cards are protected. Missing metadata retains the current title; unchanged provider names do not undo explicit regeneration during the live session. Shutdown drains and fences in-flight reads. `src/title/codex-thread-names.ts` caps reads at 1 MiB and skips incomplete records, with newest names winning and cleared names suppressing historical entries.
+
+Validation: focused scheduler, monitor, explicit-regeneration, and board-writer tests; synthetic filesystem integration from Codex index updates through real board persistence; runtime typecheck; targeted Biome. No real provider or active user runtime was launched or modified.
+
 ## 2026-09-25 — Prepare isolated worktrees with explicit includes and setup scripts
 
 New task worktrees now copy Git-ignored files selected by repository-root `.worktreeinclude` patterns rather than sharing ignored trees through symlinks. The maintained `ignore` parser supplies Git-style matching; source/destination symlink checks, exclusive copies, and dependency/build-output exclusions preserve checkout isolation. Git exclude metadata is merged under its own lock so concurrently prepared worktrees do not lose ignore entries. Legacy dependency links are removed without following their targets.

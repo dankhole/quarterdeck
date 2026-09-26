@@ -4,6 +4,8 @@
 
 ## [0.12.7] - 2026-09-24
 
+- Reuse native Codex chat titles without a separate title-generation call, follow subsequent name changes, and preserve manual Quarterdeck titles.
+
 - Copy explicitly selected ignored files using `.worktreeinclude` and run a project-configured setup script once per new task worktree. Show setup progress, preserve failed worktrees for explicit retry, and keep installed dependencies isolated.
 
 - Require Codex 0.157.0+ and launch task terminals with `--no-daemon` to preserve managed process ownership. Force fullscreen transcripts for start, resume, and fork, overriding conflicting scrollback settings without changing global Codex configuration.

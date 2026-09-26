@@ -433,6 +433,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 							kind: "create_task" as const,
 							columnId: "backlog" as const,
 							taskId: "untitled",
+							agentId: "codex" as const,
 							prompt: "Generate a title",
 							baseRef: "main",
 							createdAt: 100,
@@ -458,7 +459,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 					effects: [
 						{
 							type: "untitled_task_created",
-							task: { taskId: "untitled", prompt: "Generate a title", createdAt: 100 },
+							task: { taskId: "untitled", prompt: "Generate a title", createdAt: 100, agentId: "codex" },
 						},
 					],
 				});

@@ -76,6 +76,51 @@ const scope = { projectId: "project-1", projectPath: "/project" };
 const card = { id: "task-1", prompt: "private task prompt", createdAt: 1 };
 
 describe("automatic task title scheduler", () => {
+	it.each(["explicit", "default"])(
+		"uses a local placeholder for %s Codex selection without a model call",
+		async (selection) => {
+			const generateTaskTitle = vi.fn(async () => "Remote title");
+			const harness = createHarness(generateTaskTitle);
+			harness.dependencies.getDefaultAgentId = vi.fn(async () => "codex" as const);
+			await scheduleAutomaticTaskTitle(harness.dependencies, scope, {
+				...card,
+				...(selection === "explicit" ? { agentId: "codex" as const } : {}),
+			});
+			expect(generateTaskTitle).not.toHaveBeenCalled();
+			expect(harness.setGeneratedTaskTitle).toHaveBeenCalledWith(scope, "task-1", 1, "Private");
+		},
+	);
+
+	it("keeps the generator for an explicit non-Codex task even when Codex is the default", async () => {
+		const generateTaskTitle = vi.fn(async () => "Remote title");
+		const harness = createHarness(generateTaskTitle);
+		harness.dependencies.getDefaultAgentId = vi.fn(async () => "codex" as const);
+		await scheduleAutomaticTaskTitle(harness.dependencies, scope, { ...card, agentId: "claude" });
+		expect(generateTaskTitle).toHaveBeenCalledWith(card.prompt);
+	});
+
+	it("retains the Codex selection through post-commit delivery", async () => {
+		const generateTaskTitle = vi.fn(async () => "Remote title");
+		const harness = createHarness(generateTaskTitle);
+		const listener = createAutomaticTaskTitlePostCommitListener(harness.dependencies);
+		listener({
+			scope,
+			commandId: "codex-task",
+			revision: 1,
+			replayed: false,
+			effects: [
+				{
+					type: "untitled_task_created",
+					task: { taskId: card.id, prompt: card.prompt, createdAt: card.createdAt, agentId: "codex" },
+				},
+			],
+		});
+		await vi.waitFor(() =>
+			expect(harness.setGeneratedTaskTitle).toHaveBeenCalledWith(scope, card.id, card.createdAt, "Private"),
+		);
+		expect(generateTaskTitle).not.toHaveBeenCalled();
+	});
+
 	it("consumes the authoritative post-commit effect without rescanning board state", async () => {
 		const generateTaskTitle = vi.fn(async () => "Generated Title");
 		const harness = createHarness(generateTaskTitle);

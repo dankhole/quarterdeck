@@ -1,13 +1,14 @@
-import type { RuntimeBoardCard } from "../core";
+import type { RuntimeAgentId, RuntimeBoardCard } from "../core";
 import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import type { ProjectBoardCommandScope, ProjectBoardCommandService, ProjectBoardPostCommitListener } from "../state";
 import { type AutomaticTitleGenerationRunner, generateTaskTitle as generateTaskTitleWithProvider } from "../title";
+import { createFallbackTaskTitle } from "../title/title-fallback";
 
 const log = createTaggedLogger("automatic-title");
 const MAX_CONCURRENT_TITLE_REQUESTS = 3;
 
-type AutomaticTitleCard = Pick<RuntimeBoardCard, "id" | "prompt" | "createdAt">;
+type AutomaticTitleCard = Pick<RuntimeBoardCard, "id" | "prompt" | "createdAt" | "agentId">;
 
 export interface AutomaticTaskTitleSchedulerDependencies {
 	automaticTitleGeneration: AutomaticTitleGenerationRunner;
@@ -15,6 +16,7 @@ export interface AutomaticTaskTitleSchedulerDependencies {
 	publishTitleUpdated: (input: { projectId: string; taskId: string; title: string }) => Promise<void> | void;
 	diagnostics?: Pick<RuntimeDiagnostics, "recordEvent">;
 	generateTaskTitle?: (prompt: string) => Promise<string | null>;
+	getDefaultAgentId?: (scope: ProjectBoardCommandScope) => Promise<RuntimeAgentId>;
 }
 
 /**
@@ -28,7 +30,11 @@ export function scheduleAutomaticTaskTitle(
 	card: AutomaticTitleCard,
 ): Promise<void> | null {
 	const generation = dependencies.automaticTitleGeneration.runIfIdle(projectScope.projectId, card.id, async () => {
-		const title = await (dependencies.generateTaskTitle ?? generateTaskTitleWithProvider)(card.prompt);
+		const agentId = card.agentId ?? (await dependencies.getDefaultAgentId?.(projectScope));
+		const title =
+			agentId === "codex"
+				? createFallbackTaskTitle(card.prompt)
+				: await (dependencies.generateTaskTitle ?? generateTaskTitleWithProvider)(card.prompt);
 		if (!title) {
 			dependencies.diagnostics?.recordEvent(
 				"task.title_generation_no_result",
@@ -102,6 +108,7 @@ export function createAutomaticTaskTitlePostCommitListener(
 			id: task.taskId,
 			prompt: task.prompt,
 			createdAt: task.createdAt,
+			agentId: task.agentId,
 		}));
 		void (async () => {
 			for (let index = 0; index < untitledTasks.length; index += MAX_CONCURRENT_TITLE_REQUESTS) {
