@@ -5,6 +5,7 @@ import {
 	buildCodexHooksConfig,
 	buildCodexHookTrustEntries,
 	CODEX_HOOK_TIMEOUT_SECONDS,
+	CODEX_INTERRUPT_HOOK_TIMEOUT_SECONDS,
 	type CodexHooksConfig,
 	serializeCodexTomlValue,
 } from "../../src/codex-hooks";
@@ -91,6 +92,7 @@ describe("buildCodexHookConfigOverrides", () => {
 
 		expect(values[0]?.split("=", 1)[0]).toBe("hooks.state");
 		expect(values[0]).toContain(JSON.stringify(`${SESSION_FLAGS_CONFIG_SOURCE}:permission_request:0:0`));
+		expect(values[0]).toContain(JSON.stringify(`${SESSION_FLAGS_CONFIG_SOURCE}:interrupt:0:0`));
 		expect(values[0]).toContain("trusted_hash");
 		expect(values[0]).toContain("sha256:");
 	});
@@ -105,10 +107,10 @@ describe("buildCodexHookConfigOverrides", () => {
 
 	it("sets a bounded timeout on every generated command hook", () => {
 		const config = buildCodexHooksConfig();
-		for (const hookGroups of Object.values(config)) {
+		for (const [eventName, hookGroups] of Object.entries(config)) {
 			for (const group of hookGroups) {
 				for (const hook of group.hooks) {
-					expect(hook.timeout).toBe(CODEX_HOOK_TIMEOUT_SECONDS);
+					expect(hook.timeout).toBe(eventName === "Interrupt" ? 3 : CODEX_HOOK_TIMEOUT_SECONDS);
 				}
 			}
 		}
@@ -128,6 +130,11 @@ describe("buildCodexHookConfigOverrides", () => {
 			UserPromptSubmit: [],
 			PreCompact: [],
 			PostCompact: [],
+			Interrupt: [
+				{
+					hooks: [{ type: "command", command: "true", timeout: CODEX_INTERRUPT_HOOK_TIMEOUT_SECONDS }],
+				},
+			],
 			Stop: [
 				{
 					hooks: [{ type: "command", command: "true", timeout: CODEX_HOOK_TIMEOUT_SECONDS }],
@@ -141,10 +148,25 @@ describe("buildCodexHookConfigOverrides", () => {
 				trustedHash: "sha256:850b1716209f4847d4d149c3cdda0149f6b98907148354b02778ee6509ec09e9",
 			},
 			{
+				key: `${SESSION_FLAGS_CONFIG_SOURCE}:interrupt:0:0`,
+				trustedHash: "sha256:461557090d383e4523d199ab0e90511c3fb32340392f729fc9796e6b2b485219",
+			},
+			{
 				key: `${SESSION_FLAGS_CONFIG_SOURCE}:stop:0:0`,
 				trustedHash: "sha256:99551a51b888f6dc725f1199663b7b1e1ef9bb9b9cab0612d84e5e9218aca6f5",
 			},
 		]);
+	});
+
+	it("reliably ingests Interrupt without a matcher within Codex's three-second cap", () => {
+		const { Interrupt } = buildCodexHooksConfig();
+
+		expect(Interrupt).toEqual([
+			{
+				hooks: [{ type: "command", command: hookCommand("to_review"), timeout: 3 }],
+			},
+		]);
+		expect(buildCodexHookConfigOverrides()).toContain(`hooks.Interrupt=${serializeCodexTomlValue(Interrupt)}`);
 	});
 
 	it.each(["startup", "resume", "clear"])("captures SessionStart identity for %s", (source) => {

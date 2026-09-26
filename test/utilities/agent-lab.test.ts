@@ -1454,12 +1454,14 @@ describe("agent-lab fake agent protocol", () => {
 	});
 
 	it("parses bounded deterministic commands", () => {
+		expect(getFakeAgentVersionOutput("codex")).toBe("codex-cli 0.157.0");
 		expect(parseFakeAgentCommand("/needs-input-auto provider approved")).toEqual({
 			kind: "needs-input-auto",
 			message: "provider approved",
 		});
 		expect(parseFakeAgentCommand("/approval-overlay")).toEqual({ kind: "approval-overlay" });
 		expect(parseFakeAgentCommand("/turn-interrupted")).toEqual({ kind: "turn-interrupted" });
+		expect(parseFakeAgentCommand("/native-interrupt")).toEqual({ kind: "native-interrupt" });
 		expect(parseFakeAgentCommand("/new-turn continue")).toEqual({ kind: "new-turn", message: "continue" });
 		expect(parseFakeAgentCommand("/redraw-interruption-history")).toEqual({
 			kind: "redraw-interruption-history",

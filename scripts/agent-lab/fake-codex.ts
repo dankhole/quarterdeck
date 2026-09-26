@@ -28,6 +28,7 @@ const requestedSessionId = invocation.requestedSessionId;
 const sessionId = requestedSessionId || `agent-lab-${taskId}`;
 let turn = 0;
 let currentTurnId: string | null = null;
+let nativeInterruptedTurn = false;
 let promptSequence = 0;
 let currentPromptId: string | null = null;
 let lastSettledTurnId: string | null = null;
@@ -219,6 +220,7 @@ function printHelp(): void {
 	writeLine("  /needs-input-auto [message]  request then provider-approve without local input");
 	writeLine("  /approval-overlay            render hookless approval; y accepts, esc dismisses");
 	writeLine("  /turn-interrupted            render Codex turn interruption without a native hook");
+	writeLine("  /native-interrupt            emit Codex Interrupt without rendered failure text");
 	writeLine("  /new-turn [message]          emit a new-turn UserPromptSubmit hook");
 	writeLine("  /redraw-interruption-history redraw old interruption above current work");
 	writeLine("  /local-action [message]      accept a TUI-local action without a hook");
@@ -305,6 +307,21 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 				process.stdout.write(`\u001b[${rows};1H  Press enter to confirm or esc to cancel`);
 			}
 			return;
+		case "native-interrupt":
+			if (provider !== "codex") {
+				throw new Error("/native-interrupt requires the fake Codex provider.");
+			}
+			clearPendingApprovalCompletion();
+			nativePermissionActive = false;
+			approvalOverlayActive = false;
+			pendingToolUseId = null;
+			nativeInterruptedTurn = true;
+			process.stdout.write("\u001b[2J\u001b[H");
+			writeLine("AGENT LAB NATIVE INTERRUPT");
+			await emitHook("to_review", { hookEventName: "Interrupt" });
+			// Keep the interrupted turn identity so /working and /review can
+			// exercise delayed same-turn events. /new-turn admits fresh work.
+			return;
 		case "turn-interrupted":
 			preserveRenderedPromptOnce = true;
 			process.stdout.write(
@@ -313,6 +330,7 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			);
 			return;
 		case "new-turn":
+			nativeInterruptedTurn = false;
 			currentTurnId = null;
 			currentPromptId = null;
 			writeLine(`AGENT LAB NEW TURN: ${command.message}`);
@@ -471,8 +489,10 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 					finalMessage: command.message,
 				});
 			}
-			currentTurnId = null;
-			currentPromptId = null;
+			if (!nativeInterruptedTurn) {
+				currentTurnId = null;
+				currentPromptId = null;
+			}
 			pendingToolUseId = null;
 			return;
 		case "working":
@@ -673,6 +693,20 @@ async function assertClaudeLaunchContract(): Promise<void> {
 	}
 }
 
+function assertCodexLaunchContract(): void {
+	if (provider !== "codex") return;
+	const separator = args.indexOf("--");
+	const optionArgs = separator === -1 ? args : args.slice(0, separator);
+	const interruptConfig = optionArgs.find(
+		(argument, index) => optionArgs[index - 1] === "-c" && argument.startsWith("hooks.Interrupt="),
+	);
+	// Commands are PowerShell-encoded on Windows. Assert installation without
+	// assuming the platform-specific shell representation of their arguments.
+	if (!interruptConfig || !/command\s*=\s*"[^"]+/.test(interruptConfig)) {
+		throw new Error("Fake Codex requires a launch-scoped Interrupt command hook.");
+	}
+}
+
 function serveModelCatalog(): void {
 	const input = createInterface({ input: process.stdin, terminal: false });
 	input.on("line", (line) => {
@@ -736,6 +770,7 @@ async function main(): Promise<void> {
 		return;
 	}
 	await assertClaudeLaunchContract();
+	assertCodexLaunchContract();
 	if (await consumeResumeFailureMarker()) {
 		writeLine(`AGENT LAB PI TARGETED RESUME FAILED: ${requestedSessionId}`);
 		process.exitCode = 78;

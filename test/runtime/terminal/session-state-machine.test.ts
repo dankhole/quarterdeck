@@ -23,6 +23,95 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 }
 
 describe("reduceSessionTransition", () => {
+	describe("native Codex Interrupt", () => {
+		const interrupt = createTestProviderHookEvent("to_review", {
+			source: "codex",
+			hookEventName: "Interrupt",
+			occurredAt: 200,
+			metadata: { sessionId: "session-1", turnId: "turn-1" },
+		});
+
+		it.each(["live", "startup_replay", "exited_replay"] as const)(
+			"retires an unresolved permission with %s evidence",
+			(sessionEvidence) => {
+				for (const status of ["waiting", "response_submitted", "resolution_unknown"] as const) {
+					const summary = createSummary({
+						agentId: "codex",
+						state: "awaiting_review",
+						reviewReason: "hook",
+						outstandingInteraction: createTestTaskOutstandingInteraction({
+							provider: "codex",
+							kind: "permission",
+							status,
+							turnId: "turn-1",
+							updatedAt: 100,
+						}),
+					});
+					const result = reduceSessionTransition(summary, { ...interrupt, sessionEvidence });
+					expect(result).toMatchObject({
+						changed: true,
+						hookMetadataMode: "identity_only",
+						hookOrderingMode: "advance",
+						patch: {
+							state: "awaiting_review",
+							reviewReason: "interrupted",
+							outstandingInteraction: null,
+							nativeWorkEvidence: null,
+							latestHookActivity: null,
+						},
+					});
+					if (sessionEvidence !== "live") {
+						expect(result.patch).toMatchObject({ pid: null, startupRecoveryRequired: false });
+					}
+				}
+			},
+		);
+
+		it("ends Running without requiring an outstanding interaction", () => {
+			const result = reduceSessionTransition(createSummary({ agentId: "codex" }), interrupt);
+			expect(result.patch).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				nativeWorkEvidence: null,
+			});
+		});
+
+		it.each([
+			{ turnId: null },
+			{ sessionId: null },
+			{ sessionId: "side-session" },
+			{ providerAgentId: "child" },
+			{ source: "claude" },
+		])("rejects malformed or non-foreground interruption %j", (metadata) => {
+			const result = reduceSessionTransition(createSummary({ agentId: "codex", resumeSessionId: "session-1" }), {
+				...interrupt,
+				metadata: { ...interrupt.metadata, ...metadata },
+			});
+			expect(result).toMatchObject({ changed: false, hookMetadataMode: "preserve" });
+		});
+
+		it("preserves a newer or background interaction and rejects unconfirmed evidence", () => {
+			for (const interaction of [
+				createTestTaskOutstandingInteraction({ provider: "codex", openedAt: 201, updatedAt: 201 }),
+				createTestTaskOutstandingInteraction({ provider: "codex", providerAgentId: "child" }),
+				createTestTaskOutstandingInteraction({ provider: "claude" }),
+			]) {
+				expect(
+					reduceSessionTransition(
+						createSummary({ agentId: "codex", outstandingInteraction: interaction }),
+						interrupt,
+					).changed,
+				).toBe(false);
+			}
+			expect(
+				reduceSessionTransition(createSummary({ agentId: "codex" }), {
+					...interrupt,
+					sessionEvidence: "unconfirmed",
+				}).changed,
+			).toBe(false);
+		});
+	});
+
 	describe("agent.permission-prompt", () => {
 		it("projects a visible Codex approval into an actionable review wait", () => {
 			const summary = createSummary({ agentId: "codex" });

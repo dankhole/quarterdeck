@@ -161,6 +161,10 @@ export class SessionTransitionController {
 		) {
 			const hookEventName = confirmedEvent.metadata?.hookEventName?.trim().toLowerCase();
 			const confirmsWork = Boolean(result.patch?.nativeWorkEvidence);
+			const confirmsInterruption =
+				hookEventName === "interrupt" &&
+				result.hookOrderingMode === "advance" &&
+				result.patch.reviewReason === "interrupted";
 			const confirmsCompletion =
 				confirmedEvent.event === "to_review" &&
 				(hookEventName === "stop" || hookEventName === "stopfailure" || hookEventName === "agentsettled") &&
@@ -171,6 +175,11 @@ export class SessionTransitionController {
 			if (confirmsWork || confirmsCompletion) {
 				clearInterruptRecoveryTimer(entry.active);
 				entry.suppressAutoRestartOnExit = false;
+			}
+			if (confirmsInterruption) {
+				clearInterruptRecoveryTimer(entry.active);
+				entry.active.lastInterruptAt = confirmedEvent.occurredAt ?? Date.now();
+				entry.suppressAutoRestartOnExit = true;
 			}
 		}
 

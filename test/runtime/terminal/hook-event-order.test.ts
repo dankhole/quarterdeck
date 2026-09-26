@@ -87,7 +87,118 @@ function restoreCommittedOrder(
 }
 
 describe("Codex hook event ordering", () => {
-	it.each(["Stop", "StopFailure"])(
+	it("retires an interrupted permission and rejects late turn events after durable restoration", () => {
+		const inputs = [
+			hook({
+				event: "activity",
+				hookEventName: "PreToolUse",
+				sessionId: "main",
+				turnId: "aborted",
+				toolName: "Bash",
+				toolUseId: "tool",
+				deliveryIndex: 1,
+			}),
+			hook({
+				event: "to_review",
+				hookEventName: "PermissionRequest",
+				sessionId: "main",
+				turnId: "aborted",
+				toolName: "Bash",
+				deliveryIndex: 2,
+			}),
+			hook({
+				event: "to_review",
+				hookEventName: "Interrupt",
+				sessionId: "main",
+				turnId: "aborted",
+				deliveryIndex: 3,
+			}),
+		];
+		const live = createHookEventOrderState(SESSION_INSTANCE_ID);
+		for (const input of inputs) acceptAndCommit(live, input);
+		for (const state of [live, restoreCommittedOrder(inputs)]) {
+			expect(state.pendingPermission).toBeNull();
+			expect(state.codexPendingToolUses.size).toBe(0);
+			for (const [index, hookEventName] of ["PermissionRequest", "PreToolUse", "PostToolUse", "Stop"].entries()) {
+				const event =
+					hookEventName === "PreToolUse"
+						? "activity"
+						: hookEventName === "PostToolUse"
+							? "to_in_progress"
+							: "to_review";
+				const late = hook({
+					event,
+					hookEventName,
+					sessionId: "main",
+					turnId: "aborted",
+					toolName: "Bash",
+					toolUseId: "tool",
+					deliveryIndex: 4 + index,
+				});
+				expect(evaluateHookEventOrder(state, late)).toEqual({ accepted: false, reason: "completed_turn" });
+				expect(evaluateHookEventOrder(state, { ...late, delivery: delivery(20 + index, 250) })).toEqual({
+					accepted: false,
+					reason: "stale_observation",
+				});
+			}
+			acceptAndCommit(
+				state,
+				hook({
+					event: "to_in_progress",
+					hookEventName: "UserPromptSubmit",
+					sessionId: "main",
+					turnId: "next",
+					deliveryIndex: 8,
+				}),
+			);
+			expect(state.activeTurnCompleted).toBe(false);
+			expect(state.activeTurnId).toBe("next");
+		}
+	});
+
+	it("rejects an Interrupt older than the current permission or outside its launch and foreground owner", () => {
+		const permission = hook({
+			event: "to_review",
+			hookEventName: "PermissionRequest",
+			sessionId: "main",
+			turnId: "current",
+			toolName: "Bash",
+			deliveryIndex: 2,
+		});
+		const live = createHookEventOrderState(SESSION_INSTANCE_ID);
+		acceptAndCommit(live, permission);
+		for (const state of [live, restoreCommittedOrder([permission])]) {
+			const interrupt = hook({
+				event: "to_review",
+				hookEventName: "Interrupt",
+				sessionId: "main",
+				turnId: "current",
+				deliveryIndex: 3,
+			});
+			expect(evaluateHookEventOrder(state, { ...interrupt, delivery: delivery(1, 100) })).toEqual({
+				accepted: false,
+				reason: "stale_observation",
+			});
+			for (const [metadata, reason] of [
+				[{ sessionInstanceId: "old-process" }, "stale_session"],
+				[{ sessionId: "side" }, "non_foreground_session"],
+				[{ providerAgentId: "child" }, "non_foreground_session"],
+			] as const) {
+				expect(
+					evaluateHookEventOrder(state, { ...interrupt, metadata: { ...interrupt.metadata, ...metadata } }),
+				).toEqual({
+					accepted: false,
+					reason,
+				});
+			}
+			expect(state.pendingPermission?.turnId).toBe("current");
+			expect(state.activeTurnCompleted).toBe(false);
+			acceptAndCommit(state, interrupt);
+			expect(state.activeTurnCompleted).toBe(true);
+		}
+	});
+
+	it.each(["Stop", "StopFailure", "Interrupt"])(
 		"accepts current %s after reordered parallel tools and keeps completion durable",
 		(hookEventName) => {
 			const toolInputs = [
@@ -165,7 +276,7 @@ describe("Codex hook event ordering", () => {
 		},
 	);
 
-	it.each(["Stop", "StopFailure"])(
+	it.each(["Stop", "StopFailure", "Interrupt"])(
 		"rejects an older %s retry without preventing the newer foreground turn from completing",
 		(hookEventName) => {
 			const starts = [
@@ -211,7 +322,7 @@ describe("Codex hook event ordering", () => {
 		},
 	);
 
-	it.each(["Stop", "StopFailure"])(
+	it.each(["Stop", "StopFailure", "Interrupt"])(
 		"preserves main %s regardless of which provider thread completes first",
 		(hookEventName) => {
 			for (const sideFirst of [true, false]) {
@@ -295,6 +406,7 @@ describe("Codex hook event ordering", () => {
 				"PermissionRequest",
 				"PostToolUse",
 				"Stop",
+				"Interrupt",
 			].entries()) {
 				expect(
 					evaluateHookEventOrder(

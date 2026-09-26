@@ -4,6 +4,8 @@
 
 ## [0.12.7] - 2026-09-24
 
+- Use Codex's native Interrupt hook to clear pending approvals and mark aborted turns Interrupted without completion notifications. Reject delayed events from aborted turns and preserve interruption across hook replay.
+
 - Reuse native Codex chat titles without a separate title-generation call, follow subsequent name changes, and preserve manual Quarterdeck titles.
 
 - Copy explicitly selected ignored files using `.worktreeinclude` and run a project-configured setup script once per new task worktree. Show setup progress, preserve failed worktrees for explicit retry, and keep installed dependencies isolated.

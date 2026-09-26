@@ -273,6 +273,10 @@ function isCodexInput(input: RuntimeHookIngestRequest): boolean {
 	return input.metadata?.source?.trim().toLowerCase() === "codex";
 }
 
+function isCodexTurnEnd(hookEventName: string): boolean {
+	return hookEventName === "stop" || hookEventName === "stopfailure" || hookEventName === "interrupt";
+}
+
 function isClaudeInput(input: RuntimeHookIngestRequest): boolean {
 	return input.metadata?.source?.trim().toLowerCase() === "claude";
 }
@@ -542,7 +546,7 @@ export function evaluateHookEventOrder(
 	const turnId = input.metadata?.turnId?.trim() || null;
 	if (!turnId) {
 		if (
-			(hookEventName === "stop" || hookEventName === "stopfailure") &&
+			isCodexTurnEnd(hookEventName) &&
 			state.activeTurnLatestOccurredAt !== null &&
 			occurredAt <= state.activeTurnLatestOccurredAt
 		) {
@@ -609,7 +613,7 @@ export function evaluateHookEventOrder(
 	}
 	if (
 		pendingPermission &&
-		(hookEventName === "userpromptsubmit" || hookEventName === "stop") &&
+		(hookEventName === "userpromptsubmit" || isCodexTurnEnd(hookEventName)) &&
 		occurredAt < pendingPermission.occurredAt
 	) {
 		return { accepted: false, reason: "stale_observation" };
@@ -754,7 +758,7 @@ export function commitHookEventOrder(
 	const hookEventName = normalizedHookEventName(input);
 	const turnId = input.metadata?.turnId?.trim() || null;
 	if (!turnId) {
-		if (hookEventName === "stop" || hookEventName === "stopfailure") {
+		if (isCodexTurnEnd(hookEventName)) {
 			state.latestCodexRootCompletionOccurredAt = Math.max(
 				state.latestCodexRootCompletionOccurredAt ?? occurredAt,
 				occurredAt,
@@ -819,7 +823,7 @@ export function commitHookEventOrder(
 		}
 	} else if (hookEventName === "userpromptsubmit") {
 		state.pendingPermission = null;
-	} else if (hookEventName === "stop" || hookEventName === "stopfailure") {
+	} else if (isCodexTurnEnd(hookEventName)) {
 		state.latestCodexRootCompletionOccurredAt = Math.max(
 			state.latestCodexRootCompletionOccurredAt ?? occurredAt,
 			occurredAt,

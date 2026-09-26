@@ -15,7 +15,11 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 
 import { buildCodexHooksConfig } from "../../../src/codex-hooks";
 import { normalizeHookMetadata } from "../../../src/commands/hook-metadata";
-import { buildQuarterdeckCommandLine, runtimeTaskSessionSummarySchema } from "../../../src/core";
+import {
+	buildQuarterdeckCommandLine,
+	deriveTaskIndicatorState,
+	runtimeTaskSessionSummarySchema,
+} from "../../../src/core";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
 import { createCodexTurnInterruptionDetector } from "../../../src/terminal/codex-turn-interruption";
 import { DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER } from "../../../src/terminal/session-manager-types";
@@ -71,6 +75,252 @@ function createDeferred<T>(): {
 }
 
 describe("TerminalSessionManager ordering invariants", () => {
+	it.each(["exited process", "restarted runtime"] as const)(
+		"replays an Interrupt emitted before exit to resolve a permission after %s",
+		async (replayContext) => {
+			const sessions = setupMockPtySpawn();
+			let manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+			await manager.startTaskSession({
+				taskId: "delayed-interrupt",
+				agentId: "codex",
+				binary: "codex",
+				args: [],
+				cwd: "/tmp/delayed-interrupt",
+				prompt: "Synthetic delayed interruption",
+			});
+			const sessionInstanceId = manager.store.getSummary("delayed-interrupt")?.sessionInstanceId;
+			const persistSessionState = vi.fn(async () => undefined);
+			const captureTaskTurnCheckpoint = vi.fn();
+			const api = createHooksApi({
+				projects: { getProjectPathById: () => "/tmp/repo" },
+				terminals: {
+					getTerminalManagerForProject: () => manager,
+					ensureTerminalManagerForProject: async () => manager,
+				},
+				persistSessionState,
+				captureTaskTurnCheckpoint,
+			});
+			let sequence = 0;
+			const ingest = (hookEventName: string, occurredAt: number) =>
+				api.ingest({
+					taskId: "delayed-interrupt",
+					projectId: "project-1",
+					event: hookEventName === "UserPromptSubmit" ? "to_in_progress" : "to_review",
+					metadata: {
+						source: "codex",
+						hookEventName,
+						sessionInstanceId,
+						sessionId: "main-session",
+						turnId: "turn-1",
+						toolName: "Bash",
+					},
+					delivery: {
+						id: `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`,
+						occurredAt,
+					},
+				});
+			vi.advanceTimersByTime(10);
+			await ingest("UserPromptSubmit", Date.now());
+			vi.advanceTimersByTime(10);
+			await ingest("PermissionRequest", Date.now());
+			vi.advanceTimersByTime(10);
+			const interruptOccurredAt = Date.now();
+			vi.advanceTimersByTime(10);
+			sessions[0]?.triggerExit(1);
+			const exited = manager.store.getSummary("delayed-interrupt");
+			if (!exited) throw new Error("Missing exited task summary");
+			expect(exited).toMatchObject({
+				reviewReason: "error",
+				pid: null,
+				outstandingInteraction: { status: "resolution_unknown" },
+			});
+			expect(exited.outstandingInteraction?.updatedAt).toBeGreaterThan(interruptOccurredAt);
+			if (replayContext === "restarted runtime") {
+				manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+				manager.hydrateFromRecord({ "delayed-interrupt": runtimeTaskSessionSummarySchema.parse(exited) });
+			}
+			await expect(ingest("Interrupt", interruptOccurredAt)).resolves.toEqual({ ok: true });
+			const interrupted = manager.store.getSummary("delayed-interrupt");
+			expect(interrupted).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				pid: null,
+				outstandingInteraction: null,
+				startupRecoveryRequired: false,
+				warningMessage: null,
+				resumeSessionId: "main-session",
+			});
+			expect(interrupted?.recentProviderHookOrderObservations.at(-1)?.hookEventName).toBe("Interrupt");
+			expect(persistSessionState).toHaveBeenLastCalledWith("project-1");
+			expect(captureTaskTurnCheckpoint).not.toHaveBeenCalled();
+		},
+	);
+
+	it("retains exact resume identity when Interrupt arrives before older startup and work hooks", async () => {
+		setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession({
+			taskId: "first-interrupt",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/first-interrupt",
+			prompt: "Synthetic first interruption",
+		});
+		const initial = manager.store.getSummary("first-interrupt");
+		expect(initial?.resumeSessionId).toBeNull();
+		const api = createHooksApi({
+			projects: { getProjectPathById: () => "/tmp/repo" },
+			terminals: {
+				getTerminalManagerForProject: () => manager,
+				ensureTerminalManagerForProject: async () => manager,
+			},
+		});
+		const startedAt = Date.now();
+		vi.advanceTimersByTime(30);
+		for (const [index, hookEventName] of ["Interrupt", "SessionStart", "UserPromptSubmit"].entries()) {
+			await expect(
+				api.ingest({
+					taskId: "first-interrupt",
+					projectId: "project-1",
+					event:
+						hookEventName === "Interrupt"
+							? "to_review"
+							: hookEventName === "SessionStart"
+								? "activity"
+								: "to_in_progress",
+					metadata: {
+						source: "codex",
+						hookEventName,
+						sessionInstanceId: initial?.sessionInstanceId,
+						sessionId: "exact-session",
+						turnId: hookEventName === "SessionStart" ? null : "turn-1",
+						transcriptPath: "/synthetic/exact-session.jsonl",
+						finalMessage: hookEventName === "Interrupt" ? "Partial output" : null,
+					},
+					delivery: {
+						id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+						occurredAt: startedAt + (hookEventName === "Interrupt" ? 30 : index * 10),
+					},
+				}),
+			).resolves.toEqual({ ok: true });
+			expect(manager.store.getSummary("first-interrupt")).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				resumeSessionId: "exact-session",
+				latestHookActivity: null,
+				displaySummary: null,
+			});
+		}
+		expect(
+			manager.store
+				.getSummary("first-interrupt")
+				?.recentProviderHookOrderObservations.map((event) => event.hookEventName),
+		).toEqual(["Interrupt"]);
+	});
+
+	it.each(["running", "waiting", "response_submitted", "rendered"] as const)(
+		"ingests native Interrupt from %s without completion side effects or same-turn revival",
+		async (phase) => {
+			const sessions = setupMockPtySpawn();
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+			await manager.startTaskSession({
+				taskId: "interrupt-task",
+				agentId: "codex",
+				binary: "codex",
+				args: [],
+				cwd: "/tmp/interrupt-task",
+				prompt: "Synthetic interruption",
+			});
+			const sessionInstanceId = manager.store.getSummary("interrupt-task")?.sessionInstanceId;
+			const captureTaskTurnCheckpoint = vi.fn();
+			const persistSessionState = vi.fn(async () => undefined);
+			const api = createHooksApi({
+				projects: { getProjectPathById: () => "/tmp/repo" },
+				terminals: {
+					getTerminalManagerForProject: () => manager,
+					ensureTerminalManagerForProject: async () => manager,
+				},
+				captureTaskTurnCheckpoint,
+				persistSessionState,
+			});
+			let sequence = 0;
+			const ingest = async (hookEventName: string, turnId = "turn-1") => {
+				vi.advanceTimersByTime(10);
+				const event = ["Interrupt", "Stop", "PermissionRequest"].includes(hookEventName)
+					? ("to_review" as const)
+					: ("to_in_progress" as const);
+				return api.ingest({
+					taskId: "interrupt-task",
+					projectId: "project-1",
+					event,
+					metadata: normalizeHookMetadata(
+						event,
+						{
+							hook_event_name: hookEventName,
+							turn_id: turnId,
+							tool_name: "Bash",
+							tool_use_id: "tool-1",
+							...(hookEventName === "Interrupt"
+								? { last_assistant_message: "Partial output, not a completion" }
+								: {}),
+						},
+						{ source: "codex", sessionInstanceId, sessionId: "main-session" },
+					),
+					delivery: {
+						id: `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`,
+						occurredAt: Date.now(),
+					},
+				});
+			};
+			await ingest("UserPromptSubmit");
+			if (phase === "rendered") {
+				manager.store.applySessionEvent("interrupt-task", {
+					type: "agent.permission-prompt",
+					occurredAt: Date.now(),
+				});
+			} else if (phase !== "running") {
+				await ingest("PermissionRequest");
+				if (phase === "response_submitted") manager.writeInput("interrupt-task", Buffer.from("y"));
+			}
+			await expect(ingest("Interrupt")).resolves.toEqual({ ok: true });
+			const interrupted = manager.store.getSummary("interrupt-task");
+			if (!interrupted) throw new Error("Missing interrupted task summary");
+			expect(interrupted).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				outstandingInteraction: null,
+				nativeWorkEvidence: null,
+				latestHookActivity: null,
+				displaySummary: null,
+			});
+			expect(deriveTaskIndicatorState(interrupted)).toMatchObject({
+				notification: null,
+				reviewReady: false,
+				needsInput: false,
+			});
+			expect(captureTaskTurnCheckpoint).not.toHaveBeenCalled();
+			expect(persistSessionState).toHaveBeenCalled();
+			expect(interrupted?.recentProviderHookOrderObservations.at(-1)?.hookEventName).toBe("Interrupt");
+			for (const event of ["PermissionRequest", "PostToolUse", "Stop"]) {
+				await ingest(event);
+				expect(manager.store.getSummary("interrupt-task")?.reviewReason).toBe("interrupted");
+			}
+			await ingest("UserPromptSubmit", "turn-2");
+			expect(manager.store.getSummary("interrupt-task")?.state).toBe("running");
+			await ingest("Interrupt");
+			expect(manager.store.getSummary("interrupt-task")?.state).toBe("running");
+			await ingest("Interrupt", "turn-2");
+			sessions[0]?.triggerExit(0);
+			expect(manager.store.getSummary("interrupt-task")).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				pid: null,
+			});
+			expect(captureTaskTurnCheckpoint).not.toHaveBeenCalled();
+		},
+	);
+
 	beforeEach(() => {
 		vi.useFakeTimers();
 		prepareAgentLaunchMock.mockReset();

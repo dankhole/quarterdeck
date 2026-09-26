@@ -1,5 +1,13 @@
 # Implementation Log
 
+## 2026-09-25 — Native Codex turn interruption
+
+Codex 0.150.0's main-thread `Interrupt` hook now enters reliable launch-scoped ingest with matching trust and the provider's three-second timeout; the merged compatibility floor remains Codex 0.157.0. The canonical reducer clears foreground interactions, work evidence, and activity into Review/Interrupted without completion summaries, checkpoints, or notifications. Ordering receipts close the aborted turn against delayed permissions, tool events, and Stop while allowing a newer turn. The controller retires local interrupt recovery, retains the causal timestamp, and suppresses restart until current work resumes.
+
+Two replay edges matter: process exit updates an unresolved interaction's timestamp, so an earlier valid Interrupt must still resolve that same interaction after exit or hydration; and Interrupt may arrive before SessionStart, so it must preserve exact resume identity even while discarding completion metadata. The native contract covers user aborts, not general failure attribution; the narrow rendered interruption fallback remains for hookless failures. Notable files: `src/codex-hooks.ts`, `src/terminal/{hook-event-order,session-state-machine,session-transition-controller}.ts`, and Agent Lab's `/native-interrupt` protocol.
+
+Validation: 449 focused tests passed (6 existing lab-test skips), runtime typecheck, changed-TypeScript Biome, and `git diff --check`. Isolated fake-provider run `codex-native-interrupt-20260926T002137Z-add664` verified native Running → Interrupted without rendered failure text, pending approval → Interrupted with Needs Input cleared, rejection of delayed same-turn work, and a fresh turn returning to Running. The `approval-interrupted` diagnostic checkpoint completed without warnings or doctor findings; the host ledger recorded no notification sound and the forbidden-host-launch log was empty. The run stopped cleanly. No real provider or native Windows runtime was exercised.
+
 ## 2026-09-25 — Follow native Codex thread titles
 
 Native Codex tasks now receive a local placeholder instead of a separate title-model call, then follow the CLI’s saved thread names. Native TUIs own their app-server connections, so the runtime polls the exact launch profile’s `session_index.jsonl` every two seconds through a bounded, read-only metadata reader. No additional provider process, model request, or transcript store is involved. Other agents and explicit title regeneration retain their existing generators.

@@ -190,6 +190,17 @@ describe("agent-registry", () => {
 		expect(codex?.installed).toBe(false);
 		expect(codex?.status).toBe("upgrade_required");
 		expect(codex?.statusMessage).toContain("0.157.0");
+		await expect(
+			resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" })),
+		).rejects.toMatchObject({ reason: "unsupported_version", transient: false });
+	});
+
+	it("allows Codex 0.157.0 launches with native Interrupt hook support", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+
+		await expect(
+			resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" })),
+		).resolves.toMatchObject({ agentId: "codex" });
 	});
 
 	it("caches availability probes across repeated config loads", async () => {

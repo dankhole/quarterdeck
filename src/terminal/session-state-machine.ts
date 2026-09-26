@@ -592,6 +592,51 @@ function reduceProviderHook(
 	// logged by ingest, but must never author this Quarterdeck task's state or
 	// overwrite stronger identity-bearing hook activity.
 	if (isNonAuthoritativeClaudeNotification(event)) return unchanged("preserve");
+	if (hookEventName === "interrupt") {
+		// Codex Interrupt is a terminal main-thread turn observation, not a
+		// completion or a generic failure. Ingest fences provider/turn ordering;
+		// keep the reducer fail-closed for malformed or non-foreground payloads.
+		if (
+			event.event !== "to_review" ||
+			event.occurredAt === undefined ||
+			providerFromMetadata(metadata) !== "codex" ||
+			!metadata?.turnId?.trim() ||
+			!metadata.sessionId?.trim() ||
+			metadata.providerAgentId?.trim() ||
+			(summary.resumeSessionId && summary.resumeSessionId !== metadata.sessionId) ||
+			(currentInteraction &&
+				(currentInteraction.providerAgentId !== null ||
+					(!interactionEventIsCurrent(currentInteraction, event) &&
+						!providerEventFollowsInteractionInSameSession(currentInteraction, event))))
+		) {
+			return unchanged("preserve");
+		}
+		return {
+			changed: true,
+			patch: {
+				...clearSemanticUncertainty(summary),
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				outstandingInteraction: null,
+				nativeWorkEvidence: null,
+				latestHookActivity: null,
+				stalledSince: null,
+				...(replayed
+					? {
+							pid: null,
+							startupRecoveryRequired: false,
+							warningMessage: removeProcessLostInteractionWarning(summary.warningMessage ?? null),
+						}
+					: {}),
+			},
+			clearAttentionBuffer: true,
+			// Never promote an interrupted turn's partial output to completion
+			// activity or a display summary. Retain exact resume identity even if
+			// this is the first delivered hook, plus its durable ordering boundary.
+			hookMetadataMode: "identity_only",
+			hookOrderingMode: "advance",
+		};
+	}
 	if (
 		interactionKind === "permission" &&
 		providerFromMetadata(metadata) === "codex" &&

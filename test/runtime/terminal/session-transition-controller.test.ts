@@ -90,6 +90,40 @@ function currentProviderHook(
 }
 
 describe("SessionTransitionController", () => {
+	it("settles native interruption after local Escape and keeps its causal fence until newer work", () => {
+		const store = new InMemorySessionSummaryStore();
+		store.hydrateFromRecord({ "task-1": createSummary({ state: "awaiting_review", reviewReason: "interrupted" }) });
+		const entry = createEntry();
+		const active = entry.active;
+		if (!active) throw new Error("Missing active test process");
+		active.lastInterruptAt = 100;
+		active.interruptRecoveryStartedAt = 100;
+		active.interruptRecoverySignal = "escape";
+		active.interruptRecoveryTimer = setTimeout(() => {}, 5_000);
+		const controller = new SessionTransitionController(store, new Map([["task-1", entry]]));
+		const interrupt = createTestProviderHookEvent("to_review", {
+			source: "codex",
+			hookEventName: "Interrupt",
+			occurredAt: 110,
+			metadata: { sessionInstanceId: "session-test", sessionId: "session-1", turnId: "turn-1" },
+		});
+		expect(controller.applyTransitionEvent(entry, { ...interrupt, occurredAt: 99 })?.changed).toBe(false);
+		expect(active.interruptRecoveryTimer).not.toBeNull();
+		expect(controller.applyTransitionEvent(entry, interrupt)?.summary.reviewReason).toBe("interrupted");
+		expect(active.interruptRecoveryTimer).toBeNull();
+		expect(active.lastInterruptAt).toBe(110);
+		expect(entry.suppressAutoRestartOnExit).toBe(true);
+		expect(
+			controller.applyTransitionEvent(entry, currentProviderHook("to_in_progress", { occurredAt: 105 }))?.changed,
+		).toBe(false);
+		expect(
+			controller.applyTransitionEvent(entry, currentProviderHook("to_in_progress", { occurredAt: 120 }))?.summary
+				.state,
+		).toBe("running");
+		expect(entry.suppressAutoRestartOnExit).toBe(false);
+		expect(active.lastInterruptAt).toBe(110);
+	});
+
 	beforeEach(() => {
 		vi.useFakeTimers();
 	});

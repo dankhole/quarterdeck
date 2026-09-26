@@ -155,7 +155,7 @@ describe("runtime-config auto agent selection", { concurrent: false }, () => {
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-old-codex-");
 
 		try {
-			writeFakeVersionedCommand(tempBin, "codex", "0.146.9");
+			writeFakeVersionedCommand(tempBin, "codex", "0.149.0");
 
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
 				const state = await loadRuntimeConfig(null);

@@ -132,6 +132,7 @@ export type FakeAgentCommand =
 	| { kind: "needs-input-auto"; message: string }
 	| { kind: "approval-overlay" }
 	| { kind: "turn-interrupted" }
+	| { kind: "native-interrupt" }
 	| { kind: "new-turn"; message: string }
 	| { kind: "redraw-interruption-history" }
 	| { kind: "local-action"; message: string }
@@ -202,6 +203,9 @@ export function parseFakeAgentCommand(rawInput: string): FakeAgentCommand {
 	}
 	if (input === "/turn-interrupted") {
 		return { kind: "turn-interrupted" };
+	}
+	if (input === "/native-interrupt") {
+		return { kind: "native-interrupt" };
 	}
 	if (input.startsWith("/new-turn")) {
 		return { kind: "new-turn", message: restAfterCommand(input) || "Follow-up work started" };

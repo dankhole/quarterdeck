@@ -5,6 +5,7 @@ import { buildQuarterdeckCommandLine } from "./core";
 
 export const CODEX_HOOKS_FEATURE_NAME = "hooks";
 export const CODEX_HOOK_TIMEOUT_SECONDS = 5;
+export const CODEX_INTERRUPT_HOOK_TIMEOUT_SECONDS = 3;
 
 export type CodexHookConfigEvent =
 	| "SessionStart"
@@ -14,6 +15,7 @@ export type CodexHookConfigEvent =
 	| "UserPromptSubmit"
 	| "PreCompact"
 	| "PostCompact"
+	| "Interrupt"
 	| "Stop";
 
 const CODEX_HOOK_EVENT_LABELS = {
@@ -24,6 +26,7 @@ const CODEX_HOOK_EVENT_LABELS = {
 	UserPromptSubmit: "user_prompt_submit",
 	PreCompact: "pre_compact",
 	PostCompact: "post_compact",
+	Interrupt: "interrupt",
 	Stop: "stop",
 } as const satisfies Record<CodexHookConfigEvent, string>;
 
@@ -57,11 +60,12 @@ export type CodexHookTrustEntry = {
 function buildCodexCommandHook(
 	event: RuntimeHookEvent,
 	metadata?: { source?: string; reliable?: boolean },
+	timeout = CODEX_HOOK_TIMEOUT_SECONDS,
 ): CodexHookCommand {
 	return {
 		type: "command",
 		command: buildHookCommand(event, metadata),
-		timeout: CODEX_HOOK_TIMEOUT_SECONDS,
+		timeout,
 	};
 }
 
@@ -111,6 +115,13 @@ export function buildCodexHooksConfig(): CodexHooksConfig {
 			{
 				matcher: "manual",
 				hooks: [buildCodexCommandHook("activity", { source: "codex" })],
+			},
+		],
+		Interrupt: [
+			{
+				// Codex 0.150.0+ interrupts only the active main turn and caps
+				// this hook at three seconds. Ingest durably queues its delivery.
+				hooks: [buildCodexCommandHook("to_review", { source: "codex" }, CODEX_INTERRUPT_HOOK_TIMEOUT_SECONDS)],
 			},
 		],
 		Stop: [
