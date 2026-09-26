@@ -102,7 +102,6 @@ describe("TerminalSessionManager auto-restart", () => {
 			args: [],
 			cwd: "/tmp/task-1",
 			prompt: "Fix the bug",
-			claudeFullscreenEnabled: true,
 			claudeLaunchPermissionMode: "acceptEdits",
 			env: { CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "0" },
 		});
@@ -131,7 +130,6 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(prepareAgentLaunchMock).toHaveBeenNthCalledWith(
 			2,
 			expect.objectContaining({
-				claudeFullscreenEnabled: true,
 				claudeLaunchPermissionMode: "acceptEdits",
 			}),
 		);

@@ -34,7 +34,7 @@ Use this map when you are planning or evaluating refactor work.
 - Start here for current refactor status: [`todo.md`](./todo.md).
 - [`todo.md`](./todo.md): active engineering backlog, including currently tracked refactor work.
 - [`pi-first-class-support-plan.md`](./pi-first-class-support-plan.md): current Pi compatibility, lifecycle, recovery, platform, and version-advance contract.
-- [`claude-terminal-rendering-plan.md`](./claude-terminal-rendering-plan.md): completed Claude fullscreen design, dogfood evidence, and default-on rollout decision with a classic-renderer escape hatch.
+- [`claude-terminal-rendering-plan.md`](./claude-terminal-rendering-plan.md): Claude fullscreen-only launch contract, terminal geometry, and historical dogfood evidence.
 - [`lsp-code-navigation-plan.md`](./lsp-code-navigation-plan.md): plan for bring-your-own language server code navigation in the Files editor.
 
 ### Live architecture and implementation guidance

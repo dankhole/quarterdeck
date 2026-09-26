@@ -95,7 +95,6 @@ function createDeferred(): { promise: Promise<void>; resolve: () => void } {
 function createRuntimeConfig(): RuntimeConfigState {
 	return {
 		selectedAgentId: "codex",
-		claudeFullscreenEnabled: false,
 		claudeLaunchPermissionMode: "plan",
 		statuslineEnabled: false,
 		worktreeSystemPromptTemplate: "",

@@ -18,7 +18,6 @@ export interface SettingsFormValues {
 	showSummaryOnHover: boolean;
 	llmSummaryPolishEnabled: boolean;
 	shellAutoRestartEnabled: boolean;
-	claudeFullscreenEnabled: boolean;
 	claudeLaunchPermissionMode: RuntimeConfigResponse["claudeLaunchPermissionMode"];
 	statuslineEnabled: boolean;
 	codexApprovalsReviewer: RuntimeConfigResponse["codexApprovalsReviewer"];
@@ -60,7 +59,6 @@ export function resolveInitialValues(config: RuntimeConfigResponse | null): Sett
 		showSummaryOnHover: config?.showSummaryOnHover ?? CONFIG_DEFAULTS.showSummaryOnHover,
 		llmSummaryPolishEnabled: config?.llmSummaryPolishEnabled ?? CONFIG_DEFAULTS.llmSummaryPolishEnabled,
 		shellAutoRestartEnabled: config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
-		claudeFullscreenEnabled: config?.claudeFullscreenEnabled ?? CONFIG_DEFAULTS.claudeFullscreenEnabled,
 		claudeLaunchPermissionMode: config?.claudeLaunchPermissionMode ?? CONFIG_DEFAULTS.claudeLaunchPermissionMode,
 		statuslineEnabled: config?.statuslineEnabled ?? CONFIG_DEFAULTS.statuslineEnabled,
 		codexApprovalsReviewer: config?.codexApprovalsReviewer ?? CONFIG_DEFAULTS.codexApprovalsReviewer,

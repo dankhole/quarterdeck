@@ -3,11 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
 import { buildShellCommandLine } from "../../../src/core";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
-import {
-	DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER,
-	resolveEffectiveTerminalRowMultiplier,
-	resolveEffectiveTerminalRows,
-} from "../../../src/terminal/session-manager-types";
+
 import {
 	createTestProviderHookEvent,
 	createTestTaskNativeWorkEvidence,
@@ -242,17 +238,6 @@ describe("TerminalSessionManager", () => {
 		expect(updated?.latestHookActivity?.hookEventName).toBe("PreToolUse");
 	});
 
-	it("uses a fixed detached row multiplier only for Claude without browser output", () => {
-		expect(resolveEffectiveTerminalRowMultiplier("claude", false)).toBe(DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER);
-		expect(resolveEffectiveTerminalRowMultiplier("claude", true)).toBe(1);
-		expect(resolveEffectiveTerminalRowMultiplier("claude", false, { claudeFullscreenEnabled: true })).toBe(1);
-		expect(resolveEffectiveTerminalRowMultiplier("codex", false)).toBe(1);
-		expect(resolveEffectiveTerminalRowMultiplier(null, false)).toBe(1);
-		expect(resolveEffectiveTerminalRows("claude", 40, false)).toBe(40 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER);
-		expect(resolveEffectiveTerminalRows("claude", 40, true)).toBe(40);
-		expect(resolveEffectiveTerminalRows("claude", 40, false, { claudeFullscreenEnabled: true })).toBe(40);
-	});
-
 	it("applies hook state, activity, and session identity in one store emission", () => {
 		const manager = createTestManager();
 		manager.store.hydrateFromRecord({
@@ -347,8 +332,7 @@ describe("TerminalSessionManager", () => {
 				},
 				agentId: "claude",
 				cols: 80,
-				baseRows: 24,
-				rows: 24 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER,
+				rows: 24,
 				terminalProtocolFilter: {
 					pendingChunk: null,
 					interceptOscColorQueries: true,
@@ -590,7 +574,6 @@ describe("TerminalSessionManager", () => {
 				},
 				agentId: null,
 				cols: 80,
-				baseRows: 24,
 				rows: 24,
 			},
 			terminalStateMirror: {
@@ -625,7 +608,6 @@ describe("TerminalSessionManager", () => {
 				},
 				agentId: "codex",
 				cols: 100,
-				baseRows: 30,
 				rows: 30,
 			},
 			terminalStateMirror: {
@@ -648,42 +630,6 @@ describe("TerminalSessionManager", () => {
 		expect(resizeMirrorSpy).toHaveBeenCalledWith(100, 30);
 	});
 
-	it("applies the detached Claude row multiplier to resize rows", () => {
-		const manager = createTestManager();
-		const resizeSpy = vi.fn();
-		const resizeMirrorSpy = vi.fn();
-		const entry = {
-			taskId: "task-resize-mult",
-			active: {
-				session: {
-					resize: resizeSpy,
-				},
-				agentId: "claude",
-				cols: 80,
-				baseRows: 24,
-				rows: 24,
-			},
-			terminalStateMirror: {
-				resize: resizeMirrorSpy,
-			},
-			listenerIdCounter: 1,
-			listeners: new Map(),
-		};
-		(
-			manager as unknown as {
-				entries: Map<string, typeof entry>;
-			}
-		).entries.set("task-resize-mult", entry);
-		manager.store.hydrateFromRecord({
-			"task-resize-mult": createSummary({ taskId: "task-resize-mult", agentId: "claude" }),
-		});
-
-		const resized = manager.resize("task-resize-mult", 100, 30);
-		expect(resized).toBe(true);
-		expect(resizeSpy).toHaveBeenCalledWith(100, 30 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER, undefined, undefined);
-		expect(resizeMirrorSpy).toHaveBeenCalledWith(100, 30 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER);
-	});
-
 	it("keeps resize rows unmultiplied while browser output is attached", () => {
 		const manager = createTestManager();
 		const resizeSpy = vi.fn();
@@ -696,7 +642,6 @@ describe("TerminalSessionManager", () => {
 				},
 				agentId: "claude",
 				cols: 80,
-				baseRows: 24,
 				rows: 24,
 			},
 			terminalStateMirror: {
@@ -731,9 +676,7 @@ describe("TerminalSessionManager", () => {
 					resize: resizeSpy,
 				},
 				agentId: "claude",
-				claudeFullscreenEnabled: true,
 				cols: 80,
-				baseRows: 24,
 				rows: 24,
 			},
 			terminalStateMirror: {
@@ -757,7 +700,7 @@ describe("TerminalSessionManager", () => {
 		expect(resizeMirrorSpy).toHaveBeenCalledWith(100, 30);
 	});
 
-	it("expands Claude rows again when the last browser output listener detaches", () => {
+	it("does not resize Claude when browser output attaches or detaches", () => {
 		const manager = createTestManager();
 		const resizeSpy = vi.fn();
 		const resizeMirrorSpy = vi.fn();
@@ -769,8 +712,7 @@ describe("TerminalSessionManager", () => {
 				},
 				agentId: "claude",
 				cols: 100,
-				baseRows: 30,
-				rows: 30 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER,
+				rows: 30,
 				terminalProtocolFilter: {
 					pendingChunk: null,
 					interceptOscColorQueries: true,
@@ -791,17 +733,14 @@ describe("TerminalSessionManager", () => {
 		).entries.set("task-detach", entry);
 
 		const detach = manager.attach("task-detach", { onOutput: vi.fn() });
-		expect(resizeSpy).toHaveBeenLastCalledWith(100, 30, undefined, undefined);
-		expect(resizeMirrorSpy).toHaveBeenLastCalledWith(100, 30);
+		expect(resizeSpy).not.toHaveBeenCalled();
+		expect(resizeMirrorSpy).not.toHaveBeenCalled();
+		expect(entry.terminalStateMirror.setBatching).toHaveBeenLastCalledWith(false);
 
 		detach?.();
-		expect(resizeSpy).toHaveBeenLastCalledWith(
-			100,
-			30 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER,
-			undefined,
-			undefined,
-		);
-		expect(resizeMirrorSpy).toHaveBeenLastCalledWith(100, 30 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER);
+		expect(resizeSpy).not.toHaveBeenCalled();
+		expect(resizeMirrorSpy).not.toHaveBeenCalled();
+		expect(entry.terminalStateMirror.setBatching).toHaveBeenLastCalledWith(true);
 	});
 
 	it("returns the latest terminal restore snapshot when available", async () => {

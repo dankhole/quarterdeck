@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-25 — Make Claude rendering fullscreen-only
+
+Claude launches now force `CLAUDE_CODE_NO_FLICKER=1` and `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=0`; screen-reader launches fail before PTY creation because they require classic rendering. Explicit scroll-speed preferences remain honored. Removed the fullscreen config/UI switch, renderer-mode resolution and process state, detached 3x row multiplier, duplicate base/effective row counts, and attach/detach-triggered resizing. The invariant is one actual viewport size for every terminal; explicit resize, pre-restore forced redraw, mirror snapshots, and alternate-buffer restore remain. Retired config values are ignored and disappear on the next save; existing sessions adopt the new launch contract on restart.
+
+Notable files: `src/terminal/{claude-renderer-policy,agent-session-adapters,session-manager,session-manager-types,session-lifecycle}.ts`, config/API definitions, and the Settings form/UI. Validation: 249 focused runtime tests across adapters, renderer policy, geometry, lifecycle, config persistence, API wiring, and startup recovery; 21 focused web settings tests; runtime/web typechecks; targeted Biome and diff checks. Isolated fake-Claude lab `claude-fullscreen-only-20260926T001950Z-9e371b` verified alternate-buffer content, 50-to-35-row resizing, and Files/Terminal detach/reattach; checkpoint `fullscreen-reattached` completed without warnings, the forbidden-host-launch log stayed empty, and the lab stopped cleanly. No real provider was used.
+
 ## 2026-09-25 — Native Codex turn interruption
 
 Codex 0.150.0's main-thread `Interrupt` hook now enters reliable launch-scoped ingest with matching trust and the provider's three-second timeout; the merged compatibility floor remains Codex 0.157.0. The canonical reducer clears foreground interactions, work evidence, and activity into Review/Interrupted without completion summaries, checkpoints, or notifications. Ordering receipts close the aborted turn against delayed permissions, tool events, and Stop while allowing a newer turn. The controller retires local interrupt recovery, retains the causal timestamp, and suppresses restart until current work resumes.

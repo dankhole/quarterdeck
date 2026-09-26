@@ -355,7 +355,6 @@ export async function prepareTaskSessionStart(
 		rows: body.rows,
 		projectId: projectScope.projectId,
 		projectPath: projectScope.projectPath,
-		claudeFullscreenEnabled: scopedRuntimeConfig.claudeFullscreenEnabled,
 		claudeLaunchPermissionMode: scopedRuntimeConfig.claudeLaunchPermissionMode,
 		statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
 		codexApprovalsReviewer: scopedRuntimeConfig.codexApprovalsReviewer,

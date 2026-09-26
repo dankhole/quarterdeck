@@ -71,7 +71,7 @@ export function HarnessSection({
 	const CodexChevron = codexSettingsExpanded ? ChevronDown : ChevronRight;
 	const PiChevron = piSettingsExpanded ? ChevronDown : ChevronRight;
 	const PromptChevron = systemPromptExpanded ? ChevronDown : ChevronRight;
-	const claudeSettingsSummary = `New/restarted sessions only · ${CLAUDE_PERMISSION_MODE_LABELS[fields.claudeLaunchPermissionMode]} · ${fields.claudeFullscreenEnabled ? "Fullscreen on" : "Fullscreen off"} · ${fields.statuslineEnabled ? "Status line on" : "Status line off"}`;
+	const claudeSettingsSummary = `New/restarted sessions only · ${CLAUDE_PERMISSION_MODE_LABELS[fields.claudeLaunchPermissionMode]} · ${fields.statuslineEnabled ? "Status line on" : "Status line off"}`;
 	const codexSettingsSummary = `New/restarted sessions only · ${CODEX_APPROVALS_REVIEWER_LABELS[fields.codexApprovalsReviewer]}`;
 	const piSupportedVersion = config?.agents.find((agent) => agent.id === "pi")?.requiredVersion ?? "0.84.3";
 	const piSettingsSummary = `Exactly ${piSupportedVersion} · ${fields.piToolApprovalsEnabled ? "Tool approvals on" : "Tool approvals off"}`;
@@ -143,15 +143,6 @@ export function HarnessSection({
 														? "Automatically denies tools that are not already allowed instead of asking interactively."
 														: "Skips Claude permission prompts and most safety checks. Use only in an externally isolated environment; managed policy can disable this mode."}
 							</p>
-						</div>
-						<div className="px-3 py-3">
-							<SettingsSwitch
-								checked={fields.claudeFullscreenEnabled}
-								onCheckedChange={(value) => setField("claudeFullscreenEnabled", value)}
-								disabled={disabled}
-								label="Fullscreen rendering"
-								description="Uses Claude Code's alternate-screen, virtualized transcript for new or restarted sessions. When off, Quarterdeck keeps Claude on the classic renderer."
-							/>
 						</div>
 						<div className="px-3 py-3">
 							<SettingsSwitch

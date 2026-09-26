@@ -110,7 +110,6 @@ export const GLOBAL_CONFIG_FIELDS = {
 	audibleNotificationsEnabled: boolField(true),
 	audibleNotificationVolume: volumeField(0.7),
 	audibleNotificationsOnlyWhenHidden: boolField(true),
-	claudeFullscreenEnabled: boolField(true),
 	claudeLaunchPermissionMode: enumField<ClaudeLaunchPermissionMode>("inherit", CLAUDE_LAUNCH_PERMISSION_MODES),
 	statuslineEnabled: boolField(false),
 	codexApprovalsReviewer: enumField<CodexApprovalsReviewer>("inherit", CODEX_APPROVALS_REVIEWERS),

@@ -637,21 +637,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(settings.statusLine).toBeUndefined();
 	});
 
-	it("leaves Claude fullscreen rendering disabled unless explicitly enabled", async () => {
-		setupTempHome();
-		const launch = await prepareAgentLaunch({
-			taskId: "task-claude-fullscreen-default",
-			agentId: "claude",
-			binary: "claude",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-		});
-
-		expect(launch.env.CLAUDE_CODE_NO_FLICKER).toBe("0");
-		expect(launch.env.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN).toBe("1");
-	});
-
 	it("normalizes conflicting Claude permission arguments to the managed launch mode", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
@@ -721,12 +706,11 @@ describe("prepareAgentLaunch hook strategies", () => {
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
-			claudeFullscreenEnabled: true,
 			env: { CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "0" },
 		});
 
 		expect(launch.env.CLAUDE_CODE_NO_FLICKER).toBe("1");
-		expect(launch.env.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN).toBeUndefined();
+		expect(launch.env.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN).toBe("0");
 		expect(launch.env.CLAUDE_CODE_SCROLL_SPEED).toBe("3");
 	});
 
@@ -739,7 +723,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
-			claudeFullscreenEnabled: true,
 			env: {
 				CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "0",
 				CLAUDE_CODE_SCROLL_SPEED: "8",
@@ -749,7 +732,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.env.CLAUDE_CODE_SCROLL_SPEED).toBe("8");
 	});
 
-	it("honors Claude's explicit classic-renderer escape hatch", async () => {
+	it("overrides Claude's classic-renderer environment at launch", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
 			taskId: "task-claude-fullscreen-escape-hatch",
@@ -758,12 +741,28 @@ describe("prepareAgentLaunch hook strategies", () => {
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
-			claudeFullscreenEnabled: true,
 			env: { CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "1" },
 		});
 
-		expect(launch.env.CLAUDE_CODE_NO_FLICKER).toBe("0");
-		expect(launch.env.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN).toBe("1");
+		expect(launch.env.CLAUDE_CODE_NO_FLICKER).toBe("1");
+		expect(launch.env.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN).toBe("0");
+	});
+
+	it.each([
+		{ args: ["--ax-screen-reader"], env: {} },
+		{ args: [], env: { CLAUDE_AX_SCREEN_READER: "1" } },
+	])("rejects screen-reader launches that require classic rendering", async ({ args, env }) => {
+		setupTempHome();
+		await expect(
+			prepareAgentLaunch({
+				taskId: "task-claude-screen-reader",
+				agentId: "claude",
+				args,
+				cwd: "/tmp",
+				prompt: "",
+				env: { CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "0", ...env },
+			}),
+		).rejects.toThrow("Quarterdeck requires Claude fullscreen rendering");
 	});
 
 	it("does not apply the Claude fullscreen environment to other agents", async () => {
@@ -775,7 +774,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
-			claudeFullscreenEnabled: true,
 		});
 
 		expect(launch.env.CLAUDE_CODE_NO_FLICKER).toBeUndefined();

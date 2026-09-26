@@ -17,7 +17,6 @@ describe("resolveInitialValues", () => {
 		expect(values.worktreeSetupScript).toBe("");
 		expect(values).toHaveProperty("worktreeSystemPromptTemplate");
 		expect(values).toHaveProperty("fileEditorAutosaveMode");
-		expect(values.claudeFullscreenEnabled).toBe(true);
 		expect(values.claudeLaunchPermissionMode).toBe("inherit");
 		expect(values.statuslineEnabled).toBe(false);
 		expect(values.codexApprovalsReviewer).toBe("inherit");

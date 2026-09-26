@@ -249,7 +249,7 @@ describe("RuntimeSettingsDialog", () => {
 		expect(bodyText).not.toContain("These settings let agents escape their worktree sandbox");
 	});
 
-	it("groups Claude fullscreen rendering and the Quarterdeck status line in a collapsible subsection", async () => {
+	it("groups Claude launch permissions and the Quarterdeck status line in a collapsible subsection", async () => {
 		saveMock.mockReset();
 		saveMock.mockResolvedValue(true);
 
@@ -270,7 +270,7 @@ describe("RuntimeSettingsDialog", () => {
 		expect(claudeSectionButton).toBeInstanceOf(HTMLButtonElement);
 		expect(claudeSectionButton?.getAttribute("aria-expanded")).toBe("false");
 		expect(document.body.textContent).toContain(
-			"New/restarted sessions only · Inherit Claude config · Fullscreen on · Status line off",
+			"New/restarted sessions only · Inherit Claude config · Status line off",
 		);
 		expect(findSwitchByLabel(document.body, "Fullscreen rendering")).toBeNull();
 
@@ -278,20 +278,16 @@ describe("RuntimeSettingsDialog", () => {
 			claudeSectionButton?.click();
 		});
 
-		const fullscreenSwitch = findSwitchByLabel(document.body, "Fullscreen rendering");
 		const statuslineSwitch = findSwitchByLabel(document.body, "Show Quarterdeck status line");
 		const claudePermissionModeSelect = document.body.querySelector<HTMLSelectElement>(
 			"#runtime-settings-claude-permission-mode",
 		);
-		expect(fullscreenSwitch).toBeInstanceOf(HTMLButtonElement);
+		expect(findSwitchByLabel(document.body, "Fullscreen rendering")).toBeNull();
 		expect(statuslineSwitch).toBeInstanceOf(HTMLButtonElement);
 		expect(claudePermissionModeSelect).toBeInstanceOf(HTMLSelectElement);
 		expect(claudePermissionModeSelect?.value).toBe("inherit");
 		expect(claudeSectionButton?.getAttribute("aria-expanded")).toBe("true");
-		expect(fullscreenSwitch?.getAttribute("data-state")).toBe("checked");
 		expect(statuslineSwitch?.getAttribute("data-state")).toBe("unchecked");
-		expect(document.body.textContent).toContain("virtualized transcript");
-		expect(document.body.textContent).toContain("classic renderer");
 		expect(document.body.textContent).toContain("new or restarted Claude sessions");
 		expect(document.body.textContent).toContain("without a Quarterdeck override");
 
@@ -305,10 +301,8 @@ describe("RuntimeSettingsDialog", () => {
 		expect(document.body.textContent).toContain("externally isolated environment");
 
 		await act(async () => {
-			fullscreenSwitch?.click();
 			statuslineSwitch?.click();
 		});
-		expect(fullscreenSwitch?.getAttribute("data-state")).toBe("unchecked");
 		expect(statuslineSwitch?.getAttribute("data-state")).toBe("checked");
 
 		const codexSectionButton = Array.from(document.body.querySelectorAll("button")).find((button) =>
@@ -367,7 +361,6 @@ describe("RuntimeSettingsDialog", () => {
 		});
 		expect(saveMock).toHaveBeenCalledWith(
 			expect.objectContaining({
-				claudeFullscreenEnabled: false,
 				claudeLaunchPermissionMode: "bypassPermissions",
 				statuslineEnabled: true,
 				codexApprovalsReviewer: "dangerously_bypass",

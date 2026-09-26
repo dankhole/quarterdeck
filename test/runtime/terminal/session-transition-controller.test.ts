@@ -71,7 +71,6 @@ function createEntry(taskId = "task-1"): ProcessEntry {
 		sessionInstanceId: "session-test",
 		agentId: "codex",
 		cols: 120,
-		baseRows: 40,
 		rows: 40,
 		willAutoTrust: true,
 	});

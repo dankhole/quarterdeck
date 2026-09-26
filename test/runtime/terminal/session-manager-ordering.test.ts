@@ -22,7 +22,6 @@ import {
 } from "../../../src/core";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
 import { createCodexTurnInterruptionDetector } from "../../../src/terminal/codex-turn-interruption";
-import { DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER } from "../../../src/terminal/session-manager-types";
 import { canApplyCodexRenderedTurnInterruption } from "../../../src/terminal/session-state-machine";
 import { createHooksApi } from "../../../src/trpc";
 import { createTestTaskOutstandingInteraction } from "../../utilities/task-session-factory";
@@ -1352,20 +1351,9 @@ describe("TerminalSessionManager ordering invariants", () => {
 		});
 	});
 
-	it("uses real detached rows when launching Claude fullscreen sessions", async () => {
+	it("launches detached Claude at the requested viewport size", async () => {
 		setupMockPtySpawn();
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
-
-		await manager.startTaskSession({
-			taskId: "task-classic",
-			agentId: "claude",
-			binary: "claude",
-			args: [],
-			cwd: "/tmp/task-classic",
-			prompt: "Classic",
-			cols: 80,
-			rows: 24,
-		});
 		await manager.startTaskSession({
 			taskId: "task-fullscreen",
 			agentId: "claude",
@@ -1375,45 +1363,8 @@ describe("TerminalSessionManager ordering invariants", () => {
 			prompt: "Fullscreen",
 			cols: 80,
 			rows: 24,
-			claudeFullscreenEnabled: true,
-			env: { CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "0" },
 		});
-
-		expect(ptySessionSpawnMock).toHaveBeenNthCalledWith(
-			1,
-			expect.objectContaining({ cols: 80, rows: 24 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER }),
-		);
-		expect(ptySessionSpawnMock).toHaveBeenNthCalledWith(2, expect.objectContaining({ cols: 80, rows: 24 }));
-		expect(prepareAgentLaunchMock).toHaveBeenNthCalledWith(
-			2,
-			expect.objectContaining({ claudeFullscreenEnabled: true }),
-		);
-	});
-
-	it("keeps classic detached rows when Claude's escape hatch overrides the fullscreen setting", async () => {
-		const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
-		setupMockPtySpawn();
-		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
-
-		await manager.startTaskSession({
-			taskId: "task-fullscreen-overridden",
-			agentId: "claude",
-			binary: "claude",
-			args: [],
-			cwd: "/tmp/task-fullscreen-overridden",
-			prompt: "Fullscreen overridden",
-			cols: 80,
-			rows: 24,
-			claudeFullscreenEnabled: true,
-			env: { CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "1" },
-		});
-
-		expect(ptySessionSpawnMock).toHaveBeenCalledWith(
-			expect.objectContaining({ cols: 80, rows: 24 * DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER }),
-		);
-		expect(prepareAgentLaunchMock).toHaveBeenCalledWith(expect.objectContaining({ claudeFullscreenEnabled: false }));
-		expect(consoleWarn).toHaveBeenCalled();
-		consoleWarn.mockRestore();
+		expect(ptySessionSpawnMock).toHaveBeenCalledWith(expect.objectContaining({ cols: 80, rows: 24 }));
 	});
 
 	// ── Gap 1: onData transition-before-broadcast ordering ──────────────

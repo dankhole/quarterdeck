@@ -70,7 +70,6 @@ export const runtimeConfigResponseSchema = z.object({
 	showSummaryOnCards: z.boolean(),
 	showSummaryOnHover: z.boolean(),
 	llmSummaryPolishEnabled: z.boolean(),
-	claudeFullscreenEnabled: z.boolean(),
 	claudeLaunchPermissionMode: claudeLaunchPermissionModeSchema,
 	statuslineEnabled: z.boolean(),
 	codexApprovalsReviewer: codexApprovalsReviewerSchema,
@@ -124,7 +123,6 @@ export const runtimeConfigSaveRequestSchema = z.object({
 			failure: z.boolean(),
 		})
 		.optional(),
-	claudeFullscreenEnabled: z.boolean().optional(),
 	claudeLaunchPermissionMode: claudeLaunchPermissionModeSchema.optional(),
 	statuslineEnabled: z.boolean().optional(),
 	codexApprovalsReviewer: codexApprovalsReviewerSchema.optional(),

@@ -4,6 +4,8 @@
 
 ## [0.12.7] - 2026-09-24
 
+- Require fullscreen rendering for Claude sessions. Remove the classic-renderer switch and detached terminal row multiplier; reject screen-reader mode, which requires classic rendering. Existing sessions adopt fullscreen on restart.
+
 - Use Codex's native Interrupt hook to clear pending approvals and mark aborted turns Interrupted without completion notifications. Reject delayed events from aborted turns and preserve interruption across hook replay.
 
 - Reuse native Codex chat titles without a separate title-generation call, follow subsequent name changes, and preserve manual Quarterdeck titles.

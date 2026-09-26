@@ -57,7 +57,6 @@ import {
 	hasLiveOutputListener,
 	type NativeTaskSessionProcessIdentity,
 	type ProcessEntry,
-	resolveEffectiveTerminalRows,
 	type StartShellSessionRequest,
 	type StartTaskSessionRequest,
 	type StopTaskSessionResult,
@@ -212,7 +211,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (summary) {
 			listener.onState?.(summary);
 		}
-		const hadLiveOutputListener = hasLiveOutputListener(entry);
 		if (entry.active && listener.onOutput) {
 			disableOutputOscIntercept(entry);
 		}
@@ -223,19 +221,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 		if (listener.onOutput) {
 			entry.terminalStateMirror?.setBatching(false);
-			if (!hadLiveOutputListener) {
-				this.applyActiveTerminalGeometry(entry);
-			}
 		}
 
 		return () => {
-			const hadLiveOutputListenerBeforeDetach = hasLiveOutputListener(entry);
 			entry.listeners.delete(listenerId);
 			if (listener.onOutput && !hasLiveOutputListener(entry)) {
 				entry.terminalStateMirror?.setBatching(true);
-				if (hadLiveOutputListenerBeforeDetach) {
-					this.applyActiveTerminalGeometry(entry);
-				}
 			}
 		};
 	}
@@ -629,20 +620,22 @@ export class TerminalSessionManager implements TerminalSessionService {
 			return false;
 		}
 		const safeCols = Math.max(1, Math.floor(cols));
-		const safeBaseRows = Math.max(1, Math.floor(rows));
+		const safeRows = Math.max(1, Math.floor(rows));
 		const safePixelWidth = Number.isFinite(pixelWidth ?? Number.NaN) ? Math.floor(pixelWidth as number) : undefined;
 		const safePixelHeight = Number.isFinite(pixelHeight ?? Number.NaN)
 			? Math.floor(pixelHeight as number)
 			: undefined;
 		const normalizedPixelWidth = safePixelWidth !== undefined && safePixelWidth > 0 ? safePixelWidth : undefined;
 		const normalizedPixelHeight = safePixelHeight !== undefined && safePixelHeight > 0 ? safePixelHeight : undefined;
-		this.applyActiveTerminalGeometry(entry, {
-			cols: safeCols,
-			baseRows: safeBaseRows,
-			pixelWidth: normalizedPixelWidth,
-			pixelHeight: normalizedPixelHeight,
-			force,
-		});
+		const dimensionsUnchanged = safeCols === entry.active.cols && safeRows === entry.active.rows;
+		if (force && dimensionsUnchanged) {
+			entry.active.session.forceRedraw(safeCols, safeRows, normalizedPixelWidth, normalizedPixelHeight);
+		} else {
+			entry.active.session.resize(safeCols, safeRows, normalizedPixelWidth, normalizedPixelHeight);
+		}
+		entry.terminalStateMirror?.resize(safeCols, safeRows);
+		entry.active.cols = safeCols;
+		entry.active.rows = safeRows;
 		return true;
 	}
 
@@ -866,36 +859,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 				essential: options.essential ?? true,
 			},
 		);
-	}
-
-	private applyActiveTerminalGeometry(
-		entry: ProcessEntry,
-		options: {
-			cols?: number;
-			baseRows?: number;
-			pixelWidth?: number;
-			pixelHeight?: number;
-			force?: boolean;
-		} = {},
-	): void {
-		if (!entry.active) {
-			return;
-		}
-		const cols = options.cols ?? entry.active.cols;
-		const baseRows = options.baseRows ?? entry.active.baseRows;
-		const rows = resolveEffectiveTerminalRows(entry.active.agentId, baseRows, hasLiveOutputListener(entry), {
-			claudeFullscreenEnabled: entry.active.claudeFullscreenEnabled,
-		});
-		const dimensionsUnchanged = cols === entry.active.cols && rows === entry.active.rows;
-		if (options.force && dimensionsUnchanged) {
-			entry.active.session.forceRedraw(cols, rows, options.pixelWidth, options.pixelHeight);
-		} else {
-			entry.active.session.resize(cols, rows, options.pixelWidth, options.pixelHeight);
-		}
-		entry.terminalStateMirror?.resize(cols, rows);
-		entry.active.cols = cols;
-		entry.active.baseRows = baseRows;
-		entry.active.rows = rows;
 	}
 
 	private ensureProcessEntry(taskId: string): ProcessEntry {

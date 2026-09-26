@@ -9,7 +9,6 @@ import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
 import { cleanStaleIndexLockForWorktree } from "../fs";
 import type { PreparedAgentLaunch } from "./agent-session-adapters";
 import { prepareAgentLaunch } from "./agent-session-adapters";
-import { resolveClaudeRendererPolicy } from "./claude-renderer-policy";
 import { shouldAutoConfirmClaudeWorkspaceTrust, stopWorkspaceTrustTimers } from "./claude-workspace-trust";
 import {
 	isCodexResumeFailureSummary,
@@ -37,7 +36,6 @@ import {
 	INITIAL_WORK_CONFIRMATION_TIMEOUT_MS,
 	normalizeDimension,
 	type ProcessEntry,
-	resolveEffectiveTerminalRowMultiplier,
 	type StartShellSessionRequest,
 	type StartTaskSessionRequest,
 	TaskSessionStartCancelledError,
@@ -114,40 +112,11 @@ export async function spawnTaskSession(
 	entry.hookEventOrder = createHookEventOrderState(hookSessionInstanceId);
 
 	const cols = normalizeDimension(request.cols, 120);
-	const baseRows = normalizeDimension(request.rows, 40);
-	const claudeRendererPolicy =
-		request.agentId === "claude"
-			? resolveClaudeRendererPolicy({
-					fullscreenEnabled: request.claudeFullscreenEnabled,
-					args: request.args,
-					envOverrides: request.env,
-				})
-			: null;
-	const claudeFullscreenEnabled = claudeRendererPolicy?.mode === "fullscreen";
-	if (request.claudeFullscreenEnabled === true && claudeRendererPolicy?.mode === "classic") {
-		sessionLog.warn("Claude fullscreen setting overridden by a classic-renderer constraint", {
-			taskId: request.taskId,
-			agentId: request.agentId,
-			reason: claudeRendererPolicy.reason,
-		});
-	}
-	const effectiveRowMultiplier = resolveEffectiveTerminalRowMultiplier(request.agentId, hasLiveOutputListener(entry), {
-		claudeFullscreenEnabled,
-	});
-	const rows = baseRows * effectiveRowMultiplier;
+	const rows = normalizeDimension(request.rows, 40);
 	let terminalStateMirror: TerminalStateMirror;
-	let launch: PreparedAgentLaunch;
+	let launch: PreparedAgentLaunch | undefined;
 	let sessionForCallbacks: PtySession | null = null;
 	try {
-		terminalStateMirror = new TerminalStateMirror(cols, rows, {
-			onInputResponse: (data) => {
-				if (!sessionForCallbacks || entry.active?.session !== sessionForCallbacks || hasLiveOutputListener(entry)) {
-					return;
-				}
-				sessionForCallbacks.write(data);
-			},
-		});
-
 		launch = await prepareAgentLaunch({
 			taskId: request.taskId,
 			agentId: request.agentId,
@@ -162,7 +131,6 @@ export async function spawnTaskSession(
 			projectId: request.projectId,
 			projectPath: request.projectPath,
 			hookSessionInstanceId,
-			claudeFullscreenEnabled,
 			claudeLaunchPermissionMode: request.claudeLaunchPermissionMode,
 			statuslineEnabled: request.statuslineEnabled,
 			codexApprovalsReviewer: request.codexApprovalsReviewer,
@@ -170,11 +138,21 @@ export async function spawnTaskSession(
 			piToolApprovalsEnabled: request.piToolApprovalsEnabled,
 			worktreeSystemPromptTemplate: request.worktreeSystemPromptTemplate,
 		});
+
+		terminalStateMirror = new TerminalStateMirror(cols, rows, {
+			onInputResponse: (data) => {
+				if (!sessionForCallbacks || entry.active?.session !== sessionForCallbacks || hasLiveOutputListener(entry)) {
+					return;
+				}
+				sessionForCallbacks.write(data);
+			},
+		});
 	} catch (error) {
 		entry.pendingSessionStart = false;
 		entry.pendingSessionStartSince = null;
 		entry.hookEventOrder = null;
 		markTaskSessionLaunchCancelled(entry.launchMonitor);
+		await launch?.cleanup?.().catch(() => undefined);
 		throw error;
 	}
 
@@ -204,7 +182,6 @@ export async function spawnTaskSession(
 		shouldAutoConfirmCodexWorkspaceTrust(request.agentId, request.cwd);
 	const spawnData = {
 		agentId: request.agentId,
-		claudeFullscreenEnabled,
 		hasBinary: commandBinary.length > 0,
 		hasLaunchPath: request.cwd.length > 0,
 		hasProjectPath: Boolean(request.projectPath),
@@ -313,9 +290,7 @@ export async function spawnTaskSession(
 		agentId: request.agentId,
 		launchBinary: commandBinary,
 		launchProfileEnvironment,
-		claudeFullscreenEnabled,
 		cols,
-		baseRows,
 		rows,
 		willAutoTrust,
 		launch,
@@ -717,7 +692,6 @@ export async function spawnShellSession(
 		launchOperationId: null,
 		agentId: null,
 		cols,
-		baseRows: rows,
 		rows,
 		willAutoTrust: false,
 	});

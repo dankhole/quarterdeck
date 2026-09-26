@@ -129,7 +129,7 @@ This observation is an input optimization, not lifecycle authority. Start, hando
 - Claude `PermissionDenied` is an automatic permission-mode event with `tool_use_id`; correlate it by that exact ID and mark the response pending. Manual denial emits no equivalent hook, so local submit remains pending until later work or Stop evidence. Never simulate a provider hook the real provider does not emit.
 - Bound native message/activity text before storage or broadcast. `PostCompact.compact_summary` describes compaction and never populates completed-turn summaries.
 
-Claude fullscreen scrolling is application-owned rather than xterm scrollback. Fullscreen launches default `CLAUDE_CODE_SCROLL_SPEED` to `3` while preserving an explicit user override. Do not apply that default to classic Claude, Codex, Pi, or shell terminals.
+Claude launches always use fullscreen, overriding classic renderer environment preferences. Screen-reader launches that require classic rendering fail before PTY creation. Scrolling is application-owned rather than xterm scrollback; `CLAUDE_CODE_SCROLL_SPEED` defaults to `3` while preserving an explicit user override. Do not apply that default to Codex, Pi, or shell terminals. Terminal geometry always uses real viewport rows; attaching or detaching a viewer must not resize the PTY.
 
 ### Codex hooks and launch arguments
 

@@ -15,7 +15,7 @@ import type {
 import { buildQuarterdeckCommandParts, createTaggedLogger } from "../core";
 import { lockedFileSystem } from "../fs";
 import { getRuntimeHomePath } from "../state";
-import { createClaudeRendererEnvironment, resolveClaudeRendererPolicy } from "./claude-renderer-policy";
+import { createClaudeRendererEnvironment } from "./claude-renderer-policy";
 import { createCodexApprovalPromptDetector } from "./codex-approval-prompt";
 import { createCodexTurnInterruptionDetector } from "./codex-turn-interruption";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
@@ -43,7 +43,6 @@ export interface AgentAdapterLaunchInput {
 	projectId?: string;
 	projectPath?: string;
 	hookSessionInstanceId?: string;
-	claudeFullscreenEnabled?: boolean;
 	claudeLaunchPermissionMode?: ClaudeLaunchPermissionMode;
 	statuslineEnabled?: boolean;
 	codexApprovalsReviewer?: CodexApprovalsReviewer;
@@ -251,14 +250,9 @@ const claudeAdapter: AgentSessionAdapter = {
 		if (input.claudeLaunchPermissionMode && input.claudeLaunchPermissionMode !== "inherit") {
 			applyManagedClaudePermissionMode(args, input.claudeLaunchPermissionMode);
 		}
-		const rendererPolicy = resolveClaudeRendererPolicy({
-			fullscreenEnabled: input.claudeFullscreenEnabled,
-			args,
-			envOverrides: input.env,
-		});
 		const env: Record<string, string | undefined> = {
 			FORCE_HYPERLINK: "1",
-			...createClaudeRendererEnvironment(rendererPolicy.mode, { envOverrides: input.env }),
+			...createClaudeRendererEnvironment({ args, envOverrides: input.env }),
 		};
 		if (input.resumeConversation && !hasCliOption(args, "--continue") && !hasCliOption(args, "--resume")) {
 			const resumeTarget = input.resumeSessionId?.trim();
@@ -320,8 +314,6 @@ const claudeAdapter: AgentSessionAdapter = {
 		const withPromptLaunch = withPrompt(args, input.prompt, "append");
 		log.debug("claude adapter prepared launch", {
 			taskId: input.taskId,
-			claudeRendererMode: rendererPolicy.mode,
-			claudeRendererReason: rendererPolicy.reason,
 			claudeLaunchPermissionMode: input.claudeLaunchPermissionMode ?? "inherit",
 			argCount: withPromptLaunch.args.length,
 			promptLength: input.prompt.trim().length,
@@ -461,7 +453,7 @@ const codexAdapter: AgentSessionAdapter = {
 			["tui.fullscreen_transcript", "true"],
 			["tui.alternate_screen", '"always"'],
 			["tui.raw_output_mode", "false"],
-		]) {
+		] as const) {
 			removeCodexConfigOverrides(codexArgs, key);
 			insertCodexGlobalArgs(codexArgs, ["-c", `${key}=${value}`]);
 		}

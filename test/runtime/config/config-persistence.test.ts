@@ -54,7 +54,6 @@ describe("runtime-config persistence", { concurrent: false }, () => {
 				expect(state.globalConfigPath).toBe(join(tempHome, ".quarterdeck", "config.json"));
 				expect(state.projectConfigPath).toBeNull();
 				expect(state.shortcuts).toEqual([]);
-				expect(state.claudeFullscreenEnabled).toBe(true);
 				expect(state.claudeLaunchPermissionMode).toBe("inherit");
 				expect(state.statuslineEnabled).toBe(false);
 				expect(state.codexApprovalsReviewer).toBe("inherit");
@@ -134,23 +133,18 @@ describe("runtime-config persistence", { concurrent: false }, () => {
 		}
 	});
 
-	it("persists the Claude classic-renderer opt-out globally", async () => {
+	it("ignores and removes the retired Claude renderer setting on config save", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-claude-fullscreen-");
-
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				const updated = await updateRuntimeConfig(null, {
-					claudeFullscreenEnabled: false,
-				});
-				expect(updated.claudeFullscreenEnabled).toBe(false);
-
-				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
-					claudeFullscreenEnabled?: boolean;
-				};
-				expect(globalPayload.claudeFullscreenEnabled).toBe(false);
-
-				const reloaded = await loadGlobalRuntimeConfig();
-				expect(reloaded.claudeFullscreenEnabled).toBe(false);
+				const configDir = join(tempHome, ".quarterdeck");
+				mkdirSync(configDir, { recursive: true });
+				writeFileSync(join(configDir, "config.json"), JSON.stringify({ claudeFullscreenEnabled: false }));
+				expect(await loadGlobalRuntimeConfig()).not.toHaveProperty("claudeFullscreenEnabled");
+				await updateRuntimeConfig(null, { statuslineEnabled: true });
+				const saved = JSON.parse(readFileSync(join(configDir, "config.json"), "utf8"));
+				expect(saved).not.toHaveProperty("claudeFullscreenEnabled");
+				expect(saved.statuslineEnabled).toBe(true);
 			});
 		} finally {
 			cleanupHome();

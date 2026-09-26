@@ -37,10 +37,8 @@ export interface ActiveProcessState {
 	agentId: StartTaskSessionRequest["agentId"] | null;
 	launchBinary: string | null;
 	launchProfileEnvironment: NativeTaskSessionProfileEnvironment;
-	claudeFullscreenEnabled: boolean;
 	workspaceTrustBuffer: string | null;
 	cols: number;
-	baseRows: number;
 	rows: number;
 	terminalProtocolFilter: TerminalProtocolFilterState;
 	onSessionCleanup: (() => Promise<void>) | null;
@@ -109,7 +107,6 @@ export interface StartTaskSessionRequest {
 	env?: Record<string, string | undefined>;
 	projectId?: string;
 	projectPath?: string;
-	claudeFullscreenEnabled?: boolean;
 	claudeLaunchPermissionMode?: AgentAdapterLaunchInput["claudeLaunchPermissionMode"];
 	statuslineEnabled?: boolean;
 	codexApprovalsReviewer?: AgentAdapterLaunchInput["codexApprovalsReviewer"];
@@ -254,35 +251,6 @@ export function createProcessEntry(taskId: string): ProcessEntry {
 	};
 }
 
-export const DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER = 3;
-
-export interface EffectiveTerminalRowPolicy {
-	claudeFullscreenEnabled?: boolean;
-}
-
-export function resolveEffectiveTerminalRowMultiplier(
-	agentId: StartTaskSessionRequest["agentId"] | null,
-	hasBrowserOutputListener: boolean,
-	policy: EffectiveTerminalRowPolicy = {},
-): number {
-	if (hasBrowserOutputListener || agentId !== "claude" || policy.claudeFullscreenEnabled === true) {
-		return 1;
-	}
-	return DETACHED_CLAUDE_TERMINAL_ROW_MULTIPLIER;
-}
-
-export function resolveEffectiveTerminalRows(
-	agentId: StartTaskSessionRequest["agentId"] | null,
-	baseRows: number,
-	hasBrowserOutputListener: boolean,
-	policy: EffectiveTerminalRowPolicy = {},
-): number {
-	return (
-		Math.max(1, Math.floor(baseRows)) *
-		resolveEffectiveTerminalRowMultiplier(agentId, hasBrowserOutputListener, policy)
-	);
-}
-
 /** Check whether any listener has an output handler attached. */
 export function hasLiveOutputListener(entry: ProcessEntry): boolean {
 	for (const listener of entry.listeners.values()) {
@@ -305,9 +273,7 @@ export interface CreateActiveProcessStateOptions {
 	agentId: StartTaskSessionRequest["agentId"] | null;
 	launchBinary?: string | null;
 	launchProfileEnvironment?: NativeTaskSessionProfileEnvironment;
-	claudeFullscreenEnabled?: boolean;
 	cols: number;
-	baseRows: number;
 	rows: number;
 	willAutoTrust: boolean;
 	launch?: PreparedAgentLaunch;
@@ -321,10 +287,8 @@ export function createActiveProcessState(opts: CreateActiveProcessStateOptions):
 		agentId: opts.agentId,
 		launchBinary: opts.launchBinary ?? null,
 		launchProfileEnvironment: { ...opts.launchProfileEnvironment },
-		claudeFullscreenEnabled: opts.agentId === "claude" && opts.claudeFullscreenEnabled === true,
 		workspaceTrustBuffer: opts.willAutoTrust ? "" : null,
 		cols: opts.cols,
-		baseRows: opts.baseRows,
 		rows: opts.rows,
 		terminalProtocolFilter: createTerminalProtocolFilterState({
 			interceptOscColorQueries: true,
