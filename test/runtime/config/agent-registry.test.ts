@@ -65,7 +65,7 @@ function mockSuccessfulAgentProbe(): void {
 			}
 			callback(
 				null,
-				normalizedBinary === "pi" || normalizedBinary.endsWith("/pi.exe") ? "0.84.3\n" : "0.147.0\n",
+				normalizedBinary === "pi" || normalizedBinary.endsWith("/pi.exe") ? "0.84.3\n" : "0.157.0\n",
 				"",
 			);
 			return {} as ChildProcess;
@@ -171,7 +171,7 @@ describe("agent-registry", () => {
 		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
 			const callback = readExecFileCallback(rest);
 			if (args[0] === "--version") {
-				callback(null, "0.146.9\n", "");
+				callback(null, "0.156.0\n", "");
 				return {} as ChildProcess;
 			}
 			if (args[0] === "features" && args[1] === "list") {
@@ -189,7 +189,7 @@ describe("agent-registry", () => {
 		expect(resolved).toBeNull();
 		expect(codex?.installed).toBe(false);
 		expect(codex?.status).toBe("upgrade_required");
-		expect(codex?.statusMessage).toContain("0.147.0");
+		expect(codex?.statusMessage).toContain("0.157.0");
 	});
 
 	it("caches availability probes across repeated config loads", async () => {
@@ -212,7 +212,7 @@ describe("agent-registry", () => {
 			const callback = readExecFileCallback(rest);
 			setTimeout(() => {
 				if (args[0] === "--version") {
-					callback(null, "0.147.0\n", "");
+					callback(null, "0.157.0\n", "");
 					return;
 				}
 				if (args[0] === "features" && args[1] === "list") {
@@ -277,7 +277,7 @@ describe("agent-registry", () => {
 					);
 					return {} as ChildProcess;
 				}
-				callback(null, "0.147.0\n", "");
+				callback(null, "0.157.0\n", "");
 				return {} as ChildProcess;
 			}
 			callback(null, "hooks stable true\n", "");
@@ -347,7 +347,7 @@ describe("agent-registry", () => {
 					);
 					return {} as ChildProcess;
 				}
-				callback(null, "0.147.0\n", "");
+				callback(null, "0.157.0\n", "");
 				return {} as ChildProcess;
 			}
 			callback(null, "hooks stable true\n", "");
@@ -473,7 +473,7 @@ describe("agent-registry", () => {
 		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
 			const callback = readExecFileCallback(rest);
 			if (args[0] === "--version") {
-				callback(null, "0.147.0\n", "");
+				callback(null, "0.157.0\n", "");
 				return {} as ChildProcess;
 			}
 			if (args[0] === "features" && args[1] === "list") {
@@ -514,7 +514,7 @@ describe("agent-registry", () => {
 				const callback = readExecFileCallback(rest);
 				const commandLine = args.join(" ");
 				if (commandLine.includes("--version")) {
-					callback(null, "0.147.0\n", "");
+					callback(null, "0.157.0\n", "");
 					return {} as ChildProcess;
 				}
 				if (commandLine.includes("features") && commandLine.includes("list")) {

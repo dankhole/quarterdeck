@@ -4,6 +4,8 @@
 
 ## [0.12.7] - 2026-09-24
 
+- Require Codex 0.157.0+ and launch task terminals with `--no-daemon` to preserve managed process ownership. Force fullscreen transcripts for start, resume, and fork, overriding conflicting scrollback settings without changing global Codex configuration.
+
 - Preserve mouse encoding when restoring agent terminals so moving or scrolling the mouse does not inject stray characters into chats.
 
 - Let merges and rebases complete once conflicts are resolved without requiring per-file review of automatic merges. Show completion failures and direct selected-file commits to the active operation.

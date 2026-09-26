@@ -69,7 +69,7 @@ export type AgentAvailabilityDiagnosticEvent =
 
 export type AgentAvailabilityDiagnosticSink = (event: AgentAvailabilityDiagnosticEvent) => void;
 
-const MINIMUM_CODEX_VERSION = "0.147.0";
+const MINIMUM_CODEX_VERSION = "0.157.0";
 const MINIMUM_CLAUDE_VERSION = "2.1.198";
 export const SUPPORTED_PI_VERSION = "0.84.3";
 const PROBE_OUTPUT_SNIPPET_MAX_LENGTH = 500;

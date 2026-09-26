@@ -35,6 +35,31 @@ function approvalScreen(title: string, footer = "Press enter to confirm or esc t
 }
 
 describe("createCodexApprovalPromptDetector", () => {
+	it("recognizes the 0.157.0 fullscreen command approval below visible conversation history", () => {
+		// Layout observed in the real-Codex Agent Lab, including its bottom-anchored footer.
+		const lines = Array.from({ length: 50 }, () => "");
+		lines[0] = "• ORBIT-157";
+		lines.splice(
+			36,
+			14,
+			"  Would you like to run the following command?",
+			"",
+			"  Environment: local",
+			"",
+			"  Reason: May I run the requested command with elevated permissions?",
+			"",
+			"  $ printf test > daemon-check.txt",
+			"",
+			"",
+			"› 1. Yes, proceed (y)",
+			"  2. Yes, and don't ask again for commands that start with `printf test > daemon-check.txt` (p)",
+			"  3. No, and tell Codex what to do differently (esc)",
+			"",
+			"  Press enter to confirm or esc to cancel",
+		);
+		expect(isCodexApprovalScreen(screen(lines, { cols: 167, rows: 50 }))).toBe(true);
+	});
+
 	it("detects a rendered canonical command approval bottom pane", () => {
 		const detector = createCodexApprovalPromptDetector();
 

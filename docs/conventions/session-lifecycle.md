@@ -131,6 +131,10 @@ Claude fullscreen scrolling is application-owned rather than xterm scrollback. F
 
 ### Codex hooks and launch arguments
 
+- Codex requires 0.157.0 or newer. Native task launches pass `--no-daemon` before `resume` or `fork` so the managed PTY does not attach to Codex's shared background server. Keep this flag out of shared app-server preparation.
+
+- Native Codex task launches enforce `tui.fullscreen_transcript=true`, `tui.alternate_screen="always"`, and `tui.raw_output_mode=false`, replacing conflicting overrides and removing `--no-alt-screen`. Keep these renderer arguments in the native adapter, before `resume` or `fork`; shared app-server preparation does not own TUI rendering. These are launch-scoped settings, not edits to user configuration.
+
 - Codex `/btw` runs in a distinct ephemeral provider thread. Keep native `session_id` scope separate from turn ordering: hooks from that side thread cannot author the main task's state, interaction, completion summary, or `resumeSessionId`. Explicit Codex subagent hooks are also non-foreground. A newer native `SessionStart` with a transcript path permits persistent-session navigation; an ephemeral side-thread start cannot replace the main identity. Durable receipts retain provider session identity and transcript-presence metadata (never the path) to reconstruct the same scope. Do not revive retired main turns merely because a different provider thread emitted a hook.
 
 - Subscribe to Codex `SessionStart` sources `startup|resume|clear`. New-conversation navigation emits `clear`; omitting it leaves the old foreground session ID authoritative and rejects every later working hook. SessionStart only transfers persistent-session identity into Review/Unconfirmed; subsequent native work establishes Running. Keep ephemeral side-thread and explicit subagent fences intact.

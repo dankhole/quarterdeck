@@ -452,6 +452,19 @@ export async function prepareCodexLaunchConfiguration(
 const codexAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const { args: codexArgs, env } = await prepareCodexLaunchConfiguration(input);
+		// Keep the managed PTY responsible for the session rather than a shared daemon.
+		removeCliOption(codexArgs, "--no-daemon");
+		insertCodexGlobalArgs(codexArgs, ["--no-daemon"]);
+		// Renderer policy belongs to native TUI launches, not shared app-server configuration.
+		removeCliOption(codexArgs, "--no-alt-screen");
+		for (const [key, value] of [
+			["tui.fullscreen_transcript", "true"],
+			["tui.alternate_screen", '"always"'],
+			["tui.raw_output_mode", "false"],
+		]) {
+			removeCodexConfigOverrides(codexArgs, key);
+			insertCodexGlobalArgs(codexArgs, ["-c", `${key}=${value}`]);
+		}
 		const binary = input.binary;
 		const approvalPromptDetector = createCodexApprovalPromptDetector();
 		const turnInterruptionDetector = createCodexTurnInterruptionDetector();

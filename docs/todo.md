@@ -17,6 +17,8 @@ These are broader architecture refactor targets confirmed against implementation
 
 ## Codex native hooks parity follow-ups
 
+- Codex 0.157.0 fullscreen approval cancellation can leave the stored permission `response_submitted`: a provider tip row between the complete interruption result and the composer defeats `isCodexTurnInterruptedScreen`. Real-Codex lab `codex-157-owned-20260926T001500Z-1a3c6b` reproduced this after Escape; the UI stopped advertising the approval, but the interaction was not fully retired. Preserve the detector's rejection of historical interruptions when handling provider-owned composer chrome.
+
 - Revisit and remove the temporary rendered-screen approval shim in `src/terminal/codex-approval-prompt.ts`. Track upstream Codex releases until nested Code Mode approvals reliably emit the structured `PermissionRequest` hook, then verify command, edit, network, permission, and nested-tool approvals before raising Quarterdeck's minimum version and deleting the detector/reset path. While the shim remains, profile attached high-output Codex sessions for CPU, allocation, and output-latency impact from per-write viewport inspection; optimize if material without broadening the fallback into transcript-based lifecycle inference.
 - Revisit remaining Codex slash-command lifecycle parity before declaring full Claude Code parity. Manual `/compact` now uses its dedicated paired hooks as activity-only observations while automatic compaction stays state-neutral, but `/resume`, plugin reloads, and other TUI-local commands still lack stable start/finish boundaries. Keep those unpaired maintenance signals activity-only; they must not move review-ready cards to running.
 

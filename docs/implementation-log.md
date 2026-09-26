@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-25 — Keep Codex 0.157 native sessions out of the shared daemon
+
+Raised the Codex compatibility floor and active fixtures to 0.157.0. Native task launches now normalize one `--no-daemon` argument before resume/fork, force fullscreen transcript and alternate-screen mode, and disable initial raw scrollback mode. These flags belong to the native adapter, not the shared app-server preparation path; user-global configuration remains untouched. Updated the availability gate, launch tests, README, lifecycle conventions, and changelog.
+
+Validation: 152 focused adapter, availability/selection, execution-ownership, and rendered-screen detector tests; runtime TypeScript; targeted Biome. Real-Codex Agent Lab `codex-157-owned-20260926T001500Z-1a3c6b` used a tiny synthetic task with GPT-5.6-Luna Low: fullscreen startup and native Stop reached Review; Restart exited the original process, launched a replacement carrying `--no-daemon`, preserved the exact provider session ID, and recalled the original marker. A real command permission rendered in fullscreen and reached Waiting for approval through the native hook. Escape removed the actionable wait, but a new tip row prevented the interruption fallback from retiring the stored `response_submitted` interaction; this limitation is tracked in `docs/todo.md`. The captured approval layout also has a focused detector regression test. This run does not establish universal hookless approval parity or cold-runtime recovery. The run stopped cleanly with no forbidden host launches and no Doctor findings at the final live checkpoint.
+
 ## 2026-09-25 — Preserve mouse encoding during terminal restore
 
 Mouse movement inserted stray characters into a live Codex composer. A synthetic reproduction showed that xterm's serialize addon retained DEC mouse tracking while omitting SGR encoding, so a restored viewer reverted to legacy mouse reports. `src/terminal/terminal-state-mirror.ts` now observes encoding changes and full reset through non-consuming public parser handlers, then appends the current encoding to the snapshot. Tracking and encoding must survive restoration together; filtering apparent garbage from user input would hide the protocol mismatch and could discard real input.

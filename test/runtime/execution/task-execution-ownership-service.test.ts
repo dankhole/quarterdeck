@@ -1034,6 +1034,7 @@ describe("TaskExecutionOwnershipService", { concurrent: false }, () => {
 			]),
 		);
 		expect(structuredLaunches[0]?.args).not.toContain("resume");
+		expect(structuredLaunches[0]?.args).not.toContain("--no-daemon");
 		expect(structuredLaunches[0]?.env).toMatchObject({
 			QUARTERDECK_HOOK_PROJECT_ID: "project-1",
 			QUARTERDECK_HOOK_TASK_ID: "task-1",

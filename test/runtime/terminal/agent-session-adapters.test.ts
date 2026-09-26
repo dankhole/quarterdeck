@@ -319,7 +319,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 		).toBe(false);
 		expect(launch.args.slice(0, 2)).toEqual(["--enable", "hooks"]);
 		const hookOverrideArgs = launch.args.slice(2);
-		expect(hookOverrideArgs.length).toBe(Object.keys(buildCodexHooksConfig()).length * 2 + 4);
+		expect(hookOverrideArgs.length).toBe(Object.keys(buildCodexHooksConfig()).length * 2 + 11);
+		expect(launch.args).toContain("--no-daemon");
 		expect(hookOverrideArgs).toContain("-c");
 		expect(hookOverrideArgs.join("\n")).toContain("hooks.SessionStart=");
 		expect(hookOverrideArgs.join("\n")).toContain("hooks.state=");
@@ -508,6 +509,45 @@ describe("prepareAgentLaunch hook strategies", () => {
 
 		expect(launch.args).not.toContain("--approve-for-me");
 		expect(getCodexConfigOverrideValues(launch.args, "approvals_reviewer")).toEqual([]);
+	});
+
+	it.each(["start", "resume", "fork"])("enforces fullscreen without a daemon for Codex %s launches", async (mode) => {
+		setupTempHome();
+		const args = [
+			"--no-alt-screen",
+			"--no-daemon",
+			"--no-daemon",
+			"-c",
+			"tui.fullscreen_transcript=false",
+			"--config",
+			'tui.alternate_screen="never"',
+			"-c=tui.raw_output_mode=true",
+			"--config=tui.fullscreen_transcript=false",
+			...(mode === "start" ? [] : [mode, "session-1"]),
+		];
+		const originalArgs = [...args];
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-fullscreen",
+			agentId: "codex",
+			binary: "codex",
+			args,
+			cwd: "/tmp",
+			prompt: "--no-alt-screen",
+		});
+
+		const optionEnd = mode === "start" ? launch.args.indexOf("--") : launch.args.indexOf(mode);
+		const options = launch.args.slice(0, optionEnd);
+		expect(options).not.toContain("--no-alt-screen");
+		expect(options.filter((arg) => arg === "--no-daemon")).toHaveLength(1);
+		expect(getCodexConfigOverrideValues(options, "tui.fullscreen_transcript")).toEqual(["true"]);
+		expect(getCodexConfigOverrideValues(options, "tui.alternate_screen")).toEqual(['"always"']);
+		expect(getCodexConfigOverrideValues(options, "tui.raw_output_mode")).toEqual(["false"]);
+		expect(launch.args.slice(optionEnd)).toEqual([
+			...(mode === "start" ? [] : [mode, "session-1"]),
+			"--",
+			"--no-alt-screen",
+		]);
+		expect(args).toEqual(originalArgs);
 	});
 
 	it("disables Codex startup update checks for Quarterdeck-launched sessions", async () => {
@@ -952,6 +992,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 
 		const resumeIndex = launch.args.indexOf("resume");
 		expect(resumeIndex).toBeGreaterThan(0);
+		expect(launch.args.indexOf("--no-daemon")).toBeGreaterThan(-1);
+		expect(launch.args.indexOf("--no-daemon")).toBeLessThan(resumeIndex);
 		expect(launch.args.slice(resumeIndex, resumeIndex + 2)).toEqual([
 			"resume",
 			"019d6fa0-db65-7f83-9531-35df54674d76",
@@ -967,6 +1009,9 @@ describe("prepareAgentLaunch hook strategies", () => {
 			"hooks.PreCompact",
 			"hooks.PostCompact",
 			"check_for_update_on_startup",
+			"tui.fullscreen_transcript",
+			"tui.alternate_screen",
+			"tui.raw_output_mode",
 			"developer_instructions",
 		]) {
 			const configIndex = launch.args.findIndex((arg) => arg.startsWith(`${key}=`));

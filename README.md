@@ -44,7 +44,7 @@ The commands below are the shortest macOS/Linux setup path. Follow the linked of
 | Agent | Install | Sign in | Verify | Version required by Quarterdeck |
 | --- | --- | --- | --- | --- |
 | [Claude Code](https://code.claude.com/docs/en/getting-started) | `curl -fsSL https://claude.ai/install.sh \| bash` | Run `claude` and follow the browser prompt | `claude auth status` | 2.1.198+ |
-| [OpenAI Codex](https://developers.openai.com/codex/cli) | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` | `codex login` | `codex login status` | 0.147.0+ with native hooks |
+| [OpenAI Codex](https://developers.openai.com/codex/cli) | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` | `codex login` | `codex login status` | 0.157.0+ with native hooks |
 | [Pi 0.84.3](https://www.npmjs.com/package/@earendil-works/pi-coding-agent/v/0.84.3) | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.84.3` | Run `pi`, then enter `/login` | Start `pi` successfully | Exactly 0.84.3 |
 
 On native Windows, run the installer from PowerShell:
@@ -57,7 +57,7 @@ On native Windows, run the installer from PowerShell:
 
 Codex supports ChatGPT sign-in with `codex login`. For API-key authentication, set `OPENAI_API_KEY`, then run `printenv OPENAI_API_KEY | codex login --with-api-key` on macOS/Linux or `$env:OPENAI_API_KEY | codex login --with-api-key` in PowerShell. Claude Code requires an account or provider-backed authentication supported by Claude Code. Pi lets you choose a provider during `/login`.
 
-Codex users need Codex 0.147.0 or newer with native hook and auto-review support.
+Codex users need Codex 0.157.0 or newer with native hook and auto-review support.
 
 Claude launch permissions are configurable under Settings → Harnesses → Claude Code for new or restarted sessions. Quarterdeck can inherit Claude's configured default or explicitly start in Claude's native default, accept-edits, plan, auto-preview, don't-ask, or bypass mode; provider-managed policy remains authoritative.
 
@@ -232,7 +232,7 @@ For the full development workflow, see [DEVELOPMENT.md](./DEVELOPMENT.md).
 
 If `quarterdeck` is not found after `npm install --global quarterdeck`, make sure your npm global bin directory is on `PATH`. Contributors using a source checkout can run `npm run link` instead.
 
-If no agent is available, install Claude Code, OpenAI Codex, or Pi and confirm the matching binary (`claude`, `codex`, or `pi`) is available on `PATH`. Quarterdeck requires Claude Code 2.1.198+, Codex 0.147.0+, or exactly Pi 0.84.3 for supported task-agent launches.
+If no agent is available, install Claude Code, OpenAI Codex, or Pi and confirm the matching binary (`claude`, `codex`, or `pi`) is available on `PATH`. Quarterdeck requires Claude Code 2.1.198+, Codex 0.157.0+, or exactly Pi 0.84.3 for supported task-agent launches.
 
 If terminal symbols look wrong, install a Nerd Font and select it in your browser or system terminal font settings.
 
