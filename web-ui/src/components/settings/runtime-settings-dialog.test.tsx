@@ -113,6 +113,48 @@ describe("RuntimeSettingsDialog", () => {
 		}
 	});
 
+	it("loads, edits, and saves the project worktree setup script", async () => {
+		saveMock.mockClear();
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					projectId="project-1"
+					initialConfig={createSavedConfig({
+						projectConfigPath: "/tmp/project/config.json",
+						worktreeSetupScript: "npm ci",
+					})}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+		const input = document.body.querySelector<HTMLTextAreaElement>("#runtime-settings-worktree-setup");
+		expect(input?.value).toBe("npm ci");
+		expect(input?.disabled).toBe(false);
+		await act(async () => {
+			Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(
+				input,
+				"npm ci\nnpm run build",
+			);
+			input?.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		const saveButton = findButtonByText(document.body, "Save");
+		expect(saveButton?.disabled).toBe(false);
+		await act(async () => {
+			saveButton?.click();
+		});
+		expect(saveMock).toHaveBeenCalledWith(expect.objectContaining({ worktreeSetupScript: "npm ci\nnpm run build" }));
+	});
+
+	it("disables worktree setup without a selected project", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog open={true} projectId={null} initialConfig={savedConfig} onOpenChange={() => {}} />,
+			);
+		});
+		expect(document.body.querySelector<HTMLTextAreaElement>("#runtime-settings-worktree-setup")?.disabled).toBe(true);
+	});
+
 	it("does not render support actions inside settings", async () => {
 		await act(async () => {
 			root.render(

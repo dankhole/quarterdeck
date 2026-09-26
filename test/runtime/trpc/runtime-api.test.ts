@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
 import type { RuntimeBoardCard, RuntimeTaskSessionSummary } from "../../../src/core";
 import { STORED_CODEX_RESUME_FAILED_WARNING } from "../../../src/terminal/codex-resume-failure";
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
@@ -15,6 +14,7 @@ const agentRegistryMocks = vi.hoisted(() => ({
 
 const taskWorktreeMocks = vi.hoisted(() => ({
 	assertTaskWorktreeRegistration: vi.fn(async () => {}),
+	finishTaskWorktreeSetup: vi.fn(async (_options: unknown) => {}),
 	resolveTaskCwd: vi.fn(),
 	resolveTaskWorkingDirectory: vi.fn((): Promise<string> => Promise.resolve("/tmp/worktree")),
 	getTaskWorkingDirectory: vi.fn(),
@@ -44,6 +44,10 @@ vi.mock("../../../src/workdir/task-worktree.js", () => ({
 	resolveTaskWorkingDirectory: taskWorktreeMocks.resolveTaskWorkingDirectory,
 	getTaskWorkingDirectory: taskWorktreeMocks.getTaskWorkingDirectory,
 	pathExists: taskWorktreeMocks.pathExists,
+}));
+
+vi.mock("../../../src/workdir/task-worktree-setup", () => ({
+	finishTaskWorktreeSetup: taskWorktreeMocks.finishTaskWorktreeSetup,
 }));
 
 vi.mock("../../../src/workdir/task-worktree-identity.js", () => ({
@@ -168,6 +172,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		agentRegistryMocks.resolveAgentCommand.mockReset();
 		agentRegistryMocks.buildRuntimeConfigResponse.mockReset();
 		taskWorktreeMocks.resolveTaskCwd.mockReset();
+		taskWorktreeMocks.finishTaskWorktreeSetup.mockReset().mockResolvedValue(undefined);
 		turnCheckpointMocks.captureTaskTurnCheckpoint.mockReset();
 		projectStateMocks.loadProjectState.mockReset();
 		taskBoardMutationMocks.findCardInBoard.mockReset();
@@ -773,6 +778,34 @@ describe("createRuntimeApi startTaskSession", () => {
 		await blocker;
 		await expect(start).resolves.toMatchObject({ taskCwd: "/tmp/worktree" });
 		expect(startTaskSession).toHaveBeenCalledTimes(1);
+	});
+
+	it("blocks persisted-worktree launch when setup is incomplete without automatically retrying it", async () => {
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(createCard({ workingDirectory: "/tmp/worktree" }));
+		taskWorktreeMocks.finishTaskWorktreeSetup.mockRejectedValue(
+			new Error("Worktree setup failed. Start the task again to retry."),
+		);
+		const startTaskSession = vi.fn(async () => createSummary());
+		await expect(
+			startTaskSessionThroughService(
+				defaultScope,
+				{
+					taskId: "task-1",
+					baseRef: "main",
+					prompt: "Do something",
+					useWorktree: true,
+				},
+				createDeps({ startTaskSession }),
+			),
+		).rejects.toThrow("Worktree setup failed");
+		expect(taskWorktreeMocks.finishTaskWorktreeSetup).toHaveBeenCalledWith(
+			expect.objectContaining({
+				repoPath: "/tmp/repo",
+				worktreePath: "/tmp/worktree",
+			}),
+		);
+		expect(taskWorktreeMocks.finishTaskWorktreeSetup.mock.calls[0]?.[0]).not.toHaveProperty("retrySetup", true);
+		expect(startTaskSession).not.toHaveBeenCalled();
 	});
 
 	it("checks terminal runtime health before creating a task worktree", async () => {

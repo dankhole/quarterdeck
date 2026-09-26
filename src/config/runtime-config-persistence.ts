@@ -26,6 +26,7 @@ import {
 	normalizePromptTemplate,
 	normalizeShortcutLabel,
 	normalizeShortcuts,
+	normalizeWorktreeSetupScript,
 	type RuntimeGlobalConfigFileShape,
 	type RuntimeProjectConfigFileShape,
 } from "./runtime-config-normalizers";
@@ -275,17 +276,21 @@ export async function writeRuntimeGlobalConfigFile(
 
 export async function writeRuntimeProjectConfigFile(
 	configPath: string | null,
-	config: { shortcuts: RuntimeProjectShortcut[]; defaultBaseRef?: string },
+	config: { shortcuts: RuntimeProjectShortcut[]; defaultBaseRef?: string; worktreeSetupScript?: string },
 ): Promise<void> {
 	const normalizedShortcuts = normalizeShortcuts(config.shortcuts);
 	const normalizedBaseRef = typeof config.defaultBaseRef === "string" ? config.defaultBaseRef.trim() : "";
+	const normalizedSetupScript = normalizeWorktreeSetupScript(config.worktreeSetupScript);
 	if (!configPath) {
 		if (normalizedShortcuts.length > 0) {
 			throw new Error("Cannot save project shortcuts without a selected project.");
 		}
+		if (normalizedSetupScript) {
+			throw new Error("Cannot save a worktree setup script without a selected project.");
+		}
 		return;
 	}
-	if (normalizedShortcuts.length === 0 && !normalizedBaseRef) {
+	if (normalizedShortcuts.length === 0 && !normalizedBaseRef && !normalizedSetupScript) {
 		await rm(configPath, { force: true });
 		return;
 	}
@@ -295,6 +300,9 @@ export async function writeRuntimeProjectConfigFile(
 	}
 	if (normalizedBaseRef) {
 		payload.defaultBaseRef = normalizedBaseRef;
+	}
+	if (normalizedSetupScript) {
+		payload.worktreeSetupScript = normalizedSetupScript;
 	}
 	await lockedFileSystem.writeJsonFileAtomic(configPath, payload, {
 		lock: null,

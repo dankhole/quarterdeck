@@ -117,6 +117,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	logLevel: CONFIG_DEFAULTS.logLevel,
 	fileEditorAutosaveMode: CONFIG_DEFAULTS.fileEditorAutosaveMode,
 	defaultBaseRef: CONFIG_DEFAULTS.defaultBaseRef,
+	worktreeSetupScript: CONFIG_DEFAULTS.worktreeSetupScript,
 	backupIntervalMinutes: CONFIG_DEFAULTS.backupIntervalMinutes,
 	llmConfigured: false,
 };

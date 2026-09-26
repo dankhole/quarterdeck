@@ -37,7 +37,12 @@ import {
 	ProjectTaskLifecycleOperationStore,
 } from "../state";
 import type { StopTaskSessionResult } from "../terminal/session-manager-types";
-import { archiveTaskWorktreeForTrash, ensureTaskWorktreeIfDoesntExist, purgeTaskWorkspaceForDelete } from "../workdir";
+import {
+	archiveTaskWorktreeForTrash,
+	ensureTaskWorktreeIfDoesntExist,
+	pathExists,
+	purgeTaskWorkspaceForDelete,
+} from "../workdir";
 
 import { clearTrashTasks } from "./clear-trash";
 
@@ -69,6 +74,9 @@ export interface ProjectTaskLifecycleServiceDependencies {
 		taskId: string;
 		baseRef: string;
 		branch?: string | null;
+		existingPath?: string;
+		retrySetup?: boolean;
+		onSetupProgress?: (phase: "running" | "succeeded" | "failed") => Promise<void>;
 	}) => Promise<RuntimeWorktreeEnsureResponse>;
 	archiveTaskWorktree?: (options: {
 		repoPath: string;
@@ -698,6 +706,12 @@ export class ProjectTaskLifecycleService {
 				taskId: card.id,
 				baseRef: card.baseRef,
 				branch: card.branch,
+				existingPath:
+					card.workingDirectory && (await pathExists(card.workingDirectory)) ? card.workingDirectory : undefined,
+				retrySetup: operation.attempt === 1,
+				onSetupProgress: async (phase) => {
+					if (phase === "running") operation = await this.setPhase(scope, operation, "running_setup");
+				},
 			});
 			if (!ensured.ok) {
 				const compensated = await this.compensateMove(
@@ -726,6 +740,7 @@ export class ProjectTaskLifecycleService {
 			rows: command.rows,
 			compensateTo: "trash",
 			warning,
+			worktreePrepared: true,
 		});
 	}
 
@@ -911,11 +926,31 @@ export class ProjectTaskLifecycleService {
 			rows?: number;
 			compensateTo: "backlog" | "trash" | null;
 			warning?: string;
+			worktreePrepared?: boolean;
 		},
 	): Promise<RuntimeTaskLifecycleResult> {
-		operation = await this.setPhase(scope, operation, "starting_session");
 		let response: RuntimeTaskSessionStartResponse;
 		try {
+			if (card.useWorktree !== false && !options.worktreePrepared) {
+				operation = await this.setPhase(scope, operation, "ensuring_worktree");
+				const ensured = await (this.dependencies.ensureTaskWorktree ?? ensureTaskWorktreeIfDoesntExist)({
+					cwd: scope.projectPath,
+					taskId: card.id,
+					baseRef: card.baseRef,
+					branch: card.branch,
+					existingPath:
+						card.workingDirectory && (await pathExists(card.workingDirectory))
+							? card.workingDirectory
+							: undefined,
+					retrySetup: operation.attempt === 1,
+					onSetupProgress: async (phase) => {
+						if (phase === "running") operation = await this.setPhase(scope, operation, "running_setup");
+					},
+				});
+				if (!ensured.ok) throw new Error(ensured.error ?? "Could not prepare the task worktree.");
+				options.warning ??= ensured.warning;
+			}
+			operation = await this.setPhase(scope, operation, "starting_session");
 			response = await this.dependencies.startTaskSession(scope, {
 				taskId: card.id,
 				launchOperationId: operation.operationId,

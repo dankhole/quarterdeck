@@ -3,7 +3,11 @@ import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { RuntimeTaskLifecycleCommand, RuntimeTaskSessionSummary } from "../../src/core";
+import type {
+	RuntimeTaskLifecycleCommand,
+	RuntimeTaskSessionSummary,
+	RuntimeWorktreeEnsureResponse,
+} from "../../src/core";
 import { findCardInBoard, getTaskColumnId } from "../../src/core";
 import { ProjectTaskLifecycleService } from "../../src/server";
 import {
@@ -13,9 +17,28 @@ import {
 	ProjectBoardCommandService,
 	ProjectTaskLifecycleOperationStore,
 } from "../../src/state";
+import type * as TaskWorktreeLifecycle from "../../src/workdir/task-worktree-lifecycle";
 import { initGitRepository } from "../utilities/git-env";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
+
+// This suite exercises durable board/lifecycle orchestration. Worktree filesystem
+// behavior has separate integration coverage; the fixtures here intentionally have no commits.
+vi.mock("../../src/workdir/task-worktree-lifecycle", async (importOriginal) => ({
+	...(await importOriginal<typeof TaskWorktreeLifecycle>()),
+	ensureTaskWorktreeIfDoesntExist: async (options: {
+		cwd: string;
+		taskId: string;
+		baseRef: string;
+		branch?: string | null;
+	}) => ({
+		ok: true,
+		path: join(options.cwd, options.taskId),
+		baseRef: options.baseRef,
+		baseCommit: "abc123",
+		branch: options.branch ?? null,
+	}),
+}));
 
 const TASK_SPEC = {
 	taskId: "task-a",
@@ -56,6 +79,112 @@ function createDeferred(): { promise: Promise<void>; resolve: () => void } {
 }
 
 describe("ProjectTaskLifecycleService integration", { concurrent: false }, () => {
+	it("publishes setup progress, prevents launch on failure, and permits a new explicit Start to retry", async () => {
+		await withTemporaryHome(async () => {
+			const { path: projectPath, cleanup } = createTempDir("quarterdeck-setup-lifecycle-");
+			try {
+				initGitRepository(projectPath);
+				const context = await loadProjectContext(projectPath);
+				const scope = { projectId: context.projectId, projectPath };
+				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+				const startTaskSession = vi.fn(async () => ({
+					ok: true,
+					summary: createTestTaskSessionSummary({ taskId: TASK_SPEC.taskId, state: "running" }),
+				}));
+				let setupFails = true;
+				const retryFlags: Array<boolean | undefined> = [];
+				const phases: string[] = [];
+				const lifecycle = new ProjectTaskLifecycleService({
+					boardCommands,
+					startTaskSession,
+					ensureTaskWorktree: async (options) => {
+						retryFlags.push(options.retrySetup);
+						await options.onSetupProgress?.("running");
+						const operation = await lifecycle.getOperation(
+							scope,
+							setupFails ? "create-with-setup" : "retry-setup",
+						);
+						phases.push(operation?.operation.phase ?? "missing");
+						return setupFails
+							? {
+									ok: false,
+									path: null,
+									baseRef: "main",
+									baseCommit: null,
+									error: "Worktree setup failed. Start the task again to retry.",
+								}
+							: { ok: true, path: projectPath, baseRef: "main", baseCommit: "abc", branch: null };
+					},
+				});
+				const first = await executeCreateAndStart(lifecycle, scope, {
+					commandId: "create-with-setup",
+					expectedRevision: (await loadProjectState(projectPath)).revision,
+					task: TASK_SPEC,
+					startedAt: 150,
+				});
+				expect(first.ok).toBe(false);
+				expect(first.error).toContain("Worktree setup failed");
+				expect(startTaskSession).not.toHaveBeenCalled();
+				expect(getTaskColumnId(first.state.board, TASK_SPEC.taskId)).toBe("backlog");
+				setupFails = false;
+				const retried = await lifecycle.execute(scope, {
+					kind: "start",
+					operationId: "retry-setup",
+					taskId: TASK_SPEC.taskId,
+					taskCreatedAt: TASK_SPEC.createdAt,
+					expectedRevision: first.state.revision,
+				});
+				expect(retried.ok).toBe(true);
+				expect(retryFlags).toEqual([true, true]);
+				expect(phases).toEqual(["running_setup", "running_setup"]);
+				expect(startTaskSession).toHaveBeenCalledOnce();
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("does not authorize setup retries while recovering an interrupted lifecycle operation", async () => {
+		await withTemporaryHome(async () => {
+			const { path: projectPath, cleanup } = createTempDir("quarterdeck-setup-recovery-");
+			try {
+				initGitRepository(projectPath);
+				const context = await loadProjectContext(projectPath);
+				const scope = { projectId: context.projectId, projectPath };
+				const operationStore = new ProjectTaskLifecycleOperationStore();
+				await operationStore.begin(scope, {
+					kind: "create_and_start",
+					operationId: "interrupted-setup",
+					expectedRevision: (await loadProjectState(projectPath)).revision,
+					task: TASK_SPEC,
+					startedAt: 150,
+				});
+				const ensureTaskWorktree = vi.fn(
+					async (): Promise<RuntimeWorktreeEnsureResponse> => ({
+						ok: false,
+						path: null,
+						baseRef: "main",
+						baseCommit: null,
+						error: "Setup requires an explicit retry.",
+					}),
+				);
+				const startTaskSession = vi.fn(async () => ({ ok: false, summary: null }));
+				const lifecycle = new ProjectTaskLifecycleService({
+					boardCommands: new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) }),
+					startTaskSession,
+					ensureTaskWorktree,
+					operationStore,
+				});
+				await lifecycle.recover(scope);
+				expect(ensureTaskWorktree).toHaveBeenCalledWith(expect.objectContaining({ retrySetup: false }));
+				expect(startTaskSession).not.toHaveBeenCalled();
+				expect((await lifecycle.getOperation(scope, "interrupted-setup"))?.ok).toBe(false);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("persists, starts, publishes, and safely replays create-and-start without a browser", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-lifecycle-");

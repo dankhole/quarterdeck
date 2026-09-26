@@ -1,22 +1,26 @@
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-
+import { loadRuntimeConfig } from "../config/runtime-config";
 import {
 	areFileSystemPathsEqual,
 	isFileSystemPathWithin,
 	type RuntimeWorktreeDeleteResponse,
 	type RuntimeWorktreeEnsureResponse,
 } from "../core";
-import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
 import { removeDirectoryWithRetries } from "../fs/remove-path";
 import { getTaskWorktreesHomePath, loadProjectContext } from "../state/project-state";
-import { getGitCommandErrorMessage, getGitCommonDir, getGitStdout, readGitHeadInfo, runGit } from "./git-utils";
+import { getGitCommandErrorMessage, getGitStdout, readGitHeadInfo, runGit } from "./git-utils";
 import { assertTaskWorktreeRegistration } from "./task-worktree-identity";
 import { applyTaskPatch, captureTaskPatch, deleteTaskPatchFiles, findTaskPatch } from "./task-worktree-patch";
 import { getWorkdirFolderLabelForWorktreePath, normalizeTaskIdForWorktreePath } from "./task-worktree-path";
-import { initializeSubmodulesIfNeeded, pathExists, syncIgnoredPathsIntoWorktree } from "./task-worktree-symlinks";
+import {
+	finishTaskWorktreeSetup,
+	initializeTaskWorktreeSetup,
+	type WorktreeSetupProgress,
+} from "./task-worktree-setup";
+import { withTaskWorktreeOperationLock, withTaskWorktreeSetupLock } from "./task-worktree-setup-lock";
+import { pathExists } from "./task-worktree-symlinks";
 
-const QUARTERDECK_TASK_WORKTREE_SETUP_LOCKFILE_NAME = "quarterdeck-task-worktree-setup.lock";
 const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 
 function isMissingInitialCommitError(message: string): boolean {
@@ -44,18 +48,6 @@ function getWorktreeBaseRefResolutionErrorMessage(baseRef: string, errorMessage:
 async function tryRunGit(cwd: string, args: string[]): Promise<string | null> {
 	const result = await runGit(cwd, args, USER_GIT_ACTION_OPTIONS);
 	return result.ok ? result.stdout : null;
-}
-
-async function getTaskWorktreeSetupLock(repoPath: string): Promise<LockRequest> {
-	return {
-		path: await getGitCommonDir(repoPath),
-		type: "directory",
-		lockfileName: QUARTERDECK_TASK_WORKTREE_SETUP_LOCKFILE_NAME,
-	};
-}
-
-async function withTaskWorktreeSetupLock<T>(repoPath: string, operation: () => Promise<T>): Promise<T> {
-	return await lockedFileSystem.withLock(await getTaskWorktreeSetupLock(repoPath), operation);
 }
 
 function getWorktreesRootPath(taskId: string): string {
@@ -107,16 +99,6 @@ async function pruneEmptyParents(rootPath: string, fromPath: string): Promise<vo
 	}
 }
 
-async function prepareNewTaskWorktree(repoPath: string, worktreePath: string): Promise<void> {
-	try {
-		await initializeSubmodulesIfNeeded(worktreePath);
-		await syncIgnoredPathsIntoWorktree(repoPath, worktreePath);
-	} catch (error) {
-		await removeTaskWorktreeInternal(repoPath, worktreePath).catch(() => {});
-		throw error;
-	}
-}
-
 // Lifecycle orchestration and low-level compatibility callers must both pass
 // `branch` for branch-aware checkout. The server reads it from durable board
 // state; browser task actions do not supply workspace identity.
@@ -125,22 +107,29 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 	taskId: string;
 	baseRef: string;
 	branch?: string | null;
+	retrySetup?: boolean;
+	onSetupProgress?: WorktreeSetupProgress;
+	/** Server-owned persisted path; never a browser-supplied checkout target. */
+	existingPath?: string;
 }): Promise<RuntimeWorktreeEnsureResponse> {
 	try {
 		const context = await loadProjectContext(options.cwd);
 		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
-		const worktreePath = getTaskWorktreePath(context.repoPath, taskId);
+		const worktreePath = options.existingPath ?? getTaskWorktreePath(context.repoPath, taskId);
+		if (options.existingPath && !(await pathExists(worktreePath))) {
+			throw new Error("The existing task worktree is unavailable. Task files were preserved.");
+		}
 		// Investigation note: ensure is called on every task start. The previous implementation
 		// compared the worktree HEAD to the latest baseRef commit and recreated the worktree
 		// when the base branch advanced, which could destroy valid task progress. Existing
 		// worktrees are now treated as authoritative and only missing worktrees are created.
-		return await withTaskWorktreeSetupLock(context.repoPath, async () => {
+		let newWorktree = false;
+		const result = await withTaskWorktreeSetupLock<RuntimeWorktreeEnsureResponse>(context.repoPath, async () => {
 			if (await pathExists(worktreePath)) {
 				await assertTaskWorktreeRegistration(worktreePath);
 			}
 			const lockedExistingCommit = await tryRunGit(worktreePath, ["rev-parse", "HEAD"]);
 			if (lockedExistingCommit) {
-				await syncIgnoredPathsIntoWorktree(context.repoPath, worktreePath);
 				const headInfo = await readGitHeadInfo(worktreePath);
 				return {
 					ok: true,
@@ -211,7 +200,8 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 					patchWarning: string,
 				): Promise<RuntimeWorktreeEnsureResponse> => {
 					let localWarning: string | undefined;
-					await prepareNewTaskWorktree(context.repoPath, worktreePath);
+					await initializeTaskWorktreeSetup(worktreePath);
+					newWorktree = true;
 					if (storedPatch) {
 						try {
 							await applyTaskPatch(storedPatch.path, worktreePath);
@@ -292,7 +282,8 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 					USER_GIT_ACTION_OPTIONS,
 				);
 			}
-			await prepareNewTaskWorktree(context.repoPath, worktreePath);
+			await initializeTaskWorktreeSetup(worktreePath);
+			newWorktree = true;
 
 			if (storedPatch && baseCommit === storedPatch.commit) {
 				try {
@@ -312,6 +303,18 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 				warning,
 			};
 		});
+		if (result.ok) {
+			const config = await loadRuntimeConfig(context.projectId);
+			await finishTaskWorktreeSetup({
+				repoPath: context.repoPath,
+				worktreePath,
+				script: config.worktreeSetupScript,
+				newWorktree,
+				retrySetup: options.retrySetup,
+				onSetupProgress: options.onSetupProgress,
+			});
+		}
+		return result;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		return {
@@ -337,36 +340,38 @@ export async function archiveTaskWorktreeForTrash(options: {
 		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 		const rootPath = getWorktreesBaseRootPath();
 		const worktreePath = getTaskWorktreePath(options.repoPath, taskId);
-		return await withTaskWorktreeSetupLock(options.repoPath, async () => {
-			if (!(await pathExists(worktreePath))) {
+		return await withTaskWorktreeOperationLock(options.repoPath, worktreePath, async () =>
+			withTaskWorktreeSetupLock(options.repoPath, async () => {
+				if (!(await pathExists(worktreePath))) {
+					await pruneEmptyParents(rootPath, dirname(worktreePath));
+					return {
+						ok: true,
+						removed: false,
+					};
+				}
+
+				if (await pathExists(join(worktreePath, ".git"))) {
+					await assertTaskWorktreeRegistration(worktreePath);
+				}
+				try {
+					await captureTaskPatch({
+						repoPath: options.repoPath,
+						taskId,
+						worktreePath,
+					});
+				} catch {
+					// Patch capture is best-effort. A corrupted or partially-created
+					// worktree (e.g. plain directory, no git init) should still be removed.
+				}
+				const removed = await removeTaskWorktreeInternal(options.repoPath, worktreePath);
 				await pruneEmptyParents(rootPath, dirname(worktreePath));
+
 				return {
 					ok: true,
-					removed: false,
+					removed,
 				};
-			}
-
-			if (await pathExists(join(worktreePath, ".git"))) {
-				await assertTaskWorktreeRegistration(worktreePath);
-			}
-			try {
-				await captureTaskPatch({
-					repoPath: options.repoPath,
-					taskId,
-					worktreePath,
-				});
-			} catch {
-				// Patch capture is best-effort. A corrupted or partially-created
-				// worktree (e.g. plain directory, no git init) should still be removed.
-			}
-			const removed = await removeTaskWorktreeInternal(options.repoPath, worktreePath);
-			await pruneEmptyParents(rootPath, dirname(worktreePath));
-
-			return {
-				ok: true,
-				removed,
-			};
-		});
+			}),
+		);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		return {
@@ -387,14 +392,16 @@ export async function purgeTaskWorkspaceForDelete(options: {
 		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 		const rootPath = getWorktreesBaseRootPath();
 		const worktreePath = getTaskWorktreePath(options.repoPath, taskId);
-		return await withTaskWorktreeSetupLock(options.repoPath, async () => {
-			const removed = (await pathExists(worktreePath))
-				? await removeTaskWorktreeInternal(options.repoPath, worktreePath)
-				: false;
-			await deleteTaskPatchFiles(taskId);
-			await pruneEmptyParents(rootPath, dirname(worktreePath));
-			return { ok: true, removed };
-		});
+		return await withTaskWorktreeOperationLock(options.repoPath, worktreePath, async () =>
+			withTaskWorktreeSetupLock(options.repoPath, async () => {
+				const removed = (await pathExists(worktreePath))
+					? await removeTaskWorktreeInternal(options.repoPath, worktreePath)
+					: false;
+				await deleteTaskPatchFiles(taskId);
+				await pruneEmptyParents(rootPath, dirname(worktreePath));
+				return { ok: true, removed };
+			}),
+		);
 	} catch (error) {
 		return {
 			ok: false,

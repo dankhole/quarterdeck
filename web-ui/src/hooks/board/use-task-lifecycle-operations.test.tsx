@@ -205,6 +205,51 @@ describe("useTaskLifecycleOperations", () => {
 		expect(notifyErrorMock).not.toHaveBeenCalled();
 	});
 
+	it("shows durable setup progress while launch waits and replaces it on completion", async () => {
+		vi.useFakeTimers();
+		try {
+			const deferred = createDeferred<RuntimeTaskLifecycleResult>();
+			executeTaskLifecycleMutateMock.mockReturnValue(deferred.promise);
+			let resultPromise: Promise<RuntimeTaskLifecycleResult | null> | undefined;
+			await act(async () => {
+				resultPromise = requireSnapshot(latestSnapshot).executeTaskLifecycle({
+					kind: "start",
+					taskId: "task-1",
+					taskCreatedAt: 1,
+				});
+			});
+			const operationId = requireSnapshot(latestSnapshot).pendingTaskLifecycleById["task-1"]?.operationId;
+			if (!operationId) throw new Error("Expected a pending task operation.");
+			getTaskLifecycleOperationQueryMock.mockResolvedValue(
+				createResult({
+					operation: { ...createResult().operation, operationId, status: "pending", phase: "running_setup" },
+				}),
+			);
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(1000);
+			});
+			expect(requireSnapshot(latestSnapshot).pendingTaskLifecycleById["task-1"]?.label).toBe(
+				"Running worktree setup script",
+			);
+			expect(showAppToastMock).toHaveBeenCalledWith(
+				expect.objectContaining({ message: "Running worktree setup script…" }),
+				operationId,
+			);
+			expect(applyLifecycleProjectState).not.toHaveBeenCalled();
+			await act(async () => {
+				deferred.resolve(createResult());
+				await resultPromise;
+			});
+			expect(showAppToastMock).toHaveBeenLastCalledWith(
+				{ intent: "success", message: "Worktree ready. Agent started." },
+				operationId,
+			);
+			expect(requireSnapshot(latestSnapshot).pendingTaskLifecycleById).toEqual({});
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("does not send a lifecycle operation when pending board commands fail to flush", async () => {
 		flushBoardCommands.mockResolvedValue({ ok: false, message: "revision conflict" });
 		await act(async () => {

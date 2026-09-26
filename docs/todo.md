@@ -12,7 +12,6 @@ Tracking note:
 
 These are broader architecture refactor targets confirmed against implementation files and worth keeping visible.
 
-- Replace broad ignored-path worktree symlinking with an explicit allowlist plus project-level opt-ins. The current denylist protects mutable dependency trees (`node_modules`) and known build outputs such as `.NET` `bin/`, `obj/`, and `TestResults/`; the safer long-term contract is to mirror only high-confidence immutable setup paths and let projects opt into additional ignored paths intentionally. Installed dependency directories must remain task-owned and are never eligible for sharing.
 - Decide whether home/task shell terminals should survive panel minimization and context switching. If persistence is desirable, design explicit IDE-style shell tabs with visible ownership and lifecycle instead of resurrecting hidden terminals into blank/loading panes; otherwise document close/dispose as the intended behavior.
 
 ## Codex native hooks parity follow-ups

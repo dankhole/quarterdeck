@@ -65,6 +65,7 @@ export const CONFIG_DEFAULTS = {
 	...getGlobalConfigDefaults(),
 	selectedAgentId: DEFAULT_AGENT_ID,
 	defaultBaseRef: "",
+	worktreeSetupScript: "",
 	audibleNotificationEvents: { ...DEFAULT_AUDIBLE_NOTIFICATION_EVENTS },
 	audibleNotificationSuppressCurrentProject: { ...DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT },
 };

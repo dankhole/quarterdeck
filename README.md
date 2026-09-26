@@ -16,7 +16,7 @@ Quarterdeck detects installed agent CLIs from your `PATH`, starts a local runtim
 
 - Runs many coding-agent tasks side by side from one browser UI.
 - Gives each task its own terminal, review state, git metadata, and optional isolated worktree.
-- Mirrors eligible ignored project setup paths into task worktrees while keeping mutable dependency trees such as `node_modules` isolated per checkout.
+- Copies explicitly included ignored setup files into task worktrees and can run a project setup script, while keeping `node_modules` isolated per checkout.
 - Tracks latest agent activity, permission/input needs, review readiness, and file changes on each card.
 - Provides task diffs, "Last Turn" checkpoint diffs, file browsing, branch comparison, line comments, commit, push, Open PR, and cherry-pick flows.
 - Supports project script shortcuts for commands such as `npm run dev` and prompt shortcuts for repeatable agent instructions such as Commit or Squash Merge.
@@ -193,7 +193,7 @@ npm run unlink
 
 3. Start agents.
 
-   Starting a card launches the configured agent. By default, Quarterdeck creates an isolated git worktree for the task, mirrors eligible ignored setup paths, and injects worktree context so the agent understands where it is working. Mutable installed dependency directories such as `node_modules` are never shared; install task-specific dependencies inside the worktree when needed. If your workflow modifies other ignored files directly, worktree symlinks can be disabled in settings.
+   Starting a card launches the configured agent. By default, Quarterdeck creates an isolated git worktree, copies ignored files selected by `.worktreeinclude`, runs the project’s optional setup script, and injects worktree context. Configure **Worktree setup script** in project Settings to install task-local dependencies automatically. See [worktree setup](docs/worktree-setup.md) for include patterns, script behavior, and failure recovery.
 
 4. Monitor progress.
 

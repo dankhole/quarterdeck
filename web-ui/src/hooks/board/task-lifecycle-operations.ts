@@ -1,4 +1,8 @@
-import type { RuntimeTaskLifecycleCommand, RuntimeTaskLifecycleOutcomeCode } from "@/runtime/types";
+import type {
+	RuntimeTaskLifecycleCommand,
+	RuntimeTaskLifecycleOperationPhase,
+	RuntimeTaskLifecycleOutcomeCode,
+} from "@/runtime/types";
 
 export type TaskLifecycleCommandDraft = RuntimeTaskLifecycleCommand extends infer Command
 	? Command extends RuntimeTaskLifecycleCommand
@@ -49,7 +53,12 @@ export function getTaskLifecycleFailureMessage(
 	}
 }
 
-export function getTaskLifecyclePendingLabel(kind: RuntimeTaskLifecycleCommand["kind"]): string {
+export function getTaskLifecyclePendingLabel(
+	kind: RuntimeTaskLifecycleCommand["kind"],
+	phase?: RuntimeTaskLifecycleOperationPhase,
+): string {
+	if (phase === "running_setup") return "Running worktree setup script";
+	if (phase === "ensuring_worktree") return "Preparing worktree";
 	switch (kind) {
 		case "start":
 		case "create_and_start":

@@ -208,6 +208,35 @@ export function RuntimeSettingsDialog({
 						{config?.projectConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 					</p>
 
+					<div className="mt-4">
+						<label
+							htmlFor="runtime-settings-worktree-setup"
+							className="block text-[13px] font-semibold text-text-primary mb-2"
+						>
+							Worktree setup script
+						</label>
+						<textarea
+							id="runtime-settings-worktree-setup"
+							aria-describedby="runtime-settings-worktree-setup-description"
+							value={fields.worktreeSetupScript}
+							onChange={(event) => setField("worktreeSetupScript", event.target.value)}
+							disabled={controlsDisabled || !config?.projectConfigPath}
+							rows={4}
+							spellCheck={false}
+							placeholder="npm ci"
+							className="w-full rounded-md border border-border bg-surface-2 px-3 py-2 font-mono text-[13px] text-text-primary focus:border-border-focus focus:outline-none disabled:opacity-40"
+						/>
+						<p
+							id="runtime-settings-worktree-setup-description"
+							className="text-text-secondary text-[13px] mt-1 mb-0"
+						>
+							Runs in each new isolated worktree after copying .worktreeinclude files and before the agent
+							starts. Use it to install local dependencies. A failed setup blocks launch until you retry;
+							successful setup does not run again on resume. Uses sh on macOS/Linux and PowerShell on Windows,
+							with a 10-minute limit. Leave blank to skip setup.
+						</p>
+					</div>
+
 					<ShortcutsSection
 						{...sectionProps}
 						sectionRef={shortcutsSectionRef}

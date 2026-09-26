@@ -79,6 +79,7 @@ export const runtimeConfigResponseSchema = z.object({
 	logLevel: z.enum(["debug", "info", "warn", "error"]),
 	fileEditorAutosaveMode: z.enum(["off", "delay", "focus"]),
 	defaultBaseRef: z.string(),
+	worktreeSetupScript: z.string(),
 	backupIntervalMinutes: z.number(),
 	llmConfigured: z.boolean(),
 });
@@ -132,6 +133,7 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	logLevel: z.enum(["debug", "info", "warn", "error"]).optional(),
 	fileEditorAutosaveMode: z.enum(["off", "delay", "focus"]).optional(),
 	defaultBaseRef: z.string().optional(),
+	worktreeSetupScript: z.string().optional(),
 	backupIntervalMinutes: z.number().min(0).optional(),
 });
 export type RuntimeConfigSaveRequest = z.infer<typeof runtimeConfigSaveRequestSchema>;

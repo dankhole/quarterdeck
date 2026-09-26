@@ -12,19 +12,14 @@ import {
 import { runGit } from "../utilities/git-env";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
-function expectMirroredDirectoryPath(path: string): void {
-	expect(existsSync(path)).toBe(true);
-	expect(lstatSync(path).isSymbolicLink()).toBe(true);
+function expectCopiedDirectoryPath(path: string): void {
+	expect(lstatSync(path).isDirectory()).toBe(true);
+	expect(lstatSync(path).isSymbolicLink()).toBe(false);
 }
 
-function expectMirroredFilePath(path: string, expectedContent: string): void {
-	expect(existsSync(path)).toBe(true);
-	const stat = lstatSync(path);
-	if (process.platform === "win32") {
-		expect(stat.isSymbolicLink() || stat.isFile()).toBe(true);
-	} else {
-		expect(stat.isSymbolicLink()).toBe(true);
-	}
+function expectCopiedFilePath(path: string, expectedContent: string): void {
+	expect(lstatSync(path).isFile()).toBe(true);
+	expect(lstatSync(path).isSymbolicLink()).toBe(false);
 	expect(readFileSync(path, "utf8")).toBe(expectedContent);
 }
 
@@ -37,6 +32,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 				mkdirSync(repoPath, { recursive: true });
 
 				runGit(repoPath, ["init"]);
+				writeFileSync(join(repoPath, ".worktreeinclude"), "*\n", "utf8");
 				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
 				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
@@ -56,7 +52,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 		});
 	});
 
-	it("keeps mirrored ignored files and directories ignored in task worktrees", async () => {
+	it("keeps included ignored files and directories ignored in task worktrees", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-");
 			try {
@@ -64,6 +60,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 				mkdirSync(repoPath, { recursive: true });
 
 				runGit(repoPath, ["init"]);
+				writeFileSync(join(repoPath, ".worktreeinclude"), "*\n", "utf8");
 				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
 				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
@@ -99,31 +96,34 @@ describe("task-worktree integration", { concurrent: false }, () => {
 
 				const huskyIgnoredPath = join(ensured.path, ".husky", "_");
 				const setupFilePath = join(ensured.path, ".task-setup.env");
-				expectMirroredDirectoryPath(huskyIgnoredPath);
-				expectMirroredFilePath(setupFilePath, "TASK_SETUP=ready\n");
+				expectCopiedDirectoryPath(huskyIgnoredPath);
+				expectCopiedFilePath(setupFilePath, "TASK_SETUP=ready\n");
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".husky/_"])).toBe("");
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".task-setup.env"])).toBe("");
 				if (existsSync(huskyIgnoredPath)) {
-					expect(runGit(ensured.path, ["check-ignore", "-v", ".husky/_"])).toContain("info/exclude");
+					expect(runGit(ensured.path, ["check-ignore", "-v", ".husky/_/pre-commit"])).toContain("pre-commit");
 				}
 				expect(runGit(ensured.path, ["check-ignore", "-v", ".task-setup.env"])).toContain(".task-setup.env");
 
+				writeFileSync(join(repoPath, ".gitignore"), "*.env\n", "utf8");
+				writeFileSync(join(repoPath, ".task-setup-later.env"), "later\n", "utf8");
 				const ensuredAgain = await ensureTaskWorktreeIfDoesntExist({
 					cwd: repoPath,
 					taskId: "task-1",
 					baseRef: "HEAD",
 				});
 				expect(ensuredAgain.ok).toBe(true);
+				expect(existsSync(join(ensured.path, ".task-setup-later.env"))).toBe(false);
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".husky/_"])).toBe("");
-				expectMirroredDirectoryPath(huskyIgnoredPath);
-				expectMirroredFilePath(setupFilePath, "TASK_SETUP=ready\n");
+				expectCopiedDirectoryPath(huskyIgnoredPath);
+				expectCopiedFilePath(setupFilePath, "TASK_SETUP=ready\n");
 			} finally {
 				cleanup();
 			}
 		});
 	});
 
-	it("mirrors safe ignored paths without sharing mutable dependencies or Agent Lab evidence", async () => {
+	it("copies included ignored paths without sharing mutable dependencies or Agent Lab evidence", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-root-ignore-");
 			try {
@@ -131,6 +131,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 				mkdirSync(repoPath, { recursive: true });
 
 				runGit(repoPath, ["init"]);
+				writeFileSync(join(repoPath, ".worktreeinclude"), "*\n", "utf8");
 				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
 				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
@@ -164,7 +165,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 
 				const nextPath = join(ensured.path, ".next");
 				const nodeModulesPath = join(ensured.path, "node_modules");
-				expectMirroredDirectoryPath(nextPath);
+				expectCopiedDirectoryPath(nextPath);
 				expect(existsSync(nodeModulesPath)).toBe(false);
 				expect(existsSync(join(ensured.path, "test-results"))).toBe(false);
 				expect(existsSync(join(ensured.path, ".agent-lab-results"))).toBe(false);
@@ -179,7 +180,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 		});
 	});
 
-	it("does not symlink mutable .NET build output paths into task worktrees", async () => {
+	it("does not copy mutable .NET build output paths into task worktrees", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-dotnet-output-");
 			try {
@@ -188,6 +189,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 				mkdirSync(join(repoPath, "tests", "ServiceTests"), { recursive: true });
 
 				runGit(repoPath, ["init"]);
+				writeFileSync(join(repoPath, ".worktreeinclude"), "*\n", "utf8");
 				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
 				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
@@ -252,6 +254,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 				mkdirSync(repoPath, { recursive: true });
 
 				runGit(repoPath, ["init"]);
+				writeFileSync(join(repoPath, ".worktreeinclude"), "*\n", "utf8");
 				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
 				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
@@ -311,6 +314,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 				mkdirSync(appPath, { recursive: true });
 
 				runGit(repoPath, ["init"]);
+				writeFileSync(join(repoPath, ".worktreeinclude"), "*\n", "utf8");
 				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
 				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
@@ -366,6 +370,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 				mkdirSync(repoPath, { recursive: true });
 
 				runGit(repoPath, ["init"]);
+				writeFileSync(join(repoPath, ".worktreeinclude"), "*\n", "utf8");
 				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
 				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 				runGit(repoPath, ["config", "core.autocrlf", "false"]);
@@ -394,7 +399,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 					repoPath,
 					taskId,
 				});
-				expect(deleted.ok).toBe(true);
+				expect(deleted.ok, JSON.stringify(deleted)).toBe(true);
 				expect(deleted.removed).toBe(true);
 
 				const patchPath = join(
@@ -442,6 +447,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 				mkdirSync(repoPath, { recursive: true });
 
 				runGit(repoPath, ["init"]);
+				writeFileSync(join(repoPath, ".worktreeinclude"), "*\n", "utf8");
 				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
 				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 				writeFileSync(join(repoPath, "tracked.txt"), "base\n", "utf8");
@@ -473,7 +479,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 					taskId,
 					operationId: "trash-operation",
 				});
-				expect(archived).toMatchObject({ ok: true, removed: true });
+				expect(archived, JSON.stringify(archived)).toMatchObject({ ok: true, removed: true });
 				expect(existsSync(patchPath)).toBe(true);
 				const patchBeforeReplay = readFileSync(patchPath, "utf8");
 
@@ -512,6 +518,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 				mkdirSync(repoPath, { recursive: true });
 
 				runGit(repoPath, ["init"]);
+				writeFileSync(join(repoPath, ".worktreeinclude"), "*\n", "utf8");
 				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
 				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
@@ -535,7 +542,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 					repoPath,
 					taskId,
 				});
-				expect(deleted.ok).toBe(true);
+				expect(deleted.ok, JSON.stringify(deleted)).toBe(true);
 
 				const patchesDir = join(process.env.HOME ?? sandboxRoot, ".quarterdeck", "trashed-task-patches");
 				mkdirSync(patchesDir, { recursive: true });

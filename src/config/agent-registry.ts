@@ -852,6 +852,7 @@ export async function buildRuntimeConfigResponse(
 		shortcuts: runtimeConfig.shortcuts,
 		pinnedBranches: runtimeConfig.pinnedBranches,
 		defaultBaseRef: runtimeConfig.defaultBaseRef,
+		worktreeSetupScript: runtimeConfig.worktreeSetupScript,
 		promptShortcuts: runtimeConfig.promptShortcuts,
 		hiddenDefaultPromptShortcuts: runtimeConfig.hiddenDefaultPromptShortcuts,
 	};

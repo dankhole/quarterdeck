@@ -14,4 +14,4 @@ export {
 	resolveTaskCwd,
 	resolveTaskWorkingDirectory,
 } from "./task-worktree-resolve";
-export { IgnoredPathMirrorError, mirrorIgnoredPath, pathExists } from "./task-worktree-symlinks";
+export { cleanupLegacyDependencySymlinks, pathExists } from "./task-worktree-symlinks";

@@ -1,5 +1,15 @@
 # Implementation Log
 
+## 2026-09-25 — Prepare isolated worktrees with explicit includes and setup scripts
+
+New task worktrees now copy Git-ignored files selected by repository-root `.worktreeinclude` patterns rather than sharing ignored trees through symlinks. The maintained `ignore` parser supplies Git-style matching; source/destination symlink checks, exclusive copies, and dependency/build-output exclusions preserve checkout isolation. Git exclude metadata is merged under its own lock so concurrently prepared worktrees do not lose ignore entries. Legacy dependency links are removed without following their targets.
+
+Project Settings stores `worktreeSetupScript`. Worktree creation records pending setup in its Git admin directory, restores saved changes, initializes submodules, copies includes, and runs the script before handing off to the agent. Success is durable and never reruns on resume; incomplete setup preserves files and blocks both ordinary and persisted-path launches. Only a new explicit lifecycle Start/Restart can retry failed setup. Automatic recovery/replay cannot authorize the retry. Output stays in a bounded local log, while the existing lifecycle operation exposes setup progress.
+
+Scripts run under a stable per-worktree lock stored outside the removable admin directory. Archive/purge acquire that same lock before the repository lock; registration changes and submodule initialization remain repository-serialized while independent installs can proceed concurrently. Use distinct lock target paths, not only distinct lockfile names: proper-lockfile tracks ownership by target path. POSIX setup processes use dedicated process groups so timeout and shell exit can terminate descendants without waiting for inherited output handles indefinitely.
+
+Notable files: `src/workdir/task-worktree-{symlinks,setup,setup-lock,lifecycle}.ts`, project config/settings, `src/server/task-session-start-service.ts`, and `project-task-lifecycle-service.ts`. Validation: focused real-Git copying/identity/setup/removal-race tests, process timeout/background-child tests, lifecycle launch/recovery tests, config persistence and Settings/progress UI tests, runtime/web typechecks, and targeted Biome. User documentation: [worktree setup](./worktree-setup.md). Isolated fake Agent Lab `worktree-setup-20260926T002028Z-7b401d` verified Settings persistence, visible progress, exit-7 failure with no agent launch and preserved files, then corrected-script Start succeeding in the same worktree. The run stopped cleanly with an empty forbidden-host-launch log; no real provider was used.
+
 ## 2026-09-25 — Keep Codex 0.157 native sessions out of the shared daemon
 
 Raised the Codex compatibility floor and active fixtures to 0.157.0. Native task launches now normalize one `--no-daemon` argument before resume/fork, force fullscreen transcript and alternate-screen mode, and disable initial raw scrollback mode. These flags belong to the native adapter, not the shared app-server preparation path; user-global configuration remains untouched. Updated the availability gate, launch tests, README, lifecycle conventions, and changelog.

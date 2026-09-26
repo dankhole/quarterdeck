@@ -9,6 +9,7 @@ import type {
 	RuntimeTaskLifecycleResult,
 } from "@/runtime/types";
 import { createClientLogger } from "@/utils/client-logger";
+import { useInterval } from "@/utils/react-use";
 import { toErrorMessage } from "@/utils/to-error-message";
 import {
 	createTaskLifecycleOperationId,
@@ -92,6 +93,45 @@ export function useTaskLifecycleOperations({
 		Record<string, ScopedPendingTaskLifecycleOperation>
 	>({});
 	const inFlightByScopeRef = useRef(new Map<string, Promise<RuntimeTaskLifecycleResult | null>>());
+	const pendingScopesRef = useRef(pendingTaskLifecycleByScope);
+	pendingScopesRef.current = pendingTaskLifecycleByScope;
+	const progressQueriesRef = useRef(new Set<string>());
+	const setupToastsRef = useRef(new Set<string>());
+	useInterval(
+		() => {
+			for (const [scopeKey, pending] of Object.entries(pendingTaskLifecycleByScope)) {
+				if (progressQueriesRef.current.has(pending.operationId)) continue;
+				progressQueriesRef.current.add(pending.operationId);
+				void getRuntimeTrpcClient(pending.projectId)
+					.runtime.getTaskLifecycleOperation.query({
+						operationId: pending.operationId,
+					})
+					.then((result) => {
+						if (
+							result?.operation.status !== "pending" ||
+							pendingScopesRef.current[scopeKey]?.operationId !== pending.operationId
+						)
+							return;
+						const label = getTaskLifecyclePendingLabel(pending.kind, result.operation.phase);
+						setPendingTaskLifecycleByScope((current) => {
+							if (current[scopeKey]?.operationId !== pending.operationId || current[scopeKey]?.label === label)
+								return current;
+							return { ...current, [scopeKey]: { ...pending, label } };
+						});
+						if (result.operation.phase === "running_setup") {
+							setupToastsRef.current.add(pending.operationId);
+							showAppToast({ message: "Running worktree setup script…", timeout: 2500 }, pending.operationId);
+						}
+					})
+					.catch(() => {
+						// Progress is advisory; the command response remains authoritative.
+					})
+					.finally(() => progressQueriesRef.current.delete(pending.operationId));
+			}
+		},
+		Object.keys(pendingTaskLifecycleByScope).length > 0 ? 1000 : null,
+	);
+
 	const pendingTaskLifecycleById = useMemo(() => {
 		if (!currentProjectId) {
 			return {};
@@ -125,7 +165,8 @@ export function useTaskLifecycleOperations({
 
 			const operationId = createTaskLifecycleOperationId(draft.kind);
 			const deleteToastKey = draft.kind === "delete" ? operationId : undefined;
-			const errorToastOptions = deleteToastKey ? { key: deleteToastKey } : undefined;
+			const errorToastOptions = () =>
+				deleteToastKey || setupToastsRef.current.has(operationId) ? { key: operationId } : undefined;
 			const promise = (async (): Promise<RuntimeTaskLifecycleResult | null> => {
 				if (deleteToastKey) {
 					showAppToast({ message: "Deleting task permanently…", timeout: Infinity }, deleteToastKey);
@@ -143,12 +184,12 @@ export function useTaskLifecycleOperations({
 				try {
 					const flushed = await flushBoardCommands();
 					if (!flushed.ok) {
-						notifyError(flushed.message ?? "Could not save pending board changes.", errorToastOptions);
+						notifyError(flushed.message ?? "Could not save pending board changes.", errorToastOptions());
 						return null;
 					}
 					const expectedRevision = getAuthoritativeRevision();
 					if (expectedRevision === null) {
-						notifyError("The project is still loading. Try the action again.", errorToastOptions);
+						notifyError("The project is still loading. Try the action again.", errorToastOptions());
 						return null;
 					}
 					const geometry =
@@ -173,7 +214,7 @@ export function useTaskLifecycleOperations({
 					if (!result.ok) {
 						notifyError(
 							getTaskLifecycleFailureMessage(result.operation.outcomeCode, result.error),
-							errorToastOptions,
+							errorToastOptions(),
 						);
 					} else if (result.warning) {
 						showAppToast(
@@ -183,10 +224,12 @@ export function useTaskLifecycleOperations({
 								message: result.warning,
 								timeout: 7000,
 							},
-							deleteToastKey,
+							operationId,
 						);
 					} else if (deleteToastKey) {
 						showAppToast({ intent: "success", message: "Task permanently deleted." }, deleteToastKey);
+					} else if (setupToastsRef.current.has(operationId)) {
+						showAppToast({ intent: "success", message: "Worktree ready. Agent started." }, operationId);
 					}
 					return result;
 				} catch (error) {
@@ -198,7 +241,7 @@ export function useTaskLifecycleOperations({
 						operationKind: draft.kind,
 						error: message,
 					});
-					notifyError(`Could not confirm the task action: ${message}`, errorToastOptions);
+					notifyError(`Could not confirm the task action: ${message}`, errorToastOptions());
 					// The server may have accepted the operation even though both the
 					// response and status lookup were lost. Replace the optimistic board
 					// with a fresh authoritative snapshot instead of leaving a card in a
@@ -206,6 +249,7 @@ export function useTaskLifecycleOperations({
 					await refreshProjectState();
 					return null;
 				} finally {
+					setupToastsRef.current.delete(operationId);
 					setPendingTaskLifecycleByScope((current) => {
 						if (current[scopeKey]?.operationId !== operationId) {
 							return current;

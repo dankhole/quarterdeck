@@ -14,6 +14,7 @@ describe("resolveInitialValues", () => {
 		expect(values).toHaveProperty("llmSummaryPolishEnabled");
 		expect(values).toHaveProperty("audibleNotificationEvents");
 		expect(values).toHaveProperty("shortcuts");
+		expect(values.worktreeSetupScript).toBe("");
 		expect(values).toHaveProperty("worktreeSystemPromptTemplate");
 		expect(values).toHaveProperty("fileEditorAutosaveMode");
 		expect(values.claudeFullscreenEnabled).toBe(true);

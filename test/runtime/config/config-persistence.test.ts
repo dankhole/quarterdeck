@@ -185,6 +185,66 @@ describe("runtime-config persistence", { concurrent: false }, () => {
 		}
 	});
 
+	it("persists setup scripts only for their project, preserving shell syntax and clearing blank scripts", async () => {
+		const { path: tempHome, cleanup } = createTempDir("quarterdeck-home-worktree-setup-");
+		const script = "cat <<'EOF' > setup.txt\n  keep whitespace\nEOF\n";
+		try {
+			const configDir = join(tempHome, ".quarterdeck");
+			mkdirSync(configDir, { recursive: true });
+			writeFileSync(join(configDir, "config.json"), "{}", "utf8");
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const updated = await updateRuntimeConfig("project-a", { worktreeSetupScript: script });
+				expect(updated.worktreeSetupScript).toBe(script);
+				expect((await loadRuntimeConfig("project-a")).worktreeSetupScript).toBe(script);
+				expect((await loadRuntimeConfig("project-b")).worktreeSetupScript).toBe("");
+				expect((await loadGlobalRuntimeConfig()).worktreeSetupScript).toBe("");
+				expect(JSON.parse(readFileSync(join(configDir, "config.json"), "utf8"))).not.toHaveProperty(
+					"worktreeSetupScript",
+				);
+				expect(JSON.parse(readFileSync(join(configDir, "projects", "project-a", "config.json"), "utf8"))).toEqual({
+					worktreeSetupScript: script,
+				});
+
+				await updateRuntimeConfig("project-a", { shortcuts: [{ label: "Test", command: "npm test" }] });
+				expect((await loadRuntimeConfig("project-a")).worktreeSetupScript).toBe(script);
+				await updateRuntimeConfig("project-a", { worktreeSetupScript: " \n\t" });
+				expect((await loadRuntimeConfig("project-a")).worktreeSetupScript).toBe("");
+				expect(JSON.parse(readFileSync(join(configDir, "projects", "project-a", "config.json"), "utf8"))).toEqual({
+					shortcuts: [{ label: "Test", command: "npm test" }],
+				});
+				await expect(updateRuntimeConfig(null, { worktreeSetupScript: script })).rejects.toThrow(
+					"without a selected project",
+				);
+			});
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("ignores global setup scripts and writes project setup through the full save path", async () => {
+		const { path: tempHome, cleanup } = createTempDir("quarterdeck-home-worktree-setup-save-");
+		try {
+			const configDir = join(tempHome, ".quarterdeck");
+			mkdirSync(configDir, { recursive: true });
+			writeFileSync(join(configDir, "config.json"), JSON.stringify({ worktreeSetupScript: "wrong" }), "utf8");
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				expect((await loadRuntimeConfig("project-a")).worktreeSetupScript).toBe("");
+				await saveRuntimeConfig(
+					"project-a",
+					createDefaultRuntimeConfigSaveRequest({ worktreeSetupScript: "npm ci" }),
+				);
+				expect((await loadRuntimeConfig("project-a")).worktreeSetupScript).toBe("npm ci");
+				expect(JSON.parse(readFileSync(join(configDir, "config.json"), "utf8"))).not.toHaveProperty(
+					"worktreeSetupScript",
+				);
+				await saveRuntimeConfig("project-a", createDefaultRuntimeConfigSaveRequest());
+				expect(existsSync(join(configDir, "projects", "project-a", "config.json"))).toBe(false);
+			});
+		} finally {
+			cleanup();
+		}
+	});
+
 	it("save omits default keys when they were not previously set", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-omit-defaults-");
 		const projectId = "test-project";

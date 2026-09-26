@@ -22,6 +22,8 @@ import {
 import { hasFailedStoredCodexResume, STORED_CODEX_RESUME_FAILED_WARNING } from "../terminal/codex-resume-failure";
 import { assertTaskWorktreeRegistration, pathExists, resolveTaskCwd } from "../workdir";
 
+import { finishTaskWorktreeSetup } from "../workdir/task-worktree-setup";
+
 const log = createTaggedLogger("task-session-start");
 
 export interface TaskSessionProjectScope {
@@ -223,6 +225,11 @@ export async function prepareTaskSessionStart(
 		!areFileSystemPathsEqual(taskCwd, projectScope.projectPath)
 	) {
 		await assertTaskWorktreeRegistration(taskCwd);
+		await finishTaskWorktreeSetup({
+			repoPath: projectScope.projectPath,
+			worktreePath: taskCwd,
+			script: scopedRuntimeConfig.worktreeSetupScript,
+		});
 	}
 	// Do not write the recreated working directory directly here. RuntimeStateHub
 	// projects launch metadata through ProjectBoardCommandService, which remains

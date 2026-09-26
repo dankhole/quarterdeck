@@ -48,6 +48,10 @@ vi.mock("../../../src/workdir", () => ({
 	resolveTaskCwd: workdirMocks.resolveTaskCwd,
 }));
 
+vi.mock("../../../src/workdir/task-worktree-setup", () => ({
+	finishTaskWorktreeSetup: vi.fn(async () => undefined),
+}));
+
 vi.mock("../../../src/terminal/agent-session-adapters.js", () => ({
 	prepareAgentLaunch: prepareAgentLaunchMock,
 }));

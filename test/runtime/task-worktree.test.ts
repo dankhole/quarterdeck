@@ -1,5 +1,5 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +14,7 @@ const childProcessMocks = vi.hoisted(() => ({
 const lockedFileSystemMocks = vi.hoisted(() => ({
 	withLock: vi.fn(),
 	writeTextFileAtomic: vi.fn(),
+	writeJsonFileAtomic: vi.fn(),
 }));
 
 const projectStateMocks = vi.hoisted(() => ({
@@ -37,7 +38,12 @@ vi.mock("../../src/fs/locked-file-system.js", () => ({
 	lockedFileSystem: {
 		withLock: lockedFileSystemMocks.withLock,
 		writeTextFileAtomic: lockedFileSystemMocks.writeTextFileAtomic,
+		writeJsonFileAtomic: lockedFileSystemMocks.writeJsonFileAtomic,
 	},
+}));
+
+vi.mock("../../src/config/runtime-config.js", () => ({
+	loadRuntimeConfig: async () => ({ worktreeSetupScript: "" }),
 }));
 
 vi.mock("../../src/state/project-state.js", () => ({
@@ -102,6 +108,41 @@ function getCommandArgs(args: readonly string[], options?: ExecFileOptions): { c
 	throw new Error(`Unexpected git args: ${args.join(" ")}`);
 }
 
+function registerMockWorktree(repoPath: string, worktreePath: string): void {
+	mkdirSync(worktreePath, { recursive: true });
+	const adminPath = join(repoPath, ".git", "worktrees", basename(dirname(worktreePath)));
+	mkdirSync(adminPath, { recursive: true });
+	writeFileSync(join(worktreePath, ".git"), `gitdir: ${adminPath}\n`);
+	writeFileSync(join(adminPath, "gitdir"), `${join(worktreePath, ".git")}\n`);
+}
+
+function mockFileSystemLocks(): void {
+	const lockQueues = new Map<string, Promise<void>>();
+	lockedFileSystemMocks.withLock.mockImplementation(
+		async (request: { path: string }, operation: () => Promise<unknown>) => {
+			const waitForTurn = lockQueues.get(request.path) ?? Promise.resolve();
+			let releaseLock: () => void = () => {};
+			lockQueues.set(
+				request.path,
+				new Promise<void>((resolve) => {
+					releaseLock = resolve;
+				}),
+			);
+			await waitForTurn;
+			try {
+				return await operation();
+			} finally {
+				releaseLock();
+			}
+		},
+	);
+	lockedFileSystemMocks.writeJsonFileAtomic.mockReset();
+	lockedFileSystemMocks.writeJsonFileAtomic.mockImplementation(async (path: string, value: unknown) => {
+		mkdirSync(dirname(path), { recursive: true });
+		writeFileSync(path, JSON.stringify(value));
+	});
+}
+
 describe("task-worktree serialization", { concurrent: false }, () => {
 	beforeEach(() => {
 		childProcessMocks.execFile.mockReset();
@@ -125,22 +166,7 @@ describe("task-worktree serialization", { concurrent: false }, () => {
 		taskWorktreePathMocks.getWorkdirFolderLabelForWorktreePath.mockReset();
 		taskWorktreePathMocks.normalizeTaskIdForWorktreePath.mockReset();
 
-		let lockQueue = Promise.resolve();
-		lockedFileSystemMocks.withLock.mockImplementation(
-			async (_request: unknown, operation: () => Promise<unknown>) => {
-				const waitForTurn = lockQueue;
-				let releaseLock: () => void = () => {};
-				lockQueue = new Promise<void>((resolve) => {
-					releaseLock = resolve;
-				});
-				await waitForTurn;
-				try {
-					return await operation();
-				} finally {
-					releaseLock();
-				}
-			},
-		);
+		mockFileSystemLocks();
 		lockedFileSystemMocks.writeTextFileAtomic.mockResolvedValue(undefined);
 	});
 
@@ -174,6 +200,13 @@ describe("task-worktree serialization", { concurrent: false }, () => {
 				async (_file: string, args: readonly string[], options?: ExecFileOptions) => {
 					const { cwd, command } = getCommandArgs(args, options);
 
+					if (command[0] === "rev-parse" && command[1] === "--git-dir") {
+						return {
+							stdout: readFileSync(join(cwd, ".git"), "utf8").slice("gitdir: ".length).trim(),
+							stderr: "",
+						};
+					}
+
 					if (command[0] === "rev-parse" && command[1] === "--git-common-dir") {
 						return {
 							stdout: ".git\n",
@@ -205,7 +238,7 @@ describe("task-worktree serialization", { concurrent: false }, () => {
 						if (!worktreePath) {
 							throw createGitError("fatal: missing worktree path");
 						}
-						mkdirSync(worktreePath, { recursive: true });
+						registerMockWorktree(cwd, worktreePath);
 						writeFileSync(
 							join(worktreePath, ".gitmodules"),
 							'[submodule "evals/quarterdeck-bench"]\n\tpath = evals/quarterdeck-bench\n\turl = ../quarterdeck-bench\n',
@@ -313,22 +346,7 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 		taskWorktreePathMocks.getWorkdirFolderLabelForWorktreePath.mockReset();
 		taskWorktreePathMocks.normalizeTaskIdForWorktreePath.mockReset();
 
-		let lockQueue = Promise.resolve();
-		lockedFileSystemMocks.withLock.mockImplementation(
-			async (_request: unknown, operation: () => Promise<unknown>) => {
-				const waitForTurn = lockQueue;
-				let releaseLock: () => void = () => {};
-				lockQueue = new Promise<void>((resolve) => {
-					releaseLock = resolve;
-				});
-				await waitForTurn;
-				try {
-					return await operation();
-				} finally {
-					releaseLock();
-				}
-			},
-		);
+		mockFileSystemLocks();
 		lockedFileSystemMocks.writeTextFileAtomic.mockResolvedValue(undefined);
 	});
 
@@ -364,6 +382,10 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 
 		return async (_file: string, args: readonly string[], execOptions?: ExecFileOptions) => {
 			const { cwd, command } = getCommandArgs(args, execOptions);
+
+			if (command[0] === "rev-parse" && command[1] === "--git-dir") {
+				return { stdout: readFileSync(join(cwd, ".git"), "utf8").slice("gitdir: ".length).trim(), stderr: "" };
+			}
 
 			if (command[0] === "rev-parse" && command[1] === "--git-common-dir") {
 				return { stdout: ".git\n", stderr: "" };
@@ -405,7 +427,7 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 					if (failOnBranchCreate?.has(branchName)) {
 						throw createGitError(`fatal: cannot create branch '${branchName}'`);
 					}
-					mkdirSync(worktreePath, { recursive: true });
+					registerMockWorktree(cwd, worktreePath);
 					worktreeHeads.set(worktreePath, commit);
 					existingBranches.add(branchName);
 					return { stdout: "", stderr: "" };
@@ -417,7 +439,7 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 					if (!worktreePath) {
 						throw createGitError("fatal: missing worktree path");
 					}
-					mkdirSync(worktreePath, { recursive: true });
+					registerMockWorktree(cwd, worktreePath);
 					worktreeHeads.set(worktreePath, commit);
 					return { stdout: "", stderr: "" };
 				}
@@ -430,10 +452,10 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 				}
 				if (branchName && failOnBranchCheckout?.has(branchName)) {
 					// Simulate partial directory creation before failure
-					mkdirSync(worktreePath, { recursive: true });
+					registerMockWorktree(cwd, worktreePath);
 					throw createGitError(`fatal: '${branchName}' is already checked out`);
 				}
-				mkdirSync(worktreePath, { recursive: true });
+				registerMockWorktree(cwd, worktreePath);
 				worktreeHeads.set(worktreePath, "base-commit");
 				return { stdout: "", stderr: "" };
 			}

@@ -107,6 +107,7 @@ export const runtimeTaskLifecycleOperationPhaseSchema = z.enum([
 	"stopping_session",
 	"archiving_worktree",
 	"ensuring_worktree",
+	"running_setup",
 	"starting_session",
 	"purging_workspace",
 	"deleting_card",

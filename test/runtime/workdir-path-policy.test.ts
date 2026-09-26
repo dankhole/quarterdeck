@@ -3,7 +3,7 @@ import {
 	getWorkdirFolderLabelForWorktreePath,
 	normalizeTaskIdForWorktreePath,
 } from "../../src/workdir/task-worktree-path";
-import { getUniquePaths, shouldSkipSymlink } from "../../src/workdir/task-worktree-symlinks";
+import { getUniquePaths, shouldSkipWorktreeCopy } from "../../src/workdir/task-worktree-symlinks";
 import {
 	assertMutableWorkdirPath,
 	normalizeWorkdirRelativePath,
@@ -50,8 +50,8 @@ describe("Windows workdir path policy", () => {
 
 	it("treats ignored-path roots and metadata blacklists case-insensitively on Windows", () => {
 		expect(getUniquePaths(["Cache", "cache/child", "CACHE"], "win32")).toEqual(["Cache"]);
-		expect(shouldSkipSymlink("nested/.GIT/config", "win32")).toBe(true);
-		expect(shouldSkipSymlink("nested/THUMBS.DB", "win32")).toBe(true);
+		expect(shouldSkipWorktreeCopy("nested/.GIT/config", "win32")).toBe(true);
+		expect(shouldSkipWorktreeCopy("nested/THUMBS.DB", "win32")).toBe(true);
 	});
 
 	it("preserves leading spaces that Windows permits in path components", () => {
