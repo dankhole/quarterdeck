@@ -592,6 +592,8 @@ describe("project registry startup recovery integration", () => {
 	});
 
 	it("keeps unavailable project state during headless startup and prunes only at client reconciliation", async () => {
+		const persistenceDrain = createDeferred();
+		const beforeProjectStateRemoval = vi.fn(async () => await persistenceDrain.promise);
 		const projectEntries = [
 			{ projectId: "offline-project", repoPath: "/tmp/offline-project" },
 			{ projectId: "available-project", repoPath: "/tmp/available-project" },
@@ -609,14 +611,20 @@ describe("project registry startup recovery integration", () => {
 			loadRuntimeConfig: async () => config,
 			hasGitRepository: async (projectPath) => projectPath === "/tmp/available-project",
 			pathIsDirectory: async (projectPath) => projectPath !== "/tmp/offline-project",
+			beforeProjectStateRemoval,
 		});
 
 		await expect(registry.initializeIndexedProjectsForStartup()).resolves.toBe(1);
 		expect(registry.getActiveProjectId()).toBe("available-project");
 		expect(stateMocks.removeProjectIndexEntry).not.toHaveBeenCalled();
 		expect(stateMocks.removeProjectStateFiles).not.toHaveBeenCalled();
+		expect(beforeProjectStateRemoval).not.toHaveBeenCalled();
 
-		await expect(registry.resolveProjectForStream(null)).resolves.toMatchObject({
+		const resolution = registry.resolveProjectForStream(null);
+		await vi.waitFor(() => expect(beforeProjectStateRemoval).toHaveBeenCalledWith("offline-project"));
+		expect(stateMocks.removeProjectStateFiles).not.toHaveBeenCalled();
+		persistenceDrain.resolve();
+		await expect(resolution).resolves.toMatchObject({
 			projectId: "available-project",
 			didPruneProjects: true,
 		});

@@ -108,6 +108,8 @@ export interface CreateProjectRegistryDependencies {
 	pathIsDirectory: (path: string) => Promise<boolean>;
 	waitForStartupAgentCleanup?: () => Promise<void>;
 	onTerminalManagerReady?: (projectId: string, manager: TerminalSessionManager) => void;
+	/** Detach and drain persistence before stream reconciliation deletes unavailable project state. */
+	beforeProjectStateRemoval?: (projectId: string) => Promise<void>;
 	diagnostics?: RuntimeDiagnostics;
 }
 
@@ -557,6 +559,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			await removeProjectIndexEntry(project.projectId);
 			// Detach and drain external runtime projections before deleting state;
 			// an already-running persistence write must not recreate the project.
+			await deps.beforeProjectStateRemoval?.(project.projectId);
 			await options?.onRemovedProject?.({
 				projectId: project.projectId,
 				repoPath: project.repoPath,

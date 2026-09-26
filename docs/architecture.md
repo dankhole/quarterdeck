@@ -195,6 +195,8 @@ This is the supported path for Claude Code, Codex, and the exact validated Pi re
 
 `runtime-state-hub.ts` is the central fanout point for live updates. It listens to terminal summaries, project metadata, project state changes, unified diagnostic records, and lightweight task events, then broadcasts websocket messages that keep the browser in sync. Diagnostic record batches are a replaceable projection sent only to connection-scoped subscribers with the Diagnostics panel open; they are bounded and dropped under socket backpressure before primary state. The durable recorder/journal remains canonical. The hub delegates batching to `runtime-state-message-batcher.ts` and git metadata policy to the project metadata monitor modules.
 
+`runtime-session-persistence.ts` separately subscribes to terminal-store changes and reconciles durable session/work-column projections through `ProjectBoardCommandService`. It owns dirty generations, bounded retry backoff, hook acknowledgement barriers, and the shutdown flush. Startup hook replay and live hook ingestion use this service directly. The runtime composes its lifecycle independently of the hub, so session durability does not depend on a WebSocket transport.
+
 This is important because Quarterdeck is not designed around browser polling. The runtime is long-lived and streams state outward.
 
 ### Diagnostics
@@ -227,7 +229,7 @@ Components in `web-ui/src/components/` are mostly rendering and composition. Goo
 
 ### Starting a task session
 
-When the user starts a task, the browser first flushes the command that created or moved the card, then asks the runtime to start a task session. The runtime resolves the task cwd from durable task state, chooses the right command, and starts a PTY-backed process inside the task worktree. An internal structured handoff may later stop that exact native writer and resume the same provider session through Codex app-server or Claude Agent SDK; ownership generation and process identity prevent overlap. As the owner runs, the terminal/session state projection emits summary updates. The runtime state hub persists the server-owned session/work-column projection and streams summaries and authoritative board updates back to the browser.
+When the user starts a task, the browser first flushes the command that created or moved the card, then asks the runtime to start a task session. The runtime resolves the task cwd from durable task state, chooses the right command, and starts a PTY-backed process inside the task worktree. An internal structured handoff may later stop that exact native writer and resume the same provider session through Codex app-server or Claude Agent SDK; ownership generation and process identity prevent overlap. As the owner runs, the terminal/session state projection emits summary updates. `RuntimeSessionPersistence` persists the server-owned session/work-column projection through the board command service. The runtime state hub streams summaries and authoritative board updates back to the browser.
 
 Raw PTY output does not travel through the runtime state hub. It streams through the terminal WebSocket path and browser terminal slot/restore layer, while the runtime state hub carries the product-shaped summaries and metadata that the rest of the UI needs.
 

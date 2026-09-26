@@ -231,7 +231,7 @@ export async function prepareTaskSessionStart(
 			script: scopedRuntimeConfig.worktreeSetupScript,
 		});
 	}
-	// Do not write the recreated working directory directly here. RuntimeStateHub
+	// Do not write the recreated working directory directly here. RuntimeSessionPersistence
 	// projects launch metadata through ProjectBoardCommandService, which remains
 	// the sole durable board writer.
 

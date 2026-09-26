@@ -65,6 +65,7 @@ import { ProjectTaskLifecycleService } from "./project-task-lifecycle-service";
 import { handleRuntimeHostEventRequest } from "./runtime-host-event-endpoint";
 import type { RuntimeHostEventLedger } from "./runtime-host-event-ledger";
 import { observeRuntimeApiRequest } from "./runtime-request-diagnostics";
+import type { RuntimeSessionPersistence } from "./runtime-session-persistence";
 import type { RuntimeStateHub } from "./runtime-state-hub";
 import { prepareTaskSessionStart, type TaskSessionStartServiceResult } from "./task-session-start-service";
 import { createTaskTitleService } from "./task-title-service";
@@ -80,6 +81,7 @@ interface DisposeTrackedProjectResult {
 export interface CreateRuntimeServerDependencies {
 	projectRegistry: ProjectRegistry;
 	runtimeStateHub: RuntimeStateHub;
+	runtimeSessionPersistence: Pick<RuntimeSessionPersistence, "persistRuntimeSessions" | "close">;
 	boardCommands: ProjectBoardCommandService;
 	diagnostics: RuntimeDiagnostics;
 	warn: (message: string) => void;
@@ -404,7 +406,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		projects: deps.projectRegistry,
 		terminals: deps.projectRegistry,
 		config: deps.projectRegistry,
-		persistSessionState: deps.runtimeStateHub.persistRuntimeSessions,
+		persistSessionState: deps.runtimeSessionPersistence.persistRuntimeSessions,
 		diagnostics: deps.diagnostics,
 		conversationSourceHints,
 		onNativeProviderSessionObserved: async ({ scope, taskId, manager }) => {
@@ -732,6 +734,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			await runCloseStep(async () => await hookTransitionOutboxReplayer.close());
 			await runCloseStep(() => disposeHookOutboxDiagnosticProvider());
 			await runCloseStep(() => disposePiSupportDiagnosticProvider());
+			await runCloseStep(async () => await deps.runtimeSessionPersistence.close());
 			await runCloseStep(async () => await deps.runtimeStateHub.close());
 			await runCloseStep(async () => await terminalWebSocketBridge.close());
 			await runCloseStep(

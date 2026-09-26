@@ -1,5 +1,13 @@
 # Implementation Log
 
+## 2026-09-26 — Separate session durability from runtime streaming
+
+`RuntimeSessionPersistence` now owns terminal-store subscriptions, dirty generations, retry backoff, explicit hook acknowledgement barriers, and shutdown draining. The CLI composes it independently of `RuntimeStateHub`; startup outbox replay and live hook ingestion call the persistence owner directly. `ProjectBoardCommandService` remains the only durable board writer. Preserve the existing barrier invariant: acknowledge only after the caller's required generation is durable, including explicit barriers arriving while shutdown detaches automatic listeners.
+
+Project removal drains the persistence owner before deleting state. Stream-driven pruning needs its own registry lifecycle callback because its former hub disposal implicitly drained persistence; omitting this wiring could let an in-flight write recreate deleted state. Runtime shutdown drains persistence before transport teardown and still closes transport and diagnostics when durability fails.
+
+Notable files: `src/server/runtime-session-persistence.ts`, `src/server/runtime-state-hub.ts`, `src/server/project-registry.ts`, `src/server/runtime-server.ts`, and `src/cli.ts`. Validation: focused persistence, streaming, hook-ingest, registry, and runtime-composition tests; a filesystem integration test verifies durable hook state/ordering receipts at acknowledgement and flushes the newest update on shutdown without a WebSocket hub. Runtime typecheck, changed-TypeScript Biome (two existing registry warnings), and diff checks pass. No browser or real-provider lane was needed for this ownership refactor.
+
 ## 2026-09-26 — Escape preserves running task state
 
 `session-input-pipeline.ts` no longer treats bare Escape as a local interrupt. Escape can dismiss provider UI without ending work, so it must not clear work evidence, suppress crash recovery, or establish the timestamp fence that rejects queued hooks. Ctrl+C retains immediate interruption; Escape still records a cancellation response for an existing actionable wait, and provider interruption evidence remains authoritative. The recovery signal types and tests now enforce that distinction.

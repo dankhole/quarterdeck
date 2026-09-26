@@ -41,6 +41,7 @@ export {
 	createRuntimeServer,
 	type RuntimeServer,
 } from "./runtime-server";
+export { RuntimeSessionPersistence } from "./runtime-session-persistence";
 export {
 	type CreateRuntimeStateHubDependencies,
 	createRuntimeStateHub,

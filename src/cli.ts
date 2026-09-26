@@ -24,7 +24,7 @@ import {
 	setRuntimeDiagnosticLogSink,
 } from "./core";
 import { createRuntimeDiagnostics, type RuntimeDiagnostics } from "./diagnostics";
-import type { RuntimeStateHub } from "./server";
+import type { RuntimeSessionPersistence, RuntimeStateHub } from "./server";
 import type { TerminalSessionManager } from "./terminal";
 import { killOrphanedAgentProcesses } from "./terminal/orphan-cleanup";
 import {
@@ -321,7 +321,7 @@ async function loadRuntimeStartupModules() {
 	*/
 	const [
 		{ resolveProjectInputPath },
-		{ createRuntimeHostIntegrations, createRuntimeServer, loadRuntimeHostSimulation },
+		{ createRuntimeHostIntegrations, createRuntimeServer, loadRuntimeHostSimulation, RuntimeSessionPersistence },
 		{ createRuntimeStateHub },
 		{ resolveInteractiveShellCommand },
 		{ shutdownRuntimeServer },
@@ -354,6 +354,7 @@ async function loadRuntimeStartupModules() {
 		createRuntimeHostIntegrations,
 		createRuntimeServer,
 		loadRuntimeHostSimulation,
+		RuntimeSessionPersistence,
 		createRuntimeStateHub,
 		resolveInteractiveShellCommand,
 		shutdownRuntimeServer,
@@ -454,6 +455,7 @@ async function createRuntimeBootstrapState(
 	diagnostics: RuntimeDiagnostics,
 ) {
 	let runtimeStateHub: RuntimeStateHub | undefined;
+	let sessionPersistence: RuntimeSessionPersistence | undefined;
 	const projectRegistry = await modules.createProjectRegistry({
 		cwd: process.cwd(),
 		loadGlobalRuntimeConfig,
@@ -463,7 +465,11 @@ async function createRuntimeBootstrapState(
 		diagnostics,
 		waitForStartupAgentCleanup: async () => await awaitStartupAgentCleanup(startupAgentCleanup),
 		onTerminalManagerReady: (projectId, manager) => {
+			sessionPersistence?.trackTerminalManager(projectId, manager);
 			runtimeStateHub?.trackTerminalManager(projectId, manager);
+		},
+		beforeProjectStateRemoval: async (projectId) => {
+			await sessionPersistence?.disposeProject(projectId);
 		},
 	});
 	const activeConfig = projectRegistry.getActiveRuntimeConfig();
@@ -513,6 +519,8 @@ async function createRuntimeBootstrapState(
 			runtimeStateHub?.broadcastRuntimeProjectStateSnapshot(projectId, result.state);
 		},
 	});
+	sessionPersistence = new modules.RuntimeSessionPersistence({ projectRegistry, boardCommands });
+	const runtimeSessionPersistence = sessionPersistence;
 	runtimeStateHub = modules.createRuntimeStateHub({
 		projectRegistry,
 		boardCommands,
@@ -520,6 +528,7 @@ async function createRuntimeBootstrapState(
 	});
 	const runtimeHub = runtimeStateHub;
 	for (const { projectId, terminalManager } of projectRegistry.listManagedProjects()) {
+		runtimeSessionPersistence.trackTerminalManager(projectId, terminalManager);
 		runtimeHub.trackTerminalManager(projectId, terminalManager);
 	}
 	await projectRegistry.initializeIndexedProjectsForStartup({
@@ -532,7 +541,7 @@ async function createRuntimeBootstrapState(
 				projects: projectRegistry,
 				terminals: projectRegistry,
 				config: projectRegistry,
-				persistSessionState: runtimeHub.persistRuntimeSessions,
+				persistSessionState: runtimeSessionPersistence.persistRuntimeSessions,
 				diagnostics,
 			});
 			const startupOutboxReplayer = modules.createHookTransitionOutboxReplayer({
@@ -577,13 +586,14 @@ async function createRuntimeBootstrapState(
 		const disposed = projectRegistry.disposeProject(projectId, {
 			stopTerminalSessions: options?.stopTerminalSessions,
 		});
-		await runtimeHub.disposeProject(projectId);
+		await Promise.all([runtimeSessionPersistence.disposeProject(projectId), runtimeHub.disposeProject(projectId)]);
 		return disposed;
 	};
 
 	return {
 		projectRegistry,
 		runtimeHub,
+		runtimeSessionPersistence,
 		boardCommands,
 		diagnostics,
 		disposeTrackedProject,
@@ -610,6 +620,7 @@ async function createRuntimeServerHandle(
 	const runtimeServer = await modules.createRuntimeServer({
 		projectRegistry: bootstrap.projectRegistry,
 		runtimeStateHub: bootstrap.runtimeHub,
+		runtimeSessionPersistence: bootstrap.runtimeSessionPersistence,
 		boardCommands: bootstrap.boardCommands,
 		diagnostics: bootstrap.diagnostics,
 		warn: bootstrap.warn,

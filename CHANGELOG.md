@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Separate session persistence and durable hook acknowledgements from WebSocket streaming, preserving retries and shutdown flushing under an independent runtime service.
+
 - Stop marking running tasks Interrupted merely because Escape was pressed. Preserve provider-reported interruptions, Ctrl+C, and approval cancellation.
 
 - Ignore session updates from other projects so delayed shell-stop responses cannot overwrite the current project’s terminal summary.
