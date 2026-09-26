@@ -46,7 +46,7 @@ interface UseTerminalPanelsInput {
 	agentCommand: string | null;
 	shellAutoRestartEnabled: boolean;
 	findCard: (cardId: string) => BoardCard | null;
-	upsertSession: (summary: RuntimeTaskSessionSummary) => void;
+	upsertSession: (projectId: string, summary: RuntimeTaskSessionSummary) => void;
 	sendTaskSessionInput: (
 		taskId: string,
 		text: string,
@@ -218,7 +218,7 @@ export function useTerminalPanels({
 						throw new Error(payload.error ?? "Could not stop terminal session.");
 					}
 					if (payload.summary) {
-						upsertSession(payload.summary);
+						upsertSession(projectId, payload.summary);
 					}
 				} finally {
 					clearSuppressedShellExitRef.current?.(taskId);
@@ -359,7 +359,7 @@ export function useTerminalPanels({
 			if (!payload.ok || !payload.summary) {
 				throw new Error(payload.error ?? "Could not start terminal session.");
 			}
-			upsertSession(payload.summary);
+			upsertSession(currentProjectId, payload.summary);
 			setHomeTerminalShellBinary(
 				typeof payload.shellBinary === "string" && payload.shellBinary.trim() ? payload.shellBinary : null,
 			);
@@ -423,7 +423,7 @@ export function useTerminalPanels({
 				if (!payload.ok || !payload.summary) {
 					throw new Error(payload.error ?? "Could not start detail terminal session.");
 				}
-				upsertSession(payload.summary);
+				upsertSession(currentProjectId, payload.summary);
 				return true;
 			} catch (error) {
 				const message = toErrorMessage(error);

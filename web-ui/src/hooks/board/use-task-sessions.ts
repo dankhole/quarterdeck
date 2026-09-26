@@ -3,7 +3,7 @@
 // merges summaries, sends agent input, and reads task context.
 
 import type { Dispatch, SetStateAction } from "react";
-import { useCallback } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
@@ -25,7 +25,7 @@ interface SendTaskSessionInputResult {
 }
 
 export interface UseTaskSessionsResult {
-	upsertSession: (summary: RuntimeTaskSessionSummary) => void;
+	upsertSession: (projectId: string, summary: RuntimeTaskSessionSummary) => void;
 	sendTaskSessionInput: (
 		taskId: string,
 		text: string,
@@ -35,15 +35,27 @@ export interface UseTaskSessionsResult {
 }
 
 export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessionsInput): UseTaskSessionsResult {
+	// Fence retained async callbacks before passive terminal cleanup can publish summaries.
+	const activeProjectIdRef = useRef(currentProjectId);
+	useLayoutEffect(() => {
+		activeProjectIdRef.current = currentProjectId;
+		return () => {
+			activeProjectIdRef.current = null;
+		};
+	}, [currentProjectId]);
+
 	/*
 		This merge needs to stay monotonic. An older hydrated or cached summary
 		must not replace a newer live session identity, or terminal consumers can
 		bounce between instances and clear visible output.
 	*/
 	const upsertSession = useCallback(
-		(summary: RuntimeTaskSessionSummary) => {
+		(projectId: string, summary: RuntimeTaskSessionSummary) => {
+			if (!projectId || projectId !== activeProjectIdRef.current) return;
 			let warningToShow: string | null = null;
 			setSessions((current) => {
+				// Recheck when React applies a queued update, after any navigation.
+				if (projectId !== activeProjectIdRef.current) return current;
 				const previousSummary = current[summary.taskId] ?? null;
 				const newestSummary = selectNewestTaskSessionSummary(previousSummary, summary);
 				if (newestSummary !== summary) {
@@ -93,7 +105,7 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 					return { ok: false, message: payload.error || "Task session input failed." };
 				}
 				if (payload.summary) {
-					upsertSession(payload.summary);
+					upsertSession(currentProjectId, payload.summary);
 				}
 				return { ok: true };
 			} catch (error) {

@@ -12,7 +12,7 @@ export interface ShellTerminalPanelProps {
 	projectId: string | null;
 	terminalEnabled?: boolean;
 	summary: RuntimeTaskSessionSummary | null;
-	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
+	onSummary?: (projectId: string, summary: RuntimeTaskSessionSummary) => void;
 	onClose?: () => void;
 	autoFocus?: boolean;
 	headerTitle?: string;

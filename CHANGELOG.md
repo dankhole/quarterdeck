@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Ignore session updates from other projects so delayed shell-stop responses cannot overwrite the current project’s terminal summary.
+
 - Enforce one active browser tab before connecting the app, including duplicated tabs and tabs paused in the background. Transfer ownership only after the previous tab unmounts.
 
 - Fix Claude Code 2.1.283 exiting on first launch in an untrusted folder. Quarterdeck now reads the rendered trust dialog, waits out Claude's input guard, moves to "Yes, I trust this folder" when "No" is focused, and presses Enter only when "Yes" is selected. If the dialog does not respond as expected, it stops and asks you to confirm in the terminal.

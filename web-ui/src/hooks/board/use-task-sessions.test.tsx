@@ -1,4 +1,4 @@
-import { act, useEffect, useState } from "react";
+import { act, type Dispatch, type SetStateAction, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -127,12 +127,84 @@ describe("useTaskSessions", () => {
 
 	it("keeps the newest session summary and surfaces a new warning once", async () => {
 		await act(async () => {
-			requireSnapshot(latestSnapshot).upsertSession(createSummary(20, "Best-effort resume"));
-			requireSnapshot(latestSnapshot).upsertSession(createSummary(10));
+			requireSnapshot(latestSnapshot).upsertSession("project-1", createSummary(20, "Best-effort resume"));
+			requireSnapshot(latestSnapshot).upsertSession("project-1", createSummary(10));
 		});
 
 		expect(requireSnapshot(latestSnapshot).sessions["task-1"]?.updatedAt).toBe(20);
 		expect(showAppToastMock).toHaveBeenCalledOnce();
+	});
+
+	it.each(["project-2", null])("rejects old callbacks after switching to %s", async (projectId) => {
+		const oldUpsert = requireSnapshot(latestSnapshot).upsertSession;
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId={projectId}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+		await act(async () => {
+			oldUpsert("project-1", createSummary(50, "Stale warning"));
+		});
+		expect(requireSnapshot(latestSnapshot).sessions).toEqual({});
+		expect(showAppToastMock).not.toHaveBeenCalled();
+	});
+
+	it("rejects an input response that completes after a project switch", async () => {
+		let resolveResponse!: (value: { ok: boolean; summary: RuntimeTaskSessionSummary }) => void;
+		const response = new Promise<{ ok: boolean; summary: RuntimeTaskSessionSummary }>((resolve) => {
+			resolveResponse = resolve;
+		});
+		sendTaskSessionInputMutateMock.mockReturnValue(response);
+		const pending = requireSnapshot(latestSnapshot).sendTaskSessionInput("task-1", "hello", {
+			intent: "write",
+			preferTerminal: false,
+		});
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId="project-2"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+		const currentSummary = createSummary(20);
+		await act(async () => {
+			requireSnapshot(latestSnapshot).upsertSession("project-2", currentSummary);
+		});
+		await act(async () => {
+			resolveResponse({ ok: true, summary: createSummary(50, "Stale warning") });
+			await pending;
+		});
+		expect(requireSnapshot(latestSnapshot).sessions["task-1"]).toBe(currentSummary);
+		expect(showAppToastMock).not.toHaveBeenCalled();
+	});
+
+	it("rechecks project identity when a queued session update is applied", async () => {
+		const setSessions = vi.fn<Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>>();
+		let upsert: HookSnapshot["upsertSession"] | undefined;
+		function QueuedHarness({ projectId }: { projectId: string }) {
+			upsert = useTaskSessions({ currentProjectId: projectId, setSessions }).upsertSession;
+			return null;
+		}
+		await act(async () => {
+			root.render(<QueuedHarness projectId="project-1" />);
+		});
+		upsert?.("project-1", createSummary(50, "Stale warning"));
+		const update = setSessions.mock.calls[0]?.[0];
+		if (typeof update !== "function") throw new Error("Expected a queued session updater.");
+		await act(async () => {
+			root.render(<QueuedHarness projectId="project-2" />);
+		});
+		const current = { "task-1": createSummary(20) };
+		expect(update(current)).toBe(current);
+		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
 
 	it("uses an attached terminal controller for low-latency input", async () => {

@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-25 — Project-scoped incremental session updates
+
+`useTaskSessions.upsertSession` now requires the originating project ID and rejects mismatches both before scheduling and inside the session updater. A layout-effect ref fences callbacks retained across navigation and unmount. Shell start/stop and input responses carry their request project; persistent terminal subscriptions forward their captured project through the latest callback. This prevents a late old-project shell stop from overwriting a new project’s identically keyed home terminal, regardless of summary timestamps, and suppresses stale warning toasts. Same-project monotonic merging remains unchanged.
+
+Notable files: `web-ui/src/hooks/board/use-task-sessions.ts`, `web-ui/src/hooks/terminal/use-terminal-panels.ts`, and `web-ui/src/terminal/use-persistent-terminal-session.ts`. Validation: 36 tests across five focused hook/component files, web typecheck, and changed-file Biome. Hook integration tests control deferred responses directly; no live runtime or PTY behavior changed, so Agent Lab was not needed.
+
 ## 2026-09-25 — Exclusive browser tab ownership
 
 The single-tab guard reused a sessionStorage identity that duplicated tabs can inherit, allowed its localStorage lease to expire after five seconds of paused timers, and initially mounted the app before checking ownership. The guard now queues an exclusive Web Lock before mounting the app. A takeover asks other tabs to cancel and requeue; the current owner synchronously unmounts its app tree before releasing the lock. Closing the owner grants the next queued request. Pagehide releases ownership after teardown, and pageshow requests it again rather than reviving an active tree without ownership. Missing coordination APIs and failed lock requests fail closed.

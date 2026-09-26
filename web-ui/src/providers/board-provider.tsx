@@ -24,7 +24,7 @@ export interface BoardContextValue {
 
 	// --- Task sessions ---
 	sessions: Record<string, RuntimeTaskSessionSummary>;
-	upsertSession: (summary: RuntimeTaskSessionSummary) => void;
+	upsertSession: (projectId: string, summary: RuntimeTaskSessionSummary) => void;
 
 	// --- Task selection ---
 	selectedTaskId: string | null;

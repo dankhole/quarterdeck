@@ -1,9 +1,10 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { TaskTerminalSubscriber } from "@/terminal/terminal-reuse-manager";
 import { usePersistentTerminalSession } from "@/terminal/use-persistent-terminal-session";
+import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 
 const acquireTaskTerminalMock = vi.hoisted(() => vi.fn());
 const stageTaskTerminalContainerMock = vi.hoisted(() => vi.fn());
@@ -31,7 +32,7 @@ vi.mock("@/terminal/terminal-controller-registry", () => ({
 
 function createTerminalSlotMock() {
 	return {
-		subscribe: vi.fn(() => vi.fn()),
+		subscribe: vi.fn((_subscriber: TaskTerminalSubscriber) => vi.fn()),
 		attachToStageContainer: vi.fn(),
 		show: vi.fn(),
 		hide: vi.fn(),
@@ -58,7 +59,7 @@ function HookHarness({
 	projectId: string | null;
 	sessionStartedAt: number | null;
 	enabled?: boolean;
-	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
+	onSummary?: (projectId: string, summary: RuntimeTaskSessionSummary) => void;
 	onConnectionReady?: (taskId: string) => void;
 }) {
 	const { containerRef, requestRestore } = usePersistentTerminalSession({
@@ -120,6 +121,36 @@ describe("usePersistentTerminalSession", () => {
 				previousActEnvironment;
 		}
 	});
+
+	it.each([false, true])(
+		"preserves the subscription project when forwarding summaries (dedicated: %s)",
+		async (dedicated) => {
+			isDedicatedTerminalTaskIdMock.mockReturnValue(dedicated);
+			const terminal = createTerminalSlotMock();
+			acquireTaskTerminalMock.mockReturnValue(terminal);
+			ensureDedicatedTerminalMock.mockReturnValue(terminal);
+			const oldCallback = vi.fn();
+			const currentCallback = vi.fn();
+			await act(async () => {
+				root.render(
+					<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} onSummary={oldCallback} />,
+				);
+			});
+			const oldSubscriber = terminal.subscribe.mock.calls[0]?.[0];
+			expect(oldSubscriber?.onSummary).toBeTypeOf("function");
+			await act(async () => {
+				root.render(
+					<HookHarness taskId="task-a" projectId="project-2" sessionStartedAt={100} onSummary={currentCallback} />,
+				);
+			});
+			const summary = createTestTaskSessionSummary({ taskId: "task-a" });
+			await act(async () => {
+				oldSubscriber?.onSummary?.(summary);
+			});
+			expect(currentCallback).toHaveBeenCalledWith("project-1", summary);
+			expect(oldCallback).not.toHaveBeenCalled();
+		},
+	);
 
 	it("acquires slot from pool on mount", async () => {
 		await act(async () => {

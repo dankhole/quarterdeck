@@ -70,7 +70,7 @@ export interface CardDetailViewRepositoryState {
 }
 
 export interface CardDetailViewTerminalState {
-	onSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
+	onSessionSummary: (projectId: string, summary: RuntimeTaskSessionSummary) => void;
 	isTaskTerminalEnabled: boolean;
 }
 

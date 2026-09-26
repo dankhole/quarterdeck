@@ -12,7 +12,7 @@ export interface AgentTerminalPanelProps {
 	projectId: string | null;
 	terminalEnabled?: boolean;
 	summary: RuntimeTaskSessionSummary | null;
-	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
+	onSummary?: (projectId: string, summary: RuntimeTaskSessionSummary) => void;
 	taskColumnId?: string;
 	showSessionToolbar?: boolean;
 	onClose?: () => void;

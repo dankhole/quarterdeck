@@ -18,7 +18,7 @@ interface UsePersistentTerminalSessionInput {
 	taskId: string;
 	projectId: string | null;
 	enabled?: boolean;
-	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
+	onSummary?: (projectId: string, summary: RuntimeTaskSessionSummary) => void;
 	onConnectionReady?: (taskId: string) => void;
 	onExit?: (taskId: string, exitCode: number | null) => void;
 	autoFocus?: boolean;
@@ -82,7 +82,7 @@ export function usePersistentTerminalSession({
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const terminalRef = useRef<TaskTerminalHandle | null>(null);
 	const callbackRef = useRef<{
-		onSummary?: (summary: RuntimeTaskSessionSummary) => void;
+		onSummary?: (projectId: string, summary: RuntimeTaskSessionSummary) => void;
 		onConnectionReady?: (taskId: string) => void;
 		onExit?: (taskId: string, exitCode: number | null) => void;
 	}>({
@@ -175,7 +175,7 @@ export function usePersistentTerminalSession({
 					setLastError(message);
 				},
 				onSummary: (summary: RuntimeTaskSessionSummary) => {
-					callbackRef.current.onSummary?.(summary);
+					callbackRef.current.onSummary?.(projectId, summary);
 				},
 				onExit: (exitTaskId: string, exitCode: number | null) => {
 					log.info("dedicated shell terminal exited", { taskId: exitTaskId, projectId, exitCode });
@@ -257,7 +257,7 @@ export function usePersistentTerminalSession({
 			},
 			onLastError: setLastError,
 			onSummary: (summary: RuntimeTaskSessionSummary) => {
-				callbackRef.current.onSummary?.(summary);
+				callbackRef.current.onSummary?.(projectId, summary);
 			},
 			onExit: (exitTaskId: string, exitCode: number | null) => {
 				callbackRef.current.onExit?.(exitTaskId, exitCode);

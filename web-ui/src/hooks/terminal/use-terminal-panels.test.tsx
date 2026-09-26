@@ -1,7 +1,8 @@
-import { act, useEffect } from "react";
+import { act, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useTaskSessions } from "@/hooks/board/use-task-sessions";
 import { useTerminalPanels } from "@/hooks/terminal/use-terminal-panels";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
@@ -30,6 +31,7 @@ vi.mock("@/terminal/terminal-geometry-registry", () => ({
 }));
 
 interface HookSnapshot {
+	sessions: Record<string, RuntimeTaskSessionSummary>;
 	closeHomeTerminal: ReturnType<typeof useTerminalPanels>["closeHomeTerminal"];
 	collapseDetailTerminal: ReturnType<typeof useTerminalPanels>["collapseDetailTerminal"];
 	collapseHomeTerminal: ReturnType<typeof useTerminalPanels>["collapseHomeTerminal"];
@@ -95,26 +97,31 @@ function requireSnapshot(snapshot: HookSnapshot | null): HookSnapshot {
 }
 
 function HookHarness({
+	currentProjectId = "project-1",
 	onSnapshot,
 	selectedCard,
 }: {
+	currentProjectId?: string;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 	selectedCard: CardSelection | null;
 }): null {
+	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
+	const { upsertSession } = useTaskSessions({ currentProjectId, setSessions });
 	const result = useTerminalPanels({
-		currentProjectId: "project-1",
+		currentProjectId,
 		selectedCard,
 		projectGit: null,
 		configDefaultBaseRef: "",
 		agentCommand: null,
 		shellAutoRestartEnabled: true,
 		findCard: () => null,
-		upsertSession: () => {},
+		upsertSession,
 		sendTaskSessionInput: async () => ({ ok: true }),
 	});
 
 	useEffect(() => {
 		onSnapshot({
+			sessions,
 			closeHomeTerminal: result.closeHomeTerminal,
 			collapseDetailTerminal: result.collapseDetailTerminal,
 			collapseHomeTerminal: result.collapseHomeTerminal,
@@ -132,6 +139,7 @@ function HookHarness({
 			setHomeTerminalPaneHeight: result.setHomeTerminalPaneHeight,
 		});
 	}, [
+		sessions,
 		onSnapshot,
 		result.closeHomeTerminal,
 		result.collapseDetailTerminal,
@@ -189,6 +197,58 @@ describe("useTerminalPanels", () => {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
+	});
+
+	it("keeps the new project's home shell when the old project's stop finishes late", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const onSnapshot = (snapshot: HookSnapshot) => {
+			latestSnapshot = snapshot;
+		};
+		let resolveResponse!: (value: { ok: boolean; summary: RuntimeTaskSessionSummary }) => void;
+		const stop = new Promise<{ ok: boolean; summary: RuntimeTaskSessionSummary }>((resolve) => {
+			resolveResponse = resolve;
+		});
+		stopTaskSessionMutateMock.mockReturnValueOnce(stop);
+		await act(async () => {
+			root.render(<HookHarness selectedCard={null} onSnapshot={onSnapshot} />);
+		});
+		await act(async () => {
+			requireSnapshot(latestSnapshot).handleToggleHomeTerminal();
+		});
+		await act(async () => {
+			requireSnapshot(latestSnapshot).closeHomeTerminal();
+		});
+		expect(stopTaskSessionMutateMock).toHaveBeenCalledWith({ taskId: "__home_terminal__", waitForExit: true });
+		await act(async () => {
+			root.render(<HookHarness currentProjectId="project-2" selectedCard={null} onSnapshot={onSnapshot} />);
+		});
+		const currentSummary = createTestTaskSessionSummary({
+			taskId: "__home_terminal__",
+			agentId: null,
+			state: "running",
+			pid: 200,
+			startedAt: 20,
+			updatedAt: 20,
+		});
+		startShellSessionMutateMock.mockResolvedValueOnce({ ok: true, summary: currentSummary });
+		await act(async () => {
+			requireSnapshot(latestSnapshot).handleToggleHomeTerminal();
+		});
+		expect(requireSnapshot(latestSnapshot).sessions.__home_terminal__).toBe(currentSummary);
+		await act(async () => {
+			resolveResponse({
+				ok: true,
+				summary: createTestTaskSessionSummary({
+					taskId: "__home_terminal__",
+					agentId: null,
+					state: "idle",
+					pid: null,
+					updatedAt: 50,
+				}),
+			});
+			await flushPromises();
+		});
+		expect(requireSnapshot(latestSnapshot).sessions.__home_terminal__).toBe(currentSummary);
 	});
 
 	it("tracks detail terminal visibility per task selection", async () => {
