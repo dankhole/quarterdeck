@@ -278,6 +278,7 @@ Persistent runtime state lives under `~/.quarterdeck/` in the user's home direct
         ├── config.json                  # project shortcuts and defaults
         ├── pinned-branches.json         # optional pinned branch order
         ├── sessions.json                # session summaries (PIDs, state, timestamps)
+        ├── state-transaction.json       # pending atomic board/session/revision commit (removed after installation)
         ├── lifecycle-operations.json    # managed lifecycle operation receipts
         ├── execution-ownership.json     # structured-owner handoff and interaction state
         └── meta.json                    # revision counter and last-updated timestamp

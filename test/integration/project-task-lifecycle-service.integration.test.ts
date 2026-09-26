@@ -9,6 +9,7 @@ import type {
 	RuntimeWorktreeEnsureResponse,
 } from "../../src/core";
 import { findCardInBoard, getTaskColumnId } from "../../src/core";
+import { lockedFileSystem } from "../../src/fs/locked-file-system";
 import { ProjectTaskLifecycleService } from "../../src/server";
 import {
 	fingerprintTaskLifecycleCommand,
@@ -261,6 +262,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 									taskId: TASK_SPEC.taskId,
 									prompt: TASK_SPEC.prompt,
 									createdAt: TASK_SPEC.createdAt,
+									agentId: "codex",
 								},
 							},
 						],
@@ -941,69 +943,87 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 		});
 	});
 
-	it("recovers a start after its board receipt commits and compensates without launching twice", async () => {
-		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-start-recovery-");
-			try {
-				const projectPath = join(sandboxRoot, "project-a");
-				mkdirSync(projectPath, { recursive: true });
-				initGitRepository(projectPath);
-				const context = await loadProjectContext(projectPath);
-				const initial = await loadProjectState(projectPath);
-				const scope = { projectId: context.projectId, projectPath };
-				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
-				const created = await boardCommands.execute(scope, {
-					commandId: "seed-start-recovery",
-					expectedRevision: initial.revision,
-					command: { ...TASK_SPEC, kind: "create_task", columnId: "backlog" },
-				});
-				const operationStore = new ProjectTaskLifecycleOperationStore();
-				const command: RuntimeTaskLifecycleCommand = {
-					kind: "start",
-					operationId: "recover-start-task-a",
-					taskId: TASK_SPEC.taskId,
-					taskCreatedAt: TASK_SPEC.createdAt,
-					expectedRevision: created.state.revision,
-				};
-				const begun = await operationStore.begin(scope, command);
-				await operationStore.update(scope, command.operationId, (operation) => ({
-					...operation,
-					phase: "board_transition",
-				}));
-				await boardCommands.execute(scope, {
-					commandId: `${command.operationId}:move`,
-					expectedRevision: command.expectedRevision,
-					command: {
-						kind: "move_task",
+	it.each([null, "board.json", "sessions.json", "meta.json"])(
+		"recovers a start interrupted before %s and compensates without launching twice",
+		async (failedFile) => {
+			await withTemporaryHome(async () => {
+				const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-start-recovery-");
+				try {
+					const projectPath = join(sandboxRoot, "project-a");
+					mkdirSync(projectPath, { recursive: true });
+					initGitRepository(projectPath);
+					const context = await loadProjectContext(projectPath);
+					const initial = await loadProjectState(projectPath);
+					const scope = { projectId: context.projectId, projectPath };
+					const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+					const created = await boardCommands.execute(scope, {
+						commandId: "seed-start-recovery",
+						expectedRevision: initial.revision,
+						command: { ...TASK_SPEC, kind: "create_task", columnId: "backlog" },
+					});
+					const operationStore = new ProjectTaskLifecycleOperationStore();
+					const command: RuntimeTaskLifecycleCommand = {
+						kind: "start",
+						operationId: "recover-start-task-a",
 						taskId: TASK_SPEC.taskId,
-						sourceColumnId: "backlog",
-						targetColumnId: "in_progress",
-						targetIndex: 0,
-						updatedAt: begun.operation.requestedAt,
-					},
-				});
+						taskCreatedAt: TASK_SPEC.createdAt,
+						expectedRevision: created.state.revision,
+					};
+					const begun = await operationStore.begin(scope, command);
+					await operationStore.update(scope, command.operationId, (operation) => ({
+						...operation,
+						phase: "board_transition",
+					}));
+					const write = lockedFileSystem.writeJsonFileAtomic.bind(lockedFileSystem);
+					const fault = vi
+						.spyOn(lockedFileSystem, "writeJsonFileAtomic")
+						.mockImplementation(async (path, payload, options) => {
+							if (failedFile && path === join(context.statePath, failedFile))
+								throw new Error("Interrupted install");
+							await write(path, payload, options);
+						});
+					const moving = boardCommands.execute(scope, {
+						commandId: `${command.operationId}:move`,
+						expectedRevision: command.expectedRevision,
+						command: {
+							kind: "move_task",
+							taskId: TASK_SPEC.taskId,
+							sourceColumnId: "backlog",
+							targetColumnId: "in_progress",
+							targetIndex: 0,
+							updatedAt: begun.operation.requestedAt,
+						},
+					});
 
-				const startTaskSession = vi.fn();
-				const lifecycle = new ProjectTaskLifecycleService({
-					boardCommands,
-					startTaskSession,
-					operationStore,
-				});
-				await lifecycle.recover(scope);
-				const recovered = await lifecycle.getOperation(scope, command.operationId);
+					try {
+						if (failedFile) await expect(moving).rejects.toThrow("Interrupted install");
+						else await moving;
+					} finally {
+						fault.mockRestore();
+					}
 
-				expect(recovered).toMatchObject({
-					ok: false,
-					operation: { status: "failed", outcomeCode: "superseded", phase: "finished" },
-				});
-				expect(getTaskColumnId(recovered?.state.board ?? initial.board, TASK_SPEC.taskId)).toBe("backlog");
-				expect(startTaskSession).not.toHaveBeenCalled();
-				expect(await operationStore.listActive(scope)).toEqual([]);
-			} finally {
-				cleanup();
-			}
-		});
-	});
+					const startTaskSession = vi.fn();
+					const lifecycle = new ProjectTaskLifecycleService({
+						boardCommands,
+						startTaskSession,
+						operationStore,
+					});
+					await lifecycle.recover(scope);
+					const recovered = await lifecycle.getOperation(scope, command.operationId);
+
+					expect(recovered).toMatchObject({
+						ok: false,
+						operation: { status: "failed", outcomeCode: "superseded", phase: "finished" },
+					});
+					expect(getTaskColumnId(recovered?.state.board ?? initial.board, TASK_SPEC.taskId)).toBe("backlog");
+					expect(startTaskSession).not.toHaveBeenCalled();
+					expect(await operationStore.listActive(scope)).toEqual([]);
+				} finally {
+					cleanup();
+				}
+			});
+		},
+	);
 
 	it("replays a committed trash move and performs cleanup exactly once", async () => {
 		await withTemporaryHome(async () => {

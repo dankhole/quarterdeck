@@ -24,19 +24,18 @@ import {
 	MAX_RECENT_BOARD_COMMAND_RECEIPTS,
 	type ProjectBoardCommandReceipt,
 	parseProjectStateSavePayload,
-	readProjectBoard,
+	readProjectBoardUnderLock,
 	readProjectIndex,
-	readProjectMeta,
-	readProjectSessions,
+	readProjectMetaUnderLock,
+	readProjectSessionsUnderLock,
 	writeProjectIndexSafe,
 } from "./project-state-index";
+import { withProjectStateLock, writeProjectStateTransaction } from "./project-state-transaction";
 import {
 	detectGitRepositoryInfo,
-	getProjectBoardPath,
 	getProjectDirectoryLockRequest,
 	getProjectDirectoryPath,
 	getProjectIndexLockRequest,
-	getProjectMetaPath,
 	getProjectSessionsPath,
 	getProjectsRootLockRequest,
 	resolveProjectPath,
@@ -191,15 +190,7 @@ async function writeProjectStateFiles(
 		recentBoardCommands,
 	};
 
-	await lockedFileSystem.writeJsonFileAtomic(getProjectBoardPath(projectId), board, {
-		lock: null,
-	});
-	await lockedFileSystem.writeJsonFileAtomic(getProjectSessionsPath(projectId), sessions, {
-		lock: null,
-	});
-	await lockedFileSystem.writeJsonFileAtomic(getProjectMetaPath(projectId), nextMeta, {
-		lock: null,
-	});
+	await writeProjectStateTransaction(projectId, { board, sessions, meta: nextMeta });
 
 	pendingSessionsWarningByProjectId.delete(projectId);
 	return nextRevision;
@@ -317,11 +308,20 @@ export async function removeProjectStateFiles(projectId: string): Promise<void> 
 }
 
 async function loadProjectStateFromContext(context: RuntimeProjectContext): Promise<RuntimeProjectStateResponse> {
-	const [board, sessionsResult, meta] = await Promise.all([
-		readProjectBoard(context.projectId),
-		readProjectSessions(context.projectId),
-		readProjectMeta(context.projectId),
-	]);
+	return await withProjectStateLock(
+		context.projectId,
+		async () => await readProjectStateFromContextUnderLock(context),
+	);
+}
+
+async function readProjectStateFromContextUnderLock(
+	context: RuntimeProjectContext,
+): Promise<RuntimeProjectStateResponse> {
+	const board = await readProjectBoardUnderLock(context.projectId);
+	const meta = await readProjectMetaUnderLock(context.projectId);
+	// Session reads may repair legacy/corrupt entries. Complete that work before
+	// releasing the lock, including when another state file is unreadable.
+	const sessionsResult = await readProjectSessionsUnderLock(context.projectId);
 	if (sessionsResult.droppedCount > 0) {
 		pendingSessionsWarningByProjectId.set(context.projectId, {
 			kind: "sessions_corruption",
@@ -347,8 +347,11 @@ export async function loadProjectStateById(projectId: string): Promise<RuntimePr
 export async function loadProjectBoardSnapshotById(
 	projectId: string,
 ): Promise<{ board: RuntimeBoardData; revision: number }> {
-	return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(projectId), async () => {
-		const [board, meta] = await Promise.all([readProjectBoard(projectId), readProjectMeta(projectId)]);
+	return await withProjectStateLock(projectId, async () => {
+		const [board, meta] = await Promise.all([
+			readProjectBoardUnderLock(projectId),
+			readProjectMetaUnderLock(projectId),
+		]);
 		return { board, revision: meta.revision };
 	});
 }
@@ -359,8 +362,8 @@ export async function saveProjectState(
 ): Promise<RuntimeProjectStateResponse> {
 	const parsedPayload = parseProjectStateSavePayload(payload, persistedProjectStateSaveRequestSchema);
 	const context = await loadProjectContext(cwd);
-	return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(context.projectId), async () => {
-		const currentMeta = await readProjectMeta(context.projectId);
+	return await withProjectStateLock(context.projectId, async () => {
+		const currentMeta = await readProjectMetaUnderLock(context.projectId);
 		assertExpectedRevision(parsedPayload.expectedRevision, currentMeta.revision);
 		const board = parsedPayload.board;
 		const sessions = parsedPayload.sessions;
@@ -392,8 +395,8 @@ export async function applyProjectBoardMutation(
 		persistedProjectSessionsSaveRequestSchema,
 	).sessions;
 	const context = await loadProjectContext(cwd);
-	return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(context.projectId), async () => {
-		const currentMeta = await readProjectMeta(context.projectId);
+	return await withProjectStateLock(context.projectId, async () => {
+		const currentMeta = await readProjectMetaUnderLock(context.projectId);
 		const commandIdentity = input.commandIdentity;
 		if (commandIdentity) {
 			const receipt = currentMeta.recentBoardCommands.find(
@@ -403,7 +406,7 @@ export async function applyProjectBoardMutation(
 				if (receipt.fingerprint !== commandIdentity.fingerprint) {
 					throw new ProjectBoardCommandIdentityConflictError(commandIdentity.commandId);
 				}
-				const currentBoard = await readProjectBoard(context.projectId);
+				const currentBoard = await readProjectBoardUnderLock(context.projectId);
 				const pendingWarning = pendingSessionsWarningByProjectId.get(context.projectId);
 				return {
 					state: toProjectStateResponse(
@@ -421,7 +424,7 @@ export async function applyProjectBoardMutation(
 		}
 		assertExpectedRevision(input.expectedRevision, currentMeta.revision);
 
-		const currentBoard = await readProjectBoard(context.projectId);
+		const currentBoard = await readProjectBoardUnderLock(context.projectId);
 		const mutation = input.mutate(currentBoard);
 		if (!mutation.changed) {
 			if (commandIdentity) {
@@ -462,7 +465,7 @@ export async function applyProjectBoardMutation(
 				});
 				persistedSessions = prunedSessions;
 			} else {
-				persistedSessions = (await readProjectSessions(context.projectId)).sessions;
+				persistedSessions = (await readProjectSessionsUnderLock(context.projectId)).sessions;
 			}
 			const pendingWarning = pendingSessionsWarningByProjectId.get(context.projectId);
 			return {
@@ -520,7 +523,7 @@ export async function saveProjectSessions(
 	const clearPendingWarnings = options.clearPendingWarnings ?? true;
 	const parsedPayload = parseProjectStateSavePayload({ sessions }, persistedProjectSessionsSaveRequestSchema);
 	const context = await loadProjectContext(cwd);
-	return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(context.projectId), async () => {
+	return await withProjectStateLock(context.projectId, async () => {
 		await lockedFileSystem.writeJsonFileAtomic(getProjectSessionsPath(context.projectId), parsedPayload.sessions, {
 			lock: null,
 		});
@@ -552,40 +555,44 @@ async function backUpSessionsBeforePrune(statePath: string): Promise<string | nu
 
 export async function pruneProjectSessionsForBoard(cwd: string): Promise<ProjectSessionsPruneResult> {
 	const context = await loadProjectContext(cwd);
-	const projectState = await loadProjectState(cwd);
-	const prunedSessions = pruneOrphanSessionsForPersist(projectState.sessions, projectState.board);
-	const prunedTaskIds = Object.keys(projectState.sessions).filter((taskId) => !(taskId in prunedSessions));
-	const beforeCount = Object.keys(projectState.sessions).length;
-	const afterCount = Object.keys(prunedSessions).length;
+	return await withProjectStateLock(context.projectId, async () => {
+		const projectState = await readProjectStateFromContextUnderLock(context);
+		const prunedSessions = pruneOrphanSessionsForPersist(projectState.sessions, projectState.board);
+		const prunedTaskIds = Object.keys(projectState.sessions).filter((taskId) => !(taskId in prunedSessions));
+		const beforeCount = Object.keys(projectState.sessions).length;
+		const afterCount = Object.keys(prunedSessions).length;
 
-	if (prunedTaskIds.length === 0) {
+		if (prunedTaskIds.length === 0) {
+			return {
+				projectId: context.projectId,
+				beforeCount,
+				afterCount,
+				prunedCount: 0,
+				prunedTaskIds: [],
+				backupPath: null,
+			};
+		}
+
+		const backupPath = await backUpSessionsBeforePrune(projectState.statePath);
+		await lockedFileSystem.writeJsonFileAtomic(getProjectSessionsPath(context.projectId), prunedSessions, {
+			lock: null,
+		});
+		projectStateLog.warn("pruned orphan session summaries from sessions.json", {
+			projectId: context.projectId,
+			statePath: projectState.statePath,
+			beforeCount,
+			afterCount,
+			prunedCount: prunedTaskIds.length,
+			backupPath,
+		});
+
 		return {
 			projectId: context.projectId,
 			beforeCount,
 			afterCount,
-			prunedCount: 0,
-			prunedTaskIds: [],
-			backupPath: null,
+			prunedCount: prunedTaskIds.length,
+			prunedTaskIds,
+			backupPath,
 		};
-	}
-
-	const backupPath = await backUpSessionsBeforePrune(projectState.statePath);
-	await saveProjectSessions(cwd, prunedSessions, { clearPendingWarnings: false });
-	projectStateLog.warn("pruned orphan session summaries from sessions.json", {
-		projectId: context.projectId,
-		statePath: projectState.statePath,
-		beforeCount,
-		afterCount,
-		prunedCount: prunedTaskIds.length,
-		backupPath,
 	});
-
-	return {
-		projectId: context.projectId,
-		beforeCount,
-		afterCount,
-		prunedCount: prunedTaskIds.length,
-		prunedTaskIds,
-		backupPath,
-	};
 }

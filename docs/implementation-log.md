@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-26 — Recoverable project-state commits
+
+Board, session, and revision/receipt files previously used separate atomic renames, allowing a process crash to persist an In Progress move without its replay receipt. Full-state reads also ran outside the writer lock. `project-state-transaction.ts` now commits a complete versioned journal before installing those files and replays it under the project directory lock before every read or write. The journal and destination files are flushed, with POSIX directory syncs before journal removal; Windows retains filesystem-dependent rename durability. Invalid journals fail closed. Existing file formats and receipt ordering are preserved. Session repair and orphan pruning hold the same lock through their writes; backups copy only a recovered state, and restore clears pending commits before replacing files.
+
+Notable files: `src/state/project-state{,-index,-transaction}.ts` and `src/state/state-backup.ts`. Validation: 66 tests across eight focused suites, runtime typecheck, changed-file Biome, and diff checks passed on macOS. Coverage includes child-process termination after each file boundary, blocked concurrent readers, pre-commit failure, session-only saves after interruption, lifecycle compensation without a duplicate launch, and backup/restore recovery. Native Windows execution was not run. Browser and provider behavior is unchanged, so filesystem/process integration tests are the relevant boundary rather than Agent Lab.
+
 ## 2026-09-26 — Separate session durability from runtime streaming
 
 `RuntimeSessionPersistence` now owns terminal-store subscriptions, dirty generations, retry backoff, explicit hook acknowledgement barriers, and shutdown draining. The CLI composes it independently of `RuntimeStateHub`; startup outbox replay and live hook ingestion call the persistence owner directly. `ProjectBoardCommandService` remains the only durable board writer. Preserve the existing barrier invariant: acknowledge only after the caller's required generation is durable, including explicit barriers arriving while shutdown detaches automatic listeners.

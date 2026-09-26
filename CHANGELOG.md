@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Commit board state, sessions, revisions, and replay receipts through a recoverable transaction so interrupted writes cannot strand task starts or expose mixed state to readers and backups.
+
 - Preserve unsaved task prompts and images during runtime disconnects, blocking actions with an overlay until the connection returns.
 
 - Separate session persistence and durable hook acknowledgements from WebSocket streaming, preserving retries and shutdown flushing under an independent runtime service.

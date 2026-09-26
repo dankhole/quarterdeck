@@ -10,6 +10,14 @@ The browser is an optimistic client. The runtime owns durable board state, sessi
 - `setBoard` must reject lifecycle-managed commands instead of displaying an optimistic transition it will not submit. Non-browser callers use the command or lifecycle service with typed intent; they never accept `BoardData`, reuse `setBoard`, reuse the presentation adapter, expose a whole-board save route, or let a client payload replace `board.json`.
 - Runtime session truth comes from the server-owned terminal/session store, never browser payloads or cached board restore data. Low-level `saveProjectState` remains for migrations, isolated tests, and controlled maintenance only. Tests that seed state directly must target the isolated runtime state root through `QUARTERDECK_STATE_HOME`, not a browser API.
 
+## Persistence transactions
+
+`project-state-transaction.ts` owns the filesystem transaction for `board.json`, `sessions.json`, and `meta.json` (revision plus board-command receipts). Under the project directory lock, it atomically writes the complete next state to `state-transaction.json`, flushes that journal, installs and flushes all three destination files, then removes the journal. POSIX directory syncs order the renames and journal removal; Windows flushes file contents but relies on filesystem rename durability because Node cannot sync directories there.
+
+Every state read, mutation, session-only save, session repair/prune, and backup snapshot enters `withProjectStateLock`, which finishes a pending journal before accessing the individual files. The `UnderLock` readers are internal primitives for callers already inside this boundary. A session read can repair old data, so its entire lifetime must remain inside the lock even if another file fails validation. Do not read the files independently or bypass recovery on a session-only write.
+
+The journal is the commit record: an installation failure can return an error after the command was accepted. Preserve it for the next reader/writer, replay idempotently, and use the persisted command receipt when retrying intent. Invalid journals fail closed rather than exposing a partially installed state. Existing projects without a journal retain their file format and need no migration. Backup snapshots recover and copy under the same lock; maintenance restore consumes any pending transaction before replacing state and still requires stopped runtimes.
+
 ## Command receipts and lifecycle effects
 
 - Board-command receipt metadata is server-owned and bounded. Check a repeated command ID and payload fingerprint before expected-revision rejection so a retry after a lost response works across runtime restarts. Reject reuse of the same ID with different content.

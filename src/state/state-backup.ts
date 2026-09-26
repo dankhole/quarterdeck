@@ -20,6 +20,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
 import { isNodeError } from "../fs";
 import { removeDirectoryWithRetries } from "../fs/remove-path";
+import { withProjectStateLock } from "./project-state-transaction";
 import {
 	BOARD_FILENAME,
 	EXECUTION_OWNERSHIP_FILENAME,
@@ -184,18 +185,23 @@ export async function createBackup(options: CreateBackupOptions = {}): Promise<s
 		for (const projectId of projectIds) {
 			const wsBackupDir = join(backupProjectsDir, projectId);
 			await mkdir(wsBackupDir, { recursive: true });
-			await copyFileIfExists(getProjectBoardPath(projectId), join(wsBackupDir, BOARD_FILENAME));
-			await copyFileIfExists(getProjectSessionsPath(projectId), join(wsBackupDir, SESSIONS_FILENAME));
-			await copyFileIfExists(getProjectMetaPath(projectId), join(wsBackupDir, META_FILENAME));
-			await copyFileIfExists(getProjectPinnedBranchesPath(projectId), join(wsBackupDir, PINNED_BRANCHES_FILENAME));
-			await copyFileIfExists(
-				getProjectLifecycleOperationsPath(projectId),
-				join(wsBackupDir, LIFECYCLE_OPERATIONS_FILENAME),
-			);
-			await copyFileIfExists(
-				getProjectExecutionOwnershipPath(projectId),
-				join(wsBackupDir, EXECUTION_OWNERSHIP_FILENAME),
-			);
+			await withProjectStateLock(projectId, async () => {
+				await copyFileIfExists(getProjectBoardPath(projectId), join(wsBackupDir, BOARD_FILENAME));
+				await copyFileIfExists(getProjectSessionsPath(projectId), join(wsBackupDir, SESSIONS_FILENAME));
+				await copyFileIfExists(getProjectMetaPath(projectId), join(wsBackupDir, META_FILENAME));
+				await copyFileIfExists(
+					getProjectPinnedBranchesPath(projectId),
+					join(wsBackupDir, PINNED_BRANCHES_FILENAME),
+				);
+				await copyFileIfExists(
+					getProjectLifecycleOperationsPath(projectId),
+					join(wsBackupDir, LIFECYCLE_OPERATIONS_FILENAME),
+				);
+				await copyFileIfExists(
+					getProjectExecutionOwnershipPath(projectId),
+					join(wsBackupDir, EXECUTION_OWNERSHIP_FILENAME),
+				);
+			});
 		}
 
 		// Manifest written last — acts as the commit signal.
@@ -273,13 +279,16 @@ export async function restoreBackup(backupPathOrName: string): Promise<BackupMan
 		const wsBackupDir = join(backupDir, "projects", projectId);
 		const wsDir = getProjectDirectoryPath(projectId);
 		await mkdir(wsDir, { recursive: true });
-		for (const filename of PROJECT_STATE_FILENAMES) {
-			if (COORDINATION_JOURNAL_FILENAMES.includes(filename)) {
-				await restoreCoordinationJournal(join(wsBackupDir, filename), join(wsDir, filename));
-			} else {
-				await copyFileIfExists(join(wsBackupDir, filename), join(wsDir, filename));
+		// Recover and remove any pending commit before replacing it with the backup.
+		await withProjectStateLock(projectId, async () => {
+			for (const filename of PROJECT_STATE_FILENAMES) {
+				if (COORDINATION_JOURNAL_FILENAMES.includes(filename)) {
+					await restoreCoordinationJournal(join(wsBackupDir, filename), join(wsDir, filename));
+				} else {
+					await copyFileIfExists(join(wsBackupDir, filename), join(wsDir, filename));
+				}
 			}
-		}
+		});
 	}
 
 	return manifest;
@@ -326,21 +335,23 @@ async function computeStateFingerprint(): Promise<string> {
 	}
 
 	for (const projectId of await discoverProjectIds(indexPath)) {
-		for (const getter of [
-			getProjectBoardPath,
-			getProjectSessionsPath,
-			getProjectMetaPath,
-			getProjectLifecycleOperationsPath,
-			getProjectExecutionOwnershipPath,
-		]) {
-			const path = getter(projectId);
-			try {
-				const info = await stat(path);
-				parts.push(`${path}:${info.mtimeMs}:${info.size}`);
-			} catch {
-				parts.push(`${path}:missing`);
+		await withProjectStateLock(projectId, async () => {
+			for (const getter of [
+				getProjectBoardPath,
+				getProjectSessionsPath,
+				getProjectMetaPath,
+				getProjectLifecycleOperationsPath,
+				getProjectExecutionOwnershipPath,
+			]) {
+				const path = getter(projectId);
+				try {
+					const info = await stat(path);
+					parts.push(`${path}:${info.mtimeMs}:${info.size}`);
+				} catch {
+					parts.push(`${path}:missing`);
+				}
 			}
-		}
+		});
 	}
 
 	return parts.join("|");

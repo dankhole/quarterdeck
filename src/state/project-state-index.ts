@@ -14,6 +14,8 @@ import {
 } from "../core";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { isNodeError } from "../fs/node-error";
+import { type ProjectStateMeta, projectStateMetaSchema, withProjectStateLock } from "./project-state-transaction";
+
 import {
 	getProjectBoardPath,
 	getProjectIndexLockRequest,
@@ -22,6 +24,13 @@ import {
 	getProjectSessionsPath,
 	isUnderWorktreesHome,
 } from "./project-state-utils";
+
+export {
+	MAX_RECENT_BOARD_COMMAND_RECEIPTS,
+	type ProjectBoardCommandReceipt,
+	type ProjectStateMeta,
+	projectStateMetaSchema,
+} from "./project-state-transaction";
 
 const INDEX_VERSION = 1;
 const PROJECT_ID_COLLISION_SUFFIX_LENGTH = 4;
@@ -50,40 +59,6 @@ interface ProjectIndexFile {
 	repoPathToId: Record<string, string>;
 	projectOrder: string[];
 }
-
-export interface ProjectStateMeta {
-	revision: number;
-	updatedAt: number;
-	recentBoardCommands: ProjectBoardCommandReceipt[];
-}
-
-export interface ProjectBoardCommandReceipt {
-	commandId: string;
-	fingerprint: string;
-	revision: number;
-	appliedAt: number;
-	acceptedChange: boolean;
-}
-
-export const MAX_RECENT_BOARD_COMMAND_RECEIPTS = 256;
-
-const projectBoardCommandReceiptSchema = z.object({
-	commandId: z.string().min(1).max(128),
-	fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-	revision: z.number().int().nonnegative(),
-	appliedAt: z.number().finite().nonnegative(),
-	acceptedChange: z.boolean(),
-});
-
-export const projectStateMetaSchema = z.object({
-	revision: z.number().int().nonnegative(),
-	updatedAt: z.number(),
-	recentBoardCommands: z
-		.array(projectBoardCommandReceiptSchema)
-		.max(MAX_RECENT_BOARD_COMMAND_RECEIPTS)
-		.optional()
-		.default([]),
-});
 
 const projectIndexEntrySchema = z.object({
 	projectId: z.string().min(1, "Project ID cannot be empty."),
@@ -367,7 +342,8 @@ export function parseProjectStateSavePayload<T>(payload: T, schema: z.ZodType<T>
 	return parsed.data;
 }
 
-export async function readProjectBoard(projectId: string): Promise<RuntimeBoardData> {
+/** Requires withProjectStateLock; never read a partial transaction. */
+export async function readProjectBoardUnderLock(projectId: string): Promise<RuntimeBoardData> {
 	const boardPath = getProjectBoardPath(projectId);
 	const rawBoard = await readJsonFile(boardPath);
 	return canonicalizeTaskBoard(
@@ -376,10 +352,11 @@ export async function readProjectBoard(projectId: string): Promise<RuntimeBoardD
 }
 
 export async function loadProjectBoardById(projectId: string): Promise<RuntimeBoardData> {
-	return await readProjectBoard(projectId);
+	return await withProjectStateLock(projectId, async () => await readProjectBoardUnderLock(projectId));
 }
 
-export async function readProjectSessions(projectId: string): Promise<ReadProjectSessionsResult> {
+/** Requires withProjectStateLock; never read a partial transaction. */
+export async function readProjectSessionsUnderLock(projectId: string): Promise<ReadProjectSessionsResult> {
 	const sessionsPath = getProjectSessionsPath(projectId);
 	const rawSessions = await readJsonFile(sessionsPath);
 	if (rawSessions === null) {
@@ -424,7 +401,8 @@ export async function readProjectSessions(projectId: string): Promise<ReadProjec
 	};
 }
 
-export async function readProjectMeta(projectId: string): Promise<ProjectStateMeta> {
+/** Requires withProjectStateLock; never read a partial transaction. */
+export async function readProjectMetaUnderLock(projectId: string): Promise<ProjectStateMeta> {
 	const metaPath = getProjectMetaPath(projectId);
 	const rawMeta = await readJsonFile(metaPath);
 	return parsePersistedStateFile(metaPath, "meta.json", rawMeta, projectStateMetaSchema, {
