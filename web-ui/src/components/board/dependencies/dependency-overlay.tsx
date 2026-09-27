@@ -6,8 +6,8 @@ import type { DependencyLinkDraft } from "@/components/board/dependencies/use-de
 import type { BoardColumnId, BoardDependency } from "@/types";
 
 import { computePath, type RenderedDependency, type TaskAnchor } from "./dependency-geometry";
+import { computeGridDependencyRoute } from "./grid-dependency-route";
 import { useDependencyLayout } from "./use-dependency-layout";
-import { useSideTransitions } from "./use-side-transitions";
 
 export function DependencyOverlay({
 	containerRef,
@@ -179,7 +179,8 @@ export function DependencyOverlay({
 			lanes.sort((first, second) => first.oppositeCenterY - second.oppositeCenterY);
 		}
 
-		return candidates.map((candidate) => {
+		const cards = Object.values(layout.anchors);
+		return candidates.flatMap((candidate) => {
 			const sourceLanes = laneOrderByTaskId.get(candidate.dependency.fromTaskId) ?? [
 				{ dependencyId: candidate.dependency.id, oppositeCenterY: candidate.targetAnchor.centerY },
 			];
@@ -190,27 +191,17 @@ export function DependencyOverlay({
 			const targetLaneIndex = targetLanes.findIndex((lane) => lane.dependencyId === candidate.dependency.id);
 			const sourceLaneOffset = ((sourceLaneIndex === -1 ? 0 : sourceLaneIndex) - (sourceLanes.length - 1) / 2) * 9;
 			const targetLaneOffset = ((targetLaneIndex === -1 ? 0 : targetLaneIndex) - (targetLanes.length - 1) / 2) * 9;
-			const geometry = computePath(
+			const route = computeGridDependencyRoute(
 				candidate.sourceAnchor,
 				candidate.targetAnchor,
 				sourceLaneOffset,
 				targetLaneOffset,
+				cards,
 				{ width: layout.width, height: layout.height },
 			);
-			return {
-				dependency: candidate.dependency,
-				geometry: geometry.geometry,
-				path: geometry.path,
-				midpointX: geometry.midpointX,
-				midpointY: geometry.midpointY,
-				startSide: geometry.startSide,
-				endSide: geometry.endSide,
-				isTransient: candidate.isTransient,
-			};
+			return route ? [{ ...route, dependency: candidate.dependency, isTransient: candidate.isTransient }] : [];
 		});
 	}, [activeTaskId, dependencies, layout.anchors, layout.height, layout.width]);
-
-	const { getDisplayedPath } = useSideTransitions(renderedDependencies);
 
 	const draftPath = useMemo(() => {
 		if (!draft) {
@@ -299,7 +290,7 @@ export function DependencyOverlay({
 					</marker>
 				</defs>
 				{renderedDependencies.map((rendered) => {
-					const displayedPath = getDisplayedPath(rendered);
+					const displayedPath = rendered.path;
 					return (
 						<g key={rendered.dependency.id}>
 							<path

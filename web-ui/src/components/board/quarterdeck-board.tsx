@@ -1,34 +1,33 @@
 import {
-	type BeforeCapture,
-	DragDropContext,
-	type DragStart,
-	type DropResult,
-	type FluidDragActions,
-	type Sensor,
-	type SensorAPI,
-	type SnapDragActions,
-} from "@hello-pangea/dnd";
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
-
+	DndContext,
+	type DragEndEvent,
+	DragOverlay,
+	KeyboardSensor,
+	PointerSensor,
+	useSensor,
+	useSensors,
+} from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import type { DropResult } from "@hello-pangea/dnd";
+import { Plus } from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { BoardColumn } from "@/components/board/board-column";
 import { DependencyOverlay } from "@/components/board/dependencies/dependency-overlay";
 import { useDependencyLinking } from "@/components/board/dependencies/use-dependency-linking";
+import { Button } from "@/components/ui/button";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { boardGridCollision } from "@/state/board-grid-collision";
+import { resolveBoardGridDrop } from "@/state/board-grid-drag";
+import type { BoardReplyScope } from "@/state/board-reply-drafts";
 import { canCreateTaskDependency } from "@/state/board-state";
 import { findCardColumnId, type ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
-import type { BoardCard, BoardColumnId, BoardData, BoardDependency } from "@/types";
-
-const BOARD_COLUMN_ORDER: BoardColumnId[] = ["in_progress", "review", "trash"];
+import type { BoardCard, BoardData, BoardDependency } from "@/types";
 
 export type RequestProgrammaticCardMove = (move: ProgrammaticCardMoveInFlight) => boolean;
 
-function isRectVerticallyVisibleWithinContainer(rect: DOMRect, containerRect: DOMRect): boolean {
-	return rect.top >= containerRect.top && rect.bottom <= containerRect.bottom;
-}
-
 export function QuarterdeckBoard({
 	data,
+	replyScope,
 	taskSessions,
 	onCardSelect,
 	onCreateTask,
@@ -44,6 +43,7 @@ export function QuarterdeckBoard({
 	onRequestProgrammaticCardMoveReady,
 }: {
 	data: BoardData;
+	replyScope?: BoardReplyScope;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCardSelect: (taskId: string) => void;
 	onCreateTask: () => void;
@@ -58,343 +58,106 @@ export function QuarterdeckBoard({
 	onDragEnd: (result: DropResult) => void;
 	onRequestProgrammaticCardMoveReady?: (requestMove: RequestProgrammaticCardMove | null) => void;
 }): React.ReactElement {
-	const dragOccurredRef = useRef(false);
 	const boardRef = useRef<HTMLElement>(null);
-	const sensorApiRef = useRef<SensorAPI | null>(null);
-	const latestDataRef = useRef<BoardData>(data);
-	const programmaticCardMoveInFlightRef = useRef<ProgrammaticCardMoveInFlight | null>(null);
 	const [activeDragTaskId, setActiveDragTaskId] = useState<string | null>(null);
-	const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<BoardColumnId | null>(null);
-	const [programmaticCardMoveInFlight, setProgrammaticCardMoveInFlight] =
-		useState<ProgrammaticCardMoveInFlight | null>(null);
+	const sensors = useSensors(
+		useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+		useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+	);
 	const dependencyLinking = useDependencyLinking({
 		canLinkTasks: (fromTaskId, toTaskId) => canCreateTaskDependency(data, fromTaskId, toTaskId),
 		onCreateDependency,
 	});
-
-	useEffect(() => {
-		latestDataRef.current = data;
-	}, [data]);
-
-	const programmaticSensor: Sensor = useCallback((api: SensorAPI) => {
-		sensorApiRef.current = api;
-	}, []);
-
-	const getElementClientCenter = useCallback((element: HTMLElement): { x: number; y: number } => {
-		const rect = element.getBoundingClientRect();
-		return {
-			x: rect.left + rect.width / 2,
-			y: rect.top + rect.height / 2,
-		};
-	}, []);
-
-	const canAnimateProgrammaticTopInsertion = useCallback((taskId: string, targetColumnId: BoardColumnId): boolean => {
-		const boardElement = boardRef.current;
-		if (!boardElement) {
-			return false;
-		}
-		const sourceCardElement = boardElement.querySelector<HTMLElement>(`[data-task-id="${taskId}"]`);
-		const sourceColumnId = findCardColumnId(latestDataRef.current.columns, taskId);
-		const sourceColumnElement = sourceColumnId
-			? boardElement.querySelector<HTMLElement>(`section[data-column-id="${sourceColumnId}"]`)
-			: null;
-		const sourceCardsElement = sourceColumnElement?.querySelector<HTMLElement>(".kb-column-cards");
-		const targetColumnElement = boardElement.querySelector<HTMLElement>(`[data-column-id="${targetColumnId}"]`);
-		const targetCardsElement = targetColumnElement?.querySelector<HTMLElement>(".kb-column-cards");
-		if (!sourceCardElement || !sourceCardsElement || !targetCardsElement) {
-			return false;
-		}
-
-		const sourceCardRect = sourceCardElement.getBoundingClientRect();
-		const sourceCardsRect = sourceCardsElement.getBoundingClientRect();
-		if (!isRectVerticallyVisibleWithinContainer(sourceCardRect, sourceCardsRect)) {
-			return false;
-		}
-
-		if (targetCardsElement.scrollTop > 1) {
-			return false;
-		}
-
-		const firstTargetCardElement = targetCardsElement.querySelector<HTMLElement>("[data-task-id]");
-		if (firstTargetCardElement) {
-			const firstTargetCardRect = firstTargetCardElement.getBoundingClientRect();
-			return isRectVerticallyVisibleWithinContainer(firstTargetCardRect, targetCardsElement.getBoundingClientRect());
-		}
-
-		return true;
-	}, []);
-
-	const getProgrammaticTopTargetClientSelection = useCallback(
-		(taskId: string, targetColumnId: BoardColumnId): { x: number; y: number } | null => {
-			const boardElement = boardRef.current;
-			if (!boardElement) {
-				return null;
-			}
-			const sourceCardElement = boardElement.querySelector<HTMLElement>(`[data-task-id="${taskId}"]`);
-			const targetColumnElement = boardElement.querySelector<HTMLElement>(`[data-column-id="${targetColumnId}"]`);
-			const targetCardsElement = targetColumnElement?.querySelector<HTMLElement>(".kb-column-cards");
-			if (!sourceCardElement || !targetCardsElement) {
-				return null;
-			}
-
-			const sourceCardRect = sourceCardElement.getBoundingClientRect();
-			const firstTargetCardElement = targetCardsElement.querySelector<HTMLElement>("[data-task-id]");
-			if (firstTargetCardElement) {
-				const targetRect = firstTargetCardElement.getBoundingClientRect();
-				const desiredCenterY = targetRect.top + sourceCardRect.height / 2;
-				const maxTopInsertCenterY = targetRect.top + targetRect.height / 2 - 1;
-				return {
-					x: targetRect.left + sourceCardRect.width / 2,
-					y: Math.min(desiredCenterY, maxTopInsertCenterY),
-				};
-			}
-			const targetRect = targetCardsElement.getBoundingClientRect();
-			const targetCardsStyle = window.getComputedStyle(targetCardsElement);
-			const paddingTop = Number.parseFloat(targetCardsStyle.paddingTop) || 0;
-			const paddingLeft = Number.parseFloat(targetCardsStyle.paddingLeft) || 0;
-			return {
-				x: targetRect.left + paddingLeft + sourceCardRect.width / 2,
-				y: targetRect.top + paddingTop + sourceCardRect.height / 2,
-			};
-		},
-		[],
-	);
-
-	const clearProgrammaticCardMoveInFlight = useCallback((taskId?: string) => {
-		if (taskId && programmaticCardMoveInFlightRef.current?.taskId !== taskId) {
-			return;
-		}
-		programmaticCardMoveInFlightRef.current = null;
-		setProgrammaticCardMoveInFlight(null);
-	}, []);
-
+	const sourceColumnId = activeDragTaskId ? findCardColumnId(data.columns, activeDragTaskId) : null;
+	const activeCard = data.columns.flatMap((column) => column.cards).find((card) => card.id === activeDragTaskId);
 	const requestProgrammaticCardMove = useCallback<RequestProgrammaticCardMove>(
 		(move) => {
-			const { taskId, toColumnId: targetColumnId } = move;
-			const board = latestDataRef.current;
-			const sourceColumnId = findCardColumnId(board.columns, taskId);
-			if (!sourceColumnId || sourceColumnId !== move.fromColumnId || sourceColumnId === targetColumnId) {
+			if (
+				move.fromColumnId === move.toColumnId ||
+				activeDragTaskId ||
+				findCardColumnId(data.columns, move.taskId) !== move.fromColumnId
+			)
 				return false;
-			}
-
-			const sensorApi = sensorApiRef.current;
-			if (!sensorApi) {
-				return false;
-			}
-
-			const sourceOrderIndex = BOARD_COLUMN_ORDER.indexOf(sourceColumnId);
-			const targetOrderIndex = BOARD_COLUMN_ORDER.indexOf(targetColumnId);
-			if (sourceOrderIndex < 0 || targetOrderIndex < 0) {
-				return false;
-			}
-			if (move.insertAtTop && !canAnimateProgrammaticTopInsertion(taskId, targetColumnId)) {
-				return false;
-			}
-
-			const horizontalSteps = targetOrderIndex - sourceOrderIndex;
-			programmaticCardMoveInFlightRef.current = move;
-			setProgrammaticCardMoveInFlight(move);
-			const preDrag = sensorApi.tryGetLock(taskId);
-			if (!preDrag) {
-				clearProgrammaticCardMoveInFlight(taskId);
-				return false;
-			}
-
-			const sourceCardElement = boardRef.current?.querySelector<HTMLElement>(`[data-task-id="${taskId}"]`) ?? null;
-			const topTargetClientSelection = move.insertAtTop
-				? getProgrammaticTopTargetClientSelection(taskId, targetColumnId)
-				: null;
-			if (sourceCardElement && topTargetClientSelection) {
-				let dragActions: FluidDragActions;
-				try {
-					dragActions = preDrag.fluidLift(getElementClientCenter(sourceCardElement));
-				} catch {
-					clearProgrammaticCardMoveInFlight(taskId);
-					if (preDrag.isActive()) {
-						preDrag.abort();
-					}
-					return false;
-				}
-
-				const startClientSelection = getElementClientCenter(sourceCardElement);
-				const startTime = performance.now();
-				const deltaX = topTargetClientSelection.x - startClientSelection.x;
-				const deltaY = topTargetClientSelection.y - startClientSelection.y;
-				const travelDistance = Math.hypot(deltaX, deltaY);
-				const durationMs = Math.min(224, Math.max(133, 102 + travelDistance * 0.126)) * 0.5;
-				const easeInOutCubic = (value: number) => (value < 0.5 ? 4 * value ** 3 : 1 - (-2 * value + 2) ** 3 / 2);
-				const animate = (frameTime: number) => {
-					if (!dragActions.isActive()) {
-						return;
-					}
-					try {
-						const progress = Math.min((frameTime - startTime) / durationMs, 1);
-						const easedProgress = easeInOutCubic(progress);
-						dragActions.move({
-							x: startClientSelection.x + deltaX * easedProgress,
-							y: startClientSelection.y + deltaY * easedProgress,
-						});
-						if (progress >= 1) {
-							dragActions.drop();
-							return;
-						}
-						window.requestAnimationFrame(animate);
-					} catch {
-						clearProgrammaticCardMoveInFlight(taskId);
-						if (dragActions.isActive()) {
-							dragActions.cancel();
-						}
-					}
-				};
-
-				window.requestAnimationFrame(animate);
-				return true;
-			}
-
-			let dragActions: SnapDragActions;
-			try {
-				dragActions = preDrag.snapLift();
-			} catch {
-				clearProgrammaticCardMoveInFlight(taskId);
-				if (preDrag.isActive()) {
-					preDrag.abort();
-				}
-				return false;
-			}
-
-			const moveOneStep = horizontalSteps > 0 ? dragActions.moveRight : dragActions.moveLeft;
-			const moveSteps: Array<() => void> = [];
-			for (let step = 0; step < Math.abs(horizontalSteps); step += 1) {
-				moveSteps.push(moveOneStep);
-			}
-
-			const performStep = (stepIndex: number) => {
-				if (!dragActions.isActive()) {
-					return;
-				}
-				try {
-					if (stepIndex >= moveSteps.length) {
-						dragActions.drop();
-						return;
-					}
-					moveSteps[stepIndex]?.();
-					window.setTimeout(() => {
-						performStep(stepIndex + 1);
-					}, 90);
-				} catch {
-					clearProgrammaticCardMoveInFlight(taskId);
-					if (dragActions.isActive()) {
-						dragActions.cancel();
-					}
-				}
-			};
-
-			window.requestAnimationFrame(() => {
-				window.requestAnimationFrame(() => {
-					performStep(0);
-				});
-			});
+			const result = resolveBoardGridDrop(data, move.taskId, move.toColumnId, move);
+			if (!result) return false;
+			// Keep the existing lifecycle intent path; grid layout no longer synthesizes horizontal keyboard drags.
+			onDragEnd(result);
 			return true;
 		},
-		[
-			canAnimateProgrammaticTopInsertion,
-			clearProgrammaticCardMoveInFlight,
-			getElementClientCenter,
-			getProgrammaticTopTargetClientSelection,
-		],
+		[activeDragTaskId, data, onDragEnd],
 	);
-
 	useEffect(() => {
 		onRequestProgrammaticCardMoveReady?.(requestProgrammaticCardMove);
-		return () => {
-			onRequestProgrammaticCardMoveReady?.(null);
-		};
+		return () => onRequestProgrammaticCardMoveReady?.(null);
 	}, [onRequestProgrammaticCardMoveReady, requestProgrammaticCardMove]);
-
-	const handleBeforeCapture = useCallback(
-		(start: BeforeCapture) => {
-			setActiveDragTaskId(start.draggableId);
-			setActiveDragSourceColumnId(findCardColumnId(data.columns, start.draggableId));
-		},
-		[data],
-	);
-
-	const handleDragStart = useCallback((_start: DragStart) => {
-		dragOccurredRef.current = true;
-	}, []);
-
-	const handleDragEnd = useCallback(
-		(result: DropResult) => {
-			setActiveDragTaskId(null);
-			setActiveDragSourceColumnId(null);
-			clearProgrammaticCardMoveInFlight(result.draggableId);
-			requestAnimationFrame(() => {
-				dragOccurredRef.current = false;
-			});
-			onDragEnd(result);
-		},
-		[clearProgrammaticCardMoveInFlight, onDragEnd],
-	);
-
-	// Dependency links should reroute as soon as motion starts, not only after drop.
-	// Treat the active card as already belonging to its destination/effective column
-	// so the edge transition can animate alongside the move.
-	const activeDragTaskUnstarted = data.columns.some((column) =>
-		column.cards.some((card) => card.id === activeDragTaskId && card.unstarted),
-	);
-	const activeTaskEffectiveColumnId =
-		programmaticCardMoveInFlight?.toColumnId ??
-		(activeDragTaskId !== null && activeDragTaskUnstarted ? "in_progress" : null);
-
+	const handleDragEnd = ({ active, over }: DragEndEvent) => {
+		setActiveDragTaskId(null);
+		if (!over) return;
+		const result = resolveBoardGridDrop(data, String(active.id), String(over.id));
+		if (result) onDragEnd(result);
+	};
 	return (
-		<DragDropContext
-			onBeforeCapture={handleBeforeCapture}
-			onDragStart={handleDragStart}
-			onDragEnd={handleDragEnd}
-			sensors={[programmaticSensor]}
-		>
-			<section
-				ref={boardRef}
-				className="kb-board kb-dependency-surface"
-				data-programmatic-card-move={programmaticCardMoveInFlight ? "true" : undefined}
+		<div className="flex min-h-0 min-w-0 flex-1 flex-col">
+			<div className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-6 py-4">
+				<Button variant="primary" icon={<Plus size={16} />} onClick={onCreateTask} aria-label="Create task">
+					Create task{" "}
+					<span aria-hidden className="ml-4 rounded border border-white/20 px-1.5 text-[11px] text-white/70">
+						C
+					</span>
+				</Button>
+				<span className="text-xs text-text-tertiary">Your agents, at a glance</span>
+			</div>
+			<DndContext
+				sensors={sensors}
+				collisionDetection={boardGridCollision}
+				onDragStart={({ active }) => setActiveDragTaskId(String(active.id))}
+				onDragCancel={() => setActiveDragTaskId(null)}
+				onDragEnd={handleDragEnd}
 			>
-				{data.columns.map((column) => (
-					<BoardColumn
-						key={column.id}
-						column={column}
-						taskSessions={taskSessions}
-						onCreateTask={column.id === "review" ? onCreateTask : undefined}
-						onStartAllTasks={column.id === "review" ? onStartAllTasks : undefined}
-						onClearTrash={column.id === "trash" ? onClearTrash : undefined}
-						editingTaskId={column.id === "review" ? editingTaskId : null}
-						inlineTaskEditor={column.id === "review" ? inlineTaskEditor : undefined}
-						onEditTask={column.id === "review" ? onEditTask : undefined}
-						activeDragTaskId={activeDragTaskId}
-						activeDragSourceColumnId={activeDragSourceColumnId}
-						activeDragTaskUnstarted={activeDragTaskUnstarted}
-						programmaticCardMoveInFlight={programmaticCardMoveInFlight}
-						onDependencyPointerDown={dependencyLinking.onDependencyPointerDown}
-						onDependencyPointerEnter={dependencyLinking.onDependencyPointerEnter}
-						dependencySourceTaskId={dependencyLinking.draft?.sourceTaskId ?? null}
-						dependencyTargetTaskId={dependencyLinking.draft?.targetTaskId ?? null}
-						isDependencyLinking={dependencyLinking.draft !== null}
-						onCardClick={(card) => {
-							if (!dragOccurredRef.current) {
-								onCardSelect(card.id);
-							}
-						}}
-					/>
-				))}
-				<DependencyOverlay
-					containerRef={boardRef}
-					dependencies={dependencies}
-					draft={dependencyLinking.draft}
-					activeTaskId={activeDragTaskId ?? programmaticCardMoveInFlight?.taskId ?? null}
-					activeTaskEffectiveColumnId={activeTaskEffectiveColumnId}
-					isMotionActive={activeDragTaskId !== null || programmaticCardMoveInFlight !== null}
-					onDeleteDependency={onDeleteDependency}
-				/>
-			</section>
-		</DragDropContext>
+				<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+					<section ref={boardRef} className="kb-board kb-dependency-surface" aria-label="Task board">
+						{data.columns.map((column) => (
+							<BoardColumn
+								key={column.id}
+								column={column}
+								taskSessions={taskSessions}
+								replyScope={replyScope}
+								onStartAllTasks={column.id === "review" ? onStartAllTasks : undefined}
+								onClearTrash={column.id === "trash" ? onClearTrash : undefined}
+								editingTaskId={editingTaskId}
+								inlineTaskEditor={inlineTaskEditor}
+								onEditTask={onEditTask}
+								activeDragTaskId={activeDragTaskId}
+								activeDragSourceColumnId={sourceColumnId}
+								activeDragTaskUnstarted={activeCard?.unstarted}
+								onDependencyPointerDown={dependencyLinking.onDependencyPointerDown}
+								onDependencyPointerEnter={dependencyLinking.onDependencyPointerEnter}
+								dependencySourceTaskId={dependencyLinking.draft?.sourceTaskId}
+								dependencyTargetTaskId={dependencyLinking.draft?.targetTaskId}
+								isDependencyLinking={dependencyLinking.draft !== null}
+								onCardClick={(card) => {
+									if (!activeDragTaskId) onCardSelect(card.id);
+								}}
+							/>
+						))}
+						<DependencyOverlay
+							containerRef={boardRef}
+							dependencies={dependencies}
+							draft={dependencyLinking.draft}
+							activeTaskId={activeDragTaskId}
+							isMotionActive={activeDragTaskId !== null}
+							onDeleteDependency={onDeleteDependency}
+						/>
+					</section>
+				</div>
+				<DragOverlay dropAnimation={null}>
+					{activeCard ? (
+						<div className="rounded-xl border border-accent bg-surface-2 px-5 py-4 text-sm font-medium shadow-xl">
+							{activeCard.title || "Task"}
+						</div>
+					) : null}
+				</DragOverlay>
+			</DndContext>
+		</div>
 	);
 }

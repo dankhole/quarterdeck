@@ -261,6 +261,26 @@ describe("useTaskSessions", () => {
 		});
 	});
 
+	it("always sends board replies through the launch-fenced API and reports uncertain delivery", async () => {
+		const input = vi.fn(() => true);
+		getTerminalControllerMock.mockReturnValue({ input, paste: vi.fn(() => true) });
+		sendTaskSessionInputMutateMock.mockRejectedValue(new Error("Connection lost"));
+		await expect(
+			requireSnapshot(latestSnapshot).sendTaskSessionInput("task-1", "Follow up", {
+				intent: "submit",
+				replyToSessionInstanceId: "launch-1",
+			}),
+		).resolves.toEqual({ ok: false, message: "Delivery could not be confirmed. Check the agent before resending." });
+		expect(input).not.toHaveBeenCalled();
+		expect(sendTaskSessionInputMutateMock).toHaveBeenCalledExactlyOnceWith({
+			taskId: "task-1",
+			text: "Follow up",
+			appendNewline: true,
+			intent: "submit",
+			replyToSessionInstanceId: "launch-1",
+		});
+	});
+
 	it("reads task context without exposing lifecycle mutation methods", async () => {
 		const response = { ok: true, taskId: "task-1", path: "/tmp/task-1" };
 		getTaskContextQueryMock.mockResolvedValue(response);

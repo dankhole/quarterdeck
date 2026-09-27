@@ -372,6 +372,8 @@ const runtimeTaskSessionTextInputRequestSchema = z
 		text: z.string(),
 		appendNewline: z.boolean().optional(),
 		intent: z.enum(["write", "submit"]),
+		// Board replies target this exact live launch before writing any bytes.
+		replyToSessionInstanceId: z.string().min(1).optional(),
 	})
 	.strict();
 

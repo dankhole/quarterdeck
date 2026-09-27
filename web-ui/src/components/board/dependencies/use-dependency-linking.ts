@@ -10,45 +10,19 @@ export interface DependencyLinkDraft {
 
 const CARD_GAP_CAPTURE_PX = 16;
 
-function getNearestCardTaskIdInColumn(columnElement: HTMLElement, clientY: number): string | null {
-	const cards = Array.from(columnElement.querySelectorAll<HTMLElement>("[data-task-id]"));
-	if (cards.length === 0) {
-		return null;
-	}
-
-	let nearestBelow: { taskId: string; distance: number } | null = null;
-	let nearestAbove: { taskId: string; distance: number } | null = null;
-
-	for (const card of cards) {
-		const taskId = card.dataset.taskId;
-		if (!taskId) {
-			continue;
-		}
+function getNearestCardTaskIdInColumn(columnElement: HTMLElement, clientX: number, clientY: number): string | null {
+	let nearest: { taskId: string; distance: number } | null = null;
+	for (const card of columnElement.querySelectorAll<HTMLElement>("[data-task-id]")) {
+		if (!card.dataset.taskId) continue;
 		const rect = card.getBoundingClientRect();
-		if (clientY >= rect.top && clientY <= rect.bottom) {
-			return taskId;
-		}
-		if (clientY < rect.top) {
-			const distance = rect.top - clientY;
-			if (!nearestBelow || distance < nearestBelow.distance) {
-				nearestBelow = { taskId, distance };
-			}
-			continue;
-		}
-		const distance = clientY - rect.bottom;
-		if (!nearestAbove || distance < nearestAbove.distance) {
-			nearestAbove = { taskId, distance };
-		}
+		const distance = Math.hypot(
+			Math.max(rect.left - clientX, 0, clientX - rect.right),
+			Math.max(rect.top - clientY, 0, clientY - rect.bottom),
+		);
+		if (distance <= CARD_GAP_CAPTURE_PX && (!nearest || distance < nearest.distance))
+			nearest = { taskId: card.dataset.taskId, distance };
 	}
-
-	if (nearestBelow && nearestBelow.distance <= CARD_GAP_CAPTURE_PX) {
-		return nearestBelow.taskId;
-	}
-	if (nearestAbove && nearestAbove.distance <= CARD_GAP_CAPTURE_PX) {
-		return nearestAbove.taskId;
-	}
-
-	return null;
+	return nearest?.taskId ?? null;
 }
 
 function getTaskIdFromPoint(clientX: number, clientY: number): string | null {
@@ -71,7 +45,7 @@ function getTaskIdFromPoint(clientX: number, clientY: number): string | null {
 	}
 
 	if (columnElement) {
-		return getNearestCardTaskIdInColumn(columnElement, clientY);
+		return getNearestCardTaskIdInColumn(columnElement, clientX, clientY);
 	}
 	return null;
 }

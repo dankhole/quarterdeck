@@ -1,11 +1,15 @@
-import { Droppable } from "@hello-pangea/dnd";
-import { Play, Plus, Trash2 } from "lucide-react";
-import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
-
+import { useDroppable } from "@dnd-kit/core";
+import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
+import { ChevronDown, ChevronRight, Play, Trash2 } from "lucide-react";
+import { Fragment, type MouseEvent as ReactMouseEvent, type ReactNode, useState } from "react";
 import { BoardCard } from "@/components/board/board-card";
+import { BoardCardConversation } from "@/components/board/board-card-conversation";
+import { SortableBoardCard } from "@/components/board/sortable-board-card";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
 import { ColumnIndicator } from "@/components/ui/column-indicator";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { BoardReplyScope } from "@/state/board-reply-drafts";
 import { useReactiveCardState, useStableCardActions } from "@/state/card-actions-context";
 import { isCardDropDisabled, type ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
 import { sortColumnCards } from "@/state/sort-column-cards";
@@ -14,7 +18,7 @@ import type { BoardCard as BoardCardModel, BoardColumnId, BoardColumn as BoardCo
 export function BoardColumn({
 	column,
 	taskSessions,
-	onCreateTask,
+	replyScope,
 	onStartAllTasks,
 	onClearTrash,
 	editingTaskId,
@@ -33,7 +37,7 @@ export function BoardColumn({
 }: {
 	column: BoardColumnModel;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
-	onCreateTask?: () => void;
+	replyScope?: BoardReplyScope;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
 	editingTaskId?: string | null;
@@ -59,168 +63,174 @@ export function BoardColumn({
 		onRegenerateTitleTask,
 		onUpdateTaskTitle,
 		onTogglePinTask,
-		onTerminalWarmup,
-		onTerminalCancelWarmup,
 	} = useStableCardActions();
 	const { moveToTrashLoadingById, showSummaryOnCards, showSummaryOnHover, uncommittedChangesOnCardsEnabled } =
 		useReactiveCardState();
-	const canCreate = column.id === "review" && onCreateTask;
 	const unstartedCount = column.cards.filter((card) => card.unstarted).length;
 	const canStartAllTasks = column.id === "review" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
-	const cardDropType = "CARD";
 	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null, {
 		activeDragTaskId,
 		activeDragTaskUnstarted,
 		programmaticCardMoveInFlight,
 	});
-	const createTaskButtonText = (
-		<span className="inline-flex items-center gap-1.5">
-			<span>Create task</span>
-			<span aria-hidden className="text-text-secondary">
-				(c)
-			</span>
-		</span>
-	);
+	const [trashOpen, setTrashOpen] = useState(false);
+	const isTrash = column.id === "trash";
+	const open = !isTrash || trashOpen;
+	const { setNodeRef, isOver } = useDroppable({ id: column.id, disabled: isDropDisabled });
+	const cards = sortColumnCards(column.cards, column.id);
 
 	return (
 		<section
+			ref={setNodeRef}
 			data-column-id={column.id}
-			className="flex flex-col min-w-0 min-h-0 bg-surface-1 rounded-lg overflow-hidden"
-			style={{
-				flex: "1 1 0",
-			}}
+			aria-label={column.title}
+			className={cn(
+				"min-w-0 rounded-xl",
+				isTrash && "border border-border bg-surface-1/50",
+				isOver && "ring-1 ring-accent bg-accent/5",
+			)}
 		>
-			<div className="flex flex-col min-h-0" style={{ flex: "1 1 0" }}>
-				<div
-					className="flex items-center justify-between"
-					style={{
-						height: 40,
-						padding: "0 12px",
-					}}
-				>
-					<div className="flex items-center gap-2">
+			<div className={cn("mb-3 flex min-h-9 items-center justify-between gap-2", isTrash && "m-0 px-3 py-2")}>
+				{isTrash ? (
+					<button
+						type="button"
+						aria-expanded={open}
+						aria-controls="board-trash-cards"
+						onClick={() => setTrashOpen((value) => !value)}
+						className="flex flex-1 items-center gap-2.5 rounded py-1 text-sm text-text-secondary hover:text-text-primary"
+					>
+						{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+						<Trash2 size={14} />
+						<span className="font-medium">Trash</span>
+						<span className="text-xs text-text-tertiary">{cards.length}</span>
+					</button>
+				) : (
+					<div className="flex items-center gap-2.5">
 						<ColumnIndicator columnId={column.id} />
-						<span className="font-semibold text-sm">{column.title}</span>
-						<span className="text-text-secondary text-xs">{column.cards.length}</span>
+						<h2 className="text-sm font-semibold">{column.title}</h2>
+						<span className="rounded bg-surface-2 px-2 py-0.5 text-xs text-text-secondary">{cards.length}</span>
 					</div>
-					{canStartAllTasks ? (
-						<Button
-							icon={<Play size={14} />}
-							variant="ghost"
-							size="sm"
-							onClick={onStartAllTasks}
-							disabled={unstartedCount === 0}
-							aria-label="Start all unstarted tasks"
-							title={unstartedCount > 0 ? "Start all unstarted tasks" : "No unstarted tasks"}
-						/>
-					) : null}
-					{canClearTrash ? (
-						<Button
-							icon={<Trash2 size={14} />}
-							variant="ghost"
-							size="sm"
-							className="text-status-red hover:text-status-red"
-							onClick={onClearTrash}
-							disabled={column.cards.length === 0}
-							aria-label="Clear trash"
-							title={column.cards.length > 0 ? "Clear trash permanently" : "Trash is empty"}
-						/>
-					) : null}
-				</div>
-
-				<Droppable droppableId={column.id} type={cardDropType} isDropDisabled={isDropDisabled}>
-					{(cardProvided) => (
-						<div ref={cardProvided.innerRef} {...cardProvided.droppableProps} className="kb-column-cards">
-							{canCreate ? (
-								<Button
-									icon={<Plus size={14} />}
-									aria-label="Create task"
-									fill
-									onClick={onCreateTask}
-									style={{ marginBottom: 6, flexShrink: 0 }}
-								>
-									{createTaskButtonText}
-								</Button>
-							) : null}
-
-							{(() => {
-								const items: ReactNode[] = [];
-								let draggableIndex = 0;
-								const cards = sortColumnCards(column.cards, column.id);
-								let unstartedSectionShown = false;
-								for (const card of cards) {
-									if (column.id === "review" && card.unstarted && !unstartedSectionShown) {
-										unstartedSectionShown = true;
-										items.push(
-											<div
-												key="unstarted-heading"
-												className="flex items-center gap-2 px-1 pb-2 pt-3 text-xs text-text-secondary"
-												data-unstarted-heading
-											>
-												<span>Unstarted</span>
-												<span className="text-text-tertiary">{unstartedCount}</span>
-												<span className="h-px flex-1 bg-border" />
-											</div>,
-										);
-									}
-									if (column.id === "review" && card.unstarted && editingTaskId === card.id) {
-										items.push(
-											<div
-												key={card.id}
-												data-task-id={card.id}
-												data-column-id={column.id}
-												style={{ marginBottom: 6 }}
-											>
-												{inlineTaskEditor}
-											</div>,
-										);
-										continue;
-									}
-									items.push(
-										<BoardCard
-											key={card.id}
-											card={card}
-											index={draggableIndex}
-											columnId={column.id}
-											sessionSummary={taskSessions[card.id]}
-											onStart={onStartTask}
-											onRestartSession={onRestartSessionTask}
-											onMoveToTrash={onMoveToTrashTask}
-											onRestoreFromTrash={onRestoreFromTrashTask}
-											onHardDelete={onHardDeleteTrashTask}
-											onRegenerateTitle={onRegenerateTitleTask}
-											onUpdateTitle={onUpdateTaskTitle}
-											onTogglePin={onTogglePinTask}
-											isMoveToTrashLoading={moveToTrashLoadingById[card.id] ?? false}
-											onDependencyPointerDown={onDependencyPointerDown}
-											onDependencyPointerEnter={onDependencyPointerEnter}
-											isDependencySource={dependencySourceTaskId === card.id}
-											isDependencyTarget={dependencyTargetTaskId === card.id}
-											isDependencyLinking={isDependencyLinking}
-											showSummaryOnCards={showSummaryOnCards}
-											showSummaryOnHover={showSummaryOnHover}
-											uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}
-											onTerminalWarmup={onTerminalWarmup}
-											onTerminalCancelWarmup={onTerminalCancelWarmup}
-											onClick={() => {
-												if (column.id === "review" && card.unstarted) {
-													onEditTask?.(card);
-													return;
-												}
-												onCardClick?.(card);
-											}}
-										/>,
-									);
-									draggableIndex += 1;
-								}
-								return items;
-							})()}
-							{cardProvided.placeholder}
-						</div>
-					)}
-				</Droppable>
+				)}
+				{canStartAllTasks && unstartedCount > 0 ? (
+					<Button
+						icon={<Play size={12} />}
+						variant="ghost"
+						size="sm"
+						onClick={onStartAllTasks}
+						aria-label="Start all unstarted tasks"
+					>
+						Start {unstartedCount} unstarted
+					</Button>
+				) : null}
+				{canClearTrash ? (
+					<Button
+						icon={<Trash2 size={13} />}
+						variant="ghost"
+						size="sm"
+						onClick={onClearTrash}
+						disabled={!cards.length}
+						aria-label="Clear trash"
+					>
+						Clear trash
+					</Button>
+				) : null}
 			</div>
+			{open ? (
+				<SortableContext
+					items={cards.filter((card) => card.id !== editingTaskId).map((card) => card.id)}
+					strategy={rectSortingStrategy}
+				>
+					<div
+						id={isTrash ? "board-trash-cards" : undefined}
+						className={cn("kb-board-grid", isTrash && "p-3 pt-1")}
+					>
+						{cards.map((card, index) => (
+							<Fragment key={card.id}>
+								{column.id === "review" && card.unstarted && !cards[index - 1]?.unstarted ? (
+									<div
+										className="col-span-full flex items-center gap-2 pt-2 text-xs text-text-secondary"
+										data-unstarted-heading
+									>
+										<span>Unstarted</span>
+										<span>{unstartedCount}</span>
+										<span className="h-px flex-1 bg-border" />
+									</div>
+								) : null}
+								{card.unstarted && editingTaskId === card.id ? (
+									<div key={card.id} data-task-id={card.id} data-column-id={column.id}>
+										{inlineTaskEditor}
+									</div>
+								) : (
+									<SortableBoardCard
+										key={card.id}
+										id={card.id}
+										title={card.title || "task"}
+										dropDisabled={isDropDisabled}
+									>
+										{(handle) => (
+											<BoardCard
+												key={card.id}
+												draggable={false}
+												rich={column.id !== "trash"}
+												dragHandle={handle}
+												conversation={
+													column.id !== "trash" ? (
+														<BoardCardConversation
+															card={card}
+															columnId={column.id}
+															summary={taskSessions[card.id]}
+															replyScope={replyScope}
+															onOpen={() => (card.unstarted ? onEditTask?.(card) : onCardClick?.(card))}
+														/>
+													) : undefined
+												}
+												card={card}
+												index={index}
+												columnId={column.id}
+												sessionSummary={taskSessions[card.id]}
+												onStart={onStartTask}
+												onRestartSession={onRestartSessionTask}
+												onMoveToTrash={onMoveToTrashTask}
+												onRestoreFromTrash={onRestoreFromTrashTask}
+												onHardDelete={onHardDeleteTrashTask}
+												onRegenerateTitle={onRegenerateTitleTask}
+												onUpdateTitle={onUpdateTaskTitle}
+												onTogglePin={onTogglePinTask}
+												isMoveToTrashLoading={moveToTrashLoadingById[card.id] ?? false}
+												onDependencyPointerDown={onDependencyPointerDown}
+												onDependencyPointerEnter={onDependencyPointerEnter}
+												isDependencySource={dependencySourceTaskId === card.id}
+												isDependencyTarget={dependencyTargetTaskId === card.id}
+												isDependencyLinking={isDependencyLinking}
+												showSummaryOnCards={showSummaryOnCards}
+												showSummaryOnHover={showSummaryOnHover}
+												uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}
+												onClick={() => {
+													if (column.id === "review" && card.unstarted) {
+														onEditTask?.(card);
+														return;
+													}
+													onCardClick?.(card);
+												}}
+											/>
+										)}
+									</SortableBoardCard>
+								)}
+							</Fragment>
+						))}
+					</div>
+					{cards.length === 0 ? (
+						<div className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-text-tertiary">
+							{isTrash
+								? "Trash is empty."
+								: column.id === "in_progress"
+									? "No tasks in progress. Create a task to get started."
+									: "All caught up. Tasks appear here when they're ready for you."}
+						</div>
+					) : null}
+				</SortableContext>
+			) : null}
 		</section>
 	);
 }

@@ -1,5 +1,5 @@
 import { type BeforeCapture, DragDropContext, Droppable, type DropResult } from "@hello-pangea/dnd";
-import { ChevronDown, ChevronRight, Play, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Play, Plus, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -19,7 +19,6 @@ function ColumnSection({
 	onCardClick,
 	onCardDoubleClick,
 	taskSessions,
-	onCreateTask,
 	onStartAllTasks,
 	onClearTrash,
 	editingTaskId,
@@ -35,7 +34,6 @@ function ColumnSection({
 	onCardClick: (card: BoardCardModel) => void;
 	onCardDoubleClick?: (card: BoardCardModel) => void;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
-	onCreateTask?: () => void;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
 	editingTaskId?: string | null;
@@ -60,7 +58,6 @@ function ColumnSection({
 	const { moveToTrashLoadingById, showSummaryOnCards, showSummaryOnHover, uncommittedChangesOnCardsEnabled } =
 		useReactiveCardState();
 	const [open, setOpen] = useState(defaultOpen);
-	const canCreate = column.id === "review" && onCreateTask;
 	const unstartedCount = column.cards.filter((card) => card.unstarted).length;
 	const canStartAllTasks = column.id === "review" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
@@ -148,22 +145,6 @@ function ColumnSection({
 				<Droppable droppableId={column.id} type="CARD" isDropDisabled={isDropDisabled}>
 					{(provided) => (
 						<div ref={provided.innerRef} {...provided.droppableProps} className="flex flex-col p-2">
-							{canCreate ? (
-								<Button
-									icon={<span style={{ fontSize: 16, lineHeight: 1 }}>+</span>}
-									aria-label="Create task"
-									fill
-									onClick={onCreateTask}
-									style={{ marginBottom: 8 }}
-								>
-									<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-										<span>Create task</span>
-										<span aria-hidden className="text-text-secondary">
-											(c)
-										</span>
-									</span>
-								</Button>
-							) : null}
 							{(() => {
 								const items: ReactNode[] = [];
 								let cardIndex = 0;
@@ -327,6 +308,16 @@ export function ColumnContextPanel({
 				background: "var(--color-surface-0)",
 			}}
 		>
+			{onCreateTask ? (
+				<div className="shrink-0 px-2 pt-3 pb-1">
+					<Button fill icon={<Plus size={14} />} aria-label="Create task" onClick={onCreateTask}>
+						Create task{" "}
+						<span aria-hidden className="ml-auto text-text-tertiary">
+							C
+						</span>
+					</Button>
+				</div>
+			) : null}
 			<DragDropContext onBeforeCapture={handleBeforeCapture} onDragEnd={handleDragEnd}>
 				<div
 					ref={scrollContainerRef}
@@ -348,7 +339,6 @@ export function ColumnContextPanel({
 							onCardClick={(card) => onCardSelect(card.id)}
 							onCardDoubleClick={onCardDoubleClick ? (card) => onCardDoubleClick(card.id) : undefined}
 							taskSessions={taskSessions}
-							onCreateTask={column.id === "review" ? onCreateTask : undefined}
 							onStartAllTasks={column.id === "review" ? onStartAllTasks : undefined}
 							onClearTrash={column.id === "trash" ? onClearTrash : undefined}
 							editingTaskId={column.id === "review" ? editingTaskId : null}

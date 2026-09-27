@@ -1,6 +1,6 @@
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import { FolderOpen } from "lucide-react";
-import { type ReactElement, type ReactNode, useEffect } from "react";
+import { type ReactElement, type ReactNode, useEffect, useMemo } from "react";
 import { GitBranchStatusControl } from "@/components/app/top-bar";
 import { QuarterdeckBoard } from "@/components/board";
 import { ConflictBanner, FilesView, GitHistoryView, GitView } from "@/components/git";
@@ -42,7 +42,18 @@ export function HomeView({
 	const projectNavigation = useProjectNavigationContext();
 	const { projectPath, projectGit } = useProjectSyncContext();
 	const projectRuntime = useProjectRuntimeContext();
-	const { board, sessions, upsertSession, selectedTaskId } = useBoardContext();
+	const { board, sessions, upsertSession, selectedTaskId, replyDrafts, sendTaskSessionInput } = useBoardContext();
+	const replyScope = useMemo(
+		() =>
+			projectNavigation.currentProjectId
+				? {
+						projectId: projectNavigation.currentProjectId,
+						drafts: replyDrafts,
+						sendInput: sendTaskSessionInput,
+					}
+				: undefined,
+		[projectNavigation.currentProjectId, replyDrafts, sendTaskSessionInput],
+	);
 	const git = useGitContext();
 	const navigation = useSurfaceNavigationContext();
 	const terminal = useTerminalContext();
@@ -229,6 +240,8 @@ export function HomeView({
 								/>
 							) : (
 								<QuarterdeckBoard
+									key={projectNavigation.currentProjectId}
+									replyScope={replyScope}
 									data={board}
 									taskSessions={sessions}
 									onCardSelect={interactions.handleCardSelect}

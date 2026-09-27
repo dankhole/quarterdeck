@@ -192,7 +192,7 @@ describe("ColumnContextPanel", () => {
 		expect(onTaskDragEnd).toHaveBeenCalledWith(result);
 	});
 
-	it("keeps Review creation available and disables bulk start when only started tasks remain", async () => {
+	it("puts creation above In Progress and disables bulk start when only started tasks remain", async () => {
 		const onCreateTask = vi.fn();
 		const onStartAllTasks = vi.fn();
 		const columns: BoardColumn[] = [
@@ -215,6 +215,7 @@ describe("ColumnContextPanel", () => {
 			);
 		await act(async () => renderPanel());
 		expect(container.textContent).not.toContain("Backlog");
+		expect(container.querySelector("button")?.getAttribute("aria-label")).toBe("Create task");
 		expect(container.querySelector<HTMLButtonElement>('[aria-label="Start all unstarted tasks"]')?.disabled).toBe(
 			true,
 		);

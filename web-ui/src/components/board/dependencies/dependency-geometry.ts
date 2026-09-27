@@ -18,12 +18,9 @@ export interface DependencyLayout {
 
 export interface RenderedDependency {
 	dependency: BoardDependency;
-	geometry: DependencyGeometry;
 	path: string;
 	midpointX: number;
 	midpointY: number;
-	startSide: AnchorSide;
-	endSide: AnchorSide;
 	isTransient: boolean;
 }
 
@@ -52,21 +49,12 @@ interface AnchorPoint {
 
 const SOURCE_CONNECTOR_PADDING = 2;
 const TARGET_CONNECTOR_PADDING = 8;
-const COLUMN_ORDER: BoardColumnId[] = ["in_progress", "review", "trash"];
 const SIDE_NORMALS: Record<AnchorSide, { x: number; y: number }> = {
 	left: { x: -1, y: 0 },
 	right: { x: 1, y: 0 },
 	top: { x: 0, y: -1 },
 	bottom: { x: 0, y: 1 },
 };
-
-function getColumnOrder(columnId: BoardColumnId | null): number | null {
-	if (!columnId) {
-		return null;
-	}
-	const index = COLUMN_ORDER.indexOf(columnId);
-	return index === -1 ? null : index;
-}
 
 export function cubicPoint(
 	t: number,
@@ -92,47 +80,6 @@ export function cubicPoint(
 
 export function buildPathFromGeometry(geometry: DependencyGeometry): string {
 	return `M ${geometry.startX} ${geometry.startY} C ${geometry.controlPoint1X} ${geometry.controlPoint1Y} ${geometry.controlPoint2X} ${geometry.controlPoint2Y} ${geometry.endX} ${geometry.endY}`;
-}
-
-export function interpolateDependencyGeometry(
-	from: DependencyGeometry,
-	to: DependencyGeometry,
-	progress: number,
-): DependencyGeometry {
-	const interpolate = (fromValue: number, toValue: number) => fromValue + (toValue - fromValue) * progress;
-	const startX = interpolate(from.startX, to.startX);
-	const startY = interpolate(from.startY, to.startY);
-	const controlPoint1X = interpolate(from.controlPoint1X, to.controlPoint1X);
-	const controlPoint1Y = interpolate(from.controlPoint1Y, to.controlPoint1Y);
-	const controlPoint2X = interpolate(from.controlPoint2X, to.controlPoint2X);
-	const controlPoint2Y = interpolate(from.controlPoint2Y, to.controlPoint2Y);
-	const endX = interpolate(from.endX, to.endX);
-	const endY = interpolate(from.endY, to.endY);
-	const midpoint = cubicPoint(
-		0.5,
-		startX,
-		startY,
-		controlPoint1X,
-		controlPoint1Y,
-		controlPoint2X,
-		controlPoint2Y,
-		endX,
-		endY,
-	);
-	return {
-		startX,
-		startY,
-		controlPoint1X,
-		controlPoint1Y,
-		controlPoint2X,
-		controlPoint2Y,
-		endX,
-		endY,
-		midpointX: midpoint.x,
-		midpointY: midpoint.y,
-		startSide: to.startSide,
-		endSide: to.endSide,
-	};
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -187,56 +134,7 @@ function chooseConnection(
 	firstPadding: number,
 	secondPadding: number,
 ): { start: AnchorPoint; end: AnchorPoint } {
-	// Same-column links curve around the cards; cross-column links follow column order.
-	// Draft links face the pointer so they remain natural on either side of Review.
-	const firstColumnId = firstAnchor.columnId;
-	const secondColumnId = secondAnchor.columnId;
-	const firstColumnOrder = getColumnOrder(firstColumnId);
-	const secondColumnOrder = getColumnOrder(secondColumnId);
-
-	if (secondColumnId === null) {
-		const sourceSide: AnchorSide = secondAnchor.centerX >= firstAnchor.centerX ? "right" : "left";
-		const targetSide: AnchorSide = sourceSide === "right" ? "left" : "right";
-		return {
-			start: getAnchorPoint(firstAnchor, sourceSide, firstLaneOffset, firstPadding),
-			end: getAnchorPoint(secondAnchor, targetSide, secondLaneOffset, secondPadding),
-		};
-	}
-
-	if (firstColumnId === null) {
-		const targetSide: AnchorSide = firstAnchor.centerX >= secondAnchor.centerX ? "right" : "left";
-		const sourceSide: AnchorSide = targetSide === "right" ? "left" : "right";
-		return {
-			start: getAnchorPoint(firstAnchor, sourceSide, firstLaneOffset, firstPadding),
-			end: getAnchorPoint(secondAnchor, targetSide, secondLaneOffset, secondPadding),
-		};
-	}
-
-	if (
-		firstColumnId &&
-		secondColumnId &&
-		firstColumnId === secondColumnId &&
-		(firstColumnId === "in_progress" || firstColumnId === "review")
-	) {
-		return {
-			start: getAnchorPoint(firstAnchor, "right", firstLaneOffset, firstPadding),
-			end: getAnchorPoint(secondAnchor, "right", secondLaneOffset, secondPadding),
-		};
-	}
-
-	if (firstColumnOrder !== null && secondColumnOrder !== null && firstColumnOrder !== secondColumnOrder) {
-		if (firstColumnOrder < secondColumnOrder) {
-			return {
-				start: getAnchorPoint(firstAnchor, "right", firstLaneOffset, firstPadding),
-				end: getAnchorPoint(secondAnchor, "left", secondLaneOffset, secondPadding),
-			};
-		}
-		return {
-			start: getAnchorPoint(firstAnchor, "left", firstLaneOffset, firstPadding),
-			end: getAnchorPoint(secondAnchor, "right", secondLaneOffset, secondPadding),
-		};
-	}
-
+	// Choose facing edges from actual card positions: sections can wrap into multiple grid rows.
 	const firstSides: AnchorSide[] = ["left", "right", "top", "bottom"];
 	const secondSides: AnchorSide[] = ["left", "right", "top", "bottom"];
 	let best: {

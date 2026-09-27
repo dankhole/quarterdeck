@@ -4,7 +4,7 @@ As-built reference for the browser UI shell: region names, main-view/sidebar sta
 
 Read this before changing main views, sidebar panels, toolbar tabs, or task-detail layout routing.
 
-Last updated: 2026-04-27
+Last updated: 2026-09-27
 
 ## Region Names
 
@@ -108,6 +108,12 @@ Do not route task-scoped panels through the home side-panel path; task panels us
 - No-task layout: renders `QuarterdeckBoard`.
 - Selecting Home also deselects the current task and opens Projects.
 - If a task is selected, task selection auto-switches away from Home to Terminal.
+
+The home board stacks In Progress and Review sections with responsive card grids. Trash is a visible, collapsed row that mounts its compact cards only when expanded. Create task stays above the scrollable sections, including in the task sidebar. Unstarted tasks remain grouped within Review.
+
+Rich cards show a bounded plain-text response preview from the existing session projection. They never mount or prewarm terminals or fetch transcripts. Inline replies use the existing task-input API with an exact session-instance fence; only a live, review-ready native agent can receive them. Approvals and busy agents keep drafts without sending. `BoardReplyDrafts` owns window-local drafts keyed by project, task, and creation time, surviving navigation and column changes without writing board state.
+
+The home grid uses dnd-kit with dedicated pointer/keyboard handles; the compact task sidebar retains its list drag implementation. Grid drops resolve task IDs back to the existing board/lifecycle intent path. Dependency links use card-free grid gutters, validate each route against all visible cards, and skip unsafe transient routes during layout changes. Card content stays above dependency hit areas.
 
 ### Terminal
 

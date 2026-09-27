@@ -2,30 +2,35 @@
 
 .kb-board {
 	display: flex;
-	flex: 1 1 0;
-	min-height: 0;
-	overflow: hidden;
-	gap: 8px;
-	padding: 8px;
+	flex-direction: column;
+	gap: 28px;
+	padding: 20px 24px 28px;
+	min-width: 0;
+}
+
+.kb-board-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+	gap: 14px;
+	align-items: stretch;
+}
+
+/* Keep even the wide dependency hit areas below card and editor content. */
+.kb-board-grid > div {
+	position: relative;
+	z-index: 5;
+}
+
+.kb-board-grid:has(form) {
+	align-items: start;
 }
 
 .kb-dependency-surface {
 	position: relative;
 }
 
-.kb-column-cards {
-	display: flex;
-	flex: 1 1 0;
-	flex-direction: column;
-	min-height: 0;
-	overflow-y: auto;
-	overscroll-behavior: contain;
-	padding: 6px;
-}
-
-.kb-board[data-programmatic-card-move="true"] [data-rfd-draggable-context-id],
-.kb-board[data-programmatic-card-move="true"] [data-rfd-placeholder-context-id] {
-	transition: none !important;
+@media (max-width: 700px) {
+	.kb-board { padding: 16px; gap: 24px; }
 }
 
 /* -- Card shell -- */

@@ -1,222 +1,116 @@
-import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import { QuarterdeckBoard, type RequestProgrammaticCardMove } from "@/components/board/quarterdeck-board";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { CardActionsProvider, type ReactiveCardState } from "@/state/card-actions-context";
 import type { BoardData } from "@/types";
 
-const dndMock = vi.hoisted(() => ({
-	sensorApi: null as {
-		tryGetLock: ReturnType<typeof vi.fn>;
-	} | null,
-}));
-
-vi.mock("@hello-pangea/dnd", async () => {
-	const React = await vi.importActual<typeof import("react")>("react");
-
-	return {
-		DragDropContext: ({
-			children,
-			sensors,
-		}: {
-			children: ReactNode;
-			sensors?: Array<(api: NonNullable<typeof dndMock.sensorApi>) => void>;
-		}): React.ReactElement => {
-			React.useEffect(() => {
-				if (!dndMock.sensorApi) {
-					return;
-				}
-				for (const sensor of sensors ?? []) {
-					sensor(dndMock.sensorApi);
-				}
-			}, [sensors]);
-
-			return <>{children}</>;
-		},
-	};
+vi.mock("@/components/board/dependencies/dependency-overlay", () => ({ DependencyOverlay: () => null }));
+const reactive: ReactiveCardState = {
+	moveToTrashLoadingById: {},
+	isLlmGenerationDisabled: false,
+	showSummaryOnCards: false,
+	showSummaryOnHover: true,
+	uncommittedChangesOnCardsEnabled: false,
+};
+const card = (id: string, unstarted = false) => ({
+	id,
+	unstarted,
+	title: id,
+	prompt: `Prompt for ${id}`,
+	baseRef: "main",
+	createdAt: 1,
+	updatedAt: 1,
 });
+const data: BoardData = {
+	dependencies: [],
+	columns: [
+		{ id: "in_progress", title: "In Progress", cards: [card("working")] },
+		{ id: "review", title: "Review", cards: [card("draft", true)] },
+		{ id: "trash", title: "Trash", cards: [card("archived")] },
+	],
+};
 
-vi.mock("@/components/board/board-column", () => ({
-	BoardColumn: ({ column }: { column: BoardData["columns"][number] }): React.ReactElement => (
-		<section data-column-id={column.id}>
-			<div className="kb-column-cards">
-				{column.cards.map((card) => (
-					<div key={card.id} data-task-id={card.id} />
-				))}
-			</div>
-		</section>
-	),
-}));
-
-vi.mock("@/components/board/dependencies/dependency-overlay", () => ({
-	DependencyOverlay: (): null => null,
-}));
-
-vi.mock("@/components/board/dependencies/use-dependency-linking", () => ({
-	useDependencyLinking: () => ({
-		draft: null,
-		onDependencyPointerDown: vi.fn(),
-		onDependencyPointerEnter: vi.fn(),
-	}),
-}));
-
-function createRect(left: number, top: number, width: number, height: number): DOMRect {
-	return {
-		x: left,
-		y: top,
-		left,
-		top,
-		width,
-		height,
-		right: left + width,
-		bottom: top + height,
-		toJSON: () => ({}),
-	} as DOMRect;
-}
-
-describe("QuarterdeckBoard", () => {
+describe("QuarterdeckBoard grid", () => {
 	let container: HTMLDivElement;
 	let root: Root;
-	let previousActEnvironment: boolean | undefined;
-
 	beforeEach(() => {
-		vi.useFakeTimers();
-		vi.spyOn(performance, "now").mockImplementation(() => Date.now());
-		vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
-			return window.setTimeout(() => {
-				callback(performance.now());
-			}, 16);
-		});
-		vi.spyOn(window, "cancelAnimationFrame").mockImplementation((handle: number) => {
-			window.clearTimeout(handle);
-		});
-		vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function getBoundingClientRect(
-			this: HTMLElement,
-		) {
-			if (this.dataset.taskId === "source-task") {
-				return createRect(20, 20, 160, 96);
-			}
-			if (this.dataset.taskId === "target-task-1") {
-				return createRect(300, 20, 160, 96);
-			}
-			if (this.classList.contains("kb-column-cards")) {
-				const columnId = this.closest<HTMLElement>("[data-column-id]")?.dataset.columnId;
-				if (columnId === "review") {
-					return createRect(12, 12, 176, 420);
-				}
-				if (columnId === "in_progress") {
-					return createRect(292, 12, 176, 420);
-				}
-			}
-			return createRect(0, 0, 0, 0);
-		});
-		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 		container = document.createElement("div");
 		document.body.appendChild(container);
 		root = createRoot(container);
 	});
-
-	afterEach(() => {
-		act(() => {
-			root.unmount();
-		});
-		dndMock.sensorApi = null;
-		vi.restoreAllMocks();
-		vi.useRealTimers();
+	afterEach(async () => {
+		await act(async () => root.unmount());
 		container.remove();
-		if (previousActEnvironment === undefined) {
-			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
-		} else {
-			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-				previousActEnvironment;
-		}
+		vi.restoreAllMocks();
 	});
-
-	it("marks the board while a programmatic move is active", async () => {
-		const dragActions = {
-			isActive: vi.fn(() => true),
-			move: vi.fn(),
-			drop: vi.fn(),
-			cancel: vi.fn(),
-		};
-		const preDrag = {
-			fluidLift: vi.fn(() => dragActions),
-			isActive: vi.fn(() => true),
-			abort: vi.fn(),
-		};
-		dndMock.sensorApi = {
-			tryGetLock: vi.fn(() => preDrag),
-		};
-
-		const board: BoardData = {
-			columns: [
-				{
-					id: "review",
-					title: "Review",
-					cards: [
-						{
-							id: "source-task",
-							title: null,
-							prompt: "Source task",
-							unstarted: true,
-							baseRef: "main",
-							createdAt: 1,
-							updatedAt: 1,
-						},
-					],
-				},
-				{
-					id: "in_progress",
-					title: "In Progress",
-					cards: [
-						{
-							id: "target-task-1",
-							title: null,
-							prompt: "Target task 1",
-							baseRef: "main",
-							createdAt: 1,
-							updatedAt: 1,
-						},
-					],
-				},
-				{ id: "trash", title: "Trash", cards: [] },
-			],
-			dependencies: [],
-		};
-
-		let requestMove: RequestProgrammaticCardMove | null = null;
-
-		await act(async () => {
+	it("puts creation first and keeps Trash visible without mounting its cards until expanded", async () => {
+		const create = vi.fn();
+		await act(async () =>
 			root.render(
-				<QuarterdeckBoard
-					data={board}
-					taskSessions={{}}
-					onCardSelect={() => {}}
-					onCreateTask={() => {}}
-					dependencies={[]}
-					onDragEnd={() => {}}
-					onRequestProgrammaticCardMoveReady={(nextRequestMove) => {
-						requestMove = nextRequestMove;
-					}}
-				/>,
-			);
-		});
-
-		const boardElement = container.querySelector<HTMLElement>(".kb-board");
-		expect(boardElement?.dataset.programmaticCardMove).toBeUndefined();
-
-		await act(async () => {
-			requestMove?.({
-				taskId: "source-task",
-				fromColumnId: "review",
-				toColumnId: "in_progress",
-				insertAtTop: true,
-			});
-		});
-
-		expect(boardElement?.dataset.programmaticCardMove).toBe("true");
+				<TooltipProvider>
+					<CardActionsProvider stable={{}} reactive={reactive}>
+						<QuarterdeckBoard
+							data={data}
+							taskSessions={{}}
+							dependencies={[]}
+							onCardSelect={() => {}}
+							onCreateTask={create}
+							onDragEnd={() => {}}
+						/>
+					</CardActionsProvider>
+				</TooltipProvider>,
+			),
+		);
+		const createButton = container.querySelector<HTMLButtonElement>('[aria-label="Create task"]')!;
+		expect(
+			createButton.compareDocumentPosition(container.querySelector('[data-column-id="in_progress"]')!) &
+				Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+		await act(async () => createButton.click());
+		expect(create).toHaveBeenCalledOnce();
+		expect(container.querySelector('[data-task-id="archived"]')).toBeNull();
+		const trash = container.querySelector<HTMLButtonElement>('[aria-controls="board-trash-cards"]')!;
+		expect(trash.textContent).toContain("Trash");
+		expect(trash.getAttribute("aria-expanded")).toBe("false");
+		await act(async () => trash.click());
+		expect(container.querySelector('[data-task-id="archived"]')).not.toBeNull();
+		expect(container.querySelectorAll(".kb-board-grid")).toHaveLength(3);
+	});
+	it("forwards programmatic moves through the existing lifecycle callback and unregisters on unmount", async () => {
+		let request: RequestProgrammaticCardMove | null = null;
+		const ready = (value: RequestProgrammaticCardMove | null) => {
+			request = value;
+		};
+		const onDrop = vi.fn();
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<CardActionsProvider stable={{}} reactive={reactive}>
+						<QuarterdeckBoard
+							data={data}
+							taskSessions={{}}
+							dependencies={[]}
+							onCardSelect={() => {}}
+							onCreateTask={() => {}}
+							onDragEnd={onDrop}
+							onRequestProgrammaticCardMoveReady={ready}
+						/>
+					</CardActionsProvider>
+				</TooltipProvider>,
+			),
+		);
+		await act(async () =>
+			expect(
+				request?.({ taskId: "working", fromColumnId: "in_progress", toColumnId: "review", insertAtTop: true }),
+			).toBe(true),
+		);
+		expect(onDrop).toHaveBeenCalledWith(
+			expect.objectContaining({ draggableId: "working", destination: { droppableId: "review", index: 0 } }),
+		);
+		await act(async () => root.render(null));
+		expect(request).toBeNull();
 	});
 });

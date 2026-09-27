@@ -1,4 +1,9 @@
-import { parseTaskSessionInputRequest, type TaskResourceOperationRunner } from "../../core";
+import {
+	canSendTaskQuickReply,
+	parseTaskSessionInputRequest,
+	TASK_QUICK_REPLY_MAX_LENGTH,
+	type TaskResourceOperationRunner,
+} from "../../core";
 import type { TerminalSessionManager } from "../../terminal";
 import { prepareTerminalImagePaste } from "../../terminal/terminal-image-paste";
 import type { RuntimeTrpcProjectScope } from "../app-router-context";
@@ -43,7 +48,32 @@ export async function handleSendTaskSessionInput(
 					if (!delivered) await prepared.discard();
 				}
 			}
-			const payloadText = body.appendNewline ? `${body.text}${getTerminalSubmitTerminator()}` : body.text;
+			let payloadText = body.appendNewline ? `${body.text}${getTerminalSubmitTerminator()}` : body.text;
+			if (body.replyToSessionInstanceId) {
+				const current = terminalManager.store.getSummary(body.taskId);
+				const identity = terminalManager.getTaskSessionProcessIdentity(body.taskId);
+				if (
+					!canSendTaskQuickReply(current) ||
+					current?.sessionInstanceId !== body.replyToSessionInstanceId ||
+					identity?.sessionInstanceId !== body.replyToSessionInstanceId
+				) {
+					throw new Error(
+						"The agent is no longer ready for this reply. Your draft is saved; open the agent to continue.",
+					);
+				}
+				// biome-ignore lint/suspicious/noControlCharactersInRegex: Reject terminal control bytes in board replies.
+				const hasTerminalControls = /[\u0000-\u0008\u000b-\u001f\u007f]/u.test(body.text);
+				if (
+					body.intent !== "submit" ||
+					!body.text.trim() ||
+					body.text.length > TASK_QUICK_REPLY_MAX_LENGTH ||
+					hasTerminalControls
+				) {
+					throw new Error("Enter a reply of up to 8,000 characters without terminal control characters.");
+				}
+				// Native TUIs accept bracketed paste; multiline text must never become separate submissions.
+				payloadText = `\x1b[200~${body.text}\x1b[201~\r`;
+			}
 			return terminalManager.writeInput(body.taskId, Buffer.from(payloadText, "utf8"), {
 				explicitUserSubmission: body.intent === "submit",
 			});

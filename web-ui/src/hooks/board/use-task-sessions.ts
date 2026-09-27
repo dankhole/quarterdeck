@@ -79,7 +79,8 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 	const sendTaskSessionInput = useCallback(
 		async (taskId: string, text: string, options: SendTerminalInputOptions): Promise<SendTaskSessionInputResult> => {
 			const appendNewline = options.appendNewline ?? true;
-			const controller = options.preferTerminal === false ? null : getTerminalController(taskId);
+			const controller =
+				options.preferTerminal === false || options.replyToSessionInstanceId ? null : getTerminalController(taskId);
 			if (controller) {
 				const sent = appendNewline
 					? (options.mode === "paste" ? controller.paste(text) : controller.input(text)) && controller.input("\r")
@@ -100,6 +101,7 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 					text,
 					appendNewline,
 					intent: options.intent,
+					replyToSessionInstanceId: options.replyToSessionInstanceId,
 				});
 				if (!payload.ok) {
 					return { ok: false, message: payload.error || "Task session input failed." };
@@ -109,7 +111,12 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 				}
 				return { ok: true };
 			} catch (error) {
-				return { ok: false, message: toErrorMessage(error) };
+				return {
+					ok: false,
+					message: options.replyToSessionInstanceId
+						? "Delivery could not be confirmed. Check the agent before resending."
+						: toErrorMessage(error),
+				};
 			}
 		},
 		[currentProjectId, upsertSession],

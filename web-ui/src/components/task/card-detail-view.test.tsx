@@ -1,12 +1,12 @@
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import { CardDetailView } from "@/components/task/card-detail-view";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BoardContext, type BoardContextValue } from "@/providers/board-provider";
 import { GitContext, type GitContextValue } from "@/providers/git-provider";
 import { SurfaceNavigationContext, type SurfaceNavigationContextValue } from "@/providers/surface-navigation-provider";
+import { BoardReplyDrafts } from "@/state/board-reply-drafts";
 import { CardActionsProvider, type ReactiveCardState, type StableCardActions } from "@/state/card-actions-context";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardCard, BoardColumn, CardSelection } from "@/types";
@@ -158,6 +158,7 @@ const noopReactiveState: ReactiveCardState = {
 };
 
 const noopBoardContext: BoardContextValue = {
+	replyDrafts: new BoardReplyDrafts(),
 	board: { columns: [], dependencies: [] },
 	setBoard: () => {},
 	presentLifecycleBoard: () => {},

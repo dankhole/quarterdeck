@@ -1,5 +1,5 @@
 import type { Dispatch, ReactNode, SetStateAction } from "react";
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import { useTaskLifecycleOperations, useTaskSessions } from "@/hooks/board";
 import { useDetailTaskNavigation } from "@/hooks/project";
 import {
@@ -8,6 +8,7 @@ import {
 	useProjectSyncContext,
 } from "@/providers/project-provider";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { BoardReplyDrafts } from "@/state/board-reply-drafts";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardData, CardSelection } from "@/types";
 
@@ -17,6 +18,7 @@ import type { BoardData, CardSelection } from "@/types";
 // ---------------------------------------------------------------------------
 
 export interface BoardContextValue {
+	replyDrafts: BoardReplyDrafts;
 	// --- Board data ---
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
@@ -69,6 +71,7 @@ interface BoardProviderProps {
 }
 
 export function BoardProvider({ board, sessions, setSessions, children }: BoardProviderProps): ReactNode {
+	const [replyDrafts] = useState(() => new BoardReplyDrafts());
 	const { currentProjectId, projects } = useProjectNavigationContext();
 	const { streamedProjectState, hasReceivedSnapshot, streamError } = useProjectRuntimeStreamContext();
 	const {
@@ -112,6 +115,7 @@ export function BoardProvider({ board, sessions, setSessions, children }: BoardP
 	// --- Context value ---
 	const value = useMemo<BoardContextValue>(
 		() => ({
+			replyDrafts,
 			board,
 			setBoard,
 			presentLifecycleBoard,
@@ -128,6 +132,7 @@ export function BoardProvider({ board, sessions, setSessions, children }: BoardP
 			isAwaitingProjectSnapshot,
 		}),
 		[
+			replyDrafts,
 			board,
 			setBoard,
 			presentLifecycleBoard,

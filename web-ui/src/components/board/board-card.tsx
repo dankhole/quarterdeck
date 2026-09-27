@@ -1,6 +1,6 @@
 import { Draggable, type DraggableProvided, type DraggableStateSnapshot } from "@hello-pangea/dnd";
 import { AlertCircle, GitBranch, Info, Pencil, Pin, PinOff, RotateCw } from "lucide-react";
-import type { MouseEvent } from "react";
+import { type MouseEvent, memo, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { BoardCardActions } from "@/components/board/board-card-actions";
 import { InlineTitleEditor } from "@/components/task/inline-title-editor";
@@ -21,7 +21,7 @@ const stopEvent = (event: MouseEvent<HTMLElement>) => {
 	event.stopPropagation();
 };
 
-export function BoardCard({
+export const BoardCard = memo(function BoardCard({
 	card,
 	index,
 	columnId,
@@ -49,6 +49,9 @@ export function BoardCard({
 	isDependencyTarget = false,
 	isDependencyLinking = false,
 	draggable = true,
+	rich = false,
+	dragHandle,
+	conversation,
 }: {
 	card: BoardCardModel;
 	index: number;
@@ -77,6 +80,9 @@ export function BoardCard({
 	isDependencyTarget?: boolean;
 	isDependencyLinking?: boolean;
 	draggable?: boolean;
+	rich?: boolean;
+	dragHandle?: ReactNode;
+	conversation?: ReactNode;
 }): React.ReactElement {
 	const {
 		reviewWorktreeSnapshot,
@@ -187,7 +193,7 @@ export function BoardCard({
 				ref={provided?.innerRef}
 				{...(provided?.draggableProps ?? {})}
 				{...(provided?.dragHandleProps ?? {})}
-				className="kb-board-card-shell"
+				className={cn("kb-board-card-shell", rich && "h-full")}
 				data-task-id={card.id}
 				data-column-id={columnId}
 				data-selected={selected}
@@ -238,7 +244,7 @@ export function BoardCard({
 				}}
 				style={{
 					...(provided?.draggableProps?.style ?? {}),
-					marginBottom: 6,
+					marginBottom: rich ? 0 : 6,
 					cursor: draggable ? "grab" : undefined,
 				}}
 				onMouseEnter={() => {
@@ -261,10 +267,12 @@ export function BoardCard({
 					if (!card.unstarted) onTerminalCancelWarmup?.(card.id);
 				}}
 			>
-				<Tooltip content={effectiveTooltip ?? undefined} side="top">
+				<Tooltip content={rich ? undefined : (effectiveTooltip ?? undefined)} side="top">
 					<div
 						className={cn(
 							"rounded-md border border-border-bright bg-surface-2 p-2.5",
+							rich &&
+								"flex h-full min-h-[260px] flex-col rounded-xl !border-border !bg-surface-1 !p-4 hover:!border-border-bright",
 							isCardInteractive && "cursor-pointer hover:bg-surface-3 hover:border-border-bright",
 							isDragging && "shadow-lg",
 							isHovered && isCardInteractive && "bg-surface-3 border-border-bright",
@@ -340,7 +348,9 @@ export function BoardCard({
 								<div className="min-w-0 flex-1 basis-0" data-board-card-title>
 									<p
 										className={cn(
-											"kb-line-clamp-1 m-0 font-medium text-sm",
+											rich
+												? "line-clamp-2 m-0 font-semibold text-[15px] leading-6"
+												: "kb-line-clamp-1 m-0 font-medium text-sm",
 											isTrashCard && "line-through text-text-tertiary",
 										)}
 									>
@@ -352,7 +362,7 @@ export function BoardCard({
 								className="ml-auto flex w-max min-w-0 max-w-full shrink flex-wrap items-center justify-end gap-0.5 [&>button]:h-[22px] [&>button]:shrink-0 [&>button]:px-0"
 								data-board-card-action-rail
 							>
-								{!isEditingTitle && isHovered && !isTrashCard ? (
+								{!isEditingTitle && (rich || isHovered) && !isTrashCard ? (
 									<>
 										{onTogglePin ? (
 											<Tooltip content={card.pinned ? "Unpin" : "Pin to top"}>
@@ -384,11 +394,12 @@ export function BoardCard({
 										) : null}
 									</>
 								) : null}
+								{dragHandle}
 								<BoardCardActions
 									cardId={card.id}
 									columnId={columnId}
 									isUnstarted={card.unstarted === true}
-									isHovered={isHovered}
+									isHovered={rich || isHovered}
 									isSessionDead={isSessionDead}
 									isSessionRestartable={isSessionRestartable}
 									isMoveToTrashLoading={isMoveToTrashLoading}
@@ -400,7 +411,7 @@ export function BoardCard({
 								/>
 							</div>
 						</div>
-						{showSummaryOnCards && latestSummaryText ? (
+						{!rich && showSummaryOnCards && latestSummaryText ? (
 							<p className="text-xs text-text-secondary line-clamp-2 mt-1 m-0">{latestSummaryText}</p>
 						) : null}
 						{showStatusBadge || agentBadge ? (
@@ -431,6 +442,7 @@ export function BoardCard({
 							</div>
 						) : null}
 						{renderBranchStatus()}
+						{conversation}
 					</div>
 				</Tooltip>
 			</div>
@@ -451,4 +463,4 @@ export function BoardCard({
 			{(provided, snapshot) => renderShell(provided, snapshot)}
 		</Draggable>
 	);
-}
+});
