@@ -69,6 +69,7 @@ function HookHarness({
 	queueTaskStartAfterEdit,
 	branchOptions = [{ value: "main", label: "main" }],
 	defaultTaskBranchRef = "main",
+	folderOnly = false,
 	fallbackTaskAgentId = "claude",
 	availableTaskAgentIds = ["claude", "codex", "pi"],
 }: {
@@ -77,6 +78,7 @@ function HookHarness({
 	queueTaskStartAfterEdit?: (taskId: string) => void;
 	branchOptions?: Array<{ value: string; label: string }>;
 	defaultTaskBranchRef?: string;
+	folderOnly?: boolean;
 	fallbackTaskAgentId?: "claude" | "codex" | "pi";
 	availableTaskAgentIds?: Array<"claude" | "codex" | "pi"> | null;
 }): null {
@@ -88,6 +90,7 @@ function HookHarness({
 		currentProjectId: "project-1",
 		createTaskBranchOptions: branchOptions,
 		defaultTaskBranchRef,
+		folderOnly,
 		fallbackTaskAgentId,
 		availableTaskAgentIds,
 		setSelectedTaskId,
@@ -173,6 +176,35 @@ describe("useTaskEditor", () => {
 				previousActEnvironment;
 		}
 		window.localStorage.clear();
+	});
+
+	it("saves and queues an older isolated task in folder mode after branch options disappear", async () => {
+		let snapshot: HookSnapshot | null = null;
+		const task = createTask("converted", "Before", 1, { useWorktree: true });
+		const queueTaskStartAfterEdit = vi.fn();
+		await act(async () =>
+			root.render(
+				<HookHarness
+					initialBoard={createBoard([task])}
+					folderOnly
+					branchOptions={[]}
+					defaultTaskBranchRef=""
+					queueTaskStartAfterEdit={queueTaskStartAfterEdit}
+					onSnapshot={(next) => {
+						snapshot = next;
+					}}
+				/>,
+			),
+		);
+		await act(async () => requireSnapshot(snapshot).handleOpenEditTask(task));
+		await act(async () => requireSnapshot(snapshot).setEditTaskPrompt("After"));
+		await act(async () => requireSnapshot(snapshot).handleSaveAndStartEditedTask());
+		expect(requireSnapshot(snapshot).board.columns[0]?.cards[0]).toMatchObject({
+			prompt: "After",
+			baseRef: "main",
+			useWorktree: true,
+		});
+		expect(queueTaskStartAfterEdit).toHaveBeenCalledWith(task.id);
 	});
 
 	it("inherits Codex settings by default and after overrides are disabled or the dialog is reopened", async () => {

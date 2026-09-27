@@ -489,6 +489,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				taskResourceOperations,
 			}),
 			projectsApi: createProjectsApi({
+				boardCommands: deps.boardCommands,
 				projects: deps.projectRegistry,
 				terminals: deps.projectRegistry,
 				broadcaster: deps.runtimeStateHub,

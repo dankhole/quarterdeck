@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Fix editing pre-existing tasks after folder conversion, restore Git views for branchless tasks when enabling Git, and prevent background Git polling from restarting after a mode change or disconnect.
+
 - Make Codex fullscreen scrolling preserve wheel and trackpad distance, including fast swipes, slow wheel ticks, and fine movements across pauses, instead of losing distance to browser event coalescing and abrupt sensitivity changes.
 
 - Add folder projects with their own boards and tasks, without requiring Git. Convert existing parent projects without losing tasks or files, and add nested repositories independently instead of reopening the parent.

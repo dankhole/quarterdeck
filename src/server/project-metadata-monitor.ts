@@ -136,15 +136,24 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 			const hadController = projects.has(projectId);
 			const controller = getOrCreateController(projectId, projectPath);
 			if (!hadController) {
+				// Restore all connection counts before yielding: disposal or disconnect
+				// during a refresh must never be followed by another connect.
+				const connections: Promise<RuntimeProjectMetadata>[] = [];
 				for (const [clientId, report] of clients.get(projectId) ?? []) {
 					for (let connection = 0; connection < report.activeConnectionCount; connection++) {
-						await controller.connect({
-							projectPath,
-							board,
-							clientId,
-							isDocumentVisible: report.isDocumentVisible,
-						});
+						connections.push(
+							controller.connect({
+								projectPath,
+								board,
+								clientId,
+								isDocumentVisible: report.isDocumentVisible,
+							}),
+						);
 					}
+				}
+				if (connections.length > 0) {
+					const snapshots = await Promise.all(connections);
+					return snapshots[snapshots.length - 1] ?? createEmptyProjectMetadata();
 				}
 			}
 			return await controller.updateProjectState({ projectPath, board });

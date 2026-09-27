@@ -259,9 +259,9 @@ export async function loadProjectContext(
 ): Promise<RuntimeProjectContext> {
 	const autoCreateIfMissing = options.autoCreateIfMissing ?? true;
 	const canonicalCwd = await canonicalizeProjectInputPath(cwd);
-	const exactIndexedScope = await loadProjectScopeByRepoPath(canonicalCwd);
-	if (exactIndexedScope && options.folderOnly === undefined) {
-		return await loadFullProjectContext(exactIndexedScope);
+	if (options.folderOnly === undefined) {
+		const exactIndexedScope = await loadProjectScopeByRepoPath(canonicalCwd);
+		if (exactIndexedScope) return await loadFullProjectContext(exactIndexedScope);
 	}
 
 	const repoPath = options.folderOnly !== undefined ? canonicalCwd : await resolveProjectPath(canonicalCwd);

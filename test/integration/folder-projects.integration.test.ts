@@ -68,6 +68,37 @@ describe("folder projects", { concurrent: false }, () => {
 				defaultBranch: null,
 				branches: [],
 			});
+			const seeded = await requestJson({
+				baseUrl,
+				projectId: folderId,
+				procedure: "project.applyBoardCommands",
+				type: "mutation",
+				payload: {
+					commandId: "seed-folder-tasks",
+					expectedRevision: state.payload.revision,
+					commands: [
+						{
+							kind: "create_task",
+							columnId: "review",
+							taskId: "branchless",
+							prompt: "Folder task",
+							baseRef: "",
+							useWorktree: false,
+							createdAt: 1,
+						},
+						{
+							kind: "create_task",
+							columnId: "review",
+							taskId: "preserved",
+							prompt: "Existing ref",
+							baseRef: "kept-ref",
+							useWorktree: false,
+							createdAt: 2,
+						},
+					],
+				},
+			});
+			expect(seeded.status).toBe(200);
 			const git = await requestJson({
 				baseUrl,
 				projectId: parentId,
@@ -101,6 +132,32 @@ describe("folder projects", { concurrent: false }, () => {
 			// Reopening the folder preserves its mode; switching back keeps its identity.
 			expect(await add(plain)).toMatchObject({ ok: true, project: { id: folderId, folderOnly: true } });
 			expect(await add(root.path, false)).toMatchObject({ ok: true, project: { id: parentId } });
+			expect(await add(plain, false, true)).toMatchObject({ ok: true, project: { id: folderId } });
+			const enabled = await requestJson<RuntimeProjectStateResponse>({
+				baseUrl,
+				projectId: folderId,
+				procedure: "project.getState",
+				type: "query",
+			});
+			const cards = enabled.payload.board.columns.flatMap((column) => column.cards);
+			const branchless = cards.find((card) => card.id === "branchless");
+			expect(branchless).toMatchObject({
+				baseRef: enabled.payload.git.currentBranch,
+				useWorktree: false,
+				prompt: "Folder task",
+			});
+			expect(cards.find((card) => card.id === "preserved")?.baseRef).toBe("kept-ref");
+			expect(enabled.payload.revision).toBeGreaterThan(state.payload.revision);
+			for (const procedure of ["project.getTaskContext", "project.getChanges"]) {
+				const response = await requestJson({
+					baseUrl,
+					projectId: folderId,
+					procedure,
+					type: "query",
+					payload: { taskId: "branchless", baseRef: branchless?.baseRef },
+				});
+				expect(response.status).toBe(200);
+			}
 			expect(readFileSync(join(plain, "notes.txt"), "utf8")).toContain("needle");
 			expect(runGit(root.path, ["rev-parse", "HEAD"])).toBe(parentHead);
 		} finally {

@@ -173,6 +173,27 @@ export class ProjectBoardCommandService {
 		);
 	}
 
+	/** Assign a comparison ref to branchless folder tasks before enabling Git. */
+	async resolveMissingTaskBaseRefs(
+		scope: ProjectBoardCommandScope,
+		baseRef: string,
+	): Promise<ApplyProjectBoardMutationResult> {
+		if (!baseRef.trim()) throw new Error("A Git base ref is required to enable Git.");
+		const sessions = await this.dependencies.getAuthoritativeSessions(scope);
+		return await this.executeInternalMutation(scope, sessions, (board) => {
+			let changed = false;
+			const columns = board.columns.map((column) => ({
+				...column,
+				cards: column.cards.map((card) => {
+					if (card.baseRef.trim()) return card;
+					changed = true;
+					return { ...card, baseRef, updatedAt: Date.now() };
+				}),
+			}));
+			return { board: changed ? { ...board, columns } : board, changed };
+		});
+	}
+
 	async setGeneratedTaskTitle(
 		scope: ProjectBoardCommandScope,
 		taskId: string,

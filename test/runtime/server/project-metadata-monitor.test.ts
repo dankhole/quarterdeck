@@ -232,6 +232,38 @@ describe("ProjectMetadataMonitor", () => {
 		vi.useRealTimers();
 	});
 
+	it.each(["disable", "disconnect"] as const)(
+		"does not revive a monitor when clients %s during Git enablement",
+		async (action) => {
+			vi.useFakeTimers();
+			const deferred = createDeferred<CachedHomeGitMetadata>();
+			loaderMocks.loadHomeGitMetadata.mockReturnValueOnce(deferred.promise);
+			const monitor = createProjectMetadataMonitor({ onMetadataUpdated: vi.fn() });
+			const project = { projectId: "folder-race", projectPath: "/folder", board: createBoard([]) };
+			try {
+				await monitor.connectProject({ ...project, folderOnly: true, clientId: "a" });
+				await monitor.connectProject({ ...project, folderOnly: true, clientId: "b" });
+				const enabling = monitor.updateProjectState({ ...project, folderOnly: false });
+				await vi.waitFor(() => expect(loaderMocks.loadHomeGitMetadata).toHaveBeenCalled());
+				if (action === "disable") await monitor.updateProjectState({ ...project, folderOnly: true });
+				else {
+					monitor.disconnectProject(project.projectId, "a");
+					monitor.disconnectProject(project.projectId, "b");
+				}
+				deferred.resolve(createHomeMetadata("/folder", "home"));
+				await enabling;
+				expect(monitor.getDiagnosticSnapshot().projects).toEqual([]);
+				loaderMocks.loadHomeGitMetadata.mockClear();
+				workdirMocks.runGit.mockClear();
+				await vi.advanceTimersByTimeAsync(120_000);
+				expect(loaderMocks.loadHomeGitMetadata).not.toHaveBeenCalled();
+				expect(workdirMocks.runGit).not.toHaveBeenCalled();
+			} finally {
+				monitor.close();
+			}
+		},
+	);
+
 	it("suspends folder Git probes and resumes existing client subscriptions when Git is enabled", async () => {
 		const monitor = createProjectMetadataMonitor({ onMetadataUpdated: vi.fn() });
 		const project = { projectId: "folder", projectPath: "/folder", board: createBoard([]) };

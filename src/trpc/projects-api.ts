@@ -21,13 +21,14 @@ import {
 	loadProjectContext,
 	loadProjectScopeById,
 	loadProjectState,
+	type ProjectBoardCommandService,
 	removeProjectIndexEntry,
 	removeProjectStateFiles,
 	resolveProjectPath,
 	updateProjectOrder,
 } from "../state";
 import type { TerminalSessionManager } from "../terminal";
-import { ensureInitialCommit, initializeGitRepository, purgeTaskWorkspaceForDelete } from "../workdir";
+import { ensureInitialCommit, initializeGitRepository, purgeTaskWorkspaceForDelete, readGitHeadInfo } from "../workdir";
 import type { RuntimeTrpcContext } from "./app-router";
 import { applyRuntimeMutationEffects, createProjectsUpdatedEffects } from "./runtime-mutation-effects";
 
@@ -37,6 +38,7 @@ interface DisposeProjectOptions {
 
 export interface CreateProjectsApiDependencies {
 	projects: IProjectResolver;
+	boardCommands: Pick<ProjectBoardCommandService, "resolveMissingTaskBaseRefs">;
 	terminals: ITerminalManagerProvider;
 	broadcaster: Pick<IRuntimeBroadcaster, "broadcastRuntimeProjectsUpdated" | "broadcastRuntimeProjectStateUpdated">;
 	data: IProjectDataProvider;
@@ -111,6 +113,15 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 							error: commitResult.error ?? "Failed to ensure initial commit.",
 						} satisfies RuntimeProjectAddResponse;
 					}
+				}
+				if (existing?.folderOnly && !folderOnly) {
+					const head = await readGitHeadInfo(projectPath);
+					const baseRef = head.branch ?? head.headCommit;
+					if (!baseRef) throw new Error("Could not resolve a Git base ref for existing tasks.");
+					await deps.boardCommands.resolveMissingTaskBaseRefs(
+						{ projectId: existing.projectId, projectPath },
+						baseRef,
+					);
 				}
 				const context = await loadProjectContext(projectPath, { folderOnly });
 				deps.projects.rememberProject(context.projectId, context.repoPath);

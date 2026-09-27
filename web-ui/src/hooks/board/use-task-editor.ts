@@ -321,6 +321,7 @@ export function useTaskEditor({
 			images: editTaskImages,
 			branchRef: editTaskBranchRef,
 			defaultBranchRef: resolvedDefaultTaskBranchRef,
+			folderOnly,
 		});
 		if (!savedTaskId) {
 			return null;
@@ -334,6 +335,7 @@ export function useTaskEditor({
 		return savedTaskId;
 	}, [
 		board,
+		folderOnly,
 		editTaskBranchRef,
 		editTaskPrompt,
 		editTaskImages,

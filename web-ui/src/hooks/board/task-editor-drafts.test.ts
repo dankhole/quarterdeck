@@ -35,6 +35,26 @@ function createBoard(tasks: BoardCard[] = []): BoardData {
 }
 
 describe("task-editor-drafts", () => {
+	it("edits a converted isolated task without clearing its saved base ref or workspace", () => {
+		const task = createTask("converted", "Before", { useWorktree: true, workingDirectory: "/old-workspace" });
+		const input = {
+			board: createBoard([task]),
+			editingTaskId: task.id,
+			prompt: "After",
+			images: [],
+			branchRef: "",
+			defaultBranchRef: "",
+		};
+		expect(saveEditedTaskToBoard(input).savedTaskId).toBeNull();
+		const result = saveEditedTaskToBoard({ ...input, folderOnly: true });
+		expect(result.savedTaskId).toBe(task.id);
+		expect(result.board.columns[0]?.cards[0]).toMatchObject({
+			prompt: "After",
+			baseRef: "main",
+			useWorktree: true,
+			workingDirectory: "/old-workspace",
+		});
+	});
 	it("creates and edits folder tasks without a branch", () => {
 		const options = {
 			board: createBoard(),

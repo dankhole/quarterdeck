@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-27 — Folder project conversion review fixes
+
+After merging local main at `ff99149c` (merge `3e238ac2`), folder-mode task editing now validates against project mode while retaining saved workspace/base-ref identity. Enabling Git fills only missing task base refs from the repository HEAD through `ProjectBoardCommandService`, under the existing board mutation lock, before publishing Git mode. Existing refs and shared-checkout choices remain intact. Metadata monitor subscription restoration now registers every connection before awaiting refreshes; disconnect or disposal during refresh can no longer be followed by a reconnect that revives polling. Explicit project-mode updates skip an unused preliminary index read while retaining the fresh locked read.
+
+Validation: converted-task editor regression; two-client monitor disable/disconnect races with delayed refresh and timer assertions; isolated HTTP integration covering folder task creation, Git enablement, preserved refs, and successful task-context/changes queries; runtime and web typechecks.
+
 ## 2026-09-27 — Preserve Codex fullscreen wheel distance
 
 The fullscreen scroll regression was at the browser input boundary: installed xterm 6 computes wheel magnitude but emits at most one mouse report per DOM event, discarding coalesced swipe distance. Its below-50-pixel heuristic also changes sensitivity abruptly. Codex 0.157 advances three rows per wheel report. `TerminalWheelAccumulator` converts browser pixel/line/page distance into that unit; `TerminalWheelInput` sends the resulting line-mode events through xterm's public mouse path. Keep coordinate/protocol encoding in xterm and transcript navigation in Codex. No renderer, output batching, PTY, or lifecycle change was justified by this investigation. The adapter is confined to unmodified vertical fullscreen Codex gestures and owns its fractional remainder independently of browser effects. Fractions persist across pauses and reset on direction and task/buffer changes, and synchronous dispatch has a pathological-delta bound without an input backlog.

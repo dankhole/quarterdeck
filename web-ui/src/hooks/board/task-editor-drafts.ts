@@ -57,6 +57,7 @@ export function saveEditedTaskToBoard({
 	images,
 	branchRef,
 	defaultBranchRef,
+	folderOnly = false,
 }: {
 	board: BoardData;
 	editingTaskId: string | null;
@@ -64,23 +65,16 @@ export function saveEditedTaskToBoard({
 	images: TaskImage[];
 	branchRef: string;
 	defaultBranchRef: string;
+	folderOnly?: boolean;
 }): { board: BoardData; savedTaskId: string | null } {
-	if (
-		!editingTaskId ||
-		!isTaskSaveValid(
-			prompt,
-			branchRef,
-			defaultBranchRef,
-			board.columns.flatMap((column) => column.cards).find((card) => card.id === editingTaskId)?.useWorktree !==
-				false,
-		)
-	) {
+	const task = board.columns.flatMap((column) => column.cards).find((card) => card.id === editingTaskId);
+	if (!task || !isTaskSaveValid(prompt, branchRef, defaultBranchRef, !folderOnly && task.useWorktree !== false)) {
 		return { board, savedTaskId: null };
 	}
 
 	const trimmedPrompt = prompt.trim();
-	const baseRef = resolveEffectiveBaseRef(branchRef, defaultBranchRef);
-	const updated = updateTask(board, editingTaskId, {
+	const baseRef = folderOnly ? task.baseRef : resolveEffectiveBaseRef(branchRef, defaultBranchRef);
+	const updated = updateTask(board, task.id, {
 		prompt: trimmedPrompt,
 		images,
 		baseRef,
