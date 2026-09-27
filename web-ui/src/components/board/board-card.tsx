@@ -1,4 +1,5 @@
 import { Draggable, type DraggableProvided, type DraggableStateSnapshot } from "@hello-pangea/dnd";
+import { TASK_CARD_COLORS, taskColorSeed } from "@runtime-contract";
 import { AlertCircle, GitBranch, Info, Pencil, Pin, PinOff, RotateCw } from "lucide-react";
 import { type MouseEvent, memo, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -112,6 +113,7 @@ export const BoardCard = memo(function BoardCard({
 		uncommittedChangesOnCardsEnabled,
 		onRestartSession,
 	});
+	const cardColor = TASK_CARD_COLORS[card.colorIndex ?? taskColorSeed(card.id)];
 	const statusBadgeClass = isTrashCard ? "bg-surface-3 text-text-tertiary" : statusBadgeColors[statusTagStyle!];
 
 	const statusBadges =
@@ -263,13 +265,15 @@ export const BoardCard = memo(function BoardCard({
 			>
 				<Tooltip content={rich ? undefined : (effectiveTooltip ?? undefined)} side="top">
 					<div
+						style={{
+							backgroundColor: `color-mix(in srgb, ${cardColor} ${isHovered ? 23 : 16}%, var(--color-surface-1))`,
+							borderColor: `color-mix(in srgb, ${cardColor} 30%, var(--color-border))`,
+						}}
 						className={cn(
-							"rounded-md border border-border-bright bg-surface-2 p-2.5",
-							rich &&
-								"flex h-full flex-col rounded-xl !border-border !bg-surface-1 !p-3 hover:!border-border-bright",
-							isCardInteractive && "cursor-pointer hover:bg-surface-3 hover:border-border-bright",
+							"rounded-md border p-2.5 transition-colors",
+							rich && "flex h-full flex-col rounded-xl !p-3",
+							isCardInteractive && "cursor-pointer",
 							isDragging && "shadow-lg",
-							isHovered && isCardInteractive && "bg-surface-3 border-border-bright",
 						)}
 					>
 						<div

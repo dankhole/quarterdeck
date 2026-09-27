@@ -60,6 +60,7 @@ export function ProjectNavigationList({
 											>
 												<ProjectRow
 													project={project}
+													striped={index % 2 === 1}
 													isCurrent={currentProjectId === project.id}
 													removingProjectId={removingProjectId}
 													needsInputCount={needsInputByProject[project.id] ?? 0}

@@ -6,6 +6,7 @@ import type {
 	RuntimeTaskImage,
 	RuntimeTaskSessionSummary,
 } from "./api-contract";
+import { allocateTaskColor } from "./task-card-colors";
 import { createUniqueTaskId } from "./task-id";
 
 export interface RuntimeCreateTaskInput {
@@ -143,8 +144,13 @@ export function addTaskToColumn(
 	if (explicitTaskId && existingIds.has(explicitTaskId)) {
 		throw new Error(`Task "${explicitTaskId}" already exists.`);
 	}
+	const taskId = explicitTaskId || createUniqueTaskId(existingIds, randomUuid);
 	const task: RuntimeBoardCard = {
-		id: explicitTaskId || createUniqueTaskId(existingIds, randomUuid),
+		id: taskId,
+		colorIndex: allocateTaskColor(
+			taskId,
+			board.columns.flatMap((column) => column.cards),
+		),
 		...(columnId === "review" ? { unstarted: true } : {}),
 		title: input.title?.trim() || null,
 		prompt,

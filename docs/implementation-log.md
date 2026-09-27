@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-27 — Stable task card colors
+
+Task creation allocates a persisted `colorIndex` from forty muted pastels, seeded by the random task ID and preferring least-used colors across all project columns. Board reads deterministically backfill legacy cards; the next authoritative write saves those assignments without a separate browser writer. Keep palette indices stable. The browser board parser must retain the field, or hydration silently loses collision avoidance. Key files: `task-card-colors.ts`, `task-board-mutations.ts`, `project-state-index.ts`, and `board-state-parser.ts`. Validation covers palette exhaustion, deterministic backfill, command persistence/replay, browser normalization, and card/project rendering.
+
+Review follow-up: backfill sorts only missing assignments and counts palette usage once. A filesystem integration test verifies deleting an older colliding legacy card preserves the survivor’s saved color after reload. Focused runtime/web tests, typechecks, and the isolated fake Agent Lab visual check passed; the lab stopped cleanly with no forbidden host launches.
+
 ## 2026-09-27 — Remove task chaining, bulk start, and turn diffs
 
 Removed task dependency contracts, commands, board linking UI, and linked-start orchestration from Trash. Existing board links and persisted linked-start plans are stripped by schema parsing; replaying an older Trash operation cannot launch follow-up tasks. Multi-task creation still saves unstarted cards, with individual Start actions only. Removed Last Turn queries, session checkpoint metadata, and Git checkpoint capture at launch and review transitions; saved Last Turn tab preferences fall back to Uncommitted. Existing Git checkpoint refs are left untouched. Renamed the remaining trash hooks to reflect their actual responsibility.

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Give task cards persistent, subtle pastel colors from a 40-color palette, preferring unused colors within each project, and softly alternate project row backgrounds.
+
 - Move Create task above the project list, remove redundant sidebar and board headers, and give both sidebar create buttons a taller, polished appearance.
 
 - Compact board cards with smaller six-line response previews, less padding, and status/agent badges in the reply footer. Show file diff totals before branch names on cards. Remove the redundant Open agent button and preview header, and explain why replies are disabled while an agent is running.

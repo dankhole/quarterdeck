@@ -14,6 +14,19 @@ afterEach(() => {
 });
 
 describe("normalizeBoardData", () => {
+	it("retains saved card colors through authoritative board normalization", () => {
+		const task = {
+			id: "colored",
+			title: null,
+			prompt: "Task",
+			baseRef: "main",
+			createdAt: 1,
+			updatedAt: 1,
+			colorIndex: 39,
+		};
+		const board = normalizeBoardData({ columns: [{ id: "review", cards: [task] }] });
+		expect(board?.columns.find((column) => column.id === "review")?.cards[0]?.colorIndex).toBe(39);
+	});
 	it("merges legacy Backlog into Review while preserving started Review tasks", () => {
 		const task = { title: null, prompt: "Task", baseRef: "main", createdAt: 1, updatedAt: 1 };
 		const board = normalizeBoardData({

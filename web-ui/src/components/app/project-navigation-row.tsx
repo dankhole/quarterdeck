@@ -25,6 +25,7 @@ const PRELOAD_HOVER_DELAY_MS = 150;
 export function ProjectRow({
 	project,
 	isCurrent,
+	striped = false,
 	removingProjectId,
 	needsInputCount = 0,
 	showDragHandle = false,
@@ -36,6 +37,7 @@ export function ProjectRow({
 }: {
 	project: RuntimeProjectSummary;
 	isCurrent: boolean;
+	striped?: boolean;
 	removingProjectId: string | null;
 	needsInputCount?: number;
 	showDragHandle?: boolean;
@@ -114,6 +116,7 @@ export function ProjectRow({
 				}}
 				className={cn(
 					"kb-project-row group cursor-pointer rounded-md",
+					!isCurrent && (striped ? "bg-white/[0.035]" : "bg-black/[0.06]"),
 					isCurrent && "kb-project-row-selected",
 					isDragging && "shadow-lg bg-surface-2 rounded-md",
 				)}

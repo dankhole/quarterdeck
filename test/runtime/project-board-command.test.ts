@@ -68,6 +68,7 @@ describe("applyProjectBoardCommand", () => {
 		expect(result.board.columns.find((column) => column.id === "review")?.cards).toEqual([
 			{
 				id: "task-a",
+				colorIndex: expect.any(Number),
 				unstarted: true,
 				title: null,
 				prompt: "Ship it",

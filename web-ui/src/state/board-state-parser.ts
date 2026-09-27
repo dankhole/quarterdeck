@@ -1,5 +1,6 @@
 import {
 	runtimeAgentIdSchema,
+	runtimeBoardCardSchema,
 	runtimeBoardColumnIdSchema,
 	runtimeCodexOptionsSchema,
 	runtimeTaskImageSchema,
@@ -30,6 +31,7 @@ const rawPersistedBoardCardSchema = z.object({
 	workingDirectory: z.unknown().optional(),
 	branch: z.unknown().optional(),
 	pinned: z.unknown().optional(),
+	colorIndex: z.unknown().optional(),
 	unstarted: z.unknown().optional(),
 	createdAt: z.unknown().optional(),
 	updatedAt: z.unknown().optional(),
@@ -82,6 +84,7 @@ export function parsePersistedBoardCard(
 		return null;
 	}
 
+	const color = runtimeBoardCardSchema.shape.colorIndex.safeParse(result.data.colorIndex);
 	const now = options.now ?? Date.now();
 	const agentId = parsePersistedAgentId(result.data.agentId);
 	const codexOptions = runtimeCodexOptionsSchema.safeParse(result.data.codexOptions);
@@ -101,6 +104,7 @@ export function parsePersistedBoardCard(
 		useWorktree: typeof result.data.useWorktree === "boolean" ? result.data.useWorktree : undefined,
 		workingDirectory: parseOptionalNullableString(result.data.workingDirectory),
 		branch: parseOptionalNullableString(result.data.branch),
+		...(color.success && color.data !== undefined ? { colorIndex: color.data } : {}),
 		pinned: typeof result.data.pinned === "boolean" ? result.data.pinned : undefined,
 		...(result.data.unstarted === true ? { unstarted: true } : {}),
 		createdAt: typeof result.data.createdAt === "number" ? result.data.createdAt : now,

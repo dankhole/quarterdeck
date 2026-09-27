@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 import { copyFile, readFile } from "node:fs/promises";
 import { basename, win32 } from "node:path";
 import { z } from "zod";
-
 import type { RuntimeBoardColumnId, RuntimeBoardData, RuntimeTaskSessionSummary } from "../core";
 import {
 	areFileSystemPathsEqual,
@@ -11,6 +10,7 @@ import {
 	runtimeBoardDataSchema,
 	runtimeTaskSessionSummarySchema,
 } from "../core";
+import { assignMissingTaskColors } from "../core/task-card-colors.js";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { isNodeError } from "../fs/node-error";
 import { migrateLegacyBacklog } from "./legacy-backlog-migration";
@@ -347,12 +347,14 @@ export function parseProjectStateSavePayload<T>(payload: T, schema: z.ZodType<T>
 export async function readProjectBoardUnderLock(projectId: string): Promise<RuntimeBoardData> {
 	const boardPath = getProjectBoardPath(projectId);
 	const rawBoard = await readJsonFile(boardPath);
-	return parsePersistedStateFile(
-		boardPath,
-		"board.json",
-		migrateLegacyBacklog(rawBoard),
-		runtimeBoardDataSchema,
-		createEmptyBoard(),
+	return assignMissingTaskColors(
+		parsePersistedStateFile(
+			boardPath,
+			"board.json",
+			migrateLegacyBacklog(rawBoard),
+			runtimeBoardDataSchema,
+			createEmptyBoard(),
+		),
 	);
 }
 

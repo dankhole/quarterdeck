@@ -2,8 +2,8 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
-
-import { findCardInBoard } from "../../src/core";
+import { findCardInBoard, runtimeBoardDataSchema } from "../../src/core";
+import { taskColorSeed } from "../../src/core/task-card-colors";
 import {
 	loadProjectContext,
 	loadProjectState,
@@ -18,6 +18,68 @@ import { createTestTaskSessionSummary } from "../utilities/task-session-factory"
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
 describe("ProjectBoardCommandService integration", { concurrent: false }, () => {
+	it("persists legacy color assignments before deleting a colliding older task", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-legacy-colors-");
+			try {
+				const projectPath = join(sandboxRoot, "project");
+				mkdirSync(projectPath, { recursive: true });
+				initGitRepository(projectPath);
+				const context = await loadProjectContext(projectPath);
+				const initial = await loadProjectState(projectPath);
+				// Find IDs with the same preferred color so removing the older card would
+				// recolor the survivor if backfilled assignments were not persisted.
+				const olderId = "legacy-0";
+				const survivorId = Array.from({ length: 1000 }, (_, index) => `legacy-${index + 1}`).find(
+					(id) => taskColorSeed(id) === taskColorSeed(olderId),
+				);
+				expect(survivorId).toBeDefined();
+				if (!survivorId) throw new Error("Missing collision fixture");
+				await saveProjectState(projectPath, {
+					expectedRevision: initial.revision,
+					sessions: {},
+					board: {
+						columns: [
+							{
+								id: "trash",
+								title: "Trash",
+								cards: [olderId, survivorId].map((id, index) => ({
+									id,
+									title: null,
+									prompt: "Legacy task",
+									baseRef: "main",
+									createdAt: index + 1,
+									updatedAt: index + 1,
+								})),
+							},
+						],
+					},
+				});
+				const before = await loadProjectState(projectPath);
+				const color = findCardInBoard(before.board, survivorId)?.colorIndex;
+				expect(color).toBeDefined();
+				expect(color).not.toBe(taskColorSeed(survivorId));
+				const service = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+				await service.execute(
+					{ projectId: context.projectId, projectPath },
+					{
+						commandId: "delete-older",
+						expectedRevision: before.revision,
+						command: { kind: "delete_tasks", taskIds: [olderId] },
+					},
+				);
+				const persisted = runtimeBoardDataSchema.parse(
+					JSON.parse(readFileSync(join(context.statePath, "board.json"), "utf8")),
+				);
+				expect(findCardInBoard(persisted, survivorId)?.colorIndex).toBe(color);
+				const reloaded = await loadProjectState(projectPath);
+				expect(findCardInBoard(reloaded.board, survivorId)?.colorIndex).toBe(color);
+				expect(findCardInBoard(reloaded.board, olderId)).toBeNull();
+			} finally {
+				cleanup();
+			}
+		});
+	});
 	it("persists a prepared command with no browser client or UI writer", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-board-command-");
@@ -59,6 +121,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 				expect(result.state.board.columns.find((column) => column.id === "review")?.cards[0]).toMatchObject({
 					id: "task-a",
 					prompt: "Create without a browser",
+					colorIndex: expect.any(Number),
 					codexOptions: { model: "test-model", reasoningEffort: "high" },
 					createdAt: 100,
 					updatedAt: 100,

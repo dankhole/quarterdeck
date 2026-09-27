@@ -1,5 +1,9 @@
 import { z } from "zod";
+import { TASK_CARD_COLORS } from "../task-card-colors.js";
+
 import { runtimeAgentIdSchema, runtimeBoardColumnIdSchema, runtimeTaskImageSchema } from "./shared.js";
+
+export { TASK_CARD_COLORS, taskColorSeed } from "../task-card-colors.js";
 
 export const runtimeCodexOptionsSchema = z.object({
 	model: z
@@ -36,6 +40,12 @@ export const runtimeBoardCardSchema = z.object({
 	workingDirectory: z.string().min(1).nullable().optional(),
 	branch: z.string().min(1).nullable().optional(),
 	pinned: z.boolean().optional(),
+	colorIndex: z
+		.number()
+		.int()
+		.min(0)
+		.max(TASK_CARD_COLORS.length - 1)
+		.optional(),
 	createdAt: z.number(),
 	updatedAt: z.number(),
 });
