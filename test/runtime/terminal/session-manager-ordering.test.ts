@@ -89,7 +89,6 @@ describe("TerminalSessionManager ordering invariants", () => {
 			});
 			const sessionInstanceId = manager.store.getSummary("delayed-interrupt")?.sessionInstanceId;
 			const persistSessionState = vi.fn(async () => undefined);
-			const captureTaskTurnCheckpoint = vi.fn();
 			const api = createHooksApi({
 				projects: { getProjectPathById: () => "/tmp/repo" },
 				terminals: {
@@ -97,7 +96,6 @@ describe("TerminalSessionManager ordering invariants", () => {
 					ensureTerminalManagerForProject: async () => manager,
 				},
 				persistSessionState,
-				captureTaskTurnCheckpoint,
 			});
 			let sequence = 0;
 			const ingest = (hookEventName: string, occurredAt: number) =>
@@ -151,7 +149,6 @@ describe("TerminalSessionManager ordering invariants", () => {
 			});
 			expect(interrupted?.recentProviderHookOrderObservations.at(-1)?.hookEventName).toBe("Interrupt");
 			expect(persistSessionState).toHaveBeenLastCalledWith("project-1");
-			expect(captureTaskTurnCheckpoint).not.toHaveBeenCalled();
 		},
 	);
 
@@ -232,7 +229,6 @@ describe("TerminalSessionManager ordering invariants", () => {
 				prompt: "Synthetic interruption",
 			});
 			const sessionInstanceId = manager.store.getSummary("interrupt-task")?.sessionInstanceId;
-			const captureTaskTurnCheckpoint = vi.fn();
 			const persistSessionState = vi.fn(async () => undefined);
 			const api = createHooksApi({
 				projects: { getProjectPathById: () => "/tmp/repo" },
@@ -240,7 +236,6 @@ describe("TerminalSessionManager ordering invariants", () => {
 					getTerminalManagerForProject: () => manager,
 					ensureTerminalManagerForProject: async () => manager,
 				},
-				captureTaskTurnCheckpoint,
 				persistSessionState,
 			});
 			let sequence = 0;
@@ -298,7 +293,6 @@ describe("TerminalSessionManager ordering invariants", () => {
 				reviewReady: false,
 				needsInput: false,
 			});
-			expect(captureTaskTurnCheckpoint).not.toHaveBeenCalled();
 			expect(persistSessionState).toHaveBeenCalled();
 			expect(interrupted?.recentProviderHookOrderObservations.at(-1)?.hookEventName).toBe("Interrupt");
 			for (const event of ["PermissionRequest", "PostToolUse", "Stop"]) {
@@ -316,7 +310,6 @@ describe("TerminalSessionManager ordering invariants", () => {
 				reviewReason: "interrupted",
 				pid: null,
 			});
-			expect(captureTaskTurnCheckpoint).not.toHaveBeenCalled();
 		},
 	);
 
@@ -883,12 +876,6 @@ describe("TerminalSessionManager ordering invariants", () => {
 		});
 		const sessionInstanceId = manager.store.getSummary("task-clear")?.sessionInstanceId;
 		const api = createHooksApi({
-			captureTaskTurnCheckpoint: async ({ turn }) => ({
-				turn,
-				ref: `refs/quarterdeck/checkpoints/task-clear/${turn}`,
-				commit: "synthetic-commit",
-				createdAt: Date.now(),
-			}),
 			projects: { getProjectPathById: () => "/tmp/repo" },
 			terminals: {
 				getTerminalManagerForProject: () => manager,

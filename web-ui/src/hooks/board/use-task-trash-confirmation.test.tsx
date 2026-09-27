@@ -10,7 +10,7 @@ import {
 	type HookSnapshot,
 	requireSnapshot,
 	useTestEnvironment,
-} from "./linked-backlog-actions-test-harness";
+} from "./task-trash-actions-test-harness";
 
 type TestWorktreeSnapshot = Pick<
 	ReviewTaskWorktreeSnapshot,
@@ -30,7 +30,7 @@ vi.mock("@/stores/project-metadata-store", () => ({
 	getTaskWorktreeInfo: getTaskWorktreeInfoMock,
 }));
 
-describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
+describe("useTaskTrashActions — trash confirmation dialog", () => {
 	const ctx = useTestEnvironment();
 
 	beforeEach(() => {
@@ -299,7 +299,6 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 
 				{ id: "trash", title: "Trash", cards: [createTask("task-2", "Review task", 2)] },
 			],
-			dependencies: [],
 		});
 
 		await act(async () => {

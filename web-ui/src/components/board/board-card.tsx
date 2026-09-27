@@ -41,13 +41,8 @@ export const BoardCard = memo(function BoardCard({
 	onUpdateTitle,
 	onTogglePin,
 	isMoveToTrashLoading = false,
-	onDependencyPointerDown,
-	onDependencyPointerEnter,
 	onTerminalWarmup,
 	onTerminalCancelWarmup,
-	isDependencySource = false,
-	isDependencyTarget = false,
-	isDependencyLinking = false,
 	draggable = true,
 	rich = false,
 	dragHandle,
@@ -72,13 +67,8 @@ export const BoardCard = memo(function BoardCard({
 	onUpdateTitle?: (taskId: string, title: string) => void;
 	onTogglePin?: (taskId: string) => void;
 	isMoveToTrashLoading?: boolean;
-	onDependencyPointerDown?: (taskId: string, event: MouseEvent<HTMLElement>) => void;
-	onDependencyPointerEnter?: (taskId: string) => void;
 	onTerminalWarmup?: (taskId: string) => void;
 	onTerminalCancelWarmup?: (taskId: string) => void;
-	isDependencySource?: boolean;
-	isDependencyTarget?: boolean;
-	isDependencyLinking?: boolean;
 	draggable?: boolean;
 	rich?: boolean;
 	dragHandle?: ReactNode;
@@ -197,33 +187,8 @@ export const BoardCard = memo(function BoardCard({
 				data-task-id={card.id}
 				data-column-id={columnId}
 				data-selected={selected}
-				onMouseDownCapture={(event) => {
-					if (!isCardInteractive) {
-						return;
-					}
-					if (isDependencyLinking) {
-						event.preventDefault();
-						event.stopPropagation();
-						return;
-					}
-					if (!event.metaKey && !event.ctrlKey) {
-						return;
-					}
-					const target = event.target as HTMLElement | null;
-					if (target?.closest("button, a, input, textarea, [contenteditable='true']")) {
-						return;
-					}
-					event.preventDefault();
-					event.stopPropagation();
-					onDependencyPointerDown?.(card.id, event);
-				}}
 				onClick={(event) => {
 					if (!isCardInteractive) {
-						return;
-					}
-					if (isDependencyLinking) {
-						event.preventDefault();
-						event.stopPropagation();
 						return;
 					}
 					if (event.metaKey || event.ctrlKey) {
@@ -234,7 +199,7 @@ export const BoardCard = memo(function BoardCard({
 					}
 				}}
 				onDoubleClick={(event) => {
-					if (!isCardInteractive || isDependencyLinking || isDragging) {
+					if (!isCardInteractive || isDragging) {
 						return;
 					}
 					if (event.metaKey || event.ctrlKey) {
@@ -249,14 +214,7 @@ export const BoardCard = memo(function BoardCard({
 				}}
 				onMouseEnter={() => {
 					hoverTimerRef.current = setTimeout(() => setIsHovered(true), 200);
-					onDependencyPointerEnter?.(card.id);
 					if (!card.unstarted) onTerminalWarmup?.(card.id);
-				}}
-				onMouseMove={() => {
-					if (!isDependencyLinking) {
-						return;
-					}
-					onDependencyPointerEnter?.(card.id);
 				}}
 				onMouseLeave={() => {
 					if (hoverTimerRef.current) {
@@ -276,8 +234,6 @@ export const BoardCard = memo(function BoardCard({
 							isCardInteractive && "cursor-pointer hover:bg-surface-3 hover:border-border-bright",
 							isDragging && "shadow-lg",
 							isHovered && isCardInteractive && "bg-surface-3 border-border-bright",
-							isDependencySource && "kb-board-card-dependency-source",
-							isDependencyTarget && "kb-board-card-dependency-target",
 						)}
 					>
 						<div

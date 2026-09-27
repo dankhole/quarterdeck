@@ -6,7 +6,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { CardActionsProvider, type ReactiveCardState } from "@/state/card-actions-context";
 import type { BoardData } from "@/types";
 
-vi.mock("@/components/board/dependencies/dependency-overlay", () => ({ DependencyOverlay: () => null }));
 const reactive: ReactiveCardState = {
 	moveToTrashLoadingById: {},
 	isLlmGenerationDisabled: false,
@@ -24,7 +23,6 @@ const card = (id: string, unstarted = false) => ({
 	updatedAt: 1,
 });
 const data: BoardData = {
-	dependencies: [],
 	columns: [
 		{ id: "in_progress", title: "In Progress", cards: [card("working")] },
 		{ id: "review", title: "Review", cards: [card("draft", true)] },
@@ -55,7 +53,6 @@ describe("QuarterdeckBoard grid", () => {
 						<QuarterdeckBoard
 							data={data}
 							taskSessions={{}}
-							dependencies={[]}
 							onCardSelect={() => {}}
 							onCreateTask={create}
 							onDragEnd={() => {}}
@@ -92,7 +89,6 @@ describe("QuarterdeckBoard grid", () => {
 						<QuarterdeckBoard
 							data={data}
 							taskSessions={{}}
-							dependencies={[]}
 							onCardSelect={() => {}}
 							onCreateTask={() => {}}
 							onDragEnd={onDrop}

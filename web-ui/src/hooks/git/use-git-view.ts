@@ -27,7 +27,7 @@ import {
 } from "@/resize/resize-preferences";
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeGitSyncSummary, RuntimeTaskSessionSummary, RuntimeWorkdirFileChange } from "@/runtime/types";
+import type { RuntimeGitSyncSummary, RuntimeWorkdirFileChange } from "@/runtime/types";
 import type { FileLoadingState } from "@/runtime/use-all-file-diff-content";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { BoardData, CardSelection } from "@/types";
@@ -41,7 +41,6 @@ const GIT_VIEW_FILE_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
 export interface UseGitViewOptions {
 	currentProjectId: string | null;
 	selectedCard: CardSelection | null;
-	sessionSummary: RuntimeTaskSessionSummary | null;
 	projectPath?: string | null;
 	homeGitSummary?: RuntimeGitSyncSummary | null;
 	board?: BoardData;
@@ -54,10 +53,9 @@ export interface UseGitViewOptions {
 export function useGitView({
 	currentProjectId,
 	selectedCard,
-	sessionSummary,
 	projectPath,
 	homeGitSummary = null,
-	board = { columns: [], dependencies: [] },
+	board = { columns: [] },
 	pendingCompareNavigation,
 	onCompareNavigationConsumed,
 	pendingFileNavigation,
@@ -181,7 +179,6 @@ export function useGitView({
 		currentProjectId,
 		taskId,
 		baseRef,
-		sessionSummary,
 		selectedPath,
 		visibleDiffPaths,
 		compare,
@@ -284,7 +281,6 @@ export function useGitView({
 		isChangesPending,
 		hasNoChanges,
 		handleRollbackFile,
-		selectedCard,
 	};
 }
 
@@ -312,5 +308,4 @@ export interface UseGitViewResult {
 	isChangesPending: boolean;
 	hasNoChanges: boolean;
 	handleRollbackFile: (path: string) => Promise<void>;
-	selectedCard: CardSelection | null;
 }

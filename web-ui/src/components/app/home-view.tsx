@@ -97,7 +97,6 @@ export function HomeView({
 								<GitView
 									currentProjectId={projectNavigation.currentProjectId}
 									selectedCard={null}
-									sessionSummary={null}
 									projectPath={projectPath}
 									homeGitSummary={homeGitSummary}
 									board={board}
@@ -246,14 +245,10 @@ export function HomeView({
 									taskSessions={sessions}
 									onCardSelect={interactions.handleCardSelect}
 									onCreateTask={handleOpenCreateTask}
-									onStartAllTasks={interactions.handleStartAllUnstartedTasksFromBoard}
 									onClearTrash={interactions.handleOpenClearTrash}
 									editingTaskId={editingTaskId}
 									inlineTaskEditor={inlineTaskEditor}
 									onEditTask={handleOpenEditTask}
-									dependencies={board.dependencies}
-									onCreateDependency={interactions.handleCreateDependency}
-									onDeleteDependency={interactions.handleDeleteDependency}
 									onRequestProgrammaticCardMoveReady={interactions.handleProgrammaticCardMoveReady}
 									onDragEnd={interactions.handleDragEnd}
 								/>

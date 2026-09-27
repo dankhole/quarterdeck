@@ -4,7 +4,6 @@ import { useCallback, useEffect } from "react";
 
 import type { TaskTrashWarningViewModel } from "@/components/task";
 import { useBoardDragHandler } from "@/hooks/board/use-board-drag-handler";
-import { useLinkedBacklogTaskActions } from "@/hooks/board/use-linked-backlog-task-actions";
 import { useProgrammaticCardMoves } from "@/hooks/board/use-programmatic-card-moves";
 import {
 	shouldWarnForNonIsolatedResume,
@@ -13,6 +12,7 @@ import {
 } from "@/hooks/board/use-task-lifecycle";
 import type { UseTaskLifecycleOperationsResult } from "@/hooks/board/use-task-lifecycle-operations";
 import { useTaskStart } from "@/hooks/board/use-task-start";
+import { useTaskTrashActions } from "@/hooks/board/use-task-trash-actions";
 import { type HardDeleteDialogState, type TrashWarningState, useTrashWorkflow } from "@/hooks/board/use-trash-workflow";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
@@ -52,11 +52,8 @@ export interface UseBoardInteractionsResult {
 		currentBoard?: BoardData,
 		sourceColumnId?: Exclude<BoardColumnId, "trash">,
 	) => Promise<void>;
-	handleCreateDependency: (fromTaskId: string, toTaskId: string) => void;
-	handleDeleteDependency: (dependencyId: string) => void;
 	handleDragEnd: (result: DropResult, options?: { selectDroppedTask?: boolean }) => void;
 	handleStartTask: (taskId: string) => void;
-	handleStartAllUnstartedTasks: (taskIds?: string[]) => void;
 	handleCardSelect: (taskId: string) => void;
 	handleMoveToTrash: () => void;
 	handleMoveReviewCardToTrash: (taskId: string) => void;
@@ -106,12 +103,7 @@ export function useBoardInteractions({
 	const { kickoffTaskInProgress, resumeTaskFromTrash } = useTaskLifecycle({ executeTaskLifecycle });
 
 	// ── Unstarted task start + animation ───────────────────────────────────
-	const {
-		handleStartTask,
-		handleStartAllUnstartedTasks,
-		resolvePendingProgrammaticStartMove,
-		resetPendingStartMoves,
-	} = useTaskStart({
+	const { handleStartTask, resolvePendingProgrammaticStartMove, resetPendingStartMoves } = useTaskStart({
 		board,
 		presentLifecycleBoard,
 		selectedCard,
@@ -120,31 +112,29 @@ export function useBoardInteractions({
 		waitForProgrammaticCardMoveAvailability,
 	});
 
-	// ── Linked task actions (dependency graph, trash workflow) ───
-	const { confirmMoveTaskToTrash, handleCreateDependency, handleDeleteDependency, requestMoveTaskToTrash } =
-		useLinkedBacklogTaskActions({
-			board,
-			setBoard,
-			presentLifecycleBoard,
-			setSelectedTaskId,
-			executeTaskLifecycle,
-			onRequestTrashConfirmation: (
-				viewModel: TaskTrashWarningViewModel,
-				card: BoardCard,
-				fromColumnId: BoardColumnId,
-				optimisticMoveApplied: boolean,
-			) => {
-				log.debug("showing trash warning dialog", {
-					cardId: card.id,
-					fileCount: viewModel.fileCount,
-					fromColumnId,
-					optimisticMoveApplied,
-				});
-				setTrashWarningState({ open: true, warning: viewModel, card, fromColumnId, optimisticMoveApplied });
-			},
-			showTrashWorktreeNotice,
-			saveTrashWorktreeNoticeDismissed,
-		});
+	// ── Trash actions ───
+	const { confirmMoveTaskToTrash, requestMoveTaskToTrash } = useTaskTrashActions({
+		board,
+		presentLifecycleBoard,
+		setSelectedTaskId,
+		executeTaskLifecycle,
+		onRequestTrashConfirmation: (
+			viewModel: TaskTrashWarningViewModel,
+			card: BoardCard,
+			fromColumnId: BoardColumnId,
+			optimisticMoveApplied: boolean,
+		) => {
+			log.debug("showing trash warning dialog", {
+				cardId: card.id,
+				fileCount: viewModel.fileCount,
+				fromColumnId,
+				optimisticMoveApplied,
+			});
+			setTrashWarningState({ open: true, warning: viewModel, card, fromColumnId, optimisticMoveApplied });
+		},
+		showTrashWorktreeNotice,
+		saveTrashWorktreeNoticeDismissed,
+	});
 
 	useEffect(() => {
 		setRequestMoveTaskToTrashHandler(requestMoveTaskToTrash);
@@ -251,11 +241,8 @@ export function useBoardInteractions({
 	return {
 		handleProgrammaticCardMoveReady,
 		confirmMoveTaskToTrash,
-		handleCreateDependency,
-		handleDeleteDependency,
 		handleDragEnd,
 		handleStartTask,
-		handleStartAllUnstartedTasks,
 		handleCardSelect,
 		handleMoveToTrash,
 		handleMoveReviewCardToTrash,

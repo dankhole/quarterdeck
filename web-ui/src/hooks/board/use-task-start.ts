@@ -33,7 +33,6 @@ interface UseTaskStartInput {
 
 export interface UseTaskStartResult {
 	handleStartTask: (taskId: string) => void;
-	handleStartAllUnstartedTasks: (taskIds?: string[]) => void;
 	startUnstartedTaskWithAnimation: (task: BoardCard) => Promise<boolean>;
 	resolvePendingProgrammaticStartMove: (taskId: string, started: boolean) => void;
 	resetPendingStartMoves: () => void;
@@ -113,13 +112,13 @@ export function useTaskStart({
 	const startUnstartedTaskImmediately = useCallback(
 		async (task: BoardCard): Promise<boolean> => {
 			const selection = findCardSelection(board, task.id);
-			if (!selection || selection.column.id !== "review" || !selection.card.unstarted) {
+			if (selection?.column.id !== "review" || !selection.card.unstarted) {
 				return false;
 			}
 
 			presentLifecycleBoard((currentBoard) => {
 				const currentSelection = findCardSelection(currentBoard, task.id);
-				if (!currentSelection || currentSelection.column.id !== "review" || !currentSelection.card.unstarted) {
+				if (currentSelection?.column.id !== "review" || !currentSelection.card.unstarted) {
 					return currentBoard;
 				}
 				const moved = moveTaskToColumn(currentBoard, task.id, "in_progress", { insertAtTop: true });
@@ -182,62 +181,12 @@ export function useTaskStart({
 	const handleStartTask = useCallback(
 		(taskId: string) => {
 			const selection = findCardSelection(board, taskId);
-			if (!selection || selection.column.id !== "review" || !selection.card.unstarted) {
+			if (selection?.column.id !== "review" || !selection.card.unstarted) {
 				return;
 			}
 			void startUnstartedTaskWithAnimation(selection.card);
 		},
 		[board, startUnstartedTaskWithAnimation],
-	);
-
-	const handleStartAllUnstartedTasks = useCallback(
-		(taskIds?: string[]) => {
-			const requestedTaskIds =
-				taskIds ??
-				board.columns
-					.find((column) => column.id === "review")
-					?.cards.filter((card) => card.unstarted)
-					.map((card) => card.id) ??
-				[];
-			if (requestedTaskIds.length === 0) {
-				return;
-			}
-
-			let nextBoard = board;
-			const pendingStarts: BoardCard[] = [];
-			const startedTaskIds = new Set<string>();
-
-			for (const taskId of requestedTaskIds) {
-				if (!taskId || startedTaskIds.has(taskId)) {
-					continue;
-				}
-				const selection = findCardSelection(nextBoard, taskId);
-				if (!selection || selection.column.id !== "review" || !selection.card.unstarted) {
-					continue;
-				}
-				const moved = moveTaskToColumn(nextBoard, taskId, "in_progress", { insertAtTop: true });
-				if (!moved.moved) {
-					continue;
-				}
-				nextBoard = moved.board;
-				const movedSelection = findCardSelection(nextBoard, taskId);
-				if (!movedSelection) {
-					continue;
-				}
-				pendingStarts.push(selection.card);
-				startedTaskIds.add(taskId);
-			}
-
-			if (pendingStarts.length === 0) {
-				return;
-			}
-
-			presentLifecycleBoard(nextBoard);
-			for (const task of pendingStarts) {
-				void kickoffTaskInProgress(task, task.id, "review");
-			}
-		},
-		[board, kickoffTaskInProgress, presentLifecycleBoard],
 	);
 
 	const resetPendingStartMoves = useCallback(() => {
@@ -248,7 +197,6 @@ export function useTaskStart({
 
 	return {
 		handleStartTask,
-		handleStartAllUnstartedTasks,
 		startUnstartedTaskWithAnimation,
 		resolvePendingProgrammaticStartMove,
 		resetPendingStartMoves,

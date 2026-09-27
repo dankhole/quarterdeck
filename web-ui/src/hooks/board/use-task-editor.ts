@@ -111,7 +111,6 @@ export interface UseTaskEditorResult {
 	handleCreateTask: (options?: CreateTaskOptions) => string | null;
 	handleCreateTasks: (prompts: string[], options?: CreateTaskOptions) => string[];
 	prepareCreateTaskForLifecycle: (options?: CreateTaskOptions) => PreparedTaskCreation | null;
-	prepareCreateTasksForLifecycle: (prompts: string[], options?: CreateTaskOptions) => PreparedTaskCreation[];
 	resetTaskEditorState: () => void;
 }
 
@@ -224,7 +223,7 @@ export function useTaskEditor({
 			return;
 		}
 		const selection = findCardSelection(board, editingTaskId);
-		if (!selection || selection.column.id !== "review" || !selection.card.unstarted) {
+		if (selection?.column.id !== "review" || !selection.card.unstarted) {
 			setEditingTaskId(null);
 			setEditTaskPrompt("");
 			setEditTaskImages([]);
@@ -474,36 +473,6 @@ export function useTaskEditor({
 		],
 	);
 
-	const prepareCreateTasksForLifecycle = useCallback(
-		(prompts: string[], options?: CreateTaskOptions): PreparedTaskCreation[] => {
-			const { createdTasks } = createTasksOnBoard({
-				board,
-				prompts,
-				images: newTaskImages,
-				agentId: newTaskAgentId,
-				codexOptions: newTaskCodexOptions,
-				branchRef: newTaskBranchRef,
-				defaultBranchRef: resolvedDefaultTaskBranchRef,
-				useWorktree: newTaskUseWorktree,
-			});
-			if (createdTasks.length === 0) {
-				return [];
-			}
-			resetCreateEditorAfterSubmit(options);
-			return createdTasks.map((task) => ({ task }));
-		},
-		[
-			board,
-			newTaskAgentId,
-			newTaskCodexOptions,
-			newTaskBranchRef,
-			newTaskImages,
-			newTaskUseWorktree,
-			resetCreateEditorAfterSubmit,
-			resolvedDefaultTaskBranchRef,
-		],
-	);
-
 	const resetTaskEditorState = useCallback(() => {
 		setNewTaskCodexOptions(undefined);
 		setIsInlineTaskCreateOpen(false);
@@ -555,7 +524,6 @@ export function useTaskEditor({
 		handleCreateTask,
 		handleCreateTasks,
 		prepareCreateTaskForLifecycle,
-		prepareCreateTasksForLifecycle,
 		resetTaskEditorState,
 	};
 }

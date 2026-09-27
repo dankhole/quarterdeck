@@ -1,7 +1,6 @@
 import type { BoardContextValue } from "@/providers/board-provider";
 import type { DialogContextValue } from "@/providers/dialog-provider";
 import type { GitContextValue } from "@/providers/git-provider";
-import type { InteractionsContextValue } from "@/providers/interactions-provider";
 import type {
 	ProjectNavigationContextValue,
 	ProjectNotificationContextValue,
@@ -30,7 +29,6 @@ interface UseAppSideEffectsInput {
 	git: GitContextValue;
 	navigation: SurfaceNavigationContextValue;
 	terminal: TerminalContextValue;
-	interactions: InteractionsContextValue;
 	dialog: DialogContextValue;
 	handleToggleFileFinder: () => void;
 	handleToggleTextSearch: () => void;
@@ -47,7 +45,6 @@ export function useAppSideEffects({
 	git,
 	navigation,
 	terminal,
-	interactions,
 	dialog,
 	handleToggleFileFinder,
 	handleToggleTextSearch,
@@ -95,7 +92,6 @@ export function useAppSideEffects({
 		handleToggleHomeTerminal: terminal.handleToggleHomeTerminal,
 		handleOpenCreateTask: taskEditor.taskEditor.handleOpenCreateTask,
 		handleOpenSettings: dialog.handleOpenSettings,
-		onStartAllTasks: interactions.handleStartAllUnstartedTasksFromBoard,
 		handleToggleDiagnosticsPanel: dialog.diagnostics.togglePanel,
 		handleToggleFileFinder,
 		handleToggleTextSearch,

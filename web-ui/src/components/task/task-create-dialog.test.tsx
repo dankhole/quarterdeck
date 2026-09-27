@@ -95,6 +95,7 @@ interface HarnessProps {
 	initialPrompt: string;
 	initialImages?: TaskImage[];
 	onCreate?: (options?: { keepDialogOpen?: boolean }) => string | null;
+	onCreateMultiple?: (prompts: string[]) => string[];
 }
 
 function createImage(id: string): TaskImage {
@@ -106,7 +107,12 @@ function createImage(id: string): TaskImage {
 	};
 }
 
-function Harness({ initialPrompt, initialImages = [], onCreate = () => "task-1" }: HarnessProps): React.ReactElement {
+function Harness({
+	initialPrompt,
+	initialImages = [],
+	onCreate = () => "task-1",
+	onCreateMultiple = (prompts) => prompts.map((taskPrompt, index) => `${taskPrompt}-${index}`),
+}: HarnessProps): React.ReactElement {
 	const [prompt, setPrompt] = useState(initialPrompt);
 	const [images, setImages] = useState<TaskImage[]>(initialImages);
 	const [agentId, setAgentId] = useState<"claude" | "codex" | "pi">("claude");
@@ -147,8 +153,7 @@ function Harness({ initialPrompt, initialImages = [], onCreate = () => "task-1" 
 			onCreate={onCreate}
 			onCreateAndStart={() => "task-2"}
 			onCreateStartAndOpen={() => "task-3"}
-			onCreateMultiple={(prompts) => prompts.map((taskPrompt, index) => `${taskPrompt}-${index}`)}
-			onCreateAndStartMultiple={(prompts) => prompts.map((taskPrompt, index) => `${taskPrompt}-${index}`)}
+			onCreateMultiple={onCreateMultiple}
 			useWorktree
 			onUseWorktreeChange={() => {}}
 			createFeatureBranch={false}
@@ -213,6 +218,42 @@ describe("TaskCreateDialog", () => {
 				previousActEnvironment;
 		}
 		localStorage.clear();
+	});
+
+	it.each(["ctrlKey", "metaKey"] as const)("creates multiple tasks once with %s+Enter", async (modifier) => {
+		const onCreateMultiple = vi.fn(() => ["task-1", "task-2"]);
+		await act(async () => {
+			root.render(
+				<Harness initialPrompt={"1. Draft changelog\n2. Ship beta"} onCreateMultiple={onCreateMultiple} />,
+			);
+		});
+		await act(async () => findButtonByText(container, "Split into 2 tasks").click());
+		const input = container.querySelector<HTMLInputElement>('input[name="task-prompt-1"]');
+		expect(input).not.toBeNull();
+		await act(async () => {
+			input?.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", [modifier]: true, bubbles: true, cancelable: true }),
+			);
+		});
+		expect(onCreateMultiple).toHaveBeenCalledExactlyOnceWith(["Draft changelog", "Ship beta"], {
+			keepDialogOpen: false,
+		});
+	});
+
+	it("keeps the last task row without creating tasks when remove is clicked", async () => {
+		const onCreateMultiple = vi.fn(() => ["task-1"]);
+		await act(async () => {
+			root.render(
+				<Harness initialPrompt={"1. Draft changelog\n2. Ship beta"} onCreateMultiple={onCreateMultiple} />,
+			);
+		});
+		await act(async () => findButtonByText(container, "Split into 2 tasks").click());
+		await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Remove task 2"]')?.click());
+		await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Remove task 1"]')?.click());
+		expect(onCreateMultiple).not.toHaveBeenCalled();
+		const inputs = container.querySelectorAll<HTMLInputElement>('input[placeholder="Describe the task..."]');
+		expect(inputs).toHaveLength(1);
+		expect(inputs[0]?.value).toBe("Draft changelog");
 	});
 
 	it("switches to multi-task mode and merges edits back into the single prompt", async () => {

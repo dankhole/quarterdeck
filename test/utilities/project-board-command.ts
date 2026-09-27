@@ -41,17 +41,8 @@ export function createBoardSeedCommandBatch(
 			commands.push({ kind: "reorder_task", taskId: card.id, columnId: column.id, targetIndex });
 		}
 	}
-	for (const dependency of board.dependencies) {
-		commands.push({
-			kind: "add_dependency",
-			firstTaskId: dependency.fromTaskId,
-			secondTaskId: dependency.toTaskId,
-			dependencyId: dependency.id,
-			createdAt: dependency.createdAt,
-		});
-	}
 	if (commands.length === 0) {
-		throw new Error("Board seed command batches require at least one task or dependency.");
+		throw new Error("Board seed command batches require at least one task.");
 	}
 	return { commandId, expectedRevision, commands };
 }

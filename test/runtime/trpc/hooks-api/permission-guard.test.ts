@@ -55,13 +55,6 @@ async function createHarness(
 			getTerminalManagerForProject: () => manager,
 			ensureTerminalManagerForProject: async () => manager,
 		},
-		captureTaskTurnCheckpoint: vi.fn(async ({ taskId: checkpointTaskId, turn }) => ({
-			turn,
-			ref: `refs/quarterdeck/checkpoints/${checkpointTaskId}/turn/${turn}`,
-			commit: "abc123",
-			createdAt: turn * 100,
-		})),
-		deleteTaskTurnCheckpointRef: vi.fn(async () => undefined),
 		scheduleHookBackgroundTask: (task) => task(),
 	});
 	let deliveryIndex = 0;

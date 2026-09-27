@@ -147,7 +147,6 @@ export const runtimeTaskLifecycleOperationSchema = z.object({
 	targetColumnId: runtimeBoardColumnIdSchema.nullable(),
 	acceptedBoardRevision: z.number().int().nonnegative().nullable(),
 	launchOperationId: z.string().nullable(),
-	childOperationIds: z.array(z.string()),
 	outcomeCode: runtimeTaskLifecycleOutcomeCodeSchema.nullable(),
 	requestedAt: z.number().finite().nonnegative(),
 	updatedAt: z.number().finite().nonnegative(),

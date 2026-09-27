@@ -46,7 +46,6 @@ export function TaskCreateDialog({
 	onCreate,
 	onCreateAndStart,
 	onCreateMultiple,
-	onCreateAndStartMultiple,
 	onCreateStartAndOpen,
 	useWorktree,
 	folderOnly = false,
@@ -80,7 +79,6 @@ export function TaskCreateDialog({
 	onCreate: (options?: { keepDialogOpen?: boolean }) => string | null;
 	onCreateAndStart?: (options?: { keepDialogOpen?: boolean }) => string | null;
 	onCreateMultiple: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
-	onCreateAndStartMultiple?: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
 	onCreateStartAndOpen?: (options?: { keepDialogOpen?: boolean }) => string | null;
 	useWorktree: boolean;
 	folderOnly?: boolean;
@@ -126,7 +124,6 @@ export function TaskCreateDialog({
 		handleCreateSingle,
 		handleRunSingleStartAction,
 		handleCreateAll,
-		handleCreateAndStartAll,
 	} = useTaskCreateDialog({
 		open,
 		prompt,
@@ -135,7 +132,6 @@ export function TaskCreateDialog({
 		onCreate,
 		onCreateAndStart,
 		onCreateMultiple,
-		onCreateAndStartMultiple,
 		onCreateStartAndOpen,
 	});
 
@@ -206,7 +202,6 @@ export function TaskCreateDialog({
 						onTaskPromptsChange={setTaskPrompts}
 						onBackToSingle={handleBackToSingle}
 						onCreateAll={handleCreateAll}
-						onCreateAndStartAll={handleCreateAndStartAll}
 					/>
 				)}
 
@@ -411,22 +406,9 @@ export function TaskCreateDialog({
 						>
 							<span className="inline-flex items-center">
 								Create {validTaskCount} {taskCountLabel}
-								<ButtonShortcut includeAlt />
+								<ButtonShortcut />
 							</span>
 						</Button>
-						{onCreateAndStartMultiple ? (
-							<Button
-								variant="primary"
-								size="sm"
-								onClick={handleCreateAndStartAll}
-								disabled={validTaskCount === 0 || (useWorktree && !branchRef)}
-							>
-								<span className="inline-flex items-center">
-									Start {validTaskCount} {taskCountLabel}
-									<ButtonShortcut />
-								</span>
-							</Button>
-						) : null}
 					</>
 				)}
 			</DialogFooter>

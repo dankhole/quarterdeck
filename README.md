@@ -18,9 +18,8 @@ Quarterdeck detects installed agent CLIs from your `PATH`, starts a local runtim
 - Gives each task its own terminal, review state, git metadata, and optional isolated worktree.
 - Copies explicitly included ignored setup files into task worktrees and can run a project setup script, while keeping `node_modules` isolated per checkout.
 - Tracks latest agent activity, permission/input needs, review readiness, and file changes on each card.
-- Provides task diffs, "Last Turn" checkpoint diffs, file browsing, branch comparison, line comments, commit, push, Open PR, and cherry-pick flows.
+- Provides task diffs, file browsing, branch comparison, line comments, commit, push, Open PR, and cherry-pick flows.
 - Supports project script shortcuts for commands such as `npm run dev` and prompt shortcuts for repeatable agent instructions such as Commit or Squash Merge.
-- Lets linked cards start after earlier cards complete, which makes larger agent workflows easier to sequence.
 
 ## Status
 
@@ -193,7 +192,7 @@ npm run unlink
 
 2. Create task cards.
 
-   Add cards manually, paste prompts into the sidebar, or ask an agent session to break a larger goal into linked tasks. Link cards when one task should start after another is finished.
+   Add cards manually or paste prompts into the sidebar. You can split a list into multiple unstarted cards, then start each task individually.
 
 3. Start agents.
 
@@ -205,11 +204,11 @@ npm run unlink
 
 5. Review changes.
 
-   The task detail view includes terminal output, git diffs, the "Last Turn" checkpoint diff, a file browser, branch comparison, and line comments that can be sent back to the agent. The git view can also compare branches and inspect uncommitted work in either the home repo or the selected task worktree.
+   The task detail view includes terminal output, git diffs, a file browser, branch comparison, and line comments that can be sent back to the agent. The git view can also compare branches and inspect uncommitted work in either the home repo or the selected task worktree.
 
 6. Land the work.
 
-   Use Commit, Open PR, Squash Merge, cherry-pick, or the git view to move reviewed work back toward your base branch. Prompt shortcuts and linked-card starts help automate repetitive landing steps and larger dependency chains.
+   Use Commit, Open PR, Squash Merge, cherry-pick, or the git view to move reviewed work back toward your base branch. Prompt shortcuts help automate repetitive landing steps.
 
 7. Clean up or resume.
 

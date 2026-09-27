@@ -182,29 +182,6 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 			);
 			if (!taskCwd) return await createEmptyWorkdirChangesResponse(projectScope.projectPath);
 
-			if (normalizedInput.mode === "last_turn") {
-				const terminalManager = await ctx.deps.terminals.ensureTerminalManagerForProject(
-					projectScope.projectId,
-					projectScope.projectPath,
-				);
-				const summary = terminalManager.store.getSummary(normalizedInput.taskId);
-				const fromCheckpoint = summary?.previousTurnCheckpoint;
-				const toCheckpoint = summary?.latestTurnCheckpoint;
-				if (!toCheckpoint) {
-					return await createEmptyWorkdirChangesResponse(taskCwd);
-				}
-				if (summary?.state === "running" || !fromCheckpoint) {
-					return await getWorkdirChangesFromRef({
-						cwd: taskCwd,
-						fromRef: toCheckpoint.commit,
-					});
-				}
-				return await getWorkdirChangesBetweenRefs({
-					cwd: taskCwd,
-					fromRef: fromCheckpoint.commit,
-					toRef: toCheckpoint.commit,
-				});
-			}
 			return await getWorkdirChanges(taskCwd);
 		},
 
@@ -257,26 +234,6 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 				normalizedInput.baseRef,
 			);
 			if (!taskCwd) return emptyResult;
-
-			if (normalizedInput.mode === "last_turn") {
-				const terminalManager = await ctx.deps.terminals.ensureTerminalManagerForProject(
-					projectScope.projectId,
-					projectScope.projectPath,
-				);
-				const summary = terminalManager.store.getSummary(normalizedInput.taskId);
-				const fromCheckpoint = summary?.previousTurnCheckpoint;
-				const toCheckpoint = summary?.latestTurnCheckpoint;
-				if (!toCheckpoint) return emptyResult;
-
-				return await getWorkdirFileDiff({
-					cwd: taskCwd,
-					path: input.path,
-					previousPath: input.previousPath,
-					status: input.status,
-					fromRef: summary?.state === "running" || !fromCheckpoint ? toCheckpoint.commit : fromCheckpoint.commit,
-					toRef: summary?.state === "running" || !fromCheckpoint ? undefined : toCheckpoint.commit,
-				});
-			}
 
 			return await getWorkdirFileDiff({
 				cwd: taskCwd,

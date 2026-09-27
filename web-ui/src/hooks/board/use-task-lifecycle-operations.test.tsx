@@ -84,7 +84,6 @@ function createResult(overrides: Partial<RuntimeTaskLifecycleResult> = {}): Runt
 			targetColumnId: "in_progress",
 			acceptedBoardRevision: 8,
 			launchOperationId: "server-operation",
-			childOperationIds: [],
 			outcomeCode: "completed",
 			requestedAt: 10,
 			updatedAt: 11,

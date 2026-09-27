@@ -20,7 +20,7 @@ describe("AppRuntimeBoundary", () => {
 	const close = vi.fn();
 
 	function Editor(): React.ReactNode {
-		const [board, setBoard] = useState<BoardData>({ columns: [], dependencies: [] });
+		const [board, setBoard] = useState<BoardData>({ columns: [] });
 		const [, setSelectedTaskId] = useState<string | null>(null);
 		editor = useTaskEditor({
 			board,

@@ -18,7 +18,6 @@ function createCard(overrides: Partial<BoardCard> = {}): BoardCard {
 function createBoard(card: BoardCard = createCard()): BoardData {
 	return {
 		columns: [{ id: "in_progress", title: "In progress", cards: [card] }],
-		dependencies: [],
 	};
 }
 

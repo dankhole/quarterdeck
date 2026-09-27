@@ -19,14 +19,14 @@ export type RuntimeDiffMode = z.infer<typeof runtimeDiffModeSchema>;
 export const runtimeWorkdirChangesRequestSchema = z.object({
 	taskId: z.string().nullable(),
 	baseRef: z.string().optional(),
-	mode: z.enum(["working_copy", "last_turn"]).optional(),
+	mode: z.literal("working_copy").optional(),
 	fromRef: z.string().optional(),
 	toRef: z.string().optional(),
 	diffMode: runtimeDiffModeSchema.optional(),
 });
 export type RuntimeWorkdirChangesRequest = z.infer<typeof runtimeWorkdirChangesRequestSchema>;
 
-export const runtimeWorkdirChangesModeSchema = z.enum(["working_copy", "last_turn"]);
+export const runtimeWorkdirChangesModeSchema = z.literal("working_copy");
 export type RuntimeWorkdirChangesMode = z.infer<typeof runtimeWorkdirChangesModeSchema>;
 
 export const runtimeWorkdirChangesResponseSchema = z.object({

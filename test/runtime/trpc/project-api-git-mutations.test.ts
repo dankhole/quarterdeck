@@ -203,7 +203,7 @@ describe("createProjectApi discardGitChanges", () => {
 		projectStateMocks.loadProjectState.mockReset();
 		gitSyncMocks.discardGitChanges.mockReset();
 
-		projectStateMocks.loadProjectState.mockResolvedValue({ board: { columns: [], dependencies: [] } });
+		projectStateMocks.loadProjectState.mockResolvedValue({ board: { columns: [] } });
 	});
 
 	it("blocks discard when task CWD resolves to the shared project path", async () => {
@@ -256,7 +256,7 @@ describe("createProjectApi checkoutGitBranch", () => {
 		gitSyncMocks.runGitCheckoutAction.mockReset();
 
 		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
-		projectStateMocks.loadProjectState.mockResolvedValue({ board: { columns: [], dependencies: [] } });
+		projectStateMocks.loadProjectState.mockResolvedValue({ board: { columns: [] } });
 	});
 
 	it("blocks branch switch when a task uses the shared checkout", async () => {
@@ -279,7 +279,6 @@ describe("createProjectApi checkoutGitBranch", () => {
 						],
 					},
 				],
-				dependencies: [],
 			},
 		});
 
@@ -312,7 +311,6 @@ describe("createProjectApi checkoutGitBranch", () => {
 						],
 					},
 				],
-				dependencies: [],
 			},
 		});
 		gitSyncMocks.runGitCheckoutAction.mockResolvedValue({
@@ -374,7 +372,6 @@ describe("createProjectApi checkoutGitBranch", () => {
 						],
 					},
 				],
-				dependencies: [],
 			},
 		});
 		gitSyncMocks.runGitCheckoutAction.mockResolvedValue({

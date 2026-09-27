@@ -110,7 +110,6 @@ function createBoardInColumn(columnId: "review" | "in_progress" | "trash", taskI
 						: [],
 			},
 		],
-		dependencies: [],
 	};
 }
 

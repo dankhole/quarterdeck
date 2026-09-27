@@ -26,7 +26,6 @@ function stateWithTask(
 				{ id: "review", title: "Review", cards: columnId === "review" ? [card] : [] },
 				{ id: "trash", title: "Trash", cards: [] },
 			],
-			dependencies: [],
 		},
 		sessions: {
 			"task-1": createTestTaskSessionSummary({ taskId: "task-1", state: sessionState }),

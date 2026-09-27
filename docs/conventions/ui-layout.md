@@ -46,7 +46,7 @@ type SidebarId = "projects" | "task_column" | "commit";
 `GitView` also has internal tabs:
 
 ```ts
-type GitViewTab = "uncommitted" | "last_turn" | "compare";
+type GitViewTab = "uncommitted" | "compare";
 ```
 
 ## State Owners
@@ -113,7 +113,7 @@ The home board stacks In Progress and Review sections with responsive card grids
 
 Rich cards show a bounded plain-text response preview from the existing session projection. They never mount or prewarm terminals or fetch transcripts. Inline replies use the existing task-input API with an exact session-instance fence; only a live, review-ready native agent can receive them. Approvals and busy agents keep drafts without sending. `BoardReplyDrafts` owns window-local drafts keyed by project, task, and creation time, surviving navigation and column changes without writing board state.
 
-The home grid uses dnd-kit with dedicated pointer/keyboard handles; the compact task sidebar retains its list drag implementation. Grid drops resolve task IDs back to the existing board/lifecycle intent path. Dependency links use card-free grid gutters, validate each route against all visible cards, and skip unsafe transient routes during layout changes. Card content stays above dependency hit areas.
+The home grid uses dnd-kit with dedicated pointer/keyboard handles; the compact task sidebar retains its list drag implementation. Grid drops resolve task IDs back to the existing board/lifecycle intent path.
 
 ### Terminal
 
@@ -130,7 +130,7 @@ The home grid uses dnd-kit with dedicated pointer/keyboard handles; the compact 
 ### Git
 
 - Renders `GitView` in home or task context.
-- Includes its own changed-file tree and internal tabs: Uncommitted, Last Turn, Compare.
+- Includes its own changed-file tree and internal tabs: Uncommitted, Compare.
 - Git history is a nested panel controlled by `SurfaceNavigationProvider`, not a separate main view.
 
 ## Side Panels
@@ -239,7 +239,7 @@ The current shell came from a few incremental reworks:
 1. A legacy single-tab model used one persisted `DetailActivePanel` value for both side panel and main content.
 2. The dual-selection model split that into `MainViewId` and `SidebarId`.
 3. Files became a scope-aware main view with its own tree/content layout.
-4. Git became a main view with internal Uncommitted, Last Turn, and Compare tabs.
+4. Git became a main view with internal Uncommitted and Compare tabs.
 5. Projects and Commit became side panels, with Commit valid in both home and task contexts.
 
 ## Validation

@@ -1,14 +1,12 @@
 import type { RuntimeBoardCard, RuntimeBoardData, RuntimeProjectBoardCommand, RuntimeTaskImage } from "./api-contract";
 import type { RuntimeCreateTaskInput } from "./task-board-mutations";
 import {
-	addTaskDependency,
 	addTaskToColumn,
 	deleteTasksFromBoard,
 	findCardInBoard,
 	getTaskColumnId,
 	moveTaskToColumn,
 	patchTask,
-	removeTaskDependency,
 	reorderTaskInColumn,
 	reorderTasksInColumn,
 	updateTask,
@@ -183,17 +181,6 @@ export function applyProjectBoardCommand(
 				command.updatedAt,
 			);
 			return { board: patched.board, changed: patched.updated };
-		}
-		case "add_dependency": {
-			const added = addTaskDependency(board, command.firstTaskId, command.secondTaskId, {
-				dependencyId: command.dependencyId,
-				createdAt: command.createdAt,
-			});
-			return { board: added.board, changed: added.added };
-		}
-		case "remove_dependency": {
-			const removed = removeTaskDependency(board, command.dependencyId);
-			return { board: removed.board, changed: removed.removed };
 		}
 		case "delete_tasks": {
 			const deleted = deleteTasksFromBoard(board, command.taskIds);

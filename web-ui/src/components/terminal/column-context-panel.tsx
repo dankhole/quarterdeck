@@ -1,5 +1,5 @@
 import { type BeforeCapture, DragDropContext, Droppable, type DropResult } from "@hello-pangea/dnd";
-import { ChevronDown, ChevronRight, Play, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -19,7 +19,6 @@ function ColumnSection({
 	onCardClick,
 	onCardDoubleClick,
 	taskSessions,
-	onStartAllTasks,
 	onClearTrash,
 	editingTaskId,
 	inlineTaskEditor,
@@ -34,7 +33,6 @@ function ColumnSection({
 	onCardClick: (card: BoardCardModel) => void;
 	onCardDoubleClick?: (card: BoardCardModel) => void;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
-	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
@@ -59,7 +57,6 @@ function ColumnSection({
 		useReactiveCardState();
 	const [open, setOpen] = useState(defaultOpen);
 	const unstartedCount = column.cards.filter((card) => card.unstarted).length;
-	const canStartAllTasks = column.id === "review" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
 	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null, {
 		activeDragTaskId,
@@ -115,18 +112,6 @@ function ColumnSection({
 						</span>
 					</span>
 				</button>
-				{canStartAllTasks ? (
-					<Button
-						icon={<Play size={14} />}
-						variant="ghost"
-						size="sm"
-						onClick={onStartAllTasks}
-						disabled={unstartedCount === 0}
-						aria-label="Start all unstarted tasks"
-						title={unstartedCount > 0 ? "Start all unstarted tasks" : "No unstarted tasks"}
-						style={{ marginRight: 4 }}
-					/>
-				) : null}
 				{canClearTrash ? (
 					<Button
 						icon={<Trash2 size={14} />}
@@ -233,7 +218,6 @@ export function ColumnContextPanel({
 	onTaskDragEnd,
 	taskSessions,
 	onCreateTask,
-	onStartAllTasks,
 	onClearTrash,
 	editingTaskId,
 	inlineTaskEditor,
@@ -246,7 +230,6 @@ export function ColumnContextPanel({
 	onTaskDragEnd: (result: DropResult) => void;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCreateTask?: () => void;
-	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
@@ -339,7 +322,6 @@ export function ColumnContextPanel({
 							onCardClick={(card) => onCardSelect(card.id)}
 							onCardDoubleClick={onCardDoubleClick ? (card) => onCardDoubleClick(card.id) : undefined}
 							taskSessions={taskSessions}
-							onStartAllTasks={column.id === "review" ? onStartAllTasks : undefined}
 							onClearTrash={column.id === "trash" ? onClearTrash : undefined}
 							editingTaskId={column.id === "review" ? editingTaskId : null}
 							inlineTaskEditor={column.id === "review" ? inlineTaskEditor : undefined}

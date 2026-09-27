@@ -149,14 +149,6 @@ export const conversationSummaryEntrySchema = z.object({
 });
 export type ConversationSummaryEntry = z.infer<typeof conversationSummaryEntrySchema>;
 
-export const runtimeTaskTurnCheckpointSchema = z.object({
-	turn: z.number().int().positive(),
-	ref: z.string(),
-	commit: z.string(),
-	createdAt: z.number(),
-});
-export type RuntimeTaskTurnCheckpoint = z.infer<typeof runtimeTaskTurnCheckpointSchema>;
-
 const runtimeTaskSessionSummaryBaseSchema = z.object({
 	taskId: z.string(),
 	/** Stable identity for the exact PTY process represented by this summary. */
@@ -199,8 +191,6 @@ const runtimeTaskSessionSummaryBaseSchema = z.object({
 	/** Legacy persistence erased the prior semantic state; remain neutral until a new event establishes meaning. */
 	startupRecoverySemanticStateUncertain: z.boolean().optional(),
 	warningMessage: z.string().nullable().optional(),
-	latestTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
-	previousTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
 	conversationSummaries: z.array(conversationSummaryEntrySchema).default([]),
 	displaySummary: z.string().nullable().default(null),
 	displaySummaryGeneratedAt: z.number().nullable().default(null),

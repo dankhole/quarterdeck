@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { createInitialBoardData } from "@/data/board-data";
 import {
-	addTaskDependency,
 	addTaskToColumn,
 	clearColumnTasks,
 	moveTaskToColumn,
@@ -10,7 +9,6 @@ import {
 	reconcileTaskWorkingDirectory,
 	removeTask,
 	toggleTaskPinned,
-	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
 } from "@/state/board-state";
 import { createUnstartedBoard, requireTaskId } from "@/state/board-state-test-helpers";
@@ -185,18 +183,15 @@ describe("updateTask", () => {
 });
 
 describe("removeTask", () => {
-	it("uses the runtime board deletion rules to remove linked dependencies", () => {
+	it("uses the runtime board deletion rules", () => {
 		const fixture = createUnstartedBoard(["Task A", "Task B"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
-		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
-		const linked = moveTaskToColumn(moveTaskToColumn(fixture.board, taskA, "in_progress").board, taskA, "review");
-		expect(linked.moved).toBe(true);
+		const moved = moveTaskToColumn(moveTaskToColumn(fixture.board, taskA, "in_progress").board, taskA, "review");
+		expect(moved.moved).toBe(true);
 
-		const withDependency = requireDependencyBoard(linked.board, taskA, taskB);
-		const removed = removeTask(withDependency, taskA);
+		const removed = removeTask(moved.board, taskA);
 
 		expect(removed.removed).toBe(true);
-		expect(removed.board.dependencies).toEqual([]);
 		expect(removed.board.columns.some((column) => column.cards.some((card) => card.id === taskA))).toBe(false);
 	});
 });
@@ -257,7 +252,7 @@ describe("toggleTaskPinned", () => {
 	});
 });
 
-describe("trashTaskAndGetReadyLinkedTaskIds", () => {
+describe("moveTaskToColumn", () => {
 	it("preserves branch on trashed card", () => {
 		let board = addTaskToColumn(createInitialBoardData(), "in_progress", { prompt: "Task A", baseRef: "main" });
 		const taskId = board.columns.find((c) => c.id === "in_progress")!.cards[0]!.id;
@@ -277,7 +272,7 @@ describe("trashTaskAndGetReadyLinkedTaskIds", () => {
 			),
 		};
 
-		const result = trashTaskAndGetReadyLinkedTaskIds(board, taskId);
+		const result = moveTaskToColumn(board, taskId, "trash");
 		expect(result.moved).toBe(true);
 		const trashedCard = result.board.columns.find((c) => c.id === "trash")!.cards.find((c) => c.id === taskId);
 		expect(trashedCard?.branch).toBe("feat/my-work");
@@ -301,21 +296,9 @@ describe("trashTaskAndGetReadyLinkedTaskIds", () => {
 			),
 		};
 
-		const result = trashTaskAndGetReadyLinkedTaskIds(board, taskId);
+		const result = moveTaskToColumn(board, taskId, "trash");
 		expect(result.moved).toBe(true);
 		const trashedCard = result.board.columns.find((c) => c.id === "trash")!.cards.find((c) => c.id === taskId);
 		expect(trashedCard?.workingDirectory).toBeNull();
 	});
 });
-
-function requireDependencyBoard(
-	board: ReturnType<typeof createInitialBoardData>,
-	fromTaskId: string,
-	toTaskId: string,
-) {
-	const withDependency = addTaskDependency(board, fromTaskId, toTaskId);
-	if (!withDependency.added) {
-		throw new Error("Expected dependency to be created");
-	}
-	return withDependency.board;
-}

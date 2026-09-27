@@ -21,10 +21,6 @@ const taskWorktreeMocks = vi.hoisted(() => ({
 	pathExists: vi.fn(async () => true),
 }));
 
-const turnCheckpointMocks = vi.hoisted(() => ({
-	captureTaskTurnCheckpoint: vi.fn(),
-}));
-
 const projectStateMocks = vi.hoisted(() => ({
 	loadProjectScopeById: vi.fn<() => Promise<{ folderOnly?: boolean } | null>>(async () => null),
 	loadProjectState: vi.fn(),
@@ -53,10 +49,6 @@ vi.mock("../../../src/workdir/task-worktree-setup", () => ({
 
 vi.mock("../../../src/workdir/task-worktree-identity.js", () => ({
 	assertTaskWorktreeRegistration: taskWorktreeMocks.assertTaskWorktreeRegistration,
-}));
-
-vi.mock("../../../src/workdir/turn-checkpoints.js", () => ({
-	captureTaskTurnCheckpoint: turnCheckpointMocks.captureTaskTurnCheckpoint,
 }));
 
 vi.mock("../../../src/state/project-state.js", () => ({
@@ -115,7 +107,6 @@ const STORE_METHOD_NAMES = new Set([
 	"getSummary",
 	"listSummaries",
 	"update",
-	"applyTurnCheckpoint",
 	"applySessionEvent",
 	"appendConversationSummary",
 	"setDisplaySummary",
@@ -128,7 +119,6 @@ const STORE_METHOD_NAMES = new Set([
 function createDeps(flat: Record<string, unknown> = {}) {
 	const store: Record<string, unknown> = {
 		getSummary: vi.fn(() => null),
-		applyTurnCheckpoint: vi.fn(),
 	};
 	const manager: Record<string, unknown> = { store };
 	for (const [key, value] of Object.entries(flat)) {
@@ -174,7 +164,6 @@ describe("createRuntimeApi startTaskSession", () => {
 		agentRegistryMocks.buildRuntimeConfigResponse.mockReset();
 		taskWorktreeMocks.resolveTaskCwd.mockReset();
 		taskWorktreeMocks.finishTaskWorktreeSetup.mockReset().mockResolvedValue(undefined);
-		turnCheckpointMocks.captureTaskTurnCheckpoint.mockReset();
 		projectStateMocks.loadProjectScopeById.mockReset().mockResolvedValue(null);
 		projectStateMocks.loadProjectState.mockReset();
 		taskBoardMutationMocks.findCardInBoard.mockReset();
@@ -188,12 +177,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			binary: "claude",
 			args: [],
 		});
-		turnCheckpointMocks.captureTaskTurnCheckpoint.mockResolvedValue({
-			turn: 1,
-			ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
-			commit: "1111111",
-			createdAt: Date.now(),
-		});
+
 		// Default: card not found (legacy behavior — falls through to worktree lookup).
 		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(null);
@@ -207,7 +191,6 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary()),
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const api = createRuntimeApi(createDeps(terminalManager));
 
@@ -287,7 +270,6 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary({ agentId: "codex" })),
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const api = createRuntimeApi(createDeps(terminalManager));
 
@@ -317,7 +299,6 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary()),
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const deps = createDeps(terminalManager);
 		deps.config.loadScopedRuntimeConfig.mockResolvedValue(
@@ -349,7 +330,6 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary()),
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const deps = createDeps(terminalManager);
 		deps.config.loadScopedRuntimeConfig.mockResolvedValue(
@@ -378,7 +358,6 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary()),
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const deps = createDeps(terminalManager);
 		deps.config.loadScopedRuntimeConfig.mockResolvedValue(
@@ -408,7 +387,6 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary()),
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const api = createRuntimeApi(createDeps(terminalManager));
 
@@ -454,7 +432,6 @@ describe("createRuntimeApi startTaskSession", () => {
 				}),
 			),
 			update,
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const api = createRuntimeApi(createDeps(terminalManager));
 
@@ -512,7 +489,6 @@ describe("createRuntimeApi startTaskSession", () => {
 				}),
 			),
 			update,
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const api = createRuntimeApi(createDeps(terminalManager));
 
@@ -579,7 +555,6 @@ describe("createRuntimeApi startTaskSession", () => {
 				}),
 			),
 			update,
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const api = createRuntimeApi(createDeps(terminalManager));
 
@@ -650,7 +625,6 @@ describe("createRuntimeApi startTaskSession", () => {
 			),
 			getSummary: vi.fn(() => failedSummary),
 			update,
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const api = createRuntimeApi(createDeps(terminalManager));
 
@@ -840,7 +814,6 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary()),
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const api = createRuntimeApi(createDeps(terminalManager));
 
@@ -862,7 +835,6 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary({ sessionLaunchPath: "/tmp/repo" })),
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const api = createRuntimeApi(createDeps(terminalManager));
 
@@ -888,7 +860,6 @@ describe("createRuntimeApi startTaskSession", () => {
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(createCard({ baseRef: "", workingDirectory: null }));
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary({ sessionLaunchPath: "/tmp/repo" })),
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const api = createRuntimeApi(createDeps(terminalManager));
 		const response = await api.startTaskSession(defaultScope, {
@@ -899,14 +870,12 @@ describe("createRuntimeApi startTaskSession", () => {
 		});
 		expect(response.ok).toBe(true);
 		expect(taskWorktreeMocks.resolveTaskCwd).not.toHaveBeenCalled();
-		expect(turnCheckpointMocks.captureTaskTurnCheckpoint).not.toHaveBeenCalled();
 		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(expect.objectContaining({ cwd: "/tmp/repo" }));
 	});
 
 	it("still rejects an unresolved base branch for isolated tasks", async () => {
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary()),
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const api = createRuntimeApi(createDeps(terminalManager));
 
@@ -933,7 +902,6 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary()),
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const api = createRuntimeApi(createDeps(terminalManager));
 
@@ -967,7 +935,6 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary()),
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const api = createRuntimeApi(createDeps(terminalManager));
 
@@ -997,7 +964,6 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary()),
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const api = createRuntimeApi(createDeps(terminalManager));
 
@@ -1018,55 +984,6 @@ describe("createRuntimeApi startTaskSession", () => {
 		});
 	});
 
-	it("does not wait for turn checkpoint capture before returning start response", async () => {
-		taskBoardMutationMocks.findCardInBoard.mockReturnValue(null);
-		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/existing-worktree");
-		const summary = createSummary({ taskId: "task-1", startedAt: 12_345 });
-		const checkpoint = {
-			turn: 1,
-			ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
-			commit: "1111111",
-			createdAt: 12_346,
-		};
-		let resolveCheckpoint: (value: typeof checkpoint) => void = () => {};
-		const checkpointPromise = new Promise<typeof checkpoint>((resolve) => {
-			resolveCheckpoint = resolve;
-		});
-		turnCheckpointMocks.captureTaskTurnCheckpoint.mockReturnValueOnce(checkpointPromise);
-
-		const applyTurnCheckpoint = vi.fn();
-		const terminalManager = {
-			startTaskSession: vi.fn(async () => summary),
-			getSummary: vi.fn(() => summary),
-			applyTurnCheckpoint,
-		};
-		const api = createRuntimeApi(createDeps(terminalManager));
-
-		const responsePromise = api.startTaskSession(defaultScope, {
-			taskId: "task-1",
-			baseRef: "main",
-			prompt: "Investigate startup freeze",
-		});
-		let racedResult: Awaited<typeof responsePromise> | "timed-out";
-		try {
-			racedResult = await Promise.race([
-				responsePromise,
-				new Promise<"timed-out">((resolve) => {
-					setTimeout(() => resolve("timed-out"), 50);
-				}),
-			]);
-		} finally {
-			resolveCheckpoint(checkpoint);
-		}
-
-		expect(racedResult).toMatchObject({ ok: true });
-		expect(applyTurnCheckpoint).not.toHaveBeenCalled();
-		await responsePromise;
-		await vi.waitFor(() => {
-			expect(applyTurnCheckpoint).toHaveBeenCalledWith("task-1", checkpoint);
-		});
-	});
-
 	it("forwards task images to CLI task sessions", async () => {
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(null);
 		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/existing-worktree");
@@ -1080,7 +997,6 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary({ agentId: "codex" })),
-			applyTurnCheckpoint: vi.fn(),
 		};
 		const deps = createDeps(terminalManager);
 		deps.config.loadScopedRuntimeConfig = vi.fn(async () => {

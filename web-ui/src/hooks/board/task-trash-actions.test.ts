@@ -1,32 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildTrashWarningViewModel, getDependencyAddErrorMessage } from "@/hooks/board/linked-backlog-task-actions";
+import { buildTrashWarningViewModel } from "@/hooks/board/task-trash-actions";
 import type { BoardCard } from "@/types";
-
-describe("getDependencyAddErrorMessage", () => {
-	it("returns message for same_task", () => {
-		expect(getDependencyAddErrorMessage("same_task")).toBe("A task cannot be linked to itself.");
-	});
-
-	it("returns message for duplicate", () => {
-		expect(getDependencyAddErrorMessage("duplicate")).toBe("Link already exists.");
-	});
-
-	it("returns message for trash_task", () => {
-		expect(getDependencyAddErrorMessage("trash_task")).toBe("Links cannot include trashed tasks.");
-	});
-
-	it("returns message for non_unstarted", () => {
-		expect(getDependencyAddErrorMessage("non_unstarted")).toBe("Links must include at least one unstarted task.");
-	});
-
-	it("returns fallback for unknown reason", () => {
-		expect(getDependencyAddErrorMessage("something_else")).toBe("Could not create link.");
-	});
-
-	it("returns fallback for undefined", () => {
-		expect(getDependencyAddErrorMessage(undefined)).toBe("Could not create link.");
-	});
-});
 
 describe("buildTrashWarningViewModel", () => {
 	function card(overrides: Partial<BoardCard> = {}): BoardCard {

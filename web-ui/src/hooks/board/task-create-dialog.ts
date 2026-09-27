@@ -2,12 +2,7 @@ import { DEFAULT_PRIMARY_START_ACTION, type TaskCreateStartAction } from "@/comp
 
 export type TaskCreateMode = "single" | "multi";
 
-export type TaskCreateHotkeyAction =
-	| "create_single"
-	| "start_single"
-	| "start_and_open_single"
-	| "create_all"
-	| "start_all";
+export type TaskCreateHotkeyAction = "create_single" | "start_single" | "start_and_open_single" | "create_all";
 
 interface TaskCreateDialogCopy {
 	dialogTitle: string;
@@ -44,7 +39,7 @@ export function resolveTaskCreateHotkeyAction(
 	modifiers: { altKey: boolean; shiftKey: boolean },
 ): TaskCreateHotkeyAction {
 	if (mode === "multi") {
-		return modifiers.altKey ? "create_all" : "start_all";
+		return "create_all";
 	}
 	if (modifiers.altKey) {
 		return "create_single";

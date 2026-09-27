@@ -100,7 +100,7 @@ export function useAppActionModels({
 
 	const stableCardActions = useMemo<StableCardActions>(
 		() => ({
-			onStartTask: interactions.handleStartTaskFromBoard,
+			onStartTask: interactions.handleStartTask,
 			onRestartSessionTask: interactions.handleRestartTaskSession,
 			onMoveToTrashTask: interactions.handleMoveReviewCardToTrash,
 			onRestoreFromTrashTask: interactions.handleRestoreTaskFromTrash,
@@ -121,7 +121,7 @@ export function useAppActionModels({
 			interactions.handleMoveReviewCardToTrash,
 			interactions.handleRestartTaskSession,
 			interactions.handleRestoreTaskFromTrash,
-			interactions.handleStartTaskFromBoard,
+			interactions.handleStartTask,
 		],
 	);
 

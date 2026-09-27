@@ -2,16 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { RuntimeBoardData } from "../../src/core";
 import {
-	addTaskDependency,
 	addTaskToColumn,
-	canonicalizeTaskBoard,
 	deleteTasksFromBoard,
 	moveTaskToColumn,
 	pruneOrphanSessionsForBroadcast,
 	pruneOrphanSessionsForNotification,
 	pruneOrphanSessionsForNotificationDelta,
 	pruneOrphanSessionsForPersist,
-	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
 } from "../../src/core";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
@@ -23,25 +20,19 @@ function createBoard(): RuntimeBoardData {
 			{ id: "review", title: "Review", cards: [] },
 			{ id: "trash", title: "Trash", cards: [] },
 		],
-		dependencies: [],
 	};
 }
 
 describe("deleteTasksFromBoard", () => {
-	it("removes a trashed task and any dependencies that reference it", () => {
+	it("removes a trashed task without affecting other cards", () => {
 		const createA = addTaskToColumn(createBoard(), "review", { prompt: "Task A", baseRef: "main" }, () => "aaaaa111");
 		const createB = addTaskToColumn(createA.board, "review", { prompt: "Task B", baseRef: "main" }, () => "bbbbb111");
-		const linked = addTaskDependency(createB.board, "aaaaa", "bbbbb");
-		if (!linked.added) {
-			throw new Error("Expected dependency to be created.");
-		}
-		const trashed = trashTaskAndGetReadyLinkedTaskIds(linked.board, "bbbbb");
+		const trashed = moveTaskToColumn(createB.board, "bbbbb", "trash");
 		const deleted = deleteTasksFromBoard(trashed.board, ["bbbbb"]);
 
 		expect(deleted.deleted).toBe(true);
 		expect(deleted.deletedTaskIds).toEqual(["bbbbb"]);
 		expect(deleted.board.columns.find((column) => column.id === "trash")?.cards).toEqual([]);
-		expect(deleted.board.dependencies).toEqual([]);
 	});
 
 	it("removes multiple trashed tasks at once", () => {
@@ -53,53 +44,6 @@ describe("deleteTasksFromBoard", () => {
 		expect(deleted.deleted).toBe(true);
 		expect(deleted.deletedTaskIds.sort()).toEqual(["aaaaa", "bbbbb"]);
 		expect(deleted.board.columns.find((column) => column.id === "trash")?.cards).toEqual([]);
-	});
-});
-
-describe("canonicalizeTaskBoard", () => {
-	it("drops invalid dependencies and reorients surviving links to the unstarted endpoint", () => {
-		const board = canonicalizeTaskBoard({
-			columns: [
-				{
-					id: "in_progress",
-					title: "In Progress",
-					cards: [
-						{
-							id: "a",
-							title: null,
-							prompt: "Task A",
-							baseRef: "main",
-							createdAt: 1,
-							updatedAt: 1,
-						},
-					],
-				},
-				{
-					id: "review",
-					title: "Review",
-					cards: [
-						{
-							unstarted: true,
-							id: "b",
-							title: null,
-							prompt: "Task B",
-							baseRef: "main",
-							createdAt: 1,
-							updatedAt: 1,
-						},
-					],
-				},
-				{ id: "trash", title: "Trash", cards: [] },
-			],
-			dependencies: [
-				{ id: "dep-1", fromTaskId: "a", toTaskId: "b", createdAt: 1 },
-				{ id: "dep-2", fromTaskId: "b", toTaskId: "a", createdAt: 2 },
-				{ id: "dep-3", fromTaskId: "a", toTaskId: "missing", createdAt: 3 },
-				{ id: "dep-4", fromTaskId: "a", toTaskId: "a", createdAt: 4 },
-			],
-		});
-
-		expect(board.dependencies).toEqual([{ id: "dep-1", fromTaskId: "b", toTaskId: "a", createdAt: 1 }]);
 	});
 });
 
@@ -170,7 +114,7 @@ describe("task images", () => {
 });
 
 describe("branch persistence on cards", () => {
-	it("trashTaskAndGetReadyLinkedTaskIds preserves branch on trashed card", () => {
+	it("moveTaskToColumn preserves branch on trashed card", () => {
 		const created = addTaskToColumn(
 			createBoard(),
 			"in_progress",
@@ -194,7 +138,7 @@ describe("branch persistence on cards", () => {
 			),
 		};
 
-		const trashed = trashTaskAndGetReadyLinkedTaskIds(board, created.task.id);
+		const trashed = moveTaskToColumn(board, created.task.id, "trash");
 		const trashedCard = trashed.board.columns
 			.find((c) => c.id === "trash")
 			?.cards.find((c) => c.id === created.task.id);
@@ -202,7 +146,7 @@ describe("branch persistence on cards", () => {
 		expect(trashedCard?.workingDirectory).toBeNull();
 	});
 
-	it("trashTaskAndGetReadyLinkedTaskIds clears workingDirectory but not branch", () => {
+	it("moveTaskToColumn clears workingDirectory but not branch", () => {
 		const created = addTaskToColumn(
 			createBoard(),
 			"in_progress",
@@ -225,7 +169,7 @@ describe("branch persistence on cards", () => {
 			),
 		};
 
-		const trashed = trashTaskAndGetReadyLinkedTaskIds(board, created.task.id);
+		const trashed = moveTaskToColumn(board, created.task.id, "trash");
 		const trashedCard = trashed.board.columns
 			.find((c) => c.id === "trash")
 			?.cards.find((c) => c.id === created.task.id);
@@ -277,7 +221,7 @@ describe("branch persistence on cards", () => {
 			),
 		};
 
-		const trashed = trashTaskAndGetReadyLinkedTaskIds(board, created.task.id);
+		const trashed = moveTaskToColumn(board, created.task.id, "trash");
 		const trashedCard = trashed.board.columns
 			.find((c) => c.id === "trash")
 			?.cards.find((c) => c.id === created.task.id);

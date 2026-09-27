@@ -2,31 +2,24 @@ import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useRef } from "react";
 
 import { toast } from "sonner";
-import { showAppToast } from "@/components/app-toaster";
 import type { TaskTrashWarningViewModel } from "@/components/task";
-import { buildTrashWarningViewModel, getDependencyAddErrorMessage } from "@/hooks/board/linked-backlog-task-actions";
+import { buildTrashWarningViewModel } from "@/hooks/board/task-trash-actions";
 import type { UseTaskLifecycleOperationsResult } from "@/hooks/board/use-task-lifecycle-operations";
-import {
-	addTaskDependency,
-	findCardSelection,
-	removeTaskDependency,
-	trashTaskAndGetReadyLinkedTaskIds,
-} from "@/state/board-state";
+import { findCardSelection, moveTaskToColumn } from "@/state/board-state";
 import { getTaskWorktreeInfo, getTaskWorktreeSnapshot } from "@/stores/project-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { createClientLogger } from "@/utils/client-logger";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
 
-const log = createClientLogger("linked-backlog-task-actions");
+const log = createClientLogger("task-trash-actions");
 
 interface RequestMoveTaskToTrashOptions {
 	optimisticMoveApplied?: boolean;
 	skipWorkingChangeWarning?: boolean;
 }
 
-export function useLinkedBacklogTaskActions({
+export function useTaskTrashActions({
 	board,
-	setBoard,
 	presentLifecycleBoard,
 	setSelectedTaskId,
 	executeTaskLifecycle,
@@ -35,7 +28,6 @@ export function useLinkedBacklogTaskActions({
 	saveTrashWorktreeNoticeDismissed,
 }: {
 	board: BoardData;
-	setBoard: Dispatch<SetStateAction<BoardData>>;
 	presentLifecycleBoard: Dispatch<SetStateAction<BoardData>>;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 	executeTaskLifecycle: UseTaskLifecycleOperationsResult["executeTaskLifecycle"];
@@ -48,8 +40,6 @@ export function useLinkedBacklogTaskActions({
 	showTrashWorktreeNotice?: boolean;
 	saveTrashWorktreeNoticeDismissed?: () => void;
 }): {
-	handleCreateDependency: (fromTaskId: string, toTaskId: string) => void;
-	handleDeleteDependency: (dependencyId: string) => void;
 	confirmMoveTaskToTrash: (
 		task: BoardCard,
 		currentBoard?: BoardData,
@@ -67,37 +57,6 @@ export function useLinkedBacklogTaskActions({
 		boardRef.current = board;
 	}, [board]);
 
-	const handleCreateDependency = useCallback(
-		(fromTaskId: string, toTaskId: string) => {
-			const result = addTaskDependency(boardRef.current, fromTaskId, toTaskId);
-			if (!result.added) {
-				showAppToast({
-					intent: "warning",
-					icon: "warning-sign",
-					message: getDependencyAddErrorMessage(result.reason),
-					timeout: 3000,
-				});
-				return;
-			}
-
-			setBoard((currentBoard) => {
-				const latestResult = addTaskDependency(currentBoard, fromTaskId, toTaskId);
-				return latestResult.added ? latestResult.board : currentBoard;
-			});
-		},
-		[setBoard],
-	);
-
-	const handleDeleteDependency = useCallback(
-		(dependencyId: string) => {
-			setBoard((currentBoard) => {
-				const removed = removeTaskDependency(currentBoard, dependencyId);
-				return removed.removed ? removed.board : currentBoard;
-			});
-		},
-		[setBoard],
-	);
-
 	const performMoveTaskToTrash = useCallback(
 		async (
 			task: BoardCard,
@@ -110,7 +69,7 @@ export function useLinkedBacklogTaskActions({
 				log.warn("task trash move skipped because its source column was unavailable", { taskId: task.id });
 				return false;
 			}
-			const trashed = trashTaskAndGetReadyLinkedTaskIds(boardBeforeTrash, task.id);
+			const trashed = moveTaskToColumn(boardBeforeTrash, task.id, "trash");
 			log.debug("performing task trash move", {
 				taskId: task.id,
 				moved: trashed.moved,
@@ -118,7 +77,7 @@ export function useLinkedBacklogTaskActions({
 			});
 			if (trashed.moved) {
 				presentLifecycleBoard((currentBoardState) => {
-					const latestTrashResult = trashTaskAndGetReadyLinkedTaskIds(currentBoardState, task.id);
+					const latestTrashResult = moveTaskToColumn(currentBoardState, task.id, "trash");
 					return latestTrashResult.moved ? latestTrashResult.board : currentBoardState;
 				});
 			}
@@ -221,8 +180,6 @@ export function useLinkedBacklogTaskActions({
 	);
 
 	return {
-		handleCreateDependency,
-		handleDeleteDependency,
 		confirmMoveTaskToTrash: async (
 			task: BoardCard,
 			currentBoard?: BoardData,

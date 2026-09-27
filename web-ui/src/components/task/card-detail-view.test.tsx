@@ -159,7 +159,7 @@ const noopReactiveState: ReactiveCardState = {
 
 const noopBoardContext: BoardContextValue = {
 	replyDrafts: new BoardReplyDrafts(),
-	board: { columns: [], dependencies: [] },
+	board: { columns: [] },
 	setBoard: () => {},
 	presentLifecycleBoard: () => {},
 	sessions: {},

@@ -56,7 +56,6 @@ describe("useAppHotkeys", () => {
 					handleToggleHomeTerminal={() => {}}
 					handleOpenCreateTask={() => {}}
 					handleOpenSettings={handleOpenSettings}
-					onStartAllTasks={() => {}}
 					currentProjectId="test-project"
 					handleToggleFileFinder={() => {}}
 					handleToggleTextSearch={() => {}}
@@ -81,9 +80,7 @@ describe("useAppHotkeys", () => {
 		expect(handleOpenSettings).toHaveBeenCalledTimes(1);
 	});
 
-	it("starts all tasks on Mod+B", async () => {
-		const onStartAllTasks = vi.fn();
-
+	it("does not register the retired bulk-start shortcut", async () => {
 		await act(async () => {
 			root.render(
 				<HookHarness
@@ -93,7 +90,6 @@ describe("useAppHotkeys", () => {
 					handleToggleHomeTerminal={() => {}}
 					handleOpenCreateTask={() => {}}
 					handleOpenSettings={() => {}}
-					onStartAllTasks={onStartAllTasks}
 					currentProjectId="test-project"
 					handleToggleFileFinder={() => {}}
 					handleToggleTextSearch={() => {}}
@@ -101,17 +97,7 @@ describe("useAppHotkeys", () => {
 			);
 		});
 
-		const startAllTasksCall = mockUseHotkeys.mock.calls.find(([shortcut]) => shortcut === "mod+b");
-		if (!startAllTasksCall || typeof startAllTasksCall[1] !== "function") {
-			throw new Error("Expected start all tasks shortcut to be registered.");
-		}
-
-		act(() => {
-			const startAllTasksHandler = startAllTasksCall[1] as () => void;
-			startAllTasksHandler();
-		});
-
-		expect(onStartAllTasks).toHaveBeenCalledTimes(1);
+		expect(mockUseHotkeys.mock.calls.some(([shortcut]) => shortcut === "mod+b")).toBe(false);
 	});
 
 	it("does not open create task on C when create-task shortcut is disabled", async () => {
@@ -126,7 +112,6 @@ describe("useAppHotkeys", () => {
 					handleToggleHomeTerminal={() => {}}
 					handleOpenCreateTask={handleOpenCreateTask}
 					handleOpenSettings={() => {}}
-					onStartAllTasks={() => {}}
 					currentProjectId="test-project"
 					handleToggleFileFinder={() => {}}
 					handleToggleTextSearch={() => {}}

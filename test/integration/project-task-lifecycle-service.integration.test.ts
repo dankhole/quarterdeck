@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -18,6 +18,7 @@ import {
 	ProjectBoardCommandService,
 	ProjectTaskLifecycleOperationStore,
 } from "../../src/state";
+import { getProjectLifecycleOperationsPath } from "../../src/state/project-state-utils";
 import type * as TaskWorktreeLifecycle from "../../src/workdir/task-worktree-lifecycle";
 import { initGitRepository } from "../utilities/git-env";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
@@ -1226,7 +1227,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 		});
 	});
 
-	it("starts linked unstarted tasks from the durable pre-trash transition plan", async () => {
+	it("ignores legacy links and pending linked-start plans during trash and replay", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-trash-linked-");
 			try {
@@ -1267,17 +1268,6 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					expectedRevision: parentCreated.state.revision,
 					command: { ...childTask, kind: "create_task", columnId: "review" },
 				});
-				const linked = await boardCommands.execute(scope, {
-					commandId: "seed-linked-dependency",
-					expectedRevision: childCreated.state.revision,
-					command: {
-						kind: "add_dependency",
-						firstTaskId: childTask.taskId,
-						secondTaskId: parentTask.taskId,
-						dependencyId: "linked-child-parent",
-						createdAt: 203,
-					},
-				});
 				const startTaskSession = vi.fn(async (_scope, request) => {
 					const summary = createTestTaskSessionSummary({
 						taskId: request.taskId,
@@ -1298,10 +1288,34 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					operationId: "trash-linked-parent",
 					taskId: parentTask.taskId,
 					taskCreatedAt: parentTask.createdAt,
-					expectedRevision: linked.state.revision,
+					expectedRevision: childCreated.state.revision,
 					sourceColumnId: "review",
 				};
 
+				writeFileSync(
+					join(context.statePath, "board.json"),
+					JSON.stringify({
+						...childCreated.state.board,
+						dependencies: [
+							{ id: "old-link", fromTaskId: childTask.taskId, toTaskId: parentTask.taskId, createdAt: 203 },
+						],
+					}),
+				);
+				const operationStore = new ProjectTaskLifecycleOperationStore();
+				const begun = await operationStore.begin(scope, command);
+				writeFileSync(
+					getProjectLifecycleOperationsPath(scope.projectId),
+					JSON.stringify({
+						version: 1,
+						operations: [
+							{
+								...begun.operation,
+								plannedLinkedTaskIds: [childTask.taskId],
+								childOperationIds: ["legacy-linked-0"],
+							},
+						],
+					}),
+				);
 				const result = await lifecycle.execute(scope, command);
 				const replayed = await lifecycle.execute(scope, command);
 
@@ -1309,19 +1323,13 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					ok: true,
 					operation: {
 						status: "completed",
-						childOperationIds: [expect.stringContaining("linked-0")],
 					},
 				});
 				expect(getTaskColumnId(result.state.board, parentTask.taskId)).toBe("trash");
-				expect(getTaskColumnId(result.state.board, childTask.taskId)).toBe("in_progress");
-				expect(result.state.board.dependencies).toEqual([]);
-				expect(startTaskSession).toHaveBeenCalledOnce();
-				expect(startTaskSession).toHaveBeenCalledWith(
-					scope,
-					expect.objectContaining({ taskId: childTask.taskId, launchOperationId: expect.any(String) }),
-				);
+				expect(getTaskColumnId(result.state.board, childTask.taskId)).toBe("review");
+				expect(startTaskSession).not.toHaveBeenCalled();
 				expect(replayed).toEqual(result);
-				expect(startTaskSession).toHaveBeenCalledOnce();
+				expect(startTaskSession).not.toHaveBeenCalled();
 			} finally {
 				cleanup();
 			}

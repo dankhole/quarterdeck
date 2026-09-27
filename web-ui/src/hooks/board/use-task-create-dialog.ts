@@ -31,7 +31,6 @@ interface UseTaskCreateDialogInput {
 	onCreate: (options?: CreateTaskOptions) => string | null;
 	onCreateAndStart?: (options?: CreateTaskOptions) => string | null;
 	onCreateMultiple: (prompts: string[], options?: CreateTaskOptions) => string[];
-	onCreateAndStartMultiple?: (prompts: string[], options?: CreateTaskOptions) => string[];
 	onCreateStartAndOpen?: (options?: CreateTaskOptions) => string | null;
 }
 
@@ -57,7 +56,6 @@ interface UseTaskCreateDialogResult {
 	handleCreateSingle: () => void;
 	handleRunSingleStartAction: (action: TaskCreateStartAction) => void;
 	handleCreateAll: () => void;
-	handleCreateAndStartAll: () => void;
 }
 
 export function useTaskCreateDialog({
@@ -68,7 +66,6 @@ export function useTaskCreateDialog({
 	onCreate,
 	onCreateAndStart,
 	onCreateMultiple,
-	onCreateAndStartMultiple,
 	onCreateStartAndOpen,
 }: UseTaskCreateDialogInput): UseTaskCreateDialogResult {
 	const [mode, setMode] = useState<TaskCreateMode>("single");
@@ -165,23 +162,12 @@ export function useTaskCreateDialog({
 		resetAfterSuccessfulCreate(createdTaskIds.length);
 	}, [createMore, onCreateMultiple, resetAfterSuccessfulCreate, validTaskPrompts]);
 
-	const handleCreateAndStartAll = useCallback(() => {
-		if (validTaskPrompts.length === 0) {
-			return;
-		}
-		const createdTaskIds = onCreateAndStartMultiple?.(validTaskPrompts, { keepDialogOpen: createMore }) ?? [];
-		resetAfterSuccessfulCreate(createdTaskIds.length);
-	}, [createMore, onCreateAndStartMultiple, resetAfterSuccessfulCreate, validTaskPrompts]);
-
 	useHotkeys(
 		"mod+enter, mod+shift+enter, mod+alt+enter",
 		(event) => {
 			switch (resolveTaskCreateHotkeyAction(mode, event)) {
 				case "create_all":
 					handleCreateAll();
-					return;
-				case "start_all":
-					handleCreateAndStartAll();
 					return;
 				case "create_single":
 					handleCreateSingle();
@@ -205,7 +191,7 @@ export function useTaskCreateDialog({
 			},
 			preventDefault: true,
 		},
-		[open, mode, handleCreateAll, handleCreateAndStartAll, handleCreateSingle, handleRunSingleStartAction],
+		[open, mode, handleCreateAll, handleCreateSingle, handleRunSingleStartAction],
 	);
 
 	return {
@@ -230,6 +216,5 @@ export function useTaskCreateDialog({
 		handleCreateSingle,
 		handleRunSingleStartAction,
 		handleCreateAll,
-		handleCreateAndStartAll,
 	};
 }

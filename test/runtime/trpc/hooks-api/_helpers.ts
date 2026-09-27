@@ -101,8 +101,6 @@ export function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}
 		displaySummary: null,
 		displaySummaryGeneratedAt: null,
 		warningMessage: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
 		...summaryOverrides,
 	};
 }

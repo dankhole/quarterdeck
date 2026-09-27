@@ -53,7 +53,6 @@ function transaction(revision: number) {
 				],
 			},
 		],
-		dependencies: [],
 	};
 	return {
 		version: 1,

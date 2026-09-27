@@ -14,7 +14,7 @@ function createEntry(
 	overrides?: Partial<Omit<ProjectBoardCacheEntry, "cachedAt">>,
 ): Omit<ProjectBoardCacheEntry, "cachedAt"> {
 	return {
-		board: { columns: [], dependencies: [] } as BoardData,
+		board: { columns: [] } as BoardData,
 		sessions: {},
 		authoritativeRevision: 1,
 		projectPath: "/test",

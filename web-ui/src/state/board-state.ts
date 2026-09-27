@@ -4,21 +4,9 @@ import * as runtimeTaskState from "@runtime-task-state";
 
 import { createInitialBoardData } from "@/data/board-data";
 import type { RuntimeAgentId } from "@/runtime/types";
-import {
-	parsePersistedBoardCard,
-	parsePersistedBoardDependency,
-	parsePersistedBoardPayload,
-} from "@/state/board-state-parser";
+import { parsePersistedBoardCard, parsePersistedBoardPayload } from "@/state/board-state-parser";
 import { isAllowedCrossColumnCardMove, type ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
-import type {
-	BoardCard,
-	BoardColumn,
-	BoardColumnId,
-	BoardData,
-	BoardDependency,
-	CardSelection,
-	TaskImage,
-} from "@/types";
+import type { BoardCard, BoardColumn, BoardColumnId, BoardData, CardSelection, TaskImage } from "@/types";
 import { arePathIdentitiesEqual } from "@/utils/path-identity";
 
 export interface TaskDraft {
@@ -98,10 +86,6 @@ function createRandomId(length: number): string {
 	return id;
 }
 
-function createDependencyId(): string {
-	return createBrowserUuid().replaceAll("-", "").slice(0, 8);
-}
-
 function createRuntimeTaskUpdateInput(
 	card: BoardCard,
 	overrides: Partial<runtimeTaskState.RuntimeUpdateTaskInput>,
@@ -141,21 +125,7 @@ export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 		}
 	}
 
-	const normalizedDependencies: BoardDependency[] = [];
-	for (const rawDependency of parsedBoard.dependencies) {
-		const dependency = parsePersistedBoardDependency(rawDependency, {
-			createDependencyId,
-		});
-		if (!dependency) {
-			continue;
-		}
-		normalizedDependencies.push(dependency);
-	}
-
-	return runtimeTaskState.canonicalizeTaskBoard({
-		columns: normalizedColumns,
-		dependencies: normalizedDependencies,
-	});
+	return { columns: normalizedColumns };
 }
 
 export function addTaskToColumn(board: BoardData, columnId: BoardColumnId, draft: TaskDraft): BoardData {
@@ -193,32 +163,6 @@ export function addTaskToColumnWithResult(
 		board: result.board,
 		task: result.task,
 	};
-}
-
-export interface AddTaskDependencyResult {
-	board: BoardData;
-	added: boolean;
-	reason?: NonNullable<runtimeTaskState.RuntimeAddTaskDependencyResult["reason"]>;
-	dependency?: BoardDependency;
-}
-
-export function addTaskDependency(board: BoardData, fromTaskId: string, toTaskId: string): AddTaskDependencyResult {
-	return runtimeTaskState.addTaskDependency(board, fromTaskId, toTaskId);
-}
-
-export function canCreateTaskDependency(board: BoardData, fromTaskId: string, toTaskId: string): boolean {
-	return runtimeTaskState.canAddTaskDependency(board, fromTaskId, toTaskId);
-}
-
-export function removeTaskDependency(board: BoardData, dependencyId: string): { board: BoardData; removed: boolean } {
-	return runtimeTaskState.removeTaskDependency(board, dependencyId);
-}
-
-export function trashTaskAndGetReadyLinkedTaskIds(
-	board: BoardData,
-	taskId: string,
-): { board: BoardData; moved: boolean; readyTaskIds: string[] } {
-	return runtimeTaskState.trashTaskAndGetReadyLinkedTaskIds(board, taskId);
 }
 
 export function applyDragResult(
@@ -297,7 +241,7 @@ export function applyDragResult(
 	};
 
 	return {
-		board: runtimeTaskState.updateTaskDependencies(withUpdatedColumns(board, columns)),
+		board: withUpdatedColumns(board, columns),
 		moveEvent: {
 			taskId: movedCard.id,
 			fromColumnId: sourceColumn.id,

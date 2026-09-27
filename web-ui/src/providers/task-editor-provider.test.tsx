@@ -37,7 +37,7 @@ function HookHarness({ onValue }: { onValue: (value: TaskEditorContextValue) => 
 
 function createBoardContextValue(overrides: Partial<BoardContextValue> = {}): BoardContextValue {
 	return {
-		board: { columns: [], dependencies: [] },
+		board: { columns: [] },
 		setBoard: () => {},
 		setSelectedTaskId: () => {},
 		...overrides,

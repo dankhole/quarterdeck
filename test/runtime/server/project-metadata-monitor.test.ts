@@ -76,7 +76,6 @@ function createBoard(tasks: TestTaskInput[]): RuntimeBoardData {
 				cards: tasks.filter((task) => task.columnId === "trash").map((task) => createCard(task, now)),
 			},
 		],
-		dependencies: [],
 	};
 }
 

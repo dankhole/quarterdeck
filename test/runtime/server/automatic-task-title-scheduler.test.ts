@@ -30,7 +30,6 @@ function createState(): RuntimeProjectStateResponse {
 			},
 			{ id: "trash", title: "Trash", cards: [] },
 		],
-		dependencies: [],
 	};
 	return {
 		repoPath: "/project",

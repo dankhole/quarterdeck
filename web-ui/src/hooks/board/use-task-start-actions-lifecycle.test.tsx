@@ -5,37 +5,25 @@ import { createInitialBoardData } from "@/data/board-data";
 import type { PreparedTaskCreation } from "@/hooks/board/use-task-editor";
 import type { UseTaskLifecycleOperationsResult } from "@/hooks/board/use-task-lifecycle-operations";
 import { useTaskStartActions } from "@/hooks/board/use-task-start-actions";
-import type { RuntimeTaskLifecycleResult } from "@/runtime/types";
 import type { BoardCard, BoardData } from "@/types";
 
 interface HookSnapshot {
 	board: BoardData;
 	handleCreateAndStartTask: ReturnType<typeof useTaskStartActions>["handleCreateAndStartTask"];
-	handleCreateAndStartTasks: ReturnType<typeof useTaskStartActions>["handleCreateAndStartTasks"];
 }
 
 interface HookHarnessProps {
 	prepareCreateTaskForLifecycle: () => PreparedTaskCreation | null;
-	prepareCreateTasksForLifecycle: (prompts: string[]) => PreparedTaskCreation[];
 	executeTaskLifecycle: UseTaskLifecycleOperationsResult["executeTaskLifecycle"];
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }
 
-function HookHarness({
-	prepareCreateTaskForLifecycle,
-	prepareCreateTasksForLifecycle,
-	executeTaskLifecycle,
-	onSnapshot,
-}: HookHarnessProps): null {
+function HookHarness({ prepareCreateTaskForLifecycle, executeTaskLifecycle, onSnapshot }: HookHarnessProps): null {
 	const [board, setBoard] = useState(createInitialBoardData);
 	const actions = useTaskStartActions({
-		board,
 		presentLifecycleBoard: setBoard,
 		prepareCreateTaskForLifecycle,
-		prepareCreateTasksForLifecycle,
 		executeTaskLifecycle,
-		handleStartTask: () => {},
-		handleStartAllUnstartedTasks: () => {},
 		setSelectedTaskId: () => {},
 	});
 	useEffect(() => {
@@ -57,14 +45,6 @@ function createTask(id: string, createdAt: number, agentId: BoardCard["agentId"]
 		createdAt,
 		updatedAt: createdAt,
 	};
-}
-
-function createDeferred<T>() {
-	let resolve!: (value: T) => void;
-	const promise = new Promise<T>((nextResolve) => {
-		resolve = nextResolve;
-	});
-	return { promise, resolve };
 }
 
 function requireSnapshot(snapshot: HookSnapshot | null): HookSnapshot {
@@ -108,7 +88,6 @@ describe("useTaskStartActions lifecycle creation", () => {
 			root.render(
 				<HookHarness
 					prepareCreateTaskForLifecycle={() => ({ task })}
-					prepareCreateTasksForLifecycle={() => []}
 					executeTaskLifecycle={executeTaskLifecycle}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -152,7 +131,6 @@ describe("useTaskStartActions lifecycle creation", () => {
 			root.render(
 				<HookHarness
 					prepareCreateTaskForLifecycle={() => ({ task })}
-					prepareCreateTasksForLifecycle={() => []}
 					executeTaskLifecycle={executeTaskLifecycle}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -171,33 +149,5 @@ describe("useTaskStartActions lifecycle creation", () => {
 				task: expect.objectContaining({ taskId: "task-pi", agentId: "pi" }),
 			}),
 		);
-	});
-
-	it("serializes multi-create lifecycle operations so revisions cannot race", async () => {
-		const first = createTask("task-1", 100);
-		const second = createTask("task-2", 101);
-		const firstResult = createDeferred<RuntimeTaskLifecycleResult | null>();
-		const executeTaskLifecycle = vi.fn().mockReturnValueOnce(firstResult.promise).mockResolvedValueOnce(null);
-		await act(async () => {
-			root.render(
-				<HookHarness
-					prepareCreateTaskForLifecycle={() => null}
-					prepareCreateTasksForLifecycle={() => [{ task: first }, { task: second }]}
-					executeTaskLifecycle={executeTaskLifecycle}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-		});
-
-		expect(requireSnapshot(latestSnapshot).handleCreateAndStartTasks(["one", "two"])).toEqual(["task-1", "task-2"]);
-		expect(executeTaskLifecycle).toHaveBeenCalledTimes(1);
-
-		await act(async () => {
-			firstResult.resolve(null);
-			await firstResult.promise;
-		});
-		await vi.waitFor(() => expect(executeTaskLifecycle).toHaveBeenCalledTimes(2));
 	});
 });

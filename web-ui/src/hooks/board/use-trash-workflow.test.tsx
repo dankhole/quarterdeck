@@ -40,7 +40,6 @@ function createBoard(taskColumnId: "review" | "trash" = "review"): BoardData {
 			{ id: "review", title: "Review", cards: taskColumnId === "review" ? [task] : [] },
 			{ id: "trash", title: "Trash", cards: taskColumnId === "trash" ? [task] : [] },
 		],
-		dependencies: [],
 	};
 }
 

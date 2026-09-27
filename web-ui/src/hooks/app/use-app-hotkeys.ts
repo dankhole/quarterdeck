@@ -10,7 +10,6 @@ interface UseAppHotkeysInput {
 	handleToggleHomeTerminal: () => void;
 	handleOpenCreateTask: () => void;
 	handleOpenSettings: () => void;
-	onStartAllTasks: () => void;
 	handleToggleDiagnosticsPanel?: () => void;
 	handleToggleFileFinder: () => void;
 	handleToggleTextSearch: () => void;
@@ -24,7 +23,6 @@ export function useAppHotkeys({
 	handleToggleHomeTerminal,
 	handleOpenCreateTask,
 	handleOpenSettings,
-	onStartAllTasks,
 	handleToggleDiagnosticsPanel,
 	handleToggleFileFinder,
 	handleToggleTextSearch,
@@ -44,17 +42,6 @@ export function useAppHotkeys({
 			preventDefault: true,
 		},
 		[handleToggleDetailTerminal, handleToggleHomeTerminal, selectedCard],
-	);
-
-	useHotkeys(
-		"mod+b",
-		onStartAllTasks,
-		{
-			enableOnContentEditable: false,
-			enableOnFormTags: false,
-			preventDefault: true,
-		},
-		[onStartAllTasks],
 	);
 
 	useHotkeys(

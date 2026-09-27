@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Remove task dependency links, automatic linked-task starts, bulk start controls and shortcuts, and Last Turn diffs with their background Git snapshots. Tasks start individually; Git review retains Uncommitted and Compare.
+
 - Detect missing or stale direct dependencies before linking and report the required locked install instead of failing later during the build.
 
 - Open the agent chat when clicking a task card's latest response preview.
@@ -14,7 +16,7 @@
 
 - Make Codex fullscreen scrolling preserve wheel and trackpad distance, including fast swipes, slow wheel ticks, and fine movements across pauses, instead of losing distance to browser event coalescing and abrupt sensitivity changes.
 
-- Redesign the board with spacious responsive task cards, recent response previews, inline replies with retained drafts, and compact collapsible Trash. Move Create task above In Progress on both the board and task sidebar; preserve keyboard dragging and lifecycle actions. Keep dependency links outside cards and prefer current agent responses over older summaries.
+- Redesign the board with spacious responsive task cards, recent response previews, inline replies with retained drafts, and compact collapsible Trash. Move Create task above In Progress on both the board and task sidebar; preserve keyboard dragging and lifecycle actions. Prefer current agent responses over older summaries.
 
 - Add folder projects with their own boards and tasks, without requiring Git. Convert existing parent projects without losing tasks or files, and add nested repositories independently instead of reopening the parent.
 
@@ -24,7 +26,7 @@
 
 - Open the new-task dialog larger by default, with a taller prompt editor that fills the available space and balanced spacing around task options.
 
-- Fold Backlog into Review as Unstarted tasks, with a grouped layout, Start and edit actions, and automatic migration of existing tasks. Preserve bulk start, dependencies, and interrupted-start recovery.
+- Fold Backlog into Review as Unstarted tasks, with a grouped layout, Start and edit actions, and automatic migration of existing tasks. Preserve interrupted-start recovery.
 
 - Commit board state, sessions, revisions, and replay receipts through a recoverable transaction so interrupted writes cannot strand task starts or expose mixed state to readers and backups.
 

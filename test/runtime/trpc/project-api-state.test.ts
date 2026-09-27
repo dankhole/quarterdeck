@@ -41,7 +41,6 @@ function createBoard(title: string | null = "Task One"): RuntimeBoardData {
 			},
 			{ id: "trash", title: "Trash", cards: [] },
 		],
-		dependencies: [],
 	};
 }
 

@@ -20,7 +20,6 @@ const persistedOperationSchema = runtimeTaskLifecycleOperationSchema.extend({
 	fingerprint: z.string(),
 	command: runtimeTaskLifecycleCommandSchema,
 	attempt: z.number().int().positive(),
-	plannedLinkedTaskIds: z.array(z.string()).default([]),
 	warning: z.string().nullable(),
 	error: z.string().nullable(),
 });
@@ -239,8 +238,6 @@ export class ProjectTaskLifecycleOperationStore {
 						: command.kind === "create_and_start"
 							? command.operationId
 							: null,
-				childOperationIds: [],
-				plannedLinkedTaskIds: [],
 				outcomeCode: null,
 				requestedAt: now,
 				updatedAt: now,

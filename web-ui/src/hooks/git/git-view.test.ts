@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { isTaskBaseRefResolved, resolveGitChangesQueryProjectId } from "@/hooks/git/git-view";
+import { isTaskBaseRefResolved, loadGitViewTab, resolveGitChangesQueryProjectId } from "@/hooks/git/git-view";
 
 describe("git view scope helpers", () => {
+	it("falls back to Uncommitted for a retired Last Turn selection", () => {
+		localStorage.setItem("quarterdeck.git-view-active-tab", "last_turn");
+		expect(loadGitViewTab()).toBe("uncommitted");
+		localStorage.removeItem("quarterdeck.git-view-active-tab");
+	});
+
 	it("treats home scope as resolved without a base ref", () => {
 		expect(isTaskBaseRefResolved(null, null)).toBe(true);
 		expect(

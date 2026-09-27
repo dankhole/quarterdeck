@@ -72,7 +72,6 @@ function harness() {
 			{ id: "review", title: "Review", cards: [card] },
 			{ id: "trash", title: "Trash", cards: [] },
 		],
-		dependencies: [],
 	};
 	const state: RuntimeProjectStateResponse = {
 		repoPath: "/project",

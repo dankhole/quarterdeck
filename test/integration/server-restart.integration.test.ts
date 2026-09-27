@@ -59,8 +59,6 @@ function createPersistedReviewSession(
 		outstandingInteraction: null,
 		nativeWorkEvidence: null,
 		stalledSince: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
 		conversationSummaries: [],
 		displaySummary: null,
 		displaySummaryGeneratedAt: null,

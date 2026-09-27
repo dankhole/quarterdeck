@@ -4,7 +4,6 @@ import { createInitialBoardData } from "@/data/board-data";
 import { addTaskToColumn, normalizeBoardData } from "@/state/board-state";
 import {
 	parsePersistedBoardCard,
-	parsePersistedBoardDependency,
 	parsePersistedBoardPayload,
 	parsePersistedTaskImages,
 } from "@/state/board-state-parser";
@@ -220,7 +219,6 @@ describe("board-state parser helpers", () => {
 
 		expect(parsed).toEqual({
 			columns: [{ id: "backlog", cards: [{ prompt: "Task A", baseRef: "main" }] }],
-			dependencies: [{ fromTaskId: "a", toTaskId: "b" }],
 		});
 	});
 
@@ -284,36 +282,5 @@ describe("board-state parser helpers", () => {
 			{ id: "img-1", data: "data", mimeType: "image/png" },
 		]);
 		expect(parsePersistedTaskImages([{ id: 1 }])).toBeUndefined();
-	});
-
-	it("drops invalid dependencies and generates ids for valid ones", () => {
-		expect(
-			parsePersistedBoardDependency(
-				{ fromTaskId: " task-a ", toTaskId: "task-b" },
-				{
-					createDependencyId: () => "dep-1",
-					now: 99,
-				},
-			),
-		).toEqual({
-			id: "dep-1",
-			fromTaskId: "task-a",
-			toTaskId: "task-b",
-			createdAt: 99,
-		});
-		expect(
-			parsePersistedBoardDependency(
-				{ fromTaskId: "task-a", toTaskId: "missing" },
-				{
-					createDependencyId: () => "dep-2",
-					now: 99,
-				},
-			),
-		).toEqual({
-			id: "dep-2",
-			fromTaskId: "task-a",
-			toTaskId: "missing",
-			createdAt: 99,
-		});
 	});
 });

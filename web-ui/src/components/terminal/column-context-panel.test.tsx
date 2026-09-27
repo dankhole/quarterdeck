@@ -192,9 +192,8 @@ describe("ColumnContextPanel", () => {
 		expect(onTaskDragEnd).toHaveBeenCalledWith(result);
 	});
 
-	it("puts creation above In Progress and disables bulk start when only started tasks remain", async () => {
+	it("keeps creation and unstarted cards without a bulk-start control", async () => {
 		const onCreateTask = vi.fn();
-		const onStartAllTasks = vi.fn();
 		const columns: BoardColumn[] = [
 			{ id: "in_progress", title: "In Progress", cards: [] },
 			{ id: "review", title: "Review", cards: [createCard("task-1", "Completed work")] },
@@ -209,28 +208,19 @@ describe("ColumnContextPanel", () => {
 						onTaskDragEnd={() => {}}
 						taskSessions={{}}
 						onCreateTask={onCreateTask}
-						onStartAllTasks={onStartAllTasks}
 					/>
 				</CardActionsProvider>,
 			);
 		await act(async () => renderPanel());
 		expect(container.textContent).not.toContain("Backlog");
 		expect(container.querySelector("button")?.getAttribute("aria-label")).toBe("Create task");
-		expect(container.querySelector<HTMLButtonElement>('[aria-label="Start all unstarted tasks"]')?.disabled).toBe(
-			true,
-		);
+		expect(container.querySelector('[aria-label="Start all unstarted tasks"]')).toBeNull();
 		await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Create task"]')?.click());
 		expect(onCreateTask).toHaveBeenCalledOnce();
 		columns[1]!.cards.push({ ...createCard("task-2", "Future work"), unstarted: true });
 		await act(async () => renderPanel());
-		expect(container.querySelector<HTMLButtonElement>('[aria-label="Start all unstarted tasks"]')?.disabled).toBe(
-			false,
-		);
+		expect(container.querySelector('[aria-label="Start all unstarted tasks"]')).toBeNull();
 		expect(container.querySelector("[data-unstarted-heading]")?.textContent).toBe("Unstarted1");
-		await act(async () =>
-			container.querySelector<HTMLButtonElement>('[aria-label="Start all unstarted tasks"]')?.click(),
-		);
-		expect(onStartAllTasks).toHaveBeenCalledOnce();
 	});
 
 	it("centers the selected detail card when the selection changes", async () => {

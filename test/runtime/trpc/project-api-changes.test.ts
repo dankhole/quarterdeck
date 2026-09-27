@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RuntimeTaskSessionSummary, RuntimeWorkdirChangesResponse } from "../../../src/core";
-import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
+import type { RuntimeWorkdirChangesResponse } from "../../../src/core";
 
 const worktreeMocks = vi.hoisted(() => ({
 	resolveTaskCwd: vi.fn(),
@@ -145,19 +144,6 @@ vi.mock("../../../src/workdir/mutate-workdir-entry.js", () => ({
 import { TaskResourceOperationCoordinator } from "../../../src/core";
 import { createProjectApi } from "../../../src/trpc";
 
-function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
-	return createTestTaskSessionSummary({
-		state: "running",
-		agentId: "claude",
-		sessionLaunchPath: "/tmp/worktree",
-		pid: 1234,
-		startedAt: Date.now(),
-		updatedAt: Date.now(),
-		lastOutputAt: Date.now(),
-		...overrides,
-	});
-}
-
 function createChangesResponse(): RuntimeWorkdirChangesResponse {
 	return {
 		repoRoot: "/tmp/worktree",
@@ -292,135 +278,12 @@ describe("createProjectApi loadChanges", () => {
 		workdirChangesMocks.getWorkdirChangesFromRef.mockReset();
 
 		// Default: resolveTaskWorkingDirectory resolves to /tmp/worktree.
-		projectStateMocks.loadProjectState.mockResolvedValue({ board: { columns: [], dependencies: [] } });
+		projectStateMocks.loadProjectState.mockResolvedValue({ board: { columns: [] } });
 		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
 		workdirChangesMocks.createEmptyWorkdirChangesResponse.mockResolvedValue(createChangesResponse());
 		workdirChangesMocks.getWorkdirChanges.mockResolvedValue(createChangesResponse());
 		workdirChangesMocks.getWorkdirChangesBetweenRefs.mockResolvedValue(createChangesResponse());
 		workdirChangesMocks.getWorkdirChangesFromRef.mockResolvedValue(createChangesResponse());
-	});
-
-	it("shows the completed turn diff while awaiting review", async () => {
-		const terminalManager = {
-			store: {
-				getSummary: vi.fn(() =>
-					createSummary({
-						state: "awaiting_review",
-						latestTurnCheckpoint: {
-							turn: 2,
-							ref: "refs/quarterdeck/checkpoints/task-1/turn/2",
-							commit: "2222222",
-							createdAt: 2,
-						},
-						previousTurnCheckpoint: {
-							turn: 1,
-							ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
-							commit: "1111111",
-							createdAt: 1,
-						},
-					}),
-				),
-			},
-		};
-
-		const api = createProjectApi({
-			terminals: {
-				getTerminalManagerForProject: vi.fn(() => null),
-				ensureTerminalManagerForProject: vi.fn(async () => terminalManager as never),
-			},
-			broadcaster: {
-				broadcastRuntimeProjectStateUpdated: vi.fn(),
-				broadcastRuntimeProjectNotificationsUpdated: vi.fn(),
-				broadcastRuntimeProjectsUpdated: vi.fn(),
-				broadcastTaskTitleUpdated: vi.fn(),
-				setFocusedTask: vi.fn(),
-				setDocumentVisible: vi.fn(),
-				requestTaskRefresh: vi.fn(),
-				requestHomeRefresh: vi.fn(),
-			},
-			data: { buildProjectStateSnapshot: vi.fn() },
-			taskResourceOperations: new TaskResourceOperationCoordinator(),
-		});
-
-		await api.loadChanges(
-			{
-				projectId: "project-1",
-				projectPath: "/tmp/repo",
-			},
-			{
-				taskId: "task-1",
-				baseRef: "main",
-				mode: "last_turn",
-			},
-		);
-
-		expect(workdirChangesMocks.getWorkdirChangesBetweenRefs).toHaveBeenCalledWith({
-			cwd: "/tmp/worktree",
-			fromRef: "1111111",
-			toRef: "2222222",
-		});
-		expect(workdirChangesMocks.getWorkdirChangesFromRef).not.toHaveBeenCalled();
-	});
-
-	it("tracks the current turn from the latest checkpoint while running", async () => {
-		const terminalManager = {
-			store: {
-				getSummary: vi.fn(() =>
-					createSummary({
-						state: "running",
-						latestTurnCheckpoint: {
-							turn: 2,
-							ref: "refs/quarterdeck/checkpoints/task-1/turn/2",
-							commit: "2222222",
-							createdAt: 2,
-						},
-						previousTurnCheckpoint: {
-							turn: 1,
-							ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
-							commit: "1111111",
-							createdAt: 1,
-						},
-					}),
-				),
-			},
-		};
-
-		const api = createProjectApi({
-			terminals: {
-				getTerminalManagerForProject: vi.fn(() => null),
-				ensureTerminalManagerForProject: vi.fn(async () => terminalManager as never),
-			},
-			broadcaster: {
-				broadcastRuntimeProjectStateUpdated: vi.fn(),
-				broadcastRuntimeProjectNotificationsUpdated: vi.fn(),
-				broadcastRuntimeProjectsUpdated: vi.fn(),
-				broadcastTaskTitleUpdated: vi.fn(),
-				setFocusedTask: vi.fn(),
-				setDocumentVisible: vi.fn(),
-				requestTaskRefresh: vi.fn(),
-				requestHomeRefresh: vi.fn(),
-			},
-			data: { buildProjectStateSnapshot: vi.fn() },
-			taskResourceOperations: new TaskResourceOperationCoordinator(),
-		});
-
-		await api.loadChanges(
-			{
-				projectId: "project-1",
-				projectPath: "/tmp/repo",
-			},
-			{
-				taskId: "task-1",
-				baseRef: "main",
-				mode: "last_turn",
-			},
-		);
-
-		expect(workdirChangesMocks.getWorkdirChangesFromRef).toHaveBeenCalledWith({
-			cwd: "/tmp/worktree",
-			fromRef: "2222222",
-		});
-		expect(workdirChangesMocks.getWorkdirChangesBetweenRefs).not.toHaveBeenCalled();
 	});
 
 	it("returns an empty diff when the task worktree does not exist yet", async () => {

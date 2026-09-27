@@ -6,7 +6,6 @@ import { z } from "zod";
 import type { RuntimeBoardColumnId, RuntimeBoardData, RuntimeTaskSessionSummary } from "../core";
 import {
 	areFileSystemPathsEqual,
-	canonicalizeTaskBoard,
 	createTaggedLogger,
 	isWindowsSafePathComponent,
 	runtimeBoardDataSchema,
@@ -319,7 +318,6 @@ export function createEmptyBoard(): RuntimeBoardData {
 			title: column.title,
 			cards: [],
 		})),
-		dependencies: [],
 	};
 }
 
@@ -349,14 +347,12 @@ export function parseProjectStateSavePayload<T>(payload: T, schema: z.ZodType<T>
 export async function readProjectBoardUnderLock(projectId: string): Promise<RuntimeBoardData> {
 	const boardPath = getProjectBoardPath(projectId);
 	const rawBoard = await readJsonFile(boardPath);
-	return canonicalizeTaskBoard(
-		parsePersistedStateFile(
-			boardPath,
-			"board.json",
-			migrateLegacyBacklog(rawBoard),
-			runtimeBoardDataSchema,
-			createEmptyBoard(),
-		),
+	return parsePersistedStateFile(
+		boardPath,
+		"board.json",
+		migrateLegacyBacklog(rawBoard),
+		runtimeBoardDataSchema,
+		createEmptyBoard(),
 	);
 }
 

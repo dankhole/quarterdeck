@@ -9,7 +9,6 @@ interface TaskCreateMultiListProps {
 	onTaskPromptsChange: (prompts: string[]) => void;
 	onBackToSingle: () => void;
 	onCreateAll: () => void;
-	onCreateAndStartAll: () => void;
 }
 
 export function TaskCreateMultiList({
@@ -17,7 +16,6 @@ export function TaskCreateMultiList({
 	onTaskPromptsChange,
 	onBackToSingle,
 	onCreateAll,
-	onCreateAndStartAll,
 }: TaskCreateMultiListProps): ReactElement {
 	const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 	const nextFocusIndexRef = useRef<number | null>(0);
@@ -67,11 +65,7 @@ export function TaskCreateMultiList({
 		(index: number, event: React.KeyboardEvent<HTMLInputElement>) => {
 			if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
 				event.preventDefault();
-				if (event.altKey) {
-					onCreateAll();
-					return;
-				}
-				onCreateAndStartAll();
+				onCreateAll();
 				return;
 			}
 			if (event.key === "Enter" && !event.shiftKey) {
@@ -84,7 +78,7 @@ export function TaskCreateMultiList({
 				handleRemove(index);
 			}
 		},
-		[handleAdd, handleRemove, onCreateAll, onCreateAndStartAll, taskPrompts],
+		[handleAdd, handleRemove, onCreateAll, taskPrompts],
 	);
 
 	const setInputRef = useCallback((index: number, el: HTMLInputElement | null) => {

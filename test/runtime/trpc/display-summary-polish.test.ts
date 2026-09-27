@@ -53,8 +53,6 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		nativeWorkEvidence,
 		stalledSince: null,
 		warningMessage: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
 		conversationSummaries: [],
 		displaySummary: null,
 		displaySummaryGeneratedAt: null,
@@ -80,7 +78,6 @@ function createBoard(prompt: string): RuntimeBoardData {
 				],
 			},
 		],
-		dependencies: [],
 	};
 }
 

@@ -15,7 +15,6 @@ function createBoard(): RuntimeBoardData {
 			{ id: "review", title: "Review", cards: [] },
 			{ id: "trash", title: "Trash", cards: [] },
 		],
-		dependencies: [],
 	};
 }
 
@@ -83,7 +82,7 @@ describe("applyProjectBoardCommand", () => {
 		expect(replayed.board).toBe(result.board);
 	});
 
-	it("applies update, move, dependency, and delete commands through shared reducers", () => {
+	it("applies update, move, and delete commands through shared reducers", () => {
 		const first = applyProjectBoardCommand(createBoard(), createTaskCommand("task-a", "Task A", 100));
 		const second = applyProjectBoardCommand(first.board, createTaskCommand("task-b", "Task B", 110));
 		const moved = applyProjectBoardCommand(second.board, {
@@ -91,13 +90,6 @@ describe("applyProjectBoardCommand", () => {
 			taskId: "task-b",
 			targetColumnId: "in_progress",
 			updatedAt: 120,
-		});
-		const linked = applyProjectBoardCommand(moved.board, {
-			kind: "add_dependency",
-			firstTaskId: "task-a",
-			secondTaskId: "task-b",
-			dependencyId: "dependency-a",
-			createdAt: 130,
 		});
 		const updateCommand: RuntimeProjectBoardCommand = {
 			kind: "update_task",
@@ -109,7 +101,7 @@ describe("applyProjectBoardCommand", () => {
 			pinned: true,
 			updatedAt: 140,
 		};
-		const updated = applyProjectBoardCommand(linked.board, updateCommand);
+		const updated = applyProjectBoardCommand(moved.board, updateCommand);
 		const replayedUpdate = applyProjectBoardCommand(updated.board, updateCommand);
 		const deleted = applyProjectBoardCommand(updated.board, {
 			kind: "delete_tasks",
@@ -118,14 +110,6 @@ describe("applyProjectBoardCommand", () => {
 
 		expect(moved.changed).toBe(true);
 		expect(moved.board.columns.find((column) => column.id === "in_progress")?.cards[0]?.updatedAt).toBe(120);
-		expect(linked.board.dependencies).toEqual([
-			{
-				id: "dependency-a",
-				fromTaskId: "task-a",
-				toTaskId: "task-b",
-				createdAt: 130,
-			},
-		]);
 		expect(updated.board.columns.find((column) => column.id === "review")?.cards[0]).toMatchObject({
 			id: "task-a",
 			title: "Task A title",
@@ -138,7 +122,6 @@ describe("applyProjectBoardCommand", () => {
 		expect(replayedUpdate.changed).toBe(false);
 		expect(replayedUpdate.board).toBe(updated.board);
 		expect(deleted.changed).toBe(true);
-		expect(deleted.board.dependencies).toEqual([]);
 		expect(deleted.board.columns.flatMap((column) => column.cards).map((card) => card.id)).toEqual(["task-a"]);
 	});
 

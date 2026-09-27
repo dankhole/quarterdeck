@@ -129,7 +129,6 @@ function createProjectState(): RuntimeProjectStateResponse {
 				{ id: "review", title: "Review", cards: [] },
 				{ id: "trash", title: "Trash", cards: [] },
 			],
-			dependencies: [],
 		},
 		sessions: {
 			"task-1": runtimeTaskSessionSummarySchema.parse({

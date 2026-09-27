@@ -1,7 +1,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
-import { ChevronDown, ChevronRight, Play, Trash2 } from "lucide-react";
-import { Fragment, type MouseEvent as ReactMouseEvent, type ReactNode, useState } from "react";
+import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
+import { Fragment, type ReactNode, useState } from "react";
 import { BoardCard } from "@/components/board/board-card";
 import { BoardCardConversation } from "@/components/board/board-card-conversation";
 import { SortableBoardCard } from "@/components/board/sortable-board-card";
@@ -19,7 +19,6 @@ export function BoardColumn({
 	column,
 	taskSessions,
 	replyScope,
-	onStartAllTasks,
 	onClearTrash,
 	editingTaskId,
 	inlineTaskEditor,
@@ -29,16 +28,10 @@ export function BoardColumn({
 	activeDragSourceColumnId,
 	activeDragTaskUnstarted,
 	programmaticCardMoveInFlight,
-	onDependencyPointerDown,
-	onDependencyPointerEnter,
-	dependencySourceTaskId,
-	dependencyTargetTaskId,
-	isDependencyLinking,
 }: {
 	column: BoardColumnModel;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	replyScope?: BoardReplyScope;
-	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
@@ -48,11 +41,6 @@ export function BoardColumn({
 	activeDragSourceColumnId?: BoardColumnId | null;
 	activeDragTaskUnstarted?: boolean;
 	programmaticCardMoveInFlight?: ProgrammaticCardMoveInFlight | null;
-	onDependencyPointerDown?: (taskId: string, event: ReactMouseEvent<HTMLElement>) => void;
-	onDependencyPointerEnter?: (taskId: string) => void;
-	dependencySourceTaskId?: string | null;
-	dependencyTargetTaskId?: string | null;
-	isDependencyLinking?: boolean;
 }): React.ReactElement {
 	const {
 		onStartTask,
@@ -67,7 +55,6 @@ export function BoardColumn({
 	const { moveToTrashLoadingById, showSummaryOnCards, showSummaryOnHover, uncommittedChangesOnCardsEnabled } =
 		useReactiveCardState();
 	const unstartedCount = column.cards.filter((card) => card.unstarted).length;
-	const canStartAllTasks = column.id === "review" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
 	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null, {
 		activeDragTaskId,
@@ -112,17 +99,6 @@ export function BoardColumn({
 						<span className="rounded bg-surface-2 px-2 py-0.5 text-xs text-text-secondary">{cards.length}</span>
 					</div>
 				)}
-				{canStartAllTasks && unstartedCount > 0 ? (
-					<Button
-						icon={<Play size={12} />}
-						variant="ghost"
-						size="sm"
-						onClick={onStartAllTasks}
-						aria-label="Start all unstarted tasks"
-					>
-						Start {unstartedCount} unstarted
-					</Button>
-				) : null}
 				{canClearTrash ? (
 					<Button
 						icon={<Trash2 size={13} />}
@@ -198,11 +174,6 @@ export function BoardColumn({
 												onUpdateTitle={onUpdateTaskTitle}
 												onTogglePin={onTogglePinTask}
 												isMoveToTrashLoading={moveToTrashLoadingById[card.id] ?? false}
-												onDependencyPointerDown={onDependencyPointerDown}
-												onDependencyPointerEnter={onDependencyPointerEnter}
-												isDependencySource={dependencySourceTaskId === card.id}
-												isDependencyTarget={dependencyTargetTaskId === card.id}
-												isDependencyLinking={isDependencyLinking}
 												showSummaryOnCards={showSummaryOnCards}
 												showSummaryOnHover={showSummaryOnHover}
 												uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}

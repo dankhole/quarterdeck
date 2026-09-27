@@ -7,14 +7,8 @@ import type {
 	RuntimeHookIngestRequest,
 	RuntimeHookIngestResponse,
 	RuntimeHookMetadata,
-	RuntimeTaskTurnCheckpoint,
 } from "../core";
-import {
-	createTaggedLogger,
-	didEnterTaskReviewReady,
-	normalizeDiagnosticErrorClass,
-	parseHookIngestRequest,
-} from "../core";
+import { createTaggedLogger, normalizeDiagnosticErrorClass, parseHookIngestRequest } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import { loadProjectScopeById } from "../state";
 import {
@@ -23,7 +17,6 @@ import {
 	type TerminalSessionManager,
 } from "../terminal";
 import { compactDisplaySummaryText } from "../title";
-import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workdir";
 import type { RuntimeTrpcContext } from "./app-router";
 import { queueTaskDisplaySummaryPolish } from "./display-summary-polish";
 
@@ -105,12 +98,6 @@ export interface CreateHooksApiDependencies {
 	projects: Pick<IProjectResolver, "getProjectPathById">;
 	terminals: ITerminalManagerProvider;
 	config?: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
-	captureTaskTurnCheckpoint?: (input: {
-		cwd: string;
-		taskId: string;
-		turn: number;
-	}) => Promise<RuntimeTaskTurnCheckpoint>;
-	deleteTaskTurnCheckpointRef?: (input: { cwd: string; ref: string }) => Promise<void>;
 	scheduleHookBackgroundTask?: HookBackgroundTaskScheduler;
 	/** Resolves only after the latest session-store generation is durable. */
 	persistSessionState?: (projectId: string) => Promise<void>;
@@ -124,8 +111,6 @@ export interface CreateHooksApiDependencies {
 }
 
 export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcContext["hooksApi"] {
-	const checkpointCapture = deps.captureTaskTurnCheckpoint ?? captureTaskTurnCheckpoint;
-	const checkpointRefDelete = deps.deleteTaskTurnCheckpointRef ?? deleteTaskTurnCheckpointRef;
 	const scheduleBackgroundTask = deps.scheduleHookBackgroundTask ?? scheduleHookBackgroundTask;
 
 	return {
@@ -287,7 +272,6 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						},
 					});
 				}
-				const enteredOrdinaryReview = didEnterTaskReviewReady(previousSummary, nextSummary);
 				// Ordering is committed after the canonical mutation so correlation for
 				// PermissionRequest observes the preceding PreToolUse, not itself. The
 				// reducer explicitly retains identity-bearing Claude observations that
@@ -307,38 +291,6 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						interactionStatus: nextSummary.outstandingInteraction?.status ?? null,
 					},
 				);
-
-				if (enteredOrdinaryReview && !(await loadProjectScopeById(projectId))?.folderOnly) {
-					const nextTurn = (nextSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
-					const checkpointCwd = nextSummary.sessionLaunchPath ?? projectPath;
-					const staleRef = nextSummary.previousTurnCheckpoint?.ref ?? null;
-					const checkpointLogData = {
-						...hookLogData,
-						hasCheckpointCwd: checkpointCwd.length > 0,
-						checkpointTurn: nextTurn,
-						hasStaleCheckpointRef: staleRef !== null,
-					};
-					void (async () => {
-						try {
-							const checkpoint = await checkpointCapture({ cwd: checkpointCwd, taskId, turn: nextTurn });
-							store.applyTurnCheckpoint(taskId, checkpoint);
-							if (staleRef) {
-								void checkpointRefDelete({ cwd: checkpointCwd, ref: staleRef }).catch((error) => {
-									log.warn("Failed to delete stale hook turn checkpoint ref", {
-										...checkpointLogData,
-										errorClass:
-											error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
-									});
-								});
-							}
-						} catch (error) {
-							log.warn("Hook turn checkpoint capture failed", {
-								...checkpointLogData,
-								errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
-							});
-						}
-					})();
-				}
 
 				return response;
 			} catch (error) {

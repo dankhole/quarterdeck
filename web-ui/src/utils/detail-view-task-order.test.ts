@@ -13,7 +13,6 @@ function board(inProgress: BoardCard[], review: BoardCard[]): BoardData {
 			{ id: "review", title: "Review", cards: review },
 			{ id: "trash", title: "Trash", cards: [card("trashed")] },
 		],
-		dependencies: [],
 	};
 }
 

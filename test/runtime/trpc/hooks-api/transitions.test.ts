@@ -262,37 +262,4 @@ describe("createHooksApi — canonical provider routing", () => {
 		expect(manager.applyProviderHook).toHaveBeenCalledOnce();
 		expect(manager.commitHookEventOrder).toHaveBeenCalledWith("task-1", expect.any(Object), false);
 	});
-
-	it("captures a checkpoint for an ordinary completed Review transition", async () => {
-		const manager = createMockManager({
-			getSummary: vi.fn(() => createSummary({ state: "running", agentId: "codex" })),
-			toReviewSummary: vi.fn(() =>
-				createSummary({ state: "awaiting_review", reviewReason: "hook", agentId: "codex" }),
-			),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary: vi.fn(),
-			applyTurnCheckpoint: vi.fn(),
-		});
-		const captureTaskTurnCheckpoint = vi.fn(async () => ({
-			turn: 1,
-			ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
-			commit: "abc123",
-			createdAt: 100,
-		}));
-		const api = createTestApi(manager, {
-			captureTaskTurnCheckpoint,
-			deleteTaskTurnCheckpointRef: vi.fn(async () => undefined),
-			scheduleHookBackgroundTask: (task) => task(),
-		});
-
-		await expect(
-			api.ingest({
-				taskId: "task-1",
-				projectId: "project-1",
-				event: "to_review",
-				metadata: { source: "codex", hookEventName: "Stop", turnId: "turn-1" },
-			}),
-		).resolves.toEqual({ ok: true });
-		await vi.waitFor(() => expect(captureTaskTurnCheckpoint).toHaveBeenCalledOnce());
-	});
 });

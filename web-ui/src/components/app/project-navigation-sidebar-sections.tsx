@@ -15,9 +15,7 @@ const MOD = isMacPlatform ? "⌘" : modifierKeyLabel;
 
 const SIDEBAR_SHORTCUTS = [
 	{ keys: ["C"], label: "New task" },
-	{ keys: [MOD, "B"], label: "Start unstarted tasks" },
 	{ keys: [MOD, "Shift", "S"], label: "Settings" },
-	{ keys: ["Click", MOD], label: "Hold to link tasks" },
 	{ keys: [MOD, "J"], label: "Toggle terminal" },
 	{ keys: [MOD, "P"], label: "Find file" },
 	{ keys: [MOD, "Shift", "F"], label: "Search in files" },

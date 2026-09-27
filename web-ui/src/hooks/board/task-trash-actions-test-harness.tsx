@@ -4,11 +4,11 @@ import { afterEach, beforeEach } from "vitest";
 
 import type { TaskTrashWarningViewModel } from "@/components/task";
 import type { TaskLifecycleCommandDraft } from "@/hooks/board/task-lifecycle-operations";
-import { useLinkedBacklogTaskActions } from "@/hooks/board/use-linked-backlog-task-actions";
 import type { UseTaskLifecycleOperationsResult } from "@/hooks/board/use-task-lifecycle-operations";
+import { useTaskTrashActions } from "@/hooks/board/use-task-trash-actions";
 import type { RuntimeTaskLifecycleResult } from "@/runtime/types";
 import { createTestProjectStateResponse } from "@/test-utils/task-session-factory";
-import type { BoardCard, BoardColumnId, BoardData, BoardDependency } from "@/types";
+import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 
 export interface RequestMoveTaskToTrashOptions {
 	optimisticMoveApplied?: boolean;
@@ -18,7 +18,6 @@ export interface RequestMoveTaskToTrashOptions {
 export interface HookSnapshot {
 	board: BoardData;
 	selectedTaskId: string | null;
-	handleCreateDependency: (fromTaskId: string, toTaskId: string) => void;
 	confirmMoveTaskToTrash: (
 		task: BoardCard,
 		currentBoard?: BoardData,
@@ -42,7 +41,7 @@ export function createTask(taskId: string, prompt: string, createdAt: number): B
 	};
 }
 
-export function createBoard(dependencies: BoardDependency[] = []): BoardData {
+export function createBoard(): BoardData {
 	return {
 		columns: [
 			{
@@ -57,7 +56,6 @@ export function createBoard(dependencies: BoardDependency[] = []): BoardData {
 			{ id: "in_progress", title: "In Progress", cards: [] },
 			{ id: "trash", title: "Trash", cards: [] },
 		],
-		dependencies,
 	};
 }
 
@@ -102,7 +100,6 @@ function createSuccessfulLifecycleResult(
 			targetColumnId: null,
 			acceptedBoardRevision: 2,
 			launchOperationId: null,
-			childOperationIds: [],
 			outcomeCode: "completed",
 			requestedAt: 1,
 			updatedAt: 2,
@@ -124,9 +121,8 @@ export function HookHarness({
 }: HookHarnessProps): null {
 	const [board, setBoard] = useState<BoardData>(() => (boardFactory ? boardFactory() : createBoard()));
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-	const actions = useLinkedBacklogTaskActions({
+	const actions = useTaskTrashActions({
 		board,
-		setBoard,
 		presentLifecycleBoard: setBoard,
 		setSelectedTaskId: setSelectedTaskIdOverride ?? setSelectedTaskId,
 		executeTaskLifecycle: executeTaskLifecycle ?? (async (draft) => createSuccessfulLifecycleResult(draft, board)),
@@ -139,18 +135,10 @@ export function HookHarness({
 		onSnapshot({
 			board,
 			selectedTaskId,
-			handleCreateDependency: actions.handleCreateDependency,
 			confirmMoveTaskToTrash: actions.confirmMoveTaskToTrash,
 			requestMoveTaskToTrash: actions.requestMoveTaskToTrash,
 		});
-	}, [
-		actions.confirmMoveTaskToTrash,
-		actions.handleCreateDependency,
-		actions.requestMoveTaskToTrash,
-		board,
-		selectedTaskId,
-		onSnapshot,
-	]);
+	}, [actions.confirmMoveTaskToTrash, actions.requestMoveTaskToTrash, board, selectedTaskId, onSnapshot]);
 
 	return null;
 }

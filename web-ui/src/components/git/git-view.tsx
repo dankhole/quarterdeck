@@ -94,7 +94,6 @@ export function GitView({
 		isChangesPending,
 		hasNoChanges,
 		handleRollbackFile,
-		selectedCard,
 	} = useGitView(hookOptions);
 
 	// --- Conflict resolution early return ---
@@ -134,13 +133,6 @@ export function GitView({
 			<div className="flex items-center gap-1 px-3 h-9 border-b border-border bg-surface-1 shrink-0">
 				<TabButton active={activeTab === "uncommitted"} onClick={() => setActiveTab("uncommitted")}>
 					Uncommitted
-				</TabButton>
-				<TabButton
-					active={activeTab === "last_turn"}
-					disabled={!selectedCard}
-					onClick={() => setActiveTab("last_turn")}
-				>
-					Last Turn
 				</TabButton>
 				<TabButton active={activeTab === "compare"} onClick={() => setActiveTab("compare")}>
 					Compare

@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 
-import {
-	createCompareDiffViewKey,
-	createLastTurnDiffViewKey,
-	deriveDiffPriorityPaths,
-	isGitDiffChangesPending,
-} from "./git-diff-data";
+import { createCompareDiffViewKey, deriveDiffPriorityPaths, isGitDiffChangesPending } from "./git-diff-data";
 
 describe("git diff data policy", () => {
 	it("dedupes selected and visible paths while preserving foreground order", () => {
@@ -15,25 +9,6 @@ describe("git diff data policy", () => {
 			"src/a.ts",
 			"src/b.ts",
 		]);
-	});
-
-	it("keys last-turn views by lifecycle and checkpoint commits", () => {
-		expect(
-			createLastTurnDiffViewKey(
-				true,
-				createTestTaskSessionSummary({
-					taskId: "task-1",
-					agentId: "claude",
-					state: "awaiting_review",
-					sessionLaunchPath: "/tmp/task",
-					startedAt: 1,
-					updatedAt: 2,
-					latestTurnCheckpoint: { turn: 2, ref: "refs/two", commit: "222", createdAt: 2 },
-					previousTurnCheckpoint: { turn: 1, ref: "refs/one", commit: "111", createdAt: 1 },
-				}),
-			),
-		).toBe("awaiting_review:222:111");
-		expect(createLastTurnDiffViewKey(false, null)).toBeNull();
 	});
 
 	it("keys compare views by refs, worktree inclusion, and diff mode", () => {

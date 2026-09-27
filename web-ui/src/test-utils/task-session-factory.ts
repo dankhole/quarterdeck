@@ -5,24 +5,16 @@ import type {
 	RuntimeTaskNativeWorkEvidence,
 	RuntimeTaskOutstandingInteraction,
 	RuntimeTaskSessionSummary,
-	RuntimeTaskTurnCheckpoint,
 } from "@/runtime/types";
 import type { BoardData } from "@/types";
 
 type TestTaskSessionSummaryOverrides = Omit<
 	Partial<RuntimeTaskSessionSummary>,
-	| "latestHookActivity"
-	| "outstandingInteraction"
-	| "nativeWorkEvidence"
-	| "latestTurnCheckpoint"
-	| "previousTurnCheckpoint"
-	| "conversationSummaries"
+	"latestHookActivity" | "outstandingInteraction" | "nativeWorkEvidence" | "conversationSummaries"
 > & {
 	latestHookActivity?: Partial<RuntimeTaskHookActivity> | null;
 	outstandingInteraction?: RuntimeTaskOutstandingInteraction | null;
 	nativeWorkEvidence?: RuntimeTaskSessionSummary["nativeWorkEvidence"];
-	latestTurnCheckpoint?: RuntimeTaskTurnCheckpoint | null;
-	previousTurnCheckpoint?: RuntimeTaskTurnCheckpoint | null;
 	conversationSummaries?: RuntimeTaskSessionSummary["conversationSummaries"];
 };
 
@@ -93,8 +85,6 @@ export function createTestTaskSessionSummary(
 		latestHookActivity,
 		outstandingInteraction,
 		nativeWorkEvidence,
-		latestTurnCheckpoint,
-		previousTurnCheckpoint,
 		conversationSummaries,
 		...summaryOverrides
 	} = overrides;
@@ -122,8 +112,6 @@ export function createTestTaskSessionSummary(
 		nativeWorkEvidence: nativeWorkEvidence ? { ...nativeWorkEvidence } : null,
 		stalledSince: null,
 		warningMessage: null,
-		latestTurnCheckpoint: latestTurnCheckpoint ?? null,
-		previousTurnCheckpoint: previousTurnCheckpoint ?? null,
 		conversationSummaries: conversationSummaries ? [...conversationSummaries] : [],
 		displaySummary: null,
 		displaySummaryGeneratedAt: null,

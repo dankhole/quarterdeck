@@ -46,7 +46,6 @@ export {
 export {
 	assertValidGitRef,
 	countLines,
-	GIT_CHECKPOINT_OPTIONS,
 	GIT_COMMAND_TIMEOUTS_MS,
 	GIT_INSPECTION_OPTIONS,
 	type GitCommandTimeoutClass,
@@ -107,4 +106,3 @@ export {
 	resolveTaskWorkingDirectory,
 } from "./task-worktree";
 export { assertTaskWorktreeRegistration } from "./task-worktree-identity";
-export { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "./turn-checkpoints";

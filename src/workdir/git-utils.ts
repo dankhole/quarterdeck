@@ -14,7 +14,6 @@ export const GIT_COMMAND_TIMEOUTS_MS = {
 	inspection: 30_000,
 	metadata: 5_000,
 	remoteFetch: 30_000,
-	checkpoint: 30_000,
 	sync: 5_000,
 	userAction: 120_000,
 } as const;
@@ -39,7 +38,6 @@ export interface RunGitOptions {
 }
 
 export const GIT_INSPECTION_OPTIONS = { timeoutClass: "inspection" } as const satisfies RunGitOptions;
-export const GIT_CHECKPOINT_OPTIONS = { timeoutClass: "checkpoint" } as const satisfies RunGitOptions;
 
 function normalizeProcessExitCode(code: unknown): number {
 	if (typeof code === "number" && Number.isFinite(code)) {

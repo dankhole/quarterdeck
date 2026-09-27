@@ -237,7 +237,7 @@ export function deriveTaskIndicatorState(summary: RuntimeTaskSessionSummary): Ru
 
 /**
  * Returns whether one authoritative mutation newly entered an ordinary
- * review-ready result. Notifications and turn checkpoints must use this same
+ * review-ready result. Notifications must use this same
  * semantic edge instead of reclassifying raw provider events.
  */
 export function didEnterTaskReviewReady(previous: RuntimeTaskSessionSummary, next: RuntimeTaskSessionSummary): boolean {

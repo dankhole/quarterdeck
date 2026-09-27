@@ -74,17 +74,6 @@ export const runtimeProjectBoardCommandSchema = z.discriminatedUnion("kind", [
 		updatedAt: commandTimestampSchema,
 	}),
 	z.object({
-		kind: z.literal("add_dependency"),
-		firstTaskId: commandTaskIdSchema,
-		secondTaskId: commandTaskIdSchema,
-		dependencyId: z.string().trim().min(1),
-		createdAt: commandTimestampSchema,
-	}),
-	z.object({
-		kind: z.literal("remove_dependency"),
-		dependencyId: z.string().trim().min(1),
-	}),
-	z.object({
 		kind: z.literal("delete_tasks"),
 		taskIds: z.array(commandTaskIdSchema).min(1),
 	}),

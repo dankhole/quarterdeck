@@ -1,17 +1,10 @@
-import {
-	createTaggedLogger,
-	type IRuntimeConfigProvider,
-	parseTaskSessionStartRequest,
-	type RuntimeTaskSessionSummary,
-} from "../../core";
+import { createTaggedLogger, type IRuntimeConfigProvider, parseTaskSessionStartRequest } from "../../core";
 import {
 	type SerializedTaskSessionStartServiceDependencies,
 	startTaskSessionThroughService,
 	type TaskSessionStartServiceResult,
 } from "../../server/task-session-start-service";
-import { loadProjectScopeById } from "../../state";
 import type { TerminalSessionManager } from "../../terminal";
-import { captureTaskTurnCheckpoint } from "../../workdir";
 import type { RuntimeTrpcProjectScope } from "../app-router-context";
 import { queueTaskDisplaySummaryPolish } from "../display-summary-polish";
 
@@ -26,46 +19,6 @@ export interface StartTaskSessionDeps extends SerializedTaskSessionStartServiceD
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
-}
-
-function queueStartTurnCheckpointCapture(options: {
-	terminalManager: TerminalSessionManager;
-	taskId: string;
-	taskCwd: string;
-	summary: RuntimeTaskSessionSummary;
-}): void {
-	const nextTurn = (options.summary.latestTurnCheckpoint?.turn ?? 0) + 1;
-	const checkpointLogData = {
-		taskId: options.taskId,
-		taskCwd: options.taskCwd,
-		checkpointTurn: nextTurn,
-		sessionStartedAt: options.summary.startedAt,
-	};
-	log.debug("Start turn checkpoint capture queued", checkpointLogData);
-	void captureTaskTurnCheckpoint({
-		cwd: options.taskCwd,
-		taskId: options.taskId,
-		turn: nextTurn,
-	})
-		.then((checkpoint) => {
-			const currentSummary = options.terminalManager.store.getSummary(options.taskId);
-			if (currentSummary?.startedAt !== options.summary.startedAt) {
-				log.debug("Start turn checkpoint capture skipped for stale session", checkpointLogData);
-				return;
-			}
-			options.terminalManager.store.applyTurnCheckpoint(options.taskId, checkpoint);
-			log.debug("Start turn checkpoint captured", {
-				...checkpointLogData,
-				checkpointRef: checkpoint.ref,
-				checkpointCommit: checkpoint.commit,
-			});
-		})
-		.catch((error) => {
-			log.warn("Start turn checkpoint capture failed", {
-				...checkpointLogData,
-				error: errorMessage(error),
-			});
-		});
 }
 
 export async function handleStartTaskSession(
@@ -102,14 +55,6 @@ export async function handleStartTaskSession(
 				deps,
 				reason: "task-started",
 				promptOverride: body.prompt,
-			});
-		}
-		if (!body.resumeConversation && !(await loadProjectScopeById(projectScope.projectId))?.folderOnly) {
-			queueStartTurnCheckpointCapture({
-				terminalManager: result.terminalManager,
-				taskId: body.taskId,
-				taskCwd: result.taskCwd,
-				summary: result.summary,
 			});
 		}
 		log.debug("start-task-session returning ok", {

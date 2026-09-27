@@ -1,7 +1,7 @@
 import { applyProjectBoardCommands } from "@runtime-board-commands";
 import type { RuntimeProjectBoardCommand } from "@runtime-contract";
 
-import type { BoardCard, BoardColumnId, BoardData, BoardDependency, TaskImage } from "@/types";
+import type { BoardCard, BoardColumnId, BoardData, TaskImage } from "@/types";
 import { areOptionalPathIdentitiesEqual } from "@/utils/path-identity";
 
 interface CardLocation {
@@ -65,14 +65,6 @@ function hasTaskPatchChange(before: BoardCard, after: BoardCard): boolean {
 	);
 }
 
-function dependencyById(dependencies: readonly BoardDependency[]): Map<string, BoardDependency> {
-	return new Map(dependencies.map((dependency) => [dependency.id, dependency]));
-}
-
-/**
- * Converts one existing optimistic board transition into the explicit command
- * batch the runtime will validate and persist atomically.
- */
 export function deriveProjectBoardCommands(before: BoardData, after: BoardData): RuntimeProjectBoardCommand[] {
 	if (before === after) {
 		return [];
@@ -171,35 +163,6 @@ export function deriveProjectBoardCommands(before: BoardData, after: BoardData):
 		) {
 			commands.push({ kind: "reorder_column", columnId: column.id, taskIds });
 		}
-	}
-
-	const previousDependencies = dependencyById(before.dependencies);
-	const nextDependencies = dependencyById(after.dependencies);
-	for (const dependencyId of previousDependencies.keys()) {
-		if (!nextDependencies.has(dependencyId)) {
-			commands.push({ kind: "remove_dependency", dependencyId });
-		}
-	}
-	for (const dependency of after.dependencies) {
-		const previous = previousDependencies.get(dependency.id);
-		if (
-			previous &&
-			previous.fromTaskId === dependency.fromTaskId &&
-			previous.toTaskId === dependency.toTaskId &&
-			previous.createdAt === dependency.createdAt
-		) {
-			continue;
-		}
-		if (previous) {
-			commands.push({ kind: "remove_dependency", dependencyId: dependency.id });
-		}
-		commands.push({
-			kind: "add_dependency",
-			firstTaskId: dependency.fromTaskId,
-			secondTaskId: dependency.toTaskId,
-			dependencyId: dependency.id,
-			createdAt: dependency.createdAt,
-		});
 	}
 
 	return commands;

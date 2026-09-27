@@ -22,7 +22,6 @@ export function createBoard(title: string): RuntimeBoardData {
 			},
 			{ id: "trash", title: "Trash", cards: [] },
 		],
-		dependencies: [],
 	};
 }
 
@@ -59,6 +58,5 @@ export function createReviewBoard(taskId: string, title: string, existingTrashTa
 			},
 			{ id: "trash", title: "Trash", cards: trashCards },
 		],
-		dependencies: [],
 	};
 }

@@ -12,7 +12,6 @@ const card = (id: string, unstarted = false) => ({
 	updatedAt: 1,
 });
 const board: BoardData = {
-	dependencies: [],
 	columns: [
 		{ id: "in_progress", title: "In Progress", cards: [card("working")] },
 		{ id: "review", title: "Review", cards: [card("ready"), card("draft", true)] },

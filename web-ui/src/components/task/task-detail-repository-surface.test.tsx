@@ -175,7 +175,7 @@ function createFileBrowserData(): UseFileBrowserDataResult {
 
 function createRepositoryState(): CardDetailViewRepositoryState {
 	return {
-		board: { columns: [], dependencies: [] },
+		board: { columns: [] },
 		taskRepositoryInfo: null,
 		taskWorktreeSnapshot: null,
 		homeGitSummary: null,

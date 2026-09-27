@@ -18,7 +18,6 @@ import type {
 import {
 	createTaggedLogger,
 	findCardInBoard,
-	getReadyLinkedTaskIdsForTrashTransition,
 	getRuntimeDetailTerminalTaskId,
 	getTaskColumnId,
 	runtimeClearTrashRequestSchema,
@@ -151,7 +150,6 @@ function toPublicOperation(operation: PersistedTaskLifecycleOperation): RuntimeT
 		fingerprint: _fingerprint,
 		command: _command,
 		attempt: _attempt,
-		plannedLinkedTaskIds: _plannedLinkedTaskIds,
 		warning: _warning,
 		error: _error,
 		...publicOperation
@@ -182,7 +180,6 @@ function createSyntheticOperation(
 		targetColumnId: null,
 		acceptedBoardRevision: null,
 		launchOperationId: null,
-		childOperationIds: [],
 		outcomeCode,
 		requestedAt: now,
 		updatedAt: now,
@@ -533,22 +530,7 @@ export class ProjectTaskLifecycleService {
 		if (!precondition.ok) {
 			return await this.finish(scope, operation, precondition.failure);
 		}
-		const readyLinkedTaskIds =
-			operation.plannedLinkedTaskIds.length > 0 || operation.childOperationIds.length > 0
-				? operation.plannedLinkedTaskIds
-				: getReadyLinkedTaskIdsForTrashTransition(precondition.state.board, command.taskId, command.sourceColumnId);
-		const childOperationIds = readyLinkedTaskIds.map((_taskId, index) =>
-			getStepCommandId(command.operationId, `linked-${index}`),
-		);
-		operation = await this.operationStore.update(scope, operation.operationId, (current) => ({
-			...current,
-			plannedLinkedTaskIds: readyLinkedTaskIds,
-			childOperationIds,
-		}));
 		operation = await this.setPhase(scope, operation, "board_transition");
-		// The linked-child start plan is persisted before the parent move. Execute
-		// against that exact revision so an unrelated concurrent board edit cannot
-		// change the dependency graph after the durable plan was recorded.
 		const moveResult = await this.executeBoard(scope, {
 			commandId: getStepCommandId(command.operationId, "move"),
 			expectedRevision: command.expectedRevision,
@@ -610,27 +592,6 @@ export class ProjectTaskLifecycleService {
 			}
 		}
 
-		for (const [index, readyTaskId] of readyLinkedTaskIds.entries()) {
-			const state = await this.loadState(scope);
-			const readyCard = findCardInBoard(state.board, readyTaskId);
-			if (!readyCard?.unstarted || getTaskColumnId(state.board, readyTaskId) !== "review") {
-				continue;
-			}
-			const childOperationId = childOperationIds[index];
-			if (!childOperationId) {
-				continue;
-			}
-			const child = await this.execute(scope, {
-				kind: "start",
-				operationId: childOperationId,
-				taskId: readyCard.id,
-				taskCreatedAt: readyCard.createdAt,
-				expectedRevision: state.revision,
-			});
-			if (!child.ok) {
-				warning ??= "Task was trashed, but a newly unblocked linked task could not be started.";
-			}
-		}
 		return await this.finish(scope, operation, {
 			status: warning ? "completed_with_warning" : "completed",
 			outcomeCode: warning ? "completed_with_warning" : "completed",

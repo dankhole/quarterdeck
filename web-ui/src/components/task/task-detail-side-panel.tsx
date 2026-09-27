@@ -54,7 +54,6 @@ export function TaskDetailSidePanelSurface({
 						onTaskDragEnd={sidePanelProps.onTaskDragEnd}
 						taskSessions={sidePanelState.taskSessions}
 						onCreateTask={sidePanelProps.onCreateTask}
-						onStartAllTasks={sidePanelProps.onStartAllTasks}
 						onClearTrash={sidePanelProps.onClearTrash}
 						editingTaskId={sidePanelProps.editingTaskId}
 						inlineTaskEditor={sidePanelProps.inlineTaskEditor}

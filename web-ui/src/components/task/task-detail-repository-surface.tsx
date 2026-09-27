@@ -108,7 +108,6 @@ export function TaskDetailRepositorySurface({
 				<GitView
 					currentProjectId={currentProjectId}
 					selectedCard={selection}
-					sessionSummary={sessionSummary}
 					projectPath={projectPath}
 					homeGitSummary={repositoryState.homeGitSummary}
 					board={repositoryState.board}

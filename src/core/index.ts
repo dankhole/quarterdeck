@@ -115,13 +115,9 @@ export {
 	resolveWindowsSystem32ExecutablePath,
 } from "./shell";
 export {
-	addTaskDependency,
 	addTaskToColumn,
-	canAddTaskDependency,
-	canonicalizeTaskBoard,
 	deleteTasksFromBoard,
 	findCardInBoard,
-	getReadyLinkedTaskIdsForTrashTransition,
 	getTaskColumnId,
 	moveTaskToColumn,
 	patchTask,
@@ -129,12 +125,9 @@ export {
 	pruneOrphanSessionsForNotification,
 	pruneOrphanSessionsForNotificationDelta,
 	pruneOrphanSessionsForPersist,
-	removeTaskDependency,
 	reorderTaskInColumn,
 	reorderTasksInColumn,
-	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
-	updateTaskDependencies,
 } from "./task-board-mutations";
 export { createShortTaskId, createUniqueTaskId } from "./task-id";
 export {

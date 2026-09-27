@@ -4,7 +4,7 @@ Status: maintained on macOS and pinned to exactly Pi `0.84.3`.
 
 ## Product contract
 
-Pi is a first-class desktop task agent alongside Claude Code and Codex. Quarterdeck preserves Pi selection through task creation, create-and-start, authoritative hydration, project switching, linked-card starts, restart, Trash/restore, and startup recovery.
+Pi is a first-class desktop task agent alongside Claude Code and Codex. Quarterdeck preserves Pi selection through task creation, create-and-start, authoritative hydration, project switching, restart, Trash/restore, and startup recovery.
 
 Quarterdeck deliberately accepts exactly Pi `0.84.3`, not an open-ended minimum version. Older or newer versions return a typed availability failure naming the detected and required versions. Advancing the supported version requires a fresh compatibility review and the validation gate below.
 

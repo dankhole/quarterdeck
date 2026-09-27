@@ -30,7 +30,6 @@ function makeBoard(trashCardIds: string[]): BoardData {
 				})),
 			},
 		],
-		dependencies: [],
 	};
 }
 

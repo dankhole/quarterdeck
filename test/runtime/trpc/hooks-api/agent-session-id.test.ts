@@ -7,16 +7,12 @@ describe("createHooksApi — agent session persistence", () => {
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running", resumeSessionId: "claude-session-123" })),
 			toReviewSummary: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "hook" })),
-			applyTurnCheckpoint: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
 		});
 		const recordClaudeHookHint = vi.fn();
 		const api = createTestApi(manager, {
 			conversationSourceHints: { recordClaudeHookHint },
-			captureTaskTurnCheckpoint: vi.fn(() =>
-				Promise.resolve({ turn: 1, ref: "refs/quarterdeck/checkpoint", commit: "abc123", createdAt: 1 }),
-			),
 		});
 		const metadata = {
 			hookEventName: "Stop",
@@ -42,16 +38,11 @@ describe("createHooksApi — agent session persistence", () => {
 			getSummary: vi.fn(() => createSummary({ state: "running", agentId: "codex", resumeSessionId: null })),
 			update,
 			toReviewSummary: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "hook" })),
-			applyTurnCheckpoint: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
 		});
 
-		const api = createTestApi(manager, {
-			captureTaskTurnCheckpoint: vi.fn(() =>
-				Promise.resolve({ turn: 1, ref: "refs/quarterdeck/checkpoint", commit: "abc123", createdAt: 1 }),
-			),
-		});
+		const api = createTestApi(manager, {});
 
 		const response = await api.ingest({
 			taskId: "task-1",

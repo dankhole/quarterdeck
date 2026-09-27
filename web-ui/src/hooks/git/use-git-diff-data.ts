@@ -1,18 +1,12 @@
 import { useMemo } from "react";
 
 import { useDocumentVisibility } from "@/hooks/notifications/use-document-visibility";
-import type {
-	RuntimeDiffMode,
-	RuntimeTaskSessionSummary,
-	RuntimeWorkdirChangesResponse,
-	RuntimeWorkdirFileChange,
-} from "@/runtime/types";
+import type { RuntimeDiffMode, RuntimeWorkdirChangesResponse, RuntimeWorkdirFileChange } from "@/runtime/types";
 import { type FileLoadingState, useAllFileDiffContent } from "@/runtime/use-all-file-diff-content";
 import { useRuntimeProjectChanges } from "@/runtime/use-runtime-project-changes";
 import { useTaskWorktreeStateVersionValue } from "@/stores/project-metadata-store";
 import {
 	createCompareDiffViewKey,
-	createLastTurnDiffViewKey,
 	deriveDiffPriorityPaths,
 	getActiveFilesRevision,
 	isGitDiffChangesPending,
@@ -28,7 +22,6 @@ export interface UseGitDiffDataOptions {
 	readonly currentProjectId: string | null;
 	readonly taskId: string | null;
 	readonly baseRef: string | null;
-	readonly sessionSummary: RuntimeTaskSessionSummary | null;
 	readonly selectedPath: string | null;
 	readonly visibleDiffPaths: readonly string[];
 	readonly compare: UseGitViewCompareResult;
@@ -46,8 +39,7 @@ export interface UseGitDiffDataResult {
 }
 
 export function useGitDiffData(options: UseGitDiffDataOptions): UseGitDiffDataResult {
-	const { activeTab, currentProjectId, taskId, baseRef, sessionSummary, selectedPath, visibleDiffPaths, compare } =
-		options;
+	const { activeTab, currentProjectId, taskId, baseRef, selectedPath, visibleDiffPaths, compare } = options;
 	const isDocumentVisible = useDocumentVisibility();
 	const taskWorktreeStateVersion = useTaskWorktreeStateVersionValue(taskId);
 	const baseDerivedProjectId = resolveGitChangesQueryProjectId({
@@ -65,22 +57,6 @@ export function useGitDiffData(options: UseGitDiffDataOptions): UseGitDiffDataRe
 		"working_copy",
 		taskWorktreeStateVersion,
 		isUncommittedActive && isDocumentVisible ? POLL_INTERVAL_MS : null,
-	);
-
-	const isLastTurnActive = activeTab === "last_turn";
-	const lastTurnViewKey = useMemo(
-		() => createLastTurnDiffViewKey(isLastTurnActive, sessionSummary),
-		[isLastTurnActive, sessionSummary],
-	);
-	const { changes: lastTurnChanges, isRuntimeAvailable: lastTurnAvailable } = useRuntimeProjectChanges(
-		isLastTurnActive ? taskId : null,
-		isLastTurnActive ? baseDerivedProjectId : null,
-		isLastTurnActive ? baseRef : null,
-		"last_turn",
-		taskWorktreeStateVersion,
-		isLastTurnActive && isDocumentVisible ? POLL_INTERVAL_MS : null,
-		lastTurnViewKey,
-		true,
 	);
 
 	const isCompareActive = activeTab === "compare";
@@ -123,13 +99,12 @@ export function useGitDiffData(options: UseGitDiffDataOptions): UseGitDiffDataRe
 	);
 
 	const uncommittedFiles = uncommittedChanges?.files ?? null;
-	const lastTurnFiles = lastTurnChanges?.files ?? null;
 	const compareFiles = compareChanges?.files ?? null;
 	const activeFiles: RuntimeWorkdirFileChange[] | null = useMemo(
-		() => deriveActiveFiles(activeTab, uncommittedFiles, lastTurnFiles, compareFiles),
-		[activeTab, uncommittedFiles, lastTurnFiles, compareFiles],
+		() => deriveActiveFiles(activeTab, uncommittedFiles, compareFiles),
+		[activeTab, uncommittedFiles, compareFiles],
 	);
-	const activeFilesRevision = getActiveFilesRevision(activeTab, uncommittedChanges, lastTurnChanges, compareChanges);
+	const activeFilesRevision = getActiveFilesRevision(activeTab, uncommittedChanges, compareChanges);
 	const diffPriorityPaths = useMemo(
 		() => deriveDiffPriorityPaths(selectedPath, visibleDiffPaths),
 		[selectedPath, visibleDiffPaths],
@@ -139,7 +114,7 @@ export function useGitDiffData(options: UseGitDiffDataOptions): UseGitDiffDataRe
 		projectId: activeTab === "compare" ? compareProjectId : baseDerivedProjectId,
 		taskId,
 		baseRef,
-		mode: activeTab === "last_turn" ? "last_turn" : "working_copy",
+		mode: "working_copy",
 		fromRef: activeTab === "compare" ? compare.targetRef : undefined,
 		toRef: activeTab === "compare" && !compareIncludeUncommitted ? compare.sourceRef : undefined,
 		diffMode: activeTab === "compare" ? compareDiffMode : undefined,
@@ -151,7 +126,6 @@ export function useGitDiffData(options: UseGitDiffDataOptions): UseGitDiffDataRe
 	const isRuntimeAvailable = resolveGitDiffRuntimeAvailable({
 		activeTab,
 		uncommittedAvailable,
-		lastTurnAvailable,
 		compareAvailable,
 	});
 	const isChangesPending = isGitDiffChangesPending({

@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import { createInitialBoardData } from "@/data/board-data";
 import { saveEditedTaskToBoard } from "@/hooks/board/task-editor-drafts";
 import {
-	addTaskDependency,
 	addTaskToColumnWithResult,
 	moveTaskToColumn,
 	removeTask,
@@ -231,7 +230,7 @@ describe("project board command sync", () => {
 		expect(deriveProjectBoardCommands(withPath, caseAlias)).toEqual([]);
 	});
 
-	it("reproduces moves, dependency cleanup, and deletion", () => {
+	it("reproduces moves and deletion", () => {
 		const first = addTaskToColumnWithResult(createInitialBoardData(), "review", {
 			prompt: "First",
 			baseRef: "main",
@@ -240,12 +239,10 @@ describe("project board command sync", () => {
 			prompt: "Second",
 			baseRef: "main",
 		});
-		const linked = addTaskDependency(second.board, first.task.id, second.task.id);
-		if (!linked.added) throw new Error("Expected dependency.");
-		const moved = moveTaskToColumn(linked.board, first.task.id, "in_progress", { insertAtTop: true });
+		const moved = moveTaskToColumn(second.board, first.task.id, "in_progress", { insertAtTop: true });
 		const deleted = removeTask(moved.board, first.task.id);
 
-		const result = applyDerived(linked.board, deleted.board);
+		const result = applyDerived(second.board, deleted.board);
 
 		expect(result.commands.some((command) => command.kind === "delete_tasks")).toBe(true);
 		expect(result.board).toEqual(deleted.board);

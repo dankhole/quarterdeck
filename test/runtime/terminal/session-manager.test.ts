@@ -294,30 +294,6 @@ describe("TerminalSessionManager", () => {
 		expect(summary?.agentId).toBe("claude");
 	});
 
-	it("tracks only the latest two turn checkpoints", () => {
-		const manager = createTestManager();
-		manager.store.hydrateFromRecord({
-			"task-1": createSummary({ state: "running" }),
-		});
-
-		manager.store.applyTurnCheckpoint("task-1", {
-			turn: 1,
-			ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
-			commit: "1111111",
-			createdAt: 1,
-		});
-		manager.store.applyTurnCheckpoint("task-1", {
-			turn: 2,
-			ref: "refs/quarterdeck/checkpoints/task-1/turn/2",
-			commit: "2222222",
-			createdAt: 2,
-		});
-
-		const summary = manager.store.getSummary("task-1");
-		expect(summary?.latestTurnCheckpoint?.turn).toBe(2);
-		expect(summary?.previousTurnCheckpoint?.turn).toBe(1);
-	});
-
 	it("does not replay raw PTY history when attaching an output listener", () => {
 		const manager = createTestManager();
 		manager.store.hydrateFromRecord({

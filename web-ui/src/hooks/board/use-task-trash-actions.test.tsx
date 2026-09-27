@@ -11,31 +11,10 @@ import {
 	type HookSnapshot,
 	requireSnapshot,
 	useTestEnvironment,
-} from "./linked-backlog-actions-test-harness";
+} from "./task-trash-actions-test-harness";
 
-describe("useLinkedBacklogTaskActions", () => {
+describe("useTaskTrashActions", () => {
 	const ctx = useTestEnvironment();
-
-	it("creates a dependency link between tasks", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-		await act(async () => {
-			ctx.root.render(
-				<HookHarness
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-		});
-
-		await act(async () => {
-			requireSnapshot(latestSnapshot).handleCreateDependency("task-1", "task-2");
-		});
-
-		expect(requireSnapshot(latestSnapshot).board.dependencies).toEqual([
-			expect.objectContaining({ fromTaskId: "task-1", toTaskId: "task-2" }),
-		]);
-	});
 
 	it("trashes through one server-owned lifecycle command while keeping the optimistic move", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
@@ -74,46 +53,6 @@ describe("useLinkedBacklogTaskActions", () => {
 			[],
 		);
 		expect(next.columns.find((column) => column.id === "trash")?.cards[0]?.id).toBe(reviewTask.id);
-	});
-
-	it("sends only the parent trash intent when dependencies become unblocked", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-		const executeTaskLifecycle = vi.fn<UseTaskLifecycleOperationsResult["executeTaskLifecycle"]>(async () => null);
-		const boardFactory = () =>
-			createBoard([
-				{ id: "dep-1", fromTaskId: "task-1", toTaskId: "task-2", createdAt: 10 },
-				{ id: "dep-2", fromTaskId: "task-3", toTaskId: "task-2", createdAt: 11 },
-			]);
-		await act(async () => {
-			ctx.root.render(
-				<HookHarness
-					boardFactory={boardFactory}
-					executeTaskLifecycle={executeTaskLifecycle}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-		});
-		const initial = requireSnapshot(latestSnapshot);
-		const reviewTask = initial.board.columns
-			.find((column) => column.id === "review")
-			?.cards.find((card) => !card.unstarted);
-		if (!reviewTask) {
-			throw new Error("Expected a review task.");
-		}
-
-		await act(async () => {
-			await initial.confirmMoveTaskToTrash(reviewTask, initial.board, "review");
-		});
-
-		// Linked-child discovery and starts are part of the same durable server
-		// operation. React must not launch child sessions independently.
-		expect(executeTaskLifecycle).toHaveBeenCalledOnce();
-		expect(executeTaskLifecycle.mock.calls[0]?.[0]).toMatchObject({
-			kind: "trash",
-			taskId: "task-2",
-		});
 	});
 
 	it("routes a direct request through the same lifecycle boundary", async () => {

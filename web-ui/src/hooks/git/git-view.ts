@@ -4,13 +4,13 @@ import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/
 
 // --- Types ---
 
-export type GitViewTab = "uncommitted" | "last_turn" | "compare";
+export type GitViewTab = "uncommitted" | "compare";
 
 // --- Tab persistence ---
 
 export function loadGitViewTab(): GitViewTab {
 	const stored = readLocalStorageItem(LocalStorageKey.GitViewActiveTab);
-	if (stored === "uncommitted" || stored === "last_turn" || stored === "compare") return stored;
+	if (stored === "uncommitted" || stored === "compare") return stored;
 	return "uncommitted";
 }
 
@@ -94,11 +94,9 @@ export function resolveGitChangesQueryProjectId({
 export function deriveActiveFiles(
 	activeTab: GitViewTab,
 	uncommittedFiles: RuntimeWorkdirFileChange[] | null | undefined,
-	lastTurnFiles: RuntimeWorkdirFileChange[] | null | undefined,
 	compareFiles: RuntimeWorkdirFileChange[] | null | undefined,
 ): RuntimeWorkdirFileChange[] | null {
 	if (activeTab === "uncommitted") return uncommittedFiles ?? null;
-	if (activeTab === "last_turn") return lastTurnFiles ?? null;
 	if (activeTab === "compare") return compareFiles ?? null;
 	return null;
 }
@@ -110,7 +108,6 @@ export function deriveEmptyTitle(
 	sourceRef: string | null,
 	targetRef: string | null,
 ): string {
-	if (activeTab === "last_turn") return "No changes since last turn";
 	if (activeTab === "uncommitted") return "No uncommitted changes";
 	if (activeTab === "compare" && hasCompareRefs) {
 		return includeUncommitted

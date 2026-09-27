@@ -10,7 +10,7 @@ import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory"
 import type { BoardCard, BoardData } from "@/types";
 
 const showAppToastMock = vi.hoisted(() => vi.fn());
-const useLinkedBacklogTaskActionsMock = vi.hoisted(() => vi.fn());
+const useTaskTrashActionsMock = vi.hoisted(() => vi.fn());
 const useProgrammaticCardMovesMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/components/app-toaster", () => ({
@@ -18,8 +18,8 @@ vi.mock("@/components/app-toaster", () => ({
 	showAppToast: showAppToastMock,
 }));
 
-vi.mock("@/hooks/board/use-linked-backlog-task-actions", () => ({
-	useLinkedBacklogTaskActions: useLinkedBacklogTaskActionsMock,
+vi.mock("@/hooks/board/use-task-trash-actions", () => ({
+	useTaskTrashActions: useTaskTrashActionsMock,
 }));
 
 vi.mock("@/hooks/board/use-programmatic-card-moves", () => ({
@@ -45,7 +45,6 @@ function createBoard(task: BoardCard = createTask("task-1", "Backlog task", 1), 
 			{ id: "in_progress", title: "In Progress", cards: columnId === "in_progress" ? [task] : [] },
 			{ id: "trash", title: "Trash", cards: columnId === "trash" ? [task] : [] },
 		],
-		dependencies: [],
 	};
 }
 
@@ -149,7 +148,7 @@ describe("useBoardInteractions", () => {
 			resetProgrammaticCardMoves: () => {},
 			requestMoveTaskToTrashWithAnimation: async () => {},
 		});
-		useLinkedBacklogTaskActionsMock.mockReturnValue({
+		useTaskTrashActionsMock.mockReturnValue({
 			handleCreateDependency: () => {},
 			handleDeleteDependency: () => {},
 			confirmMoveTaskToTrash: async () => {},

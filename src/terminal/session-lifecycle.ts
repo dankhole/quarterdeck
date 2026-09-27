@@ -271,8 +271,6 @@ export async function spawnTaskSession(
 			outstandingInteraction: null,
 			nativeWorkEvidence: null,
 			stalledSince: null,
-			latestTurnCheckpoint: null,
-			previousTurnCheckpoint: null,
 		});
 		throw new Error(formatSpawnFailure(commandBinary, error, "task"));
 	}
@@ -361,8 +359,6 @@ export async function spawnTaskSession(
 		startupRecoveryRequired: false,
 		startupRecoverySemanticStateUncertain: restoredSemanticStateIsUncertain,
 		warningMessage: request.startupRecoveryWarningMessage ?? null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
 	});
 	callbacksReady = true;
 	if (entry.active?.session === sessionForCallbacks) {
@@ -680,8 +676,6 @@ export async function spawnShellSession(
 			latestHookActivity: null,
 			outstandingInteraction: null,
 			stalledSince: null,
-			latestTurnCheckpoint: null,
-			previousTurnCheckpoint: null,
 		});
 		throw new Error(formatSpawnFailure(request.binary, error, "shell"));
 	}
@@ -724,8 +718,6 @@ export async function spawnShellSession(
 		outstandingInteraction: null,
 		stalledSince: null,
 		warningMessage: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
 	});
 	callbacksReady = true;
 	if (entry.active?.session === sessionForCallbacks) {

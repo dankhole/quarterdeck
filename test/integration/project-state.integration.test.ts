@@ -43,7 +43,6 @@ function createBoard(title: string): RuntimeBoardData {
 			},
 			{ id: "trash", title: "Trash", cards: [] },
 		],
-		dependencies: [],
 	};
 }
 
@@ -108,19 +107,20 @@ describe("project-state integration", { concurrent: false }, () => {
 					}),
 				);
 				const loaded = await loadProjectState(projectPath);
+				expect(loaded.board).not.toHaveProperty("dependencies");
 				expect(loaded.board.columns.map((column) => column.id)).toEqual(["in_progress", "review", "trash"]);
 				const cards = loaded.board.columns.find((column) => column.id === "review")?.cards;
 				expect(cards?.map((card) => [card.id, card.unstarted])).toEqual([
 					["finished", undefined],
 					["queued", true],
 				]);
-				expect(loaded.board.dependencies).toHaveLength(1);
 				await saveProjectState(projectPath, {
 					board: loaded.board,
 					sessions: loaded.sessions,
 					expectedRevision: loaded.revision,
 				});
 				expect(readFileSync(join(context.statePath, "board.json"), "utf8")).not.toContain('"backlog"');
+				expect(readFileSync(join(context.statePath, "board.json"), "utf8")).not.toContain('"dependencies"');
 			} finally {
 				cleanup();
 			}

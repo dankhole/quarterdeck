@@ -5,11 +5,10 @@ import {
 	runtimeTaskImageSchema,
 } from "@runtime-contract";
 import { z } from "zod";
-import type { BoardCard, BoardColumnId, BoardDependency, TaskImage } from "@/types";
+import type { BoardCard, BoardColumnId, TaskImage } from "@/types";
 
 const rawPersistedBoardSchema = z.object({
 	columns: z.array(z.unknown()),
-	dependencies: z.array(z.unknown()).optional(),
 });
 
 const rawPersistedBoardColumnSchema = z.object({
@@ -36,13 +35,6 @@ const rawPersistedBoardCardSchema = z.object({
 	updatedAt: z.unknown().optional(),
 });
 
-const rawPersistedBoardDependencySchema = z.object({
-	id: z.unknown().optional(),
-	fromTaskId: z.unknown().optional(),
-	toTaskId: z.unknown().optional(),
-	createdAt: z.unknown().optional(),
-});
-
 export interface ParsedPersistedBoardColumn {
 	id: BoardColumnId | "backlog";
 	cards: unknown[];
@@ -50,7 +42,6 @@ export interface ParsedPersistedBoardColumn {
 
 export interface ParsedPersistedBoardPayload {
 	columns: ParsedPersistedBoardColumn[];
-	dependencies: unknown[];
 }
 
 export function parsePersistedBoardPayload(rawBoard: unknown): ParsedPersistedBoardPayload | null {
@@ -69,7 +60,6 @@ export function parsePersistedBoardPayload(rawBoard: unknown): ParsedPersistedBo
 
 	return {
 		columns,
-		dependencies: result.data.dependencies ?? [],
 	};
 }
 
@@ -121,29 +111,6 @@ export function parsePersistedBoardCard(
 function parsePersistedAgentId(value: unknown): BoardCard["agentId"] | null {
 	const result = runtimeAgentIdSchema.safeParse(value);
 	return result.success ? result.data : null;
-}
-
-export function parsePersistedBoardDependency(
-	rawDependency: unknown,
-	options: { createDependencyId: () => string; now?: number },
-): BoardDependency | null {
-	const result = rawPersistedBoardDependencySchema.safeParse(rawDependency);
-	if (!result.success) {
-		return null;
-	}
-
-	const fromTaskId = parseRequiredTrimmedString(result.data.fromTaskId);
-	const toTaskId = parseRequiredTrimmedString(result.data.toTaskId);
-	if (!fromTaskId || !toTaskId || fromTaskId === toTaskId) {
-		return null;
-	}
-
-	return {
-		id: parseNonEmptyString(result.data.id) ?? options.createDependencyId(),
-		fromTaskId,
-		toTaskId,
-		createdAt: typeof result.data.createdAt === "number" ? result.data.createdAt : (options.now ?? Date.now()),
-	};
 }
 
 export function parsePersistedTaskImages(rawImages: unknown): TaskImage[] | undefined {

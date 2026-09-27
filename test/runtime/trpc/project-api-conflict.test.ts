@@ -181,7 +181,7 @@ describe("createProjectApi conflict resolution", () => {
 		gitSyncMocks.runGitMergeAction.mockReset();
 		projectStateMocks.loadProjectState.mockReset();
 
-		projectStateMocks.loadProjectState.mockResolvedValue({ board: { columns: [], dependencies: [] } });
+		projectStateMocks.loadProjectState.mockResolvedValue({ board: { columns: [] } });
 	});
 
 	it("getConflictFiles returns file content", async () => {

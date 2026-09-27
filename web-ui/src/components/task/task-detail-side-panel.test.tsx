@@ -73,7 +73,6 @@ function createSidePanelProps(): TaskDetailSidePanelProps {
 		onCardDoubleClick: () => {},
 		onTaskDragEnd: () => {},
 		onCreateTask: () => {},
-		onStartAllTasks: () => {},
 		onClearTrash: () => {},
 		onEditTask: () => {},
 	};

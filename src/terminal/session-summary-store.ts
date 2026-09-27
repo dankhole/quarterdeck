@@ -13,7 +13,6 @@ import {
 	type RuntimeTaskHookActivity,
 	type RuntimeTaskProviderHookOrderObservation,
 	type RuntimeTaskSessionSummary,
-	type RuntimeTaskTurnCheckpoint,
 } from "../core";
 import { compactDisplaySummaryText } from "../title";
 import { deriveStartupRecoveryPolicy } from "./session-startup-recovery-policy";
@@ -58,7 +57,6 @@ export interface SessionSummaryStore {
 		entry: { text: string; capturedAt: number },
 	): RuntimeTaskSessionSummary | null;
 	setDisplaySummary(taskId: string, text: string, generatedAt: number | null): RuntimeTaskSessionSummary | null;
-	applyTurnCheckpoint(taskId: string, checkpoint: RuntimeTaskTurnCheckpoint): RuntimeTaskSessionSummary | null;
 
 	// Bulk operations
 	markAllInterrupted(
@@ -103,8 +101,6 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		nativeWorkEvidence: null,
 		stalledSince: null,
 		warningMessage: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
 		conversationSummaries: [],
 		displaySummary: null,
 		displaySummaryGeneratedAt: null,
@@ -120,8 +116,6 @@ export function cloneSummary(summary: RuntimeTaskSessionSummary): RuntimeTaskSes
 		outstandingInteraction: summary.outstandingInteraction ? { ...summary.outstandingInteraction } : null,
 		initialWorkConfirmation: summary.initialWorkConfirmation ? { ...summary.initialWorkConfirmation } : null,
 		nativeWorkEvidence: summary.nativeWorkEvidence ? { ...summary.nativeWorkEvidence } : null,
-		latestTurnCheckpoint: summary.latestTurnCheckpoint ? { ...summary.latestTurnCheckpoint } : null,
-		previousTurnCheckpoint: summary.previousTurnCheckpoint ? { ...summary.previousTurnCheckpoint } : null,
 		conversationSummaries: summary.conversationSummaries.map((entry) => ({ ...entry })),
 	};
 }
@@ -451,23 +445,6 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		});
 	}
 
-	applyTurnCheckpoint(taskId: string, checkpoint: RuntimeTaskTurnCheckpoint): RuntimeTaskSessionSummary | null {
-		const entry = this.entries.get(taskId);
-		if (!entry) {
-			return null;
-		}
-
-		const latestCheckpoint = entry.latestTurnCheckpoint ?? null;
-		if (latestCheckpoint?.ref === checkpoint.ref && latestCheckpoint.commit === checkpoint.commit) {
-			return cloneSummary(entry);
-		}
-
-		return this.update(taskId, {
-			previousTurnCheckpoint: latestCheckpoint,
-			latestTurnCheckpoint: checkpoint,
-		});
-	}
-
 	// ── Bulk operations ───────────────────────────────────────────────────
 
 	markAllInterrupted(
@@ -545,8 +522,6 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 			outstandingInteraction: null,
 			nativeWorkEvidence: null,
 			stalledSince: null,
-			latestTurnCheckpoint: null,
-			previousTurnCheckpoint: null,
 		});
 	}
 
