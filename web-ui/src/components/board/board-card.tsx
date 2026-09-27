@@ -72,7 +72,7 @@ export const BoardCard = memo(function BoardCard({
 	draggable?: boolean;
 	rich?: boolean;
 	dragHandle?: ReactNode;
-	conversation?: ReactNode;
+	conversation?: (statusBadges: ReactNode) => ReactNode;
 }): React.ReactElement {
 	const {
 		reviewWorktreeSnapshot,
@@ -114,6 +114,35 @@ export const BoardCard = memo(function BoardCard({
 	});
 	const statusBadgeClass = isTrashCard ? "bg-surface-3 text-text-tertiary" : statusBadgeColors[statusTagStyle!];
 
+	const statusBadges =
+		showStatusBadge || agentBadge ? (
+			<div className={cn("flex flex-wrap items-center gap-1.5", !rich && "mt-1.5")} data-board-card-status-row>
+				{showStatusBadge ? (
+					<Tooltip content={statusTooltip}>
+						<span
+							className={cn(
+								"inline-flex shrink-0 items-center whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium leading-tight",
+								statusBadgeClass,
+							)}
+							data-board-card-status-badge
+						>
+							{statusLabel}
+						</span>
+					</Tooltip>
+				) : null}
+				{agentBadge ? (
+					<Tooltip content={agentBadge.tooltip}>
+						<span
+							className="inline-flex shrink-0 items-center whitespace-nowrap rounded bg-surface-3 px-1.5 py-0.5 text-xs font-medium text-text-secondary leading-tight"
+							data-board-card-agent-badge
+						>
+							{agentBadge.label}
+						</span>
+					</Tooltip>
+				) : null}
+			</div>
+		) : null;
+
 	const renderBranchStatus = () => {
 		if (!showProjectStatus || !reviewBranchLabel) {
 			return null;
@@ -129,6 +158,14 @@ export const BoardCard = memo(function BoardCard({
 					color: isTrashCard ? CARD_TEXT_COLOR.muted : undefined,
 				}}
 			>
+				{reviewChangeSummary && !isTrashCard ? (
+					<>
+						<span style={{ color: CARD_TEXT_COLOR.muted }}>{reviewChangeSummary.filesLabel}</span>
+						<span className="text-status-green"> +{reviewChangeSummary.additions}</span>
+						<span className="text-status-red"> -{reviewChangeSummary.deletions}</span>
+						<span style={{ color: CARD_TEXT_COLOR.muted }}> · </span>
+					</>
+				) : null}
 				<GitBranch
 					size={10}
 					style={{
@@ -153,14 +190,6 @@ export const BoardCard = memo(function BoardCard({
 						className="ml-1 inline text-text-tertiary"
 						style={{ verticalAlign: -1 }}
 					/>
-				) : null}
-				{reviewChangeSummary && !isTrashCard ? (
-					<>
-						<span style={{ color: CARD_TEXT_COLOR.muted }}> · </span>
-						<span style={{ color: CARD_TEXT_COLOR.muted }}>{reviewChangeSummary.filesLabel}</span>
-						<span className="text-status-green"> +{reviewChangeSummary.additions}</span>
-						<span className="text-status-red"> -{reviewChangeSummary.deletions}</span>
-					</>
 				) : null}
 			</p>
 		);
@@ -187,6 +216,13 @@ export const BoardCard = memo(function BoardCard({
 				data-task-id={card.id}
 				data-column-id={columnId}
 				data-selected={selected}
+				{...(rich && isCardInteractive ? { role: "link", tabIndex: 0, "aria-label": `Open ${displayTitle}` } : {})}
+				onKeyDown={(event) => {
+					if (rich && isCardInteractive && event.target === event.currentTarget && event.key === "Enter") {
+						event.preventDefault();
+						onClick?.();
+					}
+				}}
 				onClick={(event) => {
 					if (!isCardInteractive) {
 						return;
@@ -230,7 +266,7 @@ export const BoardCard = memo(function BoardCard({
 						className={cn(
 							"rounded-md border border-border-bright bg-surface-2 p-2.5",
 							rich &&
-								"flex h-full min-h-[260px] flex-col rounded-xl !border-border !bg-surface-1 !p-4 hover:!border-border-bright",
+								"flex h-full flex-col rounded-xl !border-border !bg-surface-1 !p-3 hover:!border-border-bright",
 							isCardInteractive && "cursor-pointer hover:bg-surface-3 hover:border-border-bright",
 							isDragging && "shadow-lg",
 							isHovered && isCardInteractive && "bg-surface-3 border-border-bright",
@@ -378,35 +414,9 @@ export const BoardCard = memo(function BoardCard({
 						{!rich && showSummaryOnCards && latestSummaryText ? (
 							<p className="text-xs text-text-secondary line-clamp-2 mt-1 m-0">{latestSummaryText}</p>
 						) : null}
-						{showStatusBadge || agentBadge ? (
-							<div className="mt-1.5 flex flex-wrap items-center gap-1.5" data-board-card-status-row>
-								{showStatusBadge ? (
-									<Tooltip content={statusTooltip}>
-										<span
-											className={cn(
-												"inline-flex shrink-0 items-center whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium leading-tight",
-												statusBadgeClass,
-											)}
-											data-board-card-status-badge
-										>
-											{statusLabel}
-										</span>
-									</Tooltip>
-								) : null}
-								{agentBadge ? (
-									<Tooltip content={agentBadge.tooltip}>
-										<span
-											className="inline-flex shrink-0 items-center whitespace-nowrap rounded bg-surface-3 px-1.5 py-0.5 text-xs font-medium text-text-secondary leading-tight"
-											data-board-card-agent-badge
-										>
-											{agentBadge.label}
-										</span>
-									</Tooltip>
-								) : null}
-							</div>
-						) : null}
+						{!rich && statusBadges}
 						{renderBranchStatus()}
-						{conversation}
+						{conversation?.(statusBadges)}
 					</div>
 				</Tooltip>
 			</div>

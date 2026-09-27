@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Compact board cards with smaller six-line response previews, less padding, and status/agent badges in the reply footer. Show file diff totals before branch names on cards. Remove the redundant Open agent button and preview header, and explain why replies are disabled while an agent is running.
+
 - Remove task dependency links, automatic linked-task starts, bulk start controls and shortcuts, and Last Turn diffs with their background Git snapshots. Tasks start individually; Git review retains Uncommitted and Compare.
 
 - Detect missing or stale direct dependencies before linking and report the required locked install instead of failing later during the build.

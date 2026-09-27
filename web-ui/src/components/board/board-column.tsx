@@ -151,15 +151,17 @@ export function BoardColumn({
 												rich={column.id !== "trash"}
 												dragHandle={handle}
 												conversation={
-													column.id !== "trash" ? (
-														<BoardCardConversation
-															card={card}
-															columnId={column.id}
-															summary={taskSessions[card.id]}
-															replyScope={replyScope}
-															onOpen={() => (card.unstarted ? onEditTask?.(card) : onCardClick?.(card))}
-														/>
-													) : undefined
+													column.id !== "trash"
+														? (statusBadges) => (
+																<BoardCardConversation
+																	card={card}
+																	columnId={column.id}
+																	summary={taskSessions[card.id]}
+																	replyScope={replyScope}
+																	statusBadges={statusBadges}
+																/>
+															)
+														: undefined
 												}
 												card={card}
 												index={index}

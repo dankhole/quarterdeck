@@ -60,7 +60,7 @@ describe("board card conversation", () => {
 			),
 		);
 		expect(container.textContent).toContain("Older response");
-		expect(container.querySelector("time")?.dateTime).toBe(new Date(100).toISOString());
+		expect(container.querySelector("time")).toBeNull();
 	});
 	it("keeps a draft across navigation and readiness changes, and submits only explicitly to the current launch", async () => {
 		const drafts = new BoardReplyDrafts();
