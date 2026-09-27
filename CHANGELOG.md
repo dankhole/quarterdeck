@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Open the agent chat when clicking a task card's latest response preview.
+
+- Reduce the Trash bar's height by removing extra bottom spacing and tightening vertical padding.
+
 - Allow pinning tasks in Trash to protect them from permanent deletion. Clear Trash skips pinned tasks, and their delete button stays hidden until unpinned.
 
 - Fix editing pre-existing tasks after folder conversion, restore Git views for branchless tasks when enabling Git, and prevent background Git polling from restarting after a mode change or disconnect.

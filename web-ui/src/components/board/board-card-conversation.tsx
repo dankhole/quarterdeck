@@ -156,10 +156,7 @@ export function BoardCardConversation({
 				: "Task prompt";
 	return (
 		<>
-			<div
-				className="my-4 flex-1 cursor-text rounded-md bg-surface-0/60 px-3 py-3"
-				onClick={(event) => event.stopPropagation()}
-			>
+			<div className="my-4 flex-1 cursor-pointer rounded-md bg-surface-0/60 px-3 py-3">
 				<div className="mb-2 flex items-center justify-between gap-2 text-[11px] text-text-secondary">
 					<span>{label}</span>
 					{latest && !finalMessage ? (

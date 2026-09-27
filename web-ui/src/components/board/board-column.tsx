@@ -91,7 +91,7 @@ export function BoardColumn({
 				isOver && "ring-1 ring-accent bg-accent/5",
 			)}
 		>
-			<div className={cn("mb-3 flex min-h-9 items-center justify-between gap-2", isTrash && "m-0 px-3 py-2")}>
+			<div className={cn("flex min-h-9 items-center justify-between gap-2", isTrash ? "px-3 py-1" : "mb-3")}>
 				{isTrash ? (
 					<button
 						type="button"
