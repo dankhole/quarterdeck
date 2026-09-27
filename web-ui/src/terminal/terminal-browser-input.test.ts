@@ -16,7 +16,11 @@ describe("terminal browser clipboard", () => {
 		vi.clearAllMocks();
 		terminal = new Terminal();
 		host = document.createElement("div");
-		input = new TerminalBrowserInput(terminal, host, { getSessionAgentId: () => "codex", beginImagePaste });
+		input = new TerminalBrowserInput(terminal, host, {
+			getSessionAgentId: () => "codex",
+			getConnectedTaskId: () => "task",
+			beginImagePaste,
+		});
 	});
 	afterEach(() => {
 		input.dispose();
