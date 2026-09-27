@@ -366,12 +366,48 @@ export const runtimeTaskSessionStopResponseSchema = z.object({
 });
 export type RuntimeTaskSessionStopResponse = z.infer<typeof runtimeTaskSessionStopResponseSchema>;
 
-export const runtimeTaskSessionInputRequestSchema = z.object({
-	taskId: z.string(),
-	text: z.string(),
-	appendNewline: z.boolean().optional(),
-	intent: z.enum(["write", "submit"]),
+const runtimeTaskSessionTextInputRequestSchema = z
+	.object({
+		taskId: z.string(),
+		text: z.string(),
+		appendNewline: z.boolean().optional(),
+		intent: z.enum(["write", "submit"]),
+	})
+	.strict();
+
+export const TERMINAL_IMAGE_PASTE_MAX_BYTES = 20 * 1024 * 1024;
+export const TERMINAL_IMAGE_PASTE_MAX_COUNT = 10;
+
+const terminalPasteImageSchema = runtimeTaskImageSchema.extend({
+	data: z
+		.string()
+		.min(4)
+		.max(Math.ceil(TERMINAL_IMAGE_PASTE_MAX_BYTES / 3) * 4)
+		.regex(/^[A-Za-z0-9+/]+={0,2}$/)
+		.refine((data) => data.length % 4 === 0),
+	mimeType: z.string().refine((mime) => ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(mime)),
 });
+
+export const runtimeTaskSessionInputRequestSchema = z.union([
+	runtimeTaskSessionTextInputRequestSchema,
+	z
+		.object({
+			taskId: z.string(),
+			sessionInstanceId: z.string().min(1),
+			intent: z.literal("write"),
+			images: z
+				.array(terminalPasteImageSchema)
+				.min(1)
+				.max(TERMINAL_IMAGE_PASTE_MAX_COUNT)
+				.refine(
+					(images) =>
+						images.reduce((sum, image) => sum + image.data.length, 0) <=
+						Math.ceil(TERMINAL_IMAGE_PASTE_MAX_BYTES / 3) * 4,
+					"Pasted images must total at most 20 MB.",
+				),
+		})
+		.strict(),
+]);
 export type RuntimeTaskSessionInputRequest = z.infer<typeof runtimeTaskSessionInputRequestSchema>;
 
 export const runtimeTaskSessionInputResponseSchema = z.object({

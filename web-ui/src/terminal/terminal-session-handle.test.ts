@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 
 const { socketInstances, SlotSocketManagerMock } = vi.hoisted(() => {
 	interface MockSlotSocketCallbacks {
 		onIoOpen: () => void;
+		onState: (payload: { type: "state"; summary: RuntimeTaskSessionSummary }) => void;
 	}
 
 	class MockSlotSocketManager {
@@ -22,6 +24,7 @@ const { socketInstances, SlotSocketManagerMock } = vi.hoisted(() => {
 		resetConnectionState = vi.fn();
 		sendIo = vi.fn(() => true);
 		sendControl = vi.fn(() => true);
+		emitState = (summary: RuntimeTaskSessionSummary) => this.callbacks.onState({ type: "state", summary });
 		openIo = vi.fn(() => {
 			this.isIoOpen = true;
 			this.callbacks.onIoOpen();
@@ -56,7 +59,9 @@ vi.mock("@/utils/client-logger", () => ({
 	}),
 }));
 
+import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import { TerminalSessionHandle } from "@/terminal/terminal-session-handle";
+import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 
 function createDeferred<T>() {
 	let resolve: (value?: T | PromiseLike<T>) => void = () => {};
@@ -107,6 +112,37 @@ describe("TerminalSessionHandle", () => {
 
 	afterEach(() => {
 		vi.useRealTimers();
+	});
+
+	it("captures image paste ownership before asynchronous file reads and rejects retargeting", async () => {
+		const { handle } = createHandle();
+		handle.connectToTask("task-1", "project-1");
+		const sockets = socketInstances[0]!;
+		sockets.isIoOpen = true;
+		sockets.emitState(
+			createTestTaskSessionSummary({ taskId: "task-1", agentId: "codex", sessionInstanceId: "first" }),
+		);
+		const writer = handle.beginImagePaste();
+		expect(writer).not.toBeNull();
+		sockets.emitState(
+			createTestTaskSessionSummary({ taskId: "task-1", agentId: "codex", sessionInstanceId: "replacement" }),
+		);
+		await expect(writer!([])).rejects.toThrow("Terminal session changed");
+		expect(getRuntimeTrpcClient).not.toHaveBeenCalled();
+		handle.dispose();
+	});
+
+	it("does not offer image paste for disconnected or shell terminals", () => {
+		const { handle } = createHandle();
+		expect(handle.beginImagePaste()).toBeNull();
+		handle.connectToTask("shell", "project-1");
+		const sockets = socketInstances[0]!;
+		sockets.isIoOpen = true;
+		sockets.emitState(
+			createTestTaskSessionSummary({ taskId: "shell", agentId: null, sessionInstanceId: "shell-launch" }),
+		);
+		expect(handle.beginImagePaste()).toBeNull();
+		handle.dispose();
 	});
 
 	it("makes the terminal interactive without requesting restore if restore readiness stalls but IO is open", async () => {

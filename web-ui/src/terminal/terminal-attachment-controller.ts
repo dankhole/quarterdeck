@@ -98,6 +98,7 @@ export class TerminalAttachmentController {
 			clearGeometry: clearTerminalGeometry,
 			getConnectedTaskId: () => this.connectedTaskId,
 			getSessionAgentId: () => this.sessionAgentId,
+			beginImagePaste: () => this.session.beginImagePaste(),
 			isDisposed: () => this.options.isDisposed(),
 			notifyOutputText: (text) => this.session.publishOutputText(text),
 			reportGeometry: reportTerminalGeometry,

@@ -5,6 +5,7 @@ import type {
 	RuntimeTerminalWsServerMessage,
 } from "@/runtime/types";
 import { SlotSocketManager } from "@/terminal/slot-socket-manager";
+import type { TerminalImagePasteWriter } from "@/terminal/terminal-input";
 import { generateTerminalClientId } from "@/terminal/terminal-socket-utils";
 import type { TerminalWriteOptions } from "@/terminal/terminal-write-options";
 import { createClientLogger } from "@/utils/client-logger";
@@ -111,6 +112,30 @@ export class TerminalSessionHandle {
 
 	get sessionAgentId(): RuntimeTaskSessionSummary["agentId"] | null {
 		return this.latestSummary?.agentId ?? null;
+	}
+
+	beginImagePaste(): TerminalImagePasteWriter | null {
+		const { taskId, projectId } = this;
+		const sessionInstanceId = this.latestSummary?.sessionInstanceId;
+		if (!taskId || !projectId || !sessionInstanceId || !this.sessionAgentId || !this.isIoOpen) return null;
+		return async (images) => {
+			if (
+				this.callbacks.isDisposed() ||
+				this.taskId !== taskId ||
+				this.projectId !== projectId ||
+				this.latestSummary?.sessionInstanceId !== sessionInstanceId ||
+				!this.isIoOpen
+			) {
+				throw new Error("Terminal session changed during image paste.");
+			}
+			const result = await getRuntimeTrpcClient(projectId).runtime.sendTaskSessionInput.mutate({
+				taskId,
+				sessionInstanceId,
+				images,
+				intent: "write",
+			});
+			if (!result.ok) throw new Error("Image paste was not accepted.");
+		};
 	}
 
 	get hasIoSocket(): boolean {

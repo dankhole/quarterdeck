@@ -1,5 +1,6 @@
 import { parseTaskSessionInputRequest, type TaskResourceOperationRunner } from "../../core";
 import type { TerminalSessionManager } from "../../terminal";
+import { prepareTerminalImagePaste } from "../../terminal/terminal-image-paste";
 import type { RuntimeTrpcProjectScope } from "../app-router-context";
 
 export interface SendTaskSessionInputDeps {
@@ -21,8 +22,28 @@ export async function handleSendTaskSessionInput(
 		const body = parseTaskSessionInputRequest(input);
 		const summary = await deps.taskResourceOperations.run(projectScope.projectId, body.taskId, async () => {
 			await deps.assertNativeInputAllowed?.(projectScope, body.taskId);
-			const payloadText = body.appendNewline ? `${body.text}${getTerminalSubmitTerminator()}` : body.text;
 			const terminalManager = await deps.getScopedTerminalManager(projectScope);
+			if ("images" in body) {
+				const identity = terminalManager.getTaskSessionProcessIdentity(body.taskId);
+				if (!identity?.agentId || identity.sessionInstanceId !== body.sessionInstanceId) {
+					throw new Error("Task session changed before image paste.");
+				}
+				const prepared = await prepareTerminalImagePaste(body.images);
+				let delivered = false;
+				try {
+					await deps.assertNativeInputAllowed?.(projectScope, body.taskId);
+					const current = terminalManager.getTaskSessionProcessIdentity(body.taskId);
+					if (current?.sessionInstanceId !== identity.sessionInstanceId || current.pid !== identity.pid) {
+						throw new Error("Task session changed during image paste.");
+					}
+					const result = terminalManager.writeInput(body.taskId, prepared.data, { explicitUserSubmission: false });
+					delivered = result !== null;
+					return result;
+				} finally {
+					if (!delivered) await prepared.discard();
+				}
+			}
+			const payloadText = body.appendNewline ? `${body.text}${getTerminalSubmitTerminator()}` : body.text;
 			return terminalManager.writeInput(body.taskId, Buffer.from(payloadText, "utf8"), {
 				explicitUserSubmission: body.intent === "submit",
 			});

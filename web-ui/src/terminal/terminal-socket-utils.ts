@@ -1,5 +1,3 @@
-import { isMacPlatform } from "@/utils/platform";
-
 export function generateTerminalClientId(): string {
 	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
 		return crypto.randomUUID();
@@ -49,15 +47,4 @@ export function getTerminalSocketChunkByteLength(data: string | ArrayBuffer | Bl
 		return data.byteLength;
 	}
 	return 0;
-}
-
-export function isCopyShortcut(event: KeyboardEvent): boolean {
-	return (
-		event.type === "keydown" &&
-		!event.altKey &&
-		event.key.toLowerCase() === "c" &&
-		(isMacPlatform
-			? event.metaKey && !event.ctrlKey && !event.shiftKey
-			: event.ctrlKey && event.shiftKey && !event.metaKey)
-	);
 }

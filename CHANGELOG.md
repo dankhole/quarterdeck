@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Support macOS Command+Left/Right/Backspace editing, Ctrl+Shift+C for Codex fullscreen selections on other platforms, and screenshot paste into connected task-agent terminals. Report browser clipboard failures, preserve IME and unrelated modified keys, and reject image uploads when the target session changes.
+
 - Fix Command+C copying Codex fullscreen selections on macOS, while preserving terminal selection copying and Ctrl+C behavior.
 
 - Open the new-task dialog larger by default, with a taller prompt editor that fills the available space and balanced spacing around task options.

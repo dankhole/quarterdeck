@@ -7,18 +7,18 @@ import {
 	buildMentionInsertText,
 	detectActiveComposerToken,
 } from "@/components/task/composer-completion";
-import {
-	ACCEPTED_TASK_IMAGE_INPUT_ACCEPT,
-	collectImageFilesFromDataTransfer,
-	extractImagesFromDataTransfer,
-	fileToTaskImage,
-} from "@/components/task/task-image-input-utils";
 import { TaskImageStrip } from "@/components/task/task-image-strip";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { TaskImage } from "@/types";
 import { useDebouncedEffect } from "@/utils/react-use";
+import {
+	ACCEPTED_TASK_IMAGE_INPUT_ACCEPT,
+	collectImageFilesFromDataTransfer,
+	extractImagesFromDataTransfer,
+	fileToTaskImage,
+} from "@/utils/task-image-input";
 
 const FILE_MENTION_LIMIT = 8;
 const MENTION_QUERY_DEBOUNCE_MS = 120;

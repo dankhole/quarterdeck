@@ -1,45 +1,24 @@
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
-import { ClipboardAddon, type ClipboardSelectionType, type IClipboardProvider } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
-import { browserHostIntegrations } from "@/runtime/browser-host-integrations";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import type { RuntimeAgentId, RuntimeTerminalWsClientMessage } from "@/runtime/types";
 import { SlotDomHost } from "@/terminal/slot-dom-host";
 import { SlotRenderer } from "@/terminal/slot-renderer";
 import { SlotResizeManager } from "@/terminal/slot-resize-manager";
 import { SlotWriteQueue } from "@/terminal/slot-write-queue";
+import { TerminalBrowserInput } from "@/terminal/terminal-browser-input";
 import { TERMINAL_SCROLLBACK } from "@/terminal/terminal-constants";
+import type { TerminalImagePasteWriter } from "@/terminal/terminal-input";
 import { createQuarterdeckTerminalOptions, type PersistentTerminalAppearance } from "@/terminal/terminal-options";
 import { shouldSkipEmptyRestoreSnapshot } from "@/terminal/terminal-restore-policy";
-import { isCopyShortcut } from "@/terminal/terminal-socket-utils";
 import type { TerminalWriteOptions } from "@/terminal/terminal-write-options";
 import { createClientLogger } from "@/utils/client-logger";
 import { isMacPlatform } from "@/utils/platform";
 
 const log = createClientLogger("terminal-viewport");
-
-const SHIFT_ENTER_SEQUENCE = "\n";
-// Kitty's Super+C encoding, understood by Codex's fullscreen selection handler.
-// Preserve Command rather than substituting Ctrl+C, which can interrupt a turn.
-const CODEX_COMMAND_COPY_SEQUENCE = "\u001b[99;9u";
-
-const terminalClipboardProvider: IClipboardProvider = {
-	async readText(selection: ClipboardSelectionType): Promise<string> {
-		if (selection !== "c") {
-			return "";
-		}
-		return await browserHostIntegrations.readClipboardText().catch(() => "");
-	},
-	async writeText(selection: ClipboardSelectionType, text: string): Promise<void> {
-		if (selection !== "c") {
-			return;
-		}
-		await browserHostIntegrations.writeClipboardText(text).catch(() => {});
-	},
-};
 
 let currentTerminalFontWeight: number = CONFIG_DEFAULTS.terminalFontWeight;
 
@@ -53,6 +32,7 @@ interface TerminalViewportCallbacks {
 	clearGeometry: (taskId: string) => void;
 	getConnectedTaskId: () => string | null;
 	getSessionAgentId: () => RuntimeAgentId | null;
+	beginImagePaste: () => TerminalImagePasteWriter | null;
 	isDisposed: () => boolean;
 	notifyOutputText: (text: string) => void;
 	reportGeometry: (taskId: string, geometry: { cols: number; rows: number }) => void;
@@ -62,6 +42,7 @@ interface TerminalViewportCallbacks {
 
 export class TerminalViewport {
 	private readonly terminal: Terminal;
+	private readonly browserInput: TerminalBrowserInput;
 	private readonly fitAddon = new FitAddon();
 	private readonly domHost = new SlotDomHost();
 	private readonly renderer: SlotRenderer;
@@ -86,7 +67,7 @@ export class TerminalViewport {
 		this.writeQueue = this.createWriteQueue();
 		this.initializeTerminalAddons();
 		this.configureTerminalIoForwarding();
-		this.configureCustomKeyHandling();
+		this.browserInput = new TerminalBrowserInput(this.terminal, this.domHost.hostElement, callbacks);
 		this.renderer = this.createRenderer();
 		this.resizer = this.createResizeManager();
 		this.renderer.openWhenFontsReady();
@@ -125,7 +106,6 @@ export class TerminalViewport {
 
 	private initializeTerminalAddons(): void {
 		this.terminal.loadAddon(this.fitAddon);
-		this.terminal.loadAddon(new ClipboardAddon(undefined, terminalClipboardProvider));
 		this.terminal.loadAddon(new WebLinksAddon());
 		this.terminal.loadAddon(this.unicode11Addon);
 		this.terminal.unicode.activeVersion = "11";
@@ -141,36 +121,6 @@ export class TerminalViewport {
 				bytes[index] = data.charCodeAt(index) & 0xff;
 			}
 			this.callbacks.sendIoData(bytes);
-		});
-	}
-
-	private configureCustomKeyHandling(): void {
-		this.terminal.attachCustomKeyEventHandler((event) => {
-			if (event.key === "Enter" && event.shiftKey) {
-				if (event.type === "keydown") {
-					this.terminal.input(SHIFT_ENTER_SEQUENCE);
-				}
-				return false;
-			}
-			if (isCopyShortcut(event)) {
-				if (this.terminal.hasSelection()) {
-					void browserHostIntegrations.writeClipboardText(this.terminal.getSelection()).catch(() => {
-						// Ignore clipboard failures.
-					});
-					return false;
-				}
-				if (
-					isMacPlatform &&
-					this.callbacks.getSessionAgentId() === "codex" &&
-					this.terminal.buffer.active.type === "alternate" &&
-					this.terminal.modes.mouseTrackingMode !== "none"
-				) {
-					event.preventDefault();
-					this.terminal.input(CODEX_COMMAND_COPY_SEQUENCE);
-					return false;
-				}
-			}
-			return true;
 		});
 	}
 
@@ -486,6 +436,7 @@ export class TerminalViewport {
 		this.cancelPendingReveal();
 		this.resizer.disconnect();
 		this.renderer.dispose();
+		this.browserInput.dispose();
 		this.domHost.dispose();
 		this.terminal.dispose();
 	}

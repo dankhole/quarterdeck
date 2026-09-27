@@ -56,7 +56,7 @@ export function collectImageFilesFromDataTransfer(dataTransfer: DataTransfer): F
 	if (dataTransfer.items && dataTransfer.items.length > 0) {
 		for (let i = 0; i < dataTransfer.items.length; i++) {
 			const item = dataTransfer.items[i];
-			if (!item || item.kind !== "file") {
+			if (item?.kind !== "file") {
 				continue;
 			}
 			const file = item.getAsFile();

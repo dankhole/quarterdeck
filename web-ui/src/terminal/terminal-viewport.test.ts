@@ -42,6 +42,7 @@ describe("TerminalViewport copy keys", () => {
 				clearGeometry: vi.fn(),
 				getConnectedTaskId: () => "task-copy",
 				getSessionAgentId: () => agentId,
+				beginImagePaste: () => null,
 				isDisposed: () => false,
 				notifyOutputText: vi.fn(),
 				reportGeometry: vi.fn(),
@@ -119,11 +120,11 @@ describe("TerminalViewport copy keys", () => {
 		expect(sendIoData).not.toHaveBeenCalled();
 	});
 
-	it("does not send Super+C on other platforms without a terminal selection", () => {
+	it("sends Ctrl+Shift+C to Codex on other platforms without a terminal selection", () => {
 		platform.isMac = false;
-		expect(handleKey(copyKey({ metaKey: false, ctrlKey: true, shiftKey: true }))).toBe(true);
+		expect(handleKey(copyKey({ metaKey: false, ctrlKey: true, shiftKey: true }))).toBe(false);
 		expect(handleKey(copyKey())).toBe(true);
-		expect(sendIoData).not.toHaveBeenCalled();
+		expect(sendIoData.mock.calls).toEqual([["\u001b[99;6u"]]);
 	});
 
 	it("delivers the provider's OSC 52 copy through the clipboard integration", async () => {
