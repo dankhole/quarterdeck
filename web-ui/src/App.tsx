@@ -454,6 +454,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 									}}
 								>
 									<ProjectNavigationPanel
+										onCreateTask={handleOpenCreateTask}
 										projects={displayedProjects}
 										isLoadingProjects={isProjectListLoading}
 										currentProjectId={projectNavigation.navigationCurrentProjectId}
@@ -557,7 +558,6 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 							shouldShowProjectLoadingState={shouldShowProjectLoadingState}
 							editingTaskId={editingTaskId}
 							inlineTaskEditor={inlineTaskEditor}
-							handleOpenCreateTask={handleOpenCreateTask}
 							handleOpenEditTask={handleOpenEditTask}
 							homeGitSummary={homeGitSummary}
 						/>

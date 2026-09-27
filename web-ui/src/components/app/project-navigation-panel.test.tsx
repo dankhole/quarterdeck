@@ -70,12 +70,24 @@ describe("ProjectNavigationPanel", () => {
 					onSelectProject={() => {}}
 					onRemoveProject={async () => true}
 					onAddProject={() => {}}
+					onCreateTask={() => {}}
 					needsInputByProject={{}}
 					{...overrides}
 				/>,
 			);
 		});
 	}
+
+	it("opens task creation from the button above the projects", () => {
+		const onCreateTask = vi.fn();
+		renderPanel({ onCreateTask });
+		const button = container.querySelector<HTMLButtonElement>('[aria-label="Create task"]')!;
+		expect(
+			button.compareDocumentPosition(container.querySelector(".kb-project-row")!) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+		act(() => button.click());
+		expect(onCreateTask).toHaveBeenCalledOnce();
+	});
 
 	it("renders the project list", () => {
 		renderPanel();

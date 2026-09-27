@@ -1,6 +1,7 @@
 import { ProjectNavigationList } from "@/components/app/project-navigation-list";
 import { ProjectNavigationRemovalDialog } from "@/components/app/project-navigation-removal-dialog";
 import { ProjectNavigationSidebarSections } from "@/components/app/project-navigation-sidebar-sections";
+import { CreateTaskButton } from "@/components/task/create-task-button";
 import { useProjectNavigationPanel } from "@/hooks/project";
 import type { RuntimeProjectSummary } from "@/runtime/types";
 
@@ -14,6 +15,7 @@ export function ProjectNavigationPanel({
 	onRemoveProject,
 	onReorderProjects,
 	onAddProject,
+	onCreateTask,
 	needsInputByProject,
 }: {
 	projects: RuntimeProjectSummary[];
@@ -25,6 +27,7 @@ export function ProjectNavigationPanel({
 	onRemoveProject: (projectId: string) => Promise<boolean>;
 	onReorderProjects?: (projectOrder: string[]) => Promise<void>;
 	onAddProject: () => void;
+	onCreateTask: () => void;
 	needsInputByProject: Record<string, number>;
 }): React.ReactElement {
 	const panel = useProjectNavigationPanel({
@@ -36,13 +39,7 @@ export function ProjectNavigationPanel({
 
 	return (
 		<div className="flex flex-col min-h-0 overflow-hidden bg-surface-1 flex-1">
-			<div style={{ padding: "12px 12px 8px" }}>
-				<div>
-					<div className="font-semibold text-base flex items-baseline gap-1.5">
-						Quarterdeck <span className="text-text-secondary font-normal text-xs">v{__APP_VERSION__}</span>
-					</div>
-				</div>
-			</div>
+			<CreateTaskButton onClick={onCreateTask} />
 
 			<ProjectNavigationList
 				projects={panel.displayedProjects}

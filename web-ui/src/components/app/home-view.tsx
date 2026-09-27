@@ -25,7 +25,6 @@ interface HomeViewProps {
 	shouldShowProjectLoadingState: boolean;
 	editingTaskId: string | null;
 	inlineTaskEditor: ReactNode | undefined;
-	handleOpenCreateTask: () => void;
 	handleOpenEditTask: (task: BoardCard, options?: { preserveDetailSelection?: boolean }) => void;
 	homeGitSummary: RuntimeGitSyncSummary | null;
 }
@@ -35,7 +34,6 @@ export function HomeView({
 	shouldShowProjectLoadingState,
 	editingTaskId,
 	inlineTaskEditor,
-	handleOpenCreateTask,
 	handleOpenEditTask,
 	homeGitSummary,
 }: HomeViewProps): ReactElement {
@@ -244,7 +242,6 @@ export function HomeView({
 									data={board}
 									taskSessions={sessions}
 									onCardSelect={interactions.handleCardSelect}
-									onCreateTask={handleOpenCreateTask}
 									onClearTrash={interactions.handleOpenClearTrash}
 									editingTaskId={editingTaskId}
 									inlineTaskEditor={inlineTaskEditor}

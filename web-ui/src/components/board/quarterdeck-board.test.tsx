@@ -44,30 +44,16 @@ describe("QuarterdeckBoard grid", () => {
 		container.remove();
 		vi.restoreAllMocks();
 	});
-	it("puts creation first and keeps Trash visible without mounting its cards until expanded", async () => {
-		const create = vi.fn();
+	it("keeps Trash visible without mounting its cards until expanded", async () => {
 		await act(async () =>
 			root.render(
 				<TooltipProvider>
 					<CardActionsProvider stable={{}} reactive={reactive}>
-						<QuarterdeckBoard
-							data={data}
-							taskSessions={{}}
-							onCardSelect={() => {}}
-							onCreateTask={create}
-							onDragEnd={() => {}}
-						/>
+						<QuarterdeckBoard data={data} taskSessions={{}} onCardSelect={() => {}} onDragEnd={() => {}} />
 					</CardActionsProvider>
 				</TooltipProvider>,
 			),
 		);
-		const createButton = container.querySelector<HTMLButtonElement>('[aria-label="Create task"]')!;
-		expect(
-			createButton.compareDocumentPosition(container.querySelector('[data-column-id="in_progress"]')!) &
-				Node.DOCUMENT_POSITION_FOLLOWING,
-		).toBeTruthy();
-		await act(async () => createButton.click());
-		expect(create).toHaveBeenCalledOnce();
 		expect(container.querySelector('[data-task-id="archived"]')).toBeNull();
 		const trash = container.querySelector<HTMLButtonElement>('[aria-controls="board-trash-cards"]')!;
 		expect(trash.textContent).toContain("Trash");
@@ -90,7 +76,6 @@ describe("QuarterdeckBoard grid", () => {
 							data={data}
 							taskSessions={{}}
 							onCardSelect={() => {}}
-							onCreateTask={() => {}}
 							onDragEnd={onDrop}
 							onRequestProgrammaticCardMoveReady={ready}
 						/>

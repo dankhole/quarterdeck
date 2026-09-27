@@ -1,9 +1,9 @@
 import { type BeforeCapture, DragDropContext, Droppable, type DropResult } from "@hello-pangea/dnd";
-import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-
 import { BoardCard } from "@/components/board/board-card";
+import { CreateTaskButton } from "@/components/task/create-task-button";
 import { Button } from "@/components/ui/button";
 import { ColumnIndicator } from "@/components/ui/column-indicator";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -291,16 +291,7 @@ export function ColumnContextPanel({
 				background: "var(--color-surface-0)",
 			}}
 		>
-			{onCreateTask ? (
-				<div className="shrink-0 px-2 pt-3 pb-1">
-					<Button fill icon={<Plus size={14} />} aria-label="Create task" onClick={onCreateTask}>
-						Create task{" "}
-						<span aria-hidden className="ml-auto text-text-tertiary">
-							C
-						</span>
-					</Button>
-				</div>
-			) : null}
+			{onCreateTask ? <CreateTaskButton onClick={onCreateTask} /> : null}
 			<DragDropContext onBeforeCapture={handleBeforeCapture} onDragEnd={handleDragEnd}>
 				<div
 					ref={scrollContainerRef}

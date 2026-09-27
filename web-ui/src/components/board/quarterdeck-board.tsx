@@ -9,10 +9,8 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import type { DropResult } from "@hello-pangea/dnd";
-import { Plus } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { BoardColumn } from "@/components/board/board-column";
-import { Button } from "@/components/ui/button";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { boardGridCollision } from "@/state/board-grid-collision";
 import { resolveBoardGridDrop } from "@/state/board-grid-drag";
@@ -27,7 +25,6 @@ export function QuarterdeckBoard({
 	replyScope,
 	taskSessions,
 	onCardSelect,
-	onCreateTask,
 	onClearTrash,
 	editingTaskId,
 	inlineTaskEditor,
@@ -39,7 +36,6 @@ export function QuarterdeckBoard({
 	replyScope?: BoardReplyScope;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCardSelect: (taskId: string) => void;
-	onCreateTask: () => void;
 	onClearTrash?: () => void;
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
@@ -82,15 +78,6 @@ export function QuarterdeckBoard({
 	};
 	return (
 		<div className="flex min-h-0 min-w-0 flex-1 flex-col">
-			<div className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-6 py-4">
-				<Button variant="primary" icon={<Plus size={16} />} onClick={onCreateTask} aria-label="Create task">
-					Create task{" "}
-					<span aria-hidden className="ml-4 rounded border border-white/20 px-1.5 text-[11px] text-white/70">
-						C
-					</span>
-				</Button>
-				<span className="text-xs text-text-tertiary">Your agents, at a glance</span>
-			</div>
 			<DndContext
 				sensors={sensors}
 				collisionDetection={boardGridCollision}

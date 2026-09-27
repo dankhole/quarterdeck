@@ -109,7 +109,7 @@ Do not route task-scoped panels through the home side-panel path; task panels us
 - Selecting Home also deselects the current task and opens Projects.
 - If a task is selected, task selection auto-switches away from Home to Terminal.
 
-The home board stacks In Progress and Review sections with responsive card grids. Trash is a visible, collapsed row that mounts its compact cards only when expanded. Create task stays above the scrollable sections, including in the task sidebar. Unstarted tasks remain grouped within Review.
+The home board stacks In Progress and Review sections with responsive card grids. Trash is a visible, collapsed row that mounts its compact cards only when expanded. Create task stays above the project list in the Projects side panel and above the scrollable sections in the task sidebar. The home board has no separate header row. Unstarted tasks remain grouped within Review.
 
 Rich cards show a bounded plain-text response preview from the existing session projection. They never mount or prewarm terminals or fetch transcripts. Inline replies use the existing task-input API with an exact session-instance fence; only a live, review-ready native agent can receive them. Approvals and busy agents keep drafts without sending. `BoardReplyDrafts` owns window-local drafts keyed by project, task, and creation time, surviving navigation and column changes without writing board state.
 
