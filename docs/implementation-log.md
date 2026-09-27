@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-27 — Forward macOS copy to Codex-owned fullscreen selections
+
+Codex's fullscreen mouse selection is provider-owned, so xterm reports no selection even when the user sees highlighted text. Quarterdeck previously handled Command+C only for xterm selections, and xterm 6 does not encode that shortcut for the PTY. `TerminalViewport` now preserves local selection copying first, then sends Kitty Super+C (`CSI 99;9u`) only on macOS for the current Codex session in an alternate screen with mouse tracking. `TerminalAttachmentController` supplies the current agent identity; the copy matcher rejects unrelated modifier combinations. Never map this gesture to Ctrl+C, which can interrupt work and trigger Quarterdeck's interrupt bookkeeping. Codex's existing OSC 52 output continues through the browser host-integration boundary.
+
+Validation: 18 viewport regression tests using the real xterm parser/input/clipboard addon, 12 attachment-controller tests, web typecheck, changed-file Biome, and diff checks. Fake Agent Lab `command-copy-20260927T151200Z-72705a` used synthetic fullscreen/mouse modes to verify a real browser Command+C sends exactly the Super+C bytes; Option-selected terminal text still copied without keyboard input, and synthetic OSC 52 output reached the simulated clipboard ledger. The forbidden-launch log was empty. No real provider or account was used; provider acceptance was checked against Codex 0.157.0 source.
+
 ## 2026-09-26 — Fold Backlog into Review with explicit unstarted state
 
 The canonical board now has In Progress, Review, and Trash. Review cards use an explicit `unstarted` flag; missing session state never implies an unstarted task. Persisted Backlog cards migrate into Review, including boards inside pending filesystem transaction journals before recovery validation. Pending lifecycle journals plus exact legacy command-receipt fingerprints remain replayable across upgrades. Start atomically clears the flag, failed preparation restores it while retaining the workspace, and trash/restore preserves it without accidentally launching an agent. Generic board commands cannot bypass managed Start, including moves without a source column.

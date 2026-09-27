@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Fix Command+C copying Codex fullscreen selections on macOS, while preserving terminal selection copying and Ctrl+C behavior.
+
 - Open the new-task dialog larger by default, with a taller prompt editor that fills the available space and balanced spacing around task options.
 
 - Fold Backlog into Review as Unstarted tasks, with a grouped layout, Start and edit actions, and automatic migration of existing tasks. Preserve bulk start, dependencies, and interrupted-start recovery.

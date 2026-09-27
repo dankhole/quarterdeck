@@ -54,7 +54,10 @@ export function getTerminalSocketChunkByteLength(data: string | ArrayBuffer | Bl
 export function isCopyShortcut(event: KeyboardEvent): boolean {
 	return (
 		event.type === "keydown" &&
-		((isMacPlatform && event.metaKey && !event.shiftKey && event.key.toLowerCase() === "c") ||
-			(!isMacPlatform && event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "c"))
+		!event.altKey &&
+		event.key.toLowerCase() === "c" &&
+		(isMacPlatform
+			? event.metaKey && !event.ctrlKey && !event.shiftKey
+			: event.ctrlKey && event.shiftKey && !event.metaKey)
 	);
 }

@@ -133,6 +133,8 @@ Claude launches always use fullscreen, overriding classic renderer environment p
 
 ### Codex hooks and launch arguments
 
+- Fullscreen Codex owns mouse selections separately from xterm's selection. On macOS, `TerminalViewport` copies an xterm selection first; otherwise it forwards Command+C as Kitty Super+C (`CSI 99;9u`) only for a Codex session with an active alternate screen and mouse tracking. Codex's [selection handler](https://raw.githubusercontent.com/openai/codex/rust-v0.157.0/codex-rs/tui/src/text_selection.rs) accepts that encoding. Never substitute Ctrl+C: without a provider selection it can interrupt work, and Quarterdeck treats it as lifecycle input. Keep clipboard writes on the existing browser host-integration boundary.
+
 - Codex requires 0.157.0 or newer. Native task launches pass `--no-daemon` before `resume` or `fork` so the managed PTY does not attach to Codex's shared background server. Keep this flag out of shared app-server preparation.
 
 - Native Codex task launches enforce `tui.fullscreen_transcript=true`, `tui.alternate_screen="always"`, and `tui.raw_output_mode=false`, replacing conflicting overrides and removing `--no-alt-screen`. Keep these renderer arguments in the native adapter, before `resume` or `fork`; shared app-server preparation does not own TUI rendering. These are launch-scoped settings, not edits to user configuration.

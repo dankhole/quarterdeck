@@ -97,6 +97,7 @@ export class TerminalAttachmentController {
 		return new TerminalViewport(this.slotId, appearance, {
 			clearGeometry: clearTerminalGeometry,
 			getConnectedTaskId: () => this.connectedTaskId,
+			getSessionAgentId: () => this.sessionAgentId,
 			isDisposed: () => this.options.isDisposed(),
 			notifyOutputText: (text) => this.session.publishOutputText(text),
 			reportGeometry: reportTerminalGeometry,

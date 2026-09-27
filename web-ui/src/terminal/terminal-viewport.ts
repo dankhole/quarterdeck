@@ -6,7 +6,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import { browserHostIntegrations } from "@/runtime/browser-host-integrations";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
-import type { RuntimeTerminalWsClientMessage } from "@/runtime/types";
+import type { RuntimeAgentId, RuntimeTerminalWsClientMessage } from "@/runtime/types";
 import { SlotDomHost } from "@/terminal/slot-dom-host";
 import { SlotRenderer } from "@/terminal/slot-renderer";
 import { SlotResizeManager } from "@/terminal/slot-resize-manager";
@@ -22,6 +22,9 @@ import { isMacPlatform } from "@/utils/platform";
 const log = createClientLogger("terminal-viewport");
 
 const SHIFT_ENTER_SEQUENCE = "\n";
+// Kitty's Super+C encoding, understood by Codex's fullscreen selection handler.
+// Preserve Command rather than substituting Ctrl+C, which can interrupt a turn.
+const CODEX_COMMAND_COPY_SEQUENCE = "\u001b[99;9u";
 
 const terminalClipboardProvider: IClipboardProvider = {
 	async readText(selection: ClipboardSelectionType): Promise<string> {
@@ -49,6 +52,7 @@ export function updateGlobalTerminalFontWeight(weight: number): void {
 interface TerminalViewportCallbacks {
 	clearGeometry: (taskId: string) => void;
 	getConnectedTaskId: () => string | null;
+	getSessionAgentId: () => RuntimeAgentId | null;
 	isDisposed: () => boolean;
 	notifyOutputText: (text: string) => void;
 	reportGeometry: (taskId: string, geometry: { cols: number; rows: number }) => void;
@@ -148,11 +152,23 @@ export class TerminalViewport {
 				}
 				return false;
 			}
-			if (isCopyShortcut(event) && this.terminal.hasSelection()) {
-				void browserHostIntegrations.writeClipboardText(this.terminal.getSelection()).catch(() => {
-					// Ignore clipboard failures.
-				});
-				return false;
+			if (isCopyShortcut(event)) {
+				if (this.terminal.hasSelection()) {
+					void browserHostIntegrations.writeClipboardText(this.terminal.getSelection()).catch(() => {
+						// Ignore clipboard failures.
+					});
+					return false;
+				}
+				if (
+					isMacPlatform &&
+					this.callbacks.getSessionAgentId() === "codex" &&
+					this.terminal.buffer.active.type === "alternate" &&
+					this.terminal.modes.mouseTrackingMode !== "none"
+				) {
+					event.preventDefault();
+					this.terminal.input(CODEX_COMMAND_COPY_SEQUENCE);
+					return false;
+				}
 			}
 			return true;
 		});
