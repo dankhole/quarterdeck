@@ -266,8 +266,8 @@ export const BoardCard = memo(function BoardCard({
 				<Tooltip content={rich ? undefined : (effectiveTooltip ?? undefined)} side="top">
 					<div
 						style={{
-							backgroundColor: `color-mix(in srgb, ${cardColor} ${isHovered ? 23 : 16}%, var(--color-surface-1))`,
-							borderColor: `color-mix(in srgb, ${cardColor} 30%, var(--color-border))`,
+							backgroundColor: `color-mix(in srgb, ${cardColor} ${isHovered ? 11 : 7}%, var(--color-surface-1))`,
+							borderColor: `color-mix(in srgb, ${cardColor} 18%, var(--color-border))`,
 						}}
 						className={cn(
 							"rounded-md border p-2.5 transition-colors",

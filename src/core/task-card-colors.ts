@@ -57,14 +57,35 @@ function countTaskColors(cards: readonly { colorIndex?: number }[]): number[] {
 	return counts;
 }
 
+const paletteRgb = TASK_CARD_COLORS.map((color) => [
+	Number.parseInt(color.slice(1, 3), 16),
+	Number.parseInt(color.slice(3, 5), 16),
+	Number.parseInt(color.slice(5, 7), 16),
+]);
+
 function chooseTaskColor(id: string, counts: readonly number[]): number {
 	const minimum = Math.min(...counts);
 	const seed = taskColorSeed(id);
+	// Prefer the most distinct available pastel; the task seed breaks ties.
+	const usedColors = paletteRgb.filter((_, index) => (counts[index] ?? 0) > 0);
+	let selected = seed;
+	let bestDistance = -1;
 	for (let offset = 0; offset < counts.length; offset++) {
 		const index = (seed + offset) % counts.length;
-		if (counts[index] === minimum) return index;
+		if (counts[index] !== minimum) continue;
+		const rgb = paletteRgb[index];
+		if (!rgb) continue;
+		const distance = Math.min(
+			...usedColors.map((used) =>
+				rgb.reduce((sum, channel, channelIndex) => sum + (channel - (used[channelIndex] ?? 0)) ** 2, 0),
+			),
+		);
+		if (distance > bestDistance) {
+			selected = index;
+			bestDistance = distance;
+		}
 	}
-	return seed;
+	return selected;
 }
 
 export function allocateTaskColor(id: string, cards: readonly { colorIndex?: number }[]): number {

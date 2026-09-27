@@ -116,7 +116,7 @@ export function ProjectRow({
 				}}
 				className={cn(
 					"kb-project-row group cursor-pointer rounded-md",
-					!isCurrent && (striped ? "bg-white/[0.035]" : "bg-black/[0.06]"),
+					!isCurrent && striped && "bg-white/[0.025]",
 					isCurrent && "kb-project-row-selected",
 					isDragging && "shadow-lg bg-surface-2 rounded-md",
 				)}

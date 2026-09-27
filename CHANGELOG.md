@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Soften task card tints and borders, prefer visually distinct pastels when assigning new task colors, and let every other project row blend into the sidebar.
+
 - Give task cards persistent, subtle pastel colors from a 40-color palette, preferring unused colors within each project, and softly alternate project row backgrounds.
 
 - Move Create task above the project list, remove redundant sidebar and board headers, and give both sidebar create buttons a taller, polished appearance.
