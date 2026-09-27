@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-27 — Trash pin deletion protection
+
+Trash pins reuse the saved task pin flag. Lifecycle deletion rejects already pinned tasks before effects; the board reducer also preserves pinned Trash cards. Board-command pin updates validate against the durable lifecycle journal while holding the project directory lock shared with lifecycle reservation. This prevents a pin from being accepted during session shutdown or workspace purge, which would otherwise leave a protected card after its saved patches had been deleted. Receipt replay remains ahead of validation, and failed batches persist no partial edits. Trash membership remains inclusive for notification suppression; deletion selection alone excludes pins. Notable owners: `project-board-command-service.ts`, `project-state.ts`, `project-task-lifecycle-operation-store.ts`, and `trash-workflow.ts`.
+
+Validation: focused board-command and lifecycle integration tests, including pin attempts through a separate command service during delayed shutdown; Trash selector/card and notification-settle tests; runtime and web typechecks.
+
 ## 2026-09-27 — Folder project conversion review fixes
 
 After merging local main at `ff99149c` (merge `3e238ac2`), folder-mode task editing now validates against project mode while retaining saved workspace/base-ref identity. Enabling Git fills only missing task base refs from the repository HEAD through `ProjectBoardCommandService`, under the existing board mutation lock, before publishing Git mode. Existing refs and shared-checkout choices remain intact. Metadata monitor subscription restoration now registers every connection before awaiting refreshes; disconnect or disposal during refresh can no longer be followed by a reconnect that revives polling. Explicit project-mode updates skip an unused preliminary index read while retaining the fresh locked read.

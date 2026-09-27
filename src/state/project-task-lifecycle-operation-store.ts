@@ -172,6 +172,24 @@ async function writeJournal(scope: ProjectBoardCommandScope, journal: OperationJ
 	);
 }
 
+/** Caller must hold the project directory lock shared with lifecycle begin/finish. */
+export async function assertTaskPinsAllowedUnderLock(
+	scope: ProjectBoardCommandScope,
+	tasks: readonly { id: string; createdAt: number }[],
+): Promise<void> {
+	if (tasks.length === 0) return;
+	const journal = await readJournal(scope);
+	const deleting = journal.operations.some(
+		(operation) =>
+			operation.kind === "delete" &&
+			operation.status === "pending" &&
+			tasks.some((task) => task.id === operation.taskId && task.createdAt === operation.taskCreatedAt),
+	);
+	if (deleting) {
+		throw new Error("Cannot pin a task while its permanent deletion is in progress.");
+	}
+}
+
 export class ProjectTaskLifecycleOperationStore {
 	async begin(
 		scope: ProjectBoardCommandScope,

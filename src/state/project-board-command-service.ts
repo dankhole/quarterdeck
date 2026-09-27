@@ -21,6 +21,7 @@ import {
 } from "../core";
 import { getLegacyBacklogCommandFingerprints } from "./legacy-backlog-command-receipts";
 import { type ApplyProjectBoardMutationResult, applyProjectBoardMutation } from "./project-state";
+import { assertTaskPinsAllowedUnderLock } from "./project-task-lifecycle-operation-store";
 
 const log = createTaggedLogger("project-board-command");
 
@@ -117,6 +118,16 @@ export class ProjectBoardCommandService {
 				legacyFingerprints: getLegacyBacklogCommandFingerprints(envelope.commands),
 			},
 			mutate: (board) => applyProjectBoardCommands(board, envelope.commands),
+			validateMutationUnderLock: async (before, after) => {
+				if (!envelope.commands.some((command) => "pinned" in command && command.pinned === true)) return;
+				const previouslyPinned = new Set(
+					before.columns.flatMap((column) => column.cards.filter((card) => card.pinned).map((card) => card.id)),
+				);
+				const newlyPinned = after.columns
+					.flatMap((column) => column.cards)
+					.filter((card) => card.pinned && !previouslyPinned.has(card.id));
+				await assertTaskPinsAllowedUnderLock(scope, newlyPinned);
+			},
 		});
 		try {
 			await this.dependencies.publishAuthoritativeState?.(scope, result);

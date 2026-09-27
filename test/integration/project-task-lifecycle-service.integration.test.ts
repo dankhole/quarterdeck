@@ -1546,6 +1546,129 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 		});
 	});
 
+	it("rejects pins while deletion is waiting for session shutdown", async () => {
+		await withTemporaryHome(async () => {
+			const fixture = createTempDir("quarterdeck-pin-delete-race-");
+			const stopped = createDeferred();
+			const stopping = createDeferred();
+			try {
+				const context = await loadProjectContext(fixture.path, { folderOnly: true });
+				const scope = { projectId: context.projectId, projectPath: context.repoPath };
+				const initial = await loadProjectState(fixture.path);
+				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+				const created = await boardCommands.execute(scope, {
+					commandId: "seed-race",
+					expectedRevision: initial.revision,
+					command: { ...TASK_SPEC, kind: "create_task", columnId: "trash" },
+				});
+				const purgeTaskWorkspace = vi.fn(async () => ({ ok: true, removed: false }));
+				const lifecycle = new ProjectTaskLifecycleService({
+					boardCommands,
+					startTaskSession: vi.fn(),
+					purgeTaskWorkspace,
+					stopTaskSession: async (_scope, taskId) => {
+						stopping.resolve();
+						await stopped.promise;
+						return {
+							summary: null,
+							requestedSessionInstanceId: null,
+							didExit: true,
+							outcome: "not_running",
+							taskId,
+						};
+					},
+				});
+				const deleting = lifecycle.execute(scope, {
+					kind: "delete",
+					operationId: "delete-race",
+					expectedRevision: created.state.revision,
+					taskId: TASK_SPEC.taskId,
+					taskCreatedAt: TASK_SPEC.createdAt,
+				});
+				await stopping.promise;
+				try {
+					// A separate service still sees the durable reservation; no shared in-memory lock is required.
+					const otherCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+					for (const kind of ["update_task", "patch_task"] as const) {
+						await expect(
+							otherCommands.executeClientBatch(scope, {
+								commandId: `pin-race-${kind}`,
+								expectedRevision: created.state.revision,
+								commands: [
+									{
+										kind,
+										taskId: TASK_SPEC.taskId,
+										prompt: TASK_SPEC.prompt,
+										baseRef: TASK_SPEC.baseRef,
+										pinned: true,
+										updatedAt: 200,
+									},
+								],
+							}),
+						).rejects.toThrow("permanent deletion is in progress");
+					}
+					expect(findCardInBoard((await loadProjectState(fixture.path)).board, TASK_SPEC.taskId)?.pinned).not.toBe(
+						true,
+					);
+					expect(purgeTaskWorkspace).not.toHaveBeenCalled();
+				} finally {
+					stopped.resolve();
+					await deleting;
+				}
+				expect((await deleting).ok).toBe(true);
+				expect(purgeTaskWorkspace).toHaveBeenCalledTimes(1);
+			} finally {
+				stopped.resolve();
+				fixture.cleanup();
+			}
+		});
+	});
+
+	it("rejects pinned trash deletion before stopping sessions or purging workspaces", async () => {
+		await withTemporaryHome(async () => {
+			const fixture = createTempDir("quarterdeck-pinned-trash-");
+			try {
+				const context = await loadProjectContext(fixture.path, { folderOnly: true });
+				const scope = { projectId: context.projectId, projectPath: context.repoPath };
+				const initial = await loadProjectState(fixture.path);
+				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+				const created = await boardCommands.execute(scope, {
+					commandId: "seed-pinned",
+					expectedRevision: initial.revision,
+					command: { ...TASK_SPEC, kind: "create_task", columnId: "trash", pinned: true },
+				});
+				const stopTaskSession = vi.fn();
+				const purgeTaskWorkspace = vi.fn();
+				const lifecycle = new ProjectTaskLifecycleService({
+					boardCommands,
+					startTaskSession: vi.fn(),
+					stopTaskSession,
+					purgeTaskWorkspace,
+				});
+				const result = await lifecycle.execute(scope, {
+					kind: "delete",
+					operationId: "delete-pinned",
+					expectedRevision: created.state.revision,
+					taskId: TASK_SPEC.taskId,
+					taskCreatedAt: TASK_SPEC.createdAt,
+				});
+				expect(result.ok).toBe(false);
+				expect(result.error).toContain("Unpin");
+				const bulk = await lifecycle.clearTrash(scope, {
+					operationId: "clear-pinned",
+					expectedRevision: created.state.revision,
+					tasks: [{ taskId: TASK_SPEC.taskId, taskCreatedAt: TASK_SPEC.createdAt }],
+				});
+				expect(bulk.results[0]?.ok).toBe(false);
+				expect(findCardInBoard((await loadProjectState(fixture.path)).board, TASK_SPEC.taskId)?.pinned).toBe(true);
+				expect(stopTaskSession).not.toHaveBeenCalled();
+				expect(purgeTaskWorkspace).not.toHaveBeenCalled();
+			} finally {
+				fixture.cleanup();
+			}
+		});
+	});
+
 	it("blocks trash cleanup and permanent deletion when the process stop times out", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-stop-timeout-");

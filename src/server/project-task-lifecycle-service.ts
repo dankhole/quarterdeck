@@ -874,6 +874,14 @@ export class ProjectTaskLifecycleService {
 		if (!precondition.ok) {
 			return await this.finish(scope, operation, precondition.failure);
 		}
+		if (precondition.card.pinned) {
+			return await this.finish(scope, operation, {
+				status: "failed",
+				outcomeCode: "invalid_transition",
+				error: "Unpin this task before permanently deleting it.",
+				state: precondition.state,
+			});
+		}
 		operation = await this.setPhase(scope, operation, "stopping_session");
 		const stopped = await this.stopTaskAndDetailShell(
 			scope,

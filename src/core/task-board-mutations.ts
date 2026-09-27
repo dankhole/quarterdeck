@@ -465,7 +465,7 @@ export function deleteTasksFromBoard(board: RuntimeBoardData, taskIds: Iterable<
 	const deletedTaskIds: string[] = [];
 	const columns = board.columns.map((column) => {
 		const remainingCards = column.cards.filter((card) => {
-			if (!normalizedTaskIds.has(card.id)) {
+			if (!normalizedTaskIds.has(card.id) || (column.id === "trash" && card.pinned)) {
 				return true;
 			}
 			deletedTaskIds.push(card.id);

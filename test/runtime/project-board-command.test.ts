@@ -33,6 +33,33 @@ function createTaskCommand(taskId: string, prompt: string, createdAt: number): R
 }
 
 describe("applyProjectBoardCommand", () => {
+	it("keeps pinned trash tasks in deletion batches until explicitly unpinned", () => {
+		let board = createBoard();
+		for (const taskId of ["kept", "deleted"]) {
+			board = applyProjectBoardCommand(board, {
+				kind: "create_task",
+				columnId: "trash",
+				taskId,
+				prompt: taskId,
+				baseRef: "main",
+				createdAt: 1,
+				pinned: taskId === "kept",
+			}).board;
+		}
+		board = applyProjectBoardCommand(board, { kind: "delete_tasks", taskIds: ["kept", "deleted"] }).board;
+		expect(board.columns.find((column) => column.id === "trash")?.cards.map((card) => card.id)).toEqual(["kept"]);
+		board = applyProjectBoardCommand(board, {
+			kind: "update_task",
+			taskId: "kept",
+			prompt: "kept",
+			baseRef: "main",
+			pinned: false,
+			updatedAt: 2,
+		}).board;
+		board = applyProjectBoardCommand(board, { kind: "delete_tasks", taskIds: ["kept"] }).board;
+		expect(board.columns.find((column) => column.id === "trash")?.cards).toEqual([]);
+	});
+
 	it("creates tasks with command-owned identity and timestamps", () => {
 		const command = createTaskCommand("task-a", "  Ship it  ", 100);
 		const result = applyProjectBoardCommand(createBoard(), command);

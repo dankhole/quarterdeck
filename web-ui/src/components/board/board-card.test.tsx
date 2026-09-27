@@ -119,6 +119,35 @@ describe("BoardCard", () => {
 		}
 	});
 
+	it("lets trash tasks be pinned and hides permanent delete until unpinned", async () => {
+		const onTogglePin = vi.fn();
+		for (const pinned of [false, true, false]) {
+			await act(async () => {
+				root.render(
+					<Providers>
+						<BoardCard
+							card={createCard({ pinned })}
+							columnId="trash"
+							index={0}
+							onTogglePin={onTogglePin}
+							onHardDelete={vi.fn()}
+						/>
+					</Providers>,
+				);
+			});
+			expect(Boolean(container.querySelector('button[aria-label="Delete task permanently"]'))).toBe(!pinned);
+			const pin = container.querySelector<HTMLButtonElement>(
+				`button[aria-label="${pinned ? "Unpin task" : "Pin task in trash"}"]`,
+			);
+			expect(pin).not.toBeNull();
+			await act(async () => {
+				pin?.click();
+			});
+		}
+		expect(onTogglePin).toHaveBeenCalledTimes(3);
+		expect(onTogglePin).toHaveBeenCalledWith("task-1");
+	});
+
 	it("shows a loading state on the review trash button while moving to trash", async () => {
 		await act(async () => {
 			root.render(

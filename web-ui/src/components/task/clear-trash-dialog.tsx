@@ -25,7 +25,7 @@ export function ClearTrashDialog({
 			onConfirm={onConfirm}
 		>
 			<AlertDialogDescription>
-				This will permanently delete {taskCount} {taskLabel} from Trash.
+				This will permanently delete {taskCount} {taskLabel} from Trash. Pinned tasks will be kept.
 			</AlertDialogDescription>
 			<p className="text-text-primary">This action cannot be undone.</p>
 		</ConfirmationDialog>

@@ -129,7 +129,7 @@ export function BoardColumn({
 						variant="ghost"
 						size="sm"
 						onClick={onClearTrash}
-						disabled={!cards.length}
+						disabled={!cards.some((card) => !card.pinned)}
 						aria-label="Clear trash"
 					>
 						Clear trash

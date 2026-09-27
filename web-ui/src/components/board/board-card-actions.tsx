@@ -175,20 +175,22 @@ export function BoardCardActions({
 						}}
 					/>
 				</Tooltip>
-				<Tooltip side="bottom" content="Delete permanently">
-					<Button
-						icon={<Trash2 size={12} />}
-						variant="ghost"
-						size="sm"
-						className="text-status-red hover:text-status-red"
-						aria-label="Delete task permanently"
-						onMouseDown={stopEvent}
-						onClick={(event) => {
-							stopEvent(event);
-							onHardDelete?.(cardId);
-						}}
-					/>
-				</Tooltip>
+				{onHardDelete ? (
+					<Tooltip side="bottom" content="Delete permanently">
+						<Button
+							icon={<Trash2 size={12} />}
+							variant="ghost"
+							size="sm"
+							className="text-status-red hover:text-status-red"
+							aria-label="Delete task permanently"
+							onMouseDown={stopEvent}
+							onClick={(event) => {
+								stopEvent(event);
+								onHardDelete?.(cardId);
+							}}
+						/>
+					</Tooltip>
+				) : null}
 			</>
 		);
 	}

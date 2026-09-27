@@ -50,9 +50,15 @@ export const INITIAL_HARD_DELETE_DIALOG_STATE: HardDeleteDialogState = {
 // ---------------------------------------------------------------------------
 
 /**
- * Extract the list of task IDs currently in the trash column.
+ * Extract the list of task IDs currently in the trash column, including pinned tasks.
  */
 export function findTrashTaskIds(board: BoardData): string[] {
 	const trashColumn = board.columns.find((column) => column.id === "trash");
 	return trashColumn ? trashColumn.cards.map((card) => card.id) : [];
+}
+
+/** Permanent-deletion selection is separate from Trash membership used by notifications. */
+export function findDeletableTrashTaskIds(board: BoardData): string[] {
+	const trashColumn = board.columns.find((column) => column.id === "trash");
+	return trashColumn ? trashColumn.cards.filter((card) => !card.pinned).map((card) => card.id) : [];
 }

@@ -99,6 +99,8 @@ export interface ApplyProjectBoardMutationInput {
 	expectedRevision?: number;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
 	mutate: (board: RuntimeBoardData) => { board: RuntimeBoardData; changed: boolean };
+	/** Runs under the project lock, after receipt/revision checks and before persistence. */
+	validateMutationUnderLock?: (before: RuntimeBoardData, after: RuntimeBoardData) => Promise<void>;
 	persistSessionsOnNoop?: boolean;
 	commandIdentity?: {
 		commandId: string;
@@ -442,6 +444,7 @@ export async function applyProjectBoardMutation(
 
 		const currentBoard = await readProjectBoardUnderLock(context.projectId);
 		const mutation = input.mutate(currentBoard);
+		await input.validateMutationUnderLock?.(currentBoard, mutation.board);
 		if (!mutation.changed) {
 			if (commandIdentity) {
 				const nextRevision = currentMeta.revision + 1;

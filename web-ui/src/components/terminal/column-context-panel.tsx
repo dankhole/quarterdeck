@@ -134,9 +134,9 @@ function ColumnSection({
 						size="sm"
 						className="text-status-red hover:text-status-red"
 						onClick={onClearTrash}
-						disabled={column.cards.length === 0}
+						disabled={!column.cards.some((card) => !card.pinned)}
 						aria-label="Clear trash"
-						title={column.cards.length > 0 ? "Clear trash permanently" : "Trash is empty"}
+						title="Clear unpinned tasks permanently"
 						style={{ marginRight: 4 }}
 					/>
 				) : null}

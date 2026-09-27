@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Allow pinning tasks in Trash to protect them from permanent deletion. Clear Trash skips pinned tasks, and their delete button stays hidden until unpinned.
+
 - Fix editing pre-existing tasks after folder conversion, restore Git views for branchless tasks when enabling Git, and prevent background Git polling from restarting after a mode change or disconnect.
 
 - Make Codex fullscreen scrolling preserve wheel and trackpad distance, including fast swipes, slow wheel ticks, and fine movements across pauses, instead of losing distance to browser event coalescing and abrupt sensitivity changes.

@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
-	findTrashTaskIds,
+	findDeletableTrashTaskIds,
 	type HardDeleteDialogState,
 	INITIAL_HARD_DELETE_DIALOG_STATE,
 	INITIAL_TRASH_WARNING_STATE,
@@ -103,7 +103,7 @@ export function useTrashWorkflow({
 	);
 	const hardDeleteConfirmedRef = useRef(false);
 
-	const trashTaskIds = useMemo(() => findTrashTaskIds(board), [board.columns]);
+	const trashTaskIds = useMemo(() => findDeletableTrashTaskIds(board), [board.columns]);
 	const trashTaskCount = trashTaskIds.length;
 
 	const setTaskMoveToTrashLoading = useCallback((taskId: string, isLoading: boolean) => {
@@ -168,7 +168,7 @@ export function useTrashWorkflow({
 			}
 
 			const selection = findCardSelection(board, taskId);
-			if (!selection || selection.column.id !== "trash") {
+			if (selection?.column.id !== "trash") {
 				return;
 			}
 
@@ -189,7 +189,7 @@ export function useTrashWorkflow({
 	const executeHardDelete = useCallback(
 		(taskId: string) => {
 			const selection = findCardSelection(board, taskId);
-			if (!selection || selection.column.id !== "trash") {
+			if (selection?.column.id !== "trash" || selection.card.pinned) {
 				return;
 			}
 			void (async () => {
@@ -211,6 +211,7 @@ export function useTrashWorkflow({
 	const handleHardDeleteTrashTask = useCallback(
 		(taskId: string) => {
 			const card = board.columns.flatMap((col) => col.cards).find((c) => c.id === taskId);
+			if (!card || card.pinned) return;
 			setHardDeleteDialogState({
 				open: true,
 				taskId,

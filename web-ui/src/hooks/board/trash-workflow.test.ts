@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { BoardData } from "@/types";
-import { findTrashTaskIds, INITIAL_HARD_DELETE_DIALOG_STATE, INITIAL_TRASH_WARNING_STATE } from "./trash-workflow";
+import {
+	findDeletableTrashTaskIds,
+	findTrashTaskIds,
+	INITIAL_HARD_DELETE_DIALOG_STATE,
+	INITIAL_TRASH_WARNING_STATE,
+} from "./trash-workflow";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -34,6 +39,13 @@ function makeBoard(trashCardIds: string[]): BoardData {
 // ---------------------------------------------------------------------------
 
 describe("findTrashTaskIds", () => {
+	it("includes pinned tasks for notifications but excludes them from deletion", () => {
+		const board = makeBoard(["kept", "deleted"]);
+		board.columns.find((column) => column.id === "trash")!.cards[0]!.pinned = true;
+		expect(findTrashTaskIds(board)).toEqual(["kept", "deleted"]);
+		expect(findDeletableTrashTaskIds(board)).toEqual(["deleted"]);
+	});
+
 	it("returns IDs of cards in the trash column", () => {
 		expect(findTrashTaskIds(makeBoard(["t1", "t2", "t3"]))).toEqual(["t1", "t2", "t3"]);
 	});

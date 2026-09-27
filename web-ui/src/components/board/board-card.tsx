@@ -307,8 +307,8 @@ export const BoardCard = memo(function BoardCard({
 									<Spinner size={12} />
 								</div>
 							) : null}
-							{card.pinned && !isTrashCard ? (
-								<Tooltip content="Pinned to top">
+							{card.pinned ? (
+								<Tooltip content={isTrashCard ? "Pinned — protected from deletion" : "Pinned to top"}>
 									<span className="inline-flex items-center shrink-0 text-text-secondary">
 										<Pin size={12} />
 									</span>
@@ -362,15 +362,23 @@ export const BoardCard = memo(function BoardCard({
 								className="ml-auto flex w-max min-w-0 max-w-full shrink flex-wrap items-center justify-end gap-0.5 [&>button]:h-[22px] [&>button]:shrink-0 [&>button]:px-0"
 								data-board-card-action-rail
 							>
-								{!isEditingTitle && (rich || isHovered) && !isTrashCard ? (
+								{!isEditingTitle && (rich || isHovered || isTrashCard) ? (
 									<>
 										{onTogglePin ? (
-											<Tooltip content={card.pinned ? "Unpin" : "Pin to top"}>
+											<Tooltip
+												content={card.pinned ? "Unpin" : isTrashCard ? "Keep in Trash" : "Pin to top"}
+											>
 												<Button
 													icon={card.pinned ? <PinOff size={12} /> : <Pin size={12} />}
 													variant="ghost"
 													size="sm"
-													aria-label={card.pinned ? "Unpin task" : "Pin task to top"}
+													aria-label={
+														card.pinned
+															? "Unpin task"
+															: isTrashCard
+																? "Pin task in trash"
+																: "Pin task to top"
+													}
 													onMouseDown={stopEvent}
 													onClick={(event) => {
 														stopEvent(event);
@@ -379,7 +387,7 @@ export const BoardCard = memo(function BoardCard({
 												/>
 											</Tooltip>
 										) : null}
-										{onUpdateTitle ? (
+										{onUpdateTitle && !isTrashCard ? (
 											<Button
 												icon={<Pencil size={12} />}
 												variant="ghost"
@@ -407,7 +415,7 @@ export const BoardCard = memo(function BoardCard({
 									onRestartSession={onRestartSession}
 									onMoveToTrash={onMoveToTrash}
 									onRestoreFromTrash={onRestoreFromTrash}
-									onHardDelete={onHardDelete}
+									onHardDelete={card.pinned ? undefined : onHardDelete}
 								/>
 							</div>
 						</div>
