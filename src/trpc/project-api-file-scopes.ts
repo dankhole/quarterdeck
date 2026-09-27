@@ -1,4 +1,5 @@
 import type { RuntimeFileContentResponse, RuntimeListFilesResponse, RuntimeWorkdirSearchScope } from "../core";
+import { loadProjectContext } from "../state";
 import { resolveWorkingDir, tryResolveTaskCwd } from "./project-api-shared";
 
 export interface ProjectFileScopeInput {
@@ -36,6 +37,8 @@ export async function resolveProjectFileScope(
 	input: ProjectFileScopeInput,
 ): Promise<ResolvedProjectFileScope> {
 	const ref = input.ref || null;
+	if (ref && (await loadProjectContext(projectPath)).folderOnly)
+		throw new Error("Git ref browsing is disabled for folder projects.");
 	if (!input.taskId) {
 		return {
 			cwd: projectPath,

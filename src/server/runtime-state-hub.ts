@@ -321,6 +321,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 					projectId,
 					projectPath: projectState.repoPath,
 					board: projectState.board,
+					folderOnly: projectState.git.folderOnly,
 				})
 				.catch((error) => {
 					hubLog.warn("runtime project metadata refresh failed", {
@@ -527,6 +528,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 							projectId: snapshot.projectId,
 							projectPath: snapshot.projectPath,
 							board: snapshot.projectState.board,
+							folderOnly: snapshot.projectState.git.folderOnly,
 							clientId: runtimeClientId,
 							isDocumentVisible,
 						})
@@ -630,6 +632,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		const exact = deriveProjectSummary({
 			projectId,
 			repoPath: projectState.repoPath,
+			folderOnly: projectState.git.folderOnly,
 			board: projectState.board,
 			boardRevision: projectState.revision,
 		});

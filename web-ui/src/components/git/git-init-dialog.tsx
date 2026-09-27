@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { Button } from "@/components/ui/button";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { AlertDialogDescription } from "@/components/ui/dialog";
 
@@ -8,12 +9,14 @@ export function GitInitDialog({
 	isInitializing,
 	onCancel,
 	onConfirm,
+	onAddFolder,
 }: {
 	open: boolean;
 	path: string | null;
 	isInitializing: boolean;
 	onCancel: () => void;
 	onConfirm: () => void;
+	onAddFolder?: () => void;
 }): ReactElement {
 	return (
 		<ConfirmationDialog
@@ -27,9 +30,20 @@ export function GitInitDialog({
 		>
 			<AlertDialogDescription asChild>
 				<div className="flex flex-col gap-3">
-					<p>Quarterdeck requires git to manage worktrees for tasks. This folder is not a git repository yet.</p>
+					<p>
+						This folder does not have its own Git repository. Initialize one here for Git history and isolated
+						task worktrees. A parent folder’s repository will not be used.
+					</p>
 					{path ? <p className="font-mono text-xs text-text-secondary break-all">{path}</p> : null}
-					<p>If you cancel, the project will not be added.</p>
+					<p>
+						You can also add a folder project without Git. It has its own task board, and tasks run directly in
+						the folder.
+					</p>
+					{onAddFolder ? (
+						<Button disabled={isInitializing} onClick={onAddFolder}>
+							Add without Git
+						</Button>
+					) : null}
 				</div>
 			</AlertDialogDescription>
 		</ConfirmationDialog>

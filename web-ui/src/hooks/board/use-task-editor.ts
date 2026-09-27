@@ -25,6 +25,7 @@ interface UseTaskEditorInput {
 	currentProjectId: string | null;
 	createTaskBranchOptions: Array<{ value: string; label: string }>;
 	defaultTaskBranchRef: string;
+	folderOnly?: boolean;
 	fallbackTaskAgentId: RuntimeAgentId;
 	availableTaskAgentIds?: readonly RuntimeAgentId[] | null;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
@@ -120,6 +121,7 @@ export function useTaskEditor({
 	currentProjectId,
 	createTaskBranchOptions,
 	defaultTaskBranchRef,
+	folderOnly = false,
 	fallbackTaskAgentId,
 	availableTaskAgentIds,
 	setSelectedTaskId,
@@ -145,7 +147,8 @@ export function useTaskEditor({
 		}),
 	);
 	const [newTaskCodexOptions, setNewTaskCodexOptions] = useState<RuntimeCodexOptions>();
-	const [newTaskUseWorktree, setNewTaskUseWorktree] = useState(true);
+	const [draftUseWorktree, setNewTaskUseWorktree] = useState(true);
+	const newTaskUseWorktree = !folderOnly && draftUseWorktree;
 	const [createFeatureBranch, setCreateFeatureBranch] = useState(false);
 	const [branchName, setBranchName] = useState("");
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
@@ -154,7 +157,7 @@ export function useTaskEditor({
 	const [editTaskImages, setEditTaskImages] = useState<TaskImage[]>([]);
 	const [editTaskBranchRef, setEditTaskBranchRef] = useState("");
 
-	const resolvedDefaultTaskBranchRef = defaultTaskBranchRef;
+	const resolvedDefaultTaskBranchRef = folderOnly ? "" : defaultTaskBranchRef;
 	const newTaskAgentIdRef = useRef(newTaskAgentId);
 	newTaskAgentIdRef.current = newTaskAgentId;
 

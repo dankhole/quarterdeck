@@ -2,6 +2,7 @@ import { z } from "zod";
 import { runtimeTaskWorktreeInfoRequestSchema, runtimeWorkdirFileStatusSchema } from "./shared.js";
 
 export const runtimeGitRepositoryInfoSchema = z.object({
+	folderOnly: z.boolean().optional(),
 	currentBranch: z.string().nullable(),
 	defaultBranch: z.string().nullable(),
 	branches: z.array(z.string()),

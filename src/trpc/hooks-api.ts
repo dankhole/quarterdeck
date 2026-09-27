@@ -308,7 +308,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					},
 				);
 
-				if (enteredOrdinaryReview) {
+				if (enteredOrdinaryReview && !(await loadProjectScopeById(projectId))?.folderOnly) {
 					const nextTurn = (nextSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
 					const checkpointCwd = nextSummary.sessionLaunchPath ?? projectPath;
 					const staleRef = nextSummary.previousTurnCheckpoint?.ref ?? null;

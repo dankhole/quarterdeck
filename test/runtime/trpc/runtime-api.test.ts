@@ -26,6 +26,7 @@ const turnCheckpointMocks = vi.hoisted(() => ({
 }));
 
 const projectStateMocks = vi.hoisted(() => ({
+	loadProjectScopeById: vi.fn<() => Promise<{ folderOnly?: boolean } | null>>(async () => null),
 	loadProjectState: vi.fn(),
 }));
 
@@ -60,6 +61,7 @@ vi.mock("../../../src/workdir/turn-checkpoints.js", () => ({
 
 vi.mock("../../../src/state/project-state.js", () => ({
 	loadProjectState: projectStateMocks.loadProjectState,
+	loadProjectScopeById: projectStateMocks.loadProjectScopeById,
 }));
 
 vi.mock("../../../src/core/task-board-mutations.js", () => ({
@@ -173,6 +175,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		taskWorktreeMocks.resolveTaskCwd.mockReset();
 		taskWorktreeMocks.finishTaskWorktreeSetup.mockReset().mockResolvedValue(undefined);
 		turnCheckpointMocks.captureTaskTurnCheckpoint.mockReset();
+		projectStateMocks.loadProjectScopeById.mockReset().mockResolvedValue(null);
 		projectStateMocks.loadProjectState.mockReset();
 		taskBoardMutationMocks.findCardInBoard.mockReset();
 		taskWorktreeMocks.pathExists.mockReset();
@@ -878,6 +881,26 @@ describe("createRuntimeApi startTaskSession", () => {
 				env: undefined,
 			}),
 		);
+	});
+
+	it("starts folder tasks in place despite a stale isolated-task request", async () => {
+		projectStateMocks.loadProjectScopeById.mockResolvedValue({ folderOnly: true });
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(createCard({ baseRef: "", workingDirectory: null }));
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => createSummary({ sessionLaunchPath: "/tmp/repo" })),
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const api = createRuntimeApi(createDeps(terminalManager));
+		const response = await api.startTaskSession(defaultScope, {
+			taskId: "task-1",
+			baseRef: "",
+			prompt: "Parent work",
+			useWorktree: true,
+		});
+		expect(response.ok).toBe(true);
+		expect(taskWorktreeMocks.resolveTaskCwd).not.toHaveBeenCalled();
+		expect(turnCheckpointMocks.captureTaskTurnCheckpoint).not.toHaveBeenCalled();
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(expect.objectContaining({ cwd: "/tmp/repo" }));
 	});
 
 	it("still rejects an unresolved base branch for isolated tasks", async () => {

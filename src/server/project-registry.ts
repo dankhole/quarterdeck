@@ -25,6 +25,7 @@ import {
 	listProjectIndexEntries,
 	loadProjectBoardSnapshotById,
 	loadProjectContext,
+	loadProjectScopeById,
 	loadProjectState,
 	loadProjectStateById,
 	type RuntimeProjectIndexEntry,
@@ -203,7 +204,7 @@ async function resolveIndexedProjectRemovalMessage(
 	if (!(await deps.pathIsDirectory(project.repoPath))) {
 		return `Project no longer exists on disk and was removed: ${project.repoPath}`;
 	}
-	if (!(await deps.hasGitRepository(project.repoPath))) {
+	if (!project.folderOnly && !(await deps.hasGitRepository(project.repoPath))) {
 		return `Project is not a git repository and was removed: ${project.repoPath}`;
 	}
 	return null;
@@ -242,11 +243,15 @@ export function collectProjectWorktreeTaskIdsForRemoval(board: RuntimeBoardData)
 export async function createProjectRegistry(deps: CreateProjectRegistryDependencies): Promise<ProjectRegistry> {
 	const launchedFromGitRepo = await deps.hasGitRepository(deps.cwd);
 	const launchedFromWorktree = isUnderWorktreesHome(deps.cwd);
-	const initialProject = launchedFromGitRepo && !launchedFromWorktree ? await loadProjectContext(deps.cwd) : null;
+	const initialIndexedProjects = await listProjectIndexEntries();
+	const indexedFolder = initialIndexedProjects.find(
+		(entry) => entry.folderOnly && areFileSystemPathsEqual(entry.repoPath, deps.cwd),
+	);
+	const initialProject =
+		(launchedFromGitRepo || indexedFolder) && !launchedFromWorktree ? await loadProjectContext(deps.cwd) : null;
 	let indexedProject: RuntimeProjectIndexEntry | null = null;
 	if (!initialProject) {
-		const indexedProjects = await listProjectIndexEntries();
-		indexedProject = indexedProjects[0] ?? null;
+		indexedProject = initialIndexedProjects[0] ?? null;
 	}
 
 	let activeProjectId: string | null = initialProject?.projectId ?? indexedProject?.projectId ?? null;
@@ -455,11 +460,13 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 
 	const buildProjectSummary = async (projectId: string, repoPath: string): Promise<RuntimeProjectSummary> => {
 		const snapshot = await loadProjectBoardSnapshotById(projectId);
+		const scope = await loadProjectScopeById(projectId);
 		return deriveProjectSummary({
 			projectId,
 			repoPath,
 			board: snapshot.board,
 			boardRevision: snapshot.revision,
+			folderOnly: scope?.folderOnly,
 		});
 	};
 

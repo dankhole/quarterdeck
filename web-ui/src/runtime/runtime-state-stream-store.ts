@@ -180,6 +180,7 @@ function mergeProjectStateSummary(
 			? {
 					...project,
 					boardRevision: projectState.revision,
+					folderOnly: projectState.git.folderOnly,
 					taskCounts: countTasksByColumn(projectState.board),
 				}
 			: project,

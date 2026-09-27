@@ -1,3 +1,5 @@
+import { realpath } from "node:fs/promises";
+
 import type {
 	IProjectDataProvider,
 	IProjectResolver,
@@ -7,7 +9,12 @@ import type {
 	RuntimeBoardData,
 	RuntimeProjectAddResponse,
 } from "../core";
-import { parseProjectAddRequest, parseProjectRemoveRequest, parseProjectReorderRequest } from "../core";
+import {
+	areFileSystemPathsEqual,
+	parseProjectAddRequest,
+	parseProjectRemoveRequest,
+	parseProjectReorderRequest,
+} from "../core";
 import {
 	isUnderWorktreesHome,
 	listProjectIndexEntries,
@@ -16,6 +23,7 @@ import {
 	loadProjectState,
 	removeProjectIndexEntry,
 	removeProjectStateFiles,
+	resolveProjectPath,
 	updateProjectOrder,
 } from "../state";
 import type { TerminalSessionManager } from "../terminal";
@@ -30,7 +38,7 @@ interface DisposeProjectOptions {
 export interface CreateProjectsApiDependencies {
 	projects: IProjectResolver;
 	terminals: ITerminalManagerProvider;
-	broadcaster: Pick<IRuntimeBroadcaster, "broadcastRuntimeProjectsUpdated">;
+	broadcaster: Pick<IRuntimeBroadcaster, "broadcastRuntimeProjectsUpdated" | "broadcastRuntimeProjectStateUpdated">;
 	data: IProjectDataProvider;
 	resolveProjectInputPath: (inputPath: string, cwd: string) => string;
 	assertPathIsDirectory: (path: string) => Promise<void>;
@@ -60,7 +68,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 			const resolveBasePath =
 				preferredProjectContext?.repoPath ?? deps.projects.getActiveProjectPath() ?? process.cwd();
 			try {
-				const projectPath = deps.resolveProjectInputPath(body.path, resolveBasePath);
+				const projectPath = await realpath(deps.resolveProjectInputPath(body.path, resolveBasePath));
 				await deps.assertPathIsDirectory(projectPath);
 				if (isUnderWorktreesHome(projectPath)) {
 					return {
@@ -69,13 +77,21 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 						error: "This path is inside Quarterdeck's worktree directory and cannot be added as a project.",
 					} satisfies RuntimeProjectAddResponse;
 				}
-				if (!(await deps.hasGitRepository(projectPath))) {
+				const existing = (await listProjectIndexEntries()).find((entry) =>
+					areFileSystemPathsEqual(entry.repoPath, projectPath),
+				);
+				const folderOnly = body.folderOnly ?? existing?.folderOnly ?? false;
+				const hasOwnRepository =
+					!folderOnly &&
+					(await deps.hasGitRepository(projectPath)) &&
+					areFileSystemPathsEqual(await resolveProjectPath(projectPath), projectPath);
+				if (!folderOnly && !hasOwnRepository) {
 					if (!body.initializeGit) {
 						return {
 							ok: false,
 							project: null,
 							requiresGitInitialization: true,
-							error: "This folder is not a git repository. Quarterdeck requires git to manage worktrees. Initialize git to continue.",
+							error: "This folder does not have its own Git repository. Initialize one here, or add it as a folder project without Git.",
 						} satisfies RuntimeProjectAddResponse;
 					}
 					const initResult = await initializeGitRepository(projectPath);
@@ -86,7 +102,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 							error: initResult.error ?? "Failed to initialize git repository.",
 						} satisfies RuntimeProjectAddResponse;
 					}
-				} else {
+				} else if (!folderOnly) {
 					const commitResult = await ensureInitialCommit(projectPath);
 					if (!commitResult.ok) {
 						return {
@@ -96,7 +112,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 						} satisfies RuntimeProjectAddResponse;
 					}
 				}
-				const context = await loadProjectContext(projectPath);
+				const context = await loadProjectContext(projectPath, { folderOnly });
 				deps.projects.rememberProject(context.projectId, context.repoPath);
 				const projectsAfterAdd = await listProjectIndexEntries();
 				const activeProjectId = deps.projects.getActiveProjectId();
@@ -107,6 +123,9 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					await deps.projects.setActiveProject(context.projectId, context.repoPath);
 				}
 				const project = await deps.data.buildProjectSummary(context.projectId, context.repoPath);
+				if (existing && Boolean(existing.folderOnly) !== folderOnly) {
+					await deps.broadcaster.broadcastRuntimeProjectStateUpdated(context.projectId, context.repoPath);
+				}
 				void applyRuntimeMutationEffects(deps.broadcaster, createProjectsUpdatedEffects(context.projectId));
 				return {
 					ok: true,
@@ -193,6 +212,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 							cleanupTaskIds.map(async (taskId) => ({
 								taskId,
 								deleted: await purgeTaskWorkspaceForDelete({
+									folderOnly: projectToRemove.folderOnly,
 									repoPath: projectToRemove.repoPath,
 									taskId,
 								}),

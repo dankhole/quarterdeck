@@ -56,6 +56,30 @@ function createSessionSummary(taskId: string): RuntimeTaskSessionSummary {
 }
 
 describe("project-state integration", { concurrent: false }, () => {
+	it("converts an existing repository to a folder while retaining its board and stable identity", async () => {
+		await withTemporaryHome(async () => {
+			const { path, cleanup } = createTempDir("quarterdeck-folder-conversion-");
+			try {
+				initGitRepository(path);
+				const original = await loadProjectContext(path);
+				await saveProjectState(path, { board: createBoard("Parent planning task"), sessions: {} });
+				const before = await loadProjectState(path);
+				const folder = await loadProjectContext(path, { folderOnly: true });
+				expect(folder.projectId).toBe(original.projectId);
+				const after = await loadProjectState(path);
+				expect(after.board).toEqual(before.board);
+				expect(after.revision).toBe(before.revision);
+				expect(after.git.folderOnly).toBe(true);
+				expect((await loadProjectContextById(original.projectId))?.folderOnly).toBe(true);
+				expect(existsSync(join(path, ".git"))).toBe(true);
+				await loadProjectContext(path, { folderOnly: false });
+				expect((await loadProjectState(path)).board).toEqual(before.board);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("migrates legacy Backlog cards into Review without relabeling already started cards", async () => {
 		await withTemporaryHome(async () => {
 			const { path: projectPath, cleanup } = createTempDir("quarterdeck-backlog-migration-");

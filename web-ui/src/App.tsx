@@ -337,6 +337,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 
 	const inlineTaskEditor = editingTaskId ? (
 		<TaskInlineCreateCard
+			folderOnly={projectSync.projectGit?.folderOnly}
 			prompt={editTaskPrompt}
 			onPromptChange={setEditTaskPrompt}
 			images={editTaskImages}
@@ -387,6 +388,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 					{/* Sidebar toolbar + side panel */}
 					<>
 						<DetailToolbar
+							folderOnly={projectSync.projectGit?.folderOnly}
 							activeMainView={navigation.visualMainView}
 							activeSidebar={navigation.visualSidebar}
 							onMainViewChange={handleMainViewChange}

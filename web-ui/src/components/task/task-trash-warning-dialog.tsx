@@ -42,12 +42,9 @@ export function TaskTrashWarningDialog({
 			{warning?.isNonIsolated ? (
 				<>
 					<AlertDialogDescription>
-						{warning.taskTitle} has an active session in the shared home repo.
+						{warning.taskTitle} has an active session in the shared project folder.
 					</AlertDialogDescription>
-					<p>
-						Moving to Trash will stop this task's session. Uncommitted changes in the home repo will not be
-						affected.
-					</p>
+					<p>Moving to Trash will stop this task's session. Files in the project folder will not be affected.</p>
 				</>
 			) : hasChanges ? (
 				<>

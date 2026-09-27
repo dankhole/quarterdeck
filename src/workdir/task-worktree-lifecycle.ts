@@ -114,6 +114,8 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 }): Promise<RuntimeWorktreeEnsureResponse> {
 	try {
 		const context = await loadProjectContext(options.cwd);
+		if (context.folderOnly && !options.existingPath)
+			throw new Error("Folder projects run tasks in place without Git worktrees.");
 		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 		const worktreePath = options.existingPath ?? getTaskWorktreePath(context.repoPath, taskId);
 		if (options.existingPath && !(await pathExists(worktreePath))) {
@@ -335,11 +337,15 @@ export async function archiveTaskWorktreeForTrash(options: {
 	repoPath: string;
 	taskId: string;
 	operationId?: string;
+	folderOnly?: boolean;
 }): Promise<RuntimeWorktreeDeleteResponse> {
 	try {
 		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 		const rootPath = getWorktreesBaseRootPath();
 		const worktreePath = getTaskWorktreePath(options.repoPath, taskId);
+		if (!(await pathExists(worktreePath)) && options.folderOnly) {
+			return { ok: true, removed: false };
+		}
 		return await withTaskWorktreeOperationLock(options.repoPath, worktreePath, async () =>
 			withTaskWorktreeSetupLock(options.repoPath, async () => {
 				if (!(await pathExists(worktreePath))) {
@@ -387,11 +393,16 @@ export async function purgeTaskWorkspaceForDelete(options: {
 	repoPath: string;
 	taskId: string;
 	operationId?: string;
+	folderOnly?: boolean;
 }): Promise<RuntimeWorktreeDeleteResponse> {
 	try {
 		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 		const rootPath = getWorktreesBaseRootPath();
 		const worktreePath = getTaskWorktreePath(options.repoPath, taskId);
+		if (!(await pathExists(worktreePath)) && options.folderOnly) {
+			await deleteTaskPatchFiles(taskId);
+			return { ok: true, removed: false };
+		}
 		return await withTaskWorktreeOperationLock(options.repoPath, worktreePath, async () =>
 			withTaskWorktreeSetupLock(options.repoPath, async () => {
 				const removed = (await pathExists(worktreePath))

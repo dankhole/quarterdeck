@@ -139,7 +139,7 @@ export function TaskDetailRepositorySurface({
 			) : (
 				<FilesView
 					key={`${selection.card.id}-${repositoryState.taskScopeMode}`}
-					showScopeBar={repositoryState.taskScopeMode !== "contextual"}
+					showScopeBar={!repositoryState.folderOnly && repositoryState.taskScopeMode !== "contextual"}
 					scopeBar={
 						<ScopeBar
 							resolvedScope={repositoryState.taskResolvedScope}

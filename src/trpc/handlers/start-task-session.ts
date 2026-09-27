@@ -9,6 +9,7 @@ import {
 	startTaskSessionThroughService,
 	type TaskSessionStartServiceResult,
 } from "../../server/task-session-start-service";
+import { loadProjectScopeById } from "../../state";
 import type { TerminalSessionManager } from "../../terminal";
 import { captureTaskTurnCheckpoint } from "../../workdir";
 import type { RuntimeTrpcProjectScope } from "../app-router-context";
@@ -103,7 +104,7 @@ export async function handleStartTaskSession(
 				promptOverride: body.prompt,
 			});
 		}
-		if (!body.resumeConversation) {
+		if (!body.resumeConversation && !(await loadProjectScopeById(projectScope.projectId))?.folderOnly) {
 			queueStartTurnCheckpointCapture({
 				terminalManager: result.terminalManager,
 				taskId: body.taskId,

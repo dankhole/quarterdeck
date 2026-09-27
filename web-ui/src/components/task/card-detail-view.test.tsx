@@ -16,6 +16,10 @@ const { mockAgentTerminalPanel } = vi.hoisted(() => ({
 	mockAgentTerminalPanel: vi.fn((_props: { panelBackgroundColor?: string; terminalBackgroundColor?: string }) => null),
 }));
 
+vi.mock("@/providers/project-provider", () => ({
+	useProjectSyncContext: () => ({ projectGit: null }),
+}));
+
 vi.mock("react-hotkeys-hook", () => ({
 	useHotkeys: () => {},
 }));

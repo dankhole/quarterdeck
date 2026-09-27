@@ -40,7 +40,7 @@ export function HomeView({
 	homeGitSummary,
 }: HomeViewProps): ReactElement {
 	const projectNavigation = useProjectNavigationContext();
-	const { projectPath } = useProjectSyncContext();
+	const { projectPath, projectGit } = useProjectSyncContext();
 	const projectRuntime = useProjectRuntimeContext();
 	const { board, sessions, upsertSession, selectedTaskId } = useBoardContext();
 	const git = useGitContext();
@@ -133,7 +133,7 @@ export function HomeView({
 							) : navigation.mainView === "files" ? (
 								<FilesView
 									key={projectNavigation.currentProjectId ?? "no-project"}
-									showScopeBar={git.fileBrowserScopeMode !== "contextual"}
+									showScopeBar={!projectGit?.folderOnly && git.fileBrowserScopeMode !== "contextual"}
 									scopeBar={
 										<ScopeBar
 											resolvedScope={git.fileBrowserResolvedScope}
@@ -148,60 +148,62 @@ export function HomeView({
 											onSwitchToHome={git.fileBrowserSwitchToHome}
 											onReturnToContextual={git.fileBrowserReturnToContextual}
 											branchPillSlot={
-												<BranchSelectorPopover
-													isOpen={git.fileBrowserBranchActions.isBranchPopoverOpen}
-													onOpenChange={git.fileBrowserBranchActions.setBranchPopoverOpen}
-													branches={git.fileBrowserBranchActions.branches}
-													currentBranch={git.fileBrowserBranchActions.currentBranch}
-													worktreeBranches={git.fileBrowserBranchActions.worktreeBranches}
-													onSelectBranchView={git.fileBrowserBranchActions.handleSelectBranchView}
-													onCheckoutBranch={git.fileBrowserBranchActions.handleCheckoutBranch}
-													onCompareWithBranch={(branch) =>
-														navigation.openGitCompare({ targetRef: branch })
-													}
-													onMergeBranch={git.fileBrowserBranchActions.handleMergeBranch}
-													onCreateBranch={git.fileBrowserBranchActions.handleCreateBranchFrom}
-													onDeleteBranch={git.fileBrowserBranchActions.handleDeleteBranch}
-													onRebaseBranch={git.fileBrowserBranchActions.handleRebaseBranch}
-													onRenameBranch={git.fileBrowserBranchActions.handleRenameBranch}
-													onResetToRef={git.fileBrowserBranchActions.handleResetToRef}
-													onPull={
-														git.fileBrowserResolvedScope?.type !== "branch_view"
-															? (branch) => {
-																	void git.runGitAction("pull", null, branch);
+												projectGit?.folderOnly ? undefined : (
+													<BranchSelectorPopover
+														isOpen={git.fileBrowserBranchActions.isBranchPopoverOpen}
+														onOpenChange={git.fileBrowserBranchActions.setBranchPopoverOpen}
+														branches={git.fileBrowserBranchActions.branches}
+														currentBranch={git.fileBrowserBranchActions.currentBranch}
+														worktreeBranches={git.fileBrowserBranchActions.worktreeBranches}
+														onSelectBranchView={git.fileBrowserBranchActions.handleSelectBranchView}
+														onCheckoutBranch={git.fileBrowserBranchActions.handleCheckoutBranch}
+														onCompareWithBranch={(branch) =>
+															navigation.openGitCompare({ targetRef: branch })
+														}
+														onMergeBranch={git.fileBrowserBranchActions.handleMergeBranch}
+														onCreateBranch={git.fileBrowserBranchActions.handleCreateBranchFrom}
+														onDeleteBranch={git.fileBrowserBranchActions.handleDeleteBranch}
+														onRebaseBranch={git.fileBrowserBranchActions.handleRebaseBranch}
+														onRenameBranch={git.fileBrowserBranchActions.handleRenameBranch}
+														onResetToRef={git.fileBrowserBranchActions.handleResetToRef}
+														onPull={
+															git.fileBrowserResolvedScope?.type !== "branch_view"
+																? (branch) => {
+																		void git.runGitAction("pull", null, branch);
+																	}
+																: undefined
+														}
+														onPush={
+															git.fileBrowserResolvedScope?.type !== "branch_view"
+																? (branch) => {
+																		void git.runGitAction("push", null, branch);
+																	}
+																: undefined
+														}
+														pinnedBranches={projectRuntime.pinnedBranches}
+														onTogglePinBranch={projectRuntime.handleTogglePinBranch}
+														disableContextMenu
+														trigger={
+															<BranchPillTrigger
+																label={
+																	git.fileBrowserResolvedScope?.type === "branch_view"
+																		? git.fileBrowserResolvedScope.ref
+																		: (homeGitSummary?.currentBranch ?? "unknown")
 																}
-															: undefined
-													}
-													onPush={
-														git.fileBrowserResolvedScope?.type !== "branch_view"
-															? (branch) => {
-																	void git.runGitAction("push", null, branch);
+																aheadCount={
+																	git.fileBrowserResolvedScope?.type === "branch_view"
+																		? undefined
+																		: homeGitSummary?.aheadCount
 																}
-															: undefined
-													}
-													pinnedBranches={projectRuntime.pinnedBranches}
-													onTogglePinBranch={projectRuntime.handleTogglePinBranch}
-													disableContextMenu
-													trigger={
-														<BranchPillTrigger
-															label={
-																git.fileBrowserResolvedScope?.type === "branch_view"
-																	? git.fileBrowserResolvedScope.ref
-																	: (homeGitSummary?.currentBranch ?? "unknown")
-															}
-															aheadCount={
-																git.fileBrowserResolvedScope?.type === "branch_view"
-																	? undefined
-																	: homeGitSummary?.aheadCount
-															}
-															behindCount={
-																git.fileBrowserResolvedScope?.type === "branch_view"
-																	? undefined
-																	: homeGitSummary?.behindCount
-															}
-														/>
-													}
-												/>
+																behindCount={
+																	git.fileBrowserResolvedScope?.type === "branch_view"
+																		? undefined
+																		: homeGitSummary?.behindCount
+																}
+															/>
+														}
+													/>
+												)
 											}
 											onCheckoutBrowsingBranch={
 												git.fileBrowserResolvedScope?.type === "branch_view"

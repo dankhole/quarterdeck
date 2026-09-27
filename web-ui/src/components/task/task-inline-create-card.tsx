@@ -43,6 +43,7 @@ export function TaskInlineCreateCard({
 	onCreateAndStart,
 	onCancel,
 	useWorktree,
+	folderOnly = false,
 	onUseWorktreeChange,
 	projectId,
 	branchRef,
@@ -62,6 +63,7 @@ export function TaskInlineCreateCard({
 	onCreateAndStart?: () => void;
 	onCancel?: () => void;
 	useWorktree?: boolean;
+	folderOnly?: boolean;
 	onUseWorktreeChange?: (value: boolean) => void;
 	projectId: string | null;
 	branchRef: string;
@@ -164,7 +166,7 @@ export function TaskInlineCreateCard({
 				</p>
 			</div>
 
-			<div className="flex flex-col gap-2 mt-3">
+			<div className={folderOnly ? "hidden" : "flex flex-col gap-2 mt-3"}>
 				<div>
 					<span className="text-[11px] text-text-secondary block mb-1">Base ref</span>
 					<BranchSelectDropdown
@@ -225,7 +227,7 @@ export function TaskInlineCreateCard({
 						size="sm"
 						className="whitespace-nowrap"
 						onClick={onCreate}
-						disabled={!prompt.trim() || !branchRef}
+						disabled={!prompt.trim() || (!folderOnly && useWorktree !== false && !branchRef)}
 					>
 						<span className="inline-flex items-center">
 							<span>{actionLabel}</span>
@@ -238,7 +240,7 @@ export function TaskInlineCreateCard({
 							size="sm"
 							className="whitespace-nowrap"
 							onClick={onCreateAndStart}
-							disabled={!prompt.trim() || !branchRef}
+							disabled={!prompt.trim() || (!folderOnly && useWorktree !== false && !branchRef)}
 						>
 							<span className="inline-flex items-center">
 								<span>Start</span>

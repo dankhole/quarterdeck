@@ -232,6 +232,28 @@ describe("ProjectMetadataMonitor", () => {
 		vi.useRealTimers();
 	});
 
+	it("suspends folder Git probes and resumes existing client subscriptions when Git is enabled", async () => {
+		const monitor = createProjectMetadataMonitor({ onMetadataUpdated: vi.fn() });
+		const project = { projectId: "folder", projectPath: "/folder", board: createBoard([]) };
+		try {
+			await monitor.connectProject({ ...project, folderOnly: true, clientId: "browser" });
+			expect(loaderMocks.loadHomeGitMetadata).not.toHaveBeenCalled();
+			await monitor.updateProjectState({ ...project, folderOnly: false });
+			expect(loaderMocks.loadHomeGitMetadata).toHaveBeenCalled();
+			expect(monitor.getDiagnosticSnapshot().projects[0]?.connectedClientCount).toBe(1);
+			await monitor.updateProjectState({ ...project, folderOnly: true });
+			expect(monitor.getDiagnosticSnapshot().projects).toEqual([]);
+			loaderMocks.loadHomeGitMetadata.mockClear();
+			monitor.requestHomeRefresh("folder");
+			expect(loaderMocks.loadHomeGitMetadata).not.toHaveBeenCalled();
+			monitor.disconnectProject("folder", "browser");
+			await monitor.updateProjectState(project);
+			expect(monitor.getDiagnosticSnapshot().projects[0]?.connectedClientCount).toBe(0);
+		} finally {
+			monitor.close();
+		}
+	});
+
 	it("refreshes home metadata independently across connected projects", async () => {
 		const onMetadataUpdated = vi.fn();
 		const monitor = createProjectMetadataMonitor({

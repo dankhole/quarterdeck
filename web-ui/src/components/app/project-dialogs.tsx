@@ -43,6 +43,9 @@ export function ProjectDialogs(): ReactElement {
 				open={pendingGitInitializationPath !== null}
 				path={pendingGitInitializationPath}
 				isInitializing={isInitializingGitProject}
+				onAddFolder={() => {
+					void handleConfirmInitializeGitProject(true);
+				}}
 				onCancel={handleCancelInitializeGitProject}
 				onConfirm={() => {
 					void handleConfirmInitializeGitProject();

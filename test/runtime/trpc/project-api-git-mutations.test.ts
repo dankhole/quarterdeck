@@ -84,6 +84,7 @@ vi.mock("../../../src/workdir/get-workdir-changes.js", () => ({
 
 vi.mock("../../../src/state/project-state.js", () => ({
 	loadProjectState: projectStateMocks.loadProjectState,
+	loadProjectScopeById: vi.fn(async () => null),
 	saveProjectState: projectStateMocks.saveProjectState,
 	ProjectStateConflictError: projectStateMocks.ProjectStateConflictError,
 }));

@@ -5,6 +5,8 @@ import { GIT_INSPECTION_OPTIONS, runGit, validateGitRef } from "./git-utils.js";
 const DEFAULT_LIMIT = 100;
 
 interface SearchWorkdirTextOptions {
+	/** Search the filesystem without consulting any repository or Git index. */
+	noIndex?: boolean;
 	caseSensitive?: boolean;
 	isRegex?: boolean;
 	limit?: number;
@@ -21,7 +23,8 @@ export async function searchWorkdirText(
 		return { query, files: [], totalMatches: 0, truncated: false };
 	}
 
-	const args: string[] = ["grep", "-n", "--null", "--no-color"];
+	const args: string[] = ["grep", "-n", "--null", "--no-color", "-I"];
+	if (options.noIndex) args.push("--no-index", "--exclude-standard");
 	if (!caseSensitive) {
 		args.push("-i");
 	}

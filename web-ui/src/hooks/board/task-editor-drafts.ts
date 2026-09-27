@@ -65,7 +65,16 @@ export function saveEditedTaskToBoard({
 	branchRef: string;
 	defaultBranchRef: string;
 }): { board: BoardData; savedTaskId: string | null } {
-	if (!editingTaskId || !isTaskSaveValid(prompt, branchRef, defaultBranchRef)) {
+	if (
+		!editingTaskId ||
+		!isTaskSaveValid(
+			prompt,
+			branchRef,
+			defaultBranchRef,
+			board.columns.flatMap((column) => column.cards).find((card) => card.id === editingTaskId)?.useWorktree !==
+				false,
+		)
+	) {
 		return { board, savedTaskId: null };
 	}
 
@@ -106,7 +115,7 @@ export function createTaskOnBoard({
 	agentId: RuntimeAgentId;
 	codexOptions?: BoardCard["codexOptions"];
 }): { board: BoardData; createdTaskId: string | null; createdTask: BoardCard | null; baseRef: string } {
-	if (!isTaskSaveValid(prompt, branchRef, defaultBranchRef)) {
+	if (!isTaskSaveValid(prompt, branchRef, defaultBranchRef, useWorktree)) {
 		return {
 			board,
 			createdTaskId: null,
@@ -156,7 +165,7 @@ export function createTasksOnBoard({
 }): { board: BoardData; createdTaskIds: string[]; createdTasks: BoardCard[]; baseRef: string } {
 	const validPrompts = prompts.map((prompt) => prompt.trim()).filter(Boolean);
 	const baseRef = resolveEffectiveBaseRef(branchRef, defaultBranchRef);
-	if (validPrompts.length === 0 || !baseRef) {
+	if (validPrompts.length === 0 || (useWorktree && !baseRef)) {
 		return { board, createdTaskIds: [], createdTasks: [], baseRef };
 	}
 

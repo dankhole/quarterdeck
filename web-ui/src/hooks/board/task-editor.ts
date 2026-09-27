@@ -9,8 +9,13 @@ export function isBranchRefValid(branchRef: string, availableBranches: Array<{ v
 /**
  * Validate that the minimum requirements for creating/saving a task are met.
  */
-export function isTaskSaveValid(prompt: string, branchRef: string, fallbackBranchRef: string): boolean {
-	return prompt.trim().length > 0 && !!(branchRef || fallbackBranchRef);
+export function isTaskSaveValid(
+	prompt: string,
+	branchRef: string,
+	fallbackBranchRef: string,
+	useWorktree = true,
+): boolean {
+	return prompt.trim().length > 0 && (!useWorktree || !!(branchRef || fallbackBranchRef));
 }
 
 /**

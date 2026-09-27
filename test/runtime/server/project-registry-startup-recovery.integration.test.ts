@@ -29,6 +29,7 @@ vi.mock("../../../src/state", () => ({
 	loadProjectBoardById: vi.fn(),
 	loadProjectBoardSnapshotById: stateMocks.loadProjectBoardSnapshotById,
 	loadProjectContext: vi.fn(async () => null),
+	loadProjectScopeById: vi.fn(async () => null),
 	loadProjectState: stateMocks.loadProjectState,
 	removeProjectIndexEntry: stateMocks.removeProjectIndexEntry,
 	removeProjectStateFiles: stateMocks.removeProjectStateFiles,

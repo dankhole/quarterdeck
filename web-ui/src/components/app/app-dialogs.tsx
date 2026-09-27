@@ -99,6 +99,7 @@ export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactEleme
 				onCreateStartAndOpen={interactions.handleCreateStartAndOpenTask}
 				onCreateMultiple={handleCreateTasks}
 				onCreateAndStartMultiple={interactions.handleCreateAndStartTasks}
+				folderOnly={projectGit?.folderOnly}
 				useWorktree={newTaskUseWorktree}
 				onUseWorktreeChange={setNewTaskUseWorktree}
 				currentBranch={projectGit?.currentBranch ?? null}

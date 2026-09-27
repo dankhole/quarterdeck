@@ -46,11 +46,13 @@ const BOARD_COLUMNS: Array<{ id: RuntimeBoardColumnId; title: string }> = [
 export interface ProjectIndexEntry {
 	projectId: string;
 	repoPath: string;
+	folderOnly?: boolean;
 }
 
 export interface RuntimeProjectIndexEntry {
 	projectId: string;
 	repoPath: string;
+	folderOnly?: boolean;
 }
 
 interface ProjectIndexFile {
@@ -63,6 +65,7 @@ interface ProjectIndexFile {
 const projectIndexEntrySchema = z.object({
 	projectId: z.string().min(1, "Project ID cannot be empty."),
 	repoPath: z.string().min(1, "Project repository path cannot be empty."),
+	folderOnly: z.boolean().optional(),
 });
 
 const projectIndexFileSchema = z
@@ -552,6 +555,7 @@ export async function listProjectIndexEntries(): Promise<RuntimeProjectIndexEntr
 	const entries = Object.values(index.entries).map((entry) => ({
 		projectId: entry.projectId,
 		repoPath: entry.repoPath,
+		...(entry.folderOnly ? { folderOnly: true } : {}),
 	}));
 	const order = index.projectOrder;
 	if (order.length === 0) {

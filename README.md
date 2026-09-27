@@ -185,7 +185,11 @@ npm run unlink
 
 1. Add projects.
 
-   Quarterdeck can track multiple git repositories. Each project has its own board, task cards, settings, shortcuts, and runtime state.
+   Quarterdeck can track Git repositories and ordinary folders. Each project has its own board, task cards, settings, shortcuts, and runtime state.
+
+   For a parent folder that contains several repositories, choose **Use as folder project** from its project menu. Its board and tasks stay in place, while each child can be added as an independent project. You can also choose **Add without Git** when adding a folder. Adding a child never silently opens its parent repository; initialize Git in the child if it needs its own repository.
+
+   Folder projects keep task agents and the file browser, but disable Git controls and new isolated worktrees. New tasks run directly in the folder. Conversion preserves existing files, Git history, and task workspaces; it does not delete `.git` or restrict Git commands an agent runs itself. Choose **Enable Git** from the same menu to switch back.
 
 2. Create task cards.
 

@@ -66,6 +66,7 @@ export function TaskEditorProvider({ children }: TaskEditorProviderProps): React
 		currentProjectId,
 		createTaskBranchOptions,
 		defaultTaskBranchRef,
+		folderOnly: projectGit?.folderOnly,
 		fallbackTaskAgentId,
 		availableTaskAgentIds,
 		setSelectedTaskId,

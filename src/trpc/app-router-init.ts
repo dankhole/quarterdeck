@@ -1,5 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 
+import { loadProjectScopeById } from "../state";
+
 import type { RuntimeTrpcContext, RuntimeTrpcContextWithProjectScope } from "./app-router-context";
 
 function readConflictRevision(cause: unknown): number | null {
@@ -45,4 +47,15 @@ export const projectProcedure = t.procedure.use(({ ctx, next }) => {
 			projectScope: ctx.projectScope,
 		} satisfies RuntimeTrpcContextWithProjectScope,
 	});
+});
+
+/** Folder projects never operate on an incidental ancestor or placeholder repository. */
+export const projectGitProcedure = projectProcedure.use(async ({ ctx, next }) => {
+	if ((await loadProjectScopeById(ctx.projectScope.projectId))?.folderOnly) {
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message: "Git is disabled for this folder project. Open a child Git project instead.",
+		});
+	}
+	return next();
 });

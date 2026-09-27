@@ -79,11 +79,13 @@ export interface ProjectTaskLifecycleServiceDependencies {
 		onSetupProgress?: (phase: "running" | "succeeded" | "failed") => Promise<void>;
 	}) => Promise<RuntimeWorktreeEnsureResponse>;
 	archiveTaskWorktree?: (options: {
+		folderOnly?: boolean;
 		repoPath: string;
 		taskId: string;
 		operationId?: string;
 	}) => Promise<RuntimeWorktreeDeleteResponse>;
 	purgeTaskWorkspace?: (options: {
+		folderOnly?: boolean;
 		repoPath: string;
 		taskId: string;
 		operationId?: string;
@@ -590,9 +592,11 @@ export class ProjectTaskLifecycleService {
 
 		const card = findCardInBoard(moveResult.state.board, command.taskId);
 		let warning: string | null = null;
-		if (card?.useWorktree !== false) {
+		// Folder mode keeps pre-existing workspaces intact so restore needs no Git recreation.
+		if (!moveResult.state.git.folderOnly && card?.useWorktree !== false) {
 			operation = await this.setPhase(scope, operation, "archiving_worktree");
 			const archived = await (this.dependencies.archiveTaskWorktree ?? archiveTaskWorktreeForTrash)({
+				folderOnly: moveResult.state.git.folderOnly,
 				repoPath: scope.projectPath,
 				taskId: command.taskId,
 				operationId: command.operationId,
@@ -708,7 +712,7 @@ export class ProjectTaskLifecycleService {
 			});
 		}
 		let warning: string | undefined;
-		if (card.useWorktree !== false) {
+		if (!moveResult.state.git.folderOnly && card.useWorktree !== false) {
 			operation = await this.setPhase(scope, operation, "ensuring_worktree");
 			const ensured = await (this.dependencies.ensureTaskWorktree ?? ensureTaskWorktreeIfDoesntExist)({
 				cwd: scope.projectPath,
@@ -887,6 +891,7 @@ export class ProjectTaskLifecycleService {
 		operation = await this.setPhase(scope, operation, "purging_workspace");
 		if (precondition.card.useWorktree !== false) {
 			const purged = await (this.dependencies.purgeTaskWorkspace ?? purgeTaskWorkspaceForDelete)({
+				folderOnly: precondition.state.git.folderOnly,
 				repoPath: scope.projectPath,
 				taskId: command.taskId,
 				operationId: command.operationId,
@@ -940,7 +945,7 @@ export class ProjectTaskLifecycleService {
 	): Promise<RuntimeTaskLifecycleResult> {
 		let response: RuntimeTaskSessionStartResponse;
 		try {
-			if (card.useWorktree !== false && !options.worktreePrepared) {
+			if (!state.git.folderOnly && card.useWorktree !== false && !options.worktreePrepared) {
 				operation = await this.setPhase(scope, operation, "ensuring_worktree");
 				const ensured = await (this.dependencies.ensureTaskWorktree ?? ensureTaskWorktreeIfDoesntExist)({
 					cwd: scope.projectPath,
@@ -969,7 +974,7 @@ export class ProjectTaskLifecycleService {
 				resumeConversation: options.resumeConversation,
 				awaitReview: options.awaitReview,
 				baseRef: card.baseRef,
-				useWorktree: card.useWorktree,
+				useWorktree: state.git.folderOnly ? false : card.useWorktree,
 				cols: options.cols,
 				rows: options.rows,
 			});

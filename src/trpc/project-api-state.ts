@@ -8,13 +8,18 @@ import {
 	parseWorktreeEnsureRequest,
 } from "../core";
 import {
+	loadProjectScopeById,
 	ProjectBoardCommandIdentityConflictError,
 	ProjectBoardLifecycleCommandRequiredError,
 	ProjectStateConflictError,
 } from "../state";
 import { archiveTaskWorktreeForTrash, ensureTaskWorktreeIfDoesntExist, getTaskRepositoryInfo } from "../workdir";
 import type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
-import { normalizeRequiredTaskScopeInput, type ProjectApiContext } from "./project-api-shared";
+import {
+	normalizeOptionalTaskScopeInput,
+	normalizeRequiredTaskScopeInput,
+	type ProjectApiContext,
+} from "./project-api-shared";
 import {
 	createBoardCommandCommittedEffects,
 	createProjectStateUpdatedEffects,
@@ -126,6 +131,7 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 				// work rather than permanently purging it. Production task deletion is
 				// owned by ProjectTaskLifecycleService.
 				return await archiveTaskWorktreeForTrash({
+					folderOnly: (await loadProjectScopeById(projectScope.projectId))?.folderOnly,
 					repoPath: projectScope.projectPath,
 					taskId: body.taskId,
 				});
@@ -133,7 +139,10 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 		},
 
 		loadTaskContext: async (projectScope, input) => {
-			const normalizedInput = normalizeRequiredTaskScopeInput(input);
+			const normalizedInput = (await loadProjectScopeById(projectScope.projectId))?.folderOnly
+				? normalizeOptionalTaskScopeInput(input)
+				: normalizeRequiredTaskScopeInput(input);
+			if (!normalizedInput) throw new Error("Missing taskId query parameter.");
 			return await getTaskRepositoryInfo({
 				cwd: projectScope.projectPath,
 				taskId: normalizedInput.taskId,

@@ -47,7 +47,8 @@ interface SurfaceNavigationProviderProps {
 }
 
 export function SurfaceNavigationProvider({ children }: SurfaceNavigationProviderProps): ReactNode {
-	const { hasNoProjects, isProjectSwitching } = useProjectNavigationContext();
+	const { hasNoProjects, isProjectSwitching, projects, currentProjectId } = useProjectNavigationContext();
+	const folderOnly = Boolean(projects?.find((project) => project.id === currentProjectId)?.folderOnly);
 	const { selectedTaskId, setSelectedTaskId } = useBoardContext();
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
 	const [activeFileSearchScope, setActiveFileSearchScope] = useState<WorkdirSearchScope>(DEFAULT_WORKDIR_SEARCH_SCOPE);
@@ -75,14 +76,14 @@ export function SurfaceNavigationProvider({ children }: SurfaceNavigationProvide
 	} = useGitNavigation({ isGitHistoryOpen, setMainView, setSelectedTaskId });
 
 	const handleToggleGitHistory = useCallback(() => {
-		if (hasNoProjects) return;
+		if (hasNoProjects || folderOnly) return;
 		setIsGitHistoryOpen((current) => !current);
-	}, [hasNoProjects]);
+	}, [hasNoProjects, folderOnly]);
 
 	const openGitHistory = useCallback(() => {
-		if (hasNoProjects) return;
+		if (hasNoProjects || folderOnly) return;
 		setIsGitHistoryOpen(true);
-	}, [hasNoProjects]);
+	}, [hasNoProjects, folderOnly]);
 
 	const closeGitHistory = useCallback(() => {
 		setIsGitHistoryOpen(false);
@@ -96,7 +97,7 @@ export function SurfaceNavigationProvider({ children }: SurfaceNavigationProvide
 
 	const value = useMemo<SurfaceNavigationContextValue>(
 		() => ({
-			isGitHistoryOpen,
+			isGitHistoryOpen: !folderOnly && isGitHistoryOpen,
 			handleToggleGitHistory,
 			openGitHistory,
 			closeGitHistory,
@@ -109,17 +110,18 @@ export function SurfaceNavigationProvider({ children }: SurfaceNavigationProvide
 			navigateToGitView,
 			activeFileSearchScope,
 			setActiveFileSearchScope,
-			mainView,
-			sidebar,
+			mainView: folderOnly && mainView === "git" ? "home" : mainView,
+			sidebar: folderOnly && sidebar === "commit" ? null : sidebar,
 			setMainView,
 			toggleSidebar,
-			visualMainView,
-			visualSidebar,
+			visualMainView: folderOnly && visualMainView === "git" ? "home" : visualMainView,
+			visualSidebar: folderOnly && visualSidebar === "commit" ? null : visualSidebar,
 			sidePanelRatio,
 			setSidePanelRatio,
 			resetSurfaceNavigationToDefaults,
 		}),
 		[
+			folderOnly,
 			isGitHistoryOpen,
 			handleToggleGitHistory,
 			openGitHistory,

@@ -9,7 +9,7 @@ import {
 	type RuntimeTaskSessionSummary,
 	type TaskResourceOperationRunner,
 } from "../core";
-import { loadProjectState } from "../state";
+import { loadProjectScopeById, loadProjectState } from "../state";
 import {
 	assertPtyRuntimeAvailable,
 	cloneStartTaskSessionRequest,
@@ -147,7 +147,8 @@ export async function prepareTaskSessionStart(
 	options: TaskSessionStartServiceOptions = {},
 ): Promise<PreparedTaskSessionStart> {
 	const scopedRuntimeConfig = await deps.config.loadScopedRuntimeConfig(projectScope);
-	const useWorktree = body.useWorktree !== false;
+	const project = await loadProjectScopeById(projectScope.projectId);
+	const useWorktree = !project?.folderOnly && body.useWorktree !== false;
 	if (useWorktree && !isRuntimeTaskBaseRefResolved({ baseRef: body.baseRef })) {
 		throw new Error("Select a base branch before starting this task.");
 	}

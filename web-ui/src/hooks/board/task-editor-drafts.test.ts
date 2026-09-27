@@ -35,6 +35,34 @@ function createBoard(tasks: BoardCard[] = []): BoardData {
 }
 
 describe("task-editor-drafts", () => {
+	it("creates and edits folder tasks without a branch", () => {
+		const options = {
+			board: createBoard(),
+			prompt: "Parent work",
+			prompts: ["One", "Two"],
+			images: [],
+			branchRef: "",
+			defaultBranchRef: "",
+			useWorktree: false,
+			branchName: "",
+			createFeatureBranch: false,
+			agentId: "codex" as const,
+		};
+		const single = createTaskOnBoard(options);
+		expect(single.createdTask).toMatchObject({ baseRef: "", useWorktree: false });
+		expect(createTasksOnBoard(options).createdTasks).toHaveLength(2);
+		if (!single.createdTask) throw new Error("Expected folder task");
+		const edited = saveEditedTaskToBoard({
+			board: single.board,
+			editingTaskId: single.createdTask.id,
+			prompt: "Edited parent work",
+			images: [],
+			branchRef: "",
+			defaultBranchRef: "",
+		});
+		expect(edited.savedTaskId).toBe(single.createdTask.id);
+		expect(createTaskOnBoard({ ...options, useWorktree: true }).createdTask).toBeNull();
+	});
 	it("keeps Codex starting options on single and bulk tasks and drops them for other harnesses", () => {
 		const options = {
 			board: createBoard(),

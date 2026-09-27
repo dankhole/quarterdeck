@@ -60,6 +60,7 @@ export {
 
 export interface RuntimeProjectContext {
 	repoPath: string;
+	folderOnly?: boolean;
 	projectId: string;
 	statePath: string;
 	git: RuntimeGitRepositoryInfo;
@@ -67,12 +68,15 @@ export interface RuntimeProjectContext {
 
 export interface RuntimeProjectScopeContext {
 	repoPath: string;
+	folderOnly?: boolean;
 	projectId: string;
 	statePath: string;
 }
 
 export interface LoadProjectContextOptions {
 	autoCreateIfMissing?: boolean;
+	/** Explicit project mode; omitted for ordinary lookup. */
+	folderOnly?: boolean;
 }
 
 const persistedProjectStateSaveRequestSchema = z.object({
@@ -218,9 +222,14 @@ async function canonicalizeProjectInputPath(cwd: string): Promise<string> {
 	}
 }
 
-function toProjectScopeContext(input: { projectId: string; repoPath: string }): RuntimeProjectScopeContext {
+function toProjectScopeContext(input: {
+	projectId: string;
+	repoPath: string;
+	folderOnly?: boolean;
+}): RuntimeProjectScopeContext {
 	return {
 		repoPath: input.repoPath,
+		...(input.folderOnly ? { folderOnly: true } : {}),
 		projectId: input.projectId,
 		statePath: getProjectDirectoryPath(input.projectId),
 	};
@@ -238,7 +247,9 @@ async function loadProjectScopeByRepoPath(repoPath: string): Promise<RuntimeProj
 async function loadFullProjectContext(scope: RuntimeProjectScopeContext): Promise<RuntimeProjectContext> {
 	return {
 		...scope,
-		git: await detectGitRepositoryInfo(scope.repoPath),
+		git: scope.folderOnly
+			? { folderOnly: true, currentBranch: null, defaultBranch: null, branches: [] }
+			: await detectGitRepositoryInfo(scope.repoPath),
 	};
 }
 
@@ -249,11 +260,11 @@ export async function loadProjectContext(
 	const autoCreateIfMissing = options.autoCreateIfMissing ?? true;
 	const canonicalCwd = await canonicalizeProjectInputPath(cwd);
 	const exactIndexedScope = await loadProjectScopeByRepoPath(canonicalCwd);
-	if (exactIndexedScope) {
+	if (exactIndexedScope && options.folderOnly === undefined) {
 		return await loadFullProjectContext(exactIndexedScope);
 	}
 
-	const repoPath = await resolveProjectPath(canonicalCwd);
+	const repoPath = options.folderOnly !== undefined ? canonicalCwd : await resolveProjectPath(canonicalCwd);
 	if (!autoCreateIfMissing) {
 		const existingScope = await loadProjectScopeByRepoPath(repoPath);
 		if (!existingScope) {
@@ -269,7 +280,8 @@ export async function loadProjectContext(
 			? { index, entry: existingEntry, changed: false }
 			: ensureProjectEntry(index, repoPath);
 		index = ensured.index;
-		if (ensured.changed) {
+		if (options.folderOnly !== undefined) ensured.entry.folderOnly = options.folderOnly;
+		if (ensured.changed || options.folderOnly !== undefined) {
 			await writeProjectIndexSafe(index);
 		}
 

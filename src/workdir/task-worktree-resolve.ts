@@ -56,7 +56,8 @@ export async function resolveTaskWorkingDirectory(options: {
 }): Promise<string> {
 	const state = await loadProjectState(options.projectPath);
 	const card = findCardInBoard(state.board, options.taskId);
-	if (card?.useWorktree === false) return resolve(options.projectPath);
+	if (card?.useWorktree === false || (state.git.folderOnly && !card?.workingDirectory))
+		return resolve(options.projectPath);
 
 	const persisted = card?.workingDirectory ?? null;
 	if (persisted && (await pathExists(persisted))) {
@@ -114,6 +115,23 @@ export async function getTaskRepositoryInfo(options: {
 	taskId: string;
 	baseRef: string;
 }): Promise<RuntimeTaskRepositoryInfoResponse> {
+	const context = await loadProjectContext(options.cwd);
+	if (context.folderOnly) {
+		const path = await resolveTaskWorkingDirectory({
+			projectPath: options.cwd,
+			taskId: options.taskId,
+			baseRef: options.baseRef,
+		});
+		return {
+			taskId: options.taskId,
+			path,
+			exists: await pathExists(path),
+			baseRef: options.baseRef,
+			branch: null,
+			isDetached: false,
+			headCommit: null,
+		};
+	}
 	const projectPathInfo = await getTaskWorktreePathInfo(options);
 	try {
 		const assignedPath = await resolveTaskWorkingDirectory({

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Add folder projects with their own boards and tasks, without requiring Git. Convert existing parent projects without losing tasks or files, and add nested repositories independently instead of reopening the parent.
+
 - Support macOS Command+Left/Right/Backspace editing, Ctrl+Shift+C for Codex fullscreen selections on other platforms, and screenshot paste into connected task-agent terminals. Report browser clipboard failures, preserve IME and unrelated modified keys, and reject image uploads when the target session changes.
 
 - Fix Command+C copying Codex fullscreen selections on macOS, while preserving terminal selection copying and Ctrl+C behavior.

@@ -80,6 +80,61 @@ function createDeferred(): { promise: Promise<void>; resolve: () => void } {
 }
 
 describe("ProjectTaskLifecycleService integration", { concurrent: false }, () => {
+	it("keeps converted tasks through trash and restore without creating or archiving Git worktrees", async () => {
+		await withTemporaryHome(async () => {
+			const fixture = createTempDir("quarterdeck-folder-lifecycle-");
+			try {
+				const context = await loadProjectContext(fixture.path, { folderOnly: true });
+				const scope = { projectId: context.projectId, projectPath: context.repoPath };
+				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+				const created = await boardCommands.execute(scope, {
+					commandId: "seed",
+					expectedRevision: 0,
+					command: { ...TASK_SPEC, kind: "create_task", columnId: "review" },
+				});
+				const ensureTaskWorktree = vi.fn();
+				const archiveTaskWorktree = vi.fn();
+				const startTaskSession = vi.fn(async () => ({
+					ok: true,
+					summary: createTestTaskSessionSummary({ taskId: TASK_SPEC.taskId, state: "running" }),
+				}));
+				const lifecycle = new ProjectTaskLifecycleService({
+					boardCommands,
+					startTaskSession,
+					ensureTaskWorktree,
+					archiveTaskWorktree,
+				});
+				const identity = { taskId: TASK_SPEC.taskId, taskCreatedAt: TASK_SPEC.createdAt };
+				const trashed = await lifecycle.execute(scope, {
+					...identity,
+					kind: "trash",
+					operationId: "trash",
+					sourceColumnId: "review",
+					expectedRevision: created.state.revision,
+				});
+				expect(trashed.ok).toBe(true);
+				const restored = await lifecycle.execute(scope, {
+					...identity,
+					kind: "restore",
+					operationId: "restore",
+					expectedRevision: trashed.state.revision,
+				});
+				expect(restored.ok).toBe(true);
+				const started = await lifecycle.execute(scope, {
+					...identity,
+					kind: "start",
+					operationId: "start",
+					expectedRevision: restored.state.revision,
+				});
+				expect(started.ok).toBe(true);
+				expect(startTaskSession).toHaveBeenCalledWith(scope, expect.objectContaining({ useWorktree: false }));
+				expect(ensureTaskWorktree).not.toHaveBeenCalled();
+				expect(archiveTaskWorktree).not.toHaveBeenCalled();
+			} finally {
+				fixture.cleanup();
+			}
+		});
+	});
 	it("keeps unstarted Review tasks distinct through stop, restart, Trash, restore, and Start", async () => {
 		await withTemporaryHome(async () => {
 			const { path: projectPath, cleanup } = createTempDir("quarterdeck-unstarted-");

@@ -7,6 +7,7 @@ import type {
 	RuntimeWorkdirFileSearchResponse,
 	RuntimeWorkdirTextSearchResponse,
 } from "../core";
+import { loadProjectScopeById } from "../state";
 import type { RuntimeCommitMessageGenerationContext } from "../title";
 import {
 	assertValidGitRef,
@@ -341,17 +342,23 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 
 		searchFiles: async (projectScope, input) => {
 			const query = input.query.trim();
+			const folderOnly = (await loadProjectScopeById(projectScope.projectId))?.folderOnly;
+			if (folderOnly && input.ref) throw new Error("Git ref browsing is disabled for folder projects.");
 			const cwd = await resolveProjectFileCwd(projectScope.projectPath, input);
 			if (!cwd) {
 				return { query, files: [] } satisfies RuntimeWorkdirFileSearchResponse;
 			}
 			const files = input.ref
 				? searchFilePaths(await listFilesAtRef(cwd, input.ref), query, input.limit)
-				: await searchWorkdirFiles(cwd, query, input.limit);
+				: folderOnly
+					? searchFilePaths((await listAllWorkdirFileEntries(cwd)).files, query, input.limit)
+					: await searchWorkdirFiles(cwd, query, input.limit);
 			return { query, files } satisfies RuntimeWorkdirFileSearchResponse;
 		},
 
 		searchText: async (projectScope, input) => {
+			const folderOnly = (await loadProjectScopeById(projectScope.projectId))?.folderOnly;
+			if (folderOnly && input.ref) throw new Error("Git ref browsing is disabled for folder projects.");
 			const cwd = await resolveProjectFileCwd(projectScope.projectPath, input);
 			if (!cwd) {
 				return {
@@ -362,6 +369,7 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 				} satisfies RuntimeWorkdirTextSearchResponse;
 			}
 			return (await searchWorkdirText(cwd, input.query, {
+				noIndex: folderOnly,
 				caseSensitive: input.caseSensitive,
 				isRegex: input.isRegex,
 				limit: input.limit,

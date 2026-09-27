@@ -9,6 +9,7 @@ import {
 import { useBranchActions, useFileBrowserData, useScopeContext } from "@/hooks/git";
 import { useBoardContext } from "@/providers/board-provider";
 import { useGitContext } from "@/providers/git-provider";
+import { useProjectSyncContext } from "@/providers/project-provider";
 import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -45,6 +46,7 @@ export interface CardDetailViewSidePanelState {
 }
 
 export interface CardDetailViewRepositoryState {
+	folderOnly?: boolean;
 	board: ReturnType<typeof useBoardContext>["board"];
 	taskRepositoryInfo: ReturnType<typeof useTaskRepositoryInfoValue>;
 	taskWorktreeSnapshot: ReturnType<typeof useTaskWorktreeSnapshotValue>;
@@ -94,6 +96,8 @@ export function useCardDetailView({
 	const { board, sessions: taskSessions, upsertSession: onSessionSummary, sendTaskSessionInput } = useBoardContext();
 	const navigation = useSurfaceNavigationContext();
 	const { runGitAction } = useGitContext();
+	const { projectGit } = useProjectSyncContext();
+	const folderOnly = projectGit?.folderOnly === true;
 	const { startDrag: startSidePanelResize } = useResizeDrag();
 	const detailLayoutRef = useRef<HTMLDivElement | null>(null);
 	const mainRowRef = useRef<HTMLDivElement | null>(null);
@@ -147,8 +151,12 @@ export function useCardDetailView({
 		currentProjectId,
 	});
 
+	useEffect(() => {
+		if (folderOnly) taskReturnToContextual();
+	}, [folderOnly, taskReturnToContextual]);
+
 	const taskBranchActions = useBranchActions({
-		projectId: currentProjectId,
+		projectId: folderOnly ? null : currentProjectId,
 		board,
 		selectBranchView: taskSelectBranchView,
 		homeGitSummary,
@@ -250,6 +258,7 @@ export function useCardDetailView({
 			taskSessions,
 		},
 		repository: {
+			folderOnly,
 			board,
 			taskRepositoryInfo,
 			taskWorktreeSnapshot,
@@ -259,7 +268,7 @@ export function useCardDetailView({
 			taskReturnToContextual,
 			taskBranchActions,
 			fileBrowserData,
-			pillBranchLabel,
+			pillBranchLabel: folderOnly ? null : pillBranchLabel,
 			isGitHistoryOpen: navigation.isGitHistoryOpen,
 			onToggleGitHistory: navigation.handleToggleGitHistory,
 			pendingCompareNavigation: navigation.pendingCompareNavigation,

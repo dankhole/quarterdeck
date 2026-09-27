@@ -17,6 +17,7 @@ export function deriveProjectSummary(input: {
 	repoPath: string;
 	board: RuntimeBoardData;
 	boardRevision: number;
+	folderOnly?: boolean;
 }): RuntimeProjectSummary {
 	const normalized = input.repoPath.replaceAll("\\", "/").replace(/\/+$/g, "");
 	const segments = normalized.split("/").filter((segment) => segment.length > 0);
@@ -24,6 +25,7 @@ export function deriveProjectSummary(input: {
 		id: input.projectId,
 		path: input.repoPath,
 		name: segments[segments.length - 1] ?? normalized,
+		...(input.folderOnly ? { folderOnly: true } : {}),
 		boardRevision: input.boardRevision,
 		taskCounts: countProjectTasksByColumn(input.board),
 	};

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useEffect, useMemo } from "react";
 
 import type { UseGitHistoryDataResult } from "@/components/git/history";
 import {
@@ -106,7 +106,7 @@ interface GitProviderProps {
 
 export function GitProvider({ children }: GitProviderProps): ReactNode {
 	const { currentProjectId } = useProjectNavigationContext();
-	const { projectPath, refreshProjectState } = useProjectSyncContext();
+	const { projectPath, refreshProjectState, projectGit } = useProjectSyncContext();
 	const { runtimeProjectConfig, skipTaskCheckoutConfirmation, skipHomeCheckoutConfirmation } =
 		useProjectRuntimeContext();
 
@@ -144,9 +144,13 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 		currentProjectId,
 	});
 
+	useEffect(() => {
+		if (projectGit?.folderOnly) fileBrowserReturnToContextual();
+	}, [projectGit?.folderOnly, fileBrowserReturnToContextual]);
+
 	// --- useBranchActions (file browser) ---
 	const fileBrowserBranchActions = useBranchActions({
-		projectId: currentProjectId,
+		projectId: projectGit?.folderOnly ? null : currentProjectId,
 		board,
 		selectBranchView: fileBrowserSelectBranchView,
 		homeGitSummary,
@@ -158,7 +162,7 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 
 	// --- useBranchActions (topbar) ---
 	const topbarBranchActions = useBranchActions({
-		projectId: currentProjectId,
+		projectId: projectGit?.folderOnly ? null : currentProjectId,
 		board,
 		selectBranchView: topbarBranchViewNoop,
 		homeGitSummary,
@@ -173,11 +177,12 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 
 	// --- topbarBranchLabel ---
 	const topbarBranchLabel = useMemo(() => {
+		if (projectGit?.folderOnly) return null;
 		if (selectedCard) {
 			return selectedTaskGitState?.branchLabel ?? null;
 		}
 		return homeGitSummary?.currentBranch ?? null;
-	}, [selectedCard, selectedTaskGitState, homeGitSummary]);
+	}, [selectedCard, selectedTaskGitState, homeGitSummary, projectGit?.folderOnly]);
 	const topbarDetachedWorktree = useMemo(() => {
 		if (!selectedCard || !selectedTaskGitState) {
 			return null;

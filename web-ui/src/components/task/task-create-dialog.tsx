@@ -49,6 +49,7 @@ export function TaskCreateDialog({
 	onCreateAndStartMultiple,
 	onCreateStartAndOpen,
 	useWorktree,
+	folderOnly = false,
 	onUseWorktreeChange,
 	createFeatureBranch,
 	onCreateFeatureBranchChange,
@@ -82,6 +83,7 @@ export function TaskCreateDialog({
 	onCreateAndStartMultiple?: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
 	onCreateStartAndOpen?: (options?: { keepDialogOpen?: boolean }) => string | null;
 	useWorktree: boolean;
+	folderOnly?: boolean;
 	onUseWorktreeChange: (value: boolean) => void;
 	createFeatureBranch: boolean;
 	onCreateFeatureBranchChange: (value: boolean) => void;
@@ -220,60 +222,68 @@ export function TaskCreateDialog({
 					) : (
 						harnessSelector
 					)}
-					<div className={useWorktree ? "mt-3" : "mt-3 opacity-40"}>
-						<span className="text-[11px] text-text-secondary block mb-1">Base ref</span>
-						<BranchSelectDropdown
-							options={branchOptions}
-							selectedValue={branchRef}
-							onSelect={onBranchRefChange}
-							disabled={!useWorktree}
-							fill
-							size="sm"
-							emptyText="No branches detected"
-							defaultValue={defaultBaseRef || null}
-							onSetDefault={onSetDefaultBaseRef}
-							portalContainer={dropdownPortalContainer}
-						/>
-					</div>
-					<div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
-						<label
-							htmlFor={useWorktreeId}
-							className="flex items-center gap-2 text-[13px] text-text-primary cursor-pointer select-none"
-						>
-							<RadixCheckbox.Root
-								id={useWorktreeId}
-								checked={useWorktree}
-								onCheckedChange={(checked) => onUseWorktreeChange(checked === true)}
-								className="flex h-4 w-4 shrink-0 translate-y-px cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
-							>
-								<RadixCheckbox.Indicator className="flex items-center justify-center">
-									<Check size={11} className="block text-white" />
-								</RadixCheckbox.Indicator>
-							</RadixCheckbox.Root>
-							Use isolated worktree
-						</label>
-						<label
-							htmlFor={createFeatureBranchId}
-							className={cn(
-								"flex items-center gap-2 text-[13px] text-text-primary select-none",
-								useWorktree ? "cursor-pointer" : "cursor-default opacity-40",
-							)}
-						>
-							<RadixCheckbox.Root
-								id={createFeatureBranchId}
-								checked={createFeatureBranch}
-								onCheckedChange={(checked) => onCreateFeatureBranchChange(checked === true)}
-								disabled={!useWorktree}
-								className="flex h-4 w-4 shrink-0 translate-y-px cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default"
-							>
-								<RadixCheckbox.Indicator className="flex items-center justify-center">
-									<Check size={11} className="block text-white" />
-								</RadixCheckbox.Indicator>
-							</RadixCheckbox.Root>
-							Create feature branch
-						</label>
-					</div>
-					{!useWorktree ? (
+					{folderOnly ? (
+						<p className="mt-3 text-xs text-text-secondary">
+							Folder project: tasks run directly in this folder without Git or isolated worktrees.
+						</p>
+					) : (
+						<>
+							<div className={useWorktree ? "mt-3" : "mt-3 opacity-40"}>
+								<span className="text-[11px] text-text-secondary block mb-1">Base ref</span>
+								<BranchSelectDropdown
+									options={branchOptions}
+									selectedValue={branchRef}
+									onSelect={onBranchRefChange}
+									disabled={!useWorktree}
+									fill
+									size="sm"
+									emptyText="No branches detected"
+									defaultValue={defaultBaseRef || null}
+									onSetDefault={onSetDefaultBaseRef}
+									portalContainer={dropdownPortalContainer}
+								/>
+							</div>
+							<div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+								<label
+									htmlFor={useWorktreeId}
+									className="flex items-center gap-2 text-[13px] text-text-primary cursor-pointer select-none"
+								>
+									<RadixCheckbox.Root
+										id={useWorktreeId}
+										checked={useWorktree}
+										onCheckedChange={(checked) => onUseWorktreeChange(checked === true)}
+										className="flex h-4 w-4 shrink-0 translate-y-px cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+									>
+										<RadixCheckbox.Indicator className="flex items-center justify-center">
+											<Check size={11} className="block text-white" />
+										</RadixCheckbox.Indicator>
+									</RadixCheckbox.Root>
+									Use isolated worktree
+								</label>
+								<label
+									htmlFor={createFeatureBranchId}
+									className={cn(
+										"flex items-center gap-2 text-[13px] text-text-primary select-none",
+										useWorktree ? "cursor-pointer" : "cursor-default opacity-40",
+									)}
+								>
+									<RadixCheckbox.Root
+										id={createFeatureBranchId}
+										checked={createFeatureBranch}
+										onCheckedChange={(checked) => onCreateFeatureBranchChange(checked === true)}
+										disabled={!useWorktree}
+										className="flex h-4 w-4 shrink-0 translate-y-px cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default"
+									>
+										<RadixCheckbox.Indicator className="flex items-center justify-center">
+											<Check size={11} className="block text-white" />
+										</RadixCheckbox.Indicator>
+									</RadixCheckbox.Root>
+									Create feature branch
+								</label>
+							</div>
+						</>
+					)}
+					{!useWorktree && !folderOnly ? (
 						<div className="mt-1.5 flex items-start gap-1.5 rounded-md bg-status-orange/10 border border-status-orange/20 px-2 py-1.5 text-[11px] text-status-orange leading-snug">
 							<AlertTriangle size={12} className="mt-0.5 shrink-0" />
 							<span>
@@ -329,7 +339,11 @@ export function TaskCreateDialog({
 				</label>
 				{mode === "single" ? (
 					<>
-						<Button size="sm" onClick={handleCreateSingle} disabled={!prompt.trim() || !branchRef}>
+						<Button
+							size="sm"
+							onClick={handleCreateSingle}
+							disabled={!prompt.trim() || (useWorktree && !branchRef)}
+						>
 							<span className="inline-flex items-center">
 								Create
 								<ButtonShortcut includeAlt />
@@ -342,7 +356,7 @@ export function TaskCreateDialog({
 										variant="primary"
 										size="sm"
 										onClick={() => handleRunSingleStartAction(primaryStartAction)}
-										disabled={!prompt.trim() || !branchRef}
+										disabled={!prompt.trim() || (useWorktree && !branchRef)}
 										className={onCreateStartAndOpen ? "rounded-r-none" : undefined}
 									>
 										<span className="inline-flex items-center">
@@ -355,7 +369,7 @@ export function TaskCreateDialog({
 											<Button
 												variant="primary"
 												size="sm"
-												disabled={!prompt.trim() || !branchRef}
+												disabled={!prompt.trim() || (useWorktree && !branchRef)}
 												className="rounded-l-none border-l border-white/20 px-1"
 												aria-label="More start options"
 											>
@@ -390,7 +404,11 @@ export function TaskCreateDialog({
 					</>
 				) : (
 					<>
-						<Button size="sm" onClick={handleCreateAll} disabled={validTaskCount === 0 || !branchRef}>
+						<Button
+							size="sm"
+							onClick={handleCreateAll}
+							disabled={validTaskCount === 0 || (useWorktree && !branchRef)}
+						>
 							<span className="inline-flex items-center">
 								Create {validTaskCount} {taskCountLabel}
 								<ButtonShortcut includeAlt />
@@ -401,7 +419,7 @@ export function TaskCreateDialog({
 								variant="primary"
 								size="sm"
 								onClick={handleCreateAndStartAll}
-								disabled={validTaskCount === 0 || !branchRef}
+								disabled={validTaskCount === 0 || (useWorktree && !branchRef)}
 							>
 								<span className="inline-flex items-center">
 									Start {validTaskCount} {taskCountLabel}

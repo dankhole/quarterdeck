@@ -304,7 +304,7 @@ export function addTaskToColumn(
 		throw new Error("Task prompt is required.");
 	}
 	const baseRef = input.baseRef.trim();
-	if (!baseRef) {
+	if (!baseRef && input.useWorktree !== false) {
 		throw new Error("Task baseRef is required.");
 	}
 	const existingIds = collectExistingTaskIds(board);

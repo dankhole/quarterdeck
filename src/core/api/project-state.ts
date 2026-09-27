@@ -16,6 +16,7 @@ export const runtimeProjectSummarySchema = z.object({
 	id: z.string(),
 	path: z.string(),
 	name: z.string(),
+	folderOnly: z.boolean().optional(),
 	boardRevision: z.number().int().nonnegative(),
 	taskCounts: runtimeProjectTaskCountsSchema,
 });
@@ -76,6 +77,7 @@ export type RuntimeProjectsResponse = z.infer<typeof runtimeProjectsResponseSche
 export const runtimeProjectAddRequestSchema = z.object({
 	path: z.string(),
 	initializeGit: z.boolean().optional(),
+	folderOnly: z.boolean().optional(),
 });
 export type RuntimeProjectAddRequest = z.infer<typeof runtimeProjectAddRequestSchema>;
 

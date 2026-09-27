@@ -19,6 +19,7 @@ interface DetailToolbarProps {
 	onMainViewChange: (view: MainViewId) => void;
 	onSidebarChange: (id: SidebarId) => void;
 	hasSelectedTask: boolean;
+	folderOnly?: boolean;
 	gitBadgeColor?: "red" | "blue";
 	isBehindBase?: boolean;
 	projectsBadgeColor?: "orange";
@@ -130,6 +131,7 @@ export function DetailToolbar({
 	onMainViewChange,
 	onSidebarChange,
 	hasSelectedTask,
+	folderOnly = false,
 	gitBadgeColor,
 	isBehindBase,
 	projectsBadgeColor,
@@ -177,6 +179,7 @@ export function DetailToolbar({
 				onMainViewChange={onMainViewChange}
 				icon={<GitCompareArrows size={18} />}
 				label="Git"
+				disabled={folderOnly}
 				badgeColor={gitBadgeColor}
 			/>
 
@@ -207,6 +210,7 @@ export function DetailToolbar({
 				onSidebarChange={onSidebarChange}
 				icon={<GitCommitHorizontal size={18} />}
 				label="Commit"
+				disabled={folderOnly}
 			/>
 		</aside>
 	);

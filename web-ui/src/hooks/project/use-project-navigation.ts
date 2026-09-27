@@ -51,7 +51,7 @@ export interface UseProjectNavigationResult {
 	handleAddProject: () => Promise<void>;
 	handleConfirmManualProjectPath: (path: string) => Promise<void>;
 	handleCancelManualProjectPath: () => void;
-	handleConfirmInitializeGitProject: () => Promise<void>;
+	handleConfirmInitializeGitProject: (folderOnly?: boolean) => Promise<void>;
 	handleCancelInitializeGitProject: () => void;
 	handleRemoveProject: (projectId: string) => Promise<boolean>;
 	handleReorderProjects: (projectOrder: string[]) => Promise<void>;
@@ -113,11 +113,12 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 	);
 
 	const addProjectByPath = useCallback(
-		async (path: string, initializeGit = false) => {
+		async (path: string, initializeGit = false, folderOnly?: boolean) => {
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
 			const added = await trpcClient.projects.add.mutate({
 				path,
 				initializeGit,
+				folderOnly,
 			});
 			if (!added.ok || !added.project) {
 				if (added.requiresGitInitialization) {
@@ -197,25 +198,28 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		setManualProjectPathPhase("closed");
 	}, [isAddingManualProject]);
 
-	const handleConfirmInitializeGitProject = useCallback(async () => {
-		if (!pendingGitInitializationPath || isInitializingGitProject) {
-			return;
-		}
-		setIsInitializingGitProject(true);
-		try {
-			await addProjectByPath(pendingGitInitializationPath, true);
-		} catch (error) {
-			const message = toErrorMessage(error);
-			showAppToast({
-				intent: "danger",
-				icon: "warning-sign",
-				message,
-				timeout: 7000,
-			});
-		} finally {
-			setIsInitializingGitProject(false);
-		}
-	}, [addProjectByPath, isInitializingGitProject, pendingGitInitializationPath]);
+	const handleConfirmInitializeGitProject = useCallback(
+		async (folderOnly = false) => {
+			if (!pendingGitInitializationPath || isInitializingGitProject) {
+				return;
+			}
+			setIsInitializingGitProject(true);
+			try {
+				await addProjectByPath(pendingGitInitializationPath, !folderOnly, folderOnly);
+			} catch (error) {
+				const message = toErrorMessage(error);
+				showAppToast({
+					intent: "danger",
+					icon: "warning-sign",
+					message,
+					timeout: 7000,
+				});
+			} finally {
+				setIsInitializingGitProject(false);
+			}
+		},
+		[addProjectByPath, isInitializingGitProject, pendingGitInitializationPath],
+	);
 
 	const handleCancelInitializeGitProject = useCallback(() => {
 		if (isInitializingGitProject) {

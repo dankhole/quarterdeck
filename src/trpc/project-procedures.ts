@@ -83,7 +83,7 @@ import {
 	SUMMARY_ORIGINAL_PROMPT_LIMIT,
 	SUMMARY_PREVIOUS_ACTIVITY_LIMIT,
 } from "../title";
-import { projectProcedure, t } from "./app-router-init";
+import { projectGitProcedure, projectProcedure, t } from "./app-router-init";
 
 const log = createTaggedLogger("task-gen");
 
@@ -99,121 +99,121 @@ const gitSyncActionInputSchema = z.object({
 });
 
 export const projectRouter = t.router({
-	runGitSyncAction: projectProcedure
+	runGitSyncAction: projectGitProcedure
 		.input(gitSyncActionInputSchema)
 		.output(runtimeGitSyncResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.runGitSyncAction(ctx.projectScope, input);
 		}),
-	checkoutGitBranch: projectProcedure
+	checkoutGitBranch: projectGitProcedure
 		.input(runtimeGitCheckoutRequestSchema)
 		.output(runtimeGitCheckoutResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.checkoutGitBranch(ctx.projectScope, input);
 		}),
-	mergeBranch: projectProcedure
+	mergeBranch: projectGitProcedure
 		.input(runtimeGitMergeRequestSchema)
 		.output(runtimeGitMergeResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.mergeBranch(ctx.projectScope, input);
 		}),
-	getConflictFiles: projectProcedure
+	getConflictFiles: projectGitProcedure
 		.input(runtimeConflictFilesRequestSchema)
 		.output(runtimeConflictFilesResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.getConflictFiles(ctx.projectScope, input);
 		}),
-	getAutoMergedFiles: projectProcedure
+	getAutoMergedFiles: projectGitProcedure
 		.input(runtimeAutoMergedFilesRequestSchema)
 		.output(runtimeAutoMergedFilesResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.getAutoMergedFiles(ctx.projectScope, input);
 		}),
-	resolveConflictFile: projectProcedure
+	resolveConflictFile: projectGitProcedure
 		.input(runtimeConflictResolveRequestSchema)
 		.output(z.object({ ok: z.boolean(), error: z.string().optional() }))
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.resolveConflictFile(ctx.projectScope, input);
 		}),
-	continueConflictResolution: projectProcedure
+	continueConflictResolution: projectGitProcedure
 		.input(runtimeConflictContinueRequestSchema)
 		.output(runtimeConflictContinueResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.continueConflictResolution(ctx.projectScope, input);
 		}),
-	abortConflictResolution: projectProcedure
+	abortConflictResolution: projectGitProcedure
 		.input(runtimeConflictAbortRequestSchema)
 		.output(runtimeConflictAbortResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.abortConflictResolution(ctx.projectScope, input);
 		}),
-	createBranch: projectProcedure
+	createBranch: projectGitProcedure
 		.input(runtimeGitCreateBranchRequestSchema)
 		.output(runtimeGitCreateBranchResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.createBranch(ctx.projectScope, input);
 		}),
-	deleteBranch: projectProcedure
+	deleteBranch: projectGitProcedure
 		.input(runtimeGitDeleteBranchRequestSchema)
 		.output(runtimeGitDeleteBranchResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.deleteBranch(ctx.projectScope, input);
 		}),
-	renameBranch: projectProcedure
+	renameBranch: projectGitProcedure
 		.input(runtimeGitRenameBranchRequestSchema)
 		.output(runtimeGitRenameBranchResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.renameBranch(ctx.projectScope, input);
 		}),
-	rebaseBranch: projectProcedure
+	rebaseBranch: projectGitProcedure
 		.input(runtimeGitRebaseRequestSchema)
 		.output(runtimeGitRebaseResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.rebaseBranch(ctx.projectScope, input);
 		}),
-	resetToRef: projectProcedure
+	resetToRef: projectGitProcedure
 		.input(runtimeGitResetToRefRequestSchema)
 		.output(runtimeGitResetToRefResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.resetToRef(ctx.projectScope, input);
 		}),
-	cherryPickCommit: projectProcedure
+	cherryPickCommit: projectGitProcedure
 		.input(runtimeGitCherryPickRequestSchema)
 		.output(runtimeGitCherryPickResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.cherryPickCommit(ctx.projectScope, input);
 		}),
-	discardGitChanges: projectProcedure
+	discardGitChanges: projectGitProcedure
 		.input(optionalTaskWorktreeInfoRequestSchema)
 		.output(runtimeGitDiscardResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.discardGitChanges(ctx.projectScope, input ?? null);
 		}),
-	commitSelectedFiles: projectProcedure
+	commitSelectedFiles: projectGitProcedure
 		.input(runtimeGitCommitRequestSchema)
 		.output(runtimeGitCommitResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.commitSelectedFiles(ctx.projectScope, input);
 		}),
-	discardFile: projectProcedure
+	discardFile: projectGitProcedure
 		.input(runtimeGitDiscardFileRequestSchema)
 		.output(runtimeGitDiscardResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.discardFile(ctx.projectScope, input);
 		}),
-	getChanges: projectProcedure
+	getChanges: projectGitProcedure
 		.input(runtimeWorkdirChangesRequestSchema)
 		.output(runtimeWorkdirChangesResponseSchema)
 		.query(async ({ ctx, input }) => {
 			return await ctx.projectApi.loadChanges(ctx.projectScope, input);
 		}),
-	getFileDiff: projectProcedure
+	getFileDiff: projectGitProcedure
 		.input(runtimeFileDiffRequestSchema)
 		.output(runtimeFileDiffResponseSchema)
 		.query(async ({ ctx, input }) => {
 			return await ctx.projectApi.loadFileDiff(ctx.projectScope, input);
 		}),
-	ensureWorktree: projectProcedure
+	ensureWorktree: projectGitProcedure
 		.input(runtimeWorktreeEnsureRequestSchema)
 		.output(runtimeWorktreeEnsureResponseSchema)
 		.mutation(async ({ ctx, input }) => {
@@ -296,22 +296,22 @@ export const projectRouter = t.router({
 		.mutation(({ ctx, input }) => {
 			ctx.projectApi.setDocumentVisible(ctx.projectScope, ctx.runtimeClientId, input.isDocumentVisible);
 		}),
-	getWorkdirChanges: projectProcedure.output(runtimeWorkdirChangesResponseSchema).query(async ({ ctx }) => {
+	getWorkdirChanges: projectGitProcedure.output(runtimeWorkdirChangesResponseSchema).query(async ({ ctx }) => {
 		return await ctx.projectApi.loadWorkdirChanges(ctx.projectScope);
 	}),
-	getGitLog: projectProcedure
+	getGitLog: projectGitProcedure
 		.input(runtimeGitLogRequestSchema)
 		.output(runtimeGitLogResponseSchema)
 		.query(async ({ ctx, input }) => {
 			return await ctx.projectApi.loadGitLog(ctx.projectScope, input);
 		}),
-	getGitRefs: projectProcedure
+	getGitRefs: projectGitProcedure
 		.input(optionalTaskWorktreeInfoRequestSchema)
 		.output(runtimeGitRefsResponseSchema)
 		.query(async ({ ctx, input }) => {
 			return await ctx.projectApi.loadGitRefs(ctx.projectScope, input ?? null);
 		}),
-	getCommitDiff: projectProcedure
+	getCommitDiff: projectGitProcedure
 		.input(runtimeGitCommitDiffRequestSchema)
 		.output(runtimeGitCommitDiffResponseSchema)
 		.query(async ({ ctx, input }) => {
@@ -400,7 +400,7 @@ export const projectRouter = t.router({
 		}),
 	// No server-side rate limiting: this is user-triggered (not batch) and the client
 	// guards against duplicate in-flight calls via isGeneratingBranchName state.
-	generateBranchName: projectProcedure
+	generateBranchName: projectGitProcedure
 		.input(z.object({ prompt: z.string().min(1) }))
 		.output(z.object({ ok: z.boolean(), branchName: z.string().nullable() }))
 		.mutation(async ({ input }) => {
@@ -408,7 +408,7 @@ export const projectRouter = t.router({
 			return { ok: branchName !== null, branchName };
 		}),
 	// User-triggered — client guards against duplicate in-flight calls via isGenerating state.
-	generateCommitMessage: projectProcedure
+	generateCommitMessage: projectGitProcedure
 		.input(
 			z.object({
 				taskScope: runtimeTaskWorktreeInfoRequestSchema.nullable(),
@@ -445,37 +445,37 @@ export const projectRouter = t.router({
 			const message = await generateCommitMessage(generationContext);
 			return { ok: message !== null, message };
 		}),
-	stashPush: projectProcedure
+	stashPush: projectGitProcedure
 		.input(runtimeStashPushRequestSchema)
 		.output(runtimeStashPushResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.stashPush(ctx.projectScope, input);
 		}),
-	stashList: projectProcedure
+	stashList: projectGitProcedure
 		.input(z.object({ taskScope: runtimeTaskWorktreeInfoRequestSchema.nullable() }))
 		.output(runtimeStashListResponseSchema)
 		.query(async ({ ctx, input }) => {
 			return await ctx.projectApi.stashList(ctx.projectScope, input);
 		}),
-	stashPop: projectProcedure
+	stashPop: projectGitProcedure
 		.input(runtimeStashActionRequestSchema)
 		.output(runtimeStashPopApplyResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.stashPop(ctx.projectScope, input);
 		}),
-	stashApply: projectProcedure
+	stashApply: projectGitProcedure
 		.input(runtimeStashActionRequestSchema)
 		.output(runtimeStashPopApplyResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.stashApply(ctx.projectScope, input);
 		}),
-	stashDrop: projectProcedure
+	stashDrop: projectGitProcedure
 		.input(runtimeStashActionRequestSchema)
 		.output(runtimeStashDropResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.stashDrop(ctx.projectScope, input);
 		}),
-	stashShow: projectProcedure
+	stashShow: projectGitProcedure
 		.input(runtimeStashActionRequestSchema)
 		.output(runtimeStashShowResponseSchema)
 		.query(async ({ ctx, input }) => {
