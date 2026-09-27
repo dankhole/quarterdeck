@@ -26,29 +26,34 @@ export function normalizeCheckoutPathForComparison(path, platform = process.plat
 	return posix.resolve(path);
 }
 
-const DEPENDENCY_MARKERS = {
-	root: ["node_modules/node-pty/package.json", "node_modules/zod/package.json"],
-	web: ["web-ui/node_modules/react/package.json", "web-ui/node_modules/vite/package.json"],
-};
-
-async function pathExists(path) {
+async function dependencyTreeMatchesLockfile(packageRoot) {
 	try {
-		await lstat(path);
-		return true;
+		// Dependency trees belong to this checkout, never another worktree.
+		if (!(await lstat(join(packageRoot, "node_modules"))).isDirectory()) return false;
+		const [manifest, lock] = await Promise.all(
+			["package.json", "package-lock.json"].map(async (name) =>
+				JSON.parse(await readFile(join(packageRoot, name), "utf8")),
+			),
+		);
+		const names = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies });
+		const matches = await Promise.all(names.map(async (name) => {
+			const expectedVersion = lock.packages?.[`node_modules/${name}`]?.version;
+			if (typeof expectedVersion !== "string") return false;
+			const installed = JSON.parse(await readFile(join(packageRoot, "node_modules", name, "package.json"), "utf8"));
+			return installed.version === expectedVersion;
+		}));
+		return matches.every(Boolean);
 	} catch {
 		return false;
 	}
 }
 
 export async function inspectDependencyTrees(checkoutRoot) {
-	const [rootMarkers, webMarkers] = await Promise.all([
-		Promise.all(DEPENDENCY_MARKERS.root.map((path) => pathExists(join(checkoutRoot, path)))),
-		Promise.all(DEPENDENCY_MARKERS.web.map((path) => pathExists(join(checkoutRoot, path)))),
+	const [rootAvailable, webAvailable] = await Promise.all([
+		dependencyTreeMatchesLockfile(checkoutRoot),
+		dependencyTreeMatchesLockfile(join(checkoutRoot, "web-ui")),
 	]);
-	return {
-		rootAvailable: rootMarkers.every(Boolean),
-		webAvailable: webMarkers.every(Boolean),
-	};
+	return { rootAvailable, webAvailable };
 }
 
 function isProcessAlive(pid) {
@@ -121,13 +126,13 @@ export async function assertLinkedRuntimeIsStopped(
 
 export function getMissingDependencyMessage(health) {
 	if (!health.rootAvailable && !health.webAvailable) {
-		return "Quarterdeck root and web UI dependencies are missing. Stop any linked Quarterdeck runtime, then run `npm run bootstrap`.";
+		return "Quarterdeck root and web UI dependencies are missing or out of sync with the lockfile. Stop any linked Quarterdeck runtime, then run `npm run bootstrap`.";
 	}
 	if (!health.rootAvailable) {
-		return "Quarterdeck root dependencies are missing. Stop any linked Quarterdeck runtime, then run `npm ci`.";
+		return "Quarterdeck root dependencies are missing or out of sync with the lockfile. Stop any linked Quarterdeck runtime, then run `npm ci`.";
 	}
 	if (!health.webAvailable) {
-		return "Quarterdeck web UI dependencies are missing. Stop any linked Quarterdeck runtime, then run `npm ci --prefix web-ui`.";
+		return "Quarterdeck web UI dependencies are missing or out of sync with the lockfile. Stop any linked Quarterdeck runtime, then run `npm ci --prefix web-ui`.";
 	}
 	return null;
 }

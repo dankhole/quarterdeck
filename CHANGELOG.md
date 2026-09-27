@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Detect missing or stale direct dependencies before linking and report the required locked install instead of failing later during the build.
+
 - Open the agent chat when clicking a task card's latest response preview.
 
 - Reduce the Trash bar's height by removing extra bottom spacing and tightening vertical padding.

@@ -234,7 +234,7 @@ After cloning and installing dependencies, create/update the global CLI link fro
 npm run link
 ```
 
-`npm run link` does not install dependencies. It checks both dependency trees, builds, and then updates the development symlink. If either tree is missing, it prints the exact `npm ci` remediation. If the globally linked runtime is currently running from this checkout, stop it before relinking.
+`npm run link` does not install dependencies. It checks installed direct dependencies in both trees against their lockfile versions, builds, and then updates the development symlink. If either tree has missing or outdated dependencies, it prints the exact `npm ci` remediation. If the globally linked runtime is currently running from this checkout, stop it before relinking.
 
 Verify:
 
