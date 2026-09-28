@@ -2,7 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useGitHistoryData } from "@/components/git/history/use-git-history-data";
+import { type UseGitHistoryDataResult, useGitHistoryData } from "@/components/git/history/use-git-history-data";
 import type {
 	RuntimeGitCommitDiffResponse,
 	RuntimeGitLogResponse,
@@ -49,6 +49,7 @@ interface HookSnapshot {
 	isRefsLoading: boolean;
 	isLogLoading: boolean;
 	isDiffLoading: boolean;
+	diffPaths: string[];
 }
 
 function createGitSummary(branch: string): RuntimeGitSyncSummary {
@@ -128,7 +129,7 @@ function createDiffResponse(hash: string): RuntimeGitCommitDiffResponse {
 	return {
 		ok: true,
 		commitHash: hash,
-		files: [],
+		files: [{ path: `${hash}.ts`, status: "modified", additions: 1, deletions: 1, patch: "@@ -1 +1 @@\n-old\n+new" }],
 	};
 }
 
@@ -153,7 +154,7 @@ function HookHarness({
 }: {
 	taskScope: { taskId: string; baseRef: string } | null;
 	enabled?: boolean;
-	onRender: (snapshot: HookSnapshot) => void;
+	onRender: (snapshot: HookSnapshot, result: UseGitHistoryDataResult) => void;
 }): null {
 	const gitHistory = useGitHistoryData({
 		projectId: "project-1",
@@ -162,15 +163,19 @@ function HookHarness({
 		enabled,
 	});
 
-	onRender({
-		refs: gitHistory.refs.map((ref) => ref.name),
-		activeRefName: gitHistory.activeRef?.name ?? null,
-		commits: gitHistory.commits.map((commit) => commit.hash),
-		selectedCommitHash: gitHistory.selectedCommitHash,
-		isRefsLoading: gitHistory.isRefsLoading,
-		isLogLoading: gitHistory.isLogLoading,
-		isDiffLoading: gitHistory.isDiffLoading,
-	});
+	onRender(
+		{
+			refs: gitHistory.refs.map((ref) => ref.name),
+			activeRefName: gitHistory.activeRef?.name ?? null,
+			commits: gitHistory.commits.map((commit) => commit.hash),
+			selectedCommitHash: gitHistory.selectedCommitHash,
+			isRefsLoading: gitHistory.isRefsLoading,
+			isLogLoading: gitHistory.isLogLoading,
+			isDiffLoading: gitHistory.isDiffLoading,
+			diffPaths: gitHistory.diffSource?.files.map((file) => file.path) ?? [],
+		},
+		gitHistory,
+	);
 
 	return null;
 }
@@ -269,7 +274,56 @@ describe("useGitHistoryData", () => {
 			isRefsLoading: true,
 			isLogLoading: true,
 			isDiffLoading: true,
+			diffPaths: [],
 		});
+	});
+
+	it("hides the previous commit immediately and rejects delayed diff responses after rapid selection", async () => {
+		const log = createLogResponse([
+			{ hash: "homehash1", message: "First" },
+			{ hash: "second", message: "Second" },
+			{ hash: "third", message: "Third" },
+		]);
+		getGitLogQueryMock.mockResolvedValue(log);
+		const [, second, third] = log.commits;
+		if (!second || !third) throw new Error("Missing commit fixtures");
+		let latest!: UseGitHistoryDataResult;
+		const snapshots: HookSnapshot[] = [];
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskScope={null}
+					onRender={(snapshot, result) => {
+						snapshots.push(snapshot);
+						latest = result;
+					}}
+				/>,
+			);
+			await flushPromises();
+		});
+		expect(snapshots.at(-1)?.diffPaths).toEqual(["homehash1.ts"]);
+		let finishSecond!: (response: RuntimeGitCommitDiffResponse) => void;
+		getCommitDiffQueryMock.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finishSecond = resolve;
+				}),
+		);
+		const start = snapshots.length;
+		await act(async () => {
+			latest.selectCommit(second);
+		});
+		expect(snapshots.slice(start).every((snapshot) => snapshot.diffPaths.length === 0)).toBe(true);
+		await act(async () => {
+			latest.selectCommit(third);
+			await flushPromises();
+		});
+		expect(snapshots.at(-1)?.diffPaths).toEqual(["third.ts"]);
+		await act(async () => {
+			finishSecond(createDiffResponse("second"));
+			await flushPromises();
+		});
+		expect(snapshots.at(-1)?.diffPaths).toEqual(["third.ts"]);
 	});
 
 	it("reports loading on the first render before git history queries resolve", async () => {

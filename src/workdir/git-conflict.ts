@@ -10,6 +10,7 @@ import type {
 	RuntimeGitMergeResponse,
 	RuntimeGitRebaseResponse,
 } from "../core";
+import { lockedFileSystem } from "../fs";
 import { getGitSyncSummary } from "./git-probe";
 import {
 	GIT_INSPECTION_OPTIONS,
@@ -19,6 +20,7 @@ import {
 	validateGitPath,
 	validateGitRef,
 } from "./git-utils";
+import { readWorkdirFile, resolveWorkdirFilePath } from "./read-workdir-file";
 
 const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 
@@ -157,13 +159,17 @@ export async function getConflictFileContent(cwd: string, path: string): Promise
 	if (!validateGitPath(path)) {
 		return { path, oursContent: "", theirsContent: "" };
 	}
-	const [oursResult, theirsResult] = await Promise.all([
-		runGit(cwd, ["show", `:2:${path}`], GIT_INSPECTION_OPTIONS),
-		runGit(cwd, ["show", `:3:${path}`], GIT_INSPECTION_OPTIONS),
+	const [oursResult, theirsResult, baseResult] = await Promise.all([
+		runGit(cwd, ["show", `:2:${path}`], { ...GIT_INSPECTION_OPTIONS, trimStdout: false }),
+		runGit(cwd, ["show", `:3:${path}`], { ...GIT_INSPECTION_OPTIONS, trimStdout: false }),
+		runGit(cwd, ["show", `:1:${path}`], { ...GIT_INSPECTION_OPTIONS, trimStdout: false }),
 	]);
 
 	return {
 		path,
+		baseContent: baseResult.ok ? baseResult.stdout : "",
+		binary: [baseResult, oursResult, theirsResult].some((result) => result.stdout.includes("\0")),
+		sourcesUnavailable: !oursResult.ok || !theirsResult.ok,
 		oursContent: oursResult.ok ? oursResult.stdout : "",
 		theirsContent: theirsResult.ok ? theirsResult.stdout : "",
 	};
@@ -246,27 +252,56 @@ export async function getConflictState(
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve a single conflicted file by choosing "ours" or "theirs", then stage it.
+ * Explicitly stage a saved result, or choose and stage a complete side.
+ * Hash-guarded staging shares the Files save lock so an in-process save cannot interleave.
  */
 export async function resolveConflictFile(
 	cwd: string,
 	path: string,
-	resolution: "ours" | "theirs",
+	resolution: "ours" | "theirs" | "manual",
+	expectedContentHash?: string,
 ): Promise<{ ok: boolean; error?: string }> {
 	if (!validateGitPath(path)) {
 		return { ok: false, error: "Invalid file path." };
 	}
-	const checkoutResult = await runGit(cwd, ["checkout", `--${resolution}`, "--", path], USER_GIT_ACTION_OPTIONS);
-	if (!checkoutResult.ok) {
-		return { ok: false, error: checkoutResult.error ?? `Failed to checkout --${resolution} for ${path}.` };
+	const apply = async (): Promise<{ ok: boolean; error?: string }> => {
+		if (expectedContentHash || resolution === "manual") {
+			const content = await readWorkdirFile(cwd, path);
+			if (!expectedContentHash || content.contentHash !== expectedContentHash) {
+				return { ok: false, error: "File changed on disk. Reload before staging." };
+			}
+			if (resolution === "manual") {
+				const markerAttribute = await runGit(
+					cwd,
+					["check-attr", "-z", "conflict-marker-size", "--", path],
+					GIT_INSPECTION_OPTIONS,
+				);
+				if (!markerAttribute.ok) return { ok: false, error: "Could not check conflict markers. Try again." };
+				const configuredSize = Number.parseInt(markerAttribute.stdout.split("\0")[2] ?? "", 10);
+				const markerSize = configuredSize > 0 ? configuredSize : 7;
+				const hasMarkers = [...content.content.matchAll(/^([<|=>])\1*(?=\s|$)/gm)].some(
+					(marker) => marker[0].length === markerSize,
+				);
+				if (content.binary || content.truncated || hasMarkers) {
+					return { ok: false, error: "Remove conflict markers and save the text result before staging." };
+				}
+			}
+		}
+		if (resolution !== "manual") {
+			const checkoutResult = await runGit(cwd, ["checkout", `--${resolution}`, "--", path], USER_GIT_ACTION_OPTIONS);
+			if (!checkoutResult.ok)
+				return { ok: false, error: checkoutResult.error ?? `Failed to checkout --${resolution} for ${path}.` };
+		}
+		const addResult = await runGit(cwd, ["add", "--", path], USER_GIT_ACTION_OPTIONS);
+		return addResult.ok
+			? { ok: true }
+			: { ok: false, error: addResult.error ?? `Failed to stage resolved file ${path}.` };
+	};
+	if (expectedContentHash || resolution === "manual") {
+		const absolutePath = await resolveWorkdirFilePath(cwd, path);
+		return await lockedFileSystem.withLock({ path: absolutePath, type: "file" }, apply);
 	}
-
-	const addResult = await runGit(cwd, ["add", "--", path], USER_GIT_ACTION_OPTIONS);
-	if (!addResult.ok) {
-		return { ok: false, error: addResult.error ?? `Failed to stage resolved file ${path}.` };
-	}
-
-	return { ok: true };
+	return await apply();
 }
 
 /**

@@ -73,6 +73,10 @@ describe("GitCommitDiffPanel", () => {
 		await act(async () => {
 			root.render(
 				<GitCommitDiffPanel
+					reviewScope={{
+						repository: { projectId: "test", taskId: null },
+						revisions: { kind: "commit", base: "a", head: "b" },
+					}}
 					diffSource={diffSource}
 					isLoading={false}
 					errorMessage={null}
@@ -121,6 +125,10 @@ describe("GitCommitDiffPanel", () => {
 		await act(async () => {
 			root.render(
 				<GitCommitDiffPanel
+					reviewScope={{
+						repository: { projectId: "test", taskId: null },
+						revisions: { kind: "commit", base: "a", head: "b" },
+					}}
 					diffSource={diffSource}
 					isLoading={false}
 					errorMessage={null}
@@ -151,6 +159,10 @@ describe("GitCommitDiffPanel", () => {
 		await act(async () => {
 			root.render(
 				<GitCommitDiffPanel
+					reviewScope={{
+						repository: { projectId: "test", taskId: null },
+						revisions: { kind: "commit", base: "a", head: "b" },
+					}}
 					diffSource={diffSource}
 					isLoading={false}
 					errorMessage={null}

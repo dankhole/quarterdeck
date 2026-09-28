@@ -19,12 +19,12 @@ Externally blocked native-hook capabilities live in [`compatibility-watchlist.md
 
 ## Files view and Git diff performance
 
-The editable Files view uses the newer file tree/editor path, while compare, uncommitted changes, and commit diffs still use the Git diff viewer pipeline. Profile both where dogfood shows lag, especially for tasks with many files or large diffs. The 2026-05-01 profiling pass fixed hidden file-tree/content polling outside the Files surface; remaining work should focus on active Files/Git view latency rather than background non-Files refreshes.
+Files and Git review now share document scope and editor presentation; Git retains its diff-data and review-row owners. Profile their distinct data and rendering costs where dogfood shows lag, especially for tasks with many files or large diffs. The 2026-05-01 profiling pass fixed hidden file-tree/content polling outside the Files surface; remaining work should focus on active Files/Git view latency rather than background non-Files refreshes.
 
 - **First-open latency**: Opening the compare view or uncommitted-changes view for the first time is noticeably slow. Use bounded diagnostic marks and a category-scoped deep-recording window to identify where time is spent (git commands, data serialization, WebSocket transfer, React rendering) before optimizing.
 - **Files view end-to-end cost**: The repeated sibling scan in tree construction is fixed. Continue profiling large-repository traversal, tRPC transfer, CodeMirror loading, and active navigation separately from global search scope updates. Hidden surfaces must not resume file polling.
 - **Very large diff calculation**: Inline word matching is bounded, unchanged sections are memoized, and offscreen row chunks defer rendering. Exact line matching still runs synchronously, and revealed chunks stay mounted. Profile worker/server-side line computation and full virtualization for files with thousands of unrelated replaced lines, preserving exact line text and review behavior.
-- **Files-to-diff interaction**: Compare the newer Files view path with the Git diff viewer path before merging surfaces. Selecting a file in Git diff views now prioritizes that file's diff content over background work; continue profiling remaining selection latency and tune nearby/offscreen prefetch.
+- **Files-to-diff interaction**: Measure Files and review navigation separately after the shared presentation migration. Selecting a file in Git diff views now prioritizes that file's diff content over background work; continue profiling remaining selection latency and tune nearby/offscreen prefetch.
 
 If profiling points to mixed ownership rather than a local hot path, keep fixes aligned with the split Files/editor scope, tree, content, and diff-data boundaries rather than folding policy back into a view component.
 
@@ -33,7 +33,6 @@ If profiling points to mixed ownership rather than a local hot path, keep fixes 
 The first editable Files-view milestone has landed with CodeMirror tabs, dirty/save/reload/discard behavior, live-worktree-only saves, and basic file/folder create, rename/move, and delete operations. Remaining follow-ups:
 
 - Validate configured LSP servers against real third-party implementations and native Windows. Track optional continuous buffer synchronization, additional templates, shortcuts, and result snippets in the [LSP plan](./lsp-code-navigation-plan.md); request-scoped unsaved-content navigation is implemented.
-- Move compare, merge/conflict resolution, commit diff, and other file-viewing surfaces onto the Files/editor foundation where it reduces duplication without losing review-specific workflows. Sequence: [Files and review surface migration](./files-review-surface-plan.md).
 
 ## Windows native release acceptance
 

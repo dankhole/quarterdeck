@@ -12,6 +12,9 @@ export type RuntimeGitMergeRequest = z.infer<typeof runtimeGitMergeRequestSchema
 // Conflict file info returned by content fetch
 export const runtimeConflictFileSchema = z.object({
 	path: z.string(),
+	baseContent: z.string().optional(),
+	binary: z.boolean().optional(),
+	sourcesUnavailable: z.boolean().optional(),
 	oursContent: z.string(),
 	theirsContent: z.string(),
 });
@@ -78,11 +81,16 @@ export const runtimeGitMergeResponseSchema = z.object({
 export type RuntimeGitMergeResponse = z.infer<typeof runtimeGitMergeResponseSchema>;
 
 // Conflict resolution request
-export const runtimeConflictResolveRequestSchema = z.object({
-	taskId: z.string().optional(),
-	path: z.string(),
-	resolution: z.enum(["ours", "theirs"]),
-});
+export const runtimeConflictResolveRequestSchema = z
+	.object({
+		taskId: z.string().optional(),
+		path: z.string(),
+		resolution: z.enum(["ours", "theirs", "manual"]),
+		expectedContentHash: z.string().min(1).optional(),
+	})
+	.refine((input) => input.resolution !== "manual" || input.expectedContentHash !== undefined, {
+		message: "Reload the result before staging it.",
+	});
 export type RuntimeConflictResolveRequest = z.infer<typeof runtimeConflictResolveRequestSchema>;
 
 // Continue merge/rebase request

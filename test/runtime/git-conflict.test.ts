@@ -1,9 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-
 import { describe, expect, it } from "vitest";
-
 import {
 	abortMergeOrRebase,
 	continueMergeOrRebase,
@@ -13,6 +11,8 @@ import {
 	resolveConflictFile,
 	runGitMergeAction,
 } from "../../src/workdir";
+import { readWorkdirFile } from "../../src/workdir/read-workdir-file";
+import { saveWorkdirFile } from "../../src/workdir/save-workdir-file";
 import { createGitTestEnv } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 
@@ -229,6 +229,7 @@ describe("getConflictFileContent", { concurrent: false }, () => {
 			expect(content.oursContent).toContain("modified on main");
 			// theirs deleted — stage 3 won't exist, so empty string
 			expect(content.theirsContent).toBe("");
+			expect(content.sourcesUnavailable).toBe(true);
 		} finally {
 			cleanup();
 		}
@@ -240,6 +241,49 @@ describe("getConflictFileContent", { concurrent: false }, () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveConflictFile", { concurrent: false }, () => {
+	it.each([3, 12])("rejects unresolved markers with conflict-marker-size=%s", async (markerSize) => {
+		const { repoPath, cleanup, conflictBranch } = createMergeConflictRepo();
+		try {
+			writeFileSync(join(repoPath, ".gitattributes"), `file.txt conflict-marker-size=${markerSize}\n`);
+			runGitUnchecked(repoPath, ["merge", conflictBranch]);
+			const original = await readWorkdirFile(repoPath, "file.txt");
+			expect(original.content).toContain("<".repeat(markerSize));
+			expect(await resolveConflictFile(repoPath, "file.txt", "manual", original.contentHash)).toMatchObject({
+				ok: false,
+				error: "Remove conflict markers and save the text result before staging.",
+			});
+			expect(await getConflictedFiles(repoPath)).toEqual(["file.txt"]);
+			const saved = await saveWorkdirFile(repoPath, "file.txt", "resolved text \n", original.contentHash ?? "");
+			expect((await resolveConflictFile(repoPath, "file.txt", "manual", saved.contentHash)).ok).toBe(true);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("keeps saving separate from staging and rejects stale or unresolved results", async () => {
+		const { repoPath, cleanup, conflictBranch } = createMergeConflictRepo();
+		try {
+			runGitUnchecked(repoPath, ["merge", conflictBranch]);
+			const sources = await getConflictFileContent(repoPath, "file.txt");
+			expect(sources.baseContent).toBe("base content\n");
+			expect(sources.oursContent).toBe("main content\n");
+			const original = await readWorkdirFile(repoPath, "file.txt");
+			expect((await resolveConflictFile(repoPath, "file.txt", "manual", original.contentHash)).ok).toBe(false);
+			const saved = await saveWorkdirFile(repoPath, "file.txt", "manual result\n", original.contentHash ?? "");
+			expect(await getConflictedFiles(repoPath)).toEqual(["file.txt"]);
+			writeFileSync(join(repoPath, "file.txt"), "external edit\n");
+			expect(await resolveConflictFile(repoPath, "file.txt", "manual", saved.contentHash)).toMatchObject({
+				ok: false,
+				error: "File changed on disk. Reload before staging.",
+			});
+			expect(readFileSync(join(repoPath, "file.txt"), "utf8")).toBe("external edit\n");
+			const reloaded = await readWorkdirFile(repoPath, "file.txt");
+			expect((await resolveConflictFile(repoPath, "file.txt", "manual", reloaded.contentHash)).ok).toBe(true);
+			expect(await getConflictedFiles(repoPath)).toEqual([]);
+		} finally {
+			cleanup();
+		}
+	});
 	it("resolves with ours correctly", async () => {
 		const { repoPath, cleanup, conflictBranch } = createMergeConflictRepo();
 		try {

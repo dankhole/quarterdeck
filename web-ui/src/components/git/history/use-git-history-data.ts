@@ -345,13 +345,16 @@ export function useGitHistoryData({
 			throw new Error("Missing scope.");
 		}
 		const trpc = getRuntimeTrpcClient(projectId);
-		return await trpc.project.getCommitDiff.query({
+		const response = await trpc.project.getCommitDiff.query({
 			commitHash: selectedCommitHash,
 			taskScope: taskScope ?? null,
 		});
-	}, [selectedCommitHash, taskScope, projectId]);
+		return { ...response, reviewScopeKey: scopeKey, selectedCommitHash };
+	}, [scopeKey, selectedCommitHash, taskScope, projectId]);
 
-	const diffQuery = useTrpcQuery<RuntimeGitCommitDiffResponse>({
+	const diffQuery = useTrpcQuery<
+		RuntimeGitCommitDiffResponse & { reviewScopeKey: string; selectedCommitHash: string }
+	>({
 		enabled:
 			!isScopeTransitioning && enabled && projectId !== null && selectedCommitHash !== null && viewMode === "commit",
 		queryFn: diffQueryFn,
@@ -488,12 +491,15 @@ export function useGitHistoryData({
 			}
 			return { type: "working-copy", files };
 		}
-		const commitFiles = diffQuery.data?.files;
+		const commitFiles =
+			diffQuery.data?.reviewScopeKey === scopeKey && diffQuery.data.selectedCommitHash === selectedCommitHash
+				? diffQuery.data.files
+				: undefined;
 		if (!commitFiles) {
 			return null;
 		}
 		return { type: "commit", files: commitFiles };
-	}, [diffQuery.data?.files, viewMode, workingCopyQuery.data?.files]);
+	}, [diffQuery.data, scopeKey, selectedCommitHash, viewMode, workingCopyQuery.data?.files]);
 
 	const selectedCommit = commits.find((commit) => commit.hash === selectedCommitHash) ?? null;
 	const isDiffLoading =

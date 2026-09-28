@@ -1,26 +1,16 @@
-import {
-	AlertTriangle,
-	Check,
-	CheckCircle,
-	Clipboard,
-	FileCheck,
-	GitMerge,
-	GitPullRequest,
-	Info,
-	UserCheck,
-	Users,
-	XCircle,
-} from "lucide-react";
+import { AlertTriangle, Check, CheckCircle, FileCheck, GitMerge, GitPullRequest, XCircle } from "lucide-react";
 import { useMemo } from "react";
-
-import { copyToClipboard } from "@/components/git/panels/context-menu-utils";
-import { buildUnifiedDiffRows, ReadOnlyUnifiedDiff } from "@/components/shared/diff-renderer";
+import { ReviewDocumentDiff } from "@/components/editor/review-document-diff";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
+import type { FileBrowserScopeOptions } from "@/hooks/git/file-browser-scope";
+import { createReviewDocument } from "@/hooks/git/review-document";
 import type { RuntimeAutoMergedFile, RuntimeConflictFile, RuntimeConflictState } from "@/runtime/types";
+import { ConflictResultEditor } from "./conflict-result-editor";
 
 export interface ConflictResolutionPanelProps {
+	repository: FileBrowserScopeOptions;
 	conflictState: RuntimeConflictState;
 	conflictFiles: RuntimeConflictFile[];
 	resolvedFiles: ReadonlySet<string>;
@@ -29,7 +19,11 @@ export interface ConflictResolutionPanelProps {
 	acceptAutoMergedFile: (path: string) => void;
 	selectedPath: string | null;
 	setSelectedPath: (path: string | null) => void;
-	resolveFile: (path: string, resolution: "ours" | "theirs") => Promise<{ ok: boolean; error?: string }>;
+	resolveFile: (
+		path: string,
+		resolution: "ours" | "theirs" | "manual",
+		expectedContentHash?: string,
+	) => Promise<{ ok: boolean; error?: string }>;
 	continueResolution: () => Promise<unknown>;
 	abortResolution: () => Promise<unknown>;
 	isLoading: boolean;
@@ -43,6 +37,8 @@ function getBasename(filePath: string): string {
 }
 
 function ConflictDetailPane({
+	repository,
+	isMutating,
 	selectedPath,
 	conflictFiles,
 	resolvedFiles,
@@ -52,13 +48,19 @@ function ConflictDetailPane({
 	resolveFile,
 	isLoading,
 }: {
+	repository: FileBrowserScopeOptions;
+	isMutating: boolean;
 	selectedPath: string | null;
 	conflictFiles: RuntimeConflictFile[];
 	resolvedFiles: ReadonlySet<string>;
 	autoMergedFiles: RuntimeAutoMergedFile[];
 	reviewedAutoMergedFiles: ReadonlySet<string>;
 	acceptAutoMergedFile: (path: string) => void;
-	resolveFile: (path: string, resolution: "ours" | "theirs") => Promise<{ ok: boolean; error?: string }>;
+	resolveFile: (
+		path: string,
+		resolution: "ours" | "theirs" | "manual",
+		expectedContentHash?: string,
+	) => Promise<{ ok: boolean; error?: string }>;
 	isLoading: boolean;
 }): React.ReactElement {
 	// No file selected — show placeholder.
@@ -85,7 +87,7 @@ function ConflictDetailPane({
 	const autoMergedFile = autoMergedFiles.find((f) => f.path === selectedPath);
 	if (autoMergedFile) {
 		const isReviewed = reviewedAutoMergedFiles.has(selectedPath);
-		const rows = buildUnifiedDiffRows(autoMergedFile.oldContent, autoMergedFile.newContent);
+
 		return (
 			<div className="flex flex-col flex-1 min-w-0 min-h-0">
 				{/* Header */}
@@ -95,13 +97,13 @@ function ConflictDetailPane({
 				</div>
 				{/* Diff */}
 				<div className="flex-1 min-h-0 overflow-auto">
-					{rows.length > 0 ? (
-						<ReadOnlyUnifiedDiff rows={rows} path={selectedPath} />
-					) : (
-						<div className="flex items-center justify-center h-full">
-							<span className="text-[13px] text-text-tertiary">No changes in this file</span>
-						</div>
-					)}
+					<ReviewDocumentDiff
+						document={createReviewDocument(
+							{ repository, revisions: { kind: "auto-merge", base: "HEAD", head: ":0" } },
+							autoMergedFile,
+							{ kind: "text", oldText: autoMergedFile.oldContent, newText: autoMergedFile.newContent },
+						)}
+					/>
 				</div>
 				{/* Accept button */}
 				<div className="flex items-center gap-2 px-3 py-2 border-t border-border bg-surface-1 shrink-0">
@@ -143,80 +145,18 @@ function ConflictDetailPane({
 		);
 	}
 
-	// Build diff rows directly using the ours/theirs content.
-	const hasContent = selectedFile.oursContent.length > 0 || selectedFile.theirsContent.length > 0;
-	const rows = hasContent ? buildUnifiedDiffRows(selectedFile.oursContent, selectedFile.theirsContent) : [];
-
-	const handleCopyPath = (): void => {
-		copyToClipboard(selectedPath, "Path");
-	};
-
 	return (
-		<div className="flex flex-col flex-1 min-w-0 min-h-0">
-			{/* Column headers */}
-			<div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-surface-1 shrink-0">
-				<span className="text-[12px] text-status-red font-medium">Ours (current branch)</span>
-				<span className="text-[11px] text-text-tertiary">→</span>
-				<span className="text-[12px] text-status-green font-medium">Theirs (incoming)</span>
-			</div>
-
-			{/* Diff or error state */}
-			<div className="flex-1 min-h-0 overflow-auto">
-				{hasContent ? (
-					<ReadOnlyUnifiedDiff rows={rows} path={selectedPath} />
-				) : (
-					<div className="flex flex-col items-center justify-center h-full gap-2 px-4">
-						<AlertTriangle size={24} className="text-status-orange" />
-						<span className="text-[13px] text-text-primary font-medium">Could not load conflict content</span>
-						<span className="text-[12px] text-text-secondary text-center">
-							The file may be binary or the conflict data is unavailable. Resolve it manually using your editor.
-						</span>
-					</div>
-				)}
-			</div>
-
-			{/* Manual resolution info bar */}
-			<div className="flex items-center gap-2 px-3 py-1.5 border-t border-border bg-surface-0 shrink-0 text-[11px] text-text-secondary">
-				<Info size={13} className="shrink-0 text-text-tertiary" />
-				<span>
-					To resolve manually, edit in your editor then run{" "}
-					<code className="text-text-primary bg-surface-2 px-1 py-0.5 rounded text-[10px]">
-						git add {selectedPath}
-					</code>
-				</span>
-				<button
-					type="button"
-					onClick={handleCopyPath}
-					className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-2 border-0 cursor-pointer text-text-secondary hover:text-text-primary text-[10px]"
-				>
-					<Clipboard size={11} /> Copy path
-				</button>
-			</div>
-
-			{/* Resolution action buttons */}
-			<div className="flex items-center gap-2 px-3 py-2 border-t border-border bg-surface-1 shrink-0">
-				<Button
-					variant="default"
-					size="sm"
-					icon={<UserCheck size={14} />}
-					onClick={() => resolveFile(selectedPath, "ours")}
-				>
-					Accept Ours
-				</Button>
-				<Button
-					variant="default"
-					size="sm"
-					icon={<Users size={14} />}
-					onClick={() => resolveFile(selectedPath, "theirs")}
-				>
-					Accept Theirs
-				</Button>
-			</div>
-		</div>
+		<ConflictResultEditor
+			file={selectedFile}
+			repository={repository}
+			isMutating={isMutating}
+			resolveFile={resolveFile}
+		/>
 	);
 }
 
 export function ConflictResolutionPanel({
+	repository,
 	conflictState,
 	conflictFiles,
 	resolvedFiles,
@@ -351,6 +291,8 @@ export function ConflictResolutionPanel({
 
 				{/* Right pane — detail view */}
 				<ConflictDetailPane
+					repository={repository}
+					isMutating={isMutating}
 					selectedPath={selectedPath}
 					conflictFiles={conflictFiles}
 					resolvedFiles={resolvedFiles}

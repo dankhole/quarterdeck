@@ -1,17 +1,14 @@
 import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react";
 import { memo, useCallback, useMemo, useState } from "react";
+import { createSourceLineCache } from "@/components/editor/source-line-highlighting";
+import { quarterdeckHighlightStyle } from "@/components/editor/source-presentation";
 
 import { Button } from "@/components/ui/button";
 import { DeferredDiffRows } from "./deferred-diff-rows";
 import { DiffContextRows } from "./diff-context-rows";
 import type { CollapsedContextBlock, ExpandedBlockState, UnifiedDiffRow } from "./diff-parser";
 import { buildDiffDisplayGroups, INCREMENTAL_EXPAND_STEP, INCREMENTAL_EXPAND_THRESHOLD } from "./diff-parser";
-import {
-	createHighlightedLineCache,
-	type HighlightedLineCache,
-	resolvePrismGrammar,
-	resolvePrismLanguage,
-} from "./syntax-highlighting";
+import type { HighlightedLineCache } from "./syntax-highlighting";
 
 export type {
 	CollapsedContextBlock,
@@ -216,12 +213,7 @@ export const ReadOnlyUnifiedDiff = memo(function ReadOnlyUnifiedDiff({
 	path: string;
 }): React.ReactElement {
 	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
-	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
-	const prismGrammar = useMemo(() => resolvePrismGrammar(prismLanguage), [prismLanguage]);
-	const highlightCache = useMemo(
-		() => createHighlightedLineCache(prismGrammar, prismLanguage),
-		[prismGrammar, prismLanguage, rows],
-	);
+	const highlightCache = useMemo(() => createSourceLineCache(path), [path, rows]);
 	const displayItems = useMemo(() => buildDiffDisplayGroups(rows), [rows]);
 
 	const renderRow = (row: UnifiedDiffRow): React.ReactElement => {
@@ -245,6 +237,9 @@ export const ReadOnlyUnifiedDiff = memo(function ReadOnlyUnifiedDiff({
 
 	return (
 		<div className="kb-diff-readonly">
+			<style href="quarterdeck-editor-highlights" precedence="editor">
+				{quarterdeckHighlightStyle.module?.getRules()}
+			</style>
 			{displayItems.map((item) => {
 				if (item.type === "rows") {
 					return (

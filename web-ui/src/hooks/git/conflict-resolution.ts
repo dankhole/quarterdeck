@@ -31,25 +31,6 @@ export const EMPTY_GIT_SYNC_SUMMARY: RuntimeGitSyncSummary = {
 // ---------------------------------------------------------------------------
 
 /**
- * During a multi-step rebase, resolved files and reviewed auto-merged files
- * should reset when the rebase advances to the next commit. This returns
- * `true` when both previous and current steps are non-null and differ.
- */
-export function shouldResetOnStepChange(previousStep: number | null, currentStep: number | null): boolean {
-	return previousStep !== null && currentStep !== null && currentStep !== previousStep;
-}
-
-/**
- * Filter conflicted file paths to only those not yet resolved.
- */
-export function filterUnresolvedPaths(
-	conflictedFiles: readonly string[],
-	resolvedFiles: ReadonlySet<string>,
-): string[] {
-	return conflictedFiles.filter((f) => !resolvedFiles.has(f));
-}
-
-/**
  * Detect files that were externally resolved (e.g. by the agent or another
  * tool) between metadata polls. Returns the paths that were present in the
  * previous conflict state but absent in the current one.

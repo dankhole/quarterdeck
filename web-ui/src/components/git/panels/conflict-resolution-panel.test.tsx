@@ -42,6 +42,7 @@ function createConflictFile(path: string): RuntimeConflictFile {
 
 function createDefaultProps(overrides: Partial<ConflictResolutionPanelProps> = {}): ConflictResolutionPanelProps {
 	return {
+		repository: { projectId: "test", taskId: null },
 		conflictState: createConflictState(),
 		conflictFiles: [createConflictFile("src/foo.ts"), createConflictFile("src/bar.ts")],
 		resolvedFiles: new Set<string>(),
@@ -150,9 +151,9 @@ describe("ConflictResolutionPanel", () => {
 	});
 
 	// -----------------------------------------------------------------------
-	// 5. Accept Ours button calls resolveFile
+	// 5. Use Ours requires a loaded editable result
 	// -----------------------------------------------------------------------
-	it("Accept Ours button calls resolveFile", () => {
+	it("Use Ours requires a loaded editable result", () => {
 		const resolveFile = vi.fn(async () => ({ ok: true }));
 		renderPanel(
 			createDefaultProps({
@@ -162,20 +163,20 @@ describe("ConflictResolutionPanel", () => {
 		);
 
 		const buttons = Array.from(container.querySelectorAll("button"));
-		const acceptOursButton = buttons.find((btn) => btn.textContent?.includes("Accept Ours"));
+		const acceptOursButton = buttons.find((btn) => btn.textContent?.includes("Use Ours in Result"));
 		expect(acceptOursButton).toBeDefined();
 
 		act(() => {
 			acceptOursButton!.click();
 		});
 
-		expect(resolveFile).toHaveBeenCalledWith("src/foo.ts", "ours");
+		expect(resolveFile).not.toHaveBeenCalled();
 	});
 
 	// -----------------------------------------------------------------------
-	// 6. Accept Theirs button calls resolveFile
+	// 6. Use Theirs requires a loaded editable result
 	// -----------------------------------------------------------------------
-	it("Accept Theirs button calls resolveFile", () => {
+	it("Use Theirs requires a loaded editable result", () => {
 		const resolveFile = vi.fn(async () => ({ ok: true }));
 		renderPanel(
 			createDefaultProps({
@@ -185,14 +186,14 @@ describe("ConflictResolutionPanel", () => {
 		);
 
 		const buttons = Array.from(container.querySelectorAll("button"));
-		const acceptTheirsButton = buttons.find((btn) => btn.textContent?.includes("Accept Theirs"));
+		const acceptTheirsButton = buttons.find((btn) => btn.textContent?.includes("Use Theirs in Result"));
 		expect(acceptTheirsButton).toBeDefined();
 
 		act(() => {
 			acceptTheirsButton!.click();
 		});
 
-		expect(resolveFile).toHaveBeenCalledWith("src/foo.ts", "theirs");
+		expect(resolveFile).not.toHaveBeenCalled();
 	});
 
 	// -----------------------------------------------------------------------

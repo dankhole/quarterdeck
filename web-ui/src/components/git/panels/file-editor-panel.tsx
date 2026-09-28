@@ -70,6 +70,7 @@ function MarkdownCodeBlock({
 const MARKDOWN_COMPONENTS = { code: MarkdownCodeBlock };
 
 interface FileEditorPanelProps {
+	embedded?: boolean;
 	tabs: readonly FileEditorTab[];
 	activeTab: FileEditorTab | null;
 	activePath: string | null;
@@ -99,6 +100,7 @@ interface FileEditorPanelProps {
 }
 
 export function FileEditorPanel({
+	embedded = false,
 	tabs,
 	activeTab,
 	activePath,
@@ -237,7 +239,7 @@ export function FileEditorPanel({
 					)}
 				</AlertDialogDescription>
 			</ConfirmationDialog>
-			{tabs.length > 0 ? (
+			{!embedded && tabs.length > 0 ? (
 				<div className="flex items-center min-h-8 border-b border-border bg-surface-0 overflow-x-auto">
 					{tabs.map((tab) => {
 						const selected = tab.path === activePath;
@@ -355,36 +357,40 @@ export function FileEditorPanel({
 								)}
 							</button>
 						</Tooltip>
-						<Tooltip content={saveAllDisabled ? "Save all unavailable" : "Save all files"}>
-							<button
-								type="button"
-								aria-label="Save all files"
-								onClick={() => void onSaveAllTabs()}
-								disabled={saveAllDisabled}
-								className="shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
-							>
-								<SaveAll size={13} />
-							</button>
-						</Tooltip>
-						<Tooltip
-							content={
-								tabs.length === 0
-									? "No files open"
-									: hasSavingTabs
-										? "Wait for saves to finish"
-										: "Close all files"
-							}
-						>
-							<button
-								type="button"
-								aria-label="Close all files"
-								onClick={onCloseAllTabs}
-								disabled={closeAllDisabled}
-								className="shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
-							>
-								<PanelTopClose size={13} />
-							</button>
-						</Tooltip>
+						{!embedded ? (
+							<>
+								<Tooltip content={saveAllDisabled ? "Save all unavailable" : "Save all files"}>
+									<button
+										type="button"
+										aria-label="Save all files"
+										onClick={() => void onSaveAllTabs()}
+										disabled={saveAllDisabled}
+										className="shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+									>
+										<SaveAll size={13} />
+									</button>
+								</Tooltip>
+								<Tooltip
+									content={
+										tabs.length === 0
+											? "No files open"
+											: hasSavingTabs
+												? "Wait for saves to finish"
+												: "Close all files"
+									}
+								>
+									<button
+										type="button"
+										aria-label="Close all files"
+										onClick={onCloseAllTabs}
+										disabled={closeAllDisabled}
+										className="shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+									>
+										<PanelTopClose size={13} />
+									</button>
+								</Tooltip>
+							</>
+						) : null}
 						<Tooltip content={findReplaceDisabled ? "Find unavailable" : "Find and replace in file"}>
 							<button
 								type="button"

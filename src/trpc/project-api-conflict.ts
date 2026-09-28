@@ -64,7 +64,7 @@ export function createConflictOps(ctx: ProjectApiContext): ConflictOps {
 					projectScope.projectPath,
 					input.taskId ? { taskId: input.taskId, baseRef: "" } : null,
 				);
-				const result = await gitResolveConflictFile(cwd, input.path, input.resolution);
+				const result = await gitResolveConflictFile(cwd, input.path, input.resolution, input.expectedContentHash);
 				if (result.ok) ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
 				return result;
 			} catch (error) {

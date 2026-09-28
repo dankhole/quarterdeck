@@ -2,11 +2,12 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 import { ChevronDown, ChevronRight, Command, CornerDownLeft, Undo2 } from "lucide-react";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
+import { ReviewDocumentDiff } from "@/components/editor/review-document-diff";
 import { CONTEXT_MENU_ITEM_CLASS, FileContextMenuItems } from "@/components/git/panels/context-menu-utils";
 import { truncatePathMiddle } from "@/components/shared/diff-renderer";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import { createReviewDocument, type ReviewScope } from "@/hooks/git/review-document";
 import { useDiffComments } from "@/hooks/git/use-diff-comments";
 import { useDiffScrollSync } from "@/hooks/git/use-diff-scroll-sync";
 import type { FileNavigation } from "@/hooks/git/use-git-navigation";
@@ -14,9 +15,6 @@ import type { RuntimeWorkdirFileChange } from "@/runtime/types";
 import type { FileLoadingState } from "@/runtime/use-all-file-diff-content";
 import { isBinaryFilePath } from "@/utils/is-binary-file-path";
 import { isMacPlatform } from "@/utils/platform";
-
-import { SplitDiff } from "./diff-split";
-import { UnifiedDiff } from "./diff-unified";
 import {
 	type DiffLineComment,
 	type DiffViewMode,
@@ -35,6 +33,7 @@ function arePathListsEqual(previous: readonly string[], next: readonly string[])
 
 export function DiffViewerPanel({
 	projectFiles,
+	reviewScope,
 	agentContextSource,
 	selectedPath,
 	onSelectedPathChange,
@@ -49,6 +48,7 @@ export function DiffViewerPanel({
 	fileLoadingState,
 }: {
 	projectFiles: RuntimeWorkdirFileChange[] | null;
+	reviewScope: ReviewScope;
 	agentContextSource?: string;
 	selectedPath: string | null;
 	onSelectedPathChange: (path: string) => void;
@@ -66,10 +66,10 @@ export function DiffViewerPanel({
 	const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
 	const lastReportedVisiblePathsRef = useRef<string[]>([]);
 
-	const fileStatusByPath = useMemo(() => {
-		const map = new Map<string, string>();
+	const fileByPath = useMemo(() => {
+		const map = new Map<string, RuntimeWorkdirFileChange>();
 		for (const file of projectFiles ?? []) {
-			map.set(file.path, file.status);
+			map.set(file.path, file);
 		}
 		return map;
 	}, [projectFiles]);
@@ -250,7 +250,9 @@ export function DiffViewerPanel({
 						{groupedByPath.map((group) => {
 							const isExpanded = expandedPaths[group.path] ?? true;
 							const hasBinaryEntry = group.entries.some((entry) => entry.isBinary);
-							const fileStatus = fileStatusByPath.get(group.path);
+							const file = fileByPath.get(group.path);
+							if (!file) return null;
+							const fileStatus = file.status;
 							const canRollback = fileStatus !== "renamed" && fileStatus !== "copied";
 							return (
 								<section
@@ -347,29 +349,23 @@ export function DiffViewerPanel({
 											) : (
 												group.entries.map((entry) => (
 													<div key={entry.id} className="kb-diff-entry">
-														{entry.isBinary ? null : viewMode === "split" ? (
-															<SplitDiff
-																path={group.path}
-																agentContextSource={agentContextSource}
-																oldText={entry.oldText}
-																newText={entry.newText}
-																comments={comments}
-																onAddComment={handleAddComment}
-																onUpdateComment={handleUpdateComment}
-																onDeleteComment={handleDeleteComment}
-															/>
-														) : (
-															<UnifiedDiff
-																path={group.path}
-																agentContextSource={agentContextSource}
-																oldText={entry.oldText}
-																newText={entry.newText}
-																comments={comments}
-																onAddComment={handleAddComment}
-																onUpdateComment={handleUpdateComment}
-																onDeleteComment={handleDeleteComment}
-															/>
-														)}
+														<ReviewDocumentDiff
+															document={createReviewDocument(
+																reviewScope,
+																file,
+																entry.isBinary
+																	? { kind: "binary" }
+																	: { kind: "text", oldText: entry.oldText, newText: entry.newText },
+															)}
+															viewMode={viewMode}
+															interactions={{
+																agentContextSource,
+																comments,
+																onAddComment: handleAddComment,
+																onUpdateComment: handleUpdateComment,
+																onDeleteComment: handleDeleteComment,
+															}}
+														/>
 													</div>
 												))
 											)}

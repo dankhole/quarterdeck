@@ -79,6 +79,10 @@ describe("DiffViewerPanel", () => {
 				await act(async () =>
 					root.render(
 						<DiffViewerPanel
+							reviewScope={{
+								repository: { projectId: "test", taskId: null },
+								revisions: { kind: "commit", base: "a", head: "b" },
+							}}
 							projectFiles={projectFiles}
 							selectedPath={selectedPath}
 							onSelectedPathChange={onSelectedPathChange}
@@ -130,6 +134,10 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
+					reviewScope={{
+						repository: { projectId: "test", taskId: null },
+						revisions: { kind: "commit", base: "a", head: "b" },
+					}}
 					projectFiles={projectFiles}
 					selectedPath={null}
 					onSelectedPathChange={() => {}}
@@ -177,6 +185,10 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
+					reviewScope={{
+						repository: { projectId: "test", taskId: null },
+						revisions: { kind: "commit", base: "a", head: "b" },
+					}}
 					projectFiles={projectFiles}
 					selectedPath="src/b.ts"
 					onSelectedPathChange={() => {}}
@@ -221,6 +233,10 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
+					reviewScope={{
+						repository: { projectId: "test", taskId: null },
+						revisions: { kind: "commit", base: "a", head: "b" },
+					}}
 					projectFiles={projectFiles}
 					selectedPath={null}
 					onSelectedPathChange={() => {}}
@@ -282,6 +298,10 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
+					reviewScope={{
+						repository: { projectId: "test", taskId: null },
+						revisions: { kind: "commit", base: "a", head: "b" },
+					}}
 					projectFiles={projectFiles}
 					selectedPath={null}
 					onSelectedPathChange={() => {}}
@@ -314,6 +334,10 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
+					reviewScope={{
+						repository: { projectId: "test", taskId: null },
+						revisions: { kind: "commit", base: "a", head: "b" },
+					}}
 					projectFiles={projectFiles}
 					selectedPath={null}
 					onSelectedPathChange={() => {}}
@@ -351,6 +375,10 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
+					reviewScope={{
+						repository: { projectId: "test", taskId: null },
+						revisions: { kind: "commit", base: "a", head: "b" },
+					}}
 					projectFiles={projectFiles}
 					selectedPath={null}
 					onSelectedPathChange={() => {}}
@@ -379,6 +407,10 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
+					reviewScope={{
+						repository: { projectId: "test", taskId: null },
+						revisions: { kind: "commit", base: "a", head: "b" },
+					}}
 					projectFiles={projectFiles}
 					selectedPath={null}
 					onSelectedPathChange={() => {}}
@@ -420,6 +452,10 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
+					reviewScope={{
+						repository: { projectId: "test", taskId: null },
+						revisions: { kind: "commit", base: "a", head: "b" },
+					}}
 					projectFiles={projectFiles}
 					selectedPath={null}
 					onSelectedPathChange={() => {}}
@@ -473,6 +509,10 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
+					reviewScope={{
+						repository: { projectId: "test", taskId: null },
+						revisions: { kind: "commit", base: "a", head: "b" },
+					}}
 					projectFiles={projectFiles}
 					selectedPath={null}
 					onSelectedPathChange={() => {}}

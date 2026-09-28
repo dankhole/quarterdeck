@@ -1,4 +1,6 @@
 import { memo, useMemo } from "react";
+import { createSourceLineCache } from "@/components/editor/source-line-highlighting";
+import { quarterdeckHighlightStyle } from "@/components/editor/source-presentation";
 
 import { DeferredDiffRows } from "@/components/shared/deferred-diff-rows";
 import { DiffContextRows } from "@/components/shared/diff-context-rows";
@@ -6,10 +8,7 @@ import {
 	buildDiffDisplayGroups,
 	buildUnifiedDiffRows,
 	CollapsedBlockControls,
-	createHighlightedLineCache,
 	DiffRowText,
-	resolvePrismGrammar,
-	resolvePrismLanguage,
 	type UnifiedDiffRow,
 	useIncrementalExpand,
 } from "@/components/shared/diff-renderer";
@@ -118,12 +117,7 @@ export const SplitDiff = memo(function SplitDiff({
 	comments: Map<string, DiffLineComment>;
 } & DiffCommentCallbacks): React.ReactElement {
 	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
-	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
-	const prismGrammar = useMemo(() => resolvePrismGrammar(prismLanguage), [prismLanguage]);
-	const highlightCache = useMemo(
-		() => createHighlightedLineCache(prismGrammar, prismLanguage),
-		[oldText, newText, prismGrammar, prismLanguage],
-	);
+	const highlightCache = useMemo(() => createSourceLineCache(path), [path, oldText, newText]);
 	const rows = useMemo(() => buildUnifiedDiffRows(oldText, newText), [oldText, newText]);
 	const displayItems = useMemo(
 		() =>
@@ -206,6 +200,9 @@ export const SplitDiff = memo(function SplitDiff({
 
 	return (
 		<div className="kb-diff-split-grid-shell">
+			<style href="quarterdeck-editor-highlights" precedence="editor">
+				{quarterdeckHighlightStyle.module?.getRules()}
+			</style>
 			<div className="kb-diff-split-grid-backgrounds" aria-hidden>
 				<div className="kb-diff-split-grid-background-column" />
 				<div className="kb-diff-split-grid-background-column kb-diff-split-grid-background-column-right" />

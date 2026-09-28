@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Protect conflict results from binary or missing Git sources, honor custom conflict-marker sizes before staging, and discard stale resolution responses when a workspace is replaced.
+
+- Unify commit, compare, and uncommitted review documents with the Files editor presentation. Edit conflict results in the shared Files workspace with dirty-buffer protection, hash-checked saves, and explicit stage, complete, and abort actions.
+
 - Release task branches after failed worktree removal by pruning Git registrations after directory cleanup; retry cleanup for already-missing folders and report pruning failures.
 
 - Preserve restored Files editor content against delayed responses, keep discarded attached drafts open, and open language-server dependency targets read-only.

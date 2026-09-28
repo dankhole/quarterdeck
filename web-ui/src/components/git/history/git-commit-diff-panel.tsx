@@ -1,13 +1,9 @@
 import { AlertCircle, ChevronDown, ChevronRight, GitCommit, GitCompare } from "lucide-react";
 import { type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ReviewDocumentDiff } from "@/components/editor/review-document-diff";
 import { FileTreePanel } from "@/components/git/panels/file-tree-panel";
-import {
-	buildUnifiedDiffRows,
-	parsePatchToRows,
-	ReadOnlyUnifiedDiff,
-	truncatePathMiddle,
-	type UnifiedDiffRow,
-} from "@/components/shared/diff-renderer";
+import { truncatePathMiddle } from "@/components/shared/diff-renderer";
+import { createReviewDocument, type ReviewScope } from "@/hooks/git/review-document";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { useGitCommitDiffLayout } from "@/resize/use-git-commit-diff-layout";
 import { useResizeDrag } from "@/resize/use-resize-drag";
@@ -22,44 +18,6 @@ function getSectionTopWithinScrollContainer(container: HTMLElement, section: HTM
 	const containerRect = container.getBoundingClientRect();
 	const sectionRect = section.getBoundingClientRect();
 	return container.scrollTop + sectionRect.top - (containerRect.top + container.clientTop);
-}
-
-function getFileRows(source: GitCommitDiffSource, path: string): UnifiedDiffRow[] {
-	if (isBinaryFilePath(path)) {
-		return [];
-	}
-	if (source.type === "commit") {
-		const file = source.files.find((f) => f.path === path);
-		if (!file) {
-			return [];
-		}
-		return parsePatchToRows(file.patch);
-	}
-	const file = source.files.find((f) => f.path === path);
-	if (!file) {
-		return [];
-	}
-	// Content is loaded on-demand — skip diff computation when content hasn't been fetched yet.
-	if (file.oldText == null && file.newText == null && file.status !== "added") {
-		return [];
-	}
-	return buildUnifiedDiffRows(file.oldText, file.newText ?? "");
-}
-
-function isWorkingCopyFileContentPending(source: GitCommitDiffSource, path: string): boolean {
-	if (source.type !== "working-copy") return false;
-	const file = source.files.find((f) => f.path === path);
-	if (!file) return false;
-	return file.oldText == null && file.newText == null && file.status !== "added";
-}
-
-function getFileStats(source: GitCommitDiffSource, path: string): { additions: number; deletions: number } {
-	if (source.type === "commit") {
-		const file = source.files.find((f) => f.path === path);
-		return { additions: file?.additions ?? 0, deletions: file?.deletions ?? 0 };
-	}
-	const file = source.files.find((f) => f.path === path);
-	return { additions: file?.additions ?? 0, deletions: file?.deletions ?? 0 };
 }
 
 function toWorkdirFileChangeFormat(source: GitCommitDiffSource): RuntimeWorkdirFileChange[] {
@@ -77,15 +35,9 @@ function toWorkdirFileChangeFormat(source: GitCommitDiffSource): RuntimeWorkdirF
 	}));
 }
 
-function getCommitFile(source: GitCommitDiffSource | null, path: string): RuntimeGitCommitDiffFile | null {
-	if (!source || source.type !== "commit") {
-		return null;
-	}
-	return source.files.find((file) => file.path === path) ?? null;
-}
-
 export function GitCommitDiffPanel({
 	diffSource,
+	reviewScope,
 	isLoading,
 	errorMessage,
 	selectedPath,
@@ -93,6 +45,7 @@ export function GitCommitDiffPanel({
 	headerContent,
 }: {
 	diffSource: GitCommitDiffSource | null;
+	reviewScope: ReviewScope;
 	isLoading: boolean;
 	errorMessage?: string | null;
 	selectedPath: string | null;
@@ -114,7 +67,7 @@ export function GitCommitDiffPanel({
 		if (!diffSource) {
 			return [];
 		}
-		return diffSource.type === "commit" ? diffSource.files.map((f) => f.path) : diffSource.files.map((f) => f.path);
+		return diffSource.files.map((f) => f.path);
 	}, [diffSource]);
 
 	const projectFilesForTree = useMemo(() => {
@@ -353,11 +306,11 @@ export function GitCommitDiffPanel({
 						padding: "0 12px 12px",
 					}}
 				>
-					{filePaths.map((path) => {
+					{files.map((file) => {
+						const path = file.path;
 						const isExpanded = expandedPaths[path] ?? true;
-						const stats = diffSource ? getFileStats(diffSource, path) : { additions: 0, deletions: 0 };
-						const rows = diffSource ? getFileRows(diffSource, path) : [];
-						const commitFile = getCommitFile(diffSource, path);
+						const additions = file.additions ?? 0;
+						const deletions = file.deletions ?? 0;
 						const isBinaryFile = isBinaryFilePath(path);
 
 						return (
@@ -398,12 +351,10 @@ export function GitCommitDiffPanel({
 										{truncatePathMiddle(path)}
 									</span>
 									<span className="shrink-0 text-xs">
-										{stats.additions > 0 ? (
-											<span className="text-status-green">+{stats.additions}</span>
-										) : null}
-										{stats.additions > 0 && stats.deletions > 0 ? " " : null}
-										{stats.deletions > 0 ? <span className="text-status-red">-{stats.deletions}</span> : null}
-										{stats.additions === 0 && stats.deletions === 0 && isBinaryFile ? (
+										{additions > 0 ? <span className="text-status-green">+{additions}</span> : null}
+										{additions > 0 && deletions > 0 ? " " : null}
+										{deletions > 0 ? <span className="text-status-red">-{deletions}</span> : null}
+										{additions === 0 && deletions === 0 && isBinaryFile ? (
 											<span className="text-text-tertiary">Binary</span>
 										) : null}
 									</span>
@@ -414,48 +365,20 @@ export function GitCommitDiffPanel({
 										style={{ overflow: "hidden" }}
 									>
 										<div className="kb-diff-entry">
-											{commitFile?.status === "renamed" && commitFile.previousPath ? (
-												<div
-													style={{
-														padding: "8px 12px 0",
-														fontSize: 12,
-														color: "var(--color-text-tertiary)",
-													}}
-												>
-													Renamed from <code className="font-mono">{commitFile.previousPath}</code>
-												</div>
-											) : null}
-											{!isBinaryFile && rows.length > 0 ? (
-												<ReadOnlyUnifiedDiff rows={rows} path={path} />
-											) : !isBinaryFile && isWorkingCopyFileContentPending(diffSource, path) ? (
-												selectedPath === path ? (
-													<div className="px-4 py-5">
-														<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "92%" }} />
-														<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "80%" }} />
-														<div className="kb-skeleton h-3 rounded-sm" style={{ width: "86%" }} />
-													</div>
-												) : (
-													<div
-														style={{
-															padding: "12px",
-															fontSize: 12,
-															color: "var(--color-text-tertiary)",
-														}}
-													>
-														Select file to view diff
-													</div>
-												)
-											) : !isBinaryFile ? (
-												<div
-													style={{
-														padding: "12px",
-														fontSize: 12,
-														color: "var(--color-text-tertiary)",
-													}}
-												>
-													No textual diff available.
-												</div>
-											) : null}
+											<ReviewDocumentDiff
+												document={createReviewDocument(
+													reviewScope,
+													file,
+													isBinaryFile ||
+														("patch" in file && /^(Binary files |GIT binary patch)/m.test(file.patch))
+														? { kind: "binary" }
+														: "patch" in file
+															? { kind: "patch", patch: file.patch }
+															: file.oldText == null && file.newText == null
+																? { kind: "loading" }
+																: { kind: "text", oldText: file.oldText, newText: file.newText ?? "" },
+												)}
+											/>
 										</div>
 									</div>
 								) : null}

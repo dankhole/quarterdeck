@@ -384,6 +384,17 @@ export function GitHistoryView({
 					className="z-10"
 				/>
 				<GitCommitDiffPanel
+					reviewScope={{
+						repository: { projectId, taskId: taskScope?.taskId ?? null, baseRef: taskScope?.baseRef },
+						revisions: {
+							kind: gitHistory.viewMode === "commit" ? "commit" : "working-copy",
+							base:
+								gitHistory.viewMode === "commit" && gitHistory.selectedCommitHash
+									? `${gitHistory.selectedCommitHash}^`
+									: "HEAD",
+							head: gitHistory.viewMode === "commit" ? (gitHistory.selectedCommitHash ?? "") : "WORKTREE",
+						},
+					}}
 					diffSource={enrichedDiffSource}
 					isLoading={gitHistory.isDiffLoading}
 					errorMessage={gitHistory.diffErrorMessage}

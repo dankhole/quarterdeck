@@ -1,13 +1,22 @@
 import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import type { UseConflictResolutionResult } from "@/hooks/git/use-conflict-resolution";
 import type {
 	RuntimeConflictAbortResponse,
 	RuntimeConflictContinueResponse,
+	RuntimeConflictFilesResponse,
 	RuntimeConflictState,
 } from "@/runtime/types";
+import { createFileBrowserContentScopeKey } from "./file-browser-scope";
+import {
+	clearCachedFileEditorTabs,
+	getFileEditorReviewTarget,
+	registerFileEditorScope,
+	retireFileEditorScopes,
+	setCachedFileEditorTabs,
+} from "./file-editor-cache";
+import { createFileEditorTab } from "./file-editor-workspace";
 
 // ---------------------------------------------------------------------------
 // Mocks — hoisted so they are available before any imports run.
@@ -56,7 +65,9 @@ const abortConflictResolutionMutateMock = vi.hoisted(() =>
 		}),
 	),
 );
-const getConflictFilesMutateMock = vi.hoisted(() => vi.fn(async () => ({ ok: true, files: [] })));
+const getConflictFilesMutateMock = vi.hoisted(() =>
+	vi.fn(async (): Promise<RuntimeConflictFilesResponse> => ({ ok: true, files: [] })),
+);
 
 vi.mock("@/runtime/trpc-client", () => ({
 	getRuntimeTrpcClient: () => ({
@@ -123,6 +134,7 @@ describe("useConflictResolution", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
+		clearCachedFileEditorTabs();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -134,7 +146,7 @@ describe("useConflictResolution", () => {
 		resolveConflictFileMutateMock.mockClear();
 		continueConflictResolutionMutateMock.mockClear();
 		abortConflictResolutionMutateMock.mockClear();
-		getConflictFilesMutateMock.mockClear();
+		getConflictFilesMutateMock.mockReset().mockResolvedValue({ ok: true, files: [] });
 		useConflictStateMock.mockReset();
 		useHomeConflictStateMock.mockReset();
 
@@ -169,6 +181,136 @@ describe("useConflictResolution", () => {
 			);
 		});
 	}
+
+	it("guards hidden dirty and saving tabs before resolve, continue and abort", async () => {
+		useConflictStateMock.mockReturnValue(createConflictState({ conflictedFiles: [] }));
+		registerFileEditorScope("hidden", { projectId: "ws-1", taskId: "task-1" });
+		const tab = createFileEditorTab("hidden.ts", {
+			content: "disk",
+			contentHash: "hash",
+			binary: false,
+			truncated: false,
+			language: "typescript",
+			size: 4,
+		});
+		setCachedFileEditorTabs("hidden", [{ ...tab, value: "unsaved" }]);
+		render();
+		await act(async () => {
+			expect((await latest.resolveFile("src/foo.ts", "manual", "hash")).ok).toBe(false);
+			expect((await latest.continueResolution()).ok).toBe(false);
+			expect((await latest.abortResolution()).ok).toBe(false);
+		});
+		expect(getFileEditorReviewTarget()).toEqual({ projectId: "ws-1", taskId: "task-1" });
+		expect(resolveConflictFileMutateMock).not.toHaveBeenCalled();
+		expect(continueConflictResolutionMutateMock).not.toHaveBeenCalled();
+		expect(abortConflictResolutionMutateMock).not.toHaveBeenCalled();
+		setCachedFileEditorTabs("hidden", [{ ...tab, isSaving: true }]);
+		await act(async () => {
+			expect((await latest.abortResolution()).ok).toBe(false);
+		});
+		expect(abortConflictResolutionMutateMock).not.toHaveBeenCalled();
+	});
+
+	it("blocks continue while conflicts remain and handles resolve failures", async () => {
+		useConflictStateMock.mockReturnValue(createConflictState());
+		render();
+		await act(async () => {
+			await latest.continueResolution();
+		});
+		expect(continueConflictResolutionMutateMock).not.toHaveBeenCalled();
+		resolveConflictFileMutateMock.mockRejectedValueOnce(new Error("staging failed"));
+		await act(async () => {
+			expect((await latest.resolveFile("src/foo.ts", "manual", "hash")).ok).toBe(false);
+		});
+		expect(latest.actionError).toBe("staging failed");
+		expect(latest.resolvedFiles.size).toBe(0);
+	});
+
+	it("rejects retired callbacks and ignores a staging response after workspace retirement", async () => {
+		useConflictStateMock.mockReturnValue(createConflictState());
+		const identity = { projectId: "ws-1", taskId: "task-1" };
+		registerFileEditorScope(createFileBrowserContentScopeKey(identity), identity);
+		render();
+		const staleResolve = latest.resolveFile;
+		let finish!: (value: { ok: boolean }) => void;
+		resolveConflictFileMutateMock.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		);
+		let pending!: Promise<{ ok: boolean; error?: string }>;
+		act(() => {
+			pending = latest.resolveFile("src/foo.ts", "manual", "hash");
+		});
+		act(() => retireFileEditorScopes(identity));
+		await act(async () => {
+			finish({ ok: true });
+			await pending;
+		});
+		expect(latest.resolvedFiles.size).toBe(0);
+		await act(async () => {
+			expect((await staleResolve("src/foo.ts", "manual", "hash")).ok).toBe(false);
+		});
+		expect(resolveConflictFileMutateMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("reloads conflict sources and clears resolution state when the workspace is replaced", async () => {
+		const identity = { projectId: "ws-1", taskId: "task-1" };
+		const scopeKey = createFileBrowserContentScopeKey(identity);
+		registerFileEditorScope(scopeKey, identity);
+		useConflictStateMock.mockReturnValue(createConflictState());
+		let finishOldRead!: (response: RuntimeConflictFilesResponse) => void;
+		getConflictFilesMutateMock.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finishOldRead = resolve;
+				}),
+		);
+		render();
+		await act(async () => {
+			await latest.resolveFile("src/foo.ts", "ours");
+		});
+		expect(latest.resolvedFiles.has("src/foo.ts")).toBe(true);
+		const replacementFile = { path: "src/foo.ts", oursContent: "replacement", theirsContent: "incoming" };
+		getConflictFilesMutateMock.mockResolvedValue({ ok: true, files: [replacementFile] });
+		await act(async () => {
+			retireFileEditorScopes(identity);
+			registerFileEditorScope(scopeKey, identity);
+		});
+		expect(latest.resolvedFiles.size).toBe(0);
+		expect(latest.conflictFiles).toEqual([replacementFile]);
+		await act(async () => {
+			finishOldRead({ ok: true, files: [{ ...replacementFile, oursContent: "retired" }] });
+		});
+		expect(latest.conflictFiles).toEqual([replacementFile]);
+	});
+
+	it("ignores a staging response after leaving and returning to the same operation scope", async () => {
+		const conflictState = createConflictState();
+		useConflictStateMock.mockReturnValue(conflictState);
+		render();
+		let finish!: (response: { ok: boolean }) => void;
+		resolveConflictFileMutateMock.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		);
+		let pending!: Promise<{ ok: boolean; error?: string }>;
+		act(() => {
+			pending = latest.resolveFile("src/foo.ts", "ours");
+		});
+		useConflictStateMock.mockReturnValue(null);
+		render();
+		useConflictStateMock.mockReturnValue(conflictState);
+		render();
+		await act(async () => {
+			finish({ ok: true });
+			await pending;
+		});
+		expect(latest.resolvedFiles.size).toBe(0);
+	});
 
 	// -----------------------------------------------------------------------
 	// 1. isActive is false when no conflict state
@@ -214,7 +356,7 @@ describe("useConflictResolution", () => {
 	// 4. continueResolution calls trpc mutation
 	// -----------------------------------------------------------------------
 	it("continueResolution calls trpc mutation", async () => {
-		useConflictStateMock.mockReturnValue(createConflictState());
+		useConflictStateMock.mockReturnValue(createConflictState({ conflictedFiles: [] }));
 		render();
 
 		await act(async () => {

@@ -1,6 +1,5 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
 import { showAppToast } from "@/components/app-toaster";
 import type { DiffLineComment } from "@/components/git/panels/diff-viewer-panel";
 import { arePathListsEqual } from "@/hooks/git/git-diff-data";
@@ -30,7 +29,9 @@ import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitSyncSummary, RuntimeWorkdirFileChange } from "@/runtime/types";
 import type { FileLoadingState } from "@/runtime/use-all-file-diff-content";
 import { LocalStorageKey } from "@/storage/local-storage-store";
+import { useTaskRepositoryInfoValue } from "@/stores/project-metadata-store";
 import type { BoardData, CardSelection } from "@/types";
+import type { FileBrowserScopeOptions } from "./file-browser-scope";
 
 const GIT_VIEW_FILE_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
 	key: LocalStorageKey.GitViewFileTreeRatio,
@@ -39,6 +40,7 @@ const GIT_VIEW_FILE_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
 };
 
 export interface UseGitViewOptions {
+	reviewVisible?: boolean;
 	currentProjectId: string | null;
 	selectedCard: CardSelection | null;
 	projectPath?: string | null;
@@ -51,6 +53,7 @@ export interface UseGitViewOptions {
 }
 
 export function useGitView({
+	reviewVisible = true,
 	currentProjectId,
 	selectedCard,
 	projectPath,
@@ -76,6 +79,24 @@ export function useGitView({
 	const { startDrag: startFileTreeResize } = useResizeDrag();
 
 	const taskId = selectedCard?.card.id ?? null;
+	const repositoryInfo = useTaskRepositoryInfoValue(taskId, selectedCard?.card.baseRef);
+	const repositoryScope = useMemo(
+		() => ({
+			projectId: currentProjectId,
+			taskId,
+			taskCreatedAt: selectedCard?.card.createdAt,
+			rootPath: taskId ? repositoryInfo?.path : projectPath,
+			baseRef: selectedCard?.card.baseRef,
+		}),
+		[
+			currentProjectId,
+			taskId,
+			selectedCard?.card.createdAt,
+			selectedCard?.card.baseRef,
+			repositoryInfo?.path,
+			projectPath,
+		],
+	);
 
 	// --- Selected path with persistence ---
 
@@ -91,10 +112,7 @@ export function useGitView({
 
 	// --- Conflict resolution ---
 
-	const conflictResolution = useConflictResolution({
-		taskId,
-		projectId: currentProjectId,
-	});
+	const conflictResolution = useConflictResolution(repositoryScope);
 
 	// --- Resize ---
 
@@ -176,13 +194,17 @@ export function useGitView({
 		uncommittedChanges,
 	} = useGitDiffData({
 		activeTab,
-		currentProjectId,
+		currentProjectId: reviewVisible && !conflictResolution.isActive ? currentProjectId : null,
 		taskId,
 		baseRef,
 		selectedPath,
 		visibleDiffPaths,
 		compare,
 	});
+
+	useEffect(() => {
+		setDiffComments(new Map());
+	}, [compare.sourceRef, compare.targetRef, compare.includeUncommitted, compare.threeDotDiff]);
 
 	// Auto-select file when file list changes
 	const availablePaths = useMemo(() => {
@@ -258,6 +280,7 @@ export function useGitView({
 	}, [currentProjectId, setActiveTab]);
 
 	return {
+		repositoryScope,
 		activeTab,
 		setActiveTab,
 		fileTreeVisible,
@@ -285,6 +308,7 @@ export function useGitView({
 }
 
 export interface UseGitViewResult {
+	repositoryScope: FileBrowserScopeOptions;
 	activeTab: GitViewTab;
 	setActiveTab: (tab: GitViewTab) => void;
 	fileTreeVisible: boolean;

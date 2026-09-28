@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeAutoMergedFile,
@@ -9,14 +8,13 @@ import type {
 	RuntimeConflictState,
 } from "@/runtime/types";
 import { useConflictState, useHomeConflictState } from "@/stores/project-metadata-store";
-
 import {
 	buildNoWorktreeAbortResponse,
 	buildNoWorktreeContinueResponse,
 	detectExternallyResolvedFiles,
-	filterUnresolvedPaths,
-	shouldResetOnStepChange,
 } from "./conflict-resolution";
+import { createFileBrowserContentScopeKey, type FileBrowserScopeOptions } from "./file-browser-scope";
+import { getFileEditorScopeGeneration, guardFileEditorScopes, subscribeFileEditorCache } from "./file-editor-cache";
 
 export interface UseConflictResolutionResult {
 	isActive: boolean;
@@ -28,7 +26,11 @@ export interface UseConflictResolutionResult {
 	acceptAutoMergedFile: (path: string) => void;
 	selectedPath: string | null;
 	setSelectedPath: (path: string | null) => void;
-	resolveFile: (path: string, resolution: "ours" | "theirs") => Promise<{ ok: boolean; error?: string }>;
+	resolveFile: (
+		path: string,
+		resolution: "ours" | "theirs" | "manual",
+		expectedContentHash?: string,
+	) => Promise<{ ok: boolean; error?: string }>;
 	continueResolution: () => Promise<RuntimeConflictContinueResponse>;
 	abortResolution: () => Promise<RuntimeConflictAbortResponse>;
 	isLoading: boolean;
@@ -36,61 +38,77 @@ export interface UseConflictResolutionResult {
 	actionError: string | null;
 }
 
-export function useConflictResolution(options: {
-	taskId: string | null;
-	projectId: string | null;
-}): UseConflictResolutionResult {
-	// 1. Call both hooks unconditionally (React rules of hooks).
+export function useConflictResolution(options: FileBrowserScopeOptions): UseConflictResolutionResult {
+	// Call both hooks unconditionally (React rules of hooks).
 	const taskConflictState = useConflictState(options.taskId);
 	const homeConflictState = useHomeConflictState();
 
-	// 2. Select based on taskId.
+	// Select based on taskId.
 	const conflictState = options.taskId ? taskConflictState : homeConflictState;
 	const isActive = conflictState !== null;
 
-	// 3. State tracking.
+	// State tracking.
 	const [conflictFiles, setConflictFiles] = useState<RuntimeConflictFile[]>([]);
 	const [resolvedFiles, setResolvedFiles] = useState<Set<string>>(new Set());
-	const resolvedFilesRef = useRef<Set<string>>(resolvedFiles);
-	resolvedFilesRef.current = resolvedFiles;
 	const [autoMergedFiles, setAutoMergedFiles] = useState<RuntimeAutoMergedFile[]>([]);
 	const [reviewedAutoMergedFiles, setReviewedAutoMergedFiles] = useState<Set<string>>(new Set());
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [isMutating, setIsMutating] = useState(false);
 	const [actionError, setActionError] = useState<string | null>(null);
-	const previousStepRef = useRef<number | null>(null);
 
+	const editorScopeKey = createFileBrowserContentScopeKey(options);
+	const getScopeGeneration = useCallback(() => getFileEditorScopeGeneration(editorScopeKey), [editorScopeKey]);
+	const scopeGeneration = useSyncExternalStore(subscribeFileEditorCache, getScopeGeneration);
+	const scopeKey = JSON.stringify([
+		editorScopeKey,
+		conflictState?.operation,
+		conflictState?.sourceBranch,
+		conflictState?.currentStep,
+	]);
+	const scope = useMemo(() => ({ key: scopeKey, generation: scopeGeneration }), [scopeKey, scopeGeneration]);
+	const [stateScope, setStateScope] = useState(scope);
+	const currentScopeRef = useRef<typeof scope | null>(scope);
+	currentScopeRef.current = scope;
+	const mutationRef = useRef(false);
 	useEffect(() => {
+		currentScopeRef.current = scope;
+		return () => {
+			currentScopeRef.current = null;
+		};
+	}, [scope]);
+	useEffect(() => {
+		setStateScope(scope);
 		setActionError(null);
-	}, [options.projectId, options.taskId, isActive, conflictState?.currentStep]);
-
-	// 4. Reset resolvedFiles and reviewedAutoMergedFiles when currentStep changes (rebase advancing to next commit).
+		setIsLoading(false);
+		setIsMutating(false);
+		setConflictFiles([]);
+		setAutoMergedFiles([]);
+		setResolvedFiles(new Set());
+		setReviewedAutoMergedFiles(new Set());
+		previousConflictedFilesRef.current = [];
+	}, [scope]);
 	useEffect(() => {
-		const currentStep = conflictState?.currentStep ?? null;
-		if (shouldResetOnStepChange(previousStepRef.current, currentStep)) {
-			setResolvedFiles(new Set());
-			setReviewedAutoMergedFiles(new Set());
+		setSelectedPath(null);
+	}, [scopeKey]);
+	const isCurrentScope = useCallback(
+		() => currentScopeRef.current === scope && scope.generation === getScopeGeneration(),
+		[scope, getScopeGeneration],
+	);
+	const guardMutation = useCallback(() => {
+		if (!isCurrentScope() || mutationRef.current || !options.projectId) return false;
+		if (!guardFileEditorScopes({ projectId: options.projectId, taskId: options.taskId })) {
+			setActionError("Save or discard unsaved files before changing conflict resolution.");
+			return false;
 		}
-		previousStepRef.current = currentStep;
-	}, [conflictState?.currentStep]);
+		return true;
+	}, [isCurrentScope, options.projectId, options.taskId]);
 
-	// 5. Reset everything when conflict becomes inactive.
-	useEffect(() => {
-		if (!isActive) {
-			setConflictFiles([]);
-			setResolvedFiles(new Set());
-			setAutoMergedFiles([]);
-			setReviewedAutoMergedFiles(new Set());
-			setSelectedPath(null);
-		}
-	}, [isActive]);
-
-	// 6. Load conflict file content when conflict state changes.
+	// Load conflict file content when conflict state changes.
 	useEffect(() => {
 		if (!isActive || !conflictState || !options.projectId) return;
 
-		const unresolvedPaths = filterUnresolvedPaths(conflictState.conflictedFiles, resolvedFilesRef.current);
+		const unresolvedPaths = conflictState.conflictedFiles;
 		if (unresolvedPaths.length === 0) return;
 
 		let cancelled = false;
@@ -102,7 +120,7 @@ export function useConflictResolution(options: {
 				paths: unresolvedPaths,
 			})
 			.then((response) => {
-				if (!cancelled && response.ok) {
+				if (!cancelled && isCurrentScope() && response.ok) {
 					setConflictFiles(response.files);
 				}
 			})
@@ -110,7 +128,7 @@ export function useConflictResolution(options: {
 				// Error handled silently — files will remain empty.
 			})
 			.finally(() => {
-				if (!cancelled) {
+				if (!cancelled && isCurrentScope()) {
 					setIsLoading(false);
 				}
 			});
@@ -118,9 +136,9 @@ export function useConflictResolution(options: {
 		return () => {
 			cancelled = true;
 		};
-	}, [conflictState?.conflictedFiles, isActive, options.taskId, options.projectId]);
+	}, [conflictState?.conflictedFiles, isActive, options.taskId, options.projectId, isCurrentScope]);
 
-	// 7. Detect external resolutions (metadata poll shows fewer conflicted files).
+	// Detect external resolutions (metadata poll shows fewer conflicted files).
 	const previousConflictedFilesRef = useRef<string[]>([]);
 	useEffect(() => {
 		if (!conflictState) return;
@@ -136,9 +154,9 @@ export function useConflictResolution(options: {
 			});
 		}
 		previousConflictedFilesRef.current = conflictState.conflictedFiles;
-	}, [conflictState?.conflictedFiles, conflictState]);
+	}, [conflictState?.conflictedFiles, conflictState, scope]);
 
-	// 8. Fetch auto-merged file content when autoMergedFiles changes.
+	// Fetch auto-merged file content when autoMergedFiles changes.
 	useEffect(() => {
 		if (!isActive || !conflictState || !options.projectId) return;
 		const paths = conflictState.autoMergedFiles;
@@ -155,7 +173,7 @@ export function useConflictResolution(options: {
 				paths,
 			})
 			.then((response) => {
-				if (!cancelled && response.ok) {
+				if (!cancelled && isCurrentScope() && response.ok) {
 					setAutoMergedFiles(response.files);
 				}
 			})
@@ -167,34 +185,58 @@ export function useConflictResolution(options: {
 		return () => {
 			cancelled = true;
 		};
-	}, [conflictState?.autoMergedFiles, isActive, options.taskId, options.projectId]);
+	}, [conflictState?.autoMergedFiles, isActive, options.taskId, options.projectId, isCurrentScope]);
 
-	// 9. Accept auto-merged file callback.
+	// Accept auto-merged file callback.
 	const acceptAutoMergedFile = useCallback((path: string) => {
 		setReviewedAutoMergedFiles((existing) => new Set([...existing, path]));
 	}, []);
 
-	// 10. Mutation wrappers.
+	// Mutation wrappers.
 	const resolveFile = useCallback(
-		async (path: string, resolution: "ours" | "theirs"): Promise<{ ok: boolean; error?: string }> => {
+		async (
+			path: string,
+			resolution: "ours" | "theirs" | "manual",
+			expectedContentHash?: string,
+		): Promise<{ ok: boolean; error?: string }> => {
 			if (!options.projectId) {
 				return { ok: false, error: "No project available" };
 			}
-			const trpcClient = getRuntimeTrpcClient(options.projectId);
-			const result = await trpcClient.project.resolveConflictFile.mutate({
-				taskId: options.taskId ?? undefined,
-				path,
-				resolution,
-			});
-			if (result.ok) {
-				setResolvedFiles((existing) => new Set([...existing, path]));
+			if (!guardMutation()) return { ok: false, error: "Review unsaved files before resolving." };
+			mutationRef.current = true;
+			setIsMutating(true);
+			setActionError(null);
+			try {
+				const result = await getRuntimeTrpcClient(options.projectId).project.resolveConflictFile.mutate({
+					taskId: options.taskId ?? undefined,
+					path,
+					resolution,
+					expectedContentHash,
+				});
+				if (isCurrentScope()) {
+					if (result.ok) setResolvedFiles((existing) => new Set([...existing, path]));
+					else setActionError(result.error ?? "Could not resolve file.");
+				}
+				return result;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "Could not resolve file.";
+				if (isCurrentScope()) setActionError(message);
+				return { ok: false, error: message };
+			} finally {
+				mutationRef.current = false;
+				if (isCurrentScope()) setIsMutating(false);
 			}
-			return result;
 		},
-		[options.taskId, options.projectId],
+		[options.taskId, options.projectId, guardMutation, isCurrentScope],
 	);
 
 	const continueResolution = useCallback(async (): Promise<RuntimeConflictContinueResponse> => {
+		if (!guardMutation()) return buildNoWorktreeContinueResponse();
+		if (conflictState?.conflictedFiles.length) {
+			setActionError("Resolve all conflicts before continuing.");
+			return buildNoWorktreeContinueResponse();
+		}
+		mutationRef.current = true;
 		setActionError(null);
 		setIsMutating(true);
 		try {
@@ -202,7 +244,7 @@ export function useConflictResolution(options: {
 			const response = await getRuntimeTrpcClient(options.projectId).project.continueConflictResolution.mutate({
 				taskId: options.taskId ?? undefined,
 			});
-			if (!response.ok) {
+			if (isCurrentScope() && !response.ok) {
 				setActionError(
 					response.error ??
 						(response.conflictState?.conflictedFiles.length
@@ -213,14 +255,17 @@ export function useConflictResolution(options: {
 			return response;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Could not complete the operation.";
-			setActionError(message);
+			if (isCurrentScope()) setActionError(message);
 			return { ...buildNoWorktreeContinueResponse(), error: message };
 		} finally {
-			setIsMutating(false);
+			mutationRef.current = false;
+			if (isCurrentScope()) setIsMutating(false);
 		}
-	}, [options.taskId, options.projectId]);
+	}, [options.taskId, options.projectId, guardMutation, isCurrentScope, conflictState]);
 
 	const abortResolution = useCallback(async (): Promise<RuntimeConflictAbortResponse> => {
+		if (!guardMutation()) return buildNoWorktreeAbortResponse();
+		mutationRef.current = true;
 		setActionError(null);
 		setIsMutating(true);
 		try {
@@ -228,26 +273,27 @@ export function useConflictResolution(options: {
 			const response = await getRuntimeTrpcClient(options.projectId).project.abortConflictResolution.mutate({
 				taskId: options.taskId ?? undefined,
 			});
-			if (!response.ok) setActionError(response.error ?? "Could not abort the operation.");
+			if (isCurrentScope() && !response.ok) setActionError(response.error ?? "Could not abort the operation.");
 			return response;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Could not abort the operation.";
-			setActionError(message);
+			if (isCurrentScope()) setActionError(message);
 			return { ...buildNoWorktreeAbortResponse(), error: message };
 		} finally {
-			setIsMutating(false);
+			mutationRef.current = false;
+			if (isCurrentScope()) setIsMutating(false);
 		}
-	}, [options.taskId, options.projectId]);
+	}, [options.taskId, options.projectId, guardMutation, isCurrentScope]);
 
 	return {
 		isActive,
 		conflictState,
-		conflictFiles,
-		resolvedFiles,
-		autoMergedFiles,
-		reviewedAutoMergedFiles,
+		conflictFiles: stateScope === scope ? conflictFiles : [],
+		resolvedFiles: stateScope === scope ? resolvedFiles : new Set(),
+		autoMergedFiles: stateScope === scope ? autoMergedFiles : [],
+		reviewedAutoMergedFiles: stateScope === scope ? reviewedAutoMergedFiles : new Set(),
 		acceptAutoMergedFile,
-		selectedPath,
+		selectedPath: stateScope.key === scopeKey ? selectedPath : null,
 		setSelectedPath,
 		resolveFile,
 		continueResolution,

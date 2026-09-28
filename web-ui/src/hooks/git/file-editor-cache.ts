@@ -10,6 +10,8 @@ export interface FileEditorScopeIdentity {
 
 export interface FileEditorScopeTarget {
 	readonly projectId: string;
+	/** When present, target exactly one live worktree, including the home repository. */
+	readonly taskId?: string | null;
 	readonly tasks?: readonly { readonly taskId: string; readonly taskCreatedAt: number }[];
 }
 
@@ -50,6 +52,7 @@ function isProtected(tab: FileEditorTab): boolean {
 function matches(scope: FileEditorScopeIdentity, target: FileEditorScopeTarget): boolean {
 	return (
 		scope.projectId === target.projectId &&
+		(target.taskId === undefined || scope.taskId === target.taskId) &&
 		(!target.tasks ||
 			target.tasks.some(
 				(task) =>

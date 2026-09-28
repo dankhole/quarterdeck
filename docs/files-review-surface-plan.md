@@ -1,48 +1,41 @@
 # Files and Review Surface Migration
 
-Status: staged follow-up to the [Editor-lite backlog](./todo.md#editor-lite-follow-ups). The editable Files view is implemented; compare, commit diffs, and conflict resolution still have independent presentation paths. This plan defines the next boundaries to share without losing review behavior.
+Status: implemented. Commit, compare, uncommitted, and conflict review share the Files/editor foundation. Git data loading and operation ownership remain separate from editor presentation and writable buffer lifecycle.
 
-## Existing ownership
+## Ownership
 
-| Boundary | Current owner | Keep authoritative |
+| Boundary | Owner | Invariant |
 | --- | --- | --- |
 | Project/task/ref identity and write eligibility | `file-browser-scope.ts` | Live worktrees may be editable; ref snapshots are read-only. |
-| File discovery and content requests | `use-file-tree-data.ts`, `use-file-content-data.ts`, `use-file-browser-data.ts` | Scope changes reject stale results; writes use expected content hashes. |
-| Open documents and unsaved buffers | `file-editor-workspace.ts`, `use-file-editor-workspace.ts` | Dirty buffers survive ordinary navigation and require explicit save/discard. |
-| Compare/uncommitted data | `use-git-diff-data.ts`, `use-all-file-diff-content.ts` | Selected/visible content priority and bounded prefetch remain separate from rendering. |
-| Commit review | `GitCommitDiffPanel` | Commit patches, renamed/deleted/binary paths, file statistics, and review navigation. |
-| Merge/rebase progress and mutation | `use-conflict-resolution.ts`, `ConflictResolutionPanel` | Conflict state, ours/theirs, optional auto-merge review, continue, and abort. |
+| Review document identity | `review-document.ts` | Repository scope, revision pair, old/new paths, kind, and available content revision identify immutable snapshots. No writable scope or save callback is exposed. |
+| Review content admission | `components/editor/review-document-diff.tsx` | Patches and complete old/new text are different inputs. Partial patches never become supposedly complete files. Binary, loading, unavailable, and rename states are explicit. |
+| Language and palette | `components/editor/source-presentation.ts`, `source-line-highlighting.ts` | Files and rendered review rows use the same CodeMirror language definitions and highlight palette; unsupported editor languages retain the existing Prism fallback. |
+| File discovery and content requests | `use-file-tree-data.ts`, `use-file-content-data.ts`, `use-file-browser-data.ts` | Scope/generation changes reject stale results; writes use expected content hashes. |
+| Open documents and unsaved buffers | `file-editor-cache.ts`, `use-file-editor-workspace.ts` | Files and conflict results share live scope identities. Dirty buffers survive navigation; retired scopes preserve detached drafts. |
+| Compare/uncommitted data | `use-git-diff-data.ts`, `use-all-file-diff-content.ts` | Selected/visible content priority, cancellation, and bounded prefetch remain separate from document correctness. Hidden compare/uncommitted surfaces stop their data work. |
+| Git review interactions | `GitCommitDiffPanel`, `DiffViewerPanel`, split/unified row renderers | Preserve file statistics, navigation, context expansion, selection, comments, and agent hunk actions. |
+| Merge/rebase/revert progress and mutation | `use-conflict-resolution.ts`, `ConflictResolutionPanel`, runtime `git-conflict.ts` | Saving, staging, completing, and aborting remain distinct commands. Git owns operation state. |
 
-Paths above are under `web-ui/src/hooks/git`, `web-ui/src/runtime`, and `web-ui/src/components/git`. Share domain and editor behavior at these boundaries; do not make `FilesView` a universal component that owns Git operations.
+Hook paths are under `web-ui/src/hooks/git` unless qualified; component paths are under `web-ui/src`. `FilesView` does not own Git operations. Existing row renderers remain review-specific presentation primitives behind the shared document contract, rather than a second writable editor or buffer cache.
 
-## Sequence
+## Commit review
 
-### 1. Read-only commit review
+`GitCommitDiffPanel` creates immutable review documents and supplies patches directly to the shared presenter. Patch line numbers, added/deleted/renamed/binary files, statistics, collapse, file navigation, loading, and errors remain available. Commit data responses carry their request scope and selected commit identity; switching commits or repositories masks old data immediately and rejects late responses.
 
-Start with the smallest surface that cannot lose unsaved edits. Define a typed review-document identity containing repository scope, revision pair, old/new paths, and document kind. Keep it distinct from a live editable document so identical paths at different revisions cannot share buffers or save capabilities.
+## Compare and uncommitted review
 
-Reuse the editor's language, theme, selection, and content presentation facilities where appropriate, with a dedicated diff presentation contract. Commit data currently provides patches rather than complete old/new file contents: decide explicitly whether the renderer consumes patches or requests revision content before changing that API. Never reconstruct a supposedly complete file from a partial patch. Preserve commit selection, file statistics, rename/delete/binary states, loading/error states, and file/line navigation.
+`DiffViewerPanel` supplies complete old/new content to the same presenter. Split/unified mode, comments, context expansion, hunk prompts, selected-file priority, and visible-file reporting retain their existing owners. Compare option changes clear comments tied to the previous comparison. Working-copy review stays immutable; writable content enters the existing live Files scope explicitly.
 
-Acceptance: changing commits or repository scopes cannot show stale content; review documents expose no save path; existing commit-review navigation remains available. Focused domain/component tests establish these contracts, then one deterministic Agent Lab Git scenario checks the integrated surface.
+This migration makes no performance improvement claim. The [performance backlog](./todo.md#files-view-and-git-diff-performance) remains active. Measure first-open and selected-file latency with bounded diagnostic marks before further changes to calculation, transfer, prefetch, or virtualization. Highlighting remains limited to rendered rows and bounded line lengths.
 
-### 2. Compare and uncommitted review
+## Conflict results
 
-Reuse the review-document contract after commit review establishes it. Retain compare base/head semantics, unified/split review, comments and hunk context, selected-file priority, and visible-file reporting. A working-copy diff is a review snapshot; opening its live file for editing must enter the existing editable scope explicitly.
+`ConflictResultEditor` combines immutable base/ours/theirs sources with the live Files workspace and embedded `FileEditorPanel`. Choosing ours or theirs changes only the result buffer. Autosave is off here; Save uses the existing expected-content-hash contract and does not stage or resolve the file. **Stage & Mark Resolved** explicitly stages saved text after checking its hash and rejecting remaining conflict markers. The check and stage share the Files save lock. Noneditable results retain explicit complete-side staging actions.
 
-Measure first-open and selected-file latency before choosing further performance changes. Use bounded diagnostic marks to separate Git, serialization/transfer, diff calculation, and rendering. Sharing presentation does not establish a performance improvement. Keep cancellation, caching, prefetch, and any virtualization policy outside document correctness.
+Replacement, resolve/stage, continue, and abort consult the shared cache guard for the exact project/task, including hidden dirty or saving tabs. The existing drafts dialog handles save/discard decisions; the original operation must be retried explicitly. Continue also requires authoritative Git metadata to report no unresolved files. Operation/scope changes reset review state, and stale asynchronous completions cannot apply to another operation. Navigation preserves unsaved results, while task/worktree retirement detaches protected drafts through the existing lifecycle owner.
 
-Acceptance: deleted/renamed paths and binary/large files retain correct review states; rapid selection changes cannot apply stale results; hidden review surfaces do not resume file polling. Validate the touched data/rendering owners and one lab compare/uncommitted scenario.
+## Validation
 
-### 3. Editable conflict resolution
+Focused tests cover document identity, rendered-row highlighting, commit selection races, comments/context/hunk behavior, content loading, conflict save/stage and disk-change failures, hidden dirty/saving guards, scope retirement, and detached recovery. Runtime tests exercise hash-protected staging against a real disposable Git conflict. Deterministic Agent Lab scenarios check integrated commit/compare/uncommitted review and the explicit conflict workflow; no real provider or active user instance is needed.
 
-Reuse the existing dirty-buffer lifecycle in [file-editor-cache.ts](../web-ui/src/hooks/git/file-editor-cache.ts), [use-file-editor-workspace.ts](../web-ui/src/hooks/git/use-file-editor-workspace.ts), and [file-editor-drafts-dialog.tsx](../web-ui/src/components/git/file-editor-drafts-dialog.tsx). Sharing writable documents must preserve scope-generation checks, hidden dirty/saving-tab guards, and detached draft recovery when project/task/worktree scopes are deleted or replaced. Verify those guarantees through the conflict-specific mutation paths below; the existing owners do not establish acceptance for the new integration. Read-only migrations above do not require writable-document integration.
-
-Keep merge/rebase operation state and continue/abort commands in their existing Git owner. Represent base/ours/theirs as immutable sources and the worktree result as the only editable document. Saving a result is distinct from staging or marking it resolved. Reuse expected-content-hash protection and make any resolve/stage gesture explicit. Define how unsaved result buffers are handled before ours/theirs replacement, continue, abort, or worktree deletion; none may silently overwrite a dirty tab.
-
-Acceptance: manual edits can be saved and explicitly resolved; disk changes cannot be overwritten silently; continue remains unavailable while conflicts remain; abort and scope teardown preserve the chosen dirty-buffer contract. Test the mutation/error paths and one deterministic conflicting Git fixture.
-
-## Completion criteria
-
-Remove an old renderer or cache only after its callers use the shared contract and its review behaviors have corresponding coverage. Keep each migrated surface independently reviewable. Update the active backlog per completed slice; retain the broader item until compare, commit review, and conflict resolution have all been assessed and the intended shared ownership is documented.
-
-Follow [Architecture Guardrails](./conventions/architecture-guardrails.md), [Frontend Hooks](./conventions/frontend-hooks.md), [UI Layout](./conventions/ui-layout.md), and the [Testing Strategy](./testing.md). Real providers and active user instances are unnecessary for this migration.
+Follow [Architecture Guardrails](./conventions/architecture-guardrails.md), [Frontend Hooks](./conventions/frontend-hooks.md), [UI Layout](./conventions/ui-layout.md), and the [Testing Strategy](./testing.md).

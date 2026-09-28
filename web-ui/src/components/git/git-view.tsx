@@ -71,6 +71,7 @@ export function GitView({
 	...hookOptions
 }: GitViewProps): React.ReactElement {
 	const {
+		repositoryScope,
 		activeTab,
 		setActiveTab,
 		fileTreeVisible,
@@ -94,13 +95,20 @@ export function GitView({
 		isChangesPending,
 		hasNoChanges,
 		handleRollbackFile,
-	} = useGitView(hookOptions);
+	} = useGitView({ ...hookOptions, reviewVisible: !gitHistoryPanel });
 
 	// --- Conflict resolution early return ---
 
 	if (conflictResolution.isActive && conflictResolution.conflictState) {
 		return (
 			<ConflictResolutionPanel
+				key={JSON.stringify([
+					repositoryScope,
+					conflictResolution.conflictState.operation,
+					conflictResolution.conflictState.sourceBranch,
+					conflictResolution.conflictState.currentStep,
+				])}
+				repository={repositoryScope}
 				conflictState={conflictResolution.conflictState}
 				conflictFiles={conflictResolution.conflictFiles}
 				resolvedFiles={conflictResolution.resolvedFiles}
@@ -227,6 +235,18 @@ export function GitView({
 								}}
 							>
 								<DiffViewerPanel
+									reviewScope={{
+										repository: repositoryScope,
+										revisions: {
+											kind: activeTab === "uncommitted" ? "working-copy" : "compare",
+											base: activeTab === "uncommitted" ? "HEAD" : (compare.targetRef ?? ""),
+											head:
+												activeTab === "uncommitted" || compare.includeUncommitted
+													? "WORKTREE"
+													: (compare.sourceRef ?? ""),
+											mode: compare.threeDotDiff ? "three_dot" : "two_dot",
+										},
+									}}
 									agentContextSource={
 										activeTab === "uncommitted"
 											? "Uncommitted: HEAD → working copy"

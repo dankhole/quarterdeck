@@ -228,7 +228,7 @@ describe("createProjectApi conflict resolution", () => {
 		});
 
 		expect(result.ok).toBe(true);
-		expect(gitSyncMocks.resolveConflictFile).toHaveBeenCalledWith("/tmp/repo", "src/index.ts", "ours");
+		expect(gitSyncMocks.resolveConflictFile).toHaveBeenCalledWith("/tmp/repo", "src/index.ts", "ours", undefined);
 	});
 
 	it("continueConflictResolution calls continueMergeOrRebase", async () => {

@@ -1,4 +1,4 @@
-import Prism from "prismjs";
+import { EditorState } from "@codemirror/state";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -42,7 +42,7 @@ describe("UnifiedDiff", () => {
 		const after = buildLines("const after =", 80);
 		const oldText = [...before, "const value = 1;", ...after].join("\n");
 		const newText = [...before, "const value = 2;", ...after].join("\n");
-		const highlightSpy = vi.spyOn(Prism, "highlight");
+		const highlightSpy = vi.spyOn(EditorState, "create");
 
 		await act(async () => {
 			root.render(
