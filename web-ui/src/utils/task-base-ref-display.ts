@@ -58,7 +58,10 @@ export function resolveTaskBaseRefDisplayState(
 	return {
 		baseRefState,
 		triggerLabel: `from ${baseRefState.baseRef}`,
-		behindLabel: `${formatBehindCount(input.behindBaseCount, "local")} · ${formatBehindCount(input.behindRemoteBaseCount, "remote")}`,
+		behindLabel:
+			input.behindBaseCount != null && input.behindBaseCount === input.behindRemoteBaseCount
+				? `${input.behindBaseCount} behind local & remote`
+				: `${formatBehindCount(input.behindBaseCount, "local")} · ${formatBehindCount(input.behindRemoteBaseCount, "remote")}`,
 		isBehind: (input.behindBaseCount ?? 0) > 0 || (input.behindRemoteBaseCount ?? 0) > 0,
 		pinToggleLabel: baseRefState.isPinned ? "Pinned - won't auto-update" : "Unpinned - auto-updates on branch change",
 	};

@@ -68,7 +68,7 @@ describe("BaseRefLabel", () => {
 	it.each([
 		[1, 0, "1 behind local · 0 behind remote", true],
 		[0, 2, "0 behind local · 2 behind remote", true],
-		[0, 0, "0 behind local · 0 behind remote", false],
+		[0, 0, "0 behind local & remote", false],
 		[null, null, "local unavailable · remote unavailable", false],
 	] as const)("shows local %s and remote %s without hovering", async (local, remote, label, highlighted) => {
 		await act(async () => {

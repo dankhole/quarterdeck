@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Combine matching local and remote behind counts into a single compact label.
+
 - Preserve already-staged ignored files in selected-file commits, include rejected paths in commit error notifications, and expand error details by default.
 
 - Prevent duplicate browser tabs when clicking web links in fullscreen Codex terminals.

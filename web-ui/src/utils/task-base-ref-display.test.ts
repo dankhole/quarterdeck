@@ -27,13 +27,13 @@ describe("task base-ref display state", () => {
 	});
 
 	it.each([
-		[0, 0, "0 behind local · 0 behind remote", false],
+		[0, 0, "0 behind local & remote", false],
 		[1, 3, "1 behind local · 3 behind remote", true],
 		[0, 2, "0 behind local · 2 behind remote", true],
 		[null, 0, "local unavailable · 0 behind remote", false],
 		[0, null, "0 behind local · remote unavailable", false],
 		[undefined, undefined, "local unavailable · remote unavailable", false],
-	] as const)("keeps local %s and remote %s comparisons distinct", (local, remote, label, isBehind) => {
+	] as const)("formats local %s and remote %s comparisons", (local, remote, label, isBehind) => {
 		const state = resolveTaskBaseRefDisplayState({
 			baseRef: "main",
 			behindBaseCount: local,
