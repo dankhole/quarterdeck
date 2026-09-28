@@ -345,7 +345,7 @@ export const BoardCard = memo(function BoardCard({
 									<p
 										className={cn(
 											"truncate m-0",
-											rich ? "font-semibold text-[15px] leading-6" : "font-medium text-sm",
+											rich ? "font-semibold text-sm leading-6" : "font-medium text-[13px] leading-5",
 											isTrashCard && "line-through text-text-tertiary",
 										)}
 									>
