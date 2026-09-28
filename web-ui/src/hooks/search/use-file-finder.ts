@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from "react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeWorkdirFileSearchMatch } from "@/runtime/types";
 import { useDebouncedEffect } from "@/utils/react-use";
@@ -31,25 +31,30 @@ export function useFileFinder(options: {
 	const [isLoading, setIsLoading] = useState(false);
 	const [selectedIndex, setSelectedIndex] = useState(0);
 	const requestIdRef = useRef(0);
+	const trimmedQuery = query.trim();
+
+	useEffect(() => {
+		requestIdRef.current += 1;
+		setResults([]);
+		setIsLoading(Boolean(trimmedQuery && projectId));
+		return () => {
+			requestIdRef.current += 1;
+		};
+	}, [query, trimmedQuery, projectId, searchScope]);
 
 	useDebouncedEffect(
 		() => {
-			const trimmed = query.trim();
-			if (!trimmed || !projectId) {
-				requestIdRef.current += 1;
-				setResults([]);
-				setIsLoading(false);
+			if (!trimmedQuery || !projectId) {
 				return;
 			}
 
 			const requestId = ++requestIdRef.current;
-			setIsLoading(true);
 
 			void (async () => {
 				try {
 					const trpcClient = getRuntimeTrpcClient(projectId);
 					const payload = await trpcClient.project.searchFiles.query({
-						query: trimmed,
+						query: trimmedQuery,
 						limit: SEARCH_RESULT_LIMIT,
 						taskId: searchScope.taskId,
 						...(searchScope.baseRef ? { baseRef: searchScope.baseRef } : {}),
@@ -73,7 +78,7 @@ export function useFileFinder(options: {
 			})();
 		},
 		SEARCH_DEBOUNCE_MS,
-		[query, projectId, searchScope],
+		[query, trimmedQuery, projectId, searchScope],
 	);
 
 	const confirmSelection = useCallback(() => {

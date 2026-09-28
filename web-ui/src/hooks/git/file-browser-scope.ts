@@ -13,6 +13,8 @@ import type {
 export interface FileBrowserScopeOptions {
 	projectId: string | null;
 	taskId: string | null;
+	taskCreatedAt?: number;
+	rootPath?: string | null;
 	baseRef?: string;
 	ref?: string | null;
 	enabled?: boolean;
@@ -33,6 +35,8 @@ export interface FileBrowserScope {
 export function createFileBrowserContentScopeKey(input: {
 	projectId: string | null;
 	taskId: string | null;
+	taskCreatedAt?: number;
+	rootPath?: string | null;
 	baseRef?: string;
 	ref?: string | null;
 }): string {
@@ -41,6 +45,8 @@ export function createFileBrowserContentScopeKey(input: {
 		taskId: input.taskId ?? "__home__",
 		baseRef: input.baseRef ?? "__default_base__",
 		ref: input.ref ?? "__live__",
+		...(input.taskCreatedAt !== undefined ? { taskCreatedAt: input.taskCreatedAt } : {}),
+		...(input.rootPath ? { rootPath: input.rootPath } : {}),
 	});
 }
 
@@ -58,6 +64,8 @@ export function resolveFileBrowserScope(options: FileBrowserScopeOptions): FileB
 			taskId: options.taskId,
 			baseRef: options.baseRef,
 			ref: browseRef,
+			taskCreatedAt: options.taskCreatedAt,
+			rootPath: options.rootPath,
 		}),
 		searchScope: createWorkdirSearchScope({
 			taskId: options.taskId,

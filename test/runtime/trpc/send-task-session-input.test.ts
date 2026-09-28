@@ -20,12 +20,12 @@ describe("handleSendTaskSessionInput", () => {
 
 		const response = await handleSendTaskSessionInput(
 			scope,
-			{ taskId: "task-1", text: "continue", appendNewline: false, intent: "submit" },
+			{ taskId: "task-1", text: "continue\r\n", appendNewline: false, intent: "submit" },
 			{ getScopedTerminalManager: vi.fn(async () => terminalManager), taskResourceOperations },
 		);
 
 		expect(response).toEqual({ ok: true, summary });
-		expect(writeInput).toHaveBeenCalledWith("task-1", Buffer.from("continue"), {
+		expect(writeInput).toHaveBeenCalledWith("task-1", Buffer.from("continue\r\n"), {
 			explicitUserSubmission: true,
 		});
 	});
@@ -111,12 +111,18 @@ describe("board quick replies", () => {
 		expect(response.ok).toBe(false);
 		expect(writeInput).not.toHaveBeenCalled();
 	});
-	it.each(["\x1b[201~unsafe", "\u0003", " ", "x".repeat(8_001)])(
-		"rejects terminal control bytes and invalid lengths",
-		async (text) => {
-			const { response, writeInput } = await send(ready, "launch-1", text);
-			expect(response.ok).toBe(false);
-			expect(writeInput).not.toHaveBeenCalled();
-		},
-	);
+	it.each([
+		"\x1b[201~unsafe",
+		"line\r\n\x1b[201~unsafe",
+		"\u0003",
+		"standalone\rreturn",
+		"extra\r\r\nreturn",
+		" ",
+		"x".repeat(8_001),
+		`${"x".repeat(7_999)}\r\n`,
+	])("rejects terminal control bytes and invalid lengths", async (text) => {
+		const { response, writeInput } = await send(ready, "launch-1", text);
+		expect(response.ok).toBe(false);
+		expect(writeInput).not.toHaveBeenCalled();
+	});
 });

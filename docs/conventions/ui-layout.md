@@ -19,6 +19,12 @@ Use these names consistently in specs, code comments, and conversation:
 - **Detail Terminal**: optional shell terminal at the bottom of the task detail layout.
 - **Task Column**: compact board-column side panel rendered by `ColumnContextPanel`.
 
+### Shell terminal lifetime
+
+Home and Detail Terminals are temporary manual shells. Closing or collapsing their panel stops the backing PTY and disposes its dedicated browser terminal. Changing the owning project or task, including switching between Home and task detail, closes the previous shell. Reopening starts a fresh shell; it does not restore a hidden shell session.
+
+`useTerminalPanels` owns this contract, including waiting for a pending stop before starting the same shell again. Expanding or resizing an open panel does not close it. Task-agent terminals retain their separate session and viewer lifecycle described in [Session and Terminal Lifecycle](./session-lifecycle.md).
+
 ## Mental Model
 
 The toolbar exposes two independent selections:

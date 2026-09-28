@@ -316,6 +316,7 @@ const noopGitContext: GitContextValue = {
 		mutationBlockedReason: null,
 		selectedPath: null,
 		onSelectPath: () => {},
+		onSelectNavigationTarget: () => {},
 		fileContent: null,
 		isContentLoading: false,
 		isContentError: false,

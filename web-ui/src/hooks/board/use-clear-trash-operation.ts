@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
+import { guardFileEditorScopes, retireFileEditorScopes } from "@/hooks/git/file-editor-cache";
 import type { FlushProjectBoardCommandsResult } from "@/hooks/project/use-project-sync";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeClearTrashRequest, RuntimeClearTrashResult, RuntimeProjectStateResponse } from "@/runtime/types";
@@ -23,6 +24,8 @@ export function useClearTrashOperation({
 	return useCallback(
 		async (tasks) => {
 			if (!currentProjectId || tasks.length === 0) return null;
+			const editorTarget = { projectId: currentProjectId, tasks };
+			if (!guardFileEditorScopes(editorTarget)) return null;
 			const existing = inFlight.current.get(currentProjectId);
 			if (existing) return existing;
 			const initialRevision = getAuthoritativeRevision();
@@ -47,8 +50,19 @@ export function useClearTrashOperation({
 					// The captured origin revision remains valid for identity-checked server rebasing after navigation.
 					const expectedRevision = initialRevision;
 					const request = { operationId, expectedRevision, tasks: taskIdentities };
+					if (!guardFileEditorScopes(editorTarget)) {
+						showAppToast(
+							{ intent: "warning", message: "Resolve unsaved files before clearing Trash." },
+							operationId,
+						);
+						return null;
+					}
 					const client = getRuntimeTrpcClient(projectId);
 					const result = await sendClearTrashRequest(request, (input) => client.runtime.clearTrash.mutate(input));
+					retireFileEditorScopes({
+						projectId,
+						tasks: result.results.filter((task) => task.ok),
+					});
 					applyLifecycleProjectState(result.state);
 					const { message, failed } = summarizeClearTrash(result);
 					showAppToast(

@@ -18,7 +18,9 @@
 // The dirty check, reset, and save payload are handled by useSettingsForm.
 
 import { CLAUDE_LAUNCH_PERMISSION_MODES, type ClaudeLaunchPermissionMode } from "../core/api/claude-permissions";
+import { type LspServerConfig, lspServersSchema } from "../core/api/code-navigation";
 import { CODEX_APPROVALS_REVIEWERS, type CodexApprovalsReviewer } from "../core/api/codex-approvals";
+import { DEFAULT_LSP_SERVERS } from "./lsp-defaults";
 
 export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -61,6 +63,7 @@ export function normalizeVolume(value: unknown, fallback: number): number {
 interface ConfigField<T> {
 	readonly defaultValue: T;
 	readonly normalize: (value: unknown, fallback: T) => T;
+	readonly equals?: (left: T, right: T) => boolean;
 }
 
 function boolField(defaultValue: boolean): ConfigField<boolean> {
@@ -117,6 +120,15 @@ export const GLOBAL_CONFIG_FIELDS = {
 	terminalFontWeight: numField(325),
 	logLevel: enumField<LogLevel>("warn", LOG_LEVELS),
 	fileEditorAutosaveMode: enumField<FileEditorAutosaveMode>("off", FILE_EDITOR_AUTOSAVE_MODES),
+	codeNavigationEnabled: boolField(false),
+	lspServers: {
+		defaultValue: DEFAULT_LSP_SERVERS,
+		normalize: (value: unknown, fallback: LspServerConfig[]): LspServerConfig[] => {
+			const parsed = lspServersSchema.safeParse(value);
+			return parsed.success ? parsed.data : fallback;
+		},
+		equals: (left: LspServerConfig[], right: LspServerConfig[]) => JSON.stringify(left) === JSON.stringify(right),
+	} satisfies ConfigField<LspServerConfig[]>,
 	backupIntervalMinutes: numField(30),
 } as const;
 
@@ -171,8 +183,8 @@ export function mergeGlobalConfigFields(
 
 /** Check if any registry field differs between two configs. */
 export function hasGlobalConfigFieldChanges(a: GlobalConfigFieldValues, b: GlobalConfigFieldValues): boolean {
-	for (const key of FIELD_KEYS) {
-		if (a[key] !== b[key]) {
+	for (const [key, def] of FIELD_ENTRIES) {
+		if (!(def.equals?.(a[key], b[key]) ?? a[key] === b[key])) {
 			return true;
 		}
 	}
@@ -192,7 +204,10 @@ export function buildSparseGlobalConfigPayload(
 	const payload = {} as Record<string, unknown>;
 	for (const [key, def] of FIELD_ENTRIES) {
 		const resolvedValue = (resolved as Record<string, unknown>)[key];
-		if ((existing !== null && Object.hasOwn(existing, key)) || resolvedValue !== def.defaultValue) {
+		if (
+			(existing !== null && Object.hasOwn(existing, key)) ||
+			!(def.equals?.(resolvedValue, def.defaultValue) ?? resolvedValue === def.defaultValue)
+		) {
 			payload[key] = resolvedValue;
 		}
 	}

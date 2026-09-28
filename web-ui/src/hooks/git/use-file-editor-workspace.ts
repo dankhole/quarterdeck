@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
 import {
@@ -14,7 +14,6 @@ import {
 	isFileEditorTabEditable,
 	markFileEditorTabSaved,
 	renameFileEditorEntryPath,
-	setCachedFileEditorTabs,
 	updateFileEditorTabError,
 	updateFileEditorTabSaving,
 	updateFileEditorTabValue,
@@ -23,8 +22,18 @@ import {
 import type { RuntimeFileContentResponse, RuntimeWorkdirEntryKind } from "@/runtime/types";
 import { useDebouncedEffect, useDocumentEvent, useWindowEvent } from "@/utils/react-use";
 
+import {
+	type FileEditorScopeIdentity,
+	getFileEditorCacheRevision,
+	getFileEditorScopeGeneration,
+	registerFileEditorScope,
+	subscribeFileEditorCache,
+	updateCachedFileEditorTabs,
+} from "./file-editor-cache";
+
 export interface UseFileEditorWorkspaceInput {
 	scopeKey: string;
+	scope?: FileEditorScopeIdentity;
 	selectedPath: string | null;
 	fileContent: RuntimeFileContentResponse | null;
 	isContentLoading: boolean;
@@ -85,6 +94,7 @@ export function useFileEditorDirtyUnloadGuard(): void {
 export function useFileEditorWorkspace(input: UseFileEditorWorkspaceInput): UseFileEditorWorkspaceResult {
 	const {
 		scopeKey,
+		scope,
 		selectedPath,
 		fileContent,
 		isContentLoading,
@@ -96,37 +106,27 @@ export function useFileEditorWorkspace(input: UseFileEditorWorkspaceInput): UseF
 		reloadFileContent,
 		saveFileContent,
 	} = input;
-	const [tabsState, setTabsState] = useState<{ readonly scopeKey: string; readonly tabs: FileEditorTab[] }>(() => ({
-		scopeKey,
-		tabs: getCachedFileEditorTabs(scopeKey),
-	}));
 	const [discardPrompt, setDiscardPrompt] = useState<FileEditorDiscardPrompt | null>(null);
 	const savingPathsRef = useRef(new Set<string>());
-	const tabs = tabsState.scopeKey === scopeKey ? tabsState.tabs : getCachedFileEditorTabs(scopeKey);
-
-	const isTabSaving = useCallback((tab: FileEditorTab): boolean => {
-		return tab.isSaving || savingPathsRef.current.has(tab.path);
-	}, []);
-
-	const setScopedTabs = useCallback(
-		(updater: (currentTabs: FileEditorTab[]) => FileEditorTab[]) => {
-			setTabsState((currentState) => {
-				const currentTabs =
-					currentState.scopeKey === scopeKey ? currentState.tabs : getCachedFileEditorTabs(scopeKey);
-				const nextTabs = updater(currentTabs);
-				setCachedFileEditorTabs(scopeKey, nextTabs);
-				return { scopeKey, tabs: nextTabs };
-			});
+	useSyncExternalStore(subscribeFileEditorCache, getFileEditorCacheRevision);
+	const tabs = getCachedFileEditorTabs(scopeKey);
+	const scopeGeneration = getFileEditorScopeGeneration(scopeKey);
+	const isTabSaving = useCallback(
+		(tab: FileEditorTab): boolean => {
+			return tab.isSaving || savingPathsRef.current.has(JSON.stringify([scopeKey, tab.path]));
 		},
 		[scopeKey],
 	);
-
+	const setScopedTabs = useCallback(
+		(updater: (currentTabs: FileEditorTab[]) => FileEditorTab[]) => {
+			updateCachedFileEditorTabs(scopeKey, updater, scopeGeneration);
+		},
+		[scopeKey, scopeGeneration],
+	);
 	useEffect(() => {
-		if (tabsState.scopeKey !== scopeKey) {
-			setTabsState({ scopeKey, tabs: getCachedFileEditorTabs(scopeKey) });
-			setDiscardPrompt(null);
-		}
-	}, [scopeKey, tabsState.scopeKey]);
+		registerFileEditorScope(scopeKey, scope ?? { projectId: null, taskId: null });
+		setDiscardPrompt(null);
+	}, [scopeKey, scope]);
 
 	useEffect(() => {
 		if (!selectedPath || !fileContent || isContentLoading || isContentError) {
@@ -205,7 +205,12 @@ export function useFileEditorWorkspace(input: UseFileEditorWorkspaceInput): UseF
 
 	const saveTab = useCallback(
 		async (tab: FileEditorTab, options: { notifySuccess: boolean }): Promise<SaveFileEditorTabResult> => {
-			if (!isFileEditorTabEditable(tab, isReadOnly) || tab.isSaving || savingPathsRef.current.has(tab.path)) {
+			if (
+				scopeGeneration !== getFileEditorScopeGeneration(scopeKey) ||
+				!isFileEditorTabEditable(tab, isReadOnly) ||
+				tab.isSaving ||
+				savingPathsRef.current.has(JSON.stringify([scopeKey, tab.path]))
+			) {
 				return "skipped";
 			}
 			if (!isFileEditorTabDirty(tab)) {
@@ -217,7 +222,7 @@ export function useFileEditorWorkspace(input: UseFileEditorWorkspaceInput): UseF
 				showAppToast({ intent: "danger", message: "Cannot save without a loaded file revision." });
 				return "failed";
 			}
-			savingPathsRef.current.add(tab.path);
+			savingPathsRef.current.add(JSON.stringify([scopeKey, tab.path]));
 			setScopedTabs((currentTabs) => updateFileEditorTabSaving(currentTabs, tab.path, true));
 			try {
 				const saved = await saveFileContent(tab.path, submittedValue, expectedContentHash);
@@ -232,10 +237,10 @@ export function useFileEditorWorkspace(input: UseFileEditorWorkspaceInput): UseF
 				showAppToast({ intent: "danger", message, timeout: 7000 });
 				return "failed";
 			} finally {
-				savingPathsRef.current.delete(tab.path);
+				savingPathsRef.current.delete(JSON.stringify([scopeKey, tab.path]));
 			}
 		},
-		[isReadOnly, saveFileContent, setScopedTabs],
+		[isReadOnly, saveFileContent, scopeKey, scopeGeneration, setScopedTabs],
 	);
 
 	const handleSaveActiveTab = useCallback(async () => {

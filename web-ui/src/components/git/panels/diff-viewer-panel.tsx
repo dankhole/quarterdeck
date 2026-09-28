@@ -35,6 +35,7 @@ function arePathListsEqual(previous: readonly string[], next: readonly string[])
 
 export function DiffViewerPanel({
 	projectFiles,
+	agentContextSource,
 	selectedPath,
 	onSelectedPathChange,
 	onVisiblePathsChange,
@@ -48,6 +49,7 @@ export function DiffViewerPanel({
 	fileLoadingState,
 }: {
 	projectFiles: RuntimeWorkdirFileChange[] | null;
+	agentContextSource?: string;
 	selectedPath: string | null;
 	onSelectedPathChange: (path: string) => void;
 	onVisiblePathsChange?: (paths: string[]) => void;
@@ -235,6 +237,7 @@ export function DiffViewerPanel({
 				<>
 					<div
 						ref={scrollContainerRef}
+						data-diff-scroll-container
 						onScroll={handlePanelScroll}
 						style={{
 							flex: "1 1 0",
@@ -347,34 +350,24 @@ export function DiffViewerPanel({
 														{entry.isBinary ? null : viewMode === "split" ? (
 															<SplitDiff
 																path={group.path}
+																agentContextSource={agentContextSource}
 																oldText={entry.oldText}
 																newText={entry.newText}
 																comments={comments}
-																onAddComment={(lineNumber, lineText, variant) =>
-																	handleAddComment(group.path, lineNumber, lineText, variant)
-																}
-																onUpdateComment={(lineNumber, variant, text) =>
-																	handleUpdateComment(group.path, lineNumber, variant, text)
-																}
-																onDeleteComment={(lineNumber, variant) =>
-																	handleDeleteComment(group.path, lineNumber, variant)
-																}
+																onAddComment={handleAddComment}
+																onUpdateComment={handleUpdateComment}
+																onDeleteComment={handleDeleteComment}
 															/>
 														) : (
 															<UnifiedDiff
 																path={group.path}
+																agentContextSource={agentContextSource}
 																oldText={entry.oldText}
 																newText={entry.newText}
 																comments={comments}
-																onAddComment={(lineNumber, lineText, variant) =>
-																	handleAddComment(group.path, lineNumber, lineText, variant)
-																}
-																onUpdateComment={(lineNumber, variant, text) =>
-																	handleUpdateComment(group.path, lineNumber, variant, text)
-																}
-																onDeleteComment={(lineNumber, variant) =>
-																	handleDeleteComment(group.path, lineNumber, variant)
-																}
+																onAddComment={handleAddComment}
+																onUpdateComment={handleUpdateComment}
+																onDeleteComment={handleDeleteComment}
 															/>
 														)}
 													</div>

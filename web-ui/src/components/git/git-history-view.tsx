@@ -10,6 +10,7 @@ import {
 import { GitCommitDiffPanel } from "@/components/git/history/git-commit-diff-panel";
 import { GitCommitListPanel } from "@/components/git/history/git-commit-list-panel";
 import { GitRefsPanel } from "@/components/git/history/git-refs-panel";
+import { RevertCommitAction } from "@/components/git/history/revert-commit-action";
 import type { UseGitHistoryDataResult } from "@/components/git/history/use-git-history-data";
 import { ResizeHandle } from "@/resize/resize-handle";
 import {
@@ -28,8 +29,10 @@ function CommitDiffHeader({
 	commit,
 	branches,
 	onLandOnBranch,
+	revertAction,
 }: {
 	commit: RuntimeGitCommit;
+	revertAction?: React.ReactNode;
 	branches: BranchSelectOption[];
 	onLandOnBranch?: (commit: RuntimeGitCommit, targetBranch: string) => void;
 }): React.ReactElement {
@@ -82,6 +85,7 @@ function CommitDiffHeader({
 						<code className="font-mono">{commit.shortHash}</code>
 					</div>
 				</div>
+				{revertAction}
 				{onLandOnBranch && branches.length > 0 && !isMergeCommit ? (
 					<BranchSelectDropdown
 						options={branches}
@@ -391,6 +395,16 @@ export function GitHistoryView({
 								commit={gitHistory.selectedCommit}
 								branches={branchOptions}
 								onLandOnBranch={handleLandOnBranch}
+								revertAction={
+									<RevertCommitAction
+										key={`${projectId}:${taskScope?.taskId ?? "home"}:${gitHistory.selectedCommit.hash}`}
+										projectId={projectId}
+										taskScope={taskScope ?? null}
+										commit={gitHistory.selectedCommit}
+										headRef={gitHistory.refs.find((ref) => ref.isHead && ref.type === "branch") ?? null}
+										onRefresh={() => gitHistory.refresh({ background: true })}
+									/>
+								}
 							/>
 						) : gitHistory.viewMode === "working-copy" ? (
 							<div

@@ -30,36 +30,12 @@ export function isFileEditorTabDirty(tab: FileEditorTab): boolean {
 	return tab.value !== tab.savedValue;
 }
 
-const cachedTabsByScope = new Map<string, FileEditorTab[]>();
-
-export function getCachedFileEditorTabs(scopeKey: string): FileEditorTab[] {
-	return cachedTabsByScope.get(scopeKey) ?? [];
-}
-
-export function setCachedFileEditorTabs(scopeKey: string, tabs: readonly FileEditorTab[]): void {
-	if (tabs.length > 0) {
-		cachedTabsByScope.set(scopeKey, [...tabs]);
-	} else {
-		cachedTabsByScope.delete(scopeKey);
-	}
-}
-
-export function clearCachedFileEditorTabs(scopeKey?: string): void {
-	if (scopeKey) {
-		cachedTabsByScope.delete(scopeKey);
-		return;
-	}
-	cachedTabsByScope.clear();
-}
-
-export function hasDirtyCachedFileEditorTabs(): boolean {
-	for (const tabs of cachedTabsByScope.values()) {
-		if (tabs.some(isFileEditorTabDirty)) {
-			return true;
-		}
-	}
-	return false;
-}
+export {
+	clearCachedFileEditorTabs,
+	getCachedFileEditorTabs,
+	hasDirtyCachedFileEditorTabs,
+	setCachedFileEditorTabs,
+} from "./file-editor-cache";
 
 export function isFileEditorTabEditable(tab: FileEditorTab, readOnly: boolean): boolean {
 	return !readOnly && tab.editable && !tab.binary && !tab.truncated && tab.contentHash !== null;

@@ -61,8 +61,11 @@ export async function handleSendTaskSessionInput(
 						"The agent is no longer ready for this reply. Your draft is saved; open the agent to continue.",
 					);
 				}
+				// Preserve captured/editor text until this transport boundary. CRLF is a
+				// line ending; a standalone carriage return remains a terminal control.
+				const replyText = body.text.replace(/\r\n/g, "\n");
 				// biome-ignore lint/suspicious/noControlCharactersInRegex: Reject terminal control bytes in board replies.
-				const hasTerminalControls = /[\u0000-\u0008\u000b-\u001f\u007f]/u.test(body.text);
+				const hasTerminalControls = /[\u0000-\u0008\u000b-\u001f\u007f]/u.test(replyText);
 				if (
 					body.intent !== "submit" ||
 					!body.text.trim() ||
@@ -72,7 +75,7 @@ export async function handleSendTaskSessionInput(
 					throw new Error("Enter a reply of up to 8,000 characters without terminal control characters.");
 				}
 				// Native TUIs accept bracketed paste; multiline text must never become separate submissions.
-				payloadText = `\x1b[200~${body.text}\x1b[201~\r`;
+				payloadText = `\x1b[200~${replyText}\x1b[201~\r`;
 			}
 			return terminalManager.writeInput(body.taskId, Buffer.from(payloadText, "utf8"), {
 				explicitUserSubmission: body.intent === "submit",

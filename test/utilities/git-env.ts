@@ -7,8 +7,10 @@ export function createGitTestEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.Proc
 	const sanitized: NodeJS.ProcessEnv = {};
 	for (const [key, value] of Object.entries(process.env)) {
 		// Hooks can export GIT_* vars that redirect git commands away from test cwd.
+		// Keep the explicit discovery ceiling so local temp fixtures cannot discover
+		// their enclosing checkout when TMPDIR is inside a worktree.
 		const comparisonKey = process.platform === "win32" ? key.toUpperCase() : key;
-		if (comparisonKey.startsWith("GIT_")) {
+		if (comparisonKey.startsWith("GIT_") && comparisonKey !== "GIT_CEILING_DIRECTORIES") {
 			continue;
 		}
 		sanitized[key] = value;

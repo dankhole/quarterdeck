@@ -5,6 +5,11 @@ export const MIN_COLLAPSE_LINES = 8;
 export const INCREMENTAL_EXPAND_STEP = 20;
 export const INCREMENTAL_EXPAND_THRESHOLD = 40;
 
+// Inline highlighting is optional; keep the exact line diff when a heavily
+// rewritten or generated line would make word matching expensive.
+const MAX_INLINE_DIFF_EDIT_LENGTH = 200;
+const MAX_INLINE_DIFF_LINE_LENGTH = 20_000;
+
 export interface InlineDiffSegment {
 	key: string;
 	text: string;
@@ -26,10 +31,10 @@ export interface CollapsedContextBlock {
 	expanded: boolean;
 }
 
-export type ExpandedBlockState = Record<string, boolean | { top: number; bottom: number }>;
+export type ExpandedBlockState = Record<string, boolean | { top: number; bottom: number; expanded?: true }>;
 
-export type DiffDisplayItem =
-	| { type: "row"; row: UnifiedDiffRow }
+export type DiffDisplayGroup =
+	| { type: "rows"; rows: UnifiedDiffRow[] }
 	| { type: "collapsed"; block: CollapsedContextBlock };
 
 function toLines(text: string): string[] {
@@ -46,7 +51,16 @@ function buildModifiedSegments(
 } {
 	const oldSegments: InlineDiffSegment[] = [];
 	const newSegments: InlineDiffSegment[] = [];
-	const parts = diffWordsWithSpace(oldText, newText);
+	const parts =
+		Math.max(oldText.length, newText.length) <= MAX_INLINE_DIFF_LINE_LENGTH
+			? diffWordsWithSpace(oldText, newText, { maxEditLength: MAX_INLINE_DIFF_EDIT_LENGTH })
+			: undefined;
+	if (!parts) {
+		return {
+			oldSegments: [{ key: "o-line", text: oldText, tone: "removed" }],
+			newSegments: [{ key: "n-line", text: newText, tone: "added" }],
+		};
+	}
 
 	for (let index = 0; index < parts.length; index += 1) {
 		const part = parts[index];
@@ -257,7 +271,8 @@ function enrichRowsWithInlineSegments(rows: UnifiedDiffRow[]): UnifiedDiffRow[] 
 	return result;
 }
 
-export function buildDisplayItems(rows: UnifiedDiffRow[], expandedBlocks: ExpandedBlockState): DiffDisplayItem[] {
+/** Keep source groups stable while context expansion is projected separately. */
+export function buildDiffDisplayGroups(rows: readonly UnifiedDiffRow[]): DiffDisplayGroup[] {
 	const changedIndices: number[] = [];
 	for (let index = 0; index < rows.length; index += 1) {
 		if (rows[index]?.variant !== "context") {
@@ -276,7 +291,7 @@ export function buildDisplayItems(rows: UnifiedDiffRow[], expandedBlocks: Expand
 
 	const shouldHideContextAt = (index: number): boolean => {
 		const row = rows[index];
-		if (!row || row.variant !== "context") {
+		if (row?.variant !== "context") {
 			return false;
 		}
 		if (changedIndices.length === 0) {
@@ -285,14 +300,11 @@ export function buildDisplayItems(rows: UnifiedDiffRow[], expandedBlocks: Expand
 		return !nearbyContext.has(index);
 	};
 
-	const items: DiffDisplayItem[] = [];
+	const groups: DiffDisplayGroup[] = [];
+	let visibleStart = 0;
 	let index = 0;
 	while (index < rows.length) {
 		if (!shouldHideContextAt(index)) {
-			const row = rows[index];
-			if (row) {
-				items.push({ type: "row", row });
-			}
 			index += 1;
 			continue;
 		}
@@ -301,66 +313,24 @@ export function buildDisplayItems(rows: UnifiedDiffRow[], expandedBlocks: Expand
 		while (index < rows.length && shouldHideContextAt(index)) {
 			index += 1;
 		}
+		if (index - start < MIN_COLLAPSE_LINES) {
+			continue;
+		}
+
+		if (start > visibleStart) {
+			groups.push({ type: "rows", rows: rows.slice(visibleStart, start) });
+		}
 		const blockRows = rows.slice(start, index);
-		if (blockRows.length < MIN_COLLAPSE_LINES) {
-			for (const row of blockRows) {
-				items.push({ type: "row", row });
-			}
-			continue;
-		}
-
-		const blockId = `ctx-${start}-${index - 1}`;
-		const blockState = expandedBlocks[blockId];
-
-		if (blockState === true) {
-			// Fully expanded (legacy boolean toggle)
-			items.push({
-				type: "collapsed",
-				block: { id: blockId, count: blockRows.length, rows: blockRows, expanded: true },
-			});
-			continue;
-		}
-
-		if (typeof blockState === "object" && blockState !== null) {
-			const topReveal = Math.min(blockState.top, blockRows.length);
-			const bottomReveal = Math.min(blockState.bottom, blockRows.length - topReveal);
-
-			// Rows revealed from the top
-			for (let ri = 0; ri < topReveal; ri += 1) {
-				const row = blockRows[ri];
-				if (row) {
-					items.push({ type: "row", row });
-				}
-			}
-
-			// Remaining collapsed middle
-			const remainingStart = topReveal;
-			const remainingEnd = blockRows.length - bottomReveal;
-			if (remainingEnd > remainingStart) {
-				const remainingRows = blockRows.slice(remainingStart, remainingEnd);
-				items.push({
-					type: "collapsed",
-					block: { id: blockId, count: remainingRows.length, rows: remainingRows, expanded: false },
-				});
-			}
-
-			// Rows revealed from the bottom
-			for (let ri = blockRows.length - bottomReveal; ri < blockRows.length; ri += 1) {
-				const row = blockRows[ri];
-				if (row) {
-					items.push({ type: "row", row });
-				}
-			}
-			continue;
-		}
-
-		// Not expanded at all
-		items.push({
+		groups.push({
 			type: "collapsed",
-			block: { id: blockId, count: blockRows.length, rows: blockRows, expanded: false },
+			block: { id: `ctx-${start}-${index - 1}`, count: blockRows.length, rows: blockRows, expanded: false },
 		});
+		visibleStart = index;
 	}
-	return items;
+	if (visibleStart < rows.length) {
+		groups.push({ type: "rows", rows: rows.slice(visibleStart) });
+	}
+	return groups;
 }
 
 export function truncatePathMiddle(path: string, maxLength = 64): string {

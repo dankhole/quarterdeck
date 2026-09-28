@@ -233,7 +233,7 @@ export function ConflictResolutionPanel({
 	actionError,
 }: ConflictResolutionPanelProps): React.ReactElement {
 	const isMerge = conflictState.operation === "merge";
-	const operationLabel = isMerge ? "Merge" : "Rebase";
+	const operationLabel = isMerge ? "Merge" : conflictState.operation === "revert" ? "Revert" : "Rebase";
 	const OperationIcon = isMerge ? GitMerge : GitPullRequest;
 
 	const unresolvedCount = conflictState.conflictedFiles.length;
@@ -275,15 +275,15 @@ export function ConflictResolutionPanel({
 	// Banner text
 	const bannerText = useMemo(() => {
 		const conflictSuffix = `${unresolvedCount} ${unresolvedCount === 1 ? "conflict" : "conflicts"} remaining`;
-		if (isMerge) {
-			return `Merge in progress \u2014 ${conflictSuffix}`;
+		if (conflictState.operation !== "rebase") {
+			return `${operationLabel} in progress \u2014 ${conflictSuffix}`;
 		}
 		const { currentStep, totalSteps } = conflictState;
 		if (currentStep != null && totalSteps != null) {
 			return `Rebase in progress \u2014 commit ${currentStep} of ${totalSteps} \u2014 ${conflictSuffix}`;
 		}
 		return `Rebase in progress \u2014 ${conflictSuffix}`;
-	}, [isMerge, unresolvedCount, conflictState]);
+	}, [operationLabel, unresolvedCount, conflictState]);
 
 	// Progress text
 	const progressText = useMemo(() => {

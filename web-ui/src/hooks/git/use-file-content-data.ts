@@ -1,9 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeFileContentResponse } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
 import { createFileContentRequest, createFileSaveRequest, type FileBrowserScope } from "./file-browser-scope";
+import { getFileEditorScopeGeneration, subscribeFileEditorCache } from "./file-editor-cache";
+
+interface ScopedFileContent {
+	readonly scopeKey: string;
+	readonly generation: number | undefined;
+	readonly path: string;
+	readonly content: RuntimeFileContentResponse;
+}
 
 export interface UseFileContentDataResult {
 	readonly fileContent: RuntimeFileContentResponse | null;
@@ -16,6 +24,11 @@ export interface UseFileContentDataResult {
 }
 
 export function useFileContentData(scope: FileBrowserScope, selectedPath: string | null): UseFileContentDataResult {
+	const getScopeGeneration = useCallback(
+		() => getFileEditorScopeGeneration(scope.contentScopeKey),
+		[scope.contentScopeKey],
+	);
+	const scopeGeneration = useSyncExternalStore(subscribeFileEditorCache, getScopeGeneration);
 	const selectedPathRef = useRef(selectedPath);
 	const contentScopeKeyRef = useRef(scope.contentScopeKey);
 	selectedPathRef.current = selectedPath;
@@ -26,17 +39,18 @@ export function useFileContentData(scope: FileBrowserScope, selectedPath: string
 			throw new Error("No file selected.");
 		}
 		const trpcClient = getRuntimeTrpcClient(scope.projectId);
-		return await trpcClient.project.getFileContent.query(createFileContentRequest(scope, selectedPath));
-	}, [scope, selectedPath]);
+		const content = await trpcClient.project.getFileContent.query(createFileContentRequest(scope, selectedPath));
+		return { scopeKey: scope.contentScopeKey, generation: scopeGeneration, path: selectedPath, content };
+	}, [scope, scopeGeneration, selectedPath]);
 
-	const fileContentQuery = useTrpcQuery<RuntimeFileContentResponse>({
+	const fileContentQuery = useTrpcQuery<ScopedFileContent>({
 		enabled: scope.canQueryRuntime && selectedPath !== null,
 		queryFn: fileContentQueryFn,
 	});
 	const setFileContentData = fileContentQuery.setData;
 	const activeContentCacheKey = useMemo(
-		() => JSON.stringify({ contentScopeKey: scope.contentScopeKey, selectedPath }),
-		[scope.contentScopeKey, selectedPath],
+		() => JSON.stringify({ contentScopeKey: scope.contentScopeKey, scopeGeneration, selectedPath }),
+		[scope.contentScopeKey, scopeGeneration, selectedPath],
 	);
 	const [contentCacheKey, setContentCacheKey] = useState(activeContentCacheKey);
 
@@ -46,7 +60,16 @@ export function useFileContentData(scope: FileBrowserScope, selectedPath: string
 	}, [activeContentCacheKey, setFileContentData]);
 
 	const hasActiveContentCache = contentCacheKey === activeContentCacheKey;
-	const fileContent = hasActiveContentCache ? (fileContentQuery.data ?? null) : null;
+	const snapshot = fileContentQuery.data;
+	// Retirement can keep the same project, task, root, and path. Only content read
+	// for the current cache generation may hydrate its replacement workspace.
+	const fileContent =
+		hasActiveContentCache &&
+		snapshot?.scopeKey === scope.contentScopeKey &&
+		snapshot.generation === scopeGeneration &&
+		snapshot.path === selectedPath
+			? snapshot.content
+			: null;
 	const isContentError = hasActiveContentCache && fileContentQuery.isError;
 	const isContentLoading =
 		scope.enabled &&
@@ -55,15 +78,16 @@ export function useFileContentData(scope: FileBrowserScope, selectedPath: string
 
 	const getFileContent = useCallback(
 		async (path: string): Promise<RuntimeFileContentResponse | null> => {
-			if (!scope.enabled || !scope.projectId) return null;
+			if (!scope.enabled || !scope.projectId || scopeGeneration !== getScopeGeneration()) return null;
 			try {
 				const trpcClient = getRuntimeTrpcClient(scope.projectId);
-				return await trpcClient.project.getFileContent.query(createFileContentRequest(scope, path));
+				const content = await trpcClient.project.getFileContent.query(createFileContentRequest(scope, path));
+				return scopeGeneration === getScopeGeneration() ? content : null;
 			} catch {
 				return null;
 			}
 		},
-		[scope],
+		[scope, scopeGeneration, getScopeGeneration],
 	);
 
 	const reloadFileContent = useCallback(
@@ -71,12 +95,17 @@ export function useFileContentData(scope: FileBrowserScope, selectedPath: string
 			if (!scope.enabled) return null;
 			const requestScopeKey = scope.contentScopeKey;
 			const result = await getFileContent(path);
-			if (result && path === selectedPathRef.current && requestScopeKey === contentScopeKeyRef.current) {
-				setFileContentData(result);
+			if (
+				result &&
+				path === selectedPathRef.current &&
+				requestScopeKey === contentScopeKeyRef.current &&
+				scopeGeneration === getScopeGeneration()
+			) {
+				setFileContentData({ scopeKey: requestScopeKey, generation: scopeGeneration, path, content: result });
 			}
 			return result;
 		},
-		[getFileContent, scope.contentScopeKey, scope.enabled, setFileContentData],
+		[getFileContent, getScopeGeneration, scope.contentScopeKey, scope.enabled, scopeGeneration, setFileContentData],
 	);
 
 	const saveFileContent = useCallback(
@@ -84,17 +113,22 @@ export function useFileContentData(scope: FileBrowserScope, selectedPath: string
 			if (!scope.enabled) throw new Error("Files view is not active.");
 			if (!scope.projectId) throw new Error("Missing project.");
 			if (scope.isReadOnly) throw new Error("Branch/ref browsing is read-only.");
+			if (scopeGeneration !== getScopeGeneration()) throw new Error("The file workspace changed. Reload the file.");
 			const requestScopeKey = scope.contentScopeKey;
 			const trpcClient = getRuntimeTrpcClient(scope.projectId);
 			const result = await trpcClient.project.saveFileContent.mutate(
 				createFileSaveRequest(scope, path, content, expectedContentHash),
 			);
-			if (path === selectedPathRef.current && requestScopeKey === contentScopeKeyRef.current) {
-				setFileContentData(result);
+			if (
+				path === selectedPathRef.current &&
+				requestScopeKey === contentScopeKeyRef.current &&
+				scopeGeneration === getScopeGeneration()
+			) {
+				setFileContentData({ scopeKey: requestScopeKey, generation: scopeGeneration, path, content: result });
 			}
 			return result;
 		},
-		[scope, setFileContentData],
+		[getScopeGeneration, scope, scopeGeneration, setFileContentData],
 	);
 
 	const clearFileContent = useCallback(() => {

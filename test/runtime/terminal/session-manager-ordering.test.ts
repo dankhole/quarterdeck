@@ -1538,7 +1538,9 @@ describe("TerminalSessionManager ordering invariants", () => {
 				"\u001b[2J\u001b[H■ Conversation interrupted - tell the model what to do differently. " +
 					"Something went wrong? Hit `/feedback` to report the issue.\r\n\r\n" +
 					"› Ask Codex to do anything\r\n\r\n• Working on the follow-up\r\n" +
-					"  └ Read src/terminal/session-state-machine.ts\r\n\r\n› Ask Codex to do anything",
+					"  └ Read src/terminal/session-state-machine.ts\r\n\r\n" +
+					"  Tip: Use /fast to enable our fastest inference with increased plan usage.\r\n\r\n" +
+					"› Ask Codex to do anything",
 			);
 			await vi.advanceTimersByTimeAsync(1);
 			expect(manager.store.getSummary("task-interruption-redraw")).toMatchObject({
@@ -1558,7 +1560,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 		});
 
 		it.each(["waiting", "response_submitted"] as const)(
-			"retires a %s Codex approval when the current rendered turn is interrupted",
+			"retires a %s Codex approval when the interrupted result has a composer tip",
 			async (status) => {
 				const detector = createCodexTurnInterruptionDetector();
 				prepareAgentLaunchMock.mockImplementation(async (input: { args: string[]; binary?: string }) => ({
@@ -1589,17 +1591,25 @@ describe("TerminalSessionManager ordering invariants", () => {
 					outstandingInteraction: createTestTaskOutstandingInteraction({
 						provider: "codex",
 						kind: "permission",
-						status,
+						status: "waiting",
 						providerAgentId: null,
 						sessionInstanceId,
-						responseSubmittedAt: status === "response_submitted" ? Date.now() : null,
-						responseKind: status === "response_submitted" ? "cancel" : null,
 					}),
 				});
+				if (status === "response_submitted") {
+					manager.writeInput(taskId, Buffer.from([0x1b]));
+					expect(spawnedSessions[0]?.write).toHaveBeenCalledWith(Buffer.from([0x1b]));
+					expect(manager.store.getSummary(taskId)?.outstandingInteraction).toMatchObject({
+						status: "response_submitted",
+						responseKind: "cancel",
+					});
+				}
 
 				spawnedSessions[0]?.triggerData(
 					"\u001b[2J\u001b[H■ Conversation interrupted - tell the model what to do differently. " +
-						"Something went wrong? Hit `/feedback` to report the issue.\r\n\r\n› Ask Codex to do anything",
+						"Something went wrong? Hit `/feedback` to report the issue.\r\n\r\n" +
+						"  Tip: Use /fast to enable our fastest inference with increased plan usage.\r\n\r\n" +
+						"› Ask Codex to do anything",
 				);
 				await vi.advanceTimersByTimeAsync(1);
 

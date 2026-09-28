@@ -23,6 +23,7 @@ export {
 } from "./git-conflict";
 export { type CommitDiffFile, getCommitDiff, getGitLog, getGitRefs } from "./git-history";
 export { type GitWorkdirProbe, getGitSyncSummary, probeGitWorkdirState } from "./git-probe";
+export { revertCommit } from "./git-revert";
 export {
 	stashApply,
 	stashCount,

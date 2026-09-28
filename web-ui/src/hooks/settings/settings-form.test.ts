@@ -21,6 +21,8 @@ describe("resolveInitialValues", () => {
 		expect(values.statuslineEnabled).toBe(false);
 		expect(values.codexApprovalsReviewer).toBe("inherit");
 		expect(values.piToolApprovalsEnabled).toBe(true);
+		expect(values.codeNavigationEnabled).toBe(false);
+		expect(values.lspServers[0]?.command).toBe("typescript-language-server");
 	});
 });
 
@@ -69,6 +71,14 @@ describe("areFormValuesEqual", () => {
 		const a = makeValues();
 		const b = makeValues();
 		b.shortcuts = [{ label: "test", command: "echo hello" }];
+		expect(areFormValuesEqual(a, b)).toBe(false);
+	});
+
+	it("compares language server settings structurally and detects nested changes", () => {
+		const a = makeValues();
+		const b = makeValues({ lspServers: structuredClone(a.lspServers) });
+		expect(areFormValuesEqual(a, b)).toBe(true);
+		b.lspServers[0]!.args.push("--extra");
 		expect(areFormValuesEqual(a, b)).toBe(false);
 	});
 });

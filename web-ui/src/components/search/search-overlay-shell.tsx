@@ -24,12 +24,12 @@ export function SearchOverlayShell({ children, onDismiss }: SearchOverlayShellPr
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/50"
+			className="fixed inset-0 z-50 flex items-start justify-center px-3 pt-[10vh] bg-black/50"
 			onClick={onDismiss}
 			onKeyDown={undefined}
 		>
 			<div
-				className="w-full max-w-2xl max-h-[70vh] flex flex-col rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl overflow-hidden"
+				className="w-full max-w-6xl max-h-[80vh] flex flex-col rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl overflow-hidden"
 				onClick={(e) => e.stopPropagation()}
 				onKeyDown={undefined}
 			>

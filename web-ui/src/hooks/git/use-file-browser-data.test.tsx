@@ -11,15 +11,24 @@ vi.mock("@/runtime/trpc-client", () => ({
 	getRuntimeTrpcClient: getRuntimeTrpcClientMock,
 }));
 
+import { createFileBrowserContentScopeKey } from "@/hooks/git/file-browser-scope";
+import { setLastSelectedFileBrowserPath } from "@/hooks/git/file-browser-selection-cache";
+import {
+	clearCachedFileEditorTabs,
+	registerFileEditorScope,
+	retireFileEditorScopes,
+} from "@/hooks/git/file-editor-cache";
 import { type UseFileBrowserDataResult, useFileBrowserData } from "@/hooks/git/use-file-browser-data";
 import type { RuntimeFileContentResponse, RuntimeListFilesResponse } from "@/runtime/types";
 
 function HookHarness({
 	taskId,
+	browseRef,
 	enabled = true,
 	onResult,
 }: {
 	taskId: string | null;
+	browseRef?: string;
 	enabled?: boolean;
 	onResult: (result: UseFileBrowserDataResult) => void;
 }): null {
@@ -27,6 +36,7 @@ function HookHarness({
 		projectId: "project-1",
 		taskId,
 		baseRef: taskId ? "main" : undefined,
+		ref: browseRef,
 		enabled,
 	});
 	onResult(result);
@@ -61,6 +71,13 @@ describe("useFileBrowserData", () => {
 		document.body.appendChild(container);
 		root = createRoot(container);
 		localStorage.clear();
+		clearCachedFileEditorTabs();
+		for (const ref of [undefined, "main"]) {
+			setLastSelectedFileBrowserPath(
+				createFileBrowserContentScopeKey({ projectId: "project-1", taskId: null, ref }),
+				null,
+			);
+		}
 		listFilesQueryMock.mockReset();
 		getFileContentQueryMock.mockReset();
 		saveFileContentMutateMock.mockReset();
@@ -82,6 +99,7 @@ describe("useFileBrowserData", () => {
 			root.unmount();
 		});
 		container.remove();
+		clearCachedFileEditorTabs();
 		localStorage.clear();
 		if (previousActEnvironment === undefined) {
 			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
@@ -205,5 +223,133 @@ describe("useFileBrowserData", () => {
 		});
 
 		expect(listFilesQueryMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("admits unlisted runtime navigation targets as read-only while clearing ordinary missing selections", async () => {
+		let latest: UseFileBrowserDataResult | undefined;
+		const current = () => {
+			if (!latest) throw new Error("No browser result");
+			return latest;
+		};
+		listFilesQueryMock.mockResolvedValue({ files: ["src/home.ts"], directories: ["src"], mutable: true });
+		getFileContentQueryMock.mockResolvedValue({ ...contentResponse("declaration", "hash"), editable: true });
+		await act(async () =>
+			root.render(
+				<HookHarness
+					taskId={null}
+					onResult={(result) => {
+						latest = result;
+					}}
+				/>,
+			),
+		);
+
+		await act(async () => current().onSelectPath("missing.ts"));
+		expect(current().selectedPath).toBeNull();
+
+		const target = "node_modules/dependency/index.d.ts";
+		await act(async () => current().onSelectNavigationTarget(target));
+		expect(current().selectedPath).toBe(target);
+		expect(current().fileContent).toMatchObject({ content: "declaration", editable: false });
+		await act(async () => {
+			await expect(current().reloadFileContent(target)).resolves.toMatchObject({ editable: false });
+		});
+		await expect(current().saveFileContent(target, "edited", "hash")).rejects.toThrow("read-only");
+		expect(saveFileContentMutateMock).not.toHaveBeenCalled();
+
+		await act(async () => current().onSelectPath("src/home.ts"));
+		expect(current().fileContent?.editable).toBe(true);
+		await act(async () => current().onSelectPath(target));
+		expect(current().selectedPath).toBe(target);
+		expect(current().fileContent?.editable).toBe(false);
+	});
+
+	it("expires navigation admission when the same workspace is retired and recreated", async () => {
+		let latest: UseFileBrowserDataResult | undefined;
+		const current = () => {
+			if (!latest) throw new Error("No browser result");
+			return latest;
+		};
+		const identity = { projectId: "project-1", taskId: null };
+		const scopeKey = createFileBrowserContentScopeKey(identity);
+		registerFileEditorScope(scopeKey, identity);
+		listFilesQueryMock.mockResolvedValue({ files: ["src/home.ts"], directories: ["src"], mutable: true });
+		getFileContentQueryMock.mockResolvedValue(contentResponse("declaration", "hash"));
+		await act(async () =>
+			root.render(
+				<HookHarness
+					taskId={null}
+					onResult={(result) => {
+						latest = result;
+					}}
+				/>,
+			),
+		);
+		const staleSelect = current().onSelectNavigationTarget;
+		await act(async () => staleSelect("node_modules/dependency/index.d.ts"));
+		expect(current().selectedPath).toBe("node_modules/dependency/index.d.ts");
+		await act(async () => {
+			retireFileEditorScopes({ projectId: "project-1" });
+			registerFileEditorScope(scopeKey, identity);
+		});
+		expect(current().selectedPath).toBeNull();
+		await act(async () => staleSelect("node_modules/dependency/index.d.ts"));
+		expect(current().selectedPath).toBeNull();
+		await act(async () => current().onSelectNavigationTarget("node_modules/dependency/index.d.ts"));
+		expect(current().selectedPath).toBe("node_modules/dependency/index.d.ts");
+	});
+
+	it("clears an ordinary selected file when the next file listing removes it", async () => {
+		vi.useFakeTimers();
+		let latest: UseFileBrowserDataResult | undefined;
+		const current = () => {
+			if (!latest) throw new Error("No browser result");
+			return latest;
+		};
+		listFilesQueryMock.mockResolvedValue({ files: ["src/home.ts"], directories: ["src"], mutable: true });
+		getFileContentQueryMock.mockResolvedValue(contentResponse("source", "hash"));
+		await act(async () =>
+			root.render(
+				<HookHarness
+					taskId={null}
+					onResult={(result) => {
+						latest = result;
+					}}
+				/>,
+			),
+		);
+		await act(async () => current().onSelectPath("src/home.ts"));
+		expect(current().selectedPath).toBe("src/home.ts");
+		listFilesQueryMock.mockResolvedValue({ files: [], directories: [], mutable: true });
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(5_000);
+		});
+		expect(current().selectedPath).toBeNull();
+	});
+
+	it("does not admit live navigation targets into another scope or a read-only ref", async () => {
+		let latest: UseFileBrowserDataResult | undefined;
+		const current = () => {
+			if (!latest) throw new Error("No browser result");
+			return latest;
+		};
+		const capture = (result: UseFileBrowserDataResult) => {
+			latest = result;
+		};
+		listFilesQueryMock.mockResolvedValue({ files: ["src/home.ts"], directories: ["src"], mutable: true });
+		getFileContentQueryMock.mockResolvedValue(contentResponse("declaration", "hash"));
+		await act(async () => root.render(<HookHarness taskId={null} onResult={capture} />));
+		const staleSelect = current().onSelectNavigationTarget;
+		await act(async () => current().onSelectNavigationTarget("node_modules/dependency/index.d.ts"));
+		await act(async () => root.render(<HookHarness taskId={null} browseRef="main" onResult={capture} />));
+		await act(async () => {
+			staleSelect("node_modules/dependency/index.d.ts");
+			current().onSelectNavigationTarget("node_modules/dependency/index.d.ts");
+		});
+		expect(current().selectedPath).toBeNull();
+		expect(current().isReadOnly).toBe(true);
+		await act(async () => current().onSelectPath("src/home.ts"));
+		expect(current().selectedPath).toBe("src/home.ts");
+		await expect(current().saveFileContent("src/home.ts", "edited", "hash")).rejects.toThrow("read-only");
 	});
 });

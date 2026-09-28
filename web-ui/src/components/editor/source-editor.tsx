@@ -33,6 +33,7 @@ import {
 	scrollPastEnd,
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
+import * as ContextMenu from "@radix-ui/react-context-menu";
 import {
 	forwardRef,
 	type MutableRefObject,
@@ -44,6 +45,15 @@ import {
 } from "react";
 
 import { cn } from "@/components/ui/cn";
+import {
+	createSourceEditorActionContext,
+	type SourceEditorAction,
+	type SourceEditorActionContext,
+	type SourceEditorRange,
+	sourceEditorOffset,
+} from "./source-editor-context";
+
+export type { SourceEditorAction, SourceEditorActionContext, SourceEditorRange } from "./source-editor-context";
 
 export interface SourceEditorProps {
 	path: string;
@@ -52,6 +62,9 @@ export interface SourceEditorProps {
 	readOnly: boolean;
 	wordWrap: boolean;
 	scrollToLine?: number | null;
+	scrollToRange?: SourceEditorRange | null;
+	actions?: readonly SourceEditorAction[];
+	onScrollToRangeConsumed?: () => void;
 	onChange: (value: string) => void;
 	onSave?: () => void;
 	onScrollToLineConsumed?: () => void;
@@ -60,6 +73,7 @@ export interface SourceEditorProps {
 export interface SourceEditorHandle {
 	openSearchPanel: () => void;
 	focus: () => void;
+	getActionContext: () => SourceEditorActionContext | null;
 }
 
 export function detectSourceEditorLineSeparator(value: string): "\n" | "\r\n" {
@@ -226,6 +240,7 @@ function createExtensions(input: {
 	onChange: (value: string) => void;
 	onSave?: () => void;
 	ignoreUpdateRef: MutableRefObject<boolean>;
+	documentVersionRef: MutableRefObject<number>;
 	lineSeparator: "\n" | "\r\n";
 }): Extension[] {
 	return [
@@ -253,6 +268,7 @@ function createExtensions(input: {
 		input.wordWrap ? EditorView.lineWrapping : [],
 		languageExtension(input.language, input.path),
 		EditorView.updateListener.of((update) => {
+			if (update.docChanged) input.documentVersionRef.current += 1;
 			if (!update.docChanged || input.ignoreUpdateRef.current) {
 				return;
 			}
@@ -276,12 +292,28 @@ function createExtensions(input: {
 }
 
 export const SourceEditor = forwardRef<SourceEditorHandle, SourceEditorProps>(function SourceEditor(
-	{ path, language, value, readOnly, wordWrap, scrollToLine, onChange, onSave, onScrollToLineConsumed },
+	{
+		path,
+		language,
+		value,
+		readOnly,
+		wordWrap,
+		scrollToLine,
+		scrollToRange,
+		actions,
+		onChange,
+		onSave,
+		onScrollToLineConsumed,
+		onScrollToRangeConsumed,
+	},
 	ref,
 ): ReactElement {
 	const hostRef = useRef<HTMLDivElement | null>(null);
 	const viewRef = useRef<EditorView | null>(null);
 	const ignoreUpdateRef = useRef(false);
+	const documentVersionRef = useRef(1);
+	const pathRef = useRef(path);
+	pathRef.current = path;
 	const onChangeRef = useRef(onChange);
 	const onSaveRef = useRef(onSave);
 	const lineSeparator = useMemo(() => detectSourceEditorLineSeparator(value), [value]);
@@ -303,6 +335,10 @@ export const SourceEditor = forwardRef<SourceEditorHandle, SourceEditorProps>(fu
 				openSearchPanel(view);
 				view.focus();
 			},
+			getActionContext: () =>
+				viewRef.current
+					? createSourceEditorActionContext(viewRef.current.state, pathRef.current, documentVersionRef.current)
+					: null,
 			focus: () => {
 				viewRef.current?.focus();
 			},
@@ -320,6 +356,7 @@ export const SourceEditor = forwardRef<SourceEditorHandle, SourceEditorProps>(fu
 				onChange: (nextValue) => onChangeRef.current(nextValue),
 				onSave: () => onSaveRef.current?.(),
 				ignoreUpdateRef,
+				documentVersionRef,
 				lineSeparator,
 			}),
 		[path, language, readOnly, wordWrap, lineSeparator],
@@ -369,11 +406,60 @@ export const SourceEditor = forwardRef<SourceEditorHandle, SourceEditorProps>(fu
 		onScrollToLineConsumed?.();
 	}, [scrollToLine, onScrollToLineConsumed]);
 
-	return (
+	useEffect(() => {
+		const view = viewRef.current;
+		if (!view || !scrollToRange) return;
+		const anchor = sourceEditorOffset(view.state, scrollToRange.start);
+		const head = sourceEditorOffset(view.state, scrollToRange.end);
+		view.dispatch({
+			selection: { anchor, head },
+			effects: EditorView.scrollIntoView(anchor, { y: "center" }),
+		});
+		view.focus();
+		onScrollToRangeConsumed?.();
+	}, [path, scrollToRange, onScrollToRangeConsumed]);
+
+	const editor = (
 		<div
 			ref={hostRef}
 			className={cn("min-h-0 flex-1 overflow-hidden", readOnly && "cursor-default")}
 			data-testid="source-editor"
+			onContextMenu={(event) => {
+				const view = viewRef.current;
+				if (!view || !actions?.length) return;
+				const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
+				const selection = view.state.selection.main;
+				if (position != null && (selection.empty || position < selection.from || position > selection.to)) {
+					view.dispatch({ selection: { anchor: position } });
+				}
+			}}
 		/>
+	);
+	return (
+		<ContextMenu.Root>
+			<ContextMenu.Trigger asChild disabled={!actions?.length}>
+				{editor}
+			</ContextMenu.Trigger>
+			<ContextMenu.Portal>
+				<ContextMenu.Content className="z-50 min-w-48 rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg">
+					{actions?.map((action) => (
+						<ContextMenu.Item
+							key={action.id}
+							disabled={action.disabled}
+							className="rounded-sm px-2 py-1.5 text-[13px] text-text-primary cursor-pointer outline-none data-[highlighted]:bg-surface-3 data-[disabled]:text-text-tertiary data-[disabled]:cursor-default"
+							onSelect={() => {
+								const view = viewRef.current;
+								if (view)
+									action.onSelect(
+										createSourceEditorActionContext(view.state, path, documentVersionRef.current),
+									);
+							}}
+						>
+							{action.label}
+						</ContextMenu.Item>
+					))}
+				</ContextMenu.Content>
+			</ContextMenu.Portal>
+		</ContextMenu.Root>
 	);
 });

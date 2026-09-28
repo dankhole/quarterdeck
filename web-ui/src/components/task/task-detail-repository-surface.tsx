@@ -5,6 +5,9 @@ import { BranchPillTrigger, BranchSelectorPopover, ScopeBar } from "@/components
 import type { TaskDetailRepositoryProps } from "@/components/task/task-detail-screen";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { CardDetailViewLayoutState, CardDetailViewRepositoryState } from "@/hooks/board/use-card-detail-view";
+import { useBoardContext } from "@/providers/board-provider";
+import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
+import { TaskAgentContextProvider } from "@/providers/task-agent-context-provider";
 import type { MainViewId } from "@/resize/use-card-detail-layout";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { getProjectPath } from "@/stores/project-metadata-store";
@@ -70,6 +73,8 @@ export function TaskDetailRepositorySurface({
 	sessionSummary,
 	mainView,
 }: TaskDetailRepositorySurfaceProps): React.ReactElement {
+	const { sendTaskSessionInput } = useBoardContext();
+	const { runtimeProjectConfig } = useProjectRuntimeContext();
 	const browsingBranchRef =
 		repositoryState.taskResolvedScope?.type === "branch_view" ? repositoryState.taskResolvedScope.ref : null;
 	const checkoutBrowsingBranch = browsingBranchRef
@@ -94,7 +99,7 @@ export function TaskDetailRepositorySurface({
 	const isDetachedTaskWorktree = detachedWorktree !== null;
 	const showDetachedPillHint = detachedWorktree !== null && repositoryState.taskResolvedScope?.type !== "branch_view";
 
-	return (
+	const content = (
 		<div
 			ref={detailLayout.mainRowRef}
 			style={{
@@ -137,6 +142,8 @@ export function TaskDetailRepositorySurface({
 				/>
 			) : (
 				<FilesView
+					projectId={currentProjectId}
+					codeNavigationConfig={runtimeProjectConfig}
 					key={`${selection.card.id}-${repositoryState.taskScopeMode}`}
 					showScopeBar={!repositoryState.folderOnly && repositoryState.taskScopeMode !== "contextual"}
 					scopeBar={
@@ -213,5 +220,25 @@ export function TaskDetailRepositorySurface({
 				/>
 			)}
 		</div>
+	);
+	if (!currentProjectId || selection.column.id === "trash" || selection.card.unstarted) return content;
+	return (
+		<TaskAgentContextProvider
+			projectId={currentProjectId}
+			taskId={selection.card.id}
+			taskCreatedAt={selection.card.createdAt}
+			taskTitle={selection.card.title}
+			summary={sessionSummary}
+			source={
+				browsingBranchRef
+					? `Branch/ref ${browsingBranchRef}`
+					: repositoryState.taskResolvedScope?.type === "home"
+						? "Home worktree"
+						: "Task worktree"
+			}
+			sendInput={sendTaskSessionInput}
+		>
+			{content}
+		</TaskAgentContextProvider>
 	);
 }

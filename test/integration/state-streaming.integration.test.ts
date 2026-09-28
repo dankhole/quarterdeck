@@ -536,6 +536,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 			const projectId = decodeURIComponent(runtimeUrl.pathname.slice(1));
 			expect(projectId).not.toBe("");
 			const taskId = "hook-review-task";
+			const providerSessionId = "synthetic-hook-stream-session";
 
 			stream = await connectRuntimeStream(
 				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectId)}`,
@@ -621,6 +622,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 						source: "codex",
 						hookEventName: "UserPromptSubmit",
 						sessionInstanceId,
+						sessionId: providerSessionId,
 						turnId: "turn-1",
 					},
 					delivery: {
@@ -654,6 +656,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 						source: "codex",
 						hookEventName: "PreToolUse",
 						sessionInstanceId,
+						sessionId: providerSessionId,
 						turnId: "turn-1",
 						toolUseId: "tool-1",
 						toolName: "Bash",
@@ -679,6 +682,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 						source: "codex",
 						hookEventName: "PermissionRequest",
 						sessionInstanceId,
+						sessionId: providerSessionId,
 						turnId: "turn-1",
 						toolName: "Bash",
 						notificationType: "permission_prompt",
@@ -774,6 +778,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 						source: "codex",
 						hookEventName: "PreToolUse",
 						sessionInstanceId,
+						sessionId: providerSessionId,
 						turnId: "turn-1",
 						toolUseId: "tool-2",
 						toolName: "Read",
@@ -851,6 +856,32 @@ describe("state streaming integration", { concurrent: false }, () => {
 			});
 			expect(interruptResponse.status).toBe(200);
 			expect(interruptResponse.payload.ok).toBe(true);
+			// Escape records input intent. The idle fake does not emit an Interrupt
+			// hook, so supply the provider confirmation just as for the earlier turns.
+			expect(interruptResponse.payload.summary).toMatchObject({ state: "running", reviewReason: null });
+			const interruptHookResponse = await requestJson<RuntimeHookIngestResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "hooks.ingest",
+				type: "mutation",
+				payload: {
+					taskId,
+					projectId,
+					event: "to_review",
+					metadata: {
+						source: "codex",
+						hookEventName: "Interrupt",
+						sessionInstanceId,
+						sessionId: providerSessionId,
+						turnId: "turn-1",
+					},
+					delivery: {
+						id: "00000000-0000-4000-8000-000000000003",
+						occurredAt: Date.now() + 2,
+					},
+				},
+			});
+			expect(interruptHookResponse.status).toBe(200);
+			expect(interruptHookResponse.payload.ok).toBe(true);
 
 			const interruptedNotification = (await stream.waitForMessage(
 				(message): message is RuntimeStateStreamTaskNotificationMessage =>

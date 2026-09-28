@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type DiffLineComment, DiffViewerPanel } from "@/components/git/panels/diff-viewer-panel";
+import * as diffRenderer from "@/components/shared/diff-renderer";
 import type { RuntimeWorkdirFileChange } from "@/runtime/types";
 
 const hotkeyRegistrations: Array<{
@@ -58,6 +59,52 @@ describe("DiffViewerPanel", () => {
 				previousActEnvironment;
 		}
 	});
+
+	it.each(["unified", "split"] as const)(
+		"does not render unchanged %s file rows again on selection or another file load",
+		async (viewMode) => {
+			const rowSpy = vi.spyOn(diffRenderer, "DiffRowText");
+			const files: RuntimeWorkdirFileChange[] = ["a", "b"].map((name) => ({
+				path: `${name}.ts`,
+				status: "modified",
+				additions: 1,
+				deletions: 1,
+				oldText: `const ${name} = 1;`,
+				newText: `const ${name} = 2;`,
+			}));
+			const comments = new Map<string, DiffLineComment>();
+			const onCommentsChange = vi.fn();
+			const onSelectedPathChange = vi.fn();
+			const render = async (projectFiles: RuntimeWorkdirFileChange[], selectedPath: string) => {
+				await act(async () =>
+					root.render(
+						<DiffViewerPanel
+							projectFiles={projectFiles}
+							selectedPath={selectedPath}
+							onSelectedPathChange={onSelectedPathChange}
+							comments={comments}
+							onCommentsChange={onCommentsChange}
+							viewMode={viewMode}
+						/>,
+					),
+				);
+			};
+			await render(files, "a.ts");
+			expect(rowSpy).toHaveBeenCalled();
+			rowSpy.mockClear();
+			await render(files, "b.ts");
+			expect(rowSpy).not.toHaveBeenCalled();
+			await render([...files, { ...files[0]!, path: "c.ts", newText: "const c = 3;" }], "b.ts");
+			expect(rowSpy).toHaveBeenCalledTimes(2);
+			expect(container.textContent).toContain("const c = 3;");
+			const addedRow = container.querySelector(".kb-diff-row-added");
+			await act(async () => addedRow?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+			expect(onCommentsChange.mock.calls[0]?.[0].get("a.ts:added:1")).toMatchObject({
+				filePath: "a.ts",
+				lineText: "const a = 2;",
+			});
+		},
+	);
 
 	it("scrolls to the selected file using section position relative to the scroll container", async () => {
 		const projectFiles: RuntimeWorkdirFileChange[] = [

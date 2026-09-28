@@ -306,8 +306,12 @@ describe("ConflictResolutionPanel", () => {
 		abortButton = buttons.find((btn) => btn.textContent?.includes("Abort"));
 		expect(abortButton).toBeDefined();
 		expect(abortButton!.textContent).toContain("Abort Rebase");
+		renderPanel(createDefaultProps({ conflictState: createConflictState({ operation: "revert" }) }));
+		expect(container.textContent).toContain("Revert in progress");
+		expect(container.textContent).toContain("Abort Revert");
+		expect(container.textContent).toContain("Complete Revert");
 	});
-	it.each(["merge", "rebase"] as const)(
+	it.each(["merge", "rebase", "revert"] as const)(
 		"allows completing %s with unreviewed auto-merged files",
 		async (operation) => {
 			const props = createDefaultProps({

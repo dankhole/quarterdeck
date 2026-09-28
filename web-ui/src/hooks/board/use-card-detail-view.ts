@@ -175,6 +175,8 @@ export function useCardDetailView({
 	const fileBrowserData = useFileBrowserData({
 		projectId: currentProjectId,
 		taskId: fileBrowserScope.taskId,
+		taskCreatedAt: fileBrowserScope.taskId ? selection.card.createdAt : undefined,
+		rootPath: fileBrowserScope.taskId ? taskRepositoryInfo?.path : projectPath,
 		baseRef: fileBrowserScope.baseRef,
 		ref: fileBrowserScope.ref,
 		enabled: navigation.mainView === "files",

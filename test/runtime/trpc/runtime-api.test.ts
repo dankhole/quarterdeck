@@ -130,6 +130,7 @@ function createDeps(flat: Record<string, unknown> = {}) {
 	}
 	const runtimeConfig = createTestRuntimeConfigState();
 	return {
+		onCodeNavigationConfigChanged: vi.fn(async () => {}),
 		config: {
 			getActiveRuntimeConfig: vi.fn(() => runtimeConfig),
 			loadScopedRuntimeConfig: vi.fn(async () => runtimeConfig),

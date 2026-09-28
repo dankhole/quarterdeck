@@ -9,6 +9,12 @@ vi.mock("@/components/app-toaster", () => ({
 }));
 
 import {
+	getCachedFileEditorTabs,
+	getFileEditorDrafts,
+	registerFileEditorScope,
+	retireFileEditorScopes,
+} from "@/hooks/git/file-editor-cache";
+import {
 	clearCachedFileEditorTabs,
 	createFileEditorTab,
 	FILE_EDITOR_AUTOSAVE_DELAY_MS,
@@ -97,6 +103,59 @@ describe("useFileEditorWorkspace", () => {
 			...overrides,
 		};
 	}
+
+	it("keeps newer edits when saving across scope switches and fences retired scope completions", async () => {
+		let finishSave: (content: RuntimeFileContentResponse) => void = () => {};
+		const saving = new Promise<RuntimeFileContentResponse>((resolve) => {
+			finishSave = resolve;
+		});
+		let latest: UseFileEditorWorkspaceResult | null = null;
+		const current = () => {
+			if (!latest) throw new Error("No workspace");
+			return latest;
+		};
+		const scope = { projectId: "p1", taskId: "t1", taskCreatedAt: 1 };
+		await act(async () => {
+			root.render(
+				<HookHarness
+					input={createInput({ scope, saveFileContent: async () => saving })}
+					onResult={(result) => {
+						latest = result;
+					}}
+				/>,
+			);
+		});
+		await act(async () => {
+			current().handleChangeActiveContent("original draft");
+		});
+		let pending: Promise<void> = Promise.resolve();
+		await act(async () => {
+			pending = current().handleSaveActiveTab();
+		});
+		await act(async () => {
+			retireFileEditorScopes({ projectId: "p1" });
+		});
+		expect(current().tabs).toEqual([]);
+		await act(async () => {
+			registerFileEditorScope("project-1:task-1", scope);
+			setCachedFileEditorTabs("project-1:task-1", [
+				{
+					...createFileEditorTab("src/app.ts", contentResponse("restored disk", "new-hash")),
+					value: "original draft",
+				},
+			]);
+		});
+		await act(async () => {
+			finishSave(contentResponse("original draft", "old-save-hash"));
+			await pending;
+		});
+		expect(getCachedFileEditorTabs("project-1:task-1")[0]).toMatchObject({
+			value: "original draft",
+			savedValue: "restored disk",
+			contentHash: "new-hash",
+		});
+		expect(getFileEditorDrafts("detached")[0]?.tab.value).toBe("original draft");
+	});
 
 	it("suppresses focus autosave while a discard prompt is active", async () => {
 		const saveFileContent = vi.fn(async (_path: string, content: string) => contentResponse(content, "hash-saved"));

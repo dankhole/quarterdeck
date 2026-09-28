@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { notifyError, showAppToast } from "@/components/app-toaster";
+import {
+	guardFileEditorScopes,
+	reconcileFileEditorProjects,
+	reconcileFileEditorWorktrees,
+	retireFileEditorScopes,
+} from "@/hooks/git/file-editor-cache";
 import { resolveProjectDirectoryPickerDecision } from "@/hooks/project/project-navigation";
 import { preloadProjectState } from "@/runtime/project-preload-cache";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
@@ -86,6 +92,13 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		isRuntimeDisconnected,
 		hasReceivedSnapshot,
 	} = useRuntimeStateStream(requestedProjectId);
+
+	useEffect(() => {
+		if (hasReceivedSnapshot) reconcileFileEditorProjects(projects);
+	}, [hasReceivedSnapshot, projects]);
+	useEffect(() => {
+		if (currentProjectId && projectMetadata) reconcileFileEditorWorktrees(currentProjectId, projectMetadata);
+	}, [currentProjectId, projectMetadata]);
 
 	const hasNoProjects = hasReceivedSnapshot && projects.length === 0 && currentProjectId === null;
 	const isProjectSwitching = requestedProjectId !== null && requestedProjectId !== currentProjectId && !hasNoProjects;
@@ -233,6 +246,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 			if (removingProjectId) {
 				return false;
 			}
+			if (!guardFileEditorScopes({ projectId })) return false;
 			setRemovingProjectId(projectId);
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
@@ -240,6 +254,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 				if (!payload.ok) {
 					throw new Error(payload.error ?? "Could not remove project.");
 				}
+				retireFileEditorScopes({ projectId });
 				if (currentProjectId === projectId) {
 					onProjectSwitchStart();
 					setRequestedProjectId(null);

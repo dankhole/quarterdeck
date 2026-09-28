@@ -28,7 +28,8 @@ export function ConflictBanner({
 		>
 			<GitMerge size={14} className="text-status-orange shrink-0" />
 			<span className="text-[12px] text-text-primary font-medium">
-				{conflictState.operation === "merge" ? "Merge" : "Rebase"} in progress
+				{conflictState.operation === "merge" ? "Merge" : conflictState.operation === "revert" ? "Revert" : "Rebase"}{" "}
+				in progress
 			</span>
 			<span className="text-[12px] text-text-secondary">
 				&mdash; {remainingCount} {remainingCount === 1 ? "conflict" : "conflicts"} remaining

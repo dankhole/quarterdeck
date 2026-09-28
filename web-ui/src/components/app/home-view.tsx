@@ -140,6 +140,8 @@ export function HomeView({
 								/>
 							) : navigation.mainView === "files" ? (
 								<FilesView
+									projectId={projectNavigation.currentProjectId}
+									codeNavigationConfig={projectRuntime.runtimeProjectConfig}
 									key={projectNavigation.currentProjectId ?? "no-project"}
 									showScopeBar={!projectGit?.folderOnly && git.fileBrowserScopeMode !== "contextual"}
 									scopeBar={

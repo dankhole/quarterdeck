@@ -33,6 +33,7 @@ import {
 } from "../execution";
 import { createNativeTerminalInputWriter } from "../execution/native-terminal-input";
 import { createHookTransitionOutboxReplayer } from "../hook-transition-outbox";
+import { LanguageNavigationManager } from "../language-navigation/manager";
 import type { ProjectBoardCommandService } from "../state";
 import {
 	listProjectIndexEntries,
@@ -53,6 +54,7 @@ import {
 	type RuntimeTrpcProjectScope,
 	runtimeAppRouter,
 } from "../trpc";
+import { createCodeNavigationApi } from "../trpc/code-navigation-api";
 import { handleStartTaskSession } from "../trpc/handlers/start-task-session";
 import { applyRuntimeMutationEffects, createTaskTitleUpdatedEffects } from "../trpc/runtime-mutation-effects";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
@@ -171,6 +173,12 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	} catch {
 		throw new Error("Could not find web UI assets. Run `npm run build` to generate and package the web UI.");
 	}
+	const codeNavigation = new LanguageNavigationManager({ diagnostics: deps.diagnostics });
+	const codeNavigationApi = createCodeNavigationApi(codeNavigation, deps.projectRegistry);
+	const disposeCodeNavigationDiagnostics = deps.diagnostics.registerSnapshotProvider({
+		name: "code_navigation",
+		capture: (scope) => codeNavigation.getSnapshot(scope.projectId ?? undefined),
+	});
 
 	const resolveProjectScopeFromRequest = async (
 		request: IncomingMessage,
@@ -263,9 +271,11 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		ownership: executionOwnership,
 		taskResourceOperations,
 	});
-	deps.projectRegistry.setProjectRemovalPreparationHandler(
-		async (projectId, projectPath) => await executionOwnership.prepareProjectRemoval({ projectId, projectPath }),
-	);
+	deps.projectRegistry.setProjectRemovalPreparationHandler(async (projectId, projectPath) => {
+		const result = await executionOwnership.prepareProjectRemoval({ projectId, projectPath });
+		if (result.ok) await codeNavigation.stopProject(projectId);
+		return result;
+	});
 	const nativeOwnershipHooks = {
 		assertNativeStartAllowed: async (scope: RuntimeTrpcProjectScope, taskId: string) =>
 			await executionOwnership.assertNativeStartAllowed(scope, taskId),
@@ -453,6 +463,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		},
 	});
 	const runtimeApi = createRuntimeApi({
+		onCodeNavigationConfigChanged: () => codeNavigation.reset(),
 		config: deps.projectRegistry,
 		broadcaster: deps.runtimeStateHub,
 		getActiveProjectId: deps.projectRegistry.getActiveProjectId,
@@ -478,6 +489,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			requestedProjectId: scope.requestedProjectId,
 			projectScope: scope.projectScope,
 			runtimeClientId,
+			codeNavigationApi,
 			runtimeApi,
 			projectApi: createProjectApi({
 				taskTitles,
@@ -489,6 +501,8 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				taskResourceOperations,
 			}),
 			projectsApi: createProjectsApi({
+				onProjectAdded: (projectId) => codeNavigation.restoreProject(projectId),
+				onProjectRemovalFailed: (projectId) => codeNavigation.restoreProject(projectId),
 				boardCommands: deps.boardCommands,
 				projects: deps.projectRegistry,
 				terminals: deps.projectRegistry,
@@ -677,7 +691,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		? buildQuarterdeckRuntimeUrl(`/${encodeURIComponent(activeProjectId)}`)
 		: getQuarterdeckRuntimeOrigin();
 
-	const prepareForShutdown = createStructuredShutdownPreparation({
+	const prepareTaskOwnersForShutdown = createStructuredShutdownPreparation({
 		stopReconciliation: () => {
 			if (executionOwnershipReconciliationTimer) {
 				clearInterval(executionOwnershipReconciliationTimer);
@@ -712,6 +726,17 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			}
 		},
 	});
+	const prepareForShutdown: RuntimeServer["prepareForShutdown"] = async (options) => {
+		// Language servers have no resumable task identity and must stop even during lab crash simulation.
+		// A failed language-server stop must not prevent task owners from cleaning up.
+		const results = await Promise.allSettled([codeNavigation.close(), prepareTaskOwnersForShutdown(options)]);
+		const failures = results.filter((result) => result.status === "rejected");
+		if (failures.length > 0)
+			throw new AggregateError(
+				failures.map((result) => result.reason),
+				"Runtime owner shutdown failed.",
+			);
+	};
 
 	codexTitles.start();
 	return {
@@ -735,6 +760,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			await runCloseStep(async () => await hookTransitionOutboxReplayer.close());
 			await runCloseStep(() => disposeHookOutboxDiagnosticProvider());
 			await runCloseStep(() => disposePiSupportDiagnosticProvider());
+			await runCloseStep(() => disposeCodeNavigationDiagnostics());
 			await runCloseStep(async () => await deps.runtimeSessionPersistence.close());
 			await runCloseStep(async () => await deps.runtimeStateHub.close());
 			await runCloseStep(async () => await terminalWebSocketBridge.close());

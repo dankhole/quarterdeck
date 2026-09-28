@@ -27,7 +27,9 @@ const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 // ---------------------------------------------------------------------------
 
 interface DetectedConflict {
-	operation: "merge" | "rebase";
+	operation: RuntimeConflictState["operation"];
+	/** Sequencer retained changes after a hook failure before REVERT_HEAD was written. */
+	revertNeedsCommit?: boolean;
 	sourceBranch: string | null;
 	currentStep: number | null;
 	totalSteps: number | null;
@@ -63,6 +65,16 @@ export async function detectActiveConflict(cwd: string): Promise<DetectedConflic
 	const rawGitDir = gitDirResult.stdout.trim();
 	// git rev-parse --git-dir may return a relative path; resolve against cwd.
 	const gitDir = isAbsolute(rawGitDir) ? rawGitDir : join(cwd, rawGitDir);
+
+	if (await fileExists(join(gitDir, "REVERT_HEAD"))) {
+		return { operation: "revert", sourceBranch: null, currentStep: null, totalSteps: null };
+	}
+
+	// A failed commit hook can leave only the sequencer, without REVERT_HEAD.
+	const sequencerTodo = await readFileSafe(join(gitDir, "sequencer", "todo"));
+	if (sequencerTodo?.trimStart().startsWith("revert ")) {
+		return { operation: "revert", revertNeedsCommit: true, sourceBranch: null, currentStep: null, totalSteps: null };
+	}
 
 	// Check for active merge
 	if (await fileExists(join(gitDir, "MERGE_HEAD"))) {
@@ -202,7 +214,7 @@ export async function getAutoMergedFileContent(cwd: string, path: string): Promi
  */
 export async function getConflictState(
 	cwd: string,
-	overrides?: { operation?: "merge" | "rebase"; sourceBranch?: string; autoMergedFiles?: string[] },
+	overrides?: { operation?: RuntimeConflictState["operation"]; sourceBranch?: string; autoMergedFiles?: string[] },
 ): Promise<RuntimeConflictState | null> {
 	const detected = await detectActiveConflict(cwd);
 
@@ -265,7 +277,17 @@ export async function continueMergeOrRebase(cwd: string): Promise<RuntimeConflic
 	const detected = await detectActiveConflict(cwd);
 
 	let continueResult: { ok: boolean; output: string; stdout: string; error: string | null };
-	if (detected?.operation === "rebase") {
+	if (detected?.operation === "revert") {
+		const staged = detected.revertNeedsCommit ? await runGit(cwd, ["diff", "--cached", "--name-only"]) : null;
+		const commitResult =
+			staged?.ok && staged.stdout.trim()
+				? await runGit(cwd, ["commit", "--no-edit"], USER_GIT_ACTION_OPTIONS)
+				: null;
+		continueResult =
+			commitResult && !commitResult.ok
+				? commitResult
+				: await runGit(cwd, ["-c", "core.editor=true", "revert", "--continue"], USER_GIT_ACTION_OPTIONS);
+	} else if (detected?.operation === "rebase") {
 		continueResult = await runGit(cwd, ["-c", "core.editor=true", "rebase", "--continue"], USER_GIT_ACTION_OPTIONS);
 	} else {
 		// Default to merge commit (also handles case where detected is null — graceful attempt)
@@ -321,7 +343,7 @@ export async function abortMergeOrRebase(cwd: string): Promise<RuntimeConflictAb
 		return { ok: true, summary };
 	}
 
-	const abortArgs = detected.operation === "rebase" ? ["rebase", "--abort"] : ["merge", "--abort"];
+	const abortArgs = [detected.operation, "--abort"];
 	const abortResult = await runGit(cwd, abortArgs, USER_GIT_ACTION_OPTIONS);
 	const summary = await getGitSyncSummary(cwd);
 

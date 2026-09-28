@@ -34,7 +34,9 @@ import {
 	runtimeTaskSessionStopRequestSchema,
 	runtimeTaskSessionStopResponseSchema,
 } from "../core";
+import { lspServerConfigSchema } from "../core/api/code-navigation";
 import { runtimeCodexModelsResponseSchema } from "../core/codex-model-contracts";
+import { checkLanguageServerCommand } from "../language-navigation/command";
 import { projectProcedure, t } from "./app-router-init";
 import { projectRouter } from "./project-procedures";
 
@@ -42,6 +44,15 @@ import { projectRouter } from "./project-procedures";
 export type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
 
 const runtimeRouter = t.router({
+	checkLspCommand: t.procedure
+		.input(
+			z.object({
+				command: lspServerConfigSchema.shape.command,
+				env: lspServerConfigSchema.shape.env,
+			}),
+		)
+		.output(z.object({ available: z.boolean(), message: z.string() }))
+		.query(({ input }) => checkLanguageServerCommand(input.command, input.env)),
 	codexModels: t.procedure
 		.output(runtimeCodexModelsResponseSchema)
 		.query(({ ctx }) => ctx.runtimeApi.codexModels(ctx.projectScope)),

@@ -19,7 +19,7 @@ export type RuntimeConflictFile = z.infer<typeof runtimeConflictFileSchema>;
 
 // Active conflict state — part of metadata
 export const runtimeConflictStateSchema = z.object({
-	operation: z.enum(["merge", "rebase"]),
+	operation: z.enum(["merge", "rebase", "revert"]),
 	sourceBranch: z.string().nullable(),
 	currentStep: z.number().int().nullable(),
 	totalSteps: z.number().int().nullable(),

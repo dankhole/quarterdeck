@@ -7,6 +7,7 @@ import {
 	renameBranch,
 	resetToRef,
 	resolveTaskWorkingDirectory,
+	revertCommit,
 	runGitCheckoutAction,
 	runGitMergeAction,
 	runGitRebaseAction,
@@ -34,6 +35,7 @@ type GitOps = Pick<
 	| "rebaseBranch"
 	| "resetToRef"
 	| "cherryPickCommit"
+	| "revertCommit"
 	| "createBranch"
 	| "deleteBranch"
 	| "renameBranch"
@@ -255,6 +257,36 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 			}
 		},
 
+		revertCommit: async (projectScope, input) => {
+			try {
+				const taskScope = normalizeOptionalTaskScopeInput(input.taskScope ?? null);
+				const cwd = await resolveWorkingDir(projectScope.projectPath, taskScope);
+				if (
+					isProjectCheckoutCwd(projectScope.projectPath, cwd) &&
+					(await hasActiveSharedCheckoutTask(projectScope.projectPath))
+				) {
+					return {
+						ok: false,
+						commitHash: input.commitHash,
+						output: "",
+						error: "Cannot revert while a task in the shared checkout is in progress or review. Isolate the task or move it to another column first.",
+					};
+				}
+				const result = await revertCommit({ cwd, ...input });
+				if (result.ok || result.conflictState) {
+					invalidateProjectGitRepositoryInfo(projectScope);
+					ctx.applyEffects(
+						createGitMetadataRefreshEffects(projectScope, taskScope, {
+							includeHome: isProjectCheckoutCwd(projectScope.projectPath, cwd),
+						}),
+					);
+				}
+				return result;
+			} catch (error) {
+				return { ok: false, commitHash: input.commitHash, output: "", error: errorMessage(error) };
+			}
+		},
+
 		cherryPickCommit: async (projectScope, input) => {
 			try {
 				const cwd = await resolveWorkingDir(
@@ -370,6 +402,14 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 				"reset",
 				{ taskId: input.taskId },
 				async () => await operations.resetToRef(scope, input),
+			),
+		revertCommit: async (scope, input) =>
+			await observeProjectOperation(
+				ctx,
+				scope,
+				"revert",
+				{ taskId: input.taskScope?.taskId },
+				async () => await operations.revertCommit(scope, input),
 			),
 		cherryPickCommit: async (scope, input) =>
 			await observeProjectOperation(

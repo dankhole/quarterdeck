@@ -157,7 +157,7 @@ export function useCommitPanel(
 	const homeConflictState = useHomeConflictState();
 	const conflictState = taskId ? taskConflictState : homeConflictState;
 	const commitBlockedReason = conflictState
-		? `A ${conflictState.operation} is in progress. Use Complete ${conflictState.operation === "merge" ? "Merge" : "Rebase"} in the Git view to finish it.`
+		? `A ${conflictState.operation} is in progress. Use Complete ${conflictState.operation === "merge" ? "Merge" : conflictState.operation === "revert" ? "Revert" : "Rebase"} in the Git view to finish it.`
 		: null;
 
 	// Selected-file commits cannot conclude a merge or advance a rebase.

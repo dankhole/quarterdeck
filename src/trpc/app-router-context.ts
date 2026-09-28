@@ -43,6 +43,8 @@ import type {
 	RuntimeGitRenameBranchResponse,
 	RuntimeGitResetToRefRequest,
 	RuntimeGitResetToRefResponse,
+	RuntimeGitRevertRequest,
+	RuntimeGitRevertResponse,
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
 	RuntimeHookIngestRequest,
@@ -98,6 +100,7 @@ import type {
 } from "../core";
 import type { RuntimeCodexModelsResponse } from "../core/codex-model-contracts";
 import type { RuntimeCommitMessageGenerationContext } from "../title";
+import type { CodeNavigationApi } from "./code-navigation-api";
 
 export interface RuntimeTrpcProjectScope {
 	projectId: string;
@@ -105,6 +108,7 @@ export interface RuntimeTrpcProjectScope {
 }
 
 export interface RuntimeTrpcContext {
+	codeNavigationApi: CodeNavigationApi;
 	requestedProjectId: string | null;
 	projectScope: RuntimeTrpcProjectScope | null;
 	runtimeClientId: string;
@@ -207,6 +211,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcProjectScope,
 			input: RuntimeGitResetToRefRequest,
 		) => Promise<RuntimeGitResetToRefResponse>;
+		revertCommit: (
+			scope: RuntimeTrpcProjectScope,
+			input: RuntimeGitRevertRequest,
+		) => Promise<RuntimeGitRevertResponse>;
 		cherryPickCommit: (
 			scope: RuntimeTrpcProjectScope,
 			input: RuntimeGitCherryPickRequest,

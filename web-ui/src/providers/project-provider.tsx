@@ -63,7 +63,7 @@ export interface ProjectSyncContextValue {
 	boardProjectId: string | null;
 	projectPath: string | null;
 	projectGit: RuntimeGitRepositoryInfo | null;
-	refreshProjectState: () => Promise<void>;
+	refreshProjectState: (options?: { restoreLifecyclePresentation?: boolean }) => Promise<void>;
 	isProjectMetadataPending: boolean;
 	resetProjectSyncState: (targetProjectId?: string | null) => void;
 	isDocumentVisible: boolean;

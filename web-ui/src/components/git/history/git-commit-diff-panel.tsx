@@ -343,6 +343,7 @@ export function GitCommitDiffPanel({
 				{headerContent ? headerContent : null}
 				<div
 					ref={scrollContainerRef}
+					data-diff-scroll-container
 					onScroll={handleDiffScroll}
 					style={{
 						flex: "1 1 0",

@@ -37,6 +37,8 @@ interface DisposeProjectOptions {
 }
 
 export interface CreateProjectsApiDependencies {
+	onProjectAdded?: (projectId: string) => void;
+	onProjectRemovalFailed?: (projectId: string) => void;
 	projects: IProjectResolver;
 	boardCommands: Pick<ProjectBoardCommandService, "resolveMissingTaskBaseRefs">;
 	terminals: ITerminalManagerProvider;
@@ -125,6 +127,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 				}
 				const context = await loadProjectContext(projectPath, { folderOnly });
 				deps.projects.rememberProject(context.projectId, context.repoPath);
+				deps.onProjectAdded?.(context.projectId);
 				const projectsAfterAdd = await listProjectIndexEntries();
 				const activeProjectId = deps.projects.getActiveProjectId();
 				const hasActiveProject = activeProjectId
@@ -242,6 +245,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					ok: true,
 				};
 			} catch (error) {
+				deps.onProjectRemovalFailed?.(input.projectId);
 				const message = error instanceof Error ? error.message : String(error);
 				return {
 					ok: false,

@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlreadyOpenFallback, AppDialogs, ConnectedTopBar, HomeView, ProjectNavigationPanel } from "@/components/app";
 import { AppRuntimeBoundary } from "@/components/app/app-runtime-boundary";
 import { GitHistoryView } from "@/components/git";
+import { FileEditorDraftsDialog } from "@/components/git/file-editor-drafts-dialog";
 import { CommitPanel } from "@/components/git/panels";
 import { FileFinderOverlay } from "@/components/search/file-finder-overlay";
 import { TextSearchOverlay } from "@/components/search/text-search-overlay";
@@ -122,6 +123,7 @@ function AppInner(): ReactElement {
 			projectBoardSessionsRef={projectBoardSessionsRef}
 			setProjectBoardSessions={setProjectBoardSessions}
 		>
+			<FileEditorDraftsDialog />
 			<AppRuntimeBoundary>
 				<BoardProvider board={board} sessions={sessions} setSessions={setSessions}>
 					<TaskEditorProvider>

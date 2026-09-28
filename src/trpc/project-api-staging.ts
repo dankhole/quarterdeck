@@ -9,7 +9,6 @@ import {
 	commitSelectedFiles,
 	discardGitChanges,
 	discardSingleFile,
-	runGitSyncAction,
 	stashApply,
 	stashDrop,
 	stashList,
@@ -79,23 +78,14 @@ export function createStagingOps(ctx: ProjectApiContext): StagingOps {
 					cwd: commitCwd,
 					paths: input.paths,
 					message: input.message,
+					pushAfterCommit: input.pushAfterCommit,
 				});
 				if (response.ok) {
-					if (input.pushAfterCommit) {
-						const pushResult = await runGitSyncAction({ cwd: commitCwd, action: "push" });
-						ctx.applyEffects(createGitMetadataRefreshEffectsForCwd(projectScope, taskScope, commitCwd));
-						return {
-							...response,
-							pushOk: pushResult.ok,
-							...(!pushResult.ok && { pushError: pushResult.error ?? "Push failed." }),
-							summary: pushResult.summary,
-						};
-					}
 					ctx.applyEffects(createGitMetadataRefreshEffectsForCwd(projectScope, taskScope, commitCwd));
 				}
 				return response;
 			} catch (error) {
-				return createGitOutputErrorResponse(error);
+				return { ok: false, output: "", error: errorMessage(error) };
 			}
 		},
 

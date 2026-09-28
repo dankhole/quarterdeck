@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import { createInitialBoardData } from "@/data/board-data";
 import { recordBrowserEvent } from "@/diagnostics";
+import { reconcileFileEditorProjectState } from "@/hooks/git/file-editor-cache";
 import { restoreProjectBoard, stashProjectBoard, updateProjectBoardCache } from "@/runtime/project-board-cache";
 import { applyProjectBoardCommands, fetchProjectState, ProjectStateConflictError } from "@/runtime/project-state-query";
 import type {
@@ -99,7 +100,7 @@ interface UseProjectSyncResult {
 	projectGit: RuntimeGitRepositoryInfo | null;
 	isProjectMetadataPending: boolean;
 	isServedFromBoardCache: boolean;
-	refreshProjectState: () => Promise<void>;
+	refreshProjectState: (options?: { restoreLifecyclePresentation?: boolean }) => Promise<void>;
 	resetProjectSyncState: (targetProjectId?: string | null) => void;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	presentLifecycleBoard: Dispatch<SetStateAction<BoardData>>;
@@ -282,6 +283,7 @@ export function useProjectSync({
 				);
 				return;
 			}
+			if (currentProjectId) reconcileFileEditorProjectState(currentProjectId, nextProjectState);
 			const queue = currentProjectId ? commandQueuesRef.current.get(currentProjectId) : undefined;
 			const optimisticBoard = queue?.pending.length
 				? applyPendingProjectBoardCommands(
@@ -340,45 +342,74 @@ export function useProjectSync({
 	);
 	applyProjectStateRef.current = (state) => applyProjectState(state);
 
-	const refreshProjectState = useCallback(async () => {
-		if (!currentProjectId) {
-			return;
-		}
-		const requestId = projectRefreshRequestIdRef.current + 1;
-		projectRefreshRequestIdRef.current = requestId;
-		const requestedProjectId = currentProjectId;
-		setIsProjectStateRefreshing(true);
-		try {
-			const refreshed = await fetchProjectState(requestedProjectId);
+	const applyLifecycleProjectState = useCallback(
+		(state: RuntimeProjectStateResponse): void => {
+			if (!currentProjectId || syncTargetProjectIdRef.current !== currentProjectId) {
+				return;
+			}
+			const currentVersion = authoritativeProjectVersionRef.current;
 			if (
-				projectRefreshRequestIdRef.current !== requestId ||
-				syncTargetProjectIdRef.current !== requestedProjectId
+				currentVersion.projectId === currentProjectId &&
+				currentVersion.revision !== null &&
+				state.revision < currentVersion.revision
 			) {
 				return;
 			}
-			applyProjectState(refreshed);
-			projectRefreshSuccessCountRef.current += 1;
-		} catch (error) {
-			if (
-				projectRefreshRequestIdRef.current !== requestId ||
-				syncTargetProjectIdRef.current !== requestedProjectId
-			) {
+			// A lifecycle response must remove its optimistic presentation even when
+			// the stream already advertised the same revision. Re-enter the one
+			// authoritative apply seam with exact hydration enabled.
+			authoritativeProjectVersionRef.current = { projectId: currentProjectId, revision: null };
+			applyProjectState(state);
+		},
+		[applyProjectState, currentProjectId],
+	);
+
+	const refreshProjectState = useCallback(
+		async (options?: { restoreLifecyclePresentation?: boolean }) => {
+			if (!currentProjectId) {
 				return;
 			}
-			const message = toErrorMessage(error);
-			recordBrowserEvent(
-				"browser.project_refresh_failed",
-				{ errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError" },
-				{ projectId: requestedProjectId },
-				{ level: "warn", essential: true },
-			);
-			notifyError(message);
-		} finally {
-			if (projectRefreshRequestIdRef.current === requestId) {
-				setIsProjectStateRefreshing(false);
+			const requestId = projectRefreshRequestIdRef.current + 1;
+			projectRefreshRequestIdRef.current = requestId;
+			const requestedProjectId = currentProjectId;
+			setIsProjectStateRefreshing(true);
+			try {
+				const refreshed = await fetchProjectState(requestedProjectId);
+				if (
+					projectRefreshRequestIdRef.current !== requestId ||
+					syncTargetProjectIdRef.current !== requestedProjectId
+				) {
+					return;
+				}
+				if (options?.restoreLifecyclePresentation) {
+					applyLifecycleProjectState(refreshed);
+				} else {
+					applyProjectState(refreshed);
+				}
+				projectRefreshSuccessCountRef.current += 1;
+			} catch (error) {
+				if (
+					projectRefreshRequestIdRef.current !== requestId ||
+					syncTargetProjectIdRef.current !== requestedProjectId
+				) {
+					return;
+				}
+				const message = toErrorMessage(error);
+				recordBrowserEvent(
+					"browser.project_refresh_failed",
+					{ errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError" },
+					{ projectId: requestedProjectId },
+					{ level: "warn", essential: true },
+				);
+				notifyError(message);
+			} finally {
+				if (projectRefreshRequestIdRef.current === requestId) {
+					setIsProjectStateRefreshing(false);
+				}
 			}
-		}
-	}, [applyProjectState, currentProjectId]);
+		},
+		[applyLifecycleProjectState, applyProjectState, currentProjectId],
+	);
 	refreshProjectStateRef.current = refreshProjectState;
 
 	const setBoard = useCallback<Dispatch<SetStateAction<BoardData>>>(
@@ -475,28 +506,6 @@ export function useProjectSync({
 		const version = authoritativeProjectVersionRef.current;
 		return version.projectId === currentProjectId ? version.revision : null;
 	}, [currentProjectId]);
-
-	const applyLifecycleProjectState = useCallback(
-		(state: RuntimeProjectStateResponse): void => {
-			if (!currentProjectId || syncTargetProjectIdRef.current !== currentProjectId) {
-				return;
-			}
-			const currentVersion = authoritativeProjectVersionRef.current;
-			if (
-				currentVersion.projectId === currentProjectId &&
-				currentVersion.revision !== null &&
-				state.revision < currentVersion.revision
-			) {
-				return;
-			}
-			// A lifecycle response must remove its optimistic presentation even when
-			// the stream already advertised the same revision. Re-enter the one
-			// authoritative apply seam with exact hydration enabled.
-			authoritativeProjectVersionRef.current = { projectId: currentProjectId, revision: null };
-			applyProjectState(state);
-		},
-		[applyProjectState, currentProjectId],
-	);
 
 	const resetProjectSyncState = useCallback(
 		(targetProjectId?: string | null) => {

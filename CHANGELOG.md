@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+- Preserve restored Files editor content against delayed responses, keep discarded attached drafts open, and open language-server dependency targets read-only.
+
+- Keep language servers running through unrelated Settings saves, preserve current project settings during concurrent saves, honor configured command environments, and retain Windows worker ownership after server crashes.
+
+- Preserve diff comment focus and text selection when expanding context, and deliver CRLF source context through explicit task-agent sends.
+
+- Add opt-in code navigation with user-configured language servers: definition, references, and hover use unsaved Files editor content, with scoped results and bounded server lifetimes.
+
+- Add selection, file, and diff-hunk prompts for the active task agent, with a context preview and explicit Send action.
+
+- Protect hidden unsaved editor tabs before task or project removal, preserve orphan drafts for recovery, and keep recreated worktrees separate from old buffers.
+
+- Add Revert commit from Git history, including conflict continuation and abort without rewriting history.
+
+- Show read-only file previews for highlighted filename and text-search results, with responsive stacked layouts on narrow windows.
+
+- Speed up wide file trees and large diff rendering, bound expensive inline word highlighting, and remove unused post-commit diff recomputation while preserving Git hooks.
+
+- Retire cancelled Codex fullscreen approvals when one provider Tip row appears before the composer, preserving rejection of historical interruptions and reducing repeated composer scanning.
+
 - Move the Shared badge beside task status badges and keep card titles on one line with an ellipsis.
 
 - Soften task card tints and borders, prefer visually distinct pastels when assigning new task colors, and let every other project row blend into the sidebar.

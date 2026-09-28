@@ -2,6 +2,7 @@ import type React from "react";
 import { useEffect, useMemo, useRef } from "react";
 
 import { SearchOverlayShell } from "@/components/search/search-overlay-shell.js";
+import { SearchResultPreview } from "@/components/search/search-result-preview";
 import type { WorkdirSearchScope } from "@/hooks/search/search-scope";
 import { useTextSearch } from "@/hooks/search/use-text-search.js";
 import type { RuntimeWorkdirTextSearchFile } from "@/runtime/types";
@@ -41,7 +42,21 @@ function highlightMatches(content: string, query: string, isRegex: boolean, case
 	}
 }
 
-export function TextSearchOverlay({
+export function TextSearchOverlay(props: TextSearchOverlayProps): React.ReactElement {
+	return (
+		<TextSearchOverlayContent
+			key={JSON.stringify([
+				props.projectId,
+				props.searchScope.taskId,
+				props.searchScope.baseRef,
+				props.searchScope.ref,
+			])}
+			{...props}
+		/>
+	);
+}
+
+function TextSearchOverlayContent({
 	projectId,
 	searchScope,
 	onSelect,
@@ -123,21 +138,29 @@ export function TextSearchOverlay({
 			)}
 
 			{!search.isLoading && search.results.length > 0 && (
-				<div className="overflow-y-auto max-h-[55vh]">
-					{search.results.map((file: RuntimeWorkdirTextSearchFile, fileIdx: number) => (
-						<FileGroup
-							key={file.path}
-							file={file}
-							query={search.query}
-							isRegex={search.isRegex}
-							caseSensitive={search.caseSensitive}
-							selectedIndex={search.selectedIndex}
-							flatIndexStart={flatIndexStarts[fileIdx] ?? 0}
-							selectedRowRef={selectedRowRef}
-							onClickMatch={(path: string, lineNumber: number) => onSelect(path, lineNumber)}
-							onHoverMatch={search.setSelectedIndex}
-						/>
-					))}
+				<div className="flex min-h-0 flex-col md:flex-row">
+					<div className="min-w-0 overflow-y-auto max-h-[30vh] md:max-h-[60vh] md:w-2/5 shrink-0">
+						{search.results.map((file: RuntimeWorkdirTextSearchFile, fileIdx: number) => (
+							<FileGroup
+								key={file.path}
+								file={file}
+								query={search.query}
+								isRegex={search.isRegex}
+								caseSensitive={search.caseSensitive}
+								selectedIndex={search.selectedIndex}
+								flatIndexStart={flatIndexStarts[fileIdx] ?? 0}
+								selectedRowRef={selectedRowRef}
+								onClickMatch={(path: string, lineNumber: number) => onSelect(path, lineNumber)}
+								onHoverMatch={search.setSelectedIndex}
+							/>
+						))}
+					</div>
+					<SearchResultPreview
+						projectId={projectId}
+						searchScope={searchScope}
+						path={search.flatMatches[search.selectedIndex]?.path ?? null}
+						line={search.flatMatches[search.selectedIndex]?.line}
+					/>
 				</div>
 			)}
 		</SearchOverlayShell>

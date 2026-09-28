@@ -174,7 +174,7 @@ interface HookSnapshot {
 	boardProjectId: string | null;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
 	isServedFromBoardCache: boolean;
-	refreshProjectState: () => Promise<void>;
+	refreshProjectState: ReturnType<typeof useProjectSync>["refreshProjectState"];
 	resetProjectSyncState: (targetProjectId?: string | null) => void;
 	setBoard: ReturnType<typeof useProjectSync>["setBoard"];
 	presentLifecycleBoard: ReturnType<typeof useProjectSync>["presentLifecycleBoard"];
@@ -1070,6 +1070,39 @@ describe("useProjectSync", () => {
 
 		expect(applyProjectBoardCommandsMock).toHaveBeenCalledTimes(2);
 		expect(applyProjectBoardCommandsMock.mock.calls[1]).toEqual(applyProjectBoardCommandsMock.mock.calls[0]);
+	});
+
+	it("restores a cancelled optimistic lifecycle move from the same authoritative revision", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const state = createProjectState("persisted-task", 1);
+		await act(async () => {
+			root.render(
+				<HookHarness
+					streamedProjectState={state}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+		assertSnapshot(latestSnapshot, "Expected an initial hook snapshot.");
+		const initial: HookSnapshot = latestSnapshot;
+		await act(async () => {
+			initial.presentLifecycleBoard(createBoardInColumn("trash", "persisted-task"));
+		});
+		assertSnapshot(latestSnapshot, "Expected an optimistic snapshot.");
+		const optimistic: HookSnapshot = latestSnapshot;
+		expect(optimistic.board.columns.find((column) => column.id === "trash")?.cards).toHaveLength(1);
+		fetchProjectStateMock.mockResolvedValueOnce(state);
+		await act(async () => {
+			await optimistic.refreshProjectState({ restoreLifecyclePresentation: true });
+		});
+		assertSnapshot(latestSnapshot, "Expected a restored snapshot.");
+		const restored: HookSnapshot = latestSnapshot;
+		expect(restored.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("persisted-task");
+		expect(restored.board.columns.find((column) => column.id === "trash")?.cards).toHaveLength(0);
+		expect(restored.getAuthoritativeRevision()).toBe(1);
+		expect(applyProjectBoardCommandsMock).not.toHaveBeenCalled();
 	});
 
 	it("rejects the whole setBoard batch when it contains a lifecycle move and accepts presentation-only rollback", async () => {

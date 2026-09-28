@@ -227,6 +227,11 @@ export function GitView({
 								}}
 							>
 								<DiffViewerPanel
+									agentContextSource={
+										activeTab === "uncommitted"
+											? "Uncommitted: HEAD → working copy"
+											: `Compare: ${compare.targetRef} → ${compare.includeUncommitted ? "working copy" : compare.sourceRef}${compare.threeDotDiff ? " (merge-base comparison)" : ""}`
+									}
 									projectFiles={isRuntimeAvailable ? enrichedFiles : null}
 									selectedPath={selectedPath}
 									onSelectedPathChange={setSelectedPath}

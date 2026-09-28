@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const revertCommitMock = vi.hoisted(() => vi.fn());
+vi.mock("../../../src/workdir/git-revert.js", () => ({ revertCommit: revertCommitMock }));
+
 const worktreeMocks = vi.hoisted(() => ({
 	resolveTaskCwd: vi.fn(),
 	resolveTaskWorkingDirectory: vi.fn((): Promise<string> => Promise.resolve("/tmp/worktree")),
@@ -510,26 +513,17 @@ describe("createProjectApi deleteWorktree", () => {
 });
 
 describe("createProjectApi commitSelectedFiles", () => {
-	const defaultSummary = {
-		currentBranch: "feature/test",
-		upstreamBranch: null,
-		changedFiles: 0,
-		additions: 0,
-		deletions: 0,
-		aheadCount: 1,
-		behindCount: 0,
-	};
-
 	beforeEach(() => {
 		worktreeMocks.resolveTaskWorkingDirectory.mockReset();
 		gitSyncMocks.commitSelectedFiles.mockReset();
+		gitSyncMocks.runGitSyncAction.mockReset();
+		gitSyncMocks.getGitSyncSummary.mockReset();
 	});
 
 	it("resolves home cwd when no taskId", async () => {
 		gitSyncMocks.commitSelectedFiles.mockResolvedValue({
 			ok: true,
 			commitHash: "abc1234",
-			summary: defaultSummary,
 			output: "",
 		});
 
@@ -555,7 +549,6 @@ describe("createProjectApi commitSelectedFiles", () => {
 		gitSyncMocks.commitSelectedFiles.mockResolvedValue({
 			ok: true,
 			commitHash: "abc1234",
-			summary: defaultSummary,
 			output: "",
 		});
 
@@ -585,7 +578,6 @@ describe("createProjectApi commitSelectedFiles", () => {
 		gitSyncMocks.commitSelectedFiles.mockResolvedValue({
 			ok: true,
 			commitHash: "abc1234",
-			summary: defaultSummary,
 			output: "",
 		});
 
@@ -612,7 +604,6 @@ describe("createProjectApi commitSelectedFiles", () => {
 		gitSyncMocks.commitSelectedFiles.mockResolvedValue({
 			ok: true,
 			commitHash: "abc1234",
-			summary: defaultSummary,
 			output: "",
 		});
 
@@ -629,6 +620,36 @@ describe("createProjectApi commitSelectedFiles", () => {
 		expect(deps.broadcaster.broadcastRuntimeProjectStateUpdated).not.toHaveBeenCalled();
 	});
 
+	it.each([{ pushOk: true }, { pushOk: false, pushError: "remote rejected the push" }])(
+		"keeps completed commits and refreshes metadata once after pushing: $pushOk",
+		async (pushResult) => {
+			worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
+			const commitResult = { ok: true, commitHash: "abc1234", output: "committed", ...pushResult };
+			gitSyncMocks.commitSelectedFiles.mockResolvedValue(commitResult);
+			const deps = createProjectDeps();
+			const api = createProjectApi(deps);
+
+			const result = await api.commitSelectedFiles(defaultScope, {
+				taskScope: { taskId: "task-1", baseRef: "main" },
+				paths: ["src/file.ts"],
+				message: "test commit",
+				pushAfterCommit: true,
+			});
+
+			expect(result).toEqual(commitResult);
+			expect(gitSyncMocks.commitSelectedFiles).toHaveBeenCalledExactlyOnceWith({
+				cwd: "/tmp/worktree",
+				paths: ["src/file.ts"],
+				message: "test commit",
+				pushAfterCommit: true,
+			});
+			expect(gitSyncMocks.runGitSyncAction).not.toHaveBeenCalled();
+			expect(gitSyncMocks.getGitSyncSummary).not.toHaveBeenCalled();
+			expect(deps.broadcaster.requestTaskRefresh).toHaveBeenCalledExactlyOnceWith("project-1", "task-1");
+			expect(deps.broadcaster.requestHomeRefresh).not.toHaveBeenCalled();
+		},
+	);
+
 	it("returns error on git failure", async () => {
 		gitSyncMocks.commitSelectedFiles.mockRejectedValue(new Error("git commit failed"));
 
@@ -640,8 +661,7 @@ describe("createProjectApi commitSelectedFiles", () => {
 			message: "test commit",
 		});
 
-		expect(result.ok).toBe(false);
-		expect(result.error).toBe("git commit failed");
+		expect(result).toEqual({ ok: false, output: "", error: "git commit failed" });
 	});
 });
 
@@ -721,5 +741,54 @@ describe("createProjectApi discardFile", () => {
 
 		expect(deps.broadcaster.requestTaskRefresh).toHaveBeenCalledWith("project-1", "task-1");
 		expect(deps.broadcaster.broadcastRuntimeProjectStateUpdated).not.toHaveBeenCalled();
+	});
+});
+
+describe("createProjectApi revertCommit", () => {
+	beforeEach(() => revertCommitMock.mockReset());
+	it("rejects a task scope resolving to an active shared checkout", async () => {
+		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/repo");
+		projectStateMocks.loadProjectState.mockResolvedValue({
+			board: { columns: [{ id: "review", cards: [{ id: "task-1", useWorktree: false }] }] },
+		});
+		const deps = createProjectDeps();
+		const result = await createProjectApi(deps).revertCommit(defaultScope, {
+			commitHash: "a".repeat(40),
+			expectedHead: "b".repeat(40),
+			expectedBranch: "main",
+			taskScope: { taskId: "task-1", baseRef: "main" },
+		});
+		expect(result.error).toContain("shared checkout");
+		expect(revertCommitMock).not.toHaveBeenCalled();
+	});
+	it.each([true, false])("refreshes scoped metadata after success or retained conflicts (success=%s)", async (ok) => {
+		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
+		const conflictState = {
+			operation: "revert",
+			sourceBranch: null,
+			currentStep: null,
+			totalSteps: null,
+			conflictedFiles: ["file.txt"],
+			autoMergedFiles: [],
+		};
+		revertCommitMock.mockResolvedValue({
+			ok,
+			commitHash: "a".repeat(40),
+			output: "",
+			...(ok ? {} : { conflictState }),
+		});
+		const deps = createProjectDeps();
+		const api = createProjectApi(deps);
+		const input = {
+			commitHash: "a".repeat(40),
+			expectedHead: "b".repeat(40),
+			expectedBranch: "feature",
+			taskScope: { taskId: "task-1", baseRef: "main" },
+		};
+		const result = await api.revertCommit(defaultScope, input);
+		expect(result.ok).toBe(ok);
+		expect(revertCommitMock).toHaveBeenCalledWith({ cwd: "/tmp/worktree", ...input });
+		expect(deps.broadcaster.requestTaskRefresh).toHaveBeenCalledWith("project-1", "task-1");
+		expect(deps.broadcaster.requestHomeRefresh).not.toHaveBeenCalled();
 	});
 });

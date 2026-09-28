@@ -27,10 +27,64 @@ const interruptionScreen = screen([
 	"› Ask Codex to do anything",
 	"gpt-5.6-sol xhigh",
 ]);
+const composerTip = "  Tip: Use /fast to enable our fastest inference with increased plan usage.";
+const interruptionWithTipScreen = screen([
+	...interruptionScreen.lines.slice(0, 4),
+	composerTip,
+	"",
+	...interruptionScreen.lines.slice(4),
+]);
 
 describe("Codex rendered turn interruption", () => {
 	it("recognizes the complete interruption result followed by the Codex input prompt", () => {
 		expect(isCodexTurnInterruptedScreen(interruptionScreen)).toBe(true);
+	});
+
+	it("recognizes the complete result across the adjacent Codex composer tip", () => {
+		expect(isCodexTurnInterruptedScreen(interruptionWithTipScreen)).toBe(true);
+	});
+
+	it("preserves normalized composer matching on indented viewport rows", () => {
+		expect(
+			isCodexTurnInterruptedScreen(
+				screen([...interruptionWithTipScreen.lines.slice(0, 6), "  ›   Ask  CODEX to do anything  "]),
+			),
+		).toBe(true);
+	});
+
+	it.each([
+		["• Working on the follow-up", "", composerTip],
+		["› Continue working", "", composerTip],
+		[composerTip, "A newer assistant response."],
+		[composerTip, "  A second row of transcript text."],
+		[composerTip, "", composerTip],
+		["Tip:"],
+		["> Tip: Use /fast to enable our fastest inference with increased plan usage."],
+	])("does not skip newer transcript or arbitrary chrome: %j", (...interveningRows) => {
+		expect(
+			isCodexTurnInterruptedScreen(
+				screen([
+					...interruptionScreen.lines.slice(0, 4),
+					...interveningRows,
+					"",
+					...interruptionScreen.lines.slice(4),
+				]),
+			),
+		).toBe(false);
+	});
+
+	it("still requires the complete interruption result when composer chrome is present", () => {
+		expect(
+			isCodexTurnInterruptedScreen(
+				screen([
+					"■ Conversation interrupted - tell the model what to do differently.",
+					"",
+					composerTip,
+					"",
+					"› Ask Codex to do anything",
+				]),
+			),
+		).toBe(false);
 	});
 
 	it("does not treat quoted or partial transcript text as lifecycle evidence", () => {
@@ -83,7 +137,7 @@ describe("Codex rendered turn interruption", () => {
 			const detector = createCodexTurnInterruptionDetector();
 			expect(
 				detector.detect(
-					interruptionScreen,
+					interruptionWithTipScreen,
 					createTestTaskSessionSummary({
 						state: "awaiting_review",
 						agentId: "codex",
@@ -127,6 +181,7 @@ describe("Codex rendered turn interruption", () => {
 		const detector = createCodexTurnInterruptionDetector();
 		const running = createTestTaskSessionSummary({ state: "running", agentId: "codex" });
 		expect(detector.detect(interruptionScreen, running)).toEqual({ type: "agent.rendered-turn-interrupted" });
+		expect(detector.detect(interruptionWithTipScreen, running)).toBeNull();
 		expect(detector.detect(interruptionScreen, running)).toBeNull();
 		expect(detector.detect(screen(["Working on the next turn"]), running)).toBeNull();
 		expect(detector.detect(interruptionScreen, running)).toEqual({ type: "agent.rendered-turn-interrupted" });

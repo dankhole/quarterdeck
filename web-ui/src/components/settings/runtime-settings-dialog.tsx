@@ -4,6 +4,7 @@ import { ExternalLink, Settings } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import { HarnessSection } from "@/components/settings/agent-section";
+import { CodeNavigationSection } from "@/components/settings/code-navigation-section";
 import { AiFeaturesSection, NotificationsSection, TerminalSection } from "@/components/settings/display-sections";
 import {
 	ConfirmationsSection,
@@ -189,6 +190,7 @@ export function RuntimeSettingsDialog({
 					<TerminalSection {...sectionProps} />
 					<GitSection {...sectionProps} />
 					<EditorSection {...sectionProps} />
+					<CodeNavigationSection {...sectionProps} projectId={projectId} />
 					<ConfirmationsSection {...sectionProps} />
 					<TroubleshootingSection {...sectionProps} onResetLayout={resetLayoutCustomizations} />
 

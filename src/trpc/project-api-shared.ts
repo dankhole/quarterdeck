@@ -4,7 +4,6 @@ import type {
 	IRuntimeBroadcaster,
 	ITerminalManagerProvider,
 	RuntimeGitCheckoutResponse,
-	RuntimeGitCommitResponse,
 	RuntimeGitDiscardResponse,
 	RuntimeGitMergeResponse,
 	RuntimeWorkdirChangesMode,
@@ -208,6 +207,6 @@ export function createGitBranchErrorResponse(error: unknown): RuntimeGitCheckout
 	return { ok: false, branch: "", summary: { ...EMPTY_GIT_SUMMARY }, output: "", error: errorMessage(error) };
 }
 
-export function createGitOutputErrorResponse(error: unknown): RuntimeGitDiscardResponse & RuntimeGitCommitResponse {
+export function createGitOutputErrorResponse(error: unknown): RuntimeGitDiscardResponse {
 	return { ok: false, summary: { ...EMPTY_GIT_SUMMARY }, output: "", error: errorMessage(error) };
 }

@@ -447,6 +447,7 @@ export async function commitSelectedFiles(options: {
 	cwd: string;
 	paths: string[];
 	message: string;
+	pushAfterCommit?: boolean;
 }): Promise<RuntimeGitCommitResponse> {
 	const repoRoot = await resolveRepoRoot(options.cwd);
 
@@ -455,18 +456,32 @@ export async function commitSelectedFiles(options: {
 		if (!validateGitPath(p)) {
 			return {
 				ok: false,
-				summary: createEmptySummary(),
 				output: "",
 				error: `Invalid file path: ${p}`,
 			};
 		}
 	}
 
-	const result = await commitSelectedPaths(repoRoot, options.paths, options.message);
-	return {
-		...result,
-		summary: await getGitSyncSummary(repoRoot),
-	};
+	// Metadata refresh is owned by the API's mutation effects. The commit result
+	// must not wait for another full worktree scan or fail after Git succeeded
+	// because that unrelated scan failed.
+	const response = await commitSelectedPaths(repoRoot, options.paths, options.message);
+	if (!response.ok || !options.pushAfterCommit) return response;
+
+	try {
+		const pushResult = await runGit(repoRoot, ["push"], USER_GIT_ACTION_OPTIONS);
+		return {
+			...response,
+			pushOk: pushResult.ok,
+			...(!pushResult.ok && { pushError: pushResult.error ?? "Push failed." }),
+		};
+	} catch (error) {
+		return {
+			...response,
+			pushOk: false,
+			pushError: error instanceof Error ? error.message : "Push failed.",
+		};
+	}
 }
 
 export async function discardSingleFile(options: {

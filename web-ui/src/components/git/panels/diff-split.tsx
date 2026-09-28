@@ -1,7 +1,9 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 
+import { DeferredDiffRows } from "@/components/shared/deferred-diff-rows";
+import { DiffContextRows } from "@/components/shared/diff-context-rows";
 import {
-	buildDisplayItems,
+	buildDiffDisplayGroups,
 	buildUnifiedDiffRows,
 	CollapsedBlockControls,
 	createHighlightedLineCache,
@@ -11,6 +13,7 @@ import {
 	type UnifiedDiffRow,
 	useIncrementalExpand,
 } from "@/components/shared/diff-renderer";
+import { AgentDiffHunkAction } from "./agent-diff-hunk-action";
 
 import {
 	commentKey,
@@ -98,8 +101,9 @@ function isCommentableOnSplitSide(row: UnifiedDiffRow, side: "left" | "right"): 
 	return side === "right";
 }
 
-export function SplitDiff({
+export const SplitDiff = memo(function SplitDiff({
 	path,
+	agentContextSource,
 	oldText,
 	newText,
 	comments,
@@ -108,6 +112,7 @@ export function SplitDiff({
 	onDeleteComment,
 }: {
 	path: string;
+	agentContextSource?: string;
 	oldText: string | null | undefined;
 	newText: string;
 	comments: Map<string, DiffLineComment>;
@@ -120,7 +125,13 @@ export function SplitDiff({
 		[oldText, newText, prismGrammar, prismLanguage],
 	);
 	const rows = useMemo(() => buildUnifiedDiffRows(oldText, newText), [oldText, newText]);
-	const displayItems = useMemo(() => buildDisplayItems(rows, expandedBlocks), [expandedBlocks, rows]);
+	const displayItems = useMemo(
+		() =>
+			buildDiffDisplayGroups(rows).map((item) =>
+				item.type === "rows" ? { ...item, pairs: pairRowsForSplit(item.rows) } : item,
+			),
+		[rows],
+	);
 
 	const renderSide = (row: UnifiedDiffRow, side: "left" | "right"): React.ReactElement => {
 		const rowLineNumber = row.lineNumber;
@@ -154,7 +165,7 @@ export function SplitDiff({
 					onClick={
 						canClickRow
 							? () => {
-									onAddComment(rowLineNumber, row.text, row.variant);
+									onAddComment(path, rowLineNumber, row.text, row.variant);
 								}
 							: undefined
 					}
@@ -163,86 +174,35 @@ export function SplitDiff({
 						lineNumber={rowLineNumber}
 						hasComment={hasComment}
 						canComment={canCommentOnSide}
-						onDeleteComment={hasComment ? () => onDeleteComment(rowLineNumber, row.variant) : undefined}
+						onDeleteComment={hasComment ? () => onDeleteComment(path, rowLineNumber, row.variant) : undefined}
 					/>
 					<DiffRowText row={row} highlightedLineHtml={highlightedLineHtml} highlightCache={highlightCache} />
 				</div>
 				{existingComment ? (
 					<InlineComment
 						comment={existingComment}
-						onChange={(text) => onUpdateComment(rowLineNumber, row.variant, text)}
-						onDelete={() => onDeleteComment(rowLineNumber, row.variant)}
+						onChange={(text) => onUpdateComment(path, rowLineNumber, row.variant, text)}
+						onDelete={() => onDeleteComment(path, rowLineNumber, row.variant)}
 					/>
 				) : null}
 			</div>
 		);
 	};
 
-	const renderPairs = (sourceRows: UnifiedDiffRow[]): React.ReactElement[] => {
-		const pairs = pairRowsForSplit(sourceRows);
-		return pairs.map((pair) => (
-			<div key={pair.key} className="kb-diff-split-grid-row">
-				<div
-					className={`kb-diff-split-cell ${pair.left ? "kb-diff-split-cell-filled" : "kb-diff-split-cell-placeholder"}`}
-				>
-					{pair.left ? renderSide(pair.left, "left") : null}
-				</div>
-				<div
-					className={`kb-diff-split-cell kb-diff-split-cell-right ${pair.right ? "kb-diff-split-cell-filled" : "kb-diff-split-cell-placeholder"}`}
-				>
-					{pair.right ? renderSide(pair.right, "right") : null}
-				</div>
+	const renderPair = (pair: SplitDiffRowPair): React.ReactElement => (
+		<div key={pair.key} className="kb-diff-split-grid-row">
+			<div
+				className={`kb-diff-split-cell ${pair.left ? "kb-diff-split-cell-filled" : "kb-diff-split-cell-placeholder"}`}
+			>
+				{pair.left ? renderSide(pair.left, "left") : null}
 			</div>
-		));
-	};
-
-	const renderDisplayItems = (): React.ReactElement[] => {
-		const renderedItems: React.ReactElement[] = [];
-		let pendingRows: UnifiedDiffRow[] = [];
-
-		const flushPendingRows = (): void => {
-			if (pendingRows.length === 0) {
-				return;
-			}
-			renderedItems.push(...renderPairs(pendingRows));
-			pendingRows = [];
-		};
-
-		for (const item of displayItems) {
-			if (item.type === "row") {
-				pendingRows.push(item.row);
-				continue;
-			}
-
-			flushPendingRows();
-			renderedItems.push(
-				<div key={item.block.id}>
-					<div className="kb-diff-split-grid-row">
-						<div className="kb-diff-split-cell kb-diff-split-cell-filled">
-							<CollapsedBlockControls
-								block={item.block}
-								onExpandTop={expandTop}
-								onExpandBottom={expandBottom}
-								onExpandAll={expandAll}
-							/>
-						</div>
-						<div className="kb-diff-split-cell kb-diff-split-cell-filled kb-diff-split-cell-right">
-							<CollapsedBlockControls
-								block={item.block}
-								onExpandTop={expandTop}
-								onExpandBottom={expandBottom}
-								onExpandAll={expandAll}
-							/>
-						</div>
-					</div>
-					{item.block.expanded ? renderPairs(item.block.rows) : null}
-				</div>,
-			);
-		}
-
-		flushPendingRows();
-		return renderedItems;
-	};
+			<div
+				className={`kb-diff-split-cell kb-diff-split-cell-right ${pair.right ? "kb-diff-split-cell-filled" : "kb-diff-split-cell-placeholder"}`}
+			>
+				{pair.right ? renderSide(pair.right, "right") : null}
+			</div>
+		</div>
+	);
 
 	return (
 		<div className="kb-diff-split-grid-shell">
@@ -250,7 +210,41 @@ export function SplitDiff({
 				<div className="kb-diff-split-grid-background-column" />
 				<div className="kb-diff-split-grid-background-column kb-diff-split-grid-background-column-right" />
 			</div>
-			<div className="kb-diff-split-grid-content">{renderDisplayItems()}</div>
+			<div className="kb-diff-split-grid-content">
+				{displayItems.map((item) =>
+					item.type === "rows" ? (
+						<div key={item.pairs[0]!.key}>
+							<AgentDiffHunkAction path={path} rows={item.rows} source={agentContextSource} />
+							<DeferredDiffRows rows={item.pairs} getRowKey={(pair) => pair.key} renderRow={renderPair} />
+						</div>
+					) : (
+						<div key={item.block.id}>
+							<DiffContextRows
+								block={item.block}
+								state={expandedBlocks[item.block.id]}
+								renderRow={(row) => renderPair({ key: `pair-context-${row.key}`, left: row, right: row })}
+								renderControls={(block) => (
+									<div className="kb-diff-split-grid-row">
+										{["left", "right"].map((side) => (
+											<div
+												key={side}
+												className={`kb-diff-split-cell kb-diff-split-cell-filled ${side === "right" ? "kb-diff-split-cell-right" : ""}`}
+											>
+												<CollapsedBlockControls
+													block={block}
+													onExpandTop={expandTop}
+													onExpandBottom={expandBottom}
+													onExpandAll={expandAll}
+												/>
+											</div>
+										))}
+									</div>
+								)}
+							/>
+						</div>
+					),
+				)}
+			</div>
 		</div>
 	);
-}
+});

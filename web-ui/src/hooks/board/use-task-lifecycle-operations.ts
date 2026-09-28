@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import { resolveTaskStartGeometry } from "@/hooks/board/task-session-geometry";
+import { guardFileEditorScopes, retireFileEditorScopes } from "@/hooks/git/file-editor-cache";
 import type { FlushProjectBoardCommandsResult } from "@/hooks/project/use-project-sync";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
@@ -38,7 +39,7 @@ interface UseTaskLifecycleOperationsInput {
 	flushBoardCommands: () => Promise<FlushProjectBoardCommandsResult>;
 	getAuthoritativeRevision: () => number | null;
 	applyLifecycleProjectState: (state: RuntimeProjectStateResponse) => void;
-	refreshProjectState: () => Promise<void>;
+	refreshProjectState: (options?: { restoreLifecyclePresentation?: boolean }) => Promise<void>;
 }
 
 export interface UseTaskLifecycleOperationsResult {
@@ -157,6 +158,20 @@ export function useTaskLifecycleOperations({
 				return null;
 			}
 			const taskId = draft.kind === "create_and_start" ? draft.task.taskId : draft.taskId;
+			const editorTarget = {
+				projectId,
+				tasks: [
+					{
+						taskId,
+						taskCreatedAt: draft.kind === "create_and_start" ? draft.task.createdAt : draft.taskCreatedAt,
+					},
+				],
+			};
+			const removesScope = draft.kind === "trash" || draft.kind === "delete";
+			if (removesScope && !guardFileEditorScopes(editorTarget)) {
+				await refreshProjectState({ restoreLifecyclePresentation: true });
+				return null;
+			}
 			const scopeKey = createTaskLifecycleScopeKey(projectId, taskId);
 			const existing = inFlightByScopeRef.current.get(scopeKey);
 			if (existing) {
@@ -203,6 +218,15 @@ export function useTaskLifecycleOperations({
 									viewportHeight: window.innerHeight,
 								})
 							: null;
+					if (removesScope && !guardFileEditorScopes(editorTarget)) {
+						await refreshProjectState({ restoreLifecyclePresentation: true });
+						if (deleteToastKey)
+							showAppToast(
+								{ intent: "warning", message: "Resolve unsaved files before deleting the task." },
+								deleteToastKey,
+							);
+						return null;
+					}
 					const command = {
 						...draft,
 						...(geometry ?? {}),
@@ -210,6 +234,7 @@ export function useTaskLifecycleOperations({
 						expectedRevision,
 					} as RuntimeTaskLifecycleCommand;
 					const result = await sendLifecycleCommand(projectId, command);
+					if (result.ok && removesScope) retireFileEditorScopes(editorTarget);
 					applyLifecycleProjectState(result.state);
 					if (!result.ok) {
 						notifyError(
@@ -246,7 +271,7 @@ export function useTaskLifecycleOperations({
 					// response and status lookup were lost. Replace the optimistic board
 					// with a fresh authoritative snapshot instead of leaving a card in a
 					// locally invented lifecycle state.
-					await refreshProjectState();
+					await refreshProjectState({ restoreLifecyclePresentation: true });
 					return null;
 				} finally {
 					setupToastsRef.current.delete(operationId);

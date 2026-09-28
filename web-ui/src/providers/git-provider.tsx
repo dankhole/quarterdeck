@@ -197,6 +197,7 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 
 	// --- useFileBrowserData ---
 	const homeFileBrowserData = useFileBrowserData({
+		rootPath: projectPath,
 		projectId: currentProjectId,
 		taskId: fileBrowserResolvedScope?.type === "task" ? fileBrowserResolvedScope.taskId : null,
 		baseRef: fileBrowserResolvedScope?.type === "task" ? fileBrowserResolvedScope.baseRef : undefined,

@@ -101,7 +101,6 @@ export type RuntimeGitCommitRequest = z.infer<typeof runtimeGitCommitRequestSche
 export const runtimeGitCommitResponseSchema = z.object({
 	ok: z.boolean(),
 	commitHash: z.string().optional(),
-	summary: runtimeGitSyncSummarySchema,
 	output: z.string(),
 	error: z.string().optional(),
 	pushOk: z.boolean().optional(),

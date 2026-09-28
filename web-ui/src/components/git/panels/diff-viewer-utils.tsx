@@ -101,9 +101,19 @@ export function getVisibleDiffGroupPaths({
 }
 
 export interface DiffCommentCallbacks {
-	onAddComment: (lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => void;
-	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;
-	onDeleteComment: (lineNumber: number, variant: "added" | "removed" | "context") => void;
+	onAddComment: (
+		filePath: string,
+		lineNumber: number,
+		lineText: string,
+		variant: "added" | "removed" | "context",
+	) => void;
+	onUpdateComment: (
+		filePath: string,
+		lineNumber: number,
+		variant: "added" | "removed" | "context",
+		text: string,
+	) => void;
+	onDeleteComment: (filePath: string, lineNumber: number, variant: "added" | "removed" | "context") => void;
 }
 
 export function DiffLineGutter({

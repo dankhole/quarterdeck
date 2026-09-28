@@ -33,6 +33,7 @@ function createBoard(title: string): RuntimeBoardData {
 					{
 						unstarted: true,
 						id: "task-1",
+						colorIndex: 0,
 						title: null,
 						prompt: title,
 						baseRef: "main",

@@ -42,6 +42,8 @@ import {
 	runtimeGitRenameBranchResponseSchema,
 	runtimeGitResetToRefRequestSchema,
 	runtimeGitResetToRefResponseSchema,
+	runtimeGitRevertRequestSchema,
+	runtimeGitRevertResponseSchema,
 	runtimeGitSyncActionSchema,
 	runtimeGitSyncResponseSchema,
 	runtimeListFilesRequestSchema,
@@ -84,6 +86,7 @@ import {
 	SUMMARY_PREVIOUS_ACTIVITY_LIMIT,
 } from "../title";
 import { projectGitProcedure, projectProcedure, t } from "./app-router-init";
+import { codeNavigationRouter } from "./code-navigation-router";
 
 const log = createTaggedLogger("task-gen");
 
@@ -99,6 +102,7 @@ const gitSyncActionInputSchema = z.object({
 });
 
 export const projectRouter = t.router({
+	codeNavigation: codeNavigationRouter,
 	runGitSyncAction: projectGitProcedure
 		.input(gitSyncActionInputSchema)
 		.output(runtimeGitSyncResponseSchema)
@@ -176,6 +180,12 @@ export const projectRouter = t.router({
 		.output(runtimeGitResetToRefResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.resetToRef(ctx.projectScope, input);
+		}),
+	revertCommit: projectGitProcedure
+		.input(runtimeGitRevertRequestSchema)
+		.output(runtimeGitRevertResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.projectApi.revertCommit(ctx.projectScope, input);
 		}),
 	cherryPickCommit: projectGitProcedure
 		.input(runtimeGitCherryPickRequestSchema)

@@ -1,6 +1,14 @@
 # Bring-Your-Own LSP Code Navigation Plan
 
-Status: planned; no LSP runtime or Files-view integration has been implemented.
+Status: first milestone implemented. The runtime, Settings, Files editor, definition/references, and explicit hover action are available behind the opt-in global setting. TS/JS is the shipped template; custom server definitions support other languages.
+
+Navigation synchronizes the exact unsaved editor snapshot through a serialized `didOpen`/request/`didClose` exchange, with runtime-monotonic document versions. Continuous `didChange` subscriptions are deferred; a closed or changed browser document cannot supply a stale result. Completed reference lists remain usable while navigating within their original scope.
+
+Current limits are 3 processes per project, 16 per runtime, 8 queued requests per server, 30-second initialization/request deadlines, 15-minute idle shutdown, 500 mapped result candidates, 5 MB document content, and a 32 MB stdout budget per request. Diagnostics retain server ID, operation, bounded failure category/stage, and exit code/signal without server output or document content. Server launch uses structured executable/arguments; Windows `.cmd` wrappers require `node.exe` plus the server JavaScript entrypoint. No server is installed or launched by merely opening Settings.
+
+POSIX sessions own detached process groups. On Windows, a trusted system PowerShell supervisor joins a kill-on-close Job Object before directly launching the server with inherited protocol pipes. Its sole noninheritable job handle keeps workers owned after the server crashes. Private environment values carry launch data without expanding the supervisor command line and are removed before the server inherits its environment. Native Windows tests must establish kernel cleanup and argument/pipe behavior; source inspection on macOS does not satisfy that gate.
+
+Focused synthetic protocol/process tests cover the first milestone. Real third-party server compatibility and native Windows acceptance remain open. The phases below retain later design options; additional templates, continuous synchronization, shortcuts, result snippets, warmup, and advanced features are not implemented.
 
 ## Goal
 

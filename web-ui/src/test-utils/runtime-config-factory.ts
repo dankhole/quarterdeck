@@ -115,6 +115,8 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	terminalFontWeight: CONFIG_DEFAULTS.terminalFontWeight,
 	logLevel: CONFIG_DEFAULTS.logLevel,
 	fileEditorAutosaveMode: CONFIG_DEFAULTS.fileEditorAutosaveMode,
+	codeNavigationEnabled: CONFIG_DEFAULTS.codeNavigationEnabled,
+	lspServers: CONFIG_DEFAULTS.lspServers,
 	defaultBaseRef: CONFIG_DEFAULTS.defaultBaseRef,
 	worktreeSetupScript: CONFIG_DEFAULTS.worktreeSetupScript,
 	backupIntervalMinutes: CONFIG_DEFAULTS.backupIntervalMinutes,
@@ -146,6 +148,7 @@ export function createTestRuntimeConfigResponse(overrides: RuntimeConfigResponse
 		...DEFAULT_RUNTIME_CONFIG_RESPONSE,
 		...overrides,
 		selectedAgentId,
+		lspServers: structuredClone(overrides.lspServers ?? DEFAULT_RUNTIME_CONFIG_RESPONSE.lspServers),
 		effectiveCommand: overrides.effectiveCommand ?? selectedAgentId,
 		audibleNotificationEvents: {
 			...DEFAULT_RUNTIME_CONFIG_RESPONSE.audibleNotificationEvents,

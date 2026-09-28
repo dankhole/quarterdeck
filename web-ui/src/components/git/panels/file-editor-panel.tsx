@@ -1,9 +1,11 @@
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
 	BookOpen,
 	Check,
 	Clipboard,
 	Code,
 	Copy,
+	Ellipsis,
 	FileText,
 	PanelTopClose,
 	RotateCcw,
@@ -18,7 +20,12 @@ import { type FocusEvent, type HTMLAttributes, type ReactElement, type ReactNode
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { SourceEditor, type SourceEditorHandle } from "@/components/editor/source-editor";
+import {
+	SourceEditor,
+	type SourceEditorAction,
+	type SourceEditorHandle,
+	type SourceEditorRange,
+} from "@/components/editor/source-editor";
 import { copyToClipboard } from "@/components/git/panels/context-menu-utils";
 import { resolvePrismGrammar, resolvePrismLanguageByAlias } from "@/components/shared/syntax-highlighting";
 import { cn } from "@/components/ui/cn";
@@ -75,6 +82,9 @@ interface FileEditorPanelProps {
 	discardPrompt: FileEditorDiscardPrompt | null;
 	autosaveMode: FileEditorAutosaveMode;
 	scrollToLine?: number | null;
+	scrollToRange?: SourceEditorRange | null;
+	onScrollToRangeConsumed?: () => void;
+	editorActions?: readonly SourceEditorAction[];
 	onScrollToLineConsumed?: () => void;
 	onSelectTab: (path: string) => void;
 	onCloseTab: (path: string) => void;
@@ -101,6 +111,9 @@ export function FileEditorPanel({
 	discardPrompt,
 	autosaveMode,
 	scrollToLine,
+	scrollToRange,
+	onScrollToRangeConsumed,
+	editorActions,
 	onScrollToLineConsumed,
 	onSelectTab,
 	onCloseTab,
@@ -292,6 +305,39 @@ export function FileEditorPanel({
 								Unsaved
 							</span>
 						) : null}
+						{editorActions?.length && !findReplaceDisabled ? (
+							<DropdownMenu.Root>
+								<DropdownMenu.Trigger asChild>
+									<button
+										type="button"
+										aria-label="Editor actions"
+										className="shrink-0 rounded p-0.5 text-text-tertiary hover:text-text-primary"
+									>
+										<Ellipsis size={16} />
+									</button>
+								</DropdownMenu.Trigger>
+								<DropdownMenu.Portal>
+									<DropdownMenu.Content
+										align="end"
+										className="z-50 min-w-48 rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg"
+									>
+										{editorActions.map((action) => (
+											<DropdownMenu.Item
+												key={action.id}
+												disabled={action.disabled}
+												className="rounded-sm px-2 py-1.5 text-[13px] text-text-primary cursor-pointer outline-none data-[highlighted]:bg-surface-3 data-[disabled]:text-text-tertiary"
+												onSelect={() => {
+													const context = sourceEditorRef.current?.getActionContext();
+													if (context) action.onSelect(context);
+												}}
+											>
+												{action.label}
+											</DropdownMenu.Item>
+										))}
+									</DropdownMenu.Content>
+								</DropdownMenu.Portal>
+							</DropdownMenu.Root>
+						) : null}
 						<Tooltip content={saveDisabled ? "Save unavailable" : "Save file"}>
 							<button
 								type="button"
@@ -452,6 +498,9 @@ export function FileEditorPanel({
 							readOnly={!canEditActiveTab}
 							wordWrap={wordWrap}
 							scrollToLine={scrollToLine}
+							scrollToRange={scrollToRange}
+							onScrollToRangeConsumed={onScrollToRangeConsumed}
+							actions={editorActions}
 							onChange={onChangeActiveContent}
 							onSave={onSaveActiveTab}
 							onScrollToLineConsumed={onScrollToLineConsumed}

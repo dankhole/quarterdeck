@@ -1,7 +1,9 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 
+import { DeferredDiffRows } from "@/components/shared/deferred-diff-rows";
+import { DiffContextRows } from "@/components/shared/diff-context-rows";
 import {
-	buildDisplayItems,
+	buildDiffDisplayGroups,
 	buildUnifiedDiffRows,
 	CollapsedBlockControls,
 	createHighlightedLineCache,
@@ -11,6 +13,7 @@ import {
 	type UnifiedDiffRow,
 	useIncrementalExpand,
 } from "@/components/shared/diff-renderer";
+import { AgentDiffHunkAction } from "./agent-diff-hunk-action";
 
 import {
 	commentKey,
@@ -20,8 +23,9 @@ import {
 	InlineComment,
 } from "./diff-viewer-utils";
 
-export function UnifiedDiff({
+export const UnifiedDiff = memo(function UnifiedDiff({
 	path,
+	agentContextSource,
 	oldText,
 	newText,
 	comments,
@@ -30,6 +34,7 @@ export function UnifiedDiff({
 	onDeleteComment,
 }: {
 	path: string;
+	agentContextSource?: string;
 	oldText: string | null | undefined;
 	newText: string;
 	comments: Map<string, DiffLineComment>;
@@ -42,7 +47,7 @@ export function UnifiedDiff({
 		[oldText, newText, prismGrammar, prismLanguage],
 	);
 	const rows = useMemo(() => buildUnifiedDiffRows(oldText, newText), [oldText, newText]);
-	const displayItems = useMemo(() => buildDisplayItems(rows, expandedBlocks), [expandedBlocks, rows]);
+	const displayItems = useMemo(() => buildDiffDisplayGroups(rows), [rows]);
 
 	const renderRow = (row: UnifiedDiffRow): React.ReactElement => {
 		const rowKey = row.lineNumber != null ? commentKey(path, row.lineNumber, row.variant) : null;
@@ -61,7 +66,7 @@ export function UnifiedDiff({
 		const handleRowClick =
 			row.lineNumber != null && !hasComment
 				? () => {
-						onAddComment(row.lineNumber!, row.text, row.variant);
+						onAddComment(path, row.lineNumber!, row.text, row.variant);
 					}
 				: undefined;
 
@@ -71,15 +76,15 @@ export function UnifiedDiff({
 					<DiffLineGutter
 						lineNumber={row.lineNumber}
 						hasComment={hasComment}
-						onDeleteComment={hasComment ? () => onDeleteComment(row.lineNumber!, row.variant) : undefined}
+						onDeleteComment={hasComment ? () => onDeleteComment(path, row.lineNumber!, row.variant) : undefined}
 					/>
 					<DiffRowText row={row} highlightedLineHtml={highlightedLineHtml} highlightCache={highlightCache} />
 				</div>
 				{existingComment ? (
 					<InlineComment
 						comment={existingComment}
-						onChange={(text) => onUpdateComment(row.lineNumber!, row.variant, text)}
-						onDelete={() => onDeleteComment(row.lineNumber!, row.variant)}
+						onChange={(text) => onUpdateComment(path, row.lineNumber!, row.variant, text)}
+						onDelete={() => onDeleteComment(path, row.lineNumber!, row.variant)}
 					/>
 				) : null}
 			</div>
@@ -89,22 +94,33 @@ export function UnifiedDiff({
 	return (
 		<>
 			{displayItems.map((item) => {
-				if (item.type === "row") {
-					return renderRow(item.row);
+				if (item.type === "rows") {
+					return (
+						<div key={item.rows[0]!.key}>
+							<AgentDiffHunkAction path={path} rows={item.rows} source={agentContextSource} />
+							<DeferredDiffRows rows={item.rows} getRowKey={(row) => row.key} renderRow={renderRow} />
+						</div>
+					);
 				}
 
 				return (
 					<div key={item.block.id}>
-						<CollapsedBlockControls
+						<DiffContextRows
 							block={item.block}
-							onExpandTop={expandTop}
-							onExpandBottom={expandBottom}
-							onExpandAll={expandAll}
+							state={expandedBlocks[item.block.id]}
+							renderRow={renderRow}
+							renderControls={(block) => (
+								<CollapsedBlockControls
+									block={block}
+									onExpandTop={expandTop}
+									onExpandBottom={expandBottom}
+									onExpandAll={expandAll}
+								/>
+							)}
 						/>
-						{item.block.expanded ? item.block.rows.map((row) => renderRow(row)) : null}
 					</div>
 				);
 			})}
 		</>
 	);
-}
+});

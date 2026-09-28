@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CLAUDE_LAUNCH_PERMISSION_MODES } from "./claude-permissions.js";
+import { lspServersSchema } from "./code-navigation.js";
 import { CODEX_APPROVALS_REVIEWERS } from "./codex-approvals.js";
 import { runtimeCapabilitiesSchema, runtimeOpenTargetPlatformSchema } from "./host-integrations.js";
 import { promptShortcutSchema, runtimeAgentIdSchema, runtimeProjectShortcutSchema } from "./shared.js";
@@ -77,6 +78,8 @@ export const runtimeConfigResponseSchema = z.object({
 	terminalFontWeight: z.number(),
 	logLevel: z.enum(["debug", "info", "warn", "error"]),
 	fileEditorAutosaveMode: z.enum(["off", "delay", "focus"]),
+	codeNavigationEnabled: z.boolean(),
+	lspServers: lspServersSchema,
 	defaultBaseRef: z.string(),
 	worktreeSetupScript: z.string(),
 	backupIntervalMinutes: z.number(),
@@ -133,6 +136,8 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	terminalFontWeight: z.number().min(100).max(900).optional(),
 	logLevel: z.enum(["debug", "info", "warn", "error"]).optional(),
 	fileEditorAutosaveMode: z.enum(["off", "delay", "focus"]).optional(),
+	codeNavigationEnabled: z.boolean().optional(),
+	lspServers: lspServersSchema.optional(),
 	defaultBaseRef: z.string().optional(),
 	worktreeSetupScript: z.string().optional(),
 	backupIntervalMinutes: z.number().min(0).optional(),

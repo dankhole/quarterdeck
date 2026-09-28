@@ -204,6 +204,8 @@ async function applyConfigUpdates({
 
 // --- Public API ---
 
+type RuntimeConfigUpdateObserver = (previous: RuntimeConfigState, next: RuntimeConfigState) => void;
+
 export async function loadRuntimeConfig(projectId?: string | null): Promise<RuntimeConfigState> {
 	const configFiles = await readRuntimeConfigFiles(projectId ?? null);
 	if (configFiles.globalConfig !== null) {
@@ -269,6 +271,7 @@ export async function saveRuntimeConfig(
 export async function updateRuntimeConfig(
 	projectId: string | null,
 	updates: RuntimeConfigUpdateInput,
+	onUpdated?: RuntimeConfigUpdateObserver,
 ): Promise<RuntimeConfigState> {
 	const { globalConfigPath, projectConfigPath } = resolveRuntimeConfigPaths(projectId);
 	return await lockedFileSystem.withLocks(getRuntimeConfigLockRequests(projectId), async () => {
@@ -279,26 +282,40 @@ export async function updateRuntimeConfig(
 		if (projectConfigPath === null && normalizeWorktreeSetupScript(updates.worktreeSetupScript)) {
 			throw new Error("Cannot save a worktree setup script without a selected project.");
 		}
-		return applyConfigUpdates({ globalConfigPath, projectConfigPath, projectId, current, updates });
+		const next = await applyConfigUpdates({ globalConfigPath, projectConfigPath, projectId, current, updates });
+		// Capture changes under the persistence lock, before another save can replace them.
+		onUpdated?.(current, next);
+		return next;
 	});
 }
 
 export async function updateGlobalRuntimeConfig(
 	current: RuntimeConfigState,
 	updates: RuntimeConfigUpdateInput,
+	onUpdated?: RuntimeConfigUpdateObserver,
 ): Promise<RuntimeConfigState> {
 	const globalConfigPath = getRuntimeGlobalConfigPath();
 	return await lockedFileSystem.withLocks([{ path: globalConfigPath, type: "file" }], async () => {
+		// The caller's active state can predate a concurrent global save. Refresh global
+		// values inside the lock while retaining its project-only presentation state.
+		const persisted = await loadRuntimeConfigLocked(null);
+		const previous = {
+			...persisted,
+			projectConfigPath: current.projectConfigPath,
+			shortcuts: current.shortcuts,
+			pinnedBranches: current.pinnedBranches,
+			defaultBaseRef: current.defaultBaseRef,
+			worktreeSetupScript: current.worktreeSetupScript,
+		};
 		const result = await applyConfigUpdates({
 			globalConfigPath,
 			projectConfigPath: null,
 			projectId: null,
-			current,
+			current: previous,
 			updates,
 		});
-		if (result === current) {
-			return current;
-		}
-		return { ...result, projectConfigPath: current.projectConfigPath };
+		const next = { ...result, projectConfigPath: current.projectConfigPath };
+		onUpdated?.(previous, next);
+		return next;
 	});
 }

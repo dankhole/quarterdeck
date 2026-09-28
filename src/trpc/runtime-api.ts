@@ -32,6 +32,7 @@ export interface CreateRuntimeApiDependencies {
 	taskResourceOperations: TaskResourceOperationRunner;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	hostIntegrations: IRuntimeHostIntegrations;
+	onCodeNavigationConfigChanged: () => Promise<void>;
 	taskLifecycle?: Pick<ProjectTaskLifecycleService, "execute" | "getOperation" | "clearTrash">;
 	assertNativeStartAllowed?: (scope: RuntimeTrpcProjectScope, taskId: string) => Promise<void>;
 	onTaskSessionStarted?: (scope: RuntimeTrpcProjectScope, result: TaskSessionStartServiceResult) => Promise<void>;
@@ -75,11 +76,12 @@ class RuntimeApiImpl implements RuntimeApi {
 	}
 
 	async saveConfig(projectScope: RuntimeTrpcProjectScope | null, input: unknown) {
-		return handleSaveConfig(projectScope, input, {
+		return await handleSaveConfig(projectScope, input, {
 			config: this.deps.config,
 			broadcaster: this.deps.broadcaster,
 			getActiveProjectId: this.deps.getActiveProjectId,
 			runtimeCapabilities: this.deps.hostIntegrations.capabilities,
+			onCodeNavigationConfigChanged: this.deps.onCodeNavigationConfigChanged,
 		});
 	}
 

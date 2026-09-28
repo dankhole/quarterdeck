@@ -1,6 +1,13 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
+import {
+	clearCachedFileEditorTabs,
+	getFileEditorDrafts,
+	registerFileEditorScope,
+	setCachedFileEditorTabs,
+} from "@/hooks/git/file-editor-cache";
+import { createFileEditorTab } from "@/hooks/git/file-editor-workspace";
 import type { RuntimeClearTrashResult } from "@/runtime/types";
 import { createTestProjectStateResponse } from "@/test-utils/task-session-factory";
 import { type ClearTrash, useClearTrashOperation } from "./use-clear-trash-operation";
@@ -81,5 +88,43 @@ it("keeps all task identities in the original project across navigation during f
 		});
 	} finally {
 		await act(async () => root.unmount());
+	}
+});
+
+it("blocks Clear Trash on hidden drafts and preserves them for review", async () => {
+	mocks.mutate.mockClear();
+	registerFileEditorScope("hidden-trash", { projectId: "one", taskId: "task-1", taskCreatedAt: 1 });
+	const tab = createFileEditorTab("app.ts", {
+		content: "disk",
+		contentHash: "hash",
+		language: "typescript",
+		binary: false,
+		truncated: false,
+		size: 4,
+	});
+	setCachedFileEditorTabs("hidden-trash", [{ ...tab, value: "unsaved" }]);
+	let clear: ClearTrash = async () => null;
+	const flush = vi.fn(async () => ({ ok: true }));
+	function Harness() {
+		clear = useClearTrashOperation({
+			currentProjectId: "one",
+			flushBoardCommands: flush,
+			getAuthoritativeRevision: () => 1,
+			applyLifecycleProjectState: vi.fn(),
+		});
+		return null;
+	}
+	const root = createRoot(document.createElement("div"));
+	try {
+		await act(async () => root.render(<Harness />));
+		await act(async () => {
+			expect(await clear([{ taskId: "task-1", taskCreatedAt: 1 }])).toBeNull();
+		});
+		expect(flush).not.toHaveBeenCalled();
+		expect(mocks.mutate).not.toHaveBeenCalled();
+		expect(getFileEditorDrafts()[0]?.tab.value).toBe("unsaved");
+	} finally {
+		await act(async () => root.unmount());
+		clearCachedFileEditorTabs();
 	}
 });

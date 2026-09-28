@@ -24,6 +24,8 @@ export interface SettingsFormValues {
 	piToolApprovalsEnabled: boolean;
 	terminalFontWeight: number;
 	fileEditorAutosaveMode: RuntimeConfigResponse["fileEditorAutosaveMode"];
+	codeNavigationEnabled: boolean;
+	lspServers: RuntimeConfigResponse["lspServers"];
 	showTrashWorktreeNotice: boolean;
 	uncommittedChangesOnCardsEnabled: boolean;
 	unmergedChangesIndicatorEnabled: boolean;
@@ -65,6 +67,8 @@ export function resolveInitialValues(config: RuntimeConfigResponse | null): Sett
 		piToolApprovalsEnabled: config?.piToolApprovalsEnabled ?? CONFIG_DEFAULTS.piToolApprovalsEnabled,
 		terminalFontWeight: config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight,
 		fileEditorAutosaveMode: config?.fileEditorAutosaveMode ?? CONFIG_DEFAULTS.fileEditorAutosaveMode,
+		codeNavigationEnabled: config?.codeNavigationEnabled ?? CONFIG_DEFAULTS.codeNavigationEnabled,
+		lspServers: config?.lspServers ?? CONFIG_DEFAULTS.lspServers,
 		showTrashWorktreeNotice: config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice,
 		uncommittedChangesOnCardsEnabled:
 			config?.uncommittedChangesOnCardsEnabled ?? CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
@@ -102,6 +106,7 @@ export function areFormValuesEqual(a: SettingsFormValues, b: SettingsFormValues)
 		"audibleNotificationEvents",
 		"audibleNotificationSuppressCurrentProject",
 		"shortcuts",
+		"lspServers",
 	]);
 	for (const key of Object.keys(a) as Array<keyof SettingsFormValues>) {
 		if (objectKeys.has(key)) continue;
@@ -120,5 +125,8 @@ export function areFormValuesEqual(a: SettingsFormValues, b: SettingsFormValues)
 		return false;
 	}
 	// Shortcuts — custom structural equality
-	return areRuntimeProjectShortcutsEqual(a.shortcuts, b.shortcuts);
+	return (
+		areRuntimeProjectShortcutsEqual(a.shortcuts, b.shortcuts) &&
+		JSON.stringify(a.lspServers) === JSON.stringify(b.lspServers)
+	);
 }

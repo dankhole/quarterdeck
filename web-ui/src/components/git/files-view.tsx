@@ -2,12 +2,16 @@ import { FolderOpen, PanelLeft } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { CodeNavigationResults } from "@/components/git/panels/code-navigation-results";
 import { FileBrowserTreePanel } from "@/components/git/panels/file-browser-tree-panel";
 import { FileEditorPanel } from "@/components/git/panels/file-editor-panel";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useFileEditorWorkspace } from "@/hooks/git";
+import type { CodeNavigationConfig } from "@/hooks/git/code-navigation";
 import type { FileEditorAutosaveMode } from "@/hooks/git/file-editor-workspace";
+import { useAgentEditorActions } from "@/hooks/git/use-agent-editor-actions";
+import { useCodeNavigation } from "@/hooks/git/use-code-navigation";
 import type { UseFileBrowserDataResult } from "@/hooks/git/use-file-browser-data";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { clampBetween } from "@/resize/resize-persistence";
@@ -17,7 +21,11 @@ import {
 	type ResizeNumberPreference,
 } from "@/resize/resize-preferences";
 import { useResizeDrag } from "@/resize/use-resize-drag";
-import type { RuntimeWorkdirEntryKind, RuntimeWorkdirEntryMutationResponse } from "@/runtime/types";
+import type {
+	CodeNavigationLocation,
+	RuntimeWorkdirEntryKind,
+	RuntimeWorkdirEntryMutationResponse,
+} from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 
 // --- Constants ---
@@ -36,6 +44,8 @@ const expandedDirsByScope = new Map<string, Set<string>>();
 const initializedExpansionByScope = new Set<string>();
 
 export interface FilesViewProps {
+	projectId?: string | null;
+	codeNavigationConfig?: CodeNavigationConfig | null;
 	/** Pre-built ScopeBar element — parents construct this with their own scope/branch context. */
 	scopeBar: ReactNode;
 	showScopeBar?: boolean;
@@ -53,6 +63,8 @@ export interface FilesViewProps {
 }
 
 export function FilesView({
+	projectId = null,
+	codeNavigationConfig = null,
 	scopeBar,
 	showScopeBar = true,
 	fileBrowserData,
@@ -73,6 +85,10 @@ export function FilesView({
 		scopeKey ? initializedExpansionByScope.has(scopeKey) : false,
 	);
 
+	const [pendingCodeLocation, setPendingCodeLocation] = useState<{
+		scopeKey: string;
+		location: CodeNavigationLocation;
+	} | null>(null);
 	const [pendingScrollLine, setPendingScrollLine] = useState<number | null>(null);
 	const contentRowRef = useRef<HTMLDivElement | null>(null);
 	const contentScopeKeyRef = useRef(fileBrowserData.contentScopeKey);
@@ -80,6 +96,7 @@ export function FilesView({
 	const { startDrag: startFileTreeResize } = useResizeDrag();
 	const editorWorkspace = useFileEditorWorkspace({
 		scopeKey: fileBrowserData.contentScopeKey,
+		scope: fileBrowserData.editorScope,
 		selectedPath: fileBrowserData.selectedPath,
 		fileContent: fileBrowserData.fileContent,
 		isContentLoading: fileBrowserData.isContentLoading,
@@ -91,6 +108,44 @@ export function FilesView({
 		reloadFileContent: fileBrowserData.reloadFileContent,
 		saveFileContent: fileBrowserData.saveFileContent,
 	});
+
+	const codeNavigation = useCodeNavigation({
+		projectId,
+		scopeKey: fileBrowserData.contentScopeKey,
+		scope: fileBrowserData.searchScope,
+		config: codeNavigationConfig,
+		tab: editorWorkspace.activeTab,
+		readOnly: fileBrowserData.isReadOnly,
+	});
+	const agentEditorActions = useAgentEditorActions();
+	const editorActions = useMemo(
+		() => [...codeNavigation.actions, ...agentEditorActions],
+		[codeNavigation.actions, agentEditorActions],
+	);
+	const handleCodeNavigate = useCallback(
+		(location: CodeNavigationLocation) => {
+			setPendingScrollLine(null);
+			setPendingCodeLocation({ scopeKey: fileBrowserData.contentScopeKey, location });
+			if (location.path !== fileBrowserData.selectedPath) editorWorkspace.handleAutosaveFocusChange();
+			fileBrowserData.onSelectNavigationTarget(location.path);
+		},
+		[
+			fileBrowserData.contentScopeKey,
+			fileBrowserData.selectedPath,
+			fileBrowserData.onSelectNavigationTarget,
+			editorWorkspace.handleAutosaveFocusChange,
+		],
+	);
+	const pendingCodeRange =
+		pendingCodeLocation?.scopeKey === fileBrowserData.contentScopeKey &&
+		pendingCodeLocation.location.path === editorWorkspace.activeTab?.path
+			? pendingCodeLocation.location.range
+			: null;
+
+	useEffect(() => {
+		setPendingCodeLocation(null);
+		setPendingScrollLine(null);
+	}, [fileBrowserData.contentScopeKey]);
 
 	// Persist expanded dirs to module-level cache whenever they change.
 	useEffect(() => {
@@ -110,6 +165,7 @@ export function FilesView({
 	useEffect(() => {
 		if (pendingFileNavigation?.targetView === "files") {
 			fileBrowserData.onSelectPath(pendingFileNavigation.filePath);
+			setPendingCodeLocation(null);
 			setPendingScrollLine(pendingFileNavigation.lineNumber ?? null);
 			onFileNavigationConsumed?.();
 		}
@@ -312,6 +368,7 @@ export function FilesView({
 						<div
 							style={{
 								display: "flex",
+								flexDirection: "column",
 								flex: fileTreeVisible ? `0 0 ${contentPercent}` : "1 1 0",
 								minWidth: 0,
 								minHeight: 0,
@@ -329,6 +386,9 @@ export function FilesView({
 								hasDirtyTabs={editorWorkspace.hasDirtyTabs}
 								discardPrompt={editorWorkspace.discardPrompt}
 								autosaveMode={fileEditorAutosaveMode}
+								editorActions={editorActions}
+								scrollToRange={pendingCodeRange}
+								onScrollToRangeConsumed={() => setPendingCodeLocation(null)}
 								scrollToLine={pendingScrollLine}
 								onScrollToLineConsumed={() => setPendingScrollLine(null)}
 								onSelectTab={editorWorkspace.handleSelectTab}
@@ -342,6 +402,13 @@ export function FilesView({
 								onCancelDiscardPrompt={editorWorkspace.handleCancelDiscardPrompt}
 								onConfirmDiscardPrompt={editorWorkspace.handleConfirmDiscardPrompt}
 							/>
+							{codeNavigation.result ? (
+								<CodeNavigationResults
+									result={codeNavigation.result}
+									onDismiss={codeNavigation.dismiss}
+									onNavigate={handleCodeNavigate}
+								/>
+							) : null}
 						</div>
 					</>
 				)}

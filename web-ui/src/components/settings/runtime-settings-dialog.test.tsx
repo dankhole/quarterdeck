@@ -618,6 +618,48 @@ describe("RuntimeSettingsDialog", () => {
 		expect(payload.fileEditorAutosaveMode).toBe("focus");
 	});
 
+	it("opts into code navigation and saves structured language server edits", async () => {
+		saveMock.mockReset();
+		saveMock.mockResolvedValue(true);
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog open projectId="project-1" initialConfig={savedConfig} onOpenChange={() => {}} />,
+			);
+		});
+		const enabled = findSwitchByLabel(document.body, "Enable code navigation");
+		expect(enabled?.getAttribute("data-state")).toBe("unchecked");
+		await act(async () => {
+			enabled?.click();
+		});
+		const section = document.body.querySelector('[aria-labelledby="code-navigation-settings-heading"]')!;
+		await act(async () => {
+			findButtonByText(section, "Edit")?.click();
+		});
+		const executableLabel = Array.from(document.body.querySelectorAll("label")).find(
+			(label) => label.textContent?.trim() === "Executable",
+		);
+		const executable = executableLabel?.querySelector("input");
+		await act(async () => {
+			Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+				executable,
+				"/tools/custom language server",
+			);
+			executable?.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		await act(async () => {
+			findButtonByText(document.body, "Apply server")?.click();
+		});
+		await act(async () => {
+			findButtonByText(document.body, "Save")?.click();
+		});
+		expect(saveMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				codeNavigationEnabled: true,
+				lspServers: [expect.objectContaining({ command: "/tools/custom language server", args: ["--stdio"] })],
+			}),
+		);
+	});
+
 	it("syncs audible settings from loaded config", async () => {
 		const customConfig: RuntimeConfigResponse = {
 			...savedConfig,

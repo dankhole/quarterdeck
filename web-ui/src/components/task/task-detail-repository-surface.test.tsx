@@ -26,6 +26,14 @@ vi.mock("@/components/app/top-bar", () => ({
 	),
 }));
 
+vi.mock("@/providers/board-provider", () => ({
+	useBoardContext: () => ({ sendTaskSessionInput: vi.fn(async () => ({ ok: true })) }),
+}));
+
+vi.mock("@/providers/project-runtime-provider", () => ({
+	useProjectRuntimeContext: () => ({ runtimeProjectConfig: null }),
+}));
+
 vi.mock("@/components/git", () => ({
 	GitView: ({ branchStatusSlot, ...props }: { branchStatusSlot?: ReactNode }) => {
 		mockGitView(props);
@@ -151,6 +159,7 @@ function createFileBrowserData(): UseFileBrowserDataResult {
 		mutationBlockedReason: null,
 		selectedPath: null,
 		onSelectPath: () => {},
+		onSelectNavigationTarget: () => {},
 		fileContent: null,
 		isContentLoading: false,
 		isContentError: false,

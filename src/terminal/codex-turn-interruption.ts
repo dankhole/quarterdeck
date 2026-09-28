@@ -38,7 +38,10 @@ function hasCompleteInterruptionEndingAt(lines: readonly string[], expectedEnd: 
 export function isCodexTurnInterruptedScreen(screen: TerminalScreenSnapshot): boolean {
 	let inputPromptIndex = -1;
 	for (let index = screen.lines.length - 1; index >= 0; index -= 1) {
-		if (normalizeLine(screen.lines[index] ?? "") === INPUT_PROMPT) {
+		const line = screen.lines[index] ?? "";
+		// Most output rows cannot be the composer; avoid normalizing those rows
+		// on every mirrored write in attached high-output sessions.
+		if (line.includes("›") && normalizeLine(line) === INPUT_PROMPT) {
 			inputPromptIndex = index;
 			break;
 		}
@@ -46,12 +49,23 @@ export function isCodexTurnInterruptedScreen(screen: TerminalScreenSnapshot): bo
 	if (inputPromptIndex < 0) return false;
 
 	// The interruption must be the current terminal result immediately above
-	// the active composer. Historical interruption text may remain visible while
-	// a later turn is genuinely working; arbitrary intervening transcript or
-	// status rows make that older result non-authoritative.
+	// the active composer. Codex 0.157 can insert one Tip: chrome row here; skip
+	// only that adjacent row, never arbitrary transcript, status, or tip blocks.
+	// Historical interruption text above a newer result remains inert.
 	let interruptionEnd = inputPromptIndex - 1;
-	while (interruptionEnd >= 0 && normalizeLine(screen.lines[interruptionEnd] ?? "") === "") {
-		interruptionEnd -= 1;
+	let skippedComposerTip = false;
+	while (interruptionEnd >= 0) {
+		const line = normalizeLine(screen.lines[interruptionEnd] ?? "");
+		if (!line) {
+			interruptionEnd -= 1;
+			continue;
+		}
+		if (!skippedComposerTip && /^tip: \S/.test(line)) {
+			skippedComposerTip = true;
+			interruptionEnd -= 1;
+			continue;
+		}
+		break;
 	}
 	return interruptionEnd >= 0 && hasCompleteInterruptionEndingAt(screen.lines, interruptionEnd);
 }

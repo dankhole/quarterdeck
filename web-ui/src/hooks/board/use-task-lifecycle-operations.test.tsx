@@ -6,6 +6,14 @@ import {
 	type PendingTaskLifecycleOperation,
 	useTaskLifecycleOperations,
 } from "@/hooks/board/use-task-lifecycle-operations";
+import {
+	clearCachedFileEditorTabs,
+	getCachedFileEditorTabs,
+	getFileEditorDrafts,
+	registerFileEditorScope,
+	setCachedFileEditorTabs,
+} from "@/hooks/git/file-editor-cache";
+import { createFileEditorTab } from "@/hooks/git/file-editor-workspace";
 import type { RuntimeTaskLifecycleResult } from "@/runtime/types";
 import { createTestProjectStateResponse } from "@/test-utils/task-session-factory";
 
@@ -123,6 +131,7 @@ describe("useTaskLifecycleOperations", () => {
 	let refreshProjectState: Mock<() => Promise<void>>;
 
 	beforeEach(async () => {
+		clearCachedFileEditorTabs();
 		executeTaskLifecycleMutateMock.mockReset();
 		getTaskLifecycleOperationQueryMock.mockReset();
 		getRuntimeTrpcClientProjectMock.mockReset();
@@ -157,6 +166,7 @@ describe("useTaskLifecycleOperations", () => {
 	});
 
 	afterEach(() => {
+		clearCachedFileEditorTabs();
 		act(() => root.unmount());
 		container.remove();
 		if (previousActEnvironment === undefined) {
@@ -165,6 +175,76 @@ describe("useTaskLifecycleOperations", () => {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
+	});
+
+	function cacheEditorDraft(dirty = true): void {
+		registerFileEditorScope("hidden", { projectId: "project-1", taskId: "task-1", taskCreatedAt: 1 });
+		const tab = createFileEditorTab("app.ts", {
+			content: "disk",
+			contentHash: "hash",
+			language: "typescript",
+			binary: false,
+			truncated: false,
+			size: 4,
+		});
+		setCachedFileEditorTabs("hidden", [{ ...tab, value: dirty ? "draft" : tab.value }]);
+	}
+
+	it("surfaces hidden unsaved tabs before trash dispatch and restores optimistic board presentation", async () => {
+		cacheEditorDraft();
+		await act(async () => {
+			await requireSnapshot(latestSnapshot).executeTaskLifecycle({
+				kind: "trash",
+				taskId: "task-1",
+				taskCreatedAt: 1,
+				sourceColumnId: "review",
+			});
+		});
+		expect(executeTaskLifecycleMutateMock).not.toHaveBeenCalled();
+		expect(flushBoardCommands).not.toHaveBeenCalled();
+		expect(refreshProjectState).toHaveBeenCalledOnce();
+		expect(getFileEditorDrafts()).toMatchObject([{ tab: { value: "draft" } }]);
+	});
+
+	it("rechecks drafts created during the board-command flush before deletion", async () => {
+		flushBoardCommands.mockImplementation(async () => {
+			cacheEditorDraft();
+			return { ok: true };
+		});
+		await act(async () => {
+			await requireSnapshot(latestSnapshot).executeTaskLifecycle({
+				kind: "delete",
+				taskId: "task-1",
+				taskCreatedAt: 1,
+			});
+		});
+		expect(executeTaskLifecycleMutateMock).not.toHaveBeenCalled();
+		expect(refreshProjectState).toHaveBeenCalledOnce();
+		expect(getCachedFileEditorTabs("hidden")[0]?.value).toBe("draft");
+	});
+
+	it("prunes clean tabs only after a successful destructive response", async () => {
+		cacheEditorDraft(false);
+		executeTaskLifecycleMutateMock.mockResolvedValueOnce(
+			createResult({ ok: false, error: "Cannot remove worktree" }),
+		);
+		await act(async () => {
+			await requireSnapshot(latestSnapshot).executeTaskLifecycle({
+				kind: "delete",
+				taskId: "task-1",
+				taskCreatedAt: 1,
+			});
+		});
+		expect(getCachedFileEditorTabs("hidden")).toHaveLength(1);
+		executeTaskLifecycleMutateMock.mockResolvedValueOnce(createResult());
+		await act(async () => {
+			await requireSnapshot(latestSnapshot).executeTaskLifecycle({
+				kind: "delete",
+				taskId: "task-1",
+				taskCreatedAt: 1,
+			});
+		});
+		expect(getCachedFileEditorTabs("hidden")).toEqual([]);
 	});
 
 	it("flushes first, sends one revisioned command, and applies the authoritative result", async () => {

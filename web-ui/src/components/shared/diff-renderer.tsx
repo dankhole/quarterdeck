@@ -1,9 +1,11 @@
 import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { DeferredDiffRows } from "./deferred-diff-rows";
+import { DiffContextRows } from "./diff-context-rows";
 import type { CollapsedContextBlock, ExpandedBlockState, UnifiedDiffRow } from "./diff-parser";
-import { buildDisplayItems, INCREMENTAL_EXPAND_STEP, INCREMENTAL_EXPAND_THRESHOLD } from "./diff-parser";
+import { buildDiffDisplayGroups, INCREMENTAL_EXPAND_STEP, INCREMENTAL_EXPAND_THRESHOLD } from "./diff-parser";
 import {
 	createHighlightedLineCache,
 	type HighlightedLineCache,
@@ -13,13 +15,13 @@ import {
 
 export type {
 	CollapsedContextBlock,
-	DiffDisplayItem,
+	DiffDisplayGroup,
 	ExpandedBlockState,
 	InlineDiffSegment,
 	UnifiedDiffRow,
 } from "./diff-parser";
 export {
-	buildDisplayItems,
+	buildDiffDisplayGroups,
 	buildUnifiedDiffRows,
 	CONTEXT_RADIUS,
 	INCREMENTAL_EXPAND_STEP,
@@ -192,19 +194,27 @@ export function useIncrementalExpand(): {
 		setExpandedBlocks((prev) => {
 			const current = prev[id];
 			// If it's already fully expanded (true), toggle it off
-			if (current === true) {
+			if (current === true || (typeof current === "object" && current.expanded)) {
 				const next = { ...prev };
 				delete next[id];
 				return next;
 			}
-			return { ...prev, [id]: true };
+			// Keep the control between the same previously revealed edges. Moving
+			// it ahead of those rows would reorder DOM nodes and clear selection.
+			return { ...prev, [id]: typeof current === "object" ? { ...current, expanded: true } : true };
 		});
 	}, []);
 
 	return { expandedBlocks, expandTop, expandBottom, expandAll };
 }
 
-export function ReadOnlyUnifiedDiff({ rows, path }: { rows: UnifiedDiffRow[]; path: string }): React.ReactElement {
+export const ReadOnlyUnifiedDiff = memo(function ReadOnlyUnifiedDiff({
+	rows,
+	path,
+}: {
+	rows: UnifiedDiffRow[];
+	path: string;
+}): React.ReactElement {
 	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
 	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
 	const prismGrammar = useMemo(() => resolvePrismGrammar(prismLanguage), [prismLanguage]);
@@ -212,7 +222,7 @@ export function ReadOnlyUnifiedDiff({ rows, path }: { rows: UnifiedDiffRow[]; pa
 		() => createHighlightedLineCache(prismGrammar, prismLanguage),
 		[prismGrammar, prismLanguage, rows],
 	);
-	const displayItems = useMemo(() => buildDisplayItems(rows, expandedBlocks), [expandedBlocks, rows]);
+	const displayItems = useMemo(() => buildDiffDisplayGroups(rows), [rows]);
 
 	const renderRow = (row: UnifiedDiffRow): React.ReactElement => {
 		const baseClass =
@@ -236,21 +246,34 @@ export function ReadOnlyUnifiedDiff({ rows, path }: { rows: UnifiedDiffRow[]; pa
 	return (
 		<div className="kb-diff-readonly">
 			{displayItems.map((item) => {
-				if (item.type === "row") {
-					return renderRow(item.row);
+				if (item.type === "rows") {
+					return (
+						<DeferredDiffRows
+							key={item.rows[0]!.key}
+							rows={item.rows}
+							getRowKey={(row) => row.key}
+							renderRow={renderRow}
+						/>
+					);
 				}
 				return (
 					<div key={item.block.id}>
-						<CollapsedBlockControls
+						<DiffContextRows
 							block={item.block}
-							onExpandTop={expandTop}
-							onExpandBottom={expandBottom}
-							onExpandAll={expandAll}
+							state={expandedBlocks[item.block.id]}
+							renderRow={renderRow}
+							renderControls={(block) => (
+								<CollapsedBlockControls
+									block={block}
+									onExpandTop={expandTop}
+									onExpandBottom={expandBottom}
+									onExpandAll={expandAll}
+								/>
+							)}
 						/>
-						{item.block.expanded ? item.block.rows.map((row) => renderRow(row)) : null}
 					</div>
 				);
 			})}
 		</div>
 	);
-}
+});
