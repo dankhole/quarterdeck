@@ -147,6 +147,7 @@ export type FakeAgentCommand =
 	| { kind: "fail-next-resume" }
 	| { kind: "review"; message: string }
 	| { kind: "working"; message: string }
+	| { kind: "progress"; message: string }
 	| { kind: "write"; relativePath: string; contents: string }
 	| { kind: "commit"; message: string }
 	| { kind: "status" }
@@ -245,6 +246,9 @@ export function parseFakeAgentCommand(rawInput: string): FakeAgentCommand {
 	}
 	if (input.startsWith("/review")) {
 		return { kind: "review", message: restAfterCommand(input) || "Agent-lab task is ready for review" };
+	}
+	if (input.startsWith("/progress")) {
+		return { kind: "progress", message: restAfterCommand(input) || "Checking the next step" };
 	}
 	if (input.startsWith("/working")) {
 		return { kind: "working", message: restAfterCommand(input) || "Working on task" };

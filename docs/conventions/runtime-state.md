@@ -69,6 +69,12 @@ The behind-base labels show independent local and remote counts of commits reach
 - allow a command response or conflict refresh to force exact authoritative hydration even at a revision the browser already displayed; and
 - keep hydration flags, cache updates, queue revision re-entry, and optimistic overlay in this one apply path.
 
+## Board message previews
+
+Completion hooks retain the foreground final response in `conversationSummaries`; `displaySummary` is only a short optional synopsis and must not replace the retained response after later hooks clear transient activity. Running cards may prefer `progressMessage`, but it never supplies lifecycle evidence or completed history. Normalization clears it outside native Running and during cold hydration.
+
+`src/server/task-progress-preview.ts` samples on admitted native hooks only: at most one bounded history read per task per 30 seconds, one runtime-wide read in flight, no queued reads, timers, model calls, or directory searches. Codex/Claude require an exact provider-supplied transcript hint validated through the existing conversation reader. Read limits are 128 KiB / 256 records with a 100 ms cooperative deadline; missing, unsupported, or oversized history keeps the completed response. Pi currently uses that fallback. Only timestamped assistant text from the observed running epoch is eligible. Session/turn changes, completion, and shutdown fence delayed results; unchanged text causes no store update. Do not make preview freshness a reason to poll every card or infer Running from transcript content.
+
 ## Automatic task titles
 
 Initial title generation is triggered by the board command service's post-commit `untitled_task_created` effect. This is the only automatic model-call trigger. Codex tasks use a local placeholder instead of a model call, then follow native Codex thread names. Completing a turn never requests another generated title; follow-up generation requires the user's explicit Auto-generate title action.

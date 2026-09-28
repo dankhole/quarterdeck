@@ -146,13 +146,20 @@ export function BoardCardConversation({
 }): React.ReactElement {
 	const latest = card.unstarted ? undefined : summary?.conversationSummaries?.at(-1);
 	const finalMessage = card.unstarted ? undefined : summary?.latestHookActivity?.finalMessage?.slice(0, 500);
-	const text = (finalMessage || latest?.text || (!card.unstarted && summary?.displaySummary) || card.prompt).slice(
-		0,
-		500,
-	);
+	const progress =
+		!card.unstarted && summary && deriveTaskIndicatorState(summary).publicStatus === "running"
+			? summary.progressMessage
+			: null;
+	const text = (
+		progress ||
+		finalMessage ||
+		latest?.text ||
+		(!card.unstarted && summary?.displaySummary) ||
+		card.prompt
+	).slice(0, 500);
 	return (
 		<>
-			<div className="my-2 flex-1 cursor-pointer rounded-md bg-surface-0/60 px-2 py-1.5">
+			<div className="my-2 min-h-[120px] flex-1 cursor-pointer rounded-md bg-surface-0/60 px-2 py-1.5">
 				<p className="m-0 line-clamp-6 whitespace-pre-wrap break-words text-xs leading-[18px] text-text-primary/90">
 					{text || "No response yet. Open the agent to follow its progress."}
 				</p>

@@ -10,7 +10,7 @@ interface StoredConversationSourceHint extends ConversationSourceHint {
 }
 
 export interface ConversationSourceHintRecorder {
-	recordClaudeHookHint(input: {
+	recordProviderHookHint(input: {
 		projectId: string;
 		taskId: string;
 		expectedProviderSessionId: string | null;
@@ -22,25 +22,27 @@ function hintKey(projectId: string, taskId: string): string {
 	return `${projectId}\0${taskId}`;
 }
 
-function isClaudeMetadata(metadata: RuntimeHookMetadata): boolean {
-	return metadata.source?.trim().toLowerCase() === "claude";
+function hookProvider(metadata: RuntimeHookMetadata) {
+	const source = metadata.source?.trim().toLowerCase();
+	return source === "claude" || source === "codex" ? source : null;
 }
 
 export class ConversationSourceHintStore implements ConversationSourceHintReader, ConversationSourceHintRecorder {
 	private readonly hints = new Map<string, StoredConversationSourceHint>();
 
-	recordClaudeHookHint(input: {
+	recordProviderHookHint(input: {
 		projectId: string;
 		taskId: string;
 		expectedProviderSessionId: string | null;
 		metadata: RuntimeHookMetadata | undefined;
 	}): void {
 		const metadata = input.metadata;
+		const providerId = metadata ? hookProvider(metadata) : null;
 		const sourcePath = metadata?.transcriptPath?.trim() ?? "";
 		const providerSessionId = metadata?.sessionId?.trim() || input.expectedProviderSessionId?.trim() || "";
 		if (
 			!metadata ||
-			!isClaudeMetadata(metadata) ||
+			!providerId ||
 			!sourcePath ||
 			sourcePath.length > MAX_SOURCE_HINT_PATH_LENGTH ||
 			!providerSessionId
@@ -53,7 +55,7 @@ export class ConversationSourceHintStore implements ConversationSourceHintReader
 		this.hints.set(key, {
 			projectId: input.projectId,
 			taskId: input.taskId,
-			providerId: "claude",
+			providerId,
 			providerSessionId,
 			sourcePath,
 		});

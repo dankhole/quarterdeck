@@ -7,6 +7,7 @@ import type {
 	RuntimeHookIngestRequest,
 	RuntimeHookIngestResponse,
 	RuntimeHookMetadata,
+	RuntimeTaskSessionSummary,
 } from "../core";
 import { createTaggedLogger, normalizeDiagnosticErrorClass, parseHookIngestRequest } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
@@ -16,7 +17,6 @@ import {
 	shouldRetainHookEventOrderObservation,
 	type TerminalSessionManager,
 } from "../terminal";
-import { compactDisplaySummaryText } from "../title";
 import type { RuntimeTrpcContext } from "./app-router";
 import { queueTaskDisplaySummaryPolish } from "./display-summary-polish";
 
@@ -64,16 +64,14 @@ function applyConversationSummaryFromMetadata(
 	taskId: string,
 	metadata: { conversationSummaryText?: string | null; finalMessage?: string | null } | undefined,
 ): void {
-	if (metadata?.conversationSummaryText) {
+	// Retain the response independently of latestHookActivity: subsequent hooks
+	// clear its finalMessage. displaySummary is only a short, optional synopsis.
+	const text = metadata?.finalMessage?.trim() || metadata?.conversationSummaryText?.trim();
+	if (text) {
 		store.appendConversationSummary(taskId, {
-			text: metadata.conversationSummaryText,
+			text,
 			capturedAt: Date.now(),
 		});
-		return;
-	}
-	if (metadata?.finalMessage) {
-		const display = compactDisplaySummaryText(metadata.finalMessage);
-		if (display) store.setDisplaySummary(taskId, display, null);
 	}
 }
 
@@ -103,6 +101,12 @@ export interface CreateHooksApiDependencies {
 	persistSessionState?: (projectId: string) => Promise<void>;
 	diagnostics?: RuntimeDiagnostics;
 	conversationSourceHints?: ConversationSourceHintRecorder;
+	observeProgress?: (input: {
+		projectId: string;
+		taskId: string;
+		store: SessionSummaryStore;
+		previous: RuntimeTaskSessionSummary;
+	}) => void;
 	onNativeProviderSessionObserved?: (input: {
 		scope: { projectId: string; projectPath: string };
 		taskId: string;
@@ -237,7 +241,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					} satisfies RuntimeHookIngestResponse;
 				}
 				providerSessionIdentityAccepted = true;
-				deps.conversationSourceHints?.recordClaudeHookHint({
+				deps.conversationSourceHints?.recordProviderHookHint({
 					projectId,
 					taskId,
 					expectedProviderSessionId: body.metadata?.sessionId ?? previousSummary.resumeSessionId ?? null,
@@ -254,6 +258,9 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					transitionResult.hookMetadataMode === "apply" && isForegroundCompletionMetadata(body.metadata);
 				if (hasForegroundCompletionMetadata) {
 					applyConversationSummaryFromMetadata(store, taskId, body.metadata);
+				}
+				if (transitionResult.hookMetadataMode === "apply") {
+					deps.observeProgress?.({ projectId, taskId, store, previous: previousSummary });
 				}
 				const hasSummarySourceMetadata = Boolean(
 					hasForegroundCompletionMetadata &&

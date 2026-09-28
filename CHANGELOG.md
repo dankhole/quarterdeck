@@ -5,6 +5,7 @@
 - Protect conflict results from binary or missing Git sources, honor custom conflict-marker sizes before staging, and discard stale resolution responses when a workspace is replaced.
 
 - Unify commit, compare, and uncommitted review documents with the Files editor presentation. Edit conflict results in the shared Files workspace with dirty-buffer protection, hash-checked saves, and explicit stage, complete, and abort actions.
+- Show occasional assistant progress in running board cards, retain completed responses for Review and fallback, and give both previews the same six-line height. Progress sampling is hook-triggered, bounded, and limited to once per 30 seconds per task.
 
 - Release task branches after failed worktree removal by pruning Git registrations after directory cleanup; retry cleanup for already-missing folders and report pruning failures.
 

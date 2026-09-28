@@ -1,6 +1,7 @@
 import { scanJsonlTail } from "./bounded-jsonl-tail.js";
 import type { ConversationEntry, ConversationReadIssue } from "./contracts.js";
 import type { ConversationReadLimits } from "./limits.js";
+import { isJsonObject, readString } from "./provider-record-utils.js";
 import { createNativeConversationEntryId, createSourceCoordinateConversationEntryId } from "./stable-id.js";
 import { normalizeConversationText } from "./text-normalization.js";
 import type {
@@ -88,7 +89,13 @@ function createMessageCandidate(input: {
 	if (normalized.truncated) candidateIssues.push("message_truncated");
 	return {
 		byteOffset: input.record.byteOffset,
-		entry: { type: "message", id, role: item.role, text: normalized.text },
+		entry: {
+			type: "message",
+			id,
+			role: item.role,
+			text: normalized.text,
+			...(input.record.recordedAt !== undefined ? { recordedAt: input.record.recordedAt } : {}),
+		},
 		issues: candidateIssues,
 	};
 }
@@ -145,7 +152,13 @@ export async function readProviderConversationTail(input: {
 					opaqueBarrier ??= "malformed_record";
 					return false;
 				}
-				scannedNewestFirst.push({ record: parsed, byteOffset: record.byteOffset });
+				const timestamp = isJsonObject(record.value) ? readString(record.value, "timestamp") : null;
+				const recordedAt = timestamp ? Date.parse(timestamp) : Number.NaN;
+				scannedNewestFirst.push({
+					record: parsed,
+					byteOffset: record.byteOffset,
+					...(Number.isFinite(recordedAt) ? { recordedAt } : {}),
+				});
 				if (parsed.item.kind === "boundary" && parsed.item.boundary === "compacted") {
 					addIssue(issues, "history_compacted");
 					incomplete = true;

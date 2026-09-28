@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage } from "node:http";
 import { join } from "node:path";
-
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { getAgentAvailability, SUPPORTED_PI_VERSION } from "../config";
 import {
@@ -9,6 +8,7 @@ import {
 	type ConversationTaskSessionResolver,
 	createConversationReadService,
 } from "../conversation/index.js";
+import { DEFAULT_CONVERSATION_READ_LIMITS } from "../conversation/limits";
 import type { IRuntimeHostIntegrations, RuntimeProjectStateResponse } from "../core";
 import {
 	buildQuarterdeckRuntimeUrl,
@@ -69,6 +69,7 @@ import type { RuntimeHostEventLedger } from "./runtime-host-event-ledger";
 import { observeRuntimeApiRequest } from "./runtime-request-diagnostics";
 import type { RuntimeSessionPersistence } from "./runtime-session-persistence";
 import type { RuntimeStateHub } from "./runtime-state-hub";
+import { createTaskProgressPreview } from "./task-progress-preview";
 import { prepareTaskSessionStart, type TaskSessionStartServiceResult } from "./task-session-start-service";
 import { createTaskTitleService } from "./task-title-service";
 
@@ -160,6 +161,24 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	const conversationReads = createConversationReadService({
 		sessions: createRuntimeConversationTaskSessionResolver(deps.projectRegistry),
 		hints: conversationSourceHints,
+	});
+	const progressPreviews = createTaskProgressPreview({
+		hasSource: (projectId, taskId, sessionId) =>
+			Boolean(conversationSourceHints.getHint(projectId, taskId, sessionId)),
+		reads: createConversationReadService({
+			sessions: createRuntimeConversationTaskSessionResolver(deps.projectRegistry),
+			hints: conversationSourceHints,
+			limits: {
+				...DEFAULT_CONVERSATION_READ_LIMITS,
+				maxSourceBytes: 128 * 1024,
+				maxRecords: 256,
+				maxRawRecordBytes: 64 * 1024,
+				maxMessageBytes: 2 * 1024,
+				maxResponseBytes: 4 * 1024,
+				maxLookupEntries: 0,
+				deadlineMs: 100,
+			},
+		}),
 	});
 	const executionOwnershipStore = new ProjectExecutionOwnershipStore();
 	const codexStructuredOwners = new CodexStructuredOwnerRegistry({
@@ -419,6 +438,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		persistSessionState: deps.runtimeSessionPersistence.persistRuntimeSessions,
 		diagnostics: deps.diagnostics,
 		conversationSourceHints,
+		observeProgress: progressPreviews.observe,
 		onNativeProviderSessionObserved: async ({ scope, taskId, manager }) => {
 			await executionOwnership.observeNativeOwner(scope, taskId, manager);
 		},
@@ -755,6 +775,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			};
 
 			await runCloseStep(() => disposeAutomaticTitleListener());
+			await runCloseStep(() => progressPreviews.close());
 			await runCloseStep(() => codexTitles.close());
 			await runCloseStep(async () => await prepareForShutdown());
 			await runCloseStep(async () => await hookTransitionOutboxReplayer.close());

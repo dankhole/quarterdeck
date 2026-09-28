@@ -122,7 +122,7 @@ describe("conversation read service integration", () => {
 			Array.from({ length: 5 }, (_, index) => writeFile(join(claudeRoot, `unrelated-${index}.jsonl`), "{}\n")),
 		);
 		const hints = new ConversationSourceHintStore();
-		hints.recordClaudeHookHint({
+		hints.recordProviderHookHint({
 			projectId: "project-1",
 			taskId: "task-1",
 			expectedProviderSessionId: "claude-session-1",

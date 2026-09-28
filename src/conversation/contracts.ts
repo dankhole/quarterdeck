@@ -21,6 +21,8 @@ export type ParsedConversationReadRequest = z.output<typeof conversationReadRequ
 export type ConversationMessageRole = "user" | "assistant";
 
 export interface ConversationMessageEntry {
+	/** Provider record time, when available; presentation freshness only. */
+	recordedAt?: number;
 	type: "message";
 	id: string;
 	role: ConversationMessageRole;

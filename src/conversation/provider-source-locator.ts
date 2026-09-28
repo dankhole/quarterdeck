@@ -321,6 +321,12 @@ export class ProviderConversationSourceLocator {
 			retainedInvalidReason = "source_path_invalid";
 		}
 
+		if (this.limits.maxLookupEntries === 0) {
+			return retainedInvalidReason
+				? { status: "invalid_source", reason: retainedInvalidReason, accounting }
+				: { status: "unavailable", reason: "source_lookup_limit", accounting };
+		}
+
 		const search = await findCandidatePaths({
 			providerId: this.providerId,
 			providerSessionId: input.providerSessionId,

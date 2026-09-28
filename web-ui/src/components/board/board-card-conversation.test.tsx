@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoardCardConversation } from "@/components/board/board-card-conversation";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { BoardReplyDrafts } from "@/state/board-reply-drafts";
-import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
+import { createTestTaskNativeWorkEvidence, createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 
 const card = { id: "task", title: "Layout", prompt: "Original prompt", baseRef: "main", createdAt: 1, updatedAt: 1 };
 const ready = createTestTaskSessionSummary({
@@ -61,6 +61,55 @@ describe("board card conversation", () => {
 		);
 		expect(container.textContent).toContain("Older response");
 		expect(container.querySelector("time")).toBeNull();
+	});
+	it("shows progress only while running and returns to the completed response in Review", async () => {
+		const render = async (summary: RuntimeTaskSessionSummary) =>
+			act(async () => root.render(<BoardCardConversation card={card} columnId="in_progress" summary={summary} />));
+		const running = {
+			...ready,
+			state: "running" as const,
+			reviewReason: null,
+			nativeWorkEvidence: createTestTaskNativeWorkEvidence({ sessionInstanceId: "launch-1" }),
+			progressMessage: "Checking the remaining keyboard shortcuts.",
+		};
+		await render(running);
+		expect(container.querySelector("p")?.textContent).toBe(running.progressMessage);
+		await render({ ...ready, progressMessage: running.progressMessage });
+		expect(container.querySelector("p")?.textContent).toBe("The updated layout is ready.");
+		await render({ ...running, progressMessage: null });
+		expect(container.querySelector("p")?.textContent).toBe("The updated layout is ready.");
+	});
+	it("keeps the retained response beyond the short display summary when the next turn starts", async () => {
+		const response = "The latest completed response has more detail than a short synopsis. ".repeat(6).trim();
+		const summary = {
+			...ready,
+			conversationSummaries: [
+				{ text: "Older response", capturedAt: 100, sessionIndex: 0 },
+				{ text: response, capturedAt: 200, sessionIndex: 1 },
+			],
+			displaySummary: `${response.slice(0, 90)}…`,
+		};
+		await act(async () =>
+			root.render(
+				<BoardCardConversation
+					card={card}
+					columnId="review"
+					summary={{ ...summary, latestHookActivity: { ...ready.latestHookActivity!, finalMessage: response } }}
+				/>,
+			),
+		);
+		expect(container.querySelector("p")?.textContent).toBe(response);
+		await act(async () =>
+			root.render(
+				<BoardCardConversation
+					card={card}
+					columnId="in_progress"
+					summary={{ ...summary, state: "running", latestHookActivity: null }}
+				/>,
+			),
+		);
+		expect(container.querySelector("p")?.textContent).toBe(response);
+		expect(container.textContent).not.toContain("Older response");
 	});
 	it("keeps a draft across navigation and readiness changes, and submits only explicitly to the current launch", async () => {
 		const drafts = new BoardReplyDrafts();

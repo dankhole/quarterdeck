@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
 
@@ -26,6 +27,7 @@ const APPROVAL_COMPLETION_DELAY_MS = 5_000;
 const taskId = process.env.QUARTERDECK_HOOK_TASK_ID ?? "unknown-task";
 const requestedSessionId = invocation.requestedSessionId;
 const sessionId = requestedSessionId || `agent-lab-${taskId}`;
+const historyPath = join(process.env.CODEX_HOME || join(homedir(), ".codex"), "sessions", `rollout-${sessionId}.jsonl`);
 let turn = 0;
 let currentTurnId: string | null = null;
 let nativeInterruptedTurn = false;
@@ -138,6 +140,7 @@ async function emitHook(
 					sessionSource: options.sessionSource,
 				})
 			: null;
+	if (provider === "codex") hookArgs.push("--transcript-path", historyPath);
 	if (!claudePayload) {
 		hookArgs.push("--hook-event-name", options.hookEventName, "--session-id", sessionId);
 		if (options.includeTurnId !== false) {
@@ -233,6 +236,7 @@ function printHelp(): void {
 	writeLine("  /queued-follow-up [message]  emit agent_end followed by a queued agent_start");
 	writeLine("  /stale-run                   replay the last completed Pi run identity");
 	writeLine("  /fail-next-resume            crash now and fail the next targeted Pi resume");
+	writeLine("  /progress [message]          append a synthetic Codex assistant progress message");
 	writeLine("  /working [message]           transition back to running");
 	writeLine("  /review [message]            finish the turn for review");
 	writeLine("  /write <path> <contents>     write inside the disposable checkout");
@@ -495,6 +499,26 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			}
 			pendingToolUseId = null;
 			return;
+		case "progress": {
+			if (provider !== "codex") return;
+			await mkdir(dirname(historyPath), { recursive: true });
+			try {
+				await writeFile(
+					historyPath,
+					`${JSON.stringify({ type: "session_meta", payload: { id: sessionId, cli_version: "0.153.4", history_mode: "legacy" } })}\n`,
+					{ flag: "wx" },
+				);
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+			}
+			await appendFile(
+				historyPath,
+				`${JSON.stringify({ timestamp: new Date().toISOString(), type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: command.message }] } })}\n`,
+			);
+			writeLine(`AGENT LAB PROGRESS: ${command.message}`);
+			await emitHook("activity", { hookEventName: "PostToolUse", activityText: "Progress available" });
+			return;
+		}
 		case "working":
 			clearPendingApprovalCompletion();
 			nativePermissionActive = false;

@@ -246,3 +246,7 @@ Include:
 9. whether the failure reproduces in a fresh run.
 
 This is enough for another agent to replay the failure without the original browser or runtime process.
+
+### Board progress preview scenario
+
+In the fake Codex lane, `/progress <message>` appends timestamped synthetic assistant text to the isolated provider history and emits an activity hook. Establish Running with `/working`, then allow the 30-second preview sampling interval before sending `/progress`. Use `/review <message>` to verify completion replaces progress immediately and `/working` to verify the completed response remains as the fallback. Running and Review preview areas should each reserve six text lines.

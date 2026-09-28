@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { InMemorySessionSummaryStore } from "../../../../src/terminal";
+
 import { createMockManager, createSummary, createTestApi } from "./_helpers";
 
 describe("createHooksApi — conversation summaries", () => {
@@ -30,56 +32,71 @@ describe("createHooksApi — conversation summaries", () => {
 		});
 	});
 
-	it("falls back to setDisplaySummary from finalMessage when no conversationSummaryText", async () => {
-		const setDisplaySummary = vi.fn();
+	it.each(["codex", "claude", "pi"] as const)(
+		"retains the latest %s final response after subsequent hooks clear transient activity",
+		async (agentId) => {
+			const store = new InMemorySessionSummaryStore();
+			store.ensureEntry("task-1");
+			store.update(
+				"task-1",
+				createSummary({ agentId, sessionInstanceId: "launch-1", state: "awaiting_review", reviewReason: "hook" }),
+			);
+			store.appendConversationSummary("task-1", { text: "Older response", capturedAt: 1 });
+			const manager = createMockManager({
+				getSummary: store.getSummary.bind(store),
+				appendConversationSummary: store.appendConversationSummary.bind(store),
+			});
+			manager.applyProviderHook = vi.fn((taskId, input) =>
+				store.applySessionEvent(taskId, {
+					type: "provider.hook",
+					event: input.event,
+					metadata: input.metadata,
+					sessionEvidence: "live",
+				}),
+			);
+			const api = createTestApi(manager);
+			const finalMessage = "The latest response with enough detail to fill the card. ".repeat(7);
+			await api.ingest({
+				taskId: "task-1",
+				projectId: "project-1",
+				event: "to_review",
+				metadata: {
+					source: agentId,
+					sessionInstanceId: "launch-1",
+					hookEventName: agentId === "pi" ? "AgentSettled" : "Stop",
+					finalMessage,
+					conversationSummaryText: "A shorter synopsis",
+				},
+			});
+			expect(store.getSummary("task-1")?.conversationSummaries.at(-1)?.text).toBe(finalMessage.trim());
+			await api.ingest({
+				taskId: "task-1",
+				projectId: "project-1",
+				event: "to_in_progress",
+				metadata: { source: agentId, sessionInstanceId: "launch-1", hookEventName: "UserPromptSubmit" },
+			});
+			const summary = store.getSummary("task-1");
+			expect(summary?.latestHookActivity?.finalMessage).toBeNull();
+			expect(summary?.conversationSummaries.at(-1)?.text).toBe(finalMessage.trim());
+		},
+	);
+
+	it("retains finalMessage without requiring conversationSummaryText", async () => {
+		const appendConversationSummary = vi.fn();
 		const manager = createMockManager({
-			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary,
+			getSummary: vi.fn(() => createSummary()),
+			appendConversationSummary,
 		});
-
-		const api = createTestApi(manager);
-
-		await api.ingest({
+		await createTestApi(manager).ingest({
 			taskId: "task-1",
 			projectId: "project-1",
 			event: "to_review",
-			metadata: {
-				source: "claude",
-				hookEventName: "Stop",
-				finalMessage: "Done with the work",
-			},
+			metadata: { source: "claude", hookEventName: "Stop", finalMessage: "Latest response" },
 		});
-
-		expect(setDisplaySummary).toHaveBeenCalledWith("task-1", "Done with the work", null);
-	});
-
-	it("truncates long finalMessage to 90 chars with ellipsis in setDisplaySummary", async () => {
-		const setDisplaySummary = vi.fn();
-		const manager = createMockManager({
-			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary,
+		expect(appendConversationSummary).toHaveBeenCalledWith("task-1", {
+			text: "Latest response",
+			capturedAt: expect.any(Number),
 		});
-
-		const api = createTestApi(manager);
-
-		const longMessage = "A".repeat(100);
-		await api.ingest({
-			taskId: "task-1",
-			projectId: "project-1",
-			event: "to_review",
-			metadata: {
-				source: "claude",
-				hookEventName: "Stop",
-				finalMessage: longMessage,
-			},
-		});
-
-		expect(setDisplaySummary).toHaveBeenCalledTimes(1);
-		const displayArg = setDisplaySummary.mock.calls[0][1] as string;
-		expect(displayArg.length).toBe(91); // 90 + ellipsis
-		expect(displayArg.endsWith("\u2026")).toBe(true);
 	});
 
 	it("does not call summary methods when neither conversationSummaryText nor finalMessage is present", async () => {

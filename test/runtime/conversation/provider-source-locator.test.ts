@@ -72,6 +72,24 @@ describe("ProviderConversationSourceLocator", () => {
 		});
 	}
 
+	it("requires an exact hint and never searches directories when lookup is disabled", async () => {
+		const { allowedRoot } = await createRoots();
+		const sourcePath = join(allowedRoot, `${SESSION_ID}.jsonl`);
+		await writeFile(sourcePath, "{}\n", "utf8");
+		const locator = new ProviderConversationSourceLocator("claude", [allowedRoot], {
+			...DEFAULT_CONVERSATION_READ_LIMITS,
+			maxLookupEntries: 0,
+		});
+		expect(await locate(locator)).toMatchObject({
+			status: "unavailable",
+			reason: "source_lookup_limit",
+			accounting: { lookupEntriesExamined: 0 },
+		});
+		const result = await locate(locator, { providerId: "claude", providerSessionId: SESSION_ID, sourcePath });
+		expect(result.status).toBe("available");
+		if (result.status === "available") await result.source.fileHandle.close();
+	});
+
 	it("opens a regular exact-session source inside an approved canonical root", async () => {
 		const { allowedRoot } = await createRoots();
 		const sourcePath = join(allowedRoot, "project", `${SESSION_ID}.jsonl`);

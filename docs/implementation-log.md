@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-28 — Bounded board progress previews
+
+Completed hook messages now enter retained conversation history before transient hook activity can replace them, fixing Codex cards falling back to the short display summary. Running cards prefer optional server-owned progress text; Review uses completed text, and both reserve six lines. `task-progress-preview.ts` samples validated Codex/Claude history hints only on accepted activity, at most once per task per 30 seconds with one runtime-wide read in flight, bounded bytes/records, and no directory search, polling, queued work, or model request. Turn/session identity and message timestamps fence stale reads; completion and cold hydration clear progress without clearing completed history. Pi and missing-source sessions retain the completed fallback.
+
+Validation: focused hook, conversation-reader, summary, progress, API-schema, fake-agent helper, and card tests; runtime and web typechecks. Fake Agent Lab `board-progress-20260928T170028Z-d26ec5` verified throttled progress, immediate completion replacement, completed fallback on the next turn, and matching Running/Review preview heights with screenshots. The run stopped cleanly with no forbidden host launches. No real provider or performance benchmark was used. Local main was fast-forwarded to `ac006557` before implementation.
+
 ## 2026-09-28 — Review migration conflict safety follow-up
 
 Review of `296ed2a9` against local main `effb95e7` found that conflict responses could survive a replaced Files workspace or an operation that disappeared and returned with the same key. `use-conflict-resolution.ts` now fences reads and mutations with a generation-scoped identity and resets resolution/review state when that identity changes. Selection survives initial workspace registration. Files remains the buffer owner and Git remains the operation owner.

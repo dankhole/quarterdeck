@@ -192,6 +192,8 @@ const runtimeTaskSessionSummaryBaseSchema = z.object({
 	startupRecoverySemanticStateUncertain: z.boolean().optional(),
 	warningMessage: z.string().nullable().optional(),
 	conversationSummaries: z.array(conversationSummaryEntrySchema).default([]),
+	/** Best-effort running preview; never completion or lifecycle evidence. */
+	progressMessage: z.string().max(500).nullable().optional(),
 	displaySummary: z.string().nullable().default(null),
 	displaySummaryGeneratedAt: z.number().nullable().default(null),
 });
@@ -300,6 +302,12 @@ export function normalizeRuntimeTaskSessionSummary(
 			outstandingInteraction: null,
 			nativeWorkEvidence: null,
 		};
+	}
+	if (
+		next.progressMessage &&
+		(next.state !== "running" || !next.nativeWorkEvidence || options.invalidateNativeWorkEvidence)
+	) {
+		next = { ...next, progressMessage: null };
 	}
 	return next;
 }

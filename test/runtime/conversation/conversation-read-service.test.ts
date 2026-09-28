@@ -154,10 +154,13 @@ describe("ConversationReadService", () => {
 					: { type: entry.type, kind: entry.kind },
 			);
 		expect(toComparable(claudeResult)).toEqual(toComparable(codexResult));
+		expect(codexResult.entries.at(-1)).toMatchObject({ recordedAt: Date.parse("2026-08-24T12:00:07.000Z") });
 		for (const result of [claudeResult, codexResult]) {
 			for (const entry of result.entries) {
 				expect(Object.keys(entry).sort()).toEqual(
-					entry.type === "message" ? ["id", "role", "text", "type"] : ["id", "kind", "type"],
+					entry.type === "message"
+						? ["id", ...(entry.recordedAt !== undefined ? ["recordedAt"] : []), "role", "text", "type"]
+						: ["id", "kind", "type"],
 				);
 			}
 		}

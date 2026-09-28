@@ -107,6 +107,7 @@ export interface ParsedProviderRecord {
 }
 
 export interface ParsedProviderRecordAtOffset {
+	recordedAt?: number;
 	record: ParsedProviderRecord;
 	byteOffset: number;
 }
