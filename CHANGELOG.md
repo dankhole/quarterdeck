@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Release task branches after failed worktree removal by pruning Git registrations after directory cleanup; retry cleanup for already-missing folders and report pruning failures.
+
 - Preserve restored Files editor content against delayed responses, keep discarded attached drafts open, and open language-server dependency targets read-only.
 
 - Keep language servers running through unrelated Settings saves, preserve current project settings during concurrent saves, honor configured command environments, and retain Windows worker ownership after server crashes.

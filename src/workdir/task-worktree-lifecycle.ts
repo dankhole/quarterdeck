@@ -74,12 +74,15 @@ async function removeTaskWorktreeInternal(repoPath: string, worktreePath: string
 		["worktree", "remove", "--force", worktreePath],
 		USER_GIT_ACTION_OPTIONS,
 	);
-	if (!removeResult.ok) {
-		// If remove failed (e.g. worktree in bad state), prune stale registrations
-		// so git doesn't think the path is still registered after we rm it.
-		await runGit(repoPath, ["worktree", "prune"], USER_GIT_ACTION_OPTIONS);
-	}
 	await removeDirectoryWithRetries(worktreePath);
+	if (!removeResult.ok) {
+		// Git only prunes missing worktrees. Remove the directory first so a
+		// failed Git removal cannot leave the task's branch checked out forever.
+		const pruned = await runGit(repoPath, ["worktree", "prune"], USER_GIT_ACTION_OPTIONS);
+		if (!pruned.ok) {
+			throw new Error(pruned.stderr || pruned.error || "Could not prune task worktree registration.");
+		}
+	}
 	return existed;
 }
 
@@ -237,7 +240,6 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 					}
 					// Checkout failed (e.g., locked by another worktree) — clean up before fallback
 					await removeTaskWorktreeInternal(context.repoPath, worktreePath);
-					await runGit(context.repoPath, ["worktree", "prune"], USER_GIT_ACTION_OPTIONS);
 					// fall through to detached
 				} else {
 					// Branch NOT exists — create new branch (creation path)
@@ -254,7 +256,6 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 					}
 					// -b failed — clean up before fallback
 					await removeTaskWorktreeInternal(context.repoPath, worktreePath);
-					await runGit(context.repoPath, ["worktree", "prune"], USER_GIT_ACTION_OPTIONS);
 					// fall through to detached
 				}
 			}
@@ -348,27 +349,22 @@ export async function archiveTaskWorktreeForTrash(options: {
 		}
 		return await withTaskWorktreeOperationLock(options.repoPath, worktreePath, async () =>
 			withTaskWorktreeSetupLock(options.repoPath, async () => {
-				if (!(await pathExists(worktreePath))) {
-					await pruneEmptyParents(rootPath, dirname(worktreePath));
-					return {
-						ok: true,
-						removed: false,
-					};
+				if (await pathExists(worktreePath)) {
+					if (await pathExists(join(worktreePath, ".git"))) {
+						await assertTaskWorktreeRegistration(worktreePath);
+					}
+					try {
+						await captureTaskPatch({
+							repoPath: options.repoPath,
+							taskId,
+							worktreePath,
+						});
+					} catch {
+						// Patch capture is best-effort. A corrupted or partially-created
+						// worktree (e.g. plain directory, no git init) should still be removed.
+					}
 				}
-
-				if (await pathExists(join(worktreePath, ".git"))) {
-					await assertTaskWorktreeRegistration(worktreePath);
-				}
-				try {
-					await captureTaskPatch({
-						repoPath: options.repoPath,
-						taskId,
-						worktreePath,
-					});
-				} catch {
-					// Patch capture is best-effort. A corrupted or partially-created
-					// worktree (e.g. plain directory, no git init) should still be removed.
-				}
+				// Even a missing folder can retain a stale Git registration; preserve its saved patch.
 				const removed = await removeTaskWorktreeInternal(options.repoPath, worktreePath);
 				await pruneEmptyParents(rootPath, dirname(worktreePath));
 
@@ -405,9 +401,7 @@ export async function purgeTaskWorkspaceForDelete(options: {
 		}
 		return await withTaskWorktreeOperationLock(options.repoPath, worktreePath, async () =>
 			withTaskWorktreeSetupLock(options.repoPath, async () => {
-				const removed = (await pathExists(worktreePath))
-					? await removeTaskWorktreeInternal(options.repoPath, worktreePath)
-					: false;
+				const removed = await removeTaskWorktreeInternal(options.repoPath, worktreePath);
 				await deleteTaskPatchFiles(taskId);
 				await pruneEmptyParents(rootPath, dirname(worktreePath));
 				return { ok: true, removed };
