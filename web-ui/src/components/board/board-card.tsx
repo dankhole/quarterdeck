@@ -117,8 +117,15 @@ export const BoardCard = memo(function BoardCard({
 	const statusBadgeClass = isTrashCard ? "bg-surface-3 text-text-tertiary" : statusBadgeColors[statusTagStyle!];
 
 	const statusBadges =
-		showStatusBadge || agentBadge ? (
+		isSharedCheckout || showStatusBadge || agentBadge ? (
 			<div className={cn("flex flex-wrap items-center gap-1.5", !rich && "mt-1.5")} data-board-card-status-row>
+				{isSharedCheckout ? (
+					<Tooltip content="Running in shared checkout (not isolated)">
+						<span className="inline-flex items-center shrink-0 rounded bg-status-red/15 px-1 py-px text-[10px] font-medium text-status-red leading-tight">
+							Shared
+						</span>
+					</Tooltip>
+				) : null}
 				{showStatusBadge ? (
 					<Tooltip content={statusTooltip}>
 						<span
@@ -310,13 +317,6 @@ export const BoardCard = memo(function BoardCard({
 									</span>
 								</Tooltip>
 							) : null}
-							{isSharedCheckout ? (
-								<Tooltip content="Running in shared checkout (not isolated)">
-									<span className="inline-flex items-center shrink-0 rounded bg-status-red/15 px-1 py-px text-[10px] font-medium text-status-red leading-tight">
-										Shared
-									</span>
-								</Tooltip>
-							) : null}
 							{isSessionPathDiverged ? (
 								<Tooltip content="Agent session was launched from a different directory than this task's assigned identity. Restart the task to realign it.">
 									<AlertCircle size={12} className="shrink-0 text-status-orange" />
@@ -344,9 +344,8 @@ export const BoardCard = memo(function BoardCard({
 								<div className="min-w-0 flex-1 basis-0" data-board-card-title>
 									<p
 										className={cn(
-											rich
-												? "line-clamp-2 m-0 font-semibold text-[15px] leading-6"
-												: "kb-line-clamp-1 m-0 font-medium text-sm",
+											"truncate m-0",
+											rich ? "font-semibold text-[15px] leading-6" : "font-medium text-sm",
 											isTrashCard && "line-through text-text-tertiary",
 										)}
 									>
