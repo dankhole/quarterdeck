@@ -57,10 +57,8 @@ describe("describeSessionState", () => {
 		expect(describeSessionState(makeSummary({ state: "awaiting_review", reviewReason: "exit" }))).toBe("Completed");
 	});
 
-	it("returns 'Ready for review' for awaiting_review with hook reason (non-permission)", () => {
-		expect(describeSessionState(makeSummary({ state: "awaiting_review", reviewReason: "hook" }))).toBe(
-			"Ready for review",
-		);
+	it("returns 'Review' for awaiting_review with hook reason (non-permission)", () => {
+		expect(describeSessionState(makeSummary({ state: "awaiting_review", reviewReason: "hook" }))).toBe("Review");
 	});
 
 	it("returns 'Waiting for approval' for permission request hook", () => {
@@ -121,10 +119,8 @@ describe("describeSessionState", () => {
 		expect(describeSessionState(makeSummary({ state: "idle" }))).toBe("Idle");
 	});
 
-	it("returns 'Ready for review' for unknown review reason in awaiting_review", () => {
-		expect(describeSessionState(makeSummary({ state: "awaiting_review", reviewReason: null }))).toBe(
-			"Ready for review",
-		);
+	it("returns 'Review' for unknown review reason in awaiting_review", () => {
+		expect(describeSessionState(makeSummary({ state: "awaiting_review", reviewReason: null }))).toBe("Review");
 	});
 });
 

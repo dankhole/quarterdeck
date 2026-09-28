@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Shorten the green task status pill from “Ready for review” to “Review” everywhere it appears.
+
 - Reduce task card title font sizes slightly so longer titles fit more comfortably.
 
 - Combine matching local and remote behind counts into a single compact label.

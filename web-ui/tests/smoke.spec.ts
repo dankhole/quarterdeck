@@ -418,9 +418,9 @@ test("drives the deterministic agent terminal through review", async ({ page }, 
 	await page.keyboard.type("/review Playwright lifecycle verified");
 	await page.keyboard.press("Enter");
 
-	const reviewCard = page.locator(`[data-task-id="${taskId}"]`).filter({ hasText: "Ready for review" }).first();
+	const reviewCard = page.locator(`[data-task-id="${taskId}"]`).filter({ hasText: "Review" }).first();
 	await expect(reviewCard).toBeVisible({ timeout: 20_000 });
-	await expect(reviewCard).toContainText("Ready for review");
+	await expect(reviewCard).toContainText("Review");
 	await page.screenshot({ path: testInfo.outputPath("fake-agent-review.png"), fullPage: true });
 });
 

@@ -24,7 +24,7 @@ export function describeSessionState(summary: RuntimeTaskSessionSummary | null):
 		case "interaction_unknown":
 			return "Response outcome unknown";
 		case "review_ready":
-			return "Ready for review";
+			return "Review";
 		case "needs_input":
 			return "Waiting for input";
 		case "completed":
