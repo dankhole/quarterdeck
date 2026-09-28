@@ -185,7 +185,7 @@ export function CommitPanel({ projectId, taskId, baseRef, navigateToFile }: Comm
 	const { changesListRef, commitControlsRef, commitControlsHeight, handleCommitControlsResizeMouseDown } =
 		useCommitPanelLayout();
 	const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
-	const [errorExpanded, setErrorExpanded] = useState(false);
+	const [errorExpanded, setErrorExpanded] = useState(true);
 	const [stashMessageVisible, setStashMessageVisible] = useState(false);
 
 	const fileCount = files?.length ?? 0;

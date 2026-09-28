@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmdirSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -38,6 +38,97 @@ function gitStatus(cwd: string): string {
 }
 
 describe("commitSelectedFiles", { concurrent: false }, () => {
+	it.each([false, true])("commits already-staged ignored additions (initial commit: %s)", async (initial) => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-ignored-");
+		try {
+			initRepository(repoPath);
+			writeFileSync(join(repoPath, "base.txt"), "base\n");
+			if (!initial) commitAll(repoPath, "initial");
+			writeFileSync(join(repoPath, "[generated].txt"), "staged\n");
+			runGit(repoPath, ["--literal-pathspecs", "add", "--", "[generated].txt"]);
+			writeFileSync(join(repoPath, "[generated].txt"), "latest\n");
+			writeFileSync(join(repoPath, ".gitignore"), "*.txt\n");
+			const result = await commitSelectedFiles({
+				cwd: repoPath,
+				paths: ["[generated].txt", ".gitignore"],
+				message: "selected",
+			});
+			expect(result.ok, result.error).toBe(true);
+			expect(runGit(repoPath, ["show", "HEAD:[generated].txt"])).toBe("latest");
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("does not commit ignored children when a tracked file becomes a directory", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-directory-");
+		try {
+			initRepository(repoPath);
+			writeFileSync(join(repoPath, ".gitignore"), "*.secret\n");
+			writeFileSync(join(repoPath, "replaced"), "tracked\n");
+			commitAll(repoPath, "initial");
+			unlinkSync(join(repoPath, "replaced"));
+			mkdirSync(join(repoPath, "replaced"));
+			writeFileSync(join(repoPath, "replaced", "private.secret"), "private\n");
+			const result = await commitSelectedFiles({
+				cwd: repoPath,
+				paths: ["replaced"],
+				message: "remove tracked file",
+			});
+			expect(result.ok, result.error).toBe(true);
+			expect(runGit(repoPath, ["ls-tree", "-r", "--name-only", "HEAD"])).toBe(".gitignore");
+			expect(runGit(repoPath, ["ls-files"])).toBe(".gitignore");
+			expect(readFileSync(join(repoPath, "replaced", "private.secret"), "utf8")).toBe("private\n");
+		} finally {
+			cleanup();
+		}
+	});
+
+	it.each([false, true])(
+		"commits staged file/directory replacements (directory to file: %s)",
+		async (directoryToFile) => {
+			const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-replacement-");
+			try {
+				initRepository(repoPath);
+				const oldPath = directoryToFile ? "replaced/child.txt" : "replaced";
+				const newPath = directoryToFile ? "replaced" : "replaced/child.txt";
+				if (directoryToFile) mkdirSync(join(repoPath, "replaced"));
+				writeFileSync(join(repoPath, oldPath), "before\n");
+				commitAll(repoPath, "initial");
+				unlinkSync(join(repoPath, oldPath));
+				if (directoryToFile) rmdirSync(join(repoPath, "replaced"));
+				else mkdirSync(join(repoPath, "replaced"));
+				writeFileSync(join(repoPath, newPath), "after\n");
+				runGit(repoPath, ["add", "-A"]);
+				const result = await commitSelectedFiles({ cwd: repoPath, paths: [oldPath, newPath], message: "replace" });
+				expect(result.ok, result.error).toBe(true);
+				expect(runGit(repoPath, ["ls-tree", "-r", "--name-only", "HEAD"])).toBe(newPath);
+				expect(runGit(repoPath, ["show", `HEAD:${newPath}`])).toBe("after");
+				expect(gitStatus(repoPath)).toBe("");
+			} finally {
+				cleanup();
+			}
+		},
+	);
+
+	it("rejects untracked ignored selections without changing HEAD or the index", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-untracked-ignored-");
+		try {
+			initRepository(repoPath);
+			writeFileSync(join(repoPath, ".gitignore"), "ignored.txt\n");
+			const head = commitAll(repoPath, "initial");
+			writeFileSync(join(repoPath, "ignored.txt"), "private\n");
+			const index = runGit(repoPath, ["write-tree"]);
+			const result = await commitSelectedFiles({ cwd: repoPath, paths: ["ignored.txt"], message: "selected" });
+			expect(result.ok).toBe(false);
+			expect(result.error).toContain("ignored.txt");
+			expect(runGit(repoPath, ["rev-parse", "HEAD"])).toBe(head);
+			expect(runGit(repoPath, ["write-tree"])).toBe(index);
+		} finally {
+			cleanup();
+		}
+	});
+
 	it("keeps same-size unselected edits visible when index stat data is racily clean", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-racy-index-");
 		try {

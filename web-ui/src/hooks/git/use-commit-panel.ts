@@ -5,6 +5,7 @@ import {
 	canPerformCommit,
 	computeSelectedPaths,
 	computeSelectionSync,
+	formatCommitErrorMessage,
 	formatCommitSuccessMessage,
 } from "@/hooks/git/commit-panel";
 import { isTaskBaseRefResolved, resolveGitChangesQueryProjectId } from "@/hooks/git/git-view";
@@ -185,7 +186,7 @@ export function useCommitPanel(
 				if (!result.ok) {
 					const fullError = result.error ?? "Commit failed.";
 					setLastError(fullError);
-					showAppToast({ intent: "danger", message: fullError, timeout: 5000 });
+					showAppToast({ intent: "danger", message: formatCommitErrorMessage(fullError), timeout: 5000 });
 					return;
 				}
 				if (pushAfterCommit && !result.pushOk) {
@@ -207,7 +208,7 @@ export function useCommitPanel(
 				const label = pushAfterCommit ? "Commit & push failed." : "Commit failed.";
 				const fullError = error instanceof Error ? error.message : label;
 				setLastError(fullError);
-				showAppToast({ intent: "danger", message: fullError, timeout: 5000 });
+				showAppToast({ intent: "danger", message: formatCommitErrorMessage(fullError), timeout: 5000 });
 			} finally {
 				setIsCommitting(false);
 				if (pushAfterCommit) setIsPushing(false);

@@ -377,6 +377,24 @@ describe("useCommitPanel", () => {
 		expect(commitMutateMock).toHaveBeenCalledWith(expect.objectContaining({ pushAfterCommit: true }));
 	});
 
+	it("includes the ignored path in the toast and retains full error details", async () => {
+		const error =
+			"The following paths are ignored by one of your .gitignore files:\nprivate.txt\nhint: Use -f if you really want to add them.";
+		commitMutateMock.mockResolvedValueOnce({ ok: false, error });
+		render();
+		act(() => latest.setMessage("Selected changes"));
+		await act(async () => {
+			await latest.commitFiles();
+		});
+		expect(latest.lastError).toBe(error);
+		expect(latest.message).toBe("Selected changes");
+		expect(showAppToast).toHaveBeenCalledWith({
+			intent: "danger",
+			message: "Cannot commit ignored path: private.txt. Review the commit error details.",
+			timeout: 5000,
+		});
+	});
+
 	it("shows a danger toast when commit message generation returns no message", async () => {
 		generateCommitMessageMutateMock.mockResolvedValueOnce({ ok: false, message: null });
 		render();

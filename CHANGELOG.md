@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Preserve already-staged ignored files in selected-file commits, include rejected paths in commit error notifications, and expand error details by default.
+
 - Prevent duplicate browser tabs when clicking web links in fullscreen Codex terminals.
 
 - Protect conflict results from binary or missing Git sources, honor custom conflict-marker sizes before staging, and discard stale resolution responses when a workspace is replaced.

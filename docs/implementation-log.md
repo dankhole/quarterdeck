@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-28 — Selected commits retain staged ignored entries
+
+`git-selected-commit.ts` now seeds selected entries from the saved index into its HEAD-based temporary index before normal staging. Otherwise staged additions matching current ignore rules lose their tracked status and Git rejects the commit. Do not replace this with forced staging: a tracked file replaced by a directory can cause ignored children to be committed. Untracked ignored selections must still fail without changing HEAD or the user index. Commit notifications identify the first rejected path and retain full output in the expanded error panel.
+
+Validation: 37 focused real-Git/commit-response tests, 30 commit-panel tests, runtime typecheck, and changed-file formatting/diff checks. Regressions reproduced staged-addition rejection, recursive ignored-child staging, and staged file/directory replacement failures before the fixes. No live app or provider was used. After merging local main `67c1257d`, commit-gate typecheck/Biome and the fast suite passed (three loopback-dependent files required an unsandboxed rerun); web typecheck and 30 commit-panel tests also passed.
+
 ## 2026-09-28 — Codex terminal link click ownership
 
 Fullscreen Codex opens transcript links from mouse reports while xterm independently activates detected URLs and OSC 8 hyperlinks. `terminal-links.ts`, composed by `TerminalBrowserInput`, owns recognized web-link clicks before PTY forwarding. It opens stationary releases in the browser, but replays withheld mouse-down through xterm's public DOM path when a drag starts. Other providers, ordinary text input, forced selection, and OSC confirmation retain their existing paths.

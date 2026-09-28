@@ -68,6 +68,23 @@ export async function commitSelectedPaths(repoRoot: string, paths: string[], mes
 		const head = await runGit(repoRoot, ["rev-parse", "--verify", "HEAD"], options);
 		await getGitStdout(head.ok ? ["read-tree", head.stdout] : ["read-tree", "--empty"], repoRoot, tempOptions);
 		const toStage = paths.filter((path) => !deleted.has(path));
+		// HEAD omits staged additions. Seed selected entries from the saved index so
+		// normal staging recognizes them even when the current ignore rules match.
+		// Never force-add: a tracked file may now be a directory with ignored children.
+		const selectedEntries = splitNullSeparatedGitOutput(
+			await getGitStdout(["--literal-pathspecs", "ls-files", "--stage", "-z", "--", ...paths], repoRoot, {
+				...savedOptions,
+				trimStdout: false,
+			}),
+		);
+		if (selectedEntries.length > 0) {
+			const cacheEntries = selectedEntries.flatMap((entry) => {
+				const separator = entry.indexOf("\t");
+				const [mode, hash] = entry.slice(0, separator).split(" ");
+				return ["--cacheinfo", `${mode},${hash},${entry.slice(separator + 1)}`];
+			});
+			await getGitStdout(["update-index", "--add", "--replace", ...cacheEntries], repoRoot, tempOptions);
+		}
 		if (toStage.length > 0) {
 			await getGitStdout(["--literal-pathspecs", "add", "--", ...toStage], repoRoot, tempOptions);
 		}

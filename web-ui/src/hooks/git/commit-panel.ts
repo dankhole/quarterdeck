@@ -100,3 +100,15 @@ export function formatCommitSuccessMessage(commitHash: string | null | undefined
 	}
 	return `Committed${hashLabel}`;
 }
+
+/** Keep the affected path in the toast; the panel retains Git's full output. */
+export function formatCommitErrorMessage(error: string): string {
+	const lines = error
+		.split(/\r?\n/u)
+		.map((line) => line.trim())
+		.filter(Boolean);
+	if (lines[0] === "The following paths are ignored by one of your .gitignore files:" && lines[1]) {
+		return `Cannot commit ignored path: ${lines[1]}. Review the commit error details.`;
+	}
+	return error;
+}
