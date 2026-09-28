@@ -1,5 +1,13 @@
 # Implementation Log
 
+## 2026-09-28 — Codex terminal link click ownership
+
+Fullscreen Codex opens transcript links from mouse reports while xterm independently activates detected URLs and OSC 8 hyperlinks. `terminal-links.ts`, composed by `TerminalBrowserInput`, owns recognized web-link clicks before PTY forwarding. It opens stationary releases in the browser, but replays withheld mouse-down through xterm's public DOM path when a drag starts. Other providers, ordinary text input, forced selection, and OSC confirmation retain their existing paths.
+
+Parallel correctness and code-smell review caught blanket suppression breaking Codex footer PR links, modifier ownership changing between down/up, unstable hover-object identity across redraws, and stale mouse-down replay after a lost release. The final adapter uses URI/range identity, preserves ownership across a gesture, scopes pending clicks to their task, cancels on button loss/blur/disposal, and lives with the existing browser-input owner.
+
+Validation: 55 focused link/browser-input/viewport tests, web typecheck, changed-file Biome, and diff checks. Isolated Chromium Agent Lab `link-review-20260928T170537Z-040454` reproduced the old browser-open plus provider-release overlap and verified one browser open with no provider release for plain, transcript OSC, and footer OSC links; modifier changes; provider drag selection; ordinary-text mouse forwarding; and browser opening after tracking was disabled. The synthetic terminal uses browser-open spies and never launches external sites or real Codex. The final browser check exercised the production `TerminalBrowserInput` composition. Chromium required execution outside the shell sandbox; both labs stopped cleanly with empty forbidden-host-launch logs. Earlier lab `terminal-links-20260928T165507Z-b1d6e4` isolated the original overlap but did not cover the footer regression.
+
 ## 2026-09-28 — Bounded board progress previews
 
 Completed hook messages now enter retained conversation history before transient hook activity can replace them, fixing Codex cards falling back to the short display summary. Running cards prefer optional server-owned progress text; Review uses completed text, and both reserve six lines. `task-progress-preview.ts` samples validated Codex/Claude history hints only on accepted activity, at most once per task per 30 seconds with one runtime-wide read in flight, bounded bytes/records, and no directory search, polling, queued work, or model request. Turn/session identity and message timestamps fence stale reads; completion and cold hydration clear progress without clearing completed history. Pi and missing-source sessions retain the completed fallback.

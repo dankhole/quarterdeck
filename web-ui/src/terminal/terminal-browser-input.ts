@@ -6,6 +6,7 @@ import { browserHostIntegrations } from "@/runtime/browser-host-integrations";
 import type { RuntimeAgentId } from "@/runtime/types";
 import type { TerminalImagePasteWriter } from "@/terminal/terminal-input";
 import { resolveTerminalKey } from "@/terminal/terminal-key-policy";
+import { configureTerminalLinks } from "@/terminal/terminal-links";
 import { TerminalWheelInput } from "@/terminal/terminal-wheel-input";
 import { isMacPlatform } from "@/utils/platform";
 import { collectImageFilesFromDataTransfer, fileToTaskImage } from "@/utils/task-image-input";
@@ -38,6 +39,7 @@ const clipboardProvider: IClipboardProvider = {
 /** Owns browser input effects; xterm retains text paste, encoding, and IME handling. */
 export class TerminalBrowserInput {
 	private readonly wheel: TerminalWheelInput;
+	private readonly disposeLinks: () => void;
 	constructor(
 		terminal: Terminal,
 		private readonly host: HTMLElement,
@@ -48,6 +50,7 @@ export class TerminalBrowserInput {
 		},
 	) {
 		this.wheel = new TerminalWheelInput(terminal, callbacks);
+		this.disposeLinks = configureTerminalLinks(terminal, host, callbacks);
 		terminal.loadAddon(new ClipboardAddon(undefined, clipboardProvider));
 		terminal.attachCustomKeyEventHandler((event) => {
 			const action = resolveTerminalKey(event, {
@@ -102,6 +105,7 @@ export class TerminalBrowserInput {
 
 	dispose(): void {
 		this.wheel.dispose();
+		this.disposeLinks();
 		this.host.removeEventListener("paste", this.onPaste, true);
 	}
 }

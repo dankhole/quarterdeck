@@ -1,7 +1,6 @@
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import type { RuntimeAgentId, RuntimeTerminalWsClientMessage } from "@/runtime/types";
@@ -106,7 +105,6 @@ export class TerminalViewport {
 
 	private initializeTerminalAddons(): void {
 		this.terminal.loadAddon(this.fitAddon);
-		this.terminal.loadAddon(new WebLinksAddon());
 		this.terminal.loadAddon(this.unicode11Addon);
 		this.terminal.unicode.activeVersion = "11";
 	}
