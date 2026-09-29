@@ -1,14 +1,26 @@
-[mcp_servers.draftkings-multitool]
+[mcp_servers.dk-bitbucket]
+enabled = false
+
+[mcp_servers.dk-jenkins]
+enabled = false
+
+[mcp_servers.pagerduty-mcp]
 enabled = false
 
 [mcp_servers.atlassian]
-enabled = false
-
-[mcp_servers.slack]
 enabled = false
 
 [mcp_servers.datadog-mcp]
 enabled = false
 
 [mcp_servers.kafka-mcp]
+enabled = false
+
+[plugins."slack@openai-curated-remote"]
+enabled = false
+
+[plugins."atlassian-rovo@openai-curated-remote"]
+enabled = false
+
+[plugins."dk-kafka@jsweeney"]
 enabled = false
