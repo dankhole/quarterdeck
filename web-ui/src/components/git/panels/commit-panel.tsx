@@ -7,6 +7,7 @@ import {
 	ClipboardCopy,
 	FileSearch,
 	FileText,
+	FolderGit2,
 	GitCompare,
 	GripHorizontal,
 	MessageSquare,
@@ -31,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
+import { isNestedRepository } from "@/hooks/git/commit-panel";
 import { useCommitPanel } from "@/hooks/git/use-commit-panel";
 import { useCommitPanelLayout } from "@/hooks/git/use-commit-panel-layout";
 import { ResizeHandle } from "@/resize/resize-handle";
@@ -69,6 +71,26 @@ function CommitFileRow({
 	onRollback: () => void;
 	onNavigateToFile?: (nav: { targetView: "git" | "files"; filePath: string }) => void;
 }): React.ReactElement {
+	if (isNestedRepository(file)) {
+		return (
+			<div className="flex items-start gap-1.5 px-2 py-1 min-w-0">
+				<Checkbox.Root
+					checked={false}
+					disabled
+					aria-label={`Exclude nested repository ${file.path}`}
+					className="w-4 h-4 shrink-0 rounded-sm border border-border bg-surface-2 opacity-50"
+				/>
+				<FolderGit2 size={14} className="shrink-0 text-text-tertiary" />
+				<div className="min-w-0 text-text-secondary">
+					<div className="truncate text-[13px]" title={file.path}>
+						{file.path}
+					</div>
+					<p className="text-[11px]">Nested repository. Manage its changes separately; excluded from selection.</p>
+				</div>
+			</div>
+		);
+	}
+
 	const badge = STATUS_BADGE[file.status] ?? { letter: "?", className: "text-text-tertiary" };
 	const fileName = file.path.split("/").pop() ?? file.path;
 	const canRollback = file.status !== "renamed" && file.status !== "copied";
@@ -153,6 +175,7 @@ function CommitFileRow({
 export function CommitPanel({ projectId, taskId, baseRef, navigateToFile }: CommitPanelProps): React.ReactElement {
 	const {
 		files,
+		selectableFileCount,
 		selectedPaths,
 		isAllSelected,
 		isIndeterminate,
@@ -209,6 +232,8 @@ export function CommitPanel({ projectId, taskId, baseRef, navigateToFile }: Comm
 					<Checkbox.Root
 						checked={isAllSelected ? true : isIndeterminate ? "indeterminate" : false}
 						onCheckedChange={toggleAll}
+						disabled={selectableFileCount === 0}
+						aria-label="Select all files"
 						className="flex items-center justify-center w-4 h-4 shrink-0 rounded-sm border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent data-[state=indeterminate]:bg-accent data-[state=indeterminate]:border-accent cursor-pointer"
 					>
 						<Checkbox.Indicator>
@@ -220,7 +245,7 @@ export function CommitPanel({ projectId, taskId, baseRef, navigateToFile }: Comm
 						</Checkbox.Indicator>
 					</Checkbox.Root>
 					<span className="text-[12px] text-text-secondary">
-						Select all ({fileCount} {fileCount === 1 ? "file" : "files"})
+						Select all ({selectableFileCount} {selectableFileCount === 1 ? "file" : "files"})
 					</span>
 				</div>
 			) : null}
@@ -302,7 +327,7 @@ export function CommitPanel({ projectId, taskId, baseRef, navigateToFile }: Comm
 								<Button
 									variant="default"
 									size="sm"
-									disabled={!hasFiles || isStashing}
+									disabled={selectedPaths.length === 0 || isStashing}
 									onClick={() => void stashChanges()}
 								>
 									{isStashing ? <Spinner size={14} /> : "Stash"}

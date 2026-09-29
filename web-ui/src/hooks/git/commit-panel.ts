@@ -8,6 +8,15 @@
 
 import type { RuntimeWorkdirFileChange } from "@/runtime/types";
 
+/** Git ls-files --others expands ordinary directories, but emits nested repositories with a trailing slash. */
+export function isNestedRepository(file: RuntimeWorkdirFileChange): boolean {
+	return file.status === "untracked" && file.path.endsWith("/");
+}
+
+export function isSelectableCommitFile(file: RuntimeWorkdirFileChange): boolean {
+	return !isNestedRepository(file);
+}
+
 // ---------------------------------------------------------------------------
 // File selection sync
 // ---------------------------------------------------------------------------
@@ -29,6 +38,7 @@ export function computeSelectionSync(
 	prevPaths: Set<string>,
 	currentSelection: Map<string, boolean>,
 ): SelectionSyncResult {
+	files = files.filter(isSelectableCommitFile);
 	const currentPaths = new Set(files.map((f) => f.path));
 
 	const added = files.filter((f) => !prevPaths.has(f.path));
@@ -71,7 +81,7 @@ export function computeSelectedPaths(
 	if (!files) {
 		return [];
 	}
-	return files.filter((f) => selection.get(f.path)).map((f) => f.path);
+	return files.filter((f) => isSelectableCommitFile(f) && selection.get(f.path)).map((f) => f.path);
 }
 
 // ---------------------------------------------------------------------------
