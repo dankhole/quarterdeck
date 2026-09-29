@@ -9,9 +9,11 @@ import { runtimeTaskSessionSummarySchema } from "./task-session.js";
 
 export const runtimeStateStreamSnapshotMessageSchema = z.object({
 	type: z.literal("snapshot"),
-	// Exact packaged artifact identity. Optional only for rolling compatibility
-	// with runtimes built before browser/runtime build fencing existed.
+	// Artifact identity is diagnostic metadata, not contract compatibility.
 	runtimeBuildId: z.string().min(1).optional(),
+	// Missing on older runtimes; browsers must resolve compatibility before
+	// consuming any snapshot state. Keep this field stable across protocol bumps.
+	runtimeProtocolVersion: z.number().int().positive().optional(),
 	currentProjectId: z.string().nullable(),
 	projects: z.array(runtimeProjectSummarySchema),
 	projectState: runtimeProjectStateResponseSchema.nullable(),

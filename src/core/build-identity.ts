@@ -3,8 +3,8 @@
  *
  * Source-mode development intentionally shares the stable `development`
  * identity; Vite owns browser hot reload there. The production build wrapper
- * injects one opaque ID into both bundles so an already-open browser can detect
- * that it reconnected to a replacement runtime built from different code.
+ * injects one opaque ID into both bundles for diagnostic correlation. Contract
+ * compatibility is declared separately by QUARTERDECK_RUNTIME_PROTOCOL_VERSION.
  */
 const DEVELOPMENT_BUILD_ID = "development";
 
@@ -12,8 +12,9 @@ export const QUARTERDECK_BUILD_ID = process.env.QUARTERDECK_BUILD_ID?.trim() || 
 
 /**
  * A production runtime must not admit a browser that predates build identity.
- * Newer mismatched browsers are admitted long enough to receive the runtime
- * snapshot and run their bounded reload policy.
+ * Identified browsers already check their initial snapshot before consuming
+ * state: older ones compare build IDs and newer ones compare protocol versions.
+ * Admit them so they can run their bounded reload policy if needed.
  */
 export function shouldRejectLegacyRuntimeStreamClient(
 	runtimeBuildId: string,

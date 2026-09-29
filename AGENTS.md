@@ -36,6 +36,7 @@ Claude Code, Codex, and Pi are supported desktop task-agent targets. Pi support 
 Read the referenced document before editing the listed area:
 
 - Frontend work under `web-ui`: `docs/conventions/web-ui.md`.
+- Browser/runtime API or WebSocket contract changes: the compatibility-version policy in `DEVELOPMENT.md#browserruntime-compatibility`.
 - Hook/domain extraction or provider/context contracts: `docs/conventions/frontend-hooks.md`.
 - Main views, sidebars, toolbar tabs, task-detail routing, or surface navigation: `docs/conventions/ui-layout.md`.
 - Durable board state, board commands/receipts, lifecycle board transitions, authoritative hydration, project-scoped projections, automatic titles, notifications, or task indicators: `docs/conventions/runtime-state.md`.

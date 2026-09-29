@@ -21,7 +21,7 @@ import type {
 	RuntimeTaskSessionStartResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "../../src/core";
-import { deriveTaskIndicatorState, QUARTERDECK_BUILD_ID } from "../../src/core";
+import { deriveTaskIndicatorState, QUARTERDECK_BUILD_ID, QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "../../src/core";
 import { loadProjectContext, saveProjectState } from "../../src/state";
 import { createBoard, createReviewBoard } from "../utilities/board-factory";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
@@ -135,6 +135,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
 			expect(snapshotA.runtimeBuildId).toBe(QUARTERDECK_BUILD_ID);
+			expect(snapshotA.runtimeProtocolVersion).toBe(QUARTERDECK_RUNTIME_PROTOCOL_VERSION);
 			expect(snapshotA.currentProjectId).toBe(projectAId);
 			expect(snapshotA.projectState?.repoPath).toBe(expectedProjectAPath);
 			expect(snapshotA.projects.map((project) => project.id).sort()).toEqual([projectAId, projectBId].sort());

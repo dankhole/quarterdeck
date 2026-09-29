@@ -1,8 +1,9 @@
+import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "@runtime-contract";
 import { useEffect, useReducer, useRef } from "react";
 import { handleBrowserDiagnosticsStreamMessage, recordBrowserEvent } from "@/diagnostics";
 import { consumeProjectPreload } from "@/runtime/project-preload-cache";
-import { resolveRuntimeBuildCompatibility } from "@/runtime/runtime-build-compatibility";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
+import { resolveRuntimeProtocolCompatibility } from "@/runtime/runtime-protocol-compatibility";
 import {
 	createInitialRuntimeStateStreamStore,
 	type RuntimeStateStreamDomainAction,
@@ -74,48 +75,35 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 			},
 			onMessage: (payload) => {
 				if (payload.type === "snapshot") {
-					const compatibility = resolveRuntimeBuildCompatibility(
-						payload.runtimeBuildId,
-						__QUARTERDECK_BUILD_ID__,
-						sessionStorage,
+					const compatibility = resolveRuntimeProtocolCompatibility(
+						payload.runtimeProtocolVersion,
+						QUARTERDECK_RUNTIME_PROTOCOL_VERSION,
+						() => sessionStorage,
 					);
-					if (compatibility === "reload") {
+					if (compatibility !== "compatible") {
 						recordBrowserEvent(
-							"browser.runtime_build_mismatch",
+							"browser.runtime_protocol_mismatch",
 							{
-								action: "reload",
+								action: compatibility,
 								browserBuildId: __QUARTERDECK_BUILD_ID__,
 								runtimeBuildId: payload.runtimeBuildId ?? null,
+								browserProtocolVersion: QUARTERDECK_RUNTIME_PROTOCOL_VERSION,
+								runtimeProtocolVersion: payload.runtimeProtocolVersion ?? null,
 							},
 							{},
-							{ level: "warn", essential: true },
+							{ level: compatibility === "reload" ? "warn" : "error", essential: true },
 						);
 						transport?.dispose();
 						dispatchStreamAction({
 							type: "stream_disconnected",
 							message:
-								"Quarterdeck was rebuilt. Reload this page to use the browser code that matches the running server.",
+								compatibility === "reload"
+									? "Quarterdeck's browser and runtime are incompatible. Reloading this page to load a compatible browser application."
+									: "Quarterdeck's browser and runtime are incompatible. Restart Quarterdeck and refresh this page.",
 						});
-						window.location.reload();
-						return;
-					}
-					if (compatibility === "blocked") {
-						recordBrowserEvent(
-							"browser.runtime_build_mismatch",
-							{
-								action: "blocked",
-								browserBuildId: __QUARTERDECK_BUILD_ID__,
-								runtimeBuildId: payload.runtimeBuildId ?? null,
-							},
-							{},
-							{ level: "error", essential: true },
-						);
-						transport?.dispose();
-						dispatchStreamAction({
-							type: "stream_disconnected",
-							message:
-								"Quarterdeck's browser and runtime builds do not match after reloading. Restart Quarterdeck and refresh this page.",
-						});
+						if (compatibility === "reload") {
+							window.location.reload();
+						}
 						return;
 					}
 					transport?.acceptCurrentConnection();

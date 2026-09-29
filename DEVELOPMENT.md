@@ -124,6 +124,16 @@ node dist/cli.js --port auto
 
 You can still use `QUARTERDECK_RUNTIME_PORT` if needed, but `--port` is preferred for local multi-instance runs.
 
+### Browser/runtime compatibility
+
+`QUARTERDECK_RUNTIME_PROTOCOL_VERSION` in [`src/core/api/runtime-protocol.ts`](src/core/api/runtime-protocol.ts) declares the shared browser/runtime contract. Different package versions and build IDs may connect when this version matches. Build IDs remain available for diagnostics and packaged-artifact verification; rebuilding alone does not require a browser reload.
+
+Increment the protocol version deliberately when compatibility breaks in **either direction**: removing or changing an API, changing a WebSocket message shape or meaning, or requiring a new runtime endpoint/field from the browser without a fallback. Optional additions, bug fixes, and presentation changes keep the version when both older browsers and older runtimes still work. Cover any fallback with a regression test; do not derive this version from package semver or generate it during builds.
+
+Every initial runtime snapshot includes `runtimeProtocolVersion`. Keep the snapshot `type` and this field stable across protocol bumps so an older browser can reject the contract before applying state. The browser accepts the connection only after this check. An unequal, missing, or malformed version permits one automatic reload per protocol pair, then shows restart/refresh guidance if the served browser still cannot use the running process. Storage failures block incompatible connections without a reload loop and do not block compatible ones.
+
+Runtimes predating the protocol field require a one-time restart when upgrading to this policy. Older browsers that compare build IDs reload into the served browser; the existing production guard still rejects clients that predate even build identity because they cannot check snapshot compatibility. This browser admission check is not API authentication or server-side protocol negotiation.
+
 ## Dogfooding with two Quarterdeck instances
 
 Run your stable orchestrator first (main checkout):

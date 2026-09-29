@@ -29,6 +29,7 @@ import type {
 	RuntimeStateStreamTaskTitleUpdatedMessage,
 	RuntimeTaskSessionSummary,
 } from "../core";
+import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "../core/api/runtime-protocol";
 
 export function buildSnapshotMessage(
 	runtimeBuildId: string,
@@ -41,6 +42,7 @@ export function buildSnapshotMessage(
 	return {
 		type: "snapshot",
 		runtimeBuildId,
+		runtimeProtocolVersion: QUARTERDECK_RUNTIME_PROTOCOL_VERSION,
 		currentProjectId,
 		projects,
 		projectState,
