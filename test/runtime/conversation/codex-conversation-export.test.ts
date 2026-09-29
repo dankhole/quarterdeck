@@ -1,6 +1,6 @@
 import { mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { exportCodexConversation } from "../../../src/conversation/codex-conversation-export";
 import type { OwnedCodexAppServerTransport } from "../../../src/execution/codex-app-server-client";
@@ -8,10 +8,10 @@ import type { OwnedCodexAppServerTransport } from "../../../src/execution/codex-
 const input = {
 	binary: "codex",
 	args: [],
-	cwd: "/tmp/project",
+	cwd: resolve("/tmp/project"),
 	env: {},
 	threadId: "thread-1",
-	codexHome: "/tmp/profile",
+	codexHome: resolve("/tmp/profile"),
 };
 const turn = (id: string, text: string) => ({ id, items: [{ id: `${id}-message`, type: "agentMessage", text }] });
 
@@ -127,8 +127,8 @@ describe("full Codex conversation export", () => {
 	});
 
 	it.each([
-		["profile", "thread-1", "/tmp/wrong"],
-		["conversation", "wrong-thread", "/tmp/profile"],
+		["profile", "thread-1", resolve("/tmp/wrong")],
+		["conversation", "wrong-thread", input.codexHome],
 	])("rejects the wrong %s and reaps the process", async (_name, threadId, codexHome) => {
 		const f = fixture([], threadId, codexHome);
 		await expect(exportCodexConversation(input, f)).rejects.toThrow("different");

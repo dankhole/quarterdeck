@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
-import { join } from "node:path";
+import { join, normalize } from "node:path";
 import { describe, expect, it } from "vitest";
 import type {
 	RuntimeProjectAddResponse,
@@ -50,7 +50,7 @@ describe("folder projects", { concurrent: false }, () => {
 			const independent = await add(child, false, true);
 			expect(independent.ok).toBe(true);
 			expect(independent.project?.id).not.toBe(parentId);
-			expect(runGit(child, ["rev-parse", "--show-toplevel"]).trim()).toBe(await realpath(child));
+			expect(normalize(runGit(child, ["rev-parse", "--show-toplevel"]).trim())).toBe(await realpath(child));
 			const folder = await add(plain, true);
 			expect(folder.ok).toBe(true);
 			expect(existsSync(join(plain, ".git"))).toBe(false);

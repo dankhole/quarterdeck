@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { TerminalSessionManager } from "../../../src/terminal";
 import { handleReadTaskConversation } from "../../../src/trpc/handlers/read-task-conversation";
@@ -51,7 +52,7 @@ describe("read task conversation", () => {
 		expect(f.exportConversation).toHaveBeenCalledWith(
 			expect.objectContaining({
 				threadId: "thread-1",
-				codexHome: "/tmp/worktree/profile",
+				codexHome: resolve("/tmp/worktree", "profile"),
 				env: expect.objectContaining(f.identity.profileEnvironment),
 			}),
 		);

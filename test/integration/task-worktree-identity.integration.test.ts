@@ -23,6 +23,7 @@ describe("task worktree registration identity", { concurrent: false }, () => {
 				const repoPath = join(sandboxRoot, "repo");
 				mkdirSync(repoPath);
 				runGit(repoPath, ["init"]);
+				runGit(repoPath, ["config", "core.autocrlf", "false"]);
 				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
 				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 				writeFileSync(join(repoPath, "README.md"), "initial\n");
