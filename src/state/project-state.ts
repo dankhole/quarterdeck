@@ -349,8 +349,11 @@ async function readProjectStateFromContextUnderLock(
 	return toProjectStateResponse(context, board, sessionsResult.sessions, meta.revision, warnings);
 }
 
-export async function loadProjectState(cwd: string): Promise<RuntimeProjectStateResponse> {
-	return await loadProjectStateFromContext(await loadProjectContext(cwd));
+export async function loadProjectState(
+	cwd: string,
+	options: LoadProjectContextOptions = {},
+): Promise<RuntimeProjectStateResponse> {
+	return await loadProjectStateFromContext(await loadProjectContext(cwd, options));
 }
 
 export async function loadProjectStateById(projectId: string): Promise<RuntimeProjectStateResponse | null> {

@@ -56,6 +56,21 @@ function createSessionSummary(taskId: string): RuntimeTaskSessionSummary {
 }
 
 describe("project-state integration", { concurrent: false }, () => {
+	it("does not recreate a removed project during an existing-project state read", async () => {
+		await withTemporaryHome(async () => {
+			const { path, cleanup } = createTempDir("quarterdeck-removed-state-read-");
+			try {
+				initGitRepository(path);
+				const context = await loadProjectContext(path);
+				expect(await removeProjectIndexEntry(context.projectId)).toBe(true);
+				await expect(loadProjectState(path, { autoCreateIfMissing: false })).rejects.toThrow("not added");
+				expect(await listProjectIndexEntries()).toEqual([]);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("converts an existing repository to a folder while retaining its board and stable identity", async () => {
 		await withTemporaryHome(async () => {
 			const { path, cleanup } = createTempDir("quarterdeck-folder-conversion-");

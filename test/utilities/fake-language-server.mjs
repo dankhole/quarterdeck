@@ -14,7 +14,12 @@ if (process.env.LSP_TEST_CHILD === "1") {
 connection.onRequest(InitializeRequest.type, (params) => {
 	record("initialize", { rootUri: params.rootUri });
 	if (process.env.LSP_TEST_EXIT_INITIALIZE === "1") process.exit(0);
-	if (process.env.LSP_TEST_FLOOD === "1") process.stdout.write(Buffer.alloc(34 * 1024 * 1024, "x"));
+	if (process.env.LSP_TEST_FLOOD === "1") {
+		// Frame the oversized invalid body so this tests process cleanup without
+		// quadratic rescanning of an unterminated header in the protocol library.
+		process.stdout.write(`Content-Length: ${34 * 1024 * 1024}\r\n\r\n`);
+		process.stdout.write(Buffer.alloc(34 * 1024 * 1024, "x"));
+	}
 	if (process.env.LSP_TEST_OUTPUT_LIMIT === "1") {
 		void connection.sendNotification("window/logMessage", { type: 3, message: "x".repeat(34 * 1024 * 1024) }).catch(() => {});
 	}

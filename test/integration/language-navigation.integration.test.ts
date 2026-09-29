@@ -96,10 +96,15 @@ describe("language navigation process and filesystem ownership", () => {
 		const recorded = await readEvents();
 		expect(recorded.filter((event) => event.event === "initialize")).toHaveLength(1);
 		expect(recorded.filter((event) => event.event === "open").map((event) => event.version)).toEqual([1, 2]);
-		expect(recorded.filter((event) => event.event === "open").map((event) => event.content)).toEqual([
-			input.content,
-			"target",
-		]);
+		expect(
+			recorded
+				.filter((event) => event.event === "open")
+				.map((event) => event.content)
+				.sort(),
+		).toEqual([input.content, "target"].sort());
+		expect(
+			recorded.filter((event) => event.event === "open" || event.event === "close").map((event) => event.event),
+		).toEqual(["open", "close", "open", "close"]);
 		expect(recorded.filter((event) => event.event === "close")).toHaveLength(2);
 		expect(await readFile(join(root, "source.ts"), "utf8")).toBe("const target = 0;");
 	});
