@@ -842,7 +842,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				projectId,
 				payload: {
 					taskId,
-					text: "/working Native Windows task PTY",
+					text: "/new-turn Native Windows task PTY",
 					intent: "submit",
 					appendNewline: true,
 				},

@@ -85,8 +85,8 @@ describe("task worktree registration identity", { concurrent: false }, () => {
 					expect(runGit(replacementPath, ["rev-parse", "HEAD"])).toBe(replacementHead);
 					expect(readFileSync(join(adminPath, "index"))).toEqual(replacementIndex);
 					expect(runGit(replacementPath, ["status", "--porcelain"])).toBe("");
-					expect(realpathSync(readFileSync(join(adminPath, "gitdir"), "utf8").trim())).toBe(
-						realpathSync(join(replacementPath, ".git")),
+					expect(realpathSync.native(readFileSync(join(adminPath, "gitdir"), "utf8").trim())).toBe(
+						realpathSync.native(join(replacementPath, ".git")),
 					);
 				}
 			} finally {
