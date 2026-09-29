@@ -62,18 +62,35 @@ function readHookEventName(payload: Record<string, unknown> | null): string | nu
 		: null;
 }
 
-function isClaudeStopWaitingForBackgroundWork(
+// Background shells (dev servers, watchers) and monitors may never finish, so they must not hold a
+// finished turn in progress. They can still wake the same prompt later, so such a Stop reaches review
+// without retiring the prompt; a woken turn's next tool or Stop hook is then accepted.
+const CLAUDE_UNBOUNDED_BACKGROUND_TASK_TYPES = new Set(["shell", "monitor"]);
+
+type ClaudeStopBackgroundWork = "none" | "unbounded" | "pending";
+
+function isClaudeBackgroundTaskUnbounded(task: unknown): boolean {
+	const record = asRecord(task);
+	const type = record ? readStringField(record, "type")?.toLowerCase() : null;
+	return Boolean(type && CLAUDE_UNBOUNDED_BACKGROUND_TASK_TYPES.has(type));
+}
+
+function classifyClaudeStopBackgroundWork(
 	payload: Record<string, unknown> | null,
 	source: string | null | undefined,
 	hookEventName = readHookEventName(payload),
-): boolean {
+): ClaudeStopBackgroundWork {
 	if (source?.trim().toLowerCase() !== "claude" || hookEventName?.toLowerCase() !== "stop" || !payload) {
-		return false;
+		return "none";
 	}
-	return (
-		(Array.isArray(payload.background_tasks) && payload.background_tasks.length > 0) ||
+	const backgroundTasks = Array.isArray(payload.background_tasks) ? payload.background_tasks : [];
+	if (
+		backgroundTasks.some((task) => !isClaudeBackgroundTaskUnbounded(task)) ||
 		(Array.isArray(payload.session_crons) && payload.session_crons.length > 0)
-	);
+	) {
+		return "pending";
+	}
+	return backgroundTasks.length > 0 ? "unbounded" : "none";
 }
 
 export function resolveHookEventFromPayload(
@@ -81,7 +98,7 @@ export function resolveHookEventFromPayload(
 	payload: Record<string, unknown> | null,
 	source: string | null | undefined,
 ): RuntimeHookEvent {
-	return event === "to_review" && isClaudeStopWaitingForBackgroundWork(payload, source) ? "activity" : event;
+	return event === "to_review" && classifyClaudeStopBackgroundWork(payload, source) === "pending" ? "activity" : event;
 }
 
 export function parseJsonObject(value: string): Record<string, unknown> | null {
@@ -420,7 +437,8 @@ export function normalizeHookMetadata(
 		: null;
 	const inferredSource = inferHookSourceFromPayload(payload);
 	const source = flagMetadata.source ?? inferredSource ?? null;
-	const waitingForBackgroundWork = isClaudeStopWaitingForBackgroundWork(payload, source, hookEventName);
+	const backgroundWork = classifyClaudeStopBackgroundWork(payload, source, hookEventName);
+	const waitingForBackgroundWork = backgroundWork === "pending";
 	const extractedFinalMessage = payload
 		? (readStringField(payload, "last_assistant_message") ??
 			readStringField(payload, "lastAssistantMessage") ??
@@ -492,6 +510,7 @@ export function normalizeHookMetadata(
 			? null
 			: (flagMetadata.conversationSummaryText ??
 				(conversationSummaryText ? compactHookMetadataText(conversationSummaryText) : null)),
+		...(backgroundWork === "unbounded" ? { unboundedBackgroundWorkPending: true } : undefined),
 	};
 
 	const hasValue = Object.values(merged).some((value) => typeof value === "string" && value.trim().length > 0);

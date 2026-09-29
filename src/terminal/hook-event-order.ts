@@ -153,6 +153,7 @@ export function createProviderHookOrderObservation(
 		toolUseId: optionalIdentity(input.metadata?.toolUseId),
 		elicitationId: optionalIdentity(input.metadata?.elicitationId),
 		toolName: optionalIdentity(input.metadata?.toolName),
+		...(input.metadata?.unboundedBackgroundWorkPending ? { unboundedBackgroundWorkPending: true } : undefined),
 	};
 }
 
@@ -174,6 +175,7 @@ function observationAsHookInput(observation: RuntimeTaskProviderHookOrderObserva
 			toolUseId: observation.toolUseId,
 			elicitationId: observation.elicitationId,
 			toolName: observation.toolName,
+			unboundedBackgroundWorkPending: observation.unboundedBackgroundWorkPending,
 		},
 		delivery: {
 			id: observation.deliveryId,
@@ -715,7 +717,10 @@ export function commitHookEventOrder(
 				occurredAt,
 			);
 			const completedPromptId = promptId ?? state.activeClaudePromptId;
-			if (completedPromptId) state.retiredClaudePromptIds.set(completedPromptId, now);
+			// A shell or monitor may wake this prompt again, so keep its later hooks admissible.
+			if (completedPromptId && !input.metadata?.unboundedBackgroundWorkPending) {
+				state.retiredClaudePromptIds.set(completedPromptId, now);
+			}
 			if (!promptId || state.activeClaudePromptId === promptId) {
 				state.activeClaudePromptId = null;
 				state.activeClaudePromptLatestOccurredAt = null;

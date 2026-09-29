@@ -103,6 +103,8 @@ export const runtimeHookMetadataSchema = runtimeTaskHookActivitySchema
 		elicitationId: z.string().nullable().default(null),
 		providerAgentId: z.string().nullable().default(null),
 		transcriptPath: z.string().nullable().default(null),
+		/** Claude root Stop left only shell/monitor background work, which may wake the same prompt later. */
+		unboundedBackgroundWorkPending: z.boolean(),
 	})
 	.partial();
 export type RuntimeHookMetadata = z.infer<typeof runtimeHookMetadataSchema>;
@@ -129,6 +131,7 @@ export const runtimeTaskProviderHookOrderObservationSchema = z.object({
 	sessionInstanceId: z.string().min(1),
 	providerSessionId: z.string().min(1).nullish(),
 	sessionStartHasTranscript: z.boolean().optional(),
+	unboundedBackgroundWorkPending: z.boolean().optional(),
 	hookEventName: z.string().nullable(),
 	notificationType: z.string().nullable(),
 	turnId: z.string().nullable(),

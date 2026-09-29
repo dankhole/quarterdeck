@@ -62,6 +62,7 @@ function minimalReplayMetadata(metadata: RuntimeHookMetadata | undefined): Runti
 		hookEventName: metadata.hookEventName ?? null,
 		toolName: metadata.toolName ?? null,
 		notificationType: metadata.notificationType ?? null,
+		...(metadata.unboundedBackgroundWorkPending ? { unboundedBackgroundWorkPending: true } : undefined),
 	};
 }
 

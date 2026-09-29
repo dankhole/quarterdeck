@@ -159,6 +159,39 @@ describe("hook metadata", () => {
 		).toBe("to_review");
 	});
 
+	it("moves a Claude Stop to review without retiring the prompt when only shells or monitors remain", () => {
+		const payload = {
+			hook_event_name: "Stop",
+			last_assistant_message: "The backend is running at http://127.0.0.1:8765.",
+			background_tasks: [
+				{ id: "shell-1", type: "shell", status: "running", description: "Launch backend", command: "just run" },
+				{ id: "monitor-1", type: "monitor", status: "running", description: "Watch logs" },
+			],
+			session_crons: [],
+		};
+
+		expect(resolveHookEventFromPayload("to_review", payload, "claude")).toBe("to_review");
+		expect(normalizeHookMetadata("to_review", payload, { source: "claude" })).toEqual(
+			expect.objectContaining({
+				finalMessage: "The backend is running at http://127.0.0.1:8765.",
+				unboundedBackgroundWorkPending: true,
+			}),
+		);
+		expect(
+			resolveHookEventFromPayload(
+				"to_review",
+				{
+					...payload,
+					background_tasks: [
+						...payload.background_tasks,
+						{ id: "agent-1", type: "subagent", status: "running", description: "Explore" },
+					],
+				},
+				"claude",
+			),
+		).toBe("activity");
+	});
+
 	it("bounds native final-message metadata before runtime persistence", () => {
 		const metadata = normalizeHookMetadata(
 			"to_review",

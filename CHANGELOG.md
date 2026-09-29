@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.12.9]
+
+- Move finished Claude tasks to Review when only a background shell or monitor (such as a dev server) is still running, instead of leaving the card stuck in Running.
+
 ## [0.12.8] - 2026-09-29
 
 - Prevent delayed runtime snapshot and session hydration reads from re-adding removed projects.

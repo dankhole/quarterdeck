@@ -38,6 +38,7 @@ function hook(input: {
 	sessionInstanceId?: string;
 	sessionId?: string;
 	transcriptPath?: string;
+	unboundedBackgroundWorkPending?: boolean;
 }): RuntimeHookIngestRequest {
 	return {
 		taskId: "task-1",
@@ -56,6 +57,7 @@ function hook(input: {
 			notificationType: input.notificationType,
 			elicitationId: input.elicitationId,
 			providerAgentId: input.providerAgentId,
+			unboundedBackgroundWorkPending: input.unboundedBackgroundWorkPending,
 		},
 		delivery:
 			input.deliveryIndex === undefined
@@ -1604,6 +1606,63 @@ describe("Claude hook event ordering", () => {
 		}
 		expect(state.retiredClaudePromptIds.has("prompt-1")).toBe(true);
 		expect(state.latestClaudeRootCompletionOccurredAt).toBe(400);
+	});
+
+	it("keeps a Claude prompt admissible after a root Stop that left only unbounded background work", () => {
+		const promptStart = hook({
+			source: "claude",
+			event: "to_in_progress",
+			hookEventName: "UserPromptSubmit",
+			promptId: "prompt-1",
+			deliveryIndex: 70,
+			occurredAt: 100,
+		});
+		const shellOnlyStop = hook({
+			source: "claude",
+			event: "to_review",
+			hookEventName: "Stop",
+			promptId: "prompt-1",
+			unboundedBackgroundWorkPending: true,
+			deliveryIndex: 71,
+			occurredAt: 200,
+		});
+		const wokenTool = hook({
+			source: "claude",
+			event: "to_in_progress",
+			hookEventName: "PreToolUse",
+			promptId: "prompt-1",
+			toolUseId: "woken-tool",
+			deliveryIndex: 72,
+			occurredAt: 300,
+		});
+		const completedStop = hook({
+			source: "claude",
+			event: "to_review",
+			hookEventName: "Stop",
+			promptId: "prompt-1",
+			deliveryIndex: 73,
+			occurredAt: 400,
+		});
+
+		const state = createHookEventOrderState(SESSION_INSTANCE_ID);
+		acceptAndCommit(state, promptStart);
+		acceptAndCommit(state, shellOnlyStop);
+		expect(state.retiredClaudePromptIds.has("prompt-1")).toBe(false);
+
+		const observations = [promptStart, shellOnlyStop]
+			.map(createProviderHookOrderObservation)
+			.filter((observation) => observation !== null);
+		const restored = restoreHookEventOrderState({
+			sessionInstanceId: SESSION_INSTANCE_ID,
+			observations,
+			recentDeliveryIds: observations.map((observation) => observation.deliveryId),
+			outstandingInteraction: null,
+		});
+		expect(restored.retiredClaudePromptIds.has("prompt-1")).toBe(false);
+
+		acceptAndCommit(state, wokenTool);
+		acceptAndCommit(state, completedStop);
+		expect(state.retiredClaudePromptIds.has("prompt-1")).toBe(true);
 	});
 
 	it("rejects delayed elicitation requests after their native result", () => {
