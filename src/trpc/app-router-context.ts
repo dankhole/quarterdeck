@@ -73,6 +73,8 @@ import type {
 	RuntimeStashPopApplyResponse,
 	RuntimeStashPushResponse,
 	RuntimeStashShowResponse,
+	RuntimeTaskConversationRequest,
+	RuntimeTaskConversationResponse,
 	RuntimeTaskLifecycleCommand,
 	RuntimeTaskLifecycleResult,
 	RuntimeTaskRepositoryInfoResponse,
@@ -113,6 +115,10 @@ export interface RuntimeTrpcContext {
 	projectScope: RuntimeTrpcProjectScope | null;
 	runtimeClientId: string;
 	runtimeApi: {
+		readTaskConversation: (
+			scope: RuntimeTrpcProjectScope,
+			input: RuntimeTaskConversationRequest,
+		) => Promise<RuntimeTaskConversationResponse>;
 		codexModels: (scope: RuntimeTrpcProjectScope | null) => Promise<RuntimeCodexModelsResponse>;
 		loadConfig: (scope: RuntimeTrpcProjectScope | null) => Promise<RuntimeConfigResponse>;
 		saveConfig: (

@@ -25,6 +25,7 @@ import {
 	turnStartedNotificationSchema,
 	turnStartResponseSchema,
 } from "./codex-app-server-protocol";
+import { codexHistoryPageSchema, codexHistoryThreadSchema } from "./codex-history-protocol";
 import { MAX_TASK_INTERACTION_ID_LENGTH } from "./execution-ownership-contracts";
 
 const log = createTaggedLogger("codex-app-server");
@@ -86,6 +87,7 @@ export interface OwnedCodexAppServerTransport extends CodexAppServerTransport {
 }
 
 export interface SpawnCodexAppServerTransportOptions {
+	maxMessageBytes?: number;
 	binary: string;
 	args: string[];
 	cwd: string;
@@ -126,7 +128,7 @@ export function spawnCodexAppServerTransport(
 		});
 	});
 	let exitEvent: { exitCode: number | null; signal: NodeJS.Signals | null } | null = null;
-	const framer = new CodexAppServerJsonlFramer();
+	const framer = new CodexAppServerJsonlFramer(options.maxMessageBytes);
 	const requestStop = (): void => {
 		if (exitEvent) return;
 		if (!childPid) return;
@@ -152,7 +154,7 @@ export function spawnCodexAppServerTransport(
 		const framed = framer.push(chunk);
 		if (framed.overflow) {
 			log.warn("codex app-server exceeded the bounded protocol message size", {
-				maxMessageBytes: CODEX_APP_SERVER_MAX_MESSAGE_BYTES,
+				maxMessageBytes: options.maxMessageBytes ?? CODEX_APP_SERVER_MAX_MESSAGE_BYTES,
 			});
 			requestStop();
 			return;
@@ -352,6 +354,22 @@ export class CodexAppServerClient {
 
 	async readThread(threadId: string): Promise<ReturnType<typeof threadReadResponseSchema.parse>> {
 		return threadReadResponseSchema.parse(await this.request("thread/read", { threadId, includeTurns: false }));
+	}
+
+	async readHistoryThread(threadId: string) {
+		return codexHistoryThreadSchema.parse(await this.request("thread/read", { threadId, includeTurns: false }));
+	}
+
+	async listHistoryTurns(threadId: string, cursor: string | null) {
+		return codexHistoryPageSchema.parse(
+			await this.request("thread/turns/list", {
+				threadId,
+				cursor,
+				limit: 10,
+				sortDirection: "desc",
+				itemsView: "full",
+			}),
+		);
 	}
 
 	async listTurns(threadId: string, limit = 20): Promise<ReturnType<typeof threadTurnsListResponseSchema.parse>> {

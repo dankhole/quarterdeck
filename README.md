@@ -202,6 +202,8 @@ npm run unlink
 
    Cards show task state, latest agent activity, review readiness, permission/input needs, and git change indicators. Opening a card shows the live agent terminal.
 
+   For a connected Codex task, use **Copy full conversation** in the top toolbar to copy saved prompts, replies, progress messages, and plans as Markdown. It reads all history pages through Codex’s API, including messages outside the terminal viewport. Tool logs are excluded; attachments appear as labels. The copy fails explicitly if the full result exceeds 8 MB or cannot be read completely. Messages still being generated may not have been saved yet.
+
 5. Review changes.
 
    The task detail view includes terminal output, git diffs, a file browser, branch comparison, and line comments that can be sent back to the agent. The git view can also compare branches and inspect uncommitted work in either the home repo or the selected task worktree.

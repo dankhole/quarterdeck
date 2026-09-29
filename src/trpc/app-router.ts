@@ -24,6 +24,8 @@ import {
 	runtimeProjectsResponseSchema,
 	runtimeShellSessionStartRequestSchema,
 	runtimeShellSessionStartResponseSchema,
+	runtimeTaskConversationRequestSchema,
+	runtimeTaskConversationResponseSchema,
 	runtimeTaskLifecycleCommandSchema,
 	runtimeTaskLifecycleGetRequestSchema,
 	runtimeTaskLifecycleResultSchema,
@@ -44,6 +46,10 @@ import { projectRouter } from "./project-procedures";
 export type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
 
 const runtimeRouter = t.router({
+	readTaskConversation: projectProcedure
+		.input(runtimeTaskConversationRequestSchema)
+		.output(runtimeTaskConversationResponseSchema)
+		.query(({ ctx, input }) => ctx.runtimeApi.readTaskConversation(ctx.projectScope, input)),
 	checkLspCommand: t.procedure
 		.input(
 			z.object({

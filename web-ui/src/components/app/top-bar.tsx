@@ -1,10 +1,11 @@
-import { Activity, Command, RefreshCw, Settings, Terminal, Wrench } from "lucide-react";
+import { Activity, Command, Copy, RefreshCw, Settings, Terminal, Wrench } from "lucide-react";
 import { TopBarOpenProjectControl } from "@/components/app/top-bar-open-project-control";
 import { TopBarProjectShortcutControl } from "@/components/app/top-bar-project-shortcut-control";
 import { TopBarPromptShortcutControl } from "@/components/app/top-bar-prompt-shortcut-control";
 import { getTopBarScopeBorderClass, TopBarScopeSection } from "@/components/app/top-bar-scope-section";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { PromptShortcut, RuntimeProjectShortcut } from "@/runtime/types";
 import type { OpenTargetId, OpenTargetOption } from "@/utils/open-targets";
@@ -25,6 +26,8 @@ export function TopBar({
 	isTerminalOpen,
 	isTerminalLoading,
 	onResyncAgentTerminal,
+	onCopyConversation,
+	isCopyingConversation,
 	onOpenSettings,
 	onOpenDiagnostics,
 	showDebugButton,
@@ -62,6 +65,8 @@ export function TopBar({
 	isTerminalOpen?: boolean;
 	isTerminalLoading?: boolean;
 	onResyncAgentTerminal?: () => void;
+	onCopyConversation?: () => void;
+	isCopyingConversation?: boolean;
 	onOpenSettings?: (section?: SettingsSection) => void;
 	onOpenDiagnostics?: () => void;
 	showDebugButton?: boolean;
@@ -177,6 +182,19 @@ export function TopBar({
 							disabled={Boolean(isTerminalLoading)}
 							aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
 							className="ml-2"
+						/>
+					</Tooltip>
+				) : null}
+				{onCopyConversation ? (
+					<Tooltip side="bottom" content="Copy full conversation">
+						<Button
+							variant="ghost"
+							size="sm"
+							icon={isCopyingConversation ? <Spinner size={16} /> : <Copy size={16} />}
+							onClick={onCopyConversation}
+							disabled={isCopyingConversation}
+							aria-label="Copy full conversation"
+							className="ml-0.5"
 						/>
 					</Tooltip>
 				) : null}

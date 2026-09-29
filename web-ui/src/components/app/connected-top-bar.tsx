@@ -15,6 +15,7 @@ import {
 	shouldShowHomeBranchTracking,
 } from "@/hooks/git/git-actions";
 import { useOpenProject } from "@/hooks/project";
+import { useCopyConversation } from "@/hooks/terminal/use-copy-conversation";
 import { useBoardContext } from "@/providers/board-provider";
 import { useDialogContext } from "@/providers/dialog-provider";
 import { useGitContext } from "@/providers/git-provider";
@@ -72,7 +73,13 @@ export function ConnectedTopBar({
 }: ConnectedTopBarProps): ReactElement {
 	const projectNavigation = useProjectNavigationContext();
 	const projectRuntime = useProjectRuntimeContext();
-	const { selectedCard, setBoard } = useBoardContext();
+	const { selectedCard, setBoard, sessions } = useBoardContext();
+	const selectedSession = selectedCard ? sessions[selectedCard.card.id] : null;
+	const copyConversation = useCopyConversation(
+		projectNavigation.currentProjectId,
+		selectedCard?.card.id ?? null,
+		selectedSession?.sessionInstanceId ?? null,
+	);
 	const git = useGitContext();
 	const navigation = useSurfaceNavigationContext();
 	const terminal = useTerminalContext();
@@ -166,6 +173,17 @@ export function ConnectedTopBar({
 					: undefined
 			}
 			onOpenSettings={dialog.handleOpenSettings}
+			onCopyConversation={
+				selectedSession?.agentId === "codex" &&
+				selectedSession.pid !== null &&
+				selectedSession.resumeSessionId &&
+				!shouldHideProjectDependentTopBarActions
+					? () => {
+							void copyConversation.copyConversation();
+						}
+					: undefined
+			}
+			isCopyingConversation={copyConversation.isCopying}
 			onOpenDiagnostics={dialog.diagnostics.openPanel}
 			showDebugButton={dialog.debugModeEnabled}
 			onOpenDebugDialog={dialog.debugModeEnabled ? dialog.handleOpenDebugDialog : undefined}

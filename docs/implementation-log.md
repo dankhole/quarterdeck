@@ -1,5 +1,13 @@
 # Implementation Log
 
+## 2026-09-29 — Full Codex conversation copy
+
+Added a task-toolbar copy action backed by read-only `thread/read` and paginated `thread/turns/list` calls. The runtime derives the exact thread and profile from the scoped live PTY, rechecks identity after the read, and reaps its temporary app-server without resuming a thread or starting a turn. The separate history schema projects Codex 0.157.1 without changing the older structured-execution compatibility tuple. A thread's `sessionId` identifies its shared session tree; only `thread.id` identifies the requested conversation. Profile comparison accepts canonical paths to the same directory.
+
+`codex-conversation-export.ts` produces chronological Markdown for prompts, replies, progress, and plans, with attachment labels and explicit size/deadline/page failures instead of partial copies. The browser begins a promise-backed clipboard write in the click gesture for WebKit and cancels pending content when task scope changes. No conversation cache, board writes, or transcript logging were added. Connected native Codex tasks are supported, including idle Review; stopped sessions lack the retained launch-profile identity required by this action.
+
+Validation: focused export, session-race, protocol, runtime API, clipboard, hook, and toolbar tests; runtime/web typechecks and changed-file Biome/diff checks. Fake Agent Lab `copy-conversation-20260929T140011Z-ffed8b` copied 25 synthetic messages across three API pages, recording the expected 10,573-character simulated clipboard write and success toast. Evidence is in its `full-conversation-copied` checkpoint; the forbidden-host-launch log was empty and the lab stopped cleanly. No real provider conversation was used.
+
 ## 2026-09-28 — Selected commits retain staged ignored entries
 
 `git-selected-commit.ts` now seeds selected entries from the saved index into its HEAD-based temporary index before normal staging. Otherwise staged additions matching current ignore rules lose their tracked status and Git rejects the commit. Do not replace this with forced staging: a tracked file replaced by a directory can cause ignored children to be committed. Untracked ignored selections must still fail without changing HEAD or the user index. Commit notifications identify the first rejected path and retain full output in the expanded error panel.

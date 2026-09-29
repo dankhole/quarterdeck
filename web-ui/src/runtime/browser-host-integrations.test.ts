@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BrowserHostIntegrations } from "@/runtime/browser-host-integrations";
 import type { RuntimeBrowserHostIntegrationEventRequest } from "@/runtime/types";
@@ -8,6 +8,47 @@ function createEventReporter() {
 }
 
 describe("BrowserHostIntegrations", () => {
+	afterEach(() => vi.unstubAllGlobals());
+
+	it("initiates native promise-backed clipboard writes before the API data arrives", async () => {
+		let resolve!: (value: string) => void;
+		const promise = new Promise<string>((nextResolve) => {
+			resolve = nextResolve;
+		});
+		const content: Record<string, Promise<Blob>>[] = [];
+		vi.stubGlobal(
+			"ClipboardItem",
+			class {
+				constructor(data: Record<string, Promise<Blob>>) {
+					content.push(data);
+				}
+			},
+		);
+		const write = vi.fn(async () => {
+			await content[0]?.["text/plain"];
+		});
+		vi.stubGlobal("navigator", { clipboard: { write } });
+		const integrations = new BrowserHostIntegrations({ nativeUiAvailable: true, hostIntegrationMode: "native" });
+		const copying = integrations.writeClipboardText(promise);
+		expect(write).toHaveBeenCalledOnce();
+		resolve("full transcript");
+		await copying;
+		expect((await content[0]?.["text/plain"])?.size).toBe(15);
+	});
+
+	it("does not replace the simulated clipboard when deferred content fails", async () => {
+		const reportSimulatedEvent = createEventReporter();
+		const integrations = new BrowserHostIntegrations(
+			{ nativeUiAvailable: false, hostIntegrationMode: "simulated" },
+			{ readClipboardText: vi.fn(), writeClipboardText: vi.fn(), reportSimulatedEvent },
+		);
+		await integrations.writeClipboardText("previous");
+		await expect(integrations.writeClipboardText(Promise.reject(new Error("read failed")))).rejects.toThrow(
+			"read failed",
+		);
+		await expect(integrations.readClipboardText()).resolves.toBe("previous");
+		expect(reportSimulatedEvent.mock.calls.filter(([event]) => event.kind === "clipboard_write")).toHaveLength(1);
+	});
 	it("fails closed before invoking browser host APIs when integrations are unavailable", async () => {
 		const readClipboardText = vi.fn(async () => {
 			throw new Error("forbidden clipboard read invoked");

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Add “Copy full conversation” to connected Codex tasks, reading saved prompts, replies, progress, and plans through Codex’s API across the complete history instead of copying only the terminal viewport.
+
 - Shorten the green task status pill from “Ready for review” to “Review” everywhere it appears.
 
 - Reduce task card title font sizes slightly so longer titles fit more comfortably.

@@ -17,6 +17,7 @@ import type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-c
 import { handleLoadConfig } from "./handlers/load-config";
 import { handleOpenFile } from "./handlers/open-file";
 import { handleOpenProject } from "./handlers/open-project";
+import { handleReadTaskConversation } from "./handlers/read-task-conversation";
 import { handleSaveConfig } from "./handlers/save-config";
 import { handleSendTaskSessionInput } from "./handlers/send-task-session-input";
 import { handleSetLogLevel } from "./handlers/set-log-level";
@@ -86,6 +87,10 @@ class RuntimeApiImpl implements RuntimeApi {
 	}
 
 	// ── Sessions ──────────────────────────────────────────────────────────
+
+	async readTaskConversation(projectScope: RuntimeTrpcProjectScope, input: unknown) {
+		return handleReadTaskConversation(projectScope, input, this.deps);
+	}
 
 	async startTaskSession(projectScope: RuntimeTrpcProjectScope, input: unknown) {
 		return handleStartTaskSession(projectScope, input, this.deps);

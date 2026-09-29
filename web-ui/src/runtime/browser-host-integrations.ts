@@ -9,7 +9,7 @@ export interface BrowserHostIntegrationAttempt {
 
 export interface BrowserHostIntegrationDependencies {
 	readClipboardText: () => Promise<string>;
-	writeClipboardText: (text: string) => Promise<void>;
+	writeClipboardText: (text: string | Promise<string>) => Promise<void>;
 	reportSimulatedEvent: (event: RuntimeBrowserHostIntegrationEventRequest) => Promise<void>;
 	onAttempt?: (attempt: BrowserHostIntegrationAttempt) => void;
 }
@@ -33,7 +33,21 @@ function defaultReadClipboardText(): Promise<string> {
 	return navigator.clipboard.readText();
 }
 
-function defaultWriteClipboardText(text: string): Promise<void> {
+function defaultWriteClipboardText(text: string | Promise<string>): Promise<void> {
+	// Start the write during the click gesture, even when text arrives from an API.
+	// WebKit requires this user activation for asynchronous clipboard content.
+	if (typeof text !== "string") {
+		if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
+			const content = text.then((value) => new Blob([value], { type: "text/plain" }));
+			void content.catch(() => {});
+			return navigator.clipboard.write([
+				new ClipboardItem({
+					"text/plain": content,
+				}),
+			]);
+		}
+		return text.then(defaultWriteClipboardText);
+	}
 	if (!navigator.clipboard?.writeText) {
 		return Promise.reject(new Error("Clipboard API unavailable"));
 	}
@@ -99,17 +113,20 @@ export class BrowserHostIntegrations {
 		return await this.dependencies.readClipboardText();
 	}
 
-	async writeClipboardText(text: string, fallback?: () => boolean): Promise<void> {
+	async writeClipboardText(text: string | Promise<string>, fallback?: () => boolean): Promise<void> {
+		// Observe rejection even if clipboard permission/capability fails before the read finishes.
+		if (typeof text !== "string") void text.catch(() => {});
 		const mode = this.beginAttempt("clipboard_write");
 		if (mode === "unavailable") {
 			throw new Error("Clipboard integration is disabled for this runtime.");
 		}
 		if (mode === "simulated") {
+			const readyText = await text;
 			await this.dependencies.reportSimulatedEvent({
 				kind: "clipboard_write",
-				characterCount: text.length,
+				characterCount: readyText.length,
 			});
-			this.simulatedClipboardText = text;
+			this.simulatedClipboardText = readyText;
 			return;
 		}
 		try {

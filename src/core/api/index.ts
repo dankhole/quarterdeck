@@ -14,6 +14,7 @@ export * from "./project-board-command.js";
 export * from "./project-state.js";
 export * from "./shared.js";
 export * from "./streams.js";
+export * from "./task-conversation.js";
 export * from "./task-indicators.js";
 export * from "./task-lifecycle.js";
 export * from "./task-quick-reply.js";

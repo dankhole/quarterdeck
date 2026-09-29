@@ -18,6 +18,7 @@ import {
 	resolveFakeAgentScenario,
 	shouldFakeClaudeUseFullscreen,
 } from "./fake-agent-protocol";
+import { readFakeCodexHistory } from "./fake-codex-history";
 import { AgentLabScenarioSchema } from "./types";
 
 const args = process.argv.slice(2);
@@ -734,8 +735,18 @@ function assertCodexLaunchContract(): void {
 function serveModelCatalog(): void {
 	const input = createInterface({ input: process.stdin, terminal: false });
 	input.on("line", (line) => {
-		const request = JSON.parse(line) as { id?: string | number; method: string };
+		const request = JSON.parse(line) as { id?: string | number; method: string; params?: unknown };
 		if (request.id === undefined) return;
+		if (request.method === "thread/read" || request.method === "thread/turns/list") {
+			void readFakeCodexHistory(request.method, request.params).then(
+				(result) => process.stdout.write(`${JSON.stringify({ id: request.id, result })}\n`),
+				() =>
+					process.stdout.write(
+						`${JSON.stringify({ id: request.id, error: { code: -32602, message: "Synthetic history unavailable" } })}\n`,
+					),
+			);
+			return;
+		}
 		if (request.method === "initialize") {
 			process.stdout.write(
 				`${JSON.stringify({
