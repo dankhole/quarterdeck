@@ -321,7 +321,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		const loading = (async () => {
 			const store = new InMemorySessionSummaryStore();
 			const manager = new TerminalSessionManager(store, { projectId, diagnostics: deps.diagnostics });
-			const existingProject = await loadProjectState(repoPath);
+			const existingProject = await loadProjectState(repoPath, { autoCreateIfMissing: false });
 			manager.hydrateFromRecord(existingProject.sessions);
 			const hydratedSessionCount = Object.keys(existingProject.sessions).length;
 			manager.startReconciliation();
@@ -474,7 +474,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		projectId: string,
 		projectPath: string,
 	): Promise<RuntimeProjectStateResponse> => {
-		const response = await loadProjectState(projectPath);
+		const response = await loadProjectState(projectPath, { autoCreateIfMissing: false });
 		const terminalManager = await ensureTerminalManagerForProject(projectId, projectPath);
 		for (const summary of terminalManager.store.listSummaries()) {
 			response.sessions[summary.taskId] = summary;
@@ -645,7 +645,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		const manager = await ensureTerminalManagerForProject(projectId, projectPath);
 		let state: RuntimeProjectStateResponse;
 		try {
-			state = await loadProjectState(projectPath);
+			state = await loadProjectState(projectPath, { autoCreateIfMissing: false });
 		} catch (error) {
 			deferredStartupRecoveryProjects.set(projectId, projectPath);
 			registryLog.warn("startup resume deferred: failed to load project state", {

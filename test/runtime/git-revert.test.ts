@@ -33,6 +33,7 @@ describe("revertCommit with a real synthetic repository", () => {
 	beforeEach(() => {
 		temp = createTempDir("qd-revert-");
 		git("init", "-q", "-b", "main");
+		git("config", "core.autocrlf", "false");
 		git("config", "user.name", "Test User");
 		git("config", "user.email", "test@example.com");
 		original = commit("original\n");

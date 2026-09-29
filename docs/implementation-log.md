@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-29 — Release validation project-removal race
+
+The 0.12.8 CI matrix exposed a project reappearing after removal: registry snapshot and session hydration reads used the auto-creating state loader while stream catch-up could still be in flight. Registry reads now require an existing index entry via `loadProjectState(..., { autoCreateIfMissing: false })`; explicit project registration retains creation authority. The project-state integration regression checks that a late read cannot restore the index entry. Release validation also corrected the LSP integration fixture to frame its oversized invalid body, avoiding quadratic unterminated-header parsing, and stopped assuming filesystem preparation preserves concurrent request order while retaining serialized open/close assertions.
+
+Validation: focused project-state, project-management, registry recovery, and language-navigation tests, followed by the release CI matrix.
+
 ## 2026-09-29 — Full Codex conversation copy
 
 Added a task-toolbar copy action backed by read-only `thread/read` and paginated `thread/turns/list` calls. The runtime derives the exact thread and profile from the scoped live PTY, rechecks identity after the read, and reaps its temporary app-server without resuming a thread or starting a turn. The separate history schema projects Codex 0.157.1 without changing the older structured-execution compatibility tuple. A thread's `sessionId` identifies its shared session tree; only `thread.id` identifies the requested conversation. Profile comparison accepts canonical paths to the same directory.

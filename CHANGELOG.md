@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.12.8] - 2026-09-29
+
+- Prevent delayed runtime snapshot and session hydration reads from re-adding removed projects.
+
+- Put npm installation, launch, and update instructions near the top of the README.
+
 - Identify nested repositories in Changes, explain why they are excluded, and keep them out of file selection and commits.
 
 - Add “Copy full conversation” to connected Codex tasks, reading saved prompts, replies, progress, and plans through Codex’s API across the complete history instead of copying only the terminal viewport.

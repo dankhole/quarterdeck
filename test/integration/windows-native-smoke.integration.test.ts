@@ -27,8 +27,8 @@ import type {
 	RuntimeProjectBoardCommandExecutionResult,
 	RuntimeProjectStateResponse,
 	RuntimeShellSessionStartResponse,
+	RuntimeTaskLifecycleResult,
 	RuntimeTaskSessionInputResponse,
-	RuntimeTaskSessionStartResponse,
 	RuntimeTaskSessionStopResponse,
 	RuntimeTerminalWsServerMessage,
 	RuntimeWorkdirChangesResponse,
@@ -44,6 +44,7 @@ import {
 	resolveWindowsPowerShellPath,
 } from "../../src/core";
 import { registerManagedProcessOwnership } from "../../src/terminal/managed-process-ownership";
+import { finishTaskWorktreeSetup } from "../../src/workdir/task-worktree-setup";
 import { createReviewBoard } from "../utilities/board-factory";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
 import {
@@ -575,7 +576,8 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				"utf8",
 			);
 			mkdirSync(ignoredDirectoryPath, { recursive: true });
-			writeFileSync(join(ignoredDirectoryPath, "sentinel.txt"), "junction target\n", "utf8");
+			writeFileSync(join(ignoredDirectoryPath, "sentinel.txt"), "copied setup directory\n", "utf8");
+			writeFileSync(join(projectPath, ".worktreeinclude"), ".windows-smoke-cache/\n.windows-smoke.env\n", "utf8");
 			writeFileSync(ignoredFilePath, "WINDOWS_SMOKE=ready\n", "utf8");
 			commitAll(projectPath, "seed native Windows smoke project");
 			expect(longTrackedPath.length).toBeGreaterThan(260);
@@ -753,6 +755,13 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			});
 
 			const taskId = "windows-native-task";
+			const taskPrompt =
+				"Wait for native Windows smoke input [agent-lab:idle]\r\nPreserve this exact multiline prompt.";
+			const taskBoard = createReviewBoard(taskId, taskPrompt);
+			const taskCard = taskBoard.columns.flatMap((column) => column.cards)[0];
+			if (!taskCard) throw new Error("Missing native Windows task fixture.");
+			taskCard.agentId = "codex";
+			taskCard.useWorktree = false;
 			const stateResponse = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl,
 				procedure: "project.getState",
@@ -766,7 +775,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				type: "mutation",
 				projectId,
 				payload: createBoardSeedCommandBatch(
-					createReviewBoard(taskId, "Native Windows task PTY"),
+					taskBoard,
 					stateResponse.payload.revision,
 					"seed-native-windows-smoke",
 				),
@@ -785,30 +794,36 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			if (!worktreeResponse.payload.ok) {
 				throw new Error(worktreeResponse.payload.error ?? "Native Windows worktree creation failed.");
 			}
+			await finishTaskWorktreeSetup({
+				repoPath: projectPath,
+				worktreePath: worktreeResponse.payload.path,
+				script: "",
+				newWorktree: true,
+			});
 			const mirroredIgnoredPath = join(worktreeResponse.payload.path, ".windows-smoke-cache");
-			expect(lstatSync(mirroredIgnoredPath).isSymbolicLink()).toBe(true);
-			expect(readFileSync(join(mirroredIgnoredPath, "sentinel.txt"), "utf8")).toBe("junction target\n");
+			expect(lstatSync(mirroredIgnoredPath).isSymbolicLink()).toBe(false);
+			expect(lstatSync(mirroredIgnoredPath).isDirectory()).toBe(true);
+			expect(readFileSync(join(mirroredIgnoredPath, "sentinel.txt"), "utf8")).toBe("copied setup directory\n");
 			const mirroredIgnoredFilePath = join(worktreeResponse.payload.path, ".windows-smoke.env");
 			const mirroredIgnoredFileStat = lstatSync(mirroredIgnoredFilePath);
-			expect(mirroredIgnoredFileStat.isSymbolicLink() || mirroredIgnoredFileStat.isFile()).toBe(true);
+			expect(mirroredIgnoredFileStat.isSymbolicLink()).toBe(false);
+			expect(mirroredIgnoredFileStat.isFile()).toBe(true);
 			expect(readFileSync(mirroredIgnoredFilePath, "utf8")).toBe("WINDOWS_SMOKE=ready\n");
 			expect(readFileSync(join(worktreeResponse.payload.path, longTrackedRelativePath), "utf8")).toBe(
 				"Git for Windows long-path checkout\n",
 			);
 
-			const taskPrompt =
-				"Wait for native Windows smoke input [agent-lab:idle]\r\nPreserve this exact multiline prompt.";
-			const startTaskResponse = await requestJson<RuntimeTaskSessionStartResponse>({
+			const startTaskResponse = await requestJson<RuntimeTaskLifecycleResult>({
 				baseUrl,
-				procedure: "runtime.startTaskSession",
+				procedure: "runtime.executeTaskLifecycle",
 				type: "mutation",
 				projectId,
 				payload: {
+					kind: "start",
+					operationId: "start-native-windows-smoke",
 					taskId,
-					prompt: taskPrompt,
-					agentId: "codex",
-					baseRef: "main",
-					useWorktree: false,
+					taskCreatedAt: taskCard.createdAt,
+					expectedRevision: seedResponse.payload.state.revision,
 				},
 			});
 			expect(startTaskResponse.status).toBe(200);
@@ -832,7 +847,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				projectId,
 				payload: {
 					taskId,
-					text: "/working Native Windows task PTY",
+					text: "/new-turn Native Windows task PTY",
 					intent: "submit",
 					appendNewline: true,
 				},
@@ -845,8 +860,14 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 					type: "query",
 					projectId,
 				});
-				return state.payload.board.columns.some(
-					(column) => column.id === "in_progress" && column.cards.some((card) => card.id === taskId),
+				const session = state.payload.sessions[taskId];
+				return (
+					session?.state === "running" &&
+					session.nativeWorkEvidence != null &&
+					state.payload.board.columns.some(
+						(column) =>
+							column.id === "in_progress" && column.cards.some((card) => card.id === taskId && !card.unstarted),
+					)
 				);
 			}, "native Codex hook transition");
 
