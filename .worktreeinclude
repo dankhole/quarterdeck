@@ -1,0 +1,2 @@
+# Preserve local Codex integration overrides in Quarterdeck task worktrees.
+/.codex/config.toml
