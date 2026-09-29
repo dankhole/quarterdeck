@@ -12,6 +12,42 @@ Quarterdeck currently supports:
 
 Quarterdeck detects installed agent CLIs from your `PATH`, starts a local runtime server, and opens the browser UI for the git repository you launch it from.
 
+## Install via npm
+
+Quarterdeck is available on [npm](https://www.npmjs.com/package/quarterdeck). With Node.js 22.22.2 or newer and Git installed, install the CLI globally and launch it from your project:
+
+```bash
+npm install --global quarterdeck
+cd /path/to/your/project
+quarterdeck
+```
+
+Or run the latest release from your project directory without a global installation:
+
+```bash
+npx --yes quarterdeck@latest
+```
+
+npm does not automatically update global installations. Upgrade an installed copy explicitly when a new release is available:
+
+```bash
+npm install --global quarterdeck@latest
+```
+
+The `npx` form resolves `@latest` for you and may reuse npm's download cache.
+
+On interactive startup, Quarterdeck checks npm at most once per day in the background and prints the explicit global update command when a newer stable release is available. It never installs an update automatically. Set `NO_UPDATE_NOTIFIER=1` or pass `--no-update-notifier` to disable the check.
+
+Verify and run the installed command from any git repository:
+
+```bash
+quarterdeck --version
+cd /path/to/your/project
+quarterdeck
+```
+
+Quarterdeck launches a local server, opens the browser UI, and stores runtime state under `~/.quarterdeck` by default. Set `QUARTERDECK_STATE_HOME` to use a different state directory. Quarterdeck itself does not require a separate account; agent access comes from the agent CLIs you have installed and authenticated.
+
 ## What Quarterdeck Does
 
 - Runs many coding-agent tasks side by side from one browser UI.
@@ -127,41 +163,7 @@ The endpoint must accept OpenAI-style `/v1/chat/completions`. Base URLs ending i
 
 To keep the configuration across shell sessions, add the exports to the shell startup file or launcher environment that starts Quarterdeck. Open a new shell—or reload that environment—then restart Quarterdeck so the runtime receives the new values.
 
-## Install
-
-Install Quarterdeck globally for regular use:
-
-```bash
-npm install --global quarterdeck
-```
-
-Or try it without keeping a global installation:
-
-```bash
-npx --yes quarterdeck@latest
-```
-
-npm does not automatically update global installations. Upgrade an installed copy explicitly when a new release is available:
-
-```bash
-npm install --global quarterdeck@latest
-```
-
-The `npx` form resolves `@latest` for you and may reuse npm's download cache.
-
-On interactive startup, Quarterdeck checks npm at most once per day in the background and prints the explicit global update command when a newer stable release is available. It never installs an update automatically. Set `NO_UPDATE_NOTIFIER=1` or pass `--no-update-notifier` to disable the check.
-
-Verify and run the installed command from any git repository:
-
-```bash
-quarterdeck --version
-cd /path/to/your/project
-quarterdeck
-```
-
-Quarterdeck launches a local server, opens the browser UI, and stores runtime state under `~/.quarterdeck` by default. Set `QUARTERDECK_STATE_HOME` to use a different state directory. Quarterdeck itself does not require a separate account; agent access comes from the agent CLIs you have installed and authenticated.
-
-### Install From Source
+## Install From Source
 
 For development, clone the repository, install the runtime and web UI dependencies, then link the local build as the global `quarterdeck` command:
 
