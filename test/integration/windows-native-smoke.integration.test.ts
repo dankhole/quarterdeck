@@ -27,8 +27,8 @@ import type {
 	RuntimeProjectBoardCommandExecutionResult,
 	RuntimeProjectStateResponse,
 	RuntimeShellSessionStartResponse,
+	RuntimeTaskLifecycleResult,
 	RuntimeTaskSessionInputResponse,
-	RuntimeTaskSessionStartResponse,
 	RuntimeTaskSessionStopResponse,
 	RuntimeTerminalWsServerMessage,
 	RuntimeWorkdirChangesResponse,
@@ -755,6 +755,13 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			});
 
 			const taskId = "windows-native-task";
+			const taskPrompt =
+				"Wait for native Windows smoke input [agent-lab:idle]\r\nPreserve this exact multiline prompt.";
+			const taskBoard = createReviewBoard(taskId, taskPrompt);
+			const taskCard = taskBoard.columns.flatMap((column) => column.cards)[0];
+			if (!taskCard) throw new Error("Missing native Windows task fixture.");
+			taskCard.agentId = "codex";
+			taskCard.useWorktree = false;
 			const stateResponse = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl,
 				procedure: "project.getState",
@@ -768,7 +775,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				type: "mutation",
 				projectId,
 				payload: createBoardSeedCommandBatch(
-					createReviewBoard(taskId, "Native Windows task PTY"),
+					taskBoard,
 					stateResponse.payload.revision,
 					"seed-native-windows-smoke",
 				),
@@ -806,19 +813,17 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				"Git for Windows long-path checkout\n",
 			);
 
-			const taskPrompt =
-				"Wait for native Windows smoke input [agent-lab:idle]\r\nPreserve this exact multiline prompt.";
-			const startTaskResponse = await requestJson<RuntimeTaskSessionStartResponse>({
+			const startTaskResponse = await requestJson<RuntimeTaskLifecycleResult>({
 				baseUrl,
-				procedure: "runtime.startTaskSession",
+				procedure: "runtime.executeTaskLifecycle",
 				type: "mutation",
 				projectId,
 				payload: {
+					kind: "start",
+					operationId: "start-native-windows-smoke",
 					taskId,
-					prompt: taskPrompt,
-					agentId: "codex",
-					baseRef: "main",
-					useWorktree: false,
+					taskCreatedAt: taskCard.createdAt,
+					expectedRevision: seedResponse.payload.state.revision,
 				},
 			});
 			expect(startTaskResponse.status).toBe(200);
@@ -855,8 +860,14 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 					type: "query",
 					projectId,
 				});
-				return state.payload.board.columns.some(
-					(column) => column.id === "in_progress" && column.cards.some((card) => card.id === taskId),
+				const session = state.payload.sessions[taskId];
+				return (
+					session?.state === "running" &&
+					session.nativeWorkEvidence != null &&
+					state.payload.board.columns.some(
+						(column) =>
+							column.id === "in_progress" && column.cards.some((card) => card.id === taskId && !card.unstarted),
+					)
 				);
 			}, "native Codex hook transition");
 

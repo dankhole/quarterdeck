@@ -66,7 +66,7 @@ describe("language navigation process and filesystem ownership", () => {
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		await manager.close();
-		await rm(directory, { recursive: true, force: true });
+		await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 	});
 
 	it("starts lazily, serializes authoritative unsaved buffers, and closes each document", async () => {
