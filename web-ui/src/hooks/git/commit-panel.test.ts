@@ -133,3 +133,20 @@ describe("formatCommitSuccessMessage", () => {
 		expect(formatCommitSuccessMessage(undefined, true)).toBe("Committed and pushed");
 	});
 });
+
+describe("nested repository selection", () => {
+	const nested: RuntimeWorkdirFileChange = { ...makeFile(".gitops-dev-docs/"), status: "untracked" };
+
+	it("excludes nested repositories on load and refresh, retaining ordinary untracked files and tracked submodules", () => {
+		const files = [nested, { ...makeFile("docs/new.md"), status: "untracked" as const }, makeFile("submodule")];
+		const first = computeSelectionSync(files, new Set(), new Map());
+		expect(computeSelectedPaths(files, first.selection)).toEqual(["docs/new.md", "submodule"]);
+		const refreshed = computeSelectionSync(files, new Set([nested.path]), new Map([[nested.path, true]]));
+		expect(refreshed.selection.has(nested.path)).toBe(false);
+		expect(computeSelectedPaths(files, refreshed.selection)).toEqual(["docs/new.md", "submodule"]);
+	});
+
+	it("rejects stale checked entries even before selection synchronization", () => {
+		expect(computeSelectedPaths([nested], new Map([[nested.path, true]]))).toEqual([]);
+	});
+});

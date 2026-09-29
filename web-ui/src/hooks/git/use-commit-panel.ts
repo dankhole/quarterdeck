@@ -7,6 +7,7 @@ import {
 	computeSelectionSync,
 	formatCommitErrorMessage,
 	formatCommitSuccessMessage,
+	isSelectableCommitFile,
 } from "@/hooks/git/commit-panel";
 import { isTaskBaseRefResolved, resolveGitChangesQueryProjectId } from "@/hooks/git/git-view";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
@@ -23,6 +24,7 @@ import {
 
 export interface UseCommitPanelResult {
 	files: RuntimeWorkdirFileChange[] | null;
+	selectableFileCount: number;
 	selectedPaths: string[];
 	isAllSelected: boolean;
 	isIndeterminate: boolean;
@@ -105,6 +107,7 @@ export function useCommitPanel(
 		pollIntervalMs,
 	);
 	const files = changes?.files ?? null;
+	const selectableFiles = useMemo(() => files?.filter(isSelectableCommitFile) ?? [], [files]);
 
 	// Selection state — Map<path, checked>.
 	const [selection, setSelection] = useState<Map<string, boolean>>(() => new Map());
@@ -117,36 +120,40 @@ export function useCommitPanel(
 		if (result.changed) {
 			setSelection(result.selection);
 		}
-		prevPathsRef.current = new Set(files.map((f) => f.path));
-	}, [files]);
+		prevPathsRef.current = new Set(selectableFiles.map((f) => f.path));
+	}, [files, selectableFiles]);
 
 	// Derived selection state.
 	const selectedPaths = useMemo(() => computeSelectedPaths(files, selection), [files, selection]);
 
-	const isAllSelected = files !== null && files.length > 0 && selectedPaths.length === files.length;
+	const isAllSelected = selectableFiles.length > 0 && selectedPaths.length === selectableFiles.length;
 	const isIndeterminate = selectedPaths.length > 0 && !isAllSelected;
 
 	// Toggle individual file.
-	const toggleFile = useCallback((path: string) => {
-		setSelection((prev) => {
-			const next = new Map(prev);
-			next.set(path, !prev.get(path));
-			return next;
-		});
-	}, []);
+	const toggleFile = useCallback(
+		(path: string) => {
+			if (!selectableFiles.some((file) => file.path === path)) return;
+			setSelection((prev) => {
+				const next = new Map(prev);
+				next.set(path, !prev.get(path));
+				return next;
+			});
+		},
+		[selectableFiles],
+	);
 
 	// Toggle all files.
 	const toggleAll = useCallback(() => {
 		if (!files) return;
 		setSelection((prev) => {
-			const allChecked = files.every((f) => prev.get(f.path));
+			const allChecked = selectableFiles.every((f) => prev.get(f.path));
 			const next = new Map(prev);
-			for (const f of files) {
+			for (const f of selectableFiles) {
 				next.set(f.path, !allChecked);
 			}
 			return next;
 		});
-	}, [files]);
+	}, [files, selectableFiles]);
 
 	// Commit message.
 	const [message, setMessage] = useState("");
@@ -297,7 +304,7 @@ export function useCommitPanel(
 
 	// Stash changes action.
 	const stashChanges = useCallback(async () => {
-		if (!projectId || isStashing || !hasResolvedTaskBaseRef) return;
+		if (!projectId || isStashing || !hasResolvedTaskBaseRef || selectedPaths.length === 0) return;
 		setIsStashing(true);
 		setLastError(null);
 		try {
@@ -353,6 +360,7 @@ export function useCommitPanel(
 
 	return {
 		files,
+		selectableFileCount: selectableFiles.length,
 		selectedPaths,
 		isAllSelected,
 		isIndeterminate,

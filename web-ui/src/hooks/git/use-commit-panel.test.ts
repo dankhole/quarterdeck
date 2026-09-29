@@ -60,6 +60,7 @@ const generateCommitMessageMutateMock = vi.hoisted(() =>
 	),
 );
 const discardGitChangesMutateMock = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
+const stashPushMutateMock = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
 const discardFileMutateMock = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
 
 vi.mock("@/runtime/trpc-client", () => ({
@@ -69,6 +70,7 @@ vi.mock("@/runtime/trpc-client", () => ({
 			generateCommitMessage: { mutate: generateCommitMessageMutateMock },
 			discardGitChanges: { mutate: discardGitChangesMutateMock },
 			discardFile: { mutate: discardFileMutateMock },
+			stashPush: { mutate: stashPushMutateMock },
 		},
 	}),
 }));
@@ -139,6 +141,7 @@ describe("useCommitPanel", () => {
 		generateCommitMessageMutateMock.mockClear();
 		discardGitChangesMutateMock.mockClear();
 		discardFileMutateMock.mockClear();
+		stashPushMutateMock.mockClear();
 		vi.mocked(showAppToast).mockClear();
 
 		// Default: return the three mock files.
@@ -181,6 +184,53 @@ describe("useCommitPanel", () => {
 			);
 		});
 	}
+
+	it("keeps nested repositories out of toggles, commit, and stash payloads", async () => {
+		const nested = { ...mockFiles[0]!, path: ".gitops-dev-docs/", status: "untracked" };
+		useRuntimeProjectChangesMock.mockReturnValue({ changes: { files: [...mockFiles, nested] }, isLoading: false });
+		render();
+		expect(latest.isAllSelected).toBe(true);
+		expect(latest.isIndeterminate).toBe(false);
+		expect(latest.selectableFileCount).toBe(mockFiles.length);
+		act(() => latest.toggleAll());
+		expect(latest.selectedPaths).toEqual([]);
+		act(() => latest.toggleFile(nested.path));
+		expect(latest.selectedPaths).toEqual([]);
+		act(() => latest.toggleAll());
+		act(() => latest.setMessage("Update files"));
+		await act(async () => {
+			await latest.commitFiles();
+		});
+		expect(commitMutateMock).toHaveBeenCalledWith(
+			expect.objectContaining({ paths: mockFiles.map((file) => file.path) }),
+		);
+		await act(async () => {
+			await latest.stashChanges();
+		});
+		expect(stashPushMutateMock).toHaveBeenCalledWith(
+			expect.objectContaining({ paths: mockFiles.map((file) => file.path) }),
+		);
+	});
+
+	it("blocks commit and stash when only nested repositories remain", async () => {
+		useRuntimeProjectChangesMock.mockReturnValue({
+			changes: { files: [{ ...mockFiles[0]!, path: "nested/", status: "untracked" }] },
+			isLoading: false,
+		});
+		render();
+		act(() => latest.setMessage("Update files"));
+		act(() => latest.toggleAll());
+		expect(latest.selectedPaths).toEqual([]);
+		expect(latest.isAllSelected).toBe(false);
+		expect(latest.canCommit).toBe(false);
+		expect(latest.selectableFileCount).toBe(0);
+		await act(async () => {
+			await latest.commitFiles();
+			await latest.stashChanges();
+		});
+		expect(commitMutateMock).not.toHaveBeenCalled();
+		expect(stashPushMutateMock).not.toHaveBeenCalled();
+	});
 
 	// -----------------------------------------------------------------------
 	// 1. initializes all files as selected

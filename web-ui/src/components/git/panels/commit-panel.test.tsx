@@ -33,6 +33,7 @@ const files: RuntimeWorkdirFileChange[] = [
 function createCommitPanelResult(overrides: Partial<UseCommitPanelResult> = {}): UseCommitPanelResult {
 	return {
 		files,
+		selectableFileCount: 1,
 		selectedPaths: ["src/a.ts"],
 		isAllSelected: true,
 		isIndeterminate: false,
@@ -126,6 +127,35 @@ describe("CommitPanel", () => {
 			);
 		});
 	}
+
+	it("explains nested repositories, disables their checkboxes, and counts only selectable files", () => {
+		useCommitPanelMock.mockReturnValue(
+			createCommitPanelResult({
+				files: [...files, { ...files[0]!, path: ".gitops-dev-docs/", status: "untracked" }],
+			}),
+		);
+		render();
+		const checkbox = requireElement(container, '[aria-label="Exclude nested repository .gitops-dev-docs/"]');
+		expect(checkbox.hasAttribute("disabled")).toBe(true);
+		expect(checkbox.getAttribute("data-state")).toBe("unchecked");
+		expect(container.textContent).toContain(
+			"Nested repository. Manage its changes separately; excluded from selection.",
+		);
+		expect(container.textContent).toContain("Select all (1 file)");
+	});
+
+	it("disables select all when only nested repositories are listed", () => {
+		useCommitPanelMock.mockReturnValue(
+			createCommitPanelResult({
+				files: [{ ...files[0]!, path: "nested/", status: "untracked" }],
+				selectableFileCount: 0,
+				selectedPaths: [],
+				isAllSelected: false,
+			}),
+		);
+		render();
+		expect(requireElement(container, '[aria-label="Select all files"]').hasAttribute("disabled")).toBe(true);
+	});
 
 	it("uses a top divider resize handle instead of native textarea resizing", () => {
 		render();
