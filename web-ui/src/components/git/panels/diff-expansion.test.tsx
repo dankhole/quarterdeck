@@ -126,5 +126,7 @@ describe.each([
 			expect(selectedRow.isConnected).toBe(true);
 			expect(window.getSelection()!.toString()).toBe(selectedText);
 		},
+		// Repeated expansion of 620 rows can exceed the default timeout on shared CI runners.
+		15_000,
 	);
 });
