@@ -6,19 +6,11 @@ export type CodexHistoryMode = "legacy" | "paginated" | null;
 export type ParsedCodexSessionHeader =
 	| { status: "valid"; providerSessionId: string | null; historyMode: CodexHistoryMode; cliVersion: string | null }
 	| { status: "invalid" }
-	| { status: "unsupported_cli_version" | "unsupported_history_mode" };
+	| { status: "unsupported_history_mode" };
 
 interface CodexHistoryParserState {
 	newerUserTurnIds: Set<string>;
 }
-
-type SemverTuple = readonly [major: number, minor: number, patch: number];
-
-const MINIMUM_CODEX_HISTORY_VERSION: SemverTuple = [0, 142, 5];
-const MAXIMUM_CODEX_HISTORY_VERSION: SemverTuple = [0, 149, 1];
-// Read-only rollout compatibility verified against a native paginated history.
-// This does not extend the independent structured execution compatibility gate.
-const ADDITIONAL_CODEX_HISTORY_VERSIONS = new Set(["0.153.4"]);
 
 function ignored(recognized: boolean, providerSessionId: string | null = null): ParsedProviderRecord {
 	return { recognized, providerSessionId, item: { kind: "ignore" } };
@@ -26,34 +18,6 @@ function ignored(recognized: boolean, providerSessionId: string | null = null): 
 
 function isSupportedCodexHistoryMode(value: string): value is Exclude<CodexHistoryMode, null> {
 	return value === "legacy" || value === "paginated";
-}
-
-function parseSemverTuple(value: string): SemverTuple | null {
-	const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value.trim());
-	if (!match) {
-		return null;
-	}
-	return [Number(match[1]), Number(match[2]), Number(match[3])];
-}
-
-function compareSemverTuple(left: SemverTuple, right: SemverTuple): number {
-	for (let index = 0; index < left.length; index += 1) {
-		const difference = (left[index] ?? 0) - (right[index] ?? 0);
-		if (difference !== 0) {
-			return difference;
-		}
-	}
-	return 0;
-}
-
-function isSupportedCodexCliVersion(value: string): boolean {
-	if (ADDITIONAL_CODEX_HISTORY_VERSIONS.has(value.trim())) return true;
-	const version = parseSemverTuple(value);
-	return Boolean(
-		version &&
-			compareSemverTuple(version, MINIMUM_CODEX_HISTORY_VERSION) >= 0 &&
-			compareSemverTuple(version, MAXIMUM_CODEX_HISTORY_VERSION) <= 0,
-	);
 }
 
 export function parseCodexSessionHeader(value: unknown): ParsedCodexSessionHeader {
@@ -68,9 +32,8 @@ export function parseCodexSessionHeader(value: unknown): ParsedCodexSessionHeade
 	) {
 		return { status: "invalid" };
 	}
-	if (typeof cliVersionValue === "string" && !isSupportedCodexCliVersion(cliVersionValue)) {
-		return { status: "unsupported_cli_version" };
-	}
+	// CLI versions are descriptive metadata. Read-only compatibility follows the
+	// history mode and recognized record shapes, independently of execution gates.
 	let historyMode: CodexHistoryMode = null;
 	if (typeof historyModeValue === "string") {
 		if (!isSupportedCodexHistoryMode(historyModeValue)) {

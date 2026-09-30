@@ -73,6 +73,8 @@ The behind-base labels show independent local and remote counts of commits reach
 
 Completion hooks retain the foreground final response in `conversationSummaries`; `displaySummary` is only a short optional synopsis and must not replace the retained response after later hooks clear transient activity. Running cards may prefer `progressMessage`, but it never supplies lifecycle evidence or completed history. Normalization clears it outside native Running and during cold hydration.
 
+Read-only Codex transcript compatibility follows supported history modes and recognized record shapes, not a CLI-version allowlist. Keep CLI version as metadata; reject malformed headers, unknown history modes, and mismatched session identities. This does not relax the separate native-launch or structured-execution compatibility gates.
+
 `src/server/task-progress-preview.ts` samples on admitted native hooks only: at most one bounded history read per task per 30 seconds, one runtime-wide read in flight, no queued reads, timers, model calls, or directory searches. Codex/Claude require an exact provider-supplied transcript hint validated through the existing conversation reader. Read limits are 128 KiB / 256 records with a 100 ms cooperative deadline; missing, unsupported, or oversized history keeps the completed response. Pi currently uses that fallback. Only timestamped assistant text from the observed running epoch is eligible. Session/turn changes, completion, and shutdown fence delayed results; unchanged text causes no store update. Do not make preview freshness a reason to poll every card or infer Running from transcript content.
 
 ## Automatic task titles

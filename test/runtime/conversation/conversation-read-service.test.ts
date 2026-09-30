@@ -476,12 +476,24 @@ describe("ConversationReadService", () => {
 		expect(JSON.stringify(result)).not.toContain("private");
 	});
 
+	it.each([
+		{ cli_version: 159, history_mode: "paginated" },
+		{ cli_version: "99.0.0", history_mode: { format: "paginated" } },
+	])("rejects malformed Codex header fields: %j", async (fields) => {
+		const history = [
+			JSON.stringify({ type: "session_meta", payload: { id: CODEX_SESSION_ID, ...fields } }),
+			codexMessage(1, "assistant", "must-not-return"),
+		].join("\n");
+		const harness = await createHarness({ providerId: "codex", history: `${history}\n` });
+		expect(await harness.read()).toMatchObject({ status: "unsupported", reason: "format_unsupported", entries: [] });
+	});
+
 	it("rejects an unknown Codex history mode before returning rollout content", async () => {
 		const history = [
 			JSON.stringify({
 				timestamp: "2026-08-24T12:00:00.000Z",
 				type: "session_meta",
-				payload: { id: CODEX_SESSION_ID, history_mode: "future_mode" },
+				payload: { id: CODEX_SESSION_ID, cli_version: "99.0.0", history_mode: "future_mode" },
 			}),
 			codexMessage(1, "user", "must-not-return"),
 		].join("\n");
@@ -491,77 +503,67 @@ describe("ConversationReadService", () => {
 		expect(JSON.stringify(result)).not.toContain("must-not-return");
 	});
 
-	it.each(["0.150.0", "0.153.3", "0.153.5", "0.153.4-preview"])(
-		"rejects unvalidated Codex transcript version %s",
+	it.each(["0.149.1", "0.153.4", "0.157.0", "0.159.0", "99.0.0", "99.0.0-preview"])(
+		"reads supported paginated record shapes from Codex %s without injected context",
 		async (cliVersion) => {
+			// Synthetic equivalents of native rollout records; never retain real conversation text in fixtures.
+			const message = (id: string, role: string, text: string, turnId: string, phase?: string) => ({
+				type: "response_item",
+				payload: {
+					type: "message",
+					id,
+					role,
+					...(phase ? { phase } : {}),
+					content: [{ type: role === "assistant" ? "output_text" : "input_text", text }],
+					internal_chat_message_metadata_passthrough: { turn_id: turnId },
+				},
+			});
+			const injected = message("context", "user", "", "turn-1");
+			injected.payload.content = [
+				{
+					type: "input_text",
+					text: "# AGENTS.md instructions for /synthetic\n<INSTRUCTIONS>\nprivate instructions\n</INSTRUCTIONS>",
+				},
+				{ type: "input_text", text: "<environment_context>private environment</environment_context>" },
+			];
 			const history = [
-				JSON.stringify({
-					timestamp: "2026-08-24T12:00:00.000Z",
+				{
 					type: "session_meta",
 					payload: { id: CODEX_SESSION_ID, cli_version: cliVersion, history_mode: "paginated" },
-				}),
-				codexMessage(1, "user", "must-not-return"),
-			].join("\n");
+				},
+				message("developer", "developer", "private developer instructions", "turn-1"),
+				injected,
+				message("user-1", "user", "Review search sorting", "turn-1"),
+				message("commentary", "assistant", "I will inspect search controls", "turn-1", "commentary"),
+				{ type: "response_item", payload: { type: "reasoning", content: "private reasoning" } },
+				{ type: "response_item", payload: { type: "custom_tool_call_output", output: "private tool output" } },
+				message(
+					"answer-1",
+					"assistant",
+					"Sorting and recommendations share inconsistent controls",
+					"turn-1",
+					"final_answer",
+				),
+				message("user-2", "user", "Unify the search and recommendation experience", "turn-2"),
+				message("answer-2", "assistant", "Updated both experiences", "turn-2", "final_answer"),
+			]
+				.map((record) => JSON.stringify(record))
+				.join("\n");
 			const harness = await createHarness({ providerId: "codex", history: `${history}\n` });
 			const result = await harness.read();
-			expect(result).toMatchObject({ status: "unsupported", reason: "format_unsupported", entries: [] });
-			expect(JSON.stringify(result)).not.toContain("must-not-return");
+			expect(result.status).toBe("available");
+			expect(meaningfulEntries(result).map((entry) => entry.type === "message" && [entry.role, entry.text])).toEqual(
+				[
+					["user", "Review search sorting"],
+					["assistant", "I will inspect search controls"],
+					["assistant", "Sorting and recommendations share inconsistent controls"],
+					["user", "Unify the search and recommendation experience"],
+					["assistant", "Updated both experiences"],
+				],
+			);
+			expect(JSON.stringify(result)).not.toContain("private");
 		},
 	);
-
-	it("reads validated 0.153.4 paginated user, commentary, and final-answer records without injected context", async () => {
-		// Synthetic equivalents of native rollout records; never retain real conversation text in fixtures.
-		const message = (id: string, role: string, text: string, turnId: string, phase?: string) => ({
-			type: "response_item",
-			payload: {
-				type: "message",
-				id,
-				role,
-				...(phase ? { phase } : {}),
-				content: [{ type: role === "assistant" ? "output_text" : "input_text", text }],
-				internal_chat_message_metadata_passthrough: { turn_id: turnId },
-			},
-		});
-		const injected = message("context", "user", "", "turn-1");
-		injected.payload.content = [
-			{
-				type: "input_text",
-				text: "# AGENTS.md instructions for /synthetic\n<INSTRUCTIONS>\nprivate instructions\n</INSTRUCTIONS>",
-			},
-			{ type: "input_text", text: "<environment_context>private environment</environment_context>" },
-		];
-		const history = [
-			{ type: "session_meta", payload: { id: CODEX_SESSION_ID, cli_version: "0.153.4", history_mode: "paginated" } },
-			message("developer", "developer", "private developer instructions", "turn-1"),
-			injected,
-			message("user-1", "user", "Review search sorting", "turn-1"),
-			message("commentary", "assistant", "I will inspect search controls", "turn-1", "commentary"),
-			{ type: "response_item", payload: { type: "reasoning", content: "private reasoning" } },
-			{ type: "response_item", payload: { type: "custom_tool_call_output", output: "private tool output" } },
-			message(
-				"answer-1",
-				"assistant",
-				"Sorting and recommendations share inconsistent controls",
-				"turn-1",
-				"final_answer",
-			),
-			message("user-2", "user", "Unify the search and recommendation experience", "turn-2"),
-			message("answer-2", "assistant", "Updated both experiences", "turn-2", "final_answer"),
-		]
-			.map((record) => JSON.stringify(record))
-			.join("\n");
-		const harness = await createHarness({ providerId: "codex", history: `${history}\n` });
-		const result = await harness.read();
-		expect(result.status).toBe("available");
-		expect(meaningfulEntries(result).map((entry) => entry.type === "message" && [entry.role, entry.text])).toEqual([
-			["user", "Review search sorting"],
-			["assistant", "I will inspect search controls"],
-			["assistant", "Sorting and recommendations share inconsistent controls"],
-			["user", "Unify the search and recommendation experience"],
-			["assistant", "Updated both experiences"],
-		]);
-		expect(JSON.stringify(result)).not.toContain("private");
-	});
 
 	it("keeps historical Codex transcripts readable when session_meta predates cli_version", async () => {
 		const history = [

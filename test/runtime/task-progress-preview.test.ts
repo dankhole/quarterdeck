@@ -1,8 +1,16 @@
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { ConversationReadResult } from "../../src/conversation";
+import {
+	type ConversationReadResult,
+	createConversationReadService,
+	DEFAULT_CONVERSATION_READ_LIMITS,
+} from "../../src/conversation";
 import { createTaskProgressPreview } from "../../src/server/task-progress-preview";
 import { InMemorySessionSummaryStore } from "../../src/terminal";
 import { createTestTaskNativeWorkEvidence, createTestTaskSessionSummary } from "../utilities/task-session-factory";
+
+import { createTempDir } from "../utilities/temp-dir";
 
 function response(text = "Checking keyboard navigation", recordedAt = 200): ConversationReadResult {
 	return {
@@ -64,6 +72,67 @@ function setup() {
 }
 
 describe("task progress preview sampling", () => {
+	it.each(["0.159.0", "99.0.0-preview"])(
+		"shows parent commentary from Codex %s with bounded preview reads",
+		async (cliVersion) => {
+			const temporary = createTempDir("progress-preview-");
+			const { store } = setup();
+			const sourcePath = join(temporary.path, "session-1.jsonl");
+			const records = [
+				{ type: "session_meta", payload: { id: "session-1", cli_version: cliVersion, history_mode: "paginated" } },
+				{
+					timestamp: new Date(200).toISOString(),
+					type: "response_item",
+					payload: {
+						type: "message",
+						role: "assistant",
+						phase: "commentary",
+						content: [{ type: "output_text", text: "Checking parent progress" }],
+					},
+				},
+				{ type: "response_item", payload: { type: "agent_message", text: "private subagent reply" } },
+				{ type: "response_item", payload: { type: "function_call_output", output: "private tool output" } },
+			];
+			const reads = createConversationReadService({
+				sessions: {
+					resolveTaskSession: async (projectId, taskId) => ({
+						projectId,
+						taskId,
+						agentId: "codex",
+						providerSessionId: "session-1",
+					}),
+				},
+				roots: { codex: [temporary.path], claude: [] },
+				hints: { getHint: () => ({ providerId: "codex", providerSessionId: "session-1", sourcePath }) },
+				limits: {
+					...DEFAULT_CONVERSATION_READ_LIMITS,
+					maxSourceBytes: 128 * 1024,
+					maxRecords: 256,
+					maxRawRecordBytes: 64 * 1024,
+					maxMessageBytes: 2 * 1024,
+					maxResponseBytes: 4 * 1024,
+					maxLookupEntries: 0,
+					deadlineMs: 100,
+				},
+			});
+			const service = createTaskProgressPreview({ reads, hasSource: () => true, now: () => 100 });
+			try {
+				await writeFile(sourcePath, `${records.map((record) => JSON.stringify(record)).join("\n")}\n`);
+				store.appendConversationSummary("task-1", { text: "Old completed answer", capturedAt: 1 });
+				const previous = store.getSummary("task-1");
+				if (!previous) throw new Error("Missing session");
+				service.observe({ projectId: "project-1", taskId: "task-1", store, previous });
+				await vi.waitFor(() =>
+					expect(store.getSummary("task-1")?.progressMessage).toBe("Checking parent progress"),
+				);
+				expect(store.getSummary("task-1")?.conversationSummaries.at(-1)?.text).toBe("Old completed answer");
+			} finally {
+				await service.close();
+				await temporary.cleanupAsync();
+			}
+		},
+	);
+
 	it("samples only on activity, at most once per 30 seconds, without publishing unchanged text", async () => {
 		const { store, service, observe, readRecent, setTime } = setup();
 		const update = vi.spyOn(store, "update");

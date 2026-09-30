@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-09-29 — Codex parent progress rejected by transcript version gate
+
+A running card retained an old completed answer despite timestamped parent commentary and admitted foreground hooks. The affected native rollout declared Codex 0.159.0 with paginated history, while `codex-history-parser.ts` admitted only 0.142.5–0.149.1 and 0.153.4. The reader therefore rejected the source before progress sampling could inspect messages. Rejected subagent hooks were incidental and did not explain the missing parent previews. Read-only compatibility now follows supported history modes and recognized record shapes instead of a CLI-version allowlist. Version remains descriptive metadata; malformed headers, unknown history modes, and mismatched identities remain rejected. Native-launch and structured-execution gates remain independent.
+
+Validation: the synthetic 0.159.0 reader regression failed as unsupported before the fix; focused conversation and progress-preview tests cover parent commentary through the real bounded reader, completed-response retention, ignored subagent/tool records, and future and prerelease CLI versions, malformed headers, and unknown history modes. No active runtime mutation or real-provider launch was used.
+
 ## 2026-09-29 — Durable project groups
 
 Project groups, membership, and ordering now live in the global project index. `projects.organize` applies revision-checked intent under the existing index lock; registration/removal preserve the metadata, and adding a project to a group is atomic with registration. The first organization edit upgrades index.json to version 2 so older runtimes reject it instead of stripping group metadata. Browser/runtime protocol version 2 requires the new mutation endpoint. No board or task lifecycle state is rewritten by grouping.

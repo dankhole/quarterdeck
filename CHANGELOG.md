@@ -4,8 +4,9 @@
 
 ## [0.12.9]
 
-- Add named project groups with collapse/expand, drag-and-drop and menu moves, saved ordering, and safe group removal that keeps projects and tasks.
+- Read compatible Codex transcript formats across CLI releases, preventing stale task previews and title context caused by an outdated version allowlist.
 
+- Add named project groups with collapse/expand, drag-and-drop and menu moves, saved ordering, and safe group removal that keeps projects and tasks.
 
 - Allow browser and runtime builds to differ when their explicit compatibility versions match; reload or request a restart only for incompatible or unknown contracts.
 
