@@ -96,6 +96,28 @@ describe("ProjectNavigationPanel", () => {
 		expect(projectRow?.textContent).toContain("Quarterdeck");
 	});
 
+	it("retains selectable unavailable projects and counts while disabling task creation", () => {
+		const onCreateTask = vi.fn();
+		const onSelectProject = vi.fn();
+		renderPanel({
+			onCreateTask,
+			onSelectProject,
+			projects: PROJECTS.map((project) => ({
+				...project,
+				availability: { status: "unavailable", reason: "missing" },
+				taskCounts: { in_progress: 0, review: 4, trash: 0 },
+			})),
+		});
+		expect(container.textContent).toContain("Folder unavailable");
+		expect(container.querySelector('[title="Review"]')?.textContent).toBe("R|4");
+		const create = container.querySelector<HTMLButtonElement>('[aria-label="Create task"]');
+		expect(create?.disabled).toBe(true);
+		act(() => create?.click());
+		expect(onCreateTask).not.toHaveBeenCalled();
+		act(() => container.querySelector<HTMLButtonElement>('[aria-label="Open Quarterdeck"]')?.click());
+		expect(onSelectProject).toHaveBeenCalledWith("project-1");
+	});
+
 	it("shows unstarted tasks in the Review count without a Backlog category", () => {
 		renderPanel({
 			projects: PROJECTS.map((project) => ({

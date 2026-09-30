@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { copyFile, realpath } from "node:fs/promises";
+import { copyFile, realpath, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import type {
@@ -23,6 +23,8 @@ import {
 	findProjectEntry,
 	MAX_RECENT_BOARD_COMMAND_RECEIPTS,
 	type ProjectBoardCommandReceipt,
+	type ProjectDirectoryIdentity,
+	type ProjectIndexEntry,
 	parseProjectStateSavePayload,
 	readProjectBoardUnderLock,
 	readProjectIndex,
@@ -58,18 +60,11 @@ export {
 	isUnderWorktreesHome,
 } from "./project-state-utils";
 
-export interface RuntimeProjectContext {
-	repoPath: string;
-	folderOnly?: boolean;
-	projectId: string;
-	statePath: string;
+export interface RuntimeProjectContext extends RuntimeProjectScopeContext {
 	git: RuntimeGitRepositoryInfo;
 }
 
-export interface RuntimeProjectScopeContext {
-	repoPath: string;
-	folderOnly?: boolean;
-	projectId: string;
+export interface RuntimeProjectScopeContext extends ProjectIndexEntry {
 	statePath: string;
 }
 
@@ -146,6 +141,7 @@ function toProjectStateResponse(
 		board,
 		sessions,
 		revision,
+		metadataRevision: context.metadataRevision ?? 0,
 	};
 	if (warnings && warnings.length > 0) {
 		response.warnings = warnings;
@@ -225,15 +221,10 @@ async function canonicalizeProjectInputPath(cwd: string): Promise<string> {
 	}
 }
 
-function toProjectScopeContext(input: {
-	projectId: string;
-	repoPath: string;
-	folderOnly?: boolean;
-}): RuntimeProjectScopeContext {
+function toProjectScopeContext(input: ProjectIndexEntry): RuntimeProjectScopeContext {
 	return {
-		repoPath: input.repoPath,
-		...(input.folderOnly ? { folderOnly: true } : {}),
-		projectId: input.projectId,
+		...input,
+		metadataRevision: input.metadataRevision ?? 0,
 		statePath: getProjectDirectoryPath(input.projectId),
 	};
 }
@@ -253,6 +244,18 @@ async function loadFullProjectContext(scope: RuntimeProjectScopeContext): Promis
 		git: scope.folderOnly
 			? { folderOnly: true, currentBranch: null, defaultBranch: null, branches: [] }
 			: await detectGitRepositoryInfo(scope.repoPath),
+	};
+}
+
+function toSavedProjectContext(scope: RuntimeProjectScopeContext): RuntimeProjectContext {
+	return {
+		...scope,
+		git: {
+			...(scope.folderOnly ? { folderOnly: true } : {}),
+			currentBranch: null,
+			defaultBranch: null,
+			branches: [],
+		},
 	};
 }
 
@@ -276,6 +279,13 @@ export async function loadProjectContext(
 		return await loadFullProjectContext(existingScope);
 	}
 
+	let directoryIdentity: ProjectDirectoryIdentity | undefined;
+	try {
+		const directory = await stat(repoPath, { bigint: true });
+		if (directory.isDirectory()) directoryIdentity = { device: String(directory.dev), inode: String(directory.ino) };
+	} catch {
+		// A legacy or temporarily unavailable root can still retain its indexed identity.
+	}
 	const scope = await lockedFileSystem.withLock(getProjectIndexLockRequest(), async () => {
 		let index = await readProjectIndex();
 		const existingEntry = findProjectEntry(index, repoPath);
@@ -283,9 +293,16 @@ export async function loadProjectContext(
 			? { index, entry: existingEntry, changed: false }
 			: ensureProjectEntry(index, repoPath);
 		index = ensured.index;
+		const identityAdded = !ensured.entry.directoryIdentity && directoryIdentity !== undefined;
+		const modeChanged = options.folderOnly !== undefined && Boolean(ensured.entry.folderOnly) !== options.folderOnly;
+		if (identityAdded) ensured.entry.directoryIdentity = directoryIdentity;
+		if (identityAdded || modeChanged) {
+			ensured.entry.metadataRevision = (ensured.entry.metadataRevision ?? 0) + 1;
+			index.version = 3;
+		}
 		if (options.folderOnly !== undefined) ensured.entry.folderOnly = options.folderOnly;
 		if (options.groupId !== undefined) assignIndexedProjectGroup(index, ensured.entry.projectId, options.groupId);
-		if (ensured.changed || options.folderOnly !== undefined || options.groupId !== undefined) {
+		if (ensured.changed || identityAdded || options.folderOnly !== undefined || options.groupId !== undefined) {
 			await writeProjectIndexSafe(index);
 		}
 
@@ -363,6 +380,12 @@ export async function loadProjectStateById(projectId: string): Promise<RuntimePr
 	return context ? await loadProjectStateFromContext(context) : null;
 }
 
+/** Reads retained state without requiring the project's directory, repository, or a terminal manager. */
+export async function loadSavedProjectStateById(projectId: string): Promise<RuntimeProjectStateResponse | null> {
+	const scope = await loadProjectScopeById(projectId);
+	return scope ? await loadProjectStateFromContext(toSavedProjectContext(scope)) : null;
+}
+
 /** Reads the count-bearing board and its revision under the same project lock. */
 export async function loadProjectBoardSnapshotById(
 	projectId: string,
@@ -410,11 +433,27 @@ export async function applyProjectBoardMutation(
 	cwd: string,
 	input: ApplyProjectBoardMutationInput,
 ): Promise<ApplyProjectBoardMutationResult> {
+	return await applyProjectBoardMutationFromContext(await loadProjectContext(cwd), input);
+}
+
+/** Internal board-command persistence for identity-preserving maintenance while the folder is unavailable. */
+export async function applyProjectBoardMutationById(
+	projectId: string,
+	input: ApplyProjectBoardMutationInput,
+): Promise<ApplyProjectBoardMutationResult> {
+	const scope = await loadProjectScopeById(projectId);
+	if (!scope) throw new Error(`Unknown project ID: ${projectId}`);
+	return await applyProjectBoardMutationFromContext(toSavedProjectContext(scope), input);
+}
+
+async function applyProjectBoardMutationFromContext(
+	context: RuntimeProjectContext,
+	input: ApplyProjectBoardMutationInput,
+): Promise<ApplyProjectBoardMutationResult> {
 	const parsedSessions = parseProjectStateSavePayload(
 		{ sessions: input.sessions },
 		persistedProjectSessionsSaveRequestSchema,
 	).sessions;
-	const context = await loadProjectContext(cwd);
 	return await withProjectStateLock(context.projectId, async () => {
 		const currentMeta = await readProjectMetaUnderLock(context.projectId);
 		const commandIdentity = input.commandIdentity;

@@ -119,6 +119,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		});
 		const sessionInstanceId = manager.store.getSummary("task-1")?.sessionInstanceId;
 		const api = createHooksApi({
+			runProjectOperation: async (_scope, operation) => await operation(),
 			projects: { getProjectPathById: () => "/tmp/repo" },
 			terminals: {
 				getTerminalManagerForProject: () => manager,

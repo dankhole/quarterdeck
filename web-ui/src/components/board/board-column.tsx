@@ -17,6 +17,7 @@ import type { BoardCard as BoardCardModel, BoardColumnId, BoardColumn as BoardCo
 
 export function BoardColumn({
 	column,
+	readOnly = false,
 	taskSessions,
 	replyScope,
 	onClearTrash,
@@ -30,6 +31,7 @@ export function BoardColumn({
 	programmaticCardMoveInFlight,
 }: {
 	column: BoardColumnModel;
+	readOnly?: boolean;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	replyScope?: BoardReplyScope;
 	onClearTrash?: () => void;
@@ -55,12 +57,14 @@ export function BoardColumn({
 	const { moveToTrashLoadingById, showSummaryOnCards, showSummaryOnHover, uncommittedChangesOnCardsEnabled } =
 		useReactiveCardState();
 	const unstartedCount = column.cards.filter((card) => card.unstarted).length;
-	const canClearTrash = column.id === "trash" && onClearTrash;
-	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null, {
-		activeDragTaskId,
-		activeDragTaskUnstarted,
-		programmaticCardMoveInFlight,
-	});
+	const canClearTrash = !readOnly && column.id === "trash" && onClearTrash;
+	const isDropDisabled =
+		readOnly ||
+		isCardDropDisabled(column.id, activeDragSourceColumnId ?? null, {
+			activeDragTaskId,
+			activeDragTaskUnstarted,
+			programmaticCardMoveInFlight,
+		});
 	const [trashOpen, setTrashOpen] = useState(false);
 	const isTrash = column.id === "trash";
 	const open = !isTrash || trashOpen;
@@ -114,7 +118,7 @@ export function BoardColumn({
 			</div>
 			{open ? (
 				<SortableContext
-					items={cards.filter((card) => card.id !== editingTaskId).map((card) => card.id)}
+					items={cards.filter((card) => readOnly || card.id !== editingTaskId).map((card) => card.id)}
 					strategy={rectSortingStrategy}
 				>
 					<div
@@ -133,7 +137,7 @@ export function BoardColumn({
 										<span className="h-px flex-1 bg-border" />
 									</div>
 								) : null}
-								{card.unstarted && editingTaskId === card.id ? (
+								{!readOnly && card.unstarted && editingTaskId === card.id ? (
 									<div key={card.id} data-task-id={card.id} data-column-id={column.id}>
 										{inlineTaskEditor}
 									</div>
@@ -143,11 +147,13 @@ export function BoardColumn({
 										id={card.id}
 										title={card.title || "task"}
 										dropDisabled={isDropDisabled}
+										dragDisabled={readOnly}
 									>
 										{(handle) => (
 											<BoardCard
 												key={card.id}
 												draggable={false}
+												readOnly={readOnly}
 												rich={column.id !== "trash"}
 												dragHandle={handle}
 												conversation={
@@ -159,6 +165,7 @@ export function BoardColumn({
 																	summary={taskSessions[card.id]}
 																	replyScope={replyScope}
 																	statusBadges={statusBadges}
+																	readOnly={readOnly}
 																/>
 															)
 														: undefined

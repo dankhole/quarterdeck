@@ -171,6 +171,7 @@ function createDeferred<T>() {
 
 interface HookSnapshot {
 	board: BoardData;
+	projectPath: string | null;
 	boardProjectId: string | null;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
 	isServedFromBoardCache: boolean;
@@ -219,6 +220,7 @@ function HookHarness({
 	);
 	const {
 		boardProjectId,
+		projectPath,
 		refreshProjectState,
 		resetProjectSyncState,
 		isServedFromBoardCache,
@@ -240,6 +242,7 @@ function HookHarness({
 	useEffect(() => {
 		onSnapshot({
 			board,
+			projectPath,
 			boardProjectId,
 			sessions,
 			isServedFromBoardCache,
@@ -255,6 +258,7 @@ function HookHarness({
 		applyLifecycleProjectState,
 		board,
 		boardProjectId,
+		projectPath,
 		isServedFromBoardCache,
 		onSnapshot,
 		refreshProjectState,
@@ -297,6 +301,39 @@ describe("useProjectSync", () => {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
+	});
+
+	it("preserves a same-project location update when an older-path refresh finishes later", async () => {
+		const deferred = createDeferred<RuntimeProjectStateResponse>();
+		fetchProjectStateMock.mockReturnValue(deferred.promise);
+		const snapshots: HookSnapshot[] = [];
+		const onSnapshot = (snapshot: HookSnapshot) => {
+			snapshots.push(snapshot);
+		};
+		const initial = { ...createProjectState("saved-task", 8), metadataRevision: 1, repoPath: "/old" };
+		await act(async () => {
+			root.render(<HookHarness streamedProjectState={initial} onSnapshot={onSnapshot} />);
+		});
+		let refreshPromise: Promise<void> | undefined;
+		await act(async () => {
+			refreshPromise = snapshots.at(-1)?.refreshProjectState();
+		});
+		await act(async () => {
+			root.render(
+				<HookHarness
+					streamedProjectState={{ ...initial, revision: 7, metadataRevision: 2, repoPath: "/new" }}
+					onSnapshot={onSnapshot}
+				/>,
+			);
+		});
+		expect(snapshots.at(-1)?.projectPath).toBe("/new");
+		expect(snapshots.at(-1)?.getAuthoritativeRevision()).toBe(8);
+		await act(async () => {
+			deferred.resolve({ ...createProjectState("newer-task", 9), metadataRevision: 1, repoPath: "/old" });
+			await refreshPromise;
+		});
+		expect(snapshots.at(-1)?.projectPath).toBe("/new");
+		expect(snapshots.at(-1)?.getAuthoritativeRevision()).toBe(9);
 	});
 
 	it("ignores a stale refresh response after the sync state is reset during a project transition", async () => {

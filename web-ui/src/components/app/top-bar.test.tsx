@@ -227,6 +227,24 @@ describe("TopBar script shortcut onboarding", () => {
 		expect(projectPath?.title).toBe("/Users/alice/.quarterdeck/worktrees/fd8c0/quarterdeck");
 	});
 
+	it.each([false, true])(
+		"shows the indexed name and full folder tooltip when actions are hidden: %s",
+		async (hidden) => {
+			await act(async () => {
+				root.render(
+					<TopBar
+						projectName="Folder Recovery Demo"
+						projectPath="/projects/project"
+						hideProjectDependentActions={hidden}
+					/>,
+				);
+			});
+			const label = container.querySelector<HTMLElement>('[data-testid="project-path"]');
+			expect(label?.textContent).toBe("Folder Recovery Demo");
+			expect(label?.title).toBe("/projects/project");
+		},
+	);
+
 	it("shows agent terminal re-sync when a handler is provided", async () => {
 		const onResyncAgentTerminal = vi.fn();
 

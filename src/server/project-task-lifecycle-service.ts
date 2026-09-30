@@ -78,12 +78,14 @@ export interface ProjectTaskLifecycleServiceDependencies {
 		onSetupProgress?: (phase: "running" | "succeeded" | "failed") => Promise<void>;
 	}) => Promise<RuntimeWorktreeEnsureResponse>;
 	archiveTaskWorktree?: (options: {
+		existingPath?: string;
 		folderOnly?: boolean;
 		repoPath: string;
 		taskId: string;
 		operationId?: string;
 	}) => Promise<RuntimeWorktreeDeleteResponse>;
 	purgeTaskWorkspace?: (options: {
+		existingPath?: string;
 		folderOnly?: boolean;
 		repoPath: string;
 		taskId: string;
@@ -578,6 +580,7 @@ export class ProjectTaskLifecycleService {
 		if (!moveResult.state.git.folderOnly && card?.useWorktree !== false) {
 			operation = await this.setPhase(scope, operation, "archiving_worktree");
 			const archived = await (this.dependencies.archiveTaskWorktree ?? archiveTaskWorktreeForTrash)({
+				existingPath: precondition.card.workingDirectory ?? undefined,
 				folderOnly: moveResult.state.git.folderOnly,
 				repoPath: scope.projectPath,
 				taskId: command.taskId,
@@ -860,6 +863,7 @@ export class ProjectTaskLifecycleService {
 		operation = await this.setPhase(scope, operation, "purging_workspace");
 		if (precondition.card.useWorktree !== false) {
 			const purged = await (this.dependencies.purgeTaskWorkspace ?? purgeTaskWorkspaceForDelete)({
+				existingPath: precondition.card.workingDirectory ?? undefined,
 				folderOnly: precondition.state.git.folderOnly,
 				repoPath: scope.projectPath,
 				taskId: command.taskId,

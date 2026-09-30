@@ -26,6 +26,7 @@ import { handleStartTaskSession } from "./handlers/start-task-session";
 import { handleStopTaskSession } from "./handlers/stop-task-session";
 
 export interface CreateRuntimeApiDependencies {
+	runProjectOperation: RuntimeTrpcContext["runProjectOperation"];
 	config: IRuntimeConfigProvider;
 	broadcaster: Pick<IRuntimeBroadcaster, "broadcastRuntimeProjectStateUpdated" | "broadcastLogLevel">;
 	getActiveProjectId: () => string | null;

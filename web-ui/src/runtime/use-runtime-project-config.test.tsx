@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeConfigResponse } from "@/runtime/types";
 import { type UseRuntimeProjectConfigResult, useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
+import { resetProjectMetadataStore, setProjectPath } from "@/stores/project-metadata-store";
 import { createSelectedAgentRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
 
 const fetchRuntimeConfigMock = vi.hoisted(() => vi.fn());
@@ -66,6 +67,7 @@ describe("useRuntimeProjectConfig", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
+		resetProjectMetadataStore();
 		fetchRuntimeConfigMock.mockReset();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
@@ -134,6 +136,28 @@ describe("useRuntimeProjectConfig", () => {
 		});
 
 		expect(snapshots.at(-1)?.config?.shortcuts).toEqual([]);
+	});
+
+	it("refetches on same-project relocation and ignores the old folder response", async () => {
+		resetProjectMetadataStore("project-a");
+		setProjectPath("project-a", "/old");
+		const oldRequest = createDeferred<RuntimeConfigResponse>();
+		const nextConfig = createRuntimeConfigResponse("codex", []);
+		fetchRuntimeConfigMock.mockReturnValueOnce(oldRequest.promise).mockResolvedValueOnce(nextConfig);
+		const snapshots: HookSnapshot[] = [];
+		await act(async () => {
+			root.render(<HookHarness projectId="project-a" onSnapshot={(snapshot) => snapshots.push(snapshot)} />);
+		});
+		await act(async () => {
+			setProjectPath("project-a", "/new");
+		});
+		expect(fetchRuntimeConfigMock).toHaveBeenCalledTimes(2);
+		expect(snapshots.at(-1)?.config).toBe(nextConfig);
+		await act(async () => {
+			oldRequest.resolve(createRuntimeConfigResponse("claude", [{ label: "Old", command: "old", icon: "rocket" }]));
+			await oldRequest.promise;
+		});
+		expect(snapshots.at(-1)?.config).toBe(nextConfig);
 	});
 
 	it("loads runtime config without a selected project", async () => {

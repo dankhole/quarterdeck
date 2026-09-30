@@ -14,7 +14,7 @@ import {
 	SUMMARY_ORIGINAL_PROMPT_LIMIT,
 	SUMMARY_PREVIOUS_ACTIVITY_LIMIT,
 } from "../title";
-import type { RuntimeTrpcProjectScope } from "./app-router-context";
+import type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
 
 const log = createTaggedLogger("summary-polish");
 const polishGenerationInFlight = new Set<string>();
@@ -31,6 +31,7 @@ type DisplaySummaryPolishRequest = {
 const pendingPolishRequests = new Map<string, DisplaySummaryPolishRequest>();
 
 export interface DisplaySummaryPolishDeps {
+	runProjectOperation: RuntimeTrpcContext["runProjectOperation"];
 	config: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
 	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
 	loadProjectState?: typeof loadProjectState;
@@ -105,64 +106,76 @@ function queuePendingPolishIfNeeded(inFlightKey: string): void {
 }
 
 export async function polishTaskDisplaySummary(input: DisplaySummaryPolishRequest): Promise<string | null> {
-	const runtimeConfig = await input.deps.config.loadScopedRuntimeConfig(input.projectScope);
-	if (!runtimeConfig.llmSummaryPolishEnabled) {
-		return null;
-	}
-
 	const inFlightKey = `${input.projectScope.projectId}:${input.taskId}`;
 	if (polishGenerationInFlight.has(inFlightKey)) {
 		pendingPolishRequests.set(inFlightKey, input);
 		return null;
 	}
-
-	const terminalManager = await input.deps.getScopedTerminalManager(input.projectScope);
-	const session = terminalManager.store.getSummary(input.taskId);
-	if (!session || !shouldPolishDisplaySummary(session)) {
-		return null;
-	}
-
-	const loadState = input.deps.loadProjectState ?? loadProjectState;
-	const projectState = await loadState(input.projectScope.projectPath);
-	const card = findCardInBoard(projectState.board, input.taskId);
-	const prompt = input.promptOverride ?? card?.prompt;
-	const sourceText = buildPolishSourceText({
-		prompt,
-		summary: session,
-	});
-	if (!sourceText?.trim()) {
-		return null;
-	}
-	const sourceFingerprint = buildPolishSourceFingerprint({ prompt, summary: session });
-
 	polishGenerationInFlight.add(inFlightKey);
 	try {
+		const loadState = input.deps.loadProjectState ?? loadProjectState;
+		const prepared = await input.deps.runProjectOperation(input.projectScope, async () => {
+			const runtimeConfig = await input.deps.config.loadScopedRuntimeConfig(input.projectScope);
+			if (!runtimeConfig.llmSummaryPolishEnabled) return null;
+			const terminalManager = await input.deps.getScopedTerminalManager(input.projectScope);
+			const session = terminalManager.store.getSummary(input.taskId);
+			if (!session || !shouldPolishDisplaySummary(session)) return null;
+			const projectState = await loadState(input.projectScope.projectPath, { autoCreateIfMissing: false });
+			const card = findCardInBoard(projectState.board, input.taskId);
+			if (!card) return null;
+			const prompt = input.promptOverride ?? card.prompt;
+			const sourceText = buildPolishSourceText({ prompt, summary: session });
+			if (!sourceText?.trim()) return null;
+			return {
+				terminalManager,
+				taskCreatedAt: card.createdAt,
+				cardPrompt: card.prompt,
+				prompt,
+				sessionInstanceId: session.sessionInstanceId,
+				resumeSessionId: session.resumeSessionId,
+				sourceText,
+				sourceFingerprint: buildPolishSourceFingerprint({ prompt, summary: session }),
+				summaryCount: session.conversationSummaries.length,
+			};
+		});
+		if (!prepared) return null;
 		log.debug("Polishing display summary", {
 			projectId: input.projectScope.projectId,
 			taskId: input.taskId,
 			reason: input.reason,
-			summaryCount: session.conversationSummaries.length,
-			sourceTextSnippet: sourceText.slice(0, 120),
+			summaryCount: prepared.summaryCount,
+			sourceTextSnippet: prepared.sourceText.slice(0, 120),
 		});
-		const generated = await generateDisplaySummary(sourceText);
-		if (!generated) {
-			return null;
-		}
-		const currentSession = terminalManager.store.getSummary(input.taskId);
-		const currentFingerprint = currentSession
-			? buildPolishSourceFingerprint({ prompt, summary: currentSession })
-			: null;
-		if (currentFingerprint !== sourceFingerprint) {
-			log.debug("Discarded stale display summary polish result", {
-				projectId: input.projectScope.projectId,
-				taskId: input.taskId,
-				reason: input.reason,
-			});
-			return null;
-		}
-		const generatedAt = (input.deps.now ?? Date.now)();
-		terminalManager.store.setDisplaySummary(input.taskId, generated, generatedAt);
-		return generated;
+		// A model call is independent of filesystem ownership. Relocation may
+		// finish while it runs; reacquire admission before observing or updating a store.
+		const generated = await generateDisplaySummary(prepared.sourceText);
+		if (!generated) return null;
+		return await input.deps.runProjectOperation(input.projectScope, async () => {
+			const terminalManager = await input.deps.getScopedTerminalManager(input.projectScope);
+			if (terminalManager !== prepared.terminalManager) return null;
+			const projectState = await loadState(input.projectScope.projectPath, { autoCreateIfMissing: false });
+			const card = findCardInBoard(projectState.board, input.taskId);
+			const currentSession = terminalManager.store.getSummary(input.taskId);
+			if (
+				!card ||
+				card.createdAt !== prepared.taskCreatedAt ||
+				card.prompt !== prepared.cardPrompt ||
+				!currentSession ||
+				currentSession.sessionInstanceId !== prepared.sessionInstanceId ||
+				currentSession.resumeSessionId !== prepared.resumeSessionId ||
+				buildPolishSourceFingerprint({ prompt: prepared.prompt, summary: currentSession }) !==
+					prepared.sourceFingerprint
+			) {
+				log.debug("Discarded stale display summary polish result", {
+					projectId: input.projectScope.projectId,
+					taskId: input.taskId,
+					reason: input.reason,
+				});
+				return null;
+			}
+			terminalManager.store.setDisplaySummary(input.taskId, generated, (input.deps.now ?? Date.now)());
+			return generated;
+		});
 	} finally {
 		polishGenerationInFlight.delete(inFlightKey);
 		queuePendingPolishIfNeeded(inFlightKey);

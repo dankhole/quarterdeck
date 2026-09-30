@@ -134,6 +134,7 @@ export function nullFilledActivity(partial: Partial<RuntimeTaskHookActivity>): R
 
 export function createTestApi(manager: TerminalSessionManager, overrides: Partial<CreateHooksApiDependencies> = {}) {
 	return createHooksApi({
+		runProjectOperation: async (_scope, operation) => await operation(),
 		projects: { getProjectPathById: vi.fn(() => "/tmp/repo") },
 		terminals: {
 			getTerminalManagerForProject: vi.fn(() => null),

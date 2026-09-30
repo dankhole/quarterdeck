@@ -22,6 +22,7 @@ export type RequestProgrammaticCardMove = (move: ProgrammaticCardMoveInFlight) =
 
 export function QuarterdeckBoard({
 	data,
+	readOnly = false,
 	replyScope,
 	taskSessions,
 	onCardSelect,
@@ -33,6 +34,7 @@ export function QuarterdeckBoard({
 	onRequestProgrammaticCardMoveReady,
 }: {
 	data: BoardData;
+	readOnly?: boolean;
 	replyScope?: BoardReplyScope;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCardSelect: (taskId: string) => void;
@@ -53,6 +55,7 @@ export function QuarterdeckBoard({
 	const requestProgrammaticCardMove = useCallback<RequestProgrammaticCardMove>(
 		(move) => {
 			if (
+				readOnly ||
 				move.fromColumnId === move.toColumnId ||
 				activeDragTaskId ||
 				findCardColumnId(data.columns, move.taskId) !== move.fromColumnId
@@ -64,7 +67,7 @@ export function QuarterdeckBoard({
 			onDragEnd(result);
 			return true;
 		},
-		[activeDragTaskId, data, onDragEnd],
+		[activeDragTaskId, data, onDragEnd, readOnly],
 	);
 	useEffect(() => {
 		onRequestProgrammaticCardMoveReady?.(requestProgrammaticCardMove);
@@ -72,7 +75,7 @@ export function QuarterdeckBoard({
 	}, [onRequestProgrammaticCardMoveReady, requestProgrammaticCardMove]);
 	const handleDragEnd = ({ active, over }: DragEndEvent) => {
 		setActiveDragTaskId(null);
-		if (!over) return;
+		if (readOnly || !over) return;
 		const result = resolveBoardGridDrop(data, String(active.id), String(over.id));
 		if (result) onDragEnd(result);
 	};
@@ -81,7 +84,9 @@ export function QuarterdeckBoard({
 			<DndContext
 				sensors={sensors}
 				collisionDetection={boardGridCollision}
-				onDragStart={({ active }) => setActiveDragTaskId(String(active.id))}
+				onDragStart={({ active }) => {
+					if (!readOnly) setActiveDragTaskId(String(active.id));
+				}}
 				onDragCancel={() => setActiveDragTaskId(null)}
 				onDragEnd={handleDragEnd}
 			>
@@ -91,6 +96,7 @@ export function QuarterdeckBoard({
 							<BoardColumn
 								key={column.id}
 								column={column}
+								readOnly={readOnly}
 								taskSessions={taskSessions}
 								replyScope={replyScope}
 								onClearTrash={column.id === "trash" ? onClearTrash : undefined}
@@ -101,14 +107,14 @@ export function QuarterdeckBoard({
 								activeDragSourceColumnId={sourceColumnId}
 								activeDragTaskUnstarted={activeCard?.unstarted}
 								onCardClick={(card) => {
-									if (!activeDragTaskId) onCardSelect(card.id);
+									if (!readOnly && !activeDragTaskId) onCardSelect(card.id);
 								}}
 							/>
 						))}
 					</section>
 				</div>
 				<DragOverlay dropAnimation={null}>
-					{activeCard ? (
+					{!readOnly && activeCard ? (
 						<div className="rounded-xl border border-accent bg-surface-2 px-5 py-4 text-sm font-medium shadow-xl">
 							{activeCard.title || "Task"}
 						</div>

@@ -93,6 +93,7 @@ function scheduleHookBackgroundTask(task: () => void): void {
 }
 
 export interface CreateHooksApiDependencies {
+	runProjectOperation: RuntimeTrpcContext["runProjectOperation"];
 	projects: Pick<IProjectResolver, "getProjectPathById">;
 	terminals: ITerminalManagerProvider;
 	config?: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
@@ -272,6 +273,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						taskId,
 						reason: transitionResult.changed ? `hook.${event}` : "hook.metadata",
 						deps: {
+							runProjectOperation: deps.runProjectOperation,
 							config: deps.config,
 							getScopedTerminalManager: async (scope) =>
 								await deps.terminals.ensureTerminalManagerForProject(scope.projectId, scope.projectPath),

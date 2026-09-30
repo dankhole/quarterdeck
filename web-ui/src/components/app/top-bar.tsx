@@ -18,6 +18,7 @@ export { GitBranchStatusControl } from "@/components/app/git-branch-status-contr
 
 export function TopBar({
 	onBack,
+	projectName,
 	projectPath,
 	isProjectPathLoading = false,
 	projectHint,
@@ -57,6 +58,7 @@ export function TopBar({
 	taskTitle,
 }: {
 	onBack?: () => void;
+	projectName?: string;
 	projectPath?: string;
 	isProjectPathLoading?: boolean;
 	projectHint?: string;
@@ -114,6 +116,7 @@ export function TopBar({
 				onBack={onBack}
 				scopeType={scopeType}
 				taskTitle={taskTitle}
+				projectName={projectName}
 				projectPath={projectPath}
 				isProjectPathLoading={isProjectPathLoading}
 				projectHint={projectHint}

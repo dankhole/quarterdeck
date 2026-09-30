@@ -42,14 +42,15 @@ export function useAppActionModels({
 	navigation,
 	interactions,
 }: UseAppActionModelsInput): UseAppActionModelsResult {
+	const isProjectUnavailable = projectNavigation.currentProjectAvailability?.status === "unavailable";
 	const terminalPrewarmPolicy = getTerminalPrewarmPolicy();
 	const handleTerminalWarmup = useCallback(
 		(taskId: string) => {
-			if (projectNavigation.currentProjectId) {
+			if (!isProjectUnavailable && projectNavigation.currentProjectId) {
 				terminalPrewarmPolicy.requestTaskHoverPrewarm(taskId, projectNavigation.currentProjectId);
 			}
 		},
-		[projectNavigation.currentProjectId, terminalPrewarmPolicy],
+		[isProjectUnavailable, projectNavigation.currentProjectId, terminalPrewarmPolicy],
 	);
 
 	const handleTerminalCancelWarmup = useCallback(
@@ -74,44 +75,51 @@ export function useAppActionModels({
 
 	const handleMainViewChange = useCallback(
 		(view: MainViewId) => {
+			if (isProjectUnavailable && view !== "home") return;
 			navigation.setMainView(view, { setSelectedTaskId: board.setSelectedTaskId });
 		},
-		[board.setSelectedTaskId, navigation.setMainView],
+		[board.setSelectedTaskId, isProjectUnavailable, navigation.setMainView],
 	);
 
 	const handleCardSelectWithFocus = useCallback(
 		(taskId: string) => {
+			if (isProjectUnavailable) return;
 			interactions.handleCardSelect(taskId);
 			if (navigation.mainView === "terminal") {
 				requestAnimationFrame(() => getTerminalController(taskId)?.focus?.());
 			}
 		},
-		[navigation.mainView, interactions.handleCardSelect],
+		[isProjectUnavailable, navigation.mainView, interactions.handleCardSelect],
 	);
 
 	const handleCardDoubleClick = useCallback(
 		(taskId: string) => {
+			if (isProjectUnavailable) return;
 			interactions.handleCardSelect(taskId);
 			navigation.setMainView("terminal", { setSelectedTaskId: board.setSelectedTaskId });
 			requestAnimationFrame(() => getTerminalController(taskId)?.focus?.());
 		},
-		[board.setSelectedTaskId, navigation.setMainView, interactions.handleCardSelect],
+		[board.setSelectedTaskId, isProjectUnavailable, navigation.setMainView, interactions.handleCardSelect],
 	);
 
 	const stableCardActions = useMemo<StableCardActions>(
-		() => ({
-			onStartTask: interactions.handleStartTask,
-			onRestartSessionTask: interactions.handleRestartTaskSession,
-			onMoveToTrashTask: interactions.handleMoveReviewCardToTrash,
-			onRestoreFromTrashTask: interactions.handleRestoreTaskFromTrash,
-			onHardDeleteTrashTask: interactions.handleHardDeleteTrashTask,
-			onRegenerateTitleTask: handleRegenerateTitleTask,
-			onUpdateTaskTitle: handleUpdateTaskTitle,
-			onTogglePinTask: handleToggleTaskPinned,
-			onTerminalWarmup: handleTerminalWarmup,
-			onTerminalCancelWarmup: handleTerminalCancelWarmup,
-		}),
+		() =>
+			isProjectUnavailable
+				? {}
+				: {
+						onStartTask: interactions.handleStartTask,
+						onRestartSessionTask: interactions.handleRestartTaskSession,
+						onMoveToTrashTask: interactions.handleMoveReviewCardToTrash,
+						onRestoreFromTrashTask: interactions.handleRestoreTaskFromTrash,
+						onHardDeleteTrashTask: interactions.handleHardDeleteTrashTask,
+						onRegenerateTitleTask: handleRegenerateTitleTask,
+						onUpdateTaskTitle: handleUpdateTaskTitle,
+						onTogglePinTask: handleToggleTaskPinned,
+						onTerminalWarmup: handleTerminalWarmup,
+						onTerminalCancelWarmup: handleTerminalCancelWarmup,
+					},
 		[
+			isProjectUnavailable,
 			handleRegenerateTitleTask,
 			handleTerminalCancelWarmup,
 			handleTerminalWarmup,

@@ -5,12 +5,13 @@ import {
 	type TaskSessionStartServiceResult,
 } from "../../server/task-session-start-service";
 import type { TerminalSessionManager } from "../../terminal";
-import type { RuntimeTrpcProjectScope } from "../app-router-context";
+import type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "../app-router-context";
 import { queueTaskDisplaySummaryPolish } from "../display-summary-polish";
 
 const log = createTaggedLogger("task-session-start");
 
 export interface StartTaskSessionDeps extends SerializedTaskSessionStartServiceDependencies {
+	runProjectOperation: RuntimeTrpcContext["runProjectOperation"];
 	config: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
 	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
 	assertNativeStartAllowed?: (scope: RuntimeTrpcProjectScope, taskId: string) => Promise<void>;

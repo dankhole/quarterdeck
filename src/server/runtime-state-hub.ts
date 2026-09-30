@@ -99,6 +99,8 @@ export interface RuntimeStateHub extends IRuntimeBroadcaster {
 		},
 	) => void;
 	disposeProject: (projectId: string, options?: DisposeRuntimeStateProjectOptions) => Promise<void>;
+	suspendProject: (projectId: string) => Promise<void>;
+	refreshProject: (projectId: string, projectPath: string) => Promise<void>;
 	close: () => Promise<void>;
 	getDiagnosticSnapshot: (scope?: Readonly<DiagnosticCaptureScope>) => RuntimeStateHubDiagnosticSnapshot;
 }
@@ -110,6 +112,8 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	private readonly metadataMonitor: ReturnType<typeof createProjectMetadataMonitor>;
 	private readonly notificationRevisionsByProject = new Map<string, number>();
 	private readonly notificationPublicationStates = new Map<string, RuntimeNotificationPublicationState>();
+	private readonly suspendedProjects = new Set<string>();
+	private readonly metadataWrites = new Map<string, Set<Promise<void>>>();
 	private readonly diagnosticClientBySocket = new WeakMap<
 		WebSocket,
 		{ clientId: string; capability: string; connectionId: string }
@@ -160,43 +164,52 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 		this.metadataMonitor = createProjectMetadataMonitor({
 			onMetadataUpdated: (projectId, projectMetadata) => {
+				if (this.suspendedProjects.has(projectId)) return;
 				this.clients.broadcastToProject(projectId, buildProjectMetadataUpdatedMessage(projectId, projectMetadata));
 				const projectPath = this.deps.projectRegistry.getProjectPathById(projectId);
 				if (projectPath) {
-					void this.deps.boardCommands
-						.reconcileRuntimeMetadata({ projectId, projectPath }, projectMetadata)
-						.catch((error) => {
-							hubLog.warn("runtime task metadata persistence failed", {
-								projectId,
-								error: error instanceof Error ? error.message : String(error),
-							});
-						});
+					this.trackMetadataWrite(
+						projectId,
+						this.deps.boardCommands
+							.reconcileRuntimeMetadata({ projectId, projectPath }, projectMetadata)
+							.catch((error) => {
+								hubLog.warn("runtime task metadata persistence failed", {
+									projectId,
+									error: error instanceof Error ? error.message : String(error),
+								});
+							})
+							.then(() => undefined),
+					);
 				}
 			},
 			onTaskBaseRefChanged: (projectId, taskId, newBaseRef) => {
+				if (this.suspendedProjects.has(projectId)) return;
 				const projectPath = this.deps.projectRegistry.getProjectPathById(projectId);
 				if (!projectPath) {
 					return;
 				}
-				void this.deps.boardCommands
-					.reconcileRuntimeTaskBaseRef({ projectId, projectPath }, taskId, newBaseRef)
-					.then(async () => {
-						await applyRuntimeMutationEffects(
-							this,
-							createTaskBaseRefUpdatedEffects({
+				this.trackMetadataWrite(
+					projectId,
+					this.deps.boardCommands
+						.reconcileRuntimeTaskBaseRef({ projectId, projectPath }, taskId, newBaseRef)
+						.then(async () => {
+							await applyRuntimeMutationEffects(
+								this,
+								createTaskBaseRefUpdatedEffects({
+									projectId,
+									taskId,
+									baseRef: newBaseRef,
+								}),
+							);
+						})
+						.catch((error) => {
+							hubLog.warn("runtime task base ref persistence failed", {
 								projectId,
 								taskId,
-								baseRef: newBaseRef,
-							}),
-						);
-					})
-					.catch((error) => {
-						hubLog.warn("runtime task base ref persistence failed", {
-							projectId,
-							taskId,
-							error: error instanceof Error ? error.message : String(error),
-						});
-					});
+								error: error instanceof Error ? error.message : String(error),
+							});
+						}),
+				);
 			},
 			onRemoteFetchCompleted: (projectId, result) => {
 				if (!result.succeeded) {
@@ -278,6 +291,8 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	};
 
 	disposeProject = async (projectId: string, options?: DisposeRuntimeStateProjectOptions): Promise<void> => {
+		await this.suspendProject(projectId);
+		this.suspendedProjects.delete(projectId);
 		this.batcher.disposeProject(projectId);
 		await this.disposeNotificationPublications(projectId);
 		this.notificationRevisionsByProject.delete(projectId);
@@ -297,12 +312,29 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		});
 	};
 
+	suspendProject = async (projectId: string): Promise<void> => {
+		this.suspendedProjects.add(projectId);
+		this.batcher.disposeProject(projectId);
+		await this.metadataMonitor.suspendProject(projectId);
+		await Promise.allSettled(Array.from(this.metadataWrites.get(projectId) ?? []));
+		await this.disposeNotificationPublications(projectId);
+	};
+
+	refreshProject = async (projectId: string, projectPath: string): Promise<void> => {
+		this.suspendedProjects.delete(projectId);
+		for (const project of this.deps.projectRegistry.listManagedProjects()) {
+			if (project.projectId === projectId) this.trackTerminalManager(projectId, project.terminalManager);
+		}
+		await this.broadcastRuntimeProjectStateUpdated(projectId, projectPath);
+		await this.broadcastRuntimeProjectNotificationsUpdated(projectId);
+	};
+
 	broadcastRuntimeProjectStateUpdated = async (projectId: string, projectPath: string): Promise<void> => {
 		if (!this.clients.hasClients) {
 			return;
 		}
 		try {
-			const projectState = await this.deps.projectRegistry.buildProjectStateSnapshot(projectId, projectPath);
+			const projectState = await this.deps.projectRegistry.buildProjectStateSnapshot(projectId);
 			this.broadcastRuntimeProjectStateSnapshot(projectId, projectState);
 		} catch (error) {
 			hubLog.warn("runtime project state publication failed", {
@@ -314,6 +346,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	};
 
 	broadcastRuntimeProjectStateSnapshot = (projectId: string, projectState: RuntimeProjectStateResponse): void => {
+		if (this.suspendedProjects.has(projectId)) return;
 		const clients = this.clients.getProjectClients(projectId);
 		if (clients && clients.size > 0) {
 			this.clients.broadcastToProject(projectId, buildProjectStateUpdatedMessage(projectId, projectState));
@@ -323,6 +356,8 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 					projectPath: projectState.repoPath,
 					board: projectState.board,
 					folderOnly: projectState.git.folderOnly,
+					metadataRevision: projectState.metadataRevision,
+					available: projectState.availability?.status !== "unavailable",
 				})
 				.catch((error) => {
 					hubLog.warn("runtime project metadata refresh failed", {
@@ -430,6 +465,17 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 	// ── Private helpers ───────────────────────────────────────────────────
 
+	private trackMetadataWrite(projectId: string, write: Promise<void>): void {
+		const pending = this.metadataWrites.get(projectId) ?? new Set<Promise<void>>();
+		this.metadataWrites.set(projectId, pending);
+		pending.add(write);
+		void write.finally(() => {
+			pending.delete(write);
+			if (pending.size === 0 && this.metadataWrites.get(projectId) === pending)
+				this.metadataWrites.delete(projectId);
+		});
+	}
+
 	private async handleConnection(client: WebSocket, context: unknown): Promise<void> {
 		client.on("close", () => {
 			const diagnosticClient = this.diagnosticClientBySocket.get(client);
@@ -462,14 +508,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				{ essential: true },
 			);
 			const isDocumentVisible = this.parseDocumentVisible(context);
-			const resolved = await this.deps.projectRegistry.resolveProjectForStream(requestedProjectId, {
-				onRemovedProject: ({ projectId, message }) => {
-					return this.disposeProject(projectId, {
-						disconnectClients: true,
-						closeClientErrorMessage: message,
-					});
-				},
-			});
+			const resolved = await this.deps.projectRegistry.resolveProjectForStream(requestedProjectId);
 			if (client.readyState !== WebSocket.OPEN) {
 				this.clients.removeClient(client);
 				return;
@@ -508,7 +547,6 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				}
 				this.enqueueConnectionCatchupForClient(client, {
 					projectId: snapshot.projectId,
-					projectPath: snapshot.projectPath,
 					projectIds: snapshot.projects.map((project) => project.id),
 				});
 				if (client.readyState !== WebSocket.OPEN) {
@@ -533,6 +571,10 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 							projectPath: snapshot.projectPath,
 							board: snapshot.projectState.board,
 							folderOnly: snapshot.projectState.git.folderOnly,
+							metadataRevision: snapshot.projectState.metadataRevision,
+							available:
+								!this.suspendedProjects.has(snapshot.projectId) &&
+								snapshot.projectState.availability?.status !== "unavailable",
 							clientId: runtimeClientId,
 							isDocumentVisible,
 						})
@@ -551,15 +593,6 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 						recentRecords: [],
 					}),
 				);
-
-				if (resolved.removedRequestedProjectPath) {
-					const message = `Project no longer exists on disk and was removed: ${resolved.removedRequestedProjectPath}`;
-					hubLog.warn(message);
-					this.sendMessage(client, buildErrorMessage(message));
-				}
-				if (resolved.didPruneProjects) {
-					void this.broadcastRuntimeProjectsUpdated(resolved.projectId);
-				}
 			} catch (error) {
 				if (didConnectProjectMonitor && monitorProjectId) {
 					this.metadataMonitor.disconnectProject(monitorProjectId, runtimeClientId);
@@ -591,7 +624,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		if (resolved.projectId && resolved.projectPath) {
 			const [projectsPayload, projectStateResult, notificationSummariesByProject] = await Promise.all([
 				this.deps.projectRegistry.buildProjectsPayload(resolved.projectId),
-				this.loadInitialProjectState(resolved.projectId, resolved.projectPath),
+				this.loadInitialProjectState(resolved.projectId),
 				this.collectNotificationSummariesByProject(),
 			]);
 			const projects = projectStateResult.projectState
@@ -606,7 +639,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				organization: projectsPayload.organization,
 				projects,
 				projectId: resolved.projectId,
-				projectPath: resolved.projectPath,
+				projectPath: projectStateResult.projectState?.repoPath ?? resolved.projectPath,
 				projectState: projectStateResult.projectState,
 				projectStateError: projectStateResult.projectStateError,
 				notificationSummariesByProject,
@@ -636,12 +669,17 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		projectId: string,
 		projectState: RuntimeProjectStateResponse,
 	): RuntimeProjectSummary[] {
+		const current = projects.find((project) => project.id === projectId);
+		const useStateMetadata = (projectState.metadataRevision ?? 0) >= (current?.metadataRevision ?? 0);
 		const exact = deriveProjectSummary({
 			projectId,
-			repoPath: projectState.repoPath,
+			repoPath: useStateMetadata ? projectState.repoPath : (current?.path ?? projectState.repoPath),
 			folderOnly: projectState.git.folderOnly,
 			board: projectState.board,
 			boardRevision: projectState.revision,
+			displayName: current?.displayName,
+			metadataRevision: Math.max(projectState.metadataRevision ?? 0, current?.metadataRevision ?? 0),
+			availability: useStateMetadata ? (projectState.availability ?? current?.availability) : current?.availability,
 		});
 		let found = false;
 		const merged = projects.map((project) => {
@@ -681,11 +719,10 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 	private async loadInitialProjectState(
 		projectId: string,
-		projectPath: string,
 	): Promise<{ projectState: RuntimeProjectStateResponse | null; projectStateError: string | null }> {
 		try {
 			return {
-				projectState: await this.deps.projectRegistry.buildProjectStateSnapshot(projectId, projectPath),
+				projectState: await this.deps.projectRegistry.buildProjectStateSnapshot(projectId),
 				projectStateError: null,
 			};
 		} catch (error) {
@@ -766,22 +803,17 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 	private enqueueConnectionCatchupForClient(
 		client: WebSocket,
-		input: { projectId: string | null; projectPath: string | null; projectIds: readonly string[] },
+		input: { projectId: string | null; projectIds: readonly string[] },
 	): void {
 		this.enqueueNotificationCatchupForClient(client, input.projectIds);
-		void this.sendDurableConnectionCatchup(client, input.projectId, input.projectPath);
+		void this.sendDurableConnectionCatchup(client, input.projectId);
 	}
 
-	private async sendDurableConnectionCatchup(
-		client: WebSocket,
-		projectId: string | null,
-		projectPath: string | null,
-	): Promise<void> {
+	private async sendDurableConnectionCatchup(client: WebSocket, projectId: string | null): Promise<void> {
 		const projectsPromise = this.deps.projectRegistry.buildProjectsPayload(projectId);
-		const projectStatePromise =
-			projectId && projectPath
-				? this.deps.projectRegistry.buildProjectStateSnapshot(projectId, projectPath)
-				: Promise.resolve<RuntimeProjectStateResponse | null>(null);
+		const projectStatePromise = projectId
+			? this.deps.projectRegistry.buildProjectStateSnapshot(projectId)
+			: Promise.resolve<RuntimeProjectStateResponse | null>(null);
 		const [projectsResult, projectStateResult] = await Promise.allSettled([projectsPromise, projectStatePromise]);
 
 		if (client.readyState !== WebSocket.OPEN) return;

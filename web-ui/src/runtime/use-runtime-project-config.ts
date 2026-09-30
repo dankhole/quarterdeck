@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback } from "react";
 
 import { fetchRuntimeConfig } from "@/runtime/runtime-config-query";
 import type { RuntimeConfigResponse } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
+import { useProjectMetadataScopeVersion } from "@/stores/project-metadata-store";
 
 export interface UseRuntimeProjectConfigResult {
 	config: RuntimeConfigResponse | null;
@@ -11,29 +12,31 @@ export interface UseRuntimeProjectConfigResult {
 }
 
 export function useRuntimeProjectConfig(projectId: string | null): UseRuntimeProjectConfigResult {
-	const previousProjectIdRef = useRef<string | null>(null);
-	const queryFn = useCallback(async () => await fetchRuntimeConfig(projectId), [projectId]);
-	const configQuery = useTrpcQuery<RuntimeConfigResponse>({
+	const scopeVersion = useProjectMetadataScopeVersion(projectId);
+	const queryFn = useCallback(
+		async () => ({
+			projectId,
+			scopeVersion,
+			config: await fetchRuntimeConfig(projectId),
+		}),
+		[projectId, scopeVersion],
+	);
+	const configQuery = useTrpcQuery({
 		enabled: true,
 		queryFn,
 	});
-	const setConfigData = configQuery.setData;
-
-	useEffect(() => {
-		const projectChanged = previousProjectIdRef.current !== projectId;
-		previousProjectIdRef.current = projectId;
-		if (projectChanged) {
-			setConfigData(null);
-		}
-	}, [setConfigData, projectId]);
+	const config =
+		configQuery.data?.projectId === projectId && configQuery.data.scopeVersion === scopeVersion
+			? configQuery.data.config
+			: null;
 
 	const refresh = useCallback(() => {
 		void configQuery.refetch();
 	}, [configQuery.refetch]);
 
 	return {
-		config: configQuery.data,
-		isLoading: configQuery.isLoading && configQuery.data === null,
+		config,
+		isLoading: configQuery.isLoading && config === null,
 		refresh,
 	};
 }

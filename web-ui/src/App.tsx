@@ -152,6 +152,7 @@ function AppInner(): ReactElement {
 
 function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 	const projectNavigation = useProjectNavigationContext();
+	const isProjectUnavailable = projectNavigation.currentProjectAvailability?.status === "unavailable";
 	const projectStream = useProjectRuntimeStreamContext();
 	const projectSync = useProjectSyncContext();
 	const projectNotifications = useProjectNotificationContext();
@@ -206,14 +207,24 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 	const [isTextSearchOpen, setIsTextSearchOpen] = useState(false);
 
 	const handleToggleFileFinder = useCallback(() => {
+		if (isProjectUnavailable) return;
 		setIsTextSearchOpen(false);
 		setIsFileFinderOpen((prev) => !prev);
-	}, []);
+	}, [isProjectUnavailable]);
 
 	const handleToggleTextSearch = useCallback(() => {
+		if (isProjectUnavailable) return;
 		setIsFileFinderOpen(false);
 		setIsTextSearchOpen((prev) => !prev);
-	}, []);
+	}, [isProjectUnavailable]);
+
+	useEffect(() => {
+		if (!isProjectUnavailable) return;
+		setIsFileFinderOpen(false);
+		setIsTextSearchOpen(false);
+		navigation.setMainView("home", { setSelectedTaskId });
+		navigation.closeGitHistory();
+	}, [isProjectUnavailable, navigation.setMainView, navigation.closeGitHistory, setSelectedTaskId]);
 
 	const handleSearchFileSelect = useCallback(
 		(filePath: string, lineNumber?: number) => {
@@ -254,7 +265,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 
 	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut, handleCreateShortcut } =
 		useShortcutActions({
-			currentProjectId: projectNavigation.currentProjectId,
+			currentProjectId: isProjectUnavailable ? null : projectNavigation.currentProjectId,
 			selectedShortcutLabel: projectRuntime.runtimeProjectConfig?.selectedShortcutLabel,
 			shortcuts: projectRuntime.shortcuts,
 			refreshRuntimeProjectConfig: projectRuntime.refreshRuntimeProjectConfig,
@@ -270,7 +281,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		selectShortcutLabel: selectPromptShortcutLabel,
 		savePromptShortcuts,
 	} = usePromptShortcuts({
-		currentProjectId: projectNavigation.currentProjectId,
+		currentProjectId: isProjectUnavailable ? null : projectNavigation.currentProjectId,
 		promptShortcuts: projectRuntime.runtimeProjectConfig?.promptShortcuts ?? [],
 		refreshRuntimeConfig: projectRuntime.refreshRuntimeProjectConfig,
 		sendTaskSessionInput,
@@ -336,30 +347,31 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		handleOpenEditTask,
 	} = taskEditor;
 
-	const inlineTaskEditor = editingTaskId ? (
-		<TaskInlineCreateCard
-			folderOnly={projectSync.projectGit?.folderOnly}
-			prompt={editTaskPrompt}
-			onPromptChange={setEditTaskPrompt}
-			images={editTaskImages}
-			onImagesChange={setEditTaskImages}
-			onCreate={handleSaveEditedTask}
-			onCreateAndStart={handleSaveAndStartEditedTask}
-			onCancel={handleCancelEditTask}
-			projectId={projectNavigation.currentProjectId}
-			branchRef={editTaskBranchRef}
-			branchOptions={createTaskBranchOptions}
-			onBranchRefChange={setEditTaskBranchRef}
-			defaultBaseRef={projectRuntime.configDefaultBaseRef}
-			onSetDefaultBaseRef={projectRuntime.handleSetDefaultBaseRef}
-			mode="edit"
-			idPrefix={`inline-edit-task-${editingTaskId}`}
-		/>
-	) : undefined;
+	const inlineTaskEditor =
+		editingTaskId && !isProjectUnavailable ? (
+			<TaskInlineCreateCard
+				folderOnly={projectSync.projectGit?.folderOnly}
+				prompt={editTaskPrompt}
+				onPromptChange={setEditTaskPrompt}
+				images={editTaskImages}
+				onImagesChange={setEditTaskImages}
+				onCreate={handleSaveEditedTask}
+				onCreateAndStart={handleSaveAndStartEditedTask}
+				onCancel={handleCancelEditTask}
+				projectId={projectNavigation.currentProjectId}
+				branchRef={editTaskBranchRef}
+				branchOptions={createTaskBranchOptions}
+				onBranchRefChange={setEditTaskBranchRef}
+				defaultBaseRef={projectRuntime.configDefaultBaseRef}
+				onSetDefaultBaseRef={projectRuntime.handleSetDefaultBaseRef}
+				mode="edit"
+				idPrefix={`inline-edit-task-${editingTaskId}`}
+			/>
+		) : undefined;
 
 	const topBar = (
 		<ConnectedTopBar
-			onBack={selectedCard ? handleBack : undefined}
+			onBack={!isProjectUnavailable && selectedCard ? handleBack : undefined}
 			runningShortcutLabel={runningShortcutLabel}
 			handleSelectShortcutLabel={handleSelectShortcutLabel}
 			handleRunShortcut={handleRunShortcut}
@@ -372,7 +384,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 			openProjectPath={openProjectPath}
 			navbarProjectHint={navbarProjectHint}
 			navbarRuntimeHint={navbarRuntimeHint}
-			shouldHideProjectDependentTopBarActions={shouldHideProjectDependentTopBarActions}
+			shouldHideProjectDependentTopBarActions={shouldHideProjectDependentTopBarActions || isProjectUnavailable}
 			shouldShowProjectLoadingState={shouldShowProjectLoadingState}
 			homeGitSummary={homeGitSummary}
 			selectedTaskWorktreeSnapshot={selectedTaskWorktreeSnapshot}
@@ -390,6 +402,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 					<>
 						<DetailToolbar
 							folderOnly={projectSync.projectGit?.folderOnly}
+							projectUnavailable={isProjectUnavailable}
 							activeMainView={navigation.visualMainView}
 							activeSidebar={navigation.visualSidebar}
 							onMainViewChange={handleMainViewChange}
@@ -417,7 +430,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 							boardBadgeColor={selectedCard ? boardBadgeColor : undefined}
 						/>
 
-						{navigation.sidebar === "commit" && !selectedCard ? (
+						{!isProjectUnavailable && navigation.sidebar === "commit" && !selectedCard ? (
 							<>
 								<div
 									style={{
@@ -486,7 +499,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 					</>
 
 					{/* Main area */}
-					{selectedCard && detailSession ? (
+					{!isProjectUnavailable && selectedCard && detailSession ? (
 						<CardDetailView
 							selection={selectedCard}
 							currentProjectId={projectNavigation.currentProjectId}
@@ -567,7 +580,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 						/>
 					)}
 					<AppDialogs savePromptShortcuts={savePromptShortcuts} />
-					{isFileFinderOpen && (
+					{!isProjectUnavailable && isFileFinderOpen && (
 						<FileFinderOverlay
 							projectId={projectNavigation.currentProjectId}
 							searchScope={navigation.activeFileSearchScope}
@@ -575,7 +588,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 							onDismiss={() => setIsFileFinderOpen(false)}
 						/>
 					)}
-					{isTextSearchOpen && (
+					{!isProjectUnavailable && isTextSearchOpen && (
 						<TextSearchOverlay
 							projectId={projectNavigation.currentProjectId}
 							searchScope={navigation.activeFileSearchScope}

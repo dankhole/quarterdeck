@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDocumentVisibility } from "@/hooks/notifications/use-document-visibility";
 import type { RuntimeStateStreamTaskReadyForReviewMessage } from "@/runtime/types";
 import { useDocumentTitle, useWindowEvent } from "@/utils/react-use";
@@ -6,7 +6,7 @@ import { useDocumentTitle, useWindowEvent } from "@/utils/react-use";
 interface UseReviewReadyNotificationsOptions {
 	activeProjectId: string | null;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
-	projectPath: string | null;
+	projectName: string | null;
 }
 
 const MAX_HANDLED_READY_EVENT_KEYS = 200;
@@ -14,7 +14,7 @@ const MAX_HANDLED_READY_EVENT_KEYS = 200;
 export function useReviewReadyNotifications({
 	activeProjectId,
 	latestTaskReadyForReview,
-	projectPath,
+	projectName,
 }: UseReviewReadyNotificationsOptions): void {
 	const handledReadyForReviewEventKeysRef = useRef<Set<string>>(new Set());
 	const handledReadyForReviewEventKeyQueueRef = useRef<string[]>([]);
@@ -26,19 +26,6 @@ export function useReviewReadyNotifications({
 		return document.hasFocus();
 	});
 	const isDocumentVisible = useDocumentVisibility();
-	const projectTitle = useMemo(() => {
-		if (!projectPath) {
-			return null;
-		}
-		const segments = projectPath
-			.replaceAll("\\", "/")
-			.split("/")
-			.filter((segment) => segment.length > 0);
-		if (segments.length === 0) {
-			return projectPath;
-		}
-		return segments[segments.length - 1] ?? projectPath;
-	}, [projectPath]);
 	const isAppActive = isDocumentVisible && isWindowFocused;
 
 	useWindowEvent("focus", () => {
@@ -91,7 +78,7 @@ export function useReviewReadyNotifications({
 		setPendingReviewReadyNotificationCount(0);
 	}, [activeProjectId]);
 
-	const baseTitle = projectTitle || "quarterdeck";
+	const baseTitle = projectName || "quarterdeck";
 	const documentTitle =
 		pendingReviewReadyNotificationCount > 0 ? `(${pendingReviewReadyNotificationCount}) ${baseTitle}` : baseTitle;
 	useDocumentTitle(documentTitle);

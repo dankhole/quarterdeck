@@ -4,6 +4,8 @@ import { updateBrowserSnapshotContext } from "@/diagnostics";
 import { useDocumentVisibility } from "@/hooks/notifications";
 import { buildProjectNotificationProjection } from "@/hooks/notifications/project-notifications";
 import { type UseProjectNavigationResult, useProjectNavigation, useProjectSync } from "@/hooks/project";
+import { useProjectManagement } from "@/hooks/project/use-project-management";
+import { ProjectManagementContext } from "@/providers/project-management-context";
 import { ProjectRuntimeProvider } from "@/providers/project-runtime-provider";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import type { RuntimeGitRepositoryInfo, RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -23,6 +25,8 @@ export interface ProjectNavigationContextValue {
 	applyOrganization: UseProjectNavigationResult["applyOrganization"];
 	isRuntimeDisconnected: boolean;
 	currentProjectId: UseProjectNavigationResult["currentProjectId"];
+	navigationProjectName?: string;
+	currentProjectAvailability?: UseProjectNavigationResult["projects"][number]["availability"];
 	projects: UseProjectNavigationResult["projects"];
 	navigationCurrentProjectId: UseProjectNavigationResult["navigationCurrentProjectId"];
 	removingProjectId: UseProjectNavigationResult["removingProjectId"];
@@ -172,6 +176,7 @@ export function ProjectProvider({
 		handleRemoveProject,
 		organization,
 		applyOrganization,
+		applyProjectManagementResult,
 		pendingGitInitializationPath,
 		isInitializingGitProject,
 		isManualProjectPathDialogOpen,
@@ -211,6 +216,19 @@ export function ProjectProvider({
 		setProjectBoardSessions,
 	});
 	const projectRevision = getAuthoritativeRevision();
+	const currentProject = projects.find((project) => project.id === currentProjectId);
+	const navigationProjectName = projects.find((project) => project.id === navigationCurrentProjectId)?.name;
+	const currentProjectAvailability =
+		(streamedProjectState?.metadataRevision ?? 0) > (currentProject?.metadataRevision ?? 0)
+			? streamedProjectState?.availability
+			: (currentProject?.availability ?? streamedProjectState?.availability);
+	const management = useProjectManagement({
+		currentProjectId,
+		projects,
+		isRuntimeDisconnected,
+		flushBoardCommands,
+		applyResult: applyProjectManagementResult,
+	});
 
 	useEffect(() => {
 		updateBrowserSnapshotContext({
@@ -222,6 +240,8 @@ export function ProjectProvider({
 	const navigationValue = useMemo<ProjectNavigationContextValue>(
 		() => ({
 			currentProjectId,
+			navigationProjectName,
+			currentProjectAvailability,
 			projects,
 			navigationCurrentProjectId,
 			removingProjectId,
@@ -246,6 +266,8 @@ export function ProjectProvider({
 		}),
 		[
 			currentProjectId,
+			navigationProjectName,
+			currentProjectAvailability,
 			projects,
 			navigationCurrentProjectId,
 			removingProjectId,
@@ -341,12 +363,14 @@ export function ProjectProvider({
 			<ProjectRuntimeStreamContext.Provider value={streamValue}>
 				<ProjectNotificationContext.Provider value={notificationValue}>
 					<ProjectSyncContext.Provider value={syncValue}>
-						<ProjectRuntimeProvider
-							currentProjectId={currentProjectId}
-							navigationCurrentProjectId={navigationCurrentProjectId}
-						>
-							{children}
-						</ProjectRuntimeProvider>
+						<ProjectManagementContext.Provider value={management}>
+							<ProjectRuntimeProvider
+								currentProjectId={currentProjectId}
+								navigationCurrentProjectId={navigationCurrentProjectId}
+							>
+								{children}
+							</ProjectRuntimeProvider>
+						</ProjectManagementContext.Provider>
 					</ProjectSyncContext.Provider>
 				</ProjectNotificationContext.Provider>
 			</ProjectRuntimeStreamContext.Provider>

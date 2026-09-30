@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { createServer as createNetServer, Socket as NetSocket } from "node:net";
 import { Command, Option } from "commander";
 import ora, { type Ora } from "ora";
@@ -10,6 +10,7 @@ import { registerStatuslineCommand } from "./commands/statusline";
 import { loadGlobalRuntimeConfig, loadRuntimeConfig, setAgentAvailabilityDiagnosticSink } from "./config";
 import type { IRuntimeHostIntegrations, RuntimeCapabilities } from "./core";
 import {
+	areFileSystemPathsEqual,
 	buildQuarterdeckRuntimeUrl,
 	createRuntimeCapabilities,
 	DEFAULT_QUARTERDECK_RUNTIME_PORT,
@@ -32,6 +33,7 @@ import {
 	PTY_RUNTIME_REMEDIATION,
 	PtyRuntimeDependencyError,
 } from "./terminal/pty-runtime-health";
+import type { RuntimeTrpcContext } from "./trpc";
 import { notifyAboutAvailableUpdate } from "./update-notification";
 import { runGit } from "./workdir/git-utils";
 
@@ -211,10 +213,16 @@ async function pathIsDirectory(path: string): Promise<boolean> {
 }
 
 async function hasGitRepository(path: string): Promise<boolean> {
-	const result = await runGit(path, ["rev-parse", "--is-inside-work-tree"], {
+	const result = await runGit(path, ["rev-parse", "--show-toplevel"], {
 		timeoutClass: "sync",
 	});
-	return result.ok && result.stdout.trim() === "true";
+	if (!result.ok || !result.stdout.trim()) return false;
+	try {
+		const [projectPath, gitRoot] = await Promise.all([realpath(path), realpath(result.stdout.trim())]);
+		return areFileSystemPathsEqual(projectPath, gitRoot);
+	} catch {
+		return false;
+	}
 }
 
 function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
@@ -468,9 +476,6 @@ async function createRuntimeBootstrapState(
 			sessionPersistence?.trackTerminalManager(projectId, manager);
 			runtimeStateHub?.trackTerminalManager(projectId, manager);
 		},
-		beforeProjectStateRemoval: async (projectId) => {
-			await sessionPersistence?.disposeProject(projectId);
-		},
 	});
 	const activeConfig = projectRegistry.getActiveRuntimeConfig();
 	modules.setLogLevel(activeConfig.logLevel as "debug" | "info" | "warn" | "error");
@@ -515,8 +520,11 @@ async function createRuntimeBootstrapState(
 			const manager = await projectRegistry.ensureTerminalManagerForProject(projectId, projectPath);
 			return Object.fromEntries(manager.store.listSummaries().map((summary) => [summary.taskId, summary]));
 		},
-		publishAuthoritativeState: ({ projectId }, result) => {
-			runtimeStateHub?.broadcastRuntimeProjectStateSnapshot(projectId, result.state);
+		publishAuthoritativeState: async ({ projectId }, result) => {
+			const hub = runtimeStateHub;
+			if (!hub) return;
+			const state = await projectRegistry.buildProjectStatePublication(projectId, result.state);
+			if (state) hub.broadcastRuntimeProjectStateSnapshot(projectId, state);
 		},
 	});
 	sessionPersistence = new modules.RuntimeSessionPersistence({ projectRegistry, boardCommands });
@@ -531,51 +539,56 @@ async function createRuntimeBootstrapState(
 		runtimeSessionPersistence.trackTerminalManager(projectId, terminalManager);
 		runtimeHub.trackTerminalManager(projectId, terminalManager);
 	}
-	await projectRegistry.initializeIndexedProjectsForStartup({
-		beforeRecovery: async () => {
-			// Stop the prior runtime's orphaned processes before taking the final
-			// outbox snapshot. No old launch can then enqueue a lifecycle event in
-			// the gap between replay and replacement-session recovery.
-			await awaitStartupAgentCleanup(startupAgentCleanup);
-			const startupHooksApi = modules.createHooksApi({
-				projects: projectRegistry,
-				terminals: projectRegistry,
-				config: projectRegistry,
-				persistSessionState: runtimeSessionPersistence.persistRuntimeSessions,
-				diagnostics,
-			});
-			const startupOutboxReplayer = modules.createHookTransitionOutboxReplayer({
-				ingest: startupHooksApi.ingest,
-			});
-			try {
-				await startupOutboxReplayer.replayOnce();
-				const pending = await modules.loadPendingHookTransitions();
-				const blockedTasks = Array.from(
-					new Map(
-						pending.map(({ request }) => [
-							JSON.stringify([request.projectId, request.taskId]),
-							{ projectId: request.projectId, taskId: request.taskId },
-						]),
-					).values(),
-				);
-				if (blockedTasks.length > 0) {
-					warn(
-						`Held automatic recovery for ${blockedTasks.length} task(s) with deferred provider hooks; their persisted Interrupted state is being retained.`,
+	const initializeProjectsForStartup = async (
+		runProjectOperation: RuntimeTrpcContext["runProjectOperation"],
+	): Promise<void> => {
+		await projectRegistry.initializeIndexedProjectsForStartup({
+			beforeRecovery: async () => {
+				// Stop the prior runtime's orphaned processes before taking the final
+				// outbox snapshot. No old launch can then enqueue a lifecycle event in
+				// the gap between replay and replacement-session recovery.
+				await awaitStartupAgentCleanup(startupAgentCleanup);
+				const startupHooksApi = modules.createHooksApi({
+					runProjectOperation,
+					projects: projectRegistry,
+					terminals: projectRegistry,
+					config: projectRegistry,
+					persistSessionState: runtimeSessionPersistence.persistRuntimeSessions,
+					diagnostics,
+				});
+				const startupOutboxReplayer = modules.createHookTransitionOutboxReplayer({
+					ingest: startupHooksApi.ingest,
+				});
+				try {
+					await startupOutboxReplayer.replayOnce();
+					const pending = await modules.loadPendingHookTransitions();
+					const blockedTasks = Array.from(
+						new Map(
+							pending.map(({ request }) => [
+								JSON.stringify([request.projectId, request.taskId]),
+								{ projectId: request.projectId, taskId: request.taskId },
+							]),
+						).values(),
 					);
+					if (blockedTasks.length > 0) {
+						warn(
+							`Held automatic recovery for ${blockedTasks.length} task(s) with deferred provider hooks; their persisted Interrupted state is being retained.`,
+						);
+					}
+					return { blockAllRecovery: false, blockedTasks };
+				} catch (error) {
+					warn(
+						`Could not inspect persisted provider hooks before session recovery; automatic recovery is being held: ${
+							error instanceof Error ? error.message : String(error)
+						}`,
+					);
+					return { blockAllRecovery: true, blockedTasks: [] };
+				} finally {
+					await startupOutboxReplayer.close();
 				}
-				return { blockAllRecovery: false, blockedTasks };
-			} catch (error) {
-				warn(
-					`Could not inspect persisted provider hooks before session recovery; automatic recovery is being held: ${
-						error instanceof Error ? error.message : String(error)
-					}`,
-				);
-				return { blockAllRecovery: true, blockedTasks: [] };
-			} finally {
-				await startupOutboxReplayer.close();
-			}
-		},
-	});
+			},
+		});
+	};
 
 	const disposeTrackedProject = async (
 		projectId: string,
@@ -595,6 +608,7 @@ async function createRuntimeBootstrapState(
 		runtimeHub,
 		runtimeSessionPersistence,
 		boardCommands,
+		initializeProjectsForStartup,
 		diagnostics,
 		disposeTrackedProject,
 		warn,
@@ -622,6 +636,7 @@ async function createRuntimeServerHandle(
 		runtimeStateHub: bootstrap.runtimeHub,
 		runtimeSessionPersistence: bootstrap.runtimeSessionPersistence,
 		boardCommands: bootstrap.boardCommands,
+		initializeProjectsForStartup: bootstrap.initializeProjectsForStartup,
 		diagnostics: bootstrap.diagnostics,
 		warn: bootstrap.warn,
 		resolveInteractiveShellCommand: modules.resolveInteractiveShellCommand,
@@ -708,6 +723,9 @@ async function startServer(hostLaunch: {
 		const startupAgentCleanup =
 			process.env.QUARTERDECK_AGENT_LAB === "1" ? Promise.resolve(null) : startOrphanedAgentCleanup(warn);
 		const bootstrap = await createRuntimeBootstrapState(modules, warn, startupAgentCleanup, diagnostics);
+		// Pending relocations are recovered while constructing the server. Retire
+		// the prior runtime's processes before that recovery can change paths.
+		await awaitStartupAgentCleanup(startupAgentCleanup);
 		return await createRuntimeServerHandle(modules, bootstrap, hostLaunch);
 	} catch (error) {
 		setAgentAvailabilityDiagnosticSink(null);

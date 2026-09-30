@@ -20,6 +20,7 @@ interface DetailToolbarProps {
 	onSidebarChange: (id: SidebarId) => void;
 	hasSelectedTask: boolean;
 	folderOnly?: boolean;
+	projectUnavailable?: boolean;
 	gitBadgeColor?: "red" | "blue";
 	isBehindBase?: boolean;
 	projectsBadgeColor?: "orange";
@@ -132,6 +133,7 @@ export function DetailToolbar({
 	onSidebarChange,
 	hasSelectedTask,
 	folderOnly = false,
+	projectUnavailable = false,
 	gitBadgeColor,
 	isBehindBase,
 	projectsBadgeColor,
@@ -163,7 +165,7 @@ export function DetailToolbar({
 				onMainViewChange={onMainViewChange}
 				icon={<SquareTerminal size={18} />}
 				label="Terminal"
-				disabled={!hasSelectedTask}
+				disabled={!hasSelectedTask || projectUnavailable}
 			/>
 			<MainViewButton
 				viewId="files"
@@ -171,6 +173,7 @@ export function DetailToolbar({
 				onMainViewChange={onMainViewChange}
 				icon={<FolderOpen size={18} />}
 				label="Files"
+				disabled={projectUnavailable}
 				badgeColor={filesBadgeColor}
 			/>
 			<MainViewButton
@@ -179,7 +182,7 @@ export function DetailToolbar({
 				onMainViewChange={onMainViewChange}
 				icon={<GitCompareArrows size={18} />}
 				label="Git"
-				disabled={folderOnly}
+				disabled={folderOnly || projectUnavailable}
 				badgeColor={gitBadgeColor}
 			/>
 
@@ -202,7 +205,7 @@ export function DetailToolbar({
 				icon={<LayoutGrid size={18} />}
 				label="Board"
 				badgeColor={boardBadgeColor}
-				disabled={!hasSelectedTask}
+				disabled={!hasSelectedTask || projectUnavailable}
 			/>
 			<SidebarButton
 				sidebarId="commit"
@@ -210,7 +213,7 @@ export function DetailToolbar({
 				onSidebarChange={onSidebarChange}
 				icon={<GitCommitHorizontal size={18} />}
 				label="Commit"
-				disabled={folderOnly}
+				disabled={folderOnly || projectUnavailable}
 			/>
 		</aside>
 	);

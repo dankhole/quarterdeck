@@ -1,4 +1,4 @@
-import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeGitRepositoryInfo, RuntimeProjectAvailability, RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardData } from "@/types";
 
 export interface ProjectBoardCacheEntry {
@@ -7,6 +7,8 @@ export interface ProjectBoardCacheEntry {
 	authoritativeRevision: number;
 	projectPath: string | null;
 	projectGit: RuntimeGitRepositoryInfo | null;
+	metadataRevision?: number;
+	availability?: RuntimeProjectAvailability;
 	cachedAt: number;
 }
 
@@ -25,7 +27,7 @@ export function stashProjectBoard(projectId: string, entry: Omit<ProjectBoardCac
 	if (entry.authoritativeRevision == null) {
 		return;
 	}
-	cache.set(projectId, { ...entry, cachedAt: Date.now() });
+	cache.set(projectId, mergeCacheEntry(cache.get(projectId), entry));
 	if (cache.size > MAX_ENTRIES) {
 		evictOldest();
 	}
@@ -47,7 +49,23 @@ export function updateProjectBoardCache(projectId: string, entry: Omit<ProjectBo
 	if (!cache.has(projectId) || entry.authoritativeRevision == null) {
 		return;
 	}
-	cache.set(projectId, { ...entry, cachedAt: Date.now() });
+	cache.set(projectId, mergeCacheEntry(cache.get(projectId), entry));
+}
+
+function mergeCacheEntry(
+	current: ProjectBoardCacheEntry | undefined,
+	incoming: Omit<ProjectBoardCacheEntry, "cachedAt">,
+): ProjectBoardCacheEntry {
+	const board = current && current.authoritativeRevision > incoming.authoritativeRevision ? current : incoming;
+	const metadata = current && (current.metadataRevision ?? 0) > (incoming.metadataRevision ?? 0) ? current : incoming;
+	return {
+		...board,
+		projectPath: metadata.projectPath,
+		projectGit: metadata.projectGit,
+		metadataRevision: metadata.metadataRevision,
+		availability: metadata.availability,
+		cachedAt: Date.now(),
+	};
 }
 
 export function invalidateProjectBoardCache(projectId: string): void {

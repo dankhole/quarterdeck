@@ -43,6 +43,7 @@ export interface UseProjectNavigationResult {
 	projects: RuntimeProjectSummary[];
 	organization: ProjectOrganization | null;
 	applyOrganization: (organization: ProjectOrganization) => void;
+	applyProjectManagementResult: (project: RuntimeProjectSummary, state?: RuntimeProjectStateResponse) => void;
 	projectState: RuntimeProjectStateResponse | null;
 	projectMetadata: RuntimeProjectMetadata | null;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
@@ -86,6 +87,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		projects,
 		organization,
 		applyOrganization,
+		applyProjectManagementResult,
 		projectState,
 		projectMetadata,
 		notificationProjects,
@@ -362,6 +364,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		projects,
 		organization,
 		applyOrganization,
+		applyProjectManagementResult,
 		projectState,
 		projectMetadata,
 		latestTaskReadyForReview,

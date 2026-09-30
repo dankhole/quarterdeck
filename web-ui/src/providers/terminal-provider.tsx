@@ -83,7 +83,9 @@ interface TerminalProviderProps {
 }
 
 export function TerminalProvider({ children }: TerminalProviderProps): ReactNode {
-	const { currentProjectId, hasNoProjects, projects, navigationCurrentProjectId } = useProjectNavigationContext();
+	const { currentProjectId, hasNoProjects, projects, navigationCurrentProjectId, currentProjectAvailability } =
+		useProjectNavigationContext();
+	const isProjectUnavailable = currentProjectAvailability?.status === "unavailable";
 	const { projectGit, projectPath } = useProjectSyncContext();
 	const { configDefaultBaseRef, agentCommand, runtimeProjectConfig } = useProjectRuntimeContext();
 
@@ -140,12 +142,14 @@ export function TerminalProvider({ children }: TerminalProviderProps): ReactNode
 		handleShellExit,
 		cancelPendingRestart,
 	} = useTerminalPanels({
-		currentProjectId,
-		selectedCard,
+		currentProjectId: isProjectUnavailable ? null : currentProjectId,
+		selectedCard: isProjectUnavailable ? null : selectedCard,
 		projectGit,
 		configDefaultBaseRef,
-		agentCommand,
-		shellAutoRestartEnabled: runtimeProjectConfig?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
+		agentCommand: isProjectUnavailable ? null : agentCommand,
+		shellAutoRestartEnabled:
+			!isProjectUnavailable &&
+			(runtimeProjectConfig?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled),
 		findCard: findCardStable,
 		upsertSession,
 		sendTaskSessionInput,
@@ -153,7 +157,7 @@ export function TerminalProvider({ children }: TerminalProviderProps): ReactNode
 
 	// --- Derived terminal metadata ---
 	const homeTerminalSummary = sessions[homeTerminalTaskId] ?? null;
-	const showHomeBottomTerminal = !selectedCard && !hasNoProjects && isHomeTerminalOpen;
+	const showHomeBottomTerminal = !isProjectUnavailable && !selectedCard && !hasNoProjects && isHomeTerminalOpen;
 	const navigationProjectPath = useMemo(
 		() =>
 			navigationCurrentProjectId ? (projects.find((p) => p.id === navigationCurrentProjectId)?.path ?? null) : null,

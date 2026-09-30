@@ -71,7 +71,7 @@ export interface IProjectResolver {
 	getActiveProjectPath: () => string | null;
 	getProjectPathById: (projectId: string) => string | null;
 	rememberProject: (projectId: string, repoPath: string) => void;
-	setActiveProject: (projectId: string, repoPath: string) => Promise<void>;
+	setActiveProject: (projectId: string) => Promise<void>;
 	clearActiveProject: () => void;
 }
 
@@ -117,7 +117,7 @@ export interface RuntimeHostActionContext {
  * Implemented by ProjectRegistry.
  */
 export interface IProjectDataProvider {
-	buildProjectStateSnapshot: (projectId: string, projectPath: string) => Promise<RuntimeProjectStateResponse>;
+	buildProjectStateSnapshot: (projectId: string) => Promise<RuntimeProjectStateResponse>;
 	buildProjectsPayload: (preferredCurrentProjectId: string | null) => Promise<{
 		currentProjectId: string | null;
 		projects: RuntimeProjectSummary[];

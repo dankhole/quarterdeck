@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -11,6 +11,7 @@ import {
 	purgeTaskWorkspaceForDelete,
 } from "../../src/workdir/task-worktree-lifecycle";
 import { finishTaskWorktreeSetup, runWorktreeSetupScript } from "../../src/workdir/task-worktree-setup";
+import { withTaskWorktreeOperationLock } from "../../src/workdir/task-worktree-setup-lock";
 import { runGit } from "../utilities/git-env";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
@@ -144,6 +145,44 @@ describe("creation-time worktree setup", { concurrent: false }, () => {
 				expect(purgeResult.removed).toBe(true);
 			}
 			expect(existsSync(worktreePath)).toBe(false);
+		});
+	});
+
+	it.each([false, true])("shares operation ownership across folder aliases after removal: %s", async (removed) => {
+		await fixture(async (repoPath) => {
+			const checkoutRoot = join(repoPath, "checkouts");
+			const alias = join(repoPath, "checkout-alias");
+			const checkout = join(checkoutRoot, "task", "worktree");
+			mkdirSync(checkout, { recursive: true });
+			symlinkSync(checkoutRoot, alias, process.platform === "win32" ? "junction" : "dir");
+			const canonicalCheckout = realpathSync(checkout);
+			let entered = () => {};
+			let release = () => {};
+			const ownerEntered = new Promise<void>((resolve) => {
+				entered = resolve;
+			});
+			const ownerReleased = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			const locks = vi.spyOn(lockedFileSystem, "withLock");
+			const owner = withTaskWorktreeOperationLock(repoPath, join(alias, "task", "worktree"), async () => {
+				if (removed) rmSync(join(checkoutRoot, "task"), { recursive: true });
+				entered();
+				await ownerReleased;
+			});
+			await ownerEntered;
+			const enterContender = vi.fn(async () => undefined);
+			const contender = withTaskWorktreeOperationLock(repoPath, canonicalCheckout, enterContender);
+			try {
+				await vi.waitFor(() => expect(locks.mock.calls).toHaveLength(2));
+				expect(locks.mock.calls[1]?.[0].path).toBe(locks.mock.calls[0]?.[0].path);
+				expect(enterContender).not.toHaveBeenCalled();
+			} finally {
+				release();
+				await Promise.all([owner, contender]);
+				locks.mockRestore();
+			}
+			expect(enterContender).toHaveBeenCalledOnce();
 		});
 	});
 

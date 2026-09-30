@@ -72,7 +72,8 @@ interface BoardProviderProps {
 
 export function BoardProvider({ board, sessions, setSessions, children }: BoardProviderProps): ReactNode {
 	const [replyDrafts] = useState(() => new BoardReplyDrafts());
-	const { currentProjectId, projects } = useProjectNavigationContext();
+	const { currentProjectId, projects, currentProjectAvailability } = useProjectNavigationContext();
+	const availableProjectId = currentProjectAvailability?.status === "unavailable" ? null : currentProjectId;
 	const { streamedProjectState, hasReceivedSnapshot, streamError } = useProjectRuntimeStreamContext();
 	const {
 		boardProjectId,
@@ -101,11 +102,11 @@ export function BoardProvider({ board, sessions, setSessions, children }: BoardP
 
 	// --- useTaskSessions ---
 	const { upsertSession, sendTaskSessionInput, fetchTaskWorktreeInfo } = useTaskSessions({
-		currentProjectId,
+		currentProjectId: availableProjectId,
 		setSessions,
 	});
 	const taskLifecycle = useTaskLifecycleOperations({
-		currentProjectId,
+		currentProjectId: availableProjectId,
 		flushBoardCommands,
 		getAuthoritativeRevision,
 		applyLifecycleProjectState,

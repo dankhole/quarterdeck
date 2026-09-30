@@ -45,6 +45,7 @@ export const BoardCard = memo(function BoardCard({
 	onTerminalWarmup,
 	onTerminalCancelWarmup,
 	draggable = true,
+	readOnly = false,
 	rich = false,
 	dragHandle,
 	conversation,
@@ -71,6 +72,7 @@ export const BoardCard = memo(function BoardCard({
 	onTerminalWarmup?: (taskId: string) => void;
 	onTerminalCancelWarmup?: (taskId: string) => void;
 	draggable?: boolean;
+	readOnly?: boolean;
 	rich?: boolean;
 	dragHandle?: ReactNode;
 	conversation?: (statusBadges: ReactNode) => ReactNode;
@@ -84,7 +86,7 @@ export const BoardCard = memo(function BoardCard({
 		openTitleEditor,
 		closeTitleEditor,
 		isTrashCard,
-		isCardInteractive,
+		isCardInteractive: canInteractWithCard,
 		isSharedCheckout,
 		isSessionPathDiverged,
 		displayTitle,
@@ -111,8 +113,9 @@ export const BoardCard = memo(function BoardCard({
 		showSummaryOnCards,
 		showSummaryOnHover,
 		uncommittedChangesOnCardsEnabled,
-		onRestartSession,
+		onRestartSession: readOnly ? undefined : onRestartSession,
 	});
+	const isCardInteractive = !readOnly && canInteractWithCard;
 	const cardColor = TASK_CARD_COLORS[card.colorIndex ?? taskColorSeed(card.id)];
 	const statusBadgeClass = isTrashCard ? "bg-surface-3 text-text-tertiary" : statusBadgeColors[statusTagStyle!];
 
@@ -255,11 +258,11 @@ export const BoardCard = memo(function BoardCard({
 				style={{
 					...(provided?.draggableProps?.style ?? {}),
 					marginBottom: rich ? 0 : 6,
-					cursor: draggable ? "grab" : undefined,
+					cursor: !readOnly && draggable ? "grab" : undefined,
 				}}
 				onMouseEnter={() => {
 					hoverTimerRef.current = setTimeout(() => setIsHovered(true), 200);
-					if (!card.unstarted) onTerminalWarmup?.(card.id);
+					if (!readOnly && !card.unstarted) onTerminalWarmup?.(card.id);
 				}}
 				onMouseLeave={() => {
 					if (hoverTimerRef.current) {
@@ -288,7 +291,7 @@ export const BoardCard = memo(function BoardCard({
 							data-board-card-header
 							style={{ minHeight: 24 }}
 						>
-							{statusMarker === "restart" ? (
+							{!readOnly && statusMarker === "restart" ? (
 								<div className="inline-flex shrink-0 items-center">
 									<Tooltip content="Restart session">
 										<Button
@@ -331,7 +334,7 @@ export const BoardCard = memo(function BoardCard({
 									</span>
 								</Tooltip>
 							) : null}
-							{isEditingTitle && onUpdateTitle ? (
+							{!readOnly && isEditingTitle && onUpdateTitle ? (
 								<InlineTitleEditor
 									cardId={card.id}
 									currentTitle={card.title}
@@ -357,7 +360,7 @@ export const BoardCard = memo(function BoardCard({
 								className="ml-auto flex w-max min-w-0 max-w-full shrink flex-wrap items-center justify-end gap-0.5 [&>button]:h-[22px] [&>button]:shrink-0 [&>button]:px-0"
 								data-board-card-action-rail
 							>
-								{!isEditingTitle && (rich || isHovered || isTrashCard) ? (
+								{!readOnly && !isEditingTitle && (rich || isHovered || isTrashCard) ? (
 									<>
 										{onTogglePin ? (
 											<Tooltip
@@ -397,21 +400,23 @@ export const BoardCard = memo(function BoardCard({
 										) : null}
 									</>
 								) : null}
-								{dragHandle}
-								<BoardCardActions
-									cardId={card.id}
-									columnId={columnId}
-									isUnstarted={card.unstarted === true}
-									isHovered={rich || isHovered}
-									isSessionDead={isSessionDead}
-									isSessionRestartable={isSessionRestartable}
-									isMoveToTrashLoading={isMoveToTrashLoading}
-									onStart={onStart}
-									onRestartSession={onRestartSession}
-									onMoveToTrash={onMoveToTrash}
-									onRestoreFromTrash={onRestoreFromTrash}
-									onHardDelete={card.pinned ? undefined : onHardDelete}
-								/>
+								{!readOnly && dragHandle}
+								{!readOnly && (
+									<BoardCardActions
+										cardId={card.id}
+										columnId={columnId}
+										isUnstarted={card.unstarted === true}
+										isHovered={rich || isHovered}
+										isSessionDead={isSessionDead}
+										isSessionRestartable={isSessionRestartable}
+										isMoveToTrashLoading={isMoveToTrashLoading}
+										onStart={onStart}
+										onRestartSession={onRestartSession}
+										onMoveToTrash={onMoveToTrash}
+										onRestoreFromTrash={onRestoreFromTrash}
+										onHardDelete={card.pinned ? undefined : onHardDelete}
+									/>
+								)}
 							</div>
 						</div>
 						{!rich && showSummaryOnCards && latestSummaryText ? (
@@ -431,7 +436,7 @@ export const BoardCard = memo(function BoardCard({
 		return content;
 	};
 
-	if (!draggable) {
+	if (readOnly || !draggable) {
 		return renderShell();
 	}
 

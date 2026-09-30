@@ -1,4 +1,9 @@
-import type { RuntimeBoardData, RuntimeProjectSummary, RuntimeProjectTaskCounts } from "./api-contract.js";
+import type {
+	RuntimeBoardData,
+	RuntimeProjectAvailability,
+	RuntimeProjectSummary,
+	RuntimeProjectTaskCounts,
+} from "./api-contract.js";
 
 export function countProjectTasksByColumn(board: RuntimeBoardData): RuntimeProjectTaskCounts {
 	const counts: RuntimeProjectTaskCounts = {
@@ -15,6 +20,9 @@ export function countProjectTasksByColumn(board: RuntimeBoardData): RuntimeProje
 export function deriveProjectSummary(input: {
 	projectId: string;
 	repoPath: string;
+	displayName?: string;
+	metadataRevision?: number;
+	availability?: RuntimeProjectAvailability;
 	board: RuntimeBoardData;
 	boardRevision: number;
 	folderOnly?: boolean;
@@ -24,7 +32,10 @@ export function deriveProjectSummary(input: {
 	return {
 		id: input.projectId,
 		path: input.repoPath,
-		name: segments[segments.length - 1] ?? normalized,
+		name: input.displayName ?? segments[segments.length - 1] ?? normalized,
+		...(input.displayName ? { displayName: input.displayName } : {}),
+		metadataRevision: input.metadataRevision ?? 0,
+		availability: input.availability ?? { status: "available" },
 		...(input.folderOnly ? { folderOnly: true } : {}),
 		boardRevision: input.boardRevision,
 		taskCounts: countProjectTasksByColumn(input.board),

@@ -26,6 +26,7 @@ function createHarness(agentId: "codex" | "claude") {
 	});
 	const persistSessionState = vi.fn(async () => undefined);
 	const api = createHooksApi({
+		runProjectOperation: async (_scope, operation) => await operation(),
 		projects: { getProjectPathById: () => "/tmp/repo" },
 		terminals: {
 			getTerminalManagerForProject: () => manager,
@@ -138,6 +139,7 @@ describe("persisted hook replay before startup recovery", () => {
 			}),
 		});
 		const api = createHooksApi({
+			runProjectOperation: async (_scope, operation) => await operation(),
 			projects: { getProjectPathById: () => "/tmp/repo" },
 			terminals: {
 				getTerminalManagerForProject: () => manager,
@@ -198,6 +200,7 @@ describe("persisted hook replay before startup recovery", () => {
 			}),
 		});
 		const api = createHooksApi({
+			runProjectOperation: async (_scope, operation) => await operation(),
 			projects: { getProjectPathById: () => "/tmp/repo" },
 			terminals: {
 				getTerminalManagerForProject: () => manager,
@@ -259,6 +262,7 @@ describe("persisted hook replay before startup recovery", () => {
 			}),
 		});
 		const api = createHooksApi({
+			runProjectOperation: async (_scope, operation) => await operation(),
 			projects: { getProjectPathById: () => "/tmp/repo" },
 			terminals: {
 				getTerminalManagerForProject: () => manager,
@@ -331,6 +335,7 @@ describe("persisted hook replay before startup recovery", () => {
 			}),
 		});
 		const api = createHooksApi({
+			runProjectOperation: async (_scope, operation) => await operation(),
 			projects: { getProjectPathById: () => "/tmp/repo" },
 			terminals: {
 				getTerminalManagerForProject: () => manager,

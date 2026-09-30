@@ -8,7 +8,7 @@ interface PreloadCacheEntry {
 
 const PRELOAD_TTL_MS = 15_000;
 const cache = new Map<string, PreloadCacheEntry>();
-const inflight = new Set<string>();
+const inflight = new Map<string, object>();
 
 /**
  * Fire-and-forget: fetches project state for the given project and caches it.
@@ -23,19 +23,27 @@ export function preloadProjectState(projectId: string): void {
 	if (inflight.has(projectId)) {
 		return;
 	}
-	inflight.add(projectId);
+	const request = {};
+	inflight.set(projectId, request);
 	const client = getRuntimeTrpcClient(projectId);
 	client.project.getState
 		.query()
 		.then((projectState) => {
+			if (inflight.get(projectId) !== request) return;
 			cache.set(projectId, { projectState, fetchedAt: Date.now() });
 		})
 		.catch(() => {
 			// Preload is opportunistic — swallow errors silently.
 		})
 		.finally(() => {
-			inflight.delete(projectId);
+			if (inflight.get(projectId) === request) inflight.delete(projectId);
 		});
+}
+
+/** Retire both stored data and its producer when a project's location changes. */
+export function invalidateProjectPreload(projectId: string): void {
+	cache.delete(projectId);
+	inflight.delete(projectId);
 }
 
 /**

@@ -41,6 +41,32 @@ const homeConflictStateListeners = new Set<StoreListener>();
 const homeStashCountListeners = new Set<StoreListener>();
 const taskMetadataListenersByTaskId = new Map<string, Set<StoreListener>>();
 const anyTaskMetadataListeners = new Set<TaskMetadataListener>();
+const scopeListeners = new Set<StoreListener>();
+let scopeVersion = 0;
+
+export function getProjectMetadataScopeVersion(projectId: string | null): number {
+	return projectMetadataState.projectId === projectId ? scopeVersion : -1;
+}
+
+export function isProjectMetadataScopeCurrent(projectId: string | null, version: number): boolean {
+	return projectMetadataState.projectId === projectId && scopeVersion === version;
+}
+
+export function useProjectMetadataScopeVersion(projectId: string | null): number {
+	return useSyncExternalStore(
+		(listener) => {
+			scopeListeners.add(listener);
+			return () => scopeListeners.delete(listener);
+		},
+		() => getProjectMetadataScopeVersion(projectId),
+		() => -1,
+	);
+}
+
+function emitScopeChange(): void {
+	scopeVersion++;
+	for (const listener of scopeListeners) listener();
+}
 
 function emitHomeGitSummary(): void {
 	for (const listener of homeGitSummaryListeners) {
@@ -215,7 +241,10 @@ export function setProjectPath(projectId: string | null, path: string | null): b
 	if (projectMetadataState.projectId !== projectId) {
 		return false;
 	}
+	if (projectMetadataState.projectPath === path) return true;
+	if (projectMetadataState.projectPath !== null) resetProjectMetadataStore(projectId);
 	projectMetadataState.projectPath = path;
+	emitScopeChange();
 	return true;
 }
 
@@ -235,8 +264,15 @@ function setHomeGitMetadata(summary: RuntimeGitSyncSummary | null, stateVersion:
 	return true;
 }
 
-export function setHomeGitSummary(projectId: string, summary: RuntimeGitSyncSummary | null): boolean {
-	if (projectMetadataState.projectId !== projectId) {
+export function setHomeGitSummary(
+	projectId: string,
+	summary: RuntimeGitSyncSummary | null,
+	expectedScopeVersion?: number,
+): boolean {
+	if (
+		projectMetadataState.projectId !== projectId ||
+		(expectedScopeVersion !== undefined && scopeVersion !== expectedScopeVersion)
+	) {
 		return false;
 	}
 	const nextStateVersion = areGitSummariesEqual(projectMetadataState.homeGitSummary, summary)
@@ -276,8 +312,16 @@ export function getTaskRepositoryInfo(
 	return getTaskWorktreeInfo(taskId, baseRef);
 }
 
-export function setTaskWorktreeInfo(projectId: string, info: RuntimeTaskRepositoryInfoResponse | null): boolean {
-	if (projectMetadataState.projectId !== projectId || !info) {
+export function setTaskWorktreeInfo(
+	projectId: string,
+	info: RuntimeTaskRepositoryInfoResponse | null,
+	expectedScopeVersion?: number,
+): boolean {
+	if (
+		projectMetadataState.projectId !== projectId ||
+		!info ||
+		(expectedScopeVersion !== undefined && scopeVersion !== expectedScopeVersion)
+	) {
 		return false;
 	}
 	const existing = projectMetadataState.taskWorktreeInfoByTaskId[info.taskId] ?? null;
@@ -408,6 +452,7 @@ export function resetProjectMetadataStore(projectId: string | null = null): void
 	projectMetadataState.taskWorktreeSnapshotByTaskId = {};
 	projectMetadataState.taskWorktreeStateVersionByTaskId = {};
 	homeConflictState = null;
+	emitScopeChange();
 	emitHomeGitSummary();
 	emitHomeConflictState();
 	emitHomeStashCount();

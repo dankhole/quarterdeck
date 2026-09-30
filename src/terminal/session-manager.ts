@@ -60,6 +60,7 @@ import {
 	type StartShellSessionRequest,
 	type StartTaskSessionRequest,
 	type StopTaskSessionResult,
+	TaskSessionStartCancelledError,
 } from "./session-manager-types";
 import { disableOutputOscIntercept, processTaskSessionOutput } from "./session-output-pipeline";
 import { createReconciliationTimer, type ReconciliationTimer } from "./session-reconciliation-sweep";
@@ -132,6 +133,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 	private readonly projectId: string | null;
 	private readonly diagnostics: RuntimeDiagnostics | null;
 	private readonly previousSummaries = new Map<string, ObservedSessionSummary>();
+	private runLaunchOperation: <T>(operation: () => Promise<T>) => Promise<T> = (operation) => operation();
+	private readonly pendingLaunchAdmissions = new Set<() => void>();
+	private launchAdmissionClosed = false;
 
 	constructor(store: SessionSummaryStore, options: TerminalSessionManagerOptions = {}) {
 		this.store = store;
@@ -147,6 +151,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			entries: this.entries,
 			transitions: this.transitions,
 			ensureProcessEntry: (taskId) => this.ensureProcessEntry(taskId),
+			startTaskSession: (request) => this.startTaskSession(request),
 			onTaskOutput: (entry, taskId, chunk) => this.handleTaskSessionOutput(entry, taskId, chunk),
 			onInterruptRecoveryApplied: (taskId, signal, result, sessionInstanceId) =>
 				this.recordInterruptRecoveryApplied(taskId, signal, result, sessionInstanceId),
@@ -243,7 +248,37 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return (await this.startTaskSessionWithReadiness(request)).summary;
 	}
 
+	/** The registry supplies project admission and revalidates this manager's location after waiting. */
+	setLaunchOperationRunner(runner: <T>(operation: () => Promise<T>) => Promise<T>): void {
+		this.runLaunchOperation = runner;
+	}
+
 	async startTaskSessionWithReadiness(request: StartTaskSessionRequest): Promise<TaskSessionStartWithReadinessResult> {
+		return this.admitSessionLaunch(() => this.startAdmittedTaskSession(request));
+	}
+
+	private async admitSessionLaunch<T>(operation: () => Promise<T>): Promise<T> {
+		if (this.launchAdmissionClosed) throw new TaskSessionStartCancelledError();
+		let cancel!: () => void;
+		const cancelled = new Promise<never>((_resolve, reject) => {
+			cancel = () => reject(new TaskSessionStartCancelledError());
+			this.pendingLaunchAdmissions.add(cancel);
+		});
+		try {
+			const launch = this.runLaunchOperation(() => {
+				this.pendingLaunchAdmissions.delete(cancel);
+				if (this.launchAdmissionClosed) throw new TaskSessionStartCancelledError();
+				return operation();
+			});
+			return await Promise.race([launch, cancelled]);
+		} finally {
+			this.pendingLaunchAdmissions.delete(cancel);
+		}
+	}
+
+	private async startAdmittedTaskSession(
+		request: StartTaskSessionRequest,
+	): Promise<TaskSessionStartWithReadinessResult> {
 		if (!request.startupRecoveryToken) {
 			this.clearStartupRecoveryRequirement(request.taskId);
 		}
@@ -283,7 +318,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 	}
 
 	async startShellSession(request: StartShellSessionRequest): Promise<RuntimeTaskSessionSummary> {
-		return this.lifecycle.startShellSession(request);
+		return this.admitSessionLaunch(() => this.lifecycle.startShellSession(request));
 	}
 
 	recoverStaleSession(taskId: string): RuntimeTaskSessionSummary | null {
@@ -688,6 +723,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 	}
 
 	markInterruptedAndStopAll(): RuntimeTaskSessionSummary[] {
+		// A relocation holds exclusive project admission while stopping this
+		// manager. Queued launches must settle without waiting for that same lock;
+		// admitted launches remain owned and drained by the lifecycle controller.
+		this.launchAdmissionClosed = true;
+		for (const cancel of this.pendingLaunchAdmissions) cancel();
+		this.pendingLaunchAdmissions.clear();
 		return this.lifecycle.markInterruptedAndStopAll();
 	}
 

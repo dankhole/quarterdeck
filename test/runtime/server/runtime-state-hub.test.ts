@@ -57,7 +57,7 @@ interface RuntimeStateHubInternals {
 	) => Promise<void>;
 	enqueueConnectionCatchupForClient: (
 		client: TestRuntimeClient,
-		input: { projectId: string | null; projectPath: string | null; projectIds: readonly string[] },
+		input: { projectId: string | null; projectIds: readonly string[] },
 	) => void;
 }
 
@@ -147,7 +147,7 @@ function createDiagnosticsStub(): RuntimeDiagnostics {
 
 function createDependencies(input: {
 	buildProjectsPayload: (preferredCurrentProjectId: string | null) => Promise<RuntimeProjectsResponse>;
-	buildProjectStateSnapshot: (projectId: string, projectPath: string) => Promise<RuntimeProjectStateResponse>;
+	buildProjectStateSnapshot: (projectId: string) => Promise<RuntimeProjectStateResponse>;
 	listManagedProjects: CreateRuntimeStateHubDependencies["projectRegistry"]["listManagedProjects"];
 }): CreateRuntimeStateHubDependencies {
 	return {
@@ -156,8 +156,6 @@ function createDependencies(input: {
 			resolveProjectForStream: async () => ({
 				projectId: null,
 				projectPath: null,
-				removedRequestedProjectPath: null,
-				didPruneProjects: false,
 			}),
 			buildProjectsPayload: input.buildProjectsPayload,
 			buildProjectStateSnapshot: input.buildProjectStateSnapshot,
@@ -182,6 +180,49 @@ function createBoardCommandResult() {
 }
 
 describe("RuntimeStateHub", () => {
+	it("preserves display names and newer location metadata when pairing summaries with a board snapshot", async () => {
+		const projects = createProjectsResponse();
+		const project = projects.projects[0];
+		if (!project) throw new Error("Expected a project fixture.");
+		projects.projects[0] = {
+			...project,
+			path: "/new",
+			name: "Saved name",
+			displayName: "Saved name",
+			metadataRevision: 4,
+			availability: { status: "unavailable", reason: "missing" },
+		};
+		const state = {
+			...createProjectStateResponse(),
+			repoPath: "/old",
+			metadataRevision: 3,
+			availability: { status: "available" as const },
+		};
+		const hub = new RuntimeStateHubImpl(
+			createDependencies({
+				buildProjectsPayload: async () => projects,
+				buildProjectStateSnapshot: async () => state,
+				listManagedProjects: () => [],
+			}),
+		);
+		try {
+			const snapshot = await (hub as unknown as RuntimeStateHubInternals).loadInitialSnapshot({
+				projectId: "project-1",
+				projectPath: "/old",
+			});
+			expect(snapshot.projects[0]).toMatchObject({
+				name: "Saved name",
+				displayName: "Saved name",
+				path: "/new",
+				metadataRevision: 4,
+				availability: { status: "unavailable", reason: "missing" },
+				boardRevision: state.revision,
+			});
+		} finally {
+			await hub.close();
+		}
+	});
+
 	it("registers a client only after its snapshot and immediately schedules durable catch-up", async () => {
 		const hub = new RuntimeStateHubImpl(
 			createDependencies({
@@ -678,9 +719,7 @@ describe("RuntimeStateHub", () => {
 		const projectsDeferred = createDeferred<RuntimeProjectsResponse>();
 		const projectStateDeferred = createDeferred<RuntimeProjectStateResponse>();
 		const buildProjectsPayload = vi.fn((_preferredCurrentProjectId: string | null) => projectsDeferred.promise);
-		const buildProjectStateSnapshot = vi.fn(
-			(_projectId: string, _projectPath: string) => projectStateDeferred.promise,
-		);
+		const buildProjectStateSnapshot = vi.fn((_projectId: string) => projectStateDeferred.promise);
 		const listManagedProjects = vi.fn(() => []);
 		const hub = new RuntimeStateHubImpl(
 			createDependencies({
@@ -699,7 +738,7 @@ describe("RuntimeStateHub", () => {
 			await Promise.resolve();
 
 			expect(buildProjectsPayload).toHaveBeenCalledWith("project-1");
-			expect(buildProjectStateSnapshot).toHaveBeenCalledWith("project-1", "/repo");
+			expect(buildProjectStateSnapshot).toHaveBeenCalledWith("project-1");
 			expect(listManagedProjects).toHaveBeenCalledOnce();
 
 			projectsDeferred.resolve(createProjectsResponse());

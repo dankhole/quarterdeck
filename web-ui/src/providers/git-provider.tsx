@@ -105,7 +105,9 @@ interface GitProviderProps {
 }
 
 export function GitProvider({ children }: GitProviderProps): ReactNode {
-	const { currentProjectId } = useProjectNavigationContext();
+	const { currentProjectId, currentProjectAvailability } = useProjectNavigationContext();
+	const isProjectUnavailable = currentProjectAvailability?.status === "unavailable";
+	const availableProjectId = isProjectUnavailable ? null : currentProjectId;
 	const { projectPath, refreshProjectState, projectGit } = useProjectSyncContext();
 	const { runtimeProjectConfig, skipTaskCheckoutConfirmation, skipHomeCheckoutConfirmation } =
 		useProjectRuntimeContext();
@@ -150,7 +152,7 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 
 	// --- useBranchActions (file browser) ---
 	const fileBrowserBranchActions = useBranchActions({
-		projectId: projectGit?.folderOnly ? null : currentProjectId,
+		projectId: projectGit?.folderOnly ? null : availableProjectId,
 		board,
 		selectBranchView: fileBrowserSelectBranchView,
 		homeGitSummary,
@@ -162,7 +164,7 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 
 	// --- useBranchActions (topbar) ---
 	const topbarBranchActions = useBranchActions({
-		projectId: projectGit?.folderOnly ? null : currentProjectId,
+		projectId: projectGit?.folderOnly ? null : availableProjectId,
 		board,
 		selectBranchView: topbarBranchViewNoop,
 		homeGitSummary,
@@ -197,12 +199,12 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 
 	// --- useFileBrowserData ---
 	const homeFileBrowserData = useFileBrowserData({
-		rootPath: projectPath,
-		projectId: currentProjectId,
+		rootPath: isProjectUnavailable ? null : projectPath,
+		projectId: availableProjectId,
 		taskId: fileBrowserResolvedScope?.type === "task" ? fileBrowserResolvedScope.taskId : null,
 		baseRef: fileBrowserResolvedScope?.type === "task" ? fileBrowserResolvedScope.baseRef : undefined,
 		ref: fileBrowserResolvedScope?.type === "branch_view" ? fileBrowserResolvedScope.ref : undefined,
-		enabled: selectedCard === null && mainView === "files",
+		enabled: !isProjectUnavailable && selectedCard === null && mainView === "files",
 	});
 
 	// --- useGitActions ---
@@ -220,13 +222,13 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 		onStashAndRetry,
 		isStashAndRetryingPull,
 	} = useGitActions({
-		currentProjectId,
+		currentProjectId: availableProjectId,
 		board,
 		selectedCard,
 		runtimeProjectConfig,
 		sendTaskSessionInput,
 		fetchTaskWorktreeInfo,
-		isGitHistoryOpen,
+		isGitHistoryOpen: !isProjectUnavailable && isGitHistoryOpen,
 		refreshProjectState,
 	});
 

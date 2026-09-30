@@ -59,9 +59,14 @@ import type {
 	RuntimeProjectAddResponse,
 	RuntimeProjectBoardCommandBatchEnvelope,
 	RuntimeProjectBoardCommandExecutionResult,
+	RuntimeProjectCheckAvailabilityRequest,
 	RuntimeProjectDirectoryPickerResponse,
+	RuntimeProjectLocateRequest,
+	RuntimeProjectManagementResponse,
 	RuntimeProjectRemoveRequest,
 	RuntimeProjectRemoveResponse,
+	RuntimeProjectRenameFolderRequest,
+	RuntimeProjectRenameRequest,
 	RuntimeProjectReorderRequest,
 	RuntimeProjectReorderResponse,
 	RuntimeProjectStateResponse,
@@ -111,6 +116,11 @@ export interface RuntimeTrpcProjectScope {
 }
 
 export interface RuntimeTrpcContext {
+	runProjectOperation: <T>(
+		scope: RuntimeTrpcProjectScope,
+		operation: () => Promise<T>,
+		options?: { allowUnavailable?: boolean },
+	) => Promise<T>;
 	codeNavigationApi: CodeNavigationApi;
 	requestedProjectId: string | null;
 	projectScope: RuntimeTrpcProjectScope | null;
@@ -343,6 +353,12 @@ export interface RuntimeTrpcContext {
 		) => Promise<RuntimeStashShowResponse>;
 	};
 	projectsApi: {
+		renameProject: (input: RuntimeProjectRenameRequest) => Promise<RuntimeProjectManagementResponse>;
+		locateProject: (input: RuntimeProjectLocateRequest) => Promise<RuntimeProjectManagementResponse>;
+		renameProjectFolder: (input: RuntimeProjectRenameFolderRequest) => Promise<RuntimeProjectManagementResponse>;
+		checkProjectAvailability: (
+			input: RuntimeProjectCheckAvailabilityRequest,
+		) => Promise<RuntimeProjectManagementResponse>;
 		organizeProjects: (input: ProjectOrganizationRequest) => Promise<ProjectOrganizationResponse>;
 		listProjects: (preferredProjectId: string | null) => Promise<RuntimeProjectsResponse>;
 		addProject: (

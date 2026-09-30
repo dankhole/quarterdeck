@@ -16,9 +16,14 @@ import {
 	runtimeOpenProjectResponseSchema,
 	runtimeProjectAddRequestSchema,
 	runtimeProjectAddResponseSchema,
+	runtimeProjectCheckAvailabilityRequestSchema,
 	runtimeProjectDirectoryPickerResponseSchema,
+	runtimeProjectLocateRequestSchema,
+	runtimeProjectManagementResponseSchema,
 	runtimeProjectRemoveRequestSchema,
 	runtimeProjectRemoveResponseSchema,
+	runtimeProjectRenameFolderRequestSchema,
+	runtimeProjectRenameRequestSchema,
 	runtimeProjectReorderRequestSchema,
 	runtimeProjectReorderResponseSchema,
 	runtimeProjectsResponseSchema,
@@ -43,7 +48,13 @@ import {
 } from "../core/api/project-organization.js";
 import { runtimeCodexModelsResponseSchema } from "../core/codex-model-contracts";
 import { checkLanguageServerCommand } from "../language-navigation/command";
-import { projectProcedure, t } from "./app-router-init";
+import {
+	optionalProjectProcedure,
+	projectProcedure,
+	savedProjectProcedure,
+	scopedProjectProcedure,
+	t,
+} from "./app-router-init";
 import { projectRouter } from "./project-procedures";
 
 // Re-export context types for consumers.
@@ -63,13 +74,13 @@ const runtimeRouter = t.router({
 		)
 		.output(z.object({ available: z.boolean(), message: z.string() }))
 		.query(({ input }) => checkLanguageServerCommand(input.command, input.env)),
-	codexModels: t.procedure
+	codexModels: optionalProjectProcedure
 		.output(runtimeCodexModelsResponseSchema)
 		.query(({ ctx }) => ctx.runtimeApi.codexModels(ctx.projectScope)),
 	getConfig: t.procedure.output(runtimeConfigResponseSchema).query(async ({ ctx }) => {
 		return await ctx.runtimeApi.loadConfig(ctx.projectScope);
 	}),
-	saveConfig: t.procedure
+	saveConfig: optionalProjectProcedure
 		.input(runtimeConfigSaveRequestSchema)
 		.output(runtimeConfigResponseSchema)
 		.mutation(async ({ ctx, input }) => {
@@ -81,7 +92,7 @@ const runtimeRouter = t.router({
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.runtimeApi.startTaskSession(ctx.projectScope, input);
 		}),
-	stopTaskSession: projectProcedure
+	stopTaskSession: savedProjectProcedure
 		.input(runtimeTaskSessionStopRequestSchema)
 		.output(runtimeTaskSessionStopResponseSchema)
 		.mutation(async ({ ctx, input }) => {
@@ -91,13 +102,14 @@ const runtimeRouter = t.router({
 		.input(runtimeClearTrashRequestSchema)
 		.output(runtimeClearTrashResultSchema)
 		.mutation(({ ctx, input }) => ctx.runtimeApi.clearTrash(ctx.projectScope, input)),
-	executeTaskLifecycle: projectProcedure
+	executeTaskLifecycle: scopedProjectProcedure
 		.input(runtimeTaskLifecycleCommandSchema)
 		.output(runtimeTaskLifecycleResultSchema)
 		.mutation(async ({ ctx, input }) => {
-			return await ctx.runtimeApi.executeTaskLifecycle(ctx.projectScope, input);
+			const execute = async () => await ctx.runtimeApi.executeTaskLifecycle(ctx.projectScope, input);
+			return await ctx.runProjectOperation(ctx.projectScope, execute, { allowUnavailable: input.kind === "stop" });
 		}),
-	getTaskLifecycleOperation: projectProcedure
+	getTaskLifecycleOperation: savedProjectProcedure
 		.input(runtimeTaskLifecycleGetRequestSchema)
 		.output(runtimeTaskLifecycleResultSchema.nullable())
 		.query(async ({ ctx, input }) => {
@@ -127,7 +139,7 @@ const runtimeRouter = t.router({
 		.mutation(({ ctx, input }) => {
 			return ctx.runtimeApi.setLogLevel(input.level);
 		}),
-	openFile: t.procedure
+	openFile: optionalProjectProcedure
 		.input(runtimeOpenFileRequestSchema)
 		.output(runtimeOpenFileResponseSchema)
 		.mutation(async ({ ctx, input }) => {
@@ -136,6 +148,22 @@ const runtimeRouter = t.router({
 });
 
 const projectsRouter = t.router({
+	rename: t.procedure
+		.input(runtimeProjectRenameRequestSchema)
+		.output(runtimeProjectManagementResponseSchema)
+		.mutation(({ ctx, input }) => ctx.projectsApi.renameProject(input)),
+	locate: t.procedure
+		.input(runtimeProjectLocateRequestSchema)
+		.output(runtimeProjectManagementResponseSchema)
+		.mutation(({ ctx, input }) => ctx.projectsApi.locateProject(input)),
+	renameFolder: t.procedure
+		.input(runtimeProjectRenameFolderRequestSchema)
+		.output(runtimeProjectManagementResponseSchema)
+		.mutation(({ ctx, input }) => ctx.projectsApi.renameProjectFolder(input)),
+	checkAvailability: t.procedure
+		.input(runtimeProjectCheckAvailabilityRequestSchema)
+		.output(runtimeProjectManagementResponseSchema)
+		.mutation(({ ctx, input }) => ctx.projectsApi.checkProjectAvailability(input)),
 	organize: t.procedure
 		.input(projectOrganizationRequestSchema)
 		.output(projectOrganizationResponseSchema)

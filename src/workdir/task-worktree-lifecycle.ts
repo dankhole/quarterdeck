@@ -10,6 +10,7 @@ import {
 import { removeDirectoryWithRetries } from "../fs/remove-path";
 import { getTaskWorktreesHomePath, loadProjectContext } from "../state/project-state";
 import { getGitCommandErrorMessage, getGitStdout, readGitHeadInfo, runGit } from "./git-utils";
+import { resolveTaskWorktreeCleanupPath } from "./task-worktree-cleanup-path";
 import { assertTaskWorktreeRegistration } from "./task-worktree-identity";
 import { applyTaskPatch, captureTaskPatch, deleteTaskPatchFiles, findTaskPatch } from "./task-worktree-patch";
 import { getWorkdirFolderLabelForWorktreePath, normalizeTaskIdForWorktreePath } from "./task-worktree-path";
@@ -339,11 +340,13 @@ export async function archiveTaskWorktreeForTrash(options: {
 	taskId: string;
 	operationId?: string;
 	folderOnly?: boolean;
+	/** Server-owned persisted task workspace, which may retain an earlier project folder label. */
+	existingPath?: string;
 }): Promise<RuntimeWorktreeDeleteResponse> {
 	try {
 		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 		const rootPath = getWorktreesBaseRootPath();
-		const worktreePath = getTaskWorktreePath(options.repoPath, taskId);
+		const worktreePath = await resolveTaskWorktreeCleanupPath(options);
 		if (!(await pathExists(worktreePath)) && options.folderOnly) {
 			return { ok: true, removed: false };
 		}
@@ -390,11 +393,13 @@ export async function purgeTaskWorkspaceForDelete(options: {
 	taskId: string;
 	operationId?: string;
 	folderOnly?: boolean;
+	/** Server-owned persisted task workspace, which may retain an earlier project folder label. */
+	existingPath?: string;
 }): Promise<RuntimeWorktreeDeleteResponse> {
 	try {
 		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 		const rootPath = getWorktreesBaseRootPath();
-		const worktreePath = getTaskWorktreePath(options.repoPath, taskId);
+		const worktreePath = await resolveTaskWorktreeCleanupPath(options);
 		if (!(await pathExists(worktreePath)) && options.folderOnly) {
 			await deleteTaskPatchFiles(taskId);
 			return { ok: true, removed: false };

@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QuarterdeckBoard, type RequestProgrammaticCardMove } from "@/components/board/quarterdeck-board";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { BoardReplyDrafts } from "@/state/board-reply-drafts";
 import { CardActionsProvider, type ReactiveCardState } from "@/state/card-actions-context";
 import type { BoardData } from "@/types";
 
@@ -93,5 +94,57 @@ describe("QuarterdeckBoard grid", () => {
 		);
 		await act(async () => root.render(null));
 		expect(request).toBeNull();
+	});
+	it("keeps saved cards and previews readable while removing every task action from a read-only board", async () => {
+		const onAction = vi.fn();
+		let request: RequestProgrammaticCardMove | null = null;
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<CardActionsProvider
+						stable={{
+							onStartTask: onAction,
+							onRestartSessionTask: onAction,
+							onMoveToTrashTask: onAction,
+							onRestoreFromTrashTask: onAction,
+							onHardDeleteTrashTask: onAction,
+							onRegenerateTitleTask: onAction,
+							onUpdateTaskTitle: onAction,
+							onTogglePinTask: onAction,
+						}}
+						reactive={reactive}
+					>
+						<QuarterdeckBoard
+							readOnly
+							data={data}
+							taskSessions={{}}
+							replyScope={{ projectId: "saved-project", drafts: new BoardReplyDrafts(), sendInput: onAction }}
+							onCardSelect={onAction}
+							onEditTask={onAction}
+							onClearTrash={onAction}
+							onDragEnd={onAction}
+							onRequestProgrammaticCardMoveReady={(value) => {
+								request = value;
+							}}
+						/>
+					</CardActionsProvider>
+				</TooltipProvider>,
+			),
+		);
+		expect(container.textContent).toContain("Prompt for working");
+		expect(container.textContent).toContain("Prompt for draft");
+		await act(async () => {
+			container.querySelector<HTMLElement>('[data-task-id="working"]')!.click();
+			container.querySelector<HTMLElement>('[data-task-id="draft"]')!.click();
+			container.querySelector<HTMLButtonElement>('[aria-controls="board-trash-cards"]')!.click();
+			expect(
+				request?.({ taskId: "working", fromColumnId: "in_progress", toColumnId: "review", insertAtTop: true }),
+			).toBe(false);
+		});
+		expect(container.querySelector('[data-task-id="archived"]')).not.toBeNull();
+		expect(container.querySelectorAll("button")).toHaveLength(1);
+		expect(container.querySelector('[role="link"]')).toBeNull();
+		expect(container.querySelector("textarea")).toBeNull();
+		expect(onAction).not.toHaveBeenCalled();
 	});
 });

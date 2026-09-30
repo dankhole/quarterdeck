@@ -3,6 +3,7 @@ import { ProjectNavigationRemovalDialog } from "@/components/app/project-navigat
 import { ProjectNavigationSidebarSections } from "@/components/app/project-navigation-sidebar-sections";
 import { CreateTaskButton } from "@/components/task/create-task-button";
 import { useProjectNavigationPanel } from "@/hooks/project";
+import { ProjectManagementContext } from "@/providers/project-management-context";
 import type { ProjectOrganization, RuntimeProjectSummary } from "@/runtime/types";
 
 export function ProjectNavigationPanel({
@@ -34,6 +35,9 @@ export function ProjectNavigationPanel({
 	onCreateTask: () => void;
 	needsInputByProject: Record<string, number>;
 }): React.ReactElement {
+	const management = useContext(ProjectManagementContext);
+	const isProjectUnavailable =
+		projects.find((project) => project.id === currentProjectId)?.availability?.status === "unavailable";
 	const panel = useProjectNavigationPanel({
 		projects,
 		removingProjectId,
@@ -42,7 +46,7 @@ export function ProjectNavigationPanel({
 
 	return (
 		<div className="flex flex-col min-h-0 overflow-hidden bg-surface-1 flex-1">
-			<CreateTaskButton onClick={onCreateTask} />
+			<CreateTaskButton onClick={onCreateTask} disabled={isProjectUnavailable} />
 
 			<ProjectNavigationList
 				projects={projects}
@@ -57,6 +61,7 @@ export function ProjectNavigationPanel({
 				organization={organization}
 				onOrganization={onOrganization}
 				organizationDisabled={organizationDisabled}
+				management={management}
 			/>
 			<ProjectNavigationSidebarSections />
 			<ProjectNavigationRemovalDialog
@@ -69,3 +74,5 @@ export function ProjectNavigationPanel({
 		</div>
 	);
 }
+
+import { useContext } from "react";

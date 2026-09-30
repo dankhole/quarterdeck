@@ -72,6 +72,7 @@ export function ConnectedTopBar({
 	selectedTaskWorktreeSnapshot,
 }: ConnectedTopBarProps): ReactElement {
 	const projectNavigation = useProjectNavigationContext();
+	const isProjectUnavailable = projectNavigation.currentProjectAvailability?.status === "unavailable";
 	const projectRuntime = useProjectRuntimeContext();
 	const { selectedCard, setBoard, sessions } = useBoardContext();
 	const selectedSession = selectedCard ? sessions[selectedCard.card.id] : null;
@@ -102,8 +103,8 @@ export function ConnectedTopBar({
 		selectedTaskHasBaseRef,
 	});
 	const openProject = useOpenProject({
-		currentProjectId: projectNavigation.currentProjectId,
-		projectPath: openProjectPath,
+		currentProjectId: isProjectUnavailable ? null : projectNavigation.currentProjectId,
+		projectPath: isProjectUnavailable ? undefined : openProjectPath,
 		runtimePlatform: projectRuntime.runtimeProjectConfig?.runtimePlatform,
 		hostIntegrationMode:
 			projectRuntime.runtimeProjectConfig?.runtimeCapabilities.hostIntegrationMode ?? "unavailable",
@@ -151,6 +152,7 @@ export function ConnectedTopBar({
 	return (
 		<TopBar
 			onBack={onBack}
+			projectName={projectNavigation.navigationProjectName}
 			projectPath={navbarProjectPath}
 			isProjectPathLoading={shouldShowProjectLoadingState}
 			projectHint={navbarProjectHint}
@@ -159,7 +161,7 @@ export function ConnectedTopBar({
 			scopeType={selectedCard ? "task" : (git.fileBrowserResolvedScope?.type ?? "home")}
 			taskTitle={selectedCard?.card.title ?? null}
 			onToggleTerminal={
-				projectNavigation.hasNoProjects
+				projectNavigation.hasNoProjects || isProjectUnavailable
 					? undefined
 					: selectedCard
 						? terminal.handleToggleDetailTerminal

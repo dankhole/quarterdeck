@@ -50,6 +50,7 @@ async function createHarness(
 	const sessionInstanceId = manager.store.getSummary(taskId)?.sessionInstanceId;
 	if (!sessionInstanceId) throw new Error("Missing test session identity.");
 	const api = createHooksApi({
+		runProjectOperation: async (_scope, operation) => await operation(),
 		projects: { getProjectPathById: () => "/tmp/project-1" },
 		terminals: {
 			getTerminalManagerForProject: () => manager,

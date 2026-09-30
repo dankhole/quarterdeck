@@ -22,8 +22,10 @@ import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeConfigResponse, RuntimeGitSyncAction, RuntimeTaskRepositoryInfoResponse } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
 import {
+	getProjectMetadataScopeVersion,
 	getTaskWorktreeInfo,
 	getTaskWorktreeSnapshot,
+	isProjectMetadataScopeCurrent,
 	setHomeGitSummary,
 	setTaskWorktreeInfo,
 	useHomeGitStateVersionValue,
@@ -182,6 +184,7 @@ export function useGitActions({
 			if (!currentProjectId) {
 				return false;
 			}
+			const requestScopeVersion = getProjectMetadataScopeVersion(currentProjectId);
 			const actionKey = action === "commit" ? "commitSource" : "prSource";
 			if (isTaskGitActionInFlight(taskGitActionLoadingByTaskId, taskId, actionKey)) {
 				return false;
@@ -218,11 +221,12 @@ export function useGitActions({
 				const worktreeInfo = matchesWorktreeInfoSelection(storedWorktreeInfo, selection.card)
 					? storedWorktreeInfo
 					: (snapshotWorktreeInfo ?? (await fetchTaskWorktreeInfo(selection.card)));
+				if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return false;
 				if (!worktreeInfo) {
 					showGitErrorToast("Could not resolve task worktree details.", { timeout: 6000 });
 					return false;
 				}
-				setTaskWorktreeInfo(currentProjectId, worktreeInfo);
+				setTaskWorktreeInfo(currentProjectId, worktreeInfo, requestScopeVersion);
 
 				const prompt = buildTaskGitActionPrompt({
 					action,
@@ -241,6 +245,7 @@ export function useGitActions({
 					appendNewline: false,
 					mode: "paste",
 				});
+				if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return false;
 				if (!typed.ok) {
 					showGitErrorToast(typed.message ?? "Could not send instructions to the task session.");
 					return false;
@@ -248,6 +253,7 @@ export function useGitActions({
 				await new Promise<void>((resolve) => {
 					window.setTimeout(resolve, 200);
 				});
+				if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return false;
 				const submitted = await sendTaskSessionInput(taskId, "\r", {
 					intent: "submit",
 					appendNewline: false,
@@ -259,7 +265,8 @@ export function useGitActions({
 				getTerminalController(taskId)?.focus?.();
 				return true;
 			} finally {
-				setTaskGitActionLoading(taskId, action, null);
+				if (isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion))
+					setTaskGitActionLoading(taskId, action, null);
 			}
 		},
 		[
@@ -311,6 +318,7 @@ export function useGitActions({
 			if (!currentProjectId || runningGitAction || isSwitchingHomeBranch) {
 				return;
 			}
+			const requestScopeVersion = getProjectMetadataScopeVersion(currentProjectId);
 			const shouldUpdateHomeSummary = shouldApplyHomeGitSummaryFromSync(taskScope, options);
 			setRunningGitAction(action);
 			try {
@@ -320,6 +328,7 @@ export function useGitActions({
 					taskScope: taskScope ?? null,
 					branch: branch ?? null,
 				});
+				if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
 				if (!payload.ok || !payload.summary) {
 					const errorMessage = payload.error ?? `${action} failed.`;
 					const output = payload.output ?? "";
@@ -341,6 +350,7 @@ export function useGitActions({
 				refreshGitHistory();
 				showGitSuccessToast(getGitSyncSuccessLabel(action));
 			} catch (error) {
+				if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
 				const message = toErrorMessage(error);
 				setGitActionError({
 					action,
@@ -348,7 +358,7 @@ export function useGitActions({
 					output: "",
 				});
 			} finally {
-				setRunningGitAction(null);
+				if (isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) setRunningGitAction(null);
 			}
 		},
 		[currentProjectId, isSwitchingHomeBranch, refreshGitHistory, runningGitAction],
@@ -361,12 +371,14 @@ export function useGitActions({
 			if (!currentProjectId || !normalizedBranch || normalizedBranch === currentBranch) {
 				return;
 			}
+			const requestScopeVersion = getProjectMetadataScopeVersion(currentProjectId);
 			await switchHomeBranchGuard.run(async () => {
 				try {
 					const trpcClient = getRuntimeTrpcClient(currentProjectId);
 					const payload = await trpcClient.project.checkoutGitBranch.mutate({
 						branch: normalizedBranch,
 					});
+					if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
 					if (!payload.ok || !payload.summary) {
 						const errorMessage = payload.error ?? "Switch branch failed.";
 						const fallbackSummary = payload.summary ?? null;
@@ -379,6 +391,7 @@ export function useGitActions({
 								action: {
 									label: "Stash & Switch",
 									onClick: () => {
+										if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
 										void (async () => {
 											try {
 												const stashClient = getRuntimeTrpcClient(currentProjectId);
@@ -386,6 +399,7 @@ export function useGitActions({
 													taskScope: null,
 													paths: [],
 												});
+												if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
 												if (!stashResult.ok) {
 													showGitErrorToast(`Stash failed: ${stashResult.error ?? "Unknown error"}`);
 													return;
@@ -407,6 +421,7 @@ export function useGitActions({
 					refreshGitHistory();
 					await refreshProjectState();
 				} catch (error) {
+					if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
 					showGitErrorToast(`Could not switch to ${normalizedBranch}. ${toErrorMessage(error)}`);
 				}
 			});
@@ -422,10 +437,12 @@ export function useGitActions({
 
 	const discardHomeWorkingChanges = useCallback(async () => {
 		if (!currentProjectId) return;
+		const requestScopeVersion = getProjectMetadataScopeVersion(currentProjectId);
 		await discardHomeChangesGuard.run(async () => {
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
 				const payload = await trpcClient.project.discardGitChanges.mutate(null);
+				if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
 				if (!payload.ok) {
 					if (payload.summary) {
 						setHomeGitSummary(currentProjectId, payload.summary);
@@ -437,6 +454,7 @@ export function useGitActions({
 				refreshGitHistory();
 				showGitSuccessToast("Discarded working copy changes.", 4000);
 			} catch (error) {
+				if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
 				showGitErrorToast(`Could not discard working copy changes. ${toErrorMessage(error)}`);
 			}
 		});
@@ -444,6 +462,7 @@ export function useGitActions({
 
 	const stashAndRetryPull = useCallback(async () => {
 		if (!currentProjectId) return;
+		const requestScopeVersion = getProjectMetadataScopeVersion(currentProjectId);
 		await stashAndRetryPullGuard.run(async () => {
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
@@ -452,12 +471,14 @@ export function useGitActions({
 					taskScope: null,
 					paths: [],
 				});
+				if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
 				if (!stashResult.ok) {
 					showGitErrorToast(`Stash failed: ${stashResult.error ?? "Unknown error"}`);
 					return;
 				}
 
 				const pullResult = await trpcClient.project.runGitSyncAction.mutate({ action: "pull" });
+				if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
 				if (!pullResult.ok || !pullResult.summary) {
 					const fallbackSummary = pullResult.summary ?? null;
 					if (fallbackSummary) {
@@ -481,6 +502,7 @@ export function useGitActions({
 					taskScope: null,
 					index: 0,
 				});
+				if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
 				if (!popResult.ok) {
 					if (popResult.conflicted) {
 						showGitWarningToast(
@@ -499,6 +521,7 @@ export function useGitActions({
 				setGitActionError(null);
 				refreshGitHistory();
 			} catch (error) {
+				if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
 				showGitErrorToast(`Stash & Pull failed: ${toErrorMessage(error)}`);
 			}
 		});

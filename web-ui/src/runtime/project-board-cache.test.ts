@@ -29,6 +29,27 @@ afterEach(() => {
 });
 
 describe("project-board-cache", () => {
+	it("orders cached metadata independently of board revisions", () => {
+		stashProjectBoard("proj-1", createEntry({ authoritativeRevision: 10, metadataRevision: 1, projectPath: "/old" }));
+		updateProjectBoardCache(
+			"proj-1",
+			createEntry({ authoritativeRevision: 9, metadataRevision: 2, projectPath: "/new" }),
+		);
+		expect(restoreProjectBoard("proj-1")).toMatchObject({
+			authoritativeRevision: 10,
+			metadataRevision: 2,
+			projectPath: "/new",
+		});
+		updateProjectBoardCache(
+			"proj-1",
+			createEntry({ authoritativeRevision: 11, metadataRevision: 1, projectPath: "/old" }),
+		);
+		expect(restoreProjectBoard("proj-1")).toMatchObject({
+			authoritativeRevision: 11,
+			metadataRevision: 2,
+			projectPath: "/new",
+		});
+	});
 	it("stashes and restores a board", () => {
 		const entry = createEntry({ authoritativeRevision: 5 });
 		stashProjectBoard("proj-1", entry);

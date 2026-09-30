@@ -8,8 +8,11 @@ const callCodexMock = vi.mocked(callCodex);
 
 import type { RuntimeBoardData, RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "../../../src/core";
 import type { TerminalSessionManager } from "../../../src/terminal";
-import { polishTaskDisplaySummary } from "../../../src/trpc";
+import { type DisplaySummaryPolishDeps, polishTaskDisplaySummary } from "../../../src/trpc";
 import { createDefaultMockConfig } from "../../utilities/runtime-config-factory";
+
+const runProjectOperation: DisplaySummaryPolishDeps["runProjectOperation"] = async (_scope, operation) =>
+	await operation();
 
 const LLM_ENV = {
 	QUARTERDECK_LLM_BASE_URL: "https://llm.example.test",
@@ -169,6 +172,7 @@ describe("polishTaskDisplaySummary", () => {
 			taskId: "task-1",
 			reason: "test",
 			deps: {
+				runProjectOperation,
 				config: { loadScopedRuntimeConfig: vi.fn(async () => createDefaultMockConfig()) },
 				getScopedTerminalManager: vi.fn(async () => manager),
 				loadProjectState: vi.fn(async () => createProjectState()),
@@ -190,6 +194,7 @@ describe("polishTaskDisplaySummary", () => {
 			reason: "task-started",
 			promptOverride: "Fix auth timeout bug",
 			deps: {
+				runProjectOperation,
 				config: {
 					loadScopedRuntimeConfig: vi.fn(async () => createDefaultMockConfig({ llmSummaryPolishEnabled: true })),
 				},
@@ -215,6 +220,7 @@ describe("polishTaskDisplaySummary", () => {
 			reason: "task-started",
 			promptOverride: "Fix auth timeout bug",
 			deps: {
+				runProjectOperation,
 				config: {
 					loadScopedRuntimeConfig: vi.fn(async () => createDefaultMockConfig({ llmSummaryPolishEnabled: true })),
 				},
@@ -245,6 +251,7 @@ describe("polishTaskDisplaySummary", () => {
 			taskId: "task-1",
 			reason: "hook.to_review",
 			deps: {
+				runProjectOperation,
 				config: {
 					loadScopedRuntimeConfig: vi.fn(async () => createDefaultMockConfig({ llmSummaryPolishEnabled: true })),
 				},
@@ -273,6 +280,7 @@ describe("polishTaskDisplaySummary", () => {
 			taskId: "task-1",
 			reason: "hook.to_review",
 			deps: {
+				runProjectOperation,
 				config: {
 					loadScopedRuntimeConfig: vi.fn(async () => createDefaultMockConfig({ llmSummaryPolishEnabled: true })),
 				},
@@ -312,6 +320,7 @@ describe("polishTaskDisplaySummary", () => {
 			taskId: "task-1",
 			reason: "hook.to_review",
 			deps: {
+				runProjectOperation,
 				config: {
 					loadScopedRuntimeConfig: vi.fn(async () => createDefaultMockConfig({ llmSummaryPolishEnabled: true })),
 				},
@@ -344,6 +353,7 @@ describe("polishTaskDisplaySummary", () => {
 		vi.stubGlobal("fetch", fetchMock);
 		const { manager, setDisplaySummary, updateSummary } = createManager(createSummary());
 		const deps = {
+			runProjectOperation,
 			config: {
 				loadScopedRuntimeConfig: vi.fn(async () => createDefaultMockConfig({ llmSummaryPolishEnabled: true })),
 			},

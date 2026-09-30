@@ -1,7 +1,9 @@
 import type { ReactElement } from "react";
 import { ManualProjectPathDialog } from "@/components/app/manual-project-path-dialog";
+import { ProjectManagementDialog } from "@/components/app/project-management-dialog";
 import { StartupOnboardingDialog } from "@/components/app/startup-onboarding-dialog";
 import { GitInitDialog } from "@/components/git/git-init-dialog";
+import { useProjectManagementContext } from "@/providers/project-management-context";
 import { useProjectNavigationContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 
@@ -10,6 +12,7 @@ import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
  * project contexts. Extracted from App.tsx to reduce its JSX surface.
  */
 export function ProjectDialogs(): ReactElement {
+	const management = useProjectManagementContext();
 	const {
 		runtimeProjectConfig,
 		isStartupOnboardingDialogOpen,
@@ -29,6 +32,7 @@ export function ProjectDialogs(): ReactElement {
 
 	return (
 		<>
+			<ProjectManagementDialog management={management} />
 			<StartupOnboardingDialog
 				open={isStartupOnboardingDialogOpen}
 				onClose={handleCloseStartupOnboardingDialog}

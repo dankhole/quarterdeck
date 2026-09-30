@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage } from "node:http";
 import { join } from "node:path";
+import { TRPCError } from "@trpc/server";
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { getAgentAvailability, SUPPORTED_PI_VERSION } from "../config";
 import {
@@ -11,12 +12,14 @@ import {
 import { DEFAULT_CONVERSATION_READ_LIMITS } from "../conversation/limits";
 import type { IRuntimeHostIntegrations, RuntimeProjectStateResponse } from "../core";
 import {
+	areFileSystemPathsEqual,
 	buildQuarterdeckRuntimeUrl,
 	createTaggedLogger,
 	findCardInBoard,
 	getQuarterdeckRuntimeHost,
 	getQuarterdeckRuntimeOrigin,
 	getQuarterdeckRuntimePort,
+	KeyedOperationCoordinator,
 	normalizeDiagnosticErrorClass,
 	QUARTERDECK_BUILD_ID,
 	shouldRejectLegacyRuntimeStreamClient,
@@ -40,8 +43,10 @@ import {
 	loadProjectBoardById,
 	loadProjectScopeById,
 	loadProjectState,
+	loadSavedProjectStateById,
 	ProjectExecutionOwnershipStore,
 } from "../state";
+import { readProjectRelocationJournal } from "../state/project-relocation-journal";
 import type { TerminalSessionManager } from "../terminal";
 import { createTerminalWebSocketBridge, getPiLifecycleExtensionFingerprint } from "../terminal";
 import { AutomaticTitleGenerationCoordinator } from "../title";
@@ -61,8 +66,10 @@ import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
 import { createAutomaticTaskTitlePostCommitListener } from "./automatic-task-title-scheduler";
 import { createCodexTaskTitleMonitor } from "./codex-task-title-monitor";
 import { handleHttpRequest, handleSocketUpgrade } from "./middleware";
+import { ProjectLocationService } from "./project-location-service";
 import { normalizeProjectMetadataClientId } from "./project-metadata-visibility";
 import type { ProjectRegistry } from "./project-registry";
+import { assertProjectRelocationRuntimeIsExclusive } from "./project-relocation-runtime-guard";
 import { ProjectTaskLifecycleService } from "./project-task-lifecycle-service";
 import { handleRuntimeHostEventRequest } from "./runtime-host-event-endpoint";
 import type { RuntimeHostEventLedger } from "./runtime-host-event-ledger";
@@ -84,7 +91,8 @@ interface DisposeTrackedProjectResult {
 export interface CreateRuntimeServerDependencies {
 	projectRegistry: ProjectRegistry;
 	runtimeStateHub: RuntimeStateHub;
-	runtimeSessionPersistence: Pick<RuntimeSessionPersistence, "persistRuntimeSessions" | "close">;
+	runtimeSessionPersistence: Pick<RuntimeSessionPersistence, "persistRuntimeSessions" | "disposeProject" | "close">;
+	initializeProjectsForStartup?: (runProjectOperation: RuntimeTrpcContext["runProjectOperation"]) => Promise<void>;
 	boardCommands: ProjectBoardCommandService;
 	diagnostics: RuntimeDiagnostics;
 	warn: (message: string) => void;
@@ -156,6 +164,33 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	}
 	const webUiDir = getWebUiDir();
 	const taskResourceOperations = new TaskResourceOperationCoordinator();
+	const projectRegistrationOperations = new KeyedOperationCoordinator();
+	const runRegistrationMutation = <T>(operation: () => Promise<T>): Promise<T> =>
+		projectRegistrationOperations.run("projects", operation);
+	deps.projectRegistry.setProjectOperationRunner((projectId, operation) =>
+		taskResourceOperations.runProject(projectId, operation),
+	);
+	const runProjectOperation: RuntimeTrpcContext["runProjectOperation"] = async (scope, operation, options) =>
+		await taskResourceOperations.runProject(scope.projectId, async () => {
+			const current = await loadProjectScopeById(scope.projectId);
+			if (!current) throw new TRPCError({ code: "NOT_FOUND", message: "Project no longer exists." });
+			if (!areFileSystemPathsEqual(current.repoPath, scope.projectPath)) {
+				throw new TRPCError({ code: "CONFLICT", message: "The project folder changed. Refresh and try again." });
+			}
+			if (!options?.allowUnavailable) {
+				const availability = await deps.projectRegistry.checkProjectAvailability(scope.projectId);
+				if (availability.status !== "available") {
+					throw new TRPCError({
+						code: "PRECONDITION_FAILED",
+						message: "Folder unavailable. Locate the project folder or check again.",
+					});
+				}
+			}
+			return await operation();
+		});
+	deps.boardCommands.setProjectOperationRunner((scope, operation) =>
+		runProjectOperation(scope, operation, { allowUnavailable: true }),
+	);
 	const automaticTitleGeneration = new AutomaticTitleGenerationCoordinator();
 	const conversationSourceHints = new ConversationSourceHintStore();
 	const conversationReads = createConversationReadService({
@@ -241,7 +276,8 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	};
 
 	const getScopedTerminalManager = async (scope: RuntimeTrpcProjectScope): Promise<TerminalSessionManager> =>
-		await deps.projectRegistry.ensureTerminalManagerForProject(scope.projectId, scope.projectPath);
+		deps.projectRegistry.getTerminalManagerForProject(scope.projectId) ??
+		(await deps.projectRegistry.ensureTerminalManagerForProject(scope.projectId, scope.projectPath));
 	const prepareNativeResume = async (input: {
 		scope: RuntimeTrpcProjectScope;
 		taskId: string;
@@ -290,6 +326,57 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		ownership: executionOwnership,
 		taskResourceOperations,
 	});
+	const stopCurrentOwner = async (scope: RuntimeTrpcProjectScope, taskId: string, sessionInstanceId?: string) => {
+		if (deps.projectRegistry.getTerminalManagerForProject(scope.projectId)) {
+			return await executionOwnership.stopCurrentOwner(scope, taskId, sessionInstanceId);
+		}
+		const saved = await loadSavedProjectStateById(scope.projectId);
+		return {
+			summary: saved?.sessions[taskId] ?? null,
+			requestedSessionInstanceId: sessionInstanceId ?? null,
+			didExit: true,
+			outcome: "not_running" as const,
+		};
+	};
+	const projectLocations = new ProjectLocationService({
+		runRegistrationMutation,
+		operations: taskResourceOperations,
+		registry: deps.projectRegistry,
+		boardCommands: deps.boardCommands,
+		assertRuntimeExclusive: () => assertProjectRelocationRuntimeIsExclusive(deps.diagnostics.runtimeInstanceId),
+		stopProject: async (scope) => {
+			const manager = deps.projectRegistry.getTerminalManagerForProject(scope.projectId);
+			// Startup cleanup has already retired old-runtime processes. A manager is
+			// present whenever this runtime owns native, structured, or shell execution.
+			if (!manager) return;
+			const prepared = await executionOwnership.prepareProjectRemoval(scope);
+			if (!prepared.ok) throw new Error(prepared.error ?? "Task execution could not be stopped.");
+			manager.stopReconciliation();
+			const taskIds = manager.store.listSummaries().map((summary) => summary.taskId);
+			manager.markInterruptedAndStopAll();
+			await manager.waitForShutdownQuiescence();
+			for (const taskId of taskIds) {
+				const stopped = await manager.stopTaskSessionAndWaitForExit(taskId);
+				if (!stopped.didExit)
+					throw new Error(stopped.error ?? "A terminal did not stop. The folder was not changed.");
+			}
+			await deps.runtimeSessionPersistence.persistRuntimeSessions(scope.projectId);
+		},
+		suspendProject: async (projectId) => {
+			await codeNavigation.stopProject(projectId);
+			await deps.runtimeStateHub.suspendProject(projectId);
+			await deps.runtimeSessionPersistence.disposeProject(projectId);
+		},
+		refreshProject: async (projectId, projectPath) => {
+			codeNavigation.restoreProject(projectId);
+			await deps.runtimeStateHub.refreshProject(projectId, projectPath);
+		},
+		publishProjects: () =>
+			deps.runtimeStateHub.broadcastRuntimeProjectsUpdated(deps.projectRegistry.getActiveProjectId()),
+		warn: deps.warn,
+	});
+	await projectLocations.recoverPendingProjects();
+	await deps.initializeProjectsForStartup?.(runProjectOperation);
 	deps.projectRegistry.setProjectRemovalPreparationHandler(async (projectId, projectPath) => {
 		const result = await executionOwnership.prepareProjectRemoval({ projectId, projectPath });
 		if (result.ok) await codeNavigation.stopProject(projectId);
@@ -313,6 +400,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	};
 	const ownershipRecoveryEntries = await listProjectIndexEntries();
 	for (const entry of ownershipRecoveryEntries) {
+		if ((await deps.projectRegistry.checkProjectAvailability(entry.projectId)).status !== "available") continue;
 		await executionOwnership
 			.recoverProject({ projectId: entry.projectId, projectPath: entry.repoPath })
 			.catch((error) => {
@@ -336,8 +424,15 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				return;
 			}
 			for (const entry of entries) {
-				await executionOwnership
-					.reconcileProjectLaunchPaths({ projectId: entry.projectId, projectPath: entry.repoPath })
+				await taskResourceOperations
+					.runProject(entry.projectId, async () => {
+						const current = await loadProjectScopeById(entry.projectId);
+						if (!current || !areFileSystemPathsEqual(current.repoPath, entry.repoPath)) return;
+						await executionOwnership.reconcileProjectLaunchPaths({
+							projectId: entry.projectId,
+							projectPath: entry.repoPath,
+						});
+					})
 					.catch((error) => {
 						serverLog.warn("structured ownership reconciliation failed", {
 							projectId: entry.projectId,
@@ -392,6 +487,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		boardCommands: deps.boardCommands,
 		startTaskSession: async (scope, input) =>
 			await handleStartTaskSession(scope, input, {
+				runProjectOperation,
 				config: deps.projectRegistry,
 				getScopedTerminalManager,
 				taskResourceOperations,
@@ -399,7 +495,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			}),
 		stopTaskSession: async (scope, taskId, sessionInstanceId) => {
 			return await taskResourceOperations.run(scope.projectId, taskId, async () => {
-				return await executionOwnership.stopCurrentOwner(scope, taskId, sessionInstanceId);
+				return await stopCurrentOwner(scope, taskId, sessionInstanceId);
 			});
 		},
 		restartStructuredTaskSession: async (scope, taskId, operationId) =>
@@ -413,14 +509,16 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			const manager = await getScopedTerminalManager(scope);
 			return manager.store.getSummary(taskId);
 		},
-		loadState: async (scope) =>
-			await deps.projectRegistry.buildProjectStateSnapshot(scope.projectId, scope.projectPath),
+		loadState: async (scope) => await deps.projectRegistry.buildProjectStateSnapshot(scope.projectId),
 	});
 	const recoveryEntries = await listProjectIndexEntries();
 	const recoveryResults = await Promise.allSettled(
-		recoveryEntries.map(
-			async (entry) => await taskLifecycle.recover({ projectId: entry.projectId, projectPath: entry.repoPath }),
-		),
+		recoveryEntries.map(async (entry) => {
+			if ((await deps.projectRegistry.checkProjectAvailability(entry.projectId)).status !== "available") return;
+			await taskResourceOperations.runProject(entry.projectId, () =>
+				taskLifecycle.recover({ projectId: entry.projectId, projectPath: entry.repoPath }),
+			);
+		}),
 	);
 	for (const [index, result] of recoveryResults.entries()) {
 		if (result.status === "fulfilled") {
@@ -431,7 +529,8 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			error: result.reason instanceof Error ? result.reason.message : String(result.reason),
 		});
 	}
-	const hooksApi = createHooksApi({
+	const unguardedHooksApi = createHooksApi({
+		runProjectOperation,
 		projects: deps.projectRegistry,
 		terminals: deps.projectRegistry,
 		config: deps.projectRegistry,
@@ -443,6 +542,19 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			await executionOwnership.observeNativeOwner(scope, taskId, manager);
 		},
 	});
+	const hooksApi: RuntimeTrpcContext["hooksApi"] = {
+		ingest: async (input) => {
+			const scope = await loadProjectScopeById(input.projectId);
+			if (!scope) return { ok: false, error: "Project no longer exists." };
+			try {
+				return await runProjectOperation({ projectId: input.projectId, projectPath: scope.repoPath }, () =>
+					unguardedHooksApi.ingest(input),
+				);
+			} catch (error) {
+				return { ok: false, error: error instanceof Error ? error.message : String(error) };
+			}
+		},
+	};
 	const hookTransitionOutboxReplayer = createHookTransitionOutboxReplayer({
 		ingest: hooksApi.ingest,
 		onReplayPassCompleted: ({ pendingTasks }) => {
@@ -483,6 +595,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		},
 	});
 	const runtimeApi = createRuntimeApi({
+		runProjectOperation,
 		onCodeNavigationConfigChanged: () => codeNavigation.reset(),
 		config: deps.projectRegistry,
 		broadcaster: deps.runtimeStateHub,
@@ -496,7 +609,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		assertNativeInputAllowed: async (scope, taskId) =>
 			await executionOwnership.assertNativeStartAllowed(scope, taskId),
 		stopTaskSession: async (scope, taskId, sessionInstanceId) =>
-			await executionOwnership.stopCurrentOwner(scope, taskId, sessionInstanceId),
+			await stopCurrentOwner(scope, taskId, sessionInstanceId),
 	});
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
 		const requestUrl = new URL(req.url ?? "/", "http://localhost");
@@ -506,6 +619,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			Array.isArray(rawClientId) ? rawClientId[0] : rawClientId,
 		);
 		return {
+			runProjectOperation,
 			requestedProjectId: scope.requestedProjectId,
 			projectScope: scope.projectScope,
 			runtimeClientId,
@@ -521,6 +635,10 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				taskResourceOperations,
 			}),
 			projectsApi: createProjectsApi({
+				runRegistrationMutation,
+				runProjectRemoval: (projectId, operation) =>
+					taskResourceOperations.runProjectExclusive(projectId, operation),
+				projectLocations,
 				onProjectAdded: (projectId) => codeNavigation.restoreProject(projectId),
 				onProjectRemovalFailed: (projectId) => codeNavigation.restoreProject(projectId),
 				boardCommands: deps.boardCommands,
@@ -653,7 +771,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				return { write: async () => null, dispose: () => {} };
 			}
 			const scope = { projectId, projectPath };
-			return createNativeTerminalInputWriter({
+			const writer = createNativeTerminalInputWriter({
 				scope,
 				taskId,
 				manager,
@@ -661,6 +779,22 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				taskResourceOperations,
 				hasStructuredOwner: () => Boolean(structuredOwners.get(projectId, taskId)),
 			});
+			return {
+				write: (data) =>
+					runProjectOperation(
+						scope,
+						async () => {
+							// Input targets an already admitted, exact PTY. Check location
+							// fencing here without running filesystem/Git probes per keystroke.
+							if (await readProjectRelocationJournal(projectId)) {
+								throw new Error("Project folder relocation is awaiting recovery.");
+							}
+							return await writer.write(data);
+						},
+						{ allowUnavailable: true },
+					),
+				dispose: () => writer.dispose(),
+			};
 		},
 		stopTaskSession: async ({ projectId, taskId }) => {
 			await taskResourceOperations.run(projectId, taskId, async () => {

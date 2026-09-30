@@ -18,6 +18,7 @@ export function TopBarScopeSection({
 	onBack,
 	scopeType,
 	taskTitle,
+	projectName,
 	projectPath,
 	isProjectPathLoading,
 	projectHint,
@@ -29,6 +30,7 @@ export function TopBarScopeSection({
 	onBack?: () => void;
 	scopeType: "home" | "task" | "branch_view";
 	taskTitle?: string | null;
+	projectName?: string;
 	projectPath?: string;
 	isProjectPathLoading: boolean;
 	projectHint?: string;
@@ -38,7 +40,7 @@ export function TopBarScopeSection({
 	branchPillSlot?: React.ReactNode;
 }): React.ReactElement {
 	const displayProjectPath = projectPath ? formatPathForDisplay(projectPath) : null;
-	const projectPathLabel = displayProjectPath ? getProjectPathLabel(displayProjectPath) : null;
+	const projectLabel = projectName ?? (displayProjectPath ? getProjectPathLabel(displayProjectPath) : null);
 
 	return (
 		<div className="flex flex-nowrap items-center h-10 flex-1 min-w-0 overflow-hidden gap-1.5">
@@ -67,14 +69,14 @@ export function TopBarScopeSection({
 					style={{ height: 14, width: 320, borderRadius: 3 }}
 					aria-hidden
 				/>
-			) : projectPathLabel ? (
+			) : projectLabel ? (
 				<div className="shrink min-w-0 max-w-[240px] overflow-hidden">
 					<span
 						className="font-mono truncate block w-full min-w-0 text-xs max-w-full text-text-secondary"
 						title={projectPath}
 						data-testid="project-path"
 					>
-						{projectPathLabel}
+						{projectLabel}
 					</span>
 				</div>
 			) : null}

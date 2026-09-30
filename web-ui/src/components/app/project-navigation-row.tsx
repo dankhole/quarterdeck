@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { statusPillColors } from "@/data/column-colors";
+import type { ProjectManagementMenuActions } from "@/hooks/project/use-project-management";
 import { useProjectMode } from "@/hooks/project/use-project-mode";
 import type { RuntimeProjectSummary } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
@@ -35,6 +36,8 @@ export function ProjectRow({
 	onPreload,
 	onRemove,
 	groupActions,
+	management,
+	actionsDisabled = false,
 }: {
 	project: RuntimeProjectSummary;
 	isCurrent: boolean;
@@ -44,6 +47,8 @@ export function ProjectRow({
 	showDragHandle?: boolean;
 	dragHandleProps?: ButtonHTMLAttributes<HTMLButtonElement> | null;
 	groupActions?: ReactNode;
+	management?: ProjectManagementMenuActions | null;
+	actionsDisabled?: boolean;
 	isDragging?: boolean;
 	onSelect: (id: string) => void;
 	onPreload?: (id: string) => void;
@@ -55,6 +60,9 @@ export function ProjectRow({
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const isRemovingProject = removingProjectId === project.id;
 	const hasAnyProjectRemoval = removingProjectId !== null;
+	const isUnavailable = project.availability?.status === "unavailable";
+	const managementPending = management?.pendingProjectId != null;
+	const areActionsDisabled = actionsDisabled || hasAnyProjectRemoval || managementPending;
 	const displayCounts = resolveProjectNavigationTaskCounts(project.taskCounts, needsInputCount);
 
 	useEffect(() => {
@@ -93,7 +101,7 @@ export function ProjectRow({
 		<>
 			<div
 				onMouseEnter={() => {
-					if (isCurrent || !onPreload) {
+					if (isCurrent || isUnavailable || !onPreload) {
 						return;
 					}
 					hoverTimerRef.current = window.setTimeout(() => {
@@ -169,6 +177,7 @@ export function ProjectRow({
 					>
 						{displayPath}
 					</div>
+					{isUnavailable ? <div className="mt-1 text-[11px] text-status-orange">Folder unavailable</div> : null}
 					{taskCountBadges.length > 0 ? (
 						<div className="flex gap-1 mt-1">
 							{taskCountBadges.map((badge) => (
@@ -195,7 +204,7 @@ export function ProjectRow({
 								variant="ghost"
 								size="sm"
 								icon={isRemovingProject ? <Spinner size={12} /> : <Ellipsis size={14} />}
-								disabled={hasAnyProjectRemoval && !isRemovingProject}
+								disabled={actionsDisabled || managementPending || (hasAnyProjectRemoval && !isRemovingProject)}
 								className={
 									isCurrent ? "text-white hover:bg-white/20 hover:text-white active:bg-white/30" : undefined
 								}
@@ -213,8 +222,35 @@ export function ProjectRow({
 								className="z-50 min-w-[140px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg"
 							>
 								{groupActions}
+								{management ? (
+									<>
+										<DropdownMenu.Item
+											className="rounded-sm px-2 py-1.5 text-[13px] cursor-pointer outline-none data-[highlighted]:bg-surface-3 data-[disabled]:opacity-40"
+											disabled={areActionsDisabled}
+											onSelect={() => management.requestRename(project.id)}
+										>
+											Rename project…
+										</DropdownMenu.Item>
+										<DropdownMenu.Item
+											className="rounded-sm px-2 py-1.5 text-[13px] cursor-pointer outline-none data-[highlighted]:bg-surface-3 data-[disabled]:opacity-40"
+											disabled={areActionsDisabled}
+											onSelect={() => management.requestLocate(project.id)}
+										>
+											Locate folder…
+										</DropdownMenu.Item>
+										<DropdownMenu.Item
+											className="rounded-sm px-2 py-1.5 text-[13px] cursor-pointer outline-none data-[highlighted]:bg-surface-3 data-[disabled]:opacity-40"
+											disabled={areActionsDisabled || isUnavailable}
+											onSelect={() => management.requestRenameFolder(project.id)}
+										>
+											Rename folder on disk…
+										</DropdownMenu.Item>
+										<DropdownMenu.Separator className="my-1 h-px bg-border" />
+									</>
+								) : null}
 								<DropdownMenu.Item
-									className="rounded-sm px-2 py-1.5 text-[13px] cursor-pointer outline-none data-[highlighted]:bg-surface-3"
+									className="rounded-sm px-2 py-1.5 text-[13px] cursor-pointer outline-none data-[highlighted]:bg-surface-3 data-[disabled]:opacity-40"
+									disabled={areActionsDisabled || isUnavailable}
 									onSelect={mode.request}
 								>
 									{project.folderOnly ? "Enable Git" : "Use as folder project"}
@@ -222,6 +258,7 @@ export function ProjectRow({
 								<DropdownMenu.Item
 									className="flex items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-status-red cursor-pointer outline-none data-[highlighted]:bg-surface-3"
 									onSelect={() => onRemove(project.id)}
+									disabled={areActionsDisabled}
 								>
 									Delete
 								</DropdownMenu.Item>

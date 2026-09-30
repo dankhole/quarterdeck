@@ -6,6 +6,7 @@ import {
 	clearTaskWorktreeSnapshot,
 	getHomeGitStateVersion,
 	getProjectMetadataProjectId,
+	getProjectMetadataScopeVersion,
 	getProjectPath,
 	getTaskWorktreeInfo,
 	getTaskWorktreeSnapshot,
@@ -55,6 +56,23 @@ function createMetadata(branch: string, path: string, stateVersion: number): Run
 }
 
 describe("project metadata store scoping", () => {
+	it("clears old-path Git data and rejects its late response after same-project relocation", () => {
+		setProjectMetadataScope("project-a");
+		setProjectPath("project-a", "/old");
+		replaceProjectMetadata("project-a", createMetadata("main", "/old/task", 5));
+		const oldScope = getProjectMetadataScopeVersion("project-a");
+		setProjectPath("project-a", "/new");
+		expect(getProjectPath()).toBe("/new");
+		expect(getTaskWorktreeInfo("shared-task-id")).toBeNull();
+		expect(setHomeGitSummary("project-a", createMetadata("stale", "/old/task", 6).homeGitSummary, oldScope)).toBe(
+			false,
+		);
+		expect(getHomeGitStateVersion()).toBe(0);
+		setProjectPath("project-a", "/old");
+		expect(setHomeGitSummary("project-a", createMetadata("stale", "/old/task", 6).homeGitSummary, oldScope)).toBe(
+			false,
+		);
+	});
 	afterEach(() => {
 		resetProjectMetadataStore();
 	});

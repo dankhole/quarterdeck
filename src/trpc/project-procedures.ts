@@ -85,7 +85,7 @@ import {
 	SUMMARY_ORIGINAL_PROMPT_LIMIT,
 	SUMMARY_PREVIOUS_ACTIVITY_LIMIT,
 } from "../title";
-import { projectGitProcedure, projectProcedure, t } from "./app-router-init";
+import { projectGitProcedure, projectProcedure, savedProjectProcedure, t } from "./app-router-init";
 import { codeNavigationRouter } from "./code-navigation-router";
 
 const log = createTaggedLogger("task-gen");
@@ -289,7 +289,7 @@ export const projectRouter = t.router({
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.deleteWorkdirEntry(ctx.projectScope, input);
 		}),
-	getState: projectProcedure.output(runtimeProjectStateResponseSchema).query(async ({ ctx }) => {
+	getState: savedProjectProcedure.output(runtimeProjectStateResponseSchema).query(async ({ ctx }) => {
 		return await ctx.projectApi.loadState(ctx.projectScope);
 	}),
 	applyBoardCommands: projectProcedure

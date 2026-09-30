@@ -231,6 +231,130 @@ describe("ProjectMetadataMonitor", () => {
 		vi.useRealTimers();
 	});
 
+	it("retains unavailable client visibility without attaching Git monitoring, then resumes at the current location", async () => {
+		const onMetadataUpdated = vi.fn();
+		const monitor = createProjectMetadataMonitor({ onMetadataUpdated });
+		const project = { projectId: "unavailable", projectPath: "/old", board: createBoard([]) };
+		try {
+			await monitor.connectProject({ ...project, available: false, metadataRevision: 1, clientId: "a" });
+			await monitor.connectProject({ ...project, available: false, metadataRevision: 1, clientId: "b" });
+			expect(monitor.getDiagnosticSnapshot().projects).toEqual([]);
+			expect(loaderMocks.loadHomeGitMetadata).not.toHaveBeenCalled();
+			expect(workdirMocks.runGit).not.toHaveBeenCalled();
+			await monitor.updateProjectState({ ...project, projectPath: "/new", metadataRevision: 2 });
+			expect(monitor.getDiagnosticSnapshot().projects[0]?.connectedClientCount).toBe(2);
+			expect(onMetadataUpdated).toHaveBeenCalledWith(
+				"unavailable",
+				expect.objectContaining({
+					metadataRevision: 2,
+					homeGitSummary: expect.objectContaining({ currentBranch: "home-/new" }),
+				}),
+			);
+		} finally {
+			monitor.close();
+		}
+	});
+
+	it("drains an in-flight fetch and metadata read before relocation and fences their publications", async () => {
+		const onMetadataUpdated = vi.fn();
+		const monitor = createProjectMetadataMonitor({ onMetadataUpdated });
+		const home = createDeferred<CachedHomeGitMetadata>();
+		const fetch = createDeferred<{ ok: boolean; stdout: string; stderr: string; exitCode: number }>();
+		loaderMocks.loadHomeGitMetadata.mockReturnValueOnce(home.promise);
+		workdirMocks.runGit.mockReturnValueOnce(fetch.promise);
+		const project = { projectId: "relocate", projectPath: "/before", board: createBoard([]) };
+		try {
+			const connecting = monitor.connectProject({ ...project, metadataRevision: 1, clientId: "browser" });
+			await vi.waitFor(() => expect(workdirMocks.runGit).toHaveBeenCalled());
+			let suspended = false;
+			const suspending = monitor.suspendProject(project.projectId).then(() => {
+				suspended = true;
+			});
+			await Promise.resolve();
+			expect(suspended).toBe(false);
+			home.resolve(createHomeMetadata("/before", "old"));
+			await connecting;
+			expect(suspended).toBe(false);
+			fetch.resolve({ ok: true, stdout: "", stderr: "", exitCode: 0 });
+			await suspending;
+			expect(onMetadataUpdated).not.toHaveBeenCalled();
+			await monitor.updateProjectState({ ...project, projectPath: "/after", metadataRevision: 2 });
+			expect(onMetadataUpdated).toHaveBeenCalledWith("relocate", expect.objectContaining({ metadataRevision: 2 }));
+			expect(monitor.getDiagnosticSnapshot().projects[0]?.connectedClientCount).toBe(1);
+		} finally {
+			monitor.close();
+		}
+	});
+
+	it("retains existing subscriptions when a new connection observes the relocated folder first", async () => {
+		const monitor = createProjectMetadataMonitor({ onMetadataUpdated: vi.fn() });
+		const project = { projectId: "relocated-connect", projectPath: "/before", board: createBoard([]) };
+		try {
+			await monitor.connectProject({ ...project, metadataRevision: 1, clientId: "first" });
+			await monitor.connectProject({ ...project, projectPath: "/after", metadataRevision: 2, clientId: "second" });
+			expect(monitor.getDiagnosticSnapshot().projects[0]?.connectedClientCount).toBe(2);
+			monitor.disconnectProject(project.projectId, "second");
+			expect(monitor.getDiagnosticSnapshot().projects[0]?.connectedClientCount).toBe(1);
+			monitor.disconnectProject(project.projectId, "first");
+			expect(monitor.getDiagnosticSnapshot().projects).toEqual([]);
+		} finally {
+			monitor.close();
+		}
+	});
+
+	it("drains a retired metadata read when the final client disconnects before relocation", async () => {
+		const onMetadataUpdated = vi.fn();
+		const monitor = createProjectMetadataMonitor({ onMetadataUpdated });
+		const home = createDeferred<CachedHomeGitMetadata>();
+		loaderMocks.loadHomeGitMetadata.mockReturnValueOnce(home.promise);
+		try {
+			const connecting = monitor.connectProject({
+				projectId: "disconnected",
+				projectPath: "/before",
+				board: createBoard([]),
+				clientId: "browser",
+				isDocumentVisible: false,
+			});
+			await vi.waitFor(() => expect(loaderMocks.loadHomeGitMetadata).toHaveBeenCalled());
+			monitor.disconnectProject("disconnected", "browser");
+			let suspended = false;
+			const suspending = monitor.suspendProject("disconnected").then(() => {
+				suspended = true;
+			});
+			await Promise.resolve();
+			expect(suspended).toBe(false);
+			home.resolve(createHomeMetadata("/before", "old"));
+			await Promise.all([connecting, suspending]);
+			expect(onMetadataUpdated).not.toHaveBeenCalled();
+		} finally {
+			monitor.close();
+		}
+	});
+
+	it("never stamps a former path's late result with the current metadata revision", async () => {
+		const onMetadataUpdated = vi.fn();
+		const monitor = createProjectMetadataMonitor({ onMetadataUpdated });
+		const old = createDeferred<CachedHomeGitMetadata>();
+		loaderMocks.loadHomeGitMetadata.mockReturnValueOnce(old.promise);
+		const project = { projectId: "generation", projectPath: "/old", board: createBoard([]) };
+		try {
+			const connecting = monitor.connectProject({
+				...project,
+				metadataRevision: 1,
+				clientId: "browser",
+				isDocumentVisible: false,
+			});
+			await vi.waitFor(() => expect(loaderMocks.loadHomeGitMetadata).toHaveBeenCalled());
+			await monitor.updateProjectState({ ...project, projectPath: "/new", metadataRevision: 2 });
+			onMetadataUpdated.mockClear();
+			old.resolve(createHomeMetadata("/old", "stale"));
+			await connecting;
+			expect(onMetadataUpdated).not.toHaveBeenCalled();
+		} finally {
+			monitor.close();
+		}
+	});
+
 	it.each(["disable", "disconnect"] as const)(
 		"does not revive a monitor when clients %s during Git enablement",
 		async (action) => {

@@ -1,7 +1,13 @@
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function CreateTaskButton({ onClick }: { onClick: () => void }): React.ReactElement {
+export function CreateTaskButton({
+	onClick,
+	disabled = false,
+}: {
+	onClick: () => void;
+	disabled?: boolean;
+}): React.ReactElement {
 	return (
 		<div className="shrink-0 px-2 pt-3 pb-2">
 			<Button
@@ -10,6 +16,7 @@ export function CreateTaskButton({ onClick }: { onClick: () => void }): React.Re
 				icon={<Plus size={16} className="text-accent" />}
 				aria-label="Create task"
 				onClick={onClick}
+				disabled={disabled}
 			>
 				Create task{" "}
 				<span

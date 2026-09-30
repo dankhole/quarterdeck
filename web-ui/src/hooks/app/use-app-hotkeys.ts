@@ -5,6 +5,7 @@ import type { CardSelection } from "@/types";
 interface UseAppHotkeysInput {
 	selectedCard: CardSelection | null;
 	canUseCreateTaskShortcut: boolean;
+	canUseProjectActions?: boolean;
 	currentProjectId: string | null;
 	handleToggleDetailTerminal: () => void;
 	handleToggleHomeTerminal: () => void;
@@ -18,6 +19,7 @@ interface UseAppHotkeysInput {
 export function useAppHotkeys({
 	selectedCard,
 	canUseCreateTaskShortcut,
+	canUseProjectActions = true,
 	currentProjectId,
 	handleToggleDetailTerminal,
 	handleToggleHomeTerminal,
@@ -30,6 +32,7 @@ export function useAppHotkeys({
 	useHotkeys(
 		"mod+j",
 		() => {
+			if (!canUseProjectActions || !currentProjectId) return;
 			if (selectedCard) {
 				handleToggleDetailTerminal();
 				return;
@@ -41,19 +44,19 @@ export function useAppHotkeys({
 			enableOnContentEditable: true,
 			preventDefault: true,
 		},
-		[handleToggleDetailTerminal, handleToggleHomeTerminal, selectedCard],
+		[canUseProjectActions, currentProjectId, handleToggleDetailTerminal, handleToggleHomeTerminal, selectedCard],
 	);
 
 	useHotkeys(
 		"c",
 		() => {
-			if (!canUseCreateTaskShortcut) {
+			if (!canUseProjectActions || !canUseCreateTaskShortcut) {
 				return;
 			}
 			handleOpenCreateTask();
 		},
 		{ preventDefault: true },
-		[canUseCreateTaskShortcut, handleOpenCreateTask],
+		[canUseCreateTaskShortcut, canUseProjectActions, handleOpenCreateTask],
 	);
 
 	useHotkeys(
@@ -85,7 +88,7 @@ export function useAppHotkeys({
 	useHotkeys(
 		"mod+p",
 		() => {
-			if (!currentProjectId) return;
+			if (!canUseProjectActions || !currentProjectId) return;
 			handleToggleFileFinder();
 		},
 		{
@@ -93,13 +96,13 @@ export function useAppHotkeys({
 			enableOnContentEditable: true,
 			preventDefault: true,
 		},
-		[currentProjectId, handleToggleFileFinder],
+		[canUseProjectActions, currentProjectId, handleToggleFileFinder],
 	);
 
 	useHotkeys(
 		"mod+shift+f",
 		() => {
-			if (!currentProjectId) return;
+			if (!canUseProjectActions || !currentProjectId) return;
 			handleToggleTextSearch();
 		},
 		{
@@ -107,6 +110,6 @@ export function useAppHotkeys({
 			enableOnContentEditable: true,
 			preventDefault: true,
 		},
-		[currentProjectId, handleToggleTextSearch],
+		[canUseProjectActions, currentProjectId, handleToggleTextSearch],
 	);
 }

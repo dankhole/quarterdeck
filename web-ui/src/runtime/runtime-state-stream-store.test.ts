@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createInitialBoardData } from "@/data/board-data";
-import { createInitialRuntimeStateStreamStore, runtimeStateStreamReducer } from "@/runtime/runtime-state-stream-store";
-import type { RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
+import {
+	createInitialRuntimeStateStreamStore,
+	mergeProjectSummariesByRevision,
+	runtimeStateStreamReducer,
+} from "@/runtime/runtime-state-stream-store";
+import type { RuntimeProjectStateResponse, RuntimeProjectSummary, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { createTestProjectStateResponse, createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 import type { BoardData } from "@/types";
 
@@ -716,6 +720,115 @@ describe("runtimeStateStreamReducer", () => {
 			replace: true,
 		});
 		expect(newRuntimeBaseline.notificationMemory.projects["project-a"]).toBeUndefined();
+	});
+});
+
+describe("project location ordering", () => {
+	const project: RuntimeProjectSummary = {
+		id: "project-a",
+		name: "Old",
+		path: "/old",
+		boardRevision: 8,
+		metadataRevision: 1,
+		taskCounts: { in_progress: 2, review: 0, trash: 0 },
+	};
+	const moved: RuntimeProjectSummary = {
+		...project,
+		name: "New",
+		path: "/new",
+		boardRevision: 7,
+		metadataRevision: 2,
+	};
+
+	it("accepts new names and paths while preserving newer board counts", () => {
+		const merged = mergeProjectSummariesByRevision(
+			[project],
+			[{ ...moved, taskCounts: { in_progress: 1, review: 0, trash: 0 } }],
+		);
+		expect(merged[0]).toMatchObject({
+			name: "New",
+			path: "/new",
+			metadataRevision: 2,
+			boardRevision: 8,
+			taskCounts: project.taskCounts,
+		});
+		expect(mergeProjectSummariesByRevision(merged, [{ ...project, boardRevision: 9 }])[0]).toMatchObject({
+			name: "New",
+			path: "/new",
+			metadataRevision: 2,
+			boardRevision: 9,
+		});
+	});
+
+	it("applies management responses to existing identities and retains the board when unavailable", () => {
+		const oldState = createTestProjectStateResponse({ revision: 8, metadataRevision: 1, repoPath: "/old" });
+		const state = {
+			...createInitialRuntimeStateStreamStore("project-a"),
+			projects: [project],
+			projectState: oldState,
+		};
+		const next = runtimeStateStreamReducer(state, {
+			type: "project_management_updated",
+			project: { ...moved, availability: { status: "unavailable", reason: "missing" } },
+		});
+		expect(next.projectState).toMatchObject({
+			repoPath: "/new",
+			metadataRevision: 2,
+			revision: 8,
+			availability: { status: "unavailable" },
+		});
+		expect(next.projectState?.board).toBe(oldState.board);
+		const removed = runtimeStateStreamReducer(next, {
+			type: "project_management_updated",
+			project: { ...moved, id: "removed" },
+		});
+		expect(removed).toBe(next);
+	});
+
+	it("fences old-path states, snapshots, and Git metadata after a location response", () => {
+		const oldState = createTestProjectStateResponse({ revision: 8, metadataRevision: 1, repoPath: "/old" });
+		const initial = {
+			...createInitialRuntimeStateStreamStore("project-a"),
+			projects: [moved],
+			projectState: { ...oldState, repoPath: "/new", metadataRevision: 2 },
+		};
+		const state = runtimeStateStreamReducer(initial, {
+			type: "project_state_updated",
+			projectId: "project-a",
+			projectState: { ...oldState, revision: 9 },
+		});
+		expect(state.projectState).toMatchObject({ repoPath: "/new", revision: 9, metadataRevision: 2 });
+		const snapshot = runtimeStateStreamReducer(state, {
+			type: "snapshot",
+			payload: {
+				type: "snapshot",
+				currentProjectId: "project-a",
+				projects: [project],
+				projectState: oldState,
+				projectMetadata: {
+					metadataRevision: 1,
+					homeGitSummary: null,
+					homeGitStateVersion: 5,
+					homeStashCount: 0,
+					taskWorktrees: [],
+				},
+			},
+		});
+		expect(snapshot.projectState).toMatchObject({ repoPath: "/new", revision: 9, metadataRevision: 2 });
+		expect(snapshot.projects[0]?.path).toBe("/new");
+		expect(snapshot.projectMetadata).toBeNull();
+		const lateMetadata = runtimeStateStreamReducer(snapshot, {
+			type: "project_metadata_updated",
+			projectId: "project-a",
+			projectMetadata: {
+				metadataRevision: 1,
+				homeGitSummary: null,
+				homeGitStateVersion: 6,
+				homeStashCount: 0,
+				taskWorktrees: [],
+			},
+		});
+		expect(lateMetadata).toBe(snapshot);
 	});
 });
 

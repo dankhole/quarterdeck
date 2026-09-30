@@ -193,6 +193,11 @@ export class ProjectMetadataController {
 
 	dispose(): void {
 		this.stopPolicies();
+		this.refresher.dispose();
+	}
+
+	async waitForIdle(): Promise<void> {
+		await Promise.all([this.remoteFetchPolicy.waitForIdle(), this.refresher.waitForIdle()]);
 	}
 
 	private stopPolicies(): void {

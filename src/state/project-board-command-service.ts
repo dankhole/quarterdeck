@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import type {
 	RuntimeBoardData,
@@ -13,6 +14,7 @@ import {
 	createTaggedLogger,
 	findCardInBoard,
 	isLifecycleManagedBoardCommand,
+	normalizeRuntimeTaskSessionSummary,
 	projectRuntimeSessionsOntoBoard,
 	projectRuntimeTaskBaseRefOntoBoard,
 	projectRuntimeTaskMetadataOntoBoard,
@@ -20,7 +22,12 @@ import {
 	runtimeProjectBoardCommandEnvelopeSchema,
 } from "../core";
 import { getLegacyBacklogCommandFingerprints } from "./legacy-backlog-command-receipts";
-import { type ApplyProjectBoardMutationResult, applyProjectBoardMutation } from "./project-state";
+import {
+	type ApplyProjectBoardMutationResult,
+	applyProjectBoardMutation,
+	applyProjectBoardMutationById,
+	loadSavedProjectStateById,
+} from "./project-state";
 import { assertTaskPinsAllowedUnderLock } from "./project-task-lifecycle-operation-store";
 
 const log = createTaggedLogger("project-board-command");
@@ -80,8 +87,16 @@ export class ProjectBoardLifecycleCommandRequiredError extends Error {
  */
 export class ProjectBoardCommandService {
 	private readonly postCommitListeners = new Set<ProjectBoardPostCommitListener>();
+	private runProjectOperation = <T>(_scope: ProjectBoardCommandScope, operation: () => Promise<T>): Promise<T> =>
+		operation();
 
 	constructor(private readonly dependencies: ProjectBoardCommandServiceDependencies) {}
+
+	setProjectOperationRunner(
+		runner: <T>(scope: ProjectBoardCommandScope, operation: () => Promise<T>) => Promise<T>,
+	): void {
+		this.runProjectOperation = runner;
+	}
 
 	subscribeToPostCommitEffects(listener: ProjectBoardPostCommitListener): () => void {
 		this.postCommitListeners.add(listener);
@@ -106,42 +121,44 @@ export class ProjectBoardCommandService {
 		scope: ProjectBoardCommandScope,
 		input: ExecuteProjectBoardCommandBatchInput,
 	): Promise<ApplyProjectBoardMutationResult> {
-		const envelope = runtimeProjectBoardCommandBatchEnvelopeSchema.parse(input);
-		const fingerprint = createHash("sha256").update(JSON.stringify(envelope.commands)).digest("hex");
-		const sessions = await this.dependencies.getAuthoritativeSessions(scope);
-		const result = await applyProjectBoardMutation(scope.projectPath, {
-			expectedRevision: envelope.expectedRevision,
-			sessions,
-			commandIdentity: {
-				commandId: envelope.commandId,
-				fingerprint,
-				legacyFingerprints: getLegacyBacklogCommandFingerprints(envelope.commands),
-			},
-			mutate: (board) => applyProjectBoardCommands(board, envelope.commands),
-			validateMutationUnderLock: async (before, after) => {
-				if (!envelope.commands.some((command) => "pinned" in command && command.pinned === true)) return;
-				const previouslyPinned = new Set(
-					before.columns.flatMap((column) => column.cards.filter((card) => card.pinned).map((card) => card.id)),
-				);
-				const newlyPinned = after.columns
-					.flatMap((column) => column.cards)
-					.filter((card) => card.pinned && !previouslyPinned.has(card.id));
-				await assertTaskPinsAllowedUnderLock(scope, newlyPinned);
-			},
-		});
-		try {
-			await this.dependencies.publishAuthoritativeState?.(scope, result);
-		} catch (error) {
-			// Persistence already committed. Publication is a wake-up hint and a
-			// later replay/reconnect can publish the same authoritative snapshot.
-			log.warn("authoritative board state publication failed", {
-				projectId: scope.projectId,
-				commandId: envelope.commandId,
-				error: toErrorMessage(error),
+		return await this.runProjectOperation(scope, async () => {
+			const envelope = runtimeProjectBoardCommandBatchEnvelopeSchema.parse(input);
+			const fingerprint = createHash("sha256").update(JSON.stringify(envelope.commands)).digest("hex");
+			const sessions = await this.dependencies.getAuthoritativeSessions(scope);
+			const result = await applyProjectBoardMutation(scope.projectPath, {
+				expectedRevision: envelope.expectedRevision,
+				sessions,
+				commandIdentity: {
+					commandId: envelope.commandId,
+					fingerprint,
+					legacyFingerprints: getLegacyBacklogCommandFingerprints(envelope.commands),
+				},
+				mutate: (board) => applyProjectBoardCommands(board, envelope.commands),
+				validateMutationUnderLock: async (before, after) => {
+					if (!envelope.commands.some((command) => "pinned" in command && command.pinned === true)) return;
+					const previouslyPinned = new Set(
+						before.columns.flatMap((column) => column.cards.filter((card) => card.pinned).map((card) => card.id)),
+					);
+					const newlyPinned = after.columns
+						.flatMap((column) => column.cards)
+						.filter((card) => card.pinned && !previouslyPinned.has(card.id));
+					await assertTaskPinsAllowedUnderLock(scope, newlyPinned);
+				},
 			});
-		}
-		this.publishPostCommitEffects(scope, envelope.commandId, envelope.commands, result);
-		return result;
+			try {
+				await this.dependencies.publishAuthoritativeState?.(scope, result);
+			} catch (error) {
+				// Persistence already committed. Publication is a wake-up hint and a
+				// later replay/reconnect can publish the same authoritative snapshot.
+				log.warn("authoritative board state publication failed", {
+					projectId: scope.projectId,
+					commandId: envelope.commandId,
+					error: toErrorMessage(error),
+				});
+			}
+			this.publishPostCommitEffects(scope, envelope.commandId, envelope.commands, result);
+			return result;
+		});
 	}
 
 	async executeClientBatch(
@@ -158,9 +175,56 @@ export class ProjectBoardCommandService {
 
 	async reconcileRuntimeSessions(scope: ProjectBoardCommandScope): Promise<ApplyProjectBoardMutationResult> {
 		const sessions = await this.dependencies.getAuthoritativeSessions(scope);
-		return await this.executeInternalMutation(scope, sessions, (board) =>
+		return await this.persistRuntimeProjection(scope, sessions, (board) =>
 			projectRuntimeSessionsOntoBoard(board, Object.values(sessions), scope.projectPath),
 		);
+	}
+
+	/** Internal relocation commit. The caller has stopped and detached every project writer. */
+	async relocateProjectPaths(
+		projectId: string,
+		oldPath: string,
+		newPath: string,
+		taskWorkingDirectories: Readonly<Record<string, string>>,
+	): Promise<ApplyProjectBoardMutationResult> {
+		const saved = await loadSavedProjectStateById(projectId);
+		if (!saved) throw new Error("Project no longer exists.");
+		const rebasePath = (path: string): string => {
+			const child = relative(oldPath, path);
+			return child === "" || (!isAbsolute(child) && child !== ".." && !child.startsWith(`..${sep}`))
+				? resolve(newPath, child)
+				: path;
+		};
+		const sessions = Object.fromEntries(
+			Object.entries(saved.sessions).map(([taskId, session]) => [
+				taskId,
+				{
+					...normalizeRuntimeTaskSessionSummary(session, { invalidateNativeWorkEvidence: true }),
+					sessionLaunchPath: session.sessionLaunchPath ? rebasePath(session.sessionLaunchPath) : null,
+					pid: null,
+					startupRecoveryRequired: false,
+				},
+			]),
+		);
+		return await applyProjectBoardMutationById(projectId, {
+			sessions,
+			persistSessionsOnNoop: true,
+			mutate: (board) => {
+				let changed = false;
+				const columns = board.columns.map((column) => ({
+					...column,
+					cards: column.cards.map((card) => {
+						const workingDirectory =
+							taskWorkingDirectories[card.id] ??
+							(card.workingDirectory ? rebasePath(card.workingDirectory) : card.workingDirectory);
+						if (workingDirectory === card.workingDirectory) return card;
+						changed = true;
+						return { ...card, workingDirectory };
+					}),
+				}));
+				return { board: changed ? { ...board, columns } : board, changed };
+			},
+		});
 	}
 
 	async reconcileRuntimeMetadata(
@@ -168,7 +232,7 @@ export class ProjectBoardCommandService {
 		metadata: RuntimeProjectMetadata,
 	): Promise<ApplyProjectBoardMutationResult> {
 		const sessions = await this.dependencies.getAuthoritativeSessions(scope);
-		return await this.executeInternalMutation(scope, sessions, (board) =>
+		return await this.persistRuntimeProjection(scope, sessions, (board) =>
 			projectRuntimeTaskMetadataOntoBoard(board, metadata.taskWorktrees, scope.projectPath),
 		);
 	}
@@ -179,7 +243,7 @@ export class ProjectBoardCommandService {
 		baseRef: string,
 	): Promise<ApplyProjectBoardMutationResult> {
 		const sessions = await this.dependencies.getAuthoritativeSessions(scope);
-		return await this.executeInternalMutation(scope, sessions, (board) =>
+		return await this.persistRuntimeProjection(scope, sessions, (board) =>
 			projectRuntimeTaskBaseRefOntoBoard(board, taskId, baseRef),
 		);
 	}
@@ -190,8 +254,7 @@ export class ProjectBoardCommandService {
 		baseRef: string,
 	): Promise<ApplyProjectBoardMutationResult> {
 		if (!baseRef.trim()) throw new Error("A Git base ref is required to enable Git.");
-		const sessions = await this.dependencies.getAuthoritativeSessions(scope);
-		return await this.executeInternalMutation(scope, sessions, (board) => {
+		return await this.executeInternalMutation(scope, (board) => {
 			let changed = false;
 			const columns = board.columns.map((column) => ({
 				...column,
@@ -217,8 +280,7 @@ export class ProjectBoardCommandService {
 			isCurrent?: (board: RuntimeBoardData) => boolean;
 		} = {},
 	): Promise<ApplyProjectBoardMutationResult> {
-		const sessions = await this.dependencies.getAuthoritativeSessions(scope);
-		return await this.executeInternalMutation(scope, sessions, (board) => {
+		return await this.executeInternalMutation(scope, (board) => {
 			const card = findCardInBoard(board, taskId);
 			const expectedTitle = options.expectedTitle ?? null;
 			if (
@@ -314,10 +376,23 @@ export class ProjectBoardCommandService {
 
 	private async executeInternalMutation(
 		scope: ProjectBoardCommandScope,
+		mutate: Parameters<typeof applyProjectBoardMutation>[1]["mutate"],
+	): Promise<ApplyProjectBoardMutationResult> {
+		return await this.runProjectOperation(scope, async () => {
+			const sessions = await this.dependencies.getAuthoritativeSessions(scope);
+			return await this.persistRuntimeProjection(scope, sessions, mutate);
+		});
+	}
+
+	/** Runtime persistence/metadata owners are explicitly detached and drained before relocation commits.
+	 * Their final writes must remain outside admission or that drain would wait behind its own exclusion.
+	 */
+	private async persistRuntimeProjection(
+		scope: ProjectBoardCommandScope,
 		sessions: Record<string, RuntimeTaskSessionSummary>,
 		mutate: Parameters<typeof applyProjectBoardMutation>[1]["mutate"],
 	): Promise<ApplyProjectBoardMutationResult> {
-		const result = await applyProjectBoardMutation(scope.projectPath, {
+		const result = await applyProjectBoardMutationById(scope.projectId, {
 			sessions,
 			persistSessionsOnNoop: true,
 			mutate,

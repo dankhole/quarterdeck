@@ -137,12 +137,14 @@ export function BoardCardConversation({
 	summary,
 	replyScope,
 	statusBadges,
+	readOnly = false,
 }: {
 	card: BoardCard;
 	columnId: BoardColumnId;
 	summary?: RuntimeTaskSessionSummary;
 	replyScope?: BoardReplyScope;
 	statusBadges?: ReactNode;
+	readOnly?: boolean;
 }): React.ReactElement {
 	const latest = card.unstarted ? undefined : summary?.conversationSummaries?.at(-1);
 	const finalMessage = card.unstarted ? undefined : summary?.latestHookActivity?.finalMessage?.slice(0, 500);
@@ -159,7 +161,7 @@ export function BoardCardConversation({
 	).slice(0, 500);
 	return (
 		<>
-			<div className="my-2 min-h-[120px] flex-1 cursor-pointer rounded-md bg-surface-0/60 px-2 py-1.5">
+			<div className="my-2 min-h-[120px] flex-1 rounded-md bg-surface-0/60 px-2 py-1.5">
 				<p className="m-0 line-clamp-6 whitespace-pre-wrap break-words text-xs leading-[18px] text-text-primary/90">
 					{text || "No response yet. Open the agent to follow its progress."}
 				</p>
@@ -168,13 +170,19 @@ export function BoardCardConversation({
 				className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-1.5"
 				onClick={(event) => event.stopPropagation()}
 			>
-				{replyScope && !card.unstarted && columnId !== "trash" ? (
+				{!readOnly && replyScope && !card.unstarted && columnId !== "trash" ? (
 					<div className="min-w-0 flex-1 has-[form]:basis-full has-[form]:order-last">
 						<QuickReply card={card} summary={summary} scope={replyScope} />
 					</div>
 				) : (
 					<span className="py-1 text-xs text-text-secondary">
-						{card.unstarted ? "Ready when you are" : "In Trash"}
+						{readOnly
+							? "Saved task"
+							: card.unstarted
+								? "Ready when you are"
+								: columnId === "trash"
+									? "In Trash"
+									: ""}
 					</span>
 				)}
 				{statusBadges}

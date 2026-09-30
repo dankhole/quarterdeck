@@ -4,6 +4,8 @@ import { disposeAllDedicatedTerminalsForProject, releaseAll } from "@/terminal/t
 
 interface UseProjectSwitchCleanupInput {
 	currentProjectId: string | null;
+	projectPath: string | null;
+	isProjectUnavailable?: boolean;
 	navigationCurrentProjectId: string | null;
 	isProjectSwitching: boolean;
 	resetTaskEditorWorkflow: () => void;
@@ -20,6 +22,8 @@ interface UseProjectSwitchCleanupInput {
  */
 export function useProjectSwitchCleanup({
 	currentProjectId,
+	projectPath,
+	isProjectUnavailable = false,
 	navigationCurrentProjectId,
 	isProjectSwitching,
 	resetTaskEditorWorkflow,
@@ -32,15 +36,27 @@ export function useProjectSwitchCleanup({
 	// Dispose persistent terminal instances for the previous project.
 	// These hold xterm instances, WebGL contexts, and WebSocket connections that
 	// are no longer reachable once the project changes.
-	const previousProjectIdRef = useRef(currentProjectId);
+	const previousProjectRef = useRef({
+		projectId: currentProjectId,
+		path: projectPath,
+		unavailable: isProjectUnavailable,
+	});
 	useEffect(() => {
-		const previousProjectId = previousProjectIdRef.current;
-		previousProjectIdRef.current = currentProjectId;
-		if (previousProjectId && previousProjectId !== currentProjectId) {
+		const previous = previousProjectRef.current;
+		previousProjectRef.current = {
+			projectId: currentProjectId,
+			path: projectPath,
+			unavailable: isProjectUnavailable,
+		};
+		const locationChanged = previous.path !== null && previous.path !== projectPath;
+		if (
+			previous.projectId &&
+			(previous.projectId !== currentProjectId || locationChanged || (!previous.unavailable && isProjectUnavailable))
+		) {
 			releaseAll();
-			disposeAllDedicatedTerminalsForProject(previousProjectId);
+			disposeAllDedicatedTerminalsForProject(previous.projectId);
 		}
-	}, [currentProjectId]);
+	}, [currentProjectId, projectPath, isProjectUnavailable]);
 
 	// Scope the shared Git/task metadata read model to the navigation target
 	// before paint. Late async results for the previous project are rejected by
@@ -75,6 +91,8 @@ export function useProjectSwitchCleanup({
 		resetTerminalPanelsState();
 	}, [
 		currentProjectId,
+		projectPath,
+		isProjectUnavailable,
 		resetGitActionState,
 		resetProjectNavigationState,
 		resetTaskEditorWorkflow,

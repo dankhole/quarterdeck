@@ -58,7 +58,7 @@ async function persistTaskTitle(
 ): Promise<boolean> {
 	const updatedAt = Date.now();
 	for (let attempt = 0; attempt < 3; attempt += 1) {
-		const current = await ctx.deps.data.buildProjectStateSnapshot(projectScope.projectId, projectScope.projectPath);
+		const current = await ctx.deps.data.buildProjectStateSnapshot(projectScope.projectId);
 		const card = findCardInBoard(current.board, input.taskId);
 		if (!card) {
 			return false;
@@ -152,10 +152,7 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 
 		loadState: async (projectScope) => {
 			try {
-				const state = await ctx.deps.data.buildProjectStateSnapshot(
-					projectScope.projectId,
-					projectScope.projectPath,
-				);
+				const state = await ctx.deps.data.buildProjectStateSnapshot(projectScope.projectId);
 				return state;
 			} catch (error) {
 				ctx.deps.diagnostics?.recordEvent(

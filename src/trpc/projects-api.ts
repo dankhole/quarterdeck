@@ -14,6 +14,7 @@ import {
 	parseProjectRemoveRequest,
 	parseProjectReorderRequest,
 } from "../core";
+import type { ProjectLocationService } from "../server/project-location-service";
 import {
 	isUnderWorktreesHome,
 	listProjectIndexEntries,
@@ -37,6 +38,9 @@ interface DisposeProjectOptions {
 }
 
 export interface CreateProjectsApiDependencies {
+	runRegistrationMutation: <T>(operation: () => Promise<T>) => Promise<T>;
+	runProjectRemoval: <T>(projectId: string, operation: () => Promise<T>) => Promise<T>;
+	projectLocations: Pick<ProjectLocationService, "rename" | "locate" | "renameFolder" | "checkAvailability">;
 	onProjectAdded?: (projectId: string) => void;
 	onProjectRemovalFailed?: (projectId: string) => void;
 	projects: IProjectResolver;
@@ -58,7 +62,11 @@ export interface CreateProjectsApiDependencies {
 }
 
 export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeTrpcContext["projectsApi"] {
-	return {
+	const api: RuntimeTrpcContext["projectsApi"] = {
+		renameProject: deps.projectLocations.rename,
+		locateProject: deps.projectLocations.locate,
+		renameProjectFolder: deps.projectLocations.renameFolder,
+		checkProjectAvailability: deps.projectLocations.checkAvailability,
 		organizeProjects: async (input) => {
 			const result = await updateProjectOrganization(input);
 			if (result.ok)
@@ -144,7 +152,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					? projectsAfterAdd.some((project) => project.projectId === activeProjectId)
 					: false;
 				if (!hasActiveProject) {
-					await deps.projects.setActiveProject(context.projectId, context.repoPath);
+					await deps.projects.setActiveProject(context.projectId);
 				}
 				const project = await deps.data.buildProjectSummary(context.projectId, context.repoPath);
 				if (existing && Boolean(existing.folderOnly) !== folderOnly) {
@@ -220,7 +228,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					const remaining = await listProjectIndexEntries();
 					const fallbackProject = remaining[0];
 					if (fallbackProject) {
-						await deps.projects.setActiveProject(fallbackProject.projectId, fallbackProject.repoPath);
+						await deps.projects.setActiveProject(fallbackProject.projectId);
 					} else {
 						deps.projects.clearActiveProject();
 					}
@@ -280,5 +288,14 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 				return { ok: false, error: message };
 			}
 		},
+	};
+	return {
+		...api,
+		addProject: (preferredProjectId, input) =>
+			deps.runRegistrationMutation(() => api.addProject(preferredProjectId, input)),
+		removeProject: (preferredProjectId, input) =>
+			deps.runRegistrationMutation(() =>
+				deps.runProjectRemoval(input.projectId, () => api.removeProject(preferredProjectId, input)),
+			),
 	};
 }

@@ -13,10 +13,39 @@ export const runtimeProjectTaskCountsSchema = z.object({
 });
 export type RuntimeProjectTaskCounts = z.infer<typeof runtimeProjectTaskCountsSchema>;
 
+export const runtimeProjectAvailabilitySchema = z.discriminatedUnion("status", [
+	z.object({ status: z.literal("available") }),
+	z.object({
+		status: z.literal("unavailable"),
+		reason: z.enum([
+			"missing",
+			"inaccessible",
+			"not_directory",
+			"not_git_repository",
+			"invalid_location",
+			"relocation_pending",
+		]),
+	}),
+]);
+export type RuntimeProjectAvailability = z.infer<typeof runtimeProjectAvailabilitySchema>;
+
+export const runtimeProjectDisplayNameSchema = z
+	.string()
+	.trim()
+	.min(1, "Project name cannot be empty.")
+	.max(120, "Project name cannot exceed 120 characters.")
+	.refine(
+		(name) => !/[\p{Cc}\u2028\u2029]/u.test(name),
+		"Project name must be a single line without control characters.",
+	);
+
 export const runtimeProjectSummarySchema = z.object({
 	id: z.string(),
 	path: z.string(),
 	name: z.string(),
+	displayName: runtimeProjectDisplayNameSchema.optional(),
+	metadataRevision: z.number().int().nonnegative().optional(),
+	availability: runtimeProjectAvailabilitySchema.optional(),
 	folderOnly: z.boolean().optional(),
 	boardRevision: z.number().int().nonnegative(),
 	taskCounts: runtimeProjectTaskCountsSchema,
@@ -43,6 +72,7 @@ export const runtimeTaskWorktreeMetadataSchema = z.object({
 export type RuntimeTaskWorktreeMetadata = z.infer<typeof runtimeTaskWorktreeMetadataSchema>;
 
 export const runtimeProjectMetadataSchema = z.object({
+	metadataRevision: z.number().int().nonnegative().optional(),
 	homeGitSummary: runtimeGitSyncSummarySchema.nullable(),
 	homeGitStateVersion: z.number().int().nonnegative(),
 	homeConflictState: runtimeConflictStateSchema.nullable().optional(),
@@ -65,6 +95,8 @@ export const runtimeProjectStateResponseSchema = z.object({
 	board: runtimeBoardDataSchema,
 	sessions: z.record(z.string(), runtimeTaskSessionSummarySchema),
 	revision: z.number(),
+	metadataRevision: z.number().int().nonnegative().optional(),
+	availability: runtimeProjectAvailabilitySchema.optional(),
 	warnings: z.array(runtimeProjectStateWarningSchema).optional(),
 });
 export type RuntimeProjectStateResponse = z.infer<typeof runtimeProjectStateResponseSchema>;
@@ -91,6 +123,39 @@ export const runtimeProjectAddResponseSchema = z.object({
 	error: z.string().optional(),
 });
 export type RuntimeProjectAddResponse = z.infer<typeof runtimeProjectAddResponseSchema>;
+
+export const runtimeProjectRenameRequestSchema = z.object({
+	projectId: z.string().min(1),
+	name: runtimeProjectDisplayNameSchema.nullable(),
+});
+export type RuntimeProjectRenameRequest = z.infer<typeof runtimeProjectRenameRequestSchema>;
+
+export const runtimeProjectLocateRequestSchema = z.object({
+	projectId: z.string().min(1),
+	expectedPath: z.string().min(1),
+	path: z.string().min(1),
+});
+export type RuntimeProjectLocateRequest = z.infer<typeof runtimeProjectLocateRequestSchema>;
+
+export const runtimeProjectRenameFolderRequestSchema = z.object({
+	projectId: z.string().min(1),
+	expectedPath: z.string().min(1),
+	folderName: z.string().min(1),
+});
+export type RuntimeProjectRenameFolderRequest = z.infer<typeof runtimeProjectRenameFolderRequestSchema>;
+
+export const runtimeProjectCheckAvailabilityRequestSchema = z.object({
+	projectId: z.string().min(1),
+});
+export type RuntimeProjectCheckAvailabilityRequest = z.infer<typeof runtimeProjectCheckAvailabilityRequestSchema>;
+
+export const runtimeProjectManagementResponseSchema = z.object({
+	ok: z.boolean(),
+	project: runtimeProjectSummarySchema.nullable(),
+	state: runtimeProjectStateResponseSchema.optional(),
+	error: z.string().optional(),
+});
+export type RuntimeProjectManagementResponse = z.infer<typeof runtimeProjectManagementResponseSchema>;
 
 export const runtimeProjectDirectoryPickerFailureReasonSchema = z.union([
 	z.literal("cancelled"),

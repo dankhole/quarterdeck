@@ -1,5 +1,5 @@
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, FolderSearch, RefreshCw } from "lucide-react";
 import { type ReactElement, type ReactNode, useEffect, useMemo } from "react";
 import { GitBranchStatusControl } from "@/components/app/top-bar";
 import { QuarterdeckBoard } from "@/components/board";
@@ -11,6 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useBoardContext } from "@/providers/board-provider";
 import { useGitContext } from "@/providers/git-provider";
 import { useInteractionsContext } from "@/providers/interactions-provider";
+import { useProjectManagementContext } from "@/providers/project-management-context";
 import { useProjectNavigationContext, useProjectSyncContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
@@ -38,7 +39,12 @@ export function HomeView({
 	homeGitSummary,
 }: HomeViewProps): ReactElement {
 	const projectNavigation = useProjectNavigationContext();
-	const { projectPath, projectGit } = useProjectSyncContext();
+	const projectManagement = useProjectManagementContext();
+	const isProjectUnavailable = projectNavigation.currentProjectAvailability?.status === "unavailable";
+	const isCheckingAvailability = projectManagement.pendingProjectId === projectNavigation.currentProjectId;
+	const areRecoveryActionsDisabled = isCheckingAvailability || projectNavigation.isRuntimeDisconnected;
+	const { boardProjectId, projectPath, projectGit } = useProjectSyncContext();
+	const hasRetainedBoard = boardProjectId === projectNavigation.currentProjectId;
 	const projectRuntime = useProjectRuntimeContext();
 	const { board, sessions, upsertSession, selectedTaskId, replyDrafts, sendTaskSessionInput } = useBoardContext();
 	const replyScope = useMemo(
@@ -64,11 +70,11 @@ export function HomeView({
 	return (
 		<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 			{topBar}
-			{navigation.mainView !== "git" && (
+			{!isProjectUnavailable && navigation.mainView !== "git" && (
 				<ConflictBanner taskId={selectedTaskId} onNavigateToResolver={navigation.navigateToGitView} />
 			)}
 			<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-				{shouldShowProjectLoadingState ? (
+				{shouldShowProjectLoadingState && !(isProjectUnavailable && hasRetainedBoard) ? (
 					<div className="flex flex-1 min-h-0 items-center justify-center bg-surface-0">
 						<Spinner size={30} />
 					</div>
@@ -90,8 +96,47 @@ export function HomeView({
 					</div>
 				) : (
 					<div className="flex flex-1 flex-col min-h-0 min-w-0">
+						{isProjectUnavailable ? (
+							<section
+								aria-label="Folder unavailable"
+								className="flex flex-wrap items-center justify-between gap-3 border-b border-status-orange/30 bg-status-orange/10 px-5 py-4"
+							>
+								<div className="min-w-0">
+									<h2 className="text-sm font-semibold text-text-primary">Folder unavailable</h2>
+									<p className="mt-1 text-sm text-text-secondary">
+										Your saved tasks and session history are preserved. Locate the folder to continue working.
+									</p>
+									{projectPath ? (
+										<p className="mt-1 break-all font-mono text-xs text-text-tertiary">{projectPath}</p>
+									) : null}
+								</div>
+								<div className="flex shrink-0 items-center gap-2">
+									<Button
+										icon={<FolderSearch size={14} />}
+										disabled={areRecoveryActionsDisabled}
+										onClick={() => {
+											if (projectNavigation.currentProjectId)
+												projectManagement.requestLocate(projectNavigation.currentProjectId);
+										}}
+									>
+										Locate folder…
+									</Button>
+									<Button
+										variant="ghost"
+										icon={isCheckingAvailability ? <Spinner size={14} /> : <RefreshCw size={14} />}
+										disabled={areRecoveryActionsDisabled}
+										onClick={() => {
+											if (projectNavigation.currentProjectId)
+												void projectManagement.checkAvailability(projectNavigation.currentProjectId);
+										}}
+									>
+										Check again
+									</Button>
+								</div>
+							</section>
+						) : null}
 						<div className="flex flex-1 min-h-0 min-w-0">
-							{navigation.mainView === "git" ? (
+							{!isProjectUnavailable && navigation.mainView === "git" ? (
 								<GitView
 									currentProjectId={projectNavigation.currentProjectId}
 									selectedCard={null}
@@ -138,7 +183,7 @@ export function HomeView({
 										) : undefined
 									}
 								/>
-							) : navigation.mainView === "files" ? (
+							) : !isProjectUnavailable && navigation.mainView === "files" ? (
 								<FilesView
 									projectId={projectNavigation.currentProjectId}
 									codeNavigationConfig={projectRuntime.runtimeProjectConfig}
@@ -240,6 +285,7 @@ export function HomeView({
 							) : (
 								<QuarterdeckBoard
 									key={projectNavigation.currentProjectId}
+									readOnly={isProjectUnavailable}
 									replyScope={replyScope}
 									data={board}
 									taskSessions={sessions}
@@ -253,7 +299,7 @@ export function HomeView({
 								/>
 							)}
 						</div>
-						{terminal.showHomeBottomTerminal ? (
+						{!isProjectUnavailable && terminal.showHomeBottomTerminal ? (
 							<ResizableBottomPane
 								minHeight={200}
 								initialHeight={terminal.homeTerminalPaneHeight}

@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Preserve projects whose folders are unavailable, reconnect moved folders with Locate folder, set independent project display names, and rename project folders while retaining tasks, session history, and managed worktrees.
+
 - Read compatible Codex transcript formats across CLI releases, preventing stale task previews and title context caused by an outdated version allowlist.
 
 - Add named project groups with collapse/expand, drag-and-drop and menu moves, saved ordering, and safe group removal that keeps projects and tasks.

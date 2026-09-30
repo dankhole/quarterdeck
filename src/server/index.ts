@@ -15,7 +15,6 @@ export {
 	type DisposeProjectRegistryOptions,
 	type ProjectRegistry,
 	type ProjectRegistryScope,
-	type RemovedProjectNotice,
 	type ResolvedProjectStreamTarget,
 } from "./project-registry";
 export {

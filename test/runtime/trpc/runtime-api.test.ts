@@ -62,7 +62,7 @@ vi.mock("../../../src/core/task-board-mutations.js", () => ({
 
 import { TaskResourceOperationCoordinator } from "../../../src/core";
 import { startTaskSessionThroughService } from "../../../src/server/task-session-start-service";
-import { createRuntimeApi } from "../../../src/trpc";
+import { type CreateRuntimeApiDependencies, createRuntimeApi } from "../../../src/trpc";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return createTestTaskSessionSummary({
@@ -116,6 +116,9 @@ const STORE_METHOD_NAMES = new Set([
  * Build a fake TerminalSessionManager from a flat Record. Keys matching store
  * method names are placed under `.store`; the rest stay at the top level.
  */
+const runProjectOperation: CreateRuntimeApiDependencies["runProjectOperation"] = async (_scope, operation) =>
+	await operation();
+
 function createDeps(flat: Record<string, unknown> = {}) {
 	const store: Record<string, unknown> = {
 		getSummary: vi.fn(() => null),
@@ -130,6 +133,7 @@ function createDeps(flat: Record<string, unknown> = {}) {
 	}
 	const runtimeConfig = createTestRuntimeConfigState();
 	return {
+		runProjectOperation,
 		onCodeNavigationConfigChanged: vi.fn(async () => {}),
 		config: {
 			getActiveRuntimeConfig: vi.fn(() => runtimeConfig),

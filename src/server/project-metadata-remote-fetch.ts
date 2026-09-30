@@ -74,6 +74,10 @@ export class ProjectMetadataRemoteFetchPolicy {
 		void this.performFetch();
 	}
 
+	async waitForIdle(): Promise<void> {
+		await this.fetchPromise;
+	}
+
 	private async performFetch(): Promise<void> {
 		if (this.fetchPromise) {
 			await this.fetchPromise;

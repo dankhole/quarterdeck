@@ -305,7 +305,7 @@ describe("project-state integration", { concurrent: false }, () => {
 					[contextA.projectId, contextB.projectId].sort(),
 				);
 
-				expect(await loadProjectScopeById(contextA.projectId)).toEqual({
+				expect(await loadProjectScopeById(contextA.projectId)).toMatchObject({
 					projectId: contextA.projectId,
 					repoPath: contextA.repoPath,
 					statePath: contextA.statePath,

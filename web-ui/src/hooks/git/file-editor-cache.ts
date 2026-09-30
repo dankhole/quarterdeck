@@ -152,8 +152,9 @@ export function getFileEditorDrafts(
 }
 
 /** Every destructive caller checks current drafts immediately before dispatch. */
-export function guardFileEditorScopes(target: FileEditorScopeTarget): boolean {
-	if (getFileEditorDrafts(target).length === 0) return true;
+export function guardFileEditorScopes(target: FileEditorScopeTarget, options?: { includeDetached?: boolean }): boolean {
+	const drafts = getFileEditorDrafts(target);
+	if (!drafts.some((draft) => options?.includeDetached !== false || !draft.detached)) return true;
 	reviewTarget = target;
 	changed();
 	return false;
@@ -218,16 +219,34 @@ export function retireFileEditorScopes(target: FileEditorScopeTarget): void {
 /** Project lists are complete; task/worktree snapshots are scoped to one project. */
 export function reconcileFileEditorProjects(projects: readonly RuntimeProjectSummary[]): void {
 	const projectIds = new Set(projects.map((project) => project.id));
+	const unavailableProjectIds = new Set(
+		projects.filter((project) => project.availability?.status === "unavailable").map((project) => project.id),
+	);
 	for (const [key, scope] of unavailableWorktrees)
 		if (scope.projectId && !projectIds.has(scope.projectId)) unavailableWorktrees.delete(key);
 	for (const workspace of [...workspaces.values()]) {
-		if (workspace.scope.projectId && !projectIds.has(workspace.scope.projectId)) {
+		const project = projects.find((project) => project.id === workspace.scope.projectId);
+		const movedHome =
+			project &&
+			workspace.scope.taskId === null &&
+			workspace.scope.rootPath &&
+			workspace.scope.rootPath !== project.path;
+		if (
+			workspace.scope.projectId &&
+			(!projectIds.has(workspace.scope.projectId) ||
+				unavailableProjectIds.has(workspace.scope.projectId) ||
+				movedHome)
+		) {
 			retireFileEditorScopes({ projectId: workspace.scope.projectId });
 		}
 	}
 }
 
 export function reconcileFileEditorProjectState(projectId: string, state: RuntimeProjectStateResponse): void {
+	if (state.availability?.status === "unavailable") {
+		retireFileEditorScopes({ projectId });
+		return;
+	}
 	const liveTasks = new Map(
 		state.board.columns
 			.flatMap((column) => (column.id === "trash" ? [] : column.cards))
@@ -243,7 +262,14 @@ export function reconcileFileEditorProjectState(projectId: string, state: Runtim
 	let retained = false;
 	for (const [key, workspace] of workspaces) {
 		const { scope } = workspace;
-		if (scope.projectId !== projectId || !scope.taskId) continue;
+		if (scope.projectId !== projectId) continue;
+		if (!scope.taskId) {
+			if (scope.rootPath && scope.rootPath !== state.repoPath) {
+				retained = retireWorkspace(key, workspace) || retained;
+				retired = true;
+			}
+			continue;
+		}
 		const task = liveTasks.get(scope.taskId);
 		if (task && (scope.taskCreatedAt === undefined || scope.taskCreatedAt === task.createdAt)) continue;
 		retained = retireWorkspace(key, workspace) || retained;

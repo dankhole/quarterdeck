@@ -90,6 +90,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 			const sessionInstanceId = manager.store.getSummary("delayed-interrupt")?.sessionInstanceId;
 			const persistSessionState = vi.fn(async () => undefined);
 			const api = createHooksApi({
+				runProjectOperation: async (_scope, operation) => await operation(),
 				projects: { getProjectPathById: () => "/tmp/repo" },
 				terminals: {
 					getTerminalManagerForProject: () => manager,
@@ -166,6 +167,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 		const initial = manager.store.getSummary("first-interrupt");
 		expect(initial?.resumeSessionId).toBeNull();
 		const api = createHooksApi({
+			runProjectOperation: async (_scope, operation) => await operation(),
 			projects: { getProjectPathById: () => "/tmp/repo" },
 			terminals: {
 				getTerminalManagerForProject: () => manager,
@@ -231,6 +233,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 			const sessionInstanceId = manager.store.getSummary("interrupt-task")?.sessionInstanceId;
 			const persistSessionState = vi.fn(async () => undefined);
 			const api = createHooksApi({
+				runProjectOperation: async (_scope, operation) => await operation(),
 				projects: { getProjectPathById: () => "/tmp/repo" },
 				terminals: {
 					getTerminalManagerForProject: () => manager,
@@ -466,6 +469,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 		spawnedSessions[0]?.triggerExit(0);
 		const occurredAt = Date.now();
 		const api = createHooksApi({
+			runProjectOperation: async (_scope, operation) => await operation(),
 			projects: { getProjectPathById: () => "/tmp/repo" },
 			terminals: {
 				getTerminalManagerForProject: () => manager,
@@ -520,6 +524,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 		if (!sessionInstanceId) throw new Error("Expected a session instance id.");
 		spawnedSessions[0]?.triggerExit(0);
 		const api = createHooksApi({
+			runProjectOperation: async (_scope, operation) => await operation(),
 			projects: { getProjectPathById: () => "/tmp/repo" },
 			terminals: {
 				getTerminalManagerForProject: () => manager,
@@ -574,6 +579,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 			});
 			const sessionInstanceId = manager.store.getSummary("completion-matrix")?.sessionInstanceId;
 			const api = createHooksApi({
+				runProjectOperation: async (_scope, operation) => await operation(),
 				projects: { getProjectPathById: () => "/tmp/repo" },
 				terminals: {
 					getTerminalManagerForProject: () => manager,
@@ -665,6 +671,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 		});
 		const sessionInstanceId = manager.store.getSummary("native-child")?.sessionInstanceId;
 		const api = createHooksApi({
+			runProjectOperation: async (_scope, operation) => await operation(),
 			projects: { getProjectPathById: () => "/tmp/repo" },
 			terminals: {
 				getTerminalManagerForProject: () => manager,
@@ -733,6 +740,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 		});
 		const sessionInstanceId = manager.store.getSummary("task-btw")?.sessionInstanceId;
 		const api = createHooksApi({
+			runProjectOperation: async (_scope, operation) => await operation(),
 			projects: { getProjectPathById: () => "/tmp/repo" },
 			terminals: {
 				getTerminalManagerForProject: () => manager,
@@ -811,6 +819,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 		});
 		const sessionInstanceId = manager.store.getSummary("task-main-wait")?.sessionInstanceId;
 		const api = createHooksApi({
+			runProjectOperation: async (_scope, operation) => await operation(),
 			projects: { getProjectPathById: () => "/tmp/repo" },
 			terminals: {
 				getTerminalManagerForProject: () => manager,
@@ -876,6 +885,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 		});
 		const sessionInstanceId = manager.store.getSummary("task-clear")?.sessionInstanceId;
 		const api = createHooksApi({
+			runProjectOperation: async (_scope, operation) => await operation(),
 			projects: { getProjectPathById: () => "/tmp/repo" },
 			terminals: {
 				getTerminalManagerForProject: () => manager,
@@ -968,6 +978,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 		});
 		const sessionInstanceId = manager.store.getSummary("task-main-wait")?.sessionInstanceId;
 		const api = createHooksApi({
+			runProjectOperation: async (_scope, operation) => await operation(),
 			projects: { getProjectPathById: () => "/tmp/repo" },
 			terminals: {
 				getTerminalManagerForProject: () => manager,
@@ -1046,6 +1057,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 		});
 		const sessionInstanceId = manager.store.getSummary("task-claude")?.sessionInstanceId as string;
 		const api = createHooksApi({
+			runProjectOperation: async (_scope, operation) => await operation(),
 			projects: { getProjectPathById: () => "/tmp/repo" },
 			terminals: {
 				getTerminalManagerForProject: () => manager,

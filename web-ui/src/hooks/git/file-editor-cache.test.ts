@@ -39,6 +39,36 @@ function cache(scopeKey: string, projectId: string, taskId: string | null, dirty
 afterEach(() => clearCachedFileEditorTabs());
 
 describe("file editor scope lifecycle", () => {
+	it("detaches dirty home drafts when a folder changes externally and fences late writes", () => {
+		cache("home", "p1", null);
+		const generation = getFileEditorScopeGeneration("home");
+		reconcileFileEditorProjectState("p1", createTestProjectStateResponse({ repoPath: "/new" }));
+		expect(getCachedFileEditorTabs("home")).toEqual([]);
+		expect(getFileEditorDrafts("detached")[0]).toMatchObject({
+			scope: { projectId: "p1", rootPath: "/tmp/home" },
+			tab: { value: "draft" },
+			detached: true,
+		});
+		registerFileEditorScope("home", { projectId: "p1", taskId: null, rootPath: "/new" });
+		updateCachedFileEditorTabs("home", () => [getFileEditorDrafts("detached")[0]!.tab], generation);
+		expect(getCachedFileEditorTabs("home")).toEqual([]);
+	});
+
+	it("preserves unavailable-project drafts without keeping a writable workspace", () => {
+		cache("home", "p1", null);
+		reconcileFileEditorProjects([
+			{
+				id: "p1",
+				path: "/tmp/home",
+				name: "Project",
+				boardRevision: 1,
+				taskCounts: { in_progress: 0, review: 0, trash: 0 },
+				availability: { status: "unavailable", reason: "missing" },
+			},
+		]);
+		expect(getCachedFileEditorTabs("home")).toEqual([]);
+		expect(getFileEditorDrafts("detached")[0]?.tab.value).toBe("draft");
+	});
 	it("blocks only the affected project and task, including hidden tabs", () => {
 		cache("one", "p1", "t1");
 		cache("two", "p2", "t1");

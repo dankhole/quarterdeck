@@ -32,6 +32,7 @@ export interface SessionLifecycleControllerOptions {
 	entries: Map<string, ProcessEntry>;
 	transitions: SessionTransitionController;
 	ensureProcessEntry: (taskId: string) => ProcessEntry;
+	startTaskSession: (request: StartTaskSessionRequest) => Promise<RuntimeTaskSessionSummary>;
 	onTaskOutput: (entry: ProcessEntry, taskId: string, chunk: Buffer) => void;
 	onInterruptRecoveryApplied: (
 		taskId: string,
@@ -58,6 +59,7 @@ export class SessionLifecycleController {
 	private readonly entries: Map<string, ProcessEntry>;
 	private readonly transitions: SessionTransitionController;
 	private readonly ensureProcessEntry: (taskId: string) => ProcessEntry;
+	private readonly startTaskSession: SessionLifecycleControllerOptions["startTaskSession"];
 	private readonly onTaskOutput: (entry: ProcessEntry, taskId: string, chunk: Buffer) => void;
 	private readonly onInterruptRecoveryApplied: SessionLifecycleControllerOptions["onInterruptRecoveryApplied"];
 	private readonly inFlightTaskStarts = new Map<
@@ -72,6 +74,7 @@ export class SessionLifecycleController {
 		this.entries = options.entries;
 		this.transitions = options.transitions;
 		this.ensureProcessEntry = options.ensureProcessEntry;
+		this.startTaskSession = options.startTaskSession;
 		this.onTaskOutput = options.onTaskOutput;
 		this.onInterruptRecoveryApplied = options.onInterruptRecoveryApplied;
 	}
@@ -82,10 +85,6 @@ export class SessionLifecycleController {
 			updateStore: (id, patch) => this.store.update(id, patch),
 			ensureProcessEntry: (taskId) => this.ensureProcessEntry(taskId),
 		});
-	}
-
-	async startTaskSession(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
-		return (await this.startTaskSessionWithReadiness(request)).summary;
 	}
 
 	getTaskSessionProcessIdentity(taskId: string): NativeTaskSessionProcessIdentity | null {

@@ -36,7 +36,8 @@ interface TaskEditorProviderProps {
 }
 
 export function TaskEditorProvider({ children }: TaskEditorProviderProps): ReactNode {
-	const { currentProjectId } = useProjectNavigationContext();
+	const { currentProjectId, currentProjectAvailability } = useProjectNavigationContext();
+	const isProjectUnavailable = currentProjectAvailability?.status === "unavailable";
 	const { projectGit } = useProjectSyncContext();
 	const { configDefaultBaseRef, runtimeProjectConfig } = useProjectRuntimeContext();
 	const { board, setBoard, setSelectedTaskId } = useBoardContext();
@@ -62,6 +63,7 @@ export function TaskEditorProvider({ children }: TaskEditorProviderProps): React
 
 	const taskEditor = useTaskEditor({
 		board,
+		readOnly: isProjectUnavailable,
 		setBoard,
 		currentProjectId,
 		createTaskBranchOptions,
@@ -84,11 +86,12 @@ export function TaskEditorProvider({ children }: TaskEditorProviderProps): React
 		() => ({
 			taskEditor,
 			createTaskBranchOptions,
-			pendingTaskStartAfterEditId,
+			pendingTaskStartAfterEditId: isProjectUnavailable ? null : pendingTaskStartAfterEditId,
 			clearPendingTaskStartAfterEditId,
 			resetTaskEditorWorkflow,
 		}),
 		[
+			isProjectUnavailable,
 			taskEditor,
 			createTaskBranchOptions,
 			pendingTaskStartAfterEditId,

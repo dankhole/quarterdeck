@@ -1,7 +1,8 @@
 import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "@runtime-contract";
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from "react";
 import { handleBrowserDiagnosticsStreamMessage, recordBrowserEvent } from "@/diagnostics";
-import { consumeProjectPreload } from "@/runtime/project-preload-cache";
+import { invalidateProjectBoardCache } from "@/runtime/project-board-cache";
+import { consumeProjectPreload, invalidateProjectPreload } from "@/runtime/project-preload-cache";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import { resolveRuntimeProtocolCompatibility } from "@/runtime/runtime-protocol-compatibility";
 import {
@@ -31,6 +32,7 @@ export interface UseRuntimeStateStreamResult {
 	projects: RuntimeProjectSummary[];
 	organization: ProjectOrganization | null;
 	applyOrganization: (organization: ProjectOrganization) => void;
+	applyProjectManagementResult: (project: RuntimeProjectSummary, state?: RuntimeProjectStateResponse) => void;
 	projectState: RuntimeProjectStateResponse | null;
 	projectMetadata: RuntimeProjectMetadata | null;
 	notificationProjects: RuntimeProjectNotificationStateMap;
@@ -49,6 +51,22 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 		requestedProjectId,
 		createInitialRuntimeStateStreamStore,
 	);
+	const previousProjects = useRef<RuntimeProjectSummary[]>([]);
+	useLayoutEffect(() => {
+		const previousById = new Map(previousProjects.current.map((project) => [project.id, project]));
+		for (const project of state.projects) {
+			const previous = previousById.get(project.id);
+			if (
+				previous &&
+				(previous.path !== project.path ||
+					(previous.availability?.status ?? "available") !== (project.availability?.status ?? "available"))
+			) {
+				invalidateProjectPreload(project.id);
+				invalidateProjectBoardCache(project.id);
+			}
+		}
+		previousProjects.current = state.projects;
+	}, [state.projects]);
 
 	useEffect(() => {
 		const streamGeneration = streamGenerationRef.current + 1;
@@ -141,11 +159,18 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 		(organization: ProjectOrganization) => dispatch({ type: "organization_updated", organization }),
 		[],
 	);
+	const applyProjectManagementResult = useCallback(
+		(project: RuntimeProjectSummary, projectState?: RuntimeProjectStateResponse) => {
+			dispatch({ type: "project_management_updated", project, projectState });
+		},
+		[],
+	);
 	return {
 		currentProjectId: state.currentProjectId,
 		projects: state.projects,
 		organization: state.organization,
 		applyOrganization,
+		applyProjectManagementResult,
 		projectState: state.projectState,
 		projectMetadata: state.projectMetadata,
 		notificationProjects: state.notificationMemory.projects,

@@ -1,3 +1,4 @@
+import { useProjectMetadataReporting } from "@/hooks/notifications";
 import type { BoardContextValue } from "@/providers/board-provider";
 import type { DialogContextValue } from "@/providers/dialog-provider";
 import type { GitContextValue } from "@/providers/git-provider";
@@ -49,12 +50,19 @@ export function useAppSideEffects({
 	handleToggleFileFinder,
 	handleToggleTextSearch,
 }: UseAppSideEffectsInput): void {
+	useProjectMetadataReporting({
+		currentProjectId: projectNavigation.currentProjectId,
+		selectedTaskId: board.selectedTaskId,
+		isDocumentVisible: projectSync.isDocumentVisible,
+		enabled:
+			projectStream.hasReceivedSnapshot && projectNavigation.currentProjectAvailability?.status !== "unavailable",
+	});
+
 	useAppProjectNotificationEffects({
 		board: board.board,
-		selectedTaskId: board.selectedTaskId,
 		currentProjectId: projectNavigation.currentProjectId,
 		navigationCurrentProjectId: projectNavigation.navigationCurrentProjectId,
-		projectPath: projectSync.projectPath,
+		projectName: projectNavigation.navigationProjectName ?? null,
 		latestTaskReadyForReview: projectStream.latestTaskReadyForReview,
 		streamError: projectStream.streamError,
 		isRuntimeDisconnected: projectStream.isRuntimeDisconnected,
@@ -68,10 +76,11 @@ export function useAppSideEffects({
 
 	useAppProjectSyncEffects({
 		currentProjectId: projectNavigation.currentProjectId,
+		projectPath: projectSync.projectPath,
+		isProjectUnavailable: projectNavigation.currentProjectAvailability?.status === "unavailable",
 		navigationCurrentProjectId: projectNavigation.navigationCurrentProjectId,
 		hasNoProjects: projectNavigation.hasNoProjects,
 		isProjectSwitching: projectNavigation.isProjectSwitching,
-		isDocumentVisible: projectSync.isDocumentVisible,
 		projectMetadata: projectStream.projectMetadata,
 		selectedCard: board.selectedCard,
 		isHomeTerminalOpen: terminal.isHomeTerminalOpen,
@@ -86,6 +95,7 @@ export function useAppSideEffects({
 
 	useAppHotkeys({
 		selectedCard: board.selectedCard,
+		canUseProjectActions: projectNavigation.currentProjectAvailability?.status !== "unavailable",
 		canUseCreateTaskShortcut: !projectNavigation.hasNoProjects && projectNavigation.currentProjectId !== null,
 		currentProjectId: projectNavigation.currentProjectId,
 		handleToggleDetailTerminal: terminal.handleToggleDetailTerminal,

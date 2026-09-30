@@ -9,7 +9,11 @@ import { areGitRefsResponsesEqual } from "@/runtime/query-equality";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRef, RuntimeGitRefsResponse, RuntimeGitSyncSummary } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
-import { setHomeGitSummary } from "@/stores/project-metadata-store";
+import {
+	getProjectMetadataScopeVersion,
+	isProjectMetadataScopeCurrent,
+	setHomeGitSummary,
+} from "@/stores/project-metadata-store";
 import type { BoardData } from "@/types";
 import { useLoadingGuard } from "@/utils/react-use";
 import { toErrorMessage } from "@/utils/to-error-message";
@@ -172,6 +176,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 			if (!projectId) {
 				return;
 			}
+			const requestScopeVersion = getProjectMetadataScopeVersion(projectId);
 			try {
 				const trpc = getRuntimeTrpcClient(projectId);
 				const result = await trpc.project.checkoutGitBranch.mutate({
@@ -179,9 +184,10 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 					...(scope === "task" && checkoutTaskId ? { taskId: checkoutTaskId } : {}),
 					...(checkoutBaseRef ? { baseRef: checkoutBaseRef } : {}),
 				});
+				if (!isProjectMetadataScopeCurrent(projectId, requestScopeVersion)) return;
 				// Update the status bar line diff immediately from the response summary
 				if (scope === "home" && result.summary) {
-					setHomeGitSummary(projectId, result.summary);
+					setHomeGitSummary(projectId, result.summary, requestScopeVersion);
 				}
 				if (result.ok) {
 					showGitSuccessToast(`Switched to ${branch}`);
@@ -190,6 +196,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 					showGitErrorToast(result.error ?? `Failed to switch to ${branch}`);
 				}
 			} catch (error) {
+				if (!isProjectMetadataScopeCurrent(projectId, requestScopeVersion)) return;
 				showGitErrorToast(`Checkout failed: ${toErrorMessage(error)}`);
 			}
 		},

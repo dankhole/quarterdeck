@@ -4,15 +4,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import { createInitialBoardData } from "@/data/board-data";
 import { recordBrowserEvent } from "@/diagnostics";
-import { reconcileFileEditorProjectState } from "@/hooks/git/file-editor-cache";
-import { restoreProjectBoard, stashProjectBoard, updateProjectBoardCache } from "@/runtime/project-board-cache";
+import { reconcileFileEditorProjectState, retireFileEditorScopes } from "@/hooks/git/file-editor-cache";
+import {
+	invalidateProjectBoardCache,
+	restoreProjectBoard,
+	stashProjectBoard,
+	updateProjectBoardCache,
+} from "@/runtime/project-board-cache";
+import { invalidateProjectPreload } from "@/runtime/project-preload-cache";
+import { mergeProjectStateByRevision } from "@/runtime/project-state-ordering";
 import { applyProjectBoardCommands, fetchProjectState, ProjectStateConflictError } from "@/runtime/project-state-query";
 import type {
 	RuntimeGitRepositoryInfo,
 	RuntimeProjectBoardCommand,
 	RuntimeProjectStateResponse,
 } from "@/runtime/types";
-import { setProjectPath as setStoreProjectPath } from "@/stores/project-metadata-store";
+import { resetProjectMetadataStore, setProjectPath as setStoreProjectPath } from "@/stores/project-metadata-store";
 import type { BoardData } from "@/types";
 import { toErrorMessage } from "@/utils/to-error-message";
 import { applyPendingProjectBoardCommands, deriveProjectBoardCommands } from "./project-board-command-sync";
@@ -81,6 +88,8 @@ function cacheAuthoritativeProjectState(projectId: string, state: RuntimeProject
 		authoritativeRevision: state.revision,
 		projectPath: state.repoPath,
 		projectGit: state.git,
+		metadataRevision: state.metadataRevision,
+		availability: state.availability,
 	});
 }
 
@@ -138,6 +147,7 @@ export function useProjectSync({
 		projectId: string;
 		state: RuntimeProjectStateResponse;
 	} | null>(null);
+	const previousLocationRef = useRef<{ projectId: string; path: string; unavailable: boolean } | null>(null);
 	const applyProjectStateRef = useRef<(state: RuntimeProjectStateResponse) => void>(() => {});
 	const refreshProjectStateRef = useRef<() => Promise<void>>(async () => {});
 
@@ -241,10 +251,30 @@ export function useProjectSync({
 					revision: null,
 				};
 				lastAuthoritativeProjectStateRef.current = null;
+				previousLocationRef.current = null;
 				return;
 			}
 			if (currentProjectId !== syncTargetProjectIdRef.current) {
 				return;
+			}
+			const lastAuthoritative = lastAuthoritativeProjectStateRef.current;
+			nextProjectState = mergeProjectStateByRevision(
+				lastAuthoritative?.projectId === currentProjectId ? lastAuthoritative.state : null,
+				nextProjectState,
+			);
+			const previousLocation = previousLocationRef.current;
+			const unavailable = nextProjectState.availability?.status === "unavailable";
+			if (currentProjectId) {
+				if (
+					previousLocation?.projectId === currentProjectId &&
+					(previousLocation.path !== nextProjectState.repoPath || previousLocation.unavailable !== unavailable)
+				) {
+					retireFileEditorScopes({ projectId: currentProjectId });
+					invalidateProjectBoardCache(currentProjectId);
+					invalidateProjectPreload(currentProjectId);
+					resetProjectMetadataStore(currentProjectId);
+				}
+				previousLocationRef.current = { projectId: currentProjectId, path: nextProjectState.repoPath, unavailable };
 			}
 			setProjectPath(nextProjectState.repoPath);
 			setStoreProjectPath(currentProjectId, nextProjectState.repoPath);
@@ -335,6 +365,8 @@ export function useProjectSync({
 					authoritativeRevision: nextProjectState.revision,
 					projectPath: nextProjectState.repoPath,
 					projectGit: nextProjectState.git,
+					metadataRevision: nextProjectState.metadataRevision,
+					availability: nextProjectState.availability,
 				});
 			}
 		},
@@ -348,17 +380,12 @@ export function useProjectSync({
 				return;
 			}
 			const currentVersion = authoritativeProjectVersionRef.current;
-			if (
-				currentVersion.projectId === currentProjectId &&
-				currentVersion.revision !== null &&
-				state.revision < currentVersion.revision
-			) {
-				return;
-			}
 			// A lifecycle response must remove its optimistic presentation even when
 			// the stream already advertised the same revision. Re-enter the one
 			// authoritative apply seam with exact hydration enabled.
-			authoritativeProjectVersionRef.current = { projectId: currentProjectId, revision: null };
+			if (currentVersion.revision === null || state.revision >= currentVersion.revision) {
+				authoritativeProjectVersionRef.current = { projectId: currentProjectId, revision: null };
+			}
 			applyProjectState(state);
 		},
 		[applyProjectState, currentProjectId],
@@ -416,6 +443,7 @@ export function useProjectSync({
 		(nextBoardAction) => {
 			const projectId = currentProjectId;
 			const version = authoritativeProjectVersionRef.current;
+			if (lastAuthoritativeProjectStateRef.current?.state.availability?.status === "unavailable") return;
 			if (!projectId || version.projectId !== projectId || version.revision === null) {
 				return;
 			}
@@ -471,6 +499,7 @@ export function useProjectSync({
 		(nextBoardAction) => {
 			const projectId = currentProjectId;
 			const version = authoritativeProjectVersionRef.current;
+			if (lastAuthoritativeProjectStateRef.current?.state.availability?.status === "unavailable") return;
 			if (!projectId || version.projectId !== projectId || version.revision === null) {
 				return;
 			}
@@ -526,6 +555,8 @@ export function useProjectSync({
 					authoritativeRevision: prevRevision,
 					projectPath: stateForCache?.repoPath ?? projectPath,
 					projectGit: stateForCache?.git ?? projectGit,
+					metadataRevision: stateForCache?.metadataRevision,
+					availability: stateForCache?.availability,
 				});
 			}
 
@@ -537,6 +568,7 @@ export function useProjectSync({
 			};
 			cachedBoardRestoreRef.current = null;
 			lastAuthoritativeProjectStateRef.current = null;
+			previousLocationRef.current = null;
 			projectRefreshRequestIdRef.current += 1;
 			setIsProjectStateRefreshing(false);
 			setAppliedProjectId(null);
@@ -551,6 +583,12 @@ export function useProjectSync({
 				setProjectPath(cached.projectPath);
 				setStoreProjectPath(restoreId, cached.projectPath);
 				setProjectGit(cached.projectGit);
+				if (cached.projectPath)
+					previousLocationRef.current = {
+						projectId: restoreId,
+						path: cached.projectPath,
+						unavailable: cached.availability?.status === "unavailable",
+					};
 				cachedBoardRestoreRef.current = {
 					projectId: restoreId,
 					authoritativeRevision: cached.authoritativeRevision,

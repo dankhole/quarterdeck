@@ -23,6 +23,7 @@ export {
 	type ApplyProjectBoardMutationInput,
 	type ApplyProjectBoardMutationResult,
 	applyProjectBoardMutation,
+	applyProjectBoardMutationById,
 	type LoadProjectContextOptions,
 	listProjectIndexEntries,
 	loadProjectBoardById,
@@ -32,6 +33,7 @@ export {
 	loadProjectScopeById,
 	loadProjectState,
 	loadProjectStateById,
+	loadSavedProjectStateById,
 	ProjectBoardCommandIdentityConflictError,
 	type ProjectSessionsPruneResult,
 	ProjectStateConflictError,
@@ -46,6 +48,11 @@ export {
 	saveProjectState,
 	updateProjectOrder,
 } from "./project-state";
+export {
+	type ProjectDirectoryIdentity,
+	type UpdateProjectIndexMetadataInput,
+	updateProjectIndexMetadata,
+} from "./project-state-index";
 export {
 	getProjectDirectoryPath,
 	getProjectExecutionOwnershipPath,

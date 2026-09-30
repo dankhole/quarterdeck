@@ -64,6 +64,7 @@ export interface ProjectMetadataRefresherDiagnosticSnapshot {
 }
 
 export class ProjectMetadataRefresher {
+	private disposed = false;
 	private readonly fullRefreshState: QueuedFullRefreshState = {
 		promise: null,
 		rerun: false,
@@ -80,6 +81,22 @@ export class ProjectMetadataRefresher {
 
 	get snapshot(): RuntimeProjectMetadata {
 		return this.deps.getSnapshot();
+	}
+
+	dispose(): void {
+		this.disposed = true;
+		this.fullRefreshState.rerun = false;
+		this.homeRefreshState.rerun = false;
+		for (const state of this.taskRefreshStates.values()) state.rerun = false;
+	}
+
+	async waitForIdle(): Promise<void> {
+		await Promise.allSettled([
+			this.fullRefreshState.promise,
+			this.backgroundRefreshPromise,
+			this.homeRefreshState.promise,
+			...Array.from(this.taskRefreshStates.values(), (state) => state.promise),
+		]);
 	}
 
 	getDiagnosticSnapshot(): ProjectMetadataRefresherDiagnosticSnapshot {
@@ -100,6 +117,7 @@ export class ProjectMetadataRefresher {
 	}
 
 	async refreshProject(): Promise<RuntimeProjectMetadata> {
+		if (this.disposed) return this.snapshot;
 		if (this.fullRefreshState.promise) {
 			this.fullRefreshState.rerun = true;
 			return await this.fullRefreshState.promise;
@@ -110,7 +128,7 @@ export class ProjectMetadataRefresher {
 			do {
 				this.fullRefreshState.rerun = false;
 				latestSnapshot = await this.performFullRefresh();
-			} while (this.fullRefreshState.rerun);
+			} while (!this.disposed && this.fullRefreshState.rerun);
 			return latestSnapshot;
 		})().finally(() => {
 			this.fullRefreshState.promise = null;
@@ -147,6 +165,7 @@ export class ProjectMetadataRefresher {
 	}
 
 	async refreshBackgroundTasks(): Promise<void> {
+		if (this.disposed) return;
 		if (this.backgroundRefreshPromise) {
 			return await this.backgroundRefreshPromise;
 		}
@@ -367,6 +386,7 @@ export class ProjectMetadataRefresher {
 	}
 
 	private broadcastIfChanged(previousSnapshot: RuntimeProjectMetadata): void {
+		if (this.disposed) return;
 		const nextSnapshot = this.snapshot;
 		if (!areProjectMetadataEqual(previousSnapshot, nextSnapshot)) {
 			this.deps.onMetadataUpdated(this.deps.projectId, nextSnapshot);
@@ -392,6 +412,7 @@ export class ProjectMetadataRefresher {
 		refresh: (invalidate: boolean) => Promise<void>,
 		invalidate: boolean,
 	): Promise<void> {
+		if (this.disposed) return;
 		if (state.promise) {
 			state.rerun = true;
 			state.invalidate = state.invalidate || invalidate;
@@ -406,7 +427,7 @@ export class ProjectMetadataRefresher {
 				state.invalidate = false;
 				state.rerun = false;
 				await refresh(shouldInvalidate);
-			} while (state.rerun);
+			} while (!this.disposed && state.rerun);
 		})().finally(() => {
 			state.promise = null;
 		});

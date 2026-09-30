@@ -28,7 +28,7 @@ export const t = initTRPC.context<RuntimeTrpcContext>().create({
 	},
 });
 
-export const projectProcedure = t.procedure.use(({ ctx, next }) => {
+export const scopedProjectProcedure = t.procedure.use(({ ctx, next }) => {
 	if (!ctx.requestedProjectId) {
 		throw new TRPCError({
 			code: "BAD_REQUEST",
@@ -48,6 +48,21 @@ export const projectProcedure = t.procedure.use(({ ctx, next }) => {
 		} satisfies RuntimeTrpcContextWithProjectScope,
 	});
 });
+
+/** Saved state and explicit Stop remain available while a folder is missing. */
+export const savedProjectProcedure = scopedProjectProcedure.use(
+	async ({ ctx, next }) =>
+		await ctx.runProjectOperation(ctx.projectScope, async () => await next(), { allowUnavailable: true }),
+);
+
+/** The complete request participates in relocation admission, including Files/Git reads. */
+export const projectProcedure = scopedProjectProcedure.use(
+	async ({ ctx, next }) => await ctx.runProjectOperation(ctx.projectScope, async () => await next()),
+);
+
+export const optionalProjectProcedure = t.procedure.use(async ({ ctx, next }) =>
+	ctx.projectScope ? await ctx.runProjectOperation(ctx.projectScope, async () => await next()) : await next(),
+);
 
 /** Folder projects never operate on an incidental ancestor or placeholder repository. */
 export const projectGitProcedure = projectProcedure.use(async ({ ctx, next }) => {

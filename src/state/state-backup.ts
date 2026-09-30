@@ -16,10 +16,12 @@
 
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { basename, isAbsolute, join, resolve } from "node:path";
 import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
 import { isNodeError } from "../fs";
+import { lockedFileSystem } from "../fs/locked-file-system";
 import { removeDirectoryWithRetries } from "../fs/remove-path";
+import { getProjectRelocationJournalPath, readProjectRelocationJournal } from "./project-relocation-journal";
 import { withProjectStateLock } from "./project-state-transaction";
 import {
 	BOARD_FILENAME,
@@ -27,6 +29,7 @@ import {
 	getProjectBoardPath,
 	getProjectDirectoryPath,
 	getProjectExecutionOwnershipPath,
+	getProjectIndexLockRequest,
 	getProjectLifecycleOperationsPath,
 	getProjectMetaPath,
 	getProjectPinnedBranchesPath,
@@ -154,6 +157,15 @@ export interface CreateBackupOptions {
  * or null if there was nothing to back up.
  */
 export async function createBackup(options: CreateBackupOptions = {}): Promise<string | null> {
+	// Location changes commit board/session paths before their indexed path. Keep
+	// the index fixed until all project snapshots have rejected pending moves.
+	return await lockedFileSystem.withLock(
+		getProjectIndexLockRequest(),
+		async () => await createBackupUnderIndexLock(options),
+	);
+}
+
+async function createBackupUnderIndexLock(options: CreateBackupOptions): Promise<string | null> {
 	const trigger = options.trigger ?? "manual";
 	const maxBackups = options.maxBackups ?? DEFAULT_MAX_BACKUPS;
 
@@ -186,6 +198,11 @@ export async function createBackup(options: CreateBackupOptions = {}): Promise<s
 			const wsBackupDir = join(backupProjectsDir, projectId);
 			await mkdir(wsBackupDir, { recursive: true });
 			await withProjectStateLock(projectId, async () => {
+				if (await readProjectRelocationJournal(projectId)) {
+					throw new Error(
+						`Project "${projectId}" has a folder relocation awaiting recovery. Finish it before backing up.`,
+					);
+				}
 				await copyFileIfExists(getProjectBoardPath(projectId), join(wsBackupDir, BOARD_FILENAME));
 				await copyFileIfExists(getProjectSessionsPath(projectId), join(wsBackupDir, SESSIONS_FILENAME));
 				await copyFileIfExists(getProjectMetaPath(projectId), join(wsBackupDir, META_FILENAME));
@@ -262,6 +279,18 @@ export async function restoreBackup(backupPathOrName: string): Promise<BackupMan
 
 	const runtimeHome = getRuntimeHomePath();
 	const projectsRoot = getProjectsRootPath();
+	const currentProjectIds = await discoverProjectIds(join(projectsRoot, "index.json"));
+	for (const projectId of new Set([...currentProjectIds, ...manifest.projectIds])) {
+		if (await readProjectRelocationJournal(projectId)) {
+			throw new Error(
+				`Project "${projectId}" has a folder relocation awaiting recovery. Finish it before restoring.`,
+			);
+		}
+		const journalFilename = basename(getProjectRelocationJournalPath(projectId));
+		if (await fileExists(join(backupDir, "projects", projectId, journalFilename))) {
+			throw new Error("This backup contains an unfinished folder relocation and cannot be restored safely.");
+		}
+	}
 
 	const backupConfigPath = join(backupDir, "config.json");
 	if (await fileExists(backupConfigPath)) {

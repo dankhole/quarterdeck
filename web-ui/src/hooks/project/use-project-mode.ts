@@ -8,6 +8,7 @@ export function useProjectMode(project: RuntimeProjectSummary) {
 	const [open, setOpen] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [requiresInitialization, setRequiresInitialization] = useState(false);
+	const unavailable = project.availability?.status === "unavailable";
 	const close = () => {
 		if (!saving) {
 			setOpen(false);
@@ -15,7 +16,7 @@ export function useProjectMode(project: RuntimeProjectSummary) {
 		}
 	};
 	const confirm = async () => {
-		if (saving) return;
+		if (saving || unavailable) return;
 		setSaving(true);
 		try {
 			const result = await getRuntimeTrpcClient(project.id).projects.add.mutate({
@@ -36,5 +37,14 @@ export function useProjectMode(project: RuntimeProjectSummary) {
 			setSaving(false);
 		}
 	};
-	return { open, saving, requiresInitialization, request: () => setOpen(true), close, confirm };
+	return {
+		open: open && !unavailable,
+		saving,
+		requiresInitialization,
+		request: () => {
+			if (!unavailable) setOpen(true);
+		},
+		close,
+		confirm,
+	};
 }

@@ -181,6 +181,6 @@ describe("validateIndexedProjectsForStream", () => {
 		});
 
 		expect(gitProbeCount).toBe(0);
-		expect(result?.removalMessage).toContain("Project no longer exists on disk");
+		expect(result?.availability).toEqual({ status: "unavailable", reason: "missing" });
 	});
 });

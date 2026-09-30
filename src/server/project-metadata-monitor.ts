@@ -40,6 +40,8 @@ export interface ProjectMetadataMonitor {
 		projectPath: string;
 		board: RuntimeBoardData;
 		folderOnly?: boolean;
+		metadataRevision?: number;
+		available?: boolean;
 		clientId?: string | null;
 		isDocumentVisible?: boolean;
 	}) => Promise<RuntimeProjectMetadata>;
@@ -48,6 +50,8 @@ export interface ProjectMetadataMonitor {
 		projectPath: string;
 		board: RuntimeBoardData;
 		folderOnly?: boolean;
+		metadataRevision?: number;
+		available?: boolean;
 	}) => Promise<RuntimeProjectMetadata>;
 	setFocusedTask: (projectId: string, taskId: string | null) => void;
 	setDocumentVisible: (projectId: string, clientId: string | null | undefined, isDocumentVisible: boolean) => void;
@@ -55,12 +59,15 @@ export interface ProjectMetadataMonitor {
 	requestHomeRefresh: (projectId: string) => void;
 	disconnectProject: (projectId: string, clientId?: string | null) => void;
 	disposeProject: (projectId: string) => void;
+	suspendProject: (projectId: string) => Promise<void>;
 	getDiagnosticSnapshot: (scope?: Readonly<DiagnosticCaptureScope>) => ProjectMetadataMonitorDiagnosticSnapshot;
 	close: () => void;
 }
 
 export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorDependencies): ProjectMetadataMonitor {
 	const projects = new Map<string, ProjectMetadataController>();
+	const projectScopes = new Map<string, { path: string; revision: number }>();
+	const retiringControllers = new Map<string, Set<Promise<void>>>();
 	const clients = new Map<string, ProjectMetadataVisibilityReports>();
 	const globalMetadataProbeLimit = pLimit(GLOBAL_METADATA_PROBE_CONCURRENCY_LIMIT);
 	const projectMetadataProbeLimits = new Map<string, ReturnType<typeof pLimit>>();
@@ -82,11 +89,39 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 		});
 	};
 
-	const getOrCreateController = (projectId: string, projectPath: string): ProjectMetadataController => {
+	const retireController = (projectId: string): void => {
+		const controller = projects.get(projectId);
+		if (!controller) return;
+		controller.dispose();
+		projects.delete(projectId);
+		projectScopes.delete(projectId);
+		const pending = retiringControllers.get(projectId) ?? new Set<Promise<void>>();
+		retiringControllers.set(projectId, pending);
+		const drained = controller.waitForIdle().finally(() => {
+			pending.delete(drained);
+			if (pending.size === 0 && retiringControllers.get(projectId) === pending)
+				retiringControllers.delete(projectId);
+		});
+		pending.add(drained);
+	};
+
+	const suspendProject = async (projectId: string): Promise<void> => {
+		retireController(projectId);
+		await Promise.allSettled(Array.from(retiringControllers.get(projectId) ?? []));
+		projectMetadataProbeLimits.delete(projectId);
+	};
+
+	const getOrCreateController = (
+		projectId: string,
+		projectPath: string,
+		metadataRevision = 0,
+	): ProjectMetadataController => {
 		const existing = projects.get(projectId);
-		if (existing) {
+		const scope = projectScopes.get(projectId);
+		if (existing && scope?.path === projectPath && scope.revision === metadataRevision) {
 			return existing;
 		}
+		retireController(projectId);
 		const controller = new ProjectMetadataController({
 			projectId,
 			projectPath,
@@ -97,7 +132,7 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 				return await limitProjectMetadataProbe(projectId, probe);
 			},
 			onMetadataUpdated: (id, metadata) => {
-				if (projects.get(id) === controller) deps.onMetadataUpdated(id, metadata);
+				if (projects.get(id) === controller) deps.onMetadataUpdated(id, { ...metadata, metadataRevision });
 			},
 			onTaskBaseRefChanged: (id, taskId, baseRef) => {
 				if (projects.get(id) === controller) deps.onTaskBaseRefChanged?.(id, taskId, baseRef);
@@ -108,49 +143,75 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 			getProjectDefaultBaseRef: deps.getProjectDefaultBaseRef,
 		});
 		projects.set(projectId, controller);
+		projectScopes.set(projectId, { path: projectPath, revision: metadataRevision });
 		return controller;
 	};
 
-	const folderMetadata = (projectId: string, folderOnly?: boolean) => {
+	const folderMetadata = (projectId: string, folderOnly?: boolean, metadataRevision = 0) => {
 		if (!folderOnly) return null;
-		projects.get(projectId)?.dispose();
-		projects.delete(projectId);
+		retireController(projectId);
 		projectMetadataProbeLimits.delete(projectId);
-		const metadata = createEmptyProjectMetadata();
+		const metadata = { ...createEmptyProjectMetadata(), metadataRevision };
 		deps.onMetadataUpdated(projectId, metadata);
 		return metadata;
 	};
+	const restoreClientConnections = (
+		controller: ProjectMetadataController,
+		projectId: string,
+		projectPath: string,
+		board: RuntimeBoardData,
+	): Promise<RuntimeProjectMetadata>[] => {
+		// Restore all counts before yielding: a disconnect during a refresh
+		// must never be followed by another connect.
+		const connections: Promise<RuntimeProjectMetadata>[] = [];
+		for (const [clientId, report] of clients.get(projectId) ?? []) {
+			for (let connection = 0; connection < report.activeConnectionCount; connection++) {
+				connections.push(
+					controller.connect({ projectPath, board, clientId, isDocumentVisible: report.isDocumentVisible }),
+				);
+			}
+		}
+		return connections;
+	};
 	return {
-		connectProject: async ({ projectId, projectPath, board, clientId, isDocumentVisible, folderOnly }) => {
+		connectProject: async ({
+			projectId,
+			projectPath,
+			board,
+			clientId,
+			isDocumentVisible,
+			folderOnly,
+			metadataRevision,
+			available = true,
+		}) => {
 			const reports = clients.get(projectId) ?? new Map();
 			clients.set(projectId, reports);
 			connectProjectMetadataClient(reports, clientId, isDocumentVisible);
-			const disabled = folderMetadata(projectId, folderOnly);
+			if (!available) {
+				await suspendProject(projectId);
+				return createEmptyProjectMetadata();
+			}
+			const disabled = folderMetadata(projectId, folderOnly, metadataRevision);
 			if (disabled) return disabled;
-			const controller = getOrCreateController(projectId, projectPath);
+			const previous = projects.get(projectId);
+			const controller = getOrCreateController(projectId, projectPath, metadataRevision);
+			if (previous !== controller) {
+				const snapshots = await Promise.all(restoreClientConnections(controller, projectId, projectPath, board));
+				return snapshots[snapshots.length - 1] ?? createEmptyProjectMetadata();
+			}
 			return await controller.connect({ projectPath, board, clientId, isDocumentVisible });
 		},
-		updateProjectState: async ({ projectId, projectPath, board, folderOnly }) => {
-			const disabled = folderMetadata(projectId, folderOnly);
+		updateProjectState: async ({ projectId, projectPath, board, folderOnly, metadataRevision, available = true }) => {
+			if (!available) {
+				await suspendProject(projectId);
+				return createEmptyProjectMetadata();
+			}
+			const disabled = folderMetadata(projectId, folderOnly, metadataRevision);
 			if (disabled) return disabled;
-			const hadController = projects.has(projectId);
-			const controller = getOrCreateController(projectId, projectPath);
-			if (!hadController) {
-				// Restore all connection counts before yielding: disposal or disconnect
-				// during a refresh must never be followed by another connect.
-				const connections: Promise<RuntimeProjectMetadata>[] = [];
-				for (const [clientId, report] of clients.get(projectId) ?? []) {
-					for (let connection = 0; connection < report.activeConnectionCount; connection++) {
-						connections.push(
-							controller.connect({
-								projectPath,
-								board,
-								clientId,
-								isDocumentVisible: report.isDocumentVisible,
-							}),
-						);
-					}
-				}
+			const previous = projects.get(projectId);
+			const controller = getOrCreateController(projectId, projectPath, metadataRevision);
+			if (previous !== controller) {
+				const connections = restoreClientConnections(controller, projectId, projectPath, board);
 				if (connections.length > 0) {
 					const snapshots = await Promise.all(connections);
 					return snapshots[snapshots.length - 1] ?? createEmptyProjectMetadata();
@@ -183,20 +244,16 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 				return;
 			}
 			if (controller.disconnect(clientId)) {
-				projects.delete(projectId);
+				retireController(projectId);
 				projectMetadataProbeLimits.delete(projectId);
 			}
 		},
 		disposeProject: (projectId) => {
 			clients.delete(projectId);
-			const controller = projects.get(projectId);
-			if (!controller) {
-				return;
-			}
-			controller.dispose();
-			projects.delete(projectId);
+			retireController(projectId);
 			projectMetadataProbeLimits.delete(projectId);
 		},
+		suspendProject,
 		getDiagnosticSnapshot: (scope = {}) => {
 			const scopedProjects = Array.from(projects.entries()).flatMap(([projectId, controller]) => {
 				if (scope.projectId && projectId !== scope.projectId) return [];
@@ -240,10 +297,7 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 		},
 		close: () => {
 			clients.clear();
-			for (const controller of projects.values()) {
-				controller.dispose();
-			}
-			projects.clear();
+			for (const projectId of projects.keys()) retireController(projectId);
 			projectMetadataProbeLimits.clear();
 		},
 	};

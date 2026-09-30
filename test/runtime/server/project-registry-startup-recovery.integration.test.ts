@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const stateMocks = vi.hoisted(() => ({
 	loadProjectState: vi.fn(),
+	loadSavedProjectStateById: vi.fn(),
+	loadProjectScopeById: vi.fn(),
+	updateProjectIndexMetadata: vi.fn(),
 	loadProjectBoardSnapshotById: vi.fn(),
 	listProjectIndexEntries: vi.fn(async (): Promise<Array<{ projectId: string; repoPath: string }>> => []),
 	removeProjectIndexEntry: vi.fn(),
@@ -29,10 +32,16 @@ vi.mock("../../../src/state", () => ({
 	loadProjectBoardById: vi.fn(),
 	loadProjectBoardSnapshotById: stateMocks.loadProjectBoardSnapshotById,
 	loadProjectContext: vi.fn(async () => null),
-	loadProjectScopeById: vi.fn(async () => null),
+	loadProjectScopeById: stateMocks.loadProjectScopeById,
+	loadSavedProjectStateById: stateMocks.loadSavedProjectStateById,
+	updateProjectIndexMetadata: stateMocks.updateProjectIndexMetadata,
 	loadProjectState: stateMocks.loadProjectState,
 	removeProjectIndexEntry: stateMocks.removeProjectIndexEntry,
 	removeProjectStateFiles: stateMocks.removeProjectStateFiles,
+}));
+
+vi.mock("../../../src/state/project-relocation-journal", () => ({
+	readProjectRelocationJournal: vi.fn(async () => null),
 }));
 
 vi.mock("../../../src/config", () => ({
@@ -148,6 +157,15 @@ describe("project registry startup recovery integration", () => {
 	let manager: TerminalSessionManager | null = null;
 
 	beforeEach(() => {
+		stateMocks.loadProjectScopeById.mockReset();
+		stateMocks.loadProjectScopeById.mockImplementation(async (projectId: string) => {
+			const entries = (await stateMocks.listProjectIndexEntries.getMockImplementation()?.()) ?? [];
+			return entries.find((entry) => entry.projectId === projectId) ?? { projectId, repoPath: "/tmp/project" };
+		});
+		stateMocks.updateProjectIndexMetadata.mockReset();
+		stateMocks.updateProjectIndexMetadata.mockResolvedValue({});
+		stateMocks.loadSavedProjectStateById.mockReset();
+		stateMocks.loadSavedProjectStateById.mockResolvedValue(createProjectState());
 		stateMocks.loadProjectState.mockReset();
 		stateMocks.loadProjectState.mockResolvedValue(createProjectState());
 		stateMocks.loadProjectBoardSnapshotById.mockReset();
@@ -204,7 +222,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async () => false,
+			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
 			pathIsDirectory: async () => true,
 			onTerminalManagerReady: (_projectId, readyManager) => {
 				manager = readyManager;
@@ -225,7 +243,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async () => false,
+			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
 			pathIsDirectory: async () => true,
 		});
 		stateMocks.loadProjectBoardSnapshotById.mockRejectedValueOnce(new Error("board.json is unreadable"));
@@ -267,7 +285,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async () => false,
+			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
 			pathIsDirectory: async () => true,
 			waitForStartupAgentCleanup: async () => await startupCleanup.promise,
 			onTerminalManagerReady: (_projectId, readyManager) => {
@@ -332,7 +350,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async () => false,
+			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
 			pathIsDirectory: async () => true,
 			onTerminalManagerReady: (_projectId, readyManager) => {
 				manager = readyManager;
@@ -361,7 +379,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async () => false,
+			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
 			pathIsDirectory: async () => true,
 			onTerminalManagerReady: (_projectId, readyManager) => {
 				manager = readyManager;
@@ -434,7 +452,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async () => false,
+			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
 			pathIsDirectory: async () => true,
 			onTerminalManagerReady: (_projectId, readyManager) => {
 				manager = readyManager;
@@ -458,7 +476,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async () => false,
+			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
 			pathIsDirectory: async () => true,
 			onTerminalManagerReady: (_projectId, readyManager) => {
 				manager = readyManager;
@@ -590,9 +608,7 @@ describe("project registry startup recovery integration", () => {
 		expect(stateMocks.listProjectIndexEntries).toHaveBeenCalledTimes(2);
 	});
 
-	it("keeps unavailable project state during headless startup and prunes only at client reconciliation", async () => {
-		const persistenceDrain = createDeferred();
-		const beforeProjectStateRemoval = vi.fn(async () => await persistenceDrain.promise);
+	it("keeps unavailable selected projects and saved state through startup and client reconciliation", async () => {
 		const projectEntries = [
 			{ projectId: "offline-project", repoPath: "/tmp/offline-project" },
 			{ projectId: "available-project", repoPath: "/tmp/available-project" },
@@ -600,9 +616,12 @@ describe("project registry startup recovery integration", () => {
 		stateMocks.listProjectIndexEntries.mockResolvedValue(projectEntries);
 		const availableState = createProjectState();
 		availableState.repoPath = "/tmp/available-project";
-		availableState.board.columns[1] = { id: "in_progress", title: "In Progress", cards: [] };
+		availableState.board.columns[0] = { id: "in_progress", title: "In Progress", cards: [] };
 		availableState.sessions = {};
 		stateMocks.loadProjectState.mockResolvedValue(availableState);
+		const saved = createProjectState();
+		saved.repoPath = "/tmp/offline-project";
+		stateMocks.loadSavedProjectStateById.mockResolvedValue(saved);
 		const config = createRuntimeConfig();
 		registry = await createProjectRegistry({
 			cwd: "/tmp/runtime",
@@ -610,25 +629,92 @@ describe("project registry startup recovery integration", () => {
 			loadRuntimeConfig: async () => config,
 			hasGitRepository: async (projectPath) => projectPath === "/tmp/available-project",
 			pathIsDirectory: async (projectPath) => projectPath !== "/tmp/offline-project",
-			beforeProjectStateRemoval,
 		});
 
 		await expect(registry.initializeIndexedProjectsForStartup()).resolves.toBe(1);
-		expect(registry.getActiveProjectId()).toBe("available-project");
+		expect(registry.getActiveProjectId()).toBe("offline-project");
+		await expect(registry.resolveProjectForStream("offline-project")).resolves.toMatchObject({
+			projectId: "offline-project",
+			projectPath: "/tmp/offline-project",
+		});
+		const snapshot = await registry.buildProjectStateSnapshot("offline-project");
+		expect(snapshot.availability).toEqual({ status: "unavailable", reason: "missing" });
+		expect(snapshot.board).toEqual(saved.board);
+		expect(snapshot.sessions["task-1"]?.resumeSessionId).toBe("session-1");
+		expect(registry.getTerminalManagerForProject("offline-project")).toBeNull();
+		await expect(registry.resumeInterruptedSessions("offline-project", "/tmp/offline-project")).resolves.toBe(0);
+		expect(stateMocks.loadProjectState).not.toHaveBeenCalledWith("/tmp/offline-project", expect.anything());
 		expect(stateMocks.removeProjectIndexEntry).not.toHaveBeenCalled();
 		expect(stateMocks.removeProjectStateFiles).not.toHaveBeenCalled();
-		expect(beforeProjectStateRemoval).not.toHaveBeenCalled();
+		expect(ptySessionSpawnMock).not.toHaveBeenCalled();
+	});
 
-		const resolution = registry.resolveProjectForStream(null);
-		await vi.waitFor(() => expect(beforeProjectStateRemoval).toHaveBeenCalledWith("offline-project"));
-		expect(stateMocks.removeProjectStateFiles).not.toHaveBeenCalled();
-		persistenceDrain.resolve();
-		await expect(resolution).resolves.toMatchObject({
-			projectId: "available-project",
-			didPruneProjects: true,
+	it("orders availability changes independently of board revisions and keeps the display name", async () => {
+		const scope = {
+			projectId: "project-1",
+			repoPath: "/tmp/offline-naming-test",
+			displayName: "My project",
+			metadataRevision: 10,
+		};
+		stateMocks.loadProjectScopeById.mockImplementation(async () => ({ ...scope }));
+		stateMocks.updateProjectIndexMetadata.mockImplementation(async () => {
+			scope.metadataRevision += 1;
+			return { ...scope };
 		});
-		expect(stateMocks.removeProjectIndexEntry).toHaveBeenCalledWith("offline-project");
-		expect(stateMocks.removeProjectStateFiles).toHaveBeenCalledWith("offline-project");
+		let available = false;
+		const config = createRuntimeConfig();
+		registry = await createProjectRegistry({
+			cwd: "/tmp/runtime",
+			loadGlobalRuntimeConfig: async () => config,
+			loadRuntimeConfig: async () => config,
+			hasGitRepository: async (path) => path !== "/tmp/runtime",
+			pathIsDirectory: async () => available,
+		});
+		const missing = await registry.buildProjectSummary(scope.projectId, scope.repoPath);
+		expect(missing).toMatchObject({
+			name: "My project",
+			displayName: "My project",
+			metadataRevision: 11,
+			boardRevision: 1,
+			availability: { status: "unavailable", reason: "missing" },
+		});
+		await registry.checkProjectAvailability(scope.projectId);
+		expect(stateMocks.updateProjectIndexMetadata).toHaveBeenCalledTimes(1);
+		available = true;
+		const restored = await registry.buildProjectSummary(scope.projectId, scope.repoPath);
+		expect(restored).toMatchObject({
+			id: scope.projectId,
+			name: "My project",
+			metadataRevision: 12,
+			boardRevision: 1,
+			availability: { status: "available" },
+		});
+		expect(registry.getTerminalManagerForProject(scope.projectId)).toBeNull();
+	});
+
+	it("rebinds remembered paths and rejects a launch through the former terminal manager", async () => {
+		const scope = { projectId: "project-1", repoPath: "/tmp/project", metadataRevision: 1 };
+		stateMocks.loadProjectScopeById.mockImplementation(async () => ({ ...scope }));
+		const config = createRuntimeConfig();
+		registry = await createProjectRegistry({
+			cwd: "/tmp/runtime",
+			loadGlobalRuntimeConfig: async () => config,
+			loadRuntimeConfig: async () => config,
+			hasGitRepository: async (path) => path !== "/tmp/runtime",
+			pathIsDirectory: async () => true,
+		});
+		await registry.setActiveProject(scope.projectId);
+		const previousManager = registry.getTerminalManagerForProject(scope.projectId);
+		if (!previousManager) throw new Error("Expected original manager");
+		scope.repoPath = "/tmp/relocated-project";
+		await registry.rebindProjectLocation(scope.projectId, scope.repoPath);
+		expect(registry.getProjectPathById(scope.projectId)).toBe(scope.repoPath);
+		expect(registry.getActiveProjectPath()).toBe(scope.repoPath);
+		expect(registry.getTerminalManagerForProject(scope.projectId)).not.toBe(previousManager);
+		await expect(
+			previousManager.startShellSession({ taskId: "shell", cwd: "/tmp/project", binary: "/bin/sh" }),
+		).rejects.toThrow("unavailable or has moved");
+		expect(ptySessionSpawnMock).not.toHaveBeenCalled();
 	});
 
 	it.each([
@@ -680,7 +766,7 @@ describe("project registry startup recovery integration", () => {
 				cwd: "/tmp/runtime",
 				loadGlobalRuntimeConfig: async () => config,
 				loadRuntimeConfig: async () => config,
-				hasGitRepository: async () => false,
+				hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
 				pathIsDirectory: async () => true,
 				onTerminalManagerReady: (_projectId, readyManager) => {
 					manager = readyManager;
@@ -748,7 +834,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async () => false,
+			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
 			pathIsDirectory: async () => true,
 			onTerminalManagerReady: (_projectId, readyManager) => {
 				manager = readyManager;

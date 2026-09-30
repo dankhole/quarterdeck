@@ -23,6 +23,7 @@ interface UseTaskEditorInput {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	currentProjectId: string | null;
+	readOnly?: boolean;
 	createTaskBranchOptions: Array<{ value: string; label: string }>;
 	defaultTaskBranchRef: string;
 	folderOnly?: boolean;
@@ -118,6 +119,7 @@ export function useTaskEditor({
 	board,
 	setBoard,
 	currentProjectId,
+	readOnly = false,
 	createTaskBranchOptions,
 	defaultTaskBranchRef,
 	folderOnly = false,
@@ -237,7 +239,7 @@ export function useTaskEditor({
 
 	const generateBranchNameFromPrompt = useCallback(async () => {
 		const prompt = newTaskPrompt.trim();
-		if (!prompt || !currentProjectId || isGeneratingBranchNameRef.current) {
+		if (readOnly || !prompt || !currentProjectId || isGeneratingBranchNameRef.current) {
 			return;
 		}
 		isGeneratingBranchNameRef.current = true;
@@ -256,9 +258,10 @@ export function useTaskEditor({
 			isGeneratingBranchNameRef.current = false;
 			setIsGeneratingBranchName(false);
 		}
-	}, [currentProjectId, newTaskPrompt]);
+	}, [currentProjectId, newTaskPrompt, readOnly]);
 
 	const handleOpenCreateTask = useCallback(() => {
+		if (readOnly) return;
 		setEditingTaskId(null);
 		setEditTaskPrompt("");
 		setEditTaskImages([]);
@@ -269,7 +272,7 @@ export function useTaskEditor({
 		resetNewTaskAgentId(resetCreateDraft.agentId);
 		setNewTaskCodexOptions(undefined);
 		setIsInlineTaskCreateOpen(true);
-	}, [getDefaultTaskAgentId, resetNewTaskAgentId, resolvedDefaultTaskBranchRef]);
+	}, [getDefaultTaskAgentId, readOnly, resetNewTaskAgentId, resolvedDefaultTaskBranchRef]);
 
 	const handleCancelCreateTask = useCallback(() => {
 		const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, getDefaultTaskAgentId());
@@ -286,6 +289,7 @@ export function useTaskEditor({
 
 	const handleOpenEditTask = useCallback(
 		(task: BoardCard, options?: OpenEditTaskOptions) => {
+			if (readOnly) return;
 			const selection = findCardSelection(board, task.id);
 			if (selection?.column.id !== "review" || !selection.card.unstarted) return;
 			if (!options?.preserveDetailSelection) {
@@ -301,7 +305,7 @@ export function useTaskEditor({
 			setEditTaskImages(editDraft.images);
 			setEditTaskBranchRef(editDraft.branchRef);
 		},
-		[board, resolvedDefaultTaskBranchRef, setSelectedTaskId],
+		[board, readOnly, resolvedDefaultTaskBranchRef, setSelectedTaskId],
 	);
 
 	const handleCancelEditTask = useCallback(() => {
@@ -313,6 +317,7 @@ export function useTaskEditor({
 	}, []);
 
 	const handleSaveEditedTask = useCallback((): string | null => {
+		if (readOnly) return null;
 		const { board: nextBoard, savedTaskId } = saveEditedTaskToBoard({
 			board,
 			editingTaskId,
@@ -339,6 +344,7 @@ export function useTaskEditor({
 		editTaskPrompt,
 		editTaskImages,
 		editingTaskId,
+		readOnly,
 		resolvedDefaultTaskBranchRef,
 		setBoard,
 	]);
@@ -371,6 +377,7 @@ export function useTaskEditor({
 
 	const handleCreateTask = useCallback(
 		(options?: CreateTaskOptions): string | null => {
+			if (readOnly) return null;
 			const { board: nextBoard, createdTaskId } = createTaskOnBoard({
 				board,
 				prompt: newTaskPrompt,
@@ -400,6 +407,7 @@ export function useTaskEditor({
 			newTaskImages,
 			newTaskPrompt,
 			newTaskUseWorktree,
+			readOnly,
 			resetCreateEditorAfterSubmit,
 			resolvedDefaultTaskBranchRef,
 			setBoard,
@@ -408,6 +416,7 @@ export function useTaskEditor({
 
 	const handleCreateTasks = useCallback(
 		(prompts: string[], options?: CreateTaskOptions): string[] => {
+			if (readOnly) return [];
 			const { board: nextBoard, createdTaskIds } = createTasksOnBoard({
 				board,
 				prompts,
@@ -432,6 +441,7 @@ export function useTaskEditor({
 			newTaskBranchRef,
 			newTaskImages,
 			newTaskUseWorktree,
+			readOnly,
 			resetCreateEditorAfterSubmit,
 			resolvedDefaultTaskBranchRef,
 			setBoard,
@@ -440,6 +450,7 @@ export function useTaskEditor({
 
 	const prepareCreateTaskForLifecycle = useCallback(
 		(options?: CreateTaskOptions): PreparedTaskCreation | null => {
+			if (readOnly) return null;
 			const { createdTask } = createTaskOnBoard({
 				board,
 				prompt: newTaskPrompt,
@@ -468,6 +479,7 @@ export function useTaskEditor({
 			newTaskImages,
 			newTaskPrompt,
 			newTaskUseWorktree,
+			readOnly,
 			resetCreateEditorAfterSubmit,
 			resolvedDefaultTaskBranchRef,
 		],
@@ -489,7 +501,7 @@ export function useTaskEditor({
 	}, [getDefaultTaskAgentId, resetNewTaskAgentId, resolvedDefaultTaskBranchRef]);
 
 	return {
-		isInlineTaskCreateOpen,
+		isInlineTaskCreateOpen: !readOnly && isInlineTaskCreateOpen,
 		newTaskPrompt,
 		setNewTaskPrompt,
 		newTaskImages,
@@ -508,7 +520,7 @@ export function useTaskEditor({
 		isGeneratingBranchName,
 		newTaskBranchRef,
 		setNewTaskBranchRef,
-		editingTaskId,
+		editingTaskId: readOnly ? null : editingTaskId,
 		editTaskPrompt,
 		setEditTaskPrompt,
 		editTaskImages,

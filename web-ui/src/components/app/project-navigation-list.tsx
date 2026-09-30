@@ -13,6 +13,7 @@ import { ProjectNavigationItem } from "@/components/app/project-navigation-item"
 import { ProjectRowSkeleton } from "@/components/app/project-navigation-row";
 import { moveProjectOneStep, projectDropCommand, UNGROUPED } from "@/hooks/project/project-groups";
 import { useProjectGroupNavigation } from "@/hooks/project/use-project-group-navigation";
+import type { ProjectManagementMenuActions } from "@/hooks/project/use-project-management";
 import type { ProjectOrganization, RuntimeProjectSummary } from "@/runtime/types";
 
 const ignoreOrganization = () => {};
@@ -29,6 +30,7 @@ export function ProjectNavigationList({
 	organization = null,
 	onOrganization = ignoreOrganization,
 	organizationDisabled = false,
+	management,
 }: {
 	projects: RuntimeProjectSummary[];
 	isLoadingProjects: boolean;
@@ -42,6 +44,7 @@ export function ProjectNavigationList({
 	organization?: ProjectOrganization | null;
 	onOrganization?: (value: ProjectOrganization) => void;
 	organizationDisabled?: boolean;
+	management?: ProjectManagementMenuActions | null;
 }) {
 	const {
 		groups,
@@ -85,6 +88,8 @@ export function ProjectNavigationList({
 						onSelect={onSelectProject}
 						onPreload={onPreloadProject}
 						onRemove={onRequestRemoveProject}
+						management={management}
+						actionsDisabled={organizationDisabled}
 						groupActions={
 							<>
 								<DropdownMenu.Item

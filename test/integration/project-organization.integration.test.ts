@@ -34,7 +34,7 @@ describe("project group persistence", () => {
 				if (!afterAdd) throw new Error("Missing saved organization");
 				expect(afterAdd.groups).toEqual([{ id: groupId, name: "Work" }]);
 				expect(afterAdd.membership).toEqual({ [first.projectId]: groupId, [second.projectId]: groupId });
-				expect(JSON.parse(readFileSync(join(getProjectsRootPath(), "index.json"), "utf8")).version).toBe(2);
+				expect(JSON.parse(readFileSync(join(getProjectsRootPath(), "index.json"), "utf8")).version).toBe(3);
 				const edits = await Promise.all(
 					["Team", "Personal"].map((name) =>
 						updateProjectOrganization({

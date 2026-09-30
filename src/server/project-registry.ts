@@ -7,6 +7,7 @@ import type {
 	ITerminalManagerProvider,
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
+	RuntimeProjectAvailability,
 	RuntimeProjectStateResponse,
 	RuntimeProjectSummary,
 	RuntimeTaskSessionSummary,
@@ -15,10 +16,13 @@ import {
 	areFileSystemPathsEqual,
 	createTaggedLogger,
 	deriveProjectSummary,
+	KeyedOperationCoordinator,
 	normalizeDiagnosticErrorClass,
+	normalizeRuntimeTaskSessionSummary,
 	pruneOrphanSessionsForBroadcast,
 } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
+import { observeProjectAvailability } from "../projects/project-availability";
 import {
 	isUnderWorktreesHome,
 	listProjectIndexEntries,
@@ -26,13 +30,14 @@ import {
 	loadProjectContext,
 	loadProjectScopeById,
 	loadProjectState,
-	loadProjectStateById,
+	loadSavedProjectStateById,
 	type RuntimeProjectIndexEntry,
-	removeProjectIndexEntry,
-	removeProjectStateFiles,
+	type RuntimeProjectScopeContext,
+	updateProjectIndexMetadata,
 } from "../state";
 import { ProjectExecutionOwnershipStore } from "../state/project-execution-ownership-store";
 import { readProjectNavigationIndex } from "../state/project-state-index.js";
+import { detectGitRepositoryInfo } from "../state/project-state-utils";
 import {
 	deriveStartupRecoveryPolicy,
 	InMemorySessionSummaryStore,
@@ -96,6 +101,20 @@ export function shouldResumeSessionOnStartup(summary: RuntimeTaskSessionSummary)
 	return deriveStartupRecoveryPolicy(summary).required;
 }
 
+function projectSessionsForAvailability(
+	sessions: Record<string, RuntimeTaskSessionSummary>,
+	availability: RuntimeProjectAvailability,
+): Record<string, RuntimeTaskSessionSummary> {
+	if (availability.status === "available") return sessions;
+	// Preserve durable history while removing process claims from this read-only projection.
+	return Object.fromEntries(
+		Object.entries(sessions).map(([taskId, summary]) => [
+			taskId,
+			normalizeRuntimeTaskSessionSummary({ ...summary, pid: null }, { invalidateNativeWorkEvidence: true }),
+		]),
+	);
+}
+
 export interface ProjectRegistryScope {
 	projectId: string;
 	projectPath: string;
@@ -109,8 +128,6 @@ export interface CreateProjectRegistryDependencies {
 	pathIsDirectory: (path: string) => Promise<boolean>;
 	waitForStartupAgentCleanup?: () => Promise<void>;
 	onTerminalManagerReady?: (projectId: string, manager: TerminalSessionManager) => void;
-	/** Detach and drain persistence before stream reconciliation deletes unavailable project state. */
-	beforeProjectStateRemoval?: (projectId: string) => Promise<void>;
 	diagnostics?: RuntimeDiagnostics;
 }
 
@@ -121,14 +138,6 @@ export interface DisposeProjectRegistryOptions {
 export interface ResolvedProjectStreamTarget {
 	projectId: string | null;
 	projectPath: string | null;
-	removedRequestedProjectPath: string | null;
-	didPruneProjects: boolean;
-}
-
-export interface RemovedProjectNotice {
-	projectId: string;
-	repoPath: string;
-	message: string;
 }
 
 export type ProjectRemovalPreparationHandler = (
@@ -155,12 +164,7 @@ export interface ProjectRegistry
 		terminalManager: TerminalSessionManager | null;
 		projectPath: string | null;
 	};
-	resolveProjectForStream: (
-		requestedProjectId: string | null,
-		options?: {
-			onRemovedProject?: (notice: RemovedProjectNotice) => void | Promise<void>;
-		},
-	) => Promise<ResolvedProjectStreamTarget>;
+	resolveProjectForStream: (requestedProjectId: string | null) => Promise<ResolvedProjectStreamTarget>;
 	/**
 	 * Hydrate every valid indexed project before the runtime accepts clients,
 	 * then enqueue eligible session recovery without waiting for agent launches.
@@ -180,6 +184,14 @@ export interface ProjectRegistry
 	) => Promise<number>;
 	resolveTaskSessionSummary: (projectId: string, taskId: string) => Promise<RuntimeTaskSessionSummary | null>;
 	setProjectRemovalPreparationHandler: (handler: ProjectRemovalPreparationHandler | null) => void;
+	checkProjectAvailability: (projectId: string) => Promise<RuntimeProjectAvailability>;
+	/** Enrichs a committed projection without acquiring admission or hydrating a session manager. */
+	buildProjectStatePublication: (
+		projectId: string,
+		state: RuntimeProjectStateResponse,
+	) => Promise<RuntimeProjectStateResponse | null>;
+	rebindProjectLocation: (projectId: string, projectPath: string) => Promise<void>;
+	setProjectOperationRunner: (runner: ProjectOperationRunner) => void;
 	prepareProjectRemoval: (projectId: string, projectPath: string) => Promise<{ ok: boolean; error?: string }>;
 	stopMaintenance: () => void;
 	listManagedProjects: () => Array<{
@@ -189,25 +201,11 @@ export interface ProjectRegistry
 	}>;
 }
 
+export type ProjectOperationRunner = <T>(projectId: string, operation: () => Promise<T>) => Promise<T>;
+
 export interface ProjectStreamValidationResult {
 	project: RuntimeProjectIndexEntry;
-	removalMessage: string | null;
-}
-
-async function resolveIndexedProjectRemovalMessage(
-	project: RuntimeProjectIndexEntry,
-	deps: Pick<CreateProjectRegistryDependencies, "hasGitRepository" | "pathIsDirectory">,
-): Promise<string | null> {
-	if (isUnderWorktreesHome(project.repoPath)) {
-		return `Worktree was incorrectly indexed as a project and was removed: ${project.repoPath}`;
-	}
-	if (!(await deps.pathIsDirectory(project.repoPath))) {
-		return `Project no longer exists on disk and was removed: ${project.repoPath}`;
-	}
-	if (!project.folderOnly && !(await deps.hasGitRepository(project.repoPath))) {
-		return `Project is not a git repository and was removed: ${project.repoPath}`;
-	}
-	return null;
+	availability: RuntimeProjectAvailability;
 }
 
 export async function validateIndexedProjectsForStream(
@@ -219,7 +217,7 @@ export async function validateIndexedProjectsForStream(
 		projects.map((project) =>
 			limit(async () => ({
 				project,
-				removalMessage: await resolveIndexedProjectRemovalMessage(project, deps),
+				availability: await observeProjectAvailability(project, deps),
 			})),
 		),
 	);
@@ -265,6 +263,9 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	const executionOwnershipStore = new ProjectExecutionOwnershipStore();
 	const terminalManagersByProjectId = new Map<string, TerminalSessionManager>();
 	const terminalManagerLoadPromises = new Map<string, Promise<TerminalSessionManager>>();
+	const availabilityOperations = new KeyedOperationCoordinator();
+	const observedAvailability = new Map<string, RuntimeProjectAvailability>();
+	let runProjectOperation: ProjectOperationRunner = async (_projectId, operation) => await operation();
 	const deferredStartupRecoveries = new Map<string, { projectId: string; projectPath: string; taskId: string }>();
 	const deferredStartupRecoveryProjects = new Map<string, string>();
 	const projectOrphanMaintenance: ProjectOrphanMaintenanceTimer = createProjectOrphanMaintenanceTimer({
@@ -280,6 +281,61 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		projectPathsById.set(projectId, repoPath);
 		projectOrphanMaintenance.start();
 		if (!wasKnown) deps.diagnostics?.recordEvent("project.registered", {}, { projectId }, { essential: true });
+	};
+
+	const observeProjectLocation = async (
+		projectId: string,
+	): Promise<{ scope: RuntimeProjectScopeContext | null; availability: RuntimeProjectAvailability }> => {
+		return await availabilityOperations.run(projectId, async () => {
+			let scope = await loadProjectScopeById(projectId);
+			if (!scope) return { scope: null, availability: { status: "unavailable", reason: "invalid_location" } };
+			rememberProject(projectId, scope.repoPath);
+			if (activeProjectId === projectId) activeProjectPath = scope.repoPath;
+			const availability = await observeProjectAvailability(scope, deps);
+			const previous = observedAvailability.get(projectId);
+			if (
+				(previous && JSON.stringify(previous) !== JSON.stringify(availability)) ||
+				(!previous && availability.status === "unavailable")
+			) {
+				scope = {
+					...scope,
+					...(await updateProjectIndexMetadata({ projectId, expectedPath: scope.repoPath, touch: true })),
+				};
+			}
+			observedAvailability.set(projectId, availability);
+			return { scope, availability };
+		});
+	};
+
+	const checkProjectAvailability = async (projectId: string): Promise<RuntimeProjectAvailability> =>
+		(await observeProjectLocation(projectId)).availability;
+
+	const assertProjectLaunchAvailable = async (
+		projectId: string,
+		projectPath: string,
+		manager: TerminalSessionManager,
+	): Promise<void> => {
+		const availability = await checkProjectAvailability(projectId);
+		if (
+			availability.status !== "available" ||
+			!areFileSystemPathsEqual(projectPathsById.get(projectId) ?? "", projectPath) ||
+			terminalManagersByProjectId.get(projectId) !== manager
+		) {
+			throw new Error("Project folder is unavailable or has moved. Locate the folder before starting a session.");
+		}
+	};
+
+	const configureManagerLaunchAdmission = (
+		projectId: string,
+		projectPath: string,
+		manager: TerminalSessionManager,
+	): void => {
+		manager.setLaunchOperationRunner(async (operation) => {
+			return await runProjectOperation(projectId, async () => {
+				await assertProjectLaunchAvailable(projectId, projectPath, manager);
+				return await operation();
+			});
+		});
 	};
 
 	const stopOrphanMaintenanceIfIdle = (): void => {
@@ -326,6 +382,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			const hydratedSessionCount = Object.keys(existingProject.sessions).length;
 			manager.startReconciliation();
 			terminalManagersByProjectId.set(projectId, manager);
+			configureManagerLaunchAdmission(projectId, repoPath, manager);
 			registryLog.debug("terminal manager created", {
 				projectId,
 				hasProjectPath: repoPath.length > 0,
@@ -385,7 +442,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		if (pendingManager) {
 			return (await pendingManager).store.getSummary(taskId);
 		}
-		const state = await loadProjectStateById(projectId);
+		const state = await loadSavedProjectStateById(projectId);
 		return state?.sessions[taskId] ?? null;
 	};
 
@@ -399,26 +456,40 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	const startupRecoveryCoordinator = new StartupSessionRecoveryCoordinator({
 		waitForPrerequisite: deps.waitForStartupAgentCleanup,
 		prepare: async (candidate, options) =>
-			await prepareTaskSessionStart(
-				candidate.scope,
-				candidate.request,
-				{
-					config: { loadScopedRuntimeConfig },
-					getScopedTerminalManager: async () => candidate.manager,
-				},
-				options,
-			),
+			await runProjectOperation(candidate.scope.projectId, async () => {
+				await assertProjectLaunchAvailable(
+					candidate.scope.projectId,
+					candidate.scope.projectPath,
+					candidate.manager,
+				);
+				const prepared = await prepareTaskSessionStart(
+					candidate.scope,
+					candidate.request,
+					{
+						config: { loadScopedRuntimeConfig },
+						getScopedTerminalManager: async () => candidate.manager,
+					},
+					options,
+				);
+				return prepared;
+			}),
+		// The manager's launch runner fences every frozen recovery attempt too.
 		launch: launchPreparedTaskSession,
 	});
 
-	const setActiveProject = async (projectId: string, repoPath: string): Promise<void> => {
-		activeProjectId = projectId;
-		activeProjectPath = repoPath;
-		rememberProject(projectId, repoPath);
-		activeRuntimeConfig = await deps.loadRuntimeConfig(projectId);
-		globalRuntimeConfig = toGlobalRuntimeConfigState(activeRuntimeConfig);
-		await prepareTerminalManagerForProject(projectId, repoPath, "selection");
-	};
+	const setActiveProject = async (projectId: string): Promise<void> =>
+		await runProjectOperation(projectId, async () => {
+			const scope = await loadProjectScopeById(projectId);
+			if (!scope) throw new Error("Project is no longer registered.");
+			activeProjectId = projectId;
+			activeProjectPath = scope.repoPath;
+			rememberProject(projectId, scope.repoPath);
+			activeRuntimeConfig = await deps.loadRuntimeConfig(projectId);
+			globalRuntimeConfig = toGlobalRuntimeConfigState(activeRuntimeConfig);
+			if ((await checkProjectAvailability(projectId)).status === "available") {
+				await prepareTerminalManagerForProject(projectId, scope.repoPath, "selection");
+			}
+		});
 
 	const clearActiveProject = (): void => {
 		activeProjectId = null;
@@ -441,6 +512,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		projectStateDiagnostics.remove(projectId);
 		const projectPath = projectPathsById.get(projectId) ?? null;
 		projectPathsById.delete(projectId);
+		observedAvailability.delete(projectId);
 		for (const [key, deferred] of deferredStartupRecoveries) {
 			if (deferred.projectId === projectId) deferredStartupRecoveries.delete(key);
 		}
@@ -458,30 +530,109 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		};
 	};
 
+	const rebindProjectLocation = async (projectId: string, projectPath: string): Promise<void> => {
+		const scope = await loadProjectScopeById(projectId);
+		if (!scope || !areFileSystemPathsEqual(scope.repoPath, projectPath)) {
+			throw new Error("Project location changed before runtime refresh completed.");
+		}
+		const pending = terminalManagerLoadPromises.get(projectId);
+		if (pending) await pending;
+		const manager = terminalManagersByProjectId.get(projectId);
+		if (manager) {
+			await manager.waitForShutdownQuiescence();
+			manager.stopReconciliation();
+			terminalManagersByProjectId.delete(projectId);
+		}
+		terminalManagerLoadPromises.delete(projectId);
+		for (const [key, deferred] of deferredStartupRecoveries) {
+			if (deferred.projectId === projectId) deferredStartupRecoveries.delete(key);
+		}
+		deferredStartupRecoveryProjects.delete(projectId);
+		rememberProject(projectId, scope.repoPath);
+		if (activeProjectId === projectId) {
+			activeProjectPath = scope.repoPath;
+			activeRuntimeConfig = await deps.loadRuntimeConfig(projectId);
+			globalRuntimeConfig = toGlobalRuntimeConfigState(activeRuntimeConfig);
+		}
+		if ((await checkProjectAvailability(projectId)).status === "available") {
+			await prepareTerminalManagerForProject(projectId, scope.repoPath, "selection");
+		}
+	};
+
 	const buildProjectSummary = async (projectId: string, repoPath: string): Promise<RuntimeProjectSummary> => {
 		const snapshot = await loadProjectBoardSnapshotById(projectId);
+		const availability = await checkProjectAvailability(projectId);
 		const scope = await loadProjectScopeById(projectId);
 		return deriveProjectSummary({
 			projectId,
-			repoPath,
+			repoPath: scope?.repoPath ?? repoPath,
 			board: snapshot.board,
 			boardRevision: snapshot.revision,
 			folderOnly: scope?.folderOnly,
+			displayName: scope?.displayName,
+			metadataRevision: scope?.metadataRevision,
+			availability,
 		});
 	};
 
-	const buildProjectStateSnapshot = async (
+	const buildProjectStateSnapshot = async (projectId: string): Promise<RuntimeProjectStateResponse> =>
+		await runProjectOperation(projectId, async () => {
+			// A snapshot may hydrate and publish a manager. Hold admission through
+			// that publication so relocation cannot dispose its owner mid-read.
+			const availability = await checkProjectAvailability(projectId);
+			const scope = await loadProjectScopeById(projectId);
+			if (!scope) throw new Error("Project is no longer registered.");
+			const response =
+				availability.status === "available"
+					? await loadProjectState(scope.repoPath, { autoCreateIfMissing: false })
+					: await loadSavedProjectStateById(projectId);
+			if (!response) throw new Error("Project is no longer registered.");
+			response.availability = availability;
+			if (availability.status === "available") {
+				const terminalManager = await ensureTerminalManagerForProject(projectId, scope.repoPath);
+				for (const summary of terminalManager.store.listSummaries()) {
+					response.sessions[summary.taskId] = summary;
+				}
+			}
+			response.sessions = projectSessionsForAvailability(response.sessions, availability);
+			response.sessions = pruneOrphanSessionsForBroadcast(response.sessions, response.board);
+			projectStateDiagnostics.observe(projectId, response);
+			return response;
+		});
+
+	const buildProjectStatePublication = async (
 		projectId: string,
-		projectPath: string,
-	): Promise<RuntimeProjectStateResponse> => {
-		const response = await loadProjectState(projectPath, { autoCreateIfMissing: false });
-		const terminalManager = await ensureTerminalManagerForProject(projectId, projectPath);
-		for (const summary of terminalManager.store.listSummaries()) {
-			response.sessions[summary.taskId] = summary;
+		state: RuntimeProjectStateResponse,
+	): Promise<RuntimeProjectStateResponse | null> => {
+		// Runtime persistence owners await publication while draining inside relocation's
+		// exclusion. Read metadata only: admission or manager hydration here can deadlock
+		// that drain or resurrect a manager whose subscriptions were already disposed.
+		const { scope, availability } = await observeProjectLocation(projectId);
+		if (!scope || scope.repoPath !== state.repoPath) return null;
+		const git =
+			availability.status === "available" && !scope.folderOnly
+				? await detectGitRepositoryInfo(scope.repoPath)
+				: {
+						...(scope.folderOnly ? { folderOnly: true } : {}),
+						currentBranch: null,
+						defaultBranch: null,
+						branches: [],
+					};
+		const currentScope = await loadProjectScopeById(projectId);
+		if (
+			!currentScope ||
+			currentScope.repoPath !== scope.repoPath ||
+			currentScope.metadataRevision !== scope.metadataRevision
+		) {
+			return null;
 		}
-		response.sessions = pruneOrphanSessionsForBroadcast(response.sessions, response.board);
-		projectStateDiagnostics.observe(projectId, response);
-		return response;
+		return {
+			...state,
+			git,
+			availability,
+			metadataRevision: scope.metadataRevision,
+			sessions: projectSessionsForAvailability(state.sessions, availability),
+		};
 	};
 
 	const buildProjectsPayload = async (preferredCurrentProjectId: string | null) => {
@@ -493,8 +644,9 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				projects.some((project) => project.projectId === preferredCurrentProjectId) &&
 				preferredCurrentProjectId) ||
 			fallbackProjectId;
+		const limit = pLimit(PROJECT_STREAM_VALIDATION_CONCURRENCY);
 		const projectSummaries = await Promise.all(
-			projects.map(async (project) => await buildProjectSummary(project.projectId, project.repoPath)),
+			projects.map((project) => limit(() => buildProjectSummary(project.projectId, project.repoPath))),
 		);
 		return {
 			currentProjectId: resolvedCurrentProjectId,
@@ -504,6 +656,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	};
 
 	const inspectIndexedProjects = async (): Promise<{
+		indexedProjects: RuntimeProjectIndexEntry[];
 		existingProjects: RuntimeProjectIndexEntry[];
 		unavailableProjects: RuntimeProjectIndexEntry[];
 	}> => {
@@ -512,123 +665,52 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		const existingProjects: RuntimeProjectIndexEntry[] = [];
 		const unavailableProjects: RuntimeProjectIndexEntry[] = [];
 
-		for (const { project, removalMessage } of validationResults) {
-			if (!removalMessage) {
+		for (const { project, availability } of validationResults) {
+			if (availability.status === "available") {
 				existingProjects.push(project);
 				continue;
 			}
 
 			unavailableProjects.push(project);
 		}
-		return { existingProjects, unavailableProjects };
+		return { indexedProjects: allProjects, existingProjects, unavailableProjects };
 	};
 
 	const selectAvailableActiveProject = async (existingProjects: RuntimeProjectIndexEntry[]): Promise<void> => {
 		const activeProjectMissing = !existingProjects.some((project) => project.projectId === activeProjectId);
 		if (activeProjectMissing) {
 			if (existingProjects[0]) {
-				await setActiveProject(existingProjects[0].projectId, existingProjects[0].repoPath);
+				await setActiveProject(existingProjects[0].projectId);
 			} else {
 				clearActiveProject();
 			}
 		}
 	};
 
-	const reconcileIndexedProjects = async (options?: {
-		onRemovedProject?: (notice: RemovedProjectNotice) => void | Promise<void>;
-	}): Promise<{
-		existingProjects: RuntimeProjectIndexEntry[];
-		removedProjects: RuntimeProjectIndexEntry[];
-	}> => {
-		const { existingProjects, unavailableProjects } = await inspectIndexedProjects();
-		const removedProjects: RuntimeProjectIndexEntry[] = [];
-
-		for (const project of unavailableProjects) {
-			const removalMessage = await resolveIndexedProjectRemovalMessage(project, deps);
-			if (!removalMessage) {
-				// The path recovered between validation and mutation. Keep the index
-				// entry and let the next stream resolution include it normally.
-				existingProjects.push(project);
-				continue;
+	const resolveProjectForStream = async (requestedProjectId: string | null): Promise<ResolvedProjectStreamTarget> => {
+		// Selection is an identity operation. An unavailable path still owns its
+		// saved board and must remain selectable until the user removes it.
+		const projects = await listProjectIndexEntries();
+		const selected =
+			projects.find((project) => project.projectId === requestedProjectId) ??
+			projects.find((project) => project.projectId === activeProjectId) ??
+			projects[0] ??
+			null;
+		if (selected) {
+			if (
+				activeProjectId !== selected.projectId ||
+				!areFileSystemPathsEqual(activeProjectPath ?? "", selected.repoPath)
+			) {
+				await setActiveProject(selected.projectId);
+			} else {
+				await checkProjectAvailability(selected.projectId);
 			}
-			const preparation = await prepareProjectRemoval(project.projectId, project.repoPath);
-			if (!preparation.ok) {
-				registryLog.warn("project removal deferred because execution ownership could not be stopped", {
-					projectId: project.projectId,
-					errorClass: "ExecutionOwnerStopUnconfirmed",
-				});
-				continue;
-			}
-			removedProjects.push(project);
-			const terminalManager = getTerminalManagerForProject(project.projectId);
-			if (terminalManager) {
-				terminalManager.markInterruptedAndStopAll();
-				await terminalManager.waitForShutdownQuiescence();
-			}
-			await removeProjectIndexEntry(project.projectId);
-			// Detach and drain external runtime projections before deleting state;
-			// an already-running persistence write must not recreate the project.
-			await deps.beforeProjectStateRemoval?.(project.projectId);
-			await options?.onRemovedProject?.({
-				projectId: project.projectId,
-				repoPath: project.repoPath,
-				message: removalMessage,
-			});
-			await removeProjectStateFiles(project.projectId);
-			disposeProject(project.projectId, { stopTerminalSessions: false });
-		}
-
-		await selectAvailableActiveProject(existingProjects);
-
-		return { existingProjects, removedProjects };
-	};
-
-	const resolveProjectForStream = async (
-		requestedProjectId: string | null,
-		options?: {
-			onRemovedProject?: (notice: RemovedProjectNotice) => void | Promise<void>;
-		},
-	): Promise<ResolvedProjectStreamTarget> => {
-		const { existingProjects, removedProjects } = await reconcileIndexedProjects(options);
-
-		const removedRequestedProjectPath = requestedProjectId
-			? (removedProjects.find((project) => project.projectId === requestedProjectId)?.repoPath ?? null)
-			: null;
-
-		if (requestedProjectId) {
-			const requestedProject = existingProjects.find((project) => project.projectId === requestedProjectId);
-			if (requestedProject) {
-				if (
-					activeProjectId !== requestedProject.projectId ||
-					activeProjectPath === null ||
-					!areFileSystemPathsEqual(activeProjectPath, requestedProject.repoPath)
-				) {
-					await setActiveProject(requestedProject.projectId, requestedProject.repoPath);
-				}
-				return {
-					projectId: requestedProject.projectId,
-					projectPath: requestedProject.repoPath,
-					removedRequestedProjectPath,
-					didPruneProjects: removedProjects.length > 0,
-				};
-			}
-		}
-
-		const fallbackProject =
-			existingProjects.find((project) => project.projectId === activeProjectId) ?? existingProjects[0] ?? null;
-		if (!fallbackProject) {
-			return {
-				projectId: null,
-				projectPath: null,
-				removedRequestedProjectPath,
-				didPruneProjects: removedProjects.length > 0,
-			};
+		} else {
+			clearActiveProject();
 		}
 		return {
-			projectId: fallbackProject.projectId,
-			projectPath: fallbackProject.repoPath,
-			removedRequestedProjectPath,
-			didPruneProjects: removedProjects.length > 0,
+			projectId: selected?.projectId ?? null,
+			projectPath: selected?.repoPath ?? null,
 		};
 	};
 
@@ -643,20 +725,28 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		projectPath: string,
 		options: { recoveryBarrier?: StartupRecoveryBarrier | null } = {},
 	): Promise<number> => {
-		const manager = await ensureTerminalManagerForProject(projectId, projectPath);
-		let state: RuntimeProjectStateResponse;
-		try {
-			state = await loadProjectState(projectPath, { autoCreateIfMissing: false });
-		} catch (error) {
-			deferredStartupRecoveryProjects.set(projectId, projectPath);
-			registryLog.warn("startup resume deferred: failed to load project state", {
-				projectId,
-				hasProjectPath: projectPath.length > 0,
-				errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
-			});
-			throw error;
-		}
-		deferredStartupRecoveryProjects.delete(projectId);
+		const acquired = await runProjectOperation(projectId, async () => {
+			if ((await checkProjectAvailability(projectId)).status !== "available") return null;
+			if (!areFileSystemPathsEqual(projectPathsById.get(projectId) ?? "", projectPath)) return null;
+			const manager = await ensureTerminalManagerForProject(projectId, projectPath);
+			try {
+				const state = await loadProjectState(projectPath, { autoCreateIfMissing: false });
+				deferredStartupRecoveryProjects.delete(projectId);
+				return { manager, state };
+			} catch (error) {
+				deferredStartupRecoveryProjects.set(projectId, projectPath);
+				registryLog.warn("startup resume deferred: failed to load project state", {
+					projectId,
+					hasProjectPath: projectPath.length > 0,
+					errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError",
+				});
+				throw error;
+			}
+		});
+		if (!acquired) return 0;
+		// Only acquisition holds admission. Recovery preparation and each launch
+		// validate this manager again without blocking relocation on readiness waits.
+		const { manager, state } = acquired;
 		const resumable: StartupSessionRecoveryCandidate[] = [];
 		let ownershipByTask: Map<string, Awaited<ReturnType<ProjectExecutionOwnershipStore["listOwnership"]>>[number]>;
 		try {
@@ -912,14 +1002,14 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		}
 
 		indexedProjectInitialization = (async () => {
-			const { existingProjects, unavailableProjects } = await inspectIndexedProjects();
+			const { indexedProjects, existingProjects, unavailableProjects } = await inspectIndexedProjects();
 			for (const project of unavailableProjects) {
 				registryLog.warn("startup skipped unavailable indexed project without pruning saved state", {
 					projectId: project.projectId,
 					hasProjectPath: project.repoPath.length > 0,
 				});
 			}
-			await selectAvailableActiveProject(existingProjects);
+			await selectAvailableActiveProject(indexedProjects);
 			const hydrateLimit = pLimit(PROJECT_STREAM_VALIDATION_CONCURRENCY);
 			const hydrationResults = await Promise.all(
 				existingProjects.map(async (project) => ({
@@ -968,7 +1058,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		return indexedProjectInitialization;
 	};
 
-	if (initialProject) {
+	if (initialProject && (await checkProjectAvailability(initialProject.projectId)).status === "available") {
 		await prepareTerminalManagerForProject(initialProject.projectId, initialProject.repoPath, "startup");
 	}
 
@@ -1017,12 +1107,22 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		disposeProject,
 		buildProjectSummary,
 		buildProjectStateSnapshot,
+		buildProjectStatePublication,
 		buildProjectsPayload,
 		resolveProjectForStream,
 		initializeIndexedProjectsForStartup,
 		resumeInterruptedSessions,
 		releaseDeferredStartupRecoveries,
 		resolveTaskSessionSummary,
+		checkProjectAvailability,
+		rebindProjectLocation,
+		setProjectOperationRunner: (runner) => {
+			runProjectOperation = runner;
+			for (const [projectId, manager] of terminalManagersByProjectId) {
+				const projectPath = projectPathsById.get(projectId);
+				if (projectPath) configureManagerLaunchAdmission(projectId, projectPath, manager);
+			}
+		},
 		setProjectRemovalPreparationHandler: (handler) => {
 			projectRemovalPreparationHandler = handler;
 		},

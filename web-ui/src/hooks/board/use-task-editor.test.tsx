@@ -69,6 +69,7 @@ function HookHarness({
 	branchOptions = [{ value: "main", label: "main" }],
 	defaultTaskBranchRef = "main",
 	folderOnly = false,
+	readOnly = false,
 	fallbackTaskAgentId = "claude",
 	availableTaskAgentIds = ["claude", "codex", "pi"],
 }: {
@@ -78,6 +79,7 @@ function HookHarness({
 	branchOptions?: Array<{ value: string; label: string }>;
 	defaultTaskBranchRef?: string;
 	folderOnly?: boolean;
+	readOnly?: boolean;
 	fallbackTaskAgentId?: "claude" | "codex" | "pi";
 	availableTaskAgentIds?: Array<"claude" | "codex" | "pi"> | null;
 }): null {
@@ -90,6 +92,7 @@ function HookHarness({
 		createTaskBranchOptions: branchOptions,
 		defaultTaskBranchRef,
 		folderOnly,
+		readOnly,
 		fallbackTaskAgentId,
 		availableTaskAgentIds,
 		setSelectedTaskId,
@@ -600,6 +603,44 @@ describe("useTaskEditor", () => {
 		});
 
 		expect(requireSnapshot(latestSnapshot).newTaskAgentId).toBe("claude");
+	});
+
+	it("preserves a draft without saving or starting tasks when its project becomes read-only", async () => {
+		const task = createTask("saved-task", "Original prompt", 1);
+		const initialBoard = createBoard([task]);
+		const queueStart = vi.fn();
+		let latestSnapshot: HookSnapshot | null = null;
+		const onSnapshot = (snapshot: HookSnapshot) => {
+			latestSnapshot = snapshot;
+		};
+		const render = (readOnly: boolean) =>
+			root.render(
+				<HookHarness
+					initialBoard={initialBoard}
+					onSnapshot={onSnapshot}
+					queueTaskStartAfterEdit={queueStart}
+					readOnly={readOnly}
+				/>,
+			);
+		await act(async () => render(false));
+		await act(async () => requireSnapshot(latestSnapshot).handleOpenEditTask(task));
+		await act(async () => requireSnapshot(latestSnapshot).setEditTaskPrompt("Unsaved revised prompt"));
+		await act(async () => render(true));
+		expect(requireSnapshot(latestSnapshot).editingTaskId).toBeNull();
+		await act(async () => {
+			const snapshot = requireSnapshot(latestSnapshot);
+			expect(snapshot.handleSaveEditedTask()).toBeNull();
+			snapshot.handleSaveAndStartEditedTask();
+			snapshot.handleOpenCreateTask();
+			expect(snapshot.handleCreateTask()).toBeNull();
+			expect(snapshot.handleCreateTasks(["Another task"])).toEqual([]);
+		});
+		expect(requireSnapshot(latestSnapshot).board).toEqual(initialBoard);
+		expect(requireSnapshot(latestSnapshot).isInlineTaskCreateOpen).toBe(false);
+		expect(queueStart).not.toHaveBeenCalled();
+		await act(async () => render(false));
+		expect(requireSnapshot(latestSnapshot).editingTaskId).toBe("saved-task");
+		expect(requireSnapshot(latestSnapshot).editTaskPrompt).toBe("Unsaved revised prompt");
 	});
 
 	it("copies attached images to each split task and clears the draft images", async () => {

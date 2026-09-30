@@ -8,6 +8,7 @@ import {
 	createTaggedLogger,
 	isWindowsSafePathComponent,
 	runtimeBoardDataSchema,
+	runtimeProjectDisplayNameSchema,
 	runtimeTaskSessionSummarySchema,
 } from "../core";
 import {
@@ -53,13 +54,17 @@ export interface ProjectIndexEntry {
 	projectId: string;
 	repoPath: string;
 	folderOnly?: boolean;
+	displayName?: string;
+	metadataRevision?: number;
+	directoryIdentity?: ProjectDirectoryIdentity;
 }
 
-export interface RuntimeProjectIndexEntry {
-	projectId: string;
-	repoPath: string;
-	folderOnly?: boolean;
+export interface ProjectDirectoryIdentity {
+	device: string;
+	inode: string;
 }
+
+export type RuntimeProjectIndexEntry = ProjectIndexEntry;
 
 interface ProjectIndexFile {
 	version: number;
@@ -73,11 +78,14 @@ const projectIndexEntrySchema = z.object({
 	projectId: z.string().min(1, "Project ID cannot be empty."),
 	repoPath: z.string().min(1, "Project repository path cannot be empty."),
 	folderOnly: z.boolean().optional(),
+	displayName: runtimeProjectDisplayNameSchema.optional(),
+	metadataRevision: z.number().int().nonnegative().optional().default(0),
+	directoryIdentity: z.object({ device: z.string().min(1), inode: z.string().min(1) }).optional(),
 });
 
 const projectIndexFileSchema = z
 	.object({
-		version: z.union([z.literal(INDEX_VERSION), z.literal(2)]),
+		version: z.union([z.literal(INDEX_VERSION), z.literal(2), z.literal(3)]),
 		organization: projectOrganizationSchema.omit({ projectOrder: true }).optional(),
 		entries: z.record(z.string(), projectIndexEntrySchema),
 		repoPathToId: z.record(z.string(), z.string().min(1, "Project ID cannot be empty.")),
@@ -594,9 +602,8 @@ export async function listProjectIndexEntries(): Promise<RuntimeProjectIndexEntr
 
 function projectIndexEntries(index: ProjectIndexFile): RuntimeProjectIndexEntry[] {
 	const entries = Object.values(index.entries).map((entry) => ({
-		projectId: entry.projectId,
-		repoPath: entry.repoPath,
-		...(entry.folderOnly ? { folderOnly: true } : {}),
+		...entry,
+		metadataRevision: entry.metadataRevision ?? 0,
 	}));
 	const order = index.projectOrder;
 	if (order.length === 0) {
@@ -610,6 +617,72 @@ function projectIndexEntries(index: ProjectIndexFile): RuntimeProjectIndexEntry[
 			return leftPos - rightPos;
 		}
 		return left.repoPath.localeCompare(right.repoPath);
+	});
+}
+
+export interface UpdateProjectIndexMetadataInput {
+	projectId: string;
+	expectedPath?: string;
+	displayName?: string | null;
+	repoPath?: string;
+	directoryIdentity?: ProjectDirectoryIdentity;
+	/** Publishes a newly observed availability state even when identity metadata is unchanged. */
+	touch?: boolean;
+}
+
+/** Updates identity metadata without replacing the project, its state, or navigation membership. */
+export async function updateProjectIndexMetadata(
+	input: UpdateProjectIndexMetadataInput,
+): Promise<RuntimeProjectIndexEntry> {
+	return await lockedFileSystem.withLock(getProjectIndexLockRequest(), async () => {
+		const index = await readProjectIndex();
+		const entry = index.entries[input.projectId];
+		if (!entry) throw new Error(`Unknown project ID: ${input.projectId}`);
+		if (input.expectedPath !== undefined && !areFileSystemPathsEqual(entry.repoPath, input.expectedPath)) {
+			throw new Error("The project folder changed in another window. Refresh the project and try again.");
+		}
+		const nextPath = input.repoPath ?? entry.repoPath;
+		if (!nextPath.trim()) throw new Error("Project folder path cannot be empty.");
+		if (input.repoPath !== undefined && isUnderWorktreesHome(nextPath)) {
+			throw new Error("A Quarterdeck task worktree cannot be used as a project folder.");
+		}
+		if (
+			input.repoPath !== undefined &&
+			Object.values(index.entries).some(
+				(other) => other.projectId !== entry.projectId && areFileSystemPathsEqual(other.repoPath, nextPath),
+			)
+		) {
+			throw new Error("This folder is already registered to another project.");
+		}
+		const displayName =
+			input.displayName === null
+				? undefined
+				: input.displayName === undefined
+					? entry.displayName
+					: runtimeProjectDisplayNameSchema.parse(input.displayName);
+		const directoryIdentity = input.directoryIdentity ?? entry.directoryIdentity;
+		const changed =
+			input.touch === true ||
+			entry.repoPath !== nextPath ||
+			entry.displayName !== displayName ||
+			entry.directoryIdentity?.device !== directoryIdentity?.device ||
+			entry.directoryIdentity?.inode !== directoryIdentity?.inode;
+		if (!changed) return { ...entry, metadataRevision: entry.metadataRevision ?? 0 };
+
+		const next: ProjectIndexEntry = {
+			...entry,
+			repoPath: nextPath,
+			metadataRevision: (entry.metadataRevision ?? 0) + 1,
+		};
+		if (displayName === undefined) delete next.displayName;
+		else next.displayName = displayName;
+		if (directoryIdentity) next.directoryIdentity = directoryIdentity;
+		delete index.repoPathToId[entry.repoPath];
+		index.repoPathToId[nextPath] = entry.projectId;
+		index.entries[entry.projectId] = next;
+		index.version = 3;
+		await writeProjectIndex(index);
+		return next;
 	});
 }
 
@@ -694,7 +767,7 @@ export async function updateProjectOrganization(
 				input.command,
 			);
 			const { projectOrder, ...organization } = next;
-			index.version = 2; // Older runtimes reject this file instead of silently stripping group metadata.
+			index.version = Math.max(index.version, 2); // Never downgrade metadata unknown to older runtimes.
 			index.projectOrder = projectOrder;
 			index.organization = organization;
 			await writeProjectIndex(index);
