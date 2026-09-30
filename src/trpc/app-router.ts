@@ -37,6 +37,10 @@ import {
 	runtimeTaskSessionStopResponseSchema,
 } from "../core";
 import { lspServerConfigSchema } from "../core/api/code-navigation";
+import {
+	projectOrganizationRequestSchema,
+	projectOrganizationResponseSchema,
+} from "../core/api/project-organization.js";
 import { runtimeCodexModelsResponseSchema } from "../core/codex-model-contracts";
 import { checkLanguageServerCommand } from "../language-navigation/command";
 import { projectProcedure, t } from "./app-router-init";
@@ -132,6 +136,10 @@ const runtimeRouter = t.router({
 });
 
 const projectsRouter = t.router({
+	organize: t.procedure
+		.input(projectOrganizationRequestSchema)
+		.output(projectOrganizationResponseSchema)
+		.mutation(async ({ ctx, input }) => ctx.projectsApi.organizeProjects(input)),
 	list: t.procedure.output(runtimeProjectsResponseSchema).query(async ({ ctx }) => {
 		return await ctx.projectsApi.listProjects(ctx.requestedProjectId);
 	}),

@@ -3,6 +3,7 @@ import { runtimeBoardDataSchema } from "./board.js";
 import { runtimeConflictStateSchema } from "./git-merge.js";
 import { runtimeGitRepositoryInfoSchema, runtimeGitSyncSummarySchema } from "./git-sync.js";
 import { runtimeHostIntegrationFailureReasonSchema } from "./host-integrations.js";
+import { projectOrganizationSchema } from "./project-organization.js";
 import { runtimeTaskSessionSummarySchema } from "./task-session.js";
 
 export const runtimeProjectTaskCountsSchema = z.object({
@@ -69,12 +70,14 @@ export const runtimeProjectStateResponseSchema = z.object({
 export type RuntimeProjectStateResponse = z.infer<typeof runtimeProjectStateResponseSchema>;
 
 export const runtimeProjectsResponseSchema = z.object({
+	organization: projectOrganizationSchema.nullable().optional(),
 	currentProjectId: z.string().nullable(),
 	projects: z.array(runtimeProjectSummarySchema),
 });
 export type RuntimeProjectsResponse = z.infer<typeof runtimeProjectsResponseSchema>;
 
 export const runtimeProjectAddRequestSchema = z.object({
+	groupId: z.string().optional(),
 	path: z.string(),
 	initializeGit: z.boolean().optional(),
 	folderOnly: z.boolean().optional(),

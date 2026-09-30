@@ -4,7 +4,7 @@ As-built reference for the browser UI shell: region names, main-view/sidebar sta
 
 Read this before changing main views, sidebar panels, toolbar tabs, or task-detail layout routing.
 
-Last updated: 2026-09-27
+Last updated: 2026-09-29
 
 ## Region Names
 
@@ -145,6 +145,12 @@ The home grid uses dnd-kit with dedicated pointer/keyboard handles; the compact 
 
 - Home/no-task layout: renders `ProjectNavigationPanel`.
 - Task-detail layout: does not render a task side panel.
+
+Named project groups are one level deep. Each project belongs to at most one group; Ungrouped appears last only when needed (and as a drop target during dragging). With no groups, the original flat list remains. The Projects plus menu offers Add project and New group; group menus offer add, rename, reorder, and removal. Removing a group moves its projects to Ungrouped without touching tasks or repositories.
+
+`useProjectGroupNavigation` owns interaction state, reveal behavior, and drag coordination. `useProjectGroups` submits typed intent to `projects.organize`, with one pending mutation and a reversible optimistic projection. `project-groups.ts` owns pure grouping/drop projections. Group membership/order is runtime-owned global project-index metadata, independent of board state. Revision-checked writes use the index lock, and every project registration/removal preserves metadata and advances its revision. A coherent project list plus organization snapshot travels through the existing state stream; stale organization messages cannot roll back membership or resurrect removed project rows.
+
+Collapse state is a browser preference scoped to the stable organization ID. Each open tab keeps its own view; storage seeds later visits. Collapsing never changes selection or stops tasks. Collapsed headers show aggregate activity and indicate when they contain the current project. An explicit project switch reveals its row; background activity does not expand groups. Project and group menus provide keyboard alternatives to drag handles. Dropping on a collapsed header appends without expanding it.
 
 ### Board (`task_column`)
 

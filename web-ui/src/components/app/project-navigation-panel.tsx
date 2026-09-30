@@ -3,7 +3,7 @@ import { ProjectNavigationRemovalDialog } from "@/components/app/project-navigat
 import { ProjectNavigationSidebarSections } from "@/components/app/project-navigation-sidebar-sections";
 import { CreateTaskButton } from "@/components/task/create-task-button";
 import { useProjectNavigationPanel } from "@/hooks/project";
-import type { RuntimeProjectSummary } from "@/runtime/types";
+import type { ProjectOrganization, RuntimeProjectSummary } from "@/runtime/types";
 
 export function ProjectNavigationPanel({
 	projects,
@@ -13,9 +13,11 @@ export function ProjectNavigationPanel({
 	onSelectProject,
 	onPreloadProject,
 	onRemoveProject,
-	onReorderProjects,
 	onAddProject,
 	onCreateTask,
+	organization,
+	onOrganization,
+	organizationDisabled,
 	needsInputByProject,
 }: {
 	projects: RuntimeProjectSummary[];
@@ -25,8 +27,10 @@ export function ProjectNavigationPanel({
 	onSelectProject: (projectId: string) => void;
 	onPreloadProject?: (projectId: string) => void;
 	onRemoveProject: (projectId: string) => Promise<boolean>;
-	onReorderProjects?: (projectOrder: string[]) => Promise<void>;
-	onAddProject: () => void;
+	onAddProject: (groupId?: string) => void;
+	organization?: ProjectOrganization | null;
+	onOrganization?: (value: ProjectOrganization) => void;
+	organizationDisabled?: boolean;
 	onCreateTask: () => void;
 	needsInputByProject: Record<string, number>;
 }): React.ReactElement {
@@ -34,7 +38,6 @@ export function ProjectNavigationPanel({
 		projects,
 		removingProjectId,
 		onRemoveProject,
-		onReorderProjects,
 	});
 
 	return (
@@ -42,17 +45,18 @@ export function ProjectNavigationPanel({
 			<CreateTaskButton onClick={onCreateTask} />
 
 			<ProjectNavigationList
-				projects={panel.displayedProjects}
+				projects={projects}
 				isLoadingProjects={isLoadingProjects}
-				canReorder={panel.canReorder}
 				currentProjectId={currentProjectId}
 				removingProjectId={removingProjectId}
 				needsInputByProject={needsInputByProject}
 				onSelectProject={onSelectProject}
 				onPreloadProject={onPreloadProject}
 				onRequestRemoveProject={panel.requestProjectRemoval}
-				onDragEnd={panel.handleDragEnd}
 				onAddProject={onAddProject}
+				organization={organization}
+				onOrganization={onOrganization}
+				organizationDisabled={organizationDisabled}
 			/>
 			<ProjectNavigationSidebarSections />
 			<ProjectNavigationRemovalDialog

@@ -23,14 +23,18 @@ export function Dialog({
 	children,
 	contentClassName,
 	contentAriaDescribedBy,
+	contentAriaLabel,
 	contentStyle,
+	onOpenAutoFocus,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	children: ReactNode;
 	contentClassName?: string;
 	contentAriaDescribedBy?: string;
+	contentAriaLabel?: string;
 	contentStyle?: CSSProperties;
+	onOpenAutoFocus?: ComponentPropsWithoutRef<typeof RadixDialog.Content>["onOpenAutoFocus"];
 }): React.ReactElement {
 	return (
 		<RadixDialog.Root open={open} onOpenChange={onOpenChange}>
@@ -41,6 +45,8 @@ export function Dialog({
 				/>
 				<RadixDialog.Content
 					aria-describedby={contentAriaDescribedBy}
+					aria-label={contentAriaLabel}
+					onOpenAutoFocus={onOpenAutoFocus}
 					className={cn(
 						"fixed inset-0 z-50 m-auto flex flex-col rounded-lg border border-border-bright bg-surface-1 shadow-2xl focus:outline-none",
 						contentClassName,
@@ -70,7 +76,10 @@ export function DialogHeader({
 				{title}
 			</RadixDialog.Title>
 			{children}
-			<RadixDialog.Close className="p-1 rounded-md text-text-tertiary hover:text-text-primary hover:bg-surface-3 cursor-pointer">
+			<RadixDialog.Close
+				aria-label="Close dialog"
+				className="p-1 rounded-md text-text-tertiary hover:text-text-primary hover:bg-surface-3 cursor-pointer"
+			>
 				<X size={16} />
 			</RadixDialog.Close>
 		</div>

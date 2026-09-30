@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
-
+import { useCallback, useEffect, useRef, useState } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import {
 	guardFileEditorScopes,
@@ -12,6 +11,7 @@ import { preloadProjectState } from "@/runtime/project-preload-cache";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
+	ProjectOrganization,
 	RuntimeProjectMetadata,
 	RuntimeProjectStateResponse,
 	RuntimeProjectSummary,
@@ -41,6 +41,8 @@ export interface UseProjectNavigationResult {
 	isAddingManualProject: boolean;
 	currentProjectId: string | null;
 	projects: RuntimeProjectSummary[];
+	organization: ProjectOrganization | null;
+	applyOrganization: (organization: ProjectOrganization) => void;
 	projectState: RuntimeProjectStateResponse | null;
 	projectMetadata: RuntimeProjectMetadata | null;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
@@ -54,17 +56,17 @@ export interface UseProjectNavigationResult {
 	isProjectSwitching: boolean;
 	handleSelectProject: (projectId: string) => void;
 	handlePreloadProject: (projectId: string) => void;
-	handleAddProject: () => Promise<void>;
+	handleAddProject: (groupId?: string) => Promise<void>;
 	handleConfirmManualProjectPath: (path: string) => Promise<void>;
 	handleCancelManualProjectPath: () => void;
 	handleConfirmInitializeGitProject: (folderOnly?: boolean) => Promise<void>;
 	handleCancelInitializeGitProject: () => void;
 	handleRemoveProject: (projectId: string) => Promise<boolean>;
-	handleReorderProjects: (projectOrder: string[]) => Promise<void>;
 	resetProjectNavigationState: () => void;
 }
 
 export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigationInput): UseProjectNavigationResult {
+	const addToGroupRef = useRef<string | undefined>(undefined);
 	const [requestedProjectId, setRequestedProjectId] = useState<string | null>(() => {
 		if (typeof window === "undefined") {
 			return null;
@@ -82,6 +84,8 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 	const {
 		currentProjectId,
 		projects,
+		organization,
+		applyOrganization,
 		projectState,
 		projectMetadata,
 		notificationProjects,
@@ -132,6 +136,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 				path,
 				initializeGit,
 				folderOnly,
+				groupId: addToGroupRef.current,
 			});
 			if (!added.ok || !added.project) {
 				if (added.requiresGitInitialization) {
@@ -147,39 +152,43 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		[currentProjectId, handleSelectProject],
 	);
 
-	const handleAddProject = useCallback(async () => {
-		try {
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			const picked = await trpcClient.projects.pickDirectory.mutate();
-			const decision = resolveProjectDirectoryPickerDecision(picked);
-			if (decision.kind === "cancelled") {
-				return;
-			}
-			if (decision.kind === "failed") {
-				throw new Error(decision.message);
-			}
+	const handleAddProject = useCallback(
+		async (groupId?: string) => {
+			addToGroupRef.current = groupId;
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const picked = await trpcClient.projects.pickDirectory.mutate();
+				const decision = resolveProjectDirectoryPickerDecision(picked);
+				if (decision.kind === "cancelled") {
+					return;
+				}
+				if (decision.kind === "failed") {
+					throw new Error(decision.message);
+				}
 
-			if (decision.kind === "manual_path") {
+				if (decision.kind === "manual_path") {
+					showAppToast({
+						intent: "warning",
+						icon: "warning-sign",
+						message: "Directory picker unavailable on this runtime. Enter the project path manually.",
+						timeout: 5000,
+					});
+					setManualProjectPathPhase("editing");
+					return;
+				}
+				await addProjectByPath(decision.path);
+			} catch (error) {
+				const message = toErrorMessage(error);
 				showAppToast({
-					intent: "warning",
+					intent: "danger",
 					icon: "warning-sign",
-					message: "Directory picker unavailable on this runtime. Enter the project path manually.",
-					timeout: 5000,
+					message,
+					timeout: 7000,
 				});
-				setManualProjectPathPhase("editing");
-				return;
 			}
-			await addProjectByPath(decision.path);
-		} catch (error) {
-			const message = toErrorMessage(error);
-			showAppToast({
-				intent: "danger",
-				icon: "warning-sign",
-				message,
-				timeout: 7000,
-			});
-		}
-	}, [addProjectByPath, currentProjectId]);
+		},
+		[addProjectByPath, currentProjectId],
+	);
 
 	const handleConfirmManualProjectPath = useCallback(
 		async (path: string) => {
@@ -334,22 +343,6 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		setRequestedProjectId(currentProjectId);
 	}, [currentProjectId, pendingAddedProjectId, projects, requestedProjectId]);
 
-	const handleReorderProjects = useCallback(
-		async (projectOrder: string[]) => {
-			try {
-				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				const result = await trpcClient.projects.reorder.mutate({ projectOrder });
-				if (!result.ok) {
-					throw new Error(result.error ?? "Could not reorder projects.");
-				}
-			} catch (error) {
-				const message = toErrorMessage(error);
-				notifyError(message);
-			}
-		},
-		[currentProjectId],
-	);
-
 	const resetProjectNavigationState = useCallback(() => {
 		setRemovingProjectId(null);
 		setPendingGitInitializationPath(null);
@@ -367,6 +360,8 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		isAddingManualProject,
 		currentProjectId,
 		projects,
+		organization,
+		applyOrganization,
 		projectState,
 		projectMetadata,
 		latestTaskReadyForReview,
@@ -386,7 +381,6 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		handleConfirmInitializeGitProject,
 		handleCancelInitializeGitProject,
 		handleRemoveProject,
-		handleReorderProjects,
 		resetProjectNavigationState,
 	};
 }

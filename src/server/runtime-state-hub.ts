@@ -1,3 +1,4 @@
+import type { ProjectOrganization } from "../core/api/project-organization.js";
 // Streams live runtime state to browser clients over websocket.
 // It listens to terminal updates, normalizes them into the shared API contract,
 // and fans out project-scoped snapshots and deltas.
@@ -353,7 +354,9 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		}
 		try {
 			const payload = await this.deps.projectRegistry.buildProjectsPayload(preferredCurrentProjectId);
-			this.clients.broadcastToAll(buildProjectsUpdatedMessage(payload.currentProjectId, payload.projects));
+			this.clients.broadcastToAll(
+				buildProjectsUpdatedMessage(payload.currentProjectId, payload.projects, payload.organization),
+			);
 		} catch (error) {
 			hubLog.warn("runtime project list publication failed", {
 				preferredCurrentProjectId,
@@ -491,6 +494,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 						snapshot.projectState,
 						snapshot.notificationSummariesByProject,
 						snapshot.notificationRevisionsByProject,
+						snapshot.organization,
 					),
 				);
 				monitorProjectId = snapshot.projectId;
@@ -575,6 +579,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	private async loadInitialSnapshot(resolved: { projectId: string | null; projectPath: string | null }): Promise<{
 		currentProjectId: string | null;
 		projects: RuntimeProjectSummary[];
+		organization?: ProjectOrganization | null;
 		projectId: string | null;
 		projectPath: string | null;
 		projectState: RuntimeProjectStateResponse | null;
@@ -598,6 +603,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				: projectsPayload.projects;
 			return {
 				currentProjectId: projectsPayload.currentProjectId,
+				organization: projectsPayload.organization,
 				projects,
 				projectId: resolved.projectId,
 				projectPath: resolved.projectPath,
@@ -614,6 +620,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		]);
 		return {
 			currentProjectId: projectsPayload.currentProjectId,
+			organization: projectsPayload.organization,
 			projects: projectsPayload.projects,
 			projectId: null,
 			projectPath: null,
@@ -660,7 +667,9 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		try {
 			const payload = await this.deps.projectRegistry.buildProjectsPayload(projectId);
 			const projects = this.mergeProjectSummaryForState(payload.projects, projectId, projectState);
-			this.clients.broadcastToAll(buildProjectsUpdatedMessage(payload.currentProjectId, projects));
+			this.clients.broadcastToAll(
+				buildProjectsUpdatedMessage(payload.currentProjectId, projects, payload.organization),
+			);
 		} catch (error) {
 			hubLog.warn("authoritative project summary publication failed", {
 				projectId,
@@ -786,7 +795,14 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				projectState && projectId
 					? this.mergeProjectSummaryForState(projectsResult.value.projects, projectId, projectState)
 					: projectsResult.value.projects;
-			this.sendMessage(client, buildProjectsUpdatedMessage(projectsResult.value.currentProjectId, projects));
+			this.sendMessage(
+				client,
+				buildProjectsUpdatedMessage(
+					projectsResult.value.currentProjectId,
+					projects,
+					projectsResult.value.organization,
+				),
+			);
 		}
 
 		if (projectsResult.status === "rejected" || projectStateResult.status === "rejected") {

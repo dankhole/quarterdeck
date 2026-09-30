@@ -100,6 +100,7 @@ import type {
 	RuntimeWorktreeEnsureRequest,
 	RuntimeWorktreeEnsureResponse,
 } from "../core";
+import type { ProjectOrganizationRequest, ProjectOrganizationResponse } from "../core/api/project-organization.js";
 import type { RuntimeCodexModelsResponse } from "../core/codex-model-contracts";
 import type { RuntimeCommitMessageGenerationContext } from "../title";
 import type { CodeNavigationApi } from "./code-navigation-api";
@@ -342,6 +343,7 @@ export interface RuntimeTrpcContext {
 		) => Promise<RuntimeStashShowResponse>;
 	};
 	projectsApi: {
+		organizeProjects: (input: ProjectOrganizationRequest) => Promise<ProjectOrganizationResponse>;
 		listProjects: (preferredProjectId: string | null) => Promise<RuntimeProjectsResponse>;
 		addProject: (
 			preferredProjectId: string | null,

@@ -1,5 +1,5 @@
 import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "@runtime-contract";
-import { useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import { handleBrowserDiagnosticsStreamMessage, recordBrowserEvent } from "@/diagnostics";
 import { consumeProjectPreload } from "@/runtime/project-preload-cache";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
@@ -17,6 +17,7 @@ import {
 } from "@/runtime/runtime-state-stream-transport";
 import { resolveStreamMessage } from "@/runtime/runtime-stream-dispatch";
 import type {
+	ProjectOrganization,
 	RuntimeProjectMetadata,
 	RuntimeProjectStateResponse,
 	RuntimeProjectSummary,
@@ -28,6 +29,8 @@ export type { TaskBaseRefUpdate, TaskTitleUpdate } from "@/runtime/runtime-state
 export interface UseRuntimeStateStreamResult {
 	currentProjectId: string | null;
 	projects: RuntimeProjectSummary[];
+	organization: ProjectOrganization | null;
+	applyOrganization: (organization: ProjectOrganization) => void;
 	projectState: RuntimeProjectStateResponse | null;
 	projectMetadata: RuntimeProjectMetadata | null;
 	notificationProjects: RuntimeProjectNotificationStateMap;
@@ -134,9 +137,15 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 		};
 	}, [requestedProjectId]);
 
+	const applyOrganization = useCallback(
+		(organization: ProjectOrganization) => dispatch({ type: "organization_updated", organization }),
+		[],
+	);
 	return {
 		currentProjectId: state.currentProjectId,
 		projects: state.projects,
+		organization: state.organization,
+		applyOrganization,
 		projectState: state.projectState,
 		projectMetadata: state.projectMetadata,
 		notificationProjects: state.notificationMemory.projects,

@@ -4,7 +4,7 @@
 }
 
 .kb-project-row-actions {
-	opacity: 0;
+	opacity: 0.65;
 }
 
 .kb-project-row:hover {
@@ -17,7 +17,8 @@
 	color: #fff;
 }
 
-.kb-project-row:hover .kb-project-row-actions {
+.kb-project-row:hover .kb-project-row-actions,
+.kb-project-row:focus-within .kb-project-row-actions {
 	opacity: 1;
 }
 

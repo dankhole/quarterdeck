@@ -1,6 +1,6 @@
-import type { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Ellipsis, GripVertical } from "lucide-react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { ProjectModeDialog } from "@/components/app/project-mode-dialog";
 import { resolveProjectNavigationTaskCounts } from "@/components/app/project-navigation-counts";
@@ -34,6 +34,7 @@ export function ProjectRow({
 	onSelect,
 	onPreload,
 	onRemove,
+	groupActions,
 }: {
 	project: RuntimeProjectSummary;
 	isCurrent: boolean;
@@ -41,7 +42,8 @@ export function ProjectRow({
 	removingProjectId: string | null;
 	needsInputCount?: number;
 	showDragHandle?: boolean;
-	dragHandleProps?: DraggableProvidedDragHandleProps | null;
+	dragHandleProps?: ButtonHTMLAttributes<HTMLButtonElement> | null;
+	groupActions?: ReactNode;
 	isDragging?: boolean;
 	onSelect: (id: string) => void;
 	onPreload?: (id: string) => void;
@@ -90,15 +92,6 @@ export function ProjectRow({
 	return (
 		<>
 			<div
-				role="button"
-				tabIndex={0}
-				onClick={() => onSelect(project.id)}
-				onKeyDown={(event) => {
-					if (event.key === "Enter" || event.key === " ") {
-						event.preventDefault();
-						onSelect(project.id);
-					}
-				}}
 				onMouseEnter={() => {
 					if (isCurrent || !onPreload) {
 						return;
@@ -128,20 +121,29 @@ export function ProjectRow({
 				}}
 			>
 				{showDragHandle ? (
-					<div
+					<button
+						type="button"
+						aria-label={`Drag ${project.name}`}
 						{...dragHandleProps}
 						className={cn(
-							"shrink-0 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity",
+							"shrink-0 cursor-grab opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity touch-none",
 							isCurrent ? "text-white/50 hover:text-white/80" : "text-text-tertiary hover:text-text-secondary",
 							isDragging && "opacity-100 cursor-grabbing",
 						)}
 						onClick={(event) => event.stopPropagation()}
-						onKeyDown={(event) => event.stopPropagation()}
 					>
 						<GripVertical size={14} />
-					</div>
+					</button>
 				) : null}
-				<div className="flex-1 min-w-0">
+				<button
+					title={`${project.name} — ${displayPath}`}
+					type="button"
+					onClick={() => onSelect(project.id)}
+					aria-current={isCurrent ? "page" : undefined}
+					data-project-id={project.id}
+					aria-label={`Open ${project.name}`}
+					className="flex-1 min-w-0 text-left cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-border-focus"
+				>
 					<div className="flex items-center gap-1.5">
 						{displayCounts.needsInput > 0 ? (
 							<span
@@ -185,7 +187,7 @@ export function ProjectRow({
 							))}
 						</div>
 					) : null}
-				</div>
+				</button>
 				<div className="kb-project-row-actions flex items-center" style={isMenuOpen ? { opacity: 1 } : undefined}>
 					<DropdownMenu.Root open={isMenuOpen} onOpenChange={setIsMenuOpen}>
 						<DropdownMenu.Trigger asChild>
@@ -200,7 +202,7 @@ export function ProjectRow({
 								onClick={(event) => {
 									event.stopPropagation();
 								}}
-								aria-label="Project actions"
+								aria-label={`Actions for ${project.name}`}
 							/>
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Portal>
@@ -209,8 +211,8 @@ export function ProjectRow({
 								align="end"
 								sideOffset={4}
 								className="z-50 min-w-[140px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg"
-								onCloseAutoFocus={(event) => event.preventDefault()}
 							>
+								{groupActions}
 								<DropdownMenu.Item
 									className="rounded-sm px-2 py-1.5 text-[13px] cursor-pointer outline-none data-[highlighted]:bg-surface-3"
 									onSelect={mode.request}

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { diagnosticRecordEnvelopeSchema, diagnosticRecordingStateSchema } from "./diagnostics.js";
+import { projectOrganizationSchema } from "./project-organization.js";
 import {
 	runtimeProjectMetadataSchema,
 	runtimeProjectStateResponseSchema,
@@ -16,6 +17,7 @@ export const runtimeStateStreamSnapshotMessageSchema = z.object({
 	runtimeProtocolVersion: z.number().int().positive().optional(),
 	currentProjectId: z.string().nullable(),
 	projects: z.array(runtimeProjectSummarySchema),
+	organization: projectOrganizationSchema.nullable().optional(),
 	projectState: runtimeProjectStateResponseSchema.nullable(),
 	projectMetadata: runtimeProjectMetadataSchema.nullable(),
 	// Connection-time baseline for all managed projects; live updates continue
@@ -46,6 +48,7 @@ export const runtimeStateStreamProjectsMessageSchema = z.object({
 	type: z.literal("projects_updated"),
 	currentProjectId: z.string().nullable(),
 	projects: z.array(runtimeProjectSummarySchema),
+	organization: projectOrganizationSchema.nullable().optional(),
 });
 export type RuntimeStateStreamProjectsMessage = z.infer<typeof runtimeStateStreamProjectsMessageSchema>;
 

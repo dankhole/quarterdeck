@@ -19,6 +19,9 @@ import type { BoardData } from "@/types";
 // ---------------------------------------------------------------------------
 
 export interface ProjectNavigationContextValue {
+	organization: UseProjectNavigationResult["organization"];
+	applyOrganization: UseProjectNavigationResult["applyOrganization"];
+	isRuntimeDisconnected: boolean;
 	currentProjectId: UseProjectNavigationResult["currentProjectId"];
 	projects: UseProjectNavigationResult["projects"];
 	navigationCurrentProjectId: UseProjectNavigationResult["navigationCurrentProjectId"];
@@ -33,7 +36,6 @@ export interface ProjectNavigationContextValue {
 	handleConfirmInitializeGitProject: UseProjectNavigationResult["handleConfirmInitializeGitProject"];
 	handleCancelInitializeGitProject: UseProjectNavigationResult["handleCancelInitializeGitProject"];
 	handleRemoveProject: UseProjectNavigationResult["handleRemoveProject"];
-	handleReorderProjects: UseProjectNavigationResult["handleReorderProjects"];
 	pendingGitInitializationPath: UseProjectNavigationResult["pendingGitInitializationPath"];
 	isInitializingGitProject: UseProjectNavigationResult["isInitializingGitProject"];
 	isManualProjectPathDialogOpen: UseProjectNavigationResult["isManualProjectPathDialogOpen"];
@@ -168,7 +170,8 @@ export function ProjectProvider({
 		handleConfirmInitializeGitProject,
 		handleCancelInitializeGitProject,
 		handleRemoveProject,
-		handleReorderProjects,
+		organization,
+		applyOrganization,
 		pendingGitInitializationPath,
 		isInitializingGitProject,
 		isManualProjectPathDialogOpen,
@@ -232,7 +235,9 @@ export function ProjectProvider({
 			handleConfirmInitializeGitProject,
 			handleCancelInitializeGitProject,
 			handleRemoveProject,
-			handleReorderProjects,
+			organization,
+			applyOrganization,
+			isRuntimeDisconnected,
 			pendingGitInitializationPath,
 			isInitializingGitProject,
 			isManualProjectPathDialogOpen,
@@ -254,7 +259,9 @@ export function ProjectProvider({
 			handleConfirmInitializeGitProject,
 			handleCancelInitializeGitProject,
 			handleRemoveProject,
-			handleReorderProjects,
+			organization,
+			applyOrganization,
+			isRuntimeDisconnected,
 			pendingGitInitializationPath,
 			isInitializingGitProject,
 			isManualProjectPathDialogOpen,

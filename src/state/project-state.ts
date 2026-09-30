@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 import { copyFile, realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-
 import type {
 	RuntimeBoardData,
 	RuntimeGitRepositoryInfo,
@@ -19,6 +18,7 @@ import {
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { removeDirectoryWithRetries } from "../fs/remove-path";
 import {
+	assignIndexedProjectGroup,
 	ensureProjectEntry,
 	findProjectEntry,
 	MAX_RECENT_BOARD_COMMAND_RECEIPTS,
@@ -74,6 +74,7 @@ export interface RuntimeProjectScopeContext {
 }
 
 export interface LoadProjectContextOptions {
+	groupId?: string;
 	autoCreateIfMissing?: boolean;
 	/** Explicit project mode; omitted for ordinary lookup. */
 	folderOnly?: boolean;
@@ -261,7 +262,7 @@ export async function loadProjectContext(
 ): Promise<RuntimeProjectContext> {
 	const autoCreateIfMissing = options.autoCreateIfMissing ?? true;
 	const canonicalCwd = await canonicalizeProjectInputPath(cwd);
-	if (options.folderOnly === undefined) {
+	if (options.folderOnly === undefined && options.groupId === undefined) {
 		const exactIndexedScope = await loadProjectScopeByRepoPath(canonicalCwd);
 		if (exactIndexedScope) return await loadFullProjectContext(exactIndexedScope);
 	}
@@ -283,7 +284,8 @@ export async function loadProjectContext(
 			: ensureProjectEntry(index, repoPath);
 		index = ensured.index;
 		if (options.folderOnly !== undefined) ensured.entry.folderOnly = options.folderOnly;
-		if (ensured.changed || options.folderOnly !== undefined) {
+		if (options.groupId !== undefined) assignIndexedProjectGroup(index, ensured.entry.projectId, options.groupId);
+		if (ensured.changed || options.folderOnly !== undefined || options.groupId !== undefined) {
 			await writeProjectIndexSafe(index);
 		}
 

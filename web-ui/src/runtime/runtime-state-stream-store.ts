@@ -8,6 +8,7 @@ import {
 	seedRuntimeNotificationMemoryFromProjectState,
 } from "@/runtime/runtime-notification-memory";
 import type {
+	ProjectOrganization,
 	RuntimeProjectMetadata,
 	RuntimeProjectStateResponse,
 	RuntimeProjectSummary,
@@ -36,6 +37,7 @@ export interface RuntimeStateStreamStore {
 	streamGeneration: number;
 	currentProjectId: string | null;
 	projects: RuntimeProjectSummary[];
+	organization: ProjectOrganization | null;
 	exactBoardRevisionsByProject: Record<string, number>;
 	projectState: RuntimeProjectStateResponse | null;
 	projectMetadata: RuntimeProjectMetadata | null;
@@ -55,6 +57,7 @@ export type RuntimeStateStreamDomainAction =
 			requestedProjectId: string | null;
 	  }
 	| { type: "stream_connected" }
+	| { type: "organization_updated"; organization: ProjectOrganization }
 	| { type: "snapshot"; payload: RuntimeStateStreamSnapshotMessage }
 	| {
 			type: "projects_updated";
@@ -237,6 +240,13 @@ function applySnapshot(
 	state: RuntimeStateStreamStore,
 	payload: RuntimeStateStreamSnapshotMessage,
 ): RuntimeStateStreamStore {
+	const staleOrganization = isOlderOrganization(state.organization, payload.organization);
+	if (staleOrganization)
+		payload = {
+			...payload,
+			organization: state.organization,
+			projects: retainProjectIdentities(state.projects, payload.projects),
+		};
 	const didProjectChange = payload.currentProjectId !== state.currentProjectId;
 	const currentProjectState = didProjectChange ? null : state.projectState;
 	const nextProjectState = payload.projectState
@@ -263,6 +273,7 @@ function applySnapshot(
 		...state,
 		currentProjectId: payload.currentProjectId,
 		projects,
+		organization: payload.organization ?? state.organization,
 		exactBoardRevisionsByProject,
 		projectState: nextProjectState,
 		projectMetadata: payload.projectMetadata,
@@ -285,6 +296,7 @@ export function createInitialRuntimeStateStreamStore(requestedProjectId: string 
 		streamGeneration: 0,
 		currentProjectId: requestedProjectId,
 		projects: [],
+		organization: null,
 		exactBoardRevisionsByProject: {},
 		projectState: null,
 		projectMetadata: null,
@@ -335,11 +347,26 @@ function reduceRuntimeStateStreamDomainAction(
 			};
 		case "snapshot":
 			return applySnapshot(state, action.payload);
+		case "organization_updated":
+			return isOlderOrganization(state.organization, action.organization)
+				? state
+				: { ...state, organization: action.organization };
 		case "projects_updated": {
+			if (isOlderOrganization(state.organization, action.payload.organization)) {
+				return {
+					...state,
+					projects: mergeProjectSummariesByRevision(
+						state.projects,
+						retainProjectIdentities(state.projects, action.payload.projects),
+						state.exactBoardRevisionsByProject,
+					),
+				};
+			}
 			const didProjectChange = action.nextProjectId !== state.currentProjectId;
 			return {
 				...state,
 				currentProjectId: action.nextProjectId,
+				organization: action.payload.organization ?? state.organization,
 				projects: mergeProjectSummariesByRevision(
 					state.projects,
 					action.payload.projects,
@@ -463,4 +490,19 @@ export function runtimeStateStreamReducer(
 		default:
 			return reduceRuntimeStateStreamDomainAction(state, action);
 	}
+}
+
+function isOlderOrganization(
+	current: ProjectOrganization | null,
+	incoming: ProjectOrganization | null | undefined,
+): boolean {
+	return current !== null && (!incoming || (incoming.id === current.id && incoming.revision < current.revision));
+}
+
+function retainProjectIdentities(
+	current: RuntimeProjectSummary[],
+	incoming: RuntimeProjectSummary[],
+): RuntimeProjectSummary[] {
+	const byId = new Map(incoming.map((project) => [project.id, project]));
+	return current.map((project) => byId.get(project.id) ?? project);
 }

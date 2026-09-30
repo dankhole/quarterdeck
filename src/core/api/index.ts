@@ -11,6 +11,7 @@ export * from "./git-revert.js";
 export * from "./git-sync.js";
 export * from "./host-integrations.js";
 export * from "./project-board-command.js";
+export * from "./project-organization.js";
 export * from "./project-state.js";
 export * from "./runtime-protocol.js";
 export * from "./shared.js";

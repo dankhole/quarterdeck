@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { copyFile, readFile } from "node:fs/promises";
 import { basename, win32 } from "node:path";
 import { z } from "zod";
@@ -10,6 +10,13 @@ import {
 	runtimeBoardDataSchema,
 	runtimeTaskSessionSummarySchema,
 } from "../core";
+import {
+	type ProjectOrganization,
+	type ProjectOrganizationRequest,
+	type ProjectOrganizationResponse,
+	projectOrganizationSchema,
+} from "../core/api/project-organization.js";
+import { applyProjectOrganizationCommand } from "../core/project-organization.js";
 import { assignMissingTaskColors } from "../core/task-card-colors.js";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { isNodeError } from "../fs/node-error";
@@ -59,6 +66,7 @@ interface ProjectIndexFile {
 	entries: Record<string, ProjectIndexEntry>;
 	repoPathToId: Record<string, string>;
 	projectOrder: string[];
+	organization?: Omit<ProjectOrganization, "projectOrder">;
 }
 
 const projectIndexEntrySchema = z.object({
@@ -69,12 +77,41 @@ const projectIndexEntrySchema = z.object({
 
 const projectIndexFileSchema = z
 	.object({
-		version: z.literal(INDEX_VERSION),
+		version: z.union([z.literal(INDEX_VERSION), z.literal(2)]),
+		organization: projectOrganizationSchema.omit({ projectOrder: true }).optional(),
 		entries: z.record(z.string(), projectIndexEntrySchema),
 		repoPathToId: z.record(z.string(), z.string().min(1, "Project ID cannot be empty.")),
 		projectOrder: z.array(z.string()).optional().default([]),
 	})
 	.superRefine((index, context) => {
+		if (index.version === 2 && !index.organization)
+			context.addIssue({
+				code: "custom",
+				path: ["organization"],
+				message: "Version 2 requires project organization metadata.",
+			});
+		if (index.organization) {
+			const groups = index.organization.groups;
+			if (
+				new Set(groups.map((group) => group.id)).size !== groups.length ||
+				new Set(groups.map((group) => group.name.toLowerCase())).size !== groups.length
+			) {
+				context.addIssue({
+					code: "custom",
+					path: ["organization", "groups"],
+					message: "Group IDs and names must be unique.",
+				});
+			}
+			for (const [projectId, groupId] of Object.entries(index.organization.membership)) {
+				if (!index.entries[projectId] || !groups.some((group) => group.id === groupId))
+					context.addIssue({
+						code: "custom",
+						path: ["organization", "membership", projectId],
+						message: "Membership must reference an existing project and group.",
+					});
+			}
+		}
+
 		for (const [projectId, entry] of Object.entries(index.entries)) {
 			if (entry.projectId !== projectId) {
 				context.addIssue({
@@ -513,7 +550,10 @@ export function ensureProjectEntry(
 
 	return {
 		index: {
-			version: INDEX_VERSION,
+			...index,
+			...(index.organization
+				? { organization: { ...index.organization, revision: index.organization.revision + 1 } }
+				: {}),
 			entries: {
 				...index.entries,
 				[projectId]: entry,
@@ -549,7 +589,10 @@ export function findProjectEntry(
 }
 
 export async function listProjectIndexEntries(): Promise<RuntimeProjectIndexEntry[]> {
-	const index = await readProjectIndex();
+	return projectIndexEntries(await readProjectIndex());
+}
+
+function projectIndexEntries(index: ProjectIndexFile): RuntimeProjectIndexEntry[] {
 	const entries = Object.values(index.entries).map((entry) => ({
 		projectId: entry.projectId,
 		repoPath: entry.repoPath,
@@ -580,6 +623,10 @@ export async function removeProjectIndexEntry(projectId: string): Promise<boolea
 		delete index.entries[projectId];
 		delete index.repoPathToId[entry.repoPath];
 		index.projectOrder = index.projectOrder.filter((id) => id !== projectId);
+		if (index.organization) {
+			delete index.organization.membership[projectId];
+			index.organization.revision++;
+		}
 		await writeProjectIndex(index);
 		return true;
 	});
@@ -591,11 +638,73 @@ export async function updateProjectOrder(orderedIds: string[]): Promise<void> {
 		const validIds = orderedIds.filter((id) => index.entries[id] !== undefined);
 		const includedIds = new Set(validIds);
 		const missingIds = Object.keys(index.entries).filter((id) => !includedIds.has(id));
-		index.projectOrder = [...validIds, ...missingIds];
+		index.projectOrder = [...new Set(validIds), ...missingIds];
+		if (index.organization) index.organization.revision++;
 		await writeProjectIndex(index);
 	});
 }
 
 export async function writeProjectIndexSafe(index: ProjectIndexFile): Promise<void> {
 	await writeProjectIndex(index);
+}
+
+/** Read membership and the indexed project set from the same atomic file snapshot. */
+export async function readProjectNavigationIndex() {
+	const index = await readProjectIndex();
+	return { entries: projectIndexEntries(index), organization: projectIndexOrganization(index) };
+}
+
+function projectIndexOrganization(index: ProjectIndexFile): ProjectOrganization | null {
+	return index.organization
+		? { ...index.organization, projectOrder: projectIndexEntries(index).map((entry) => entry.projectId) }
+		: null;
+}
+
+export function assignIndexedProjectGroup(index: ProjectIndexFile, projectId: string, groupId: string): void {
+	const current = projectIndexOrganization(index);
+	if (!current) throw new Error("This group no longer exists.");
+	const { projectOrder, ...organization } = applyProjectOrganizationCommand(current, {
+		type: "move",
+		projectIds: [projectId],
+		groupId,
+		beforeProjectId: null,
+	});
+	index.projectOrder = projectOrder;
+	index.organization = organization;
+}
+
+export async function updateProjectOrganization(
+	input: ProjectOrganizationRequest,
+): Promise<ProjectOrganizationResponse> {
+	return lockedFileSystem.withLock(getProjectIndexLockRequest(), async () => {
+		const index = await readProjectIndex();
+		const current = projectIndexOrganization(index);
+		if ((current?.revision ?? 0) !== input.expectedRevision) {
+			return { ok: false, error: "Project groups changed in another window. Try again.", organization: current };
+		}
+		try {
+			const next = applyProjectOrganizationCommand(
+				current ?? {
+					id: randomUUID(),
+					revision: 0,
+					groups: [],
+					membership: {},
+					projectOrder: projectIndexEntries(index).map((entry) => entry.projectId),
+				},
+				input.command,
+			);
+			const { projectOrder, ...organization } = next;
+			index.version = 2; // Older runtimes reject this file instead of silently stripping group metadata.
+			index.projectOrder = projectOrder;
+			index.organization = organization;
+			await writeProjectIndex(index);
+			return { ok: true, organization: next };
+		} catch (error) {
+			return {
+				ok: false,
+				error: error instanceof Error ? error.message : "Could not save project groups.",
+				organization: current,
+			};
+		}
+	});
 }

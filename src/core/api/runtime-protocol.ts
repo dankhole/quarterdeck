@@ -6,4 +6,4 @@
  * dependency on a new runtime feature without a fallback. Compatible additions,
  * fixes, and rebuilds keep this version. See DEVELOPMENT.md for the bump policy.
  */
-export const QUARTERDECK_RUNTIME_PROTOCOL_VERSION = 1;
+export const QUARTERDECK_RUNTIME_PROTOCOL_VERSION = 2;

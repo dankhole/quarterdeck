@@ -466,9 +466,11 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 										}}
 										onPreloadProject={projectNavigation.handlePreloadProject}
 										onRemoveProject={projectNavigation.handleRemoveProject}
-										onReorderProjects={projectNavigation.handleReorderProjects}
-										onAddProject={() => {
-											void projectNavigation.handleAddProject();
+										organization={projectNavigation.organization}
+										onOrganization={projectNavigation.applyOrganization}
+										organizationDisabled={projectNavigation.isRuntimeDisconnected}
+										onAddProject={(groupId) => {
+											void projectNavigation.handleAddProject(groupId);
 										}}
 										needsInputByProject={projectNotifications.needsInputByProject}
 									/>

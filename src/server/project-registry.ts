@@ -1,5 +1,4 @@
 import pLimit from "p-limit";
-
 import { type RuntimeConfigState, toGlobalRuntimeConfigState } from "../config";
 import type {
 	IProjectDataProvider,
@@ -33,6 +32,7 @@ import {
 	removeProjectStateFiles,
 } from "../state";
 import { ProjectExecutionOwnershipStore } from "../state/project-execution-ownership-store";
+import { readProjectNavigationIndex } from "../state/project-state-index.js";
 import {
 	deriveStartupRecoveryPolicy,
 	InMemorySessionSummaryStore,
@@ -485,7 +485,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	};
 
 	const buildProjectsPayload = async (preferredCurrentProjectId: string | null) => {
-		const projects = await listProjectIndexEntries();
+		const { entries: projects, organization } = await readProjectNavigationIndex();
 		const fallbackProjectId =
 			projects.find((project) => project.projectId === activeProjectId)?.projectId ?? projects[0]?.projectId ?? null;
 		const resolvedCurrentProjectId =
@@ -499,6 +499,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		return {
 			currentProjectId: resolvedCurrentProjectId,
 			projects: projectSummaries,
+			organization,
 		};
 	};
 

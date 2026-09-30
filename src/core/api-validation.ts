@@ -104,6 +104,7 @@ export function parseProjectAddRequest(value: unknown): RuntimeProjectAddRequest
 	return {
 		path,
 		initializeGit: parsed.initializeGit,
+		groupId: parsed.groupId,
 		folderOnly: parsed.folderOnly,
 	};
 }

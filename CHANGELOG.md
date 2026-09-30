@@ -4,6 +4,9 @@
 
 ## [0.12.9]
 
+- Add named project groups with collapse/expand, drag-and-drop and menu moves, saved ordering, and safe group removal that keeps projects and tasks.
+
+
 - Allow browser and runtime builds to differ when their explicit compatibility versions match; reload or request a restart only for incompatible or unknown contracts.
 
 - Move finished Claude tasks to Review when only a background shell or monitor (such as a dev server) is still running, instead of leaving the card stuck in Running.

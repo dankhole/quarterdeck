@@ -718,3 +718,44 @@ describe("runtimeStateStreamReducer", () => {
 		expect(newRuntimeBaseline.notificationMemory.projects["project-a"]).toBeUndefined();
 	});
 });
+
+describe("organization ordering", () => {
+	it("does not let stale project lists resurrect removed entries or roll back groups", () => {
+		const project = {
+			id: "a",
+			name: "A",
+			path: "/tmp/a",
+			boardRevision: 1,
+			taskCounts: { in_progress: 0, review: 0, trash: 0 },
+		};
+		const organization = {
+			id: "index",
+			revision: 5,
+			groups: [{ id: "g", name: "Work" }],
+			membership: { a: "g" },
+			projectOrder: ["a"],
+		};
+		const state = { ...createInitialRuntimeStateStreamStore("a"), organization, projects: [project] };
+		const result = runtimeStateStreamReducer(state, {
+			type: "projects_updated",
+			nextProjectId: "a",
+			payload: {
+				type: "projects_updated",
+				currentProjectId: "a",
+				organization: { ...organization, revision: 4, groups: [] },
+				projects: [
+					{ ...project, boardRevision: 2, taskCounts: { in_progress: 2, review: 0, trash: 0 } },
+					{ ...project, id: "removed" },
+				],
+			},
+		});
+		expect(result.organization).toEqual(organization);
+		expect(result.projects.map((item) => item.id)).toEqual(["a"]);
+		expect(result.projects[0]?.taskCounts.in_progress).toBe(2);
+		const lateReceipt = runtimeStateStreamReducer(result, {
+			type: "organization_updated",
+			organization: { ...organization, revision: 3 },
+		});
+		expect(lateReceipt.organization?.revision).toBe(5);
+	});
+});

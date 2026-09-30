@@ -29,6 +29,7 @@ import type {
 	RuntimeStateStreamTaskTitleUpdatedMessage,
 	RuntimeTaskSessionSummary,
 } from "../core";
+import type { ProjectOrganization } from "../core/api/project-organization.js";
 import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "../core/api/runtime-protocol";
 
 export function buildSnapshotMessage(
@@ -38,6 +39,7 @@ export function buildSnapshotMessage(
 	projectState: RuntimeProjectStateResponse | null,
 	notificationSummariesByProject: Record<string, RuntimeTaskSessionSummary[]> = {},
 	notificationRevisionsByProject: Record<string, number> = {},
+	organization?: ProjectOrganization | null,
 ): RuntimeStateStreamSnapshotMessage {
 	return {
 		type: "snapshot",
@@ -45,6 +47,7 @@ export function buildSnapshotMessage(
 		runtimeProtocolVersion: QUARTERDECK_RUNTIME_PROTOCOL_VERSION,
 		currentProjectId,
 		projects,
+		...(organization !== undefined ? { organization } : {}),
 		projectState,
 		projectMetadata: null,
 		notificationSummariesByProject,
@@ -77,11 +80,13 @@ export function buildProjectMetadataUpdatedMessage(
 export function buildProjectsUpdatedMessage(
 	currentProjectId: string | null,
 	projects: RuntimeProjectSummary[],
+	organization?: ProjectOrganization | null,
 ): RuntimeStateStreamProjectsMessage {
 	return {
 		type: "projects_updated",
 		currentProjectId,
 		projects,
+		...(organization !== undefined ? { organization } : {}),
 	};
 }
 

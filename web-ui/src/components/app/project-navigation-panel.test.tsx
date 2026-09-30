@@ -110,6 +110,35 @@ describe("ProjectNavigationPanel", () => {
 		expect(container.textContent).not.toMatch(/backlog/i);
 	});
 
+	it("keeps the active project selected when collapsed, summarizes activity, and reveals an explicit switch", () => {
+		const onSelectProject = vi.fn();
+		const organization = {
+			id: "collapse-test",
+			revision: 1,
+			groups: [{ id: "work", name: "Work" }],
+			membership: { "project-1": "work", "project-2": "work" },
+			projectOrder: ["project-1", "project-2"],
+		};
+		const projects = [
+			{ ...PROJECTS[0]!, taskCounts: { in_progress: 2, review: 3, trash: 0 } },
+			{ ...PROJECTS[0]!, id: "project-2", name: "Tools", taskCounts: { in_progress: 1, review: 2, trash: 0 } },
+		];
+		const props = { organization, projects, onSelectProject, needsInputByProject: { "project-1": 1 } };
+		renderPanel(props);
+		const disclosure = container.querySelector<HTMLButtonElement>('[aria-label="Collapse Work"]');
+		if (!disclosure) throw new Error("Missing group disclosure");
+		act(() => disclosure.click());
+		expect(onSelectProject).not.toHaveBeenCalled();
+		expect(disclosure.getAttribute("aria-label")).toBe("Expand Work, contains current project");
+		expect(container.querySelector("#project-group-work")?.hasAttribute("hidden")).toBe(true);
+		expect(container.querySelector('[aria-label="3 tasks In Progress"]')).not.toBeNull();
+		expect(container.querySelector('[aria-label="4 tasks Review"]')).not.toBeNull();
+		expect(container.querySelector('[aria-label="1 tasks Needs Input"]')).not.toBeNull();
+		renderPanel({ ...props, currentProjectId: "project-2" });
+		expect(container.querySelector("#project-group-work")?.hasAttribute("hidden")).toBe(false);
+		expect(onSelectProject).not.toHaveBeenCalled();
+	});
+
 	it("fills its parent container without fixed width", () => {
 		renderPanel();
 		// The root element should be a flex column div, not a fixed-width aside
@@ -120,10 +149,10 @@ describe("ProjectNavigationPanel", () => {
 		expect((rootEl as HTMLElement).style.width).toBe("");
 	});
 
-	it("renders the add project button", () => {
+	it("renders the project and group creation menu", () => {
 		renderPanel();
 		const addButton = Array.from(container.querySelectorAll("button")).find(
-			(btn) => btn.textContent?.trim() === "Add Project",
+			(btn) => btn.getAttribute("aria-label") === "Add project or group",
 		);
 		expect(addButton).toBeInstanceOf(HTMLButtonElement);
 	});

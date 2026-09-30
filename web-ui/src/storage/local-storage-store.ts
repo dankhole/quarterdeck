@@ -1,4 +1,5 @@
 export enum LocalStorageKey {
+	ProjectGroupsCollapsed = "quarterdeck.project-groups-collapsed",
 	TaskCreatePrimaryStartAction = "quarterdeck.task-create-primary-start-action",
 	TaskCreateLastAgentId = "quarterdeck.task-create-last-agent-id",
 	BottomTerminalPaneHeight = "quarterdeck.bottom-terminal-pane-height",

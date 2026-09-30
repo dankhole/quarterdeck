@@ -1,5 +1,4 @@
 import { realpath } from "node:fs/promises";
-
 import type {
 	IProjectDataProvider,
 	IProjectResolver,
@@ -27,6 +26,7 @@ import {
 	resolveProjectPath,
 	updateProjectOrder,
 } from "../state";
+import { updateProjectOrganization } from "../state/project-state-index.js";
 import type { TerminalSessionManager } from "../terminal";
 import { ensureInitialCommit, initializeGitRepository, purgeTaskWorkspaceForDelete, readGitHeadInfo } from "../workdir";
 import type { RuntimeTrpcContext } from "./app-router";
@@ -59,11 +59,21 @@ export interface CreateProjectsApiDependencies {
 
 export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeTrpcContext["projectsApi"] {
 	return {
+		organizeProjects: async (input) => {
+			const result = await updateProjectOrganization(input);
+			if (result.ok)
+				void applyRuntimeMutationEffects(
+					deps.broadcaster,
+					createProjectsUpdatedEffects(deps.projects.getActiveProjectId()),
+				);
+			return result;
+		},
 		listProjects: async (preferredProjectId) => {
 			const payload = await deps.data.buildProjectsPayload(preferredProjectId);
 			return {
 				currentProjectId: payload.currentProjectId,
 				projects: payload.projects,
+				organization: payload.organization,
 			};
 		},
 		addProject: async (preferredProjectId, input) => {
@@ -125,7 +135,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 						baseRef,
 					);
 				}
-				const context = await loadProjectContext(projectPath, { folderOnly });
+				const context = await loadProjectContext(projectPath, { folderOnly, groupId: body.groupId });
 				deps.projects.rememberProject(context.projectId, context.repoPath);
 				deps.onProjectAdded?.(context.projectId);
 				const projectsAfterAdd = await listProjectIndexEntries();

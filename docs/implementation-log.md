@@ -1,5 +1,13 @@
 # Implementation Log
 
+## 2026-09-29 — Durable project groups
+
+Project groups, membership, and ordering now live in the global project index. `projects.organize` applies revision-checked intent under the existing index lock; registration/removal preserve the metadata, and adding a project to a group is atomic with registration. The first organization edit upgrades index.json to version 2 so older runtimes reject it instead of stripping group metadata. Browser/runtime protocol version 2 requires the new mutation endpoint. No board or task lifecycle state is rewritten by grouping.
+
+The runtime publishes organization metadata and the indexed project list from one file snapshot. Browser receipts and stream updates reject older organization revisions while retaining newer task counts. `useProjectGroups` owns one pending optimistic edit with rollback to the latest authoritative state. Collapse choices remain per-tab presentation, persisted by stable organization ID; group removal only unassigns projects.
+
+Validation: production build, runtime typecheck, full web tests, focused organization/index/API/state-stream tests, and changed-file Biome. Deterministic Agent Lab exercised creation, rename, direct project addition, menu moves, dragging into a collapsed group, refresh and cold-runtime restart persistence. Group removal and concurrent-edit safety are covered by focused tests. An additional second-window browser check was not completed before lab shutdown; it is not part of the passing evidence. The lab stopped cleanly with no forbidden host launches. No real provider or user runtime was used.
+
 ## 2026-09-29 — Explicit browser/runtime compatibility
 
 The exact-build fence blocked a single browser after installed web assets changed while an older runtime process stayed alive; refreshing could never make those build IDs agree. Snapshots now publish `QUARTERDECK_RUNTIME_PROTOCOL_VERSION` from `src/core/api/runtime-protocol.ts`, and the browser admits state by that shared contract version. Build IDs remain diagnostic metadata and package-build verification. Increment the protocol only for changes incompatible in either direction, including browser requirements without an older-runtime fallback; the policy lives in `DEVELOPMENT.md` and is routed from `AGENTS.md`.

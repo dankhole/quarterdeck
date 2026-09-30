@@ -1,3 +1,4 @@
+import type { ProjectOrganization } from "./api/project-organization.js";
 /**
  * Shared service interfaces for dependency injection.
  *
@@ -120,6 +121,7 @@ export interface IProjectDataProvider {
 	buildProjectsPayload: (preferredCurrentProjectId: string | null) => Promise<{
 		currentProjectId: string | null;
 		projects: RuntimeProjectSummary[];
+		organization?: ProjectOrganization | null;
 	}>;
 	buildProjectSummary: (projectId: string, repoPath: string) => Promise<RuntimeProjectSummary>;
 }
