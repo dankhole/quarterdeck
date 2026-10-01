@@ -45,7 +45,7 @@ Read the referenced document before editing the listed area:
 - Diagnostics recorder, journal, panel delivery, doctor, capture, or bundle format: `docs/diagnostics.md`.
 - Test selection, validation scope, or deciding whether a heavier testing lane is justified: `docs/testing.md`.
 - Structured/non-PTY execution or provider-session handoff: `docs/conventions/structured-execution.md`.
-- Current architecture priorities or active refactors: `docs/todo.md` and the specific linked plan.
+- Current architecture priorities or active refactors: `docs/qDeck.yaml` (the local, gitignored Chit source of truth) and the specific linked plan. Keep the list in the primary checkout; worktrees must use that same file with an explicit `--file` path rather than create copies. Use `chit --file docs/qDeck.yaml read` from the primary checkout before updates, preserve existing IDs, and use expected-value edits. `docs/todo.md` is an archived migration snapshot; do not maintain tasks there.
 
 Tracked historical context lives under `docs/history/`. Read it only when current docs and code do not answer the question or the user explicitly requests archival context.
 
@@ -82,7 +82,7 @@ Before preparing, tagging, publishing, retrying, or verifying an npm release, re
 
 When a user-visible feature or fix lands, or an active todo item is completed:
 
-1. Remove the completed active item from `docs/todo.md`, if present.
+1. Remove the completed active item from `docs/qDeck.yaml`, if present.
 2. Add a matching bullet under the current version in `CHANGELOG.md`. If no current version exists, create the next patch section.
 
 When bumping a version, retain `## [Unreleased]` above the new version heading.

@@ -15,7 +15,7 @@ The goal is to keep the cleverness while protecting the design.
 Execution tracking note:
 
 - Do not use this document as a backlog.
-- If a guardrail violation turns into real work, add or update the corresponding item in `docs/todo.md`.
+- If a guardrail violation turns into real work, add or update the corresponding item in `docs/qDeck.yaml`.
 
 ## Core Rule
 
@@ -152,4 +152,4 @@ When working in those areas, prefer:
 
 ## Companion Docs
 
-- `docs/todo.md`
+- `docs/qDeck.yaml`

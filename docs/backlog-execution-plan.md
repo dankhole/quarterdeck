@@ -1,6 +1,6 @@
 # Backlog Execution Plan
 
-This plan sequences the active work in [todo.md](./todo.md). It is an ownership and dependency map, not a claim that every feature or acceptance gate is complete.
+This plan sequences the active work in [qDeck.yaml](./qDeck.yaml). It is an ownership and dependency map, not a claim that every feature or acceptance gate is complete.
 
 ## Parallel implementation
 
@@ -31,7 +31,7 @@ The integration owner owns dependency manifests, shared backlog/changelog update
 
 Implemented and integrated: the Codex Tip-row cancellation fix, wide-tree construction, bounded diff highlighting and deferred rows, sidebar commit completion, opt-in LSP navigation, editor/agent context actions, hidden-draft lifecycle protection, Revert commit, and search previews. Cross-review covered LSP process shutdown/admission races, editor scope generations, and failed-hook revert recovery.
 
-Remaining active work is listed in [todo.md](./todo.md): end-to-end first-open profiling, pathological exact line-diff computation/full virtualization, staged review-surface migration, later LSP polish/compatibility, and external native/provider gates. The migration plan is a design handoff; its surfaces have not been replaced.
+Remaining active work is listed in [qDeck.yaml](./qDeck.yaml): end-to-end first-open profiling, pathological exact line-diff computation/full virtualization, staged review-surface migration, later LSP polish/compatibility, and external native/provider gates. The migration plan is a design handoff; its surfaces have not been replaced.
 
 Validation on the integrated worktree: production build; complete web suite (184 files, 1,266 tests); root gate instruction/format/type checks plus root tests (218 passing files, 2,194 passing tests, 8 skipped tests) across the initial run and scoped repairs. The initial root command failed under socket sandbox restrictions and stale fixtures; all failures passed on affected reruns. No second umbrella run was needed. Three fixture corrections preserve current task-color normalization, Git discovery isolation, and native interruption authority.
 
@@ -39,7 +39,7 @@ Fake Agent Lab `backlog-acceptance-20260927T233258Z-4586fd` verified responsive 
 
 ## Review follow-up
 
-The branch review's eleven findings were assigned to parallel owners, followed by an independent code-smell pass and scoped cleanup. Follow-up covers generation-fenced editor content, attached draft discard, dependency target navigation, CRLF context delivery, stable diff comment/selection identity, semantic settings resets, configured environment checks, required runtime APIs, safe failure metadata, Windows process ownership, and the existing migration-plan prerequisites. Additional checks addressed committed settings changes followed by response failure, concurrent project-field publication, Windows argument transport, and short file reads. See the [implementation log](./implementation-log.md) for ownership details and validation. Remaining active work and external acceptance gates stay in [todo.md](./todo.md).
+The branch review's eleven findings were assigned to parallel owners, followed by an independent code-smell pass and scoped cleanup. Follow-up covers generation-fenced editor content, attached draft discard, dependency target navigation, CRLF context delivery, stable diff comment/selection identity, semantic settings resets, configured environment checks, required runtime APIs, safe failure metadata, Windows process ownership, and the existing migration-plan prerequisites. Additional checks addressed committed settings changes followed by response failure, concurrent project-field publication, Windows argument transport, and short file reads. See the [implementation log](./implementation-log.md) for ownership details and validation. Remaining active work and external acceptance gates stay in [qDeck.yaml](./qDeck.yaml).
 
 Final follow-up validation passed runtime/web type checks and the production build, 1,291 web tests followed by affected cleanup regressions, focused runtime tests, and isolated fake Agent Lab checks for read-only dependency navigation, usable editors after draft discard, and whole-file/selection CRLF context delivery. The lab runs stopped cleanly. Native Windows execution and real-provider compatibility remain separate acceptance gates.
 

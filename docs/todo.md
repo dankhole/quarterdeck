@@ -1,3 +1,11 @@
+# Todo Migration Snapshot
+
+The active backlog moved to the Chit list [`qDeck.yaml`](./qDeck.yaml) on 2026-09-30. All eight open items were migrated with their details and ordering preserved. This file retains the original source below for reference; do not maintain tasks here. Statements below about the active backlog describe the pre-migration state.
+
+Read the current list with `chit --file docs/qDeck.yaml read` from the repository root. Continue to keep historical completion context in `CHANGELOG.md`, `docs/implementation-log.md`, or `docs/history/`.
+
+---
+
 # Dev Todo
 
 Ordered hardest-first so broad/high-risk work is at the top and quick follow-ups are lower in the list.

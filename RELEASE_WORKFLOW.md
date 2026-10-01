@@ -37,7 +37,7 @@ open -a Firefox https://www.npmjs.com/settings/dankhole/tfa
    ```
 
 4. Keep `## [Unreleased]` at the top of `CHANGELOG.md` and add a non-empty `## [X.Y.Z] - YYYY-MM-DD` section beneath it.
-5. Apply normal release hygiene: remove completed items from `docs/todo.md` and include the user-visible changes in the new changelog section.
+5. Apply normal release hygiene: remove completed items from `docs/qDeck.yaml` and include the user-visible changes in the new changelog section.
 6. Validate the publishable artifact and the changed behavior. At minimum for packaging changes:
 
    ```bash

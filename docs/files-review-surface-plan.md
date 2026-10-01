@@ -26,7 +26,7 @@ Hook paths are under `web-ui/src/hooks/git` unless qualified; component paths ar
 
 `DiffViewerPanel` supplies complete old/new content to the same presenter. Split/unified mode, comments, context expansion, hunk prompts, selected-file priority, and visible-file reporting retain their existing owners. Compare option changes clear comments tied to the previous comparison. Working-copy review stays immutable; writable content enters the existing live Files scope explicitly.
 
-This migration makes no performance improvement claim. The [performance backlog](./todo.md#files-view-and-git-diff-performance) remains active. Measure first-open and selected-file latency with bounded diagnostic marks before further changes to calculation, transfer, prefetch, or virtualization. Highlighting remains limited to rendered rows and bounded line lengths.
+This migration makes no performance improvement claim. The [performance backlog](./qDeck.yaml) remains active. Measure first-open and selected-file latency with bounded diagnostic marks before further changes to calculation, transfer, prefetch, or virtualization. Highlighting remains limited to rendered rows and bounded line lengths.
 
 ## Conflict results
 

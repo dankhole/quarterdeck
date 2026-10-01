@@ -15,14 +15,14 @@ If you are new to the codebase, read these in order:
 1. [`../README.md`](../README.md) for the product overview and local setup.
 2. [`architecture.md`](./architecture.md) for the system map, runtime model, and key file guide.
 3. [`testing.md`](./testing.md) for proportionate validation and testing-layer selection.
-4. [`todo.md`](./todo.md) for the active engineering backlog and current refactor queue.
+4. [`qDeck.yaml`](./qDeck.yaml) for the active engineering backlog and current refactor queue.
 5. [`conventions/architecture-guardrails.md`](./conventions/architecture-guardrails.md) for reusable rules on adding clever features without letting optimization define the architecture.
 
 For test selection, start with [`testing.md`](./testing.md). For live-instance diagnostics, use [`../DEVELOPMENT.md#unified-diagnostics`](../DEVELOPMENT.md#unified-diagnostics). The stable architecture and privacy boundary is in [`diagnostics.md`](./diagnostics.md). When the testing strategy calls for isolated browser, terminal, Git, Files, lifecycle, or visual validation, use [`agent-functional-testing.md`](./agent-functional-testing.md).
 
 If you only need the current refactor state, start with:
 
-1. [`todo.md`](./todo.md) for the active backlog.
+1. [`qDeck.yaml`](./qDeck.yaml) for the active backlog.
 2. The convention or architecture doc linked from the todo item you are actually picking up.
 
 ## Refactor Docs Map
@@ -31,8 +31,8 @@ Use this map when you are planning or evaluating refactor work.
 
 ### Live planning and prioritization
 
-- Start here for current refactor status: [`todo.md`](./todo.md).
-- [`todo.md`](./todo.md): active engineering backlog, including currently tracked refactor work.
+- Start here for current refactor status: [`qDeck.yaml`](./qDeck.yaml).
+- [`qDeck.yaml`](./qDeck.yaml): Chit source of truth for the active engineering backlog, including currently tracked refactor work. Read from the repository root with `chit --file docs/qDeck.yaml read`; the original Markdown is retained in [`todo.md`](./todo.md) as a migration snapshot.
 - [`reviews/README.md`](./reviews/README.md): whole-repository module inventory, consolidated findings, and evidence-backed review reports.
 - [`pi-first-class-support-plan.md`](./pi-first-class-support-plan.md): current Pi compatibility, lifecycle, recovery, platform, and version-advance contract.
 - [`claude-terminal-rendering-plan.md`](./claude-terminal-rendering-plan.md): Claude fullscreen-only launch contract, terminal geometry, and historical dogfood evidence.

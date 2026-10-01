@@ -20,6 +20,9 @@ docs/archive
 .kanban
 .quarterdeck
 
+# Keep one local Chit backlog in the primary checkout.
+/docs/qDeck.yaml
+
 # Keep the checked-in Codex environment bootstrap that symlinks worktree dependencies,
 # but ignore local Codex config/session state spillover.
 .codex/*

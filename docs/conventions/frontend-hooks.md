@@ -4,7 +4,7 @@
 
 Read this when changing complex hooks, extracting domain logic, or changing provider/context return shapes. For the everyday `web-ui` stack, styling, UI primitives, and hook directory rules, use `docs/conventions/web-ui.md`.
 
-Progress tracking (what's been extracted, what's left) lives in `docs/todo.md` and `docs/implementation-log.md`. This doc is the "how," those are the "what."
+Progress tracking (what's been extracted, what's left) lives in `docs/qDeck.yaml` and `docs/implementation-log.md`. This doc is the "how," those are the "what."
 
 ---
 

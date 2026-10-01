@@ -13,7 +13,7 @@ Quarterdeck has diverged substantially and removed the Cline SDK/account layer, 
 During documentation-heavy or release cleanup:
 
 - keep stable architecture, conventions, testing, and operator references in the active docs map;
-- keep only actionable work in [`todo.md`](./todo.md);
+- keep only actionable work in [`qDeck.yaml`](./qDeck.yaml);
 - move superseded current-era plans and investigation records to `docs/history/` while preserving links and provenance;
 - treat `docs/archive/` as frozen imported legacy context; and
 - split an implemented plan with remaining rollout work into a compact active gate/checklist plus frozen implementation history when its size obscures the remaining action.
