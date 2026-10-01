@@ -1,5 +1,13 @@
 # Implementation Log
 
+## 2026-09-30 — Selected commits handle unstaged deletions in ignored folders
+
+`git-selected-commit.ts` now combines staged and worktree deletions before preparing its temporary index. Git can reject an explicitly selected missing tracked file when its newly ignored parent directory still contains local files; the error names the parent directory even though the selection contains individual files. The existing staged-deletion handling missed this case. Both kinds of removal now bypass `git add` and use exact index removal, preserving ignored contents, retained staged-removal copies, and unrelated staging without force-adding files.
+
+Regression coverage in `test/runtime/git-commit.test.ts` exercises retained and absent ignored parents, literal filenames, and a staged addition subsequently deleted from disk. The retained-parent cases reproduced the original ignored-path error before the fix.
+
+Validation: 40 focused commit and commit-response tests, runtime typecheck, and changed-source/test Biome passed. Real-Git fixtures exercise the production commit function; no browser, provider, or live runtime was needed.
+
 ## 2026-09-30 — Stable project identity across unavailable and renamed folders
 
 Missing folders no longer authorize deleting the project index entry or saved board/session state. The version-3 project index owns display names, directory identity, and a metadata revision independent of board revisions. Saved-state reads use project IDs without probing the unavailable repository. Explicit Locate can accept identity drift after remounting or moving across volumes, while managed disk rename requires the known source identity.

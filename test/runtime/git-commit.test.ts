@@ -187,6 +187,79 @@ describe("commitSelectedFiles", { concurrent: false }, () => {
 		}
 	});
 
+	it.each([false, true])(
+		"commits unstaged deletions under an ignored directory (parent retained: %s)",
+		async (retainParent) => {
+			const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-unstaged-deletion-");
+			try {
+				initRepository(repoPath);
+				mkdirSync(join(repoPath, "outputs"));
+				const deletedPath = "outputs/[generated].txt";
+				writeFileSync(join(repoPath, deletedPath), "generated file\n");
+				writeFileSync(join(repoPath, "selected.txt"), "original\n");
+				writeFileSync(join(repoPath, "unselected.txt"), "original\n");
+				commitAll(repoPath, "initial");
+				unlinkSync(join(repoPath, deletedPath));
+				if (retainParent) writeFileSync(join(repoPath, "outputs", "private.txt"), "ignored content\n");
+				else rmdirSync(join(repoPath, "outputs"));
+				writeFileSync(join(repoPath, ".gitignore"), "/outputs/\n");
+				writeFileSync(join(repoPath, "selected.txt"), "selected change\n");
+				writeFileSync(join(repoPath, "unselected.txt"), "staged change\n");
+				runGit(repoPath, ["add", "unselected.txt"]);
+				writeFileSync(join(repoPath, "unselected.txt"), "unstaged change\n");
+
+				const result = await commitSelectedFiles({
+					cwd: repoPath,
+					paths: [deletedPath, ".gitignore", "selected.txt"],
+					message: "remove generated file",
+				});
+
+				expect(result.ok, result.error).toBe(true);
+				expect(runGit(repoPath, ["ls-tree", "-r", "--name-only", "HEAD"])).toBe(
+					".gitignore\nselected.txt\nunselected.txt",
+				);
+				expect(runGit(repoPath, ["show", "HEAD:selected.txt"])).toBe("selected change");
+				expect(runGit(repoPath, ["show", "HEAD:unselected.txt"])).toBe("original");
+				expect(runGit(repoPath, ["show", ":unselected.txt"])).toBe("staged change");
+				expect(readFileSync(join(repoPath, "unselected.txt"), "utf8")).toBe("unstaged change\n");
+				if (retainParent)
+					expect(readFileSync(join(repoPath, "outputs", "private.txt"), "utf8")).toBe("ignored content\n");
+				expect(gitStatus(repoPath)).toBe("MM unselected.txt");
+			} finally {
+				cleanup();
+			}
+		},
+	);
+
+	it("does not restore a staged ignored addition deleted from the worktree", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-deleted-addition-");
+		try {
+			initRepository(repoPath);
+			writeFileSync(join(repoPath, "base.txt"), "base\n");
+			commitAll(repoPath, "initial");
+			mkdirSync(join(repoPath, "outputs"));
+			writeFileSync(join(repoPath, "outputs", "generated.txt"), "staged addition\n");
+			runGit(repoPath, ["add", "outputs/generated.txt"]);
+			unlinkSync(join(repoPath, "outputs", "generated.txt"));
+			writeFileSync(join(repoPath, "outputs", "private.txt"), "ignored content\n");
+			writeFileSync(join(repoPath, ".gitignore"), "/outputs/\n");
+
+			const result = await commitSelectedFiles({
+				cwd: repoPath,
+				paths: ["outputs/generated.txt", ".gitignore"],
+				message: "ignore generated outputs",
+			});
+
+			expect(result.ok, result.error).toBe(true);
+			expect(runGit(repoPath, ["ls-tree", "-r", "--name-only", "HEAD"])).toBe(".gitignore\nbase.txt");
+			expect(runGit(repoPath, ["ls-files"])).toBe(".gitignore\nbase.txt");
+			expect(readFileSync(join(repoPath, "outputs", "private.txt"), "utf8")).toBe("ignored content\n");
+			expect(gitStatus(repoPath)).toBe("");
+		} finally {
+			cleanup();
+		}
+	});
+
 	it("supports an initial commit and treats selected filenames literally", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-git-commit-initial-");
 		try {

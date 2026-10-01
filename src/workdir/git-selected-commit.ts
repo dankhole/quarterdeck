@@ -37,25 +37,15 @@ export async function commitSelectedPaths(repoRoot: string, paths: string[], mes
 		if (await getGitStdout(["ls-files", "--unmerged"], repoRoot, options)) {
 			throw new Error("Resolve unmerged files before committing selected files.");
 		}
-		const deleted = new Set(
-			splitNullSeparatedGitOutput(
-				await getGitStdout(
-					[
-						"--literal-pathspecs",
-						"diff",
-						"--cached",
-						"--no-renames",
-						"--diff-filter=D",
-						"--name-only",
-						"-z",
-						"--",
-						...paths,
-					],
-					repoRoot,
-					{ ...options, trimStdout: false },
-				),
-			),
-		);
+		// Git add can reject missing tracked files beneath a retained ignored
+		// directory. Handle staged and worktree removals directly in the index.
+		const deletionArgs = ["--no-renames", "--diff-filter=D", "--name-only", "-z", "--", ...paths];
+		const deletionOptions = { ...options, trimStdout: false };
+		const deletionOutputs = await Promise.all([
+			getGitStdout(["--literal-pathspecs", "diff", "--cached", ...deletionArgs], repoRoot, deletionOptions),
+			getGitStdout(["--literal-pathspecs", "diff", ...deletionArgs], repoRoot, deletionOptions),
+		]);
+		const deleted = new Set(deletionOutputs.flatMap(splitNullSeparatedGitOutput));
 		tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-commit-"));
 		const tempOptions = { ...options, env: createGitProcessEnv({ GIT_INDEX_FILE: join(tempDir, "index") }) };
 		const savedIndexPath = join(tempDir, "saved-index");
@@ -89,7 +79,7 @@ export async function commitSelectedPaths(repoRoot: string, paths: string[], mes
 			await getGitStdout(["--literal-pathspecs", "add", "--", ...toStage], repoRoot, tempOptions);
 		}
 		if (deleted.size > 0) {
-			// Keep staged removals even when ignored copies still exist in the worktree.
+			// Preserve removals without adding ignored children or retained copies.
 			await getGitStdout(["update-index", "--force-remove", "--", ...deleted], repoRoot, tempOptions);
 		}
 		output = await getGitStdout(["commit", "-m", message], repoRoot, tempOptions);
