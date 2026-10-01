@@ -89,9 +89,7 @@ export {
 } from "./search-workdir-files";
 export { searchWorkdirText } from "./search-workdir-text";
 export {
-	applyTaskPatch,
 	archiveTaskWorktreeForTrash,
-	captureTaskPatch,
 	cleanupLegacyDependencySymlinks,
 	deleteTaskWorktree,
 	ensureTaskWorktreeIfDoesntExist,

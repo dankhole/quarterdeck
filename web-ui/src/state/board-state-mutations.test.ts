@@ -276,10 +276,10 @@ describe("moveTaskToColumn", () => {
 		expect(result.moved).toBe(true);
 		const trashedCard = result.board.columns.find((c) => c.id === "trash")!.cards.find((c) => c.id === taskId);
 		expect(trashedCard?.branch).toBe("feat/my-work");
-		expect(trashedCard?.workingDirectory).toBeNull();
+		expect(trashedCard?.workingDirectory).toBe("/tmp/worktree");
 	});
 
-	it("clears workingDirectory on trash (regression test 31)", () => {
+	it("preserves workingDirectory on trash for restoration", () => {
 		let board = addTaskToColumn(createInitialBoardData(), "in_progress", { prompt: "Task A", baseRef: "main" });
 		const taskId = board.columns.find((c) => c.id === "in_progress")!.cards[0]!.id;
 		board = {
@@ -299,6 +299,6 @@ describe("moveTaskToColumn", () => {
 		const result = moveTaskToColumn(board, taskId, "trash");
 		expect(result.moved).toBe(true);
 		const trashedCard = result.board.columns.find((c) => c.id === "trash")!.cards.find((c) => c.id === taskId);
-		expect(trashedCard?.workingDirectory).toBeNull();
+		expect(trashedCard?.workingDirectory).toBe("/tmp/worktree");
 	});
 });

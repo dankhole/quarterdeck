@@ -77,7 +77,7 @@ function createWorktree(repoPath: string): string {
 }
 
 describe("project folder relocation", { concurrent: false }, () => {
-	it("renames the root, repairs exact worktrees, and archives the original physical checkout", async () => {
+	it("renames the root, repairs exact worktrees, and preserves the original checkout in Trash", async () => {
 		await withFixture(async (_root, repoPath) => {
 			const worktreePath = createWorktree(repoPath);
 			const plan = await prepareProjectRelocation({
@@ -102,8 +102,10 @@ describe("project folder relocation", { concurrent: false }, () => {
 				taskId: "task-relocation",
 				existingPath: worktreePath,
 			});
-			expect(archived).toEqual({ ok: true, removed: true });
-			expect(await findTaskPatch("task-relocation")).not.toBeNull();
+			expect(archived).toEqual({ ok: true, removed: false });
+			expect(await findTaskPatch("task-relocation")).toBeNull();
+			await assertTaskWorktreeRegistration(worktreePath);
+			expect(readFileSync(join(worktreePath, "tracked.txt"), "utf8")).toBe("task progress\n");
 			await finalizeProjectRelocation(plan);
 			expect(await readProjectRelocationJournal(plan.projectId)).toBeNull();
 		});

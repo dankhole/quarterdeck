@@ -36,12 +36,7 @@ import {
 	ProjectTaskLifecycleOperationStore,
 } from "../state";
 import type { StopTaskSessionResult } from "../terminal/session-manager-types";
-import {
-	archiveTaskWorktreeForTrash,
-	ensureTaskWorktreeIfDoesntExist,
-	pathExists,
-	purgeTaskWorkspaceForDelete,
-} from "../workdir";
+import { ensureTaskWorktreeIfDoesntExist, pathExists, purgeTaskWorkspaceForDelete } from "../workdir";
 
 import { clearTrashTasks } from "./clear-trash";
 
@@ -75,15 +70,10 @@ export interface ProjectTaskLifecycleServiceDependencies {
 		branch?: string | null;
 		existingPath?: string;
 		retrySetup?: boolean;
+		/** Server-validated legacy Trash restore whose persisted workspace path was cleared. */
+		restoreFromTrash?: boolean;
 		onSetupProgress?: (phase: "running" | "succeeded" | "failed") => Promise<void>;
 	}) => Promise<RuntimeWorktreeEnsureResponse>;
-	archiveTaskWorktree?: (options: {
-		existingPath?: string;
-		folderOnly?: boolean;
-		repoPath: string;
-		taskId: string;
-		operationId?: string;
-	}) => Promise<RuntimeWorktreeDeleteResponse>;
 	purgeTaskWorkspace?: (options: {
 		existingPath?: string;
 		folderOnly?: boolean;
@@ -574,31 +564,11 @@ export class ProjectTaskLifecycleService {
 			});
 		}
 
-		const card = findCardInBoard(moveResult.state.board, command.taskId);
-		let warning: string | null = null;
-		// Folder mode keeps pre-existing workspaces intact so restore needs no Git recreation.
-		if (!moveResult.state.git.folderOnly && card?.useWorktree !== false) {
-			operation = await this.setPhase(scope, operation, "archiving_worktree");
-			const archived = await (this.dependencies.archiveTaskWorktree ?? archiveTaskWorktreeForTrash)({
-				existingPath: precondition.card.workingDirectory ?? undefined,
-				folderOnly: moveResult.state.git.folderOnly,
-				repoPath: scope.projectPath,
-				taskId: command.taskId,
-				operationId: command.operationId,
-			});
-			if (!archived.ok) {
-				warning = archived.error ?? "Task was trashed, but its worktree could not be archived.";
-				log.warn(
-					"task lifecycle worktree archive failed",
-					this.logFields(operation, { outcome: "worktree_failed", error: warning }),
-				);
-			}
-		}
-
+		// Preserve the complete workspace for restore. A patch archive cannot retain
+		// ignored files, index state, or writes from unmanaged background processes.
 		return await this.finish(scope, operation, {
-			status: warning ? "completed_with_warning" : "completed",
-			outcomeCode: warning ? "completed_with_warning" : "completed",
-			warning: warning ?? undefined,
+			status: "completed",
+			outcomeCode: "completed",
 		});
 	}
 
@@ -683,9 +653,11 @@ export class ProjectTaskLifecycleService {
 				taskId: card.id,
 				baseRef: card.baseRef,
 				branch: card.branch,
-				existingPath:
-					card.workingDirectory && (await pathExists(card.workingDirectory)) ? card.workingDirectory : undefined,
+				existingPath: card.workingDirectory ?? undefined,
 				retrySetup: operation.attempt === 1,
+				// Only legacy Trash cards cleared their workspace identity before archive.
+				// Retained paths still require intact registration and fail closed.
+				restoreFromTrash: !card.workingDirectory,
 				onSetupProgress: async (phase) => {
 					if (phase === "running") operation = await this.setPhase(scope, operation, "running_setup");
 				},

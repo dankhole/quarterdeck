@@ -1,14 +1,14 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
 	RuntimeTaskLifecycleCommand,
 	RuntimeTaskSessionSummary,
 	RuntimeWorktreeEnsureResponse,
 } from "../../src/core";
-import { findCardInBoard, getTaskColumnId } from "../../src/core";
+import { findCardInBoard, getRuntimeDetailTerminalTaskId, getTaskColumnId } from "../../src/core";
 import { lockedFileSystem } from "../../src/fs/locked-file-system";
 import { ProjectTaskLifecycleService } from "../../src/server";
 import {
@@ -20,6 +20,7 @@ import {
 } from "../../src/state";
 import { getProjectLifecycleOperationsPath } from "../../src/state/project-state-utils";
 import type * as TaskWorktreeLifecycle from "../../src/workdir/task-worktree-lifecycle";
+import { archiveTaskWorktreeForTrash } from "../../src/workdir/task-worktree-lifecycle";
 import { initGitRepository } from "../utilities/git-env";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
@@ -28,6 +29,7 @@ import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 // behavior has separate integration coverage; the fixtures here intentionally have no commits.
 vi.mock("../../src/workdir/task-worktree-lifecycle", async (importOriginal) => ({
 	...(await importOriginal<typeof TaskWorktreeLifecycle>()),
+	archiveTaskWorktreeForTrash: vi.fn(async () => ({ ok: true as const, removed: false })),
 	ensureTaskWorktreeIfDoesntExist: async (options: {
 		cwd: string;
 		taskId: string;
@@ -81,7 +83,11 @@ function createDeferred(): { promise: Promise<void>; resolve: () => void } {
 }
 
 describe("ProjectTaskLifecycleService integration", { concurrent: false }, () => {
-	it("keeps converted tasks through trash and restore without creating or archiving Git worktrees", async () => {
+	beforeEach(() => {
+		vi.mocked(archiveTaskWorktreeForTrash).mockClear();
+	});
+
+	it("keeps converted tasks through trash and restore without creating or deleting Git worktrees", async () => {
 		await withTemporaryHome(async () => {
 			const fixture = createTempDir("quarterdeck-folder-lifecycle-");
 			try {
@@ -94,7 +100,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					command: { ...TASK_SPEC, kind: "create_task", columnId: "review" },
 				});
 				const ensureTaskWorktree = vi.fn();
-				const archiveTaskWorktree = vi.fn();
+				const purgeTaskWorkspace = vi.fn();
 				const startTaskSession = vi.fn(async () => ({
 					ok: true,
 					summary: createTestTaskSessionSummary({ taskId: TASK_SPEC.taskId, state: "running" }),
@@ -103,7 +109,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					boardCommands,
 					startTaskSession,
 					ensureTaskWorktree,
-					archiveTaskWorktree,
+					purgeTaskWorkspace,
 				});
 				const identity = { taskId: TASK_SPEC.taskId, taskCreatedAt: TASK_SPEC.createdAt };
 				const trashed = await lifecycle.execute(scope, {
@@ -130,12 +136,218 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 				expect(started.ok).toBe(true);
 				expect(startTaskSession).toHaveBeenCalledWith(scope, expect.objectContaining({ useWorktree: false }));
 				expect(ensureTaskWorktree).not.toHaveBeenCalled();
-				expect(archiveTaskWorktree).not.toHaveBeenCalled();
+				expect(archiveTaskWorktreeForTrash).not.toHaveBeenCalled();
+				expect(purgeTaskWorkspace).not.toHaveBeenCalled();
 			} finally {
 				fixture.cleanup();
 			}
 		});
 	});
+
+	it("retains the workspace and exact conversation identity through Trash, replay, and restore", async () => {
+		await withTemporaryHome(async () => {
+			const fixture = createTempDir("quarterdeck-retained-trash-workspace-");
+			try {
+				initGitRepository(fixture.path);
+				const context = await loadProjectContext(fixture.path);
+				const scope = { projectId: context.projectId, projectPath: fixture.path };
+				const worktreePath = join(fixture.path, "workspaces", TASK_SPEC.taskId);
+				mkdirSync(worktreePath, { recursive: true });
+				writeFileSync(join(worktreePath, "retained.txt"), "Complete task workspace\n");
+				const sessions: Record<string, RuntimeTaskSessionSummary> = {
+					[TASK_SPEC.taskId]: createTestTaskSessionSummary({
+						taskId: TASK_SPEC.taskId,
+						agentId: "codex",
+						state: "awaiting_review",
+						sessionInstanceId: "original-session",
+						sessionLaunchPath: worktreePath,
+						resumeSessionId: "exact-provider-conversation",
+						pid: 456,
+						startedAt: 200,
+					}),
+				};
+				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => sessions });
+				const created = await boardCommands.executeBatch(scope, {
+					commandId: "seed-retained-workspace",
+					expectedRevision: 0,
+					commands: [
+						{ ...TASK_SPEC, kind: "create_task", columnId: "in_progress" },
+						{
+							kind: "patch_task",
+							taskId: TASK_SPEC.taskId,
+							workingDirectory: worktreePath,
+							updatedAt: 200,
+						},
+					],
+				});
+				const stopTaskSession = vi.fn(async (_scope: typeof scope, taskId: string) => {
+					const summary = sessions[taskId] ?? null;
+					if (summary) {
+						sessions[taskId] = { ...summary, pid: null, reviewReason: "interrupted" };
+					}
+					return {
+						summary: sessions[taskId] ?? null,
+						requestedSessionInstanceId: summary?.sessionInstanceId ?? null,
+						didExit: true,
+						outcome: "exited" as const,
+					};
+				});
+				const ensureTaskWorktree = vi.fn(async () => ({
+					ok: true as const,
+					path: worktreePath,
+					baseRef: TASK_SPEC.baseRef,
+					baseCommit: "abc123",
+					branch: TASK_SPEC.branch,
+				}));
+				const purgeTaskWorkspace = vi.fn();
+				const startTaskSession = vi.fn(async () => ({
+					ok: true,
+					summary: createTestTaskSessionSummary({
+						...sessions[TASK_SPEC.taskId],
+						sessionInstanceId: "resumed-session",
+						launchOperationId: "restore-retained-workspace",
+						pid: 789,
+						startedAt: 300,
+					}),
+				}));
+				const lifecycle = new ProjectTaskLifecycleService({
+					boardCommands,
+					startTaskSession,
+					stopTaskSession,
+					getTaskSessionSummary: (_scope, taskId) => sessions[taskId] ?? null,
+					ensureTaskWorktree,
+					purgeTaskWorkspace,
+				});
+				const trashCommand: Extract<RuntimeTaskLifecycleCommand, { kind: "trash" }> = {
+					kind: "trash",
+					operationId: "trash-retained-workspace",
+					taskId: TASK_SPEC.taskId,
+					taskCreatedAt: TASK_SPEC.createdAt,
+					sourceColumnId: "in_progress",
+					expectedRevision: created.state.revision,
+				};
+				const trashed = await lifecycle.execute(scope, trashCommand);
+				const replayed = await lifecycle.execute(scope, trashCommand);
+
+				expect(trashed.ok).toBe(true);
+				expect(replayed).toEqual(trashed);
+				expect(findCardInBoard(trashed.state.board, TASK_SPEC.taskId)?.workingDirectory).toBe(worktreePath);
+				expect(trashed.summary).toMatchObject({
+					resumeSessionId: "exact-provider-conversation",
+					sessionLaunchPath: worktreePath,
+					pid: null,
+				});
+				expect(stopTaskSession).toHaveBeenCalledTimes(2);
+				expect(stopTaskSession).toHaveBeenNthCalledWith(
+					2,
+					scope,
+					getRuntimeDetailTerminalTaskId(TASK_SPEC.taskId),
+					undefined,
+				);
+				expect(ensureTaskWorktree).not.toHaveBeenCalled();
+				expect(startTaskSession).not.toHaveBeenCalled();
+
+				const restored = await lifecycle.execute(scope, {
+					kind: "restore",
+					operationId: "restore-retained-workspace",
+					taskId: TASK_SPEC.taskId,
+					taskCreatedAt: TASK_SPEC.createdAt,
+					expectedRevision: trashed.state.revision,
+				});
+
+				expect(restored.ok).toBe(true);
+				expect(ensureTaskWorktree).toHaveBeenCalledWith(
+					expect.objectContaining({
+						existingPath: worktreePath,
+						restoreFromTrash: false,
+					}),
+				);
+				expect(startTaskSession).toHaveBeenCalledWith(
+					scope,
+					expect.objectContaining({
+						resumeConversation: true,
+						awaitReview: true,
+						prompt: "",
+					}),
+				);
+				expect(restored.summary).toMatchObject({
+					resumeSessionId: "exact-provider-conversation",
+					sessionLaunchPath: worktreePath,
+				});
+				expect(findCardInBoard(restored.state.board, TASK_SPEC.taskId)?.workingDirectory).toBe(worktreePath);
+				expect(readFileSync(join(worktreePath, "retained.txt"), "utf8")).toBe("Complete task workspace\n");
+				expect(archiveTaskWorktreeForTrash).not.toHaveBeenCalled();
+				expect(purgeTaskWorkspace).not.toHaveBeenCalled();
+			} finally {
+				fixture.cleanup();
+			}
+		});
+	});
+
+	it("fails restore when the retained workspace is missing instead of creating a replacement", async () => {
+		await withTemporaryHome(async () => {
+			const fixture = createTempDir("quarterdeck-missing-trash-workspace-");
+			try {
+				initGitRepository(fixture.path);
+				const context = await loadProjectContext(fixture.path);
+				const scope = { projectId: context.projectId, projectPath: fixture.path };
+				const missingPath = join(fixture.path, "missing-retained-workspace");
+				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+				const created = await boardCommands.executeBatch(scope, {
+					commandId: "seed-missing-workspace",
+					expectedRevision: 0,
+					commands: [
+						{ ...TASK_SPEC, kind: "create_task", columnId: "trash" },
+						{
+							kind: "patch_task",
+							taskId: TASK_SPEC.taskId,
+							workingDirectory: missingPath,
+							updatedAt: 200,
+						},
+					],
+				});
+				const ensureTaskWorktree = vi.fn(async () => ({
+					ok: false as const,
+					path: null,
+					baseRef: TASK_SPEC.baseRef,
+					baseCommit: null,
+					error: "The retained workspace is missing.",
+				}));
+				const startTaskSession = vi.fn();
+				const lifecycle = new ProjectTaskLifecycleService({
+					boardCommands,
+					startTaskSession,
+					ensureTaskWorktree,
+				});
+				const restored = await lifecycle.execute(scope, {
+					kind: "restore",
+					operationId: "restore-missing-workspace",
+					taskId: TASK_SPEC.taskId,
+					taskCreatedAt: TASK_SPEC.createdAt,
+					expectedRevision: created.state.revision,
+				});
+
+				expect(restored).toMatchObject({
+					ok: false,
+					operation: { outcomeCode: "worktree_failed" },
+					error: "The retained workspace is missing.",
+				});
+				expect(ensureTaskWorktree).toHaveBeenCalledWith(
+					expect.objectContaining({
+						existingPath: missingPath,
+						restoreFromTrash: false,
+					}),
+				);
+				expect(startTaskSession).not.toHaveBeenCalled();
+				expect(getTaskColumnId(restored.state.board, TASK_SPEC.taskId)).toBe("trash");
+				expect(findCardInBoard(restored.state.board, TASK_SPEC.taskId)?.workingDirectory).toBe(missingPath);
+				expect(archiveTaskWorktreeForTrash).not.toHaveBeenCalled();
+			} finally {
+				fixture.cleanup();
+			}
+		});
+	});
+
 	it("keeps unstarted Review tasks distinct through stop, restart, Trash, restore, and Start", async () => {
 		await withTemporaryHome(async () => {
 			const { path: projectPath, cleanup } = createTempDir("quarterdeck-unstarted-");
@@ -1152,80 +1364,99 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 		},
 	);
 
-	it("replays a committed trash move and performs cleanup exactly once", async () => {
-		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-trash-recovery-");
-			try {
-				const projectPath = join(sandboxRoot, "project-a");
-				mkdirSync(projectPath, { recursive: true });
-				initGitRepository(projectPath);
-				const context = await loadProjectContext(projectPath);
-				const initial = await loadProjectState(projectPath);
-				const scope = { projectId: context.projectId, projectPath };
-				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
-				const created = await boardCommands.execute(scope, {
-					commandId: "seed-trash-recovery",
-					expectedRevision: initial.revision,
-					command: { ...TASK_SPEC, kind: "create_task", columnId: "review" },
-				});
-				const operationStore = new ProjectTaskLifecycleOperationStore();
-				const command: RuntimeTaskLifecycleCommand = {
-					kind: "trash",
-					operationId: "recover-trash-task-a",
-					taskId: TASK_SPEC.taskId,
-					taskCreatedAt: TASK_SPEC.createdAt,
-					expectedRevision: created.state.revision,
-					sourceColumnId: "review",
-				};
-				const begun = await operationStore.begin(scope, command);
-				await operationStore.update(scope, command.operationId, (operation) => ({
-					...operation,
-					phase: "board_transition",
-				}));
-				await boardCommands.execute(scope, {
-					commandId: `${command.operationId}:move`,
-					expectedRevision: command.expectedRevision,
-					command: {
-						kind: "move_task",
+	it.each(["board_transition", "archiving_worktree"] as const)(
+		"replays a committed Trash move from %s without archiving or purging its workspace",
+		async (phase) => {
+			await withTemporaryHome(async () => {
+				const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-trash-recovery-");
+				try {
+					const projectPath = join(sandboxRoot, "project-a");
+					mkdirSync(projectPath, { recursive: true });
+					initGitRepository(projectPath);
+					const context = await loadProjectContext(projectPath);
+					const initial = await loadProjectState(projectPath);
+					const scope = { projectId: context.projectId, projectPath };
+					const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+					const worktreePath = join(sandboxRoot, "retained-worktree");
+					mkdirSync(worktreePath);
+					writeFileSync(join(worktreePath, "retained.txt"), "Recoverable task workspace\n");
+					const created = await boardCommands.executeBatch(scope, {
+						commandId: "seed-trash-recovery",
+						expectedRevision: initial.revision,
+						commands: [
+							{ ...TASK_SPEC, kind: "create_task", columnId: "review" },
+							{
+								kind: "patch_task",
+								taskId: TASK_SPEC.taskId,
+								workingDirectory: worktreePath,
+								updatedAt: 200,
+							},
+						],
+					});
+					const operationStore = new ProjectTaskLifecycleOperationStore();
+					const command: RuntimeTaskLifecycleCommand = {
+						kind: "trash",
+						operationId: "recover-trash-task-a",
 						taskId: TASK_SPEC.taskId,
+						taskCreatedAt: TASK_SPEC.createdAt,
+						expectedRevision: created.state.revision,
 						sourceColumnId: "review",
-						targetColumnId: "trash",
-						targetIndex: 0,
-						updatedAt: begun.operation.requestedAt,
-					},
-				});
+					};
+					const begun = await operationStore.begin(scope, command);
+					await operationStore.update(scope, command.operationId, (operation) => ({
+						...operation,
+						phase,
+					}));
+					await boardCommands.execute(scope, {
+						commandId: `${command.operationId}:move`,
+						expectedRevision: command.expectedRevision,
+						command: {
+							kind: "move_task",
+							taskId: TASK_SPEC.taskId,
+							sourceColumnId: "review",
+							targetColumnId: "trash",
+							targetIndex: 0,
+							updatedAt: begun.operation.requestedAt,
+						},
+					});
 
-				const stopTaskSession = vi.fn(async (_scope, taskId: string) => ({
-					summary: null,
-					requestedSessionInstanceId: null,
-					didExit: true,
-					outcome: "not_running" as const,
-					taskId,
-				}));
-				const archiveTaskWorktree = vi.fn(async () => ({ ok: true as const, removed: false }));
-				const lifecycle = new ProjectTaskLifecycleService({
-					boardCommands,
-					startTaskSession: vi.fn(),
-					stopTaskSession,
-					archiveTaskWorktree,
-					operationStore,
-				});
-				await lifecycle.recover(scope);
-				await lifecycle.recover(scope);
-				const recovered = await lifecycle.getOperation(scope, command.operationId);
+					const stopTaskSession = vi.fn(async (_scope, taskId: string) => ({
+						summary: null,
+						requestedSessionInstanceId: null,
+						didExit: true,
+						outcome: "not_running" as const,
+						taskId,
+					}));
+					const purgeTaskWorkspace = vi.fn();
+					const lifecycle = new ProjectTaskLifecycleService({
+						boardCommands,
+						startTaskSession: vi.fn(),
+						stopTaskSession,
+						purgeTaskWorkspace,
+						operationStore,
+					});
+					await lifecycle.recover(scope);
+					await lifecycle.recover(scope);
+					const recovered = await lifecycle.getOperation(scope, command.operationId);
 
-				expect(recovered).toMatchObject({
-					ok: true,
-					operation: { status: "completed", outcomeCode: "completed" },
-				});
-				expect(getTaskColumnId(recovered?.state.board ?? initial.board, TASK_SPEC.taskId)).toBe("trash");
-				expect(stopTaskSession).toHaveBeenCalledTimes(2);
-				expect(archiveTaskWorktree).toHaveBeenCalledOnce();
-			} finally {
-				cleanup();
-			}
-		});
-	});
+					expect(recovered).toMatchObject({
+						ok: true,
+						operation: { status: "completed", outcomeCode: "completed" },
+					});
+					expect(getTaskColumnId(recovered?.state.board ?? initial.board, TASK_SPEC.taskId)).toBe("trash");
+					expect(stopTaskSession).toHaveBeenCalledTimes(2);
+					expect(
+						findCardInBoard(recovered?.state.board ?? initial.board, TASK_SPEC.taskId)?.workingDirectory,
+					).toBe(worktreePath);
+					expect(readFileSync(join(worktreePath, "retained.txt"), "utf8")).toBe("Recoverable task workspace\n");
+					expect(archiveTaskWorktreeForTrash).not.toHaveBeenCalled();
+					expect(purgeTaskWorkspace).not.toHaveBeenCalled();
+				} finally {
+					cleanup();
+				}
+			});
+		},
+	);
 
 	it("ignores legacy links and pending linked-start plans during trash and replay", async () => {
 		await withTemporaryHome(async () => {
@@ -1394,17 +1625,18 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					});
 					throw new Error("Response connection closed after spawn.");
 				});
+				const ensureTaskWorktree = vi.fn(async () => ({
+					ok: true as const,
+					path: join(projectPath, ".quarterdeck", "task-a"),
+					baseRef: "main",
+					baseCommit: "abc123",
+					branch: TASK_SPEC.branch,
+				}));
 				const lifecycle = new ProjectTaskLifecycleService({
 					boardCommands,
 					startTaskSession,
 					getTaskSessionSummary: (_scope, taskId) => sessions[taskId] ?? null,
-					ensureTaskWorktree: async () => ({
-						ok: true,
-						path: join(projectPath, ".quarterdeck", "task-a"),
-						baseRef: "main",
-						baseCommit: "abc123",
-						branch: TASK_SPEC.branch,
-					}),
+					ensureTaskWorktree,
 					operationStore,
 				});
 				await lifecycle.recover(scope);
@@ -1419,6 +1651,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 				expect(geometryRetry.ok).toBe(true);
 				expect(getTaskColumnId(geometryRetry.state.board, TASK_SPEC.taskId)).toBe("review");
 				expect(startTaskSession).toHaveBeenCalledOnce();
+				expect(ensureTaskWorktree).toHaveBeenCalledWith(expect.objectContaining({ restoreFromTrash: true }));
 				expect(fingerprintTaskLifecycleCommand(command)).toBe(
 					fingerprintTaskLifecycleCommand({ ...command, cols: 48, rows: 12 }),
 				);
@@ -1677,7 +1910,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 		});
 	});
 
-	it("blocks trash cleanup and permanent deletion when the process stop times out", async () => {
+	it("compensates Trash and blocks permanent deletion when the process stop times out", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-stop-timeout-");
 			try {
@@ -1711,13 +1944,11 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					outcome: "timed_out" as const,
 					error: "Task session did not exit before the timeout.",
 				}));
-				const archiveTaskWorktree = vi.fn();
 				const purgeTaskWorkspace = vi.fn();
 				const lifecycle = new ProjectTaskLifecycleService({
 					boardCommands,
 					startTaskSession: vi.fn(),
 					stopTaskSession,
-					archiveTaskWorktree,
 					purgeTaskWorkspace,
 				});
 
@@ -1743,7 +1974,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 				expect(getTaskColumnId(trashed.state.board, reviewTask.taskId)).toBe("review");
 				expect(deleted.operation.outcomeCode).toBe("stop_timed_out");
 				expect(findCardInBoard(deleted.state.board, trashTask.taskId)).not.toBeNull();
-				expect(archiveTaskWorktree).not.toHaveBeenCalled();
+				expect(archiveTaskWorktreeForTrash).not.toHaveBeenCalled();
 				expect(purgeTaskWorkspace).not.toHaveBeenCalled();
 			} finally {
 				cleanup();

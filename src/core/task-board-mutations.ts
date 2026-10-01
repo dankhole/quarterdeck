@@ -313,9 +313,6 @@ export function moveTaskToColumn(
 				? { unstarted: options.unstarted || undefined }
 				: {}),
 		updatedAt: now,
-		// Clear workingDirectory as part of the same runtime-owned board command
-		// that moves the card. Worktree cleanup runs only after that command flushes.
-		...(targetColumnId === "trash" ? { workingDirectory: null } : undefined),
 	};
 	const targetCards = [...targetColumn.cards];
 	const defaultTargetIndex = targetColumnId === "trash" ? 0 : targetCards.length;

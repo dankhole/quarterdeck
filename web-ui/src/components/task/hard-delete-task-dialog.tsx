@@ -31,6 +31,7 @@ export function HardDeleteTaskDialog({
 					"This will permanently delete this task."
 				)}
 			</AlertDialogDescription>
+			<p>Any retained task worktree will also be removed, including uncommitted work.</p>
 			<p className="text-text-primary">This action cannot be undone.</p>
 		</ConfirmationDialog>
 	);

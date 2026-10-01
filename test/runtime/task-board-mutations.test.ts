@@ -143,10 +143,11 @@ describe("branch persistence on cards", () => {
 			.find((c) => c.id === "trash")
 			?.cards.find((c) => c.id === created.task.id);
 		expect(trashedCard?.branch).toBe("feat/my-work");
-		expect(trashedCard?.workingDirectory).toBeNull();
+		expect(trashedCard?.workingDirectory).toBe("/tmp/wt");
 	});
 
-	it("moveTaskToColumn clears workingDirectory but not branch", () => {
+	it("keeps the exact workspace and branch through trash and restore", () => {
+		const workingDirectory = "/tmp/worktrees/aaaaa/project-before-rename";
 		const created = addTaskToColumn(
 			createBoard(),
 			"in_progress",
@@ -160,9 +161,7 @@ describe("branch persistence on cards", () => {
 					? {
 							...col,
 							cards: col.cards.map((card) =>
-								card.id === created.task.id
-									? { ...card, branch: "feat/my-work", workingDirectory: "/tmp/wt" }
-									: card,
+								card.id === created.task.id ? { ...card, branch: "feat/my-work", workingDirectory } : card,
 							),
 						}
 					: col,
@@ -173,8 +172,12 @@ describe("branch persistence on cards", () => {
 		const trashedCard = trashed.board.columns
 			.find((c) => c.id === "trash")
 			?.cards.find((c) => c.id === created.task.id);
-		expect(trashedCard?.workingDirectory).toBeNull();
+		expect(trashedCard?.workingDirectory).toBe(workingDirectory);
 		expect(trashedCard?.branch).toBe("feat/my-work");
+
+		const restored = moveTaskToColumn(trashed.board, created.task.id, "review");
+		expect(restored.task?.workingDirectory).toBe(workingDirectory);
+		expect(restored.task?.branch).toBe("feat/my-work");
 	});
 
 	it("addTaskToColumn sets branch from input", () => {
@@ -200,7 +203,7 @@ describe("branch persistence on cards", () => {
 		expect(created.task.baseRef).toBe("main");
 	});
 
-	it("workingDirectory still cleared on trash (regression test 31)", () => {
+	it("retains a detached task workspace and exact resume identity while trashed", () => {
 		const created = addTaskToColumn(
 			createBoard(),
 			"in_progress",
@@ -225,7 +228,21 @@ describe("branch persistence on cards", () => {
 		const trashedCard = trashed.board.columns
 			.find((c) => c.id === "trash")
 			?.cards.find((c) => c.id === created.task.id);
-		expect(trashedCard?.workingDirectory).toBeNull();
+		expect(trashedCard?.workingDirectory).toBe("/tmp/wt");
+		expect(trashedCard?.branch).toBeUndefined();
+
+		const summary = createTestTaskSessionSummary({
+			taskId: created.task.id,
+			pid: null,
+			resumeSessionId: "exact-provider-session",
+			sessionLaunchPath: "/tmp/wt",
+		});
+		expect(pruneOrphanSessionsForPersist({ [created.task.id]: summary }, trashed.board)).toEqual({
+			[created.task.id]: summary,
+		});
+		const restored = moveTaskToColumn(trashed.board, created.task.id, "review");
+		expect(restored.task?.workingDirectory).toBe("/tmp/wt");
+		expect(restored.task?.branch).toBeUndefined();
 	});
 });
 

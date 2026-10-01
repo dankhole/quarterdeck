@@ -127,9 +127,8 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 						error: "Task worktree cleanup was skipped because an agent session is active.",
 					};
 				}
-				// This compatibility endpoint is trash-safe: it archives recoverable
-				// work rather than permanently purging it. Production task deletion is
-				// owned by ProjectTaskLifecycleService.
+				// Legacy Trash callers must preserve the workspace. Permanent deletion
+				// is owned by ProjectTaskLifecycleService.
 				return await archiveTaskWorktreeForTrash({
 					folderOnly: (await loadProjectScopeById(projectScope.projectId))?.folderOnly,
 					repoPath: projectScope.projectPath,

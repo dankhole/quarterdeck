@@ -73,9 +73,9 @@ describe("useTaskTrashActions — worktree notice toast", () => {
 		});
 
 		expect(toastMock).toHaveBeenCalledWith(
-			"Task worktree removed",
+			"Task moved to Trash",
 			expect.objectContaining({
-				description: expect.stringContaining("worktree was deleted"),
+				description: "The worktree and uncommitted work were kept. Restore the task to resume it.",
 			}),
 		);
 	});
@@ -100,10 +100,10 @@ describe("useTaskTrashActions — worktree notice toast", () => {
 			await initialSnapshot.requestMoveTaskToTrash("task-2", "review");
 		});
 
-		expect(toastMock).toHaveBeenCalledWith("Task worktree removed", expect.anything());
+		expect(toastMock).toHaveBeenCalledWith("Task moved to Trash", expect.anything());
 	});
 
-	it("does not claim the worktree was removed when the lifecycle operation fails", async () => {
+	it("does not claim the task moved to Trash when the lifecycle operation fails", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {

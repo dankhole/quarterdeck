@@ -90,7 +90,7 @@ export function useNavbarState({
 			return undefined;
 		}
 		if (!selectedTaskRepositoryInfo.exists) {
-			return selectedCard.column.id === "trash" ? "Task worktree deleted" : "Task worktree not created yet";
+			return selectedCard.column.id === "trash" ? "Task worktree unavailable" : "Task worktree not created yet";
 		}
 		return undefined;
 	}, [selectedCard, selectedTaskRepositoryInfo]);

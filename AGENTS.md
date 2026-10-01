@@ -59,6 +59,7 @@ Tracked historical context lives under `docs/history/`. Read it only when curren
 
 - `ProjectBoardCommandService` is the only production writer of durable board state. Browsers and future clients submit typed intent and may show optimistic presentation; they never replace `board.json` or coordinate managed lifecycle effects themselves.
 - Managed task lifecycle intent goes through `ProjectTaskLifecycleService`. Process-side transition consequences go through `SessionTransitionController`.
+- Soft Trash must preserve task work and provider resume identity. Keep cleanup separate from the explicit permanent-delete intent; follow the Trash recovery contract in `docs/conventions/session-lifecycle.md`.
 - Runtime session truth comes from the server-owned terminal/session store. Terminal output and input/submit intent are not proof that an agent is working; only a current launch-scoped native provider hook may assert resumed work.
 - `applyAuthoritativeProjectState(...)` is the single browser apply path for authoritative project state.
 - `IRuntimeHostIntegrations` is the sole production boundary for server-side file, application, URL, IDE, and folder-picker effects. Preserve its launch-derived capability checks and typed outcomes; never accept arbitrary browser-supplied commands.

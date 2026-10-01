@@ -5,11 +5,11 @@ import { describe, expect, it } from "vitest";
 
 import {
 	archiveTaskWorktreeForTrash,
-	deleteTaskWorktree,
 	ensureTaskWorktreeIfDoesntExist,
 	purgeTaskWorkspaceForDelete,
 } from "../../src/workdir";
 import { runGit } from "../utilities/git-env";
+import { captureTaskPatch } from "../utilities/legacy-task-worktree-patch";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
 function expectCopiedDirectoryPath(path: string): void {
@@ -362,7 +362,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 		});
 	});
 
-	it("restores a trashed task patch onto the saved commit", async () => {
+	it("restores a legacy trashed task patch onto the saved commit", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-restore-");
 			try {
@@ -395,12 +395,13 @@ describe("task-worktree integration", { concurrent: false }, () => {
 				writeFileSync(join(ensured.path, "tracked.txt"), "base\nlocal change\n", "utf8");
 				writeFileSync(join(ensured.path, "notes.txt"), "untracked\n", "utf8");
 
-				const deleted = await deleteTaskWorktree({
+				await captureTaskPatch({
 					repoPath,
 					taskId,
+					worktreePath: ensured.path,
 				});
-				expect(deleted.ok, JSON.stringify(deleted)).toBe(true);
-				expect(deleted.removed).toBe(true);
+				// Simulate the archive-and-remove behavior of older Quarterdeck versions.
+				runGit(repoPath, ["worktree", "remove", "--force", ensured.path]);
 
 				const patchPath = join(
 					process.env.HOME ?? sandboxRoot,
@@ -474,12 +475,12 @@ describe("task-worktree integration", { concurrent: false }, () => {
 					`${taskId}.${createdCommit}.patch`,
 				);
 
-				const archived = await archiveTaskWorktreeForTrash({
+				await captureTaskPatch({
 					repoPath,
 					taskId,
-					operationId: "trash-operation",
+					worktreePath: ensured.path,
 				});
-				expect(archived, JSON.stringify(archived)).toMatchObject({ ok: true, removed: true });
+				runGit(repoPath, ["worktree", "remove", "--force", ensured.path]);
 				expect(existsSync(patchPath)).toBe(true);
 				const patchBeforeReplay = readFileSync(patchPath, "utf8");
 
@@ -510,7 +511,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 		});
 	});
 
-	it("resumes a trashed task even when the saved patch is invalid", async () => {
+	it("blocks legacy restore and subsequent reuse when the saved patch is invalid", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-invalid-patch-");
 			try {
@@ -538,11 +539,7 @@ describe("task-worktree integration", { concurrent: false }, () => {
 				}
 
 				const createdCommit = runGit(ensured.path, ["rev-parse", "HEAD"]);
-				const deleted = await deleteTaskWorktree({
-					repoPath,
-					taskId,
-				});
-				expect(deleted.ok, JSON.stringify(deleted)).toBe(true);
+				runGit(repoPath, ["worktree", "remove", "--force", ensured.path]);
 
 				const patchesDir = join(process.env.HOME ?? sandboxRoot, ".quarterdeck", "trashed-task-patches");
 				mkdirSync(patchesDir, { recursive: true });
@@ -569,13 +566,17 @@ describe("task-worktree integration", { concurrent: false }, () => {
 					taskId,
 					baseRef: "HEAD",
 				});
-				expect(restored.ok).toBe(true);
-				if (!restored.ok || !restored.path) {
-					throw new Error("Task worktree was not restored");
-				}
-
-				expect(restored.warning).toContain("Saved task changes could not be reapplied automatically.");
-				expect(runGit(restored.path, ["rev-parse", "HEAD"])).toBe(createdCommit);
+				expect(restored.ok).toBe(false);
+				expect(existsSync(patchPath)).toBe(true);
+				const retried = await ensureTaskWorktreeIfDoesntExist({
+					cwd: repoPath,
+					taskId,
+					baseRef: "HEAD",
+					retrySetup: true,
+				});
+				expect(retried.ok).toBe(false);
+				expect(existsSync(patchPath)).toBe(true);
+				expect(runGit(ensured.path, ["rev-parse", "HEAD"])).toBe(createdCommit);
 			} finally {
 				cleanup();
 			}

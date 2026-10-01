@@ -27,6 +27,7 @@ export function ClearTrashDialog({
 			<AlertDialogDescription>
 				This will permanently delete {taskCount} {taskLabel} from Trash. Pinned tasks will be kept.
 			</AlertDialogDescription>
+			<p>Any retained worktrees for the deleted tasks will also be removed, including uncommitted work.</p>
 			<p className="text-text-primary">This action cannot be undone.</p>
 		</ConfirmationDialog>
 	);

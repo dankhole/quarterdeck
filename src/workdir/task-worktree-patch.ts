@@ -1,14 +1,12 @@
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { lockedFileSystem } from "../fs/locked-file-system";
+import { isNodeError } from "../fs/node-error";
 import { getRuntimeHomePath } from "../state/project-state";
-import { getGitStdout, runGit, splitNullSeparatedGitOutput } from "./git-utils";
 import { normalizeTaskIdForWorktreePath } from "./task-worktree-path";
 
 const QUARTERDECK_TRASHED_TASK_PATCHES_DIR_NAME = "trashed-task-patches";
 const TASK_PATCH_FILE_SUFFIX = ".patch";
-const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 
 function getTaskPatchFilePrefix(taskId: string): string {
 	return `${normalizeTaskIdForWorktreePath(taskId)}.`;
@@ -32,8 +30,9 @@ async function listTaskPatchFiles(taskId: string): Promise<string[]> {
 	try {
 		const entries = await readdir(patchesRootPath);
 		return entries.filter((entry) => parseTaskPatchCommit(taskId, entry) !== null);
-	} catch {
-		return [];
+	} catch (error) {
+		if (isNodeError(error, "ENOENT")) return [];
+		throw error;
 	}
 }
 
@@ -58,71 +57,4 @@ export async function findTaskPatch(taskId: string): Promise<{ path: string; com
 		path: join(patchesRootPath, filename),
 		commit,
 	};
-}
-
-function ensureTrailingNewline(value: string): string {
-	return value.endsWith("\n") ? value : `${value}\n`;
-}
-
-async function listUntrackedPaths(worktreePath: string): Promise<string[]> {
-	// Original used runGitRaw (throws on failure).
-	const output = await getGitStdout(["ls-files", "--others", "--exclude-standard", "-z"], worktreePath, {
-		trimStdout: false,
-		...USER_GIT_ACTION_OPTIONS,
-	});
-	return splitNullSeparatedGitOutput(output);
-}
-
-export async function captureTaskPatch(options: {
-	repoPath: string;
-	taskId: string;
-	worktreePath: string;
-}): Promise<void> {
-	const headCommit = await getGitStdout(
-		["rev-parse", "--verify", "HEAD"],
-		options.worktreePath,
-		USER_GIT_ACTION_OPTIONS,
-	);
-
-	const trackedResult = await runGit(options.worktreePath, ["diff", "--binary", "HEAD", "--"], {
-		trimStdout: false,
-		...USER_GIT_ACTION_OPTIONS,
-	});
-	if (!trackedResult.ok && trackedResult.exitCode !== 1) {
-		throw new Error(trackedResult.error ?? "Failed to capture tracked diff.");
-	}
-	const trackedPatch = trackedResult.stdout;
-	const patchChunks = trackedPatch.trim().length > 0 ? [ensureTrailingNewline(trackedPatch)] : [];
-
-	for (const relativePath of await listUntrackedPaths(options.worktreePath)) {
-		const untrackedResult = await runGit(
-			options.worktreePath,
-			["diff", "--binary", "--no-index", "--", process.platform === "win32" ? "NUL" : "/dev/null", relativePath],
-			{ trimStdout: false, ...USER_GIT_ACTION_OPTIONS },
-		);
-		if (!untrackedResult.ok && untrackedResult.exitCode !== 1) {
-			throw new Error(untrackedResult.error ?? "Failed to capture untracked diff.");
-		}
-		const untrackedPatch = untrackedResult.stdout;
-		if (untrackedPatch.trim().length > 0) {
-			patchChunks.push(ensureTrailingNewline(untrackedPatch));
-		}
-	}
-
-	await deleteTaskPatchFiles(options.taskId);
-	if (patchChunks.length === 0) {
-		return;
-	}
-
-	const patchesRootPath = getTrashedTaskPatchesRootPath();
-	await mkdir(patchesRootPath, { recursive: true });
-	const patchPath = join(
-		patchesRootPath,
-		`${normalizeTaskIdForWorktreePath(options.taskId)}.${headCommit}${TASK_PATCH_FILE_SUFFIX}`,
-	);
-	await lockedFileSystem.writeTextFileAtomic(patchPath, patchChunks.join(""));
-}
-
-export async function applyTaskPatch(patchPath: string, worktreePath: string): Promise<void> {
-	await getGitStdout(["apply", "--binary", "--whitespace=nowarn", patchPath], worktreePath, USER_GIT_ACTION_OPTIONS);
 }

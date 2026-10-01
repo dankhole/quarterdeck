@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Preserve complete task worktrees and conversation identity in Trash, safely recover leftover folders from older archived tasks, and block resume when saved changes cannot be restored.
+
 - Allow switching the shared checkout's branch after shared tasks finish in Review, retain protection during active work, and keep the branch selector visible after a rejected checkout.
 
 - Stabilize project names and paths while scrolling the Projects sidebar.

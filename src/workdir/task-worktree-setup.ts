@@ -19,7 +19,7 @@ import {
 
 const setupStateSchema = z.object({
 	version: z.literal(1),
-	status: z.enum(["pending", "running", "succeeded", "failed"]),
+	status: z.enum(["pending", "running", "succeeded", "failed", "checkout_failed"]),
 });
 const SETUP_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_LOG_BYTES = 64 * 1024;
@@ -34,9 +34,35 @@ async function writeState(directory: string, status: z.infer<typeof setupStateSc
 	await lockedFileSystem.writeJsonFileAtomic(join(directory, "quarterdeck-setup.json"), { version: 1, status });
 }
 
+async function readState(directory: string): Promise<z.infer<typeof setupStateSchema> | null> {
+	try {
+		return setupStateSchema.parse(JSON.parse(await readFile(join(directory, "quarterdeck-setup.json"), "utf8")));
+	} catch (error) {
+		if (isNodeError(error, "ENOENT")) return null;
+		throw new Error(
+			"Worktree setup state is unreadable. Task files were preserved; repair the setup state before retrying.",
+		);
+	}
+}
+
+function assertCheckoutComplete(state: z.infer<typeof setupStateSchema> | null): void {
+	if (state?.status === "checkout_failed") {
+		throw new Error(
+			"Git worktree creation did not complete. Task files were preserved; repair the checkout before retrying.",
+		);
+	}
+}
+
+/** A failed Git add may leave a registered checkout that must not count as a legacy workspace. */
+export async function markTaskWorktreeCheckoutFailed(worktreePath: string): Promise<void> {
+	await writeState(await setupDirectory(worktreePath), "checkout_failed");
+}
+
 /** Called under the repository creation lock, before a new worktree is made available. */
 export async function initializeTaskWorktreeSetup(worktreePath: string): Promise<void> {
-	await writeState(await setupDirectory(worktreePath), "pending");
+	const directory = await setupDirectory(worktreePath);
+	assertCheckoutComplete(await readState(directory));
+	await writeState(directory, "pending");
 }
 
 export function worktreeSetupCommand(
@@ -122,15 +148,9 @@ export async function finishTaskWorktreeSetup(options: {
 		// Recheck registration after acquiring ownership: removal may have won the lock.
 		const directory = await setupDirectory(options.worktreePath);
 		await cleanupLegacyDependencySymlinks(options.worktreePath);
-		let state: z.infer<typeof setupStateSchema>;
-		try {
-			state = setupStateSchema.parse(JSON.parse(await readFile(join(directory, "quarterdeck-setup.json"), "utf8")));
-		} catch (error) {
-			if (isNodeError(error, "ENOENT")) return;
-			throw new Error(
-				"Worktree setup state is unreadable. Task files were preserved; repair the setup state before retrying.",
-			);
-		}
+		const state = await readState(directory);
+		if (!state) return;
+		assertCheckoutComplete(state);
 		if (state.status === "succeeded") return;
 		if (!options.retrySetup && !(options.newWorktree && state.status === "pending")) {
 			throw new Error(

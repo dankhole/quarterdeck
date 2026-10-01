@@ -28,13 +28,12 @@ export function TaskTrashWarningDialog({
 		: hasChanges
 			? "Trash task with uncommitted changes?"
 			: "Trash task?";
-	const confirmLabel = warning?.isNonIsolated || !hasChanges ? "Move to Trash" : "Move to Trash Anyway";
 
 	return (
 		<ConfirmationDialog
 			open={open}
 			title={title}
-			confirmLabel={confirmLabel}
+			confirmLabel="Move to Trash"
 			confirmVariant="danger"
 			onCancel={onCancel}
 			onConfirm={onConfirm}
@@ -44,7 +43,7 @@ export function TaskTrashWarningDialog({
 					<AlertDialogDescription>
 						{warning.taskTitle} has an active session in the shared project folder.
 					</AlertDialogDescription>
-					<p>Moving to Trash will stop this task's session. Files in the project folder will not be affected.</p>
+					<p>Moving to Trash will stop this task's session. Restore the task to resume it.</p>
 				</>
 			) : hasChanges ? (
 				<>
@@ -54,20 +53,19 @@ export function TaskTrashWarningDialog({
 							: "This task has uncommitted changes."}
 					</AlertDialogDescription>
 					<p>
-						Moving to Trash will delete this task's worktree. Uncommitted work will be captured in a patch file
-						and can be recovered if you restore the task.
+						Moving to Trash will stop this task's session and keep its worktree, including uncommitted work.
+						Restore the task to resume it in the same worktree.
 					</p>
 					{warning?.worktreeInfo?.path ? (
 						<pre className="overflow-auto rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap">
 							{formatPathForDisplay(warning.worktreeInfo.path)}
 						</pre>
 					) : null}
-					<p>The patch file is saved automatically — no action needed to preserve your work.</p>
 				</>
 			) : (
 				<AlertDialogDescription>
-					Are you sure you want to move {warning?.taskTitle ?? "this task"} to Trash? This will stop the session
-					and delete the worktree.
+					Moving {warning?.taskTitle ?? "this task"} to Trash will stop its session and keep its worktree. Restore
+					the task to resume it.
 				</AlertDialogDescription>
 			)}
 		</ConfirmationDialog>

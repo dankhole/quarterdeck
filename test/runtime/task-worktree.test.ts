@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 
@@ -68,6 +68,8 @@ type ExecFileOptions = {
 	env?: NodeJS.ProcessEnv;
 	timeout?: number;
 };
+
+const BASE_COMMIT = "a".repeat(40);
 
 function createGitError(message: string): NodeJS.ErrnoException & { stdout: string; stderr: string; code: number } {
 	const error = new Error(message) as NodeJS.ErrnoException & { stdout: string; stderr: string };
@@ -227,14 +229,14 @@ describe("task-worktree serialization", { concurrent: false }, () => {
 
 					if (command[0] === "rev-parse" && command[1] === "--verify") {
 						return {
-							stdout: "base-commit\n",
+							stdout: `${BASE_COMMIT}\n`,
 							stderr: "",
 						};
 					}
 
 					if (command[0] === "worktree" && command[1] === "add") {
 						const worktreePath = command[3];
-						const commit = command[4] ?? "base-commit";
+						const commit = command[4] ?? BASE_COMMIT;
 						if (!worktreePath) {
 							throw createGitError("fatal: missing worktree path");
 						}
@@ -309,8 +311,8 @@ describe("task-worktree serialization", { concurrent: false }, () => {
 				type: string;
 				lockfileName: string;
 			};
-			expect(first, JSON.stringify(first, null, 2)).toMatchObject({ ok: true, baseCommit: "base-commit" });
-			expect(second, JSON.stringify(second, null, 2)).toMatchObject({ ok: true, baseCommit: "base-commit" });
+			expect(first, JSON.stringify(first, null, 2)).toMatchObject({ ok: true, baseCommit: BASE_COMMIT });
+			expect(second, JSON.stringify(second, null, 2)).toMatchObject({ ok: true, baseCommit: BASE_COMMIT });
 			expect(firstLockRequest).toMatchObject({
 				path: join(repoPath, ".git"),
 				type: "directory",
@@ -377,8 +379,10 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 		existingBranches: Set<string>;
 		failOnBranchCheckout?: Set<string>;
 		failOnBranchCreate?: Set<string>;
+		leaveCheckoutOnFailure?: boolean;
 	}) {
-		const { worktreeHeads, existingBranches, failOnBranchCheckout, failOnBranchCreate } = options;
+		const { worktreeHeads, existingBranches, failOnBranchCheckout, failOnBranchCreate, leaveCheckoutOnFailure } =
+			options;
 
 		return async (_file: string, args: readonly string[], execOptions?: ExecFileOptions) => {
 			const { cwd, command } = getCommandArgs(args, execOptions);
@@ -401,16 +405,16 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 
 			if (command[0] === "rev-parse" && command[1] === "--verify") {
 				const ref = command[2] ?? "";
-				// Branch ref check: refs/heads/<branch>
+				// Verify that the branch resolves to a commit.
 				if (ref.startsWith("refs/heads/")) {
-					const branchName = ref.replace("refs/heads/", "");
+					const branchName = ref.slice("refs/heads/".length).replace(/\^\{commit\}$/u, "");
 					if (existingBranches.has(branchName)) {
-						return { stdout: "base-commit\n", stderr: "" };
+						return { stdout: `${BASE_COMMIT}\n`, stderr: "" };
 					}
 					throw createGitError(`fatal: Needed a single revision\nfatal: couldn't verify ref: ${ref}`);
 				}
 				// Base ref resolution
-				return { stdout: "base-commit\n", stderr: "" };
+				return { stdout: `${BASE_COMMIT}\n`, stderr: "" };
 			}
 
 			if (command[0] === "worktree" && command[1] === "add") {
@@ -420,7 +424,7 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 				if (isBranchCreate) {
 					const branchName = command[3];
 					const worktreePath = command[4];
-					const commit = command[5] ?? "base-commit";
+					const commit = command[5] ?? BASE_COMMIT;
 					if (!worktreePath || !branchName) {
 						throw createGitError("fatal: missing args");
 					}
@@ -435,7 +439,7 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 
 				if (isDetach) {
 					const worktreePath = command[3];
-					const commit = command[4] ?? "base-commit";
+					const commit = command[4] ?? BASE_COMMIT;
 					if (!worktreePath) {
 						throw createGitError("fatal: missing worktree path");
 					}
@@ -451,12 +455,14 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 					throw createGitError("fatal: missing worktree path");
 				}
 				if (branchName && failOnBranchCheckout?.has(branchName)) {
-					// Simulate partial directory creation before failure
-					registerMockWorktree(cwd, worktreePath);
+					if (leaveCheckoutOnFailure) {
+						registerMockWorktree(cwd, worktreePath);
+						worktreeHeads.set(worktreePath, BASE_COMMIT);
+					}
 					throw createGitError(`fatal: '${branchName}' is already checked out`);
 				}
 				registerMockWorktree(cwd, worktreePath);
-				worktreeHeads.set(worktreePath, "base-commit");
+				worktreeHeads.set(worktreePath, BASE_COMMIT);
 				return { stdout: "", stderr: "" };
 			}
 
@@ -672,15 +678,20 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 		}
 	});
 
-	it("falls back to detached when existing branch checkout fails (test 23b)", async () => {
-		const { repoPath, cleanup } = setupSandbox();
+	it("preserves a failed registered checkout and blocks reuse", async () => {
+		const { repoPath, worktreesHomePath, cleanup } = setupSandbox();
 		try {
 			const worktreeHeads = new Map<string, string>();
 			const existingBranches = new Set(["feat/locked"]);
 			const failOnBranchCheckout = new Set(["feat/locked"]);
 
 			childProcessMocks.execFilePromise.mockImplementation(
-				createBranchAwareMock({ worktreeHeads, existingBranches, failOnBranchCheckout }),
+				createBranchAwareMock({
+					worktreeHeads,
+					existingBranches,
+					failOnBranchCheckout,
+					leaveCheckoutOnFailure: true,
+				}),
 			);
 
 			const result = await ensureTaskWorktreeIfDoesntExist({
@@ -690,21 +701,33 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 				branch: "feat/locked",
 			});
 
-			expect(result).toMatchObject({ ok: true });
-			// Should have fallen back to detached
+			expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Task files were preserved") });
+			const path = join(worktreesHomePath, "task-checkout-fail", "repo");
+			expect(existsSync(join(path, ".git"))).toBe(true);
+			const retry = await ensureTaskWorktreeIfDoesntExist({
+				cwd: repoPath,
+				taskId: "task-checkout-fail",
+				baseRef: "HEAD",
+				branch: "feat/locked",
+				retrySetup: true,
+			});
+			expect(retry).toMatchObject({
+				ok: false,
+				error: expect.stringContaining("Git worktree creation did not complete"),
+			});
+			// Neither fallback nor cleanup may discard the preserved checkout.
 			const detachCalls = childProcessMocks.execFilePromise.mock.calls.filter((_call: unknown[]) => {
 				const args = stripConfigFlags(_call[1] as string[]);
 				const { command } = getCommandArgs(args, _call[2] as ExecFileOptions | undefined);
 				return command[0] === "worktree" && command[1] === "add" && command[2] === "--detach";
 			});
-			expect(detachCalls.length).toBeGreaterThanOrEqual(1);
-			// Cleanup calls should have happened (worktree remove + prune)
+			expect(detachCalls).toHaveLength(0);
 			const removeCalls = childProcessMocks.execFilePromise.mock.calls.filter((_call: unknown[]) => {
 				const args = stripConfigFlags(_call[1] as string[]);
 				const { command } = getCommandArgs(args, _call[2] as ExecFileOptions | undefined);
 				return command[0] === "worktree" && command[1] === "remove";
 			});
-			expect(removeCalls.length).toBeGreaterThanOrEqual(1);
+			expect(removeCalls).toHaveLength(0);
 		} finally {
 			cleanup();
 		}
@@ -734,7 +757,7 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 		}
 	});
 
-	it("returns warning when branch worktree patch apply fails (existing branch path)", async () => {
+	it("blocks restore and retains a failed patch for an existing branch", async () => {
 		const { repoPath, runtimeHomePath, cleanup } = setupSandbox();
 		try {
 			const worktreeHeads = new Map<string, string>();
@@ -743,7 +766,7 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 			// Create a stored patch file so findTaskPatch returns it
 			const patchesDir = join(runtimeHomePath, "trashed-task-patches");
 			mkdirSync(patchesDir, { recursive: true });
-			writeFileSync(join(patchesDir, "task-patch-fail.base-commit.patch"), "fake patch content", "utf8");
+			writeFileSync(join(patchesDir, `task-patch-fail.${BASE_COMMIT}.patch`), "fake patch content", "utf8");
 
 			childProcessMocks.execFilePromise.mockImplementation(
 				async (_file: string, args: readonly string[], execOptions?: ExecFileOptions) => {
@@ -766,14 +789,18 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 				branch: "feat/patch-fail",
 			});
 
-			expect(result).toMatchObject({ ok: true });
-			expect(result.ok && result.warning).toBe("Saved task changes could not be reapplied onto the branch.");
+			expect(result).toMatchObject({
+				ok: false,
+				error: expect.stringContaining("Saved task changes could not be restored"),
+			});
+			expect(result.error).toContain("error: patch failed");
+			expect(existsSync(join(patchesDir, `task-patch-fail.${BASE_COMMIT}.patch`))).toBe(true);
 		} finally {
 			cleanup();
 		}
 	});
 
-	it("returns warning when branch worktree patch apply fails (new branch path)", async () => {
+	it("blocks restore and retains a failed patch for a recreated branch", async () => {
 		const { repoPath, runtimeHomePath, cleanup } = setupSandbox();
 		try {
 			const worktreeHeads = new Map<string, string>();
@@ -782,7 +809,7 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 			// Create a stored patch file so findTaskPatch returns it
 			const patchesDir = join(runtimeHomePath, "trashed-task-patches");
 			mkdirSync(patchesDir, { recursive: true });
-			writeFileSync(join(patchesDir, "task-patch-fail-new.base-commit.patch"), "fake patch content", "utf8");
+			writeFileSync(join(patchesDir, `task-patch-fail-new.${BASE_COMMIT}.patch`), "fake patch content", "utf8");
 
 			childProcessMocks.execFilePromise.mockImplementation(
 				async (_file: string, args: readonly string[], execOptions?: ExecFileOptions) => {
@@ -805,10 +832,12 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 				branch: "feat/patch-new",
 			});
 
-			expect(result).toMatchObject({ ok: true });
-			expect(result.ok && result.warning).toBe(
-				"Saved task changes could not be reapplied onto the recreated branch.",
-			);
+			expect(result).toMatchObject({
+				ok: false,
+				error: expect.stringContaining("Saved task changes could not be restored"),
+			});
+			expect(result.error).toContain("error: patch failed");
+			expect(existsSync(join(patchesDir, `task-patch-fail-new.${BASE_COMMIT}.patch`))).toBe(true);
 		} finally {
 			cleanup();
 		}
@@ -831,7 +860,7 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 				baseRef: "HEAD",
 			});
 
-			expect(result).toMatchObject({ ok: true, baseCommit: "base-commit" });
+			expect(result).toMatchObject({ ok: true, baseCommit: BASE_COMMIT });
 			// Verify detached HEAD was used
 			const detachCalls = childProcessMocks.execFilePromise.mock.calls.filter((_call: unknown[]) => {
 				const args = stripConfigFlags(_call[1] as string[]);
@@ -862,7 +891,7 @@ describe("branch-aware worktree creation", { concurrent: false }, () => {
 				branch: null,
 			});
 
-			expect(result).toMatchObject({ ok: true, baseCommit: "base-commit" });
+			expect(result).toMatchObject({ ok: true, baseCommit: BASE_COMMIT });
 			const detachCalls = childProcessMocks.execFilePromise.mock.calls.filter((_call: unknown[]) => {
 				const args = stripConfigFlags(_call[1] as string[]);
 				const { command } = getCommandArgs(args, _call[2] as ExecFileOptions | undefined);

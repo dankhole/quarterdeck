@@ -1,4 +1,4 @@
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { loadRuntimeConfig } from "../config/runtime-config";
 import {
@@ -9,14 +9,23 @@ import {
 } from "../core";
 import { removeDirectoryWithRetries } from "../fs/remove-path";
 import { getTaskWorktreesHomePath, loadProjectContext } from "../state/project-state";
-import { getGitCommandErrorMessage, getGitStdout, readGitHeadInfo, runGit } from "./git-utils";
+import { readGitHeadInfo, runGit } from "./git-utils";
 import { resolveTaskWorktreeCleanupPath } from "./task-worktree-cleanup-path";
 import { assertTaskWorktreeRegistration } from "./task-worktree-identity";
-import { applyTaskPatch, captureTaskPatch, deleteTaskPatchFiles, findTaskPatch } from "./task-worktree-patch";
+import { deleteTaskPatchFiles, findTaskPatch } from "./task-worktree-patch";
 import { getWorkdirFolderLabelForWorktreePath, normalizeTaskIdForWorktreePath } from "./task-worktree-path";
+import {
+	beginTaskPatchRestore,
+	completePendingTaskPatchRestore,
+	deleteTaskPatchRestore,
+	getPendingTaskPatchRestore,
+	preserveLegacyTaskWorktreeFiles,
+	taskWorktreeEntryExists,
+} from "./task-worktree-restore";
 import {
 	finishTaskWorktreeSetup,
 	initializeTaskWorktreeSetup,
+	markTaskWorktreeCheckoutFailed,
 	type WorktreeSetupProgress,
 } from "./task-worktree-setup";
 import { withTaskWorktreeOperationLock, withTaskWorktreeSetupLock } from "./task-worktree-setup-lock";
@@ -67,7 +76,7 @@ export function getTaskWorktreePath(repoPath: string, taskId: string): string {
 
 async function removeTaskWorktreeInternal(repoPath: string, worktreePath: string): Promise<boolean> {
 	const existed = await pathExists(worktreePath);
-	if (await pathExists(join(worktreePath, ".git"))) {
+	if (await taskWorktreeEntryExists(join(worktreePath, ".git"))) {
 		await assertTaskWorktreeRegistration(worktreePath);
 	}
 	const removeResult = await runGit(
@@ -115,7 +124,10 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 	onSetupProgress?: WorktreeSetupProgress;
 	/** Server-owned persisted path; never a browser-supplied checkout target. */
 	existingPath?: string;
+	/** Internal authorization from lifecycle restore of a legacy Trash card without a durable path. */
+	restoreFromTrash?: boolean;
 }): Promise<RuntimeWorktreeEnsureResponse> {
+	let recoveryWarning: string | undefined;
 	try {
 		const context = await loadProjectContext(options.cwd);
 		if (context.folderOnly && !options.existingPath)
@@ -131,60 +143,88 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 		// worktrees are now treated as authoritative and only missing worktrees are created.
 		let newWorktree = false;
 		const result = await withTaskWorktreeSetupLock<RuntimeWorktreeEnsureResponse>(context.repoPath, async () => {
-			if (await pathExists(worktreePath)) {
-				await assertTaskWorktreeRegistration(worktreePath);
-			}
-			const lockedExistingCommit = await tryRunGit(worktreePath, ["rev-parse", "HEAD"]);
-			if (lockedExistingCommit) {
-				const headInfo = await readGitHeadInfo(worktreePath);
-				return {
-					ok: true,
-					path: worktreePath,
-					baseRef: options.baseRef.trim(),
-					baseCommit: lockedExistingCommit,
-					branch: headInfo.branch,
-				};
+			const requestedBaseRef = options.baseRef.trim();
+			const restoreIdentity = { repoPath: context.repoPath, taskId, worktreePath };
+			let warning: string | undefined;
+			if (await taskWorktreeEntryExists(worktreePath)) {
+				if (await taskWorktreeEntryExists(join(worktreePath, ".git"))) {
+					await assertTaskWorktreeRegistration(worktreePath);
+				} else {
+					const hasRestoreSource =
+						Boolean(await findTaskPatch(taskId)) ||
+						Boolean(
+							options.branch &&
+								(await tryRunGit(context.repoPath, [
+									"rev-parse",
+									"--verify",
+									`refs/heads/${options.branch}^{commit}`,
+								])),
+						);
+					warning = await preserveLegacyTaskWorktreeFiles({
+						...restoreIdentity,
+						restoreFromTrash: options.restoreFromTrash,
+						hasRestoreSource,
+					});
+					recoveryWarning = warning;
+				}
+				if (await taskWorktreeEntryExists(worktreePath)) {
+					newWorktree = await completePendingTaskPatchRestore(restoreIdentity);
+					const lockedExistingCommit = await tryRunGit(worktreePath, ["rev-parse", "HEAD"]);
+					if (!lockedExistingCommit) {
+						throw new Error(
+							`Cannot read the existing task worktree HEAD at "${worktreePath}". Task files were preserved.`,
+						);
+					}
+					const headInfo = await readGitHeadInfo(worktreePath);
+					return {
+						ok: true,
+						path: worktreePath,
+						baseRef: requestedBaseRef,
+						baseCommit: lockedExistingCommit,
+						branch: headInfo.branch,
+					};
+				}
 			}
 
-			const requestedBaseRef = options.baseRef.trim();
 			if (!requestedBaseRef) {
 				return {
 					ok: false,
 					path: null,
 					baseRef: requestedBaseRef,
 					baseCommit: null,
-					error: "Task base branch is required for worktree creation.",
+					error: ["Task base branch is required for worktree creation.", recoveryWarning]
+						.filter(Boolean)
+						.join(" "),
 				};
 			}
 
+			const storedPatch = (await getPendingTaskPatchRestore(restoreIdentity)) ?? (await findTaskPatch(taskId));
+			const branchCommit = options.branch
+				? await tryRunGit(context.repoPath, ["rev-parse", "--verify", `refs/heads/${options.branch}^{commit}`])
+				: null;
+			if (options.restoreFromTrash && !storedPatch && !branchCommit) {
+				throw new Error(
+					"The archived task has no surviving task branch or saved patch. Restore was stopped to preserve its remaining files.",
+				);
+			}
+			const baseRef = storedPatch?.commit ?? branchCommit ?? requestedBaseRef;
 			const baseRefResult = await runGit(
 				context.repoPath,
-				["rev-parse", "--verify", `${requestedBaseRef}^{commit}`],
+				["rev-parse", "--verify", `${baseRef}^{commit}`],
 				USER_GIT_ACTION_OPTIONS,
 			);
 			if (!baseRefResult.ok) {
-				return {
-					ok: false,
-					path: null,
-					baseRef: requestedBaseRef,
-					baseCommit: null,
-					error: getWorktreeBaseRefResolutionErrorMessage(
-						requestedBaseRef,
-						baseRefResult.stderr || baseRefResult.output,
-					),
-				};
-			}
-			const requestedBaseCommit = baseRefResult.stdout;
-
-			const storedPatch = await findTaskPatch(taskId);
-			let baseCommit = storedPatch?.commit ?? requestedBaseCommit;
-			let warning: string | undefined;
-
-			if (await pathExists(worktreePath)) {
 				throw new Error(
-					`Cannot read the existing task worktree HEAD at "${worktreePath}". Task files were preserved.`,
+					storedPatch
+						? "The saved task commit is unavailable. The saved patch and task files were preserved."
+						: getWorktreeBaseRefResolutionErrorMessage(
+								requestedBaseRef,
+								baseRefResult.stderr || baseRefResult.output,
+							),
 				);
 			}
+			const baseCommit = baseRefResult.stdout;
+			if (storedPatch) await beginTaskPatchRestore(restoreIdentity, storedPatch);
 
 			// Clean up stale worktree registrations that can linger when git
 			// worktree remove fails or the process is interrupted. Without this,
@@ -193,117 +233,55 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 
 			await mkdir(dirname(worktreePath), { recursive: true });
 
-			// Branch-aware worktree creation: try named branch before falling back to detached HEAD.
-			if (options.branch) {
-				const branchCheck = await runGit(
-					context.repoPath,
-					["rev-parse", "--verify", `refs/heads/${options.branch}`],
-					USER_GIT_ACTION_OPTIONS,
-				);
-
-				const finalizeBranchWorktree = async (
-					resolvedBaseCommit: string,
-					patchWarning: string,
-				): Promise<RuntimeWorktreeEnsureResponse> => {
-					let localWarning: string | undefined;
-					await initializeTaskWorktreeSetup(worktreePath);
-					newWorktree = true;
-					if (storedPatch) {
-						try {
-							await applyTaskPatch(storedPatch.path, worktreePath);
-							await rm(storedPatch.path, { force: true });
-						} catch {
-							localWarning = patchWarning;
-						}
+			let branch: string | null = null;
+			if (options.branch && (!storedPatch || !branchCommit || branchCommit === baseCommit)) {
+				const branchArgs = branchCommit
+					? ["worktree", "add", worktreePath, options.branch]
+					: ["worktree", "add", "-b", options.branch, worktreePath, baseCommit];
+				const added = await runGit(context.repoPath, branchArgs, USER_GIT_ACTION_OPTIONS);
+				if (added.ok) branch = options.branch;
+				else if (await taskWorktreeEntryExists(worktreePath)) {
+					if (await taskWorktreeEntryExists(join(worktreePath, ".git"))) {
+						await markTaskWorktreeCheckoutFailed(worktreePath);
 					}
-					return {
-						ok: true,
-						path: worktreePath,
-						baseRef: requestedBaseRef,
-						baseCommit: resolvedBaseCommit,
-						branch: options.branch,
-						warning: localWarning,
-					};
-				};
-
-				if (branchCheck.ok) {
-					// Branch EXISTS — checkout existing branch (resume path)
-					const checkoutResult = await runGit(
-						context.repoPath,
-						["worktree", "add", worktreePath, options.branch],
-						USER_GIT_ACTION_OPTIONS,
+					throw new Error(
+						`Worktree creation failed after its folder appeared. Task files were preserved. ${added.stderr || added.output}`,
 					);
-					if (checkoutResult.ok) {
-						return await finalizeBranchWorktree(
-							branchCheck.stdout.trim(),
-							"Saved task changes could not be reapplied onto the branch.",
-						);
-					}
-					// Checkout failed (e.g., locked by another worktree) — clean up before fallback
-					await removeTaskWorktreeInternal(context.repoPath, worktreePath);
-					// fall through to detached
-				} else {
-					// Branch NOT exists — create new branch (creation path)
-					const createResult = await runGit(
-						context.repoPath,
-						["worktree", "add", "-b", options.branch, worktreePath, baseCommit],
-						USER_GIT_ACTION_OPTIONS,
-					);
-					if (createResult.ok) {
-						return await finalizeBranchWorktree(
-							baseCommit,
-							"Saved task changes could not be reapplied onto the recreated branch.",
-						);
-					}
-					// -b failed — clean up before fallback
-					await removeTaskWorktreeInternal(context.repoPath, worktreePath);
-					// fall through to detached
 				}
+			} else if (options.branch && storedPatch) {
+				warning = [
+					warning,
+					"The task branch changed after archival. Saved task changes were restored at their original commit in a detached worktree.",
+				]
+					.filter(Boolean)
+					.join(" ");
 			}
-
-			const addResult = await runGit(
-				context.repoPath,
-				["worktree", "add", "--detach", worktreePath, baseCommit],
-				USER_GIT_ACTION_OPTIONS,
-			);
-			if (!addResult.ok) {
-				if (!storedPatch) {
-					return {
-						ok: false,
-						path: null,
-						baseRef: requestedBaseRef,
-						baseCommit: null,
-						error: addResult.stderr || addResult.output,
-					};
+			if (!branch) {
+				if (await taskWorktreeEntryExists(worktreePath)) {
+					throw new Error("A task folder appeared during worktree creation. Its files were preserved.");
 				}
-
-				baseCommit = requestedBaseCommit;
-				warning =
-					"Could not restore the saved task patch onto its original commit. Started from the task base ref instead.";
-				await getGitStdout(
+				const added = await runGit(
+					context.repoPath,
 					["worktree", "add", "--detach", worktreePath, baseCommit],
-					context.repoPath,
 					USER_GIT_ACTION_OPTIONS,
 				);
-			}
-			await initializeTaskWorktreeSetup(worktreePath);
-			newWorktree = true;
-
-			if (storedPatch && baseCommit === storedPatch.commit) {
-				try {
-					await applyTaskPatch(storedPatch.path, worktreePath);
-					await rm(storedPatch.path, { force: true });
-				} catch (error) {
-					warning = `Saved task changes could not be reapplied automatically. ${getGitCommandErrorMessage(error)}`;
+				if (!added.ok) {
+					if (await taskWorktreeEntryExists(join(worktreePath, ".git"))) {
+						await markTaskWorktreeCheckoutFailed(worktreePath);
+					}
+					throw new Error(added.stderr || added.error || added.output || "Task worktree creation failed.");
 				}
 			}
+			if (storedPatch) await completePendingTaskPatchRestore(restoreIdentity);
+			else await initializeTaskWorktreeSetup(worktreePath);
+			newWorktree = true;
 
 			return {
 				ok: true,
 				path: worktreePath,
 				baseRef: requestedBaseRef,
 				baseCommit,
-				branch: null,
+				branch,
 				warning,
 			};
 		});
@@ -326,14 +304,14 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 			path: null,
 			baseRef: options.baseRef.trim(),
 			baseCommit: null,
-			error: message,
+			error: [message, recoveryWarning].filter(Boolean).join(" "),
 		};
 	}
 }
 
 /**
- * Archive a task workspace for Trash while preserving any saved restore patch.
- * Replaying this after the worktree is gone must not delete that patch.
+ * Compatibility Trash operation: retain the complete workspace and every legacy restore patch.
+ * Permanent deletion is the only operation that removes task files.
  */
 export async function archiveTaskWorktreeForTrash(options: {
 	repoPath: string;
@@ -344,37 +322,18 @@ export async function archiveTaskWorktreeForTrash(options: {
 	existingPath?: string;
 }): Promise<RuntimeWorktreeDeleteResponse> {
 	try {
-		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
-		const rootPath = getWorktreesBaseRootPath();
 		const worktreePath = await resolveTaskWorktreeCleanupPath(options);
 		if (!(await pathExists(worktreePath)) && options.folderOnly) {
 			return { ok: true, removed: false };
 		}
 		return await withTaskWorktreeOperationLock(options.repoPath, worktreePath, async () =>
 			withTaskWorktreeSetupLock(options.repoPath, async () => {
-				if (await pathExists(worktreePath)) {
-					if (await pathExists(join(worktreePath, ".git"))) {
+				if (await taskWorktreeEntryExists(worktreePath)) {
+					if (!options.folderOnly || (await taskWorktreeEntryExists(join(worktreePath, ".git")))) {
 						await assertTaskWorktreeRegistration(worktreePath);
 					}
-					try {
-						await captureTaskPatch({
-							repoPath: options.repoPath,
-							taskId,
-							worktreePath,
-						});
-					} catch {
-						// Patch capture is best-effort. A corrupted or partially-created
-						// worktree (e.g. plain directory, no git init) should still be removed.
-					}
 				}
-				// Even a missing folder can retain a stale Git registration; preserve its saved patch.
-				const removed = await removeTaskWorktreeInternal(options.repoPath, worktreePath);
-				await pruneEmptyParents(rootPath, dirname(worktreePath));
-
-				return {
-					ok: true,
-					removed,
-				};
+				return { ok: true, removed: false };
 			}),
 		);
 	} catch (error) {
@@ -408,6 +367,7 @@ export async function purgeTaskWorkspaceForDelete(options: {
 			withTaskWorktreeSetupLock(options.repoPath, async () => {
 				const removed = await removeTaskWorktreeInternal(options.repoPath, worktreePath);
 				await deleteTaskPatchFiles(taskId);
+				if (!options.folderOnly) await deleteTaskPatchRestore({ repoPath: options.repoPath, taskId, worktreePath });
 				await pruneEmptyParents(rootPath, dirname(worktreePath));
 				return { ok: true, removed };
 			}),

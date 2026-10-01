@@ -1,7 +1,27 @@
+import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 import { areFileSystemPathsEqual } from "../core";
+import { isNodeError } from "../fs/node-error";
+
+/** Stable across directory aliases and deletion of the checkout or its parent folders. */
+export async function getTaskWorktreePathKey(worktreePath: string): Promise<string> {
+	let existingPath = resolve(worktreePath);
+	const missingSegments: string[] = [];
+	while (true) {
+		try {
+			const absolutePath = join(await realpath(existingPath), ...missingSegments.reverse());
+			const identity = process.platform === "win32" ? absolutePath.toLowerCase() : absolutePath;
+			return createHash("sha256").update(identity).digest("hex");
+		} catch (error) {
+			const parent = dirname(existingPath);
+			if (!isNodeError(error, "ENOENT") || parent === existingPath) throw error;
+			missingSegments.push(basename(existingPath));
+			existingPath = parent;
+		}
+	}
+}
 
 export class TaskWorktreeRegistrationError extends Error {
 	constructor(worktreePath: string) {

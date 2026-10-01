@@ -1,5 +1,17 @@
 # Implementation Log
 
+## 2026-10-01 — Recoverable Trash and legacy worktree leftovers
+
+Read-only incident inspection found a completed Trash operation followed less than a second later by a recreated `.gradle` directory without a Git registration, consistent with a background daemon writing after deletion. The original task branch and provider conversation survived. The registration guard correctly blocked that leftover folder; weakening the guard or deleting the folder would risk discarding additional work.
+
+Soft Trash now stops execution while retaining the complete registered worktree, exact `workingDirectory`, and provider resume identity. `ProjectTaskLifecycleService`, the board reducer, and the compatibility archive endpoint preserve this invariant through replay. Permanent deletion remains the cleanup boundary. Keeping the full workspace preserves ignored files, staged versus unstaged changes, clean detached commits, and late writes that the former best-effort patch archive could lose.
+
+Explicit restore of older Trash cards without a durable path may atomically move unregistered, `.git`-less leftovers into `recovered-task-files` before recreating the checkout from a surviving branch or saved patch. `task-worktree-restore.ts` owns preservation and durable patch-restore intent. Saved patches restore at their original commit without rewinding advanced branches; missing recovery sources or failed restoration block launch. The restore journal precedes checkout creation, validates the patch before permitting reverse-check recovery after interruption, and initializes setup before retiring its intent. Invalid patches cannot become successful restores merely because the checkout now exists.
+
+Parallel branch and code-smell reviews found a failed-checkout retry bypass: a failing Git post-checkout hook can leave a registered workspace without its setup marker. The setup owner now records `checkout_failed` and blocks both setup retry and patch application until checkout repair. The same reviews consolidated stable path identity for locks and restore markers, and moved obsolete patch capture into test fixtures.
+
+Validation: focused board, lifecycle, worktree, setup, registration, relocation, and web tests passed, including ignored/untracked/index retention through Git GC, the recreated Gradle folder, failed patch retries, interrupted apply recovery, missing recovery sources, and permanent deletion. After review fixes, 30 focused worktree integration tests and the runtime typecheck passed, including real-Git failed-checkout cases with and without saved patches. Web typecheck, changed-file Biome, the instruction bridge, and final diff checks passed. Follow-up review found no remaining issues. Synthetic filesystem fixtures exercised recovery; no live task was changed, runtime restarted, or real provider launched.
+
 ## 2026-10-01 — Shared checkout branch guard and disappearing selector
 
 The branch-switch guard treated every started Shared card in Review as active, including completed tasks with an idle attached PTY. Checkout now uses a dedicated guard in `src/trpc/project-api-shared.ts`: shared In Progress tasks, authoritative work/input indicators, and pending launch/recovery still block; ordinary Review does not. Task-scoped requests resolving to the project root use the same guard. Assigned worktree paths take precedence over stale isolation flags, while active session launch paths protect execution whose card metadata has not caught up. Other Git mutation guards are unchanged.

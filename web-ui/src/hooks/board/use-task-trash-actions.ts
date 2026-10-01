@@ -149,7 +149,7 @@ export function useTaskTrashActions({
 			const movedToTrash = await performMoveTaskToTrash(selection.card, boardSnapshot, fromColumnId);
 
 			// Show informational notice toast for manual trash from in_progress or review columns.
-			// Non-isolated tasks have no worktree to delete and no patch to capture — skip the toast.
+			// Non-isolated tasks have no dedicated worktree to retain — skip the toast.
 			if (
 				movedToTrash &&
 				!isNonIsolated &&
@@ -157,8 +157,8 @@ export function useTaskTrashActions({
 				showTrashWorktreeNotice &&
 				(fromColumnId === "in_progress" || fromColumnId === "review")
 			) {
-				toast("Task worktree removed", {
-					description: "The worktree was deleted. Uncommitted work was captured in a patch file.",
+				toast("Task moved to Trash", {
+					description: "The worktree and uncommitted work were kept. Restore the task to resume it.",
 					duration: 7000,
 					className: "toast-with-dismiss-link",
 					cancel: {
