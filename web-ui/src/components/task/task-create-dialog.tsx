@@ -1,10 +1,8 @@
-import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as RadixSwitch from "@radix-ui/react-switch";
 import {
 	AlertTriangle,
 	ArrowBigUp,
-	Check,
 	ChevronDown,
 	Command,
 	CornerDownLeft,
@@ -135,18 +133,6 @@ export function TaskCreateDialog({
 		onCreateStartAndOpen,
 	});
 
-	const harnessSelector = (
-		<div className={agentId === "codex" ? "min-w-0 flex-[1_1_12rem]" : undefined}>
-			<span className="text-[11px] text-text-secondary block mb-1">Harness</span>
-			<TaskAgentSelector
-				agents={agentOptions}
-				value={agentId}
-				onValueChange={onAgentIdChange}
-				portalContainer={dropdownPortalContainer}
-			/>
-		</div>
-	);
-
 	return (
 		<Dialog
 			open={open}
@@ -155,7 +141,7 @@ export function TaskCreateDialog({
 			contentStyle={DIALOG_STYLE}
 		>
 			<DialogHeader title={dialogTitle} icon={<PencilLine size={16} />} />
-			<DialogBody className="flex flex-col gap-5 p-5">
+			<DialogBody className="flex flex-col gap-3 p-5">
 				{mode === "single" ? (
 					<div className="flex flex-1 flex-col">
 						<TaskPromptComposer
@@ -173,7 +159,7 @@ export function TaskCreateDialog({
 							showAttachImageButton={false}
 						/>
 						<div className="mt-2 flex shrink-0 flex-wrap items-center justify-between gap-2">
-							<div className="text-[11px] text-text-tertiary space-y-0.5">
+							<div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-text-tertiary">
 								<p>
 									Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to
 									reference files. Drag and drop or{" "}
@@ -206,17 +192,25 @@ export function TaskCreateDialog({
 				)}
 
 				<div ref={setDropdownPortalContainer} className="shrink-0 border-t border-border pt-4">
-					{open && agentId === "codex" && onCodexOptionsChange ? (
-						<TaskCodexOptions
-							projectId={projectId}
-							value={codexOptions}
-							onValueChange={onCodexOptionsChange}
-							portalContainer={dropdownPortalContainer}
-							harnessSelector={harnessSelector}
-						/>
-					) : (
-						harnessSelector
-					)}
+					<div className="space-y-2">
+						<div>
+							<span className="text-[11px] text-text-secondary block mb-1">Harness</span>
+							<TaskAgentSelector
+								agents={agentOptions}
+								value={agentId}
+								onValueChange={onAgentIdChange}
+								portalContainer={dropdownPortalContainer}
+							/>
+						</div>
+						{open && agentId === "codex" && onCodexOptionsChange ? (
+							<TaskCodexOptions
+								projectId={projectId}
+								value={codexOptions}
+								onValueChange={onCodexOptionsChange}
+								portalContainer={dropdownPortalContainer}
+							/>
+						) : null}
+					</div>
 					{folderOnly ? (
 						<p className="mt-3 text-xs text-text-secondary">
 							Folder project: tasks run directly in this folder without Git or isolated worktrees.
@@ -243,16 +237,14 @@ export function TaskCreateDialog({
 									htmlFor={useWorktreeId}
 									className="flex items-center gap-2 text-[13px] text-text-primary cursor-pointer select-none"
 								>
-									<RadixCheckbox.Root
+									<RadixSwitch.Root
 										id={useWorktreeId}
 										checked={useWorktree}
-										onCheckedChange={(checked) => onUseWorktreeChange(checked === true)}
-										className="flex h-4 w-4 shrink-0 translate-y-px cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+										onCheckedChange={onUseWorktreeChange}
+										className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full bg-surface-4 data-[state=checked]:bg-accent"
 									>
-										<RadixCheckbox.Indicator className="flex items-center justify-center">
-											<Check size={11} className="block text-white" />
-										</RadixCheckbox.Indicator>
-									</RadixCheckbox.Root>
+										<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+									</RadixSwitch.Root>
 									Use isolated worktree
 								</label>
 								<label
@@ -262,17 +254,15 @@ export function TaskCreateDialog({
 										useWorktree ? "cursor-pointer" : "cursor-default opacity-40",
 									)}
 								>
-									<RadixCheckbox.Root
+									<RadixSwitch.Root
 										id={createFeatureBranchId}
 										checked={createFeatureBranch}
-										onCheckedChange={(checked) => onCreateFeatureBranchChange(checked === true)}
+										onCheckedChange={onCreateFeatureBranchChange}
 										disabled={!useWorktree}
-										className="flex h-4 w-4 shrink-0 translate-y-px cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default"
+										className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full bg-surface-4 data-[state=checked]:bg-accent disabled:cursor-default"
 									>
-										<RadixCheckbox.Indicator className="flex items-center justify-center">
-											<Check size={11} className="block text-white" />
-										</RadixCheckbox.Indicator>
-									</RadixCheckbox.Root>
+										<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+									</RadixSwitch.Root>
 									Create feature branch
 								</label>
 							</div>

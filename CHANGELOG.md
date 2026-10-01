@@ -6,6 +6,8 @@
 
 - Preserve complete task worktrees and conversation identity in Trash, safely recover leftover folders from older archived tasks, and block resume when saved changes cannot be restored.
 
+- Keep new-task Codex model and reasoning selectors visible, place prompt tips on one compact row, and use larger switches for worktree and feature-branch options.
+
 - Allow switching the shared checkout's branch after shared tasks finish in Review, retain protection during active work, and keep the branch selector visible after a rejected checkout.
 
 - Stabilize project names and paths while scrolling the Projects sidebar.

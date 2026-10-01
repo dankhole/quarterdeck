@@ -96,27 +96,24 @@ describe("TaskCodexOptions", () => {
 			previousActEnvironment;
 	});
 
-	it("defaults overrides off, discovers models only on opt-in, and clears disabled overrides", async () => {
+	it("shows selectors and discovers models immediately without changing defaults", async () => {
 		const onChange = vi.fn();
 		await act(async () => root.render(<Harness onChange={onChange} />));
-		const toggle = document.querySelector<HTMLButtonElement>('[role="switch"]');
-		if (!toggle) throw new Error("Missing override toggle");
-		expect(toggle.getAttribute("aria-checked")).toBe("false");
-		expect(document.querySelector('[aria-label="Starting model"]')).toBeNull();
-		expect(query).not.toHaveBeenCalled();
-		await act(async () => toggle.click());
+		expect(document.querySelector('[role="switch"]')).toBeNull();
+		expect(document.querySelector('[aria-label="Starting model"]')?.textContent).toContain("Codex default");
+		expect(document.querySelector('[aria-label="Reasoning level"]')?.textContent).toContain("Codex default");
+		expect(document.body.textContent).not.toContain("Choose a model to select its reasoning level.");
 		expect(query).toHaveBeenCalledOnce();
+		expect(onChange).not.toHaveBeenCalled();
 		await openMenu("Starting model");
 		await choose("Model A");
 		await openMenu("Reasoning level");
 		await choose("Low");
-		await act(async () => toggle.click());
-		expect(onChange).toHaveBeenLastCalledWith(undefined);
-		expect(document.querySelector('[aria-label="Starting model"]')).toBeNull();
-		await act(async () => toggle.click());
+		await openMenu("Starting model");
+		await choose("Codex default");
 		expect(onChange).toHaveBeenLastCalledWith({});
 		expect(document.querySelector('[aria-label="Starting model"]')?.textContent).toContain("Codex default");
-		expect(document.querySelector('[aria-label="Reasoning level"]')?.textContent).toContain("Codex default");
+		expect(document.querySelector<HTMLButtonElement>('[aria-label="Reasoning level"]')?.disabled).toBe(true);
 	});
 
 	it("selects provider models and only their supported efforts inside the dialog", async () => {

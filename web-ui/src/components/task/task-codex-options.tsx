@@ -1,7 +1,6 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import * as RadixSwitch from "@radix-ui/react-switch";
 import { Check, ChevronDown } from "lucide-react";
-import { type ReactElement, useCallback, useId, useState } from "react";
+import { type ReactElement, useCallback, useState } from "react";
 
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeCodexOptions } from "@/runtime/types";
@@ -12,7 +11,6 @@ interface TaskCodexOptionsProps {
 	value: RuntimeCodexOptions | undefined;
 	onValueChange: (value: RuntimeCodexOptions | undefined) => void;
 	portalContainer?: HTMLElement | null;
-	harnessSelector?: ReactElement;
 }
 
 interface Option {
@@ -86,13 +84,10 @@ export function TaskCodexOptions({
 	value,
 	onValueChange,
 	portalContainer,
-	harnessSelector,
 }: TaskCodexOptionsProps): ReactElement {
 	const [localPortalContainer, setLocalPortalContainer] = useState<HTMLDivElement | null>(null);
 	const queryFn = useCallback(() => getRuntimeTrpcClient(projectId).runtime.codexModels.query(), [projectId]);
-	const overrideId = useId();
-	const overrideEnabled = value !== undefined;
-	const { data, isLoading, isError } = useTrpcQuery({ enabled: overrideEnabled, queryFn });
+	const { data, isLoading, isError } = useTrpcQuery({ enabled: true, queryFn });
 	const models = data?.models ?? [];
 	const selectedModel = models.find((model) => model.model === value?.model);
 	const defaultOption = { value: "", label: "Codex default" };
@@ -100,69 +95,40 @@ export function TaskCodexOptions({
 
 	return (
 		<div ref={setLocalPortalContainer} className="space-y-2">
-			<div className="flex flex-wrap items-end justify-between gap-3">
-				{harnessSelector}
-				<label
-					htmlFor={overrideId}
-					className="flex h-8 shrink-0 cursor-pointer items-center gap-2 text-[12px] text-text-primary"
-				>
-					<RadixSwitch.Root
-						id={overrideId}
-						checked={overrideEnabled}
-						onCheckedChange={(checked) => onValueChange(checked ? {} : undefined)}
-						className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full bg-surface-4 data-[state=checked]:bg-accent"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					Override Codex settings
-				</label>
+			<div className="grid grid-cols-2 gap-2">
+				<OptionSelector
+					label="Starting model"
+					value={value?.model ?? ""}
+					options={[defaultOption, ...models.map((model) => ({ value: model.model, label: model.displayName }))]}
+					onSelect={(model) => onValueChange(model ? { model } : {})}
+					portalContainer={resolvedPortalContainer}
+				/>
+				<OptionSelector
+					label="Reasoning level"
+					value={value?.reasoningEffort ?? ""}
+					options={[
+						defaultOption,
+						...(selectedModel?.supportedReasoningEfforts.map((effort) => ({
+							value: effort.reasoningEffort,
+							label: effort.reasoningEffort.charAt(0).toUpperCase() + effort.reasoningEffort.slice(1),
+							description: effort.description,
+						})) ?? []),
+					]}
+					disabled={!selectedModel && !value?.reasoningEffort}
+					onSelect={(effort) => {
+						onValueChange({
+							...(value?.model ? { model: value?.model } : {}),
+							...(effort ? { reasoningEffort: effort } : {}),
+						});
+					}}
+					portalContainer={resolvedPortalContainer}
+				/>
 			</div>
-			{overrideEnabled ? (
-				<>
-					<div className="grid grid-cols-2 gap-2">
-						<OptionSelector
-							label="Starting model"
-							value={value?.model ?? ""}
-							options={[
-								defaultOption,
-								...models.map((model) => ({ value: model.model, label: model.displayName })),
-							]}
-							onSelect={(model) => onValueChange(model ? { model } : {})}
-							portalContainer={resolvedPortalContainer}
-						/>
-						<OptionSelector
-							label="Reasoning level"
-							value={value?.reasoningEffort ?? ""}
-							options={[
-								defaultOption,
-								...(selectedModel?.supportedReasoningEfforts.map((effort) => ({
-									value: effort.reasoningEffort,
-									label: effort.reasoningEffort.charAt(0).toUpperCase() + effort.reasoningEffort.slice(1),
-									description: effort.description,
-								})) ?? []),
-							]}
-							disabled={!selectedModel && !value?.reasoningEffort}
-							onSelect={(effort) => {
-								const supported = selectedModel?.supportedReasoningEfforts.find(
-									(item) => item.reasoningEffort === effort,
-								);
-								onValueChange({
-									...(value?.model ? { model: value?.model } : {}),
-									...(supported ? { reasoningEffort: supported.reasoningEffort } : {}),
-								});
-							}}
-							portalContainer={resolvedPortalContainer}
-						/>
-					</div>
-					{isLoading ? <p className="text-[11px] text-text-secondary">Loading Codex models…</p> : null}
-					{isError || (!isLoading && data && models.length === 0) ? (
-						<p role="status" className="text-[11px] text-text-secondary">
-							Model choices are unavailable. You can still start with Codex default.
-						</p>
-					) : !value?.model ? (
-						<p className="text-[11px] text-text-secondary">Choose a model to select its reasoning level.</p>
-					) : null}
-				</>
+			{isLoading ? <p className="text-[11px] text-text-secondary">Loading Codex models…</p> : null}
+			{isError || (!isLoading && data && models.length === 0) ? (
+				<p role="status" className="text-[11px] text-text-secondary">
+					Model choices are unavailable. You can still start with Codex default.
+				</p>
 			) : null}
 		</div>
 	);

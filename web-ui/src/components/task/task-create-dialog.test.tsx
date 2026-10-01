@@ -116,6 +116,8 @@ function Harness({
 	const [prompt, setPrompt] = useState(initialPrompt);
 	const [images, setImages] = useState<TaskImage[]>(initialImages);
 	const [agentId, setAgentId] = useState<"claude" | "codex" | "pi">("claude");
+	const [useWorktree, setUseWorktree] = useState(true);
+	const [createFeatureBranch, setCreateFeatureBranch] = useState(false);
 	return (
 		<TaskCreateDialog
 			open
@@ -154,10 +156,10 @@ function Harness({
 			onCreateAndStart={() => "task-2"}
 			onCreateStartAndOpen={() => "task-3"}
 			onCreateMultiple={onCreateMultiple}
-			useWorktree
-			onUseWorktreeChange={() => {}}
-			createFeatureBranch={false}
-			onCreateFeatureBranchChange={() => {}}
+			useWorktree={useWorktree}
+			onUseWorktreeChange={setUseWorktree}
+			createFeatureBranch={createFeatureBranch}
+			onCreateFeatureBranchChange={setCreateFeatureBranch}
 			branchName=""
 			onBranchNameEdit={() => {}}
 			onGenerateBranchName={() => {}}
@@ -189,6 +191,17 @@ function requireTextarea(container: HTMLElement): HTMLTextAreaElement {
 		throw new Error("Expected a task prompt textarea.");
 	}
 	return textarea;
+}
+
+function findSwitchByLabel(container: HTMLElement, text: string): HTMLButtonElement {
+	const label = Array.from(container.querySelectorAll("label")).find(
+		(candidate) => candidate.textContent?.trim() === text,
+	);
+	const toggle = label?.querySelector('button[role="switch"]');
+	if (!(toggle instanceof HTMLButtonElement) || label?.htmlFor !== toggle.id) {
+		throw new Error(`Expected a labelled switch for "${text}".`);
+	}
+	return toggle;
 }
 
 describe("TaskCreateDialog", () => {
@@ -295,10 +308,7 @@ describe("TaskCreateDialog", () => {
 			);
 		});
 
-		const createMoreToggle = container.querySelector('button[role="switch"]');
-		if (!(createMoreToggle instanceof HTMLButtonElement)) {
-			throw new Error("Expected a create-more switch.");
-		}
+		const createMoreToggle = findSwitchByLabel(container, "Create more");
 
 		await act(async () => {
 			createMoreToggle.click();
@@ -312,6 +322,43 @@ describe("TaskCreateDialog", () => {
 		expect(requireTextarea(container).value).toBe("");
 		expect(container.querySelector('[data-testid="composer-image-count"]')?.textContent).toBe("0");
 		expect(container.textContent).toContain("New task");
+	});
+
+	it("preserves feature-branch selection while isolation disables branch controls", async () => {
+		await act(async () => {
+			root.render(<Harness initialPrompt="Review login flow" />);
+		});
+
+		const isolationToggle = findSwitchByLabel(container, "Use isolated worktree");
+		const featureBranchToggle = findSwitchByLabel(container, "Create feature branch");
+		const baseRef = container.querySelector<HTMLSelectElement>('select[aria-label="Base ref"]');
+		expect(isolationToggle.getAttribute("aria-checked")).toBe("true");
+		expect(featureBranchToggle.getAttribute("aria-checked")).toBe("false");
+		expect(featureBranchToggle.disabled).toBe(false);
+		expect(baseRef?.disabled).toBe(false);
+
+		await act(async () => featureBranchToggle.click());
+		expect(featureBranchToggle.getAttribute("aria-checked")).toBe("true");
+		expect(container.querySelector('input[name="feature-branch-name"]')).not.toBeNull();
+
+		await act(async () => isolationToggle.click());
+		expect(isolationToggle.getAttribute("aria-checked")).toBe("false");
+		expect(featureBranchToggle.disabled).toBe(true);
+		expect(baseRef?.disabled).toBe(true);
+		expect(container.querySelector('input[name="feature-branch-name"]')).toBeNull();
+		expect(container.textContent).toContain("Without isolation, the task runs directly on");
+
+		await act(async () => featureBranchToggle.click());
+		expect(featureBranchToggle.getAttribute("aria-checked")).toBe("true");
+
+		await act(async () => isolationToggle.click());
+		expect(featureBranchToggle.disabled).toBe(false);
+		expect(baseRef?.disabled).toBe(false);
+		expect(container.querySelector('input[name="feature-branch-name"]')).not.toBeNull();
+
+		await act(async () => featureBranchToggle.click());
+		expect(featureBranchToggle.getAttribute("aria-checked")).toBe("false");
+		expect(container.querySelector('input[name="feature-branch-name"]')).toBeNull();
 	});
 
 	it("renders the task harness picker in the create flow", async () => {
