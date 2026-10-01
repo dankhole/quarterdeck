@@ -396,9 +396,13 @@ export class TerminalSessionManager implements TerminalSessionService {
 	 */
 	hasTaskSessionLifecycleActivity(taskId: string): boolean {
 		const entry = this.entries.get(taskId);
-		return Boolean(
-			entry?.active || entry?.pendingSessionStart || entry?.pendingAutoRestart || entry?.pendingStartupRecoveryToken,
-		);
+		return Boolean(entry?.active || this.hasPendingTaskSessionLaunch(taskId));
+	}
+
+	/** In-flight launch/recovery protection without treating an idle agent PTY as foreground work. */
+	hasPendingTaskSessionLaunch(taskId: string): boolean {
+		const entry = this.entries.get(taskId);
+		return Boolean(entry?.pendingSessionStart || entry?.pendingAutoRestart || entry?.pendingStartupRecoveryToken);
 	}
 
 	/** Exact live PTY identity for server-owned execution-owner fencing. */

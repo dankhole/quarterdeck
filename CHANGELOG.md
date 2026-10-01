@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Allow switching the shared checkout's branch after shared tasks finish in Review, retain protection during active work, and keep the branch selector visible after a rejected checkout.
+
 - Stabilize project names and paths while scrolling the Projects sidebar.
 
 - Fix selected-file commits failing when deleted files are inside a newly ignored folder that still exists locally.

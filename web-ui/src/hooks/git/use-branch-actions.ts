@@ -185,8 +185,9 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 					...(checkoutBaseRef ? { baseRef: checkoutBaseRef } : {}),
 				});
 				if (!isProjectMetadataScopeCurrent(projectId, requestScopeVersion)) return;
-				// Update the status bar line diff immediately from the response summary
-				if (scope === "home" && result.summary) {
+				// Preflight failures have an empty branch and placeholder summary;
+				// attempted checkouts retain the requested branch and a measured summary.
+				if (scope === "home" && (result.ok || result.branch !== "") && result.summary) {
 					setHomeGitSummary(projectId, result.summary, requestScopeVersion);
 				}
 				if (result.ok) {

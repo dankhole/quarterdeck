@@ -142,13 +142,25 @@ describe("TerminalSessionManager project launch admission", () => {
 		});
 		const launch = manager.startTaskSession(startRequest);
 		await preparing.promise;
+		expect(manager.hasPendingTaskSessionLaunch("task-1")).toBe(true);
 		const observeRelocation = vi.fn(() => manager.getTaskSessionProcessIdentity("task-1"));
 		const relocation = gate.runProjectExclusive("project-1", async () => observeRelocation());
 		await Promise.resolve();
 		expect(observeRelocation).not.toHaveBeenCalled();
 		prepared.resolve();
 		await launch;
+		expect(manager.hasPendingTaskSessionLaunch("task-1")).toBe(false);
+		expect(manager.hasTaskSessionLifecycleActivity("task-1")).toBe(true);
 		await expect(relocation).resolves.toMatchObject({ pid: 101 });
+	});
+
+	it("reports recovery ownership as a pending launch until it is completed", () => {
+		const manager = createManager();
+		expect(manager.hasPendingTaskSessionLaunch("task-1")).toBe(false);
+		expect(manager.beginStartupRecovery("task-1", "recovery-1")).toBe(true);
+		expect(manager.hasPendingTaskSessionLaunch("task-1")).toBe(true);
+		manager.completeStartupRecovery("task-1", "recovery-1");
+		expect(manager.hasPendingTaskSessionLaunch("task-1")).toBe(false);
 	});
 
 	it("cancels a crash restart queued behind relocation before waiting for shutdown quiescence", async () => {
@@ -181,6 +193,7 @@ describe("TerminalSessionManager project launch admission", () => {
 		});
 		spawned[0]?.triggerExit(1);
 		await restartQueued.promise;
+		expect(manager.hasPendingTaskSessionLaunch("task-1")).toBe(true);
 		releaseAdmittedWork.resolve();
 		await admittedWork;
 

@@ -9,7 +9,12 @@ import type {
 	RuntimeWorkdirChangesMode,
 	TaskResourceOperationRunner,
 } from "../core";
-import { areFileSystemPathsEqual, createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
+import {
+	areFileSystemPathsEqual,
+	createTaggedLogger,
+	deriveTaskIndicatorState,
+	normalizeDiagnosticErrorClass,
+} from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import type { ProjectBoardCommandService } from "../state";
 import { loadProjectState } from "../state";
@@ -169,6 +174,42 @@ export async function hasActiveSharedCheckoutTask(projectPath: string): Promise<
 				return !card.unstarted && isSharedCheckout;
 			}),
 		);
+}
+
+export async function hasSharedCheckoutBranchSwitchBlocker(
+	projectScope: { projectId: string; projectPath: string },
+	terminals: ITerminalManagerProvider,
+): Promise<boolean> {
+	const state = await loadProjectState(projectScope.projectPath);
+	const manager = terminals.getTerminalManagerForProject(projectScope.projectId);
+	return state.board.columns.some((column) =>
+		column.cards.some((card) => {
+			const assignedSharedCheckout = card.workingDirectory
+				? isProjectCheckoutCwd(projectScope.projectPath, card.workingDirectory)
+				: card.useWorktree === false;
+			const summary = manager?.store.getSummary(card.id);
+			if (summary) {
+				const indicator = deriveTaskIndicatorState(summary);
+				const protectsExecution =
+					indicator.publicStatus === "running" ||
+					indicator.needsInput ||
+					indicator.kind === "response_pending" ||
+					(indicator.kind === "unconfirmed" && summary.pid !== null);
+				// During active execution, protect the actual launch checkout even if
+				// durable card placement or assigned-path metadata has not caught up.
+				const executionSharedCheckout = summary.sessionLaunchPath
+					? isProjectCheckoutCwd(projectScope.projectPath, summary.sessionLaunchPath)
+					: assignedSharedCheckout;
+				if (protectsExecution && executionSharedCheckout) return true;
+			}
+			return (
+				assignedSharedCheckout &&
+				((!card.unstarted && column.id === "in_progress") ||
+					summary?.startupRecoveryRequired === true ||
+					manager?.hasPendingTaskSessionLaunch(card.id) === true)
+			);
+		}),
+	);
 }
 
 // ── Input normalization ─────────────────────────────────────────────────────────

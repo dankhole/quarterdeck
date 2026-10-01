@@ -1,5 +1,13 @@
 # Implementation Log
 
+## 2026-10-01 — Shared checkout branch guard and disappearing selector
+
+The branch-switch guard treated every started Shared card in Review as active, including completed tasks with an idle attached PTY. Checkout now uses a dedicated guard in `src/trpc/project-api-shared.ts`: shared In Progress tasks, authoritative work/input indicators, and pending launch/recovery still block; ordinary Review does not. Task-scoped requests resolving to the project root use the same guard. Assigned worktree paths take precedence over stale isolation flags, while active session launch paths protect execution whose card metadata has not caught up. Other Git mutation guards are unchanged.
+
+Guard rejection also returned an empty placeholder Git summary. Both browser checkout callers applied it, clearing `currentBranch` and unmounting the top-bar selector. `use-branch-actions.ts` and `use-git-actions.ts` now preserve known home metadata when a response has no measured summary and apply measured responses within their original project scope. A failed Git command can still change branches before a post-checkout hook fails, so its measured summary must be applied even when the operation reports an error; pre-probe error responses identify their placeholder with an empty `branch`.
+
+Validation: 44 focused runtime tests, 45 focused web tests, both typechecks, and changed-source Biome passed. A production web build and fake Agent Lab `shared-checkout-20261001T082415Z-5bd157` verified the original guard/selector fix; the lab covered checkout with a live idle Shared Review task, rejection during native-hook-confirmed Running with the selector still visible, and successful retry after completion. The passing checkpoint had no diagnostic findings or forbidden host launches; the run stopped cleanly. Parallel branch and code-smell reviews identified the partial-checkout failure case; its named-branch and detached-HEAD regressions failed before the refinement and passed afterward in both callers, including stale-scope protection. Production diagnostics were read-only, and no real provider was launched.
+
 ## 2026-09-30 — Selected commits handle unstaged deletions in ignored folders
 
 `git-selected-commit.ts` now combines staged and worktree deletions before preparing its temporary index. Git can reject an explicitly selected missing tracked file when its newly ignored parent directory still contains local files; the error names the parent directory even though the selection contains individual files. The existing staged-deletion handling missed this case. Both kinds of removal now bypass `git add` and use exact index removal, preserving ignored contents, retained staged-removal copies, and unrelated staging without force-adding files.

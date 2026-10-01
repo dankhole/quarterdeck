@@ -125,8 +125,17 @@ vi.mock("../../../src/workdir/read-workdir-file.js", () => ({
 	readWorkdirFile: vi.fn(),
 }));
 
-import { TaskResourceOperationCoordinator } from "../../../src/core";
+import {
+	type RuntimeBoardCard,
+	type RuntimeTaskSessionSummary,
+	TaskResourceOperationCoordinator,
+} from "../../../src/core";
 import { createProjectApi } from "../../../src/trpc";
+import {
+	createTestTaskNativeWorkEvidence,
+	createTestTaskOutstandingInteraction,
+	createTestTaskSessionSummary,
+} from "../../utilities/task-session-factory";
 
 function createProjectDeps(overrides: Record<string, unknown> = {}) {
 	return {
@@ -253,6 +262,57 @@ describe("createProjectApi discardGitChanges", () => {
 });
 
 describe("createProjectApi checkoutGitBranch", () => {
+	function setSharedTask(columnId = "review", overrides: Partial<RuntimeBoardCard> = {}) {
+		projectStateMocks.loadProjectState.mockResolvedValue({
+			board: {
+				columns: [
+					{
+						id: columnId,
+						title: columnId,
+						cards: [
+							{
+								id: "task-1",
+								title: "Shared task",
+								prompt: "Do the task",
+								baseRef: "main",
+								workingDirectory: "/tmp/repo",
+								createdAt: 1,
+								updatedAt: 1,
+								...overrides,
+							},
+						],
+					},
+				],
+			},
+		});
+	}
+
+	function createApiWithSession(summary: RuntimeTaskSessionSummary | null, pendingLaunch = false) {
+		return createProjectApi(
+			createProjectDeps({
+				terminals: {
+					getTerminalManagerForProject: vi.fn(() => ({
+						store: { getSummary: vi.fn(() => summary) },
+						hasPendingTaskSessionLaunch: vi.fn(() => pendingLaunch),
+					})),
+					ensureTerminalManagerForProject: vi.fn(async () => ({}) as never),
+				},
+			}),
+		);
+	}
+
+	function createLiveReviewSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}) {
+		return createTestTaskSessionSummary({
+			state: "awaiting_review",
+			reviewReason: "hook",
+			pid: 1234,
+			agentId: "codex",
+			sessionInstanceId: "process-1",
+			sessionLaunchPath: "/tmp/repo",
+			...overrides,
+		});
+	}
+
 	beforeEach(() => {
 		worktreeMocks.resolveTaskWorkingDirectory.mockReset();
 		projectStateMocks.loadProjectState.mockReset();
@@ -260,6 +320,118 @@ describe("createProjectApi checkoutGitBranch", () => {
 
 		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
 		projectStateMocks.loadProjectState.mockResolvedValue({ board: { columns: [] } });
+		gitSyncMocks.runGitCheckoutAction.mockResolvedValue({
+			ok: true,
+			branch: "feature/other",
+			summary: {
+				currentBranch: "feature/other",
+				upstreamBranch: null,
+				changedFiles: 0,
+				additions: 0,
+				deletions: 0,
+				aheadCount: 0,
+				behindCount: 0,
+			},
+			output: "",
+		});
+	});
+
+	it.each([false, true])("allows a completed shared Review task with a live PTY: %s", async (livePty) => {
+		setSharedTask();
+		const api = createApiWithSession(livePty ? createLiveReviewSummary() : null);
+
+		const result = await api.checkoutGitBranch(defaultScope, { branch: "feature/other" });
+
+		expect(result.ok).toBe(true);
+		expect(gitSyncMocks.runGitCheckoutAction).toHaveBeenCalledExactlyOnceWith({
+			cwd: "/tmp/repo",
+			branch: "feature/other",
+		});
+	});
+
+	it.each([false, true])(
+		"blocks a shared running session in Review for a task-scoped checkout: %s",
+		async (taskScoped) => {
+			setSharedTask();
+			worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/repo");
+			const api = createApiWithSession(
+				createLiveReviewSummary({
+					state: "running",
+					reviewReason: null,
+					nativeWorkEvidence: createTestTaskNativeWorkEvidence(),
+				}),
+			);
+
+			const result = await api.checkoutGitBranch(defaultScope, {
+				branch: "feature/other",
+				...(taskScoped ? { taskId: "task-1", baseRef: "main" } : {}),
+			});
+
+			expect(result.error).toContain("active in the shared checkout");
+			expect(gitSyncMocks.runGitCheckoutAction).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each([
+		createTestTaskOutstandingInteraction({ kind: "permission" }),
+		createTestTaskOutstandingInteraction(),
+		createTestTaskOutstandingInteraction({ status: "response_submitted" }),
+	])("blocks a live shared Review interaction: $kind/$status", async (outstandingInteraction) => {
+		setSharedTask();
+		const api = createApiWithSession(createLiveReviewSummary({ outstandingInteraction }));
+
+		const result = await api.checkoutGitBranch(defaultScope, { branch: "feature/other" });
+
+		expect(result.ok).toBe(false);
+		expect(gitSyncMocks.runGitCheckoutAction).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		{ summary: createLiveReviewSummary({ reviewReason: "unconfirmed" }), pendingLaunch: false },
+		{ summary: createLiveReviewSummary({ pid: null, startupRecoveryRequired: true }), pendingLaunch: false },
+		{ summary: null, pendingLaunch: true },
+	])("blocks a shared unconfirmed, recovering, or pending launch: %j", async ({ summary, pendingLaunch }) => {
+		setSharedTask();
+		const api = createApiWithSession(summary, pendingLaunch);
+
+		const result = await api.checkoutGitBranch(defaultScope, { branch: "feature/other" });
+
+		expect(result.ok).toBe(false);
+		expect(gitSyncMocks.runGitCheckoutAction).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		{ assignedPath: "/tmp/worktree", launchPath: "/tmp/repo", blocked: true },
+		{ assignedPath: "/tmp/repo", launchPath: "/tmp/worktree", blocked: false },
+	])(
+		"protects the running launch checkout over stale assigned metadata: $launchPath",
+		async ({ assignedPath, launchPath, blocked }) => {
+			setSharedTask("review", { workingDirectory: assignedPath });
+			const api = createApiWithSession(
+				createLiveReviewSummary({
+					state: "running",
+					reviewReason: null,
+					sessionLaunchPath: launchPath,
+					nativeWorkEvidence: createTestTaskNativeWorkEvidence(),
+				}),
+			);
+
+			const result = await api.checkoutGitBranch(defaultScope, { branch: "feature/other" });
+
+			expect(result.ok).toBe(!blocked);
+			expect(gitSyncMocks.runGitCheckoutAction).toHaveBeenCalledTimes(blocked ? 0 : 1);
+		},
+	);
+
+	it("allows an assigned worktree despite a stale shared-checkout flag", async () => {
+		setSharedTask("in_progress", { workingDirectory: "/tmp/worktree", useWorktree: false });
+
+		const result = await createProjectApi(createProjectDeps()).checkoutGitBranch(defaultScope, {
+			branch: "feature/other",
+		});
+
+		expect(result.ok).toBe(true);
+		expect(gitSyncMocks.runGitCheckoutAction).toHaveBeenCalledOnce();
 	});
 
 	it("blocks branch switch when a task uses the shared checkout", async () => {

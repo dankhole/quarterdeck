@@ -379,12 +379,13 @@ export function useGitActions({
 						branch: normalizedBranch,
 					});
 					if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
+					// Preflight failures have an empty branch and placeholder summary;
+					// attempted checkouts retain the requested branch and a measured summary.
+					if ((payload.ok || payload.branch !== "") && payload.summary) {
+						setHomeGitSummary(currentProjectId, payload.summary, requestScopeVersion);
+					}
 					if (!payload.ok || !payload.summary) {
 						const errorMessage = payload.error ?? "Switch branch failed.";
-						const fallbackSummary = payload.summary ?? null;
-						if (fallbackSummary) {
-							setHomeGitSummary(currentProjectId, fallbackSummary);
-						}
 						if (payload.dirtyTree) {
 							showGitErrorToast(`Could not switch to ${normalizedBranch}. ${errorMessage}`, {
 								timeout: 12000,
@@ -417,7 +418,6 @@ export function useGitActions({
 						}
 						return;
 					}
-					setHomeGitSummary(currentProjectId, payload.summary);
 					refreshGitHistory();
 					await refreshProjectState();
 				} catch (error) {

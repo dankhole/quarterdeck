@@ -19,6 +19,7 @@ import {
 	EMPTY_GIT_SUMMARY,
 	errorMessage,
 	hasActiveSharedCheckoutTask,
+	hasSharedCheckoutBranchSwitchBlocker,
 	isProjectCheckoutCwd,
 	normalizeOptionalTaskScopeInput,
 	observeProjectOperation,
@@ -84,35 +85,32 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 		checkoutGitBranch: async (projectScope, input) => {
 			try {
 				const body = parseGitCheckoutRequest(input);
+				const cwd = input.taskId
+					? await resolveTaskWorkingDirectory({
+							projectPath: projectScope.projectPath,
+							taskId: input.taskId,
+							baseRef: input.baseRef ?? "",
+						})
+					: projectScope.projectPath;
 
-				if (input.taskId) {
-					const taskCwd = await resolveTaskWorkingDirectory({
-						projectPath: projectScope.projectPath,
-						taskId: input.taskId,
-						baseRef: input.baseRef ?? "",
-					});
-					const response = await runGitCheckoutAction({ cwd: taskCwd, branch: body.branch });
-					if (response.ok) {
-						invalidateProjectGitRepositoryInfo(projectScope);
-						ctx.applyEffects(createTaskGitMetadataRefreshEffects(projectScope, input.taskId, taskCwd));
-					}
-					return response;
-				}
-
-				if (await hasActiveSharedCheckoutTask(projectScope.projectPath)) {
+				if (
+					isProjectCheckoutCwd(projectScope.projectPath, cwd) &&
+					(await hasSharedCheckoutBranchSwitchBlocker(projectScope, ctx.deps.terminals))
+				) {
 					return createGitBranchErrorResponse(
 						new Error(
-							"Cannot switch branches while a task in the shared checkout is in progress or review. Isolate the task or move it to another column first.",
+							"Cannot switch branches while a task is active in the shared checkout. Wait for it to finish, stop it, or isolate it first.",
 						),
 					);
 				}
-				const response = await runGitCheckoutAction({
-					cwd: projectScope.projectPath,
-					branch: body.branch,
-				});
+				const response = await runGitCheckoutAction({ cwd, branch: body.branch });
 				if (response.ok) {
 					invalidateProjectGitRepositoryInfo(projectScope);
-					ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
+					ctx.applyEffects(
+						input.taskId
+							? createTaskGitMetadataRefreshEffects(projectScope, input.taskId, cwd)
+							: createProjectStateUpdatedEffects(projectScope),
+					);
 				}
 				return response;
 			} catch (error) {
