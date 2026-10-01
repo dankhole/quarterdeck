@@ -195,10 +195,11 @@ export function ProjectNavigationList({
 					</DropdownMenu.Root>
 				) : null}
 			</div>
+			{/* Keep clipped row text on a stable composited layer while the list scrolls. */}
 			<div
 				ref={listRef}
 				role="navigation"
-				className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-1"
+				className="flex-1 min-h-0 overflow-y-auto overscroll-contain transform-gpu px-3 py-1"
 				aria-label="Projects"
 			>
 				{projects.length === 0 && isLoadingProjects

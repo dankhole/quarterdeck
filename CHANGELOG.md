@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Stabilize project names and paths while scrolling the Projects sidebar.
+
 - Fix selected-file commits failing when deleted files are inside a newly ignored folder that still exists locally.
 
 - Preserve projects whose folders are unavailable, reconnect moved folders with Locate folder, set independent project display names, and rename project folders while retaining tasks, session history, and managed worktrees.
