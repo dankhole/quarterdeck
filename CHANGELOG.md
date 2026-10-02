@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Tighten Projects sidebar gutters and group indentation, move project action menus closer to the edge, and use subtle alternating backgrounds for group headers and project rows.
+
 - Preserve complete task worktrees and conversation identity in Trash, safely recover leftover folders from older archived tasks, and block resume when saved changes cannot be restored.
 
 - Keep new-task Codex model and reasoning selectors visible, place prompt tips on one compact row, and use larger switches for worktree and feature-branch options.

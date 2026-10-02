@@ -140,7 +140,7 @@ export function ProjectNavigationList({
 	const draggedGroup = sections.find((section) => `group:${section.id}` === dragId);
 	return (
 		<>
-			<div className="flex shrink-0 items-center px-4 pt-2 pb-1 gap-1">
+			<div className="flex shrink-0 items-center bg-white/[0.025] px-2 pt-2 pb-1 gap-1">
 				<span className="text-xs font-medium text-text-secondary flex-1">Projects</span>
 				<DropdownMenu.Root>
 					<DropdownMenu.Trigger asChild>
@@ -199,7 +199,7 @@ export function ProjectNavigationList({
 			<div
 				ref={listRef}
 				role="navigation"
-				className="flex-1 min-h-0 overflow-y-auto overscroll-contain transform-gpu px-3 py-1"
+				className="flex-1 min-h-0 overflow-y-auto overscroll-contain transform-gpu px-1 py-1"
 				aria-label="Projects"
 			>
 				{projects.length === 0 && isLoadingProjects
@@ -228,6 +228,7 @@ export function ProjectNavigationList({
 							<ProjectNavigationGroup
 								key={section.id}
 								section={section}
+								striped={index % 2 === 1}
 								currentProjectId={currentProjectId}
 								collapsed={collapse.collapsed.includes(section.id)}
 								needsInputByProject={needsInputByProject}

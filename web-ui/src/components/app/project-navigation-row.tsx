@@ -116,17 +116,11 @@ export function ProjectRow({
 					}
 				}}
 				className={cn(
-					"kb-project-row group cursor-pointer rounded-md",
+					"kb-project-row group flex items-center gap-1 pl-1 pr-0 py-1.5 cursor-pointer rounded-md",
 					!isCurrent && striped && "bg-white/[0.025]",
 					isCurrent && "kb-project-row-selected",
 					isDragging && "shadow-lg bg-surface-2 rounded-md",
 				)}
-				style={{
-					display: "flex",
-					alignItems: "center",
-					gap: 6,
-					padding: "6px 8px",
-				}}
 			>
 				{showDragHandle ? (
 					<button
@@ -205,9 +199,10 @@ export function ProjectRow({
 								size="sm"
 								icon={isRemovingProject ? <Spinner size={12} /> : <Ellipsis size={14} />}
 								disabled={actionsDisabled || managementPending || (hasAnyProjectRemoval && !isRemovingProject)}
-								className={
-									isCurrent ? "text-white hover:bg-white/20 hover:text-white active:bg-white/30" : undefined
-								}
+								className={cn(
+									"w-6 shrink-0 px-0!",
+									isCurrent && "text-white hover:bg-white/20 hover:text-white active:bg-white/30",
+								)}
 								onClick={(event) => {
 									event.stopPropagation();
 								}}
@@ -274,7 +269,7 @@ export function ProjectRow({
 
 export function ProjectRowSkeleton(): React.ReactElement {
 	return (
-		<div className="flex items-center gap-1.5" style={{ padding: "6px 8px" }}>
+		<div className="flex items-center gap-1 px-1 py-1.5">
 			<div className="flex-1 min-w-0">
 				<div className="kb-skeleton" style={{ height: 14, width: "58%", borderRadius: 3, marginBottom: 6 }} />
 				<div

@@ -13,6 +13,7 @@ export const projectMenuClass = "z-50 min-w-40 rounded-md border border-border-b
 
 export function ProjectNavigationGroup({
 	section,
+	striped = false,
 	collapsed,
 	currentProjectId,
 	needsInputByProject,
@@ -23,6 +24,7 @@ export function ProjectNavigationGroup({
 	children,
 }: {
 	section: ProjectSection;
+	striped?: boolean;
 	collapsed: boolean;
 	currentProjectId: string | null;
 	needsInputByProject: Record<string, number>;
@@ -51,12 +53,13 @@ export function ProjectNavigationGroup({
 		<section
 			ref={drag.setNodeRef}
 			aria-label={section.name}
-			className={cn("group/section mb-3", drag.isDragging && "opacity-35")}
+			className={cn("group/section mb-2", drag.isDragging && "opacity-35")}
 		>
 			<div
 				ref={drop.setNodeRef}
 				className={cn(
 					"flex items-center gap-0.5 rounded-md min-h-8 pr-1",
+					striped && !(drop.isOver && dragging) && "bg-white/[0.025]",
 					drop.isOver && dragging && "bg-accent/10 ring-1 ring-accent",
 					current && "border-l-2 border-accent",
 				)}
@@ -139,7 +142,7 @@ export function ProjectNavigationGroup({
 						))}
 				</div>
 			) : null}
-			<div id={`project-group-${section.id}`} hidden={collapsed} className="pl-3 pt-1">
+			<div id={`project-group-${section.id}`} hidden={collapsed} className="pl-1 pt-1">
 				{children}
 			</div>
 		</section>

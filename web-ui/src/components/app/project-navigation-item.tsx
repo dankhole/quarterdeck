@@ -16,7 +16,7 @@ export function ProjectNavigationItem({
 				drop.setNodeRef(element);
 			}}
 			className={cn(
-				"relative mb-1",
+				"relative mb-0.5",
 				drag.isDragging && "opacity-35",
 				drop.isOver &&
 					!drag.isDragging &&
