@@ -9,7 +9,6 @@ import {
 	type ConversationTaskSessionResolver,
 	createConversationReadService,
 } from "../conversation/index.js";
-import { DEFAULT_CONVERSATION_READ_LIMITS } from "../conversation/limits";
 import type { IRuntimeHostIntegrations, RuntimeProjectStateResponse } from "../core";
 import {
 	areFileSystemPathsEqual,
@@ -198,22 +197,11 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		hints: conversationSourceHints,
 	});
 	const progressPreviews = createTaskProgressPreview({
-		hasSource: (projectId, taskId, sessionId) =>
-			Boolean(conversationSourceHints.getHint(projectId, taskId, sessionId)),
-		reads: createConversationReadService({
-			sessions: createRuntimeConversationTaskSessionResolver(deps.projectRegistry),
-			hints: conversationSourceHints,
-			limits: {
-				...DEFAULT_CONVERSATION_READ_LIMITS,
-				maxSourceBytes: 128 * 1024,
-				maxRecords: 256,
-				maxRawRecordBytes: 64 * 1024,
-				maxMessageBytes: 2 * 1024,
-				maxResponseBytes: 4 * 1024,
-				maxLookupEntries: 0,
-				deadlineMs: 100,
-			},
-		}),
+		hints: conversationSourceHints,
+		isCurrentStore: (projectId, store) =>
+			deps.projectRegistry
+				.listManagedProjects()
+				.some((project) => project.projectId === projectId && project.terminalManager.store === store),
 	});
 	const executionOwnershipStore = new ProjectExecutionOwnershipStore();
 	const codexStructuredOwners = new CodexStructuredOwnerRegistry({

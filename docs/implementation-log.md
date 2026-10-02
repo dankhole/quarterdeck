@@ -1,5 +1,15 @@
 # Implementation Log
 
+## 2026-10-01 — Grid progress survives noisy agent transcripts
+
+Read-only diagnostics showed that the Data task entered Running correctly while its grid card retained the previous completed response. The first preview read preceded the new commentary and consumed a 30-second cooldown. By the next eligible read, tool output had pushed the commentary about 110 KiB behind the transcript end; the 128 KiB reader budget had already spent 64 KiB reading the session header, so its remaining tail could not reach the message.
+
+Progress tracking now separates bounded forward transcript reads from the active-session scheduling policy. After a bounded recent bootstrap, it retains a cursor and follows appended records instead of repeatedly searching backward. Exact provider source validation and launch/turn/store fences remain mandatory; transcript content can update only `progressMessage`, never lifecycle state. Running cards show current progress or “Working…” and keep the retained completion under “Previous response.” No conversation history or provider resume identity is rewritten.
+
+Parallel branch and code-smell reviews identified same-inode transcript rewrites hidden by repetitive output, unread prior-turn rollback records blocking the next turn, and retained cursors pinning discarded session stores. Bounded assistant-record fingerprints, timestamp-aware rollback handling, and weak store ownership address those cases without changing lifecycle authority.
+
+Validation: 32 focused runtime/filesystem tests and 36 focused UI tests passed; the corrected UI fixture passed its 11-test suite again. Runtime and web typechecks, the production build, changed-file Biome, and diff checks passed. Both review follow-ups found no remaining substantive findings. Fake Agent Lab `grid-progress-20261001T232837Z-cd2c87` verified the expanded previous-response layout; the final-code run `grid-progress-final-20261002T013237Z-bca419` verified progress surviving a 341 KiB synthetic append without a hook, retention through further tool-only output, completion, and the next-turn placeholder. The checkpoint doctor and forbidden-host-launch log were empty. Both lab runs stopped cleanly; no real provider was launched or active user runtime changed.
+
 ## 2026-10-01 — Recoverable Trash and legacy worktree leftovers
 
 Read-only incident inspection found a completed Trash operation followed less than a second later by a recreated `.gradle` directory without a Git registration, consistent with a background daemon writing after deletion. The original task branch and provider conversation survived. The registration guard correctly blocked that leftover folder; weakening the guard or deleting the folder would risk discarding additional work.

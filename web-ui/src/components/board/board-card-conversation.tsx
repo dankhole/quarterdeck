@@ -1,5 +1,6 @@
+import * as Collapsible from "@radix-ui/react-collapsible";
 import { canSendTaskQuickReply, deriveTaskIndicatorState, TASK_QUICK_REPLY_MAX_LENGTH } from "@runtime-contract";
-import { MessageSquare, Send, X } from "lucide-react";
+import { ChevronRight, MessageSquare, Send, X } from "lucide-react";
 import { type ReactNode, useCallback, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -148,16 +149,14 @@ export function BoardCardConversation({
 }): React.ReactElement {
 	const latest = card.unstarted ? undefined : summary?.conversationSummaries?.at(-1);
 	const finalMessage = card.unstarted ? undefined : summary?.latestHookActivity?.finalMessage?.slice(0, 500);
-	const progress =
-		!card.unstarted && summary && deriveTaskIndicatorState(summary).publicStatus === "running"
-			? summary.progressMessage
-			: null;
+	const running = !card.unstarted && summary && deriveTaskIndicatorState(summary).publicStatus === "running";
+	const completedResponse = finalMessage || latest?.text || (!card.unstarted && summary?.displaySummary);
 	const text = (
-		progress ||
-		finalMessage ||
-		latest?.text ||
-		(!card.unstarted && summary?.displaySummary) ||
-		card.prompt
+		running
+			? summary.progressMessage?.trim()
+				? summary.progressMessage
+				: "Working…"
+			: completedResponse || card.prompt
 	).slice(0, 500);
 	return (
 		<>
@@ -165,6 +164,23 @@ export function BoardCardConversation({
 				<p className="m-0 line-clamp-6 whitespace-pre-wrap break-words text-xs leading-[18px] text-text-primary/90">
 					{text || "No response yet. Open the agent to follow its progress."}
 				</p>
+				{running && completedResponse ? (
+					<Collapsible.Root
+						className="mt-2 border-t border-border pt-1.5"
+						onClick={(event) => event.stopPropagation()}
+						onDoubleClick={(event) => event.stopPropagation()}
+					>
+						<Collapsible.Trigger className="group flex items-center gap-1 rounded-sm text-xs text-text-secondary hover:text-text-primary focus-visible:outline-2 focus-visible:outline-border-focus">
+							<ChevronRight size={12} aria-hidden className="group-data-[state=open]:rotate-90" />
+							Previous response
+						</Collapsible.Trigger>
+						<Collapsible.Content>
+							<p className="mb-0 mt-1.5 line-clamp-6 whitespace-pre-wrap break-words text-xs leading-[18px] text-text-secondary">
+								{completedResponse.slice(0, 500)}
+							</p>
+						</Collapsible.Content>
+					</Collapsible.Root>
+				) : null}
 			</div>
 			<div
 				className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-1.5"

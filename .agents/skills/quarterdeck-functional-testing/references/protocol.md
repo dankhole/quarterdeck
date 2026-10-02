@@ -38,6 +38,7 @@ Interactive terminal commands:
 - `/stale-run` — for Pi, replay the last settled run identity through `agent_start`; the provider-order fence must reject it without changing Review state.
 - `/fail-next-resume` — for Pi, persist a disposable one-shot marker, crash the current process, and make the exact automatic targeted replacement fail; use it to verify typed recovery failure without prompt replay.
 - `/working [message]` — send `PostToolUse` and transition to running.
+- `/progress [message]` — append a synthetic Codex assistant message to its transcript and emit an activity hook for grid-preview checks.
 - `/review [message]` — send root `Stop` with final-message metadata.
 - `/write <relative-path> <contents>` — write inside the disposable task checkout; absolute paths and escapes are rejected.
 - `/commit [message]` — stage and commit all disposable changes.

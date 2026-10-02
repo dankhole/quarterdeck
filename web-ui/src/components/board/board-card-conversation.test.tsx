@@ -16,6 +16,12 @@ const ready = createTestTaskSessionSummary({
 	sessionInstanceId: "launch-1",
 	latestHookActivity: { finalMessage: "The updated layout is ready." },
 });
+const running = {
+	...ready,
+	state: "running" as const,
+	reviewReason: null,
+	nativeWorkEvidence: createTestTaskNativeWorkEvidence({ sessionInstanceId: "launch-1" }),
+};
 
 describe("board card conversation", () => {
 	let root: Root;
@@ -62,25 +68,51 @@ describe("board card conversation", () => {
 		expect(container.textContent).toContain("Older response");
 		expect(container.querySelector("time")).toBeNull();
 	});
-	it("shows progress only while running and returns to the completed response in Review", async () => {
+	it("replaces the running placeholder with current progress and returns to the completed response in Review", async () => {
 		const render = async (summary: RuntimeTaskSessionSummary) =>
 			act(async () => root.render(<BoardCardConversation card={card} columnId="in_progress" summary={summary} />));
-		const running = {
-			...ready,
-			state: "running" as const,
-			reviewReason: null,
-			nativeWorkEvidence: createTestTaskNativeWorkEvidence({ sessionInstanceId: "launch-1" }),
-			progressMessage: "Checking the remaining keyboard shortcuts.",
-		};
+		const progressMessage = "Checking the remaining keyboard shortcuts.";
 		await render(running);
-		expect(container.querySelector("p")?.textContent).toBe(running.progressMessage);
-		await render({ ...ready, progressMessage: running.progressMessage });
+		expect(container.querySelector("p")?.textContent).toBe("Working…");
+		await render({ ...running, progressMessage });
+		expect(container.querySelector("p")?.textContent).toBe(progressMessage);
+		expect(container.textContent).not.toContain("The updated layout is ready.");
+		await render({ ...ready, progressMessage });
 		expect(container.querySelector("p")?.textContent).toBe("The updated layout is ready.");
-		await render({ ...running, progressMessage: null });
-		expect(container.querySelector("p")?.textContent).toBe("The updated layout is ready.");
+		expect(container.querySelector("[aria-expanded]")).toBeNull();
 	});
-	it("keeps the retained response beyond the short display summary when the next turn starts", async () => {
-		const response = "The latest completed response has more detail than a short synopsis. ".repeat(6).trim();
+	it.each([undefined, null, "", "   "])(
+		"keeps the previous final response behind an accessible disclosure when running progress is %s",
+		async (progressMessage) => {
+			const openTask = vi.fn();
+			await act(async () =>
+				root.render(
+					<div onClick={openTask} onDoubleClick={openTask}>
+						<BoardCardConversation card={card} columnId="in_progress" summary={{ ...running, progressMessage }} />
+					</div>,
+				),
+			);
+			expect(container.querySelector("p")?.textContent).toBe("Working…");
+			expect(container.textContent).not.toContain("The updated layout is ready.");
+			expect(container.textContent).not.toContain(card.prompt);
+			const trigger = container.querySelector<HTMLButtonElement>('button[aria-expanded="false"]');
+			expect(trigger?.textContent).toBe("Previous response");
+			expect(trigger?.type).toBe("button");
+			await act(async () => trigger?.click());
+			expect(trigger?.getAttribute("aria-expanded")).toBe("true");
+			const contentId = trigger?.getAttribute("aria-controls");
+			expect(contentId).toBeTruthy();
+			expect(document.getElementById(contentId!)?.textContent).toBe("The updated layout is ready.");
+			await act(async () => trigger?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+			expect(openTask).not.toHaveBeenCalled();
+			expect(container.querySelector("p")?.textContent).toBe("Working…");
+			await act(async () => trigger?.click());
+			expect(trigger?.getAttribute("aria-expanded")).toBe("false");
+			expect(container.textContent).not.toContain("The updated layout is ready.");
+		},
+	);
+	it("keeps the retained response beyond the short display summary separately when the next turn starts", async () => {
+		const response = "The latest completed response has more detail than a short synopsis. ".repeat(10).trim();
 		const summary = {
 			...ready,
 			conversationSummaries: [
@@ -98,18 +130,58 @@ describe("board card conversation", () => {
 				/>,
 			),
 		);
-		expect(container.querySelector("p")?.textContent).toBe(response);
+		expect(container.querySelector("p")?.textContent).toBe(response.slice(0, 500));
 		await act(async () =>
 			root.render(
 				<BoardCardConversation
 					card={card}
 					columnId="in_progress"
-					summary={{ ...summary, state: "running", latestHookActivity: null }}
+					summary={{
+						...summary,
+						state: "running",
+						reviewReason: null,
+						nativeWorkEvidence: running.nativeWorkEvidence,
+						latestHookActivity: null,
+					}}
 				/>,
 			),
 		);
-		expect(container.querySelector("p")?.textContent).toBe(response);
+		expect(container.querySelector("p")?.textContent).toBe("Working…");
+		expect(container.textContent).not.toContain(response);
+		await act(async () => container.querySelector<HTMLButtonElement>("button[aria-expanded]")?.click());
+		expect(container.querySelectorAll("p")[1]?.textContent).toBe(response.slice(0, 500));
 		expect(container.textContent).not.toContain("Older response");
+	});
+	it("shows the running placeholder without a disclosure when there is no previous response", async () => {
+		await act(async () =>
+			root.render(
+				<BoardCardConversation
+					card={card}
+					columnId="in_progress"
+					summary={{ ...running, latestHookActivity: null }}
+				/>,
+			),
+		);
+		expect(container.querySelector("p")?.textContent).toBe("Working…");
+		expect(container.querySelector("button[aria-expanded]")).toBeNull();
+		expect(container.textContent).not.toContain(card.prompt);
+	});
+	it("keeps unstarted cards on the original prompt even when old runtime messages exist", async () => {
+		await act(async () =>
+			root.render(
+				<BoardCardConversation
+					card={{ ...card, unstarted: true }}
+					columnId="in_progress"
+					summary={{ ...running, progressMessage: "Current progress", displaySummary: "Old synopsis" }}
+				/>,
+			),
+		);
+		expect(container.querySelector("p")?.textContent).toBe(card.prompt);
+		expect(container.querySelector("button[aria-expanded]")).toBeNull();
+		expect(container.textContent).toContain("Ready when you are");
+		expect(container.textContent).not.toContain("Current progress");
+		expect(container.textContent).not.toContain("The updated layout is ready.");
+		expect(container.textContent).not.toContain("Old synopsis");
 	});
 	it("keeps a draft across navigation and readiness changes, and submits only explicitly to the current launch", async () => {
 		const drafts = new BoardReplyDrafts();

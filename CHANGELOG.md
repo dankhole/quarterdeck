@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Follow new agent messages incrementally so tool output cannot bury grid progress updates, show “Working…” while a new turn awaits its first update, and keep the previous response separately expandable.
+
 - Tighten Projects sidebar gutters and group indentation, move project action menus closer to the edge, and use subtle alternating backgrounds for group headers and project rows.
 
 - Preserve complete task worktrees and conversation identity in Trash, safely recover leftover folders from older archived tasks, and block resume when saved changes cannot be restored.

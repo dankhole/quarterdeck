@@ -11,6 +11,11 @@ export {
 	conversationReadRequestSchema,
 } from "./contracts.js";
 export {
+	type ConversationProgressCursor,
+	type ConversationProgressReadResult,
+	createConversationProgressCursor,
+} from "./conversation-progress-cursor.js";
+export {
 	type ConversationReadService,
 	type CreateConversationReadServiceInput,
 	createConversationReadService,
