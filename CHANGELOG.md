@@ -24,6 +24,8 @@
 
 - Recognize Codex's updated folder-trust startup screen in managed tasks, with confirmation fenced to the current launch, selection, and unchanged terminal output.
 
+- Move Codex tasks to Review when a model-capacity failure returns the agent to its input prompt, instead of leaving them marked Running.
+
 - Follow new agent messages incrementally so tool output cannot bury grid progress updates, show “Working…” while a new turn awaits its first update, and keep the previous response separately expandable.
 
 - Tighten Projects sidebar gutters and group indentation, move project action menus closer to the edge, and use subtle alternating backgrounds for group headers and project rows.

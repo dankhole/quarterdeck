@@ -1479,7 +1479,14 @@ describe("TerminalSessionManager ordering invariants", () => {
 	});
 
 	describe("onData transition-before-broadcast ordering", () => {
-		it("keeps a newer provider-confirmed turn Running across a redraw with historical interruption text", async () => {
+		it.each([
+			{
+				result: "interruption",
+				message:
+					"■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/feedback` to report the issue.",
+			},
+			{ result: "capacity failure", message: "■ Selected model is at capacity. Please try a different model." },
+		])("keeps a newer provider-confirmed turn Running across historical $result text", async ({ message }) => {
 			const detector = createCodexTurnInterruptionDetector();
 			prepareAgentLaunchMock.mockImplementation(async (input: { args: string[]; binary?: string }) => ({
 				binary: input.binary,
@@ -1490,7 +1497,10 @@ describe("TerminalSessionManager ordering invariants", () => {
 			}));
 			const spawnedSessions = setupMockPtySpawn();
 			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
-			manager.attach("task-interruption-redraw", { onOutput: () => undefined });
+			const statesSeenInOnOutput: Array<string | undefined> = [];
+			manager.attach("task-interruption-redraw", {
+				onOutput: () => statesSeenInOnOutput.push(manager.store.getSummary("task-interruption-redraw")?.state),
+			});
 
 			await manager.startTaskSession({
 				taskId: "task-interruption-redraw",
@@ -1519,15 +1529,14 @@ describe("TerminalSessionManager ordering invariants", () => {
 			});
 			expect(manager.store.getSummary("task-interruption-redraw")?.state).toBe("running");
 
-			spawnedSessions[0]?.triggerData(
-				"\u001b[2J\u001b[H■ Conversation interrupted - tell the model what to do differently. " +
-					"Something went wrong? Hit `/feedback` to report the issue.\r\n\r\n› Ask Codex to do anything",
-			);
+			spawnedSessions[0]?.triggerData(`\u001b[2J\u001b[H${message}\r\n\r\n› Ask Codex to do anything`);
 			await vi.advanceTimersByTimeAsync(1);
 			expect(manager.store.getSummary("task-interruption-redraw")).toMatchObject({
 				state: "awaiting_review",
 				reviewReason: "interrupted",
+				nativeWorkEvidence: null,
 			});
+			expect(statesSeenInOnOutput).toEqual(["awaiting_review"]);
 
 			manager.applyProviderHook("task-interruption-redraw", {
 				taskId: "task-interruption-redraw",
@@ -1547,8 +1556,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 			expect(manager.store.getSummary("task-interruption-redraw")?.state).toBe("running");
 
 			spawnedSessions[0]?.triggerData(
-				"\u001b[2J\u001b[H■ Conversation interrupted - tell the model what to do differently. " +
-					"Something went wrong? Hit `/feedback` to report the issue.\r\n\r\n" +
+				`\u001b[2J\u001b[H${message}\r\n\r\n` +
 					"› Ask Codex to do anything\r\n\r\n• Working on the follow-up\r\n" +
 					"  └ Read src/terminal/session-state-machine.ts\r\n\r\n" +
 					"  Tip: Use /fast to enable our fastest inference with increased plan usage.\r\n\r\n" +
@@ -1560,10 +1568,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 				reviewReason: null,
 			});
 
-			spawnedSessions[0]?.triggerData(
-				"\u001b[2J\u001b[H■ Conversation interrupted - tell the model what to do differently. " +
-					"Something went wrong? Hit `/feedback` to report the issue.\r\n\r\n› Ask Codex to do anything",
-			);
+			spawnedSessions[0]?.triggerData(`\u001b[2J\u001b[H${message}\r\n\r\n› Ask Codex to do anything`);
 			await vi.advanceTimersByTimeAsync(1);
 			expect(manager.store.getSummary("task-interruption-redraw")).toMatchObject({
 				state: "awaiting_review",

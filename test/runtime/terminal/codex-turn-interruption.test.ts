@@ -34,8 +34,11 @@ const interruptionWithTipScreen = screen([
 	"",
 	...interruptionScreen.lines.slice(4),
 ]);
+const capacityMessage = "■ Selected model is at capacity. Please try a different model.";
+const capacityScreen = screen([capacityMessage, "", "› Ask Codex to do anything", "gpt-6-astra high"]);
+const capacityWithTipScreen = screen([capacityMessage, "", composerTip, "", "› Ask Codex to do anything"]);
 
-describe("Codex rendered turn interruption", () => {
+describe("Codex rendered turn failure", () => {
 	it("recognizes the complete interruption result followed by the Codex input prompt", () => {
 		expect(isCodexTurnInterruptedScreen(interruptionScreen)).toBe(true);
 	});
@@ -124,11 +127,70 @@ describe("Codex rendered turn interruption", () => {
 		).toBe(false);
 	});
 
+	it.each([
+		capacityScreen,
+		capacityWithTipScreen,
+		screen(["■ Selected model is at capacity.", "  Please try a different model.", "", "› Ask Codex to do anything"]),
+	])("recognizes the complete model-capacity failure at the current composer: %j", (snapshot) => {
+		expect(isCodexTurnInterruptedScreen(snapshot)).toBe(true);
+	});
+
+	it.each([
+		["■ Selected model is at capacity.", "", composerTip, "", "› Ask Codex to do anything"],
+		[
+			'const message = "■ Selected model is at capacity. Please try a different model.";',
+			"› Ask Codex to do anything",
+		],
+		[`> ${capacityMessage}`, "› Ask Codex to do anything"],
+		[`${capacityMessage} More output.`, "› Ask Codex to do anything"],
+		["Selected model is at capacity. Please try a different model.", "› Ask Codex to do anything"],
+		[capacityMessage],
+		["› Ask Codex to do anything", capacityMessage],
+		["■ Selected", "model is", "at capacity.", "Please try", "a different", "model.", "› Ask Codex to do anything"],
+	])("rejects incomplete, quoted, unanchored, or excessively wrapped capacity text: %j", (...lines) => {
+		expect(isCodexTurnInterruptedScreen(screen(lines))).toBe(false);
+	});
+
+	it.each([
+		["• Working on the follow-up", "", composerTip],
+		["A newer assistant response."],
+		[composerTip, "A newer assistant response."],
+		[composerTip, "", composerTip],
+		["Tip:"],
+	])("keeps historical capacity text inert beneath newer result or chrome rows: %j", (...interveningRows) => {
+		expect(
+			isCodexTurnInterruptedScreen(
+				screen([capacityMessage, "", ...interveningRows, "", "› Ask Codex to do anything"]),
+			),
+		).toBe(false);
+	});
+
+	it("anchors capacity failures to the newest composer", () => {
+		expect(
+			isCodexTurnInterruptedScreen(
+				screen([
+					...capacityScreen.lines.slice(0, 3),
+					"",
+					"• Working on the follow-up",
+					"",
+					composerTip,
+					"",
+					"› Ask Codex to do anything",
+				]),
+			),
+		).toBe(false);
+	});
+});
+
+describe.each([
+	{ result: "interruption", snapshot: interruptionScreen, snapshotWithTip: interruptionWithTipScreen },
+	{ result: "capacity failure", snapshot: capacityScreen, snapshotWithTip: capacityWithTipScreen },
+])("Codex rendered $result transitions", ({ snapshot, snapshotWithTip }) => {
 	it("emits a conservative transition while the task claims Running", () => {
 		const detector = createCodexTurnInterruptionDetector();
-		expect(
-			detector.detect(interruptionScreen, createTestTaskSessionSummary({ state: "running", agentId: "codex" })),
-		).toEqual({ type: "agent.rendered-turn-interrupted" });
+		expect(detector.detect(snapshot, createTestTaskSessionSummary({ state: "running", agentId: "codex" }))).toEqual({
+			type: "agent.rendered-turn-interrupted",
+		});
 	});
 
 	it.each(["waiting", "response_submitted"] as const)(
@@ -137,7 +199,7 @@ describe("Codex rendered turn interruption", () => {
 			const detector = createCodexTurnInterruptionDetector();
 			expect(
 				detector.detect(
-					interruptionWithTipScreen,
+					snapshotWithTip,
 					createTestTaskSessionSummary({
 						state: "awaiting_review",
 						agentId: "codex",
@@ -159,7 +221,7 @@ describe("Codex rendered turn interruption", () => {
 		const ordinaryReviewDetector = createCodexTurnInterruptionDetector();
 		expect(
 			ordinaryReviewDetector.detect(
-				interruptionScreen,
+				snapshot,
 				createTestTaskSessionSummary({ state: "awaiting_review", agentId: "codex" }),
 			),
 		).toBeNull();
@@ -167,7 +229,7 @@ describe("Codex rendered turn interruption", () => {
 		const claudeWaitDetector = createCodexTurnInterruptionDetector();
 		expect(
 			claudeWaitDetector.detect(
-				interruptionScreen,
+				snapshot,
 				createTestTaskSessionSummary({
 					state: "awaiting_review",
 					agentId: "claude",
@@ -177,26 +239,23 @@ describe("Codex rendered turn interruption", () => {
 		).toBeNull();
 	});
 
-	it("does not replay the same rendered interruption after a provider hook until the screen clears", () => {
+	it("does not replay the same rendered failure after a provider hook until the screen clears", () => {
 		const detector = createCodexTurnInterruptionDetector();
 		const running = createTestTaskSessionSummary({ state: "running", agentId: "codex" });
-		expect(detector.detect(interruptionScreen, running)).toEqual({ type: "agent.rendered-turn-interrupted" });
-		expect(detector.detect(interruptionWithTipScreen, running)).toBeNull();
-		expect(detector.detect(interruptionScreen, running)).toBeNull();
+		expect(detector.detect(snapshot, running)).toEqual({ type: "agent.rendered-turn-interrupted" });
+		expect(detector.detect(snapshotWithTip, running)).toBeNull();
+		expect(detector.detect(snapshot, running)).toBeNull();
 		expect(detector.detect(screen(["Working on the next turn"]), running)).toBeNull();
-		expect(detector.detect(interruptionScreen, running)).toEqual({ type: "agent.rendered-turn-interrupted" });
+		expect(detector.detect(snapshot, running)).toEqual({ type: "agent.rendered-turn-interrupted" });
 	});
 
-	it("latches an ineligible visible interruption so it cannot defeat a later working hook", () => {
+	it("latches an ineligible visible failure so it cannot defeat a later working hook", () => {
 		const detector = createCodexTurnInterruptionDetector();
 		expect(
-			detector.detect(
-				interruptionScreen,
-				createTestTaskSessionSummary({ state: "awaiting_review", agentId: "codex" }),
-			),
+			detector.detect(snapshot, createTestTaskSessionSummary({ state: "awaiting_review", agentId: "codex" })),
 		).toBeNull();
 		expect(
-			detector.detect(interruptionScreen, createTestTaskSessionSummary({ state: "running", agentId: "codex" })),
+			detector.detect(snapshot, createTestTaskSessionSummary({ state: "running", agentId: "codex" })),
 		).toBeNull();
 	});
 });

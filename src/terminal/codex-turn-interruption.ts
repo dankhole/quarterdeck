@@ -2,35 +2,39 @@ import type { RuntimeTaskSessionSummary } from "../core";
 import { canApplyCodexRenderedTurnInterruption, type SessionTransitionEvent } from "./session-state-machine";
 import type { TerminalScreenSnapshot } from "./terminal-state-mirror";
 
-const INTERRUPTION_MESSAGE =
-	"■ conversation interrupted - tell the model what to do differently. something went wrong? hit `/feedback` to report the issue.";
+const TURN_FAILURE_MESSAGES = [
+	"■ conversation interrupted - tell the model what to do differently. something went wrong? hit `/feedback` to report the issue.",
+	"■ selected model is at capacity. please try a different model.",
+] as const;
 const INPUT_PROMPT = "› ask codex to do anything";
-const MAX_WRAPPED_INTERRUPTION_ROWS = 5;
+const MAX_WRAPPED_FAILURE_ROWS = 5;
 
 function normalizeLine(line: string): string {
 	return line.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-function hasCompleteInterruptionEndingAt(lines: readonly string[], expectedEnd: number): boolean {
-	const firstPossibleStart = Math.max(0, expectedEnd - MAX_WRAPPED_INTERRUPTION_ROWS + 1);
+function hasCompleteTurnFailureEndingAt(lines: readonly string[], expectedEnd: number): boolean {
+	const firstPossibleStart = Math.max(0, expectedEnd - MAX_WRAPPED_FAILURE_ROWS + 1);
 	for (let start = firstPossibleStart; start <= expectedEnd; start += 1) {
 		const first = normalizeLine(lines[start] ?? "");
-		if (!first.startsWith("■ conversation interrupted -")) continue;
+		if (!first.startsWith("■ ")) continue;
+		const message = TURN_FAILURE_MESSAGES.find((failure) => failure.startsWith(first));
+		if (!message) continue;
 		let candidate = "";
 		for (let end = start; end <= expectedEnd; end += 1) {
 			const fragment = normalizeLine(lines[end] ?? "");
 			if (!fragment) break;
 			candidate = `${candidate} ${fragment}`.trim();
-			if (candidate === INTERRUPTION_MESSAGE) return end === expectedEnd;
-			if (!INTERRUPTION_MESSAGE.startsWith(candidate)) break;
+			if (candidate === message) return end === expectedEnd;
+			if (!message.startsWith(candidate)) break;
 		}
 	}
 	return false;
 }
 
 /**
- * Recognizes Codex's rendered interrupted-turn result after it has returned to
- * its input prompt without emitting a native Stop hook. Both the complete
+ * Recognizes Codex's supported rendered turn failures after it has returned to
+ * its input prompt without emitting a native terminal hook. Both the complete
  * provider-owned failure text and the later canonical input prompt are
  * required in the visible viewport so transcript/source text cannot become a
  * general lifecycle signal.
@@ -48,10 +52,10 @@ export function isCodexTurnInterruptedScreen(screen: TerminalScreenSnapshot): bo
 	}
 	if (inputPromptIndex < 0) return false;
 
-	// The interruption must be the current terminal result immediately above
+	// The failure must be the current terminal result immediately above
 	// the active composer. Codex 0.157 can insert one Tip: chrome row here; skip
 	// only that adjacent row, never arbitrary transcript, status, or tip blocks.
-	// Historical interruption text above a newer result remains inert.
+	// Historical failure text above a newer result remains inert.
 	let interruptionEnd = inputPromptIndex - 1;
 	let skippedComposerTip = false;
 	while (interruptionEnd >= 0) {
@@ -67,7 +71,7 @@ export function isCodexTurnInterruptedScreen(screen: TerminalScreenSnapshot): bo
 		}
 		break;
 	}
-	return interruptionEnd >= 0 && hasCompleteInterruptionEndingAt(screen.lines, interruptionEnd);
+	return interruptionEnd >= 0 && hasCompleteTurnFailureEndingAt(screen.lines, interruptionEnd);
 }
 
 /** This compatibility evidence may only remove Running or a current Codex permission wait; it never asserts work. */
