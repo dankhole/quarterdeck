@@ -5,12 +5,14 @@ import App from "@/App";
 import { AppErrorBoundary } from "@/components/app";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { initializeBrowserDiagnostics, recordBrowserLog } from "@/diagnostics";
+import { registerBrowserServiceWorker } from "@/service-worker-registration";
 import { installGlobalErrorCapture, setGlobalErrorCallback } from "@/utils/global-error-capture";
 import "@/styles/globals.css";
 
 initializeBrowserDiagnostics();
 setGlobalErrorCallback(recordBrowserLog);
 installGlobalErrorCapture();
+void registerBrowserServiceWorker();
 
 const root = document.getElementById("root");
 if (!root) {

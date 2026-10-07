@@ -3,6 +3,7 @@ import { chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "no
 import { dirname, join } from "node:path";
 import type { LockOptions } from "proper-lockfile";
 import * as lockfile from "proper-lockfile";
+import { assertRuntimeWriteAdmission, withRuntimeWriteOperation } from "../state/runtime-write-admission.js";
 import { isNodeError } from "./node-error";
 import { removeDirectoryWithRetries } from "./remove-path";
 
@@ -43,6 +44,8 @@ interface NormalizedLockRequest {
 
 export interface AtomicTextWriteOptions {
 	lock?: LockRequest | null;
+	/** Source-owner paths for effects such as publishing backups outside the state home. */
+	admissionPaths?: readonly string[];
 	executable?: boolean;
 	mode?: number;
 }
@@ -113,6 +116,7 @@ export class LockedFileSystem {
 	constructor(private readonly platform: NodeJS.Platform = process.platform) {}
 
 	private async normalizeLockRequest(request: LockRequest): Promise<NormalizedLockRequest> {
+		assertRuntimeWriteAdmission(request.path);
 		if (request.type === "directory") {
 			await mkdir(request.path, { recursive: true });
 			const lockfilePath = request.lockfilePath ?? join(request.path, request.lockfileName ?? ".lock");
@@ -137,6 +141,13 @@ export class LockedFileSystem {
 	}
 
 	async withLocks<T>(requests: readonly LockRequest[], operation: () => Promise<T>): Promise<T> {
+		return await withRuntimeWriteOperation(
+			requests.map((request) => request.path),
+			async () => await this.withLocksAdmitted(requests, operation),
+		);
+	}
+
+	private async withLocksAdmitted<T>(requests: readonly LockRequest[], operation: () => Promise<T>): Promise<T> {
 		const normalizedRequests = await Promise.all(
 			requests.map(async (request) => await this.normalizeLockRequest(request)),
 		);
@@ -157,8 +168,10 @@ export class LockedFileSystem {
 		const releases: Array<() => Promise<void>> = [];
 		try {
 			for (const request of uniqueRequests) {
+				assertRuntimeWriteAdmission(request.path);
 				releases.push(await lockfile.lock(request.path, request.options));
 			}
+			for (const request of uniqueRequests) assertRuntimeWriteAdmission(request.path);
 			return await operation();
 		} finally {
 			for (const release of releases.reverse()) {
@@ -168,6 +181,10 @@ export class LockedFileSystem {
 	}
 
 	async writeTextFileAtomic(path: string, content: string, options: AtomicTextWriteOptions = {}): Promise<void> {
+		const admissionPaths = [path, ...(options.admissionPaths ?? [])];
+		const assertAdmission = () => {
+			for (const admissionPath of admissionPaths) assertRuntimeWriteAdmission(admissionPath);
+		};
 		const lockRequest: LockRequest | null =
 			options.lock === undefined
 				? {
@@ -175,29 +192,35 @@ export class LockedFileSystem {
 						type: "file" as const,
 					}
 				: options.lock;
-		const writeOperation = async () => {
-			const existingContent = await readFileIfExists(path);
-			if (existingContent === content) {
+		const writeOperation = async () =>
+			await withRuntimeWriteOperation(admissionPaths, async () => {
+				const existingContent = await readFileIfExists(path);
+				if (existingContent === content) {
+					assertAdmission();
+					if (options.executable && this.platform !== "win32") {
+						await chmod(path, 0o755);
+					} else if (options.mode !== undefined && this.platform !== "win32") {
+						await chmod(path, options.mode);
+					}
+					return;
+				}
+				assertAdmission();
+				await mkdir(dirname(path), { recursive: true });
+				const tempPath = `${path}.tmp.${process.pid}.${Date.now()}.${randomUUID()}`;
+				assertAdmission();
+				await writeFile(tempPath, content, {
+					encoding: "utf8",
+					...(options.mode !== undefined && this.platform !== "win32" ? { mode: options.mode } : {}),
+				});
+				assertAdmission();
+				await rename(tempPath, path);
+				assertAdmission();
 				if (options.executable && this.platform !== "win32") {
 					await chmod(path, 0o755);
 				} else if (options.mode !== undefined && this.platform !== "win32") {
 					await chmod(path, options.mode);
 				}
-				return;
-			}
-			await mkdir(dirname(path), { recursive: true });
-			const tempPath = `${path}.tmp.${process.pid}.${Date.now()}.${randomUUID()}`;
-			await writeFile(tempPath, content, {
-				encoding: "utf8",
-				...(options.mode !== undefined && this.platform !== "win32" ? { mode: options.mode } : {}),
 			});
-			await rename(tempPath, path);
-			if (options.executable && this.platform !== "win32") {
-				await chmod(path, 0o755);
-			} else if (options.mode !== undefined && this.platform !== "win32") {
-				await chmod(path, options.mode);
-			}
-		};
 		if (lockRequest) {
 			await this.withLock(lockRequest, writeOperation);
 			return;
@@ -215,6 +238,7 @@ export class LockedFileSystem {
 
 	async removePath(path: string, options: { lock: LockRequest; recursive?: boolean; force?: boolean }): Promise<void> {
 		await this.withLock(options.lock, async () => {
+			assertRuntimeWriteAdmission(path);
 			await rm(path, {
 				recursive: options.recursive,
 				force: options.force,

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { open, readFile, unlink } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,146 +13,11 @@ import { terminateProcessTree } from "./process-tree.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
 const nodeBinary = process.execPath;
-// Dogfood can run multiple wrapper processes at once. Exactly one wrapper should
-// own shutdown cleanup, while all others launch Quarterdeck with
-// --skip-shutdown-cleanup. We elect that owner with an exclusive lock file in
-// the OS temp directory. If the recorded owner PID is no longer alive, the lock
-// is treated as stale and recovered so the next run can become owner.
-const cleanupOwnerLockPath = resolve(tmpdir(), "quarterdeck-dogfood-cleanup-owner.lock");
 
 function printHelp() {
 	console.log(
 		"Usage: npm run dogfood -- [--project <path>] [--port <number|auto>] [--no-open] [--skip-build]",
 	);
-}
-
-function isErrnoException(error) {
-	return typeof error === "object" && error !== null && "code" in error;
-}
-
-function isProcessAlive(pid) {
-	if (!Number.isInteger(pid) || pid <= 0) {
-		return false;
-	}
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch (error) {
-		if (isErrnoException(error)) {
-			if (error.code === "EPERM") {
-				return true;
-			}
-			if (error.code === "ESRCH") {
-				return false;
-			}
-		}
-		return false;
-	}
-}
-
-function parseCleanupOwnerRecord(raw) {
-	try {
-		const parsed = JSON.parse(raw);
-		if (
-			typeof parsed === "object" &&
-			parsed !== null &&
-			typeof parsed.pid === "number" &&
-			Number.isInteger(parsed.pid) &&
-			parsed.pid > 0 &&
-			typeof parsed.token === "string" &&
-			parsed.token.length > 0
-		) {
-			return {
-				pid: parsed.pid,
-				token: parsed.token,
-			};
-		}
-	} catch {}
-	return null;
-}
-
-async function readCleanupOwnerRecord() {
-	try {
-		const raw = await readFile(cleanupOwnerLockPath, "utf8");
-		return parseCleanupOwnerRecord(raw);
-	} catch (error) {
-		if (isErrnoException(error) && error.code === "ENOENT") {
-			return null;
-		}
-		throw error;
-	}
-}
-
-async function acquireCleanupOwnership() {
-	const ownerToken = `${process.pid}-${Date.now()}`;
-	for (let attempt = 0; attempt < 2; attempt += 1) {
-		try {
-			const handle = await open(cleanupOwnerLockPath, "wx");
-			try {
-				await handle.writeFile(
-					JSON.stringify({
-						pid: process.pid,
-						token: ownerToken,
-						startedAt: Date.now(),
-					}),
-				);
-			} finally {
-				await handle.close();
-			}
-			return {
-				isCleanupOwner: true,
-				ownerPid: process.pid,
-				ownerToken,
-			};
-		} catch (error) {
-			if (!(isErrnoException(error) && error.code === "EEXIST")) {
-				throw error;
-			}
-		}
-
-		const existingOwner = await readCleanupOwnerRecord();
-		if (existingOwner && existingOwner.pid !== process.pid && isProcessAlive(existingOwner.pid)) {
-			return {
-				isCleanupOwner: false,
-				ownerPid: existingOwner.pid,
-				ownerToken: null,
-			};
-		}
-
-		try {
-			await unlink(cleanupOwnerLockPath);
-		} catch (error) {
-			if (!(isErrnoException(error) && error.code === "ENOENT")) {
-				throw error;
-			}
-		}
-	}
-
-	return {
-		isCleanupOwner: false,
-		ownerPid: null,
-		ownerToken: null,
-	};
-}
-
-async function releaseCleanupOwnership(ownerToken) {
-	if (!ownerToken) {
-		return;
-	}
-	const existingOwner = await readCleanupOwnerRecord();
-	if (!existingOwner) {
-		return;
-	}
-	if (existingOwner.pid !== process.pid || existingOwner.token !== ownerToken) {
-		return;
-	}
-	try {
-		await unlink(cleanupOwnerLockPath);
-	} catch (error) {
-		if (!(isErrnoException(error) && error.code === "ENOENT")) {
-			throw error;
-		}
-	}
 }
 
 function parseArgs(argv) {
@@ -346,7 +212,14 @@ function stripNodeModulesBinFromPath(pathValue) {
 		.join(delimiter);
 }
 
-function buildDogfoodRuntimeEnv(baseEnv) {
+export function getDefaultDogfoodStateHome(checkoutRoot = repoRoot, userHome = homedir()) {
+	const canonicalRoot = realpathSync(checkoutRoot);
+	const identity = process.platform === "win32" ? canonicalRoot.toLowerCase() : canonicalRoot;
+	const checkoutId = createHash("sha256").update(identity).digest("hex").slice(0, 24);
+	return resolve(userHome, ".quarterdeck-dogfood", "checkouts", checkoutId);
+}
+
+export function buildDogfoodRuntimeEnv(baseEnv, checkoutRoot = repoRoot, userHome = homedir()) {
 	const runtimeEnv = { ...baseEnv };
 	let hasStateHome = false;
 	for (const key of Object.keys(runtimeEnv)) {
@@ -363,76 +236,56 @@ function buildDogfoodRuntimeEnv(baseEnv) {
 	// Spreading `process.env` creates an ordinary case-sensitive object, so look
 	// up the existing key using Windows' case-insensitive environment semantics.
 	if (!hasStateHome) {
-		runtimeEnv.QUARTERDECK_STATE_HOME = resolve(homedir(), ".quarterdeck-dogfood");
+		runtimeEnv.QUARTERDECK_STATE_HOME = getDefaultDogfoodStateHome(checkoutRoot, userHome);
 	}
 	return runtimeEnv;
 }
 
 async function main() {
 	const args = parseArgs(process.argv.slice(2));
-	const cleanupOwnership = await acquireCleanupOwnership();
-	const skipShutdownCleanup = !cleanupOwnership.isCleanupOwner;
-	if (skipShutdownCleanup) {
-		const ownerPidLabel =
-			typeof cleanupOwnership.ownerPid === "number"
-				? ` (owner pid ${cleanupOwnership.ownerPid})`
-				: "";
-		console.log(`[dogfood] Cleanup owner already active${ownerPidLabel}; this run will skip shutdown cleanup.`);
-	} else {
-		console.log(
-			`[dogfood] Acquired shutdown cleanup lock at ${cleanupOwnerLockPath} (owner pid ${process.pid}).`,
-		);
-		console.log("[dogfood] This run owns shutdown cleanup and will perform it on exit.");
-	}
-
-	try {
-		if (!args.skipBuild) {
-			console.log(`[dogfood] Building checkout at ${repoRoot}`);
-			const npmBuild = resolveNpmCommand(["run", "build"]);
-			const buildCode = await runCommand(npmBuild.command, npmBuild.args, {
-				cwd: repoRoot,
-				env: process.env,
-			});
-			if (buildCode !== 0) {
-				return buildCode;
-			}
-		}
-
-		const cliEntrypoint = resolve(repoRoot, "dist/cli.js");
-		const launchArgs = ["--port", args.port];
-		if (skipShutdownCleanup) {
-			launchArgs.push("--skip-shutdown-cleanup");
-		}
-		if (args.noOpen) {
-			launchArgs.push("--no-open");
-		}
-		const launchCwd = args.project ?? tmpdir();
-
-		console.log(`[dogfood] Launching ${cliEntrypoint}`);
-		if (args.project) {
-			console.log(`[dogfood] Target project: ${args.project}`);
-		} else {
-			console.log(`[dogfood] No --project provided; launching from non-git cwd ${launchCwd}`);
-			console.log("[dogfood] Quarterdeck will open the first indexed project if one exists.");
-		}
-		console.log(`[dogfood] Runtime port: ${args.port}`);
-
-		return await runRuntimeCommand(nodeBinary, [cliEntrypoint, ...launchArgs], {
-			cwd: launchCwd,
-			env: buildDogfoodRuntimeEnv(process.env),
-			stdio: ["pipe", "inherit", "inherit"],
+	if (!args.skipBuild) {
+		console.log(`[dogfood] Building checkout at ${repoRoot}`);
+		const npmBuild = resolveNpmCommand(["run", "build"]);
+		const buildCode = await runCommand(npmBuild.command, npmBuild.args, {
+			cwd: repoRoot,
+			env: process.env,
 		});
-	} finally {
-		await releaseCleanupOwnership(cleanupOwnership.ownerToken);
+		if (buildCode !== 0) {
+			return buildCode;
+		}
 	}
+
+	const cliEntrypoint = resolve(repoRoot, "dist/cli.js");
+	const launchArgs = ["--port", args.port];
+	if (args.noOpen) {
+		launchArgs.push("--no-open");
+	}
+	const launchCwd = args.project ?? tmpdir();
+
+	console.log(`[dogfood] Launching ${cliEntrypoint}`);
+	if (args.project) {
+		console.log(`[dogfood] Target project: ${args.project}`);
+	} else {
+		console.log(`[dogfood] No --project provided; launching from non-git cwd ${launchCwd}`);
+		console.log("[dogfood] Quarterdeck will open the first indexed project if one exists.");
+	}
+	console.log(`[dogfood] Runtime port: ${args.port}`);
+
+	return await runRuntimeCommand(nodeBinary, [cliEntrypoint, ...launchArgs], {
+		cwd: launchCwd,
+		env: buildDogfoodRuntimeEnv(process.env),
+		stdio: ["pipe", "inherit", "inherit"],
+	});
 }
 
-main()
-	.then((exitCode) => {
-		process.exit(exitCode);
-	})
-	.catch((error) => {
-		const message = error instanceof Error ? error.message : String(error);
-		console.error(`[dogfood] ${message}`);
-		process.exit(1);
-	});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+	main()
+		.then((exitCode) => {
+			process.exit(exitCode);
+		})
+		.catch((error) => {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error(`[dogfood] ${message}`);
+			process.exit(1);
+		});
+}

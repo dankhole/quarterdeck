@@ -5,6 +5,7 @@ import { z } from "zod";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { isNodeError } from "../fs/node-error";
 import { getProjectDirectoryLockRequest, getProjectDirectoryPath } from "./project-state-utils";
+import { assertRuntimeWriteAdmission } from "./runtime-write-admission.js";
 
 const directoryIdentitySchema = z.object({ device: z.string(), inode: z.string() });
 const projectRelocationPlanSchema = z.object({
@@ -90,6 +91,7 @@ export async function finalizeProjectRelocation(plan: ProjectRelocationPlan): Pr
 		const existing = await readProjectRelocationJournal(plan.projectId);
 		if (!existing) return;
 		if (existing.operationId !== plan.operationId) throw new Error("Project relocation identity changed.");
+		assertRuntimeWriteAdmission(path);
 		await unlink(path);
 		await syncJournalDirectory(path);
 	});

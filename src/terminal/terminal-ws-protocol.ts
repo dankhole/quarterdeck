@@ -18,6 +18,8 @@ export interface TerminalWebSocketConnectionContext {
 
 export interface UpgradeRequest extends IncomingMessage {
 	__quarterdeckUpgradeHandled?: boolean;
+	/** Set only by the runtime's outer host/origin/client-admission gate. */
+	__quarterdeckUpgradeAdmitted?: boolean;
 }
 
 export function buildConnectionKey(projectId: string, taskId: string): string {

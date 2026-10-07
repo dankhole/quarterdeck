@@ -28,7 +28,7 @@ afterEach(() => {
 	if (originalStateHome === undefined) delete process.env.QUARTERDECK_STATE_HOME;
 	else process.env.QUARTERDECK_STATE_HOME = originalStateHome;
 });
-function fixture() {
+function fixture(beforeWrite?: () => Promise<void>) {
 	const store = new ProjectExecutionOwnershipStore();
 	const operations = new TaskResourceOperationCoordinator();
 	let sessionInstanceId: string | null = "pty-1";
@@ -55,6 +55,7 @@ function fixture() {
 		authorization,
 		taskResourceOperations: operations,
 		hasStructuredOwner,
+		beforeWrite,
 	});
 	return {
 		store,
@@ -73,6 +74,81 @@ function fixture() {
 }
 
 describe("native terminal input", { concurrent: false }, () => {
+	it("reserves input order before asynchronous location validation can complete in reverse", async () => {
+		const entered = deferred();
+		const first = deferred();
+		const second = deferred();
+		const third = deferred();
+		const beforeWrite = vi
+			.fn<() => Promise<void>>()
+			.mockImplementationOnce(async () => {
+				entered.resolve();
+				await first.promise;
+			})
+			.mockImplementationOnce(async () => await second.promise)
+			.mockImplementationOnce(async () => await third.promise);
+		const f = fixture(beforeWrite);
+		try {
+			const writes = ["A", "B", "C"].map((data) => f.writer.write(Buffer.from(data)));
+			await entered.promise;
+			third.resolve();
+			second.resolve();
+			expect(beforeWrite).toHaveBeenCalledTimes(1);
+			expect(f.manager.writeInput).not.toHaveBeenCalled();
+			first.resolve();
+			await Promise.all(writes);
+			expect(f.manager.writeInput.mock.calls).toEqual([
+				["task", Buffer.from("A")],
+				["task", Buffer.from("B")],
+				["task", Buffer.from("C")],
+			]);
+		} finally {
+			first.resolve();
+			second.resolve();
+			third.resolve();
+			f.writer.dispose();
+			await f.operations.waitForIdle();
+		}
+	});
+	it.each(["replacement", "disconnect"])("rechecks exact PTY ownership after validation during %s", async (reason) => {
+		const entered = deferred();
+		const release = deferred();
+		const f = fixture(async () => {
+			entered.resolve();
+			await release.promise;
+		});
+		try {
+			const first = f.writer.write(Buffer.from("first"));
+			const second = f.writer.write(Buffer.from("second"));
+			await entered.promise;
+			if (reason === "replacement") f.replace();
+			else f.writer.dispose();
+			release.resolve();
+			expect(await Promise.all([first, second])).toEqual([null, null]);
+			expect(f.manager.writeInput).not.toHaveBeenCalled();
+		} finally {
+			release.resolve();
+			f.writer.dispose();
+			await f.operations.waitForIdle();
+		}
+	});
+	it("rejects failed project validation without writing or poisoning later task operations", async () => {
+		const beforeWrite = vi
+			.fn<() => Promise<void>>()
+			.mockRejectedValueOnce(new Error("Project moved"))
+			.mockResolvedValue(undefined);
+		const f = fixture(beforeWrite);
+		try {
+			const rejected = expect(f.writer.write(Buffer.from("rejected"))).rejects.toThrow("Project moved");
+			const accepted = f.writer.write(Buffer.from("accepted"));
+			await rejected;
+			expect(await accepted).not.toBeNull();
+			expect(f.manager.writeInput).toHaveBeenCalledExactlyOnceWith("task", Buffer.from("accepted"));
+		} finally {
+			f.writer.dispose();
+			await f.operations.waitForIdle();
+		}
+	});
 	it("writes an ordered burst while another task holds the project disk lock", async () => {
 		const f = fixture();
 		const reads = vi.spyOn(f.store, "getOwnership");

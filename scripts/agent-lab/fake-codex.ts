@@ -2,7 +2,6 @@
 
 import { spawn } from "node:child_process";
 import { appendFile, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
 
@@ -19,6 +18,12 @@ import {
 	shouldFakeClaudeUseFullscreen,
 } from "./fake-agent-protocol";
 import { readFakeCodexHistory } from "./fake-codex-history";
+import {
+	hasFakeCodexHistory,
+	initializeFreshFakeCodexHistory,
+	resolveFakeCodexHistoryPath,
+	writeFakeInvocationReceipt,
+} from "./fake-invocation-receipt";
 import { AgentLabScenarioSchema } from "./types";
 
 const args = process.argv.slice(2);
@@ -28,7 +33,7 @@ const APPROVAL_COMPLETION_DELAY_MS = 5_000;
 const taskId = process.env.QUARTERDECK_HOOK_TASK_ID ?? "unknown-task";
 const requestedSessionId = invocation.requestedSessionId;
 const sessionId = requestedSessionId || `agent-lab-${taskId}`;
-const historyPath = join(process.env.CODEX_HOME || join(homedir(), ".codex"), "sessions", `rollout-${sessionId}.jsonl`);
+let historyPath = "";
 let turn = 0;
 let currentTurnId: string | null = null;
 let nativeInterruptedTurn = false;
@@ -502,16 +507,6 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			return;
 		case "progress": {
 			if (provider !== "codex") return;
-			await mkdir(dirname(historyPath), { recursive: true });
-			try {
-				await writeFile(
-					historyPath,
-					`${JSON.stringify({ type: "session_meta", payload: { id: sessionId, cli_version: "0.153.4", history_mode: "legacy" } })}\n`,
-					{ flag: "wx" },
-				);
-			} catch (error) {
-				if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-			}
 			await appendFile(
 				historyPath,
 				`${JSON.stringify({ timestamp: new Date().toISOString(), type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: command.message }] } })}\n`,
@@ -806,6 +801,39 @@ async function main(): Promise<void> {
 	}
 	await assertClaudeLaunchContract();
 	assertCodexLaunchContract();
+	if (provider === "codex") {
+		historyPath = await resolveFakeCodexHistoryPath(process.env, sessionId);
+		if (invocation.resumeKind === "fresh") {
+			await initializeFreshFakeCodexHistory(
+				historyPath,
+				sessionId,
+				getFakeAgentVersionOutput("codex").replace("codex-cli ", ""),
+			);
+		}
+		const historyPresent = await hasFakeCodexHistory(historyPath, sessionId);
+		const sessionInstanceId = process.env.QUARTERDECK_HOOK_SESSION_INSTANCE_ID;
+		if (process.env.QUARTERDECK_HOOK_TASK_ID && sessionInstanceId) {
+			const stateHome = process.env.QUARTERDECK_STATE_HOME;
+			if (!stateHome) throw new Error("Fake invocation receipt requires isolated state.");
+			await writeFakeInvocationReceipt({
+				stateHome,
+				receipt: {
+					version: 1,
+					provider,
+					taskId,
+					sessionInstanceId,
+					pid: process.pid,
+					providerSessionId: sessionId,
+					resumeKind: invocation.resumeKind,
+					requestedSessionId,
+					historyPresent,
+				},
+			});
+		}
+		if (invocation.resumeKind === "targeted" && !historyPresent) {
+			throw new Error("Fake Codex targeted resume requires matching fixture-local history.");
+		}
+	}
 	if (await consumeResumeFailureMarker()) {
 		writeLine(`AGENT LAB PI TARGETED RESUME FAILED: ${requestedSessionId}`);
 		process.exitCode = 78;

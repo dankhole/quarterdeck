@@ -736,6 +736,17 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return this.lifecycle.markInterruptedAndStopAll();
 	}
 
+	/** Live in-memory PTY roots only; retained session PIDs are never process ownership. */
+	getOwnedProcessRootPids(): number[] {
+		return Array.from(this.entries.values()).flatMap((entry) => (entry.active ? [entry.active.session.pid] : []));
+	}
+
+	hasPendingOwnedProcessLaunches(): boolean {
+		return Array.from(this.entries.values()).some((entry) =>
+			Boolean(entry.pendingSessionStart || entry.pendingAutoRestart),
+		);
+	}
+
 	async waitForShutdownQuiescence(): Promise<void> {
 		await this.lifecycle.waitForShutdownQuiescence();
 	}

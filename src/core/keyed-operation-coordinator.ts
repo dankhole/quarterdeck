@@ -21,4 +21,9 @@ export class KeyedOperationCoordinator {
 		});
 		return result;
 	}
+
+	/** Drain operations already admitted before a composition root closed its ingress. */
+	async waitForIdle(): Promise<void> {
+		while (this.tails.size > 0) await Promise.all(Array.from(this.tails.values()));
+	}
 }

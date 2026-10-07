@@ -1,6 +1,6 @@
 ---
 name: quarterdeck-functional-testing
-description: Boot, inspect, and drive Quarterdeck through an isolated browser UI with a deterministic fake coding agent or an explicitly authorized real Codex or Claude provider. Use for Quarterdeck functional testing, visual debugging, browser/terminal lifecycle regressions, Git or Files workflow checks, real-provider compatibility checks, and reproducible UI failure reports. Do not use for ordinary unit tests or against the user's active Quarterdeck instance.
+description: Boot, inspect, and drive Quarterdeck through an isolated browser UI or packaged macOS app with a deterministic fake coding agent or an explicitly authorized real Codex or Claude provider. Use for Quarterdeck functional testing, visual debugging, browser/terminal lifecycle regressions, Git or Files workflow checks, desktop packaging and lifecycle checks, real-provider compatibility checks, and reproducible UI failure reports. Do not use for ordinary unit tests or against the user's active Quarterdeck instance.
 ---
 
 # Quarterdeck Functional Testing
@@ -8,6 +8,22 @@ description: Boot, inspect, and drive Quarterdeck through an isolated browser UI
 Use this skill only after [`docs/testing.md`](../../../docs/testing.md) selects the Agent Lab layer. Run the narrowest scenario that proves the changed browser/runtime/PTY, persistence, Git/Files, host-integration, or visual invariant.
 
 Use the repo-owned agent lab instead of `npm run dev`, `npm run dev:full`, `npm run dogfood`, or an already-running Quarterdeck instance. The lab uses disposable state and synthetic projects; its default agent is a deterministic fake `codex`.
+
+## Packaged macOS app
+
+Use the additive desktop lane for claims about an actual `.app`, its bundled helper, stable origin, native command routing, or application lifetime:
+
+```text
+npm run --silent agent:desktop -- smoke --app <absolute-app-path> --json
+```
+
+The harness owns temporary runtime state, Electron storage, a synthetic project, fake provider launchers, process identity evidence, and cleanup. It launches the packaged executable through Playwright's Electron driver; do not substitute a source Electron launch or attach to the user's application. Record the artifact/build identity from the candidate manifest because rebuilding source does not update an already packaged app.
+
+Windows remain hidden and unfocused by default. Use `--show-window` only for an explicit native visibility/focus check, and explain that it can take focus. `--no-agent` limits the check to startup/renderer/native commands and cannot establish PTY, hooks, or recovery behavior. Synthetic runs use the lab-only `--use-mock-keychain` Chromium flag; never reset or modify the user's keychain for a test. Normal app launches retain native encryption.
+
+Inspect the returned manifest, checkpoints, socket metadata, forbidden-host-launch evidence, and `remainingPids`. The runner always attempts shutdown, but an unconfirmed process remains a failed cleanup: preserve its synthetic fixture and investigate exact identity instead of deleting state or killing processes by name. Screenshots are needed only for visual claims. Signed production fuses disallow the inspector used by this driver; use an unsigned inspection-enabled candidate for this lane, and retain separate signed-install/update gates in [`docs/desktop-validation.md`](../../../docs/desktop-validation.md).
+
+Desktop real-provider checks require the same explicit account authorization and tiny synthetic scope as the browser lane below. After a fresh candidate passes the full fake scenario, select `--provider real-codex` or `--provider real-claude`; `--provider fake` is the default. Combining a real provider with `--no-agent` is rejected before account access. The real scenario holds a permission request without approving it, verifies the requested synthetic file was not written, and uses the board's restart intent to check exact provider-session identity, a new PTY, and a fresh launch-scoped hook. This proves an unapproved permission boundary, not an explicit denial. Do not send guessed numeric choices or broaden the prompt to force progress. Staged sign-in profiles are removed even with `--keep-temp`. A fake packaged run is not evidence that a real provider accepted the bundled hook invocation.
 
 ## Start and discover the run
 

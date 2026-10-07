@@ -11,14 +11,14 @@ import {
 	type DiagnosticRecordEnvelope,
 	type DiagnosticRecorderHealth,
 	type DiagnosticSnapshot,
-	isWindowsSafePathComponent,
 	normalizeDiagnosticErrorClass,
 	type PublicRuntimeDiagnosticDescriptor,
-} from "../core";
+} from "../core/api/diagnostics.js";
 import { isFileSystemPathWithin } from "../core/path-comparison.js";
+import { isWindowsSafePathComponent } from "../core/windows-path-component.js";
 import { removeDirectoryWithRetries } from "../fs/remove-path.js";
-import { copyPrivateDiagnosticFile, ensurePrivateDiagnosticDirectories } from "./private-path";
-import { getDiagnosticBundlesRootPath } from "./runtime-instance";
+import { copyPrivateDiagnosticFile, ensurePrivateDiagnosticDirectories } from "./private-path.js";
+import { getDiagnosticBundlesRootPath } from "./runtime-instance.js";
 
 export interface WriteDiagnosticBundleOptions {
 	quarterdeckVersion: string;

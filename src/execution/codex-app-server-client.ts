@@ -1,9 +1,8 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-
 import treeKill from "tree-kill";
-
 import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
+import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 import {
 	addressableServerRequestMethods,
 	type CodexAddressableServerRequestIdentity,
@@ -111,6 +110,7 @@ export class CodexAppServerExitedError extends Error {
 export function spawnCodexAppServerTransport(
 	options: SpawnCodexAppServerTransportOptions,
 ): OwnedCodexAppServerTransport {
+	assertRuntimeProcessLaunchAdmission();
 	const child: ChildProcessWithoutNullStreams = spawn(options.binary, options.args, {
 		cwd: options.cwd,
 		env: options.env,

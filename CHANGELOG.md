@@ -4,6 +4,26 @@
 
 ## [0.12.9]
 
+- Check native test permissions before launching the macOS app, and separate manual-terminal and performance checks from deliberate crash-recovery tests.
+
+- Launch browser mode explicitly with `quarterdeck --browser`, or install and open the optional macOS app with `quarterdeck --desktop`; import local app builds without replacing a running installation.
+
+- Add the macOS desktop application foundation with a bundled Node runtime, shared browser UI, native application lifecycle, and isolated packaged-app validation. Browser and npm use remain supported.
+
+- Admit one writable runtime per state home, authenticate browser and desktop clients, isolate dogfood state, and retain runtime ownership until shutdown writes and owned processes finish.
+
+- Preserve newly opened task drafts while project metadata finishes loading.
+
+- Load the runtime's selected project when opening Quarterdeck without a project URL, including the first project added to an empty runtime.
+
+- Preserve terminal keystroke order while validating project paths and task ownership.
+
+- Keep sidebar shortcut hints readable in narrow panels and at enlarged zoom.
+
+- Acknowledge desktop file-recovery commits before reporting a completed save or replacing the window, preventing a previously saved draft from returning after app-process loss.
+
+- Recognize Codex's updated folder-trust startup screen in managed tasks, with confirmation fenced to the current launch, selection, and unchanged terminal output.
+
 - Follow new agent messages incrementally so tool output cannot bury grid progress updates, show “Working…” while a new turn awaits its first update, and keep the previous response separately expandable.
 
 - Tighten Projects sidebar gutters and group indentation, move project action menus closer to the edge, and use subtle alternating backgrounds for group headers and project rows.

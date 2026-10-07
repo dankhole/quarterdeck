@@ -1,14 +1,17 @@
 import { realpath } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join, posix, resolve, win32 } from "node:path";
 
-import { isFileSystemPathWithin, normalizeFileSystemPathForComparison, type RuntimeGitRepositoryInfo } from "../core";
-import type { LockRequest } from "../fs/locked-file-system";
-import { runGit } from "../workdir/git-utils";
+import {
+	isFileSystemPathWithin,
+	normalizeFileSystemPathForComparison,
+	type RuntimeGitRepositoryInfo,
+} from "../core/index.js";
+import { getRuntimeHomePath, getRuntimeHomePathForPlatform } from "../core/runtime-state-home.js";
+import type { LockRequest } from "../fs/locked-file-system.js";
+import { runGit } from "../workdir/git-utils.js";
 
 // --- Path constants and getters ---
 
-const RUNTIME_HOME_DIR = ".quarterdeck";
 const RUNTIME_WORKTREES_DIR = "worktrees";
 const PROJECTS_DIR = "projects";
 
@@ -20,23 +23,12 @@ export const PINNED_BRANCHES_FILENAME = "pinned-branches.json";
 export const LIFECYCLE_OPERATIONS_FILENAME = "lifecycle-operations.json";
 export const EXECUTION_OWNERSHIP_FILENAME = "execution-ownership.json";
 
-function getRuntimeHomePathForPlatform(platform: NodeJS.Platform): string {
-	const pathApi = platform === "win32" ? win32 : posix;
-	const override = process.env.QUARTERDECK_STATE_HOME;
-	if (override) {
-		return pathApi.resolve(override);
-	}
-	return pathApi.join(homedir(), RUNTIME_HOME_DIR);
-}
-
 function getTaskWorktreesHomePathForPlatform(platform: NodeJS.Platform): string {
 	const pathApi = platform === "win32" ? win32 : posix;
 	return pathApi.join(getRuntimeHomePathForPlatform(platform), RUNTIME_WORKTREES_DIR);
 }
 
-export function getRuntimeHomePath(): string {
-	return getRuntimeHomePathForPlatform(process.platform);
-}
+export { getRuntimeHomePath };
 
 export function getTaskWorktreesHomePath(): string {
 	return getTaskWorktreesHomePathForPlatform(process.platform);

@@ -14,6 +14,7 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 }));
 
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
+import { MODERN_CODEX_TRUST_RENDER_ANSI } from "./codex-workspace-trust-fixtures";
 
 interface MockSpawnRequest {
 	onData?: (chunk: Buffer) => void;
@@ -21,14 +22,17 @@ interface MockSpawnRequest {
 }
 
 function createMockPtySession(pid: number, request: MockSpawnRequest) {
+	let interrupted = false;
 	return {
 		pid,
 		write: vi.fn(),
 		resize: vi.fn(),
 		pause: vi.fn(),
 		resume: vi.fn(),
-		stop: vi.fn(),
-		wasInterrupted: vi.fn(() => false),
+		stop: vi.fn((options?: { interrupted?: boolean }) => {
+			if (options?.interrupted) interrupted = true;
+		}),
+		wasInterrupted: vi.fn(() => interrupted),
 		triggerData: (chunk: string | Buffer) => {
 			request.onData?.(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8"));
 		},
@@ -199,6 +203,61 @@ describe("TerminalSessionManager workspace trust auto-confirm", () => {
 		await vi.advanceTimersByTimeAsync(100);
 
 		expect(session?.write).toHaveBeenCalledWith("\r");
+	});
+
+	it("drives modern Codex startup trust from the managed task mirror without asserting native work", async () => {
+		let spawned: ReturnType<typeof createMockPtySession> | null = null;
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			spawned = createMockPtySession(223, request);
+			return spawned;
+		});
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession({
+			taskId: "modern-task",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/workspace",
+			prompt: "Synthetic task",
+			cols: 80,
+			rows: 40,
+		});
+		const session = spawned as ReturnType<typeof createMockPtySession> | null;
+		if (!session) throw new Error("Missing spawned test session");
+		const initial = manager.store.getSummary("modern-task");
+		session.triggerData(MODERN_CODEX_TRUST_RENDER_ANSI);
+		await vi.advanceTimersByTimeAsync(500);
+		expect(session.write.mock.calls).toEqual([["\r"]]);
+		expect(manager.store.getSummary("modern-task")?.state).toBe(initial?.state);
+		expect(manager.store.getSummary("modern-task")?.nativeWorkEvidence).toBeNull();
+		await manager.stopTaskSession("modern-task");
+	});
+
+	it("cancels the modern confirmation timer during managed task teardown", async () => {
+		let spawned: ReturnType<typeof createMockPtySession> | null = null;
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			spawned = createMockPtySession(224, request);
+			return spawned;
+		});
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession({
+			taskId: "modern-task",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/workspace",
+			prompt: "Synthetic task",
+			cols: 80,
+			rows: 40,
+		});
+		const session = spawned as ReturnType<typeof createMockPtySession> | null;
+		if (!session) throw new Error("Missing spawned test session");
+		session.triggerData(MODERN_CODEX_TRUST_RENDER_ANSI);
+		await vi.advanceTimersByTimeAsync(20);
+		await manager.stopTaskSession("modern-task");
+		await vi.advanceTimersByTimeAsync(500);
+		expect(session.write).not.toHaveBeenCalled();
+		expect(session.stop).toHaveBeenCalledOnce();
 	});
 
 	it("does not auto-confirm when willAutoTrust is false", async () => {

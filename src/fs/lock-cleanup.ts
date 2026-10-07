@@ -23,6 +23,7 @@ import { readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { getProjectsRootPath, getRuntimeHomePath } from "../state/project-state.js";
+import { assertRuntimeWriteAdmission, withRuntimeWriteOperation } from "../state/runtime-write-admission.js";
 import { getGitCommonDir, getGitDir } from "../workdir/git-utils.js";
 import { cleanupStaleLockAndTempFiles, DEFAULT_LOCK_STALE_MS } from "./locked-file-system.js";
 import { isNodeError } from "./node-error.js";
@@ -119,6 +120,7 @@ async function cleanupNamedStaleLockArtifacts(
 			try {
 				const info = await stat(entryPath);
 				if (now - info.mtimeMs < staleMs) continue;
+				assertRuntimeWriteAdmission(getRuntimeHomePath());
 				await removeDirectoryWithRetries(entryPath);
 				warn?.(`Removed stale artifact: ${entryPath}`);
 			} catch {
@@ -256,7 +258,11 @@ async function removeIndexLock(gitDir: string, force: boolean, warn?: WarnFn): P
 				return; // Lock is fresh — a git process is likely still running.
 			}
 		}
-		await rm(lockPath, { force: true });
+		await withRuntimeWriteOperation([getRuntimeHomePath(), lockPath], async () => {
+			assertRuntimeWriteAdmission(getRuntimeHomePath());
+			assertRuntimeWriteAdmission(lockPath);
+			await rm(lockPath, { force: true });
+		});
 		warn?.(`Removed stale git index.lock: ${lockPath}`);
 	} catch (error) {
 		// ENOENT is the common case (no stale lock) — ignore silently.

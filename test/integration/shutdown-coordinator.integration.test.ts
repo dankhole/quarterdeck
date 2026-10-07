@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core";
+import { installRuntimeProcessLaunchAdmission } from "../../src/core/runtime-process-launch-admission";
 import { shutdownRuntimeServer } from "../../src/server";
 import { loadProjectState, saveProjectState } from "../../src/state";
 import type { TerminalSessionManager } from "../../src/terminal";
@@ -174,7 +175,8 @@ describe("shutdown coordinator integration", { concurrent: false }, () => {
 						getSummary: getManagedSummary,
 					},
 				} as unknown as TerminalSessionManager;
-				await shutdownRuntimeServer({
+				let releaseLaunchAdmission: (() => void) | undefined;
+				const shutdown = await shutdownRuntimeServer({
 					projectRegistry: {
 						listManagedProjects: () => [
 							{
@@ -185,11 +187,23 @@ describe("shutdown coordinator integration", { concurrent: false }, () => {
 						],
 					},
 					warn: () => {},
+					beforeProcessSnapshot: () => {
+						releaseLaunchAdmission = installRuntimeProcessLaunchAdmission({
+							beforeSpawn: () => {
+								throw new Error("Shutdown snapshot already captured; further process launches are denied.");
+							},
+						});
+					},
 					closeRuntimeServer: async () => {
 						didCloseRuntimeServer = true;
 					},
-				});
+					stopOwnedProcesses: async (stopSessions) => {
+						stopSessions();
+						return { status: "stopped" };
+					},
+				}).finally(() => releaseLaunchAdmission?.());
 
+				expect(shutdown.outcome.status).toBe("clean");
 				expect(didCloseRuntimeServer).toBe(true);
 				expect(getManagedSummary).toHaveBeenCalledWith("managed-active-review");
 

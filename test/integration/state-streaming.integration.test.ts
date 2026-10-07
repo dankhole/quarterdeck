@@ -12,7 +12,6 @@ import type {
 	RuntimeProjectStateResponse,
 	RuntimeProjectsResponse,
 	RuntimeShellSessionStartResponse,
-	RuntimeStateStreamErrorMessage,
 	RuntimeStateStreamProjectStateMessage,
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
@@ -113,6 +112,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			const addProjectResponse = await requestJson<RuntimeProjectAddResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "projects.add",
 				type: "mutation",
 				projectId: projectAId,
@@ -130,6 +130,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			streamA = await connectRuntimeStream(
 				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectAId)}`,
+				server.browserHeaders,
 			);
 			const snapshotA = (await streamA.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
@@ -142,6 +143,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			streamB = await connectRuntimeStream(
 				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectBId)}`,
+				server.browserHeaders,
 			);
 			const snapshotB = (await streamB.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
@@ -151,6 +153,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			const currentProjectBState = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "project.getState",
 				type: "query",
 				projectId: projectBId,
@@ -158,6 +161,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 			const previousRevision = currentProjectBState.payload.revision;
 			const saveProjectBResponse = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "project.applyBoardCommands",
 				type: "mutation",
 				projectId: projectBId,
@@ -203,6 +207,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			const projectsAfterUpdate = await requestJson<RuntimeProjectsResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "projects.list",
 				type: "query",
 				projectId: projectAId,
@@ -217,6 +222,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			const projectsWhileBIsPreferred = await requestJson<RuntimeProjectsResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "projects.list",
 				type: "query",
 				projectId: projectBId,
@@ -267,6 +273,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			const addProjectResponse = await requestJson<RuntimeProjectAddResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "projects.add",
 				type: "mutation",
 				projectId: projectAId,
@@ -285,6 +292,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 			startedTaskId = "task-1";
 			const projectBState = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "project.getState",
 				type: "query",
 				projectId: projectBId,
@@ -299,6 +307,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			const startShellResponse = await requestJson<RuntimeShellSessionStartResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "runtime.startShellSession",
 				type: "mutation",
 				projectId: projectBId,
@@ -313,6 +322,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			streamA = await connectRuntimeStream(
 				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectAId)}`,
+				server.browserHeaders,
 			);
 			const snapshot = (await streamA.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
@@ -329,6 +339,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 			if (projectBId && startedTaskId) {
 				await requestJson({
 					baseUrl: `http://127.0.0.1:${port}`,
+					headers: server.browserHeaders,
 					procedure: "runtime.stopTaskSession",
 					type: "mutation",
 					projectId: projectBId,
@@ -341,77 +352,41 @@ describe("state streaming integration", { concurrent: false }, () => {
 		}
 	}, 30_000);
 
-	it("streams the project list when the selected project's state cannot load", async () => {
+	it("retains unreadable process evidence and refuses startup recovery", async () => {
 		const { path: tempHome, cleanupAsync: cleanupHome } = createTempDir("quarterdeck-home-stream-corrupt-");
-		const { path: tempRoot, cleanupAsync: cleanupRoot } = createTempDir("quarterdeck-projects-stream-corrupt-");
-
-		const projectAPath = join(tempRoot, "project-a");
-		const projectBPath = join(tempRoot, "project-b");
-		mkdirSync(projectAPath, { recursive: true });
-		mkdirSync(projectBPath, { recursive: true });
-		initGitRepository(projectAPath);
-		initGitRepository(projectBPath);
+		const { path: projectPath, cleanupAsync: cleanupProject } = createTempDir("quarterdeck-project-stream-corrupt-");
+		initGitRepository(projectPath);
 
 		const previousHome = process.env.HOME;
 		const previousUserProfile = process.env.USERPROFILE;
-		let projectAId = "";
-		let projectBId = "";
+		let sessionsPath = "";
+		let boardPath = "";
+		const sessionsEvidence = JSON.stringify(["not", "an", "object"]);
+		const boardEvidence = JSON.stringify(createBoard("Valid board"), null, 2);
 		process.env.HOME = tempHome;
 		process.env.USERPROFILE = tempHome;
 		try {
-			const contextA = await loadProjectContext(projectAPath);
-			const contextB = await loadProjectContext(projectBPath);
-			projectAId = contextA.projectId;
-			projectBId = contextB.projectId;
-			mkdirSync(contextA.statePath, { recursive: true });
-			writeFileSync(
-				join(contextA.statePath, "board.json"),
-				JSON.stringify(createBoard("Valid board"), null, 2),
-				"utf8",
-			);
-			writeFileSync(join(contextA.statePath, "sessions.json"), JSON.stringify(["not", "an", "object"]), "utf8");
+			const context = await loadProjectContext(projectPath);
+			mkdirSync(context.statePath, { recursive: true });
+			sessionsPath = join(context.statePath, "sessions.json");
+			boardPath = join(context.statePath, "board.json");
+			writeFileSync(boardPath, boardEvidence, "utf8");
+			writeFileSync(sessionsPath, sessionsEvidence, "utf8");
 		} finally {
-			if (previousHome === undefined) {
-				delete process.env.HOME;
-			} else {
-				process.env.HOME = previousHome;
-			}
-			if (previousUserProfile === undefined) {
-				delete process.env.USERPROFILE;
-			} else {
-				process.env.USERPROFILE = previousUserProfile;
-			}
+			if (previousHome === undefined) delete process.env.HOME;
+			else process.env.HOME = previousHome;
+			if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+			else process.env.USERPROFILE = previousUserProfile;
 		}
 
-		const port = await getAvailablePort();
-		const server = await startQuarterdeckServer({
-			cwd: projectAPath,
-			homeDir: tempHome,
-			port,
-		});
-
-		let stream: RuntimeStreamClient | null = null;
 		try {
-			stream = await connectRuntimeStream(
-				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectAId)}`,
-			);
-			const snapshot = (await stream.waitForMessage(
-				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
-			)) as RuntimeStateStreamSnapshotMessage;
-			expect(snapshot.currentProjectId).toBe(projectAId);
-			expect(snapshot.projects.map((project) => project.id).sort()).toEqual([projectAId, projectBId].sort());
-			expect(snapshot.projectState).toBeNull();
-
-			const error = (await stream.waitForMessage(
-				(message): message is RuntimeStateStreamErrorMessage => message.type === "error",
-			)) as RuntimeStateStreamErrorMessage;
-			expect(error.message).toContain("Invalid sessions.json file");
+			await expect(
+				startQuarterdeckServer({ cwd: projectPath, homeDir: tempHome, port: await getAvailablePort() }),
+			).rejects.toThrow("could not verify prior process evidence");
+			expect(readFileSync(sessionsPath, "utf8")).toBe(sessionsEvidence);
+			expect(readFileSync(boardPath, "utf8")).toBe(boardEvidence);
 		} finally {
-			if (stream) {
-				await stream.close();
-			}
-			await server.stop();
-			await cleanupRoot();
+			await cleanupProject();
 			await cleanupHome();
 		}
 	}, 30_000);
@@ -486,6 +461,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 		try {
 			stream = await connectRuntimeStream(
 				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectId)}`,
+				server.browserHeaders,
 			);
 			const snapshot = (await stream.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
@@ -541,6 +517,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			stream = await connectRuntimeStream(
 				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectId)}`,
+				server.browserHeaders,
 			);
 			await stream.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
@@ -548,6 +525,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			const initialState = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "project.getState",
 				type: "query",
 				projectId,
@@ -560,6 +538,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 			);
 			await requestJson<RuntimeProjectBoardCommandExecutionResult>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "project.applyBoardCommands",
 				type: "mutation",
 				projectId,
@@ -572,6 +551,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			const startTaskResponse = await requestJson<RuntimeTaskSessionStartResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "runtime.startTaskSession",
 				type: "mutation",
 				projectId,
@@ -613,6 +593,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			const startWorkResponse = await requestJson<RuntimeHookIngestResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "hooks.ingest",
 				type: "mutation",
 				payload: {
@@ -647,6 +628,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 			const permissionOccurredAt = Date.now();
 			const preToolUseResponse = await requestJson<RuntimeHookIngestResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "hooks.ingest",
 				type: "mutation",
 				payload: {
@@ -673,6 +655,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			const hookResponse = await requestJson<RuntimeHookIngestResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "hooks.ingest",
 				type: "mutation",
 				payload: {
@@ -699,6 +682,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 			expect(hookResponse.payload.ok).toBe(true);
 			const permissionState = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "project.getState",
 				type: "query",
 				projectId,
@@ -752,6 +736,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			const inputResponse = await requestJson<RuntimeTaskSessionInputResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "runtime.sendTaskSessionInput",
 				type: "mutation",
 				projectId,
@@ -769,6 +754,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 			});
 			const resumeHookResponse = await requestJson<RuntimeHookIngestResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "hooks.ingest",
 				type: "mutation",
 				payload: {
@@ -794,6 +780,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 			expect(resumeHookResponse.payload.ok).toBe(true);
 			const resumedState = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "project.getState",
 				type: "query",
 				projectId,
@@ -845,6 +832,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			const interruptResponse = await requestJson<RuntimeTaskSessionInputResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "runtime.sendTaskSessionInput",
 				type: "mutation",
 				projectId,
@@ -862,6 +850,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 			expect(interruptResponse.payload.summary).toMatchObject({ state: "running", reviewReason: null });
 			const interruptHookResponse = await requestJson<RuntimeHookIngestResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "hooks.ingest",
 				type: "mutation",
 				payload: {
@@ -925,6 +914,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			const finalState = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "project.getState",
 				type: "query",
 				projectId,
@@ -936,6 +926,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			await requestJson({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "runtime.stopTaskSession",
 				type: "mutation",
 				projectId,
@@ -978,6 +969,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			const stateResponse = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "project.getState",
 				type: "query",
 				projectId,
@@ -1003,6 +995,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			const ensureResponse = await requestJson<RuntimeWorktreeEnsureResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "project.ensureWorktree",
 				type: "mutation",
 				projectId,
@@ -1019,6 +1012,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 
 			stream = await connectRuntimeStream(
 				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectId)}`,
+				server.browserHeaders,
 			);
 			const snapshot = (await stream.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
@@ -1046,6 +1040,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 			writeFileSync(join(ensureResponse.payload.path, "task-change.txt"), "updated\n", "utf8");
 			const focusResponse = await requestJson({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "project.setFocusedTask",
 				type: "mutation",
 				projectId,

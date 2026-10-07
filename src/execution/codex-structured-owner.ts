@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { promisify } from "node:util";
 
 import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
+import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 import { prepareCodexLaunchConfiguration } from "../terminal/agent-session-adapters";
 import {
 	CodexAppServerClient,
@@ -147,6 +148,7 @@ export function fingerprintCodexProfileRoot(profileRoot: string): string {
 }
 
 export async function resolveCodexCliVersion(binary: string): Promise<string> {
+	assertRuntimeProcessLaunchAdmission();
 	const result = await execFileAsync(binary, ["--version"], { timeout: 5_000 });
 	const match = /codex-cli\s+([^\s]+)/u.exec(result.stdout.trim());
 	if (!match?.[1]) throw new Error("Could not determine the Codex CLI version.");
@@ -432,6 +434,10 @@ export class CodexStructuredOwner {
 
 export class CodexStructuredOwnerRegistry {
 	private readonly owners = new Map<string, CodexStructuredOwner>();
+
+	getOwnedProcessRootPids(): number[] {
+		return Array.from(this.owners.values(), (owner) => owner.identity.pid);
+	}
 	private events: CodexStructuredOwnerEvents;
 
 	constructor(private readonly dependencies: CodexStructuredOwnerDependencies) {

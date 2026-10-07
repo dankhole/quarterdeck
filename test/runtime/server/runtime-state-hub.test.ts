@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_RUNTIME_CONFIG_STATE } from "../../../src/config";
@@ -180,6 +182,94 @@ function createBoardCommandResult() {
 }
 
 describe("RuntimeStateHub", () => {
+	it("streams notification-only baselines without project viewers and grants one renewable socket", async () => {
+		const deps = createDependencies({
+			buildProjectsPayload: async () => ({ currentProjectId: null, projects: [] }),
+			buildProjectStateSnapshot: vi.fn(async () => createProjectStateResponse()),
+			listManagedProjects: () => [],
+		});
+		const resolve = vi.spyOn(deps.projectRegistry, "resolveProjectForStream");
+		const capability = vi.spyOn(deps.diagnostics, "issueBrowserCapability");
+		const hub = new RuntimeStateHubImpl(deps);
+		const generation = randomUUID();
+		hub.configureNotificationPresentation(generation);
+		const internals = hub as unknown as RuntimeStateHubInternals;
+		const makeClient = () => {
+			const emitter = new EventEmitter();
+			const created = createRuntimeClient();
+			const client = Object.assign(created.client, {
+				on: emitter.on.bind(emitter),
+				close: vi.fn(() => {
+					created.client.readyState = 3;
+					emitter.emit("close");
+				}),
+			});
+			return { ...created, client, emitter };
+		};
+		const first = makeClient(),
+			second = makeClient();
+		try {
+			await internals.handleConnection(first.client, { notificationOnly: true, requestedProjectId: "project-1" });
+			await internals.handleConnection(second.client, { notificationOnly: true });
+			expect(resolve).not.toHaveBeenCalled();
+			expect(deps.projectRegistry.buildProjectStateSnapshot).not.toHaveBeenCalled();
+			expect(capability).not.toHaveBeenCalled();
+			expect(first.messages[0]).toMatchObject({
+				type: "snapshot",
+				projectState: null,
+				notificationPresentation: { owner: "browser", runtimeGeneration: generation },
+				notificationPreferences: { enabled: DEFAULT_RUNTIME_CONFIG_STATE.audibleNotificationsEnabled },
+			});
+			const grant = first.messages.find(
+				(message) => message.type === "notification_presentation" && message.granted,
+			);
+			if (grant?.type !== "notification_presentation") throw new Error("Expected desktop grant");
+			expect(second.messages.at(-1)).toMatchObject({ type: "notification_presentation", granted: false });
+			first.emitter.emit(
+				"message",
+				Buffer.from(
+					JSON.stringify({
+						type: "notification_presentation_renew",
+						runtimeGeneration: generation,
+						epoch: grant.state.epoch,
+					}),
+				),
+			);
+			expect(first.messages.at(-1)).toMatchObject({ type: "notification_presentation", granted: true });
+			first.client.close();
+			const released = second.messages.at(-1);
+			if (released?.type !== "notification_presentation") throw new Error("Expected lease release");
+			expect(released.state.owner).toBe("browser");
+			second.emitter.emit(
+				"message",
+				Buffer.from(
+					JSON.stringify({
+						type: "notification_presentation_renew",
+						runtimeGeneration: generation,
+						epoch: released.state.epoch,
+					}),
+				),
+			);
+			expect(second.messages.at(-1)).toMatchObject({ type: "notification_presentation", granted: true });
+			hub.broadcastLogLevel("warn");
+			expect(second.messages.at(-1)).toMatchObject({ type: "notification_preferences" });
+			second.emitter.emit(
+				"message",
+				Buffer.from(
+					JSON.stringify({
+						type: "notification_presentation_renew",
+						runtimeGeneration: generation,
+						epoch: released.state.epoch,
+						arbitrary: true,
+					}),
+				),
+			);
+			expect(second.client.close).toHaveBeenCalled();
+		} finally {
+			await hub.close();
+		}
+	});
+
 	it("preserves display names and newer location metadata when pairing summaries with a board snapshot", async () => {
 		const projects = createProjectsResponse();
 		const project = projects.projects[0];

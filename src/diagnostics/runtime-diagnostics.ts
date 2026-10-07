@@ -8,38 +8,40 @@ import {
 	type DiagnosticSnapshot,
 	diagnosticRecordingScopeSchema,
 	type PublicRuntimeDiagnosticDescriptor,
-} from "../core";
-import { getRuntimeHomePath } from "../state";
-import { getDiagnosticErrorClass } from "./bounded-value";
-import { type WriteDiagnosticBundleOptions, type WriteDiagnosticBundleResult, writeDiagnosticBundle } from "./bundle";
+} from "../core/api/diagnostics.js";
+import { getRuntimeHomePath } from "../core/runtime-state-home.js";
+import { getDiagnosticErrorClass } from "./bounded-value.js";
+import {
+	type WriteDiagnosticBundleOptions,
+	type WriteDiagnosticBundleResult,
+	writeDiagnosticBundle,
+} from "./bundle.js";
 import {
 	captureScopeFromRecordFilter,
 	type DiagnosticLogCandidate,
 	type DiagnosticRecordCandidate,
 	type DiagnosticRecordFilter,
-} from "./diagnostic-record";
-import { evaluateDiagnosticSnapshot, filterDiagnosticFindingsByScope } from "./doctor";
-import { DiagnosticJournal } from "./journal";
-import { DiagnosticRecorder } from "./recorder";
+} from "./diagnostic-record.js";
+import { evaluateDiagnosticSnapshot, filterDiagnosticFindingsByScope } from "./doctor.js";
+import { DiagnosticJournal } from "./journal.js";
+import { DiagnosticRecorder } from "./recorder.js";
 import {
 	type BrowserDiagnosticIngestResult,
 	type BrowserLiveSubscriptionState,
 	type BrowserSnapshotRequester,
 	type BrowserSnapshotRequestResult,
 	RuntimeBrowserDiagnostics,
-} from "./runtime-browser-diagnostics";
-import { RuntimeDiagnosticInstance } from "./runtime-instance";
-import { DiagnosticSnapshotCoordinator, type DiagnosticSnapshotProvider } from "./snapshot";
+} from "./runtime-browser-diagnostics.js";
+import { type DiagnosticInstanceEndpointOptions, RuntimeDiagnosticInstance } from "./runtime-instance.js";
+import { DiagnosticSnapshotCoordinator, type DiagnosticSnapshotProvider } from "./snapshot.js";
 
 const BROWSER_TIMELINE_RECORD_LIMIT = 200;
 
-export interface CreateRuntimeDiagnosticsOptions {
+export type CreateRuntimeDiagnosticsOptions = DiagnosticInstanceEndpointOptions & {
 	stateHome?: string;
-	host: string;
-	port: number;
 	quarterdeckVersion: string;
 	captureTier?: "flight" | "agent-lab";
-}
+};
 
 export interface DiagnosticCaptureData {
 	descriptor: PublicRuntimeDiagnosticDescriptor;
@@ -129,12 +131,17 @@ export class RuntimeDiagnostics {
 		const diagnostics = new RuntimeDiagnostics({ ...options, stateHome }, instance, recorder, snapshots);
 		diagnostics.registerCoreProviders();
 		recorder.recordEvent(
-			"runtime.starting",
+			options.processKind === "desktop" ? "desktop.starting" : "runtime.starting",
 			{
 				quarterdeckVersion: options.quarterdeckVersion,
 				platform: instance.getDescriptor().platform,
 				nodeMajorVersion: instance.getDescriptor().nodeMajorVersion,
-				hostClassification: options.host === "127.0.0.1" || options.host === "localhost" ? "loopback" : "custom",
+				hostClassification:
+					options.processKind === "desktop"
+						? "journal_only"
+						: options.host === "127.0.0.1" || options.host === "localhost"
+							? "loopback"
+							: "custom",
 				port: options.port,
 			},
 			{},
@@ -308,11 +315,11 @@ export class RuntimeDiagnostics {
 		});
 	}
 
-	async markReady(host: string, port: number): Promise<void> {
+	async markReady(host: string | null, port: number | null): Promise<void> {
 		await this.instance.markReady(host, port);
 		this.recordEvent(
-			"runtime.listening",
-			{ hostClassification: host === "127.0.0.1" ? "loopback" : "custom", port },
+			this.instance.getDescriptor().processKind === "desktop" ? "desktop.ready" : "runtime.listening",
+			{ hostClassification: host === null ? "journal_only" : host === "127.0.0.1" ? "loopback" : "custom", port },
 			{},
 			{ essential: true },
 		);
@@ -320,7 +327,14 @@ export class RuntimeDiagnostics {
 
 	async markFailed(error: unknown): Promise<void> {
 		const errorClass = getDiagnosticErrorClass(error);
-		this.recordEvent("runtime.shutdown_failed", { errorClass }, {}, { level: "error", essential: true });
+		this.recordEvent(
+			this.instance.getDescriptor().processKind === "desktop"
+				? "desktop.recorder_failed"
+				: "runtime.shutdown_failed",
+			{ errorClass },
+			{},
+			{ level: "error", essential: true },
+		);
 		await this.recorder.flush();
 		await this.instance.markFailed(errorClass);
 	}
@@ -337,9 +351,15 @@ export class RuntimeDiagnostics {
 	async close(): Promise<void> {
 		if (this.closed) return;
 		this.closed = true;
-		this.recordEvent("runtime.shutdown_requested", {}, {}, { essential: true });
+		const desktop = this.instance.getDescriptor().processKind === "desktop";
+		this.recordEvent(
+			desktop ? "desktop.recorder_closing" : "runtime.shutdown_requested",
+			{},
+			{},
+			{ essential: true },
+		);
 		await this.instance.markStopping().catch(() => undefined);
-		this.recordEvent("runtime.shutdown_completed", {}, {}, { essential: true });
+		this.recordEvent(desktop ? "desktop.recorder_closed" : "runtime.shutdown_completed", {}, {}, { essential: true });
 		this.disposeProvidersAndCapabilities();
 		await this.recorder.close();
 		if (!this.failed) await this.instance.markStopped();

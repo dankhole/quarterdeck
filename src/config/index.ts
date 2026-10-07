@@ -16,6 +16,7 @@ export {
 	resolveAgentCommandForLaunch,
 	SUPPORTED_PI_VERSION,
 	setAgentAvailabilityDiagnosticSink,
+	waitForPendingAgentAvailabilityProbes,
 } from "./agent-registry";
 export {
 	type AudibleNotificationEvents,

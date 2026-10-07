@@ -4,6 +4,7 @@ export async function requestJson<T>(input: {
 	type: "query" | "mutation";
 	projectId?: string | null;
 	payload?: unknown;
+	headers?: Readonly<Record<string, string>>;
 }): Promise<{ status: number; payload: T }> {
 	const unwrapTrpcPayload = (value: unknown): unknown => {
 		const envelope = Array.isArray(value) ? value[0] : value;
@@ -23,7 +24,7 @@ export async function requestJson<T>(input: {
 		}
 		return value;
 	};
-	const headers = new Headers();
+	const headers = new Headers(input.headers);
 	if (input.projectId) {
 		headers.set("x-quarterdeck-project-id", input.projectId);
 	}

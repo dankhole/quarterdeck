@@ -67,6 +67,7 @@ export interface ProjectOrphanMaintenanceTimer {
 	start(): void;
 	stop(): void;
 	runNow(): Promise<void>;
+	waitForIdle(): Promise<void>;
 }
 
 function collectProjectRepoPaths(paths: Iterable<string | null | undefined>): string[] {
@@ -128,5 +129,8 @@ export function createProjectOrphanMaintenanceTimer(
 			}
 		},
 		runNow,
+		async waitForIdle() {
+			await runningSweep;
+		},
 	};
 }

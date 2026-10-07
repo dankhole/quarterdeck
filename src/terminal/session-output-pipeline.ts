@@ -7,8 +7,10 @@ import type { RuntimeTaskSessionSummary } from "../core";
 import type { ProcessEntry } from "./session-manager-types";
 import type { SessionTransitionEvent, SessionTransitionResult } from "./session-summary-store";
 import {
+	beginCodexWorkspaceTrustOutput,
 	MAX_WORKSPACE_TRUST_BUFFER_CHARS,
 	processClaudeWorkspaceTrustScreen,
+	processCodexWorkspaceTrustScreen,
 	processWorkspaceTrustOutput,
 } from "./session-workspace-trust";
 import { disableOscColorQueryIntercept, filterTerminalProtocolOutput } from "./terminal-protocol-filter";
@@ -54,6 +56,7 @@ export function processTaskSessionOutput(
 	//    overlays are terminal UI, so transcript chunks are not lifecycle truth.
 	const liveSummary = deps.getSummary(taskId);
 	const activeAtWrite = entry.active;
+	const codexTrustRevision = beginCodexWorkspaceTrustOutput(activeAtWrite);
 	const inspectRenderedScreen =
 		entry.terminalStateMirror !== null &&
 		activeAtWrite.detectOutputTransition !== null &&
@@ -66,18 +69,24 @@ export function processTaskSessionOutput(
 	// 3. Terminal state mirror — feed filtered output to the headless xterm.
 	//    When inspection is required, transition before the same chunk becomes
 	//    visible to listeners so the card cannot briefly claim it is Running.
-	//    Claude workspace trust is also driven from the rendered screen.
+	//    Claude and modern Codex workspace trust also use the rendered screen.
 	const inspectClaudeTrust = activeAtWrite.claudeWorkspaceTrust !== null;
 	if (entry.terminalStateMirror) {
 		entry.terminalStateMirror.applyOutput(
 			filteredChunk,
-			inspectRenderedScreen || inspectClaudeTrust
+			inspectRenderedScreen || inspectClaudeTrust || codexTrustRevision !== null
 				? (screen) => {
 						if (entry.active !== activeAtWrite) {
 							return;
 						}
 						if (inspectClaudeTrust) {
 							processClaudeWorkspaceTrustScreen(activeAtWrite, taskId, screen, {
+								updateStore: (id, patch) => deps.updateStore(id, patch),
+								getActive: (id) => (id === taskId ? entry.active : null),
+							});
+						}
+						if (codexTrustRevision !== null) {
+							processCodexWorkspaceTrustScreen(activeAtWrite, taskId, screen, codexTrustRevision, {
 								updateStore: (id, patch) => deps.updateStore(id, patch),
 								getActive: (id) => (id === taskId ? entry.active : null),
 							});

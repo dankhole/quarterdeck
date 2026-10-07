@@ -7,6 +7,8 @@ import { type UseTaskEditorResult, useTaskEditor } from "@/hooks/board/use-task-
 import type { BoardData, TaskImage } from "@/types";
 
 const connection = vi.hoisted(() => ({ isRuntimeDisconnected: false, streamError: null as string | null }));
+const environment = vi.hoisted(() => ({ kind: "browser" }));
+vi.mock("@/runtime/runtime-environment", () => ({ getRuntimeEnvironment: () => environment }));
 const runtime = vi.hoisted(() => ({ isQuarterdeckAccessBlocked: false }));
 vi.mock("@/providers/project-provider", () => ({ useProjectRuntimeStreamContext: () => connection }));
 vi.mock("@/providers/project-runtime-provider", () => ({ useProjectRuntimeContext: () => runtime }));
@@ -49,6 +51,7 @@ describe("AppRuntimeBoundary", () => {
 		vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 		Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: showModal });
 		Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value: close });
+		environment.kind = "browser";
 		connection.isRuntimeDisconnected = false;
 		connection.streamError = null;
 		runtime.isQuarterdeckAccessBlocked = false;
@@ -122,6 +125,37 @@ describe("AppRuntimeBoundary", () => {
 		} finally {
 			document.removeEventListener("keydown", shortcut, true);
 			document.removeEventListener("pointerdown", outsidePointerDown);
+		}
+	});
+
+	it("keeps local controls and portaled draft review reachable while desktop is offline", () => {
+		environment.kind = "desktop";
+		connection.isRuntimeDisconnected = true;
+		const review = vi.fn();
+		const keydown = vi.fn();
+		document.addEventListener("keydown", keydown);
+		try {
+			act(() =>
+				root.render(
+					<AppRuntimeBoundary>
+						<button type="button" onClick={review}>
+							Review drafts
+						</button>
+					</AppRuntimeBoundary>,
+				),
+			);
+			expect(document.querySelector("dialog")).toBeNull();
+			expect(showModal).not.toHaveBeenCalled();
+			expect(document.querySelector('[role="status"]')?.textContent).toContain("Local drafts remain available");
+			const button = container.querySelector("button")!;
+			button.focus();
+			expect(document.activeElement).toBe(button);
+			button.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+			act(() => button.click());
+			expect(review).toHaveBeenCalledOnce();
+			expect(keydown).toHaveBeenCalledOnce();
+		} finally {
+			document.removeEventListener("keydown", keydown);
 		}
 	});
 

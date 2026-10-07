@@ -26,6 +26,7 @@ import {
 	DialogFooter,
 	DialogHeader,
 } from "@/components/ui/dialog";
+import { useDesktopDraftProtection } from "@/hooks/app";
 import { useSettingsForm } from "@/hooks/settings/use-settings-form";
 import { useLayoutCustomizations } from "@/resize/layout-customizations";
 import { openFileOnHost, saveRuntimeConfig } from "@/runtime/runtime-config-query";
@@ -65,6 +66,7 @@ export function RuntimeSettingsDialog({
 
 	// Consolidated form state — dirty check, reset, and save payload are automatic
 	const { fields, setField, hasUnsavedChanges } = useSettingsForm(config, open);
+	useDesktopDraftProtection("Settings", open && (hasUnsavedChanges || isSaving));
 
 	// Reset default prompt shortcuts — visibility
 	const hasHiddenDefaults = (config?.hiddenDefaultPromptShortcuts ?? []).length > 0;

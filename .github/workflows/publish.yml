@@ -24,6 +24,8 @@ jobs:
     outputs:
       tag: ${{ steps.resolve_tag.outputs.tag }}
       sha: ${{ steps.resolve_tag.outputs.sha }}
+      desktop_enabled: ${{ steps.resolve_tag.outputs.desktop_enabled }}
+      stable_release: ${{ steps.resolve_tag.outputs.stable_release }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -35,6 +37,7 @@ jobs:
         id: resolve_tag
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
+          DESKTOP_ENABLED: ${{ vars.QUARTERDECK_DESKTOP_RELEASES }}
         run: |
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
             echo "Error: tag must match vX.Y.Z (with optional prerelease suffix)"
@@ -47,6 +50,16 @@ jobs:
           SHA=$(git rev-parse --verify "refs/tags/$TAG^{commit}")
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "stable_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stable_release=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ "$DESKTOP_ENABLED" == "1" ]]; then
+            echo "desktop_enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "desktop_enabled=false" >> "$GITHUB_OUTPUT"
+          fi
 
   test:
     needs: resolve
@@ -54,9 +67,66 @@ jobs:
     with:
       ref: ${{ needs.resolve.outputs.sha }}
 
+  desktop:
+    needs: [resolve, test]
+    if: ${{ needs.resolve.outputs.desktop_enabled == 'true' }}
+    uses: ./.github/workflows/desktop-release.yml
+    with:
+      source_sha: ${{ needs.resolve.outputs.sha }}
+      production_updates: ${{ needs.resolve.outputs.stable_release == 'true' }}
+      coordinated_release: true
+    secrets: inherit
+
+  desktop-assets:
+    name: Validate complete desktop assets and stage draft release
+    needs: [resolve, desktop]
+    if: ${{ needs.resolve.outputs.desktop_enabled == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22.23.2"
+          package-manager-cache: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-signed-*-${{ github.run_attempt }}
+          path: desktop-release-assets
+          merge-multiple: true
+      - name: Verify release identity and every asset checksum
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          [[ "$TAG" == "v$version" ]] || { echo "Tag/version mismatch"; exit 1; }
+          node .github/scripts/desktop-release-artifacts.mjs validate --dir desktop-release-assets --version "$version" --sha "$SOURCE_SHA" --list desktop-release-files.txt
+      - name: Upload only to an unpublished draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          # Distinguish a missing release from auth/network errors.
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$TAG\") | .id")
+          if [[ -n "$release_id" ]]; then
+            is_draft=$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" --jq .draft)
+            [[ "$is_draft" == "true" ]] || { echo "Refusing to modify a public release; use a new version"; exit 1; }
+          else
+            gh release create "$TAG" --verify-tag --draft --title "$TAG" --notes "Desktop assets staged; release gates and npm publication pending."
+          fi
+          # Partial failed uploads may be retried while the release is draft.
+          mapfile -t files < desktop-release-files.txt
+          gh release upload "$TAG" "${files[@]}" --clobber
+
   publish:
     name: Publish npm package and create GitHub release
-    needs: [resolve, test]
+    needs: [resolve, test, desktop-assets]
+    if: ${{ always() && needs.resolve.result == 'success' && needs.test.result == 'success' && ((needs.resolve.outputs.desktop_enabled == 'true' && needs.desktop-assets.result == 'success') || (needs.resolve.outputs.desktop_enabled == 'false' && needs.desktop-assets.result == 'skipped')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -118,7 +188,26 @@ jobs:
             --output-key body
 
       - name: Build, validate, and publish to npm (OIDC trusted publishing)
-        run: npm publish --access public
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.package_version }}
+          RELEASE_SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { spawnSync } from 'node:child_process';
+          import { getNpmPublicationState } from './.github/scripts/npm-publication-identity.mjs';
+          const version = process.env.RELEASE_VERSION;
+          const sourceSha = process.env.RELEASE_SOURCE_SHA;
+          if (getNpmPublicationState({ version, sourceSha }) === 'published') {
+            console.log(`npm already contains ${version} from the release source; finishing GitHub release only.`);
+          } else {
+            const publish = spawnSync('npm', ['publish', '--access', 'public'], { stdio: 'inherit' });
+            if (publish.error) throw publish.error;
+            if (publish.status !== 0) process.exit(publish.status ?? 1);
+            if (getNpmPublicationState({ version, sourceSha }) !== 'published') {
+              throw new Error('npm publication identity is not yet confirmed; retry this immutable release.');
+            }
+          }
+          NODE
 
       - name: Compute compare link
         id: compare
@@ -143,3 +232,4 @@ jobs:
 
             ${{ steps.compare.outputs.link }}
           prerelease: ${{ contains(needs.resolve.outputs.tag, '-') }}
+          draft: false

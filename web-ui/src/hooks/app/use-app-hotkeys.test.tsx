@@ -132,33 +132,38 @@ describe("useAppHotkeys", () => {
 		expect(handleOpenCreateTask).not.toHaveBeenCalled();
 	});
 
-	it("blocks project keyboard actions while unavailable and keeps settings accessible", async () => {
-		const projectAction = vi.fn();
-		const settingsAction = vi.fn();
-		await act(async () =>
-			root.render(
-				<HookHarness
-					selectedCard={null}
-					canUseCreateTaskShortcut
-					canUseProjectActions={false}
-					currentProjectId="unavailable-project"
-					handleToggleDetailTerminal={projectAction}
-					handleToggleHomeTerminal={projectAction}
-					handleOpenCreateTask={projectAction}
-					handleToggleFileFinder={projectAction}
-					handleToggleTextSearch={projectAction}
-					handleOpenSettings={settingsAction}
-				/>,
-			),
-		);
-		act(() => {
-			for (const shortcut of ["c", "mod+j", "mod+p", "mod+shift+f", "mod+shift+s"]) {
-				const handler = mockUseHotkeys.mock.calls.find(([key]) => key === shortcut)?.[1];
-				if (typeof handler !== "function") throw new Error(`Missing shortcut ${shortcut}`);
-				(handler as () => void)();
-			}
-		});
-		expect(projectAction).not.toHaveBeenCalled();
-		expect(settingsAction).toHaveBeenCalledTimes(1);
-	});
+	it.each(["unavailable", "offline", "onboarding"])(
+		"blocks project keyboard actions while %s and keeps settings accessible",
+		async (reason) => {
+			const projectAction = vi.fn();
+			const settingsAction = vi.fn();
+			await act(async () =>
+				root.render(
+					<HookHarness
+						selectedCard={null}
+						canUseCreateTaskShortcut
+						canUseProjectActions={reason !== "unavailable"}
+						runtimeConnected={reason !== "offline"}
+						onboarding={reason === "onboarding"}
+						currentProjectId="unavailable-project"
+						handleToggleDetailTerminal={projectAction}
+						handleToggleHomeTerminal={projectAction}
+						handleOpenCreateTask={projectAction}
+						handleToggleFileFinder={projectAction}
+						handleToggleTextSearch={projectAction}
+						handleOpenSettings={settingsAction}
+					/>,
+				),
+			);
+			act(() => {
+				for (const shortcut of ["c", "mod+j", "mod+p", "mod+shift+f", "mod+shift+s"]) {
+					const handler = mockUseHotkeys.mock.calls.find(([key]) => key === shortcut)?.[1];
+					if (typeof handler !== "function") throw new Error(`Missing shortcut ${shortcut}`);
+					(handler as () => void)();
+				}
+			});
+			expect(projectAction).not.toHaveBeenCalled();
+			expect(settingsAction).toHaveBeenCalledTimes(1);
+		},
+	);
 });

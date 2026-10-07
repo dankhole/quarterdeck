@@ -7,6 +7,7 @@ import {
 	resolveWindowsCompatibleCommand,
 	terminateProcessForTimeout,
 } from "../core";
+import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 
 const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 export const GIT_COMMAND_TIMEOUTS_MS = {
@@ -90,6 +91,7 @@ function executeGitCommand(
 		let timedOut = false;
 		let timeout: NodeJS.Timeout | null = null;
 		const command = resolveWindowsCompatibleCommand("git", args, process.platform, env);
+		assertRuntimeProcessLaunchAdmission();
 		const child = execFile(
 			command.binary,
 			command.args,

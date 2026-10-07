@@ -95,6 +95,11 @@ export function useAppSideEffects({
 
 	useAppHotkeys({
 		selectedCard: board.selectedCard,
+		runtimeConnected:
+			projectStream.hasReceivedSnapshot &&
+			!projectStream.isRuntimeDisconnected &&
+			!projectRuntime.isQuarterdeckAccessBlocked,
+		onboarding: projectRuntime.isStartupOnboardingDialogOpen,
 		canUseProjectActions: projectNavigation.currentProjectAvailability?.status !== "unavailable",
 		canUseCreateTaskShortcut: !projectNavigation.hasNoProjects && projectNavigation.currentProjectId !== null,
 		currentProjectId: projectNavigation.currentProjectId,

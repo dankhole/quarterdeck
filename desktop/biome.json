@@ -1,0 +1,7 @@
+{
+	"root": false,
+	"extends": ["../biome.json"],
+	"files": {
+		"includes": ["src/**/*.ts", "test/**/*.ts", "test/**/*.mjs", "scripts/**/*.mjs", "forge.config.mjs", "package.json", "tsconfig.json", "!node_modules/**/*", "!dist/**/*", "!out/**/*", "!.stage/**/*", "!.cache/**/*"]
+	}
+}

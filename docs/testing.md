@@ -24,6 +24,7 @@ This document owns test selection. [`DEVELOPMENT.md`](../DEVELOPMENT.md) lists d
 | Persistence, shutdown, startup, or recovery | Focused integration test that crosses the relevant process or filesystem boundary | Use Agent Lab cold restart only when the browser-visible projection or PTY recovery is part of the claim. |
 | UI component, hook, or projection | Targeted web unit/integration tests | Run the complete web suite only for broad shared-state, provider, or application-shell changes. |
 | CLI or launcher composition | Focused executable, adapter, or argument-construction tests | Use a real provider only when its actual CLI rejects or interprets the generated invocation differently from the fake. |
+| Packaged macOS shell, helper, protocol, or lifetime | Focused desktop tests plus one relevant `agent:desktop` scenario against a freshly packaged app | Use visible native checks only for focus/window/dialog claims; signing, Gatekeeper, Intel, oldest macOS, and updates have separate gates. |
 | Browser/runtime/PTY convergence | One narrow deterministic Agent Lab scenario | Add more scenarios only for separate regression classes. |
 | Provider TUI, hook schema, event ordering, version compatibility, or launcher uncertainty | One narrow, explicitly authorized real-provider Agent Lab scenario | Keep fake coverage for deterministic product behavior; never make the real lane a general regression suite. |
 | Visual layout, clipping, paint, stacking, contrast, or responsive behavior | Pixel screenshot at the affected viewport plus semantic state | Skip screenshots for lifecycle or semantic bugs whose visual rendering is not disputed. |
@@ -38,15 +39,18 @@ This document owns test selection. [`DEVELOPMENT.md`](../DEVELOPMENT.md) lists d
 | `npm run test -- <paths...>` | Root Vitest tests, optionally focused by path | Web UI tests |
 | `npm run test:fast` | `test/runtime` and `test/utilities` | `test/integration`, web UI tests |
 | `npm run test:integration` | `test/integration` | Runtime unit tests, web UI tests |
-| `npm run test:package` | Publishable tarball creation, isolated global install, command/version verification, bundled UI fetch, and graceful shutdown | Source-tree tests, browser interaction, or real providers |
+| `npm run test:package` | Publishable tarball creation, isolated global install under default npm lifecycle policy, installed native PTY TTY input/output/exit, desktop-dependency exclusion, command/version verification, authenticated bundled UI fetch, and graceful shutdown | Source-tree tests, browser interaction, provider PTY lifecycle, or real providers |
 | `npm run test:windows-smoke` | Packaged CLI plus focused native Windows integration checks; fails off Windows and requires a prior build | Full root/web suites and the remaining native acceptance gate |
 | `npm run web:test -- <paths...>` | Web UI Vitest tests, optionally focused by path | Root tests, Playwright |
 | `npm run typecheck` | Runtime TypeScript | Web UI TypeScript |
 | `npm run web:typecheck` | Web UI TypeScript | Runtime TypeScript |
 | `npm run build` | Web UI typecheck and production bundle, runtime build, packaged build-identity check | Unit, integration, or E2E tests |
-| `npm run check` | Instruction bridge, repository Biome check, runtime typecheck, and all root Vitest tests | Web UI tests/typecheck, Playwright, Agent Lab |
+| `npm run check` | Instruction bridge, repository Biome check, runtime typecheck, release policy tests, and all root Vitest tests | Web UI tests/typecheck, Playwright, Agent Lab |
+| `npm run test:release-policy` | Node-only release manifest and npm publication identity tests | Actual publication, signing, or application execution |
 | `npm run web:e2e` | Automated Playwright smoke suite against a disposable runtime and Git fixture | Full Agent Lab scenario exploration, real providers |
 | `npm run agent:lab` | Interactive isolated functional lane, fake provider by default | Automated unit-test coverage or permission to use a real provider |
+| `npm run agent:desktop -- smoke --app <path>` | Isolated packaged macOS app, hidden by default, with synthetic data and fake provider | Signed-install/update acceptance, another architecture/OS version, or authorization for real providers |
+| `npm --prefix desktop run check` | Desktop Biome, TypeScript, and Vitest checks | Root/web checks, actual packaged execution, signing, or Gatekeeper |
 
 The pre-commit hook already runs staged Biome, the runtime typecheck, and `test:fast`. Account for that when choosing manual pre-commit validation instead of repeating it on an unchanged tree.
 
@@ -68,6 +72,10 @@ If a focused run fails because another test is genuinely coupled to the changed 
 ## Choosing a heavy lane
 
 Use `web:e2e` for repeatable, automated browser smoke behavior already represented by its disposable fixture. Use the repo-owned `quarterdeck-functional-testing` skill and Agent Lab for interactive browser, terminal, Git, Files, lifecycle, persistence, host-integration, or visual behavior that needs scenario control or diagnostic evidence.
+
+For a packaged macOS boundary, the same skill routes to `agent:desktop`. Keep routine tests hidden; `--show-window` is reserved for native visibility/focus checks. Its lab-only mock keychain avoids modifying the user's macOS keychain. Record the actual app manifest and build identity, and inspect cleanup evidence even when the scenario fails. See the [desktop ledger](./desktop-validation.md) for gates that a synthetic unsigned run cannot establish.
+
+Packaged runs require native application, local socket, and process-inspection permission from the task runner. A restricted host sandbox can abort macOS application registration before Quarterdeck starts, displaying a system crash alert even for a hidden window. The driver checks process inspection before spawning Electron; if denied, use scoped permission for the isolated test rather than retrying the restricted launch. Hidden windows do not suppress macOS crash dialogs. The full fake smoke deliberately crashes the renderer to test recovery; use `--manual-shells --no-agent` or `--performance` for their separate checks without deliberate crashes. Explain possible system alerts before running an intentional crash scenario, and never change global crash-reporting settings to hide test effects.
 
 Within Agent Lab:
 

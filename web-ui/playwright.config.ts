@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
@@ -7,6 +8,10 @@ const repoRoot = dirname(currentDir);
 const webPort = process.env.QUARTERDECK_E2E_WEB_PORT ?? "4174";
 const runtimePort = process.env.QUARTERDECK_E2E_RUNTIME_PORT ?? "3597";
 const baseURL = `http://127.0.0.1:${webPort}`;
+const manifestPointerPath =
+	process.env.QUARTERDECK_E2E_MANIFEST_POINTER_PATH ??
+	resolve(repoRoot, "test-results", `playwright-fixture-${randomUUID()}.json`);
+process.env.QUARTERDECK_E2E_MANIFEST_POINTER_PATH = manifestPointerPath;
 
 export default defineConfig({
 	testDir: "./tests",
@@ -17,7 +22,8 @@ export default defineConfig({
 		baseURL,
 		headless: true,
 		screenshot: "only-on-failure",
-		trace: "retain-on-failure",
+		// Network traces retain admission cookies; safe URL logs, screenshots and video remain available.
+		trace: "off",
 		video: "retain-on-failure",
 	},
 	webServer: {
@@ -33,6 +39,7 @@ export default defineConfig({
 		env: {
 			QUARTERDECK_E2E_RUNTIME_PORT: runtimePort,
 			QUARTERDECK_E2E_WEB_PORT: webPort,
+			QUARTERDECK_E2E_MANIFEST_POINTER_PATH: manifestPointerPath,
 			NODE_ENV: "development",
 		},
 	},

@@ -10,11 +10,11 @@ import {
 	type RuntimeDiagnosticDescriptor,
 	type RuntimeDiagnosticDescriptorStatus,
 	runtimeDiagnosticDescriptorSchema,
-} from "../core";
+} from "../core/api/diagnostics.js";
+import { getRuntimeHomePath } from "../core/runtime-state-home.js";
 import { removeDirectoryWithRetries } from "../fs/remove-path.js";
-import { getRuntimeHomePath } from "../state";
-import { getDiagnosticErrorClass } from "./bounded-value";
-import { ensurePrivateDiagnosticDirectories } from "./private-path";
+import { getDiagnosticErrorClass } from "./bounded-value.js";
+import { ensurePrivateDiagnosticDirectories } from "./private-path.js";
 
 const COMPLETED_INSTANCE_RETENTION = 3;
 
@@ -48,13 +48,15 @@ export function getDiagnosticBundlesRootPath(stateHome = getRuntimeHomePath()): 
 	return join(getDiagnosticsRootPath(stateHome), "bundles");
 }
 
-export interface CreateRuntimeDiagnosticInstanceOptions {
+export type DiagnosticInstanceEndpointOptions =
+	| { processKind?: "runtime"; host: string; port: number }
+	| { processKind: "desktop"; host: null; port: null };
+
+export type CreateRuntimeDiagnosticInstanceOptions = DiagnosticInstanceEndpointOptions & {
 	stateHome?: string;
-	host: string;
-	port: number;
 	quarterdeckVersion: string;
 	onPersistenceFailure?: (error: Error) => void;
-}
+};
 
 export class RuntimeDiagnosticInstance {
 	readonly directory: string;
@@ -86,6 +88,7 @@ export class RuntimeDiagnosticInstance {
 		const journalDirectory = join(directory, "journal");
 		const descriptor = runtimeDiagnosticDescriptorSchema.parse({
 			version: 1,
+			processKind: options.processKind ?? "runtime",
 			runtimeInstanceId,
 			status: "starting",
 			pid: process.pid,
@@ -139,15 +142,16 @@ export class RuntimeDiagnosticInstance {
 		return expected.length === received.length && timingSafeEqual(expected, received);
 	}
 
-	async markReady(host: string, port: number): Promise<void> {
-		this.descriptor = {
+	async markReady(host: string | null, port: number | null): Promise<void> {
+		this.descriptor = runtimeDiagnosticDescriptorSchema.parse({
 			...this.descriptor,
 			status: "ready",
 			host,
 			port,
 			readyAt: new Date().toISOString(),
+			stoppedAt: null,
 			failure: null,
-		};
+		});
 		await this.persist();
 	}
 

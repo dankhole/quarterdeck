@@ -10,6 +10,7 @@ import type {
 /** One runtime registry boundary with exactly one provider owner per task. */
 export class StructuredOwnerRegistry implements StructuredOwnerRegistryContract {
 	private readonly starting = new Set<string>();
+	private launchesFenced = false;
 
 	constructor(
 		private readonly codex: CodexStructuredOwnerRegistry,
@@ -25,7 +26,20 @@ export class StructuredOwnerRegistry implements StructuredOwnerRegistryContract 
 		return this.codex.get(projectId, taskId) ?? this.claude.get(projectId, taskId);
 	}
 
+	getOwnedProcessRootPids(): number[] {
+		return [...this.codex.getOwnedProcessRootPids(), ...this.claude.getOwnedProcessRootPids()];
+	}
+
+	hasPendingLaunches(): boolean {
+		return this.starting.size > 0;
+	}
+
+	fenceLaunches(): void {
+		this.launchesFenced = true;
+	}
+
 	async start(input: StartStructuredOwnerInput): Promise<StructuredOwner> {
+		if (this.launchesFenced) throw new Error("Runtime is shutting down.");
 		const key = JSON.stringify([input.projectId, input.taskId]);
 		if (this.starting.has(key) || this.get(input.projectId, input.taskId)) {
 			throw new Error("A structured owner is already active for this task.");

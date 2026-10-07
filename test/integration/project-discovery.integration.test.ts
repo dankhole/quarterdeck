@@ -36,6 +36,7 @@ describe("project discovery integration", { concurrent: false }, () => {
 
 			const projectsResponse = await requestJson<RuntimeProjectsResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "projects.list",
 				type: "query",
 			});
@@ -43,7 +44,7 @@ describe("project discovery integration", { concurrent: false }, () => {
 			expect(projectsResponse.payload.currentProjectId).toBeNull();
 			expect(projectsResponse.payload.projects).toEqual([]);
 
-			stream = await connectRuntimeStream(`ws://127.0.0.1:${port}/api/runtime/ws`);
+			stream = await connectRuntimeStream(`ws://127.0.0.1:${port}/api/runtime/ws`, server.browserHeaders);
 			const snapshot = (await stream.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
@@ -78,6 +79,7 @@ describe("project discovery integration", { concurrent: false }, () => {
 
 			const projectsResponse = await requestJson<RuntimeProjectsResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "projects.list",
 				type: "query",
 			});
@@ -85,7 +87,7 @@ describe("project discovery integration", { concurrent: false }, () => {
 			expect(projectsResponse.payload.currentProjectId).toBeNull();
 			expect(projectsResponse.payload.projects).toEqual([]);
 
-			stream = await connectRuntimeStream(`ws://127.0.0.1:${port}/api/runtime/ws`);
+			stream = await connectRuntimeStream(`ws://127.0.0.1:${port}/api/runtime/ws`, server.browserHeaders);
 			const snapshot = (await stream.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
@@ -129,6 +131,7 @@ describe("project discovery integration", { concurrent: false }, () => {
 
 			const addProjectResponse = await requestJson<RuntimeProjectAddResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
+				headers: firstServer.browserHeaders,
 				procedure: "projects.add",
 				type: "mutation",
 				projectId: projectAId,
@@ -162,13 +165,17 @@ describe("project discovery integration", { concurrent: false }, () => {
 
 			const projectsResponse = await requestJson<RuntimeProjectsResponse>({
 				baseUrl: `http://127.0.0.1:${secondPort}`,
+				headers: secondServer.browserHeaders,
 				procedure: "projects.list",
 				type: "query",
 			});
 			expect(projectsResponse.status).toBe(200);
 			expect(projectsResponse.payload.currentProjectId).toBe(projectAId);
 
-			secondStream = await connectRuntimeStream(`ws://127.0.0.1:${secondPort}/api/runtime/ws?documentVisible=false`);
+			secondStream = await connectRuntimeStream(
+				`ws://127.0.0.1:${secondPort}/api/runtime/ws?documentVisible=false`,
+				secondServer.browserHeaders,
+			);
 			const snapshot = (await secondStream.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;

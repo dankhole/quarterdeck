@@ -1,12 +1,16 @@
 import { useHotkeys } from "react-hotkeys-hook";
 
+import { getRuntimeEnvironment } from "@/runtime/runtime-environment";
 import type { CardSelection } from "@/types";
+import { deriveAppCommandAvailability } from "./desktop-app";
 
 interface UseAppHotkeysInput {
 	selectedCard: CardSelection | null;
 	canUseCreateTaskShortcut: boolean;
 	canUseProjectActions?: boolean;
 	currentProjectId: string | null;
+	runtimeConnected?: boolean;
+	onboarding?: boolean;
 	handleToggleDetailTerminal: () => void;
 	handleToggleHomeTerminal: () => void;
 	handleOpenCreateTask: () => void;
@@ -21,6 +25,8 @@ export function useAppHotkeys({
 	canUseCreateTaskShortcut,
 	canUseProjectActions = true,
 	currentProjectId,
+	runtimeConnected = true,
+	onboarding = false,
 	handleToggleDetailTerminal,
 	handleToggleHomeTerminal,
 	handleOpenCreateTask,
@@ -29,10 +35,21 @@ export function useAppHotkeys({
 	handleToggleFileFinder,
 	handleToggleTextSearch,
 }: UseAppHotkeysInput): void {
+	// Electron menu accelerators deliver typed commands, independently of the focused input.
+	// Keep a single owner even if a renderer key event also reaches React's hotkey listener.
+	const nativeCommands =
+		getRuntimeEnvironment().kind === "desktop" && typeof window.quarterdeckDesktop?.onCommand === "function";
+	const commands = deriveAppCommandAvailability({
+		runtimeConnected,
+		onboarding,
+		projectActionsEnabled: canUseProjectActions && currentProjectId !== null,
+		selectedTask: selectedCard !== null,
+	});
+	const projectCommandsEnabled = commands.includes("toggle-shell");
 	useHotkeys(
 		"mod+j",
 		() => {
-			if (!canUseProjectActions || !currentProjectId) return;
+			if (!projectCommandsEnabled) return;
 			if (selectedCard) {
 				handleToggleDetailTerminal();
 				return;
@@ -40,23 +57,24 @@ export function useAppHotkeys({
 			handleToggleHomeTerminal();
 		},
 		{
+			enabled: !nativeCommands,
 			enableOnFormTags: true,
 			enableOnContentEditable: true,
 			preventDefault: true,
 		},
-		[canUseProjectActions, currentProjectId, handleToggleDetailTerminal, handleToggleHomeTerminal, selectedCard],
+		[projectCommandsEnabled, currentProjectId, handleToggleDetailTerminal, handleToggleHomeTerminal, selectedCard],
 	);
 
 	useHotkeys(
 		"c",
 		() => {
-			if (!canUseProjectActions || !canUseCreateTaskShortcut) {
+			if (!commands.includes("new-task") || !canUseCreateTaskShortcut) {
 				return;
 			}
 			handleOpenCreateTask();
 		},
 		{ preventDefault: true },
-		[canUseCreateTaskShortcut, canUseProjectActions, handleOpenCreateTask],
+		[canUseCreateTaskShortcut, projectCommandsEnabled, handleOpenCreateTask],
 	);
 
 	useHotkeys(
@@ -78,6 +96,7 @@ export function useAppHotkeys({
 			handleToggleDiagnosticsPanel?.();
 		},
 		{
+			enabled: !nativeCommands,
 			enableOnFormTags: true,
 			enableOnContentEditable: true,
 			preventDefault: true,
@@ -88,28 +107,30 @@ export function useAppHotkeys({
 	useHotkeys(
 		"mod+p",
 		() => {
-			if (!canUseProjectActions || !currentProjectId) return;
+			if (!projectCommandsEnabled) return;
 			handleToggleFileFinder();
 		},
 		{
+			enabled: !nativeCommands,
 			enableOnFormTags: true,
 			enableOnContentEditable: true,
 			preventDefault: true,
 		},
-		[canUseProjectActions, currentProjectId, handleToggleFileFinder],
+		[projectCommandsEnabled, currentProjectId, handleToggleFileFinder],
 	);
 
 	useHotkeys(
 		"mod+shift+f",
 		() => {
-			if (!canUseProjectActions || !currentProjectId) return;
+			if (!projectCommandsEnabled) return;
 			handleToggleTextSearch();
 		},
 		{
+			enabled: !nativeCommands,
 			enableOnFormTags: true,
 			enableOnContentEditable: true,
 			preventDefault: true,
 		},
-		[canUseProjectActions, currentProjectId, handleToggleTextSearch],
+		[projectCommandsEnabled, currentProjectId, handleToggleTextSearch],
 	);
 }

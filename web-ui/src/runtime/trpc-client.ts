@@ -1,5 +1,6 @@
 import type { RuntimeAppRouter } from "@runtime-trpc";
 import { createTRPCProxyClient, httpBatchLink, TRPCClientError } from "@trpc/client";
+import { observeRuntimeAdmissionResponse } from "@/runtime/runtime-client-admission";
 import { getRuntimeBrowserClientId } from "@/runtime/runtime-client-id";
 
 interface TrpcErrorDataWithConflictRevision {
@@ -21,6 +22,11 @@ export function getRuntimeTrpcClient(projectId: string | null): RuntimeTrpcClien
 		links: [
 			httpBatchLink({
 				url: "/api/trpc",
+				fetch: async (input, init) => {
+					const response = await fetch(input, init);
+					await observeRuntimeAdmissionResponse(response, init?.signal);
+					return response;
+				},
 				headers: () => ({
 					...(projectId ? { "x-quarterdeck-project-id": projectId } : {}),
 					"x-quarterdeck-client-id": getRuntimeBrowserClientId(),

@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-
 import {
 	RUNTIME_OPEN_TARGET_IDS_BY_PLATFORM,
 	type RuntimeOpenTargetId,
@@ -8,6 +7,7 @@ import {
 	resolveWindowsRootExecutablePath,
 	terminateProcessForTimeout,
 } from "../core";
+import { resolveMacOpenProjectArguments } from "../core/api/mac-open-project.js";
 
 export interface OpenProjectCommandCandidate {
 	executable: string;
@@ -43,21 +43,6 @@ export interface OpenProjectOnHostOptions {
 
 const OUTPUT_LIMIT_BYTES = 64 * 1024;
 const OPEN_PROJECT_TIMEOUT_MS = 60_000;
-
-const MAC_APP_NAMES: Partial<Record<RuntimeOpenTargetId, readonly string[]>> = {
-	vscode: ["Visual Studio Code"],
-	"vscode-insiders": ["Visual Studio Code - Insiders"],
-	cursor: ["Cursor"],
-	windsurf: ["Windsurf"],
-	terminal: ["Terminal"],
-	iterm2: ["iTerm", "iTerm2"],
-	ghostty: ["Ghostty", "Ghostie"],
-	warp: ["Warp"],
-	xcode: ["Xcode"],
-	intellijidea: ["IntelliJ IDEA", "IntelliJ IDEA CE"],
-	rider: ["Rider", "JetBrains Rider"],
-	zed: ["Zed"],
-};
 
 const DIRECT_EXECUTABLES: Partial<Record<RuntimeOpenTargetId, string>> = {
 	vscode: "code",
@@ -95,13 +80,9 @@ export function resolveOpenProjectCommandCandidates(
 	const resolvedPlatform = resolvePlatform(platform);
 	const resolvedTargetId = normalizeTargetId(targetId, resolvedPlatform);
 	if (resolvedPlatform === "mac") {
-		if (resolvedTargetId === "finder") {
-			return [{ executable: "open", args: [projectPath] }];
-		}
-		const appNames = MAC_APP_NAMES[resolvedTargetId] ?? MAC_APP_NAMES.vscode ?? [];
-		return appNames.map((appName) => ({
+		return resolveMacOpenProjectArguments(resolvedTargetId, projectPath).map((args) => ({
 			executable: "open",
-			args: ["-a", appName, projectPath],
+			args,
 		}));
 	}
 	if (resolvedTargetId === "finder") {

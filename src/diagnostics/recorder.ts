@@ -10,22 +10,22 @@ import {
 	type DiagnosticRecordingState,
 	type DiagnosticTruncationSummary,
 	diagnosticContextSchema,
-} from "../core";
+} from "../core/api/diagnostics.js";
 import {
 	type DiagnosticPathAliases,
 	getDiagnosticErrorClass,
 	sanitizeDiagnosticText,
 	sanitizeDiagnosticValue,
-} from "./bounded-value";
+} from "./bounded-value.js";
 import {
 	type DiagnosticLogCandidate,
 	type DiagnosticRecordCandidate,
 	type DiagnosticRecordFilter,
 	matchesDiagnosticRecordFilter,
 	mergeDiagnosticRecordSources,
-} from "./diagnostic-record";
-import { type DiagnosticJournal, readDiagnosticJournal } from "./journal";
-import { type DiagnosticAdmissionProfile, DiagnosticRecordingPolicy } from "./recording-policy";
+} from "./diagnostic-record.js";
+import { type DiagnosticJournal, readDiagnosticJournal } from "./journal.js";
+import { type DiagnosticAdmissionProfile, DiagnosticRecordingPolicy } from "./recording-policy.js";
 
 const DEFAULT_MEMORY_RECORDS = 2_000;
 const DEFAULT_MAX_RECORD_BYTES = 8 * 1_024;

@@ -104,4 +104,24 @@ describe("createProjectOrphanMaintenanceTimer", () => {
 
 		timer.stop();
 	});
+
+	it("drains an already-started lock sweep after its timer is stopped", async () => {
+		let finish!: () => void;
+		const sweep = new Promise<void>((resolve) => {
+			finish = resolve;
+		});
+		const timer = createProjectOrphanMaintenanceTimer({
+			getProjectRepoPaths: () => ["/synthetic/project"],
+			cleanStaleGitIndexLocks: async () => await sweep,
+		});
+		const running = timer.runNow();
+		timer.stop();
+		const drained = vi.fn();
+		const draining = timer.waitForIdle().then(drained);
+		await Promise.resolve();
+		expect(drained).not.toHaveBeenCalled();
+		finish();
+		await Promise.all([running, draining]);
+		expect(drained).toHaveBeenCalledOnce();
+	});
 });

@@ -312,9 +312,15 @@ export class LanguageNavigationManager {
 		await Promise.all(sessions.map((entry) => entry.session.stop()));
 	}
 
-	async close(): Promise<void> {
+	/** Reject new launches without signaling children before their ownership snapshot. */
+	fenceLaunches(): void {
 		this.closed = true;
+		this.epoch++;
 		clearInterval(this.idleTimer);
+	}
+
+	async close(): Promise<void> {
+		this.fenceLaunches();
 		await this.reset();
 	}
 

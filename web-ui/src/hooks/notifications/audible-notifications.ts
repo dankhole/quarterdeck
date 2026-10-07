@@ -1,23 +1,22 @@
 import { deriveTaskIndicatorState, type RuntimeTaskIndicatorColumn } from "@runtime-contract";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { AudibleNotificationEventType } from "@/utils/notification-audio";
+import {
+	deriveTaskNotificationState,
+	getTaskNotificationSettleWindowMs,
+	isNewTaskNotification,
+	TASK_NOTIFICATION_EVENT_PRIORITY,
+} from "../../../../src/shared/task-notification-policy";
 
 export const SETTLE_WINDOW_HOOK_MS = 500;
 export const SETTLE_WINDOW_IMMEDIATE_MS = 0;
 
 export function getSettleWindowMs(summary: RuntimeTaskSessionSummary): number {
-	if (deriveTaskIndicatorState(summary).hookReview) {
-		return SETTLE_WINDOW_HOOK_MS;
-	}
-	return SETTLE_WINDOW_IMMEDIATE_MS;
+	return getTaskNotificationSettleWindowMs(summary);
 }
 
 /** Higher number = higher priority. Failure beats permission beats review. */
-export const EVENT_PRIORITY: Record<AudibleNotificationEventType, number> = {
-	review: 0,
-	permission: 1,
-	failure: 2,
-};
+export const EVENT_PRIORITY: Record<AudibleNotificationEventType, number> = TASK_NOTIFICATION_EVENT_PRIORITY;
 
 export type TaskColumn = RuntimeTaskIndicatorColumn;
 
@@ -42,11 +41,7 @@ export function resolveSessionSoundEvent(summary: RuntimeTaskSessionSummary): Au
 }
 
 export function deriveAudibleTaskNotificationState(summary: RuntimeTaskSessionSummary): AudibleTaskNotificationState {
-	const indicator = deriveTaskIndicatorState(summary);
-	return {
-		column: indicator.column,
-		eventType: indicator.notification,
-	};
+	return deriveTaskNotificationState(summary);
 }
 
 /**
@@ -58,16 +53,7 @@ export function isNewAudibleNotification(
 	previous: AudibleTaskNotificationState,
 	current: AudibleTaskNotificationState,
 ): boolean {
-	if (current.column !== "stopped" || current.eventType === null) {
-		return false;
-	}
-	if (previous.column === "active") {
-		return true;
-	}
-	if (previous.eventType === null) {
-		return true;
-	}
-	return EVENT_PRIORITY[current.eventType] > EVENT_PRIORITY[previous.eventType];
+	return isNewTaskNotification(previous, current);
 }
 
 export interface AudibleNotificationEventConfig {

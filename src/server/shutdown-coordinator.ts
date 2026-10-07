@@ -1,12 +1,14 @@
 import {
 	pruneOrphanSessionsForPersist,
+	type RuntimeOwnedProcessShutdownOutcome,
 	type RuntimeProjectStateResponse,
+	type RuntimeShutdownIncompleteReason,
+	type RuntimeShutdownOutcome,
 	type RuntimeTaskSessionReviewReason,
 	type RuntimeTaskSessionSummary,
 } from "../core";
-import { listProjectIndexEntries, loadProjectState, saveProjectSessions } from "../state";
+import { listProjectIndexEntries, loadSavedProjectStateById, saveProjectSessions } from "../state";
 import type { TerminalSessionManager } from "../terminal";
-import { killOrphanedAgentProcesses } from "../terminal";
 import type { ProjectRegistry } from "./project-registry";
 
 export interface RuntimeShutdownCoordinatorDependencies {
@@ -15,9 +17,27 @@ export interface RuntimeShutdownCoordinatorDependencies {
 	};
 	warn: (message: string) => void;
 	closeRuntimeServer: () => Promise<void>;
+	/** Reject new mutations and drain runtime producers before the final session snapshot. */
+	prepareForShutdown?: () => Promise<void>;
+	/** Close process launch admission only after admitted producer drains have settled. */
+	beforeProcessSnapshot?: () => void;
+	/** Capture exact-owned roots, call stopSessions, then confirm descendants stopped. */
+	stopOwnedProcesses?: (stopSessions: () => void) => Promise<RuntimeOwnedProcessShutdownOutcome>;
+	/** State writers must also enforce this fence at their own mutation boundary. */
+	persistenceAllowed?: () => boolean;
 	skipSessionCleanup?: boolean;
-	/** Agent Lab owns its synthetic child tree and must not scan unrelated host processes. */
+	/** @deprecated Shutdown never scans unrelated host processes. */
 	skipOrphanProcessCleanup?: boolean;
+	cleanupTimeoutMs?: number;
+}
+
+export interface RuntimeShutdownResult {
+	outcome: RuntimeShutdownOutcome;
+	/**
+	 * Settles only after every started write, close, and owned-process cleanup has
+	 * settled. A deadline report does not cancel I/O or release the lifetime lease.
+	 */
+	completion: Promise<RuntimeShutdownOutcome>;
 }
 
 /**
@@ -29,15 +49,15 @@ export interface RuntimeShutdownCoordinatorDependencies {
 async function persistInterruptedSessions(
 	projectPath: string,
 	interruptedTaskIds: string[],
-	options?: {
-		projectState?: RuntimeProjectStateResponse;
+	options: {
+		projectState: RuntimeProjectStateResponse;
 		resolveSummary?: (taskId: string) => RuntimeTaskSessionSummary | null;
 	},
 ): Promise<void> {
 	if (interruptedTaskIds.length === 0) {
 		return;
 	}
-	const projectState = options?.projectState ?? (await loadProjectState(projectPath));
+	const projectState = options.projectState;
 	const nextSessions = {
 		...projectState.sessions,
 	};
@@ -123,34 +143,32 @@ function collectWorkColumnTaskIds(projectState: RuntimeProjectStateResponse): st
 	return taskIds;
 }
 
-export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDependencies): Promise<void> {
-	deps.projectRegistry.stopMaintenance?.();
-
-	if (deps.skipSessionCleanup) {
-		await deps.closeRuntimeServer();
-		return;
-	}
-
+async function persistShutdownSessions(
+	deps: RuntimeShutdownCoordinatorDependencies,
+	managedProjects: ReturnType<ProjectRegistry["listManagedProjects"]>,
+	interruptedSummaries: Map<TerminalSessionManager, RuntimeTaskSessionSummary[]>,
+	recordFailure: (reason: RuntimeShutdownIncompleteReason, message: string) => void,
+): Promise<void> {
 	const interruptedByProject: Array<{
 		projectPath: string;
 		interruptedTaskIds: string[];
-		projectState?: RuntimeProjectStateResponse;
+		projectState: RuntimeProjectStateResponse;
 		resolveSummary?: (taskId: string) => RuntimeTaskSessionSummary | null;
 	}> = [];
 	const managedProjectIds = new Set<string>();
-	const shutdownQuiescence: Promise<void>[] = [];
+	const persistenceAllowed = () => deps.persistenceAllowed?.() ?? true;
 
-	for (const { projectId, projectPath, terminalManager } of deps.projectRegistry.listManagedProjects()) {
-		terminalManager.stopReconciliation();
-		const interrupted = terminalManager.markInterruptedAndStopAll();
-		shutdownQuiescence.push(terminalManager.waitForShutdownQuiescence());
+	for (const { projectId, projectPath, terminalManager } of managedProjects) {
+		if (!persistenceAllowed()) return;
+		const interrupted = interruptedSummaries.get(terminalManager) ?? [];
 		const interruptedTaskIds = new Set(collectShutdownInterruptedTaskIds(interrupted, terminalManager));
 		if (!projectPath) {
 			continue;
 		}
 		managedProjectIds.add(projectId);
 		try {
-			const projectState = await loadProjectState(projectPath);
+			const projectState = await loadSavedProjectStateById(projectId);
+			if (!projectState) throw new Error("Saved project state is unavailable.");
 			for (const taskId of collectWorkColumnTaskIds(projectState)) {
 				interruptedTaskIds.add(taskId);
 			}
@@ -162,16 +180,27 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			deps.warn(`Could not load project state for ${projectPath} during shutdown cleanup. ${message}`);
+			recordFailure(
+				"persistence_failed",
+				`Could not load project state for ${projectPath} during shutdown cleanup. ${message}`,
+			);
 		}
 	}
-	const indexedProjects = await listProjectIndexEntries();
+	if (!persistenceAllowed()) return;
+	let indexedProjects: Awaited<ReturnType<typeof listProjectIndexEntries>> = [];
+	try {
+		indexedProjects = await listProjectIndexEntries();
+	} catch (error) {
+		recordFailure("persistence_failed", `Could not load the project index during shutdown cleanup. ${String(error)}`);
+	}
 	for (const indexed of indexedProjects) {
+		if (!persistenceAllowed()) return;
 		if (managedProjectIds.has(indexed.projectId)) {
 			continue;
 		}
 		try {
-			const projectState = await loadProjectState(indexed.repoPath);
+			const projectState = await loadSavedProjectStateById(indexed.projectId);
+			if (!projectState) throw new Error("Saved project state is unavailable.");
 			// Over-collects — tasks without a pre-existing session record are
 			// silently skipped by persistInterruptedSessions's `if (summary)` guard.
 			const interruptedTaskIds = collectWorkColumnTaskIds(projectState);
@@ -185,46 +214,151 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			deps.warn(`Could not load project state for ${indexed.repoPath} during shutdown cleanup. ${message}`);
+			recordFailure(
+				"persistence_failed",
+				`Could not load project state for ${indexed.repoPath} during shutdown cleanup. ${message}`,
+			);
 		}
 	}
-
-	// Start exact-owned orphan cleanup as soon as active PTYs have received their
-	// stop request. Windows console-close gives the runtime only a short fixed
-	// lifetime, so waiting until persistence and server close have completed can
-	// leave no time for the CIM identity recheck and taskkill. The promise remains
-	// awaited after server close, preserving the external shutdown contract.
-	const orphanCleanupPromise = deps.skipOrphanProcessCleanup
-		? Promise.resolve()
-		: killOrphanedAgentProcesses({ includeCurrentRuntime: true })
-				.then(() => undefined)
-				.catch(() => undefined);
-
-	// Wrap cleanup I/O in a timeout so closeRuntimeServer() always gets called
-	// orderly. Without this, a hung git operation or stale filesystem write blocks
-	// until the hard 10s process-level timeout kills us mid-I/O, skipping server
-	// close entirely.
-	const CLEANUP_TIMEOUT_MS = 7000;
-	const cleanupPromise = (async () => {
-		await Promise.all(shutdownQuiescence);
-		await Promise.all(
-			interruptedByProject.map(async (entry) => {
+	// allSettled retains the lifetime of sibling writes after the first failure.
+	await Promise.allSettled(
+		interruptedByProject.map(async (entry) => {
+			if (!persistenceAllowed()) return;
+			try {
 				await persistInterruptedSessions(entry.projectPath, entry.interruptedTaskIds, {
 					projectState: entry.projectState,
 					resolveSummary: entry.resolveSummary,
 				});
-			}),
-		);
+			} catch (error) {
+				recordFailure(
+					"persistence_failed",
+					`Could not persist interrupted sessions for ${entry.projectPath}. ${String(error)}`,
+				);
+			}
+		}),
+	);
+}
+
+function shutdownOutcome(reasons: Set<RuntimeShutdownIncompleteReason>): RuntimeShutdownOutcome {
+	return reasons.size === 0
+		? { status: "clean", safeToExit: true, safeToReleaseOwnership: true }
+		: { status: "incomplete", safeToExit: false, safeToReleaseOwnership: false, reasons: Array.from(reasons) };
+}
+
+export async function shutdownRuntimeServer(
+	deps: RuntimeShutdownCoordinatorDependencies,
+): Promise<RuntimeShutdownResult> {
+	const reasons = new Set<RuntimeShutdownIncompleteReason>();
+	const recordFailure = (reason: RuntimeShutdownIncompleteReason, message: string) => {
+		reasons.add(reason);
+		deps.warn(message);
+	};
+	const checkOwnership = () => {
+		const allowed = deps.persistenceAllowed?.() ?? true;
+		if (!allowed) reasons.add("ownership_lost");
+		return allowed;
+	};
+	const timeoutMs = deps.cleanupTimeoutMs ?? 7_000;
+	let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+	const deadline = new Promise<RuntimeShutdownOutcome>((resolve) => {
+		deadlineTimer = setTimeout(() => {
+			checkOwnership();
+			deps.warn(`Shutdown cleanup timed out after ${timeoutMs}ms. Ownership remains held until cleanup settles.`);
+			resolve(shutdownOutcome(new Set([...reasons, "deadline"])));
+		}, timeoutMs);
+	});
+	let managedProjects: ReturnType<ProjectRegistry["listManagedProjects"]> = [];
+	const interruptedSummaries = new Map<TerminalSessionManager, RuntimeTaskSessionSummary[]>();
+	const quiescence: Promise<void>[] = [];
+	let sessionsStopped = false;
+	const stopSessions = () => {
+		if (sessionsStopped) return;
+		sessionsStopped = true;
+		for (const { terminalManager } of managedProjects) {
+			try {
+				terminalManager.stopReconciliation();
+				if (!deps.skipSessionCleanup) {
+					interruptedSummaries.set(terminalManager, terminalManager.markInterruptedAndStopAll());
+					quiescence.push(
+						terminalManager.waitForShutdownQuiescence().catch((error) => {
+							recordFailure(
+								"quiescence_failed",
+								`Managed session shutdown preparation failed. ${String(error)}`,
+							);
+						}),
+					);
+				}
+			} catch (error) {
+				recordFailure("quiescence_failed", `Could not stop managed sessions during shutdown. ${String(error)}`);
+			}
+		}
+	};
+	const preparation = (async () => {
+		try {
+			deps.projectRegistry.stopMaintenance?.();
+			await deps.prepareForShutdown?.();
+		} catch (error) {
+			recordFailure("quiescence_failed", `Could not prepare runtime shutdown. ${String(error)}`);
+		}
 	})();
-	const timeoutPromise = new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), CLEANUP_TIMEOUT_MS));
-	const result = await Promise.race([cleanupPromise.then(() => "done" as const), timeoutPromise]);
-	if (result === "timeout") {
-		deps.warn(`Shutdown cleanup timed out after ${CLEANUP_TIMEOUT_MS}ms. Closing server without full cleanup.`);
-	}
-
-	await deps.closeRuntimeServer();
-
-	// Await best-effort cleanup so discovery has a chance to signal exact owned
-	// stragglers before the graceful-shutdown handler exits the process.
-	await orphanCleanupPromise;
+	const ownedProcesses = (async () => {
+		await preparation;
+		// A producer admitted before ingress closed may register a manager or
+		// spawn a helper while draining. Snapshot the settled set, never an
+		// enumeration captured concurrently with that drain.
+		try {
+			managedProjects = deps.projectRegistry.listManagedProjects();
+			deps.beforeProcessSnapshot?.();
+		} catch (error) {
+			recordFailure("quiescence_failed", `Could not fence runtime process launches. ${String(error)}`);
+		}
+		if (deps.skipSessionCleanup) return;
+		try {
+			const attempt = deps.stopOwnedProcesses?.(stopSessions);
+			if (!attempt) stopSessions();
+			const result = await attempt;
+			if (result?.status === "unconfirmed" || (!result && managedProjects.length > 0)) {
+				recordFailure(
+					"processes_unconfirmed",
+					"Shutdown could not confirm termination of all owned process trees.",
+				);
+			}
+		} catch (error) {
+			recordFailure("processes_unconfirmed", `Owned process shutdown failed. ${String(error)}`);
+		} finally {
+			stopSessions();
+		}
+	})();
+	const cleanup = (async () => {
+		await ownedProcesses;
+		if (deps.skipSessionCleanup) stopSessions();
+		await Promise.all(quiescence);
+		if (deps.skipSessionCleanup) {
+			reasons.add("session_cleanup_skipped");
+			return;
+		}
+		if (!checkOwnership() || reasons.has("quiescence_failed")) return;
+		await persistShutdownSessions(deps, managedProjects, interruptedSummaries, recordFailure);
+		checkOwnership();
+	})().catch((error) => {
+		recordFailure("persistence_failed", `Runtime shutdown cleanup failed. ${String(error)}`);
+	});
+	// Preparation fences ingress synchronously. A deadline reports incomplete
+	// while cleanup continues; it must never trigger owner signals before the
+	// admitted producer drain and exact process snapshot have completed.
+	const close = (async () => {
+		await cleanup;
+		try {
+			await deps.closeRuntimeServer();
+		} catch (error) {
+			recordFailure("server_close_failed", `Runtime server close failed. ${String(error)}`);
+		}
+	})();
+	const completion = (async () => {
+		await Promise.allSettled([cleanup, ownedProcesses, close]);
+		checkOwnership();
+		if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
+		return shutdownOutcome(reasons);
+	})();
+	return { outcome: await Promise.race([completion, deadline]), completion };
 }

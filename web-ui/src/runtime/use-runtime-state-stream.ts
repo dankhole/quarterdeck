@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from "rea
 import { handleBrowserDiagnosticsStreamMessage, recordBrowserEvent } from "@/diagnostics";
 import { invalidateProjectBoardCache } from "@/runtime/project-board-cache";
 import { consumeProjectPreload, invalidateProjectPreload } from "@/runtime/project-preload-cache";
+import { applyRuntimeNotificationPresentation } from "@/runtime/runtime-notification-presentation";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import { resolveRuntimeProtocolCompatibility } from "@/runtime/runtime-protocol-compatibility";
 import {
@@ -128,6 +129,11 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 						return;
 					}
 					transport?.acceptCurrentConnection();
+					applyRuntimeNotificationPresentation(payload.notificationPresentation);
+				}
+				if (payload.type === "notification_presentation") {
+					applyRuntimeNotificationPresentation(payload.state);
+					return;
 				}
 				if (handleBrowserDiagnosticsStreamMessage(payload)) {
 					return;

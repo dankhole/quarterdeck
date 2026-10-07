@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
+import { unlink } from "node:fs/promises";
+
 import { createAgentLabLaunchConfig, persistAgentLabLaunchConfig } from "./agent-lab/launch-config";
-import { AGENT_LAB_REPO_ROOT } from "./agent-lab/paths";
+import { AGENT_LAB_REPO_ROOT, writeJsonAtomic } from "./agent-lab/paths";
 import { runAgentLabSupervisor } from "./agent-lab/supervisor";
 
 function parsePort(value: string | undefined, fallback: number): number {
@@ -21,5 +23,14 @@ const config = await createAgentLabLaunchConfig({
 	forwardLogs: true,
 });
 await persistAgentLabLaunchConfig(config);
+const manifestPointerPath = process.env.QUARTERDECK_E2E_MANIFEST_POINTER_PATH;
+if (!manifestPointerPath) throw new Error("Playwright fixture discovery path is required.");
+await writeJsonAtomic(manifestPointerPath, { manifestPath: config.manifestPath });
 process.stderr.write(`[agent-lab e2e] artifacts: ${config.artifactDir}\n`);
-await runAgentLabSupervisor(config);
+try {
+	await runAgentLabSupervisor(config);
+} finally {
+	await unlink(manifestPointerPath).catch((error: unknown) => {
+		if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error;
+	});
+}

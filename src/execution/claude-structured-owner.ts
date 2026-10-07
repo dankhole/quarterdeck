@@ -18,6 +18,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 
 import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
+import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 import { buildWorktreeContextPrompt } from "../terminal";
 import type {
 	StartStructuredOwnerInput,
@@ -162,6 +163,7 @@ export function isSupportedClaudeStructuredCliVersion(version: string): boolean 
 }
 
 export async function resolveClaudeCliVersion(binary: string): Promise<string> {
+	assertRuntimeProcessLaunchAdmission();
 	const { stdout, stderr } = await execFileAsync(binary, ["--version"], { timeout: 3_000 });
 	const version = parseVersion(`${stdout}\n${stderr}`);
 	if (!version) throw new StructuredOwnerCompatibilityError("unsupported_version");
@@ -171,6 +173,7 @@ export async function resolveClaudeCliVersion(binary: string): Promise<string> {
 export async function resolveClaudeExecutablePath(binary: string, env: NodeJS.ProcessEnv): Promise<string> {
 	if (isAbsolute(binary)) return resolve(binary);
 	const locator = process.platform === "win32" ? "where" : "/usr/bin/which";
+	assertRuntimeProcessLaunchAdmission();
 	const { stdout } = await execFileAsync(locator, [binary], { env, timeout: 3_000 });
 	const candidate = stdout
 		.split(/\r?\n/)
@@ -281,6 +284,7 @@ function validateClaudeNativeArgs(input: {
 }
 
 function spawnClaudeProcess(options: Parameters<NonNullable<ClaudeAgentSdkOptions["spawnClaudeCodeProcess"]>>[0]) {
+	assertRuntimeProcessLaunchAdmission();
 	return spawn(options.command, options.args, {
 		cwd: options.cwd,
 		env: options.env,
@@ -565,6 +569,10 @@ export class ClaudeStructuredOwner implements StructuredOwner {
 
 export class ClaudeStructuredOwnerRegistry {
 	private readonly owners = new Map<string, ClaudeStructuredOwner>();
+
+	getOwnedProcessRootPids(): number[] {
+		return Array.from(this.owners.values(), (owner) => owner.identity.pid);
+	}
 	private events: StructuredOwnerEvents;
 
 	constructor(private readonly dependencies: ClaudeStructuredOwnerDependencies = {}) {
@@ -750,6 +758,7 @@ export class ClaudeStructuredOwnerRegistry {
 				canUseTool,
 				onElicitation,
 				spawnClaudeCodeProcess: (options) => {
+					if (this.dependencies.spawnProcess) assertRuntimeProcessLaunchAdmission();
 					const child = (this.dependencies.spawnProcess ?? spawnClaudeProcess)(options);
 					spawnedProcess = child;
 					child.once("exit", () => resolveExit());

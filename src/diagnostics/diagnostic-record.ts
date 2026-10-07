@@ -5,7 +5,7 @@ import type {
 	DiagnosticRecordEnvelope,
 	DiagnosticRecordKind,
 	DiagnosticSource,
-} from "../core";
+} from "../core/api/diagnostics.js";
 
 export interface DiagnosticRecordCandidate {
 	source: DiagnosticSource;

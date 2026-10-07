@@ -2,7 +2,7 @@ import { mkdirSync, readdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import { installRuntimeWriteAdmission } from "../../src/state/runtime-write-admission";
 import { createTempDir } from "../utilities/temp-dir";
 
 // ---------------------------------------------------------------------------
@@ -346,5 +346,24 @@ describe("cleanStaleGitIndexLocks", () => {
 		// The worktree's index.lock should have been cleaned up.
 		expect(readdirSync(wtDir).sort()).toEqual(["HEAD"]);
 		expect(warnings.some((w) => w.includes("index.lock"))).toBe(true);
+	});
+
+	it("preserves repository locks after its source state-home admission is lost", async () => {
+		const gitDir = join(mockProjectRepo.path, ".git");
+		const wtDir = join(gitDir, "worktrees", "task-fenced");
+		mkdirSync(wtDir, { recursive: true });
+		createStaleFile(wtDir, "index.lock");
+		createStaleDir(gitDir, "quarterdeck-task-worktree-setup.lock");
+		const dispose = installRuntimeWriteAdmission({
+			canonicalStateHome: mockRuntimeHome.path,
+			isCurrent: () => false,
+		});
+		try {
+			await cleanupProjectStaleLockArtifacts([mockProjectRepo.path]);
+			expect(readdirSync(wtDir)).toContain("index.lock");
+			expect(readdirSync(gitDir)).toContain("quarterdeck-task-worktree-setup.lock");
+		} finally {
+			dispose();
+		}
 	});
 });

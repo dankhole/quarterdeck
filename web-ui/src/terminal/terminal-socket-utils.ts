@@ -1,3 +1,5 @@
+import { getRuntimeWebSocketUrl } from "@/runtime/runtime-environment";
+
 export function generateTerminalClientId(): string {
 	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
 		return crypto.randomUUID();
@@ -11,8 +13,7 @@ export function getTerminalWebSocketUrl(
 	projectId: string,
 	clientId: string,
 ): string {
-	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-	const url = new URL(`${protocol}//${window.location.host}/api/terminal/${path}`);
+	const url = getRuntimeWebSocketUrl(`/api/terminal/${path}`);
 	url.searchParams.set("taskId", taskId);
 	url.searchParams.set("projectId", projectId);
 	url.searchParams.set("clientId", clientId);

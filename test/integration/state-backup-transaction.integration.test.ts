@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RuntimeBoardData } from "../../src/core";
 import { getProjectStateTransactionPath, withProjectStateLock } from "../../src/state/project-state-transaction";
 import { getProjectBoardPath, getProjectDirectoryPath, getProjectIndexPath } from "../../src/state/project-state-utils";
-import { _testing, createBackup, restoreBackup } from "../../src/state/state-backup";
+import { _testing, createBackup, restoreBackup, waitForPendingBackups } from "../../src/state/state-backup";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir } from "../utilities/temp-dir";
 
@@ -91,6 +91,33 @@ async function expectSnapshot(directory: string, state: ReturnType<typeof transa
 }
 
 describe("state backup transactions", { concurrent: false }, () => {
+	it("waits for a backup already admitted behind a project transaction lock", async () => {
+		await writePendingTransaction(1);
+		let release!: () => void;
+		let entered!: () => void;
+		const held = new Promise<void>((resolveHeld) => {
+			entered = resolveHeld;
+		});
+		const gate = new Promise<void>((resolveGate) => {
+			release = resolveGate;
+		});
+		const locking = withProjectStateLock(projectId, async () => {
+			entered();
+			await gate;
+		});
+		await held;
+		const backup = createBackup();
+		let drained = false;
+		const draining = waitForPendingBackups().then(() => {
+			drained = true;
+		});
+		await Promise.resolve();
+		expect(drained).toBe(false);
+		release();
+		await Promise.all([locking, backup, draining]);
+		expect(drained).toBe(true);
+	});
+
 	it("backs up the complete committed snapshot after an interrupted file installation", async () => {
 		await writePendingTransaction(1);
 		await withProjectStateLock(projectId, async () => {});

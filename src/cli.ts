@@ -1,41 +1,28 @@
-import { realpath, stat } from "node:fs/promises";
 import { createServer as createNetServer, Socket as NetSocket } from "node:net";
 import { Command, Option } from "commander";
 import ora, { type Ora } from "ora";
 import packageJson from "../package.json" with { type: "json" };
 import { registerBackupCommand } from "./commands/backup";
+import { registerDesktopCommand } from "./commands/desktop.js";
 import { registerDiagnosticsCommand } from "./commands/diagnostics";
 import { registerHooksCommand } from "./commands/hooks";
 import { registerStatuslineCommand } from "./commands/statusline";
-import { loadGlobalRuntimeConfig, loadRuntimeConfig, setAgentAvailabilityDiagnosticSink } from "./config";
-import type { IRuntimeHostIntegrations, RuntimeCapabilities } from "./core";
 import {
-	areFileSystemPathsEqual,
-	buildQuarterdeckRuntimeUrl,
-	createRuntimeCapabilities,
 	DEFAULT_QUARTERDECK_RUNTIME_PORT,
 	getQuarterdeckRuntimeHost,
 	getQuarterdeckRuntimeOrigin,
-	getQuarterdeckRuntimePort,
 	installGracefulShutdownHandlers,
-	normalizeDiagnosticErrorClass,
 	parseRuntimePort,
 	setQuarterdeckRuntimeHost,
 	setQuarterdeckRuntimePort,
-	setRuntimeDiagnosticLogSink,
 } from "./core";
-import { createRuntimeDiagnostics, type RuntimeDiagnostics } from "./diagnostics";
-import type { RuntimeSessionPersistence, RuntimeStateHub } from "./server";
-import type { TerminalSessionManager } from "./terminal";
-import { killOrphanedAgentProcesses } from "./terminal/orphan-cleanup";
-import {
-	inspectPtyRuntimeHealth,
-	PTY_RUNTIME_REMEDIATION,
-	PtyRuntimeDependencyError,
-} from "./terminal/pty-runtime-health";
-import type { RuntimeTrpcContext } from "./trpc";
+import { launchDesktop } from "./desktop-launcher.js";
+import { createDesktopRuntimeDiagnosticsIngestor } from "./diagnostics/desktop-diagnostics.js";
+import { DesktopRuntimeChannel } from "./server/desktop-runtime-channel";
+import { classifyDesktopStartupFailure } from "./server/desktop-startup-failure.js";
+import { createRuntimeHostIntegrations } from "./server/runtime-host-integrations";
+import { startAdmittedRuntime } from "./server/runtime-launch";
 import { notifyAboutAvailableUpdate } from "./update-notification";
-import { runGit } from "./workdir/git-utils";
 
 interface CliOptions {
 	noOpen: boolean;
@@ -64,6 +51,8 @@ function parseCliPortValue(rawValue: string): { mode: "fixed"; value: number } |
 }
 
 interface RootCommandOptions {
+	desktop?: boolean;
+	browser?: boolean;
 	host?: string;
 	port?: { mode: "fixed"; value: number } | { mode: "auto" };
 	open?: boolean;
@@ -87,7 +76,14 @@ interface ShutdownIndicator {
  * unexpected argument is treated as a command-style invocation instead.
  */
 function shouldAutoOpenBrowserTabForInvocation(argv: string[]): boolean {
-	const launchFlags = new Set(["--open", "--no-open", "--no-native-ui", "--skip-shutdown-cleanup"]);
+	const launchFlags = new Set([
+		"--browser",
+		"--open",
+		"--no-open",
+		"--no-native-ui",
+		"--no-update-notifier",
+		"--skip-shutdown-cleanup",
+	]);
 	const launchOptionsWithValues = new Set(["--host", "--port", "--simulate-host-integrations"]);
 
 	for (let index = 0; index < argv.length; index += 1) {
@@ -196,668 +192,102 @@ async function applyRuntimePortOption(portOption: CliOptions["port"]): Promise<n
 	return autoPort;
 }
 
-async function assertPathIsDirectory(path: string): Promise<void> {
-	const info = await stat(path);
-	if (!info.isDirectory()) {
-		throw new Error(`Project path is not a directory: ${path}`);
-	}
-}
-
-async function pathIsDirectory(path: string): Promise<boolean> {
-	try {
-		const info = await stat(path);
-		return info.isDirectory();
-	} catch {
-		return false;
-	}
-}
-
-async function hasGitRepository(path: string): Promise<boolean> {
-	const result = await runGit(path, ["rev-parse", "--show-toplevel"], {
-		timeoutClass: "sync",
-	});
-	if (!result.ok || !result.stdout.trim()) return false;
-	try {
-		const [projectPath, gitRoot] = await Promise.all([realpath(path), realpath(result.stdout.trim())]);
-		return areFileSystemPathsEqual(projectPath, gitRoot);
-	} catch {
-		return false;
-	}
-}
-
-function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
-	return (
-		typeof error === "object" &&
-		error !== null &&
-		"code" in error &&
-		(error as NodeJS.ErrnoException).code === "EADDRINUSE"
-	);
-}
-
-async function canReachQuarterdeckServer(projectId: string | null): Promise<boolean> {
-	try {
-		const headers: Record<string, string> = {};
-		if (projectId) {
-			headers["x-quarterdeck-project-id"] = projectId;
-		}
-		const response = await fetch(buildQuarterdeckRuntimeUrl("/api/trpc/projects.list"), {
-			method: "GET",
-			headers,
-			signal: AbortSignal.timeout(1_500),
-		});
-		if (response.status === 404) {
-			return false;
-		}
-		const payload = (await response.json().catch(() => null)) as {
-			result?: { data?: unknown };
-			error?: unknown;
-		} | null;
-		return Boolean(payload && (payload.result || payload.error));
-	} catch {
-		return false;
-	}
-}
-
-async function openExternalTarget(
-	target: string,
-	runtimeCapabilities: RuntimeCapabilities,
-): Promise<Awaited<ReturnType<IRuntimeHostIntegrations["openExternalUrl"]>>> {
-	const { createRuntimeHostIntegrations } = await import("./server/runtime-host-integrations.js");
-	return await createRuntimeHostIntegrations({
-		capabilities: runtimeCapabilities,
-		warn: createRuntimeWarnLogger(),
-	}).openExternalUrl(target);
-}
-
-async function tryOpenExistingServer(options: {
-	noOpen: boolean;
-	shouldAutoOpenBrowser: boolean;
-	runtimeCapabilities: RuntimeCapabilities;
-}): Promise<boolean> {
-	let projectId: string | null = null;
-	if (await hasGitRepository(process.cwd())) {
-		const { isUnderWorktreesHome, loadProjectContext } = await import("./state/project-state.js");
-		if (!isUnderWorktreesHome(process.cwd())) {
-			const context = await loadProjectContext(process.cwd());
-			projectId = context.projectId;
-		}
-	}
-	const running = await canReachQuarterdeckServer(projectId);
-	if (!running) {
-		return false;
-	}
-	const projectUrl = projectId
-		? buildQuarterdeckRuntimeUrl(`/${encodeURIComponent(projectId)}`)
-		: getQuarterdeckRuntimeOrigin();
-	console.log(`Quarterdeck already running at ${getQuarterdeckRuntimeOrigin()}`);
-	if (!options.noOpen && options.shouldAutoOpenBrowser) {
-		const result = await openExternalTarget(projectUrl, options.runtimeCapabilities);
-		if (!result.ok) {
-			console.warn(`Could not open browser automatically: ${result.error}`);
-		} else {
-			console.log("Browser launcher accepted the Quarterdeck URL.");
-		}
-	}
-	console.log(`Project URL: ${projectUrl}`);
-	return true;
-}
-
-interface RuntimeServerHandle {
-	url: string;
-	hostIntegrations: Pick<IRuntimeHostIntegrations, "openExternalUrl">;
-	diagnostics: Pick<RuntimeDiagnostics, "recordEvent">;
-	close: () => Promise<void>;
-	shutdown: (options?: { skipSessionCleanup?: boolean }) => Promise<void>;
-}
-
 function createRuntimeWarnLogger(): (message: string) => void {
 	return (message: string): void => {
 		console.warn(`[quarterdeck] ${message}`);
 	};
 }
 
-async function loadRuntimeStartupModules() {
-	/*
-		Server-only modules are loaded lazily because subcommands like
-		`quarterdeck hooks ingest` do not need the runtime server.
-
-		A regression in 25ba59f showed that eagerly importing the runtime stack here
-		could leave the source CLI process alive after the command had already printed
-		its JSON result. We have not yet isolated the deepest handle creator inside
-		the server import graph, so we keep command-style subcommands on the
-		lightweight path and only load the server stack when we actually start Quarterdeck.
-	*/
-	const [
-		{ resolveProjectInputPath },
-		{ createRuntimeHostIntegrations, createRuntimeServer, loadRuntimeHostSimulation, RuntimeSessionPersistence },
-		{ createRuntimeStateHub },
-		{ resolveInteractiveShellCommand },
-		{ shutdownRuntimeServer },
-		{ collectProjectWorktreeTaskIdsForRemoval, createProjectRegistry },
-		{ cleanupGlobalStaleLockArtifacts, cleanupProjectStaleLockArtifacts },
-		{ listProjectIndexEntries, ProjectBoardCommandService, pruneProjectSessionsForBoard },
-		{ setLogLevel },
-		{ createBackup, listBackups, startPeriodicBackups, stopPeriodicBackups },
-		{ migrateLegacyProjectConfig },
-		{ createHookTransitionOutboxReplayer, loadPendingHookTransitions },
-		{ createHooksApi },
-	] = await Promise.all([
-		import("./projects/project-path.js"),
-		import("./server/index.js"),
-		import("./server/runtime-state-hub.js"),
-		import("./server/shell.js"),
-		import("./server/shutdown-coordinator.js"),
-		import("./server/project-registry.js"),
-		import("./fs/lock-cleanup.js"),
-		import("./state/index.js"),
-		import("./core/runtime-logger.js"),
-		import("./state/state-backup.js"),
-		import("./config/index.js"),
-		import("./hook-transition-outbox.js"),
-		import("./trpc/hooks-api.js"),
-	]);
-
-	return {
-		resolveProjectInputPath,
-		createRuntimeHostIntegrations,
-		createRuntimeServer,
-		loadRuntimeHostSimulation,
-		RuntimeSessionPersistence,
-		createRuntimeStateHub,
-		resolveInteractiveShellCommand,
-		shutdownRuntimeServer,
-		collectProjectWorktreeTaskIdsForRemoval,
-		createProjectRegistry,
-		cleanupGlobalStaleLockArtifacts,
-		cleanupProjectStaleLockArtifacts,
-		listProjectIndexEntries,
-		ProjectBoardCommandService,
-		pruneProjectSessionsForBoard,
-		migrateLegacyProjectConfig,
-		setLogLevel,
-		createBackup,
-		listBackups,
-		startPeriodicBackups,
-		stopPeriodicBackups,
-		createHookTransitionOutboxReplayer,
-		loadPendingHookTransitions,
-		createHooksApi,
-	};
-}
-
-async function runRuntimeStartupCleanup(
-	modules: Awaited<ReturnType<typeof loadRuntimeStartupModules>>,
-	warn: (message: string) => void,
-): Promise<void> {
-	// Phase 1: Clean stale lock artifacts from ~/.quarterdeck/ (before registry load).
-	await modules.cleanupGlobalStaleLockArtifacts(warn);
-
-	// Phase 2: Clean stale lock artifacts from per-project directories.
-	// Read the project index (now safe after phase 1 cleaned its lock files)
-	// to discover project repo paths, then clean their .git/ dirs.
-	try {
-		const indexEntries = await modules.listProjectIndexEntries();
-		const projectPaths = indexEntries.map((entry) => entry.repoPath);
-		if (projectPaths.length > 0) {
-			await modules.cleanupProjectStaleLockArtifacts(projectPaths, warn);
-		}
-		if (indexEntries.length > 0) {
-			const migrated = await modules.migrateLegacyProjectConfig(indexEntries);
-			if (migrated > 0) {
-				warn(`Migrated project config for ${migrated} project(s) from repo .quarterdeck/ to state home.`);
-			}
-		}
-		for (const entry of indexEntries) {
-			try {
-				const result = await modules.pruneProjectSessionsForBoard(entry.repoPath);
-				if (result.prunedCount > 0) {
-					const plural = result.prunedCount === 1 ? "summary" : "summaries";
-					const backupText = result.backupPath ? ` Backup: ${result.backupPath}` : "";
-					warn(
-						`Pruned ${result.prunedCount} orphan session ${plural} from ${entry.projectId} sessions.json.${backupText}`,
-					);
-				}
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				warn(`Could not prune orphan sessions for ${entry.projectId}: ${message}`);
-			}
-		}
-	} catch {
-		// Project index may not exist yet on first run — safe to skip.
-	}
-}
-
-function startOrphanedAgentCleanup(warn: (message: string) => void): Promise<Error | null> {
-	// Phase 3: Kill orphaned agent processes left by a previously crashed instance.
-	// Server boot remains non-blocking, but startup task recovery awaits this
-	// promise so it cannot race an orphan sweep and launch into a checkout that
-	// still has the previous agent process alive.
-	return new Promise((resolve) => {
-		const cleanupTimer = setTimeout(() => {
-			void killOrphanedAgentProcesses()
-				.then((killed) => {
-					if (killed > 0) {
-						warn(`Cleaned up ${killed} orphaned agent process(es) from a previous session.`);
-					}
-					resolve(null);
-				})
-				.catch((error: unknown) => {
-					const message = error instanceof Error ? error.message : String(error);
-					warn(`Could not verify or clean abandoned agent processes: ${message}`);
-					resolve(error instanceof Error ? error : new Error(message));
-				});
-		}, 0);
-		cleanupTimer.unref?.();
-	});
-}
-
-async function awaitStartupAgentCleanup(startupAgentCleanup: Promise<Error | null>): Promise<void> {
-	const error = await startupAgentCleanup;
-	if (error) throw error;
-}
-
-async function createRuntimeBootstrapState(
-	modules: Awaited<ReturnType<typeof loadRuntimeStartupModules>>,
-	warn: (message: string) => void,
-	startupAgentCleanup: Promise<Error | null>,
-	diagnostics: RuntimeDiagnostics,
-) {
-	let runtimeStateHub: RuntimeStateHub | undefined;
-	let sessionPersistence: RuntimeSessionPersistence | undefined;
-	const projectRegistry = await modules.createProjectRegistry({
-		cwd: process.cwd(),
-		loadGlobalRuntimeConfig,
-		loadRuntimeConfig,
-		hasGitRepository,
-		pathIsDirectory,
-		diagnostics,
-		waitForStartupAgentCleanup: async () => await awaitStartupAgentCleanup(startupAgentCleanup),
-		onTerminalManagerReady: (projectId, manager) => {
-			sessionPersistence?.trackTerminalManager(projectId, manager);
-			runtimeStateHub?.trackTerminalManager(projectId, manager);
-		},
-	});
-	const activeConfig = projectRegistry.getActiveRuntimeConfig();
-	modules.setLogLevel(activeConfig.logLevel as "debug" | "info" | "warn" | "error");
-	diagnostics.registerSnapshotProvider({
-		name: "backups",
-		capture: async () => {
-			const backups = await modules.listBackups();
-			const latest = backups[0]?.manifest ?? null;
-			return {
-				count: backups.length,
-				latest: latest
-					? {
-							timestamp: latest.timestamp,
-							trigger: latest.trigger,
-							projectCount: latest.projectIds.length,
-						}
-					: null,
-			};
-		},
-	});
-
-	// Phase 4: State backup — snapshot before any mutations, then start periodic timer.
-	modules
-		.createBackup({ trigger: "startup" })
-		.then((path) => {
-			if (path) {
-				diagnostics.recordEvent("backup.startup_created", {}, {}, { essential: true });
-				console.log(`[quarterdeck] Startup backup created: ${path}`);
-			}
-		})
-		.catch((error: unknown) => {
-			diagnostics.recordEvent(
-				"backup.startup_failed",
-				{ errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError" },
-				{},
-				{ level: "warn", essential: true },
-			);
-		});
-	modules.startPeriodicBackups(activeConfig.backupIntervalMinutes);
-	const boardCommands = new modules.ProjectBoardCommandService({
-		getAuthoritativeSessions: async ({ projectId, projectPath }) => {
-			const manager = await projectRegistry.ensureTerminalManagerForProject(projectId, projectPath);
-			return Object.fromEntries(manager.store.listSummaries().map((summary) => [summary.taskId, summary]));
-		},
-		publishAuthoritativeState: async ({ projectId }, result) => {
-			const hub = runtimeStateHub;
-			if (!hub) return;
-			const state = await projectRegistry.buildProjectStatePublication(projectId, result.state);
-			if (state) hub.broadcastRuntimeProjectStateSnapshot(projectId, state);
-		},
-	});
-	sessionPersistence = new modules.RuntimeSessionPersistence({ projectRegistry, boardCommands });
-	const runtimeSessionPersistence = sessionPersistence;
-	runtimeStateHub = modules.createRuntimeStateHub({
-		projectRegistry,
-		boardCommands,
-		diagnostics,
-	});
-	const runtimeHub = runtimeStateHub;
-	for (const { projectId, terminalManager } of projectRegistry.listManagedProjects()) {
-		runtimeSessionPersistence.trackTerminalManager(projectId, terminalManager);
-		runtimeHub.trackTerminalManager(projectId, terminalManager);
-	}
-	const initializeProjectsForStartup = async (
-		runProjectOperation: RuntimeTrpcContext["runProjectOperation"],
-	): Promise<void> => {
-		await projectRegistry.initializeIndexedProjectsForStartup({
-			beforeRecovery: async () => {
-				// Stop the prior runtime's orphaned processes before taking the final
-				// outbox snapshot. No old launch can then enqueue a lifecycle event in
-				// the gap between replay and replacement-session recovery.
-				await awaitStartupAgentCleanup(startupAgentCleanup);
-				const startupHooksApi = modules.createHooksApi({
-					runProjectOperation,
-					projects: projectRegistry,
-					terminals: projectRegistry,
-					config: projectRegistry,
-					persistSessionState: runtimeSessionPersistence.persistRuntimeSessions,
-					diagnostics,
-				});
-				const startupOutboxReplayer = modules.createHookTransitionOutboxReplayer({
-					ingest: startupHooksApi.ingest,
-				});
-				try {
-					await startupOutboxReplayer.replayOnce();
-					const pending = await modules.loadPendingHookTransitions();
-					const blockedTasks = Array.from(
-						new Map(
-							pending.map(({ request }) => [
-								JSON.stringify([request.projectId, request.taskId]),
-								{ projectId: request.projectId, taskId: request.taskId },
-							]),
-						).values(),
-					);
-					if (blockedTasks.length > 0) {
-						warn(
-							`Held automatic recovery for ${blockedTasks.length} task(s) with deferred provider hooks; their persisted Interrupted state is being retained.`,
-						);
-					}
-					return { blockAllRecovery: false, blockedTasks };
-				} catch (error) {
-					warn(
-						`Could not inspect persisted provider hooks before session recovery; automatic recovery is being held: ${
-							error instanceof Error ? error.message : String(error)
-						}`,
-					);
-					return { blockAllRecovery: true, blockedTasks: [] };
-				} finally {
-					await startupOutboxReplayer.close();
-				}
-			},
-		});
-	};
-
-	const disposeTrackedProject = async (
-		projectId: string,
-		options?: {
-			stopTerminalSessions?: boolean;
-		},
-	): Promise<{ terminalManager: TerminalSessionManager | null; projectPath: string | null }> => {
-		const disposed = projectRegistry.disposeProject(projectId, {
-			stopTerminalSessions: options?.stopTerminalSessions,
-		});
-		await Promise.all([runtimeSessionPersistence.disposeProject(projectId), runtimeHub.disposeProject(projectId)]);
-		return disposed;
-	};
-
-	return {
-		projectRegistry,
-		runtimeHub,
-		runtimeSessionPersistence,
-		boardCommands,
-		initializeProjectsForStartup,
-		diagnostics,
-		disposeTrackedProject,
-		warn,
-		stopPeriodicBackups: () => {
-			modules.stopPeriodicBackups();
-		},
-	};
-}
-
-async function createRuntimeServerHandle(
-	modules: Awaited<ReturnType<typeof loadRuntimeStartupModules>>,
-	bootstrap: Awaited<ReturnType<typeof createRuntimeBootstrapState>>,
-	hostLaunch: { capabilities: RuntimeCapabilities; simulationConfigPath: string | null },
-): Promise<RuntimeServerHandle> {
-	const simulation = hostLaunch.simulationConfigPath
-		? await modules.loadRuntimeHostSimulation(hostLaunch.simulationConfigPath)
-		: null;
-	const hostIntegrations = modules.createRuntimeHostIntegrations({
-		capabilities: hostLaunch.capabilities,
-		warn: bootstrap.warn,
-		simulator: simulation?.simulator,
-	});
-	const runtimeServer = await modules.createRuntimeServer({
-		projectRegistry: bootstrap.projectRegistry,
-		runtimeStateHub: bootstrap.runtimeHub,
-		runtimeSessionPersistence: bootstrap.runtimeSessionPersistence,
-		boardCommands: bootstrap.boardCommands,
-		initializeProjectsForStartup: bootstrap.initializeProjectsForStartup,
-		diagnostics: bootstrap.diagnostics,
-		warn: bootstrap.warn,
-		resolveInteractiveShellCommand: modules.resolveInteractiveShellCommand,
-		hostIntegrations,
-		hostEventLedger: simulation?.ledger,
-		resolveProjectInputPath: modules.resolveProjectInputPath,
-		assertPathIsDirectory,
-		hasGitRepository,
-		disposeProject: bootstrap.disposeTrackedProject,
-		collectProjectWorktreeTaskIdsForRemoval: modules.collectProjectWorktreeTaskIdsForRemoval,
-	});
-
-	const close = async () => {
-		try {
-			await runtimeServer.close();
-		} finally {
-			setAgentAvailabilityDiagnosticSink(null);
-			setRuntimeDiagnosticLogSink(null);
-		}
-	};
-
-	const shutdown = async (options?: { skipSessionCleanup?: boolean }) => {
-		bootstrap.stopPeriodicBackups();
-		await runtimeServer.prepareForShutdown({ skipSessionCleanup: options?.skipSessionCleanup ?? false });
-		await modules.shutdownRuntimeServer({
-			projectRegistry: bootstrap.projectRegistry,
-			warn: bootstrap.warn,
-			closeRuntimeServer: close,
-			skipSessionCleanup: options?.skipSessionCleanup ?? false,
-			skipOrphanProcessCleanup: process.env.QUARTERDECK_AGENT_LAB === "1",
-		});
-	};
-
-	return {
-		url: runtimeServer.url,
-		hostIntegrations,
-		diagnostics: bootstrap.diagnostics,
-		close,
-		shutdown,
-	};
-}
-
-async function startServer(hostLaunch: {
-	capabilities: RuntimeCapabilities;
-	simulationConfigPath: string | null;
-}): Promise<RuntimeServerHandle> {
-	const warn = createRuntimeWarnLogger();
-	const diagnostics = await createRuntimeDiagnostics({
-		host: getQuarterdeckRuntimeHost(),
-		port: getQuarterdeckRuntimePort(),
-		quarterdeckVersion: QUARTERDECK_VERSION,
-		captureTier: process.env.QUARTERDECK_AGENT_LAB === "1" ? "agent-lab" : "flight",
-	});
-	setAgentAvailabilityDiagnosticSink((event) => {
-		diagnostics.recordEvent(event.name, event.payload, {}, { level: event.level, essential: true });
-	});
-	setRuntimeDiagnosticLogSink(diagnostics);
-	try {
-		diagnostics.registerSnapshotProvider({
-			name: "terminal_runtime",
-			capture: () => inspectPtyRuntimeHealth(),
-		});
-		const terminalRuntimeHealth = inspectPtyRuntimeHealth();
-		if (!terminalRuntimeHealth.available) {
-			diagnostics.recordEvent(
-				"terminal.runtime_dependency_missing",
-				{
-					issue: terminalRuntimeHealth.issue,
-					platform: terminalRuntimeHealth.platform,
-					arch: terminalRuntimeHealth.arch,
-				},
-				{},
-				{ level: "warn", essential: true },
-			);
-			warn(PTY_RUNTIME_REMEDIATION);
-			throw new PtyRuntimeDependencyError(terminalRuntimeHealth);
-		}
-
-		// Keep node-pty-owning server modules behind the standalone on-disk
-		// health check. A missing native addon must remain diagnosable instead
-		// of failing while the runtime import graph is still being evaluated.
-		const modules = await loadRuntimeStartupModules();
-		await runRuntimeStartupCleanup(modules, warn);
-		const startupAgentCleanup =
-			process.env.QUARTERDECK_AGENT_LAB === "1" ? Promise.resolve(null) : startOrphanedAgentCleanup(warn);
-		const bootstrap = await createRuntimeBootstrapState(modules, warn, startupAgentCleanup, diagnostics);
-		// Pending relocations are recovered while constructing the server. Retire
-		// the prior runtime's processes before that recovery can change paths.
-		await awaitStartupAgentCleanup(startupAgentCleanup);
-		return await createRuntimeServerHandle(modules, bootstrap, hostLaunch);
-	} catch (error) {
-		setAgentAvailabilityDiagnosticSink(null);
-		setRuntimeDiagnosticLogSink(null);
-		await diagnostics.fail(error).catch(() => undefined);
-		throw error;
-	}
-}
-
-async function startServerWithAutoPortRetry(options: CliOptions): Promise<RuntimeServerHandle> {
-	const hostLaunch = {
-		capabilities: createRuntimeCapabilities(
-			options.hostSimulationConfigPath ? "simulated" : options.nativeUiAvailable ? "native" : "unavailable",
-		),
-		simulationConfigPath: options.hostSimulationConfigPath,
-	};
-	if (options.port?.mode !== "auto") {
-		return await startServer(hostLaunch);
-	}
-
-	while (true) {
-		try {
-			return await startServer(hostLaunch);
-		} catch (error) {
-			if (!isAddressInUseError(error)) {
-				throw error;
-			}
-			const currentPort = getQuarterdeckRuntimePort();
-			const retryPort = await findAvailableRuntimePort(currentPort + 1);
-			setQuarterdeckRuntimePort(retryPort);
-			console.warn(`Runtime port ${currentPort} became busy during startup, retrying on ${retryPort}.`);
-		}
-	}
-}
-
 async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolean): Promise<void> {
-	if (options.host) {
-		setQuarterdeckRuntimeHost(options.host);
-		console.log(`Binding to host ${options.host}.`);
-	}
+	const desktop = process.env.QUARTERDECK_DESKTOP_CHILD === "1" ? new DesktopRuntimeChannel() : null;
+	const desktopStartup = desktop ? await desktop.startup : null;
+	if (desktop && options.skipShutdownCleanup) throw new Error("Desktop cannot skip shutdown cleanup.");
+	if (options.host) setQuarterdeckRuntimeHost(options.host);
+	if (desktop) setQuarterdeckRuntimeHost("127.0.0.1");
+	const selectedPort = desktop ? null : await applyRuntimePortOption(options.port);
+	if (selectedPort !== null) console.log(`Using runtime port ${selectedPort}.`);
 
-	const selectedPort = await applyRuntimePortOption(options.port);
-	if (selectedPort !== null) {
-		console.log(`Using runtime port ${selectedPort}.`);
-	}
-
-	let runtime: RuntimeServerHandle;
-	try {
-		runtime = await startServerWithAutoPortRetry(options);
-	} catch (error) {
-		if (
-			options.port?.mode !== "auto" &&
-			isAddressInUseError(error) &&
-			(await tryOpenExistingServer({
-				noOpen: options.noOpen,
-				shouldAutoOpenBrowser,
-				runtimeCapabilities: createRuntimeCapabilities(
-					options.hostSimulationConfigPath ? "simulated" : options.nativeUiAvailable ? "native" : "unavailable",
-				),
-			}))
-		) {
-			process.exit(0);
+	const launch = await startAdmittedRuntime({
+		...options,
+		quarterdeckVersion: QUARTERDECK_VERSION,
+		desktopStartup,
+		desktopRequestHostEffect: desktop
+			? (action, generation) => desktop.requestHostEffect(action, generation)
+			: undefined,
+	}).catch(async (error: unknown) => {
+		if (desktop) {
+			const failure = classifyDesktopStartupFailure(error);
+			await desktop.fail(failure.code, failure.message);
 		}
 		throw error;
-	}
-	console.log(`Quarterdeck running at ${runtime.url}`);
-	if (!options.noOpen && shouldAutoOpenBrowser) {
-		runtime.diagnostics.recordEvent(
-			"browser.auto_open_requested",
-			{ platform: process.platform },
-			{},
-			{ essential: true },
+	});
+	if (desktop) {
+		const diagnostics = launch.runtime ? createDesktopRuntimeDiagnosticsIngestor(launch.runtime.diagnostics) : null;
+		if (diagnostics) desktop.setDiagnosticsHandler(diagnostics.ingest);
+		desktop.setShutdownHandler(async (waitForCompletion) => {
+			const outcome = await launch.shutdown(waitForCompletion);
+			if (outcome.safeToExit) diagnostics?.dispose();
+			return outcome;
+		});
+		desktop.setControlHandler(async (method) =>
+			method === "create-browser-launch"
+				? { method, url: await launch.createBrowserUrl() }
+				: {
+						method,
+						owned: launch.kind === "owned",
+						...(launch.runtime?.getQuitSummary() ?? { liveProcessCount: 0, pendingLaunches: false }),
+					},
 		);
-		const result = await runtime.hostIntegrations.openExternalUrl(runtime.url);
-		if (!result.ok) {
-			runtime.diagnostics.recordEvent(
-				"browser.launcher_failed",
-				{ platform: process.platform, reason: result.reason },
-				{},
-				{ level: "warn", essential: true },
-			);
-			console.warn(`Could not open browser automatically: ${result.error}`);
-		} else {
-			runtime.diagnostics.recordEvent(
-				"browser.launcher_accepted",
-				{ platform: process.platform, outcome: result.outcome },
-				{},
-				{ essential: true },
-			);
-			console.log("Browser launcher accepted the Quarterdeck URL.");
+		try {
+			await desktop.ready(launch.ready);
+		} catch (error) {
+			// A parent can disappear while startup is constructing owners. Never let
+			// the top-level error exit race their shutdown writes or process cleanup.
+			await launch.shutdown(true);
+			throw error;
 		}
+	} else {
+		console.log(`Quarterdeck ${launch.kind === "attached" ? "already " : ""}running at ${launch.url}`);
+		const browserUrl = await launch.createBrowserUrl();
+		if (!options.noOpen && shouldAutoOpenBrowser) {
+			if (launch.kind === "attached" && options.hostSimulationConfigPath) {
+				// The owner's simulator owns its ledger. Loading it again would reset
+				// that evidence and create a second independent sequence writer.
+				console.warn("Simulated browser launch is unavailable while attaching; use the Browser URL below.");
+			} else {
+				const hostIntegrations =
+					launch.runtime?.hostIntegrations ??
+					createRuntimeHostIntegrations({ capabilities: launch.capabilities, warn: createRuntimeWarnLogger() });
+				const result = await hostIntegrations.openExternalUrl(browserUrl);
+				if (!result.ok) console.warn(`Could not open browser automatically: ${result.error}`);
+				else console.log("Browser launcher accepted the Quarterdeck URL.");
+			}
+		}
+		// This capability is single use, expires quickly, and redirects to a clean URL.
+		console.log(`Browser URL: ${browserUrl}`);
 	}
-	console.log("Press Ctrl+C to stop.");
+	if (launch.kind === "attached") return;
+	if (!desktop) console.log("Press Ctrl+C to stop.");
 
 	let isShuttingDown = false;
 	const shutdownIndicator = createShutdownIndicator();
-	const shutdown = async () => {
-		if (isShuttingDown) {
-			return;
-		}
-		isShuttingDown = true;
-		if (options.skipShutdownCleanup) {
-			console.warn("Skipping shutdown task cleanup for this instance.");
-		}
-		await runtime.shutdown({
-			skipSessionCleanup: options.skipShutdownCleanup,
-		});
-	};
-
 	const shutdownController = installGracefulShutdownHandlers({
 		process,
-		// Windows unconditionally terminates a console process roughly ten seconds
-		// after console-close SIGHUP, so leave headroom for our own final exit.
 		delayMs: process.platform === "win32" ? 8_000 : 10_000,
-		exit: (code) => {
-			process.exit(code);
-		},
+		exit: (code) => process.exit(code),
 		onShutdown: async () => {
+			isShuttingDown = true;
 			shutdownIndicator.start();
 			try {
-				await shutdown();
+				const outcome = await launch.shutdown(true);
+				if (!outcome.safeToExit) throw new Error("Runtime cleanup could not confirm quiescence.");
 				shutdownIndicator.stop("done");
 			} catch (error) {
 				shutdownIndicator.stop("failed");
 				throw error;
 			}
 		},
-		onShutdownError: (error) => {
-			shutdownIndicator.stop("failed");
-			const message = error instanceof Error ? error.message : String(error);
-			console.error(`Shutdown failed: ${message}`);
-		},
+		onShutdownError: () => console.error("Shutdown could not complete safely."),
 		onTimeout: (delayMs) => {
 			shutdownIndicator.stop("interrupted");
 			console.error(`Forced exit after shutdown timeout (${delayMs}ms).`);
@@ -867,20 +297,12 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 			console.error(`Forced exit on second signal: ${signal}`);
 		},
 	});
-
-	// When quarterdeck is launched as a child process (by Cline, an agent, etc.),
-	// stdin is a pipe from the parent. If the parent exits without signaling, the
-	// pipe closes — detect that and trigger graceful shutdown so we don't orphan.
-	// Only arm this when stdin is a pipe (net.Socket) — not a TTY (direct terminal
-	// launch, where SIGHUP already handles close) and not /dev/null (stdio: "ignore"
-	// in test harnesses and launchers that intentionally detach stdin).
-	if (process.stdin instanceof NetSocket && !process.stdin.isTTY) {
+	// Desktop uses its authenticated private IPC disconnect; ordinary piped CLI
+	// launchers retain the existing stdin-parent lifetime contract.
+	if (!desktop && process.stdin instanceof NetSocket && !process.stdin.isTTY) {
 		process.stdin.resume();
 		process.stdin.on("end", () => {
-			if (!isShuttingDown) {
-				console.warn("Parent process disconnected (stdin closed). Shutting down.");
-				shutdownController.requestShutdown(process.platform === "win32" ? "SIGTERM" : "SIGHUP");
-			}
+			if (!isShuttingDown) shutdownController.requestShutdown(process.platform === "win32" ? "SIGTERM" : "SIGHUP");
 		});
 	}
 }
@@ -892,6 +314,18 @@ function createProgram(invocationArgs: string[]): Command {
 		.name("quarterdeck")
 		.description("Local orchestration board for coding agents.")
 		.version(QUARTERDECK_VERSION, "-v, --version", "Output the version number")
+		.addOption(new Option("--browser", "Open browser mode (the default).").conflicts("desktop"))
+		.addOption(
+			new Option("--desktop", "Install if needed and open the optional macOS app.").conflicts([
+				"browser",
+				"host",
+				"port",
+				"open",
+				"nativeUi",
+				"skipShutdownCleanup",
+				"simulateHostIntegrations",
+			]),
+		)
 		.option("--host <ip>", "Host IP to bind the server to (default: 127.0.0.1).")
 		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
 		.option("--no-open", "Do not open browser automatically.")
@@ -912,12 +346,23 @@ function createProgram(invocationArgs: string[]): Command {
 	registerStatuslineCommand(program);
 	registerBackupCommand(program);
 	registerDiagnosticsCommand(program);
+	registerDesktopCommand(program, QUARTERDECK_VERSION);
+	program.hook("preAction", (_command, actionCommand) => {
+		const options = program.opts<RootCommandOptions>();
+		if (actionCommand !== program && (options.desktop || options.browser)) {
+			throw new Error("--desktop and --browser select launch modes and cannot be combined with subcommands.");
+		}
+	});
 
 	program.action(async (options: RootCommandOptions) => {
+		if (options.desktop) {
+			await launchDesktop(QUARTERDECK_VERSION);
+			return;
+		}
 		if (options.simulateHostIntegrations && options.nativeUi !== false) {
 			throw new Error("--simulate-host-integrations requires --no-native-ui.");
 		}
-		notifyAboutAvailableUpdate();
+		if (process.env.QUARTERDECK_DESKTOP_CHILD !== "1") notifyAboutAvailableUpdate();
 		await runMainCommand(
 			{
 				host: options.host ?? null,

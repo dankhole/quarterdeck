@@ -7,13 +7,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { terminateProcessTree } from "../../src/core";
-
+import { verifyLabRuntimeOwner } from "./browser-runtime-access";
 import { closeAgentLabBrowserSession } from "./browser-session";
 import { buildAgentLabEnvironment } from "./environment";
 import { prepareAgentLabFixture } from "./fixture";
 import { resolveLoopbackPort } from "./loopback-port";
 import { writeJsonAtomic } from "./paths";
 import { toPublicAgentConfig } from "./public-agent-config";
+import { createRuntimeLogSanitizer } from "./runtime-log-sanitizer";
 import { captureAgentLabSnapshot } from "./snapshot";
 import {
 	type AgentLabLaunchConfig,
@@ -89,11 +90,13 @@ function createManagedChild(
 		detached: process.platform !== "win32",
 		windowsHide: true,
 	});
-	child.stdout?.pipe(logStream, { end: false });
-	child.stderr?.pipe(logStream, { end: false });
+	const sanitizedOutput = child.stdout?.pipe(createRuntimeLogSanitizer());
+	const sanitizedErrors = child.stderr?.pipe(createRuntimeLogSanitizer());
+	sanitizedOutput?.pipe(logStream, { end: false });
+	sanitizedErrors?.pipe(logStream, { end: false });
 	if (options.forwardLogs) {
-		child.stdout?.pipe(process.stdout, { end: false });
-		child.stderr?.pipe(process.stderr, { end: false });
+		sanitizedOutput?.pipe(process.stdout, { end: false });
+		sanitizedErrors?.pipe(process.stderr, { end: false });
 	}
 	let exitResult: ManagedChildExit | null = null;
 	const exit = new Promise<ManagedChildExit>((resolveExit) => {
@@ -191,7 +194,12 @@ async function waitForManagedChildExit(child: ManagedChild, timeoutMs = 2_000): 
 	]);
 }
 
-async function waitForUrl(url: string, child: ManagedChild, label: string): Promise<void> {
+async function waitForUrl(
+	url: string,
+	child: ManagedChild,
+	label: string,
+	verifyReady?: () => Promise<unknown>,
+): Promise<void> {
 	const deadline = Date.now() + STARTUP_TIMEOUT_MS;
 	let lastFailure = "not reachable";
 	while (Date.now() < deadline) {
@@ -202,7 +210,8 @@ async function waitForUrl(url: string, child: ManagedChild, label: string): Prom
 		}
 		try {
 			const response = await fetch(url, { signal: AbortSignal.timeout(1_500) });
-			if (response.status < 500) {
+			if (response.ok) {
+				await verifyReady?.();
 				return;
 			}
 			lastFailure = `HTTP ${response.status}`;
@@ -376,7 +385,8 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 				`Quarterdeck runtime generation ${generation}`,
 				process.execPath,
 				[
-					tsxCliPath,
+					"--import",
+					import.meta.resolve("tsx"),
 					cliEntrypointPath,
 					...nativeUiArgs,
 					"--simulate-host-integrations",
@@ -398,7 +408,7 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 			runManifest.runtimeGeneration = generation;
 			runManifest.processes.runtime = { pid: child.process.pid, logPath: runtimeLogPath };
 			await writeJsonAtomic(config.manifestPath, runManifest);
-			await waitForUrl(`${runtimeUrl}/api/trpc/projects.list`, child, child.label);
+			await waitForUrl(runtimeUrl, child, child.label, () => verifyLabRuntimeOwner(runManifest));
 			return child;
 		};
 

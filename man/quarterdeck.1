@@ -3,6 +3,7 @@
 quarterdeck \- local orchestration board for coding agents
 .SH SYNOPSIS
 .B quarterdeck
+.RI [ --browser | --desktop ]
 .RI [ --host " " ip ]
 .RI [ --port " " number|auto ]
 .RI [ --no-open ]
@@ -27,6 +28,14 @@ quarterdeck \- local orchestration board for coding agents
 starts the local Quarterdeck runtime and serves the web UI. When launched inside a Git repository, it opens that repository's indexed workspace. When launched outside Git, it starts without an active workspace or uses an indexed project.
 .SH OPTIONS
 .TP
+.B --browser
+Open browser mode explicitly. This is the default without a mode flag.
+.TP
+.B --desktop
+Install the matching optional macOS app if needed and request native launch.
+Cannot be combined with browser-runtime flags or subcommands.
+npm installation alone does not download Electron.
+.TP
 .B --host <ip>
 Bind the runtime to an IP address. The default is 127.0.0.1.
 .TP
@@ -48,6 +57,13 @@ Show help text and exit.
 .B -v, --version
 Show the version and exit.
 .SH COMMANDS
+.TP
+.B desktop install [--from <app-path>]
+Install the matching published macOS app without launching it,
+or explicitly import a local app candidate.
+Native self-updates are disabled for npm-managed copies.
+Failed imports preserve the previous selection.
+Quit a running older app before switching installations.
 .TP
 .B hooks ingest [payload]
 Ingest an agent hook event into a running Quarterdeck instance. The payload may be supplied as an argument or on standard input. Hook adapters can also provide structured fields with options including

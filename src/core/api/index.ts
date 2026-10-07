@@ -14,6 +14,7 @@ export * from "./project-board-command.js";
 export * from "./project-organization.js";
 export * from "./project-state.js";
 export * from "./runtime-protocol.js";
+export * from "./runtime-shutdown.js";
 export * from "./shared.js";
 export * from "./streams.js";
 export * from "./task-conversation.js";

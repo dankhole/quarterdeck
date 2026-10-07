@@ -2,6 +2,8 @@
 
 Quarterdeck is a local Node runtime plus a React app for running many coding-agent tasks across one or more git projects.
 
+The macOS desktop shell packages this same UI with a separate bundled Node helper. CLI and desktop share lifetime runtime admission before any startup mutation; browsers submit authenticated intent to that owner. See [desktop architecture](./desktop.md) for process custody, attachment, renderer security, and shutdown boundaries. npm/browser use remains independent of Electron.
+
 There are two big ideas to hold in your head:
 
 1. The browser is mostly a control surface. It renders state, submits typed commands, applies optimistic presentation, and reacts to live updates.

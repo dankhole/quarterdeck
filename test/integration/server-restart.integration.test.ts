@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -10,6 +10,7 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeWorktreeEnsureResponse,
 } from "../../src/core";
+import { discoverRuntimeOwner, readPriorRuntimeOwnershipClaims } from "../../src/server/runtime-ownership";
 import { saveProjectSessions, saveProjectState } from "../../src/state";
 import { createBoard, createReviewBoard } from "../utilities/board-factory";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
@@ -92,6 +93,7 @@ describe("server restart integration", { concurrent: false }, () => {
 
 			const stateResponse = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "project.getState",
 				type: "query",
 				projectId,
@@ -109,6 +111,7 @@ describe("server restart integration", { concurrent: false }, () => {
 
 			const saveResponse = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "project.applyBoardCommands",
 				type: "mutation",
 				projectId,
@@ -118,6 +121,7 @@ describe("server restart integration", { concurrent: false }, () => {
 
 			const firstEnsure = await requestJson<RuntimeWorktreeEnsureResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "project.ensureWorktree",
 				type: "mutation",
 				projectId,
@@ -144,6 +148,7 @@ describe("server restart integration", { concurrent: false }, () => {
 
 			const secondEnsure = await requestJson<RuntimeWorktreeEnsureResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "project.ensureWorktree",
 				type: "mutation",
 				projectId,
@@ -162,6 +167,7 @@ describe("server restart integration", { concurrent: false }, () => {
 
 			const taskContext = await requestJson<RuntimeTaskRepositoryInfoResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "project.getTaskContext",
 				type: "query",
 				projectId,
@@ -206,6 +212,7 @@ describe("server restart integration", { concurrent: false }, () => {
 
 			const currentState = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
+				headers: firstServer.browserHeaders,
 				procedure: "project.getState",
 				type: "query",
 				projectId,
@@ -222,6 +229,7 @@ describe("server restart integration", { concurrent: false }, () => {
 
 			const taskWorktreeInfo = await requestJson<RuntimeWorktreeEnsureResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
+				headers: firstServer.browserHeaders,
 				procedure: "project.ensureWorktree",
 				type: "mutation",
 				projectId,
@@ -256,6 +264,7 @@ describe("server restart integration", { concurrent: false }, () => {
 
 			const finalState = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${secondPort}`,
+				headers: secondServer.browserHeaders,
 				procedure: "project.getState",
 				type: "query",
 				projectId,
@@ -270,6 +279,7 @@ describe("server restart integration", { concurrent: false }, () => {
 			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("exit");
 			const worktreeInfo = await requestJson<RuntimeTaskRepositoryInfoResponse>({
 				baseUrl: `http://127.0.0.1:${secondPort}`,
+				headers: secondServer.browserHeaders,
 				procedure: "project.getTaskContext",
 				type: "query",
 				projectId,
@@ -287,7 +297,7 @@ describe("server restart integration", { concurrent: false }, () => {
 		}
 	}, 45_000);
 
-	it("skips stale session shutdown cleanup when --skip-shutdown-cleanup is enabled", async () => {
+	it("retains skipped-cleanup evidence and refuses same-boot recovery of unconfirmed custody", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-skip-cleanup-flag-");
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-skip-cleanup-flag-");
 
@@ -299,99 +309,106 @@ describe("server restart integration", { concurrent: false }, () => {
 		const taskId = "skip-cleanup-flag-review-task";
 		const taskTitle = "Keep review task when cleanup flag is enabled";
 		const now = Date.now();
-
-		const firstPort = await getAvailablePort();
-		const firstServer = await startQuarterdeckServer({
-			cwd: projectPath,
-			homeDir: tempHome,
-			port: firstPort,
-			extraArgs: ["--skip-shutdown-cleanup"],
-		});
+		let sessionsPath = "";
+		let boardPath = "";
+		let taskWorktreePath = "";
+		let sessionsEvidence = "";
+		let boardEvidence = "";
+		let worktreeHead = "";
+		const stateHome = join(tempHome, ".quarterdeck");
 
 		try {
-			const firstRuntimeUrl = new URL(firstServer.runtimeUrl);
-			const projectId = decodeURIComponent(firstRuntimeUrl.pathname.slice(1));
-			expect(projectId).not.toBe("");
-
-			const currentState = await requestJson<RuntimeProjectStateResponse>({
-				baseUrl: `http://127.0.0.1:${firstPort}`,
-				procedure: "project.getState",
-				type: "query",
-				projectId,
+			const firstPort = await getAvailablePort();
+			const firstServer = await startQuarterdeckServer({
+				cwd: projectPath,
+				homeDir: tempHome,
+				port: firstPort,
+				extraArgs: ["--skip-shutdown-cleanup"],
 			});
-			expect(currentState.status).toBe(200);
 
-			await withStateHomeOverride(tempHome, async () => {
-				await saveProjectState(projectPath, {
-					board: createReviewBoard(taskId, taskTitle),
-					sessions: {},
-					expectedRevision: currentState.payload.revision,
+			try {
+				const firstRuntimeUrl = new URL(firstServer.runtimeUrl);
+				const projectId = decodeURIComponent(firstRuntimeUrl.pathname.slice(1));
+				expect(projectId).not.toBe("");
+
+				const currentState = await requestJson<RuntimeProjectStateResponse>({
+					baseUrl: `http://127.0.0.1:${firstPort}`,
+					headers: firstServer.browserHeaders,
+					procedure: "project.getState",
+					type: "query",
+					projectId,
 				});
-			});
+				expect(currentState.status).toBe(200);
+				sessionsPath = join(currentState.payload.statePath, "sessions.json");
+				boardPath = join(currentState.payload.statePath, "board.json");
 
-			const taskWorktreeInfo = await requestJson<RuntimeWorktreeEnsureResponse>({
-				baseUrl: `http://127.0.0.1:${firstPort}`,
-				procedure: "project.ensureWorktree",
-				type: "mutation",
-				projectId,
-				payload: { taskId, baseRef: "HEAD" },
-			});
-			expect(taskWorktreeInfo.status).toBe(200);
-			if (!taskWorktreeInfo.payload.ok) throw new Error(taskWorktreeInfo.payload.error ?? "Fixture worktree failed");
-			const taskWorktreePath = taskWorktreeInfo.payload.path;
-			const persistedSessions = await withStateHomeOverride(
-				tempHome,
-				async () =>
-					await saveProjectSessions(projectPath, {
-						[taskId]: createPersistedReviewSession(taskId, taskWorktreePath, now, "hook"),
-					}),
-			);
-			expect(persistedSessions[taskId]?.reviewReason).toBe("hook");
+				await withStateHomeOverride(tempHome, async () => {
+					await saveProjectState(projectPath, {
+						board: createReviewBoard(taskId, taskTitle),
+						sessions: {},
+						expectedRevision: currentState.payload.revision,
+					});
+				});
+
+				const taskWorktreeInfo = await requestJson<RuntimeWorktreeEnsureResponse>({
+					baseUrl: `http://127.0.0.1:${firstPort}`,
+					headers: firstServer.browserHeaders,
+					procedure: "project.ensureWorktree",
+					type: "mutation",
+					projectId,
+					payload: { taskId, baseRef: "HEAD" },
+				});
+				expect(taskWorktreeInfo.status).toBe(200);
+				if (!taskWorktreeInfo.payload.ok)
+					throw new Error(taskWorktreeInfo.payload.error ?? "Fixture worktree failed");
+				taskWorktreePath = taskWorktreeInfo.payload.path;
+				const persistedSessions = await withStateHomeOverride(
+					tempHome,
+					async () =>
+						await saveProjectSessions(projectPath, {
+							[taskId]: createPersistedReviewSession(taskId, taskWorktreePath, now, "hook"),
+						}),
+				);
+				expect(persistedSessions[taskId]?.reviewReason).toBe("hook");
+				sessionsEvidence = readFileSync(sessionsPath, "utf8");
+				boardEvidence = readFileSync(boardPath, "utf8");
+				worktreeHead = runGit(taskWorktreePath, ["rev-parse", "HEAD"]);
+			} finally {
+				await firstServer.stop();
+			}
+
+			expect(readFileSync(sessionsPath, "utf8")).toBe(sessionsEvidence);
+			expect(readFileSync(boardPath, "utf8")).toBe(boardEvidence);
+			expect(runGit(taskWorktreePath, ["rev-parse", "HEAD"])).toBe(worktreeHead);
+
+			const previousOwner = await discoverRuntimeOwner(stateHome);
+			expect(previousOwner?.released).toBe(false);
+			expect(previousOwner?.processState).toBe("dead");
+			const previousGeneration = previousOwner?.claim.generation;
+			if (!previousGeneration) throw new Error("Expected the skipped-cleanup owner's retained claim.");
+
+			await expect(
+				startQuarterdeckServer({
+					cwd: projectPath,
+					homeDir: tempHome,
+					port: await getAvailablePort(),
+				}),
+			).rejects.toThrow("cannot prove that a prior agent's detached children have exited");
+
+			expect(readFileSync(sessionsPath, "utf8")).toBe(sessionsEvidence);
+			expect(readFileSync(boardPath, "utf8")).toBe(boardEvidence);
+			expect(runGit(taskWorktreePath, ["rev-parse", "HEAD"])).toBe(worktreeHead);
+
+			const refusedOwner = await discoverRuntimeOwner(stateHome);
+			if (!refusedOwner) throw new Error("Expected the refused launch to retain its ownership observation.");
+			const previousClaims = await readPriorRuntimeOwnershipClaims(stateHome, refusedOwner.claim.generation);
+			expect(
+				previousClaims.some(
+					({ claim, released, custodyDirty }) =>
+						claim.generation === previousGeneration && !released && custodyDirty === true,
+				),
+			).toBe(true);
 		} finally {
-			await firstServer.stop();
-		}
-
-		const secondPort = await getAvailablePort();
-		const secondServer = await startQuarterdeckServer({
-			cwd: projectPath,
-			homeDir: tempHome,
-			port: secondPort,
-		});
-
-		try {
-			const secondRuntimeUrl = new URL(secondServer.runtimeUrl);
-			const projectId = decodeURIComponent(secondRuntimeUrl.pathname.slice(1));
-			expect(projectId).not.toBe("");
-
-			const finalState = await requestJson<RuntimeProjectStateResponse>({
-				baseUrl: `http://127.0.0.1:${secondPort}`,
-				procedure: "project.getState",
-				type: "query",
-				projectId,
-			});
-			expect(finalState.status).toBe(200);
-
-			const reviewCards = finalState.payload.board.columns.find((column) => column.id === "review")?.cards ?? [];
-			const trashCards = finalState.payload.board.columns.find((column) => column.id === "trash")?.cards ?? [];
-			expect(reviewCards.some((card) => card.id === taskId)).toBe(true);
-			expect(trashCards.some((card) => card.id === taskId)).toBe(false);
-			expect(finalState.payload.sessions[taskId]?.state).toBe("awaiting_review");
-			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("hook");
-
-			const worktreeInfo = await requestJson<RuntimeTaskRepositoryInfoResponse>({
-				baseUrl: `http://127.0.0.1:${secondPort}`,
-				procedure: "project.getTaskContext",
-				type: "query",
-				projectId,
-				payload: {
-					taskId,
-					baseRef: "HEAD",
-				},
-			});
-			expect(worktreeInfo.status, JSON.stringify(worktreeInfo.payload)).toBe(200);
-			expect(worktreeInfo.payload.exists).toBe(true);
-		} finally {
-			await secondServer.stop();
 			cleanupProject();
 			cleanupHome();
 		}

@@ -17,6 +17,7 @@ import { isNodeError, lockedFileSystem } from "../fs";
 import { type NativeInputAuthorization, NativeInputAuthorizationSubscriptions } from "./native-input-authorization";
 import type { ProjectBoardCommandScope } from "./project-board-command-service";
 import { getProjectDirectoryLockRequest, getProjectExecutionOwnershipPath } from "./project-state-utils";
+import { assertRuntimeWriteAdmission } from "./runtime-write-admission.js";
 
 const MAX_TERMINAL_HANDOFFS = 200;
 const MAX_TERMINAL_INTERACTIONS = 500;
@@ -151,6 +152,7 @@ async function readJournal(scope: ProjectBoardCommandScope): Promise<ExecutionOw
 			// continues to fail closed until an operator deliberately repairs it.
 			// The content-derived name plus exclusive copy bounds repeated reads of
 			// the same corrupt payload to one backup artifact.
+			assertRuntimeWriteAdmission(path);
 			await copyFile(path, backupPath, COPYFILE_EXCL);
 			persistedBackupPath = backupPath;
 		} catch (error) {

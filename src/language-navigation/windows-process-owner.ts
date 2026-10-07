@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 import { buildWindowsProcessArgsCommandLine } from "../core/windows-cmd-launch";
 import { resolveWindowsPowerShellPath } from "../core/windows-system-paths";
 import { LanguageNavigationError } from "./failure";
@@ -121,6 +122,7 @@ ${OWNER_SOURCE}
 } catch { exit 1 }
 `;
 
+	assertRuntimeProcessLaunchAdmission();
 	return spawn(
 		resolveWindowsPowerShellPath(),
 		[

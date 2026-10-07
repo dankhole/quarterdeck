@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { createGitProcessEnv } from "../core/git-process-env";
 import { terminateProcessTree } from "../core/process-termination";
+import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 import { resolveWindowsPowerShellPath } from "../core/windows-system-paths";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { isNodeError } from "../fs/node-error";
@@ -99,6 +100,7 @@ export async function runWorktreeSetupScript(options: {
 	let output = Buffer.alloc(0);
 	let failure: Error | null = null;
 	await new Promise<void>((done) => {
+		assertRuntimeProcessLaunchAdmission();
 		const child = spawn(command.binary, command.args, {
 			cwd: options.worktreePath,
 			env: createGitProcessEnv(),

@@ -58,6 +58,7 @@ export interface UseProjectNavigationResult {
 	handleSelectProject: (projectId: string) => void;
 	handlePreloadProject: (projectId: string) => void;
 	handleAddProject: (groupId?: string) => Promise<void>;
+	handleOpenProjectByPath: (path: string, canNavigate: () => boolean) => Promise<void>;
 	handleConfirmManualProjectPath: (path: string) => Promise<void>;
 	handleCancelManualProjectPath: () => void;
 	handleConfirmInitializeGitProject: (folderOnly?: boolean) => Promise<void>;
@@ -132,7 +133,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 	);
 
 	const addProjectByPath = useCallback(
-		async (path: string, initializeGit = false, folderOnly?: boolean) => {
+		async (path: string, initializeGit = false, folderOnly?: boolean, canNavigate?: () => boolean) => {
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
 			const added = await trpcClient.projects.add.mutate({
 				path,
@@ -148,10 +149,24 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 				throw new Error(added.error ?? "Could not add project.");
 			}
 			setPendingGitInitializationPath(null);
+			if (canNavigate && !canNavigate()) return;
 			setPendingAddedProjectId(added.project.id);
 			handleSelectProject(added.project.id);
 		},
 		[currentProjectId, handleSelectProject],
+	);
+
+	const handleOpenProjectByPath = useCallback(
+		async (path: string, canNavigate: () => boolean) => {
+			if (!canNavigate()) return;
+			addToGroupRef.current = undefined;
+			try {
+				await addProjectByPath(path, false, undefined, canNavigate);
+			} catch (error) {
+				notifyError(toErrorMessage(error));
+			}
+		},
+		[addProjectByPath],
 	);
 
 	const handleAddProject = useCallback(
@@ -379,6 +394,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		handleSelectProject,
 		handlePreloadProject,
 		handleAddProject,
+		handleOpenProjectByPath,
 		handleConfirmManualProjectPath,
 		handleCancelManualProjectPath,
 		handleConfirmInitializeGitProject,

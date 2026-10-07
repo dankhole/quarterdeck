@@ -5,6 +5,7 @@ export async function assertProjectRelocationRuntimeIsExclusive(runtimeInstanceI
 	const instances = await discoverRuntimeDiagnosticInstances();
 	const otherRuntime = instances.find(
 		({ descriptor, pidAlive }) =>
+			descriptor.processKind !== "desktop" &&
 			descriptor.runtimeInstanceId !== runtimeInstanceId &&
 			pidAlive &&
 			(descriptor.status === "starting" || descriptor.status === "ready" || descriptor.status === "stopping"),

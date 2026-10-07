@@ -1,9 +1,9 @@
 import { appendFile, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import { type DiagnosticRecordEnvelope, diagnosticRecordEnvelopeSchema } from "../core";
-import { getDiagnosticErrorClass } from "./bounded-value";
-import { ensurePrivateDiagnosticDirectory } from "./private-path";
+import { type DiagnosticRecordEnvelope, diagnosticRecordEnvelopeSchema } from "../core/api/diagnostics.js";
+import { getDiagnosticErrorClass } from "./bounded-value.js";
+import { ensurePrivateDiagnosticDirectory } from "./private-path.js";
 
 const DEFAULT_SEGMENT_MAX_BYTES = 2 * 1024 * 1024;
 const DEFAULT_SEGMENT_COUNT = 4;

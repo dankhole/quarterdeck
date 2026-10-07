@@ -12,6 +12,7 @@ const ALLOWED_HEADERS = [
 	"X-Quarterdeck-Client-Id",
 	"X-Quarterdeck-Diagnostic-Capability",
 	"X-Quarterdeck-Diagnostic-Token",
+	"X-Quarterdeck-Desktop-Token",
 	"X-Quarterdeck-Project-Id",
 ].join(", ");
 
@@ -155,7 +156,11 @@ function rejectSocketUpgrade(socket: Duplex): { end: true } {
 	return { end: true };
 }
 
-export function handleHttpRequest(req: IncomingMessage, res: ServerResponse): { end: boolean } {
+export function handleHttpRequest(
+	req: IncomingMessage,
+	res: ServerResponse,
+	allowDesktopOrigin = false,
+): { end: boolean } {
 	const hostDecision = evaluateHost({
 		hostHeader: req.headers.host,
 		allowedHosts: getAllowedHostHeaders(),
@@ -164,10 +169,12 @@ export function handleHttpRequest(req: IncomingMessage, res: ServerResponse): { 
 		return rejectHttpRequest(res, "Host not allowed.");
 	}
 
+	const allowedOrigins = new Set(getAllowedRuntimeOrigins());
+	if (allowDesktopOrigin) allowedOrigins.add("app://quarterdeck");
 	const corsDecision = evaluateCors({
 		method: req.method,
 		originHeader: req.headers.origin,
-		allowedOrigins: getAllowedRuntimeOrigins(),
+		allowedOrigins,
 	});
 	switch (corsDecision.kind) {
 		case "allow": {
@@ -191,7 +198,11 @@ export function handleHttpRequest(req: IncomingMessage, res: ServerResponse): { 
 	}
 }
 
-export function handleSocketUpgrade(request: IncomingMessage, socket: Duplex): { end: boolean } {
+export function handleSocketUpgrade(
+	request: IncomingMessage,
+	socket: Duplex,
+	allowDesktopOrigin = false,
+): { end: boolean } {
 	const hostDecision = evaluateHost({
 		hostHeader: request.headers.host,
 		allowedHosts: getAllowedHostHeaders(),
@@ -200,10 +211,12 @@ export function handleSocketUpgrade(request: IncomingMessage, socket: Duplex): {
 		return rejectSocketUpgrade(socket);
 	}
 
+	const allowedOrigins = new Set(getAllowedRuntimeOrigins());
+	if (allowDesktopOrigin) allowedOrigins.add("app://quarterdeck");
 	const corsDecision = evaluateCors({
 		method: request.method,
 		originHeader: request.headers.origin,
-		allowedOrigins: getAllowedRuntimeOrigins(),
+		allowedOrigins,
 	});
 	if (corsDecision.kind === "reject") {
 		return rejectSocketUpgrade(socket);

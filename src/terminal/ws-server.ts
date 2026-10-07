@@ -119,7 +119,7 @@ export function createTerminalWebSocketBridge({
 			if (!isIoRequest && !isControlRequest) {
 				return;
 			}
-			if (handleSocketUpgrade(request, socket).end) {
+			if (!upgradeRequest.__quarterdeckUpgradeAdmitted && handleSocketUpgrade(request, socket).end) {
 				upgradeRequest.__quarterdeckUpgradeHandled = true;
 				return;
 			}

@@ -1,4 +1,9 @@
 import type { RuntimeProjectMetadata, RuntimeProjectStateResponse, RuntimeProjectSummary } from "@/runtime/types";
+import {
+	type FileEditorRecoveryProblem,
+	type FileEditorRecoveryRecord,
+	sameFileEditorRecoveryScope,
+} from "./file-editor-recovery";
 import type { FileEditorTab } from "./file-editor-workspace";
 
 export interface FileEditorScopeIdentity {
@@ -22,6 +27,8 @@ export interface FileEditorDraft {
 	readonly scope: FileEditorScopeIdentity;
 	readonly tab: FileEditorTab;
 	readonly detached: boolean;
+	readonly recovered?: boolean;
+	readonly recoveryId?: string;
 }
 
 interface CachedWorkspace {
@@ -38,7 +45,96 @@ const listeners = new Set<() => void>();
 let revision = 0;
 let nextDraftId = 0;
 let nextGeneration = 0;
-let reviewTarget: FileEditorScopeTarget | "detached" | null = null;
+const recoverySessionId = crypto.randomUUID();
+export type FileEditorReviewTarget = FileEditorScopeTarget | "detached" | "all" | null;
+let reviewTarget: FileEditorReviewTarget = null;
+let recoveryProblem: FileEditorRecoveryProblem | null = null;
+let expiredRecoveryCount = 0;
+let recoveryWritesPaused = false;
+let recoveryCommitPending = false;
+let recoveryCommitBusy = false;
+
+export function getFileEditorRecoveryStatus(): {
+	problem: FileEditorRecoveryProblem | null;
+	expired: number;
+	paused: boolean;
+	pending: boolean;
+	busy: boolean;
+} {
+	return {
+		problem: recoveryProblem,
+		expired: expiredRecoveryCount,
+		paused: recoveryWritesPaused,
+		pending: recoveryCommitPending,
+		busy: recoveryCommitBusy,
+	};
+}
+
+export function setFileEditorRecoveryStatus(
+	problem: FileEditorRecoveryProblem | null,
+	expired = expiredRecoveryCount,
+	paused = false,
+	pending = false,
+	busy = false,
+): void {
+	if (
+		recoveryProblem === problem &&
+		expiredRecoveryCount === expired &&
+		recoveryWritesPaused === paused &&
+		recoveryCommitPending === pending &&
+		recoveryCommitBusy === busy
+	)
+		return;
+	recoveryProblem = problem;
+	expiredRecoveryCount = expired;
+	recoveryWritesPaused = paused;
+	recoveryCommitPending = pending;
+	recoveryCommitBusy = busy;
+	changed();
+}
+
+export function hydrateFileEditorRecovery(records: readonly FileEditorRecoveryRecord[]): void {
+	for (const record of records) {
+		const id = `recovered:${record.id}`;
+		if (detachedDrafts.has(id)) continue;
+		detachedDrafts.set(id, {
+			id,
+			recoveryId: record.id,
+			recovered: true,
+			scopeKey: record.scopeKey,
+			generation: 0,
+			scope: record.scope,
+			tab: { ...record.tab, isSaving: false, error: null, recoveryRequiresSave: true, recoveryId: record.id },
+			detached: true,
+		});
+	}
+	if (records.length > 0) reviewTarget = "detached";
+	changed();
+}
+
+/** Restoration changes the local editor only; the normal explicit Save retains its revision check. */
+export function canRestoreFileEditorDraft(draft: FileEditorDraft): boolean {
+	const current = detachedDrafts.get(draft.id);
+	const workspace = workspaces.get(draft.scopeKey);
+	return (
+		!!current &&
+		current.tab.value === draft.tab.value &&
+		!!workspace &&
+		sameFileEditorRecoveryScope(workspace.scope, draft.scope) &&
+		!workspace.tabs.some((tab) => tab.path === draft.tab.path && isProtected(tab))
+	);
+}
+
+export function restoreFileEditorDraft(draft: FileEditorDraft): boolean {
+	if (!canRestoreFileEditorDraft(draft)) return false;
+	const workspace = workspaces.get(draft.scopeKey);
+	if (!workspace) return false;
+	const tab = { ...draft.tab, isSaving: false, error: null, recoveryRequiresSave: true };
+	workspace.tabs = [...workspace.tabs.filter((candidate) => candidate.path !== tab.path), tab];
+	detachedDrafts.delete(draft.id);
+	changed();
+	return true;
+}
 
 function changed(): void {
 	revision++;
@@ -127,15 +223,13 @@ export function hasDirtyCachedFileEditorTabs(): boolean {
 	return detachedDrafts.size > 0 || [...workspaces.values()].some(({ tabs }) => tabs.some(isProtected));
 }
 
-export function getFileEditorDrafts(
-	target: FileEditorScopeTarget | "detached" | null = reviewTarget,
-): FileEditorDraft[] {
+export function getFileEditorDrafts(target: FileEditorReviewTarget = reviewTarget): FileEditorDraft[] {
 	const result = [...detachedDrafts.values()].filter(
-		(draft) => !target || target === "detached" || matches(draft.scope, target),
+		(draft) => !target || target === "detached" || target === "all" || matches(draft.scope, target),
 	);
 	if (target === "detached") return result;
 	for (const [scopeKey, workspace] of workspaces) {
-		if (target && !matches(workspace.scope, target)) continue;
+		if (target && target !== "all" && !matches(workspace.scope, target)) continue;
 		for (const tab of workspace.tabs) {
 			if (isProtected(tab))
 				result.push({
@@ -145,6 +239,8 @@ export function getFileEditorDrafts(
 					scope: workspace.scope,
 					tab,
 					detached: false,
+					recoveryId:
+						tab.recoveryId ?? JSON.stringify([recoverySessionId, scopeKey, workspace.generation, tab.path]),
 				});
 		}
 	}
@@ -160,18 +256,20 @@ export function guardFileEditorScopes(target: FileEditorScopeTarget, options?: {
 	return false;
 }
 
-export function getFileEditorReviewTarget(): FileEditorScopeTarget | "detached" | null {
+export function getFileEditorReviewTarget(): FileEditorReviewTarget {
 	return reviewTarget;
 }
-export function setFileEditorReviewTarget(target: FileEditorScopeTarget | "detached" | null): void {
+export function setFileEditorReviewTarget(target: FileEditorReviewTarget): void {
 	reviewTarget = target;
 	changed();
 }
 
 export function discardFileEditorDraft(draft: FileEditorDraft): void {
 	if (draft.tab.isSaving) return;
-	if (draft.detached) detachedDrafts.delete(draft.id);
-	else {
+	if (draft.detached) {
+		if (detachedDrafts.get(draft.id)?.tab.value !== draft.tab.value) return;
+		detachedDrafts.delete(draft.id);
+	} else {
 		const workspace = workspaces.get(draft.scopeKey);
 		if (!workspace || workspace.generation !== draft.generation) return;
 		// A confirmation only discards the exact version that was presented.
@@ -196,6 +294,7 @@ function retireWorkspace(scopeKey: string, workspace: CachedWorkspace): boolean 
 			scope: workspace.scope,
 			tab: { ...tab, isSaving: false },
 			detached: true,
+			recoveryId: tab.recoveryId ?? JSON.stringify([recoverySessionId, scopeKey, workspace.generation, tab.path]),
 		});
 		retained = true;
 	}

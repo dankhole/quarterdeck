@@ -15,6 +15,8 @@ async function openBoard(page: Page) {
 	await page.goto(E2E_PROJECT_PATH);
 	await dismissStartupOnboarding(page);
 	await expect(page.locator("section.kb-board")).toBeVisible();
+	// Project actions are ready only after the authoritative metadata snapshot applies.
+	await expect(page.getByRole("button", { name: "Open in VS Code", exact: true })).toBeEnabled();
 }
 
 async function dismissStartupOnboarding(page: Page) {
@@ -29,7 +31,7 @@ async function dismissStartupOnboarding(page: Page) {
 
 async function createUnstartedTask(page: Page, title: string) {
 	const reviewColumn = page.locator(REVIEW_COLUMN).first();
-	await reviewColumn.getByRole("button", { name: "Create task" }).click();
+	await page.getByRole("button", { name: "Create task", exact: true }).click();
 	const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "New task" }) });
 	await expect(dialog).toBeVisible();
 	const prompt = dialog.getByPlaceholder("Describe the task");
@@ -42,7 +44,20 @@ async function createUnstartedTask(page: Page, title: string) {
 async function openTaskFromBoard(page: Page, title: string) {
 	const card = page.locator(REVIEW_COLUMN).locator("[data-task-id]").filter({ hasText: title }).first();
 	await expect(card).toBeVisible();
-	await card.click();
+	await card.press("Enter");
+}
+
+async function expectTerminalOutput(page: Page, taskId: string, text: string): Promise<void> {
+	await expect
+		.poll(
+			() =>
+				page.evaluate((activeTaskId) => {
+					const state = window.__quarterdeckDumpTerminalState?.();
+					return state?.poolSlots.find((slot) => slot.taskId === activeTaskId)?.visibleLines.join("\n") ?? "";
+				}, taskId),
+			{ timeout: 20_000 },
+		)
+		.toContain(text);
 }
 
 async function readTaskIds(page: Page): Promise<string[]> {
@@ -75,7 +90,7 @@ test("renders quarterdeck top bar and columns", async ({ page }) => {
 	await expect(page.getByText("In Progress", { exact: true })).toBeVisible();
 	await expect(page.getByText("Review", { exact: true })).toBeVisible();
 	await expect(page.getByText("Trash", { exact: true })).toBeVisible();
-	await expect(page.locator(REVIEW_COLUMN).getByRole("button", { name: "Create task" })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Create task", exact: true })).toBeVisible();
 });
 
 test("simulates the CLI host-browser launch while ordinary docs links stay browser-contained", async ({ page }) => {
@@ -87,7 +102,7 @@ test("simulates the CLI host-browser launch while ordinary docs links stay brows
 		origin: "runtime",
 		outcome: "simulated",
 	});
-	if (!externalUrlEvent || externalUrlEvent.kind !== "external_url") {
+	if (externalUrlEvent?.kind !== "external_url") {
 		throw new Error("Expected the simulated startup external URL event.");
 	}
 	const simulatedUrl = new URL(externalUrlEvent.url);
@@ -185,8 +200,7 @@ test("uses the in-memory lab clipboard for Files copy and terminal OSC 52 read",
 
 	await page.getByRole("button", { name: "Home" }).click();
 	const taskPrompt = `[agent-lab:idle] clipboard-${Date.now()}`;
-	const reviewColumn = page.locator(REVIEW_COLUMN).first();
-	await reviewColumn.getByRole("button", { name: "Create task" }).click();
+	await page.getByRole("button", { name: "Create task", exact: true }).click();
 	const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "New task" }) });
 	await dialog.getByPlaceholder("Describe the task").fill(taskPrompt);
 	const existingTaskIds = new Set(await readTaskIds(page));
@@ -194,9 +208,10 @@ test("uses the in-memory lab clipboard for Files copy and terminal OSC 52 read",
 	const taskId = await waitForCreatedTaskId(page, existingTaskIds);
 	const taskCard = page.locator(`[data-task-id="${taskId}"]`).first();
 	await expect(taskCard).toBeVisible({ timeout: 20_000 });
-	await expect(taskCard).toContainText("Review");
-	await taskCard.click();
+	await expect(taskCard).toContainText("Running");
+	await taskCard.press("Enter");
 	await expect(page.getByRole("textbox", { name: "Terminal input" })).toBeVisible();
+	await expectTerminalOutput(page, taskId, "AGENT LAB READY");
 	await page.getByRole("textbox", { name: "Terminal input" }).focus();
 	await page.keyboard.type("/clipboard-read");
 	await page.keyboard.press("Enter");
@@ -208,16 +223,7 @@ test("uses the in-memory lab clipboard for Files copy and terminal OSC 52 read",
 		outcome: "simulated",
 		characterCount: writeEvent.characterCount,
 	});
-	await expect
-		.poll(
-			() =>
-				page.evaluate((activeTaskId) => {
-					const state = window.__quarterdeckDumpTerminalState?.();
-					return state?.poolSlots.find((slot) => slot.taskId === activeTaskId)?.visibleLines.join("\n") ?? "";
-				}, taskId),
-			{ timeout: 20_000 },
-		)
-		.toContain("AGENT LAB CLIPBOARD READ: # Quarterdeck agent lab fixture");
+	await expectTerminalOutput(page, taskId, "AGENT LAB CLIPBOARD READ: # Quarterdeck agent lab fixture");
 });
 
 test("creating and opening an unstarted task shows the inline editor", async ({ page }) => {
@@ -354,7 +360,8 @@ test("agent lab adds a synthetic project through the browser manual-path fallbac
 	});
 	expect(additionalProjectPath).toBeTruthy();
 
-	await page.getByRole("button", { name: "Add Project" }).click();
+	await page.getByRole("button", { name: "Add project or group", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Add project…", exact: true }).click();
 	const pathDialog = page
 		.getByRole("dialog")
 		.filter({ has: page.getByRole("heading", { name: "Add project by path" }) });
@@ -362,7 +369,9 @@ test("agent lab adds a synthetic project through the browser manual-path fallbac
 	await pathDialog.getByLabel("Project path").fill(additionalProjectPath);
 	await pathDialog.getByRole("button", { name: "Add project" }).click();
 	await expect(pathDialog).toBeHidden();
-	await expect(page.getByRole("button", { name: /^project-secondary\b/ })).toBeVisible({ timeout: 10_000 });
+	await expect(page.getByRole("button", { name: "Open project-secondary", exact: true })).toBeVisible({
+		timeout: 10_000,
+	});
 	await expect(page).toHaveURL(/\/project-secondary(?:[?#]|$)/);
 	const pickerEvent = await waitForHostEvent(page, "directory_picker");
 	expect(pickerEvent).toMatchObject({
@@ -375,8 +384,7 @@ test("agent lab adds a synthetic project through the browser manual-path fallbac
 test("drives the deterministic agent terminal through review", async ({ page }, testInfo) => {
 	await openBoard(page);
 	const taskPrompt = `[agent-lab:idle] functional-${Date.now()}`;
-	const reviewColumn = page.locator(REVIEW_COLUMN).first();
-	await reviewColumn.getByRole("button", { name: "Create task" }).click();
+	await page.getByRole("button", { name: "Create task", exact: true }).click();
 	const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "New task" }) });
 	await dialog.getByPlaceholder("Describe the task").fill(taskPrompt);
 	const existingTaskIds = new Set(await readTaskIds(page));
@@ -386,34 +394,16 @@ test("drives the deterministic agent terminal through review", async ({ page }, 
 	const taskId = await waitForCreatedTaskId(page, existingTaskIds);
 	const taskCard = page.locator(`[data-task-id="${taskId}"]`).first();
 	await expect(taskCard).toBeVisible({ timeout: 20_000 });
-	await expect(taskCard).toContainText("Review");
-	await taskCard.click();
+	await expect(taskCard).toContainText("Running");
+	await taskCard.press("Enter");
 	await expect(page.getByRole("textbox", { name: "Terminal input" })).toBeVisible();
 
-	await expect
-		.poll(
-			() =>
-				page.evaluate((activeTaskId) => {
-					const state = window.__quarterdeckDumpTerminalState?.();
-					return state?.poolSlots.find((slot) => slot.taskId === activeTaskId)?.visibleLines.join("\n") ?? "";
-				}, taskId),
-			{ timeout: 20_000 },
-		)
-		.toContain("AGENT LAB READY");
+	await expectTerminalOutput(page, taskId, "AGENT LAB READY");
 
 	await page.getByRole("textbox", { name: "Terminal input" }).focus();
 	await page.keyboard.type("/write agent-lab-e2e.txt created-by-playwright");
 	await page.keyboard.press("Enter");
-	await expect
-		.poll(
-			() =>
-				page.evaluate((activeTaskId) => {
-					const state = window.__quarterdeckDumpTerminalState?.();
-					return state?.poolSlots.find((slot) => slot.taskId === activeTaskId)?.visibleLines.join("\n") ?? "";
-				}, taskId),
-			{ timeout: 20_000 },
-		)
-		.toContain("AGENT LAB WROTE: agent-lab-e2e.txt");
+	await expectTerminalOutput(page, taskId, "AGENT LAB WROTE: agent-lab-e2e.txt");
 
 	await page.keyboard.type("/review Playwright lifecycle verified");
 	await page.keyboard.press("Enter");
@@ -438,8 +428,7 @@ test("converges provider-approved permissions and fences historical interruption
 	await settingsDialog.getByRole("button", { name: "Save" }).click();
 	await expect(settingsDialog).toBeHidden();
 	const taskPrompt = `[agent-lab:idle] lifecycle-fences-${Date.now()}`;
-	const reviewColumn = page.locator(REVIEW_COLUMN).first();
-	await reviewColumn.getByRole("button", { name: "Create task" }).click();
+	await page.getByRole("button", { name: "Create task", exact: true }).click();
 	const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "New task" }) });
 	await dialog.getByPlaceholder("Describe the task").fill(taskPrompt);
 	await expect(dialog.getByRole("button", { name: "Task harness" })).toContainText("Codex");
@@ -451,8 +440,8 @@ test("converges provider-approved permissions and fences historical interruption
 	const inProgressColumn = page.locator('section[data-column-id="in_progress"]').first();
 	const initialCard = page.locator(`[data-task-id="${taskId}"]`).first();
 	await expect(initialCard).toBeVisible({ timeout: 20_000 });
-	await expect(initialCard).toContainText("Review");
-	await expect(inProgressColumn.locator(`[data-task-id="${taskId}"]`)).toHaveCount(0);
+	await expect(initialCard).toContainText("Running");
+	await expect(inProgressColumn.locator(`[data-task-id="${taskId}"]`)).toBeVisible();
 	const projectRow = page.locator(".kb-project-row-selected:visible").first();
 	const card = page.locator(`[data-task-id="${taskId}"]`).first();
 	const readProjectIndicatorCount = async (title: "Review" | "Needs Input"): Promise<number> => {
@@ -462,10 +451,15 @@ test("converges provider-approved permissions and fences historical interruption
 		if (!match) throw new Error(`Expected ${title} project indicator to contain a count.`);
 		return Number(match[0]);
 	};
+	let hasConfirmedFakeReadiness = false;
 	const submitTerminalCommand = async (command: string): Promise<void> => {
-		await card.click();
+		await card.press("Enter");
 		const terminalInput = page.getByRole("textbox", { name: "Terminal input" });
 		await expect(terminalInput).toBeVisible();
+		if (!hasConfirmedFakeReadiness) {
+			await expectTerminalOutput(page, taskId, "AGENT LAB READY");
+			hasConfirmedFakeReadiness = true;
+		}
 		await terminalInput.focus();
 		await page.keyboard.type(command);
 		await page.keyboard.press("Enter");
@@ -476,37 +470,45 @@ test("converges provider-approved permissions and fences historical interruption
 	};
 	const beforeEvents = await listHostEvents(page);
 	const lastEventSequence = beforeEvents.events.at(-1)?.sequence ?? 0;
+	// The fresh task is Running; Review counts below add it only after a review transition.
 	const initialReviewCount = await readProjectIndicatorCount("Review");
 	const initialNeedsInputCount = await readProjectIndicatorCount("Needs Input");
 	const needsInputMarkers = projectRow.locator('span[title$="needs input"]:visible');
 	const initialNeedsInputMarkerCount = await needsInputMarkers.count();
 
 	await submitTerminalCommand("/working provider-confirmed initial turn");
+	await expectTerminalOutput(page, taskId, "AGENT LAB WORKING: provider-confirmed initial turn");
 	await expect(card).toContainText("Running", { timeout: 20_000 });
 	await showBoard();
 	await expect(inProgressColumn.locator(`[data-task-id="${taskId}"]`)).toBeVisible();
-	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount - 1);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
 	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
 
-	await card.click();
+	await card.press("Enter");
 	await expect(page.getByRole("textbox", { name: "Terminal input" })).toBeVisible();
 	await page.getByRole("textbox", { name: "Terminal input" }).focus();
 	await page.keyboard.press("Escape");
-	await expect(card).toContainText("Interrupted", { timeout: 20_000 });
+	await expect(card).toContainText("Running");
 	await showBoard();
 	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
 	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
 
-	await submitTerminalCommand("/working provider-confirmed after interrupt");
+	await submitTerminalCommand("/native-interrupt");
+	await expect(card).toContainText("Interrupted", { timeout: 20_000 });
+	await showBoard();
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount + 1);
+	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
+
+	await submitTerminalCommand("/new-turn provider-confirmed after interrupt");
 	await expect(card).toContainText("Running", { timeout: 20_000 });
 	await showBoard();
-	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount - 1);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
 
 	await submitTerminalCommand("/needs-input cancel before provider completion");
 	await expect(card).toContainText("Waiting for approval", { timeout: 20_000 });
 	await showBoard();
 	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount + 1);
-	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount - 1);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
 	const cancelledPermissionSound = await waitForHostEvent(page, "notification_audio", lastEventSequence);
 	expect(cancelledPermissionSound).toMatchObject({
 		kind: "notification_audio",
@@ -515,7 +517,7 @@ test("converges provider-approved permissions and fences historical interruption
 		taskId,
 		outcome: "simulated",
 	});
-	await card.click();
+	await card.press("Enter");
 	const terminalInput = page.getByRole("textbox", { name: "Terminal input" });
 	await expect(terminalInput).toBeVisible();
 	await terminalInput.focus();
@@ -523,14 +525,14 @@ test("converges provider-approved permissions and fences historical interruption
 	await expect(card).toContainText("Response sent", { timeout: 20_000 });
 	await showBoard();
 	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
-	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount + 1);
 	await expect(needsInputMarkers).toHaveCount(initialNeedsInputMarkerCount);
 
 	await submitTerminalCommand("/needs-input-auto provider policy approved");
 	await expect(card).toContainText("Waiting for approval", { timeout: 20_000 });
 	await showBoard();
 	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount + 1);
-	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount - 1);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
 	await expect(needsInputMarkers).toHaveCount(initialNeedsInputMarkerCount + 1);
 	const permissionSound = await waitForHostEvent(page, "notification_audio", cancelledPermissionSound.sequence);
 	expect(permissionSound).toMatchObject({
@@ -544,14 +546,14 @@ test("converges provider-approved permissions and fences historical interruption
 	await expect(card).toContainText("Running", { timeout: 20_000 });
 	await expect(inProgressColumn.locator(`[data-task-id="${taskId}"]`)).toBeVisible();
 	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
-	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount - 1);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
 	await expect(needsInputMarkers).toHaveCount(initialNeedsInputMarkerCount);
 
 	await submitTerminalCommand("/approval-overlay");
 	await expect(card).toContainText("Waiting for approval", { timeout: 20_000 });
 	await showBoard();
 	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount + 1);
-	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount - 1);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
 	const overlayPermissionSound = await waitForHostEvent(page, "notification_audio", permissionSound.sequence);
 	expect(overlayPermissionSound).toMatchObject({
 		kind: "notification_audio",
@@ -560,21 +562,21 @@ test("converges provider-approved permissions and fences historical interruption
 		taskId,
 		outcome: "simulated",
 	});
-	await card.click();
+	await card.press("Enter");
 	await expect(terminalInput).toBeVisible();
 	await terminalInput.focus();
 	await page.keyboard.type("y");
 	await expect(card).toContainText("Response sent", { timeout: 20_000 });
 	await showBoard();
 	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
-	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount + 1);
 	await expect(card).toContainText("Running", { timeout: 20_000 });
-	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount - 1);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
 
 	await submitTerminalCommand("/turn-interrupted");
 	await expect(card).toContainText("Interrupted", { timeout: 20_000 });
 	await showBoard();
-	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount + 1);
 	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
 	await expect(needsInputMarkers).toHaveCount(initialNeedsInputMarkerCount);
 
@@ -585,13 +587,13 @@ test("converges provider-approved permissions and fences historical interruption
 	await submitTerminalCommand("/redraw-interruption-history");
 	await expect.poll(async () => await card.textContent(), { timeout: 3_000 }).toContain("Running");
 	await showBoard();
-	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount - 1);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
 	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
 
 	await submitTerminalCommand("/turn-interrupted");
 	await expect(card).toContainText("Interrupted", { timeout: 20_000 });
 	await showBoard();
-	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount);
+	await expect.poll(async () => await readProjectIndicatorCount("Review")).toBe(initialReviewCount + 1);
 	await expect.poll(async () => await readProjectIndicatorCount("Needs Input")).toBe(initialNeedsInputCount);
 
 	const afterEvents = await listHostEvents(page);

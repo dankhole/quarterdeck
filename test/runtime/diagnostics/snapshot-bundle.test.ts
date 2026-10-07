@@ -21,6 +21,7 @@ import {
 function descriptor(): PublicRuntimeDiagnosticDescriptor {
 	return {
 		version: 1,
+		processKind: "runtime",
 		runtimeInstanceId: "runtime-test",
 		status: "ready",
 		pid: process.pid,

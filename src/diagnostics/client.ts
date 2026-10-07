@@ -13,15 +13,16 @@ import {
 	normalizeDiagnosticErrorClass,
 	publicRuntimeDiagnosticDescriptorSchema,
 	type RuntimeDiagnosticDescriptor,
-} from "../core";
+} from "../core/api/diagnostics.js";
+import { getDesktopDiagnosticJournalState } from "./desktop-diagnostics.js";
 import {
 	captureScopeFromRecordFilter,
 	type DiagnosticRecordFilter,
 	mergeDiagnosticRecordSources,
-} from "./diagnostic-record";
-import { evaluateDiagnosticSnapshot } from "./doctor";
-import { readDiagnosticJournal } from "./journal";
-import { type DiscoveredRuntimeDiagnosticInstance, discoverRuntimeDiagnosticInstances } from "./runtime-instance";
+} from "./diagnostic-record.js";
+import { evaluateDiagnosticSnapshot } from "./doctor.js";
+import { readDiagnosticJournal } from "./journal.js";
+import { type DiscoveredRuntimeDiagnosticInstance, discoverRuntimeDiagnosticInstances } from "./runtime-instance.js";
 
 const liveCaptureSchema = z.object({
 	descriptor: publicRuntimeDiagnosticDescriptorSchema,
@@ -57,6 +58,8 @@ export interface RuntimeDiagnosticProbeResult {
 }
 
 export function diagnosticRuntimeUrl(descriptor: RuntimeDiagnosticDescriptor, pathname: string): URL {
+	if (descriptor.processKind === "desktop" || descriptor.host === null || descriptor.port === null)
+		throw new RuntimeDiagnosticClientError("Desktop diagnostics are journal-only and have no runtime endpoint.");
 	let host = descriptor.host;
 	if (host === "0.0.0.0" || host === "::") host = "127.0.0.1";
 	const bracketedHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
@@ -99,7 +102,12 @@ export async function probeRuntimeDiagnosticInstance(
 	instance: DiscoveredRuntimeDiagnosticInstance,
 	timeoutMs = 750,
 ): Promise<RuntimeDiagnosticProbeResult> {
-	if (!instance.pidAlive || instance.descriptor.status === "stopped" || instance.descriptor.status === "failed") {
+	if (
+		instance.descriptor.processKind === "desktop" ||
+		!instance.pidAlive ||
+		instance.descriptor.status === "stopped" ||
+		instance.descriptor.status === "failed"
+	) {
 		return { reachable: false, instanceMatches: false };
 	}
 	try {
@@ -137,6 +145,7 @@ export async function selectRuntimeDiagnosticInstance(
 	}
 	const active = instances.filter(
 		(instance) =>
+			instance.descriptor.processKind !== "desktop" &&
 			instance.pidAlive &&
 			(instance.descriptor.status === "ready" ||
 				instance.descriptor.status === "starting" ||
@@ -159,6 +168,8 @@ async function collectOfflineCapture(
 ): Promise<CollectedDiagnosticCapture> {
 	const journal = await readDiagnosticJournal(instance.descriptor.journalDirectory);
 	const records = mergeDiagnosticRecordSources([journal.records], filter);
+	const desktopState = getDesktopDiagnosticJournalState(records);
+	const desktop = instance.descriptor.processKind === "desktop";
 	const snapshot: DiagnosticSnapshot = {
 		version: 1,
 		runtimeInstanceId: instance.descriptor.runtimeInstanceId,
@@ -166,11 +177,23 @@ async function collectOfflineCapture(
 		scope: captureScopeFromRecordFilter(filter),
 		providers: [
 			{
-				name: "runtime",
+				name: desktop ? "recorder" : "runtime",
 				status: "unavailable",
 				durationMs: 0,
-				error: "Runtime is not reachable; current in-memory snapshots are unavailable.",
+				error: desktop
+					? "Desktop evidence is journal-only; current recorder health is unavailable."
+					: "Runtime is not reachable; current in-memory snapshots are unavailable.",
 			},
+			...(desktopState
+				? [
+						{
+							name: "desktop",
+							status: "completed" as const,
+							durationMs: 0,
+							data: { ...desktopState, snapshotOrigin: "journal" },
+						},
+					]
+				: []),
 		],
 	};
 	return {
@@ -191,7 +214,12 @@ export async function collectDiagnosticCapture(
 	options: { filter?: DiagnosticRecordFilter; requestBrowser?: boolean; fallbackToJournal?: boolean } = {},
 ): Promise<CollectedDiagnosticCapture> {
 	const filter = options.filter ?? {};
-	if (!instance.pidAlive || instance.descriptor.status === "stopped" || instance.descriptor.status === "failed") {
+	if (
+		instance.descriptor.processKind === "desktop" ||
+		!instance.pidAlive ||
+		instance.descriptor.status === "stopped" ||
+		instance.descriptor.status === "failed"
+	) {
 		return await collectOfflineCapture(instance, filter);
 	}
 	try {

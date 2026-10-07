@@ -1,5 +1,5 @@
-import type { DiagnosticCaptureScope, DiagnosticProviderResult, DiagnosticSnapshot } from "../core";
-import { type DiagnosticPathAliases, getDiagnosticErrorClass, sanitizeDiagnosticValue } from "./bounded-value";
+import type { DiagnosticCaptureScope, DiagnosticProviderResult, DiagnosticSnapshot } from "../core/api/diagnostics.js";
+import { type DiagnosticPathAliases, getDiagnosticErrorClass, sanitizeDiagnosticValue } from "./bounded-value.js";
 
 const DEFAULT_PROVIDER_TIMEOUT_MS = 2_000;
 

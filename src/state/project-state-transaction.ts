@@ -13,6 +13,7 @@ import {
 	getProjectMetaPath,
 	getProjectSessionsPath,
 } from "./project-state-utils";
+import { assertRuntimeWriteAdmission } from "./runtime-write-admission.js";
 
 export interface ProjectStateMeta {
 	revision: number;
@@ -103,6 +104,7 @@ async function installProjectStateTransaction(projectId: string, transaction: Pr
 	}
 	// Destination renames must reach disk before the recovery record is removed.
 	await syncProjectDirectory(projectId);
+	assertRuntimeWriteAdmission(getProjectStateTransactionPath(projectId));
 	await unlink(getProjectStateTransactionPath(projectId));
 	await syncProjectDirectory(projectId);
 }

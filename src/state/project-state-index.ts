@@ -23,7 +23,6 @@ import { lockedFileSystem } from "../fs/locked-file-system";
 import { isNodeError } from "../fs/node-error";
 import { migrateLegacyBacklog } from "./legacy-backlog-migration";
 import { type ProjectStateMeta, projectStateMetaSchema, withProjectStateLock } from "./project-state-transaction";
-
 import {
 	getProjectBoardPath,
 	getProjectIndexLockRequest,
@@ -32,6 +31,7 @@ import {
 	getProjectSessionsPath,
 	isUnderWorktreesHome,
 } from "./project-state-utils";
+import { assertRuntimeWriteAdmission } from "./runtime-write-admission.js";
 
 export {
 	MAX_RECENT_BOARD_COMMAND_RECEIPTS,
@@ -212,6 +212,7 @@ async function backUpCorruptSessionsFile(sessionsPath: string): Promise<string |
 	const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 	const backupPath = `${sessionsPath}.corrupt-${timestamp}-${randomBytes(3).toString("hex")}`;
 	try {
+		assertRuntimeWriteAdmission(sessionsPath);
 		await copyFile(sessionsPath, backupPath);
 		return backupPath;
 	} catch (error) {

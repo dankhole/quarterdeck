@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	observeRuntimeAdmissionResponse,
+	RUNTIME_ADMISSION_REQUIRED_MESSAGE,
+} from "@/runtime/runtime-client-admission";
 import { startRuntimeStateStreamTransport } from "@/runtime/runtime-state-stream-transport";
 
 class FakeWebSocket {
@@ -46,12 +50,73 @@ describe("startRuntimeStateStreamTransport", () => {
 		originalWebSocket = globalThis.WebSocket;
 		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
 		vi.useFakeTimers();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response("{}", { status: 200 })),
+		);
 	});
 
 	afterEach(() => {
 		globalThis.WebSocket = originalWebSocket;
 		setDocumentVisibilityState("visible");
 		vi.useRealTimers();
+		vi.unstubAllGlobals();
+	});
+
+	it("uses the pinned desktop endpoint and encodes the project without exposing bootstrap metadata", () => {
+		vi.stubGlobal("window", {
+			location: { protocol: "app:", host: "quarterdeck" },
+			setTimeout: window.setTimeout.bind(window),
+			clearTimeout: window.clearTimeout.bind(window),
+			quarterdeckDesktop: {
+				version: 1,
+				bootstrap: {
+					runtimeOrigin: "http://127.0.0.1:54321",
+					runtimeGeneration: "generation-1",
+					capabilities: { desktop: true, nativeDialogs: false, nativeNotifications: false },
+				},
+			},
+		});
+		const transport = startRuntimeStateStreamTransport("project ü /&?#", {
+			onConnected: vi.fn(),
+			onDisconnected: vi.fn(),
+			onMessage: vi.fn(),
+		});
+		const url = new URL(FakeWebSocket.instances[0]?.url ?? "");
+		expect(url.origin).toBe("ws://127.0.0.1:54321");
+		expect(url.pathname).toBe("/api/runtime/ws");
+		expect(url.searchParams.get("projectId")).toBe("project ü /&?#");
+		expect(url.searchParams.get("browserBuildId")).toBe("test");
+		expect([...url.searchParams.keys()].sort()).toEqual([
+			"browserBuildId",
+			"clientId",
+			"documentVisible",
+			"projectId",
+		]);
+		expect(url.username).toBe("");
+		expect(url.password).toBe("");
+		expect(url.hash).toBe("");
+		transport.dispose();
+	});
+
+	it("reports invalid desktop bootstrap without opening a socket or falling back to the page host", () => {
+		vi.stubGlobal("window", {
+			location: { protocol: "app:", host: "quarterdeck" },
+			setTimeout: window.setTimeout.bind(window),
+			clearTimeout: window.clearTimeout.bind(window),
+			quarterdeckDesktop: { version: 99 },
+		});
+		const onDisconnected = vi.fn();
+		const transport = startRuntimeStateStreamTransport("project-a", {
+			onConnected: vi.fn(),
+			onDisconnected,
+			onMessage: vi.fn(),
+		});
+		expect(FakeWebSocket.instances).toHaveLength(0);
+		expect(onDisconnected).toHaveBeenCalledWith(
+			"Desktop runtime bootstrap is invalid or unsupported. Restart Quarterdeck.",
+		);
+		transport.dispose();
 	});
 
 	it("switches the websocket connection to the new project immediately", () => {
@@ -156,7 +221,7 @@ describe("startRuntimeStateStreamTransport", () => {
 		transport.dispose();
 	});
 
-	it("reconnects after the socket closes", () => {
+	it("reconnects after the socket closes", async () => {
 		const onDisconnected = vi.fn();
 		const transport = startRuntimeStateStreamTransport("project-a", {
 			onConnected: vi.fn(),
@@ -173,7 +238,7 @@ describe("startRuntimeStateStreamTransport", () => {
 		expect(onDisconnected).toHaveBeenCalledWith("Runtime stream disconnected.");
 		expect(FakeWebSocket.instances).toHaveLength(1);
 
-		vi.advanceTimersByTime(500);
+		await vi.advanceTimersByTimeAsync(500);
 
 		expect(FakeWebSocket.instances).toHaveLength(2);
 		expect(FakeWebSocket.instances[1]?.url).toContain("projectId=project-a");
@@ -181,7 +246,7 @@ describe("startRuntimeStateStreamTransport", () => {
 		transport.dispose();
 	});
 
-	it("reports a transport failure once even when onerror is followed by onclose", () => {
+	it("reports a transport failure once even when onerror is followed by onclose", async () => {
 		const onDisconnected = vi.fn();
 		const transport = startRuntimeStateStreamTransport("project-a", {
 			onConnected: vi.fn(),
@@ -199,10 +264,93 @@ describe("startRuntimeStateStreamTransport", () => {
 		expect(onDisconnected).toHaveBeenCalledTimes(1);
 		expect(onDisconnected).toHaveBeenCalledWith("Runtime stream connection failed.");
 
-		vi.advanceTimersByTime(500);
+		await vi.advanceTimersByTimeAsync(500);
 
 		expect(FakeWebSocket.instances).toHaveLength(2);
 
 		transport.dispose();
+	});
+	it.each(["browser session expiry", "runtime generation restart"])(
+		"stops reconnecting after %s requires fresh admission",
+		async () => {
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(
+					async () =>
+						new Response(JSON.stringify({ code: "QUARTERDECK_CLIENT_ACCESS_REQUIRED" }), { status: 401 }),
+				),
+			);
+			const onDisconnected = vi.fn();
+			const transport = startRuntimeStateStreamTransport("project-a", {
+				onConnected: vi.fn(),
+				onDisconnected,
+				onMessage: vi.fn(),
+			});
+			FakeWebSocket.instances[0]?.emitClose();
+			await vi.advanceTimersByTimeAsync(500);
+			expect(onDisconnected).toHaveBeenLastCalledWith(RUNTIME_ADMISSION_REQUIRED_MESSAGE);
+			expect(fetch).toHaveBeenCalledOnce();
+			expect(fetch).toHaveBeenCalledWith(
+				"/api/trpc/runtime.getConfig",
+				expect.objectContaining({ credentials: "same-origin", cache: "no-store" }),
+			);
+			await vi.advanceTimersByTimeAsync(30_000);
+			transport.switchProject("project-b");
+			expect(FakeWebSocket.instances).toHaveLength(1);
+			transport.dispose();
+		},
+	);
+
+	it("uses ordinary API admission failures to stop an existing stream immediately", async () => {
+		const onDisconnected = vi.fn();
+		const transport = startRuntimeStateStreamTransport("project-a", {
+			onConnected: vi.fn(),
+			onDisconnected,
+			onMessage: vi.fn(),
+		});
+		await observeRuntimeAdmissionResponse(
+			new Response(JSON.stringify({ code: "QUARTERDECK_CLIENT_ACCESS_REQUIRED" }), { status: 401 }),
+		);
+		expect(onDisconnected).toHaveBeenLastCalledWith(RUNTIME_ADMISSION_REQUIRED_MESSAGE);
+		expect(FakeWebSocket.instances[0]?.close).toHaveBeenCalledOnce();
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(fetch).not.toHaveBeenCalled();
+		expect(FakeWebSocket.instances).toHaveLength(1);
+		transport.dispose();
+	});
+
+	it("keeps retrying an offline runtime and ignores a late probe after disposal", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				throw new TypeError("Failed to fetch");
+			}),
+		);
+		const onDisconnected = vi.fn();
+		const transport = startRuntimeStateStreamTransport("project-a", {
+			onConnected: vi.fn(),
+			onDisconnected,
+			onMessage: vi.fn(),
+		});
+		FakeWebSocket.instances[0]?.emitClose();
+		await vi.advanceTimersByTimeAsync(500);
+		expect(FakeWebSocket.instances).toHaveLength(2);
+		expect(onDisconnected).not.toHaveBeenCalledWith(RUNTIME_ADMISSION_REQUIRED_MESSAGE);
+		let resolveProbe: (value: Response) => void = () => {};
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				() =>
+					new Promise<Response>((resolve) => {
+						resolveProbe = resolve;
+					}),
+			),
+		);
+		FakeWebSocket.instances[1]?.emitClose();
+		await vi.advanceTimersByTimeAsync(1_000);
+		transport.dispose();
+		resolveProbe(new Response(JSON.stringify({ code: "QUARTERDECK_CLIENT_ACCESS_REQUIRED" }), { status: 401 }));
+		await Promise.resolve();
+		expect(onDisconnected).not.toHaveBeenCalledWith(RUNTIME_ADMISSION_REQUIRED_MESSAGE);
 	});
 });

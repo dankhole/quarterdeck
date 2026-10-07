@@ -1,6 +1,6 @@
 // Workspace trust auto-confirm logic for agent sessions.
 // Extracted from session-manager.ts — Codex trust is detected in raw PTY
-// output; Claude trust is driven from the rendered screen because Claude's
+// output; modern Codex and Claude trust are driven from the rendered screen because their
 // select focus and input guard decide what a keypress means.
 
 import type { RuntimeTaskSessionSummary } from "../core";
@@ -13,7 +13,7 @@ import {
 	stopWorkspaceTrustTimers,
 	WORKSPACE_TRUST_CONFIRM_DELAY_MS,
 } from "./claude-workspace-trust";
-import { hasCodexWorkspaceTrustPrompt } from "./codex-workspace-trust";
+import { hasCodexWorkspaceTrustPrompt, readCodexWorkspaceTrustScreen } from "./codex-workspace-trust";
 import type { ActiveProcessState } from "./session-manager-types";
 import type { TerminalScreenSnapshot } from "./terminal-state-mirror";
 
@@ -45,7 +45,7 @@ export function processWorkspaceTrustOutput(
 	data: string,
 	callbacks: WorkspaceTrustCallbacks,
 ): void {
-	if (active.workspaceTrustBuffer === null) {
+	if (active.workspaceTrustBuffer === null || active.workspaceTrustConfirmCount >= MAX_AUTO_TRUST_CONFIRMS) {
 		return;
 	}
 
@@ -72,7 +72,7 @@ export function processWorkspaceTrustOutput(
 
 	active.workspaceTrustConfirmTimer = setTimeout(() => {
 		const activeEntry = callbacks.getActive(taskId);
-		if (!activeEntry?.autoConfirmedWorkspaceTrust) {
+		if (activeEntry !== active || !activeEntry.autoConfirmedWorkspaceTrust) {
 			return;
 		}
 		activeEntry.session.write("\r");
@@ -97,6 +97,86 @@ export function processWorkspaceTrustOutput(
 			});
 			callbacks.updateStore(taskId, { warningMessage: TRUST_CAP_WARNING });
 		}
+	}, WORKSPACE_TRUST_CONFIRM_DELAY_MS);
+}
+
+/** Invalidate modern confirmation before the mirror queues any new filtered output. */
+export function beginCodexWorkspaceTrustOutput(active: ActiveProcessState): number | null {
+	const state = active.codexWorkspaceTrust;
+	if (!state) return null;
+	if (state.pendingRevision !== null) stopWorkspaceTrustTimers(active);
+	state.pendingRevision = null;
+	state.screen = null;
+	if (active.nativeWorkConfirmed) {
+		active.codexWorkspaceTrust = null;
+		return null;
+	}
+	return ++state.outputRevision;
+}
+
+/** Direct keyboard intent takes over this dialog until it actually disappears. */
+export function cancelCodexWorkspaceTrustForUserInput(active: ActiveProcessState): void {
+	const state = active.codexWorkspaceTrust;
+	if (!state) return;
+	beginCodexWorkspaceTrustOutput(active);
+	state.manualInput = true;
+}
+
+export function processCodexWorkspaceTrustScreen(
+	active: ActiveProcessState,
+	taskId: string,
+	screen: TerminalScreenSnapshot,
+	revision: number,
+	callbacks: WorkspaceTrustCallbacks,
+): void {
+	const state = active.codexWorkspaceTrust;
+	if (!state || callbacks.getActive(taskId) !== active || state.outputRevision !== revision) return;
+	if (active.nativeWorkConfirmed) {
+		beginCodexWorkspaceTrustOutput(active);
+		return;
+	}
+	state.screen = screen;
+	const view = readCodexWorkspaceTrustScreen(screen);
+	if (!view.visible) {
+		state.confirmed = false;
+		state.manualInput = false;
+		return;
+	}
+	if (
+		active.agentId !== "codex" ||
+		active.nativeWorkConfirmed ||
+		active.session.wasInterrupted() ||
+		state.confirmed ||
+		state.manualInput ||
+		view.selection !== "confirm" ||
+		active.workspaceTrustConfirmCount >= MAX_AUTO_TRUST_CONFIRMS ||
+		active.workspaceTrustConfirmTimer !== null
+	)
+		return;
+	state.pendingRevision = revision;
+	active.workspaceTrustConfirmTimer = setTimeout(() => {
+		active.workspaceTrustConfirmTimer = null;
+		state.pendingRevision = null;
+		if (active.nativeWorkConfirmed) {
+			active.codexWorkspaceTrust = null;
+			return;
+		}
+		if (
+			callbacks.getActive(taskId) !== active ||
+			state.outputRevision !== revision ||
+			active.agentId !== "codex" ||
+			active.nativeWorkConfirmed ||
+			active.session.wasInterrupted() ||
+			state.confirmed ||
+			state.manualInput ||
+			!state.screen ||
+			readCodexWorkspaceTrustScreen(state.screen).selection !== "confirm"
+		)
+			return;
+		// A redraw of the same dialog cannot produce another Enter.
+		state.confirmed = true;
+		active.workspaceTrustConfirmCount += 1;
+		active.session.write("\r");
 	}, WORKSPACE_TRUST_CONFIRM_DELAY_MS);
 }
 

@@ -15,6 +15,7 @@ export class TaskResourceOperationCoordinator implements TaskResourceOperationRu
 	private readonly operations = new KeyedOperationCoordinator();
 	private readonly projectGates = new Map<string, ProjectOperationGate>();
 	private readonly ownership = new AsyncLocalStorage<ReadonlyMap<string, { active: boolean }>>();
+	private readonly activeOperations = new Set<Promise<unknown>>();
 
 	run<T>(projectId: string | null, taskId: string, operation: () => Promise<T>): Promise<T> {
 		return this.runProject(projectId, () => this.operations.run(JSON.stringify([projectId, taskId]), operation));
@@ -22,8 +23,9 @@ export class TaskResourceOperationCoordinator implements TaskResourceOperationRu
 
 	/** Shared admission for a complete operation, including its asynchronous effects. */
 	runProject<T>(projectId: string | null, operation: () => Promise<T>): Promise<T> {
-		if (!projectId || this.ownership.getStore()?.get(projectId)?.active) return operation();
-		return this.getGate(projectId).runShared(() => this.withOwnership(projectId, operation));
+		if (projectId && this.ownership.getStore()?.get(projectId)?.active) return operation();
+		if (!projectId) return this.track(operation());
+		return this.track(this.getGate(projectId).runShared(() => this.withOwnership(projectId, operation)));
 	}
 
 	/** Drains admitted work before relocation, and fences later operations until it finishes. */
@@ -31,7 +33,22 @@ export class TaskResourceOperationCoordinator implements TaskResourceOperationRu
 		if (this.ownership.getStore()?.get(projectId)?.active) {
 			throw new Error("Cannot begin a project relocation inside an admitted project operation.");
 		}
-		return this.getGate(projectId).runExclusive(() => this.withOwnership(projectId, operation));
+		return this.track(this.getGate(projectId).runExclusive(() => this.withOwnership(projectId, operation)));
+	}
+
+	/** The runtime first closes ingress/producers, then waits for admitted complete operations. */
+	async waitForIdle(): Promise<void> {
+		while (this.activeOperations.size > 0) await Promise.allSettled(Array.from(this.activeOperations));
+		await this.operations.waitForIdle();
+	}
+
+	private track<T>(operation: Promise<T>): Promise<T> {
+		this.activeOperations.add(operation);
+		void operation.then(
+			() => this.activeOperations.delete(operation),
+			() => this.activeOperations.delete(operation),
+		);
+		return operation;
 	}
 
 	private async withOwnership<T>(projectId: string, operation: () => Promise<T>): Promise<T> {

@@ -24,6 +24,7 @@ import {
 import type { LspServerConfig } from "../core/api/code-navigation";
 import { mergeProcessEnvironment } from "../core/process-environment";
 import { terminateProcessTree } from "../core/process-termination";
+import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 import { LanguageNavigationError, type LanguageNavigationFailureMetadata } from "./failure";
 import { languageIdForPath } from "./paths";
 import { spawnWindowsLanguageProcess } from "./windows-process-owner";
@@ -61,16 +62,18 @@ export class LanguageSession {
 	constructor(private readonly options: LanguageSessionOptions) {
 		this.requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
 		const env = mergeProcessEnvironment(process.env, options.config.env ?? {});
-		this.child =
-			process.platform === "win32"
-				? spawnWindowsLanguageProcess(options.command, options.config.args, options.root, env)
-				: spawn(options.command, options.config.args, {
-						cwd: options.root,
-						env,
-						stdio: "pipe",
-						shell: false,
-						detached: true,
-					});
+		if (process.platform === "win32") {
+			this.child = spawnWindowsLanguageProcess(options.command, options.config.args, options.root, env);
+		} else {
+			assertRuntimeProcessLaunchAdmission();
+			this.child = spawn(options.command, options.config.args, {
+				cwd: options.root,
+				env,
+				stdio: "pipe",
+				shell: false,
+				detached: true,
+			});
+		}
 		this.exited = new Promise((resolve) => {
 			this.child.once("close", resolve);
 			this.child.once("error", () => resolve());

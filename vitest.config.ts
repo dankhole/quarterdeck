@@ -10,7 +10,16 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: "node",
-		exclude: ["apps/**", "web-ui/**", "third_party/**", "**/node_modules/**", "**/dist/**", ".worktrees/**"],
+		exclude: [
+			".github/**", // Release policy checks use Node's test runner, not Vitest.
+			"apps/**",
+			"desktop/**",
+			"web-ui/**",
+			"third_party/**",
+			"**/node_modules/**",
+			"**/dist/**",
+			".worktrees/**",
+		],
 		testTimeout: 15_000,
 		coverage: {
 			provider: "v8",

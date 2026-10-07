@@ -1,10 +1,13 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { sanitizeRuntimeLogOutput } from "../../scripts/agent-lab/runtime-log-sanitizer.js";
 import { terminateProcessTree } from "../../src/core/process-termination.js";
+import { createOwnerBrowserBootstrap, verifyRuntimeOwner } from "../../src/server/runtime-owner-client.js";
+import { discoverRuntimeOwner } from "../../src/server/runtime-ownership.js";
 import { createGitTestEnv } from "./git-env";
 
 const requireFromHere = createRequire(import.meta.url);
@@ -57,7 +60,11 @@ export async function waitForProcessStart(
 				return;
 			}
 			settled = true;
-			rejectStart(new Error(`Timed out waiting for server start.\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+			rejectStart(
+				new Error(
+					`Timed out waiting for server start.\nstdout:\n${sanitizeRuntimeLogOutput(stdout)}\nstderr:\n${sanitizeRuntimeLogOutput(stderr)}`,
+				),
+			);
 		}, timeoutMs);
 		const handleOutput = (chunk: Buffer, source: "stdout" | "stderr") => {
 			const text = chunk.toString();
@@ -92,7 +99,7 @@ export async function waitForProcessStart(
 			clearTimeout(timeoutId);
 			rejectStart(
 				new Error(
-					`Server process exited before startup (code=${String(code)} signal=${String(signal)}).\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+					`Server process exited before startup (code=${String(code)} signal=${String(signal)}).\nstdout:\n${sanitizeRuntimeLogOutput(stdout)}\nstderr:\n${sanitizeRuntimeLogOutput(stderr)}`,
 				),
 			);
 		});
@@ -129,6 +136,23 @@ export async function requestGracefulShutdown(childProcess: ChildProcess): Promi
 	childProcess.kill(getShutdownSignal());
 }
 
+/** Enroll a browser against this disposable fixture, without exposing management credentials to clients. */
+export async function createFixtureBrowserHeaders(
+	runtimeUrl: string,
+	stateHome: string,
+): Promise<Readonly<Record<string, string>>> {
+	const owner = await discoverRuntimeOwner(stateHome);
+	const descriptor = owner?.descriptor;
+	if (descriptor?.status !== "ready") throw new Error("Isolated runtime owner is not ready.");
+	const origin = await verifyRuntimeOwner(descriptor, false);
+	if (origin !== new URL(runtimeUrl).origin) throw new Error("Isolated runtime endpoint changed during admission.");
+	const bootstrapUrl = await createOwnerBrowserBootstrap(descriptor);
+	const exchange = await fetch(bootstrapUrl, { redirect: "manual", signal: AbortSignal.timeout(3_000) });
+	const cookie = exchange.headers.get("set-cookie")?.split(";")[0];
+	if (exchange.status !== 303 || !cookie) throw new Error("Isolated browser admission failed.");
+	return Object.freeze({ cookie, origin });
+}
+
 export async function startQuarterdeckServer(input: {
 	cwd: string;
 	homeDir: string;
@@ -137,11 +161,13 @@ export async function startQuarterdeckServer(input: {
 	extraEnv?: NodeJS.ProcessEnv;
 }): Promise<{
 	runtimeUrl: string;
+	browserHeaders: Readonly<Record<string, string>>;
 	crash: () => Promise<void>;
 	stop: () => Promise<void>;
 }> {
 	const cliEntrypoint = resolve(process.cwd(), "src/cli.ts");
 	const tsxLoaderImportSpecifier = resolveTsxLoaderImportSpecifier();
+	const stateHome = resolve(input.extraEnv?.QUARTERDECK_STATE_HOME ?? join(input.homeDir, ".quarterdeck"));
 	const child = spawn(
 		process.execPath,
 		["--import", tsxLoaderImportSpecifier, cliEntrypoint, "--no-open", ...(input.extraArgs ?? [])],
@@ -151,6 +177,7 @@ export async function startQuarterdeckServer(input: {
 				...input.extraEnv,
 				HOME: input.homeDir,
 				USERPROFILE: input.homeDir,
+				QUARTERDECK_STATE_HOME: stateHome,
 				QUARTERDECK_RUNTIME_PORT: String(input.port),
 			}),
 			stdio: ["pipe", "pipe", "pipe"],
@@ -168,48 +195,60 @@ export async function startQuarterdeckServer(input: {
 				resolveClose(true);
 			});
 		});
-	const { runtimeUrl } = await waitForProcessStart(child);
-	return {
-		runtimeUrl,
-		crash: async () => {
-			if (child.exitCode !== null) {
-				return;
-			}
-			child.kill("SIGKILL");
-			if (!(await waitForExit(child, 5_000))) {
-				throw new Error("Timed out crashing quarterdeck test server process.");
-			}
-		},
-		stop: async () => {
-			if (child.exitCode === null && child.signalCode === null) {
-				await requestGracefulShutdown(child);
-			}
-			// Exceed the CLI's 8s Windows / 10s POSIX shutdown deadlines.
-			if (await waitForClose(12_000)) {
-				return;
-			}
+	const stop = async () => {
+		if (child.exitCode === null && child.signalCode === null) {
+			await requestGracefulShutdown(child);
+		}
+		// Exceed the CLI's 8s Windows / 10s POSIX shutdown deadlines.
+		if (await waitForClose(12_000)) {
+			return;
+		}
 
-			if (child.exitCode !== null || child.signalCode !== null) {
-				throw new Error("Quarterdeck test server exited but its stdio did not close.");
-			}
-			const pid = child.pid;
-			if (pid === undefined) {
-				throw new Error("Cannot stop quarterdeck test server without a process PID.");
-			}
-			await new Promise<void>((resolveTermination, rejectTermination) => {
-				terminateProcessTree(pid, "SIGKILL", (error) => {
-					if (error) {
-						rejectTermination(
-							new Error("Failed to terminate quarterdeck test server process tree.", { cause: error }),
-						);
-						return;
-					}
-					resolveTermination();
-				});
+		if (child.exitCode !== null || child.signalCode !== null) {
+			throw new Error("Quarterdeck test server exited but its stdio did not close.");
+		}
+		const pid = child.pid;
+		if (pid === undefined) {
+			throw new Error("Cannot stop quarterdeck test server without a process PID.");
+		}
+		await new Promise<void>((resolveTermination, rejectTermination) => {
+			terminateProcessTree(pid, "SIGKILL", (error) => {
+				if (error) {
+					rejectTermination(
+						new Error("Failed to terminate quarterdeck test server process tree.", { cause: error }),
+					);
+					return;
+				}
+				resolveTermination();
 			});
-			if (!(await waitForClose(5_000))) {
-				throw new Error("Timed out waiting for quarterdeck test server process to close.");
-			}
-		},
+		});
+		if (!(await waitForClose(5_000))) {
+			throw new Error("Timed out waiting for quarterdeck test server process to close.");
+		}
 	};
+	try {
+		const { runtimeUrl } = await waitForProcessStart(child);
+		const browserHeaders = await createFixtureBrowserHeaders(runtimeUrl, stateHome);
+		return {
+			runtimeUrl,
+			browserHeaders,
+			stop,
+			crash: async () => {
+				if (child.exitCode !== null) {
+					return;
+				}
+				child.kill("SIGKILL");
+				if (!(await waitForExit(child, 5_000))) {
+					throw new Error("Timed out crashing quarterdeck test server process.");
+				}
+			},
+		};
+	} catch (error) {
+		try {
+			await stop();
+		} catch (cleanupError) {
+			throw new AggregateError([error, cleanupError], "Isolated runtime startup and cleanup failed.");
+		}
+		throw error;
+	}
 }

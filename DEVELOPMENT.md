@@ -15,7 +15,7 @@
 npm run bootstrap
 ```
 
-Quarterdeck has two independent dependency trees: the repository root and `web-ui/`. Bootstrap preserves or migrates the clone-wide Agent Lab browser cache before running `npm ci` for both trees. Task worktrees start without shared `node_modules`; run bootstrap (or the individual `npm ci` commands) inside a worktree before building or testing there. Stop a globally linked Quarterdeck runtime before reinstalling or relinking its checkout.
+Quarterdeck's npm/browser development uses two independent dependency trees: the repository root and `web-ui/`. The optional `desktop/` package has a third, separately installed tree; ordinary bootstrap and root builds do not install Electron. Bootstrap preserves or migrates the clone-wide Agent Lab browser cache before running `npm ci` for the root and web UI. Task worktrees start without shared `node_modules`; run bootstrap (or the individual `npm ci` commands) inside a worktree before building or testing there. Stop a globally linked Quarterdeck runtime before reinstalling or relinking its checkout.
 
 Update shared Zod and tRPC dependencies in both trees together. The browser imports runtime schemas and router types directly, so independently resolved versions can break the web build even when both ranges permit the upgrade. Dependabot groups these updates across both directories; the root dependency-contract test checks the committed lockfiles. Keep the Claude Agent SDK update separate because its version is paired with an exact native executable in `src/execution/claude-structured-owner.ts`.
 
@@ -132,9 +132,9 @@ Increment the protocol version deliberately when compatibility breaks in **eithe
 
 Every initial runtime snapshot includes `runtimeProtocolVersion`. Keep the snapshot `type` and this field stable across protocol bumps so an older browser can reject the contract before applying state. The browser accepts the connection only after this check. An unequal, missing, or malformed version permits one automatic reload per protocol pair, then shows restart/refresh guidance if the served browser still cannot use the running process. Storage failures block incompatible connections without a reload loop and do not block compatible ones.
 
-Runtimes predating the protocol field require a one-time restart when upgrading to this policy. Older browsers that compare build IDs reload into the served browser; the existing production guard still rejects clients that predate even build identity because they cannot check snapshot compatibility. This browser admission check is not API authentication or server-side protocol negotiation.
+Runtimes predating the protocol field require a one-time restart when upgrading to this policy. Older browsers that compare build IDs reload into the served browser; the existing production guard still rejects clients that predate even build identity because they cannot check snapshot compatibility. This browser admission check is separate from API authentication. Protocol version 4 requires a one-use browser launch capability, exchanged for an HttpOnly session cookie, or a private desktop client credential. Reopen Quarterdeck from the CLI or app when browser access expires. Desktop attachment additionally checks the independent bridge and transport capabilities before loading the owner's UI.
 
-## Dogfooding with two Quarterdeck instances
+## Dogfooding with isolated Quarterdeck instances
 
 Run your stable orchestrator first (main checkout):
 
@@ -157,8 +157,11 @@ If `--project` is omitted, the launcher starts Quarterdeck from a non-git cwd so
 npm run dogfood -- --port auto
 ```
 
+A canonical state home has one writable runtime. A second compatible CLI or desktop launch attaches to that owner even when it requests another port; it never takes shutdown ownership. A live legacy runtime must be stopped or upgraded first. Backup restore uses exclusive maintenance admission. State homes must be on a host-local filesystem with hard-link support.
+
 Dogfood launcher behavior:
 
+- uses a stable, checkout-specific state home under `~/.quarterdeck-dogfood/checkouts/` by default; an explicit `QUARTERDECK_STATE_HOME` override is honored
 - builds the current checkout by default
 - launches `dist/cli.js` with `cwd` set to the target project
 - supports `--port <number|auto>`

@@ -35,6 +35,7 @@ export interface ProjectNavigationContextValue {
 	handleSelectProject: UseProjectNavigationResult["handleSelectProject"];
 	handlePreloadProject: UseProjectNavigationResult["handlePreloadProject"];
 	handleAddProject: UseProjectNavigationResult["handleAddProject"];
+	handleOpenProjectByPath: UseProjectNavigationResult["handleOpenProjectByPath"];
 	handleConfirmManualProjectPath: UseProjectNavigationResult["handleConfirmManualProjectPath"];
 	handleCancelManualProjectPath: UseProjectNavigationResult["handleCancelManualProjectPath"];
 	handleConfirmInitializeGitProject: UseProjectNavigationResult["handleConfirmInitializeGitProject"];
@@ -169,6 +170,7 @@ export function ProjectProvider({
 		handleSelectProject,
 		handlePreloadProject,
 		handleAddProject,
+		handleOpenProjectByPath,
 		handleConfirmManualProjectPath,
 		handleCancelManualProjectPath,
 		handleConfirmInitializeGitProject,
@@ -250,6 +252,7 @@ export function ProjectProvider({
 			handleSelectProject,
 			handlePreloadProject,
 			handleAddProject,
+			handleOpenProjectByPath,
 			handleConfirmManualProjectPath,
 			handleCancelManualProjectPath,
 			handleConfirmInitializeGitProject,
@@ -276,6 +279,7 @@ export function ProjectProvider({
 			handleSelectProject,
 			handlePreloadProject,
 			handleAddProject,
+			handleOpenProjectByPath,
 			handleConfirmManualProjectPath,
 			handleCancelManualProjectPath,
 			handleConfirmInitializeGitProject,

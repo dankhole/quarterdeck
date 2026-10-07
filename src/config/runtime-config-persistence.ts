@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import type { PromptShortcut, RuntimeAgentId, RuntimeProjectShortcut } from "../core";
 import { type LockRequest, lockedFileSystem } from "../fs";
 import { getProjectDirectoryPath, getProjectPinnedBranchesPath, getRuntimeHomePath } from "../state";
+import { assertRuntimeWriteAdmission, withRuntimeWriteOperation } from "../state/runtime-write-admission.js";
 import type { AudibleNotificationEvents, AudibleNotificationSuppressCurrentProject } from "./config-defaults";
 import {
 	DEFAULT_AUDIBLE_NOTIFICATION_EVENTS,
@@ -122,7 +123,10 @@ export async function writePinnedBranchesFile(projectId: string, pinnedBranches:
 	const normalized = normalizePinnedBranches(pinnedBranches);
 	const filePath = getProjectPinnedBranchesPath(projectId);
 	if (normalized.length === 0) {
-		await rm(filePath, { force: true });
+		await withRuntimeWriteOperation([filePath], async () => {
+			assertRuntimeWriteAdmission(filePath);
+			await rm(filePath, { force: true });
+		});
 		return;
 	}
 	await lockedFileSystem.writeJsonFileAtomic(filePath, normalized, { lock: null });
@@ -291,7 +295,10 @@ export async function writeRuntimeProjectConfigFile(
 		return;
 	}
 	if (normalizedShortcuts.length === 0 && !normalizedBaseRef && !normalizedSetupScript) {
-		await rm(configPath, { force: true });
+		await withRuntimeWriteOperation([configPath], async () => {
+			assertRuntimeWriteAdmission(configPath);
+			await rm(configPath, { force: true });
+		});
 		return;
 	}
 	const payload: RuntimeProjectConfigFileShape = {};
@@ -334,8 +341,10 @@ export async function migrateLegacyProjectConfig(
 				continue;
 			}
 			await lockedFileSystem.writeJsonFileAtomic(newPath, legacy, { lock: null });
+			assertRuntimeWriteAdmission(newPath);
 			await rm(legacyPath, { force: true });
 			try {
+				assertRuntimeWriteAdmission(newPath);
 				await rmdir(resolve(repoPath, ".quarterdeck"));
 			} catch {
 				// Directory not empty or already gone — fine.

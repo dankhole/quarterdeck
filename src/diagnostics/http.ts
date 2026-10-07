@@ -1,9 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { diagnosticContextSchema, diagnosticRecordingScopeSchema } from "../core";
-import { getDiagnosticErrorClass, sanitizeDiagnosticText } from "./bounded-value";
-import type { DiagnosticRecordFilter } from "./diagnostic-record";
-import type { RuntimeDiagnostics } from "./runtime-diagnostics";
+import { diagnosticContextSchema, diagnosticRecordingScopeSchema } from "../core/api/diagnostics.js";
+import { getDiagnosticErrorClass, sanitizeDiagnosticText } from "./bounded-value.js";
+import type { DiagnosticRecordFilter } from "./diagnostic-record.js";
+import type { RuntimeDiagnostics } from "./runtime-diagnostics.js";
 
 const DIAGNOSTIC_TOKEN_HEADER = "x-quarterdeck-diagnostic-token";
 const BROWSER_CAPABILITY_HEADER = "x-quarterdeck-diagnostic-capability";

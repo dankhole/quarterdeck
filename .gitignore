@@ -2,6 +2,7 @@ node_modules
 dist
 coverage
 .DS_Store
+/.cache/
 test-results
 .agent-lab-results
 .playwright-cli

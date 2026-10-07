@@ -72,6 +72,19 @@ function registry(start: StructuredOwnerRegistryContract["start"]): StructuredOw
 }
 
 describe("StructuredOwnerRegistry", () => {
+	it("fences future launches without stopping an existing owner", async () => {
+		const start = vi.fn(async () => owner("codex"));
+		const codex = registry(start);
+		const combined = new StructuredOwnerRegistry(
+			codex as unknown as CodexStructuredOwnerRegistry,
+			registry(start) as unknown as ClaudeStructuredOwnerRegistry,
+		);
+		const stop = vi.spyOn(codex, "stopAll");
+		combined.fenceLaunches();
+		await expect(combined.start(startInput("codex"))).rejects.toThrow("Runtime is shutting down");
+		expect(start).not.toHaveBeenCalled();
+		expect(stop).not.toHaveBeenCalled();
+	});
 	it("serializes concurrent starts across providers for one task", async () => {
 		let releaseCodex!: () => void;
 		const blockedCodex = new Promise<void>((resolve) => {

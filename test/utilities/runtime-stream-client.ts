@@ -14,8 +14,11 @@ export interface RuntimeStreamClient {
 	close: () => Promise<void>;
 }
 
-export async function connectRuntimeStream(url: string): Promise<RuntimeStreamClient> {
-	const socket = new WebSocket(url);
+export async function connectRuntimeStream(
+	url: string,
+	headers?: Readonly<Record<string, string>>,
+): Promise<RuntimeStreamClient> {
+	const socket = new WebSocket(url, { headers });
 	const emitter = new EventEmitter();
 	const queue: RuntimeStateStreamMessage[] = [];
 

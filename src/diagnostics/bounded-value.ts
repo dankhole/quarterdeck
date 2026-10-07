@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { posix, win32 } from "node:path";
 
-import { type DiagnosticTruncationSummary, normalizeDiagnosticErrorClass } from "../core";
+import { type DiagnosticTruncationSummary, normalizeDiagnosticErrorClass } from "../core/api/diagnostics.js";
 
 export interface DiagnosticValueLimits {
 	maxStringLength: number;

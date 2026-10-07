@@ -1,7 +1,13 @@
 import { normalizeDiagnosticErrorClass } from "@runtime-contract";
 import { noteBrowserRuntimeReconnect, recordBrowserEvent, setBrowserDiagnosticsConnected } from "@/diagnostics";
+import {
+	probeRuntimeClientAdmission,
+	RUNTIME_ADMISSION_REQUIRED_MESSAGE,
+	subscribeRuntimeAdmissionRequired,
+} from "@/runtime/runtime-client-admission";
 import { getRuntimeBrowserClientId } from "@/runtime/runtime-client-id";
 import { setRuntimeDisconnected } from "@/runtime/runtime-connection-state";
+import { getRuntimeWebSocketUrl } from "@/runtime/runtime-environment";
 import type { RuntimeStateStreamMessage } from "@/runtime/types";
 import { createClientLogger } from "@/utils/client-logger";
 import { toErrorMessage } from "@/utils/to-error-message";
@@ -12,8 +18,7 @@ const STREAM_RECONNECT_BASE_DELAY_MS = 500;
 const STREAM_RECONNECT_MAX_DELAY_MS = 5_000;
 
 function getRuntimeStreamUrl(projectId: string | null): string {
-	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-	const url = new URL(`${protocol}//${window.location.host}/api/runtime/ws`);
+	const url = getRuntimeWebSocketUrl("/api/runtime/ws");
 	if (projectId) {
 		url.searchParams.set("projectId", projectId);
 	}
@@ -54,8 +59,12 @@ export function startRuntimeStateStreamTransport(
 	let disconnectReportedForSocket = false;
 	let socketOpen = false;
 	let connectionAccepted = false;
+	let admissionRequired = false;
+	let admissionProbe: AbortController | null = null;
 
 	const cleanupSocket = () => {
+		admissionProbe?.abort();
+		admissionProbe = null;
 		if (!socket) {
 			return;
 		}
@@ -69,21 +78,36 @@ export function startRuntimeStateStreamTransport(
 		connectionAccepted = false;
 	};
 
+	const unsubscribeAdmission = subscribeRuntimeAdmissionRequired(() => {
+		if (cancelled || admissionRequired) return;
+		admissionRequired = true;
+		if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+		reconnectTimer = null;
+		cleanupSocket();
+		setRuntimeDisconnected(true);
+		setBrowserDiagnosticsConnected(false, RUNTIME_ADMISSION_REQUIRED_MESSAGE);
+		callbacks.onDisconnected(RUNTIME_ADMISSION_REQUIRED_MESSAGE);
+	});
+
 	const scheduleReconnect = () => {
-		if (cancelled || reconnectTimer !== null) {
+		if (cancelled || admissionRequired || reconnectTimer !== null) {
 			return;
 		}
 
 		const delay = Math.min(STREAM_RECONNECT_MAX_DELAY_MS, STREAM_RECONNECT_BASE_DELAY_MS * 2 ** reconnectAttempt);
 		reconnectAttempt += 1;
 		noteBrowserRuntimeReconnect(reconnectAttempt, delay);
-		reconnectTimer = window.setTimeout(() => {
-			connect();
+		reconnectTimer = window.setTimeout(async () => {
+			reconnectTimer = null;
+			const probe = new AbortController();
+			admissionProbe = probe;
+			await probeRuntimeClientAdmission(probe.signal);
+			if (!probe.signal.aborted && !cancelled && !admissionRequired) connect();
 		}, delay);
 	};
 
 	const connect = () => {
-		if (cancelled) {
+		if (cancelled || admissionRequired) {
 			return;
 		}
 		if (reconnectTimer !== null) {
@@ -184,6 +208,7 @@ export function startRuntimeStateStreamTransport(
 		},
 		dispose() {
 			cancelled = true;
+			unsubscribeAdmission();
 			if (reconnectTimer !== null) {
 				window.clearTimeout(reconnectTimer);
 			}

@@ -25,11 +25,13 @@ const GITHUB_ISSUES_URL = "https://github.com/dankhole/quarterdeck/issues";
 
 function ShortcutHint({ keys, label }: { keys: readonly string[]; label: string }): React.ReactElement {
 	return (
-		<div className="flex justify-between items-center py-px">
-			<span className="text-text-tertiary text-xs">{label}</span>
-			<span className="inline-flex items-center gap-0.5">
+		<div className="flex flex-wrap justify-between items-center gap-x-2 gap-y-1 py-px">
+			<span className="min-w-0 break-words text-text-tertiary text-xs">{label}</span>
+			<span className="ml-auto inline-flex max-w-full shrink-0 flex-wrap justify-end items-center gap-0.5">
 				{keys.map((key, index) => (
-					<Kbd key={`${key}-${index}`}>{key}</Kbd>
+					<Kbd key={`${key}-${index}`} className="shrink-0 whitespace-nowrap">
+						{key}
+					</Kbd>
 				))}
 			</span>
 		</div>
@@ -123,12 +125,21 @@ export function ProjectNavigationSidebarSections(): React.ReactElement {
 	const [isExpanded, setIsExpanded] = useBooleanLocalStorageValue(LocalStorageKey.SidebarHelpExpanded, true);
 
 	return (
-		<Collapsible.Root open={isExpanded} onOpenChange={setIsExpanded} className="shrink-0">
-			<Collapsible.Trigger className="group flex w-full cursor-pointer items-center gap-1.5 border-none bg-transparent px-5 py-2 text-xs text-text-tertiary hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-border-focus">
+		<Collapsible.Root
+			open={isExpanded}
+			onOpenChange={setIsExpanded}
+			className="flex max-h-[45%] min-h-0 shrink-0 flex-col"
+		>
+			<Collapsible.Trigger className="group flex w-full shrink-0 cursor-pointer items-center gap-1.5 border-none bg-transparent px-5 py-2 text-xs text-text-tertiary hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-border-focus">
 				<ChevronRight size={12} aria-hidden="true" className="group-data-[state=open]:rotate-90" />
 				Tips &amp; shortcuts
 			</Collapsible.Trigger>
-			<Collapsible.Content>
+			<Collapsible.Content
+				role="region"
+				aria-label="Tips and shortcuts"
+				tabIndex={0}
+				className="min-h-0 overflow-y-auto overscroll-contain focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-border-focus"
+			>
 				<OnboardingTips />
 				<ShortcutsCard />
 				<BetaNotice />

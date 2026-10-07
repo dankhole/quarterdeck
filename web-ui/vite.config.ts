@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, minify, type Plugin, type ResolvedConfig } from "vite";
+import { runtimeDevAdmissionPlugin } from "./dev-runtime-admission";
 
 const rootPkg = JSON.parse(readFileSync(resolve(import.meta.dirname, "../package.json"), "utf-8")) as {
 	version: string;
@@ -57,7 +58,7 @@ export default defineConfig({
 	// 770 KB raw and 108.5 KB gzipped across emitted frontend assets.
 	// Compared with fully minifying everything, this costs about 545 KB raw and
 	// 58.5 KB gzipped, which is the current tradeoff for keeping TUI agents stable.
-	plugins: [tailwindcss(), react(), selectiveBuildMinifyPlugin()],
+	plugins: [tailwindcss(), react(), selectiveBuildMinifyPlugin(), runtimeDevAdmissionPlugin(runtimeProxyTarget)],
 	envPrefix: ["VITE_"],
 	define: {
 		__APP_VERSION__: JSON.stringify(rootPkg.version),

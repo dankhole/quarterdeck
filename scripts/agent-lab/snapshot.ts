@@ -36,11 +36,15 @@ function sanitizeLabel(label: string): string {
 	return sanitized || "snapshot";
 }
 
-function isDiagnosticsStatePath(sourceRoot: string, sourcePath: string): boolean {
-	return relative(sourceRoot, sourcePath).split(sep)[0] === "diagnostics";
+function isPrivateRuntimeStatePath(sourceRoot: string, sourcePath: string): boolean {
+	return ["diagnostics", "runtime-ownership"].includes(relative(sourceRoot, sourcePath).split(sep)[0] ?? "");
 }
 
-async function copyJsonState(sourceRoot: string, destinationRoot: string, currentPath = sourceRoot): Promise<void> {
+export async function copyAgentLabJsonState(
+	sourceRoot: string,
+	destinationRoot: string,
+	currentPath = sourceRoot,
+): Promise<void> {
 	let entries: Dirent[];
 	try {
 		entries = await readdir(currentPath, { withFileTypes: true });
@@ -51,10 +55,9 @@ async function copyJsonState(sourceRoot: string, destinationRoot: string, curren
 	for (const entry of entries) {
 		const sourcePath = join(currentPath, entry.name);
 		if (entry.isDirectory()) {
-			// The canonical bundle already contains the recorder journal and public
-			// descriptor. Copying this directory would leak its authentication token.
-			if (!isDiagnosticsStatePath(sourceRoot, sourcePath)) {
-				await copyJsonState(sourceRoot, destinationRoot, sourcePath);
+			// Diagnostic and ownership descriptors carry independent private credentials.
+			if (!isPrivateRuntimeStatePath(sourceRoot, sourcePath)) {
+				await copyAgentLabJsonState(sourceRoot, destinationRoot, sourcePath);
 			}
 			continue;
 		}
@@ -159,6 +162,7 @@ async function createMissingRuntimeCapture(manifest: ReadableAgentLabManifest): 
 	const runtimeInstanceId = `agent-lab-${manifest.runId}`;
 	const descriptor: PublicRuntimeDiagnosticDescriptor = {
 		version: 1,
+		processKind: "runtime",
 		runtimeInstanceId,
 		status: "failed",
 		pid: manifest.processes.runtime?.pid ?? manifest.supervisorPid,
@@ -248,7 +252,7 @@ export async function captureAgentLabSnapshot(
 			mkdir(stateDestination, { recursive: true }),
 			mkdir(join(gitPath, "main"), { recursive: true }),
 		]);
-		await copyJsonState(manifest.statePath, stateDestination);
+		await copyAgentLabJsonState(manifest.statePath, stateDestination);
 		await writeFile(join(labPath, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 		await Promise.all([
 			captureHostEventLedger(manifest, labPath, options.flushHostEvents !== false),

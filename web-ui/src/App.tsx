@@ -19,6 +19,7 @@ import { updateBrowserSnapshotContext } from "@/diagnostics";
 import {
 	useAppActionModels,
 	useAppSideEffects,
+	useDesktopApp,
 	useHomeSidePanelResize,
 	useNavbarState,
 	useSingleTabGuard,
@@ -306,6 +307,49 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		interactions,
 	});
 
+	const isDesktopTransitionFrozen = useDesktopApp({
+		openProjectByPath: projectNavigation.handleOpenProjectByPath,
+		handlers: {
+			settings: dialog.handleOpenSettings,
+			diagnostics: dialog.diagnostics.openPanel,
+			newTask: taskEditorContext.taskEditor.handleOpenCreateTask,
+			openProject: () => {
+				void projectNavigation.handleAddProject();
+			},
+			navigate: handleMainViewChange,
+			fileFinder: handleToggleFileFinder,
+			textSearch: handleToggleTextSearch,
+			toggleShell: selectedCard ? terminal.handleToggleDetailTerminal : terminal.handleToggleHomeTerminal,
+		},
+		projectActionsEnabled: !isProjectUnavailable && Boolean(projectNavigation.currentProjectId),
+		selectedTask: selectedCard !== null,
+		onboarding: projectRuntime.isStartupOnboardingDialogOpen,
+		notificationNavigation: {
+			currentProjectId: projectNavigation.currentProjectId,
+			navigationProjectId: projectNavigation.navigationCurrentProjectId,
+			boardProjectId: projectSync.boardProjectId,
+			projectIds: projectNavigation.projects
+				.filter((project) => project.availability?.status !== "unavailable")
+				.map((project) => project.id),
+			taskIds: boardContext.board.columns.flatMap((column) => column.cards.map((card) => card.id)),
+			isProjectSwitching: projectNavigation.isProjectSwitching,
+			selectProject: projectNavigation.handleSelectProject,
+			selectTask: handleCardSelectWithFocus,
+		},
+		runtimeConnected:
+			projectStream.hasReceivedSnapshot &&
+			!projectStream.isRuntimeDisconnected &&
+			!projectRuntime.isQuarterdeckAccessBlocked,
+		notificationProjects: projectNotifications.notificationProjects,
+		taskDraftCount:
+			Number(taskEditorContext.taskEditor.editingTaskId !== null) +
+			Number(
+				taskEditorContext.taskEditor.isInlineTaskCreateOpen &&
+					(taskEditorContext.taskEditor.newTaskPrompt.length > 0 ||
+						taskEditorContext.taskEditor.newTaskImages.length > 0),
+			),
+	});
+
 	const { sidebarAreaRef, homeSidePanelPercent, handleHomeSidePanelSeparatorMouseDown } = useHomeSidePanelResize({
 		sidePanelRatio: navigation.sidePanelRatio,
 		setSidePanelRatio: navigation.setSidePanelRatio,
@@ -397,7 +441,20 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 				onResetBottomTerminalLayoutCustomizations={terminal.resetBottomTerminalLayoutCustomizations}
 			>
 				<LayoutResetBridge resetToDefaults={navigation.resetSurfaceNavigationToDefaults} />
-				<div ref={sidebarAreaRef} className="flex h-[100svh] min-w-0 overflow-hidden">
+				<div
+					ref={sidebarAreaRef}
+					aria-busy={isDesktopTransitionFrozen}
+					className="flex h-[100svh] min-w-0 overflow-hidden"
+				>
+					{isDesktopTransitionFrozen ? (
+						<div
+							role="status"
+							aria-live="polite"
+							className="fixed inset-0 z-[1000] flex items-center justify-center bg-surface-0/70 text-text-primary"
+						>
+							Finishing the requested desktop action…
+						</div>
+					) : null}
 					{/* Sidebar toolbar + side panel */}
 					<>
 						<DetailToolbar

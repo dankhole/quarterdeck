@@ -37,10 +37,14 @@ Use this map when you are planning or evaluating refactor work.
 - [`pi-first-class-support-plan.md`](./pi-first-class-support-plan.md): current Pi compatibility, lifecycle, recovery, platform, and version-advance contract.
 - [`claude-terminal-rendering-plan.md`](./claude-terminal-rendering-plan.md): Claude fullscreen-only launch contract, terminal geometry, and historical dogfood evidence.
 - [`lsp-code-navigation-plan.md`](./lsp-code-navigation-plan.md): plan for bring-your-own language server code navigation in the Files editor.
+- [`macos-desktop-plan.md`](./macos-desktop-plan.md): delivery plan for a polished macOS application sharing the runtime and UI with browser mode.
 
 ### Live architecture and implementation guidance
 
 - [`architecture.md`](./architecture.md): system-wide architecture overview.
+- [`desktop.md`](./desktop.md): macOS shell, shared runtime admission, process custody, browser authentication, and native ownership boundaries.
+- [`desktop-release.md`](./desktop-release.md): native packaging, signing, coordinated publication, and update procedure.
+- [`desktop-validation.md`](./desktop-validation.md): executed candidate evidence and remaining platform/distribution/daily-use gates.
 - [`diagnostics.md`](./diagnostics.md): stable unified diagnostics contract, privacy boundary, ownership, and validation entry points.
 - [`testing.md`](./testing.md): canonical validation-selection policy, command scopes, and heavy-lane criteria.
 - [`agent-functional-testing.md`](./agent-functional-testing.md): disposable Quarterdeck lab, deterministic fake agent, browser UI driving, visual artifacts, and failure evidence.

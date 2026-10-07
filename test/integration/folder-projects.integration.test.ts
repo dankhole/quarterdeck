@@ -34,6 +34,7 @@ describe("folder projects", { concurrent: false }, () => {
 			(
 				await requestJson<RuntimeProjectAddResponse>({
 					baseUrl,
+					headers: server.browserHeaders,
 					projectId: parentId,
 					procedure: "projects.add",
 					type: "mutation",
@@ -58,6 +59,7 @@ describe("folder projects", { concurrent: false }, () => {
 			const folderId = folder.project.id;
 			const state = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				projectId: folderId,
 				procedure: "project.getState",
 				type: "query",
@@ -70,6 +72,7 @@ describe("folder projects", { concurrent: false }, () => {
 			});
 			const seeded = await requestJson({
 				baseUrl,
+				headers: server.browserHeaders,
 				projectId: folderId,
 				procedure: "project.applyBoardCommands",
 				type: "mutation",
@@ -101,6 +104,7 @@ describe("folder projects", { concurrent: false }, () => {
 			expect(seeded.status).toBe(200);
 			const git = await requestJson({
 				baseUrl,
+				headers: server.browserHeaders,
 				projectId: parentId,
 				procedure: "project.getGitRefs",
 				type: "query",
@@ -109,6 +113,7 @@ describe("folder projects", { concurrent: false }, () => {
 			expect(git.status).toBe(400);
 			const text = await requestJson<RuntimeWorkdirTextSearchResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				projectId: folderId,
 				procedure: "project.searchText",
 				type: "query",
@@ -117,6 +122,7 @@ describe("folder projects", { concurrent: false }, () => {
 			expect(text.payload.files).toMatchObject([{ path: "notes.txt", matches: [{ line: 1 }] }]);
 			const context = await requestJson<RuntimeTaskRepositoryInfoResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				projectId: folderId,
 				procedure: "project.getTaskContext",
 				type: "query",
@@ -125,6 +131,7 @@ describe("folder projects", { concurrent: false }, () => {
 			expect(context.payload).toMatchObject({ path: await realpath(plain), exists: true, branch: null });
 			const projects = await requestJson<RuntimeProjectsResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "projects.list",
 				type: "query",
 			});
@@ -135,6 +142,7 @@ describe("folder projects", { concurrent: false }, () => {
 			expect(await add(plain, false, true)).toMatchObject({ ok: true, project: { id: folderId } });
 			const enabled = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				projectId: folderId,
 				procedure: "project.getState",
 				type: "query",
@@ -151,6 +159,7 @@ describe("folder projects", { concurrent: false }, () => {
 			for (const procedure of ["project.getTaskContext", "project.getChanges"]) {
 				const response = await requestJson({
 					baseUrl,
+					headers: server.browserHeaders,
 					projectId: folderId,
 					procedure,
 					type: "query",

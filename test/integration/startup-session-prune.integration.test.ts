@@ -35,65 +35,86 @@ function createBoard(): RuntimeBoardData {
 }
 
 describe("startup session pruning", { concurrent: false }, () => {
-	it("rewrites sessions.json before terminal-manager hydration", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-startup-prune-");
-		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("quarterdeck-project-startup-prune-");
-		const projectPath = join(tempRoot, "project-a");
-		let statePath = "";
-		const previousHome = process.env.HOME;
-		const previousUserProfile = process.env.USERPROFILE;
-		process.env.HOME = tempHome;
-		process.env.USERPROFILE = tempHome;
-		try {
-			mkdirSync(projectPath, { recursive: true });
-			initGitRepository(projectPath);
-			const context = await loadProjectContext(projectPath);
-			statePath = context.statePath;
-			const initial = await loadProjectState(projectPath);
-			await saveProjectState(projectPath, {
-				board: createBoard(),
-				sessions: {
-					"task-1": createTestTaskSessionSummary({ taskId: "task-1" }),
-					"deleted-task": createTestTaskSessionSummary({
-						taskId: "deleted-task",
-						state: "awaiting_review",
-						reviewReason: "hook",
-						pid: 12345,
-					}),
-					__home_terminal__: createTestTaskSessionSummary({
-						taskId: "__home_terminal__",
-						state: "running",
-						pid: 23456,
-					}),
-				},
-				expectedRevision: initial.revision,
-			});
-		} finally {
-			if (previousHome === undefined) {
-				delete process.env.HOME;
-			} else {
-				process.env.HOME = previousHome;
-			}
-			if (previousUserProfile === undefined) {
-				delete process.env.USERPROFILE;
-			} else {
-				process.env.USERPROFILE = previousUserProfile;
-			}
-		}
+	it.each([
+		{ name: "prunes PID-free stale sessions before terminal-manager hydration", hasLegacyProcessEvidence: false },
+		{ name: "retains legacy PID evidence and refuses startup before pruning", hasLegacyProcessEvidence: true },
+	])(
+		"$name",
+		async ({ hasLegacyProcessEvidence }) => {
+			const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-startup-prune-");
+			const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("quarterdeck-project-startup-prune-");
+			const projectPath = join(tempRoot, "project-a");
+			let statePath = "";
+			try {
+				const previousHome = process.env.HOME;
+				const previousUserProfile = process.env.USERPROFILE;
+				process.env.HOME = tempHome;
+				process.env.USERPROFILE = tempHome;
+				try {
+					mkdirSync(projectPath, { recursive: true });
+					initGitRepository(projectPath);
+					const context = await loadProjectContext(projectPath);
+					statePath = context.statePath;
+					const initial = await loadProjectState(projectPath);
+					await saveProjectState(projectPath, {
+						board: createBoard(),
+						sessions: {
+							"task-1": createTestTaskSessionSummary({ taskId: "task-1" }),
+							"deleted-task": createTestTaskSessionSummary({
+								taskId: "deleted-task",
+								state: "awaiting_review",
+								reviewReason: "hook",
+								pid: hasLegacyProcessEvidence ? 12345 : null,
+							}),
+							__home_terminal__: createTestTaskSessionSummary({
+								taskId: "__home_terminal__",
+								state: "running",
+								pid: hasLegacyProcessEvidence ? 23456 : null,
+							}),
+						},
+						expectedRevision: initial.revision,
+					});
+				} finally {
+					if (previousHome === undefined) {
+						delete process.env.HOME;
+					} else {
+						process.env.HOME = previousHome;
+					}
+					if (previousUserProfile === undefined) {
+						delete process.env.USERPROFILE;
+					} else {
+						process.env.USERPROFILE = previousUserProfile;
+					}
+				}
 
-		const port = await getAvailablePort();
-		const server = await startQuarterdeckServer({
-			cwd: projectPath,
-			homeDir: tempHome,
-			port,
-		});
-		try {
-			const sessions = JSON.parse(readFileSync(join(statePath, "sessions.json"), "utf8")) as Record<string, unknown>;
-			expect(Object.keys(sessions)).toEqual(["task-1"]);
-		} finally {
-			await server.stop();
-			cleanupRoot();
-			cleanupHome();
-		}
-	}, 30_000);
+				const sessionsPath = join(statePath, "sessions.json");
+				const boardPath = join(statePath, "board.json");
+				const sessionsEvidence = readFileSync(sessionsPath, "utf8");
+				const boardEvidence = readFileSync(boardPath, "utf8");
+				const port = await getAvailablePort();
+				const startup = startQuarterdeckServer({
+					cwd: projectPath,
+					homeDir: tempHome,
+					port,
+				});
+				if (hasLegacyProcessEvidence) {
+					await expect(startup).rejects.toThrow("cannot prove that a prior agent's detached children have exited");
+					expect(readFileSync(sessionsPath, "utf8")).toBe(sessionsEvidence);
+					expect(readFileSync(boardPath, "utf8")).toBe(boardEvidence);
+					return;
+				}
+				const server = await startup;
+				try {
+					const sessions = JSON.parse(readFileSync(sessionsPath, "utf8")) as Record<string, unknown>;
+					expect(Object.keys(sessions)).toEqual(["task-1"]);
+				} finally {
+					await server.stop();
+				}
+			} finally {
+				cleanupRoot();
+				cleanupHome();
+			}
+		},
+		30_000,
+	);
 });

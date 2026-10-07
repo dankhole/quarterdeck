@@ -1,5 +1,14 @@
 import { z } from "zod";
 import { diagnosticRecordEnvelopeSchema, diagnosticRecordingStateSchema } from "./diagnostics.js";
+import {
+	runtimeNotificationPreferencesSchema,
+	runtimeNotificationPresentationStateSchema,
+	runtimeStateStreamNotificationPreferencesMessageSchema,
+	runtimeStateStreamNotificationPresentationMessageSchema,
+} from "./notification-presentation.js";
+
+export * from "./notification-presentation.js";
+
 import { projectOrganizationSchema } from "./project-organization.js";
 import {
 	runtimeProjectMetadataSchema,
@@ -27,6 +36,8 @@ export const runtimeStateStreamSnapshotMessageSchema = z.object({
 	// connection snapshot from replacing a newer live delta that reached the
 	// browser while the snapshot was being assembled.
 	notificationRevisionsByProject: z.record(z.string(), z.number().int().nonnegative()).optional(),
+	notificationPresentation: runtimeNotificationPresentationStateSchema.optional(),
+	notificationPreferences: runtimeNotificationPreferencesSchema.optional(),
 });
 export type RuntimeStateStreamSnapshotMessage = z.infer<typeof runtimeStateStreamSnapshotMessageSchema>;
 
@@ -160,6 +171,8 @@ export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
 	runtimeStateStreamDiagnosticRecordBatchMessageSchema,
 	runtimeStateStreamDiagnosticCaptureStateMessageSchema,
 	runtimeStateStreamDiagnosticSnapshotRequestMessageSchema,
+	runtimeStateStreamNotificationPresentationMessageSchema,
+	runtimeStateStreamNotificationPreferencesMessageSchema,
 ]);
 export type RuntimeStateStreamMessage = z.infer<typeof runtimeStateStreamMessageSchema>;
 

@@ -14,7 +14,7 @@
 //           board.json, sessions.json, meta.json, pinned-branches.json,
 //           lifecycle-operations.json, execution-ownership.json
 
-import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
@@ -41,6 +41,7 @@ import {
 	PINNED_BRANCHES_FILENAME,
 	SESSIONS_FILENAME,
 } from "./project-state-utils";
+import { assertRuntimeWriteAdmission } from "./runtime-write-admission.js";
 
 const DEFAULT_BACKUP_HOME = join(homedir(), ".quarterdeck-backups");
 const DEFAULT_MAX_BACKUPS = 10;
@@ -95,7 +96,13 @@ async function fileExists(path: string): Promise<boolean> {
 
 async function copyFileIfExists(src: string, dest: string): Promise<void> {
 	try {
-		await cp(src, dest);
+		assertRuntimeWriteAdmission(getRuntimeHomePath());
+		const content = await readFile(src, "utf8");
+		assertRuntimeWriteAdmission(getRuntimeHomePath());
+		await lockedFileSystem.writeTextFileAtomic(dest, content, {
+			lock: null,
+			admissionPaths: [getRuntimeHomePath()],
+		});
 	} catch (error) {
 		if (!isNodeError(error, "ENOENT")) {
 			throw error;
@@ -105,11 +112,12 @@ async function copyFileIfExists(src: string, dest: string): Promise<void> {
 
 async function restoreCoordinationJournal(src: string, dest: string): Promise<void> {
 	if (await fileExists(src)) {
-		await cp(src, dest);
+		await copyFileIfExists(src, dest);
 		return;
 	}
 	// Restoring a snapshot without a coordination journal must not retain
 	// operations or process ownership created after that snapshot.
+	assertRuntimeWriteAdmission(dest);
 	await rm(dest, { force: true });
 }
 
@@ -156,13 +164,30 @@ export interface CreateBackupOptions {
  * Create a state backup snapshot. Returns the backup directory path,
  * or null if there was nothing to back up.
  */
-export async function createBackup(options: CreateBackupOptions = {}): Promise<string | null> {
+export function createBackup(options: CreateBackupOptions = {}): Promise<string | null> {
 	// Location changes commit board/session paths before their indexed path. Keep
 	// the index fixed until all project snapshots have rejected pending moves.
-	return await lockedFileSystem.withLock(
-		getProjectIndexLockRequest(),
-		async () => await createBackupUnderIndexLock(options),
+	return trackBackupOperation(
+		lockedFileSystem.withLock(getProjectIndexLockRequest(), async () => await createBackupUnderIndexLock(options)),
 	);
+}
+
+const pendingBackupOperations = new Set<Promise<unknown>>();
+
+function trackBackupOperation<T>(operation: Promise<T>): Promise<T> {
+	pendingBackupOperations.add(operation);
+	void operation.then(
+		() => pendingBackupOperations.delete(operation),
+		() => pendingBackupOperations.delete(operation),
+	);
+	return operation;
+}
+
+/** Stop periodic admission first, then retain ownership until all started backup I/O settles. */
+export async function waitForPendingBackups(): Promise<void> {
+	while (pendingBackupOperations.size > 0) {
+		await Promise.allSettled(Array.from(pendingBackupOperations));
+	}
 }
 
 async function createBackupUnderIndexLock(options: CreateBackupOptions): Promise<string | null> {
@@ -170,6 +195,7 @@ async function createBackupUnderIndexLock(options: CreateBackupOptions): Promise
 	const maxBackups = options.maxBackups ?? DEFAULT_MAX_BACKUPS;
 
 	const runtimeHome = getRuntimeHomePath();
+	assertRuntimeWriteAdmission(runtimeHome);
 	const globalConfigPath = join(runtimeHome, "config.json");
 	const projectsRoot = getProjectsRootPath();
 	const indexPath = join(projectsRoot, "index.json");
@@ -183,6 +209,7 @@ async function createBackupUnderIndexLock(options: CreateBackupOptions): Promise
 	const projectIds = await discoverProjectIds(indexPath);
 	const now = new Date();
 	const backupDir = join(getBackupHomePath(), toBackupDirectoryName(now));
+	assertRuntimeWriteAdmission(runtimeHome);
 	await mkdir(backupDir, { recursive: true });
 
 	try {
@@ -190,12 +217,14 @@ async function createBackupUnderIndexLock(options: CreateBackupOptions): Promise
 
 		const backupProjectsDir = join(backupDir, "projects");
 		if (indexExists) {
+			assertRuntimeWriteAdmission(runtimeHome);
 			await mkdir(backupProjectsDir, { recursive: true });
 			await copyFileIfExists(indexPath, join(backupProjectsDir, "index.json"));
 		}
 
 		for (const projectId of projectIds) {
 			const wsBackupDir = join(backupProjectsDir, projectId);
+			assertRuntimeWriteAdmission(runtimeHome);
 			await mkdir(wsBackupDir, { recursive: true });
 			await withProjectStateLock(projectId, async () => {
 				if (await readProjectRelocationJournal(projectId)) {
@@ -228,10 +257,19 @@ async function createBackupUnderIndexLock(options: CreateBackupOptions): Promise
 			projectIds,
 			trigger,
 		};
-		await writeFile(join(backupDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
+		assertRuntimeWriteAdmission(runtimeHome);
+		await lockedFileSystem.writeJsonFileAtomic(join(backupDir, "manifest.json"), manifest, {
+			lock: null,
+			admissionPaths: [runtimeHome],
+		});
 	} catch (error) {
 		// Clean up incomplete backup directory so it doesn't accumulate as junk.
-		await removeDirectoryWithRetries(backupDir).catch(() => {});
+		try {
+			assertRuntimeWriteAdmission(runtimeHome);
+			await removeDirectoryWithRetries(backupDir);
+		} catch {
+			/* A lost owner leaves its partial backup for later maintenance. */
+		}
 		throw error;
 	}
 
@@ -271,6 +309,7 @@ export async function listBackups(): Promise<BackupListEntry[]> {
  * The caller should ensure the Quarterdeck server is not running.
  */
 export async function restoreBackup(backupPathOrName: string): Promise<BackupManifest> {
+	assertRuntimeWriteAdmission(getRuntimeHomePath());
 	const backupDir = await resolveBackupPath(backupPathOrName);
 	const manifest = (await readJsonFileSafe(join(backupDir, "manifest.json"))) as BackupManifest | null;
 	if (!manifest) {
@@ -294,19 +333,22 @@ export async function restoreBackup(backupPathOrName: string): Promise<BackupMan
 
 	const backupConfigPath = join(backupDir, "config.json");
 	if (await fileExists(backupConfigPath)) {
+		assertRuntimeWriteAdmission(runtimeHome);
 		await mkdir(runtimeHome, { recursive: true });
-		await cp(backupConfigPath, join(runtimeHome, "config.json"));
+		await copyFileIfExists(backupConfigPath, join(runtimeHome, "config.json"));
 	}
 
 	const backupIndexPath = join(backupDir, "projects", "index.json");
 	if (await fileExists(backupIndexPath)) {
+		assertRuntimeWriteAdmission(runtimeHome);
 		await mkdir(projectsRoot, { recursive: true });
-		await cp(backupIndexPath, join(projectsRoot, "index.json"));
+		await copyFileIfExists(backupIndexPath, join(projectsRoot, "index.json"));
 	}
 
 	for (const projectId of manifest.projectIds) {
 		const wsBackupDir = join(backupDir, "projects", projectId);
 		const wsDir = getProjectDirectoryPath(projectId);
+		assertRuntimeWriteAdmission(wsDir);
 		await mkdir(wsDir, { recursive: true });
 		// Recover and remove any pending commit before replacing it with the backup.
 		await withProjectStateLock(projectId, async () => {
@@ -334,6 +376,7 @@ export async function pruneBackups(keep: number = DEFAULT_MAX_BACKUPS): Promise<
 	let removed = 0;
 	for (const backup of toRemove) {
 		try {
+			assertRuntimeWriteAdmission(getRuntimeHomePath());
 			await removeDirectoryWithRetries(backup.path);
 			removed += 1;
 		} catch {
@@ -347,6 +390,7 @@ export async function pruneBackups(keep: number = DEFAULT_MAX_BACKUPS): Promise<
 
 let periodicTimer: ReturnType<typeof setInterval> | null = null;
 let lastFingerprint: string | null = null;
+let periodicGeneration = 0;
 
 /** Lightweight change detection via mtime + size — avoids reading file contents every tick. */
 async function computeStateFingerprint(): Promise<string> {
@@ -391,11 +435,12 @@ export function startPeriodicBackups(intervalMinutes: number): void {
 	if (intervalMinutes <= 0) {
 		return;
 	}
+	const generation = periodicGeneration;
 
 	// Capture initial fingerprint so first tick can compare.
-	computeStateFingerprint()
+	trackBackupOperation(computeStateFingerprint())
 		.then((fp) => {
-			lastFingerprint = fp;
+			if (generation === periodicGeneration) lastFingerprint = fp;
 		})
 		.catch((error: unknown) => {
 			backupLog.warn("failed to establish periodic backup fingerprint", {
@@ -405,7 +450,7 @@ export function startPeriodicBackups(intervalMinutes: number): void {
 
 	periodicTimer = setInterval(
 		() => {
-			void runPeriodicBackupTick();
+			void trackBackupOperation(runPeriodicBackupTick(generation));
 		},
 		intervalMinutes * 60 * 1000,
 	);
@@ -415,6 +460,7 @@ export function startPeriodicBackups(intervalMinutes: number): void {
 }
 
 export function stopPeriodicBackups(): void {
+	periodicGeneration += 1;
 	if (periodicTimer !== null) {
 		clearInterval(periodicTimer);
 		periodicTimer = null;
@@ -422,9 +468,10 @@ export function stopPeriodicBackups(): void {
 	lastFingerprint = null;
 }
 
-async function runPeriodicBackupTick(): Promise<void> {
+async function runPeriodicBackupTick(generation: number): Promise<void> {
 	try {
 		const fingerprint = await computeStateFingerprint();
+		if (generation !== periodicGeneration) return;
 		// Skip if the initial fingerprint hasn't been captured yet (async race on first tick)
 		// or if nothing has changed since the last backup.
 		if (lastFingerprint === null || fingerprint === lastFingerprint) {
@@ -432,7 +479,7 @@ async function runPeriodicBackupTick(): Promise<void> {
 			return;
 		}
 		const path = await createBackup({ trigger: "periodic" });
-		lastFingerprint = fingerprint;
+		if (generation === periodicGeneration) lastFingerprint = fingerprint;
 		backupLog.info("periodic backup completed", { created: path !== null });
 	} catch (error) {
 		// Periodic backup failure is non-critical.

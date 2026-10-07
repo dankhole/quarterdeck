@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 
 import { buildGitCommandArgs, createGitProcessEnv, resolveWindowsCompatibleCommand } from "../../src/core";
 import type { RuntimeHostSimulationConfig } from "../../src/server/runtime-host-simulation";
+import { getFakeAgentVersionOutput } from "./fake-agent-protocol";
 import { resolveAgentLabProviderPolicy } from "./provider-policy";
 import { AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_POLICY } from "./real-claude";
 import { getAgentLabRealCodexConfigOverrides } from "./real-codex";
@@ -56,25 +57,52 @@ async function runGit(projectPath: string, args: string[]): Promise<void> {
 }
 
 async function writeFakeAgentLaunchers(fakeBinPath: string, provider: "claude" | "codex" | "pi"): Promise<void> {
+	// Availability must not depend on cold TSX compilation of the synthetic TUI.
+	// Keep these replies generated from the same version contract as that TUI.
+	const version = getFakeAgentVersionOutput(provider);
+	const features = "hooks                                stable             true";
 	const shellLauncherPath = join(fakeBinPath, provider);
 	const windowsLauncherPath = join(fakeBinPath, `${provider}.cmd`);
 	const windowsPowerShellLauncherPath = join(fakeBinPath, `${provider}.ps1`);
 	await writeFile(
 		shellLauncherPath,
-		`#!/bin/sh\nQUARTERDECK_AGENT_LAB_PROVIDER=${provider} exec "$QUARTERDECK_AGENT_LAB_NODE" "$QUARTERDECK_AGENT_LAB_TSX_CLI" "$QUARTERDECK_AGENT_LAB_FAKE_AGENT" "$@"\n`,
+		[
+			"#!/bin/sh",
+			`if [ "$#" -eq 1 ] && { [ "$1" = "--version" ] || [ "$1" = "version" ]; }; then printf '%s\\n' '${version}'; exit 0; fi`,
+			`if [ "$#" -eq 2 ] && [ "$1" = "features" ] && [ "$2" = "list" ]; then printf '%s\\n' '${features}'; exit 0; fi`,
+			`QUARTERDECK_AGENT_LAB_PROVIDER=${provider} exec "$QUARTERDECK_AGENT_LAB_NODE" "$QUARTERDECK_AGENT_LAB_TSX_CLI" "$QUARTERDECK_AGENT_LAB_FAKE_AGENT" "$@"`,
+			"",
+		].join("\n"),
 		"utf8",
 	);
 	await chmod(shellLauncherPath, 0o755);
 	await writeFile(
 		windowsLauncherPath,
-		`@echo off\r\nset "QUARTERDECK_AGENT_LAB_PROVIDER=${provider}"\r\n"%QUARTERDECK_AGENT_LAB_NODE%" "%QUARTERDECK_AGENT_LAB_TSX_CLI%" "%QUARTERDECK_AGENT_LAB_FAKE_AGENT%" %*\r\n`,
+		[
+			"@echo off",
+			'if "%~2"=="" if "%~1"=="--version" goto probe_version',
+			'if "%~2"=="" if "%~1"=="version" goto probe_version',
+			'if "%~3"=="" if "%~1"=="features" if "%~2"=="list" goto probe_features',
+			`set "QUARTERDECK_AGENT_LAB_PROVIDER=${provider}"`,
+			'"%QUARTERDECK_AGENT_LAB_NODE%" "%QUARTERDECK_AGENT_LAB_TSX_CLI%" "%QUARTERDECK_AGENT_LAB_FAKE_AGENT%" %*',
+			"exit /b %errorlevel%",
+			":probe_version",
+			`echo ${version}`,
+			"exit /b 0",
+			":probe_features",
+			`echo ${features}`,
+			"exit /b 0",
+			"",
+		].join("\r\n"),
 		"utf8",
 	);
 	await writeFile(
 		windowsPowerShellLauncherPath,
 		[
+			`if ($args.Count -eq 1 -and ($args[0] -ceq '--version' -or $args[0] -ceq 'version')) { Write-Output '${version}'; exit 0 }`,
+			`if ($args.Count -eq 2 -and $args[0] -ceq 'features' -and $args[1] -ceq 'list') { Write-Output '${features}'; exit 0 }`,
 			`$env:QUARTERDECK_AGENT_LAB_PROVIDER = '${provider}'`,
-			"& $env:QUARTERDECK_AGENT_LAB_NODE $env:QUARTERDECK_AGENT_LAB_TSX_CLI $env:QUARTERDECK_AGENT_LAB_FAKE_CODEX @args",
+			"& $env:QUARTERDECK_AGENT_LAB_NODE $env:QUARTERDECK_AGENT_LAB_TSX_CLI $env:QUARTERDECK_AGENT_LAB_FAKE_AGENT @args",
 			"exit $LASTEXITCODE",
 			"",
 		].join("\r\n"),

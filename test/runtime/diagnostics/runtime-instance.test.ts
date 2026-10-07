@@ -67,6 +67,27 @@ describe("runtime diagnostic discovery", () => {
 		expect(JSON.stringify(instance.getPublicDescriptor())).not.toContain("sentinel private");
 	});
 
+	it("clears failed finalization evidence when the same desktop recorder becomes ready after retry", async () => {
+		const instance = await RuntimeDiagnosticInstance.create({
+			stateHome,
+			processKind: "desktop",
+			host: null,
+			port: null,
+			quarterdeckVersion: "test",
+		});
+		await instance.markFailed("Error");
+		expect(instance.getPublicDescriptor().stoppedAt).not.toBeNull();
+		await instance.markReady(null, null);
+		expect((await discoverRuntimeDiagnosticInstances(stateHome))[0]?.descriptor).toMatchObject({
+			processKind: "desktop",
+			status: "ready",
+			host: null,
+			port: null,
+			stoppedAt: null,
+			failure: null,
+		});
+	});
+
 	it("retains only the newest three dead instances, including unfinalized crash descriptors", async () => {
 		for (let index = 0; index < 4; index += 1) {
 			const instance = await RuntimeDiagnosticInstance.create({

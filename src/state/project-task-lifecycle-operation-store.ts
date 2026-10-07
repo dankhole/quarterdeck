@@ -12,6 +12,7 @@ import {
 import { isNodeError, lockedFileSystem } from "../fs";
 import type { ProjectBoardCommandScope } from "./project-board-command-service";
 import { getProjectDirectoryLockRequest, getProjectLifecycleOperationsPath } from "./project-state-utils";
+import { assertRuntimeWriteAdmission } from "./runtime-write-admission.js";
 
 const MAX_TERMINAL_OPERATIONS = 200;
 const log = createTaggedLogger("task-lifecycle-journal");
@@ -135,6 +136,7 @@ async function readJournal(scope: ProjectBoardCommandScope): Promise<OperationJo
 		const backupPath = `${path}.corrupt-${Date.now()}`;
 		let persistedBackupPath: string | null = null;
 		try {
+			assertRuntimeWriteAdmission(path);
 			await rename(path, backupPath);
 			persistedBackupPath = backupPath;
 		} catch (backupError) {

@@ -370,8 +370,8 @@ function rawDataToBuffer(data: RawData): Buffer {
 	return Buffer.from(data);
 }
 
-async function openQueuedWebSocket(url: string): Promise<QueuedWebSocket> {
-	const socket = new WebSocket(url);
+async function openQueuedWebSocket(url: string, headers: Readonly<Record<string, string>>): Promise<QueuedWebSocket> {
+	const socket = new WebSocket(url, { headers });
 	const queue: RawData[] = [];
 	const events = new EventEmitter();
 	socket.on("message", (message) => {
@@ -423,6 +423,7 @@ async function assertNativeConptyResizeReconnectRestore(
 	baseUrl: string,
 	projectId: string,
 	taskId: string,
+	headers: Readonly<Record<string, string>>,
 ): Promise<void> {
 	const websocketOrigin = baseUrl.replace(/^http/u, "ws");
 	const clientId = `windows-native-${randomUUID()}`;
@@ -432,8 +433,8 @@ async function assertNativeConptyResizeReconnectRestore(
 	let ioSocket: QueuedWebSocket | null = null;
 	let controlSocket: QueuedWebSocket | null = null;
 	try {
-		ioSocket = await openQueuedWebSocket(socketUrl("io"));
-		controlSocket = await openQueuedWebSocket(socketUrl("control"));
+		ioSocket = await openQueuedWebSocket(socketUrl("io"), headers);
+		controlSocket = await openQueuedWebSocket(socketUrl("control"), headers);
 		controlSocket.socket.send(JSON.stringify({ type: "resize", cols: 111, rows: 33 }));
 		const initialRestore = await waitForControlMessage(controlSocket, (message) => message.type === "restore");
 		expect(initialRestore).toMatchObject({ type: "restore", cols: 111, rows: 33 });
@@ -452,8 +453,8 @@ async function assertNativeConptyResizeReconnectRestore(
 		await closeWebSocket(controlSocket.socket);
 		controlSocket = null;
 
-		ioSocket = await openQueuedWebSocket(socketUrl("io"));
-		controlSocket = await openQueuedWebSocket(socketUrl("control"));
+		ioSocket = await openQueuedWebSocket(socketUrl("io"), headers);
+		controlSocket = await openQueuedWebSocket(socketUrl("control"), headers);
 		controlSocket.socket.send(JSON.stringify({ type: "resize", cols: 111, rows: 33, force: true }));
 		const reconnectRestore = await waitForControlMessage(controlSocket, (message) => message.type === "restore");
 		expect(reconnectRestore).toMatchObject({ type: "restore", cols: 111, rows: 33 });
@@ -653,6 +654,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 
 			const configResponse = await requestJson<RuntimeConfigResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "runtime.getConfig",
 				type: "query",
 				projectId,
@@ -665,6 +667,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 
 			const refFilesResponse = await requestJson<RuntimeListFilesResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "project.listFiles",
 				type: "query",
 				projectId,
@@ -674,6 +677,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			expect(refFilesResponse.payload.files).toContain(leadingTrackedRelativePath);
 			const refContentResponse = await requestJson<RuntimeFileContentResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "project.getFileContent",
 				type: "query",
 				projectId,
@@ -684,6 +688,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			const leadingCreatedRelativePath = " created-in-quarterdeck.txt";
 			const createLeadingEntryResponse = await requestJson<RuntimeWorkdirEntryMutationResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "project.createWorkdirEntry",
 				type: "mutation",
 				projectId,
@@ -699,6 +704,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			const caseRenameTarget = "case-rename.txt";
 			const createCaseRenameResponse = await requestJson<RuntimeWorkdirEntryMutationResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "project.createWorkdirEntry",
 				type: "mutation",
 				projectId,
@@ -708,6 +714,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			writeFileSync(join(projectPath, caseRenameSource), "case-only rename content\n", "utf8");
 			const caseRenameResponse = await requestJson<RuntimeWorkdirEntryMutationResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "project.renameWorkdirEntry",
 				type: "mutation",
 				projectId,
@@ -725,6 +732,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 
 			const changesResponse = await requestJson<RuntimeWorkdirChangesResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "project.getChanges",
 				type: "query",
 				projectId,
@@ -738,6 +746,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			const shellCommand = `"${process.execPath}" -e "require('node:fs').writeFileSync(process.env.QUARTERDECK_WINDOWS_SHELL_MARKER,'ok')"`;
 			const savedConfig = await requestJson<RuntimeConfigResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "runtime.saveConfig",
 				type: "mutation",
 				projectId,
@@ -764,6 +773,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			taskCard.useWorktree = false;
 			const stateResponse = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "project.getState",
 				type: "query",
 				projectId,
@@ -771,6 +781,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			expect(stateResponse.status).toBe(200);
 			const seedResponse = await requestJson<RuntimeProjectBoardCommandExecutionResult>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "project.applyBoardCommands",
 				type: "mutation",
 				projectId,
@@ -784,6 +795,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 
 			const worktreeResponse = await requestJson<RuntimeWorktreeEnsureResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "project.ensureWorktree",
 				type: "mutation",
 				projectId,
@@ -815,6 +827,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 
 			const startTaskResponse = await requestJson<RuntimeTaskLifecycleResult>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "runtime.executeTaskLifecycle",
 				type: "mutation",
 				projectId,
@@ -831,7 +844,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			expect(startTaskResponse.payload.summary?.pid).toEqual(expect.any(Number));
 			await waitUntil(() => existsSync(powerShellAgentMarkerPath), "PowerShell task-agent shim execution");
 			expect(JSON.parse(readFileSync(powerShellAgentMarkerPath, "utf8"))).toContain(taskPrompt);
-			await assertNativeConptyResizeReconnectRestore(baseUrl, projectId, taskId);
+			await assertNativeConptyResizeReconnectRestore(baseUrl, projectId, taskId, server.browserHeaders);
 			const managedProcessesPath = join(customStateHome, "managed-processes");
 			const ownershipRecordNames = (await readdir(managedProcessesPath)).filter((name) => name.endsWith(".json"));
 			expect(ownershipRecordNames).toHaveLength(1);
@@ -842,6 +855,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 
 			const taskInputResponse = await requestJson<RuntimeTaskSessionInputResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "runtime.sendTaskSessionInput",
 				type: "mutation",
 				projectId,
@@ -856,6 +870,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			await waitUntil(async () => {
 				const state = await requestJson<RuntimeProjectStateResponse>({
 					baseUrl,
+					headers: server.browserHeaders,
 					procedure: "project.getState",
 					type: "query",
 					projectId,
@@ -873,6 +888,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 
 			const stopTaskResponse = await requestJson<RuntimeTaskSessionStopResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "runtime.stopTaskSession",
 				type: "mutation",
 				projectId,
@@ -888,6 +904,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			const shellTaskId = "__windows_native_shell__";
 			const startShellResponse = await requestJson<RuntimeShellSessionStartResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "runtime.startShellSession",
 				type: "mutation",
 				projectId,
@@ -899,6 +916,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 
 			const shortcutInputResponse = await requestJson<RuntimeTaskSessionInputResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "runtime.sendTaskSessionInput",
 				type: "mutation",
 				projectId,
@@ -914,6 +932,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			expect(readFileSync(shellMarkerPath, "utf8")).toBe("ok");
 			const stopShellResponse = await requestJson<RuntimeTaskSessionStopResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "runtime.stopTaskSession",
 				type: "mutation",
 				projectId,
@@ -924,6 +943,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 
 			const openProjectResponse = await requestJson<RuntimeOpenProjectResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "runtime.openProject",
 				type: "mutation",
 				projectId,
@@ -937,6 +957,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 
 			const deleteWorktreeResponse = await requestJson<RuntimeWorktreeDeleteResponse>({
 				baseUrl,
+				headers: server.browserHeaders,
 				procedure: "project.deleteWorktree",
 				type: "mutation",
 				projectId,

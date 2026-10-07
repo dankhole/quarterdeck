@@ -8,6 +8,7 @@ import {
 	resolveWindowsCompatibleCommand,
 	terminateProcessForTimeout,
 } from "../core";
+import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 import { sanitizeGenerationResponse } from "./generation-response";
 
 const log = createTaggedLogger("codex-helper");
@@ -71,6 +72,7 @@ function runCodexCommand(args: string[], timeoutMs: number, input: string): Prom
 			}
 			resolve(result);
 		};
+		assertRuntimeProcessLaunchAdmission();
 		child = execFile(
 			command.binary,
 			command.args,

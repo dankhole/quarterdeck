@@ -1,5 +1,5 @@
-import type { DiagnosticRecordingScope, DiagnosticRecordingState } from "../core";
-import type { DiagnosticRecordCandidate } from "./diagnostic-record";
+import type { DiagnosticRecordingScope, DiagnosticRecordingState } from "../core/api/diagnostics.js";
+import type { DiagnosticRecordCandidate } from "./diagnostic-record.js";
 
 const MAX_DEEP_RECORDING_MS = 15 * 60 * 1_000;
 export type DiagnosticAdmissionProfile = "flight" | "agent-lab";

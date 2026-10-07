@@ -1,6 +1,5 @@
 import type { ChildProcess, ExecFileException } from "node:child_process";
 import { execFile } from "node:child_process";
-
 import { CODEX_HOOKS_FEATURE_NAME } from "../codex-hooks";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeCapabilities, RuntimeConfigResponse } from "../core";
 import {
@@ -11,6 +10,7 @@ import {
 	resolveWindowsCompatibleCommand,
 	terminateProcessForTimeout,
 } from "../core";
+import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 import { isGenerationHelperAvailable, isLlmConfigured } from "../title";
 import { extractGlobalConfigFields } from "./global-config-fields";
 import type { RuntimeConfigState } from "./runtime-config";
@@ -230,6 +230,7 @@ function runProbeCommand(
 		let timeout: NodeJS.Timeout | null = null;
 		let settled = false;
 		let timedOut = false;
+		assertRuntimeProcessLaunchAdmission();
 		child = execFile(
 			command.binary,
 			command.args,
@@ -486,6 +487,13 @@ interface ResolveAgentAvailabilityOptions {
 const agentAvailabilityCache = new Map<string, AvailabilityCacheEntry>();
 const inFlightAgentAvailabilityProbes = new Map<string, Promise<AvailabilityCacheEntry>>();
 let agentAvailabilityCacheGeneration = 0;
+
+/** Includes detached Settings refreshes and their version-to-feature probe sequence. */
+export async function waitForPendingAgentAvailabilityProbes(): Promise<void> {
+	while (inFlightAgentAvailabilityProbes.size > 0) {
+		await Promise.allSettled(Array.from(inFlightAgentAvailabilityProbes.values()));
+	}
+}
 
 /** Clear the agent-availability cache. Exported for tests; also useful if a future
  *  Settings re-check button needs to force a fresh probe. */

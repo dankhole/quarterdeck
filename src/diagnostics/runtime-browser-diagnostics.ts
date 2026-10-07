@@ -1,8 +1,12 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 
-import { type BrowserDiagnosticSnapshot, browserDiagnosticSnapshotSchema, type DiagnosticCaptureScope } from "../core";
-import { applyBrowserSnapshotContentPolicy } from "./browser-snapshot-policy";
-import type { BrowserDiagnosticIngestResult } from "./recorder";
+import {
+	type BrowserDiagnosticSnapshot,
+	browserDiagnosticSnapshotSchema,
+	type DiagnosticCaptureScope,
+} from "../core/api/diagnostics.js";
+import { applyBrowserSnapshotContentPolicy } from "./browser-snapshot-policy.js";
+import type { BrowserDiagnosticIngestResult } from "./recorder.js";
 
 const BROWSER_SNAPSHOT_WAIT_MS = 1_250;
 

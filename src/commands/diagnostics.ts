@@ -18,10 +18,12 @@ import {
 	matchesDiagnosticRecordFilter,
 	probeRuntimeDiagnosticInstance,
 	RuntimeDiagnosticClientError,
+	readDiagnosticJournal,
 	requestRuntimeDiagnostic,
 	selectRuntimeDiagnosticInstance,
 	writeDiagnosticBundle,
 } from "../diagnostics";
+import { getDesktopDiagnosticJournalState } from "../diagnostics/desktop-diagnostics.js";
 import type { DiagnosticRecordFilter } from "../diagnostics/diagnostic-record";
 
 const MAX_WATCH_DURATION_MS = 15 * 60_000;
@@ -187,7 +189,7 @@ export function registerDiagnosticsCommand(program: Command): void {
 	const diagnostics = program.command("diagnostics").description("Inspect Quarterdeck's private local diagnostics.");
 
 	addJsonOption(
-		diagnostics.command("list").description("List active and recently retained runtime instances."),
+		diagnostics.command("list").description("List active and recently retained runtime and desktop evidence."),
 	).action(async (options: JsonOption) => {
 		try {
 			const instances = await discoverRuntimeDiagnosticInstances();
@@ -207,8 +209,12 @@ export function registerDiagnosticsCommand(program: Command): void {
 			else if (result.length === 0) console.log("No Quarterdeck diagnostic runtimes found.");
 			else {
 				for (const instance of result) {
+					const endpoint =
+						instance.descriptor.processKind === "desktop"
+							? "journal-only"
+							: `${instance.descriptor.host}:${instance.descriptor.port}`;
 					console.log(
-						`${instance.descriptor.runtimeInstanceId}  ${instance.descriptor.status.padEnd(8)}  pid=${instance.descriptor.pid} (${instance.pidAlive ? "alive" : "not alive"})  ${instance.reachable && instance.instanceMatches ? "authenticated" : "offline/unverified"}  ${instance.descriptor.host}:${instance.descriptor.port}  ${instance.descriptor.startedAt}`,
+						`${instance.descriptor.runtimeInstanceId}  ${instance.descriptor.processKind}  ${instance.descriptor.status.padEnd(8)}  pid=${instance.descriptor.pid} (${instance.pidAlive ? "alive" : "not alive"})  ${instance.reachable && instance.instanceMatches ? "authenticated" : "offline/unverified"}  ${endpoint}  ${instance.descriptor.startedAt}`,
 					);
 				}
 			}
@@ -222,6 +228,24 @@ export function registerDiagnosticsCommand(program: Command): void {
 	).action(async (options: InstanceSelectionOptions & JsonOption) => {
 		try {
 			const instance = await selectInstance(options);
+			if (instance.descriptor.processKind === "desktop") {
+				const journal = await readDiagnosticJournal(instance.descriptor.journalDirectory);
+				const result = {
+					descriptor: publicRuntimeDiagnosticDescriptorSchema.parse(instance.descriptor),
+					pidAlive: instance.pidAlive,
+					reachable: false,
+					health: null,
+					journalRecordCount: journal.records.length,
+					lastObservedDesktopState: getDesktopDiagnosticJournalState(journal.records),
+					warnings: journal.warnings,
+				};
+				if (options.json) printJson(result);
+				else
+					console.log(
+						`${result.descriptor.runtimeInstanceId}: desktop ${result.descriptor.status}; journal-only, records=${result.journalRecordCount}.`,
+					);
+				return;
+			}
 			if (!instance.pidAlive) {
 				const result = {
 					descriptor: publicRuntimeDiagnosticDescriptorSchema.parse(instance.descriptor),
@@ -343,9 +367,16 @@ export function registerDiagnosticsCommand(program: Command): void {
 			const deadline = Date.now() + durationMs;
 			while (Date.now() < deadline) {
 				const queryFilter = { ...filter, afterSequence: lastSequence };
-				const payload = recordsResponseSchema.parse(
-					await requestRuntime(instance, `/api/diagnostics/records${diagnosticFilterQuery(queryFilter)}`),
-				);
+				const payload =
+					instance.descriptor.processKind === "desktop"
+						? {
+								records: (await readDiagnosticJournal(instance.descriptor.journalDirectory)).records.filter(
+									(record) => matchesDiagnosticRecordFilter(record, queryFilter),
+								),
+							}
+						: recordsResponseSchema.parse(
+								await requestRuntime(instance, `/api/diagnostics/records${diagnosticFilterQuery(queryFilter)}`),
+							);
 				for (const record of payload.records) {
 					lastSequence = Math.max(lastSequence, record.sequence);
 					if (options.jsonl) console.log(JSON.stringify(record));

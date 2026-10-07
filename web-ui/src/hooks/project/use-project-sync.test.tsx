@@ -193,12 +193,14 @@ function assertSnapshot(snapshot: HookSnapshot | null, message: string): asserts
 function HookHarness({
 	currentProjectId = "project-a",
 	streamedProjectState,
+	hasNoProjects = false,
 	hasReceivedSnapshot = true,
 	isDocumentVisible = false,
 	onSnapshot,
 }: {
 	currentProjectId?: string | null;
 	streamedProjectState: RuntimeProjectStateResponse | null;
+	hasNoProjects?: boolean;
 	hasReceivedSnapshot?: boolean;
 	isDocumentVisible?: boolean;
 	onSnapshot: (snapshot: HookSnapshot) => void;
@@ -232,7 +234,7 @@ function HookHarness({
 	} = useProjectSync({
 		currentProjectId,
 		streamedProjectState,
-		hasNoProjects: false,
+		hasNoProjects,
 		hasReceivedSnapshot,
 		isDocumentVisible,
 		projectBoardSessionsRef,
@@ -303,6 +305,132 @@ describe("useProjectSync", () => {
 		}
 	});
 
+	it("adopts the runtime's initial project snapshot after mounting without a requested project", async () => {
+		const snapshots: HookSnapshot[] = [];
+		const onSnapshot = (snapshot: HookSnapshot) => snapshots.push(snapshot);
+		stashProjectBoard("project-a", {
+			board: createBoard("cached-task"),
+			sessions: {},
+			authoritativeRevision: 99,
+			projectPath: "/cached",
+			projectGit: null,
+		});
+		await act(async () =>
+			root.render(
+				<HookHarness
+					currentProjectId={null}
+					streamedProjectState={null}
+					hasReceivedSnapshot={false}
+					onSnapshot={onSnapshot}
+				/>,
+			),
+		);
+		const state = createProjectState("runtime-task", 8);
+		await act(async () =>
+			root.render(<HookHarness currentProjectId="project-a" streamedProjectState={state} onSnapshot={onSnapshot} />),
+		);
+		expect(snapshots.at(-1)?.boardProjectId).toBe("project-a");
+		expect(snapshots.at(-1)?.projectPath).toBe(state.repoPath);
+		expect(snapshots.at(-1)?.getAuthoritativeRevision()).toBe(8);
+		expect(snapshots.at(-1)?.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe(
+			"runtime-task",
+		);
+		expect(snapshots.at(-1)?.isServedFromBoardCache).toBe(false);
+		expect(fetchProjectStateMock).not.toHaveBeenCalled();
+	});
+	it("adopts the first project after an authoritative empty-project snapshot without an explicit switch", async () => {
+		const snapshots: HookSnapshot[] = [];
+		const onSnapshot = (snapshot: HookSnapshot) => snapshots.push(snapshot);
+		await act(async () =>
+			root.render(
+				<HookHarness currentProjectId={null} streamedProjectState={null} hasNoProjects onSnapshot={onSnapshot} />,
+			),
+		);
+		expect(snapshots.at(-1)?.boardProjectId).toBeNull();
+		await act(async () =>
+			root.render(
+				<HookHarness
+					currentProjectId="project-a"
+					streamedProjectState={createProjectState("first-task", 1)}
+					onSnapshot={onSnapshot}
+				/>,
+			),
+		);
+		expect(snapshots.at(-1)?.boardProjectId).toBe("project-a");
+		expect(snapshots.at(-1)?.getAuthoritativeRevision()).toBe(1);
+		expect(snapshots.at(-1)?.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("first-task");
+	});
+	it("does not auto-adopt an older snapshot after an explicit initial project switch", async () => {
+		const snapshots: HookSnapshot[] = [];
+		const onSnapshot = (snapshot: HookSnapshot) => snapshots.push(snapshot);
+		await act(async () =>
+			root.render(<HookHarness currentProjectId={null} streamedProjectState={null} onSnapshot={onSnapshot} />),
+		);
+		await act(async () => snapshots.at(-1)?.resetProjectSyncState("project-b"));
+		await act(async () =>
+			root.render(
+				<HookHarness
+					currentProjectId="project-a"
+					streamedProjectState={createProjectState("stale-task", 8)}
+					onSnapshot={onSnapshot}
+				/>,
+			),
+		);
+		expect(snapshots.at(-1)?.boardProjectId).toBeNull();
+		expect(snapshots.at(-1)?.getAuthoritativeRevision()).toBeNull();
+		await act(async () =>
+			root.render(
+				<HookHarness
+					currentProjectId="project-b"
+					streamedProjectState={createProjectState("selected-task", 2)}
+					onSnapshot={onSnapshot}
+				/>,
+			),
+		);
+		expect(snapshots.at(-1)?.boardProjectId).toBe("project-b");
+		expect(snapshots.at(-1)?.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe(
+			"selected-task",
+		);
+	});
+	it("does not reactivate a cleared initial target from a late snapshot", async () => {
+		const snapshots: HookSnapshot[] = [];
+		const onSnapshot = (snapshot: HookSnapshot) => snapshots.push(snapshot);
+		await act(async () =>
+			root.render(<HookHarness currentProjectId={null} streamedProjectState={null} onSnapshot={onSnapshot} />),
+		);
+		await act(async () => snapshots.at(-1)?.resetProjectSyncState(null));
+		await act(async () =>
+			root.render(
+				<HookHarness
+					currentProjectId="project-a"
+					streamedProjectState={createProjectState("late-task", 8)}
+					onSnapshot={onSnapshot}
+				/>,
+			),
+		);
+		expect(snapshots.at(-1)?.boardProjectId).toBeNull();
+		expect(snapshots.at(-1)?.getAuthoritativeRevision()).toBeNull();
+	});
+	it("does not adopt a different project after ownership is established without an explicit reset", async () => {
+		const snapshots: HookSnapshot[] = [];
+		const onSnapshot = (snapshot: HookSnapshot) => snapshots.push(snapshot);
+		await act(async () =>
+			root.render(
+				<HookHarness streamedProjectState={createProjectState("owned-task", 8)} onSnapshot={onSnapshot} />,
+			),
+		);
+		await act(async () =>
+			root.render(
+				<HookHarness
+					currentProjectId="project-b"
+					streamedProjectState={createProjectState("unowned-task", 2)}
+					onSnapshot={onSnapshot}
+				/>,
+			),
+		);
+		expect(snapshots.at(-1)?.boardProjectId).toBe("project-a");
+		expect(snapshots.at(-1)?.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("owned-task");
+	});
 	it("preserves a same-project location update when an older-path refresh finishes later", async () => {
 		const deferred = createDeferred<RuntimeProjectStateResponse>();
 		fetchProjectStateMock.mockReturnValue(deferred.promise);

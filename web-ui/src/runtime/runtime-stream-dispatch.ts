@@ -132,6 +132,8 @@ const streamMessageHandlers: {
 	diagnostic_record_batch: (_msg, state) => createDispatchResult([], state.activeProjectId),
 	diagnostic_capture_state: (_msg, state) => createDispatchResult([], state.activeProjectId),
 	diagnostic_snapshot_request: (_msg, state) => createDispatchResult([], state.activeProjectId),
+	notification_presentation: (_msg, state) => createDispatchResult([], state.activeProjectId),
+	notification_preferences: (_msg, state) => createDispatchResult([], state.activeProjectId),
 
 	error: (msg, state) => createDispatchResult([{ type: "stream_error", message: msg.message }], state.activeProjectId),
 };

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import {
 	type AudibleNotificationEventConfig,
 	type AudibleTaskNotificationState,
@@ -10,6 +10,10 @@ import {
 	isNewAudibleNotification,
 } from "@/hooks/notifications/audible-notifications";
 import { flattenProjectNotificationTasks } from "@/hooks/notifications/project-notifications";
+import {
+	desktopOwnsNotificationPresentation,
+	subscribeRuntimeNotificationPresentation,
+} from "@/runtime/runtime-notification-presentation";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import type { AudibleNotificationEventType } from "@/utils/notification-audio";
 import { notificationAudioPlayer } from "@/utils/notification-audio";
@@ -55,6 +59,11 @@ export function useAudibleNotifications({
 	currentProjectId,
 	suppressedTaskIds,
 }: UseAudibleNotificationsOptions): void {
+	const desktopOwnsPresentation = useSyncExternalStore(
+		subscribeRuntimeNotificationPresentation,
+		desktopOwnsNotificationPresentation,
+		() => false,
+	);
 	const notificationTasks = useMemo(
 		() => flattenProjectNotificationTasks(notificationProjects),
 		[notificationProjects],
@@ -88,6 +97,7 @@ export function useAudibleNotifications({
 		const pending = pendingSoundsRef.current.get(notificationKey);
 		if (!pending) return;
 		pendingSoundsRef.current.delete(notificationKey);
+		if (desktopOwnsNotificationPresentation()) return;
 		const task = latestNotificationTasksRef.current[notificationKey];
 		const locallySuppressed = isTaskLocallySuppressed(
 			task,
@@ -134,7 +144,9 @@ export function useAudibleNotifications({
 			return;
 		}
 
-		const soundsSuppressed = areSoundsSuppressed(audibleNotificationsEnabled, audibleNotificationsOnlyWhenHidden);
+		const soundsSuppressed =
+			desktopOwnsPresentation ||
+			areSoundsSuppressed(audibleNotificationsEnabled, audibleNotificationsOnlyWhenHidden);
 
 		for (const [notificationKey, task] of Object.entries(notificationTasks)) {
 			const currentState = deriveAudibleTaskNotificationState(task.summary);
@@ -184,7 +196,13 @@ export function useAudibleNotifications({
 				cancelPendingSound(notificationKey);
 			}
 		}
-	}, [audibleNotificationsEnabled, audibleNotificationsOnlyWhenHidden, notificationTasks, suppressedTaskIds]);
+	}, [
+		audibleNotificationsEnabled,
+		audibleNotificationsOnlyWhenHidden,
+		desktopOwnsPresentation,
+		notificationTasks,
+		suppressedTaskIds,
+	]);
 
 	// Clean up pending timers on unmount.
 	useEffect(() => {

@@ -55,4 +55,19 @@ describe("project relocation runtime exclusion", () => {
 			assertProjectRelocationRuntimeIsExclusive(current.getPublicDescriptor().runtimeInstanceId),
 		).resolves.toBeUndefined();
 	});
+
+	it("ignores live desktop evidence because it does not own project state", async () => {
+		const current = await createInstance();
+		const desktop = await RuntimeDiagnosticInstance.create({
+			stateHome,
+			processKind: "desktop",
+			host: null,
+			port: null,
+			quarterdeckVersion: "test",
+		});
+		await desktop.markReady(null, null);
+		await expect(
+			assertProjectRelocationRuntimeIsExclusive(current.getPublicDescriptor().runtimeInstanceId),
+		).resolves.toBeUndefined();
+	});
 });

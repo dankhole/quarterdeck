@@ -11,7 +11,59 @@ import {
 	beginAgentBrowserAction,
 	completeAgentBrowserAction,
 } from "./agent-lab/browser-actions";
+import { planAuthenticatedLabNavigation, withLabBrowserAdmissionScript } from "./agent-lab/browser-runtime-access";
 import { AGENT_LAB_REPO_ROOT, getAgentBrowserLocalPaths, prepareAgentLabBrowserCache } from "./agent-lab/paths";
+
+interface BrowserCommandResult {
+	exitCode: number | null;
+	signal: NodeJS.Signals | null;
+	error: Error | null;
+}
+
+async function runBrowserCommand(
+	cliPath: string,
+	args: readonly string[],
+	environment: NodeJS.ProcessEnv,
+	silent = false,
+): Promise<BrowserCommandResult> {
+	const child = spawn(process.execPath, [cliPath, ...args], {
+		cwd: AGENT_LAB_REPO_ROOT,
+		env: environment,
+		stdio: silent ? "ignore" : "inherit",
+		detached: process.platform !== "win32",
+		windowsHide: true,
+	});
+	const forwardedSignals = [
+		"SIGINT",
+		"SIGTERM",
+		"SIGHUP",
+		...(process.platform === "win32" ? (["SIGBREAK"] as const) : []),
+	] as const;
+	const handlers = forwardedSignals.map((signal) => {
+		const handler = () => {
+			if (child.pid !== undefined) terminateProcessTree(child.pid, signal);
+		};
+		process.once(signal, handler);
+		return { signal, handler };
+	});
+
+	return await new Promise<{
+		exitCode: number | null;
+		signal: NodeJS.Signals | null;
+		error: Error | null;
+	}>((resolveResult) => {
+		let settled = false;
+		const settle = (value: { exitCode: number | null; signal: NodeJS.Signals | null; error: Error | null }) => {
+			if (settled) return;
+			settled = true;
+			resolveResult(value);
+		};
+		child.once("error", (error) => settle({ exitCode: null, signal: null, error }));
+		child.once("exit", (exitCode, signal) => settle({ exitCode, signal, error: null }));
+	}).finally(() => {
+		for (const { signal, handler } of handlers) process.removeListener(signal, handler);
+	});
+}
 
 async function main(): Promise<void> {
 	const browserArguments = process.argv.slice(2);
@@ -71,43 +123,34 @@ async function main(): Promise<void> {
 		throw launchError;
 	}
 
-	const child = spawn(process.execPath, [cliPath, ...browserArguments], {
-		cwd: AGENT_LAB_REPO_ROOT,
-		env: environment,
-		stdio: "inherit",
-		detached: process.platform !== "win32",
-		windowsHide: true,
-	});
-	const forwardedSignals = [
-		"SIGINT",
-		"SIGTERM",
-		"SIGHUP",
-		...(process.platform === "win32" ? (["SIGBREAK"] as const) : []),
-	] as const;
-	const handlers = forwardedSignals.map((signal) => {
-		const handler = () => {
-			if (child.pid !== undefined) terminateProcessTree(child.pid, signal);
-		};
-		process.once(signal, handler);
-		return { signal, handler };
-	});
-
-	const result = await new Promise<{
-		exitCode: number | null;
-		signal: NodeJS.Signals | null;
-		error: Error | null;
-	}>((resolveResult) => {
-		let settled = false;
-		const settle = (value: { exitCode: number | null; signal: NodeJS.Signals | null; error: Error | null }) => {
-			if (settled) return;
-			settled = true;
-			resolveResult(value);
-		};
-		child.once("error", (error) => settle({ exitCode: null, signal: null, error }));
-		child.once("exit", (exitCode, signal) => settle({ exitCode, signal, error: null }));
-	}).finally(() => {
-		for (const { signal, handler } of handlers) process.removeListener(signal, handler);
-	});
+	let result: BrowserCommandResult;
+	try {
+		const navigation = actionContext
+			? planAuthenticatedLabNavigation(browserArguments, actionContext.manifest)
+			: null;
+		if (navigation?.prepareArguments) {
+			const prepared = await runBrowserCommand(cliPath, navigation.prepareArguments, environment, true);
+			if (prepared.error || prepared.exitCode !== 0)
+				throw new Error("Agent Lab browser could not open its isolated session.");
+		}
+		if (navigation && actionContext) {
+			await withLabBrowserAdmissionScript(actionContext.manifest, async (scriptPath) => {
+				const admission = await runBrowserCommand(
+					cliPath,
+					[...navigation.sessionArguments, "run-code", `--filename=${scriptPath}`],
+					environment,
+					true,
+				);
+				if (admission.error || admission.exitCode !== 0)
+					throw new Error(
+						"Agent Lab browser admission failed. Check the isolated runtime and reopen the project URL.",
+					);
+			});
+		}
+		result = await runBrowserCommand(cliPath, navigation?.navigationArguments ?? browserArguments, environment);
+	} catch (error) {
+		result = { exitCode: null, signal: null, error: error instanceof Error ? error : new Error(String(error)) };
+	}
 
 	await completeAgentBrowserAction(actionContext, result).catch(() => {});
 	if (result.error) throw result.error;

@@ -68,7 +68,64 @@ function extractPiPromptArgument(args: readonly string[]): string {
 	return "";
 }
 
+const CODEX_OPTIONS_WITH_VALUES = new Set([
+	"-c",
+	"--config",
+	"-m",
+	"--model",
+	"-p",
+	"--profile",
+	"-s",
+	"--sandbox",
+	"-a",
+	"--ask-for-approval",
+	"--enable",
+	"--disable",
+	"-C",
+	"--cd",
+	"-i",
+	"--image",
+	"--add-dir",
+]);
+
+function resolveFakeCodexResume(
+	args: readonly string[],
+): Pick<FakeAgentInvocation, "resumeKind" | "requestedSessionId"> {
+	const separator = args.indexOf("--");
+	const optionArgs = separator === -1 ? args : args.slice(0, separator);
+	const positionals: string[] = [];
+	let lastCount = 0;
+	for (let index = 0; index < optionArgs.length; index += 1) {
+		const argument = optionArgs[index];
+		if (!argument) throw new Error("Fake Codex received an empty launch argument.");
+		if (CODEX_OPTIONS_WITH_VALUES.has(argument)) {
+			if (!optionArgs[index + 1]) throw new Error("Fake Codex received an option without its value.");
+			index += 1;
+		} else if (argument === "--last") {
+			lastCount += 1;
+		} else if (argument === "--continue" || argument === "--resume" || argument.startsWith("--resume=")) {
+			throw new Error("Fake Codex requires the positional resume command.");
+		} else if (!argument.startsWith("-")) {
+			positionals.push(argument);
+		}
+	}
+	if (positionals[0] !== "resume") {
+		if (lastCount > 0 || positionals.includes("resume"))
+			throw new Error("Fake Codex received an ambiguous resume command.");
+		return { resumeKind: "fresh", requestedSessionId: null };
+	}
+	if (positionals.length === 1 && lastCount === 1) return { resumeKind: "continue", requestedSessionId: null };
+	const target = positionals[1];
+	if (lastCount !== 0 || positionals.length !== 2 || !target || !/^[a-zA-Z0-9_-]{1,128}$/.test(target)) {
+		throw new Error("Fake Codex requires one unambiguous resume target or --last.");
+	}
+	return { resumeKind: "targeted", requestedSessionId: target };
+}
+
 export function resolveFakeAgentInvocation(provider: FakeAgentProvider, args: readonly string[]): FakeAgentInvocation {
+	if (provider === "codex") {
+		return { prompt: extractPromptArgument(args), ...resolveFakeCodexResume(args), settingsPath: null };
+	}
 	if (provider === "pi") {
 		const requestedSessionId = findOptionValue(args, "--session");
 		return {
@@ -292,7 +349,7 @@ export function parseFakeAgentCommand(rawInput: string): FakeAgentCommand {
 }
 
 export function extractPromptArgument(args: readonly string[]): string {
-	const separator = args.lastIndexOf("--");
+	const separator = args.indexOf("--");
 	if (separator >= 0) {
 		return args.slice(separator + 1).join(" ");
 	}

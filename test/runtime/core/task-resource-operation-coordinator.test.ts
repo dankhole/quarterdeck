@@ -14,6 +14,24 @@ function createDeferred<T>(): {
 }
 
 describe("TaskResourceOperationCoordinator", () => {
+	it("retains admitted project and unscoped work until all effects settle", async () => {
+		const coordinator = new TaskResourceOperationCoordinator();
+		const scoped = createDeferred<void>();
+		const unscoped = createDeferred<void>();
+		const first = coordinator.run("project", "task", async () => await scoped.promise);
+		const second = coordinator.runProject(null, async () => await unscoped.promise);
+		let idle = false;
+		const draining = coordinator.waitForIdle().then(() => {
+			idle = true;
+		});
+		scoped.resolve();
+		await first;
+		expect(idle).toBe(false);
+		unscoped.resolve();
+		await Promise.all([second, draining]);
+		expect(idle).toBe(true);
+	});
+
 	it("serializes the same project task across independent callers", async () => {
 		const coordinator = new TaskResourceOperationCoordinator();
 		const gate = createDeferred<void>();

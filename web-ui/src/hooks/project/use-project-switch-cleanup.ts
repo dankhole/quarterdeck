@@ -75,15 +75,35 @@ export function useProjectSwitchCleanup({
 	}, [isProjectSwitching, navigationCurrentProjectId, resetProjectSyncState]);
 
 	// Reset task editor state when switching projects.
+	const previousSwitchingRef = useRef({ active: false, target: navigationCurrentProjectId });
 	useLayoutEffect(() => {
-		if (!isProjectSwitching) {
-			return;
-		}
-		resetTaskEditorWorkflow();
-	}, [isProjectSwitching, resetTaskEditorWorkflow]);
+		const previous = previousSwitchingRef.current;
+		previousSwitchingRef.current = { active: isProjectSwitching, target: navigationCurrentProjectId };
+		if (isProjectSwitching && (!previous.active || previous.target !== navigationCurrentProjectId))
+			resetTaskEditorWorkflow();
+	}, [isProjectSwitching, navigationCurrentProjectId, resetTaskEditorWorkflow]);
 
-	// Reset all transient state when the current project changes.
+	// Track transient ownership separately from the passive terminal cleanup.
+	// Resolving the initial path for the same project is hydration, not a switch.
+	const previousTransientScopeRef = useRef<{
+		projectId: string | null;
+		path: string | null;
+		unavailable: boolean;
+	} | null>(null);
 	useLayoutEffect(() => {
+		const previous = previousTransientScopeRef.current;
+		previousTransientScopeRef.current = {
+			projectId: currentProjectId,
+			path: projectPath,
+			unavailable: isProjectUnavailable,
+		};
+		if (
+			previous &&
+			previous.projectId === currentProjectId &&
+			(previous.path === null || previous.path === projectPath) &&
+			previous.unavailable === isProjectUnavailable
+		)
+			return;
 		resetTaskEditorWorkflow();
 		setIsClearTrashDialogOpen(false);
 		resetGitActionState();

@@ -4,13 +4,22 @@ import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { terminateProcessTree } from "../../src/core/process-termination.js";
-import { startQuarterdeckServer } from "./integration-server";
+import { startQuarterdeckServer, waitForProcessStart } from "./integration-server";
 
 vi.mock("node:child_process", async (importOriginal) => ({
 	...(await importOriginal<typeof childProcess>()),
 	spawn: vi.fn(),
 }));
 vi.mock("../../src/core/process-termination.js", () => ({ terminateProcessTree: vi.fn() }));
+vi.mock("../../src/server/runtime-owner-client.js", () => ({
+	verifyRuntimeOwner: vi.fn(async () => "http://127.0.0.1:1234"),
+	createOwnerBrowserBootstrap: vi.fn(
+		async () => "http://127.0.0.1:1234/api/runtime/client-bootstrap?capability=synthetic",
+	),
+}));
+vi.mock("../../src/server/runtime-ownership.js", () => ({
+	discoverRuntimeOwner: vi.fn(async () => ({ descriptor: { status: "ready" } })),
+}));
 
 async function startFakeServer() {
 	const child = new childProcess.ChildProcess();
@@ -40,8 +49,21 @@ describe("integration server teardown", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		vi.clearAllMocks();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(null, {
+						status: 303,
+						headers: { "set-cookie": "qd-synthetic=synthetic; HttpOnly; Path=/" },
+					}),
+			),
+		);
 	});
-	afterEach(() => vi.useRealTimers());
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+	});
 
 	it("allows the runtime's full shutdown deadline before forcing termination", async () => {
 		const { child, server } = await startFakeServer();
@@ -139,5 +161,22 @@ describe("integration server teardown", () => {
 		await vi.advanceTimersByTimeAsync(12_000);
 		await rejected;
 		expect(terminateProcessTree).not.toHaveBeenCalled();
+	});
+
+	it("redacts browser capabilities from failed readiness output on both pipes", async () => {
+		const child = new childProcess.ChildProcess();
+		const stdout = new PassThrough();
+		const stderr = new PassThrough();
+		child.stdout = stdout;
+		child.stderr = stderr;
+		const starting = waitForProcessStart(child);
+		stdout.write("Browser URL: http://127.0.0.1:1234/api/runtime/client-bootstrap?capability=stdout-secret\n");
+		stderr.write("Failed /api/runtime/client-bootstrap?capability=stderr-secret\n");
+		child.emit("exit", 1, null);
+		const failure = await starting.catch((error: unknown) => error);
+		expect(failure).toBeInstanceOf(Error);
+		expect((failure as Error).message).toContain("[private browser bootstrap]");
+		expect((failure as Error).message).not.toContain("stdout-secret");
+		expect((failure as Error).message).not.toContain("stderr-secret");
 	});
 });

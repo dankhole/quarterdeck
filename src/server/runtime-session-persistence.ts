@@ -77,10 +77,22 @@ export class RuntimeSessionPersistence {
 		}
 	};
 
-	close = async (): Promise<void> => {
+	close = async (options?: { skipPersistence?: boolean }): Promise<void> => {
 		const trackedProjectIds = Array.from(this.sessionPersistenceUnsubscribes.keys());
 		for (const projectId of trackedProjectIds) {
 			this.unsubscribeRuntimeSessionPersistence(projectId);
+		}
+		if (options?.skipPersistence) {
+			this.sessionPersistenceClosed = true;
+			await Promise.allSettled(
+				Array.from(this.sessionPersistenceStates.keys()).map(
+					async (projectId) => await this.disposeProject(projectId),
+				),
+			);
+			while (this.sessionPersistenceBarriers.size > 0) {
+				await Promise.allSettled(Array.from(this.sessionPersistenceBarriers));
+			}
+			return;
 		}
 		const persistenceResults = await Promise.allSettled(
 			trackedProjectIds.map(async (projectId) => await this.flushRuntimeSessionPersistence(projectId)),

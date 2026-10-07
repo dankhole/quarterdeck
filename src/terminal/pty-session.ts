@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import type * as NodePty from "node-pty";
 
 import { mergeProcessEnvironment, resolveWindowsCompatibleCommand } from "../core";
+import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 import {
 	type ManagedProcessOwnershipHandle,
 	registerManagedProcessOwnership,
@@ -217,6 +218,7 @@ export class PtySession {
 		};
 
 		let ptyProcess: NodePty.IPty;
+		assertRuntimeProcessLaunchAdmission();
 		try {
 			ptyProcess = getNodePtySpawn()(spawnBinary, spawnArgs, ptyOptions);
 		} catch (error) {

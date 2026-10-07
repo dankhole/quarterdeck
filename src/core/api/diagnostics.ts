@@ -109,13 +109,14 @@ export type DiagnosticRecorderHealth = z.infer<typeof diagnosticRecorderHealthSc
 export const runtimeDiagnosticDescriptorStatusSchema = z.enum(["starting", "ready", "stopping", "stopped", "failed"]);
 export type RuntimeDiagnosticDescriptorStatus = z.infer<typeof runtimeDiagnosticDescriptorStatusSchema>;
 
-export const runtimeDiagnosticDescriptorSchema = z.object({
+const runtimeDiagnosticDescriptorObjectSchema = z.object({
 	version: z.literal(DIAGNOSTIC_SCHEMA_VERSION),
+	processKind: z.enum(["runtime", "desktop"]).default("runtime"),
 	runtimeInstanceId: z.string().min(1),
 	status: runtimeDiagnosticDescriptorStatusSchema,
 	pid: z.number().int().positive(),
-	host: z.string().min(1),
-	port: z.number().int().min(1).max(65_535),
+	host: z.string().min(1).nullable(),
+	port: z.number().int().min(1).max(65_535).nullable(),
 	quarterdeckVersion: z.string().min(1),
 	nodeMajorVersion: z.number().int().positive(),
 	platform: z.enum(["mac", "linux", "windows", "other"]),
@@ -126,12 +127,24 @@ export const runtimeDiagnosticDescriptorSchema = z.object({
 	journalDirectory: z.string().min(1),
 	failure: z.string().nullable(),
 });
+function hasValidDiagnosticEndpoint(value: {
+	processKind: "runtime" | "desktop";
+	host: string | null;
+	port: number | null;
+}): boolean {
+	return value.processKind === "desktop"
+		? value.host === null && value.port === null
+		: value.host !== null && value.port !== null;
+}
+export const runtimeDiagnosticDescriptorSchema = runtimeDiagnosticDescriptorObjectSchema.refine(
+	hasValidDiagnosticEndpoint,
+	"Only desktop evidence instances may omit their HTTP endpoint.",
+);
 export type RuntimeDiagnosticDescriptor = z.infer<typeof runtimeDiagnosticDescriptorSchema>;
 
-export const publicRuntimeDiagnosticDescriptorSchema = runtimeDiagnosticDescriptorSchema.omit({
-	diagnosticToken: true,
-	journalDirectory: true,
-});
+export const publicRuntimeDiagnosticDescriptorSchema = runtimeDiagnosticDescriptorObjectSchema
+	.omit({ diagnosticToken: true, journalDirectory: true })
+	.refine(hasValidDiagnosticEndpoint, "Only desktop evidence instances may omit their HTTP endpoint.");
 export type PublicRuntimeDiagnosticDescriptor = z.infer<typeof publicRuntimeDiagnosticDescriptorSchema>;
 
 export const diagnosticProviderStatusSchema = z.enum(["completed", "timed_out", "failed", "unavailable"]);

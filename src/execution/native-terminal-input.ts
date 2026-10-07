@@ -11,6 +11,8 @@ interface NativeTerminalInputDependencies {
 	authorization: NativeInputAuthorization;
 	taskResourceOperations: TaskResourceOperationRunner;
 	hasStructuredOwner: () => boolean;
+	/** Validate location inside the reserved task operation, before native authorization. */
+	beforeWrite?: () => Promise<void>;
 }
 
 /** A connection may write only to the exact native PTY it attached to. */
@@ -21,6 +23,7 @@ export function createNativeTerminalInputWriter({
 	authorization,
 	taskResourceOperations,
 	hasStructuredOwner,
+	beforeWrite,
 }: NativeTerminalInputDependencies): TerminalInputWriter {
 	let sessionInstanceId = manager.getTaskSessionProcessIdentity(taskId)?.sessionInstanceId;
 	let disposed = false;
@@ -38,6 +41,9 @@ export function createNativeTerminalInputWriter({
 			}
 			if (!isCurrentSession()) return null;
 			return await taskResourceOperations.run(scope.projectId, taskId, async () => {
+				if (!isCurrentSession()) return null;
+				// Reserve arrival order before any asynchronous project/location checks.
+				await beforeWrite?.();
 				if (!isCurrentSession()) return null;
 				for (;;) {
 					const ownership = await authorization.read();

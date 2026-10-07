@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const stateMocks = vi.hoisted(() => ({
+	loadProjectContext: vi.fn(async () => null),
 	loadProjectState: vi.fn(),
 	loadSavedProjectStateById: vi.fn(),
 	loadProjectScopeById: vi.fn(),
@@ -31,7 +32,7 @@ vi.mock("../../../src/state", () => ({
 	listProjectIndexEntries: stateMocks.listProjectIndexEntries,
 	loadProjectBoardById: vi.fn(),
 	loadProjectBoardSnapshotById: stateMocks.loadProjectBoardSnapshotById,
-	loadProjectContext: vi.fn(async () => null),
+	loadProjectContext: stateMocks.loadProjectContext,
 	loadProjectScopeById: stateMocks.loadProjectScopeById,
 	loadSavedProjectStateById: stateMocks.loadSavedProjectStateById,
 	updateProjectIndexMetadata: stateMocks.updateProjectIndexMetadata,
@@ -85,6 +86,8 @@ import {
 	type RuntimeProjectStateResponse,
 	runtimeTaskSessionSummarySchema,
 } from "../../../src/core";
+import type { RuntimeDiagnostics } from "../../../src/diagnostics";
+import * as orphanMaintenance from "../../../src/server/project-orphan-maintenance";
 import { createProjectRegistry, type ProjectRegistry } from "../../../src/server/project-registry";
 import { LEGACY_STARTUP_SEMANTIC_STATE_WARNING, type TerminalSessionManager } from "../../../src/terminal";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
@@ -157,6 +160,7 @@ describe("project registry startup recovery integration", () => {
 	let manager: TerminalSessionManager | null = null;
 
 	beforeEach(() => {
+		stateMocks.loadProjectContext.mockClear();
 		stateMocks.loadProjectScopeById.mockReset();
 		stateMocks.loadProjectScopeById.mockImplementation(async (projectId: string) => {
 			const entries = (await stateMocks.listProjectIndexEntries.getMockImplementation()?.()) ?? [];
@@ -214,6 +218,57 @@ describe("project registry startup recovery integration", () => {
 		registry?.stopMaintenance();
 		manager?.stopReconciliation();
 		manager?.markInterruptedAndStopAll();
+		vi.restoreAllMocks();
+	});
+
+	it("does not register the launch directory when native desktop startup opts out", async () => {
+		const config = createRuntimeConfig();
+		registry = await createProjectRegistry({
+			cwd: "/synthetic/home",
+			registerCwdProject: false,
+			loadGlobalRuntimeConfig: async () => config,
+			loadRuntimeConfig: async () => config,
+			hasGitRepository: async () => true,
+			pathIsDirectory: async () => true,
+		});
+		expect(stateMocks.loadProjectContext).not.toHaveBeenCalled();
+		expect(registry.getActiveProjectId()).toBeNull();
+	});
+
+	it("stops and drains local maintenance when diagnostic setup fails before the registry returns", async () => {
+		const config = createRuntimeConfig();
+		stateMocks.listProjectIndexEntries.mockResolvedValue([
+			{ projectId: "project-1", repoPath: "/synthetic/project" },
+		]);
+		const timer = {
+			start: vi.fn(),
+			stop: vi.fn(),
+			runNow: vi.fn(async () => undefined),
+			waitForIdle: vi.fn(async () => undefined),
+		};
+		vi.spyOn(orphanMaintenance, "createProjectOrphanMaintenanceTimer").mockReturnValue(timer);
+		const dispose = vi.fn();
+		const failure = new Error("Diagnostic provider failed");
+		const registerSnapshotProvider = vi
+			.fn()
+			.mockReturnValueOnce(dispose)
+			.mockImplementationOnce(() => {
+				throw failure;
+			});
+		await expect(
+			createProjectRegistry({
+				cwd: "/synthetic/home",
+				loadGlobalRuntimeConfig: async () => config,
+				loadRuntimeConfig: async () => config,
+				hasGitRepository: async () => false,
+				pathIsDirectory: async () => true,
+				diagnostics: { registerSnapshotProvider } as unknown as RuntimeDiagnostics,
+			}),
+		).rejects.toBe(failure);
+		expect(timer.start).toHaveBeenCalledOnce();
+		expect(timer.stop).toHaveBeenCalledOnce();
+		expect(timer.waitForIdle).toHaveBeenCalledOnce();
+		expect(dispose).toHaveBeenCalledOnce();
 	});
 
 	it("fails manager hydration instead of replacing unreadable durable sessions with an empty store", async () => {

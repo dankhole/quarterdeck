@@ -18,6 +18,9 @@ export interface FileEditorTab {
 	size: number;
 	isSaving: boolean;
 	error: string | null;
+	/** Recovered text is never submitted by either autosave policy. */
+	recoveryRequiresSave?: boolean;
+	recoveryId?: string;
 }
 
 export function normalizeFileEditorAutosaveMode(value: string | null | undefined): FileEditorAutosaveMode {
@@ -56,6 +59,7 @@ export function createFileEditorTab(path: string, content: RuntimeFileContentRes
 		size: content.size,
 		isSaving: false,
 		error: null,
+		recoveryRequiresSave: false,
 	};
 }
 
@@ -121,6 +125,7 @@ function applySavedContentToFileEditorTab(
 		...tab,
 		value,
 		savedValue,
+		recoveryRequiresSave: false,
 		contentHash: content.contentHash ?? null,
 		language: content.language,
 		binary: content.binary,

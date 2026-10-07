@@ -43,6 +43,7 @@ describe("project management integration", { concurrent: false }, () => {
 
 			const addWithoutInitResponse = await requestJson<RuntimeProjectAddResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "projects.add",
 				type: "mutation",
 				projectId: projectAId,
@@ -57,6 +58,7 @@ describe("project management integration", { concurrent: false }, () => {
 
 			const projectsAfterDeclinedInit = await requestJson<RuntimeProjectsResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "projects.list",
 				type: "query",
 				projectId: projectAId,
@@ -66,6 +68,7 @@ describe("project management integration", { concurrent: false }, () => {
 
 			const addWithInitResponse = await requestJson<RuntimeProjectAddResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "projects.add",
 				type: "mutation",
 				projectId: projectAId,
@@ -114,6 +117,7 @@ describe("project management integration", { concurrent: false }, () => {
 
 			const addProjectResponse = await requestJson<RuntimeProjectAddResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "projects.add",
 				type: "mutation",
 				projectId: projectAId,
@@ -131,6 +135,7 @@ describe("project management integration", { concurrent: false }, () => {
 
 			streamA = await connectRuntimeStream(
 				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectAId)}`,
+				server.browserHeaders,
 			);
 			const initialSnapshot = (await streamA.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
@@ -139,6 +144,7 @@ describe("project management integration", { concurrent: false }, () => {
 
 			const removeResponse = await requestJson<RuntimeProjectRemoveResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "projects.remove",
 				type: "mutation",
 				projectId: projectAId,
@@ -158,6 +164,7 @@ describe("project management integration", { concurrent: false }, () => {
 
 			streamB = await connectRuntimeStream(
 				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectBId)}`,
+				server.browserHeaders,
 			);
 			const fallbackSnapshot = (await streamB.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
@@ -167,6 +174,7 @@ describe("project management integration", { concurrent: false }, () => {
 
 			const projectsAfterRemoval = await requestJson<RuntimeProjectsResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
+				headers: server.browserHeaders,
 				procedure: "projects.list",
 				type: "query",
 				projectId: projectBId,

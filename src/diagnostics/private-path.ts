@@ -8,7 +8,7 @@ import {
 	PrivateDirectoryAclError,
 	type WindowsPrivateAclCommandResult,
 	type WindowsPrivateAclCommandRunner,
-} from "../core/private-directory";
+} from "../core/private-directory.js";
 
 export type { WindowsPrivateAclCommandResult, WindowsPrivateAclCommandRunner };
 

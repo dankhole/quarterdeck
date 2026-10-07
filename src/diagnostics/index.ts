@@ -2,12 +2,12 @@ export {
 	getDiagnosticErrorClass,
 	sanitizeDiagnosticText,
 	sanitizeDiagnosticValue,
-} from "./bounded-value";
+} from "./bounded-value.js";
 export {
 	type DiagnosticBundleEvidenceSource,
 	type WriteDiagnosticBundleResult,
 	writeDiagnosticBundle,
-} from "./bundle";
+} from "./bundle.js";
 export {
 	type CollectedDiagnosticCapture,
 	collectDiagnosticCapture,
@@ -17,7 +17,12 @@ export {
 	RuntimeDiagnosticClientError,
 	requestRuntimeDiagnostic,
 	selectRuntimeDiagnosticInstance,
-} from "./client";
+} from "./client.js";
+export {
+	createDesktopRuntimeDiagnosticsIngestor,
+	type DesktopDiagnosticObservedState,
+	getDesktopDiagnosticJournalState,
+} from "./desktop-diagnostics.js";
 export {
 	captureScopeFromRecordFilter,
 	type DiagnosticLogCandidate,
@@ -25,10 +30,10 @@ export {
 	type DiagnosticRecordFilter,
 	matchesDiagnosticRecordFilter,
 	mergeDiagnosticRecordSources,
-} from "./diagnostic-record";
-export { evaluateDiagnosticSnapshot, filterDiagnosticFindingsByScope } from "./doctor";
-export { handleDiagnosticsHttpRequest } from "./http";
-export { DiagnosticJournal, readDiagnosticJournal } from "./journal";
+} from "./diagnostic-record.js";
+export { evaluateDiagnosticSnapshot, filterDiagnosticFindingsByScope } from "./doctor.js";
+export { handleDiagnosticsHttpRequest } from "./http.js";
+export { DiagnosticJournal, readDiagnosticJournal } from "./journal.js";
 export {
 	copyPrivateDiagnosticFile,
 	DiagnosticAclError,
@@ -37,20 +42,20 @@ export {
 	ensurePrivateDiagnosticDirectory,
 	type WindowsPrivateAclCommandResult,
 	type WindowsPrivateAclCommandRunner,
-} from "./private-path";
-export { type DiagnosticRecordCollectionResult, DiagnosticRecorder } from "./recorder";
+} from "./private-path.js";
+export { type DiagnosticRecordCollectionResult, DiagnosticRecorder } from "./recorder.js";
 export {
 	type BrowserLiveSubscriptionState,
 	type BrowserSnapshotRequest,
 	type BrowserSnapshotRequester,
 	type BrowserSnapshotRequestResult,
 	RuntimeBrowserDiagnostics,
-} from "./runtime-browser-diagnostics";
+} from "./runtime-browser-diagnostics.js";
 export {
 	createRuntimeDiagnostics,
 	type DiagnosticCaptureData,
 	RuntimeDiagnostics,
-} from "./runtime-diagnostics";
+} from "./runtime-diagnostics.js";
 export {
 	type DiscoveredRuntimeDiagnosticInstance,
 	discoverRuntimeDiagnosticInstances,
@@ -59,5 +64,5 @@ export {
 	getDiagnosticsRootPath,
 	RuntimeDiagnosticInstance,
 	readRuntimeDiagnosticDescriptor,
-} from "./runtime-instance";
-export { DiagnosticSnapshotCoordinator, type DiagnosticSnapshotProvider } from "./snapshot";
+} from "./runtime-instance.js";
+export { DiagnosticSnapshotCoordinator, type DiagnosticSnapshotProvider } from "./snapshot.js";

@@ -30,8 +30,10 @@ import {
 	resolveAgentCommandForLaunch,
 	SUPPORTED_PI_VERSION,
 	setAgentAvailabilityDiagnosticSink,
+	waitForPendingAgentAvailabilityProbes,
 } from "../../../src/config";
 import { getRuntimeAgentCatalogEntry } from "../../../src/core";
+import { installRuntimeProcessLaunchAdmission } from "../../../src/core/runtime-process-launch-admission.js";
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
 
 function buildRuntimeConfigResponse(
@@ -98,6 +100,42 @@ beforeEach(() => {
 });
 
 describe("agent-registry", () => {
+	it("drains the complete version-to-feature sequence before shutdown process admission closes", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+		let versionCallback!: ExecFileCallback;
+		let featureCallback!: ExecFileCallback;
+		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+			if (args[0] === "--version") versionCallback = readExecFileCallback(rest);
+			else featureCallback = readExecFileCallback(rest);
+			return {} as ChildProcess;
+		});
+		const probing = resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+		await vi.waitFor(() => expect(versionCallback).toBeTypeOf("function"));
+		const finished = vi.fn();
+		const draining = waitForPendingAgentAvailabilityProbes().then(finished);
+		versionCallback(null, "0.157.0\n", "");
+		await vi.waitFor(() => expect(featureCallback).toBeTypeOf("function"));
+		expect(finished).not.toHaveBeenCalled();
+		featureCallback(null, "hooks                                stable             true\n", "");
+		await Promise.all([probing, draining]);
+		expect(finished).toHaveBeenCalledOnce();
+	});
+	it("refuses configured executable availability probes before spawning", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+		const release = installRuntimeProcessLaunchAdmission({
+			beforeSpawn: () => {
+				throw new Error("Custody admission refused");
+			},
+		});
+		try {
+			await expect(
+				resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" })),
+			).rejects.toMatchObject({ reason: "probe_failed" });
+			expect(childProcessMocks.execFile).not.toHaveBeenCalled();
+		} finally {
+			release();
+		}
+	});
 	it("keeps Pi setup instructions pinned to the validated runtime version", () => {
 		const piCatalogEntry = getRuntimeAgentCatalogEntry("pi");
 

@@ -14,6 +14,7 @@ import type {
 	AgentOutputTransitionInspectionPredicate,
 } from "./agent-session-adapters";
 import type { ClaudeWorkspaceTrustDriverState } from "./claude-workspace-trust";
+import { type CodexWorkspaceTrustDriverState, createCodexWorkspaceTrustDriverState } from "./codex-workspace-trust";
 import type { HookEventOrderState } from "./hook-event-order";
 import { PtyLaunchError, PtySpawnError } from "./pty-runtime-health";
 import type { PtySession } from "./pty-session";
@@ -42,6 +43,8 @@ export interface ActiveProcessState {
 	workspaceTrustBuffer: string | null;
 	/** Rendered-screen trust confirmation (Claude). */
 	claudeWorkspaceTrust: ClaudeWorkspaceTrustDriverState | null;
+	/** Modern Codex startup trust confirmation, fenced by rendered-output revision. */
+	codexWorkspaceTrust: CodexWorkspaceTrustDriverState | null;
 	cols: number;
 	rows: number;
 	terminalProtocolFilter: TerminalProtocolFilterState;
@@ -297,6 +300,8 @@ export function createActiveProcessState(opts: CreateActiveProcessStateOptions):
 		workspaceTrustBuffer: opts.willAutoTrust && opts.agentId !== "claude" ? "" : null,
 		claudeWorkspaceTrust:
 			opts.willAutoTrust && opts.agentId === "claude" ? createClaudeWorkspaceTrustDriverState() : null,
+		codexWorkspaceTrust:
+			opts.willAutoTrust && opts.agentId === "codex" ? createCodexWorkspaceTrustDriverState() : null,
 		cols: opts.cols,
 		rows: opts.rows,
 		terminalProtocolFilter: createTerminalProtocolFilterState({

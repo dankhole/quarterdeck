@@ -1,6 +1,6 @@
 # Unified Diagnostics Contract
 
-Quarterdeck has one diagnostics system for runtime, browser, terminal, and isolated Agent Lab evidence. The system is designed for post-incident investigation: its lightweight recorder starts automatically, so a newly started agent can inspect recent behavior without asking the user to reproduce the problem after enabling logs.
+Quarterdeck has one diagnostics system for runtime, native desktop, browser, terminal, and isolated Agent Lab evidence. The system is designed for post-incident investigation: its lightweight recorder starts automatically, so a newly started agent can inspect recent behavior without asking the user to reproduce the problem after enabling logs.
 
 For commands and operator workflow, see [Unified diagnostics](../DEVELOPMENT.md#unified-diagnostics). For deterministic UI and lifecycle testing, see [Agent functional testing](./agent-functional-testing.md). The completed design plan and migration record are retained in [history](./history/agent-diagnostics-plan.md).
 
@@ -40,9 +40,21 @@ Start bundle analysis at `manifest.json`, then correlate:
 
 Diagnostics can report layout bounds and terminal metrics, but it cannot reconstruct historical pixels. Use Agent Lab screenshots or Playwright traces when visual truth matters.
 
+## Desktop evidence
+
+The native main process uses the same bounded recorder and private journal under the canonical state home. Its descriptor has `processKind: "desktop"` and no HTTP endpoint. Older descriptors without a role remain runtime evidence. Desktop evidence never participates in runtime admission, project ownership, relocation exclusion, or authenticated endpoint discovery.
+
+Fixed metadata events cover startup, window/lifecycle decisions, helper generations, updater state, and shutdown outcomes. Each carries a bounded observed state; no environment values, command arguments, arbitrary errors, prompts, or editor contents are accepted. A normal forced quit remains explicitly unconfirmed and does not report safe ownership release or update installation. Recorder closure describes evidence finalization, not runtime cleanup.
+
+An owned helper receives validated desktop metadata over private parent IPC and records it in its existing recorder. Its desktop snapshot provider retains only the latest observed state and timestamp. Canonical main records can be replayed in batches of at most 100; transport backpressure may discard pending projection records while the main journal retains the evidence. Attached runtimes do not ingest another app's desktop records.
+
+`diagnostics list` identifies desktop journals. `status`, `watch`, `doctor`, and `capture --instance <id>` read them locally, including failures before a helper becomes ready. Journal snapshots are explicitly last-observed evidence; current recorder health and subsystem state are unavailable through this path. The default selector prefers an authenticated runtime when present. `record` and `mark` require the owning runtime's authenticated endpoint and never write another process's journal.
+
+Native desktop export uses a folder picker and the canonical bundle writer. It exports authenticated owned-helper evidence when that generation is still selected, otherwise the exact main-process journal. An attached desktop exports its own journal; use the shared Diagnostics UI or CLI to export the independent runtime. Export accepts no renderer-supplied destination, enables no unrestricted downloads, and cancellation produces no export effects. Bundle descriptors identify the exported role and omit credentials.
+
 ## Implementation ownership
 
-The core schema, recorder, journal, bundle writer, doctor, and capture policy live under `src/diagnostics/`. Runtime discovery and authenticated read-only access are wired by the server. Browser recording and panel projection live under `web-ui/src/diagnostics/`. Agent Lab enriches the shared bundle contract under `scripts/agent-lab/` without widening production capture.
+The core schema, recorder, journal, bundle writer, doctor, and capture policy live under `src/diagnostics/`. Runtime discovery and authenticated read-only access are wired by the server. Native event admission and export live under `desktop/src/`, with fixed contracts in `src/core/api/desktop-diagnostics.ts`. Browser recording and panel projection live under `web-ui/src/diagnostics/`. Agent Lab enriches the shared bundle contract under `scripts/agent-lab/` without widening production capture.
 
 When changing the system, preserve these ownership boundaries:
 

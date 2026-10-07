@@ -1,0 +1,81 @@
+name: Desktop CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Unsigned desktop (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22.23.2"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web-ui/package-lock.json
+            desktop/package-lock.json
+      - name: Install pinned toolchain and isolated dependencies
+        run: |
+          npm install --global npm@11.19.1
+          npm ci
+          npm ci --prefix web-ui
+          npm ci --prefix desktop
+          npm --prefix desktop exec -- install-electron
+      - name: Build and check desktop sources
+        run: |
+          npm run test:release-policy
+          npm run build
+          npm --prefix desktop run typecheck
+          npm --prefix desktop test
+      - name: Make and verify native desktop artifact
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          npm --prefix desktop run make -- --arch="$TARGET_ARCH"
+          npm --prefix desktop run verify -- --manifest "$PWD/desktop/out/artifact-manifest-darwin-$TARGET_ARCH.json"
+      - name: Exercise isolated packaged app with a fake provider
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: npm run agent:desktop -- smoke --app "desktop/out/Quarterdeck-darwin-$TARGET_ARCH/Quarterdeck.app" --json
+      - name: Upload synthetic desktop lab evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-lab-${{ matrix.arch }}-${{ github.run_attempt }}
+          path: test-results/agent-lab/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload install containers and identity manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-unsigned-${{ matrix.arch }}-${{ github.run_attempt }}
+          path: |
+            desktop/out/make/**/*.dmg
+            desktop/out/make/**/*.zip
+            desktop/out/artifact-manifest-darwin-${{ matrix.arch }}.json
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

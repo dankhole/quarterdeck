@@ -21,7 +21,7 @@ import {
 } from "@/hooks/git/file-editor-workspace";
 import type { RuntimeFileContentResponse, RuntimeWorkdirEntryKind } from "@/runtime/types";
 import { useDebouncedEffect, useDocumentEvent, useWindowEvent } from "@/utils/react-use";
-
+import { flushDesktopFileEditorRecovery } from "./desktop-file-editor-recovery";
 import {
 	type FileEditorScopeIdentity,
 	getFileEditorCacheRevision,
@@ -73,7 +73,10 @@ export interface UseFileEditorWorkspaceResult {
 	handleDeleteEntryPath: (path: string, kind: RuntimeWorkdirEntryKind) => void;
 }
 
-type SaveFileEditorTabResult = "saved" | "skipped" | "failed";
+type SaveFileEditorTabResult = "saved" | "saved_recovery_failed" | "skipped" | "failed";
+
+const SAVED_RECOVERY_WARNING =
+	"File saved, but its recovery update could not be confirmed. Choose Retry recovery, or save a copy of your drafts.";
 
 function toErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -225,17 +228,27 @@ export function useFileEditorWorkspace(input: UseFileEditorWorkspaceInput): UseF
 			savingPathsRef.current.add(JSON.stringify([scopeKey, tab.path]));
 			setScopedTabs((currentTabs) => updateFileEditorTabSaving(currentTabs, tab.path, true));
 			try {
-				const saved = await saveFileContent(tab.path, submittedValue, expectedContentHash);
+				let saved: RuntimeFileContentResponse;
+				try {
+					saved = await saveFileContent(tab.path, submittedValue, expectedContentHash);
+				} catch (error) {
+					const message = toErrorMessage(error);
+					setScopedTabs((currentTabs) => updateFileEditorTabError(currentTabs, tab.path, message));
+					showAppToast({ intent: "danger", message, timeout: 7000 });
+					return "failed";
+				}
 				setScopedTabs((currentTabs) => markFileEditorTabSaved(currentTabs, tab.path, saved, submittedValue));
+				// Source truth is already saved. Recovery failure must never reclassify or retry that write.
+				const recoveryCommitted = await flushDesktopFileEditorRecovery().catch(() => false);
+				if (!recoveryCommitted) {
+					if (options.notifySuccess)
+						showAppToast({ intent: "warning", message: SAVED_RECOVERY_WARNING, timeout: 7000 });
+					return "saved_recovery_failed";
+				}
 				if (options.notifySuccess) {
 					showAppToast({ intent: "success", message: "File saved.", timeout: 2500 });
 				}
 				return "saved";
-			} catch (error) {
-				const message = toErrorMessage(error);
-				setScopedTabs((currentTabs) => updateFileEditorTabError(currentTabs, tab.path, message));
-				showAppToast({ intent: "danger", message, timeout: 7000 });
-				return "failed";
 			} finally {
 				savingPathsRef.current.delete(JSON.stringify([scopeKey, tab.path]));
 			}
@@ -254,11 +267,15 @@ export function useFileEditorWorkspace(input: UseFileEditorWorkspaceInput): UseF
 		let savedCount = 0;
 		let skippedDirtyCount = 0;
 		let failedCount = 0;
+		let recoveryFailedCount = 0;
 
 		for (const tab of dirtyTabs) {
 			const result = await saveTab(tab, { notifySuccess: false });
 			if (result === "saved") {
 				savedCount++;
+			} else if (result === "saved_recovery_failed") {
+				savedCount++;
+				recoveryFailedCount++;
 			} else if (result === "failed") {
 				failedCount++;
 			} else if (isFileEditorTabDirty(tab)) {
@@ -266,7 +283,14 @@ export function useFileEditorWorkspace(input: UseFileEditorWorkspaceInput): UseF
 			}
 		}
 
-		if (savedCount > 0 && failedCount === 0 && skippedDirtyCount === 0) {
+		if (recoveryFailedCount > 0) {
+			const sourceFailures = failedCount + skippedDirtyCount;
+			showAppToast({
+				intent: "warning",
+				message: `${savedCount} file${savedCount === 1 ? "" : "s"} saved, but recovery updates could not all be confirmed.${sourceFailures > 0 ? ` ${sourceFailures} file${sourceFailures === 1 ? "" : "s"} could not be saved.` : ""} Choose Retry recovery, or save a copy of your drafts.`,
+				timeout: 7000,
+			});
+		} else if (savedCount > 0 && failedCount === 0 && skippedDirtyCount === 0) {
 			showAppToast({
 				intent: "success",
 				message: `${savedCount} file${savedCount === 1 ? "" : "s"} saved.`,
@@ -282,7 +306,7 @@ export function useFileEditorWorkspace(input: UseFileEditorWorkspaceInput): UseF
 	}, [dirtyTabs, saveTab]);
 
 	const handleAutosaveFocusChange = useCallback(() => {
-		if (autosaveMode !== "focus" || !activeTab || discardPrompt !== null) {
+		if (autosaveMode !== "focus" || !activeTab || activeTab.recoveryRequiresSave || discardPrompt !== null) {
 			return;
 		}
 		void saveTab(activeTab, { notifySuccess: false });
@@ -311,6 +335,7 @@ export function useFileEditorWorkspace(input: UseFileEditorWorkspaceInput): UseF
 			}
 			void (async () => {
 				for (const tab of dirtyTabs) {
+					if (tab.recoveryRequiresSave) continue;
 					await saveTab(tab, { notifySuccess: false });
 				}
 			})();

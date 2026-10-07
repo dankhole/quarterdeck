@@ -14,6 +14,7 @@ import {
 	DialogFooter,
 	DialogHeader,
 } from "@/components/ui/dialog";
+import { useDesktopDraftProtection } from "@/hooks/app";
 import type { PromptShortcut } from "@/runtime/types";
 
 interface PromptShortcutEditorDialogProps {
@@ -59,6 +60,13 @@ export function PromptShortcutEditorDialog({
 	const [hiddenDefaults, setHiddenDefaults] = useState<string[]>([]);
 	const [isSaving, setIsSaving] = useState(false);
 	const [pendingDelete, setPendingDelete] = useState<DeleteAction | null>(null);
+	useDesktopDraftProtection(
+		"prompt shortcuts",
+		open &&
+			(isSaving ||
+				JSON.stringify(editedShortcuts) !== JSON.stringify(shortcuts) ||
+				JSON.stringify(hiddenDefaults) !== JSON.stringify(hiddenDefaultPromptShortcuts)),
+	);
 
 	useEffect(() => {
 		if (open) {

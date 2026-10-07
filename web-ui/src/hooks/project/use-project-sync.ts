@@ -139,6 +139,7 @@ export function useProjectSync({
 	});
 	const cachedBoardRestoreRef = useRef<CachedProjectBoardRestore | null>(null);
 	const syncTargetProjectIdRef = useRef<string | null>(currentProjectId);
+	const initialProjectSelectionPendingRef = useRef(currentProjectId === null);
 	const projectRefreshRequestIdRef = useRef(0);
 	const projectRefreshSuccessCountRef = useRef(0);
 	const warnedProjectIdsRef = useRef<Set<string>>(new Set());
@@ -538,6 +539,7 @@ export function useProjectSync({
 
 	const resetProjectSyncState = useCallback(
 		(targetProjectId?: string | null) => {
+			initialProjectSelectionPendingRef.current = false;
 			const prevProjectId = authoritativeProjectVersionRef.current.projectId;
 			const prevRevision = authoritativeProjectVersionRef.current.revision;
 			if (prevProjectId && prevRevision != null) {
@@ -617,8 +619,22 @@ export function useProjectSync({
 		if (!streamedProjectState) {
 			return;
 		}
+		// Root navigation can receive the runtime's selected project without an
+		// explicit switch. Adopt only that first authoritative selection; a reset
+		// or any established target permanently consumes this initial allowance.
+		if (
+			initialProjectSelectionPendingRef.current &&
+			hasReceivedSnapshot &&
+			currentProjectId !== null &&
+			syncTargetProjectIdRef.current === null &&
+			authoritativeProjectVersionRef.current.projectId === null &&
+			authoritativeProjectVersionRef.current.revision === null
+		) {
+			initialProjectSelectionPendingRef.current = false;
+			syncTargetProjectIdRef.current = currentProjectId;
+		}
 		applyProjectState(streamedProjectState);
-	}, [applyProjectState, hasNoProjects, streamedProjectState]);
+	}, [applyProjectState, currentProjectId, hasNoProjects, hasReceivedSnapshot, streamedProjectState]);
 
 	useEffect(() => {
 		if (!hasReceivedSnapshot || !isDocumentVisible || !streamedProjectState) {

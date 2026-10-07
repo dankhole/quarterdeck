@@ -1,11 +1,45 @@
 import type { Command } from "commander";
-
-import { type BackupListEntry, createBackup, getBackupHomePath, listBackups, restoreBackup } from "../state";
+import { withRuntimeMaintenance } from "../server/runtime-ownership.js";
+import { assertRuntimeRecoveryAdmission } from "../server/runtime-recovery-admission.js";
+import {
+	type BackupListEntry,
+	createBackup,
+	getBackupHomePath,
+	getRuntimeHomePath,
+	listBackups,
+	restoreBackup,
+} from "../state";
+import { installRuntimeWriteAdmission, waitForRuntimeWriteQuiescence } from "../state/runtime-write-admission.js";
 
 function formatBackupRow(entry: BackupListEntry): string {
 	const date = new Date(entry.manifest.timestamp).toLocaleString();
 	const projects = entry.manifest.projectIds.length;
 	return `  ${entry.name}  ${entry.manifest.trigger.padEnd(8)}  ${String(projects).padStart(2)} project(s)  ${date}`;
+}
+
+async function runBackupMaintenance<T>(operation: () => Promise<T>): Promise<T> {
+	return await withRuntimeMaintenance(getRuntimeHomePath(), async (lease) => {
+		process.env.QUARTERDECK_STATE_HOME = lease.canonicalStateHome;
+		await assertRuntimeRecoveryAdmission({
+			stateHome: lease.canonicalStateHome,
+			currentGeneration: lease.generation,
+			bootIdentity: lease.bootIdentity,
+		});
+		let writesAllowed = true;
+		installRuntimeWriteAdmission({
+			canonicalStateHome: lease.canonicalStateHome,
+			isCurrent: () => writesAllowed && lease.isCurrent(),
+		});
+		try {
+			lease.assertCurrent();
+			return await operation();
+		} finally {
+			// Close admission before the drain can resolve; a zero-pending check
+			// alone leaves a microtask gap before maintenance releases its lease.
+			writesAllowed = false;
+			await waitForRuntimeWriteQuiescence(lease.canonicalStateHome);
+		}
+	});
 }
 
 export function registerBackupCommand(program: Command): void {
@@ -16,7 +50,7 @@ export function registerBackupCommand(program: Command): void {
 		.description("Create a state backup snapshot.")
 		.action(async () => {
 			try {
-				const path = await createBackup({ trigger: "manual" });
+				const path = await runBackupMaintenance(() => createBackup({ trigger: "manual" }));
 				if (path) {
 					console.log(`Backup created: ${path}`);
 				} else {
@@ -67,7 +101,7 @@ export function registerBackupCommand(program: Command): void {
 			}
 
 			try {
-				const manifest = await restoreBackup(backupPathOrName);
+				const manifest = await runBackupMaintenance(() => restoreBackup(backupPathOrName));
 				const date = new Date(manifest.timestamp).toLocaleString();
 				console.log(`Restored backup from ${date} (${manifest.projectIds.length} project(s)).`);
 			} catch (error) {

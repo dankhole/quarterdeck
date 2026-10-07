@@ -8,6 +8,7 @@ import { recordHookUserSubmission } from "./hook-event-order";
 import { detectInterruptSignal, type InterruptSignal, scheduleInterruptRecovery } from "./session-interrupt-recovery";
 import type { ProcessEntry } from "./session-manager-types";
 import type { SessionTransitionEvent, SessionTransitionResult } from "./session-summary-store";
+import { cancelCodexWorkspaceTrustForUserInput } from "./session-workspace-trust";
 import type { TerminalSessionInputOptions } from "./terminal-session-service";
 
 const ESC = 0x1b;
@@ -112,6 +113,7 @@ export function processSessionInput(
 	const summary = deps.getSummary(taskId);
 
 	const protocolResponse = isTerminalProtocolResponse(data);
+	if (!protocolResponse) cancelCodexWorkspaceTrustForUserInput(entry.active);
 	const explicitSubmission =
 		!protocolResponse &&
 		(options.explicitUserSubmission === true ||

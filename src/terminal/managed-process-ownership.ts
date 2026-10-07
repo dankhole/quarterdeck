@@ -1,34 +1,18 @@
-import type { ExecFileException } from "node:child_process";
-import { execFile } from "node:child_process";
 import { open, readdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
-import { type EnsurePrivateDirectoryOptions, ensurePrivateDirectory } from "../core/private-directory";
-import { mergeProcessEnvironment } from "../core/process-environment.js";
-import { terminateProcessForTimeout } from "../core/process-termination.js";
-import { resolveWindowsPowerShellPath } from "../core/windows-system-paths.js";
-import { getRuntimeHomePath } from "../state";
+import { type EnsurePrivateDirectoryOptions, ensurePrivateDirectory } from "../core/private-directory.js";
+import {
+	runWindowsProcessSnapshot,
+	WINDOWS_PROCESS_SNAPSHOT_SCRIPT,
+	type WindowsProcessSnapshotRunner,
+} from "../core/windows-process-snapshot.js";
+import { getRuntimeHomePath } from "../state/project-state-utils.js";
+
+export type { WindowsProcessSnapshotResult, WindowsProcessSnapshotRunner } from "../core/windows-process-snapshot.js";
 
 const MANAGED_PROCESS_REGISTRY_DIRECTORY = "managed-processes";
 const MANAGED_PROCESS_RECORD_VERSION = 1;
-const PROCESS_IDENTITY_ENVIRONMENT_KEY = "QUARTERDECK_PROCESS_IDENTITY_PIDS";
-const WINDOWS_PROCESS_SNAPSHOT_TIMEOUT_MS = 10_000;
-
-const WINDOWS_PROCESS_SNAPSHOT_SCRIPT = [
-	"$ErrorActionPreference = 'Stop'",
-	`$serializedPids = [Environment]::GetEnvironmentVariable('${PROCESS_IDENTITY_ENVIRONMENT_KEY}', 'Process')`,
-	"$requestedPids = if ([string]::IsNullOrWhiteSpace($serializedPids)) { @() } else { @(ConvertFrom-Json -InputObject $serializedPids) }",
-	"$requested = @{}",
-	"foreach ($requestedPid in $requestedPids) { $requested[[int]$requestedPid] = $true }",
-	"$processes = if ($requested.Count -eq 0) { @() } else { $filter = (($requested.Keys | ForEach-Object { 'ProcessId = ' + [int]$_ }) -join ' OR '); @(Get-CimInstance Win32_Process -Filter $filter) }",
-	"$rows = @(foreach ($process in $processes) { if ($null -eq $process.CreationDate) { continue }; [pscustomobject]@{ pid = [int]$process.ProcessId; parentPid = [int]$process.ParentProcessId; creationTime = ([datetime]$process.CreationDate).ToUniversalTime().Ticks.ToString([System.Globalization.CultureInfo]::InvariantCulture) } })",
-	"ConvertTo-Json -InputObject $rows -Compress",
-].join("; ");
-
-const WINDOWS_PROCESS_SNAPSHOT_ENCODED_SCRIPT = Buffer.from(WINDOWS_PROCESS_SNAPSHOT_SCRIPT, "utf16le").toString(
-	"base64",
-);
-
 export interface ManagedProcessIdentity {
 	pid: number;
 	creationTime: string;
@@ -38,7 +22,7 @@ interface WindowsProcessSnapshotIdentity extends ManagedProcessIdentity {
 	parentPid: number;
 }
 
-interface ManagedProcessOwnershipRecord {
+export interface ManagedProcessOwnershipRecord {
 	version: typeof MANAGED_PROCESS_RECORD_VERSION;
 	recordId: string;
 	registeredAt: string;
@@ -55,13 +39,6 @@ export interface AbandonedManagedProcess {
 	identity: ManagedProcessIdentity;
 	records: ManagedProcessOwnershipHandle[];
 }
-
-export interface WindowsProcessSnapshotResult {
-	ok: boolean;
-	stdout: string;
-}
-
-export type WindowsProcessSnapshotRunner = (pids?: readonly number[]) => Promise<WindowsProcessSnapshotResult>;
 
 type EnsurePrivateRegistryDirectory = (path: string, options?: EnsurePrivateDirectoryOptions) => Promise<void>;
 
@@ -146,37 +123,6 @@ function parseWindowsProcessSnapshot(stdout: string): WindowsProcessSnapshotIden
 	return identities;
 }
 
-function runWindowsProcessSnapshot(pids: readonly number[] = []): Promise<WindowsProcessSnapshotResult> {
-	return new Promise((resolve) => {
-		let timeout: NodeJS.Timeout | null = null;
-		const child = execFile(
-			resolveWindowsPowerShellPath(),
-			[
-				"-NoLogo",
-				"-NoProfile",
-				"-NonInteractive",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-EncodedCommand",
-				WINDOWS_PROCESS_SNAPSHOT_ENCODED_SCRIPT,
-			],
-			{
-				encoding: "utf8",
-				env: mergeProcessEnvironment(process.env, {
-					[PROCESS_IDENTITY_ENVIRONMENT_KEY]: JSON.stringify(pids),
-				}),
-				windowsHide: true,
-			},
-			(error: ExecFileException | null, stdout: string | Buffer) => {
-				if (timeout) clearTimeout(timeout);
-				resolve({ ok: error === null, stdout: String(stdout ?? "") });
-			},
-		);
-		timeout = setTimeout(() => terminateProcessForTimeout(child), WINDOWS_PROCESS_SNAPSHOT_TIMEOUT_MS);
-		timeout.unref();
-	});
-}
-
 function getRegistryPath(stateHome = getRuntimeHomePath()): string {
 	return join(stateHome, MANAGED_PROCESS_REGISTRY_DIRECTORY);
 }
@@ -199,6 +145,14 @@ async function readSnapshot(
 		throw new ManagedProcessOwnershipError("Could not query Windows process creation identities.");
 	}
 	return parseWindowsProcessSnapshot(result.stdout);
+}
+
+/** Shares the existing exact Windows creation-time probe with runtime admission. */
+export async function queryManagedProcessIdentities(
+	pids: readonly number[],
+	options: ManagedProcessOwnershipOptions = {},
+): Promise<ManagedProcessIdentity[]> {
+	return (await readSnapshot(pids, options)).map(({ pid, creationTime }) => ({ pid, creationTime }));
 }
 
 function identitiesMatch(left: ManagedProcessIdentity, right: ManagedProcessIdentity | undefined): boolean {
@@ -287,6 +241,33 @@ async function readOwnershipRecords(
 			continue;
 		}
 		records.push({ record, handle: { recordId: record.recordId, path } });
+	}
+	return records;
+}
+
+/** Read-only preflight evidence: malformed records never authorize cleanup or recovery. */
+export async function readManagedProcessOwnershipEvidence(stateHome: string): Promise<ManagedProcessOwnershipRecord[]> {
+	const registryPath = getRegistryPath(stateHome);
+	let entries: string[];
+	try {
+		entries = await readdir(registryPath);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw error;
+	}
+	const records: ManagedProcessOwnershipRecord[] = [];
+	if (entries.length > 10_000)
+		throw new ManagedProcessOwnershipError("Managed process evidence exceeds its bounded size.");
+	for (const entry of entries) {
+		const name = entry;
+		if (!name.endsWith(".json")) continue;
+		const record = parseOwnershipRecord(JSON.parse(await readFile(join(registryPath, name), "utf8")));
+		if (!record || name !== `${record.recordId}.json`) {
+			throw new ManagedProcessOwnershipError(
+				"Managed process ownership evidence is unreadable; startup recovery is unsafe.",
+			);
+		}
+		records.push(record);
 	}
 	return records;
 }

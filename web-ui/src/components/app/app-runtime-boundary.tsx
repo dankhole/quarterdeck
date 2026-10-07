@@ -5,6 +5,7 @@ import { QuarterdeckAccessBlockedFallback } from "@/components/app/quarterdeck-a
 import { RuntimeDisconnectedFallback } from "@/components/app/runtime-disconnected-fallback";
 import { useProjectRuntimeStreamContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
+import { getRuntimeEnvironment } from "@/runtime/runtime-environment";
 
 function RuntimeDisconnectedOverlay({ message }: { message?: string }): ReactNode {
 	const dialogRef = useRef<HTMLDialogElement>(null);
@@ -48,13 +49,19 @@ function RuntimeDisconnectedOverlay({ message }: { message?: string }): ReactNod
 export function AppRuntimeBoundary({ children }: { children: ReactNode }): ReactNode {
 	const { isRuntimeDisconnected, streamError } = useProjectRuntimeStreamContext();
 	const { isQuarterdeckAccessBlocked } = useProjectRuntimeContext();
+	const desktop = getRuntimeEnvironment().kind === "desktop";
 
 	if (isQuarterdeckAccessBlocked) return <QuarterdeckAccessBlockedFallback />;
 
 	return (
 		<>
 			{children}
-			{isRuntimeDisconnected && <RuntimeDisconnectedOverlay message={streamError ?? undefined} />}
+			{isRuntimeDisconnected &&
+				(desktop ? (
+					<RuntimeDisconnectedFallback message={streamError ?? undefined} presentation="banner" />
+				) : (
+					<RuntimeDisconnectedOverlay message={streamError ?? undefined} />
+				))}
 		</>
 	);
 }

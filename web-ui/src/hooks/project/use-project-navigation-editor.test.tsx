@@ -12,8 +12,9 @@ import { createFileEditorTab } from "@/hooks/git/file-editor-workspace";
 import { type UseProjectNavigationResult, useProjectNavigation } from "./use-project-navigation";
 
 const remove = vi.hoisted(() => vi.fn());
+const add = vi.hoisted(() => vi.fn());
 vi.mock("@/runtime/trpc-client", () => ({
-	getRuntimeTrpcClient: () => ({ projects: { remove: { mutate: remove } } }),
+	getRuntimeTrpcClient: () => ({ projects: { remove: { mutate: remove }, add: { mutate: add } } }),
 }));
 vi.mock("@/components/app-toaster", () => ({ notifyError: vi.fn(), showAppToast: vi.fn() }));
 vi.mock("@/runtime/use-runtime-state-stream", () => ({
@@ -46,6 +47,41 @@ afterEach(() => {
 });
 
 describe("project removal editor protection", () => {
+	it.each([true, false])(
+		"uses authoritative project registration and rechecks draft safety before SPA navigation (%s)",
+		async (navigationAllowed) => {
+			const project = { id: "p2", path: "/private/tmp/second", name: "second" };
+			add.mockResolvedValue({ ok: true, project });
+			const guard = vi.fn().mockReturnValueOnce(true).mockReturnValue(navigationAllowed);
+			const switchProject = vi.fn();
+			let navigation: UseProjectNavigationResult | null = null;
+			function Harness() {
+				navigation = useProjectNavigation({ onProjectSwitchStart: switchProject });
+				return null;
+			}
+			const container = document.createElement("div");
+			const root = createRoot(container);
+			try {
+				await act(async () => {
+					root.render(<Harness />);
+				});
+				await act(async () => {
+					if (!navigation) throw new Error("No navigation");
+					await navigation.handleOpenProjectByPath(project.path, guard);
+				});
+				expect(add).toHaveBeenCalledExactlyOnceWith({
+					path: project.path,
+					initializeGit: false,
+					folderOnly: undefined,
+					groupId: undefined,
+				});
+				expect(guard).toHaveBeenCalledTimes(2);
+				expect(switchProject).toHaveBeenCalledTimes(navigationAllowed ? 1 : 0);
+			} finally {
+				await act(async () => root.unmount());
+			}
+		},
+	);
 	it.each(["dirty", "clean", "failed"] as const)("handles %s hidden tabs before project removal", async (mode) => {
 		registerFileEditorScope("hidden", { projectId: "p1", taskId: null, rootPath: "/tmp/project" });
 		const tab = createFileEditorTab("app.ts", {

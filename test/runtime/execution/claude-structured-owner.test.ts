@@ -9,6 +9,7 @@ import type {
 	SpawnedProcess,
 } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, it, vi } from "vitest";
+import { installRuntimeProcessLaunchAdmission } from "../../../src/core/runtime-process-launch-admission.js";
 import type { StartStructuredOwnerInput } from "../../../src/execution";
 import {
 	CLAUDE_AGENT_SDK_SCHEMA_FINGERPRINT,
@@ -186,6 +187,23 @@ describe("isSupportedClaudeStructuredCliVersion", () => {
 });
 
 describe("ClaudeStructuredOwnerRegistry", () => {
+	it("refuses the custom SDK process callback before handing off process ownership", async () => {
+		const harness = createHarness();
+		const processStarted = vi.fn();
+		const refusal = new Error("Custody admission refused");
+		const release = installRuntimeProcessLaunchAdmission({
+			beforeSpawn: () => {
+				throw refusal;
+			},
+		});
+		try {
+			await expect(harness.registry.start(startInput({ onProcessStarted: processStarted }))).rejects.toBe(refusal);
+			expect(processStarted).not.toHaveBeenCalled();
+			expect(harness.process.kill).not.toHaveBeenCalled();
+		} finally {
+			release();
+		}
+	});
 	it("accepts an auto-updated CLI in the validated minor line when it matches the native launch", async () => {
 		const harness = createHarness({
 			providerVersion: "2.1.283",

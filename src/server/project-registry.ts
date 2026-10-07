@@ -46,6 +46,7 @@ import {
 } from "../terminal";
 import { createProjectOrphanMaintenanceTimer, type ProjectOrphanMaintenanceTimer } from "./project-orphan-maintenance";
 import { ProjectStateDiagnosticTracker } from "./project-state-diagnostics";
+import { RuntimeStartupCleanupError } from "./runtime-startup-cleanup";
 import { type StartupSessionRecoveryCandidate, StartupSessionRecoveryCoordinator } from "./startup-session-recovery";
 import { launchPreparedTaskSession, prepareTaskSessionStart } from "./task-session-start-service";
 
@@ -122,6 +123,7 @@ export interface ProjectRegistryScope {
 
 export interface CreateProjectRegistryDependencies {
 	cwd: string;
+	registerCwdProject?: boolean;
 	loadGlobalRuntimeConfig: () => Promise<RuntimeConfigState>;
 	loadRuntimeConfig: (projectId?: string | null) => Promise<RuntimeConfigState>;
 	hasGitRepository: (path: string) => Promise<boolean>;
@@ -194,6 +196,7 @@ export interface ProjectRegistry
 	setProjectOperationRunner: (runner: ProjectOperationRunner) => void;
 	prepareProjectRemoval: (projectId: string, projectPath: string) => Promise<{ ok: boolean; error?: string }>;
 	stopMaintenance: () => void;
+	waitForMaintenance?: () => Promise<void>;
 	listManagedProjects: () => Array<{
 		projectId: string;
 		projectPath: string | null;
@@ -246,7 +249,9 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		(entry) => entry.folderOnly && areFileSystemPathsEqual(entry.repoPath, deps.cwd),
 	);
 	const initialProject =
-		(launchedFromGitRepo || indexedFolder) && !launchedFromWorktree ? await loadProjectContext(deps.cwd) : null;
+		deps.registerCwdProject !== false && (launchedFromGitRepo || indexedFolder) && !launchedFromWorktree
+			? await loadProjectContext(deps.cwd)
+			: null;
 	let indexedProject: RuntimeProjectIndexEntry | null = null;
 	if (!initialProject) {
 		indexedProject = initialIndexedProjects[0] ?? null;
@@ -1058,87 +1063,126 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		return indexedProjectInitialization;
 	};
 
-	if (initialProject && (await checkProjectAvailability(initialProject.projectId)).status === "available") {
-		await prepareTerminalManagerForProject(initialProject.projectId, initialProject.repoPath, "startup");
-	}
+	let disposeDiagnosticProvider: (() => void) | undefined;
+	let disposeProjectStateDiagnosticProvider: (() => void) | undefined;
+	try {
+		if (initialProject && (await checkProjectAvailability(initialProject.projectId)).status === "available") {
+			await prepareTerminalManagerForProject(initialProject.projectId, initialProject.repoPath, "startup");
+		}
 
-	const disposeDiagnosticProvider = deps.diagnostics?.registerSnapshotProvider({
-		name: "projects",
-		capture: (scope) => {
-			const sessions = Array.from(terminalManagersByProjectId.entries()).flatMap(([projectId, manager]) =>
-				!scope.projectId || projectId === scope.projectId ? manager.getDiagnosticSnapshot(scope).sessions : [],
-			);
-			const taskProjectIds = new Set(sessions.map((session) => session.projectId));
-			const visibleProjectIds = Array.from(projectPathsById.keys()).filter(
-				(projectId) =>
-					(!scope.projectId || projectId === scope.projectId) &&
-					(!scope.taskId || Boolean(scope.projectId) || taskProjectIds.has(projectId)),
-			);
-			return {
-				activeProjectId: activeProjectId && visibleProjectIds.includes(activeProjectId) ? activeProjectId : null,
-				managedProjects: visibleProjectIds.map((projectId) => ({
+		disposeDiagnosticProvider = deps.diagnostics?.registerSnapshotProvider({
+			name: "projects",
+			capture: (scope) => {
+				const sessions = Array.from(terminalManagersByProjectId.entries()).flatMap(([projectId, manager]) =>
+					!scope.projectId || projectId === scope.projectId ? manager.getDiagnosticSnapshot(scope).sessions : [],
+				);
+				const taskProjectIds = new Set(sessions.map((session) => session.projectId));
+				const visibleProjectIds = Array.from(projectPathsById.keys()).filter(
+					(projectId) =>
+						(!scope.projectId || projectId === scope.projectId) &&
+						(!scope.taskId || Boolean(scope.projectId) || taskProjectIds.has(projectId)),
+				);
+				return {
+					activeProjectId: activeProjectId && visibleProjectIds.includes(activeProjectId) ? activeProjectId : null,
+					managedProjects: visibleProjectIds.map((projectId) => ({
+						projectId,
+						hasTerminalManager: terminalManagersByProjectId.has(projectId),
+					})),
+					sessions,
+				};
+			},
+		});
+		disposeProjectStateDiagnosticProvider = deps.diagnostics?.registerSnapshotProvider({
+			name: "project_state",
+			capture: (scope) => projectStateDiagnostics.getSnapshot(scope),
+		});
+
+		return {
+			getActiveProjectId: () => activeProjectId,
+			getActiveProjectPath: () => activeProjectPath,
+			getProjectPathById: (projectId: string) => projectPathsById.get(projectId) ?? null,
+			rememberProject,
+			getActiveRuntimeConfig: () => activeRuntimeConfig,
+			setActiveRuntimeConfig: (config: RuntimeConfigState) => {
+				globalRuntimeConfig = toGlobalRuntimeConfigState(config);
+				activeRuntimeConfig = activeProjectId ? config : globalRuntimeConfig;
+			},
+			loadScopedRuntimeConfig,
+			getTerminalManagerForProject,
+			ensureTerminalManagerForProject,
+			setActiveProject,
+			clearActiveProject,
+			disposeProject,
+			buildProjectSummary,
+			buildProjectStateSnapshot,
+			buildProjectStatePublication,
+			buildProjectsPayload,
+			resolveProjectForStream,
+			initializeIndexedProjectsForStartup,
+			resumeInterruptedSessions,
+			releaseDeferredStartupRecoveries,
+			resolveTaskSessionSummary,
+			checkProjectAvailability,
+			rebindProjectLocation,
+			setProjectOperationRunner: (runner) => {
+				runProjectOperation = runner;
+				for (const [projectId, manager] of terminalManagersByProjectId) {
+					const projectPath = projectPathsById.get(projectId);
+					if (projectPath) configureManagerLaunchAdmission(projectId, projectPath, manager);
+				}
+			},
+			setProjectRemovalPreparationHandler: (handler) => {
+				projectRemovalPreparationHandler = handler;
+			},
+			prepareProjectRemoval,
+			stopMaintenance: () => {
+				disposeDiagnosticProvider?.();
+				disposeProjectStateDiagnosticProvider?.();
+				startupRecoveryCoordinator.close();
+				projectOrphanMaintenance.stop();
+			},
+			waitForMaintenance: async () => {
+				await projectOrphanMaintenance.waitForIdle();
+				await availabilityOperations.waitForIdle();
+			},
+			listManagedProjects: () => {
+				return Array.from(terminalManagersByProjectId.entries()).map(([projectId, terminalManager]) => ({
 					projectId,
-					hasTerminalManager: terminalManagersByProjectId.has(projectId),
-				})),
-				sessions,
-			};
-		},
-	});
-	const disposeProjectStateDiagnosticProvider = deps.diagnostics?.registerSnapshotProvider({
-		name: "project_state",
-		capture: (scope) => projectStateDiagnostics.getSnapshot(scope),
-	});
-
-	return {
-		getActiveProjectId: () => activeProjectId,
-		getActiveProjectPath: () => activeProjectPath,
-		getProjectPathById: (projectId: string) => projectPathsById.get(projectId) ?? null,
-		rememberProject,
-		getActiveRuntimeConfig: () => activeRuntimeConfig,
-		setActiveRuntimeConfig: (config: RuntimeConfigState) => {
-			globalRuntimeConfig = toGlobalRuntimeConfigState(config);
-			activeRuntimeConfig = activeProjectId ? config : globalRuntimeConfig;
-		},
-		loadScopedRuntimeConfig,
-		getTerminalManagerForProject,
-		ensureTerminalManagerForProject,
-		setActiveProject,
-		clearActiveProject,
-		disposeProject,
-		buildProjectSummary,
-		buildProjectStateSnapshot,
-		buildProjectStatePublication,
-		buildProjectsPayload,
-		resolveProjectForStream,
-		initializeIndexedProjectsForStartup,
-		resumeInterruptedSessions,
-		releaseDeferredStartupRecoveries,
-		resolveTaskSessionSummary,
-		checkProjectAvailability,
-		rebindProjectLocation,
-		setProjectOperationRunner: (runner) => {
-			runProjectOperation = runner;
-			for (const [projectId, manager] of terminalManagersByProjectId) {
-				const projectPath = projectPathsById.get(projectId);
-				if (projectPath) configureManagerLaunchAdmission(projectId, projectPath, manager);
+					projectPath: projectPathsById.get(projectId) ?? null,
+					terminalManager,
+				}));
+			},
+		};
+	} catch (error) {
+		projectOrphanMaintenance.stop();
+		startupRecoveryCoordinator.close();
+		const failures: unknown[] = [];
+		for (const dispose of [disposeDiagnosticProvider, disposeProjectStateDiagnosticProvider]) {
+			try {
+				dispose?.();
+			} catch (cleanupError) {
+				failures.push(cleanupError);
 			}
-		},
-		setProjectRemovalPreparationHandler: (handler) => {
-			projectRemovalPreparationHandler = handler;
-		},
-		prepareProjectRemoval,
-		stopMaintenance: () => {
-			disposeDiagnosticProvider?.();
-			disposeProjectStateDiagnosticProvider?.();
-			startupRecoveryCoordinator.close();
-			projectOrphanMaintenance.stop();
-		},
-		listManagedProjects: () => {
-			return Array.from(terminalManagersByProjectId.entries()).map(([projectId, terminalManager]) => ({
-				projectId,
-				projectPath: projectPathsById.get(projectId) ?? null,
-				terminalManager,
-			}));
-		},
-	};
+		}
+		for (const manager of terminalManagersByProjectId.values()) {
+			try {
+				manager.stopReconciliation();
+				manager.markInterruptedAndStopAll();
+			} catch (cleanupError) {
+				failures.push(cleanupError);
+			}
+		}
+		const drained = await Promise.allSettled([
+			projectOrphanMaintenance.waitForIdle(),
+			availabilityOperations.waitForIdle(),
+			...Array.from(terminalManagersByProjectId.values(), (manager) => manager.waitForShutdownQuiescence()),
+		]);
+		failures.push(...drained.filter((result) => result.status === "rejected").map((result) => result.reason));
+		if (failures.length > 0)
+			throw new RuntimeStartupCleanupError(
+				{ status: "incomplete", safeToExit: false, safeToReleaseOwnership: false, reasons: ["quiescence_failed"] },
+				new AggregateError([error, ...failures], "Project registry startup cleanup failed."),
+			);
+		throw error;
+	}
 }

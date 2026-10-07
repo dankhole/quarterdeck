@@ -43,6 +43,7 @@ import {
 	resolveProjectPath,
 	SESSIONS_FILENAME,
 } from "./project-state-utils";
+import { assertRuntimeWriteAdmission } from "./runtime-write-admission.js";
 
 export type { RuntimeProjectIndexEntry } from "./project-state-index";
 export {
@@ -585,7 +586,10 @@ export async function saveProjectSessions(
 ): Promise<Record<string, RuntimeTaskSessionSummary>> {
 	const clearPendingWarnings = options.clearPendingWarnings ?? true;
 	const parsedPayload = parseProjectStateSavePayload({ sessions }, persistedProjectSessionsSaveRequestSchema);
-	const context = await loadProjectContext(cwd);
+	// Existing session writers need identity, not Git metadata. Shutdown writes
+	// must not spawn a probe after the owned process forest has been captured.
+	const context =
+		(await loadProjectScopeByRepoPath(await canonicalizeProjectInputPath(cwd))) ?? (await loadProjectContext(cwd));
 	return await withProjectStateLock(context.projectId, async () => {
 		await lockedFileSystem.writeJsonFileAtomic(getProjectSessionsPath(context.projectId), parsedPayload.sessions, {
 			lock: null,
@@ -604,6 +608,7 @@ async function backUpSessionsBeforePrune(statePath: string): Promise<string | nu
 	const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 	const backupPath = `${sessionsPath}.pruned-${timestamp}-${randomBytes(3).toString("hex")}`;
 	try {
+		assertRuntimeWriteAdmission(sessionsPath);
 		await copyFile(sessionsPath, backupPath);
 		return backupPath;
 	} catch (error) {

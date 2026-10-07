@@ -26,6 +26,10 @@ import {
 	QUARTERDECK_BUILD_ID,
 	toDisposable,
 } from "../core";
+import {
+	type RuntimeNotificationPreferences,
+	runtimeNotificationPresentationRenewSchema,
+} from "../core/api/notification-presentation";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import type { ProjectBoardCommandService } from "../state";
 import { loadProjectBoardById } from "../state";
@@ -34,6 +38,7 @@ import { applyRuntimeMutationEffects, createTaskBaseRefUpdatedEffects } from "..
 import { createProjectMetadataMonitor } from "./project-metadata-monitor";
 import { normalizeProjectMetadataClientId } from "./project-metadata-visibility";
 import type { ProjectRegistry } from "./project-registry";
+import { RuntimeNotificationPresentationLease } from "./runtime-notification-presentation";
 import { RuntimeStateClientRegistry } from "./runtime-state-client-registry";
 import { RuntimeStateMessageBatcher } from "./runtime-state-message-batcher";
 import {
@@ -86,6 +91,7 @@ export interface CreateRuntimeStateHubDependencies {
 }
 
 export interface RuntimeStateHub extends IRuntimeBroadcaster {
+	configureNotificationPresentation?: (runtimeGeneration: string) => void;
 	trackTerminalManager: (projectId: string, manager: TerminalSessionManager) => void;
 	broadcastRuntimeProjectStateSnapshot: (projectId: string, state: RuntimeProjectStateResponse) => void;
 	handleUpgrade: (
@@ -96,6 +102,7 @@ export interface RuntimeStateHub extends IRuntimeBroadcaster {
 			requestedProjectId: string | null;
 			clientId: string | null;
 			isDocumentVisible: boolean;
+			notificationOnly?: boolean;
 		},
 	) => void;
 	disposeProject: (projectId: string, options?: DisposeRuntimeStateProjectOptions) => Promise<void>;
@@ -111,6 +118,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	private readonly batcher: RuntimeStateMessageBatcher;
 	private readonly metadataMonitor: ReturnType<typeof createProjectMetadataMonitor>;
 	private readonly notificationRevisionsByProject = new Map<string, number>();
+	private notificationPresentation: RuntimeNotificationPresentationLease<WebSocket> | null = null;
 	private readonly notificationPublicationStates = new Map<string, RuntimeNotificationPublicationState>();
 	private readonly suspendedProjects = new Set<string>();
 	private readonly metadataWrites = new Map<string, Set<Promise<void>>>();
@@ -275,6 +283,13 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	}
 
 	// ── Public API (arrow fields for stable `this` when passed as refs) ──
+	configureNotificationPresentation = (runtimeGeneration: string): void => {
+		if (this.notificationPresentation) throw new Error("Notification presentation is already configured");
+		this.notificationPresentation = new RuntimeNotificationPresentationLease(runtimeGeneration, (state) => {
+			this.clients.broadcastToAll({ type: "notification_presentation", state });
+		});
+	};
+
 	trackTerminalManager = (projectId: string, manager: TerminalSessionManager): void => {
 		this.batcher.trackTerminalManager(projectId, manager);
 	};
@@ -283,7 +298,12 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		request: IncomingMessage,
 		socket: Parameters<WebSocketServer["handleUpgrade"]>[1],
 		head: Buffer,
-		context: { requestedProjectId: string | null; clientId: string | null; isDocumentVisible: boolean },
+		context: {
+			requestedProjectId: string | null;
+			clientId: string | null;
+			isDocumentVisible: boolean;
+			notificationOnly?: boolean;
+		},
 	): void => {
 		this.wss.handleUpgrade(request, socket, head, (ws) => {
 			this.wss.emit("connection", ws, context);
@@ -437,6 +457,12 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		this.clients.broadcastToAll(
 			buildDiagnosticCaptureStateMessage(level, this.deps.diagnostics.recorder.getRecordingState()),
 		);
+		if (this.notificationPresentation) {
+			this.clients.broadcastToAll({
+				type: "notification_preferences",
+				preferences: this.getNotificationPreferences(),
+			});
+		}
 	};
 
 	getDiagnosticSnapshot = (scope: Readonly<DiagnosticCaptureScope> = {}): RuntimeStateHubDiagnosticSnapshot => ({
@@ -445,6 +471,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	});
 
 	close = async (): Promise<void> => {
+		this.notificationPresentation?.dispose();
 		const notificationPublications = Array.from(this.notificationPublicationStates.values());
 		for (const state of notificationPublications) state.disposed = true;
 		this.notificationPublicationStates.clear();
@@ -478,6 +505,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 	private async handleConnection(client: WebSocket, context: unknown): Promise<void> {
 		client.on("close", () => {
+			this.notificationPresentation?.release(client);
 			const diagnosticClient = this.diagnosticClientBySocket.get(client);
 			if (diagnosticClient) {
 				this.deps.diagnostics.revokeBrowserCapability(diagnosticClient.clientId, diagnosticClient.capability);
@@ -492,6 +520,15 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		});
 
 		try {
+			if (
+				context &&
+				typeof context === "object" &&
+				"notificationOnly" in context &&
+				context.notificationOnly === true
+			) {
+				await this.handleNotificationConnection(client);
+				return;
+			}
 			const requestedProjectId = this.parseProjectId(context);
 			const runtimeClientId = this.parseClientId(context);
 			const connectionId = randomUUID();
@@ -524,9 +561,8 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 					return;
 				}
 
-				this.sendMessage(
-					client,
-					buildSnapshotMessage(
+				this.sendMessage(client, {
+					...buildSnapshotMessage(
 						QUARTERDECK_BUILD_ID,
 						snapshot.currentProjectId,
 						snapshot.projects,
@@ -535,7 +571,8 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 						snapshot.notificationRevisionsByProject,
 						snapshot.organization,
 					),
-				);
+					...this.getNotificationSnapshotFields(),
+				});
 				monitorProjectId = snapshot.projectId;
 				// Do not expose a half-hydrated client to live publications. Register
 				// immediately after the snapshot send, then issue revision-fenced
@@ -607,6 +644,72 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			this.sendMessage(client, buildErrorMessage(message));
 			client.close();
 		}
+	}
+
+	private getNotificationPreferences(): RuntimeNotificationPreferences {
+		const config = this.deps.projectRegistry.getActiveRuntimeConfig();
+		return {
+			enabled: config.audibleNotificationsEnabled,
+			volume: config.audibleNotificationVolume,
+			events: { ...config.audibleNotificationEvents },
+			onlyWhenHidden: config.audibleNotificationsOnlyWhenHidden,
+			suppressCurrentProject: { ...config.audibleNotificationSuppressCurrentProject },
+		};
+	}
+
+	private getNotificationSnapshotFields() {
+		return this.notificationPresentation
+			? {
+					notificationPresentation: this.notificationPresentation.getState(),
+					notificationPreferences: this.getNotificationPreferences(),
+				}
+			: {};
+	}
+
+	private async handleNotificationConnection(client: WebSocket): Promise<void> {
+		const presentation = this.notificationPresentation;
+		if (!presentation) {
+			client.close(1008, "Notification presentation unavailable");
+			return;
+		}
+		// This read-only subscription never resolves a project viewer or acquires a Git monitor.
+		const snapshot = await this.loadInitialSnapshot({ projectId: null, projectPath: null });
+		if (client.readyState !== WebSocket.OPEN) return;
+		this.sendMessage(client, {
+			...buildSnapshotMessage(
+				QUARTERDECK_BUILD_ID,
+				snapshot.currentProjectId,
+				snapshot.projects,
+				null,
+				snapshot.notificationSummariesByProject,
+				snapshot.notificationRevisionsByProject,
+				snapshot.organization,
+			),
+			...this.getNotificationSnapshotFields(),
+		});
+		this.clients.registerGlobalClient(client);
+		this.enqueueNotificationCatchupForClient(
+			client,
+			snapshot.projects.map((project) => project.id),
+		);
+		const granted = presentation.acquire(client);
+		this.sendMessage(client, { type: "notification_presentation", state: presentation.getState(), granted });
+		client.on("message", (data) => {
+			let value: unknown;
+			try {
+				value = JSON.parse(data.toString());
+			} catch {
+				client.close(1008, "Invalid presentation renewal");
+				return;
+			}
+			const renewal = runtimeNotificationPresentationRenewSchema.safeParse(value);
+			if (!renewal.success) {
+				client.close(1008, "Invalid presentation renewal");
+				return;
+			}
+			const granted = presentation.renew(client, renewal.data.runtimeGeneration, renewal.data.epoch);
+			this.sendMessage(client, { type: "notification_presentation", state: presentation.getState(), granted });
+		});
 	}
 
 	private async loadInitialSnapshot(resolved: { projectId: string | null; projectPath: string | null }): Promise<{
