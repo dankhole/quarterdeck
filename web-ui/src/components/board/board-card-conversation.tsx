@@ -151,20 +151,15 @@ export function BoardCardConversation({
 	const finalMessage = card.unstarted ? undefined : summary?.latestHookActivity?.finalMessage?.slice(0, 500);
 	const running = !card.unstarted && summary && deriveTaskIndicatorState(summary).publicStatus === "running";
 	const completedResponse = finalMessage || latest?.text || (!card.unstarted && summary?.displaySummary);
-	const text = (
-		running
-			? summary.progressMessage?.trim()
-				? summary.progressMessage
-				: "Working…"
-			: completedResponse || card.prompt
-	).slice(0, 500);
+	const progressMessage = running && summary.progressMessage?.trim() ? summary.progressMessage : undefined;
+	const text = (progressMessage || completedResponse || card.prompt).slice(0, 500);
 	return (
 		<>
 			<div className="my-2 min-h-[120px] flex-1 rounded-md bg-surface-0/60 px-2 py-1.5">
 				<p className="m-0 line-clamp-6 whitespace-pre-wrap break-words text-xs leading-[18px] text-text-primary/90">
 					{text || "No response yet. Open the agent to follow its progress."}
 				</p>
-				{running && completedResponse ? (
+				{progressMessage && completedResponse ? (
 					<Collapsible.Root
 						className="mt-2 border-t border-border pt-1.5"
 						onClick={(event) => event.stopPropagation()}

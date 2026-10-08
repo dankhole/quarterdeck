@@ -68,12 +68,12 @@ describe("board card conversation", () => {
 		expect(container.textContent).toContain("Older response");
 		expect(container.querySelector("time")).toBeNull();
 	});
-	it("replaces the running placeholder with current progress and returns to the completed response in Review", async () => {
+	it("keeps the completed response until current progress arrives and restores it in Review", async () => {
 		const render = async (summary: RuntimeTaskSessionSummary) =>
 			act(async () => root.render(<BoardCardConversation card={card} columnId="in_progress" summary={summary} />));
 		const progressMessage = "Checking the remaining keyboard shortcuts.";
 		await render(running);
-		expect(container.querySelector("p")?.textContent).toBe("Working…");
+		expect(container.querySelector("p")?.textContent).toBe("The updated layout is ready.");
 		await render({ ...running, progressMessage });
 		expect(container.querySelector("p")?.textContent).toBe(progressMessage);
 		expect(container.textContent).not.toContain("The updated layout is ready.");
@@ -82,36 +82,44 @@ describe("board card conversation", () => {
 		expect(container.querySelector("[aria-expanded]")).toBeNull();
 	});
 	it.each([undefined, null, "", "   "])(
-		"keeps the previous final response behind an accessible disclosure when running progress is %s",
+		"shows the previous final response directly when running progress is %s",
 		async (progressMessage) => {
-			const openTask = vi.fn();
 			await act(async () =>
 				root.render(
-					<div onClick={openTask} onDoubleClick={openTask}>
-						<BoardCardConversation card={card} columnId="in_progress" summary={{ ...running, progressMessage }} />
-					</div>,
+					<BoardCardConversation card={card} columnId="in_progress" summary={{ ...running, progressMessage }} />,
 				),
 			);
-			expect(container.querySelector("p")?.textContent).toBe("Working…");
-			expect(container.textContent).not.toContain("The updated layout is ready.");
-			expect(container.textContent).not.toContain(card.prompt);
-			const trigger = container.querySelector<HTMLButtonElement>('button[aria-expanded="false"]');
-			expect(trigger?.textContent).toBe("Previous response");
-			expect(trigger?.type).toBe("button");
-			await act(async () => trigger?.click());
-			expect(trigger?.getAttribute("aria-expanded")).toBe("true");
-			const contentId = trigger?.getAttribute("aria-controls");
-			expect(contentId).toBeTruthy();
-			expect(document.getElementById(contentId!)?.textContent).toBe("The updated layout is ready.");
-			await act(async () => trigger?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
-			expect(openTask).not.toHaveBeenCalled();
-			expect(container.querySelector("p")?.textContent).toBe("Working…");
-			await act(async () => trigger?.click());
-			expect(trigger?.getAttribute("aria-expanded")).toBe("false");
-			expect(container.textContent).not.toContain("The updated layout is ready.");
+			expect(container.querySelector("p")?.textContent).toBe("The updated layout is ready.");
+			expect(container.querySelector("[aria-expanded]")).toBeNull();
+			expect(container.textContent).not.toContain("Working…");
 		},
 	);
-	it("keeps the retained response beyond the short display summary separately when the next turn starts", async () => {
+	it("keeps the previous response expandable after new progress arrives without opening the task", async () => {
+		const openTask = vi.fn();
+		const progressMessage = "Checking the remaining keyboard shortcuts.";
+		await act(async () =>
+			root.render(
+				<div onClick={openTask} onDoubleClick={openTask}>
+					<BoardCardConversation card={card} columnId="in_progress" summary={{ ...running, progressMessage }} />
+				</div>,
+			),
+		);
+		const trigger = container.querySelector<HTMLButtonElement>('button[aria-expanded="false"]');
+		expect(trigger?.textContent).toBe("Previous response");
+		expect(trigger?.type).toBe("button");
+		await act(async () => trigger?.click());
+		expect(trigger?.getAttribute("aria-expanded")).toBe("true");
+		const contentId = trigger?.getAttribute("aria-controls");
+		expect(contentId).toBeTruthy();
+		expect(document.getElementById(contentId!)?.textContent).toBe("The updated layout is ready.");
+		await act(async () => trigger?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+		expect(openTask).not.toHaveBeenCalled();
+		expect(container.querySelector("p")?.textContent).toBe(progressMessage);
+		await act(async () => trigger?.click());
+		expect(trigger?.getAttribute("aria-expanded")).toBe("false");
+		expect(container.textContent).not.toContain("The updated layout is ready.");
+	});
+	it("keeps the retained response beyond the short display summary visible when the next turn starts", async () => {
 		const response = "The latest completed response has more detail than a short synopsis. ".repeat(10).trim();
 		const summary = {
 			...ready,
@@ -146,13 +154,11 @@ describe("board card conversation", () => {
 				/>,
 			),
 		);
-		expect(container.querySelector("p")?.textContent).toBe("Working…");
-		expect(container.textContent).not.toContain(response);
-		await act(async () => container.querySelector<HTMLButtonElement>("button[aria-expanded]")?.click());
-		expect(container.querySelectorAll("p")[1]?.textContent).toBe(response.slice(0, 500));
+		expect(container.querySelector("p")?.textContent).toBe(response.slice(0, 500));
+		expect(container.querySelector("[aria-expanded]")).toBeNull();
 		expect(container.textContent).not.toContain("Older response");
 	});
-	it("shows the running placeholder without a disclosure when there is no previous response", async () => {
+	it("shows the original prompt without a disclosure when there is no previous response", async () => {
 		await act(async () =>
 			root.render(
 				<BoardCardConversation
@@ -162,9 +168,9 @@ describe("board card conversation", () => {
 				/>,
 			),
 		);
-		expect(container.querySelector("p")?.textContent).toBe("Working…");
+		expect(container.querySelector("p")?.textContent).toBe(card.prompt);
 		expect(container.querySelector("button[aria-expanded]")).toBeNull();
-		expect(container.textContent).not.toContain(card.prompt);
+		expect(container.textContent).not.toContain("Working…");
 	});
 	it("keeps unstarted cards on the original prompt even when old runtime messages exist", async () => {
 		await act(async () =>

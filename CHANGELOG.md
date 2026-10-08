@@ -34,7 +34,7 @@
 
 - Move Codex tasks to Review when a model-capacity failure returns the agent to its input prompt, instead of leaving them marked Running.
 
-- Follow new agent messages incrementally so tool output cannot bury grid progress updates, show “Working…” while a new turn awaits its first update, and keep the previous response separately expandable.
+- Follow new agent messages incrementally so tool output cannot bury grid progress updates, keep the previous response visible until a new update arrives, and keep it expandable afterward.
 
 - Tighten Projects sidebar gutters and group indentation, move project action menus closer to the edge, and use subtle alternating backgrounds for group headers and project rows.
 
