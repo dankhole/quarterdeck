@@ -6,14 +6,14 @@ The prerequisite npm release with runtime admission has not been published. The 
 
 ## Local unsigned candidate
 
-For everyday source-checkout use, install the independent dependency trees once (`npm ci`, `npm ci --prefix web-ui`, and `npm ci --prefix desktop`), then install Electron with `npm --prefix desktop exec -- install-electron`. From the repository root:
+For everyday source-checkout use, run this from the repository root:
 
 ```sh
 npm run desktop:install
 node dist/cli.js --desktop
 ```
 
-`desktop:install` builds the paired runtime/UI, packages the native host architecture, and imports the `.app` into a new managed directory. It does not launch the app or modify an existing installation. Quit an older standalone candidate before the first managed launch. Use `node dist/cli.js --browser` for browser mode from the same build. The existing `npm run link` workflow makes the checkout available as the global `quarterdeck` command; follow its active-runtime safeguards. Use `npm run desktop:build` to build without importing.
+`desktop:install` installs missing or outdated root, web UI, and desktop dependencies from their lockfiles, ensures Electron is installed, builds the paired runtime/UI, packages the native host architecture, and imports the `.app` into a new managed directory. It does not launch the app or modify an existing installation. Quit an older standalone candidate before the first managed launch. Use `node dist/cli.js --browser` for browser mode from the same build. Use `npm run link -- --desktop` to do the same preparation and app installation while also making this checkout available as the global `quarterdeck` command. Then launch with `quarterdeck --desktop`. Follow the active-runtime safeguards. Use `npm run desktop:build` to build without importing.
 
 The npm launcher downloads only a matching signed public release from the fixed repository/tag, verifies its manifest and DMG size/checksum, mounts read-only, validates bundle identity and macOS signature/Gatekeeper policy, and imports without running bundled code during verification. `--from` is an explicit local-candidate import and is not evidence of signing or notarization. It requires the current desktop launch protocol marker; old candidates must be rebuilt. No installer removes quarantine or changes the user's Keychain. Public release downloads remain unavailable until the existing distribution gates are satisfied.
 

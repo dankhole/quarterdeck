@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Prepare missing or outdated dependencies automatically when linking or building the desktop app; use `npm run link -- --desktop` to install the app and link the CLI together.
+
 - Check native test permissions before launching the macOS app, and separate manual-terminal and performance checks from deliberate crash-recovery tests.
 
 - Launch browser mode explicitly with `quarterdeck --browser`, or install and open the optional macOS app with `quarterdeck --desktop`; import local app builds without replacing a running installation.

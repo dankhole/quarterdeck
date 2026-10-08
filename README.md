@@ -179,16 +179,15 @@ To keep the configuration across shell sessions, add the exports to the shell st
 
 ## Install From Source
 
-For development, clone the repository, install the runtime and web UI dependencies, then link the local build as the global `quarterdeck` command:
+For development, clone the repository and prepare, build, and link the local CLI in one command:
 
 ```bash
 git clone https://github.com/dankhole/quarterdeck.git
 cd quarterdeck
-npm run bootstrap
 npm run link
 ```
 
-`npm run bootstrap` preserves or migrates the clone-wide Agent Lab browser cache, then performs locked installs for both the runtime and the separate web UI dependency tree. `npm run link` verifies those prerequisites, runs a production build, and then creates the development symlink used by the global `quarterdeck` command. Stop a Quarterdeck runtime launched from this linked checkout before bootstrapping or relinking; the scripts refuse to replace files underneath that live process.
+`npm run bootstrap` preserves or migrates the clone-wide Agent Lab browser cache, then performs locked installs for both the runtime and the separate web UI dependency tree. `npm run link` installs missing or outdated root and web UI dependencies from their lockfiles, runs a production build, and then creates the development symlink used by the global `quarterdeck` command. To also build and install the macOS app and prepare its dependencies, run `npm run link -- --desktop`, then launch with `quarterdeck --desktop`. Stop a Quarterdeck runtime launched from this linked checkout before bootstrapping or relinking; the scripts refuse to replace files underneath that live process.
 
 When you pull new Quarterdeck changes, switch worktrees, or want the global command to point at a different checkout, run `npm run link` again from that checkout. To remove the global link:
 
@@ -238,14 +237,14 @@ npm run unlink
 | --- | --- |
 | `npm run bootstrap` | Preserve the Agent Lab browser cache, then install locked root and web UI dependencies; refuses to run beneath an active linked runtime. |
 | `npm run install:all` | Backward-compatible alias for `npm run bootstrap`. |
-| `npm run link` | Build the app and link the local `quarterdeck` CLI globally. |
+| `npm run link` | Prepare root/web dependencies, build, and link the local CLI globally; add `-- --desktop` to also prepare and install the macOS app. |
 | `npm run unlink` | Remove the global `quarterdeck` link. |
 | `npm run dev` | Run the runtime server in watch mode on port 3500. |
 | `npm run dev:full` | Run the runtime and web UI together for local development. |
 | `npm run web:dev` | Run the Vite web UI dev server on port 4173. |
 | `npm run build` | Build the packaged runtime and web UI into `dist`. |
-| `npm run desktop:build` | Build the shared runtime/UI and package the optional native macOS app. Requires the independent desktop dependency tree. |
-| `npm run desktop:install` | Build and import that local app into the CLI's managed installations, without launching it. |
+| `npm run desktop:build` | Prepare root/web/desktop dependencies and Electron, then build and package the optional native macOS app. |
+| `npm run desktop:install` | Prepare dependencies, build, and import the local app into managed installations, without launching it. |
 | `npm run check` | Run agent-instruction checks, Biome, runtime typecheck, and root tests. |
 | `quarterdeck diagnostics --help` | Discover and inspect private local runtime diagnostics. |
 

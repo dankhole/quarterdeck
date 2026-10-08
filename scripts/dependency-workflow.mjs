@@ -124,19 +124,6 @@ export async function assertLinkedRuntimeIsStopped(
 	);
 }
 
-export function getMissingDependencyMessage(health) {
-	if (!health.rootAvailable && !health.webAvailable) {
-		return "Quarterdeck root and web UI dependencies are missing or out of sync with the lockfile. Stop any linked Quarterdeck runtime, then run `npm run bootstrap`.";
-	}
-	if (!health.rootAvailable) {
-		return "Quarterdeck root dependencies are missing or out of sync with the lockfile. Stop any linked Quarterdeck runtime, then run `npm ci`.";
-	}
-	if (!health.webAvailable) {
-		return "Quarterdeck web UI dependencies are missing or out of sync with the lockfile. Stop any linked Quarterdeck runtime, then run `npm ci --prefix web-ui`.";
-	}
-	return null;
-}
-
 function runNpm(args, checkoutRoot = repoRoot) {
 	const invocation = resolveNpmCommand(args);
 	const result = spawnSync(invocation.command, invocation.args, {
@@ -159,27 +146,64 @@ export async function bootstrapDependencies(checkoutRoot, options = {}) {
 	return browserCache;
 }
 
+/** Prepare only the dependency trees needed by the requested source workflow. */
+export async function ensureDependencies(checkoutRoot, options = {}) {
+	await assertLinkedRuntimeIsStopped(checkoutRoot, options.runtime);
+	const prefixes = options.desktop ? ["", "web-ui", "desktop"] : ["", "web-ui"];
+	// Reject all shared trees before any installation can mutate them.
+	for (const prefix of prefixes) {
+		const packageRoot = join(checkoutRoot, prefix);
+		const tree = await lstat(join(packageRoot, "node_modules")).catch((error) => {
+			if (error.code === "ENOENT") return null;
+			throw error;
+		});
+		if (tree && (!tree.isDirectory() || tree.isSymbolicLink())) {
+			throw new Error(`Dependencies require a real, independent node_modules directory in ${packageRoot}.`);
+		}
+	}
+	const executeNpm = options.executeNpm ?? ((args) => runNpm(args, checkoutRoot));
+	for (const prefix of prefixes) {
+		if (await dependencyTreeMatchesLockfile(join(checkoutRoot, prefix))) continue;
+		if (prefix === "web-ui") {
+			await prepareAgentLabBrowserCache(checkoutRoot, options.gitCommonDirectory);
+		}
+		console.log(`Installing locked ${prefix || "root"} dependencies…`);
+		await executeNpm(prefix ? ["ci", "--prefix", prefix] : ["ci"]);
+	}
+	if (options.desktop) {
+		// Electron's installer reuses the matching binary when already present.
+		await executeNpm(["--prefix", "desktop", "exec", "--no", "--", "install-electron"]);
+	}
+}
+
 async function runBootstrap() {
 	await bootstrapDependencies(repoRoot);
 }
 
-async function runLink() {
-	await assertLinkedRuntimeIsStopped(repoRoot);
-	const health = await inspectDependencyTrees(repoRoot);
-	const missingMessage = getMissingDependencyMessage(health);
-	if (missingMessage) throw new Error(missingMessage);
-	runNpm(["run", "build"]);
-	runNpm(["link"]);
+export async function linkCheckout(checkoutRoot, options = {}) {
+	const executeNpm = options.executeNpm ?? ((args) => runNpm(args, checkoutRoot));
+	if (options.desktop) {
+		// desktop:install owns preparation and the single paired build.
+		await executeNpm(["run", "desktop:install"]);
+	} else {
+		await ensureDependencies(checkoutRoot, options);
+		await executeNpm(["run", "build"]);
+	}
+	await executeNpm(["link"]);
 }
 
 async function main() {
 	const command = process.argv[2];
+	const flags = process.argv.slice(3);
+	if (flags.length > 0 && !(command === "link" && flags.length === 1 && flags[0] === "--desktop")) {
+		throw new Error("Usage: npm run bootstrap | npm run link [-- --desktop]");
+	}
 	if (command === "bootstrap") {
 		await runBootstrap();
 		return;
 	}
 	if (command === "link") {
-		await runLink();
+		await linkCheckout(repoRoot, { desktop: flags.includes("--desktop") });
 		return;
 	}
 	throw new Error("Usage: node scripts/dependency-workflow.mjs <bootstrap|link>");

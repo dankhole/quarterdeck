@@ -43,7 +43,8 @@ npm run typecheck        # Runtime typecheck
 npm run lint             # Biome lint
 npm run format           # Biome check --write
 npm run dogfood          # Build and launch against a target project
-npm run link             # Global CLI symlink for local dev
+npm run link             # Prepare deps, build, and link the CLI
+npm run link -- --desktop # Also prepare and install the macOS app
 ```
 
 ## Repo orientation
@@ -241,13 +242,13 @@ Live diagnostics can describe viewport/layout bounds, terminal buffer metrics, a
 
 ## Run `quarterdeck` from any directory
 
-After cloning and installing dependencies, create/update the global CLI link from this repo:
+After cloning, prepare dependencies and create/update the global CLI link from this repo:
 
 ```bash
 npm run link
 ```
 
-`npm run link` does not install dependencies. It checks installed direct dependencies in both trees against their lockfile versions, builds, and then updates the development symlink. If either tree has missing or outdated dependencies, it prints the exact `npm ci` remediation. If the globally linked runtime is currently running from this checkout, stop it before relinking.
+`npm run link` checks installed direct dependencies against their lockfile versions and runs `npm ci` for missing or outdated root/web UI trees before building and updating the development symlink. Use `npm run link -- --desktop` on macOS to also prepare desktop dependencies and Electron, build and install the native app, and link the CLI. Existing independent dependency directories are reused when they match; shared dependency symlinks are rejected. If the globally linked runtime is currently running from this checkout, stop it before relinking.
 
 Verify:
 
