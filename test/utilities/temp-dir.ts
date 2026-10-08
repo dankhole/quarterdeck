@@ -28,8 +28,10 @@ export async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
 	const { path: tempHome, cleanup } = createTempDir("quarterdeck-home-");
 	const previousHome = process.env.HOME;
 	const previousUserProfile = process.env.USERPROFILE;
+	const previousStateHome = process.env.QUARTERDECK_STATE_HOME;
 	process.env.HOME = tempHome;
 	process.env.USERPROFILE = tempHome;
+	process.env.QUARTERDECK_STATE_HOME = join(tempHome, ".quarterdeck");
 	try {
 		return await run();
 	} finally {
@@ -42,6 +44,11 @@ export async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
 			delete process.env.USERPROFILE;
 		} else {
 			process.env.USERPROFILE = previousUserProfile;
+		}
+		if (previousStateHome === undefined) {
+			delete process.env.QUARTERDECK_STATE_HOME;
+		} else {
+			process.env.QUARTERDECK_STATE_HOME = previousStateHome;
 		}
 		cleanup();
 	}

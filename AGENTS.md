@@ -100,6 +100,7 @@ Avoid broad edits to copied config mocks during feature work. Prefer the shared 
 ## Validation
 
 - Follow `docs/testing.md` and run the smallest validation set that proves the changed invariant.
+- Test fixtures that redirect `HOME` must also redirect or remove `QUARTERDECK_STATE_HOME`, which takes precedence over the home directory. Root Vitest strips inherited `QUARTERDECK_*` launcher settings and creates a temporary default `HOME`/`USERPROFILE` with global-setup cleanup; preserve that isolation so fallback paths never target an active instance's state.
 - Do not run an umbrella command and its constituent commands on the same unchanged tree. Reconcile the final base before any broad final gate, and re-run only validation affected by later changes.
 - Documentation-only work does not require runtime or browser tests. Validate the instruction bridge only when it changed and check only links added or modified.
 - Use the deterministic Agent Lab only when browser/runtime/PTY, persistence, Git/Files, host-integration, or visual behavior is part of the claim. Use screenshots only for visual claims and `restart-runtime` only for cold-start or recovery claims.

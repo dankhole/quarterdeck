@@ -30,17 +30,27 @@ async function dependencyTreeMatchesLockfile(packageRoot) {
 	try {
 		// Dependency trees belong to this checkout, never another worktree.
 		if (!(await lstat(join(packageRoot, "node_modules"))).isDirectory()) return false;
-		const [manifest, lock] = await Promise.all(
-			["package.json", "package-lock.json"].map(async (name) =>
+		const [manifest, lock, installedLock] = await Promise.all(
+			["package.json", "package-lock.json", "node_modules/.package-lock.json"].map(async (name) =>
 				JSON.parse(await readFile(join(packageRoot, name), "utf8")),
 			),
 		);
-		const names = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies });
-		const matches = await Promise.all(names.map(async (name) => {
-			const expectedVersion = lock.packages?.[`node_modules/${name}`]?.version;
-			if (typeof expectedVersion !== "string") return false;
-			const installed = JSON.parse(await readFile(join(packageRoot, "node_modules", name, "package.json"), "utf8"));
-			return installed.version === expectedVersion;
+		// Removed dependencies must also trigger npm ci, otherwise an obsolete
+		// vulnerable package can remain in an otherwise up-to-date tree.
+		if (!installedLock.packages || Object.keys(installedLock.packages).some((path) => !lock.packages?.[path])) return false;
+		const directNames = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies });
+		if (directNames.some((name) => !lock.packages?.[`node_modules/${name}`])) return false;
+		// Security fixes often change only transitive packages. Check the entire
+		// locked tree, including nested versions, before reusing an installation.
+		const entries = Object.entries(lock.packages ?? {}).filter(([path]) => path.startsWith("node_modules/"));
+		const matches = await Promise.all(entries.map(async ([path, expected]) => {
+			try {
+				const installed = JSON.parse(await readFile(join(packageRoot, path, "package.json"), "utf8"));
+				return installed.version === expected.version;
+			} catch (error) {
+				// npm omits optional dependencies unsupported by the current host.
+				return error.code === "ENOENT" && expected.optional === true;
+			}
 		}));
 		return matches.every(Boolean);
 	} catch {
@@ -189,7 +199,8 @@ export async function linkCheckout(checkoutRoot, options = {}) {
 		await ensureDependencies(checkoutRoot, options);
 		await executeNpm(["run", "build"]);
 	}
-	await executeNpm(["link"]);
+	// Preparation and the paired build already ran; global linking only needs bins.
+	await executeNpm(["link", "--ignore-scripts"]);
 }
 
 async function main() {

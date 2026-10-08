@@ -3,7 +3,7 @@ import { delimiter, join } from "node:path";
 
 import { resetAgentAvailabilityCache } from "../../../src/config";
 
-export function withTemporaryEnv<T>(
+export async function withTemporaryEnv<T>(
 	input: {
 		home: string;
 		pathPrefix?: string;
@@ -13,10 +13,12 @@ export function withTemporaryEnv<T>(
 ): Promise<T> {
 	const previousHome = process.env.HOME;
 	const previousUserProfile = process.env.USERPROFILE;
+	const previousStateHome = process.env.QUARTERDECK_STATE_HOME;
 	const previousPath = process.env.PATH;
 	resetAgentAvailabilityCache();
 	process.env.HOME = input.home;
 	process.env.USERPROFILE = input.home;
+	process.env.QUARTERDECK_STATE_HOME = join(input.home, ".quarterdeck");
 	if (input.pathPrefix) {
 		process.env.PATH = input.replacePath
 			? input.pathPrefix
@@ -24,7 +26,9 @@ export function withTemporaryEnv<T>(
 				? `${input.pathPrefix}${delimiter}${previousPath}`
 				: input.pathPrefix;
 	}
-	return run().finally(() => {
+	try {
+		return await run();
+	} finally {
 		if (previousHome === undefined) {
 			delete process.env.HOME;
 		} else {
@@ -35,6 +39,11 @@ export function withTemporaryEnv<T>(
 		} else {
 			process.env.USERPROFILE = previousUserProfile;
 		}
+		if (previousStateHome === undefined) {
+			delete process.env.QUARTERDECK_STATE_HOME;
+		} else {
+			process.env.QUARTERDECK_STATE_HOME = previousStateHome;
+		}
 		if (input.pathPrefix) {
 			if (previousPath === undefined) {
 				delete process.env.PATH;
@@ -43,7 +52,7 @@ export function withTemporaryEnv<T>(
 			}
 		}
 		resetAgentAvailabilityCache();
-	});
+	}
 }
 
 export function writeFakeCommand(binDir: string, command: string): void {

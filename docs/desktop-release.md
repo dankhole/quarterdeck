@@ -33,6 +33,8 @@ Substitute `x64` on Intel. Run these commands from the repository root; verifica
 
 These local artifacts are unsigned, allow explicitly requested CLI inspection for the isolated test harness, and have automatic updates disabled. Normal startup does not open an inspector listener; a passing local candidate is not signed-release or sustained daily-use acceptance.
 
+The DMG maker uses macOS `ditto` and `hdiutil` to preserve the packaged app in a compressed HFS+ volume with an Applications link. It uses a plain Finder view; no image parser or third-party DMG layout tooling is required. DMG signing and notarization remain separate release gates.
+
 `desktop-ci.yml` uses explicit `macos-15` ARM and `macos-15-intel` runner labels, pinned Node/npm build tools, independent lockfiles, unsigned DMG/ZIP artifacts, and isolated fake-provider Electron smoke. It uploads synthetic lab evidence on success or failure. Its download is a prototype, not a signed installer. The corresponding [GitHub runner table](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) identifies each label's architecture. It does not establish support on the macOS 13 minimum or prove signed Gatekeeper behavior.
 
 ## Provision signing once

@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, minify, type Plugin, type ResolvedConfig } from "vite";
-import { runtimeDevAdmissionPlugin } from "./dev-runtime-admission";
+import { runtimeDevAdmissionPlugin } from "./dev-runtime-admission.js";
 
 const rootPkg = JSON.parse(readFileSync(resolve(import.meta.dirname, "../package.json"), "utf-8")) as {
 	version: string;

@@ -4,6 +4,10 @@
 
 ## [0.12.9]
 
+- Isolate tests from inherited runtime state and hook settings so tests launched inside Quarterdeck cannot write to the active instance through its state-home override.
+
+- Fix desktop build and linking warnings, refresh vulnerable transitive dependencies, and create DMGs with native macOS tools instead of the vulnerable image-parser dependency chain. Dependency preparation now detects transitive lockfile updates.
+
 - Recover sessions after an unconfirmed shutdown through an explicit desktop or CLI confirmation, preserving task work and conversation history without requiring a full computer restart when saved processes have stopped.
 
 - Prepare missing or outdated dependencies automatically when linking or building the desktop app; use `npm run link -- --desktop` to install the app and link the CLI together.

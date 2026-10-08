@@ -248,7 +248,7 @@ After cloning, prepare dependencies and create/update the global CLI link from t
 npm run link
 ```
 
-`npm run link` checks installed direct dependencies against their lockfile versions and runs `npm ci` for missing or outdated root/web UI trees before building and updating the development symlink. Use `npm run link -- --desktop` on macOS to also prepare desktop dependencies and Electron, build and install the native app, and link the CLI. Existing independent dependency directories are reused when they match; shared dependency symlinks are rejected. If the globally linked runtime is currently running from this checkout, stop it before relinking.
+`npm run link` checks installed direct and transitive dependencies against their lockfile versions and runs `npm ci` for missing or outdated root/web UI trees before building and updating the development symlink. Use `npm run link -- --desktop` on macOS to also prepare desktop dependencies and Electron, build and install the native app, and link the CLI. Existing independent dependency directories are reused when they match; shared dependency symlinks are rejected. If the globally linked runtime is currently running from this checkout, stop it before relinking.
 
 Verify:
 

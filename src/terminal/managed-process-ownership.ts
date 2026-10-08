@@ -2,12 +2,12 @@ import { open, readdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
 import { type EnsurePrivateDirectoryOptions, ensurePrivateDirectory } from "../core/private-directory.js";
+import { getRuntimeHomePath } from "../core/runtime-state-home.js";
 import {
 	runWindowsProcessSnapshot,
 	WINDOWS_PROCESS_SNAPSHOT_SCRIPT,
 	type WindowsProcessSnapshotRunner,
 } from "../core/windows-process-snapshot.js";
-import { getRuntimeHomePath } from "../state/project-state-utils.js";
 
 export type { WindowsProcessSnapshotResult, WindowsProcessSnapshotRunner } from "../core/windows-process-snapshot.js";
 

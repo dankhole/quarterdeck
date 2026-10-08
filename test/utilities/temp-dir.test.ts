@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createTempDir } from "./temp-dir";
+import { createTempDir, withTemporaryHome } from "./temp-dir";
 
 describe("createTempDir", () => {
 	it("creates and cleans up a temporary directory", () => {
@@ -49,4 +50,46 @@ describe("createTempDir", () => {
 			}
 		},
 	);
+});
+
+describe("withTemporaryHome", { concurrent: false }, () => {
+	afterEach(() => vi.unstubAllEnvs());
+
+	it.each(["success", "rejection", "synchronous throw"] as const)(
+		"isolates inherited state and restores the environment after %s",
+		async (outcome) => {
+			const original = createTempDir("quarterdeck-original-home-");
+			vi.stubEnv("HOME", original.path);
+			vi.stubEnv("USERPROFILE", original.path);
+			vi.stubEnv("QUARTERDECK_STATE_HOME", join(original.path, "inherited-state"));
+			const originalEnvironment = { ...process.env };
+			const failure = new Error("fixture failure");
+			let temporaryHome: string | undefined;
+			try {
+				const result = withTemporaryHome(() => {
+					temporaryHome = process.env.HOME;
+					expect(temporaryHome).toBeDefined();
+					expect(temporaryHome).not.toBe(original.path);
+					expect(process.env.USERPROFILE).toBe(temporaryHome);
+					expect(process.env.QUARTERDECK_STATE_HOME).toBe(join(temporaryHome ?? "", ".quarterdeck"));
+					if (outcome === "synchronous throw") throw failure;
+					return outcome === "rejection" ? Promise.reject(failure) : Promise.resolve("done");
+				});
+				if (outcome === "success") await expect(result).resolves.toBe("done");
+				else await expect(result).rejects.toBe(failure);
+				expect(process.env).toEqual(originalEnvironment);
+				expect(existsSync(temporaryHome ?? "")).toBe(false);
+			} finally {
+				original.cleanup();
+			}
+		},
+	);
+
+	it("removes the state override when the caller did not have one", async () => {
+		vi.stubEnv("QUARTERDECK_STATE_HOME", undefined);
+		await withTemporaryHome(async () => {
+			expect(process.env.QUARTERDECK_STATE_HOME).toBe(join(process.env.HOME ?? "", ".quarterdeck"));
+		});
+		expect(process.env.QUARTERDECK_STATE_HOME).toBeUndefined();
+	});
 });

@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { readPairedBuildIdentity } from "./build-identity.mjs";
+import { rebuildRuntimePty } from "./native-runtime.mjs";
 import { desktopRoot, repoRoot, requireNativeMacTarget, stagedRuntimePath } from "./paths.mjs";
 import { run } from "./process.mjs";
 import { createReleasePolicy, releaseBuildSettings } from "./release-policy.mjs";
@@ -85,34 +86,13 @@ export async function stageRuntime(arch = process.arch) {
 		...process.env,
 		PATH: `${join(runtimePath, "bin")}:${process.env.PATH ?? ""}`,
 		npm_config_cache: join(desktopRoot, ".cache", "npm"),
-		npm_config_devdir: join(desktopRoot, ".cache", "node-gyp"),
 	};
 	delete env.ELECTRON_RUN_AS_NODE;
 	delete env.npm_config_runtime;
 	delete env.npm_config_target;
 	delete env.npm_config_disturl;
 	run(nodeBin, [npmCli, "ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: runtimePath, env });
-	const nativeEnv = {
-		...env,
-		npm_config_build_from_source: "true",
-		npm_config_runtime: "node",
-		npm_config_target: nodeVersion,
-		npm_config_arch: arch,
-		npm_config_disturl: "https://nodejs.org/download/release",
-	};
-	run(
-		nodeBin,
-		[
-			npmCli,
-			"rebuild",
-			"node-pty",
-			"--build-from-source",
-			`--target=${nodeVersion}`,
-			`--arch=${arch}`,
-			"--dist-url=https://nodejs.org/download/release",
-		],
-		{ cwd: runtimePath, env: nativeEnv },
-	);
+	rebuildRuntimePty({ runtimePath, nodeBin, nodeVersion, arch, env });
 	// Keep native runtime products without node-gyp's Python symlink and
 	// generated build files containing machine-local toolchain paths.
 	const nativeBuildPath = join(runtimePath, "node_modules", "node-pty", "build");

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { recordMakeArtifacts, recordPackagedApp } from "./scripts/artifact-manifest.mjs";
+import { MakerDMG } from "./scripts/maker-dmg.mjs";
 import { desktopRoot, requireNativeMacTarget, resolveTargetArch, stagedRuntimePath } from "./scripts/paths.mjs";
 import { releaseBuildSettings } from "./scripts/release-policy.mjs";
 import { copyRuntimeResource } from "./scripts/runtime-resources.mjs";
@@ -79,11 +80,7 @@ export default {
 		}),
 	],
 	makers: [
-		{
-			name: "@electron-forge/maker-dmg",
-			platforms: ["darwin"],
-			config: { name: `Quarterdeck-${desktopPackage.version}-${arch}`, format: "ULFO" },
-		},
+		new MakerDMG({ name: `Quarterdeck-${desktopPackage.version}-${arch}` }),
 		{ name: "@electron-forge/maker-zip", platforms: ["darwin"], config: {} },
 	],
 	publishers: [],

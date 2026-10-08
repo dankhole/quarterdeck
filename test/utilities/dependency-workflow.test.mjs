@@ -31,6 +31,7 @@ describe("dependency workflow preflight", () => {
 		await writeFile(join(packageRoot, "package-lock.json"), JSON.stringify({
 			packages: Object.fromEntries(Object.entries(versions).map(([name, version]) => [`node_modules/${name}`, { version }])),
 		}));
+		await writeFile(join(packageRoot, "node_modules/.package-lock.json"), await readFile(join(packageRoot, "package-lock.json")));
 		for (const [name, version] of Object.entries(versions)) {
 			await mkdir(join(packageRoot, "node_modules", name), { recursive: true });
 			await writeFile(join(packageRoot, "node_modules", name, "package.json"), JSON.stringify({ version }));
@@ -57,6 +58,42 @@ describe("dependency workflow preflight", () => {
 		await writeFile(join(checkoutRoot, "node_modules/zod/package.json"), JSON.stringify({ version: "4.4.0" }));
 		const health = await inspectDependencyTrees(checkoutRoot);
 		expect(health.rootAvailable).toBe(false);
+	});
+
+	it("detects stale transitive and nested packages after lockfile-only security updates", async () => {
+		await installFixture("", { zod: "4.6.2" });
+		const lockPath = join(checkoutRoot, "package-lock.json");
+		const lock = JSON.parse(await readFile(lockPath, "utf8"));
+		const nestedPath = "node_modules/zod/node_modules/transitive";
+		lock.packages[nestedPath] = { version: "2.0.1" };
+		await writeFile(lockPath, JSON.stringify(lock));
+		await mkdir(join(checkoutRoot, nestedPath), { recursive: true });
+		await writeFile(join(checkoutRoot, nestedPath, "package.json"), JSON.stringify({ version: "2.0.0" }));
+		expect((await inspectDependencyTrees(checkoutRoot)).rootAvailable).toBe(false);
+		await writeFile(join(checkoutRoot, nestedPath, "package.json"), JSON.stringify({ version: "2.0.1" }));
+		expect((await inspectDependencyTrees(checkoutRoot)).rootAvailable).toBe(true);
+	});
+
+	it("detects removed packages still recorded in the installed tree", async () => {
+		await installFixture("", { zod: "4.6.2", obsolete: "1.0.0" });
+		await writeFile(join(checkoutRoot, "package.json"), JSON.stringify({ dependencies: { zod: "4.6.2" } }));
+		const lockPath = join(checkoutRoot, "package-lock.json");
+		const lock = JSON.parse(await readFile(lockPath, "utf8"));
+		delete lock.packages["node_modules/obsolete"];
+		await writeFile(lockPath, JSON.stringify(lock));
+		expect((await inspectDependencyTrees(checkoutRoot)).rootAvailable).toBe(false);
+	});
+
+	it("permits omitted optional packages but checks their versions when installed", async () => {
+		await installFixture("", { zod: "4.6.2" });
+		const lockPath = join(checkoutRoot, "package-lock.json");
+		const lock = JSON.parse(await readFile(lockPath, "utf8"));
+		lock.packages["node_modules/optional-native"] = { version: "1.1.0", optional: true };
+		await writeFile(lockPath, JSON.stringify(lock));
+		expect((await inspectDependencyTrees(checkoutRoot)).rootAvailable).toBe(true);
+		await mkdir(join(checkoutRoot, "node_modules/optional-native"));
+		await writeFile(join(checkoutRoot, "node_modules/optional-native/package.json"), JSON.stringify({ version: "1.0.0" }));
+		expect((await inspectDependencyTrees(checkoutRoot)).rootAvailable).toBe(false);
 	});
 
 	it("installs only missing or stale trees", async () => {
@@ -99,13 +136,13 @@ describe("dependency workflow preflight", () => {
 			runtime: { activeRuntimePids: [], linkedCheckout: null },
 			executeNpm: (args) => calls.push(args),
 		});
-		expect(calls).toEqual([["run", "build"], ["link"]]);
+		expect(calls).toEqual([["run", "build"], ["link", "--ignore-scripts"]]);
 	});
 
 	it("installs the paired desktop build before linking without building twice", async () => {
 		const calls = [];
 		await linkCheckout(checkoutRoot, { desktop: true, executeNpm: (args) => calls.push(args) });
-		expect(calls).toEqual([["run", "desktop:install"], ["link"]]);
+		expect(calls).toEqual([["run", "desktop:install"], ["link", "--ignore-scripts"]]);
 	});
 
 	it("does not link when desktop installation fails", async () => {

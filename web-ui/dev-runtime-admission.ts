@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
-import { getRuntimeHomePath } from "../src/core/runtime-state-home";
-import { createOwnerBrowserBootstrap, verifyRuntimeOwner } from "../src/server/runtime-owner-client";
-import { discoverRuntimeOwner } from "../src/server/runtime-ownership";
+import { getRuntimeHomePath } from "../src/core/runtime-state-home.js";
+import { createOwnerBrowserBootstrap, verifyRuntimeOwner } from "../src/server/runtime-owner-client.js";
+import { discoverRuntimeOwner } from "../src/server/runtime-ownership.js";
 import type { Plugin } from "vite";
 
 function isLoopback(address: string | undefined): boolean {

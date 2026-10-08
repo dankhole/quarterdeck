@@ -1,5 +1,13 @@
 # Implementation Log
 
+## 2026-10-08 — Test isolation for inherited runtime state
+
+A pre-commit test run launched from a managed task inherited `QUARTERDECK_STATE_HOME`. Fixtures redirected `HOME` but left the higher-priority state-home override intact, so configuration tests changed the active instance's settings and task-repository tests registered synthetic projects in its state directory. Passing tests were not proof of isolation: several fixture writes succeeded against the wrong destination.
+
+Root `vitest.config.ts` now removes inherited `QUARTERDECK_*` launcher variables before fixtures run, then selects the local title provider. A global setup also assigns a temporary default `HOME`/`USERPROFILE` and removes it at suite teardown, protecting fallback paths that do not use a fixture helper. The shared temporary-home and runtime-config helpers explicitly redirect and restore `QUARTERDECK_STATE_HOME`, including exceptional exits. Tests retain the ability to set a synthetic state home within their own scope. `AGENTS.md` records the precedence trap.
+
+Validation passed: config and task-repository tests launched with an external synthetic state sentinel, helper exception/restore regressions, runtime typechecking, and 3,148 fast tests (eight platform skips). An additional 170-test focused run verified worker home isolation, teardown cleanup, and an unchanged external state sentinel. The sentinels remained byte-for-byte unchanged. Live-state repair is separate from repository validation and must preserve real projects and concurrent user changes.
+
 ## 2026-10-08 — Explicit recovery after unconfirmed shutdown
 
 Startup previously required a host reboot for every same-boot dirty custody generation, including runs that had launched only Git or availability probes. An absent runtime root could not establish that detached commands were gone. Legacy macOS session records contain PIDs without durable process-birth or descendant evidence, so automatic orphan termination would risk signalling an unrelated process.
