@@ -1,11 +1,13 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { ProjectTaskLifecycleService } from "../../src/server/project-task-lifecycle-service";
 import { loadProjectContext, loadProjectState, ProjectBoardCommandService } from "../../src/state";
 import { getProjectLifecycleOperationsPath } from "../../src/state/project-state-utils";
-import { initGitRepository } from "../utilities/git-env";
+import * as gitUtils from "../../src/workdir/git-utils";
+import { getTaskWorktreePath } from "../../src/workdir/task-worktree-lifecycle";
+import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
 it("clears exact Trash identities, retains cleanup failures, and safely replays child receipts", async () => {
@@ -84,6 +86,82 @@ it("clears exact Trash identities, retains cleanup failures, and safely replays 
 			expect(purgeTaskWorkspace).toHaveBeenCalledTimes(2);
 		} finally {
 			temp.cleanup();
+		}
+	});
+});
+
+it("clears concurrent real worktrees when one purge outlasts the filesystem lock retry budget", async () => {
+	await withTemporaryHome(async () => {
+		const temp = createTempDir("clear-trash-slow-purge-");
+		const originalRunGit = gitUtils.runGit;
+		const git = vi.spyOn(gitUtils, "runGit");
+		try {
+			const projectPath = join(temp.path, "project");
+			mkdirSync(projectPath);
+			initGitRepository(projectPath);
+			writeFileSync(join(projectPath, "tracked.txt"), "synthetic\n");
+			commitAll(projectPath, "synthetic fixture");
+			const { projectId } = await loadProjectContext(projectPath);
+			const scope = { projectId, projectPath };
+			const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+			const tasks = Array.from({ length: 8 }, (_, index) => ({
+				taskId: `slow-purge-${index}`,
+				taskCreatedAt: 100 + index,
+			}));
+			let revision = (await loadProjectState(projectPath)).revision;
+			for (const task of tasks) {
+				const workingDirectory = getTaskWorktreePath(projectPath, task.taskId);
+				mkdirSync(workingDirectory, { recursive: true });
+				runGit(projectPath, ["worktree", "add", "--detach", workingDirectory, "main"]);
+				const seeded = await boardCommands.execute(scope, {
+					commandId: `seed-${task.taskId}`,
+					expectedRevision: revision,
+					command: {
+						kind: "create_task",
+						columnId: "trash",
+						taskId: task.taskId,
+						createdAt: task.taskCreatedAt,
+						title: "Synthetic",
+						prompt: "Synthetic",
+						agentId: "codex",
+						baseRef: "main",
+						useWorktree: true,
+					},
+				});
+				revision = seeded.state.revision;
+			}
+			let delayed = false;
+			git.mockImplementation(async (cwd, args, options) => {
+				if (args[0] === "worktree" && args[1] === "remove" && !delayed) {
+					delayed = true;
+					// The original lock retries only 200 times at 25 ms. Keep one real
+					// repository owner past that budget while the other workers queue.
+					await new Promise((resolve) => setTimeout(resolve, 6_000));
+				}
+				return await originalRunGit(cwd, args, options);
+			});
+			const lifecycle = new ProjectTaskLifecycleService({
+				boardCommands,
+				startTaskSession: async () => ({ ok: false, summary: null, error: "Unused" }),
+			});
+			const request = { operationId: "slow-clear", expectedRevision: revision, tasks };
+			const result = await lifecycle.clearTrash(scope, request);
+			expect(result.results).toHaveLength(tasks.length);
+			expect(
+				result.results.every(({ ok }) => ok),
+				JSON.stringify(result.results),
+			).toBe(true);
+			expect(result.state.board.columns.flatMap((column) => column.cards)).toEqual([]);
+			expect(tasks.every(({ taskId }) => !existsSync(getTaskWorktreePath(projectPath, taskId)))).toBe(true);
+			const removalCount = () =>
+				git.mock.calls.filter(([, args]) => args[0] === "worktree" && args[1] === "remove").length;
+			expect(removalCount()).toBe(tasks.length);
+			const replay = await lifecycle.clearTrash(scope, request);
+			expect(replay.results.every(({ ok }) => ok)).toBe(true);
+			expect(removalCount()).toBe(tasks.length);
+		} finally {
+			git.mockRestore();
+			await temp.cleanupAsync();
 		}
 	});
 });

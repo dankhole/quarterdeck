@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 
@@ -314,7 +314,7 @@ describe("task-worktree serialization", { concurrent: false }, () => {
 			expect(first, JSON.stringify(first, null, 2)).toMatchObject({ ok: true, baseCommit: BASE_COMMIT });
 			expect(second, JSON.stringify(second, null, 2)).toMatchObject({ ok: true, baseCommit: BASE_COMMIT });
 			expect(firstLockRequest).toMatchObject({
-				path: join(repoPath, ".git"),
+				path: realpathSync(join(repoPath, ".git")),
 				type: "directory",
 				lockfileName: "quarterdeck-task-worktree-setup.lock",
 			});

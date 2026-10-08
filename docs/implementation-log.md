@@ -1,5 +1,13 @@
 # Implementation Log
 
+## 2026-10-08 — Clear Trash repository-lock contention
+
+The live `horizon-tooling` lifecycle journal confirmed that a bulk deletion completed one task and failed seven workspace purges with `Lock file is already being held`. The successful deletion took about 21 seconds; sibling deletions failed after approximately six seconds. Four Clear Trash workers were competing for the same Git common-directory setup lock, whose filesystem acquisition retries expire after roughly five seconds. Subsequent user attempts completed the affected deletions; investigation did not mutate live task state.
+
+The worktree setup-lock boundary now queues callers within each repository before acquiring the filesystem lock. Different repositories remain independent, and the filesystem lock still protects against other processes. Task identity, pinned-card protection, stop-before-purge, retained Trash workspaces, and durable deletion receipts remain owned by the existing lifecycle service.
+
+Notable files: `src/workdir/task-worktree-setup-lock.ts`, `test/runtime/task-worktree-setup-lock.test.ts`, and `test/integration/clear-trash.integration.test.ts`. Validation: 18 focused tests passed on the final code, including eight real worktrees with a six-second first purge and receipt replay without duplicate removals; 10 setup/cleanup integration tests also passed. Runtime typecheck and scoped Biome passed. Tests cover canonical repository aliases, independent repositories, failed queue owners, write draining, and ownership fencing. Agent Lab and real providers were unnecessary for this filesystem-lock invariant.
+
 ## 2026-10-08 — Shared desktop/browser preferences and Git availability evidence
 
 Desktop and browser clients already shared canonical global/project configuration, but profile-local UI preferences made a new desktop profile appear reset. `UiPreferencesStore` now owns a bounded, validated `ui-preferences.json`; per-key updates merge under the file lock, and legacy profiles seed only missing entries. Explicit reset tombstones prevent stale profiles from resurrecting cleared choices. Clients hydrate before mounting preference consumers and converge through runtime snapshots/events. Settings saves also invalidate connected clients, with dirty form fields preserved and inactive-project saves updating global runtime settings without replacing the active project's fields. Browser/runtime protocol 5 requires the new preference API.

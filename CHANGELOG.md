@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Prevent bulk Trash deletion from timing out while another task in the same repository is removing its workspace.
+
 - Share persistent UI preferences between browser and desktop clients, migrate existing profile choices without replacing shared values, and refresh settings after changes in another client.
 
 - Retain safe, project-scoped diagnostic reasons when Git validation makes a saved project unavailable.
