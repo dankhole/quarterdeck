@@ -59,6 +59,12 @@ import {
 	type SupervisedRuntime,
 } from "./runtime-supervisor.js";
 import { DESKTOP_ORIGIN, desktopPartition, desktopUrl, isProductPage } from "./security-policy.js";
+import {
+	canRecoverDesktopSessions,
+	DESKTOP_SESSION_RECOVERY_LAB_DIALOG,
+	recoverDesktopSessions,
+	showDesktopSessionRecoveryMessage,
+} from "./session-recovery.js";
 import { type DesktopSurface, startupSurface } from "./startup-surface.js";
 import { installWindowState, readWindowState, restoreWindowState } from "./window-state.js";
 
@@ -111,6 +117,7 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 	let navigating = false;
 	let reloading = false;
 	let refreshing = false;
+	let recovering = false;
 	let documentCommitEpoch = 0;
 	let shutdownConfirmed = false;
 	let loadedGeneration: string | null = null;
@@ -164,6 +171,7 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 				!navigating &&
 				!reloading &&
 				!refreshing &&
+				!recovering &&
 				!shutdownConfirmed,
 		);
 	const connectedProduct = (): boolean => productReady() && renderer?.generation === selection.get()?.generation;
@@ -225,12 +233,24 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 						void reloadWindow();
 					},
 					runtimeFailed:
-						surface === "runtime_failed" && !starting && !stopping && !navigating && !reloading && !refreshing,
+						surface === "runtime_failed" &&
+						!starting &&
+						!stopping &&
+						!navigating &&
+						!reloading &&
+						!refreshing &&
+						!recovering,
 					restartRuntime: () => {
 						void startRuntime();
 					},
 					environmentSetup:
-						!starting && !stopping && !navigating && !reloading && !refreshing && !shutdownConfirmed
+						!starting &&
+						!stopping &&
+						!navigating &&
+						!reloading &&
+						!refreshing &&
+						!recovering &&
+						!shutdownConfirmed
 							? () => {
 									void environmentController.open();
 								}
@@ -379,6 +399,8 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 			stopping ||
 			navigating ||
 			reloading ||
+			recovering ||
+			supervisor?.isRecoveryRunning() ||
 			coordinator?.isPending() ||
 			shutdownConfirmed ||
 			!supervisor ||
@@ -441,6 +463,55 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 			starting = false;
 			rebuildMenu();
 			launchRequests.deliver();
+		}
+	};
+	const recoverSessions = async (sender: ApprovedRenderer): Promise<void> => {
+		if (recovering || !supervisor) return;
+		const recoverySupervisor = supervisor;
+		const commitEpoch = documentCommitEpoch;
+		const isAllowed = (): boolean =>
+			canRecoverDesktopSessions({
+				surface,
+				failureCode: startupFailureCode,
+				documentUrl: sender.contents.isDestroyed() ? "" : sender.contents.getURL(),
+				senderIsCurrent: sender === renderer && documentCommitEpoch === commitEpoch,
+				busy:
+					starting ||
+					stopping ||
+					navigating ||
+					reloading ||
+					refreshing ||
+					Boolean(coordinator?.isPending()) ||
+					shutdownConfirmed ||
+					environmentCleanupUnconfirmed ||
+					supervisor !== recoverySupervisor ||
+					recoverySupervisor.isRecoveryRunning(),
+				runtimeRunning: recoverySupervisor.isRunning(),
+			});
+		if (!isAllowed()) return;
+		recovering = true;
+		rebuildMenu();
+		try {
+			await recoverDesktopSessions({
+				isAllowed,
+				showMessage: (options) =>
+					showDesktopSessionRecoveryMessage(options, {
+						syntheticLab: launch.synthetic && launch.lab !== null,
+						showMessage: (message) => dialogs.message(message),
+						labDialog: async (message): Promise<unknown> => {
+							const callback: unknown = Reflect.get(app, DESKTOP_SESSION_RECOVERY_LAB_DIALOG);
+							return typeof callback === "function" ? await callback(message) : 0;
+						},
+					}),
+				runHelper: () => recoverySupervisor.recoverPriorSessions(),
+				retryRuntime: async () => {
+					recovering = false;
+					await startRuntime();
+				},
+			});
+		} finally {
+			recovering = false;
+			rebuildMenu();
 		}
 	};
 	const createSupervisor = (environmentForHelper: NodeJS.ProcessEnv): RuntimeSupervisor => {
@@ -542,6 +613,8 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 			navigating ||
 			reloading ||
 			refreshing ||
+			recovering ||
+			supervisor?.isRecoveryRunning() ||
 			coordinator.isPending() ||
 			shutdownConfirmed ||
 			runtimeIdentity?.ownership === "attached"
@@ -591,6 +664,7 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 	const requestQuit = async (reason: DesktopQuitReason): Promise<boolean> => {
 		if (!coordinator) return false;
 		// Provisional navigation temporarily clears document authority; no lifecycle action may use that gap.
+		if (recovering || supervisor?.isRecoveryRunning()) return false;
 		if (navigating || reloading || ((refreshing || starting) && loadedGeneration !== null)) {
 			await dialogs.inform("frontend_unavailable");
 			return false;
@@ -697,14 +771,24 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 			isSynthetic: launch.synthetic,
 			showWindow,
 			isQuitting: () => shutdownConfirmed,
-			onSurfaceAction: (action) => {
-				if (!renderer || !desktopUrl(renderer.contents.getURL())?.pathname.startsWith("/__desktop/")) return;
+			onSurfaceAction: (action, sender) => {
+				if (
+					sender !== renderer ||
+					sender.contents.isDestroyed() ||
+					sender.contents.getURL() !== `${DESKTOP_ORIGIN}/__desktop/error`
+				)
+					return;
+				if (action === "recover") {
+					void recoverSessions(sender).catch(() => undefined);
+					return;
+				}
 				if (
 					action === "reload" &&
 					surface === "renderer_failed" &&
 					!navigating &&
 					!starting &&
 					!stopping &&
+					!recovering &&
 					!coordinator?.isPending()
 				)
 					void loadProduct().catch(() => undefined);

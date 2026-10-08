@@ -5,12 +5,12 @@ import { RuntimeOwnershipError } from "../../../src/server/runtime-ownership.js"
 import { RuntimeRecoveryAdmissionError } from "../../../src/server/runtime-recovery-admission.js";
 
 describe("desktop startup guidance", () => {
-	it("explains unconfirmed custody requires reboot without exposing process evidence", () => {
+	it("offers explicit recovery for unconfirmed custody without exposing process evidence", () => {
 		const failure = classifyDesktopStartupFailure(
 			new RuntimeRecoveryAdmissionError("unconfirmed_prior_custody", [54321]),
 		);
 		expect(failure.code).toBe("recovery_custody_unconfirmed");
-		expect(failure.message).toContain("Restart your Mac");
+		expect(failure.message).toContain("quarterdeck recover");
 		expect(failure.message).not.toContain("54321");
 	});
 	it("distinguishes live processes, unavailable identity, and incompatible owners", () => {

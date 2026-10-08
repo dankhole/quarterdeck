@@ -39,7 +39,7 @@ export class DesktopDialogs {
 				cancelId: 0,
 				message: "Runtime cleanup is unconfirmed",
 				detail:
-					"The owned runtime helper exited before confirming that its sessions stopped. Some processes may still be running, and unsaved window edits may be lost. Quit Anyway closes only this app; it does not confirm cleanup or authorize an update. If restart remains blocked by prior-session custody, restart the Mac before retrying.",
+					"The owned runtime helper exited before confirming that its sessions stopped. Some processes may still be running, and unsaved window edits may be lost. Quit Anyway closes only this app; it does not confirm cleanup or authorize an update. If restart remains blocked, check that prior agents and background commands have stopped, then choose Recover sessions. Restart the Mac if you cannot confirm cleanup.",
 			})) === 1
 		);
 	}

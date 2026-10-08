@@ -54,6 +54,18 @@ function supervisor(
 		shutdownDeadlineMs: 1000,
 		spawnChild: (executable, args, options) => {
 			expect(executable).toBe("/synthetic/bin/node");
+			if (args[1] === "recover") {
+				expect(mode).toBe("maintenance");
+				expect(args).toEqual(["/synthetic/dist/cli.js", "recover", "--confirm-stopped"]);
+				expect(options.env?.QUARTERDECK_DESKTOP_CHILD).toBeUndefined();
+				const child = spawn(
+					process.execPath,
+					[fileURLToPath(new URL("./fixtures/recovery-helper.mjs", import.meta.url))],
+					{ ...options, cwd: undefined },
+				);
+				children.push(child);
+				return child;
+			}
 			expect(args).toContain("--no-open");
 			expect(args).toContain("--no-native-ui");
 			expect(args).not.toContainEqual(expect.stringContaining("clientToken"));
@@ -77,6 +89,16 @@ function supervisor(
 }
 
 describe("private bundled runtime supervision", () => {
+	it("fences runtime start until the maintenance helper actually exits", async () => {
+		const { owner } = supervisor("maintenance");
+		const recovery = owner.recoverPriorSessions();
+		expect(owner.isRecoveryRunning()).toBe(true);
+		await expect(owner.start()).rejects.toThrow("recovery check is still running");
+		expect(await recovery).toBe("recovered");
+		expect(owner.isRecoveryRunning()).toBe(false);
+		await owner.start();
+		expect(await owner.stop()).toMatchObject({ status: "clean" });
+	});
 	it("preserves lifecycle ownership when an evidence observer throws", async () => {
 		const { owner } = supervisor("normal", true);
 		await owner.start();
@@ -86,6 +108,7 @@ describe("private bundled runtime supervision", () => {
 	it("uses private IPC readiness and requires confirmed quiescence plus process exit", async () => {
 		const { owner, evidence } = supervisor();
 		const ready = await owner.start();
+		expect(await owner.recoverPriorSessions()).toBe("unavailable");
 		expect(ready.origin).toBe("http://127.0.0.1:12345");
 		expect(ready.clientToken).toMatch(/^[a-zA-Z0-9_-]{43}$/);
 		expect(JSON.stringify(evidence)).not.toContain(ready.clientToken);

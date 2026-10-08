@@ -36,6 +36,11 @@ import { exerciseDesktopRealProvider } from "./desktop-real-scenario";
 import { exerciseDesktopRendererRecovery, openDesktopPrimaryProject } from "./desktop-renderer-recovery";
 import { DesktopSecondLaunchError, proveDesktopSecondLaunch } from "./desktop-second-launch";
 import { readDesktopTaskSession } from "./desktop-session-evidence";
+import {
+	exerciseDesktopSessionRecovery,
+	prepareDesktopSessionRecovery,
+	validateDesktopSessionRecoverySelection,
+} from "./desktop-session-recovery";
 import { type DesktopAgentMode, DesktopProcessEvidenceSchema } from "./desktop-types";
 import { readFakeInvocationReceipt } from "./fake-invocation-receipt";
 import { writeJsonAtomic } from "./paths";
@@ -458,11 +463,13 @@ export async function runDesktopSmoke(options: {
 	nativeExperience?: boolean;
 	performance?: boolean;
 	mainLoss?: boolean;
+	sessionRecovery?: boolean;
 	npmLaunch?: boolean;
 	manualShells?: boolean;
 	agentMode?: DesktopAgentMode;
 }): Promise<{ runId: string; manifestPath: string; artifactDir: string }> {
 	if (process.platform !== "darwin") throw new Error("Packaged desktop smoke requires macOS.");
+	if (options.sessionRecovery) validateDesktopSessionRecoverySelection(options);
 	validateDesktopProviderSelection(options.agentMode ?? "fake", options.includeAgent !== false);
 	if (options.manualShells) validateDesktopManualShellSelection(options);
 	if (options.performance) validateDesktopPerformanceSelection(options);
@@ -509,15 +516,26 @@ export async function runDesktopSmoke(options: {
 		const npmPreparation = options.npmLaunch
 			? await driver.prepareFixture(() => prepareDesktopNpmLaunch(fixture))
 			: null;
+		const recoverySeed = options.sessionRecovery
+			? await driver.prepareFixture(() => prepareDesktopSessionRecovery(fixture))
+			: null;
 		let page = await driver.launch();
-		await page.getByRole("button", { name: "Settings", exact: true }).waitFor({ state: "visible", timeout: 45_000 });
-		await dismissOnboarding(page);
-		if (npmPreparation) await assertDesktopNpmInitialProject(page, fixture);
-		else await openDesktopPrimaryProject(page);
+		if (recoverySeed) {
+			await exerciseDesktopSessionRecovery(page, driver, recoverySeed);
+		} else {
+			await page
+				.getByRole("button", { name: "Settings", exact: true })
+				.waitFor({ state: "visible", timeout: 45_000 });
+			await dismissOnboarding(page);
+			if (npmPreparation) await assertDesktopNpmInitialProject(page, fixture);
+			else await openDesktopPrimaryProject(page);
+		}
 		await assertRendererIsolation(page);
 		await driver.markReady();
 		await driver.inspect("ready");
-		if (npmPreparation) {
+		if (recoverySeed) {
+			await driver.inspect("completed");
+		} else if (npmPreparation) {
 			await exerciseDesktopNpmLaunch(page, driver, npmPreparation);
 		} else if (options.manualShells) {
 			await exerciseDesktopManualShells(page, driver);

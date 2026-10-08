@@ -247,6 +247,7 @@ npm run unlink
 | `npm run desktop:install` | Prepare dependencies, build, and import the local app into managed installations, without launching it. |
 | `npm run check` | Run agent-instruction checks, Biome, runtime typecheck, and root tests. |
 | `quarterdeck diagnostics --help` | Discover and inspect private local runtime diagnostics. |
+| `quarterdeck recover` | Inspect saved process evidence after an unconfirmed shutdown. |
 
 For the full development workflow, see [DEVELOPMENT.md](./DEVELOPMENT.md).
 
@@ -257,6 +258,8 @@ If `quarterdeck` is not found after `npm install --global quarterdeck`, make sur
 If no agent is available, install Claude Code, OpenAI Codex, or Pi and confirm the matching binary (`claude`, `codex`, or `pi`) is available on `PATH`. Quarterdeck requires Claude Code 2.1.198+, Codex 0.157.0+, or exactly Pi 0.84.3 for supported task-agent launches.
 
 If terminal symbols look wrong, install a Nerd Font and select it in your browser or system terminal font settings.
+
+If startup reports an unconfirmed prior shutdown, choose **Recover sessions…** in the desktop app, or run `quarterdeck recover`. After checking and stopping any remaining agents or background commands, confirm in the app or run `quarterdeck recover --confirm-stopped`, then reopen Quarterdeck. Recovery preserves saved projects, task work, and session history. It refuses live saved processes or unreadable evidence and does not kill processes. Older runs cannot account for detached commands; reboot remains an option when you cannot verify those commands have stopped.
 
 If an incident is difficult to explain, run `quarterdeck diagnostics doctor --request-browser` or `quarterdeck diagnostics capture --request-browser`. Quarterdeck automatically retains a small recent metadata-only history; you do not need to enable logging before the incident. Diagnostic bundles stay local under the Quarterdeck state directory, use owner-only filesystem access including protected Windows ACLs, and exclude prompts, terminal transcripts, files, diffs, environment values, and secrets by default. See [DEVELOPMENT.md](./DEVELOPMENT.md#unified-diagnostics) for filters, temporary deep recording, privacy limits, and isolated visual testing.
 

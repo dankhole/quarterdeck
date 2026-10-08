@@ -19,6 +19,7 @@ import type { RuntimeShutdownOutcome } from "../../src/core/api/runtime-shutdown
 import type { DesktopHostEffectIdentity } from "./desktop-host-effects.js";
 import type { DesktopRuntimeLaunchConfig } from "./launch-config.js";
 import { sanitizeDesktopHelperEnvironment } from "./launch-environment.js";
+import { DesktopRecoveryHelper, type DesktopRecoveryHelperResult } from "./recovery-helper.js";
 import type { RuntimeBundle } from "./runtime-bundle.js";
 import { runtimeOrigin } from "./security-policy.js";
 
@@ -86,15 +87,28 @@ export class RuntimeStartupError extends Error {
 /** The helper's private IPC is the sole readiness/shutdown authority, never stdout or port occupancy. */
 export class RuntimeSupervisor {
 	private active: ChildGeneration | null = null;
+	private readonly recoveryHelper: DesktopRecoveryHelper;
 
-	constructor(private readonly options: RuntimeSupervisorOptions) {}
+	constructor(private readonly options: RuntimeSupervisorOptions) {
+		this.recoveryHelper = new DesktopRecoveryHelper(options);
+	}
 
 	isRunning(): boolean {
 		return this.active !== null && !this.active.exited;
 	}
 
+	isRecoveryRunning(): boolean {
+		return this.recoveryHelper.isRunning();
+	}
+
+	recoverPriorSessions(): Promise<DesktopRecoveryHelperResult> {
+		if (this.isRunning()) return Promise.resolve("unavailable");
+		return this.recoveryHelper.run();
+	}
+
 	async start(): Promise<SupervisedRuntime> {
 		if (this.isRunning()) throw new Error("The desktop helper is already running.");
+		if (this.isRecoveryRunning()) throw new Error("The desktop recovery check is still running.");
 		const { bundle, launch } = this.options;
 		if (launch.synthetic && !launch.hostSimulationConfigPath)
 			throw new Error("Synthetic launch requires host simulation.");

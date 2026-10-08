@@ -16,6 +16,9 @@ quarterdeck \- local orchestration board for coding agents
 .br
 .B quarterdeck statusline
 .br
+.B quarterdeck recover
+.RI [ --confirm-stopped ]
+.br
 .B quarterdeck backup
 .RI " " create|list|restore
 .RI " " [ options ]
@@ -89,6 +92,15 @@ It accepts the same hook fields and does not fail the calling agent when deliver
 .TP
 .B statusline
 Read Claude Code status JSON from standard input and render the Quarterdeck statusline.
+.TP
+.B recover [--confirm-stopped]
+Inspect saved process evidence after an unconfirmed shutdown. Stop any remaining
+agents or detached background commands before passing
+.BR --confirm-stopped .
+Confirmation permits recovery of the inspected prior history on this boot;
+it does not prove detached commands exited. A live runtime, live saved process,
+or unreadable evidence blocks recovery. Saved projects, task work, and sessions
+are preserved. No processes are killed. Reopen Quarterdeck after confirmation.
 .TP
 .B backup create
 Create a manual snapshot of Quarterdeck state.

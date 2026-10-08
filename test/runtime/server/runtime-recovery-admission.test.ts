@@ -228,4 +228,40 @@ describe("runtime recovery admission", () => {
 		);
 		expect(readFileSync(path, "utf8")).toBe("incomplete");
 	});
+
+	it.each<[string, unknown]>([
+		["sessions.json", []],
+		["sessions.json", { task: [] }],
+		["state-transaction.json", { sessions: [] }],
+		["execution-ownership.json", { owners: [] }],
+		["execution-ownership.json", { owners: { task: { ownerProcess: [] } } }],
+	])("refuses malformed array evidence in %s", async (name, value) => {
+		const { home, project } = fixture();
+		const path = join(project, name);
+		const content = JSON.stringify(value);
+		writeFileSync(path, content);
+		await expect(assertRuntimeRecoveryAdmission({ stateHome: home, snapshot: async () => [] })).rejects.toMatchObject(
+			{
+				reason: "unverifiable_evidence",
+			},
+		);
+		expect(readFileSync(path, "utf8")).toBe(content);
+	});
+
+	it.each([BOOT_A, BOOT_B])(
+		"does not hide unreadable saved evidence behind clean-release or reboot proof on %s",
+		async (boot) => {
+			const { home, project } = fixture();
+			writeFileSync(join(project, "sessions.json"), "corrupt");
+			await expect(
+				assertRuntimeRecoveryAdmission({
+					stateHome: home,
+					currentGeneration: "current",
+					bootIdentity: boot,
+					readPriorClaims: async () => [custody({ released: boot === BOOT_A })],
+					snapshot: async () => [],
+				}),
+			).rejects.toMatchObject({ reason: "unverifiable_evidence" });
+		},
+	);
 });

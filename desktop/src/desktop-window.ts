@@ -1,6 +1,7 @@
 import { BrowserWindow, shell } from "electron";
 import type { ApprovedRenderer } from "./renderer-admission.js";
 import { desktopUrl, externalWebUrl } from "./security-policy.js";
+import { type DesktopSurfaceAction, desktopSurfaceAction } from "./startup-surface.js";
 
 export interface DesktopWindowOptions {
 	partition: string;
@@ -8,7 +9,7 @@ export interface DesktopWindowOptions {
 	isQuitting: () => boolean;
 	isSynthetic: boolean;
 	showWindow: boolean;
-	onSurfaceAction: (action: "retry" | "reload") => void;
+	onSurfaceAction: (action: DesktopSurfaceAction, sender: ApprovedRenderer) => void;
 	onRendererFailed: () => void;
 	onDocumentNavigation?: () => void;
 }
@@ -55,9 +56,10 @@ export function createDesktopWindow(options: DesktopWindowOptions): ApprovedRend
 			event.preventDefault();
 			return;
 		}
-		if (url?.pathname === "/__desktop/retry" || url?.pathname === "/__desktop/reload") {
+		const action = desktopSurfaceAction(event.url);
+		if (action) {
 			event.preventDefault();
-			options.onSurfaceAction(url.pathname.endsWith("reload") ? "reload" : "retry");
+			options.onSurfaceAction(action, renderer);
 			return;
 		}
 		if (!url) {

@@ -501,6 +501,10 @@ export class RuntimeOwnershipLease {
 	getDescriptor(): RuntimeOwnerDescriptor | null {
 		return structuredClone(this.descriptor);
 	}
+	/** Immutable admission identity; callers cannot change the lease's claim. */
+	getClaim(): RuntimeOwnershipClaim {
+		return structuredClone(this.claim);
+	}
 	getPublicDescriptor(): PublicRuntimeOwnerDescriptor | null {
 		return this.descriptor ? publicRuntimeOwnerDescriptorSchema.parse(this.descriptor) : null;
 	}

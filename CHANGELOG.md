@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Recover sessions after an unconfirmed shutdown through an explicit desktop or CLI confirmation, preserving task work and conversation history without requiring a full computer restart when saved processes have stopped.
+
 - Prepare missing or outdated dependencies automatically when linking or building the desktop app; use `npm run link -- --desktop` to install the app and link the CLI together.
 
 - Check native test permissions before launching the macOS app, and separate manual-terminal and performance checks from deliberate crash-recovery tests.

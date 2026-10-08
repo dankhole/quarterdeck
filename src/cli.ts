@@ -6,6 +6,7 @@ import { registerBackupCommand } from "./commands/backup";
 import { registerDesktopCommand } from "./commands/desktop.js";
 import { registerDiagnosticsCommand } from "./commands/diagnostics";
 import { registerHooksCommand } from "./commands/hooks";
+import { registerRecoverCommand } from "./commands/recover.js";
 import { registerStatuslineCommand } from "./commands/statusline";
 import {
 	DEFAULT_QUARTERDECK_RUNTIME_PORT,
@@ -345,6 +346,7 @@ function createProgram(invocationArgs: string[]): Command {
 	registerHooksCommand(program);
 	registerStatuslineCommand(program);
 	registerBackupCommand(program);
+	registerRecoverCommand(program);
 	registerDiagnosticsCommand(program);
 	registerDesktopCommand(program, QUARTERDECK_VERSION);
 	program.hook("preAction", (_command, actionCommand) => {

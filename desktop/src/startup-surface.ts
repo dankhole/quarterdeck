@@ -2,6 +2,14 @@ import type { DesktopStartupFailureMessage } from "../../src/core/api/desktop-ru
 import { desktopCsp } from "./security-policy.js";
 
 export type DesktopSurface = "starting" | "startup_failed" | "runtime_failed" | "renderer_failed" | "shutdown_failed";
+export type DesktopSurfaceAction = "retry" | "reload" | "recover";
+
+export function desktopSurfaceAction(value: string): DesktopSurfaceAction | null {
+	for (const action of ["retry", "reload", "recover"] as const) {
+		if (value === `app://quarterdeck/__desktop/${action}`) return action;
+	}
+	return null;
+}
 
 const COPY: Record<DesktopSurface, { title: string; detail: string }> = {
 	starting: { title: "Starting Quarterdeck", detail: "Preparing the runtime and your workspace…" },
@@ -31,7 +39,7 @@ const FAILURE_COPY: Record<DesktopStartupFailureMessage["code"], string> = {
 	incompatible_runtime:
 		"An existing runtime uses an incompatible version. Quit that Quarterdeck CLI or app, then reopen this version. Workspace state will remain available.",
 	recovery_custody_unconfirmed:
-		"A prior runtime stopped without confirming cleanup. Quarterdeck cannot safely assume its sessions have ended. Restart the Mac to retire those sessions, then reopen Quarterdeck.",
+		"A prior runtime stopped without confirming cleanup. Check that its agents and background commands have stopped, then choose Recover sessions. If you cannot confirm they stopped, restart the Mac before reopening Quarterdeck. Saved projects and session history are retained.",
 	recovery_evidence_unverifiable:
 		"Prior session cleanup cannot be verified from its saved process identities. Quarterdeck will keep recovery blocked. Restart the Mac, then reopen Quarterdeck; if this persists, use diagnostics before retrying.",
 	prior_processes_live:
@@ -52,8 +60,12 @@ export function startupSurface(
 		surface === "starting" || surface === "shutdown_failed"
 			? ""
 			: `<a href="app://quarterdeck/__desktop/${action}">${label}</a>`;
+	const recoveryLink =
+		surface === "startup_failed" && failureCode === "recovery_custody_unconfirmed"
+			? '<a href="app://quarterdeck/__desktop/recover">Recover sessions…</a>'
+			: "";
 	return new Response(
-		`<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Quarterdeck</title><style>html{color-scheme:dark;background:#24292e;color:#e6edf3;font:16px system-ui}body{margin:0;min-height:100vh;display:grid;place-items:center}main{max-width:34rem;padding:3rem}h1{font-size:1.6rem;font-weight:600}p{line-height:1.65;color:#aeb7c2}a{display:inline-block;padding:.7rem 1rem;border:1px solid #57606a;border-radius:6px;color:#e6edf3;text-decoration:none}a:focus-visible{outline:2px solid #58a6ff;outline-offset:4px}</style></head><body><main role="status"><h1>${title}</h1><p>${detail}</p>${link}</main></body></html>`,
+		`<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Quarterdeck</title><style>html{color-scheme:dark;background:#24292e;color:#e6edf3;font:16px system-ui}body{margin:0;min-height:100vh;display:grid;place-items:center}main{max-width:34rem;padding:3rem}h1{font-size:1.6rem;font-weight:600}p{line-height:1.65;color:#aeb7c2}nav{display:flex;flex-wrap:wrap;gap:.7rem}a{display:inline-block;padding:.7rem 1rem;border:1px solid #57606a;border-radius:6px;color:#e6edf3;text-decoration:none}a:focus-visible{outline:2px solid #58a6ff;outline-offset:4px}</style></head><body><main role="status"><h1>${title}</h1><p>${detail}</p><nav>${link}${recoveryLink}</nav></main></body></html>`,
 		{
 			headers: {
 				"Content-Type": "text/html; charset=utf-8",

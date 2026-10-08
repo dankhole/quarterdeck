@@ -12,7 +12,7 @@ export function classifyDesktopStartupFailure(error: unknown): DesktopStartupFai
 			return {
 				code: "recovery_custody_unconfirmed",
 				message:
-					"Quarterdeck cannot confirm that processes from the previous run have stopped. Restart your Mac, then reopen Quarterdeck. Your saved projects and sessions are retained.",
+					"Quarterdeck cannot confirm cleanup of the previous run. Use Recover sessions after checking prior agents and background commands, or run quarterdeck recover. Your saved projects and sessions are retained.",
 			};
 		if (error.reason === "live_prior_process")
 			return {

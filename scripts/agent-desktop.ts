@@ -25,6 +25,7 @@ program
 		"Run only hidden fake task/browser idle and navigation measurements, without crash/recovery",
 	)
 	.option("--main-loss", "Verify fake-provider recovery after exact isolated app process loss")
+	.option("--session-recovery", "Check explicit acknowledgement after isolated unclean startup; requires --no-agent")
 	.option("--provider <mode>", "Provider mode: fake, real-codex, or real-claude", "fake")
 	.option("--json", "Print artifact references as JSON")
 	.action(
@@ -36,6 +37,7 @@ program
 			nativeExperience?: boolean;
 			performance?: boolean;
 			mainLoss?: boolean;
+			sessionRecovery?: boolean;
 			npmLaunch?: boolean;
 			manualShells?: boolean;
 			agent: boolean;
@@ -51,6 +53,7 @@ program
 				nativeExperience: options.nativeExperience,
 				performance: options.performance,
 				mainLoss: options.mainLoss,
+				sessionRecovery: options.sessionRecovery,
 				npmLaunch: options.npmLaunch,
 				manualShells: options.manualShells,
 				agentMode: DesktopAgentModeSchema.parse(options.provider),

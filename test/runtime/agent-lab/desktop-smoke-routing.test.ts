@@ -9,9 +9,18 @@ import {
 } from "../../../scripts/agent-lab/desktop-browser-coexistence";
 import { type DesktopLabFixture, prepareDesktopLabFixture } from "../../../scripts/agent-lab/desktop-fixture";
 import { exerciseDesktopMainLoss } from "../../../scripts/agent-lab/desktop-main-loss-scenario";
-import { exerciseDesktopRendererRecovery } from "../../../scripts/agent-lab/desktop-renderer-recovery";
+import {
+	exerciseDesktopRendererRecovery,
+	openDesktopPrimaryProject,
+} from "../../../scripts/agent-lab/desktop-renderer-recovery";
 import type * as secondLaunchModule from "../../../scripts/agent-lab/desktop-second-launch";
 import { proveDesktopSecondLaunch } from "../../../scripts/agent-lab/desktop-second-launch";
+import type * as recoveryModule from "../../../scripts/agent-lab/desktop-session-recovery";
+import {
+	type DesktopSessionRecoverySeed,
+	exerciseDesktopSessionRecovery,
+	prepareDesktopSessionRecovery,
+} from "../../../scripts/agent-lab/desktop-session-recovery";
 import { runDesktopSmoke } from "../../../scripts/agent-lab/desktop-smoke";
 
 const mocks = vi.hoisted(() => {
@@ -44,6 +53,7 @@ const mocks = vi.hoisted(() => {
 		keyboard: { type: vi.fn(async () => {}), press: vi.fn(async (_key: string) => {}) },
 	};
 	const driver = {
+		prepareFixture: vi.fn(async (operation: () => Promise<unknown>) => operation()),
 		launch: vi.fn(async () => page),
 		markReady: vi.fn(async () => {}),
 		inspect: vi.fn(async () => {}),
@@ -71,6 +81,11 @@ vi.mock("../../../scripts/agent-lab/desktop-renderer-recovery", () => ({
 	exerciseDesktopRendererRecovery: vi.fn(),
 }));
 vi.mock("../../../scripts/agent-lab/desktop-main-loss-scenario", () => ({ exerciseDesktopMainLoss: vi.fn() }));
+vi.mock("../../../scripts/agent-lab/desktop-session-recovery", async (importOriginal) => ({
+	...(await importOriginal<typeof recoveryModule>()),
+	prepareDesktopSessionRecovery: vi.fn(),
+	exerciseDesktopSessionRecovery: vi.fn(),
+}));
 vi.mock("../../../scripts/agent-lab/desktop-second-launch", async (importOriginal) => ({
 	...(await importOriginal<typeof secondLaunchModule>()),
 	proveDesktopSecondLaunch: vi.fn(),
@@ -236,11 +251,67 @@ describe.skipIf(process.platform !== "darwin")("exclusive packaged performance r
 		{ manualShells: true },
 		{ nativeExperience: true },
 		{ mainLoss: true },
+		{ sessionRecovery: true },
 	])("rejects conflicting performance options before fixture or app launch: %j", async (options) => {
 		await expect(
 			runDesktopSmoke({ appPath: fixture.manifest.appPath, performance: true, ...options }),
 		).rejects.toThrow(/performance|no other scenario/);
 		expect(prepareDesktopLabFixture).not.toHaveBeenCalled();
 		expect(mocks.driver.launch).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		{},
+		{ includeAgent: true },
+		{ includeAgent: false, showWindow: true },
+		{ includeAgent: false, agentMode: "real-codex" as const },
+		{ includeAgent: false, agentMode: "real-claude" as const },
+		{ includeAgent: false, npmLaunch: true },
+		{ includeAgent: false, manualShells: true },
+		{ includeAgent: false, nativeExperience: true },
+		{ includeAgent: false, performance: true },
+		{ includeAgent: false, mainLoss: true },
+	])("rejects conflicting acknowledgement options before fixture or app access: %j", async (options) => {
+		await expect(
+			runDesktopSmoke({ appPath: fixture.manifest.appPath, sessionRecovery: true, ...options }),
+		).rejects.toThrow("no other scenario");
+		expect(prepareDesktopLabFixture).not.toHaveBeenCalled();
+		expect(mocks.driver.launch).not.toHaveBeenCalled();
+	});
+
+	it("seeds unclean ownership before launch and runs only acknowledgement before normal cleanup", async () => {
+		const seed = { claim: { generation: "synthetic-seed" } } as DesktopSessionRecoverySeed;
+		vi.mocked(prepareDesktopSessionRecovery).mockResolvedValueOnce(seed);
+		await runDesktopSmoke({ appPath: fixture.manifest.appPath, sessionRecovery: true, includeAgent: false });
+		expect(prepareDesktopSessionRecovery).toHaveBeenCalledExactlyOnceWith(fixture);
+		expect(vi.mocked(prepareDesktopSessionRecovery).mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.driver.launch.mock.invocationCallOrder[0] ?? 0,
+		);
+		expect(exerciseDesktopSessionRecovery).toHaveBeenCalledExactlyOnceWith(
+			mocks.page,
+			expect.objectContaining({ fixture }),
+			seed,
+		);
+		expect(mocks.driver.markReady).toHaveBeenCalledOnce();
+		expect(mocks.driver.inspect.mock.calls.at(-1)).toEqual(["completed"]);
+		expect(mocks.driver.stop).toHaveBeenCalledExactlyOnceWith(undefined);
+		expect(openDesktopPrimaryProject).not.toHaveBeenCalled();
+		expect(mocks.page.getByRole).not.toHaveBeenCalled();
+		expect(mocks.page.keyboard.press).not.toHaveBeenCalled();
+		expect(exerciseDesktopBrowserCoexistence).not.toHaveBeenCalled();
+		expect(proveDesktopSecondLaunch).not.toHaveBeenCalled();
+		expect(exerciseDesktopRendererRecovery).not.toHaveBeenCalled();
+		expect(exerciseDesktopMainLoss).not.toHaveBeenCalled();
+	});
+
+	it("preserves fixture preparation failure for cleanup and never launches an app", async () => {
+		const failure = new Error("fixture child could not establish dead custody");
+		vi.mocked(prepareDesktopSessionRecovery).mockRejectedValueOnce(failure);
+		await expect(
+			runDesktopSmoke({ appPath: fixture.manifest.appPath, sessionRecovery: true, includeAgent: false }),
+		).rejects.toThrow(failure.message);
+		expect(mocks.driver.launch).not.toHaveBeenCalled();
+		expect(mocks.driver.markReady).not.toHaveBeenCalled();
+		expect(mocks.driver.stop).toHaveBeenCalledExactlyOnceWith(failure);
 	});
 });
