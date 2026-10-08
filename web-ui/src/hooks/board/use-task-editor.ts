@@ -1,6 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-
 import { showAppToast } from "@/components/app-toaster";
 import { isBranchRefValid } from "@/hooks/board/task-editor";
 import {
@@ -11,6 +10,7 @@ import {
 	createTasksOnBoard,
 	saveEditedTaskToBoard,
 } from "@/hooks/board/task-editor-drafts";
+import { usePreferenceStorageEffect } from "@/hooks/settings/use-preference-storage-effect";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeAgentId, RuntimeCodexOptions } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
@@ -176,6 +176,11 @@ export function useTaskEditor({
 		},
 		[resetNewTaskAgentId],
 	);
+
+	usePreferenceStorageEffect(LocalStorageKey.TaskCreateLastAgentId, () => {
+		inSessionRememberedTaskAgentIdRef.current = readRememberedTaskAgentId();
+		if (!isInlineTaskCreateOpen) resetNewTaskAgentId(getDefaultTaskAgentId());
+	});
 
 	useEffect(() => {
 		if (!isInlineTaskCreateOpen) {

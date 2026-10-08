@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { usePreferenceStorageEffect } from "@/hooks/settings/use-preference-storage-effect";
 
 import { useLayoutResetEffect } from "@/resize/layout-customizations";
 import { clampAtLeast, clampWidthToContainer } from "@/resize/resize-persistence";
@@ -54,8 +55,14 @@ export function useGitHistoryLayout({ containerWidth }: { containerWidth: number
 	setRefsPanelWidth: (width: number) => void;
 } {
 	const [refsPanelWidth, setRefsPanelWidthState] = useState(() => loadResizePreference(REFS_PANEL_WIDTH_PREFERENCE));
+	usePreferenceStorageEffect(REFS_PANEL_WIDTH_PREFERENCE.key, () =>
+		setRefsPanelWidthState(loadResizePreference(REFS_PANEL_WIDTH_PREFERENCE)),
+	);
 	const [commitsPanelWidth, setCommitsPanelWidthState] = useState(() =>
 		loadResizePreference(COMMITS_PANEL_WIDTH_PREFERENCE),
+	);
+	usePreferenceStorageEffect(COMMITS_PANEL_WIDTH_PREFERENCE.key, () =>
+		setCommitsPanelWidthState(loadResizePreference(COMMITS_PANEL_WIDTH_PREFERENCE)),
 	);
 
 	const setRefsPanelWidth = useCallback((width: number) => {

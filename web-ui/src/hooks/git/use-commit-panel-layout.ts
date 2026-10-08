@@ -1,12 +1,12 @@
 import type { MutableRefObject, MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useRef, useState } from "react";
-
 import {
 	COMMIT_CONTROLS_DEFAULT_HEIGHT,
 	calculateCommitControlsDragHeight,
 	clampCommitControlsHeight,
 	getCommitControlsResizeBounds,
 } from "@/hooks/git/commit-panel-layout";
+import { usePreferenceStorageEffect } from "@/hooks/settings/use-preference-storage-effect";
 import { useLayoutResetEffect } from "@/resize/layout-customizations";
 import {
 	getResizePreferenceDefaultValue,
@@ -36,6 +36,9 @@ export function useCommitPanelLayout(): UseCommitPanelLayoutResult {
 	const { startDrag: startCommitControlsResize } = useResizeDrag();
 	const [commitControlsHeight, setCommitControlsHeightState] = useState(() =>
 		loadResizePreference(COMMIT_CONTROLS_HEIGHT_PREFERENCE),
+	);
+	usePreferenceStorageEffect(COMMIT_CONTROLS_HEIGHT_PREFERENCE.key, () =>
+		setCommitControlsHeightState(loadResizePreference(COMMIT_CONTROLS_HEIGHT_PREFERENCE)),
 	);
 
 	const setCommitControlsHeight = useCallback((height: number) => {

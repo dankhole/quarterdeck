@@ -1,3 +1,4 @@
+import { isSharedUiPreferenceKey, sharedUiPreferences } from "@/storage/shared-ui-preferences";
 export enum LocalStorageKey {
 	ProjectGroupsCollapsed = "quarterdeck.project-groups-collapsed",
 	TaskCreatePrimaryStartAction = "quarterdeck.task-create-primary-start-action",
@@ -46,15 +47,30 @@ export const LAYOUT_CUSTOMIZATION_LOCAL_STORAGE_KEYS = [
 	LocalStorageKey.DiagnosticsPanelWidth,
 ] as const;
 
-function getLocalStorage(): Storage | null {
+export function getOptionalLocalStorage(): Storage | null {
 	if (typeof window === "undefined") {
 		return null;
 	}
-	return window.localStorage;
+	try {
+		return window.localStorage;
+	} catch {
+		return null;
+	}
 }
 
-export function readLocalStorageItem(key: LocalStorageKey): string | null {
-	const storage = getLocalStorage();
+const localListeners = new Set<() => void>();
+export function subscribePreferenceStorage(listener: () => void): () => void {
+	localListeners.add(listener);
+	const unsubscribe = sharedUiPreferences.subscribe(listener);
+	return () => {
+		localListeners.delete(listener);
+		unsubscribe();
+	};
+}
+
+export function readLocalStorageItem(key: string): string | null {
+	if (sharedUiPreferences.active && isSharedUiPreferenceKey(key)) return sharedUiPreferences.read(key);
+	const storage = getOptionalLocalStorage();
 	if (!storage) {
 		return null;
 	}
@@ -65,25 +81,35 @@ export function readLocalStorageItem(key: LocalStorageKey): string | null {
 	}
 }
 
-export function writeLocalStorageItem(key: LocalStorageKey, value: string): void {
-	const storage = getLocalStorage();
+export function writeLocalStorageItem(key: string, value: string): void {
+	if (sharedUiPreferences.active && isSharedUiPreferenceKey(key)) {
+		sharedUiPreferences.write(key, value);
+		return;
+	}
+	const storage = getOptionalLocalStorage();
 	if (!storage) {
 		return;
 	}
 	try {
 		storage.setItem(key, value);
+		for (const listener of localListeners) listener();
 	} catch {
 		// Ignore storage write failures.
 	}
 }
 
-export function removeLocalStorageItem(key: LocalStorageKey): void {
-	const storage = getLocalStorage();
+export function removeLocalStorageItem(key: string): void {
+	if (sharedUiPreferences.active && isSharedUiPreferenceKey(key)) {
+		sharedUiPreferences.write(key, null);
+		return;
+	}
+	const storage = getOptionalLocalStorage();
 	if (!storage) {
 		return;
 	}
 	try {
 		storage.removeItem(key);
+		for (const listener of localListeners) listener();
 	} catch {
 		// Ignore storage removal failures.
 	}

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-
 import { areGitRefsResponsesEqual } from "@/runtime/query-equality";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRef, RuntimeGitRefsResponse, RuntimeGitSyncSummary } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
-import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
+import { LocalStorageKey } from "@/storage/local-storage-store";
 import { useTaskRepositoryInfoValue, useTaskWorktreeSnapshotValue } from "@/stores/project-metadata-store";
 import type { BoardData, CardSelection } from "@/types";
+import { useBooleanLocalStorageValue } from "@/utils/react-use";
 import { resolveTaskGitState } from "@/utils/task-git-state";
 
 export interface GitViewCompareNavigation {
@@ -98,23 +98,11 @@ export function useGitViewCompare({
 	const [sourceRef, setSourceRefState] = useState<string | null>(defaultSourceRef);
 	const [targetRef, setTargetRefState] = useState<string | null>(defaultTargetRef);
 
-	// "Include uncommitted work" toggle — persisted to localStorage, default true
-	const [includeUncommitted, setIncludeUncommittedState] = useState(
-		() => readLocalStorageItem(LocalStorageKey.CompareIncludeUncommitted) !== "false",
+	const [includeUncommitted, setIncludeUncommitted] = useBooleanLocalStorageValue(
+		LocalStorageKey.CompareIncludeUncommitted,
+		true,
 	);
-	const setIncludeUncommitted = useCallback((value: boolean) => {
-		setIncludeUncommittedState(value);
-		writeLocalStorageItem(LocalStorageKey.CompareIncludeUncommitted, String(value));
-	}, []);
-
-	// "Only branch changes" toggle (three-dot diff) — persisted to localStorage, default true
-	const [threeDotDiff, setThreeDotDiffState] = useState(
-		() => readLocalStorageItem(LocalStorageKey.CompareThreeDotDiff) !== "false",
-	);
-	const setThreeDotDiff = useCallback((value: boolean) => {
-		setThreeDotDiffState(value);
-		writeLocalStorageItem(LocalStorageKey.CompareThreeDotDiff, String(value));
-	}, []);
+	const [threeDotDiff, setThreeDotDiff] = useBooleanLocalStorageValue(LocalStorageKey.CompareThreeDotDiff, true);
 
 	// Reset on task/project change
 	useEffect(() => {

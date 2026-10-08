@@ -1,9 +1,9 @@
-import { realpath, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 
-import { areFileSystemPathsEqual, type RuntimeProjectAvailability } from "../core";
+import type { RuntimeProjectAvailability } from "../core";
 import { readProjectRelocationJournal } from "../state/project-relocation-journal";
 import { isUnderWorktreesHome } from "../state/project-state-utils";
-import { runGit } from "../workdir/git-utils";
+import { hasGitRepository } from "./git-repository-probe";
 
 export interface ProjectAvailabilityScope {
 	projectId?: string;
@@ -14,7 +14,7 @@ export interface ProjectAvailabilityScope {
 
 export interface ProjectAvailabilityDependencies {
 	pathIsDirectory?: (path: string) => Promise<boolean>;
-	hasGitRepository?: (path: string) => Promise<boolean>;
+	hasGitRepository?: (path: string, projectId?: string) => Promise<boolean>;
 	hasPendingRelocation?: (projectId: string) => Promise<boolean>;
 }
 
@@ -66,14 +66,10 @@ export async function observeProjectAvailability(
 			}
 		}
 		if (scope.folderOnly) return { status: "available" };
-		const hasGitRepository = deps.hasGitRepository
-			? await deps.hasGitRepository(scope.repoPath)
-			: await runGit(scope.repoPath, ["rev-parse", "--show-toplevel"], { timeoutClass: "sync" }).then(
-					async (result) =>
-						result.ok &&
-						areFileSystemPathsEqual(await realpath(result.stdout.trim()), await realpath(scope.repoPath)),
-				);
-		return hasGitRepository ? { status: "available" } : { status: "unavailable", reason: "not_git_repository" };
+		const gitRepositoryAvailable = deps.hasGitRepository
+			? await deps.hasGitRepository(scope.repoPath, scope.projectId)
+			: await hasGitRepository(scope.repoPath);
+		return gitRepositoryAvailable ? { status: "available" } : { status: "unavailable", reason: "not_git_repository" };
 	} catch {
 		return { status: "unavailable", reason: "inaccessible" };
 	}

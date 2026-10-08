@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { usePreferenceStorageEffect } from "@/hooks/settings/use-preference-storage-effect";
 
 import { useLayoutResetEffect } from "@/resize/layout-customizations";
 import { clampBetween } from "@/resize/resize-persistence";
@@ -22,6 +23,9 @@ export function useGitCommitDiffLayout(): {
 } {
 	const [fileTreePanelRatio, setFileTreePanelRatioState] = useState(() =>
 		loadResizePreference(FILE_TREE_RATIO_PREFERENCE),
+	);
+	usePreferenceStorageEffect(FILE_TREE_RATIO_PREFERENCE.key, () =>
+		setFileTreePanelRatioState(loadResizePreference(FILE_TREE_RATIO_PREFERENCE)),
 	);
 
 	const setFileTreePanelRatio = useCallback((ratio: number) => {

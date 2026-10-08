@@ -18,6 +18,7 @@ import {
 	type UseGitViewCompareResult,
 	useGitViewCompare,
 } from "@/hooks/git/use-git-view-compare";
+import { usePreferenceStorageEffect } from "@/hooks/settings/use-preference-storage-effect";
 import { clampBetween } from "@/resize/resize-persistence";
 import {
 	loadResizePreference,
@@ -68,6 +69,9 @@ export function useGitView({
 	const [fileTreeVisible, setFileTreeVisible] = useState(true);
 	const [fileTreeRatio, setFileTreeRatioState] = useState(() =>
 		loadResizePreference(GIT_VIEW_FILE_TREE_RATIO_PREFERENCE),
+	);
+	usePreferenceStorageEffect(GIT_VIEW_FILE_TREE_RATIO_PREFERENCE.key, () =>
+		setFileTreeRatioState(loadResizePreference(GIT_VIEW_FILE_TREE_RATIO_PREFERENCE)),
 	);
 	const [selectedPath, setSelectedPathRaw] = useState<string | null>(null);
 	const [visibleDiffPaths, setVisibleDiffPaths] = useState<readonly string[]>([]);

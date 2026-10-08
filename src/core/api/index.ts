@@ -22,4 +22,5 @@ export * from "./task-indicators.js";
 export * from "./task-lifecycle.js";
 export * from "./task-quick-reply.js";
 export * from "./task-session.js";
+export * from "./ui-preferences.js";
 export * from "./workdir-files.js";

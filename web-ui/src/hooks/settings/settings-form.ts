@@ -130,3 +130,18 @@ export function areFormValuesEqual(a: SettingsFormValues, b: SettingsFormValues)
 		JSON.stringify(a.lspServers) === JSON.stringify(b.lspServers)
 	);
 }
+
+/** Reconcile server changes while preserving fields edited in an open form. */
+export function reconcileSettingsFormValues(
+	current: SettingsFormValues,
+	previous: SettingsFormValues,
+	next: SettingsFormValues,
+): SettingsFormValues {
+	const result = { ...next };
+	for (const key of Object.keys(current) as Array<keyof SettingsFormValues>) {
+		if (JSON.stringify(current[key]) !== JSON.stringify(previous[key])) {
+			Object.assign(result, { [key]: current[key] });
+		}
+	}
+	return result;
+}

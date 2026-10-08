@@ -46,6 +46,7 @@ import {
 	projectOrganizationRequestSchema,
 	projectOrganizationResponseSchema,
 } from "../core/api/project-organization.js";
+import { runtimeUiPreferencesPatchSchema, runtimeUiPreferencesSchema } from "../core/api/ui-preferences.js";
 import { runtimeCodexModelsResponseSchema } from "../core/codex-model-contracts";
 import { checkLanguageServerCommand } from "../language-navigation/command";
 import {
@@ -61,6 +62,13 @@ import { projectRouter } from "./project-procedures";
 export type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
 
 const runtimeRouter = t.router({
+	getUiPreferences: t.procedure
+		.output(runtimeUiPreferencesSchema)
+		.query(({ ctx }) => ctx.runtimeApi.getUiPreferences()),
+	patchUiPreferences: t.procedure
+		.input(runtimeUiPreferencesPatchSchema)
+		.output(runtimeUiPreferencesSchema)
+		.mutation(({ ctx, input }) => ctx.runtimeApi.patchUiPreferences(input)),
 	readTaskConversation: projectProcedure
 		.input(runtimeTaskConversationRequestSchema)
 		.output(runtimeTaskConversationResponseSchema)

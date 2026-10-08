@@ -678,15 +678,27 @@ describe("project registry startup recovery integration", () => {
 		saved.repoPath = "/tmp/offline-project";
 		stateMocks.loadSavedProjectStateById.mockResolvedValue(saved);
 		const config = createRuntimeConfig();
+		const recordEvent = vi.fn();
+		const diagnostics = {
+			recordEvent,
+			registerSnapshotProvider: vi.fn(() => () => {}),
+		} as unknown as RuntimeDiagnostics;
 		registry = await createProjectRegistry({
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
 			hasGitRepository: async (projectPath) => projectPath === "/tmp/available-project",
 			pathIsDirectory: async (projectPath) => projectPath !== "/tmp/offline-project",
+			diagnostics,
 		});
 
 		await expect(registry.initializeIndexedProjectsForStartup()).resolves.toBe(1);
+		expect(recordEvent).toHaveBeenCalledWith(
+			"project.startup_availability_failed",
+			{ reason: "missing", folderOnly: false },
+			{ projectId: "offline-project" },
+			{ level: "warn", essential: true },
+		);
 		expect(registry.getActiveProjectId()).toBe("offline-project");
 		await expect(registry.resolveProjectForStream("offline-project")).resolves.toMatchObject({
 			projectId: "offline-project",

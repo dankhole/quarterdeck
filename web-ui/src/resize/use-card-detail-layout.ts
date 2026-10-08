@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePreferenceStorageEffect } from "@/hooks/settings/use-preference-storage-effect";
 
 import { clampBetween } from "@/resize/resize-persistence";
 import {
@@ -108,7 +109,11 @@ export function useCardDetailLayout({
 	const [mainView, setMainViewState] = useState<MainViewId>("home");
 	const [sidebar, setSidebarState] = useState<SidebarId | null>("projects");
 	const [lastSidebarTab, setLastSidebarTabState] = useState<SidebarId>(loadLastSidebarTab);
+	usePreferenceStorageEffect(LocalStorageKey.DetailLastSidebarTab, () => setLastSidebarTabState(loadLastSidebarTab()));
 	const [sidePanelRatio, setSidePanelRatioState] = useState(() => loadResizePreference(SIDE_PANEL_RATIO_PREFERENCE));
+	usePreferenceStorageEffect(SIDE_PANEL_RATIO_PREFERENCE.key, () =>
+		setSidePanelRatioState(loadResizePreference(SIDE_PANEL_RATIO_PREFERENCE)),
+	);
 
 	const setMainViewPersist = useCallback((view: MainViewId) => {
 		setMainViewState(persistMainView(view));

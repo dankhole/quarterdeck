@@ -4,6 +4,10 @@
 
 ## [0.12.9]
 
+- Share persistent UI preferences between browser and desktop clients, migrate existing profile choices without replacing shared values, and refresh settings after changes in another client.
+
+- Retain safe, project-scoped diagnostic reasons when Git validation makes a saved project unavailable.
+
 - Avoid false “Waiting for approval” badges when Codex inherits automatic review; show the wait only when Codex presents a human approval prompt.
 
 - Isolate tests from inherited runtime state and hook settings so tests launched inside Quarterdeck cannot write to the active instance through its state-home override.

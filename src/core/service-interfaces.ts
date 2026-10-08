@@ -1,4 +1,5 @@
 import type { ProjectOrganization } from "./api/project-organization.js";
+import type { RuntimeUiPreferences } from "./api/ui-preferences.js";
 /**
  * Shared service interfaces for dependency injection.
  *
@@ -31,6 +32,8 @@ import type { LogLevel } from "./runtime-logger";
  * Implemented by RuntimeStateHub.
  */
 export interface IRuntimeBroadcaster {
+	broadcastUiPreferences?: (preferences: RuntimeUiPreferences) => void;
+	broadcastConfigChanged?: (projectId: string | null) => void;
 	broadcastRuntimeProjectStateUpdated: (projectId: string, projectPath: string) => Promise<void>;
 	broadcastRuntimeProjectNotificationsUpdated: (projectId: string) => Promise<void>;
 	broadcastRuntimeProjectsUpdated: (preferredCurrentProjectId: string | null) => Promise<void>;

@@ -105,7 +105,12 @@ describe("runtime child launch admission", () => {
 		expect((await runGit("/synthetic", ["status"])).ok).toBe(true);
 		expect(order).toEqual(["assert-current", "durable-custody-mark", "spawn"]);
 		current = false;
-		expect(await runGit("/synthetic", ["status"])).toMatchObject({ ok: false, error: "Lease released" });
+		expect(await runGit("/synthetic", ["status"])).toMatchObject({
+			ok: false,
+			error: "Lease released",
+			failureKind: "launch_blocked",
+			errorCode: null,
+		});
 		expect(child.execFile).toHaveBeenCalledOnce();
 		expect(order.at(-1)).toBe("assert-current");
 	});

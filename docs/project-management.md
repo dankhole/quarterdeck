@@ -32,6 +32,10 @@ Locate can retry a pending rename using its exact journaled destination even whe
 
 Destination existence and identity are checked immediately before the filesystem rename and identity is checked afterward. Node's portable rename API has no atomic no-replace option; an unrelated process creating an empty destination between the check and rename remains a platform limitation.
 
+## Diagnosing availability
+
+Git projects require both directory access and a successful Git root check; folder projects bypass Git. A failed Git command can therefore make Git projects unavailable while folder projects remain accessible. Compare launch environments and retained `project.git_validation_failed` diagnostic events before treating the saved path as missing or relocating it. Those events retain bounded failure categories, process error/exit codes, and project identity without Git output, environment values, or repository paths.
+
 ## Validation boundaries
 
 Focused filesystem and runtime tests cover missing-folder retention, name persistence, stale requests, duplicate destinations, project-wide exclusion, confirmed session shutdown, exact Git repair, stable worktree paths, journal interruption, and startup recovery. Frontend tests cover dialogs, unavailable read-only state, metadata ordering, dirty buffers, and same-ID path invalidation.

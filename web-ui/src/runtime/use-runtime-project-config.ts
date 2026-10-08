@@ -1,7 +1,7 @@
 import { useCallback } from "react";
-
 import { fetchRuntimeConfig } from "@/runtime/runtime-config-query";
 import type { RuntimeConfigResponse } from "@/runtime/types";
+import { useRuntimeConfigSync } from "@/runtime/use-runtime-config-sync";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
 import { useProjectMetadataScopeVersion } from "@/stores/project-metadata-store";
 
@@ -33,6 +33,8 @@ export function useRuntimeProjectConfig(projectId: string | null): UseRuntimePro
 	const refresh = useCallback(() => {
 		void configQuery.refetch();
 	}, [configQuery.refetch]);
+
+	useRuntimeConfigSync(true, refresh);
 
 	return {
 		config,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SettingsFormValues } from "./settings-form";
-import { areFormValuesEqual, resolveInitialValues } from "./settings-form";
+import { areFormValuesEqual, reconcileSettingsFormValues, resolveInitialValues } from "./settings-form";
 
 // ---------------------------------------------------------------------------
 // resolveInitialValues
@@ -80,5 +80,17 @@ describe("areFormValuesEqual", () => {
 		expect(areFormValuesEqual(a, b)).toBe(true);
 		b.lspServers[0]!.args.push("--extra");
 		expect(areFormValuesEqual(a, b)).toBe(false);
+	});
+});
+
+describe("reconcileSettingsFormValues", () => {
+	it("keeps edited fields while accepting remote changes to untouched settings", () => {
+		const previous = resolveInitialValues(null);
+		const draft = { ...previous, terminalFontWeight: 600 };
+		const next = { ...previous, terminalFontWeight: 500, audibleNotificationVolume: 0.25 };
+		expect(reconcileSettingsFormValues(draft, previous, next)).toMatchObject({
+			terminalFontWeight: 600,
+			audibleNotificationVolume: 0.25,
+		});
 	});
 });

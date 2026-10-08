@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-
 import { fetchRuntimeConfig, saveRuntimeConfig } from "@/runtime/runtime-config-query";
 import type { RuntimeConfigResponse, RuntimeConfigSaveRequest } from "@/runtime/types";
+import { useRuntimeConfigSync } from "@/runtime/use-runtime-config-sync";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
 
 export interface UseRuntimeConfigResult {
@@ -86,6 +86,8 @@ export function useRuntimeConfig(
 	const refresh = useCallback(() => {
 		void configQuery.refetch();
 	}, [configQuery.refetch]);
+
+	useRuntimeConfigSync(open, refresh);
 
 	return {
 		config: configQuery.data ?? initialConfig,

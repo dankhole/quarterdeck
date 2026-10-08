@@ -1,7 +1,6 @@
 import { FolderOpen, PanelLeft } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
 import { CodeNavigationResults } from "@/components/git/panels/code-navigation-results";
 import { FileBrowserTreePanel } from "@/components/git/panels/file-browser-tree-panel";
 import { FileEditorPanel } from "@/components/git/panels/file-editor-panel";
@@ -13,6 +12,7 @@ import type { FileEditorAutosaveMode } from "@/hooks/git/file-editor-workspace";
 import { useAgentEditorActions } from "@/hooks/git/use-agent-editor-actions";
 import { useCodeNavigation } from "@/hooks/git/use-code-navigation";
 import type { UseFileBrowserDataResult } from "@/hooks/git/use-file-browser-data";
+import { usePreferenceStorageEffect } from "@/hooks/settings/use-preference-storage-effect";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { clampBetween } from "@/resize/resize-persistence";
 import {
@@ -77,6 +77,9 @@ export function FilesView({
 	const [fileTreeVisible, setFileTreeVisible] = useState(true);
 	const [fileTreeRatio, setFileTreeRatioState] = useState(() =>
 		loadResizePreference(FILES_VIEW_FILE_TREE_RATIO_PREFERENCE),
+	);
+	usePreferenceStorageEffect(FILES_VIEW_FILE_TREE_RATIO_PREFERENCE.key, () =>
+		setFileTreeRatioState(loadResizePreference(FILES_VIEW_FILE_TREE_RATIO_PREFERENCE)),
 	);
 	const [expandedDirs, setExpandedDirs] = useState<Set<string>>(
 		() => (scopeKey ? expandedDirsByScope.get(scopeKey) : undefined) ?? new Set(),

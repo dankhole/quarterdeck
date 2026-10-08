@@ -126,7 +126,7 @@ export interface CreateProjectRegistryDependencies {
 	registerCwdProject?: boolean;
 	loadGlobalRuntimeConfig: () => Promise<RuntimeConfigState>;
 	loadRuntimeConfig: (projectId?: string | null) => Promise<RuntimeConfigState>;
-	hasGitRepository: (path: string) => Promise<boolean>;
+	hasGitRepository: (path: string, projectId?: string) => Promise<boolean>;
 	pathIsDirectory: (path: string) => Promise<boolean>;
 	waitForStartupAgentCleanup?: () => Promise<void>;
 	onTerminalManagerReady?: (projectId: string, manager: TerminalSessionManager) => void;
@@ -677,6 +677,12 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			}
 
 			unavailableProjects.push(project);
+			deps.diagnostics?.recordEvent(
+				"project.startup_availability_failed",
+				{ reason: availability.reason, folderOnly: project.folderOnly === true },
+				{ projectId: project.projectId },
+				{ level: "warn", essential: true },
+			);
 		}
 		return { indexedProjects: allProjects, existingProjects, unavailableProjects };
 	};

@@ -18,7 +18,7 @@ import {
 
 export interface SaveConfigDeps {
 	config: IRuntimeConfigProvider;
-	broadcaster: Pick<IRuntimeBroadcaster, "broadcastLogLevel">;
+	broadcaster: Pick<IRuntimeBroadcaster, "broadcastLogLevel" | "broadcastConfigChanged">;
 	getActiveProjectId: () => string | null;
 	runtimeCapabilities: RuntimeCapabilities;
 	onCodeNavigationConfigChanged: () => Promise<void>;
@@ -35,6 +35,26 @@ export async function handleSaveConfig(
 		codeNavigationChanged =
 			previous.codeNavigationEnabled !== next.codeNavigationEnabled ||
 			!GLOBAL_CONFIG_FIELDS.lspServers.equals(previous.lspServers, next.lspServers);
+		setLogLevel(next.logLevel as LogLevel);
+		const active = deps.config.getActiveRuntimeConfig();
+		const activeProjectId = deps.getActiveProjectId();
+		// Publish globals while the persistence lock still orders this save. An
+		// inactive project may save global settings, but cannot replace the active
+		// project's shortcuts, branches, or worktree setup.
+		deps.config.setActiveRuntimeConfig(
+			!activeProjectId
+				? toGlobalRuntimeConfigState(next)
+				: projectScope?.projectId === activeProjectId
+					? next
+					: {
+							...next,
+							projectConfigPath: active.projectConfigPath,
+							shortcuts: active.shortcuts,
+							pinnedBranches: active.pinnedBranches,
+							defaultBaseRef: active.defaultBaseRef,
+							worktreeSetupScript: active.worktreeSetupScript,
+						},
+		);
 	};
 	let nextRuntimeConfig: RuntimeConfigState;
 	if (projectScope) {
@@ -49,31 +69,12 @@ export async function handleSaveConfig(
 		}
 		nextRuntimeConfig = await updateGlobalRuntimeConfig(activeRuntimeConfig, parsed, onUpdated);
 	}
-	if (projectScope && projectScope.projectId === deps.getActiveProjectId()) {
-		deps.config.setActiveRuntimeConfig(nextRuntimeConfig);
-	}
-	if (!projectScope) {
-		// A project save or selection change may have completed while the global
-		// save waited for its lock. Keep the config owner's current project fields.
-		const active = deps.config.getActiveRuntimeConfig();
-		nextRuntimeConfig = deps.getActiveProjectId()
-			? {
-					...nextRuntimeConfig,
-					projectConfigPath: active.projectConfigPath,
-					shortcuts: active.shortcuts,
-					pinnedBranches: active.pinnedBranches,
-					defaultBaseRef: active.defaultBaseRef,
-					worktreeSetupScript: active.worktreeSetupScript,
-				}
-			: toGlobalRuntimeConfigState(nextRuntimeConfig);
-		deps.config.setActiveRuntimeConfig(nextRuntimeConfig);
-	}
 	// The config is committed. Retire old sessions before fallible presentation
 	// work; an unchanged retry cannot recover a skipped reset.
 	if (codeNavigationChanged) await deps.onCodeNavigationConfigChanged();
 	const effects: RuntimeMutationEffect[] = [];
-	setLogLevel(nextRuntimeConfig.logLevel as LogLevel);
-	effects.push(...createLogLevelBroadcastEffects(nextRuntimeConfig.logLevel as LogLevel));
+	deps.broadcaster.broadcastConfigChanged?.(projectScope?.projectId ?? null);
+	effects.push(...createLogLevelBroadcastEffects(deps.config.getActiveRuntimeConfig().logLevel as LogLevel));
 	await applyRuntimeMutationEffects(deps.broadcaster, effects);
 	return await buildRuntimeConfigResponse(nextRuntimeConfig, deps.runtimeCapabilities);
 }

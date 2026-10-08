@@ -1,14 +1,15 @@
 import type { DependencyList, Dispatch, SetStateAction } from "react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
 	useDebounce as useReactUseDebounce,
 	useEvent as useReactUseEvent,
 	useInterval as useReactUseInterval,
-	useLocalStorage as useReactUseLocalStorage,
 	useMeasure as useReactUseMeasure,
 	useTitle as useReactUseTitle,
 	useUnmount as useReactUseUnmount,
 } from "react-use";
+import { readLocalStorageItem, subscribePreferenceStorage, writeLocalStorageItem } from "@/storage/local-storage-store";
+import { isSharedUiPreferenceKey, sharedUiPreferences } from "@/storage/shared-ui-preferences";
 
 type DomEventOptions = boolean | AddEventListenerOptions;
 type StateSetter<T> = Dispatch<SetStateAction<T>>;
@@ -59,15 +60,23 @@ function resolveNextValue<T>(nextValue: SetStateAction<T>, currentValue: T): T {
 }
 
 export function useBooleanLocalStorageValue(key: string, initialValue: boolean): [boolean, StateSetter<boolean>] {
-	const [storedValue, setStoredValue] = useReactUseLocalStorage<boolean>(key, initialValue, {
-		raw: false,
-		serializer: (value) => String(value),
-		deserializer: (value) => value === "true",
-	});
+	const raw = useSyncExternalStore(subscribePreferenceStorage, () => readLocalStorageItem(key));
+	const [fallbackValue, setFallbackValue] = useState(initialValue);
+	const storedValue =
+		raw === null
+			? sharedUiPreferences.active && isSharedUiPreferenceKey(key)
+				? initialValue
+				: fallbackValue
+			: raw === "true";
+	const setStoredValue = useCallback(
+		(value: boolean) => {
+			setFallbackValue(value);
+			writeLocalStorageItem(key, String(value));
+		},
+		[key],
+	);
 	const value = storedValue ?? initialValue;
-	// react-use's useLocalStorage setter has a stale closure bug: its functional updater
-	// form always receives the initial state because `state` isn't in useCallback's deps.
-	// Work around by tracking the current value in a ref and resolving updates ourselves.
+	// Resolve functional updates against the current choice, including unavailable storage.
 	const valueRef = useRef(value);
 	valueRef.current = value;
 	const setValue: StateSetter<boolean> = useCallback(
@@ -85,11 +94,19 @@ export function useRawLocalStorageValue<T extends string>(
 	initialValue: T,
 	normalize: (value: string) => T | null,
 ): [T, StateSetter<T>] {
-	const [storedValue, setStoredValue] = useReactUseLocalStorage<string>(key, initialValue, {
-		raw: true,
-	});
+	const raw = useSyncExternalStore(subscribePreferenceStorage, () => readLocalStorageItem(key));
+	const [fallbackValue, setFallbackValue] = useState(initialValue);
+	const storedValue =
+		raw ?? (sharedUiPreferences.active && isSharedUiPreferenceKey(key) ? initialValue : fallbackValue);
+	const setStoredValue = useCallback(
+		(value: T) => {
+			setFallbackValue(value);
+			writeLocalStorageItem(key, value);
+		},
+		[key],
+	);
 	const value = storedValue ? (normalize(storedValue) ?? initialValue) : initialValue;
-	// Same stale closure workaround as useBooleanLocalStorageValue above.
+	// Resolve functional updates against the current choice.
 	const valueRef = useRef(value);
 	valueRef.current = value;
 	const setValue: StateSetter<T> = useCallback(

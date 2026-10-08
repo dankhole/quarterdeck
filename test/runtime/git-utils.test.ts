@@ -75,6 +75,22 @@ describe("runGit", () => {
 		expect(childProcessMocks.execFilePromise).toHaveBeenCalledTimes(1);
 	});
 
+	it.each([
+		["ENOENT", "spawn_unavailable", "ENOENT"],
+		["EACCES", "permission_denied", "EACCES"],
+		["EPERM", "permission_denied", "EPERM"],
+		["ETIMEDOUT", "timed_out", "ETIMEDOUT"],
+		[128, "command_failed", null],
+		["private-error-sentinel", "command_failed", null],
+	])("retains bounded failure metadata for code %s", async (code, failureKind, errorCode) => {
+		childProcessMocks.execFilePromise.mockRejectedValueOnce(createExecError({ code: code as string | number }));
+		expect(await runGit("/repo", ["rev-parse", "--show-toplevel"])).toMatchObject({
+			ok: false,
+			failureKind,
+			errorCode,
+		});
+	});
+
 	it.each([null, "", "invalid", "3 partial", "9007199254740992"])(
 		"returns unknown rather than zero for failed or malformed behind counts: %s",
 		async (count) => {

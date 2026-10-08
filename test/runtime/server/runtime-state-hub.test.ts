@@ -371,6 +371,7 @@ describe("RuntimeStateHub", () => {
 			await connection;
 
 			expect(timeline.slice(0, 4)).toEqual(["send-snapshot", "register-global", "register-project", "catch-up"]);
+			expect(timeline.indexOf("send-ui_preferences")).toBeGreaterThan(timeline.indexOf("catch-up"));
 		} finally {
 			await hub.close();
 		}

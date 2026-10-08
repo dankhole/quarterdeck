@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from "rea
 import { handleBrowserDiagnosticsStreamMessage, recordBrowserEvent } from "@/diagnostics";
 import { invalidateProjectBoardCache } from "@/runtime/project-board-cache";
 import { consumeProjectPreload, invalidateProjectPreload } from "@/runtime/project-preload-cache";
+import { invalidateRuntimeConfig } from "@/runtime/runtime-config-invalidation";
 import { applyRuntimeNotificationPresentation } from "@/runtime/runtime-notification-presentation";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import { resolveRuntimeProtocolCompatibility } from "@/runtime/runtime-protocol-compatibility";
@@ -25,6 +26,7 @@ import type {
 	RuntimeProjectSummary,
 	RuntimeStateStreamTaskReadyForReviewMessage,
 } from "@/runtime/types";
+import { sharedUiPreferences } from "@/storage/shared-ui-preferences";
 
 export type { TaskBaseRefUpdate, TaskTitleUpdate } from "@/runtime/runtime-state-stream-store";
 
@@ -129,7 +131,17 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 						return;
 					}
 					transport?.acceptCurrentConnection();
+					if (payload.uiPreferences) sharedUiPreferences.apply(payload.uiPreferences);
+					invalidateRuntimeConfig();
 					applyRuntimeNotificationPresentation(payload.notificationPresentation);
+				}
+				if (payload.type === "ui_preferences") {
+					sharedUiPreferences.apply(payload.preferences);
+					return;
+				}
+				if (payload.type === "config_changed") {
+					invalidateRuntimeConfig();
+					return;
 				}
 				if (payload.type === "notification_presentation") {
 					applyRuntimeNotificationPresentation(payload.state);

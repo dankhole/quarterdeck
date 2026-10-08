@@ -1,4 +1,6 @@
+import { UiPreferencesStore } from "../config/ui-preferences-store.js";
 import type { ProjectOrganization } from "../core/api/project-organization.js";
+import type { RuntimeUiPreferences } from "../core/api/ui-preferences.js";
 // Streams live runtime state to browser clients over websocket.
 // It listens to terminal updates, normalizes them into the shared API contract,
 // and fans out project-scoped snapshots and deltas.
@@ -113,6 +115,7 @@ export interface RuntimeStateHub extends IRuntimeBroadcaster {
 }
 
 export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
+	private readonly uiPreferences = new UiPreferencesStore();
 	private readonly wss: WebSocketServer;
 	private readonly clients: RuntimeStateClientRegistry;
 	private readonly batcher: RuntimeStateMessageBatcher;
@@ -453,6 +456,14 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		this.metadataMonitor.requestHomeRefresh(projectId);
 	};
 
+	broadcastUiPreferences = (preferences: RuntimeUiPreferences): void => {
+		this.clients.broadcastToAll({ type: "ui_preferences", preferences });
+	};
+
+	broadcastConfigChanged = (projectId: string | null): void => {
+		this.clients.broadcastToAll({ type: "config_changed", projectId });
+	};
+
 	broadcastLogLevel = (level: LogLevel): void => {
 		this.clients.broadcastToAll(
 			buildDiagnosticCaptureStateMessage(level, this.deps.diagnostics.recorder.getRecordingState()),
@@ -572,6 +583,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 						snapshot.organization,
 					),
 					...this.getNotificationSnapshotFields(),
+					uiPreferences: await this.uiPreferences.read(),
 				});
 				monitorProjectId = snapshot.projectId;
 				// Do not expose a half-hydrated client to live publications. Register
@@ -586,6 +598,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 					projectId: snapshot.projectId,
 					projectIds: snapshot.projects.map((project) => project.id),
 				});
+				this.sendMessage(client, { type: "ui_preferences", preferences: await this.uiPreferences.read() });
 				if (client.readyState !== WebSocket.OPEN) {
 					this.clients.removeClient(client);
 					return;
@@ -686,8 +699,10 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				snapshot.organization,
 			),
 			...this.getNotificationSnapshotFields(),
+			uiPreferences: await this.uiPreferences.read(),
 		});
 		this.clients.registerGlobalClient(client);
+		this.sendMessage(client, { type: "ui_preferences", preferences: await this.uiPreferences.read() });
 		this.enqueueNotificationCatchupForClient(
 			client,
 			snapshot.projects.map((project) => project.id),

@@ -106,6 +106,7 @@ import type {
 	RuntimeWorktreeEnsureResponse,
 } from "../core";
 import type { ProjectOrganizationRequest, ProjectOrganizationResponse } from "../core/api/project-organization.js";
+import type { RuntimeUiPreferences, RuntimeUiPreferencesPatch } from "../core/api/ui-preferences.js";
 import type { RuntimeCodexModelsResponse } from "../core/codex-model-contracts";
 import type { RuntimeCommitMessageGenerationContext } from "../title";
 import type { CodeNavigationApi } from "./code-navigation-api";
@@ -126,6 +127,8 @@ export interface RuntimeTrpcContext {
 	projectScope: RuntimeTrpcProjectScope | null;
 	runtimeClientId: string;
 	runtimeApi: {
+		getUiPreferences: () => Promise<RuntimeUiPreferences>;
+		patchUiPreferences: (input: RuntimeUiPreferencesPatch) => Promise<RuntimeUiPreferences>;
 		readTaskConversation: (
 			scope: RuntimeTrpcProjectScope,
 			input: RuntimeTaskConversationRequest,

@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadRuntimeConfig, type RuntimeConfigState, updateRuntimeConfig } from "../../src/config";
+import { getLogLevel } from "../../src/core/runtime-logger";
 import { lockedFileSystem } from "../../src/fs";
 import { handleSaveConfig } from "../../src/trpc/handlers/save-config";
 import { createDefaultRuntimeConfigSaveRequest } from "../utilities/runtime-config-factory";
@@ -189,6 +190,63 @@ describe("configuration saves and language-server lifetime", () => {
 			await Promise.all([projectSave, globalSave]);
 			expect(deps.config.getActiveRuntimeConfig()).toMatchObject({ ...projectFields, terminalFontWeight: 450 });
 			expect(await loadRuntimeConfig("project-1")).toMatchObject({ ...projectFields, terminalFontWeight: 450 });
+		});
+	});
+
+	it("does not roll back a newer log level while an earlier save retires language sessions", async () => {
+		await withTemporaryHome(async () => {
+			const deps = await createActiveProjectDeps();
+			let release = () => {};
+			let started = () => {};
+			const waiting = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			const entered = new Promise<void>((resolve) => {
+				started = resolve;
+			});
+			deps.onCodeNavigationConfigChanged.mockImplementationOnce(async () => {
+				started();
+				await waiting;
+			});
+			const first = handleSaveConfig(null, { codeNavigationEnabled: true, logLevel: "debug" }, deps);
+			await entered;
+			try {
+				await handleSaveConfig(null, { logLevel: "warn" }, deps);
+			} finally {
+				release();
+				await first;
+			}
+			expect(getLogLevel()).toBe("warn");
+			expect(deps.broadcaster.broadcastLogLevel.mock.lastCall?.[0]).toBe("warn");
+		});
+	});
+
+	it("shares globals saved from an inactive project while preserving active project settings", async () => {
+		await withTemporaryHome(async () => {
+			const deps = await createActiveProjectDeps();
+			await handleSaveConfig(
+				{ projectId: "project-1", projectPath: "/synthetic/one" },
+				{
+					shortcuts: [{ label: "Build", command: "npm run build" }],
+					defaultBaseRef: "main",
+				},
+				deps,
+			);
+			await handleSaveConfig(
+				{ projectId: "project-2", projectPath: "/synthetic/two" },
+				{
+					terminalFontWeight: 450,
+					shortcuts: [{ label: "Test", command: "npm test" }],
+					defaultBaseRef: "develop",
+				},
+				deps,
+			);
+			expect(deps.config.getActiveRuntimeConfig()).toMatchObject({
+				terminalFontWeight: 450,
+				defaultBaseRef: "main",
+				shortcuts: [{ label: "Build", command: "npm run build" }],
+			});
+			expect(deps.config.getActiveRuntimeConfig()).toEqual(await loadRuntimeConfig("project-1"));
 		});
 	});
 

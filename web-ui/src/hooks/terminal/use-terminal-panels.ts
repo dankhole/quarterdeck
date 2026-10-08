@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-
 import { notifyError } from "@/components/app-toaster";
+import { usePreferenceStorageEffect } from "@/hooks/settings/use-preference-storage-effect";
 import {
 	collapseAllDetailPanels,
 	computeTerminalPaneHeight,
@@ -122,6 +122,9 @@ export function useTerminalPanels({
 	const [homeTerminalShellBinary, setHomeTerminalShellBinary] = useState<string | null>(null);
 	const [lastBottomTerminalPaneHeight, setLastBottomTerminalPaneHeight] = useState<number | undefined>(
 		loadBottomTerminalPaneHeight,
+	);
+	usePreferenceStorageEffect(LocalStorageKey.BottomTerminalPaneHeight, () =>
+		setLastBottomTerminalPaneHeight(loadBottomTerminalPaneHeight()),
 	);
 	const [detailTerminalPanelStateByTaskId, setDetailTerminalPanelStateByTaskId] = useState<
 		Record<string, DetailTerminalPanelState>

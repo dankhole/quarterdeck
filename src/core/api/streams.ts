@@ -6,6 +6,11 @@ import {
 	runtimeStateStreamNotificationPreferencesMessageSchema,
 	runtimeStateStreamNotificationPresentationMessageSchema,
 } from "./notification-presentation.js";
+import {
+	runtimeStateStreamConfigChangedMessageSchema,
+	runtimeStateStreamUiPreferencesMessageSchema,
+	runtimeUiPreferencesSchema,
+} from "./ui-preferences.js";
 
 export * from "./notification-presentation.js";
 
@@ -38,6 +43,7 @@ export const runtimeStateStreamSnapshotMessageSchema = z.object({
 	notificationRevisionsByProject: z.record(z.string(), z.number().int().nonnegative()).optional(),
 	notificationPresentation: runtimeNotificationPresentationStateSchema.optional(),
 	notificationPreferences: runtimeNotificationPreferencesSchema.optional(),
+	uiPreferences: runtimeUiPreferencesSchema.optional(),
 });
 export type RuntimeStateStreamSnapshotMessage = z.infer<typeof runtimeStateStreamSnapshotMessageSchema>;
 
@@ -157,6 +163,8 @@ export type RuntimeStateStreamDiagnosticSnapshotRequestMessage = z.infer<
 >;
 
 export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
+	runtimeStateStreamUiPreferencesMessageSchema,
+	runtimeStateStreamConfigChangedMessageSchema,
 	runtimeStateStreamSnapshotMessageSchema,
 	runtimeStateStreamProjectStateMessageSchema,
 	runtimeStateStreamTaskSessionsMessageSchema,

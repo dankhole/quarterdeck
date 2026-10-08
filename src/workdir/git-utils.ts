@@ -21,6 +21,14 @@ export const GIT_COMMAND_TIMEOUTS_MS = {
 
 export type GitCommandTimeoutClass = keyof typeof GIT_COMMAND_TIMEOUTS_MS;
 
+export type GitCommandFailureKind =
+	| "launch_blocked"
+	| "spawn_unavailable"
+	| "permission_denied"
+	| "timed_out"
+	| "command_failed";
+export type GitCommandErrorCode = "ENOENT" | "EACCES" | "EPERM" | "ETIMEDOUT" | "ERR_CHILD_PROCESS_STDIO_MAXBUFFER";
+
 interface GitCommandResult {
 	ok: boolean;
 	stdout: string;
@@ -29,6 +37,27 @@ interface GitCommandResult {
 	error: string | null;
 	exitCode: number;
 	timedOut: boolean;
+	failureKind?: GitCommandFailureKind;
+	errorCode?: GitCommandErrorCode | null;
+}
+
+class GitLaunchAdmissionError extends Error {
+	constructor(cause: unknown) {
+		super(cause instanceof Error ? cause.message : "Git process launch admission failed.", { cause });
+	}
+}
+
+function boundedGitErrorCode(code: unknown): GitCommandErrorCode | null {
+	switch (code) {
+		case "ENOENT":
+		case "EACCES":
+		case "EPERM":
+		case "ETIMEDOUT":
+		case "ERR_CHILD_PROCESS_STDIO_MAXBUFFER":
+			return code;
+		default:
+			return null;
+	}
 }
 
 export interface RunGitOptions {
@@ -91,7 +120,11 @@ function executeGitCommand(
 		let timedOut = false;
 		let timeout: NodeJS.Timeout | null = null;
 		const command = resolveWindowsCompatibleCommand("git", args, process.platform, env);
-		assertRuntimeProcessLaunchAdmission();
+		try {
+			assertRuntimeProcessLaunchAdmission();
+		} catch (error) {
+			throw new GitLaunchAdmissionError(error);
+		}
 		const child = execFile(
 			command.binary,
 			command.args,
@@ -174,6 +207,17 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 		const timeoutMessage = `Git command timed out after ${resolveGitTimeoutMs(options)}ms`;
 		const errorMessage = timedOut ? stderr || timeoutMessage : stderr || message || "Unknown git error";
 		const exitCode = normalizeProcessExitCode(candidate.code);
+		const errorCode = boundedGitErrorCode(candidate.code);
+		const failureKind: GitCommandFailureKind =
+			error instanceof GitLaunchAdmissionError
+				? "launch_blocked"
+				: timedOut
+					? "timed_out"
+					: errorCode === "ENOENT"
+						? "spawn_unavailable"
+						: errorCode === "EACCES" || errorCode === "EPERM"
+							? "permission_denied"
+							: "command_failed";
 
 		return {
 			ok: false,
@@ -183,6 +227,8 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 			error: errorMessage,
 			exitCode,
 			timedOut,
+			failureKind,
+			errorCode,
 		};
 	}
 }

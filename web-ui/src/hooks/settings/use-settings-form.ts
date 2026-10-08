@@ -9,7 +9,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RuntimeConfigResponse } from "@/runtime/types";
-import { areFormValuesEqual, resolveInitialValues, type SettingsFormValues } from "./settings-form";
+import {
+	areFormValuesEqual,
+	reconcileSettingsFormValues,
+	resolveInitialValues,
+	type SettingsFormValues,
+} from "./settings-form";
 
 export type { SettingsFormValues } from "./settings-form";
 export { resolveInitialValues } from "./settings-form";
@@ -39,19 +44,18 @@ export function useSettingsForm(config: RuntimeConfigResponse | null, open: bool
 	// check below prevents unnecessary form resets.
 	const initialValues = useMemo(() => resolveInitialValues(config), [config]);
 
-	// Track what we last reset to, so we only reset when server values actually
-	// change — not on every config identity change from polling.
-	const lastResetFingerprintRef = useRef("");
+	const previousInitialValuesRef = useRef<SettingsFormValues | null>(null);
 
 	useEffect(() => {
 		if (!open) {
-			lastResetFingerprintRef.current = "";
+			previousInitialValuesRef.current = null;
 			return;
 		}
-		const fingerprint = JSON.stringify(initialValues);
-		if (fingerprint === lastResetFingerprintRef.current) return;
-		lastResetFingerprintRef.current = fingerprint;
-		setFields(initialValues);
+		const previous = previousInitialValuesRef.current;
+		previousInitialValuesRef.current = initialValues;
+		setFields((current) =>
+			previous ? reconcileSettingsFormValues(current, previous, initialValues) : initialValues,
+		);
 	}, [open, initialValues]);
 
 	const hasUnsavedChanges = useMemo(() => {

@@ -1,6 +1,5 @@
 import { Activity, Download, RefreshCw, Trash2, X } from "lucide-react";
 import { type ReactElement, type MouseEvent as ReactMouseEvent, useCallback, useState } from "react";
-
 import {
 	DiagnosticsCapture,
 	DiagnosticsHealth,
@@ -12,6 +11,7 @@ import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { DiagnosticLevelFilter, DiagnosticSourceFilter, UseDiagnosticsResult } from "@/hooks/diagnostics";
+import { usePreferenceStorageEffect } from "@/hooks/settings/use-preference-storage-effect";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { clampBetween } from "@/resize/resize-persistence";
 import {
@@ -44,6 +44,7 @@ const TABS: Array<{ id: DiagnosticsTab; label: string }> = [
 export function DiagnosticsPanel({ diagnostics }: { diagnostics: UseDiagnosticsResult }): ReactElement {
 	const [activeTab, setActiveTab] = useState<DiagnosticsTab>("timeline");
 	const [panelWidth, setPanelWidth] = useState(() => loadResizePreference(WIDTH_PREFERENCE));
+	usePreferenceStorageEffect(WIDTH_PREFERENCE.key, () => setPanelWidth(loadResizePreference(WIDTH_PREFERENCE)));
 	const { startDrag } = useResizeDrag();
 	const handleResizeMouseDown = useCallback(
 		(event: ReactMouseEvent<HTMLDivElement>) => {

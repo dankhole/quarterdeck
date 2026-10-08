@@ -1,3 +1,5 @@
+import { UiPreferencesStore } from "../config/ui-preferences-store.js";
+import type { RuntimeUiPreferencesPatch } from "../core/api/ui-preferences.js";
 // Coordinates the runtime-side TRPC handlers used by the browser.
 // Each handler is a standalone function in src/trpc/handlers/. This class
 // is a thin dispatcher that delegates to them, providing the shared
@@ -28,7 +30,10 @@ import { handleStopTaskSession } from "./handlers/stop-task-session";
 export interface CreateRuntimeApiDependencies {
 	runProjectOperation: RuntimeTrpcContext["runProjectOperation"];
 	config: IRuntimeConfigProvider;
-	broadcaster: Pick<IRuntimeBroadcaster, "broadcastRuntimeProjectStateUpdated" | "broadcastLogLevel">;
+	broadcaster: Pick<
+		IRuntimeBroadcaster,
+		"broadcastRuntimeProjectStateUpdated" | "broadcastLogLevel" | "broadcastUiPreferences" | "broadcastConfigChanged"
+	>;
 	getActiveProjectId: () => string | null;
 	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
 	taskResourceOperations: TaskResourceOperationRunner;
@@ -56,9 +61,20 @@ export interface CreateRuntimeApiDependencies {
 type RuntimeApi = RuntimeTrpcContext["runtimeApi"];
 
 class RuntimeApiImpl implements RuntimeApi {
+	private readonly uiPreferences = new UiPreferencesStore();
 	private readonly codexModelCatalog = new CodexModelCatalogCache();
 
 	constructor(private readonly deps: CreateRuntimeApiDependencies) {}
+
+	async getUiPreferences() {
+		return await this.uiPreferences.read();
+	}
+
+	async patchUiPreferences(input: RuntimeUiPreferencesPatch) {
+		const preferences = await this.uiPreferences.patch(input);
+		this.deps.broadcaster.broadcastUiPreferences?.(preferences);
+		return preferences;
+	}
 
 	// ── Config ────────────────────────────────────────────────────────────
 

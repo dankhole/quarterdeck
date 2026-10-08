@@ -153,7 +153,16 @@ async function createRuntimeBootstrapState(
 		registerCwdProject,
 		loadGlobalRuntimeConfig,
 		loadRuntimeConfig,
-		hasGitRepository,
+		hasGitRepository: (path, projectId) =>
+			hasGitRepository(path, {
+				onFailure: (failure) =>
+					diagnostics.recordEvent(
+						"project.git_validation_failed",
+						failure,
+						{ projectId },
+						{ level: "warn", essential: true },
+					),
+			}),
 		pathIsDirectory,
 		diagnostics,
 		waitForStartupAgentCleanup: async () => await startupAgentCleanup,

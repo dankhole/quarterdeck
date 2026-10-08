@@ -1,5 +1,17 @@
 # Implementation Log
 
+## 2026-10-08 — Shared desktop/browser preferences and Git availability evidence
+
+Desktop and browser clients already shared canonical global/project configuration, but profile-local UI preferences made a new desktop profile appear reset. `UiPreferencesStore` now owns a bounded, validated `ui-preferences.json`; per-key updates merge under the file lock, and legacy profiles seed only missing entries. Explicit reset tombstones prevent stale profiles from resurrecting cleared choices. Clients hydrate before mounting preference consumers and converge through runtime snapshots/events. Settings saves also invalidate connected clients, with dirty form fields preserved and inactive-project saves updating global runtime settings without replacing the active project's fields. Browser/runtime protocol 5 requires the new preference API.
+
+The reported desktop startup loaded five folder projects and skipped fifteen Git projects. Historical diagnostics discarded the Git failure details. Current read-only checks and the exact installed package against fifteen synthetic Git projects plus five folders passed, so the original cause remains unconfirmed. `git-repository-probe.ts` now retains bounded failure categories and process error/exit codes in `project.git_validation_failed`; startup availability failures retain project identity and reason without repository paths or command output.
+
+During validation, a pre-existing HOME-only test helper inherited the live `QUARTERDECK_STATE_HOME`; the configuration integration fixture overwrote the user's global config. The original four shortcuts and settings were subsequently restored outside this thread, verified byte-for-byte against the preceding startup backup. Test-isolation fixes were handled in the user's separate thread and subsequently incorporated from local main; validation here also used explicit disposable home, state-home, and backup-home environment overrides.
+
+Validation: 1,660 web tests and 15 focused configuration/preference persistence tests passed, including concurrent disjoint writes, seed precedence, reset tombstones, near-limit disk round trips, corrupt-state preservation, mounted-client updates, and older-runtime guidance. The Git diagnosis changes passed 60 focused tests. Runtime types, the paired production build with browser typechecking, and changed-source Biome checks passed (two existing project-registry warnings).
+
+Fresh packaged build `146ecd70-1c3c-4454-8bf4-a580f995d107` passed isolated desktop/browser run `shared-preferences-20261008T164440Z-5314c3`: legacy seeding, both directions of live preference changes, settings reconciliation in an already-open dialog, and cold reopen with a new helper generation. Saved preferences/config survived and a stale legacy browser value could not overwrite them. Both launches stopped gracefully without fallback or remaining processes. The candidate was built for validation, not installed over the user's running application.
+
 ## 2026-10-08 — Inherited Codex approval routing
 
 Task `49baf` emitted `PermissionRequest` while retrying a dependency install. Runtime diagnostics recorded Review at 12:29:08 EDT, rejected an unrelated tool completion, and restored Running on the matching completion at 12:29:30, while the supplied screenshot showed the command already running. The native request precedes reviewer routing; treating inherited reviewer configuration as a human wait could leave a false approval badge for the command's entire execution.

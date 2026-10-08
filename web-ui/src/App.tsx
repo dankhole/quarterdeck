@@ -1,3 +1,4 @@
+import { UiPreferencesBoundary } from "@/providers/ui-preferences-boundary";
 // Main React composition root for the browser app.
 // Keep this file focused on wiring top-level hooks and surfaces together, and
 // push runtime-specific orchestration down into hooks and service modules.
@@ -80,7 +81,11 @@ interface AppContentProps {
 export default function App(): ReactElement {
 	const { isBlocked, forceOpen } = useSingleTabGuard();
 	if (isBlocked) return <AlreadyOpenFallback onForceOpen={forceOpen} />;
-	return <AppInner />;
+	return (
+		<UiPreferencesBoundary>
+			<AppInner />
+		</UiPreferencesBoundary>
+	);
 }
 
 function AppInner(): ReactElement {

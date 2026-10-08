@@ -25,6 +25,14 @@ If a window crash leaves recoverable file drafts, review **Recover unsaved files
 
 An eligible signed build offers **Check for Updates…** and an explicit **Restart to Update…** after download. Unsigned local candidates have updates disabled. Update installation waits for safe shutdown and does not bypass unsaved-work checks.
 
+## Shared settings and preferences
+
+Browser and desktop clients using the same canonical state home share global settings, project settings, project organization, boards, and session history. Persistent UI preferences also belong to that runtime: onboarding and tips, saved panel sizes, editor wrap/preview, Git comparison options, preferred application, and remembered task/prompt choices are stored in `ui-preferences.json`. Settings changes notify connected clients; reconnecting or returning to a window refreshes its settings.
+
+On the first upgraded visit, valid preferences already present in that browser or desktop profile seed only missing shared values. Existing shared values and explicit resets win. If legacy profiles disagree, open the profile whose preferences you want first, then adjust any remaining choices normally. A fresh profile does not publish defaults during startup. Preference loading and save failures are visible rather than silently replacing shared values.
+
+Window geometry, current navigation and selected files/tasks, unsaved drafts, browser permissions, authentication, and diagnostic records stay with their owning window or profile. Project-group collapse choices seed later visits without changing another open window's navigation. Native executable-folder overrides remain desktop launch configuration; an attached app uses the owning CLI's process environment. Sharing settings does not make independently launched processes inherit identical shell environments.
+
 ## Process and storage ownership
 
 Electron main owns the window, native presentation, update decisions, and private IPC to a separate real Node helper. The helper owns PTYs, provider hooks, and existing runtime services. Its dependencies are built for bundled Node, separately from Electron's ABI. Runtime code, paired web assets, Node, and native modules live outside ASAR.
