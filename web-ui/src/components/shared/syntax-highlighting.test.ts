@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import Prism from "prismjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

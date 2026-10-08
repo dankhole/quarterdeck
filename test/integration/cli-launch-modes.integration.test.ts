@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createGitTestEnv } from "../utilities/git-env.js";
+import { resolveIntegrationNodeArgs } from "../utilities/integration-server";
 import { createTempDir } from "../utilities/temp-dir.js";
 
 describe("CLI launch mode routing", () => {
@@ -23,21 +24,17 @@ describe("CLI launch mode routing", () => {
 		const sandbox = createTempDir("quarterdeck-cli-modes-");
 		const stateHome = join(sandbox.path, "state");
 		try {
-			const child = spawnSync(
-				process.execPath,
-				["--import", import.meta.resolve("tsx"), resolve("src/cli.ts"), ...args],
-				{
-					cwd: sandbox.path,
-					env: createGitTestEnv({
-						HOME: sandbox.path,
-						USERPROFILE: sandbox.path,
-						QUARTERDECK_STATE_HOME: stateHome,
-						QUARTERDECK_DESKTOP_CHILD: "1",
-					}),
-					encoding: "utf8",
-					timeout: 10_000,
-				},
-			);
+			const child = spawnSync(process.execPath, [...resolveIntegrationNodeArgs(), ...args], {
+				cwd: sandbox.path,
+				env: createGitTestEnv({
+					HOME: sandbox.path,
+					USERPROFILE: sandbox.path,
+					QUARTERDECK_STATE_HOME: stateHome,
+					QUARTERDECK_DESKTOP_CHILD: "1",
+				}),
+				encoding: "utf8",
+				timeout: 10_000,
+			});
 			expect(child.error).toBeUndefined();
 			expect(child.status).toBe(1);
 			expect(child.stderr).toContain(message);

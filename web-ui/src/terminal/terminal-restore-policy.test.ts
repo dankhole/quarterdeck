@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 
 import { shouldForceResizeBeforeRestore, shouldSkipEmptyRestoreSnapshot } from "@/terminal/terminal-restore-policy";

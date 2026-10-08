@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FILE_EDITOR_RECOVERY_LIMITS } from "./file-editor-recovery";
 import {

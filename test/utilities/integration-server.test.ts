@@ -1,10 +1,16 @@
 import * as childProcess from "node:child_process";
+import { resolve } from "node:path";
 import { PassThrough } from "node:stream";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, inject, it, vi } from "vitest";
 
 import { terminateProcessTree } from "../../src/core/process-termination.js";
-import { startQuarterdeckServer, waitForProcessStart } from "./integration-server";
+import {
+	resolveIntegrationEntrypoint,
+	resolveTsxLoaderImportSpecifier,
+	startQuarterdeckServer,
+	waitForProcessStart,
+} from "./integration-server";
 
 vi.mock("node:child_process", async (importOriginal) => ({
 	...(await importOriginal<typeof childProcess>()),
@@ -63,6 +69,37 @@ describe("integration server teardown", () => {
 	afterEach(() => {
 		vi.useRealTimers();
 		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
+	});
+
+	it("passes the selected source or compiled entrypoint into the actual process launch", async () => {
+		const { child, server } = await startFakeServer();
+		const compiled = inject("compiledIntegrationEntrypoints")?.["src/cli.ts"];
+		expect(childProcess.spawn).toHaveBeenCalledWith(
+			process.execPath,
+			compiled
+				? [compiled, "--no-open"]
+				: ["--import", resolveTsxLoaderImportSpecifier(), resolve("src/cli.ts"), "--no-open"],
+			expect.objectContaining({ cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] }),
+		);
+		exitChild(child);
+		child.emit("close", 0, null);
+		await server.stop();
+	});
+
+	it("resolves compiled entrypoints without a loader and retains deliberate source fixtures", () => {
+		const compiled = resolve(".cache/synthetic-integration/cli.mjs");
+		const compiledEntrypoints = { "src/cli.ts": compiled };
+		expect(resolveIntegrationEntrypoint("src/cli.ts", compiledEntrypoints)).toEqual({ path: compiled, execArgv: [] });
+		expect(resolveIntegrationEntrypoint("src/cli.ts", {})).toEqual({
+			path: resolve("src/cli.ts"),
+			execArgv: ["--import", resolveTsxLoaderImportSpecifier()],
+		});
+		// Deliberate source/import fixtures stay source even in a compiled run.
+		expect(resolveIntegrationEntrypoint("src/core/graceful-shutdown.ts", compiledEntrypoints)).toEqual({
+			path: resolve("src/core/graceful-shutdown.ts"),
+			execArgv: ["--import", resolveTsxLoaderImportSpecifier()],
+		});
 	});
 
 	it("allows the runtime's full shutdown deadline before forcing termination", async () => {

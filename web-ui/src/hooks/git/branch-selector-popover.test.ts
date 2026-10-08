@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { resolveBranchSelectorSections } from "@/hooks/git/branch-selector-popover";
 import type { RuntimeGitRef } from "@/runtime/types";

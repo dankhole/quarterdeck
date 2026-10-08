@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import { describe, expect, it } from "vitest";
 import { createLspServerFormValues, parseLspServerForm } from "./lsp-server-form";

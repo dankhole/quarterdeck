@@ -29,6 +29,7 @@ import {
 import { cn } from "@/components/ui/cn";
 import {
 	createSourceEditorActionContext,
+	detectSourceEditorLineSeparator,
 	type SourceEditorAction,
 	type SourceEditorActionContext,
 	type SourceEditorRange,
@@ -38,6 +39,7 @@ import {
 import { languageExtension, quarterdeckEditorTheme, quarterdeckHighlightStyle } from "./source-presentation";
 
 export type { SourceEditorAction, SourceEditorActionContext, SourceEditorRange } from "./source-editor-context";
+export { detectSourceEditorLineSeparator } from "./source-editor-context";
 
 export interface SourceEditorProps {
 	path: string;
@@ -58,19 +60,6 @@ export interface SourceEditorHandle {
 	openSearchPanel: () => void;
 	focus: () => void;
 	getActionContext: () => SourceEditorActionContext | null;
-}
-
-export function detectSourceEditorLineSeparator(value: string): "\n" | "\r\n" {
-	let crlfCount = 0;
-	let lfCount = 0;
-	for (let index = value.indexOf("\n"); index >= 0; index = value.indexOf("\n", index + 1)) {
-		if (index > 0 && value[index - 1] === "\r") {
-			crlfCount++;
-		} else {
-			lfCount++;
-		}
-	}
-	return crlfCount > lfCount ? "\r\n" : "\n";
 }
 
 function createExtensions(input: {

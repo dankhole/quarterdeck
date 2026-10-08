@@ -1,5 +1,7 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
-import { sanitizeErrorForToast } from "./app-toaster";
+import { sanitizeErrorForToast } from "@/utils/toast-message";
 
 describe("sanitizeErrorForToast", () => {
 	it("passes short single-line messages through unchanged", () => {

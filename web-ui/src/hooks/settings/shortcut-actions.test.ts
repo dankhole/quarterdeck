@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { getNextShortcutLabel, validateNewShortcut } from "@/hooks/settings/shortcut-actions";
 

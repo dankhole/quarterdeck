@@ -3,10 +3,11 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { parseArgs } from "node:util";
 
 import { resolveNpmCommand } from "./npm-command.mjs";
 import { fetchInstalledApplication, readInstalledBrowserBootstrap } from "./package-smoke-client.mjs";
-import { mergeProcessEnvironment } from "./process-environment.mjs";
+import { createPackageSmokeEnvironment } from "./package-smoke-environment.mjs";
 import { terminateProcessTree } from "./process-tree.mjs";
 
 const START_TIMEOUT_MS = 15_000;
@@ -123,32 +124,20 @@ function assertCliDependencyTree(tree) {
 }
 
 const repoRoot = resolve(import.meta.dirname, "..");
+const { values } = parseArgs({ options: { "npm-cache": { type: "string" } } });
+if (values["npm-cache"] !== undefined && !values["npm-cache"].trim()) throw new Error("--npm-cache requires a directory.");
 const packageJson = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8"));
 const smokeRoot = mkdtempSync(join(tmpdir(), "quarterdeck-package-smoke-"));
 const artifactRoot = join(smokeRoot, "artifact");
 const installRoot = join(smokeRoot, "install");
-const stateRoot = join(smokeRoot, "state");
 const projectRoot = join(smokeRoot, "project");
 // A consumer-default install must not inherit the maintainer's script policy,
 // npm user/global config paths, or Node module search/execution overrides.
-const baseEnvironment = { ...process.env };
-for (const key of Object.keys(baseEnvironment)) {
-	if (
-		/^(npm_config_(?:ignore_scripts|allow_scripts|dangerously_allow_all_scripts|strict_allow_scripts|userconfig|globalconfig)|NODE_PATH|NODE_OPTIONS|ELECTRON_RUN_AS_NODE)$/iu.test(
-			key,
-		)
-	) {
-		delete baseEnvironment[key];
-	}
-}
-const smokeEnv = mergeProcessEnvironment(baseEnvironment, {
-	HOME: stateRoot,
-	USERPROFILE: stateRoot,
-	QUARTERDECK_STATE_HOME: join(stateRoot, ".quarterdeck"),
-	npm_config_cache: join(smokeRoot, "npm-cache"),
-	npm_config_userconfig: join(smokeRoot, "user.npmrc"),
-	npm_config_globalconfig: join(smokeRoot, "global.npmrc"),
-});
+const smokeEnv = createPackageSmokeEnvironment(
+	process.env,
+	smokeRoot,
+	values["npm-cache"] === undefined ? undefined : resolve(values["npm-cache"]),
+);
 let child;
 let retainSmokeRoot = false;
 

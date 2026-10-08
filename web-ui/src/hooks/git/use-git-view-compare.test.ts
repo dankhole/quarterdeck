@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment node
 
-import { resolveDefaultCompareSourceRef } from "@/hooks/git/use-git-view-compare";
+import { describe, expect, it } from "vitest";
 import type { RuntimeGitSyncSummary, RuntimeTaskRepositoryInfoResponse } from "@/runtime/types";
 import type { BoardCard, BoardColumn, CardSelection, ReviewTaskWorktreeSnapshot } from "@/types";
+import { resolveDefaultCompareSourceRef } from "./git-view-compare";
 
 function createSelection(card: Partial<BoardCard> = {}): CardSelection {
 	const resolvedCard: BoardCard = {

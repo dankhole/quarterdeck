@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { sortColumnCards } from "@/state/sort-column-cards";
 import type { BoardCard } from "@/types";

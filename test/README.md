@@ -12,4 +12,6 @@ Prefer colocating a new test with the nearest existing subsystem group. A test b
 
 Use `npm run test -- <test-path...>` for a focused root run. `npm run test:fast` covers `test/runtime` and `test/utilities`, `npm run test:integration` covers the complete integration directory, and the unfiltered `npm run test` discovers both.
 
+The integration command compiles disposable CLI/IPC entrypoints once per run (`--mode integration`); every test still owns fresh processes and state. Focused runs default to TSX source execution unless that mode is requested. Keep source-bootstrap regression tests on the source path. Large filesystem-depth stress belongs in the integration lane, with representative smaller real-boundary coverage in the fast lane.
+
 Tests that touch state, repositories, processes, or HOME-like configuration must use disposable roots and shared helpers. Never point a test at the developer's normal Quarterdeck state, provider profile, or active runtime.

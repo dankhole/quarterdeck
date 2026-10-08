@@ -5,33 +5,14 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { commitSelectedFiles, discardSingleFile } from "../../src/workdir";
-import { createGitTestEnv } from "../utilities/git-env";
+import {
+	stageAndCommitAll as commitAll,
+	commitAll as commitAllAndReadHead,
+	createGitTestEnv,
+	initGitRepository as initRepository,
+	runGit,
+} from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
-
-function runGit(cwd: string, args: string[]): string {
-	const result = spawnSync("git", args, {
-		cwd,
-		encoding: "utf8",
-		env: createGitTestEnv(),
-	});
-	if (result.status !== 0) {
-		throw new Error(result.stderr || result.stdout || `git ${args.join(" ")} failed`);
-	}
-	return result.stdout.trim();
-}
-
-function initRepository(path: string): void {
-	runGit(path, ["init", "-q"]);
-	runGit(path, ["config", "user.name", "Test User"]);
-	runGit(path, ["config", "user.email", "test@example.com"]);
-	runGit(path, ["config", "core.autocrlf", "false"]);
-}
-
-function commitAll(cwd: string, message: string): string {
-	runGit(cwd, ["add", "."]);
-	runGit(cwd, ["commit", "-qm", message]);
-	return runGit(cwd, ["rev-parse", "HEAD"]);
-}
 
 function gitStatus(cwd: string): string {
 	return runGit(cwd, ["status", "--porcelain"]);
@@ -116,7 +97,7 @@ describe("commitSelectedFiles", { concurrent: false }, () => {
 		try {
 			initRepository(repoPath);
 			writeFileSync(join(repoPath, ".gitignore"), "ignored.txt\n");
-			const head = commitAll(repoPath, "initial");
+			const head = commitAllAndReadHead(repoPath, "initial");
 			writeFileSync(join(repoPath, "ignored.txt"), "private\n");
 			const index = runGit(repoPath, ["write-tree"]);
 			const result = await commitSelectedFiles({ cwd: repoPath, paths: ["ignored.txt"], message: "selected" });
@@ -158,7 +139,7 @@ describe("commitSelectedFiles", { concurrent: false }, () => {
 		try {
 			initRepository(repoPath);
 			writeFileSync(join(repoPath, "file.txt"), "original\n");
-			const head = commitAll(repoPath, "initial");
+			const head = commitAllAndReadHead(repoPath, "initial");
 			writeFileSync(join(repoPath, "file.txt"), "modified\n");
 			writeFileSync(join(repoPath, ".git", "index.lock"), "another operation");
 			const result = await commitSelectedFiles({ cwd: repoPath, paths: ["file.txt"], message: "blocked" });
@@ -283,7 +264,7 @@ describe("commitSelectedFiles", { concurrent: false }, () => {
 			try {
 				initRepository(repoPath);
 				writeFileSync(join(repoPath, "file.txt"), "original\n");
-				const head = commitAll(repoPath, "initial");
+				const head = commitAllAndReadHead(repoPath, "initial");
 				writeFileSync(join(repoPath, ".git", stateFile), `${head}\n`);
 				writeFileSync(join(repoPath, "file.txt"), "modified\n");
 				const before = runGit(repoPath, ["write-tree"]);

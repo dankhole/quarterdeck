@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { resolveBoardCardViewModel } from "@/hooks/board/board-card";
 import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";

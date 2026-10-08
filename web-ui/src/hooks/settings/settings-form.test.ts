@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import type { SettingsFormValues } from "./settings-form";
 import { areFormValuesEqual, reconcileSettingsFormValues, resolveInitialValues } from "./settings-form";

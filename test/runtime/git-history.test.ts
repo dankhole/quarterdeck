@@ -1,35 +1,15 @@
-import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 import { discardGitChanges, getCommitDiff, getGitLog, getGitRefs, getGitSyncSummary } from "../../src/workdir";
-import { createGitTestEnv } from "../utilities/git-env";
+import {
+	stageAndCommitAll as commitAll,
+	commitAll as commitAllAndReadHead,
+	initGitRepository as initRepository,
+	runGit,
+} from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
-
-function runGit(cwd: string, args: string[]): string {
-	const result = spawnSync("git", args, {
-		cwd,
-		encoding: "utf8",
-		env: createGitTestEnv(),
-	});
-	if (result.status !== 0) {
-		throw new Error(result.stderr || result.stdout || `git ${args.join(" ")} failed`);
-	}
-	return result.stdout.trim();
-}
-
-function initRepository(path: string): void {
-	runGit(path, ["init", "-q"]);
-	runGit(path, ["config", "user.name", "Test User"]);
-	runGit(path, ["config", "user.email", "test@example.com"]);
-}
-
-function commitAll(cwd: string, message: string): string {
-	runGit(cwd, ["add", "."]);
-	runGit(cwd, ["commit", "-qm", message]);
-	return runGit(cwd, ["rev-parse", "HEAD"]);
-}
 
 describe("git history runtime", { concurrent: false }, () => {
 	it("returns correct metadata for root commit diffs", async () => {
@@ -37,7 +17,7 @@ describe("git history runtime", { concurrent: false }, () => {
 		try {
 			initRepository(repoPath);
 			writeFileSync(join(repoPath, "first.txt"), "hello\nworld\n", "utf8");
-			const rootCommit = commitAll(repoPath, "first commit");
+			const rootCommit = commitAllAndReadHead(repoPath, "first commit");
 
 			const response = await getCommitDiff({
 				cwd: repoPath,
@@ -66,7 +46,7 @@ describe("git history runtime", { concurrent: false }, () => {
 			commitAll(repoPath, "init");
 
 			runGit(repoPath, ["mv", "old.txt", "new.txt"]);
-			const renameCommit = commitAll(repoPath, "rename file");
+			const renameCommit = commitAllAndReadHead(repoPath, "rename file");
 
 			const response = await getCommitDiff({
 				cwd: repoPath,
@@ -121,7 +101,7 @@ describe("git history runtime", { concurrent: false }, () => {
 			const relativePath = `${dirName}/${fileName}`;
 			mkdirSync(join(repoPath, dirName), { recursive: true });
 			writeFileSync(join(repoPath, dirName, fileName), "# 設計書\n", "utf8");
-			const commitHash = commitAll(repoPath, "add non-ASCII path");
+			const commitHash = commitAllAndReadHead(repoPath, "add non-ASCII path");
 
 			const response = await getCommitDiff({
 				cwd: repoPath,
@@ -148,7 +128,7 @@ describe("git history runtime", { concurrent: false }, () => {
 			const peerPath = join(sandboxRoot, "peer");
 
 			mkdirSync(remotePath, { recursive: true });
-			runGit(remotePath, ["init", "--bare", "-q"]);
+			runGit(remotePath, ["init", "--bare", "-q", "-b", "main"]);
 
 			mkdirSync(localPath, { recursive: true });
 			initRepository(localPath);

@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { appendFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { mergeProcessEnvironment } from "../../src/core/process-environment.js";
 import { resolveWindowsCompatibleCommand } from "../../src/core/windows-cmd-launch.js";
@@ -35,6 +37,14 @@ export function createGitTestEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.Proc
 	);
 }
 
+/** Fresh standalone fixtures also need identity for production Git callers. */
+export function configureGitTestRepository(path: string): void {
+	appendFileSync(
+		join(path, ".git", "config"),
+		"\n[user]\n\tname = Test User\n\temail = test@example.com\n[core]\n\tautocrlf = false\n",
+	);
+}
+
 export function initGitRepository(path: string): void {
 	const env = createGitTestEnv();
 	const command = resolveWindowsCompatibleCommand("git", ["init", "-b", "main"], process.platform, env);
@@ -46,6 +56,7 @@ export function initGitRepository(path: string): void {
 	if (init.status !== 0) {
 		throw new Error(`Failed to initialize git repository at ${path}`);
 	}
+	configureGitTestRepository(path);
 }
 
 export function runGit(cwd: string, args: string[]): string {
@@ -66,8 +77,12 @@ export function runGit(cwd: string, args: string[]): string {
 	return result.stdout.trim();
 }
 
-export function commitAll(cwd: string, message: string): string {
+export function stageAndCommitAll(cwd: string, message: string): void {
 	runGit(cwd, ["add", "."]);
 	runGit(cwd, ["commit", "-qm", message]);
+}
+
+export function commitAll(cwd: string, message: string): string {
+	stageAndCommitAll(cwd, message);
 	return runGit(cwd, ["rev-parse", "HEAD"]);
 }

@@ -1,7 +1,7 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { mkdtemp, rm, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	acquireRuntimeOwnership,
@@ -9,6 +9,7 @@ import {
 	type RuntimeOwnershipLease,
 } from "../../src/server/runtime-ownership.js";
 import { inspectRuntimeProcess, readRuntimeProcessIdentity } from "../../src/server/runtime-process-identity.js";
+import { resolveIntegrationEntrypoint } from "../utilities/integration-server";
 
 interface ChildAdmission {
 	kind: "acquired" | "occupied";
@@ -33,8 +34,9 @@ describe("cross-process runtime ownership", () => {
 		await rm(directory, { recursive: true, force: true });
 	});
 	function launch(home = directory): { child: ChildProcess; admitted: Promise<ChildAdmission> } {
-		const child = fork(resolve("test/utilities/runtime-ownership-child.ts"), [], {
-			execArgv: ["--import", "tsx"],
+		const entrypoint = resolveIntegrationEntrypoint("test/utilities/runtime-ownership-child.ts");
+		const child = fork(entrypoint.path, [], {
+			execArgv: entrypoint.execArgv,
 			env: { ...process.env, QUARTERDECK_TEST_OWNERSHIP_HOME: home },
 			stdio: ["ignore", "pipe", "pipe", "ipc"],
 		});

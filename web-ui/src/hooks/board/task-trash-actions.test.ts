@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { buildTrashWarningViewModel } from "@/hooks/board/task-trash-actions";
 import type { BoardCard } from "@/types";

@@ -49,6 +49,7 @@ import { createReviewBoard } from "../utilities/board-factory";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
 import {
 	getAvailablePort,
+	resolveIntegrationNodeArgs,
 	resolveTsxCliPath,
 	resolveTsxLoaderImportSpecifier,
 	startQuarterdeckServer,
@@ -119,19 +120,9 @@ async function assertPrivateWindowsAcls(paths: readonly string[]): Promise<void>
 }
 
 async function captureDiagnostics(stateHome: string, outputDirectory: string, homeDirectory: string): Promise<void> {
-	const cliEntrypoint = resolve(process.cwd(), "src/cli.ts");
 	await execFileAsync(
 		process.execPath,
-		[
-			"--import",
-			resolveTsxLoaderImportSpecifier(),
-			cliEntrypoint,
-			"diagnostics",
-			"capture",
-			"--output",
-			outputDirectory,
-			"--json",
-		],
+		[...resolveIntegrationNodeArgs(), "diagnostics", "capture", "--output", outputDirectory, "--json"],
 		{
 			cwd: process.cwd(),
 			encoding: "utf8",

@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { isBranchRefValid, isTaskSaveValid, resolveEffectiveBaseRef } from "@/hooks/board/task-editor";
 

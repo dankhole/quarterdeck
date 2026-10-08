@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { TASK_QUICK_REPLY_MAX_LENGTH } from "@runtime-contract";
 import { describe, expect, it } from "vitest";
 import type { SourceEditorActionContext } from "@/components/editor/source-editor-context";

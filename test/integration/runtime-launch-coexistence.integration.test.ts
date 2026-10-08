@@ -2,7 +2,7 @@ import { type ChildProcess, execFile, fork } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type DesktopReadyMessage, desktopChildMessageSchema } from "../../src/core/api/desktop-runtime-protocol.js";
@@ -12,7 +12,13 @@ import {
 	type RuntimeOwnershipLease,
 } from "../../src/server/runtime-ownership.js";
 import { initGitRepository } from "../utilities/git-env.js";
-import { getAvailablePort, startQuarterdeckServer, waitForExit } from "../utilities/integration-server.js";
+import {
+	getAvailablePort,
+	resolveIntegrationEntrypoint,
+	resolveIntegrationNodeArgs,
+	startQuarterdeckServer,
+	waitForExit,
+} from "../utilities/integration-server.js";
 
 const execute = promisify(execFile);
 
@@ -46,21 +52,18 @@ describe("actual CLI and desktop relay coexistence", () => {
 	});
 
 	async function invoke(...args: string[]) {
-		return await execute(
-			process.execPath,
-			["--import", import.meta.resolve("tsx"), resolve("src/cli.ts"), "--no-open", ...args],
-			{
-				cwd: projectPath,
-				env: { ...process.env, HOME: directory, USERPROFILE: directory, QUARTERDECK_STATE_HOME: stateHome },
-				timeout: 20_000,
-			},
-		);
+		return await execute(process.execPath, [...resolveIntegrationNodeArgs(), "--no-open", ...args], {
+			cwd: projectPath,
+			env: { ...process.env, HOME: directory, USERPROFILE: directory, QUARTERDECK_STATE_HOME: stateHome },
+			timeout: 20_000,
+		});
 	}
 
 	async function launchDesktopRelay() {
 		const startupId = randomUUID();
-		const child = fork(resolve("src/cli.ts"), ["--no-open", "--port", "auto"], {
-			execArgv: ["--import", import.meta.resolve("tsx")],
+		const entrypoint = resolveIntegrationEntrypoint();
+		const child = fork(entrypoint.path, ["--no-open", "--port", "auto"], {
+			execArgv: entrypoint.execArgv,
 			cwd: projectPath,
 			env: {
 				...process.env,
@@ -185,14 +188,7 @@ describe("actual CLI and desktop relay coexistence", () => {
 		// branch without permitting any native host effect.
 		const attached = await execute(
 			process.execPath,
-			[
-				"--import",
-				import.meta.resolve("tsx"),
-				resolve("src/cli.ts"),
-				"--no-native-ui",
-				"--simulate-host-integrations",
-				configPath,
-			],
+			[...resolveIntegrationNodeArgs(), "--no-native-ui", "--simulate-host-integrations", configPath],
 			{
 				cwd: projectPath,
 				env: { ...process.env, HOME: directory, USERPROFILE: directory, QUARTERDECK_STATE_HOME: stateHome },

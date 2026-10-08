@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 
 import { resolveTaskGitState } from "@/utils/task-git-state";

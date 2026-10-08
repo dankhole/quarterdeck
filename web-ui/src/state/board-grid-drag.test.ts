@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { resolveBoardGridDrop } from "@/state/board-grid-drag";
 import type { BoardData } from "@/types";

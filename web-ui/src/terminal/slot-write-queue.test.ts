@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import type { Terminal } from "@xterm/xterm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

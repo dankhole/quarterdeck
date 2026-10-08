@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { createTestProjectStateResponse } from "@/test-utils/task-session-factory";
 import { mergeProjectStateByRevision } from "./project-state-ordering";

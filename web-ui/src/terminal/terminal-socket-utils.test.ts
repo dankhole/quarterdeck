@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getTerminalWebSocketUrl } from "@/terminal/terminal-socket-utils";
 import type { DesktopBridge } from "../../../src/shared/desktop-bridge-contract";

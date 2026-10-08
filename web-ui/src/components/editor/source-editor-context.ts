@@ -57,3 +57,16 @@ export function createSourceEditorActionContext(
 		},
 	};
 }
+
+export function detectSourceEditorLineSeparator(value: string): "\n" | "\r\n" {
+	let crlfCount = 0;
+	let lfCount = 0;
+	for (let index = value.indexOf("\n"); index >= 0; index = value.indexOf("\n", index + 1)) {
+		if (index > 0 && value[index - 1] === "\r") {
+			crlfCount++;
+		} else {
+			lfCount++;
+		}
+	}
+	return crlfCount > lfCount ? "\r\n" : "\n";
+}

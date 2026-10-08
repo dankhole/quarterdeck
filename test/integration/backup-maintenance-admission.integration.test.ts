@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -9,6 +9,7 @@ import {
 	discoverRuntimeOwner,
 	type RuntimeOwnershipLease,
 } from "../../src/server/runtime-ownership.js";
+import { resolveIntegrationNodeArgs } from "../utilities/integration-server";
 
 const execute = promisify(execFile);
 
@@ -44,15 +45,11 @@ describe("backup CLI ownership admission", () => {
 	});
 
 	async function invoke(...args: string[]) {
-		return await execute(
-			process.execPath,
-			["--import", import.meta.resolve("tsx"), resolve("src/cli.ts"), "backup", ...args],
-			{
-				cwd: directory,
-				env: { ...process.env, QUARTERDECK_STATE_HOME: stateHome, QUARTERDECK_BACKUP_HOME: backupHome },
-				timeout: 15_000,
-			},
-		);
+		return await execute(process.execPath, [...resolveIntegrationNodeArgs(), "backup", ...args], {
+			cwd: directory,
+			env: { ...process.env, QUARTERDECK_STATE_HOME: stateHome, QUARTERDECK_BACKUP_HOME: backupHome },
+			timeout: 15_000,
+		});
 	}
 
 	it("refuses create and restore before touching a live owner's committed journal", async () => {

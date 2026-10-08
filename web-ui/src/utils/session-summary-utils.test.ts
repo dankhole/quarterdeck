@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";

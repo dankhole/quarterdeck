@@ -9,8 +9,11 @@ import { describe, expect, it } from "vitest";
 import { mainBuildOptions, preloadBuildOptions } from "../scripts/build-options.mjs";
 import { desktopRoot } from "../scripts/paths.mjs";
 
+// Both caller-path cases inspect the same build with independent fixture patches.
+let generatedMain;
 async function generatedMainPrefix(fixture, virtualArchiveView = false) {
-	const result = await build({ ...mainBuildOptions, write: false, sourcemap: false });
+	generatedMain ??= build({ ...mainBuildOptions, write: false, sourcemap: false });
+	const result = await generatedMain;
 	const generated = result.outputFiles[0].text;
 	const boundary = generated.indexOf("protocol.registerSchemesAsPrivileged([");
 	expect(boundary).toBeGreaterThan(0);

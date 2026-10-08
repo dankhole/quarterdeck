@@ -9,7 +9,7 @@ import {
 	resolveConflictFile,
 } from "../../src/workdir/git-conflict";
 import { revertCommit } from "../../src/workdir/git-revert";
-import { createGitTestEnv } from "../utilities/git-env";
+import { configureGitTestRepository, createGitTestEnv } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 
 describe("revertCommit with a real synthetic repository", () => {
@@ -33,9 +33,7 @@ describe("revertCommit with a real synthetic repository", () => {
 	beforeEach(() => {
 		temp = createTempDir("qd-revert-");
 		git("init", "-q", "-b", "main");
-		git("config", "core.autocrlf", "false");
-		git("config", "user.name", "Test User");
-		git("config", "user.email", "test@example.com");
+		configureGitTestRepository(temp.path);
 		original = commit("original\n");
 		changed = commit("changed\n");
 	});

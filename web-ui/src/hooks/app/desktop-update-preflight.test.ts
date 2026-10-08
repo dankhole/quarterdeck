@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it, vi } from "vitest";
 import { resolveDesktopFrontendPreflightReason } from "../../../../desktop/src/desktop-preflight-reason";
 import { DesktopQuitCoordinator, type DesktopQuitOptions } from "../../../../desktop/src/quit-coordinator";

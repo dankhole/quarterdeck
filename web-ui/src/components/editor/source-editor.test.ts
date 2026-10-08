@@ -1,7 +1,9 @@
+// @vitest-environment node
+
 import { EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 
-import { detectSourceEditorLineSeparator } from "./source-editor";
+import { detectSourceEditorLineSeparator } from "./source-editor-context";
 
 describe("source editor line separators", () => {
 	it("preserves CRLF when CodeMirror serializes editor state", () => {

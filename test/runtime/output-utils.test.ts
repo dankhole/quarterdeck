@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stripAnsi } from "../../src/terminal";
+import { stripAnsi } from "../../src/terminal/output-utils";
 
 describe("stripAnsi", () => {
 	it("returns plain text unchanged", () => {

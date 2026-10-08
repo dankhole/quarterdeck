@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 
 import { applyTaskBaseRefSelectionToBoard, applyTaskBaseRefUpdateToBoard } from "@/hooks/board/task-base-ref-sync";

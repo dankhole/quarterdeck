@@ -2,9 +2,10 @@ import { type ChildProcess, fork } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { desktopChildMessageSchema } from "../../src/core/api/desktop-runtime-protocol.js";
+import { resolveIntegrationEntrypoint } from "../utilities/integration-server";
 
 describe("private host effects across the actual helper IPC channel", () => {
 	let directory: string;
@@ -25,8 +26,9 @@ describe("private host effects across the actual helper IPC channel", () => {
 	it.each(["owned", "attached"] as const)("forwards only the %s helper's admitted effects", async (ownership) => {
 		const evidence = join(directory, "result.json");
 		const startupId = randomUUID();
-		const child = fork(resolve("test/utilities/desktop-host-effects-child.ts"), [evidence, ownership], {
-			execArgv: ["--import", "tsx"],
+		const entrypoint = resolveIntegrationEntrypoint("test/utilities/desktop-host-effects-child.ts");
+		const child = fork(entrypoint.path, [evidence, ownership], {
+			execArgv: entrypoint.execArgv,
 			stdio: ["ignore", "ignore", "pipe", "ipc"],
 		});
 		children.push(child);

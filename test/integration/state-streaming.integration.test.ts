@@ -1,9 +1,10 @@
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
-
+import { readFakeInvocationReceipt } from "../../scripts/agent-lab/fake-invocation-receipt";
 import type {
 	RuntimeBoardData,
 	RuntimeHookIngestResponse,
@@ -494,6 +495,10 @@ describe("state streaming integration", { concurrent: false }, () => {
 		initGitRepository(projectPath);
 		const fakeBinPath = join(tempHome, "bin");
 		installDeterministicFakeCodex(fakeBinPath);
+		mkdirSync(join(tempHome, ".quarterdeck"), { recursive: true });
+		// A native Codex PermissionRequest is actionable only for an explicitly
+		// human-reviewed launch. Inherited policy may select automatic review.
+		writeFileSync(join(tempHome, ".quarterdeck", "config.json"), JSON.stringify({ codexApprovalsReviewer: "user" }));
 
 		const port = await getAvailablePort();
 		const server = await startQuarterdeckServer({
@@ -502,7 +507,12 @@ describe("state streaming integration", { concurrent: false }, () => {
 			port,
 			extraEnv: {
 				PATH: [fakeBinPath, process.env.PATH].filter(Boolean).join(delimiter),
+				QUARTERDECK_AGENT_LAB: "1",
+				QUARTERDECK_AGENT_LAB_ALLOWED_AGENT_IDS: "codex",
 				QUARTERDECK_AGENT_LAB_SCENARIO: "idle",
+				TMPDIR: tmpdir(),
+				TEMP: tmpdir(),
+				CODEX_HOME: join(tempHome, ".codex"),
 			},
 		});
 
@@ -564,10 +574,17 @@ describe("state streaming integration", { concurrent: false }, () => {
 				},
 			});
 			expect(startTaskResponse.status).toBe(200);
-			expect(startTaskResponse.payload.ok).toBe(true);
+			expect(startTaskResponse.payload.ok, startTaskResponse.payload.error).toBe(true);
 			const sessionInstanceId = startTaskResponse.payload.summary?.sessionInstanceId;
 			expect(sessionInstanceId).toBeTruthy();
 			if (!sessionInstanceId) throw new Error("Missing live Codex session identity.");
+			// Starting a PTY precedes provider initialization. Wait for the exact
+			// fake launch to finish its isolation checks before supplying hooks.
+			await expect
+				.poll(() => readFakeInvocationReceipt({ stateHome: join(tempHome, ".quarterdeck"), sessionInstanceId }), {
+					timeout: 10_000,
+				})
+				.toMatchObject({ taskId, sessionInstanceId, historyPresent: true });
 
 			const initialUnconfirmedStateMessage = (await stream.waitForMessage(
 				(message): message is RuntimeStateStreamProjectStateMessage =>

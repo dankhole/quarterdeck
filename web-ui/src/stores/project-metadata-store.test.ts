@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeProjectMetadata } from "@/runtime/types";
 import {

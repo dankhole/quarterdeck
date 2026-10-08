@@ -4,6 +4,9 @@
 // populateGlobal() skips keys that already exist on globalThis.
 // Replace the broken stub with a spec-compliant in-memory Storage mock.
 const hasWorkingLocalStorage = (): boolean => {
+	// Node's built-in getter emits an experimental warning when accessed. Node
+	// tests need the same in-memory shim, so only inspect a browser implementation.
+	if (typeof window === "undefined") return false;
 	try {
 		const storage = globalThis.localStorage as Partial<Storage> | undefined;
 		return Boolean(

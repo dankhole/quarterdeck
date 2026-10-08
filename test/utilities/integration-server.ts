@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { inject } from "vitest";
 
 import { sanitizeRuntimeLogOutput } from "../../scripts/agent-lab/runtime-log-sanitizer.js";
 import { terminateProcessTree } from "../../src/core/process-termination.js";
@@ -41,6 +42,22 @@ export function resolveTsxLoaderImportSpecifier(): string {
 
 export function resolveTsxCliPath(): string {
 	return requireFromHere.resolve("tsx/cli");
+}
+
+/** Source by default; the integration lane may provide a fresh disposable build. */
+export function resolveIntegrationEntrypoint(
+	source = "src/cli.ts",
+	compiledEntrypoints = inject("compiledIntegrationEntrypoints"),
+): { path: string; execArgv: string[] } {
+	const compiled = compiledEntrypoints?.[source];
+	return compiled
+		? { path: compiled, execArgv: [] }
+		: { path: resolve(process.cwd(), source), execArgv: ["--import", resolveTsxLoaderImportSpecifier()] };
+}
+
+export function resolveIntegrationNodeArgs(source = "src/cli.ts"): string[] {
+	const entrypoint = resolveIntegrationEntrypoint(source);
+	return [...entrypoint.execArgv, entrypoint.path];
 }
 
 export async function waitForProcessStart(
@@ -165,25 +182,19 @@ export async function startQuarterdeckServer(input: {
 	crash: () => Promise<void>;
 	stop: () => Promise<void>;
 }> {
-	const cliEntrypoint = resolve(process.cwd(), "src/cli.ts");
-	const tsxLoaderImportSpecifier = resolveTsxLoaderImportSpecifier();
 	const stateHome = resolve(input.extraEnv?.QUARTERDECK_STATE_HOME ?? join(input.homeDir, ".quarterdeck"));
-	const child = spawn(
-		process.execPath,
-		["--import", tsxLoaderImportSpecifier, cliEntrypoint, "--no-open", ...(input.extraArgs ?? [])],
-		{
-			cwd: input.cwd,
-			env: createGitTestEnv({
-				...input.extraEnv,
-				HOME: input.homeDir,
-				USERPROFILE: input.homeDir,
-				QUARTERDECK_STATE_HOME: stateHome,
-				QUARTERDECK_RUNTIME_PORT: String(input.port),
-			}),
-			stdio: ["pipe", "pipe", "pipe"],
-			windowsHide: true,
-		},
-	);
+	const child = spawn(process.execPath, [...resolveIntegrationNodeArgs(), "--no-open", ...(input.extraArgs ?? [])], {
+		cwd: input.cwd,
+		env: createGitTestEnv({
+			...input.extraEnv,
+			HOME: input.homeDir,
+			USERPROFILE: input.homeDir,
+			QUARTERDECK_STATE_HOME: stateHome,
+			QUARTERDECK_RUNTIME_PORT: String(input.port),
+		}),
+		stdio: ["pipe", "pipe", "pipe"],
+		windowsHide: true,
+	});
 	// Observe close from launch: exit alone can precede stdio/descendant cleanup,
 	// and the process may already have closed by the time teardown starts.
 	const closed = new Promise<void>((resolveClose) => child.once("close", () => resolveClose()));

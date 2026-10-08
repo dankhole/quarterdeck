@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 import { runGitCheckoutAction } from "../../src/workdir";
-import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
+import { stageAndCommitAll as commitAll, initGitRepository, runGit } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 
 function setupRemoteClone(

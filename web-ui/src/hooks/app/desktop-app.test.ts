@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it, vi } from "vitest";
 import { createTestTaskOutstandingInteraction, createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 import { desktopCommandAvailabilitySchema } from "../../../../src/shared/desktop-bridge-contract";

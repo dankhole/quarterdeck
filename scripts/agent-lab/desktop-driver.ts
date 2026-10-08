@@ -85,7 +85,10 @@ export class DesktopLabDriver {
 	private fixturePreparation: Promise<unknown> | null = null;
 	private secondaryLaunches = new Set<Promise<DesktopSecondLaunchProof>>();
 
-	constructor(readonly fixture: DesktopLabFixture) {}
+	constructor(
+		readonly fixture: DesktopLabFixture,
+		private readonly cleanupPollWait: (milliseconds: number) => Promise<void> = wait,
+	) {}
 
 	private log(name: string, value: string): void {
 		if (this.logsClosed) return;
@@ -886,7 +889,7 @@ export class DesktopLabDriver {
 					this.knownProcesses,
 				);
 				if (shutdown.remainingBeforeFallback.length === 0) break;
-				if (attempt < 19) await wait(100);
+				if (attempt < 19) await this.cleanupPollWait(100);
 			}
 		} catch (error) {
 			shutdown.remainingBeforeFallback = null;

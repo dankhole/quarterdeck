@@ -1,9 +1,10 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { withRuntimeMaintenance } from "../../src/server/runtime-ownership.js";
+import { resolveIntegrationEntrypoint } from "../utilities/integration-server";
 
 interface RecoveryChildResult {
 	kind: "ready" | "inspected" | "admitted" | "denied";
@@ -29,8 +30,9 @@ describe("cross-process explicit runtime recovery", () => {
 		await rm(home, { recursive: true, force: true });
 	});
 	function launch(mode: "dirty-owner" | "admit" | "inspect" | "acknowledge") {
-		const child = fork(resolve("test/utilities/runtime-recovery-child.ts"), [mode], {
-			execArgv: ["--import", "tsx"],
+		const entrypoint = resolveIntegrationEntrypoint("test/utilities/runtime-recovery-child.ts");
+		const child = fork(entrypoint.path, [mode], {
+			execArgv: entrypoint.execArgv,
 			env: { ...process.env, QUARTERDECK_TEST_RECOVERY_HOME: home },
 			stdio: ["ignore", "pipe", "pipe", "ipc"],
 		});

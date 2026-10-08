@@ -13,20 +13,13 @@ import {
 } from "../../src/workdir";
 import { readWorkdirFile } from "../../src/workdir/read-workdir-file";
 import { saveWorkdirFile } from "../../src/workdir/save-workdir-file";
-import { createGitTestEnv } from "../utilities/git-env";
+import {
+	stageAndCommitAll as commitAll,
+	createGitTestEnv,
+	initGitRepository as initRepository,
+	runGit,
+} from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
-
-function runGit(cwd: string, args: string[]): string {
-	const result = spawnSync("git", args, {
-		cwd,
-		encoding: "utf8",
-		env: createGitTestEnv(),
-	});
-	if (result.status !== 0) {
-		throw new Error(result.stderr || result.stdout || `git ${args.join(" ")} failed`);
-	}
-	return result.stdout.trim();
-}
 
 /**
  * Like runGit but does not throw on non-zero exit — returns the exit code.
@@ -43,19 +36,6 @@ function runGitUnchecked(cwd: string, args: string[]): { status: number; stdout:
 		stdout: (result.stdout ?? "").trim(),
 		stderr: (result.stderr ?? "").trim(),
 	};
-}
-
-function initRepository(path: string): void {
-	runGit(path, ["init", "-q", "-b", "main"]);
-	runGit(path, ["config", "user.name", "Test User"]);
-	runGit(path, ["config", "user.email", "test@example.com"]);
-	runGit(path, ["config", "core.autocrlf", "false"]);
-}
-
-function commitAll(cwd: string, message: string): string {
-	runGit(cwd, ["add", "."]);
-	runGit(cwd, ["commit", "-qm", message]);
-	return runGit(cwd, ["rev-parse", "HEAD"]);
 }
 
 interface ConflictRepo {

@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { buildContextDisplayItems } from "./diff-context";
 import type { CollapsedContextBlock, ExpandedBlockState } from "./diff-parser";

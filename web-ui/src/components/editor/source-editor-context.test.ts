@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 import { createSourceEditorActionContext, sourceEditorOffset } from "./source-editor-context";

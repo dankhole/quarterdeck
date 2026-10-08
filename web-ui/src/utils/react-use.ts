@@ -1,13 +1,11 @@
 import type { DependencyList, Dispatch, SetStateAction } from "react";
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import {
-	useDebounce as useReactUseDebounce,
-	useEvent as useReactUseEvent,
-	useInterval as useReactUseInterval,
-	useMeasure as useReactUseMeasure,
-	useTitle as useReactUseTitle,
-	useUnmount as useReactUseUnmount,
-} from "react-use";
+import useReactUseDebounce from "react-use/lib/useDebounce.js";
+import useReactUseEvent from "react-use/lib/useEvent.js";
+import useReactUseInterval from "react-use/lib/useInterval.js";
+import useReactUseMeasure from "react-use/lib/useMeasure.js";
+import useReactUseTitle from "react-use/lib/useTitle.js";
+import useReactUseUnmount from "react-use/lib/useUnmount.js";
 import { readLocalStorageItem, subscribePreferenceStorage, writeLocalStorageItem } from "@/storage/local-storage-store";
 import { isSharedUiPreferenceKey, sharedUiPreferences } from "@/storage/shared-ui-preferences";
 

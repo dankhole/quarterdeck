@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeProjectStateResponse } from "@/runtime/types";
 import { createTestProjectStateResponse } from "@/test-utils/task-session-factory";

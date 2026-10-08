@@ -1,11 +1,12 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { EventEmitter } from "node:events";
+import { EventEmitter, once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DesktopRecoveryHelper, type DesktopRecoveryHelperOptions } from "../src/recovery-helper.js";
 
 const children: ChildProcess[] = [];
 afterEach(async () => {
+	vi.useRealTimers();
 	await Promise.all(
 		children.splice(0).map(async (child) => {
 			if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
@@ -40,7 +41,11 @@ function helper(mode = "recovered", overrides: Partial<DesktopRecoveryHelperOpti
 		const child = spawn(
 			process.execPath,
 			[fileURLToPath(new URL("./fixtures/recovery-helper.mjs", import.meta.url))],
-			{ ...options, cwd: undefined },
+			{
+				...options,
+				cwd: undefined,
+				...(mode === "timeout" ? { stdio: ["ignore", "ignore", "ignore", "ipc"] as const } : {}),
+			},
 		);
 		children.push(child);
 		return child;
@@ -100,8 +105,14 @@ describe("trusted desktop recovery helper", () => {
 	});
 
 	it("terminates only its newly spawned maintenance child and waits for actual exit on timeout", async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 		const fixture = helper("timeout", { deadlineMs: 100 });
-		expect(await fixture.owner.run()).toBe("timed_out");
+		const result = fixture.owner.run();
+		const child = children[0];
+		if (!child) throw new Error("Expected a spawned maintenance child");
+		expect(await once(child, "message")).toEqual(["ready", undefined]);
+		await vi.advanceTimersByTimeAsync(200);
+		expect(await result).toBe("timed_out");
 		expect(fixture.owner.isRunning()).toBe(false);
 		expect(children[0]?.signalCode).toBe("SIGKILL");
 		expect(fixture.spawnChild).toHaveBeenCalledOnce();

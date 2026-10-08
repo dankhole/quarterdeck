@@ -52,7 +52,22 @@ This document owns test selection. [`DEVELOPMENT.md`](../DEVELOPMENT.md) lists d
 | `npm run agent:desktop -- smoke --app <path>` | Isolated packaged macOS app, hidden by default, with synthetic data and fake provider | Signed-install/update acceptance, another architecture/OS version, or authorization for real providers |
 | `npm --prefix desktop run check` | Desktop Biome, TypeScript, and Vitest checks | Root/web checks, actual packaged execution, signing, or Gatekeeper |
 
-The pre-commit hook already runs staged Biome, the runtime typecheck, and `test:fast`. Account for that when choosing manual pre-commit validation instead of repeating it on an unchanged tree.
+The pre-commit hook runs staged Biome followed by `npm run test:precommit`, which selects checks from NUL-delimited staged paths (including both sides of renames):
+
+- Documentation-only edits skip code checks; changes to the canonical instruction bridge still run `check:agent-instructions`.
+- Web-only and desktop-only edits run their own typecheck and unit suite. Runtime implementation edits run the runtime typecheck and `test:fast`.
+- Test-only edits run the affected existing test files and their lane's typecheck. Deleted tests and changed test helpers fall back to the complete lane.
+- Shared runtime contracts/configuration/diagnostics, browser-imported runtime helpers, shared tooling, dependency manifests, and unknown inputs take the conservative root, web, and desktop gates. These require independent dependencies in all three package directories.
+
+The hook does not restage working-tree files. Account for its selected checks when choosing manual validation instead of repeating them on an unchanged tree. The selector in `scripts/precommit.mjs` is deliberately conservative; keep its ownership mapping current when adding cross-package imports. CI retains the complete platform matrix.
+
+Pure web domain tests explicitly select the Node environment. Tests that require DOM rendering, browser event behavior, selection, or real React mounting retain jsdom. Do not infer environment from the `.ts` extension alone or disable module isolation globally. Focused web filters fail when they match no tests.
+
+The 10,000-generation ownership traversal remains a real-filesystem integration stress test; the fast lane covers a smaller real chain. Desktop cleanup orchestration tests inject the polling wait and control deadline timers while asserting poll counts and fallback behavior. Production shutdown deadlines are unchanged.
+
+`test:integration` and the root tests in `check` use Vitest's `integration` mode. Global setup compiles the current CLI and repeated IPC fixture entrypoints once into a disposable worktree-local directory, passes their paths through Vitest's provided context, and removes the build during teardown. Each case still starts fresh processes with its own state; no live runtime or previous build is reused. Plain `npm test -- <paths>` keeps the source/TSX path for focused iteration and comparison. Add `--mode integration` to opt a focused run into compilation. Source-bootstrap/import-safety cases deliberately remain source-based.
+
+Package smoke uses a cold temporary npm cache by default. `npm run test:package -- --npm-cache <directory>` reuses only npm package downloads; installation roots, npm configuration, lifecycle policy, state, and native PTY checks remain isolated. CI passes its cached npm directory explicitly. Never share a mutable `node_modules` tree between worktrees.
 
 CI runs the production build (which includes the web typecheck), `npm run check`, and web unit tests on Ubuntu, macOS, and Windows. The non-optional Windows job also fetches and gracefully stops the packaged CLI before the root gate, whose integration suite covers native ConPTY resize/reconnect/restore, long/case-sensitive Git paths, junction/copy worktrees, exact process ownership, DACLs, hook/status-line transport, host launch, and parent-disconnect shutdown. CI does not repeat the web typecheck as a separate step and does not run `web:e2e` or Agent Lab. Local validation should prove the change; it does not need to impersonate CI unless release or PR-readiness work explicitly calls for that gate. See the [native Windows guide](./windows-native-smoke.md) for the exact clean, focused, and manual commands.
 

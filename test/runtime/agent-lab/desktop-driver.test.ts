@@ -16,6 +16,8 @@ import { listDesktopProcesses, stopOwnedDesktopProcesses } from "../../../script
 import { captureDesktopShutdownEvidence } from "../../../scripts/agent-lab/desktop-shutdown-evidence";
 import type { DesktopLabProcess } from "../../../scripts/agent-lab/desktop-types";
 
+const cleanupPollWait = vi.fn(async (_milliseconds: number) => {});
+
 vi.mock("playwright-core", () => ({ _electron: { launch: vi.fn() } }));
 vi.mock("../../../scripts/agent-lab/desktop-shutdown-evidence", () => ({
 	captureDesktopShutdownEvidence: vi.fn(async () => undefined),
@@ -167,7 +169,7 @@ async function prepareRetirement() {
 	Reflect.set(application, "once", events.once.bind(events));
 	vi.mocked(_electron.launch).mockResolvedValue(application);
 	vi.mocked(listDesktopProcesses).mockResolvedValue([main]);
-	const driver = new DesktopLabDriver(fixture);
+	const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 	await driver.launch();
 	const proof = mainLossProof(fixture, main);
 	vi.mocked(listDesktopProcesses).mockResolvedValue([]);
@@ -190,7 +192,7 @@ describe("desktop driver cleanup orchestration", () => {
 
 	it("refuses a process-restricted host before spawning Electron", async () => {
 		const fixture = await createFixture();
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		vi.mocked(listDesktopProcesses).mockRejectedValue(new Error("spawn /bin/ps EPERM"));
 		try {
 			await expect(driver.launch()).rejects.toThrow("no app was launched");
@@ -203,7 +205,7 @@ describe("desktop driver cleanup orchestration", () => {
 
 	it("does not spawn when stop arrives during the native preflight", async () => {
 		const fixture = await createFixture();
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		const census = deferred<DesktopLabProcess[]>();
 		vi.mocked(listDesktopProcesses).mockReturnValueOnce(census.promise);
 		try {
@@ -220,7 +222,7 @@ describe("desktop driver cleanup orchestration", () => {
 
 	it("drains admitted installer preparation before deleting its cancelled fixture", async () => {
 		const fixture = await createFixture();
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		const prepared = deferred<void>();
 		try {
 			const preparation = driver.prepareFixture(() => prepared.promise);
@@ -246,7 +248,7 @@ describe("desktop driver cleanup orchestration", () => {
 
 	it("refuses installer I/O when stopped in the same turn as preparation admission", async () => {
 		const fixture = await createFixture();
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		const operation = vi.fn(async () => undefined);
 		try {
 			const preparation = driver.prepareFixture(operation);
@@ -272,7 +274,7 @@ describe("desktop driver cleanup orchestration", () => {
 		);
 		vi.mocked(listDesktopProcesses).mockResolvedValue([main]);
 		vi.mocked(captureDesktopShutdownEvidence).mockRejectedValueOnce(new Error("private diagnostic detail"));
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		try {
 			await driver.launch();
 			await expect(driver.stop()).rejects.toThrow("SDK close failed");
@@ -289,6 +291,8 @@ describe("desktop driver cleanup orchestration", () => {
 			expect(fixture.manifest.failure).toContain("timeout evidence could not be retained");
 			expect(fixture.manifest.failure).not.toContain("private diagnostic detail");
 			expect(fixture.manifest.shutdown?.fallbackUsed).toBe(true);
+			expect(cleanupPollWait).toHaveBeenCalledTimes(19);
+			expect(cleanupPollWait.mock.calls.every(([milliseconds]) => milliseconds === 100)).toBe(true);
 			await expect(access(join(fixture.config.tempRoot, "codex-home"))).rejects.toThrow();
 		} finally {
 			await driver.stop().catch(() => undefined);
@@ -324,7 +328,7 @@ describe("desktop driver cleanup orchestration", () => {
 			close: async () => {},
 		} as unknown as ElectronApplication;
 		vi.mocked(_electron.launch).mockResolvedValue(application);
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		try {
 			await driver.launch();
 			const readCount = await driver.observeSecondInstances();
@@ -353,7 +357,7 @@ describe("desktop driver cleanup orchestration", () => {
 		};
 		const descendant = { ...secondary, pid: 52_001, parentPid: secondary.pid, command: "synthetic child" };
 		const unrelated = { ...secondary, pid: 53_000, command: "unrelated application" };
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		try {
 			expect(() => driver.retainSecondaryLaunchProcesses([secondary, unrelated])).toThrow("isolated process tree");
 			expect(() => driver.retainSecondaryLaunchProcesses([{ ...secondary, pid: 51_000 }])).toThrow(
@@ -378,7 +382,7 @@ describe("desktop driver cleanup orchestration", () => {
 			startedAt: "Thu Oct  1 14:45:00 2026",
 			command: `${appPath}/Contents/MacOS/Quarterdeck --user-data-dir=${fixture.config.userDataPath}`,
 		};
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		try {
 			expect(() => driver.retainSecondaryLaunchProcesses([secondary], "/other/Quarterdeck.app")).toThrow(
 				"outside its isolated fixture",
@@ -395,7 +399,7 @@ describe("desktop driver cleanup orchestration", () => {
 
 	it("never tracks or submits an unmarked reused main PID or its descendants to cleanup on the first capture", async () => {
 		const fixture = await createFixture();
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		const reused: DesktopLabProcess = {
 			pid: 50_000,
 			parentPid: 1,
@@ -441,7 +445,7 @@ describe("desktop driver cleanup orchestration", () => {
 
 	it("tracks a marked main tree and retains captured descendants after reparenting and main PID reuse", async () => {
 		const fixture = await createFixture();
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		const main: DesktopLabProcess = {
 			pid: 50_000,
 			parentPid: 1,
@@ -490,10 +494,11 @@ describe("desktop driver cleanup orchestration", () => {
 
 	it("accepts completed SDK Quit only after the exact owned forest drains without fallback", async () => {
 		const fixture = await createFixture();
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		const main = markedMain(fixture);
 		const helper = { ...main, pid: 50_001, parentPid: main.pid, command: "synthetic helper" };
-		const close = vi.fn(async () => {
+		const close = vi.fn(async () => {});
+		cleanupPollWait.mockImplementationOnce(async () => {
 			vi.mocked(listDesktopProcesses).mockResolvedValue([]);
 		});
 		vi.mocked(_electron.launch).mockResolvedValue(mockApplication(main.pid, close));
@@ -502,6 +507,7 @@ describe("desktop driver cleanup orchestration", () => {
 			await driver.launch();
 			await expect(driver.stop()).resolves.toBeUndefined();
 			expect(close).toHaveBeenCalledOnce();
+			expect(cleanupPollWait).toHaveBeenCalledExactlyOnceWith(100);
 			expect(stopOwnedDesktopProcesses).not.toHaveBeenCalled();
 			expect(fixture.manifest.shutdown).toEqual({
 				gracefulQuit: { attempted: true, outcome: "sdk_close_completed" },
@@ -525,7 +531,7 @@ describe("desktop driver cleanup orchestration", () => {
 		"records successful fallback cleanup without treating it as graceful Quit: %s",
 		async (scenario) => {
 			const fixture = await createFixture();
-			const driver = new DesktopLabDriver(fixture);
+			const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 			const main = markedMain(fixture);
 			const helper = { ...main, pid: 50_001, parentPid: main.pid, command: "synthetic helper" };
 			const orphanedHelper = { ...helper, parentPid: 1 };
@@ -567,7 +573,7 @@ describe("desktop driver cleanup orchestration", () => {
 
 	it("rejects an unconfirmed SDK Quit even when no owned processes need fallback", async () => {
 		const fixture = await createFixture();
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		const main = markedMain(fixture);
 		const close = vi.fn(async () => {
 			vi.mocked(listDesktopProcesses).mockResolvedValue([]);
@@ -633,7 +639,7 @@ describe("desktop driver cleanup orchestration", () => {
 			close: async () => {},
 		} as unknown as ElectronApplication;
 		vi.mocked(_electron.launch).mockResolvedValue(application);
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		try {
 			await driver.launch();
 			await expect(driver.resizeOwnedWindow(100_000, 720)).rejects.toThrow("bounded viewport");
@@ -678,7 +684,7 @@ describe("desktop driver cleanup orchestration", () => {
 				close: async () => {},
 			} as unknown as ElectronApplication;
 			vi.mocked(_electron.launch).mockResolvedValue(application);
-			const driver = new DesktopLabDriver(fixture);
+			const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 			try {
 				await driver.launch();
 				await expect(driver.inspect("hidden")).resolves.toBeUndefined();
@@ -709,7 +715,7 @@ describe("desktop driver cleanup orchestration", () => {
 			};
 			vi.mocked(_electron.launch).mockRejectedValue(new Error("SDK handshake failed"));
 			vi.mocked(listDesktopProcesses).mockResolvedValue([remnant]);
-			const driver = new DesktopLabDriver(fixture);
+			const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 			await expect(driver.launch()).rejects.toThrow("SDK handshake failed");
 			await driver.stop(new Error("SDK handshake failed"));
 			expect(stopOwnedDesktopProcesses).toHaveBeenCalledWith([remnant]);
@@ -739,7 +745,7 @@ describe("desktop driver cleanup orchestration", () => {
 						resolveLaunch = resolve;
 					}),
 			);
-			const driver = new DesktopLabDriver(fixture);
+			const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 			const launched = driver.launch();
 			await vi.waitFor(() => expect(_electron.launch).toHaveBeenCalledOnce());
 			expect(_electron.launch).toHaveBeenCalledWith(
@@ -775,7 +781,7 @@ describe("desktop driver cleanup orchestration", () => {
 				.mockResolvedValueOnce([])
 				.mockRejectedValue(new Error("Process inspection unavailable"));
 			vi.mocked(stopOwnedDesktopProcesses).mockRejectedValue(new Error("Process inspection unavailable"));
-			const driver = new DesktopLabDriver(fixture);
+			const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 			await expect(driver.launch()).rejects.toThrow("SDK handshake failed");
 			await expect(driver.stop(new Error("SDK handshake failed"))).rejects.toThrow("Process inspection unavailable");
 			await expect(access(fixture.config.tempRoot)).resolves.toBeUndefined();
@@ -803,7 +809,7 @@ describe("desktop driver cleanup orchestration", () => {
 				await writeFile(join(fixture.config.tempRoot, directory, "auth.json"), "synthetic-credential");
 			}
 			vi.mocked(_electron.launch).mockRejectedValue(new Error("SDK handshake failed"));
-			const driver = new DesktopLabDriver(fixture);
+			const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 			await expect(driver.launch()).rejects.toThrow("SDK handshake failed");
 			await driver.stop(new Error("SDK handshake failed"));
 			await expect(access(fixture.config.tempRoot)).resolves.toBeUndefined();
@@ -818,7 +824,7 @@ describe("desktop driver cleanup orchestration", () => {
 
 	it("restricts task cleanup to the exact provider identity below the owned helper", async () => {
 		const fixture = await createFixture();
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		try {
 			const process = (pid: number, parentPid: number, command: string): DesktopLabProcess => ({
 				pid,
@@ -882,7 +888,7 @@ describe("desktop driver cleanup orchestration", () => {
 
 	it("disconnects only the recovered observer before graceful Electron Quit", async () => {
 		const fixture = await createFixture();
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		try {
 			vi.mocked(listDesktopProcesses).mockResolvedValue([markedMain(fixture)]);
 			const quit = vi.fn(async () => {
@@ -907,7 +913,7 @@ describe("desktop driver cleanup orchestration", () => {
 
 	it("still quits Electron and removes staged auth when observer detach times out", async () => {
 		const fixture = await createFixture();
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		try {
 			await mkdir(join(fixture.config.tempRoot, "codex-home"));
 			await writeFile(join(fixture.config.tempRoot, "codex-home", "auth.json"), "synthetic-credential");
@@ -917,22 +923,34 @@ describe("desktop driver cleanup orchestration", () => {
 			});
 			vi.mocked(_electron.launch).mockResolvedValue(mockApplication(50_000, quit));
 			await driver.launch();
-			Reflect.set(driver, "rendererObserver", { close: () => new Promise<void>(() => {}) });
-			await expect(driver.stop()).rejects.toThrow("observer disconnect was not confirmed");
+			const disconnectStarted = deferred<void>();
+			Reflect.set(driver, "rendererObserver", {
+				close: () => {
+					disconnectStarted.resolve();
+					return new Promise<void>(() => {});
+				},
+			});
+			vi.useFakeTimers({ toFake: ["setTimeout"] });
+			const stopped = expect(driver.stop()).rejects.toThrow("observer disconnect was not confirmed");
+			await disconnectStarted.promise;
+			await vi.advanceTimersByTimeAsync(5_001);
+			await stopped;
+			vi.useRealTimers();
 			expect(quit).toHaveBeenCalledOnce();
 			expect(fixture.keepTemp).toBe(true);
 			expect(fixture.manifest.remainingPids).toEqual([]);
 			await expect(access(join(fixture.config.tempRoot, "codex-home"))).rejects.toThrow();
 			expect(stopOwnedDesktopProcesses).not.toHaveBeenCalled();
 		} finally {
+			vi.useRealTimers();
 			await rm(fixture.config.tempRoot, { recursive: true, force: true });
 			await rm(fixture.manifest.artifactDir, { recursive: true, force: true });
 		}
-	}, 8_000);
+	});
 
 	it("waits for a pending observer registration before disconnect and Quit", async () => {
 		const fixture = await createFixture();
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		try {
 			vi.mocked(listDesktopProcesses).mockResolvedValue([markedMain(fixture)]);
 			const quit = vi.fn(async () => {
@@ -965,7 +983,7 @@ describe("desktop driver cleanup orchestration", () => {
 
 	it.each(["main-reused", "wrong-fixture"])("rejects %s before attaching any observer", async (failure) => {
 		const fixture = await createFixture();
-		const driver = new DesktopLabDriver(fixture);
+		const driver = new DesktopLabDriver(fixture, cleanupPollWait);
 		try {
 			const main = markedMain(fixture);
 			vi.mocked(listDesktopProcesses).mockResolvedValue([main]);

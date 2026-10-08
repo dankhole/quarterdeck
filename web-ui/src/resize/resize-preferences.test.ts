@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import {

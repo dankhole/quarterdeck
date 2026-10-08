@@ -7,7 +7,9 @@ import { LocalStorageKey } from "@/storage/local-storage-store";
 import { useTaskRepositoryInfoValue, useTaskWorktreeSnapshotValue } from "@/stores/project-metadata-store";
 import type { BoardData, CardSelection } from "@/types";
 import { useBooleanLocalStorageValue } from "@/utils/react-use";
-import { resolveTaskGitState } from "@/utils/task-git-state";
+import { resolveDefaultCompareSourceRef } from "./git-view-compare";
+
+export { resolveDefaultCompareSourceRef } from "./git-view-compare";
 
 export interface GitViewCompareNavigation {
 	sourceRef?: string;
@@ -41,25 +43,6 @@ export interface UseGitViewCompareResult {
 	setIncludeUncommitted: (value: boolean) => void;
 	threeDotDiff: boolean;
 	setThreeDotDiff: (value: boolean) => void;
-}
-
-export function resolveDefaultCompareSourceRef(input: {
-	selectedCard: CardSelection | null;
-	projectPath?: string | null;
-	homeGitSummary: RuntimeGitSyncSummary | null;
-	repositoryInfo: ReturnType<typeof useTaskRepositoryInfoValue>;
-	worktreeSnapshot: ReturnType<typeof useTaskWorktreeSnapshotValue>;
-}): string | null {
-	if (!input.selectedCard) {
-		return input.homeGitSummary?.currentBranch ?? null;
-	}
-	return resolveTaskGitState({
-		projectRootPath: input.projectPath,
-		card: input.selectedCard.card,
-		repositoryInfo: input.repositoryInfo,
-		worktreeSnapshot: input.worktreeSnapshot,
-		homeGitSummary: input.homeGitSummary,
-	}).branchLabel;
 }
 
 export function useGitViewCompare({

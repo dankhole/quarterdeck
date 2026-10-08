@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import {
 	buildDiffDisplayGroups,
@@ -6,7 +8,7 @@ import {
 	INCREMENTAL_EXPAND_THRESHOLD,
 	MIN_COLLAPSE_LINES,
 	type UnifiedDiffRow,
-} from "@/components/shared/diff-renderer";
+} from "./diff-parser";
 
 function makeContextRows(count: number, startLine = 1): UnifiedDiffRow[] {
 	const rows: UnifiedDiffRow[] = [];

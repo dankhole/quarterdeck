@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it, vi } from "vitest";
 import { observeRuntimeAdmissionResponse, subscribeRuntimeAdmissionRequired } from "@/runtime/runtime-client-admission";
 

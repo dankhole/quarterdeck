@@ -13,8 +13,9 @@ process.env.NODE_ENV = "production";
 // override this with mocked Codex/LLM dependencies.
 process.env.QUARTERDECK_TITLE_PROVIDER = "local";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
 	test: {
+		provide: { compileIntegrationCli: mode === "integration" },
 		globals: true,
 		environment: "node",
 		globalSetup: "./test/global-setup.ts",
@@ -37,4 +38,4 @@ export default defineConfig({
 			reportsDirectory: "coverage",
 		},
 	},
-});
+}));

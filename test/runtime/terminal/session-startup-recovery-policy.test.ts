@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveSessionResumeSemanticState, deriveStartupRecoveryPolicy } from "../../../src/terminal";
+import {
+	deriveSessionResumeSemanticState,
+	deriveStartupRecoveryPolicy,
+} from "../../../src/terminal/session-startup-recovery-policy";
 import {
 	createTestTaskOutstandingInteraction,
 	createTestTaskSessionSummary,

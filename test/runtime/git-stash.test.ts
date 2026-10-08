@@ -14,33 +14,14 @@ import {
 	stashPush,
 	stashShow,
 } from "../../src/workdir";
-import { createGitTestEnv } from "../utilities/git-env";
+import {
+	stageAndCommitAll as commitAll,
+	configureGitTestRepository,
+	createGitTestEnv,
+	initGitRepository as initRepository,
+	runGit,
+} from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
-
-function runGit(cwd: string, args: string[]): string {
-	const result = spawnSync("git", args, {
-		cwd,
-		encoding: "utf8",
-		env: createGitTestEnv(),
-	});
-	if (result.status !== 0) {
-		throw new Error(result.stderr || result.stdout || `git ${args.join(" ")} failed`);
-	}
-	return result.stdout.trim();
-}
-
-function initRepository(path: string): void {
-	runGit(path, ["init", "-q", "-b", "main"]);
-	runGit(path, ["config", "user.name", "Test User"]);
-	runGit(path, ["config", "user.email", "test@example.com"]);
-	runGit(path, ["config", "core.autocrlf", "false"]);
-}
-
-function commitAll(cwd: string, message: string): string {
-	runGit(cwd, ["add", "."]);
-	runGit(cwd, ["commit", "-qm", message]);
-	return runGit(cwd, ["rev-parse", "HEAD"]);
-}
 
 function gitStatus(cwd: string): string {
 	return runGit(cwd, ["status", "--porcelain"]);
@@ -593,9 +574,8 @@ describe("dirtyTree detection", { concurrent: false }, () => {
 				env: createGitTestEnv(),
 			});
 
-			// Configure the clone
-			runGit(repoPath, ["config", "user.name", "Test User"]);
-			runGit(repoPath, ["config", "user.email", "test@example.com"]);
+			// Configure production Git calls as well as fixture commands.
+			configureGitTestRepository(repoPath);
 
 			// Create initial commit and push
 			writeFileSync(join(repoPath, "file.txt"), "initial\n", "utf8");

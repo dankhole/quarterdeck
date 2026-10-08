@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -8,7 +8,7 @@ import { commitAll, createGitTestEnv, initGitRepository, runGit } from "../utili
 import {
 	getAvailablePort,
 	requestGracefulShutdown,
-	resolveTsxLoaderImportSpecifier,
+	resolveIntegrationNodeArgs,
 	waitForExit,
 	waitForProcessStart,
 } from "../utilities/integration-server";
@@ -55,12 +55,11 @@ async function waitForBrowserOpenCount(logPath: string, expectedCount: number, t
 	);
 }
 
-function spawnSourceCli(
+function spawnFixtureCli(
 	args: string[],
 	options: { cwd: string; env: NodeJS.ProcessEnv; stdio?: ChildProcess["stdio"] },
 ) {
-	const cliEntrypoint = resolve(process.cwd(), "src/cli.ts");
-	return spawn(process.execPath, ["--import", resolveTsxLoaderImportSpecifier(), cliEntrypoint, ...args], {
+	return spawn(process.execPath, [...resolveIntegrationNodeArgs(), ...args], {
 		cwd: options.cwd,
 		env: options.env,
 		stdio: options.stdio ?? ["ignore", "pipe", "pipe"],
@@ -73,7 +72,7 @@ async function runCliCommandAndCollectOutput(options: {
 	env: NodeJS.ProcessEnv;
 	timeoutMs?: number;
 }): Promise<{ stdout: string; stderr: string; exitCode: number | null; didExit: boolean }> {
-	const childProcess = spawnSourceCli(options.args, {
+	const childProcess = spawnFixtureCli(options.args, {
 		cwd: options.cwd,
 		env: options.env,
 	});
@@ -138,15 +137,11 @@ describe("source CLI commands", () => {
 				PATH: `${browserStubBinDir}:${process.env.PATH ?? ""}`,
 			});
 
-			const serverProcess = spawn(
-				process.execPath,
-				["--import", resolveTsxLoaderImportSpecifier(), resolve(process.cwd(), "src/cli.ts")],
-				{
-					cwd: projectPath,
-					env,
-					stdio: ["pipe", "pipe", "pipe"],
-				},
-			);
+			const serverProcess = spawn(process.execPath, resolveIntegrationNodeArgs(), {
+				cwd: projectPath,
+				env,
+				stdio: ["pipe", "pipe", "pipe"],
+			});
 
 			try {
 				await waitForProcessStart(serverProcess);

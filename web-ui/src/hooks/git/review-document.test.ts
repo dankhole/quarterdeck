@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { createFileBrowserContentScopeKey } from "./file-browser-scope";
 import { createReviewDocument, type ReviewScope } from "./review-document";

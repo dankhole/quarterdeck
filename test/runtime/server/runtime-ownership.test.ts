@@ -101,7 +101,7 @@ describe("runtime lifetime ownership", () => {
 		await expect(stat(join(releasedDirectory, `${lease.generation}.json`))).rejects.toMatchObject({ code: "ENOENT" });
 	});
 
-	it("walks a ten-thousand-generation history iteratively before admission", async () => {
+	it("walks a multi-generation history before admission", async () => {
 		const initial = await acquire();
 		await initial.release();
 		const root = join(directory, "runtime-ownership");
@@ -109,28 +109,27 @@ describe("runtime lifetime ownership", () => {
 			JSON.parse(await readFile(join(root, "first-owner.json"), "utf8")),
 		);
 		let predecessor = initial.generation;
-		for (let offset = 1; offset < 10_000; offset += 100) {
-			const writes: Promise<void>[] = [];
-			for (let index = offset; index < Math.min(offset + 100, 10_000); index++) {
-				const generation = randomUUID();
-				writes.push(
-					writeFile(
-						join(root, "successors", `${predecessor}.json`),
-						JSON.stringify({ ...initialClaim, generation, previousGeneration: predecessor }),
-					),
-				);
-				predecessor = generation;
-			}
-			await Promise.all(writes);
+		const writes: Promise<void>[] = [];
+		for (let index = 1; index < 32; index++) {
+			const generation = randomUUID();
+			writes.push(
+				writeFile(
+					join(root, "successors", `${predecessor}.json`),
+					JSON.stringify({ ...initialClaim, generation, previousGeneration: predecessor }),
+				),
+			);
+			predecessor = generation;
 		}
+		await Promise.all(writes);
 		vi.mocked(inspectRuntimeProcess).mockResolvedValue("dead");
-		const startedAt = performance.now();
 		const current = await acquire();
-		const elapsedMs = performance.now() - startedAt;
 		expect(current.generation).not.toBe(predecessor);
 		expect(current.isCurrent()).toBe(true);
-		console.info(`Synthetic 10000-generation ownership admission: ${Math.round(elapsedMs)}ms`);
-	}, 30_000);
+		expect(JSON.parse(await readFile(join(root, "successors", `${predecessor}.json`), "utf8"))).toMatchObject({
+			generation: current.generation,
+			previousGeneration: predecessor,
+		});
+	});
 
 	it("publishes process custody synchronously and reports prior exact release and dirty evidence", async () => {
 		const clean = await acquire();

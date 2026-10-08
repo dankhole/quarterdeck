@@ -1,6 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFERRED_ROW_THRESHOLD } from "@/components/shared/deferred-diff-rows";
 import { SplitDiff } from "./diff-split";
 import { UnifiedDiff } from "./diff-unified";
 import type { DiffLineComment } from "./diff-viewer-utils";
@@ -97,7 +98,10 @@ describe.each([
 	it.each(["↑", "↓"])(
 		"keeps row selection and comment parents across %s context chunk and deferral boundaries",
 		async (direction) => {
-			await renderDiff(620, 300);
+			// Preserve the original 317-row collapsed context and cross the changed-row
+			// deferral boundary in both renderers with the smallest changed group.
+			const changedLines = DEFERRED_ROW_THRESHOLD + 1;
+			await renderDiff(320 + changedLines, changedLines);
 			const comment = container.querySelector("textarea")!;
 			const commentParent = comment.parentElement;
 			comment.setSelectionRange(3, 7);
@@ -126,7 +130,7 @@ describe.each([
 			expect(selectedRow.isConnected).toBe(true);
 			expect(window.getSelection()!.toString()).toBe(selectedText);
 		},
-		// Repeated expansion of 620 rows can exceed the default timeout on shared CI runners.
+		// Repeated expansion across both deferral boundaries can exceed the default timeout on shared CI runners.
 		15_000,
 	);
 });

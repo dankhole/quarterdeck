@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import type { ClientRect, CollisionDetection } from "@dnd-kit/core";
 import { describe, expect, it } from "vitest";
 import { boardGridCollision } from "@/state/board-grid-collision";

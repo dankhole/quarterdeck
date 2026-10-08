@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { applyProjectBoardCommands } from "@runtime-board-commands";
 import { runtimeProjectBoardCommandBatchEnvelopeSchema } from "@runtime-contract";
 import { describe, expect, it } from "vitest";

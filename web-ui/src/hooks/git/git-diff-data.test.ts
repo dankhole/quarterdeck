@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 
 import { createCompareDiffViewKey, deriveDiffPriorityPaths, isGitDiffChangesPending } from "./git-diff-data";

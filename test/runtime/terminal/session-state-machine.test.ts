@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
-import { LEGACY_STARTUP_SEMANTIC_STATE_WARNING, reduceSessionTransition } from "../../../src/terminal";
+import { LEGACY_STARTUP_SEMANTIC_STATE_WARNING } from "../../../src/terminal/session-startup-recovery-policy";
+import { reduceSessionTransition } from "../../../src/terminal/session-state-machine";
 import {
 	createTestProviderHookEvent,
 	createTestTaskHookActivity,

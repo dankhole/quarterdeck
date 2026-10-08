@@ -2,9 +2,10 @@ import { type ChildProcess, fork } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { desktopChildMessageSchema } from "../../src/core/api/desktop-runtime-protocol.js";
+import { resolveIntegrationEntrypoint } from "../utilities/integration-server";
 
 describe("private desktop runtime shutdown channel", () => {
 	let directory: string;
@@ -25,8 +26,9 @@ describe("private desktop runtime shutdown channel", () => {
 	async function launch(finalStatus = "clean") {
 		const startupId = randomUUID();
 		const evidencePath = join(directory, `${startupId}.txt`);
-		const child = fork(resolve("test/utilities/desktop-channel-child.ts"), [evidencePath, finalStatus], {
-			execArgv: ["--import", "tsx"],
+		const entrypoint = resolveIntegrationEntrypoint("test/utilities/desktop-channel-child.ts");
+		const child = fork(entrypoint.path, [evidencePath, finalStatus], {
+			execArgv: entrypoint.execArgv,
 			stdio: ["ignore", "pipe", "pipe", "ipc"],
 		});
 		children.push(child);

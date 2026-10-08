@@ -14,24 +14,18 @@ import {
 	resolveConflictFile,
 	runGitMergeAction,
 } from "../../src/workdir";
-import { createGitTestEnv } from "../utilities/git-env";
+import {
+	stageAndCommitAll as commitAll,
+	commitAll as commitAllAndReadHead,
+	createGitTestEnv,
+	initGitRepository as initRepository,
+	runGit,
+} from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function runGit(cwd: string, args: string[]): string {
-	const result = spawnSync("git", args, {
-		cwd,
-		encoding: "utf8",
-		env: createGitTestEnv(),
-	});
-	if (result.status !== 0) {
-		throw new Error(result.stderr || result.stdout || `git ${args.join(" ")} failed`);
-	}
-	return result.stdout.trim();
-}
 
 function runGitUnchecked(cwd: string, args: string[]): { status: number; stdout: string; stderr: string } {
 	const result = spawnSync("git", args, {
@@ -44,19 +38,6 @@ function runGitUnchecked(cwd: string, args: string[]): { status: number; stdout:
 		stdout: (result.stdout ?? "").trim(),
 		stderr: (result.stderr ?? "").trim(),
 	};
-}
-
-function initRepository(path: string): void {
-	runGit(path, ["init", "-q", "-b", "main"]);
-	runGit(path, ["config", "user.name", "Test User"]);
-	runGit(path, ["config", "user.email", "test@example.com"]);
-	runGit(path, ["config", "core.autocrlf", "false"]);
-}
-
-function commitAll(cwd: string, message: string): string {
-	runGit(cwd, ["add", "."]);
-	runGit(cwd, ["commit", "-qm", message]);
-	return runGit(cwd, ["rev-parse", "HEAD"]);
 }
 
 interface ConflictRepo {
@@ -139,10 +120,10 @@ describe("git conflict integration", { concurrent: false }, () => {
 			commitAll(repoPath, "initial");
 			runGit(repoPath, ["checkout", "-b", "feature"]);
 			writeFileSync(join(repoPath, "feature.txt"), "feature\n", "utf8");
-			const featureHead = commitAll(repoPath, "feature");
+			const featureHead = commitAllAndReadHead(repoPath, "feature");
 			runGit(repoPath, ["checkout", "main"]);
 			writeFileSync(join(repoPath, "file.txt"), "main\n", "utf8");
-			const mainHead = commitAll(repoPath, "main");
+			const mainHead = commitAllAndReadHead(repoPath, "main");
 
 			const hookPath = join(repoPath, ".git", "hooks", "pre-commit");
 			runGit(repoPath, ["config", "core.hooksPath", join(repoPath, ".git", "hooks")]);
