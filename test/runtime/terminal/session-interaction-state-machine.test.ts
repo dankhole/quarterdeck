@@ -231,7 +231,7 @@ describe("provider interaction lifecycle", () => {
 		expect(resumed).toMatchObject({ state: "running", reviewReason: null, outstandingInteraction: null });
 	});
 
-	it("treats auto-review PermissionRequest as provisional until an approval is actually rendered", () => {
+	it("treats rendered-required PermissionRequest as provisional until an approval is actually rendered", () => {
 		const working = running("codex");
 		const provisional = reduceSessionTransition(working, {
 			...providerHook(
@@ -244,7 +244,7 @@ describe("provider interaction lifecycle", () => {
 				},
 				{ occurredAt: 100 },
 			),
-			codexAutoReviewPermissionRequest: true,
+			codexPermissionRequiresRenderedPrompt: true,
 		});
 		expect(provisional).toMatchObject({
 			changed: false,

@@ -211,7 +211,9 @@ describe("hook-ingest provider interaction lifecycle", () => {
 	});
 
 	it("converges a Codex y approval through real hook ingest only after PostToolUse", async () => {
-		const { manager, ingest } = await createHarness("codex", "task-codex-approve-y");
+		const { manager, ingest } = await createHarness("codex", "task-codex-approve-y", {
+			codexApprovalsReviewer: "user",
+		});
 		await ingest("activity", {
 			hookEventName: "PreToolUse",
 			turnId: "turn-1",
@@ -283,7 +285,9 @@ describe("hook-ingest provider interaction lifecycle", () => {
 	});
 
 	it("converges a numbered Codex approval when later foreground work proves progress", async () => {
-		const { manager, ingest } = await createHarness("codex", "task-codex-approve-number");
+		const { manager, ingest } = await createHarness("codex", "task-codex-approve-number", {
+			codexApprovalsReviewer: "user",
+		});
 		await ingest("activity", {
 			hookEventName: "PreToolUse",
 			turnId: "turn-1",
@@ -333,7 +337,9 @@ describe("hook-ingest provider interaction lifecycle", () => {
 	});
 
 	it("retires an obsolete Codex wait when hook ordering admits a newer foreground turn", async () => {
-		const { manager, ingest } = await createHarness("codex", "task-codex-new-turn");
+		const { manager, ingest } = await createHarness("codex", "task-codex-new-turn", {
+			codexApprovalsReviewer: "user",
+		});
 		await ingest("to_review", {
 			hookEventName: "PermissionRequest",
 			turnId: "turn-1",
@@ -403,7 +409,9 @@ describe("hook-ingest provider interaction lifecycle", () => {
 	});
 
 	it("converges a provider-approved Codex permission without fabricating a local response", async () => {
-		const { manager, ingest } = await createHarness("codex", "task-codex-provider-approve");
+		const { manager, ingest } = await createHarness("codex", "task-codex-provider-approve", {
+			codexApprovalsReviewer: "user",
+		});
 		await ingest("activity", {
 			hookEventName: "PreToolUse",
 			turnId: "turn-1",
@@ -447,7 +455,9 @@ describe("hook-ingest provider interaction lifecycle", () => {
 	});
 
 	it("correlates a second same-turn Codex permission after cancellation has no completion hook", async () => {
-		const { manager, ingest } = await createHarness("codex", "task-codex-cancel-next-permission");
+		const { manager, ingest } = await createHarness("codex", "task-codex-cancel-next-permission", {
+			codexApprovalsReviewer: "user",
+		});
 		await ingest("activity", {
 			hookEventName: "PreToolUse",
 			turnId: "turn-1",
@@ -502,7 +512,9 @@ describe("hook-ingest provider interaction lifecycle", () => {
 	});
 
 	it("fails closed when parallel Codex tools make an identity-less permission ambiguous", async () => {
-		const { manager, ingest } = await createHarness("codex", "task-codex-ambiguous-permission");
+		const { manager, ingest } = await createHarness("codex", "task-codex-ambiguous-permission", {
+			codexApprovalsReviewer: "user",
+		});
 		await ingest("activity", {
 			hookEventName: "PreToolUse",
 			turnId: "turn-1",
@@ -606,7 +618,7 @@ describe("hook-ingest provider interaction lifecycle", () => {
 	});
 
 	it("keeps Codex cancellation pending until a scoped Stop proves the turn ended", async () => {
-		const { manager, ingest } = await createHarness("codex", "task-codex-cancel");
+		const { manager, ingest } = await createHarness("codex", "task-codex-cancel", { codexApprovalsReviewer: "user" });
 		await ingest(
 			"to_review",
 			{

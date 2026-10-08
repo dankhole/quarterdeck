@@ -1,5 +1,13 @@
 # Implementation Log
 
+## 2026-10-08 — Inherited Codex approval routing
+
+Task `49baf` emitted `PermissionRequest` while retrying a dependency install. Runtime diagnostics recorded Review at 12:29:08 EDT, rejected an unrelated tool completion, and restored Running on the matching completion at 12:29:30, while the supplied screenshot showed the command already running. The native request precedes reviewer routing; treating inherited reviewer configuration as a human wait could leave a false approval badge for the command's entire execution.
+
+Managed Codex PTY launches now require a rendered human approval prompt unless the launch explicitly selects `user`. Inherit (including omitted configuration), automatic review, and bypass keep native permission events as ordering/correlation evidence. The existing narrow viewport detector owns actual human waits in those modes; native provider evidence still owns resumed work. Quarterdeck neither reads external Codex configuration nor changes the provider's approval policy. Explicit user launches retain native tool identity and approval behavior. The detector cannot be retired merely when nested Code Mode gains hook coverage: the provider must also distinguish actionable human approval from pre-routing requests.
+
+Notable files: `src/terminal/session-manager.ts`, `src/terminal/session-state-machine.ts`, and `src/terminal/codex-approval-prompt.ts`. Validation: all 761 terminal tests and 35 hook-ingest tests passed; the final production-shaped reviewer matrix rerun passed all 59 ordering tests. Runtime typecheck, changed-code Biome checks, and `git diff --check` passed. The manager test drives the real approval detector through the headless terminal mirror, covering prompt-before-broadcast, unrelated completions, late permission hooks, response submission, and native resumption. No live provider or browser run was needed for this hook-classification change; the user’s active runtime was not modified.
+
 ## 2026-10-08 — Test isolation for inherited runtime state
 
 A pre-commit test run launched from a managed task inherited `QUARTERDECK_STATE_HOME`. Fixtures redirected `HOME` but left the higher-priority state-home override intact, so configuration tests changed the active instance's settings and task-repository tests registered synthetic projects in its state directory. Passing tests were not proof of isolation: several fixture writes succeeded against the wrong destination.

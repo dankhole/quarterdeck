@@ -21,6 +21,7 @@ import {
 	runtimeTaskSessionSummarySchema,
 } from "../../../src/core";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
+import { createCodexApprovalPromptDetector } from "../../../src/terminal/codex-approval-prompt";
 import { createCodexTurnInterruptionDetector } from "../../../src/terminal/codex-turn-interruption";
 import { canApplyCodexRenderedTurnInterruption } from "../../../src/terminal/session-state-machine";
 import { createHooksApi } from "../../../src/trpc";
@@ -82,6 +83,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 			await manager.startTaskSession({
 				taskId: "delayed-interrupt",
 				agentId: "codex",
+				codexApprovalsReviewer: "user",
 				binary: "codex",
 				args: [],
 				cwd: "/tmp/delayed-interrupt",
@@ -331,6 +333,85 @@ describe("TerminalSessionManager ordering invariants", () => {
 		vi.useRealTimers();
 	});
 
+	it.each([undefined, "inherit", "auto_review", "dangerously_bypass", "user"] as const)(
+		"requires a rendered human approval unless the Codex launch selects user (reviewer: %s)",
+		async (codexApprovalsReviewer) => {
+			setupMockPtySpawn();
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+			const taskId = "reviewer-routing";
+			await manager.startTaskSession({
+				taskId,
+				agentId: "codex",
+				binary: "codex",
+				args: [],
+				cwd: "/tmp/reviewer-routing",
+				prompt: "Synthetic reviewer routing",
+				codexApprovalsReviewer,
+			});
+			const sessionInstanceId = manager.store.getSummary(taskId)?.sessionInstanceId;
+			const api = createHooksApi({
+				runProjectOperation: async (_scope, operation) => await operation(),
+				projects: { getProjectPathById: () => "/tmp/repo" },
+				terminals: {
+					getTerminalManagerForProject: () => manager,
+					ensureTerminalManagerForProject: async () => manager,
+				},
+			});
+			const startedAt = Date.now();
+			let sequence = 0;
+			const ingest = (hookEventName: string) =>
+				api.ingest({
+					taskId,
+					projectId: "project-1",
+					event:
+						hookEventName === "PermissionRequest"
+							? "to_review"
+							: hookEventName === "PreToolUse"
+								? "activity"
+								: "to_in_progress",
+					metadata: {
+						source: "codex",
+						hookEventName,
+						sessionInstanceId,
+						sessionId: "main",
+						turnId: "turn-1",
+						toolUseId: hookEventName === "PermissionRequest" ? undefined : "tool-1",
+						toolName: "Bash",
+						activityText: hookEventName === "PermissionRequest" ? "Waiting for approval" : "Using Bash",
+					},
+					delivery: {
+						id: `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`,
+						occurredAt: startedAt + sequence,
+					},
+				});
+			await ingest("PreToolUse");
+			const working = manager.store.getSummary(taskId);
+			expect(working?.nativeWorkEvidence).not.toBeNull();
+			await ingest("PermissionRequest");
+			const requested = manager.store.getSummary(taskId);
+			if (!requested) throw new Error("Missing reviewer routing summary.");
+			if (codexApprovalsReviewer === "user") {
+				expect(requested).toMatchObject({
+					state: "awaiting_review",
+					outstandingInteraction: { status: "waiting", toolUseId: "tool-1" },
+					latestHookActivity: { activityText: "Waiting for approval" },
+				});
+			} else {
+				expect(requested).toMatchObject({ state: "running", reviewReason: null, outstandingInteraction: null });
+				expect(requested?.nativeWorkEvidence).toEqual(working?.nativeWorkEvidence);
+				expect(requested?.latestHookActivity).toEqual(working?.latestHookActivity);
+				expect(deriveTaskIndicatorState(requested).needsInput).toBe(false);
+			}
+			expect(requested?.recentProviderHookOrderObservations.at(-1)?.hookEventName).toBe("PermissionRequest");
+			await ingest("PostToolUse");
+			expect(manager.store.getSummary(taskId)).toMatchObject({
+				state: "running",
+				outstandingInteraction: null,
+				latestHookActivity: { hookEventName: "PostToolUse" },
+			});
+		},
+	);
+
 	it("assigns an isolated hook identity to every spawned task process", async () => {
 		setupMockPtySpawn();
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
@@ -572,6 +653,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 			await manager.startTaskSession({
 				taskId: "completion-matrix",
 				agentId: "codex",
+				codexApprovalsReviewer: "user",
 				binary: "codex",
 				args: [],
 				cwd: "/tmp/completion-matrix",
@@ -812,6 +894,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 		await manager.startTaskSession({
 			taskId: "task-main-wait",
 			agentId: "codex",
+			codexApprovalsReviewer: "user",
 			binary: "codex",
 			args: [],
 			cwd: "/tmp/task-main-wait",
@@ -971,6 +1054,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 		await manager.startTaskSession({
 			taskId: "task-main-wait",
 			agentId: "codex",
+			codexApprovalsReviewer: "user",
 			binary: "codex",
 			args: [],
 			cwd: "/tmp/task-main-wait",
@@ -1641,21 +1725,13 @@ describe("TerminalSessionManager ordering invariants", () => {
 		);
 
 		it("moves visible Codex approvals before broadcast and resets after a hook-driven return", async () => {
-			let detected = false;
-			const resetDetection = vi.fn(() => {
-				detected = false;
-			});
+			const detector = createCodexApprovalPromptDetector();
+			const resetDetection = vi.fn(detector.reset);
 			prepareAgentLaunchMock.mockImplementation(async (input: { args: string[]; binary?: string }) => ({
 				binary: input.binary,
 				args: [...input.args],
 				env: {},
-				detectOutputTransition: (screen: { lines: string[] }) => {
-					if (detected || !screen.lines.some((line) => line.includes("APPROVAL_OVERLAY"))) {
-						return null;
-					}
-					detected = true;
-					return { type: "agent.permission-prompt" as const };
-				},
+				detectOutputTransition: detector.detect,
 				shouldInspectOutputForTransition: (summary: { state: string; reviewReason: string | null }) =>
 					summary.state === "running" || summary.reviewReason === "unconfirmed",
 				resetOutputTransitionDetection: resetDetection,
@@ -1675,9 +1751,33 @@ describe("TerminalSessionManager ordering invariants", () => {
 				args: [],
 				cwd: "/tmp/task-approval",
 				prompt: "Fix the bug",
+				codexApprovalsReviewer: "inherit",
+				rows: 10,
 			});
 			resetDetection.mockClear();
-			spawnedSessions[0]?.triggerData("APPROVAL_OVERLAY");
+			const permissionRequest = {
+				taskId: "task-approval",
+				projectId: "project-1",
+				event: "to_review" as const,
+				metadata: {
+					source: "codex",
+					hookEventName: "PermissionRequest",
+					sessionInstanceId: manager.store.getSummary("task-approval")?.sessionInstanceId,
+					turnId: "turn-1",
+					toolName: "Bash",
+					activityText: "Waiting for approval",
+				},
+			};
+			manager.applyProviderHook("task-approval", permissionRequest);
+			expect(manager.store.getSummary("task-approval")).toMatchObject({
+				state: "running",
+				outstandingInteraction: null,
+			});
+			const approvalOutput =
+				"\u001b[2J\u001b[H\r\n  Would you like to run the following command?\r\n\r\n  $ npm test\r\n\r\n" +
+				"› 1. Yes, proceed (y)\r\n  2. No, and tell Codex what to do differently (esc)\r\n\r\n" +
+				"  Press enter to confirm or esc to cancel";
+			spawnedSessions[0]?.triggerData(approvalOutput);
 			await vi.advanceTimersByTimeAsync(1);
 
 			expect(statesSeenInOnOutput).toEqual(["awaiting_review"]);
@@ -1687,8 +1787,12 @@ describe("TerminalSessionManager ordering invariants", () => {
 				latestHookActivity: {
 					notificationType: "permission.asked",
 				},
+				outstandingInteraction: { requestEventName: "RenderedApprovalOverlay", status: "waiting" },
 			});
 			expect(resetDetection).not.toHaveBeenCalled();
+			const renderedInteraction = manager.store.getSummary("task-approval")?.outstandingInteraction;
+			manager.applyProviderHook("task-approval", permissionRequest);
+			expect(manager.store.getSummary("task-approval")?.outstandingInteraction).toEqual(renderedInteraction);
 
 			// A parallel PostToolUse cannot clear an untouched identity-free
 			// compatibility wait.
@@ -1732,7 +1836,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 			expect(manager.store.getSummary("task-approval")?.state).toBe("running");
 			expect(resetDetection).toHaveBeenCalledTimes(1);
 
-			spawnedSessions[0]?.triggerData("\r\nAPPROVAL_OVERLAY_SECOND");
+			spawnedSessions[0]?.triggerData(approvalOutput);
 			await vi.advanceTimersByTimeAsync(1);
 
 			expect(manager.store.getSummary("task-approval")?.state).toBe("awaiting_review");
@@ -1851,6 +1955,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 			await manager.startTaskSession({
 				taskId: "task-1",
 				agentId: "codex",
+				codexApprovalsReviewer: "user",
 				binary: "codex",
 				args: [],
 				cwd: "/tmp/task-1",
@@ -1919,6 +2024,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 				await manager.startTaskSession({
 					taskId: "task-codex-y",
 					agentId: "codex",
+					codexApprovalsReviewer: "user",
 					binary: "codex",
 					args: [],
 					cwd: "/tmp/task-codex-y",
@@ -2038,6 +2144,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 			await manager.startTaskSession({
 				taskId: "task-1",
 				agentId: "codex",
+				codexApprovalsReviewer: "user",
 				binary: "codex",
 				args: [],
 				cwd: "/tmp/task-1",

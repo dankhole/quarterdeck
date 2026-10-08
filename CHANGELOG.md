@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Avoid false “Waiting for approval” badges when Codex inherits automatic review; show the wait only when Codex presents a human approval prompt.
+
 - Isolate tests from inherited runtime state and hook settings so tests launched inside Quarterdeck cannot write to the active instance through its state-home override.
 
 - Fix desktop build and linking warnings, refresh vulnerable transitive dependencies, and create DMGs with native macOS tools instead of the vulnerable image-parser dependency chain. Dependency preparation now detects transitive lockfile updates.

@@ -363,10 +363,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 			correlatedToolUseId:
 				correlateClaudePermissionToolUseId(entry.hookEventOrder, input) ??
 				correlateCodexPermissionToolUseId(entry.hookEventOrder, input),
-			codexAutoReviewPermissionRequest:
+			codexPermissionRequiresRenderedPrompt:
 				entry.restartRequest?.kind === "task" &&
 				entry.restartRequest.request.agentId === "codex" &&
-				entry.restartRequest.request.codexApprovalsReviewer === "auto_review",
+				entry.restartRequest.request.codexApprovalsReviewer !== "user",
 		});
 	}
 

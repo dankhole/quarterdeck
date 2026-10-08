@@ -29,11 +29,11 @@ export type ProviderHookSessionTransitionEvent = {
 	/** Controller-authored wall-clock time at which live hook evidence was accepted. */
 	confirmedAt?: number;
 	/**
-	 * Launch-scoped Codex auto-review requests are not proof of user-facing
-	 * input. The rendered approval detector remains the actionable fallback when
-	 * native auto-review delegates an exceptional request to the user.
+	 * Codex requests are not proof of user-facing input unless this launch
+	 * explicitly selected the user reviewer. Inherited or automatic review
+	 * requires the rendered approval detector to establish an actionable wait.
 	 */
-	codexAutoReviewPermissionRequest?: boolean;
+	codexPermissionRequiresRenderedPrompt?: boolean;
 };
 
 export type SessionTransitionEvent =
@@ -648,12 +648,12 @@ function reduceProviderHook(
 		interactionKind === "permission" &&
 		providerFromMetadata(metadata) === "codex" &&
 		hookEventName === "permissionrequest" &&
-		event.codexAutoReviewPermissionRequest === true
+		event.codexPermissionRequiresRenderedPrompt === true
 	) {
-		// PermissionRequest fires before Codex chooses its effective auto-review
-		// result. In this exact launch mode it is ordering/correlation evidence, not
-		// proof that the TUI is waiting for a person. If Codex actually renders an
-		// approval, the narrow screen detector authors the actionable wait.
+		// PermissionRequest fires before Codex routes its approval decision, and
+		// inherited configuration does not expose the effective reviewer. Retain
+		// ordering/correlation evidence without claiming a person must answer.
+		// A canonical rendered approval authors the actionable wait instead.
 		return {
 			...unchanged("identity_only"),
 			hookOrderingMode: "advance",

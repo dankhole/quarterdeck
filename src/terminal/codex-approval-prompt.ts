@@ -84,11 +84,12 @@ export interface CodexApprovalPromptDetector {
  * TEMPORARY COMPATIBILITY SHIM — this infers semantic lifecycle state from
  * terminal presentation and is intentionally not a preferred state source.
  *
- * It exists only because supported Codex releases can render approvals from
- * nested Code Mode executions without emitting the corresponding structured
- * `PermissionRequest` hook. Native hooks remain authoritative. Delete this
- * detector once Quarterdeck's minimum supported Codex version emits that hook
- * for every displayed approval; do not broaden it to other terminal output.
+ * Supported Codex releases can render nested Code Mode approvals without a
+ * `PermissionRequest` hook, and that hook precedes reviewer routing rather
+ * than proving a person must answer. Native hooks still own resumed work.
+ * Delete this detector only when the minimum supported Codex version exposes
+ * a structured human-wait signal for every displayed approval, including
+ * inherited reviewer configuration; do not broaden it to other output.
  */
 export function createCodexApprovalPromptDetector(): CodexApprovalPromptDetector {
 	let detected = false;
