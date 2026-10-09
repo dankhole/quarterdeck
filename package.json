@@ -57,6 +57,7 @@
     "web:typecheck": "npm --prefix web-ui run typecheck",
     "web:test": "npm --prefix web-ui run test --",
     "web:e2e": "npm --prefix web-ui run e2e --",
+    "web:smoke:production": "npm --prefix web-ui run e2e -- --config playwright.production.config.ts",
     "agent:lab": "node --import tsx scripts/agent-lab.ts",
     "agent:browser": "node --import tsx scripts/agent-browser.ts",
     "agent:desktop": "node --import tsx scripts/agent-desktop.ts",

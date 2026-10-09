@@ -28,7 +28,9 @@ if (!manifestPointerPath) throw new Error("Playwright fixture discovery path is 
 await writeJsonAtomic(manifestPointerPath, { manifestPath: config.manifestPath });
 process.stderr.write(`[agent-lab e2e] artifacts: ${config.artifactDir}\n`);
 try {
-	await runAgentLabSupervisor(config);
+	await runAgentLabSupervisor(config, {
+		applicationMode: process.env.QUARTERDECK_E2E_PRODUCTION === "1" ? "production" : "development",
+	});
 } finally {
 	await unlink(manifestPointerPath).catch((error: unknown) => {
 		if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error;

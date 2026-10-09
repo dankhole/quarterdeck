@@ -1,5 +1,15 @@
 # Implementation Log
 
+## 2026-10-09 — Production hook import crash
+
+A fresh linked build rendered the UI error `(0, Kw.default) is not a function`. The emitted `index-CEbtw23K.js` mapped `Kw` to the CommonJS `react-use/lib/useEvent.js` export object; production interop wrapped the whole object as its default rather than exposing the hook function. All six deep CommonJS hook imports in `web-ui/src/utils/react-use.ts` shared that risk. They now use named exports from the package's public ESM entry.
+
+Source-level Vitest tests and the Vite development-server browser lane did not exercise production interop. Package smoke fetched the bundled UI without executing it. The new colocated test builds the adapters in memory with the production configuration and selective minifier, then mounts all six adapters with shared React and checks event, timer, title, measurement, and unmount behavior. The original imports reproduce the same default-import TypeError; the corrected imports pass. Keep production module execution covered when changing dependency entry points or bundling.
+
+`web:smoke:production` also executes the compiled CLI and its bundled UI in Chromium using the existing disposable Agent Lab fixture and shutdown ownership. Production mode serves both browser assets and APIs from the compiled runtime without a Vite child or source fallback, reuses the candidate build, and checks the emitted asset path, board hydration, Settings, and browser errors. CI runs this narrow gate once on Ubuntu Node 22 after Build and retains the Playwright report/results on failure. The development browser lane remains separate.
+
+Validation: all 1,662 web tests, the paired production build, web types, and scoped Biome passed. The final regression harness also reproduces the original TypeError and passes with the fix. The production browser smoke and the existing development startup scenario passed; both isolated runtimes stopped and temporary fixtures were removed. Runtime types, the focused supervisor shutdown test, CI YAML checks, and Playwright scenario selection also passed. The linked CLI's assets were rebuilt; immutable installed desktop candidates retain their previous bundle until rebuilt and installed.
+
 ## 2026-10-08 — Test-suite cost and validation selection
 
 The performance audit found repeated jsdom/import setup, real polling deadlines in mocked desktop cleanup tests, repeated Git fixture subprocesses, source transpilation on every integration CLI launch, and full unrelated suites in the commit hook. After merging local main at `3c6ea5b4`, validation now selects staged ownership boundaries, uses Node for 92 additional pure web test files, imports narrow utility modules, and reduces fixture work while retaining the deferred-render boundaries. Desktop cleanup tests control waits without changing production deadlines. The 10,000-generation real-filesystem ownership regression moved to integration; the fast lane retains a smaller real chain.

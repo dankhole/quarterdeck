@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Fix a startup UI crash in production builds caused by CommonJS hook imports, and execute the bundled UI in a browser startup smoke test in CI.
+
 - Speed up developer validation with targeted commit checks, Node-based domain tests, cheaper isolated fixtures, and reusable CI package downloads while retaining lifecycle and platform coverage.
 
 - Prevent bulk Trash deletion from timing out while another task in the same repository is removing its workspace.

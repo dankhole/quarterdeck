@@ -309,7 +309,11 @@ export async function executeAgentLabShutdownSequence(sequence: AgentLabShutdown
 	await sequence.removeTemporaryFixture();
 }
 
-export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promise<void> {
+export async function runAgentLabSupervisor(
+	config: AgentLabLaunchConfig,
+	options: { applicationMode?: "development" | "production" } = {},
+): Promise<void> {
+	const production = options.applicationMode === "production";
 	let manifest: AgentLabManifest | null = null;
 	let runtime: ManagedChild | null = null;
 	let web: ManagedChild | null = null;
@@ -317,15 +321,24 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 	let failure: string | null = null;
 	try {
 		const runtimePort = await resolveLoopbackPort(config.runtimePort, "runtime");
-		const webPort = await resolveLoopbackPort(config.webPort, "web");
-		if (runtimePort === webPort) {
+		const webPort = production ? runtimePort : await resolveLoopbackPort(config.webPort, "web");
+		if (!production && runtimePort === webPort) {
 			throw new Error(`Runtime and web resolved to the same port (${runtimePort}).`);
 		}
 		const runtimeUrl = `http://127.0.0.1:${runtimePort}`;
 		const webUrl = `http://127.0.0.1:${webPort}`;
+		if (production) {
+			// Reuse the candidate build; never silently fall back to source or rebuild it.
+			await Promise.all([
+				access(join(config.repoRoot, "dist", "cli.js")),
+				access(join(config.repoRoot, "dist", "web-ui", "index.html")),
+			]);
+		}
 		const fixture = await prepareAgentLabFixture(config, webUrl);
 		const tsxCliPath = fileURLToPath(import.meta.resolve("tsx/cli"));
-		const cliEntrypointPath = join(config.repoRoot, "src", "cli.ts");
+		const cliEntrypointPath = production
+			? join(config.repoRoot, "dist", "cli.js")
+			: join(config.repoRoot, "src", "cli.ts");
 		const fakeAgentPath = join(config.repoRoot, "scripts", "agent-lab", "fake-codex.ts");
 		const environment = buildAgentLabEnvironment(process.env, {
 			...fixture,
@@ -385,8 +398,7 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 				`Quarterdeck runtime generation ${generation}`,
 				process.execPath,
 				[
-					"--import",
-					import.meta.resolve("tsx"),
+					...(production ? [] : ["--import", import.meta.resolve("tsx")]),
 					cliEntrypointPath,
 					...nativeUiArgs,
 					"--simulate-host-integrations",
@@ -414,24 +426,26 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 
 		runtime = await startRuntimeGeneration(1);
 
-		const viteCliPath = join(config.repoRoot, "web-ui", "node_modules", "vite", "bin", "vite.js");
-		web = createManagedChild(
-			"Quarterdeck web UI",
-			process.execPath,
-			[viteCliPath, "--host", "127.0.0.1", "--port", String(webPort), "--strictPort"],
-			{
-				cwd: join(config.repoRoot, "web-ui"),
-				env: environment,
-				logPath: webLogPath,
-				forwardLogs: config.forwardLogs,
-			},
-		);
-		if (web.process.pid === undefined) {
-			throw new Error("Quarterdeck web UI did not receive a process id.");
+		if (!production) {
+			const viteCliPath = join(config.repoRoot, "web-ui", "node_modules", "vite", "bin", "vite.js");
+			web = createManagedChild(
+				"Quarterdeck web UI",
+				process.execPath,
+				[viteCliPath, "--host", "127.0.0.1", "--port", String(webPort), "--strictPort"],
+				{
+					cwd: join(config.repoRoot, "web-ui"),
+					env: environment,
+					logPath: webLogPath,
+					forwardLogs: config.forwardLogs,
+				},
+			);
+			if (web.process.pid === undefined) {
+				throw new Error("Quarterdeck web UI did not receive a process id.");
+			}
+			manifest.processes.web = { pid: web.process.pid, logPath: webLogPath };
+			await writeJsonAtomic(config.manifestPath, manifest);
+			await waitForUrl(webUrl, web, "Quarterdeck web UI");
 		}
-		manifest.processes.web = { pid: web.process.pid, logPath: webLogPath };
-		await writeJsonAtomic(config.manifestPath, manifest);
-		await waitForUrl(webUrl, web, "Quarterdeck web UI");
 
 		manifest.status = "ready";
 		manifest.readyAt = new Date().toISOString();
@@ -441,7 +455,11 @@ export async function runAgentLabSupervisor(config: AgentLabLaunchConfig): Promi
 		});
 		while (true) {
 			control = createSupervisorControl(config.stopRequestPath, config.runtimeRestartRequestPath);
-			const action = await Promise.race([control.promise, childFailure(runtime), childFailure(web)]);
+			const action = await Promise.race([
+				control.promise,
+				childFailure(runtime),
+				...(web ? [childFailure(web)] : []),
+			]);
 			control.dispose();
 			control = null;
 			if (action.kind === "stop") {
