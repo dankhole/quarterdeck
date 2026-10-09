@@ -57,6 +57,12 @@ export class SlotSocketManager {
 		return this.ioSocket !== null && this.ioSocket.readyState === WebSocket.OPEN;
 	}
 
+	get requiresReconnect(): boolean {
+		return [this.ioSocket, this.controlSocket].some(
+			(socket) => !socket || (socket.readyState !== WebSocket.CONNECTING && socket.readyState !== WebSocket.OPEN),
+		);
+	}
+
 	sendControl(message: RuntimeTerminalWsClientMessage): boolean {
 		if (!this.controlSocket || this.controlSocket.readyState !== WebSocket.OPEN) {
 			return false;
@@ -155,6 +161,9 @@ export class SlotSocketManager {
 			this.callbacks.requestResize();
 		};
 		controlSocket.onmessage = (event) => {
+			if (this.callbacks.isDisposed() || this.controlSocket !== controlSocket) {
+				return;
+			}
 			let payload: RuntimeTerminalWsServerMessage;
 			try {
 				payload = JSON.parse(String(event.data)) as RuntimeTerminalWsServerMessage;

@@ -162,6 +162,13 @@ export class TerminalSessionHandle {
 		if (this.callbacks.isDisposed() || !this.taskId || !this.projectId) {
 			return;
 		}
+		if (this.sockets.requiresReconnect) {
+			// IO loss invalidates restore readiness. Keeping its old control peer
+			// would leave a follow-up restore queued behind a handshake that ended
+			// with the lost IO connection. Replace the pair to restore together.
+			this.reconnect("socket_pair_disconnected");
+			return;
+		}
 		this.sockets.connectIo(this.taskId, this.projectId);
 		this.sockets.connectControl(this.taskId, this.projectId);
 		if (!this.sockets.connectionReady) {
@@ -169,7 +176,7 @@ export class TerminalSessionHandle {
 		}
 	}
 
-	reconnect(reason: "session_instance_changed"): void {
+	reconnect(reason: "session_instance_changed" | "socket_pair_disconnected"): void {
 		if (this.callbacks.isDisposed() || !this.taskId || !this.projectId) {
 			return;
 		}
@@ -264,6 +271,10 @@ export class TerminalSessionHandle {
 			log.warn(`slot ${this.slotId} requestRestore skipped — terminal disposed`);
 			return;
 		}
+		if (!this.taskId || !this.projectId) {
+			return;
+		}
+		this.ensureConnected();
 		this.restoreRequestTimestamp = performance.now();
 		this.sockets.requestRestore();
 	}

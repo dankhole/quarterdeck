@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Reconnect both terminal sockets after a stream disconnect so resumed and restarted tasks restore correctly, and make Re-sync repair disconnected viewers.
+
 - Avoid false unconfirmed-shutdown warnings on macOS when captured child processes briefly outlive their parents but exit before cleanup finishes.
 
 - Repair local desktop app signatures after packaging so macOS can request access to protected project folders, and reject invalid signatures during artifact verification.

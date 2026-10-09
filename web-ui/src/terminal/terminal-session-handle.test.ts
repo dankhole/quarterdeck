@@ -13,6 +13,9 @@ const { socketInstances, SlotSocketManagerMock } = vi.hoisted(() => {
 		isIoOpen = false;
 		connectionReady = false;
 		restoreCompleted = false;
+		get requiresReconnect(): boolean {
+			return !this.hasIoSocket || !this.hasControlSocket;
+		}
 		connectIo = vi.fn(() => {
 			this.hasIoSocket = true;
 		});

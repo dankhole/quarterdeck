@@ -106,6 +106,7 @@ Terminal restore has several distinct races:
 - Once the IO socket is open, a stalled control restore must not keep the loading overlay forever. `terminal-session-handle.ts` uses a readiness fallback for new and reused slots and for delayed IO-open events.
 - Do not pair that fallback with speculative restore. A stale or empty snapshot can erase live output already written to xterm.
 - When a live session instance changes (`startedAt` with non-null `pid`), drop and reopen pooled terminal sockets rather than queueing restore on an existing control socket; reused active slots can otherwise remain stuck at `restoreCompleted=false`. Do not reconnect for processless stop summaries (`pid: null`).
+- When acquiring a pooled viewer or requesting Re-sync, replace both sockets if either is missing, closing, or closed. IO loss invalidates restore readiness even if control remains open; retaining that control socket can queue restore forever. Preserve a healthy connecting pair, and ignore callbacks from replaced sockets.
 - Before treating a restore snapshot as empty, `TerminalViewport` drains queued writes; live output can be queued but not yet visible.
 - A forced same-size redraw is platform-owned. POSIX may send `SIGWINCH`; Windows must issue one bounded adjacent-row ConPTY resize and immediately restore the requested geometry. Do not signal ConPTY with Unix redraw semantics or leave the nudged size authoritative.
 

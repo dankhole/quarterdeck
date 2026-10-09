@@ -1,5 +1,13 @@
 # Implementation Log
 
+## 2026-10-09 — Terminal recovery after partial socket disconnect
+
+The supplied task screenshot showed a closed terminal stream. Read-only live diagnostics confirmed repeated IO disconnections while control remained attached, followed by a successful targeted provider resume. This points to viewer recovery rather than establishing a provider-launch failure: the socket manager clears restore readiness on IO loss, but the retained control socket never repeats its initial restore handshake.
+
+`TerminalSessionHandle` now replaces both sockets when a pooled viewer is acquired or Re-sync is requested with either peer missing, closing, or closed. A healthy connecting pair retains its existing handshake. `SlotSocketManager` fences control messages from replaced sockets; existing restore fencing prevents obsolete asynchronous completion from marking the new pair ready. The runtime remains authoritative for provider resume identity and working state.
+
+Validation: 45 focused terminal socket, handle, attachment, and persistent-hook tests, web typecheck, and scoped Biome checks passed. Running the new socket regressions against the original handle reproduced four failures. Isolated fake-provider Agent Lab run `resume-viewer-20261009T205918Z-73778e` reproduced the closed-stream footer, verified Re-sync replaced both peers and accepted input, and verified restart and Trash restore with exact resume identity, new PTYs, and completed restores. The lab stopped cleanly. The installed desktop app and live task state were not changed.
+
 ## 2026-10-09 — Transient macOS reparenting during shutdown
 
 Repeated startup recovery prompts led to a read-only audit of ownership claims and retained desktop diagnostics. Recent desktop-owned generations had immutable clean releases; intervening runtime generations had dirty, unreleased claims. The original failing shutdown journals were no longer retained, so the user's exact failure remains unconfirmed.
