@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Repair local desktop app signatures after packaging so macOS can request access to protected project folders, and reject invalid signatures during artifact verification.
+
 - Fix a startup UI crash in production builds caused by CommonJS hook imports, and execute the bundled UI in a browser startup smoke test in CI.
 
 - Speed up developer validation with targeted commit checks, Node-based domain tests, cheaper isolated fixtures, and reusable CI package downloads while retaining lifecycle and platform coverage.

@@ -36,6 +36,8 @@ Destination existence and identity are checked immediately before the filesystem
 
 Git projects require both directory access and a successful Git root check; folder projects bypass Git. A failed Git command can therefore make Git projects unavailable while folder projects remain accessible. Compare launch environments and retained `project.git_validation_failed` diagnostic events before treating the saved path as missing or relocating it. Those events retain bounded failure categories, process error/exit codes, and project identity without Git output, environment values, or repository paths.
 
+For macOS desktop-only failures under protected folders such as Desktop, also check the installed app with `codesign --verify --deep --strict /path/to/Quarterdeck.app` and correlate macOS permission events with the helper's Git process. An invalid app signature can cause macOS to deny access without presenting a usable permission request. See the [local desktop candidate build](./desktop-release.md#local-unsigned-candidate); shared settings cannot grant a native app filesystem permission.
+
 ## Validation boundaries
 
 Focused filesystem and runtime tests cover missing-folder retention, name persistence, stale requests, duplicate destinations, project-wide exclusion, confirmed session shutdown, exact Git repair, stable worktree paths, journal interruption, and startup recovery. Frontend tests cover dialogs, unavailable read-only state, metadata ordering, dirty buffers, and same-ID path invalidation.

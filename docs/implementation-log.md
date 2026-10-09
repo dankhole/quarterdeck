@@ -1,5 +1,13 @@
 # Implementation Log
 
+## 2026-10-09 — Desktop Git failures from stale app signatures
+
+The desktop loaded the saved project list but reported Git projects under Desktop unavailable and offered to initialize an existing repository. The retained helper journal recorded 91 `project.git_validation_failed` events with exit code 128. macOS TCC correlated the failing Git process with Quarterdeck and denied Desktop-folder access because it could not obtain the app's code requirements; `codesign --verify --deep --strict` confirmed an invalid Info.plist signature. This establishes a cause for the repeated symptom investigated on October 8; the earlier journal alone could not identify it. Saved configuration and Git availability are separate concerns.
+
+The fuse plugin's early ad-hoc signing preceded Packager's final plist, identity, rename, and integrity changes. Local candidates now receive a final ad-hoc seal in `desktop/forge.config.mjs` before artifact recording, and the redundant early seal is explicitly disabled. `desktop/scripts/app-signature.mjs` derives the final Quarterdeck identity rather than preserving upstream Electron requirements, and `verify-artifact.mjs` requires strict deep signature verification for every candidate before executing bundled runtime checks. Developer ID distribution signing remains separate. Local ad-hoc builds still require ordinary macOS consent and do not establish notarized distribution acceptance.
+
+Validation: 12 focused signature/entitlement tests passed, including real macOS metadata mutation, repair, final identity, and later-tamper rejection. Desktop types, scoped Biome, the paired production build, and fresh ARM64 packaging passed; package verification includes strict deep signatures and bundled Node/native PTY execution. Candidate build `17b5d16d-d143-4d3b-830b-9d05d7ddd581` passed isolated `agent:desktop --manual-shells --no-agent` run `desktop-signature-review-20261009T153220Z-668769` after removing the redundant early signing pass, with an empty forbidden-host-launch log and no remaining processes. This validates the package and synthetic Git/shell startup, not the user's next macOS permission decision. The installed app was left unchanged.
+
 ## 2026-10-09 — Production hook import crash
 
 A fresh linked build rendered the UI error `(0, Kw.default) is not a function`. The emitted `index-CEbtw23K.js` mapped `Kw` to the CommonJS `react-use/lib/useEvent.js` export object; production interop wrapped the whole object as its default rather than exposing the hook function. All six deep CommonJS hook imports in `web-ui/src/utils/react-use.ts` shared that risk. They now use named exports from the package's public ESM entry.

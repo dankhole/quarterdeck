@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { FuseState, FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
+import { verifyAppSignature } from "./app-signature.mjs";
 import { readPairedBuildIdentity } from "./build-identity.mjs";
 import { sha256File } from "./checksums.mjs";
 import { requireNativeMacTarget } from "./paths.mjs";
@@ -69,6 +70,7 @@ export async function verifyRuntime(runtimePath) {
 
 export async function verifyApp(appPath) {
 	if (!appPath.endsWith(".app")) throw new Error("Pass the packaged .app path.");
+	verifyAppSignature(appPath);
 	const resources = join(appPath, "Contents", "Resources");
 	if (!(await lstat(join(resources, "app.asar"))).isFile())
 		throw new Error("Desktop shell must be packaged in app.asar.");
@@ -96,7 +98,6 @@ export async function verifyApp(appPath) {
 		}
 	}
 	if (manifest.signedDistribution) {
-		run("/usr/bin/codesign", ["--verify", "--deep", "--strict", appPath], { stdio: "pipe" });
 		const signature = run("/usr/bin/codesign", ["--display", "--verbose=4", appPath], {
 			encoding: "utf8",
 			stdio: "pipe",

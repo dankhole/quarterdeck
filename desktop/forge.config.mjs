@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
+import { finalizeLocalAppSignature } from "./scripts/app-signature.mjs";
 import { recordMakeArtifacts, recordPackagedApp } from "./scripts/artifact-manifest.mjs";
 import { MakerDMG } from "./scripts/maker-dmg.mjs";
 import { desktopRoot, requireNativeMacTarget, resolveTargetArch, stagedRuntimePath } from "./scripts/paths.mjs";
@@ -65,7 +66,8 @@ export default {
 	plugins: [
 		new FusesPlugin({
 			version: FuseVersion.V1,
-			resetAdHocDarwinSignature: true,
+			// Seal only after Packager's final mutations (osxSign or postPackage).
+			resetAdHocDarwinSignature: false,
 			strictlyRequireAllFuses: true,
 			[FuseV1Options.RunAsNode]: false,
 			[FuseV1Options.EnableCookieEncryption]: true,
@@ -100,7 +102,10 @@ export default {
 			}
 		},
 		postPackage: async (_config, result) => {
-			for (const outputPath of result.outputPaths) await recordPackagedApp(outputPath, result.arch);
+			for (const outputPath of result.outputPaths) {
+				finalizeLocalAppSignature(join(outputPath, "Quarterdeck.app"), signing);
+				await recordPackagedApp(outputPath, result.arch);
+			}
 		},
 		postMake: async (_config, results) => recordMakeArtifacts(results),
 	},
