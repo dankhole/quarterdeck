@@ -114,7 +114,16 @@ export async function stopRuntimeOwnedProcessTrees(
 			remaining = true;
 			// Coarse BSD birth times cannot safely authorize a reparented/recycled PID.
 			if (!target.preciseIdentity && current.parentPid !== target.parentPid) {
-				uncertain = true;
+				// Keep observing without signalling. Reparenting prevents a safe
+				// signal while this PID is live, but later absence still proves
+				// this captured target stopped. New descendants are a coverage gap:
+				// this unverifiable parent cannot grant ownership of their trees.
+				if (
+					selectForest(rows, new Set([target.pid])).some(
+						(row) => !row.zombie && !targets.some((captured) => sameIdentity(captured, row)),
+					)
+				)
+					uncertain = true;
 				continue;
 			}
 			const force = Date.now() - startedAt >= graceMs;

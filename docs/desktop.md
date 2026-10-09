@@ -71,6 +71,8 @@ The CLI equivalent is `quarterdeck recover` to inspect, followed by `quarterdeck
 
 Confirmed shutdown covers tracked process trees/groups and validated provider behavior. Arbitrary user commands can daemonize outside those trees; this is not an OS containment sandbox. Never infer complete cleanup from an absent root PID or broaden a kill by executable name.
 
+On macOS, a captured process whose parent changes is observed without further PID-based signals because BSD birth timestamps have coarse precision. If it subsequently disappears before the cleanup deadline, that captured target is confirmed stopped. A still-live target, an incomplete initial ownership snapshot, or newly observed descendants under an unverifiable parent continue to block clean release.
+
 ## Native boundaries
 
 `IRuntimeHostIntegrations` remains the runtime boundary for project, path, URL, IDE, and folder-picker effects. App-owned helpers forward allowed effects over private IPC; attached CLI runtimes keep their host implementation. Native commands use shared UI handlers. Quit/reload protection includes unsaved settings, task drafts, and cached file drafts. Recovery exports use explicit save dialogs rather than unrestricted downloads.

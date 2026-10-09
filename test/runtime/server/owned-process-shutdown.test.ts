@@ -121,6 +121,53 @@ describe("exact-owned process shutdown", () => {
 		expect(signal).toHaveBeenCalledWith(10, "SIGKILL");
 	});
 
+	it.each([false, true])(
+		"clears temporary BSD reparenting without dismissing pending launch uncertainty (%s)",
+		async (hasPendingLaunches) => {
+			let queries = 0;
+			const signal = vi.fn();
+			expect(
+				await stopRuntimeOwnedProcessTrees({
+					runtimePid: 1,
+					getRootPids: () => [10],
+					hasPendingLaunches: () => hasPendingLaunches,
+					stopSessions: () => {},
+					signal,
+					snapshot: async () => {
+						queries++;
+						if (queries === 1) return [row(10, 1), { ...row(11, 10), preciseIdentity: false }];
+						if (queries === 2) return [{ ...row(11, 99), preciseIdentity: false }];
+						return [];
+					},
+				}),
+			).toEqual({ status: hasPendingLaunches ? "unconfirmed" : "stopped" });
+			expect(queries).toBe(3);
+			expect(signal).not.toHaveBeenCalled();
+		},
+	);
+
+	it("retains uncertainty for new descendants of a reparented BSD process", async () => {
+		let queries = 0;
+		const signal = vi.fn();
+		const coarseRow = (pid: number, parentPid: number) => ({ ...row(pid, parentPid), preciseIdentity: false });
+		expect(
+			await stopRuntimeOwnedProcessTrees({
+				runtimePid: 1,
+				getRootPids: () => [10],
+				stopSessions: () => {},
+				signal,
+				snapshot: async () => {
+					queries++;
+					if (queries === 1) return [coarseRow(10, 1), coarseRow(11, 10)];
+					if (queries === 2) return [coarseRow(11, 99), coarseRow(12, 11)];
+					return [coarseRow(12, 99)];
+				},
+			}),
+		).toEqual({ status: "unconfirmed" });
+		expect(queries).toBe(3);
+		expect(signal).not.toHaveBeenCalled();
+	});
+
 	it("does not signal a BSD PID whose coarse birth time survives changed ancestry", async () => {
 		let queries = 0;
 		const signal = vi.fn();
