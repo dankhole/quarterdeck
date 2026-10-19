@@ -15,6 +15,7 @@ const WINDOWS_PRIVATE_DIRECTORY_ACL_SCRIPT = [
 	"$ErrorActionPreference = 'Stop'",
 	"$stage = 'setup'",
 	`trap { $failure = $_.Exception; while ($failure.InnerException) { $failure = $failure.InnerException }; [Console]::Error.WriteLine('${WINDOWS_ACL_FAILURE_PREFIX}' + $stage + '|' + $failure.GetType().FullName + '|' + $_.FullyQualifiedErrorId); exit 1 }`,
+	"Import-Module ([IO.Path]::Combine($PSHOME,'Modules','Microsoft.PowerShell.Utility','Microsoft.PowerShell.Utility.psd1')) -ErrorAction Stop",
 	`$serializedPaths = [Environment]::GetEnvironmentVariable('${PRIVATE_PATHS_ENVIRONMENT_KEY}', 'Process')`,
 	"if ([string]::IsNullOrWhiteSpace($serializedPaths)) { throw 'Missing private paths.' }",
 	// Windows PowerShell 5.1 can retain a JSON array as one pipeline value. Let

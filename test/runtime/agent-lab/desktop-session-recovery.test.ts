@@ -1,13 +1,17 @@
+import { type ChildProcess, execFile } from "node:child_process";
 import { join } from "node:path";
 import type { Page } from "playwright-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DesktopLabDriver } from "../../../scripts/agent-lab/desktop-driver";
+import type { DesktopLabFixture } from "../../../scripts/agent-lab/desktop-fixture";
 import {
 	type DesktopSessionRecoverySeed,
 	exerciseDesktopSessionRecovery,
+	prepareDesktopSessionRecovery,
 } from "../../../scripts/agent-lab/desktop-session-recovery";
 import { writeJsonAtomic } from "../../../scripts/agent-lab/paths";
 import type { RuntimeOwnershipClaim } from "../../../src/core/api/runtime-management";
+import { terminateProcessForTimeout } from "../../../src/core/process-termination";
 import { discoverRuntimeOwner, readPriorRuntimeOwnershipClaims } from "../../../src/server/runtime-ownership";
 
 vi.mock("node:fs/promises", () => ({
@@ -15,6 +19,8 @@ vi.mock("node:fs/promises", () => ({
 	readdir: vi.fn(async () => []),
 	lstat: vi.fn(),
 }));
+vi.mock("node:child_process", () => ({ execFile: vi.fn() }));
+vi.mock("../../../src/core/process-termination", () => ({ terminateProcessForTimeout: vi.fn() }));
 vi.mock("../../../scripts/agent-lab/paths", () => ({
 	AGENT_LAB_REPO_ROOT: "/synthetic/repo",
 	writeJsonAtomic: vi.fn(),
@@ -44,6 +50,49 @@ beforeEach(() => {
 });
 afterEach(() => {
 	vi.unstubAllGlobals();
+	vi.useRealTimers();
+});
+
+it("terminates a timed-out seed tree and waits for stdio closure before reporting safe phase metadata", async () => {
+	vi.useFakeTimers();
+	vi.mocked(discoverRuntimeOwner).mockResolvedValue(null);
+	const child = { pid: 50_001, kill: vi.fn() } as unknown as ChildProcess;
+	let close: ((error: Error | null, stdout: string, stderr: string) => void) | undefined;
+	vi.mocked(execFile).mockImplementation((...args: unknown[]) => {
+		const callback = args.at(-1);
+		if (typeof callback !== "function") throw new Error("Expected execFile completion callback.");
+		close = (error, stdout, stderr) => callback(error, stdout, stderr);
+		return child;
+	});
+	const fixture = {
+		config: { tempRoot: "/synthetic/fixture", stateHome: "/synthetic/fixture/state" },
+		environment: { QUARTERDECK_STATE_HOME: "/synthetic/fixture/state" },
+		manifest: { stateHome: "/synthetic/fixture/state" },
+	} as unknown as DesktopLabFixture;
+	const operation = prepareDesktopSessionRecovery(fixture);
+	let settled = false;
+	void operation.then(
+		() => {
+			settled = true;
+		},
+		() => {
+			settled = true;
+		},
+	);
+	await vi.advanceTimersByTimeAsync(29_999);
+	expect(terminateProcessForTimeout).not.toHaveBeenCalled();
+	await vi.advanceTimersByTimeAsync(1);
+	expect(terminateProcessForTimeout).toHaveBeenCalledExactlyOnceWith(child);
+	expect(settled).toBe(false);
+	const rejection = expect(operation).rejects.toThrow(
+		"timed out after 30000ms; QUARTERDECK_RECOVERY_SEED_PHASE|ownership-acquire-start|0",
+	);
+	close?.(
+		new Error("synthetic private error"),
+		"synthetic private claim",
+		"QUARTERDECK_RECOVERY_SEED_PHASE|ownership-acquire-start|0\nprivate stderr",
+	);
+	await rejection;
 });
 
 describe("packaged session recovery intercepted navigation", () => {
