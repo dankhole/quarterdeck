@@ -90,14 +90,15 @@ describe("runtime lifetime ownership", () => {
 		// persistence. Break only the synthetic destination before publication.
 		rmSync(releasedDirectory, { recursive: true });
 		writeFileSync(releasedDirectory, "synthetic publication fault");
-		await expect(firstRelease).rejects.toMatchObject({ code: "ENOTDIR" });
+		const publicationErrorCode = process.platform === "win32" ? "ENOENT" : "ENOTDIR";
+		await expect(firstRelease).rejects.toMatchObject({ code: publicationErrorCode });
 		expect(lease.isCurrent()).toBe(false);
 		expect(() => lease.assertCurrent()).toThrow("no longer owns");
 		await rm(releasedDirectory);
 		await mkdir(releasedDirectory);
 		const secondRelease = lease.release();
 		expect(secondRelease).toBe(firstRelease);
-		await expect(secondRelease).rejects.toMatchObject({ code: "ENOTDIR" });
+		await expect(secondRelease).rejects.toMatchObject({ code: publicationErrorCode });
 		await expect(stat(join(releasedDirectory, `${lease.generation}.json`))).rejects.toMatchObject({ code: "ENOENT" });
 	});
 

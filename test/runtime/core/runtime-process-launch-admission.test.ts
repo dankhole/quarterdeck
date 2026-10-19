@@ -27,6 +27,11 @@ vi.mock("../../../src/terminal/pty-runtime-health.js", async (original) => ({
 	...(await original<typeof import("../../../src/terminal/pty-runtime-health.js")>()),
 	preflightPtyLaunch: vi.fn(),
 }));
+vi.mock("../../../src/core/windows-cmd-launch.js", async (original) => ({
+	...(await original<typeof import("../../../src/core/windows-cmd-launch.js")>()),
+	// These factories must reach admission without requiring an installed agent.
+	resolveWindowsCompatibleCommand: (binary: string, args: string[]) => ({ binary, args }),
+}));
 
 let release: (() => void) | undefined;
 const ptySpawn = vi.fn<typeof NodePty.spawn>();

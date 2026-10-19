@@ -5,7 +5,7 @@ import { areFileSystemPathsEqual, isFileSystemPathWithin } from "../core";
 import { isNodeError } from "../fs/node-error";
 import { getTaskWorktreesHomePath } from "../state/project-state-utils";
 import { getGitCommonDir, getGitStdout } from "./git-utils";
-import { assertTaskWorktreeRegistration } from "./task-worktree-identity";
+import { assertTaskWorktreeRegistration, getTaskWorktreePathKey } from "./task-worktree-identity";
 import { getWorkdirFolderLabelForWorktreePath, normalizeTaskIdForWorktreePath } from "./task-worktree-path";
 import { pathExists } from "./task-worktree-symlinks";
 
@@ -23,7 +23,11 @@ export async function resolveTaskWorktreeCleanupPath(input: {
 	});
 	const taskRoot = join(canonicalHome, normalizeTaskIdForWorktreePath(input.taskId));
 	const fallback = join(taskRoot, getWorkdirFolderLabelForWorktreePath(input.repoPath));
-	const candidates = new Set<string>();
+	const candidates = new Map<string, string>();
+	const addCandidate = async (path: string): Promise<void> => {
+		const key = await getTaskWorktreePathKey(path);
+		if (!candidates.has(key)) candidates.set(key, path);
+	};
 	if (input.existingPath) {
 		const path = await realpath(input.existingPath).catch((error: unknown) => {
 			if (isNodeError(error, "ENOENT")) return resolve(input.existingPath as string);
@@ -32,21 +36,25 @@ export async function resolveTaskWorktreeCleanupPath(input: {
 		if (!isFileSystemPathWithin(taskRoot, path) || areFileSystemPathsEqual(taskRoot, path)) {
 			throw new Error("The task workspace is outside its managed folder. Its files were preserved.");
 		}
-		candidates.add(path);
+		await addCandidate(path);
 	} else {
 		try {
 			for (const entry of await readdir(taskRoot, { withFileTypes: true })) {
-				if (entry.isDirectory()) candidates.add(join(taskRoot, entry.name));
+				if (entry.isDirectory()) await addCandidate(join(taskRoot, entry.name));
 			}
 		} catch (error) {
 			if (!isNodeError(error, "ENOENT")) throw error;
 		}
 		if (!input.folderOnly) {
 			// Missing folders can still own a Git registration and keep their branch checked out.
+			const taskRootKey = await getTaskWorktreePathKey(taskRoot);
 			for (const line of (await getGitStdout(["worktree", "list", "--porcelain"], input.repoPath)).split("\n")) {
 				if (!line.startsWith("worktree ")) continue;
 				const path = line.slice("worktree ".length);
-				if (areFileSystemPathsEqual(dirname(path), taskRoot)) candidates.add(path);
+				// Git and readdir may spell one Windows directory with different
+				// separators or short-name aliases. Compare physical ownership, even
+				// when the registered checkout or its task folder is already missing.
+				if ((await getTaskWorktreePathKey(dirname(path))) === taskRootKey) await addCandidate(path);
 			}
 		}
 	}

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type * as browserProcessesModule from "../../../scripts/agent-lab/browser-processes";
 import { _testing as browserProcesses } from "../../../scripts/agent-lab/browser-processes";
 import type { DesktopPerformancePorts } from "../../../scripts/agent-lab/desktop-performance";
 import {
@@ -8,6 +9,19 @@ import {
 	exerciseDesktopPerformanceScenario,
 } from "../../../scripts/agent-lab/desktop-performance-scenario";
 import type { DesktopLabProcess } from "../../../scripts/agent-lab/desktop-types";
+
+// The injected census below models macOS ps output, regardless of the test host.
+vi.mock("../../../scripts/agent-lab/browser-processes", async (importOriginal) => {
+	const actual = await importOriginal<typeof browserProcessesModule>();
+	return {
+		...actual,
+		findAgentLabBrowserProcessTree: (
+			repoRoot: string,
+			sessionName: string,
+			options: Parameters<typeof actual.findAgentLabBrowserProcessTree>[2],
+		) => actual.findAgentLabBrowserProcessTree(repoRoot, sessionName, { ...options, platform: "darwin" }),
+	};
+});
 
 const session = "qd-desktop-browser-performance-test";
 const birth = "Thu Oct  1 12:00:00 2026";

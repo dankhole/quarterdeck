@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type * as nodeFs from "node:fs/promises";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import type { Page } from "playwright-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -87,7 +88,7 @@ function fixtureMock(): DesktopLabFixture {
 		config,
 		configPath: "/synthetic/fixture/config.json",
 		environment: { HOME: "/synthetic/fixture/home" },
-		manifestPath: "/synthetic/evidence/desktop-manifest.json",
+		manifestPath: join("/synthetic/evidence", "desktop-manifest.json"),
 		forbiddenHostLaunchLogPath: "/synthetic/evidence/forbidden.log",
 		keepTemp: false,
 		manifest: {
@@ -298,7 +299,7 @@ describe("packaged main-loss scenario cleanup ownership", () => {
 			}),
 		);
 		expect(writeJsonAtomic).toHaveBeenCalledWith(
-			"/synthetic/evidence/main-loss-proof.json",
+			join("/synthetic/evidence", "main-loss-proof.json"),
 			expect.objectContaining({ sameFixture: true, reviewPreserved: true }),
 		);
 		expect(result).toEqual({
@@ -369,14 +370,17 @@ describe("packaged main-loss scenario cleanup ownership", () => {
 			exerciseDesktopMainLoss(test.page, test.driver, "task", { setCleanupOwner: test.setCleanupOwner }),
 		).rejects.toBe(failure);
 		expect(test.setCleanupOwner).toHaveBeenCalledExactlyOnceWith(test.replacement);
-		expect(writeJsonAtomic).not.toHaveBeenCalledWith("/synthetic/evidence/main-loss-proof.json", expect.anything());
+		expect(writeJsonAtomic).not.toHaveBeenCalledWith(
+			join("/synthetic/evidence", "main-loss-proof.json"),
+			expect.anything(),
+		);
 	});
 
 	it("captures the saved fixture immediately before invoking the guarded loss proof", async () => {
 		const test = setup();
 		vi.mocked(proveDesktopMainProcessLoss).mockImplementation(async () => {
 			expect(writeJsonAtomic).toHaveBeenLastCalledWith(
-				"/synthetic/evidence/main-loss-file-recovery-before-proof.json",
+				join("/synthetic/evidence", "main-loss-file-recovery-before-proof.json"),
 				expect.objectContaining({
 					observation: "renderer-observed-before-proof",
 					savedFixture: test.savedFixture,
@@ -414,7 +418,7 @@ describe("packaged main-loss scenario cleanup ownership", () => {
 			exerciseDesktopMainLoss(test.page, test.driver, "task", { setCleanupOwner: test.setCleanupOwner }),
 		).rejects.toThrow("acknowledged committed IndexedDB");
 		expect(writeJsonAtomic).toHaveBeenCalledWith(
-			"/synthetic/evidence/main-loss-file-recovery-before-proof.json",
+			join("/synthetic/evidence", "main-loss-file-recovery-before-proof.json"),
 			expect.objectContaining({
 				evidence: expect.objectContaining({ status: "unavailable", fixtureEntryCount: null }),
 			}),
@@ -504,7 +508,7 @@ describe("packaged main-loss scenario cleanup ownership", () => {
 		await vi.runAllTimersAsync();
 		expect((await running).driver).toBe(test.replacement);
 		expect(writeJsonAtomic).toHaveBeenCalledWith(
-			"/synthetic/evidence/main-loss-file-recovery-after-ready.json",
+			join("/synthetic/evidence", "main-loss-file-recovery-after-ready.json"),
 			expect.objectContaining({
 				evidence: expect.objectContaining({
 					recoveryStateBefore: "ready",
@@ -528,7 +532,7 @@ describe("packaged main-loss scenario cleanup ownership", () => {
 			exerciseDesktopMainLoss(test.page, test.driver, "task", { setCleanupOwner: test.setCleanupOwner }),
 		).rejects.toThrow("became uninitialized, unreadable or nonempty before acknowledgement");
 		expect(writeJsonAtomic).toHaveBeenCalledWith(
-			"/synthetic/evidence/main-loss-file-recovery-after-ready.json",
+			join("/synthetic/evidence", "main-loss-file-recovery-after-ready.json"),
 			expect.objectContaining({
 				evidence: expect.objectContaining({ status: "uninitialized", fixtureEntryCount: null }),
 			}),
@@ -551,7 +555,7 @@ describe("packaged main-loss scenario cleanup ownership", () => {
 			exerciseDesktopMainLoss(test.page, test.driver, "task", { setCleanupOwner: test.setCleanupOwner }),
 		).rejects.toThrow("Replacement renderer");
 		expect(writeJsonAtomic).toHaveBeenCalledWith(
-			"/synthetic/evidence/main-loss-file-recovery-after-replacement.json",
+			join("/synthetic/evidence", "main-loss-file-recovery-after-replacement.json"),
 			expect.objectContaining({
 				observation: "renderer-observed-before-settings",
 				evidence: expect.objectContaining({ fixtureEntryCount: 1, recoveryDialogVisible: true }),
@@ -577,7 +581,7 @@ describe("packaged main-loss scenario cleanup ownership", () => {
 			exerciseDesktopMainLoss(test.page, test.driver, "task", { setCleanupOwner: test.setCleanupOwner }),
 		).rejects.toBe(failure);
 		expect(writeJsonAtomic).toHaveBeenCalledWith(
-			"/synthetic/evidence/main-loss-file-recovery-after-replacement.json",
+			join("/synthetic/evidence", "main-loss-file-recovery-after-replacement.json"),
 			expect.objectContaining({ evidence: expect.objectContaining({ fixtureEntryCount: 0 }) }),
 		);
 		expect(readDesktopFileRecoveryEvidence).toHaveBeenCalledTimes(4);

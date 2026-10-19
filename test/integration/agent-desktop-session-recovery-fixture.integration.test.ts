@@ -30,7 +30,13 @@ async function fixture(): Promise<DesktopLabFixture> {
 	return {
 		config,
 		configPath: join(tempRoot, "config.json"),
-		environment: { HOME: home, PATH: process.env.PATH ?? "", QUARTERDECK_STATE_HOME: stateHome },
+		environment: {
+			HOME: home,
+			USERPROFILE: home,
+			...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
+			PATH: process.env.PATH ?? "",
+			QUARTERDECK_STATE_HOME: stateHome,
+		},
 		manifestPath: join(tempRoot, "manifest.json"),
 		forbiddenHostLaunchLogPath: join(tempRoot, "forbidden.log"),
 		keepTemp: false,

@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { Page } from "playwright-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DesktopLabDriver } from "../../../scripts/agent-lab/desktop-driver";
@@ -62,7 +63,7 @@ describe("packaged session recovery intercepted navigation", () => {
 		const native = {
 			app: {
 				isPackaged: true,
-				getAppPath: () => "/synthetic/Quarterdeck.app/Contents/Resources/app.asar",
+				getAppPath: () => join("/synthetic/Quarterdeck.app", "Contents/Resources/app.asar"),
 				getPath: () => "/synthetic/fixture/user-data",
 				__quarterdeckLabSessionRecoveryDialog: original,
 			},
@@ -133,8 +134,11 @@ describe("packaged session recovery intercepted navigation", () => {
 		expect(inspect).toHaveBeenCalledExactlyOnceWith("session-recovery-blocked");
 		expect(native.app.__quarterdeckLabSessionRecoveryDialog).toBe(original);
 		expect(Reflect.has(native.app, "__quarterdeckLabSessionRecoveryObservation")).toBe(false);
-		expect(writeJsonAtomic).toHaveBeenCalledExactlyOnceWith("/synthetic/artifacts/session-recovery-dialogs.json", {
-			dialogs: [expect.objectContaining({ response: 0, defaultId: 0, cancelId: 0 })],
-		});
+		expect(writeJsonAtomic).toHaveBeenCalledExactlyOnceWith(
+			join("/synthetic/artifacts", "session-recovery-dialogs.json"),
+			{
+				dialogs: [expect.objectContaining({ response: 0, defaultId: 0, cancelId: 0 })],
+			},
+		);
 	});
 });

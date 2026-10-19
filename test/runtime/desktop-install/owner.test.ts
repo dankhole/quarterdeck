@@ -41,20 +41,24 @@ describe("recorded npm package slot", () => {
 			}),
 		).resolves.toBeUndefined();
 	});
-	it("uses the exact invoking prefix rather than npm or npm_config_prefix from another toolchain", async () => {
-		const fixture = await createDesktopAppFixture(root);
-		const { dependencies } = await createInstallerDependencies(root, fixture);
-		const prefix = join(root, "second-prefix");
-		const slot = join(prefix, "lib/node_modules/quarterdeck");
-		await mkdir(join(prefix, "lib/node_modules"), { recursive: true });
-		await symlink(dependencies.owner.packageRoot, slot);
-		process.argv = [process.execPath, join(prefix, "bin/quarterdeck")];
-		vi.stubEnv("PATH", "/no-tools");
-		vi.stubEnv("npm_config_prefix", dependencies.owner.prefix);
-		const resolved = await resolveDesktopInstallationOwner({ packageRoot: dependencies.owner.packageRoot });
-		expect(resolved.packageSlot).toBe(slot);
-		expect(resolved.prefix).toBe(prefix);
-	});
+	// Invoking-prefix discovery here models the POSIX global npm bin/lib layout.
+	it.skipIf(process.platform === "win32")(
+		"uses the exact invoking prefix rather than npm or npm_config_prefix from another toolchain",
+		async () => {
+			const fixture = await createDesktopAppFixture(root);
+			const { dependencies } = await createInstallerDependencies(root, fixture);
+			const prefix = join(root, "second-prefix");
+			const slot = join(prefix, "lib/node_modules/quarterdeck");
+			await mkdir(join(prefix, "lib/node_modules"), { recursive: true });
+			await symlink(dependencies.owner.packageRoot, slot);
+			process.argv = [process.execPath, join(prefix, "bin/quarterdeck")];
+			vi.stubEnv("PATH", "/no-tools");
+			vi.stubEnv("npm_config_prefix", dependencies.owner.prefix);
+			const resolved = await resolveDesktopInstallationOwner({ packageRoot: dependencies.owner.packageRoot });
+			expect(resolved.packageSlot).toBe(slot);
+			expect(resolved.prefix).toBe(prefix);
+		},
+	);
 	it("rejects an owner slot retargeted to a different checkout even with identical build metadata", async () => {
 		const fixture = await createDesktopAppFixture(root);
 		const { dependencies } = await createInstallerDependencies(root, fixture);

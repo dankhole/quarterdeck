@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import type * as nodeFs from "node:fs/promises";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { runInNewContext } from "node:vm";
 import type { Locator, Page } from "playwright-core";
@@ -108,7 +109,7 @@ describe("initial dirty acknowledgement evidence retention", () => {
 			contentSha256: draftDigest,
 		});
 		expect(writeJsonAtomic).toHaveBeenCalledWith(
-			"/synthetic/evidence/renderer-file-recovery-dirty.json",
+			join("/synthetic/evidence", "renderer-file-recovery-dirty.json"),
 			expect.objectContaining({
 				stage: "initial_dirty_snapshot",
 				outcome: "acknowledged",
@@ -144,7 +145,7 @@ describe("initial dirty acknowledgement evidence retention", () => {
 				}),
 			);
 			expect(writeJsonAtomic).toHaveBeenCalledWith(
-				"/synthetic/evidence/renderer-file-recovery-dirty.json",
+				join("/synthetic/evidence", "renderer-file-recovery-dirty.json"),
 				expect.objectContaining({
 					stage: "initial_dirty_snapshot",
 					outcome: "incomplete",
@@ -179,7 +180,7 @@ describe("initial dirty acknowledgement evidence retention", () => {
 			await vi.advanceTimersByTimeAsync(25_100);
 			expect(await checking).toEqual(expect.objectContaining({ message: expect.stringContaining("timed out") }));
 			expect(writeJsonAtomic).toHaveBeenCalledWith(
-				"/synthetic/evidence/renderer-file-recovery-dirty.json",
+				join("/synthetic/evidence", "renderer-file-recovery-dirty.json"),
 				expect.objectContaining({ stage: "initial_dirty_snapshot", outcome: "incomplete", category }),
 			);
 			expect(readFile).not.toHaveBeenCalled();
@@ -219,7 +220,7 @@ describe("acknowledged dirty fixture after renderer recovery", () => {
 			fixtureIdentityMatches: true,
 		});
 		expect(writeJsonAtomic).toHaveBeenCalledWith(
-			"/synthetic/evidence/renderer-file-recovery-after-crash.json",
+			join("/synthetic/evidence", "renderer-file-recovery-after-crash.json"),
 			expect.objectContaining({ observation: "renderer-observed-committed-dirty-after-renderer-crash" }),
 		);
 	});
@@ -260,7 +261,7 @@ describe("acknowledged dirty fixture after renderer recovery", () => {
 				"did not preserve the exact acknowledged dirty recovery record",
 			);
 			expect(writeJsonAtomic).toHaveBeenCalledWith(
-				"/synthetic/evidence/renderer-file-recovery-after-crash.json",
+				join("/synthetic/evidence", "renderer-file-recovery-after-crash.json"),
 				expect.objectContaining({ evidence: expect.any(Object) }),
 			);
 			expect(readFile).not.toHaveBeenCalled();
@@ -398,7 +399,7 @@ describe("bounded renderer-observed saved fixture evidence", () => {
 			saveDisabled: true,
 		});
 		expect(writeJsonAtomic).toHaveBeenCalledWith(
-			"/synthetic/evidence/renderer-file-recovery-after-save.json",
+			join("/synthetic/evidence", "renderer-file-recovery-after-save.json"),
 			expect.objectContaining({
 				observation: "renderer-observed",
 				savedFixture: { identitySha256: target.identitySha256, contentSha256: draftDigest },
@@ -423,7 +424,7 @@ describe("bounded renderer-observed saved fixture evidence", () => {
 			await vi.advanceTimersByTimeAsync(25_100);
 			await rejected;
 			expect(writeJsonAtomic).toHaveBeenCalledWith(
-				"/synthetic/evidence/renderer-file-recovery-after-save.json",
+				join("/synthetic/evidence", "renderer-file-recovery-after-save.json"),
 				expect.objectContaining({
 					evidence: expect.objectContaining({
 						status: "unavailable",
@@ -811,7 +812,7 @@ describe("read-only committed IndexedDB recovery receipts", () => {
 		await vi.advanceTimersByTimeAsync(25_100);
 		await rejected;
 		expect(writeJsonAtomic).toHaveBeenCalledWith(
-			"/synthetic/evidence/renderer-file-recovery-after-save.json",
+			join("/synthetic/evidence", "renderer-file-recovery-after-save.json"),
 			expect.objectContaining({
 				evidence: expect.objectContaining({ status: "uninitialized", transactionCommitted: true }),
 			}),

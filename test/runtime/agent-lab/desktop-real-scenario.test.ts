@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { EventEmitter } from "node:events";
 import type * as nodeFs from "node:fs/promises";
 import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { runInNewContext } from "node:vm";
 import type { Page } from "playwright-core";
@@ -109,7 +110,7 @@ function timeoutFixture() {
 	const expected = {
 		mainPid: process.pid,
 		executablePath: "/synthetic/Quarterdeck.app/Contents/MacOS/Quarterdeck",
-		appPath: "/synthetic/Quarterdeck.app/Contents/Resources/app.asar",
+		appPath: join("/synthetic/Quarterdeck.app", "Contents", "Resources", "app.asar"),
 		userDataPath: "/synthetic/user-data",
 		url: "app://quarterdeck/Projects/fixture",
 		maxPngBytes: 8 * 1024 * 1024,
@@ -181,7 +182,7 @@ describe("bounded real-provider timeout evidence", () => {
 			}),
 		);
 		expect(writeJsonAtomic).toHaveBeenCalledWith(
-			"/synthetic/evidence/real-native-work-timeout.json",
+			join("/synthetic/evidence", "real-native-work-timeout.json"),
 			expect.objectContaining({
 				stage: "wait_for_session",
 				label: "native-work",

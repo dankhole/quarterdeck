@@ -22,7 +22,8 @@ async function changeOwnerBuild(dependencies: DesktopInstallationDependencies, b
 		JSON.stringify(dependencies.owner.identity),
 	);
 }
-describe("transaction failures and resumable cleanup", () => {
+// Recovery crosses real installer admission, including POSIX ownership and private mode bits.
+describe.skipIf(process.platform === "win32")("transaction failures and resumable cleanup", () => {
 	it.each(["backed_up", "promoted", "metadata_written"] as const)(
 		"rolls back a live %s failure without leaving a partial canonical app",
 		async (failure) => {

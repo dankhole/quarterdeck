@@ -179,12 +179,28 @@ describe("incremental progress cursor isolated files", () => {
 		const { sourcePath, cursor } = await setup();
 		await writeFile(sourcePath, jsonl(codexHeader(), codexMessage("Displaced snapshot")));
 		const validate = fileValidation.validateOpenedContainedRegularFile;
+		let replacementError: unknown;
+		let replaced = false;
 		vi.spyOn(fileValidation, "validateOpenedContainedRegularFile").mockImplementationOnce(async (input) => {
-			await writeFile(`${sourcePath}.new`, jsonl(codexHeader(), codexMessage("Replacement's preexisting message")));
-			await rename(`${sourcePath}.new`, sourcePath);
+			try {
+				await writeFile(
+					`${sourcePath}.new`,
+					jsonl(codexHeader(), codexMessage("Replacement's preexisting message")),
+				);
+				// Windows cannot overwrite an open destination with rename. Move the
+				// opened file aside first, then replace its path while the handle stays open.
+				await rename(sourcePath, `${sourcePath}.displaced`);
+				await rename(`${sourcePath}.new`, sourcePath);
+				replaced = true;
+			} catch (error) {
+				replacementError = error;
+				throw error;
+			}
 			return await validate(input);
 		});
 		expect((await cursor.read()).text).toBeNull();
+		expect(replacementError).toBeUndefined();
+		expect(replaced).toBe(true);
 		expect((await cursor.read()).text).toBeNull();
 		await appendFile(sourcePath, jsonl(codexMessage("Fresh after fenced replacement", 400)));
 		expect((await cursor.read()).text).toBe("Fresh after fenced replacement");

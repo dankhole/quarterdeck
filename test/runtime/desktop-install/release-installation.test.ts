@@ -21,7 +21,8 @@ afterEach(async () => {
 	await rm(root, { recursive: true, force: true });
 });
 
-describe("trusted desktop release installation", () => {
+// These filesystem transactions use POSIX ownership and private mode-bit admission.
+describe.skipIf(process.platform === "win32")("trusted desktop release installation", () => {
 	it("downloads only the exact tagged manifest and matching DMG, verifies before copy, and reuses offline", async () => {
 		const fixture = await createDesktopAppFixture(root, { signed: true });
 		const { dependencies, commands } = await createInstallerDependencies(root, fixture);
@@ -122,7 +123,9 @@ describe("trusted desktop release installation", () => {
 			expect(await readdir(join(root, "Applications"))).toEqual([]);
 		},
 	);
+});
 
+describe("desktop release manifest policy", () => {
 	it("requires signed public release policy even when metadata otherwise matches", async () => {
 		const fixture = await createDesktopAppFixture(root, { signed: true });
 		for (const mutation of [
@@ -147,7 +150,10 @@ describe("trusted desktop release installation", () => {
 			validateDesktopReleaseManifest({ ...fixture.manifest, updateAuthority: "desktop" }, "0.12.9-beta.1", "arm64"),
 		).toThrow();
 	});
+});
 
+// Mounted-app verification enters the same POSIX installer admission boundary.
+describe.skipIf(process.platform === "win32")("mounted desktop release integrity", () => {
 	it("checks mounted app resource hashes against the trusted manifest before copying", async () => {
 		const fixture = await createDesktopAppFixture(root, { signed: true });
 		await writeFile(join(fixture.appPath, "Contents/Resources/runtime/dist/cli.js"), "tampered runtime");
