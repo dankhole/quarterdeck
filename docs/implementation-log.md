@@ -1,5 +1,11 @@
 # Implementation Log
 
+## 2026-10-19 — Synthetic desktop helper admission after channel initialization
+
+The packaged ARM desktop smoke test reached task creation but never exposed terminal input because provider hook preparation rejected the bundled launcher. `DesktopRuntimeChannel` intentionally consumes `QUARTERDECK_DESKTOP_CHILD` so independent hook CLI processes cannot start another runtime; `src/core/quarterdeck-command.ts` had incorrectly required that consumed marker to recognize the synthetic helper. Synthetic admission now requires a connected process IPC channel with a callable send function, plus the existing private lab config, exact runtime/state/simulation identity, and noncanonical app location. Canonical installed apps still require native installation admission, and independent CLI processes cannot qualify through lab environment variables alone.
+
+Validation: all 21 focused command tests, root TypeScript, scoped Biome, and diff checks passed, including consumed-marker success and disconnected/missing-IPC rejection. The existing packaged desktop CI lane supplies the final end-to-end smoke proof; no local packaging or active instance was used.
+
 ## 2026-10-19 — Shell-free desktop environment resolution
 
 Finder/Dock startup now builds its executable PATH without evaluating shell startup files. This avoids unrelated credential prompts and initialization work during environment preparation while retaining direct agent launches. `desktop/src/executable-path-discovery.ts` adds existing common user folders and one deterministic nvm installation through bounded filesystem reads. Inherited PATH remains ahead of automatic additions; bundled Node and explicit saved folders retain precedence. Discovery never executes a manager or agent, and an incomplete nvm installation cannot hide a usable older version.

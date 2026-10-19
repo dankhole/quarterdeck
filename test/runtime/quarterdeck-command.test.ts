@@ -21,6 +21,8 @@ import { QUARTERDECK_PI_HOOK_COMMAND_ENV } from "../../src/terminal/pi-lifecycle
 const originalExecPath = process.execPath;
 const originalArgv = process.argv;
 const originalExecArgv = process.execArgv;
+const originalConnected = process.connected;
+const originalSend = process.send;
 let fixtureRoot: string | undefined;
 let admissionFd: number | undefined;
 
@@ -28,6 +30,8 @@ afterEach(() => {
 	Object.defineProperty(process, "execPath", { configurable: true, value: originalExecPath });
 	process.argv = originalArgv;
 	process.execArgv = originalExecArgv;
+	Object.defineProperty(process, "connected", { configurable: true, value: originalConnected });
+	process.send = originalSend;
 	vi.restoreAllMocks();
 	vi.unstubAllEnvs();
 	if (admissionFd !== undefined) closeSync(admissionFd);
@@ -83,7 +87,10 @@ function createSyntheticInvocation() {
 	vi.stubEnv("QUARTERDECK_INSTALLATION_LOCK_FD", undefined);
 	vi.stubEnv("QUARTERDECK_INSTALLATION_LOCK_PATH", undefined);
 	vi.stubEnv("QUARTERDECK_AGENT_LAB", "1");
-	vi.stubEnv("QUARTERDECK_DESKTOP_CHILD", "1");
+	// The runtime channel consumes this marker before preparing provider hooks.
+	vi.stubEnv("QUARTERDECK_DESKTOP_CHILD", undefined);
+	Object.defineProperty(process, "connected", { configurable: true, value: true });
+	process.send = vi.fn(() => true);
 	vi.stubEnv("QUARTERDECK_DESKTOP_LAB_CONFIG", configPath);
 	vi.stubEnv("QUARTERDECK_STATE_HOME", stateHome);
 	return {
@@ -154,7 +161,7 @@ describe("buildQuarterdeckCommandParts", () => {
 });
 
 describe.skipIf(process.platform === "win32")("bundled desktop hook commands", () => {
-	it("keeps validated noncanonical synthetic runtime hooks on the native wrapper without a descriptor", () => {
+	it("keeps validated synthetic helper hooks on the wrapper after the child marker is consumed", () => {
 		const context = createSyntheticInvocation();
 		expect(buildQuarterdeckCommandParts(["hooks", "notify"], context)).toEqual([
 			context.wrapper,
@@ -172,7 +179,7 @@ describe.skipIf(process.platform === "win32")("bundled desktop hook commands", (
 		expect(() => resolveQuarterdeckCommandParts(context)).toThrow("could not verify native installation admission");
 	});
 
-	it.each(["QUARTERDECK_AGENT_LAB", "QUARTERDECK_DESKTOP_CHILD", "QUARTERDECK_DESKTOP_LAB_CONFIG"])(
+	it.each(["QUARTERDECK_AGENT_LAB", "QUARTERDECK_DESKTOP_LAB_CONFIG"])(
 		"rejects synthetic environment without %s",
 		(key) => {
 			const context = createSyntheticInvocation();
@@ -182,6 +189,12 @@ describe.skipIf(process.platform === "win32")("bundled desktop hook commands", (
 			);
 		},
 	);
+	it.each(["disconnected", "missing send"])("rejects a synthetic helper with %s IPC", (kind) => {
+		const context = createSyntheticInvocation();
+		if (kind === "disconnected") Object.defineProperty(process, "connected", { configurable: true, value: false });
+		else process.send = undefined;
+		expect(() => resolveQuarterdeckCommandParts(context)).toThrow("could not verify native installation admission");
+	});
 
 	it("rejects changed lab config, runtime state, and host simulation identity", () => {
 		const context = createSyntheticInvocation();

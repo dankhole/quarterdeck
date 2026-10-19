@@ -16,10 +16,13 @@ function isValidatedSyntheticRuntime(context: RuntimeInvocationContext): boolean
 	if (
 		resolve(runtime, "../../..") === desktopStableAppPath() ||
 		process.env.QUARTERDECK_AGENT_LAB !== "1" ||
-		process.env.QUARTERDECK_DESKTOP_CHILD !== "1" ||
+		process.connected !== true ||
+		typeof process.send !== "function" ||
 		context.argv[1] !== join(runtime, "dist/cli.js")
 	)
 		return false;
+	// DesktopRuntimeChannel consumes the child marker so independent hook CLI
+	// processes cannot start another runtime. Only the live helper retains IPC.
 	const lab = readLabLaunchConfig(process.env.QUARTERDECK_DESKTOP_LAB_CONFIG);
 	const simulationFlag = context.argv.indexOf("--simulate-host-integrations");
 	return (

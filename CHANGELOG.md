@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Restore fake-agent task launches in packaged desktop smoke tests after runtime initialization consumes the child marker.
+
 - Keep web builds independent of Electron dependencies while preserving desktop command bridge coverage.
 
 - Silence harmless upstream `node-pty` aggregate-initialization warnings during desktop native builds while preserving other compiler diagnostics.
