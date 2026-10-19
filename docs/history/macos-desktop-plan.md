@@ -1,6 +1,8 @@
 # macOS Desktop App Plan
 
-Status: core local implementation and the npm launch simplification are committed and reviewed, 2026-10-07; acceptance remains in progress. The shared desktop/browser architecture, ARM packaging, native layout, and fake-provider process-loss checks are implemented and reviewed. npm can select browser mode or install and launch an optional matching app; isolated local import, reuse, and native project handoff passed. Real Codex validation exposed a folder-trust compatibility defect; the correction passes packaged startup, held permission, and exact resume with fresh native hooks after a guarded no-tools turn. Local main is incorporated in the feature branch. Signing, Intel/oldest-macOS execution, signed updates, actual cross-platform CI, remaining OS interaction and performance checks, other real-provider coverage, and sustained daily use remain acceptance gates. The [architecture guide](./desktop.md) records implemented boundaries; the [validation ledger](./desktop-validation.md) distinguishes executed checks from release gates.
+> Frozen historical snapshot archived on 2026-10-19. This document preserves the original design or candidate evidence, including superseded proposals and status at the time. Use the [current desktop guide](../desktop.md), [release runbook](../desktop-release.md), and [current acceptance gates](../desktop-validation.md) for development and release decisions.
+
+Status: core local implementation and the npm launch simplification are committed and reviewed, 2026-10-07; acceptance remains in progress. The shared desktop/browser architecture, ARM packaging, native layout, and fake-provider process-loss checks are implemented and reviewed. npm can select browser mode or install and launch an optional matching app; isolated local import, reuse, and native project handoff passed. Real Codex validation exposed a folder-trust compatibility defect; the correction passes packaged startup, held permission, and exact resume with fresh native hooks after a guarded no-tools turn. Local main is incorporated in the feature branch. Signing, Intel/oldest-macOS execution, signed updates, actual cross-platform CI, remaining OS interaction and performance checks, other real-provider coverage, and sustained daily use remain acceptance gates. The [architecture guide](../desktop.md) records implemented boundaries; the [validation ledger](./desktop-validation-evidence.md) distinguishes executed checks from release gates.
 
 Deliver a dependable, polished macOS application that opens from Finder or the Dock, runs existing Quarterdeck workflows, and installs and updates without requiring Node or npm for Quarterdeck itself. Keep the npm CLI and browser experience supported on macOS, Linux, and Windows, with the existing platform support qualifications, including experimental Windows support.
 
@@ -50,7 +52,7 @@ Manual Home and Detail shell panels retain their documented lifetime: closing th
 | Desktop preload | A small, typed, versioned bridge for approved desktop commands and capabilities. Never expose raw Electron IPC, arbitrary process launch, or filesystem access. |
 | Host integrations | Preserve `IRuntimeHostIntegrations`. For an app-owned helper, forward allowed native effects over its private parent channel. A CLI owner retains its existing host implementation. |
 
-The existing [architecture](./architecture.md), [runtime state rules](./conventions/runtime-state.md), [session lifecycle](./conventions/session-lifecycle.md), and [frontend ownership rules](./conventions/frontend-hooks.md) remain authoritative. Desktop adapters must not become additional board or session writers.
+The existing [architecture](../architecture.md), [runtime state rules](../conventions/runtime-state.md), [session lifecycle](../conventions/session-lifecycle.md), and [frontend ownership rules](../conventions/frontend-hooks.md) remain authoritative. Desktop adapters must not become additional board or session writers.
 
 ### Runtime ownership and coexistence
 
@@ -72,7 +74,7 @@ Ship and validate admission support in the npm CLI before the desktop release. O
 
 Bundle a real Node executable with runtime JavaScript, web assets, and production dependencies. PTYs run in that helper, not Electron main. Keep the helper and its dependencies outside the Electron ASAR where native loading and child execution require real files.
 
-Replace accidental dependence on the GUI's executable identity with an explicit headless invocation contract. Existing hook construction derives from `process.execPath` and `process.argv` in [`quarterdeck-command.ts`](../src/core/quarterdeck-command.ts). Claude, Codex, and Pi hooks/statuslines must invoke the bundled helper with the exact launch-scoped state directory and endpoint. Hook subcommands must not open a window, acquire the runtime-owner lease, or execute full runtime startup.
+Replace accidental dependence on the GUI's executable identity with an explicit headless invocation contract. Existing hook construction derives from `process.execPath` and `process.argv` in [`quarterdeck-command.ts`](../../src/core/quarterdeck-command.ts). Claude, Codex, and Pi hooks/statuslines must invoke the bundled helper with the exact launch-scoped state directory and endpoint. Hook subcommands must not open a window, acquire the runtime-owner lease, or execute full runtime startup.
 
 Keep the runtime helper's native dependency tree separate from Electron's. Build `node-pty` for the bundled Node version and architecture; Electron-native modules, if introduced, have their own ABI requirements. Validate installed bundle paths containing spaces and non-ASCII characters. [Electron native module guidance](https://www.electronjs.org/docs/latest/tutorial/using-native-node-modules)
 
@@ -94,7 +96,7 @@ Separate runtime discovery, authenticated management, and client API authorizati
 
 Apply this through shared launch/admission services so the app can attach safely to a new CLI owner. Cover startup, expiry, refresh, invalid credentials, replay, and cross-origin attempts. Keep desktop attachment limited to loopback. Existing explicit CLI network binding requires a documented compatible admission path; this release does not add remote desktop attachment.
 
-Follow the [browser/runtime compatibility policy](../DEVELOPMENT.md#browserruntime-compatibility) when changing admission or API contracts. Declare a protocol bump wherever old clients cannot safely continue. Desktop management/bridge versions are separate from browser protocol, package semver, and build identity.
+Follow the [browser/runtime compatibility policy](../../DEVELOPMENT.md#browserruntime-compatibility) when changing admission or API contracts. Declare a protocol bump wherever old clients cannot safely continue. Desktop management/bridge versions are separate from browser protocol, package semver, and build identity.
 
 ## Daily use integration
 
@@ -120,7 +122,7 @@ Native notifications and the Dock badge are part of this release. One desktop no
 
 Notification clicks carry only project/task identity, restore the window, revalidate that the target still exists, and navigate through existing UI owners. Deleted targets fall back to the project or board. Prevent duplicate desktop/browser audio when both clients are open through explicit notification presentation ownership; losing a presentation owner must not affect task lifecycle. Denied notifications leave in-app indicators usable.
 
-Add bounded desktop startup, process-generation, updater, and shutdown evidence to the existing diagnostic schema and bundle. Reuse the one recorder/export contract, including a bounded path for failures before runtime readiness. Do not create a second general log system or record environment values, prompts, terminal content, or full launch arguments. Follow [diagnostics guidance](./diagnostics.md).
+Add bounded desktop startup, process-generation, updater, and shutdown evidence to the existing diagnostic schema and bundle. Reuse the one recorder/export contract, including a bounded path for failures before runtime readiness. Do not create a second general log system or record environment values, prompts, terminal content, or full launch arguments. Follow [diagnostics guidance](../diagnostics.md).
 
 ## Packaging and updates
 
@@ -136,7 +138,7 @@ Use one product semver and immutable source tag for the app, bundled runtime, np
 
 Record source SHA, product version, Electron/Node versions, architecture, build identity, and checksums in an artifact manifest. Runtime and browser identity must match within each artifact; separately built architectures may legitimately have different build UUIDs.
 
-Extend [RELEASE_WORKFLOW.md](../RELEASE_WORKFLOW.md) with signing, both architecture gates, draft finalization, update tests, and post-download verification. Verify N-to-N+1 update with a controlled test feed before enabling production updates. Preserve data and backward-compatible state changes where possible; if a release adds an irreversible migration, document backup/recovery and do not promise automatic downgrade.
+Extend [RELEASE_WORKFLOW.md](../../RELEASE_WORKFLOW.md) with signing, both architecture gates, draft finalization, update tests, and post-download verification. Verify N-to-N+1 update with a controlled test feed before enabling production updates. Preserve data and backward-compatible state changes where possible; if a release adds an irreversible migration, document backup/recovery and do not promise automatic downgrade.
 
 ## Implementation sequence
 
@@ -155,7 +157,7 @@ Milestones 1 and 2 are the architectural gates. Before admission is implemented,
 
 ## Validation and release criteria
 
-Follow [the testing strategy](./testing.md). Add a desktop surface to the existing isolated Agent Lab with an explicit Electron launcher/driver, temporary Electron `userData`, synthetic projects, fake provider, app/main/renderer/helper process tracking, and guaranteed stop/cleanup. The current `agent:browser` wrapper drives Chromium and does not already automate Electron. Extend the repo-owned skill and harness documentation when that capability is implemented.
+Follow [the testing strategy](../testing.md). Add a desktop surface to the existing isolated Agent Lab with an explicit Electron launcher/driver, temporary Electron `userData`, synthetic projects, fake provider, app/main/renderer/helper process tracking, and guaranteed stop/cleanup. The current `agent:browser` wrapper drives Chromium and does not already automate Electron. Extend the repo-owned skill and harness documentation when that capability is implemented.
 
 Use focused tests for ownership races, lifecycle policy, menu routing, protocol/IPC authorization, notifications, and geometry. Use process/filesystem integration for startup/shutdown/recovery and actual packaged-app smoke for bundled Node/native dependencies. Simulated native effects prove routing; real macOS checks must prove actual dialogs, permissions, and Finder/Dock behavior.
 

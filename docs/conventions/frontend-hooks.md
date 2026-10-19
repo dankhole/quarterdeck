@@ -4,7 +4,7 @@
 
 Read this when changing complex hooks, extracting domain logic, or changing provider/context return shapes. For the everyday `web-ui` stack, styling, UI primitives, and hook directory rules, use `docs/conventions/web-ui.md`.
 
-Progress tracking (what's been extracted, what's left) lives in `docs/qDeck.yaml` and `docs/implementation-log.md`. This doc is the "how," those are the "what."
+Track remaining work in the primary checkout's local `docs/qDeck.yaml`. PRs and Git history record completed extractions; this document owns the current design contract and rationale.
 
 ---
 
@@ -65,7 +65,7 @@ Scan all hook files (excluding tests). For each one, count the lines that do NOT
 - Data transforms (mapping, filtering, building payloads)
 - Multi-step orchestration (do A, check result, then do B or C)
 
-**Threshold:** If a hook has >50 lines of logic that doesn't reference React APIs, it's a candidate. If it has <20, leave it alone.
+**Required extraction:** When a hook contains more than 50 lines of non-React validation, transformation, or state-machine logic, extract that logic into a colocated pure TypeScript domain module and test it with plain `describe` / `it`. Below that threshold, extract when an independent domain rule benefits from direct testing; do not create a module just to move a few lines.
 
 #### Step 2: Classify the domain logic
 
@@ -74,12 +74,12 @@ For each candidate, identify what category the extractable logic falls into:
 | Category | What it looks like | Example |
 |----------|-------------------|---------|
 | **Validation** | "Can this action proceed? Why not?" | Checking if a task can be trashed, if a branch can be deleted |
-| **State machine** | "Given current state + event, what's the next state?" | Conflict resolution steps, task lifecycle transitions |
-| **Data transform** | "Given raw data, produce a derived shape" | Building git command args, parsing server responses |
-| **Orchestration** | "Do A, then based on result do B or C" | Start task flow (create worktree → spawn agent → update state) |
-| **Decision logic** | "Given these inputs, which path should we take?" | Choosing auto-restart vs prompt, selecting merge strategy |
+| **State machine** | "Given current state + event, what's the next state?" | Conflict-resolution UI steps, form state transitions |
+| **Data transform** | "Given raw data, produce a derived shape" | Building typed intent payloads, parsing server responses |
+| **Decision planning** | "Given a result, which UI action comes next?" | Deriving an error presentation or a follow-up prompt |
+| **Decision logic** | "Given these inputs, which path should we take?" | Selecting a conflict-resolution prompt or merge strategy |
 
-This classification helps name the domain functions well. A validation function returns a result object with `canProceed` + `reason`. An orchestration function takes a step-runner callback and returns the overall result.
+This classification helps name the domain functions well. A validation function returns a result object with `canProceed` + `reason`. A decision function returns a plan or typed intent; the hook performs the UI effects. Managed task lifecycle effects belong to the server-owned service described in [session lifecycle](./session-lifecycle.md), including worktree creation, process launch, and durable board transitions.
 
 #### Step 3: Draw the extraction boundary
 
@@ -87,32 +87,25 @@ For each candidate, identify:
 
 1. **Inputs** — what data does the logic need? These become function parameters.
 2. **Outputs** — what does the logic produce? These become the return type.
-3. **Side effects** — does the logic need to call external things (tRPC mutations, toast notifications)? These become callback parameters or are left in the hook.
+3. **Side effects** — does the logic need to call external things (tRPC mutations, toast notifications)? Keep these in the hook; pass their results into pure decisions when needed.
 
 **Key rule:** The domain module must not import from React or from context providers. If it needs something that currently comes from a context, that value must be passed in as a parameter.
 
 **Side effects stay in the hook.** The domain module can return a *description* of the side effect (e.g., `{ action: "show_toast", message: "..." }`), and the hook executes it. Or, more pragmatically, the hook calls the domain function for the decision and then does the side effect itself:
 
 ```typescript
-// Domain module — pure decision
-export function shouldShowTrashWarning(task: BoardCard, config: Config): boolean {
-   return task.worktreePath != null && !config.skipTrashWorktreeNotice;
+// Domain module — pure validation (illustrative example)
+export function validateTitle(title: string): string | null {
+   return title.trim().length === 0 ? "Enter a title." : null;
 }
 
-// Hook — wiring + side effects
-const trashTask = useCallback((taskId: string) => {
-   const task = findCard(board, taskId);
-   const validation = validateTrash(task, session?.status);
-   if (!validation.canTrash) {
-      toast.error(validation.blockedReason!);  // side effect stays here
-      return;
-   }
-   if (shouldShowTrashWarning(task!, config)) {
-      setTrashWarning({ taskId, title: task!.title });  // React state stays here
-      return;
-   }
-   dispatch(buildTrashAction(taskId, true));  // dispatch stays here
-}, [board, sessions, config, dispatch]);
+// Hook — React wiring and side effects
+const handleSave = useCallback(() => {
+   const error = validateTitle(title);
+   setValidationError(error);
+   if (error !== null) return;
+   onSave(title.trim());
+}, [title, onSave]);
 ```
 
 #### Step 4: Extract and verify
@@ -155,10 +148,9 @@ Every React context provider exposes its values through a typed interface:
 export interface BoardContextValue {
    readonly board: BoardData;
    readonly selectedTaskId: string | null;
-   readonly selectedCard: CardData | null;
+   readonly selectedCard: CardSelection | null;
    setBoard: Dispatch<SetStateAction<BoardData>>;
-   sendTaskSessionInput: (taskId: string, text: string) => Promise<SendTaskSessionInputResult>;
-   stopTaskSession: (taskId: string) => Promise<void>;
+   setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
    // ... every field explicitly named and typed
 }
 ```
@@ -166,30 +158,22 @@ export interface BoardContextValue {
 Consumers use a typed hook:
 
 ```typescript
-const { board, selectedCard, stopTaskSession } = useBoardContext();
+const { board, selectedCard, setSelectedTaskId } = useBoardContext();
 ```
 
 ### C# analogy
 
-This is exactly `IBoardService` in a C# project. The interface is the contract. The provider is the implementation registered in DI. The `useXxxContext()` call is constructor injection. You can ctrl+click from `stopTaskSession` at the consumer → `BoardContextValue` interface → the provider that produces it.
+This is exactly `IBoardService` in a C# project. The interface is the contract. The provider is the implementation registered in DI. The `useXxxContext()` call is constructor injection. You can ctrl+click from `setSelectedTaskId` at the consumer → `BoardContextValue` interface → the provider that produces it.
 
-### Granularity: don't split contexts into smaller pieces
+### Granularity: split contexts at ownership boundaries
 
-In C# you might split `IBoardService` into `IBoardReader`, `IBoardWriter`, `ITaskSessionManager` for interface segregation. In React, **every context split has a performance cost** — each `useContext()` call is a re-render subscription. If you split `BoardContextValue` into `BoardStateContext` and `BoardActionsContext`, every component that needs both now subscribes to two contexts and re-renders for changes to either.
+Providers should map to domain areas of the app, not individual operations. A valid split names different sources of truth or policy boundaries, such as project navigation, runtime stream ingress, persistence gating, or notification projection. Do not split state/actions for one domain merely to reduce field count.
 
-React contexts are not C# interfaces. They're closer to observable state containers. Fewer, coarser contexts means fewer re-render triggers. Providers should map to domain areas of the app, not to individual operations.
-
-Split a context only when the current context is hiding multiple domain ownership seams, not just because a large interface could be segregated. A valid split should name different sources of truth or policy boundaries, such as project navigation, runtime stream ingress, persistence gating, or notification projection. Do not split state/actions for one domain into separate contexts just to reduce field count.
+[React re-renders context consumers when the provided value changes](https://react.dev/reference/react/useContext#caveats). A larger context can therefore invalidate consumers that need only one field; splitting can reduce those updates when values change independently. Neither a larger nor a smaller context is inherently faster. Evaluate value identity and actual consumer subscriptions before making a performance claim.
 
 ### Don't add a DI container library
 
-Libraries like InversifyJS or TSyringe bring C#-style `[Inject]` decorators and service locators to TypeScript. They work, but they fight React's paradigm:
-
-- React's rendering model expects state to flow through the component tree. DI containers bypass the tree, which breaks React's ability to batch updates and detect what needs re-rendering.
-- You'd end up maintaining two parallel systems: contexts for React-aware state, DI for "pure" services.
-- The community and tooling (React DevTools, testing utilities) assume contexts, not service locators.
-
-Context providers ARE the DI container. `useXxxContext()` IS constructor injection.
+Use context providers and typed `useXxxContext()` hooks for React-aware shared state. Adding a DI container or service locator would introduce a second discovery and ownership mechanism alongside those contracts. Pure services can use explicit function parameters and normal module composition without a container.
 
 ### Keep interfaces clean and explicit
 

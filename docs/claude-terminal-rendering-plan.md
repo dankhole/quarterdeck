@@ -1,6 +1,6 @@
-# Claude terminal rendering plan
+# Claude terminal rendering
 
-Status: complete; fullscreen is the only supported Claude renderer.
+Current contract: fullscreen is the only supported Claude renderer. This document retains the rationale and launch/geometry constraints; current lifecycle rules live in [session lifecycle](./conventions/session-lifecycle.md).
 
 ## Decision
 
@@ -30,7 +30,7 @@ The separate `--ax-screen-reader` mode is not the primary presentation fix. It d
 4. The retired `claudeFullscreenEnabled` config field is ignored on load and omitted on the next save. No persisted session-state migration is needed. Do not switch managed Claude sessions to `/tui default`; Quarterdeck supports fullscreen only.
 5. Terminal snapshots, normal/alternate-buffer serialization, restore ordering, and shared xterm scrollback options remain necessary for restore and other terminal surfaces. They are not classic-mode policy.
 
-## Dogfood and rollout gates
+## Validation boundaries
 
 - New, resumed, restarted, pooled, parked, and reattached Claude sessions restore to the bottom without duplicated frames or a premature loading-overlay reveal.
 - Trackpad and mouse-wheel scrolling, Page Up/Down, Ctrl+Home/End, and Claude's transcript search work through xterm mouse reporting.
@@ -39,15 +39,9 @@ The separate `--ax-screen-reader` mode is not the primary presentation fix. It d
 - Codex, Pi, home shell, and detail shell terminal behavior remains unchanged.
 - Linux/macOS are dogfooded separately; Windows ConPTY keeps its existing same-size-resize caveat until native validation is available.
 
-## Historical rollout evidence
+## Historical evidence
 
-The default-on decision followed two isolated macOS Agent Lab passes on 2026-08-29. Deterministic run `claude-fullscreen-gates-20260829T145825Z-7ff1b6` covered fresh launch, working/crash automatic restart, cold runtime replacement, Trash/restore, pooled Files/Terminal detach and reattach, resize, and alternate-buffer restoration. Its first pass exposed that fake Claude did not honor the production fullscreen environment on replacement; the fake now enters the alternate screen on every qualifying launch, locking that recovery contract into the deterministic lane.
-
-Authorized run `real-claude-fullscreen-fixed-20260829T151540Z-b36b4c` used one Haiku 4.5 turn through the configured Amazon Bedrock gateway. The actual Claude TUI remained in the alternate buffer across short/tall resize, virtualized mouse scrolling, pooled detach/reattach, graceful runtime replacement, and Trash/restore. Text selection produced a simulated clipboard write, the rendered URL exposed xterm's pointer link layer, and startup/restore logs contained only exact-resume `SessionStart` hooks with no replayed `UserPromptSubmit`. Snapshot `real-haiku-fullscreen-gates` completed without warnings; the final visual artifact is `browser/fullscreen-after-trash-restore.png` under that run.
-
-The real run also hardened the unattended lane before the turn was spent: explicit gateway variables must cross the disposable supervisor boundary, and the isolated Claude profile must seed the non-secret completed-onboarding marker. Focused tests now cover both. The cross-platform row/launch policies remain automated; native Windows validation retains the documented ConPTY caveat; that earlier classic fallback has since been removed.
-
-A broader authorized pass in `claude-real-tui-audit-20260829T184012Z-9f4455` verified Claude Code 2.1.224 with three small Haiku 4.5 turns. Fullscreen mode covered the actual permission chooser, safe-command auto-approval, long output, links, Page Up/Down, narrow and tall resize, Files/Terminal detach and reattach, hard browser reload, and exact runtime resume without a replayed prompt or lost alternate buffer. Restarting the same session into classic mode rendered both resumed and fresh output cleanly at rest. Claude's detailed transcript was navigable with Shift+PageUp, but bare Page Up entered an empty provider-owned view until End returned to the bottom. Because xterm had no local scrollback at that point, the remaining behavior belongs to Claude's opt-in classic UI rather than a Quarterdeck redraw frame that can be removed safely. The final checkpoint completed without warnings and the lab stopped cleanly.
+The [archived rollout receipts](./history/claude-terminal-rendering-evidence.md) record the isolated synthetic and authorized real-provider macOS runs that informed this choice, including the retired classic-mode experiments. They are candidate-specific historical evidence, not current cross-platform acceptance.
 
 ## Upstream references
 

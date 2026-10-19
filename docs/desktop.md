@@ -2,7 +2,7 @@
 
 Quarterdeck's macOS app packages the shared web UI and runtime in an Electron shell. The npm CLI and browser UI remain supported on macOS, Linux, and Windows; browser mode does not install Electron. Desktop distribution is a candidate until the [validation ledger](./desktop-validation.md) records the release gates. See the [release runbook](./desktop-release.md) for local builds and distribution.
 
-The [unified installation plan](./unified-installation-plan.md) records the design and acceptance criteria. Installation, launch identity, and update ownership are shared between the npm CLI and native app; Electron retains its own dependency tree and native ABI.
+Installation, launch identity, and update ownership are shared between the npm CLI and native app; Electron retains its own dependency tree and native ABI. This guide describes the current implementation. The [acceptance gates](./desktop-validation.md) distinguish implemented behavior from unperformed distribution and native-platform validation.
 
 ## Using the app
 
@@ -10,7 +10,7 @@ On supported local graphical Macs, `npm install -g quarterdeck` installs the CLI
 
 `npm run link` builds one local runtime/UI/app pair, links this checkout, and passes the app to the same installer. `npm run link -- --browser` explicitly opts out of desktop installation. Published artifacts pair by version and immutable source SHA; local artifacts must also share the exact build ID. One per-user app belongs to one global npm package slot and its resolved package directory. Switching checkout or npm prefix requires explicit ownership replacement. Launch only validates and opens an installed pair; it never downloads or repairs it silently.
 
-The installer stages and verifies a replacement before requesting exclusive installation admission. A running app or bundle-dependent helper blocks replacement with quit-and-retry guidance; no sessions are killed. The transaction journal and temporary backup support interrupted replacement recovery. A successful replacement removes its temporary backup. Old managed UUID copies are not a permanent version store, but unguarded legacy copies require explicit safe migration rather than speculative deletion. The fixed app location keeps new Dock shortcuts stable; replace a shortcut to an obsolete managed copy once after quitting that copy.
+Installer metadata lives in the private `~/Library/Application Support/Quarterdeck/installation` directory, outside the signed bundle and canonical runtime state. The app location is fixed rather than a configurable per-project path. The installer stages and verifies a replacement before requesting exclusive installation admission. A running app or bundle-dependent helper blocks replacement with quit-and-retry guidance; no sessions are killed. The transaction journal and temporary backup support interrupted replacement recovery. A successful replacement removes its temporary backup. Old managed UUID copies are not a permanent version store, but unguarded legacy copies require explicit safe migration rather than speculative deletion. The fixed app location keeps new Dock shortcuts stable; replace a shortcut to an obsolete managed copy once after quitting that copy.
 
 npm and the app cannot change atomically. Both CLI and Dock startup validate the owner, receipt, build identity, and transaction state before starting runtime work. A missing npm package, changed owner, interrupted transaction, or mismatched pair produces repair guidance. Browser mode remains available independently. `quarterdeck desktop uninstall` removes the owned app safely before `npm uninstall -g quarterdeck`; npm does not provide a reliable uninstall lifecycle hook. Neither command removes projects, sessions, or runtime state.
 
@@ -31,7 +31,7 @@ If a window crash leaves recoverable file drafts, review **Recover unsaved files
 
 An npm-owned app checks the public npm registry once after startup and on **Check for Updates**. Stable installs follow `latest`; prerelease installs follow `preview`. A newer version appears in the native menu and an **Update available · vX.Y.Z** button beside Settings. Startup failures stay quiet. An explicit check reports errors or that the installed version is current. Local linked builds show their checkout's `npm run link` guidance and skip public checks.
 
-Update details show the installed and available versions, the owning prefix, and release notes. **Update Quarterdeck** prepares a visible Terminal handoff, then uses the normal draft/session quit safeguards. Installation proceeds only after clean shutdown and app exit. The one-shot runner uses external Node/npm, installs the exact checked version in the recorded prefix, and verifies the resulting CLI/app pair. It reports progress, failures, and retry guidance in Terminal; reopen the app after success. There is no Electron self-updater, recurring check, unattended installation, forced session termination, or automatic relaunch. See the [update implementation plan](./desktop-update-plan.md) for ownership and failure boundaries.
+Update details show the installed and available versions, the owning prefix, and release notes. **Update Quarterdeck** prepares a visible Terminal handoff, then uses the normal draft/session quit safeguards. Installation proceeds only after clean shutdown and app exit. The one-shot runner uses external Node/npm, installs the exact checked version in the recorded prefix, and verifies the resulting CLI/app pair. It reports progress, failures, and retry guidance in Terminal; reopen the app after success. There is no Electron self-updater, recurring check, unattended installation, forced session termination, or automatic relaunch. See the [update and recovery contract](./desktop-release.md#npm-update-and-recovery-contract) for ownership and failure boundaries.
 
 ## Shared settings and preferences
 
@@ -66,6 +66,10 @@ Browsers exchange a short-lived, one-use launch URL for an HttpOnly, SameSite co
 Window close hides the app and retains task/editor state. Quit and runtime restart share draft protection, live-process decisions, producer drain, process shutdown, persistence, and server close. Idle and input-waiting processes count as live. Attached clients never stop the independent owner.
 
 Desktop file recovery stores a bounded snapshot in the renderer's state-home partition using an explicitly strict IndexedDB transaction. Only transaction completion acknowledges a revision. A single writer retains edits arriving during a commit, and Save waits for the revision that removes the saved draft before reporting ordinary success. Loading, uncommitted revisions, and storage errors block the final Quit, reload, runtime-restart, or restart seal. A persistent storage failure can therefore keep these actions blocked until recovery succeeds; exporting protects the text but does not itself repair storage.
+
+Recovery copies remain local to the persistent Electron profile and never enter diagnostics. They contain file text and original revision metadata and are not encrypted independently of the user's disk/profile protections. Limits are 32 drafts, 512 KiB per serialized draft and 2 MiB total, counting conservative UTF-16 bytes including original text and metadata. Previously recovered copies expire after 30 days; current unsaved text is never truncated or evicted to meet a quota.
+
+Restoration checks project, task creation time, repository/worktree and file identity, and refuses a newer unsaved tab. Restored text bypasses autosave until explicit Save and retains the original content-hash conflict check. Export and discard remain available without saving the original file. Task/settings prompt contents are outside this recovery mechanism. An unreadable or invalid snapshot pauses new recovery writes; confirmed **Reset saved recovery** discards it only after current drafts fit and the replacement transaction commits.
 
 An existing IndexedDB record, including an empty snapshot, is authoritative. When no record exists, valid legacy local-storage drafts are imported once and removed only after the new snapshot commits. Unreadable or invalid storage is preserved for explicit reset. The importer cannot identify a draft that an older build had already saved but failed to remove durably, so such a draft may require one review. This contract covers the last acknowledged recovery snapshot, not every keystroke or all hardware and power-loss failures; browser mode keeps its existing editor behavior.
 
@@ -102,6 +106,19 @@ Select checks by the changed boundary. Ordinary shared features use their focuse
 The shared installer lives in `src/desktop-install/`, its launcher in `src/desktop-launcher.ts`, and its CLI management command in `src/commands/desktop.ts`. The Electron shell, native dependency tree, and packaging live in `desktop/`. Removing desktop support includes deleting those areas and their CI/lab tooling, then removing the explicit CLI, native bridge, desktop transport, diagnostics, and draft-recovery integrations in shared code. It is a bounded cross-cutting change, not just deletion of one directory.
 
 Keep shared runtime admission, process/write fences, graceful shutdown, backup safety, browser authentication, and provider compatibility fixes. They also protect browser mode and should not be reverted with the shell. No product view, board model, or agent adapter needs a replacement implementation when the desktop client is removed.
+
+## Source map
+
+| Boundary | Implementation |
+| --- | --- |
+| npm/CLI installation, receipt and transaction | `src/desktop-install/`, `src/commands/desktop.ts`, `src/launch-policy.ts`, `src/desktop-launcher.ts` |
+| Local dependency/build/link orchestration | `scripts/dependency-workflow.mjs`, `scripts/desktop-local.mjs` |
+| Native installation admission | `desktop/native/`, `src/desktop-install/admission.ts`, `desktop/src/installation-preflight.ts` |
+| Shell composition and runtime selection | `desktop/src/main.ts`, `runtime-supervisor.ts`, `runtime-selection.ts`, `launch-config.ts` |
+| Renderer admission and shared UI transport | `desktop/src/protocol-proxy.ts`, `renderer-admission.ts`, `preload*.ts`, `src/shared/desktop-*-contract.ts` |
+| Environment setup | See the [environment owner map](./desktop-environment.md#ownership-and-validation). |
+| Registry checks and explicit npm handoff | `src/desktop-update/`, `desktop/src/update-controller.ts`, `npm-update-runner.ts`, `npm-update-worker.ts` |
+| Packaging and release identity | `desktop/forge.config.mjs`, `desktop/scripts/`, `.github/workflows/desktop-*.yml`, `.github/scripts/desktop-release-artifacts.mjs` |
 
 ## Dependency maintenance
 

@@ -44,12 +44,15 @@ if (!claude.startsWith("# Claude Code Compatibility Shim")) {
 	errors.push("CLAUDE.md must start with the Claude compatibility shim heading.");
 }
 
-if (!claude.includes("@AGENTS.md")) {
-	errors.push("CLAUDE.md must import AGENTS.md.");
+const claudeImports = [...claude.matchAll(/@([^\s`]+)/g)].map((match) => match[1]);
+if (claudeImports.length !== 1 || claudeImports[0] !== "AGENTS.md") {
+	errors.push("CLAUDE.md must import only AGENTS.md; use ordinary links for selectively read human guides.");
 }
 
-if (!claude.includes("@README.md") || !claude.includes("@DEVELOPMENT.md") || !claude.includes("@docs/README.md")) {
-	errors.push("CLAUDE.md must point humans to README.md, DEVELOPMENT.md, and docs/README.md.");
+for (const guide of ["README.md", "DEVELOPMENT.md", "docs/README.md"]) {
+	if (!claude.includes(`](${guide})`)) {
+		errors.push(`CLAUDE.md must link to ${guide} without importing it.`);
+	}
 }
 
 if (!/do not duplicate/i.test(claude)) {

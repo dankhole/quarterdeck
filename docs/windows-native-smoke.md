@@ -17,7 +17,7 @@ npm run web:test
 
 The packaged smoke requires `dist/cli.js`, so the build must precede it. Test state, project, fake agents, host launchers, and runtime ports are isolated; the smoke does not use installed real agents, open native applications, or attach to an existing Quarterdeck runtime.
 
-For a faster Windows-only diagnostic after building, run:
+For a narrower Windows-only diagnostic after building, run:
 
 ```powershell
 npm run test:windows-smoke
@@ -43,7 +43,7 @@ That command fails immediately off Windows. It runs the packaged CLI smoke plus 
 
 ## Manual real-provider acceptance
 
-Use a normal non-administrator Windows account and synthetic repositories. Do not attach automation to an active Quarterdeck instance. For each installed supported provider—Claude Code, Codex, and the exact pinned Pi release—verify:
+Use a normal non-administrator Windows account, synthetic repositories, and a dedicated disposable `QUARTERDECK_STATE_HOME`. Do not attach automation to an active Quarterdeck instance or run crash/recovery checks against ordinary user state. Coding agents need explicit authorization for each real-provider/account lane; deterministic fake coverage does not grant it. For each installed supported provider—Claude Code, Codex, and the exact pinned Pi release—verify:
 
 1. Availability/version probing, a new task, prompt delivery, ordinary completion, a question or approval response, explicit stop, exact resume, explicit restart, and runtime restart recovery.
 2. Task-terminal resize, repeated same-size redraw, panel detach/reattach, browser refresh, and control/IO reconnect preserve a usable provider TUI and the final requested dimensions.

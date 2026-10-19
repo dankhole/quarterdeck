@@ -4,6 +4,12 @@
 
 `AGENTS.md` is the canonical repo-owned agent-instructions file. `CLAUDE.md` is only a Claude Code compatibility shim and should not hold duplicated project docs.
 
+## Documentation and change history
+
+Update the guide that owns a changed workflow or contract. Keep the README brief; use the [documentation map](docs/README.md) to find the detailed reference. Routine changes and validation belong in PR descriptions and Git history. GitHub Releases uses generated notes, so write PR titles that explain the resulting behavior.
+
+There is no maintained changelog or chronological implementation log. Record exceptional rationale in the owning architecture document, and keep user actions for breaking changes or migrations next to the affected setup or workflow. See [documentation policy](docs/maintenance.md#documentation-lifecycle) and the [release workflow](RELEASE_WORKFLOW.md).
+
 ## Requirements
 
 - Node.js 22.22.2+ (`nvm use` selects Node 22.23.2 from the repository `.nvmrc`)
@@ -23,8 +29,8 @@ Update shared Zod and tRPC dependencies in both trees together. The browser impo
 
 ```bash
 npm run bootstrap        # Locked install of root + web-ui deps
-npm run dev              # Runtime server (watch mode, port 3500)
-npm run dev:full         # Runtime + web UI together
+npm run dev -- --browser --port 3500 # Runtime server with managed source restarts
+npm run dev:full -- --browser --port 3500 # Runtime + web UI together
 npm run web:dev          # Web UI dev server (Vite HMR, port 4173)
 npm run build            # Web typecheck/build + runtime package build
 npm run check            # Agent docs + Biome + runtime typecheck/tests
@@ -69,19 +75,21 @@ Major directories:
 - `src/`: runtime, terminal session management, tRPC, state, config, worktree lifecycle
 - `web-ui/src/`: React app, components, hooks, runtime client, stores, terminal surfaces
 - `test/`: runtime and integration tests
-- `docs/`: human-facing architecture, conventions, plans, and implementation history
+- `docs/`: current architecture, conventions, developer guides, and explicitly archived history
 - `scripts/`: build/dev utility scripts
 
 Choose validation with [`docs/testing.md`](./docs/testing.md). When that strategy calls for agent-driven functional or visual debugging, use [`docs/agent-functional-testing.md`](./docs/agent-functional-testing.md); the workflow is isolated from the normal dev/dogfood runtime and the user's Quarterdeck state.
 
 ## Hot reload workflow
 
+These manual development commands use the normal runtime state home unless `QUARTERDECK_STATE_HOME` is explicitly set. Stop an existing owner before reusing that home, or choose a separate development state home; a different port alone does not isolate runtime ownership or data. Agent-driven functional work uses the isolated [Agent Lab](docs/agent-functional-testing.md).
+
 Run two terminals:
 
 1. Runtime server (API + PTY agent runtime):
 
 ```bash
-npm run dev
+npm run dev -- --browser --port 3500
 ```
 
 - Runs on `http://127.0.0.1:3500`
@@ -95,23 +103,23 @@ npm run web:dev
 - Runs on `http://127.0.0.1:4173`
 - `/api/*` requests from Vite are proxied to `http://127.0.0.1:3500`
 
-Use `http://127.0.0.1:4173` while developing UI so changes hot reload.
+Use `http://127.0.0.1:4173` while developing UI so changes hot reload. `--browser` selects the source runtime explicitly; a plain launch on a supported graphical Mac selects the installed native app. The explicit port also matches Vite's default API proxy. If you change it, set `QUARTERDECK_RUNTIME_PORT` for the Vite process to match.
 
 ## VS Code F5 debugging
 
 The repo includes `.vscode/launch.json` with two configurations:
 
-- **Dev Server**: Launches the runtime server with `tsx watch` (same as `npm run dev`) with the debugger attached. Run `npm run web:dev` in a separate terminal for the web UI.
+- **Dev Server**: Directly runs `tsx watch src/cli.ts` with the debugger attached; it does not use the managed restart/shutdown wrapper from `npm run dev`. Add `--browser` and `--port 3500` to its `args` when debugging the source runtime, and set `NODE_ENV=development` plus a separate `QUARTERDECK_STATE_HOME` in its `env` for Vite admission and isolated development. Run `npm run web:dev` separately for the UI.
 - **Run Tests**: Runs `vitest run` with the debugger so you can set breakpoints in tests.
 
 ## Build and run packaged CLI
 
 ```bash
 npm run build
-node dist/cli.js
+node dist/cli.js --browser
 ```
 
-This mode serves built web assets from `dist/web-ui` and does not hot reload the web UI.
+This explicitly starts or attaches to the shared runtime; plain `node dist/cli.js` selects the installed desktop on supported graphical Macs. Browser mode serves built web assets from `dist/web-ui` and does not hot reload the web UI.
 
 Runtime port options:
 
@@ -123,7 +131,7 @@ node dist/cli.js --port 3500
 node dist/cli.js --port auto
 ```
 
-You can still use `QUARTERDECK_RUNTIME_PORT` if needed, but `--port` is preferred for local multi-instance runs.
+You can still use `QUARTERDECK_RUNTIME_PORT` if needed, but `--port` is preferred for explicit runtime launches. Separate runtime instances also require separate canonical state homes; port selection alone attaches to a compatible existing owner.
 
 ### Browser/runtime compatibility
 
@@ -268,11 +276,15 @@ After local code changes, run `npm run link` again to update both the linked com
 
 When switching between worktrees, re-run `npm run link` from the worktree you want to test so the global `quarterdeck` binary points at the right `dist/cli.js`.
 
+For a CLI-only link created with `--browser`, launch with `quarterdeck --browser`.
+
 Remove the global link:
 
 ```bash
 npm run unlink
 ```
+
+On macOS, first run `quarterdeck desktop uninstall` if you also want to remove the owned app. `npm run unlink` removes the command link only; it leaves the app with a missing npm owner. Both operations preserve project and runtime state.
 
 ## Validation and test layout
 
@@ -280,7 +292,7 @@ npm run unlink
 
 Important command boundaries:
 
-- `npm run check` covers the instruction bridge, repository Biome check, runtime typecheck, and all root Vitest tests. It does not cover web typechecking/tests, Playwright, or Agent Lab.
+- `npm run check` covers the instruction bridge, repository Biome check, runtime typecheck, release-policy tests, and all root Vitest tests. It does not cover web typechecking/tests, Playwright, or Agent Lab.
 - `npm run build` already performs the web typecheck as part of the production web build before packaging the runtime.
 - The pre-commit hook runs staged Biome and ownership-based checks: documentation skips code tests, package-specific edits check that package, and shared inputs take the conservative cross-package gate. See [test selection](docs/testing.md#command-scopes) before repeating validation manually.
 - `npm run web:e2e` is the automated disposable-browser smoke suite.
@@ -292,7 +304,7 @@ See [`test/README.md`](./test/README.md) for root-test placement and naming. Web
 
 - `ci.yml`: runs on pushes to `main` and PRs targeting `main`, delegating to reusable test workflow(s)
 - `test.yml`: Ubuntu/macOS matrix plus a non-optional native Windows job covering clean installs, the build (including web typecheck), packaged CLI fetch/shutdown, native ConPTY resize/reconnect/restore, Git/worktree/path fidelity, exact process ownership and DACLs, hook/status-line transport, lint, runtime typecheck/tests, and web-ui tests without repeating the standalone web typecheck
-- `publish.yml`: runs on version-tag pushes (`v*.*.*`), tests the exact release commit, publishes to npm via OIDC, and creates the GitHub Release; manual dispatch remains available for retries
+- `publish.yml`: runs on version-tag pushes (`v*.*.*`), tests the exact release commit, publishes and anonymously verifies the matching desktop assets before publishing npm via OIDC; manual dispatch remains available for retries. See the [release workflow](RELEASE_WORKFLOW.md) for immutable assets, generated notes, and retry ordering.
 
 ## Agent tracking and runtime hooks
 

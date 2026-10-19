@@ -121,6 +121,22 @@ export async function publishDesktopRelease(
 		const files = await validateRelease(options.directory, options.version, options.sourceSha);
 		const sums = join(options.directory, "SHA256SUMS");
 		await writeFile(sums, await releaseChecksums(files));
+		const generated = JSON.parse(
+			execute([
+				"api",
+				`repos/${options.repository}/releases/generate-notes`,
+				"--method",
+				"POST",
+				"--raw-field",
+				`tag_name=${tag}`,
+				"--raw-field",
+				`target_commitish=${options.sourceSha}`,
+			]),
+		);
+		if (typeof generated?.body !== "string" || !generated.body.trim())
+			throw new Error("GitHub did not return generated release notes.");
+		const notes = join(options.directory, "release-notes.md");
+		await writeFile(notes, generated.body);
 		if (!release) {
 			execute([
 				"release",
@@ -132,8 +148,8 @@ export async function publishDesktopRelease(
 				"--draft",
 				"--title",
 				tag,
-				"--notes",
-				"Verified desktop assets pending public availability checks.",
+				"--notes-file",
+				notes,
 			]);
 		}
 		// Recheck immediately before a mutation; a concurrent public promotion must
@@ -154,7 +170,7 @@ export async function publishDesktopRelease(
 			"--title",
 			tag,
 			"--notes-file",
-			options.notes,
+			notes,
 		]);
 	}
 	await verifyPublic(options, options.publicDirectory);
@@ -169,7 +185,6 @@ async function main() {
 			repository: { type: "string" },
 			dir: { type: "string" },
 			"public-dir": { type: "string" },
-			notes: { type: "string" },
 		},
 	});
 	const options = { version: values.version, sourceSha: values.sha, repository: values.repository };
@@ -180,13 +195,12 @@ async function main() {
 		await appendFile(process.env.GITHUB_OUTPUT, `public=${isPublic}\n`);
 		return;
 	}
-	if (positionals[0] !== "publish" || !values.dir || !values["public-dir"] || !values.notes)
+	if (positionals[0] !== "publish" || !values.dir || !values["public-dir"])
 		throw new Error("Pass inspect|publish with exact release identity and publication paths.");
 	await publishDesktopRelease({
 		...options,
 		directory: resolve(values.dir),
 		publicDirectory: resolve(values["public-dir"]),
-		notes: resolve(values.notes),
 	});
 }
 

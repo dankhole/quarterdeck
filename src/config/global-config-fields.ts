@@ -4,13 +4,13 @@
 //
 // To add a new boolean setting:
 //   1. Add it to GLOBAL_CONFIG_FIELDS below (1 line)
-//   2. Add z.boolean() to runtimeConfigResponseSchema in api-contract.ts
-//   3. Add z.boolean().optional() to runtimeConfigSaveRequestSchema in api-contract.ts
+//   2. Add z.boolean() to runtimeConfigResponseSchema in src/core/api/config.ts
+//   3. Add z.boolean().optional() to runtimeConfigSaveRequestSchema in that file
 //   4. Add to SettingsFormValues type and resolveInitialValues() in
-//      web-ui/src/hooks/use-settings-form.ts (the single mapping point)
-//   5. Add the JSX control in runtime-settings-dialog.tsx
-//   6. Consume in App.tsx or wherever needed
-//   7. Add to test fixtures (runtime-config.test.ts, runtime-config-factory.ts)
+//      web-ui/src/hooks/settings/settings-form.ts (the single mapping point)
+//   5. Add the JSX control in the appropriate web-ui/src/components/settings/ section
+//   6. Consume in the owning feature
+//   7. Update test/utilities/runtime-config-factory.ts and affected config tests
 //
 // Steps 1-3 are mechanical. Steps 4-7 are presentation/business logic.
 // The web-ui save types (runtime-config-query.ts, use-runtime-config.ts)

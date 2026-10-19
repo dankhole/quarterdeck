@@ -20,7 +20,7 @@ Project identity is the indexed `projectId`, independent of the project folder a
 5. Existing managed worktrees keep their physical paths, even when their folder label reflects the former project name. Persisted task paths govern later archive, restore, and deletion. Paths within the old project root are rebased at directory boundaries; opaque provider identities are never rewritten.
 6. The runtime refreshes remembered paths, managers, configuration, and metadata before publishing authoritative project state and summaries. The browser preserves project/task identity, invalidates old path scopes, guards dirty editor buffers before requested moves, and preserves recovery drafts when paths change externally.
 
-Management endpoints are `projects.rename`, `projects.locate`, `projects.renameFolder`, and `projects.checkAvailability`. Location requests capture the expected current path. Results carry the updated summary and authoritative state when needed. Availability and metadata ordering must not depend on board revision. The browser/runtime protocol advances for these new required operations.
+Management endpoints are `projects.rename`, `projects.locate`, `projects.renameFolder`, and `projects.checkAvailability`. Location requests capture the expected current path. Results carry the updated summary and authoritative state when needed. Availability and metadata ordering must not depend on board revision. These required operations are part of the [browser/runtime compatibility contract](../DEVELOPMENT.md#browserruntime-compatibility).
 
 ## Failure and identity rules
 

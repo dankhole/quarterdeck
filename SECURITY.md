@@ -17,7 +17,7 @@ You should expect an initial response within a few business days. Coordinated di
 
 ## Supported versions
 
-Quarterdeck is pre-1.0 and under active development. Before the first real npm release, no npm version should be treated as supported; use the latest source revision from this repository. After npm publishing begins, only the latest published release will receive security fixes, and older versions will not be patched.
+Quarterdeck is pre-1.0 and under active development. Only the latest published release receives security fixes; older versions are not patched. For source builds, use the latest maintained repository revision. See the [installation and update guide](README.md#updates-and-removal).
 
 ## Scope
 
@@ -25,6 +25,7 @@ In scope:
 
 - The `quarterdeck` CLI and runtime server.
 - The bundled web UI served by the runtime.
+- The macOS desktop shell and its runtime/host integration boundary.
 - Build, packaging, and release tooling in this repository.
 
 Out of scope:

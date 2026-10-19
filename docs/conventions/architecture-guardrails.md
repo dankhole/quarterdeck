@@ -15,7 +15,7 @@ The goal is to keep the cleverness while protecting the design.
 Execution tracking note:
 
 - Do not use this document as a backlog.
-- If a guardrail violation turns into real work, add or update the corresponding item in `docs/qDeck.yaml`.
+- If a guardrail violation turns into real work, add or update the corresponding item in the primary checkout's local `docs/qDeck.yaml`, following the tracker routing in `AGENTS.md`.
 
 ## Core Rule
 
@@ -152,4 +152,6 @@ When working in those areas, prefer:
 
 ## Companion Docs
 
-- `docs/qDeck.yaml`
+- [Architecture and ownership map](../architecture.md)
+- [Durable runtime state](./runtime-state.md)
+- [Session lifecycle and recovery](./session-lifecycle.md)

@@ -14,4 +14,4 @@ Use `npm run test -- <test-path...>` for a focused root run. `npm run test:fast`
 
 The integration command compiles disposable CLI/IPC entrypoints once per run (`--mode integration`); every test still owns fresh processes and state. Focused runs default to TSX source execution unless that mode is requested. Keep source-bootstrap regression tests on the source path. Large filesystem-depth stress belongs in the integration lane, with representative smaller real-boundary coverage in the fast lane.
 
-Tests that touch state, repositories, processes, or HOME-like configuration must use disposable roots and shared helpers. Never point a test at the developer's normal Quarterdeck state, provider profile, or active runtime.
+Tests that touch state, repositories, processes, or HOME-like configuration must use disposable roots and shared helpers. Root Vitest removes inherited `QUARTERDECK_*` settings and supplies a temporary default `HOME`/`USERPROFILE`; a fixture that changes home must also clear or redirect `QUARTERDECK_STATE_HOME`, which takes precedence. Never point a test at the developer's normal Quarterdeck state, provider profile, or active runtime.

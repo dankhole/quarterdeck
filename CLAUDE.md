@@ -1,11 +1,10 @@
 # Claude Code Compatibility Shim
+
 This file exists only because Claude Code reads `CLAUDE.md` for project memory.
 Shared repo-owned agent instructions are canonical in:
-- @AGENTS.md
-Human-facing docs live in:
-- @README.md
-- @DEVELOPMENT.md
-- @docs/README.md
-Claude-specific notes:
-- Keep any Claude-only compatibility notes here, clearly labeled, and minimal.
-- Do not duplicate shared instructions or project-overview content in this file.
+
+@AGENTS.md
+
+Human-facing docs: [README](README.md), [Development](DEVELOPMENT.md), and [Documentation map](docs/README.md). Follow AGENTS.md routing before reading them.
+
+Keep Claude-only compatibility notes minimal. Do not duplicate shared instructions or project-overview content here, or import additional guides automatically.

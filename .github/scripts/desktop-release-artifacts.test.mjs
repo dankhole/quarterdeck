@@ -245,27 +245,95 @@ test("public retry reuses downloaded bytes without any release mutation or local
 	assert.deepEqual(calls, [[sha, "/public"]]);
 });
 
-test("draft retries upload only complete verified candidates then verify public bytes", async () =>
+test("draft retries generate notes for the exact source before promotion and public verification", async () =>
 	fixture(async (directory) => {
 		const calls = [];
+		const body = "## What's Changed\n* Preserve saved work by @contributor in #123\n";
 		await publishDesktopRelease(
-			{ ...releaseIdentity, directory, publicDirectory: "/public", notes: "/notes" },
+			{ ...releaseIdentity, directory, publicDirectory: "/public" },
 			{
 				inspect: () => ({ id: 1, draft: true }),
 				execute: (args) => {
 					calls.push(args);
+					if (args[0] === "api") return JSON.stringify({ body });
 				},
 				verifyPublic: async () => {
 					calls.push(["verified-public"]);
 				},
 			},
 		);
-		assert.equal(calls[0][1], "upload");
-		assert.ok(calls[0].includes("--clobber"));
-		assert.equal(calls[1][1], "edit");
-		assert.ok(calls[1].includes("--prerelease=false"));
-		assert.deepEqual(calls[2], ["verified-public"]);
+		assert.deepEqual(calls[0], [
+			"api",
+			"repos/dankhole/quarterdeck/releases/generate-notes",
+			"--method",
+			"POST",
+			"--raw-field",
+			`tag_name=v${version}`,
+			"--raw-field",
+			`target_commitish=${sha}`,
+		]);
+		assert.equal(calls[1][1], "upload");
+		assert.ok(calls[1].includes("--clobber"));
+		assert.equal(calls[2][1], "edit");
+		assert.ok(calls[2].includes("--prerelease=false"));
+		const notesPath = calls[2][calls[2].indexOf("--notes-file") + 1];
+		assert.equal(await readFile(notesPath, "utf8"), body);
+		assert.deepEqual(calls[3], ["verified-public"]);
 	}));
+
+test("new prereleases create a verified-tag draft with generated notes before uploading assets", async () => {
+	const preview = "0.12.9-beta.1";
+	await fixture(async (directory) => {
+		const calls = [];
+		let inspections = 0;
+		await publishDesktopRelease(
+			{ ...releaseIdentity, version: preview, directory, publicDirectory: "/public" },
+			{
+				inspect: () => (++inspections === 1 ? null : { id: 1, draft: true }),
+				execute: (args) => {
+					calls.push(args);
+					if (args[0] === "api") return JSON.stringify({ body: "Generated preview notes" });
+				},
+				verifyPublic: async () => calls.push(["verified-public"]),
+			},
+		);
+		assert.ok(calls[0].includes(`tag_name=v${preview}`));
+		assert.equal(calls[1][1], "create");
+		assert.equal(calls[1][2], `v${preview}`);
+		assert.ok(calls[1].includes("--verify-tag"));
+		assert.ok(calls[1].includes("--draft"));
+		const notesPath = calls[1][calls[1].indexOf("--notes-file") + 1];
+		assert.equal(await readFile(notesPath, "utf8"), "Generated preview notes");
+		assert.equal(calls[2][1], "upload");
+		assert.equal(calls[3][1], "edit");
+		assert.ok(calls[3].includes("--prerelease=true"));
+		assert.equal(calls[3][calls[3].indexOf("--notes-file") + 1], notesPath);
+		assert.deepEqual(calls[4], ["verified-public"]);
+	}, preview);
+});
+
+test("failed or invalid GitHub note generation cannot create, upload, or promote a release", async () => {
+	for (const response of ["{", "null", "{}", '{"body":null}', '{"body":"  "}', new Error("API unavailable")]) {
+		await fixture(async (directory) => {
+			const calls = [];
+			await assert.rejects(
+				publishDesktopRelease(
+					{ ...releaseIdentity, directory },
+					{
+						inspect: () => null,
+						execute: (args) => {
+							calls.push(args[0]);
+							if (response instanceof Error) throw response;
+							return response;
+						},
+						verifyPublic: async () => calls.push("verified-public"),
+					},
+				),
+			);
+			assert.deepEqual(calls, ["api"]);
+		});
+	}
+});
 
 test("a candidate cannot replace a release promoted by another actor", async () =>
 	fixture(async (directory) => {
@@ -275,7 +343,8 @@ test("a candidate cannot replace a release promoted by another actor", async () 
 				{ ...releaseIdentity, directory },
 				{
 					inspect: () => ({ id: 1, draft: ++inspections === 1 }),
-					execute: () => {
+					execute: (args) => {
+						if (args[0] === "api") return JSON.stringify({ body: "Generated notes" });
 						throw new Error("Must not mutate public release.");
 					},
 				},

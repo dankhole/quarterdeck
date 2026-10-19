@@ -2,7 +2,7 @@
 
 Quarterdeck forked from [cline/kanban](https://github.com/cline/kanban) at commit `255e940d` on 2026-04-04. The two projects have diverged significantly — Quarterdeck removed the entire `cline-sdk/` layer, added multi-agent support, and has 200+ commits of its own. Cherry-picking from upstream rarely works cleanly; the practical approach is to monitor upstream for feature ideas and reimplement against our architecture.
 
-This is a living document. Each upstream review updates the sections below rather than creating a new file. See [`maintenance.md`](./maintenance.md) for the review workflow.
+This reference preserves dated upstream comparisons and adoption decisions. Descriptions in the adopted table record the implementation at the time of that review; current architecture guides and source own today's contracts. It is not a parallel task tracker: put selected local work in the primary checkout's Chit backlog. See [`maintenance.md`](./maintenance.md) for when an upstream review is useful.
 
 **Last checked:** 2026-08-30 — upstream commit `14e371ffc` (one commit reviewed since `87cfd6420`; 89 since `2c68b039`)
 
@@ -45,7 +45,7 @@ Features we pulled from upstream, or arrived at independently before upstream sh
 
 | Upstream commit | Feature | Status | Details |
 |-----------------|---------|--------|---------|
-| `56adf45a` | Incremental diff expand ("show 20 more lines") | Cherry-picked 2026-04-08 | Adapted into `useIncrementalExpand` hook + `CollapsedBlockControls` component. See implementation log. |
+| `56adf45a` | Incremental diff expand ("show 20 more lines") | Cherry-picked 2026-04-08 | Adapted into `useIncrementalExpand` hook + `CollapsedBlockControls` component; the upstream commit identifies the source change. |
 | `a57bf913` | Editable task titles + title in create/edit dialogs | Already had | Upstream inlines all editing state in `board-card.tsx`. Quarterdeck has a cleaner separation: extracted `InlineTitleEditor` component, `use-title-actions.ts` hook, `task_title_updated` WebSocket sync. Upstream also added `src/core/task-title.ts` with `resolveTaskTitle()` / `deriveTaskTitleFromPrompt()` (server-side title derivation from first sentence of prompt) — we don't have that but our client-side `truncateTaskPromptLabel` serves the same display purpose. |
 | `201ce48b` | Diff mode toggle active state fix | Already had | Upstream fixed `cn()` conditional not applying active styles on "All Changes" / "Last Turn" buttons by switching to inline `style` with CSS vars. Our `DiffModeSelector` in `card-detail-view.tsx:131-148` already uses the inline style approach. Same fix, arrived at independently. |
 | `9398a457` | Read-only startup via prompt injection instead of SDK mode | Removed 2026-04-28 | Quarterdeck previously had a similar startup-only task flag, but that product path and adapter startup behavior were removed. |
@@ -65,9 +65,9 @@ Features we pulled from upstream, or arrived at independently before upstream sh
 
 ---
 
-## Backlog
+## Ideas and current applicability
 
-Worth doing eventually. Ordered roughly by value.
+These comparisons are design inputs rather than scheduled work. Select and scope local work in Chit when there is a concrete need.
 
 ### Remote project browser and clone flow (`6cdc8fe40`)
 **Upstream:** Adds a remote directory browser, path autocomplete, server-side directory listing, and clone-by-Git-URL support from the add-project dialog.
@@ -95,9 +95,9 @@ Worth doing eventually. Ordered roughly by value.
 
 ### Update-available modal (`e8976aeef`)
 **Upstream:** Adds a "new version available" modal with one-click update.
-**Our current state:** Quarterdeck is not published to npm yet; `docs/todo.md` still tracks the first npm publish.
-**Why it matters:** Useful after a real distribution channel exists.
-**Action:** Revisit after npm publishing. Upstream's UI flow is useful conceptually, but the update command and package identity need Quarterdeck-specific design.
+**Our current state:** Quarterdeck is distributed through npm. The desktop app checks for updates at startup and on request, then offers a confirmed npm handoff after clean shutdown; linked checkouts show local rebuild guidance.
+**Why it matters:** Update discovery and installation ownership are already implemented without an automatic modal.
+**Action:** Follow the [current desktop update contract](./desktop.md#using-the-app); no upstream modal port is needed. Signed public distribution remains subject to the [desktop release gates](./desktop-validation.md).
 
 ### CLI signal re-raise semantics (`886e48c67`)
 **Upstream:** Stops handling `SIGQUIT` and reraises handled shutdown signals after cleanup so parent shells/process managers see signal termination rather than a plain `process.exit(...)`.
@@ -138,7 +138,7 @@ Trivial styling tweak — mutes the beta hint card in the project sidebar. We do
 Upstream added a file-tree toggle for diff views and multi-line comments, then reverted both. No action.
 
 ### Desktop packaging (`fa267422f`, `c6720c379`, `30980f646`)
-The desktop workspace and runtime child process manager are a separate product direction. Quarterdeck remains a CLI-served web app for now, so this is not an upstream-sync adoption target unless the product direction changes.
+Quarterdeck now has its own macOS Electron shell, bundled Node helper, shared runtime admission, and npm-owned installer/update flow. These upstream commits were not adopted directly. Evaluate any future desktop idea against the [local architecture](./desktop.md) and ownership contracts; signed distribution still has explicit [acceptance gates](./desktop-validation.md).
 
 ### Cline model catalog and provider polish (`1ee1a1f67`, `e22e1ade2`, `659e5031c`, `3d7016738`, `09ebc20be`, `01037d591`, `5e55976e5`, `8a1468737`)
 Cline provider/model-catalog maintenance, plus `7ccde0648` (jsdom guard in the Cline model selector). Quarterdeck's agent selection and lightweight LLM helper config are separate systems; do not port this directly.
@@ -147,7 +147,7 @@ Cline provider/model-catalog maintenance, plus `7ccde0648` (jsdom guard in the C
 Hook notify process cleanup, agent tips styling, `dev-full` shutdown-cleanup defaults/bootstrap behavior, and a task-card layout-shift rewrite. Quarterdeck's hook path, dev scripts, onboarding tips, and board-card layout have diverged enough that these are not portable. Revisit only if the same local symptom appears.
 
 ### New upstream-only desktop/product changes (`62f4095d3`, `b37dc95b8`, `b5e4b2e32`, `1f1f171ba`)
-Window primitives, the consolidated Electron desktop app, Electron-only dependency alert fixes, and the Trash-to-Done rename are product-direction changes rather than portable fixes. Quarterdeck remains a CLI-served web app and intentionally still uses Trash language. The risky auto-trash piece of `b5e4b2e32` had already been removed locally in `581fff7f9`.
+Window primitives, the consolidated Electron desktop app, Electron-only dependency alert fixes, and the Trash-to-Done rename were not adopted directly. Quarterdeck's desktop implementation shares its existing UI/runtime and uses its own native ownership and distribution boundaries; it intentionally retains Trash language. The risky auto-trash piece of `b5e4b2e32` had already been removed locally in `581fff7f9`.
 
 ### New Cline/model/autonomous-mode work (`f86c7a107`, `b71997b97`, `28e4bf874`)
 Custom Cline model fallback input, Cline SDK 0.0.38, and Claude autonomous-mode permission changes do not apply to current Quarterdeck. The Cline setup/model UI is gone, and Quarterdeck removed the autonomous/bypass-permissions feature in `9bda5fcfd`.
@@ -162,7 +162,7 @@ Release-note updates, lockfile/dependency churn, upstream branding fallback, Nod
 ## Notes on syncing methodology
 
 With 200+ commits of divergence and the removal of the entire `cline-sdk/` layer:
-1. **Monitor upstream** periodically for feature ideas — see todo.md for cadence
+1. **Monitor upstream** when useful for active development — see [maintenance guidance](./maintenance.md#upstream-review)
 2. **Reimplement** rather than merge — architecture has diverged too far for clean cherry-picks on anything non-trivial
-3. **Update this doc** after each review — move items between sections as they're adopted or rejected
+3. **Keep useful decisions here** when a review changes local applicability; put routine commit lists and validation in the PR/Git record rather than maintaining a review diary
 4. Roughly half of upstream's output is Cline SDK/account work that will never apply to Quarterdeck. The other half is shared UI/UX work where the ideas are portable even if the code isn't.

@@ -106,9 +106,9 @@ On supported Macs this builds and installs the matching desktop app. Use `npm ru
 
 - [User guide](docs/usage.md): agent setup, configuration, workflow, and troubleshooting
 - [Desktop guide](docs/desktop.md): app operation, installation, and recovery
-- [Changelog](CHANGELOG.md): release notes
+- [GitHub Releases](https://github.com/dankhole/quarterdeck/releases): generated release notes
 - [Development](DEVELOPMENT.md): build, link, test, and debugging commands
-- [Engineering docs](docs/README.md): architecture, conventions, validation, and implementation history
+- [Engineering docs](docs/README.md): architecture, conventions, and validation
 
 ## Help and Feedback
 

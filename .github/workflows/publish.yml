@@ -106,15 +106,6 @@ jobs:
           pattern: desktop-signed-*
           path: desktop-release-assets
           merge-multiple: true
-      - name: Extract changelog entry
-        id: changelog
-        env:
-          TAG: ${{ needs.resolve.outputs.tag }}
-        run: node .github/scripts/extract-changelog-entry.mjs --version "${TAG#v}" --changelog CHANGELOG.md --output-key body
-      - name: Write release notes
-        env:
-          RELEASE_NOTES: ${{ steps.changelog.outputs.body }}
-        run: node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync("desktop-release-notes.txt", process.env.RELEASE_NOTES + "\n")'
       - name: Publish fresh assets or reuse immutable public bytes
         env:
           GH_TOKEN: ${{ github.token }}
@@ -124,7 +115,7 @@ jobs:
           version=$(node -p "require('./package.json').version")
           desktop_version=$(node -p "require('./desktop/package.json').version")
           [[ "$TAG" == "v$version" && "$version" == "$desktop_version" ]] || { echo "Product tag/version mismatch"; exit 1; }
-          node .github/scripts/desktop-publication.mjs publish --repository "$GITHUB_REPOSITORY" --version "$version" --sha "$SOURCE_SHA" --dir desktop-release-assets --public-dir desktop-public-verification --notes desktop-release-notes.txt
+          node .github/scripts/desktop-publication.mjs publish --repository "$GITHUB_REPOSITORY" --version "$version" --sha "$SOURCE_SHA" --dir desktop-release-assets --public-dir desktop-public-verification
 
   publish:
     name: Publish npm after public desktop availability

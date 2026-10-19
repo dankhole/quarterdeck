@@ -1,6 +1,6 @@
 ## What
 
-<!-- What does this change do? One or two sentences. -->
+<!-- State the resulting behavior in one or two sentences. Use a clear title: GitHub generates release notes from merged pull requests. -->
 
 ## Why
 
@@ -8,13 +8,11 @@
 
 ## Test plan
 
-<!-- How did you verify this works? Delete items that don't apply. -->
+<!-- Describe the checks that prove the changed behavior. Follow docs/testing.md; do not run unrelated suites or use the active app for automated testing. -->
 
-- [ ] `npm run check` passes locally
-- [ ] `npm run web:typecheck` and `npm run web:test` pass
-- [ ] Manually verified in a running Quarterdeck instance (dogfood or `npm run dev:full`)
-- [ ] Updated `CHANGELOG.md` under `## [Unreleased]` for user-visible changes
-- [ ] Updated or added an entry in `docs/implementation-log.md` if the change has high-signal forensic context (architecture/ownership, persistence, session lifecycle, concurrency, etc.)
+## Documentation and compatibility
+
+<!-- Update current documentation when setup, behavior, contracts, or operations change. For breaking changes, explain the upgrade path. Add a decision/incident document only for durable rationale or recovery evidence; routine changes need no historical entry. Delete this section if it does not apply. -->
 
 ## Notes for reviewers
 

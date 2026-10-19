@@ -1,8 +1,8 @@
-# Windows Compatibility Todo
+# Windows compatibility acceptance
 
-Quarterdeck's Windows code-remediation backlog is complete as of 2026-08-29. Windows remains labeled experimental until the committed tree passes the required native CI job and the real-provider acceptance matrix below. This file is the release ledger; the evidence and commands are in the [support audit](./windows-support-audit.md) and [native validation guide](./windows-native-smoke.md).
+Quarterdeck's Windows code-remediation backlog is complete as of 2026-08-29. Windows remains labeled experimental until the committed tree passes the required native CI job and the real-provider acceptance matrix below. This file retains the dated remediation checklist and the two unresolved acceptance gates; active remediation work belongs in the primary checkout's Chit backlog. The audit scope and reproducible commands are in the [support audit](./windows-support-audit.md) and [native validation guide](./windows-native-smoke.md).
 
-## Completed remediation sequence
+## Recorded remediation (2026-08-29)
 
 - [x] **1. Make graceful shutdown Windows-safe.** Parent disconnects enter the idempotent runtime shutdown controller directly. Development, dogfood, integration, Playwright, and Agent Lab supervisors close the runtime's dedicated stdin control pipe instead of relying on a programmatic Windows `SIGTERM`; console close, Ctrl+C, Ctrl+Break, duplicate-signal suppression, bounded cleanup, and tree-kill fallback have explicit platform policy.
 - [x] **2. Make child-process launch portable.** Shared owners launch npm's absolute JavaScript entrypoint through the absolute Node executable, resolve `.cmd`/`.bat`/`.com`/`.exe`/`.ps1` commands to an exact inherited-`PATH` target before entering a project cwd, use absolute trusted System32 executables, merge Windows environment keys case-insensitively, avoid shell parsing where argv execution is possible, and terminate timed-out command trees instead of only their shim process.
@@ -22,4 +22,4 @@ Quarterdeck's Windows code-remediation backlog is complete as of 2026-08-29. Win
 - [ ] **Required CI evidence.** Push or open a pull request for the committed feature branch and confirm the non-optional `Windows native` job passes from a clean checkout for that exact commit.
 - [ ] **Real-provider acceptance.** On a normal, non-administrator Windows account, exercise authenticated supported Claude Code, Codex, and pinned Pi installations through new task, input/approval, stop, exact resume, restart, reconnect/restore, same-size redraw, runtime restart, and crash-orphan recovery. Confirm actual IDE/folder opening and that diagnostic exports remain inaccessible to a second local account.
 
-Do not remove the README's experimental label until both acceptance items pass. Failures found there return to the completed sequence as concrete regressions with automated coverage before the gate is rerun.
+Do not remove the README's experimental label until both acceptance items pass. Failures found there become concrete Chit work with automated regression coverage before the gate is rerun; do not reopen the historical remediation checklist as a second backlog.

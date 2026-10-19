@@ -11,11 +11,11 @@
 ## Styling mental model
 
 - Use Tailwind utility classes as the primary styling system. Prefer `className` over inline `style={{}}`.
-- Prefer Tailwind classes over adding custom CSS in `globals.css` when possible. Conditional Tailwind classes via `cn()` are better than CSS overrides for state-driven styling (e.g. selected/active variants). Reserve `globals.css` for things Tailwind can't express: complex selectors (sibling combinators, attribute selectors), app-level layout glue, or styles that genuinely need to cascade.
+- Prefer Tailwind classes over custom CSS when possible. Conditional Tailwind classes via `cn()` are better than CSS overrides for state-driven styling (e.g. selected/active variants). Use the relevant file under `src/styles/` for things Tailwind can't express: complex selectors (sibling combinators, attribute selectors), app-level layout glue, or styles that genuinely need to cascade.
 - Only use inline `style={{}}` for truly dynamic values (colors from props/variables, computed positions from drag-and-drop, runtime-dependent dimensions).
-- The design system tokens are defined in `globals.css` inside `@theme { ... }`. Use Tailwind utilities that reference them: `bg-surface-0`, `text-text-primary`, `border-border`, etc.
+- The design system tokens are defined in `src/styles/theme.css` inside `@theme { ... }`; `globals.css` is the stylesheet import entry point. Use Tailwind utilities that reference them: `bg-surface-0`, `text-text-primary`, `border-border`, etc.
 
-## Design tokens (defined in globals.css @theme)
+## Design tokens (defined in src/styles/theme.css @theme)
 
 - Surface hierarchy: `surface-0` (#1F2428, app bg / columns), `surface-1` (#24292E, navbar / project col / raised), `surface-2` (#2D3339, cards/inputs), `surface-3` (#353C43, hover), `surface-4` (#3E464E, pressed/scrollbars)
 - Borders: `border` (#30363D, default), `border-bright` (#444C56, more visible), `border-focus` (#0084FF, focus rings)
@@ -44,7 +44,7 @@
 
 - Use Radix directly for headless behavior: `@radix-ui/react-popover`, `@radix-ui/react-dropdown-menu`, `@radix-ui/react-checkbox`, `@radix-ui/react-switch`, `@radix-ui/react-collapsible`, `@radix-ui/react-select`.
 - Style Radix components with Tailwind classes. Use `data-[state=checked]:` for state-driven styling.
-- **Radix AlertDialog `onOpenChange` gotcha**: When using a controlled AlertDialog (`open` + `onOpenChange`), Radix fires `onOpenChange(false)` for ALL close reasons — cancel, confirm action, ESC, and overlay click. This means if `onOpenChange` routes to a cancel handler, it will also fire after confirm. The confirm handler updates state via `setState` (async), so the cancel handler's closure still sees the old state. Fix: use a `useRef` flag — set it synchronously in the confirm handler, check it in the cancel handler, skip the revert if set. See `trashWarningConfirmedRef` in `use-board-interactions.ts` for the reference pattern. This applies to any controlled AlertDialog where confirm and cancel have different side effects.
+- **Radix AlertDialog `onOpenChange` gotcha**: When using a controlled AlertDialog (`open` + `onOpenChange`), Both confirm and cancel paths can invoke `onOpenChange(false)`; that callback alone does not distinguish the accepted action from cancellation. This means if `onOpenChange` routes to a cancel handler, it will also fire after confirm. The confirm handler updates state via `setState` (async), so the cancel handler's closure still sees the old state. Fix: use a `useRef` flag — set it synchronously in the confirm handler, check it in the cancel handler, skip the revert if set. See `trashWarningConfirmedRef` in `hooks/board/use-trash-workflow.ts` for the reference pattern. This applies to any controlled AlertDialog where confirm and cancel have different side effects.
 - **Radix `asChild` requires `forwardRef` + rest props**: Any component passed as a child of a Radix `asChild` trigger (Popover.Trigger, Dialog.Trigger, DropdownMenu.Trigger, etc.) **must** use `React.forwardRef` and spread `...rest` props onto its root DOM element. Radix's internal `Slot` uses `cloneElement` to inject `onClick`, `aria-expanded`, `data-state`, and a `ref` — if the component doesn't forward these, the trigger renders visually but never opens. No error or warning is emitted. See `BranchPillTrigger` in `branch-selector-popover.tsx` for the correct pattern.
 
 ## Dialog suppression ("don't show again")
@@ -55,11 +55,13 @@
 
 ## Dark theme
 
-- The app is always in dark theme. Colors are set via CSS custom properties in `globals.css`.
+- The app is always in dark theme. Colors are set via CSS custom properties in `src/styles/theme.css`.
 - Surface hierarchy: `bg-surface-0` (app background) -> `bg-surface-1` (raised panels) -> `bg-surface-2` (cards/inputs) -> `bg-surface-3` (hover) -> `bg-surface-4` (pressed).
 - Do NOT use Blueprint, Tailwind's light-mode defaults, or any `dark:` prefix. The theme is always dark.
 
 ## Hooks architecture
+
+Prefer existing `react-use` hooks through `@/utils/react-use` when applicable. Keep package interoperability in that shared adapter, which imports from the public `react-use` entry point; do not introduce deep CommonJS imports at call sites.
 
 ### Directory structure
 
@@ -118,7 +120,7 @@ For examples of the pattern in the codebase, `ls web-ui/src/hooks/*/` and look f
 
 ### Non-hook files
 
-Utility functions, constants, and React components do not belong in `hooks/`. Place them in `utils/`, `terminal/`, or `components/` respectively.
+General-purpose utilities, unrelated constants, and React components do not belong in `hooks/`. Place them in `utils/`, `terminal/`, or `components/` as appropriate. Colocated pure domain modules described above remain beside the hooks that adapt them.
 
 ### Domain barrel files
 

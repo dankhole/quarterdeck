@@ -1,6 +1,6 @@
 # Quarterdeck Agent Instructions
 
-`AGENTS.md` is the canonical repo-owned shared agent-instructions file. Keep `CLAUDE.md` as a tiny Claude Code compatibility shim that imports `@AGENTS.md`; do not duplicate shared rules or project documentation there. Human-facing setup, architecture, and developer guidance belongs in `README.md`, `DEVELOPMENT.md`, or `docs/`.
+`AGENTS.md` is the canonical repo-owned shared agent-instructions file. Keep `CLAUDE.md` as a tiny Claude Code compatibility shim that imports only `@AGENTS.md`; link human guides normally so they are read selectively. Do not duplicate shared rules or project documentation there. Human-facing setup, architecture, and developer guidance belongs in `README.md`, `DEVELOPMENT.md`, or `docs/`.
 
 This file contains universal rules and routes specialized work to the smallest relevant reference. Read a routed document before changing that area; do not bulk-read unrelated convention or history documents.
 
@@ -46,15 +46,9 @@ Read the referenced document before editing the listed area:
 - Native desktop shell, packaging, preload, runtime admission, process custody, or desktop/browser attachment: `docs/desktop.md`; distribution and updates also require `docs/desktop-release.md`.
 - Test selection, validation scope, or deciding whether a heavier testing lane is justified: `docs/testing.md`.
 - Structured/non-PTY execution or provider-session handoff: `docs/conventions/structured-execution.md`.
-- Current architecture priorities or active refactors: `docs/qDeck.yaml` (the local, gitignored Chit source of truth) and the specific linked plan. Keep the list in the primary checkout; worktrees must use that same file with an explicit `--file` path rather than create copies. Use `chit --file docs/qDeck.yaml read` from the primary checkout before updates, preserve existing IDs, and use expected-value edits. `docs/todo.md` is an archived migration snapshot; do not maintain tasks there.
+- Current architecture priorities or active refactors: `docs/qDeck.yaml` (the local, gitignored Chit source of truth) and the specific linked plan. Keep the list in the primary checkout; worktrees must use that same file with an explicit `--file` path rather than create copies. Use `chit --file docs/qDeck.yaml read` from the primary checkout before updates, preserve existing IDs, and use expected-value edits. `docs/todo.md` points to the frozen migration snapshot; do not maintain tasks there.
 
 Tracked historical context lives under `docs/history/`. Read it only when current docs and code do not answer the question or the user explicitly requests archival context.
-
-## Frontend rules
-
-- In `web-ui`, prefer `react-use` hooks through `@/quarterdeck/utils/react-use` when applicable.
-- When a hook in `web-ui/src/hooks/` contains more than 50 lines of non-React validation, transformation, or state-machine logic, extract that logic into a colocated pure TypeScript domain module with no React imports. Test it with plain `describe` / `it`. Follow `docs/conventions/web-ui.md` and `docs/conventions/frontend-hooks.md`.
-- Keep runtime-aware orchestration in hooks or domain modules and components focused on rendering view models.
 
 ## Runtime ownership guardrails
 
@@ -65,7 +59,7 @@ Tracked historical context lives under `docs/history/`. Read it only when curren
 - `applyAuthoritativeProjectState(...)` is the single browser apply path for authoritative project state.
 - `IRuntimeHostIntegrations` is the sole production boundary for server-side file, application, URL, IDE, and folder-picker effects. Preserve its launch-derived capability checks and typed outcomes; never accept arbitrary browser-supplied commands.
 - Do not start Quarterdeck runtime or dev instances (`npm run dev`, `npm run dev:full`, `npm run dogfood`, `quarterdeck`) without asking when the user's app may already be running. Overlapping runtimes can proxy to the wrong instance. Use build/test validation or the isolated Agent Lab as appropriate.
-- Agent availability has separate display and launch policies. Settings/config display reads may use the 30-second stale-while-revalidate cache, but task launches must go through `resolveAgentCommandForLaunch(...)`: reuse only a fresh successful result, await expired or cached-failure refreshes, never cache probe timeouts/execution failures, and preserve the typed failure message. Startup recovery may retry one transient availability probe inside preparation; deterministic missing/version/feature failures remain non-retryable preparation errors. Keep probe diagnostics metadata-only (`agentId`, probe kind, duration, typed outcome), without command output or thrown messages.
+- Agent display availability is not launch authority. Task launches must use `resolveAgentCommandForLaunch(...)`; follow the cache, retry, and diagnostics policies in `docs/conventions/session-lifecycle.md#agent-availability-and-launch-admission`.
 
 The summaries above are not substitutes for the routed runtime-state and session-lifecycle documents.
 
@@ -82,18 +76,19 @@ The summaries above are not substitutes for the routed runtime-state and session
 
 Before preparing, tagging, publishing, retrying, or verifying an npm release, read `RELEASE_WORKFLOW.md` and follow its squash-merge, immutable-tag, OIDC publishing, and post-publish verification sequence.
 
-When a user-visible feature or fix lands, or an active todo item is completed:
+## Documentation and completed work
 
-1. Remove the completed active item from `docs/qDeck.yaml`, if present.
-2. Add a matching bullet under the current version in `CHANGELOG.md`. If no current version exists, create the next patch section.
+Follow `docs/maintenance.md#documentation-lifecycle` when adding, moving, or substantially revising docs.
 
-When bumping a version, retain `## [Unreleased]` above the new version heading.
-
-Add a concise top entry to `docs/implementation-log.md` only for high-signal forensic context: architecture or ownership boundaries, persistence/migration/recovery, terminal/session lifecycle, concurrency or race behavior, production/dogfood incidents, broad cross-cutting edits, or non-obvious investigation future agents would otherwise repeat. Include what changed, why, the key invariant or failure mode, notable files, validation, and the commit hash when known. Skip routine UI polish, mechanical refactors, test-only work, and small isolated fixes.
+- Keep the README a concise install/use entry point. Put current behavior, setup, and troubleshooting in the owning guide; update that guide when the behavior changes.
+- PR descriptions and Git history record routine changes and validation; GitHub release notes are generated from merged PRs. Do not maintain a changelog, append implementation-log entries, or create a replacement chronological work diary. Preserve consequential rationale or incidents in the owning guide under the documentation-lifecycle policy.
+- Document required user action for breaking changes or migrations alongside the affected workflow, and call it out in the release PR. Generated release notes do not replace upgrade instructions.
+- Remove a completed active item from the primary checkout's Chit list when accessible and authorized; preserve task IDs and expected-value edits. Completion does not require a new documentation entry. Do not create a worktree task-list copy if the tracker is unavailable.
+- Archive completed plans and verbose validation evidence under `docs/history/`; retain current constraints and unresolved gates in their owning guides and preserve reference paths. Archived findings are not current instructions or proof of release readiness.
 
 ## Configuration changes
 
-Before adding a global config field, follow the checklist at the top of `src/config/global-config-fields.ts`. For Settings UI, update `SettingsFormValues` and `resolveInitialValues` in `web-ui/src/hooks/settings/settings-form.ts`, then add the JSX control; dirty checking, reset-on-open, payload construction, and save types derive from that mapping.
+Before adding a global config field or Settings control, follow the checklist at the top of `src/config/global-config-fields.ts` for schemas, form mapping, and fixtures.
 
 Avoid broad edits to copied config mocks during feature work. Prefer the shared runtime-config factory; if repeated fixtures remain, defer mechanical updates to a final pass or consolidate them behind `createDefaultMockConfig()` to reduce merge conflicts.
 
@@ -111,6 +106,6 @@ Avoid broad edits to copied config mocks during feature work. Prefer the shared 
 
 ## Diagnostics
 
-Begin live-instance investigation with `quarterdeck diagnostics list|status|doctor|capture|watch`; do not ask the user to reproduce after enabling logging. Diagnostic access is authenticated and read-only: it does not connect as a board client, write project state, attach or resize a PTY, refresh Git, or repair anything.
+Begin live-instance investigation with `quarterdeck diagnostics list|status|doctor|capture|watch`; do not ask the user to reproduce after enabling logging. Inspection is read-only, through authenticated runtime access or the retained local desktop journal: it must not connect as a board client, write project state, attach or resize a PTY, refresh Git, or repair anything.
 
-Quarterdeck has one bounded diagnostics recorder, schema, journal, CLI family, panel, and bundle contract. Production evidence stays content-safe. Synthetic Agent Lab evidence may add terminal viewport text, Git diffs, fixture state, screenshots, and traces without widening the production privacy boundary. Start bundle analysis at `manifest.json` and correlate `records.jsonl`, `doctor.json`, provider snapshots, and indexed evidence.
+Preserve the single bounded recorder and production privacy boundary. Read `docs/diagnostics.md` for capture policy, synthetic evidence, and bundle analysis.

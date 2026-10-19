@@ -9,7 +9,7 @@ The commands below are the shortest macOS/Linux setup path. Follow the linked of
 | Agent | Install | Sign in | Verify | Version required by Quarterdeck |
 | --- | --- | --- | --- | --- |
 | [Claude Code](https://code.claude.com/docs/en/getting-started) | `curl -fsSL https://claude.ai/install.sh \| bash` | Run `claude` and follow the browser prompt | `claude auth status` | 2.1.198+ |
-| [OpenAI Codex](https://developers.openai.com/codex/cli) | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` | `codex login` | `codex login status` | 0.157.0+ with native hooks |
+| [OpenAI Codex](https://developers.openai.com/codex/cli) | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` | `codex login` | `codex login status` | 0.157.0+ with native hooks and auto-review support |
 | [Pi 0.84.3](https://www.npmjs.com/package/@earendil-works/pi-coding-agent/v/0.84.3) | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.84.3` | Run `pi`, then enter `/login` | Start `pi` successfully | Exactly 0.84.3 |
 
 On native Windows, run the installer from PowerShell:
@@ -109,7 +109,7 @@ To keep the configuration across shell sessions, add the exports to the shell st
 
 3. Start agents.
 
-   Starting a card launches the configured agent. By default, Quarterdeck creates an isolated git worktree, copies ignored files selected by `.worktreeinclude`, runs the project’s optional setup script, and injects worktree context. Configure **Worktree setup script** in project Settings to install task-local dependencies automatically. See [worktree setup](./worktree-setup.md) for include patterns, script behavior, and failure recovery.
+   Starting a card launches the configured agent. New Git-project tasks use isolated worktrees by default: Quarterdeck copies ignored files selected by `.worktreeinclude`, runs the project’s optional setup script, and injects worktree context. Configure **Worktree setup script** in project Settings to install task-local dependencies automatically. Tasks using the project folder directly skip that preparation. See [worktree setup](./worktree-setup.md) for include patterns, script behavior, and failure recovery.
 
 4. Monitor progress.
 

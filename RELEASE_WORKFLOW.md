@@ -37,8 +37,8 @@ open -a Firefox https://www.npmjs.com/settings/dankhole/tfa
    npm --prefix desktop version --no-git-tag-version X.Y.Z
    ```
 
-4. Keep `## [Unreleased]` at the top of `CHANGELOG.md` and add a non-empty `## [X.Y.Z] - YYYY-MM-DD` section beneath it.
-5. Apply normal release hygiene: remove completed items from `docs/qDeck.yaml` and include the user-visible changes in the new changelog section.
+4. Review merged pull-request titles and descriptions for clear user-facing outcomes. GitHub generates release notes from the release tag and its pull-request history; there is no maintained changelog or chronological implementation log.
+5. Update the current setup, behavior, or operational documentation where it changed, including upgrade guidance for breaking changes. Remove completed items from `docs/qDeck.yaml`. Record a separate decision or incident document only when durable rationale or recovery evidence warrants it.
 6. Validate the publishable artifact and the changed behavior. At minimum for packaging changes:
 
    ```bash
@@ -90,9 +90,9 @@ open -a Firefox "https://github.com/dankhole/quarterdeck/actions/workflows/publi
 
 Both triggers share a per-tag concurrency group and resolve one immutable source SHA. The Linux/macOS/Windows matrix validates that exact source, including the packed npm build stamp. Unified releases require matching signed desktop assets; signing cannot be disabled to bypass a failure. See the [desktop release runbook](docs/desktop-release.md) for provisioning and remaining [validation gates](docs/desktop-validation.md).
 
-The workflow inspects publication state before signing. For a new release, it builds and verifies both native architectures, prepares the complete draft, publishes the GitHub Release, and verifies an anonymous download of every public artifact before npm publication. A retry of an already-public release reuses its exact bytes and skips rebuilding; public assets are immutable.
+The workflow inspects publication state before signing. For a new release, it builds and verifies both native architectures, asks GitHub's [generated release notes API](https://docs.github.com/en/rest/releases/releases#generate-release-notes-content-for-a-release) for notes using the exact tag and resolved source SHA, prepares the complete draft, publishes the GitHub Release, and verifies an anonymous download of every public artifact before npm publication. Draft retries regenerate notes before promotion. A retry of an already-public release preserves its notes, reuses its exact bytes, and skips rebuilding; public assets are immutable.
 
-The npm job validates the version, changelog, and source stamp. It publishes through OIDC only if the version is absent. An existing version is accepted only when its `gitHead` equals the immutable tag SHA. Stable releases use `latest`; previews specify a prerelease tag so they cannot replace `latest`. Missing or mismatched identity fails closed and requires a new version.
+The npm job validates the version and source stamp. It publishes through OIDC only if the version is absent. An existing version is accepted only when its `gitHead` equals the immutable tag SHA. Stable releases use `latest`; previews specify a prerelease tag so they cannot replace `latest`. Missing or mismatched identity fails closed and requires a new version.
 
 Monitor the run to completion:
 
@@ -133,4 +133,4 @@ npm does not automatically upgrade global installations. Existing users update e
 
 ## Expected failure cases
 
-Publishing stops when the tag is missing or malformed, the tag and package version differ, the changelog entry is missing or empty, the release matrix fails, OIDC does not match the npm trusted-publisher configuration, or the complete public desktop asset set cannot be verified. An already accepted immutable npm version is a retry state, never permission to overwrite it.
+Publishing stops when the tag is missing or malformed, the tag and package version differ, GitHub cannot generate nonempty notes for a new or draft release, the release matrix fails, OIDC does not match the npm trusted-publisher configuration, or the complete public desktop asset set cannot be verified. An already accepted immutable npm version is a retry state, never permission to overwrite it.

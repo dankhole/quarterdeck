@@ -30,6 +30,10 @@ This is the stable contract for the integrated provider-neutral execution owner.
 - Concurrent Claude or background-agent structured interaction remains unsupported until it has a durable keyed model. Do not route subagent/global Agent View notifications through the foreground record.
 - Pi structured compatibility is out of scope until its ownership and exact-resume contract is designed and validated explicitly.
 
+## Implementation map
+
+`src/execution/task-execution-ownership-service.ts` coordinates handoff and recovery; `src/state/project-execution-ownership-store.ts` persists ownership and receipts. Provider-specific launch and protocol handling stay in `src/execution/codex-structured-owner.ts` and `src/execution/claude-structured-owner.ts`. Native session semantics remain in [session lifecycle](./session-lifecycle.md); board persistence remains in [runtime state](./runtime-state.md).
+
 ## Validation
 
 Follow [`../testing.md`](../testing.md). Start with focused coordinator, adapter, interaction, and recovery tests. Use purpose-built browserless integration coverage for structured ownership when no browser is involved. Use deterministic Agent Lab only for a desktop browser/PTY projection, and use an authorized real provider only when the provider's native protocol or exact-session behavior is the unresolved risk.

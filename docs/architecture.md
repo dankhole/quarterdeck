@@ -1,6 +1,6 @@
 # Architecture Overview
 
-Quarterdeck is a local Node runtime plus a React app for running many coding-agent tasks across one or more git projects.
+Quarterdeck is a local Node runtime plus a React app for running many coding-agent tasks across one or more Git repositories or folder projects.
 
 The macOS desktop shell packages this same UI with a separate bundled Node helper. CLI and desktop share lifetime runtime admission before any startup mutation; browsers submit authenticated intent to that owner. See [desktop architecture](./desktop.md) for process custody, attachment, renderer security, and shutdown boundaries. npm/browser use remains independent of Electron.
 
@@ -129,16 +129,16 @@ These terms come up everywhere in the codebase.
 
 | Concept | Meaning | Why it matters |
 | --- | --- | --- |
-| Project | an indexed git repository that Quarterdeck has opened | most browser and runtime state is scoped to a project id |
+| Project | an indexed Git repository or ordinary folder that Quarterdeck has opened | most browser and runtime state is scoped to a project id |
 | Task card | a board item with a prompt, base ref, and review settings | a task is the unit of work the board cares about |
-| Worktree | a per-task git worktree | most task agents run inside one |
+| Worktree | an isolated per-task Git checkout | Git tasks can use isolation; folder projects run directly in the project folder |
 | Task session | the live runtime attached to a task card | normally a PTY process; an exact Codex/Claude session may have one exclusive structured owner |
 | Shell session | a project-scoped manual terminal | shell sessions reuse terminal plumbing but have different lifecycle rules from task agents |
 | Runtime summary | the small state object whose canonical state is idle, running, or awaiting review, with review reason and interaction detail distinguishing completion, interruption, error, and input waits | this is the bridge between long-running agent work and the UI |
 
 ## Who Owns What
 
-One of the biggest cleanup themes was making ownership clearer. The system is much easier to work on if every concern has one obvious owner.
+Each concern has one explicit authority:
 
 | Concern | Primary owner | Notes |
 | --- | --- | --- |
@@ -189,7 +189,7 @@ This is the supported path for Claude Code, Codex, and the exact validated Pi re
 
 ### Workdir and config
 
-`src/workdir/` owns worktree creation, lookup, cleanup, git helpers, workdir searches, and turn checkpoints.
+`src/workdir/` owns worktree creation, lookup, cleanup, git helpers, and workdir searches.
 
 `src/config/runtime-config.ts` owns Quarterdeck preferences such as selected agents, shortcuts, notification settings, and prompt templates. Global config lives at the runtime state home; project config lives under the project's state directory.
 
@@ -217,7 +217,7 @@ The frontend is also easier to navigate if you think in responsibilities instead
 
 `App.tsx` is the composition root for the application shell. It wires the provider tree and high-level surfaces, but it should not become a second runtime orchestrator.
 
-Providers in `web-ui/src/providers/` own broad UI state domains. `ProjectProvider` owns project navigation, stream state, hydration, and project sync. `ProjectRuntimeProvider` owns project-scoped runtime config and onboarding/access gates. Board, dialog, git, terminal, and interaction providers layer on top of that project foundation.
+Providers in `web-ui/src/providers/` own broad UI state domains. `ProjectProvider` composes explicit navigation, runtime-stream, notification, synchronization, and project-management contexts; consumers subscribe to the owning contract. `ProjectRuntimeProvider` owns project-scoped runtime config and onboarding/access gates. Board, dialog, git, terminal, and interaction providers layer on top of that project foundation.
 
 Hooks in `web-ui/src/hooks/` are where most domain logic lives. Hooks are organized by domain subdirectory: `app`, `board`, `diagnostics`, `debug`, `git`, `notifications`, `project`, `search`, `settings`, and `terminal`. `diagnostics` owns the flight-recorder UI and capture controls; `debug` is limited to explicitly enabled developer tools. If you are looking for "how does this behavior actually work?", the answer is usually in a hook or its pure companion domain module, not a component.
 
@@ -231,7 +231,7 @@ Components in `web-ui/src/components/` are mostly rendering and composition. Goo
 
 ### Starting a task session
 
-When the user starts a task, the browser first flushes the command that created or moved the card, then asks the runtime to start a task session. The runtime resolves the task cwd from durable task state, chooses the right command, and starts a PTY-backed process inside the task worktree. An internal structured handoff may later stop that exact native writer and resume the same provider session through Codex app-server or Claude Agent SDK; ownership generation and process identity prevent overlap. As the owner runs, the terminal/session state projection emits summary updates. `RuntimeSessionPersistence` persists the server-owned session/work-column projection through the board command service. The runtime state hub streams summaries and authoritative board updates back to the browser.
+When the user starts a task, the browser flushes pending ordinary board commands, then submits one typed lifecycle intent with an operation ID and expected revision. `ProjectTaskLifecycleService` owns creation or movement of the card, workspace preparation, and session launch; the browser does not compose those effects. The runtime resolves the task cwd from durable task state, chooses the right command, and starts a PTY-backed process in the managed worktree or project folder. An internal structured handoff may later stop that exact native writer and resume the same provider session through Codex app-server or Claude Agent SDK; ownership generation and process identity prevent overlap. As the owner runs, the terminal/session state projection emits summary updates. `RuntimeSessionPersistence` persists the server-owned session/work-column projection through the board command service. The runtime state hub streams summaries and authoritative board updates back to the browser.
 
 Raw PTY output does not travel through the runtime state hub. It streams through the terminal WebSocket path and browser terminal slot/restore layer, while the runtime state hub carries the product-shaped summaries and metadata that the rest of the UI needs.
 
@@ -239,7 +239,7 @@ Raw PTY output does not travel through the runtime state hub. It streams through
 
 When the user changes the board, `useProjectSync(...)` applies the edit optimistically and derives an explicit `ProjectBoardCommand` batch from the old and new board. It sends that batch through `project.applyBoardCommands` with a durable command ID and the last authoritative revision. The runtime applies it under the project lock through the shared pure reducer, snapshots authoritative sessions, stores a bounded receipt, and returns/publishes the authoritative result.
 
-Command IDs make a lost-response retry safe: an identical retry replays the receipt, while the same ID with different content is rejected. A real revision conflict clears the rejected optimistic overlay and refetches runtime state. Task start, worktree ensure, and destructive worktree cleanup wait for the relevant queue to flush so side effects cannot overtake persistence.
+Command IDs make a lost-response retry safe: an identical retry replays the receipt, while the same ID with different content is rejected. A real revision conflict clears the rejected optimistic overlay and refetches runtime state. The browser flushes pending board commands before submitting managed lifecycle intent so those effects cannot overtake prior edits; the lifecycle service then coordinates its own board transitions and resource effects.
 
 ### Applying authoritative project state
 
@@ -258,6 +258,7 @@ Different state lives in different places on purpose.
 | lifecycle command receipts | project `lifecycle-operations.json` | retries and recovery must not duplicate managed task effects |
 | structured execution ownership | project `execution-ownership.json` | exact Claude/Codex owner generation, handoff, and interaction receipts survive restart |
 | git metadata | streamed project metadata | it is refreshed by runtime policy instead of browser polling |
+| shared UI preferences | state-home `ui-preferences.json` | remembered layout preferences are shared across browser and desktop clients; current navigation stays local |
 | runtime diagnostics | state-home `diagnostics/` instances and bundles | recorder journals and captures remain private and separate from product state |
 
 ### State directory layout
@@ -267,14 +268,15 @@ Persistent runtime state lives under `~/.quarterdeck/` in the user's home direct
 ```
 ~/.quarterdeck/
 ├── config.json                          # global runtime config
+├── ui-preferences.json                  # shared remembered UI preferences
 ├── worktrees/                           # task worktree checkouts
 │   └── <task-id>/
 │       └── <repo-name>/                 # isolated git worktree for the task
 ├── diagnostics/                         # private runtime journals, descriptors, and bundles
 ├── managed-processes/                   # protected exact process-ownership records
-├── trashed-task-patches/                # saved patches from deleted tasks
+├── trashed-task-patches/                # legacy Trash recovery patches
 └── projects/                            # per-project persistent state
-    ├── index.json                       # maps project ids to repo paths
+    ├── index.json                       # project identities, paths, and organization
     └── <project-id>/
         ├── board.json                   # columns, cards, prompts, settings
         ├── config.json                  # project shortcuts and defaults
@@ -283,10 +285,10 @@ Persistent runtime state lives under `~/.quarterdeck/` in the user's home direct
         ├── state-transaction.json       # pending atomic board/session/revision commit (removed after installation)
         ├── lifecycle-operations.json    # managed lifecycle operation receipts
         ├── execution-ownership.json     # structured-owner handoff and interaction state
-        └── meta.json                    # revision counter and last-updated timestamp
+        └── meta.json                    # revision, board-command receipts, last-updated timestamp
 ```
 
-Project state is keyed by a generated project id stored in `projects/index.json`, with a reverse mapping from repository path to project id. When you run Quarterdeck against `/Users/you/projects/myapp`, the project is indexed by its canonical git root path, and its state lands in `~/.quarterdeck/projects/<project-id>/`. Moving or recloning a repo changes the path identity unless the project index/state is migrated.
+Project state is keyed by a generated project ID stored in `projects/index.json`, with a reverse mapping from its canonical project path. Git projects resolve to a repository root; folder projects retain their folder root. State lands in `~/.quarterdeck/projects/<project-id>/`. Use the explicit Locate/relocation flow to preserve the project ID and saved history after moving a project; opening another path does not itself prove that it is the same project. See [project management](./project-management.md). Soft Trash retains the registered task worktree; patches in the layout above support legacy recovery, not a complete archive of current tasks.
 
 ## Design Rules
 
@@ -301,8 +303,9 @@ These are the architectural rules that are most important to preserve.
 
 Detailed invariants for the highest-risk state paths live in:
 
-- [`conventions/runtime-state.md`](./conventions/runtime-state.md) for durable board ownership, command receipts, authoritative hydration, projections, notifications, indicators, and automatic titles; and
-- [`conventions/session-lifecycle.md`](./conventions/session-lifecycle.md) for stop/resume/recovery, reconciliation, PTY identity, terminal restore, native hooks, input semantics, and launch boundaries.
+- [`conventions/runtime-state.md`](./conventions/runtime-state.md) for durable board ownership, command receipts, authoritative hydration, projections, notifications, indicators, and automatic titles;
+- [`conventions/session-lifecycle.md`](./conventions/session-lifecycle.md) for stop/resume/recovery, reconciliation, PTY identity, terminal restore, native hooks, input semantics, and launch boundaries; and
+- [`conventions/structured-execution.md`](./conventions/structured-execution.md) for exclusive provider ownership and exact-session handoff.
 
 Choose validation through [`testing.md`](./testing.md); the architecture map identifies the owner, and the testing strategy identifies the smallest layer that proves its invariant.
 

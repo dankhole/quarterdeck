@@ -1,8 +1,10 @@
 # Unified Quarterdeck installation plan
 
+> Frozen historical snapshot archived on 2026-10-19. This document preserves the original design or candidate evidence, including superseded proposals and status at the time. Use the [current desktop guide](../desktop.md), [release runbook](../desktop-release.md), and [current acceptance gates](../desktop-validation.md) for development and release decisions.
+
 Make Quarterdeck one installed product with desktop and browser launch modes. On supported Macs, `npm install -g quarterdeck` installs the command and the app, and `npm run link` builds and installs the current checkout through the same installer. The Dock icon and command open the same permanent app. npm owns published updates; local development uses the linked checkout.
 
-This is a design and implementation handoff, dated 2026-10-19. It does not describe shipped behavior. It replaces the installation and updater proposals in the earlier [macOS desktop plan](./macos-desktop-plan.md); the current [desktop architecture](./desktop.md), runtime ownership, and storage contracts remain the implementation baseline. Execution status belongs in the primary checkout's Chit list, not in a second Markdown task tracker.
+This is a design and implementation handoff, dated 2026-10-19. It does not describe shipped behavior. It replaces the installation and updater proposals in the earlier [macOS desktop plan](./macos-desktop-plan.md); the current [desktop architecture](../desktop.md), runtime ownership, and storage contracts remain the implementation baseline. Execution status belongs in the primary checkout's Chit list, not in a second Markdown task tracker.
 
 ## Product behavior
 
@@ -108,7 +110,7 @@ New releases have one supported installed ownership model. Signed download asset
 
 ## Release coordination
 
-Revise [RELEASE_WORKFLOW.md](../RELEASE_WORKFLOW.md), the [desktop runbook](./desktop-release.md), and workflow code together. Once unified installation ships, required desktop artifacts cannot be bypassed by disabling the desktop release variable.
+Revise [RELEASE_WORKFLOW.md](../../RELEASE_WORKFLOW.md), the [desktop runbook](../desktop-release.md), and workflow code together. Once unified installation ships, required desktop artifacts cannot be bypassed by disabling the desktop release variable.
 
 1. Resolve the immutable version tag and source SHA; verify coordinated manifest versions and changelog content.
 2. Run the required cross-platform release matrix. Build signed/notarized arm64 and x64 apps from the same source; verify artifact identity and complete manifests/checksums. Validate the packed npm artifact carries the same release identity.
@@ -147,7 +149,7 @@ Assign disjoint implementation ownership to installer/launcher and release/updat
 
 ## Verification matrix
 
-Follow [testing.md](./testing.md). Reuse unchanged passing checks and run only the lanes needed for the changed claim.
+Follow [testing.md](../testing.md). Reuse unchanged passing checks and run only the lanes needed for the changed claim.
 
 | Area | Required cases |
 | --- | --- |

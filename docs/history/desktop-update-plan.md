@@ -1,5 +1,7 @@
 # Desktop update discovery and npm handoff
 
+> Frozen historical snapshot archived on 2026-10-19. This document preserves the original design or candidate evidence, including superseded proposals and status at the time. Use the [current desktop guide](../desktop.md), [release runbook](../desktop-release.md), and [current acceptance gates](../desktop-validation.md) for development and release decisions.
+
 Implement explicit app-driven npm updates on top of the shared installer. npm remains the only update authority. This plan is an implementation handoff, not a task tracker or a claim of release validation.
 
 ## User behavior

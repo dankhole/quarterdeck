@@ -1,4 +1,4 @@
-.TH QUARTERDECK 1 "October 2026" "quarterdeck" "User Commands"
+.TH QUARTERDECK 1 "October 19, 2026" "quarterdeck" "User Commands"
 .SH NAME
 quarterdeck \- local orchestration board for coding agents
 .SH SYNOPSIS
@@ -16,6 +16,10 @@ quarterdeck \- local orchestration board for coding agents
 .br
 .B quarterdeck statusline
 .br
+.B quarterdeck desktop
+.RI " " install|status|uninstall
+.RI " " [ options ]
+.br
 .B quarterdeck recover
 .RI [ --confirm-stopped ]
 .br
@@ -28,22 +32,29 @@ quarterdeck \- local orchestration board for coding agents
 .RI " " [ options ]
 .SH DESCRIPTION
 .B quarterdeck
-opens the installed desktop app on supported local graphical Macs, or starts the local runtime and browser UI elsewhere. When launched inside a Git repository, it opens that repository's indexed workspace. When launched outside Git, it starts without an active workspace or uses an indexed project.
+opens the installed desktop app on supported local graphical Macs, or starts
+the local runtime and browser UI elsewhere. When launched inside a Git
+repository, it opens that repository's indexed workspace. When launched
+outside Git, it starts without an active workspace or uses an indexed project.
 .SH OPTIONS
 .TP
 .B --browser
-Open browser mode explicitly. Runtime options and headless environments also select this mode.
+Open browser mode explicitly. Runtime options and headless environments also
+select this mode.
+Launch-mode flags cannot be combined with subcommands.
 .TP
 .B --desktop
 Validate the installed macOS app and request native launch.
 Cannot be combined with browser-runtime flags or subcommands.
-A supported global npm installation installs the matching app; launch never downloads it.
+A supported global npm installation installs the matching app; launch never
+downloads it.
 .TP
 .B --host <ip>
 Bind the runtime to an IP address. The default is 127.0.0.1.
 .TP
 .B --port <number|auto>
-Bind to a port from 1 through 65535, or select an available port automatically.
+Bind to a port from 1 through 65535, or select an available port
+automatically.
 .TP
 .B --no-open
 Do not open the browser automatically.
@@ -52,7 +63,8 @@ Do not open the browser automatically.
 Disable integrations that launch or interact with host-native UI.
 .TP
 .B --skip-shutdown-cleanup
-Skip graceful shutdown cleanup, including session marking and orphan-process cleanup. Intended for controlled testing and recovery only.
+Skip graceful shutdown cleanup, including session marking and orphan-process
+cleanup. Intended for controlled testing and recovery only.
 .TP
 .B -h, --help
 Show help text and exit.
@@ -65,18 +77,24 @@ Show the version and exit.
 Install the matching published macOS app without launching it,
 or explicitly import a local app candidate.
 Native self-updates are disabled for npm-managed copies.
-Replacement uses a temporary backup and journal. Quit the running app and retry; installation never kills sessions.
-Use --replace-owner explicitly when changing the owning checkout or npm prefix.
+Replacement uses a temporary backup and journal. Quit the running app and
+retry; installation never kills sessions.
+Use --replace-owner explicitly when changing the owning checkout or npm
+prefix.
 .TP
 .B desktop status [--json]
 Report app, npm owner, and incomplete or mismatched installation state.
-With --json, print one JSON object and exit unsuccessfully unless the pair is ready with no pending work.
+With --json, print one JSON object and exit unsuccessfully unless the pair is
+ready with no pending work.
 .TP
 .B desktop uninstall
-Remove the owned app before npm uninstall. Preserve projects, sessions, and runtime data.
+Remove the owned app before npm uninstall. Preserve projects, sessions, and
+runtime data.
 .TP
 .B hooks ingest [payload]
-Ingest an agent hook event into a running Quarterdeck instance. The payload may be supplied as an argument or on standard input. Hook adapters can also provide structured fields with options including
+Ingest an agent hook event into a running Quarterdeck instance. The payload
+may be supplied as an argument or on standard input. Hook adapters can also
+provide structured fields with options including
 .BR --source ,
 .BR --activity-text ,
 .BR --tool-name ,
@@ -95,28 +113,35 @@ and
 .B hooks notify [payload]
 Best-effort variant of
 .BR "hooks ingest" .
-It accepts the same hook fields and does not fail the calling agent when delivery is unavailable.
+It accepts the same hook fields and does not fail the calling agent when
+delivery is unavailable.
 .TP
 .B statusline
-Read Claude Code status JSON from standard input and render the Quarterdeck statusline.
+Read Claude Code status JSON from standard input and render the Quarterdeck
+statusline.
 .TP
 .B recover [--confirm-stopped]
-Inspect saved process evidence after an unconfirmed shutdown. Stop any remaining
+Inspect saved process evidence after an unconfirmed shutdown. Stop any
+remaining
 agents or detached background commands before passing
 .BR --confirm-stopped .
 Confirmation permits recovery of the inspected prior history on this boot;
-it does not prove detached commands exited. A live runtime, live saved process,
-or unreadable evidence blocks recovery. Saved projects, task work, and sessions
+it does not prove detached commands exited. A live runtime, live saved
+process,
+or unreadable evidence blocks recovery. Saved projects, task work, and
+sessions
 are preserved. No processes are killed. Reopen Quarterdeck after confirmation.
 .TP
 .B backup create
-Create a manual snapshot of Quarterdeck state.
+Create a manual snapshot of Quarterdeck state. The Quarterdeck runtime must
+not be running.
 .TP
 .B backup list
 List available state backups.
 .TP
 .B backup restore [backup]
-Restore a named backup directory, an explicit backup path, or the most recent backup when omitted. The Quarterdeck server must not be running.
+Restore a named backup directory, an explicit backup path, or the most recent
+backup when omitted. The Quarterdeck server must not be running.
 .TP
 .B diagnostics list
 List active and recently retained runtime instances.
@@ -132,7 +157,8 @@ to request a fresh metadata-only browser snapshot and
 to return exit status 5 when an error-severity finding exists.
 .TP
 .B diagnostics capture
-Write a canonical local bundle containing the correlated JSONL timeline, findings, bounded snapshots, and a hashed manifest. Use
+Write a canonical local bundle containing the correlated JSONL timeline,
+findings, bounded snapshots, and a hashed manifest. Use
 .B --output
 to select a new output directory.
 .TP
@@ -142,16 +168,23 @@ Watch bounded records for a limited duration. Use
 for one JSON object per line.
 .TP
 .B diagnostics record
-Start, inspect, or stop an automatically expiring deep-recording window. Recording can be scoped by project, task, and category and is capped at 15 minutes.
+Start, inspect, or stop an automatically expiring deep-recording window.
+Recording can be scoped by project, task, and category and is capped at 15
+minutes.
 .TP
 .B diagnostics mark <message>
 Add a bounded correlation marker to the diagnostic timeline.
 .PP
-Diagnostic selection commands accept options for a specific runtime instance and scoped project, task, session, operation, source, level, event, and time range. Use each subcommand's
+Diagnostic selection commands accept options for a specific runtime instance
+and scoped project, task, session, operation, source, level, event, and time
+range. Use each subcommand's
 .B --help
 for the complete option set.
 .PP
-The lightweight metadata-only flight recorder starts automatically. Deep recording remains content-safe and does not enable terminal transcripts or Git diffs. Bundles are private local directories and are never uploaded automatically.
+The lightweight metadata-only flight recorder starts automatically. Deep
+recording remains content-safe and does not enable terminal transcripts or Git
+diffs. Bundles are private local directories and are never uploaded
+automatically.
 .SH EXAMPLES
 .TP
 Open Quarterdeck in the default launch mode:

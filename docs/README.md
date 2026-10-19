@@ -1,88 +1,53 @@
 # Documentation
 
-## Using Quarterdeck
+Start with the guide for the work in front of you. Current guides describe the product as implemented; Git history and PRs explain ordinary changes. [Documentation policy](maintenance.md#documentation-lifecycle) defines what merits a durable note.
 
-- [Quick start](../README.md): requirements, npm installation, launch modes, and updates.
-- [User guide](./usage.md): agent setup, optional configuration, everyday workflow, and troubleshooting.
-- [Desktop guide](./desktop.md#using-the-app): macOS installation, window behavior, updates, and recovery.
-- [Worktree setup](./worktree-setup.md): ignored-file copying and project setup scripts.
-- [Changelog](../CHANGELOG.md): user-facing release notes.
+## Use Quarterdeck
 
-## Engineering docs
+- [Quick start](../README.md): requirements, npm installation, desktop/browser modes, and updates.
+- [User guide](usage.md): agent setup, configuration, everyday workflow, and troubleshooting.
+- [Desktop guide](desktop.md#using-the-app): installation, window behavior, updates, and recovery.
+- [Desktop environment](desktop-environment.md): executable discovery and optional shell import.
+- [Worktree setup](worktree-setup.md): ignored-file copying and project setup scripts.
+- [Project management](project-management.md): naming, unavailable folders, and relocation.
+- [GitHub Releases](https://github.com/dankhole/quarterdeck/releases): generated release notes.
 
-For work on Quarterdeck itself, use this split:
+## Develop and diagnose
 
-- `README.md` explains the product, local setup, and everyday usage.
-- `DEVELOPMENT.md` is the human-facing developer guide for local commands, workflow, and repo orientation.
-- `docs/` holds stable onboarding and architecture references for humans.
-- `AGENTS.md` is the canonical repo-owned shared agent-instructions file. `CLAUDE.md` is only a Claude Code compatibility shim that imports it.
-- Superseded implementation plans and investigation context belong in tracked `docs/history/`, not in the active docs map. Completed decision records that still constrain active, unimplemented work remain here until that downstream work lands.
+- [Development](../DEVELOPMENT.md): dependencies, builds, linking, local workflow, and debugging.
+- [Architecture](architecture.md): system map, ownership, and source navigation.
+- [Testing](testing.md): select the smallest check that establishes the changed behavior.
+- [Agent Lab](agent-functional-testing.md): isolated browser/desktop functional testing and evidence.
+- [Diagnostics](diagnostics.md): recorder, privacy, and ownership; [commands](../DEVELOPMENT.md#unified-diagnostics).
+- [Agent instructions](../AGENTS.md): compact shared rules and routing; `CLAUDE.md` imports them.
 
-If you are new to the codebase, read these in order:
+## Maintain a subsystem
 
-1. [`../README.md`](../README.md) for the product overview and local setup.
-2. [`architecture.md`](./architecture.md) for the system map, runtime model, and key file guide.
-3. [`testing.md`](./testing.md) for proportionate validation and testing-layer selection.
-4. [`conventions/architecture-guardrails.md`](./conventions/architecture-guardrails.md) for reusable rules on adding clever features without letting optimization define the architecture.
+| Area | Current reference |
+| --- | --- |
+| Architecture and performance policy | [Architecture guardrails](conventions/architecture-guardrails.md) |
+| React components and hooks | [Web UI](conventions/web-ui.md), [hooks and domains](conventions/frontend-hooks.md) |
+| Navigation and layout | [UI layout](conventions/ui-layout.md) |
+| Board state and browser hydration | [Runtime state](conventions/runtime-state.md) |
+| Agents, PTYs, Trash, and resume | [Session lifecycle](conventions/session-lifecycle.md) |
+| Structured provider execution | [Structured execution](conventions/structured-execution.md) |
+| Files, diffs, and conflict editing | [Files/review contract](files-review-surface-plan.md) |
+| Language servers | [LSP contract and deferred scope](lsp-code-navigation-plan.md) |
+| Provider-specific constraints | [Pi support](pi-first-class-support-plan.md), [Claude rendering](claude-terminal-rendering-plan.md) |
+| Native shell and process ownership | [Desktop architecture](desktop.md), [environment resolution](desktop-environment.md) |
 
-For test selection, start with [`testing.md`](./testing.md). For live-instance diagnostics, use [`../DEVELOPMENT.md#unified-diagnostics`](../DEVELOPMENT.md#unified-diagnostics). The stable architecture and privacy boundary is in [`diagnostics.md`](./diagnostics.md). When the testing strategy calls for isolated browser, terminal, Git, Files, lifecycle, or visual validation, use [`agent-functional-testing.md`](./agent-functional-testing.md).
+Some contract filenames retain their original `-plan` suffix for existing references. Their opening status identifies implemented behavior and deferred scope; they are not parallel task trackers.
 
-If you only need the current refactor state, start with:
+## Release and platform acceptance
 
-1. The local `docs/qDeck.yaml` in the primary checkout for the active backlog (gitignored; unavailable in public clones).
-2. The convention or architecture doc linked from the todo item you are actually picking up.
+- [Release workflow](../RELEASE_WORKFLOW.md): versioning, immutable tags, generated notes, npm publication, and verification.
+- [Desktop release](desktop-release.md): signing, packaging, coordinated publication, and upgrades.
+- [Desktop acceptance](desktop-validation.md): current release gates and links to candidate evidence.
+- [Windows acceptance](windows-compatibility-todo.md): remaining support gates; [native validation](windows-native-smoke.md) and [support audit](windows-support-audit.md).
+- [Security](../SECURITY.md): reporting and supported security boundary.
 
-## Refactor Docs Map
+## Planning and history
 
-Use this map when you are planning or evaluating refactor work.
+The active backlog is the local, gitignored `docs/qDeck.yaml` in the primary checkout. Use `chit --file <primary-checkout>/docs/qDeck.yaml read`; do not create a worktree copy. It is not part of a public clone. [Repository maintenance](maintenance.md), the [provider watchlist](compatibility-watchlist.md), and [upstream review](upstream-sync.md) cover ongoing maintenance decisions.
 
-### Live planning and prioritization
-
-- `docs/qDeck.yaml`: local Chit source of truth for the active engineering backlog, including currently tracked refactor work. Read from the primary checkout with `chit --file docs/qDeck.yaml read`; worktrees must use that same file with an explicit path. It is gitignored, not a public documentation link. The original Markdown is retained in [`todo.md`](./todo.md) as a migration snapshot.
-- [`reviews/README.md`](./reviews/README.md): whole-repository module inventory, consolidated findings, and evidence-backed review reports.
-- [`pi-first-class-support-plan.md`](./pi-first-class-support-plan.md): current Pi compatibility, lifecycle, recovery, platform, and version-advance contract.
-- [`claude-terminal-rendering-plan.md`](./claude-terminal-rendering-plan.md): Claude fullscreen-only launch contract, terminal geometry, and historical dogfood evidence.
-- [`lsp-code-navigation-plan.md`](./lsp-code-navigation-plan.md): plan for bring-your-own language server code navigation in the Files editor.
-- [`macos-desktop-plan.md`](./macos-desktop-plan.md): delivery plan for a polished macOS application sharing the runtime and UI with browser mode.
-
-### Live architecture and implementation guidance
-
-- [`architecture.md`](./architecture.md): system-wide architecture overview.
-- [`desktop.md`](./desktop.md): macOS shell, shared runtime admission, process custody, browser authentication, and native ownership boundaries.
-- [`desktop-release.md`](./desktop-release.md): native packaging, signing, coordinated publication, and update procedure.
-- [`desktop-validation.md`](./desktop-validation.md): executed candidate evidence and remaining platform/distribution/daily-use gates.
-- [`diagnostics.md`](./diagnostics.md): stable unified diagnostics contract, privacy boundary, ownership, and validation entry points.
-- [`testing.md`](./testing.md): canonical validation-selection policy, command scopes, and heavy-lane criteria.
-- [`agent-functional-testing.md`](./agent-functional-testing.md): disposable Quarterdeck lab, deterministic fake agent, browser UI driving, visual artifacts, and failure evidence.
-- [`windows-support-audit.md`](./windows-support-audit.md): completed Windows remediation audit, verified compatibility boundaries, and remaining native acceptance evidence.
-- [`windows-compatibility-todo.md`](./windows-compatibility-todo.md): completed remediation ledger and the two remaining release-acceptance gates.
-- [`windows-native-smoke.md`](./windows-native-smoke.md): required CI coverage, reproducible native commands, and real-provider acceptance matrix.
-- [`conventions/frontend-hooks.md`](./conventions/frontend-hooks.md): domain-module extraction pattern for frontend hooks and services.
-- [`conventions/web-ui.md`](./conventions/web-ui.md): frontend conventions and hooks architecture guidance.
-- [`conventions/ui-layout.md`](./conventions/ui-layout.md): UI region names, shell layout ownership, and main-view/sidebar rules.
-- [`conventions/runtime-state.md`](./conventions/runtime-state.md): durable board ownership, command receipts, authoritative browser hydration, runtime projections, notifications, and task-indicator semantics.
-- [`conventions/session-lifecycle.md`](./conventions/session-lifecycle.md): task-session stop/resume/recovery, reconciliation, PTY and restore identity, provider hooks, input semantics, and launch boundaries.
-- [`conventions/structured-execution.md`](./conventions/structured-execution.md): stable single-writer and exact-provider-identity rules for structured/non-PTY execution and handoff.
-- [`conventions/architecture-guardrails.md`](./conventions/architecture-guardrails.md): reusable design rules for preventing optimization-shaped architecture.
-
-### Maintenance references
-
-- [`maintenance.md`](./maintenance.md): recurring upstream-review, documentation-lifecycle, and provider-compatibility routines.
-- [`compatibility-watchlist.md`](./compatibility-watchlist.md): upstream provider capabilities that are not yet actionable local backlog work.
-- [`upstream-sync.md`](./upstream-sync.md): living review tracker for ideas and fixes evaluated from the diverged `cline/kanban` upstream.
-- [`../RELEASE_WORKFLOW.md`](../RELEASE_WORKFLOW.md): version, changelog, validation, tag, and publish process.
-- [`../SECURITY.md`](../SECURITY.md): vulnerability reporting and supported security boundary.
-
-### Forensic history
-
-- [`implementation-log.md`](./implementation-log.md): current detailed implementation history.
-- [`history/`](./history): frozen historical records — version-scoped implementation logs and changelogs from earlier milestones.
-- [`history/agent-diagnostics-plan.md`](./history/agent-diagnostics-plan.md): exhaustive completed diagnostics implementation plan and migration decisions.
-- [`history/pi-first-class-support-plan.md`](./history/pi-first-class-support-plan.md): completed Pi first-class support implementation plan and acceptance design.
-- [`history/task-state-system-stale.md`](./history/task-state-system-stale.md): superseded task/session state explanation, retained only for forensic context.
-
-`docs/archive/` contains imported legacy planning and research material that predates the current documentation map. Treat it as frozen forensic context and do not route normal work there. New superseded records belong in `docs/history/`; migrate legacy archive material only when a focused cleanup can preserve its links and provenance.
-
-This `docs/` folder should stand on its own for normal onboarding. A new engineer should not need archived handoffs or historical plans to understand the current architecture.
-
-When adding new engineering docs, prefer putting stable explanations here and linking them from this index.
+PR descriptions and Git history are the normal change record. There is no maintained changelog or implementation diary. The [history index](history/README.md) preserves old release notes, implementation logs, completed plans, and detailed validation receipts. Dated [review reports](reviews/README.md) are audit evidence, not a current backlog. Neither is required onboarding reading.

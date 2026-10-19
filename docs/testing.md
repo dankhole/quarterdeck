@@ -58,7 +58,7 @@ The pre-commit hook runs staged Biome followed by `npm run test:precommit`, whic
 
 - Documentation-only edits skip code checks; changes to the canonical instruction bridge still run `check:agent-instructions`.
 - Web-only and desktop-only edits run their own typecheck and unit suite. Runtime implementation edits run the runtime typecheck and `test:fast`.
-- Test-only edits run the affected existing test files and their lane's typecheck. Deleted tests and changed test helpers fall back to the complete lane.
+- Test-only edits run the affected existing test files and their lane's typecheck. Deleted tests and changed test helpers fall back to the full web/desktop suite or the root fast suite; the root integration suite remains a separate selected check.
 - Shared runtime contracts/configuration/diagnostics, browser-imported runtime helpers, shared tooling, dependency manifests, and unknown inputs take the conservative root, web, and desktop gates. These require independent dependencies in all three package directories.
 
 The hook does not restage working-tree files. Account for its selected checks when choosing manual validation instead of repeating them on an unchanged tree. The selector in `scripts/precommit.mjs` is deliberately conservative; keep its ownership mapping current when adding cross-package imports. CI retains the complete platform matrix.

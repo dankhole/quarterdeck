@@ -1,5 +1,7 @@
 # Whole-repository review
 
+> Historical audit of the baseline below, not current instructions or an active backlog. Findings may have been resolved since this review. Use the [current documentation](../README.md) and primary checkout's local Chit list for today's work; revalidate a finding against current code before acting on it.
+
 Baseline: `fb9a34fbc41fb8464dd5133db066120c24eb866c`. Created 2026-09-26. This is a review of the current application, not a branch diff. The starting worktree was clean.
 
 The map covers all **1217 tracked files** in **29 review modules**. These are review boundaries, not a proposal to reorganize the repository. The [exact file inventory](./module-inventory.json) assigns every baseline file to one primary module. Cross-module callers, callees and tests must still be traced. Root tests are inventoried under M28 but are evidence for every relevant module; colocated tests travel with their feature.

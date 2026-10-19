@@ -1,6 +1,6 @@
 # Windows Support Audit
 
-Last audited: 2026-08-29.
+Implementation audit date: 2026-08-29. This is a dated remediation summary, not a native Windows execution receipt; current test commands and acceptance status belong to the linked guides.
 
 Quarterdeck's Windows code-remediation backlog is complete. Support remains experimental because this audit was implemented and locally validated from macOS: the required native workflow and the real-provider manual matrix still need to pass for the committed tree. The release ledger is [`windows-compatibility-todo.md`](./windows-compatibility-todo.md), and reproducible commands plus acceptance details are in [`windows-native-smoke.md`](./windows-native-smoke.md).
 
@@ -8,7 +8,7 @@ Quarterdeck's Windows code-remediation backlog is complete. Support remains expe
 
 Two complete passes covered dependency installation, build/package scripts, CLI startup and shutdown, environment lookup, executable discovery, shell and host launch, supported-agent adapters, PTY/session lifecycle, terminal restore, startup recovery, process ownership, diagnostics, state persistence, file reads/writes/deletion/locking, worktrees, Git parsing and mutations, server/browser path identity, Agent Lab, unit/integration fixtures, and GitHub Actions. The second pass specifically searched for POSIX-only fixtures, case-sensitive environment assumptions, shell parsing, privileged symlink requirements, path-length and reserved-name failures, line-ending policy, and Windows cleanup races.
 
-## Current assessment
+## Implemented boundaries from the audit
 
 - **Install, build, and packaging:** Root and web lockfiles carry the toolchain's Windows-native optional packages. Build, clean, bootstrap, link, dev, dogfood, Playwright, and Agent Lab launchers use Node filesystem/process APIs and run npm's absolute JavaScript entrypoint through the absolute Node executable; executable chmod is POSIX-only. Agent Lab derives Git's shared metadata directory from bounded `.git`/`commondir` pointers instead of launching bare Git from the checkout. The required job installs from clean lockfiles, builds, starts the packaged CLI, fetches the bundled HTML shell, and shuts it down through the production parent-disconnect path.
 - **Environment and command discovery:** Windows environment lookup and merges are case-insensitive, so duplicate-cased `PATH`, `ComSpec`, `SystemRoot`, HOME/profile, Git, and provider variables do not select stale values. Command discovery recognizes explicit `.cmd`, `.bat`, `.com`, `.exe`, and `.ps1` targets, searches Windows extensions without assuming an extensionless executable, and returns the exact inherited-`PATH` file used by launch owners.

@@ -4,8 +4,6 @@ As-built reference for the browser UI shell: region names, main-view/sidebar sta
 
 Read this before changing main views, sidebar panels, toolbar tabs, or task-detail layout routing.
 
-Last updated: 2026-09-29
-
 ## Region Names
 
 Use these names consistently in specs, code comments, and conversation:
@@ -190,7 +188,7 @@ There is no hidden override layer. If the sidebar auto-collapses, the sidebar hi
 
 Layout state starts fresh at Home + Projects on mount. Persistent panel sizes and other remembered preferences use the runtime-owned UI preference store shared by desktop and browser. Current navigation remains local. Legacy localStorage values seed missing shared preferences once a client connects; they never replace existing shared values or explicit resets.
 
-Relevant `LocalStorageKey` values:
+The storage adapter maps remembered preference keys to the shared store; the enum name does not imply browser-local ownership. Relevant `LocalStorageKey` values:
 
 | Key | Meaning |
 | --- | --- |
@@ -202,7 +200,7 @@ Relevant `LocalStorageKey` values:
 | `GitViewFileTreeRatio` | Git changed-file tree width |
 | `DetailFileBrowserTreePanelRatio` | FilesView tree width |
 
-Legacy `DetailActivePanel` and `DetailLastTaskTab` are still read by migration helpers in `use-card-detail-layout.ts`.
+Legacy `DetailActivePanel` and `DetailLastTaskTab` remain supported by migration helpers in `use-card-detail-layout.ts`. Main-view and sidebar keys are still written, but `loadMainView()` and `loadSidebar()` do not restore navigation on mount. `loadLastSidebarTab()` still seeds the remembered task sidebar, including the old `changes` → `task_column` mapping.
 
 ## Adding A Main View
 
@@ -211,7 +209,7 @@ Legacy `DetailActivePanel` and `DetailLastTaskTab` are still read by migration h
 3. Add a `MainViewButton` in `DetailToolbar`.
 4. Extend `useCardDetailLayout()` auto-coupling only if the new view has special task-selection behavior.
 5. Render the view in `HomeView` for no-task context, in `TaskDetailMainContent` or a task-detail sub-surface for task context, or intentionally support only one context.
-6. Add a localStorage key only for user-visible layout/view state that should persist.
+6. Keep navigation transient. If a new remembered layout preference is needed, add it through the existing shared UI-preference mapping and storage adapter rather than introducing browser-only persistence.
 7. If the view needs repository scope, reuse the existing Git/Files scope and navigation seams before adding another surface-level state owner.
 
 ## Adding A Side Panel
@@ -243,16 +241,6 @@ Legacy `DetailActivePanel` and `DetailLastTaskTab` are still read by migration h
 | Shell terminal | `ShellTerminalPanel` |
 | Create task dialog | `TaskCreateDialog` |
 | Settings dialog | `RuntimeSettingsDialog` |
-
-## Historical Context
-
-The current shell came from a few incremental reworks:
-
-1. A legacy single-tab model used one persisted `DetailActivePanel` value for both side panel and main content.
-2. The dual-selection model split that into `MainViewId` and `SidebarId`.
-3. Files became a scope-aware main view with its own tree/content layout.
-4. Git became a main view with internal Uncommitted and Compare tabs.
-5. Projects and Commit became side panels, with Commit valid in both home and task contexts.
 
 ## Validation
 
