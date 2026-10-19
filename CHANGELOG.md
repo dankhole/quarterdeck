@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Deduplicate equivalent Windows Git and filesystem paths when deleting task workspaces, while preserving genuinely ambiguous workspaces.
+
 - Restore fake-agent task launches in packaged desktop smoke tests after runtime initialization consumes the child marker.
 
 - Keep web builds independent of Electron dependencies while preserving desktop command bridge coverage.
