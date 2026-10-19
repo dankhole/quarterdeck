@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Show when a saved task's chat is not running and offer Resume chat while preserving terminal output.
+
 - Reconnect both terminal sockets after a stream disconnect so resumed and restarted tasks restore correctly, and make Re-sync repair disconnected viewers.
 
 - Avoid false unconfirmed-shutdown warnings on macOS when captured child processes briefly outlive their parents but exit before cleanup finishes.

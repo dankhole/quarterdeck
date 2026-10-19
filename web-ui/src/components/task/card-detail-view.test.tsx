@@ -16,6 +16,10 @@ const { mockAgentTerminalPanel } = vi.hoisted(() => ({
 	mockAgentTerminalPanel: vi.fn((_props: { panelBackgroundColor?: string; terminalBackgroundColor?: string }) => null),
 }));
 
+vi.mock("@/providers/interactions-provider", () => ({
+	useInteractionsContext: () => ({ handleRestartTaskSession: vi.fn() }),
+}));
+
 vi.mock("@/providers/project-provider", () => ({
 	useProjectSyncContext: () => ({ projectGit: null }),
 }));

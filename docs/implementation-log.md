@@ -1,5 +1,13 @@
 # Implementation Log
 
+## 2026-10-19 — Processless Review chat availability
+
+Read-only live diagnostics showed saved Review chats skipped by startup recovery with no owned process. Opening task detail nevertheless attached a terminal viewer and successfully restored an empty snapshot, leaving a blank cursor. The saved conversation identity remained available; viewer restore completion was not proof of provider resume.
+
+Task detail now shows an explicit Resume chat action for authoritative processless summaries, routed through the existing server-owned lifecycle restart intent. Actual pending lifecycle operations show progress instead of another launch action; the durable startup-recovery flag alone cannot strand manual resume. The terminal viewer stays mounted across process exits so retained provider errors remain readable. Review meaning remains unchanged, and unknown summaries do not invent process absence. The presentation and action wiring live in `use-task-terminal-state.ts` and `task-detail-terminal-surface.tsx`.
+
+Validation: 20 focused web hook/component tests and seven existing interaction tests, web typecheck, scoped Biome, and diff checks passed. Isolated fake-provider Agent Lab runs `processless-chat-20261019T150645Z-b0b28d` and `resume-review-20261019T151515Z-b8198d` verified process exit, the explicit resume state alongside retained fatal output, and successful resume with the same conversation ID, a new session instance/live PID, and retained Review meaning. Screenshots were inspected; both labs stopped cleanly with no forbidden host launches. The installed app and live task state were not changed.
+
 ## 2026-10-09 — Terminal recovery after partial socket disconnect
 
 The supplied task screenshot showed a closed terminal stream. Read-only live diagnostics confirmed repeated IO disconnections while control remained attached, followed by a successful targeted provider resume. This points to viewer recovery rather than establishing a provider-launch failure: the socket manager clears restore readiness on IO loss, but the retained control socket never repeats its initial restore handshake.

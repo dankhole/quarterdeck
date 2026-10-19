@@ -1,5 +1,7 @@
 import type { TaskDetailTerminalProps } from "@/components/task/task-detail-screen";
 import { AgentTerminalPanel, ShellTerminalPanel } from "@/components/terminal";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import type { CardDetailViewLayoutState, CardDetailViewTerminalState } from "@/hooks/board/use-card-detail-view";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -26,7 +28,24 @@ export function TaskDetailTerminalSurface({
 	return (
 		<>
 			<div ref={layoutState.mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
-				<div style={{ display: "flex", flex: "1 1 0", minWidth: 0, minHeight: 0 }}>
+				<div className="flex min-h-0 min-w-0 flex-1 flex-col">
+					{terminalState.isSessionProcessless ? (
+						<div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface-1 px-4 py-3">
+							{terminalState.pendingSessionLabel ? (
+								<div role="status" className="flex items-center gap-2 text-sm text-text-secondary">
+									<Spinner size={18} />
+									{terminalState.pendingSessionLabel}
+								</div>
+							) : (
+								<>
+									<p className="text-sm text-text-secondary">Chat is not running</p>
+									<Button variant="primary" onClick={terminalState.onResumeSession}>
+										{sessionSummary?.resumeSessionId ? "Resume chat" : "Restart chat"}
+									</Button>
+								</>
+							)}
+						</div>
+					) : null}
 					<AgentTerminalPanel
 						taskId={selection.card.id}
 						projectId={currentProjectId}

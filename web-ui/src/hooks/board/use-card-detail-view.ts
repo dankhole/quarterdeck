@@ -6,6 +6,7 @@ import {
 	resolveCardDetailBranchPillLabel,
 	resolveCardDetailFileBrowserScope,
 } from "@/hooks/board/card-detail-view";
+import { type TaskTerminalState, useTaskTerminalState } from "@/hooks/board/use-task-terminal-state";
 import { useBranchActions, useFileBrowserData, useScopeContext } from "@/hooks/git";
 import { useBoardContext } from "@/providers/board-provider";
 import { useGitContext } from "@/providers/git-provider";
@@ -71,10 +72,7 @@ export interface CardDetailViewRepositoryState {
 	handleSendToTerminal: (text: string) => Promise<void>;
 }
 
-export interface CardDetailViewTerminalState {
-	onSessionSummary: (projectId: string, summary: RuntimeTaskSessionSummary) => void;
-	isTaskTerminalEnabled: boolean;
-}
+export type CardDetailViewTerminalState = TaskTerminalState;
 
 export interface UseCardDetailViewResult {
 	layout: CardDetailViewLayoutState;
@@ -93,7 +91,8 @@ export function useCardDetailView({
 	skipTaskCheckoutConfirmation,
 	skipHomeCheckoutConfirmation,
 }: UseCardDetailViewInput): UseCardDetailViewResult {
-	const { board, sessions: taskSessions, upsertSession: onSessionSummary, sendTaskSessionInput } = useBoardContext();
+	const { board, sessions: taskSessions, sendTaskSessionInput } = useBoardContext();
+	const terminalState = useTaskTerminalState(selection);
 	const navigation = useSurfaceNavigationContext();
 	const { runGitAction } = useGitContext();
 	const { projectGit } = useProjectSyncContext();
@@ -284,10 +283,6 @@ export function useCardDetailView({
 			handleAddToTerminal,
 			handleSendToTerminal,
 		},
-		terminal: {
-			onSessionSummary,
-			isTaskTerminalEnabled:
-				!selection.card.unstarted && (selection.column.id === "in_progress" || selection.column.id === "review"),
-		},
+		terminal: terminalState,
 	};
 }
