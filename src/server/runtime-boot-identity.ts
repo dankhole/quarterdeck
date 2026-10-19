@@ -13,6 +13,7 @@ export interface RuntimeBootIdentityOptions {
 // Wall-clock boot timestamps cannot prove a reboot after the system clock changes.
 const WINDOWS_BOOT_IDENTITY_SCRIPT = [
 	"$ErrorActionPreference = 'Stop'",
+	"Import-Module ([IO.Path]::Combine($PSHOME,'Modules','Microsoft.PowerShell.Utility','Microsoft.PowerShell.Utility.psd1')) -ErrorAction Stop",
 	"$source = @'",
 	"using System;",
 	"using System.Runtime.InteropServices;",

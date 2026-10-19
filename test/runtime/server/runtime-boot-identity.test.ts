@@ -17,6 +17,11 @@ describe("runtime boot identity", () => {
 		expect(await readRuntimeBootIdentity({ platform: "win32", query })).toBe(`windows:${UUID.toLowerCase()}`);
 		const args = query.mock.calls[0]?.[1] as readonly string[] | undefined;
 		expect(args).toContain("-EncodedCommand");
+		const script = Buffer.from(args?.[6] ?? "", "base64").toString("utf16le");
+		const moduleImport =
+			"Import-Module ([IO.Path]::Combine($PSHOME,'Modules','Microsoft.PowerShell.Utility','Microsoft.PowerShell.Utility.psd1')) -ErrorAction Stop";
+		expect(script).toContain(moduleImport);
+		expect(script.indexOf(moduleImport)).toBeLessThan(script.indexOf("Add-Type -TypeDefinition"));
 	});
 
 	it("keeps unavailable or malformed OS identity unknown", async () => {

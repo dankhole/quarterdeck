@@ -150,6 +150,9 @@ describe("project discovery integration", { concurrent: false }, () => {
 			cwd: nonGitPath,
 			homeDir: tempHome,
 			port: secondPort,
+			// Reopening indexed projects includes native ownership/boot probes and
+			// startup backup work; this scenario does not assert startup latency.
+			startupTimeoutMs: process.platform === "win32" ? 20_000 : 10_000,
 		});
 
 		let secondStream: RuntimeStreamClient | null = null;
@@ -194,5 +197,5 @@ describe("project discovery integration", { concurrent: false }, () => {
 			cleanupRoot();
 			cleanupHome();
 		}
-	}, 45_000);
+	}, 60_000);
 });

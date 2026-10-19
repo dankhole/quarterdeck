@@ -176,6 +176,7 @@ export async function startQuarterdeckServer(input: {
 	port: number;
 	extraArgs?: string[];
 	extraEnv?: NodeJS.ProcessEnv;
+	startupTimeoutMs?: number;
 }): Promise<{
 	runtimeUrl: string;
 	browserHeaders: Readonly<Record<string, string>>;
@@ -238,7 +239,7 @@ export async function startQuarterdeckServer(input: {
 		}
 	};
 	try {
-		const { runtimeUrl } = await waitForProcessStart(child);
+		const { runtimeUrl } = await waitForProcessStart(child, input.startupTimeoutMs);
 		const browserHeaders = await createFixtureBrowserHeaders(runtimeUrl, stateHome);
 		return {
 			runtimeUrl,

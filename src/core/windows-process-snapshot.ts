@@ -10,6 +10,8 @@ const WINDOWS_PROCESS_SNAPSHOT_TIMEOUT_MS = 10_000;
 
 export const WINDOWS_PROCESS_SNAPSHOT_SCRIPT = [
 	"$ErrorActionPreference = 'Stop'",
+	"Import-Module ([IO.Path]::Combine($PSHOME,'Modules','Microsoft.PowerShell.Utility','Microsoft.PowerShell.Utility.psd1')) -ErrorAction Stop",
+	"Import-Module ([IO.Path]::Combine($PSHOME,'Modules','CimCmdlets','CimCmdlets.psd1')) -ErrorAction Stop",
 	"$serializedPids = [Environment]::GetEnvironmentVariable('QUARTERDECK_PROCESS_IDENTITY_PIDS', 'Process')",
 	"$requestedPids = if ([string]::IsNullOrWhiteSpace($serializedPids)) { @() } else { @(ConvertFrom-Json -InputObject $serializedPids) }",
 	"$requested = @{}",
