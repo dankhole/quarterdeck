@@ -547,7 +547,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 		);
 		const longTrackedPath = join(projectPath, longTrackedRelativePath);
 		let stopServer: (() => Promise<void>) | null = null;
-		let crashServer: (() => Promise<void>) | null = null;
+		let phase = "fixture setup";
 		let orphanOwner: ChildProcess | null = null;
 		let unrelatedAgent: ChildProcess | null = null;
 		let managedOrphanPid: number | null = null;
@@ -602,6 +602,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				QUARTERDECK_WINDOWS_TSX_LOADER: resolveTsxLoaderImportSpecifier(),
 			};
 			const port = await getAvailablePort();
+			phase = "initial runtime startup";
 			const server = await startQuarterdeckServer({
 				cwd: projectPath,
 				homeDir: tempHome,
@@ -609,7 +610,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				extraEnv: serverEnvironment,
 			});
 			stopServer = server.stop;
-			crashServer = server.crash;
+			phase = "runtime API and ConPTY checks";
 
 			const runtimeUrl = new URL(server.runtimeUrl);
 			const baseUrl = runtimeUrl.origin;
@@ -995,6 +996,14 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				deleteWorktreeResponse.payload.state.board.columns.flatMap((column) => column.cards).map((card) => card.id),
 			).not.toContain(worktreeTaskId);
 
+			// Release this runtime's custody cleanly. The abandoned tree below has its
+			// own killed owner; crashing this runtime would correctly block admission
+			// before startup can exercise the exact managed-process cleanup.
+			phase = "graceful runtime shutdown";
+			await stopServer();
+			stopServer = null;
+
+			phase = "managed-orphan fixture setup";
 			const orphanProbeRoot = join(tempHome, "managed orphan probe");
 			const orphanOwnerScript = join(orphanProbeRoot, "owner.cjs");
 			const orphanPidPath = join(orphanProbeRoot, "managed.pid");
@@ -1050,10 +1059,8 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			orphanOwner = null;
 			expect(isPidAlive(managedOrphanPid)).toBe(true);
 			expect(isPidAlive(unrelatedAgent.pid)).toBe(true);
-			await crashServer();
-			crashServer = null;
-			stopServer = null;
 
+			phase = "managed-orphan cleanup restart";
 			const cleanupServer = await startQuarterdeckServer({
 				cwd: projectPath,
 				homeDir: tempHome,
@@ -1063,12 +1070,13 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				}),
 			});
 			stopServer = cleanupServer.stop;
+			phase = "managed-orphan cleanup assertions";
 			await waitUntil(() => !isPidAlive(managedOrphanPid ?? 0), "exact managed orphan process-tree cleanup", 20_000);
 			expect(isPidAlive(unrelatedAgent.pid)).toBe(true);
 			expect(existsSync(managedOrphanRecord?.path ?? "")).toBe(false);
 		} catch (error) {
 			testFailed = true;
-			primaryError = error;
+			primaryError = new Error(`Native Windows smoke failed during ${phase}.`, { cause: error });
 		} finally {
 			await stopServer?.().catch((error: unknown) => cleanupErrors.push(error));
 			await forceStopProcess(orphanOwner).catch((error: unknown) => cleanupErrors.push(error));

@@ -33,7 +33,7 @@ That command fails immediately off Windows. It runs the packaged CLI smoke plus 
 - source CLI startup with isolated state/project data and a project/state path containing spaces;
 - a real ConPTY task session with an exact multiline prompt, Windows CR input, provider-hook transition, forced same-size row-nudge redraw, control/IO disconnect, reconnect, authoritative viewport/geometry restore, and clean stop;
 - a real `cmd.exe` shell session executing a persisted project shortcut;
-- protected launch-scoped process records and DACLs, direct runtime/root parentage, clean record retirement, and startup cleanup of an exact abandoned `codex.exe` tree while an unregistered Claude/Codex/Pi-looking process remains alive;
+- protected launch-scoped process records and DACLs, direct runtime/root parentage, clean record retirement, and, following clean runtime shutdown, startup cleanup of an exact `codex.exe` tree abandoned by a separate probe owner while an unregistered Claude/Codex/Pi-looking process remains alive;
 - generated hook/status-line execution through `cmd.exe`, including working-directory and `PATH` `powershell.exe` decoys, a copied `node.exe` under a metacharacter-heavy path, and byte-for-byte argv/stdin/stdout checks for spaces, multiline values, carriage returns, `%NAME%`, `!`, `^`, `&`, `|`, and parentheses;
 - task-worktree create/delete, task-local copies of an ignored directory and setup file selected through `.worktreeinclude`, and checkout of a tracked path longer than 260 characters;
 - Git/files API fidelity for tracked and untracked leading-space names plus a case-only rename on the native case-insensitive filesystem;
@@ -47,7 +47,7 @@ Use a normal non-administrator Windows account, synthetic repositories, and a de
 
 1. Availability/version probing, a new task, prompt delivery, ordinary completion, a question or approval response, explicit stop, exact resume, explicit restart, and runtime restart recovery.
 2. Task-terminal resize, repeated same-size redraw, panel detach/reattach, browser refresh, and control/IO reconnect preserve a usable provider TUI and the final requested dimensions.
-3. A deliberately terminated Quarterdeck owner leaves its registered provider tree recoverable by the next startup without touching an unrelated provider-looking process.
+3. Deliberately terminating a Quarterdeck owner blocks ordinary startup while its prior process custody is unconfirmed. Inspect with `quarterdeck recover`, stop remaining agents and background commands, then run `quarterdeck recover --confirm-stopped` and reopen. Confirmation must refuse live saved process evidence and leave unrelated provider-looking processes untouched.
 4. Open in the installed IDE and open-folder actions reach the exact selected path; closing the parent console or wrapper allows diagnostics and session state to finalize before exit.
 5. A diagnostic bundle exported beneath both the default and a custom state/output root cannot be read by a second ordinary local account.
 
