@@ -122,6 +122,13 @@ export async function ensurePrivateDirectory(path: string, options: EnsurePrivat
 	await ensurePrivateDirectories([path], options);
 }
 
+async function completeDirectoryOperations(operations: Promise<unknown>[]): Promise<void> {
+	const results = await Promise.allSettled(operations);
+	for (const result of results) {
+		if (result.status === "rejected") throw result.reason;
+	}
+}
+
 /**
  * Installs one exact protected DACL for all requested Windows directories.
  * POSIX platforms retain an owner-only mode contract.
@@ -132,9 +139,13 @@ export async function ensurePrivateDirectories(
 ): Promise<void> {
 	const uniquePaths = [...new Set(paths)];
 	if (uniquePaths.length === 0) return;
-	await Promise.all(uniquePaths.map(async (path) => await mkdir(path, { recursive: true, mode: 0o700 })));
+	// Callers can recover or remove failed storage as soon as this returns.
+	// A rejected sibling must not leave recursive creation or chmod in flight.
+	await completeDirectoryOperations(
+		uniquePaths.map(async (path) => await mkdir(path, { recursive: true, mode: 0o700 })),
+	);
 	if ((options.platform ?? process.platform) !== "win32") {
-		await Promise.all(uniquePaths.map(async (path) => await chmod(path, 0o700)));
+		await completeDirectoryOperations(uniquePaths.map(async (path) => await chmod(path, 0o700)));
 		return;
 	}
 
