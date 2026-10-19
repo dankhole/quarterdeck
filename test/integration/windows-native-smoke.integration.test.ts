@@ -755,13 +755,17 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			});
 
 			const taskId = "windows-native-task";
+			const worktreeTaskId = "windows-native-worktree";
 			const taskPrompt =
 				"Wait for native Windows smoke input [agent-lab:idle]\r\nPreserve this exact multiline prompt.";
-			const taskBoard = createReviewBoard(taskId, taskPrompt);
-			const taskCard = taskBoard.columns.flatMap((column) => column.cards)[0];
-			if (!taskCard) throw new Error("Missing native Windows task fixture.");
+			const taskBoard = createReviewBoard(taskId, taskPrompt, worktreeTaskId);
+			const cards = taskBoard.columns.flatMap((column) => column.cards);
+			const taskCard = cards.find((card) => card.id === taskId);
+			const worktreeCard = cards.find((card) => card.id === worktreeTaskId);
+			if (!taskCard || !worktreeCard) throw new Error("Missing native Windows task fixture.");
 			taskCard.agentId = "codex";
 			taskCard.useWorktree = false;
+			worktreeCard.useWorktree = true;
 			const stateResponse = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl,
 				headers: server.browserHeaders,
@@ -790,7 +794,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				procedure: "project.ensureWorktree",
 				type: "mutation",
 				projectId,
-				payload: { taskId, baseRef: "main" },
+				payload: { taskId: worktreeTaskId, baseRef: "main" },
 			});
 			expect(worktreeResponse.status).toBe(200);
 			expect(worktreeResponse.payload.ok).toBe(true);
@@ -946,16 +950,50 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				realpathSync.native(projectPath).toLowerCase(),
 			);
 
-			const deleteWorktreeResponse = await requestJson<RuntimeWorktreeDeleteResponse>({
+			// The legacy endpoint preserves Trash work. Only the lifecycle's explicit
+			// permanent-delete intent may remove this separate, already-trashed task.
+			const archiveWorktreeResponse = await requestJson<RuntimeWorktreeDeleteResponse>({
 				baseUrl,
 				headers: server.browserHeaders,
 				procedure: "project.deleteWorktree",
 				type: "mutation",
 				projectId,
-				payload: { taskId },
+				payload: { taskId: worktreeTaskId },
 			});
-			expect(deleteWorktreeResponse.payload).toMatchObject({ ok: true, removed: true });
+			expect(archiveWorktreeResponse.status).toBe(200);
+			expect(archiveWorktreeResponse.payload).toMatchObject({ ok: true, removed: false });
+			expect(readFileSync(join(mirroredIgnoredPath, "sentinel.txt"), "utf8")).toBe("copied setup directory\n");
+			const beforeDeleteState = await requestJson<RuntimeProjectStateResponse>({
+				baseUrl,
+				headers: server.browserHeaders,
+				procedure: "project.getState",
+				type: "query",
+				projectId,
+			});
+			expect(beforeDeleteState.status).toBe(200);
+			const deleteWorktreeResponse = await requestJson<RuntimeTaskLifecycleResult>({
+				baseUrl,
+				headers: server.browserHeaders,
+				procedure: "runtime.executeTaskLifecycle",
+				type: "mutation",
+				projectId,
+				payload: {
+					kind: "delete",
+					operationId: "delete-native-windows-worktree",
+					taskId: worktreeTaskId,
+					taskCreatedAt: worktreeCard.createdAt,
+					expectedRevision: beforeDeleteState.payload.revision,
+				},
+			});
+			expect(deleteWorktreeResponse.status).toBe(200);
+			expect(deleteWorktreeResponse.payload).toMatchObject({
+				ok: true,
+				operation: { status: "completed", outcomeCode: "completed" },
+			});
 			expect(existsSync(worktreeResponse.payload.path)).toBe(false);
+			expect(
+				deleteWorktreeResponse.payload.state.board.columns.flatMap((column) => column.cards).map((card) => card.id),
+			).not.toContain(worktreeTaskId);
 
 			const orphanProbeRoot = join(tempHome, "managed orphan probe");
 			const orphanOwnerScript = join(orphanProbeRoot, "owner.cjs");

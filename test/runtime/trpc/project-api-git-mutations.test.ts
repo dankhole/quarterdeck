@@ -613,14 +613,14 @@ describe("createProjectApi deleteWorktree", () => {
 		worktreeMocks.archiveTaskWorktreeForTrash.mockReset();
 	});
 
-	it("delegates to the trash-safe worktree archive", async () => {
-		worktreeMocks.archiveTaskWorktreeForTrash.mockResolvedValue({ ok: true });
+	it("preserves the legacy Trash response without reporting permanent removal", async () => {
+		worktreeMocks.archiveTaskWorktreeForTrash.mockResolvedValue({ ok: true, removed: false });
 
 		const api = createProjectApi(createProjectDeps());
 
 		const result = await api.deleteWorktree(defaultScope, { taskId: "task-1" });
 
-		expect(result.ok).toBe(true);
+		expect(result).toEqual({ ok: true, removed: false });
 		expect(worktreeMocks.archiveTaskWorktreeForTrash).toHaveBeenCalledWith({
 			repoPath: "/tmp/repo",
 			taskId: "task-1",

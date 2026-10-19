@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { DesktopLabFixture } from "../../scripts/agent-lab/desktop-fixture";
 import { prepareDesktopSessionRecovery } from "../../scripts/agent-lab/desktop-session-recovery";
+import { buildSupervisorEnvironment } from "../../scripts/agent-lab/environment";
 import { acquireRuntimeOwnership, discoverRuntimeOwner } from "../../src/server/runtime-ownership";
 
 const roots: string[] = [];
@@ -30,13 +31,16 @@ async function fixture(): Promise<DesktopLabFixture> {
 	return {
 		config,
 		configPath: join(tempRoot, "config.json"),
-		environment: {
-			HOME: home,
-			USERPROFILE: home,
-			...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-			PATH: process.env.PATH ?? "",
-			QUARTERDECK_STATE_HOME: stateHome,
-		},
+		// The seed acquires real host identity in its own process. Use the lab's
+		// case-insensitive Windows system allowlist and isolated temp directory.
+		environment: Object.fromEntries(
+			Object.entries({
+				...buildSupervisorEnvironment(process.env, tempRoot, { mode: "fake" }),
+				HOME: home,
+				USERPROFILE: home,
+				QUARTERDECK_STATE_HOME: stateHome,
+			}).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+		),
 		manifestPath: join(tempRoot, "manifest.json"),
 		forbiddenHostLaunchLogPath: join(tempRoot, "forbidden.log"),
 		keepTemp: false,

@@ -239,6 +239,40 @@ describe("agent-lab browser cache", () => {
 });
 
 describe("agent-lab environment", () => {
+	it("preserves Windows system variables from a copied mixed-case supervisor environment", () => {
+		const originalPlatform = process.platform;
+		try {
+			Object.defineProperty(process, "platform", { value: "win32" });
+			const environment = buildSupervisorEnvironment(
+				{
+					Path: "C:\\Windows\\System32",
+					SYSTEMROOT: "C:\\Windows",
+					windir: "C:\\Windows",
+					COMSPEC: "C:\\Windows\\System32\\cmd.exe",
+					Pathext: ".COM;.EXE;.BAT;.CMD",
+					TEMP: "C:\\Users\\host\\Temp",
+					OPENAI_API_KEY: "must-not-leak",
+					QUARTERDECK_STATE_HOME: "C:\\Users\\host\\state",
+				},
+				"C:\\synthetic\\lab",
+				{ mode: "fake" },
+			);
+			expect(environment).toEqual({
+				PATH: "C:\\Windows\\System32",
+				SystemRoot: "C:\\Windows",
+				WINDIR: "C:\\Windows",
+				ComSpec: "C:\\Windows\\System32\\cmd.exe",
+				PATHEXT: ".COM;.EXE;.BAT;.CMD",
+				TMPDIR: "C:\\synthetic\\lab",
+				TEMP: "C:\\synthetic\\lab",
+				TMP: "C:\\synthetic\\lab",
+				NO_COLOR: "1",
+			});
+		} finally {
+			Object.defineProperty(process, "platform", { value: originalPlatform });
+		}
+	});
+
 	it("forwards only the small host allowlist and injects isolated paths", () => {
 		const environment = buildAgentLabEnvironment(
 			{
