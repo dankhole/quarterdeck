@@ -8,9 +8,13 @@ import { buildSupervisorEnvironment } from "../../scripts/agent-lab/environment"
 import { acquireRuntimeOwnership, discoverRuntimeOwner } from "../../src/server/runtime-ownership";
 
 const roots: string[] = [];
+const seedOperations: Promise<unknown>[] = [];
 afterEach(async () => {
+	// A test deadline does not cancel its async body. Drain child/stdio closure
+	// before removing state that a timed-out seed could still be writing.
+	await Promise.allSettled(seedOperations.splice(0));
 	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
-});
+}, 45_000);
 
 async function fixture(): Promise<DesktopLabFixture> {
 	const tempRoot = await mkdtemp(join(tmpdir(), "quarterdeck-desktop-recovery-seed-"));
@@ -74,7 +78,9 @@ async function fixture(): Promise<DesktopLabFixture> {
 describe("packaged session recovery ownership fixture", () => {
 	it("leaves a same-boot dirty unreleased generation belonging to an exited child", async () => {
 		const test = await fixture();
-		const seed = await prepareDesktopSessionRecovery(test);
+		const operation = prepareDesktopSessionRecovery(test);
+		seedOperations.push(operation);
+		const seed = await operation;
 		const owner = await discoverRuntimeOwner(test.config.stateHome);
 		expect(owner).toMatchObject({ claim: seed.claim, released: false, processState: "dead" });
 		expect(seed.claim.process.pid).not.toBe(process.pid);
@@ -87,7 +93,7 @@ describe("packaged session recovery ownership fixture", () => {
 		});
 		expect(await readdir(join(test.config.stateHome, "runtime-ownership", "released"))).toEqual([]);
 		expect(await readdir(join(test.config.stateHome, "runtime-ownership", "successors"))).toEqual([]);
-	});
+	}, 60_000);
 
 	it("refuses an existing admitted owner before attempting synthetic seed takeover", async () => {
 		const test = await fixture();

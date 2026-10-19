@@ -2,11 +2,11 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import type { Page } from "playwright-core";
 import { type RuntimeOwnershipClaim, runtimeOwnershipClaimSchema } from "../../src/core/api/runtime-management.js";
 import { runtimeTaskSessionSummarySchema } from "../../src/core/api/task-session.js";
 import { isFileSystemPathWithin } from "../../src/core/path-comparison.js";
+import { terminateProcessForTimeout } from "../../src/core/process-termination.js";
 import { readRuntimeBootIdentity } from "../../src/server/runtime-boot-identity.js";
 import { discoverRuntimeOwner, readPriorRuntimeOwnershipClaims } from "../../src/server/runtime-ownership.js";
 import { readAcknowledgedRuntimeRecoveryBoundary } from "../../src/server/runtime-recovery-acknowledgement.js";
@@ -14,7 +14,6 @@ import type { DesktopLabDriver } from "./desktop-driver";
 import type { DesktopLabFixture } from "./desktop-fixture";
 import { AGENT_LAB_REPO_ROOT, writeJsonAtomic } from "./paths";
 
-const executeFile = promisify(execFile);
 const ERROR_URL = "app://quarterdeck/__desktop/error";
 
 /** Admission is exclusive and runs before any fixture, provider or app access. */
@@ -111,16 +110,41 @@ export async function prepareDesktopSessionRecovery(fixture: DesktopLabFixture):
 		(await discoverRuntimeOwner(home)) !== null
 	)
 		throw new Error("Desktop session recovery refuses a state home outside its new isolated fixture.");
-	const child = await executeFile(
-		process.execPath,
-		["--import", "tsx", join(AGENT_LAB_REPO_ROOT, "scripts/agent-lab/desktop-session-recovery-child.ts")],
-		{
-			cwd: AGENT_LAB_REPO_ROOT,
-			env: { ...fixture.environment, QUARTERDECK_DESKTOP_RECOVERY_SEED_HOME: home },
-			timeout: 15_000,
-			maxBuffer: 16_384,
-		},
-	);
+	// Admission serially probes host, boot and process identity, then applies ACLs.
+	// Terminate the exact tree before its root exits, and await execFile's close
+	// callback so no descendant can retain stdio or race fixture deletion.
+	const startedAt = Date.now();
+	const child = await new Promise<{ stdout: string }>((resolve, reject) => {
+		let timedOut = false;
+		let timeout: NodeJS.Timeout | undefined;
+		const child = execFile(
+			process.execPath,
+			["--import", "tsx", join(AGENT_LAB_REPO_ROOT, "scripts/agent-lab/desktop-session-recovery-child.ts")],
+			{
+				cwd: AGENT_LAB_REPO_ROOT,
+				env: { ...fixture.environment, QUARTERDECK_DESKTOP_RECOVERY_SEED_HOME: home },
+				maxBuffer: 16_384,
+				windowsHide: true,
+			},
+			(error, stdout, stderr) => {
+				clearTimeout(timeout);
+				if (!error && !timedOut) {
+					resolve({ stdout });
+					return;
+				}
+				const phases = stderr.match(/^QUARTERDECK_RECOVERY_SEED_PHASE\|[a-z-]+\|\d+$/gmu) ?? [];
+				reject(
+					new Error(
+						`Desktop recovery seed ${timedOut ? "timed out" : "failed"} after ${Date.now() - startedAt}ms; ${phases.join("; ") || "no child phase reported"}.`,
+					),
+				);
+			},
+		);
+		timeout = setTimeout(() => {
+			timedOut = true;
+			terminateProcessForTimeout(child);
+		}, 30_000);
+	});
 	const claim = runtimeOwnershipClaimSchema.parse(JSON.parse(child.stdout) as unknown);
 	const owner = await discoverRuntimeOwner(home);
 	if (
