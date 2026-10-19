@@ -53,19 +53,24 @@ jobs:
             ].join('\n'),
             process:[
               "$ErrorActionPreference = 'Stop'",
-              "$requested = @(ConvertFrom-Json -InputObject ('[' + $PID + ']'))",
-              "$filter = (($requested | ForEach-Object { 'ProcessId = ' + [int]$_ }) -join ' OR ')",
+              "$serializedPids = '[' + $PID + ']'",
+              "$requestedPids = if ([string]::IsNullOrWhiteSpace($serializedPids)) { @() } else { @(ConvertFrom-Json -InputObject $serializedPids) }",
+              '$requested = @{}',
+              'foreach ($requestedPid in $requestedPids) { $requested[[int]$requestedPid] = $true }',
+              "$filter = (($requested.Keys | ForEach-Object { 'ProcessId = ' + [int]$_ }) -join ' OR ')",
               '$rows = @(Get-CimInstance Win32_Process -Filter $filter)',
               '$valid = $rows.Count -eq 1 -and [int]$rows[0].ProcessId -eq $PID -and $null -ne $rows[0].CreationDate',
               'ConvertTo-Json -InputObject ([pscustomobject]@{count = $rows.Count; valid = [bool]$valid}) -Compress'
             ].join('; ')
           };
           try {
-            for(const [label,env] of [['baseline',base],['system-only-modules',{...base,PSModulePath:join(psHome,'Modules')}]]) {
+            for(const [label,env] of [['explicit-system-imports',base],['inherited-module-path',{...base,PSModulePath:get('PSModulePath')}]]) {
               for(const [probe,script] of Object.entries(scripts)) {
                 const start=Date.now();
                 try {
-                  const out=execFileSync(exe,['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{env,encoding:'utf8',timeout:20000,windowsHide:true});
+                  const modules=probe==='boot'?['Microsoft.PowerShell.Utility']:['Microsoft.PowerShell.Utility','CimCmdlets'];
+                  const imports=label==='explicit-system-imports'?modules.map(name=>"Import-Module ([IO.Path]::Combine($PSHOME,'Modules','"+name+"','"+name+".psd1')) -ErrorAction Stop").join('; ')+';\n':'';
+                  const out=execFileSync(exe,['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',Buffer.from(imports+script,'utf16le').toString('base64')],{env,encoding:'utf8',timeout:20000,windowsHide:true,stdio:['ignore','pipe','pipe']});
                   const result=probe==='boot'?{valid:out.trim().toLowerCase()==='true'}:JSON.parse(out);
                   console.log(JSON.stringify({label,probe,elapsed:Date.now()-start,valid:result.valid===true,...(probe==='process'?{count:result.count}:{} )}));
                 } catch(e) {
