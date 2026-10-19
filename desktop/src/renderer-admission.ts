@@ -7,9 +7,11 @@ import type {
 	Session,
 	WebContents,
 } from "electron";
+import { type ApprovedRendererDocument, isApprovedDocumentSender } from "./renderer-document.js";
 import type { RuntimeSelection } from "./runtime-selection.js";
 
 export { DESKTOP_BOOTSTRAP_CHANNEL } from "./desktop-ipc-channels.js";
+export { isApprovedDocumentSender } from "./renderer-document.js";
 
 import {
 	DESKTOP_ORIGIN,
@@ -30,10 +32,8 @@ export function isBootstrapPayload(payload: unknown): boolean {
 	);
 }
 
-export interface ApprovedRenderer {
+export interface ApprovedRenderer extends ApprovedRendererDocument {
 	contents: WebContents;
-	generation: string | null;
-	documentId?: string | null;
 }
 
 type RendererRequest = Pick<
@@ -90,25 +90,6 @@ export function isBootstrapSender(
 	return (
 		isApprovedDocumentSender(event, renderer, renderer?.generation ?? null) &&
 		Boolean(selection.get() && renderer?.generation === selection.get()?.generation)
-	);
-}
-
-/** Recovery saves/preflight remain available to the surviving document after runtime authority is revoked. */
-export function isApprovedDocumentSender(
-	event: Pick<IpcMainEvent, "sender" | "senderFrame">,
-	renderer: ApprovedRenderer | null,
-	generation: string | null,
-): boolean {
-	return Boolean(
-		renderer &&
-			generation &&
-			renderer.generation === generation &&
-			!renderer.contents.isDestroyed() &&
-			event.sender === renderer.contents &&
-			event.senderFrame === renderer.contents.mainFrame &&
-			event.senderFrame &&
-			isProductPage(event.senderFrame.url) &&
-			renderer.generation === generation,
 	);
 }
 

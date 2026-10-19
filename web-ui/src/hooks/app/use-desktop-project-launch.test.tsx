@@ -12,8 +12,8 @@ import { createFileEditorTab } from "@/hooks/git/file-editor-workspace";
 import { useDesktopFileEditorRecovery } from "@/hooks/git/use-desktop-file-editor-recovery";
 import { DesktopLaunchRequests } from "../../../../desktop/src/desktop-launch-requests";
 import { createDesktopBridge } from "../../../../desktop/src/preload-bridge";
-import type { ApprovedRenderer } from "../../../../desktop/src/renderer-admission";
 import { DesktopRendererCommands } from "../../../../desktop/src/renderer-commands";
+import type { ApprovedRendererDocument } from "../../../../desktop/src/renderer-document";
 import { RuntimeSelection } from "../../../../desktop/src/runtime-selection";
 import type { DesktopCommandAvailability } from "../../../../src/shared/desktop-bridge-contract";
 import type { DesktopLaunchRequest } from "../../../../src/shared/desktop-launch-contract";
@@ -63,13 +63,12 @@ describe("npm project intent across native and renderer readiness", () => {
 		const ipcRenderer = new EventEmitter();
 		const publications: DesktopCommandAvailability[] = [];
 		const contents = {
-			id: 42,
 			mainFrame: { url: "app://quarterdeck/" },
 			getURL: () => "app://quarterdeck/",
 			isDestroyed: () => false,
 			send: (channel: string, payload: unknown) => ipcRenderer.emit(channel, null, payload),
-		} as unknown as ApprovedRenderer["contents"];
-		const renderer: ApprovedRenderer = { contents, generation: "current", documentId: "document-current" };
+		} satisfies ApprovedRendererDocument["contents"];
+		const renderer: ApprovedRendererDocument = { contents, generation: "current", documentId: "document-current" };
 		const selection = new RuntimeSelection();
 		const selected = selection.select({
 			generation: "current",
@@ -77,13 +76,9 @@ describe("npm project intent across native and renderer readiness", () => {
 			clientToken: "a".repeat(43),
 		});
 		let launches: DesktopLaunchRequests | undefined;
-		const commands = new DesktopRendererCommands(
-			ipcMain as unknown as ConstructorParameters<typeof DesktopRendererCommands>[0],
-			() => renderer,
-			selection,
-			5_000,
-			{ onAvailability: () => launches?.deliver() },
-		);
+		const commands = new DesktopRendererCommands(ipcMain, () => renderer, selection, 5_000, {
+			onAvailability: () => launches?.deliver(),
+		});
 		const bridge = createDesktopBridge(
 			{
 				runtimeOrigin: selected.origin,

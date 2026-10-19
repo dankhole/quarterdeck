@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import type { IpcMain, IpcMainEvent } from "electron";
 import {
 	type DesktopAppCommand,
 	type DesktopCommandAvailability,
@@ -25,7 +24,11 @@ import {
 	DESKTOP_PREFLIGHT_REPLY_CHANNEL,
 	DESKTOP_PROJECT_OPEN_CHANNEL,
 } from "./desktop-ipc-channels.js";
-import { type ApprovedRenderer, isApprovedDocumentSender } from "./renderer-admission.js";
+import {
+	type ApprovedRendererDocument,
+	isApprovedDocumentSender,
+	type RendererDocumentEvent,
+} from "./renderer-document.js";
 import type { RuntimeSelection } from "./runtime-selection.js";
 import { isProductPage } from "./security-policy.js";
 
@@ -41,10 +44,15 @@ interface PendingPreflight {
 	finish: (response: DesktopQuitPreflightResponse | null) => void;
 }
 
+interface RendererCommandIpc {
+	on(channel: string, listener: (event: RendererDocumentEvent, payload: unknown) => void): unknown;
+	removeListener(channel: string, listener: (event: RendererDocumentEvent, payload: unknown) => void): unknown;
+}
+
 export class DesktopRendererCommands {
 	private publication: { documentId: string; value: DesktopCommandAvailability } | null = null;
-	private readonly onAvailability: (event: IpcMainEvent, payload: unknown) => void;
-	private readonly onContext: (event: IpcMainEvent, payload: unknown) => void;
+	private readonly onAvailability: (event: RendererDocumentEvent, payload: unknown) => void;
+	private readonly onContext: (event: RendererDocumentEvent, payload: unknown) => void;
 	private pending: PendingPreflight | null = null;
 	private readonly seals = new Map<
 		string,
@@ -52,18 +60,18 @@ export class DesktopRendererCommands {
 			documentId: string;
 			request: DesktopQuitPreflightRequest;
 			deadline: number;
-			contents: ApprovedRenderer["contents"];
+			contents: ApprovedRendererDocument["contents"];
 		}
 	>();
 	private readonly retiredNavigationHolds: {
 		request: DesktopQuitPreflightRequest;
-		contents: ApprovedRenderer["contents"];
+		contents: ApprovedRendererDocument["contents"];
 	}[] = [];
-	private readonly onReply: (event: IpcMainEvent, payload: unknown) => void;
+	private readonly onReply: (event: RendererDocumentEvent, payload: unknown) => void;
 
 	constructor(
-		private readonly ipc: Pick<IpcMain, "on" | "removeListener">,
-		private readonly getRenderer: () => ApprovedRenderer | null,
+		private readonly ipc: RendererCommandIpc,
+		private readonly getRenderer: () => ApprovedRendererDocument | null,
 		private readonly selection: RuntimeSelection,
 		private readonly deadlineMs = 5000,
 		private readonly callbacks: {
@@ -108,7 +116,11 @@ export class DesktopRendererCommands {
 		this.ipc.on(DESKTOP_NOTIFICATION_CONTEXT_CHANNEL, this.onContext);
 	}
 
-	private documentEnvelope(event: IpcMainEvent, payload: unknown, field: string): Record<string, unknown> | null {
+	private documentEnvelope(
+		event: RendererDocumentEvent,
+		payload: unknown,
+		field: string,
+	): Record<string, unknown> | null {
 		if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
 		const envelope = payload as Record<string, unknown>;
 		const renderer = this.getRenderer();

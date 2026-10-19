@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Keep web builds independent of Electron dependencies while preserving desktop command bridge coverage.
+
 - Silence harmless upstream `node-pty` aggregate-initialization warnings during desktop native builds while preserving other compiler diagnostics.
 - Resolve desktop executable folders without loading shell startup files by default, discover common user and nvm installations, and offer explicit login-shell import through Runtime Environment for shell-defined variables.
 
