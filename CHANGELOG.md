@@ -4,6 +4,8 @@
 
 ## [0.12.9]
 
+- Silence harmless upstream `node-pty` aggregate-initialization warnings during desktop native builds while preserving other compiler diagnostics.
+
 - Unify npm and macOS app installation at a stable app path, make plain `npm run link` build and install the paired app, validate CLI/app ownership before launch, and use npm-owned updates with guarded replacement and interruption recovery.
 - Show available desktop updates after startup or an explicit check, with release notes and a confirmed npm update in Terminal that verifies the CLI/app pair after clean shutdown.
 

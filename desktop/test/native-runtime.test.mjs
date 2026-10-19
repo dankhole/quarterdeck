@@ -15,6 +15,7 @@ describe("bundled Node PTY compilation", () => {
 		const runtimePath = "/synthetic/runtime";
 		const nodeBin = join(runtimePath, "bin", "node");
 		const env = {
+			CXXFLAGS: "-O2 -Wall",
 			PATH: "/synthetic/runtime/bin:/toolchain/bin",
 			npm_config_cache: "/synthetic/npm-cache",
 			npm_config_python: "/toolchain/python",
@@ -30,7 +31,12 @@ describe("bundled Node PTY compilation", () => {
 		rebuildRuntimePty({ runtimePath, nodeBin, nodeVersion: "22.22.2", arch: "arm64", env });
 		const options = {
 			cwd: join(runtimePath, "node_modules", "node-pty"),
-			env: { PATH: env.PATH, npm_config_cache: env.npm_config_cache, npm_config_python: env.npm_config_python },
+			env: {
+				CXXFLAGS: "-O2 -Wall -Wno-missing-field-initializers",
+				PATH: env.PATH,
+				npm_config_cache: env.npm_config_cache,
+				npm_config_python: env.npm_config_python,
+			},
 		};
 		expect(run.mock.calls).toEqual([
 			[
@@ -48,6 +54,7 @@ describe("bundled Node PTY compilation", () => {
 			[nodeBin, [join(options.cwd, "scripts", "post-install.js")], options],
 		]);
 		expect(env.npm_config_target).toBe("44.5.1");
+		expect(env.CXXFLAGS).toBe("-O2 -Wall");
 	});
 
 	it("does not run postinstall after a failed native compilation", () => {
@@ -64,5 +71,6 @@ describe("bundled Node PTY compilation", () => {
 			}),
 		).toThrow("Native compilation failed");
 		expect(run).toHaveBeenCalledTimes(1);
+		expect(run.mock.calls[0][2].env.CXXFLAGS).toBe("-Wno-missing-field-initializers");
 	});
 });

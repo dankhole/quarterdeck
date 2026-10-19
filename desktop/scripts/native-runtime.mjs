@@ -8,6 +8,9 @@ const require = createRequire(import.meta.url);
 /** Build the helper's PTY for real Node, independently of npm or Electron's ABI. */
 export function rebuildRuntimePty({ runtimePath, nodeBin, nodeVersion, arch, env }) {
 	const nativeEnv = { ...env };
+	// node-pty uses C-style {0} initialization for macOS kevent structs.
+	// Omitted fields are zero-initialized; silence only this upstream warning.
+	nativeEnv.CXXFLAGS = [nativeEnv.CXXFLAGS, "-Wno-missing-field-initializers"].filter(Boolean).join(" ");
 	// node-gyp reads these legacy/package config values after CLI arguments.
 	// Keep user toolchain choices (such as Python), but own the native target.
 	for (const key of Object.keys(nativeEnv)) {
