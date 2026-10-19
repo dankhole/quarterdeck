@@ -42,12 +42,13 @@ describe("CLI launch policy", () => {
 		expect(resolveLaunchPolicy(plain, host).mode).toBe("runtime");
 		expect(() => resolveLaunchPolicy({ ...plain, desktop: true }, host)).toThrow("macOS 13");
 	});
-	it("never recurses from a desktop runtime helper", () => {
-		expect(resolveLaunchPolicy(plain, { ...mac, desktopHelper: true })).toEqual({
+	it.each(["darwin", "linux", "win32"])("never recurses from a desktop runtime helper on %s", (platform) => {
+		const helper = { ...mac, platform, desktopHelper: true };
+		expect(resolveLaunchPolicy(plain, helper)).toEqual({
 			mode: "runtime",
 			openBrowser: false,
 		});
-		expect(() => resolveLaunchPolicy({ ...plain, desktop: true }, { ...mac, desktopHelper: true })).toThrow("helper");
+		expect(() => resolveLaunchPolicy({ ...plain, desktop: true }, helper)).toThrow("helper");
 	});
 	it("rejects explicit desktop conflicts", () => {
 		expect(() => resolveLaunchPolicy({ ...plain, desktop: true, runtimeFlags: true }, mac)).toThrow(

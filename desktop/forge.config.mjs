@@ -12,6 +12,9 @@ import { copyRuntimeResource } from "./scripts/runtime-resources.mjs";
 import { signingOptionsForFile } from "./scripts/signing-entitlements.mjs";
 
 const desktopPackage = JSON.parse(await readFile(join(desktopRoot, "package.json"), "utf8"));
+const electronChecksums = JSON.parse(
+	await readFile(join(desktopRoot, "node_modules", "electron", "checksums.json"), "utf8"),
+);
 const arch = resolveTargetArch(process.env.QUARTERDECK_DESKTOP_ARCH);
 const runtimePath = stagedRuntimePath(arch);
 
@@ -45,7 +48,9 @@ export default {
 			async ({ buildPath }) => installDesktopNativeAdmission(join(buildPath, "Quarterdeck.app")),
 		],
 		ignore: [/^\/(?!dist(?:\/|$)|package\.json$)/u],
-		download: { cacheRoot: join(desktopRoot, ".cache", "electron") },
+		// Match install-electron's cache and pinned checksums so packaging can reuse
+		// the verified archive without downloading it or a fresh checksum file again.
+		download: { cacheRoot: process.env.electron_config_cache, checksums: electronChecksums },
 		extendInfo: { LSMinimumSystemVersion: desktopPackage.quarterdeckDesktop.minimumMacOSVersion },
 		...(signing
 			? {

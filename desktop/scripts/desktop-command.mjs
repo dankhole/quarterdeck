@@ -22,7 +22,6 @@ const env = {
 	...process.env,
 	QUARTERDECK_DESKTOP_ARCH: values.arch,
 	QUARTERDECK_DESKTOP_RUNTIME_PATH: runtimePath,
-	electron_config_cache: join(desktopRoot, ".cache", "electron"),
 };
 if (command === "start") run(process.execPath, [join(desktopRoot, "node_modules", "electron", "install.js")], { env });
 const targetArguments = command === "start" ? [] : ["--platform=darwin", `--arch=${values.arch}`];

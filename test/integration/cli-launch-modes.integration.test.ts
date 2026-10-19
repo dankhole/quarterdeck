@@ -6,6 +6,31 @@ import { createGitTestEnv } from "../utilities/git-env.js";
 import { resolveIntegrationNodeArgs } from "../utilities/integration-server";
 import { createTempDir } from "../utilities/temp-dir.js";
 
+function expectRejectedLaunch(args: string[], message: string, desktopHelper: boolean): void {
+	const sandbox = createTempDir("quarterdeck-cli-modes-");
+	const stateHome = join(sandbox.path, "state");
+	try {
+		const child = spawnSync(process.execPath, [...resolveIntegrationNodeArgs(), ...args], {
+			cwd: sandbox.path,
+			env: createGitTestEnv({
+				HOME: sandbox.path,
+				USERPROFILE: sandbox.path,
+				QUARTERDECK_STATE_HOME: stateHome,
+				QUARTERDECK_DESKTOP_CHILD: desktopHelper ? "1" : undefined,
+			}),
+			encoding: "utf8",
+			timeout: 10_000,
+		});
+		expect(child.error).toBeUndefined();
+		expect(child.status).toBe(1);
+		expect(child.stderr).toContain(message);
+		expect(existsSync(stateHome)).toBe(false);
+		expect(existsSync(join(sandbox.path, "Library"))).toBe(false);
+	} finally {
+		sandbox.cleanup();
+	}
+}
+
 describe("CLI launch mode routing", () => {
 	it.each([
 		{ args: ["--desktop", "--browser"], message: "cannot be used with option" },
@@ -16,33 +41,12 @@ describe("CLI launch mode routing", () => {
 		{ args: ["desktop", "install", "--desktop"], message: "cannot be combined with subcommands" },
 		{
 			args: ["--desktop"],
-			message:
-				process.platform === "darwin"
-					? "A desktop runtime helper cannot launch another desktop app"
-					: "Desktop mode requires macOS 13",
+			message: "A desktop runtime helper cannot launch another desktop app",
 		},
 	])("rejects $args before installation or runtime startup", ({ args, message }) => {
-		const sandbox = createTempDir("quarterdeck-cli-modes-");
-		const stateHome = join(sandbox.path, "state");
-		try {
-			const child = spawnSync(process.execPath, [...resolveIntegrationNodeArgs(), ...args], {
-				cwd: sandbox.path,
-				env: createGitTestEnv({
-					HOME: sandbox.path,
-					USERPROFILE: sandbox.path,
-					QUARTERDECK_STATE_HOME: stateHome,
-					QUARTERDECK_DESKTOP_CHILD: "1",
-				}),
-				encoding: "utf8",
-				timeout: 10_000,
-			});
-			expect(child.error).toBeUndefined();
-			expect(child.status).toBe(1);
-			expect(child.stderr).toContain(message);
-			expect(existsSync(stateHome)).toBe(false);
-			expect(existsSync(join(sandbox.path, "Library"))).toBe(false);
-		} finally {
-			sandbox.cleanup();
-		}
+		expectRejectedLaunch(args, message, true);
+	});
+	it.skipIf(process.platform === "darwin")("rejects unsupported desktop hosts outside a helper", () => {
+		expectRejectedLaunch(["--desktop"], "Desktop mode requires macOS 13", false);
 	});
 });
