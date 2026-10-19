@@ -88,9 +88,11 @@ Open the workflow in Firefox if desired:
 open -a Firefox "https://github.com/dankhole/quarterdeck/actions/workflows/publish.yml"
 ```
 
-Both triggers share a per-tag concurrency group and resolve one immutable source SHA. The Linux/macOS/Windows matrix validates that exact source, including the packed npm build stamp. Unified releases require matching signed desktop assets; signing cannot be disabled to bypass a failure. See the [desktop release runbook](docs/desktop-release.md) for provisioning and remaining [validation gates](docs/desktop-validation.md).
+Both triggers share a per-tag concurrency group and resolve one immutable source SHA. The Linux/macOS/Windows matrix validates that exact source, including the packed npm build stamp. Browser/CLI releases do not require desktop signing. Set repository variable `QUARTERDECK_DESKTOP_RELEASES=1` only after the desktop acceptance gates pass to include matching signed desktop assets. The default npm install is browser/CLI-only; desktop installation is explicit opt-in. See the [desktop release runbook](docs/desktop-release.md) for provisioning and remaining [validation gates](docs/desktop-validation.md).
 
-The workflow inspects publication state before signing. For a new release, it builds and verifies both native architectures, asks GitHub's [generated release notes API](https://docs.github.com/en/rest/releases/releases#generate-release-notes-content-for-a-release) for notes using the exact tag and resolved source SHA, prepares the complete draft, publishes the GitHub Release, and verifies an anonymous download of every public artifact before npm publication. Draft retries regenerate notes before promotion. A retry of an already-public release preserves its notes, reuses its exact bytes, and skips rebuilding; public assets are immutable.
+With desktop releases enabled, the workflow inspects publication state before signing. For a new release, it builds and verifies both native architectures, asks GitHub's [generated release notes API](https://docs.github.com/en/rest/releases/releases#generate-release-notes-content-for-a-release) for notes using the exact tag and resolved source SHA, prepares the complete draft, publishes the GitHub Release, and verifies an anonymous download of every public artifact before npm publication. Draft retries regenerate notes before promotion. A retry of an already-public release preserves its notes, reuses its exact bytes, and skips rebuilding; public assets are immutable.
+
+With the desktop variable unset, the workflow skips signing and desktop assets, publishes a GitHub Release with generated notes, and publishes the browser/CLI package. Public retries preserve notes and assets; a browser-only release cannot later acquire desktop assets under the same immutable version. Use a new version when enabling desktop distribution.
 
 The npm job validates the version and source stamp. It publishes through OIDC only if the version is absent. An existing version is accepted only when its `gitHead` equals the immutable tag SHA. Stable releases use `latest`; previews specify a prerelease tag so they cannot replace `latest`. Missing or mismatched identity fails closed and requires a new version.
 
@@ -114,7 +116,7 @@ gh release view vX.Y.Z \
   --json tagName,name,url,isPrerelease,publishedAt,targetCommitish
 ```
 
-For a browser-package smoke test, use an isolated prefix and explicitly disable desktop lifecycle installation. A temporary prefix alone does not isolate the per-user app:
+For a browser-package smoke test, use an isolated prefix and keep desktop lifecycle installation disabled (the default). A temporary prefix alone does not isolate the per-user app:
 
 ```bash
 RELEASE_PREFIX="$(mktemp -d)"

@@ -456,7 +456,7 @@ describe("native npm update controller", () => {
 			expect.objectContaining({ detail: expect.stringContaining("External npm is missing.") }),
 		);
 		expect(options.clipboard.writeText).toHaveBeenCalledWith(
-			"npm install --global --prefix '/synthetic/Node'\"'\"'s Space' quarterdeck@0.12.9 --registry https://registry.npmjs.org --foreground-scripts",
+			"QUARTERDECK_INSTALL_MODE=desktop npm install --global --prefix '/synthetic/Node'\"'\"'s Space' quarterdeck@0.12.9 --registry https://registry.npmjs.org --foreground-scripts",
 		);
 	});
 

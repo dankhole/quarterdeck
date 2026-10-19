@@ -1,8 +1,8 @@
 # Desktop release runbook
 
-The macOS app and npm CLI form one release in the [npm release workflow](../RELEASE_WORKFLOW.md). The repository implements packaging, signing, and coordinated publication; the [acceptance gates](./desktop-validation.md) still require provisioned signing, signed distribution, platform execution, and sustained-use evidence before promotion. Workflow implementation is not proof that those gates passed.
+Signed desktop distribution is an optional lane in the [npm release workflow](../RELEASE_WORKFLOW.md). Browser/CLI-only releases remain available while desktop signing is unconfigured. The repository implements packaging, signing, and coordinated publication; the [acceptance gates](./desktop-validation.md) still require provisioned signing, signed distribution, platform execution, and sustained-use evidence before promotion. Workflow implementation is not proof that those gates passed.
 
-Do not publish the unified installation package before the matching signed ARM and Intel assets are publicly downloadable and all acceptance gates pass. npm lifecycle installation depends on those assets. Local unsigned builds remain available for development; their success does not establish signed distribution readiness.
+Keep `QUARTERDECK_DESKTOP_RELEASES` unset for browser/CLI-only releases. Set it to `1` only after the desktop acceptance gates pass; enabled releases require matching signed ARM and Intel assets to be publicly downloadable before npm publication. Explicit desktop lifecycle installation depends on those assets; default npm installation does not. Local unsigned builds remain available for development; their success does not establish signed distribution readiness.
 
 ## Local unsigned candidate
 
@@ -10,7 +10,7 @@ For everyday source-checkout use, run this from the repository root:
 
 ```sh
 npm run link
-quarterdeck
+quarterdeck --desktop
 ```
 
 `npm run link` installs missing or outdated root, web UI, and desktop dependencies from their lockfiles, builds one paired runtime/UI/app, links this checkout, and imports it through the shared installer. Quit the current app before replacement; download/build and verification happen first. The stable app location is `~/Applications/Quarterdeck.app`. This command intentionally adopts the selected checkout as owner. Use `npm run link -- --browser` to opt out, or `npm run desktop:build` to build without installation. `--desktop` remains a compatibility alias for the default link behavior.
@@ -74,9 +74,9 @@ These checks require provisioned credentials and actual signed installations. An
 
 ## Coordinated publication
 
-The desktop lane is mandatory for releases using unified installation. Provision and validate signing before publishing; a repository toggle must not produce a package whose required app is unavailable. Root and desktop versions and lockfiles must agree. Preserve the squash-merge, immutable-tag, and OIDC rules in the main release runbook.
+The desktop lane runs only when repository variable `QUARTERDECK_DESKTOP_RELEASES=1`. Provision and validate signing before enabling it. With the variable unset, publish the browser/CLI package and generated GitHub release notes without desktop assets. Do not disable the lane to repair an already-public desktop release; retries preserve its immutable assets. Root and desktop versions and lockfiles must agree. Preserve the squash-merge, immutable-tag, and OIDC rules in the main release runbook.
 
-The workflow order is:
+With desktop releases enabled, the workflow order is:
 
 1. Resolve the immutable tag SHA and pass the Linux/macOS/Windows matrix, including packed npm identity verification against that source SHA.
 2. Inspect the GitHub Release before building. An already-public release is an immutable retry input: download and validate its original bytes, rather than signing new artifacts under the same names.
@@ -110,7 +110,7 @@ The installer downloads or builds and verifies a replacement before it requests 
 
 Replacement journals its intent and staging allocation, retains the previous app only as a temporary backup, and restores or finalizes interrupted work deterministically. No permanent old-version collection is created. npm and the app cannot update as one transaction: CLI and Dock startup must identify missing owners, changed package slots, identity disagreement, and unfinished replacement before starting a runtime. Report the exact repair flow instead of silently launching a mixed pair.
 
-`quarterdeck desktop status` is read-only. `quarterdeck desktop install` retries or repairs installation; `--replace-owner` explicitly adopts another prefix or checkout. `quarterdeck desktop uninstall` removes the app before `npm uninstall -g quarterdeck`. npm lifecycle hooks may be disabled or fail; `--ignore-scripts` is not evidence that desktop installation succeeded. Browser mode remains usable via `--browser`; `QUARTERDECK_INSTALL_MODE=browser` opts out of automatic app installation. Transient `npx` usage is browser-only and must not acquire desktop ownership.
+`quarterdeck desktop status` is read-only. `quarterdeck desktop install` retries or repairs installation; `--replace-owner` explicitly adopts another prefix or checkout. `quarterdeck desktop uninstall` removes the app before `npm uninstall -g quarterdeck`. npm lifecycle hooks may be disabled or fail; `--ignore-scripts` is not evidence that desktop installation succeeded. Browser mode remains usable via `--browser`; `QUARTERDECK_INSTALL_MODE=desktop` explicitly opts into app installation during global npm install/update; absent or `browser` keeps installation browser/CLI-only. Desktop updates must retain the explicit opt-in so both parts are replaced. A browser-only update leaves any old app untouched, and pair validation blocks mismatched desktop startup until explicit repair. Transient `npx` usage is browser-only and must not acquire desktop ownership.
 
 ## Required installation evidence
 

@@ -143,15 +143,12 @@ const artifactRoot = join(smokeRoot, "artifact");
 const installRoot = join(smokeRoot, "install");
 const projectRoot = join(smokeRoot, "project");
 // A consumer-default install must not inherit the maintainer's script policy,
-// npm user/global config paths, or Node module search/execution overrides.
+// npm configuration, app admission, launch settings, or Node execution overrides.
 const smokeEnv = createPackageSmokeEnvironment(
 	process.env,
 	smokeRoot,
 	values["npm-cache"] === undefined ? undefined : resolve(values["npm-cache"]),
 );
-// Unpublished PR builds have no public release artifact. This named baseline
-// verifies the complete browser/native-PTY product under an explicit install opt-out.
-smokeEnv.QUARTERDECK_INSTALL_MODE = "browser";
 smokeEnv.npm_config_prefix = installRoot;
 let child;
 let retainSmokeRoot = false;
@@ -174,7 +171,7 @@ try {
 	const tarballPath = join(artifactRoot, filename);
 	const tarballSha256 = createHash("sha256").update(readFileSync(tarballPath)).digest("hex");
 	console.log(
-		`Artifact ${filename} SHA-256 ${tarballSha256}; Node ${process.version}; npm ${runNpm(["--version"], repoRoot, smokeEnv, true).trim()}; default isolated npm script policy; explicit browser-only installation baseline.`,
+		`Artifact ${filename} SHA-256 ${tarballSha256}; Node ${process.version}; npm ${runNpm(["--version"], repoRoot, smokeEnv, true).trim()}; default isolated npm script policy and browser/CLI installation mode.`,
 	);
 	runNpm(
 		["install", "--global", "--prefix", installRoot, "--package-lock=false", "--foreground-scripts", tarballPath],

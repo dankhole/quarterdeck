@@ -43,16 +43,6 @@ export function resolveLaunchPolicy(options: LaunchOptions, environment: LaunchE
 		}
 		return { mode: "desktop", openBrowser: false };
 	}
-	if (
-		!environment.desktopHelper &&
-		!options.browser &&
-		!options.runtimeFlags &&
-		!options.noOpen &&
-		supportsDesktopHost(environment) &&
-		environment.graphicalSession
-	) {
-		return { mode: "desktop", openBrowser: false };
-	}
 	return {
 		mode: "runtime",
 		openBrowser:

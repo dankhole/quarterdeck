@@ -46,16 +46,16 @@ describe("source-safe npm lifecycle launcher", () => {
 			const path = join(root, "npm-postinstall.cjs");
 			await writeFile(path, await readFile(new URL("../../npm-postinstall.cjs", import.meta.url)));
 			await writeFile(join(root, "package.json"), JSON.stringify({ name: "quarterdeck", version: "0.0.123" }));
-			const result = spawnSync(process.execPath, [path], { env: { ...process.env, ...globalInstall, CI: "false", QUARTERDECK_INSTALL_MODE: "", HOME: root, QUARTERDECK_STATE_HOME: join(root, "state") }, encoding: "utf8" });
+			const result = spawnSync(process.execPath, [path], { env: { ...process.env, ...globalInstall, CI: "false", QUARTERDECK_INSTALL_MODE: "desktop", HOME: root, QUARTERDECK_STATE_HOME: join(root, "state") }, encoding: "utf8" });
 			expect(result.status).toBe(1);
 			expect(result.stderr).toContain("published lifecycle entrypoint is missing");
-			expect(result.stderr).toContain("npm install -g quarterdeck@0.0.123 --foreground-scripts");
+			expect(result.stderr).toContain("QUARTERDECK_INSTALL_MODE=desktop npm install -g quarterdeck@0.0.123 --foreground-scripts");
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
 	});
 
-	it.skipIf(!supportedMac)("reports exact retry guidance after an actual isolated global npm hook failure", async () => {
+	it.skipIf(!supportedMac).each([undefined, "browser", "desktop"])("uses %s mode in an actual isolated global npm installation", async (installMode) => {
 		const root = await mkdtemp(join(tmpdir(), "quarterdeck-failed-global-npm-"));
 		try {
 			const packageRoot = join(root, "fixture");
@@ -64,7 +64,7 @@ describe("source-safe npm lifecycle launcher", () => {
 			await writeFile(join(packageRoot, "npm-postinstall.cjs"), await readFile(new URL("../../npm-postinstall.cjs", import.meta.url)));
 			await writeFile(join(packageRoot, "dist", "cli.js"), "#!/usr/bin/env node\nconsole.log('synthetic fixture');\n", { mode: 0o755 });
 			await writeFile(join(packageRoot, "package.json"), JSON.stringify({ name: "quarterdeck", version: "0.0.123", bin: { quarterdeck: "dist/cli.js" }, scripts: { postinstall: "node npm-postinstall.cjs" } }));
-			const env = { ...process.env, CI: "false", QUARTERDECK_INSTALL_MODE: "", HOME: root, USERPROFILE: root, QUARTERDECK_STATE_HOME: join(root, "state"), npm_config_cache: join(root, "cache"), npm_config_prefix: prefix, npm_config_userconfig: join(root, "user.npmrc"), npm_config_globalconfig: join(root, "global.npmrc") };
+			const env = { ...process.env, CI: "false", QUARTERDECK_INSTALL_MODE: installMode, HOME: root, USERPROFILE: root, QUARTERDECK_STATE_HOME: join(root, "state"), npm_config_cache: join(root, "cache"), npm_config_prefix: prefix, npm_config_userconfig: join(root, "user.npmrc"), npm_config_globalconfig: join(root, "global.npmrc") };
 			const pinnedNpm = fileURLToPath(new URL("../../.cache/npm-tools/node_modules/npm/bin/npm-cli.js", import.meta.url));
 			const runNpm = (args) => {
 				const invocation = existsSync(pinnedNpm) ? { command: process.execPath, args: [pinnedNpm, ...args] } : resolveNpmCommand(args, { env });
@@ -76,19 +76,30 @@ describe("source-safe npm lifecycle launcher", () => {
 			const artifact = join(root, JSON.parse(packed.stdout)[0].filename);
 			const result = runNpm(["install", "--global", "--prefix", prefix, "--offline", "--package-lock=false", "--foreground-scripts", "--ignore-scripts=false", "--no-audit", "--no-fund", artifact]);
 			expect(result.error).toBeUndefined();
-			expect(result.status).not.toBe(0);
-			expect(result.stderr).toContain("published lifecycle entrypoint is missing");
-			expect(result.stderr).toContain("npm install -g quarterdeck@0.0.123 --foreground-scripts");
+			if (installMode === "desktop") {
+				expect(result.status).not.toBe(0);
+				expect(result.stderr).toContain("published lifecycle entrypoint is missing");
+				expect(result.stderr).toContain("QUARTERDECK_INSTALL_MODE=desktop npm install -g quarterdeck@0.0.123 --foreground-scripts");
+			} else {
+				expect(result.status, result.stderr).toBe(0);
+				expect(result.stdout).toContain("node npm-postinstall.cjs");
+				expect(existsSync(join(root, "Applications"))).toBe(false);
+				expect(existsSync(join(root, "Library"))).toBe(false);
+			}
 			const retention = { package: existsSync(join(prefix, "lib", "node_modules", "quarterdeck", "package.json")), bin: existsSync(join(prefix, "bin", "quarterdeck")) };
-			expect(retention).toEqual({ package: false, bin: false });
+			expect(retention).toEqual({ package: installMode !== "desktop", bin: installMode !== "desktop" });
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
 	});
 
 	it("distinguishes direct npm link from global install without requiring dependencies", () => {
-		expect(launcher.shouldRunPostinstall(globalInstall, "darwin", "arm64", "25.0", false)).toBe(true);
-		expect(launcher.shouldRunPostinstall({ ...globalInstall, npm_command: "link" }, "darwin", "arm64", "25.0", false)).toBe(false);
-		expect(launcher.shouldRunPostinstall(globalInstall, "darwin", "arm64", "25.0", true)).toBe(false);
+		const desktopInstall = { ...globalInstall, QUARTERDECK_INSTALL_MODE: "desktop" };
+		expect(launcher.shouldRunPostinstall(desktopInstall, "darwin", "arm64", "25.0", false)).toBe(true);
+		expect(launcher.shouldRunPostinstall({ ...desktopInstall, npm_command: "link" }, "darwin", "arm64", "25.0", false)).toBe(false);
+		expect(launcher.shouldRunPostinstall(desktopInstall, "darwin", "arm64", "25.0", true)).toBe(false);
+	});
+	it.each([undefined, "", "browser", "unknown"])("keeps %s mode browser-only without requiring dependencies", (installMode) => {
+		expect(launcher.shouldRunPostinstall({ ...globalInstall, QUARTERDECK_INSTALL_MODE: installMode }, "darwin", "arm64", "25.0", false)).toBe(false);
 	});
 });

@@ -25,4 +25,24 @@ describe("package smoke download cache", () => {
 		});
 		expect(base.HOME).toBe("/host");
 	});
+	it("isolates runtime launch, native admission, provider context, and desktop install mode", () => {
+		const base = {
+			PATH: "/external/bin",
+			QUARTERDECK_INSTALLATION_LOCK_FD: "99",
+			QUARTERDECK_INSTALLATION_LOCK_PATH: "/active/installation/admission.lock",
+			QUARTERDECK_DESKTOP_CHILD: "1",
+			QUARTERDECK_RUNTIME_HOST: "127.0.0.1",
+			QUARTERDECK_RUNTIME_PORT: "12345",
+			QUARTERDECK_HOOK_PROJECT_ID: "synthetic-project",
+			QUARTERDECK_HOOK_TASK_ID: "synthetic-task",
+			QUARTERDECK_HOOK_SESSION_INSTANCE_ID: "synthetic-session",
+			QUARTERDECK_INSTALL_MODE: "desktop",
+			quarterdeck_state_home: "/other-active-state",
+		};
+		const env = createPackageSmokeEnvironment(base, "/fixture");
+		expect(Object.keys(env).filter((key) => /^QUARTERDECK_/iu.test(key))).toEqual(["QUARTERDECK_STATE_HOME"]);
+		expect(env.QUARTERDECK_STATE_HOME).toBe(join("/fixture", "state", ".quarterdeck"));
+		expect(env.PATH).toBe(base.PATH);
+		expect(base.QUARTERDECK_INSTALLATION_LOCK_FD).toBe("99");
+	});
 });

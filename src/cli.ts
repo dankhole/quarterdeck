@@ -320,12 +320,9 @@ function createProgram(invocationArgs: string[]): Command {
 		.name("quarterdeck")
 		.description("Local orchestration board for coding agents.")
 		.version(QUARTERDECK_VERSION, "-v, --version", "Output the version number")
-		.addOption(new Option("--browser", "Open browser mode.").conflicts("desktop"))
+		.addOption(new Option("--browser", "Open browser mode (the default).").conflicts("desktop"))
 		.addOption(
-			new Option(
-				"--desktop",
-				"Open the installed macOS app (the default in supported local graphical sessions).",
-			).conflicts([
+			new Option("--desktop", "Open the installed macOS app.").conflicts([
 				"browser",
 				"host",
 				"port",

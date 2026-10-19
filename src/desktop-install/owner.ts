@@ -115,7 +115,7 @@ export async function validateDesktopInstallationOwner(owner: DesktopInstallatio
 	} catch {
 		throw new DesktopInstallationError(
 			"installation_changed",
-			`The owning npm CLI is missing or changed. Repair it with npm install --global --prefix ${JSON.stringify(owner.prefix)} quarterdeck, or run npm run link in the owning checkout.`,
+			`The owning npm CLI is missing or changed. Repair it with QUARTERDECK_INSTALL_MODE=desktop npm install --global --prefix ${JSON.stringify(owner.prefix)} quarterdeck, or run npm run link in the owning checkout.`,
 		);
 	}
 }

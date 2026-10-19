@@ -20,6 +20,8 @@ import {
 	NpmUpdateChannel,
 	npmUpdateArguments,
 	npmUpdateRequestSchema,
+	npmUpdateRetryCommand,
+	updateEnvironment,
 } from "../src/npm-update-worker.js";
 
 let suite: string;
@@ -159,7 +161,7 @@ async function fixture(mode = "success", overrides: NodeJS.ProcessEnv = {}) {
 		`#!/usr/bin/env node
 import {readFileSync,writeFileSync} from 'node:fs';
 if (process.argv[2] === '--version') { console.log('11.19.1'); process.exit(0); }
-writeFileSync(process.env.TEST_TRACE, JSON.stringify({args:process.argv.slice(2),PATH:process.env.PATH,ignoreScripts:process.env.npm_config_ignore_scripts,lockFd:process.env.QUARTERDECK_INSTALLATION_LOCK_FD,nodeOptions:process.env.NODE_OPTIONS,secret:process.env.TEST_SECRET}));
+writeFileSync(process.env.TEST_TRACE, JSON.stringify({args:process.argv.slice(2),PATH:process.env.PATH,installMode:process.env.QUARTERDECK_INSTALL_MODE,ignoreScripts:process.env.npm_config_ignore_scripts,lockFd:process.env.QUARTERDECK_INSTALLATION_LOCK_FD,nodeOptions:process.env.NODE_OPTIONS,secret:process.env.TEST_SECRET}));
 console.log('synthetic npm lifecycle output');
 if (process.env.TEST_MODE === 'failure') process.exit(17);
 const result=JSON.parse(readFileSync(process.env.TEST_STATUS,'utf8'));
@@ -188,6 +190,7 @@ writeFileSync(process.env.TEST_STATUS,JSON.stringify(result));
 		TEST_SECRET: "synthetic-in-memory-only",
 		QUARTERDECK_INSTALLATION_LOCK_FD: "99",
 		QUARTERDECK_INSTALLATION_LOCK_PATH: "/synthetic/lock",
+		QUARTERDECK_INSTALL_MODE: "browser",
 		NODE_OPTIONS: "--require /synthetic/injection.js",
 		...overrides,
 	};
@@ -313,6 +316,18 @@ async function rawWorker(f: Awaited<ReturnType<typeof fixture>>) {
 // Node executable. Intel CI can exceed Vitest's 5s default before the protocol assertions;
 // allow the same 15s integration budget as root tests, preserving worker deadlines and assertions.
 describe("private npm update handoff", { timeout: 15_000 }, () => {
+	it.each([undefined, "browser", "desktop"])(
+		"explicitly updates the desktop pair with inherited %s install mode",
+		(installMode) => {
+			expect(
+				updateEnvironment({ QUARTERDECK_INSTALL_MODE: installMode }, "/usr/local/bin/node")
+					.QUARTERDECK_INSTALL_MODE,
+			).toBe("desktop");
+			expect(npmUpdateRetryCommand("/synthetic/prefix", "1.1.0")).toBe(
+				"QUARTERDECK_INSTALL_MODE=desktop npm 'install' '--global' '--prefix' '/synthetic/prefix' '--registry=https://registry.npmjs.org/' '--foreground-scripts' 'quarterdeck@1.1.0'",
+			);
+		},
+	);
 	it("acknowledges readiness, waits for parent exit, updates the exact owning prefix, and removes private files", async () => {
 		const f = await fixture();
 		const handoff = await f.prepare();
@@ -328,6 +343,7 @@ describe("private npm update handoff", { timeout: 15_000 }, () => {
 		});
 		const trace = JSON.parse(await readFile(f.tracePath, "utf8"));
 		expect(trace.args).toEqual(npmUpdateArguments(f.installation.owner.prefix, "1.1.0"));
+		expect(trace.installMode).toBe("desktop");
 		expect(trace.PATH.split(":")[0]).toBe(dirname(await realpath(process.execPath)));
 		expect(trace.PATH).not.toContain(f.installation.appPath);
 		expect(trace.PATH).not.toContain(f.installation.owner.packageRoot);

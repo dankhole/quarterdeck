@@ -6,7 +6,7 @@ import { mergeProcessEnvironment } from "./process-environment.mjs";
 export function createPackageSmokeEnvironment(base, smokeRoot, cacheDirectory) {
 	const env = { ...base };
 	for (const key of Object.keys(env)) {
-		if (/^(npm_config_(?:cache|ignore_scripts|allow_scripts|dangerously_allow_all_scripts|strict_allow_scripts|userconfig|globalconfig)|NODE_PATH|NODE_OPTIONS|ELECTRON_RUN_AS_NODE)$/iu.test(key)) {
+		if (/^QUARTERDECK_/iu.test(key) || /^(npm_config_(?:cache|ignore_scripts|allow_scripts|dangerously_allow_all_scripts|strict_allow_scripts|userconfig|globalconfig)|NODE_PATH|NODE_OPTIONS|ELECTRON_RUN_AS_NODE)$/iu.test(key)) {
 			delete env[key];
 		}
 	}

@@ -9,7 +9,7 @@ function shouldRunPostinstall(env, platform, arch, osRelease, sourceCheckout) {
 		env.npm_config_global === "true" &&
 		["install", "update"].includes(env.npm_command) &&
 		env.npm_lifecycle_event === "postinstall" &&
-		env.QUARTERDECK_INSTALL_MODE !== "browser" &&
+		env.QUARTERDECK_INSTALL_MODE === "desktop" &&
 		(!env.CI || ["0", "false"].includes(env.CI.toLowerCase())) &&
 		!sourceCheckout &&
 		platform === "darwin" &&
@@ -23,7 +23,7 @@ module.exports = { shouldRunPostinstall };
 if (require.main === module && shouldRunPostinstall(process.env, process.platform, process.arch, release(), existsSync(join(__dirname, ".git")))) {
 	const entrypoint = join(__dirname, "dist", "npm-install.js");
 	const version = require("./package.json").version;
-	const retry = `npm install -g quarterdeck@${version} --foreground-scripts`;
+	const retry = `QUARTERDECK_INSTALL_MODE=desktop npm install -g quarterdeck@${version} --foreground-scripts`;
 	if (!existsSync(entrypoint)) {
 		console.error(`[quarterdeck-install] The published lifecycle entrypoint is missing. Retry ${retry}; report a packaging error if it persists.`);
 		process.exitCode = 1;

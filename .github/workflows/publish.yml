@@ -25,6 +25,7 @@ jobs:
       tag: ${{ steps.resolve_tag.outputs.tag }}
       sha: ${{ steps.resolve_tag.outputs.sha }}
       desktop_public: ${{ steps.desktop_state.outputs.public }}
+      desktop_enabled: ${{ vars.QUARTERDECK_DESKTOP_RELEASES == '1' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -52,7 +53,7 @@ jobs:
         with:
           node-version: "22.23.2"
           package-manager-cache: false
-      - name: Inspect immutable public desktop release before rebuilding
+      - name: Inspect immutable public release before rebuilding
         id: desktop_state
         env:
           GH_TOKEN: ${{ github.token }}
@@ -78,16 +79,16 @@ jobs:
 
   desktop:
     needs: [resolve, test]
-    if: ${{ needs.resolve.outputs.desktop_public != 'true' }}
+    if: ${{ needs.resolve.outputs.desktop_enabled == 'true' && needs.resolve.outputs.desktop_public != 'true' }}
     uses: ./.github/workflows/desktop-release.yml
     with:
       source_sha: ${{ needs.resolve.outputs.sha }}
     secrets: inherit
 
   desktop-assets:
-    name: Publish and anonymously verify complete desktop assets
+    name: Publish release and verify optional signed desktop assets
     needs: [resolve, test, desktop]
-    if: ${{ always() && needs.resolve.result == 'success' && needs.test.result == 'success' && (needs.desktop.result == 'success' || (needs.resolve.outputs.desktop_public == 'true' && needs.desktop.result == 'skipped')) }}
+    if: ${{ always() && needs.resolve.result == 'success' && needs.test.result == 'success' && (needs.desktop.result == 'success' || (needs.desktop.result == 'skipped' && (needs.resolve.outputs.desktop_enabled != 'true' || needs.resolve.outputs.desktop_public == 'true'))) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -101,24 +102,27 @@ jobs:
           node-version: "22.23.2"
           package-manager-cache: false
       - uses: actions/download-artifact@v8
-        if: ${{ needs.resolve.outputs.desktop_public != 'true' }}
+        if: ${{ needs.resolve.outputs.desktop_enabled == 'true' && needs.resolve.outputs.desktop_public != 'true' }}
         with:
           pattern: desktop-signed-*
           path: desktop-release-assets
           merge-multiple: true
-      - name: Publish fresh assets or reuse immutable public bytes
+      - name: Publish generated notes and optional verified assets, or reuse the public release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.resolve.outputs.tag }}
           SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
+          DESKTOP_ENABLED: ${{ needs.resolve.outputs.desktop_enabled }}
         run: |
           version=$(node -p "require('./package.json').version")
           desktop_version=$(node -p "require('./desktop/package.json').version")
           [[ "$TAG" == "v$version" && "$version" == "$desktop_version" ]] || { echo "Product tag/version mismatch"; exit 1; }
-          node .github/scripts/desktop-publication.mjs publish --repository "$GITHUB_REPOSITORY" --version "$version" --sha "$SOURCE_SHA" --dir desktop-release-assets --public-dir desktop-public-verification
+          desktop_args=()
+          if [[ "$DESKTOP_ENABLED" == "true" ]]; then desktop_args+=(--desktop); fi
+          node .github/scripts/desktop-publication.mjs publish --repository "$GITHUB_REPOSITORY" --version "$version" --sha "$SOURCE_SHA" --dir desktop-release-assets --public-dir desktop-public-verification "${desktop_args[@]}"
 
   publish:
-    name: Publish npm after public desktop availability
+    name: Publish npm after GitHub release verification
     needs: [resolve, test, desktop-assets]
     if: ${{ always() && needs.resolve.result == 'success' && needs.test.result == 'success' && needs.desktop-assets.result == 'success' }}
     runs-on: ubuntu-latest

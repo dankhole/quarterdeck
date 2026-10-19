@@ -32,7 +32,7 @@ export type NpmInstallPolicy = { action: "skip" } | { action: "install" } | { ac
 export function resolveNpmInstallPolicy(context: NpmInstallContext): NpmInstallPolicy {
 	const { env } = context;
 	if (
-		env.QUARTERDECK_INSTALL_MODE === "browser" ||
+		env.QUARTERDECK_INSTALL_MODE !== "desktop" ||
 		env.npm_config_global !== "true" ||
 		!["install", "update"].includes(env.npm_command ?? "") ||
 		env.npm_lifecycle_event !== "postinstall" ||
@@ -60,7 +60,7 @@ export function resolveNpmInstallPolicy(context: NpmInstallContext): NpmInstallP
 }
 
 export function npmInstallRecoveryMessage(version: string, reason: string): string {
-	return `${reason}\nRetry: npm install -g quarterdeck@${version} --foreground-scripts\nIf the CLI remains available: quarterdeck desktop install\nFor an owning-prefix conflict, first install with QUARTERDECK_INSTALL_MODE=browser, then use that prefix's CLI with desktop install --replace-owner.`;
+	return `${reason}\nRetry: QUARTERDECK_INSTALL_MODE=desktop npm install -g quarterdeck@${version} --foreground-scripts\nIf the CLI remains available: quarterdeck desktop install\nFor an owning-prefix conflict, first install with QUARTERDECK_INSTALL_MODE=browser, then use that prefix's CLI with desktop install --replace-owner.`;
 }
 
 export async function installNpmDesktopPair(version: string, owner: DesktopInstallationOwner): Promise<void> {

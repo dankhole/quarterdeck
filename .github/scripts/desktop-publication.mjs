@@ -111,16 +111,24 @@ export async function verifyPublicRelease(options, directory, download = downloa
 }
 
 /** Public releases are immutable. Only an unpublished draft permits upload retries. */
-export async function publishDesktopRelease(
+export async function publishRelease(
 	options,
 	{ execute = gh, inspect = findRelease, verifyPublic = verifyPublicRelease } = {},
 ) {
 	const tag = identity(options);
+	if (typeof options.desktop !== "boolean") throw new Error("Choose browser-only or signed desktop publication.");
 	let release = inspect(options, execute);
 	if (!release || release.draft) {
-		const files = await validateRelease(options.directory, options.version, options.sourceSha);
-		const sums = join(options.directory, "SHA256SUMS");
-		await writeFile(sums, await releaseChecksums(files));
+		let assets = [];
+		if (options.desktop) {
+			const files = await validateRelease(options.directory, options.version, options.sourceSha);
+			const sums = join(options.directory, "SHA256SUMS");
+			await writeFile(sums, await releaseChecksums(files));
+			assets = [...files, sums];
+		} else {
+			assertBrowserDraft(release);
+			await mkdir(options.directory, { recursive: true });
+		}
 		const generated = JSON.parse(
 			execute([
 				"api",
@@ -156,9 +164,11 @@ export async function publishDesktopRelease(
 		// never turn --clobber into a public artifact replacement.
 		release = inspect(options, execute);
 		if (!release?.draft) throw new Error("Release is no longer draft; retry to verify immutable public assets.");
-		execute(["release", "upload", tag, ...files, sums, "--repo", options.repository, "--clobber"]);
+		if (options.desktop) execute(["release", "upload", tag, ...assets, "--repo", options.repository, "--clobber"]);
+		else assertBrowserDraft(release);
 		release = inspect(options, execute);
 		if (!release?.draft) throw new Error("Release changed before promotion; retry without replacing public bytes.");
+		if (!options.desktop) assertBrowserDraft(release);
 		execute([
 			"release",
 			"edit",
@@ -173,7 +183,12 @@ export async function publishDesktopRelease(
 			notes,
 		]);
 	}
-	await verifyPublic(options, options.publicDirectory);
+	if (options.desktop) await verifyPublic(options, options.publicDirectory);
+}
+
+function assertBrowserDraft(release) {
+	if (release && (!Array.isArray(release.assets) || release.assets.length))
+		throw new Error("Browser-only publication cannot promote a draft containing unverified assets.");
 }
 
 async function main() {
@@ -185,6 +200,7 @@ async function main() {
 			repository: { type: "string" },
 			dir: { type: "string" },
 			"public-dir": { type: "string" },
+			desktop: { type: "boolean", default: false },
 		},
 	});
 	const options = { version: values.version, sourceSha: values.sha, repository: values.repository };
@@ -195,12 +211,13 @@ async function main() {
 		await appendFile(process.env.GITHUB_OUTPUT, `public=${isPublic}\n`);
 		return;
 	}
-	if (positionals[0] !== "publish" || !values.dir || !values["public-dir"])
+	if (positionals[0] !== "publish" || !values.dir || (values.desktop && !values["public-dir"]))
 		throw new Error("Pass inspect|publish with exact release identity and publication paths.");
-	await publishDesktopRelease({
+	await publishRelease({
 		...options,
+		desktop: values.desktop,
 		directory: resolve(values.dir),
-		publicDirectory: resolve(values["public-dir"]),
+		publicDirectory: values["public-dir"] ? resolve(values["public-dir"]) : undefined,
 	});
 }
 

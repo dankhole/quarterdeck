@@ -11,8 +11,11 @@ const mac: LaunchEnvironment = {
 const plain = { runtimeFlags: false, noOpen: false };
 
 describe("CLI launch policy", () => {
-	it("defaults to desktop for supported graphical Macs without consulting a TTY", () => {
-		expect(resolveLaunchPolicy(plain, mac)).toEqual({ mode: "desktop", openBrowser: false });
+	it("defaults to browser mode on supported graphical Macs without requiring an installed app", () => {
+		expect(resolveLaunchPolicy(plain, mac)).toEqual({ mode: "runtime", openBrowser: true });
+	});
+	it("opens the native app only for an explicit desktop launch", () => {
+		expect(resolveLaunchPolicy({ ...plain, desktop: true }, mac)).toEqual({ mode: "desktop", openBrowser: false });
 	});
 	it("retains explicit browser and runtime flag paths", () => {
 		expect(resolveLaunchPolicy({ ...plain, browser: true }, mac)).toEqual({ mode: "runtime", openBrowser: true });

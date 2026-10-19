@@ -26,7 +26,7 @@ export function desktopUpdateGuidance(
 		};
 	}
 	const target = targetVersion === undefined ? "latest" : desktopVersionSchema.parse(targetVersion);
-	const command = `npm install --global --prefix ${shellArgument(owner.prefix)} quarterdeck@${target}${targetVersion ? " --registry https://registry.npmjs.org --foreground-scripts" : ""}`;
+	const command = `QUARTERDECK_INSTALL_MODE=desktop npm install --global --prefix ${shellArgument(owner.prefix)} quarterdeck@${target}${targetVersion ? " --registry https://registry.npmjs.org --foreground-scripts" : ""}`;
 	return {
 		message: "Update Quarterdeck with npm",
 		detail: `This app belongs to the npm prefix:\n${owner.prefix}\n\nQuit Quarterdeck, then update its owning package with:\n\n${command}\n\nThe explicit prefix selects this installation even when your shell uses another Node installation.`,

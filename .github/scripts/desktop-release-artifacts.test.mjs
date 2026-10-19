@@ -8,7 +8,7 @@ import { artifactNames, checksum, validateRelease } from "./desktop-release-arti
 import {
 	downloadAnonymous,
 	findRelease,
-	publishDesktopRelease,
+	publishRelease,
 	releaseChecksums,
 	verifyPublicRelease,
 } from "./desktop-publication.mjs";
@@ -56,7 +56,7 @@ async function fixture(run, productVersion = version) {
 						[
 							"app.asar",
 							"runtime/bin/node",
-		"runtime/bin/nodeHost",
+							"runtime/bin/nodeHost",
 							"runtime/dist/cli.js",
 							"runtime/dist/build-manifest.json",
 							"runtime/installation-admission",
@@ -207,7 +207,105 @@ test("requires native bootstrap and installer helper provenance", async () =>
 		await assert.rejects(validateRelease(directory, version, sha), /native admission provenance/u);
 	}));
 
-const releaseIdentity = { repository: "dankhole/quarterdeck", version, sourceSha: sha };
+const releaseIdentity = { repository: "dankhole/quarterdeck", version, sourceSha: sha, desktop: true };
+
+test("browser-only releases generate notes without desktop candidates, uploads, or downloads", async () => {
+	for (const productVersion of [version, "0.12.9-beta.1"]) {
+		for (const retry of [false, true]) {
+			const directory = await mkdtemp(join(tmpdir(), "quarterdeck-browser-release-test-"));
+			try {
+				const calls = [];
+				let inspections = 0;
+				await publishRelease(
+					{ ...releaseIdentity, version: productVersion, desktop: false, directory: join(directory, "notes") },
+					{
+						inspect: () => (++inspections === 1 && !retry ? null : { id: 1, draft: true, assets: [] }),
+						execute: (args) => {
+							calls.push(args);
+							if (args[0] === "api") return JSON.stringify({ body: "Generated browser release notes" });
+						},
+						verifyPublic: async () => assert.fail("Browser releases must not download desktop assets."),
+					},
+				);
+				assert.deepEqual(
+					calls.map((args) => args[1]),
+					retry
+						? ["repos/dankhole/quarterdeck/releases/generate-notes", "edit"]
+						: ["repos/dankhole/quarterdeck/releases/generate-notes", "create", "edit"],
+				);
+				assert.ok(calls[0].includes(`tag_name=v${productVersion}`));
+				assert.ok(calls[0].includes(`target_commitish=${sha}`));
+				if (!retry) {
+					assert.ok(calls[1].includes("--verify-tag"));
+					assert.ok(calls[1].includes("--draft"));
+				}
+				const promotion = calls.at(-1);
+				assert.ok(promotion.includes("--draft=false"));
+				assert.ok(promotion.includes(`--prerelease=${productVersion.includes("-")}`));
+				assert.equal(
+					await readFile(promotion[promotion.indexOf("--notes-file") + 1], "utf8"),
+					"Generated browser release notes",
+				);
+			} finally {
+				await rm(directory, { recursive: true, force: true });
+			}
+		}
+	}
+});
+
+test("browser-only public retries preserve existing notes and assets without desktop access", async () => {
+	await publishRelease(
+		{ ...releaseIdentity, desktop: false, directory: "/missing" },
+		{
+			inspect: () => ({ id: 1, draft: false, assets: [{ name: "existing.zip" }] }),
+			execute: () => assert.fail("Public retries must not regenerate notes or mutate a release."),
+			verifyPublic: async () => assert.fail("Browser-only retries must not require desktop assets."),
+		},
+	);
+});
+
+test("browser-only publication refuses draft assets, including assets added before promotion", async () => {
+	for (const assetInspection of [1, 2, 3]) {
+		await fixture(async (directory) => {
+			const mutations = [];
+			let inspections = 0;
+			await assert.rejects(
+				publishRelease(
+					{ ...releaseIdentity, desktop: false, directory },
+					{
+						inspect: () => ({
+							id: 1,
+							draft: true,
+							assets: ++inspections >= assetInspection ? [{ name: "unverified.dmg" }] : [],
+						}),
+						execute: (args) => {
+							if (args[0] === "api") return JSON.stringify({ body: "Generated notes" });
+							mutations.push(args);
+						},
+					},
+				),
+				/unverified assets/u,
+			);
+			assert.deepEqual(mutations, []);
+		});
+	}
+});
+
+test("enabling desktop on a public browser-only release requires the complete immutable asset set", async () => {
+	await assert.rejects(
+		publishRelease(
+			{ ...releaseIdentity, directory: "/missing", publicDirectory: "/public" },
+			{
+				inspect: () => ({ id: 1, draft: false, assets: [] }),
+				execute: () => assert.fail("A public release cannot gain new desktop assets."),
+				verifyPublic: async () => {
+					throw new Error("Missing public signed assets");
+				},
+			},
+		),
+		/Missing public signed assets/u,
+	);
+});
 
 test("release inspection distinguishes missing releases from API failure", () => {
 	assert.equal(
@@ -230,7 +328,7 @@ test("release inspection distinguishes missing releases from API failure", () =>
 
 test("public retry reuses downloaded bytes without any release mutation or local candidate", async () => {
 	const calls = [];
-	await publishDesktopRelease(
+	await publishRelease(
 		{ ...releaseIdentity, directory: "/missing", publicDirectory: "/public" },
 		{
 			inspect: () => ({ id: 1, draft: false }),
@@ -249,7 +347,7 @@ test("draft retries generate notes for the exact source before promotion and pub
 	fixture(async (directory) => {
 		const calls = [];
 		const body = "## What's Changed\n* Preserve saved work by @contributor in #123\n";
-		await publishDesktopRelease(
+		await publishRelease(
 			{ ...releaseIdentity, directory, publicDirectory: "/public" },
 			{
 				inspect: () => ({ id: 1, draft: true }),
@@ -286,7 +384,7 @@ test("new prereleases create a verified-tag draft with generated notes before up
 	await fixture(async (directory) => {
 		const calls = [];
 		let inspections = 0;
-		await publishDesktopRelease(
+		await publishRelease(
 			{ ...releaseIdentity, version: preview, directory, publicDirectory: "/public" },
 			{
 				inspect: () => (++inspections === 1 ? null : { id: 1, draft: true }),
@@ -313,25 +411,27 @@ test("new prereleases create a verified-tag draft with generated notes before up
 });
 
 test("failed or invalid GitHub note generation cannot create, upload, or promote a release", async () => {
-	for (const response of ["{", "null", "{}", '{"body":null}', '{"body":"  "}', new Error("API unavailable")]) {
-		await fixture(async (directory) => {
-			const calls = [];
-			await assert.rejects(
-				publishDesktopRelease(
-					{ ...releaseIdentity, directory },
-					{
-						inspect: () => null,
-						execute: (args) => {
-							calls.push(args[0]);
-							if (response instanceof Error) throw response;
-							return response;
+	for (const desktop of [false, true]) {
+		for (const response of ["{", "null", "{}", '{"body":null}', '{"body":"  "}', new Error("API unavailable")]) {
+			await fixture(async (directory) => {
+				const calls = [];
+				await assert.rejects(
+					publishRelease(
+						{ ...releaseIdentity, directory, desktop },
+						{
+							inspect: () => null,
+							execute: (args) => {
+								calls.push(args[0]);
+								if (response instanceof Error) throw response;
+								return response;
+							},
+							verifyPublic: async () => calls.push("verified-public"),
 						},
-						verifyPublic: async () => calls.push("verified-public"),
-					},
-				),
-			);
-			assert.deepEqual(calls, ["api"]);
-		});
+					),
+				);
+				assert.deepEqual(calls, ["api"]);
+			});
+		}
 	}
 });
 
@@ -339,7 +439,7 @@ test("a candidate cannot replace a release promoted by another actor", async () 
 	fixture(async (directory) => {
 		let inspections = 0;
 		await assert.rejects(
-			publishDesktopRelease(
+			publishRelease(
 				{ ...releaseIdentity, directory },
 				{
 					inspect: () => ({ id: 1, draft: ++inspections === 1 }),

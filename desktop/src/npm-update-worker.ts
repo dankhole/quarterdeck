@@ -65,7 +65,11 @@ export function npmUpdateArguments(prefix: string, targetVersion: string): strin
 }
 
 export function npmUpdateRetryCommand(prefix: string, targetVersion: string): string {
-	return ["npm", ...npmUpdateArguments(prefix, targetVersion).map(shellArgument)].join(" ");
+	return [
+		"QUARTERDECK_INSTALL_MODE=desktop",
+		"npm",
+		...npmUpdateArguments(prefix, targetVersion).map(shellArgument),
+	].join(" ");
 }
 
 export function isWithin(root: string, target: string): boolean {
@@ -116,10 +120,11 @@ export function updateEnvironment(environment: Readonly<NodeJS.ProcessEnv>, node
 			)
 		)
 			continue;
-		if (/^QUARTERDECK_/iu.test(name) && name !== "QUARTERDECK_INSTALL_MODE") continue;
+		if (/^QUARTERDECK_/iu.test(name)) continue;
 		if (/^(?:npm_execpath|npm_node_execpath|npm_lifecycle_.*|INIT_CWD)$/iu.test(name)) continue;
 		result[name] = value;
 	}
+	result.QUARTERDECK_INSTALL_MODE = "desktop";
 	result.PATH = [dirname(nodePath), ...(result.PATH ?? "").split(":"), "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
 		.filter((path, index, paths) => isAbsolute(path) && !/[\0\r\n]/u.test(path) && paths.indexOf(path) === index)
 		.join(":");

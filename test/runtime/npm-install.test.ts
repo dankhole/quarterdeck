@@ -64,6 +64,7 @@ afterEach(() => vi.restoreAllMocks());
 
 const supported: NpmInstallContext = {
 	env: {
+		QUARTERDECK_INSTALL_MODE: "desktop",
 		npm_config_global: "true",
 		npm_command: "install",
 		npm_lifecycle_event: "postinstall",
@@ -86,9 +87,12 @@ describe("npm lifecycle installation policy", () => {
 		{ npm_command: "link" },
 		{ npm_command: "ci" },
 		{ CI: "true" },
+		{ QUARTERDECK_INSTALL_MODE: undefined },
+		{ QUARTERDECK_INSTALL_MODE: "" },
 		{ QUARTERDECK_INSTALL_MODE: "browser" },
+		{ QUARTERDECK_INSTALL_MODE: "unknown" },
 		{ npm_lifecycle_event: "prepare" },
-	])("skips dependency/source/link/CI/opt-out contexts %j before installer effects", (env) => {
+	])("skips dependency/source/link/CI and non-desktop contexts %j before installer effects", (env) => {
 		expect(resolveNpmInstallPolicy({ ...supported, env: { ...supported.env, ...env } })).toEqual({ action: "skip" });
 	});
 	it.each([
@@ -110,7 +114,9 @@ describe("npm lifecycle installation policy", () => {
 	});
 	it("reports exact recovery even if npm removes the CLI", () => {
 		const guidance = npmInstallRecoveryMessage("0.12.8", "Quit and retry");
-		expect(guidance).toContain("npm install -g quarterdeck@0.12.8 --foreground-scripts");
+		expect(guidance).toContain(
+			"QUARTERDECK_INSTALL_MODE=desktop npm install -g quarterdeck@0.12.8 --foreground-scripts",
+		);
 		expect(guidance).toContain("quarterdeck desktop install");
 		expect(guidance).toContain("--replace-owner");
 	});

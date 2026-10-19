@@ -103,7 +103,7 @@ npm run web:dev
 - Runs on `http://127.0.0.1:4173`
 - `/api/*` requests from Vite are proxied to `http://127.0.0.1:3500`
 
-Use `http://127.0.0.1:4173` while developing UI so changes hot reload. `--browser` selects the source runtime explicitly; a plain launch on a supported graphical Mac selects the installed native app. The explicit port also matches Vite's default API proxy. If you change it, set `QUARTERDECK_RUNTIME_PORT` for the Vite process to match.
+Use `http://127.0.0.1:4173` while developing UI so changes hot reload. `--browser` and a plain launch select the source runtime; `--desktop` explicitly selects the installed native app on a supported graphical Mac. The explicit port also matches Vite's default API proxy. If you change it, set `QUARTERDECK_RUNTIME_PORT` for the Vite process to match.
 
 ## VS Code F5 debugging
 
@@ -304,7 +304,7 @@ See [`test/README.md`](./test/README.md) for root-test placement and naming. Web
 
 - `ci.yml`: runs on pushes to `main` and PRs targeting `main`, delegating to reusable test workflow(s)
 - `test.yml`: Ubuntu/macOS matrix plus a non-optional native Windows job covering clean installs, the build (including web typecheck), packaged CLI fetch/shutdown, native ConPTY resize/reconnect/restore, Git/worktree/path fidelity, exact process ownership and DACLs, hook/status-line transport, lint, runtime typecheck/tests, and web-ui tests without repeating the standalone web typecheck
-- `publish.yml`: runs on version-tag pushes (`v*.*.*`), tests the exact release commit, publishes and anonymously verifies the matching desktop assets before publishing npm via OIDC; manual dispatch remains available for retries. See the [release workflow](RELEASE_WORKFLOW.md) for immutable assets, generated notes, and retry ordering.
+- `publish.yml`: runs on version-tag pushes (`v*.*.*`), tests the exact release commit, publishes npm via OIDC, optionally publishing and anonymously verifying matching signed desktop assets first when `QUARTERDECK_DESKTOP_RELEASES=1`; manual dispatch remains available for retries. See the [release workflow](RELEASE_WORKFLOW.md) for immutable assets, generated notes, and retry ordering.
 
 ## Agent tracking and runtime hooks
 
