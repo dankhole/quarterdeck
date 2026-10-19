@@ -1,5 +1,7 @@
 # Implementation Log
 
+Maintainer history of architectural changes, incidents, and validation evidence, newest first. Entries describe their recorded source and candidate; later entries may supersede earlier behavior. For current setup, use the [README](../README.md); for user-facing changes, use the [changelog](../CHANGELOG.md). Desktop release readiness is tracked separately in the [validation ledger](./desktop-validation.md).
+
 ## 2026-10-19 — Synthetic desktop helper admission after channel initialization
 
 The packaged ARM desktop smoke test reached task creation but never exposed terminal input because provider hook preparation rejected the bundled launcher. `DesktopRuntimeChannel` intentionally consumes `QUARTERDECK_DESKTOP_CHILD` so independent hook CLI processes cannot start another runtime; `src/core/quarterdeck-command.ts` had incorrectly required that consumed marker to recognize the synthetic helper. Synthetic admission now requires a connected process IPC channel with a callable send function, plus the existing private lab config, exact runtime/state/simulation identity, and noncanonical app location. Canonical installed apps still require native installation admission, and independent CLI processes cannot qualify through lab environment variables alone.

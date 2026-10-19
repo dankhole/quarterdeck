@@ -2,23 +2,23 @@
 
 ![Quarterdeck board screenshot](https://github.com/user-attachments/assets/2aa3dcc7-94e3-4076-bcfe-6d0272007cfe)
 
-Quarterdeck is a local orchestration board for coding agents. It gives each task a card, a terminal, git context, and a review surface so you can run multiple agents in parallel without manually juggling terminals, worktrees, diffs, and follow-up prompts.
+Quarterdeck is a local board for running coding agents in parallel. Each task gets a card, a terminal, Git context, and a review surface, with optional isolated worktrees. It supports **Claude Code, OpenAI Codex, and Pi** through their installed CLIs.
 
-Quarterdeck currently supports:
-
-- Claude Code
-- OpenAI Codex
-- Pi
-
-Quarterdeck detects installed agent CLIs from your `PATH` and opens your project in its desktop app on supported Macs, or in browser mode on other platforms.
-
-The macOS app packages the shared interface and a bundled Node runtime. Both modes use the same projects, tasks, settings, and agent integrations. Global npm installation installs the matching app at `~/Applications/Quarterdeck.app`; the Dock icon and CLI use that same copy. Public distribution still requires the gates in the [validation status](docs/desktop-validation.md). See the [desktop guide](docs/desktop.md).
-
-The macOS desktop app is experimental. Current local builds are ad-hoc signed, without an Apple Developer ID signature, so macOS may ask for “Quarterdeck Safe Storage” Keychain access again after app updates.
+Use the macOS desktop app or browser mode. Both share the same projects, tasks, settings, and agent integrations.
 
 ## Install via npm
 
-Quarterdeck is available on [npm](https://www.npmjs.com/package/quarterdeck). With Node.js 22.22.2 or newer and Git installed, install the CLI globally and launch it from your project:
+You need **Node.js 22.22.2+**, **Git**, and at least one supported agent CLI installed and signed in:
+
+| Agent | Required version |
+| --- | --- |
+| Claude Code | 2.1.198+ |
+| OpenAI Codex | 0.157.0+ with native hooks and auto-review support |
+| Pi | Exactly 0.84.3; currently validated on macOS |
+
+See [agent setup](docs/usage.md#set-up-an-agent) for install and sign-in instructions. Quarterdeck does not require its own account.
+
+Install the [npm package](https://www.npmjs.com/package/quarterdeck), then launch from your project:
 
 ```bash
 npm install --global quarterdeck
@@ -26,166 +26,75 @@ cd /path/to/your/project
 quarterdeck
 ```
 
-Or run the latest release from your project directory without a global installation:
+On supported local Macs (macOS 13+, Apple Silicon or Intel), global installation installs the matching app at `~/Applications/Quarterdeck.app`, and `quarterdeck` opens it. Other platforms use browser mode. The desktop app is experimental: signed public distribution still has [pending release gates](docs/desktop-validation.md). Until matching desktop assets are published, use the [local desktop build](docs/desktop-release.md#local-unsigned-candidate), or install browser mode on a Mac:
+
+```bash
+QUARTERDECK_INSTALL_MODE=browser npm install --global quarterdeck
+quarterdeck --browser
+```
+
+To try browser mode without a global installation:
 
 ```bash
 npx --yes quarterdeck@latest --browser
 ```
 
-npm does not automatically update global installations. Upgrade an installed copy explicitly when a new release is available:
+## Desktop and browser modes
+
+```bash
+quarterdeck             # Desktop on supported local Macs; browser elsewhere
+quarterdeck --browser   # Browser mode, including on macOS
+quarterdeck --desktop   # Explicit macOS app launch
+```
+
+The desktop app also opens from Finder or the Dock. Closing its window keeps tasks running; **Quit** checks unsaved work and live sessions before shutdown. **File → Open in Browser** opens the same runtime in your browser.
+
+If the app cannot find Git or an agent, use **Quarterdeck → Runtime Environment…** to add its executable folder and refresh. Desktop startup does not load shell startup files by default; shell environment import is opt-in. Local builds are ad-hoc signed and may prompt for **Quarterdeck Safe Storage** Keychain access again after updates.
+
+See the [desktop guide](docs/desktop.md#using-the-app) for installation repair, window behavior, environment setup, and recovery. Windows browser support is also [experimental](docs/windows-support-audit.md).
+
+## What Quarterdeck Does
+
+- Runs multiple agents side by side, with task status, activity, and permission/input indicators.
+- Gives tasks isolated Git worktrees, with optional setup scripts and selected ignored files copied into each checkout.
+- Provides diffs, file browsing, branch comparison, and line comments to send back to an agent.
+- Supports Commit, Push, Open PR, Squash Merge, and cherry-pick workflows.
+- Offers project script shortcuts and reusable agent prompts.
+
+## Everyday Workflow
+
+1. **Add a project:** a Git repository or an ordinary folder. Folder projects support agents and files without Git controls or isolated worktrees.
+2. **Create and start tasks:** enter prompts, choose an agent, and work in an isolated worktree or the project folder. Configure a [worktree setup script](docs/worktree-setup.md) when tasks need their own dependencies.
+3. **Monitor and review:** open a card's terminal, inspect changes, and send feedback through line comments or prompts.
+4. **Land the work:** commit, open a PR, merge, or cherry-pick reviewed changes.
+5. **Clean up or resume:** Trash stops a task while preserving its worktree and resume identity. Permanent deletion removes the task workspace.
+
+See the [user guide](docs/usage.md#everyday-workflow) for folder-project options, conversation copying, and workflow details.
+
+## Updates and removal
+
+npm installations do not update automatically. Quit the desktop app before upgrading:
 
 ```bash
 npm install --global quarterdeck@latest
 ```
 
-The `npx` form resolves `@latest` for you and may reuse npm's download cache.
+An npm-installed desktop app checks for updates at startup or through **Check for Updates**. **Update Quarterdeck** confirms unsaved work and live sessions, quits cleanly, then runs the update in Terminal. Reopen the app when it finishes. Linked source builds use `npm run link` instead.
 
-An npm-installed app checks for a newer release once at startup and through **Check for Updates**. An **Update available** button opens version details and release notes. **Update Quarterdeck** hands the exact version to npm in Terminal after the normal save/session confirmation and a clean quit. Terminal shows progress and verifies the CLI/app pair before reporting success; reopen Quarterdeck when it finishes. Local linked builds instead show `npm run link` guidance.
+Use `quarterdeck desktop status` to inspect an incomplete CLI/app installation and `quarterdeck desktop install` to repair it. For removal, quit the app and run `quarterdeck desktop uninstall` before `npm uninstall --global quarterdeck`. npm removal alone leaves the app behind. Projects, settings, and saved sessions are preserved; see the [desktop guide](docs/desktop.md#using-the-app) for ownership and migration details.
 
-There is no recurring checker or unattended installation. You can still run the npm command yourself; quit the app before replacement. The installer never stops sessions for you. Downloads and verification happen before replacement, and a failed replacement preserves recovery evidence and the previous app when safe.
+## Configuration and troubleshooting
 
-Verify and run the installed command from any git repository:
+Settings covers project and agent preferences. Runtime state lives in `~/.quarterdeck` by default; `QUARTERDECK_STATE_HOME` overrides it. No `.env` file or helper gateway is required. Optional AI text generation uses your saved Codex login first, with configurable gateway fallback; see [environment variables and helper configuration](docs/usage.md#environment-variables).
 
-```bash
-quarterdeck --version
-cd /path/to/your/project
-quarterdeck
-```
+- **Command not found:** check that your npm global bin directory is on `PATH`.
+- **Agent unavailable:** check its supported version, sign-in, and executable path; see [agent setup](docs/usage.md#set-up-an-agent).
+- **Unconfirmed prior shutdown:** use **Recover sessions…** or `quarterdeck recover`, then follow the [recovery guidance](docs/usage.md#troubleshooting).
+- **Other runtime problems:** run `quarterdeck diagnostics doctor --request-browser` or [capture diagnostics](docs/usage.md#troubleshooting). Recent metadata is retained automatically; bundles stay local and exclude prompts, terminal transcripts, and file contents by default.
 
-Quarterdeck stores runtime state under `~/.quarterdeck` by default. Set `QUARTERDECK_STATE_HOME` to use a different state directory. Quarterdeck itself does not require a separate account; agent access comes from the agent CLIs you have installed and authenticated.
+## Development and documentation
 
-Choose a launch mode with the same CLI:
-
-```sh
-quarterdeck             # Desktop on supported local Macs; browser elsewhere
-quarterdeck --browser   # Explicit browser mode
-quarterdeck --desktop   # Explicit macOS app launch
-```
-
-Until a matching public desktop release is available, use the [local build/install flow](docs/desktop-release.md#local-unsigned-candidate). Missing assets never cause installation of a different version. For CLI-only installation on a Mac, use `QUARTERDECK_INSTALL_MODE=browser npm install --global quarterdeck`, then launch with `--browser`. Global installation does not launch the app.
-
-The desktop launcher opens the current Git repository in the native app, or restores its current view outside a repository. CLI and Dock launch both check that the app matches its owning npm installation or linked checkout. npm scripts can be disabled, and npm/app updates are separate operations: use `quarterdeck desktop status` to inspect an incomplete installation and `quarterdeck desktop install` to finish it. If the CLI itself is unavailable, rerun `npm install --global quarterdeck@<version> --foreground-scripts`.
-
-To remove the app, quit it and run `quarterdeck desktop uninstall` before `npm uninstall --global quarterdeck` in the owning npm prefix. npm removal alone does not remove the external app. Projects, settings, worktrees, and saved sessions are preserved. See the desktop guide before migrating old managed copies or a Dock shortcut.
-
-## What Quarterdeck Does
-
-- Runs many coding-agent tasks side by side from one browser UI.
-- Gives each task its own terminal, review state, git metadata, and optional isolated worktree.
-- Copies explicitly included ignored setup files into task worktrees and can run a project setup script, while keeping `node_modules` isolated per checkout.
-- Tracks latest agent activity, permission/input needs, review readiness, and file changes on each card.
-- Provides task diffs, file browsing, branch comparison, line comments, commit, push, Open PR, and cherry-pick flows.
-- Supports project script shortcuts for commands such as `npm run dev` and prompt shortcuts for repeatable agent instructions such as Commit or Squash Merge.
-
-## Status
-
-Quarterdeck is under active development and is distributed as a public npm CLI package. Found a bug or have an idea? Open a [GitHub Issue](https://github.com/dankhole/quarterdeck/issues).
-
-Windows support remains experimental, although the code-remediation audit is complete and native install, build, packaged/source CLI, ConPTY resize/reconnect/restore, Git/worktree fidelity, hook/status-line transport, exact process ownership, host launch, graceful shutdown, and diagnostic DACL coverage are now part of the required CI workflow. Promotion awaits that job on the committed revision plus the manual real-provider matrix; see the [Windows support audit](docs/windows-support-audit.md), [acceptance ledger](docs/windows-compatibility-todo.md), and [native validation guide](docs/windows-native-smoke.md).
-
-## Requirements
-
-- Git
-- Node.js 22.22.2 or newer (`.nvmrc` selects Node 22.23.2 for local development)
-- At least one supported agent CLI installed and available on `PATH`
-- Optional but recommended: a Nerd Font such as [JetBrainsMono Nerd Font](https://www.nerdfonts.com/) for cleaner terminal glyphs
-
-You only need one task agent. Quarterdeck checks whether its CLI is on the inherited `PATH` and whether the installed version is supported; provider authentication stays in the provider CLI and is not inspected by Quarterdeck.
-
-## Set Up an Agent
-
-The commands below are the shortest macOS/Linux setup path. Follow the linked official guide for platform-specific alternatives, then restart Quarterdeck after installing a CLI so the runtime inherits the updated `PATH`.
-
-| Agent | Install | Sign in | Verify | Version required by Quarterdeck |
-| --- | --- | --- | --- | --- |
-| [Claude Code](https://code.claude.com/docs/en/getting-started) | `curl -fsSL https://claude.ai/install.sh \| bash` | Run `claude` and follow the browser prompt | `claude auth status` | 2.1.198+ |
-| [OpenAI Codex](https://developers.openai.com/codex/cli) | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` | `codex login` | `codex login status` | 0.157.0+ with native hooks |
-| [Pi 0.84.3](https://www.npmjs.com/package/@earendil-works/pi-coding-agent/v/0.84.3) | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.84.3` | Run `pi`, then enter `/login` | Start `pi` successfully | Exactly 0.84.3 |
-
-On native Windows, run the installer from PowerShell:
-
-| Agent | PowerShell install |
-| --- | --- |
-| Claude Code | `irm https://claude.ai/install.ps1 \| iex` |
-| OpenAI Codex | `powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 \| iex"` |
-| Pi 0.84.3 | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.84.3` |
-
-Codex supports ChatGPT sign-in with `codex login`. For API-key authentication, set `OPENAI_API_KEY`, then run `printenv OPENAI_API_KEY | codex login --with-api-key` on macOS/Linux or `$env:OPENAI_API_KEY | codex login --with-api-key` in PowerShell. Claude Code requires an account or provider-backed authentication supported by Claude Code. Pi lets you choose a provider during `/login`.
-
-Codex users need Codex 0.157.0 or newer with native hook and auto-review support.
-
-Claude launch permissions are configurable under Settings → Harnesses → Claude Code for new or restarted sessions. Quarterdeck can inherit Claude's configured default or explicitly start in Claude's native default, accept-edits, plan, auto-preview, don't-ask, or bypass mode; provider-managed policy remains authoritative.
-
-Pi users need exactly Pi 0.84.3. Quarterdeck deliberately rejects older and newer Pi versions until the lifecycle extension, approval policy, and exact-session recovery suite is validated against a new release. Pi support is currently validated on macOS.
-
-Pi tool approvals default on. Under Settings → Harnesses → Pi, you can disable per-tool confirmations for new or restarted sessions; the once-per-launch project-trust confirmation remains required.
-
-## Environment Variables
-
-Quarterdeck does not require a `.env` file for core usage. It inherits the environment from the shell that launches `quarterdeck`, so make sure your supported agent CLI (`claude`, `codex`, or `pi`) is available on that shell's `PATH` and already authenticated according to that agent's own setup flow.
-
-Optional variables:
-
-| Variable | Purpose |
-| --- | --- |
-| `QUARTERDECK_STATE_HOME` | Override the runtime state directory. Defaults to `~/.quarterdeck`. |
-| `QUARTERDECK_BACKUP_HOME` | Override the state backup directory. Defaults to `~/.quarterdeck-backups`. |
-| `QUARTERDECK_RUNTIME_HOST` | Override the runtime host. Defaults to `127.0.0.1`; the `--host` flag is usually clearer. |
-| `QUARTERDECK_RUNTIME_PORT` | Override the runtime port. Defaults to `3500`; the `--port` flag is usually clearer. |
-| `QUARTERDECK_DEBUG_MODE` | Enable extra debug behavior for agent availability checks. `DEBUG_MODE` and `debug_mode` are also recognized. |
-| `QUARTERDECK_TITLE_PROVIDER` | Select task-title generation: `codex` (default, then gateway fallback), `llm` (gateway only), or `local` (no model call). Initial generation falls back to deterministic local text; failed follow-up generation keeps the current title. |
-| `QUARTERDECK_CODEX_TITLE_MODEL` | Override the Codex model used for task titles. Defaults to `gpt-6-luna`. |
-| `QUARTERDECK_LLM_BASE_URL` | Base URL for an optional LiteLLM or other OpenAI-compatible helper gateway. |
-| `QUARTERDECK_LLM_API_KEY` | Bearer token for the optional helper gateway. Prefer a scoped LiteLLM virtual key over a shared master key. |
-| `QUARTERDECK_LLM_MODEL` | Model name or gateway alias. Required for generic gateways; legacy base URLs ending in `/bedrock` retain the `bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0` fallback. |
-
-Titles, branch names, commit messages, and enabled summary polishing first use the installed Codex CLI’s saved login (including ChatGPT sign-in), with `gpt-6-luna` in an ephemeral, read-only invocation. If Codex is missing, signed out, times out, or returns no usable text, generation falls back to the configured OpenAI-compatible gateway. No gateway is needed when Codex succeeds. Codex owns the saved credentials; Quarterdeck does not read or copy them. A saved ChatGPT login still uses OpenAI’s hosted models, not an offline model.
-
-New task titles fall back to deterministic local text if both providers fail. Initial titles describe the broad subject or purpose, such as “UI Work” or “Kafka Investigation.” Titles stay unchanged as the conversation progresses. Use Auto-generate title to explicitly regenerate from bounded recent conversation history when the thread’s direction changes; failed follow-up generation keeps the current name. `QUARTERDECK_TITLE_PROVIDER=local` skips model calls for titles; `QUARTERDECK_TITLE_PROVIDER=llm` skips Codex for titles. `QUARTERDECK_CODEX_TITLE_MODEL` overrides the Codex title model. Summary polishing remains opt-in in Settings and keeps existing summaries if generation fails. Branch-name and commit-message generation report failure if neither provider succeeds; generating a message does not commit files.
-
-### Optional LiteLLM or OpenAI-Compatible Helper
-
-This gateway is optional. It provides fallback generation for titles, branch names, commit messages, and enabled summary polishing when the saved Codex login cannot produce a result. An explicit `QUARTERDECK_TITLE_PROVIDER=llm` override uses it directly for titles.
-
-Choose one of these setups:
-
-- **Saved Codex login (default):** sign in with ChatGPT through Codex. No gateway variables or additional service are required for AI text generation.
-- **Existing team gateway:** point Quarterdeck at a LiteLLM proxy or another OpenAI-compatible endpoint and use the gateway's scoped key and configured model alias.
-- **Self-hosted LiteLLM:** run the LiteLLM proxy separately, then point Quarterdeck at its loopback or network URL. Quarterdeck does not install, start, update, or store configuration for the proxy. See the [official LiteLLM proxy quick start](https://docs.litellm.ai/).
-
-For an existing gateway:
-
-```bash
-export QUARTERDECK_LLM_BASE_URL=https://your-llm-gateway.example.com
-export QUARTERDECK_LLM_API_KEY=your-virtual-key
-export QUARTERDECK_LLM_MODEL=your-model-alias
-```
-
-For a local proxy using LiteLLM's default port:
-
-```bash
-export QUARTERDECK_LLM_BASE_URL=http://127.0.0.1:4000
-export QUARTERDECK_LLM_API_KEY=your-litellm-key
-export QUARTERDECK_LLM_MODEL=your-model-alias
-```
-
-In Windows PowerShell, set the same values for the process that launches Quarterdeck:
-
-```powershell
-$env:QUARTERDECK_LLM_BASE_URL = "http://127.0.0.1:4000"
-$env:QUARTERDECK_LLM_API_KEY = "your-litellm-key"
-$env:QUARTERDECK_LLM_MODEL = "your-model-alias"
-```
-
-The model must match a model name or alias exposed by the gateway. Quarterdeck requires a non-empty API-key value; an unauthenticated loopback-only development proxy can use a placeholder, but shared or network-accessible proxies should use authentication—preferably a scoped LiteLLM virtual key with an appropriate budget. Keep the key out of tracked files and supply it through the shell environment or your secret manager.
-
-The endpoint must accept OpenAI-style `/v1/chat/completions`. Base URLs ending in `/v1` or `/v1/chat/completions` are accepted directly. Gateway base URLs ending in `/bedrock` are normalized to the gateway root before Quarterdeck appends `/v1/chat/completions`.
-
-To keep the configuration across shell sessions, add the exports to the shell startup file or launcher environment that starts Quarterdeck. Open a new shell—or reload that environment—then restart Quarterdeck so the runtime receives the new values.
-
-## Install From Source
-
-For development, clone the repository and prepare, build, and link the local CLI in one command:
+For a source install:
 
 ```bash
 git clone https://github.com/dankhole/quarterdeck.git
@@ -193,96 +102,17 @@ cd quarterdeck
 npm run link
 ```
 
-`npm run bootstrap` prepares the runtime and web UI dependency trees. On supported Macs, `npm run link` also prepares desktop dependencies, builds one paired runtime/UI, packages the app, links the global command, and installs the app through the same installer as published releases. Use `npm run link -- --browser` for CLI-only development. Stop a runtime launched from this linked checkout before rebuilding, and quit the installed app before replacement. Neither operation forces shutdown.
+On supported Macs this builds and installs the matching desktop app. Use `npm run link -- --browser` for CLI-only development. Stop a linked runtime and quit the installed app before rebuilding or replacement.
 
-When you pull new Quarterdeck changes, switch worktrees, or want the global command to point at a different checkout, run `npm run link` again from that checkout. To remove the global link:
-
-```bash
-npm run unlink
-```
-
-## Everyday Workflow
-
-1. Add projects.
-
-   Quarterdeck can track Git repositories and ordinary folders. Each project has its own board, task cards, settings, shortcuts, and runtime state.
-
-   For a parent folder that contains several repositories, choose **Use as folder project** from its project menu. Its board and tasks stay in place, while each child can be added as an independent project. You can also choose **Add without Git** when adding a folder. Adding a child never silently opens its parent repository; initialize Git in the child if it needs its own repository.
-
-   Folder projects keep task agents and the file browser, but disable Git controls and new isolated worktrees. New tasks run directly in the folder. Conversion preserves existing files, Git history, and task workspaces; it does not delete `.git` or restrict Git commands an agent runs itself. Choose **Enable Git** from the same menu to switch back.
-
-2. Create task cards.
-
-   Add cards manually or paste prompts into the sidebar. You can split a list into multiple unstarted cards, then start each task individually.
-
-3. Start agents.
-
-   Starting a card launches the configured agent. By default, Quarterdeck creates an isolated git worktree, copies ignored files selected by `.worktreeinclude`, runs the project’s optional setup script, and injects worktree context. Configure **Worktree setup script** in project Settings to install task-local dependencies automatically. See [worktree setup](docs/worktree-setup.md) for include patterns, script behavior, and failure recovery.
-
-4. Monitor progress.
-
-   Cards show task state, latest agent activity, review readiness, permission/input needs, and git change indicators. Opening a card shows the live agent terminal.
-
-   For a connected Codex task, use **Copy full conversation** in the top toolbar to copy saved prompts, replies, progress messages, and plans as Markdown. It reads all history pages through Codex’s API, including messages outside the terminal viewport. Tool logs are excluded; attachments appear as labels. The copy fails explicitly if the full result exceeds 8 MB or cannot be read completely. Messages still being generated may not have been saved yet.
-
-5. Review changes.
-
-   The task detail view includes terminal output, git diffs, a file browser, branch comparison, and line comments that can be sent back to the agent. The git view can also compare branches and inspect uncommitted work in either the home repo or the selected task worktree.
-
-6. Land the work.
-
-   Use Commit, Open PR, Squash Merge, cherry-pick, or the git view to move reviewed work back toward your base branch. Prompt shortcuts help automate repetitive landing steps.
-
-7. Clean up or resume.
-
-   Moving a card to Trash stops the session and removes the task worktree after capturing uncommitted work as needed. Quarterdeck stores resume metadata so interrupted tasks can be resumed later when the agent supports it.
-
-## Useful Commands
-
-| Command | Purpose |
-| --- | --- |
-| `npm run bootstrap` | Preserve the Agent Lab browser cache, then install locked root and web UI dependencies; refuses to run beneath an active linked runtime. |
-| `npm run install:all` | Backward-compatible alias for `npm run bootstrap`. |
-| `npm run link` | Prepare dependencies, build and link the CLI, and install the matching app on supported Macs. Use `-- --browser` for CLI-only development. |
-| `npm run unlink` | Remove the global `quarterdeck` link. |
-| `npm run dev` | Run the runtime server in watch mode on port 3500. |
-| `npm run dev:full` | Run the runtime and web UI together for local development. |
-| `npm run web:dev` | Run the Vite web UI dev server on port 4173. |
-| `npm run build` | Build the packaged runtime and web UI into `dist`. |
-| `npm run desktop:build` | Prepare dependencies, then build and package the macOS app without installing it. |
-| `npm run desktop:install` | Build, link, and install the local app through the shared installation workflow, without launching it. |
-| `quarterdeck desktop status` | Inspect app/CLI pairing, ownership, and incomplete installation. |
-| `quarterdeck desktop install` | Complete or repair installation for this CLI. |
-| `quarterdeck desktop uninstall` | Remove the owned app while preserving user and project data. |
-| `npm run check` | Run agent-instruction checks, Biome, runtime typecheck, and root tests. |
-| `quarterdeck diagnostics --help` | Discover and inspect private local runtime diagnostics. |
-| `quarterdeck recover` | Inspect saved process evidence after an unconfirmed shutdown. |
-
-For the full development workflow, see [DEVELOPMENT.md](./DEVELOPMENT.md).
-
-## Troubleshooting
-
-If `quarterdeck` is not found after `npm install --global quarterdeck`, make sure your npm global bin directory is on `PATH`. Contributors using a source checkout can run `npm run link` instead.
-
-If no agent is available, install Claude Code, OpenAI Codex, or Pi and confirm the matching binary (`claude`, `codex`, or `pi`) is available on `PATH`. Quarterdeck requires Claude Code 2.1.198+, Codex 0.157.0+, or exactly Pi 0.84.3 for supported task-agent launches.
-
-If terminal symbols look wrong, install a Nerd Font and select it in your browser or system terminal font settings.
-
-If startup reports an unconfirmed prior shutdown, choose **Recover sessions…** in the desktop app, or run `quarterdeck recover`. After checking and stopping any remaining agents or background commands, confirm in the app or run `quarterdeck recover --confirm-stopped`, then reopen Quarterdeck. Recovery preserves saved projects, task work, and session history. It refuses live saved processes or unreadable evidence and does not kill processes. Older runs cannot account for detached commands; reboot remains an option when you cannot verify those commands have stopped.
-
-If an incident is difficult to explain, run `quarterdeck diagnostics doctor --request-browser` or `quarterdeck diagnostics capture --request-browser`. Quarterdeck automatically retains a small recent metadata-only history; you do not need to enable logging before the incident. Diagnostic bundles stay local under the Quarterdeck state directory, use owner-only filesystem access including protected Windows ACLs, and exclude prompts, terminal transcripts, files, diffs, environment values, and secrets by default. See [DEVELOPMENT.md](./DEVELOPMENT.md#unified-diagnostics) for filters, temporary deep recording, privacy limits, and isolated visual testing.
-
-## Documentation
-
-- [DEVELOPMENT.md](./DEVELOPMENT.md): local development workflow, scripts, debugging, and repo orientation
-- [docs/testing.md](./docs/testing.md): proportionate validation strategy and testing-layer selection
-- [docs/README.md](./docs/README.md): architecture docs, conventions, roadmap, and implementation history
-- [AGENTS.md](./AGENTS.md): shared repo-owned instructions for coding agents
+- [User guide](docs/usage.md): agent setup, configuration, workflow, and troubleshooting
+- [Desktop guide](docs/desktop.md): app operation, installation, and recovery
+- [Changelog](CHANGELOG.md): release notes
+- [Development](DEVELOPMENT.md): build, link, test, and debugging commands
+- [Engineering docs](docs/README.md): architecture, conventions, validation, and implementation history
 
 ## Help and Feedback
 
-- [GitHub Issues](https://github.com/dankhole/quarterdeck/issues): bugs and regressions
-- [GitHub Discussions](https://github.com/dankhole/quarterdeck/discussions/categories/ideas): feature ideas and workflow feedback
+Quarterdeck is under active development. Use [GitHub Issues](https://github.com/dankhole/quarterdeck/issues) for bugs and [GitHub Discussions](https://github.com/dankhole/quarterdeck/discussions/categories/ideas) for ideas and workflow feedback.
 
 ## License and Origin
 

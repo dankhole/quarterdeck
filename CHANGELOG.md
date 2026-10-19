@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [0.12.9]
+## [0.12.9] - Unreleased
 
 - Restore fake-agent task launches in packaged desktop smoke tests after runtime initialization consumes the child marker.
 
@@ -13,12 +13,13 @@
 
 - Fix desktop startup rejecting a valid installed app because Electron presents its archive as a virtual directory.
 
-- Unify npm and macOS app installation at a stable app path, make plain `npm run link` build and install the paired app, validate CLI/app ownership before launch, and use npm-owned updates with guarded replacement and interruption recovery.
+- Unify npm and macOS app installation at `~/Applications/Quarterdeck.app`, validate CLI/app ownership before launch, and use npm-owned updates with guarded replacement and interruption recovery. Plain `quarterdeck` opens the app on supported local Macs; `--browser` selects browser mode.
+- Make plain `npm run link` prepare locked dependencies, build and install the paired macOS app, and link the CLI on supported Macs. Use `npm run link -- --browser` for CLI-only development.
 - Show available desktop updates after startup or an explicit check, with release notes and a confirmed npm update in Terminal that verifies the CLI/app pair after clean shutdown.
 
 - Show when a saved task's chat is not running and offer Resume chat while preserving terminal output.
 
-- Detect desktop agents installed through interactive shell setup, and preserve macOS project availability across device-number changes using directory creation-time evidence. Existing mismatched legacy folders require one explicit Locate to reconnect safely.
+- Preserve macOS project availability across device-number changes using directory creation-time evidence. Existing mismatched legacy folders require one explicit Locate to reconnect safely.
 
 - Reconnect both terminal sockets after a stream disconnect so resumed and restarted tasks restore correctly, and make Re-sync repair disconnected viewers.
 
@@ -44,11 +45,7 @@
 
 - Recover sessions after an unconfirmed shutdown through an explicit desktop or CLI confirmation, preserving task work and conversation history without requiring a full computer restart when saved processes have stopped.
 
-- Prepare missing or outdated dependencies automatically when linking or building the desktop app; use `npm run link -- --desktop` to install the app and link the CLI together.
-
 - Check native test permissions before launching the macOS app, and separate manual-terminal and performance checks from deliberate crash-recovery tests.
-
-- Launch browser mode explicitly with `quarterdeck --browser`, or install and open the optional macOS app with `quarterdeck --desktop`; import local app builds without replacing a running installation.
 
 - Add the macOS desktop application foundation with a bundled Node runtime, shared browser UI, native application lifecycle, and isolated packaged-app validation. Browser and npm use remain supported.
 
