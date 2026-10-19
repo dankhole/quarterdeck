@@ -309,7 +309,10 @@ async function rawWorker(f: Awaited<ReturnType<typeof fixture>>) {
 	return { channel, finished, directory };
 }
 
-describe("private npm update handoff", () => {
+// These process integration tests probe external Node/npm and repeatedly hash the real
+// Node executable. Intel CI can exceed Vitest's 5s default before the protocol assertions;
+// allow the same 15s integration budget as root tests, preserving worker deadlines and assertions.
+describe("private npm update handoff", { timeout: 15_000 }, () => {
 	it("acknowledges readiness, waits for parent exit, updates the exact owning prefix, and removes private files", async () => {
 		const f = await fixture();
 		const handoff = await f.prepare();
