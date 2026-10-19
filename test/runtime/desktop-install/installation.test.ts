@@ -16,7 +16,8 @@ afterEach(async () => {
 	await rm(root, { recursive: true, force: true });
 });
 
-describe("one owned desktop installation", () => {
+// Real installer admission requires POSIX ownership and private mode bits, absent on Windows.
+describe.skipIf(process.platform === "win32")("one owned desktop installation", () => {
 	it("imports into one stable path, preserves the source, and validates offline", async () => {
 		const fixture = await createDesktopAppFixture(root);
 		const { dependencies } = await createInstallerDependencies(root, fixture);
@@ -237,6 +238,9 @@ describe("one owned desktop installation", () => {
 		).rejects.toThrow("external or invalid symbolic link");
 		expect(dependencies.acquireMutation).not.toHaveBeenCalled();
 	});
+});
+
+describe("desktop installation input policy", () => {
 	it("rejects unsupported hosts, unsafe versions, and translated Intel Node", async () => {
 		const fixture = await createDesktopAppFixture(root);
 		const { dependencies } = await createInstallerDependencies(root, fixture);

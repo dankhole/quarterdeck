@@ -162,16 +162,28 @@ describe("read-only legacy desktop inventory", () => {
 		},
 	);
 
-	it("quotes untrusted names and never enumerates unrelated app or data directories", async () => {
+	it("never enumerates unrelated app or data directories", async () => {
 		await mkdir(join(root, "installations"), { recursive: true });
-		const name = "unknown\nentry";
+		const name = "unknown entry";
 		await writeFile(join(root, "installations", name), "not metadata");
 		await mkdir(join(root, "unrelated/Quarterdeck.app"), { recursive: true });
 		const inventory = await inventoryLegacyDesktopInstallations(home);
 		expect(inventory.retained).toHaveLength(1);
 		const guidance = formatLegacyDesktopMigrationGuidance(inventory);
+		expect(guidance[1]).toContain(JSON.stringify(join(root, "installations", name)));
+		expect(guidance.join("\n")).not.toContain("unrelated");
+	});
+
+	it("quotes untrusted control characters without requiring a host-valid filename", () => {
+		const guidance = formatLegacyDesktopMigrationGuidance({
+			root,
+			pending: true,
+			truncated: false,
+			retained: [
+				{ path: join(root, "installations", "unknown\nentry"), kind: "uncertain", message: "Unrecognized entry" },
+			],
+		});
 		expect(guidance[1]).toContain("unknown\\nentry");
 		expect(guidance[1]).not.toContain("unknown\nentry");
-		expect(guidance.join("\n")).not.toContain("unrelated");
 	});
 });
