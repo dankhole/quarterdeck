@@ -1,15 +1,19 @@
-import { spawn, spawnSync } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { mkdir, mkdtemp, open, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 let root: string;
 let executable: string;
+const execute = promisify(execFile);
 beforeAll(async () => {
 	root = await mkdtemp(join(tmpdir(), "quarterdeck-native-admission-"));
 	executable = join(root, "admission");
-	const result = spawnSync(
+	// Cold macOS SDK/compiler setup can exceed the default 10s hook budget.
+	// Bound the compiler itself and leave time for its exit before the hook expires.
+	await execute(
 		"/usr/bin/clang",
 		[
 			"-std=c11",
@@ -22,10 +26,9 @@ beforeAll(async () => {
 			"-o",
 			executable,
 		],
-		{ encoding: "utf8" },
+		{ encoding: "utf8", timeout: 30_000 },
 	);
-	if (result.status !== 0) throw new Error(result.stderr);
-});
+}, 35_000);
 afterAll(async () => {
 	await rm(root, { recursive: true, force: true });
 });
