@@ -4,10 +4,10 @@ import { z } from "zod";
 
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { isNodeError } from "../fs/node-error";
+import { projectDirectoryIdentitySchema } from "../fs/project-directory-identity";
 import { getProjectDirectoryLockRequest, getProjectDirectoryPath } from "./project-state-utils";
 import { assertRuntimeWriteAdmission } from "./runtime-write-admission.js";
 
-const directoryIdentitySchema = z.object({ device: z.string(), inode: z.string() });
 const projectRelocationPlanSchema = z.object({
 	operationId: z.string().min(1),
 	projectId: z.string().min(1),
@@ -15,7 +15,7 @@ const projectRelocationPlanSchema = z.object({
 	newPath: z.string().min(1),
 	kind: z.enum(["locate", "rename"]),
 	folderOnly: z.boolean(),
-	directoryIdentity: directoryIdentitySchema,
+	directoryIdentity: projectDirectoryIdentitySchema,
 	worktrees: z.array(z.object({ path: z.string(), originalPath: z.string(), gitAdminName: z.string() })),
 	taskWorkingDirectories: z.record(z.string(), z.string()),
 });
@@ -23,7 +23,7 @@ const projectRelocationPlanSchema = z.object({
 export type ProjectRelocationPlan = z.infer<typeof projectRelocationPlanSchema>;
 
 const projectRelocationJournalSchema = projectRelocationPlanSchema.extend({
-	version: z.literal(1),
+	version: z.union([z.literal(1), z.literal(2)]),
 	phase: z.enum(["prepared", "filesystem_applied", "index_committed"]),
 });
 export type ProjectRelocationJournal = z.infer<typeof projectRelocationJournalSchema>;
@@ -77,7 +77,7 @@ export async function writeProjectRelocationJournal(
 		}
 		await lockedFileSystem.writeJsonFileAtomic(
 			path,
-			projectRelocationJournalSchema.parse({ ...plan, version: 1, phase }),
+			projectRelocationJournalSchema.parse({ ...plan, version: 2, phase }),
 			{ lock: null },
 		);
 		await syncPath(path);

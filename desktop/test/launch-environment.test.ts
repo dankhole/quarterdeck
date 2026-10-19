@@ -1,4 +1,7 @@
-import { type ChildProcess, type SpawnOptions, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, type SpawnOptions, spawn } from "node:child_process";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stopRuntimeOwnedProcessTrees } from "../../src/server/owned-process-shutdown.js";
@@ -127,13 +130,12 @@ describe("desktop launch environment", () => {
 		expect(spawnCapture).not.toHaveBeenCalled();
 	});
 
-	it("captures through a private pipe using only the fixed noninteractive login command", async () => {
+	it("captures through a private pipe using only the fixed interactive login command", async () => {
 		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 		const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 		const spawnCapture = vi.fn((executable: string, args: string[], options: SpawnOptions) => {
 			expect(executable).toBe("/bin/zsh");
-			expect(args).toEqual(["-l", "-c", "exec /usr/bin/env -0 >&3"]);
-			expect(args).not.toContain("-i");
+			expect(args).toEqual(["-i", "-l", "-c", "exec /usr/bin/env -0 >&3"]);
 			expect(options.stdio).toEqual(["ignore", "ignore", "ignore", "pipe"]);
 			expect(options.shell).toBe(false);
 			return spawnFixture(
@@ -158,6 +160,64 @@ describe("desktop launch environment", () => {
 		expect(consoleError).not.toHaveBeenCalled();
 		expect(consoleLog).not.toHaveBeenCalled();
 	});
+
+	it.skipIf(process.platform !== "darwin")(
+		"discovers agents initialized in a real interactive login shell without capturing startup noise",
+		async () => {
+			const home = await mkdtemp(join(tmpdir(), "quarterdeck-desktop-shell-"));
+			try {
+				const localBin = join(home, ".local", "bin");
+				const nvmBin = join(home, ".nvm", "versions", "node", "synthetic", "bin");
+				await Promise.all([mkdir(localBin, { recursive: true }), mkdir(nvmBin, { recursive: true })]);
+				for (const [name, directory] of [
+					["codex", localBin],
+					["claude", nvmBin],
+					["pi", nvmBin],
+				]) {
+					const executable = join(directory, name);
+					await writeFile(executable, `#!/bin/sh\nprintf 'synthetic-${name}\\n'\n`);
+					await chmod(executable, 0o700);
+				}
+				await writeFile(join(home, ".zprofile"), "export SYNTHETIC_LOGIN_PROFILE=loaded\n");
+				await writeFile(
+					join(home, ".zshrc"),
+					[
+						"[[ -o interactive ]] || return",
+						'export PATH="$HOME/.local/bin:$HOME/.nvm/versions/node/synthetic/bin:$PATH"',
+						'export NODE_OPTIONS="--require synthetic-injection.js"',
+						"print 'startup noise: this is not an environment record'",
+						"print -u2 'startup error noise'",
+					].join("\n"),
+				);
+				const result = await createDesktopLaunchEnvironmentResolver(
+					environmentOptions({
+						inheritedEnvironment: {
+							HOME: home,
+							ZDOTDIR: home,
+							QUARTERDECK_STATE_HOME: join(home, "state"),
+							PATH: "/usr/bin:/bin",
+						},
+						captureTimeoutMs: 3_000,
+					}),
+				)();
+				expect(result.source).toBe("login-shell");
+				expect(result.environment.SYNTHETIC_LOGIN_PROFILE).toBe("loaded");
+				expect(result.environment.PATH?.split(":").slice(0, 3)).toEqual([
+					"/Applications/Quarterdeck Test.app/runtime/bin",
+					localBin,
+					nvmBin,
+				]);
+				expect(result.environment.NODE_OPTIONS).toBeUndefined();
+				for (const name of ["codex", "claude", "pi"]) {
+					expect(
+						execFileSync(name, [], { env: result.environment, encoding: "utf8", timeout: 1_000 }).trim(),
+					).toBe(`synthetic-${name}`);
+				}
+			} finally {
+				await rm(home, { recursive: true, force: true });
+			}
+		},
+	);
 
 	it("does not allow inherited SHELL or an arbitrary executable to become a command", async () => {
 		const spawnCapture = vi.fn(() => {

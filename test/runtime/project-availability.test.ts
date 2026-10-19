@@ -2,11 +2,50 @@ import { mkdir, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
+import { readProjectDirectoryIdentity } from "../../src/fs/project-directory-identity";
 import { observeProjectAvailability } from "../../src/projects/project-availability";
 import { initGitRepository } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 
 describe("project availability", () => {
+	it.skipIf(process.platform !== "darwin")(
+		"accepts device drift only with matching saved Darwin creation-time evidence",
+		async () => {
+			const root = createTempDir("quarterdeck-availability-darwin-");
+			try {
+				const directoryIdentity = await readProjectDirectoryIdentity(root.path);
+				expect(directoryIdentity.darwinBirthtimeNs).toBeDefined();
+				const changedDevice = (BigInt(directoryIdentity.device) + 1n).toString();
+				await expect(
+					observeProjectAvailability({
+						repoPath: root.path,
+						folderOnly: true,
+						directoryIdentity: { ...directoryIdentity, device: changedDevice },
+					}),
+				).resolves.toEqual({ status: "available" });
+				await expect(
+					observeProjectAvailability({
+						repoPath: root.path,
+						folderOnly: true,
+						directoryIdentity: {
+							...directoryIdentity,
+							darwinBirthtimeNs: (BigInt(directoryIdentity.darwinBirthtimeNs ?? "0") + 1n).toString(),
+						},
+					}),
+				).resolves.toEqual({ status: "unavailable", reason: "invalid_location" });
+				await expect(
+					observeProjectAvailability({
+						repoPath: root.path,
+						folderOnly: true,
+						directoryIdentity: { device: changedDevice, inode: directoryIdentity.inode },
+					}),
+				).resolves.toEqual({ status: "unavailable", reason: "invalid_location" });
+			} finally {
+				root.cleanup();
+			}
+		},
+	);
+
 	it("classifies a renamed folder without probing Git and recognizes its original identity at the new location", async () => {
 		const root = createTempDir("quarterdeck-availability-");
 		try {

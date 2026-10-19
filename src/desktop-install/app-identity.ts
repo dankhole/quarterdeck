@@ -1,9 +1,8 @@
-import { lstat, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { desktopBuildIdentitySchema } from "../shared/desktop-installation-contract.js";
 import { DesktopInstallationError } from "./errors.js";
-import { desktopAppTreeSha256, desktopFileSha256, readDesktopJson } from "./files.js";
+import { desktopAppTreeSha256, desktopFileSha256, desktopPhysicalFileSystem, readDesktopJson } from "./files.js";
 import {
 	type DesktopBundleMetadata,
 	type DesktopReleaseManifest,
@@ -12,6 +11,8 @@ import {
 } from "./metadata.js";
 import { desktopApplicationBundleId } from "./receipt.js";
 import type { DesktopInstallationArchitecture, DesktopInstallationDependencies } from "./types.js";
+
+const { lstat, realpath } = desktopPhysicalFileSystem;
 
 const applicationInfoSchema = z.object({
 	CFBundleIdentifier: z.literal(desktopApplicationBundleId),

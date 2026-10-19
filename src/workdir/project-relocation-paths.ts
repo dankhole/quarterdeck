@@ -1,19 +1,11 @@
-import { lstat, realpath, stat } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 import { join, posix, relative, resolve, win32 } from "node:path";
 
 import { areFileSystemPathsEqual, isFileSystemPathWithin, isWindowsSafePathComponent } from "../core";
 import { isNodeError } from "../fs/node-error";
-import type { ProjectDirectoryIdentity } from "../state/project-state-index";
+import { readProjectDirectoryIdentity } from "../fs/project-directory-identity";
 
-export async function readProjectDirectoryIdentity(path: string): Promise<ProjectDirectoryIdentity> {
-	const entry = await stat(path, { bigint: true });
-	if (!entry.isDirectory()) throw new Error("The selected path is not a folder.");
-	return { device: entry.dev.toString(), inode: entry.ino.toString() };
-}
-
-export function sameProjectDirectoryIdentity(left: ProjectDirectoryIdentity, right: ProjectDirectoryIdentity): boolean {
-	return left.device === right.device && left.inode === right.inode;
-}
+export { readProjectDirectoryIdentity } from "../fs/project-directory-identity";
 
 export async function projectPathExists(path: string): Promise<boolean> {
 	try {

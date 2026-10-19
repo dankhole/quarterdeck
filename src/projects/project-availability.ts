@@ -1,6 +1,11 @@
 import { stat } from "node:fs/promises";
 
 import type { RuntimeProjectAvailability } from "../core";
+import {
+	matchesProjectDirectoryIdentity,
+	type ProjectDirectoryIdentity,
+	readProjectDirectoryIdentity,
+} from "../fs/project-directory-identity";
 import { readProjectRelocationJournal } from "../state/project-relocation-journal";
 import { isUnderWorktreesHome } from "../state/project-state-utils";
 import { hasGitRepository } from "./git-repository-probe";
@@ -9,7 +14,7 @@ export interface ProjectAvailabilityScope {
 	projectId?: string;
 	repoPath: string;
 	folderOnly?: boolean;
-	directoryIdentity?: { device: string; inode: string };
+	directoryIdentity?: ProjectDirectoryIdentity;
 }
 
 export interface ProjectAvailabilityDependencies {
@@ -57,11 +62,8 @@ export async function observeProjectAvailability(
 			: await inspectDirectory(scope.repoPath);
 		if (directory.status === "unavailable") return directory;
 		if (scope.directoryIdentity) {
-			const identity = await stat(scope.repoPath, { bigint: true });
-			if (
-				identity.dev.toString() !== scope.directoryIdentity.device ||
-				identity.ino.toString() !== scope.directoryIdentity.inode
-			) {
+			const identity = await readProjectDirectoryIdentity(scope.repoPath);
+			if (!matchesProjectDirectoryIdentity(scope.directoryIdentity, identity)) {
 				return { status: "unavailable", reason: "invalid_location" };
 			}
 		}

@@ -9,6 +9,7 @@ import {
 	applyProjectRelocation,
 	beginProjectRelocation,
 	finalizeProjectRelocation,
+	getProjectRelocationJournalPath,
 	prepareProjectRelocation,
 	readProjectDirectoryIdentity,
 	readProjectRelocationJournal,
@@ -77,6 +78,81 @@ function createWorktree(repoPath: string): string {
 }
 
 describe("project folder relocation", { concurrent: false }, () => {
+	it.skipIf(process.platform !== "darwin")("recovers a persisted rename after a device number change", async () => {
+		await withFixture(async (_root, repoPath) => {
+			const plan = await prepareProjectRelocation({
+				projectId: "remounted",
+				oldPath: repoPath,
+				destination: { kind: "rename", folderName: "renamed" },
+				projects: [],
+				board: { columns: [] },
+			});
+			plan.directoryIdentity.device = `${BigInt(plan.directoryIdentity.device) + 1n}`;
+			await beginProjectRelocation(plan);
+			const journal = await readProjectRelocationJournal(plan.projectId);
+			if (!journal) throw new Error("Missing journal");
+			expect(journal.version).toBe(2);
+			expect(journal.directoryIdentity.darwinBirthtimeNs).toBeDefined();
+			await recoverProjectRelocation(journal);
+			expect(existsSync(repoPath)).toBe(false);
+			expect(readFileSync(join(plan.newPath, "tracked.txt"), "utf8")).toBe("original\n");
+			await finalizeProjectRelocation(journal);
+		});
+	});
+
+	it.skipIf(process.platform !== "darwin")(
+		"refuses recovery when the saved creation time no longer matches",
+		async () => {
+			await withFixture(async (_root, repoPath) => {
+				const plan = await prepareProjectRelocation({
+					projectId: "replaced",
+					oldPath: repoPath,
+					destination: { kind: "rename", folderName: "renamed" },
+					projects: [],
+					board: { columns: [] },
+				});
+				plan.directoryIdentity.darwinBirthtimeNs = `${BigInt(plan.directoryIdentity.darwinBirthtimeNs ?? "0") + 1n}`;
+				await beginProjectRelocation(plan);
+				const journal = await readProjectRelocationJournal(plan.projectId);
+				if (!journal) throw new Error("Missing journal");
+				await expect(recoverProjectRelocation(journal)).rejects.toThrow("original folder changed");
+				expect(existsSync(plan.newPath)).toBe(false);
+				expect(readFileSync(join(repoPath, "tracked.txt"), "utf8")).toBe("original\n");
+			});
+		},
+	);
+
+	it("keeps legacy relocation journals strict when their device number changes", async () => {
+		await withFixture(async (_root, repoPath) => {
+			const plan = await prepareProjectRelocation({
+				projectId: "legacy",
+				oldPath: repoPath,
+				destination: { kind: "rename", folderName: "renamed" },
+				projects: [],
+				board: { columns: [] },
+			});
+			await beginProjectRelocation(plan);
+			writeFileSync(
+				getProjectRelocationJournalPath(plan.projectId),
+				JSON.stringify({
+					...plan,
+					version: 1,
+					phase: "prepared",
+					directoryIdentity: {
+						device: `${BigInt(plan.directoryIdentity.device) + 1n}`,
+						inode: plan.directoryIdentity.inode,
+					},
+				}),
+			);
+			const journal = await readProjectRelocationJournal(plan.projectId);
+			if (!journal) throw new Error("Missing legacy journal");
+			expect(journal.version).toBe(1);
+			await expect(recoverProjectRelocation(journal)).rejects.toThrow("original folder changed");
+			expect(existsSync(repoPath)).toBe(true);
+			expect(existsSync(plan.newPath)).toBe(false);
+		});
+	});
+
 	it("renames the root, repairs exact worktrees, and preserves the original checkout in Trash", async () => {
 		await withFixture(async (_root, repoPath) => {
 			const worktreePath = createWorktree(repoPath);

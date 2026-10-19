@@ -35,6 +35,7 @@ import {
 	type RuntimeProjectScopeContext,
 	updateProjectIndexMetadata,
 } from "../state";
+import { upgradeProjectDirectoryIdentities } from "../state/project-directory-identity-upgrade";
 import { ProjectExecutionOwnershipStore } from "../state/project-execution-ownership-store";
 import { readProjectNavigationIndex } from "../state/project-state-index.js";
 import { detectGitRepositoryInfo } from "../state/project-state-utils";
@@ -242,6 +243,7 @@ export function collectProjectWorktreeTaskIdsForRemoval(board: RuntimeBoardData)
 }
 
 export async function createProjectRegistry(deps: CreateProjectRegistryDependencies): Promise<ProjectRegistry> {
+	await upgradeProjectDirectoryIdentities();
 	const launchedFromGitRepo = await deps.hasGitRepository(deps.cwd);
 	const launchedFromWorktree = isUnderWorktreesHome(deps.cwd);
 	const initialIndexedProjects = await listProjectIndexEntries();

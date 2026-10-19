@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { copyFile, realpath, stat } from "node:fs/promises";
+import { copyFile, realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import type {
@@ -16,6 +16,7 @@ import {
 	runtimeTaskSessionSummarySchema,
 } from "../core";
 import { lockedFileSystem } from "../fs/locked-file-system";
+import { readProjectDirectoryIdentity } from "../fs/project-directory-identity";
 import { removeDirectoryWithRetries } from "../fs/remove-path";
 import {
 	assignIndexedProjectGroup,
@@ -282,8 +283,7 @@ export async function loadProjectContext(
 
 	let directoryIdentity: ProjectDirectoryIdentity | undefined;
 	try {
-		const directory = await stat(repoPath, { bigint: true });
-		if (directory.isDirectory()) directoryIdentity = { device: String(directory.dev), inode: String(directory.ino) };
+		directoryIdentity = await readProjectDirectoryIdentity(repoPath);
 	} catch {
 		// A legacy or temporarily unavailable root can still retain its indexed identity.
 	}
@@ -299,7 +299,7 @@ export async function loadProjectContext(
 		if (identityAdded) ensured.entry.directoryIdentity = directoryIdentity;
 		if (identityAdded || modeChanged) {
 			ensured.entry.metadataRevision = (ensured.entry.metadataRevision ?? 0) + 1;
-			index.version = 3;
+			index.version = 4;
 		}
 		if (options.folderOnly !== undefined) ensured.entry.folderOnly = options.folderOnly;
 		if (options.groupId !== undefined) assignIndexedProjectGroup(index, ensured.entry.projectId, options.groupId);

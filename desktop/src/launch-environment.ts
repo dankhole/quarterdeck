@@ -132,7 +132,8 @@ async function captureLoginEnvironment(
 ): Promise<CaptureResult> {
 	let child: ChildProcess;
 	try {
-		child = (options.spawnCapture ?? spawn)(shell, ["-l", "-c", ENVIRONMENT_CAPTURE_COMMAND], {
+		// Agent managers commonly initialize PATH in interactive startup files such as .zshrc.
+		child = (options.spawnCapture ?? spawn)(shell, ["-i", "-l", "-c", ENVIRONMENT_CAPTURE_COMMAND], {
 			env: environment,
 			stdio: ["ignore", "ignore", "ignore", "pipe"],
 			shell: false,

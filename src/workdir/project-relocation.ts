@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 
 import { areFileSystemPathsEqual, isFileSystemPathWithin, type RuntimeBoardData } from "../core";
 import { lockedFileSystem } from "../fs/locked-file-system";
+import { matchesProjectDirectoryIdentity } from "../fs/project-directory-identity";
 import {
 	type ProjectRelocationPlan,
 	readProjectRelocationJournal,
@@ -18,7 +19,6 @@ import {
 	projectPathExists,
 	readProjectDirectoryIdentity,
 	resolveRenamedProjectPath,
-	sameProjectDirectoryIdentity,
 } from "./project-relocation-paths";
 import { prepareProjectWorktrees, repairProjectWorktrees } from "./project-relocation-worktrees";
 
@@ -87,7 +87,7 @@ export async function prepareProjectRelocation(input: PrepareProjectRelocationIn
 	if (kind === "rename" && (await projectPathExists(newPath))) {
 		if (
 			!isCaseOnlyProjectRename(oldPath, newPath) ||
-			!sameProjectDirectoryIdentity(directoryIdentity, await readProjectDirectoryIdentity(newPath))
+			!matchesProjectDirectoryIdentity(directoryIdentity, await readProjectDirectoryIdentity(newPath))
 		) {
 			throw new Error("A folder or file already exists with that name. Choose another name.");
 		}
@@ -97,7 +97,7 @@ export async function prepareProjectRelocation(input: PrepareProjectRelocationIn
 	if (
 		kind === "rename" &&
 		input.directoryIdentity &&
-		!sameProjectDirectoryIdentity(input.directoryIdentity, directoryIdentity)
+		!matchesProjectDirectoryIdentity(input.directoryIdentity, directoryIdentity)
 	) {
 		throw new Error("The selected folder does not match the original project's directory identity.");
 	}
@@ -133,7 +133,7 @@ async function completeFilesystemRelocation(plan: ProjectRelocationPlan): Promis
 		if (plan.kind !== "rename")
 			throw new Error("The selected project folder is unavailable. Locate it again to finish recovery.");
 		const sourceIdentity = await readProjectDirectoryIdentity(plan.oldPath);
-		if (!sameProjectDirectoryIdentity(sourceIdentity, plan.directoryIdentity)) {
+		if (!matchesProjectDirectoryIdentity(plan.directoryIdentity, sourceIdentity)) {
 			throw new Error("The original folder changed during relocation. No folder was renamed.");
 		}
 		// Recheck immediately before the single same-parent rename; never replace a known destination.
@@ -142,13 +142,13 @@ async function completeFilesystemRelocation(plan: ProjectRelocationPlan): Promis
 		await rename(plan.oldPath, plan.newPath);
 	}
 	const identity = await readProjectDirectoryIdentity(plan.newPath);
-	if (!sameProjectDirectoryIdentity(identity, plan.directoryIdentity)) {
+	if (!matchesProjectDirectoryIdentity(plan.directoryIdentity, identity)) {
 		throw new Error(
 			"The relocation destination changed. Project files were preserved; locate the original folder to recover.",
 		);
 	}
 	if (destinationExists && caseOnly && (await projectPathExists(plan.oldPath))) {
-		if (!sameProjectDirectoryIdentity(await readProjectDirectoryIdentity(plan.oldPath), identity)) {
+		if (!matchesProjectDirectoryIdentity(identity, await readProjectDirectoryIdentity(plan.oldPath))) {
 			throw new Error("The original folder changed during relocation. No folder was renamed.");
 		}
 		// Case-insensitive filesystems resolve both spellings before rename; still update the directory entry.

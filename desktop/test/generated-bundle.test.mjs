@@ -1,15 +1,16 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { runInNewContext } from "node:vm";
 import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
+import { createDesktopAppFixture } from "../../test/runtime/desktop-install/fixture.ts";
 import { mainBuildOptions, preloadBuildOptions } from "../scripts/build-options.mjs";
 import { desktopRoot } from "../scripts/paths.mjs";
 
-// Both caller-path cases inspect the same build with independent fixture patches.
+// Caller-path cases inspect the same build with independent fixture patches.
 let generatedMain;
 async function generatedMainPrefix(fixture, virtualArchiveView = false) {
 	generatedMain ??= build({ ...mainBuildOptions, write: false, sourcemap: false });
@@ -34,7 +35,7 @@ async function generatedMainPrefix(fixture, virtualArchiveView = false) {
 	if (virtualArchiveView) {
 		await writeFile(
 			patchedFsStub,
-			'export * from "node:fs/promises";\nimport { readFile as rawReadFile } from "node:fs/promises";\nexport async function readFile(path, ...args) { if (String(path).endsWith("app.asar")) throw new Error("ASAR is a virtual directory"); return rawReadFile(path, ...args); }\n',
+			'export * from "node:fs/promises";\nimport { lstat as rawLstat, readFile as rawReadFile } from "node:fs/promises";\nexport async function lstat(path, ...args) { const metadata = await rawLstat(path, ...args); return String(path).endsWith("app.asar") ? { ...metadata, isFile: () => false, isDirectory: () => true } : metadata; }\nexport async function readFile(path, ...args) { if (String(path).endsWith("app.asar")) throw new Error("ASAR is a virtual directory"); return rawReadFile(path, ...args); }\n',
 		);
 		prefix = prefix.replaceAll(
 			'from "node:fs/promises";',
@@ -117,6 +118,60 @@ describe("generated desktop bundles", () => {
 			expect(virtual.error).toBeUndefined();
 			expect(virtual.status).not.toBe(0);
 			expect(virtual.stderr).toContain("ASAR is a virtual directory");
+		} finally {
+			await rm(fixture, { recursive: true, force: true });
+		}
+	});
+
+	it("validates shared app identity against physical archive metadata in Electron's generated main", async () => {
+		const cache = join(desktopRoot, ".cache");
+		await mkdir(cache, { recursive: true });
+		const fixture = await mkdtemp(join(cache, "generated-app-identity-test-"));
+		try {
+			const { prefix, patchedFsStub } = await generatedMainPrefix(fixture, true);
+			const { appPath, bundle } = await createDesktopAppFixture(fixture);
+			const archive = join(appPath, "Contents/Resources/app.asar");
+			// The shared installer resolves original-fs through createRequire in
+			// Electron; provide that raw filesystem without starting the shell.
+			const originalFs = join(fixture, "node_modules/original-fs");
+			await mkdir(originalFs, { recursive: true });
+			await writeFile(join(originalFs, "package.json"), '{"main":"index.cjs"}');
+			await writeFile(join(originalFs, "index.cjs"), 'module.exports = require("node:fs");\n');
+			const args = [appPath, bundle.version, bundle.arch].map((value) => JSON.stringify(value)).join(", ");
+			const main = join(fixture, "main.mjs");
+			await writeFile(
+				main,
+				`import * as virtual from ${JSON.stringify(pathToFileURL(patchedFsStub).href)};
+Object.defineProperty(process.versions, "electron", { value: "44.5.1" });
+${prefix}
+if ((await virtual.lstat(${JSON.stringify(archive)})).isFile()) throw new Error("Missing virtual archive view");
+const identity = await inspectDesktopApp(${args}, {
+	runCommand: async (command, args) => ({ stdout: command === "/usr/bin/plutil" ? await virtual.readFile(args.at(-1), "utf8") : "arm64", stderr: "" }),
+});
+console.log(identity.appAsarSha256);
+`,
+			);
+			const run = () => spawnSync(process.execPath, [main], { encoding: "utf8", timeout: 10_000 });
+			const raw = run();
+			expect(raw.error).toBeUndefined();
+			expect(raw.status, raw.stderr).toBe(0);
+			expect(raw.stdout.trim()).toBe(createHash("sha256").update(`shell-${bundle.buildId}`).digest("hex"));
+
+			await rm(archive);
+			await mkdir(archive);
+			const directory = run();
+			expect(directory.error).toBeUndefined();
+			expect(directory.status).not.toBe(0);
+			expect(directory.stderr).toContain("A required app resource is not a regular file.");
+
+			await rm(archive, { recursive: true });
+			const target = `${archive}.bytes`;
+			await writeFile(target, "physical-archive");
+			await symlink(target, archive);
+			const link = run();
+			expect(link.error).toBeUndefined();
+			expect(link.status).not.toBe(0);
+			expect(link.stderr).toContain("A required app resource is not a regular file.");
 		} finally {
 			await rm(fixture, { recursive: true, force: true });
 		}

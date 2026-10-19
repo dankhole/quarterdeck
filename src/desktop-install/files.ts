@@ -4,12 +4,14 @@ import { createRequire } from "node:module";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { DesktopInstallationError } from "./errors.js";
 
-// Electron's normal fs virtualizes app.asar as a directory. Installer identity always hashes physical bytes.
+// Electron's normal fs virtualizes app.asar as a directory. Installer identity
+// must validate physical metadata and hash the same physical bytes.
 const physicalFs = process.versions.electron
 	? (createRequire(import.meta.url)("original-fs") as typeof nodeFs)
 	: nodeFs;
+export const desktopPhysicalFileSystem = physicalFs.promises;
 const { createReadStream } = physicalFs;
-const { chmod, lstat, readdir, readFile, readlink, realpath } = physicalFs.promises;
+const { chmod, lstat, readdir, readFile, readlink, realpath } = desktopPhysicalFileSystem;
 
 export async function desktopFileSha256(path: string): Promise<string> {
 	const hash = createHash("sha256");

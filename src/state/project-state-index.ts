@@ -21,6 +21,7 @@ import { applyProjectOrganizationCommand } from "../core/project-organization.js
 import { assignMissingTaskColors } from "../core/task-card-colors.js";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { isNodeError } from "../fs/node-error";
+import { type ProjectDirectoryIdentity, projectDirectoryIdentitySchema } from "../fs/project-directory-identity";
 import { migrateLegacyBacklog } from "./legacy-backlog-migration";
 import { type ProjectStateMeta, projectStateMetaSchema, withProjectStateLock } from "./project-state-transaction";
 import {
@@ -59,10 +60,7 @@ export interface ProjectIndexEntry {
 	directoryIdentity?: ProjectDirectoryIdentity;
 }
 
-export interface ProjectDirectoryIdentity {
-	device: string;
-	inode: string;
-}
+export type { ProjectDirectoryIdentity } from "../fs/project-directory-identity";
 
 export type RuntimeProjectIndexEntry = ProjectIndexEntry;
 
@@ -80,12 +78,12 @@ const projectIndexEntrySchema = z.object({
 	folderOnly: z.boolean().optional(),
 	displayName: runtimeProjectDisplayNameSchema.optional(),
 	metadataRevision: z.number().int().nonnegative().optional().default(0),
-	directoryIdentity: z.object({ device: z.string().min(1), inode: z.string().min(1) }).optional(),
+	directoryIdentity: projectDirectoryIdentitySchema.optional(),
 });
 
 const projectIndexFileSchema = z
 	.object({
-		version: z.union([z.literal(INDEX_VERSION), z.literal(2), z.literal(3)]),
+		version: z.union([z.literal(INDEX_VERSION), z.literal(2), z.literal(3), z.literal(4)]),
 		organization: projectOrganizationSchema.omit({ projectOrder: true }).optional(),
 		entries: z.record(z.string(), projectIndexEntrySchema),
 		repoPathToId: z.record(z.string(), z.string().min(1, "Project ID cannot be empty.")),
@@ -667,7 +665,8 @@ export async function updateProjectIndexMetadata(
 			entry.repoPath !== nextPath ||
 			entry.displayName !== displayName ||
 			entry.directoryIdentity?.device !== directoryIdentity?.device ||
-			entry.directoryIdentity?.inode !== directoryIdentity?.inode;
+			entry.directoryIdentity?.inode !== directoryIdentity?.inode ||
+			entry.directoryIdentity?.darwinBirthtimeNs !== directoryIdentity?.darwinBirthtimeNs;
 		if (!changed) return { ...entry, metadataRevision: entry.metadataRevision ?? 0 };
 
 		const next: ProjectIndexEntry = {
@@ -681,7 +680,7 @@ export async function updateProjectIndexMetadata(
 		delete index.repoPathToId[entry.repoPath];
 		index.repoPathToId[nextPath] = entry.projectId;
 		index.entries[entry.projectId] = next;
-		index.version = 3;
+		index.version = 4;
 		await writeProjectIndex(index);
 		return next;
 	});

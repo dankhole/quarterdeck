@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { deriveProjectSummary, type RuntimeBoardData } from "../../src/core";
+import { readProjectDirectoryIdentity } from "../../src/fs/project-directory-identity";
 import {
 	applyProjectBoardMutationById,
 	loadProjectContext,
@@ -14,8 +15,10 @@ import {
 	saveProjectState,
 	updateProjectIndexMetadata,
 } from "../../src/state";
+import { upgradeProjectDirectoryIdentities } from "../../src/state/project-directory-identity-upgrade";
 import {
 	finalizeProjectRelocation,
+	getProjectRelocationJournalPath,
 	type ProjectRelocationPlan,
 	writeProjectRelocationJournal,
 } from "../../src/state/project-relocation-journal";
@@ -75,7 +78,7 @@ function board(path: string): RuntimeBoardData {
 }
 
 describe("stable project identity", { concurrent: false }, () => {
-	it.each([1, 2])("loads a version %s index without a historical directory identity", async (version) => {
+	it.each([1, 2, 3])("loads a version %s index without a historical directory identity", async (version) => {
 		const project = await createProject("legacy");
 		const index = await readProjectIndex();
 		index.version = version;
@@ -86,8 +89,96 @@ describe("stable project identity", { concurrent: false }, () => {
 		expect(await loadProjectScopeById(project.projectId)).toMatchObject({ metadataRevision: 0 });
 		expect((await loadProjectScopeById(project.projectId))?.directoryIdentity).toBeUndefined();
 		await updateProjectIndexMetadata({ projectId: project.projectId, displayName: "  Legacy project  " });
-		expect((await readProjectIndex()).version).toBe(3);
+		expect((await readProjectIndex()).version).toBe(4);
 		expect((await loadProjectScopeById(project.projectId))?.displayName).toBe("Legacy project");
+	});
+
+	it.skipIf(process.platform !== "darwin")("upgrades only matching legacy directory evidence at startup", async () => {
+		const matching = await createProject("matching");
+		const changed = await createProject("changed");
+		const current = await readProjectDirectoryIdentity(matching.repoPath);
+		const changedCurrent = await readProjectDirectoryIdentity(changed.repoPath);
+		const index = await readProjectIndex();
+		index.version = 3;
+		index.entries[matching.projectId].directoryIdentity = { device: current.device, inode: current.inode };
+		const previous = { device: `${BigInt(changedCurrent.device) + 1n}`, inode: changedCurrent.inode };
+		index.entries[changed.projectId].directoryIdentity = previous;
+		await writeFile(getProjectIndexPath(), JSON.stringify(index));
+		await saveProjectState(matching.repoPath, { board: board(matching.repoPath), sessions: {} });
+		const saved = await loadSavedProjectStateById(matching.projectId);
+
+		await upgradeProjectDirectoryIdentities();
+		const upgraded = await readProjectIndex();
+		expect(upgraded.version).toBe(4);
+		expect(upgraded.entries[matching.projectId].directoryIdentity).toEqual(current);
+		expect(upgraded.entries[matching.projectId].metadataRevision).toBe((matching.metadataRevision ?? 0) + 1);
+		expect(upgraded.entries[changed.projectId]).toEqual(index.entries[changed.projectId]);
+		expect(await loadSavedProjectStateById(matching.projectId)).toEqual({
+			...saved,
+			metadataRevision: upgraded.entries[matching.projectId].metadataRevision,
+		});
+		await upgradeProjectDirectoryIdentities();
+		expect(await readProjectIndex()).toEqual(upgraded);
+	});
+
+	it.skipIf(process.platform !== "darwin")(
+		"leaves unavailable and journaled legacy projects untouched during upgrade",
+		async () => {
+			const unrecorded = await createProject("unrecorded");
+			const missing = await createProject("missing");
+			const pending = await createProject("pending");
+			const unreadable = await createProject("unreadable");
+			const index = await readProjectIndex();
+			for (const project of [unrecorded, missing, pending, unreadable]) {
+				delete index.entries[project.projectId].directoryIdentity;
+			}
+			index.version = 3;
+			await writeFile(getProjectIndexPath(), JSON.stringify(index));
+			await rename(missing.repoPath, join(root.path, "moved-away"));
+			await writeProjectRelocationJournal(
+				{
+					operationId: randomUUID(),
+					projectId: pending.projectId,
+					oldPath: pending.repoPath,
+					newPath: join(root.path, "pending-destination"),
+					kind: "rename",
+					folderOnly: true,
+					directoryIdentity: await readProjectDirectoryIdentity(pending.repoPath),
+					worktrees: [],
+					taskWorkingDirectories: {},
+				},
+				"prepared",
+			);
+			const unreadableJournalPath = getProjectRelocationJournalPath(unreadable.projectId);
+			await mkdir(dirname(unreadableJournalPath), { recursive: true });
+			await writeFile(unreadableJournalPath, "invalid journal");
+
+			await upgradeProjectDirectoryIdentities();
+			const upgraded = await readProjectIndex();
+			expect(upgraded.entries[unrecorded.projectId].directoryIdentity).toEqual(
+				await readProjectDirectoryIdentity(unrecorded.repoPath),
+			);
+			for (const project of [missing, pending, unreadable]) {
+				expect(upgraded.entries[project.projectId]).toEqual(index.entries[project.projectId]);
+			}
+		},
+	);
+
+	it("retains creation-time evidence through metadata edits, registration, and index reload", async () => {
+		const project = await createProject("fingerprint");
+		const identity = { device: "10", inode: "20", darwinBirthtimeNs: "123456789" };
+		const updated = await updateProjectIndexMetadata({ projectId: project.projectId, directoryIdentity: identity });
+		const strengthened = { ...identity, darwinBirthtimeNs: "123456790" };
+		const changed = await updateProjectIndexMetadata({
+			projectId: project.projectId,
+			directoryIdentity: strengthened,
+		});
+		expect(changed.metadataRevision).toBe((updated.metadataRevision ?? 0) + 1);
+		await createProject("second");
+		await updateProjectIndexMetadata({ projectId: project.projectId, displayName: "Renamed" });
+		const reloaded = await readProjectIndex();
+		expect(reloaded.version).toBe(4);
+		expect(reloaded.entries[project.projectId].directoryIdentity).toEqual(strengthened);
 	});
 
 	it("retains saved board and sessions by ID when the folder disappears and migrates paths under the state transaction", async () => {
@@ -166,7 +257,7 @@ describe("stable project identity", { concurrent: false }, () => {
 			command: { type: "rename", groupId, name: "Team" },
 		});
 		expect(renamedGroup.ok).toBe(true);
-		expect((await readProjectIndex()).version).toBe(3);
+		expect((await readProjectIndex()).version).toBe(4);
 		const reset = await updateProjectIndexMetadata({ projectId: project.projectId, displayName: null });
 		expect(reset.displayName).toBeUndefined();
 		expect(deriveProjectSummary({ ...reset, board: board(movedPath), boardRevision: oldRevision ?? 0 }).name).toBe(
@@ -206,7 +297,7 @@ describe("stable project identity", { concurrent: false }, () => {
 		expect(attempts.filter((attempt) => attempt.status === "rejected")).toHaveLength(1);
 	});
 
-	it("preserves version 3 metadata through backup restore and rejects unfinished relocation snapshots", async () => {
+	it("preserves version 4 metadata through backup restore and rejects unfinished relocation snapshots", async () => {
 		const project = await createProject("backup-project");
 		await updateProjectIndexMetadata({ projectId: project.projectId, displayName: "Retained name" });
 		const original = await readProjectIndex();
