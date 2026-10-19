@@ -63,7 +63,7 @@ async function resolveRuntimeHostIdentity(): Promise<string> {
 				"-NoProfile",
 				"-NonInteractive",
 				"-Command",
-				"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-ItemPropertyValue -LiteralPath 'HKLM:\\SOFTWARE\\Microsoft\\Cryptography' -Name MachineGuid -ErrorAction Stop",
+				"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Microsoft.Win32.Registry]::GetValue('HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography','MachineGuid',$null)",
 			]);
 		} else throw new Error("Unsupported machine identity platform.");
 		if (process.platform !== "linux" && !/^[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}$/u.test(identity))

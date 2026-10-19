@@ -47,34 +47,44 @@ describe("deep runtime ownership history", () => {
 		return result.lease;
 	}
 
-	it("walks a ten-thousand-generation history iteratively before admission", async () => {
-		const initial = await acquire();
-		await initial.release();
-		const root = join(directory, "runtime-ownership");
-		const initialClaim = runtimeOwnershipClaimSchema.parse(
-			JSON.parse(await readFile(join(root, "first-owner.json"), "utf8")),
-		);
-		let predecessor = initial.generation;
-		for (let offset = 1; offset < 10_000; offset += 100) {
-			const writes: Promise<void>[] = [];
-			for (let index = offset; index < Math.min(offset + 100, 10_000); index++) {
-				const generation = randomUUID();
-				writes.push(
-					writeFile(
-						join(root, "successors", `${predecessor}.json`),
-						JSON.stringify({ ...initialClaim, generation, previousGeneration: predecessor }),
-					),
-				);
-				predecessor = generation;
+	// This is a correctness/depth regression, not a disk-throughput gate.
+	// Native Windows CI also pays for creating and scanning 10,000 files.
+	it(
+		"walks a ten-thousand-generation history iteratively before admission",
+		async () => {
+			const fixtureStartedAt = performance.now();
+			const initial = await acquire();
+			await initial.release();
+			const root = join(directory, "runtime-ownership");
+			const initialClaim = runtimeOwnershipClaimSchema.parse(
+				JSON.parse(await readFile(join(root, "first-owner.json"), "utf8")),
+			);
+			let predecessor = initial.generation;
+			for (let offset = 1; offset < 10_000; offset += 100) {
+				const writes: Promise<void>[] = [];
+				for (let index = offset; index < Math.min(offset + 100, 10_000); index++) {
+					const generation = randomUUID();
+					writes.push(
+						writeFile(
+							join(root, "successors", `${predecessor}.json`),
+							JSON.stringify({ ...initialClaim, generation, previousGeneration: predecessor }),
+						),
+					);
+					predecessor = generation;
+				}
+				await Promise.all(writes);
 			}
-			await Promise.all(writes);
-		}
-		vi.mocked(inspectRuntimeProcess).mockResolvedValue("dead");
-		const startedAt = performance.now();
-		const current = await acquire();
-		const elapsedMs = performance.now() - startedAt;
-		expect(current.generation).not.toBe(predecessor);
-		expect(current.isCurrent()).toBe(true);
-		console.info(`Synthetic 10000-generation ownership admission: ${Math.round(elapsedMs)}ms`);
-	}, 30_000);
+			console.info(
+				`Synthetic 10000-generation ownership fixture: ${Math.round(performance.now() - fixtureStartedAt)}ms`,
+			);
+			vi.mocked(inspectRuntimeProcess).mockResolvedValue("dead");
+			const startedAt = performance.now();
+			const current = await acquire();
+			const elapsedMs = performance.now() - startedAt;
+			expect(current.generation).not.toBe(predecessor);
+			expect(current.isCurrent()).toBe(true);
+			console.info(`Synthetic 10000-generation ownership admission: ${Math.round(elapsedMs)}ms`);
+		},
+		process.platform === "win32" ? 60_000 : 30_000,
+	);
 });
