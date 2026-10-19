@@ -45,6 +45,18 @@ describe("Windows process snapshot leaf", () => {
 			"-EncodedCommand",
 		]);
 		expect(Buffer.from(invocation?.[1][6] ?? "", "base64").toString("utf16le")).toBe(WINDOWS_PROCESS_SNAPSHOT_SCRIPT);
+		const utilityImport =
+			"Import-Module ([IO.Path]::Combine($PSHOME,'Modules','Microsoft.PowerShell.Utility','Microsoft.PowerShell.Utility.psd1')) -ErrorAction Stop";
+		const cimImport =
+			"Import-Module ([IO.Path]::Combine($PSHOME,'Modules','CimCmdlets','CimCmdlets.psd1')) -ErrorAction Stop";
+		expect(WINDOWS_PROCESS_SNAPSHOT_SCRIPT).toContain(utilityImport);
+		expect(WINDOWS_PROCESS_SNAPSHOT_SCRIPT).toContain(cimImport);
+		expect(WINDOWS_PROCESS_SNAPSHOT_SCRIPT.indexOf(utilityImport)).toBeLessThan(
+			WINDOWS_PROCESS_SNAPSHOT_SCRIPT.indexOf("ConvertFrom-Json"),
+		);
+		expect(WINDOWS_PROCESS_SNAPSHOT_SCRIPT.indexOf(cimImport)).toBeLessThan(
+			WINDOWS_PROCESS_SNAPSHOT_SCRIPT.indexOf("Get-CimInstance"),
+		);
 		expect(invocation?.[2].env.QUARTERDECK_PROCESS_IDENTITY_PIDS).toBe("[456]");
 		expect(invocation?.[2].env.QUARTERDECK_PROCESS_SNAPSHOT_ALL).toBe("1");
 		expect(invocation?.[2].maxBuffer).toBe(4 * 1024 * 1024);

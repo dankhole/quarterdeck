@@ -43,7 +43,12 @@ import {
 	resolveWindowsComSpec,
 	resolveWindowsPowerShellPath,
 } from "../../src/core";
-import { registerManagedProcessOwnership } from "../../src/terminal/managed-process-ownership";
+import {
+	discoverAbandonedManagedProcesses,
+	readManagedProcessOwnershipEvidence,
+	registerManagedProcessOwnership,
+} from "../../src/terminal/managed-process-ownership";
+import { killOrphanedAgentProcesses } from "../../src/terminal/orphan-cleanup";
 import { finishTaskWorktreeSetup } from "../../src/workdir/task-worktree-setup";
 import { createReviewBoard } from "../utilities/board-factory";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
@@ -525,7 +530,9 @@ function isPidAlive(pid: number): boolean {
 async function forceStopProcess(child: ChildProcess | null): Promise<void> {
 	if (!child || child.exitCode !== null || child.signalCode !== null) return;
 	child.kill("SIGKILL");
-	await waitForExit(child, 5_000);
+	if (!(await waitForExit(child, 5_000))) {
+		throw new Error(`Timed out stopping native Windows smoke probe PID ${String(child.pid)}.`);
+	}
 }
 
 describe.runIf(process.platform === "win32")("native Windows smoke", { concurrent: false }, () => {
@@ -998,7 +1005,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 
 			// Release this runtime's custody cleanly. The abandoned tree below has its
 			// own killed owner; crashing this runtime would correctly block admission
-			// before startup can exercise the exact managed-process cleanup.
+			// before restart can verify that saved evidence remains untouched.
 			phase = "graceful runtime shutdown";
 			await stopServer();
 			stopServer = null;
@@ -1049,18 +1056,20 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				stateHome: customStateHome,
 				runtimePid: orphanOwner.pid,
 			});
-			expect(managedOrphanRecord).not.toBeNull();
-			await assertPrivateWindowsAcls([
-				managedProcessesPath,
-				managedOrphanRecord?.path ?? join(managedProcessesPath, "missing-orphan-record"),
-			]);
+			if (!managedOrphanRecord) throw new Error("Managed orphan exited before ownership registration.");
+			const savedOrphanRecord = (await readManagedProcessOwnershipEvidence(customStateHome)).find(
+				(record) => record.recordId === managedOrphanRecord.recordId,
+			);
+			if (!savedOrphanRecord) throw new Error("Managed orphan ownership record was not persisted.");
+			const savedOrphanRecordContent = readFileSync(managedOrphanRecord.path, "utf8");
+			await assertPrivateWindowsAcls([managedProcessesPath, managedOrphanRecord.path]);
 
 			await forceStopProcess(orphanOwner);
 			orphanOwner = null;
 			expect(isPidAlive(managedOrphanPid)).toBe(true);
 			expect(isPidAlive(unrelatedAgent.pid)).toBe(true);
 
-			phase = "managed-orphan cleanup restart";
+			phase = "managed-orphan evidence preservation on restart";
 			const cleanupServer = await startQuarterdeckServer({
 				cwd: projectPath,
 				homeDir: tempHome,
@@ -1070,10 +1079,25 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				}),
 			});
 			stopServer = cleanupServer.stop;
-			phase = "managed-orphan cleanup assertions";
+			// Ordinary admission inspects evidence; it does not signal saved PIDs.
+			expect(isPidAlive(managedOrphanPid)).toBe(true);
+			expect(isPidAlive(unrelatedAgent.pid)).toBe(true);
+			expect(readFileSync(managedOrphanRecord.path, "utf8")).toBe(savedOrphanRecordContent);
+
+			// Exercise the native identity and tree-cleanup helper explicitly against
+			// this synthetic registry, independently of ordinary runtime startup.
+			phase = "explicit managed-orphan discovery and cleanup";
+			expect(await discoverAbandonedManagedProcesses({ stateHome: customStateHome })).toEqual([
+				{ identity: savedOrphanRecord.rootProcess, records: [managedOrphanRecord] },
+			]);
+			await expect(
+				killOrphanedAgentProcesses({
+					findManagedProcesses: () => discoverAbandonedManagedProcesses({ stateHome: customStateHome }),
+				}),
+			).resolves.toBe(1);
 			await waitUntil(() => !isPidAlive(managedOrphanPid ?? 0), "exact managed orphan process-tree cleanup", 20_000);
 			expect(isPidAlive(unrelatedAgent.pid)).toBe(true);
-			expect(existsSync(managedOrphanRecord?.path ?? "")).toBe(false);
+			expect(existsSync(managedOrphanRecord.path)).toBe(false);
 		} catch (error) {
 			testFailed = true;
 			primaryError = new Error(`Native Windows smoke failed during ${phase}.`, { cause: error });
